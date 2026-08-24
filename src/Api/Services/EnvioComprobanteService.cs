@@ -267,7 +267,8 @@ public class EnvioComprobanteService
     /// Integraciones. Es el motor que usan tanto el comprobante de una venta como el recibo de
     /// una cobranza — la config del correo vive en UN solo lugar.</summary>
     public async Task<(bool ok, string? error)> EnviarEmailConAdjuntoAsync(
-        string to, string subject, string body, byte[]? pdfBytes = null, string? filename = null)
+        string to, string subject, string body, byte[]? pdfBytes = null, string? filename = null,
+        bool esHtml = false)
     {
         if (string.IsNullOrWhiteSpace(to)) return (false, "No hay dirección de correo a la que mandar.");
 
@@ -305,7 +306,9 @@ public class EnvioComprobanteService
             From = new System.Net.Mail.MailAddress(fromAddress, string.IsNullOrEmpty(fromName) ? fromAddress : fromName),
             Subject = subject,
             Body = body,
-            IsBodyHtml = false
+            // 2026-08-24: el estado de cuenta va como tabla HTML (columnas DEBE/HABER/SALDO);
+            // el resto de los mails siguen en texto plano.
+            IsBodyHtml = esHtml
         };
         message.To.Add(to);
         // 2026-08-24: el adjunto es opcional — el resumen de saldo del panel "¿Quién me debe?"

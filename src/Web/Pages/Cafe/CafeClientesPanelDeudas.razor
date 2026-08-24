@@ -409,7 +409,7 @@
 {
     <div class="modal-overlay" style="z-index: 9100;" @onclick="CerrarMandarSaldo">
         @* la clase con fondo es modal-card (no "modal"): sin ella el cuadro queda transparente *@
-        <div class="modal-card" style="max-width: 460px;" @onclick:stopPropagation="true">
+        <div class="modal-card" style="max-width: 680px;" @onclick:stopPropagation="true">
             <div class="modal-header" style="background:#2563eb; color:white;">
                 <h4 style="margin:0;">📧 Mandar el saldo a @TituloMandarSaldo</h4>
                 <button class="modal-close" style="color:white;" @onclick="CerrarMandarSaldo">×</button>
@@ -419,14 +419,14 @@
                     @if (mandarSaldoGrupo.Count > 1)
                     {
                         <span>
-                            Va <b>UN solo mail</b> con el total de las @mandarSaldoGrupo.Count cuentas, desglosado por cada una.
-                            Deben <b>$@FormatMoney(mandarSaldoGrupo.Sum(x => x.SaldoPendiente))</b> en total.
+                            Va <b>UN solo mail</b> con el estado de cuenta de las @mandarSaldoGrupo.Count cuentas juntas,
+                            movimiento por movimiento. Deben <b>$@FormatMoney(mandarSaldoGrupo.Sum(x => x.SaldoPendiente))</b> en total.
                         </span>
                     }
                     else
                     {
                         <span>
-                            Le llega el detalle de lo que debe, comprobante por comprobante, con el total.
+                            Le llega el estado de cuenta: cada factura suma, cada pago resta, y abajo el saldo final.
                             Debe <b>$@FormatMoney(mandarSaldoGrupo.Sum(x => x.SaldoPendiente))</b>.
                         </span>
                     }
@@ -455,9 +455,11 @@
                     }
                     else
                     {
-                        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:0.6rem; max-height:220px; overflow:auto;">
-                            <div style="font-size:0.75rem; color:#6b7280; margin-bottom:0.3rem;"><b>Asunto:</b> @previewAsunto</div>
-                            <pre style="margin:0; font-family:inherit; font-size:0.78rem; color:#374151; white-space:pre-wrap;">@previewCuerpo</pre>
+                        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:0.6rem; max-height:280px; overflow:auto;">
+                            <div style="font-size:0.75rem; color:#6b7280; margin-bottom:0.4rem; padding-bottom:0.3rem; border-bottom:1px solid #f3f4f6;"><b>Asunto:</b> @previewAsunto</div>
+                            @* el mail va en HTML (tabla con DEBE/HABER/SALDO): se muestra tal cual le llega.
+                               overflow-x por si la tabla es mas ancha que el cuadro. *@
+                            <div style="font-size:0.78rem; overflow-x:auto;">@((MarkupString)previewCuerpo)</div>
                         </div>
                     }
                 </div>

@@ -113,7 +113,7 @@ public class EnvioReciboCobranzaService
         if (string.IsNullOrWhiteSpace(to)) return (false, "No hay dirección de correo: cargala en la ficha o escribila a mano.");
 
         var (asunto, cuerpo) = await ArmarMailSaldoAsync(clienteId);
-        return await _envio.EnviarEmailConAdjuntoAsync(to!, asunto, cuerpo);
+        return await _envio.EnviarEmailConAdjuntoAsync(to!, asunto, cuerpo, esHtml: true);
     }
 
     /// <summary>2026-08-24: UN solo mail con el total de varias cuentas del mismo grupo (las
@@ -131,12 +131,8 @@ public class EnvioReciboCobranzaService
         var saludo = !string.IsNullOrWhiteSpace(razon) ? razon!
                    : string.Join(" / ", clis.Select(c => c.Nombre));
 
-        var resumen = await ArmarResumenDeCuentasAsync(clienteIds,
-            "El saldo total de tu cuenta es de", "✅ Tu cuenta está al día. ¡Gracias!");
         var asunto = $"Resumen de tu cuenta al {hoy:dd/MM/yyyy} - {cfg?.NegocioNombre ?? "Frikaf"}";
-        var cuerpo = $"Hola {saludo},\n\n" + resumen + "\n\n" +
-                     "Si ya lo pagaste o ves algo que no coincide, avisanos y lo revisamos.\n\n" +
-                     $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}";
+        var cuerpo = await ArmarCuerpoEstadoCuentaAsync(clienteIds, saludo, cfg);
         return (asunto, cuerpo);
     }
 
@@ -151,7 +147,7 @@ public class EnvioReciboCobranzaService
         if (string.IsNullOrWhiteSpace(to))
             return (false, "Ninguno de los clientes elegidos tiene correo: escribí uno a mano.");
         var (asunto, cuerpo) = await ArmarMailSaldoGrupoAsync(clienteIds);
-        return await _envio.EnviarEmailConAdjuntoAsync(to!, asunto, cuerpo);
+        return await _envio.EnviarEmailConAdjuntoAsync(to!, asunto, cuerpo, esHtml: true);
     }
 
     /// <summary>El mail de resumen de saldo tal cual le va a llegar al cliente. Lo usa el envío
@@ -161,54 +157,103 @@ public class EnvioReciboCobranzaService
         var cli = await _db.CafeClientes.FirstOrDefaultAsync(x => x.Id == clienteId);
         var cfg = await _db.CafeSettings.FindAsync(1);
         var hoy = DateTime.UtcNow.AddHours(-3);
-        var resumen = await ArmarResumenDeCuentasAsync(new List<int> { clienteId },
-            "El saldo de tu cuenta es de", "✅ Tu cuenta está al día. ¡Gracias!");
         var asunto = $"Resumen de tu cuenta al {hoy:dd/MM/yyyy} - {cfg?.NegocioNombre ?? "Frikaf"}";
-        var cuerpo = $"Hola {cli?.Nombre},\n\n" + resumen + "\n\n" +
-                     "Si ya lo pagaste o ves algo que no coincide, avisanos y lo revisamos.\n\n" +
-                     $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}";
+        var cuerpo = await ArmarCuerpoEstadoCuentaAsync(new List<int> { clienteId }, cli?.Nombre, cfg);
         return (asunto, cuerpo);
     }
 
     /// <summary>Arma el detalle de deuda de una o varias cuentas (sucursales del mismo grupo).</summary>
+    /// <summary>Resumen corto (una linea + comprobantes pendientes). Se usa para WhatsApp, donde
+    /// una tabla no entra.</summary>
     private async Task<string> ArmarResumenDeCuentasAsync(List<int> ids, string encabezado, string textoAlDia)
     {
         if (ids.Count == 0) return "";
-
-        var nombres = await _db.CafeClientes.Where(x => ids.Contains(x.Id))
-            .Select(x => new { x.Id, x.Nombre }).ToListAsync();
-        var nombreDe = nombres.ToDictionary(x => x.Id, x => x.Nombre);
-
-        var sb = new StringBuilder();
-        decimal totalGrupo = 0m;
-        var bloques = new List<(string nombre, decimal saldo, List<CafeSaldosService.VentaCuenta> pendientes)>();
+        // 2026-08-24: la cuenta del cliente es UNA sola aunque adentro tenga varias sucursales:
+        // un total y las facturas por fecha, mezcladas (antes iba partido por sucursal).
+        decimal total = 0m;
+        var pendientes = new List<CafeSaldosService.VentaCuenta>();
         foreach (var id in ids)
         {
-            var saldo = await _saldos.GetSaldoClienteAsync(id);
-            var pend = (await _saldos.GetVentasCuentaAsync(id))
-                .Where(v => v.Pendiente).OrderBy(v => v.Fecha).ToList();
-            totalGrupo += saldo;
-            bloques.Add((nombreDe.TryGetValue(id, out var n) ? n : "Cuenta", saldo, pend));
+            total += await _saldos.GetSaldoClienteAsync(id);
+            pendientes.AddRange((await _saldos.GetVentasCuentaAsync(id)).Where(v => v.Pendiente));
         }
+        if (total <= CafeSaldosService.Umbral) return textoAlDia;
 
-        if (totalGrupo <= CafeSaldosService.Umbral) return textoAlDia;
-
-        var variasCuentas = bloques.Count(b => b.saldo > CafeSaldosService.Umbral) > 1;
-        sb.Append($"{encabezado} {Plata(totalGrupo)}:\n");
-
-        foreach (var b in bloques)
-        {
-            if (b.saldo <= CafeSaldosService.Umbral) continue;
-            if (variasCuentas) sb.Append($"\n• {b.nombre}: {Plata(b.saldo)}\n");
-            // Hasta 12 comprobantes por cuenta: si son más, se resume. El detalle completo lo tiene
-            // el operador en el sistema; al cliente le alcanza con las más viejas.
-            var muestra = b.pendientes.Take(12).ToList();
-            foreach (var v in muestra)
-                sb.Append($"   {v.Numero} ({v.Fecha:dd/MM/yyyy}): {Plata(v.Saldo)}\n");
-            if (b.pendientes.Count > muestra.Count)
-                sb.Append($"   … y {b.pendientes.Count - muestra.Count} comprobante(s) más\n");
-        }
+        var sb = new StringBuilder();
+        sb.Append($"{encabezado} {Plata(total)}:\n");
+        var ordenadas = pendientes.OrderBy(v => v.Fecha).ThenBy(v => v.Numero).ToList();
+        var muestra = ordenadas.Take(20).ToList();
+        foreach (var v in muestra)
+            sb.Append($"   {v.Numero} ({v.Fecha:dd/MM/yyyy}): {Plata(v.Saldo)}\n");
+        if (ordenadas.Count > muestra.Count)
+            sb.Append($"   … y {ordenadas.Count - muestra.Count} comprobante(s) más\n");
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>El mail completo (saludo + estado de cuenta + cierre), en HTML.</summary>
+    private async Task<string> ArmarCuerpoEstadoCuentaAsync(List<int> ids, string? saludo, CafeSetting? cfg)
+    {
+        var (tabla, saldoFinal) = await ArmarEstadoCuentaHtmlAsync(ids);
+        var negocio = cfg?.NegocioNombre ?? "Frikaf";
+        var intro = saldoFinal <= CafeSaldosService.Umbral
+            ? "Te pasamos el resumen de tu cuenta. <b>Está al día, no hay saldo pendiente.</b> ¡Gracias!"
+            : $"Te pasamos el resumen de tu cuenta. El saldo pendiente es de <b>{Plata(saldoFinal)}</b>.";
+        return "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;\">" +
+               $"<p>Hola {saludo},</p><p>{intro}</p>" + tabla +
+               "<p style=\"font-size:13px;color:#555;\">Si ya lo pagaste o ves algo que no coincide, avisanos y lo revisamos.</p>" +
+               $"<p>Saludos,<br>{negocio}</p></div>";
+    }
+
+    /// <summary>2026-08-24: ESTADO DE CUENTA en HTML, con el formato que usan los proveedores y que
+    /// el usuario pidió copiar: saldo anterior arriba, después cada movimiento (la factura suma en
+    /// DEBE, el recibo y la nota de crédito restan en HABER) y el saldo corriendo a la derecha.
+    /// Es la cuenta GLOBAL: si el cliente tiene varias sucursales cargadas, van todas mezcladas
+    /// por fecha, porque para él es una sola cuenta.</summary>
+    public async Task<(string html, decimal saldoFinal)> ArmarEstadoCuentaHtmlAsync(List<int> ids, int mesesAtras = 3)
+    {
+        var movs = new List<CafeSaldosService.MovimientoCuenta>();
+        foreach (var id in ids) movs.AddRange(await _saldos.GetMovimientosClienteAsync(id));
+        movs = movs.OrderBy(m => m.Fecha).ThenBy(m => m.Numero).ToList();
+
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        var desde = hoy.AddMonths(-mesesAtras);
+        var anteriores = movs.Where(m => m.Fecha.Date < desde).ToList();
+        var delPeriodo = movs.Where(m => m.Fecha.Date >= desde).ToList();
+        // Si en el periodo no hubo movimiento, mostramos todo (una cuenta quieta no dice nada).
+        if (delPeriodo.Count == 0) { delPeriodo = movs; anteriores = new(); }
+
+        var saldo = anteriores.Sum(m => m.Debe - m.Haber);
+        var saldoAnterior = saldo;
+
+        var sb = new StringBuilder();
+        const string celda = "padding:5px 12px;";
+        sb.Append("<table cellspacing=\"0\" style=\"border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;\">");
+        sb.Append($"<tr style=\"background:#f3f4f6;\">" +
+                  $"<th align=\"left\" style=\"{celda}\">FECHA</th><th align=\"left\" style=\"{celda}\">TIPO</th><th align=\"left\" style=\"{celda}\">COMPROBANTE</th>" +
+                  $"<th align=\"right\" style=\"{celda}\">DEBE</th><th align=\"right\" style=\"{celda}\">HABER</th><th align=\"right\" style=\"{celda}\">SALDO</th></tr>");
+        if (anteriores.Count > 0)
+            sb.Append($"<tr><td colspan=\"5\" style=\"{celda}\"><b>SALDO AL {desde.AddDays(-1):dd/MM/yyyy}</b></td>" +
+                      $"<td align=\"right\" style=\"{celda}\"><b>{Plata(saldoAnterior)}</b></td></tr>");
+
+        foreach (var m in delPeriodo)
+        {
+            saldo += m.Debe - m.Haber;
+            var tipo = m.Tipo switch
+            {
+                "Cobranza" => "REC",
+                "Nota Crédito" => "N/C",
+                _ => "FAC"
+            };
+            sb.Append("<tr style=\"border-top:1px solid #e5e7eb;\">" +
+                      $"<td style=\"{celda}\">{m.Fecha:dd/MM/yy}</td><td style=\"{celda}\">{tipo}</td><td style=\"{celda}\">{m.Numero}</td>" +
+                      $"<td align=\"right\" style=\"{celda}\">{(m.Debe > 0 ? Plata(m.Debe) : "")}</td>" +
+                      $"<td align=\"right\" style=\"{celda}\">{(m.Haber > 0 ? Plata(m.Haber) : "")}</td>" +
+                      $"<td align=\"right\" style=\"{celda}\">{Plata(saldo)}</td></tr>");
+        }
+        sb.Append($"<tr style=\"background:#fef9c3;border-top:2px solid #d1d5db;\"><td colspan=\"5\" style=\"{celda}\"><b>SALDO AL {hoy:dd/MM/yyyy}</b></td>" +
+                  $"<td align=\"right\" style=\"{celda}\"><b>{Plata(saldo)}</b></td></tr>");
+        sb.Append("</table>");
+        return (sb.ToString(), saldo);
     }
 
     private byte[] GenerarPdf(CafeCobranza c, CafeSetting? cfg)
