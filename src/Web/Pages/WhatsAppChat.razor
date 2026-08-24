@@ -1697,7 +1697,7 @@
                                                             <label class="wa-mv-det-lbl">Formato</label>
                                                             <select class="wa-mv-det-sel" value="@li.Req.Formato"
                                                                     @onchange="(e) => CambiarFormatoLinea(idx, e.Value?.ToString())">
-                                                                @foreach (var op in FormatoOpciones(ProductoDe(li)))
+                                                                @foreach (var op in FormatoOpciones(ProductoDe(li), li.Req.Formato))
                                                                 {
                                                                     <option value="@op.Item1">@op.Item2</option>
                                                                 }
@@ -1790,9 +1790,9 @@
 
                             <div class="wa-mv-sec-t">Cómo paga</div>
                             <div class="wa-mv-ops">
-                                @foreach (var cp in new[] { "EFECTIVO", "TRANSFERENCIA", "CUENTA CORRIENTE", "CHEQUE", "TARJETA" })
+                                @foreach (var cp in PagosPosibles)
                                 {
-                                    <button class="wa-mv-op @(mvCondicionPago == cp ? "on" : "")" @onclick="() => mvCondicionPago = cp">@cp</button>
+                                    <button class="wa-mv-op @(mvCondicionPago == cp ? "on" : "")" @onclick="() => mvCondicionPago = cp">@PagoLabel(cp)</button>
                                 }
                             </div>
 
@@ -1820,7 +1820,7 @@
 
                             <div class="wa-mv-sec-t">Qué día se entrega</div>
                             <div class="wa-mv-ops">
-                                @foreach (var d in new[] { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB" })
+                                @foreach (var d in DiasSemana)
                                 {
                                     <button class="wa-mv-op @(mvDias.Contains(d) ? "on" : "")" @onclick="() => ToggleDiaEntrega(d)">@d</button>
                                 }
@@ -1866,11 +1866,11 @@
                                 <div class="wa-mv-resu">
                                     <div class="wa-mv-resu-l"><span>Cliente</span><b>@mvClienteNombre</b></div>
                                     <div class="wa-mv-resu-l"><span>Comprobante</span><b>@TipoLabel(mvTipoComprobante)</b></div>
-                                    <div class="wa-mv-resu-l"><span>Paga</span><b>@mvCondicionPago</b></div>
+                                    <div class="wa-mv-resu-l"><span>Paga</span><b>@PagoLabel(mvCondicionPago)</b></div>
                                     <div class="wa-mv-resu-l"><span>Entrega</span><b>@(mvRetira ? "Lo retira" : "Se lo llevamos")</b></div>
                                     @if (mvDias.Count > 0)
                                     {
-                                        <div class="wa-mv-resu-l"><span>Días</span><b>@string.Join(" ", mvDias)</b></div>
+                                        <div class="wa-mv-resu-l"><span>Días</span><b>@string.Join(" ", DiasOrdenados())</b></div>
                                     }
                                     <div class="wa-mv-resu-l"><span>Renglones</span><b>@mvItems.Count</b></div>
                                 </div>
@@ -4876,8 +4876,8 @@
 
     string ResumenPaso2()
     {
-        var partes = new List<string> { TipoLabel(mvTipoComprobante), mvCondicionPago, mvRetira ? "Retira" : "Envío" };
-        if (mvDias.Count > 0) partes.Add(string.Join("/", mvDias));
+        var partes = new List<string> { TipoLabel(mvTipoComprobante), PagoLabel(mvCondicionPago), mvRetira ? "Retira" : "Envío" };
+        if (mvDias.Count > 0) partes.Add(string.Join("/", DiasOrdenados()));
         return string.Join(" · ", partes);
     }
 
@@ -4914,18 +4914,27 @@
 
     /// <summary>Los formatos que se pueden elegir en ese renglón. Café: kilo, medio y cuarto.
     /// El resto: suelto + bulto y packs, pero solo los que ese producto tiene de verdad.</summary>
-    List<(string, string)> FormatoOpciones(CafeProductoDto? p)
+    List<(string, string)> FormatoOpciones(CafeProductoDto? p, string? actual = null)
     {
+        List<(string, string)> ops;
         if (p?.Categoria == "CAFE")
-            return new() { ("1KG", "1 kg"), ("MEDIO", "1/2 kg"), ("CUARTO", "1/4 kg") };
-        var ops = new List<(string, string)> { ("UNIT", "Suelto") };
-        if (p is not null)
+            ops = new() { ("1KG", "1 kg"), ("MEDIO", "1/2 kg"), ("CUARTO", "1/4 kg") };
+        else
         {
-            if (p.UxB.HasValue && p.UxB.Value > 0 && (p.PrecioBulto.HasValue || p.PrecioBultoOtro.HasValue))
-                ops.Add(("BULTO", $"Bulto x{p.UxB.Value}"));
-            foreach (var pk in (p.Packs ?? new()).Where(x => x.IsActive).OrderBy(x => x.Cantidad))
-                ops.Add(($"PACK_{pk.Cantidad}", $"Pack x{pk.Cantidad}"));
+            ops = new() { ("UNIT", "Suelto") };
+            if (p is not null)
+            {
+                if (p.UxB.HasValue && p.UxB.Value > 0 && (p.PrecioBulto.HasValue || p.PrecioBultoOtro.HasValue))
+                    ops.Add(("BULTO", $"Bulto x{p.UxB.Value}"));
+                foreach (var pk in (p.Packs ?? new()).Where(x => x.IsActive).OrderBy(x => x.Cantidad))
+                    ops.Add(($"PACK_{pk.Cantidad}", $"Pack x{pk.Cantidad}"));
+            }
         }
+        // Si el renglón viene de repetir un comprobante viejo con un formato que ya no está en la
+        // lista, lo agregamos igual: si no, el desplegable mostraría OTRA cosa que la que se va a
+        // facturar de verdad.
+        if (!string.IsNullOrWhiteSpace(actual) && !ops.Any(o => o.Item1 == actual))
+            ops.Insert(0, (actual!, FormatoLabelCorto(actual) ?? actual!));
         return ops;
     }
 
@@ -5037,6 +5046,23 @@
         mvTipoComprobante = tipo;
         await CotizarModoVenta();
     }
+
+    /// <summary>Las formas de pago TAL CUAL las guarda el sistema. Ojo: son códigos ("CTA_CORRIENTE"),
+    /// no el texto que se ve. Si acá se pone un valor inventado, la venta se guarda con una condición
+    /// de pago que después ningún listado entiende.</summary>
+    static readonly string[] PagosPosibles = { "EFECTIVO", "TRANSFERENCIA", "MERCADOPAGO", "DEBITO", "CREDITO", "CTA_CORRIENTE", "CHEQUE" };
+
+    static string PagoLabel(string? p) => (p ?? "").ToUpperInvariant() switch
+    {
+        "EFECTIVO" => "Efectivo", "TRANSFERENCIA" => "Transferencia", "MERCADOPAGO" => "Mercado Pago",
+        "DEBITO" => "Débito", "CREDITO" => "Crédito", "CTA_CORRIENTE" => "Cuenta corriente",
+        "CHEQUE" => "Cheque", "V_PRIVADO" => "*V********", _ => p ?? "—"
+    };
+
+    static readonly string[] DiasSemana = { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB" };
+
+    /// <summary>Los días en orden de semana, no en el orden en que los fue tocando.</summary>
+    IEnumerable<string> DiasOrdenados() => DiasSemana.Where(d => mvDias.Contains(d));
 
     void ToggleDiaEntrega(string dia)
     {
@@ -5361,7 +5387,7 @@
                 Retira = mvRetira,
                 Observaciones = mvObservaciones,
                 ComentarioArmado = string.IsNullOrWhiteSpace(mvComentarioArmado) ? null : mvComentarioArmado!.Trim(),
-                WeekDays = mvDias.Count > 0 ? string.Join(",", mvDias) : null
+                WeekDays = mvDias.Count > 0 ? string.Join(",", DiasOrdenados()) : null
             };
             var venta = await Api.CreateCafeVentaAsync(req);
             if (venta is null) { Toast.Error("No se pudo crear la venta."); return; }
