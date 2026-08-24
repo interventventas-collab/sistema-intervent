@@ -640,6 +640,10 @@ public class CafeCobranzasController : ControllerBase
             return BadRequest(new { error = "Solo se pueden eliminar cobranzas ANULADAS. Anula la cobranza primero." });
 
         // 3) Borrar comprobantes y medios linkeados, despues la cobranza
+        // 2026-08-24: antes de borrarla, soltar los movimientos del banco que la apuntaban
+        // (quedarian colgados de un id que ya no existe).
+        var movsBancoDel = await _db.CafeExtractoMovimientos.Where(m => m.CobranzaUsadaId == id).ToListAsync();
+        foreach (var mb in movsBancoDel) mb.CobranzaUsadaId = null;
         if (c.Comprobantes.Count > 0) _db.CafeCobranzasComprobantes.RemoveRange(c.Comprobantes);
         if (c.Medios.Count > 0) _db.CafeCobranzasMedios.RemoveRange(c.Medios);
         _db.CafeCobranzas.Remove(c);
@@ -659,6 +663,13 @@ public class CafeCobranzasController : ControllerBase
         if (c.Estado == "ANULADA") return BadRequest(new { error = "Ya esta anulada" });
         c.Estado = "ANULADA";
         c.UpdatedAt = DateTime.UtcNow;
+        // 2026-08-24: soltar los movimientos del banco que se habian usado como forma de cobro.
+        // Si no, la transferencia queda con el sello de "ya la use" apuntando a un recibo que ya no
+        // existe: deja de ofrecerse como forma de cobro, la precarga desde el extracto no encuentra
+        // nada (y no avisa), y en el listado del banco figura como cobrada. Caso real: $2.000.000
+        // de Dulce Lugar del 21/08, mas otros 5 movimientos trabados desde mayo.
+        var movsBanco = await _db.CafeExtractoMovimientos.Where(m => m.CobranzaUsadaId == id).ToListAsync();
+        foreach (var mb in movsBanco) mb.CobranzaUsadaId = null;
         // Si algun medio creo un cheque EN_CARTERA, lo marcamos como rechazado (cobranza revertida)
         foreach (var m in c.Medios.Where(m => m.ChequeId.HasValue))
         {

@@ -118,29 +118,28 @@ public class CafeExtractoBancoController : ControllerBase
             .ToListAsync())
             .ToHashSet();
 
-        // 2026-06-19: para cada venta asociada, buscar la cobranza que la imputo. Si esa cobranza
-        // tiene MAS imputaciones, las devolvemos todas para que la UI muestre los N comprobantes.
-        // Caso tipico: transferencia bancaria que cancela 2 facturas a la vez.
-        var imputacionesAsoc = await _db.CafeCobranzasComprobantes
-            .Where(i => i.VentaId.HasValue && ventaIds.Contains(i.VentaId.Value))
-            .Select(i => new { i.CobranzaId, VentaId = i.VentaId!.Value })
-            .ToListAsync();
-        var ventaToCobranzaId = imputacionesAsoc
-            .GroupBy(x => x.VentaId)
-            .ToDictionary(g => g.Key, g => g.First().CobranzaId);
-        var cobranzaIds = imputacionesAsoc.Select(x => x.CobranzaId).Distinct().ToList();
+        // 2026-08-24: el recibo que se muestra en cada fila sale del VINCULO REAL
+        // (CafeExtractoMovimiento.CobranzaUsadaId), que es el que se graba cuando el operador usa
+        // ese movimiento como forma de cobro. Antes se ADIVINABA: se buscaba cualquier cobranza que
+        // hubiera tocado la venta asociada, sin mirar siquiera si estaba ANULADA. Resultado: una
+        // transferencia sin cobrar aparecia como "ya cobrada" mostrando un recibo anulado con todas
+        // sus facturas colgando (caso Dulce Lugar 21/08 + Amitie + 2 de Alcaide).
+        // Regla: si no hay vinculo real, o el recibo esta ANULADO, la fila NO muestra cobranza.
+        var cobranzaIds = movs.Where(m => m.CobranzaUsadaId.HasValue)
+            .Select(m => m.CobranzaUsadaId!.Value).Distinct().ToList();
+        var cobranzaNumeros = await _db.CafeCobranzas
+            .Where(c => cobranzaIds.Contains(c.Id) && c.Estado == "VIGENTE")
+            .Select(c => new { c.Id, c.Numero })
+            .ToDictionaryAsync(c => c.Id, c => c.Numero);
         var todasImpDeCobranzas = await _db.CafeCobranzasComprobantes
-            .Where(i => cobranzaIds.Contains(i.CobranzaId) && i.VentaId.HasValue)
+            .Where(i => cobranzaIds.Contains(i.CobranzaId) && i.VentaId.HasValue
+                     && i.Cobranza!.Estado == "VIGENTE")
             .Join(_db.CafeVentas, i => i.VentaId!.Value, v => v.Id,
                   (i, v) => new { i.CobranzaId, v.Numero })
             .ToListAsync();
         var compsPorCobranza = todasImpDeCobranzas
             .GroupBy(x => x.CobranzaId)
             .ToDictionary(g => g.Key, g => g.Select(x => x.Numero).Distinct().OrderBy(n => n).ToList());
-        var cobranzaNumeros = await _db.CafeCobranzas
-            .Where(c => cobranzaIds.Contains(c.Id))
-            .Select(c => new { c.Id, c.Numero })
-            .ToDictionaryAsync(c => c.Id, c => c.Numero);
 
         var result = movs.Select(m =>
         {
@@ -160,11 +159,11 @@ public class CafeExtractoBancoController : ControllerBase
             }
             List<string>? comprobantes = null;
             string? cobranzaNumero = null;
-            if (m.VentaIdAsociada.HasValue
-                && ventaToCobranzaId.TryGetValue(m.VentaIdAsociada.Value, out var cobId))
+            // Solo si el movimiento se uso DE VERDAD en un recibo, y ese recibo sigue vigente.
+            if (m.CobranzaUsadaId.HasValue && cobranzaNumeros.TryGetValue(m.CobranzaUsadaId.Value, out var cnum))
             {
-                if (compsPorCobranza.TryGetValue(cobId, out var lista)) comprobantes = lista;
-                if (cobranzaNumeros.TryGetValue(cobId, out var cnum)) cobranzaNumero = cnum;
+                cobranzaNumero = cnum;
+                if (compsPorCobranza.TryGetValue(m.CobranzaUsadaId.Value, out var lista)) comprobantes = lista;
             }
             // Asociado a una venta que todavia no tiene cobranza vigente = proceso a medias.
             bool sinCobranza = m.VentaIdAsociada.HasValue && !ventasSaldadas.Contains(m.VentaIdAsociada.Value);
