@@ -758,14 +758,16 @@
         return $"hace {(int)diff.TotalDays}d";
     }
 
-    // 2026-07-07: saca SOLO la línea auto-inyectada "Saldo anterior: $X (comprobantes: ...)"
+    // 2026-07-07: saca SOLO la línea auto-inyectada "Saldo anterior: $X" (el depósito NO tiene
+    // que ver saldos del cliente). 2026-08-24: esa línea ya no lleva "(comprobantes: ...)", así que
+    // el patrón acepta las dos formas — si no, el saldo se le empezaba a colar al depósito.
     // de las observaciones, y deja el resto de la nota (que puede tener info útil para el armado).
     private static string? LimpiarSaldoAnterior(string? obs)
     {
         if (string.IsNullOrWhiteSpace(obs)) return obs;
         var limpio = System.Text.RegularExpressions.Regex.Replace(
             obs,
-            @"Saldo anterior:\s*\$?[^\n(]*\(comprobantes:[^)]*\)",
+            @"Saldo anterior:\s*\$?[^\n(]*(\(comprobantes:[^)]*\))?",
             "",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         return limpio.Trim(' ', '\n', '\r', '\t');

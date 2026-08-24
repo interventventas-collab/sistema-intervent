@@ -193,67 +193,218 @@ public class EnvioReciboCobranzaService
     /// <summary>El mail completo (saludo + estado de cuenta + cierre), en HTML.</summary>
     private async Task<string> ArmarCuerpoEstadoCuentaAsync(List<int> ids, string? saludo, CafeSetting? cfg)
     {
-        var (tabla, saldoFinal) = await ArmarEstadoCuentaHtmlAsync(ids);
+        var (tabla, saldoTotal) = await ArmarEstadoCuentaHtmlAsync(ids);
         var negocio = cfg?.NegocioNombre ?? "Frikaf";
-        var intro = saldoFinal <= CafeSaldosService.Umbral
-            ? "Te pasamos el resumen de tu cuenta. <b>Está al día, no hay saldo pendiente.</b> ¡Gracias!"
-            : $"Te pasamos el resumen de tu cuenta. El saldo pendiente es de <b>{Plata(saldoFinal)}</b>.";
-        return "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;\">" +
-               $"<p>Hola {saludo},</p><p>{intro}</p>" + tabla +
-               "<p style=\"font-size:13px;color:#555;\">Si ya lo pagaste o ves algo que no coincide, avisanos y lo revisamos.</p>" +
-               $"<p>Saludos,<br>{negocio}</p></div>";
+        var hoy = DateTime.UtcNow.AddHours(-3);
+        var sb = new StringBuilder();
+        sb.Append("<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;\">");
+        sb.Append($"<p>Hola {saludo},</p>");
+        if (saldoTotal <= CafeSaldosService.Umbral)
+        {
+            sb.Append("<p>Te pasamos el resumen de tu cuenta. <b>Está al día, no hay saldo pendiente.</b> ¡Gracias!</p>");
+        }
+        else
+        {
+            // 2026-08-24: el total va ARRIBA y grande — es lo que el usuario quiere que se vea primero.
+            sb.Append("<p>Te pasamos el resumen de tu cuenta.</p>");
+            sb.Append("<div style=\"background:#fef9c3;border-radius:8px;padding:14px 16px;margin:0 0 18px;display:inline-block;\">" +
+                      $"<div style=\"font-size:13px;color:#78350f;\">Saldo pendiente al {hoy:dd/MM/yyyy}</div>" +
+                      $"<div style=\"font-size:26px;font-weight:bold;color:#78350f;\">{Plata(saldoTotal)}</div></div>");
+        }
+        sb.Append(tabla);
+        sb.Append("<p style=\"font-size:13px;color:#555;margin-top:16px;\">Si querés el detalle completo de los comprobantes pendientes, pedínoslo y te lo mandamos.<br>" +
+                  "Si ya lo pagaste o ves algo que no coincide, avisanos y lo revisamos.</p>");
+        sb.Append($"<p>Saludos,<br>{negocio}</p></div>");
+        return sb.ToString();
+    }
+
+    /// <summary>Datos del comprobante que hacen falta para pintar el renglón.</summary>
+    private sealed record InfoComprobante(string? TipoComprobante, int? ArcaPtoVta, int? ArcaCbteNro, int? ClienteId)
+    {
+        public bool EsFiscal => TipoComprobante is "FA" or "FB" or "FC" or "NCA" or "NCB" or "NCC";
+        public bool EsNotaCredito => TipoComprobante is not null && TipoComprobante.StartsWith("NC");
+    }
+
+    /// <summary>Una cuenta del estado: "Facturas" (fiscal) o "Cotizaciones" (no fiscal).</summary>
+    private sealed class BloqueCuenta
+    {
+        public string Titulo = "";
+        public bool EsFiscal;
+        public decimal SaldoAnterior;
+        public decimal SaldoFinal;
+        public DateTime? Desde;
+        public List<CafeSaldosService.MovimientoCuenta> Movimientos = new();
     }
 
     /// <summary>2026-08-24: ESTADO DE CUENTA en HTML, con el formato que usan los proveedores y que
-    /// el usuario pidió copiar: saldo anterior arriba, después cada movimiento (la factura suma en
-    /// DEBE, el recibo y la nota de crédito restan en HABER) y el saldo corriendo a la derecha.
-    /// Es la cuenta GLOBAL: si el cliente tiene varias sucursales cargadas, van todas mezcladas
-    /// por fecha, porque para él es una sola cuenta.</summary>
-    public async Task<(string html, decimal saldoFinal)> ArmarEstadoCuentaHtmlAsync(List<int> ids, int mesesAtras = 3)
+    /// el usuario pidió copiar: saldo anterior, cada movimiento (la factura suma en DEBE, el recibo
+    /// y la nota de crédito restan en HABER) y el saldo corriendo a la derecha.
+    ///
+    /// Decisiones del usuario (24/08):
+    ///  - Las SUCURSALES son una sola cuenta (van mezcladas por fecha), pero FACTURAS y COTIZACIONES
+    ///    son DOS cuentas separadas, cada una con su saldo.
+    ///  - El historial arranca en lo que pase primero: el último pago, o el comprobante impago más
+    ///    viejo. Así se ve siempre el último pago Y todo lo que quedó sin pagar.
+    ///  - Un recibo = una línea (si tocó varias sucursales, se suma).
+    ///  - Los recibos en $0 (compensación factura + nota de crédito) no se muestran.</summary>
+    public async Task<(string html, decimal saldoTotal)> ArmarEstadoCuentaHtmlAsync(List<int> ids, int mesesAtras = 3)
     {
         var movs = new List<CafeSaldosService.MovimientoCuenta>();
         foreach (var id in ids) movs.AddRange(await _saldos.GetMovimientosClienteAsync(id));
-        movs = movs.OrderBy(m => m.Fecha).ThenBy(m => m.Numero).ToList();
 
+        // Un recibo que pagó facturas de varias sucursales venía en una línea por sucursal: el
+        // cliente veía su transferencia partida en pedazos y no la podía cruzar con el banco.
+        movs = movs
+            .GroupBy(m => new { m.Fecha.Date, m.Tipo, m.Numero })
+            .Select(g => new CafeSaldosService.MovimientoCuenta(
+                g.Min(x => x.Fecha), g.Key.Tipo, g.Key.Numero,
+                g.Sum(x => x.Debe), g.Sum(x => x.Haber), null))
+            .Where(m => Math.Abs(m.Debe) > 0.005m || Math.Abs(m.Haber) > 0.005m)
+            .OrderBy(m => m.Fecha).ThenBy(m => m.Numero)
+            .ToList();
+
+        // Datos de cada comprobante: si es fiscal, su número de ARCA y de qué sucursal es.
+        var infoVentas = await _db.CafeVentas
+            .Where(v => v.ClienteId != null && ids.Contains(v.ClienteId.Value) && v.Estado != "anulado")
+            .Select(v => new { v.Numero, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro, v.ClienteId })
+            .ToListAsync();
+        var porNumero = infoVentas.Where(v => v.Numero != null)
+            .GroupBy(v => v.Numero!)
+            .ToDictionary(g => g.Key, g => new InfoComprobante(
+                g.First().TipoComprobante, g.First().ArcaPtoVta, g.First().ArcaCbteNro, g.First().ClienteId));
+        var nombres = await _db.CafeClientes.Where(c => ids.Contains(c.Id))
+            .Select(c => new { c.Id, c.Nombre }).ToListAsync();
+        var nombreCorto = ArmarNombresCortos(nombres.ToDictionary(x => x.Id, x => x.Nombre));
+        var variasCuentas = ids.Count > 1;
+
+        // Los pagos siguen a la cuenta donde se imputaron.
+        var fiscalPorRecibo = await MapaRecibosFiscalesAsync(ids);
+
+        bool EsFiscalMov(CafeSaldosService.MovimientoCuenta m)
+        {
+            if (m.Tipo == "Cobranza") return fiscalPorRecibo.TryGetValue(m.Numero, out var f) && f;
+            return porNumero.TryGetValue(m.Numero, out var v) && v.EsFiscal;
+        }
+
+        var bloques = new List<BloqueCuenta>
+        {
+            new() { Titulo = "Cuenta facturas", EsFiscal = true },
+            new() { Titulo = "Cuenta cotizaciones", EsFiscal = false }
+        };
+        // El comprobante impago más viejo de cada cuenta: el historial nunca puede arrancar
+        // después de él, si no el cliente ve un saldo sin poder saber de dónde sale.
+        var pendientes = new List<CafeSaldosService.VentaCuenta>();
+        foreach (var id in ids)
+            pendientes.AddRange((await _saldos.GetVentasCuentaAsync(id)).Where(v => v.Pendiente));
+        DateTime? ImpagoMasViejo(bool fiscal) => pendientes
+            .Where(v => (v.TipoComprobante is "FA" or "FB" or "FC") == fiscal)
+            .Select(v => (DateTime?)v.Fecha.Date).Min();
+
+        foreach (var b in bloques)
+        {
+            var propios = movs.Where(m => EsFiscalMov(m) == b.EsFiscal).ToList();
+            if (propios.Count == 0) continue;
+            b.SaldoFinal = propios.Sum(m => m.Debe - m.Haber);
+            b.Desde = CorteDesde(propios, ImpagoMasViejo(b.EsFiscal));
+            b.SaldoAnterior = propios.Where(m => m.Fecha.Date < b.Desde!.Value).Sum(m => m.Debe - m.Haber);
+            b.Movimientos = propios.Where(m => m.Fecha.Date >= b.Desde!.Value).ToList();
+        }
+
+        var conSaldo = bloques.Where(b => b.Movimientos.Count > 0 || Math.Abs(b.SaldoFinal) > CafeSaldosService.Umbral).ToList();
         var hoy = DateTime.UtcNow.AddHours(-3).Date;
-        var desde = hoy.AddMonths(-mesesAtras);
-        var anteriores = movs.Where(m => m.Fecha.Date < desde).ToList();
-        var delPeriodo = movs.Where(m => m.Fecha.Date >= desde).ToList();
-        // Si en el periodo no hubo movimiento, mostramos todo (una cuenta quieta no dice nada).
-        if (delPeriodo.Count == 0) { delPeriodo = movs; anteriores = new(); }
-
-        var saldo = anteriores.Sum(m => m.Debe - m.Haber);
-        var saldoAnterior = saldo;
-
         var sb = new StringBuilder();
+        foreach (var b in conSaldo)
+        {
+            if (conSaldo.Count > 1)
+                sb.Append($"<p style=\"margin:16px 0 6px;font-size:14px;font-weight:bold;\">{b.Titulo}</p>");
+            sb.Append(TablaHtml(b, hoy, porNumero, nombreCorto, variasCuentas));
+        }
+        return (sb.ToString(), bloques.Sum(b => b.SaldoFinal));
+    }
+
+    /// <summary>Dónde arranca el historial: el último pago, o el comprobante impago más viejo — lo
+    /// que pase primero. Si no hay pagos, los últimos 10 movimientos.</summary>
+    private static DateTime CorteDesde(List<CafeSaldosService.MovimientoCuenta> movs, DateTime? impagoMasViejo)
+    {
+        var ultimoPago = movs.Where(m => m.Tipo == "Cobranza").Select(m => (DateTime?)m.Fecha.Date).Max();
+        var candidatos = new List<DateTime>();
+        if (ultimoPago.HasValue) candidatos.Add(ultimoPago.Value);
+        if (impagoMasViejo.HasValue) candidatos.Add(impagoMasViejo.Value);
+        if (candidatos.Count == 0)
+            return movs.Count > 10 ? movs[^10].Fecha.Date : movs[0].Fecha.Date;
+        return candidatos.Min();
+    }
+
+    /// <summary>Para cada recibo, si lo que canceló fue fiscal (factura) o no (cotización).</summary>
+    private async Task<Dictionary<string, bool>> MapaRecibosFiscalesAsync(List<int> ids)
+    {
+        var filas = await _db.CafeCobranzasComprobantes
+            .Where(cc => cc.Cobranza!.Estado == "VIGENTE" && cc.VentaId != null
+                      && cc.Venta!.ClienteId != null && ids.Contains(cc.Venta.ClienteId.Value))
+            .Select(cc => new { cc.Cobranza!.Numero, cc.Venta!.TipoComprobante, cc.Importe })
+            .ToListAsync();
+        return filas.GroupBy(f => f.Numero)
+            .ToDictionary(g => g.Key, g => g.Sum(x =>
+                x.TipoComprobante is "FA" or "FB" or "FC" or "NCA" or "NCB" or "NCC" ? Math.Abs(x.Importe) : 0m)
+                >= g.Sum(x => Math.Abs(x.Importe)) / 2m);
+    }
+
+    /// <summary>Recorta el nombre de cada sucursal sacando la parte que comparten todas
+    /// ("DULCE LUGAR S.R.L SUCURSAL CANNING" → "Canning").</summary>
+    private static Dictionary<int, string> ArmarNombresCortos(Dictionary<int, string> nombres)
+    {
+        if (nombres.Count <= 1) return nombres;
+        var listas = nombres.Values.Select(n => n.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToList();
+        var comun = 0;
+        while (comun < listas.Min(l => l.Length) - 1 &&
+               listas.All(l => l[comun].Equals(listas[0][comun], StringComparison.OrdinalIgnoreCase)))
+            comun++;
+        return nombres.ToDictionary(kv => kv.Key, kv =>
+        {
+            var partes = kv.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(comun).ToList();
+            var txt = string.Join(" ", partes);
+            return string.IsNullOrWhiteSpace(txt) ? kv.Value : System.Globalization.CultureInfo
+                .GetCultureInfo("es-AR").TextInfo.ToTitleCase(txt.ToLower());
+        });
+    }
+
+    private string TablaHtml(BloqueCuenta b, DateTime hoy, Dictionary<string, InfoComprobante> porNumero,
+        Dictionary<int, string> nombreCorto, bool variasCuentas)
+    {
         const string celda = "padding:5px 12px;";
+        var sb = new StringBuilder();
+        var saldo = b.SaldoAnterior;
         sb.Append("<table cellspacing=\"0\" style=\"border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;\">");
         sb.Append($"<tr style=\"background:#f3f4f6;\">" +
                   $"<th align=\"left\" style=\"{celda}\">FECHA</th><th align=\"left\" style=\"{celda}\">TIPO</th><th align=\"left\" style=\"{celda}\">COMPROBANTE</th>" +
                   $"<th align=\"right\" style=\"{celda}\">DEBE</th><th align=\"right\" style=\"{celda}\">HABER</th><th align=\"right\" style=\"{celda}\">SALDO</th></tr>");
-        if (anteriores.Count > 0)
-            sb.Append($"<tr><td colspan=\"5\" style=\"{celda}\"><b>SALDO AL {desde.AddDays(-1):dd/MM/yyyy}</b></td>" +
-                      $"<td align=\"right\" style=\"{celda}\"><b>{Plata(saldoAnterior)}</b></td></tr>");
+        if (Math.Abs(b.SaldoAnterior) > 0.005m && b.Desde.HasValue)
+            sb.Append($"<tr><td colspan=\"5\" style=\"{celda}\"><b>SALDO AL {b.Desde.Value.AddDays(-1):dd/MM/yyyy}</b></td>" +
+                      $"<td align=\"right\" style=\"{celda}\"><b>{Plata(b.SaldoAnterior)}</b></td></tr>");
 
-        foreach (var m in delPeriodo)
+        foreach (var m in b.Movimientos)
         {
             saldo += m.Debe - m.Haber;
-            var tipo = m.Tipo switch
-            {
-                "Cobranza" => "REC",
-                "Nota Crédito" => "N/C",
-                _ => "FAC"
-            };
+            porNumero.TryGetValue(m.Numero, out var info);
+            var tipo = m.Tipo == "Cobranza" ? "REC"
+                     : info?.EsNotaCredito == true ? "N/C"
+                     : (b.EsFiscal ? "FAC" : "COT");
+            // En las facturas mostramos el número de ARCA, que es el que el cliente tiene impreso.
+            var numero = m.Numero;
+            if (info?.ArcaCbteNro is int nro)
+                numero = $"{info.ArcaPtoVta ?? 0:00000}-{nro:00000000}";
+            if (variasCuentas && info?.ClienteId is int cliId && nombreCorto.TryGetValue(cliId, out var suc))
+                numero += $" <span style=\"color:#6b7280;\">({suc})</span>";
             sb.Append("<tr style=\"border-top:1px solid #e5e7eb;\">" +
-                      $"<td style=\"{celda}\">{m.Fecha:dd/MM/yy}</td><td style=\"{celda}\">{tipo}</td><td style=\"{celda}\">{m.Numero}</td>" +
+                      $"<td style=\"{celda}\">{m.Fecha:dd/MM/yy}</td><td style=\"{celda}\">{tipo}</td><td style=\"{celda}\">{numero}</td>" +
                       $"<td align=\"right\" style=\"{celda}\">{(m.Debe > 0 ? Plata(m.Debe) : "")}</td>" +
                       $"<td align=\"right\" style=\"{celda}\">{(m.Haber > 0 ? Plata(m.Haber) : "")}</td>" +
                       $"<td align=\"right\" style=\"{celda}\">{Plata(saldo)}</td></tr>");
         }
         sb.Append($"<tr style=\"background:#fef9c3;border-top:2px solid #d1d5db;\"><td colspan=\"5\" style=\"{celda}\"><b>SALDO AL {hoy:dd/MM/yyyy}</b></td>" +
-                  $"<td align=\"right\" style=\"{celda}\"><b>{Plata(saldo)}</b></td></tr>");
+                  $"<td align=\"right\" style=\"{celda}\"><b>{Plata(b.SaldoFinal)}</b></td></tr>");
         sb.Append("</table>");
-        return (sb.ToString(), saldo);
+        return sb.ToString();
     }
 
     private byte[] GenerarPdf(CafeCobranza c, CafeSetting? cfg)

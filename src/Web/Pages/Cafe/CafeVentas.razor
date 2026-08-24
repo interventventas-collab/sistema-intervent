@@ -9206,8 +9206,9 @@
                 && unpaidPrevSales.Count > 0
                 && !notesToSave.Contains("Saldo anterior", StringComparison.OrdinalIgnoreCase))
             {
-                var nums = string.Join(", ", unpaidPrevSales.Select(s => s.Numero));
-                var prevLine = $"Saldo anterior: ${FormatMoney(UnpaidPrevTotal)} (comprobantes: {nums})";
+                // 2026-08-24 (pedido del usuario): va SOLO el total. Antes listaba cada comprobante
+                // impago entre paréntesis y ocupaba media observación.
+                var prevLine = $"Saldo anterior: ${FormatMoney(UnpaidPrevTotal)}";
                 notesToSave = string.IsNullOrWhiteSpace(notesToSave)
                     ? prevLine
                     : prevLine + "\n" + notesToSave;
