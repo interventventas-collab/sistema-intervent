@@ -652,6 +652,35 @@ public class CafeCobranzasController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    // ─── 2026-08-24: mandarle al cliente el comprobante del pago + como le queda la cuenta ───
+    public record EnviarReciboRequest(bool Email, bool Whatsapp, string? EmailDestino = null,
+        string? WhatsappDestino = null, string? LineaPhoneId = null);
+
+    /// <summary>Manda el recibo de la cobranza (PDF) al cliente por mail y/o WhatsApp, junto con
+    /// el resumen de lo que le queda debiendo. Devuelve el resultado de cada canal por separado:
+    /// si uno falla, el otro puede haber salido igual.</summary>
+    [HttpPost("{id:int}/enviar")]
+    public async Task<IActionResult> EnviarRecibo(int id, [FromBody] EnviarReciboRequest req,
+        [FromServices] EnvioReciboCobranzaService envio)
+    {
+        if (!req.Email && !req.Whatsapp) return BadRequest(new { error = "Elegí al menos un canal" });
+        var r = await envio.EnviarAsync(id, req.Email, req.Whatsapp,
+            req.EmailDestino, req.WhatsappDestino, req.LineaPhoneId);
+        return Ok(r);
+    }
+
+    /// <summary>Vista previa del texto que se le va a mandar al cliente (sin mandarlo).</summary>
+    [HttpGet("{id:int}/enviar/preview")]
+    public async Task<IActionResult> PreviewRecibo(int id, [FromServices] EnvioReciboCobranzaService envio)
+    {
+        var c = await _db.CafeCobranzas
+            .Include(x => x.Cliente)
+            .Include(x => x.Comprobantes).ThenInclude(cc => cc.Venta)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (c is null) return NotFound();
+        return Ok(new { resumen = await envio.ArmarResumenAsync(c) });
+    }
+
     [HttpPost("{id:int}/anular")]
     public async Task<IActionResult> Anular(int id)
     {

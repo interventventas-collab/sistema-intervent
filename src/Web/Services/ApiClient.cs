@@ -5554,6 +5554,13 @@ public class ApiClient
         List<CrearComprobanteItemRequest> comprobantes, List<CrearMedioItemRequest> medios)
         => await PostAsync<CrearCobranzaResultDto>("/api/cafe/cobranzas",
             new { clienteId, retenciones, operador, observaciones, comprobantes, medios });
+    // 2026-08-24: mandarle al cliente el recibo del pago + como le queda la cuenta.
+    public record EnviarReciboResultDto(bool EmailOk, string? EmailError, bool WhatsappOk, string? WhatsappError);
+
+    public async Task<EnviarReciboResultDto?> EnviarReciboCobranzaAsync(int cobranzaId, bool email, bool whatsapp)
+        => await PostAsync<EnviarReciboResultDto>($"/api/cafe/cobranzas/{cobranzaId}/enviar",
+            new { email, whatsapp });
+
     public async Task<bool> AnularCafeCobranzaAsync(int id)
     {
         var r = await PostAsync<object>($"/api/cafe/cobranzas/{id}/anular", new { });

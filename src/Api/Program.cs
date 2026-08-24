@@ -238,6 +238,8 @@ builder.Services.AddScoped<Api.Controllers.CafeVentasController>();
 // 2026-08-20: envío del comprobante al cliente (mail / WhatsApp) + robot de la cola que lo
 // manda N minutos después de emitir, para dar tiempo a corregir la venta antes de que salga.
 builder.Services.AddScoped<EnvioComprobanteService>();
+// 2026-08-24: manda al cliente el recibo del pago + como le queda la cuenta (mail / WhatsApp).
+builder.Services.AddScoped<EnvioReciboCobranzaService>();
 builder.Services.AddHostedService<EnvioComprobanteBackgroundService>();
 // 2026-07-23: CafeListasCustomController en DI para mandar listas de precios por el chat WhatsApp
 builder.Services.AddScoped<Api.Controllers.CafeListasCustomController>();

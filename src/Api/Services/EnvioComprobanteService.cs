@@ -245,6 +245,32 @@ public class EnvioComprobanteService
     {
         if (string.IsNullOrWhiteSpace(to)) return (false, "El cliente no tiene correo cargado.");
 
+        var cfgVenta = await _db.CafeSettings.FindAsync(1);
+        var pdfVenta = await GenerarPdfAsync(v, cfgVenta);
+        var asunto = $"Comprobante {v.Numero} - {cfgVenta?.NegocioNombre ?? "Frikaf"}";
+        // 2026-08-20: si el operador escribió un texto propio, ESE es el cuerpo (el comprobante va
+        // adjunto igual). Si no, el de siempre.
+        var cuerpo = !string.IsNullOrWhiteSpace(mensajePropio)
+            ? mensajePropio!
+            : $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)},\n\n" +
+              $"Te adjuntamos el comprobante {v.Numero} por {Plata(MontoCliente(v))}.\n\n" +
+              "Cualquier consulta, escribinos.\n\n" +
+              $"Saludos,\n{cfgVenta?.NegocioNombre ?? "Frikaf"}";
+        // El texto agregado va ACÁ ABAJO, en el mismo mail. Antes salía como un segundo correo y
+        // al cliente le llegaban dos mails del mismo comprobante.
+        if (!string.IsNullOrWhiteSpace(textoExtra))
+            cuerpo += "\n\n----------\n" + textoExtra!.Trim();
+        return await EnviarEmailConAdjuntoAsync(to, asunto, cuerpo, pdfVenta, NombrePdf(v));
+    }
+
+    /// <summary>2026-08-24: envío de mail con un PDF adjunto, usando la configuración SMTP de
+    /// Integraciones. Es el motor que usan tanto el comprobante de una venta como el recibo de
+    /// una cobranza — la config del correo vive en UN solo lugar.</summary>
+    public async Task<(bool ok, string? error)> EnviarEmailConAdjuntoAsync(
+        string to, string subject, string body, byte[] pdfBytes, string filename)
+    {
+        if (string.IsNullOrWhiteSpace(to)) return (false, "No hay dirección de correo a la que mandar.");
+
         var integration = await _integrations.GetByProviderAsync("email-smtp");
         if (integration is null) return (false, "No hay configuración de email. Configurala en Integraciones.");
         var secret = await _integrations.GetSecretAsync("email-smtp");
@@ -268,23 +294,6 @@ public class EnvioComprobanteService
         }
         if (string.IsNullOrEmpty(fromAddress)) return (false, "No hay email de remitente configurado en Integraciones.");
 
-        var cfg = await _db.CafeSettings.FindAsync(1);
-        var pdfBytes = await GenerarPdfAsync(v, cfg);
-
-        var subject = $"Comprobante {v.Numero} - {cfg?.NegocioNombre ?? "Frikaf"}";
-        // 2026-08-20: si el operador escribió un texto propio, ESE es el cuerpo (el comprobante va
-        // adjunto igual). Si no, el de siempre.
-        var body = !string.IsNullOrWhiteSpace(mensajePropio)
-            ? mensajePropio!
-            : $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)},\n\n" +
-              $"Te adjuntamos el comprobante {v.Numero} por {Plata(MontoCliente(v))}.\n\n" +
-              "Cualquier consulta, escribinos.\n\n" +
-              $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}";
-        // El texto agregado va ACÁ ABAJO, en el mismo mail. Antes salía como un segundo correo y
-        // al cliente le llegaban dos mails del mismo comprobante.
-        if (!string.IsNullOrWhiteSpace(textoExtra))
-            body += "\n\n----------\n" + textoExtra!.Trim();
-
         using var client = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
         {
             Credentials = new System.Net.NetworkCredential(string.IsNullOrEmpty(username) ? fromAddress : username, secret),
@@ -300,7 +309,7 @@ public class EnvioComprobanteService
         };
         message.To.Add(to);
         using var ms = new MemoryStream(pdfBytes);
-        message.Attachments.Add(new System.Net.Mail.Attachment(ms, NombrePdf(v), "application/pdf"));
+        message.Attachments.Add(new System.Net.Mail.Attachment(ms, filename, "application/pdf"));
         await client.SendMailAsync(message);
         return (true, null);
     }
@@ -314,6 +323,20 @@ public class EnvioComprobanteService
     {
         if (string.IsNullOrWhiteSpace(numero))
             return (false, "El cliente no tiene teléfono cargado ni un chat de WhatsApp vinculado.");
+        var cfgV = await _db.CafeSettings.FindAsync(1);
+        var pdfV = await GenerarPdfAsync(v, cfgV);
+        // 2026-08-20: texto propio del operador si lo escribió; si no, el de siempre.
+        var cap = !string.IsNullOrWhiteSpace(mensajePropio) ? mensajePropio!.Trim() : CaptionWhatsApp(v);
+        return await EnviarWhatsappConPdfAsync(numero, lineaPhoneId, pdfV, NombrePdf(v), cap);
+    }
+
+    /// <summary>2026-08-24: manda un PDF por WhatsApp (API oficial de Meta) a un número, con el
+    /// texto que se le pase. Meta descarga el archivo de una URL nuestra, así que el PDF se deja
+    /// en disco con un token temporal. Lo usan el comprobante de venta y el recibo de cobranza.</summary>
+    public async Task<(bool ok, string? error)> EnviarWhatsappConPdfAsync(
+        string numero, string? lineaPhoneId, byte[] pdfBytes, string filename, string caption)
+    {
+        if (string.IsNullOrWhiteSpace(numero)) return (false, "No hay teléfono al que mandar.");
         if (!_outbound.AnyConfigured) return (false, "WhatsApp no está configurado.");
 
         var baseUrl = (await _db.AppSettings.FindAsync("mapeo.public_base_url"))?.Value?.TrimEnd('/');
@@ -321,9 +344,6 @@ public class EnvioComprobanteService
             return (false, "Falta configurar la dirección pública del sistema (Mapeo → dirección pública); sin eso Meta no puede bajar el PDF.");
 
         var numeroNorm = MetaWhatsAppService.ToInboxWhatsApp(numero);
-        var cfg = await _db.CafeSettings.FindAsync(1);
-        var pdfBytes = await GenerarPdfAsync(v, cfg);
-        var filename = NombrePdf(v);
 
         Directory.CreateDirectory(UploadsDir);
         var token = Guid.NewGuid().ToString("N");
@@ -343,8 +363,6 @@ public class EnvioComprobanteService
         await _db.SaveChangesAsync();
 
         var mediaUrl = $"{baseUrl}/api/whatsapp/twilio/files/{token}.pdf";
-        // 2026-08-20: texto propio del operador si lo escribió; si no, el de siempre.
-        var caption = !string.IsNullOrWhiteSpace(mensajePropio) ? mensajePropio!.Trim() : CaptionWhatsApp(v);
         var (sid, canal, lin) = await _outbound.SendMediaAsync(numeroNorm, mediaUrl, caption, filename, lineaPhoneId);
         if (string.IsNullOrEmpty(sid))
             return (false, "Meta no aceptó el mensaje. Suele pasar si el cliente no te escribió en las últimas 24 hs.");

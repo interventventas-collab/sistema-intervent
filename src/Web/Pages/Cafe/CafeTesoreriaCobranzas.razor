@@ -705,6 +705,53 @@
                         <div style="font-size:0.7rem; color:#6b7280; margin-top:0.4rem;">PDF, JPG o PNG · máximo 10 MB cada uno · se podés agregar más después desde el botón 📎 del listado</div>
                     </div>
 
+                    @* --- 2026-08-24: avisarle al cliente (recibo del pago + como le queda la cuenta) --- *@
+                    @if (ClienteAviso is not null)
+                    {
+                        var tieneMail = AvisoTieneMail;
+                        var tieneTel = AvisoTieneTelefono;
+                        <div style="margin: 1rem 0; padding: 0.8rem; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;">
+                            <div style="font-weight:700; font-size:0.9rem; color:#166534; margin-bottom:0.4rem;">📤 Avisarle al cliente</div>
+                            @if (!tieneMail && !tieneTel)
+                            {
+                                <div style="font-size:0.8rem; color:#6b7280;">
+                                    Este cliente no tiene mail ni teléfono cargado — cargáselos en su ficha y vas a poder mandarle el recibo.
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                                    @if (tieneMail)
+                                    {
+                                        <label style="display:flex; align-items:center; gap:0.45rem; cursor:pointer; font-size:0.85rem; color:#166534;">
+                                            <input type="checkbox" @bind="enviarPorEmail" />
+                                            <span>📧 Mandarle el recibo por mail a <b>@ClienteAviso.Email</b></span>
+                                        </label>
+                                    }
+                                    else
+                                    {
+                                        <div style="font-size:0.78rem; color:#9ca3af;">📧 Sin correo cargado en la ficha del cliente</div>
+                                    }
+                                    @if (tieneTel)
+                                    {
+                                        <label style="display:flex; align-items:center; gap:0.45rem; cursor:pointer; font-size:0.85rem; color:#166534;">
+                                            <input type="checkbox" @bind="enviarPorWhatsapp" />
+                                            <span>📱 Mandárselo por WhatsApp al <b>@ClienteAviso.Telefono</b></span>
+                                        </label>
+                                    }
+                                    else
+                                    {
+                                        <div style="font-size:0.78rem; color:#9ca3af;">📱 Sin teléfono cargado en la ficha del cliente</div>
+                                    }
+                                </div>
+                                <div style="font-size:0.72rem; color:#15803d; margin-top:0.4rem;">
+                                    Se manda el recibo del pago en PDF + cuánto le queda debiendo, factura por factura.
+                                    Si paga por varias sucursales, van todas.
+                                </div>
+                            }
+                        </div>
+                    }
+
                     @* --- Observaciones --- *@
                     <div class="form-group">
                         <label class="form-label">Observaciones</label>
@@ -1645,12 +1692,17 @@
         selClienteId = id;
         clienteSearch = "";
         clienteSearchOpen = false;
+        var cli = clientes?.FirstOrDefault(x => x.Id == id);
+        enviarPorEmail = !string.IsNullOrWhiteSpace(cli?.Email);
+        enviarPorWhatsapp = false;
         await OnClienteChange();
     }
 
     private void ClearCliente()
     {
         selClienteId = 0;
+        enviarPorEmail = false;
+        enviarPorWhatsapp = false;
         clienteSearch = "";
         clienteSearchOpen = false;
         pendientes = null;
@@ -1724,6 +1776,16 @@
     // ─── 2026-08-24: repartir un pago de la factura mas vieja a la mas nueva ───
     // Regla del negocio (Dulce Lugar y varios mas): el cliente manda lo que puede y se va
     // descontando de la mas vieja a la mas nueva. Se hacia a mano con calculadora en cada pago.
+    /// <summary>Cliente elegido en el modal (para la seccion "avisarle al cliente").</summary>
+    private CafeClienteDto? ClienteAviso => clientes?.FirstOrDefault(x => x.Id == selClienteId);
+    private bool AvisoTieneMail => !string.IsNullOrWhiteSpace(ClienteAviso?.Email);
+    private bool AvisoTieneTelefono => !string.IsNullOrWhiteSpace(ClienteAviso?.Telefono);
+
+    // 2026-08-24: avisarle al cliente al guardar. El mail arranca TILDADO si el cliente tiene
+    // correo cargado (pedido del usuario); el WhatsApp queda a eleccion, para no mandar sin querer.
+    private bool enviarPorEmail;
+    private bool enviarPorWhatsapp;
+
     private bool mostrarRepartir;
     private string repartirTexto = "";
     private string? repartirResumen;
@@ -1955,6 +2017,26 @@
             adjRetencionFile = null;
             adjTransferenciaFile = null;
             ToastService.Success($"Cobranza {r.Numero} creada");
+            // 2026-08-24: mandarle al cliente el recibo + como le queda la cuenta. Va DESPUES de
+            // crear la cobranza (si el envio falla, la cobranza ya quedo guardada igual).
+            if (enviarPorEmail || enviarPorWhatsapp)
+            {
+                try
+                {
+                    var env = await Api.EnviarReciboCobranzaAsync(r.Id, enviarPorEmail, enviarPorWhatsapp);
+                    if (env is null) ToastService.Error("La cobranza se guardó, pero no se pudo avisar al cliente.");
+                    else
+                    {
+                        if (enviarPorEmail)
+                            { if (env.EmailOk) ToastService.Success("📧 Recibo enviado por mail"); else ToastService.Error("Mail: " + (env.EmailError ?? "no se pudo enviar")); }
+                        if (enviarPorWhatsapp)
+                            { if (env.WhatsappOk) ToastService.Success("📱 Recibo enviado por WhatsApp"); else ToastService.Error("WhatsApp: " + (env.WhatsappError ?? "no se pudo enviar")); }
+                    }
+                }
+                catch (Exception ex) { ToastService.Error("La cobranza se guardó, pero falló el aviso: " + ex.Message); }
+            }
+            enviarPorEmail = false;
+            enviarPorWhatsapp = false;
             showNueva = false;
             await Load();
         }
