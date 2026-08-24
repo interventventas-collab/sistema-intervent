@@ -239,21 +239,21 @@
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Horas trabajadas</label>
-                                    <input class="form-input" type="number" step="0.5" min="0" @bind="formHorasTrabajadas" />
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormHorasTrabajadasTxt" />
                                 </div>
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Horas extra</label>
-                                    <input class="form-input" type="number" step="0.5" min="0" @bind="formHorasExtra" />
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormHorasExtraTxt" />
                                 </div>
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Días de ausencia</label>
-                                    <input class="form-input" type="number" step="0.5" min="0" @bind="formDiasAusencia" />
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormDiasAusenciaTxt" />
                                 </div>
                             </div>
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Días de vacaciones</label>
-                                    <input class="form-input" type="number" step="0.5" min="0" @bind="formDiasVacaciones" />
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormDiasVacacionesTxt" />
                                     <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">Solo informativo.</p>
                                 </div>
                                 @* Campo "Recargo hs extra" eliminado: la hora extra paga el valor hora del empleado
@@ -268,7 +268,7 @@
                                 <div class="form-row">
                                     <div class="form-group" style="flex: 1; background:#ede9fe; padding:0.6rem 0.8rem; border-radius:8px; border:1px solid #c4b5fd;">
                                         <label class="form-label" style="color:#5b21b6; font-weight:700;">📆 Días trabajados en el mes</label>
-                                        <input class="form-input" type="number" step="0.5" min="0" max="62" @bind="formDiasTrabajados" placeholder="Ej: 22" />
+                                        <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormDiasTrabajadosTxt" placeholder="Ej: 22" />
                                         <p style="font-size: 0.78rem; color: #6d28d9; margin: 0.3rem 0 0; font-weight:600;">
                                             Sueldo = @formDiasTrabajados días × $@FormatMoney(JornalDiarioEmp) = <strong style="color: #059669;">$@FormatMoney(SueldoBaseEmp)</strong>
                                         </p>
@@ -278,28 +278,28 @@
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">☕ Kg de café vendidos</label>
-                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formKgCafe" />
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormKgCafeTxt" placeholder="Ej: 120,5" />
                                     <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
                                         Comisión = @formKgCafe kg × $@FormatMoney(ComisionPorKgEmp) = <strong style="color: #059669;">$@FormatMoney(ComisionCalculada)</strong>
                                     </p>
                                 </div>
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">🎁 Bonos ($)</label>
-                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formBonos" />
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormBonosTxt" />
                                 </div>
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">🎄 Aguinaldo ($)</label>
-                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formAguinaldo" />
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormAguinaldoTxt" />
                                 </div>
                             </div>
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">💸 Adelantos ($)</label>
-                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formAdelantos" />
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormAdelantosTxt" />
                                 </div>
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">📝 Otros descuentos ($)</label>
-                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formOtros" />
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormOtrosTxt" />
                                 </div>
                             </div>
 
@@ -319,8 +319,8 @@
                                 @if (!EsEmpleadoDiario && isEditing)
                                 {
                                     <span style="display:flex; align-items:center; gap:0.2rem; font-weight:600;">$
-                                        <input type="number" step="1" min="0" class="form-input" style="width:130px; padding:0.2rem 0.4rem; text-align:right; font-weight:700;"
-                                               @bind="formSueldoBase" @bind:event="oninput" />
+                                        <input type="text" inputmode="decimal" onfocus="this.select()" class="form-input" style="width:130px; padding:0.2rem 0.4rem; text-align:right; font-weight:700;"
+                                               @bind="FormSueldoBaseTxt" />
                                     </span>
                                 }
                                 else
@@ -472,21 +472,42 @@
                                             <span> Esta liquidación no tiene importe cargado en este concepto.</span>
                                         }
                                     </span>
-                                    @if (pendienteConcepto > 0.01m)
-                                    {
-                                        <button class="btn btn-secondary" type="button" @onclick="() => UsarPendienteConcepto(pendienteConcepto)"
-                                                style="font-size: 0.72rem; padding: 0.15rem 0.55rem; background: white;">
-                                            Usar $@FormatMoney(pendienteConcepto)
-                                        </button>
-                                    }
                                 </div>
 
-                                <div class="form-row" style="margin-top: 0.4rem; align-items: end;">
-                                    <div class="form-group" style="flex: 1;">
+                                @* 2026-08-24: el MONTO va primero y grande (es el dato que mas se equivoca) y es un
+                                   campo de TEXTO, no type=number: asi acepta "1.019.000", "50000,50" y "$1.019.000,00"
+                                   pegado. Con type=number el navegador vaciaba el casillero (ver Web/Services/MontoInput.cs). *@
+                                <div class="form-row" style="margin-top: 0.5rem; align-items: end; grid-template-columns: minmax(160px, 220px) 1fr;">
+                                    <div class="form-group">
+                                        <label class="form-label" style="font-size: 0.75rem;">Monto ($)</label>
+                                        <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()"
+                                               style="font-size: 1.1rem; font-weight: 700; text-align: right;"
+                                               placeholder="0,00" @bind="pagoMontoTxt" />
+                                    </div>
+                                    <div class="form-group" style="display: flex; gap: 0.35rem; flex-wrap: wrap; align-content: end; padding-bottom: 0.15rem;">
+                                        @if (pendienteConcepto > 0.01m)
+                                        {
+                                            <button class="btn btn-secondary" type="button" @onclick="() => UsarPendienteConcepto(pendienteConcepto)"
+                                                    style="font-size: 0.72rem; padding: 0.3rem 0.6rem;">
+                                                Lo que falta de este concepto: $@FormatMoney(pendienteConcepto)
+                                            </button>
+                                        }
+                                        @if (editingLiq.Saldo > 0.01m)
+                                        {
+                                            <button class="btn btn-secondary" type="button" @onclick="UsarSaldoCompleto"
+                                                    style="font-size: 0.72rem; padding: 0.3rem 0.6rem;">
+                                                Saldo total: $@FormatMoney(editingLiq.Saldo)
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="form-row" style="margin-top: 0.4rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+                                    <div class="form-group">
                                         <label class="form-label" style="font-size: 0.75rem;">Fecha</label>
                                         <input class="form-input" type="date" @bind="pagoFecha" />
                                     </div>
-                                    <div class="form-group" style="flex: 1.4;">
+                                    <div class="form-group">
                                         <label class="form-label" style="font-size: 0.75rem;">Concepto *</label>
                                         <select class="form-input" @bind="pagoConcepto">
                                             <option value="sueldo">💰 Sueldo</option>
@@ -498,7 +519,7 @@
                                             <option value="otro">📝 Otros descuentos</option>
                                         </select>
                                     </div>
-                                    <div class="form-group" style="flex: 1;">
+                                    <div class="form-group">
                                         <label class="form-label" style="font-size: 0.75rem;">Método</label>
                                         <select class="form-input" @bind="pagoMetodo">
                                             <option value="efectivo">Efectivo</option>
@@ -509,27 +530,26 @@
                                             <option value="otro">Otro</option>
                                         </select>
                                     </div>
-                                    <div class="form-group" style="flex: 1;">
-                                        <label class="form-label" style="font-size: 0.75rem;">Monto ($)</label>
-                                        <input class="form-input" type="number" step="0.01" min="0.01" @bind="pagoMonto" />
-                                    </div>
-                                    <div class="form-group" style="flex: 0 0 110px;">
-                                        <button class="btn btn-primary" type="button" @onclick="AddPago" style="width: 100%;">+ Pagar</button>
-                                    </div>
                                 </div>
-                                <div class="form-row" style="margin-top: 0.4rem;">
-                                    <div class="form-group" style="flex: 2;">
-                                        <label class="form-label" style="font-size: 0.75rem;">Detalle del concepto (opcional)</label>
-                                        <input class="form-input" @bind="pagoDetalle" placeholder="Ej: 120kg café marzo, 15hs extras del 5/4..." />
-                                    </div>
-                                    <div class="form-group" style="flex: 2;">
-                                        <label class="form-label" style="font-size: 0.75rem;">Notas (opcional)</label>
-                                        <input class="form-input" @bind="pagoNotas" placeholder="Ej: Nº comprobante, banco..." />
-                                    </div>
+
+                                @* 2026-08-24: el detalle y las notas van ARRIBA del boton a proposito. Antes estaban
+                                   DEBAJO: el usuario apretaba "+ Pagar" sin haberlas escrito y despues las tipeaba y
+                                   tocaba "Guardar cambios" — que guarda la liquidacion, no el pago — y se perdian. *@
+                                <div class="form-group" style="margin-top: 0.4rem;">
+                                    <label class="form-label" style="font-size: 0.75rem;">Detalle (opcional)</label>
+                                    <input class="form-input" @bind="pagoDetalle" @bind:event="oninput" placeholder="Ej: 120kg café marzo, 15hs extras del 5/4..." />
                                 </div>
-                                <p style="font-size: 0.75rem; color: #6b7280; margin: 0.3rem 0 0;">
-                                    💡 Si querés pagar todo lo que queda de la liquidación (todos los conceptos juntos):
-                                    <button class="btn btn-secondary" type="button" @onclick="UsarSaldoCompleto" style="font-size: 0.72rem; padding: 0.15rem 0.5rem; margin-left: 0.3rem;">Usar saldo total $@FormatMoney(editingLiq.Saldo)</button>
+                                <div class="form-group" style="margin-top: 0.4rem;">
+                                    <label class="form-label" style="font-size: 0.75rem;">Notas (opcional)</label>
+                                    <input class="form-input" @bind="pagoNotas" @bind:event="oninput" placeholder="Ej: Nº de comprobante, banco, quién lo pagó..." />
+                                </div>
+
+                                <button class="btn btn-primary" type="button" @onclick="RegistrarPago" disabled="@(pagoGuardando || isSaving)"
+                                        style="width: 100%; margin-top: 0.6rem; padding: 0.55rem; font-size: 0.95rem; font-weight: 700;">
+                                    @(pagoGuardando ? "Registrando..." : (PagoMonto > 0 ? $"✓ Registrar pago de ${FormatMoney(PagoMonto)}" : "✓ Registrar pago"))
+                                </button>
+                                <p style="font-size: 0.75rem; color: #6b7280; margin: 0.35rem 0 0; text-align: center;">
+                                    Guarda el pago con su detalle y sus notas — y también los cambios de arriba. Un solo paso.
                                 </p>
                             </div>
                         }
@@ -580,6 +600,22 @@
                     </div>
                 }
             </div>
+            @* 2026-08-24: red de seguridad. Si hay un pago cargado a medias y el usuario cierra o
+               guarda, en vez de tirarlo a la basura en silencio le preguntamos que hacer. *@
+            @if (avisoPagoAccion is not null)
+            {
+                <div style="background: #fef3c7; border-top: 2px solid #fbbf24; padding: 0.6rem 1rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span style="font-size: 0.85rem; color: #78350f; flex: 1; min-width: 220px;">
+                        ⚠ Tenés un pago cargado sin registrar@(PagoMonto > 0 ? $" de ${FormatMoney(PagoMonto)}" : "").
+                        Si @(avisoPagoAccion == "cerrar" ? "cerrás" : "guardás") ahora se pierde.
+                    </span>
+                    <button class="btn btn-primary" type="button" @onclick="RegistrarYSeguir" disabled="@(pagoGuardando || isSaving)" style="font-size: 0.8rem;">
+                        @(pagoGuardando ? "Registrando..." : "Registrar el pago")
+                    </button>
+                    <button class="btn btn-secondary" type="button" @onclick="DescartarYSeguir" disabled="@(pagoGuardando || isSaving)" style="font-size: 0.8rem;">Descartarlo</button>
+                    <button class="btn btn-secondary" type="button" @onclick="() => avisoPagoAccion = null" disabled="@(pagoGuardando || isSaving)" style="font-size: 0.8rem;">Volver</button>
+                </div>
+            }
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cerrar</button>
                 <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">
@@ -743,7 +779,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Monto</label>
-                        <input type="number" step="0.01" class="form-input" @bind="editingPagoMonto" />
+                        <input type="text" inputmode="decimal" onfocus="this.select()" class="form-input" @bind="EditingPagoMontoTxt" />
                     </div>
                 </div>
 
@@ -829,9 +865,47 @@
     private DateTime pagoFecha = DateTime.Today;
     private string pagoMetodo = "efectivo";
     private string pagoConcepto = "sueldo";
-    private decimal pagoMonto;
     private string pagoDetalle = "";
     private string pagoNotas = "";
+    private bool pagoGuardando;
+    /// <summary>2026-08-24: "cerrar" o "guardar" — que estaba por hacer el usuario cuando le avisamos
+    /// que tenia un pago sin registrar. null = no hay aviso en pantalla.</summary>
+    private string? avisoPagoAccion;
+
+    // 2026-08-24: el monto del pago se tipea como TEXTO (ver MontoInput). Arranca VACIO a proposito:
+    // si mostrara "0,00" y el usuario tipea 1 al lado, queda 0,001 (el bug del campo cantidad del stock).
+    private string _pagoMontoTxt = "";
+    private decimal PagoMonto { get; set; }
+    private string pagoMontoTxt
+    {
+        get => _pagoMontoTxt;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) { _pagoMontoTxt = ""; PagoMonto = 0m; return; }
+            if (MontoInput.TryParse(value, out var v)) { PagoMonto = v; _pagoMontoTxt = MontoInput.Formato(v); }
+            else { PagoMonto = 0m; _pagoMontoTxt = value; }
+        }
+    }
+
+    // 2026-08-24: los importes y las cantidades de la liquidacion, como texto. El get formatea
+    // ("1.019.000,00", "7,5") y el set parsea lo que sea que haya tipeado o pegado el usuario.
+    private string FormSueldoBaseTxt { get => MontoInput.Formato(formSueldoBase); set { MontoInput.TryParse(value, out formSueldoBase); } }
+    private string FormBonosTxt { get => MontoInput.Formato(formBonos); set { MontoInput.TryParse(value, out formBonos); } }
+    private string FormAguinaldoTxt { get => MontoInput.Formato(formAguinaldo); set { MontoInput.TryParse(value, out formAguinaldo); } }
+    private string FormAdelantosTxt { get => MontoInput.Formato(formAdelantos); set { MontoInput.TryParse(value, out formAdelantos); } }
+    private string FormOtrosTxt { get => MontoInput.Formato(formOtros); set { MontoInput.TryParse(value, out formOtros); } }
+    private string FormKgCafeTxt { get => MontoInput.FormatoCantidad(formKgCafe); set { MontoInput.TryParse(value, out formKgCafe); } }
+    private string FormHorasTrabajadasTxt { get => MontoInput.FormatoCantidad(formHorasTrabajadas); set { MontoInput.TryParse(value, out formHorasTrabajadas); } }
+    private string FormHorasExtraTxt { get => MontoInput.FormatoCantidad(formHorasExtra); set { MontoInput.TryParse(value, out formHorasExtra); } }
+    private string FormDiasAusenciaTxt { get => MontoInput.FormatoCantidad(formDiasAusencia); set { MontoInput.TryParse(value, out formDiasAusencia); } }
+    private string FormDiasVacacionesTxt { get => MontoInput.FormatoCantidad(formDiasVacaciones); set { MontoInput.TryParse(value, out formDiasVacaciones); } }
+    private string FormDiasTrabajadosTxt { get => MontoInput.FormatoCantidad(formDiasTrabajados); set { MontoInput.TryParse(value, out formDiasTrabajados); } }
+
+    /// <summary>Hay algo tipeado en el formulario de pago que todavia no se grabo.</summary>
+    private bool HayPagoSinRegistrar =>
+        showForm && isEditing && editingLiq is not null
+        && editingLiq.Saldo > 0.01m && editingLiq.Estado != "anulada"
+        && (PagoMonto > 0m || !string.IsNullOrWhiteSpace(pagoDetalle) || !string.IsNullOrWhiteSpace(pagoNotas));
 
     private static string ConceptoLabel(string c) => c switch
     {
@@ -895,6 +969,8 @@
     private string editingPagoMetodo = "efectivo";
     private string editingPagoConcepto = "sueldo";
     private decimal editingPagoMonto;
+    /// <summary>2026-08-24: el monto del pago que se edita, tipeado como texto (ver MontoInput).</summary>
+    private string EditingPagoMontoTxt { get => MontoInput.Formato(editingPagoMonto); set { MontoInput.TryParse(value, out editingPagoMonto); } }
     private string editingPagoDetalle = "";
     private string editingPagoNotas = "";
     private string editingPagoOperator = "OSMAR";
@@ -1133,17 +1209,46 @@
         formDiasAusencia = 0; formDiasVacaciones = 0;
         formKgCafe = 0; formDiasTrabajados = 0; formBonos = 0; formAguinaldo = 0; formAdelantos = 0; formOtros = 0;
         formNotas = "";
-        pagoFecha = DateTime.Today; pagoMetodo = "efectivo"; pagoMonto = 0; pagoNotas = "";
+        LimpiarPagoForm();
         formError = null;
     }
 
-    private void CloseForm() { showForm = false; formError = null; editingLiq = null; }
+    /// <summary>2026-08-24: antes de cerrar, avisar si quedo un pago cargado a medias.</summary>
+    private void CloseForm()
+    {
+        if (HayPagoSinRegistrar) { avisoPagoAccion = "cerrar"; return; }
+        CerrarDeVerdad();
+    }
 
+    private void CerrarDeVerdad()
+    {
+        showForm = false; formError = null; editingLiq = null;
+        LimpiarPagoForm();
+    }
+
+    private void LimpiarPagoForm()
+    {
+        pagoFecha = DateTime.Today; pagoMetodo = "efectivo"; pagoConcepto = "sueldo";
+        pagoMontoTxt = ""; pagoDetalle = ""; pagoNotas = "";
+        avisoPagoAccion = null;
+    }
+
+    /// <summary>
+    /// 2026-08-24: el boton "Guardar cambios" guarda los numeros de arriba. Si el usuario dejo un
+    /// pago cargado sin registrar, primero le preguntamos que hacer (antes se perdia en silencio).
+    /// </summary>
     private async Task Save()
     {
+        if (HayPagoSinRegistrar) { avisoPagoAccion = "guardar"; return; }
+        await GuardarCabecera();
+    }
+
+    /// <summary>Graba los numeros de la liquidacion (sin tocar los pagos). Devuelve si salio bien.</summary>
+    private async Task<bool> GuardarCabecera(bool silencioso = false)
+    {
         formError = null;
-        if (formEmpleadoId <= 0) { formError = "Tenés que elegir un empleado"; return; }
-        if (formAnio < 2000 || formMes < 1 || formMes > 12) { formError = "Período invalido"; return; }
+        if (formEmpleadoId <= 0) { formError = "Tenés que elegir un empleado"; return false; }
+        if (formAnio < 2000 || formMes < 1 || formMes > 12) { formError = "Período invalido"; return false; }
         isSaving = true;
         try
         {
@@ -1165,9 +1270,9 @@
                     OtrosDescuentos = formOtros,
                     Notas = formNotas
                 });
-                if (updated is null) { formError = "No se pudo actualizar"; return; }
+                if (updated is null) { formError = "No se pudo actualizar"; return false; }
                 editingLiq = updated;
-                ToastService.Success("Liquidación actualizada");
+                if (!silencioso) ToastService.Success("Liquidación actualizada");
             }
             else
             {
@@ -1182,21 +1287,22 @@
                     Adelantos = formAdelantos, OtrosDescuentos = formOtros,
                     Notas = formNotas
                 });
-                if (created is null) { formError = "No se pudo crear"; return; }
+                if (created is null) { formError = "No se pudo crear"; return false; }
                 ToastService.Success($"Liquidación creada — Neto $@FormatMoney(created.NetoAPagar)");
                 // Pasar a modo edicion para poder cargar pagos
                 isEditing = true; editingId = created.Id; editingLiq = created; editingNombre = created.EmpleadoNombre;
                 formSueldoBase = created.SueldoBase;  // 2026-07-01: mostrar el sueldo congelado ya editable
             }
             await Load();
+            return true;
         }
-        catch (Exception ex) { formError = ex.Message; }
+        catch (Exception ex) { formError = ex.Message; return false; }
         finally { isSaving = false; }
     }
 
     private void UsarSaldoCompleto()
     {
-        if (editingLiq is not null) pagoMonto = Math.Round(editingLiq.Saldo, 2);
+        if (editingLiq is not null) pagoMontoTxt = MontoInput.Formato(Math.Round(editingLiq.Saldo, 2));
     }
 
     /// <summary>
@@ -1204,7 +1310,7 @@
     /// </summary>
     private void UsarPendienteConcepto(decimal pendiente)
     {
-        pagoMonto = Math.Round(pendiente, 2);
+        pagoMontoTxt = MontoInput.Formato(Math.Round(pendiente, 2));
     }
 
     /// <summary>
@@ -1230,10 +1336,29 @@
     private static decimal PagadoEnConcepto(string concepto, NomLiquidacionDto liq)
         => liq.Pagos.Where(p => p.Concepto == concepto).Sum(p => p.Monto);
 
-    private async Task AddPago()
+    /// <summary>
+    /// 2026-08-24: UN SOLO PASO. Antes habia dos botones ("+ Pagar" y "Guardar cambios") y el
+    /// usuario perdia el detalle y las notas. Ahora este boton graba primero los numeros de la
+    /// liquidacion y despues el pago completo, con su detalle y sus notas.
+    /// </summary>
+    private async Task RegistrarPago()
     {
         if (editingId is null || editingLiq is null) return;
-        if (pagoMonto <= 0) { ToastService.Error("El monto debe ser mayor a 0"); return; }
+        if (PagoMonto <= 0) { ToastService.Error("Poné un monto mayor a 0"); return; }
+        pagoGuardando = true;
+        try
+        {
+            if (!await GuardarCabecera(silencioso: true)) { ToastService.Error(formError ?? "No se pudo guardar la liquidación"); return; }
+            var monto = PagoMonto;
+            if (await GrabarPago()) ToastService.Success($"Pago de ${FormatMoney(monto)} registrado");
+        }
+        finally { pagoGuardando = false; }
+    }
+
+    /// <summary>Manda el pago al servidor y limpia el formulario. Devuelve si salio bien.</summary>
+    private async Task<bool> GrabarPago()
+    {
+        if (editingId is null) return false;
         try
         {
             var updated = await Api.AddNomPagoAsync(new CreateNomPagoRequest
@@ -1241,19 +1366,45 @@
                 LiquidacionId = editingId.Value,
                 FechaPagoStr = pagoFecha.ToString("yyyy-MM-dd"),  // 2026-07-01: sin zona horaria (no corre el día)
                 Metodo = pagoMetodo,
-                Monto = pagoMonto,
+                Monto = PagoMonto,
                 Concepto = pagoConcepto,
                 Detalle = pagoDetalle,
                 Notas = pagoNotas
             });
-            if (updated is null) { ToastService.Error("No se pudo registrar el pago"); return; }
+            if (updated is null) { ToastService.Error("No se pudo registrar el pago"); return false; }
             editingLiq = updated;
-            pagoFecha = DateTime.Today; pagoMetodo = "efectivo"; pagoConcepto = "sueldo";
-            pagoMonto = 0; pagoDetalle = ""; pagoNotas = "";
-            ToastService.Success("Pago registrado");
+            LimpiarPagoForm();
             await Load();
+            return true;
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); return false; }
+    }
+
+    /// <summary>Del aviso: registrar el pago que quedo cargado y despues seguir con lo que iba a hacer.</summary>
+    private async Task RegistrarYSeguir()
+    {
+        var accion = avisoPagoAccion;
+        if (PagoMonto <= 0) { ToastService.Error("Poné un monto mayor a 0"); return; }
+        avisoPagoAccion = null;
+        pagoGuardando = true;
+        try
+        {
+            if (!await GuardarCabecera(silencioso: true)) { ToastService.Error(formError ?? "No se pudo guardar la liquidación"); return; }
+            var monto = PagoMonto;
+            if (!await GrabarPago()) return;
+            ToastService.Success($"Pago de ${FormatMoney(monto)} registrado");
+            if (accion == "cerrar") CerrarDeVerdad();
+        }
+        finally { pagoGuardando = false; }
+    }
+
+    /// <summary>Del aviso: tirar lo que estaba cargado y seguir.</summary>
+    private async Task DescartarYSeguir()
+    {
+        var accion = avisoPagoAccion;
+        LimpiarPagoForm();
+        if (accion == "cerrar") CerrarDeVerdad();
+        else await GuardarCabecera();
     }
 
     private async Task DeletePago(int pagoId)

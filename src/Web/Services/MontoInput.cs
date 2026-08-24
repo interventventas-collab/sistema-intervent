@@ -22,6 +22,13 @@ public static class MontoInput
     public static string Formato(decimal v) => v.ToString("N2");
 
     /// <summary>
+    /// 2026-08-24: para CANTIDADES (kg de cafe, horas, dias), no plata. Mismo parseo que los
+    /// importes (asi "0,5" no vacia el casillero) pero sin los dos decimales de relleno:
+    /// 22 se ve "22" y no "22,00"; 7,5 se ve "7,5". Separador de miles para las cantidades grandes.
+    /// </summary>
+    public static string FormatoCantidad(decimal v) => v.ToString("#,0.##");
+
+    /// <summary>
     /// Interpreta lo que tipeo el usuario. Acepta lo que se ve en pantalla ("392.040,00"),
     /// lo que sale de copiar y pegar ("$ 392.040,00"), un numero pelado ("392040"),
     /// y tambien el formato con punto decimal ("1234.56").
