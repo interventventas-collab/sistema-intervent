@@ -343,7 +343,11 @@ public class EnvioReciboCobranzaService
             b.Movimientos = propios.Where(m => m.Fecha.Date >= b.Desde!.Value).ToList();
         }
 
-        var conSaldo = bloques.Where(b => b.Movimientos.Count > 0 || Math.Abs(b.SaldoFinal) > CafeSaldosService.Umbral).ToList();
+        // 2026-08-24 (pedido del usuario): solo se muestra la cuenta donde REALMENTE debe algo.
+        // Si debe cotizaciones va esa, si debe facturas va esa, y si debe de las dos van las dos.
+        // Se usa el valor absoluto para que una cuenta con saldo A FAVOR también se vea: si no,
+        // el total de arriba no cerraría con las tablas de abajo.
+        var conSaldo = bloques.Where(b => Math.Abs(b.SaldoFinal) > CafeSaldosService.Umbral).ToList();
         var hoy = DateTime.UtcNow.AddHours(-3).Date;
         var sb = new StringBuilder();
         foreach (var b in conSaldo)
