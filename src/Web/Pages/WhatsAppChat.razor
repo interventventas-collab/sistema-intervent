@@ -2257,6 +2257,74 @@
 }
 
 @* 2026-08-03: VINCULAR CLIENTE (idea "asociar fácil") — un solo buscador, sin pedir nombre ni rol *@
+@* 2026-08-24: ¿a nombre de quién va la venta? Lo usan "Abrir venta" y el Modo venta.
+   Arriba el cliente del chat (un toque y listo, como siempre), abajo el buscador para mandarla
+   a otro, y al final el alta rápida si todavía no existe. *@
+@if (showElegirCli)
+{
+    <div class="wa-modal-backdrop" @onclick="@(() => showElegirCli = false)"></div>
+    <div class="wa-modal" style="max-width:460px;" @onclick:stopPropagation="true">
+        <div class="wa-modal-header">
+            <h3 style="margin:0; flex:1; font-size:1.05rem;">@elegirCliTitulo</h3>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showElegirCli = false)">×</button>
+        </div>
+        <div class="wa-modal-body">
+            @if (elegirCliDefaultId is int _defId)
+            {
+                <div style="font-size:0.78rem; color:#6b7280; margin:0 0 0.35rem;">El cliente de este chat:</div>
+                <button class="wa-elegircli-def" @onclick="() => ElegirClienteYSeguir(_defId, elegirCliDefaultNombre)">
+                    <span class="wa-elegircli-def-nom">🛍️ @elegirCliDefaultNombre</span>
+                    <span class="wa-elegircli-def-cta">Usar este →</span>
+                </button>
+                <div class="wa-elegircli-o">o buscá otro cliente</div>
+            }
+            else
+            {
+                <p style="font-size:0.82rem; color:#6b7280; margin:0 0 0.6rem;">
+                    Este chat no está vinculado a ningún cliente. Buscá a quién le va esta venta.
+                </p>
+            }
+
+            <input class="form-control" placeholder="Buscar por nombre, teléfono, CUIT, dirección…"
+                   @bind="elegirCliQuery" @bind:event="oninput" @onkeyup="BuscarClientesElegir" autofocus />
+            @if (elegirCliBuscando)
+            {
+                <div style="padding:0.5rem; color:#9ca3af; font-size:0.85rem;">Buscando…</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(elegirCliQuery) && elegirCliResultados.Count == 0)
+            {
+                <div style="padding:0.5rem; color:#9ca3af; font-size:0.85rem;">Sin resultados. Probá con otro dato.</div>
+            }
+            <div style="margin-top:0.4rem; max-height:220px; overflow-y:auto;">
+                @foreach (var cli in elegirCliResultados)
+                {
+                    <button class="wa-vincular-opt" @onclick="() => ElegirClienteYSeguir(cli.Id, cli.Nombre)">
+                        <div>
+                            🛍️ <b>@cli.Nombre</b>
+                            @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.75rem;"> · #@cli.CodigoInterno</span> }
+                            @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#9ca3af; font-size:0.72rem;"> · 📞 @cli.Telefono</span> }
+                        </div>
+                        @if (!string.IsNullOrEmpty(cli.Direccion) || !string.IsNullOrEmpty(cli.Localidad))
+                        {
+                            <div style="color:#9ca3af; font-size:0.72rem; margin-top:0.1rem;">📍 @($"{cli.Direccion} {cli.Localidad}".Trim())</div>
+                        }
+                    </button>
+                }
+            </div>
+
+            <div class="wa-vincular-nuevo">
+                <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.35rem;">¿No está en la lista? Creá uno nuevo:</div>
+                <div style="display:flex; gap:0.4rem;">
+                    <input class="form-control form-control-sm" placeholder="Nombre del cliente nuevo" @bind="elegirCliNuevoNombre" @bind:event="oninput" style="flex:1;" />
+                    <button class="btn btn-sm btn-success" @onclick="CrearClienteYSeguir" disabled="@elegirCliCreando" style="white-space:nowrap; font-weight:600;">
+                        @(elegirCliCreando ? "⏳ Creando…" : "➕ Crear y usar")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showVincular)
 {
     <div class="wa-modal-backdrop" @onclick="@(() => showVincular = false)"></div>
@@ -3269,6 +3337,14 @@
     .wa-vincular-opt:hover:not(:disabled) { background: #ecfdf5; border-color: #16a34a; }
     .wa-vincular-opt:disabled { opacity: 0.6; cursor: wait; }
     .wa-vincular-nuevo { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px dashed #e5e7eb; }
+    /* 2026-08-24: cartel "¿a nombre de quién va la venta?" — el cliente del chat va destacado
+       arriba para que el caso normal siga siendo UN toque. */
+    .wa-elegircli-def { display: flex; align-items: center; gap: 0.6rem; width: 100%; text-align: left; cursor: pointer;
+        background: #ecfdf5; border: 2px solid #16a34a; border-radius: 10px; padding: 0.6rem 0.7rem; transition: all .12s; }
+    .wa-elegircli-def:hover { background: #d1fae5; }
+    .wa-elegircli-def-nom { flex: 1; font-size: 0.92rem; font-weight: 700; color: #065f46; }
+    .wa-elegircli-def-cta { font-size: 0.78rem; font-weight: 700; color: #16a34a; white-space: nowrap; }
+    .wa-elegircli-o { text-align: center; font-size: 0.75rem; color: #9ca3af; margin: 0.6rem 0 0.4rem; }
     /* 2026-08-17: los redondeles ya no son una columna al costado: van en la tira de arriba. */
     .wa-composer-tools { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
     /* MENÚ ROL — botón de la tira. La miniatura de lo que le llega al cliente se muestra
@@ -4056,17 +4132,92 @@
     // Paso 2: abre Nueva Venta en una PESTAÑA NUEVA con el cliente (si el chat tiene uno asignado) y
     // los mensajes tildados en "Comentario para armado". NO crea ningún pedido en la cola —
     // usa el circuito ?fromTwilio=1&notas=...&clienteIdPre=... que ya existe en /cafe/ventas.
-    async Task AbrirVentaDesdeChat()
+    // 2026-08-24: antes de abrir la venta preguntamos A NOMBRE DE QUIÉN va. Pedido del dueño: en el
+    // chat del hermano vienen pedidos de OTROS clientes ("Facundo Ramos", "Venado Graciela"…), así
+    // que el cliente del chat no siempre es el que compra. Por default sigue siendo el del chat:
+    // si no tocás nada, funciona igual que antes.
+    void AbrirVentaDesdeChat()
     {
         var texto = TextoPedidoDesdeChat();   // mensajes tildados, o el último entrante si no tildaste ninguno
         if (string.IsNullOrWhiteSpace(texto)) { Toast.Warning("Tildá los mensajes del pedido y tocá 'Abrir venta'."); return; }
         var conv = SelectedConv();
-        var url = $"/cafe/ventas?fromTwilio=1&notas={Uri.EscapeDataString(texto.Trim())}";
-        if (conv?.ClienteId is int cid) url += $"&clienteIdPre={cid}";
+        AbrirElegirCliente("🧾 ¿A nombre de quién va esta venta?", conv?.ClienteId, conv?.ClienteNombre,
+                           async (cid, _) => await AbrirVentaEnPestania(texto.Trim(), cid));
+    }
+
+    async Task AbrirVentaEnPestania(string texto, int? clienteId)
+    {
+        var url = $"/cafe/ventas?fromTwilio=1&notas={Uri.EscapeDataString(texto)}";
+        if (clienteId is int cid) url += $"&clienteIdPre={cid}";
         // pestaña nueva (no ventanita chica): el operador suele tener dos pantallas
         await JS.InvokeVoidAsync("open", url, "_blank");
         modoElegirVenta = false;
         mensajesSeleccionadosIds.Clear();
+    }
+
+    // ═══════ Elegir cliente (compartido por "Abrir venta" y por el Modo venta) ═══════
+    // Un solo cartel para las dos cosas: arriba el cliente del chat ya elegido, abajo el buscador
+    // por si la venta va a otro, y al final el alta rápida si todavía no existe.
+    private bool showElegirCli;
+    private string elegirCliTitulo = "";
+    private int? elegirCliDefaultId;
+    private string? elegirCliDefaultNombre;
+    private string elegirCliQuery = "";
+    private List<ApiClient.TwClienteBuscarDto> elegirCliResultados = new();
+    private bool elegirCliBuscando;
+    private string elegirCliNuevoNombre = "";
+    private bool elegirCliCreando;
+    private Func<int?, string?, Task>? elegirCliAlElegir;
+
+    void AbrirElegirCliente(string titulo, int? defaultId, string? defaultNombre, Func<int?, string?, Task> alElegir)
+    {
+        elegirCliTitulo = titulo;
+        elegirCliDefaultId = defaultId;
+        elegirCliDefaultNombre = defaultNombre;
+        elegirCliQuery = "";
+        elegirCliResultados = new();
+        elegirCliBuscando = false;
+        elegirCliNuevoNombre = "";
+        elegirCliCreando = false;
+        elegirCliAlElegir = alElegir;
+        showElegirCli = true;
+    }
+
+    async Task BuscarClientesElegir()
+    {
+        var q = (elegirCliQuery ?? "").Trim();
+        if (q.Length < 1) { elegirCliResultados = new(); return; }
+        elegirCliBuscando = true;
+        try { elegirCliResultados = await Api.BuscarTwClientesAsync(q); }
+        catch { elegirCliResultados = new(); }
+        elegirCliBuscando = false;
+    }
+
+    async Task ElegirClienteYSeguir(int? id, string? nombre)
+    {
+        var cb = elegirCliAlElegir;
+        showElegirCli = false;
+        elegirCliAlElegir = null;
+        if (cb != null) await cb(id, nombre);
+    }
+
+    // Alta rápida desde el cartel: crea el cliente y sigue con él. NO lo vincula al chat a propósito
+    // — el chat puede seguir siendo el del hermano aunque la venta salga a nombre de otro.
+    async Task CrearClienteYSeguir()
+    {
+        if (elegirCliCreando) return;
+        var nombre = (elegirCliNuevoNombre ?? "").Trim();
+        if (nombre.Length < 2) { Toast.Warning("Escribí el nombre del cliente nuevo."); return; }
+        elegirCliCreando = true;
+        try
+        {
+            var nuevo = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest { Nombre = nombre, Tipo = "OTRO" });
+            if (nuevo is null) { Toast.Error("No pude crear el cliente. Probá de nuevo."); return; }
+            Toast.Success($"Cliente «{nuevo.Nombre}» creado.");
+            await ElegirClienteYSeguir(nuevo.Id, nuevo.Nombre);
+        }
+        catch { Toast.Error("No pude crear el cliente. Probá de nuevo."); }
+        finally { elegirCliCreando = false; }
     }
 
     /// <summary>Confirma desde la ventana flotante: crea el pedido con el texto (ya editado si lo tocaron)
