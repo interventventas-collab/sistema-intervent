@@ -1991,6 +1991,8 @@ public class ClienteSaldoPendienteDto
     public decimal CreditoAFavor { get; set; }
     /// <summary>2026-08-24: mail de la ficha del cliente, para el botón "Mandar saldo".</summary>
     public string? Email { get; set; }
+    /// <summary>CUIT: sirve para detectar que varios tildados son sucursales del mismo cliente.</summary>
+    public string? Cuit { get; set; }
 }
 
 /// <summary>Resultado de mandar el resumen de deudas por Telegram (botón "probar aviso ahora").</summary>

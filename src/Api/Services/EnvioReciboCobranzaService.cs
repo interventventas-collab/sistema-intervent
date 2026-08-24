@@ -116,6 +116,44 @@ public class EnvioReciboCobranzaService
         return await _envio.EnviarEmailConAdjuntoAsync(to!, asunto, cuerpo);
     }
 
+    /// <summary>2026-08-24: UN solo mail con el total de varias cuentas del mismo grupo (las
+    /// sucursales de una misma razón social). Pedido del usuario: mandarle tres mails con tres
+    /// saldos parciales lo obliga al cliente a sumar y cada mail dice un total distinto.</summary>
+    public async Task<(string asunto, string cuerpo)> ArmarMailSaldoGrupoAsync(List<int> clienteIds)
+    {
+        var clis = await _db.CafeClientes.Where(x => clienteIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.Nombre, x.RazonSocial, x.Cuit }).ToListAsync();
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        var hoy = DateTime.UtcNow.AddHours(-3);
+
+        // Si comparten razón social/CUIT, el saludo va a nombre del grupo; si no, se listan.
+        var razon = clis.Select(c => c.RazonSocial).FirstOrDefault(r => !string.IsNullOrWhiteSpace(r));
+        var saludo = !string.IsNullOrWhiteSpace(razon) ? razon!
+                   : string.Join(" / ", clis.Select(c => c.Nombre));
+
+        var resumen = await ArmarResumenDeCuentasAsync(clienteIds,
+            "El saldo total de tu cuenta es de", "✅ Tu cuenta está al día. ¡Gracias!");
+        var asunto = $"Resumen de tu cuenta al {hoy:dd/MM/yyyy} - {cfg?.NegocioNombre ?? "Frikaf"}";
+        var cuerpo = $"Hola {saludo},\n\n" + resumen + "\n\n" +
+                     "Si ya lo pagaste o ves algo que no coincide, avisanos y lo revisamos.\n\n" +
+                     $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}";
+        return (asunto, cuerpo);
+    }
+
+    /// <summary>Manda ese único mail con el total del grupo.</summary>
+    public async Task<(bool ok, string? error)> EnviarResumenSaldoGrupoAsync(List<int> clienteIds, string? destinoEmail)
+    {
+        if (clienteIds is null || clienteIds.Count == 0) return (false, "No hay clientes elegidos.");
+        var to = destinoEmail?.Trim();
+        if (string.IsNullOrWhiteSpace(to))
+            to = await _db.CafeClientes.Where(x => clienteIds.Contains(x.Id) && x.Email != null && x.Email != "")
+                .Select(x => x.Email).FirstOrDefaultAsync();
+        if (string.IsNullOrWhiteSpace(to))
+            return (false, "Ninguno de los clientes elegidos tiene correo: escribí uno a mano.");
+        var (asunto, cuerpo) = await ArmarMailSaldoGrupoAsync(clienteIds);
+        return await _envio.EnviarEmailConAdjuntoAsync(to!, asunto, cuerpo);
+    }
+
     /// <summary>El mail de resumen de saldo tal cual le va a llegar al cliente. Lo usa el envío
     /// y también la vista previa del panel (para poder leerlo ANTES de mandarlo).</summary>
     public async Task<(string asunto, string cuerpo)> ArmarMailSaldoAsync(int clienteId)

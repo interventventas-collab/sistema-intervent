@@ -2010,6 +2010,14 @@ public class ApiClient
 
     public record PreviewSaldoDto(string Asunto, string Cuerpo);
 
+    // 2026-08-24: UN mail con el total de varias cuentas (sucursales del mismo cliente).
+    public async Task<PreviewSaldoDto?> PreviewSaldoGrupoAsync(IEnumerable<int> clienteIds)
+        => await GetAsync<PreviewSaldoDto>($"/api/cafe/clientes/enviar-saldo-grupo/preview?ids={string.Join(",", clienteIds)}");
+
+    public async Task<EnviarSaldoResultDto?> EnviarSaldoGrupoAsync(List<int> clienteIds, string? email)
+        => await PostAsync<EnviarSaldoResultDto>("/api/cafe/clientes/enviar-saldo-grupo",
+            new { clienteIds, email });
+
     public async Task<PreviewSaldoDto?> PreviewSaldoClienteAsync(int clienteId)
         => await GetAsync<PreviewSaldoDto>($"/api/cafe/clientes/{clienteId}/enviar-saldo/preview");
 

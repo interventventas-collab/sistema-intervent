@@ -73,6 +73,7 @@
     .barra-seleccion .total .rot { font-size: 0.72rem; font-weight: 700; color: #9ca3af; display: block; text-transform: uppercase; letter-spacing: 0.4px; }
     .barra-seleccion button { border: none; border-radius: 6px; padding: 0.4rem 0.7rem; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
     .barra-seleccion .btn-excel { background: #16a34a; color: #fff; }
+    .barra-seleccion .btn-mail-barra { background: #2563eb; color: #fff; }
     .barra-seleccion .btn-destildar { background: #4b5563; color: #fff; }
     @@media (max-width: 640px) {
         /* deja libre la esquina de abajo a la izquierda: ahi vive el boton flotante del menu */
@@ -392,6 +393,9 @@
                 @if (selFavor > 0.5m) { <span class="favor">💚 A favor − $@FormatMoney(selFavor)</span> }
             </span>
             <span class="total"><span class="rot">Total de los tildados</span>$@FormatMoney(selTotal)</span>
+            @* 2026-08-24: un solo mail con el TOTAL de los tildados (caso tipico: las sucursales
+               de un mismo cliente, que no tiene por que recibir 3 mails con 3 saldos parciales). *@
+            <button class="btn-mail-barra" @onclick="AbrirMandarSaldoGrupo">📧 Mandar saldo (@sel.Count)</button>
             <button class="btn-excel" @onclick="DescargarExcel" disabled="@exportando">
                 @(exportando ? "⏳..." : "📊 Excel")
             </button>
@@ -401,27 +405,39 @@
 </div>
 
 @* ════════ 2026-08-24: Modal "mandar saldo por mail" ════════ *@
-@if (mandarSaldoCliente is not null)
+@if (mandarSaldoGrupo.Count > 0)
 {
     <div class="modal-overlay" style="z-index: 9100;" @onclick="CerrarMandarSaldo">
         @* la clase con fondo es modal-card (no "modal"): sin ella el cuadro queda transparente *@
         <div class="modal-card" style="max-width: 460px;" @onclick:stopPropagation="true">
             <div class="modal-header" style="background:#2563eb; color:white;">
-                <h4 style="margin:0;">📧 Mandar el saldo a @mandarSaldoCliente.Nombre</h4>
+                <h4 style="margin:0;">📧 Mandar el saldo a @TituloMandarSaldo</h4>
                 <button class="modal-close" style="color:white;" @onclick="CerrarMandarSaldo">×</button>
             </div>
             <div class="modal-body" style="padding: 1rem 1.2rem;">
                 <div style="background:#eff6ff; border-left:3px solid #2563eb; padding:0.5rem 0.7rem; border-radius:4px; margin-bottom:0.8rem; font-size:0.82rem; color:#1e3a8a;">
-                    Le llega el detalle de lo que debe, comprobante por comprobante, con el total.
-                    Debe <b>$@FormatMoney(mandarSaldoCliente.SaldoPendiente)</b>.
+                    @if (mandarSaldoGrupo.Count > 1)
+                    {
+                        <span>
+                            Va <b>UN solo mail</b> con el total de las @mandarSaldoGrupo.Count cuentas, desglosado por cada una.
+                            Deben <b>$@FormatMoney(mandarSaldoGrupo.Sum(x => x.SaldoPendiente))</b> en total.
+                        </span>
+                    }
+                    else
+                    {
+                        <span>
+                            Le llega el detalle de lo que debe, comprobante por comprobante, con el total.
+                            Debe <b>$@FormatMoney(mandarSaldoGrupo.Sum(x => x.SaldoPendiente))</b>.
+                        </span>
+                    }
                 </div>
                 <label style="font-size:0.85rem; font-weight:600; color:#374151;">Correo del cliente</label>
                 <input class="form-input" type="email" placeholder="nombre@@correo.com"
                        style="width:100%; margin-top:0.25rem;" @bind="mandarSaldoEmail" @bind:event="oninput" />
-                @if (string.IsNullOrWhiteSpace(mandarSaldoCliente.Email))
+                @if (mandarSaldoGrupo.All(x => string.IsNullOrWhiteSpace(x.Email)))
                 {
                     <div style="font-size:0.75rem; color:#b45309; margin-top:0.3rem;">
-                        ⚠ Este cliente no tiene correo en la ficha — escribí uno acá y se le manda igual.
+                        ⚠ @(mandarSaldoGrupo.Count > 1 ? "Ninguna de estas cuentas tiene" : "Este cliente no tiene") correo en la ficha — escribí uno acá y se manda igual.
                     </div>
                 }
                 else
@@ -617,8 +633,10 @@
         };
     }
 
-    // ─── 2026-08-24: mandar el saldo por mail ───
-    private ClienteSaldoPendienteDto? mandarSaldoCliente;
+    // ─── 2026-08-24: mandar el saldo por mail (uno solo, o varias cuentas en UN mail) ───
+    // Si el cliente tiene varias sucursales (mismo CUIT), va un unico mail con el TOTAL y el
+    // desglose por cuenta: mandarle 3 mails con 3 saldos parciales lo obliga a el a sumar.
+    private List<ClienteSaldoPendienteDto> mandarSaldoGrupo = new();
     private string mandarSaldoEmail = "";
     private bool mandandoSaldo;
 
@@ -626,14 +644,54 @@
     private string previewCuerpo = "";
     private bool previewCargando;
 
-    private async Task AbrirMandarSaldo(ClienteSaldoPendienteDto s)
+    private string TituloMandarSaldo => mandarSaldoGrupo.Count switch
     {
-        mandarSaldoCliente = s;
-        mandarSaldoEmail = s.Email ?? "";
+        0 => "",
+        1 => mandarSaldoGrupo[0].Nombre,
+        _ => $"{mandarSaldoGrupo.Count} cuentas de {NombreComunGrupo()}"
+    };
+
+    /// <summary>Nombre corto para el titulo cuando son varias sucursales: la parte del nombre
+    /// que comparten (ej "DULCE LUGAR S.R.L"), o el primero si no comparten nada.</summary>
+    private string NombreComunGrupo()
+    {
+        if (mandarSaldoGrupo.Count == 0) return "";
+        var partes = mandarSaldoGrupo[0].Nombre.Split(' ');
+        var comun = new List<string>();
+        foreach (var pal in partes)
+        {
+            if (mandarSaldoGrupo.All(x => x.Nombre.StartsWith(string.Join(" ", comun.Append(pal)), StringComparison.OrdinalIgnoreCase)))
+                comun.Add(pal);
+            else break;
+        }
+        // sacar el "SUCURSAL" colgado del final ("... SRL SUCURSAL" queda feo en el titulo)
+        while (comun.Count > 1 && (comun[^1].Equals("SUCURSAL", StringComparison.OrdinalIgnoreCase)
+                                || comun[^1].Equals("SUC", StringComparison.OrdinalIgnoreCase)
+                                || comun[^1] == "-"))
+            comun.RemoveAt(comun.Count - 1);
+        return comun.Count > 0 ? string.Join(" ", comun) : mandarSaldoGrupo[0].Nombre;
+    }
+
+    private Task AbrirMandarSaldo(ClienteSaldoPendienteDto s) => AbrirMandarSaldoLista(new List<ClienteSaldoPendienteDto> { s });
+
+    /// <summary>Abre el envio para todos los clientes tildados, en UN solo mail.</summary>
+    private Task AbrirMandarSaldoGrupo()
+    {
+        var lista = (saldos ?? new()).Where(x => seleccionados.Contains(x.ClienteId)).ToList();
+        if (lista.Count == 0) { ToastService.Error("No hay clientes tildados"); return Task.CompletedTask; }
+        return AbrirMandarSaldoLista(lista);
+    }
+
+    private async Task AbrirMandarSaldoLista(List<ClienteSaldoPendienteDto> lista)
+    {
+        mandarSaldoGrupo = lista;
+        mandarSaldoEmail = lista.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Email))?.Email ?? "";
         previewAsunto = ""; previewCuerpo = ""; previewCargando = true;
         try
         {
-            var p = await Api.PreviewSaldoClienteAsync(s.ClienteId);
+            var p = lista.Count == 1
+                ? await Api.PreviewSaldoClienteAsync(lista[0].ClienteId)
+                : await Api.PreviewSaldoGrupoAsync(lista.Select(x => x.ClienteId));
             if (p is not null) { previewAsunto = p.Asunto; previewCuerpo = p.Cuerpo; }
             else previewCuerpo = "(no se pudo cargar la vista previa)";
         }
@@ -643,17 +701,19 @@
 
     private void CerrarMandarSaldo()
     {
-        mandarSaldoCliente = null;
+        mandarSaldoGrupo = new();
         mandarSaldoEmail = "";
     }
 
     private async Task ConfirmarMandarSaldo()
     {
-        if (mandarSaldoCliente is null || string.IsNullOrWhiteSpace(mandarSaldoEmail)) return;
+        if (mandarSaldoGrupo.Count == 0 || string.IsNullOrWhiteSpace(mandarSaldoEmail)) return;
         mandandoSaldo = true;
         try
         {
-            var r = await Api.EnviarSaldoClienteAsync(mandarSaldoCliente.ClienteId, mandarSaldoEmail.Trim());
+            var r = mandarSaldoGrupo.Count == 1
+                ? await Api.EnviarSaldoClienteAsync(mandarSaldoGrupo[0].ClienteId, mandarSaldoEmail.Trim())
+                : await Api.EnviarSaldoGrupoAsync(mandarSaldoGrupo.Select(x => x.ClienteId).ToList(), mandarSaldoEmail.Trim());
             if (r is null) { ToastService.Error("No se pudo mandar"); return; }
             if (r.Ok)
             {

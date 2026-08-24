@@ -616,6 +616,28 @@ public class CafeClientesController : ControllerBase
         return Ok(new { ok, error });
     }
 
+    // 2026-08-24: UN mail con el total de varias cuentas (sucursales del mismo cliente).
+    public record EnviarSaldoGrupoRequest(List<int> ClienteIds, string? Email);
+
+    [HttpPost("enviar-saldo-grupo")]
+    public async Task<IActionResult> EnviarSaldoGrupo([FromBody] EnviarSaldoGrupoRequest req,
+        [FromServices] EnvioReciboCobranzaService envio)
+    {
+        var (ok, error) = await envio.EnviarResumenSaldoGrupoAsync(req?.ClienteIds ?? new(), req?.Email);
+        return Ok(new { ok, error });
+    }
+
+    [HttpGet("enviar-saldo-grupo/preview")]
+    public async Task<IActionResult> PreviewSaldoGrupo([FromQuery] string ids,
+        [FromServices] EnvioReciboCobranzaService envio)
+    {
+        var lista = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => int.TryParse(x, out var n) ? n : 0).Where(n => n > 0).Distinct().ToList();
+        if (lista.Count == 0) return BadRequest(new { error = "Sin clientes" });
+        var (asunto, cuerpo) = await envio.ArmarMailSaldoGrupoAsync(lista);
+        return Ok(new { asunto, cuerpo });
+    }
+
     /// <summary>Vista previa del mail de saldo (para leerlo antes de mandarlo).</summary>
     [HttpGet("{id:int}/enviar-saldo/preview")]
     public async Task<IActionResult> PreviewSaldo(int id, [FromServices] EnvioReciboCobranzaService envio)
