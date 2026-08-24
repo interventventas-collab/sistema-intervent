@@ -77,7 +77,42 @@ public class AlqReservasController : ControllerBase
         var qr = await _qr.GenerarQrAlquilerAsync(r.PublicToken);
         var condiciones = (await _db.AppSettings.FindAsync("alq.condiciones"))?.Value;
         var bytes = _pdf.Generar(r, cfg, qr, condiciones);
-        return (bytes, $"Reserva-{r.Numero}.pdf");
+        return (bytes, BuildPdfFilename(r));
+    }
+
+    /// <summary>2026-08-24: el archivo baja con NOMBRE DEL CLIENTE - FECHA DEL EVENTO - DIRECCION,
+    /// en vez del numero de reserva (que al cliente no le dice nada). Pedido del usuario.
+    /// Si falta la fecha del evento usa la de entrega; si falta la direccion del evento usa la del cliente.</summary>
+    public static string BuildPdfFilename(AlqReserva r)
+    {
+        var cliente = !string.IsNullOrWhiteSpace(r.ClienteNav?.Nombre)
+            ? r.ClienteNav!.Nombre
+            : (r.ClienteNav?.RazonSocial ?? "");
+        var fecha = (r.FechaEvento ?? r.FechaEntrega).ToString("yyyy-MM-dd");
+        var direccion = !string.IsNullOrWhiteSpace(r.DireccionEvento)
+            ? r.DireccionEvento!
+            : (r.ClienteNav?.DomicilioEntrega ?? r.ClienteNav?.Direccion ?? "");
+
+        // Sanitizar: chars invalidos en filesystem → espacio, colapsar espacios y truncar.
+        static string Sanitize(string s, int maxLen)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "";
+            var invalid = new HashSet<char>(System.IO.Path.GetInvalidFileNameChars()) { '/', '\\', ':', '*', '?', '"', '<', '>', '|' };
+            var clean = new string(s.Select(c => invalid.Contains(c) ? ' ' : c).ToArray());
+            clean = System.Text.RegularExpressions.Regex.Replace(clean, @"\s+", " ").Trim();
+            return clean.Length > maxLen ? clean.Substring(0, maxLen).Trim() : clean;
+        }
+
+        var parts = new List<string>();
+        var clienteSan = Sanitize(cliente, 60);
+        if (!string.IsNullOrWhiteSpace(clienteSan)) parts.Add(clienteSan);
+        parts.Add(fecha);
+        var direccionSan = Sanitize(direccion, 60);
+        if (!string.IsNullOrWhiteSpace(direccionSan)) parts.Add(direccionSan);
+        // Si no hay ni cliente ni direccion, al menos que se distinga por el numero.
+        if (parts.Count == 1) parts.Insert(0, Sanitize(r.Numero, 30));
+
+        return string.Join(" - ", parts) + ".pdf";
     }
 
     public record AlqProximoDto(int Id, string Numero, string ClienteNombre, DateTime Fecha, string Tipo);

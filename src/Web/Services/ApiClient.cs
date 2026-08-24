@@ -508,11 +508,30 @@ public class ApiClient
 
     public async Task<(byte[]? bytes, string? error)> GetAlqReservaPdfAsync(int id)
     {
+        var (bytes, _, error) = await GetAlqReservaPdfConNombreAsync(id);
+        return (bytes, error);
+    }
+
+    /// <summary>2026-08-24: igual que GetAlqReservaPdfAsync pero devuelve tambien el nombre de archivo
+    /// que arma la API (cliente - fecha del evento - direccion), para que el navegador lo baje asi.</summary>
+    public async Task<(byte[]? bytes, string? filename, string? error)> GetAlqReservaPdfConNombreAsync(int id)
+    {
         await SetAuthHeaderAsync();
         var resp = await _http.GetAsync($"/api/alquileres/reservas/{id}/pdf");
-        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, "Sesión expirada"); }
-        if (resp.IsSuccessStatusCode) return (await resp.Content.ReadAsByteArrayAsync(), null);
-        return (null, $"Error {(int)resp.StatusCode}");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, null, "Sesión expirada"); }
+        if (resp.IsSuccessStatusCode)
+        {
+            string? fname = null;
+            try
+            {
+                var cd = resp.Content.Headers.ContentDisposition;
+                fname = cd?.FileNameStar ?? cd?.FileName;
+                if (!string.IsNullOrWhiteSpace(fname)) fname = fname!.Trim('"');
+            }
+            catch { }
+            return (await resp.Content.ReadAsByteArrayAsync(), fname, null);
+        }
+        return (null, null, $"Error {(int)resp.StatusCode}");
     }
 
     /// <summary>2026-07-04: PDF de la FACTURA AFIP (sobria, con CAE) de una reserva facturada.</summary>

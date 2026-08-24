@@ -2158,9 +2158,12 @@
         descargandoPdf = true;
         try
         {
-            var (bytes, error) = await Api.GetAlqReservaPdfAsync(id);
+            // 2026-08-24: el nombre del archivo lo arma la API (cliente - fecha del evento - direccion).
+            var (bytes, filename, error) = await Api.GetAlqReservaPdfConNombreAsync(id);
             if (bytes is not null)
-                await JS.InvokeVoidAsync("downloadFile", $"Reserva-{numero}.pdf", "application/pdf", Convert.ToBase64String(bytes));
+                await JS.InvokeVoidAsync("downloadFile",
+                    string.IsNullOrWhiteSpace(filename) ? $"Reserva-{numero}.pdf" : filename!,
+                    "application/pdf", Convert.ToBase64String(bytes));
             else
                 ToastService.Error("No se pudo generar el PDF" + (string.IsNullOrEmpty(error) ? "" : $": {error}"));
         }
