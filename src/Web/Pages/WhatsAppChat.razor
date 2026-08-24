@@ -565,7 +565,7 @@
                             </span>
                         }
                     </div>
-                    <div style="font-size:0.75rem; color:#6b7280; display:flex; gap:0.5rem; align-items:center;">
+                    <div style="font-size:0.75rem; color:#6b7280; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
                         <span>@PrettyNumero(selectedNumero)</span>
                         <button class="wa-num-edit" @onclick="AbrirCorregirNumero" title="Corregir el número de este chat (si quedó mal cargado)">✏️</button>
                         @* 2026-08-20: un mismo teléfono puede tener VARIAS razones sociales (hay clientas
@@ -598,6 +598,28 @@
                             <a href="/cafe/clientes?edit=@cid" target="_blank" class="wa-cliente-badge" title="Ver ficha del cliente">
                                 🛍️ Cliente: @SelectedConv()?.ClienteNombre
                             </a>
+                        }
+                        @* 2026-08-24: DIRECCIÓN y DEUDA siempre a la vista. Antes había que abrir la ficha 👁️
+                           para verlas, y son las dos cosas que más se preguntan en plena charla: a dónde se le
+                           lleva y si debe plata. Salen de la misma ficha del cliente (mismo cálculo de saldo que
+                           "¿Quién me debe?"), que ahora se carga sola al abrir el chat. Mientras carga no se
+                           muestra nada, para que la barra no salte. Solo en la compu: el celular queda igual. *@
+                        @if (FichaDelChat() is ApiClient.FichaChatDto fh)
+                        {
+                            @if (DireccionCorta(fh) is string dirh)
+                            {
+                                @if (!string.IsNullOrWhiteSpace(fh.MapeoLink))
+                                {
+                                    <a href="@fh.MapeoLink" target="_blank" class="wa-hdr-chip dir" title="Dirección de @fh.Nombre: @dirh (tocala para abrirla en el mapa)">📍 <span class="wa-hdr-txt">@dirh</span></a>
+                                }
+                                else
+                                {
+                                    <span class="wa-hdr-chip dir" title="Dirección de @fh.Nombre: @dirh">📍 <span class="wa-hdr-txt">@dirh</span></span>
+                                }
+                            }
+                            <button class="wa-hdr-chip @SaldoClase(fh.Saldo)" @onclick="ToggleFichaCliente" title="@SaldoTitulo(fh)">
+                                @SaldoTexto(fh.Saldo)
+                            </button>
                         }
                     </div>
                 </div>
@@ -3763,6 +3785,23 @@
     /* Cliente vinculado */
     .wa-cliente-badge { background: #ecfdf5; color: #047857; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; text-decoration: none; border: 1px solid #a7f3d0; }
     .wa-cliente-badge:hover { background: #d1fae5; }
+    /* 2026-08-24: cartelitos de DIRECCIÓN y DEUDA en la barra de arriba del chat. Son chatos a
+       propósito (misma altura que el cartel del cliente) para no comerle alto a la conversación.
+       La dirección se corta con puntitos si es muy larga; el texto entero queda en el globito. */
+    .wa-hdr-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.1rem 0.4rem; border-radius: 4px;
+        font-size: 0.7rem; line-height: 1.5; text-decoration: none; border: 1px solid transparent; cursor: pointer;
+        font-family: inherit; max-width: 320px; overflow: hidden; white-space: nowrap; }
+    /* La dirección larga se corta con puntitos (el texto entero queda en el globito de ayuda).
+       Va en un span aparte porque el cartelito es flex y ahí el "..." no se aplica solo. */
+    .wa-hdr-chip .wa-hdr-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .wa-hdr-chip.dir { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+    .wa-hdr-chip.dir:hover { background: #dbeafe; }
+    .wa-hdr-chip.debe { background: #fef2f2; color: #b91c1c; border-color: #fecaca; font-weight: 700; }
+    .wa-hdr-chip.debe:hover { background: #fee2e2; }
+    .wa-hdr-chip.aldia { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+    .wa-hdr-chip.aldia:hover { background: #d1fae5; }
+    .wa-hdr-chip.afavor { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+    .wa-hdr-chip.afavor:hover { background: #ede9fe; }
     /* 2026-08-20: VARIAS RAZONES SOCIALES en el mismo teléfono. Se ven todas y la que estás usando
        queda pintada con el tilde. Son botones chatos para que la fila del header no crezca. */
     .wa-razones { display: inline-flex; align-items: center; gap: 0.28rem; flex-wrap: wrap; }
@@ -5402,7 +5441,7 @@
             LimpiarCarrito();
             await CargarAnterioresModoVenta(cid);   // que la nueva aparezca para repetir
             fichaCliente = null;                     // el saldo cambió: que la ficha se recargue
-            if (mostrarFichaCliente) await CargarFichaCliente();
+            await CargarFichaCliente();   // el saldo/los datos cambiaron: refrescar también la barra de arriba
         }
         catch (Exception ex) { Toast.Error("No se pudo crear la venta: " + ex.Message); }
         finally { mvCreando = false; }
@@ -5438,7 +5477,7 @@
             {
                 await LoadConversaciones(silent: true);
                 // Si la ficha del cliente estaba abierta, que muestre la de la razón social nueva.
-                if (mostrarFichaCliente) await CargarFichaCliente();
+                await CargarFichaCliente();   // el saldo/los datos cambiaron: refrescar también la barra de arriba
                 Toast.Success($"🛍️ Ahora estás trabajando con {nombre}");
             }
             else Toast.Error("No pude cambiar de razón social. Probá de nuevo.");
@@ -5459,7 +5498,7 @@
         {
             await LoadContactos();
             await LoadConversaciones(silent: true);
-            if (mostrarFichaCliente) await CargarFichaCliente();
+            await CargarFichaCliente();   // el saldo/los datos cambiaron: refrescar también la barra de arriba
             Toast.Success($"🔗 {nombre} ya no está en este chat");
         }
         else Toast.Error("No pude sacarlo. Probá de nuevo.");
@@ -5482,6 +5521,38 @@
     bool mostrarFichaCliente = false;
     bool cargandoFicha = false;
     ApiClient.FichaChatDto? fichaCliente = null;
+
+    /// <summary>2026-08-24: la ficha cargada SOLO si es la del cliente de este chat (y de la razón
+    /// social tildada ahora). Si cambiaste de chat y la respuesta vieja todavía no llegó, devuelve
+    /// null: es preferible no mostrar nada antes que mostrarte la dirección del cliente anterior.</summary>
+    ApiClient.FichaChatDto? FichaDelChat()
+        => (SelectedConv()?.ClienteId is int c && fichaCliente is not null && fichaCliente.ClienteId == c)
+            ? fichaCliente : null;
+
+    /// <summary>Dirección + localidad en un solo renglón para la barra de arriba. Si el cliente no
+    /// tiene dirección cargada devuelve null y el cartelito directamente no aparece.</summary>
+    static string? DireccionCorta(ApiClient.FichaChatDto f)
+    {
+        var dir = (f.Direccion ?? "").Trim();
+        var loc = (f.Localidad ?? "").Trim();
+        if (dir.Length == 0 && loc.Length == 0) return null;
+        if (dir.Length == 0) return loc;
+        if (loc.Length == 0) return dir;
+        return $"{dir}, {loc}";
+    }
+
+    // El saldo se lee igual que en la ficha: positivo = te debe, negativo = tiene plata a favor.
+    static string SaldoClase(decimal saldo) => saldo > 0.01m ? "debe" : (saldo < -0.01m ? "afavor" : "aldia");
+
+    static string SaldoTexto(decimal saldo)
+        => saldo > 0.01m ? $"💰 Debe {Plata(saldo)}"
+         : saldo < -0.01m ? $"💵 A favor {Plata(Math.Abs(saldo))}"
+         : "✅ Al día";
+
+    static string SaldoTitulo(ApiClient.FichaChatDto f)
+        => f.Saldo > 0.01m ? $"{f.Nombre} debe {Plata(f.Saldo)}. Tocá para ver las últimas facturas."
+         : f.Saldo < -0.01m ? $"{f.Nombre} tiene {Plata(Math.Abs(f.Saldo))} a favor. Tocá para ver las últimas facturas."
+         : $"{f.Nombre} no debe nada. Tocá para ver las últimas facturas.";
     // 2026-08-20: factura que estás mirando en el visor grande. Antes esto era "previewFacturaId"
     // y se prendía SOLO con el mouse por encima: la vista cambiaba sola y se apagaba al salir de
     // la lista. Ahora se toca la factura y queda abierta hasta que toques otra o la cierres.
@@ -5806,14 +5877,10 @@
         if (SelectedConv()?.ClienteId is not int cid) return;
         mostrarFichaCliente = true;
         _fichaAttachPending = true;   // al renderizar, la hacemos arrastrable
-        // Si ya tenemos la ficha de ESTE mismo cliente cargada, no la volvemos a pedir.
-        if (fichaCliente is not null && fichaCliente.ClienteId == cid) return;
-        facturaAbierta = null;
-        cargandoFicha = true;
-        fichaCliente = null;
-        StateHasChanged();
-        try { fichaCliente = await Api.GetFichaChatAsync(cid); }
-        finally { cargandoFicha = false; StateHasChanged(); }
+        // Si ya tenemos la ficha de ESTE mismo cliente cargada, no la volvemos a pedir. Como ahora
+        // la ficha se carga sola al abrir el chat (para la dirección y la deuda de la barra de
+        // arriba), lo normal es que el ojito 👁️ abra al toque, sin esperar.
+        await CargarFichaCliente();
     }
 
     /// <summary>2026-08-20: recargar la ficha para la razón social que está tildada AHORA. La usa
@@ -5827,8 +5894,21 @@
         cargandoFicha = true;
         fichaCliente = null;
         StateHasChanged();
-        try { fichaCliente = await Api.GetFichaChatAsync(cid); }
-        finally { cargandoFicha = false; StateHasChanged(); }
+        try
+        {
+            var f = await Api.GetFichaChatAsync(cid);
+            // 2026-08-24: si mientras el server contestaba saltaste a otro chat (o cambiaste de
+            // razón social), esta ficha ya es de otro cliente: la tiramos. Si no, la barra de
+            // arriba te mostraría la dirección y la deuda del cliente anterior.
+            if (SelectedConv()?.ClienteId == cid) fichaCliente = f;
+        }
+        finally
+        {
+            // El "cargando" lo apaga solo el pedido que sigue siendo el actual: si lo apagara uno
+            // viejo, la ficha recién abierta quedaría mostrando "no se pudo cargar".
+            if (SelectedConv()?.ClienteId == cid) cargandoFicha = false;
+            StateHasChanged();
+        }
     }
 
     string ClaveChat() => $"{selectedNumero}|{selectedLinea}";
@@ -5910,6 +5990,7 @@
                 sugerenciasDescartadas.Remove(ClaveChat());
                 await LoadContactos();
                 await LoadConversaciones(silent: true);
+                await CargarFichaCliente();   // 2026-08-24: que la dirección y la deuda aparezcan al toque
                 Toast.Success($"🔗 Chat vinculado a {clienteNombre}");
             }
             else Toast.Error("No pude vincular. Probá de nuevo.");
@@ -7145,6 +7226,10 @@
         CerrarBuscador(); textoAbierto.Clear(); modoSeleccion = false;
         asignarNota = SelectedConv()?.AsignadoNota ?? "";   // 2026-08-06: precargar la nota guardada de este chat (editable)
         _ = CargarAvisoMeli();   // 2026-08-21: en paralelo, que el chat no espere por esto
+        // 2026-08-24: la ficha del cliente se carga sola (en paralelo, sin abrir la ventanita) para
+        // que la barra de arriba pueda mostrar la dirección y si debe plata. De paso, cuando tocás
+        // el ojito 👁️ ya está lista y abre al instante.
+        _ = CargarFichaCliente();
         await LoadMensajes();
         // 2026-08-06: presencia — salgo del chat anterior y entro al nuevo (para que se vea quién mira qué).
         await CambiarPresenciaConv(ConvIdActual());
