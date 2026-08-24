@@ -516,3 +516,54 @@
 .wa-dark .wa-bg-hit-txt { color: var(--wad-txt2); }
 .wa-dark .wa-bg-hit-fec, .wa-dark .wa-bg-hit-dir { color: var(--wad-txt3); }
 .wa-dark .wa-bg-hit-linea { background: var(--wad-panel3); color: var(--wad-txt2); }
+
+/* ══ 2026-08-24: MODO VENTA de noche ══
+   Antes el panel casi no se notaba porque los bloques eran tarjetas sueltas sobre el fondo oscuro.
+   Ahora los 3 bloques pintan todo el ancho, así que sin esto quedaba un bloque BLANCO al lado del
+   chat oscuro. */
+.wa-dark .wa-mv { background: var(--wad-panel); }
+.wa-dark .wa-mv-top { background: #0b3d2e; border-bottom-color: #14543f; }
+.wa-dark .wa-mv-tit { color: #6ee7b7; }
+.wa-dark .wa-mv-paso { background: var(--wad-panel2); border-top-color: var(--wad-borde); }
+.wa-dark .wa-mv-paso:hover { background: var(--wad-panel3); }
+.wa-dark .wa-mv-paso.abierto { background: #0b3d2e; }
+.wa-dark .wa-mv-paso-n { color: #6ee7b7; }
+.wa-dark .wa-mv-paso-t { color: var(--wad-txt); }
+.wa-dark .wa-mv-paso-r { color: var(--wad-txt3); }
+.wa-dark .wa-mv-paso-f { color: var(--wad-txt3); }
+.wa-dark .wa-mv-cuerpo { background: var(--wad-panel); }
+.wa-dark .wa-mv-cli { background: #0b3d2e; border-color: #14543f; color: #6ee7b7; }
+.wa-dark .wa-mv-cli:hover { background: #14543f; border-color: #1c6b50; }
+.wa-dark .wa-mv-cli-cta { color: #6ee7b7; }
+.wa-dark .wa-mv-sec-t, .wa-dark .wa-mv-top-lbl { color: var(--wad-txt3); }
+.wa-dark .wa-mv-vacio, .wa-dark .wa-mv-mas, .wa-dark .wa-mv-limpiar { color: var(--wad-txt3); }
+.wa-dark .wa-mv-nota { background: var(--wad-panel3); color: var(--wad-txt2); }
+.wa-dark .wa-mv-ant, .wa-dark .wa-mv-linea, .wa-dark .wa-mv-res-item,
+.wa-dark .wa-mv-top-chip, .wa-dark .wa-mv-busc, .wa-dark .wa-mv-libre,
+.wa-dark .wa-mv-resu { background: var(--wad-panel2); border-color: var(--wad-borde2); }
+.wa-dark .wa-mv-ant:hover:not(:disabled), .wa-dark .wa-mv-res-item:hover:not(:disabled),
+.wa-dark .wa-mv-top-chip:hover:not(:disabled) { background: #14543f; border-color: #1c6b50; }
+.wa-dark .wa-mv-ant-num, .wa-dark .wa-mv-ant-tot, .wa-dark .wa-mv-linea-nom,
+.wa-dark .wa-mv-linea-sub, .wa-dark .wa-mv-res-item, .wa-dark .wa-mv-top-chip,
+.wa-dark .wa-mv-resu-l b { color: var(--wad-txt); }
+.wa-dark .wa-mv-ant-l2, .wa-dark .wa-mv-res-sku, .wa-dark .wa-mv-resu-l span { color: var(--wad-txt3); }
+.wa-dark .wa-mv-ant-cta { color: #6ee7b7; }
+.wa-dark .wa-mv-busc-inp, .wa-dark .wa-mv-qinp, .wa-dark .wa-mv-inp,
+.wa-dark .wa-mv-obs, .wa-dark .wa-mv-det-sel { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-mv-busc-inp::placeholder, .wa-dark .wa-mv-inp::placeholder,
+.wa-dark .wa-mv-obs::placeholder { color: var(--wad-txt3); }
+.wa-dark .wa-mv-det-mol { background: #3a2f12; border-color: #a16207; color: #fcd34d; }
+.wa-dark .wa-mv-qbtn { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+.wa-dark .wa-mv-qbtn:hover:not(:disabled), .wa-dark .wa-mv-qbtn.on { background: #14543f; border-color: #1c6b50; }
+.wa-dark .wa-mv-det { border-top-color: var(--wad-borde2); }
+.wa-dark .wa-mv-det-lbl { color: var(--wad-txt3); }
+.wa-dark .wa-mv-det-volver { color: var(--wad-txt3); }
+.wa-dark .wa-mv-op { background: var(--wad-panel2); border-color: var(--wad-borde2); color: var(--wad-txt2); }
+.wa-dark .wa-mv-op:hover:not(:disabled) { border-color: #1c6b50; color: #6ee7b7; }
+.wa-dark .wa-mv-op.on { background: #16a34a; border-color: #16a34a; color: #fff; }
+.wa-dark .wa-mv-op-arca.on { background: #b45309; border-color: #b45309; }
+.wa-dark .wa-mv-arca-aviso, .wa-dark .wa-mv-aviso { background: #3a2f12; border-color: #5c4a1c; color: #fcd34d; }
+.wa-dark .wa-mv-hecho { background: #0b3d2e; border-color: #14543f; color: #6ee7b7; }
+.wa-dark .wa-mv-pie { background: var(--wad-panel2); border-top-color: #16a34a; color: var(--wad-txt2); box-shadow: none; }
+.wa-dark .wa-mv-total-monto { color: var(--wad-txt); }
+.wa-dark .wa-mv-chip { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt2); }
