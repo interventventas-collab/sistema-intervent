@@ -76,17 +76,16 @@ public class CafeExtractoBancoController : ControllerBase
         if (hasta.HasValue) q = q.Where(m => m.Fecha <= hasta.Value.Date);
         if (tipo == "ingresos") q = q.Where(m => m.Creditos > 0);
         else if (tipo == "egresos") q = q.Where(m => m.Debitos > 0);
-        // 2026-07-11: ventas que tienen al menos una cobranza VIGENTE que las imputa.
-        // Sirve para el filtro "sin-completar" y para la marca SinCobranza del DTO.
-        var ventasConCobranzaVigente = _db.CafeCobranzasComprobantes
-            .Where(cc => cc.VentaId != null && cc.Cobranza!.Estado == "VIGENTE")
-            .Select(cc => cc.VentaId!.Value);
-
         if (asociado == "si") q = q.Where(m => m.VentaIdAsociada != null);
         else if (asociado == "no") q = q.Where(m => m.VentaIdAsociada == null);
+        // 2026-08-24: "sin completar" = ESTE movimiento no se cobro todavia (no esta usado en
+        // ningun recibo vigente). Antes preguntaba por la VENTA asociada: si esa factura tenia
+        // cualquier otra cobranza encima, el movimiento se daba por cerrado y desaparecia el aviso
+        // + el boton "Retomar cobranza". Caso real: los $2.000.000 de Dulce Lugar, sin cobrar,
+        // apuntando a una factura que ya habia recibido plata de un recibo anterior.
         else if (asociado == "sin-completar")
             q = q.Where(m => m.VentaIdAsociada != null
-                && !ventasConCobranzaVigente.Contains(m.VentaIdAsociada.Value));
+                && !_db.CafeCobranzas.Any(c => c.Id == m.CobranzaUsadaId && c.Estado == "VIGENTE"));
 
         var movs = await q.OrderByDescending(m => m.Fecha).ThenByDescending(m => m.Id)
             .Take(Math.Clamp(take, 1, 2000))
@@ -107,16 +106,6 @@ public class CafeExtractoBancoController : ControllerBase
             .Select(v => new { v.Id, v.Numero, v.ClienteId })
             .ToListAsync())
             .ToDictionary(v => v.Id, v => v);
-
-        // 2026-07-11: de las ventas asociadas, cuales YA tienen una cobranza VIGENTE. El resto
-        // quedaron a medias (asociadas sin cobranza) -> SinCobranza = true en el DTO.
-        var ventasSaldadas = (await _db.CafeCobranzasComprobantes
-            .Where(cc => cc.VentaId.HasValue && ventaIds.Contains(cc.VentaId.Value)
-                && cc.Cobranza!.Estado == "VIGENTE")
-            .Select(cc => cc.VentaId!.Value)
-            .Distinct()
-            .ToListAsync())
-            .ToHashSet();
 
         // 2026-08-24: el recibo que se muestra en cada fila sale del VINCULO REAL
         // (CafeExtractoMovimiento.CobranzaUsadaId), que es el que se graba cuando el operador usa
@@ -165,8 +154,10 @@ public class CafeExtractoBancoController : ControllerBase
                 cobranzaNumero = cnum;
                 if (compsPorCobranza.TryGetValue(m.CobranzaUsadaId.Value, out var lista)) comprobantes = lista;
             }
-            // Asociado a una venta que todavia no tiene cobranza vigente = proceso a medias.
-            bool sinCobranza = m.VentaIdAsociada.HasValue && !ventasSaldadas.Contains(m.VentaIdAsociada.Value);
+            // 2026-08-24: proceso a medias = la transferencia esta asociada a una venta pero
+            // todavia NO se uso en ningun recibo vigente (cobranzaNumero sale del vinculo real).
+            // Con esto vuelve a aparecer el aviso y el boton "Retomar cobranza" donde corresponde.
+            bool sinCobranza = m.VentaIdAsociada.HasValue && cobranzaNumero is null;
             return new ExtractoMovimientoDto(m.Id, m.Fecha, m.Descripcion, m.Debitos, m.Creditos, m.Saldo,
                 m.Concepto, m.ObservacionesCliente, m.LeyendaAdicional1, m.LeyendaAdicional2, m.TipoMovimiento,
                 m.VentaIdAsociada, ventaNumero, m.AsociadoPor, m.AsociadoAt,
