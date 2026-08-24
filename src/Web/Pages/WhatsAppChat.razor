@@ -2105,8 +2105,17 @@
                 <button class="wa-ctx-rail-btn @(mostrarFichaCliente ? "on" : "")" @onclick="ToggleFichaCliente" title="Ficha del cliente: saldo, últimas facturas y ubicación">🛍️</button>
             }
             @* 2026-08-21: MODO MELI — está siempre, aunque el chat no esté vinculado a un cliente:
-               el que pregunta por una publicación muchas veces todavía no es cliente nuestro. *@
-            <button class="wa-ctx-rail-btn @(modoMeli ? "on" : "")" @onclick="AbrirModoMeli" title="Modo MercadoLibre: poné su usuario y mirá sus compras, envíos y seguimientos">🟡</button>
+               el que pregunta por una publicación muchas veces todavía no es cliente nuestro.
+               2026-08-24: el 🟡 pasó a ser el logo real de MercadoLibre — el circulito amarillo no
+               se entendía que era MeLi. *@
+            <button class="wa-ctx-rail-btn @(modoMeli ? "on" : "")" @onclick="AbrirModoMeli" title="Modo MercadoLibre: poné su usuario y mirá sus compras, envíos y seguimientos">
+                <img class="wa-ctx-rail-img" src="img/meli-icon.svg" alt="MercadoLibre" />
+            </button>
+            @* 2026-08-24: "Crear venta" estaba enterrado adentro del panel de Contacto — hay que
+               abrir el panel para encontrarlo. Acá tiene su propio botón: tildás los mensajes del
+               pedido y se abre Nueva Venta en una pestaña nueva (mismo circuito de siempre). *@
+            <button class="wa-ctx-rail-btn @(modoElegirVenta ? "on" : "")" @onclick="IniciarCrearVenta"
+                    title="Crear venta: tildá los mensajes del pedido y se abre Nueva Venta en una pestaña nueva">🧾</button>
         </div>
     }
 </div> @* fin .wa-thread-wrap *@
@@ -2899,13 +2908,16 @@
     .wa-ctx-info { font-size: 0.74rem; color: #475569; background: #f1f5f9; border-radius: 8px; padding: 0.4rem 0.5rem; }
 
     /* Tira de iconos del borde (estilo Zendesk): el panel se pliega pero nunca desaparece. */
-    .wa-ctx-rail { flex: 0 0 44px; width: 44px; display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
-        background: #fff; border: 1px solid #e6eaf0; border-radius: 16px; padding: 0.5rem 0; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
-    .wa-ctx-rail-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid transparent;
-        background: transparent; border-radius: 9px; font-size: 1rem; color: #475569; cursor: pointer; transition: all .12s; }
+    /* 2026-08-24: iconos MAS GRANDES (eran 32px y quedaban chiquitos, sobre todo para el dedo en el celu). */
+    .wa-ctx-rail { flex: 0 0 56px; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+        background: #fff; border: 1px solid #e6eaf0; border-radius: 16px; padding: 0.6rem 0; box-shadow: 0 6px 20px rgba(15,23,42,0.06); }
+    .wa-ctx-rail-btn { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 1px solid transparent;
+        background: transparent; border-radius: 12px; font-size: 1.4rem; line-height: 1; color: #475569; cursor: pointer; transition: all .12s; }
     .wa-ctx-rail-btn:hover { background: #f0fff6; border-color: #25d366; }
     .wa-ctx-rail-btn.on { background: #dcfce7; border-color: #25d366; }
-    .wa-ctx-rail-toggle { font-size: 1.15rem; font-weight: 800; color: #1d4ed8; background: #eff6ff; border-color: #dbeafe; }
+    /* El logo de MercadoLibre es una imagen, no un emoji: que ocupe el mismo lugar que los demás. */
+    .wa-ctx-rail-img { width: 30px; height: 30px; display: block; object-fit: contain; }
+    .wa-ctx-rail-toggle { font-size: 1.5rem; font-weight: 800; color: #1d4ed8; background: #eff6ff; border-color: #dbeafe; }
     .wa-ctx-rail-toggle:hover { background: #dbeafe; border-color: #93c5fd; }
     /* 2026-07-24: flex-wrap para que en el celular los botones del header (incluido 🗑 Borrar,
        que es el ultimo) bajen a otro renglon en vez de quedar cortados por el overflow:hidden
@@ -3613,9 +3625,12 @@
            Queda SOLO la tira de iconos, y el panel se abre POR ENCIMA del chat (como una
            gaveta) al tocar 👤 o 💬. Arranca cerrado — lo decide el código al entrar. */
         .wa-thread-wrap { position: relative; gap: 0; }
-        .wa-ctx { position: absolute; top: 0; right: 44px; bottom: 0; z-index: 30; width: min(280px, calc(100% - 52px));
+        .wa-ctx { position: absolute; top: 0; right: 50px; bottom: 0; z-index: 30; width: min(280px, calc(100% - 58px));
             flex: none; border-radius: 0; box-shadow: -8px 0 24px rgba(15,23,42,0.18); }
-        .wa-ctx-rail { border-radius: 0; flex: 0 0 40px; width: 40px; }
+        /* 2026-08-24: el rail del celu también creció (era 40/32) — el dedo no le pegaba. */
+        .wa-ctx-rail { border-radius: 0; flex: 0 0 50px; width: 50px; }
+        .wa-ctx-rail-btn { width: 40px; height: 40px; font-size: 1.3rem; }
+        .wa-ctx-rail-img { width: 27px; height: 27px; }
 
         .wa-volver-btn { display: inline-flex; align-items: center; }
 
