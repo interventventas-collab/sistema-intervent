@@ -1044,13 +1044,20 @@
         @* ═════════════ 10. ADMINISTRACION (sistema) ═════════════
            Solo cosas de configuracion del sistema: usuarios, roles, integraciones, archivos
            tecnicos, auditoria, backups, configuracion general. *@
-        @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups") || HasPerm("vault"))
+        @if (HasPerm("contadora") || HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups") || HasPerm("vault"))
         {
             <NavGroup Label="Administración" Icon="@SvgIcons.Admin"
                       HasActiveChild="@(IsActive("/contadora") || IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config") || IsActive("/vault"))">
-                @* 2026-07-08: Modulo Contadora — cuadro de ventas por jurisdiccion (Ingresos Brutos) *@
-                <NavItem Href="/contadora" Label="🧾 Contadora" Icon="@SvgIcons.Database"
-                         IsActive="@IsActive("/contadora")" OnClick="@(() => NavigateTo("/contadora"))" />
+                @* 2026-07-08: Modulo Contadora — cuadro de ventas por jurisdiccion (Ingresos Brutos)
+                   2026-08-24: permiso propio "contadora". Antes el boton colgaba del grupo
+                   Administracion sin condicion: la contadora externa NO lo veia (no es admin) y
+                   la ruta quedaba fail-open (no estaba en RouteToMenuKey) => entraba cualquiera
+                   escribiendo la direccion a mano. *@
+                @if (HasPerm("contadora"))
+                {
+                    <NavItem Href="/contadora" Label="🧾 Contadora" Icon="@SvgIcons.Database"
+                             IsActive="@IsActive("/contadora")" OnClick="@(() => NavigateTo("/contadora"))" />
+                }
                 @if (HasPerm("usuarios"))
                 {
                     <NavItem Href="/usuarios" Label="Usuarios" Icon="@SvgIcons.Users"
@@ -2567,6 +2574,7 @@
         { "tesoreria", "tesoreria" },
         { "empleados", "empleados" },
         { "sueldos", "sueldos" },
+        { "contadora", "contadora" },
         { "usuarios", "usuarios" },
         { "roles", "roles" },
         { "integraciones", "integraciones" },
