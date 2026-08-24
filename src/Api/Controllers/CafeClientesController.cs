@@ -638,10 +638,17 @@ public class CafeClientesController : ControllerBase
         return Ok(new { asunto, cuerpo });
     }
 
-    /// <summary>Vista previa del mail de saldo (para leerlo antes de mandarlo).</summary>
+    /// <summary>Vista previa del mail de saldo (para leerlo antes de mandarlo). Con texto=true
+    /// devuelve la versión en texto plano, que es la que contesta el bot de WhatsApp.</summary>
     [HttpGet("{id:int}/enviar-saldo/preview")]
-    public async Task<IActionResult> PreviewSaldo(int id, [FromServices] EnvioReciboCobranzaService envio)
+    public async Task<IActionResult> PreviewSaldo(int id, [FromServices] EnvioReciboCobranzaService envio,
+        [FromQuery] bool texto = false)
     {
+        if (texto)
+        {
+            var (t, saldo) = await envio.ArmarEstadoCuentaTextoAsync(new List<int> { id });
+            return Ok(new { asunto = "(texto para WhatsApp)", cuerpo = t, saldo });
+        }
         var (asunto, cuerpo) = await envio.ArmarMailSaldoAsync(id);
         return Ok(new { asunto, cuerpo });
     }

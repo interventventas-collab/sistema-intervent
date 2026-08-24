@@ -32,6 +32,8 @@ public class EnvioReciboCobranzaService
     public record Resultado(bool EmailOk, string? EmailError, bool WhatsappOk, string? WhatsappError);
 
     private static string Plata(decimal m) => "$" + m.ToString("N2", Ar);
+    /// <summary>Sin centavos: para WhatsApp, donde el resto del bot ya muestra los importes redondeados.</summary>
+    private static string PlataCorta(decimal m) => "$" + m.ToString("N0", Ar);
 
     /// <summary>Manda el recibo por los canales pedidos. destinoEmail/destinoWhatsapp son opcionales:
     /// si no vienen, se usan el mail y el teléfono del cliente.</summary>
@@ -220,7 +222,8 @@ public class EnvioReciboCobranzaService
 
     /// <summary>Datos del comprobante que hacen falta para pintar el renglón.</summary>
     /// <summary>Un renglón del estado de cuenta, ya listo para pintar.</summary>
-    private sealed record MovEstado(DateTime Fecha, string Tipo, string Texto, decimal Debe, decimal Haber, bool Fiscal);
+    private sealed record MovEstado(DateTime Fecha, string Tipo, string Numero, string? Nota,
+        decimal Debe, decimal Haber, bool Fiscal);
 
     /// <summary>Una cuenta del estado: "Facturas" (fiscal) o "Cotizaciones" (no fiscal).</summary>
     private sealed class BloqueCuenta
@@ -254,6 +257,45 @@ public class EnvioReciboCobranzaService
     /// cancelaban — por eso costó verlo. Caso real: GNC NUCLEO y Dulce Lugar.</summary>
     public async Task<(string html, decimal saldoTotal)> ArmarEstadoCuentaHtmlAsync(List<int> ids, int mesesAtras = 3)
     {
+        var (bloques, total) = await ArmarBloquesAsync(ids);
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        var sbH = new StringBuilder();
+        foreach (var b in bloques)
+        {
+            if (bloques.Count > 1)
+                sbH.Append($"<p style=\"margin:16px 0 6px;font-size:14px;font-weight:bold;\">{b.Titulo}</p>");
+            sbH.Append(TablaHtml(b, hoy));
+        }
+        return (sbH.ToString(), total);
+    }
+
+    /// <summary>2026-08-24: el MISMO estado de cuenta, pero en texto plano para WhatsApp. Pedido del
+    /// usuario: que el bot interno conteste lo mismo que se le manda al cliente por mail, para que
+    /// no haya dos versiones de la misma cuenta.</summary>
+    public async Task<(string texto, decimal saldoTotal)> ArmarEstadoCuentaTextoAsync(List<int> ids)
+    {
+        var (bloques, total) = await ArmarBloquesAsync(ids);
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        var sb = new StringBuilder();
+        foreach (var b in bloques)
+        {
+            if (bloques.Count > 1) sb.Append($"\n📑 *{b.Titulo}*\n");
+            if (Math.Abs(b.SaldoAnterior) > 0.005m && b.Desde.HasValue)
+                sb.Append($"Saldo al {b.Desde.Value.AddDays(-1):dd/MM/yy}: {PlataCorta(b.SaldoAnterior)}\n");
+            foreach (var m in b.Movimientos)
+            {
+                var signo = m.Debe > 0 ? "+" : "−";
+                var monto = m.Debe > 0 ? m.Debe : m.Haber;
+                var nota = m.Nota is null ? "" : $" ({m.Nota})";
+                sb.Append($" • {m.Fecha:dd/MM} {m.Tipo} {m.Numero}{nota} {signo}{PlataCorta(monto)}\n");
+            }
+            sb.Append($"*Saldo al {hoy:dd/MM/yy}: {PlataCorta(b.SaldoFinal)}*\n");
+        }
+        return (sb.ToString().TrimEnd(), total);
+    }
+
+    private async Task<(List<BloqueCuenta> bloques, decimal total)> ArmarBloquesAsync(List<int> ids)
+    {
         var ventas = await _db.CafeVentas
             .Where(v => v.ClienteId != null && ids.Contains(v.ClienteId.Value)
                      && v.Estado != "anulado" && v.TipoComprobante != "PRO")
@@ -274,11 +316,11 @@ public class EnvioReciboCobranzaService
             var esNc = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC");
             var fiscal = EsTipoFiscal(v.TipoComprobante);
             // En las facturas mostramos el número de ARCA, que es el que el cliente tiene impreso.
-            var texto = v.ArcaCbteNro is int nro ? $"{v.ArcaPtoVta ?? 0:00000}-{nro:00000000}" : (v.Numero ?? "");
-            if (variasCuentas && nombreCorto.TryGetValue(v.ClienteId, out var suc))
-                texto += $" <span style=\"color:#6b7280;\">({suc})</span>";
+            var numero = v.ArcaCbteNro is int nro ? $"{v.ArcaPtoVta ?? 0:00000}-{nro:00000000}" : (v.Numero ?? "");
+            string? nota = null;
+            if (variasCuentas && nombreCorto.TryGetValue(v.ClienteId, out var suc)) nota = suc;
             movs.Add(new MovEstado(v.Fecha, esNc ? "N/C" : fiscal ? "FAC" : "COT",
-                texto, esNc ? 0m : monto, esNc ? monto : 0m, fiscal));
+                numero, nota, esNc ? 0m : monto, esNc ? monto : 0m, fiscal));
         }
 
         // Imputaciones: se agrupan por recibo Y por cuenta, así un pago que canceló facturas y
@@ -309,12 +351,11 @@ public class EnvioReciboCobranzaService
             foreach (var (importe, fiscal) in new[] { (fiscalImp, true), (cotImp, false) })
             {
                 if (Math.Abs(importe) < 0.005m) continue;
-                var texto = g.Key.Recibo;
                 // Si el recibo se partió entre las dos cuentas, se aclara — si no, el cliente no
                 // puede cruzar el importe con la transferencia de su banco.
-                if (Math.Abs(importe - totalRec) > 0.005m)
-                    texto += $" <span style=\"color:#6b7280;\">(parte de un pago de {Plata(totalRec)})</span>";
-                movs.Add(new MovEstado(fecha, "REC", texto, 0m, importe, fiscal));
+                var nota = Math.Abs(importe - totalRec) > 0.005m
+                    ? $"parte de un pago de {Plata(totalRec)}" : null;
+                movs.Add(new MovEstado(fecha, "REC", g.Key.Recibo, nota, 0m, importe, fiscal));
             }
         }
 
@@ -335,7 +376,7 @@ public class EnvioReciboCobranzaService
         foreach (var b in bloques)
         {
             var propios = movs.Where(m => m.Fiscal == b.EsFiscal)
-                .OrderBy(m => m.Fecha).ThenBy(m => m.Texto).ToList();
+                .OrderBy(m => m.Fecha).ThenBy(m => m.Numero).ToList();
             if (propios.Count == 0) continue;
             b.SaldoFinal = propios.Sum(m => m.Debe - m.Haber);
             b.Desde = CorteDesde(propios, ImpagoMasViejo(b.EsFiscal));
@@ -348,15 +389,7 @@ public class EnvioReciboCobranzaService
         // Se usa el valor absoluto para que una cuenta con saldo A FAVOR también se vea: si no,
         // el total de arriba no cerraría con las tablas de abajo.
         var conSaldo = bloques.Where(b => Math.Abs(b.SaldoFinal) > CafeSaldosService.Umbral).ToList();
-        var hoy = DateTime.UtcNow.AddHours(-3).Date;
-        var sb = new StringBuilder();
-        foreach (var b in conSaldo)
-        {
-            if (conSaldo.Count > 1)
-                sb.Append($"<p style=\"margin:16px 0 6px;font-size:14px;font-weight:bold;\">{b.Titulo}</p>");
-            sb.Append(TablaHtml(b, hoy));
-        }
-        return (sb.ToString(), bloques.Sum(b => b.SaldoFinal));
+        return (conSaldo, bloques.Sum(b => b.SaldoFinal));
     }
 
     /// <summary>Dónde arranca el historial: el último pago, o el comprobante impago más viejo — lo
@@ -408,7 +441,8 @@ public class EnvioReciboCobranzaService
         {
             saldo += m.Debe - m.Haber;
             sb.Append("<tr style=\"border-top:1px solid #e5e7eb;\">" +
-                      $"<td style=\"{celda}\">{m.Fecha:dd/MM/yy}</td><td style=\"{celda}\">{m.Tipo}</td><td style=\"{celda}\">{m.Texto}</td>" +
+                      $"<td style=\"{celda}\">{m.Fecha:dd/MM/yy}</td><td style=\"{celda}\">{m.Tipo}</td>" +
+                      $"<td style=\"{celda}\">{m.Numero}{(m.Nota is null ? "" : $" <span style=\"color:#6b7280;\">({m.Nota})</span>")}</td>" +
                       $"<td align=\"right\" style=\"{celda}\">{(m.Debe > 0 ? Plata(m.Debe) : "")}</td>" +
                       $"<td align=\"right\" style=\"{celda}\">{(m.Haber > 0 ? Plata(m.Haber) : "")}</td>" +
                       $"<td align=\"right\" style=\"{celda}\">{Plata(saldo)}</td></tr>");

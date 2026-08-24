@@ -31,10 +31,15 @@ public class WhatsAppEmpleadoBotService
     // Mismo directorio/volumen que usan los adjuntos del chat (para servir el PDF por URL pública).
     private const string UploadsDir = "/data/whatsapp-uploads";
 
+    // 2026-08-24: el estado de cuenta lo arma el mismo servicio que manda el mail al cliente,
+    // así el bot interno y el cliente ven exactamente la misma cuenta.
+    private readonly EnvioReciboCobranzaService _estadoCuenta;
+
     public WhatsAppEmpleadoBotService(AppDbContext db, MetaWhatsAppService meta,
-        CafeSaldosService saldos, IServiceProvider sp, ILogger<WhatsAppEmpleadoBotService> log)
+        CafeSaldosService saldos, EnvioReciboCobranzaService estadoCuenta,
+        IServiceProvider sp, ILogger<WhatsAppEmpleadoBotService> log)
     {
-        _db = db; _meta = meta; _saldos = saldos; _sp = sp; _log = log;
+        _db = db; _meta = meta; _saldos = saldos; _estadoCuenta = estadoCuenta; _sp = sp; _log = log;
     }
 
     /// <summary>Intenta atender el mensaje como parte del bot de empleados. Devuelve true si lo
@@ -370,14 +375,15 @@ public class WhatsAppEmpleadoBotService
         }
         else sb.Append("💰 No tiene saldo pendiente.\n");
 
-        var ventas = await _db.CafeVentas.AsNoTracking()
-            .Where(v => v.ClienteId == cli.Id && v.Estado != "anulado")
-            .OrderByDescending(v => v.Fecha).Take(6).ToListAsync();
-        if (ventas.Count > 0)
+        // 2026-08-24: el mismo estado de cuenta que se le manda al cliente por mail (movimientos
+        // desde el último pago, con lo que suma y lo que resta). Antes acá salía un listado de las
+        // últimas 6 ventas con el importe SIN IVA y un "impaga" que no distinguía las parciales:
+        // el que salía a cobrar leía $720.000 en una factura que debía $39.800.
+        var (estado, _) = await _estadoCuenta.ArmarEstadoCuentaTextoAsync(new List<int> { cli.Id });
+        if (!string.IsNullOrWhiteSpace(estado))
         {
-            sb.Append("📄 Últimas facturas:\n");
-            foreach (var v in ventas)
-                sb.Append($" • {v.Numero} — {v.Fecha:dd/MM/yy} — {Money(v.Total)} {(v.IsPaid ? "✅ pagada" : "⏳ impaga")}\n");
+            sb.Append("\n📄 *Estado de cuenta*\n");
+            sb.Append(estado + "\n");
             sb.Append("\n📎 Respondé DOC para recibir el PDF de la última factura.");
         }
         sb.Append("\n👉 O respondé otro número/nombre, o tu palabra clave para el menú.");
@@ -396,7 +402,7 @@ public class WhatsAppEmpleadoBotService
             return ($"📄 {cli.Nombre} {cod}".TrimEnd() + " no tiene facturas cargadas."
                  + "\n\n👉 Respondé otro número/nombre, o tu palabra clave para el menú.", cli.Id);
 
-        var lineas = ventas.Select(v => $" • {v.Numero} — {v.Fecha:dd/MM/yy} — {Money(v.Total)} {(v.IsPaid ? "✅ pagada" : "⏳ impaga")}");
+        var lineas = await RenglonesComprobantesAsync(ventas);
         return ($"📄 Últimas facturas de {cli.Nombre} {cod}".TrimEnd() + ":\n" + string.Join("\n", lineas)
              + "\n\n📎 Respondé DOC para recibir el PDF de la última factura."
              + "\n👉 O respondé otro número/nombre, o tu palabra clave para el menú.", cli.Id);
@@ -562,6 +568,36 @@ public class WhatsAppEmpleadoBotService
     }
 
     /// <summary>Formatea plata al estilo argentino ($1.234.567) sin depender de la cultura del server.</summary>
+    /// <summary>2026-08-24: arma el renglón de cada comprobante para el bot. Antes mostraba
+    /// v.Total (el NETO, sin IVA) y el tildecito IsPaid, que es sí o no. Resultado: una factura de
+    /// $871.200 con $39.800 pendientes salía como "$720.000 ⏳ impaga" y el que iba a cobrar
+    /// reclamaba veinte veces de más. Ahora va el importe CON IVA (el que ve el cliente en la
+    /// factura) y cuánto falta de verdad.</summary>
+    private async Task<List<string>> RenglonesComprobantesAsync(List<CafeVenta> ventas)
+    {
+        var ids = ventas.Select(v => v.Id).ToList();
+        var pagado = (await _db.CafeCobranzasComprobantes.AsNoTracking()
+            .Where(cc => cc.VentaId != null && ids.Contains(cc.VentaId.Value) && cc.Cobranza!.Estado == "VIGENTE")
+            .GroupBy(cc => cc.VentaId!.Value)
+            .Select(g => new { VentaId = g.Key, Total = g.Sum(x => x.Importe) })
+            .ToListAsync())
+            .ToDictionary(x => x.VentaId, x => x.Total);
+
+        var lineas = new List<string>();
+        foreach (var v in ventas)
+        {
+            var cobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+            var debe = cobrable - (pagado.TryGetValue(v.Id, out var p) ? p : 0m);
+            var esNc = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
+            var estado = esNc ? "↩️ nota de crédito"
+                       : debe <= 0.50m ? "✅ pagada"
+                       : debe >= cobrable - 0.50m ? "⏳ impaga"
+                       : $"⏳ debe {Money(debe)}";
+            lineas.Add($" • {v.Numero} — {v.Fecha:dd/MM/yy} — {Money(cobrable)} {estado}");
+        }
+        return lineas;
+    }
+
     private static string Money(decimal v)
         => "$" + v.ToString("#,##0", CultureInfo.InvariantCulture).Replace(",", ".");
 }
