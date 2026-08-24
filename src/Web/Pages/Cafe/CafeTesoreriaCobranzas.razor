@@ -349,6 +349,12 @@
                             {
                                 <div style="display:flex; gap:0.4rem;">
                                     <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="ImputarTodo">⚡ Cobrar todo lo pendiente</button>
+                                    @* 2026-08-24: el cliente manda lo que puede y se descuenta de la mas vieja a la
+                                       mas nueva. Antes se hacia a mano con calculadora (de ahi salio el error de
+                                       tipeo de $182.000 en Dulce Lugar). Ahora lo llena el sistema. *@
+                                    <button class="btn btn-secondary" style="font-size:0.78rem;"
+                                            title="Escribís lo que entró y el sistema llena los casilleros de la factura más vieja a la más nueva"
+                                            @onclick="() => { mostrarRepartir = !mostrarRepartir; repartirResumen = null; }">💵 Repartir un importe</button>
                                 </div>
                             }
                         </div>
@@ -402,6 +408,29 @@
                                         </div>
                                     </div>
                                 </label>
+                            </div>
+                        }
+                        @if (mostrarRepartir)
+                        {
+                            <div style="background:#eff6ff; border:1px solid #93c5fd; border-radius:6px; padding:0.6rem 0.8rem; margin-bottom:0.6rem;">
+                                <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                                    <span style="font-size:0.85rem; font-weight:700; color:#1e40af;">💵 Entró un pago de $</span>
+                                    <input class="form-input" type="text" inputmode="decimal" placeholder="2.000.000"
+                                           style="width:150px; text-align:right;"
+                                           @bind="repartirTexto" @bind:event="oninput" @onkeydown="OnRepartirKeyDown" />
+                                    <button class="btn btn-primary" style="font-size:0.8rem;" @onclick="RepartirImporte">
+                                        Repartir de la más vieja a la más nueva
+                                    </button>
+                                </div>
+                                <div style="font-size:0.75rem; color:#1e40af; margin-top:0.35rem;">
+                                    Llena los casilleros solo: no guarda nada. Podés retocar lo que quieras antes de Guardar.
+                                </div>
+                                @if (!string.IsNullOrEmpty(repartirResumen))
+                                {
+                                    <div style="margin-top:0.45rem; padding:0.45rem 0.6rem; background:#dbeafe; border-radius:5px; font-size:0.82rem; color:#1e3a8a; font-weight:600;">
+                                        ✅ @repartirResumen
+                                    </div>
+                                }
                             </div>
                         }
                         @* 2026-08-22: la plata A FAVOR del cliente (facturas pagadas de más y notas de
@@ -486,7 +515,7 @@
                         }
                         <div style="display:flex; align-items:center; gap:0.5rem;">
                             <label class="form-check"><input type="checkbox" @bind="aCuentaActivo" @bind:after="RecalcularTotal" /> A cuenta:</label>
-                            <input class="form-input" type="number" step="0.01" style="width:140px;"
+                            <input class="form-input" type="text" inputmode="decimal" style="width:140px; text-align:right;"
                                    @bind="ACuentaImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" disabled="@(!aCuentaActivo)" />
                         </div>
                         @* 2026-06-08: total imputado + saldo DISPONIBLE en vivo (pedido del usuario)
@@ -1690,6 +1719,69 @@
     {
         incluirSucursales = val;
         await RecargarPendientesAsync();
+    }
+
+    // ─── 2026-08-24: repartir un pago de la factura mas vieja a la mas nueva ───
+    // Regla del negocio (Dulce Lugar y varios mas): el cliente manda lo que puede y se va
+    // descontando de la mas vieja a la mas nueva. Se hacia a mano con calculadora en cada pago.
+    private bool mostrarRepartir;
+    private string repartirTexto = "";
+    private string? repartirResumen;
+
+    private void OnRepartirKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") RepartirImporte();
+    }
+
+    /// <summary>Llena los casilleros "A cobrar" con el importe que entro, arrancando por la factura
+    /// mas vieja. La ultima que alcanza queda parcial. Si sobra plata, la deja "A cuenta".
+    /// NO guarda nada: el operador puede retocar todo antes de Guardar.</summary>
+    private void RepartirImporte()
+    {
+        if (!MontoInput.TryParse(repartirTexto, out var monto) || monto <= 0m)
+        {
+            ToastService.Error("Escribí el importe que entró (ej: 2.000.000)");
+            return;
+        }
+
+        // Ordenadas de la mas vieja a la mas nueva. Si estan las 3 sucursales del mismo CUIT,
+        // se reparte sobre todas juntas por fecha, sin importar de que sucursal sea cada una.
+        var lista = ComprobantesACobrar.OrderBy(p => p.Fecha).ThenBy(p => p.VentaId).ToList();
+        if (lista.Count == 0) { ToastService.Error("No hay facturas pendientes para repartir"); return; }
+
+        // Arrancar de cero en las facturas. La plata a favor (cuadro verde) NO se toca.
+        foreach (var p in lista)
+            if (imputaciones.TryGetValue(p.VentaId, out var limpio)) { limpio.Seleccionado = false; limpio.Importe = 0m; }
+
+        var restante = monto;
+        var cuantas = 0;
+        string? parcialNumero = null;
+        var parcialQueda = 0m;
+        foreach (var p in lista)
+        {
+            if (restante <= 0.005m) break;
+            if (!imputaciones.TryGetValue(p.VentaId, out var imp)) continue;
+            var aplica = Math.Min(restante, p.Saldo);
+            imp.Importe = aplica;
+            imp.Seleccionado = true;
+            restante -= aplica;
+            cuantas++;
+            if (aplica < p.Saldo - 0.005m) { parcialNumero = p.Numero; parcialQueda = p.Saldo - aplica; }
+        }
+
+        // Si pago mas de lo que debe, el sobrante queda a cuenta (no lo inventamos en una factura).
+        if (restante > 0.005m)
+        {
+            aCuentaActivo = true;
+            aCuentaImporte = restante;
+        }
+
+        var repartido = monto - restante;
+        var txt = $"Repartí ${repartido.ToString("N2")} en {cuantas} factura{(cuantas == 1 ? "" : "s")}, de la más vieja a la más nueva.";
+        if (parcialNumero is not null) txt += $" La {parcialNumero} queda debiendo ${parcialQueda.ToString("N2")}.";
+        if (restante > 0.005m) txt += $" Sobraron ${restante.ToString("N2")}: los dejé como \"A cuenta\".";
+        repartirResumen = txt;
+        RecalcularTotal();
     }
 
     /// <summary>Tildá todos los comprobantes pendientes y poneles el saldo completo (1 click).</summary>
