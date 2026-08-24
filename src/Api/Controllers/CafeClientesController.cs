@@ -603,6 +603,27 @@ public class CafeClientesController : ControllerBase
         return await GetSaldosPendientes();
     }
 
+    // ─── 2026-08-24: mandarle al cliente el detalle de lo que debe, desde "¿Quién me debe?" ───
+    public record EnviarSaldoRequest(string? Email);
+
+    /// <summary>Manda por mail el resumen de deuda del cliente. Si no viene Email, usa el de la
+    /// ficha; si viene, manda a ese (sirve para escribir una dirección a mano en el momento).</summary>
+    [HttpPost("{id:int}/enviar-saldo")]
+    public async Task<IActionResult> EnviarSaldo(int id, [FromBody] EnviarSaldoRequest req,
+        [FromServices] EnvioReciboCobranzaService envio)
+    {
+        var (ok, error) = await envio.EnviarResumenSaldoAsync(id, req?.Email);
+        return Ok(new { ok, error });
+    }
+
+    /// <summary>Vista previa del mail de saldo (para leerlo antes de mandarlo).</summary>
+    [HttpGet("{id:int}/enviar-saldo/preview")]
+    public async Task<IActionResult> PreviewSaldo(int id, [FromServices] EnvioReciboCobranzaService envio)
+    {
+        var (asunto, cuerpo) = await envio.ArmarMailSaldoAsync(id);
+        return Ok(new { asunto, cuerpo });
+    }
+
     [HttpGet("saldos-pendientes")]
     public async Task<IActionResult> GetSaldosPendientes()
         => Ok(await _saldos.GetSaldosPendientesAsync());

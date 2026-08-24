@@ -267,7 +267,7 @@ public class EnvioComprobanteService
     /// Integraciones. Es el motor que usan tanto el comprobante de una venta como el recibo de
     /// una cobranza — la config del correo vive en UN solo lugar.</summary>
     public async Task<(bool ok, string? error)> EnviarEmailConAdjuntoAsync(
-        string to, string subject, string body, byte[] pdfBytes, string filename)
+        string to, string subject, string body, byte[]? pdfBytes = null, string? filename = null)
     {
         if (string.IsNullOrWhiteSpace(to)) return (false, "No hay dirección de correo a la que mandar.");
 
@@ -308,9 +308,16 @@ public class EnvioComprobanteService
             IsBodyHtml = false
         };
         message.To.Add(to);
-        using var ms = new MemoryStream(pdfBytes);
-        message.Attachments.Add(new System.Net.Mail.Attachment(ms, filename, "application/pdf"));
-        await client.SendMailAsync(message);
+        // 2026-08-24: el adjunto es opcional — el resumen de saldo del panel "¿Quién me debe?"
+        // va solo con texto, sin PDF.
+        MemoryStream? ms = null;
+        if (pdfBytes is { Length: > 0 })
+        {
+            ms = new MemoryStream(pdfBytes);
+            message.Attachments.Add(new System.Net.Mail.Attachment(ms, filename ?? "adjunto.pdf", "application/pdf"));
+        }
+        try { await client.SendMailAsync(message); }
+        finally { ms?.Dispose(); }
         return (true, null);
     }
 

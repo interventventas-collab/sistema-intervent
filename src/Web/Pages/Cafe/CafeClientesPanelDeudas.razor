@@ -80,6 +80,8 @@
         .barra-seleccion .total { font-size: 1.05rem; }
         .barra-seleccion .desglose { width: 100%; justify-content: center; }
     }
+    .cliente-actions .btn-mail { background: #2563eb; color: #fff; border: none; border-radius: 6px; padding: 0.4rem 0.7rem; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
+    .cliente-actions .btn-mail:hover { background: #1d4ed8; }
     .credito-linea { display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; padding: 0.35rem 0.7rem; background: #dcfce7; border-radius: 6px; font-size: 0.82rem; color: #166534; font-weight: 600; }
     .credito-linea strong { font-size: 0.95rem; font-weight: 800; }
     .cliente-total { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; padding: 0.45rem 0.7rem; background: #fef9c3; border-radius: 6px; }
@@ -303,6 +305,10 @@
                     <div class="cliente-actions">
                         <a href="/cafe/clientes/@s.ClienteId/estado-cuenta">📒 Estado cuenta</a>
                         <a href="/cafe/tesoreria/cobranzas?cliente=@s.ClienteId" class="btn-cobrar">💰 Cobrar</a>
+                        @* 2026-08-24: mandarle por mail el detalle de lo que debe. Si tiene mail en la
+                           ficha va precargado; si no (o si hay que mandarlo a otro lado), se escribe
+                           una direccion a mano en el momento. *@
+                        <button class="btn-mail" @onclick="@(() => AbrirMandarSaldo(s))">📧 Mandar saldo</button>
                         @if (!string.IsNullOrEmpty(s.Telefono))
                         {
                             <button class="btn-wa" @onclick="@(() => MandarWhatsapp(s))">📱 WhatsApp</button>
@@ -393,6 +399,63 @@
         </div>
     }
 </div>
+
+@* ════════ 2026-08-24: Modal "mandar saldo por mail" ════════ *@
+@if (mandarSaldoCliente is not null)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="CerrarMandarSaldo">
+        @* la clase con fondo es modal-card (no "modal"): sin ella el cuadro queda transparente *@
+        <div class="modal-card" style="max-width: 460px;" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#2563eb; color:white;">
+                <h4 style="margin:0;">📧 Mandar el saldo a @mandarSaldoCliente.Nombre</h4>
+                <button class="modal-close" style="color:white;" @onclick="CerrarMandarSaldo">×</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.2rem;">
+                <div style="background:#eff6ff; border-left:3px solid #2563eb; padding:0.5rem 0.7rem; border-radius:4px; margin-bottom:0.8rem; font-size:0.82rem; color:#1e3a8a;">
+                    Le llega el detalle de lo que debe, comprobante por comprobante, con el total.
+                    Debe <b>$@FormatMoney(mandarSaldoCliente.SaldoPendiente)</b>.
+                </div>
+                <label style="font-size:0.85rem; font-weight:600; color:#374151;">Correo del cliente</label>
+                <input class="form-input" type="email" placeholder="nombre@@correo.com"
+                       style="width:100%; margin-top:0.25rem;" @bind="mandarSaldoEmail" @bind:event="oninput" />
+                @if (string.IsNullOrWhiteSpace(mandarSaldoCliente.Email))
+                {
+                    <div style="font-size:0.75rem; color:#b45309; margin-top:0.3rem;">
+                        ⚠ Este cliente no tiene correo en la ficha — escribí uno acá y se le manda igual.
+                    </div>
+                }
+                else
+                {
+                    <div style="font-size:0.75rem; color:#6b7280; margin-top:0.3rem;">
+                        Es el de la ficha. Podés cambiarlo si querés mandarlo a otra dirección (no se guarda).
+                    </div>
+                }
+                @* Asi le llega: se lee antes de mandarlo, no despues. *@
+                <div style="margin-top:0.8rem;">
+                    <div style="font-size:0.8rem; font-weight:700; color:#374151; margin-bottom:0.25rem;">Así le va a llegar:</div>
+                    @if (previewCargando)
+                    {
+                        <div style="font-size:0.8rem; color:#9ca3af;">Cargando...</div>
+                    }
+                    else
+                    {
+                        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:0.6rem; max-height:220px; overflow:auto;">
+                            <div style="font-size:0.75rem; color:#6b7280; margin-bottom:0.3rem;"><b>Asunto:</b> @previewAsunto</div>
+                            <pre style="margin:0; font-family:inherit; font-size:0.78rem; color:#374151; white-space:pre-wrap;">@previewCuerpo</pre>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarMandarSaldo">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarMandarSaldo"
+                        disabled="@(mandandoSaldo || string.IsNullOrWhiteSpace(mandarSaldoEmail))">
+                    @(mandandoSaldo ? "Mandando..." : "📧 Mandar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
 
 @* ════════ Modal compartir link público ════════ *@
 @if (showShareModal)
@@ -552,6 +615,55 @@
             "nombre" => q.OrderBy(s => s.Nombre),
             _ => q.OrderByDescending(s => s.DiasMasAntigua),
         };
+    }
+
+    // ─── 2026-08-24: mandar el saldo por mail ───
+    private ClienteSaldoPendienteDto? mandarSaldoCliente;
+    private string mandarSaldoEmail = "";
+    private bool mandandoSaldo;
+
+    private string previewAsunto = "";
+    private string previewCuerpo = "";
+    private bool previewCargando;
+
+    private async Task AbrirMandarSaldo(ClienteSaldoPendienteDto s)
+    {
+        mandarSaldoCliente = s;
+        mandarSaldoEmail = s.Email ?? "";
+        previewAsunto = ""; previewCuerpo = ""; previewCargando = true;
+        try
+        {
+            var p = await Api.PreviewSaldoClienteAsync(s.ClienteId);
+            if (p is not null) { previewAsunto = p.Asunto; previewCuerpo = p.Cuerpo; }
+            else previewCuerpo = "(no se pudo cargar la vista previa)";
+        }
+        catch { previewCuerpo = "(no se pudo cargar la vista previa)"; }
+        finally { previewCargando = false; }
+    }
+
+    private void CerrarMandarSaldo()
+    {
+        mandarSaldoCliente = null;
+        mandarSaldoEmail = "";
+    }
+
+    private async Task ConfirmarMandarSaldo()
+    {
+        if (mandarSaldoCliente is null || string.IsNullOrWhiteSpace(mandarSaldoEmail)) return;
+        mandandoSaldo = true;
+        try
+        {
+            var r = await Api.EnviarSaldoClienteAsync(mandarSaldoCliente.ClienteId, mandarSaldoEmail.Trim());
+            if (r is null) { ToastService.Error("No se pudo mandar"); return; }
+            if (r.Ok)
+            {
+                ToastService.Success($"📧 Saldo enviado a {mandarSaldoEmail.Trim()}");
+                CerrarMandarSaldo();
+            }
+            else ToastService.Error(r.Error ?? "No se pudo mandar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { mandandoSaldo = false; }
     }
 
     private async Task MandarWhatsapp(ClienteSaldoPendienteDto s)

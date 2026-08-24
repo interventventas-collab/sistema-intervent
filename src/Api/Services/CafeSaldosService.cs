@@ -191,7 +191,8 @@ public class CafeSaldosService
                     r.Cot,
                     r.Fac,
                     cli?.Cuit,
-                    r.Credito
+                    r.Credito,
+                    cli?.Email
                 );
             })
             .OrderBy(c => c.FechaMasAntigua) // más antigua primero (mayor urgencia)
@@ -279,4 +280,6 @@ public record ClienteSaldoPendienteDto(
     string? Cuit = null,
     /// <summary>Plata del cliente que NO está aplicada a los comprobantes pendientes: pagos a cuenta,
     /// notas de crédito sin usar y facturas pagadas de más. Cotización + Factura − esto = SaldoPendiente.</summary>
-    decimal CreditoAFavor = 0m);
+    decimal CreditoAFavor = 0m,
+    /// <summary>2026-08-24: mail de la ficha, para el botón "Mandar saldo" del panel.</summary>
+    string? Email = null);

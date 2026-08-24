@@ -98,6 +98,44 @@ public class EnvioReciboCobranzaService
         foreach (var cc in c.Comprobantes)
             if (cc.Venta?.ClienteId is int vid && !ids.Contains(vid)) ids.Add(vid);
         if (ids.Count == 0) return "";
+        return await ArmarResumenDeCuentasAsync(ids, "Después de este pago te queda un saldo de",
+            "✅ Con este pago quedás al día. ¡Gracias!");
+    }
+
+    /// <summary>2026-08-24: le manda al cliente el detalle de lo que debe, sin que haya un pago de
+    /// por medio. Lo usa el botón "Mandar saldo" del panel "¿Quién me debe?". El destino puede ser
+    /// el mail de la ficha o uno escrito a mano en el momento.</summary>
+    public async Task<(bool ok, string? error)> EnviarResumenSaldoAsync(int clienteId, string? destinoEmail = null)
+    {
+        var cli = await _db.CafeClientes.FirstOrDefaultAsync(x => x.Id == clienteId);
+        if (cli is null) return (false, "No se encontró el cliente.");
+        var to = string.IsNullOrWhiteSpace(destinoEmail) ? cli.Email : destinoEmail!.Trim();
+        if (string.IsNullOrWhiteSpace(to)) return (false, "No hay dirección de correo: cargala en la ficha o escribila a mano.");
+
+        var (asunto, cuerpo) = await ArmarMailSaldoAsync(clienteId);
+        return await _envio.EnviarEmailConAdjuntoAsync(to!, asunto, cuerpo);
+    }
+
+    /// <summary>El mail de resumen de saldo tal cual le va a llegar al cliente. Lo usa el envío
+    /// y también la vista previa del panel (para poder leerlo ANTES de mandarlo).</summary>
+    public async Task<(string asunto, string cuerpo)> ArmarMailSaldoAsync(int clienteId)
+    {
+        var cli = await _db.CafeClientes.FirstOrDefaultAsync(x => x.Id == clienteId);
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        var hoy = DateTime.UtcNow.AddHours(-3);
+        var resumen = await ArmarResumenDeCuentasAsync(new List<int> { clienteId },
+            "El saldo de tu cuenta es de", "✅ Tu cuenta está al día. ¡Gracias!");
+        var asunto = $"Resumen de tu cuenta al {hoy:dd/MM/yyyy} - {cfg?.NegocioNombre ?? "Frikaf"}";
+        var cuerpo = $"Hola {cli?.Nombre},\n\n" + resumen + "\n\n" +
+                     "Si ya lo pagaste o ves algo que no coincide, avisanos y lo revisamos.\n\n" +
+                     $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}";
+        return (asunto, cuerpo);
+    }
+
+    /// <summary>Arma el detalle de deuda de una o varias cuentas (sucursales del mismo grupo).</summary>
+    private async Task<string> ArmarResumenDeCuentasAsync(List<int> ids, string encabezado, string textoAlDia)
+    {
+        if (ids.Count == 0) return "";
 
         var nombres = await _db.CafeClientes.Where(x => ids.Contains(x.Id))
             .Select(x => new { x.Id, x.Nombre }).ToListAsync();
@@ -115,12 +153,10 @@ public class EnvioReciboCobranzaService
             bloques.Add((nombreDe.TryGetValue(id, out var n) ? n : "Cuenta", saldo, pend));
         }
 
-        if (totalGrupo <= CafeSaldosService.Umbral)
-            return "✅ Con este pago quedás al día. ¡Gracias!";
+        if (totalGrupo <= CafeSaldosService.Umbral) return textoAlDia;
 
         var variasCuentas = bloques.Count(b => b.saldo > CafeSaldosService.Umbral) > 1;
-        sb.Append($"Después de este pago te queda un saldo de {Plata(totalGrupo)}");
-        sb.Append(variasCuentas ? ":\n" : ":\n");
+        sb.Append($"{encabezado} {Plata(totalGrupo)}:\n");
 
         foreach (var b in bloques)
         {

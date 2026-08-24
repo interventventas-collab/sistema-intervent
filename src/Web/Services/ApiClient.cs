@@ -2005,6 +2005,17 @@ public class ApiClient
     private record PendientesCountDto(int count);
 
     /// <summary>Lista de clientes con saldo pendiente (deudores), ordenada por venta más antigua primero.</summary>
+    // 2026-08-24: manda por mail el resumen de deuda de un cliente (desde "¿Quién me debe?").
+    public record EnviarSaldoResultDto(bool Ok, string? Error);
+
+    public record PreviewSaldoDto(string Asunto, string Cuerpo);
+
+    public async Task<PreviewSaldoDto?> PreviewSaldoClienteAsync(int clienteId)
+        => await GetAsync<PreviewSaldoDto>($"/api/cafe/clientes/{clienteId}/enviar-saldo/preview");
+
+    public async Task<EnviarSaldoResultDto?> EnviarSaldoClienteAsync(int clienteId, string? email)
+        => await PostAsync<EnviarSaldoResultDto>($"/api/cafe/clientes/{clienteId}/enviar-saldo", new { email });
+
     public async Task<List<ClienteSaldoPendienteDto>?> GetCafeClientesSaldosPendientesAsync()
         => await GetAsync<List<ClienteSaldoPendienteDto>>("/api/cafe/clientes/saldos-pendientes");
 
