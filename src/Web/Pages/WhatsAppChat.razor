@@ -5353,6 +5353,9 @@
     {
         if (idx < 0 || idx >= mvItems.Count) return;
         mvItems.RemoveAt(idx);
+        // El detalle abierto se identifica por POSICIÓN: si no lo cerramos, después de borrar un
+        // renglón quedaría abierto sobre otro y se editaría el producto equivocado.
+        mvLineaAbierta = -1;
         if (mvItems.Count == 0) { mvTotal = 0m; mvOrigenNumero = null; StateHasChanged(); return; }
         await CotizarModoVenta();
     }
