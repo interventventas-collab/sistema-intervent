@@ -49,6 +49,11 @@
                     @onclick="() => modoEdicion = !modoEdicion" title="Edicion rapida de marca y nombre">
                 @(modoEdicion ? "🔓 Edicion ON" : "🔒 Edicion OFF")
             </button>
+            @* 2026-08-25: baja a Excel lo que quedó filtrado en pantalla (no todo el catálogo). *@
+            <button class="btn btn-success" @onclick="BajarExcel" disabled="@(bajandoExcel || productosVisibles.Count == 0)"
+                    title="Bajar un Excel con los productos que estás viendo: SKU, nombre, marca y stock">
+                @(bajandoExcel ? "⏳ Armando..." : $"⬇ Bajar Excel ({productosVisibles.Count})")
+            </button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Producto</button>
         </div>
     </div>
@@ -1319,6 +1324,46 @@
     private string filtroTexto = "";
     // 2026-06-15: filtro "solo con reserva" (ventas MeLi pendientes de despacho)
     private bool soloConReserva = false;
+
+    // 2026-08-25: bajar a Excel lo que se ve en pantalla.
+    private bool bajandoExcel;
+
+    /// <summary>Manda al backend los ids de las filas visibles (ya filtradas y en orden) y dispara
+    /// la descarga del .xlsx. El nombre del archivo lleva la marca filtrada, así no se pisan entre sí
+    /// cuando bajás una marca atrás de la otra.</summary>
+    private async Task BajarExcel()
+    {
+        var visibles = productosVisibles;
+        if (visibles.Count == 0) { ToastService.Error("No hay productos para bajar."); return; }
+
+        bajandoExcel = true;
+        try
+        {
+            var bytes = await Api.ExportCafeProductosExcelAsync(visibles.Select(p => p.Id).ToList());
+            if (bytes is null || bytes.Length == 0)
+            {
+                ToastService.Error("No se pudo armar el Excel. Probá de nuevo.");
+                return;
+            }
+
+            var sufijo = filtroMarca switch
+            {
+                "__sin__" => "sin-marca",
+                "" or null => "todos",
+                _ => filtroMarca
+            };
+            // Sacar los caracteres que rompen un nombre de archivo (acentos y espacios sí se bancan).
+            foreach (var c in System.IO.Path.GetInvalidFileNameChars()) sufijo = sufijo.Replace(c, '-');
+            var nombre = $"productos-stock-{sufijo}-{DateTime.Now:dd-MM-yyyy}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadBytesAsFile", nombre, Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success($"Listo: {visibles.Count} productos en {nombre}");
+        }
+        catch (Exception ex) { ToastService.Error("Error al bajar el Excel: " + ex.Message); }
+        finally { bajandoExcel = false; }
+    }
+
     private bool showForm;
     private bool isEditing;
     private bool saving;

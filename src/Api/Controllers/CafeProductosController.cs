@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.DTOs;
+using ClosedXML.Excel;
 using Api.Models;
 using Api.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -147,6 +148,84 @@ public class CafeProductosController : ControllerBase
                 dto = dto with { StockPropio = s.Propio, StockFull = s.Full };
             return dto;
         }).ToList());
+    }
+
+    /// <summary>2026-08-25 — Baja un Excel simple (SKU · Nombre · Marca · Stock) con los productos que
+    /// el usuario tiene filtrados en pantalla. Los filtros de marca/tipo/texto son client-side, así que
+    /// el front manda los ids de las filas visibles y en el orden en que se ven: el archivo sale igual
+    /// a lo que muestra la pantalla. El stock es el físico (StockUnidades), que es lo que sirve para
+    /// contar mercadería — no el "armable" que la grilla muestra para los combos.</summary>
+    [HttpPost("export-excel")]
+    public async Task<IActionResult> ExportExcel([FromBody] ExportProductosRequest req)
+    {
+        var ids = req?.Ids?.Distinct().ToList() ?? new List<int>();
+        if (ids.Count == 0) return BadRequest(new { error = "No hay productos para exportar." });
+
+        var prods = await _db.CafeProductos.AsNoTracking()
+            .Where(p => ids.Contains(p.Id))
+            .Select(p => new
+            {
+                p.Id,
+                p.Sku,
+                p.Nombre,
+                Marca = p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null),
+                p.StockUnidades
+            })
+            .ToListAsync();
+
+        // Respetar el orden en que vinieron los ids (= el orden de la pantalla).
+        var orden = ids.Select((id, i) => new { id, i }).ToDictionary(x => x.id, x => x.i);
+        prods = prods.OrderBy(p => orden.TryGetValue(p.Id, out var i) ? i : int.MaxValue).ToList();
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Productos y stock");
+
+        var headers = new[] { "SKU", "Nombre", "Marca", "Stock" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1f2937");
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        int r = 2;
+        foreach (var p in prods)
+        {
+            ws.Cell(r, 1).Value = p.Sku ?? "";
+            ws.Cell(r, 2).Value = p.Nombre;
+            ws.Cell(r, 3).Value = p.Marca ?? "";
+            ws.Cell(r, 4).Value = p.StockUnidades;
+            ws.Cell(r, 4).Style.NumberFormat.Format = "#,##0";
+            if (r % 2 == 0)
+                for (int c = 1; c <= 4; c++) ws.Cell(r, c).Style.Fill.BackgroundColor = XLColor.FromHtml("#f9fafb");
+            r++;
+        }
+
+        // Total de unidades al pie, para que se vea de una cuánta mercadería hay en la lista.
+        if (prods.Count > 0)
+        {
+            ws.Cell(r + 1, 3).Value = "TOTAL";
+            ws.Cell(r + 1, 3).Style.Font.Bold = true;
+            ws.Cell(r + 1, 4).FormulaA1 = $"SUM(D2:D{prods.Count + 1})";
+            ws.Cell(r + 1, 4).Style.Font.Bold = true;
+            ws.Cell(r + 1, 4).Style.NumberFormat.Format = "#,##0";
+        }
+
+        ws.SheetView.FreezeRows(1);
+        ws.RangeUsed()?.SetAutoFilter();
+        ws.Column(1).Width = 16;
+        ws.Column(2).Width = 62;
+        ws.Column(3).Width = 18;
+        ws.Column(4).Width = 12;
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "productos-stock.xlsx");
     }
 
     /// <summary>2026-06-01 — Calcula el stock armable (en lote) para una lista de productos.
@@ -913,3 +992,6 @@ public class CafeProductosController : ControllerBase
         return 21m;
     }
 }
+
+/// <summary>Ids de los productos visibles en pantalla, en el orden en que se ven. Ver ExportExcel.</summary>
+public record ExportProductosRequest(List<int> Ids);

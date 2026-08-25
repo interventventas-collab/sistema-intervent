@@ -1318,6 +1318,16 @@ public class ApiClient
     public async Task<List<CafeHistorialPrecioDto>?> GetCafeProductoHistorialAsync(int id)
         => await GetAsync<List<CafeHistorialPrecioDto>>($"/api/cafe/productos/{id}/historial-precios");
 
+    /// <summary>2026-08-25: Excel simple (SKU · Nombre · Marca · Stock) de los productos que se ven
+    /// en pantalla. Se mandan los ids ya filtrados y en orden, para que el archivo salga igual a la grilla.</summary>
+    public async Task<byte[]?> ExportCafeProductosExcelAsync(List<int> ids)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/cafe/productos/export-excel", new { Ids = ids });
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
     // --- Cafe: Settings ---
     public async Task<CafeSettingDto?> GetCafeSettingsAsync()
         => await GetAsync<CafeSettingDto>("/api/cafe/settings");
