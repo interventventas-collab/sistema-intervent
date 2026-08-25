@@ -386,11 +386,15 @@ public class MeliPricePushService
         var envio = lc.ShippingCost + lc.ListingFeeAmount;   // ← el ENVÍO que antes faltaba
         var fijoActual = lc.FixedFee;
 
-        // Igual que el frontend: si el precio resultante queda alto (>= $30.000) MeLi no cobra cargo fijo.
-        var pSinFijo = (netoConIvaNec + envio) / denom;
-        if (pSinFijo >= 30000m) return Math.Round(pSinFijo, 2);
-        var pConFijo = (netoConIvaNec + envio + fijoActual) / denom;
-        return Math.Round(pConFijo, 2);
+        // 2026-08-25 — SE SACA la suposición "arriba de $30.000 MeLi no cobra cargo fijo".
+        // No era cierta y hacía que el precio quedara corto: caso real MLA1135409963 (galletitas),
+        // precio $314.199 con $3.050 de cargo fijo → se pedía 55% de ganancia y quedaba en 53,0%.
+        // La diferencia era exactamente el cargo fijo: $3.050 / 1,21 / $124.812 = 2,02 puntos.
+        // Medido en prod: 63 publicaciones con objetivo cargado estaban 3,3% cortas de precio.
+        // Ahora se usa SIEMPRE el cargo fijo que MeLi devuelve (lc.FixedFee): si no lo cobra viene
+        // en 0 y la cuenta da igual que antes; si lo cobra, ahora sí se cuenta.
+        var precioObjetivo = (netoConIvaNec + envio + fijoActual) / denom;
+        return Math.Round(precioObjetivo, 2);
     }
 
     /// <summary>2026-07-18: margen % actual de una publicación (al precio dado, o el suyo), usando la

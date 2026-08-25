@@ -94,6 +94,8 @@
     .p2-com .big.mid { color: #b45309; }
     .p2-com .big.hi { color: #b91c1c; }
     .p2-com .des { display: block; font-size: .6rem; color: #9ca3af; }
+    .p2-com .viejo { display: inline-block; font-size: .58rem; font-weight: 700; color: #b45309;
+                     background: #fef0d8; border-radius: .25rem; padding: .05rem .3rem; margin-top: .1rem; }
     .p2-com .bar { display: block; height: 4px; border-radius: 2px; background: #e3e7e0; margin-top: .2rem;
                    overflow: hidden; max-width: 118px; }
     .p2-com .bar i { display: block; height: 100%; background: #16a34a; }
@@ -170,6 +172,7 @@
             <span class="p2-chip nue @(fVariosPrecios ? "on" : "")" @onclick="ToggleVarios">Varios precios en la familia</span>
             <span class="p2-chip nue @(fPrecioAMano ? "on" : "")" @onclick="TogglePrecioMano">Precio a mano</span>
             <span class="p2-chip nue @(fSinCosto ? "on" : "")" @onclick="ToggleSinCosto">Sin costo cargado</span>
+            <span class="p2-chip nue @(fComisionVieja ? "on" : "")" @onclick="ToggleComisionVieja">⚠ Con datos viejos</span>
             <span class="p2-chip nue @(fCuotas == "12x_campaign" ? "on" : "")" @onclick='() => SetCuotas("12x_campaign")'>Cuotas: 12x</span>
             <span class="p2-chip nue @(fCuotas == "sin" ? "on" : "")" @onclick='() => SetCuotas("sin")'>Sin cuotas</span>
             @if (HayFiltros)
@@ -252,7 +255,7 @@
                                 var m = it.MargenPct.Value;
                                 var objetivo = it.ObjetivoPct ?? 50m;
                                 var llega = m >= objetivo;
-                                <span class="pct @(llega ? "" : m >= objetivo * 0.6m ? "tibio" : "malo")">@m.ToString("0.#", ar)%</span>
+                                <span class="pct @(llega ? "" : m >= objetivo * 0.6m ? "tibio" : "malo")" style="@(it.ComisionVieja ? "opacity:.55;" : "")">@m.ToString("0.#", ar)%</span>
                                 <span class="ver @(llega ? "ok" : "no")">@(llega ? "✓ estás arriba" : "✗ abajo") del @objetivo.ToString("0", ar)%</span>
                                 <span class="det">@Plata(it.GananciaPesos ?? 0) · costo @Plata(it.Costo ?? 0)</span>
                                 @if (!llega && it.Costo is > 0)
@@ -273,6 +276,10 @@
                                 var clase = c >= 40 ? "hi" : c >= 25 ? "mid" : "";
                                 <span class="big @clase">@c.ToString("0.#", ar)%</span>
                                 <span class="des">@DesgloseComision(it)</span>
+                                @if (it.ComisionVieja)
+                                {
+                                    <span class="viejo" title="La comisión se calculó con otro precio. El margen de esta fila puede estar mal.">⚠ dato viejo</span>
+                                }
                                 <span class="bar"><i class="@clase" style="width:@(Math.Min(100, (double)c * 2).ToString("0", System.Globalization.CultureInfo.InvariantCulture))%"></i></span>
                             }
                             else
@@ -336,8 +343,9 @@
     private bool fPrecioAMano;
     private bool fSinCosto;
     private decimal? fNoLlegan;
+    private bool fComisionVieja;
 
-    private bool HayFiltros => fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
+    private bool HayFiltros => fComisionVieja || fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
                                || !string.IsNullOrEmpty(fCuotas) || !string.IsNullOrEmpty(fEstado)
                                || !string.IsNullOrWhiteSpace(fTexto) || !string.IsNullOrWhiteSpace(fSku);
 
@@ -352,7 +360,7 @@
         try
         {
             datos = await Api.GetPublicacionesV2Async(fTexto, fSku, fEstado, fComision, fCuotas, null,
-                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, pagina, 100);
+                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, 100);
         }
         catch (Exception ex)
         {
@@ -374,12 +382,13 @@
     private async Task SetCuotas(string v) { fCuotas = fCuotas == v ? "" : v; await BuscarDesdeCero(); }
     private async Task ToggleVarios() { fVariosPrecios = !fVariosPrecios; await BuscarDesdeCero(); }
     private async Task TogglePrecioMano() { fPrecioAMano = !fPrecioAMano; await BuscarDesdeCero(); }
+    private async Task ToggleComisionVieja() { fComisionVieja = !fComisionVieja; await BuscarDesdeCero(); }
     private async Task ToggleSinCosto() { fSinCosto = !fSinCosto; await BuscarDesdeCero(); }
 
     private async Task LimpiarFiltros()
     {
         fTexto = ""; fSku = ""; fEstado = ""; fComision = null; fCuotas = "";
-        fVariosPrecios = false; fPrecioAMano = false; fSinCosto = false; fNoLlegan = null;
+        fVariosPrecios = false; fPrecioAMano = false; fSinCosto = false; fNoLlegan = null; fComisionVieja = false;
         await BuscarDesdeCero();
     }
 

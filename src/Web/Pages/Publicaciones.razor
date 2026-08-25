@@ -6986,10 +6986,9 @@
         var envio = itemCosts.ShippingCost + itemCosts.ListingFeeAmount;
         var fijoActual = itemCosts.FixedFee;
 
-        // Hipótesis B: precio >= $30.000 → sin cargo fijo
-        var pSinFijo = (netoNecesarioConIva + envio) / denom;
-        if (pSinFijo >= 30000m) return Math.Round(pSinFijo, 2);
-        // Hipótesis A: precio < $30.000 → usamos el cargo fijo actual como estimación
+        // 2026-08-25: se saca la suposición de los $30.000 — MeLi ya nos dice si cobra cargo fijo
+        // (itemCosts.FixedFee). Con la suposición, el precio sugerido quedaba corto y el objetivo
+        // no se cumplía (pedías 55% y daba 53%). Mismo criterio que el backend.
         var pConFijo = (netoNecesarioConIva + envio + fijoActual) / denom;
         return Math.Round(pConFijo, 2);
     }
@@ -7014,7 +7013,7 @@
         var price = itemCosts.Price;
         var pctEscalable = (itemCosts.SaleFeeAmount - itemCosts.FixedFee + itemCosts.FinancingFee) / price
                            + taxPercentage / 100m;
-        var fijo = p >= 30000m ? 0m : itemCosts.FixedFee;
+        var fijo = itemCosts.FixedFee;   // 2026-08-25: el que MeLi cobra de verdad, sin suponer por el precio
         var envio = itemCosts.ShippingCost + itemCosts.ListingFeeAmount;
         var netoConIva = p * (1m - pctEscalable) - fijo - envio;
         return Math.Round(netoConIva / (1m + IvaAlicuota), 2);

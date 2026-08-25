@@ -33,7 +33,7 @@ public class MeliPublicacionesV2Service
         decimal Precio, string? Estado, string? Tipo, string? Cuotas, int StockMeli, int Vendidas,
         decimal? Costo, decimal? MargenPct, decimal? GananciaPesos, decimal? NetoSinIva,
         decimal? ComisionMonto, decimal? ComisionPct, decimal? ComisionPorcentaje, decimal? ComisionFija, decimal? ComisionEnvio,
-        List<ComponenteDto> Receta, int? Arma,
+        bool ComisionVieja, List<ComponenteDto> Receta, int? Arma,
         int PublisFamilia, decimal? PrecioMin, decimal? PrecioMax, bool VariosPrecios,
         bool SyncPrecio, bool SyncStock, decimal? ObjetivoPct,
         string? Cuenta);
@@ -44,7 +44,7 @@ public class MeliPublicacionesV2Service
         string? Texto = null, string? Sku = null, string? Estado = null, int? CuentaId = null,
         decimal? ComisionMinPct = null, string? Cuotas = null, string? Tipo = null,
         bool VariosPrecios = false, bool PrecioAMano = false, bool SinSincroPrecio = false,
-        bool SinCosto = false, decimal? NoLleganAlPct = null, int Pagina = 1, int PorPagina = 100);
+        bool SinCosto = false, decimal? NoLleganAlPct = null, bool ComisionVieja = false, int Pagina = 1, int PorPagina = 100);
 
     public async Task<PageDto> GetAsync(Filtros f, CancellationToken ct = default)
     {
@@ -105,6 +105,15 @@ public class MeliPublicacionesV2Service
             q = q.Where(m => m.Sku != null && skusMulti.Contains(m.Sku));
         }
 
+        // Datos viejos: la comisión se capturó a un precio que ya cambió más de 5%.
+        if (f.ComisionVieja)
+            q = q.Where(m => m.SaleFeeAmount != null && m.SaleFeeAmount > 0
+                             && m.SaleFeePriceSnapshot != null && m.SaleFeePriceSnapshot > 0
+                             && m.Price > 0
+                             && (m.Price - m.SaleFeePriceSnapshot.Value) / m.Price > 0.05m
+                                || (m.SaleFeePriceSnapshot != null && m.Price > 0
+                                    && (m.SaleFeePriceSnapshot.Value - m.Price) / m.Price > 0.05m));
+
         // ── Filtro "no llegan al X% sobre el costo" ──
         // Se resuelve en dos consultas livianas en vez de una subconsulta correlacionada por fila:
         // (a) el costo de cada publicación (un GROUP BY sobre los componentes),
@@ -145,7 +154,7 @@ public class MeliPublicacionesV2Service
             {
                 m.MeliItemId, m.Sku, m.Title, m.Thumbnail, m.Permalink, m.Price, m.Status,
                 m.ListingTypeId, m.InstallmentTag, m.AvailableQuantity, m.SoldQuantity,
-                m.SaleFeeAmount, m.SaleFeePercentageFee, m.SaleFeeFixedFee, m.SaleFeeShippingCost,
+                m.SaleFeeAmount, m.SaleFeePercentageFee, m.SaleFeeFixedFee, m.SaleFeeShippingCost, m.SaleFeePriceSnapshot,
                 m.CafeProductoId, m.CafeFormato, m.MeliAccountId,
                 Cuenta = m.MeliAccount != null ? m.MeliAccount.Nickname : null
             })
@@ -248,6 +257,11 @@ public class MeliPublicacionesV2Service
                 }
             }
 
+            // ¿La comisión guardada sigue valiendo? Se capturó a un precio dado; si el precio se movió
+            // más de un 5%, el número que muestra (y el margen que sale de él) ya no es confiable.
+            var comisionVieja = r.SaleFeeAmount is > 0 && r.SaleFeePriceSnapshot is > 0
+                                && Math.Abs(r.Price - r.SaleFeePriceSnapshot.Value) / (r.Price == 0 ? 1m : r.Price) > 0.05m;
+
             familias.TryGetValue(r.Sku ?? "", out var fam);
             var variosPrecios = fam != null && fam.Cant > 1 && fam.Min != fam.Max;
 
@@ -258,7 +272,7 @@ public class MeliPublicacionesV2Service
                 r.Price, r.Status, r.ListingTypeId, r.InstallmentTag, r.AvailableQuantity, r.SoldQuantity,
                 costo, margen, ganancia, neto,
                 (r.SaleFeeAmount.HasValue ? seLlevaMeli : (decimal?)null), comPct, r.SaleFeePercentageFee, r.SaleFeeFixedFee, r.SaleFeeShippingCost,
-                receta, arma,
+                comisionVieja, receta, arma,
                 fam?.Cant ?? 1, fam?.Min, fam?.Max, variosPrecios,
                 cfg?.SyncPrecio ?? false, cfg?.SyncStock ?? false, cfg?.GananciaObjetivoPct,
                 r.Cuenta));
