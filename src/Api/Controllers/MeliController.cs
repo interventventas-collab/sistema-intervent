@@ -2321,6 +2321,15 @@ public class MeliController : ControllerBase
         return Ok(new { procesadas = aRevertir.Count, ok, errores = err, detalle });
     }
 
+    /// <summary>Devuelve el precio viejo a las publicaciones a las que el cambio de tipo les pisó
+    /// un precio puesto a mano (registros PRECIO_PISADO). Ver MeliListingTypeService.</summary>
+    [HttpPost("listing-type/restaurar-precios")]
+    public async Task<IActionResult> ListingTypeRestaurarPrecios([FromServices] MeliListingTypeService svc)
+    {
+        var r = await svc.RestaurarPreciosPisadosAsync(HttpContext.RequestAborted);
+        return Ok(new { procesadas = r.Procesadas, ok = r.Ok, saltadas = r.Saltadas, errores = r.Errores, detalle = r.Detalle });
+    }
+
     public class CambiarListingTypeRequest
     {
         public List<string>? MeliItemIds { get; set; }

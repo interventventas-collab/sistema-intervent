@@ -201,6 +201,11 @@
                 title="Pasa a Clasica las publicaciones Premium que comparten ficha de producto con una Clasica y no vendieron en 90 dias. La Clasica cobra la mitad de comision. Arranca con una prueba de 3. Se puede revertir.">
             @if (listingTypeEnCurso) { <span>⏳ @(ltProgreso ?? "Cambiando...")</span> } else { <span>🏷️ PASAR PREMIUM A CLASICA</span> }
         </button>
+        <button class="btn" style="background:#f1f5f9; color:#0f172a; font-weight:600; border:1px solid #cbd5e1;"
+                @onclick="RestaurarPreciosPisados" disabled="@listingTypeEnCurso"
+                title="Devuelve el precio viejo a las publicaciones a las que el cambio de tipo les piso un precio puesto a mano.">
+            ↩️ Restaurar precios pisados
+        </button>
         @if (ltResultados.Count > 0)
         {
             <div style="width:100%; margin-top:0.5rem; padding:0.6rem; background:#ecfeff; border:1px solid #0e7490; border-radius:8px; max-height:280px; overflow:auto;">
@@ -5260,6 +5265,38 @@
     /// <summary>2026-06-01: dispara el push masivo agresivo a TODAS las publicaciones con SyncStock=ON.
     /// Confirma 2 veces antes de ejecutar. El backend lo procesa en background (~30 min).
     /// Despues se revisa el cotejo de ACTIVADAS vs PAUSADAS en las tablas MeliPushSnapshot_*.</summary>
+    /// <summary>2026-08-25: marcha atras de los precios que el cambio de tipo piso sin permiso
+    /// (publicaciones con el precio a mano). Les devuelve el precio que tenian antes.</summary>
+    private async Task RestaurarPreciosPisados()
+    {
+        listingTypeEnCurso = true;
+        ltProgreso = "restaurando precios...";
+        StateHasChanged();
+        try
+        {
+            var r = await Api.RestaurarPreciosPisadosAsync();
+            if (r is null || r.Procesadas == 0)
+            {
+                ToastService.Success("No hay precios pisados para restaurar.");
+                return;
+            }
+            ltResultados.Clear();
+            ltResultados.AddRange(r.Detalle);
+            if (r.Ok > 0) ToastService.Success($"Precio restaurado en {r.Ok} publicacion(es).");
+            if (r.Errores > 0) ToastService.Error($"{r.Errores} no se pudieron restaurar — mira el detalle.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
+        finally
+        {
+            listingTypeEnCurso = false;
+            ltProgreso = null;
+            StateHasChanged();
+        }
+    }
+
     /// <summary>2026-08-25: pasa a Clasica las publicaciones Premium que comparten ficha de producto
     /// con una Clasica y no vendieron nada en 90 dias. Arranca con una tanda de PRUEBA de 3 (por si
     /// MeLi rechaza el cambio en alguna categoria) y recien despues sigue con el resto, de a 25.

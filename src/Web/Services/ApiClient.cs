@@ -5026,6 +5026,8 @@ public class ApiClient
         bool recalcularPrecio = true, bool soloSinVentas = true, int dias = 90, int maximo = 0)
         => await PostAsync<ListingTypeLoteDto>("/api/meli/listing-type/cambiar",
             new { MeliItemIds = mlas, NuevoTipo = nuevoTipo, RecalcularPrecio = recalcularPrecio, SoloSinVentas = soloSinVentas, Dias = dias, Maximo = maximo });
+    public async Task<ListingTypeLoteDto?> RestaurarPreciosPisadosAsync()
+        => await PostAsync<ListingTypeLoteDto>("/api/meli/listing-type/restaurar-precios", new { });
     public async Task<ListingTypeLoteDto?> RevertirListingTypeAsync(int maximo = 0)
         => await PostAsync<ListingTypeLoteDto>("/api/meli/listing-type/revertir", new { Maximo = maximo });
     public record CafePushOneResult(int Procesadas, int Ok, int Errores, List<string> Mensajes);

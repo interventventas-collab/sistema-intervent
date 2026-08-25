@@ -137,29 +137,199 @@ public class MeliListingTypeService
         });
         await _db.SaveChangesAsync(ct);
 
-        // 4) La comisión cambió con el tipo → recapturarla antes de recalcular el precio.
-        //    Sin esto, el precio nuevo se calcularía con la comisión vieja (la de Premium).
-        var feeOk = await _itemService.RefreshSaleFeeAsync(meliItemId);
-
+        // 4) Recalcular el precio — con TRES frenos aprendidos en la prueba del 25/08:
+        //
+        //    FRENO 1 (precio a mano): si la publicación NO tiene el precio automático prendido
+        //    (SyncPrecio=0), el precio lo maneja el dueño → NO se toca. En la prueba se le pisó
+        //    el precio a mano de un set de orinales ($19.999 → $11.549). De las 152 candidatas,
+        //    50 están en esta situación.
+        //
+        //    FRENO 2 (comisión todavía vieja): MeLi tarda unos segundos en aplicar el tipo nuevo.
+        //    Si se le pregunta la comisión al toque, devuelve la de Premium (en la prueba quedó
+        //    34,20% cuando la Clásica de al lado cobra 15%) y el precio sale calculado con el
+        //    número equivocado. Se reintenta hasta que la comisión cambie de verdad.
+        //
+        //    FRENO 3 (más barata que sus hermanas): si el precio nuevo deja la publicación por
+        //    debajo del de las otras publicaciones de la MISMA ficha, se deshace el cambio de
+        //    precio y se avisa — regalar margen en la misma ficha no tiene sentido.
         decimal? precioNuevo = null;
-        var notaPrecio = recalcularPrecio ? "" : " (precio sin tocar, a pedido)";
-        if (recalcularPrecio)
+        string notaPrecio;
+
+        var syncPrecio = await _db.MeliItemSyncConfigs.AsNoTracking()
+            .Where(c => c.MeliItemId == meliItemId).Select(c => (bool?)c.SyncPrecio).FirstOrDefaultAsync(ct);
+
+        if (!recalcularPrecio)
         {
-            if (!feeOk)
+            notaPrecio = " (precio sin tocar, a pedido)";
+        }
+        else if (syncPrecio != true)
+        {
+            notaPrecio = " · precio A MANO: no se toca";
+        }
+        else
+        {
+            var comisionAntes = item.SaleFeePercentageFee;
+            bool comisionActualizada = false;
+            foreach (var esperaMs in new[] { 3000, 6000, 10000 })
             {
-                notaPrecio = " ⚠ no se pudo recapturar la comisión — precio SIN recalcular";
+                await Task.Delay(esperaMs, ct);
+                await _itemService.RefreshSaleFeeAsync(meliItemId);
+                await _db.Entry(item).ReloadAsync(ct);
+                if (item.SaleFeePercentageFee > 0 && item.SaleFeePercentageFee != comisionAntes)
+                {
+                    comisionActualizada = true;
+                    break;
+                }
+            }
+
+            if (!comisionActualizada)
+            {
+                notaPrecio = $" ⚠ MeLi sigue devolviendo la comisión vieja ({comisionAntes:0.##}%) — precio SIN recalcular";
             }
             else
             {
                 var pr = await _pricePush.PushPrecioForItemAsync(item.Id, markAsClaimed: false, ct);
-                if (pr.Ok) { precioNuevo = pr.PushedPrice; notaPrecio = $" · precio recalculado a ${pr.PushedPrice:N0}"; }
-                else notaPrecio = $" ⚠ precio NO recalculado: {pr.Message}";
+                if (!pr.Ok)
+                {
+                    notaPrecio = $" ⚠ precio NO recalculado: {pr.Message}";
+                }
+                else
+                {
+                    precioNuevo = pr.PushedPrice;
+                    notaPrecio = $" · comisión {comisionAntes:0.##}% → {item.SaleFeePercentageFee:0.##}% · precio a ${pr.PushedPrice:N0}";
+
+                    // FRENO 3: ¿quedó más barata que sus hermanas de la misma ficha?
+                    var pisoHermanas = await PrecioMinimoHermanasAsync(item, ct);
+                    if (pisoHermanas.HasValue && precioNuevo.HasValue
+                        && precioNuevo.Value < pisoHermanas.Value * 0.95m)
+                    {
+                        var volvio = precioAntes.HasValue
+                            && await RestaurarPrecioEnMeliAsync(http, meliItemId, precioAntes.Value, ct);
+                        if (volvio)
+                        {
+                            item.Price = precioAntes!.Value;
+                            await _db.SaveChangesAsync(ct);
+                            precioNuevo = precioAntes;
+                            notaPrecio = $" ⚠ el precio nuevo (${pr.PushedPrice:N0}) quedaba MUY por debajo de sus hermanas " +
+                                         $"(${pisoHermanas.Value:N0}) — se dejó el de antes (${precioAntes:N0}). Revisar a mano.";
+                        }
+                        else
+                        {
+                            notaPrecio += $" ⚠ OJO: quedó por debajo de sus hermanas (${pisoHermanas.Value:N0}) y no se pudo volver atrás";
+                        }
+                    }
+                }
             }
         }
 
         _logger.LogInformation("[ListingType] {Mla} {Viejo} → {Nuevo}{Nota}", meliItemId, tipoActual, nuevoTipo, notaPrecio);
         return new CambioResult(meliItemId, true, tipoActual, nuevoTipo, precioAntes, precioNuevo,
             $"Cambiada a {(nuevoTipo == CLASICA ? "Clásica" : "Premium")}{notaPrecio}");
+    }
+
+    /// <summary>Precio más bajo de las OTRAS publicaciones activas de la misma ficha de producto.
+    /// Sirve de piso: una publicación no debería quedar muy por debajo de sus propias hermanas.</summary>
+    private async Task<decimal?> PrecioMinimoHermanasAsync(MeliItem item, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(item.UserProductId)) return null;
+        var precios = await _db.MeliItems.AsNoTracking()
+            .Where(x => x.UserProductId == item.UserProductId
+                        && x.MeliItemId != item.MeliItemId
+                        && x.VariationId == null
+                        && x.Status == "active"
+                        && x.Price > 0)
+            .Select(x => x.Price)
+            .ToListAsync(ct);
+        return precios.Count > 0 ? precios.Min() : (decimal?)null;
+    }
+
+    /// <summary>Vuelve a poner un precio en MeLi (marcha atrás del recálculo). Contempla variantes.</summary>
+    private async Task<bool> RestaurarPrecioEnMeliAsync(HttpClient http, string meliItemId, decimal precio, CancellationToken ct)
+    {
+        try
+        {
+            var variantIds = new List<long>();
+            var getResp = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}?attributes=variations", ct);
+            if (getResp.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await getResp.Content.ReadAsStringAsync(ct));
+                if (doc.RootElement.TryGetProperty("variations", out var vs) && vs.ValueKind == JsonValueKind.Array)
+                    foreach (var v in vs.EnumerateArray()) variantIds.Add(v.GetProperty("id").GetInt64());
+            }
+            object payload = variantIds.Count > 0
+                ? new { variations = variantIds.Select(id => new { id, price = precio }).ToList() }
+                : (object)new { price = precio };
+            var body = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            var resp = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", body, ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[ListingType] {Mla}: no se pudo restaurar el precio ${P}", meliItemId, precio);
+            return false;
+        }
+    }
+
+    /// <summary>Restaura los precios que esta herramienta pisó cuando no debía (publicaciones con
+    /// el precio A MANO). Lee los registros PRECIO_PISADO sin marcar y les devuelve el precio viejo.</summary>
+    public async Task<LoteResult> RestaurarPreciosPisadosAsync(CancellationToken ct = default)
+    {
+        var pendientes = await _db.MeliCambiosDetectados
+            .Where(c => c.Tipo == "PRECIO_PISADO" && c.Source == "listing-type" && c.SeenAt == null)
+            .ToListAsync(ct);
+
+        var detalle = new List<CambioResult>();
+        int ok = 0, err = 0;
+        foreach (var reg in pendientes)
+        {
+            if (!decimal.TryParse(reg.ValorAnterior, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var precioViejo) || precioViejo <= 0)
+            {
+                err++;
+                detalle.Add(new CambioResult(reg.MeliItemId, false, null, null, null, null, "Sin precio anterior válido"));
+                continue;
+            }
+
+            var item = await _db.MeliItems.Include(i => i.MeliAccount)
+                .FirstOrDefaultAsync(i => i.MeliItemId == reg.MeliItemId && i.VariationId == null, ct);
+            if (item?.MeliAccount is null)
+            {
+                err++;
+                detalle.Add(new CambioResult(reg.MeliItemId, false, null, null, null, null, "Publicación o cuenta no encontrada"));
+                continue;
+            }
+            var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                err++;
+                detalle.Add(new CambioResult(reg.MeliItemId, false, null, null, null, null, "Token MeLi inválido"));
+                continue;
+            }
+
+            using var http = _httpFactory.CreateClient();
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var precioActual = item.Price;
+            var volvio = await RestaurarPrecioEnMeliAsync(http, reg.MeliItemId, precioViejo, ct);
+            if (volvio)
+            {
+                item.Price = precioViejo;
+                item.UpdatedAt = DateTime.UtcNow;
+                reg.SeenAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                ok++;
+                _logger.LogWarning("[ListingType] {Mla} precio RESTAURADO ${Viejo} (estaba en ${Actual})",
+                    reg.MeliItemId, precioViejo, precioActual);
+                detalle.Add(new CambioResult(reg.MeliItemId, true, null, null, precioActual, precioViejo,
+                    $"Precio restaurado a ${precioViejo:N0}"));
+            }
+            else
+            {
+                err++;
+                detalle.Add(new CambioResult(reg.MeliItemId, false, null, null, precioActual, null, "MeLi rechazó el precio"));
+            }
+            await Task.Delay(300, ct);
+        }
+        return new LoteResult(pendientes.Count, ok, 0, err, detalle);
     }
 
     /// <summary>Le pide el cambio a MeLi. Prueba el endpoint dedicado y, si no lo acepta, el PUT del item.</summary>
