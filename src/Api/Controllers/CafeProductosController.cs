@@ -150,7 +150,8 @@ public class CafeProductosController : ControllerBase
         }).ToList());
     }
 
-    /// <summary>2026-08-25 — Baja un Excel simple (SKU · Nombre · Marca · Stock) con los productos que
+    /// <summary>2026-08-25 — Baja un Excel simple (SKU · Nombre · Marca · Stock total · una columna por
+    /// depósito) con los productos que
     /// el usuario tiene filtrados en pantalla. Los filtros de marca/tipo/texto son client-side, así que
     /// el front manda los ids de las filas visibles y en el orden en que se ven: el archivo sale igual
     /// a lo que muestra la pantalla. El stock es el físico (StockUnidades), que es lo que sirve para
@@ -177,20 +178,45 @@ public class CafeProductosController : ControllerBase
         var orden = ids.Select((id, i) => new { id, i }).ToDictionary(x => x.id, x => x.i);
         prods = prods.OrderBy(p => orden.TryGetValue(p.Id, out var i) ? i : int.MaxValue).ToList();
 
+        // 2026-08-25: desglose por depósito. Las columnas se arman solas con los depósitos que
+        // realmente tienen stock de estos productos (hoy "9 de Abril" y "Full MeLi"), así no hay
+        // nombres de depósito hardcodeados que se rompan si mañana agregan otro.
+        var stockDep = await _db.CafeStockPorDeposito.AsNoTracking()
+            .Where(s => ids.Contains(s.ProductoId))
+            .Join(_db.CafeDepositos.AsNoTracking(), s => s.DepositoId, d => d.Id,
+                  (s, d) => new { s.ProductoId, DepId = d.Id, DepNombre = d.Nombre, d.Orden, s.StockUnidades })
+            .ToListAsync();
+
+        var depositos = stockDep
+            .GroupBy(x => new { x.DepId, x.DepNombre, x.Orden })
+            .Where(g => g.Any(x => x.StockUnidades != 0))
+            .Select(g => new { g.Key.DepId, g.Key.DepNombre, g.Key.Orden })
+            .OrderBy(d => d.Orden).ThenBy(d => d.DepId)
+            .ToList();
+
+        var porDep = stockDep
+            .GroupBy(x => x.ProductoId)
+            .ToDictionary(g => g.Key,
+                          g => g.GroupBy(x => x.DepId).ToDictionary(gg => gg.Key, gg => gg.Sum(x => x.StockUnidades)));
+
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Productos y stock");
 
-        var headers = new[] { "SKU", "Nombre", "Marca", "Stock" };
-        for (int i = 0; i < headers.Length; i++)
+        var headers = new List<string> { "SKU", "Nombre", "Marca", "Stock total" };
+        headers.AddRange(depositos.Select(d => d.DepNombre));
+        for (int i = 0; i < headers.Count; i++)
         {
             var cell = ws.Cell(1, i + 1);
             cell.Value = headers[i];
             cell.Style.Font.Bold = true;
             cell.Style.Font.FontColor = XLColor.White;
-            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1f2937");
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml(i >= 4 ? "#374151" : "#1f2937");
             cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         }
+        ws.Cell(1, 4).GetComment().AddText(
+            "Stock total del producto. Si la suma de los depósitos no da igual, es porque hay movimientos viejos cargados sin depósito.");
 
+        int totalCols = headers.Count;
         int r = 2;
         foreach (var p in prods)
         {
@@ -199,8 +225,20 @@ public class CafeProductosController : ControllerBase
             ws.Cell(r, 3).Value = p.Marca ?? "";
             ws.Cell(r, 4).Value = p.StockUnidades;
             ws.Cell(r, 4).Style.NumberFormat.Format = "#,##0";
+
+            porDep.TryGetValue(p.Id, out var mapa);
+            for (int i = 0; i < depositos.Count; i++)
+            {
+                var col = 5 + i;
+                var cant = mapa is not null && mapa.TryGetValue(depositos[i].DepId, out var v) ? v : 0;
+                ws.Cell(r, col).Value = cant;
+                ws.Cell(r, col).Style.NumberFormat.Format = "#,##0";
+                // Los ceros en gris clarito, para que la vista se vaya sola a donde SÍ hay mercadería.
+                if (cant == 0) ws.Cell(r, col).Style.Font.FontColor = XLColor.FromHtml("#9ca3af");
+            }
+
             if (r % 2 == 0)
-                for (int c = 1; c <= 4; c++) ws.Cell(r, c).Style.Fill.BackgroundColor = XLColor.FromHtml("#f9fafb");
+                for (int c = 1; c <= totalCols; c++) ws.Cell(r, c).Style.Fill.BackgroundColor = XLColor.FromHtml("#f9fafb");
             r++;
         }
 
@@ -209,9 +247,13 @@ public class CafeProductosController : ControllerBase
         {
             ws.Cell(r + 1, 3).Value = "TOTAL";
             ws.Cell(r + 1, 3).Style.Font.Bold = true;
-            ws.Cell(r + 1, 4).FormulaA1 = $"SUM(D2:D{prods.Count + 1})";
-            ws.Cell(r + 1, 4).Style.Font.Bold = true;
-            ws.Cell(r + 1, 4).Style.NumberFormat.Format = "#,##0";
+            for (int c = 4; c <= totalCols; c++)
+            {
+                var letra = ws.Cell(1, c).Address.ColumnLetter;
+                ws.Cell(r + 1, c).FormulaA1 = $"SUM({letra}2:{letra}{prods.Count + 1})";
+                ws.Cell(r + 1, c).Style.Font.Bold = true;
+                ws.Cell(r + 1, c).Style.NumberFormat.Format = "#,##0";
+            }
         }
 
         ws.SheetView.FreezeRows(1);
@@ -219,7 +261,7 @@ public class CafeProductosController : ControllerBase
         ws.Column(1).Width = 16;
         ws.Column(2).Width = 62;
         ws.Column(3).Width = 18;
-        ws.Column(4).Width = 12;
+        for (int c = 4; c <= totalCols; c++) ws.Column(c).Width = 16;
 
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
