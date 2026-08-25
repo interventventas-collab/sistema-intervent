@@ -31,7 +31,7 @@ public class MeliPublicacionesV2Service
     public record FilaDto(
         string MeliItemId, string? Sku, string Titulo, string? Thumbnail, string? Permalink,
         decimal Precio, string? Estado, string? Tipo, string? Cuotas, int StockMeli, int Vendidas,
-        decimal? Costo, decimal? MargenPct,
+        decimal? Costo, decimal? MargenPct, decimal? GananciaPesos, decimal? NetoSinIva,
         decimal? ComisionMonto, decimal? ComisionPct, decimal? ComisionPorcentaje, decimal? ComisionFija, decimal? ComisionEnvio,
         List<ComponenteDto> Receta, int? Arma,
         int PublisFamilia, decimal? PrecioMin, decimal? PrecioMax, bool VariosPrecios,
@@ -44,7 +44,7 @@ public class MeliPublicacionesV2Service
         string? Texto = null, string? Sku = null, string? Estado = null, int? CuentaId = null,
         decimal? ComisionMinPct = null, string? Cuotas = null, string? Tipo = null,
         bool VariosPrecios = false, bool PrecioAMano = false, bool SinSincroPrecio = false,
-        bool SinCosto = false, int Pagina = 1, int PorPagina = 100);
+        bool SinCosto = false, decimal? NoLleganAlPct = null, int Pagina = 1, int PorPagina = 100);
 
     public async Task<PageDto> GetAsync(Filtros f, CancellationToken ct = default)
     {
@@ -103,6 +103,37 @@ public class MeliPublicacionesV2Service
                 .Where(g => g.Select(x => x.Price).Distinct().Count() > 1)
                 .Select(g => g.Key);
             q = q.Where(m => m.Sku != null && skusMulti.Contains(m.Sku));
+        }
+
+        // ── Filtro "no llegan al X% sobre el costo" ──
+        // Se resuelve en dos consultas livianas en vez de una subconsulta correlacionada por fila:
+        // (a) el costo de cada publicación (un GROUP BY sobre los componentes),
+        // (b) precio y lo que se lleva MeLi de las candidatas. La cuenta se hace acá.
+        // Es la misma que muestra la ficha: (precio − comisión − envío) / 1,21 − costo, sobre el costo.
+        if (f.NoLleganAlPct.HasValue)
+        {
+            var piso = f.NoLleganAlPct.Value;
+
+            var costoPorItem = await (
+                from c in _db.MeliItemComponentes.AsNoTracking()
+                join p in _db.CafeProductos.AsNoTracking() on c.CafeProductoId equals p.Id
+                group p.Costo * c.Cantidad by c.MeliItemId into g
+                select new { MeliItemId = g.Key, Costo = g.Sum() }
+            ).ToDictionaryAsync(x => x.MeliItemId, x => x.Costo, ct);
+
+            var candidatas = await q
+                .Select(m => new { m.MeliItemId, m.Price, m.SaleFeeAmount, m.SaleFeeShippingCost })
+                .ToListAsync(ct);
+
+            var flojas = new List<string>();
+            foreach (var c in candidatas)
+            {
+                if (!costoPorItem.TryGetValue(c.MeliItemId, out var costoItem) || costoItem <= 0) continue;
+                var netoItem = (c.Price - (c.SaleFeeAmount ?? 0m) - (c.SaleFeeShippingCost ?? 0m)) / IVA;
+                var margenItem = (netoItem - costoItem) / costoItem * 100m;
+                if (margenItem < piso) flojas.Add(c.MeliItemId);
+            }
+            q = q.Where(m => flojas.Contains(m.MeliItemId));
         }
 
         var total = await q.CountAsync(ct);
@@ -203,11 +234,18 @@ public class MeliPublicacionesV2Service
             decimal? comPct = (r.SaleFeeAmount.HasValue && r.Price > 0)
                 ? Math.Round(seLlevaMeli / r.Price * 100m, 1) : null;
 
-            decimal? margen = null;
-            if (costo is > 0)
+            // Lo que REALMENTE queda: se descuenta lo que se lleva MeLi (comisión + envío) y el IVA.
+            // Se muestran las dos cosas juntas — el % sobre el costo y la plata — porque el %
+            // solo no dice nada: 200% sobre un costo de $981 son $2.000, no una fortuna.
+            decimal? neto = null, ganancia = null, margen = null;
+            if (r.Price > 0)
             {
-                var neto = (r.Price - (r.SaleFeeAmount ?? 0m) - (r.SaleFeeShippingCost ?? 0m)) / IVA;
-                margen = Math.Round((neto - costo.Value) / costo.Value * 100m, 1);
+                neto = Math.Round((r.Price - seLlevaMeli) / IVA, 2);
+                if (costo is > 0)
+                {
+                    ganancia = Math.Round(neto.Value - costo.Value, 2);
+                    margen = Math.Round(ganancia.Value / costo.Value * 100m, 1);
+                }
             }
 
             familias.TryGetValue(r.Sku ?? "", out var fam);
@@ -218,7 +256,7 @@ public class MeliPublicacionesV2Service
             items.Add(new FilaDto(
                 r.MeliItemId, r.Sku, r.Title, r.Thumbnail, r.Permalink,
                 r.Price, r.Status, r.ListingTypeId, r.InstallmentTag, r.AvailableQuantity, r.SoldQuantity,
-                costo, margen,
+                costo, margen, ganancia, neto,
                 (r.SaleFeeAmount.HasValue ? seLlevaMeli : (decimal?)null), comPct, r.SaleFeePercentageFee, r.SaleFeeFixedFee, r.SaleFeeShippingCost,
                 receta, arma,
                 fam?.Cant ?? 1, fam?.Min, fam?.Max, variosPrecios,

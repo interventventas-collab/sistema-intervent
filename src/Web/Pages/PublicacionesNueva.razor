@@ -48,7 +48,7 @@
     .p2-pg[disabled] { opacity: .45; cursor: default; }
 
     .p2-tbl { background: #fff; border: 1px solid #e3e7e0; border-radius: .6rem; overflow: hidden; }
-    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 150px 128px 152px 56px 74px;
+    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 128px 148px 120px 140px 52px 70px;
                      gap: .6rem; align-items: center; padding: .55rem .65rem; }
     .p2-th { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; font-size: .6rem; text-transform: uppercase;
              letter-spacing: .07em; color: #9ca3af; font-weight: 700; }
@@ -78,6 +78,16 @@
     .p2-dot.low { background: #f59e0b; }
     .p2-dot.bad { background: #b91c1c; }
     .p2-costo { display: block; font-size: .63rem; color: #9ca3af; }
+
+    .p2-queda { display: block; min-width: 0; }
+    .p2-queda .pct { display: block; font-weight: 800; font-size: 1.05rem; line-height: 1.15; color: #15803d; }
+    .p2-queda .pct.tibio { color: #b45309; }
+    .p2-queda .pct.malo { color: #b91c1c; }
+    .p2-queda .ver { display: block; font-size: .64rem; font-weight: 700; margin-top: .05rem; }
+    .p2-queda .ver.ok { color: #15803d; }
+    .p2-queda .ver.no { color: #b91c1c; }
+    .p2-queda .det { display: block; font-size: .6rem; color: #9ca3af; }
+    .p2-queda .falta { display: block; font-size: .62rem; color: #b91c1c; font-weight: 700; }
 
     .p2-com { display: block; min-width: 0; }
     .p2-com .big { display: block; font-weight: 700; font-size: .8rem; }
@@ -112,11 +122,11 @@
                padding: .5rem .7rem; border-radius: 0 .4rem .4rem 0; }
 
     @@media (max-width: 1100px) {
-        .p2-th, .p2-tr { grid-template-columns: 30px minmax(0,1fr) 140px 120px; }
+        .p2-th, .p2-tr { grid-template-columns: 30px minmax(0,1fr) 120px 140px 112px; }
         .p2-h2 { display: none; }
     }
     @@media (max-width: 760px) {
-        .p2-th, .p2-tr { grid-template-columns: 28px minmax(0,1fr) 120px; }
+        .p2-th, .p2-tr { grid-template-columns: 28px minmax(0,1fr) 130px; }
         .p2-h { display: none; }
     }
 </style>
@@ -152,6 +162,9 @@
             <span class="p2-chip @(fEstado == "activas" ? "on" : "")" @onclick='() => SetEstado("activas")'>Activas</span>
             <span class="p2-chip @(fEstado == "pausadas" ? "on" : "")" @onclick='() => SetEstado("pausadas")'>Pausadas</span>
 
+            <span class="p2-chip nue @(fNoLlegan == 50 ? "on" : "")" @onclick="() => SetNoLlegan(50)" style="border-width:2px;">⚠ No llegan al 50%</span>
+            <span class="p2-chip nue @(fNoLlegan == 30 ? "on" : "")" @onclick="() => SetNoLlegan(30)">…al 30%</span>
+            <span class="p2-chip nue @(fNoLlegan == 70 ? "on" : "")" @onclick="() => SetNoLlegan(70)">…al 70%</span>
             <span class="p2-chip nue @(fComision == 30 ? "on" : "")" @onclick="() => SetComision(30)">MeLi se lleva más de 30%</span>
             <span class="p2-chip nue @(fComision == 40 ? "on" : "")" @onclick="() => SetComision(40)">…más de 40%</span>
             <span class="p2-chip nue @(fVariosPrecios ? "on" : "")" @onclick="ToggleVarios">Varios precios en la familia</span>
@@ -183,7 +196,8 @@
             <div class="p2-th">
                 <span></span>
                 <span>Producto</span>
-                <span class="p2-h">Precio · Margen</span>
+                <span class="p2-h">Precio</span>
+                <span class="p2-h">Te queda<br /><span style="text-transform:none;font-weight:400;">sobre el costo</span></span>
                 <span class="p2-h">Se lleva MeLi<br /><span style="text-transform:none;font-weight:400;">comisión + envío</span></span>
                 <span class="p2-h2">Objetivo · Sincro</span>
                 <span class="p2-h2">Stock</span>
@@ -230,16 +244,25 @@
                             {
                                 <span class="p2-price">@Plata(it.Precio)</span>
                             }
+                        </span>
+
+                        <span class="p2-queda p2-h">
                             @if (it.MargenPct.HasValue)
                             {
-                                <span class="p2-marg">
-                                    <span class="p2-dot @(it.MargenPct.Value >= 50 ? "" : it.MargenPct.Value >= 25 ? "low" : "bad")"></span>
-                                    @(it.MargenPct.Value.ToString("+0;-0", ar))% sobre costo
-                                </span>
+                                var m = it.MargenPct.Value;
+                                var objetivo = it.ObjetivoPct ?? 50m;
+                                var llega = m >= objetivo;
+                                <span class="pct @(llega ? "" : m >= objetivo * 0.6m ? "tibio" : "malo")">@m.ToString("0.#", ar)%</span>
+                                <span class="ver @(llega ? "ok" : "no")">@(llega ? "✓ estás arriba" : "✗ abajo") del @objetivo.ToString("0", ar)%</span>
+                                <span class="det">@Plata(it.GananciaPesos ?? 0) · costo @Plata(it.Costo ?? 0)</span>
+                                @if (!llega && it.Costo is > 0)
+                                {
+                                    <span class="falta">faltan @Plata(Math.Round(it.Costo.Value * objetivo / 100m - (it.GananciaPesos ?? 0m), 0))</span>
+                                }
                             }
-                            @if (it.Costo is > 0)
+                            else
                             {
-                                <span class="p2-costo">costo @Plata(it.Costo.Value)</span>
+                                <span class="det" style="color:#b91c1c;font-weight:700;">falta cargar el costo</span>
                             }
                         </span>
 
@@ -312,8 +335,9 @@
     private bool fVariosPrecios;
     private bool fPrecioAMano;
     private bool fSinCosto;
+    private decimal? fNoLlegan;
 
-    private bool HayFiltros => fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
+    private bool HayFiltros => fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
                                || !string.IsNullOrEmpty(fCuotas) || !string.IsNullOrEmpty(fEstado)
                                || !string.IsNullOrWhiteSpace(fTexto) || !string.IsNullOrWhiteSpace(fSku);
 
@@ -328,7 +352,7 @@
         try
         {
             datos = await Api.GetPublicacionesV2Async(fTexto, fSku, fEstado, fComision, fCuotas, null,
-                fVariosPrecios, fPrecioAMano, fSinCosto, pagina, 100);
+                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, pagina, 100);
         }
         catch (Exception ex)
         {
@@ -345,6 +369,7 @@
     private async Task OnEnter(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarDesdeCero(); }
     private async Task IrAPagina(int p) { if (p < 1 || p > TotalPaginas) return; pagina = p; await Cargar(); }
     private async Task SetEstado(string v) { fEstado = v; await BuscarDesdeCero(); }
+    private async Task SetNoLlegan(decimal v) { fNoLlegan = fNoLlegan == v ? null : v; await BuscarDesdeCero(); }
     private async Task SetComision(decimal v) { fComision = fComision == v ? null : v; await BuscarDesdeCero(); }
     private async Task SetCuotas(string v) { fCuotas = fCuotas == v ? "" : v; await BuscarDesdeCero(); }
     private async Task ToggleVarios() { fVariosPrecios = !fVariosPrecios; await BuscarDesdeCero(); }
@@ -354,7 +379,7 @@
     private async Task LimpiarFiltros()
     {
         fTexto = ""; fSku = ""; fEstado = ""; fComision = null; fCuotas = "";
-        fVariosPrecios = false; fPrecioAMano = false; fSinCosto = false;
+        fVariosPrecios = false; fPrecioAMano = false; fSinCosto = false; fNoLlegan = null;
         await BuscarDesdeCero();
     }
 

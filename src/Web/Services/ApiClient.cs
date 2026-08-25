@@ -5039,7 +5039,7 @@ public class ApiClient
     public record PubV2Fila(
         string MeliItemId, string? Sku, string Titulo, string? Thumbnail, string? Permalink,
         decimal Precio, string? Estado, string? Tipo, string? Cuotas, int StockMeli, int Vendidas,
-        decimal? Costo, decimal? MargenPct,
+        decimal? Costo, decimal? MargenPct, decimal? GananciaPesos, decimal? NetoSinIva,
         decimal? ComisionMonto, decimal? ComisionPct, decimal? ComisionPorcentaje, decimal? ComisionFija, decimal? ComisionEnvio,
         List<PubV2Componente> Receta, int? Arma,
         int PublisFamilia, decimal? PrecioMin, decimal? PrecioMax, bool VariosPrecios,
@@ -5049,7 +5049,7 @@ public class ApiClient
     public async Task<PubV2Page?> GetPublicacionesV2Async(string? texto = null, string? sku = null,
         string? estado = null, decimal? comisionMinPct = null, string? cuotas = null, string? tipo = null,
         bool variosPrecios = false, bool precioAMano = false, bool sinCosto = false,
-        int pagina = 1, int porPagina = 100)
+        decimal? noLleganAlPct = null, int pagina = 1, int porPagina = 100)
     {
         var qs = new List<string>();
         if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
@@ -5061,6 +5061,7 @@ public class ApiClient
         if (variosPrecios) qs.Add("variosPrecios=true");
         if (precioAMano) qs.Add("precioAMano=true");
         if (sinCosto) qs.Add("sinCosto=true");
+        if (noLleganAlPct.HasValue) qs.Add($"noLleganAlPct={noLleganAlPct.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         qs.Add($"pagina={pagina}");
         qs.Add($"porPagina={porPagina}");
         return await GetAsync<PubV2Page>("/api/meli/v2/publicaciones?" + string.Join("&", qs));

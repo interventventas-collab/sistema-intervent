@@ -31,12 +31,13 @@ public class MeliPublicacionesV2Controller : ControllerBase
         [FromQuery] bool variosPrecios = false,
         [FromQuery] bool precioAMano = false,
         [FromQuery] bool sinCosto = false,
+        [FromQuery] decimal? noLleganAlPct = null,
         [FromQuery] int pagina = 1,
         [FromQuery] int porPagina = 100)
     {
         var f = new MeliPublicacionesV2Service.Filtros(
             texto, sku, estado, cuentaId, comisionMinPct, cuotas, tipo,
-            variosPrecios, precioAMano, precioAMano, sinCosto, pagina, porPagina);
+            variosPrecios, precioAMano, precioAMano, sinCosto, noLleganAlPct, pagina, porPagina);
         var res = await _svc.GetAsync(f, HttpContext.RequestAborted);
         return Ok(res);
     }
