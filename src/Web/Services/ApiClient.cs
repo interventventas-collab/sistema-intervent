@@ -4166,6 +4166,13 @@ public class ApiClient
         return await GetAsync<List<StockHistorialItem>>("/api/stock/admin/movimientos?" + string.Join("&", qs));
     }
 
+    // 2026-08-25: "último ingreso" de un producto = la última vez que ENTRÓ mercadería
+    // (las ventas y los descuentos no cuentan). Se muestra al elegir el producto para cargar stock.
+    public record UltimoIngresoDto(DateTime? Fecha, int Cantidad, string? Operador, string? TipoMov, string? Deposito, int StockDespues);
+    public async Task<UltimoIngresoDto?> GetUltimoIngresoAsync(int productoId, int? depositoId = null)
+        => await GetAsync<UltimoIngresoDto>($"/api/stock/admin/ultimo-ingreso/{productoId}"
+            + (depositoId.HasValue ? $"?depositoId={depositoId.Value}" : ""));
+
     public async Task<StockHistorialStats?> GetStockHistorialStatsAsync(DateTime? desde = null, DateTime? hasta = null)
     {
         var qs = new List<string>();

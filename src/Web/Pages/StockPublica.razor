@@ -366,6 +366,24 @@
                                 { <span>· @productoSeleccionado.UltimaModifOperador</span> }
                             </div>
                         }
+                        @* 2026-08-25: hace cuanto que NO entra mercaderia de este producto.
+                           INGRESO = movimiento que SUMO stock; las ventas no cuentan. *@
+                        @if (ultimoIngresoCargando)
+                        {
+                            <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.3rem;">🕒 Buscando el último ingreso…</div>
+                        }
+                        else if (ultimoIngreso?.Fecha is not null)
+                        {
+                            <div style="font-size:0.75rem; color:#065f46; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:0.25rem 0.45rem; margin-top:0.3rem; display:inline-block; font-weight:600;">
+                                🕒 Último ingreso: @FormatFecha(ultimoIngreso.Fecha.Value) · +@ultimoIngreso.Cantidad u.@(string.IsNullOrEmpty(ultimoIngreso.Operador) ? "" : " · " + ultimoIngreso.Operador)
+                            </div>
+                        }
+                        else if (ultimoIngresoBuscado)
+                        {
+                            <div style="font-size:0.75rem; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; padding:0.25rem 0.45rem; margin-top:0.3rem; display:inline-block; font-weight:600;">
+                                🕒 Sin ingresos registrados
+                            </div>
+                        }
                     </div>
                 </div>
                 <div style="background:#f3f4f6; border-radius:8px; padding:0.6rem; margin-bottom:0.7rem;">
@@ -506,6 +524,24 @@
     private ElementReference searchInputRef;
     private List<StockMovimientoPubDto>? ultimosMovs;
     private StockProductoPubDto? productoSeleccionado;
+    // 2026-08-25: ultimo INGRESO del producto elegido (ultima vez que entro mercaderia).
+    private UltimoIngresoDto? ultimoIngreso;
+    private bool ultimoIngresoCargando = false;
+    private bool ultimoIngresoBuscado = false;
+    public record UltimoIngresoDto(DateTime? Fecha, int Cantidad, string? Operador, string? TipoMov, string? Deposito, int StockDespues);
+
+    private async Task CargarUltimoIngreso(int productoId)
+    {
+        try
+        {
+            ultimoIngreso = await Http.GetFromJsonAsync<UltimoIngresoDto>(
+                $"api/stock/publica/{Uri.EscapeDataString(Token)}/ultimo-ingreso/{productoId}");
+        }
+        catch { ultimoIngreso = null; }
+        ultimoIngresoCargando = false;
+        ultimoIngresoBuscado = true;
+        StateHasChanged();
+    }
     private string tipoMov = "SUMA";
     private int cantidad = 1;
     private string comentario = "";
@@ -696,6 +732,8 @@
     {
         productoSeleccionado = p;
         reservadoActual = 0;
+        ultimoIngreso = null; ultimoIngresoBuscado = false; ultimoIngresoCargando = true;
+        _ = CargarUltimoIngreso(p.Id);
         // En auditoría default a SET (corregir conteo); en normal default a SUMA.
         tipoMov = ModoAuditoria ? "SET" : "SUMA";
         cantidad = ModoAuditoria ? p.StockActual : 1;

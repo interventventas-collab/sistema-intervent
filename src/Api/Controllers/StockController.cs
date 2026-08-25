@@ -347,6 +347,51 @@ public class StockController : ControllerBase
     }
 
 
+    // ============================================================
+    // 2026-08-25: "ÚLTIMO INGRESO" de un producto (pedido del dueño).
+    // Cuando alguien va a cargar stock quiere ver hace cuánto que no ENTRA mercadería
+    // de ese producto (para no cargarlo dos veces, o para saber si hay que reponer).
+    // INGRESO = movimiento donde el stock SUBIÓ (StockDespues > StockAntes). Las ventas
+    // y los descuentos NO cuentan. Se ignoran los movimientos revertidos (deshacer).
+    // ============================================================
+
+    public record UltimoIngresoDto(DateTime? Fecha, int Cantidad, string? Operador,
+        string? TipoMov, string? Deposito, int StockDespues);
+
+    private async Task<UltimoIngresoDto?> UltimoIngresoAsync(int productoId, int? depositoId)
+    {
+        var q = _db.StockMovimientos
+            .Where(m => m.ProductoId == productoId && !m.Reverted && m.StockDespues > m.StockAntes);
+        if (depositoId.HasValue)
+        {
+            // Los movimientos viejos del depósito principal quedaron con DepositoId NULL,
+            // así que si preguntan por el principal hay que contarlos igual.
+            var esDefault = await _db.CafeDepositos
+                .AnyAsync(d => d.Id == depositoId.Value && d.IsDefault);
+            q = esDefault
+                ? q.Where(m => m.DepositoId == depositoId.Value || m.DepositoId == null)
+                : q.Where(m => m.DepositoId == depositoId.Value);
+        }
+        var mov = await q.OrderByDescending(m => m.CreatedAt).FirstOrDefaultAsync();
+        if (mov is null) return null;
+        return new UltimoIngresoDto(mov.CreatedAt, mov.StockDespues - mov.StockAntes,
+            mov.OperadorNombreSnap, mov.TipoMov, mov.DepositoNombreSnap, mov.StockDespues);
+    }
+
+    [HttpGet("publica/{token}/ultimo-ingreso/{productoId:int}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetUltimoIngresoPub(string token, int productoId,
+        [FromQuery] int? depositoId = null)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+        return Ok(await UltimoIngresoAsync(productoId, depositoId) ?? new UltimoIngresoDto(null, 0, null, null, null, 0));
+    }
+
+    [HttpGet("admin/ultimo-ingreso/{productoId:int}")]
+    [Authorize]
+    public async Task<IActionResult> GetUltimoIngresoAdmin(int productoId, [FromQuery] int? depositoId = null)
+        => Ok(await UltimoIngresoAsync(productoId, depositoId) ?? new UltimoIngresoDto(null, 0, null, null, null, 0));
+
     /// <summary>Lista TODOS los productos activos paginados (para modo auditoría que recorre el depósito).</summary>
     [HttpGet("publica/{token}/all")]
     [AllowAnonymous]

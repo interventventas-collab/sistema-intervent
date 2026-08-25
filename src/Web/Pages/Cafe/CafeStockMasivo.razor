@@ -204,6 +204,32 @@
                     }
                 </div>
 
+                @* 2026-08-25: hace cuanto que NO entra mercaderia de este producto en este deposito.
+                   Solo cuenta los movimientos que SUMARON stock (las ventas no cuentan). *@
+                @if (cargaProdSel is not null)
+                {
+                    <div style="margin:-0.4rem 0 0.8rem; font-size:0.82rem;">
+                        @if (cargaUltimoIngresoCargando)
+                        {
+                            <span style="color:#9ca3af;">🕒 Buscando el último ingreso…</span>
+                        }
+                        else if (cargaUltimoIngreso?.Fecha is not null)
+                        {
+                            <span style="background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; padding:0.3rem 0.6rem; border-radius:6px; font-weight:600;"
+                                  title="Última vez que ENTRÓ mercadería de este producto en este depósito (las ventas no cuentan).">
+                                🕒 Último ingreso: @TextoUltimoIngreso(cargaUltimoIngreso)
+                            </span>
+                        }
+                        else
+                        {
+                            <span style="background:#fef3c7; border:1px solid #fcd34d; color:#92400e; padding:0.3rem 0.6rem; border-radius:6px; font-weight:600;"
+                                  title="No hay ningún ingreso registrado de este producto en este depósito.">
+                                🕒 Sin ingresos registrados
+                            </span>
+                        }
+                    </div>
+                }
+
                 @* Carrito acumulado *@
                 @if (carrito.Count == 0)
                 {
@@ -707,8 +733,34 @@ else if (modoCarga == "minimo")
             }
         }
         catch { /* si falla, no se muestra el reservado */ }
+        // 2026-08-25: "último ingreso" = la última vez que ENTRÓ mercadería de este producto
+        // en este depósito. Sirve para no cargar dos veces lo mismo y para ver hace cuánto no se repone.
+        cargaUltimoIngreso = null;
+        cargaUltimoIngresoCargando = true;
+        StateHasChanged();
+        try { cargaUltimoIngreso = await Api.GetUltimoIngresoAsync(p.ProductoId, depositoIdSeleccionado); }
+        catch { cargaUltimoIngreso = null; }
+        cargaUltimoIngresoCargando = false;
+        StateHasChanged();
     }
     private int cargaReservadoActual = 0;
+    private ApiClient.UltimoIngresoDto? cargaUltimoIngreso;
+    private bool cargaUltimoIngresoCargando = false;
+
+    /// <summary>Texto lindo del último ingreso: "25/08 08:12 · +12 u. · OSMAR" (o "hace 20 min").</summary>
+    private string TextoUltimoIngreso(ApiClient.UltimoIngresoDto d)
+    {
+        var utc = d.Fecha ?? DateTime.UtcNow;
+        var local = utc.ToArTime();            // siempre hora ARG (el dueño opera desde España)
+        var diff = DateTime.UtcNow - utc;      // el "hace X" se calcula en UTC, no con la hora del browser
+        var cuando = diff.TotalMinutes < 60 ? $"hace {Math.Max(1, (int)diff.TotalMinutes)} min"
+                   : diff.TotalHours < 24 ? $"hoy {local:HH:mm}"
+                   : diff.TotalDays < 7 ? $"hace {(int)diff.TotalDays} d · {local:dd/MM HH:mm}"
+                   : local.ToString("dd/MM/yy HH:mm");
+        var txt = $"{cuando} · +{d.Cantidad} u.";
+        if (!string.IsNullOrWhiteSpace(d.Operador)) txt += $" · {d.Operador}";
+        return txt;
+    }
     public record ReservaProductoDto(int ProductoId, int Reservado);
 
     private async Task CambiarDepositoCarrito()
