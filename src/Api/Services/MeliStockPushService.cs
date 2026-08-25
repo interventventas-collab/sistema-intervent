@@ -64,15 +64,55 @@ public class MeliStockPushService
     }
 
     /// <summary>2026-07-18: qué hacer cuando una publicación PAUSADA recupera stock.
-    /// • Margen ≥ umbral (y calculable con confianza) → se ACTIVA sola con el precio actual.
-    /// • Margen &lt; umbral, o NO calculable con confianza → red de seguridad: NO se despierta,
-    ///   se registra el aviso PAUSADA_CON_STOCK para revisar a mano. Ante la duda, seguro.
+    /// 2026-08-25 — CAMBIO DE ORDEN (pedido del dueño): PRIMERO EL PRECIO, DESPUÉS SE DESPIERTA.
+    /// El riesgo del incidente cápsulas KDOR (2026-07-16) no era despertarla, era despertarla con
+    /// el precio VIEJO con el que se había pausado (podían ser meses). Mandando el precio del
+    /// sistema ANTES de activarla, ese riesgo desaparece y la publicación vuelve sola.
+    /// • Precio automático prendido (SyncPrecio) y el push de precio salió OK → se ACTIVA sola
+    ///   con el precio FRESCO del sistema.
+    /// • Precio a mano (SyncPrecio apagado), o el push de precio falló → NO le pisamos el precio;
+    ///   se cae al criterio histórico: margen ≥ umbral activa, si no red de seguridad (avisar).
     /// reactivarStock = la parte del payload con el stock (variations o available_quantity).</summary>
     private async Task<(PushOutcome, string?)> HandlePausedConStockAsync(
         HttpClient http, string meliItemId, List<MeliItem> rows, decimal? livePrice,
         int sumStock, Dictionary<string, object> reactivarStock, CancellationToken ct)
     {
         var row0 = rows.First();
+
+        // ── PASO 1: refrescar el PRECIO antes de despertarla ──────────────────────────────
+        // Solo si la publicación tiene el precio automático prendido. Si el dueño le maneja el
+        // precio a mano (SyncPrecio=false), no se lo pisamos: esa sigue el camino de abajo.
+        var syncPrecio = await _db.MeliItemSyncConfigs.AsNoTracking()
+            .Where(c => c.MeliItemId == meliItemId)
+            .Select(c => (bool?)c.SyncPrecio)
+            .FirstOrDefaultAsync(ct);
+
+        if (syncPrecio == true)
+        {
+            var precioRes = await _pricePush.PushPrecioForItemAsync(row0.Id, markAsClaimed: false, ct);
+            if (precioRes.Ok)
+            {
+                // Precio fresco arriba → recién ahora la despertamos, junto con el stock.
+                var payloadPrecioOk = new Dictionary<string, object>(reactivarStock) { ["status"] = "active" };
+                var resPrecioOk = await DoPut(http, meliItemId, payloadPrecioOk, ct);
+                if (resPrecioOk.Item1 == PushOutcome.Ok)
+                {
+                    foreach (var r in rows) r.Status = "active";
+                    await _db.SaveChangesAsync(ct);
+                    _logger.LogInformation("[StockPush] {Mla} AUTO-ACTIVADA por stock ({S} u.) — precio actualizado a ${P:N0} ANTES de despertarla",
+                        meliItemId, sumStock, precioRes.PushedPrice ?? 0m);
+                    return (PushOutcome.Ok, $"Auto-activada por stock {sumStock}: precio actualizado a ${precioRes.PushedPrice ?? 0m:N0} antes de despertarla");
+                }
+                return resPrecioOk;
+            }
+
+            // No se pudo refrescar el precio (sin precio base, candado de precio absurdo, MeLi lo
+            // rechazó...). No la despertamos a ciegas: sigue el criterio de margen de abajo.
+            _logger.LogWarning("[StockPush] {Mla} pausada con stock {S}: no se pudo actualizar el precio ({Msg}) — se evalúa el margen antes de despertarla",
+                meliItemId, sumStock, precioRes.Message);
+        }
+
+        // ── PASO 2: sin precio fresco → criterio histórico (margen) ───────────────────────
         var (marginPct, confident) = await _pricePush.CalcularMargenActualAsync(row0, livePrice, ct);
         var umbral = await GetAutoReactivateMinMarginAsync(ct);
 
@@ -448,14 +488,14 @@ public class MeliStockPushService
             if (safeBulkMode && !todasMayorACero)
                 return (PushOutcome.Skipped, "SafeBulk: alguna variante daria 0, skip para no pausar");
 
-            // ── POLÍTICA 2026-07-16 (incidente cápsulas KDOR): el push NUNCA despierta una
-            // publicación pausada. Antes acá se mandaba status=active si stock>0 → la publi se
-            // reactivaba con el PRECIO VIEJO y se vendía a pérdida (pusheamos stock, no precio).
-            // Ahora: si está paused y tiene stock para vender, NO tocamos nada y registramos el
-            // aviso PAUSADA_CON_STOCK → Mis Alertas (Telegram/campanita) + cartel en el sistema.
-            // El usuario revisa el precio y la activa él desde /cafe/cambios-meli.
-            // OJO: tampoco pusheamos el stock — MeLi reactiva solo las pausadas por falta de
-            // stock cuando les llega available_quantity > 0, así que ni eso es seguro.
+            // ── POLÍTICA 2026-08-25 (reemplaza la de 2026-07-16, incidente cápsulas KDOR):
+            // el push SÍ puede despertar una publicación pausada, pero SIEMPRE mandándole
+            // primero el PRECIO del sistema. El problema del incidente era reactivar con el
+            // PRECIO VIEJO (pusheábamos stock, no precio) → se vendía a pérdida. Con el precio
+            // fresco arriba, despertarla es seguro. Ver HandlePausedConStockAsync.
+            // Si el precio no se puede refrescar (precio a mano o push de precio fallido), se
+            // mantiene la red de seguridad: se evalúa el margen y, si no da, se registra el
+            // aviso PAUSADA_CON_STOCK → Mis Alertas + /cafe/cambios-meli para revisar a mano.
             if (!conservativeMode && !safeBulkMode
                 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
             {
@@ -463,7 +503,8 @@ public class MeliStockPushService
                 {
                     var precio = doc.TryGetProperty("price", out var prV) && prV.ValueKind == JsonValueKind.Number
                         ? prV.GetDecimal() : (decimal?)null;
-                    // 2026-07-18: auto-activar si el margen está sano; si no, red de seguridad (avisar).
+                    // 2026-08-25: precio primero, después activar; si el precio no se pudo refrescar,
+                    // se cae al criterio de margen (y si tampoco da, red de seguridad: avisar).
                     return await HandlePausedConStockAsync(http, meliItemId, rows, precio, sumStock,
                         new Dictionary<string, object> { ["variations"] = varEntries }, ct);
                 }
@@ -526,14 +567,16 @@ public class MeliStockPushService
                 return await DoPut(http, meliItemId, payloadSb, ct);
             }
 
-            // POLÍTICA 2026-07-16: NUNCA despertar pausadas (ver comentario en la rama con variations).
+            // POLÍTICA 2026-08-25: se despierta, pero con el precio fresco primero (ver comentario
+            // en la rama con variations y HandlePausedConStockAsync).
             if (string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
             {
                 if (stockMeliSingle > 0)
                 {
                     var precio = doc.TryGetProperty("price", out var prS) && prS.ValueKind == JsonValueKind.Number
                         ? prS.GetDecimal() : (decimal?)null;
-                    // 2026-07-18: auto-activar si el margen está sano; si no, red de seguridad (avisar).
+                    // 2026-08-25: precio primero, después activar; si el precio no se pudo refrescar,
+                    // se cae al criterio de margen (y si tampoco da, red de seguridad: avisar).
                     return await HandlePausedConStockAsync(http, meliItemId, rows, precio, stockMeliSingle,
                         new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle }, ct);
                 }
