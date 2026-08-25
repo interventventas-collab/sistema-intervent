@@ -184,7 +184,7 @@
                 <span></span>
                 <span>Producto</span>
                 <span class="p2-h">Precio · Margen</span>
-                <span class="p2-h">Se lleva MeLi</span>
+                <span class="p2-h">Se lleva MeLi<br /><span style="text-transform:none;font-weight:400;">comisión + envío</span></span>
                 <span class="p2-h2">Objetivo · Sincro</span>
                 <span class="p2-h2">Stock</span>
                 <span class="p2-h2">Estado</span>
@@ -389,7 +389,7 @@
         var partes = new List<string>();
         if (it.ComisionPorcentaje is > 0) partes.Add($"{it.ComisionPorcentaje.Value.ToString("0.#", ar)}%");
         if (it.ComisionFija is > 0) partes.Add($"+ ${it.ComisionFija.Value.ToString("N0", ar)} fijo");
-        if (it.ComisionEnvio is > 0) partes.Add($"+ ${it.ComisionEnvio.Value.ToString("N0", ar)} envío");
+        if (it.ComisionEnvio is > 0) partes.Add($"+ ${it.ComisionEnvio.Value.ToString("N0", ar)} de ENVÍO");
         return partes.Count > 0 ? string.Join(" ", partes) : "—";
     }
 

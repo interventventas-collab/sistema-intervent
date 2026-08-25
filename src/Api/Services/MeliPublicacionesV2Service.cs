@@ -87,7 +87,7 @@ public class MeliPublicacionesV2Service
         {
             var min = f.ComisionMinPct.Value;
             q = q.Where(m => m.Price > 0 && m.SaleFeeAmount != null
-                             && (m.SaleFeeAmount.Value / m.Price * 100m) >= min);
+                             && ((m.SaleFeeAmount.Value + (m.SaleFeeShippingCost ?? 0m)) / m.Price * 100m) >= min);
         }
 
         // Config de sincronización (la fila puede no tener config todavía → se trata como apagada).
@@ -194,9 +194,14 @@ public class MeliPublicacionesV2Service
                 receta.Add(new ComponenteDto(lp.Sku, lp.Nombre, 1m, stock, stock, false));
             }
 
-            // Comisión real y margen
+            // Comisión real: comisión + cargo fijo + ENVÍO a tu cargo.
+            // 2026-08-25: el envío estaba afuera y escondía el número de verdad. Medido en prod:
+            // 1.508 publicaciones con envío gratis pasan de 17,2% promedio (solo comisión) a 33,4%
+            // con el envío. Hay casos de 94,7% (mesa de $98.400 con $74.490 de envío).
+            // SaleFeeShippingCost solo viene cargado cuando el envío es gratis (lo pagás vos).
+            var seLlevaMeli = (r.SaleFeeAmount ?? 0m) + (r.SaleFeeShippingCost ?? 0m);
             decimal? comPct = (r.SaleFeeAmount.HasValue && r.Price > 0)
-                ? Math.Round(r.SaleFeeAmount.Value / r.Price * 100m, 1) : null;
+                ? Math.Round(seLlevaMeli / r.Price * 100m, 1) : null;
 
             decimal? margen = null;
             if (costo is > 0)
@@ -214,7 +219,7 @@ public class MeliPublicacionesV2Service
                 r.MeliItemId, r.Sku, r.Title, r.Thumbnail, r.Permalink,
                 r.Price, r.Status, r.ListingTypeId, r.InstallmentTag, r.AvailableQuantity, r.SoldQuantity,
                 costo, margen,
-                r.SaleFeeAmount, comPct, r.SaleFeePercentageFee, r.SaleFeeFixedFee, r.SaleFeeShippingCost,
+                (r.SaleFeeAmount.HasValue ? seLlevaMeli : (decimal?)null), comPct, r.SaleFeePercentageFee, r.SaleFeeFixedFee, r.SaleFeeShippingCost,
                 receta, arma,
                 fam?.Cant ?? 1, fam?.Min, fam?.Max, variosPrecios,
                 cfg?.SyncPrecio ?? false, cfg?.SyncStock ?? false, cfg?.GananciaObjetivoPct,
@@ -245,7 +250,7 @@ public class MeliPublicacionesV2Service
             ["activas"] = await baseQ.CountAsync(m => m.Status == "active", ct),
             ["pausadas"] = await baseQ.CountAsync(m => m.Status == "paused", ct),
             ["comisionAlta"] = await baseQ.CountAsync(m => m.Price > 0 && m.SaleFeeAmount != null
-                                                           && (m.SaleFeeAmount.Value / m.Price * 100m) >= 30m, ct),
+                                                           && ((m.SaleFeeAmount.Value + (m.SaleFeeShippingCost ?? 0m)) / m.Price * 100m) >= 30m, ct),
             ["variosPrecios"] = await baseQ.CountAsync(m => m.Sku != null && skusMulti.Contains(m.Sku), ct),
             ["precioAMano"] = await baseQ.CountAsync(m => !_db.MeliItemSyncConfigs.Any(c => c.MeliItemId == m.MeliItemId && c.SyncPrecio), ct),
         };
