@@ -2551,6 +2551,12 @@
                         {
                             <div style="color:#9ca3af; font-size:0.72rem; margin-top:0.1rem;">📍 @($"{cli.Direccion} {cli.Localidad}".Trim())</div>
                         }
+                        @* 2026-08-25: si apareció porque coincidió una dirección de ENTREGA (el cliente puede
+                           tener varias), la mostramos para que se entienda por qué está en la lista. *@
+                        @if (!string.IsNullOrEmpty(cli.DireccionEntrega))
+                        {
+                            <div style="color:#10b981; font-size:0.72rem; margin-top:0.1rem;">🚚 @cli.DireccionEntrega</div>
+                        }
                     </button>
                 }
             </div>
@@ -2601,6 +2607,12 @@
                         @if (!string.IsNullOrEmpty(cli.Direccion) || !string.IsNullOrEmpty(cli.Localidad))
                         {
                             <div style="color:#9ca3af; font-size:0.72rem; margin-top:0.1rem;">📍 @($"{cli.Direccion} {cli.Localidad}".Trim())</div>
+                        }
+                        @* 2026-08-25: si apareció porque coincidió una dirección de ENTREGA (el cliente puede
+                           tener varias), la mostramos para que se entienda por qué está en la lista. *@
+                        @if (!string.IsNullOrEmpty(cli.DireccionEntrega))
+                        {
+                            <div style="color:#10b981; font-size:0.72rem; margin-top:0.1rem;">🚚 @cli.DireccionEntrega</div>
                         }
                     </button>
                 }

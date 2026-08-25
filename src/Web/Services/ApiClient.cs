@@ -6924,7 +6924,9 @@ public class ApiClient
     public record TwContactoDto(int Id, string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId, string? ClienteNombre, string? ClienteCodigo);
     public record TwRespUpsert(string Nombre, string Texto, int Orden, bool Activo);
     public record TwContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId);
-    public record TwClienteBuscarDto(int Id, string Nombre, string? CodigoInterno, string? Telefono, string? Direccion = null, string? Localidad = null);
+    // 2026-08-25: DireccionEntrega = la direccion de ENTREGA que coincidio con lo que se busco
+    // (un cliente puede tener varias). Viene solo cuando el match fue por ahi, para mostrarla.
+    public record TwClienteBuscarDto(int Id, string Nombre, string? CodigoInterno, string? Telefono, string? Direccion = null, string? Localidad = null, string? DireccionEntrega = null);
     public record TwDestinatarioDto(string Nombre, string Numero, string Origen, bool Disponible = false);
     /// <summary>
     /// 2026-08-20: <paramref name="linea"/> = por qué línea NUESTRA se le va a escribir. Sirve para

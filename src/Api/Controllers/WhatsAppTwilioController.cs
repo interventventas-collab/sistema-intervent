@@ -15,6 +15,9 @@ namespace Api.Controllers;
 [Route("api/whatsapp/twilio")]
 public class WhatsAppTwilioController : ControllerBase
 {
+    // 2026-08-25: comparar texto ignorando MAYUSCULAS y TILDES ("olavarria" encuentra "OLAVARRÍA").
+    private const string COLLATE_SIN_TILDES = "SQL_Latin1_General_CP1_CI_AI";
+
     private readonly AppDbContext _db;
     private readonly ILogger<WhatsAppTwilioController> _logger;
     private readonly WhatsAppOutboundService _outbound;
@@ -994,34 +997,73 @@ public class WhatsAppTwilioController : ControllerBase
     /// <summary>GET /api/whatsapp/twilio/clientes-buscar?q=texto — busqueda para autocomplete.
     /// 2026-08-03: busca por MUCHOS campos (nombre, razón social, CUIT/DNI, teléfonos, email,
     /// dirección, entre calles, localidad, ciudad, código y notas). Para números (CUIT/DNI/tel)
-    /// también compara ignorando guiones/espacios/+, así "20123456789" encuentra "20-12345678-9".</summary>
+    /// también compara ignorando guiones/espacios/+, así "20123456789" encuentra "20-12345678-9".
+    /// 2026-08-25: BUSCAR POR DIRECCIÓN DE VERDAD. Antes solo miraba la dirección principal de la
+    /// ficha: escribir "olavarria 2621" no encontraba nada si esa calle era una de las direcciones
+    /// de ENTREGA (que viven en una tabla aparte) o el domicilio de entrega viejo. Ahora además:
+    ///   · mira TODAS las direcciones de entrega del cliente (Cafe_ClienteDirecciones) y DomicilioEntrega;
+    ///   · compara sin tildes ni mayúsculas (collate _CI_AI), así "olavarria" encuentra "OLAVARRÍA";
+    ///   · devuelve DireccionEntrega: la dirección de entrega que hizo match, para mostrarla en el
+    ///     resultado (si no, el operador ve otra dirección y no entiende por qué apareció).</summary>
     [HttpGet("clientes-buscar")]
     [Authorize]
     public async Task<IActionResult> BuscarClientes([FromQuery] string q = "", [FromQuery] int top = 15)
     {
         q = (q ?? "").Trim();
         var query = _db.CafeClientes.AsNoTracking();
+        // Direcciones de entrega que coinciden con lo tipeado: clienteId -> texto de la dirección.
+        var dirPorCliente = new Dictionary<int, string>();
+        var idsDir = new List<int>();
         if (!string.IsNullOrWhiteSpace(q))
         {
             // Si escribió 2+ palabras (ej. "carlos quintana"), buscamos por palabra suelta:
             // cada palabra tiene que aparecer en algún campo de texto, sin importar el orden.
             // "carlos quintana" y "quintana carlos" encuentran a "QUINTANA CARLOS ADRIAN".
             var palabras = q.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+            // (1) Primero, la lista de direcciones de ENTREGA (un cliente puede tener varias).
+            var dq = _db.CafeClienteDirecciones.AsNoTracking().Where(d => d.IsActive);
+            foreach (var palabra in palabras)
+            {
+                var patDir = "%" + CafePreventasController.EscaparLike(palabra) + "%";
+                dq = dq.Where(d =>
+                       EF.Functions.Like(EF.Functions.Collate(d.Direccion, COLLATE_SIN_TILDES), patDir)
+                    || (d.Etiqueta != null && EF.Functions.Like(EF.Functions.Collate(d.Etiqueta, COLLATE_SIN_TILDES), patDir))
+                    || (d.EntreCalles != null && EF.Functions.Like(EF.Functions.Collate(d.EntreCalles, COLLATE_SIN_TILDES), patDir))
+                    || (d.Localidad != null && EF.Functions.Like(EF.Functions.Collate(d.Localidad, COLLATE_SIN_TILDES), patDir))
+                    || (d.Ciudad != null && EF.Functions.Like(EF.Functions.Collate(d.Ciudad, COLLATE_SIN_TILDES), patDir)));
+            }
+            var dirHits = await dq
+                .Select(d => new { d.ClienteId, d.Etiqueta, d.Direccion, d.Localidad })
+                .Take(200)
+                .ToListAsync();
+            foreach (var d in dirHits)
+            {
+                var txt = ((d.Etiqueta != null ? d.Etiqueta + ": " : "") + d.Direccion + " " + (d.Localidad ?? "")).Trim();
+                if (!dirPorCliente.ContainsKey(d.ClienteId)) dirPorCliente[d.ClienteId] = txt;
+            }
+            idsDir = dirPorCliente.Keys.ToList();
+
+            // (2) Después, la ficha del cliente. Los que ya matchearon por dirección de entrega
+            //     entran igual (idsDir), sin importar qué diga el resto de la ficha.
             if (palabras.Length >= 2)
             {
                 foreach (var palabra in palabras)
                 {
                     var t = palabra;                      // captura segura por iteración
+                    var pat = "%" + CafePreventasController.EscaparLike(t) + "%";
                     int.TryParse(t, out var tNum);
                     query = query.Where(c =>              // cada .Where suma un AND: todas las palabras deben estar
-                           c.Nombre.Contains(t)
-                        || (c.RazonSocial != null && c.RazonSocial.Contains(t))
-                        || (c.Direccion != null && c.Direccion.Contains(t))
-                        || (c.EntreCalles != null && c.EntreCalles.Contains(t))
-                        || (c.Localidad != null && c.Localidad.Contains(t))
-                        || (c.Ciudad != null && c.Ciudad.Contains(t))
+                           idsDir.Contains(c.Id)
+                        || EF.Functions.Like(EF.Functions.Collate(c.Nombre, COLLATE_SIN_TILDES), pat)
+                        || (c.RazonSocial != null && EF.Functions.Like(EF.Functions.Collate(c.RazonSocial, COLLATE_SIN_TILDES), pat))
+                        || (c.Direccion != null && EF.Functions.Like(EF.Functions.Collate(c.Direccion, COLLATE_SIN_TILDES), pat))
+                        || (c.DomicilioEntrega != null && EF.Functions.Like(EF.Functions.Collate(c.DomicilioEntrega, COLLATE_SIN_TILDES), pat))
+                        || (c.EntreCalles != null && EF.Functions.Like(EF.Functions.Collate(c.EntreCalles, COLLATE_SIN_TILDES), pat))
+                        || (c.Localidad != null && EF.Functions.Like(EF.Functions.Collate(c.Localidad, COLLATE_SIN_TILDES), pat))
+                        || (c.Ciudad != null && EF.Functions.Like(EF.Functions.Collate(c.Ciudad, COLLATE_SIN_TILDES), pat))
                         || (c.Email != null && c.Email.Contains(t))
-                        || (c.Notas != null && c.Notas.Contains(t))
+                        || (c.Notas != null && EF.Functions.Like(EF.Functions.Collate(c.Notas, COLLATE_SIN_TILDES), pat))
                         || (tNum > 0 && c.CodigoInterno == tNum));
                 }
             }
@@ -1031,19 +1073,22 @@ public class WhatsAppTwilioController : ControllerBase
                 int.TryParse(q, out var qNum);
                 var qDigits = new string(q.Where(char.IsDigit).ToArray());
                 bool hasDigits = qDigits.Length >= 3;
+                var patQ = "%" + CafePreventasController.EscaparLike(q) + "%";
                 query = query.Where(c =>
-                       c.Nombre.Contains(q)
-                    || (c.RazonSocial != null && c.RazonSocial.Contains(q))
+                       idsDir.Contains(c.Id)
+                    || EF.Functions.Like(EF.Functions.Collate(c.Nombre, COLLATE_SIN_TILDES), patQ)
+                    || (c.RazonSocial != null && EF.Functions.Like(EF.Functions.Collate(c.RazonSocial, COLLATE_SIN_TILDES), patQ))
                     || (qNum > 0 && c.CodigoInterno == qNum)
                     || (c.Cuit != null && (c.Cuit.Contains(q) || (hasDigits && c.Cuit.Replace("-", "").Replace(".", "").Replace(" ", "").Contains(qDigits))))
                     || (c.Telefono != null && (c.Telefono.Contains(q) || (hasDigits && c.Telefono.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(qDigits))))
                     || (c.Telefono2 != null && (c.Telefono2.Contains(q) || (hasDigits && c.Telefono2.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(qDigits))))
                     || (c.Email != null && c.Email.Contains(q))
-                    || (c.Direccion != null && c.Direccion.Contains(q))
-                    || (c.EntreCalles != null && c.EntreCalles.Contains(q))
-                    || (c.Localidad != null && c.Localidad.Contains(q))
-                    || (c.Ciudad != null && c.Ciudad.Contains(q))
-                    || (c.Notas != null && c.Notas.Contains(q)));   // por si el DNI u otro dato quedó acá
+                    || (c.Direccion != null && EF.Functions.Like(EF.Functions.Collate(c.Direccion, COLLATE_SIN_TILDES), patQ))
+                    || (c.DomicilioEntrega != null && EF.Functions.Like(EF.Functions.Collate(c.DomicilioEntrega, COLLATE_SIN_TILDES), patQ))
+                    || (c.EntreCalles != null && EF.Functions.Like(EF.Functions.Collate(c.EntreCalles, COLLATE_SIN_TILDES), patQ))
+                    || (c.Localidad != null && EF.Functions.Like(EF.Functions.Collate(c.Localidad, COLLATE_SIN_TILDES), patQ))
+                    || (c.Ciudad != null && EF.Functions.Like(EF.Functions.Collate(c.Ciudad, COLLATE_SIN_TILDES), patQ))
+                    || (c.Notas != null && EF.Functions.Like(EF.Functions.Collate(c.Notas, COLLATE_SIN_TILDES), patQ)));   // por si el DNI u otro dato quedó acá
             }
         }
         // 2026-08-21: ORDEN POR RELEVANCIA (antes era alfabetico puro). Con 9.000 clientes, cortar
@@ -1065,7 +1110,13 @@ public class WhatsAppTwilioController : ControllerBase
             .Take(Math.Clamp(top, 1, 50))
             .Select(c => new { c.Id, c.Nombre, CodigoInterno = c.CodigoInterno.HasValue ? c.CodigoInterno.ToString() : null, c.Telefono, c.Direccion, c.Localidad })
             .ToListAsync();
-        return Ok(list);
+        // La dirección de entrega que matcheó viaja aparte para poder mostrarla debajo del nombre.
+        var result = list.Select(c => new
+        {
+            c.Id, c.Nombre, c.CodigoInterno, c.Telefono, c.Direccion, c.Localidad,
+            DireccionEntrega = dirPorCliente.TryGetValue(c.Id, out var dtxt) ? dtxt : null
+        }).ToList();
+        return Ok(result);
     }
 
     /// <summary>
