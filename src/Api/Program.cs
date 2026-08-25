@@ -221,6 +221,8 @@ builder.Services.AddHostedService<MeliCodigoColectaBackgroundService>();
 builder.Services.AddHostedService<MeliFullStockSyncBackgroundService>();
 builder.Services.AddHostedService<MeliStockPushBackgroundService>();
 builder.Services.AddHostedService<MeliPricePushBackgroundService>();
+// 2026-08-25: refresco nocturno de comisiones (03:00 ARG) — sin datos frescos, los márgenes mienten.
+builder.Services.AddHostedService<MeliComisionesNocturnoService>();
 builder.Services.AddHostedService<ContabiliumNightlySnapshotService>();
 builder.Services.AddScoped<CafePreciosFuturosService>();
 builder.Services.AddHostedService<CafePreciosFuturosBackgroundService>();
