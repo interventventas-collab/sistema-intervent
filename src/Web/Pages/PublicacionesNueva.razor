@@ -1,0 +1,415 @@
+@page "/publicaciones-nueva"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject ToastService ToastService
+
+@*
+    2026-08-25 — Pantalla NUEVA de publicaciones. ETAPA 1: solo mirar.
+    Convive con la de siempre (/publicaciones), que no se toca hasta que ésta esté aprobada.
+    Novedades respecto de la vieja:
+      · Pantalla completa (sin menú al costado ni barra arriba), como el Mapeo.
+      · Debajo del título: de qué productos del sistema se compone y para cuántas alcanza.
+      · Columna "Se lleva MeLi": el total real (porcentaje + cargo fijo + cuotas), no solo el %.
+      · Cuando la familia tiene precios distintos, muestra el rango en vez de fingir uno solo.
+      · Filtros por comisión / cuotas / varios precios / precio a mano.
+*@
+
+<style>
+    .p2-full { position: fixed; inset: 0; z-index: 4000; display: flex; flex-direction: column;
+               background: #f8f9f7; overflow: hidden; }
+    .p2-bar { display: flex; align-items: center; gap: .6rem; justify-content: space-between;
+              flex-wrap: wrap; padding: .6rem .9rem; background: #0f2a1c; color: #fff; }
+    .p2-bar .ttl { font-weight: 700; font-size: .95rem; }
+    .p2-bar .ttl small { font-weight: 400; opacity: .75; margin-left: .4rem; }
+    .p2-bar .acts { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .p2-btn { font-size: .78rem; font-weight: 600; padding: .42rem .7rem; border-radius: .45rem;
+              border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.08); color: #fff; cursor: pointer; }
+    .p2-btn:hover { background: rgba(255,255,255,.16); }
+    .p2-btn.go { background: #15803d; border-color: #15803d; }
+
+    .p2-body { flex: 1; overflow: auto; padding: .8rem .9rem 1.2rem; display: flex; flex-direction: column; gap: .6rem; }
+    .p2-search { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .p2-search input { flex: 1; min-width: 160px; padding: .48rem .65rem; border: 1px solid #e3e7e0;
+                       border-radius: .5rem; font-size: .8rem; }
+    .p2-filters { display: flex; gap: .35rem; flex-wrap: wrap; align-items: center; }
+    .p2-chip { font-size: .75rem; padding: .35rem .65rem; border-radius: 999px; border: 1px solid #e3e7e0;
+               background: #fff; color: #6b7280; cursor: pointer; white-space: nowrap; }
+    .p2-chip:hover { border-color: #9ca3af; }
+    .p2-chip.on { background: #4f46e5; border-color: #4f46e5; color: #fff; font-weight: 600; }
+    .p2-chip.nue { background: #e5efe8; border-color: #1f6b45; color: #1f6b45; font-weight: 600; }
+    .p2-chip.nue.on { background: #1f6b45; color: #fff; }
+    .p2-lbl { font-size: .62rem; letter-spacing: .09em; text-transform: uppercase; color: #9ca3af; font-weight: 700; }
+
+    .p2-count { display: flex; justify-content: space-between; align-items: center; font-size: .75rem;
+                color: #6b7280; flex-wrap: wrap; gap: .5rem; }
+    .p2-pg { border: 1px solid #e3e7e0; background: #fff; border-radius: .35rem; padding: .18rem .5rem;
+             font-size: .7rem; color: #6b7280; cursor: pointer; }
+    .p2-pg[disabled] { opacity: .45; cursor: default; }
+
+    .p2-tbl { background: #fff; border: 1px solid #e3e7e0; border-radius: .6rem; overflow: hidden; }
+    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 150px 128px 152px 56px 74px;
+                     gap: .6rem; align-items: center; padding: .55rem .65rem; }
+    .p2-th { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; font-size: .6rem; text-transform: uppercase;
+             letter-spacing: .07em; color: #9ca3af; font-weight: 700; }
+    .p2-tr { border-bottom: 1px solid #e3e7e0; font-size: .78rem; }
+    .p2-tr:last-child { border-bottom: none; }
+    .p2-tr:hover { background: #fafbf9; }
+    .p2-prod { display: flex; gap: .5rem; align-items: center; min-width: 0; }
+    .p2-thumb { width: 34px; height: 34px; border-radius: .35rem; border: 1px solid #e3e7e0; object-fit: cover;
+                background: #f8f9f7; flex-shrink: 0; }
+    .p2-pinfo { min-width: 0; }
+    .p2-t { display: block; font-weight: 600; font-size: .76rem; color: #1f2937; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; }
+    .p2-m { display: block; font-family: ui-monospace, monospace; font-size: .63rem; color: #9ca3af;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .p2-rec { display: block; font-size: .63rem; color: #9ca3af; white-space: nowrap; overflow: hidden;
+              text-overflow: ellipsis; margin-top: .05rem; }
+    .p2-rec b { color: #6b7280; font-weight: 600; }
+    .p2-rec .frena { color: #b91c1c; font-weight: 700; }
+    .p2-rec .arma { color: #6b7280; font-weight: 700; }
+
+    .p2-price { display: block; font-weight: 700; font-size: .8rem; }
+    .p2-rango { display: block; font-weight: 700; font-size: .76rem; color: #b91c1c; }
+    .p2-flag { display: inline-block; font-size: .58rem; font-weight: 700; padding: .1rem .35rem;
+               border-radius: .25rem; background: #fee2e2; color: #b91c1c; margin-top: .1rem; }
+    .p2-marg { display: inline-flex; align-items: center; gap: .25rem; font-size: .64rem; margin-top: .05rem; }
+    .p2-dot { width: 7px; height: 7px; border-radius: 50%; background: #16a34a; }
+    .p2-dot.low { background: #f59e0b; }
+    .p2-dot.bad { background: #b91c1c; }
+    .p2-costo { display: block; font-size: .63rem; color: #9ca3af; }
+
+    .p2-com { display: block; min-width: 0; }
+    .p2-com .big { display: block; font-weight: 700; font-size: .8rem; }
+    .p2-com .big.mid { color: #b45309; }
+    .p2-com .big.hi { color: #b91c1c; }
+    .p2-com .des { display: block; font-size: .6rem; color: #9ca3af; }
+    .p2-com .bar { display: block; height: 4px; border-radius: 2px; background: #e3e7e0; margin-top: .2rem;
+                   overflow: hidden; max-width: 118px; }
+    .p2-com .bar i { display: block; height: 100%; background: #16a34a; }
+    .p2-com .bar i.mid { background: #f59e0b; }
+    .p2-com .bar i.hi { background: #b91c1c; }
+
+    .p2-ctrl { display: flex; align-items: center; gap: .35rem; flex-wrap: nowrap; }
+    .p2-obj { display: inline-flex; align-items: center; gap: .15rem; border: 1px solid #e3e7e0;
+              border-radius: .35rem; padding: .1rem .3rem; background: #fff; font-size: .7rem; font-weight: 700; }
+    .p2-obj .pc { font-size: .6rem; color: #9ca3af; font-weight: 400; }
+    .p2-sw { display: inline-flex; align-items: center; gap: .15rem; font-size: .6rem; }
+    .p2-led { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #cbd5e1; background: #fff; }
+    .p2-led.on { background: #15803d; border-color: #15803d; }
+
+    .p2-stk { display: block; text-align: center; font-weight: 700; font-size: .8rem; }
+    .p2-stk small { display: block; font-weight: 400; font-size: .55rem; color: #9ca3af; }
+    .p2-stk.zero { color: #9ca3af; }
+    .p2-st { font-size: .62rem; padding: .15rem .45rem; border-radius: 999px; font-weight: 600; text-align: center;
+             white-space: nowrap; display: inline-block; }
+    .p2-st.a { background: #dcfce7; color: #16a34a; }
+    .p2-st.p { background: #fef0d8; color: #b45309; }
+    .p2-st.o { background: #f1f5f9; color: #64748b; }
+
+    .p2-empty { padding: 2rem; text-align: center; color: #9ca3af; font-size: .85rem; }
+    .p2-note { font-size: .7rem; color: #6b7280; background: #eef2ff; border-left: 3px solid #4f46e5;
+               padding: .5rem .7rem; border-radius: 0 .4rem .4rem 0; }
+
+    @@media (max-width: 1100px) {
+        .p2-th, .p2-tr { grid-template-columns: 30px minmax(0,1fr) 140px 120px; }
+        .p2-h2 { display: none; }
+    }
+    @@media (max-width: 760px) {
+        .p2-th, .p2-tr { grid-template-columns: 28px minmax(0,1fr) 120px; }
+        .p2-h { display: none; }
+    }
+</style>
+
+<div class="p2-full">
+
+    <div class="p2-bar">
+        <span class="ttl">🏷️ Publicaciones <small>@(datos?.Total.ToString("N0", ar) ?? "…") publicaciones</small></span>
+        <span class="acts">
+            <button class="p2-btn go" @onclick="Cargar" disabled="@cargando">
+                @(cargando ? "⏳ Cargando…" : "🔄 Actualizar lista")
+            </button>
+            <button class="p2-btn" @onclick='() => Nav.NavigateTo("/publicaciones")'>⛶ Volver a la pantalla de siempre</button>
+        </span>
+    </div>
+
+    <div class="p2-body">
+
+        <div class="p2-note">
+            <b>Pantalla nueva — etapa 1.</b> Por ahora es solo para mirar: no toca precios, stock ni nada en MercadoLibre.
+            La pantalla de siempre sigue funcionando igual.
+        </div>
+
+        <div class="p2-search">
+            <input placeholder="Buscar por título, ID o N° de publicación (MLA)…" @bind="fTexto" @bind:event="oninput" @onkeyup="OnEnter" />
+            <input placeholder="SKU" style="max-width:170px;" @bind="fSku" @bind:event="oninput" @onkeyup="OnEnter" />
+            <button class="p2-btn" style="background:#1f6b45;border-color:#1f6b45;" @onclick="BuscarDesdeCero">Buscar</button>
+        </div>
+
+        <div class="p2-filters">
+            <span class="p2-lbl">Filtros</span>
+            <span class="p2-chip @(fEstado == "" ? "on" : "")" @onclick='() => SetEstado("")'>Todas</span>
+            <span class="p2-chip @(fEstado == "activas" ? "on" : "")" @onclick='() => SetEstado("activas")'>Activas</span>
+            <span class="p2-chip @(fEstado == "pausadas" ? "on" : "")" @onclick='() => SetEstado("pausadas")'>Pausadas</span>
+
+            <span class="p2-chip nue @(fComision == 30 ? "on" : "")" @onclick="() => SetComision(30)">MeLi se lleva más de 30%</span>
+            <span class="p2-chip nue @(fComision == 40 ? "on" : "")" @onclick="() => SetComision(40)">…más de 40%</span>
+            <span class="p2-chip nue @(fVariosPrecios ? "on" : "")" @onclick="ToggleVarios">Varios precios en la familia</span>
+            <span class="p2-chip nue @(fPrecioAMano ? "on" : "")" @onclick="TogglePrecioMano">Precio a mano</span>
+            <span class="p2-chip nue @(fSinCosto ? "on" : "")" @onclick="ToggleSinCosto">Sin costo cargado</span>
+            <span class="p2-chip nue @(fCuotas == "12x_campaign" ? "on" : "")" @onclick='() => SetCuotas("12x_campaign")'>Cuotas: 12x</span>
+            <span class="p2-chip nue @(fCuotas == "sin" ? "on" : "")" @onclick='() => SetCuotas("sin")'>Sin cuotas</span>
+            @if (HayFiltros)
+            {
+                <span class="p2-chip" style="border-color:#b91c1c;color:#b91c1c;" @onclick="LimpiarFiltros">✕ Limpiar</span>
+            }
+        </div>
+
+        <div class="p2-count">
+            <span>
+                @if (datos is not null)
+                {
+                    <text>Mostrando <b>@datos.Items.Count</b> de <b>@datos.Total.ToString("N0", ar)</b> publicaciones</text>
+                }
+            </span>
+            <span>
+                <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
+                <span class="p2-pg">Página @pagina de @TotalPaginas</span>
+                <button class="p2-pg" @onclick="() => IrAPagina(pagina + 1)" disabled="@(pagina >= TotalPaginas || cargando)">▶</button>
+            </span>
+        </div>
+
+        <div class="p2-tbl">
+            <div class="p2-th">
+                <span></span>
+                <span>Producto</span>
+                <span class="p2-h">Precio · Margen</span>
+                <span class="p2-h">Se lleva MeLi</span>
+                <span class="p2-h2">Objetivo · Sincro</span>
+                <span class="p2-h2">Stock</span>
+                <span class="p2-h2">Estado</span>
+            </div>
+
+            @if (cargando)
+            {
+                <div class="p2-empty">⏳ Buscando…</div>
+            }
+            else if (datos is null || datos.Items.Count == 0)
+            {
+                <div class="p2-empty">No hay publicaciones con esos filtros.</div>
+            }
+            else
+            {
+                @foreach (var it in datos.Items)
+                {
+                    <div class="p2-tr">
+                        <span>
+                            @if (!string.IsNullOrEmpty(it.Thumbnail))
+                            {
+                                <img class="p2-thumb" src="@it.Thumbnail" alt="" loading="lazy" />
+                            }
+                            else
+                            {
+                                <span class="p2-thumb"></span>
+                            }
+                        </span>
+
+                        <span class="p2-pinfo">
+                            <span class="p2-t" title="@it.Titulo">@it.Titulo</span>
+                            <span class="p2-m">@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)</span>
+                            <span class="p2-rec">@RecetaFragment(it)</span>
+                        </span>
+
+                        <span class="p2-h">
+                            @if (it.VariosPrecios && it.PrecioMin.HasValue && it.PrecioMax.HasValue)
+                            {
+                                <span class="p2-rango">@Plata(it.PrecioMin.Value) – @Plata(it.PrecioMax.Value)</span>
+                                <span class="p2-flag">⚠ precios distintos</span>
+                            }
+                            else
+                            {
+                                <span class="p2-price">@Plata(it.Precio)</span>
+                            }
+                            @if (it.MargenPct.HasValue)
+                            {
+                                <span class="p2-marg">
+                                    <span class="p2-dot @(it.MargenPct.Value >= 50 ? "" : it.MargenPct.Value >= 25 ? "low" : "bad")"></span>
+                                    @(it.MargenPct.Value.ToString("+0;-0", ar))% sobre costo
+                                </span>
+                            }
+                            @if (it.Costo is > 0)
+                            {
+                                <span class="p2-costo">costo @Plata(it.Costo.Value)</span>
+                            }
+                        </span>
+
+                        <span class="p2-com p2-h">
+                            @if (it.ComisionPct.HasValue)
+                            {
+                                var c = it.ComisionPct.Value;
+                                var clase = c >= 40 ? "hi" : c >= 25 ? "mid" : "";
+                                <span class="big @clase">@c.ToString("0.#", ar)%</span>
+                                <span class="des">@DesgloseComision(it)</span>
+                                <span class="bar"><i class="@clase" style="width:@(Math.Min(100, (double)c * 2).ToString("0", System.Globalization.CultureInfo.InvariantCulture))%"></i></span>
+                            }
+                            else
+                            {
+                                <span class="des">sin datos — actualizá comisiones</span>
+                            }
+                        </span>
+
+                        <span class="p2-ctrl p2-h2">
+                            <span class="p2-obj" title="Objetivo de ganancia sobre el costo">
+                                🎯 @(it.ObjetivoPct.HasValue ? it.ObjetivoPct.Value.ToString("0", ar) : "—")<span class="pc">%</span>
+                            </span>
+                            <span class="p2-sw" title="@(it.SyncPrecio ? "Precio sincronizado: el sistema lo mantiene" : "Precio a mano: el sistema no lo toca")">
+                                💲<span class="p2-led @(it.SyncPrecio ? "on" : "")"></span>
+                            </span>
+                            <span class="p2-sw" title="@(it.SyncStock ? "Stock sincronizado: se pushea solo" : "Stock a mano")">
+                                📦<span class="p2-led @(it.SyncStock ? "on" : "")"></span>
+                            </span>
+                        </span>
+
+                        <span class="p2-stk p2-h2 @(it.StockMeli == 0 ? "zero" : "")">
+                            @it.StockMeli<small>@(it.StockMeli == 0 ? "SIN STOCK" : "UNID.")</small>
+                        </span>
+
+                        <span class="p2-h2">
+                            <span class="p2-st @(it.Estado == "active" ? "a" : it.Estado == "paused" ? "p" : "o")">@EstadoTexto(it.Estado)</span>
+                        </span>
+                    </div>
+                }
+            }
+        </div>
+
+        @if (datos is not null && datos.Items.Count > 0)
+        {
+            <div class="p2-count">
+                <span>Etapa 1: mirar. Las acciones (cambiar precios, mandar stock, fotos) vienen en la etapa 2.</span>
+                <span>
+                    <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
+                    <span class="p2-pg">Página @pagina de @TotalPaginas</span>
+                    <button class="p2-pg" @onclick="() => IrAPagina(pagina + 1)" disabled="@(pagina >= TotalPaginas || cargando)">▶</button>
+                </span>
+            </div>
+        }
+
+    </div>
+</div>
+
+@code {
+    private static readonly System.Globalization.CultureInfo ar = new("es-AR");
+
+    private ApiClient.PubV2Page? datos;
+    private bool cargando;
+    private int pagina = 1;
+
+    private string fTexto = "";
+    private string fSku = "";
+    private string fEstado = "";
+    private decimal? fComision;
+    private string fCuotas = "";
+    private bool fVariosPrecios;
+    private bool fPrecioAMano;
+    private bool fSinCosto;
+
+    private bool HayFiltros => fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
+                               || !string.IsNullOrEmpty(fCuotas) || !string.IsNullOrEmpty(fEstado)
+                               || !string.IsNullOrWhiteSpace(fTexto) || !string.IsNullOrWhiteSpace(fSku);
+
+    private int TotalPaginas => datos is null || datos.Total == 0 ? 1 : (int)Math.Ceiling(datos.Total / (double)datos.PorPagina);
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true;
+        StateHasChanged();
+        try
+        {
+            datos = await Api.GetPublicacionesV2Async(fTexto, fSku, fEstado, fComision, fCuotas, null,
+                fVariosPrecios, fPrecioAMano, fSinCosto, pagina, 100);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudo cargar: " + ex.Message);
+        }
+        finally
+        {
+            cargando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task BuscarDesdeCero() { pagina = 1; await Cargar(); }
+    private async Task OnEnter(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarDesdeCero(); }
+    private async Task IrAPagina(int p) { if (p < 1 || p > TotalPaginas) return; pagina = p; await Cargar(); }
+    private async Task SetEstado(string v) { fEstado = v; await BuscarDesdeCero(); }
+    private async Task SetComision(decimal v) { fComision = fComision == v ? null : v; await BuscarDesdeCero(); }
+    private async Task SetCuotas(string v) { fCuotas = fCuotas == v ? "" : v; await BuscarDesdeCero(); }
+    private async Task ToggleVarios() { fVariosPrecios = !fVariosPrecios; await BuscarDesdeCero(); }
+    private async Task TogglePrecioMano() { fPrecioAMano = !fPrecioAMano; await BuscarDesdeCero(); }
+    private async Task ToggleSinCosto() { fSinCosto = !fSinCosto; await BuscarDesdeCero(); }
+
+    private async Task LimpiarFiltros()
+    {
+        fTexto = ""; fSku = ""; fEstado = ""; fComision = null; fCuotas = "";
+        fVariosPrecios = false; fPrecioAMano = false; fSinCosto = false;
+        await BuscarDesdeCero();
+    }
+
+    private string Plata(decimal v) => "$" + v.ToString("N0", ar);
+
+    private string EstadoTexto(string? s) => s switch
+    {
+        "active" => "Activa",
+        "paused" => "Pausada",
+        "under_review" => "En revisión",
+        _ => s ?? "—"
+    };
+
+    private string CuotasTexto(string? tag, string? tipo)
+    {
+        var t = string.Equals(tipo, "gold_pro", StringComparison.OrdinalIgnoreCase) ? "Premium" : "Clásica";
+        var c = tag switch
+        {
+            null or "" => "sin cuotas",
+            "3x_campaign" => "3 cuotas",
+            "6x_campaign" => "6 cuotas",
+            "9x_campaign" => "9 cuotas",
+            "12x_campaign" => "12 cuotas",
+            "pcj-co-funded" => "cuotas co-fundadas",
+            _ => tag
+        };
+        return $"{t} · {c}";
+    }
+
+    private string DesgloseComision(ApiClient.PubV2Fila it)
+    {
+        var partes = new List<string>();
+        if (it.ComisionPorcentaje is > 0) partes.Add($"{it.ComisionPorcentaje.Value.ToString("0.#", ar)}%");
+        if (it.ComisionFija is > 0) partes.Add($"+ ${it.ComisionFija.Value.ToString("N0", ar)} fijo");
+        if (it.ComisionEnvio is > 0) partes.Add($"+ ${it.ComisionEnvio.Value.ToString("N0", ar)} envío");
+        return partes.Count > 0 ? string.Join(" ", partes) : "—";
+    }
+
+    /// <summary>El renglón gris: de qué se compone y para cuántas alcanza. El que frena va en rojo.</summary>
+    private MarkupString RecetaFragment(ApiClient.PubV2Fila it)
+    {
+        if (it.Receta is null || it.Receta.Count == 0)
+            return new MarkupString("<span style='color:#b91c1c'>⚠ sin producto del sistema vinculado</span>");
+
+        var partes = it.Receta.Select(c =>
+        {
+            var cant = c.Cantidad == 1m ? "" : $"{c.Cantidad.ToString("0.##", ar)}× ";
+            var txt = $"{cant}<b>{System.Net.WebUtility.HtmlEncode(c.Sku ?? "?")}</b> ({c.Stock})";
+            return c.Frena && it.Receta.Count > 1 ? $"<span class='frena'>{txt}</span>" : txt;
+        });
+
+        var cola = it.Receta.Count > 1 || (it.Receta.Count == 1 && it.Receta[0].Cantidad != 1m)
+            ? $" → <span class='arma'>arma {it.Arma ?? 0}</span>"
+            : $" · stock <b>{it.Arma ?? 0}</b>";
+
+        return new MarkupString("🧩 " + string.Join(" + ", partes) + cola);
+    }
+}

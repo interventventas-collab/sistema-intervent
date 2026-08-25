@@ -5034,6 +5034,41 @@ public class ApiClient
         if (!resp.IsSuccessStatusCode) return null;
         return await resp.Content.ReadFromJsonAsync<ListingTypeLoteDto>();
     }
+    // ─── 2026-08-25: pantalla NUEVA de publicaciones (/publicaciones-nueva) ───
+    public record PubV2Componente(string? Sku, string Nombre, decimal Cantidad, int Stock, int Alcanza, bool Frena);
+    public record PubV2Fila(
+        string MeliItemId, string? Sku, string Titulo, string? Thumbnail, string? Permalink,
+        decimal Precio, string? Estado, string? Tipo, string? Cuotas, int StockMeli, int Vendidas,
+        decimal? Costo, decimal? MargenPct,
+        decimal? ComisionMonto, decimal? ComisionPct, decimal? ComisionPorcentaje, decimal? ComisionFija, decimal? ComisionEnvio,
+        List<PubV2Componente> Receta, int? Arma,
+        int PublisFamilia, decimal? PrecioMin, decimal? PrecioMax, bool VariosPrecios,
+        bool SyncPrecio, bool SyncStock, decimal? ObjetivoPct, string? Cuenta);
+    public record PubV2Page(int Total, int Pagina, int PorPagina, List<PubV2Fila> Items);
+
+    public async Task<PubV2Page?> GetPublicacionesV2Async(string? texto = null, string? sku = null,
+        string? estado = null, decimal? comisionMinPct = null, string? cuotas = null, string? tipo = null,
+        bool variosPrecios = false, bool precioAMano = false, bool sinCosto = false,
+        int pagina = 1, int porPagina = 100)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
+        if (!string.IsNullOrWhiteSpace(sku)) qs.Add($"sku={Uri.EscapeDataString(sku)}");
+        if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={estado}");
+        if (comisionMinPct.HasValue) qs.Add($"comisionMinPct={comisionMinPct.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (!string.IsNullOrWhiteSpace(cuotas)) qs.Add($"cuotas={Uri.EscapeDataString(cuotas)}");
+        if (!string.IsNullOrWhiteSpace(tipo)) qs.Add($"tipo={tipo}");
+        if (variosPrecios) qs.Add("variosPrecios=true");
+        if (precioAMano) qs.Add("precioAMano=true");
+        if (sinCosto) qs.Add("sinCosto=true");
+        qs.Add($"pagina={pagina}");
+        qs.Add($"porPagina={porPagina}");
+        return await GetAsync<PubV2Page>("/api/meli/v2/publicaciones?" + string.Join("&", qs));
+    }
+
+    public async Task<Dictionary<string, int>?> GetResumenV2Async()
+        => await GetAsync<Dictionary<string, int>>("/api/meli/v2/resumen");
+
     public async Task<ListingTypeLoteDto?> RestaurarPreciosPisadosAsync()
         => await PostAsync<ListingTypeLoteDto>("/api/meli/listing-type/restaurar-precios", new { });
     public async Task<ListingTypeLoteDto?> RevertirListingTypeAsync(int maximo = 0)
