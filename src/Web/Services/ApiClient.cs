@@ -5022,10 +5022,18 @@ public class ApiClient
     public record ListingTypeCambioRow(string MeliItemId, bool Ok, string? TipoAnterior, string? TipoNuevo,
         decimal? PrecioAnterior, decimal? PrecioNuevo, string Mensaje);
     public record ListingTypeLoteDto(int Procesadas, int Ok, int Saltadas, int Errores, List<ListingTypeCambioRow> Detalle);
+    /// <summary>2026-08-25: usa el cliente de timeout LARGO (4 min). Cada publicacion tarda hasta
+    /// ~25 segundos porque hay que esperar a que MeLi actualice la comision antes de tocar el precio;
+    /// con el cliente normal (100 s) la tanda se cortaba a la mitad.</summary>
     public async Task<ListingTypeLoteDto?> CambiarListingTypeAsync(List<string>? mlas, string nuevoTipo = "gold_special",
         bool recalcularPrecio = true, bool soloSinVentas = true, int dias = 90, int maximo = 0)
-        => await PostAsync<ListingTypeLoteDto>("/api/meli/listing-type/cambiar",
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _httpLong.PostAsJsonAsync("/api/meli/listing-type/cambiar",
             new { MeliItemIds = mlas, NuevoTipo = nuevoTipo, RecalcularPrecio = recalcularPrecio, SoloSinVentas = soloSinVentas, Dias = dias, Maximo = maximo });
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<ListingTypeLoteDto>();
+    }
     public async Task<ListingTypeLoteDto?> RestaurarPreciosPisadosAsync()
         => await PostAsync<ListingTypeLoteDto>("/api/meli/listing-type/restaurar-precios", new { });
     public async Task<ListingTypeLoteDto?> RevertirListingTypeAsync(int maximo = 0)

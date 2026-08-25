@@ -5342,7 +5342,8 @@
             var confirma2 = await JS.InvokeAsync<bool>("confirm",
                 $"Salieron bien {prueba.Ok} de {prueba.Procesadas}.\n\n" +
                 $"¿Sigo con las {restantes} restantes?\n" +
-                $"Va de a 25 por vez y podes ver el avance. Tarda unos minutos.");
+                $"Va de a 5 por vez y podes ver el avance. Tarda un rato largo (media hora o mas):\n" +
+                $"dejá esta pantalla abierta. Si la cerrás, lo hecho queda hecho y podés retomar despues.");
             if (!confirma2) return;
 
             int total = prueba.Ok;
@@ -5350,7 +5351,9 @@
             {
                 ltProgreso = $"{total} listas...";
                 StateHasChanged();
-                var tanda = await Api.CambiarListingTypeAsync(null, "gold_special", true, true, 90, 25);
+                // De a 5: cada publicacion puede tardar hasta ~25 s (espera de comision), asi que
+                // tandas mas grandes se pasaban del timeout y quedaban a mitad de camino.
+                var tanda = await Api.CambiarListingTypeAsync(null, "gold_special", true, true, 90, 5);
                 if (tanda is null || tanda.Procesadas == 0) break;
                 ltResultados.AddRange(tanda.Detalle);
                 total += tanda.Ok;
