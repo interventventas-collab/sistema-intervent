@@ -1031,7 +1031,8 @@ public class WhatsAppTwilioController : ControllerBase
                     || (d.Etiqueta != null && EF.Functions.Like(EF.Functions.Collate(d.Etiqueta, COLLATE_SIN_TILDES), patDir))
                     || (d.EntreCalles != null && EF.Functions.Like(EF.Functions.Collate(d.EntreCalles, COLLATE_SIN_TILDES), patDir))
                     || (d.Localidad != null && EF.Functions.Like(EF.Functions.Collate(d.Localidad, COLLATE_SIN_TILDES), patDir))
-                    || (d.Ciudad != null && EF.Functions.Like(EF.Functions.Collate(d.Ciudad, COLLATE_SIN_TILDES), patDir)));
+                    || (d.Ciudad != null && EF.Functions.Like(EF.Functions.Collate(d.Ciudad, COLLATE_SIN_TILDES), patDir))
+                    || (d.Telefono != null && d.Telefono.Contains(palabra)));
             }
             var dirHits = await dq
                 .Select(d => new { d.ClienteId, d.Etiqueta, d.Direccion, d.Localidad })
@@ -1052,6 +1053,7 @@ public class WhatsAppTwilioController : ControllerBase
                 {
                     var t = palabra;                      // captura segura por iteración
                     var pat = "%" + CafePreventasController.EscaparLike(t) + "%";
+                    var tDigits = new string(t.Where(char.IsDigit).ToArray());   // "15-5667788" -> "155667788"
                     int.TryParse(t, out var tNum);
                     query = query.Where(c =>              // cada .Where suma un AND: todas las palabras deben estar
                            idsDir.Contains(c.Id)
@@ -1064,6 +1066,11 @@ public class WhatsAppTwilioController : ControllerBase
                         || (c.Ciudad != null && EF.Functions.Like(EF.Functions.Collate(c.Ciudad, COLLATE_SIN_TILDES), pat))
                         || (c.Email != null && c.Email.Contains(t))
                         || (c.Notas != null && EF.Functions.Like(EF.Functions.Collate(c.Notas, COLLATE_SIN_TILDES), pat))
+                        // 2026-08-25: tambien telefono y CUIT/DNI aca (antes solo los miraba cuando se
+                        // escribia UNA sola palabra, asi que "juan 1155667788" no encontraba nada).
+                        || (c.Cuit != null && (c.Cuit.Contains(t) || (tDigits.Length >= 3 && c.Cuit.Replace("-", "").Replace(".", "").Replace(" ", "").Contains(tDigits))))
+                        || (c.Telefono != null && (c.Telefono.Contains(t) || (tDigits.Length >= 3 && c.Telefono.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(tDigits))))
+                        || (c.Telefono2 != null && (c.Telefono2.Contains(t) || (tDigits.Length >= 3 && c.Telefono2.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(tDigits))))
                         || (tNum > 0 && c.CodigoInterno == tNum));
                 }
             }
