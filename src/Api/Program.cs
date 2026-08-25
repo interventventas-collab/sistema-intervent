@@ -189,6 +189,7 @@ builder.Services.AddScoped<MeliCafePricePushService>();
 builder.Services.AddScoped<MeliStockPushService>();
 // 2026-05-30: push event-driven de PRECIO (paralelo al de stock).
 builder.Services.AddScoped<MeliPricePushService>();
+builder.Services.AddScoped<MeliListingTypeService>();
 builder.Services.AddScoped<MeliPisoMasivoService>();
 builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();

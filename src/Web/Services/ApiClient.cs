@@ -5012,6 +5012,22 @@ public class ApiClient
     // 2026-06-01: push masivo agresivo de stock a TODAS las publicaciones MeLi con SyncStock=ON
     public async Task<Dictionary<string, object>?> DispararPushMasivoAgresivoAsync()
         => await PostAsync<Dictionary<string, object>>("/api/meli/items/push-stock-masivo-agresivo", new { });
+
+    // ─── 2026-08-25: tipo de publicacion (Premium ↔ Clasica) ───
+    public record ListingTypeCandidata(string MeliItemId, string? Sku, string? Title, decimal Precio,
+        string? Cuotas, decimal? ComisionPct, string? UserProductId, bool VendioReciente);
+    public record ListingTypeCandidatasDto(int Total, int ConCuotas, int SinCuotas, List<ListingTypeCandidata> Items);
+    public async Task<ListingTypeCandidatasDto?> GetListingTypeCandidatasAsync(bool soloSinVentas = true, int dias = 90)
+        => await GetAsync<ListingTypeCandidatasDto>($"/api/meli/listing-type/candidatas?soloSinVentas={soloSinVentas.ToString().ToLower()}&dias={dias}");
+    public record ListingTypeCambioRow(string MeliItemId, bool Ok, string? TipoAnterior, string? TipoNuevo,
+        decimal? PrecioAnterior, decimal? PrecioNuevo, string Mensaje);
+    public record ListingTypeLoteDto(int Procesadas, int Ok, int Saltadas, int Errores, List<ListingTypeCambioRow> Detalle);
+    public async Task<ListingTypeLoteDto?> CambiarListingTypeAsync(List<string>? mlas, string nuevoTipo = "gold_special",
+        bool recalcularPrecio = true, bool soloSinVentas = true, int dias = 90, int maximo = 0)
+        => await PostAsync<ListingTypeLoteDto>("/api/meli/listing-type/cambiar",
+            new { MeliItemIds = mlas, NuevoTipo = nuevoTipo, RecalcularPrecio = recalcularPrecio, SoloSinVentas = soloSinVentas, Dias = dias, Maximo = maximo });
+    public async Task<ListingTypeLoteDto?> RevertirListingTypeAsync(int maximo = 0)
+        => await PostAsync<ListingTypeLoteDto>("/api/meli/listing-type/revertir", new { Maximo = maximo });
     public record CafePushOneResult(int Procesadas, int Ok, int Errores, List<string> Mensajes);
     public async Task<CafePushOneResult?> RunCafePushOneAsync(string meliItemId)
         => await PostAsync<CafePushOneResult>($"/api/meli/cafe/push-one/{meliItemId}", new { });

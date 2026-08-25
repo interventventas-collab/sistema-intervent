@@ -194,6 +194,33 @@
                 title="Pushea stock a TODAS las publicaciones MeLi. MeLi pausa las de stock 0 y activa las con stock. Despues hay que revisar el cotejo.">
             @if (pushMasivoEnCurso) { <span>⏳ Pusheando...</span> } else { <span>🚀 PUSHEAR STOCK DE TODO A MELI</span> }
         </button>
+        @* 2026-08-25: pasar a Clasica las Premium que comparten ficha con una Clasica (misma comision NO,
+           la Clasica cobra la mitad). Arranca con una tanda de prueba de 3 y despues sigue por tandas. *@
+        <button class="btn" style="background:#0e7490; color:white; font-weight:700; border:2px solid #155e75;"
+                @onclick="PasarPremiumAClasica" disabled="@listingTypeEnCurso"
+                title="Pasa a Clasica las publicaciones Premium que comparten ficha de producto con una Clasica y no vendieron en 90 dias. La Clasica cobra la mitad de comision. Arranca con una prueba de 3. Se puede revertir.">
+            @if (listingTypeEnCurso) { <span>⏳ @(ltProgreso ?? "Cambiando...")</span> } else { <span>🏷️ PASAR PREMIUM A CLASICA</span> }
+        </button>
+        @if (ltResultados.Count > 0)
+        {
+            <div style="width:100%; margin-top:0.5rem; padding:0.6rem; background:#ecfeff; border:1px solid #0e7490; border-radius:8px; max-height:280px; overflow:auto;">
+                <div style="font-weight:700; color:#155e75; margin-bottom:0.35rem;">
+                    Tipo de publicacion — @ltResultados.Count(x => x.Ok) cambiadas, @ltResultados.Count(x => !x.Ok) sin cambiar
+                </div>
+                @foreach (var r in ltResultados.TakeLast(60))
+                {
+                    <div style="font-size:0.78rem; padding:0.15rem 0; border-bottom:1px solid #cffafe;">
+                        <span>@(r.Ok ? "✅" : "⚠️")</span>
+                        <strong>@r.MeliItemId</strong>
+                        @if (r.PrecioAnterior.HasValue && r.PrecioNuevo.HasValue && r.PrecioAnterior != r.PrecioNuevo)
+                        {
+                            <span> — @r.PrecioAnterior.Value.ToString("C0", CultureInfo.GetCultureInfo("es-AR")) → @r.PrecioNuevo.Value.ToString("C0", CultureInfo.GetCultureInfo("es-AR"))</span>
+                        }
+                        <span style="color:#475569;"> · @r.Mensaje</span>
+                    </div>
+                }
+            </div>
+        }
         @* 2026-08-10: piso de 50% de margen MASIVO sobre TODAS las activas+pausadas. Muestra vista previa primero. *@
         <button class="btn" style="background:#16a34a; color:white; font-weight:700; border:2px solid #15803d;"
                 @onclick="AbrirPisoMasivo"
@@ -4170,6 +4197,10 @@
     private bool isSyncing;
     // 2026-06-01: estado del push masivo agresivo (boton rojo)
     private bool pushMasivoEnCurso;
+    // 2026-08-25: cambio de tipo de publicacion (Premium → Clasica)
+    private bool listingTypeEnCurso;
+    private string? ltProgreso;
+    private List<ApiClient.ListingTypeCambioRow> ltResultados = new();
     // 2026-06-19: estado del refresco de comisiones MeLi
     private bool refrescandoComisiones;
     private int totalItems;
@@ -5229,6 +5260,80 @@
     /// <summary>2026-06-01: dispara el push masivo agresivo a TODAS las publicaciones con SyncStock=ON.
     /// Confirma 2 veces antes de ejecutar. El backend lo procesa en background (~30 min).
     /// Despues se revisa el cotejo de ACTIVADAS vs PAUSADAS en las tablas MeliPushSnapshot_*.</summary>
+    /// <summary>2026-08-25: pasa a Clasica las publicaciones Premium que comparten ficha de producto
+    /// con una Clasica y no vendieron nada en 90 dias. Arranca con una tanda de PRUEBA de 3 (por si
+    /// MeLi rechaza el cambio en alguna categoria) y recien despues sigue con el resto, de a 25.
+    /// Al cambiar el tipo, la comision baja a la mitad y el precio se recalcula solo.</summary>
+    private async Task PasarPremiumAClasica()
+    {
+        var cand = await Api.GetListingTypeCandidatasAsync(true, 90);
+        if (cand is null || cand.Total == 0)
+        {
+            ToastService.Error("No encontre publicaciones Premium para emparejar a Clasica.");
+            return;
+        }
+
+        var confirma1 = await JS.InvokeAsync<bool>("confirm",
+            $"🏷️ PASAR PREMIUM A CLASICA\n\n" +
+            $"Encontre {cand.Total} publicaciones PREMIUM que:\n" +
+            $"  • comparten ficha de producto con una Clasica\n" +
+            $"  • NO vendieron nada en los ultimos 90 dias\n\n" +
+            $"({cand.ConCuotas} tienen campana de cuotas y la van a perder)\n\n" +
+            $"La Clasica cobra la MITAD de comision. El precio se recalcula solo (baja ~15%).\n" +
+            $"Se puede volver atras cuando quieras.\n\n" +
+            $"Arranco con una tanda de PRUEBA de 3. ¿Dale?");
+        if (!confirma1) return;
+
+        listingTypeEnCurso = true;
+        ltResultados.Clear();
+        ltProgreso = "probando 3...";
+        StateHasChanged();
+        try
+        {
+            var prueba = await Api.CambiarListingTypeAsync(null, "gold_special", true, true, 90, 3);
+            if (prueba is not null) ltResultados.AddRange(prueba.Detalle);
+            StateHasChanged();
+
+            if (prueba is null || prueba.Ok == 0)
+            {
+                ToastService.Error("La prueba no cambio ninguna. Mira el detalle: MeLi rechazo el cambio.");
+                return;
+            }
+            ToastService.Success($"Prueba OK: {prueba.Ok} de {prueba.Procesadas} pasaron a Clasica.");
+
+            var restantes = cand.Total - prueba.Ok;
+            var confirma2 = await JS.InvokeAsync<bool>("confirm",
+                $"Salieron bien {prueba.Ok} de {prueba.Procesadas}.\n\n" +
+                $"¿Sigo con las {restantes} restantes?\n" +
+                $"Va de a 25 por vez y podes ver el avance. Tarda unos minutos.");
+            if (!confirma2) return;
+
+            int total = prueba.Ok;
+            while (true)
+            {
+                ltProgreso = $"{total} listas...";
+                StateHasChanged();
+                var tanda = await Api.CambiarListingTypeAsync(null, "gold_special", true, true, 90, 25);
+                if (tanda is null || tanda.Procesadas == 0) break;
+                ltResultados.AddRange(tanda.Detalle);
+                total += tanda.Ok;
+                // Si una tanda entera fallo, cortamos: algo cambio del lado de MeLi.
+                if (tanda.Ok == 0) { ToastService.Error("Una tanda entera fallo — freno aca. Revisa el detalle."); break; }
+            }
+            ToastService.Success($"Listo: {ltResultados.Count(x => x.Ok)} publicaciones pasaron a Clasica.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
+        finally
+        {
+            listingTypeEnCurso = false;
+            ltProgreso = null;
+            StateHasChanged();
+        }
+    }
+
     private async Task DispararPushMasivoAgresivo()
     {
         var confirma1 = await JS.InvokeAsync<bool>("confirm",

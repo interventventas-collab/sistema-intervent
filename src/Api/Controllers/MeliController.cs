@@ -2238,6 +2238,105 @@ public class MeliController : ControllerBase
     }
     public class PushConservativeRequest { public List<string>? MeliItemIds { get; set; } }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 2026-08-25 — TIPO DE PUBLICACIÓN (Premium ↔ Clásica)
+    // Emparejar a Clásica las publicaciones Premium que comparten ficha de producto con
+    // una Clásica: misma ficha, mitad de comisión. Ver MeliListingTypeService.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Lista las publicaciones Premium candidatas a pasar a Clásica (comparten ficha
+    /// con una publicación de otro tipo). Con soloSinVentas=true (default) devuelve el "lote 1":
+    /// las que no vendieron nada en los últimos `dias` días. Solo lee, no toca nada.</summary>
+    [HttpGet("listing-type/candidatas")]
+    public async Task<IActionResult> ListingTypeCandidatas(
+        [FromServices] MeliListingTypeService svc,
+        [FromQuery] bool soloSinVentas = true,
+        [FromQuery] int dias = 90)
+    {
+        var lista = await svc.GetCandidatasAsync(soloSinVentas, dias, HttpContext.RequestAborted);
+        return Ok(new
+        {
+            total = lista.Count,
+            conCuotas = lista.Count(x => !string.IsNullOrEmpty(x.Cuotas)),
+            sinCuotas = lista.Count(x => string.IsNullOrEmpty(x.Cuotas)),
+            items = lista
+        });
+    }
+
+    /// <summary>Cambia el tipo de publicación de una lista de MLAs. `nuevoTipo`: gold_special
+    /// (Clásica) o gold_pro (Premium). Reversible: para volver atrás se llama con el otro tipo.
+    /// `recalcularPrecio` (default true): tras el cambio recaptura la comisión y pushea el precio nuevo.
+    /// `maximo` limita cuántas procesa en esta pasada (para hacerlo por tandas).</summary>
+    [HttpPost("listing-type/cambiar")]
+    public async Task<IActionResult> ListingTypeCambiar(
+        [FromServices] MeliListingTypeService svc,
+        [FromBody] CambiarListingTypeRequest req)
+    {
+        if (req is null) return BadRequest(new { error = "Body vacío" });
+        var tipo = string.IsNullOrWhiteSpace(req.NuevoTipo) ? MeliListingTypeService.CLASICA : req.NuevoTipo!;
+
+        var ids = req.MeliItemIds;
+        if (ids is null || ids.Count == 0)
+        {
+            // Sin lista explícita: se toma el lote de candidatas (las que no vendieron en `dias`).
+            var candidatas = await svc.GetCandidatasAsync(req.SoloSinVentas, req.Dias, HttpContext.RequestAborted);
+            ids = candidatas.Select(c => c.MeliItemId).ToList();
+        }
+        if (req.Maximo > 0) ids = ids.Take(req.Maximo).ToList();
+        if (ids.Count == 0) return Ok(new { procesadas = 0, ok = 0, saltadas = 0, errores = 0, detalle = new List<object>() });
+
+        var r = await svc.CambiarTipoLoteAsync(ids, tipo, req.RecalcularPrecio, HttpContext.RequestAborted);
+        return Ok(new { procesadas = r.Procesadas, ok = r.Ok, saltadas = r.Saltadas, errores = r.Errores, detalle = r.Detalle });
+    }
+
+    /// <summary>Marcha atrás: devuelve a Premium las publicaciones que se pasaron a Clásica con
+    /// esta herramienta (registro Tipo=LISTING_TYPE en MeliCambiosDetectados). `desde` acota por fecha.</summary>
+    [HttpPost("listing-type/revertir")]
+    public async Task<IActionResult> ListingTypeRevertir(
+        [FromServices] MeliListingTypeService svc,
+        [FromServices] Api.Data.AppDbContext db,
+        [FromBody] RevertirListingTypeRequest req)
+    {
+        var desde = req?.Desde ?? DateTime.UtcNow.AddDays(-7);
+        var cambios = await db.MeliCambiosDetectados
+            .Where(c => c.Tipo == "LISTING_TYPE" && c.DetectedAt >= desde && c.Source == "listing-type")
+            .Select(c => new { c.MeliItemId, c.ValorAnterior })
+            .ToListAsync(HttpContext.RequestAborted);
+
+        var aRevertir = cambios
+            .Where(c => !string.IsNullOrEmpty(c.ValorAnterior))
+            .GroupBy(c => c.MeliItemId)
+            .Select(g => new { Mla = g.Key, Tipo = g.First().ValorAnterior! })
+            .ToList();
+        if (req?.Maximo > 0) aRevertir = aRevertir.Take(req!.Maximo).ToList();
+
+        int ok = 0, err = 0;
+        var detalle = new List<object>();
+        foreach (var x in aRevertir)
+        {
+            var r = await svc.CambiarTipoAsync(x.Mla, x.Tipo, req?.RecalcularPrecio ?? true, HttpContext.RequestAborted);
+            if (r.Ok) ok++; else err++;
+            detalle.Add(new { r.MeliItemId, r.Ok, r.Mensaje });
+        }
+        return Ok(new { procesadas = aRevertir.Count, ok, errores = err, detalle });
+    }
+
+    public class CambiarListingTypeRequest
+    {
+        public List<string>? MeliItemIds { get; set; }
+        public string? NuevoTipo { get; set; } = MeliListingTypeService.CLASICA;
+        public bool RecalcularPrecio { get; set; } = true;
+        public bool SoloSinVentas { get; set; } = true;
+        public int Dias { get; set; } = 90;
+        public int Maximo { get; set; } = 0;
+    }
+    public class RevertirListingTypeRequest
+    {
+        public DateTime? Desde { get; set; }
+        public bool RecalcularPrecio { get; set; } = true;
+        public int Maximo { get; set; } = 0;
+    }
+
     // ============================================================
     // PUSH DE QUIETOS — productos "sin movimiento" desde el corte de Contabilium
     // ============================================================
