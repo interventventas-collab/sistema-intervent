@@ -381,7 +381,7 @@ public class TelegramService
         bool telegramListo = chatsAlertas.Count > 0;
         if (quiereTelegram && !quiereCampanita && !telegramListo) return;
 
-        var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE" };
+        var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE", "MARGEN_BAJO" };
         var corteViejo = DateTime.UtcNow.AddHours(-12);
 
         // Anti-backlog: eventos sin avisar más viejos que 12h se marcan y no se mandan.
@@ -449,7 +449,12 @@ public class TelegramService
 
     private static string ResumenCortoPubli(MeliCambioDetectado ev)
     {
-        var quePaso = ev.Tipo == "PAUSADA_CON_STOCK" ? "pausada con stock" : "reactivada";
+        var quePaso = ev.Tipo switch
+        {
+            "PAUSADA_CON_STOCK" => "pausada con stock",
+            "MARGEN_BAJO" => $"abajo del {ev.ValorAnterior ?? "50"}% (deja {ev.DeltaPct ?? 0:0.#}%)",
+            _ => "reactivada"
+        };
         var nombre = string.IsNullOrWhiteSpace(ev.Title) ? ev.MeliItemId : ev.Title;
         return $"Publi {quePaso}: {Recortar(nombre, 60)}";
     }
@@ -470,6 +475,18 @@ public class TelegramService
             if (datos.Count > 0) lineas.Add(string.Join(" · ", datos));
             lineas.Add("");
             lineas.Add("El robot NO la activó (política nueva). Revisá el precio y activala desde el sistema: Cambios MeLi.");
+        }
+        else if (ev.Tipo == "MARGEN_BAJO")
+        {
+            // 2026-08-25: aviso del vigilante nocturno. NO se tocó ningún precio: es para que lo mire.
+            var margen = ev.DeltaPct ?? 0m;
+            var piso = ev.ValorAnterior ?? "50";
+            lineas.Add($"📉 Esta publicación quedó abajo del {piso}% — te deja {margen.ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))}%");
+            lineas.Add($"📦 {ev.Title ?? ev.MeliItemId}");
+            if (!string.IsNullOrWhiteSpace(ev.Sku)) lineas.Add($"SKU {ev.Sku}");
+            if (!string.IsNullOrWhiteSpace(ev.Notes)) lineas.Add(ev.Notes);
+            lineas.Add("");
+            lineas.Add("No se tocó ningún precio. Si está en promoción, ignorá este aviso.");
         }
         else // STATUS_ACTIVE
         {
