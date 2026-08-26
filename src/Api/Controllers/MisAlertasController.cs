@@ -414,13 +414,17 @@ public class MisAlertasController : ControllerBase
     public async Task<IActionResult> CorreosImportantes()
     {
         var bucket = await GetBucketAsync();
-        var rows = await _db.MisAlertasCorreos
+        var crudos = await _db.MisAlertasCorreos
             .Where(c => c.Alerta != null && c.Alerta.Activa && c.Alerta.Alcance.Contains(bucket))
             .OrderByDescending(c => c.FechaRecibido)
             .Take(20)
-            .Select(c => new CorreoImportanteDto(c.Id, c.Remitente, c.RemitenteEmail, c.Asunto,
-                c.Adelanto, c.FechaRecibido, c.TieneAdjuntos, c.Adjuntos, c.GmailLink))
             .ToListAsync();
+        // 2026-08-26: el adelanto se limpia también acá (no solo al bajar el mail) para que los
+        // correos ya guardados dejen de mostrar el CSS interno del mail en la card del Dashboard.
+        var rows = crudos.Select(c => new CorreoImportanteDto(c.Id, c.Remitente, c.RemitenteEmail, c.Asunto,
+                MisAlertasBackgroundService.LimpiarAdelanto(c.Adelanto, 200), c.FechaRecibido,
+                c.TieneAdjuntos, c.Adjuntos, c.GmailLink))
+            .ToList();
         return Ok(rows);
     }
 
