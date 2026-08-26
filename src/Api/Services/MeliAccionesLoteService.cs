@@ -56,8 +56,12 @@ public class MeliAccionesLoteService
             if (ct.IsCancellationRequested) break;
             try
             {
-                if (await _itemService.RefreshSaleFeeAsync(mla)) { ok++; detalle.Add(new(mla, true, "comisión actualizada")); }
-                else { err++; detalle.Add(new(mla, false, "MeLi no devolvió la comisión")); }
+                // 2026-08-26: esto ahora relee PRIMERO con qué condiciones está publicada. Si cambiaron
+                // las cuotas, se avisa: es la explicación de por qué el margen se movió tanto.
+                var (fue, cambios) = await _itemService.RefreshSaleFeeConDetalleAsync(mla);
+                var nota = cambios.Count > 0 ? "⚠ " + string.Join(" · ", cambios) : "comisión actualizada";
+                if (fue) { ok++; detalle.Add(new(mla, true, nota)); }
+                else { err++; detalle.Add(new(mla, false, "MeLi no devolvió la comisión" + (cambios.Count > 0 ? " · " + string.Join(" · ", cambios) : ""))); }
             }
             catch (Exception ex) { err++; detalle.Add(new(mla, false, ex.Message)); }
             await Esperar(ct);

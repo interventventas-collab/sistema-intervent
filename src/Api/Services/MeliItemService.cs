@@ -18,7 +18,9 @@ public class MeliItemService
     private readonly SyncProgressService _syncProgress;
     private readonly MeliCambioDetectadoService _detector;
 
-    public MeliItemService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService, AuditLogService auditLog, AiService aiService, SyncProgressService syncProgress, MeliCambioDetectadoService detector)
+    private readonly ILogger<MeliItemService> _logger;
+
+    public MeliItemService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService, AuditLogService auditLog, AiService aiService, SyncProgressService syncProgress, MeliCambioDetectadoService detector, ILogger<MeliItemService> logger)
     {
         _db = db;
         _httpFactory = httpFactory;
@@ -27,6 +29,7 @@ public class MeliItemService
         _aiService = aiService;
         _syncProgress = syncProgress;
         _detector = detector;
+        _logger = logger;
     }
 
     public async Task<MeliItemsResponse> GetItemsAsync(int? meliAccountId = null, string? status = null)
@@ -2031,11 +2034,10 @@ public class MeliItemService
         string? installmentTag = null;
         if (item.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Array)
         {
-            var installmentTags = new[] { "12x_campaign", "9x_campaign", "3x_campaign", "pcj-co-funded" };
             foreach (var tag in tags.EnumerateArray())
             {
                 var tagStr = tag.GetString();
-                if (tagStr is not null && installmentTags.Contains(tagStr))
+                if (tagStr is not null && MarcasDeCuotas.Contains(tagStr))
                 {
                     installmentTag = tagStr;
                     break;
@@ -2465,16 +2467,150 @@ public class MeliItemService
         return result;
     }
 
-    /// <summary>2026-06-19: refresca el sale_fee de un item llamando GetListingCostsAsync
-    /// (que ya guarda en DB el resultado). Wrapper simple para usar desde controllers y jobs.</summary>
-    public async Task<bool> RefreshSaleFeeAsync(string meliItemId)
+    /// <summary>Las marcas con las que MeLi identifica la modalidad de cuotas de una publicación.
+    /// 2026-08-26: se agrega "6x_campaign" — estaba en la tabla de financiación (GetFinancingRealPct)
+    /// pero no en esta lista, así que una publicación de 6 cuotas se guardaba como si no tuviera.</summary>
+    private static readonly string[] MarcasDeCuotas =
+        { "12x_campaign", "9x_campaign", "6x_campaign", "3x_campaign", "pcj-co-funded" };
+
+    /// <summary>
+    /// 2026-08-26 — Vuelve a leer de MeLi CÓMO ESTÁ HOY la publicación: con qué cuotas, a qué precio,
+    /// en qué estado y de qué tipo. Devuelve la lista de cosas que cambiaron.
+    ///
+    /// Por qué existe: Osmar le puso una modalidad de cuotas distinta a cada publicación del armario
+    /// C9333GR. MeLi lo tenía bien (3x, 9x, 12x), pero en el sistema seguían figurando SIN cuotas
+    /// porque nadie había vuelto a leer la publicación. Y como el costo de las cuotas se le pide a MeLi
+    /// pasando la modalidad guardada, al refrescar la comisión se preguntaba por la modalidad
+    /// equivocada: devolvía $89.795 cuando la real era $212.911. Resultado: la pantalla mostraba 84%
+    /// de ganancia sobre publicaciones que en verdad dejaban 40%.
+    ///
+    /// Un número preciso pero falso es peor que no tener número. Por eso ahora, antes de preguntar
+    /// cuánto cobra MeLi, se vuelve a mirar con qué condiciones está publicada.
+    /// </summary>
+    public async Task<List<string>> RefrescarCondicionesVentaAsync(string meliItemId, CancellationToken ct = default)
     {
+        var cambios = new List<string>();
+
+        var item = await _db.MeliItems.Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+        if (item?.MeliAccount is null) return cambios;
+
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (string.IsNullOrWhiteSpace(token)) return cambios;
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await http.GetAsync(
+            $"https://api.mercadolibre.com/items/{meliItemId}?attributes=id,price,status,tags,listing_type_id,catalog_listing,available_quantity", ct);
+        if (!resp.IsSuccessStatusCode) return cambios;
+
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+        var root = doc.RootElement;
+
+        // Cuotas: el dato que disparó todo esto.
+        string? cuotasReales = null;
+        if (root.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var t in tags.EnumerateArray())
+            {
+                var ts = t.GetString();
+                if (ts is not null && MarcasDeCuotas.Contains(ts)) { cuotasReales = ts; break; }
+            }
+        }
+        if (item.InstallmentTag != cuotasReales)
+        {
+            cambios.Add($"cuotas: {Legible(item.InstallmentTag)} → {Legible(cuotasReales)}");
+            item.InstallmentTag = cuotasReales;
+        }
+
+        if (root.TryGetProperty("price", out var pr) && pr.ValueKind == JsonValueKind.Number)
+        {
+            var precio = pr.GetDecimal();
+            if (precio > 0 && item.Price != precio)
+            {
+                cambios.Add($"precio: ${item.Price:N0} → ${precio:N0}");
+                item.Price = precio;
+            }
+        }
+
+        if (root.TryGetProperty("status", out var st) && st.GetString() is string estado && item.Status != estado)
+        {
+            cambios.Add($"estado: {item.Status} → {estado}");
+            item.Status = estado;
+        }
+
+        if (root.TryGetProperty("listing_type_id", out var lt) && lt.GetString() is string tipo && item.ListingTypeId != tipo)
+        {
+            cambios.Add($"tipo: {item.ListingTypeId} → {tipo}");
+            item.ListingTypeId = tipo;
+        }
+
+        // El de catálogo importa: si lo es, MeLi no deja tocarle fotos ni título.
+        var esCatalogo = root.TryGetProperty("catalog_listing", out var cl) && cl.ValueKind == JsonValueKind.True;
+        if (item.CatalogListing != esCatalogo)
+        {
+            cambios.Add($"catálogo: {(item.CatalogListing ? "sí" : "no")} → {(esCatalogo ? "sí" : "no")}");
+            item.CatalogListing = esCatalogo;
+        }
+
+        if (root.TryGetProperty("available_quantity", out var aq) && aq.ValueKind == JsonValueKind.Number)
+        {
+            var stock = aq.GetInt32();
+            if (item.AvailableQuantity != stock)
+            {
+                cambios.Add($"stock en MeLi: {item.AvailableQuantity} → {stock}");
+                item.AvailableQuantity = stock;
+            }
+        }
+
+        if (cambios.Count > 0)
+        {
+            item.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            _logger.LogWarning("[Condiciones] {Mla} cambió: {Cambios}", meliItemId, string.Join(" · ", cambios));
+        }
+        return cambios;
+    }
+
+    /// <summary>El nombre de la modalidad de cuotas en criollo, para los mensajes.</summary>
+    public static string Legible(string? marcaDeCuotas) => marcaDeCuotas switch
+    {
+        null or "" => "sin cuotas",
+        "3x_campaign" => "3 cuotas",
+        "6x_campaign" => "6 cuotas",
+        "9x_campaign" => "9 cuotas",
+        "12x_campaign" => "12 cuotas",
+        "pcj-co-funded" => "cuotas co-fundadas",
+        _ => marcaDeCuotas
+    };
+
+    /// <summary>2026-06-19: refresca el sale_fee de un item llamando GetListingCostsAsync
+    /// (que ya guarda en DB el resultado). Wrapper simple para usar desde controllers y jobs.
+    /// 2026-08-26: ANTES de preguntar cuánto cobra MeLi, vuelve a leer con qué condiciones está
+    /// publicada — si no, se pregunta por la modalidad de cuotas equivocada y el número que queda
+    /// guardado es preciso pero falso. Ver RefrescarCondicionesVentaAsync.</summary>
+    public async Task<bool> RefreshSaleFeeAsync(string meliItemId)
+        => (await RefreshSaleFeeConDetalleAsync(meliItemId)).Ok;
+
+    /// <summary>Igual que RefreshSaleFeeAsync pero además devuelve QUÉ cambió en la publicación
+    /// (cuotas, precio, estado…). La pantalla lo muestra para que se entienda por qué se movió
+    /// un margen: "cuotas: sin cuotas → 12 cuotas" explica solo una caída de 84% a 40%.</summary>
+    public async Task<(bool Ok, List<string> Cambios)> RefreshSaleFeeConDetalleAsync(string meliItemId)
+    {
+        var cambios = new List<string>();
         try
         {
+            try { cambios = await RefrescarCondicionesVentaAsync(meliItemId); }
+            catch (Exception ex)
+            {
+                // Si no se pueden releer las condiciones seguimos igual: peor es no refrescar nada.
+                _logger.LogWarning(ex, "[Condiciones] {Mla}: no se pudieron releer antes de la comisión", meliItemId);
+            }
             var dto = await GetListingCostsAsync(meliItemId);
-            return dto.SaleFeeAmount > 0;
+            return (dto.SaleFeeAmount > 0, cambios);
         }
-        catch { return false; }
+        catch { return (false, cambios); }
     }
 
     public async Task<MeliItemDetailsDto?> GetItemDetailsAsync(string meliItemId)
