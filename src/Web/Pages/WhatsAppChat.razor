@@ -1600,11 +1600,31 @@
    campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
                     @* 2026-08-17: rows="1" + el crecimiento automático de wa-composer.js. Antes tenía
                        145 px de alto fijo aunque escribieras una palabra. La LETRA sigue grande. *@
-                    <div class="wa-composer-main">
-                        <textarea class="form-control wa-composer-input" placeholder="Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)" @bind="composerText" @bind:event="oninput" rows="1"></textarea>
-                        <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@((string.IsNullOrWhiteSpace(composerText) && pendientes.Count == 0) || sending)">
-                            @(sending ? "⏳ Enviando…" : (pendientes.Count > 0 ? $"📤 Enviar ({pendientes.Count} 📎)" : "📤 Enviar"))
-                        </button>
+                    @* 2026-08-26: mientras el panel del reloj está abierto, ESTE cuadro pasa a "modo
+                       programar": se pinta de ámbar y el botón verde deja de mandar ya. Antes había dos
+                       botones vivos a la vez (Enviar acá abajo, "Dejarlo programado" arriba) y el dedo
+                       iba por inercia al de siempre: el mensaje salía en el momento. *@
+                    @if (ProgramandoDesdeComposer())
+                    {
+                        <div class="wa-composer-prog-aviso">
+                            <span>🕒 Estás <b>programando</b>: esto sale @CuandoLindo(progCuando), no ahora.</span>
+                            <button class="wa-composer-prog-salir" @onclick="CerrarProgramar">Cancelar y mandar normal</button>
+                        </div>
+                    }
+                    <div class="wa-composer-main @(ProgramandoDesdeComposer() ? "programando" : "")">
+                        <textarea class="form-control wa-composer-input" placeholder="@(ProgramandoDesdeComposer() ? $"Escribí lo que se manda {CuandoLindo(progCuando)}… (Enter para dejarlo programado)" : "Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)")" @bind="composerText" @bind:event="oninput" rows="1"></textarea>
+                        @if (ProgramandoDesdeComposer())
+                        {
+                            <button class="btn wa-enviar-btn wa-programar-btn" @onclick="ProgramarAhora" disabled="@(progGuardando || !SePuedeProgramar())">
+                                @(progGuardando ? "⏳ Programando…" : (pendientes.Count > 0 ? $"🕒 Programar ({pendientes.Count} 📎)" : "🕒 Programar"))
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-success wa-enviar-btn @(sending ? "enviando" : "")" @onclick="EnviarMensaje" disabled="@((string.IsNullOrWhiteSpace(composerText) && pendientes.Count == 0) || sending)">
+                                @(sending ? "⏳ Enviando…" : (pendientes.Count > 0 ? $"📤 Enviar ({pendientes.Count} 📎)" : "📤 Enviar"))
+                            </button>
+                        }
                     </div>
                 </div>
             }
@@ -3503,6 +3523,16 @@
     .wa-composer .btn-success:disabled { background: #cfd8dc !important; color: #eceff1 !important; box-shadow: none; }
     /* 2026-08-01: el botón Enviar parpadea (verde) mientras se manda el mensaje */
     .wa-enviar-btn.enviando { opacity: 1 !important; animation: wa-enviar-blink 0.55s ease-in-out infinite; }
+    /* 2026-08-26: el cuadro de abajo en "modo programar". Los selectores llevan el padre adelante
+       para ganarle a `.wa-composer textarea` y a `.btn-success`, que están definidos acá arriba. */
+    .wa-composer-prog-aviso { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 12px; padding: 0.5rem 0.75rem; font-size: 0.9rem; color: #92400e; }
+    .wa-composer-prog-salir { margin-left: auto; padding: 0.25rem 0.6rem; font-size: 0.8rem; background: #fff; border: 1px solid #fcd34d; border-radius: 8px; color: #92400e; cursor: pointer; }
+    .wa-composer-prog-salir:hover { background: #fef3c7; }
+    .wa-composer .wa-composer-main.programando textarea { border-color: #f59e0b; background: #fffdf7; }
+    .wa-composer .wa-composer-main.programando textarea:focus { border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.2); }
+    .wa-composer .wa-programar-btn { border-radius: 14px; padding: 0.75rem 1.5rem; font-weight: 800; font-size: 1.05rem; color: #fff !important; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important; border: none !important; box-shadow: 0 4px 14px rgba(217,119,6,0.45); }
+    .wa-composer .wa-programar-btn:hover:not(:disabled) { filter: brightness(1.06); }
+    .wa-composer .wa-programar-btn:disabled { background: #cfd8dc !important; color: #eceff1 !important; box-shadow: none; }
     @@keyframes wa-enviar-blink { 0%, 100% { box-shadow: 0 3px 10px rgba(37,211,102,0.4); filter: brightness(1); } 50% { box-shadow: 0 0 20px rgba(37,211,102,0.95); filter: brightness(1.25); } }
     /* 2026-07-29: panel Enviar saldo */
     .wa-saldo-btn { font-size: 1.2rem; }
@@ -3532,12 +3562,15 @@
     .wa-prog-chip { padding: 0.35rem 0.6rem; font-size: 0.82rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 999px; cursor: pointer; }
     .wa-prog-chip.sel { background: #2563eb; color: #fff; border-color: #2563eb; font-weight: 700; }
     .wa-prog-fecha { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.45rem; font-size: 0.8rem; color: #6b7280; flex-wrap: wrap; }
-    .wa-prog-hora { flex: none; width: 6.6rem; font-size: 0.95rem; text-align: center; font-weight: 700; }
+    /* 2026-08-26: van con el padre adelante a propósito. .wa-nv-input (width:100%) está más
+       abajo en esta misma hoja, así que a igual peso le ganaba y estiraba la hora a todo el
+       ancho, empujando "hoy" y "otro día" al renglón de abajo. */
+    .wa-prog-fecha .wa-prog-hora { flex: none; width: 7rem; padding: 0.45rem 0.5rem; font-size: 1rem; text-align: center; font-weight: 700; border-radius: 10px; }
     .wa-prog-dia-tag { padding: 0.3rem 0.65rem; border-radius: 999px; font-size: 0.82rem; font-weight: 700; background: #f3f4f6; color: #374151; }
     .wa-prog-dia-tag.hoy { background: #dcfce7; color: #166534; }
     .wa-prog-otrodia { padding: 0.32rem 0.6rem; font-size: 0.82rem; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; color: #374151; }
     .wa-prog-otrodia:hover { background: #f9fafb; border-color: #9ca3af; }
-    .wa-prog-diainput { flex: none; width: 9.5rem; font-size: 0.85rem; }
+    .wa-prog-fecha .wa-prog-diainput { flex: none; width: 10rem; padding: 0.45rem 0.5rem; font-size: 0.9rem; border-radius: 10px; }
     .wa-prog-guardar { margin-top: 0.6rem; }
     /* el cartel de lo que quedó agendado, arriba del cuadro de escribir */
     .wa-prog-tray { margin: 0.4rem 1rem 0.2rem; display: flex; flex-direction: column; gap: 0.3rem; }
@@ -4543,6 +4576,34 @@
     // Así el mismo contacto en 2 líneas nuestras son 2 chats distintos y no se cruzan.
     string? selectedLinea;
     string composerText = "";
+
+    // 2026-08-26: cada chat se acuerda de lo que dejaste escrito y de los archivos que cargaste,
+    // como WhatsApp. Antes el texto y los adjuntos NO se limpiaban al cambiar de conversación:
+    // abrías otro chat, el cursor caía solo en el cuadro con el texto del anterior y un Enter se
+    // lo mandaba al cliente equivocado. Con una factura colgada era peor todavía.
+    Dictionary<string, string> borradorTexto = new();
+    Dictionary<string, List<PendingAdjunto>> borradorAdjuntos = new();
+
+    static string ClaveChat(string? numero, string? linea) => $"{linea}|{numero}";
+
+    /// <summary>Antes de irte del chat: lo que quedó escrito y adjuntado se guarda EN ESE chat.</summary>
+    void GuardarBorradorDelChat()
+    {
+        if (selectedNumero == null) return;
+        var k = ClaveChat(selectedNumero, selectedLinea);
+        if (string.IsNullOrWhiteSpace(composerText)) borradorTexto.Remove(k);
+        else borradorTexto[k] = composerText;
+        if (pendientes.Count == 0) borradorAdjuntos.Remove(k);
+        else borradorAdjuntos[k] = new List<PendingAdjunto>(pendientes);
+    }
+
+    /// <summary>Al entrar a un chat: se recupera SU borrador (y si no tenía, el cuadro queda vacío).</summary>
+    void RestaurarBorradorDelChat()
+    {
+        var k = ClaveChat(selectedNumero, selectedLinea);
+        composerText = borradorTexto.TryGetValue(k, out var t) ? t : "";
+        pendientes = borradorAdjuntos.TryGetValue(k, out var a) ? new List<PendingAdjunto>(a) : new();
+    }
 
     // === 2026-08-01: nota de voz (grabar con micrófono y enviar como audio nativo) ===
     bool grabandoAudio = false, enviandoAudio = false;
@@ -7438,8 +7499,12 @@
 
     async Task SelectConv(string numero, string? linea)
     {
+        // 2026-08-26: lo que venías escribiendo (y los archivos cargados) quedan guardados en SU
+        // chat, y acá abajo se levanta el borrador del chat al que entrás. Ver GuardarBorradorDelChat.
+        GuardarBorradorDelChat();
         selectedNumero = numero;
         selectedLinea = linea;
+        RestaurarBorradorDelChat();
         chatPlantillaName = ""; chatVariables = new();   // 2026-08-05: resetear el selector de plantilla al cambiar de chat
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
         mostrarFichaCliente = false; fichaCliente = null; facturaAbierta = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
@@ -7463,6 +7528,8 @@
         // 2026-08-06: presencia — salgo del chat anterior y entro al nuevo (para que se vea quién mira qué).
         await CambiarPresenciaConv(ConvIdActual());
         // 2026-08-06: poner el cursor solo en el cuadro de escribir (como WhatsApp Web). Solo en compu.
+        // 2026-08-26: y que recalcule el alto, porque el borrador de este chat puede ser de varios renglones.
+        try { await JS.InvokeVoidAsync("waComposer.resetSize"); } catch { }
         try { await JS.InvokeVoidAsync("waComposer.focus"); } catch { }
         await BuscarSugerenciaCliente();
         // 2026-08-04: si esta charla me la pasaron a mí y no la había abierto, apago el aviso.
@@ -7568,6 +7635,15 @@
         {
             composerText = texto;
             StateHasChanged();
+            return;
+        }
+        // 2026-08-26: si el panel del reloj está abierto, Enter DEJA PROGRAMADO en vez de mandar.
+        // El botón de al lado hace lo mismo: mientras programás, nada sale en el momento.
+        if (ProgramandoDesdeComposer())
+        {
+            composerText = texto;   // el JS ya vació el cuadro y ProgramarAhora lee de acá
+            StateHasChanged();
+            await ProgramarAhora();
             return;
         }
         // 2026-08-06: cierre de carrera. Si el usuario cancela, le devolvemos el texto al cuadro (el JS ya lo vació).
@@ -7877,6 +7953,10 @@
     bool progTrabajando = false;          // mientras se cancela / se manda uno ya agendado
     List<ApiClient.TwProgramadoDto> progPendientes = new();
     List<ApiClient.TwProgramadoDto> progResueltos = new();
+
+    /// <summary>¿El cuadro de abajo está en "modo reloj"? Mientras el panel de programar está
+    /// abierto escribiendo un mensaje (no una plantilla), lo que escribas NO sale en el momento.</summary>
+    bool ProgramandoDesdeComposer() => showProgramarPanel && progModo == "MENSAJE";
 
     async Task ToggleProgramarPanel()
     {
