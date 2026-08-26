@@ -7046,3 +7046,38 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_MensajesProgramados')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_WaProgramados_Numero')
     CREATE INDEX IX_WaProgramados_Numero ON WhatsApp_MensajesProgramados(Numero, Estado);
 GO
+
+-- ============================================================================
+-- 2026-08-26: ALARMAS DEL RELOJ. "A las 15:00 acordate de llamar a Qualitat".
+-- ----------------------------------------------------------------------------
+-- De quien es cada alarma (columna Duenio):
+--   op:NOMBRE      -> la PERSONA del PIN. Los tres hermanos comparten los usuarios
+--                     `admin` y `OFICINA`, asi que si colgaramos la alarma del usuario
+--                     tendrian una sola lista entre los tres. Con el PIN, Osmar ve las
+--                     suyas en las dos pantallas y no las de German ni Gabriel.
+--   cuenta:USUARIO -> UNA sola lista por pantalla. Es el caso de DEPOSITO y CONTADORA:
+--                     ahi tambien hay PIN, pero el dueño pidio una sola lista para el
+--                     deposito, porque la alarma es del TURNO y no de la persona.
+--
+-- No la dispara ningun robot: la hace sonar el reloj de la pantalla cuando el dueño esta
+-- presente. Si a la hora no habia nadie, queda PENDIENTE y suena cuando esa persona vuelve.
+-- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Reloj_Alarmas')
+CREATE TABLE Reloj_Alarmas (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Duenio NVARCHAR(60) NOT NULL,              -- op:OSMAR | cuenta:DEPOSITO
+    Cuando DATETIME2 NOT NULL,                 -- UTC. La pantalla la elige en hora argentina
+    Nota NVARCHAR(300) NULL,                   -- que hay que hacer
+    Sonido NVARCHAR(40) NOT NULL DEFAULT 'despertador',
+    Estado NVARCHAR(12) NOT NULL,              -- PENDIENTE | APAGADA
+    ApagadaAt DATETIME2 NULL,
+    CreadaPor NVARCHAR(60) NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+-- El reloj pregunta todo el tiempo "que tengo yo pendiente": ese es el indice que hace falta.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Reloj_Alarmas')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_RelojAlarmas_DuenioEstado')
+    CREATE INDEX IX_RelojAlarmas_DuenioEstado ON Reloj_Alarmas(Duenio, Estado, Cuando);
+GO
