@@ -378,7 +378,8 @@ public class CafeSincronizacionMeliController : ControllerBase
     public async Task<IActionResult> SetObjetivo(
         string meliItemId,
         [FromBody] SetObjetivoRequest req,
-        [FromServices] Api.Services.MeliPricePushService pushSvc)
+        [FromServices] Api.Services.MeliPricePushService pushSvc,
+        [FromServices] Api.Services.MeliItemService itemSvc)
     {
         var mi = await _db.MeliItems.FirstOrDefaultAsync(x => x.MeliItemId == meliItemId);
         if (mi is null) return NotFound(new { error = "Item MeLi no encontrado" });
@@ -433,6 +434,18 @@ public class CafeSincronizacionMeliController : ControllerBase
                     break; // convergió: el precio ya no se mueve → el margen quedó en el objetivo
                 prev = r.PushedPrice;
             }
+        }
+
+        // 2026-08-26 (planteo de Osmar: "el actualizar comisiones tendría que ir de la mano").
+        // Cuando el precio SÍ se pushea, PushPrecioForItemAsync ya recaptura la comisión. El agujero
+        // era el otro caso: si no se pushea (sincro apagado, objetivo sin cargar, o el push falló),
+        // nadie tocaba la comisión y la publicación seguía mostrando el margen del precio viejo.
+        // Caso real: 3 de los 12 armarios C9333GR decían 84,2% / 76,6% / 83,6% cuando estaban en
+        // 74,0% igual que sus parejas. Un número inflado que parece bueno es peor que no tenerlo.
+        if (precioNuevo is null)
+        {
+            try { await itemSvc.RefreshSaleFeeAsync(meliItemId); }
+            catch { /* si no se puede, lo corrige el refresco nocturno */ }
         }
 
         return Ok(new

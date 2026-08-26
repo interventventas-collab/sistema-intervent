@@ -132,6 +132,9 @@ public class MeliAccionesLoteService
 
                 if (!aplicarAhora)
                 {
+                    // Guardar el objetivo no mueve el precio, pero sí conviene dejar la comisión al día:
+                    // el usuario acaba de mirar esta publicación y el % que ve tiene que ser el real.
+                    try { await _itemService.RefreshSaleFeeAsync(mla); } catch { }
                     ok++;
                     detalle.Add(new(mla, true, $"objetivo {objetivoPct:0.#}% guardado"));
                     continue;
@@ -144,7 +147,13 @@ public class MeliAccionesLoteService
 
                 var pr = await _pricePush.PushPrecioForItemAsync(dbId, markAsClaimed: true, ct);
                 if (pr.Ok) { ok++; detalle.Add(new(mla, true, $"objetivo {objetivoPct:0.#}% → ${pr.PushedPrice:N0}")); }
-                else { err++; detalle.Add(new(mla, false, pr.Message)); }
+                else
+                {
+                    // No se movió el precio: igual hay que refrescar la comisión, si no la fila
+                    // sigue mostrando el margen calculado con el precio viejo (y se ve mejor de lo real).
+                    try { await _itemService.RefreshSaleFeeAsync(mla); } catch { }
+                    err++; detalle.Add(new(mla, false, pr.Message));
+                }
             }
             catch (Exception ex) { err++; detalle.Add(new(mla, false, ex.Message)); }
             await Esperar(ct);
