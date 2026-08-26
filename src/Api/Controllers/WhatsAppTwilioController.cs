@@ -2382,7 +2382,11 @@ public class WhatsAppTwilioController : ControllerBase
         return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA, CATALOGO, ALQUILER, VISITA" });
     }
 
-    public record SendServerFileRequest(string Numero, string Tipo, int Id, string? Caption, string? LineaPhoneId = null);
+    public record SendServerFileRequest(string Numero, string Tipo, int Id, string? Caption, string? LineaPhoneId = null,
+        // 2026-08-26: true = armá el archivo y devolveme su dirección, pero NO lo mandes. Lo usa el
+        // programador de mensajes: deja el adjunto ya resuelto y el robot lo manda a la hora fijada,
+        // por el mismo camino que un archivo subido con el clip (que ya funcionaba).
+        bool SoloPreparar = false);
 
     /// <summary>POST /api/whatsapp/twilio/send-server-file
     /// Envía un archivo del servidor al WhatsApp del numero indicado.</summary>
@@ -2615,6 +2619,11 @@ public class WhatsAppTwilioController : ControllerBase
             default:
                 return BadRequest(new { error = "Tipo no soportado. Validos: UPLOAD, COBRANZA, VENTA, LISTA, CATALOGO, ALQUILER, VISITA" });
         }
+
+        // 2026-08-26: el que programa no quiere mandarlo ahora, solo dejarlo listo. El archivo ya
+        // quedó escrito con su token; el vencimiento lo estira solo el controller de programados
+        // (busca el upload por esta misma URL).
+        if (req.SoloPreparar) return Ok(new { ok = true, preparado = true, mediaUrl, filename });
 
         try
         {

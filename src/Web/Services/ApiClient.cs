@@ -7901,6 +7901,30 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    /// <summary>2026-08-26: arma el archivo del servidor (recibo, venta, lista…) y devuelve su
+    /// dirección SIN mandarlo. Lo usa el programador: agenda el adjunto ya resuelto, y de ahí en
+    /// más el robot lo manda igual que a un archivo subido con el clip.</summary>
+    public async Task<(bool ok, string? error, string? mediaUrl, string? filename)> PrepararTwServerFileAsync(string numero, string tipo, int id, string? lineaPhoneId = null)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/send-server-file",
+                new { Numero = numero, Tipo = tipo, Id = id, Caption = (string?)null, LineaPhoneId = lineaPhoneId, SoloPreparar = true });
+            var body = await resp.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (resp.IsSuccessStatusCode)
+            {
+                var url = doc.RootElement.TryGetProperty("mediaUrl", out var u) ? u.GetString() : null;
+                var fn = doc.RootElement.TryGetProperty("filename", out var f) ? f.GetString() : null;
+                if (string.IsNullOrWhiteSpace(url)) return (false, "El servidor no devolvió el archivo", null, null);
+                return (true, null, url, fn);
+            }
+            var err = doc.RootElement.TryGetProperty("error", out var e) ? e.GetString() ?? "Error" : "Error";
+            return (false, err, null, null);
+        }
+        catch (Exception ex) { return (false, ex.Message, null, null); }
+    }
+
     public async Task<(bool ok, string? error)> SendTwServerFileAsync(string numero, string tipo, int id, string? caption, string? lineaPhoneId = null)
     {
         try

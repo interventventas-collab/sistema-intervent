@@ -1294,12 +1294,6 @@
                                 }
                             </div>
                         }
-                        @if (PendientesNoProgramables() > 0)
-                        {
-                            <div class="wa-prog-aviso">
-                                ⚠️ Los archivos del servidor (🗂️) todavía no se pueden programar: esos hay que mandarlos a mano.
-                            </div>
-                        }
                         @if (!Ventana24Abierta())
                         {
                             <div class="wa-prog-aviso">
@@ -4632,6 +4626,24 @@
             {
                 enviandoAudio = false;
                 Toast.Error("No se pudo grabar o subir el audio");
+                return;
+            }
+            // 2026-08-26: si estás programando, la nota de voz NO sale ahora: se suma a la bandeja
+            // de adjuntos y se agenda con el resto. (Ya viene subida al servidor, así que de acá en
+            // más es un archivo igual al del clip.)
+            if (ProgramandoDesdeComposer())
+            {
+                pendientes.Add(new PendingAdjunto
+                {
+                    Kind = "UPLOAD",
+                    Url = res.Url,
+                    FileName = res.OriginalFilename ?? "audio.ogg",
+                    Label = "🎤 Nota de voz",
+                    Icono = "🎤"
+                });
+                enviandoAudio = false;
+                Toast.Info("La nota de voz quedó lista para programarse.");
+                StateHasChanged();
                 return;
             }
             var (ok, err) = await Api.SendTwMediaAsync(selectedNumero, res.Url, null, res.OriginalFilename, selectedLinea);
@@ -7979,10 +7991,10 @@
 
     void CerrarProgramar() => showProgramarPanel = false;
 
-    /// <summary>Solo se pueden programar los adjuntos subidos (📎 y las capturas pegadas). Los del
-    /// servidor (🗂️) se arman recién al mandarlos, así que por ahora quedan afuera.</summary>
-    List<PendingAdjunto> AdjuntosProgramables() => pendientes.Where(p => p.Kind == "UPLOAD").ToList();
-    int PendientesNoProgramables() => pendientes.Count(p => p.Kind != "UPLOAD");
+    /// <summary>2026-08-26: ahora se programan TODOS los adjuntos. Los del servidor (🗂️: recibo de
+    /// cobranza, venta, lista, catálogo, alquiler, visita) se arman en el momento de agendarlos y
+    /// quedan guardados como un archivo más, igual que los que subís con el clip.</summary>
+    List<PendingAdjunto> AdjuntosProgramables() => pendientes.ToList();
 
     /// <summary>Los que fallaron hace poco. Se muestran para que nadie se quede esperando un mensaje
     /// que nunca salió (y con el motivo escrito, no un ⚠ mudo).</summary>
@@ -8099,10 +8111,22 @@
                     for (int i = 0; i < adjuntos.Count; i++)
                     {
                         var ad = adjuntos[i];
+                        var url = ad.Url;
+                        var nombre = ad.FileName;
+                        // 2026-08-26: los del servidor (🗂️) no tienen archivo todavía: son un tipo + un
+                        // número (ej. COBRANZA 412). Se arma AHORA el PDF y se guarda su dirección, así
+                        // el cliente recibe el comprobante tal cual lo estás viendo al agendarlo.
+                        if (ad.Kind == "SERVER")
+                        {
+                            var prep = await Api.PrepararTwServerFileAsync(numero, ad.ServerTipo, ad.ServerId, linea);
+                            if (!prep.ok) { Toast.Error($"No se pudo preparar {ad.Label}: {prep.error}"); return; }
+                            url = prep.mediaUrl!;
+                            nombre = prep.filename ?? ad.Label;
+                        }
                         var (ok, err, aviso) = await Api.ProgramarTwMensajeAsync(new
                         {
                             Numero = numero, LineaPhoneId = linea, Tipo = "ADJUNTO",
-                            Texto = i == 0 ? texto : null, MediaUrl = ad.Url, MediaFilename = ad.FileName,
+                            Texto = i == 0 ? texto : null, MediaUrl = url, MediaFilename = nombre,
                             ProgramadoPara = cuandoUtc
                         });
                         if (!ok) { Toast.Error($"No se pudo programar {ad.Label}: {err}"); return; }
