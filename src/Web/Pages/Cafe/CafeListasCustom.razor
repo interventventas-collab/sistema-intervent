@@ -454,7 +454,8 @@
     private static string FormatFechaCorta(DateTime d)
     {
         var local = d.ToArTime();
-        var hoy = DateTime.Now.Date;
+        // 2026-08-26: día de ARGENTINA, no el del navegador.
+        var hoy = DateTimeExt.AhoraAr().Date;
         if (local.Date == hoy) return $"hoy {local:HH:mm}";
         if (local.Date == hoy.AddDays(-1)) return $"ayer {local:HH:mm}";
         return local.ToString("dd/MM HH:mm");

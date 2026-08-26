@@ -1067,7 +1067,9 @@
     private string FormatFecha(DateTime utc)
     {
         var local = utc.ToArTime();
-        var diff = DateTime.Now - local;
+        // 2026-08-26: contra la hora de ARGENTINA, no la del navegador (desde España, algo recién
+        // hecho aparecía como "hace 5 h").
+        var diff = DateTimeExt.AhoraAr() - local;
         if (diff.TotalMinutes < 1) return "hace instantes";
         if (diff.TotalMinutes < 60) return $"hace {(int)diff.TotalMinutes} min";
         if (diff.TotalHours < 24) return $"hace {(int)diff.TotalHours} h";
@@ -1086,7 +1088,7 @@
             @if (p.UltimaModifAt.HasValue)
             {
                 var local = p.UltimaModifAt.Value.ToArTime();
-                var reciente = (DateTime.Now - local).TotalHours < 6;
+                var reciente = (DateTimeExt.AhoraAr() - local).TotalHours < 6;
                 var hace = FormatHace(p.UltimaModifAt.Value);
                 if (p.YaEnAuditoriaActiva && ModoAuditoria)
                 {

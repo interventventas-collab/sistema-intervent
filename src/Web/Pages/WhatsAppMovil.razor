@@ -1025,7 +1025,9 @@ else
     private static string FormatHoraLista(DateTime utc)
     {
         var local = utc.ToArTime();
-        var hoy = DateTime.Now.Date;
+        // 2026-08-26: el día de HOY es el de ARGENTINA, no el del reloj del navegador (desde España
+        // son 5 horas de diferencia: de madrugada los mensajes quedaban con el día equivocado).
+        var hoy = DateTimeExt.AhoraAr().Date;
         if (local.Date == hoy) return local.ToString("HH:mm");
         if (local.Date == hoy.AddDays(-1)) return "Ayer";
         if (local.Date > hoy.AddDays(-7)) return local.ToString("dddd", new System.Globalization.CultureInfo("es-AR"));

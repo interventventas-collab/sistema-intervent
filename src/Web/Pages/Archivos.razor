@@ -855,7 +855,9 @@
     private static string FormatRelative(DateTime dt)
     {
         var local = dt.ToArTime();
-        var diff = DateTime.Now - local;
+        // 2026-08-26: contra la hora de ARGENTINA, no la del navegador (desde España, algo recién
+        // hecho aparecía como "hace 5 h").
+        var diff = DateTimeExt.AhoraAr() - local;
         if (diff.TotalMinutes < 1) return "Hace instantes";
         if (diff.TotalMinutes < 60) return $"Hace {(int)diff.TotalMinutes} min";
         if (diff.TotalHours < 24) return $"Hace {(int)diff.TotalHours} h";

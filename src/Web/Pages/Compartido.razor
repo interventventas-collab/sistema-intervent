@@ -800,7 +800,9 @@
     private static string FechaCorta(DateTime utc)
     {
         var local = utc.ToArTime();
-        var dias = (int)Math.Floor((DateTime.Now - local).TotalDays);
+        // 2026-08-26: contra la hora de ARGENTINA, no la del navegador (desde España, algo recién
+        // hecho aparecía como "hace 5 h").
+        var dias = (int)Math.Floor((DateTimeExt.AhoraAr() - local).TotalDays);
         if (dias == 0) return "hoy";
         if (dias == 1) return "ayer";
         if (dias < 7) return $"hace {dias} días";

@@ -5772,7 +5772,9 @@
     /// así que lo más útil que le podemos decir al operador es la antigüedad.</summary>
     static string Antiguedad(DateTime fecha)
     {
-        var dias = (int)(DateTime.Now.Date - fecha.Date).TotalDays;
+        // 2026-08-26: contra el día de ARGENTINA, no el del navegador (operando desde España,
+        // de madrugada una factura de hoy se leía como "ayer").
+        var dias = (int)(DateTimeExt.AhoraAr().Date - fecha.Date).TotalDays;
         if (dias <= 0) return "hoy";
         if (dias == 1) return "ayer";
         if (dias < 30) return $"hace {dias} días";
@@ -7597,7 +7599,7 @@
         var tempId = _tempMsgId--;
         var temp = new ApiClient.TwMsgDto(
             tempId, "OUTGOING", numero, null, texto, null, null, null,
-            false, null, DateTime.Now, "SENDING", null,
+            false, null, DateTime.UtcNow, "SENDING", null,
             null, replyTarget != null ? PreviewMensajeParaResponder(replyTarget) : null, replyTarget?.Direccion == "OUTGOING");
         mensajes.Add(temp);
         sending = true;
@@ -8203,7 +8205,10 @@
     string FormatHora(DateTime utc)
     {
         var local = utc.ToArTime();
-        var ahora = DateTime.Now;
+        // 2026-08-26: la hora de AHORA tiene que ser la de ARGENTINA, no la del reloj del navegador.
+        // El dueño opera desde España (UTC+2): entre las 00:00 y las 05:00 de Argentina el navegador
+        // ya está en el día siguiente y los mensajes salían etiquetados con el día equivocado.
+        var ahora = DateTimeExt.AhoraAr();
         if (local.Date == ahora.Date) return local.ToString("HH:mm");
         if (local.Date == ahora.Date.AddDays(-1)) return "Ayer";
         return local.ToString("dd/MM");
@@ -8215,7 +8220,8 @@
     string FormatHoraMsg(DateTime utc)
     {
         var local = utc.ToArTime();
-        var ahora = DateTime.Now;
+        // 2026-08-26: hora argentina, no la del navegador (ver FormatHora).
+        var ahora = DateTimeExt.AhoraAr();
         if (local.Date == ahora.Date) return local.ToString("HH:mm");
         if (local.Date == ahora.Date.AddDays(-1)) return "Ayer " + local.ToString("HH:mm");
         return local.ToString("dd/MM HH:mm");

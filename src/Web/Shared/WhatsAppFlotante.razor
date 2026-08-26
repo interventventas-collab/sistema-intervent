@@ -99,7 +99,7 @@
                                     @* 2026-07-23: mostrar el nombre del archivo si lo tenemos (link para abrirlo) *@
                                     <div class="waf-msg-adj"><a href="@m.MediaUrl" target="_blank" rel="noopener" style="color:inherit; text-decoration:none;">📎 @(string.IsNullOrWhiteSpace(m.MediaFilename) ? "Adjunto" : m.MediaFilename)</a></div>
                                 }
-                                <div class="waf-msg-hora">@m.CreatedAt.ToLocalTime().ToString("HH:mm")</div>
+                                <div class="waf-msg-hora">@m.CreatedAt.ToArTime().ToString("HH:mm")</div>
                                 @* 2026-08-12: reacciones (chips) *@
                                 @if (m.Reacciones != null && m.Reacciones.Count > 0)
                                 {
@@ -672,8 +672,9 @@
 
     private static string Cuando(DateTime utc)
     {
-        var l = utc.ToLocalTime();
-        var hoy = DateTime.Now.Date;
+        // 2026-08-26: hora y día de ARGENTINA, no los del navegador (el dueño opera desde España).
+        var l = utc.ToArTime();
+        var hoy = DateTimeExt.AhoraAr().Date;
         if (l.Date == hoy) return l.ToString("HH:mm");
         if (l.Date == hoy.AddDays(-1)) return "Ayer";
         return l.ToString("dd/MM");

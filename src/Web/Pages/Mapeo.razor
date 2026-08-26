@@ -6357,7 +6357,9 @@
     /// <summary>Color, fondo y etiqueta del badge según el SLA del envío.</summary>
     private static (string Bg, string Fg, string Label) SlaStyle(DateTime slaLocal)
     {
-        var today = DateTime.Now.Date;
+        // 2026-08-26: slaLocal ya viene en hora argentina, así que "hoy" también tiene que serlo
+        // (con el reloj del navegador desde España, un envío de hoy se veía "Vencido").
+        var today = DateTimeExt.AhoraAr().Date;
         var sla = slaLocal.Date;
         if (sla < today) return ("#fee2e2", "#b91c1c", "🚨 Vencido");
         if (sla == today) return ("#fef3c7", "#92400e", "⏰ Hoy");
