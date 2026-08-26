@@ -37,6 +37,17 @@ public static class DateTimeExt
 
     private static readonly System.Globalization.CultureInfo EsAr = new("es-AR");
 
+    /// <summary>2026-08-26: qué hora es AHORA en Argentina. Lo que hay que usar para comparar
+    /// contra una hora que eligió el usuario (NUNCA DateTime.Now, que es la del navegador).</summary>
+    public static DateTime AhoraAr() => DateTime.UtcNow.ToArTime();
+
+    /// <summary>2026-08-26: al revés que ToArTime — una hora escrita en hora ARGENTINA (la que ve y
+    /// elige el usuario en pantalla) pasada a UTC, que es como viaja a la API y como la guarda la base.
+    /// Sin esto, un mensaje programado para las 15:00 de Buenos Aires salía a las 15:00 del reloj del
+    /// navegador: operando desde España, eso son las 10:00 de Argentina.</summary>
+    public static DateTime ArToUtc(this DateTime ar)
+        => DateTime.SpecifyKind(ar.Add(-ArOffset), DateTimeKind.Utc);
+
     /// <summary>
     /// 2026-08-20: ¿los dos mensajes son del MISMO día? (en hora argentina, que es lo que se
     /// muestra). Sirve para saber dónde va el cartelito que separa la charla por día.

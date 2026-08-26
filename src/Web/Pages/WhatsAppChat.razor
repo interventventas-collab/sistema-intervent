@@ -1377,7 +1377,7 @@
                             <span class="wa-prog-ico">🕒</span>
                             <div class="wa-prog-item-body">
                                 <div class="wa-prog-item-cuando">
-                                    @CuandoLindo(pr.ProgramadoPara.ToLocalTime())
+                                    @CuandoLindo(pr.ProgramadoPara.ToArTime())
                                     @if (pr.Tipo == "PLANTILLA") { <span class="wa-prog-tag">plantilla</span> }
                                     else if (pr.Tipo == "ADJUNTO") { <span class="wa-prog-tag">📎 @pr.MediaFilename</span> }
                                     @if (!string.IsNullOrWhiteSpace(pr.CreadoPorNombre)) { <span class="wa-prog-quien">· lo dejó @pr.CreadoPorNombre</span> }
@@ -1395,7 +1395,7 @@
                         <div class="wa-prog-item fallado">
                             <span class="wa-prog-ico">⚠️</span>
                             <div class="wa-prog-item-body">
-                                <div class="wa-prog-item-cuando">No salió el mensaje de @CuandoLindo(pr.ProgramadoPara.ToLocalTime())</div>
+                                <div class="wa-prog-item-cuando">No salió el mensaje de @CuandoLindo(pr.ProgramadoPara.ToArTime())</div>
                                 <div class="wa-prog-item-txt">@pr.Error</div>
                             </div>
                         </div>
@@ -7766,7 +7766,7 @@
     // navegador, se moriría al cerrar la pestaña y el mensaje no saldría nunca.
     bool showProgramarPanel = false;
     string progModo = "MENSAJE";          // MENSAJE (lo que escribió abajo) | PLANTILLA
-    DateTime progCuando = DateTime.Now.AddHours(1);
+    DateTime progCuando = DateTimeExt.AhoraAr().AddHours(1);   // SIEMPRE hora argentina
     bool progGuardando = false;           // mientras se está agendando
     bool progTrabajando = false;          // mientras se cancela / se manda uno ya agendado
     List<ApiClient.TwProgramadoDto> progPendientes = new();
@@ -7805,7 +7805,7 @@
     /// <summary>La hora que viene redonda: dentro de una hora, sin minutos sueltos.</summary>
     DateTime PrimeraHoraSugerida()
     {
-        var t = DateTime.Now.AddHours(1);
+        var t = DateTimeExt.AhoraAr().AddHours(1);
         return new DateTime(t.Year, t.Month, t.Day, t.Hour, 0, 0);
     }
 
@@ -7813,7 +7813,7 @@
     /// "Hoy 15:00" a las 17 hs no sirve para nada.</summary>
     List<(string Label, DateTime Cuando)> OpcionesHorario()
     {
-        var ahora = DateTime.Now;
+        var ahora = DateTimeExt.AhoraAr();
         var hoy = ahora.Date;
         var lista = new List<(string, DateTime)>
         {
@@ -7827,12 +7827,13 @@
     }
 
     /// <summary>"hoy 15:00" / "mañana 09:00" / "vie 29/08 15:00" — hora local, como la lee una persona.</summary>
-    string CuandoLindo(DateTime local)
+    string CuandoLindo(DateTime ar)
     {
-        var dia = local.Date;
-        if (dia == DateTime.Today) return $"hoy {local:HH:mm}";
-        if (dia == DateTime.Today.AddDays(1)) return $"mañana {local:HH:mm}";
-        return $"{local:ddd dd/MM HH:mm}";
+        var hoy = DateTimeExt.AhoraAr().Date;   // "hoy" es hoy en Argentina, no donde esté el navegador
+        var dia = ar.Date;
+        if (dia == hoy) return $"hoy {ar:HH:mm}";
+        if (dia == hoy.AddDays(1)) return $"mañana {ar:HH:mm}";
+        return $"{ar:ddd dd/MM HH:mm}";
     }
 
     /// <summary>Qué se ve del mensaje agendado en el cartelito.</summary>
@@ -7846,7 +7847,7 @@
 
     bool SePuedeProgramar()
     {
-        if (selectedNumero == null || progCuando <= DateTime.Now) return false;
+        if (selectedNumero == null || progCuando <= DateTimeExt.AhoraAr()) return false;
         if (progModo == "PLANTILLA") return ChatPlantillaSel() != null;
         return !string.IsNullOrWhiteSpace(composerText) || AdjuntosProgramables().Count > 0;
     }
@@ -7868,11 +7869,11 @@
     async Task ProgramarAhora()
     {
         if (selectedNumero == null || !SePuedeProgramar()) return;
-        if (progCuando <= DateTime.Now) { Toast.Warning("Esa hora ya pasó: elegí un horario que venga."); return; }
+        if (progCuando <= DateTimeExt.AhoraAr()) { Toast.Warning("Esa hora ya pasó: elegí un horario que venga."); return; }
 
         var numero = selectedNumero;
         var linea = selectedLinea;
-        var cuandoUtc = progCuando.ToUniversalTime();   // el servidor trabaja siempre en UTC
+        var cuandoUtc = progCuando.ArToUtc();   // la pantalla habla en hora argentina; el servidor, en UTC
         progGuardando = true;
         StateHasChanged();
         try
