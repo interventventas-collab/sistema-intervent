@@ -42,7 +42,7 @@ public class MeliFotosService
 
     public record FotoDto(string Id, string Url);
     public record HermanaDto(string MeliItemId, string? Titulo, int CantidadFotos, string? Estado,
-        string? Thumbnail, bool DeCatalogo);
+        string? Thumbnail, bool DeCatalogo, int Vendidas);
     public record FotosDto(string MeliItemId, string? Titulo, string? Sku, bool DeCatalogo,
         string? Permalink, List<FotoDto> Fotos, List<HermanaDto> Hermanas, string? Aviso);
 
@@ -123,7 +123,7 @@ public class MeliFotosService
             .Where(m => m.Sku == sku && m.MeliItemId != meliItemId
                         && m.VariationId == null && m.Status != "closed" && m.Status != "deleted")
             .OrderBy(m => m.Title)
-            .Select(m => new { m.MeliItemId, m.Title, m.Status, m.Thumbnail, m.CatalogListing })
+            .Select(m => new { m.MeliItemId, m.Title, m.Status, m.Thumbnail, m.CatalogListing, m.SoldQuantity })
             .Take(40)
             .ToListAsync(ct);
         if (candidatas.Count == 0) return hermanas;
@@ -164,7 +164,7 @@ public class MeliFotosService
             conteo.TryGetValue(c.MeliItemId, out var info);
             hermanas.Add(new HermanaDto(c.MeliItemId, c.Title,
                 conteo.ContainsKey(c.MeliItemId) ? info.Fotos : -1,
-                c.Status, c.Thumbnail, c.CatalogListing || info.Catalogo));
+                c.Status, c.Thumbnail, c.CatalogListing || info.Catalogo, c.SoldQuantity));
         }
         return hermanas;
     }

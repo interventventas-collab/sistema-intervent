@@ -5130,7 +5130,7 @@ public class ApiClient
     // ─── Fotos de la publicacion (pantalla nueva, etapa 3) ───
     public record PubV2Foto(string Id, string Url);
     public record PubV2Hermana(string MeliItemId, string? Titulo, int CantidadFotos, string? Estado,
-        string? Thumbnail, bool DeCatalogo);
+        string? Thumbnail, bool DeCatalogo, int Vendidas);
     public record PubV2Fotos(string MeliItemId, string? Titulo, string? Sku, bool DeCatalogo,
         string? Permalink, List<PubV2Foto> Fotos, List<PubV2Hermana> Hermanas, string? Aviso);
     public record PubV2FotosResultado(bool Ok, string Mensaje, PubV2Fotos? Fotos);
