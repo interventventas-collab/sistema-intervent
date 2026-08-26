@@ -373,9 +373,16 @@
                                     <span class="falta">faltan @Plata(Math.Round(it.Costo.Value * objetivo / 100m - (it.GananciaPesos ?? 0m), 0))</span>
                                 }
                             }
-                            else
+                            else if (it.Costo is null or <= 0)
                             {
                                 <span class="det" style="color:#b91c1c;font-weight:700;">falta cargar el costo</span>
+                            }
+                            else
+                            {
+                                @* 2026-08-26: antes acá salía un % calculado como si MeLi no cobrara
+                                   nada. Un número verde de mentira es peor que decir "no sé todavía". *@
+                                <span class="det" style="color:#b45309;font-weight:700;">no se puede calcular</span>
+                                <span class="det">falta la comisión — actualizala</span>
                             }
                         </span>
 
