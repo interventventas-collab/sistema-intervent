@@ -159,13 +159,20 @@ else
         await CargarAlarmas();
     }
 
+    bool engancheHecho = false;
+
     protected override async Task OnAfterRenderAsync(bool first)
     {
-        // Se re-engancha en cada pintado porque el reloj aparece y desaparece al esconderlo;
-        // el propio JS se protege de engancharse dos veces.
-        if (visible)
+        // El reloj se re-pinta UNA VEZ POR SEGUNDO, así que acá no se puede llamar a JS a lo
+        // bruto: serían 3.600 llamadas por hora y por pestaña abierta para no hacer nada. Se
+        // engancha sólo cuando aparece, y se marca como "por enganchar" cuando lo esconden.
+        if (visible && !engancheHecho)
         {
-            try { await JS.InvokeVoidAsync("reloj.attach", "relojFlotante", "relojAsa", ClavePos); }
+            try
+            {
+                await JS.InvokeVoidAsync("reloj.attach", "relojFlotante", "relojAsa", ClavePos);
+                engancheHecho = true;
+            }
             catch { }
         }
     }
@@ -238,7 +245,7 @@ else
 
     async Task Esconder()
     {
-        visible = false; panelAlarmas = false;
+        visible = false; panelAlarmas = false; engancheHecho = false;
         try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveOculto, "1"); } catch { }
     }
 
