@@ -65,8 +65,45 @@ public class MeliPublicacionesV2Service
         if (f.CuentaId.HasValue) q = q.Where(m => m.MeliAccountId == f.CuentaId.Value);
         if (!string.IsNullOrWhiteSpace(f.Texto))
         {
-            var t = f.Texto.Trim();
-            q = q.Where(m => m.Title.Contains(t) || m.MeliItemId.Contains(t) || (m.Sku != null && m.Sku.Contains(t)));
+            // 2026-08-26 — Osmar pegaba un número y le venía UNA sola publicación, cuando lo que
+            // quiere es la familia entera. MercadoLibre muestra los números así: "#1421759403".
+            var t = f.Texto.Trim().TrimStart('#').Trim();
+
+            // ¿Es un identificador (número de publicación, de familia, o MLAU) o texto suelto?
+            // Solo con un identificador se abre el grupo: con texto libre sería impredecible.
+            var esIdentificador = t.Length >= 6
+                && (t.All(char.IsDigit) || t.StartsWith("MLA", StringComparison.OrdinalIgnoreCase));
+
+            var abrioGrupo = false;
+            if (esIdentificador)
+            {
+                var claves = await _db.MeliItems.AsNoTracking()
+                    .Where(m => m.VariationId == null
+                                && (m.MeliItemId.Contains(t)
+                                    || (m.FamilyId != null && m.FamilyId.Contains(t))
+                                    || (m.UserProductId != null && m.UserProductId.Contains(t))))
+                    .Select(m => new { m.FamilyId, m.UserProductId, m.Sku })
+                    .Take(50).ToListAsync(ct);
+
+                if (claves.Count > 0)
+                {
+                    var fams = claves.Where(x => !string.IsNullOrEmpty(x.FamilyId)).Select(x => x.FamilyId!).Distinct().ToList();
+                    var ups = claves.Where(x => !string.IsNullOrEmpty(x.UserProductId)).Select(x => x.UserProductId!).Distinct().ToList();
+                    var sks = claves.Where(x => !string.IsNullOrEmpty(x.Sku)).Select(x => x.Sku!).Distinct().ToList();
+
+                    q = q.Where(m => (m.FamilyId != null && fams.Contains(m.FamilyId))
+                                     || (m.UserProductId != null && ups.Contains(m.UserProductId))
+                                     || (m.Sku != null && sks.Contains(m.Sku)));
+                    abrioGrupo = true;
+                }
+            }
+
+            if (!abrioGrupo)
+                q = q.Where(m => m.Title.Contains(t) || m.MeliItemId.Contains(t)
+                                 || (m.Sku != null && m.Sku.Contains(t))
+                                 || (m.FamilyName != null && m.FamilyName.Contains(t))
+                                 || (m.FamilyId != null && m.FamilyId.Contains(t))
+                                 || (m.UserProductId != null && m.UserProductId.Contains(t)));
         }
         if (!string.IsNullOrWhiteSpace(f.Sku))
         {
@@ -97,11 +134,17 @@ public class MeliPublicacionesV2Service
         // Familias con varios precios: SKUs cuyas publicaciones activas no tienen todas el mismo precio.
         if (f.VariosPrecios)
         {
+            // 2026-08-26 — Antes esto marcaba en rojo CUALQUIER diferencia de precio dentro del SKU.
+            // Estaba mal: las "opciones de venta" del mismo producto (sin cuotas vs 3 a 12 cuotas)
+            // TIENEN que valer distinto, porque MeLi les cobra distinto — medido en el armario
+            // C9333GR: mismo precio y misma venta, y entre la mejor opción y la de cuotas hay
+            // $35.032 de diferencia en lo que recibís (87,6% contra 72,6% sobre el costo).
+            // Ahora solo se marca lo que SÍ es un descuido: mismas condiciones, distinto precio.
             var skusMulti = _db.MeliItems.AsNoTracking()
                 .Where(x => x.VariationId == null && x.Status == "active" && x.Sku != null && x.Price > 0)
-                .GroupBy(x => x.Sku!)
+                .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag })
                 .Where(g => g.Select(x => x.Price).Distinct().Count() > 1)
-                .Select(g => g.Key);
+                .Select(g => g.Key.Sku);
             q = q.Where(m => m.Sku != null && skusMulti.Contains(m.Sku));
         }
 
@@ -199,6 +242,17 @@ public class MeliPublicacionesV2Service
             .Select(g => new { Sku = g.Key, Cant = g.Count(), Min = g.Min(x => x.Price), Max = g.Max(x => x.Price) })
             .ToDictionaryAsync(g => g.Sku, ct);
 
+        // Y el mismo corte pero POR CONDICIONES DE VENTA. Dos publicaciones del mismo producto con
+        // las mismas cuotas deberían valer lo mismo; si tienen cuotas distintas, NO — la de cuotas
+        // paga más comisión y necesita un precio más alto para dejar lo mismo.
+        var porCondicion = (await _db.MeliItems.AsNoTracking()
+            .Where(x => x.VariationId == null && x.Status == "active" && x.Sku != null && x.Price > 0
+                        && skus.Contains(x.Sku))
+            .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag })
+            .Select(g => new { g.Key.Sku, g.Key.Cuotas, Cant = g.Count(), Min = g.Min(x => x.Price), Max = g.Max(x => x.Price) })
+            .ToListAsync(ct))
+            .ToDictionary(g => (g.Sku, g.Cuotas ?? ""), g => (g.Cant, g.Min, g.Max));
+
         // ── 5) Armar cada fila ──
         var items = new List<FilaDto>(pageRows.Count);
         foreach (var r in pageRows)
@@ -263,7 +317,9 @@ public class MeliPublicacionesV2Service
                                 && Math.Abs(r.Price - r.SaleFeePriceSnapshot.Value) / (r.Price == 0 ? 1m : r.Price) > 0.05m;
 
             familias.TryGetValue(r.Sku ?? "", out var fam);
-            var variosPrecios = fam != null && fam.Cant > 1 && fam.Min != fam.Max;
+            // Ojo: la alarma mira SOLO a las hermanas con las mismas condiciones de venta.
+            porCondicion.TryGetValue((r.Sku ?? "", r.InstallmentTag ?? ""), out var cond);
+            var variosPrecios = cond.Cant > 1 && cond.Min != cond.Max;
 
             cfgs.TryGetValue(r.MeliItemId, out var cfg);
 
@@ -273,7 +329,10 @@ public class MeliPublicacionesV2Service
                 costo, margen, ganancia, neto,
                 (r.SaleFeeAmount.HasValue ? seLlevaMeli : (decimal?)null), comPct, r.SaleFeePercentageFee, r.SaleFeeFixedFee, r.SaleFeeShippingCost,
                 comisionVieja, receta, arma,
-                fam?.Cant ?? 1, fam?.Min, fam?.Max, variosPrecios,
+                fam?.Cant ?? 1,
+                variosPrecios ? cond.Min : fam?.Min,
+                variosPrecios ? cond.Max : fam?.Max,
+                variosPrecios,
                 cfg?.SyncPrecio ?? false, cfg?.SyncStock ?? false, cfg?.GananciaObjetivoPct,
                 r.Cuenta));
         }
@@ -290,11 +349,13 @@ public class MeliPublicacionesV2Service
         var baseQ = _db.MeliItems.AsNoTracking()
             .Where(m => m.VariationId == null && m.Status != "closed" && m.Status != "deleted");
 
+        // Mismo criterio que la lista: solo cuenta como problema si las condiciones de venta
+        // son las mismas (ver el comentario largo en GetAsync).
         var skusMulti = _db.MeliItems.AsNoTracking()
             .Where(x => x.VariationId == null && x.Status == "active" && x.Sku != null && x.Price > 0)
-            .GroupBy(x => x.Sku!)
+            .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag })
             .Where(g => g.Select(x => x.Price).Distinct().Count() > 1)
-            .Select(g => g.Key);
+            .Select(g => g.Key.Sku);
 
         return new Dictionary<string, int>
         {

@@ -12,7 +12,8 @@
       · Pantalla completa (sin menú al costado ni barra arriba), como el Mapeo.
       · Debajo del título: de qué productos del sistema se compone y para cuántas alcanza.
       · Columna "Se lleva MeLi": el total real (porcentaje + cargo fijo + cuotas), no solo el %.
-      · Cuando la familia tiene precios distintos, muestra el rango en vez de fingir uno solo.
+      · Precios distintos entre hermanas: solo es alarma si tienen LAS MISMAS condiciones de venta.
+      La que ofrece cuotas paga mas comision, asi que TIENE que valer mas para dejar lo mismo.
       · Filtros por comisión / cuotas / varios precios / precio a mano.
 *@
 
@@ -144,6 +145,8 @@
     .p2-med .guardar[disabled] { opacity: .5; cursor: default; }
     .p2-med .nota { font-size: .68rem; color: #6b7280; margin-top: .45rem; }
 
+    .p2-opcion { display: block; font-size: .6rem; color: #6b7280; margin-top: .1rem; }
+
     /* etapa 3: fotos de la publicacion */
     .p2-fotos { background: #f4f7fb; border-bottom: 1px solid #dbe3ee; padding: .8rem 1rem .9rem 3rem; }
     .p2-fotos h4 { margin: 0 0 .55rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: #9ca3af; }
@@ -267,7 +270,7 @@
             <span class="p2-chip nue @(fNoLlegan == 70 ? "on" : "")" @onclick="() => SetNoLlegan(70)">…al 70%</span>
             <span class="p2-chip nue @(fComision == 30 ? "on" : "")" @onclick="() => SetComision(30)">MeLi se lleva más de 30%</span>
             <span class="p2-chip nue @(fComision == 40 ? "on" : "")" @onclick="() => SetComision(40)">…más de 40%</span>
-            <span class="p2-chip nue @(fVariosPrecios ? "on" : "")" @onclick="ToggleVarios">Varios precios en la familia</span>
+            <span class="p2-chip nue @(fVariosPrecios ? "on" : "")" @onclick="ToggleVarios">⚠ Hermanas iguales a distinto precio</span>
             <span class="p2-chip nue @(fPrecioAMano ? "on" : "")" @onclick="TogglePrecioMano">Precio a mano</span>
             <span class="p2-chip nue @(fSinCosto ? "on" : "")" @onclick="ToggleSinCosto">Sin costo cargado</span>
             <span class="p2-chip nue @(fComisionVieja ? "on" : "")" @onclick="ToggleComisionVieja">⚠ Con datos viejos</span>
@@ -344,14 +347,15 @@
                         </span>
 
                         <span class="p2-h">
+                            <span class="p2-price">@Plata(it.Precio)</span>
                             @if (it.VariosPrecios && it.PrecioMin.HasValue && it.PrecioMax.HasValue)
                             {
+                                <span class="p2-flag" title="Otra publicación del mismo producto y con las MISMAS condiciones de venta está a otro precio. Eso sí es un descuido.">⚠ hermana igual a otro precio</span>
                                 <span class="p2-rango">@Plata(it.PrecioMin.Value) – @Plata(it.PrecioMax.Value)</span>
-                                <span class="p2-flag">⚠ precios distintos</span>
                             }
-                            else
+                            else if (it.PublisFamilia > 1)
                             {
-                                <span class="p2-price">@Plata(it.Precio)</span>
+                                <span class="p2-opcion" title="Este producto está publicado @it.PublisFamilia veces con distintas condiciones de venta. Cada una tiene que valer lo suyo: la que ofrece cuotas paga más comisión.">@CuotasTexto(it.Cuotas, it.Tipo)</span>
                             }
                         </span>
 
