@@ -5127,6 +5127,49 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // ─── Fotos de la publicacion (pantalla nueva, etapa 3) ───
+    public record PubV2Foto(string Id, string Url);
+    public record PubV2Hermana(string MeliItemId, string? Titulo, int CantidadFotos, string? Estado,
+        string? Thumbnail, bool DeCatalogo);
+    public record PubV2Fotos(string MeliItemId, string? Titulo, string? Sku, bool DeCatalogo,
+        string? Permalink, List<PubV2Foto> Fotos, List<PubV2Hermana> Hermanas, string? Aviso);
+    public record PubV2FotosResultado(bool Ok, string Mensaje, PubV2Fotos? Fotos);
+
+    public async Task<PubV2Fotos?> GetFotosV2Async(string mla)
+        => await GetAsync<PubV2Fotos>($"/api/meli/v2/publicaciones/{mla}/fotos");
+
+    /// <summary>Manda la lista final ORDENADA. Cada foto va con Id (una que ya estaba) o
+    /// DataUri (una nueva en base64). La primera queda de portada; las que no van, se borran.</summary>
+    public async Task<(PubV2FotosResultado? res, string? error)> GuardarFotosV2Async(string mla,
+        List<object> fotos)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PutAsJsonAsync($"/api/meli/v2/publicaciones/{mla}/fotos",
+                new { Fotos = fotos });
+            var body = await resp.Content.ReadFromJsonAsync<PubV2FotosResultado>();
+            if (resp.IsSuccessStatusCode) return (body, null);
+            return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(PubV2FotosResultado? res, string? error)> CopiarFotosV2Async(string mla,
+        List<string> destinos)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PostAsJsonAsync($"/api/meli/v2/publicaciones/{mla}/fotos/copiar",
+                new { Destinos = destinos });
+            var body = await resp.Content.ReadFromJsonAsync<PubV2FotosResultado>();
+            if (resp.IsSuccessStatusCode) return (body, null);
+            return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     public async Task<Dictionary<string, int>?> GetResumenV2Async()
         => await GetAsync<Dictionary<string, int>>("/api/meli/v2/resumen");
 

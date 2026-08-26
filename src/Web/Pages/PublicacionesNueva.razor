@@ -144,6 +144,52 @@
     .p2-med .guardar[disabled] { opacity: .5; cursor: default; }
     .p2-med .nota { font-size: .68rem; color: #6b7280; margin-top: .45rem; }
 
+    /* etapa 3: fotos de la publicacion */
+    .p2-fotos { background: #f4f7fb; border-bottom: 1px solid #dbe3ee; padding: .8rem 1rem .9rem 3rem; }
+    .p2-fotos h4 { margin: 0 0 .55rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: #9ca3af; }
+    .p2-fotos .tira { display: flex; gap: .5rem; flex-wrap: wrap; align-items: flex-start; }
+    .p2-fotos .pic { position: relative; width: 96px; border: 2px solid #e3e7e0; border-radius: .5rem;
+                     background: #fff; padding: .25rem; }
+    .p2-fotos .pic.portada { border-color: #15803d; box-shadow: 0 0 0 2px #dcfce7; }
+    .p2-fotos .pic img { width: 100%; height: 78px; object-fit: contain; border-radius: .3rem; display: block; }
+    .p2-fotos .pic .tag { position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+                          background: #15803d; color: #fff; font-size: .55rem; font-weight: 700;
+                          padding: .1rem .35rem; border-radius: .25rem; letter-spacing: .04em; white-space: nowrap; }
+    .p2-fotos .pic .nueva { background: #1d4f80; }
+    .p2-fotos .pic .btns { display: flex; gap: .15rem; justify-content: center; margin-top: .25rem; }
+    .p2-fotos .pic .btns button { border: 1px solid #e3e7e0; background: #fff; border-radius: .3rem;
+                                  font-size: .68rem; line-height: 1; padding: .2rem .3rem; cursor: pointer; }
+    .p2-fotos .pic .btns button[disabled] { opacity: .35; cursor: default; }
+    .p2-fotos .pic .btns .del { color: #b91c1c; border-color: #fecaca; }
+    .p2-fotos .subir { width: 96px; height: 112px; border: 2px dashed #b9c6d8; border-radius: .5rem;
+                       display: flex; flex-direction: column; align-items: center; justify-content: center;
+                       gap: .2rem; cursor: pointer; color: #1d4f80; font-size: .68rem; font-weight: 700;
+                       background: #fff; }
+    .p2-fotos .subir span.mas { font-size: 1.3rem; line-height: 1; }
+    .p2-fotos .pie { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-top: .6rem; }
+    .p2-fotos .cnt { font-size: .68rem; color: #6b7280; }
+    .p2-fotos .btn { padding: .4rem .8rem; border-radius: .4rem; border: 1px solid #cbd5e1; background: #fff;
+                     font-weight: 700; font-size: .75rem; cursor: pointer; color: #334155; }
+    .p2-fotos .btn.meli { background: #15803d; border-color: #15803d; color: #fff; }
+    .p2-fotos .btn.copiar { background: #1d4f80; border-color: #1d4f80; color: #fff; }
+    .p2-fotos .btn[disabled] { opacity: .45; cursor: default; }
+    .p2-fotos .herm { margin-top: .7rem; border-top: 1px dashed #cbd5e1; padding-top: .6rem; }
+    .p2-fotos .herm .lista { display: flex; gap: .45rem; flex-wrap: wrap; margin-top: .4rem; }
+    .p2-fotos .herm .h { display: flex; align-items: center; gap: .35rem; border: 1px solid #dbe3ee;
+                         border-radius: .4rem; padding: .25rem .45rem; background: #fff; cursor: pointer;
+                         font-size: .68rem; max-width: 290px; }
+    .p2-fotos .herm .h.sel { border-color: #1d4f80; background: #e9f1fa; }
+    .p2-fotos .herm .h.bloq { opacity: .5; cursor: not-allowed; }
+    .p2-fotos .herm .h img { width: 24px; height: 24px; object-fit: cover; border-radius: .25rem; }
+    .p2-fotos .herm .h .tit { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 165px; }
+    .p2-fotos .herm .h .n { font-weight: 700; color: #1d4f80; white-space: nowrap; }
+    .p2-fotos .aviso { font-size: .7rem; color: #b45309; background: #fef0d8; border-radius: .35rem;
+                       padding: .35rem .6rem; margin-top: .5rem; display: inline-block; }
+    .p2-fotos .aviso.ok { color: #15803d; background: #dcfce7; }
+    .p2-fotos .aviso.err { color: #b91c1c; background: #fee2e2; }
+    .p2-thumb.clickable { cursor: zoom-in; }
+    .p2-thumb.clickable:hover { border-color: #1d4f80; box-shadow: 0 0 0 2px #e9f1fa; }
+
     /* etapa 2: tildar y aplicar */
     .p2-chk { width: 15px; height: 15px; accent-color: #1d4f80; cursor: pointer; }
     .p2-tr.sel { background: #e9f1fa; }
@@ -284,8 +330,10 @@
                         <span class="p2-pinfo">
                             @if (!string.IsNullOrEmpty(it.Thumbnail))
                             {
-                                <img class="p2-thumb" src="@it.Thumbnail" alt="" loading="lazy"
-                                     style="float:left; margin-right:.5rem;" />
+                                <img class="p2-thumb clickable" src="@it.Thumbnail" alt="" loading="lazy"
+                                     title="Ver y cambiar las fotos de esta publicación"
+                                     style="float:left; margin-right:.5rem;"
+                                     @onclick="() => ToggleFotos(it.MeliItemId)" @onclick:stopPropagation="true" />
                             }
                             <span class="p2-t" title="@it.Titulo">@it.Titulo</span>
                             <span class="p2-m">@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)</span>
@@ -363,6 +411,129 @@
                             <span class="p2-st @(it.Estado == "active" ? "a" : it.Estado == "paused" ? "p" : "o")">@EstadoTexto(it.Estado)</span>
                         </span>
                     </div>
+
+                    @if (fotosAbiertas == it.MeliItemId)
+                    {
+                        <div class="p2-fotos" @onclick:stopPropagation="true">
+                            <h4>🖼️ Fotos de esta publicación — la primera es la portada</h4>
+                            @if (fotosCargando)
+                            {
+                                <span class="cnt">Consultando a MercadoLibre…</span>
+                            }
+                            else if (fotosDatos is null)
+                            {
+                                <span class="aviso err">No se pudieron leer las fotos.</span>
+                            }
+                            else
+                            {
+                                <div class="tira">
+                                    @for (int i = 0; i < fotosEdit.Count; i++)
+                                    {
+                                        var idx = i;
+                                        var f = fotosEdit[idx];
+                                        <div class="pic @(idx == 0 ? "portada" : "")">
+                                            @if (idx == 0)
+                                            {
+                                                <span class="tag">PORTADA</span>
+                                            }
+                                            else if (f.EsNueva)
+                                            {
+                                                <span class="tag nueva">NUEVA</span>
+                                            }
+                                            <img src="@f.Preview" alt="" loading="lazy" />
+                                            <span class="btns">
+                                                <button title="Mover para adelante" disabled="@(idx == 0 || fotosBloqueadas)"
+                                                        @onclick="() => MoverFoto(idx, -1)">◀</button>
+                                                <button title="Ponerla de portada" disabled="@(idx == 0 || fotosBloqueadas)"
+                                                        @onclick="() => HacerPortada(idx)">★</button>
+                                                <button class="del" title="Sacar esta foto" disabled="@fotosBloqueadas"
+                                                        @onclick="() => QuitarFoto(idx)">🗑</button>
+                                                <button title="Mover para atrás" disabled="@(idx == fotosEdit.Count - 1 || fotosBloqueadas)"
+                                                        @onclick="() => MoverFoto(idx, 1)">▶</button>
+                                            </span>
+                                        </div>
+                                    }
+                                    @if (!fotosBloqueadas)
+                                    {
+                                        <label class="subir" title="Subir fotos desde la computadora (JPG o PNG, hasta 10 MB)">
+                                            <span class="mas">＋</span>
+                                            <span>Subir</span>
+                                            <InputFile OnChange="SubirFotos" accept="image/*" multiple style="display:none;" />
+                                        </label>
+                                    }
+                                </div>
+
+                                <div class="pie">
+                                    <span class="cnt">@fotosEdit.Count foto@(fotosEdit.Count == 1 ? "" : "s") · máx. 10 MB cada una (JPG o PNG)</span>
+                                    @if (!fotosBloqueadas)
+                                    {
+                                        <button class="btn meli" disabled="@(fotosGuardando || !FotosCambiaron)"
+                                                @onclick="() => GuardarFotos(it.MeliItemId)">
+                                            @(fotosGuardando ? "Guardando…" : "💾 Guardar en MercadoLibre")
+                                        </button>
+                                        @if (FotosCambiaron)
+                                        {
+                                            <button class="btn" disabled="@fotosGuardando" @onclick="DeshacerFotos">↩ Deshacer</button>
+                                        }
+                                    }
+                                    @if (!string.IsNullOrEmpty(fotosDatos.Permalink))
+                                    {
+                                        <a class="btn" href="@fotosDatos.Permalink" target="_blank">🔗 Ver en MercadoLibre</a>
+                                    }
+                                </div>
+
+                                @if (fotosDatos.Hermanas.Count > 0)
+                                {
+                                    <div class="herm">
+                                        <h4>Otras publicaciones del mismo producto (@fotosDatos.Sku)</h4>
+                                        <span class="cnt">Elegí a cuáles copiarles estas fotos. Les reemplaza TODAS las que tienen ahora.</span>
+                                        <div class="lista">
+                                            @foreach (var h in fotosDatos.Hermanas)
+                                            {
+                                                <span class="h @(hermanasElegidas.Contains(h.MeliItemId) ? "sel" : "") @(h.DeCatalogo ? "bloq" : "")"
+                                                      title="@(h.DeCatalogo ? "Es de catálogo: MercadoLibre no deja cambiarle las fotos" : h.Titulo)"
+                                                      @onclick="() => ToggleHermana(h)">
+                                                    @if (!h.DeCatalogo)
+                                                    {
+                                                        <input type="checkbox" class="p2-chk" checked="@hermanasElegidas.Contains(h.MeliItemId)"
+                                                               @onclick:stopPropagation="true" @onchange="() => ToggleHermana(h)" />
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(h.Thumbnail))
+                                                    {
+                                                        <img src="@h.Thumbnail" alt="" loading="lazy" />
+                                                    }
+                                                    <span class="tit">@h.Titulo</span>
+                                                    <span class="n">@(h.CantidadFotos < 0 ? "?" : h.CantidadFotos.ToString()) 📷</span>
+                                                </span>
+                                            }
+                                        </div>
+                                        <div class="pie">
+                                            <button class="btn" @onclick="ElegirTodasHermanas">
+                                                @(hermanasElegidas.Count > 0 ? "✕ Ninguna" : "✓ Todas")
+                                            </button>
+                                            <button class="btn copiar" disabled="@(fotosCopiando || hermanasElegidas.Count == 0 || fotosEdit.Count == 0)"
+                                                    @onclick="() => CopiarFotos(it.MeliItemId)">
+                                                @(fotosCopiando ? "Copiando…" : $"📋 Copiar estas fotos a {hermanasElegidas.Count} publicación/es")
+                                            </button>
+                                            @if (FotosCambiaron)
+                                            {
+                                                <span class="cnt">Ojo: se copian las fotos que están HOY en MercadoLibre. Guardá primero los cambios.</span>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(fotosDatos.Aviso))
+                                {
+                                    <div class="aviso">@fotosDatos.Aviso</div>
+                                }
+                                @if (!string.IsNullOrEmpty(fotosResultado))
+                                {
+                                    <div class="aviso @(fotosResultadoOk ? "ok" : "err")">@fotosResultado</div>
+                                }
+                            }
+                        </div>
+                    }
 
                     @if (medidasAbiertas == it.MeliItemId)
                     {
@@ -463,7 +634,7 @@
         @if (datos is not null && datos.Items.Count > 0)
         {
             <div class="p2-count">
-                <span>Tocá una fila para ver el peso y las medidas del paquete. Las fotos vienen en la próxima etapa.</span>
+                <span>Tocá una fila para ver el peso y las medidas del paquete · Tocá la foto para verlas todas y cambiarlas.</span>
                 <span>
                     <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
                     <span class="p2-pg">Página @pagina de @TotalPaginas</span>
@@ -623,6 +794,7 @@
     private async Task ToggleMedidas(string mla)
     {
         if (medidasAbiertas == mla) { medidasAbiertas = null; medidas = null; return; }
+        CerrarFotos();
         medidasAbiertas = mla;
         medidas = null;
         medidasResultado = null;
@@ -669,6 +841,186 @@
             medidasResultado = "Error: " + ex.Message;
         }
         finally { medidasGuardando = false; StateHasChanged(); }
+    }
+
+    // ── Etapa 3: fotos ──
+    // Se abre al pinchar la miniatura. Reordenar, poner portada y borrar son la MISMA operación
+    // en MeLi: se manda la lista final ordenada. Por eso se edita local y recién al guardar se
+    // manda todo junto (así el usuario puede acomodar y deshacer sin tocar la publicación).
+    private class FotoEdit
+    {
+        public string? Id { get; set; }        // foto que ya estaba en MeLi
+        public string? DataUri { get; set; }   // foto nueva subida desde la compu
+        public string Preview { get; set; } = "";
+        public bool EsNueva => Id is null;
+    }
+
+    private string? fotosAbiertas;
+    private ApiClient.PubV2Fotos? fotosDatos;
+    private List<FotoEdit> fotosEdit = new();
+    private List<string> fotosOriginal = new();   // firma de cómo estaban, para saber si cambió algo
+    private readonly HashSet<string> hermanasElegidas = new();
+    private bool fotosCargando, fotosGuardando, fotosCopiando, fotosResultadoOk;
+    private string? fotosResultado;
+
+    private bool fotosBloqueadas => fotosDatos?.DeCatalogo == true;
+
+    private bool FotosCambiaron
+        => !fotosEdit.Select(f => f.Id ?? "nueva:" + f.Preview.Length).SequenceEqual(fotosOriginal);
+
+    private async Task ToggleFotos(string mla)
+    {
+        if (fotosAbiertas == mla) { CerrarFotos(); return; }
+        medidasAbiertas = null;   // no tener los dos paneles abiertos a la vez
+        fotosAbiertas = mla;
+        fotosDatos = null;
+        fotosEdit = new();
+        fotosOriginal = new();
+        hermanasElegidas.Clear();
+        fotosResultado = null;
+        fotosCargando = true;
+        StateHasChanged();
+        try
+        {
+            fotosDatos = await Api.GetFotosV2Async(mla);
+            RefrescarEdicion();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudieron leer las fotos: " + ex.Message); }
+        finally { fotosCargando = false; StateHasChanged(); }
+    }
+
+    private void CerrarFotos()
+    {
+        fotosAbiertas = null;
+        fotosDatos = null;
+        fotosEdit = new();
+        fotosOriginal = new();
+        hermanasElegidas.Clear();
+        fotosResultado = null;
+    }
+
+    private void RefrescarEdicion()
+    {
+        fotosEdit = fotosDatos?.Fotos.Select(f => new FotoEdit { Id = f.Id, Preview = f.Url }).ToList() ?? new();
+        fotosOriginal = fotosEdit.Select(f => f.Id ?? "").ToList();
+    }
+
+    private void MoverFoto(int idx, int dir)
+    {
+        var destino = idx + dir;
+        if (destino < 0 || destino >= fotosEdit.Count) return;
+        (fotosEdit[idx], fotosEdit[destino]) = (fotosEdit[destino], fotosEdit[idx]);
+    }
+
+    private void HacerPortada(int idx)
+    {
+        if (idx <= 0 || idx >= fotosEdit.Count) return;
+        var f = fotosEdit[idx];
+        fotosEdit.RemoveAt(idx);
+        fotosEdit.Insert(0, f);
+    }
+
+    private void QuitarFoto(int idx)
+    {
+        if (idx < 0 || idx >= fotosEdit.Count) return;
+        if (fotosEdit.Count == 1)
+        {
+            ToastService.Error("La publicación tiene que quedar con al menos una foto.");
+            return;
+        }
+        fotosEdit.RemoveAt(idx);
+    }
+
+    private void DeshacerFotos() { RefrescarEdicion(); fotosResultado = null; }
+
+    private async Task SubirFotos(InputFileChangeEventArgs e)
+    {
+        const long max = 10L * 1024 * 1024;   // tope de MeLi
+        foreach (var file in e.GetMultipleFiles(12))
+        {
+            if (file.Size > max)
+            {
+                ToastService.Error($"{file.Name}: pesa más de 10 MB, que es lo máximo que acepta MercadoLibre.");
+                continue;
+            }
+            try
+            {
+                var tipo = string.IsNullOrEmpty(file.ContentType) ? "image/jpeg" : file.ContentType;
+                using var stream = file.OpenReadStream(max);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                var dataUri = $"data:{tipo};base64,{Convert.ToBase64String(ms.ToArray())}";
+                fotosEdit.Add(new FotoEdit { DataUri = dataUri, Preview = dataUri });
+            }
+            catch (Exception ex) { ToastService.Error($"{file.Name}: no se pudo leer ({ex.Message})"); }
+        }
+        StateHasChanged();
+    }
+
+    private async Task GuardarFotos(string mla)
+    {
+        if (fotosEdit.Count == 0) { ToastService.Error("Tiene que quedar al menos una foto."); return; }
+        fotosGuardando = true;
+        fotosResultado = null;
+        StateHasChanged();
+        try
+        {
+            var lista = fotosEdit.Select(f => (object)new { Id = f.Id, DataUri = f.DataUri }).ToList();
+            var (res, err) = await Api.GuardarFotosV2Async(mla, lista);
+            fotosResultadoOk = res?.Ok == true;
+            fotosResultado = res?.Mensaje ?? err ?? "No se pudo guardar";
+            if (fotosResultadoOk)
+            {
+                if (res!.Fotos is not null) { fotosDatos = res.Fotos; RefrescarEdicion(); }
+                ToastService.Success(fotosResultado);
+                await Cargar();   // la miniatura de la fila cambia si cambió la portada
+            }
+            else ToastService.Error(fotosResultado);
+        }
+        catch (Exception ex) { fotosResultadoOk = false; fotosResultado = "Error: " + ex.Message; }
+        finally { fotosGuardando = false; StateHasChanged(); }
+    }
+
+    private void ToggleHermana(ApiClient.PubV2Hermana h)
+    {
+        if (h.DeCatalogo) return;   // MeLi no deja tocarles las fotos
+        if (!hermanasElegidas.Remove(h.MeliItemId)) hermanasElegidas.Add(h.MeliItemId);
+    }
+
+    private void ElegirTodasHermanas()
+    {
+        if (hermanasElegidas.Count > 0) { hermanasElegidas.Clear(); return; }
+        foreach (var h in fotosDatos?.Hermanas.Where(x => !x.DeCatalogo) ?? Enumerable.Empty<ApiClient.PubV2Hermana>())
+            hermanasElegidas.Add(h.MeliItemId);
+    }
+
+    private async Task CopiarFotos(string mla)
+    {
+        if (hermanasElegidas.Count == 0) return;
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Esto le reemplaza TODAS las fotos a {hermanasElegidas.Count} publicación/es por las de esta. No se puede deshacer solo. ¿Seguro?");
+        if (!ok) return;
+
+        fotosCopiando = true;
+        fotosResultado = null;
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.CopiarFotosV2Async(mla, hermanasElegidas.ToList());
+            fotosResultadoOk = res?.Ok == true;
+            fotosResultado = res?.Mensaje ?? err ?? "No se pudo copiar";
+            if (fotosResultadoOk)
+            {
+                ToastService.Success(fotosResultado);
+                hermanasElegidas.Clear();
+                fotosDatos = await Api.GetFotosV2Async(mla);   // refrescar el conteo de fotos de cada hermana
+                RefrescarEdicion();
+                await Cargar();
+            }
+            else ToastService.Error(fotosResultado);
+        }
+        catch (Exception ex) { fotosResultadoOk = false; fotosResultado = "Error: " + ex.Message; }
+        finally { fotosCopiando = false; StateHasChanged(); }
     }
 
     private async Task SetNoLlegan(decimal v) { fNoLlegan = fNoLlegan == v ? null : v; await BuscarDesdeCero(); }

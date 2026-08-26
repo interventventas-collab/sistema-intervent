@@ -100,6 +100,41 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return r.Ok ? Ok(r) : BadRequest(r);
     }
 
+    // ─── 2026-08-26 · ETAPA 3: fotos ───
+    // Osmar: "si se pincha la foto que se desplieguen todas, así las veo y las puedo modificar".
+    // Lo importante es poder COPIARLAS a las hermanas: el mismo producto está publicado varias
+    // veces y hoy hay que dejar linda cada una a mano.
+
+    /// <summary>Fotos en vivo de MeLi + las publicaciones hermanas con cuántas fotos tiene cada una.</summary>
+    [HttpGet("publicaciones/{mla}/fotos")]
+    public async Task<IActionResult> GetFotos(string mla, [FromServices] MeliFotosService svc)
+    {
+        var r = await svc.LeerAsync(mla, HttpContext.RequestAborted);
+        if (r is null) return NotFound(new { error = "Publicación no encontrada o sin cuenta MeLi" });
+        return Ok(r);
+    }
+
+    /// <summary>TOCA MELI: guarda la lista final ordenada. La primera foto queda de portada y
+    /// las que no vengan en la lista se borran.</summary>
+    [HttpPut("publicaciones/{mla}/fotos")]
+    public async Task<IActionResult> PutFotos(string mla,
+        [FromBody] MeliFotosService.GuardarRequest req,
+        [FromServices] MeliFotosService svc)
+    {
+        var r = await svc.GuardarAsync(mla, req.Fotos ?? new(), HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
+    /// <summary>TOCA MELI: copia estas fotos a las publicaciones hermanas elegidas.</summary>
+    [HttpPost("publicaciones/{mla}/fotos/copiar")]
+    public async Task<IActionResult> CopiarFotos(string mla,
+        [FromBody] MeliFotosService.CopiarRequest req,
+        [FromServices] MeliFotosService svc)
+    {
+        var r = await svc.CopiarAsync(mla, req.Destinos ?? new(), HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
     /// <summary>Contadores para los chips de filtro.</summary>
     [HttpGet("resumen")]
     public async Task<IActionResult> GetResumen()
