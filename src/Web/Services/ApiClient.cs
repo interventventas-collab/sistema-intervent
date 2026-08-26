@@ -5078,6 +5078,29 @@ public class ApiClient
         return await GetAsync<PubV2Page>("/api/meli/v2/publicaciones?" + string.Join("&", qs));
     }
 
+    // ─── 2026-08-26 · acciones sobre lo tildado (etapa 2) ───
+    public record PubV2AccionFila(string MeliItemId, bool Ok, string Mensaje);
+    public record PubV2AccionResultado(int Pedidas, int Ok, int Errores, List<PubV2AccionFila> Detalle);
+
+    private async Task<PubV2AccionResultado?> AccionAsync(string ruta, object body)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _httpLong.PostAsJsonAsync($"/api/meli/v2/acciones/{ruta}", body);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<PubV2AccionResultado>();
+    }
+
+    public Task<PubV2AccionResultado?> AccionComisionesAsync(List<string> mlas)
+        => AccionAsync("comisiones", new { Mlas = mlas });
+    public Task<PubV2AccionResultado?> AccionSincroAsync(List<string> mlas, bool? precio, bool? stock)
+        => AccionAsync("sincro", new { Mlas = mlas, Precio = precio, Stock = stock });
+    public Task<PubV2AccionResultado?> AccionObjetivoAsync(List<string> mlas, decimal objetivoPct, bool aplicarAhora)
+        => AccionAsync("objetivo", new { Mlas = mlas, ObjetivoPct = objetivoPct, AplicarAhora = aplicarAhora });
+    public Task<PubV2AccionResultado?> AccionPrecioAsync(List<string> mlas)
+        => AccionAsync("precio", new { Mlas = mlas });
+    public Task<PubV2AccionResultado?> AccionStockAsync(List<string> mlas)
+        => AccionAsync("stock", new { Mlas = mlas });
+
     // ─── 2026-08-26: peso y medidas del paquete (lo que define el envío) ───
     public record PubV2Medidas(string MeliItemId, string? Titulo, string? Sku,
         int? PesoGramos, decimal? LargoCm, decimal? AnchoCm, decimal? AltoCm,

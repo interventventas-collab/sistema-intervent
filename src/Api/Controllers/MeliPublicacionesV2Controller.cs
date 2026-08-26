@@ -43,6 +43,39 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return Ok(res);
     }
 
+    // ─── 2026-08-26 · ETAPA 2: acciones sobre las publicaciones TILDADAS ───
+    // Todas reciben la lista de MLAs que el usuario eligió en pantalla. Nada actúa sobre
+    // "todo el catálogo": ese era justamente el problema de la pantalla vieja.
+
+    public record LoteRequest(List<string> Mlas);
+    public record SincroRequest(List<string> Mlas, bool? Precio, bool? Stock);
+    public record ObjetivoRequest(List<string> Mlas, decimal ObjetivoPct, bool AplicarAhora);
+
+    /// <summary>SEGURA: le pregunta a MeLi la comisión de cada una. No cambia nada.</summary>
+    [HttpPost("acciones/comisiones")]
+    public async Task<IActionResult> AccionComisiones([FromBody] LoteRequest req, [FromServices] MeliAccionesLoteService svc)
+        => Ok(await svc.ActualizarComisionesAsync(req.Mlas ?? new(), HttpContext.RequestAborted));
+
+    /// <summary>SEGURA: prende o apaga el sincro de precio y/o stock. Sólo configuración.</summary>
+    [HttpPost("acciones/sincro")]
+    public async Task<IActionResult> AccionSincro([FromBody] SincroRequest req, [FromServices] MeliAccionesLoteService svc)
+        => Ok(await svc.CambiarSincroAsync(req.Mlas ?? new(), req.Precio, req.Stock, HttpContext.RequestAborted));
+
+    /// <summary>Guarda el objetivo de ganancia; con AplicarAhora además pushea el precio.</summary>
+    [HttpPost("acciones/objetivo")]
+    public async Task<IActionResult> AccionObjetivo([FromBody] ObjetivoRequest req, [FromServices] MeliAccionesLoteService svc)
+        => Ok(await svc.PonerObjetivoAsync(req.Mlas ?? new(), req.ObjetivoPct, req.AplicarAhora, HttpContext.RequestAborted));
+
+    /// <summary>TOCA MELI: pushea el precio que el sistema calcula hoy.</summary>
+    [HttpPost("acciones/precio")]
+    public async Task<IActionResult> AccionPrecio([FromBody] LoteRequest req, [FromServices] MeliAccionesLoteService svc)
+        => Ok(await svc.PushearPrecioAsync(req.Mlas ?? new(), HttpContext.RequestAborted));
+
+    /// <summary>TOCA MELI: manda el stock del sistema, con todas las reglas del motor de stock.</summary>
+    [HttpPost("acciones/stock")]
+    public async Task<IActionResult> AccionStock([FromBody] LoteRequest req, [FromServices] MeliAccionesLoteService svc)
+        => Ok(await svc.PushearStockAsync(req.Mlas ?? new(), HttpContext.RequestAborted));
+
     // ─── 2026-08-26: peso y medidas del paquete ───
     // El envío que MeLi cobra sale de acá. Si están mal cargadas, el envío se dispara y no hay
     // precio que lo arregle. Leer es en vivo contra MeLi; guardar además recalcula el envío

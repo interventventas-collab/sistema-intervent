@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
 @*
     2026-08-25 — Pantalla NUEVA de publicaciones. ETAPA 1: solo mirar.
@@ -143,6 +144,29 @@
     .p2-med .guardar[disabled] { opacity: .5; cursor: default; }
     .p2-med .nota { font-size: .68rem; color: #6b7280; margin-top: .45rem; }
 
+    /* etapa 2: tildar y aplicar */
+    .p2-chk { width: 15px; height: 15px; accent-color: #1d4f80; cursor: pointer; }
+    .p2-tr.sel { background: #e9f1fa; }
+    .p2-acciones { position: sticky; bottom: 0; z-index: 20; background: #fff; border-top: 2px solid #1d4f80;
+                   box-shadow: 0 -3px 18px -8px rgba(0,0,0,.35); padding: .6rem .8rem; display: flex;
+                   gap: .45rem; align-items: center; flex-wrap: wrap; }
+    .p2-acciones .cnt { font-weight: 700; color: #1d4f80; font-size: .82rem; white-space: nowrap; }
+    .p2-acciones .sep { width: 1px; height: 20px; background: #e3e7e0; }
+    .p2-ac { font-size: .76rem; font-weight: 600; padding: .4rem .7rem; border-radius: .4rem;
+             border: 1px solid #e3e7e0; background: #f8f9f7; color: #1f2937; cursor: pointer; white-space: nowrap; }
+    .p2-ac:hover { border-color: #9ca3af; }
+    .p2-ac.go { background: #15803d; border-color: #15803d; color: #fff; }
+    .p2-ac.meli { border-color: #b45309; color: #b45309; background: #fef0d8; }
+    .p2-ac[disabled] { opacity: .5; cursor: default; }
+    .p2-ac-obj { display: inline-flex; align-items: center; gap: .2rem; border: 1px solid #e3e7e0;
+                 border-radius: .4rem; padding: .15rem .4rem; background: #fff; }
+    .p2-ac-obj input { width: 46px; border: none; outline: none; font-size: .8rem; font-weight: 700; text-align: right; }
+    .p2-res { max-height: 130px; overflow: auto; background: #f8f9f7; border: 1px solid #e3e7e0;
+              border-radius: .4rem; padding: .4rem .6rem; font-size: .7rem; margin-top: .4rem; width: 100%; }
+    .p2-res .fila { padding: .1rem 0; border-bottom: 1px solid #eef1ec; }
+    .p2-res .fila:last-child { border-bottom: none; }
+    .p2-res .no { color: #b91c1c; }
+
     .p2-empty { padding: 2rem; text-align: center; color: #9ca3af; font-size: .85rem; }
     .p2-note { font-size: .7rem; color: #6b7280; background: #eef2ff; border-left: 3px solid #4f46e5;
                padding: .5rem .7rem; border-radius: 0 .4rem .4rem 0; }
@@ -226,7 +250,7 @@
 
         <div class="p2-tbl">
             <div class="p2-th">
-                <span></span>
+                <span><input type="checkbox" class="p2-chk" checked="@TodasTildadas" @onchange="TildarTodas" title="Tildar todas las de esta página" /></span>
                 <span>Producto</span>
                 <span class="p2-h">Precio</span>
                 <span class="p2-h">Te queda<br /><span style="text-transform:none;font-weight:400;">sobre el costo</span></span>
@@ -248,19 +272,20 @@
             {
                 @foreach (var it in datos.Items)
                 {
-                    <div class="p2-tr" @onclick="() => ToggleMedidas(it.MeliItemId)" style="cursor:pointer;">
-                        <span>
-                            @if (!string.IsNullOrEmpty(it.Thumbnail))
-                            {
-                                <img class="p2-thumb" src="@it.Thumbnail" alt="" loading="lazy" />
-                            }
-                            else
-                            {
-                                <span class="p2-thumb"></span>
-                            }
+                    <div class="p2-tr @(tildadas.Contains(it.MeliItemId) ? "sel" : "")"
+                         @onclick="() => ToggleMedidas(it.MeliItemId)" style="cursor:pointer;">
+                        <span @onclick:stopPropagation="true">
+                            <input type="checkbox" class="p2-chk"
+                                   checked="@tildadas.Contains(it.MeliItemId)"
+                                   @onchange="() => ToggleTildada(it.MeliItemId)" />
                         </span>
 
                         <span class="p2-pinfo">
+                            @if (!string.IsNullOrEmpty(it.Thumbnail))
+                            {
+                                <img class="p2-thumb" src="@it.Thumbnail" alt="" loading="lazy"
+                                     style="float:left; margin-right:.5rem;" />
+                            }
                             <span class="p2-t" title="@it.Titulo">@it.Titulo</span>
                             <span class="p2-m">@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)</span>
                             <span class="p2-rec">@RecetaFragment(it)</span>
@@ -393,6 +418,47 @@
             }
         </div>
 
+        @if (tildadas.Count > 0)
+        {
+            <div class="p2-acciones">
+                <span class="cnt">@tildadas.Count @(tildadas.Count == 1 ? "publicación tildada" : "publicaciones tildadas")</span>
+                <span class="sep"></span>
+
+                <button class="p2-ac go" @onclick="AccComisiones" disabled="@accionEnCurso">💰 Actualizar comisiones</button>
+
+                <span class="p2-ac-obj" title="Objetivo de ganancia sobre el costo">
+                    🎯 <input type="number" @bind="objetivoLote" /> %
+                </span>
+                <button class="p2-ac" @onclick="() => AccObjetivo(false)" disabled="@accionEnCurso">Guardar objetivo</button>
+
+                <button class="p2-ac" @onclick="() => AccSincro(true, null)" disabled="@accionEnCurso">💲 Prender precio</button>
+                <button class="p2-ac" @onclick="() => AccSincro(false, null)" disabled="@accionEnCurso">💲 Apagar precio</button>
+                <button class="p2-ac" @onclick="() => AccSincro(null, true)" disabled="@accionEnCurso">📦 Prender stock</button>
+
+                <span class="sep"></span>
+                <button class="p2-ac meli" @onclick="() => AccObjetivo(true)" disabled="@accionEnCurso">🎯 Aplicar objetivo y publicar</button>
+                <button class="p2-ac meli" @onclick="AccPrecio" disabled="@accionEnCurso">💵 Publicar precio</button>
+                <button class="p2-ac meli" @onclick="AccStock" disabled="@accionEnCurso">📦 Mandar stock</button>
+
+                <button class="p2-ac" @onclick="() => { tildadas.Clear(); resultado = null; }" disabled="@accionEnCurso">✕ Limpiar</button>
+
+                @if (accionEnCurso)
+                {
+                    <span class="cnt">⏳ @accionTexto</span>
+                }
+                @if (resultado is not null)
+                {
+                    <div class="p2-res">
+                        <b>@resultado.Ok ok · @resultado.Errores con error</b>
+                        @foreach (var f in resultado.Detalle.Take(40))
+                        {
+                            <div class="fila @(f.Ok ? "" : "no")">@(f.Ok ? "✓" : "✗") @f.MeliItemId — @f.Mensaje</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
         @if (datos is not null && datos.Items.Count > 0)
         {
             <div class="p2-count">
@@ -427,6 +493,16 @@
     private decimal? fNoLlegan;
 
     // Panel de medidas (peso y dimensiones): es lo que define el envío que cobra MeLi.
+    // Etapa 2: lo tildado y las acciones
+    private readonly HashSet<string> tildadas = new();
+    private bool accionEnCurso;
+    private string accionTexto = "";
+    private ApiClient.PubV2AccionResultado? resultado;
+    private decimal objetivoLote = 50;
+
+    private bool TodasTildadas => datos is not null && datos.Items.Count > 0
+                                  && datos.Items.All(i => tildadas.Contains(i.MeliItemId));
+
     private string? medidasAbiertas;
     private ApiClient.PubV2Medidas? medidas;
     private bool medidasCargando, medidasGuardando, medidasResultadoOk;
@@ -474,6 +550,75 @@
     private async Task OnEnter(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarDesdeCero(); }
     private async Task IrAPagina(int p) { if (p < 1 || p > TotalPaginas) return; pagina = p; await Cargar(); }
     private async Task SetEstado(string v) { fEstado = v; await BuscarDesdeCero(); }
+    private void ToggleTildada(string mla)
+    {
+        if (!tildadas.Remove(mla)) tildadas.Add(mla);
+        resultado = null;
+    }
+
+    private void TildarTodas(ChangeEventArgs e)
+    {
+        if (datos is null) return;
+        var prender = e.Value is bool b && b;
+        foreach (var i in datos.Items)
+        {
+            if (prender) tildadas.Add(i.MeliItemId);
+            else tildadas.Remove(i.MeliItemId);
+        }
+        resultado = null;
+    }
+
+    /// <summary>Envoltorio común: muestra "en curso", corre la acción y recarga la lista.</summary>
+    private async Task Correr(string texto, Func<List<string>, Task<ApiClient.PubV2AccionResultado?>> accion,
+        bool pedirConfirmacion = false, string? confirmacion = null)
+    {
+        var lista = tildadas.ToList();
+        if (lista.Count == 0) return;
+
+        if (pedirConfirmacion)
+        {
+            var ok = await JS.InvokeAsync<bool>("confirm", confirmacion ?? $"Esto cambia {lista.Count} publicaciones en MercadoLibre. ¿Seguro?");
+            if (!ok) return;
+        }
+
+        accionEnCurso = true;
+        accionTexto = texto;
+        resultado = null;
+        StateHasChanged();
+        try
+        {
+            resultado = await accion(lista);
+            if (resultado is null) ToastService.Error("No se pudo completar la acción.");
+            else
+            {
+                if (resultado.Errores == 0) ToastService.Success($"{resultado.Ok} listas.");
+                else ToastService.Warning($"{resultado.Ok} ok, {resultado.Errores} con error — mirá el detalle.");
+                await Cargar();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { accionEnCurso = false; StateHasChanged(); }
+    }
+
+    private Task AccComisiones() => Correr("actualizando comisiones…", l => Api.AccionComisionesAsync(l));
+
+    private Task AccSincro(bool? precio, bool? stock)
+        => Correr("guardando…", l => Api.AccionSincroAsync(l, precio, stock));
+
+    private Task AccObjetivo(bool aplicarAhora)
+        => Correr(aplicarAhora ? "aplicando objetivo y publicando…" : "guardando objetivo…",
+            l => Api.AccionObjetivoAsync(l, objetivoLote, aplicarAhora),
+            aplicarAhora,
+            $"Esto va a CAMBIAR EL PRECIO en MercadoLibre de {tildadas.Count} publicaciones para dejar {objetivoLote:0.#}% sobre el costo. ¿Seguro?");
+
+    private Task AccPrecio()
+        => Correr("publicando precios…", l => Api.AccionPrecioAsync(l), true,
+            $"Esto va a publicar en MercadoLibre el precio que calcula el sistema para {tildadas.Count} publicaciones. ¿Seguro?");
+
+    private Task AccStock()
+        => Correr("mandando stock…", l => Api.AccionStockAsync(l), true,
+            $"Esto manda el stock del sistema a MercadoLibre en {tildadas.Count} publicaciones. Las que queden en 0 MeLi las pausa. ¿Seguro?");
+
     private async Task ToggleMedidas(string mla)
     {
         if (medidasAbiertas == mla) { medidasAbiertas = null; medidas = null; return; }
