@@ -446,8 +446,8 @@ public class MisAlertasBackgroundService : BackgroundService
                 var full = await inbox.GetMessageAsync(s.UniqueId);
                 var texto = full.TextBody;
                 if (string.IsNullOrWhiteSpace(texto) && !string.IsNullOrWhiteSpace(full.HtmlBody))
-                    texto = System.Text.RegularExpressions.Regex.Replace(full.HtmlBody, "<[^>]+>", " ");
-                adelanto = LimpiarTexto(texto, 1000);
+                    texto = HtmlAtexto(full.HtmlBody);
+                adelanto = LimpiarAdelanto(LimpiarTexto(texto, 4000), 400);
                 var adj = full.Attachments.OfType<MimePart>()
                     .Select(p => p.FileName).Where(f => !string.IsNullOrWhiteSpace(f)).ToList();
                 tieneAdj = adj.Count > 0;
@@ -491,6 +491,40 @@ public class MisAlertasBackgroundService : BackgroundService
             GmailLink = Recortar(gmailLink, 800),
             PorTelegram = a.CanalTelegram
         };
+
+    /// <summary>Pasa el cuerpo HTML de un mail a texto legible. Antes de sacar las etiquetas
+    /// hay que TIRAR los bloques &lt;style&gt;/&lt;script&gt;/&lt;head&gt;: si no, el "adelanto" queda lleno
+    /// del CSS del mail (el famoso "html, body{ margin: 0 auto !important; ... }").</summary>
+    private static string HtmlAtexto(string html)
+    {
+        const System.Text.RegularExpressions.RegexOptions opts =
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline;
+        var t = System.Text.RegularExpressions.Regex.Replace(html, "<!--.*?-->", " ", opts);
+        t = System.Text.RegularExpressions.Regex.Replace(t, "<(style|script|head|title)[^>]*>.*?</\\1>", " ", opts);
+        t = System.Text.RegularExpressions.Regex.Replace(t, "<[^>]+>", " ", opts);
+        return System.Net.WebUtility.HtmlDecode(t);
+    }
+
+    /// <summary>Deja el adelanto presentable para la card del Dashboard: saca lo que quedó
+    /// con pinta de CSS (bloques "algo { ... }" y reglas @media/@font-face) y recorta.
+    /// Se usa al guardar Y al leer, así los correos viejos también se ven limpios.</summary>
+    public static string? LimpiarAdelanto(string? t, int max = 400)
+    {
+        if (string.IsNullOrWhiteSpace(t)) return null;
+        const System.Text.RegularExpressions.RegexOptions opts =
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline;
+        // reglas de CSS: "selector { declaraciones }" (incluye las que quedaron cortadas al final)
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"@[a-z-]+[^{}]*\{[^{}]*\}?", " ", opts);
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"[^{}]*\{[^{}]*\}", " ", opts);
+        // sobra final sin cerrar: "…foo { color: red; padding: 0" → afuera
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"[^{}]*\{[^{}]*$", " ", opts);
+        // llaves sueltas que quedaron de reglas anidadas (@media { .x{...} })
+        t = t.Replace("{", " ").Replace("}", " ");
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"\s+", " ").Trim();
+        // un adelanto que quedó en puntuación suelta no aporta nada
+        if (t.Length < 3 || !System.Text.RegularExpressions.Regex.IsMatch(t, "[a-zA-Z0-9]")) return null;
+        return t.Length > max ? t.Substring(0, max).TrimEnd() + "…" : t;
+    }
 
     private static string? LimpiarTexto(string? t, int max)
     {

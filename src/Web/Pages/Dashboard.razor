@@ -991,52 +991,60 @@ else
         }
     </div>
 
-    @* Correos importantes — mails que dispararon alertas EMAIL_REMITENTE (2026-07-10) *@
-    <div class="dashboard-detail-card mac-stat-card accent-purple" style="position:relative;">
-        <div class="mac-card-header">
-            <div class="mac-card-iconbox" style="background:#EEEDFE; color:#534AB7;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>
-            </div>
-            <span class="mac-card-eyebrow" style="color:#3f3f46;">Correos importantes</span>
-            @if (correosImportantes.Count > 0)
-            {
-                <span class="ci-count">@correosImportantes.Count</span>
-            }
+</div>
+
+@* Correos importantes — mails que dispararon alertas EMAIL_REMITENTE (2026-07-10).
+   2026-08-26: salió de la grilla de KPIs (era una card altísima con 4 renglones de
+   código del mail por cada correo). Ahora es una tira a lo ancho: UN renglón por mail
+   con quién lo mandó, el asunto, el arranque del texto y la fecha. Se toca y abre Gmail. *@
+<div class="ci-card">
+    <div class="ci-head">
+        <div class="mac-card-iconbox" style="background:#EEEDFE; color:#534AB7;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>
         </div>
-        @if (correosImportantes.Count == 0)
+        <span class="mac-card-eyebrow" style="color:#3f3f46;">Correos importantes</span>
+        @if (correosImportantes.Count > 0)
         {
-            <div class="mac-card-bignum" style="font-size:1rem;">Sin novedades</div>
-            <div class="mac-card-sub">No hay correos importantes sin leer</div>
-        }
-        else
-        {
-            <div class="ci-list">
-                @foreach (var c in correosImportantes.Take(5))
-                {
-                    <div class="ci-item">
-                        <div class="ci-top">
-                            <span class="ci-from">@(string.IsNullOrWhiteSpace(c.Remitente) ? (c.RemitenteEmail ?? "(desconocido)") : c.Remitente)</span>
-                            <span class="ci-time">@FormatCorreoFecha(c.Fecha)</span>
-                        </div>
-                        <div class="ci-subject">@(string.IsNullOrWhiteSpace(c.Asunto) ? "(sin asunto)" : c.Asunto)</div>
-                        @if (!string.IsNullOrWhiteSpace(c.Adelanto))
-                        {
-                            <div class="ci-preview">@c.Adelanto</div>
-                        }
-                        @if (c.TieneAdjuntos)
-                        {
-                            <div class="ci-adj">📎 @(string.IsNullOrWhiteSpace(c.Adjuntos) ? "Tiene adjuntos" : c.Adjuntos)</div>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(c.GmailLink))
-                        {
-                            <a class="ci-open" href="@c.GmailLink" target="_blank" rel="noopener">Abrir en Gmail →</a>
-                        }
-                    </div>
-                }
-            </div>
-            <div class="tres-card-foot" @onclick='() => Navigation.NavigateTo("/mis-alertas")' style="cursor:pointer;">Ver Mis Alertas ›</div>
+            <span class="ci-count">@correosImportantes.Count</span>
+            <span class="ci-verlink" @onclick='() => Navigation.NavigateTo("/mis-alertas")'>Ver Mis Alertas ›</span>
         }
     </div>
+    @if (correosImportantes.Count == 0)
+    {
+        <div class="ci-vacio">No hay correos importantes sin leer</div>
+    }
+    else
+    {
+        @foreach (var c in correosImportantes.Take(8))
+        {
+            var quien = string.IsNullOrWhiteSpace(c.Remitente) ? (c.RemitenteEmail ?? "(desconocido)") : c.Remitente;
+            var asunto = string.IsNullOrWhiteSpace(c.Asunto) ? "(sin asunto)" : c.Asunto;
+            if (!string.IsNullOrWhiteSpace(c.GmailLink))
+            {
+                <a class="ci-row" href="@c.GmailLink" target="_blank" rel="noopener" title="Abrir en Gmail">
+                    <span class="ci-from">@quien</span>
+                    <span class="ci-mid"><span class="ci-subject">@asunto</span>@if (!string.IsNullOrWhiteSpace(c.Adelanto)) { <span class="ci-preview"> — @c.Adelanto</span> }</span>
+                    @if (c.TieneAdjuntos)
+                    {
+                        <span class="ci-adj" title="@(string.IsNullOrWhiteSpace(c.Adjuntos) ? "Tiene adjuntos" : c.Adjuntos)">📎</span>
+                    }
+                    <span class="ci-time">@FormatCorreoFecha(c.Fecha)</span>
+                </a>
+            }
+            else
+            {
+                <div class="ci-row">
+                    <span class="ci-from">@quien</span>
+                    <span class="ci-mid"><span class="ci-subject">@asunto</span>@if (!string.IsNullOrWhiteSpace(c.Adelanto)) { <span class="ci-preview"> — @c.Adelanto</span> }</span>
+                    @if (c.TieneAdjuntos)
+                    {
+                        <span class="ci-adj" title="@(string.IsNullOrWhiteSpace(c.Adjuntos) ? "Tiene adjuntos" : c.Adjuntos)">📎</span>
+                    }
+                    <span class="ci-time">@FormatCorreoFecha(c.Fecha)</span>
+                </div>
+            }
+        }
+    }
 </div>
 
 @* ═══ Card: resumen del día (cheques + saldo Galicia + preguntas MeLi) ═══ *@
@@ -1468,13 +1476,17 @@ else
         border-top: 0.5px solid rgba(0,0,0,0.08) !important;
         border-radius: 12px !important;
         box-shadow: none !important;
-        padding: 18px !important;
+        padding: 13px 14px !important;
         margin-top: 0 !important;
-        min-height: 150px;
+        min-height: 92px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
     }
+    /* 2026-08-26: en la fila de KPIs las tarjetas son la mitad de anchas (4 por fila),
+       asi que el numero grande baja un toque para que no se corte. */
+    .dashboard-cards-row .mac-stat-card .mac-card-bignum { font-size: 1.3rem; }
+    .dashboard-cards-row .mac-stat-card .mac-card-eyebrow { letter-spacing: 0.03em; }
     /* 2026-07-08: fila de cards operativas (cuadradas, un poco mas altas).
        2026-07-22: se había sumado WhatsApp (4 columnas).
        2026-07-29: WhatsApp se movió arriba junto al mapa → vuelven a ser 3 columnas. */
@@ -1729,19 +1741,30 @@ else
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
-    /* 2026-07-10: card "Correos importantes" */
-    .ci-count { margin-left: auto; background: #EEEDFE; color: #3C3489; font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
-    .ci-list { display: flex; flex-direction: column; margin-top: 4px; }
-    .ci-item { padding: 8px 0; border-top: 1px solid #f1f0f5; }
-    .ci-item:first-child { border-top: none; }
-    .ci-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-    .ci-from { font-size: 0.85rem; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ci-time { font-size: 0.72rem; color: #9ca3af; white-space: nowrap; flex-shrink: 0; }
-    .ci-subject { font-size: 0.82rem; color: #374151; margin-top: 1px; }
-    .ci-preview { font-size: 0.76rem; color: #6b7280; margin-top: 3px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-    .ci-adj { font-size: 0.74rem; color: #7c3aed; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ci-open { font-size: 0.76rem; color: #185FA5; font-weight: 700; margin-top: 5px; display: inline-block; text-decoration: none; }
-    .ci-open:hover { text-decoration: underline; }
+    /* 2026-07-10: card "Correos importantes".
+       2026-08-26: rediseño — tira a lo ancho, un renglón por mail (antes: card alta
+       con 4 líneas de preview que mostraban el código interno del mail). */
+    .ci-card { background:#fff; border:0.5px solid rgba(0,0,0,0.08); border-radius:14px; padding:10px 14px 6px; margin-top:0.9rem; }
+    .ci-head { display:flex; align-items:center; gap:8px; padding-bottom:8px; border-bottom:1px solid #f1f0f5; }
+    .ci-count { background:#EEEDFE; color:#3C3489; font-size:0.72rem; font-weight:700; padding:1px 8px; border-radius:999px; }
+    .ci-verlink { margin-left:auto; font-size:0.75rem; color:#2563eb; font-weight:500; cursor:pointer; }
+    .ci-verlink:hover { text-decoration:underline; }
+    .ci-vacio { font-size:0.8rem; color:#9ca3af; padding:10px 0; }
+
+    .ci-row { display:flex; align-items:baseline; gap:10px; padding:7px 4px; border-bottom:1px solid #f6f5f9;
+        text-decoration:none; color:inherit; border-radius:6px; }
+    .ci-row:last-child { border-bottom:none; }
+    a.ci-row:hover { background:#faf9fe; }
+    .ci-from { font-size:0.8rem; font-weight:700; color:#111827; white-space:nowrap; max-width:190px; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; }
+    /* el medio se come todo el ancho sobrante y corta con "…" */
+    .ci-mid { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ci-subject { font-size:0.8rem; color:#374151; }
+    .ci-preview { font-size:0.78rem; color:#9ca3af; }
+    .ci-adj { font-size:0.78rem; flex-shrink:0; }
+    .ci-time { font-size:0.72rem; color:#9ca3af; white-space:nowrap; flex-shrink:0; font-variant-numeric:tabular-nums; }
+    @@media (max-width: 760px) {
+        .ci-from { max-width:110px; }
+    }
 </style>
 
 @* === Cheques por pagar — calendario visual === *@
