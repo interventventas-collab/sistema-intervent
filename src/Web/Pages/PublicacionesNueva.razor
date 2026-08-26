@@ -196,8 +196,9 @@
     <div class="p2-body">
 
         <div class="p2-note">
-            <b>Pantalla nueva — etapa 1.</b> Por ahora es solo para mirar: no toca precios, stock ni nada en MercadoLibre.
-            La pantalla de siempre sigue funcionando igual.
+            <b>Pantalla nueva.</b> Tildá publicaciones y abajo aparece qué podés hacerles.
+            Las acciones en <b style="color:#b45309;">ámbar</b> cambian cosas en MercadoLibre y piden confirmación;
+            el resto solo mira o guarda configuración. La pantalla de siempre sigue funcionando igual.
         </div>
 
         <div class="p2-search">
@@ -462,7 +463,7 @@
         @if (datos is not null && datos.Items.Count > 0)
         {
             <div class="p2-count">
-                <span>Etapa 1: mirar. Las acciones (cambiar precios, mandar stock, fotos) vienen en la etapa 2.</span>
+                <span>Tocá una fila para ver el peso y las medidas del paquete. Las fotos vienen en la próxima etapa.</span>
                 <span>
                     <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
                     <span class="p2-pg">Página @pagina de @TotalPaginas</span>
