@@ -250,6 +250,10 @@ builder.Services.AddScoped<EnvioComprobanteService>();
 // 2026-08-24: manda al cliente el recibo del pago + como le queda la cuenta (mail / WhatsApp).
 builder.Services.AddScoped<EnvioReciboCobranzaService>();
 builder.Services.AddHostedService<EnvioComprobanteBackgroundService>();
+// 2026-08-26: mensajes de WhatsApp agendados para salir mas tarde ("escribile a la tarde") +
+// el robot que cada minuto manda los que ya cumplieron la hora.
+builder.Services.AddScoped<WhatsAppProgramadosService>();
+builder.Services.AddHostedService<WhatsAppProgramadosBackgroundService>();
 // 2026-07-23: CafeListasCustomController en DI para mandar listas de precios por el chat WhatsApp
 builder.Services.AddScoped<Api.Controllers.CafeListasCustomController>();
 // 2026-08-05: AlqReservasController y VisitasController en DI para adjuntar reservas de alquiler

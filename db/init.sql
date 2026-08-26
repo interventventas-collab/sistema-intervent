@@ -6991,3 +6991,58 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_TwilioMensajes')
    AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EntregaError' AND Object_ID=Object_ID('WhatsApp_TwilioMensajes'))
     ALTER TABLE WhatsApp_TwilioMensajes ADD EntregaError NVARCHAR(300) NULL, EntregaErrorCodigo INT NULL;
 GO
+
+-- ============================================================================
+-- 2026-08-26: MENSAJES PROGRAMADOS (WhatsApp) — "escribile a la tarde"
+-- ----------------------------------------------------------------------------
+-- Un operador deja escrito un mensaje y a que hora tiene que salir. Un robot
+-- (WhatsAppProgramadosBackgroundService) mira cada minuto si a alguno le llego
+-- la hora y lo manda. La espera vive ACA y no en el navegador: si la contara la
+-- pantalla, se moriria al cerrar la pestaña y el mensaje no saldria nunca.
+--
+-- La fila es cola e historial a la vez: nace PENDIENTE y termina ENVIADO (con la
+-- hora real) o ERROR (con el motivo). CANCELADO = lo freno una persona.
+--
+-- Tipo:
+--   TEXTO     — texto libre. OJO: solo sale si al llegar la hora la ventana de
+--               24 hs sigue abierta (regla de WhatsApp, no nuestra).
+--   ADJUNTO   — una foto/PDF ya subido, con pie de foto opcional.
+--   PLANTILLA — plantilla aprobada por Meta. Es la UNICA que sale igual con la
+--               ventana cerrada, asi que sirve para agendar a varios dias.
+-- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_MensajesProgramados')
+CREATE TABLE WhatsApp_MensajesProgramados (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Numero NVARCHAR(40) NOT NULL,              -- destino (o "ig:{IGSID}")
+    LineaPhoneId NVARCHAR(40) NULL,            -- linea por la que sale (NULL = la default)
+    Tipo NVARCHAR(10) NOT NULL,                -- TEXTO | ADJUNTO | PLANTILLA
+    Texto NVARCHAR(MAX) NULL,                  -- mensaje, o pie de foto si es ADJUNTO
+    MediaUrl NVARCHAR(500) NULL,               -- ADJUNTO: /api/whatsapp/twilio/files/{token}
+    MediaFilename NVARCHAR(255) NULL,          -- ADJUNTO: nombre original (define foto vs documento)
+    UploadId INT NULL,                         -- ADJUNTO: fila de WhatsApp_TwilioUploads (para estirar su vencimiento)
+    Plantilla NVARCHAR(120) NULL,              -- PLANTILLA: nombre en Meta
+    Idioma NVARCHAR(20) NULL,                  -- PLANTILLA: ej es_AR
+    VariablesJson NVARCHAR(MAX) NULL,          -- PLANTILLA: lista JSON de variables
+    CuerpoPreview NVARCHAR(MAX) NULL,          -- PLANTILLA: como queda el texto ya reemplazado
+    ProgramadoPara DATETIME2 NOT NULL,         -- UTC. Cuando le toca salir
+    Estado NVARCHAR(12) NOT NULL,              -- PENDIENTE | ENVIADO | ERROR | CANCELADO
+    EnviadoAt DATETIME2 NULL,                  -- UTC. Cuando salio de verdad
+    Error NVARCHAR(400) NULL,                  -- por que no salio, en castellano
+    Intentos INT NOT NULL DEFAULT 0,
+    MensajeId INT NULL,                        -- fila que quedo en WhatsApp_TwilioMensajes al enviarse
+    CreadoPorUserId INT NULL,
+    CreadoPorNombre NVARCHAR(120) NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+-- El robot busca siempre "pendientes cuya hora ya llego": ese es el indice que necesita.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_MensajesProgramados')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_WaProgramados_EstadoHora')
+    CREATE INDEX IX_WaProgramados_EstadoHora ON WhatsApp_MensajesProgramados(Estado, ProgramadoPara);
+GO
+-- La pantalla del chat pregunta "que tiene pendiente ESTE numero".
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_MensajesProgramados')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_WaProgramados_Numero')
+    CREATE INDEX IX_WaProgramados_Numero ON WhatsApp_MensajesProgramados(Numero, Estado);
+GO

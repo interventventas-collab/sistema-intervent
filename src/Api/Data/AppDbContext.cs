@@ -228,6 +228,8 @@ public class AppDbContext : DbContext
     public DbSet<WhatsAppTwilioDatoBancario> WhatsAppTwilioDatosBancarios => Set<WhatsAppTwilioDatoBancario>();
     public DbSet<WhatsAppTwilioUpload> WhatsAppTwilioUploads => Set<WhatsAppTwilioUpload>();
     public DbSet<WhatsAppCatalogo> WhatsAppCatalogos => Set<WhatsAppCatalogo>();
+    // 2026-08-26: mensajes agendados para salir mas tarde (cola + historial).
+    public DbSet<WhatsAppMensajeProgramado> WhatsAppMensajesProgramados => Set<WhatsAppMensajeProgramado>();
     public DbSet<WhatsAppLineaConfig> WhatsAppLineasConfig => Set<WhatsAppLineaConfig>();
     public DbSet<WhatsAppSonido> WhatsAppSonidos => Set<WhatsAppSonido>();
     public DbSet<WhatsAppSector> WhatsAppSectores => Set<WhatsAppSector>();
