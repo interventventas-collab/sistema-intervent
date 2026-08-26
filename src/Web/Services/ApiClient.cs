@@ -5048,7 +5048,8 @@ public class ApiClient
     public record PubV2Componente(string? Sku, string Nombre, decimal Cantidad, int Stock, int Alcanza, bool Frena);
     public record PubV2Fila(
         string MeliItemId, string? Sku, string Titulo, string? Thumbnail, string? Permalink,
-        decimal Precio, string? Estado, string? Tipo, string? Cuotas, int StockMeli, int Vendidas,
+        decimal Precio, string? Estado, string? Tipo, string? Cuotas, bool EnvioGratis, string? Envio,
+        int StockMeli, int Vendidas,
         decimal? Costo, decimal? MargenPct, decimal? GananciaPesos, decimal? NetoSinIva,
         decimal? ComisionMonto, decimal? ComisionPct, decimal? ComisionPorcentaje, decimal? ComisionFija, decimal? ComisionEnvio,
         bool ComisionVieja, List<PubV2Componente> Receta, int? Arma,

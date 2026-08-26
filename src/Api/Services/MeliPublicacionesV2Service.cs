@@ -35,7 +35,8 @@ public class MeliPublicacionesV2Service
 
     public record FilaDto(
         string MeliItemId, string? Sku, string Titulo, string? Thumbnail, string? Permalink,
-        decimal Precio, string? Estado, string? Tipo, string? Cuotas, int StockMeli, int Vendidas,
+        decimal Precio, string? Estado, string? Tipo, string? Cuotas, bool EnvioGratis, string? Envio,
+        int StockMeli, int Vendidas,
         decimal? Costo, decimal? MargenPct, decimal? GananciaPesos, decimal? NetoSinIva,
         decimal? ComisionMonto, decimal? ComisionPct, decimal? ComisionPorcentaje, decimal? ComisionFija, decimal? ComisionEnvio,
         bool ComisionVieja, List<ComponenteDto> Receta, int? Arma,
@@ -201,7 +202,7 @@ public class MeliPublicacionesV2Service
             .Select(m => new
             {
                 m.MeliItemId, m.Sku, m.Title, m.Thumbnail, m.Permalink, m.Price, m.Status,
-                m.ListingTypeId, m.InstallmentTag, m.FreeShipping, m.AvailableQuantity, m.SoldQuantity,
+                m.ListingTypeId, m.InstallmentTag, m.FreeShipping, m.LogisticType, m.AvailableQuantity, m.SoldQuantity,
                 m.SaleFeeAmount, m.SaleFeePercentageFee, m.SaleFeeFixedFee, m.SaleFeeShippingCost, m.SaleFeePriceSnapshot,
                 m.CafeProductoId, m.CafeFormato, m.MeliAccountId,
                 Cuenta = m.MeliAccount != null ? m.MeliAccount.Nickname : null
@@ -343,7 +344,7 @@ public class MeliPublicacionesV2Service
 
             items.Add(new FilaDto(
                 r.MeliItemId, r.Sku, r.Title, r.Thumbnail, r.Permalink,
-                r.Price, r.Status, r.ListingTypeId, r.InstallmentTag, r.AvailableQuantity, r.SoldQuantity,
+                r.Price, r.Status, r.ListingTypeId, r.InstallmentTag, r.FreeShipping, r.LogisticType, r.AvailableQuantity, r.SoldQuantity,
                 costo, margen, ganancia, neto,
                 (r.SaleFeeAmount.HasValue ? seLlevaMeli : (decimal?)null), comPct, r.SaleFeePercentageFee, r.SaleFeeFixedFee, r.SaleFeeShippingCost,
                 comisionVieja, receta, arma,

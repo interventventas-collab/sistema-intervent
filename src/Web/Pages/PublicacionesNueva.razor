@@ -149,6 +149,16 @@
 
     /* Al lado de la foto, no debajo: apilados la fila crecía 9 px y con 50 filas por página
        eso es media pantalla más de scroll. */
+    /* Cómo se envía. El color separa lo que te cuesta plata de lo que no. */
+    .p2-envio { display: inline-block; font-size: .58rem; font-weight: 700; padding: 0 .3rem;
+                border-radius: .25rem; letter-spacing: .02em; vertical-align: 1px;
+                background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .p2-envio.full { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+    .p2-envio.colecta { background: #e0f2fe; color: #075985; border-color: #bae6fd; }
+    .p2-envio.flex { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+    .p2-envio.acordar { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+    .p2-envio.sindato { background: #fff; color: #9ca3af; border-style: dashed; }
+
     .p2-rail { float: left; margin-right: .5rem; display: flex; align-items: center; gap: .25rem; }
     .p2-balanza { border: 1px solid #e3e7e0; background: #fff; border-radius: .3rem; cursor: pointer;
                   font-size: .72rem; line-height: 1; padding: .15rem .34rem; color: #6b7280; }
@@ -374,7 +384,7 @@
                                         @onclick="() => ToggleMedidas(it.MeliItemId)">⚖</button>
                             </span>
                             <span class="p2-t" title="@it.Titulo">@it.Titulo</span>
-                            <span class="p2-m">@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)@(it.Vendidas > 0 ? $" · {it.Vendidas} vendidas" : "")</span>
+                            <span class="p2-m">@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)@(it.Vendidas > 0 ? $" · {it.Vendidas} vendidas" : "") <span class="p2-envio @ClaseEnvio(it.Envio)" title="@TituloEnvio(it)">@EnvioTexto(it.Envio)@(it.EnvioGratis ? " · lo pagás vos" : "")</span></span>
                             <span class="p2-rec">@RecetaFragment(it)</span>
                         </span>
 
@@ -1309,6 +1319,42 @@
         "under_review" => "En revisión",
         _ => s ?? "—"
     };
+
+    // ── Cómo se envía (2026-08-26) ──
+    // Osmar: "estaría bueno que en las publicaciones diga qué condiciones de envío tiene siempre,
+    // onda Flex, correo, ME1, retira". Sale de `shipping.logistic_type` de MercadoLibre.
+    private static string EnvioTexto(string? logistica) => logistica switch
+    {
+        null or "" => "envío sin dato",
+        "fulfillment" => "Full",
+        "cross_docking" or "xd_drop_off" => "Colecta",
+        "self_service" => "Flex",
+        "drop_off" => "Correo",
+        "default" => "A acordar",
+        "not_specified" => "envío sin definir",
+        _ => logistica
+    };
+
+    private static string ClaseEnvio(string? logistica) => logistica switch
+    {
+        "fulfillment" => "full",
+        "cross_docking" or "xd_drop_off" => "colecta",
+        "self_service" => "flex",
+        "default" => "acordar",
+        null or "" or "not_specified" => "sindato",
+        _ => ""
+    };
+
+    private static string TituloEnvio(ApiClient.PubV2Fila it) => it.Envio switch
+    {
+        "fulfillment" => "Full: la mercadería está en el depósito de MercadoLibre y ellos despachan.",
+        "cross_docking" or "xd_drop_off" => "Colecta: MercadoLibre pasa a buscar por tu depósito.",
+        "self_service" => "Flex: lo entregás vos el mismo día.",
+        "drop_off" => "Correo: lo despachás vos en una sucursal.",
+        "default" => "A acordar (ME1): no usa el envío de MercadoLibre, lo arreglás con el comprador.",
+        null or "" => "Todavía no sabemos cómo se envía. Se completa al actualizar comisiones.",
+        _ => it.Envio ?? ""
+    } + (it.EnvioGratis ? " El envío es gratis para el comprador: lo pagás vos." : " El envío lo paga el comprador.");
 
     private string CuotasTexto(string? tag, string? tipo)
     {
