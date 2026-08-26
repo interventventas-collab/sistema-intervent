@@ -155,6 +155,23 @@ public class MeliPricePushService
             cfg.UpdatedAt = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync(ct);
+
+        // 2026-08-26 — RECAPTURAR LA COMISIÓN. Sin esto quedaba la del precio VIEJO y el margen
+        // que mostraba el sistema era mentira: caso real, Mesita Bambini subió de $42.000 a
+        // $100.552 y siguió con la comisión de $5.880 (14% de $42.000) → mostraba 89,3% de margen
+        // cuando el real era 50%. Le pasó a las 848 publicaciones del piso masivo del 25/08.
+        // La comisión de MeLi escala con el precio, así que cambiar uno sin el otro deja el
+        // margen roto hasta el refresco nocturno.
+        try
+        {
+            await _itemService.RefreshSaleFeeAsync(item.MeliItemId);
+        }
+        catch (Exception ex)
+        {
+            // Si falla, el precio ya quedó bien igual — la comisión la corrige el refresco nocturno.
+            _logger.LogWarning(ex, "[PricePush] {Mla}: precio OK pero no se pudo recapturar la comisión", item.MeliItemId);
+        }
+
         _logger.LogInformation("[PricePush] {Mla} OK a ${Final} (claimed={Claimed})",
             item.MeliItemId, precioFinal, markAsClaimed || cfg.SyncPrecio);
         return new PushResult(true, $"Precio actualizado a ${precioFinal:N2}", precioFinal, precioBase);
