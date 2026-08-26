@@ -1355,9 +1355,23 @@
                             </button>
                         }
                     </div>
+                    @* 2026-08-26: el "cuándo" en DOS pedazos. Antes era un solo casillero con día,
+                       mes, año, hora y minutos: demasiado, y el año se rompía solo. Ahora se escribe
+                       la HORA (que es lo que se cambia siempre) y el día queda en hoy salvo que lo
+                       cambies desde el almanaque. *@
                     <div class="wa-prog-fecha">
-                        <span>o elegí día y hora:</span>
-                        <input type="datetime-local" class="wa-nv-input wa-prog-input" @bind="progCuando" />
+                        <span>o elegí la hora:</span>
+                        <input type="time" class="wa-nv-input wa-prog-hora" value="@ProgHoraTexto" @onchange="OnProgHoraChange" />
+                        <span class="wa-prog-dia-tag @(ProgEsHoy() ? "hoy" : "")">@ProgDiaLindo()</span>
+                        @if (progMostrarAlmanaque)
+                        {
+                            <input type="date" id="wa-prog-dia" class="wa-nv-input wa-prog-diainput"
+                                   min="@DateTimeExt.AhoraAr().ToString("yyyy-MM-dd")" value="@ProgDiaTexto" @onchange="OnProgDiaChange" />
+                        }
+                        else
+                        {
+                            <button class="wa-prog-otrodia" @onclick="AbrirAlmanaque" title="Elegir otro día en el almanaque">📅 otro día</button>
+                        }
                     </div>
 
                     <button class="wa-nueva-btn wa-prog-guardar" disabled="@(progGuardando || !SePuedeProgramar())" @onclick="ProgramarAhora">
@@ -3517,8 +3531,13 @@
     .wa-prog-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
     .wa-prog-chip { padding: 0.35rem 0.6rem; font-size: 0.82rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 999px; cursor: pointer; }
     .wa-prog-chip.sel { background: #2563eb; color: #fff; border-color: #2563eb; font-weight: 700; }
-    .wa-prog-fecha { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.45rem; font-size: 0.8rem; color: #6b7280; }
-    .wa-prog-input { flex: 1; font-size: 0.85rem; }
+    .wa-prog-fecha { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.45rem; font-size: 0.8rem; color: #6b7280; flex-wrap: wrap; }
+    .wa-prog-hora { flex: none; width: 6.6rem; font-size: 0.95rem; text-align: center; font-weight: 700; }
+    .wa-prog-dia-tag { padding: 0.3rem 0.65rem; border-radius: 999px; font-size: 0.82rem; font-weight: 700; background: #f3f4f6; color: #374151; }
+    .wa-prog-dia-tag.hoy { background: #dcfce7; color: #166534; }
+    .wa-prog-otrodia { padding: 0.32rem 0.6rem; font-size: 0.82rem; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; color: #374151; }
+    .wa-prog-otrodia:hover { background: #f9fafb; border-color: #9ca3af; }
+    .wa-prog-diainput { flex: none; width: 9.5rem; font-size: 0.85rem; }
     .wa-prog-guardar { margin-top: 0.6rem; }
     /* el cartel de lo que quedó agendado, arriba del cuadro de escribir */
     .wa-prog-tray { margin: 0.4rem 1rem 0.2rem; display: flex; flex-direction: column; gap: 0.3rem; }
@@ -6359,6 +6378,14 @@
             // 2026-08-17: ¿el panel derecho arranca abierto o cerrado? (lo que eligió la última vez)
             await CargarPrefPanelAsync();
         }
+        // 2026-08-26: tocaste "otro día" -> que el calendario se despliegue solo, así el día se
+        // elige tocando y no escribiendo (escribir el año es lo que dejaba fechas del año 0002).
+        if (progAbrirPicker)
+        {
+            progAbrirPicker = false;
+            try { await JS.InvokeVoidAsync("waAbrirAlmanaque", "wa-prog-dia"); }
+            catch { /* si el navegador no sabe desplegarlo, el campo igual se puede usar */ }
+        }
         // 2026-08-03: cuando abrimos la ventana flotante del pedido, la hacemos arrastrable
         if (_pedidoFloatAttachPending && showPedidoFloat)
         {
@@ -7768,7 +7795,84 @@
     // navegador, se moriría al cerrar la pestaña y el mensaje no saldría nunca.
     bool showProgramarPanel = false;
     string progModo = "MENSAJE";          // MENSAJE (lo que escribió abajo) | PLANTILLA
-    DateTime progCuando = DateTimeExt.AhoraAr().AddHours(1);   // SIEMPRE hora argentina
+    // 2026-08-26: el "cuándo" se guarda en DOS pedazos (día y hora) en vez de un solo casillero.
+    // El de antes era un <input type="datetime-local">: cinco casilleros, y el del año se rompía
+    // solo — el navegador avisa el año a medio escribir, así que tipear 2026 pasa por 0002, 0020
+    // y 0202 (el mismo bug que Alquileres el 19/08). Ahora el día no se tipea nunca.
+    DateTime progDia = PrimeraHoraSugerida().Date;             // SIEMPRE hora argentina
+    TimeSpan progHora = PrimeraHoraSugerida().TimeOfDay;
+    bool progDiaAMano = false;          // ¿el día lo elegiste vos, o lo estamos poniendo nosotros?
+    bool progMostrarAlmanaque = false;  // el almanaque aparece recién cuando tocás "otro día"
+    bool progAbrirPicker = false;       // pedirle al navegador que despliegue el calendario
+
+    /// <summary>La hora elegida, entera. El resto de la pantalla la sigue usando igual que antes.</summary>
+    DateTime progCuando
+    {
+        get => progDia.Date + progHora;
+        set
+        {
+            progDia = value.Date;
+            progHora = value.TimeOfDay;
+            // Un atajo de "Mañana 9:00" SÍ decide el día; uno de "Hoy 15:00" lo deja en automático.
+            progDiaAMano = value.Date != DateTimeExt.AhoraAr().Date;
+        }
+    }
+
+    /// <summary>La hora del casillero (HH:mm). Es lo único que se escribe a mano.</summary>
+    string ProgHoraTexto
+    {
+        get => $"{progHora.Hours:00}:{progHora.Minutes:00}";
+        set
+        {
+            if (!TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out var t)) return;  // vacío o a medio escribir
+            progHora = new TimeSpan(t.Hours, t.Minutes, 0);
+            // Si el día está en automático, manda la hora: si esa hora ya pasó, es para mañana.
+            // Antes esto te rebotaba con "esa hora ya pasó" y tenías que corregir la fecha a mano.
+            if (progDiaAMano) return;
+            var ahora = DateTimeExt.AhoraAr();
+            progDia = ahora.Date;
+            if (progDia + progHora <= ahora.AddMinutes(1)) progDia = ahora.Date.AddDays(1);
+        }
+    }
+
+    /// <summary>El día del almanaque. Solo se toca desde ahí, nunca tipeando.</summary>
+    string ProgDiaTexto
+    {
+        get => progDia.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        set
+        {
+            if (!DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) return;
+            // Candado del "año raro": mientras el año esté a medio escribir (0002, 0020, 0202…)
+            // no se toca nada. Con el almanaque no debería pasar nunca, pero el candado queda.
+            if (d.Year < 2000 || d.Year > 2100) return;
+            progDia = d.Date;
+            progDiaAMano = true;
+        }
+    }
+
+    // Los dos casilleros se leen como texto a propósito: con @bind, Blazor mira el type= del
+    // input y quiere convertir solo (TimeOnly / DateTime), que es justo lo que no queremos acá.
+    void OnProgHoraChange(ChangeEventArgs e) => ProgHoraTexto = e.Value?.ToString() ?? "";
+    void OnProgDiaChange(ChangeEventArgs e) => ProgDiaTexto = e.Value?.ToString() ?? "";
+
+    /// <summary>"hoy" · "mañana" · "jue 28/08" — el cartelito que va al lado de la hora.</summary>
+    string ProgDiaLindo()
+    {
+        var hoy = DateTimeExt.AhoraAr().Date;
+        if (progDia.Date == hoy) return "hoy";
+        if (progDia.Date == hoy.AddDays(1)) return "mañana";
+        return progDia.ToString("ddd dd/MM", new CultureInfo("es-AR"));
+    }
+
+    bool ProgEsHoy() => progDia.Date == DateTimeExt.AhoraAr().Date;
+
+    /// <summary>Muestra el almanaque y le pide al navegador que lo despliegue solo, para que el día
+    /// se elija tocando y no escribiendo.</summary>
+    void AbrirAlmanaque()
+    {
+        progMostrarAlmanaque = true;
+        progAbrirPicker = true;
+    }
     bool progGuardando = false;           // mientras se está agendando
     bool progTrabajando = false;          // mientras se cancela / se manda uno ya agendado
     List<ApiClient.TwProgramadoDto> progPendientes = new();
@@ -7783,6 +7887,7 @@
         // que es lo único que atraviesa la ventana cerrada.
         if (!Ventana24Abierta()) progModo = "PLANTILLA";
         progCuando = PrimeraHoraSugerida();
+        progMostrarAlmanaque = false;   // el día arranca en automático, sin almanaque a la vista
         await EnsureNvCargado();   // las plantillas se piden una sola vez y quedan
     }
 
@@ -7805,7 +7910,7 @@
         => progResueltos.Where(x => x.Estado == "ERROR" && x.ProgramadoPara > DateTime.UtcNow.AddDays(-7)).ToList();
 
     /// <summary>La hora que viene redonda: dentro de una hora, sin minutos sueltos.</summary>
-    DateTime PrimeraHoraSugerida()
+    static DateTime PrimeraHoraSugerida()
     {
         var t = DateTimeExt.AhoraAr().AddHours(1);
         return new DateTime(t.Year, t.Month, t.Day, t.Hour, 0, 0);

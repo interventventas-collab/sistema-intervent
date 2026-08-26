@@ -2007,6 +2007,19 @@
                 return true;
             } catch (e) { return false; }
         };
+        // 2026-08-26: desplegar el almanaque de un campo de fecha sin que haya que escribir nada.
+        // Escribir el ano a mano es lo que dejaba fechas del ano 0002 (el navegador avisa el ano
+        // a medio escribir). showPicker() no existe en todos los navegadores: si no esta, el campo
+        // igual se puede usar a mano, solo que no se abre solo.
+        window.waAbrirAlmanaque = function (elId) {
+            try {
+                var el = document.getElementById(elId);
+                if (!el) return false;
+                el.focus();
+                if (typeof el.showPicker === 'function') el.showPicker();
+                return true;
+            } catch (e) { return false; }
+        };
         // 2026-08-07: aviso visual del sistema (Notification API) para el WhatsApp del celu.
         // Funciona con la pantalla abierta (aunque esté en segundo plano). No usa push/service worker.
         window.waMovilNotif = {
