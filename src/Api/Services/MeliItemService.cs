@@ -2467,6 +2467,110 @@ public class MeliItemService
         return result;
     }
 
+    /// <summary>
+    /// 2026-08-26 — ¿Cuánto me cobraría MeLi si esta publicación valiera OTRO precio?
+    ///
+    /// Es la misma consulta que GetListingCostsAsync pero con un precio hipotético, y con dos
+    /// diferencias que importan:
+    ///   • NO guarda nada en la base. Es una simulación: la publicación sigue como está.
+    ///   • Pregunta SIEMPRE el costo del envío, aunque hoy lo pague el comprador. Es la clave del
+    ///     asunto: arriba de cierto precio MeLi OBLIGA a poner envío gratis y ese costo pasa a ser
+    ///     tuyo. Caso medido: bañera M302AZ a $32.999 deja 71,9%; a $33.500 deja 19,8%, porque
+    ///     aparecen $11.080 de envío. Si no preguntáramos el envío, la simulación diría que subir
+    ///     el precio te conviene, cuando te funde.
+    /// </summary>
+    public async Task<ListingCostDto?> SimularCostosAsync(string meliItemId, decimal precioSimulado,
+        CancellationToken ct = default)
+    {
+        if (precioSimulado <= 0) return null;
+
+        var item = await _db.MeliItems.AsNoTracking().Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+        if (item?.MeliAccount is null) return null;
+
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (string.IsNullOrWhiteSpace(token)) return null;
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        http.Timeout = TimeSpan.FromSeconds(25);
+
+        var res = new ListingCostDto
+        {
+            Price = precioSimulado,
+            CurrencyId = item.CurrencyId ?? "ARS",
+            ListingTypeId = item.ListingTypeId
+        };
+
+        // 1) Comisión a ese precio
+        var qs = $"price={precioSimulado.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+        if (!string.IsNullOrEmpty(item.CategoryId)) qs += $"&category_id={item.CategoryId}";
+        if (!string.IsNullOrEmpty(item.ListingTypeId)) qs += $"&listing_type_id={item.ListingTypeId}";
+        if (!string.IsNullOrEmpty(item.InstallmentTag)) qs += $"&installment_tag={item.InstallmentTag}";
+
+        try
+        {
+            var resp = await http.GetAsync($"https://api.mercadolibre.com/sites/MLA/listing_prices?{qs}", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            var root = doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0
+                ? doc.RootElement[0] : doc.RootElement;
+
+            if (root.TryGetProperty("sale_fee_amount", out var sfa) && sfa.ValueKind == JsonValueKind.Number)
+                res.SaleFeeAmount = sfa.GetDecimal();
+            if (root.TryGetProperty("listing_fee_amount", out var lfa) && lfa.ValueKind == JsonValueKind.Number)
+                res.ListingFeeAmount = lfa.GetDecimal();
+
+            if (root.TryGetProperty("sale_fee_details", out var sfd) && sfd.ValueKind == JsonValueKind.Object)
+            {
+                if (sfd.TryGetProperty("fixed_fee", out var ff) && ff.ValueKind == JsonValueKind.Number)
+                    res.FixedFee = ff.GetDecimal();
+                if (sfd.TryGetProperty("percentage_fee", out var pf) && pf.ValueKind == JsonValueKind.Number)
+                    res.PercentageFee = pf.GetDecimal();
+
+                var meliPctFee = sfd.TryGetProperty("meli_percentage_fee", out var mpf) && mpf.ValueKind == JsonValueKind.Number
+                    ? mpf.GetDecimal() : 14.30m;
+                var realFinancing = GetFinancingRealPct(item.ListingTypeId, item.InstallmentTag);
+                if (realFinancing.HasValue)
+                {
+                    res.FinancingFee = realFinancing.Value;
+                    res.PercentageFee = meliPctFee + realFinancing.Value;
+                    res.FixedFee = item.InstallmentTag == "pcj-co-funded" ? 0m : res.FixedFee;
+                    res.SaleFeeAmount = Math.Round(precioSimulado * res.PercentageFee / 100m + res.FixedFee, 2);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Simular] {Mla}: no se pudo consultar la comisión a ${Precio}", meliItemId, precioSimulado);
+            return null;
+        }
+
+        // 2) Envío a ese precio. Se pregunta SIEMPRE (ver el comentario de arriba).
+        try
+        {
+            var url = $"https://api.mercadolibre.com/users/{item.MeliAccount.MeliUserId}/shipping_options/free" +
+                      $"?item_id={meliItemId}&item_price={precioSimulado.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                      $"&free_shipping=true&listing_type_id={item.ListingTypeId}";
+            var resp = await http.GetAsync(url, ct);
+            if (resp.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+                if (doc.RootElement.TryGetProperty("coverage", out var cov)
+                    && cov.TryGetProperty("all_country", out var ac)
+                    && ac.TryGetProperty("list_cost", out var lc) && lc.ValueKind == JsonValueKind.Number)
+                    res.ShippingCost = lc.GetDecimal();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Simular] {Mla}: no se pudo consultar el envío a ${Precio}", meliItemId, precioSimulado);
+        }
+
+        res.NetAmount = Math.Round(precioSimulado - res.SaleFeeAmount - res.ListingFeeAmount - res.ShippingCost, 2);
+        return res;
+    }
+
     /// <summary>Las marcas con las que MeLi identifica la modalidad de cuotas de una publicación.
     /// 2026-08-26: se agrega "6x_campaign" — estaba en la tabla de financiación (GetFinancingRealPct)
     /// pero no en esta lista, así que una publicación de 6 cuotas se guardaba como si no tuviera.</summary>
