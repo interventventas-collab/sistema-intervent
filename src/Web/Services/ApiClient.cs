@@ -7333,6 +7333,52 @@ public class ApiClient
     // 2026-08-01: iniciar conversación nueva con plantilla aprobada
     public record TwPlantillaDto(string Name, string Language, string Category, string BodyText, int VariableCount);
 
+    // ===== 2026-08-26: ALARMAS DEL RELOJ =====
+    // No se manda "de quién son": el servidor lo deduce del usuario logueado y del PIN firmado
+    // (header X-Operator-Name, que ya viaja solo en cada request).
+    public record AlarmaDto(int Id, DateTime Cuando, string? Nota, string Sonido, string Estado,
+        string? CreadaPor, bool Vencida);
+    public record AlarmasResp(string Duenio, string? Quien, List<AlarmaDto> Alarmas);
+
+    public async Task<AlarmasResp?> GetAlarmasAsync()
+    {
+        try { return await _http.GetFromJsonAsync<AlarmasResp>("/api/alarmas"); }
+        catch { return null; }
+    }
+
+    public async Task<(bool ok, string? error)> PonerAlarmaAsync(DateTime cuandoUtc, string? nota, string? sonido)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/alarmas", new { Cuando = cuandoUtc, Nota = nota, Sonido = sonido });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            return (false, ErrorDeJson(await resp.Content.ReadAsStringAsync(), "No se pudo poner la alarma"));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    public async Task<(bool ok, string? error)> BorrarAlarmaAsync(int id)
+    {
+        try
+        {
+            var resp = await _http.DeleteAsync($"/api/alarmas/{id}");
+            if (resp.IsSuccessStatusCode) return (true, null);
+            return (false, ErrorDeJson(await resp.Content.ReadAsStringAsync(), "No se pudo sacar la alarma"));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    public async Task<(bool ok, string? error)> ApagarAlarmaAsync(int id)
+    {
+        try
+        {
+            var resp = await _http.PostAsync($"/api/alarmas/{id}/apagar", null);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            return (false, ErrorDeJson(await resp.Content.ReadAsStringAsync(), "No se pudo apagar"));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     // ===== 2026-08-26: MENSAJES PROGRAMADOS ("escribile a la tarde") =====
     // ProgramadoPara viaja siempre en UTC: el servidor no tiene por que adivinar la zona del que
     // programo. La pantalla lo convierte a hora local para mostrarlo.
