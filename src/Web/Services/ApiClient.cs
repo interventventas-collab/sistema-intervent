@@ -5170,6 +5170,32 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // ─── Precio a mano (pantalla nueva) ───
+    public record PubV2Simulacion(string MeliItemId, decimal PrecioActual, decimal PrecioProbado,
+        decimal Comision, decimal Envio, decimal? Costo, decimal? Ganancia, decimal? MargenPct,
+        decimal? MargenActualPct, bool CruzaEscalonEnvio,
+        decimal? MargenSiPagasElEnvioPct, decimal? GananciaSiPagasElEnvio,
+        bool PagasElEnvioHoy, string? Aviso);
+    public record PubV2PrecioResultado(bool Ok, string Mensaje, decimal? PrecioNuevo, bool ModoPrecio);
+
+    public async Task<PubV2Simulacion?> SimularPrecioV2Async(string mla, decimal precio)
+        => await GetAsync<PubV2Simulacion>(
+            $"/api/meli/v2/publicaciones/{mla}/simular?precio={precio.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+
+    public async Task<(PubV2PrecioResultado? res, string? error)> PonerPrecioV2Async(string mla, decimal precio, bool quedaFijo)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PutAsJsonAsync($"/api/meli/v2/publicaciones/{mla}/precio",
+                new { Precio = precio, QuedaFijo = quedaFijo });
+            var body = await resp.Content.ReadFromJsonAsync<PubV2PrecioResultado>();
+            if (resp.IsSuccessStatusCode) return (body, null);
+            return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     public async Task<Dictionary<string, int>?> GetResumenV2Async()
         => await GetAsync<Dictionary<string, int>>("/api/meli/v2/resumen");
 

@@ -135,6 +135,30 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return r.Ok ? Ok(r) : BadRequest(r);
     }
 
+    // ─── 2026-08-26 · precio a mano ───
+    // Osmar: "poder meter el precio manual y que ahí aparezca el porcentaje basado en el precio".
+    // Simular NO cambia nada; publicar sí, y define quién manda de ahí en más (el precio o el %).
+
+    /// <summary>Qué dejaría esta publicación si valiera otro precio. No toca nada.</summary>
+    [HttpGet("publicaciones/{mla}/simular")]
+    public async Task<IActionResult> Simular(string mla, [FromQuery] decimal precio,
+        [FromServices] MeliPrecioManualService svc)
+    {
+        var r = await svc.SimularAsync(mla, precio, HttpContext.RequestAborted);
+        if (r is null) return NotFound(new { error = "Publicación no encontrada" });
+        return Ok(r);
+    }
+
+    /// <summary>TOCA MELI: publica un precio escrito a mano.</summary>
+    [HttpPut("publicaciones/{mla}/precio")]
+    public async Task<IActionResult> PonerPrecio(string mla,
+        [FromBody] MeliPrecioManualService.PublicarRequest req,
+        [FromServices] MeliPrecioManualService svc)
+    {
+        var r = await svc.PublicarAsync(mla, req.Precio, req.QuedaFijo, HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
     /// <summary>Contadores para los chips de filtro.</summary>
     [HttpGet("resumen")]
     public async Task<IActionResult> GetResumen()

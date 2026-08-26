@@ -147,6 +147,22 @@
 
     .p2-opcion { display: block; font-size: .6rem; color: #6b7280; margin-top: .1rem; }
 
+    /* 2026-08-26: precio a mano en la fila */
+    .p2-price.editable { cursor: text; border-bottom: 1px dashed transparent; }
+    .p2-price.editable:hover { border-bottom-color: #1d4f80; color: #1d4f80; }
+    .p2-edit { display: block; }
+    .p2-edit input { width: 100%; box-sizing: border-box; padding: .22rem .35rem; border: 1px solid #1d4f80;
+                     border-radius: .3rem; font-size: .8rem; font-weight: 700; font-family: inherit; }
+    .p2-edit .pie { display: flex; align-items: center; gap: 3px; margin-top: .2rem; }
+    .p2-edit .antes { flex: 1; font-size: .56rem; color: #9ca3af; white-space: nowrap; overflow: hidden; }
+    .p2-edit button { border: 1px solid #e3e7e0; background: #fff; border-radius: .3rem; cursor: pointer;
+                      font-size: .68rem; line-height: 1; padding: .2rem .3rem; flex-shrink: 0; }
+    .p2-edit button.ok { background: #15803d; border-color: #15803d; color: #fff; font-weight: 700; }
+    .p2-edit button.ok[disabled] { opacity: .5; cursor: default; }
+    .p2-edit button.no { color: #b91c1c; border-color: #fecaca; }
+    .p2-queda .pct.sim { font-style: italic; }
+    .p2-obj.manda { background: #dcfce7; border-color: #86efac; color: #15803d; font-weight: 700; }
+
     /* etapa 3: fotos de la publicacion */
     .p2-fotos { background: #f4f7fb; border-bottom: 1px solid #dbe3ee; padding: .8rem 1rem .9rem 3rem; }
     .p2-fotos h4 { margin: 0 0 .55rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: #9ca3af; }
@@ -346,8 +362,27 @@
                             <span class="p2-rec">@RecetaFragment(it)</span>
                         </span>
 
-                        <span class="p2-h">
-                            <span class="p2-price">@Plata(it.Precio)</span>
+                        <span class="p2-h" @onclick:stopPropagation="true">
+                            @if (editandoPrecio == it.MeliItemId)
+                            {
+                                <span class="p2-edit">
+                                    <input type="text" value="@precioEscrito"
+                                           @oninput="@(async e => { precioEscrito = e.Value?.ToString() ?? ""; await PrecioEscritoCambio(); })"
+                                           @onkeydown="@(async e => { if (e.Key == "Enter") await ConfirmarPrecio(it); if (e.Key == "Escape") CancelarPrecio(); })"
+                                           autofocus />
+                                    <span class="pie">
+                                        <span class="antes">antes @Plata(it.Precio)</span>
+                                        <button class="ok" title="Publicar este precio (Enter)" disabled="@precioGuardando"
+                                                @onclick="() => ConfirmarPrecio(it)">✓</button>
+                                        <button class="no" title="Cancelar (Esc)" @onclick="CancelarPrecio">✕</button>
+                                    </span>
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="p2-price editable" title="Tocá para escribir otro precio"
+                                      @onclick="() => EmpezarPrecio(it)">@Plata(it.Precio)</span>
+                            }
                             @if (it.VariosPrecios && it.PrecioMin.HasValue && it.PrecioMax.HasValue)
                             {
                                 <span class="p2-flag" title="Otra publicación del mismo producto y con las MISMAS condiciones de venta está a otro precio. Eso sí es un descuido.">⚠ hermana igual a otro precio</span>
@@ -360,7 +395,30 @@
                         </span>
 
                         <span class="p2-queda p2-h">
-                            @if (it.MargenPct.HasValue)
+                            @if (editandoPrecio == it.MeliItemId)
+                            {
+                                @if (simulando)
+                                {
+                                    <span class="pct sim">···</span>
+                                    <span class="det">preguntándole a MercadoLibre</span>
+                                }
+                                else if (simulacion?.MargenPct is decimal m2)
+                                {
+                                    var obj2 = it.ObjetivoPct ?? 50m;
+                                    <span class="pct sim @(m2 >= obj2 ? "" : m2 >= obj2 * 0.6m ? "tibio" : "malo")">@m2.ToString("0.#", ar)%</span>
+                                    <span class="ver @(m2 >= obj2 ? "ok" : "no")">@(m2 >= obj2 ? "✓ arriba" : "✗ abajo") del @obj2.ToString("0", ar)%</span>
+                                    <span class="det">@Plata(simulacion.Ganancia ?? 0) · hoy @(it.MargenPct.HasValue ? it.MargenPct.Value.ToString("0.#", ar) + "%" : "—")</span>
+                                    @if (simulacion.CruzaEscalonEnvio && simulacion.MargenSiPagasElEnvioPct is decimal m3)
+                                    {
+                                        <span class="falta">si el envío pasa a ser tuyo: @m3.ToString("0.#", ar)%</span>
+                                    }
+                                }
+                                else if (!string.IsNullOrEmpty(simulacion?.Aviso))
+                                {
+                                    <span class="det" style="color:#b45309;font-weight:700;">@simulacion.Aviso</span>
+                                }
+                            }
+                            else if (it.MargenPct.HasValue)
                             {
                                 var m = it.MargenPct.Value;
                                 var objetivo = it.ObjetivoPct ?? 50m;
@@ -406,8 +464,17 @@
                         </span>
 
                         <span class="p2-ctrl p2-h2">
-                            <span class="p2-obj" title="Objetivo de ganancia sobre el costo">
-                                🎯 @(it.ObjetivoPct.HasValue ? it.ObjetivoPct.Value.ToString("0", ar) : "—")<span class="pc">%</span>
+                            @* 2026-08-26 — el tilde verde marca QUIÉN MANDA. Si manda el porcentaje, el
+                               sistema recalcula el precio cuando cambia la comisión o el costo; si manda
+                               el precio, nadie lo toca. Antes no se distinguía y por eso parecía que el
+                               sistema "cambiaba precios solo". *@
+                            <span class="p2-obj @(MandaElPorcentaje(it) ? "manda" : "")"
+                                  title="@(MandaElPorcentaje(it) ? $"Manda el PORCENTAJE: el sistema mantiene el {it.ObjetivoPct:0}% y recalcula el precio cuando hace falta." : "El objetivo está guardado pero no gobierna: manda el precio.")">
+                                @(MandaElPorcentaje(it) ? "✓" : "") 🎯 @(it.ObjetivoPct.HasValue ? it.ObjetivoPct.Value.ToString("0", ar) : "—")<span class="pc">%</span>
+                            </span>
+                            <span class="p2-obj @(MandaElPorcentaje(it) ? "" : "manda")"
+                                  title="@(MandaElPorcentaje(it) ? "El precio lo calcula el sistema a partir del objetivo." : "Manda el PRECIO: quedó fijo, el sistema no lo toca.")">
+                                @(MandaElPorcentaje(it) ? "" : "✓") 💲
                             </span>
                             <span class="p2-sw" title="@(it.SyncPrecio ? "Precio sincronizado: el sistema lo mantiene" : "Precio a mano: el sistema no lo toca")">
                                 💲<span class="p2-led @(it.SyncPrecio ? "on" : "")"></span>
@@ -1083,6 +1150,123 @@
         }
         catch (Exception ex) { fotosResultadoOk = false; fotosResultado = "Error: " + ex.Message; }
         finally { fotosCopiando = false; StateHasChanged(); }
+    }
+
+    // ── Precio a mano en la fila (2026-08-26) ──
+    // Osmar: "si me dejás poner el precio a mano y ya me aparece el porcentaje al lado, ya me vale".
+    // El porcentaje NO se calcula acá: se le pregunta a MercadoLibre cuánto cobraría a ese precio,
+    // porque la comisión cambia de escalón y una fórmula nuestra mentiría. Mientras espera se
+    // muestran tres puntitos — antes que un número aproximado que después cambia.
+    private string? editandoPrecio;
+    private string precioEscrito = "";
+    private ApiClient.PubV2Simulacion? simulacion;
+    private bool simulando, precioGuardando;
+    private CancellationTokenSource? simCts;
+
+    /// <summary>¿Quién gobierna el precio de esta publicación? El porcentaje solo manda si además
+    /// el sincro de precio está prendido: con el sincro apagado el objetivo queda de adorno.</summary>
+    private bool MandaElPorcentaje(ApiClient.PubV2Fila it)
+        => it.SyncPrecio && it.ObjetivoPct is > 0;
+
+    private void EmpezarPrecio(ApiClient.PubV2Fila it)
+    {
+        editandoPrecio = it.MeliItemId;
+        precioEscrito = it.Precio.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        simulacion = null;
+        simulando = false;
+    }
+
+    private void CancelarPrecio()
+    {
+        simCts?.Cancel();
+        editandoPrecio = null;
+        precioEscrito = "";
+        simulacion = null;
+        simulando = false;
+    }
+
+    /// <summary>Se dispara mientras escribe. Espera 600 ms de quietud para no bombardear a MeLi
+    /// con una consulta por tecla.</summary>
+    private async Task PrecioEscritoCambio()
+    {
+        simCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        simCts = cts;
+        var mla = editandoPrecio;
+        if (mla is null) return;
+
+        if (!TryPrecio(precioEscrito, out var precio) || precio <= 0)
+        {
+            simulacion = null; simulando = false; StateHasChanged(); return;
+        }
+
+        simulando = true;
+        StateHasChanged();
+        try
+        {
+            await Task.Delay(600, cts.Token);
+            var r = await Api.SimularPrecioV2Async(mla, precio);
+            if (cts.Token.IsCancellationRequested || editandoPrecio != mla) return;
+            simulacion = r;
+        }
+        catch (TaskCanceledException) { return; }
+        catch (Exception ex) { ToastService.Error("No se pudo calcular: " + ex.Message); }
+        finally
+        {
+            if (!cts.Token.IsCancellationRequested) { simulando = false; StateHasChanged(); }
+        }
+    }
+
+    /// <summary>Acepta "33500", "33.500", "33500,50" — lo que salga de teclear con costumbre argentina.</summary>
+    private static bool TryPrecio(string texto, out decimal precio)
+    {
+        precio = 0;
+        var limpio = (texto ?? "").Trim().Replace("$", "").Replace(" ", "").Replace(".", "").Replace(",", ".");
+        return decimal.TryParse(limpio, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out precio);
+    }
+
+    private async Task ConfirmarPrecio(ApiClient.PubV2Fila it)
+    {
+        if (!TryPrecio(precioEscrito, out var precio) || precio <= 0)
+        {
+            ToastService.Error("Escribí un precio válido.");
+            return;
+        }
+        if (precio == it.Precio) { CancelarPrecio(); return; }
+
+        // La pregunta que evita que el precio "se cambie solo" a la noche: si esta publicación
+        // está en modo porcentaje, el sistema lo va a recalcular salvo que se apague el sincro.
+        var quedaFijo = true;
+        if (MandaElPorcentaje(it))
+        {
+            quedaFijo = await JS.InvokeAsync<bool>("confirm",
+                $"Esta publicación hoy mantiene sola el {it.ObjetivoPct:0}% de ganancia.\n\n" +
+                $"ACEPTAR: el precio ${precio:N0} queda FIJO y el sistema no lo toca más.\n" +
+                $"CANCELAR: se publica igual, pero el sistema lo va a recalcular para volver al {it.ObjetivoPct:0}%.");
+        }
+        else
+        {
+            var ok = await JS.InvokeAsync<bool>("confirm",
+                $"Publicar ${precio:N0} en MercadoLibre (hoy está ${it.Precio:N0}). ¿Seguro?");
+            if (!ok) return;
+        }
+
+        precioGuardando = true;
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.PonerPrecioV2Async(it.MeliItemId, precio, quedaFijo);
+            if (res?.Ok == true)
+            {
+                ToastService.Success(res.Mensaje);
+                CancelarPrecio();
+                await Cargar();
+            }
+            else ToastService.Error(res?.Mensaje ?? err ?? "No se pudo publicar el precio");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { precioGuardando = false; StateHasChanged(); }
     }
 
     private async Task SetNoLlegan(decimal v) { fNoLlegan = fNoLlegan == v ? null : v; await BuscarDesdeCero(); }
