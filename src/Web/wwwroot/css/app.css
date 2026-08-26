@@ -4210,17 +4210,24 @@ textarea.form-input {
   font-weight: 600;
 }
 
-/* Dashboard cards row */
+/* Dashboard cards row
+   2026-08-26: antes eran 2 columnas fijas -> en monitor ancho quedaban tarjetas
+   gigantes con un numero chiquito adentro. Ahora se acomodan solas: en pantalla
+   ancha entran 4 por fila, y van bajando a 3 / 2 / 1 segun el ancho. */
 .dashboard-cards-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.9rem;
   margin-top: 1.5rem;
 }
-@media (max-width: 900px) {
-  .dashboard-cards-row {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 1500px) {
+  .dashboard-cards-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .dashboard-cards-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .dashboard-cards-row { grid-template-columns: 1fr; }
 }
 .detail-card-icon.primary {
   background: var(--primary-bg);
