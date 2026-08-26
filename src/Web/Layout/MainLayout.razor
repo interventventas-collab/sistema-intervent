@@ -1230,16 +1230,10 @@
             }
         </div>
 
-        @* Reloj *@
-        <div class="topchip" title="Hora Argentina">
-            <span class="topchip-ico" style="background:#eef2ff; color:#4338ca;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-            </span>
-            <span>
-                <span class="topchip-value" style="display:block;">@_arNow.ToString("HH:mm")</span>
-                <span class="topchip-label" style="text-transform:capitalize;">@_arNow.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</span>
-            </span>
-        </div>
+        @* 2026-08-26: RELOJ. Antes era un chip que mostraba HH:mm y se refrescaba cada 30 s.
+           Ahora es el display de siete segmentos con segundero, y de acá cuelgan las alarmas
+           de cada uno. El componente se maneja solo (hora argentina + su propio tic). *@
+        <RelojArgentino />
 
         @* Dólar BNA (se esconde en celu para no amontonar) *@
         <div class="topchip topchip-secondary" title="Dólar BNA">
@@ -1881,11 +1875,6 @@
 
 <ToastContainer />
 
-@* 2026-08-26: reloj flotante con la hora de ARGENTINA, en todas las pantallas (Depósito incluido).
-   El dueño maneja el negocio argentino desde España: tener esa hora siempre a la vista evita la
-   cuenta mental de cada vez. Se puede mover y esconder; cada uno tiene sus propias alarmas. *@
-<RelojArgentino />
-
 @* 2026-06-30: Asistente flotante SOLO en el dashboard (antes aparecia en todas las pantallas
    y tapaba el boton "Emitir cotizacion" del modal de Nueva Venta). *@
 @if (IsOnDashboard)
@@ -2101,8 +2090,6 @@
     // 2026-06-15: pantalla bloqueante de PIN
     private System.Threading.Timer? _pinLockTimer;
     // 2026-06-25: reloj chiquito del topbar (reemplaza al card grande del dashboard).
-    private System.Threading.Timer? _clockTimer;
-    private DateTime _arNow = DateTime.UtcNow.AddHours(-3);
 
     // 2026-07-08: datos de los chips de la fila superior (antes vivían en el Dashboard).
     // El dólar refresca cada 5 min; el disco cambia 1x/día (lo deja el robot de las 2 AM).
@@ -2725,14 +2712,9 @@
         _ = RefrescarWaStatus();
         _waStatusTimer = new System.Threading.Timer(_ => _ = RefrescarWaStatus(), null, 60000, 60000);
 
-        // 2026-06-25: reloj del topbar — refresca cada 30s (no necesitamos segundo a segundo
-        // para mostrar HH:mm, alcanza con minuto).
-        _arNow = DateTime.UtcNow.AddHours(-3);
-        _clockTimer = new System.Threading.Timer(_ => InvokeAsync(() =>
-        {
-            _arNow = DateTime.UtcNow.AddHours(-3);
-            StateHasChanged();
-        }), null, 30000, 30000);
+        // 2026-08-26: el reloj del topbar ya no se refresca desde acá — lo hace el propio
+        // componente RelojArgentino, que además tiene segundero. Antes este timer repintaba
+        // TODO el layout cada 30 segundos solo para mover un minutero.
 
         // 2026-07-08: dólar + disco de los chips de arriba. Carga inicial + refresco cada 5 min.
         _ = LoadTopChipsAsync();
@@ -3017,7 +2999,6 @@
     {
         try { cmdPalRef?.Dispose(); } catch { }
         try { _pinLockTimer?.Dispose(); } catch { }
-        try { _clockTimer?.Dispose(); } catch { }
         try { _topChipsTimer?.Dispose(); } catch { }
         try { _waStatusTimer?.Dispose(); } catch { }
         SyncProgress.OnChange -= OnSyncProgressChanged;
