@@ -43,6 +43,30 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return Ok(res);
     }
 
+    // ─── 2026-08-26: peso y medidas del paquete ───
+    // El envío que MeLi cobra sale de acá. Si están mal cargadas, el envío se dispara y no hay
+    // precio que lo arregle. Leer es en vivo contra MeLi; guardar además recalcula el envío
+    // para ver al instante si sirvió.
+
+    /// <summary>Peso (g) y medidas (cm) del paquete, leídas en vivo de MeLi.</summary>
+    [HttpGet("publicaciones/{mla}/medidas")]
+    public async Task<IActionResult> GetMedidas(string mla, [FromServices] MeliMedidasService svc)
+    {
+        var r = await svc.LeerAsync(mla, HttpContext.RequestAborted);
+        if (r is null) return NotFound(new { error = "Publicación no encontrada o sin cuenta MeLi" });
+        return Ok(r);
+    }
+
+    /// <summary>Guarda peso y/o medidas en MeLi y devuelve cuánto cambió el envío.</summary>
+    [HttpPut("publicaciones/{mla}/medidas")]
+    public async Task<IActionResult> PutMedidas(string mla,
+        [FromBody] MeliMedidasService.GuardarRequest req,
+        [FromServices] MeliMedidasService svc)
+    {
+        var r = await svc.GuardarAsync(mla, req, HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
     /// <summary>Contadores para los chips de filtro.</summary>
     [HttpGet("resumen")]
     public async Task<IActionResult> GetResumen()

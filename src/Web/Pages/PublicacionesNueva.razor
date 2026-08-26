@@ -119,6 +119,27 @@
     .p2-st.p { background: #fef0d8; color: #b45309; }
     .p2-st.o { background: #f1f5f9; color: #64748b; }
 
+    /* panel de medidas (lo que define el envio) */
+    .p2-med { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; padding: .8rem 1rem .9rem 3rem; }
+    .p2-med h4 { margin: 0 0 .5rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: #9ca3af; }
+    .p2-med .campos { display: flex; gap: .8rem; flex-wrap: wrap; align-items: flex-end; }
+    .p2-med .campo { display: flex; flex-direction: column; gap: .15rem; }
+    .p2-med .campo label { font-size: .62rem; color: #6b7280; font-weight: 600; }
+    .p2-med .campo input { width: 92px; padding: .35rem .5rem; border: 1px solid #e3e7e0; border-radius: .35rem;
+                           font-size: .82rem; font-weight: 700; text-align: right; }
+    .p2-med .envio { display: flex; flex-direction: column; gap: .1rem; padding: .35rem .7rem; border-radius: .4rem;
+                     background: #fff; border: 1px solid #e3e7e0; }
+    .p2-med .envio b { font-size: .95rem; }
+    .p2-med .envio span { font-size: .6rem; color: #9ca3af; }
+    .p2-med .aviso { font-size: .7rem; color: #b45309; background: #fef0d8; border-radius: .35rem;
+                     padding: .35rem .6rem; margin-top: .5rem; display: inline-block; }
+    .p2-med .ok { color: #15803d; background: #dcfce7; }
+    .p2-med .err { color: #b91c1c; background: #fee2e2; }
+    .p2-med .guardar { padding: .4rem .8rem; border-radius: .4rem; border: none; background: #15803d;
+                       color: #fff; font-weight: 700; font-size: .78rem; cursor: pointer; }
+    .p2-med .guardar[disabled] { opacity: .5; cursor: default; }
+    .p2-med .nota { font-size: .68rem; color: #6b7280; margin-top: .45rem; }
+
     .p2-empty { padding: 2rem; text-align: center; color: #9ca3af; font-size: .85rem; }
     .p2-note { font-size: .7rem; color: #6b7280; background: #eef2ff; border-left: 3px solid #4f46e5;
                padding: .5rem .7rem; border-radius: 0 .4rem .4rem 0; }
@@ -219,7 +240,7 @@
             {
                 @foreach (var it in datos.Items)
                 {
-                    <div class="p2-tr">
+                    <div class="p2-tr" @onclick="() => ToggleMedidas(it.MeliItemId)" style="cursor:pointer;">
                         <span>
                             @if (!string.IsNullOrEmpty(it.Thumbnail))
                             {
@@ -308,6 +329,58 @@
                             <span class="p2-st @(it.Estado == "active" ? "a" : it.Estado == "paused" ? "p" : "o")">@EstadoTexto(it.Estado)</span>
                         </span>
                     </div>
+
+                    @if (medidasAbiertas == it.MeliItemId)
+                    {
+                        <div class="p2-med" @onclick:stopPropagation="true">
+                            <h4>📦 Peso y medidas del paquete — de acá sale el envío</h4>
+                            @if (medidasCargando)
+                            {
+                                <span class="nota">Consultando a MercadoLibre…</span>
+                            }
+                            else if (medidas is null)
+                            {
+                                <span class="aviso err">No se pudieron leer las medidas.</span>
+                            }
+                            else
+                            {
+                                <div class="campos">
+                                    <span class="campo"><label>Peso (gramos)</label>
+                                        <input type="number" @bind="edPeso" placeholder="—" /></span>
+                                    <span class="campo"><label>Largo (cm)</label>
+                                        <input type="number" @bind="edLargo" placeholder="—" /></span>
+                                    <span class="campo"><label>Ancho (cm)</label>
+                                        <input type="number" @bind="edAncho" placeholder="—" /></span>
+                                    <span class="campo"><label>Alto (cm)</label>
+                                        <input type="number" @bind="edAlto" placeholder="—" /></span>
+                                    <span class="envio">
+                                        <b>@(medidas.EnvioActual.HasValue ? Plata(medidas.EnvioActual.Value) : "—")</b>
+                                        <span>envío que pagás hoy</span>
+                                    </span>
+                                    <button class="guardar" @onclick="() => GuardarMedidas(it.MeliItemId)" disabled="@medidasGuardando">
+                                        @(medidasGuardando ? "Guardando…" : "✓ Guardar en MeLi")
+                                    </button>
+                                </div>
+
+                                @if (medidas.PesoVolumetricoKg.HasValue)
+                                {
+                                    <div class="nota">
+                                        Volumen @medidas.VolumenCm3!.Value.ToString("N0", ar) cm³ ·
+                                        peso volumétrico <b>@medidas.PesoVolumetricoKg.Value.ToString("0.##", ar) kg</b>
+                                        — MeLi cobra por el que sea mayor: el peso real o el volumétrico.
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(medidas.Mensaje))
+                                {
+                                    <div class="aviso">@medidas.Mensaje</div>
+                                }
+                                @if (!string.IsNullOrEmpty(medidasResultado))
+                                {
+                                    <div class="aviso @(medidasResultadoOk ? "ok" : "err")">@medidasResultado</div>
+                                }
+                            }
+                        </div>
+                    }
                 }
             }
         </div>
@@ -343,6 +416,14 @@
     private bool fPrecioAMano;
     private bool fSinCosto;
     private decimal? fNoLlegan;
+
+    // Panel de medidas (peso y dimensiones): es lo que define el envío que cobra MeLi.
+    private string? medidasAbiertas;
+    private ApiClient.PubV2Medidas? medidas;
+    private bool medidasCargando, medidasGuardando, medidasResultadoOk;
+    private string? medidasResultado;
+    private int? edPeso;
+    private decimal? edLargo, edAncho, edAlto;
     private bool fComisionVieja;
 
     private bool HayFiltros => fComisionVieja || fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
@@ -377,6 +458,57 @@
     private async Task OnEnter(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarDesdeCero(); }
     private async Task IrAPagina(int p) { if (p < 1 || p > TotalPaginas) return; pagina = p; await Cargar(); }
     private async Task SetEstado(string v) { fEstado = v; await BuscarDesdeCero(); }
+    private async Task ToggleMedidas(string mla)
+    {
+        if (medidasAbiertas == mla) { medidasAbiertas = null; medidas = null; return; }
+        medidasAbiertas = mla;
+        medidas = null;
+        medidasResultado = null;
+        medidasCargando = true;
+        StateHasChanged();
+        try
+        {
+            medidas = await Api.GetMedidasAsync(mla);
+            edPeso = medidas?.PesoGramos;
+            edLargo = medidas?.LargoCm;
+            edAncho = medidas?.AnchoCm;
+            edAlto = medidas?.AltoCm;
+        }
+        catch (Exception ex) { ToastService.Error("No se pudieron leer las medidas: " + ex.Message); }
+        finally { medidasCargando = false; StateHasChanged(); }
+    }
+
+    private async Task GuardarMedidas(string mla)
+    {
+        medidasGuardando = true;
+        medidasResultado = null;
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.GuardarMedidasAsync(mla, edPeso, edLargo, edAncho, edAlto);
+            if (res is not null && res.Ok)
+            {
+                medidasResultadoOk = true;
+                medidasResultado = res.Mensaje;
+                medidas = res.Medidas ?? medidas;
+                ToastService.Success(res.Mensaje);
+                await Cargar();   // el margen de la fila cambia si el envío cambió
+            }
+            else
+            {
+                medidasResultadoOk = false;
+                medidasResultado = res?.Mensaje ?? err ?? "No se pudo guardar";
+                ToastService.Error(medidasResultado);
+            }
+        }
+        catch (Exception ex)
+        {
+            medidasResultadoOk = false;
+            medidasResultado = "Error: " + ex.Message;
+        }
+        finally { medidasGuardando = false; StateHasChanged(); }
+    }
+
     private async Task SetNoLlegan(decimal v) { fNoLlegan = fNoLlegan == v ? null : v; await BuscarDesdeCero(); }
     private async Task SetComision(decimal v) { fComision = fComision == v ? null : v; await BuscarDesdeCero(); }
     private async Task SetCuotas(string v) { fCuotas = fCuotas == v ? "" : v; await BuscarDesdeCero(); }

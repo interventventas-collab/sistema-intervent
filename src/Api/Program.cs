@@ -191,6 +191,7 @@ builder.Services.AddScoped<MeliStockPushService>();
 builder.Services.AddScoped<MeliPricePushService>();
 builder.Services.AddScoped<MeliListingTypeService>();
 builder.Services.AddScoped<MeliPublicacionesV2Service>();
+builder.Services.AddScoped<MeliMedidasService>();
 builder.Services.AddScoped<MeliPisoMasivoService>();
 builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();

@@ -5078,6 +5078,32 @@ public class ApiClient
         return await GetAsync<PubV2Page>("/api/meli/v2/publicaciones?" + string.Join("&", qs));
     }
 
+    // ─── 2026-08-26: peso y medidas del paquete (lo que define el envío) ───
+    public record PubV2Medidas(string MeliItemId, string? Titulo, string? Sku,
+        int? PesoGramos, decimal? LargoCm, decimal? AnchoCm, decimal? AltoCm,
+        decimal? EnvioActual, decimal Precio, bool EnvioACargoNuestro,
+        decimal? VolumenCm3, decimal? PesoVolumetricoKg, string? Mensaje);
+    public record PubV2MedidasGuardado(bool Ok, string Mensaje, PubV2Medidas? Medidas,
+        decimal? EnvioAntes, decimal? EnvioDespues, decimal? Diferencia);
+
+    public async Task<PubV2Medidas?> GetMedidasAsync(string mla)
+        => await GetAsync<PubV2Medidas>($"/api/meli/v2/publicaciones/{mla}/medidas");
+
+    public async Task<(PubV2MedidasGuardado? res, string? error)> GuardarMedidasAsync(string mla,
+        int? pesoGramos, decimal? largoCm, decimal? anchoCm, decimal? altoCm)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PutAsJsonAsync($"/api/meli/v2/publicaciones/{mla}/medidas",
+                new { PesoGramos = pesoGramos, LargoCm = largoCm, AnchoCm = anchoCm, AltoCm = altoCm });
+            var body = await resp.Content.ReadFromJsonAsync<PubV2MedidasGuardado>();
+            if (resp.IsSuccessStatusCode) return (body, null);
+            return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     public async Task<Dictionary<string, int>?> GetResumenV2Async()
         => await GetAsync<Dictionary<string, int>>("/api/meli/v2/resumen");
 
