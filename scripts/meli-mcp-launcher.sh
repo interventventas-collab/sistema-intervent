@@ -23,6 +23,12 @@
 #   - .env con SQL_SA_PASSWORD definido
 #   - npx disponible (Node.js, instalado por setup.sh)
 #   - al menos una cuenta MeLi conectada en el dashboard
+#
+# 2026-08-25: si el usuario no esta en el grupo "docker" (caso de este server),
+# "docker compose exec" fallaba con "permission denied ... /var/run/docker.sock"
+# y el conector NUNCA levantaba — sin aviso claro. Ahora se detecta solo y usa
+# sudo si hace falta. Ademas, si en DESARROLLO no hay token util, se cae a
+# PRODUCCION (donde las cuentas estan vivas y el token se renueva solo).
 # ============================================================
 
 set -euo pipefail
@@ -44,44 +50,84 @@ if [ -z "${SQL_SA_PASSWORD:-}" ]; then
     exit 1
 fi
 
-# 2) Token de la cuenta MeLi mas reciente.
-#    MSYS_NO_PATHCONV=1 evita que Git Bash (Windows) convierta rutas Linux
-#    a rutas Windows antes de pasarlas a docker.
-#    -h-1: sin header / -W: trim de espacios / SET NOCOUNT ON: sin "(N rows affected)"
-RAW_OUTPUT=$(MSYS_NO_PATHCONV=1 docker compose exec -T sqlserver \
-    /opt/mssql-tools18/bin/sqlcmd \
-    -S localhost -U sa -P "$SQL_SA_PASSWORD" -C \
-    -d AIml -h-1 -W \
-    -Q "SET NOCOUNT ON; SELECT TOP 1 AccessToken FROM MeliAccounts ORDER BY ISNULL(UpdatedAt, CreatedAt) DESC" \
-    2>&1) || {
-    echo "[meli-mcp] Error consultando SQL Server:" >&2
-    echo "$RAW_OUTPUT" >&2
-    echo "" >&2
-    echo "[meli-mcp] Verifica que el container sqlserver este corriendo:" >&2
-    echo "    docker compose up -d sqlserver" >&2
-    exit 1
+# 1.b) ¿Hace falta sudo para hablar con Docker?
+DOCKER="docker"
+if ! docker info >/dev/null 2>&1; then
+    if sudo -n docker info >/dev/null 2>&1; then
+        DOCKER="sudo docker"
+    else
+        echo "[meli-mcp] Error: no se puede hablar con Docker (ni con sudo)." >&2
+        echo "[meli-mcp] Agregá tu usuario al grupo docker:  sudo usermod -aG docker \$USER" >&2
+        exit 1
+    fi
+fi
+
+# Consulta el AccessToken en el container que se le pase. Devuelve vacio si no hay.
+leer_token() {
+    local contenedor="$1"
+    MSYS_NO_PATHCONV=1 $DOCKER exec -i "$contenedor" \
+        /opt/mssql-tools18/bin/sqlcmd \
+        -S localhost -U sa -P "$SQL_SA_PASSWORD" -C \
+        -d AIml -h-1 -W \
+        -Q "SET NOCOUNT ON; SELECT TOP 1 AccessToken FROM MeliAccounts ORDER BY ISNULL(UpdatedAt, CreatedAt) DESC" \
+        2>/dev/null | tr -d '\r' | awk 'NF{print; exit}' | xargs || true
 }
 
-# Extraer la primera linea con contenido y limpiar espacios.
-TOKEN=$(printf '%s' "$RAW_OUTPUT" | tr -d '\r' | awk 'NF{print; exit}' | xargs || true)
+# Hace cuantas horas se renovo ese token. Los de MeLi duran 6 h: si pasaron mas,
+# esta vencido aunque tenga forma de token valido (caso tipico de DESARROLLO,
+# donde nadie los renueva: el 25/08 el de dev tenia 2.213 horas = 3 meses).
+horas_token() {
+    local contenedor="$1"
+    MSYS_NO_PATHCONV=1 $DOCKER exec -i "$contenedor" \
+        /opt/mssql-tools18/bin/sqlcmd \
+        -S localhost -U sa -P "$SQL_SA_PASSWORD" -C \
+        -d AIml -h-1 -W \
+        -Q "SET NOCOUNT ON; SELECT TOP 1 DATEDIFF(hour, ISNULL(UpdatedAt, CreatedAt), GETUTCDATE()) FROM MeliAccounts ORDER BY ISNULL(UpdatedAt, CreatedAt) DESC" \
+        2>/dev/null | tr -d '\r' | awk 'NF{print; exit}' | xargs || echo 9999
+}
 
-# Validacion: un Access Token de MeLi es del estilo APP_USR-XXXX-YYYY-ZZZZ-AAAA,
-# alfanumerico con guiones, sin espacios, generalmente >50 chars. Si no parece
-# un token valido, abortar con mensaje claro.
-if [ -z "${TOKEN:-}" ] \
-   || [ "${#TOKEN}" -lt 20 ] \
-   || [[ "$TOKEN" == *" "* ]] \
-   || [ "$TOKEN" = "NULL" ]; then
-    echo "[meli-mcp] No se obtuvo un Access Token valido." >&2
+es_token_valido() {
+    local t="${1:-}"
+    [ -n "$t" ] && [ "${#t}" -ge 20 ] && [[ "$t" != *" "* ]] && [ "$t" != "NULL" ]
+}
+
+# 2) Token de la cuenta MeLi mas reciente.
+#    Primero DESARROLLO (aiml-sqlserver); si ahi no hay token util, PRODUCCION
+#    (aiml-sqlserver-prod), que es donde las cuentas estan vivas y el token se
+#    renueva solo cada 6 horas.
+HORAS_DEV="$(horas_token aiml-sqlserver)"
+HORAS_PROD="$(horas_token aiml-sqlserver-prod)"
+[[ "$HORAS_DEV" =~ ^[0-9]+$ ]] || HORAS_DEV=9999
+[[ "$HORAS_PROD" =~ ^[0-9]+$ ]] || HORAS_PROD=9999
+
+# Gana el mas fresco. Un token de MeLi vive 6 horas.
+if [ "$HORAS_DEV" -le "$HORAS_PROD" ]; then
+    TOKEN="$(leer_token aiml-sqlserver)"; ORIGEN="desarrollo"; HORAS="$HORAS_DEV"
+else
+    TOKEN="$(leer_token aiml-sqlserver-prod)"; ORIGEN="produccion"; HORAS="$HORAS_PROD"
+fi
+
+# Si el elegido tampoco sirve, probar el otro antes de rendirse.
+if ! es_token_valido "$TOKEN"; then
+    if [ "$ORIGEN" = "desarrollo" ]; then
+        TOKEN="$(leer_token aiml-sqlserver-prod)"; ORIGEN="produccion"; HORAS="$HORAS_PROD"
+    else
+        TOKEN="$(leer_token aiml-sqlserver)"; ORIGEN="desarrollo"; HORAS="$HORAS_DEV"
+    fi
+fi
+
+if ! es_token_valido "$TOKEN"; then
+    echo "[meli-mcp] No se obtuvo un Access Token valido (ni de desarrollo ni de produccion)." >&2
     echo "[meli-mcp] Causas posibles:" >&2
     echo "  - No hay cuentas conectadas en el dashboard (Integraciones -> MercadoLibre)" >&2
-    echo "  - La tabla MeliAccounts esta vacia" >&2
-    if [ -n "${RAW_OUTPUT:-}" ]; then
-        echo "" >&2
-        echo "[meli-mcp] Salida cruda de sqlcmd:" >&2
-        echo "$RAW_OUTPUT" >&2
-    fi
+    echo "  - Los containers de base de datos no estan corriendo" >&2
     exit 1
+fi
+
+if [ "${HORAS:-9999}" -gt 6 ]; then
+    echo "[meli-mcp] OJO: el token de $ORIGEN se renovo hace ${HORAS}h y los de MeLi duran 6h — puede estar vencido." >&2
+else
+    echo "[meli-mcp] Token de $ORIGEN (renovado hace ${HORAS}h)." >&2
 fi
 
 # 3) Bridge stdio<->HTTP. mcp-remote se instala on-demand con npx -y.
