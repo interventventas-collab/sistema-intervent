@@ -28,7 +28,7 @@
     .p2-btn:hover { background: rgba(255,255,255,.16); }
     .p2-btn.go { background: #15803d; border-color: #15803d; }
 
-    .p2-body { flex: 1; overflow: auto; padding: .8rem .9rem 1.2rem; display: flex; flex-direction: column; gap: .6rem; }
+    .p2-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: .8rem .9rem 1.2rem; display: flex; flex-direction: column; gap: .6rem; }
     .p2-search { display: flex; gap: .5rem; flex-wrap: wrap; }
     .p2-search input { flex: 1; min-width: 160px; padding: .48rem .65rem; border: 1px solid #e3e7e0;
                        border-radius: .5rem; font-size: .8rem; }
@@ -47,7 +47,10 @@
              font-size: .7rem; color: #6b7280; cursor: pointer; }
     .p2-pg[disabled] { opacity: .45; cursor: default; }
 
-    .p2-tbl { background: #fff; border: 1px solid #e3e7e0; border-radius: .6rem; overflow: hidden; }
+    /* 2026-08-26 — flex-shrink:0 es CLAVE: sin esto el contenedor flex comprimia la tabla y,
+       como tiene overflow:hidden por el borde redondeado, las filas de abajo se RECORTABAN
+       (se veian 9 de 17 y no aparecian ni bajando). */
+    .p2-tbl { background: #fff; border: 1px solid #e3e7e0; border-radius: .6rem; overflow: hidden; flex-shrink: 0; }
     .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 128px 148px 120px 140px 52px 70px;
                      gap: .6rem; align-items: center; padding: .55rem .65rem; }
     .p2-th { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; font-size: .6rem; text-transform: uppercase;
@@ -213,6 +216,11 @@
                 <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
                 <span class="p2-pg">Página @pagina de @TotalPaginas</span>
                 <button class="p2-pg" @onclick="() => IrAPagina(pagina + 1)" disabled="@(pagina >= TotalPaginas || cargando)">▶</button>
+                <select class="p2-pg" @onchange="CambiarPorPagina" style="cursor:pointer;">
+                    <option value="50" selected="@(porPagina == 50)">50 por página</option>
+                    <option value="100" selected="@(porPagina == 100)">100 por página</option>
+                    <option value="200" selected="@(porPagina == 200)">200 por página</option>
+                </select>
             </span>
         </div>
 
@@ -406,6 +414,7 @@
     private ApiClient.PubV2Page? datos;
     private bool cargando;
     private int pagina = 1;
+    private int porPagina = 50;   // 2026-08-26: pedido de Osmar, arranca en 50
 
     private string fTexto = "";
     private string fSku = "";
@@ -441,7 +450,7 @@
         try
         {
             datos = await Api.GetPublicacionesV2Async(fTexto, fSku, fEstado, fComision, fCuotas, null,
-                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, 100);
+                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina);
         }
         catch (Exception ex)
         {
@@ -452,6 +461,13 @@
             cargando = false;
             StateHasChanged();
         }
+    }
+
+    private async Task CambiarPorPagina(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var n) && n > 0) porPagina = n;
+        pagina = 1;
+        await Cargar();
     }
 
     private async Task BuscarDesdeCero() { pagina = 1; await Cargar(); }
