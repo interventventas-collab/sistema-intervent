@@ -1,10 +1,9 @@
-// 2026-08-26: el reloj flotante (hora de Argentina) y su alarma.
+// 2026-08-26: el sonido de la alarma del reloj (hora de Argentina).
 //
-// Tres cosas viven acá y no en Blazor a propósito:
-//   1) ARRASTRAR y RECORDAR dónde quedó: mover una caja con el dedo/mouse es cosa del navegador.
-//   2) El SONIDO de despertador: se genera con osciladores, igual que los avisos del chat
+// Dos cosas viven acá y no en Blazor a propósito:
+//   1) El SONIDO de despertador: se genera con osciladores, igual que los avisos del chat
 //      (window.waSounds en index.html), así no hay que subir ningún archivo.
-//   3) La INSISTENCIA: una alarma que suena una vez y se calla es una notificación, no una
+//   2) La INSISTENCIA: una alarma que suena una vez y se calla es una notificación, no una
 //      alarma. Esta repite hasta que la apagan.
 window.reloj = (function () {
     var loopId = null;
@@ -59,59 +58,6 @@ window.reloj = (function () {
 
         callar: function () {
             if (loopId) { clearInterval(loopId); loopId = null; }
-        },
-
-        /// Arrastrar tomándolo del asa, y acordarse de dónde quedó (por navegador).
-        attach: function (panelId, asaId, clave) {
-            var panel = document.getElementById(panelId);
-            var asa = document.getElementById(asaId);
-            if (!panel || !asa) return;
-            if (panel.dataset.relojListo === '1') return;   // no enganchar dos veces
-            panel.dataset.relojListo = '1';
-
-            var guardado = null;
-            try { guardado = JSON.parse(localStorage.getItem(clave) || 'null'); } catch (e) { }
-            if (guardado && typeof guardado.left === 'number') {
-                // Si cambió el tamaño de la pantalla, lo traemos adentro en vez de perderlo afuera.
-                panel.style.left = Math.max(0, Math.min(guardado.left, window.innerWidth - 90)) + 'px';
-                panel.style.top = Math.max(0, Math.min(guardado.top, window.innerHeight - 50)) + 'px';
-                panel.style.right = 'auto';
-            }
-
-            var sx = 0, sy = 0, sl = 0, st = 0, moviendo = false;
-            function pt(e) { return (e.touches && e.touches.length) ? e.touches[0] : e; }
-
-            function abajo(e) {
-                var ev = pt(e), r = panel.getBoundingClientRect();
-                panel.style.left = r.left + 'px'; panel.style.top = r.top + 'px'; panel.style.right = 'auto';
-                sx = ev.clientX; sy = ev.clientY; sl = r.left; st = r.top; moviendo = true;
-                document.addEventListener('mousemove', mover);
-                document.addEventListener('mouseup', arriba);
-                document.addEventListener('touchmove', mover, { passive: false });
-                document.addEventListener('touchend', arriba);
-                e.preventDefault();
-            }
-            function mover(e) {
-                if (!moviendo) return;
-                var ev = pt(e);
-                var nl = Math.max(0, Math.min(sl + (ev.clientX - sx), window.innerWidth - 90));
-                var nt = Math.max(0, Math.min(st + (ev.clientY - sy), window.innerHeight - 50));
-                panel.style.left = nl + 'px'; panel.style.top = nt + 'px';
-                if (e.cancelable) e.preventDefault();
-            }
-            function arriba() {
-                if (!moviendo) return;
-                moviendo = false;
-                document.removeEventListener('mousemove', mover);
-                document.removeEventListener('mouseup', arriba);
-                document.removeEventListener('touchmove', mover);
-                document.removeEventListener('touchend', arriba);
-                var r = panel.getBoundingClientRect();
-                try { localStorage.setItem(clave, JSON.stringify({ left: Math.round(r.left), top: Math.round(r.top) })); } catch (e) { }
-            }
-
-            asa.addEventListener('mousedown', abajo);
-            asa.addEventListener('touchstart', abajo, { passive: false });
         }
     };
 })();

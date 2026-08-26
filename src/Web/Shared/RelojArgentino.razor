@@ -1,104 +1,88 @@
-@* 2026-08-26: RELOJ FLOTANTE con hora de ARGENTINA + alarmas.
+@* 2026-08-26: RELOJ de la barra de arriba, con hora de ARGENTINA + alarmas.
 
-   Por qué existe: el dueño maneja el negocio argentino desde España. Tener la hora de Buenos
-   Aires siempre a la vista evita la cuenta mental de cada vez — y de paso deja en evidencia
-   cualquier pantalla que muestre la hora equivocada (así se descubrió el error del panel de
-   mensajes programados).
+   Reemplaza al chip de hora que había antes (mostraba HH:mm y se refrescaba cada 30 segundos).
+   Ahora es un display de siete segmentos con segundero, a pedido del dueño — "tipo radio reloj
+   antiguo". Empezó siendo una ventanita flotante, pero se tapaba con el botón de WhatsApp y el
+   propio dueño propuso lo obvio: usar el lugar que ya estaba reservado para la hora.
 
-   Vive en MainLayout, así que aparece en TODAS las pantallas, Depósito incluido.
-   La hora se calcula con DateTimeExt (UTC-3 fijo), NUNCA con el reloj del navegador. *@
+   Por qué importa que se vea siempre: maneja el negocio argentino desde España. Tener Buenos
+   Aires a la vista evita la cuenta mental — y delata cualquier pantalla que muestre otra hora
+   (así se descubrió el error del panel de mensajes programados).
+
+   La hora sale de DateTimeExt (UTC-3 fijo), NUNCA del reloj del navegador. *@
 
 @implements IDisposable
 @inject ApiClient Api
 @inject ToastService Toast
 @inject IJSRuntime JS
 
-@if (!visible)
-{
-    <button class="rl-pill" @onclick="Mostrar" title="Mostrar el reloj">
-        🕐 @Ahora.ToString("HH:mm")
-        @if (sonando != null) { <span class="rl-pill-alarma">⏰</span> }
-    </button>
-}
-else
-{
-    <div class="rl-clock" id="relojFlotante">
-        <div class="rl-top" id="relojAsa">
-            <span class="rl-badge">ARGENTINA</span>
-            <span class="rl-grip" title="Arrastrame para moverme">⠿</span>
-            <span class="rl-tools">
-                <button class="rl-tool" title="Poner una alarma" @onclick="ToggleAlarmas">⏰</button>
-                <button class="rl-tool" title="Esconder el reloj" @onclick="Esconder">—</button>
-            </span>
-        </div>
-
+<div class="rl-chip @(sonando != null ? "sonando" : "")" title="Hora de Argentina">
+    <div class="rl-chip-hora">
         <div class="rl-face">
             @Digito(Ahora.Hour / 10)@Digito(Ahora.Hour % 10)
-            <span class="rl-colon @(Ahora.Second % 2 == 0 ? "on" : "")">
-                <span></span><span></span>
-            </span>
+            <span class="rl-colon @(Ahora.Second % 2 == 0 ? "on" : "")"><span></span><span></span></span>
             @Digito(Ahora.Minute / 10)@Digito(Ahora.Minute % 10)
             <span class="rl-secs">@Digito(Ahora.Second / 10, true)@Digito(Ahora.Second % 10, true)</span>
         </div>
         <div class="rl-date">@FechaLinda()</div>
-
-        @if (alarmasPendientes.Count > 0 && !panelAlarmas)
-        {
-            <button class="rl-proxima" @onclick="ToggleAlarmas" title="Ver las alarmas puestas">
-                ⏰ @alarmasPendientes.Count · próxima @CuandoCorto(alarmasPendientes[0].Cuando.ToArTime())
-            </button>
-        }
-
-        @if (panelAlarmas)
-        {
-            <div class="rl-panel">
-                <div class="rl-panel-tit">
-                    ⏰ Alarmas de <b>@quienSoy</b>
-                    <button class="rl-tool" @onclick="ToggleAlarmas" title="Cerrar">×</button>
-                </div>
-
-                @if (alarmasPendientes.Count == 0)
-                {
-                    <div class="rl-vacio">No tenés ninguna alarma puesta.</div>
-                }
-                else
-                {
-                    @foreach (var a in alarmasPendientes)
-                    {
-                        <div class="rl-item">
-                            <span class="rl-item-hora">@CuandoCorto(a.Cuando.ToArTime())</span>
-                            <span class="rl-item-nota" title="@a.Nota">@(string.IsNullOrWhiteSpace(a.Nota) ? "(sin nota)" : a.Nota)</span>
-                            <button class="rl-item-x" @onclick="() => Borrar(a)" title="Sacar esta alarma">✖</button>
-                        </div>
-                    }
-                }
-
-                <div class="rl-nueva">
-                    <div class="rl-nueva-fila">
-                        <input type="time" class="rl-input rl-input-hora" @bind="nuevaHora" />
-                        <input type="date" class="rl-input" @bind="nuevaFecha" />
-                    </div>
-                    <input class="rl-input" placeholder="¿De qué te tengo que acordar?" maxlength="300"
-                           @bind="nuevaNota" @bind:event="oninput" />
-                    <div class="rl-sonidos">
-                        @foreach (var s in Sonidos)
-                        {
-                            <button class="rl-son @(nuevoSonido == s.Key ? "sel" : "")"
-                                    @onclick="() => ElegirSonido(s.Key)" title="Tocá para elegirlo y escucharlo">
-                                @s.Label
-                            </button>
-                        }
-                    </div>
-                    <button class="rl-poner" disabled="@guardando" @onclick="Poner">
-                        @(guardando ? "Poniendo…" : "⏰ Poner la alarma")
-                    </button>
-                </div>
-            </div>
-        }
     </div>
-}
 
-@* El cartel que salta cuando suena. Va aparte del reloj: tiene que verse aunque lo hayan escondido. *@
+    <button class="rl-alarma-btn @(alarmasPendientes.Count > 0 ? "tiene" : "")"
+            @onclick="ToggleAlarmas"
+            title="@(alarmasPendientes.Count > 0 ? $"Tenés {alarmasPendientes.Count} alarma(s) puesta(s)" : "Poner una alarma")">
+        ⏰@(alarmasPendientes.Count > 0 ? $" {alarmasPendientes.Count}" : "")
+    </button>
+
+    @if (panelAlarmas)
+    {
+        <div class="rl-drop">
+            <div class="rl-panel-tit">
+                ⏰ Alarmas de <b>@quienSoy</b>
+                <button class="rl-tool" @onclick="ToggleAlarmas" title="Cerrar">×</button>
+            </div>
+
+            @if (alarmasPendientes.Count == 0)
+            {
+                <div class="rl-vacio">No tenés ninguna alarma puesta.</div>
+            }
+            else
+            {
+                @foreach (var a in alarmasPendientes)
+                {
+                    <div class="rl-item">
+                        <span class="rl-item-hora">@CuandoCorto(a.Cuando.ToArTime())</span>
+                        <span class="rl-item-nota" title="@a.Nota">@(string.IsNullOrWhiteSpace(a.Nota) ? "(sin nota)" : a.Nota)</span>
+                        <button class="rl-item-x" @onclick="() => Borrar(a)" title="Sacar esta alarma">✖</button>
+                    </div>
+                }
+            }
+
+            <div class="rl-nueva">
+                <div class="rl-nueva-fila">
+                    <input type="time" class="rl-input rl-input-hora" @bind="nuevaHora" />
+                    <input type="date" class="rl-input" @bind="nuevaFecha" />
+                </div>
+                <input class="rl-input" placeholder="¿De qué te tengo que acordar?" maxlength="300"
+                       @bind="nuevaNota" @bind:event="oninput" />
+                <div class="rl-sonidos">
+                    @foreach (var s in Sonidos)
+                    {
+                        <button class="rl-son @(nuevoSonido == s.Key ? "sel" : "")"
+                                @onclick="() => ElegirSonido(s.Key)" title="Tocá para elegirlo y escucharlo">
+                            @s.Label
+                        </button>
+                    }
+                </div>
+                <button class="rl-poner" disabled="@guardando" @onclick="Poner">
+                    @(guardando ? "Poniendo…" : "⏰ Poner la alarma")
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@* El cartel de cuando SUENA va al medio de la pantalla, aparte del chip: una alarma que aparece
+   en un rincón de 40 píxeles no es una alarma. *@
 @if (sonando != null)
 {
     <div class="rl-ring">
@@ -115,9 +99,7 @@ else
 }
 
 @code {
-    // ── estado ──────────────────────────────────────────────────────────────
     DateTime Ahora = DateTimeExt.AhoraAr();
-    bool visible = true;
     bool panelAlarmas = false;
     bool guardando = false;
     string quienSoy = "";
@@ -131,8 +113,6 @@ else
 
     System.Threading.Timer? tic;
     int vueltas = 0;
-    const string ClavePos = "reloj.pos";
-    const string ClaveOculto = "reloj.oculto";
 
     static readonly (string Key, string Label)[] Sonidos = new[]
     {
@@ -145,7 +125,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // Cada segundo movemos el reloj; las alarmas se preguntan cada 30 (una vez cada 30 vueltas).
+        // Cada segundo corre el segundero; las alarmas se preguntan cada 30 vueltas (30 s).
         tic = new System.Threading.Timer(async _ =>
         {
             Ahora = DateTimeExt.AhoraAr();
@@ -154,30 +134,9 @@ else
             await InvokeAsync(StateHasChanged);
         }, null, 0, 1000);
 
-        try { visible = await JS.InvokeAsync<string>("localStorage.getItem", ClaveOculto) != "1"; }
-        catch { }
         await CargarAlarmas();
     }
 
-    bool engancheHecho = false;
-
-    protected override async Task OnAfterRenderAsync(bool first)
-    {
-        // El reloj se re-pinta UNA VEZ POR SEGUNDO, así que acá no se puede llamar a JS a lo
-        // bruto: serían 3.600 llamadas por hora y por pestaña abierta para no hacer nada. Se
-        // engancha sólo cuando aparece, y se marca como "por enganchar" cuando lo esconden.
-        if (visible && !engancheHecho)
-        {
-            try
-            {
-                await JS.InvokeVoidAsync("reloj.attach", "relojFlotante", "relojAsa", ClavePos);
-                engancheHecho = true;
-            }
-            catch { }
-        }
-    }
-
-    // ── alarmas ─────────────────────────────────────────────────────────────
     async Task CargarAlarmas()
     {
         var resp = await Api.GetAlarmasAsync();
@@ -185,8 +144,8 @@ else
         quienSoy = resp.Quien ?? "";
         alarmasPendientes = (resp.Alarmas ?? new()).OrderBy(a => a.Cuando).ToList();
 
-        // La que ya venció es la que tiene que sonar. Si venció mientras esta persona no estaba,
-        // suena igual ahora: por eso una alarma nunca se pierde en silencio.
+        // La vencida es la que tiene que sonar. Si venció mientras esta persona no estaba, suena
+        // igual ahora: por eso una alarma no se pierde nunca en silencio.
         var toca = alarmasPendientes.FirstOrDefault(a => a.Vencida);
         if (toca != null && sonando?.Id != toca.Id)
         {
@@ -198,11 +157,7 @@ else
     async Task Poner()
     {
         var cuandoAr = nuevaFecha.Date.Add(nuevaHora.ToTimeSpan());
-        if (cuandoAr <= DateTimeExt.AhoraAr())
-        {
-            Toast.Warning("Esa hora ya pasó. Elegí una que venga.");
-            return;
-        }
+        if (cuandoAr <= DateTimeExt.AhoraAr()) { Toast.Warning("Esa hora ya pasó. Elegí una que venga."); return; }
         guardando = true;
         try
         {
@@ -237,27 +192,13 @@ else
         _ = JS.InvokeVoidAsync("reloj.probar", key);   // se elige escuchándolo, como en el chat
     }
 
+    void ToggleAlarmas() => panelAlarmas = !panelAlarmas;
+
     /// <summary>¿Suena tarde? (la hora pasó hace más de un minuto porque no había nadie).</summary>
     bool LlegaTarde(ApiClient.AlarmaDto a) => (DateTime.UtcNow - a.Cuando).TotalMinutes > 1;
 
-    // ── mostrar / esconder ──────────────────────────────────────────────────
-    void ToggleAlarmas() => panelAlarmas = !panelAlarmas;
-
-    async Task Esconder()
-    {
-        visible = false; panelAlarmas = false; engancheHecho = false;
-        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveOculto, "1"); } catch { }
-    }
-
-    async Task Mostrar()
-    {
-        visible = true;
-        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveOculto, "0"); } catch { }
-    }
-
-    // ── pintar la hora ──────────────────────────────────────────────────────
     static readonly string[] Dias = { "dom", "lun", "mar", "mié", "jue", "vie", "sáb" };
-    string FechaLinda() => $"{Dias[(int)Ahora.DayOfWeek]} {Ahora:dd/MM/yyyy}";
+    string FechaLinda() => $"{Dias[(int)Ahora.DayOfWeek]} {Ahora:dd/MM}";
 
     string CuandoCorto(DateTime ar)
     {
@@ -267,9 +208,8 @@ else
         return $"{ar:dd/MM} {ar:HH:mm}";
     }
 
-    /// <summary>Un dígito de siete segmentos, como el display de un radio reloj. Los segmentos
-    /// apagados se dibujan igual pero oscuros: eso es lo que hace que parezca un display real
-    /// y no números escritos.</summary>
+    /// <summary>Un dígito de siete segmentos. Los apagados se dibujan igual pero oscuros: eso es
+    /// lo que lo hace parecer un display de verdad y no números escritos.</summary>
     static readonly Dictionary<char, string> Segmentos = new()
     {
         ['a'] = "10,3 30,3 33,6 30,9 10,9 7,6",
@@ -288,15 +228,12 @@ else
     MarkupString Digito(int n, bool chico = false)
     {
         var on = Encendidos[Math.Clamp(n, 0, 9)];
-        var alto = chico ? 17 : 40;
+        var alto = chico ? 9 : 18;   // que el chip mida lo mismo que los vecinos de la barra
         var ancho = (int)Math.Round(alto * (40.0 / 70.0));
         var sb = new System.Text.StringBuilder();
         sb.Append($"<svg viewBox=\"0 0 40 70\" width=\"{ancho}\" height=\"{alto}\" aria-hidden=\"true\" class=\"rl-dig\">");
         foreach (var kv in Segmentos)
-        {
-            var prendido = on.Contains(kv.Key);
-            sb.Append($"<polygon points=\"{kv.Value}\" class=\"{(prendido ? "seg on" : "seg")}\"/>");
-        }
+            sb.Append($"<polygon points=\"{kv.Value}\" class=\"{(on.Contains(kv.Key) ? "seg on" : "seg")}\"/>");
         sb.Append("</svg>");
         return (MarkupString)sb.ToString();
     }
