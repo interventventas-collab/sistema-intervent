@@ -7332,6 +7332,110 @@ public class ApiClient
 
     // 2026-08-01: iniciar conversación nueva con plantilla aprobada
     public record TwPlantillaDto(string Name, string Language, string Category, string BodyText, int VariableCount);
+
+    // ===== 2026-08-26: MENSAJES PROGRAMADOS ("escribile a la tarde") =====
+    // ProgramadoPara viaja siempre en UTC: el servidor no tiene por que adivinar la zona del que
+    // programo. La pantalla lo convierte a hora local para mostrarlo.
+    public record TwProgramadoDto(int Id, string Numero, string? LineaPhoneId, string Tipo, string? Texto,
+        string? MediaUrl, string? MediaFilename, string? Plantilla, string? Idioma, string? CuerpoPreview,
+        DateTime ProgramadoPara, string Estado, DateTime? EnviadoAt, string? Error, string? CreadoPorNombre,
+        DateTime CreatedAt);
+
+    public record TwProgramadosResp(List<TwProgramadoDto> Pendientes, List<TwProgramadoDto> Resueltos,
+        bool VentanaAbierta, DateTime? VentanaCierra);
+
+    public async Task<TwProgramadosResp?> GetTwProgramadosAsync(string numero)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<TwProgramadosResp>(
+                $"/api/whatsapp/twilio/programados?numero={Uri.EscapeDataString(numero)}");
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Agenda un mensaje. Devuelve tambien el "aviso" (ej: la hora cae fuera de las 24 hs),
+    /// que NO es un error: el mensaje quedo programado igual y hay que mostrarselo al operador.</summary>
+    public async Task<(bool ok, string? error, string? aviso)> ProgramarTwMensajeAsync(object body)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/programados", body);
+            var txt = await resp.Content.ReadAsStringAsync();
+            if (resp.IsSuccessStatusCode)
+            {
+                string? aviso = null;
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(txt);
+                    if (doc.RootElement.TryGetProperty("aviso", out var a) && a.ValueKind == System.Text.Json.JsonValueKind.String)
+                        aviso = a.GetString();
+                }
+                catch { }
+                return (true, null, aviso);
+            }
+            return (false, ErrorDeJson(txt, "No se pudo programar"), null);
+        }
+        catch (Exception ex) { return (false, ex.Message, null); }
+    }
+
+    public async Task<(bool ok, string? error, string? aviso)> EditarTwProgramadoAsync(int id, string? texto, DateTime? programadoPara)
+    {
+        try
+        {
+            var resp = await _http.PutAsJsonAsync($"/api/whatsapp/twilio/programados/{id}",
+                new { Texto = texto, ProgramadoPara = programadoPara });
+            var txt = await resp.Content.ReadAsStringAsync();
+            if (resp.IsSuccessStatusCode)
+            {
+                string? aviso = null;
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(txt);
+                    if (doc.RootElement.TryGetProperty("aviso", out var a) && a.ValueKind == System.Text.Json.JsonValueKind.String)
+                        aviso = a.GetString();
+                }
+                catch { }
+                return (true, null, aviso);
+            }
+            return (false, ErrorDeJson(txt, "No se pudo cambiar"), null);
+        }
+        catch (Exception ex) { return (false, ex.Message, null); }
+    }
+
+    public async Task<(bool ok, string? error)> CancelarTwProgramadoAsync(int id)
+    {
+        try
+        {
+            var resp = await _http.DeleteAsync($"/api/whatsapp/twilio/programados/{id}");
+            if (resp.IsSuccessStatusCode) return (true, null);
+            return (false, ErrorDeJson(await resp.Content.ReadAsStringAsync(), "No se pudo cancelar"));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    public async Task<(bool ok, string? error)> EnviarYaTwProgramadoAsync(int id)
+    {
+        try
+        {
+            var resp = await _http.PostAsync($"/api/whatsapp/twilio/programados/{id}/ahora", null);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            return (false, ErrorDeJson(await resp.Content.ReadAsStringAsync(), "No se pudo enviar"));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    /// <summary>Saca el "error" del JSON que devuelve la API para mostrarlo tal cual al operador.</summary>
+    private static string ErrorDeJson(string txt, string porDefecto)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(txt);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString() ?? porDefecto;
+        }
+        catch { }
+        return porDefecto;
+    }
     public record TwLineaDto(string PhoneId, string Numero);
 
     public async Task<List<TwPlantillaDto>> GetTwPlantillasAsync()

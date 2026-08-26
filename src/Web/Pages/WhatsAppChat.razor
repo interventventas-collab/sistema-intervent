@@ -1253,6 +1253,155 @@
                     @if (enviandoContacto) { <div class="wa-saldo-info">Enviando contacto…</div> }
                 </div>
             }
+            @* 2026-08-26: PROGRAMAR PARA MÁS TARDE. Va acá afuera (y no dentro del cajón de escribir)
+               a propósito: así también se puede programar una plantilla cuando la ventana de 24 hs
+               ya está cerrada y el cuadro de escribir ni aparece. *@
+            @if (showProgramarPanel)
+            {
+                <div class="wa-saldo-panel">
+                    <div class="wa-saldo-head">
+                        <strong>🕒 Programar para más tarde</strong>
+                        <button class="wa-saldo-x" @onclick="CerrarProgramar">×</button>
+                    </div>
+
+                    <div class="wa-prog-modos">
+                        <button class="wa-prog-modo @(progModo == "MENSAJE" ? "sel" : "")" @onclick='@(() => SetProgModo("MENSAJE"))'>
+                            ✍️ Lo que escribiste abajo
+                        </button>
+                        <button class="wa-prog-modo @(progModo == "PLANTILLA" ? "sel" : "")" @onclick='@(() => SetProgModo("PLANTILLA"))'>
+                            📋 Una plantilla
+                        </button>
+                    </div>
+
+                    @if (progModo == "MENSAJE")
+                    {
+                        @if (string.IsNullOrWhiteSpace(composerText) && AdjuntosProgramables().Count == 0)
+                        {
+                            <div class="wa-saldo-info">
+                                Escribí el mensaje en el cuadro de abajo (o adjuntá una foto/PDF con 📎) y va a aparecer acá para programarlo.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="wa-prog-resumen">
+                                @foreach (var ad in AdjuntosProgramables())
+                                {
+                                    <div class="wa-prog-resumen-adj">@ad.Icono @ad.Label</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(composerText))
+                                {
+                                    <div class="wa-prog-resumen-txt">@composerText</div>
+                                }
+                            </div>
+                        }
+                        @if (PendientesNoProgramables() > 0)
+                        {
+                            <div class="wa-prog-aviso">
+                                ⚠️ Los archivos del servidor (🗂️) todavía no se pueden programar: esos hay que mandarlos a mano.
+                            </div>
+                        }
+                        @if (!Ventana24Abierta())
+                        {
+                            <div class="wa-prog-aviso">
+                                ⚠️ Pasaron más de 24 hs desde su último mensaje: WhatsApp no deja mandarle texto libre.
+                                Si no te escribe antes de la hora que elijas, no va a salir. Para asegurarlo, usá <b>📋 Una plantilla</b>.
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        @if (nvPlantillas.Count == 0)
+                        {
+                            <div class="wa-saldo-info">No hay plantillas aprobadas disponibles. Revisá la configuración de WhatsApp.</div>
+                        }
+                        else
+                        {
+                            <div class="wa-saldo-info">
+                                La plantilla es la única que sale aunque hayan pasado las 24 hs. Sirve para agendar a varios días.
+                            </div>
+                            <select class="wa-nv-input" value="@chatPlantillaName" @onchange="OnChatPlantillaChange">
+                                <option value="">— Elegí una plantilla —</option>
+                                @foreach (var pl in nvPlantillas)
+                                {
+                                    <option value="@pl.Name">@NombrePlantillaLindo(pl.Name) (@pl.Category.ToLower())</option>
+                                }
+                            </select>
+                            @if (ChatPlantillaSel() is {} progSel)
+                            {
+                                @if (progSel.VariableCount > 0)
+                                {
+                                    <div style="margin-top:0.5rem;">
+                                        @for (int i = 0; i < progSel.VariableCount; i++)
+                                        {
+                                            var idx = i;
+                                            <input class="wa-nv-input" style="margin-bottom:0.4rem;"
+                                                   placeholder="@PlaceholderVar(progSel, idx)"
+                                                   value="@(idx < chatVariables.Count ? chatVariables[idx] : "")"
+                                                   @oninput="e => SetChatVariable(idx, e.Value?.ToString() ?? string.Empty)" />
+                                        }
+                                    </div>
+                                }
+                                <div class="wa-nv-preview" style="margin-top:0.5rem;">@ChatPreviewTexto()</div>
+                            }
+                        }
+                    }
+
+                    <div class="wa-prog-cuando-tit">¿Cuándo se lo mando?</div>
+                    <div class="wa-prog-chips">
+                        @foreach (var op in OpcionesHorario())
+                        {
+                            <button class="wa-prog-chip @(progCuando == op.Cuando ? "sel" : "")" @onclick="@(() => progCuando = op.Cuando)">
+                                @op.Label
+                            </button>
+                        }
+                    </div>
+                    <div class="wa-prog-fecha">
+                        <span>o elegí día y hora:</span>
+                        <input type="datetime-local" class="wa-nv-input wa-prog-input" @bind="progCuando" />
+                    </div>
+
+                    <button class="wa-nueva-btn wa-prog-guardar" disabled="@(progGuardando || !SePuedeProgramar())" @onclick="ProgramarAhora">
+                        <span class="wa-nueva-ico">🕒</span>
+                        @(progGuardando ? "Programando…" : $"Dejarlo programado para {CuandoLindo(progCuando)}")
+                    </button>
+                </div>
+            }
+            @* 2026-08-26: lo que quedó agendado en este chat. Un mensaje programado que no se ve ni se
+               puede frenar es una bomba, así que siempre está a la vista con su ✖ para cancelarlo. *@
+            @if (progPendientes.Count > 0 || ProgramadosFallados().Count > 0)
+            {
+                <div class="wa-prog-tray">
+                    @foreach (var pr in progPendientes)
+                    {
+                        <div class="wa-prog-item">
+                            <span class="wa-prog-ico">🕒</span>
+                            <div class="wa-prog-item-body">
+                                <div class="wa-prog-item-cuando">
+                                    @CuandoLindo(pr.ProgramadoPara.ToLocalTime())
+                                    @if (pr.Tipo == "PLANTILLA") { <span class="wa-prog-tag">plantilla</span> }
+                                    else if (pr.Tipo == "ADJUNTO") { <span class="wa-prog-tag">📎 @pr.MediaFilename</span> }
+                                    @if (!string.IsNullOrWhiteSpace(pr.CreadoPorNombre)) { <span class="wa-prog-quien">· lo dejó @pr.CreadoPorNombre</span> }
+                                </div>
+                                <div class="wa-prog-item-txt" title="@ProgTextoDe(pr)">@ProgTextoDe(pr)</div>
+                            </div>
+                            <button class="wa-prog-ya" @onclick="@(() => EnviarProgramadoYa(pr))" disabled="@progTrabajando"
+                                    title="Mandarlo ahora mismo, sin esperar a la hora">Mandar ya</button>
+                            <button class="wa-prog-x" @onclick="@(() => CancelarProgramado(pr))" disabled="@progTrabajando"
+                                    title="Cancelar: no se manda">✖</button>
+                        </div>
+                    }
+                    @foreach (var pr in ProgramadosFallados())
+                    {
+                        <div class="wa-prog-item fallado">
+                            <span class="wa-prog-ico">⚠️</span>
+                            <div class="wa-prog-item-body">
+                                <div class="wa-prog-item-cuando">No salió el mensaje de @CuandoLindo(pr.ProgramadoPara.ToLocalTime())</div>
+                                <div class="wa-prog-item-txt">@pr.Error</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
             @* 2026-08-05: los dos carteles verdes ("Le respondés desde…" y "Te quedan…") se movieron
                abajo del cuadro de escribir, uno al lado del otro, para ocupar menos alto. *@
             @if (Ventana24Abierta() || EsChatInstagram())
@@ -1389,6 +1538,12 @@
                             <button class="wa-attach-btn wa-cbu-btn" title="Pasar un CBU / datos bancarios al cliente" @onclick="ToggleCbuPanel" disabled="@(uploading || sending)">🏦</button>
                             @* 2026-08-02: compartir una tarjeta de contacto *@
                             <button class="wa-attach-btn" title="Compartir un contacto (tarjeta con nombre y número)" @onclick="ToggleContactoPanel" disabled="@(uploading || sending)">👤</button>
+                            @* 2026-08-26: programar el mensaje para más tarde ("escribile a la tarde") *@
+                            <button class="wa-attach-btn wa-prog-btn @(progPendientes.Count > 0 ? "tiene" : "")"
+                                    title="Programar este mensaje para más tarde. La espera la cuenta el servidor: podés cerrar la pestaña que sale igual."
+                                    @onclick="ToggleProgramarPanel" disabled="@(uploading || sending)">
+                                🕒@(progPendientes.Count > 0 ? $" {progPendientes.Count}" : "")
+                            </button>
                             @* 2026-08-01: nota de voz (micrófono) *@
                             @if (!grabandoAudio)
                             {
@@ -3348,6 +3503,37 @@
     .wa-cbu-solo-alias { margin-left: 1rem; width: calc(100% - 1rem); background: #fbfbfd; font-size: 0.8rem; color: #6b7280; }
     .wa-saldo-cli:disabled { opacity: 0.6; cursor: wait; }
     .wa-saldo-info { font-size: 0.8rem; color: #6b7280; padding: 0.2rem 0.1rem; }
+    /* 2026-08-26: programar un mensaje para más tarde */
+    .wa-prog-btn { font-size: 1.15rem; }
+    .wa-prog-btn.tiene { background: #fef3c7; border-color: #f59e0b; font-size: 0.95rem; font-weight: 700; }
+    .wa-prog-modos { display: flex; gap: 0.4rem; margin-bottom: 0.5rem; }
+    .wa-prog-modo { flex: 1; padding: 0.4rem 0.5rem; font-size: 0.82rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; }
+    .wa-prog-modo.sel { background: #25d366; color: #fff; border-color: #25d366; font-weight: 700; }
+    .wa-prog-resumen { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 0.45rem 0.55rem; font-size: 0.85rem; }
+    .wa-prog-resumen-adj { font-weight: 600; color: #166534; }
+    .wa-prog-resumen-txt { white-space: pre-wrap; word-break: break-word; color: #374151; }
+    .wa-prog-aviso { margin-top: 0.4rem; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.45rem 0.55rem; font-size: 0.8rem; color: #92400e; }
+    .wa-prog-cuando-tit { margin: 0.6rem 0 0.3rem; font-size: 0.85rem; font-weight: 700; color: #374151; }
+    .wa-prog-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .wa-prog-chip { padding: 0.35rem 0.6rem; font-size: 0.82rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 999px; cursor: pointer; }
+    .wa-prog-chip.sel { background: #2563eb; color: #fff; border-color: #2563eb; font-weight: 700; }
+    .wa-prog-fecha { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.45rem; font-size: 0.8rem; color: #6b7280; }
+    .wa-prog-input { flex: 1; font-size: 0.85rem; }
+    .wa-prog-guardar { margin-top: 0.6rem; }
+    /* el cartel de lo que quedó agendado, arriba del cuadro de escribir */
+    .wa-prog-tray { margin: 0.4rem 1rem 0.2rem; display: flex; flex-direction: column; gap: 0.3rem; }
+    .wa-prog-item { display: flex; align-items: center; gap: 0.5rem; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 0.4rem 0.55rem; }
+    .wa-prog-item.fallado { background: #fef2f2; border-color: #fecaca; }
+    .wa-prog-ico { font-size: 1.05rem; }
+    .wa-prog-item-body { flex: 1; min-width: 0; }
+    .wa-prog-item-cuando { font-size: 0.8rem; font-weight: 700; color: #92400e; }
+    .wa-prog-item.fallado .wa-prog-item-cuando { color: #b91c1c; }
+    .wa-prog-tag { margin-left: 0.35rem; font-size: 0.7rem; background: #fff; border: 1px solid #fde68a; border-radius: 999px; padding: 0.05rem 0.4rem; color: #92400e; font-weight: 600; }
+    .wa-prog-quien { margin-left: 0.35rem; font-size: 0.7rem; color: #a16207; font-weight: 600; }
+    .wa-prog-item-txt { font-size: 0.85rem; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wa-prog-ya { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 0.3rem 0.5rem; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .wa-prog-ya:hover:not(:disabled) { background: #25d366; color: #fff; border-color: #25d366; }
+    .wa-prog-x { background: none; border: none; font-size: 0.95rem; color: #b45309; cursor: pointer; }
     /* 2026-08-03: cartelito que adivina el cliente por teléfono */
     .wa-sug-cliente { display: flex; align-items: center; gap: 0.55rem; margin: 0.5rem 1rem 0; padding: 0.55rem 0.75rem; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; font-size: 0.88rem; color: #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
     /* 2026-08-05: ficha del cliente desplegable dentro del chat */
@@ -7231,6 +7417,8 @@
         LimpiarModoMeli();          // 2026-08-21: la ficha de MercadoLibre era del comprador del chat anterior
         LimpiarModoVenta();         // 2026-08-21: el carrito y las ventas para repetir eran del cliente anterior
         showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
+        // 2026-08-26: los mensajes programados son de CADA chat: se limpian y se piden de nuevo.
+        showProgramarPanel = false; progModo = "MENSAJE"; progPendientes = new(); progResueltos = new();
         modoElegirVenta = false; mensajesSeleccionadosIds.Clear();   // 2026-08-05: salir del modo "elegir mensajes para venta"
         // 2026-08-20: cerrar el buscador y olvidar los "Leer más" abiertos: son de la charla anterior.
         // Acá la pantalla NO se recrea al cambiar de chat (a diferencia del celular), así que si no
@@ -7284,6 +7472,9 @@
         // Bajar al ultimo mensaje: siempre al abrir/cambiar de chat, y en los refrescos
         // automaticos solo si llego algo nuevo.
         DetectarCodigosMeli();   // 2026-08-21: códigos de MercadoLibre pegados en la charla
+
+        // 2026-08-26: de paso refrescamos lo agendado: si el robot ya lo mandó, el cartelito se va solo.
+        _ = CargarProgramados();
 
         var hayNuevos = mensajes.Count != ultimaCantidadMensajes;
         ultimaCantidadMensajes = mensajes.Count;
@@ -7568,6 +7759,207 @@
     }
 
     void QuitarPendiente(PendingAdjunto p) => pendientes.Remove(p);
+
+    // ===== 2026-08-26: PROGRAMAR UN MENSAJE PARA MÁS TARDE =====
+    // La cuenta de los minutos la lleva el SERVIDOR (tabla WhatsApp_MensajesProgramados + un robot
+    // que mira cada minuto). Acá solo se anota qué mandar y a qué hora: si esto lo contara el
+    // navegador, se moriría al cerrar la pestaña y el mensaje no saldría nunca.
+    bool showProgramarPanel = false;
+    string progModo = "MENSAJE";          // MENSAJE (lo que escribió abajo) | PLANTILLA
+    DateTime progCuando = DateTime.Now.AddHours(1);
+    bool progGuardando = false;           // mientras se está agendando
+    bool progTrabajando = false;          // mientras se cancela / se manda uno ya agendado
+    List<ApiClient.TwProgramadoDto> progPendientes = new();
+    List<ApiClient.TwProgramadoDto> progResueltos = new();
+
+    async Task ToggleProgramarPanel()
+    {
+        showProgramarPanel = !showProgramarPanel;
+        if (!showProgramarPanel) return;
+        showSaldoPanel = false; showCbuPanel = false; showContactoPanel = false;
+        // Si la ventana de 24 hs ya está cerrada, el texto libre no sale: arrancamos en plantilla,
+        // que es lo único que atraviesa la ventana cerrada.
+        if (!Ventana24Abierta()) progModo = "PLANTILLA";
+        progCuando = PrimeraHoraSugerida();
+        await EnsureNvCargado();   // las plantillas se piden una sola vez y quedan
+    }
+
+    async Task SetProgModo(string modo)
+    {
+        progModo = modo;
+        if (modo == "PLANTILLA") await EnsureNvCargado();
+    }
+
+    void CerrarProgramar() => showProgramarPanel = false;
+
+    /// <summary>Solo se pueden programar los adjuntos subidos (📎 y las capturas pegadas). Los del
+    /// servidor (🗂️) se arman recién al mandarlos, así que por ahora quedan afuera.</summary>
+    List<PendingAdjunto> AdjuntosProgramables() => pendientes.Where(p => p.Kind == "UPLOAD").ToList();
+    int PendientesNoProgramables() => pendientes.Count(p => p.Kind != "UPLOAD");
+
+    /// <summary>Los que fallaron hace poco. Se muestran para que nadie se quede esperando un mensaje
+    /// que nunca salió (y con el motivo escrito, no un ⚠ mudo).</summary>
+    List<ApiClient.TwProgramadoDto> ProgramadosFallados()
+        => progResueltos.Where(x => x.Estado == "ERROR" && x.ProgramadoPara > DateTime.UtcNow.AddDays(-7)).ToList();
+
+    /// <summary>La hora que viene redonda: dentro de una hora, sin minutos sueltos.</summary>
+    DateTime PrimeraHoraSugerida()
+    {
+        var t = DateTime.Now.AddHours(1);
+        return new DateTime(t.Year, t.Month, t.Day, t.Hour, 0, 0);
+    }
+
+    /// <summary>Los atajos de horario. Solo se ofrecen los que todavía no pasaron: un botón
+    /// "Hoy 15:00" a las 17 hs no sirve para nada.</summary>
+    List<(string Label, DateTime Cuando)> OpcionesHorario()
+    {
+        var ahora = DateTime.Now;
+        var hoy = ahora.Date;
+        var lista = new List<(string, DateTime)>
+        {
+            ("En 1 hora", PrimeraHoraSugerida()),
+            ("Hoy 15:00", hoy.AddHours(15)),
+            ("Hoy 18:00", hoy.AddHours(18)),
+            ("Mañana 9:00", hoy.AddDays(1).AddHours(9)),
+            ("Mañana 15:00", hoy.AddDays(1).AddHours(15)),
+        };
+        return lista.Where(x => x.Item2 > ahora.AddMinutes(1)).Select(x => (x.Item1, x.Item2)).ToList();
+    }
+
+    /// <summary>"hoy 15:00" / "mañana 09:00" / "vie 29/08 15:00" — hora local, como la lee una persona.</summary>
+    string CuandoLindo(DateTime local)
+    {
+        var dia = local.Date;
+        if (dia == DateTime.Today) return $"hoy {local:HH:mm}";
+        if (dia == DateTime.Today.AddDays(1)) return $"mañana {local:HH:mm}";
+        return $"{local:ddd dd/MM HH:mm}";
+    }
+
+    /// <summary>Qué se ve del mensaje agendado en el cartelito.</summary>
+    string ProgTextoDe(ApiClient.TwProgramadoDto p)
+    {
+        if (p.Tipo == "PLANTILLA")
+            return string.IsNullOrWhiteSpace(p.CuerpoPreview) ? $"Plantilla: {p.Plantilla}" : p.CuerpoPreview!;
+        if (!string.IsNullOrWhiteSpace(p.Texto)) return p.Texto!;
+        return p.Tipo == "ADJUNTO" ? "(solo el archivo, sin texto)" : "";
+    }
+
+    bool SePuedeProgramar()
+    {
+        if (selectedNumero == null || progCuando <= DateTime.Now) return false;
+        if (progModo == "PLANTILLA") return ChatPlantillaSel() != null;
+        return !string.IsNullOrWhiteSpace(composerText) || AdjuntosProgramables().Count > 0;
+    }
+
+    async Task CargarProgramados()
+    {
+        if (selectedNumero == null) { progPendientes = new(); progResueltos = new(); return; }
+        var numeroPedido = selectedNumero;
+        var resp = await Api.GetTwProgramadosAsync(numeroPedido);
+        // 2026-08-24 (mismo tropiezo que la ficha del cliente): si mientras tanto cambiaron de chat,
+        // esta respuesta es del chat ANTERIOR. Se tira, no se pinta.
+        if (resp == null || numeroPedido != selectedNumero) return;
+        progPendientes = resp.Pendientes ?? new();
+        progResueltos = resp.Resueltos ?? new();
+        StateHasChanged();
+    }
+
+    /// <summary>Anota el mensaje para que salga a la hora elegida. No manda nada ahora.</summary>
+    async Task ProgramarAhora()
+    {
+        if (selectedNumero == null || !SePuedeProgramar()) return;
+        if (progCuando <= DateTime.Now) { Toast.Warning("Esa hora ya pasó: elegí un horario que venga."); return; }
+
+        var numero = selectedNumero;
+        var linea = selectedLinea;
+        var cuandoUtc = progCuando.ToUniversalTime();   // el servidor trabaja siempre en UTC
+        progGuardando = true;
+        StateHasChanged();
+        try
+        {
+            var avisos = new List<string>();
+            if (progModo == "PLANTILLA")
+            {
+                var sel = ChatPlantillaSel();
+                if (sel == null) { Toast.Warning("Elegí la plantilla"); return; }
+                var (ok, err, aviso) = await Api.ProgramarTwMensajeAsync(new
+                {
+                    Numero = numero, LineaPhoneId = linea, Tipo = "PLANTILLA",
+                    Plantilla = sel.Name, Idioma = sel.Language, Variables = chatVariables,
+                    CuerpoPreview = sel.BodyText, ProgramadoPara = cuandoUtc
+                });
+                if (!ok) { Toast.Error(err ?? "No se pudo programar"); return; }
+                if (!string.IsNullOrWhiteSpace(aviso)) avisos.Add(aviso!);
+            }
+            else
+            {
+                var adjuntos = AdjuntosProgramables();
+                var texto = composerText?.Trim();
+                if (adjuntos.Count == 0)
+                {
+                    var (ok, err, aviso) = await Api.ProgramarTwMensajeAsync(new
+                    {
+                        Numero = numero, LineaPhoneId = linea, Tipo = "TEXTO",
+                        Texto = texto, ProgramadoPara = cuandoUtc
+                    });
+                    if (!ok) { Toast.Error(err ?? "No se pudo programar"); return; }
+                    if (!string.IsNullOrWhiteSpace(aviso)) avisos.Add(aviso!);
+                }
+                else
+                {
+                    // Igual que al enviar a mano: el texto va como pie de foto del PRIMER adjunto.
+                    for (int i = 0; i < adjuntos.Count; i++)
+                    {
+                        var ad = adjuntos[i];
+                        var (ok, err, aviso) = await Api.ProgramarTwMensajeAsync(new
+                        {
+                            Numero = numero, LineaPhoneId = linea, Tipo = "ADJUNTO",
+                            Texto = i == 0 ? texto : null, MediaUrl = ad.Url, MediaFilename = ad.FileName,
+                            ProgramadoPara = cuandoUtc
+                        });
+                        if (!ok) { Toast.Error($"No se pudo programar {ad.Label}: {err}"); return; }
+                        if (i == 0 && !string.IsNullOrWhiteSpace(aviso)) avisos.Add(aviso!);
+                        pendientes.Remove(ad);
+                    }
+                }
+                composerText = "";
+                try { await JS.InvokeVoidAsync("waComposer.resetSize"); } catch { }
+            }
+
+            Toast.Success($"Listo: se manda {CuandoLindo(progCuando)}. Podés cerrar la pantalla, sale igual.");
+            foreach (var av in avisos) Toast.Warning(av);
+            showProgramarPanel = false;
+            await CargarProgramados();
+        }
+        catch (Exception ex) { Toast.Error($"Error: {ex.Message}"); }
+        finally { progGuardando = false; StateHasChanged(); }
+    }
+
+    async Task CancelarProgramado(ApiClient.TwProgramadoDto p)
+    {
+        progTrabajando = true;
+        try
+        {
+            var (ok, err) = await Api.CancelarTwProgramadoAsync(p.Id);
+            if (ok) Toast.Success("Cancelado: ese mensaje no se manda.");
+            else Toast.Error(err ?? "No se pudo cancelar");
+            await CargarProgramados();
+        }
+        finally { progTrabajando = false; StateHasChanged(); }
+    }
+
+    async Task EnviarProgramadoYa(ApiClient.TwProgramadoDto p)
+    {
+        progTrabajando = true;
+        try
+        {
+            var (ok, err) = await Api.EnviarYaTwProgramadoAsync(p.Id);
+            if (ok) { Toast.Success("Enviado."); await LoadMensajes(); }
+            else Toast.Error(err ?? "No se pudo enviar");
+            await CargarProgramados();
+        }
+        finally { progTrabajando = false; StateHasChanged(); }
+    }
 
     // Envía TODOS los pendientes; el texto del cajón va como pie de foto del PRIMERO. Si uno falla,
     // corta ahí (los ya enviados se sacan de la bandeja; los que faltan quedan para reintentar).

@@ -83,7 +83,7 @@ public class WhatsAppProgramadosController : ControllerBase
             && tipo != WhatsAppMensajeProgramado.TipoPlantilla)
             return BadRequest(new { error = "Tipo desconocido (esperaba TEXTO, ADJUNTO o PLANTILLA)" });
 
-        var cuando = DateTime.SpecifyKind(req.ProgramadoPara, DateTimeKind.Utc);
+        var cuando = AUtc(req.ProgramadoPara);
         // Un minuto de gracia: si el reloj del navegador va unos segundos atrasado, no queremos
         // rebotarle un "es en el pasado" al operador que eligió la hora que viene.
         if (cuando < DateTime.UtcNow.AddMinutes(-1))
@@ -152,7 +152,7 @@ public class WhatsAppProgramadosController : ControllerBase
 
         if (req.ProgramadoPara is DateTime nueva)
         {
-            var cuando = DateTime.SpecifyKind(nueva, DateTimeKind.Utc);
+            var cuando = AUtc(nueva);
             if (cuando < DateTime.UtcNow.AddMinutes(-1))
                 return BadRequest(new { error = "Esa hora ya pasó. Elegí un horario futuro." });
             if (cuando > DateTime.UtcNow.AddDays(MaxDiasAdelante))
@@ -204,18 +204,36 @@ public class WhatsAppProgramadosController : ControllerBase
     /// la hora programada. Es a propósito acá y no un cambio global de los 24 hs.</summary>
     private async Task EstirarVencimientoAdjuntoAsync(WhatsAppMensajeProgramado fila)
     {
-        if (fila.Tipo != WhatsAppMensajeProgramado.TipoAdjunto || fila.UploadId is not int upId) return;
+        if (fila.Tipo != WhatsAppMensajeProgramado.TipoAdjunto) return;
         try
         {
-            var up = await _db.WhatsAppTwilioUploads.FirstOrDefaultAsync(u => u.Id == upId);
+            // La pantalla no conoce el Id del upload, pero SÍ su URL: /files/{token}.ext. El token
+            // es base64url y no tiene puntos, así que sacarle la extensión es seguro.
+            var up = fila.UploadId is int upId
+                ? await _db.WhatsAppTwilioUploads.FirstOrDefaultAsync(u => u.Id == upId)
+                : await BuscarUploadPorUrlAsync(fila.MediaUrl);
             if (up == null) return;
+
+            if (fila.UploadId == null) { fila.UploadId = up.Id; }
             var necesario = fila.ProgramadoPara.AddHours(48);
-            if (up.ExpiresAt < necesario) { up.ExpiresAt = necesario; await _db.SaveChangesAsync(); }
+            if (up.ExpiresAt < necesario) up.ExpiresAt = necesario;
+            await _db.SaveChangesAsync();
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Programados] no pude estirar el vencimiento del adjunto {UploadId}", upId);
+            _logger.LogWarning(ex, "[Programados] no pude estirar el vencimiento del adjunto de {Id}", fila.Id);
         }
+    }
+
+    /// <summary>Encuentra el archivo subido a partir de la URL que va a usar el envío.</summary>
+    private async Task<WhatsAppTwilioUpload?> BuscarUploadPorUrlAsync(string? mediaUrl)
+    {
+        if (string.IsNullOrWhiteSpace(mediaUrl)) return null;
+        var ultimo = mediaUrl.TrimEnd('/').Split('/').LastOrDefault();
+        if (string.IsNullOrWhiteSpace(ultimo)) return null;
+        var token = Path.GetFileNameWithoutExtension(ultimo);
+        if (string.IsNullOrWhiteSpace(token)) return null;
+        return await _db.WhatsAppTwilioUploads.FirstOrDefaultAsync(u => u.Token == token);
     }
 
     /// <summary>Cuándo se cierra la ventana de 24 hs de este número (UTC), o null si ya está cerrada.</summary>
@@ -227,7 +245,7 @@ public class WhatsAppProgramadosController : ControllerBase
             .Select(x => (DateTime?)x.CreatedAt)
             .FirstOrDefaultAsync();
         if (ult == null) return null;
-        var cierra = ult.Value.AddHours(24);
+        var cierra = AUtc(ult.Value).AddHours(24);
         return cierra > DateTime.UtcNow ? cierra : null;
     }
 
@@ -263,8 +281,22 @@ public class WhatsAppProgramadosController : ControllerBase
         return User.Identity?.Name;
     }
 
+    /// <summary>Lleva a UTC lo que mande el navegador. Si viene "con Z" ya es UTC; si viene sin zona
+    /// (SQL Server guarda datetime2 sin zona) lo tratamos como UTC, que es como lo guardamos siempre.
+    /// Sin esto, un mensaje para las 15:00 se manda a las 12:00 o a las 18:00 segun el humor del reloj.</summary>
+    private static DateTime AUtc(DateTime d) => d.Kind switch
+    {
+        DateTimeKind.Utc => d,
+        DateTimeKind.Local => d.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(d, DateTimeKind.Utc)
+    };
+
+    /// <summary>Las fechas salen marcadas como UTC (terminan en "Z") para que la pantalla las
+    /// pueda pasar a la hora de Buenos Aires. Si salieran "peladas", el navegador las tomaria
+    /// como locales y mostraria 3 horas de mas.</summary>
     private static ProgramadoDto ToDto(WhatsAppMensajeProgramado x) => new(
         x.Id, x.Numero, x.LineaPhoneId, x.Tipo, x.Texto, x.MediaUrl, x.MediaFilename,
-        x.Plantilla, x.Idioma, x.CuerpoPreview, x.ProgramadoPara, x.Estado, x.EnviadoAt,
-        x.Error, x.CreadoPorNombre, x.CreatedAt);
+        x.Plantilla, x.Idioma, x.CuerpoPreview, AUtc(x.ProgramadoPara), x.Estado,
+        x.EnviadoAt.HasValue ? AUtc(x.EnviadoAt.Value) : null,
+        x.Error, x.CreadoPorNombre, AUtc(x.CreatedAt));
 }
