@@ -147,9 +147,19 @@
 
     .p2-opcion { display: block; font-size: .6rem; color: #6b7280; margin-top: .1rem; }
 
+    /* Al lado de la foto, no debajo: apilados la fila crecía 9 px y con 50 filas por página
+       eso es media pantalla más de scroll. */
+    .p2-rail { float: left; margin-right: .5rem; display: flex; align-items: center; gap: .25rem; }
+    .p2-balanza { border: 1px solid #e3e7e0; background: #fff; border-radius: .3rem; cursor: pointer;
+                  font-size: .72rem; line-height: 1; padding: .15rem .34rem; color: #6b7280; }
+    .p2-balanza:hover { border-color: #1d4f80; color: #1d4f80; background: #eef4fb; }
+    .p2-balanza.on { background: #1d4f80; border-color: #1d4f80; color: #fff; }
+
     /* 2026-08-26: precio a mano en la fila */
-    .p2-price.editable { cursor: text; border-bottom: 1px dashed transparent; }
-    .p2-price.editable:hover { border-bottom-color: #1d4f80; color: #1d4f80; }
+    /* 2026-08-26: Osmar no encontraba dónde escribir el precio — el subrayado solo aparecía al
+       pasar el mouse, y lo que no se ve no existe. Ahora se ve siempre, con un lapicito. */
+    .p2-price.editable { cursor: text; border-bottom: 1px dashed #b9c6d8; display: inline-block; }
+    .p2-price.editable:hover { border-bottom-color: #1d4f80; color: #1d4f80; background: #f2f7fc; }
     .p2-edit { display: block; }
     .p2-edit input { width: 100%; box-sizing: border-box; padding: .22rem .35rem; border: 1px solid #1d4f80;
                      border-radius: .3rem; font-size: .8rem; font-weight: 700; font-family: inherit; }
@@ -341,22 +351,28 @@
             {
                 @foreach (var it in datos.Items)
                 {
-                    <div class="p2-tr @(tildadas.Contains(it.MeliItemId) ? "sel" : "")"
-                         @onclick="() => ToggleMedidas(it.MeliItemId)" style="cursor:pointer;">
-                        <span @onclick:stopPropagation="true">
+                    @* 2026-08-26 — Osmar: "que apenas toco la publicación me dé esas opciones es
+                       demasiado incómodo, siempre no voy a usar esto". La fila ya no abre nada sola:
+                       el peso y las medidas tienen su botón (la balanza) y las fotos el suyo. *@
+                    <div class="p2-tr @(tildadas.Contains(it.MeliItemId) ? "sel" : "")">
+                        <span>
                             <input type="checkbox" class="p2-chk"
                                    checked="@tildadas.Contains(it.MeliItemId)"
                                    @onchange="() => ToggleTildada(it.MeliItemId)" />
                         </span>
 
                         <span class="p2-pinfo">
-                            @if (!string.IsNullOrEmpty(it.Thumbnail))
-                            {
-                                <img class="p2-thumb clickable" src="@it.Thumbnail" alt="" loading="lazy"
-                                     title="Ver y cambiar las fotos de esta publicación"
-                                     style="float:left; margin-right:.5rem;"
-                                     @onclick="() => ToggleFotos(it.MeliItemId)" @onclick:stopPropagation="true" />
-                            }
+                            <span class="p2-rail">
+                                @if (!string.IsNullOrEmpty(it.Thumbnail))
+                                {
+                                    <img class="p2-thumb clickable" src="@it.Thumbnail" alt="" loading="lazy"
+                                         title="Ver y cambiar las fotos de esta publicación"
+                                         @onclick="() => ToggleFotos(it.MeliItemId)" />
+                                }
+                                <button class="p2-balanza @(medidasAbiertas == it.MeliItemId ? "on" : "")"
+                                        title="Peso y medidas del paquete — de acá sale el envío"
+                                        @onclick="() => ToggleMedidas(it.MeliItemId)">⚖</button>
+                            </span>
                             <span class="p2-t" title="@it.Titulo">@it.Titulo</span>
                             <span class="p2-m">@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)@(it.Vendidas > 0 ? $" · {it.Vendidas} vendidas" : "")</span>
                             <span class="p2-rec">@RecetaFragment(it)</span>
@@ -365,7 +381,7 @@
                         <span class="p2-h" @onclick:stopPropagation="true">
                             @if (editandoPrecio == it.MeliItemId)
                             {
-                                <span class="p2-edit">
+                                <span class="p2-edit" @onclick:stopPropagation="true">
                                     <input type="text" value="@precioEscrito"
                                            @oninput="@(async e => { precioEscrito = e.Value?.ToString() ?? ""; await PrecioEscritoCambio(); })"
                                            @onkeydown="@(async e => { if (e.Key == "Enter") await ConfirmarPrecio(it); if (e.Key == "Escape") CancelarPrecio(); })"
@@ -381,7 +397,7 @@
                             else
                             {
                                 <span class="p2-price editable" title="Tocá para escribir otro precio"
-                                      @onclick="() => EmpezarPrecio(it)">@Plata(it.Precio)</span>
+                                      @onclick="() => EmpezarPrecio(it)" @onclick:stopPropagation="true">✎ @Plata(it.Precio)</span>
                             }
                             @if (it.VariosPrecios && it.PrecioMin.HasValue && it.PrecioMax.HasValue)
                             {
@@ -731,7 +747,7 @@
         @if (datos is not null && datos.Items.Count > 0)
         {
             <div class="p2-count">
-                <span>Tocá una fila para ver el peso y las medidas del paquete · Tocá la foto para verlas todas y cambiarlas.</span>
+                <span>Tocá el ✎ del precio para escribirlo a mano · La ⚖ abre el peso y las medidas · La foto abre todas las fotos.</span>
                 <span>
                     <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
                     <span class="p2-pg">Página @pagina de @TotalPaginas</span>
