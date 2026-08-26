@@ -2086,7 +2086,10 @@ public class MeliItemService
                 title, categoryId, price, originalPrice, currencyId,
                 availableQty, soldQty, status, condition, listingTypeId,
                 thumbnail, permalink, parentSku, userProductId, familyId, familyName,
-                installmentTag, freeShipping, dateCreated, lastUpdated, catalogListing: catalogListing);
+                // 2026-08-26: faltaba logisticType en ESTA llamada (la de las publicaciones sin
+                // variantes, o sea casi todas) y por eso el tipo de envío estaba vacío en 3.393
+                // de 3.395 publicaciones. El dato se leía arriba y se tiraba.
+                installmentTag, freeShipping, dateCreated, lastUpdated, logisticType, catalogListing: catalogListing);
             return 1;
         }
 
@@ -2606,7 +2609,7 @@ public class MeliItemService
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         var resp = await http.GetAsync(
-            $"https://api.mercadolibre.com/items/{meliItemId}?attributes=id,price,status,tags,listing_type_id,catalog_listing,available_quantity", ct);
+            $"https://api.mercadolibre.com/items/{meliItemId}?attributes=id,price,status,tags,listing_type_id,catalog_listing,available_quantity,shipping", ct);
         if (!resp.IsSuccessStatusCode) return cambios;
 
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
@@ -2658,6 +2661,24 @@ public class MeliItemService
             item.CatalogListing = esCatalogo;
         }
 
+        // Cómo se envía. Se aprovecha este refresco para ir completando el dato sin esperar una
+        // sincronización entera: cada vez que se actualizan comisiones, estas publicaciones quedan al día.
+        if (root.TryGetProperty("shipping", out var sh) && sh.ValueKind == JsonValueKind.Object)
+        {
+            if (sh.TryGetProperty("logistic_type", out var lt2) && lt2.ValueKind == JsonValueKind.String
+                && lt2.GetString() is string logi && item.LogisticType != logi)
+            {
+                cambios.Add($"envío: {EnvioLegible(item.LogisticType)} → {EnvioLegible(logi)}");
+                item.LogisticType = logi;
+            }
+            var gratis = sh.TryGetProperty("free_shipping", out var fs2) && fs2.ValueKind == JsonValueKind.True;
+            if (item.FreeShipping != gratis)
+            {
+                cambios.Add($"envío gratis: {(item.FreeShipping ? "sí" : "no")} → {(gratis ? "sí" : "no")}");
+                item.FreeShipping = gratis;
+            }
+        }
+
         if (root.TryGetProperty("available_quantity", out var aq) && aq.ValueKind == JsonValueKind.Number)
         {
             var stock = aq.GetInt32();
@@ -2676,6 +2697,20 @@ public class MeliItemService
         }
         return cambios;
     }
+
+    /// <summary>Cómo se envía, en criollo. Sale de `shipping.logistic_type` de MeLi.
+    /// Medido el 26/08 sobre 100 publicaciones activas: cross_docking 76, fulfillment 13, ME1 11.</summary>
+    public static string EnvioLegible(string? logisticType) => logisticType switch
+    {
+        null or "" => "sin dato",
+        "fulfillment" => "Full",
+        "cross_docking" or "xd_drop_off" => "Colecta",
+        "self_service" => "Flex",
+        "drop_off" => "Correo",
+        "default" => "A acordar",
+        "not_specified" => "sin definir",
+        _ => logisticType
+    };
 
     /// <summary>El nombre de la modalidad de cuotas en criollo, para los mensajes.</summary>
     public static string Legible(string? marcaDeCuotas) => marcaDeCuotas switch
