@@ -44,7 +44,24 @@
             <div class="wam-lock-ic">💬</div>
             <div class="wam-lock-title">WhatsApp</div>
 
-            @if (modoControlClave)
+            @if (sinSesion)
+            {
+                @* Para registrar la huella por primera vez hace falta entrar una vez al sistema.
+                   Es a propósito: el código son cuatro números, muy flojo para abrir solo. *@
+                <div class="wam-lock-sub">Primero registrá tu huella</div>
+                <div class="wam-lock-foot" style="margin:.6rem 0;">
+                    Para entrar con el dedo, la primera vez hay que iniciar sesión con tu usuario y
+                    clave. Después de eso, con la huella alcanza y no hace falta nunca más.
+                </div>
+                <button type="button" class="wam-huella-grande"
+                        @onclick="@(() => Nav.NavigateTo("/login?returnUrl=/wa", true))">
+                    <span>Iniciar sesión</span>
+                </button>
+                <button type="button" class="wam-lock-link" @onclick="@(() => { sinSesion = false; modoClave = false; })">
+                    Volver
+                </button>
+            }
+            else if (modoControlClave)
             {
                 @* ── Control de cada 30 días. Va ACÁ ADENTRO a propósito: mandar al login del
                      sistema era justamente la molestia que había que sacar. ── *@
@@ -448,7 +465,7 @@ else
     private bool desbloqueado;
 
     // Control de clave cada 30 días (2026-08-26). No saca de la pantalla.
-    private bool modoControlClave, ctrlOcupado;
+    private bool modoControlClave, ctrlOcupado, sinSesion;
     private string ctrlUsuario = "", ctrlClave = "";
     private string? ctrlError, credencialId;
 
@@ -776,6 +793,18 @@ else
         StateHasChanged();
         var nombre = await Api.VerificarCodigoWaMovilAsync(pin);
         verificando = false;
+
+        // Todavía no registró su huella y no está logueado: el código solo no alcanza. Se le dice
+        // qué hacer, en vez de dejarlo con un "código incorrecto" que lo vuelve loco.
+        if (nombre == "__SIN_SESION__")
+        {
+            pin = "";
+            sinSesion = true;
+            pinError = null;
+            StateHasChanged();
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(nombre))
         {
             persona = nombre;

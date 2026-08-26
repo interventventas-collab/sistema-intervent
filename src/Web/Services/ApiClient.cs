@@ -7043,6 +7043,9 @@ public class ApiClient
         try
         {
             var resp = await _http.PostAsJsonAsync("/api/wa-movil/verificar", new { Codigo = codigo });
+            // 2026-08-26: el 401 NO es "código equivocado", es "no iniciaste sesión". Se devuelve
+            // distinto para poder guiar a quien todavía no registró su huella (Germán, Gabriel).
+            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized) return "__SIN_SESION__";
             if (!resp.IsSuccessStatusCode) return null;
             var r = await resp.Content.ReadFromJsonAsync<WaMovilVerifDto>();
             return (r != null && r.ok && !string.IsNullOrWhiteSpace(r.nombre)) ? r.nombre : null;

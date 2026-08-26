@@ -35,6 +35,14 @@
                             || relPath.StartsWith("alquiler/", StringComparison.OrdinalIgnoreCase)
                             || relPath.Equals("fichador", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("fichador/", StringComparison.OrdinalIgnoreCase)
+                            // 2026-08-26: el WhatsApp del celu entra con la HUELLA, sin pasar antes
+                            // por el login del sistema. Sin esto, el router lo mandaba al login y la
+                            // huella no llegaba a mostrarse nunca. La pantalla no muestra un solo
+                            // chat hasta que el candado se abre, y sus datos siguen protegidos.
+                            || relPath.Equals("wa", StringComparison.OrdinalIgnoreCase)
+                            || relPath.StartsWith("wa?", StringComparison.OrdinalIgnoreCase)
+                            || relPath.Equals("whatsapp-movil", StringComparison.OrdinalIgnoreCase)
+                            || relPath.StartsWith("whatsapp-movil?", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("login", StringComparison.OrdinalIgnoreCase);
             }
             @if (isPublic)
