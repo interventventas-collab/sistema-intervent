@@ -12,7 +12,8 @@
       · Pantalla completa (sin menú al costado ni barra arriba), como el Mapeo.
       · Debajo del título: de qué productos del sistema se compone y para cuántas alcanza.
       · Columna "Se lleva MeLi": el total real (porcentaje + cargo fijo + cuotas), no solo el %.
-      · Cuando la familia tiene precios distintos, muestra el rango en vez de fingir uno solo.
+      · Precios distintos entre hermanas: solo es alarma si tienen LAS MISMAS condiciones de venta.
+      La que ofrece cuotas paga mas comision, asi que TIENE que valer mas para dejar lo mismo.
       · Filtros por comisión / cuotas / varios precios / precio a mano.
 *@
 
@@ -144,6 +145,8 @@
     .p2-med .guardar[disabled] { opacity: .5; cursor: default; }
     .p2-med .nota { font-size: .68rem; color: #6b7280; margin-top: .45rem; }
 
+    .p2-opcion { display: block; font-size: .6rem; color: #6b7280; margin-top: .1rem; }
+
     /* etapa 3: fotos de la publicacion */
     .p2-fotos { background: #f4f7fb; border-bottom: 1px solid #dbe3ee; padding: .8rem 1rem .9rem 3rem; }
     .p2-fotos h4 { margin: 0 0 .55rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: #9ca3af; }
@@ -173,6 +176,8 @@
     .p2-fotos .btn.meli { background: #15803d; border-color: #15803d; color: #fff; }
     .p2-fotos .btn.copiar { background: #1d4f80; border-color: #1d4f80; color: #fff; }
     .p2-fotos .btn[disabled] { opacity: .45; cursor: default; }
+    .p2-fotos .link { flex: 1; min-width: 240px; max-width: 460px; padding: .4rem .6rem; font-size: .75rem;
+                      border: 1px solid #cbd5e1; border-radius: .4rem; }
     .p2-fotos .herm { margin-top: .7rem; border-top: 1px dashed #cbd5e1; padding-top: .6rem; }
     .p2-fotos .herm .lista { display: flex; gap: .45rem; flex-wrap: wrap; margin-top: .4rem; }
     .p2-fotos .herm .h { display: flex; align-items: center; gap: .35rem; border: 1px solid #dbe3ee;
@@ -183,6 +188,7 @@
     .p2-fotos .herm .h img { width: 24px; height: 24px; object-fit: cover; border-radius: .25rem; }
     .p2-fotos .herm .h .tit { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 165px; }
     .p2-fotos .herm .h .n { font-weight: 700; color: #1d4f80; white-space: nowrap; }
+    .p2-fotos .herm .h .v { font-weight: 700; color: #15803d; white-space: nowrap; }
     .p2-fotos .aviso { font-size: .7rem; color: #b45309; background: #fef0d8; border-radius: .35rem;
                        padding: .35rem .6rem; margin-top: .5rem; display: inline-block; }
     .p2-fotos .aviso.ok { color: #15803d; background: #dcfce7; }
@@ -264,7 +270,7 @@
             <span class="p2-chip nue @(fNoLlegan == 70 ? "on" : "")" @onclick="() => SetNoLlegan(70)">…al 70%</span>
             <span class="p2-chip nue @(fComision == 30 ? "on" : "")" @onclick="() => SetComision(30)">MeLi se lleva más de 30%</span>
             <span class="p2-chip nue @(fComision == 40 ? "on" : "")" @onclick="() => SetComision(40)">…más de 40%</span>
-            <span class="p2-chip nue @(fVariosPrecios ? "on" : "")" @onclick="ToggleVarios">Varios precios en la familia</span>
+            <span class="p2-chip nue @(fVariosPrecios ? "on" : "")" @onclick="ToggleVarios">⚠ Hermanas iguales a distinto precio</span>
             <span class="p2-chip nue @(fPrecioAMano ? "on" : "")" @onclick="TogglePrecioMano">Precio a mano</span>
             <span class="p2-chip nue @(fSinCosto ? "on" : "")" @onclick="ToggleSinCosto">Sin costo cargado</span>
             <span class="p2-chip nue @(fComisionVieja ? "on" : "")" @onclick="ToggleComisionVieja">⚠ Con datos viejos</span>
@@ -336,19 +342,20 @@
                                      @onclick="() => ToggleFotos(it.MeliItemId)" @onclick:stopPropagation="true" />
                             }
                             <span class="p2-t" title="@it.Titulo">@it.Titulo</span>
-                            <span class="p2-m">@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)</span>
+                            <span class="p2-m">@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)@(it.Vendidas > 0 ? $" · {it.Vendidas} vendidas" : "")</span>
                             <span class="p2-rec">@RecetaFragment(it)</span>
                         </span>
 
                         <span class="p2-h">
+                            <span class="p2-price">@Plata(it.Precio)</span>
                             @if (it.VariosPrecios && it.PrecioMin.HasValue && it.PrecioMax.HasValue)
                             {
+                                <span class="p2-flag" title="Otra publicación del mismo producto y con las MISMAS condiciones de venta está a otro precio. Eso sí es un descuido.">⚠ hermana igual a otro precio</span>
                                 <span class="p2-rango">@Plata(it.PrecioMin.Value) – @Plata(it.PrecioMax.Value)</span>
-                                <span class="p2-flag">⚠ precios distintos</span>
                             }
-                            else
+                            else if (it.PublisFamilia > 1)
                             {
-                                <span class="p2-price">@Plata(it.Precio)</span>
+                                <span class="p2-opcion" title="Este producto está publicado @it.PublisFamilia veces con distintas condiciones de venta. Cada una tiene que valer lo suyo: la que ofrece cuotas paga más comisión.">@CuotasTexto(it.Cuotas, it.Tipo)</span>
                             }
                         </span>
 
@@ -463,6 +470,18 @@
                                     }
                                 </div>
 
+                                @if (!fotosBloqueadas)
+                                {
+                                    <div class="pie">
+                                        <input class="link" placeholder="Pegá el enlace de una foto de cualquier página (http…)"
+                                               @bind="fotoLink" @bind:event="oninput" disabled="@fotoTrayendo"
+                                               @onkeydown="@(async e => { if (e.Key == "Enter") await AgregarFotoPorLink(); })" />
+                                        <button class="btn" disabled="@fotoTrayendo" @onclick="AgregarFotoPorLink">
+                                            @(fotoTrayendo ? "Trayendo…" : "＋ Agregar por enlace")
+                                        </button>
+                                    </div>
+                                }
+
                                 <div class="pie">
                                     <span class="cnt">@fotosEdit.Count foto@(fotosEdit.Count == 1 ? "" : "s") · máx. 10 MB cada una (JPG o PNG)</span>
                                     @if (!fotosBloqueadas)
@@ -504,6 +523,10 @@
                                                     }
                                                     <span class="tit">@h.Titulo</span>
                                                     <span class="n">@(h.CantidadFotos < 0 ? "?" : h.CantidadFotos.ToString()) 📷</span>
+                                                    @if (h.Vendidas > 0)
+                                                    {
+                                                        <span class="v" title="Ventas desde que se publicó">@h.Vendidas 🛒</span>
+                                                    }
                                                 </span>
                                             }
                                         </div>
@@ -878,6 +901,7 @@
         fotosOriginal = new();
         hermanasElegidas.Clear();
         fotosResultado = null;
+        fotoLink = "";
         fotosCargando = true;
         StateHasChanged();
         try
@@ -932,6 +956,37 @@
     }
 
     private void DeshacerFotos() { RefrescarEdicion(); fotosResultado = null; }
+
+    // Traer una foto por ENLACE. El servidor la BAJA (esquiva bloqueos y convierte webp→jpg) y la deja
+    // capturada como archivo: si mañana el fabricante la borra de su página, la nuestra sigue estando.
+    private string fotoLink = "";
+    private bool fotoTrayendo;
+
+    private async Task AgregarFotoPorLink()
+    {
+        var url = (fotoLink ?? "").Trim();
+        if (string.IsNullOrEmpty(url)) return;
+        if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            ToastService.Error("Pegá un enlace que empiece con http…");
+            return;
+        }
+        fotoTrayendo = true;
+        StateHasChanged();
+        try
+        {
+            var (dataUri, error) = await Api.FetchImageFromUrlAsync(url);
+            if (string.IsNullOrEmpty(dataUri))
+            {
+                ToastService.Error(error ?? "No se pudo traer la foto de ese enlace.");
+                return;
+            }
+            fotosEdit.Add(new FotoEdit { DataUri = dataUri, Preview = dataUri });
+            fotoLink = "";
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { fotoTrayendo = false; StateHasChanged(); }
+    }
 
     private async Task SubirFotos(InputFileChangeEventArgs e)
     {
