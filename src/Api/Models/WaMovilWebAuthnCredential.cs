@@ -20,4 +20,10 @@ public class WaMovilWebAuthnCredential
     [MaxLength(120)] public string? DeviceName { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastUsedAt { get; set; }
+
+    /// <summary>2026-08-26: última vez que en ESTE teléfono se confirmó usuario y clave.
+    /// La huella abre todos los días; cada 30 días se vuelve a pedir la clave, pero adentro de la
+    /// misma pantalla — la queja de Osmar era justamente que te mandaba a otro lado a loguearte.
+    /// NULL = nunca se confirmó, así que se pide la primera vez.</summary>
+    public DateTime? PasswordCheckedAt { get; set; }
 }

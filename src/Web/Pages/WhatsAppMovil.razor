@@ -1,6 +1,11 @@
 @page "/whatsapp-movil"
 @page "/wa"
-@attribute [Authorize]
+@* 2026-08-26 — Ya NO exige estar logueado en el sistema. La queja de Osmar era esa: "se me quejan
+   de que hay que entrar a otro lado para loguearse". Ahora la HUELLA es la puerta y deja una sesión
+   acotada que solo abre el WhatsApp del celu (WaMovilScopeMiddleware la encierra ahí).
+   Sin huella no se ve nada: esta pantalla no muestra un solo chat hasta que el candado se abre, y
+   todos los datos siguen pidiéndose a endpoints protegidos. *@
+@attribute [AllowAnonymous]
 @layout Web.Layout.EmptyLayout
 @using Web.Services
 @inject ApiClient Api
@@ -39,7 +44,29 @@
             <div class="wam-lock-ic">💬</div>
             <div class="wam-lock-title">WhatsApp</div>
 
-            @if (!modoClave)
+            @if (modoControlClave)
+            {
+                @* ── Control de cada 30 días. Va ACÁ ADENTRO a propósito: mandar al login del
+                     sistema era justamente la molestia que había que sacar. ── *@
+                <div class="wam-lock-sub">Hola @persona 👋</div>
+                <div class="wam-lock-foot" style="margin-bottom:.6rem;">
+                    Cada 30 días confirmamos tu usuario y clave. Es la única vez en el mes.
+                </div>
+                <input class="wam-lock-inp" placeholder="Usuario" autocomplete="username"
+                       @bind="ctrlUsuario" @bind:event="oninput" />
+                <input class="wam-lock-inp" placeholder="Clave" type="password" autocomplete="current-password"
+                       @bind="ctrlClave" @bind:event="oninput"
+                       @onkeydown="@(async e => { if (e.Key == "Enter") await ConfirmarControlDeClave(); })" />
+                <button type="button" class="wam-huella-grande" disabled="@ctrlOcupado"
+                        @onclick="ConfirmarControlDeClave">
+                    <span>@(ctrlOcupado ? "Verificando…" : "Confirmar y entrar")</span>
+                </button>
+                @if (!string.IsNullOrEmpty(ctrlError))
+                {
+                    <div class="wam-lock-foot" style="color:#b91c1c;font-weight:700;">@ctrlError</div>
+                }
+            }
+            else if (!modoClave)
             {
                 @* ── Entrada principal: la huella ── *@
                 <div class="wam-lock-sub">Entrá con tu huella</div>
@@ -382,6 +409,13 @@ else
     .wam-huella-btn { background: #075e54; color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 1rem; font-weight: 800; cursor: pointer; }
     .wam-huella-btn:disabled { opacity: 0.6; cursor: wait; }
     /* 2026-08-19: la huella es la entrada principal — botón grande y a la vista. */
+    /* La tarjeta del candado es BLANCA, así que texto oscuro. */
+    .wam-lock-inp { width: 100%; box-sizing: border-box; margin-bottom: .5rem; padding: .7rem .8rem;
+                    border-radius: .6rem; border: 1px solid #d5dbd7; background: #fff;
+                    color: #111827; font-size: 1rem; font-family: inherit; }
+    .wam-lock-inp::placeholder { color: #9ca3af; }
+    .wam-lock-inp:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 2px #dcfce7; }
+
     .wam-huella-grande { width: 100%; margin-top: 1rem; background: #075e54; color: #fff; border: none;
         border-radius: 16px; padding: 18px 12px; font-size: 1.05rem; font-weight: 800; cursor: pointer;
         display: flex; flex-direction: column; align-items: center; gap: 8px; }
@@ -412,6 +446,36 @@ else
 
     // Candado de 4 dígitos (Osmar/Germán/Gabriel)
     private bool desbloqueado;
+
+    // Control de clave cada 30 días (2026-08-26). No saca de la pantalla.
+    private bool modoControlClave, ctrlOcupado;
+    private string ctrlUsuario = "", ctrlClave = "";
+    private string? ctrlError, credencialId;
+
+    private async Task ConfirmarControlDeClave()
+    {
+        if (ctrlOcupado) return;
+        if (string.IsNullOrWhiteSpace(ctrlUsuario) || string.IsNullOrWhiteSpace(ctrlClave))
+        {
+            ctrlError = "Escribí tu usuario y tu clave.";
+            return;
+        }
+        ctrlOcupado = true; ctrlError = null; StateHasChanged();
+        try
+        {
+            var r = await Api.WaRevalidarAsync(credencialId ?? "", ctrlUsuario.Trim(), ctrlClave);
+            if (r?.Ok == true)
+            {
+                ctrlUsuario = ""; ctrlClave = "";
+                modoControlClave = false;
+                desbloqueado = true;
+                await CargarConversaciones();
+            }
+            else ctrlError = r?.Mensaje ?? "No se pudo verificar. Probá de nuevo.";
+        }
+        catch (Exception ex) { ctrlError = "Error: " + ex.Message; }
+        finally { ctrlOcupado = false; StateHasChanged(); }
+    }
     private string? persona;
     private string pin = "";
     private string? pinError;
@@ -617,8 +681,18 @@ else
                 return;
             }
             persona = comp.Nombre;
-            desbloqueado = true;
             try { await JS.InvokeVoidAsync("localStorage.setItem", PersonaKey, persona); } catch { }
+
+            // Cada 30 días se confirma usuario y clave, pero SIN salir de esta pantalla.
+            if (comp.TocaControlDeClave)
+            {
+                credencialId = comp.CredencialId;
+                modoControlClave = true;
+                huellaMsg = null;
+                return;
+            }
+
+            desbloqueado = true;
             await CargarConversaciones();
         }
         catch { huellaMsg = "No se pudo usar la huella."; }

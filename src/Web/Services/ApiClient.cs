@@ -7053,7 +7053,8 @@ public class ApiClient
     // 2026-08-07: huella (WebAuthn) para /whatsapp-movil. Options se pasan tal cual al JS (webAuthnCreate/Get).
     public record WaHuellaBeginResp(bool Ok, string? Mensaje, object? Options, string? SessionId);
     public record WaHuellaRegCompleteResp(bool Ok, string? Mensaje);
-    public record WaHuellaLoginCompleteResp(bool Ok, string? Mensaje, string? Nombre);
+    public record WaHuellaLoginCompleteResp(bool Ok, string? Mensaje, string? Nombre,
+        bool TocaControlDeClave = false, string? CredencialId = null);
 
     public async Task<WaHuellaBeginResp?> WaHuellaRegBeginAsync(string codigo, string? device)
     {
@@ -7073,6 +7074,19 @@ public class ApiClient
     public async Task<WaHuellaLoginCompleteResp?> WaHuellaLoginCompleteAsync(object body)
     {
         try { var r = await _http.PostAsJsonAsync("/api/wa-movil/huella/login/complete", body); return await r.Content.ReadFromJsonAsync<WaHuellaLoginCompleteResp>(); }
+        catch { return null; }
+    }
+
+    /// <summary>Control de clave cada 30 días, hecho DENTRO de la pantalla del celu.</summary>
+    public record WaRevalidarResp(bool Ok, string? Mensaje);
+    public async Task<WaRevalidarResp?> WaRevalidarAsync(string credencialId, string usuario, string clave)
+    {
+        try
+        {
+            var r = await _http.PostAsJsonAsync("/api/wa-movil/revalidar",
+                new { CredencialId = credencialId, Usuario = usuario, Clave = clave });
+            return await r.Content.ReadFromJsonAsync<WaRevalidarResp>();
+        }
         catch { return null; }
     }
 

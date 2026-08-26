@@ -563,6 +563,11 @@ app.UseForwardedHeaders();
 app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
+
+// 2026-08-26: la sesión que entrega la huella del celu solo puede abrir el WhatsApp móvil.
+// Va DESPUÉS de UseAuthentication (necesita saber quién es) y ANTES de UseAuthorization.
+app.UseMiddleware<Api.Middleware.WaMovilScopeMiddleware>();
+
 app.UseAuthorization();
 app.MapControllers();
 // 2026-08-06: hub de presencia de WhatsApp. Bajo /api/hubs/ para que caiga en el proxy /api de nginx.
