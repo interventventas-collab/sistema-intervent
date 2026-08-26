@@ -24,6 +24,11 @@ public class MeliPublicacionesV2Service
     private const int DEPOSITO_9_ABRIL = 1;
     private const decimal IVA = 1.21m;
 
+    /// <summary>Por debajo de esta diferencia, dos hermanas al "mismo" precio no se marcan.
+    /// Medido el 26/08: de 171 avisos, 39 eran diferencias de menos del 1% (el caso testigo fueron
+    /// $99 sobre $641.300). Avisar por eso es ruido y hace que se ignoren los avisos que importan.</summary>
+    private const decimal TOLERANCIA_PRECIO = 0.01m;
+
     public MeliPublicacionesV2Service(AppDbContext db) => _db = db;
 
     public record ComponenteDto(string? Sku, string Nombre, decimal Cantidad, int Stock, int Alcanza, bool Frena);
@@ -142,8 +147,8 @@ public class MeliPublicacionesV2Service
             // Ahora solo se marca lo que SÍ es un descuido: mismas condiciones, distinto precio.
             var skusMulti = _db.MeliItems.AsNoTracking()
                 .Where(x => x.VariationId == null && x.Status == "active" && x.Sku != null && x.Price > 0)
-                .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag })
-                .Where(g => g.Select(x => x.Price).Distinct().Count() > 1)
+                .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag, Tipo = x.ListingTypeId, Envio = x.FreeShipping })
+                .Where(g => g.Min(x => x.Price) / g.Max(x => x.Price) < 1m - TOLERANCIA_PRECIO)
                 .Select(g => g.Key.Sku);
             q = q.Where(m => m.Sku != null && skusMulti.Contains(m.Sku));
         }
@@ -196,7 +201,7 @@ public class MeliPublicacionesV2Service
             .Select(m => new
             {
                 m.MeliItemId, m.Sku, m.Title, m.Thumbnail, m.Permalink, m.Price, m.Status,
-                m.ListingTypeId, m.InstallmentTag, m.AvailableQuantity, m.SoldQuantity,
+                m.ListingTypeId, m.InstallmentTag, m.FreeShipping, m.AvailableQuantity, m.SoldQuantity,
                 m.SaleFeeAmount, m.SaleFeePercentageFee, m.SaleFeeFixedFee, m.SaleFeeShippingCost, m.SaleFeePriceSnapshot,
                 m.CafeProductoId, m.CafeFormato, m.MeliAccountId,
                 Cuenta = m.MeliAccount != null ? m.MeliAccount.Nickname : null
@@ -242,16 +247,21 @@ public class MeliPublicacionesV2Service
             .Select(g => new { Sku = g.Key, Cant = g.Count(), Min = g.Min(x => x.Price), Max = g.Max(x => x.Price) })
             .ToDictionaryAsync(g => g.Sku, ct);
 
-        // Y el mismo corte pero POR CONDICIONES DE VENTA. Dos publicaciones del mismo producto con
-        // las mismas cuotas deberían valer lo mismo; si tienen cuotas distintas, NO — la de cuotas
-        // paga más comisión y necesita un precio más alto para dejar lo mismo.
+        // Y el mismo corte pero POR CONDICIONES DE VENTA: dos publicaciones del mismo producto solo
+        // deberían valer lo mismo si venden en LAS MISMAS CONDICIONES. Son tres cosas, no una:
+        //   • las CUOTAS      — 12 cuotas paga ~19 puntos más de financiación que sin cuotas
+        //   • el TIPO         — Premium cobra ~26% donde Clásica cobra ~14%
+        //   • el ENVÍO        — si lo pagás vos, el precio tiene que absorberlo
+        // 2026-08-26: faltaban el tipo y el envío. Caso real, C9334GR: marcaba en rojo una Clásica
+        // a $1.021.399 contra una Premium a $1.031.299 — y está bien que no valgan lo mismo.
         var porCondicion = (await _db.MeliItems.AsNoTracking()
             .Where(x => x.VariationId == null && x.Status == "active" && x.Sku != null && x.Price > 0
                         && skus.Contains(x.Sku))
-            .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag })
-            .Select(g => new { g.Key.Sku, g.Key.Cuotas, Cant = g.Count(), Min = g.Min(x => x.Price), Max = g.Max(x => x.Price) })
+            .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag, Tipo = x.ListingTypeId, Envio = x.FreeShipping })
+            .Select(g => new { g.Key.Sku, g.Key.Cuotas, g.Key.Tipo, g.Key.Envio,
+                               Cant = g.Count(), Min = g.Min(x => x.Price), Max = g.Max(x => x.Price) })
             .ToListAsync(ct))
-            .ToDictionary(g => (g.Sku, g.Cuotas ?? ""), g => (g.Cant, g.Min, g.Max));
+            .ToDictionary(g => (g.Sku, g.Cuotas ?? "", g.Tipo ?? "", g.Envio), g => (g.Cant, g.Min, g.Max));
 
         // ── 5) Armar cada fila ──
         var items = new List<FilaDto>(pageRows.Count);
@@ -300,8 +310,13 @@ public class MeliPublicacionesV2Service
             // Lo que REALMENTE queda: se descuenta lo que se lleva MeLi (comisión + envío) y el IVA.
             // Se muestran las dos cosas juntas — el % sobre el costo y la plata — porque el %
             // solo no dice nada: 200% sobre un costo de $981 son $2.000, no una fortuna.
+            // 2026-08-26 — SIN COMISIÓN NO HAY MARGEN. Antes, si MeLi todavía no nos había dicho
+            // cuánto cobra, `seLlevaMeli` valía 0 y la cuenta salía igual: la fila mostraba un
+            // número verde y tranquilizador calculado COMO SI MELI NO COBRARA NADA.
+            // Caso real: MLA1683493719 mostraba 80,3% cuando su hermana, con la comisión ya
+            // cargada, daba 25,4%. Ahora se devuelve vacío y la pantalla dice qué falta.
             decimal? neto = null, ganancia = null, margen = null;
-            if (r.Price > 0)
+            if (r.Price > 0 && r.SaleFeeAmount.HasValue)
             {
                 neto = Math.Round((r.Price - seLlevaMeli) / IVA, 2);
                 if (costo is > 0)
@@ -317,9 +332,12 @@ public class MeliPublicacionesV2Service
                                 && Math.Abs(r.Price - r.SaleFeePriceSnapshot.Value) / (r.Price == 0 ? 1m : r.Price) > 0.05m;
 
             familias.TryGetValue(r.Sku ?? "", out var fam);
-            // Ojo: la alarma mira SOLO a las hermanas con las mismas condiciones de venta.
-            porCondicion.TryGetValue((r.Sku ?? "", r.InstallmentTag ?? ""), out var cond);
-            var variosPrecios = cond.Cant > 1 && cond.Min != cond.Max;
+            // Ojo: la alarma mira SOLO a las hermanas que venden en las MISMAS condiciones
+            // (mismas cuotas, mismo tipo y mismo envío). Además hay una tolerancia: por menos
+            // de 1% de diferencia no vale la pena molestar — medido, eran 39 avisos de $99.
+            porCondicion.TryGetValue((r.Sku ?? "", r.InstallmentTag ?? "", r.ListingTypeId ?? "", r.FreeShipping), out var cond);
+            var variosPrecios = cond.Cant > 1 && cond.Max > 0
+                                && (cond.Max - cond.Min) / cond.Max >= TOLERANCIA_PRECIO;
 
             cfgs.TryGetValue(r.MeliItemId, out var cfg);
 
@@ -353,8 +371,8 @@ public class MeliPublicacionesV2Service
         // son las mismas (ver el comentario largo en GetAsync).
         var skusMulti = _db.MeliItems.AsNoTracking()
             .Where(x => x.VariationId == null && x.Status == "active" && x.Sku != null && x.Price > 0)
-            .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag })
-            .Where(g => g.Select(x => x.Price).Distinct().Count() > 1)
+            .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag, Tipo = x.ListingTypeId, Envio = x.FreeShipping })
+            .Where(g => g.Min(x => x.Price) / g.Max(x => x.Price) < 1m - TOLERANCIA_PRECIO)
             .Select(g => g.Key.Sku);
 
         return new Dictionary<string, int>
