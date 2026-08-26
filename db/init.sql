@@ -7081,3 +7081,15 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Reloj_Alarmas')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_RelojAlarmas_DuenioEstado')
     CREATE INDEX IX_RelojAlarmas_DuenioEstado ON Reloj_Alarmas(Duenio, Estado, Cuando);
 GO
+
+-- ============================================================================
+-- 2026-08-26: la huella abre sola la pantalla de WhatsApp del celu.
+-- Cada 30 dias se vuelve a pedir usuario y clave, pero DENTRO de la misma
+-- pantalla (antes te mandaba al login del sistema y por eso se quejaban).
+-- Esta columna guarda cuando fue la ultima confirmacion en ese telefono.
+-- ============================================================================
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WaMovil_WebAuthnCredentials')
+   AND NOT EXISTS (SELECT 1 FROM sys.columns
+                   WHERE Name='PasswordCheckedAt' AND Object_ID=Object_ID('WaMovil_WebAuthnCredentials'))
+    ALTER TABLE WaMovil_WebAuthnCredentials ADD PasswordCheckedAt DATETIME2 NULL;
+GO

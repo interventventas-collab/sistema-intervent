@@ -22,7 +22,56 @@ public class WaMovilAccesoController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IMemoryCache _cache;
-    public WaMovilAccesoController(AppDbContext db, IMemoryCache cache) { _db = db; _cache = cache; }
+    private readonly IConfiguration _config;
+    private readonly Api.Services.AuthService _auth;
+    public WaMovilAccesoController(AppDbContext db, IMemoryCache cache, IConfiguration config,
+        Api.Services.AuthService auth)
+    { _db = db; _cache = cache; _config = config; _auth = auth; }
+
+    /// <summary>Cada cuánto se vuelve a pedir usuario y clave en el celu. Pedido de Osmar: 30 días.</summary>
+    private const int DIAS_ENTRE_CONTROLES = 30;
+
+    /// <summary>
+    /// 2026-08-26 — La huella deja una sesión propia, para que el celu NO tenga que pasar antes por
+    /// el login del sistema (era la queja: "hay que entrar a otro lado para loguearse").
+    ///
+    /// Esta sesión lleva la marca `scope = wa-movil`, y WaMovilScopeMiddleware la encierra ahí: con
+    /// esa marca solo se puede pedir el WhatsApp del celu. No abre ventas, ni cobranzas, ni
+    /// administración. Dura 24 h y se renueva cada vez que ponés el dedo, así que en la práctica
+    /// mientras uses la app no se corta.
+    /// </summary>
+    private void DejarSesionDeHuella(string persona)
+    {
+        var secret = _config["Jwt:Secret"] ?? throw new InvalidOperationException("JWT Secret no configurado");
+        var expira = DateTime.UtcNow.AddHours(24);
+        var claims = new[]
+        {
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, persona),
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "wa-movil"),
+            new System.Security.Claims.Claim(Api.Middleware.WaMovilScopeMiddleware.ClaimScope,
+                                             Api.Middleware.WaMovilScopeMiddleware.ScopeWaMovil),
+        };
+        var key = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+            System.Text.Encoding.UTF8.GetBytes(secret));
+        var token = new System.IdentityModel.Tokens.Jwt.JwtSecurityToken(
+            issuer: _config["Jwt:Issuer"], audience: _config["Jwt:Audience"],
+            claims: claims, expires: expira,
+            signingCredentials: new Microsoft.IdentityModel.Tokens.SigningCredentials(
+                key, Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256));
+
+        // El nombre de la cookie sale de AuthController para que no se desincronicen: al escribirlo
+        // a mano ("tm_access_token") la sesión no la leía nadie y la huella no servía de nada.
+        Response.Cookies.Append(AuthController.AccessTokenCookieName,
+            new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().WriteToken(token),
+            new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                Expires = expira,
+                Path = "/"
+            });
+    }
 
     /// <summary>
     /// 2026-08-19: el motor de huella se arma con el dominio DESDE EL QUE SE ESTA ENTRANDO, no con
@@ -207,6 +256,7 @@ public class WaMovilAccesoController : ControllerBase
 
     public record HuellaLoginBeginResult(bool Ok, string? Mensaje, object? Options, string? SessionId);
 
+    [AllowAnonymous]   // 2026-08-26: es la puerta — tiene que andar sin estar logueado
     [HttpPost("huella/login/begin")]
     public async Task<IActionResult> HuellaLoginBegin()
     {
@@ -233,8 +283,42 @@ public class WaMovilAccesoController : ControllerBase
         public string SessionId { get; set; } = "";
         public AuthenticatorAssertionRawResponse AssertionResponse { get; set; } = null!;
     }
-    public record HuellaLoginCompleteResult(bool Ok, string? Mensaje, string? Nombre);
+    /// <summary>
+    /// 2026-08-26 — El control de clave de cada 30 días, hecho ACÁ ADENTRO.
+    ///
+    /// La queja de Osmar era que el celu te mandaba al login del sistema. Ahora la huella entra
+    /// siempre, y cada 30 días esta pantalla pide usuario y clave sin moverte de lugar. Si la clave
+    /// es correcta se sella la fecha en ESE teléfono y arrancan otros 30 días.
+    ///
+    /// Requiere haber pasado la huella primero (la sesión acotada), así que no es una puerta nueva:
+    /// es un control sobre alguien que ya demostró tener el dedo y el teléfono.
+    /// </summary>
+    [HttpPost("revalidar")]
+    public async Task<IActionResult> Revalidar([FromBody] RevalidarReq req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Usuario) || string.IsNullOrWhiteSpace(req.Clave))
+            return Ok(new RevalidarResult(false, "Escribí tu usuario y tu clave."));
 
+        var login = await _auth.Login(req.Usuario.Trim(), req.Clave);
+        if (login is null)
+            return Ok(new RevalidarResult(false, "Usuario o clave incorrectos."));
+
+        var cred = await _db.WaMovilWebAuthnCredentials
+            .FirstOrDefaultAsync(c => c.CredentialId == req.CredencialId);
+        if (cred is null) return Ok(new RevalidarResult(false, "No se reconoce este teléfono."));
+
+        cred.PasswordCheckedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new RevalidarResult(true, null));
+    }
+
+    public record HuellaLoginCompleteResult(bool Ok, string? Mensaje, string? Nombre,
+        bool TocaControlDeClave = false, string? CredencialId = null);
+
+    public record RevalidarReq(string CredencialId, string Usuario, string Clave);
+    public record RevalidarResult(bool Ok, string? Mensaje);
+
+    [AllowAnonymous]   // 2026-08-26: si la huella verifica, ACÁ se entrega la sesión
     [HttpPost("huella/login/complete")]
     public async Task<IActionResult> HuellaLoginComplete([FromBody] HuellaLoginCompleteReq req)
     {
@@ -265,6 +349,15 @@ public class WaMovilAccesoController : ControllerBase
         cred.LastUsedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         _cache.Remove($"wamovil:auth:{req.SessionId}");
-        return Ok(new HuellaLoginCompleteResult(true, null, cred.Persona));
+
+        // La huella alcanza para entrar a los chats: se deja la sesión acotada.
+        DejarSesionDeHuella(cred.Persona);
+
+        // ¿Toca el control de clave? Se pide cada 30 días, y también la primera vez.
+        var tocaClave = cred.PasswordCheckedAt is null
+                        || (DateTime.UtcNow - cred.PasswordCheckedAt.Value).TotalDays >= DIAS_ENTRE_CONTROLES;
+
+        return Ok(new HuellaLoginCompleteResult(true, null, cred.Persona, tocaClave,
+            Convert.ToBase64String(req.AssertionResponse.Id)));
     }
 }
