@@ -1130,6 +1130,8 @@ public class ContadoraService
             foreach (var f in await _db.ContadoraComprobantes.Where(c => chunk.Contains(c.IdComprobante)).ToListAsync())
                 existentes[f.IdComprobante] = f;
 
+        int alqProcesados = 0; // 2026-08-27: cuantos comprobantes de ALQUILERES entraron al libro
+
         foreach (var v in ventas)
         {
             var tipo = v.TipoComprobante;
@@ -1180,10 +1182,131 @@ public class ContadoraService
             int signo = esNC ? -1 : 1;
             a.NetoNeto += signo * e.NetoGravado; a.IvaNeto += signo * e.Iva21; a.TotalNeto += signo * e.Total;
         }
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // 2026-08-27: ALQUILERES. Las reservas facturadas (Alq_Reservas) tambien son ventas
+        // propias y hasta hoy NO entraban al Libro IVA: solo se miraba Cafe_Ventas.
+        //
+        // Se leen DOS fuentes y se unifican por clave "ALQ-{ptoVta}-{tipo}-{nro}":
+        //   1. Alq_ReservaComprobantes  → el historial de TODO lo emitido. Es la fuente buena:
+        //      cuando una factura se anula con NC y se re-factura, los campos vigentes se pisan,
+        //      pero la factura vieja SIGUE existiendo en ARCA y tiene que declararse igual.
+        //   2. Los campos vigentes de la reserva → para lo emitido ANTES de que existiera ese
+        //      historial (27/08), que si no quedaria afuera.
+        // La clave es por comprobante (no por fila), asi el mismo comprobante que aparece en las
+        // dos fuentes se actualiza en vez de contarse dos veces.
+        // ═══════════════════════════════════════════════════════════════════════════════
+        var alqCbtes = new List<(int ReservaId, int CbteTipoNum, int PtoVta, int Nro, string? Cae,
+            DateTime? Fecha, decimal? Neto, decimal? Iva, decimal? Total, int? CuentaId)>();
+
+        foreach (var h in await _db.AlqReservaComprobantes
+            .Where(c => c.Cae != null && c.CbteNro > 0)
+            .Select(c => new { c.ReservaId, c.CbteTipoNum, c.PtoVta, c.CbteNro, c.Cae, c.Fecha,
+                               c.ImpNeto, c.ImpIVA, c.ImpTotal, c.ArcaWebserviceAccountId })
+            .ToListAsync())
+            alqCbtes.Add((h.ReservaId, h.CbteTipoNum, h.PtoVta, h.CbteNro, h.Cae, h.Fecha,
+                          h.ImpNeto, h.ImpIVA, h.ImpTotal, h.ArcaWebserviceAccountId));
+
+        foreach (var r in await _db.AlqReservas
+            .Where(x => (x.ArcaCae != null && x.ArcaCbteNro != null) || (x.NcCae != null && x.NcCbteNro != null))
+            .Select(x => new { x.Id, x.ArcaCae, x.ArcaCbteNro, x.ArcaCbteTipoNum, x.ArcaPtoVta, x.ArcaFecha,
+                               x.ArcaImpNeto, x.ArcaImpIVA, x.ArcaImpTotal, x.ArcaWebserviceAccountId,
+                               x.NcCae, x.NcCbteNro, x.NcCbteTipoNum, x.NcPtoVta, x.NcFecha,
+                               x.NcImpNeto, x.NcImpIVA, x.NcImpTotal })
+            .ToListAsync())
+        {
+            if (r.ArcaCae != null && r.ArcaCbteNro is > 0)
+                alqCbtes.Add((r.Id, r.ArcaCbteTipoNum ?? 0, r.ArcaPtoVta ?? 0, r.ArcaCbteNro.Value, r.ArcaCae,
+                              r.ArcaFecha, r.ArcaImpNeto, r.ArcaImpIVA, r.ArcaImpTotal, r.ArcaWebserviceAccountId));
+            if (r.NcCae != null && r.NcCbteNro is > 0)
+                alqCbtes.Add((r.Id, r.NcCbteTipoNum ?? 0, r.NcPtoVta ?? 0, r.NcCbteNro.Value, r.NcCae,
+                              r.NcFecha, r.NcImpNeto, r.NcImpIVA, r.NcImpTotal, r.ArcaWebserviceAccountId));
+        }
+
+        // Un comprobante = una fila, aunque venga de las dos fuentes.
+        alqCbtes = alqCbtes
+            .GroupBy(x => $"ALQ-{x.PtoVta}-{x.CbteTipoNum}-{x.Nro}")
+            .Select(g => g.First())
+            .ToList();
+
+        if (alqCbtes.Count > 0)
+        {
+            var reservaIds = alqCbtes.Select(x => x.ReservaId).Distinct().ToList();
+            var infoReservas = new Dictionary<int, (string Numero, int Concepto, string CondIva, string? Nombre, string? Cuit)>();
+            foreach (var chunk in Chunk(reservaIds, 1000))
+                foreach (var x in await _db.AlqReservas.Where(r => chunk.Contains(r.Id))
+                    .Select(r => new { r.Id, r.Numero, r.Concepto, r.CondicionIva,
+                                       Nombre = r.ClienteNav != null ? (r.ClienteNav.RazonSocial ?? r.ClienteNav.Nombre) : null,
+                                       Cuit = r.ClienteNav != null ? r.ClienteNav.Cuit : null })
+                    .ToListAsync())
+                    infoReservas[x.Id] = (x.Numero, x.Concepto, x.CondicionIva, x.Nombre, x.Cuit);
+
+            var clavesAlq = alqCbtes.Select(x => $"ALQ-{x.PtoVta}-{x.CbteTipoNum}-{x.Nro}").ToList();
+            var existAlq = new Dictionary<string, ContadoraComprobante>();
+            foreach (var chunk in Chunk(clavesAlq, 1000))
+                foreach (var f in await _db.ContadoraComprobantes.Where(c => chunk.Contains(c.IdComprobante)).ToListAsync())
+                    existAlq[f.IdComprobante] = f;
+
+            foreach (var c in alqCbtes)
+            {
+                // Sin fecha de ARCA no se puede ubicar en un periodo: mejor dejarlo afuera que ponerlo en el mes equivocado.
+                if (!c.Fecha.HasValue) continue;
+
+                var esNC = c.CbteTipoNum is 3 or 8 or 13;
+                var letra = c.CbteTipoNum switch { 1 or 3 => "A", 6 or 8 => "B", 11 or 13 => "C", _ => (string?)null };
+                if (letra is null) continue;
+                string tipoLabel = c.CbteTipoNum switch
+                {
+                    1 => "Factura A", 6 => "Factura B", 11 => "Factura C",
+                    3 => "Nota de Crédito A", 8 => "Nota de Crédito B", 13 => "Nota de Crédito C",
+                    _ => "Comprobante"
+                };
+
+                string? cuitReal = (c.CuentaId.HasValue && cuitPorAccount.TryGetValue(c.CuentaId.Value, out var cuA) && !string.IsNullOrWhiteSpace(cuA))
+                    ? cuA : null;
+                // Misma regla que arriba: una C nunca es de PALANICA (RI). Sin CUIT real, no la colgamos.
+                if (letra == "C" && (cuitReal == null || cuitReal == CuitPorDefecto)) continue;
+
+                infoReservas.TryGetValue(c.ReservaId, out var info);
+                var e = new ContadoraComprobante
+                {
+                    Origen = "SISTEMA",
+                    Concepto = info.Concepto == 0 ? 2 : info.Concepto,
+                    EmisorCuit = cuitReal ?? CuitPorDefecto,
+                    IdComprobante = $"ALQ-{c.PtoVta}-{c.CbteTipoNum}-{c.Nro}",
+                    TipoOperacion = esNC ? "Cancelacion" : "Venta",
+                    TipoComprobante = tipoLabel,
+                    EsNotaCredito = esNC,
+                    Letra = letra,
+                    PuntoVenta = c.PtoVta,
+                    NumeroComprobante = c.Nro,
+                    Cae = c.Cae,
+                    FechaEmision = c.Fecha.Value,
+                    Estado = "Aprobada",
+                    ReceptorCondIva = string.IsNullOrWhiteSpace(info.CondIva) ? "CF" : info.CondIva,
+                    ReceptorNombre = NullIfEmpty(info.Nombre),
+                    ReceptorDoc = NullIfEmpty(info.Cuit),
+                    NetoGravado = c.Neto ?? 0m,
+                    BaseIva21 = c.Neto ?? 0m,
+                    Iva21 = c.Iva ?? 0m,
+                    Total = c.Total ?? 0m,
+                    ArchivoOrigen = "Sistema (Alquileres)",
+                    ImportadoEn = DateTime.UtcNow
+                };
+
+                if (existAlq.TryGetValue(e.IdComprobante, out var exA)) { CopiarCampos(e, exA); exA.Origen = "SISTEMA"; exA.Concepto = e.Concepto; a.Actualizados++; }
+                else { _db.ContadoraComprobantes.Add(e); a.Nuevos++; }
+                if (esNC) a.NotasCredito++; else a.Facturas++;
+                int signoA = esNC ? -1 : 1;
+                a.NetoNeto += signoA * e.NetoGravado; a.IvaNeto += signoA * e.Iva21; a.TotalNeto += signoA * e.Total;
+                alqProcesados++;
+            }
+        }
+
         await _db.SaveChangesAsync();
         a.EmpresaCuit = CuitPorDefecto;
         AcumularArchivo(res, a);
-        res.Mensaje = $"Facturas del sistema: {a.Facturas} facturas y {a.NotasCredito} NC ({a.Nuevos} nuevas, {a.Actualizados} actualizadas).";
+        res.Mensaje = $"Facturas del sistema: {a.Facturas} facturas y {a.NotasCredito} NC ({a.Nuevos} nuevas, {a.Actualizados} actualizadas)"
+                    + (alqProcesados > 0 ? $", incluyendo {alqProcesados} de Alquileres." : ".");
         _logger.LogInformation("[Contadora] Sync sistema: {Fac} fac, {NC} NC, {N} nuevas, {A} act.", a.Facturas, a.NotasCredito, a.Nuevos, a.Actualizados);
         return res;
     }
