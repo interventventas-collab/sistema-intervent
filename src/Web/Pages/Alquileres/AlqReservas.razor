@@ -146,7 +146,7 @@
                             <th style="text-align: right;">Cobrado</th>
                             <th style="text-align: right;">Saldo</th>
                             <th>Estado</th>
-                            <th style="width: 130px;">Acciones</th>
+                            <th style="width: 96px; text-align:right;">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -213,31 +213,26 @@
                                 <td style="text-align: right; color: #059669;">$@FormatMoney(r.Sena)</td>
                                 <td style="text-align: right; color: @(r.MontoCobrado > 0 ? "#059669" : "#9ca3af");">$@FormatMoney(r.MontoCobrado)</td>
                                 <td style="text-align: right; color: @(saldo > 0 ? "#dc2626" : "#059669"); font-weight: 600;">$@FormatMoney(saldo)</td>
-                                <td>@EstadoBadge(r.Estado)</td>
-                                <td class="actions-cell" @onclick:stopPropagation="true">
-                                    @* 2026-08-27: factura anulada con nota de credito. Queda a la vista que se anulo
-                                       y se puede volver a facturar (tipico: salio con la empresa equivocada). *@
-                                    @if (r.NcEstado == "autorizado" && !string.IsNullOrEmpty(r.NcCae))
+                                @* El estado va en TEXTO: el color queda para lo que es alarma de verdad (el saldo). *@
+                                <td style="font-size:0.78rem; color:#6b7280;">
+                                    @EstadoTexto(r.Estado)@if (r.NcEstado == "autorizado" && !string.IsNullOrEmpty(r.NcCae))
                                     {
-                                        <span style="font-size: 0.68rem; color:#6b7280; font-weight:600;" title="@($"Factura {r.ArcaPtoVta:D5}-{r.ArcaCbteNro:D8} anulada con la nota de crédito {r.NcPtoVta:D5}-{r.NcCbteNro:D8} (CAE {r.NcCae})")">↩️ Anulada</span>
-                                        <button class="btn-icon" style="color: #6b7280;" @onclick="() => DescargarNotaCreditoPdf(r.Id)" disabled="@descargandoPdf" title="Descargar la NOTA DE CRÉDITO (con CAE)">📄</button>
-                                        <button class="btn-icon" style="color: #059669;" @onclick="() => EmitirArca(r)" disabled="@(emitiendoId == r.Id)" title="Volver a facturar (revisá primero la empresa en Editar)">@(emitiendoId == r.Id ? "…" : "💳")</button>
+                                        <text> · <b style="color:#b45309;">anulada</b></text>
                                     }
                                     else if (r.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(r.ArcaCae))
                                     {
-                                        <span style="font-size: 0.68rem; background:#dcfce7; color:#166534; padding:0.15rem 0.4rem; border-radius:999px; font-weight:700;" title="@($"CAE {r.ArcaCae} · Comp. {r.ArcaPtoVta:D5}-{r.ArcaCbteNro:D8}")">✅ Facturada</span>
-                                        <button class="btn-icon" style="color: #0f766e;" @onclick="() => DescargarFacturaPdf(r.Id)" disabled="@descargandoPdf" title="Descargar la FACTURA legal (con CAE)">🧾</button>
-                                        <button class="btn-icon" style="color: #b45309;" @onclick="() => ConfirmarNotaCredito(r)" disabled="@(emitiendoNcId == r.Id)" title="Anular esta factura con una nota de crédito">@(emitiendoNcId == r.Id ? "…" : "↩️")</button>
+                                        <text> · <b style="color:#374151;">facturada</b></text>
                                     }
-                                    else if (r.TipoComprobante is "FA" or "FB" or "FC")
-                                    {
-                                        <button class="btn-icon" style="color: #059669;" @onclick="() => EmitirArca(r)" disabled="@(emitiendoId == r.Id)" title="Emitir factura AFIP (CAE)">@(emitiendoId == r.Id ? "…" : "💳")</button>
-                                    }
-                                    <button class="btn-icon" style="color: #7c3aed;" @onclick="() => ShowAsignar(r)" title="Asignar a repartidor">🚚</button>
-                                    <button class="btn-icon" style="color: #2563eb;" @onclick="() => SumarReservaAlMapa(r)" title="Sumar al mapa de reparto">🗺️</button>
-                                    <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(r)" title="Ver / imprimir / PDF">🖨</button>
+                                </td>
+                                @* 2026-08-27: antes cada fila tenia una cantidad distinta de botones (una
+                                   reserva facturada mostraba 8 y una comun 5), asi que la columna se estiraba y
+                                   la grilla quedaba desprolija. Ahora SIEMPRE los mismos tres — editar, imprimir
+                                   y el ⋮ — y todo lo que se usa poco vive adentro del menu, con su nombre escrito. *@
+                                <td class="actions-cell" @onclick:stopPropagation="true" style="text-align:right; white-space:nowrap;">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(r)" title="Editar / Ver">@SvgIcons.Edit</button>
-                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(r)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                    <button class="btn-icon" style="color:#1d4ed8;" @onclick="() => ShowPrint(r)" title="Ver / imprimir / PDF">🖨</button>
+                                    <button id="@($"alq-act-btn-{r.Id}")" class="btn-icon" style="color:#6b7280; font-weight:700;"
+                                            @onclick="() => ToggleAccionesMenu(r.Id)" title="Más acciones">⋮</button>
                                 </td>
                             </tr>
                         }
@@ -247,6 +242,63 @@
         }
     </div>
 </div>
+
+@* ═══ 2026-08-27: menu ⋮ de la fila. Vive fuera de la tabla (position:fixed) y se ancla al boton
+   que lo abrio con positionActionsMenu, igual que el de Ventas del Cafe. ═══ *@
+@if (accionesMenuOpenFor.HasValue)
+{
+    var rM = reservas?.FirstOrDefault(x => x.Id == accionesMenuOpenFor.Value);
+    if (rM is not null)
+    {
+        var facturadaM = rM.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(rM.ArcaCae);
+        var anuladaM = rM.NcEstado == "autorizado" && !string.IsNullOrEmpty(rM.NcCae);
+        <div class="actions-popup-overlay" @onclick="CerrarAccionesMenu"></div>
+        <div id="@($"alq-act-menu-{rM.Id}")" class="actions-popup" @onclick:stopPropagation="true">
+            <button class="actions-popup-item" @onclick="async () => { var r = rM; CerrarAccionesMenu(); await Task.Yield(); ShowAsignar(r); }">
+                <span class="ic">🚚</span><span>Asignar a repartidor</span>
+            </button>
+            <button class="actions-popup-item" @onclick="async () => { var r = rM; CerrarAccionesMenu(); await Task.Yield(); await SumarReservaAlMapa(r); }">
+                <span class="ic">🗺️</span><span>Sumar al mapa de reparto</span>
+            </button>
+
+            @* ── Facturación ── *@
+            @if (anuladaM)
+            {
+                <button class="actions-popup-item" @onclick="async () => { var r = rM; CerrarAccionesMenu(); await Task.Yield(); await DescargarNotaCreditoPdf(r.Id); }">
+                    <span class="ic">📄</span><span>Ver la nota de crédito</span>
+                </button>
+                <button class="actions-popup-item" @onclick="async () => { var r = rM; CerrarAccionesMenu(); await Task.Yield(); await EmitirArca(r); }">
+                    <span class="ic">💳</span><span>Volver a facturar</span>
+                </button>
+            }
+            else if (facturadaM)
+            {
+                <button class="actions-popup-item" @onclick="async () => { var r = rM; CerrarAccionesMenu(); await Task.Yield(); await DescargarFacturaPdf(r.Id); }">
+                    <span class="ic">🧾</span><span>Ver la factura</span>
+                </button>
+                <button class="actions-popup-item" @onclick="async () => { var r = rM; CerrarAccionesMenu(); await Task.Yield(); await ConfirmarNotaCredito(r); }">
+                    <span class="ic">↩️</span><span>Anular con nota de crédito</span>
+                </button>
+            }
+            else if (rM.TipoComprobante is "FA" or "FB" or "FC")
+            {
+                <button class="actions-popup-item" @onclick="async () => { var r = rM; CerrarAccionesMenu(); await Task.Yield(); await EmitirArca(r); }">
+                    <span class="ic">💳</span><span>Facturar (emitir CAE)</span>
+                </button>
+            }
+            else
+            {
+                <button class="actions-popup-item" disabled title="Elegí el comprobante en Editar">
+                    <span class="ic">💳</span><span>Facturar — falta elegir comprobante</span>
+                </button>
+            }
+
+            <button class="actions-popup-item" style="color:#b91c1c;" @onclick="async () => { var r = rM; CerrarAccionesMenu(); await Task.Yield(); ConfirmDelete(r); }">
+                <span class="ic">🗑</span><span>Eliminar la reserva</span>
+            </button>
+        </div>
+    }
+}
 
 @if (showForm)
 {
@@ -1442,7 +1494,39 @@
     private int? formNcCbteNro;
     private List<ArcaWebserviceAccountDto> arcaAccounts = new();
     private int? emitiendoId;
-    private int? emitiendoNcId; // 2026-08-27: reserva a la que se le esta emitiendo la nota de credito
+    private int? emitiendoNcId;
+    // 2026-08-27: menu ⋮ de la fila (una sola reserva a la vez).
+    private int? accionesMenuOpenFor;
+    private void ToggleAccionesMenu(int reservaId)
+        => accionesMenuOpenFor = accionesMenuOpenFor == reservaId ? null : reservaId;
+    private void CerrarAccionesMenu() => accionesMenuOpenFor = null;
+
+    /// <summary>Ancla el menu ⋮ al boton que lo abrio (position:fixed, sino queda en una esquina).
+    /// Misma funcion JS que usa Ventas del Cafe.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (accionesMenuOpenFor.HasValue)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("positionActionsMenu",
+                    $"alq-act-btn-{accionesMenuOpenFor.Value}",
+                    $"alq-act-menu-{accionesMenuOpenFor.Value}");
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>Estado en TEXTO (sin cajita de color): el color queda para lo que es alarma.</summary>
+    private static string EstadoTexto(string estado) => estado switch
+    {
+        "reservado" => "Reservado",
+        "confirmado" => "Confirmado",
+        "entregado" => "Entregado",
+        "finalizado" => "Finalizado",
+        "cancelado" => "Cancelado",
+        _ => estado
+    }; // 2026-08-27: reserva a la que se le esta emitiendo la nota de credito
 
     private async Task LoadArcaAccountsAsync()
     {
