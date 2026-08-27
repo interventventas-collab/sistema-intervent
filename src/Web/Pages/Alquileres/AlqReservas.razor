@@ -590,37 +590,19 @@
                     }
                     else
                     {
-                        @* 2026-07-16: empresa emisora SOLO visible cuando el comprobante es factura ARCA (pedido
-                           de Osmar — mismo criterio que Ventas del Café: en reservas sin facturar no aplica).
-                           Default PALANICA HERMANOS al pasar a factura; cambiar de empresa pide confirmación. *@
-                        @if (arcaAccounts.Count > 1 && formTipoComprobante is "FA" or "FB" or "FC")
-                        {
-                            <div class="form-row">
-                                <div class="form-group" style="flex:1;">
-                                    <label class="form-label">🏢 ¿Con qué empresa facturás?</label>
-                                    @* value+onchange en vez de @bind para poder revertir si el usuario cancela el confirm *@
-                                    <select class="form-input" value="@formArcaAccountId" @onchange="OnArcaAccountSelectChanged">
-                                        @foreach (var acc in arcaAccounts)
-                                        {
-                                            <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
-                                        }
-                                    </select>
-                                </div>
-                            </div>
-                        }
+                        @* 2026-08-27: UN SOLO desplegable de comprobante. Antes eran DOS (tipo + empresa) y
+                           el de empresa aparecia RECIEN despues de elegir A/B/C, con PALANICA HERMANOS puesto
+                           en silencio por defecto: la Factura C de los monotributistas NO figuraba en la lista.
+                           Asi se facturo RES-2026-0055 (27/08) con la sociedad equivocada. Ahora cada opcion
+                           dice tipo Y empresa, entonces se elige de una sola vez y no hay default escondido. *@
                         <div class="form-row">
                             <div class="form-group" style="flex:1;">
                                 <label class="form-label">Tipo de comprobante</label>
-                                <select class="form-input" @bind="formTipoComprobante" @bind:after="OnTipoComprobanteChanged">
+                                <select class="form-input" value="@ComprobanteSelValue" @onchange="OnComprobanteSelChanged">
                                     <option value="X">X — Sin facturar (remito interno)</option>
-                                    @if (EmisorEsRI(formArcaAccountId))
+                                    @foreach (var op in OpcionesComprobante())
                                     {
-                                        <option value="FA">Factura A</option>
-                                        <option value="FB">Factura B</option>
-                                    }
-                                    else
-                                    {
-                                        <option value="FC">Factura C · Monotributo</option>
+                                        <option value="@op.Valor">@op.Texto</option>
                                     }
                                 </select>
                             </div>
@@ -1480,52 +1462,99 @@
         formArcaAccountId = DefaultArcaAccountId();
     }
 
-    private void OnTipoComprobanteChanged()
-    {
-        if (formTipoComprobante is "FA" or "FB" or "FC")
-            EnsureDefaultArcaAccount();
-    }
+    // ═══ 2026-08-27: comprobante y empresa se eligen JUNTOS en un solo desplegable ═══
+    // El valor del <select> es "X" o "TIPO|idEmpresa" (ej "FC|5"). Antes el tipo se elegia primero
+    // con la empresa fijada en silencio a PALANICA HERMANOS, y como Palanica es RI el desplegable
+    // solo ofrecia A y B: la Factura C de los monotributistas era inalcanzable sin pasar antes por
+    // una factura que no se queria. Asi salio RES-2026-0055 con la sociedad equivocada.
 
-    /// <summary>2026-07-16: doble-check al cambiar la empresa emisora (mismo criterio que Ventas del Café).
-    /// Pide confirmación para no facturar con la sociedad equivocada. Si el operador cancela, revierte la
-    /// selección al valor anterior. Solo se dispara cuando el usuario toca el desplegable.</summary>
-    private async Task OnArcaAccountSelectChanged(ChangeEventArgs e)
+    private string ComprobanteSelValue =>
+        formTipoComprobante is "FA" or "FB" or "FC"
+            ? $"{formTipoComprobante}|{(formArcaAccountId?.ToString() ?? "")}"
+            : "X";
+
+    /// <summary>Combinaciones REALES de tipo + empresa: RI emite A y B, monotributo/exento emite C.
+    /// La empresa por defecto va primera para no cambiarle la costumbre al operador.</summary>
+    private List<(string Valor, string Texto)> OpcionesComprobante()
     {
-        if (!int.TryParse(e.Value?.ToString(), out var nuevoId)) return;
-        var anterior = formArcaAccountId;
-        if (anterior.HasValue && anterior.Value == nuevoId) return; // no cambió
-        var accNueva = arcaAccounts.FirstOrDefault(a => a.Id == nuevoId);
-        var accAnterior = anterior.HasValue ? arcaAccounts.FirstOrDefault(a => a.Id == anterior.Value) : null;
-        // Solo confirmamos si YA había una empresa elegida (cambiar de una a otra).
-        if (accAnterior is not null)
+        var res = new List<(string Valor, string Texto)>();
+        if (arcaAccounts.Count == 0)
         {
-            var msg = $"¿Seguro que querés cambiar la empresa con la que facturás?\n\n"
-                    + $"De:  {ArcaAccountLabel(accAnterior)}\n"
-                    + $"A:    {(accNueva is not null ? ArcaAccountLabel(accNueva) : "?")}\n\n"
-                    + "Revisá que sea la correcta antes de emitir.";
-            var ok = await JS.InvokeAsync<bool>("confirm", msg);
-            if (!ok)
+            // Sin certificados cargados (dev): al menos que pueda elegir el tipo; la API resuelve la empresa.
+            res.Add(("FA|", "Factura A"));
+            res.Add(("FB|", "Factura B"));
+            res.Add(("FC|", "Factura C · Monotributo"));
+            return res;
+        }
+        var defId = DefaultArcaAccountId();
+        foreach (var acc in arcaAccounts.OrderByDescending(a => a.Id == defId))
+        {
+            var nombre = ArcaAccountNombreCorto(acc);
+            if (EmisorEsRI(acc.Id))
             {
-                // Revertir: toggle a null y de vuelta al anterior para forzar que el <select> del DOM
-                // vuelva a mostrar la empresa original (si seteo el mismo valor Blazor no repinta el DOM).
-                formArcaAccountId = null;
-                StateHasChanged();
-                await Task.Yield();
-                formArcaAccountId = anterior;
-                StateHasChanged();
-                return;
+                res.Add(($"FB|{acc.Id}", $"Factura B — {nombre}"));
+                res.Add(($"FA|{acc.Id}", $"Factura A — {nombre}"));
+            }
+            else
+            {
+                res.Add(($"FC|{acc.Id}", $"Factura C — {nombre}"));
             }
         }
-        formArcaAccountId = nuevoId;
-        OnArcaAccountChanged();
+        return res;
     }
 
-    private void OnArcaAccountChanged()
+    private string ArcaAccountNombreCorto(ArcaWebserviceAccountDto acc)
     {
-        if (formTipoComprobante is not ("FA" or "FB" or "FC")) return;
-        var esRI = EmisorEsRI(formArcaAccountId);
-        if (esRI && formTipoComprobante == "FC") formTipoComprobante = "FB";
-        else if (!esRI && formTipoComprobante is "FA" or "FB") formTipoComprobante = "FC";
+        var nombre = !string.IsNullOrWhiteSpace(acc.Alias) ? acc.Alias! : $"CUIT {acc.Cuit}";
+        var cuitFmt = acc.Cuit.Length == 11 ? $"{acc.Cuit[..2]}-{acc.Cuit[2..10]}-{acc.Cuit[10..]}" : acc.Cuit;
+        return $"{nombre} ({cuitFmt})";
+    }
+
+    private async Task OnComprobanteSelChanged(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "X";
+        var tipoAnterior = formTipoComprobante;
+        var cuentaAnterior = formArcaAccountId;
+
+        var nuevoTipo = "X";
+        int? nuevaCuenta = null;
+        if (raw != "X")
+        {
+            var partes = raw.Split('|');
+            nuevoTipo = partes[0];
+            if (partes.Length > 1 && int.TryParse(partes[1], out var accId)) nuevaCuenta = accId;
+        }
+
+        // Cambiar de EMPRESA (no de tipo dentro de la misma) sigue pidiendo confirmacion — pedido de Osmar 16/07.
+        if (nuevaCuenta.HasValue && cuentaAnterior.HasValue && cuentaAnterior.Value != nuevaCuenta.Value
+            && tipoAnterior is "FA" or "FB" or "FC")
+        {
+            var accAnterior = arcaAccounts.FirstOrDefault(a => a.Id == cuentaAnterior.Value);
+            var accNueva = arcaAccounts.FirstOrDefault(a => a.Id == nuevaCuenta.Value);
+            if (accAnterior is not null)
+            {
+                var msg = "¿Seguro que querés cambiar la empresa con la que facturás?\n\n"
+                        + $"De:  {ArcaAccountLabel(accAnterior)}\n"
+                        + $"A:    {(accNueva is not null ? ArcaAccountLabel(accNueva) : "?")}\n\n"
+                        + "Revisá que sea la correcta antes de emitir.";
+                var ok = await JS.InvokeAsync<bool>("confirm", msg);
+                if (!ok)
+                {
+                    // Repintar el <select> con el valor viejo: si el estado queda igual Blazor no toca el DOM
+                    // y el desplegable se queda mostrando la opcion que el usuario acaba de cancelar.
+                    formTipoComprobante = "X";
+                    StateHasChanged();
+                    await Task.Yield();
+                    formTipoComprobante = tipoAnterior;
+                    formArcaAccountId = cuentaAnterior;
+                    StateHasChanged();
+                    return;
+                }
+            }
+        }
+
+        formTipoComprobante = nuevoTipo;
+        formArcaAccountId = nuevoTipo is "FA" or "FB" or "FC" ? nuevaCuenta : null;
     }
 
     private async Task EmitirArca(AlqReservaDto r)
@@ -1535,6 +1564,21 @@
             ToastService.Error("Elegí un tipo de factura (A, B o C) en la reserva antes de emitir.");
             return;
         }
+
+        // 2026-08-27: ultima barrera antes del CAE. Facturar es IRREVERSIBLE (despues solo queda la nota
+        // de credito), asi que mostramos en letras con QUE empresa y por cuanto va a salir.
+        var accEmisora = r.ArcaWebserviceAccountId.HasValue
+            ? arcaAccounts.FirstOrDefault(a => a.Id == r.ArcaWebserviceAccountId.Value)
+            : null;
+        var tipoTexto = r.TipoComprobante switch { "FA" => "Factura A", "FB" => "Factura B", _ => "Factura C" };
+        var empresaTexto = accEmisora is not null ? ArcaAccountLabel(accEmisora) : "la empresa por defecto";
+        var confirmMsg = $"Vas a emitir {tipoTexto} por ${FormatMoney(r.MontoTotal)}\n\n"
+                       + $"EMPRESA: {empresaTexto}\n"
+                       + $"CLIENTE: {r.ClienteNombre}\n\n"
+                       + "Una vez emitida NO se puede borrar ni cambiar de empresa (solo anularla con nota de credito).\n\n"
+                       + "¿Emito?";
+        if (!await JS.InvokeAsync<bool>("confirm", confirmMsg)) return;
+
         emitiendoId = r.Id;
         try
         {
