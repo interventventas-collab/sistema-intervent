@@ -197,6 +197,8 @@ builder.Services.AddScoped<MeliFotosService>();
 builder.Services.AddScoped<MeliPrecioManualService>();
 // 2026-08-27: Excel editable de publicaciones (bajar → editar → vista previa → aplicar).
 builder.Services.AddScoped<MeliPublicacionesExcelService>();
+// 2026-08-27: pausar y activar desde la fila (el cartelito Activa/Pausada se toca).
+builder.Services.AddScoped<MeliEstadoService>();
 builder.Services.AddScoped<MeliPisoMasivoService>();
 builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();
