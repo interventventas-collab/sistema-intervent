@@ -195,6 +195,8 @@ builder.Services.AddScoped<MeliMedidasService>();
 builder.Services.AddScoped<MeliAccionesLoteService>();
 builder.Services.AddScoped<MeliFotosService>();
 builder.Services.AddScoped<MeliPrecioManualService>();
+// 2026-08-27: Excel editable de publicaciones (bajar → editar → vista previa → aplicar).
+builder.Services.AddScoped<MeliPublicacionesExcelService>();
 builder.Services.AddScoped<MeliPisoMasivoService>();
 builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();

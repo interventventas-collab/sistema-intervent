@@ -5197,6 +5197,90 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // ─── 2026-08-27 · EXCEL EDITABLE ───
+    // Tres pasos y el del medio no se saltea: bajar → vista previa → aplicar lo tildado.
+
+    public record PubV2ExcelCambio(
+        string Mla, string? Sku, string Titulo,
+        decimal? PrecioNuevo, decimal? PrecioHoy,
+        decimal? ObjetivoNuevo, decimal? ObjetivoHoy,
+        bool? SincPrecioNuevo, bool SincPrecioHoy,
+        bool? SincStockNuevo, bool SincStockHoy,
+        string Resumen, List<string> Avisos, bool Bloqueada, decimal? MargenEstimadoPct);
+
+    public record PubV2ExcelPreview(
+        int FilasLeidas, int SinCambios, int ConCambios, int Bloqueadas,
+        int CambianPrecio, int CambianObjetivo, int CambianSincro,
+        List<PubV2ExcelCambio> Cambios, List<string> Problemas, string? BajadoEl);
+
+    public record PubV2ExcelFilaResultado(string Mla, bool Ok, string Mensaje);
+    public record PubV2ExcelAplicado(int Pedidos, int Ok, int Errores, int Salteados,
+        List<PubV2ExcelFilaResultado> Detalle);
+
+    /// <summary>Baja el .xlsx con las publicaciones que matchean los mismos filtros de la pantalla.</summary>
+    public async Task<(byte[]? bytes, string? error)> BajarExcelPublicacionesV2Async(
+        string? texto = null, string? sku = null, string? estado = null, decimal? comisionMinPct = null,
+        string? cuotas = null, string? tipo = null, bool variosPrecios = false, bool precioAMano = false,
+        bool sinCosto = false, decimal? noLleganAlPct = null, bool comisionVieja = false)
+    {
+        try
+        {
+            var qs = new List<string>();
+            if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
+            if (!string.IsNullOrWhiteSpace(sku)) qs.Add($"sku={Uri.EscapeDataString(sku)}");
+            if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={estado}");
+            if (comisionMinPct.HasValue) qs.Add($"comisionMinPct={comisionMinPct.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+            if (!string.IsNullOrWhiteSpace(cuotas)) qs.Add($"cuotas={Uri.EscapeDataString(cuotas)}");
+            if (!string.IsNullOrWhiteSpace(tipo)) qs.Add($"tipo={tipo}");
+            if (variosPrecios) qs.Add("variosPrecios=true");
+            if (precioAMano) qs.Add("precioAMano=true");
+            if (sinCosto) qs.Add("sinCosto=true");
+            if (comisionVieja) qs.Add("comisionVieja=true");
+            if (noLleganAlPct.HasValue) qs.Add($"noLleganAlPct={noLleganAlPct.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.GetAsync("/api/meli/v2/excel?" + string.Join("&", qs));
+            if (!resp.IsSuccessStatusCode)
+                return (null, $"No se pudo armar el Excel (error {(int)resp.StatusCode}).");
+            return (await resp.Content.ReadAsByteArrayAsync(), null);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    /// <summary>Sube el Excel editado y devuelve qué cambiaría. NO cambia nada.</summary>
+    public async Task<(PubV2ExcelPreview? res, string? error)> VistaPreviaExcelV2Async(
+        Stream archivo, string nombre)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            using var contenido = new MultipartFormDataContent();
+            var parte = new StreamContent(archivo);
+            parte.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            contenido.Add(parte, "archivo", nombre);
+            var resp = await _httpLong.PostAsync("/api/meli/v2/excel/vista-previa", contenido);
+            if (!resp.IsSuccessStatusCode)
+                return (null, $"No se pudo leer el archivo (error {(int)resp.StatusCode}).");
+            return (await resp.Content.ReadFromJsonAsync<PubV2ExcelPreview>(), null);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    /// <summary>Aplica los cambios elegidos. Los que traen precio tocan MercadoLibre.</summary>
+    public async Task<(PubV2ExcelAplicado? res, string? error)> AplicarExcelV2Async(List<object> items)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PostAsJsonAsync("/api/meli/v2/excel/aplicar", new { Items = items });
+            if (!resp.IsSuccessStatusCode)
+                return (null, $"No se pudieron aplicar los cambios (error {(int)resp.StatusCode}).");
+            return (await resp.Content.ReadFromJsonAsync<PubV2ExcelAplicado>(), null);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     public async Task<Dictionary<string, int>?> GetResumenV2Async()
         => await GetAsync<Dictionary<string, int>>("/api/meli/v2/resumen");
 

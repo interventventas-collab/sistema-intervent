@@ -159,6 +159,61 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return r.Ok ? Ok(r) : BadRequest(r);
     }
 
+    // ─── 2026-08-27 · EXCEL EDITABLE ───
+    // Es lo único que escala a 5.925 publicaciones: la pantalla sirve para trabajar de a pocas.
+    // El recorrido tiene tres pasos y el del medio NO se saltea: bajar → subir (vista previa) →
+    // aplicar sólo lo que quedó tildado. Ver MeliPublicacionesExcelService para el detalle.
+
+    /// <summary>SEGURO: arma el .xlsx con lo que quedó filtrado en pantalla. No cambia nada.</summary>
+    [HttpGet("excel")]
+    public async Task<IActionResult> BajarExcel(
+        [FromQuery] string? texto = null,
+        [FromQuery] string? sku = null,
+        [FromQuery] string? estado = null,
+        [FromQuery] int? cuentaId = null,
+        [FromQuery] decimal? comisionMinPct = null,
+        [FromQuery] string? cuotas = null,
+        [FromQuery] string? tipo = null,
+        [FromQuery] bool variosPrecios = false,
+        [FromQuery] bool precioAMano = false,
+        [FromQuery] bool sinCosto = false,
+        [FromQuery] decimal? noLleganAlPct = null,
+        [FromQuery] bool comisionVieja = false,
+        [FromServices] MeliPublicacionesExcelService svc = null!)
+    {
+        var f = new MeliPublicacionesV2Service.Filtros(
+            texto, sku, estado, cuentaId, comisionMinPct, cuotas, tipo,
+            variosPrecios, precioAMano, precioAMano, sinCosto, noLleganAlPct, comisionVieja, 1, 500);
+        var (bytes, filas) = await svc.ExportarAsync(f, HttpContext.RequestAborted);
+        if (filas == 0) return BadRequest(new { error = "No hay publicaciones para bajar con esos filtros." });
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    /// <summary>SEGURO: lee el Excel editado y devuelve la vista previa. NO cambia nada.</summary>
+    [HttpPost("excel/vista-previa")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<IActionResult> VistaPreviaExcel(IFormFile archivo,
+        [FromServices] MeliPublicacionesExcelService svc)
+    {
+        if (archivo is null || archivo.Length == 0)
+            return BadRequest(new { error = "No llegó ningún archivo." });
+        await using var stream = archivo.OpenReadStream();
+        var r = await svc.LeerAsync(stream, HttpContext.RequestAborted);
+        return Ok(r);
+    }
+
+    /// <summary>TOCA MELI en las filas que cambian el precio; el resto sólo guarda configuración.</summary>
+    [HttpPost("excel/aplicar")]
+    public async Task<IActionResult> AplicarExcel(
+        [FromBody] MeliPublicacionesExcelService.AplicarRequest req,
+        [FromServices] MeliPublicacionesExcelService svc)
+    {
+        var items = req?.Items ?? new();
+        if (items.Count == 0) return BadRequest(new { error = "No hay cambios para aplicar." });
+        var r = await svc.AplicarAsync(items, HttpContext.RequestAborted);
+        return Ok(r);
+    }
+
     /// <summary>Contadores para los chips de filtro.</summary>
     [HttpGet("resumen")]
     public async Task<IActionResult> GetResumen()
