@@ -856,6 +856,20 @@ public class AlqReservasController : ControllerBase
                 AlicIvaId = 5, // 21%
             });
         }
+        else if (r.Items.Sum(i => i.Cantidad * i.PrecioUnitario) <= 0m && r.MontoTotal > 0m)
+        {
+            // 2026-08-27 — LA FACTURA EN $0. Con "Usar precios" destildado los equipos quedan en $0 y el
+            // total se pone a mano; AFIP factura sumando cantidad x precio, asi que los renglones tal cual
+            // daban CERO. Paso RES-2026-0052: 150 sillas, total $290.000, Factura C emitida en $0 con CAE.
+            // Ahora, si los renglones no tienen precio, va UN renglon con el resumen de equipos y el total.
+            items.Add(new EmitirComprobanteItemDto
+            {
+                Descripcion = BuildResumen(r),
+                Cantidad = 1,
+                PrecioUnitario = r.MontoTotal,
+                AlicIvaId = 5, // 21%
+            });
+        }
         else
         {
             // Un renglón por equipo. Prorrateo para que el total AFIP == MontoTotal de la reserva
@@ -878,6 +892,10 @@ public class AlqReservasController : ControllerBase
         }
         if (items.Count == 0)
             return BadRequest(new { error = "La reserva no tiene equipos para facturar." });
+        // 2026-08-27: ULTIMO FRENO. Una factura con CAE en $0 no se puede corregir, solo anular con NC.
+        // Si por lo que sea el importe da cero, no se emite nada.
+        if (items.Sum(i => i.Cantidad * i.PrecioUnitario) <= 0m)
+            return BadRequest(new { error = "La factura daría $0. Cargá los precios de los equipos o el TOTAL de la reserva antes de facturar." });
 
         // 4. Fechas. Emisión = hoy (ART). Servicio = entrega→retiro. FchVtoPago nunca anterior a la emisión.
         var fechaEmision = DateTime.UtcNow.AddHours(-3).Date;
@@ -1018,6 +1036,18 @@ public class AlqReservasController : ControllerBase
             return items;
         }
         decimal subtotal = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
+        if (subtotal <= 0m && neto > 0m)
+        {
+            // Equipos sin precio (total a mano): un solo renglon con el importe, sino la NC saldria en $0.
+            items.Add(new EmitirComprobanteItemDto
+            {
+                Descripcion = BuildResumen(r),
+                Cantidad = 1,
+                PrecioUnitario = neto,
+                AlicIvaId = 5,
+            });
+            return items;
+        }
         decimal factor = (subtotal > 0m && neto > 0m) ? (neto / subtotal) : 1m;
         foreach (var it in r.Items)
         {
@@ -1290,6 +1320,20 @@ public class AlqReservasController : ControllerBase
         if (r.FacturaResumida)
         {
             // UN SOLO renglón: el resumen de equipos + el neto (el total va abajo).
+            comp.Items.Add(new PdfItem
+            {
+                Descripcion = BuildResumen(r),
+                Sku = null,
+                Producto = BuildResumen(r),
+                Formato = "",
+                Cantidad = 1,
+                PrecioUnitario = neto,
+                AlicPct = letra == "C" ? 0m : 21m,
+            });
+        }
+        else if (r.Items.Sum(i => i.Cantidad * i.PrecioUnitario) <= 0m && neto > 0m)
+        {
+            // Equipos sin precio: igual que en la emision, un renglon con el resumen y el importe.
             comp.Items.Add(new PdfItem
             {
                 Descripcion = BuildResumen(r),
