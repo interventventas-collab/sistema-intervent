@@ -177,6 +177,13 @@
     .p2-envio.acordar { background: #fef3c7; color: #92400e; border-color: #fde68a; }
     .p2-envio.sindato { background: #fff; color: #9ca3af; border-style: dashed; }
 
+    /* 2026-08-27: en qué cuenta de MeLi está publicada. Va primero en el renglón gris,
+       siempre en el mismo lugar, para poder barrer la lista de un vistazo. */
+    .p2-cta { display: inline-block; font-size: .58rem; font-weight: 700; padding: 0 .3rem;
+              border-radius: .25rem; letter-spacing: .02em; vertical-align: 1px; margin-right: .25rem;
+              background: #e6f1fb; color: #0c447c; border: 1px solid #b5d4f4; }
+    .p2-cta.c2 { background: #e1f5ee; color: #04342c; border-color: #9fe1cb; }
+
     .p2-rail { float: left; margin-right: .5rem; display: flex; align-items: center; gap: .25rem; }
     .p2-balanza { border: 1px solid #e3e7e0; background: #fff; border-radius: .3rem; cursor: pointer;
                   font-size: .72rem; line-height: 1; padding: .15rem .34rem; color: #6b7280; }
@@ -390,6 +397,14 @@
             <span class="p2-chip @(fEstado == "activas" ? "on" : "")" @onclick='() => SetEstado("activas")'>Activas</span>
             <span class="p2-chip @(fEstado == "pausadas" ? "on" : "")" @onclick='() => SetEstado("pausadas")'>Pausadas</span>
 
+            @if (cuentas.Count > 1)
+            {
+                foreach (var c in cuentas)
+                {
+                    <span class="p2-chip @(fCuentaId == c.Id ? "on" : "")" @onclick="() => SetCuenta(c.Id)">@c.Nickname</span>
+                }
+            }
+
             <span class="p2-chip nue @(fNoLlegan == 50 ? "on" : "")" @onclick="() => SetNoLlegan(50)" style="border-width:2px;">⚠ No llegan al 50%</span>
             <span class="p2-chip nue @(fNoLlegan == 30 ? "on" : "")" @onclick="() => SetNoLlegan(30)">…al 30%</span>
             <span class="p2-chip nue @(fNoLlegan == 70 ? "on" : "")" @onclick="() => SetNoLlegan(70)">…al 70%</span>
@@ -473,7 +488,10 @@
                                         @onclick="() => ToggleMedidas(it.MeliItemId)">⚖</button>
                             </span>
                             <span class="p2-t" title="@it.Titulo">@it.Titulo</span>
-                            <span class="p2-m">@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)@(it.Vendidas > 0 ? $" · {it.Vendidas} vendidas" : "") <span class="p2-envio @ClaseEnvio(it.Envio)" title="@TituloEnvio(it)">@EnvioTexto(it.Envio)@(it.EnvioGratis ? " · lo pagás vos" : "")</span></span>
+                            <span class="p2-m">@if (!string.IsNullOrWhiteSpace(it.Cuenta))
+                                {
+                                    <span class="p2-cta @ClaseCuenta(it.Cuenta)" title="Publicada en la cuenta @it.Cuenta">@it.Cuenta</span>
+                                }@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)@(it.Vendidas > 0 ? $" · {it.Vendidas} vendidas" : "") <span class="p2-envio @ClaseEnvio(it.Envio)" title="@TituloEnvio(it)">@EnvioTexto(it.Envio)@(it.EnvioGratis ? " · lo pagás vos" : "")</span></span>
                             <span class="p2-rec">@RecetaFragment(it)</span>
                         </span>
 
@@ -1077,13 +1095,24 @@
     private decimal? edLargo, edAncho, edAlto;
     private bool fComisionVieja;
 
+    // 2026-08-27 — Osmar no tenia forma de saber si una publicacion era de FRIKAF o de GROVAS:
+    // la fila no lo mostraba aunque el dato ya venia del servidor. Etiqueta en la fila + filtro.
+    private int? fCuentaId;
+    private List<MeliAccountDto> cuentas = new();
+
     private bool HayFiltros => fComisionVieja || fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
                                || !string.IsNullOrEmpty(fCuotas) || !string.IsNullOrEmpty(fEstado)
-                               || !string.IsNullOrWhiteSpace(fTexto) || !string.IsNullOrWhiteSpace(fSku);
+                               || !string.IsNullOrWhiteSpace(fTexto) || !string.IsNullOrWhiteSpace(fSku)
+                               || fCuentaId.HasValue;
 
     private int TotalPaginas => datos is null || datos.Total == 0 ? 1 : (int)Math.Ceiling(datos.Total / (double)datos.PorPagina);
 
-    protected override async Task OnInitializedAsync() => await Cargar();
+    protected override async Task OnInitializedAsync()
+    {
+        // Las cuentas solo alimentan los chips del filtro: si falla, la pantalla anda igual.
+        try { cuentas = await Api.GetMeliAccountsAsync() ?? new(); } catch { cuentas = new(); }
+        await Cargar();
+    }
 
     private async Task Cargar()
     {
@@ -1093,7 +1122,7 @@
         try
         {
             datos = await Api.GetPublicacionesV2Async(fTexto, fSku, fEstado, fComision, fCuotas, null,
-                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina);
+                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId);
         }
         catch (Exception ex)
         {
@@ -1574,11 +1603,22 @@
     private async Task TogglePrecioMano() { fPrecioAMano = !fPrecioAMano; await BuscarDesdeCero(); }
     private async Task ToggleComisionVieja() { fComisionVieja = !fComisionVieja; await BuscarDesdeCero(); }
     private async Task ToggleSinCosto() { fSinCosto = !fSinCosto; await BuscarDesdeCero(); }
+    private async Task SetCuenta(int id) { fCuentaId = fCuentaId == id ? null : id; await BuscarDesdeCero(); }
+
+    // La primera cuenta va en azul y las demás en verde: alcanza para separarlas de un vistazo
+    // sin depender del color (el nombre está escrito al lado).
+    private string ClaseCuenta(string? nombre)
+    {
+        if (string.IsNullOrWhiteSpace(nombre) || cuentas.Count == 0) return "";
+        var i = cuentas.FindIndex(c => c.Nickname == nombre);
+        return i <= 0 ? "" : "c2";
+    }
 
     private async Task LimpiarFiltros()
     {
         fTexto = ""; fSku = ""; fEstado = ""; fComision = null; fCuotas = "";
         fVariosPrecios = false; fPrecioAMano = false; fSinCosto = false; fNoLlegan = null; fComisionVieja = false;
+        fCuentaId = null;
         await BuscarDesdeCero();
     }
 

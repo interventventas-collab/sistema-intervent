@@ -5086,12 +5086,14 @@ public class ApiClient
     public async Task<PubV2Page?> GetPublicacionesV2Async(string? texto = null, string? sku = null,
         string? estado = null, decimal? comisionMinPct = null, string? cuotas = null, string? tipo = null,
         bool variosPrecios = false, bool precioAMano = false, bool sinCosto = false,
-        decimal? noLleganAlPct = null, bool comisionVieja = false, int pagina = 1, int porPagina = 100)
+        decimal? noLleganAlPct = null, bool comisionVieja = false, int pagina = 1, int porPagina = 100,
+        int? cuentaId = null)
     {
         var qs = new List<string>();
         if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
         if (!string.IsNullOrWhiteSpace(sku)) qs.Add($"sku={Uri.EscapeDataString(sku)}");
         if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={estado}");
+        if (cuentaId.HasValue) qs.Add($"cuentaId={cuentaId.Value}");
         if (comisionMinPct.HasValue) qs.Add($"comisionMinPct={comisionMinPct.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         if (!string.IsNullOrWhiteSpace(cuotas)) qs.Add($"cuotas={Uri.EscapeDataString(cuotas)}");
         if (!string.IsNullOrWhiteSpace(tipo)) qs.Add($"tipo={tipo}");
