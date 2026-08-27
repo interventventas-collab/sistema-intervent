@@ -5197,6 +5197,27 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // ─── 2026-08-27 · pausar y activar desde la fila ───
+    public record PubV2EstadoResultado(bool Ok, string Mensaje, string? EstadoNuevo, string? Detalle);
+
+    private async Task<(PubV2EstadoResultado? res, string? error)> CambiarEstadoAsync(string mla, string accion)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PostAsJsonAsync($"/api/meli/v2/publicaciones/{mla}/{accion}", new { });
+            var body = await resp.Content.ReadFromJsonAsync<PubV2EstadoResultado>();
+            if (resp.IsSuccessStatusCode) return (body, null);
+            return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public Task<(PubV2EstadoResultado? res, string? error)> PausarPublicacionAsync(string mla)
+        => CambiarEstadoAsync(mla, "pausar");
+    public Task<(PubV2EstadoResultado? res, string? error)> ActivarPublicacionV2Async(string mla)
+        => CambiarEstadoAsync(mla, "activar");
+
     // ─── 2026-08-27 · EXCEL EDITABLE ───
     // Tres pasos y el del medio no se saltea: bajar → vista previa → aplicar lo tildado.
 

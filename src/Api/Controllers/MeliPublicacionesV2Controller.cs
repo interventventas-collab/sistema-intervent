@@ -159,6 +159,27 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return r.Ok ? Ok(r) : BadRequest(r);
     }
 
+    // ─── 2026-08-27 · PAUSAR Y ACTIVAR DESDE LA FILA ───
+    // El cartelito "Activa"/"Pausada" de la derecha ahora se toca. Es de a UNA a propósito: nunca
+    // en lote. Y NO hay eliminar: en MeLi es irreversible y se pierde la antigüedad, el historial
+    // de ventas, las preguntas y la posición en el buscador. Pausada tampoco vende, y se vuelve.
+
+    /// <summary>TOCA MELI: deja de venderse. Se puede volver atrás.</summary>
+    [HttpPost("publicaciones/{mla}/pausar")]
+    public async Task<IActionResult> Pausar(string mla, [FromServices] MeliEstadoService svc)
+    {
+        var r = await svc.PausarAsync(mla, HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
+    /// <summary>TOCA MELI: vuelve a venderse, con el stock real y el precio del objetivo aplicados.</summary>
+    [HttpPost("publicaciones/{mla}/activar")]
+    public async Task<IActionResult> Activar(string mla, [FromServices] MeliEstadoService svc)
+    {
+        var r = await svc.ActivarAsync(mla, HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
     // ─── 2026-08-27 · EXCEL EDITABLE ───
     // Es lo único que escala a 5.925 publicaciones: la pantalla sirve para trabajar de a pocas.
     // El recorrido tiene tres pasos y el del medio NO se saltea: bajar → subir (vista previa) →

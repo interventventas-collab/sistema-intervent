@@ -53,7 +53,7 @@
        como tiene overflow:hidden por el borde redondeado, las filas de abajo se RECORTABAN
        (se veian 9 de 17 y no aparecian ni bajando). */
     .p2-tbl { background: #fff; border: 1px solid #e3e7e0; border-radius: .6rem; overflow: hidden; flex-shrink: 0; }
-    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 128px 148px 120px 212px 52px 70px;
+    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 128px 148px 120px 212px 52px 82px;
                      gap: .6rem; align-items: center; padding: .55rem .65rem; }
     .p2-th { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; font-size: .6rem; text-transform: uppercase;
              letter-spacing: .07em; color: #9ca3af; font-weight: 700; }
@@ -127,6 +127,9 @@
                   padding: .12rem .26rem; font-size: .74rem; line-height: 1; cursor: pointer; }
     .p2-candado:hover { border-color: #9ca3af; }
     .p2-candado.abierto { background: #fef3c7; border-color: #f59e0b; }
+    .p2-st.tocable { cursor: pointer; font-family: inherit; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+    .p2-st.tocable:hover { filter: brightness(.94); }
+    .p2-st.tocable[disabled] { opacity: .6; cursor: default; }
     .p2-led { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #cbd5e1; background: #fff; }
     .p2-led.on { background: #15803d; border-color: #15803d; }
 
@@ -614,7 +617,23 @@
                         </span>
 
                         <span class="p2-h2">
-                            <span class="p2-st @(it.Estado == "active" ? "a" : it.Estado == "paused" ? "p" : "o")">@EstadoTexto(it.Estado)</span>
+                            @* 2026-08-27 · idea de Osmar: el cartelito que dice el estado ES el botón
+                               para cambiarlo. No hay que aprender dónde está la acción. Sólo se puede
+                               tocar con el 🔒 abierto — pausar de un toque sin querer sería feo. *@
+                            @if (PuedeCambiarEstado(it))
+                            {
+                                <button class="p2-st tocable @(it.Estado == "active" ? "a" : "p")"
+                                        disabled="@(estadoEnCurso == it.MeliItemId)"
+                                        title="@(it.Estado == "active" ? "Tocá para PAUSAR: deja de venderse, pero podés volver cuando quieras" : "Tocá para ACTIVAR: vuelve a venderse, con el stock y el precio al día")"
+                                        @onclick="() => CambiarEstado(it)" @onclick:stopPropagation="true">
+                                    @(estadoEnCurso == it.MeliItemId ? "···" : (it.Estado == "active" ? "Activa ⏸" : "Pausada ▶"))
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="p2-st @(it.Estado == "active" ? "a" : it.Estado == "paused" ? "p" : "o")"
+                                      title="@(it.Estado is "active" or "paused" ? "Abrí el 🔒 de esta fila para poder cambiar el estado" : "")">@EstadoTexto(it.Estado)</span>
+                            }
                         </span>
                     </div>
 
@@ -856,7 +875,7 @@
         @if (datos is not null && datos.Items.Count > 0)
         {
             <div class="p2-count">
-                <span>Tocá el ✎ del precio para escribirlo a mano · La ⚖ abre el peso y las medidas · La foto abre todas las fotos · El 🔒 de la fila prende y apaga el sincro sin tildarla (se cierra solo).</span>
+                <span>Tocá el ✎ del precio para escribirlo a mano · La ⚖ abre el peso y las medidas · La foto abre todas las fotos · El 🔒 de la fila prende y apaga el sincro y deja tocar el cartel Activa/Pausada (se cierra solo).</span>
                 <span>
                     <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
                     <span class="p2-pg">Página @pagina de @TotalPaginas</span>
@@ -1736,6 +1755,70 @@
         }
         catch (Exception ex) { ToastService.Error("No se pudo cambiar el sincro: " + ex.Message); }
         finally { sincroEnCurso = null; }
+    }
+
+    // ─────────────── 2026-08-27 · PAUSAR Y ACTIVAR DESDE LA FILA ───────────────
+    // El cartelito de la derecha es el botón. Sólo se puede tocar con el 🔒 abierto, así no se
+    // pausa nada de un toque sin querer, y siempre pregunta antes: esto se ve en MercadoLibre
+    // al instante. Es de a UNA a propósito — nunca en lote.
+    // NO hay eliminar: en MeLi es irreversible y se pierde antigüedad, historial de ventas,
+    // preguntas y posición en el buscador. Pausada tampoco vende, y se vuelve.
+
+    private string? estadoEnCurso;
+
+    /// <summary>Sólo las activas y las pausadas, y sólo con el candado abierto. Una cerrada o en
+    /// revisión no se puede tocar, así que ni se muestra como botón.</summary>
+    private bool PuedeCambiarEstado(ApiClient.PubV2Fila it)
+        => FilaAbierta(it) && it.Estado is "active" or "paused";
+
+    private async Task CambiarEstado(ApiClient.PubV2Fila it)
+    {
+        if (!PuedeCambiarEstado(it) || estadoEnCurso is not null) return;
+        ArrancarRelojCandado();   // usarlo mantiene la fila abierta
+
+        var pausar = it.Estado == "active";
+        var aviso = pausar
+            ? $"Vas a PAUSAR:\n\n{it.Titulo}\n\nDeja de venderse, pero no se pierde nada: la podés activar de nuevo cuando quieras."
+            : $"Vas a ACTIVAR:\n\n{it.Titulo}\n\nVuelve a venderse. Le mando el stock real, y si tiene objetivo con el sincro prendido le aplico el precio.";
+
+        // Antes de despertar una pausada conviene mirar el precio: la regla es PRECIO PRIMERO,
+        // después despertar. Si el margen de hoy no llega al objetivo, se dice acá y no después.
+        if (!pausar && it.MargenPct is decimal m)
+        {
+            var objetivo = it.ObjetivoPct ?? 50m;
+            if (m < objetivo)
+                aviso += $"\n\n⚠ OJO: hoy te deja {m.ToString("0.#", ar)}% sobre el costo, abajo del {objetivo.ToString("0", ar)}% que pediste."
+                       + (m < 0 ? " Está vendiendo A PÉRDIDA." : "");
+        }
+        else if (!pausar && it.MargenPct is null)
+            aviso += "\n\n⚠ OJO: de esta publicación no se sabe qué deja (le falta el costo o la comisión).";
+
+        if (!await JS.InvokeAsync<bool>("confirm", aviso + "\n\n¿Dale?")) return;
+
+        estadoEnCurso = it.MeliItemId;
+        StateHasChanged();
+        try
+        {
+            var (res, error) = pausar
+                ? await Api.PausarPublicacionAsync(it.MeliItemId)
+                : await Api.ActivarPublicacionV2Async(it.MeliItemId);
+
+            if (res is null || !res.Ok)
+            {
+                ToastService.Error(error ?? res?.Mensaje ?? "No se pudo cambiar el estado.");
+                return;
+            }
+
+            // Igual que con el candado: se cambia la fila en el lugar, sin recargar la lista.
+            var idx = datos?.Items.FindIndex(x => x.MeliItemId == it.MeliItemId) ?? -1;
+            if (idx >= 0 && datos is not null && res.EstadoNuevo is not null)
+                datos.Items[idx] = datos.Items[idx] with { Estado = res.EstadoNuevo };
+
+            ToastService.Success(res.Mensaje);
+            if (!string.IsNullOrWhiteSpace(res.Detalle)) ToastService.Info(res.Detalle!);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cambiar el estado: " + ex.Message); }
+        finally { estadoEnCurso = null; }
     }
 
     // ─────────────── 2026-08-27 · EXCEL EDITABLE ───────────────
