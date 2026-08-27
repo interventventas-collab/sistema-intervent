@@ -467,7 +467,9 @@ public class AlqReservasController : ControllerBase
         if (req.NotasInternas is not null) reserva.NotasInternas = string.IsNullOrWhiteSpace(req.NotasInternas) ? null : req.NotasInternas.Trim();
         if (req.FormaPago is not null) reserva.FormaPago = string.IsNullOrWhiteSpace(req.FormaPago) ? null : req.FormaPago.Trim();
         // ARCA (2026-07-04): configuración de facturación. No se toca si la reserva YA fue autorizada (tiene CAE).
-        if (reserva.ArcaEstado != "autorizado")
+        // 2026-08-27: salvo que esa factura haya sido ANULADA con una nota de crédito — ahí se puede volver
+        // a elegir comprobante y empresa para re-facturar (tipico: salio con la empresa equivocada).
+        if (reserva.ArcaEstado != "autorizado" || reserva.NcEstado == "autorizado")
         {
             if (req.TipoComprobante is not null) reserva.TipoComprobante = NormTipoComprobante(req.TipoComprobante);
             if (req.CondicionIva is not null) reserva.CondicionIva = NormCondIva(req.CondicionIva);
@@ -722,7 +724,10 @@ public class AlqReservasController : ControllerBase
         r.ArcaWebserviceAccountId, r.ArcaCbteNro, r.ArcaCbteTipoNum,
         r.ArcaError, r.ArcaImpTotal, r.FormaPago,
         r.FacturaResumida, r.ResumenDescripcion,
-        r.NotasInternas);
+        r.NotasInternas,
+        // Nota de credito (2026-08-27)
+        r.NcEstado, r.NcCae, r.NcPtoVta, r.NcCbteNro, r.NcCbteTipoNum,
+        r.NcImpTotal, r.NcFecha, r.NcMotivo, r.NcError);
 
     /// <summary>Texto del renglón resumen de una factura resumida. Si la reserva tiene ResumenDescripcion
     /// cargado a mano se usa ese; sino se arma juntando los equipos: "180 SILLAS + 38 MESA...".</summary>
@@ -769,8 +774,21 @@ public class AlqReservasController : ControllerBase
             .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
             .FirstOrDefaultAsync(x => x.Id == id);
         if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+        // Ya facturada: solo se puede volver a facturar si esa factura fue ANULADA con una NC
+        // autorizada (caso tipico: salio con la empresa equivocada). El historial ya guarda la vieja.
         if (r.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(r.ArcaCae))
-            return BadRequest(new { error = $"Esta reserva ya está facturada (CAE {r.ArcaCae}). Para corregir, se emite una Nota de Crédito." });
+        {
+            if (r.NcEstado != "autorizado" || string.IsNullOrEmpty(r.NcCae))
+                return BadRequest(new { error = $"Esta reserva ya está facturada (CAE {r.ArcaCae}). Para corregir, se emite una Nota de Crédito." });
+            // Limpiar los campos del comprobante vigente: la NC anulada ya quedo en Alq_ReservaComprobantes.
+            r.ArcaEstado = "no_aplica"; r.ArcaCae = null; r.ArcaCaeVto = null; r.ArcaFecha = null;
+            r.ArcaPtoVta = null; r.ArcaCbteNro = null; r.ArcaCbteTipoNum = null;
+            r.ArcaImpNeto = null; r.ArcaImpIVA = null; r.ArcaImpTotal = null; r.ArcaError = null;
+            r.NcEstado = "no_aplica"; r.NcCae = null; r.NcCaeVto = null; r.NcFecha = null;
+            r.NcPtoVta = null; r.NcCbteNro = null; r.NcCbteTipoNum = null;
+            r.NcImpNeto = null; r.NcImpIVA = null; r.NcImpTotal = null; r.NcError = null;
+            r.NcMotivo = null; r.NcEmitidaAt = null;
+        }
         if (r.TipoComprobante is not ("FA" or "FB" or "FC"))
             return BadRequest(new { error = "Elegí un tipo de factura (A, B o C) en la reserva antes de emitir." });
 
@@ -895,6 +913,9 @@ public class AlqReservasController : ControllerBase
                 r.ArcaImpIVA = res.ImpIVA;
                 r.ArcaImpTotal = res.ImpTotal;
                 r.ArcaError = null;
+                ArchivarComprobante(r, "factura", r.TipoComprobante, res.CbteTipo, res.PtoVta, res.CbteNro,
+                    res.Cae, r.ArcaCaeVto, r.ArcaFecha, res.ImpNeto, res.ImpIVA, res.ImpTotal,
+                    arcaAccount.Id, arcaAccount.Cuit, null);
             }
             else
             {
@@ -919,6 +940,238 @@ public class AlqReservasController : ControllerBase
         return BadRequest(new { error = r.ArcaError, reserva = Map(saved) });
     }
 
+    /// <summary>2026-08-27 — Deja constancia de un comprobante emitido (factura o NC) en el historial
+    /// de la reserva. No hace SaveChanges: lo hace el llamador junto con el resto de los cambios.</summary>
+    private void ArchivarComprobante(AlqReserva r, string clase, string tipo, int cbteTipoNum,
+        int ptoVta, int cbteNro, string? cae, DateTime? caeVto, DateTime? fecha,
+        decimal? neto, decimal? iva, decimal? total, int? cuentaId, string? cuitEmisor, string? motivo)
+    {
+        _db.AlqReservaComprobantes.Add(new AlqReservaComprobante
+        {
+            ReservaId = r.Id,
+            Clase = clase,
+            TipoComprobante = tipo,
+            CbteTipoNum = cbteTipoNum,
+            PtoVta = ptoVta,
+            CbteNro = cbteNro,
+            Cae = cae,
+            CaeVto = caeVto,
+            Fecha = fecha,
+            ImpNeto = neto,
+            ImpIVA = iva,
+            ImpTotal = total,
+            ArcaWebserviceAccountId = cuentaId,
+            CuitEmisor = cuitEmisor,
+            Motivo = motivo,
+            Operador = Request.Headers["X-Operator-Name"].ToString() is { Length: > 0 } op ? op : null,
+            CreatedAt = DateTime.UtcNow,
+        });
+    }
+
+    /// <summary>Renglones AFIP de la reserva prorrateados para sumar exactamente <paramref name="neto"/>.
+    /// Misma logica que usan la emision y el PDF, para que la NC acredite el mismo importe que la factura.</summary>
+    private static List<EmitirComprobanteItemDto> BuildItemsPorNeto(AlqReserva r, decimal neto)
+    {
+        var items = new List<EmitirComprobanteItemDto>();
+        if (r.FacturaResumida)
+        {
+            items.Add(new EmitirComprobanteItemDto
+            {
+                Descripcion = BuildResumen(r),
+                Cantidad = 1,
+                PrecioUnitario = neto,
+                AlicIvaId = 5, // 21%
+            });
+            return items;
+        }
+        decimal subtotal = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
+        decimal factor = (subtotal > 0m && neto > 0m) ? (neto / subtotal) : 1m;
+        foreach (var it in r.Items)
+        {
+            var pu = factor != 1m
+                ? Math.Round(it.PrecioUnitario * factor, 2, MidpointRounding.AwayFromZero)
+                : it.PrecioUnitario;
+            items.Add(new EmitirComprobanteItemDto
+            {
+                Descripcion = it.EquipoId.HasValue ? (it.EquipoNav?.Nombre ?? "Alquiler") : (it.Descripcion ?? "Alquiler"),
+                Cantidad = it.Cantidad,
+                PrecioUnitario = pu,
+                AlicIvaId = 5, // 21%
+            });
+        }
+        return items;
+    }
+
+    public class EmitirNotaCreditoReservaRequest
+    {
+        /// <summary>Por que se anula (queda guardado y sale impreso en la NC).</summary>
+        public string? Motivo { get; set; }
+    }
+
+    /// <summary>
+    /// 2026-08-27 — Emite la NOTA DE CREDITO que anula la factura de esta reserva.
+    ///
+    /// Reglas que NO son negociables:
+    ///  - La NC va SIEMPRE con el MISMO CUIT que emitio la factura (si salio con la empresa equivocada,
+    ///    la NC tambien tiene que salir de esa empresa: es la unica manera de revertirla).
+    ///  - Va por el MISMO importe que registro ARCA (no por el total actual de la reserva, que pudo
+    ///    haber cambiado despues de facturar).
+    ///  - Lleva el bloque CbtesAsoc apuntando al comprobante original; sin eso ARCA la rechaza.
+    ///
+    /// Es NC total: no hay anulacion parcial de un alquiler.
+    /// </summary>
+    [HttpPost("{id:int}/nota-credito")]
+    public async Task<IActionResult> EmitirNotaCredito(int id, [FromBody] EmitirNotaCreditoReservaRequest? body)
+    {
+        var r = await _db.AlqReservas
+            .Include(x => x.ClienteNav)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+
+        if (r.ArcaEstado != "autorizado" || string.IsNullOrEmpty(r.ArcaCae))
+            return BadRequest(new { error = "Esta reserva no tiene una factura con CAE — no hay nada que anular." });
+        if (r.NcEstado == "autorizado" && !string.IsNullOrEmpty(r.NcCae))
+            return BadRequest(new { error = $"Esta factura ya fue anulada con la nota de crédito {r.NcPtoVta:D5}-{r.NcCbteNro:D8} (CAE {r.NcCae})." });
+
+        var (cbteTipoNc, tipoNcStr) = (r.ArcaCbteTipoNum ?? 0) switch
+        {
+            1 => (3, "NCA"),
+            6 => (8, "NCB"),
+            11 => (13, "NCC"),
+            _ => r.TipoComprobante switch
+            {
+                "FA" => (3, "NCA"),
+                "FB" => (8, "NCB"),
+                "FC" => (13, "NCC"),
+                _ => (0, ""),
+            }
+        };
+        if (cbteTipoNc == 0)
+            return BadRequest(new { error = $"No sé qué nota de crédito corresponde a un comprobante tipo {r.TipoComprobante}." });
+
+        // La NC se emite con el MISMO certificado que la factura original. Sin eso, no la anula.
+        if (r.ArcaWebserviceAccountId is not > 0)
+            return BadRequest(new { error = "La factura original no tiene registrada la empresa emisora — la nota de crédito hay que emitirla desde ARCA." });
+        var arcaAccount = await _db.ArcaWebserviceAccounts
+            .FirstOrDefaultAsync(a => a.Id == r.ArcaWebserviceAccountId!.Value && a.IsActive);
+        if (arcaAccount is null)
+            return BadRequest(new { error = "El certificado ARCA con el que se emitió la factura no existe o está desactivado." });
+
+        var cuitCli = new string((r.ClienteNav?.Cuit ?? "").Where(char.IsDigit).ToArray());
+        int docTipo = cuitCli.Length == 11 ? 80 : 99;
+        string docNro = cuitCli.Length == 11 ? cuitCli : "0";
+        int condIvaReceptor = r.CondicionIva switch { "RI" => 1, "EX" => 4, "MO" => 6, "CF" => 5, _ => 5 };
+
+        // Importe: el que registro ARCA en la factura, NO el total de hoy de la reserva.
+        decimal netoOriginal = r.ArcaImpNeto ?? r.MontoTotal;
+        var items = BuildItemsPorNeto(r, netoOriginal);
+        if (items.Count == 0)
+            return BadRequest(new { error = "La reserva no tiene renglones para acreditar." });
+
+        var fechaEmision = DateTime.UtcNow.AddHours(-3).Date;
+        DateTime? servDesde = r.Concepto != 1 ? r.FechaEntrega : null;
+        DateTime? servHasta = r.Concepto != 1 ? r.FechaRetiro : null;
+        DateTime? vtoPago = r.Concepto != 1 ? (r.FechaRetiro >= fechaEmision ? r.FechaRetiro : fechaEmision) : null;
+
+        var req = new EmitirComprobanteRequest
+        {
+            PtoVta = r.ArcaPtoVta ?? arcaAccount.PtoVta,
+            CbteTipo = cbteTipoNc,
+            Concepto = r.Concepto,
+            DocTipo = docTipo,
+            DocNro = docNro,
+            ReceptorNombre = r.ClienteNav?.RazonSocial ?? r.ClienteNav?.Nombre ?? "Consumidor Final",
+            ReceptorDomicilio = r.ClienteNav?.Direccion,
+            CondicionIVAReceptorId = condIvaReceptor,
+            Items = items,
+            Fecha = fechaEmision,
+            CbtesAsoc = new List<CbteAsocDto>
+            {
+                new CbteAsocDto
+                {
+                    Tipo = r.ArcaCbteTipoNum ?? 0,
+                    PtoVta = r.ArcaPtoVta ?? 0,
+                    Nro = r.ArcaCbteNro ?? 0,
+                }
+            },
+            FchServDesde = servDesde,
+            FchServHasta = servHasta,
+            FchVtoPago = vtoPago,
+        };
+
+        var motivo = (body?.Motivo ?? "").Trim();
+        if (motivo.Length > 300) motivo = motivo.Substring(0, 300);
+
+        try
+        {
+            var res = await _arca.EmitirComprobanteAsync(arcaAccount.Id, req);
+            if (res.Success)
+            {
+                r.NcEstado = "autorizado";
+                r.NcCae = res.Cae;
+                if (DateTime.TryParseExact(res.CaeVto, "yyyyMMdd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var caeVto))
+                    r.NcCaeVto = caeVto;
+                if (DateTime.TryParseExact(res.Fecha, "yyyyMMdd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var fEmi))
+                    r.NcFecha = fEmi;
+                else r.NcFecha = fechaEmision;
+                r.NcPtoVta = res.PtoVta;
+                r.NcCbteNro = res.CbteNro;
+                r.NcCbteTipoNum = res.CbteTipo;
+                r.NcImpNeto = res.ImpNeto;
+                r.NcImpIVA = res.ImpIVA;
+                r.NcImpTotal = res.ImpTotal;
+                r.NcError = null;
+                r.NcMotivo = string.IsNullOrWhiteSpace(motivo) ? null : motivo;
+                r.NcEmitidaAt = DateTime.UtcNow;
+                ArchivarComprobante(r, "nota_credito", tipoNcStr, res.CbteTipo, res.PtoVta, res.CbteNro,
+                    res.Cae, r.NcCaeVto, r.NcFecha, res.ImpNeto, res.ImpIVA, res.ImpTotal,
+                    arcaAccount.Id, arcaAccount.Cuit, r.NcMotivo);
+            }
+            else
+            {
+                r.NcEstado = "pendiente";
+                r.NcError = res.Error ?? "ARCA rechazó la nota de crédito.";
+            }
+        }
+        catch (Exception ex)
+        {
+            r.NcEstado = "pendiente";
+            r.NcError = "Error inesperado: " + ex.Message;
+        }
+        r.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var saved = await _db.AlqReservas
+            .Include(x => x.ClienteNav)
+            .Include(x => x.EntregadoPorRepartidor).Include(x => x.RetiradoPorRepartidor)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
+            .FirstAsync(x => x.Id == r.Id);
+        if (r.NcEstado == "autorizado") return Ok(Map(saved));
+        return BadRequest(new { error = r.NcError, reserva = Map(saved) });
+    }
+
+    /// <summary>2026-08-27 — PDF de la NOTA DE CREDITO (mismo formato sobrio que la factura, con su CAE
+    /// y el comprobante que anula impreso arriba).</summary>
+    [HttpGet("{id:int}/nota-credito-pdf")]
+    public async Task<IActionResult> NotaCreditoPdf(int id)
+    {
+        var r = await _db.AlqReservas
+            .Include(x => x.ClienteNav)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+        if (r.NcEstado != "autorizado" || string.IsNullOrEmpty(r.NcCae))
+            return BadRequest(new { error = "Esta reserva no tiene nota de crédito emitida." });
+        var bytes = BuildFacturaPdf(r, notaCredito: true);
+        var letra = ArcaInvoicePdfService.LetraDelTipo(r.NcCbteTipoNum ?? 0);
+        return File(bytes, "application/pdf", $"NotaCredito-{letra}-{r.NcPtoVta:D5}-{r.NcCbteNro:D8}.pdf");
+    }
+
     /// <summary>2026-07-04 — PDF de la FACTURA AFIP de una reserva facturada (formato sobrio, con CAE + QR fiscal).
     /// Documento APARTE del comprobante de reserva (ese lleva el QR del repartidor + datos de logística).</summary>
     [HttpGet("{id:int}/factura-pdf")]
@@ -931,14 +1184,14 @@ public class AlqReservasController : ControllerBase
         if (r is null) return NotFound(new { error = "Reserva no encontrada" });
         if (r.ArcaEstado != "autorizado" || string.IsNullOrEmpty(r.ArcaCae))
             return BadRequest(new { error = "Esta reserva todavía no está facturada." });
-        var bytes = BuildFacturaPdf(r);
+        var bytes = BuildFacturaPdf(r, notaCredito: false);
         var letra = ArcaInvoicePdfService.LetraDelTipo(r.ArcaCbteTipoNum ?? 0);
         return File(bytes, "application/pdf", $"Factura-{letra}-{r.ArcaPtoVta:D5}-{r.ArcaCbteNro:D8}.pdf");
     }
 
     /// <summary>Arma el PDF de factura AFIP (sobrio) a partir de la reserva facturada. Reutiliza
     /// el mismo generador que Café, pero SIN QR de repartidor ni datos de logística.</summary>
-    private byte[] BuildFacturaPdf(AlqReserva r)
+    private byte[] BuildFacturaPdf(AlqReserva r, bool notaCredito = false)
     {
         // Emisor: el CUIT con el que se facturó (o el del negocio como fallback).
         var cuitEmisor = "";
@@ -964,25 +1217,40 @@ public class AlqReservasController : ControllerBase
             BancoNombre = ficha?.BancoNombre, BancoCbu = ficha?.BancoCbu, BancoAlias = ficha?.BancoAlias,
         };
 
-        var letra = ArcaInvoicePdfService.LetraDelTipo(r.ArcaCbteTipoNum ?? 0);
-        decimal neto = r.ArcaImpNeto ?? r.MontoTotal;
-        decimal ivaImporte = r.ArcaImpIVA ?? 0m;
-        decimal total = r.ArcaImpTotal ?? r.MontoTotal;
+        // La NOTA DE CREDITO usa sus propios datos fiscales (Nc*), pero los mismos renglones y el
+        // mismo cliente: es el espejo de la factura que anula.
+        int cbteTipoNum = notaCredito ? (r.NcCbteTipoNum ?? 0) : (r.ArcaCbteTipoNum ?? 0);
+        var letra = ArcaInvoicePdfService.LetraDelTipo(cbteTipoNum);
+        decimal neto = (notaCredito ? r.NcImpNeto : r.ArcaImpNeto) ?? r.MontoTotal;
+        decimal ivaImporte = (notaCredito ? r.NcImpIVA : r.ArcaImpIVA) ?? 0m;
+        decimal total = (notaCredito ? r.NcImpTotal : r.ArcaImpTotal) ?? r.MontoTotal;
+
+        // En la NC dejamos impreso QUE comprobante anula (ademas del bloque CbtesAsoc que fue a ARCA).
+        string? observaciones = null;
+        if (notaCredito)
+        {
+            var letraOrig = ArcaInvoicePdfService.LetraDelTipo(r.ArcaCbteTipoNum ?? 0);
+            observaciones = $"Anula Factura {letraOrig} {r.ArcaPtoVta:D5}-{r.ArcaCbteNro:D8}"
+                          + (r.ArcaFecha.HasValue ? $" del {r.ArcaFecha.Value:dd/MM/yyyy}" : "")
+                          + (string.IsNullOrWhiteSpace(r.NcMotivo) ? "" : $" · Motivo: {r.NcMotivo}");
+        }
 
         var comp = new PdfComprobante
         {
-            CbteTipoNro = r.ArcaCbteTipoNum ?? 0,
-            CbteTipoNombre = ArcaWsService.NombreCbte(r.ArcaCbteTipoNum ?? 0),
-            PtoVta = r.ArcaPtoVta ?? 0,
-            CbteNro = r.ArcaCbteNro ?? 0,
+            CbteTipoNro = cbteTipoNum,
+            CbteTipoNombre = ArcaWsService.NombreCbte(cbteTipoNum),
+            PtoVta = (notaCredito ? r.NcPtoVta : r.ArcaPtoVta) ?? 0,
+            CbteNro = (notaCredito ? r.NcCbteNro : r.ArcaCbteNro) ?? 0,
             NumeroInterno = r.Numero,
-            Fecha = (r.ArcaFecha ?? DateTime.UtcNow.AddHours(-3)).ToString("yyyyMMdd"),
+            Fecha = ((notaCredito ? r.NcFecha : r.ArcaFecha) ?? DateTime.UtcNow.AddHours(-3)).ToString("yyyyMMdd"),
             Concepto = r.Concepto,
             ImpNeto = neto,
             ImpTotal = total,
-            Cae = r.ArcaCae,
-            CaeVto = r.ArcaCaeVto?.ToString("yyyyMMdd") ?? "",
-            CondicionPago = r.FormaPago,
+            Cae = notaCredito ? r.NcCae : r.ArcaCae,
+            CaeVto = (notaCredito ? r.NcCaeVto : r.ArcaCaeVto)?.ToString("yyyyMMdd") ?? "",
+            CondicionPago = notaCredito ? null : r.FormaPago,
+            Observaciones = observaciones,
+            OcultarBloqueEntrega = notaCredito,
             // FACTURA SOBRIA: sin QrRepartidorBytes ni datos de logística (esos van en el comprobante de reserva).
         };
 

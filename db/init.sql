@@ -7093,3 +7093,65 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WaMovil_WebAuthnCredentials')
                    WHERE Name='PasswordCheckedAt' AND Object_ID=Object_ID('WaMovil_WebAuthnCredentials'))
     ALTER TABLE WaMovil_WebAuthnCredentials ADD PasswordCheckedAt DATETIME2 NULL;
 GO
+
+-- ============================================================================
+-- 2026-08-27: NOTA DE CREDITO de reservas de alquiler.
+-- Una factura con CAE no se puede borrar ni cambiar de empresa; para revertirla hay que
+-- emitir una NC contra ARCA apuntando al comprobante original. Estas columnas guardan la NC
+-- vigente de la reserva, y Alq_ReservaComprobantes el historial completo (facturas + NCs),
+-- que permite re-facturar sin perder el rastro de lo ya declarado.
+-- ============================================================================
+IF COL_LENGTH('Alq_Reservas','NcEstado') IS NULL
+    ALTER TABLE Alq_Reservas ADD NcEstado NVARCHAR(20) NOT NULL CONSTRAINT DF_AlqReservas_NcEstado DEFAULT 'no_aplica';
+GO
+IF COL_LENGTH('Alq_Reservas','NcCae') IS NULL ALTER TABLE Alq_Reservas ADD NcCae NVARCHAR(20) NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcCaeVto') IS NULL ALTER TABLE Alq_Reservas ADD NcCaeVto DATETIME2 NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcFecha') IS NULL ALTER TABLE Alq_Reservas ADD NcFecha DATETIME2 NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcPtoVta') IS NULL ALTER TABLE Alq_Reservas ADD NcPtoVta INT NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcCbteNro') IS NULL ALTER TABLE Alq_Reservas ADD NcCbteNro INT NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcCbteTipoNum') IS NULL ALTER TABLE Alq_Reservas ADD NcCbteTipoNum INT NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcImpNeto') IS NULL ALTER TABLE Alq_Reservas ADD NcImpNeto DECIMAL(18,2) NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcImpIVA') IS NULL ALTER TABLE Alq_Reservas ADD NcImpIVA DECIMAL(18,2) NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcImpTotal') IS NULL ALTER TABLE Alq_Reservas ADD NcImpTotal DECIMAL(18,2) NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcError') IS NULL ALTER TABLE Alq_Reservas ADD NcError NVARCHAR(1000) NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcMotivo') IS NULL ALTER TABLE Alq_Reservas ADD NcMotivo NVARCHAR(300) NULL;
+GO
+IF COL_LENGTH('Alq_Reservas','NcEmitidaAt') IS NULL ALTER TABLE Alq_Reservas ADD NcEmitidaAt DATETIME2 NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Alq_ReservaComprobantes')
+BEGIN
+    CREATE TABLE Alq_ReservaComprobantes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ReservaId INT NOT NULL,
+        Clase NVARCHAR(20) NOT NULL DEFAULT 'factura',
+        TipoComprobante NVARCHAR(10) NOT NULL DEFAULT '',
+        CbteTipoNum INT NOT NULL DEFAULT 0,
+        PtoVta INT NOT NULL DEFAULT 0,
+        CbteNro INT NOT NULL DEFAULT 0,
+        Cae NVARCHAR(20) NULL,
+        CaeVto DATETIME2 NULL,
+        Fecha DATETIME2 NULL,
+        ImpNeto DECIMAL(18,2) NULL,
+        ImpIVA DECIMAL(18,2) NULL,
+        ImpTotal DECIMAL(18,2) NULL,
+        ArcaWebserviceAccountId INT NULL,
+        CuitEmisor NVARCHAR(20) NULL,
+        Motivo NVARCHAR(300) NULL,
+        Operador NVARCHAR(40) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT FK_AlqReservaComprobantes_Reserva FOREIGN KEY (ReservaId) REFERENCES Alq_Reservas(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_AlqReservaComprobantes_Reserva ON Alq_ReservaComprobantes (ReservaId, Id);
+END
+GO

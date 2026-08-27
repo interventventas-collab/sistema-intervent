@@ -464,6 +464,21 @@ public class ApiClient
         catch { return (false, "No se pudo facturar"); }
     }
 
+    /// <summary>2026-08-27: emite la NOTA DE CREDITO que anula la factura de la reserva.
+    /// Sale con la MISMA empresa y por el MISMO importe que la factura original. Devuelve (ok, error).</summary>
+    public async Task<(bool ok, string? error)> EmitirNotaCreditoReservaAsync(int id, string? motivo = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/alquileres/reservas/{id}/nota-credito", new { motivo });
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try
+        {
+            var err = await resp.Content.ReadFromJsonAsync<ErrorResp>();
+            return (false, err?.Error ?? "No se pudo emitir la nota de crédito");
+        }
+        catch { return (false, "No se pudo emitir la nota de crédito"); }
+    }
+
     /// <summary>Elimina una reserva. Requiere clave del usuario y falla si tiene cobranzas.
     /// Devuelve (ok, mensajeDeError).</summary>
     public async Task<(bool ok, string? error)> DeleteAlqReservaAsync(int id, string password)
@@ -539,6 +554,17 @@ public class ApiClient
     {
         await SetAuthHeaderAsync();
         var resp = await _http.GetAsync($"/api/alquileres/reservas/{id}/factura-pdf");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, "Sesión expirada"); }
+        if (resp.IsSuccessStatusCode) return (await resp.Content.ReadAsByteArrayAsync(), null);
+        try { var err = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (null, err?.Error ?? $"Error {(int)resp.StatusCode}"); }
+        catch { return (null, $"Error {(int)resp.StatusCode}"); }
+    }
+
+    /// <summary>2026-08-27: PDF de la NOTA DE CREDITO de una reserva.</summary>
+    public async Task<(byte[]? bytes, string? error)> GetAlqNotaCreditoPdfAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/alquileres/reservas/{id}/nota-credito-pdf");
         if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, "Sesión expirada"); }
         if (resp.IsSuccessStatusCode) return (await resp.Content.ReadAsByteArrayAsync(), null);
         try { var err = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (null, err?.Error ?? $"Error {(int)resp.StatusCode}"); }

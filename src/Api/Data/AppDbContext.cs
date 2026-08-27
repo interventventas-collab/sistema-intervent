@@ -87,6 +87,8 @@ public class AppDbContext : DbContext
     public DbSet<AlqCliente> AlqClientes => Set<AlqCliente>();
     public DbSet<AlqReserva> AlqReservas => Set<AlqReserva>();
     public DbSet<AlqReservaItem> AlqReservaItems => Set<AlqReservaItem>();
+    // 2026-08-27: historial de facturas y notas de credito de cada reserva.
+    public DbSet<AlqReservaComprobante> AlqReservaComprobantes => Set<AlqReservaComprobante>();
     public DbSet<AlqQrEscaneo> AlqQrEscaneos => Set<AlqQrEscaneo>();
     public DbSet<AlqCobranzaPendiente> AlqCobranzasPendientes => Set<AlqCobranzaPendiente>();
     // Modulo Nominas (independiente)

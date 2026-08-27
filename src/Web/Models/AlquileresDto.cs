@@ -161,6 +161,17 @@ public class AlqReservaDto
     public string? FormaPago { get; set; }
     public bool FacturaResumida { get; set; }
     public string? ResumenDescripcion { get; set; }
+
+    // ===== Nota de credito que anula la factura (2026-08-27) =====
+    public string NcEstado { get; set; } = "no_aplica";
+    public string? NcCae { get; set; }
+    public int? NcPtoVta { get; set; }
+    public int? NcCbteNro { get; set; }
+    public int? NcCbteTipoNum { get; set; }
+    public decimal? NcImpTotal { get; set; }
+    public DateTime? NcFecha { get; set; }
+    public string? NcMotivo { get; set; }
+    public string? NcError { get; set; }
 }
 
 public class CreateAlqReservaItemRequest

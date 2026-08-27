@@ -116,7 +116,17 @@ public record AlqReservaDto(
     bool FacturaResumida = false,
     string? ResumenDescripcion = null,
     // 2026-08-05: notas internas (uso interno, NO se imprimen)
-    string? NotasInternas = null);
+    string? NotasInternas = null,
+    // ===== Nota de credito que anula la factura (2026-08-27) =====
+    string NcEstado = "no_aplica",
+    string? NcCae = null,
+    int? NcPtoVta = null,
+    int? NcCbteNro = null,
+    int? NcCbteTipoNum = null,
+    decimal? NcImpTotal = null,
+    DateTime? NcFecha = null,
+    string? NcMotivo = null,
+    string? NcError = null);
 
 public class CreateAlqReservaItemRequest
 {

@@ -528,6 +528,9 @@ public class ArcaInvoicePdfService
             : receptor.Domicilio;
         var tieneEntrega = !string.IsNullOrWhiteSpace(domicilio);
         var tieneQr = comp.QrRepartidorBytes is not null;
+        // 2026-08-27: en una NOTA DE CREDITO este bloque no va: no hay entrega que hacer y el sello
+        // PAGADA/PENDIENTE (que es del cobro de la factura) confunde en un comprobante que acredita.
+        if (comp.OcultarBloqueEntrega) return;
         if (!tieneEntrega && !tieneQr) return;
 
         var diasActivos = (comp.DiasVisita ?? "")
@@ -747,6 +750,9 @@ public class PdfComprobante
     /// <summary>Domicilio de entrega del cliente (distinto al fiscal). Se imprime destacado
     /// abajo del comprobante para que el chofer/repartidor lo vea facil.</summary>
     public string? DomicilioEntrega { get; set; }
+    /// <summary>2026-08-27: saltea el bloque "DOMICILIO DE ENTREGA" (con sus sellos PAGADA/PENDIENTE).
+    /// Lo usan las notas de credito, donde no hay entrega ni cobro que mostrar.</summary>
+    public bool OcultarBloqueEntrega { get; set; }
 }
 
 public class PdfItem

@@ -142,6 +142,41 @@ public class AlqReserva
     [Column(TypeName = "decimal(18,2)")]
     public decimal? ArcaImpTotal { get; set; }
 
+    // ============================================================
+    // NOTA DE CREDITO que ANULA la factura de arriba (2026-08-27)
+    // Una factura con CAE no se puede borrar ni cambiar de empresa: la unica forma de revertirla
+    // es emitir una NC contra ARCA apuntando al comprobante original (CbtesAsoc).
+    // ============================================================
+    /// <summary>"no_aplica" | "pendiente" (ARCA la rechazo) | "autorizado".</summary>
+    [MaxLength(20)]
+    public string NcEstado { get; set; } = "no_aplica";
+
+    [MaxLength(20)]
+    public string? NcCae { get; set; }
+    public DateTime? NcCaeVto { get; set; }
+    /// <summary>Fecha de emision que registro ARCA (para el PDF y el QR fiscal de la NC).</summary>
+    public DateTime? NcFecha { get; set; }
+    public int? NcPtoVta { get; set; }
+    public int? NcCbteNro { get; set; }
+    /// <summary>3=NC A, 8=NC B, 13=NC C.</summary>
+    public int? NcCbteTipoNum { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? NcImpNeto { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? NcImpIVA { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? NcImpTotal { get; set; }
+
+    [MaxLength(1000)]
+    public string? NcError { get; set; }
+
+    /// <summary>Por que se anulo (lo escribe el operador). Sale impreso en la NC.</summary>
+    [MaxLength(300)]
+    public string? NcMotivo { get; set; }
+
+    public DateTime? NcEmitidaAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
