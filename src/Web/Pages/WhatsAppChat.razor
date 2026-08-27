@@ -553,32 +553,37 @@
                        cambiar de chat. El nombre completo sale en el globito de ayuda. *@
                     <div class="wa-hdr-l1">
                         <span class="wa-hdr-nombre" title="@(MostrarNombre(SelectedConv()))">@(MostrarNombre(SelectedConv()))</span>
-                        @* 2026-08-20: lupa para buscar una palabra DENTRO de esta charla. *@
-                        <button class="wa-busc-lupa-btn @(buscadorAbierto ? "activo" : "")" @onclick="ToggleBuscador"
-                                title="Buscar una palabra en esta charla">🔍</button>
-                        @* 2026-08-27: editar contacto y vincular cliente, PEGADOS al nombre (pedido de Osmar).
-                           Siguen estando también en el panel de la derecha: son los mismos botones. *@
-                        @if (!EstaEnContactos(selectedNumero))
+                        @* 2026-08-27: la razón social y la categoría van como TEXTO gris al lado del nombre.
+                           Antes eran dos cartelitos de colores más (verde el cliente, y la categoría abajo del
+                           avatar). Osmar: "tanto color marea". Se leen igual y no gritan.
+                           Con VARIAS razones sociales esto se convierte en los cartelitos con tilde: ahí el
+                           color SÍ hace falta, porque tenés que elegir con cuál facturás. *@
+                        @if (VariasRazones)
                         {
-                            <button class="wa-hdr-ico" @onclick="AbrirAsignarContacto" title="Agregar este número como contacto">➕</button>
-                        }
-                        else
-                        {
-                            <button class="wa-hdr-ico" @onclick="AbrirEditarContacto" title="Editar este contacto (nombre, categoría…)">✏️</button>
-                        }
-                        <button class="wa-hdr-ico" @onclick="AbrirVincularCliente"
-                                title="@(SelectedConv()?.ClienteId is null ? "Vincular este chat con un cliente del sistema" : "Sumar otra razón social a este teléfono")">🔗</button>
-                        @* 2026-08-05: ojito para ver la ficha del cliente, al lado del nombre (reemplaza el botón de la barra) *@
-                        @if (SelectedConv()?.ClienteId is int)
-                        {
-                            <button class="wa-ver-cliente-ojo @(mostrarFichaCliente ? "activo" : "")" @onclick="ToggleFichaCliente" title="Ver la ficha del cliente (saldo, últimas facturas, ubicación) — tocá para abrir/cerrar">👁️</button>
-                        }
-                        @if (SelectedConv()?.Linea is string _lh)
-                        {
-                            <span class="wa-header-linea" title="Esta conversación es de tu línea: @LineaNombre(_lh, SelectedConv()?.LineaNumero)">
-                                @if (LineaImg(_lh) is string _imh) { <img src="@_imh" class="wa-linea-av-xs" alt="" /> } else { <span>📱</span> }
-                                @LineaNombre(_lh, SelectedConv()?.LineaNumero)
+                            <span class="wa-hdr-sep">·</span>
+                            <span class="wa-razones" title="Este teléfono factura a varias razones sociales. Tocá la que estés usando ahora: la ficha, la venta y el comprobante salen a nombre de ésa.">
+                                <span class="wa-razones-t">Facturo a:</span>
+                                @foreach (var rs in RazonesSociales)
+                                {
+                                    <button class="wa-razon @(EsRazonActiva(rs.Id) ? "on" : "")"
+                                            @onclick="() => ElegirRazon(rs.Id)"
+                                            disabled="@cambiandoRazon"
+                                            title="@(EsRazonActiva(rs.Id) ? $"Estás trabajando con {rs.Nombre}" : $"Pasar a {rs.Nombre}")">
+                                        <span class="wa-razon-tilde">@(EsRazonActiva(rs.Id) ? "✓" : "")</span>
+                                        <span class="wa-razon-nom">@rs.Nombre</span>
+                                    </button>
+                                }
                             </span>
+                        }
+                        else if (SelectedConv()?.ClienteNombre is string _cln && !string.IsNullOrWhiteSpace(_cln))
+                        {
+                            <span class="wa-hdr-sep">·</span>
+                            <span class="wa-hdr-sub" title="Razón social a la que le facturás">@_cln</span>
+                        }
+                        @if (RolLabel(SelectedConv()?.Rol) is string _rl && !string.IsNullOrWhiteSpace(_rl))
+                        {
+                            <span class="wa-hdr-sep">·</span>
+                            <button class="wa-hdr-rol" @onclick="() => rolMenuConv = SelectedConv()" title="Categoría del contacto — tocá para cambiarla">@_rl</button>
                         }
 
                         @* El hueco de la derecha estaba desaprovechado: ahí van ESTADO y RESPONSABLE, que
@@ -586,11 +591,13 @@
                            viene la charla sin leer. Se tocan y se abre la listita. *@
                         <span class="wa-hdr-espacio"></span>
                         @{ var _estHdr = SelectedConv()?.Archivado == true ? "archivado" : (SelectedConv()?.Estado ?? "nueva"); }
+                        @* 2026-08-27: el estado dejó de ser un cartelito de color. Ahora es texto con un
+                           puntito: el color queda en 8 píxeles en vez de en todo el borde y el texto. *@
                         <span class="wa-hdr-menu-wrap">
-                            <button class="wa-hdr-pill" style="border-color:@EstadoColor(_estHdr); color:@EstadoColor(_estHdr);"
+                            <button class="wa-hdr-pill"
                                     @onclick="@(() => { showEstadoMenu = !showEstadoMenu; showPasarMenu = false; })"
                                     title="Estado de esta conversación — tocá para cambiarlo">
-                                @EstadoLabel(_estHdr)<span class="wa-hdr-pill-caret">▾</span>
+                                <span class="wa-hdr-dot" style="background:@EstadoColor(_estHdr);"></span>@EstadoLabel(_estHdr)<span class="wa-hdr-pill-caret">▾</span>
                             </button>
                             @if (showEstadoMenu)
                             {
@@ -613,7 +620,6 @@
                         <span class="wa-hdr-menu-wrap">
                             @{ var _opHdr = SelectedConv()?.AsignadoOperador; }
                             <button class="wa-hdr-pill @(string.IsNullOrEmpty(_opHdr) ? "vacia" : "")"
-                                    style="@(string.IsNullOrEmpty(_opHdr) ? "" : $"border-color:{OperadorColor(_opHdr)}; color:{OperadorColor(_opHdr)};")"
                                     @onclick="@(() => { showPasarMenu = !showPasarMenu; showEstadoMenu = false; })"
                                     title="Quién se está ocupando de esta charla — tocá para pasársela a otro">
                                 @(string.IsNullOrEmpty(_opHdr) ? "Sin asignar" : _opHdr)<span class="wa-hdr-pill-caret">▾</span>
@@ -636,42 +642,50 @@
                                 </div>
                             }
                         </span>
+                        @* 2026-08-20: lupa para buscar una palabra DENTRO de esta charla. *@
+                        <button class="wa-busc-lupa-btn @(buscadorAbierto ? "activo" : "")" @onclick="ToggleBuscador"
+                                title="Buscar una palabra en esta charla">🔍</button>
+                        @* 2026-08-27: los ⋮. Acá adentro va lo del contacto, que se usa de vez en cuando y
+                           afuera eran cuatro iconitos más peleando por atención. La lupa se queda afuera
+                           porque se usa en plena charla. *@
+                        <span class="wa-hdr-menu-wrap">
+                            <button class="wa-hdr-mas" @onclick="@(() => { showMasMenu = !showMasMenu; showEstadoMenu = false; showPasarMenu = false; })"
+                                    title="Más cosas de este contacto">⋮</button>
+                            @if (showMasMenu)
+                            {
+                                <div class="wa-hdr-menu-back" @onclick="@(() => showMasMenu = false)"></div>
+                                <div class="wa-hdr-menu">
+                                    @if (!EstaEnContactos(selectedNumero))
+                                    {
+                                        <button class="wa-hdr-menu-op" @onclick="@(() => { showMasMenu = false; AbrirAsignarContacto(); })">➕ Asignar contacto</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="wa-hdr-menu-op" @onclick="@(() => { showMasMenu = false; AbrirEditarContacto(); })">✏️ Editar contacto</button>
+                                    }
+                                    <button class="wa-hdr-menu-op" @onclick="@(() => { showMasMenu = false; AbrirVincularCliente(); })">
+                                        @(SelectedConv()?.ClienteId is null ? "🔗 Vincular cliente" : "➕ Sumar otra razón social")
+                                    </button>
+                                    @if (SelectedConv()?.ClienteId is int _cidm)
+                                    {
+                                        <button class="wa-hdr-menu-op" @onclick="@(() => { showMasMenu = false; ToggleFichaCliente(); })">👁️ Ver ficha del cliente</button>
+                                        <a class="wa-hdr-menu-op" href="/cafe/clientes?edit=@_cidm" target="_blank" @onclick="@(() => showMasMenu = false)">📂 Abrir ficha completa ↗</a>
+                                    }
+                                    <button class="wa-hdr-menu-op" @onclick="@(() => { showMasMenu = false; AbrirCorregirNumero(); })">✏️ Corregir el número</button>
+                                </div>
+                            }
+                        </span>
                     </div>
                     <div class="wa-hdr-l2">
                         <span>@PrettyNumero(selectedNumero)</span>
                         <button class="wa-num-edit" @onclick="AbrirCorregirNumero" title="Corregir el número de este chat (si quedó mal cargado)">✏️</button>
+                        @* 2026-08-27: el nombre de la línea, en gris. Antes era un cartelito lila arriba. *@
+                        @if (SelectedConv()?.Linea is string _lh2)
+                        {
+                            <span class="wa-hdr-sep">·</span>
+                            <span class="wa-hdr-sub" title="Esta conversación es de tu línea @LineaNombre(_lh2, SelectedConv()?.LineaNumero)">@LineaNombre(_lh2, SelectedConv()?.LineaNumero)</span>
+                        }
 
-                        @* 2026-08-20: un mismo teléfono puede tener VARIAS razones sociales (hay clientas
-                           que manejan 3 empresas y facturan a las tres desde el mismo WhatsApp). Se ven
-                           todas y tildás con cuál estás trabajando ahora. El tilde es TUYO: otro operador
-                           puede tener tildada otra en la misma charla sin pisarte. Con una sola razón
-                           social, esto se ve exactamente igual que antes. *@
-                        @if (VariasRazones)
-                        {
-                            <span class="wa-razones" title="Este teléfono factura a varias razones sociales. Tocá la que estés usando ahora: la ficha 👁️, la venta y el comprobante salen a nombre de ésa.">
-                                <span class="wa-razones-t">🛍️ Facturo a:</span>
-                                @foreach (var rs in RazonesSociales)
-                                {
-                                    <button class="wa-razon @(EsRazonActiva(rs.Id) ? "on" : "")"
-                                            @onclick="() => ElegirRazon(rs.Id)"
-                                            disabled="@cambiandoRazon"
-                                            title="@(EsRazonActiva(rs.Id) ? $"Estás trabajando con {rs.Nombre}" : $"Pasar a {rs.Nombre}")">
-                                        <span class="wa-razon-tilde">@(EsRazonActiva(rs.Id) ? "✓" : "")</span>
-                                        <span class="wa-razon-nom">@rs.Nombre</span>
-                                    </button>
-                                }
-                                @if (SelectedConv()?.ClienteId is int cidv)
-                                {
-                                    <a href="/cafe/clientes?edit=@cidv" target="_blank" class="wa-razon-ficha" title="Abrir la ficha de la razón social tildada">↗</a>
-                                }
-                            </span>
-                        }
-                        else if (SelectedConv()?.ClienteId is int cid)
-                        {
-                            <a href="/cafe/clientes?edit=@cid" target="_blank" class="wa-cliente-badge" title="Ver ficha del cliente">
-                                🛍️ Cliente: @SelectedConv()?.ClienteNombre
-                            </a>
-                        }
                         @* 2026-08-24: DIRECCIÓN y DEUDA siempre a la vista. Antes había que abrir la ficha 👁️
                            para verlas, y son las dos cosas que más se preguntan en plena charla: a dónde se le
                            lleva y si debe plata. Salen de la misma ficha del cliente (mismo cálculo de saldo que
@@ -681,30 +695,35 @@
                         {
                             @if (DireccionCorta(fh) is string dirh)
                             {
+                                <span class="wa-hdr-sep">·</span>
                                 @if (!string.IsNullOrWhiteSpace(fh.MapeoLink))
                                 {
-                                    <a href="@fh.MapeoLink" target="_blank" class="wa-hdr-chip dir" title="Dirección de @fh.Nombre: @dirh (tocala para abrirla en el mapa)">📍 <span class="wa-hdr-txt">@dirh</span></a>
+                                    <a href="@fh.MapeoLink" target="_blank" class="wa-hdr-dir" title="Dirección de @fh.Nombre: @dirh (tocala para abrirla en el mapa)"><span class="wa-hdr-txt">@dirh</span></a>
                                 }
                                 else
                                 {
-                                    <span class="wa-hdr-chip dir" title="Dirección de @fh.Nombre: @dirh">📍 <span class="wa-hdr-txt">@dirh</span></span>
+                                    <span class="wa-hdr-sub" title="Dirección de @fh.Nombre: @dirh"><span class="wa-hdr-txt">@dirh</span></span>
                                 }
                             }
-                            <button class="wa-hdr-chip @SaldoClase(fh.Saldo)" @onclick="ToggleFichaCliente" title="@SaldoTitulo(fh)">
-                                @SaldoTexto(fh.Saldo)
+                            <span class="wa-hdr-sep">·</span>
+                            @* 2026-08-27: el saldo dejó de ser un cartelito. Rojo SOLO si debe: al día y a
+                               favor van en gris, porque no son una alarma y el verde sumaba ruido. *@
+                            <button class="wa-hdr-saldo @(fh.Saldo > 0.01m ? "debe" : "")" @onclick="ToggleFichaCliente" title="@SaldoTitulo(fh)">
+                                @SaldoTextoPlano(fh.Saldo)
                             </button>
                         }
                         @* 2026-08-27: LA NOTA, siempre a la vista (pedido de Osmar). Antes había que abrir
                            el panel de la derecha, escribirla y apretar Guardar. Ahora se escribe acá y se
                            guarda sola al salir del campo — solo pega al servidor si de verdad cambió. *@
-                        <span class="wa-hdr-espacio"></span>
+                        <span class="wa-hdr-sep">·</span>
                         <span class="wa-hdr-nota" title="Nota de esta conversación — se guarda sola al salir del campo">
-                            <span class="wa-hdr-nota-ico">📝</span>
-                            <input class="wa-hdr-nota-inp" placeholder="ej. falta coordinar entrega…" maxlength="300"
+                            <input class="wa-hdr-nota-inp @(string.IsNullOrWhiteSpace(asignarNota) ? "vacia" : "")"
+                                   placeholder="+ nota" maxlength="300"
                                    @bind="asignarNota" @bind:event="oninput" @onblur="GuardarNotaAlSalir" />
                             @if (guardandoNota) { <span class="wa-hdr-nota-est">⏳</span> }
                             else if (NotaSinGuardar) { <span class="wa-hdr-nota-est pend" title="Todavía sin guardar — salí del campo y se guarda">•</span> }
                         </span>
+                        <span class="wa-hdr-espacio"></span>
                     </div>
                 </div>
                 @* 2026-08-17: los botones (Vincular cliente, Editar contacto, Crear venta, ⚙, 🗑) y la
@@ -3819,7 +3838,35 @@
        ancho fijo del nombre y el separador elástico del medio. */
     .wa-hdr-l1 { display: flex; align-items: center; gap: 0.45rem; font-weight: 600; min-width: 0; }
     .wa-hdr-l1 > * { flex: 0 0 auto; }
-    .wa-hdr-nombre { flex: 0 0 260px; width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* 2026-08-27: el nombre ya no necesita ancho fijo. Los iconitos se fueron al ⋮, que está pegado
+       al borde derecho, así que caen siempre en el mismo lugar por su cuenta. */
+    .wa-hdr-nombre { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1rem; }
+    /* Texto de apoyo: razón social, categoría, línea, dirección. Gris, sin caja, sin borde. */
+    .wa-hdr-sub { font-size: 0.78rem; font-weight: 500; color: #64748b; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap; max-width: 260px; }
+    .wa-hdr-sep { color: #cbd5e1; font-weight: 400; }
+    /* 2026-08-27: la categoría ahora se lee al lado del nombre, así que el cartelito y la etiqueta
+       de abajo del avatar sobran — SOLO en el encabezado del chat. En la lista de la izquierda
+       quedan como estaban, que ahí sí sirven para diferenciar de un vistazo. */
+    .wa-thread-header .wa-avatar-rol,
+    .wa-thread-header .wa-avatar-rol-label { display: none; }
+    .wa-thread-header .wa-avatar-col { padding-bottom: 0; }
+    .wa-hdr-rol { background: transparent; border: none; padding: 0; font: inherit; font-size: 0.78rem;
+        font-weight: 500; color: #94a3b8; cursor: pointer; }
+    .wa-hdr-rol:hover { color: #25d366; text-decoration: underline; }
+    .wa-hdr-dir { font-size: 0.75rem; color: #64748b; text-decoration: underline; text-decoration-color: #cbd5e1;
+        text-underline-offset: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+    .wa-hdr-dir:hover { color: #1d4ed8; text-decoration-color: #1d4ed8; }
+    /* El saldo: texto pelado. Rojo SOLO si debe. */
+    .wa-hdr-saldo { background: transparent; border: none; padding: 0; font: inherit; font-size: 0.75rem;
+        color: #64748b; cursor: pointer; }
+    .wa-hdr-saldo.debe { color: #dc2626; font-weight: 700; }
+    .wa-hdr-saldo:hover { text-decoration: underline; }
+    /* Los ⋮ */
+    .wa-hdr-mas { background: transparent; border: 1px solid transparent; border-radius: 7px; cursor: pointer;
+        font-size: 1.1rem; line-height: 1; padding: 2px 7px; color: #64748b; }
+    .wa-hdr-mas:hover { background: #f1f5f9; border-color: #e2e8f0; }
+    .wa-hdr-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
     .wa-hdr-l2 { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: #6b7280; min-width: 0; overflow: hidden; }
     .wa-hdr-l2 > * { flex: 0 0 auto; white-space: nowrap; }
     .wa-hdr-l1 > .wa-hdr-espacio, .wa-hdr-l2 > .wa-hdr-espacio { flex: 1 1 auto; min-width: 0.5rem; }
@@ -3829,11 +3876,13 @@
     .wa-hdr-ico:hover { background: #f0fff6; border-color: #25d366; }
     /* Cartelitos de ESTADO y RESPONSABLE. El color viene del estado / del operador. */
     .wa-hdr-menu-wrap { position: relative; flex: 0 0 auto; }
-    .wa-hdr-pill { display: inline-flex; align-items: center; gap: 0.25rem; background: #fff; border: 1.5px solid #cbd5e1;
-        border-radius: 999px; padding: 0.16rem 0.6rem; font-size: 0.76rem; font-weight: 700; color: #475569;
+    /* 2026-08-27: estado y responsable dejaron de ser cartelitos de colores. Son texto con un puntito.
+       Pedido de Osmar: "tanto color marea". El único color que queda acá son 8 px del puntito. */
+    .wa-hdr-pill { display: inline-flex; align-items: center; gap: 0.35rem; background: transparent; border: none;
+        border-radius: 7px; padding: 0.2rem 0.45rem; font-size: 0.78rem; font-weight: 600; color: #334155;
         cursor: pointer; font-family: inherit; white-space: nowrap; }
-    .wa-hdr-pill:hover { filter: brightness(0.96); }
-    .wa-hdr-pill.vacia { border-style: dashed; font-weight: 600; color: #94a3b8; }
+    .wa-hdr-pill:hover { background: #f1f5f9; }
+    .wa-hdr-pill.vacia { color: #94a3b8; font-weight: 500; }
     .wa-hdr-pill-caret { font-size: 0.62rem; opacity: 0.75; }
     .wa-hdr-menu-back { position: fixed; inset: 0; z-index: 1200; }
     .wa-hdr-menu { position: absolute; top: calc(100% + 5px); right: 0; z-index: 1201; background: #fff;
@@ -3847,10 +3896,13 @@
     .wa-hdr-menu-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
     .wa-hdr-menu-tick { margin-left: auto; color: #22c55e; font-weight: 800; }
     /* La nota: parece texto suelto hasta que la tocás, para no ensuciar la barra. */
-    .wa-hdr-l2 > .wa-hdr-nota { display: inline-flex; align-items: center; gap: 0.25rem; flex: 0 1 250px; min-width: 120px; }
+    .wa-hdr-l2 > .wa-hdr-nota { display: inline-flex; align-items: center; gap: 0.2rem; flex: 0 1 230px; min-width: 90px; }
     .wa-hdr-nota-ico { font-size: 0.85rem; flex: 0 0 auto; }
-    .wa-hdr-nota-inp { flex: 1 1 auto; min-width: 0; border: 1px solid #e2e8f0; border-radius: 8px;
-        background: #f8fafc; padding: 0.16rem 0.45rem; font-size: 0.75rem; font-family: inherit; color: #334155; }
+    .wa-hdr-nota-inp { flex: 1 1 auto; min-width: 0; border: 1px solid transparent; border-radius: 7px;
+        background: transparent; padding: 0.1rem 0.35rem; font-size: 0.75rem; font-family: inherit;
+        color: #64748b; font-style: italic; }
+    /* Vacía se ve como un "+ nota" apagadito; con texto, se lee la nota. */
+    .wa-hdr-nota-inp.vacia { color: #94a3b8; }
     .wa-hdr-nota-inp::placeholder { color: #b6c0cd; }
     .wa-hdr-nota-inp:hover { border-color: #cbd5e1; background: #fff; }
     .wa-hdr-nota-inp:focus { outline: none; background: #fff; border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
@@ -5634,6 +5686,12 @@
     // El saldo se lee igual que en la ficha: positivo = te debe, negativo = tiene plata a favor.
     static string SaldoClase(decimal saldo) => saldo > 0.01m ? "debe" : (saldo < -0.01m ? "afavor" : "aldia");
 
+    // 2026-08-27: versión sin emoji para el encabezado limpio. El color (rojo si debe) ya avisa.
+    static string SaldoTextoPlano(decimal saldo)
+        => saldo > 0.01m ? $"Debe {Plata(saldo)}"
+         : saldo < -0.01m ? $"A favor {Plata(Math.Abs(saldo))}"
+         : "Al día";
+
     static string SaldoTexto(decimal saldo)
         => saldo > 0.01m ? $"💰 Debe {Plata(saldo)}"
          : saldo < -0.01m ? $"💵 A favor {Plata(Math.Abs(saldo))}"
@@ -7141,7 +7199,7 @@
         CerrarBuscador(); textoAbierto.Clear(); modoSeleccion = false;
         asignarNota = SelectedConv()?.AsignadoNota ?? "";   // 2026-08-06: precargar la nota guardada de este chat (editable)
         notaGuardada = asignarNota;                        // 2026-08-27: lo que vino del servidor ya está guardado
-        showEstadoMenu = false; showPasarMenu = false;     // 2026-08-27: si quedó una listita abierta, se cierra al cambiar de chat
+        showEstadoMenu = false; showPasarMenu = false; showMasMenu = false;   // 2026-08-27: si quedó una listita abierta, se cierra al cambiar de chat
         _ = CargarAvisoMeli();   // 2026-08-21: en paralelo, que el chat no espere por esto
         // 2026-08-24: la ficha del cliente se carga sola (en paralelo, sin abrir la ventanita) para
         // que la barra de arriba pueda mostrar la dirección y si debe plata. De paso, cuando tocás
@@ -8540,6 +8598,7 @@
     // (en vez de los desplegables altos que vivían en el panel de la derecha, que siguen funcionando).
     bool showEstadoMenu = false;
     bool showPasarMenu = false;
+    bool showMasMenu = false;   // 2026-08-27: los ⋮ del encabezado
     async Task ElegirEstadoHdr(string estado)
     {
         showEstadoMenu = false;
