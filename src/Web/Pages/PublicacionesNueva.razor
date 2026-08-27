@@ -53,7 +53,7 @@
        como tiene overflow:hidden por el borde redondeado, las filas de abajo se RECORTABAN
        (se veian 9 de 17 y no aparecian ni bajando). */
     .p2-tbl { background: #fff; border: 1px solid #e3e7e0; border-radius: .6rem; overflow: hidden; flex-shrink: 0; }
-    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 128px 148px 120px 140px 52px 70px;
+    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 128px 148px 120px 212px 52px 70px;
                      gap: .6rem; align-items: center; padding: .55rem .65rem; }
     .p2-th { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; font-size: .6rem; text-transform: uppercase;
              letter-spacing: .07em; color: #9ca3af; font-weight: 700; }
@@ -107,11 +107,26 @@
     .p2-com .bar i.mid { background: #f59e0b; }
     .p2-com .bar i.hi { background: #b91c1c; }
 
-    .p2-ctrl { display: flex; align-items: center; gap: .35rem; flex-wrap: nowrap; }
+    .p2-ctrl { display: flex; align-items: center; gap: .25rem; flex-wrap: nowrap; }
     .p2-obj { display: inline-flex; align-items: center; gap: .15rem; border: 1px solid #e3e7e0;
-              border-radius: .35rem; padding: .1rem .3rem; background: #fff; font-size: .7rem; font-weight: 700; }
+              border-radius: .35rem; padding: .1rem .3rem; background: #fff; font-size: .7rem; font-weight: 700;
+              /* sin esto el chip se parte en dos renglones y la fila crece: con 50 filas por
+                 página eso es media pantalla más de scroll (misma razón que la ⚖ al lado de la foto) */
+              white-space: nowrap; }
     .p2-obj .pc { font-size: .6rem; color: #9ca3af; font-weight: 400; }
-    .p2-sw { display: inline-flex; align-items: center; gap: .15rem; font-size: .6rem; }
+    /* 2026-08-27 · Candado por fila. Cerrado, los interruptores son sólo un cartel — como
+       siempre. Abierto, se pueden tocar, y se vuelve a cerrar solo a los pocos segundos:
+       pedido de Osmar, "obvio que no quiero que sea solo tocando". */
+    .p2-sw { display: inline-flex; align-items: center; gap: .15rem; font-size: .6rem;
+             border: 0; background: transparent; padding: 0; color: inherit; font-family: inherit; }
+    .p2-sw.tocable { cursor: pointer; border: 1px solid #cbd5e1; border-radius: .35rem;
+                     padding: .12rem .28rem; background: #fff; }
+    .p2-sw.tocable:hover { border-color: #15803d; background: #f0fdf4; }
+    .p2-sw[disabled] { cursor: default; }
+    .p2-candado { border: 1px solid #e3e7e0; background: #f8f9f7; border-radius: .35rem;
+                  padding: .12rem .26rem; font-size: .74rem; line-height: 1; cursor: pointer; }
+    .p2-candado:hover { border-color: #9ca3af; }
+    .p2-candado.abierto { background: #fef3c7; border-color: #f59e0b; }
     .p2-led { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #cbd5e1; background: #fff; }
     .p2-led.on { background: #15803d; border-color: #15803d; }
 
@@ -573,12 +588,25 @@
                                   title="@(MandaElPorcentaje(it) ? "El precio lo calcula el sistema a partir del objetivo." : "Manda el PRECIO: quedó fijo, el sistema no lo toca.")">
                                 @(MandaElPorcentaje(it) ? "" : "✓") 💲
                             </span>
-                            <span class="p2-sw" title="@(it.SyncPrecio ? "Precio sincronizado: el sistema lo mantiene" : "Precio a mano: el sistema no lo toca")">
+                            @* 2026-08-27 · el candado. Cerrado, los interruptores no se pueden tocar
+                               (que es como venía funcionando). Abierto, sí — y se cierra solo. *@
+                            <button class="p2-candado @(FilaAbierta(it) ? "abierto" : "")"
+                                    title="@(FilaAbierta(it) ? "Abierto: ya podés prender o apagar el sincro de esta fila. Se cierra solo en unos segundos." : "Tocá el candado para poder prender o apagar el sincro de esta fila sin tildarla")"
+                                    @onclick="() => ToggleCandado(it.MeliItemId)" @onclick:stopPropagation="true">
+                                @(FilaAbierta(it) ? "🔓" : "🔒")
+                            </button>
+                            <button class="p2-sw @(FilaAbierta(it) ? "tocable" : "")"
+                                    disabled="@(!FilaAbierta(it) || sincroEnCurso == it.MeliItemId)"
+                                    title="@(FilaAbierta(it) ? (it.SyncPrecio ? "Tocá para APAGAR el sincro de precio (queda a mano)" : "Tocá para PRENDER el sincro de precio (lo mantiene el sistema)") : (it.SyncPrecio ? "Precio sincronizado: el sistema lo mantiene" : "Precio a mano: el sistema no lo toca"))"
+                                    @onclick="() => CambiarSincroFila(it, !it.SyncPrecio, null)" @onclick:stopPropagation="true">
                                 💲<span class="p2-led @(it.SyncPrecio ? "on" : "")"></span>
-                            </span>
-                            <span class="p2-sw" title="@(it.SyncStock ? "Stock sincronizado: se pushea solo" : "Stock a mano")">
+                            </button>
+                            <button class="p2-sw @(FilaAbierta(it) ? "tocable" : "")"
+                                    disabled="@(!FilaAbierta(it) || sincroEnCurso == it.MeliItemId)"
+                                    title="@(FilaAbierta(it) ? (it.SyncStock ? "Tocá para APAGAR el sincro de stock" : "Tocá para PRENDER el sincro de stock") : (it.SyncStock ? "Stock sincronizado: se pushea solo" : "Stock a mano"))"
+                                    @onclick="() => CambiarSincroFila(it, null, !it.SyncStock)" @onclick:stopPropagation="true">
                                 📦<span class="p2-led @(it.SyncStock ? "on" : "")"></span>
-                            </span>
+                            </button>
                         </span>
 
                         <span class="p2-stk p2-h2 @(it.StockMeli == 0 ? "zero" : "")">
@@ -828,7 +856,7 @@
         @if (datos is not null && datos.Items.Count > 0)
         {
             <div class="p2-count">
-                <span>Tocá el ✎ del precio para escribirlo a mano · La ⚖ abre el peso y las medidas · La foto abre todas las fotos.</span>
+                <span>Tocá el ✎ del precio para escribirlo a mano · La ⚖ abre el peso y las medidas · La foto abre todas las fotos · El 🔒 de la fila prende y apaga el sincro sin tildarla (se cierra solo).</span>
                 <span>
                     <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
                     <span class="p2-pg">Página @pagina de @TotalPaginas</span>
@@ -1040,6 +1068,7 @@
 
     private async Task Cargar()
     {
+        CerrarCandado();   // que no quede una fila abierta de la lista anterior
         cargando = true;
         StateHasChanged();
         try
@@ -1623,6 +1652,90 @@
             : $" · stock <b>{it.Arma ?? 0}</b>";
 
         return new MarkupString("🧩 " + string.Join(" + ", partes) + cola);
+    }
+
+    // ─────────────── 2026-08-27 · CANDADO POR FILA ───────────────
+    // Osmar: prender y apagar el sincro sin tener que tildar y bajar a la barra de acciones,
+    // pero "obvio que no quiero que sea solo tocando" — un toque de más sobre 5.925 filas es
+    // justo la clase de accidente que hace que después los precios "cambien solos".
+    // Entonces: candado cerrado por default, se abre a propósito, y se cierra solo.
+
+    /// <summary>Cuánto queda abierto sin que lo toquen. Cada vez que se usa, el reloj vuelve a cero.</summary>
+    private const int SEGUNDOS_CANDADO = 12;
+
+    private string? filaDesbloqueada;
+    private string? sincroEnCurso;
+    private CancellationTokenSource? candadoReloj;
+
+    private bool FilaAbierta(ApiClient.PubV2Fila it) => filaDesbloqueada == it.MeliItemId;
+
+    private void ToggleCandado(string mla)
+    {
+        if (filaDesbloqueada == mla) { CerrarCandado(); return; }
+        filaDesbloqueada = mla;      // una sola fila abierta por vez
+        ArrancarRelojCandado();
+    }
+
+    private void CerrarCandado()
+    {
+        candadoReloj?.Cancel();
+        candadoReloj = null;
+        filaDesbloqueada = null;
+    }
+
+    private void ArrancarRelojCandado()
+    {
+        candadoReloj?.Cancel();
+        var cts = new CancellationTokenSource();
+        candadoReloj = cts;
+        _ = CerrarSoloAsync(cts);
+    }
+
+    private async Task CerrarSoloAsync(CancellationTokenSource cts)
+    {
+        try { await Task.Delay(TimeSpan.FromSeconds(SEGUNDOS_CANDADO), cts.Token); }
+        catch (OperationCanceledException) { return; }   // lo volvieron a tocar: manda el reloj nuevo
+        if (cts.IsCancellationRequested || !ReferenceEquals(candadoReloj, cts)) return;
+        filaDesbloqueada = null;
+        candadoReloj = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Prende o apaga el sincro de UNA fila. Reusa el mismo endpoint que la barra de
+    /// acciones: no hay una segunda forma de hacer lo mismo que después se desincronice.</summary>
+    private async Task CambiarSincroFila(ApiClient.PubV2Fila it, bool? precio, bool? stock)
+    {
+        if (!FilaAbierta(it) || sincroEnCurso is not null) return;
+
+        sincroEnCurso = it.MeliItemId;
+        ArrancarRelojCandado();   // usarlo lo mantiene abierto, para poder tocar los dos seguidos
+        StateHasChanged();
+        try
+        {
+            var res = await Api.AccionSincroAsync(new List<string> { it.MeliItemId }, precio, stock);
+            if (res is null || res.Ok == 0)
+            {
+                ToastService.Error("No se pudo cambiar el sincro de esta publicación.");
+                return;
+            }
+
+            // Se actualiza la fila en el lugar en vez de recargar la lista entera: recargar hace
+            // saltar el scroll y con 50 filas por página se pierde de vista lo que se estaba mirando.
+            var idx = datos?.Items.FindIndex(x => x.MeliItemId == it.MeliItemId) ?? -1;
+            if (idx >= 0 && datos is not null)
+                datos.Items[idx] = datos.Items[idx] with
+                {
+                    SyncPrecio = precio ?? datos.Items[idx].SyncPrecio,
+                    SyncStock = stock ?? datos.Items[idx].SyncStock
+                };
+
+            var que = precio.HasValue
+                ? (precio.Value ? "Precio sincronizado: el sistema lo mantiene." : "Precio a mano: el sistema no lo toca más.")
+                : (stock!.Value ? "Stock sincronizado: se pushea solo." : "Stock a mano.");
+            ToastService.Success(que);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cambiar el sincro: " + ex.Message); }
+        finally { sincroEnCurso = null; }
     }
 
     // ─────────────── 2026-08-27 · EXCEL EDITABLE ───────────────
