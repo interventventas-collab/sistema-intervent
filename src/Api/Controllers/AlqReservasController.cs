@@ -780,7 +780,20 @@ public class AlqReservasController : ControllerBase
         {
             if (r.NcEstado != "autorizado" || string.IsNullOrEmpty(r.NcCae))
                 return BadRequest(new { error = $"Esta reserva ya está facturada (CAE {r.ArcaCae}). Para corregir, se emite una Nota de Crédito." });
-            // Limpiar los campos del comprobante vigente: la NC anulada ya quedo en Alq_ReservaComprobantes.
+            // 2026-08-27: ANTES de pisar nada, asegurar que la factura vieja y su NC queden en el
+            // historial. Las emitidas antes de que existiera Alq_ReservaComprobantes no estan ahi, y
+            // si se pisan desaparecen del sistema aunque en ARCA sigan existiendo (y el Libro IVA
+            // quedaria con la NC restando sin su factura). Paso obligatorio, no cosmetico.
+            await ArchivarSiFaltaAsync(r, "factura", r.TipoComprobante, r.ArcaCbteTipoNum, r.ArcaPtoVta,
+                r.ArcaCbteNro, r.ArcaCae, r.ArcaCaeVto, r.ArcaFecha, r.ArcaImpNeto, r.ArcaImpIVA,
+                r.ArcaImpTotal, r.ArcaWebserviceAccountId, null);
+            var tipoNcViejo = (r.NcCbteTipoNum ?? 0) switch { 3 => "NCA", 8 => "NCB", 13 => "NCC", _ => "NC" };
+            await ArchivarSiFaltaAsync(r, "nota_credito", tipoNcViejo, r.NcCbteTipoNum, r.NcPtoVta,
+                r.NcCbteNro, r.NcCae, r.NcCaeVto, r.NcFecha, r.NcImpNeto, r.NcImpIVA,
+                r.NcImpTotal, r.ArcaWebserviceAccountId, r.NcMotivo);
+            await _db.SaveChangesAsync();
+
+            // Recien ahora limpiar los campos del comprobante vigente.
             r.ArcaEstado = "no_aplica"; r.ArcaCae = null; r.ArcaCaeVto = null; r.ArcaFecha = null;
             r.ArcaPtoVta = null; r.ArcaCbteNro = null; r.ArcaCbteTipoNum = null;
             r.ArcaImpNeto = null; r.ArcaImpIVA = null; r.ArcaImpTotal = null; r.ArcaError = null;
@@ -966,6 +979,26 @@ public class AlqReservasController : ControllerBase
             Operador = Request.Headers["X-Operator-Name"].ToString() is { Length: > 0 } op ? op : null,
             CreatedAt = DateTime.UtcNow,
         });
+    }
+
+    /// <summary>2026-08-27: archiva un comprobante SOLO si todavia no esta en el historial (mismo punto
+    /// de venta + tipo + numero). Sirve para rescatar los emitidos antes de que existiera la tabla, antes
+    /// de que sus datos se pisen al re-facturar.</summary>
+    private async Task ArchivarSiFaltaAsync(AlqReserva r, string clase, string tipo, int? cbteTipoNum,
+        int? ptoVta, int? cbteNro, string? cae, DateTime? caeVto, DateTime? fecha,
+        decimal? neto, decimal? iva, decimal? total, int? cuentaId, string? motivo)
+    {
+        if (string.IsNullOrEmpty(cae) || cbteNro is not > 0) return;
+        var yaEsta = await _db.AlqReservaComprobantes.AnyAsync(c =>
+            c.ReservaId == r.Id && c.PtoVta == (ptoVta ?? 0) &&
+            c.CbteTipoNum == (cbteTipoNum ?? 0) && c.CbteNro == cbteNro.Value);
+        if (yaEsta) return;
+
+        var cuit = cuentaId is > 0
+            ? (await _db.ArcaWebserviceAccounts.Where(x => x.Id == cuentaId!.Value).Select(x => x.Cuit).FirstOrDefaultAsync())
+            : null;
+        ArchivarComprobante(r, clase, tipo, cbteTipoNum ?? 0, ptoVta ?? 0, cbteNro.Value,
+            cae, caeVto, fecha, neto, iva, total, cuentaId, cuit, motivo);
     }
 
     /// <summary>Renglones AFIP de la reserva prorrateados para sumar exactamente <paramref name="neto"/>.
