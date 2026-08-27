@@ -484,9 +484,14 @@
                                     @foreach (var p in ComprobantesACobrar)
                                     {
                                         <tr>
-                                            <td><input type="checkbox" @bind="imputaciones[p.VentaId].Seleccionado" @bind:after="RecalcularTotal" /></td>
+                                            <td><input type="checkbox" @bind="imputaciones[p.Clave].Seleccionado" @bind:after="RecalcularTotal" /></td>
                                             <td>
                                                 <b>@p.Numero</b>
+                                                @* 2026-08-27: los alquileres se cobran en el mismo recibo que las ventas; se marcan para que el operador sepa que esta cobrando. *@
+                                                @if (p.EsAlquiler)
+                                                {
+                                                    <span style="font-size:0.68rem; color:#6b7280; font-weight:600; margin-left:0.3rem;" title="Reserva de alquiler facturada">· alquiler</span>
+                                                }
                                                 @* 2026-06-16: si la venta tiene CAE de ARCA, mostramos el numero oficial abajo. *@
                                                 @if (p.ArcaCbteNro.HasValue)
                                                 {
@@ -506,7 +511,7 @@
                                                    el navegador descarta ese valor y el casillero se veia VACIO. Ahora es texto
                                                    formateado con punto de miles, igual que el saldo de la columna de al lado. *@
                                                 <input class="form-input" type="text" inputmode="decimal" style="text-align:right; width:120px; display:inline-block;"
-                                                       @bind="imputaciones[p.VentaId].ImporteTexto" @bind:event="onchange" @bind:after="@(() => OnImputeAfter(p.VentaId))" />
+                                                       @bind="imputaciones[p.Clave].ImporteTexto" @bind:event="onchange" @bind:after="@(() => OnImputeAfter(p.Clave))" />
                                             </td>
                                         </tr>
                                     }
@@ -1537,7 +1542,7 @@
 
     /// <summary>True si el saldo a favor ya se esta descontando de esta cobranza.</summary>
     private bool UsandoSaldoAFavor => ComprobantesAFavor.Count > 0
-        && ComprobantesAFavor.All(p => imputaciones.TryGetValue(p.VentaId, out var i) && i.Seleccionado);
+        && ComprobantesAFavor.All(p => imputaciones.TryGetValue(p.Clave, out var i) && i.Seleccionado);
 
     /// <summary>Tilda/destilda de una todos los comprobantes a favor. Por dentro es exactamente
     /// lo mismo que tildarlos en la lista (van con importe negativo), pero el operador no ve
@@ -1546,7 +1551,7 @@
     {
         foreach (var p in ComprobantesAFavor)
         {
-            if (!imputaciones.TryGetValue(p.VentaId, out var i)) continue;
+            if (!imputaciones.TryGetValue(p.Clave, out var i)) continue;
             i.Seleccionado = usar;
             i.Importe = p.Saldo; // negativo: descuenta
         }
@@ -1764,7 +1769,7 @@
         pendientes = await Api.GetComprobantesPendientesAsync(selClienteId, incluirSucursales) ?? new();
         imputaciones = new();
         foreach (var p in pendientes)
-            imputaciones[p.VentaId] = new ImputData { Seleccionado = false, Importe = p.Saldo };
+            imputaciones[p.Clave] = new ImputData { Seleccionado = false, Importe = p.Saldo };
     }
 
     private async Task OnToggleIncluirSucursales(bool val)
@@ -1813,7 +1818,7 @@
 
         // Arrancar de cero en las facturas. La plata a favor (cuadro verde) NO se toca.
         foreach (var p in lista)
-            if (imputaciones.TryGetValue(p.VentaId, out var limpio)) { limpio.Seleccionado = false; limpio.Importe = 0m; }
+            if (imputaciones.TryGetValue(p.Clave, out var limpio)) { limpio.Seleccionado = false; limpio.Importe = 0m; }
 
         var restante = monto;
         var cuantas = 0;
@@ -1822,7 +1827,7 @@
         foreach (var p in lista)
         {
             if (restante <= 0.005m) break;
-            if (!imputaciones.TryGetValue(p.VentaId, out var imp)) continue;
+            if (!imputaciones.TryGetValue(p.Clave, out var imp)) continue;
             var aplica = Math.Min(restante, p.Saldo);
             imp.Importe = aplica;
             imp.Seleccionado = true;
@@ -1852,7 +1857,7 @@
         if (pendientes is null) return;
         foreach (var p in pendientes)
         {
-            if (imputaciones.TryGetValue(p.VentaId, out var imp))
+            if (imputaciones.TryGetValue(p.Clave, out var imp))
             {
                 imp.Seleccionado = true;
                 imp.Importe = p.Saldo;
@@ -1981,7 +1986,10 @@
             // 2026-06-16: Math.Abs en vez de > 0 porque las Notas de Credito van con importe NEGATIVO.
             // Antes filtraba los negativos y el server recibia solo la FA, perdiendo la NC y rompiendo la compensacion.
             if (kv.Value.Seleccionado && Math.Abs(kv.Value.Importe) > 0.01m)
-                comps.Add(new ApiClient.CrearComprobanteItemRequest(kv.Key, kv.Value.Importe));
+                // 2026-08-27: clave negativa = RESERVA DE ALQUILER (ver ComprobantePendienteDto.Clave).
+                comps.Add(kv.Key < 0
+                    ? new ApiClient.CrearComprobanteItemRequest(null, kv.Value.Importe, -kv.Key)
+                    : new ApiClient.CrearComprobanteItemRequest(kv.Key, kv.Value.Importe));
         if (aCuentaActivo && Math.Abs(aCuentaImporte) > 0.01m)
             comps.Add(new ApiClient.CrearComprobanteItemRequest(null, aCuentaImporte));
 

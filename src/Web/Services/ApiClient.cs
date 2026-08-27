@@ -5912,7 +5912,7 @@ public class ApiClient
     public async Task<CobranzaDetalleDto?> GetCafeCobranzaAsync(int id)
         => await GetAsync<CobranzaDetalleDto>($"/api/cafe/cobranzas/{id}");
 
-    public record CrearComprobanteItemRequest(int? VentaId, decimal Importe);
+    public record CrearComprobanteItemRequest(int? VentaId, decimal Importe, int? ReservaId = null);
     public record CrearChequeItemRequest(string Numero, string Banco, string? Emisor, decimal Importe, DateTime? FechaCobro, DateTime? FechaVencimiento, string? Observaciones);
     public record CrearMedioItemRequest(int CajaId, decimal Importe, string? Referencia, CrearChequeItemRequest? Cheque);
     public record CrearCobranzaResultDto(int Id, string Numero);

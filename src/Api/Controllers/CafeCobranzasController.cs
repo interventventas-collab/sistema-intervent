@@ -73,7 +73,10 @@ public class CafeCobranzasController : ControllerBase
         // 2026-06-16: tipo del comprobante (FA/FB/FC/NCA/NCB/NCC/X) — para el front render NCs en otro color y signo.
         string? TipoComprobante = null,
         // 2026-06-16: numero oficial ARCA (PtoVta + CbteNro). Si esta seteado, el front lo muestra abajo del numero interno.
-        int? ArcaPtoVta = null, int? ArcaCbteNro = null);
+        int? ArcaPtoVta = null, int? ArcaCbteNro = null,
+        // 2026-08-27: si viene seteado, la linea NO es una venta sino una RESERVA DE ALQUILER
+        // facturada (VentaId va en 0). El front la muestra con su etiqueta y la manda igual al cobrar.
+        int? ReservaId = null);
 
     public record SucursalMismoCuitDto(int Id, string Nombre, string? Cuit);
 
@@ -115,7 +118,7 @@ public class CafeCobranzasController : ControllerBase
         decimal Total, decimal Retenciones, string Estado, string? Operador, string? Observaciones,
         List<CobranzaComprobanteDto> Comprobantes, List<CobranzaMedioDto> Medios);
 
-    public record CobranzaComprobanteDto(int Id, int? VentaId, string? VentaNumero, decimal Importe);
+    public record CobranzaComprobanteDto(int Id, int? VentaId, string? VentaNumero, decimal Importe, int? ReservaId = null);
     public record CobranzaMedioDto(int Id, int CajaId, string CajaNombre, decimal Importe, string? Referencia, int? ChequeId);
 
     public record CrearCobranzaRequest(
@@ -129,7 +132,7 @@ public class CafeCobranzasController : ControllerBase
         List<CrearComprobanteItem> Comprobantes,
         List<CrearMedioItem> Medios);
 
-    public record CrearComprobanteItem(int? VentaId, decimal Importe);
+    public record CrearComprobanteItem(int? VentaId, decimal Importe, int? ReservaId = null);
 
     public record CrearMedioItem(
         int CajaId, decimal Importe, string? Referencia,
@@ -158,6 +161,44 @@ public class CafeCobranzasController : ControllerBase
     /// Si incluirMismoCuit=true, ademas trae los comprobantes de OTROS clientes que comparten
     /// el mismo CUIT (caso tipico: cliente con varias sucursales que paga global).
     /// </summary>
+    /// <summary>
+    /// 2026-08-27 — RESERVAS DE ALQUILER que se pueden cobrar. Hasta hoy los alquileres se cobraban
+    /// aparte (solo el repartidor con el QR) y no figuraban en la cuenta corriente del cliente; ahora
+    /// entran al mismo recibo que las ventas.
+    /// Cobrable = tiene factura con CAE (Osmar 27/08: entra a la cuenta corriente cuando se factura,
+    /// no antes) y esa factura no fue anulada con nota de credito.
+    /// </summary>
+    private async Task<List<ReservaCobrableRow>> ReservasCobrablesAsync(List<int> clienteIds) =>
+        await _db.AlqReservas
+            .Where(r => clienteIds.Contains(r.ClienteId) && r.ArcaEstado == "autorizado" && r.ArcaCae != null
+                     && r.NcEstado != "autorizado" && r.Estado != "cancelado")
+            .Select(r => new ReservaCobrableRow(r.Id, r.Numero, r.FechaEntrega, r.ArcaImpTotal, r.MontoTotal,
+                                                r.Sena, r.MontoCobrado, r.ClienteId, r.TipoComprobante,
+                                                r.ArcaPtoVta, r.ArcaCbteNro))
+            .ToListAsync();
+
+    public record ReservaCobrableRow(int Id, string Numero, DateTime Fecha, decimal? ArcaImpTotal,
+        decimal MontoTotal, decimal Sena, decimal MontoCobrado, int ClienteId, string? TipoComprobante,
+        int? ArcaPtoVta, int? ArcaCbteNro);
+
+    /// <summary>Pasa las reservas cobrables al mismo formato que los comprobantes de venta.
+    /// Pagado = seña + lo ya cobrado: ahi entra tanto lo del repartidor como lo imputado desde
+    /// Tesoreria (al cobrar sumamos a MontoCobrado), asi que NO se descuenta dos veces.</summary>
+    private static List<ComprobantePendienteDto> LineasDeAlquiler(List<ReservaCobrableRow> reservas,
+        bool incluirMismoCuit, Dictionary<int, string> clienteNombres) =>
+        reservas
+            .Select(r =>
+            {
+                var monto = (r.ArcaImpTotal.HasValue && r.ArcaImpTotal.Value > 0m) ? r.ArcaImpTotal.Value : r.MontoTotal;
+                var pagado = r.Sena + r.MontoCobrado;
+                var clienteNom = incluirMismoCuit && clienteNombres.TryGetValue(r.ClienteId, out var nm) ? nm : null;
+                return new ComprobantePendienteDto(
+                    0, r.Numero, r.Fecha, monto, pagado, monto - pagado,
+                    r.ClienteId, clienteNom, r.TipoComprobante, r.ArcaPtoVta, r.ArcaCbteNro, r.Id);
+            })
+            .Where(x => Math.Abs(x.Saldo) > 0.01m)
+            .ToList();
+
     [HttpGet("comprobantes-pendientes/{clienteId:int}")]
     public async Task<IActionResult> ComprobantesPendientes(int clienteId, [FromQuery] bool incluirMismoCuit = false)
     {
@@ -193,7 +234,9 @@ public class CafeCobranzasController : ControllerBase
             .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro })
             .ToListAsync();
 
-        if (ventas.Count == 0) return Ok(new List<ComprobantePendienteDto>());
+        // 2026-08-27: aunque no tenga ventas, el cliente puede tener alquileres facturados.
+        if (ventas.Count == 0)
+            return Ok(LineasDeAlquiler(await ReservasCobrablesAsync(clienteIds), incluirMismoCuit, clienteNombres));
 
         var ventaIds = ventas.Select(v => v.Id).ToList();
         // IMPORTANTE: solo contamos comprobantes de cobranzas VIGENTES. Si la cobranza
@@ -225,8 +268,10 @@ public class CafeCobranzasController : ControllerBase
             })
             // 2026-06-16: |Saldo| > 0.01 — antes filtraba solo positivos y se perdian las NC con saldo negativo (a compensar).
             .Where(x => Math.Abs(x.Saldo) > 0.01m)
-            .OrderBy(x => x.Fecha)
             .ToList();
+
+        result.AddRange(LineasDeAlquiler(await ReservasCobrablesAsync(clienteIds), incluirMismoCuit, clienteNombres));
+        result = result.OrderBy(x => x.Fecha).ToList();
 
         return Ok(result);
     }
@@ -420,6 +465,7 @@ public class CafeCobranzasController : ControllerBase
         var c = await _db.CafeCobranzas
             .Include(x => x.Cliente)
             .Include(x => x.Comprobantes).ThenInclude(cc => cc.Venta)
+            .Include(x => x.Comprobantes).ThenInclude(cc => cc.Reserva) // 2026-08-27: alquileres cobrados
             .Include(x => x.Medios).ThenInclude(m => m.Caja)
             .FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return NotFound();
@@ -429,7 +475,7 @@ public class CafeCobranzasController : ControllerBase
             c.Cliente?.Nombre ?? "—",
             c.Total, c.Retenciones, c.Estado, c.Operador, c.Observaciones,
             c.Comprobantes.Select(x => new CobranzaComprobanteDto(
-                x.Id, x.VentaId, x.Venta?.Numero, x.Importe)).ToList(),
+                x.Id, x.VentaId, x.Venta?.Numero ?? x.Reserva?.Numero, x.Importe, x.ReservaId)).ToList(),
             c.Medios.Select(x => new CobranzaMedioDto(
                 x.Id, x.CajaId, x.Caja?.Nombre ?? "—", x.Importe, x.Referencia, x.ChequeId)).ToList());
         return Ok(dto);
@@ -516,8 +562,23 @@ public class CafeCobranzasController : ControllerBase
             {
                 CobranzaId = cobranza.Id,
                 VentaId = comp.VentaId,  // null = a cuenta
+                ReservaId = comp.ReservaId, // 2026-08-27: o una reserva de alquiler facturada
                 Importe = comp.Importe
             });
+
+            // 2026-08-27: si la imputacion es a un ALQUILER, le sumamos lo cobrado a la reserva.
+            // Asi el saldo que se ve en la pantalla de Reservas queda al dia solo, igual que
+            // cuando cobra el repartidor con el QR. Al anular la cobranza se resta (ver Anular).
+            if (comp.ReservaId is > 0)
+            {
+                var reserva = await _db.AlqReservas.FindAsync(comp.ReservaId!.Value);
+                if (reserva is null)
+                    return BadRequest(new { error = $"La reserva {comp.ReservaId} no existe" });
+                if (reserva.ArcaEstado != "autorizado" || string.IsNullOrEmpty(reserva.ArcaCae))
+                    return BadRequest(new { error = $"La reserva {reserva.Numero} todavía no está facturada — no se puede cobrar desde acá." });
+                reserva.MontoCobrado += comp.Importe;
+                reserva.UpdatedAt = DateTime.UtcNow;
+            }
         }
 
         // 2026-08-18: puede venir null/vacio (cobranza de solo retencion o compensacion FA+NC).
@@ -692,6 +753,17 @@ public class CafeCobranzasController : ControllerBase
         if (c.Estado == "ANULADA") return BadRequest(new { error = "Ya esta anulada" });
         c.Estado = "ANULADA";
         c.UpdatedAt = DateTime.UtcNow;
+
+        // 2026-08-27: devolver el saldo de las RESERVAS DE ALQUILER que pagaba este recibo.
+        // Las ventas no necesitan esto (su saldo se calcula sumando las imputaciones vigentes),
+        // pero la reserva guarda el acumulado en MontoCobrado, asi que hay que restarlo a mano.
+        foreach (var comp in c.Comprobantes.Where(x => x.ReservaId is > 0))
+        {
+            var reserva = await _db.AlqReservas.FindAsync(comp.ReservaId!.Value);
+            if (reserva is null) continue;
+            reserva.MontoCobrado = Math.Max(0m, reserva.MontoCobrado - comp.Importe);
+            reserva.UpdatedAt = DateTime.UtcNow;
+        }
         // 2026-08-24: soltar los movimientos del banco que se habian usado como forma de cobro.
         // Si no, la transferencia queda con el sello de "ya la use" apuntando a un recibo que ya no
         // existe: deja de ofrecerse como forma de cobro, la precarga desde el extracto no encuentra
@@ -751,7 +823,13 @@ public class CafeCobranzasController : ControllerBase
         if (retencionesNuevas < 0)
             return BadRequest(new { error = "Las retenciones no pueden ser negativas" });
 
-        var sumNuevo = req.Comprobantes.Sum(x => x.Importe);
+        // 2026-08-27: las imputaciones a RESERVAS DE ALQUILER no se editan desde esta pantalla
+        // (se maneja el saldo con MontoCobrado). Se conservan tal cual y su importe cuenta para
+        // que el total siga cuadrando; si se borraran, la reserva quedaria cobrada de mas.
+        var impAlquiler = c.Comprobantes.Where(cc => cc.ReservaId is > 0).ToList();
+        var montoAlquiler = impAlquiler.Sum(cc => cc.Importe);
+
+        var sumNuevo = req.Comprobantes.Sum(x => x.Importe) + montoAlquiler;
         var esperado = c.Total + retencionesNuevas;
         if (Math.Abs(sumNuevo - esperado) > 0.01m)
             return BadRequest(new { error = $"No cuadra: imputado ${sumNuevo:N2} vs total+retenciones ${esperado:N2}" });
@@ -782,7 +860,8 @@ public class CafeCobranzasController : ControllerBase
         var ventaIdsViejas = c.Comprobantes.Where(cc => cc.VentaId.HasValue).Select(cc => cc.VentaId!.Value).Distinct().ToList();
         var todasLasVentas = ventaIdsViejas.Concat(ventaIdsNuevas).Distinct().ToList();
 
-        _db.CafeCobranzasComprobantes.RemoveRange(c.Comprobantes);
+        // Se borran solo las de ventas: las de alquiler quedan intactas (ver arriba).
+        _db.CafeCobranzasComprobantes.RemoveRange(c.Comprobantes.Where(cc => cc.ReservaId is null or 0));
         foreach (var comp in req.Comprobantes)
         {
             _db.CafeCobranzasComprobantes.Add(new CafeCobranzaComprobante

@@ -62,6 +62,13 @@ public class CafeCobranzaComprobante
     [ForeignKey(nameof(VentaId))]
     public CafeVenta? Venta { get; set; }
 
+    /// <summary>2026-08-27: si la cobranza paga una RESERVA DE ALQUILER en vez de una venta.
+    /// Excluyente con VentaId: una imputacion es de una venta o de una reserva, nunca de las dos.
+    /// Las reservas se vuelven cobrables cuando se les emite la factura (decision de Osmar 27/08).</summary>
+    public int? ReservaId { get; set; }
+
+    public AlqReserva? Reserva { get; set; }
+
     [Column(TypeName = "decimal(18,2)")]
     public decimal Importe { get; set; }
 }

@@ -180,6 +180,16 @@ public class ComprobantePendienteDto
     /// <summary>2026-06-16: numero oficial ARCA (PtoVta + CbteNro). Si set, mostramos abajo del numero interno.</summary>
     public int? ArcaPtoVta { get; set; }
     public int? ArcaCbteNro { get; set; }
+
+    /// <summary>2026-08-27: si viene seteado, la linea es una RESERVA DE ALQUILER facturada
+    /// (VentaId viene en 0), no una venta.</summary>
+    public int? ReservaId { get; set; }
+
+    public bool EsAlquiler => ReservaId is > 0;
+
+    /// <summary>Clave unica para el diccionario de imputaciones de la pantalla: la venta va con su
+    /// Id y el alquiler con el Id de la reserva EN NEGATIVO, asi nunca se pisan entre si.</summary>
+    public int Clave => EsAlquiler ? -ReservaId!.Value : VentaId;
 }
 
 public class SucursalMismoCuitDto

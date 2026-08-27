@@ -7155,3 +7155,15 @@ BEGIN
     CREATE INDEX IX_AlqReservaComprobantes_Reserva ON Alq_ReservaComprobantes (ReservaId, Id);
 END
 GO
+
+-- ============================================================================
+-- 2026-08-27: cobrar RESERVAS DE ALQUILER desde Tesoreria (mismo circuito que las ventas).
+-- Una imputacion de cobranza ahora puede apuntar a una venta O a una reserva facturada.
+-- ============================================================================
+IF COL_LENGTH('Cafe_CobranzasComprobantes','ReservaId') IS NULL
+    ALTER TABLE Cafe_CobranzasComprobantes ADD ReservaId INT NULL;
+GO
+IF COL_LENGTH('Cafe_CobranzasComprobantes','ReservaId') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CafeCobranzasComprobantes_Reserva')
+    CREATE INDEX IX_CafeCobranzasComprobantes_Reserva ON Cafe_CobranzasComprobantes (ReservaId);
+GO

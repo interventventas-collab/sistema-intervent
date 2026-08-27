@@ -141,6 +141,9 @@
                             <th>Hora</th>
                             <th style="text-align: right;">Total</th>
                             <th style="text-align: right;">Seña</th>
+                            @* 2026-08-27: lo cobrado estaba escondido dentro de la cuenta del saldo (se veia
+                               solo en el comprobante impreso): "Seña $0 · Saldo $144.000" no cerraba a la vista. *@
+                            <th style="text-align: right;">Cobrado</th>
                             <th style="text-align: right;">Saldo</th>
                             <th>Estado</th>
                             <th style="width: 130px;">Acciones</th>
@@ -208,6 +211,7 @@
                                 <td style="font-size: 0.85rem; color: #6b7280;">@FormatHorario(r)</td>
                                 <td style="text-align: right; font-weight: 700;">$@FormatMoney(r.MontoTotal)</td>
                                 <td style="text-align: right; color: #059669;">$@FormatMoney(r.Sena)</td>
+                                <td style="text-align: right; color: @(r.MontoCobrado > 0 ? "#059669" : "#9ca3af");">$@FormatMoney(r.MontoCobrado)</td>
                                 <td style="text-align: right; color: @(saldo > 0 ? "#dc2626" : "#059669"); font-weight: 600;">$@FormatMoney(saldo)</td>
                                 <td>@EstadoBadge(r.Estado)</td>
                                 <td class="actions-cell" @onclick:stopPropagation="true">
