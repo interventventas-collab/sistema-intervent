@@ -7345,7 +7345,11 @@
         var v = reenvioVenta;
         if (v is null) return "Hola! Te paso el comprobante.";
         var hola = string.IsNullOrWhiteSpace(v.ClienteNombre) ? "Hola!" : $"Hola {v.ClienteNombre}!";
-        return $"{hola} Te paso el comprobante {v.Numero}. Total: ${FormatMoney(v.Total)}. Cualquier cosa avisame. Gracias!";
+        // 2026-08-27: el total que ve el cliente es el CON IVA (ArcaImpTotal) cuando la factura
+        // tiene CAE. Antes salia v.Total (el neto) y el importe del cartel no coincidia con el
+        // del comprobante ni con el que manda el servidor (EnvioComprobanteService.MontoCliente).
+        var totalCliente = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+        return $"{hola} Te paso el comprobante {v.Numero}. Total: ${FormatMoney(totalCliente)}. Cualquier cosa avisame. Gracias!";
     }
 
     private void CloseReenvio()
