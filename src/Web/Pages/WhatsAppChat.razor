@@ -241,7 +241,7 @@
             {
                 @foreach (var c in conversacionesFiltradas)
                 {
-                    <div class="wa-conv-item @(selectedNumero == c.Numero && selectedLinea == c.Linea ? "active" : "") @(EsPasadaAMi(c) ? "wa-conv-pasada" : "") @(c.Fijado ? "wa-conv-fijado" : "")" @onclick="() => SelectConv(c.Numero, c.Linea)">
+                    <div class="wa-conv-item @(selectedNumero == c.Numero && selectedLinea == c.Linea ? "active" : "") @(EsPasadaAMi(c) ? "wa-conv-pasada" : "") @(c.Fijado ? "wa-conv-fijado" : "") @(c.UltimoDireccion == "INCOMING" ? "sin-responder" : "")" @onclick="() => SelectConv(c.Numero, c.Linea)">
                         @* 2026-08-06: PRESENCIA — avatarcito(s) del otro agente que tiene abierta esta fila. *@
                         @if (OtrosViewers(ConvIdDe(c.Numero, c.Linea)) is { Count: > 0 } _cvOtros)
                         {
@@ -252,27 +252,21 @@
                                 }
                             </div>
                         }
+                        @* 2026-08-27: el redondel del avatar era de un color distinto por cada nombre, al azar.
+                           Veinte filas = veinte colores que no querían decir nada. Ahora es gris con la inicial,
+                           y la CATEGORÍA (que sí significa algo) baja al renglón de abajo como etiqueta. *@
                         <div class="wa-avatar-col">
                             <div class="wa-avatar-circle">
-                                <div class="wa-avatar" style="@(AvatarColor(c))">@AvatarLetra(c)</div>
-                                @if (!string.IsNullOrEmpty(c.Rol))
-                                {
-                                    <span class="wa-avatar-rol">@(RolEmoji(c.Rol) is string _re && _re != "" ? _re : "🏷️")</span>
-                                }
+                                <div class="wa-avatar">@AvatarLetra(c)</div>
                             </div>
                             @if (!string.IsNullOrEmpty(c.Rol))
                             {
-                                <span class="wa-avatar-rol-label">@RolLabel(c.Rol)</span>
+                                <span class="wa-rol-tag @RolClase(c.Rol)" title="Categoría del contacto">@RolLabel(c.Rol)</span>
                             }
                         </div>
                         <div class="wa-conv-body">
                             <div class="wa-conv-row1">
                                 <span class="wa-conv-name">
-                                    @* 2026-08-19: chinche de los chats fijados (arriba de todo) *@
-                                    @if (c.Fijado)
-                                    {
-                                        <span class="wa-fijado-pin" title="Chat fijado arriba de todo">📌</span>
-                                    }
                                     @if (c.Canal == "INSTAGRAM")
                                     {
                                         @* 2026-07-31: Instagram → chip "IG" chico + el @usuario grande como nombre *@
@@ -303,22 +297,26 @@
                                 </span>
                                 @* 2026-07-24: el badge verde se enciende SOLO si hay algo sin responder
                                    (último mensaje del cliente). Si ya respondimos, muestra "✓ leído" apagado. *@
+                                @* 2026-08-27: antes acá había un cartel verde "nuevo" y, en las leídas, un
+                                   "✓ respondido" gris en TODAS las filas. Ahora se hace como WhatsApp: sin
+                                   responder = nombre y texto en negro + puntito verde; ya respondida = todo
+                                   apagado y nada más. El "✓" del principio del texto ya dice que contestaste. *@
                                 @if (c.UltimoDireccion == "INCOMING")
                                 {
-                                    <span class="wa-conv-count" title="Sin responder">nuevo</span>
-                                }
-                                else
-                                {
-                                    <span class="wa-conv-leido" title="Ya le respondiste">✓ respondido</span>
+                                    <span class="wa-conv-punto" title="Sin responder"></span>
                                 }
                             </div>
-                            @* 2026-08-04: estado + a quién se la pasaron *@
+                            @* 2026-08-27: RENGLÓN 3 — categoría, estado y responsable, todo en una línea chiquita.
+                               Antes eran tres cartelitos de colores (naranja el estado, verde el operador y la
+                               categoría abajo del avatar). Ahora la ÚNICA con color es la categoría, porque es
+                               una clasificación de verdad y te sirve para barrer la lista con el ojo. El estado
+                               queda como un puntito y el responsable como texto gris. *@
                             @if (c.Estado != "nueva" || !string.IsNullOrEmpty(c.AsignadoOperador))
                             {
                                 <div class="wa-conv-row3">
                                     @if (c.Estado != "nueva")
                                     {
-                                        <span class="wa-estado-chip" style="background:@EstadoColor(c.Estado);">@EstadoLabel(c.Estado)</span>
+                                        <span class="wa-conv-meta"><span class="wa-conv-meta-dot" style="background:@EstadoColor(c.Estado);"></span>@EstadoLabel(c.Estado)</span>
                                     }
                                     @if (!string.IsNullOrEmpty(c.AsignadoOperador))
                                     {
@@ -328,7 +326,7 @@
                                         }
                                         else
                                         {
-                                            <span class="wa-asignado-chip" title="@($"Responsable: {c.AsignadoOperador}")"><span class="wa-asignado-ini" style="background:@OperadorColor(c.AsignadoOperador);">@OperadorIni(c.AsignadoOperador)</span> @c.AsignadoOperador</span>
+                                            <span class="wa-conv-meta" title="@($"Responsable: {c.AsignadoOperador}")">@c.AsignadoOperador</span>
                                         }
                                     }
                                 </div>
@@ -3082,16 +3080,19 @@
     .wa-avatar-btn:hover .wa-avatar-rol { transform: scale(1.12); }
     .wa-avatar-rol-lg { font-size: 1.1rem; bottom: -4px; right: -5px; }
     /* 2026-08-05: botón 🏷️ para poner categoría directo desde la lista + su menú */
-    .wa-conv-rolbtn { flex: 0 0 auto; align-self: center; background: transparent; border: none; cursor: pointer; font-size: 1rem; opacity: 0.5; padding: 0.15rem 0.3rem; border-radius: 6px; }
+    /* 2026-08-27: el 🏷️ aparece solo al pasar el mouse. Estaba en las 20 filas sin hacer falta. */
+    .wa-conv-rolbtn { flex: 0 0 auto; align-self: center; background: transparent; border: none; cursor: pointer; font-size: 1rem; opacity: 0; padding: 0.15rem 0.3rem; border-radius: 6px; }
     .wa-conv-item:hover .wa-conv-rolbtn { opacity: 1; }
     .wa-conv-rolbtn:hover { background: #e2e8f0; }
     /* 2026-08-19: CHATS FIJADOS (chinche 📌). Van arriba de todo, con fondo apenas distinto
        para que se note de un vistazo dónde termina la tanda de fijados. */
-    .wa-conv-item.wa-conv-fijado { background: #fffbeb; border-left-color: #f59e0b; }
+    .wa-conv-item.wa-conv-fijado { background: #fffdf7; border-left-color: #fcd34d; }
     .wa-conv-item.wa-conv-fijado:hover { background: #fef3c7; }
     .wa-conv-item.wa-conv-fijado.active { background: #eafcf1; border-left-color: #25d366; }
     .wa-fijado-pin { font-size: 0.85rem; margin-right: 2px; }
-    .wa-conv-pinbtn { flex: 0 0 auto; align-self: center; background: transparent; border: none; cursor: pointer; font-size: 1rem; opacity: 0.25; padding: 0.15rem 0.3rem; border-radius: 6px; filter: grayscale(1); }
+    /* 2026-08-27: el 📌 se ve SOLO si el chat está fijado (o al pasar el mouse). Antes había un
+       chinche gris apagado en las 20 filas. */
+    .wa-conv-pinbtn { flex: 0 0 auto; align-self: center; background: transparent; border: none; cursor: pointer; font-size: 1rem; opacity: 0; padding: 0.15rem 0.3rem; border-radius: 6px; filter: grayscale(1); }
     .wa-conv-item:hover .wa-conv-pinbtn { opacity: 0.75; }
     .wa-conv-pinbtn:hover { background: #fef3c7; opacity: 1 !important; filter: none; }
     .wa-conv-pinbtn.on { opacity: 1; filter: none; }
@@ -3101,7 +3102,10 @@
     .wa-rolmenu-op { display: block; width: 100%; text-align: left; background: transparent; border: none; padding: 0.5rem 0.6rem; border-radius: 7px; font-size: 0.88rem; color: #334155; cursor: pointer; }
     .wa-rolmenu-op:hover { background: #f1f5f9; }
     .wa-rolmenu-cancel { display: block; width: 100%; text-align: center; background: #f8fafc; border: 1px solid #e5e7eb; margin-top: 0.4rem; padding: 0.45rem; border-radius: 7px; font-size: 0.82rem; color: #64748b; cursor: pointer; }
-    .wa-avatar { width: 46px; height: 46px; border-radius: 50%; background: #25d366; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.05rem; flex-shrink: 0; }
+    /* 2026-08-27: gris, no de colores. El color del redondel era al azar por nombre y no significaba nada. */
+    .wa-avatar { width: 44px; height: 44px; border-radius: 50%; background: #f1f5f9; border: 1px solid #e2e8f0;
+        color: #64748b; display: flex; align-items: center; justify-content: center; font-weight: 700;
+        font-size: 1rem; flex-shrink: 0; }
     .wa-conv-body { flex: 1; min-width: 0; }
     .wa-conv-row1 { display: flex; justify-content: space-between; gap: 0.5rem; }
     .wa-conv-name { font-weight: 600; font-size: 0.9rem; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3112,12 +3116,30 @@
     .wa-conv-hora { font-size: 0.7rem; color: #9ca3af; flex-shrink: 0; }
     .wa-conv-row2 { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.15rem; }
     .wa-conv-last { font-size: 0.8rem; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-    .wa-conv-count { background: #25d366; color: white; font-size: 0.68rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 10px; text-align: center; }
-    .wa-conv-leido { color: #9ca3af; font-size: 0.66rem; white-space: nowrap; }
+    /* Sin responder: un puntito verde, como WhatsApp. Nada de carteles. */
+    .wa-conv-punto { width: 9px; height: 9px; border-radius: 50%; background: #25d366; flex: 0 0 auto; }
+    /* La fila sin responder se pone en negro; la ya respondida queda apagada. */
+    .wa-conv-item.sin-responder .wa-conv-name { font-weight: 700; color: #0f172a; }
+    .wa-conv-item.sin-responder .wa-conv-last { color: #1f2937; font-weight: 500; }
+    .wa-conv-item.sin-responder .wa-conv-hora { color: #16a34a; font-weight: 700; }
     /* 2026-08-04: estado + responsable (pasar de uno a otro) */
     .wa-conv-pasada { background: #fff7ed; border-left-color: #f59e0b; }
     .wa-conv-pasada:hover { background: #fef0dc; }
     .wa-conv-row3 { display: flex; gap: 0.35rem; flex-wrap: wrap; align-items: center; margin-top: 0.25rem; }
+    /* Estado y responsable: texto gris chiquito. El estado lleva un puntito de color de 6 px. */
+    .wa-conv-meta { display: inline-flex; align-items: center; gap: 0.22rem; font-size: 0.66rem; color: #94a3b8; white-space: nowrap; }
+    .wa-conv-meta-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+    /* La CATEGORÍA: la única con color de la fila. Fondo suave, letra del mismo tono. */
+    .wa-rol-tag { font-size: 0.6rem; font-weight: 700; padding: 0.05rem 0.35rem; border-radius: 5px;
+        white-space: nowrap; margin-top: 3px; text-align: center; max-width: 58px; overflow: hidden;
+        text-overflow: ellipsis; }
+    .wa-rol-tag.rol-hermano   { background: #eef2ff; color: #4338ca; }
+    .wa-rol-tag.rol-empleado  { background: #f0f9ff; color: #0369a1; }
+    .wa-rol-tag.rol-cliente   { background: #ecfdf5; color: #047857; }
+    .wa-rol-tag.rol-proveedor { background: #fff7ed; color: #c2410c; }
+    .wa-rol-tag.rol-alquiler  { background: #fdf2f8; color: #be185d; }
+    .wa-rol-tag.rol-cafe      { background: #fefce8; color: #a16207; }
+    .wa-rol-tag.rol-otro      { background: #f1f5f9; color: #64748b; }
     .wa-estado-chip { color: #fff; font-size: 0.63rem; font-weight: 700; padding: 0.08rem 0.42rem; border-radius: 8px; letter-spacing: .2px; }
     .wa-pasada-chip { background: #f59e0b; color: #fff; font-size: 0.63rem; font-weight: 700; padding: 0.08rem 0.42rem; border-radius: 8px; }
     .wa-asignado-chip { display: inline-flex; align-items: center; gap: 0.25rem; background: #eef2ff; color: #3730a3; font-size: 0.63rem; font-weight: 700; padding: 0.08rem 0.42rem 0.08rem 0.1rem; border-radius: 8px; }
@@ -8773,6 +8795,19 @@
         "cafe" => "Café",
         "otro" => "Otro",
         _ => "Sin categoría"
+    };
+
+    // 2026-08-27: la categoría es lo único con color en la fila. Siempre el mismo color para lo
+    // mismo, así barrés la lista con el ojo sin leer.
+    string RolClase(string? rol) => rol switch
+    {
+        "hermano" => "rol-hermano",
+        "empleado" => "rol-empleado",
+        "cliente" => "rol-cliente",
+        "proveedor" => "rol-proveedor",
+        "alquiler" => "rol-alquiler",
+        "cafe" => "rol-cafe",
+        _ => "rol-otro"
     };
 
     string AvatarColor(ApiClient.TwConvDto c)
