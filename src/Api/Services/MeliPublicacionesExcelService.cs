@@ -61,6 +61,13 @@ public class MeliPublicacionesExcelService
     private const decimal TOLERANCIA_PRECIO = 0.5m;
     private const decimal TOLERANCIA_PCT = 0.05m;
 
+    /// <summary>El contenedor corre en cultura invariante: sin esto la plata sale "33,000" en vez
+    /// de "$33.000" y los avisos se leen como si fueran de otro país. Ver la regla del proyecto.</summary>
+    private static readonly CultureInfo Ar = new("es-AR");
+    private static string Plata(decimal v) => "$" + v.ToString("N0", Ar);
+    private static string Pct(decimal v) => v.ToString("0.#", Ar) + "%";
+    private static string Num(int v) => v.ToString("N0", Ar);
+
     private const string HOJA_DATOS = "Publicaciones";
     private const string HOJA_AYUDA = "Cómo se usa";
     private const string HOJA_ORIGINAL = "_original";
@@ -103,8 +110,10 @@ public class MeliPublicacionesExcelService
         }
 
         using var wb = new XLWorkbook();
-        EscribirAyuda(wb);
+        // Primero la hoja de datos: es con la que se trabaja, y Excel abre en la que está primera.
+        // La ayuda queda de pestaña al lado, para el que la necesite.
         var ws = wb.Worksheets.Add(HOJA_DATOS);
+        EscribirAyuda(wb);
 
         var headers = new[]
         {
@@ -147,7 +156,7 @@ public class MeliPublicacionesExcelService
             ws.Cell(r, 3).Value = it.Titulo;
             ws.Cell(r, 4).Value = EstadoLindo(it.Estado);
             ws.Cell(r, 5).Value = TipoLindo(it.Tipo);
-            ws.Cell(r, 6).Value = string.IsNullOrEmpty(it.Cuotas) ? "sin cuotas" : it.Cuotas;
+            ws.Cell(r, 6).Value = CuotasLindo(it.Cuotas);
             ws.Cell(r, 7).Value = EnvioLindo(it.Envio, it.EnvioGratis);
             ws.Cell(r, 8).Value = it.StockMeli;
             ws.Cell(r, 9).Value = it.Vendidas;
@@ -342,7 +351,7 @@ public class MeliPublicacionesExcelService
             {
                 if (++filasArchivo > MAX_FILAS_LEIDAS)
                 {
-                    problemas.Add($"El archivo tiene más de {MAX_FILAS_LEIDAS:N0} filas: se leyeron las primeras.");
+                    problemas.Add($"El archivo tiene más de {Num(MAX_FILAS_LEIDAS)} filas: se leyeron las primeras.");
                     break;
                 }
                 var mla = row.Cell(COL_MLA).GetString().Trim().TrimStart('#').Trim();
@@ -434,18 +443,18 @@ public class MeliPublicacionesExcelService
                     }
                     else if (f.Precio.Value > TOPE_SEGURO)
                     {
-                        avisos.Add($"${f.Precio.Value:N0} pasa el tope de seguridad de ${TOPE_SEGURO:N0}. Frenado por las dudas.");
+                        avisos.Add($"{Plata(f.Precio.Value)} pasa el tope de seguridad de {Plata(TOPE_SEGURO)}. Frenado por las dudas.");
                         bloqueada = true;
                     }
                     else
                     {
                         precioNuevo = Math.Round(f.Precio.Value, 2);
-                        partes.Add($"precio ${precioBase:N0} → ${precioNuevo.Value:N0}");
+                        partes.Add($"precio {Plata(precioBase)} → {Plata(precioNuevo.Value)}");
                         nPrecio++;
 
                         // El escalón: lo más caro que puede pasar en un Excel de 300 filas.
                         if (!it.FreeShipping && it.Price < ESCALON_ENVIO && precioNuevo.Value >= ESCALON_ENVIO)
-                            avisos.Add($"⚠ Pasa los ${ESCALON_ENVIO:N0}. Arriba de ese precio MercadoLibre suele obligar al " +
+                            avisos.Add($"⚠ Pasa los {Plata(ESCALON_ENVIO)}. Arriba de ese precio MercadoLibre suele obligar al " +
                                        "envío gratis y lo pagás vos: puede quedarte MENOS ganancia que ahora, aunque el precio suba.");
                     }
                 }
@@ -463,8 +472,8 @@ public class MeliPublicacionesExcelService
                     {
                         objetivoNuevo = Math.Round(f.Objetivo.Value, 2);
                         partes.Add(objBase is null
-                            ? $"objetivo → {objetivoNuevo.Value:0.#}%"
-                            : $"objetivo {objBase.Value:0.#}% → {objetivoNuevo.Value:0.#}%");
+                            ? $"objetivo → {Pct(objetivoNuevo.Value)}"
+                            : $"objetivo {Pct(objBase.Value)} → {Pct(objetivoNuevo.Value)}");
                         nObjetivo++;
                     }
                 }
@@ -475,7 +484,11 @@ public class MeliPublicacionesExcelService
                 if (spNuevo.HasValue) { partes.Add(spNuevo.Value ? "prende sincro de precio" : "apaga sincro de precio"); nSincro++; }
                 if (ssNuevo.HasValue) { partes.Add(ssNuevo.Value ? "prende sincro de stock" : "apaga sincro de stock"); nSincro++; }
 
-                if (partes.Count == 0) { sinCambios++; continue; }
+                // Ojo con el orden: si la fila quedó BLOQUEADA (precio disparatado, objetivo fuera de
+                // rango) `partes` está vacío, porque no se aceptó ningún cambio. Saltearla acá la
+                // hacía desaparecer sin decir nada, y el que editó el Excel se quedaba esperando un
+                // cambio que nunca iba a pasar. Sin cambios Y sin problemas: recién ahí se saltea.
+                if (partes.Count == 0 && !bloqueada) { sinCambios++; continue; }
 
                 // ── Avisos que no bloquean pero hay que ver ──
                 if (it.Status is "closed" or "deleted")
@@ -485,7 +498,7 @@ public class MeliPublicacionesExcelService
                 }
 
                 if (tieneOrig && Math.Abs(it.Price - org.Precio) > TOLERANCIA_PRECIO)
-                    avisos.Add($"Ojo: desde que bajaste el Excel el precio cambió solo (${org.Precio:N0} → ${it.Price:N0}). " +
+                    avisos.Add($"Ojo: desde que bajaste el Excel el precio cambió solo ({Plata(org.Precio)} → {Plata(it.Price)}). " +
                                "Si aplicás, vuelve a lo que dice el archivo.");
 
                 // Qué dejaría el precio nuevo. Es una ESTIMACIÓN: usa la comisión que hay guardada,
@@ -498,10 +511,12 @@ public class MeliPublicacionesExcelService
                     var envio = it.FreeShipping ? (it.SaleFeeShippingCost ?? 0m) : 0m;
                     var neto = (precioNuevo.Value - precioNuevo.Value * comPct - envio) / IVA;
                     margenEst = Math.Round((neto - costo) / costo * 100m, 1);
+                    // El número va en su propio renglón en pantalla, así que acá va sólo el peso de
+                    // la advertencia. Repetir el porcentaje hacía que la misma frase saliera dos veces.
                     if (margenEst < 0)
-                        avisos.Add($"A ese precio quedaría a PÉRDIDA (aprox. {margenEst:0.#}% sobre el costo).");
+                        avisos.Add("⚠ A ese precio la publicación queda A PÉRDIDA.");
                     else if (margenEst < 50)
-                        avisos.Add($"A ese precio te quedaría aprox. {margenEst:0.#}% sobre el costo — abajo del 50%.");
+                        avisos.Add("Queda por debajo del 50% que venís usando de piso.");
                 }
                 else if (precioNuevo.HasValue && (!costos.TryGetValue(f.Mla, out var c2) || c2 <= 0))
                     avisos.Add("Sin costo cargado no se puede saber qué te deja este precio.");
@@ -515,7 +530,8 @@ public class MeliPublicacionesExcelService
                 cambios.Add(new CambioDto(f.Mla, it.Sku, it.Title,
                     precioNuevo, precioBase, objetivoNuevo, objBase,
                     spNuevo, spBase, ssNuevo, ssBase,
-                    string.Join(" · ", partes), avisos, bloqueada, margenEst));
+                    partes.Count > 0 ? string.Join(" · ", partes) : "No se puede aplicar lo que dice esta fila",
+                    avisos, bloqueada, margenEst));
             }
 
             // Primero lo que tiene avisos: es lo que hay que mirar antes de aplicar.
@@ -526,7 +542,7 @@ public class MeliPublicacionesExcelService
                 .ToList();
 
             if (nPrecio > MAX_PRECIOS_POR_TANDA)
-                problemas.Add($"Hay {nPrecio:N0} cambios de precio y por tanda se aplican {MAX_PRECIOS_POR_TANDA}. " +
+                problemas.Add($"Hay {Num(nPrecio)} cambios de precio y por tanda se aplican {MAX_PRECIOS_POR_TANDA}. " +
                               "Aplicá, y después volvé a subir el mismo archivo para seguir con el resto.");
 
             _logger.LogInformation("[PubExcel] Vista previa: {Leidas} filas, {Cambios} con cambios, {Bloq} bloqueadas",
@@ -635,7 +651,7 @@ public class MeliPublicacionesExcelService
         {
             cfg.GananciaObjetivoPct = i.ObjetivoNuevo;
             cfg.GananciaObjetivoAt = DateTime.UtcNow;
-            partes.Add($"objetivo {i.ObjetivoNuevo.Value:0.#}%");
+            partes.Add($"objetivo {Pct(i.ObjetivoNuevo.Value)}");
         }
         if (i.SincPrecioNuevo is not null)
         {
@@ -724,6 +740,18 @@ public class MeliPublicacionesExcelService
         "free" => "Gratuita",
         null or "" => "—",
         _ => tipo
+    };
+
+    /// <summary>Las mismas palabras que muestra la pantalla: "3x_campaign" no le dice nada a nadie.</summary>
+    private static string CuotasLindo(string? tag) => tag switch
+    {
+        null or "" => "sin cuotas",
+        "3x_campaign" => "3 cuotas",
+        "6x_campaign" => "6 cuotas",
+        "9x_campaign" => "9 cuotas",
+        "12x_campaign" => "12 cuotas",
+        "pcj-co-funded" => "cuotas co-fundadas",
+        _ => tag
     };
 
     private static string EnvioLindo(string? logistic, bool gratis)
