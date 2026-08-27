@@ -53,7 +53,7 @@
        como tiene overflow:hidden por el borde redondeado, las filas de abajo se RECORTABAN
        (se veian 9 de 17 y no aparecian ni bajando). */
     .p2-tbl { background: #fff; border: 1px solid #e3e7e0; border-radius: .6rem; overflow: hidden; flex-shrink: 0; }
-    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 128px 148px 120px 140px 52px 70px;
+    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 128px 148px 120px 212px 52px 70px;
                      gap: .6rem; align-items: center; padding: .55rem .65rem; }
     .p2-th { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; font-size: .6rem; text-transform: uppercase;
              letter-spacing: .07em; color: #9ca3af; font-weight: 700; }
@@ -107,11 +107,26 @@
     .p2-com .bar i.mid { background: #f59e0b; }
     .p2-com .bar i.hi { background: #b91c1c; }
 
-    .p2-ctrl { display: flex; align-items: center; gap: .35rem; flex-wrap: nowrap; }
+    .p2-ctrl { display: flex; align-items: center; gap: .25rem; flex-wrap: nowrap; }
     .p2-obj { display: inline-flex; align-items: center; gap: .15rem; border: 1px solid #e3e7e0;
-              border-radius: .35rem; padding: .1rem .3rem; background: #fff; font-size: .7rem; font-weight: 700; }
+              border-radius: .35rem; padding: .1rem .3rem; background: #fff; font-size: .7rem; font-weight: 700;
+              /* sin esto el chip se parte en dos renglones y la fila crece: con 50 filas por
+                 página eso es media pantalla más de scroll (misma razón que la ⚖ al lado de la foto) */
+              white-space: nowrap; }
     .p2-obj .pc { font-size: .6rem; color: #9ca3af; font-weight: 400; }
-    .p2-sw { display: inline-flex; align-items: center; gap: .15rem; font-size: .6rem; }
+    /* 2026-08-27 · Candado por fila. Cerrado, los interruptores son sólo un cartel — como
+       siempre. Abierto, se pueden tocar, y se vuelve a cerrar solo a los pocos segundos:
+       pedido de Osmar, "obvio que no quiero que sea solo tocando". */
+    .p2-sw { display: inline-flex; align-items: center; gap: .15rem; font-size: .6rem;
+             border: 0; background: transparent; padding: 0; color: inherit; font-family: inherit; }
+    .p2-sw.tocable { cursor: pointer; border: 1px solid #cbd5e1; border-radius: .35rem;
+                     padding: .12rem .28rem; background: #fff; }
+    .p2-sw.tocable:hover { border-color: #15803d; background: #f0fdf4; }
+    .p2-sw[disabled] { cursor: default; }
+    .p2-candado { border: 1px solid #e3e7e0; background: #f8f9f7; border-radius: .35rem;
+                  padding: .12rem .26rem; font-size: .74rem; line-height: 1; cursor: pointer; }
+    .p2-candado:hover { border-color: #9ca3af; }
+    .p2-candado.abierto { background: #fef3c7; border-color: #f59e0b; }
     .p2-led { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #cbd5e1; background: #fff; }
     .p2-led.on { background: #15803d; border-color: #15803d; }
 
@@ -235,6 +250,65 @@
     /* etapa 2: tildar y aplicar */
     .p2-chk { width: 15px; height: 15px; accent-color: #1d4f80; cursor: pointer; }
     .p2-tr.sel { background: #e9f1fa; }
+    /* 2026-08-27 · Vista previa del Excel. Tapa la pantalla a propósito: es una decisión que
+       hay que tomar mirándola, no algo para ojear de costado mientras se scrollea la lista. */
+    .p2-modal-fondo { position: fixed; inset: 0; background: rgba(15,42,28,.55); z-index: 4100; }
+    .p2-modal { position: fixed; inset: 3vh 3vw; z-index: 4101; background: #fff; border-radius: .6rem;
+                display: flex; flex-direction: column; overflow: hidden;
+                box-shadow: 0 20px 60px -20px rgba(0,0,0,.6); }
+    .p2-modal .cab { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+                     padding: .7rem .9rem; background: #0f2a1c; color: #fff; }
+    .p2-modal .cab .ttl { font-weight: 700; font-size: .95rem; }
+    .p2-modal .cab .ttl small { font-weight: 400; opacity: .75; margin-left: .3rem; }
+    .p2-modal .cab .cerrar { background: transparent; border: 0; color: #fff; font-size: 1.05rem; cursor: pointer; }
+    .p2-modal .cuerpo { flex: 1; overflow-y: auto; padding: .8rem .9rem; }
+    .p2-modal .pie { display: flex; gap: .5rem; justify-content: flex-end; align-items: center;
+                     padding: .6rem .9rem; border-top: 2px solid #1d4f80; background: #f8f9f7; flex-wrap: wrap; }
+    .p2-modal .pie .p2-btn { border-color: #cbd5e1; background: #fff; color: #1f2937; }
+    .p2-modal .pie .p2-btn:hover { border-color: #9ca3af; background: #f1f5f9; }
+    .p2-modal .pie .p2-btn.go { background: #15803d; border-color: #15803d; color: #fff; }
+    .p2-modal .pie .p2-btn[disabled] { opacity: .5; cursor: default; }
+    .p2-modal .pie .confirmar { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+                                font-size: .82rem; font-weight: 600; color: #7c2d12; }
+    .p2-modal .resumen { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: .6rem; }
+    .p2-modal .pill { font-size: .76rem; font-weight: 700; padding: .25rem .55rem; border-radius: 999px;
+                      background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; }
+    .p2-modal .pill.gris { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
+    .p2-modal .pill.verde { background: #dcfce7; color: #166534; border-color: #86efac; }
+    .p2-modal .pill.rojo { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    .p2-modal .pill.ambar { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+    .p2-modal .problema { font-size: .8rem; color: #7c2d12; background: #fffbeb; border: 1px solid #fcd34d;
+                          border-radius: .4rem; padding: .4rem .6rem; margin-bottom: .35rem; }
+    .p2-modal .vacio { font-size: .85rem; color: #4b5563; background: #f8f9f7; border: 1px dashed #cbd5e1;
+                       border-radius: .4rem; padding: .9rem; }
+    .p2-modal .acc-tildar { display: flex; gap: .4rem; align-items: center; margin: .5rem 0; flex-wrap: wrap; }
+    .p2-modal .acc-tildar .p2-btn.chico { background: #fff; color: #1f2937; border-color: #cbd5e1;
+                                          font-size: .74rem; padding: .3rem .55rem; }
+    .p2-modal .acc-tildar .cnt { font-size: .78rem; font-weight: 700; color: #1d4f80; }
+    .p2-modal .tabla { border: 1px solid #e3e7e0; border-radius: .45rem; overflow: hidden; }
+    .p2-modal .tabla .fila { display: flex; gap: .6rem; align-items: flex-start; padding: .5rem .6rem;
+                             border-bottom: 1px solid #eef1ee; }
+    .p2-modal .tabla .fila:last-child { border-bottom: 0; }
+    .p2-modal .tabla .fila.sel { background: #f0fdf4; }
+    .p2-modal .tabla .fila.bloq { background: #fef2f2; opacity: .85; }
+    .p2-modal .tabla .fila input[type=checkbox] { width: 16px; height: 16px; margin-top: .15rem;
+                                                  accent-color: #15803d; cursor: pointer; }
+    .p2-modal .tabla .fila .ico { font-weight: 700; }
+    .p2-modal .tabla .fila .ico.ok { color: #15803d; }
+    .p2-modal .tabla .fila .ico.no { color: #b91c1c; }
+    .p2-modal .tabla .txt { min-width: 0; flex: 1; }
+    .p2-modal .tabla .tit { font-size: .82rem; font-weight: 600; color: #1f2937; }
+    .p2-modal .tabla .tit .sku { font-size: .72rem; color: #6b7280; margin-left: .4rem; }
+    .p2-modal .tabla .tit .mla { font-size: .72rem; color: #9ca3af; margin-left: .4rem; }
+    .p2-modal .tabla .que { font-size: .8rem; font-weight: 600; color: #1d4f80; margin-top: .1rem; }
+    .p2-modal .tabla .deja { font-size: .76rem; margin-top: .1rem; }
+    .p2-modal .tabla .deja.bien { color: #15803d; }
+    .p2-modal .tabla .deja.flojo { color: #b45309; }
+    .p2-modal .tabla .deja.mal { color: #b91c1c; font-weight: 700; }
+    .p2-modal .tabla .aviso { font-size: .76rem; color: #7c2d12; margin-top: .1rem; }
+    .p2-modal .tabla .aviso.err { color: #b91c1c; font-weight: 600; }
+    @@media (max-width: 760px) { .p2-modal { inset: 0; border-radius: 0; } }
+
     .p2-acciones { position: sticky; bottom: 0; z-index: 20; background: #fff; border-top: 2px solid #1d4f80;
                    box-shadow: 0 -3px 18px -8px rgba(0,0,0,.35); padding: .6rem .8rem; display: flex;
                    gap: .45rem; align-items: center; flex-wrap: wrap; }
@@ -277,6 +351,18 @@
             <button class="p2-btn go" @onclick="Cargar" disabled="@cargando">
                 @(cargando ? "⏳ Cargando…" : "🔄 Actualizar lista")
             </button>
+            @* 2026-08-27 · Excel editable: es lo único que escala a 5.925 publicaciones.
+               Baja lo FILTRADO (no la página), se edita en Excel y vuelve. Nada se aplica
+               sin pasar por la vista previa. *@
+            <button class="p2-btn" @onclick="BajarExcel" disabled="@(excelBajando || cargando)"
+                    title="Bajar un Excel con las publicaciones que quedaron filtradas, para editar precios y objetivos de a muchas">
+                @(excelBajando ? "⏳ Armando el Excel…" : "⬇ Bajar Excel")
+            </button>
+            <label class="p2-btn" style="display:inline-flex; align-items:center; gap:.25rem; margin:0;"
+                   title="Subir el Excel editado. Primero te muestra qué cambiaría; no se aplica nada todavía">
+                @(excelLeyendo ? "⏳ Leyendo…" : "⬆ Subir Excel")
+                <InputFile OnChange="SubirExcel" accept=".xlsx" style="display:none;" disabled="@excelLeyendo" />
+            </label>
             <button class="p2-btn" @onclick='() => Nav.NavigateTo("/publicaciones")'>⛶ Volver a la pantalla de siempre</button>
         </span>
     </div>
@@ -502,12 +588,25 @@
                                   title="@(MandaElPorcentaje(it) ? "El precio lo calcula el sistema a partir del objetivo." : "Manda el PRECIO: quedó fijo, el sistema no lo toca.")">
                                 @(MandaElPorcentaje(it) ? "" : "✓") 💲
                             </span>
-                            <span class="p2-sw" title="@(it.SyncPrecio ? "Precio sincronizado: el sistema lo mantiene" : "Precio a mano: el sistema no lo toca")">
+                            @* 2026-08-27 · el candado. Cerrado, los interruptores no se pueden tocar
+                               (que es como venía funcionando). Abierto, sí — y se cierra solo. *@
+                            <button class="p2-candado @(FilaAbierta(it) ? "abierto" : "")"
+                                    title="@(FilaAbierta(it) ? "Abierto: ya podés prender o apagar el sincro de esta fila. Se cierra solo en unos segundos." : "Tocá el candado para poder prender o apagar el sincro de esta fila sin tildarla")"
+                                    @onclick="() => ToggleCandado(it.MeliItemId)" @onclick:stopPropagation="true">
+                                @(FilaAbierta(it) ? "🔓" : "🔒")
+                            </button>
+                            <button class="p2-sw @(FilaAbierta(it) ? "tocable" : "")"
+                                    disabled="@(!FilaAbierta(it) || sincroEnCurso == it.MeliItemId)"
+                                    title="@(FilaAbierta(it) ? (it.SyncPrecio ? "Tocá para APAGAR el sincro de precio (queda a mano)" : "Tocá para PRENDER el sincro de precio (lo mantiene el sistema)") : (it.SyncPrecio ? "Precio sincronizado: el sistema lo mantiene" : "Precio a mano: el sistema no lo toca"))"
+                                    @onclick="() => CambiarSincroFila(it, !it.SyncPrecio, null)" @onclick:stopPropagation="true">
                                 💲<span class="p2-led @(it.SyncPrecio ? "on" : "")"></span>
-                            </span>
-                            <span class="p2-sw" title="@(it.SyncStock ? "Stock sincronizado: se pushea solo" : "Stock a mano")">
+                            </button>
+                            <button class="p2-sw @(FilaAbierta(it) ? "tocable" : "")"
+                                    disabled="@(!FilaAbierta(it) || sincroEnCurso == it.MeliItemId)"
+                                    title="@(FilaAbierta(it) ? (it.SyncStock ? "Tocá para APAGAR el sincro de stock" : "Tocá para PRENDER el sincro de stock") : (it.SyncStock ? "Stock sincronizado: se pushea solo" : "Stock a mano"))"
+                                    @onclick="() => CambiarSincroFila(it, null, !it.SyncStock)" @onclick:stopPropagation="true">
                                 📦<span class="p2-led @(it.SyncStock ? "on" : "")"></span>
-                            </span>
+                            </button>
                         </span>
 
                         <span class="p2-stk p2-h2 @(it.StockMeli == 0 ? "zero" : "")">
@@ -757,7 +856,7 @@
         @if (datos is not null && datos.Items.Count > 0)
         {
             <div class="p2-count">
-                <span>Tocá el ✎ del precio para escribirlo a mano · La ⚖ abre el peso y las medidas · La foto abre todas las fotos.</span>
+                <span>Tocá el ✎ del precio para escribirlo a mano · La ⚖ abre el peso y las medidas · La foto abre todas las fotos · El 🔒 de la fila prende y apaga el sincro sin tildarla (se cierra solo).</span>
                 <span>
                     <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
                     <span class="p2-pg">Página @pagina de @TotalPaginas</span>
@@ -767,6 +866,159 @@
         }
 
     </div>
+
+    @* ─── 2026-08-27 · Vista previa del Excel ───
+       El paso del medio, el que nunca se saltea: acá se ve QUÉ cambiaría antes de tocar nada.
+       Arranca todo tildado menos lo que no se puede hacer, y se destilda lo que no va. *@
+    @if (preview is not null)
+    {
+        <div class="p2-modal-fondo" @onclick="CerrarPreview"></div>
+        <div class="p2-modal" @onclick:stopPropagation="true">
+
+            <div class="cab">
+                <span class="ttl">
+                    @(aplicado is null ? "📋 Esto es lo que cambiaría" : "✅ Listo")
+                    @if (aplicado is null && !string.IsNullOrEmpty(preview.BajadoEl))
+                    {
+                        <small>· archivo bajado el @preview.BajadoEl</small>
+                    }
+                </span>
+                <button class="cerrar" @onclick="CerrarPreview" title="Cerrar">✕</button>
+            </div>
+
+            <div class="cuerpo">
+
+                @if (aplicado is null)
+                {
+                    <div class="resumen">
+                        <span class="pill">@preview.FilasLeidas.ToString("N0", ar) filas en el archivo</span>
+                        <span class="pill gris">@preview.SinCambios.ToString("N0", ar) sin tocar</span>
+                        <span class="pill verde">@preview.ConCambios.ToString("N0", ar) con cambios</span>
+                        @if (preview.Bloqueadas > 0)
+                        {
+                            <span class="pill rojo">@preview.Bloqueadas.ToString("N0", ar) no se pueden</span>
+                        }
+                        @if (preview.CambianPrecio > 0)
+                        {
+                            <span class="pill ambar">💵 @preview.CambianPrecio.ToString("N0", ar) cambian el precio en MercadoLibre</span>
+                        }
+                        @if (preview.CambianObjetivo > 0)
+                        {
+                            <span class="pill">🎯 @preview.CambianObjetivo.ToString("N0", ar) cambian el objetivo</span>
+                        }
+                        @if (preview.CambianSincro > 0)
+                        {
+                            <span class="pill">🔁 @preview.CambianSincro.ToString("N0", ar) cambian el sincro</span>
+                        }
+                    </div>
+
+                    @foreach (var p in preview.Problemas)
+                    {
+                        <div class="problema">⚠ @p</div>
+                    }
+
+                    @if (preview.Cambios.Count == 0)
+                    {
+                        <div class="vacio">
+                            No hay nada para cambiar: el archivo tiene los mismos valores que el sistema.
+                            Acordate de editar las columnas amarillas y <b>guardar</b> el Excel antes de subirlo.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="acc-tildar">
+                            <button class="p2-btn chico" @onclick="TildarTodosPreview">Tildar todo lo que se puede</button>
+                            <button class="p2-btn chico" @onclick="() => preSel.Clear()">Destildar todo</button>
+                            <span class="cnt">@preSel.Count elegidos</span>
+                        </div>
+
+                        <div class="tabla">
+                            @foreach (var c in preview.Cambios)
+                            {
+                                <div class="fila @(c.Bloqueada ? "bloq" : "") @(preSel.Contains(c.Mla) ? "sel" : "")">
+                                    <input type="checkbox" checked="@preSel.Contains(c.Mla)" disabled="@c.Bloqueada"
+                                           @onchange="() => TogglePreview(c.Mla)" />
+                                    <div class="txt">
+                                        <div class="tit">
+                                            @c.Titulo
+                                            @if (!string.IsNullOrEmpty(c.Sku))
+                                            {
+                                                <span class="sku">@c.Sku</span>
+                                            }
+                                            <span class="mla">@c.Mla</span>
+                                        </div>
+                                        <div class="que">@c.Resumen</div>
+                                        @if (c.MargenEstimadoPct.HasValue)
+                                        {
+                                            <div class="deja @(c.MargenEstimadoPct < 0 ? "mal" : c.MargenEstimadoPct < 50 ? "flojo" : "bien")">
+                                                A ese precio te quedaría aprox. @c.MargenEstimadoPct.Value.ToString("0.#", ar)% sobre el costo
+                                            </div>
+                                        }
+                                        @foreach (var a in c.Avisos)
+                                        {
+                                            <div class="aviso @(c.Bloqueada ? "err" : "")">@a</div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="resumen">
+                        <span class="pill verde">@aplicado.Ok.ToString("N0", ar) hechos</span>
+                        @if (aplicado.Errores > 0)
+                        {
+                            <span class="pill rojo">@aplicado.Errores.ToString("N0", ar) con error</span>
+                        }
+                        @if (aplicado.Salteados > 0)
+                        {
+                            <span class="pill gris">@aplicado.Salteados.ToString("N0", ar) salteados</span>
+                        }
+                    </div>
+                    <div class="tabla">
+                        @foreach (var d in aplicado.Detalle)
+                        {
+                            <div class="fila">
+                                <span class="ico @(d.Ok ? "ok" : "no")">@(d.Ok ? "✓" : "✗")</span>
+                                <div class="txt">
+                                    <div class="tit"><span class="mla">@d.Mla</span></div>
+                                    <div class="que">@d.Mensaje</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="pie">
+                @if (aplicado is null)
+                {
+                    @if (confirmando)
+                    {
+                        <span class="confirmar">
+                            @ConfirmacionTexto
+                            <button class="p2-btn go" @onclick="AplicarExcel" disabled="@excelAplicando">Sí, dale</button>
+                            <button class="p2-btn" @onclick="() => confirmando = false" disabled="@excelAplicando">No</button>
+                        </span>
+                    }
+                    else
+                    {
+                        <button class="p2-btn" @onclick="CerrarPreview" disabled="@excelAplicando">Cancelar</button>
+                        <button class="p2-btn go" @onclick="PedirConfirmacion"
+                                disabled="@(excelAplicando || preSel.Count == 0)">
+                            @(excelAplicando ? "⏳ Aplicando… no cierres la pantalla" : $"Aplicar {preSel.Count} cambios")
+                        </button>
+                    }
+                }
+                else
+                {
+                    <button class="p2-btn go" @onclick="CerrarPreview">Cerrar</button>
+                }
+            </div>
+        </div>
+    }
 </div>
 
 @code {
@@ -816,6 +1068,7 @@
 
     private async Task Cargar()
     {
+        CerrarCandado();   // que no quede una fila abierta de la lista anterior
         cargando = true;
         StateHasChanged();
         try
@@ -1399,5 +1652,240 @@
             : $" · stock <b>{it.Arma ?? 0}</b>";
 
         return new MarkupString("🧩 " + string.Join(" + ", partes) + cola);
+    }
+
+    // ─────────────── 2026-08-27 · CANDADO POR FILA ───────────────
+    // Osmar: prender y apagar el sincro sin tener que tildar y bajar a la barra de acciones,
+    // pero "obvio que no quiero que sea solo tocando" — un toque de más sobre 5.925 filas es
+    // justo la clase de accidente que hace que después los precios "cambien solos".
+    // Entonces: candado cerrado por default, se abre a propósito, y se cierra solo.
+
+    /// <summary>Cuánto queda abierto sin que lo toquen. Cada vez que se usa, el reloj vuelve a cero.</summary>
+    private const int SEGUNDOS_CANDADO = 12;
+
+    private string? filaDesbloqueada;
+    private string? sincroEnCurso;
+    private CancellationTokenSource? candadoReloj;
+
+    private bool FilaAbierta(ApiClient.PubV2Fila it) => filaDesbloqueada == it.MeliItemId;
+
+    private void ToggleCandado(string mla)
+    {
+        if (filaDesbloqueada == mla) { CerrarCandado(); return; }
+        filaDesbloqueada = mla;      // una sola fila abierta por vez
+        ArrancarRelojCandado();
+    }
+
+    private void CerrarCandado()
+    {
+        candadoReloj?.Cancel();
+        candadoReloj = null;
+        filaDesbloqueada = null;
+    }
+
+    private void ArrancarRelojCandado()
+    {
+        candadoReloj?.Cancel();
+        var cts = new CancellationTokenSource();
+        candadoReloj = cts;
+        _ = CerrarSoloAsync(cts);
+    }
+
+    private async Task CerrarSoloAsync(CancellationTokenSource cts)
+    {
+        try { await Task.Delay(TimeSpan.FromSeconds(SEGUNDOS_CANDADO), cts.Token); }
+        catch (OperationCanceledException) { return; }   // lo volvieron a tocar: manda el reloj nuevo
+        if (cts.IsCancellationRequested || !ReferenceEquals(candadoReloj, cts)) return;
+        filaDesbloqueada = null;
+        candadoReloj = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Prende o apaga el sincro de UNA fila. Reusa el mismo endpoint que la barra de
+    /// acciones: no hay una segunda forma de hacer lo mismo que después se desincronice.</summary>
+    private async Task CambiarSincroFila(ApiClient.PubV2Fila it, bool? precio, bool? stock)
+    {
+        if (!FilaAbierta(it) || sincroEnCurso is not null) return;
+
+        sincroEnCurso = it.MeliItemId;
+        ArrancarRelojCandado();   // usarlo lo mantiene abierto, para poder tocar los dos seguidos
+        StateHasChanged();
+        try
+        {
+            var res = await Api.AccionSincroAsync(new List<string> { it.MeliItemId }, precio, stock);
+            if (res is null || res.Ok == 0)
+            {
+                ToastService.Error("No se pudo cambiar el sincro de esta publicación.");
+                return;
+            }
+
+            // Se actualiza la fila en el lugar en vez de recargar la lista entera: recargar hace
+            // saltar el scroll y con 50 filas por página se pierde de vista lo que se estaba mirando.
+            var idx = datos?.Items.FindIndex(x => x.MeliItemId == it.MeliItemId) ?? -1;
+            if (idx >= 0 && datos is not null)
+                datos.Items[idx] = datos.Items[idx] with
+                {
+                    SyncPrecio = precio ?? datos.Items[idx].SyncPrecio,
+                    SyncStock = stock ?? datos.Items[idx].SyncStock
+                };
+
+            var que = precio.HasValue
+                ? (precio.Value ? "Precio sincronizado: el sistema lo mantiene." : "Precio a mano: el sistema no lo toca más.")
+                : (stock!.Value ? "Stock sincronizado: se pushea solo." : "Stock a mano.");
+            ToastService.Success(que);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cambiar el sincro: " + ex.Message); }
+        finally { sincroEnCurso = null; }
+    }
+
+    // ─────────────── 2026-08-27 · EXCEL EDITABLE ───────────────
+    // Bajar lo filtrado → editar en Excel → subir → VISTA PREVIA → aplicar sólo lo tildado.
+    // El paso de la vista previa no se saltea nunca: es la única forma de que un archivo con
+    // 300 filas no cambie precios que nadie miró.
+
+    private bool excelBajando, excelLeyendo, excelAplicando, confirmando;
+    private ApiClient.PubV2ExcelPreview? preview;
+    private ApiClient.PubV2ExcelAplicado? aplicado;
+    private readonly HashSet<string> preSel = new();
+
+    private async Task BajarExcel()
+    {
+        excelBajando = true;
+        StateHasChanged();
+        try
+        {
+            // Va con los MISMOS filtros que la pantalla: lo que ves es lo que baja, todas las
+            // páginas de una. Si filtrás "no llegan al 50%", el Excel trae sólo esas.
+            var (bytes, error) = await Api.BajarExcelPublicacionesV2Async(fTexto, fSku, fEstado,
+                fComision, fCuotas, null, fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja);
+
+            if (bytes is null || bytes.Length == 0)
+            {
+                ToastService.Error(error ?? "No se pudo armar el Excel.");
+                return;
+            }
+
+            var nombre = $"publicaciones-{DateTime.Now:dd-MM-yyyy-HHmm}.xlsx";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", nombre, Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success($"Listo: {nombre}. Editá las columnas amarillas, guardá, y subilo con “⬆ Subir Excel”.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo bajar el Excel: " + ex.Message); }
+        finally { excelBajando = false; }
+    }
+
+    private async Task SubirExcel(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+
+        excelLeyendo = true;
+        aplicado = null;
+        preview = null;
+        preSel.Clear();
+        confirmando = false;
+        StateHasChanged();
+        try
+        {
+            // 20 MB: un Excel de 6.000 filas pesa menos de 1 MB, pero conviene dejar aire.
+            using var stream = file.OpenReadStream(20 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            var (res, error) = await Api.VistaPreviaExcelV2Async(ms, file.Name);
+            if (res is null)
+            {
+                ToastService.Error(error ?? "No se pudo leer el archivo.");
+                return;
+            }
+
+            preview = res;
+            TildarTodosPreview();
+
+            if (res.Cambios.Count == 0 && res.Problemas.Count == 0)
+                ToastService.Info("El archivo no trae cambios: quedó igual a lo que hay en el sistema.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo leer el archivo: " + ex.Message); }
+        finally { excelLeyendo = false; }
+    }
+
+    /// <summary>Arranca con todo tildado menos lo que no se puede hacer: es lo que el usuario
+    /// pidió al editar el archivo. Destildar es más rápido que tildar 200 filas.</summary>
+    private void TildarTodosPreview()
+    {
+        if (preview is null) return;
+        preSel.Clear();
+        foreach (var c in preview.Cambios.Where(x => !x.Bloqueada)) preSel.Add(c.Mla);
+    }
+
+    private void TogglePreview(string mla)
+    {
+        if (!preSel.Remove(mla)) preSel.Add(mla);
+    }
+
+    private List<ApiClient.PubV2ExcelCambio> Elegidos =>
+        preview?.Cambios.Where(c => preSel.Contains(c.Mla) && !c.Bloqueada).ToList() ?? new();
+
+    /// <summary>Lo que dice el cartel de confirmación. Los precios se nombran aparte porque son
+    /// los únicos que se ven en MercadoLibre al instante.</summary>
+    private string ConfirmacionTexto
+    {
+        get
+        {
+            var elegidos = Elegidos;
+            var conPrecio = elegidos.Count(c => c.PrecioNuevo.HasValue);
+            if (conPrecio == 0)
+                return $"Se van a guardar {elegidos.Count} cambios de configuración. No se toca MercadoLibre. ¿Vamos?";
+            return $"⚠ {conPrecio} de estos cambian el precio EN MERCADOLIBRE ahora mismo. ¿Seguro?";
+        }
+    }
+
+    private void PedirConfirmacion() => confirmando = true;
+
+    private async Task AplicarExcel()
+    {
+        var elegidos = Elegidos;
+        if (elegidos.Count == 0) { confirmando = false; return; }
+
+        excelAplicando = true;
+        StateHasChanged();
+        try
+        {
+            var items = elegidos.Select(c => (object)new
+            {
+                Mla = c.Mla,
+                PrecioNuevo = c.PrecioNuevo,
+                ObjetivoNuevo = c.ObjetivoNuevo,
+                SincPrecioNuevo = c.SincPrecioNuevo,
+                SincStockNuevo = c.SincStockNuevo
+            }).ToList();
+
+            var (res, error) = await Api.AplicarExcelV2Async(items);
+            if (res is null)
+            {
+                ToastService.Error(error ?? "No se pudieron aplicar los cambios.");
+                return;
+            }
+
+            aplicado = res;
+            confirmando = false;
+            if (res.Errores == 0) ToastService.Success($"Listo: {res.Ok} cambios aplicados.");
+            else ToastService.Error($"{res.Ok} aplicados y {res.Errores} con error. Mirá el detalle.");
+
+            // La lista de atrás quedó vieja: los precios y los sincros cambiaron.
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudieron aplicar los cambios: " + ex.Message); }
+        finally { excelAplicando = false; }
+    }
+
+    private void CerrarPreview()
+    {
+        if (excelAplicando) return;   // no dejar cerrar en el medio de una tanda
+        preview = null;
+        aplicado = null;
+        preSel.Clear();
+        confirmando = false;
     }
 }
