@@ -973,6 +973,10 @@
     private int busqPos = -1;
     private string? busqAviso;
 
+    /// <summary>2026-08-27: para que la pantalla del celular sepa si el buscador esta abierto y
+    /// el boton "atras" del telefono lo cierre a el primero, en vez de cerrar la charla.</summary>
+    public bool BuscadorAbierto => buscadorAbierto;
+
     /// <summary>Lo llama el encabezado (o la pantalla del celular) al tocar la lupa.</summary>
     public void ToggleBuscador()
     {

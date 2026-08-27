@@ -601,6 +601,10 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // 2026-08-27: despues de CADA dibujado le decimos al telefono cuantas cosas hay abiertas,
+        // asi su boton "atras" siempre tiene con que volver (ver wa-atras.js). Va primero para que
+        // valga tambien cuando el dibujado no es el primero y salimos enseguida.
+        await SincronizarAtrasAsync();
         if (!firstRender) return;
         // 2026-08-20: aplicar el tamaño de letra guardado en ESTE celular, antes que nada, para
         // que la pantalla aparezca ya del tamaño elegido y no salte a la vista.
@@ -653,6 +657,9 @@ else
             // 2026-08-20: al volver a la pantalla (o cuando vuelve internet) reconectar y traer lo
             // nuevo EN EL ACTO, en vez de esperar hasta un minuto al sondeo de respaldo.
             await JS.InvokeVoidAsync("waVivo.vigilar", refCandado);
+            // 2026-08-27: el boton "atras" del celular (y el gesto de deslizar desde el borde)
+            // cierra lo que este abierto en vez de salir de la aplicacion.
+            await JS.InvokeVoidAsync("waAtras.iniciar", refCandado);
         }
         catch { }
         StateHasChanged();
@@ -1025,6 +1032,7 @@ else
         try { Vivo.OnNuevoMensaje -= AvisoEnVivo; } catch { }
         try { Vivo.OnReconectado -= AvisoEnVivo0; } catch { }
         try { _ = JS.InvokeVoidAsync("waVivo.soltar"); } catch { }
+        try { _ = JS.InvokeVoidAsync("waAtras.soltar"); } catch { }
         refCandado?.Dispose();
     }
 
@@ -1034,7 +1042,10 @@ else
         await MarcarLeido(c);   // 2026-08-18: al abrirla deja de estar "sin leer"
         StateHasChanged();
     }
-    private async Task Volver()
+    /// <summary>La flecha de arriba. Cierra la charla igual que el boton "atras" del celular.</summary>
+    private Task Volver() => CerrarChat();
+
+    private async Task CerrarChat()
     {
         // 2026-08-18: al salir del chat lo damos por leido hasta el ultimo mensaje que haya
         // entrado mientras lo mirabas (si no, volvia a aparecer con el punto verde).
@@ -1045,6 +1056,40 @@ else
         }
         chatAbierto = null;
         StateHasChanged();
+    }
+
+    // ═══ 2026-08-27: BOTON "ATRAS" DEL CELULAR ═══
+    // Antes te sacaba de la aplicacion aunque estuvieras adentro de una charla, porque para el
+    // telefono esto es UNA sola pantalla. Ahora cierra de a una las cosas que tengas abiertas
+    // —primero lo ultimo que abriste— y recien cuando no queda nada abierto sale, como siempre.
+    // La cuenta la lleva wa-atras.js: nosotros solo le decimos cuantas capas hay.
+
+    /// <summary>Cuantas cosas hay abiertas encima de la lista de chats, ahora mismo.</summary>
+    private int CapasAbiertas()
+    {
+        var n = 0;
+        if (chatAbierto is not null) n++;
+        if (panelEscala) n++;
+        if (chatRef?.BuscadorAbierto == true) n++;
+        return n;
+    }
+
+    private async Task SincronizarAtrasAsync()
+    {
+        try { await JS.InvokeVoidAsync("waAtras.sincronizar", CapasAbiertas()); } catch { }
+    }
+
+    /// <summary>
+    /// Tocaron el "atras" del telefono (o deslizaron desde el borde). Cerramos SOLO lo ultimo que
+    /// se abrio: el buscador de la charla, si no el panel de la letra, si no la charla.
+    /// </summary>
+    [JSInvokable]
+    public async Task AtrasDelCelular()
+    {
+        if (chatRef?.BuscadorAbierto == true) { chatRef.ToggleBuscador(); StateHasChanged(); return; }
+        if (panelEscala) { panelEscala = false; StateHasChanged(); return; }
+        if (chatAbierto is not null) { await CerrarChat(); return; }
+        StateHasChanged();   // no habia nada abierto: igual reacomodamos las marcas
     }
 
     // Líneas que tienen chats, con su nombre lindo (FRIKAF by INTERVENT / FIJO TRANSRADIO).
