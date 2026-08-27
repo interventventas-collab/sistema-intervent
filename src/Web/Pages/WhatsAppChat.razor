@@ -1800,7 +1800,9 @@
        Se pliega con la tira de iconos del borde y queda guardado para la próxima vez. *@
     @if (selectedNumero is not null)
     {
-        @if (ctxAbierto)
+        @* 2026-08-27: este espacio ya no es un panel que se abre y se cierra a mano. Aparece SOLO
+           cuando entrás al Modo venta 🛒 o al Modo MercadoLibre 🤝, y se va cuando los cerrás con su ×. *@
+        @if (modoVenta || modoMeli)
         {
             @* 2026-08-20: MODO VENTA — el panel de la derecha se transforma en el armado de la
                venta, SIN salir del chat ni abrir otra pestaña. Pedido del dueño: "que el chat se
@@ -2460,146 +2462,12 @@
                     }
                 </aside>
             }
-            else
-            {
-            <aside class="wa-ctx">
-                <div class="wa-ctx-sec">
-                    <div class="wa-ctx-sec-t">👤 Contacto</div>
-                    @* 2026-08-20: antes este botón desaparecía apenas vinculabas UN cliente. Ahora
-                       queda siempre, porque el mismo teléfono puede facturar a varias razones
-                       sociales y hay que poder sumar la segunda y la tercera. *@
-                    @if (SelectedConv()?.ClienteId is null)
-                    {
-                        <button class="wa-ctx-btn wa-ctx-btn-ok" @onclick="AbrirVincularCliente" title="Asociar este chat a un cliente del sistema en un paso">
-                            🔗 Vincular cliente
-                        </button>
-                    }
-                    else
-                    {
-                        <button class="wa-ctx-btn" @onclick="AbrirVincularCliente" title="Este teléfono factura a más de una razón social: sumá la otra empresa acá y después elegís con cuál trabajás desde arriba del chat">
-                            ➕ Sumar otra razón social
-                        </button>
-                        @if (VariasRazones)
-                        {
-                            <div class="wa-ctx-quitar-t">Sacar de este chat:</div>
-                        }
-                        @foreach (var rs in RazonesSociales)
-                        {
-                            <button class="wa-ctx-quitar-razon" @onclick="() => QuitarRazon(rs.Id, rs.Nombre)"
-                                    title="Sacar @rs.Nombre de este chat (no borra el cliente, solo lo despega del teléfono)">
-                                🗑 @rs.Nombre
-                            </button>
-                        }
-                    }
-                    @if (!EstaEnContactos(selectedNumero))
-                    {
-                        <button class="wa-ctx-btn" @onclick="AbrirAsignarContacto" title="Agregar este número como contacto">
-                            ➕ Asignar contacto
-                        </button>
-                    }
-                    else
-                    {
-                        <button class="wa-ctx-btn" @onclick="AbrirEditarContacto" title="Editar este contacto">
-                            ✏️ Editar contacto
-                        </button>
-                    }
-                    @* 2026-08-20: MODO VENTA — arma la venta acá mismo, sin salir del chat.
-                       2026-08-24: ya no pide que el chat esté vinculado: adentro se elige el cliente. *@
-                    <button class="wa-ctx-btn wa-ctx-btn-venta" @onclick="AbrirModoVenta"
-                            title="Armar la venta acá al lado, sin salir del chat: repetís la anterior mientras seguís hablando con el cliente">
-                        🛒 Modo venta
-                    </button>
-                    <button class="wa-ctx-btn @(modoElegirVenta ? "wa-ctx-btn-on" : "")" @onclick="IniciarCrearVenta" title="Crear una venta: elegí uno o varios mensajes del pedido y se abre Nueva Venta en una pestaña nueva">
-                        🧾 Crear venta
-                    </button>
-                    @* La ficha (saldo, últimas facturas, ubicación) es la MISMA ventana del ojito
-                       que está al lado del nombre: un solo lugar donde se arma, dos formas de abrirla. *@
-                    @if (SelectedConv()?.ClienteId is int)
-                    {
-                        <button class="wa-ctx-btn @(mostrarFichaCliente ? "wa-ctx-btn-on" : "")" @onclick="ToggleFichaCliente" title="Ver la ficha del cliente: saldo, últimas facturas y ubicación">
-                            🛍️ Ficha del cliente
-                        </button>
-                    }
-                </div>
-
-                <div class="wa-ctx-sec">
-                    <div class="wa-ctx-sec-t">💬 Conversación</div>
-                    <label class="wa-ctx-lbl">Estado</label>
-                    @{ var _estSel = SelectedConv()?.Archivado == true ? "archivado" : (SelectedConv()?.Estado ?? "nueva"); }
-                    <select class="wa-ctx-select" value="@_estSel" @onchange="OnEstadoChange"
-                            style="border-color:@EstadoColor(_estSel); color:@EstadoColor(_estSel); font-weight:700;"
-                            title="Estado de esta conversación">
-                        @foreach (var e in EstadosLista)
-                        {
-                            <option value="@e.Key">@e.Label</option>
-                        }
-                        @* 2026-08-09: archivar la charla desde el mismo desplegable de estado *@
-                        <option value="archivado">🗂️ Archivado</option>
-                    </select>
-
-                    <label class="wa-ctx-lbl">Pasar a</label>
-                    <select class="wa-ctx-select" value="@(SelectedConv()?.AsignadoOperador ?? "")" @onchange="OnPasarChange"
-                            style="@(string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador) ? "" : $"border-color:{OperadorColor(SelectedConv()?.AsignadoOperador)};color:{OperadorColor(SelectedConv()?.AsignadoOperador)};font-weight:700;")"
-                            title="Responsable de esta conversación">
-                        <option value="">— Sin asignar —</option>
-                        @foreach (var op in OperadoresPasar)
-                        {
-                            <option value="@op">@op</option>
-                        }
-                    </select>
-
-                    <label class="wa-ctx-lbl">📝 Nota</label>
-                    <input class="wa-ctx-input" placeholder="ej. falta coordinar entrega…"
-                           @bind="asignarNota" @bind:event="oninput" maxlength="300" />
-                    <button class="wa-ctx-btn wa-ctx-btn-guardar" @onclick="GuardarNotaConv" disabled="@guardandoNota" title="Guardar la nota de esta conversación">
-                        @(guardandoNota ? "⏳ Guardando…" : "💾 Guardar")
-                    </button>
-
-                    @* 2026-08-19: sonido de aviso PROPIO de esta charla. Le gana al de la línea, para que
-                       un cliente importante suene distinto al resto. *@
-                    <label class="wa-ctx-lbl">🔔 Sonido de aviso</label>
-                    <div style="display:flex; gap:0.3rem; align-items:center;">
-                        <select class="wa-ctx-select" style="flex:1;" value="@(SelectedConv()?.Sonido ?? "")" @onchange="OnSonidoConvChange"
-                                title="Cuando te escriba este contacto va a sonar así, aunque la línea tenga otro">
-                            <option value="">🔔 El de la línea (@NombreSonido(SonidoDeLineaActual()))</option>
-                            @foreach (var so in SonidosDisponibles) { <option value="@so.Key">@so.Label</option> }
-                            @if (sonidosSubidos.Count > 0)
-                            {
-                                <optgroup label="Sonidos que subiste">
-                                    @foreach (var so in sonidosSubidos) { <option value="@so.Clave">🎵 @so.Nombre</option> }
-                                </optgroup>
-                            }
-                        </select>
-                        <button class="wa-ctx-btn" style="width:auto; padding:0.25rem 0.5rem;" title="Escuchar cómo suena"
-                                @onclick="@(() => ProbarSonido(string.IsNullOrEmpty(SelectedConv()?.Sonido) ? SonidoDeLineaActual() : SelectedConv()!.Sonido!))">▶</button>
-                    </div>
-                    <div class="wa-ctx-info" style="margin-top:0.2rem;">
-                        Solo para este contacto. Dejalo en "el de la línea" para que suene como el resto.
-                    </div>
-
-                    @if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoOperador))
-                    {
-                        <div class="wa-ctx-info">
-                            Ahora la tiene <b>@SelectedConv()?.AsignadoOperador</b>@if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoPor) && !string.Equals(SelectedConv()?.AsignadoPor, SelectedConv()?.AsignadoOperador, StringComparison.OrdinalIgnoreCase)) { <text> · se la pasó @SelectedConv()?.AsignadoPor</text> }@if (!string.IsNullOrEmpty(SelectedConv()?.AsignadoNota)) { <text> — “@SelectedConv()?.AsignadoNota”</text> }
-                        </div>
-                    }
-                </div>
-
-                <div class="wa-ctx-sec">
-                    <button class="wa-ctx-btn" @onclick="@(() => showConfig = true)" title="Configurar respuestas rápidas y contactos">
-                        ⚙️ Respuestas rápidas y contactos
-                    </button>
-                </div>
-
-                @* Borrar va ABAJO DE TODO y separado del Guardar, para no tocarlo sin querer. *@
-                <div class="wa-ctx-sec wa-ctx-sec-peligro">
-                    <button class="wa-ctx-btn wa-ctx-btn-borrar" @onclick="BorrarConversacion" disabled="@borrandoConv"
-                            title="Borrar esta conversación del sistema (el celular del cliente no se toca)">
-                        @(borrandoConv ? "⏳ Borrando…" : "🗑 Borrar conversación")
-                    </button>
-                </div>
-            </aside>
-            }
+            @* 2026-08-27: acá vivía el panel de CONTACTO / CONVERSACIÓN. Se borró entero: después de
+               subir estado, responsable, nota, editar contacto y vincular al encabezado del chat, no le
+               quedaba nada propio — era una lista de botones repetidos. Lo poco que sí era suyo (sumar y
+               sacar razón social, el sonido de aviso del contacto y borrar la conversación) se mudó adentro
+               de "Editar contacto". Este espacio de la derecha ahora SOLO aparece con el Modo venta o el
+               Modo MercadoLibre; el resto del tiempo el chat se lleva todo el ancho. *@
         }
 
     }
@@ -2610,12 +2478,9 @@
     <div class="wa-ctx-rail">
         @if (selectedNumero is not null)
         {
-            <button class="wa-ctx-rail-btn wa-ctx-rail-toggle" @onclick="ToggleCtx"
-                    title="@(ctxAbierto ? "Cerrar el panel (el chat se lleva todo el ancho)" : "Abrir el panel de contacto y conversación")">
-                @(ctxAbierto ? "›" : "‹")
-            </button>
-            <button class="wa-ctx-rail-btn" @onclick="AbrirCtx" title="Contacto: vincular cliente, editar contacto, crear venta">👤</button>
-            <button class="wa-ctx-rail-btn" @onclick="AbrirCtx" title="Conversación: estado, pasar a, nota">💬</button>
+            @* 2026-08-27: acá estaban el ‹ › de plegar, la 👤 y el 💬. Los tres se fueron con el panel:
+               los dos últimos llamaban a la MISMA función (abrir el panel), o sea que eran el mismo botón
+               repetido, y sin panel no tenían nada que abrir. *@
             <button class="wa-ctx-rail-btn @(modoVenta ? "on" : "")" @onclick="AbrirModoVenta" title="Modo venta: armar la venta acá al lado sin salir del chat">🛒</button>
             @if (SelectedConv()?.ClienteId is int)
             {
@@ -2739,10 +2604,67 @@
                 <label style="font-size:0.78rem; color:#6b7280; display:block;">Notas <span style="font-size:0.7rem; color:#9ca3af;">(opcional)</span></label>
                 <input class="form-control form-control-sm" @bind="quickContactNotas" placeholder="Ej. Hermano mayor, vive en San Isidro" />
             </div>
+            @* ═══ 2026-08-27: lo que sobrevivió del panel derecho ═══
+               Estas tres cosas eran lo único del panel que no estaba en ningún otro lado. Viven acá
+               porque son de ESTE contacto. Solo aparecen si estás editando el contacto del chat que
+               tenés abierto (desde la pantalla de configuración se edita cualquier contacto, y ahí
+               no habría chat al que aplicarle el sonido ni conversación que borrar). *@
+            @if (selectedNumero is not null && quickContactNumero == selectedNumero)
+            {
+                <div class="wa-qc-extra">
+                    <div class="wa-qc-extra-t">🛍️ Razones sociales de este teléfono</div>
+                    <div class="wa-qc-hint">Un mismo teléfono puede facturar a varias empresas. Sumá las que hagan falta y después elegís con cuál trabajás desde arriba del chat.</div>
+                    @foreach (var rs in RazonesSociales)
+                    {
+                        <button class="wa-qc-quitar" @onclick="() => QuitarRazonDesdeContacto(rs.Id, rs.Nombre)"
+                                title="Sacar @rs.Nombre de este chat (no borra el cliente, solo lo despega del teléfono)">
+                            🗑 @rs.Nombre
+                        </button>
+                    }
+                    <button class="wa-qc-btn" @onclick="VincularDesdeContacto"
+                            title="Buscar un cliente del sistema y pegarlo a este teléfono">
+                        ➕ Sumar otra razón social
+                    </button>
+                </div>
+
+                <div class="wa-qc-extra">
+                    <div class="wa-qc-extra-t">🔔 Sonido de aviso</div>
+                    <div class="wa-qc-hint">Solo para este contacto, para que un cliente importante suene distinto al resto. Dejalo en "el de la línea" para que suene como todos.</div>
+                    <div style="display:flex; gap:0.3rem; align-items:center;">
+                        <select class="form-control form-control-sm" style="flex:1;" value="@(SelectedConv()?.Sonido ?? "")" @onchange="OnSonidoConvChange">
+                            <option value="">🔔 El de la línea (@NombreSonido(SonidoDeLineaActual()))</option>
+                            @foreach (var so in SonidosDisponibles) { <option value="@so.Key">@so.Label</option> }
+                            @if (sonidosSubidos.Count > 0)
+                            {
+                                <optgroup label="Sonidos que subiste">
+                                    @foreach (var so in sonidosSubidos) { <option value="@so.Clave">🎵 @so.Nombre</option> }
+                                </optgroup>
+                            }
+                        </select>
+                        <button class="btn btn-sm btn-outline-secondary" title="Escuchar cómo suena"
+                                @onclick="@(() => ProbarSonido(string.IsNullOrEmpty(SelectedConv()?.Sonido) ? SonidoDeLineaActual() : SelectedConv()!.Sonido!))">▶</button>
+                    </div>
+                </div>
+
+            }
+
+            @* 2026-08-27: el Guardar va DESPUÉS de todo lo editable. Ya nos pasó en Liquidaciones que
+               lo que quedaba debajo del botón de guardar no se veía y se perdía. *@
             <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1rem;">
                 <button class="btn btn-secondary btn-sm" @onclick="@(() => showQuickContact = false)">Cancelar</button>
                 <button class="btn btn-success btn-sm" @onclick="GuardarQuickContact">@(quickContactEditId is null ? "✓ Guardar contacto" : "✓ Guardar cambios")</button>
             </div>
+
+            @if (selectedNumero is not null && quickContactNumero == selectedNumero)
+            {
+                @* Borrar va ABAJO DE TODO y separado del Guardar, para no tocarlo sin querer. *@
+                <div class="wa-qc-extra peligro">
+                    <button class="wa-qc-borrar" @onclick="BorrarConversacion" disabled="@borrandoConv"
+                            title="Borrar esta conversación del sistema (el celular del cliente no se toca)">
+                        @(borrandoConv ? "⏳ Borrando…" : "🗑 Borrar conversación")
+                    </button>
+                </div>
+            }
         </div>
     </div>
 }
@@ -3042,272 +2964,10 @@
     </div>
 }
 
-@if (showConfig)
-{
-    <div class="wa-modal-backdrop" @onclick="@(() => showConfig = false)"></div>
-    <div class="wa-modal">
-        <div class="wa-modal-header">
-            <h3 style="margin:0; flex:1;">⚙️ Configuración WhatsApp</h3>
-            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showConfig = false)">×</button>
-        </div>
-        <div class="wa-modal-tabs">
-            <button class="wa-tab @(configTab=="resp" ? "active" : "")" @onclick="@(() => configTab="resp")">💬 Respuestas rápidas (@respuestas.Count)</button>
-            <button class="wa-tab @(configTab=="cbu" ? "active" : "")" @onclick="@(() => configTab="cbu")">🏦 Datos bancarios / CBUs (@datosBancarios.Count)</button>
-            <button class="wa-tab @(configTab=="cont" ? "active" : "")" @onclick="@(() => configTab="cont")">👥 Contactos (@contactos.Count)</button>
-            <button class="wa-tab @(configTab=="bot" ? "active" : "")" @onclick="AbrirTabBot">🤖 Mensajes del bot</button>
-        </div>
-        <div class="wa-modal-body">
-            @if (configTab == "resp")
-            {
-                <p style="color:#6b7280; font-size:0.85rem;">Plantillas que aparecen como botones arriba del mensaje. Click → inserta el texto en el composer.</p>
-                <div style="background:#eff6ff; border:1px solid #bfdbfe; padding:0.5rem 0.75rem; border-radius:6px; font-size:0.8rem; color:#1e40af; margin-bottom:0.6rem;">
-                    💡 <strong>Variables disponibles</strong>: usá <code>{nombre}</code> o <code>{numero}</code> en el texto y se reemplazan solos al insertar. Ej: <em>"Hola {nombre}! Recibimos tu pedido."</em>
-                </div>
-                <table class="table table-sm">
-                    <thead><tr><th style="width:120px;">Nombre</th><th>Texto</th><th style="width:60px;">Orden</th><th style="width:50px;">Act.</th><th style="width:90px;"></th></tr></thead>
-                    <tbody>
-                        @foreach (var r in respuestas.OrderBy(x => x.Orden))
-                        {
-                            <tr>
-                                <td><input class="form-control form-control-sm" @bind="editRespNombre[r.Id]" /></td>
-                                <td><textarea class="form-control form-control-sm" rows="2" @bind="editRespTexto[r.Id]"></textarea></td>
-                                <td><input type="number" class="form-control form-control-sm" @bind="editRespOrden[r.Id]" /></td>
-                                <td style="text-align:center;"><input type="checkbox" @bind="editRespActivo[r.Id]" /></td>
-                                <td>
-                                    <button class="btn btn-sm btn-success" @onclick="() => GuardarResp(r)" title="Guardar">✓</button>
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => BorrarResp(r)" title="Borrar">×</button>
-                                </td>
-                            </tr>
-                        }
-                        <tr style="background:#f0fdf4;">
-                            <td><input class="form-control form-control-sm" placeholder="Nombre" @bind="nuevaRespNombre" /></td>
-                            <td><textarea class="form-control form-control-sm" rows="2" placeholder="Texto del mensaje" @bind="nuevaRespTexto"></textarea></td>
-                            <td><input type="number" class="form-control form-control-sm" @bind="nuevaRespOrden" /></td>
-                            <td></td>
-                            <td><button class="btn btn-sm btn-success" @onclick="AgregarResp">+ Agregar</button></td>
-                        </tr>
-                    </tbody>
-                </table>
-            }
-            else if (configTab == "cbu")
-            {
-                <p style="color:#6b7280; font-size:0.85rem;">Cargá acá tus cuentas bancarias. Después, con el botón 🏦 del chat, se las pasás al cliente en un toque (CBU completo o solo el alias).</p>
-                <div style="background:#eff6ff; border:1px solid #bfdbfe; padding:0.5rem 0.75rem; border-radius:6px; font-size:0.8rem; color:#1e40af; margin-bottom:0.6rem;">
-                    💡 El <strong>Nombre</strong> es una etiqueta interna para vos (ej. "Galicia PALANICA"). Los demás datos son los que ve el cliente. Los campos que dejes vacíos no se muestran.
-                </div>
-                <table class="table table-sm">
-                    <thead><tr>
-                        <th style="width:130px;">Nombre</th><th>Banco</th><th>Tipo cuenta</th><th>Titular</th>
-                        <th>CUIT</th><th>CBU</th><th>Alias</th><th>Mail comprob.</th>
-                        <th style="width:50px;">Orden</th><th style="width:40px;">Act.</th><th style="width:80px;"></th>
-                    </tr></thead>
-                    <tbody>
-                        @foreach (var cb in datosBancarios.OrderBy(x => x.Orden))
-                        {
-                            <tr>
-                                <td><input class="form-control form-control-sm" @bind="editCbuNombre[cb.Id]" /></td>
-                                <td><input class="form-control form-control-sm" @bind="editCbuBanco[cb.Id]" /></td>
-                                <td><input class="form-control form-control-sm" @bind="editCbuTipo[cb.Id]" /></td>
-                                <td><input class="form-control form-control-sm" @bind="editCbuTitular[cb.Id]" /></td>
-                                <td><input class="form-control form-control-sm" @bind="editCbuCuit[cb.Id]" /></td>
-                                <td><input class="form-control form-control-sm" @bind="editCbuCbu[cb.Id]" /></td>
-                                <td><input class="form-control form-control-sm" @bind="editCbuAlias[cb.Id]" /></td>
-                                <td><input class="form-control form-control-sm" @bind="editCbuMail[cb.Id]" /></td>
-                                <td><input type="number" class="form-control form-control-sm" @bind="editCbuOrden[cb.Id]" /></td>
-                                <td style="text-align:center;"><input type="checkbox" @bind="editCbuActivo[cb.Id]" /></td>
-                                <td>
-                                    <button class="btn btn-sm btn-success" @onclick="() => GuardarCbu(cb)" title="Guardar">✓</button>
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => BorrarCbu(cb)" title="Borrar">×</button>
-                                </td>
-                            </tr>
-                        }
-                        <tr style="background:#f0fdf4;">
-                            <td><input class="form-control form-control-sm" placeholder="Etiqueta" @bind="nuevoCbuNombre" /></td>
-                            <td><input class="form-control form-control-sm" placeholder="Banco Galicia" @bind="nuevoCbuBanco" /></td>
-                            <td><input class="form-control form-control-sm" placeholder="cuenta corriente" @bind="nuevoCbuTipo" /></td>
-                            <td><input class="form-control form-control-sm" placeholder="Titular" @bind="nuevoCbuTitular" /></td>
-                            <td><input class="form-control form-control-sm" placeholder="30-..." @bind="nuevoCbuCuit" /></td>
-                            <td><input class="form-control form-control-sm" placeholder="0070..." @bind="nuevoCbuCbu" /></td>
-                            <td><input class="form-control form-control-sm" placeholder="alias" @bind="nuevoCbuAlias" /></td>
-                            <td><input class="form-control form-control-sm" placeholder="mail" @bind="nuevoCbuMail" /></td>
-                            <td><input type="number" class="form-control form-control-sm" @bind="nuevoCbuOrden" /></td>
-                            <td></td>
-                            <td><button class="btn btn-sm btn-success" @onclick="AgregarCbu">+ Agregar</button></td>
-                        </tr>
-                    </tbody>
-                </table>
-                @if (datosBancarios.Any())
-                {
-                    <div style="background:#f9fafb; border:1px solid #e5e7eb; padding:0.6rem 0.8rem; border-radius:6px; margin-top:0.6rem;">
-                        <div style="font-size:0.75rem; color:#6b7280; margin-bottom:0.3rem;">Vista previa de cómo le llega al cliente:</div>
-                        <pre style="white-space:pre-wrap; font-family:inherit; font-size:0.85rem; margin:0; color:#111827;">@FormatearCbu(datosBancarios.OrderBy(x => x.Orden).First(), false)</pre>
-                    </div>
-                }
-            }
-            else if (configTab == "cont")
-            {
-                <p style="color:#6b7280; font-size:0.85rem;">Asignale un nombre y un rol a los números que te escriben. El nombre que pongas acá prevalece sobre el de WhatsApp.</p>
-                @* 2026-07-23: con la importación masiva de clientes son miles — sin buscador era inusable *@
-                <input class="form-control" style="margin-bottom:0.6rem; max-width:420px;"
-                       placeholder="🔍 Buscar por nombre o número… (mínimo 2 letras)"
-                       value="@contactosBusqueda" @oninput="@(e => contactosBusqueda = e.Value?.ToString() ?? "")" />
-                @if (ContactosFiltrados().Count > 200)
-                {
-                    <p style="color:#9ca3af; font-size:0.8rem;">Mostrando los primeros 200 de @ContactosFiltrados().Count — afiná la búsqueda para encontrar el que querés.</p>
-                }
-                <table class="table table-sm">
-                    <thead><tr><th style="width:160px;">Número</th><th>Nombre</th><th style="width:110px;">Rol</th><th style="width:200px;">Cliente vinculado</th><th>Notas</th><th style="width:40px;">Act.</th><th style="width:80px;"></th></tr></thead>
-                    <tbody>
-                        @foreach (var c in ContactosFiltrados().Take(200))
-                        {
-                            <tr>
-                                <td style="font-family:monospace; font-size:0.78rem;">@c.Numero.Replace("whatsapp:", "")</td>
-                                <td><input class="form-control form-control-sm" @bind="editContNombre[c.Id]" /></td>
-                                <td>
-                                    <select class="form-control form-control-sm" @bind="editContRol[c.Id]">
-                                        <option value="hermano">Hermano</option>
-                                        <option value="empleado">Empleado</option>
-                                        <option value="cliente">Cliente</option>
-                                        <option value="proveedor">Proveedor</option>
-                                        <option value="alquiler">Alquiler</option>
-                                        <option value="cafe">Café</option>
-                                        <option value="otro">Otro</option>
-                                    </select>
-                                </td>
-                                <td>
-                                    @if (editContClienteId.GetValueOrDefault(c.Id) is int cliId && cliId > 0)
-                                    {
-                                        <div style="display:flex; align-items:center; gap:0.3rem;">
-                                            <span style="font-size:0.78rem; color:#16a34a;">🛍️ @editContClienteNombre.GetValueOrDefault(c.Id, "Cliente #" + cliId)</span>
-                                            <button class="btn btn-sm btn-link" style="padding:0; font-size:0.7rem;" @onclick="() => { editContClienteId[c.Id] = null; editContClienteNombre[c.Id] = null; }">×</button>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <input class="form-control form-control-sm" placeholder="Buscar cliente..." @bind="editContClienteQuery[c.Id]" @bind:event="oninput"
-                                               @onfocus="() => BuscarClientes(c.Id)" />
-                                        @if (clienteBusquedaActivaId == c.Id && clienteResultados.Count > 0)
-                                        {
-                                            <div class="wa-cliente-dropdown">
-                                                @foreach (var cli in clienteResultados)
-                                                {
-                                                    <div class="wa-cliente-opt" @onclick="() => SeleccionarCliente(c.Id, cli)">
-                                                        <strong>@cli.Nombre</strong>
-                                                        @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.7rem;"> · #@cli.CodigoInterno</span> }
-                                                    </div>
-                                                }
-                                            </div>
-                                        }
-                                    }
-                                </td>
-                                <td><input class="form-control form-control-sm" @bind="editContNotas[c.Id]" /></td>
-                                <td style="text-align:center;"><input type="checkbox" @bind="editContActivo[c.Id]" /></td>
-                                <td>
-                                    <button class="btn btn-sm btn-success" @onclick="() => GuardarCont(c)">✓</button>
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => BorrarCont(c)">×</button>
-                                </td>
-                            </tr>
-                        }
-                        <tr style="background:#f0fdf4;">
-                            <td><input class="form-control form-control-sm" placeholder="+5491111111111" @bind="nuevoContNumero" /></td>
-                            <td><input class="form-control form-control-sm" placeholder="Nombre" @bind="nuevoContNombre" /></td>
-                            <td>
-                                <select class="form-control form-control-sm" @bind="nuevoContRol">
-                                    <option value="hermano">Hermano</option>
-                                    <option value="empleado">Empleado</option>
-                                    <option value="cliente">Cliente</option>
-                                    <option value="proveedor">Proveedor</option>
-                                    <option value="alquiler">Alquiler</option>
-                                    <option value="cafe">Café</option>
-                                    <option value="otro">Otro</option>
-                                </select>
-                            </td>
-                            <td style="font-size:0.75rem; color:#9ca3af;">(asignás después del alta)</td>
-                            <td><input class="form-control form-control-sm" placeholder="Notas" @bind="nuevoContNotas" /></td>
-                            <td></td>
-                            <td><button class="btn btn-sm btn-success" @onclick="AgregarCont">+ Agregar</button></td>
-                        </tr>
-                    </tbody>
-                </table>
-                <p style="color:#9ca3af; font-size:0.75rem;">💡 Tip: anteponé "whatsapp:" si querés, sino se agrega solo.</p>
-            }
-            else if (configTab == "bot")
-            {
-                <p style="color:#6b7280; font-size:0.85rem; margin-bottom:0.5rem;">
-                    Estos son los mensajes automáticos que le manda el bot a un número <strong>nuevo</strong> que escribe por primera vez.
-                    Editá lo que quieras y tocá <strong>Guardar</strong>. Si dejás un campo vacío, vuelve al texto original.
-                </p>
-                <div style="background:#eff6ff; border:1px solid #bfdbfe; padding:0.5rem 0.75rem; border-radius:6px; font-size:0.8rem; color:#1e40af; margin-bottom:0.8rem;">
-                    💡 WhatsApp limita el largo de los <strong>botones</strong> y <strong>títulos de opciones</strong>. Si un texto es muy largo no te va a dejar escribir más (el máximo está indicado en cada campo).
-                </div>
-
-                @* 2026-08-06: interruptor del aviso de venta a los internos *@
-                <div style="background:@(ventaAvisoOn ? "#ecfdf5" : "#f9fafb"); border:1px solid @(ventaAvisoOn ? "#6ee7b7" : "#e5e7eb"); border-radius:8px; padding:0.7rem 0.9rem; margin-bottom:1rem;">
-                    <label style="display:flex; align-items:flex-start; gap:0.6rem; cursor:pointer; margin:0;">
-                        <input type="checkbox" checked="@ventaAvisoOn" @onchange="e => ToggleVentaAviso((bool)e.Value!)" style="margin-top:0.2rem; width:1.1rem; height:1.1rem;" />
-                        <span>
-                            <span style="font-weight:600; color:#111827;">🧾 Aviso de venta con botones a los internos</span><br />
-                            <span style="font-size:0.8rem; color:#6b7280;">
-                                Prendido: al emitir una venta con la copia por WhatsApp tildada, al interno le llega un
-                                <strong>resumen con botones</strong> (comprobante / cuenta corriente / detalle) en vez del PDF entero.
-                                Apagado: le llega el <strong>PDF entero</strong> como antes. Los textos y botones del aviso los editás abajo, en
-                                <em>«🧾 Aviso de venta a los internos»</em>.
-                            </span>
-                        </span>
-                    </label>
-                </div>
-
-                @if (botCargando)
-                {
-                    <p style="color:#9ca3af;">Cargando…</p>
-                }
-                else
-                {
-                    @foreach (var grupo in botCampos.GroupBy(c => c.Grupo))
-                    {
-                        <div style="margin-bottom:1.1rem;">
-                            <h4 style="margin:0 0 0.5rem; font-size:0.95rem; color:#111827; border-bottom:2px solid #25d366; padding-bottom:0.25rem;">@grupo.Key</h4>
-                            @foreach (var campo in grupo)
-                            {
-                                <div style="margin-bottom:0.7rem;">
-                                    <label style="display:block; font-size:0.82rem; font-weight:600; color:#374151; margin-bottom:0.2rem;">
-                                        @campo.Etiqueta
-                                        <span style="font-weight:400; color:#9ca3af; font-size:0.72rem;"> · máx @campo.Max</span>
-                                        @if (!EsValorDefault(campo))
-                                        {
-                                            <button class="btn btn-link btn-sm" style="padding:0; font-size:0.72rem; margin-left:0.4rem;"
-                                                    @onclick="() => RestaurarCampo(campo)" title="Volver al texto original">↺ restaurar original</button>
-                                        }
-                                    </label>
-                                    @if (campo.Multilinea)
-                                    {
-                                        <textarea class="form-control form-control-sm" rows="2" maxlength="@campo.Max"
-                                                  @bind="botValores[campo.Clave]" @bind:event="oninput"></textarea>
-                                    }
-                                    else
-                                    {
-                                        <input class="form-control form-control-sm" maxlength="@campo.Max"
-                                               @bind="botValores[campo.Clave]" @bind:event="oninput" />
-                                    }
-                                    @if (!string.IsNullOrEmpty(campo.Ayuda))
-                                    {
-                                        <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.15rem;">@campo.Ayuda</div>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    }
-                    <div style="position:sticky; bottom:0; background:#fff; padding-top:0.6rem; border-top:1px solid #e5e7eb; display:flex; gap:0.5rem; align-items:center;">
-                        <button class="btn btn-success" disabled="@botGuardando" @onclick="GuardarBotMensajes">
-                            @(botGuardando ? "Guardando…" : "💾 Guardar cambios")
-                        </button>
-                        <span style="font-size:0.78rem; color:#9ca3af;">Los cambios se aplican al toque para los próximos mensajes del bot.</span>
-                    </div>
-                }
-            }
-        </div>
-    </div>
-}
+@* 2026-08-27: la ventanita de ⚙️ Configuración WhatsApp (respuestas rápidas, CBUs, contactos y
+   mensajes del bot) se mudó a "Pedidos y configuración" — componente Shared/WaConfig.razor.
+   Acá se llegaba desde el panel derecho, que ya no existe. El chat sigue LEYENDO las listas
+   (respuestas, contactos, datos bancarios) para sus botones, pero editarlas se hace allá. *@
 
 <style>
     /* 2026-07-29: rediseño — más ancho y moderno. Sidebar + thread como dos tarjetas redondeadas
@@ -4132,6 +3792,23 @@
     /* 2026-08-24: cartelitos de DIRECCIÓN y DEUDA en la barra de arriba del chat. Son chatos a
        propósito (misma altura que el cartel del cliente) para no comerle alto a la conversación.
        La dirección se corta con puntitos si es muy larga; el texto entero queda en el globito. */
+    /* 2026-08-27: bloques que bajaron del panel derecho al editor de contacto. */
+    .wa-qc-extra { margin-top: 0.9rem; padding-top: 0.8rem; border-top: 1px solid #eef2f6; }
+    .wa-qc-extra.peligro { border-top-color: #fee2e2; }
+    .wa-qc-extra-t { font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em;
+        color: #64748b; margin-bottom: 0.35rem; }
+    .wa-qc-hint { font-size: 0.74rem; color: #64748b; background: #f1f5f9; border-radius: 8px;
+        padding: 0.4rem 0.5rem; margin-bottom: 0.5rem; line-height: 1.35; }
+    .wa-qc-btn { width: 100%; text-align: left; background: #f0fdf6; border: 1px solid #bbf7d0; border-radius: 9px;
+        padding: 0.45rem 0.6rem; font-size: 0.84rem; font-weight: 600; color: #15803d; cursor: pointer; font-family: inherit; }
+    .wa-qc-btn:hover { background: #dcfce7; }
+    .wa-qc-quitar { width: 100%; text-align: left; background: #fff; border: 1px solid #e5e7eb; border-radius: 9px;
+        padding: 0.35rem 0.6rem; font-size: 0.8rem; color: #b91c1c; cursor: pointer; font-family: inherit; margin-bottom: 0.3rem; }
+    .wa-qc-quitar:hover { background: #fef2f2; border-color: #fecaca; }
+    .wa-qc-borrar { width: 100%; background: #fff; border: 1px solid #fecaca; border-radius: 9px;
+        padding: 0.45rem 0.6rem; font-size: 0.84rem; font-weight: 600; color: #b91c1c; cursor: pointer; font-family: inherit; }
+    .wa-qc-borrar:hover { background: #fef2f2; }
+
     /* ═══ 2026-08-27: encabezado del chat reorganizado (pedido de Osmar) ═══
        Renglón 1: nombre (ancho FIJO) + iconitos + estado y responsable pegados a la derecha.
        Renglón 2: número, línea, cliente, dirección, deuda + la nota siempre a la vista.
@@ -4816,36 +4493,12 @@
     // Respuestas rapidas + contactos
     List<ApiClient.TwRespRapidaDto> respuestas = new();
     List<ApiClient.TwContactoDto> contactos = new();
-    bool showConfig = false;
     bool showQuickReplies = false;   // 2026-08-05: desplegable de respuestas rápidas arriba del botón Enviar
-    string configTab = "resp";
     // 2026-07-29: Datos bancarios / CBUs
     List<ApiClient.TwCbuDto> datosBancarios = new();
     bool showCbuPanel = false;
-    Dictionary<int, string> editCbuNombre = new(), editCbuBanco = new(), editCbuTipo = new(), editCbuTitular = new(),
-                            editCbuCuit = new(), editCbuCbu = new(), editCbuAlias = new(), editCbuMail = new();
-    Dictionary<int, int> editCbuOrden = new();
-    Dictionary<int, bool> editCbuActivo = new();
-    string nuevoCbuNombre = "", nuevoCbuBanco = "", nuevoCbuTipo = "cuenta corriente", nuevoCbuTitular = "",
-           nuevoCbuCuit = "", nuevoCbuCbu = "", nuevoCbuAlias = "", nuevoCbuMail = "";
-    int nuevoCbuOrden = 99;
-    // dict para edicion inline
-    Dictionary<int, string> editRespNombre = new(), editRespTexto = new();
-    Dictionary<int, int> editRespOrden = new();
-    Dictionary<int, bool> editRespActivo = new();
-    Dictionary<int, string> editContNombre = new(), editContRol = new(), editContNotas = new();
-    Dictionary<int, bool> editContActivo = new();
-    Dictionary<int, int?> editContClienteId = new();
-    Dictionary<int, string?> editContClienteNombre = new();
-    Dictionary<int, string> editContClienteQuery = new();
-    int? clienteBusquedaActivaId = null;
-    List<ApiClient.TwClienteBuscarDto> clienteResultados = new();
-    // Mensajes del bot de bienvenida (pestaña 🤖 de la config)
-    List<ApiClient.BotCampoDto> botCampos = new();
-    Dictionary<string, string> botValores = new();
-    bool botCargando = false, botGuardando = false;
-    // 2026-08-06: interruptor del aviso de venta a internos (resumen con botones vs PDF entero)
-    bool ventaAvisoOn = true;
+    // 2026-08-27: los casilleros de edición de respuestas, CBUs y contactos se fueron con la
+    //             configuración a Shared/WaConfig.razor. Acá solo quedan las listas para leer.
     // Reacciones
     int? pickerOpenMsgId = null;
     // 2026-07-23: ☕ y 🫘 primeros (pedido Osmar — "grano de café" no existe como emoji, esto es lo más parecido)
@@ -5319,7 +4972,6 @@
     /// el modo venta abre igual y el primer paso te pide elegir a quién le vendés.</summary>
     async Task AbrirModoVenta()
     {
-        ctxAbierto = true;
         modoVenta = true;
         modoMeli = false;
         mvPaso = 1;
@@ -6073,7 +5725,6 @@
 
     async Task AbrirModoMeli()
     {
-        ctxAbierto = true;
         modoMeli = true;
         modoVenta = false;
         if (mmFicha is not null || mmResultados.Count > 0 || string.IsNullOrWhiteSpace(selectedNumero)) return;
@@ -6182,7 +5833,7 @@
     async Task AbrirFichaDelAviso()
     {
         if (mmAviso is null) return;
-        ctxAbierto = true; modoMeli = true; modoVenta = false;
+        modoMeli = true; modoVenta = false;
         await AbrirFichaMeli(mmAviso.BuyerId);
     }
 
@@ -6217,7 +5868,7 @@
     /// si es un número de venta, busca de quién es.</summary>
     async Task AbrirCodigoMeli(string codigo)
     {
-        ctxAbierto = true; modoMeli = true; modoVenta = false;
+        modoMeli = true; modoVenta = false;
         if (codigo.StartsWith("MLA", StringComparison.OrdinalIgnoreCase))
         {
             await VerPublicacionMeli(codigo);
@@ -6353,6 +6004,18 @@
 
     string ClaveChat() => $"{selectedNumero}|{selectedLinea}";
 
+    // 2026-08-27: los dos botones de razones sociales que bajaron al editor de contacto. El de
+    // vincular CIERRA el editor primero, para no apilar una ventanita encima de la otra.
+    void VincularDesdeContacto()
+    {
+        showQuickContact = false;
+        AbrirVincularCliente();
+    }
+    async Task QuitarRazonDesdeContacto(int clienteId, string nombre)
+    {
+        await QuitarRazon(clienteId, nombre);
+    }
+
     void AbrirVincularCliente()
     {
         if (selectedNumero == null) return;
@@ -6459,10 +6122,6 @@
         }
         catch { }
     }
-    // nuevos
-    string nuevaRespNombre = "", nuevaRespTexto = "";
-    int nuevaRespOrden = 99;
-    string nuevoContNumero = "", nuevoContNombre = "", nuevoContRol = "hermano", nuevoContNotas = "";
 
     // 2026-07-22: la card de WhatsApp del dashboard navega a /whatsapp?numero=whatsapp:+549...
     // para abrir directo esa conversación (sin este parámetro la pantalla arranca sin chat elegido).
@@ -6485,47 +6144,10 @@
     // (igual que el Mapeo), este botón es la salida: lleva al Dashboard.
     private void VolverAlSistema() => Nav.NavigateTo("/");
 
-    // 2026-08-17: PANEL DERECHO (contacto + conversación). Arranca abierto en la compu y
-    // cerrado en el celular (ahí tapa el chat). La elección queda guardada en el navegador,
-    // así cada uno lo deja como le gusta y no tiene que volver a cerrarlo cada vez.
-    private bool ctxAbierto = true;
-    private bool ctxPrefLeida = false;
-
-    private async Task ToggleCtx()
-    {
-        ctxAbierto = !ctxAbierto;
-        try { await JS.InvokeVoidAsync("localStorage.setItem", "wa.panel", ctxAbierto ? "1" : "0"); } catch { }
-    }
-
-    private async Task AbrirCtx()
-    {
-        if (ctxAbierto) return;
-        ctxAbierto = true;
-        try { await JS.InvokeVoidAsync("localStorage.setItem", "wa.panel", "1"); } catch { }
-    }
-
-    // Se llama una sola vez, en el primer dibujado. Si nunca eligió nada, decide por el ancho
-    // de la pantalla: en el celular arranca cerrado para no tapar la conversación.
-    private async Task CargarPrefPanelAsync()
-    {
-        if (ctxPrefLeida) return;
-        ctxPrefLeida = true;
-        try
-        {
-            var v = await JS.InvokeAsync<string>("localStorage.getItem", "wa.panel");
-            if (v == "1" || v == "0")
-            {
-                ctxAbierto = v == "1";
-            }
-            else
-            {
-                var ancho = await JS.InvokeAsync<int>("waComposer.anchoPantalla");
-                ctxAbierto = ancho > 820;
-            }
-            StateHasChanged();
-        }
-        catch { }
-    }
+    // 2026-08-27: el PANEL DERECHO de contacto + conversación se borró (todo lo suyo subió al
+    // encabezado del chat o se mudó a "Editar contacto"). Con él se fueron el interruptor de
+    // plegado, la preferencia guardada en el navegador ("wa.panel") y los dos botones de la tira
+    // que lo abrían. El espacio de la derecha ahora lo manejan solos el Modo venta y el Modo MeLi.
 
     // 2026-08-05: FIRMA de Depósito. Cuando responde un usuario de Depósito, el mensaje sale
     // firmado con quién contesta → "OK (alex)". Lista fija de empleados (pedido del usuario).
@@ -6597,7 +6219,6 @@
             try { await JS.InvokeVoidAsync("waComposer.register", _pasteRef); }
             catch { /* si el JS no cargó, igual podés enviar con el botón verde */ }
             // 2026-08-17: ¿el panel derecho arranca abierto o cerrado? (lo que eligió la última vez)
-            await CargarPrefPanelAsync();
         }
         // 2026-08-26: tocaste "otro día" -> que el calendario se despliegue solo, así el día se
         // elige tocando y no escribiendo (escribir el año es lo que dejaba fechas del año 0002).
@@ -6732,64 +6353,15 @@
     // Avisar a los demás que mandé (para SU cierre de carrera). Best-effort, NO toca el envío.
     async Task AvisarEnvie(string convId) => await Presence.NotifyMessageSentAsync(convId);
 
-    // ── Mensajes del bot de bienvenida ──
-    async Task AbrirTabBot()
-    {
-        configTab = "bot";
-        await LoadBotMensajes();
-    }
 
-    async Task LoadBotMensajes()
-    {
-        botCargando = true;
-        try
-        {
-            botCampos = await Api.GetBotMensajesAsync();
-            botValores = botCampos.ToDictionary(c => c.Clave, c => c.Valor);
-            ventaAvisoOn = await Api.GetVentaAvisoEnabledAsync();
-        }
-        catch { Toast.Error("No se pudieron cargar los mensajes del bot"); }
-        finally { botCargando = false; }
-    }
-
-    // 2026-08-06: prende/apaga el aviso de venta a internos (resumen con botones vs PDF entero).
-    async Task ToggleVentaAviso(bool on)
-    {
-        ventaAvisoOn = on;
-        var (ok, err) = await Api.SetVentaAvisoEnabledAsync(on);
-        if (ok) Toast.Success(on ? "✅ Aviso con botones ACTIVADO" : "✅ Ahora se manda el PDF entero");
-        else { Toast.Error(err ?? "No se pudo guardar"); ventaAvisoOn = !on; }
-    }
-
-    bool EsValorDefault(ApiClient.BotCampoDto campo)
-        => string.Equals(botValores.GetValueOrDefault(campo.Clave, campo.Valor)?.Trim(), campo.Default, StringComparison.Ordinal);
-
-    void RestaurarCampo(ApiClient.BotCampoDto campo) => botValores[campo.Clave] = campo.Default;
-
-    async Task GuardarBotMensajes()
-    {
-        botGuardando = true;
-        try
-        {
-            var (ok, err) = await Api.GuardarBotMensajesAsync(botValores);
-            if (ok) { Toast.Success("✅ Mensajes del bot guardados"); await LoadBotMensajes(); }
-            else Toast.Error(err ?? "Error al guardar");
-        }
-        finally { botGuardando = false; }
-    }
+    // 2026-08-27: los mensajes del bot y el interruptor del aviso de venta se editan ahora en
+    //             "Pedidos y configuración" (Shared/WaConfig.razor). Acá no queda nada de eso.
 
     async Task LoadRespuestas()
     {
         try
         {
             respuestas = await Api.GetTwRespuestasAsync();
-            foreach (var r in respuestas)
-            {
-                editRespNombre[r.Id] = r.Nombre;
-                editRespTexto[r.Id] = r.Texto;
-                editRespOrden[r.Id] = r.Orden;
-                editRespActivo[r.Id] = r.Activo;
-            }
         }
         catch { }
     }
@@ -6798,37 +6370,11 @@
         try
         {
             contactos = await Api.GetTwContactosAsync();
-            foreach (var c in contactos)
-            {
-                editContNombre[c.Id] = c.Nombre;
-                editContRol[c.Id] = c.Rol;
-                editContNotas[c.Id] = c.Notas ?? "";
-                editContActivo[c.Id] = c.Activo;
-                editContClienteId[c.Id] = c.ClienteId;
-                editContClienteNombre[c.Id] = c.ClienteNombre;
-                editContClienteQuery[c.Id] = "";
-            }
         }
         catch { }
     }
 
-    async Task BuscarClientes(int contactoId)
-    {
-        clienteBusquedaActivaId = contactoId;
-        var q = editContClienteQuery.GetValueOrDefault(contactoId, "");
-        try { clienteResultados = await Api.BuscarTwClientesAsync(q); }
-        catch { clienteResultados = new(); }
-    }
-
-    void SeleccionarCliente(int contactoId, ApiClient.TwClienteBuscarDto cli)
-    {
-        editContClienteId[contactoId] = cli.Id;
-        editContClienteNombre[contactoId] = cli.Nombre;
-        clienteResultados = new();
-        clienteBusquedaActivaId = null;
-    }
-
-    // === 2026-07-29: Enviar saldo (deuda) de un cliente ===
+            // === 2026-07-29: Enviar saldo (deuda) de un cliente ===
     bool showSaldoPanel = false, saldoBuscando = false, saldoCargando = false;
     string saldoQuery = "";
     List<ApiClient.TwClienteBuscarDto> saldoResultados = new();
@@ -7150,53 +6696,11 @@
         try
         {
             datosBancarios = await Api.GetTwDatosBancariosAsync();
-            foreach (var cb in datosBancarios)
-            {
-                editCbuNombre[cb.Id] = cb.Nombre;
-                editCbuBanco[cb.Id] = cb.Banco;
-                editCbuTipo[cb.Id] = cb.TipoCuenta;
-                editCbuTitular[cb.Id] = cb.Titular;
-                editCbuCuit[cb.Id] = cb.Cuit;
-                editCbuCbu[cb.Id] = cb.Cbu;
-                editCbuAlias[cb.Id] = cb.Alias;
-                editCbuMail[cb.Id] = cb.Mail;
-                editCbuOrden[cb.Id] = cb.Orden;
-                editCbuActivo[cb.Id] = cb.Activo;
-            }
         }
         catch { /* si falla la carga, el botón 🏦 muestra el aviso de "cargá una cuenta" */ }
     }
 
-    async Task GuardarCbu(ApiClient.TwCbuDto cb)
-    {
-        var ok = await Api.UpdateTwCbuAsync(cb.Id, new ApiClient.TwCbuUpsert(
-            editCbuNombre[cb.Id], editCbuBanco[cb.Id], editCbuTipo[cb.Id], editCbuTitular[cb.Id],
-            editCbuCuit[cb.Id], editCbuCbu[cb.Id], editCbuAlias[cb.Id], editCbuMail[cb.Id],
-            editCbuOrden[cb.Id], editCbuActivo[cb.Id]));
-        if (ok) { Toast.Success("Guardado"); await LoadDatosBancarios(); }
-        else Toast.Error("Error al guardar");
-    }
-
-    async Task BorrarCbu(ApiClient.TwCbuDto cb)
-    {
-        if (await Api.DeleteTwCbuAsync(cb.Id)) { Toast.Success("Borrado"); await LoadDatosBancarios(); }
-    }
-
-    async Task AgregarCbu()
-    {
-        if (string.IsNullOrWhiteSpace(nuevoCbuNombre)) { Toast.Error("Poné al menos un nombre/etiqueta"); return; }
-        if (await Api.CreateTwCbuAsync(new ApiClient.TwCbuUpsert(
-                nuevoCbuNombre, nuevoCbuBanco, nuevoCbuTipo, nuevoCbuTitular,
-                nuevoCbuCuit, nuevoCbuCbu, nuevoCbuAlias, nuevoCbuMail, nuevoCbuOrden, true)))
-        {
-            Toast.Success("Agregado");
-            nuevoCbuNombre = ""; nuevoCbuBanco = ""; nuevoCbuTipo = "cuenta corriente"; nuevoCbuTitular = "";
-            nuevoCbuCuit = ""; nuevoCbuCbu = ""; nuevoCbuAlias = ""; nuevoCbuMail = ""; nuevoCbuOrden = 99;
-            await LoadDatosBancarios();
-        }
-    }
-
-    async Task BuscarSaldoClientes()
+                async Task BuscarSaldoClientes()
     {
         var q = (saldoQuery ?? "").Trim();
         if (q.Length < 2) { saldoResultados = new(); return; }
@@ -7256,6 +6760,7 @@
             if (ok)
             {
                 Toast.Success("Conversación borrada");
+                showQuickContact = false;   // 2026-08-27: se borra desde el editor de contacto — cerrarlo
                 selectedNumero = null;
                 mensajes = new();
                 await LoadConversaciones(silent: true);
@@ -7287,51 +6792,7 @@
         return s.Replace("{nombre}", nombre).Replace("{numero}", num).Replace("{Nombre}", nombre);
     }
 
-    async Task GuardarResp(ApiClient.TwRespRapidaDto r)
-    {
-        var ok = await Api.UpdateTwRespuestaAsync(r.Id, new ApiClient.TwRespUpsert(editRespNombre[r.Id], editRespTexto[r.Id], editRespOrden[r.Id], editRespActivo[r.Id]));
-        if (ok) { Toast.Success("Guardado"); await LoadRespuestas(); }
-        else Toast.Error("Error al guardar");
-    }
-    async Task BorrarResp(ApiClient.TwRespRapidaDto r)
-    {
-        if (await Api.DeleteTwRespuestaAsync(r.Id)) { Toast.Success("Borrado"); await LoadRespuestas(); }
-    }
-    async Task AgregarResp()
-    {
-        if (string.IsNullOrWhiteSpace(nuevaRespNombre) || string.IsNullOrWhiteSpace(nuevaRespTexto)) { Toast.Error("Nombre y texto son obligatorios"); return; }
-        if (await Api.CreateTwRespuestaAsync(new ApiClient.TwRespUpsert(nuevaRespNombre, nuevaRespTexto, nuevaRespOrden, true)))
-        {
-            Toast.Success("Agregado");
-            nuevaRespNombre = ""; nuevaRespTexto = ""; nuevaRespOrden = 99;
-            await LoadRespuestas();
-        }
-    }
-    async Task GuardarCont(ApiClient.TwContactoDto c)
-    {
-        if (await Api.UpdateTwContactoAsync(c.Id, new ApiClient.TwContactoUpsert(
-                c.Numero, editContNombre[c.Id], editContRol[c.Id], editContNotas[c.Id], editContActivo[c.Id],
-                editContClienteId.GetValueOrDefault(c.Id))))
-        { Toast.Success("Guardado"); await LoadContactos(); await LoadConversaciones(silent: true); }
-    }
-    async Task BorrarCont(ApiClient.TwContactoDto c)
-    {
-        if (await Api.DeleteTwContactoAsync(c.Id)) { Toast.Success("Borrado"); await LoadContactos(); await LoadConversaciones(silent: true); }
-    }
-    async Task AgregarCont()
-    {
-        if (string.IsNullOrWhiteSpace(nuevoContNumero) || string.IsNullOrWhiteSpace(nuevoContNombre)) { Toast.Error("Número y nombre son obligatorios"); return; }
-        var (ok, err) = await Api.CreateTwContactoAsync(new ApiClient.TwContactoUpsert(nuevoContNumero, nuevoContNombre, nuevoContRol, nuevoContNotas, true, null));
-        if (ok)
-        {
-            Toast.Success("Contacto agregado");
-            nuevoContNumero = ""; nuevoContNombre = ""; nuevoContNotas = "";
-            await LoadContactos(); await LoadConversaciones(silent: true);
-        }
-        else Toast.Error(err ?? "Error");
-    }
-
-    async Task OnTick()
+                            async Task OnTick()
     {
         await InvokeAsync(async () =>
         {
@@ -8519,19 +7980,7 @@
     }
 
     // 2026-07-23: buscador de la pestaña Contactos (miles tras la importación de clientes)
-    string contactosBusqueda = "";
-    List<ApiClient.TwContactoDto> ContactosFiltrados()
-    {
-        var q = (contactosBusqueda ?? "").Trim();
-        var lista = contactos.OrderBy(x => x.Nombre).ToList();
-        if (q.Length < 2) return lista;
-        return lista.Where(c =>
-               (c.Nombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
-            || (c.Numero ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
-            || (c.ClienteNombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
-    }
-
-    // 2026-07-23: etiqueta legible del tipo de archivo, por la extensión de la URL o del nombre
+        // 2026-07-23: etiqueta legible del tipo de archivo, por la extensión de la URL o del nombre
     static string WaTipoArchivo(string? url, string? filename)
     {
         var ext = System.IO.Path.GetExtension(filename ?? "").TrimStart('.').ToLowerInvariant();

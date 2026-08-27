@@ -63,6 +63,21 @@
             </div>
         }
 
+        @* 2026-08-27: RESPUESTAS RÁPIDAS, CBUs, CONTACTOS y MENSAJES DEL BOT. Vivían adentro del chat,
+           en el panel derecho, y ese panel se borró. Ahora están acá, que es la pantalla de
+           configuración. Se abre y se cierra para no tapar los pedidos, que es a lo que venís. *@
+        <div style="margin-bottom:1rem;">
+            <button class="btn btn-secondary btn-sm" @onclick="@(() => mostrarWaConfig = !mostrarWaConfig)">
+                @(mostrarWaConfig ? "▲" : "▼") ⚙️ Respuestas rápidas, CBUs, contactos y mensajes del bot
+            </button>
+            @if (mostrarWaConfig)
+            {
+                <div style="margin-top:0.6rem;">
+                    <WaConfig />
+                </div>
+            }
+        </div>
+
         <div style="background:#fefce8; border:1px solid #fde68a; border-radius:6px; padding:0.85rem 1rem; margin-bottom:1rem;">
             <strong>Pegar pedido manual</strong>
             <p style="margin:0.3rem 0; font-size:0.85rem; color:#854d0e;">
@@ -144,6 +159,9 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
 </style>
 
 @code {
+    // 2026-08-27: arranca cerrado — el que entra acá viene por los pedidos, no por la configuración.
+    bool mostrarWaConfig = false;
+
     private List<ApiClient.WhatsAppPedidoDto>? pedidos;
     private bool cargando;
     private string textoNuevo = "";
