@@ -384,6 +384,9 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    // Nombres unicos por clase: hay varios controllers con clases internas del mismo nombre.
+    options.CustomSchemaIds(Api.SwaggerSchemaIds.For);
+
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Template API",
