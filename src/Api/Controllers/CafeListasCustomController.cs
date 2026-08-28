@@ -778,6 +778,7 @@ public class CafeListasCustomController : ControllerBase
 
     /// <summary>2026-07-23: genera el PDF de una lista (la MISMA lógica que el botón descargar)
     /// para poder reusarlo desde el chat de WhatsApp. Devuelve (null, "") si la lista no existe.</summary>
+    [NonAction]
     public async Task<(byte[]? Bytes, string Filename)> GenerarPdfBytesAsync(int listaId)
     {
         var lista = await _db.CafeListasPreciosCustom

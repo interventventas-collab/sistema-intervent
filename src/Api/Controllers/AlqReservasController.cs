@@ -60,6 +60,7 @@ public class AlqReservasController : ControllerBase
 
     /// <summary>Genera los bytes del PDF del comprobante de la reserva (misma lógica que el botón Descargar).
     /// Reutilizable desde otros controllers — ej. adjuntar la reserva por WhatsApp. Devuelve (null,"") si no existe.</summary>
+    [NonAction]
     public async Task<(byte[]? bytes, string filename)> GenerarPdfBytesAsync(int id)
     {
         var r = await _db.AlqReservas
@@ -83,6 +84,7 @@ public class AlqReservasController : ControllerBase
     /// <summary>2026-08-24: el archivo baja con NOMBRE DEL CLIENTE - FECHA DEL EVENTO - DIRECCION,
     /// en vez del numero de reserva (que al cliente no le dice nada). Pedido del usuario.
     /// Si falta la fecha del evento usa la de entrega; si falta la direccion del evento usa la del cliente.</summary>
+    [NonAction]
     public static string BuildPdfFilename(AlqReserva r)
     {
         var cliente = !string.IsNullOrWhiteSpace(r.ClienteNav?.Nombre)

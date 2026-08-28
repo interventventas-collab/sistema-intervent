@@ -337,6 +337,7 @@ public class VisitasController : ControllerBase
 
     /// <summary>Genera los bytes del recibo de visita por Id (mismo formato que el recibo público por token).
     /// Reutilizable desde otros controllers — ej. adjuntar la visita por WhatsApp. Devuelve (null,"") si no existe.</summary>
+    [NonAction]
     public async Task<(byte[]? bytes, string filename)> GenerarReciboPdfBytesAsync(int id)
     {
         var v = await _db.Visitas.FirstOrDefaultAsync(x => x.Id == id);

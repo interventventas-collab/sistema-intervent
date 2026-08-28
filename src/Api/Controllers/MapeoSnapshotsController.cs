@@ -108,6 +108,7 @@ public class MapeoSnapshotsController : ControllerBase
     /// Pensado para ser llamado desde otros controllers (ej: antes de "Empezar desde cero").
     /// Devuelve null si no hay paradas.
     /// </summary>
+    [NonAction]
     public static async Task<MapeoRouteSnapshot?> BuildSnapshotAsync(AppDbContext db, string? notes, string? username)
     {
         var stops = await db.MapeoStops

@@ -86,6 +86,7 @@ public class CafeClientesController : ControllerBase
 
     /// <summary>2026-08-06: núcleo reutilizable del estado de cuenta (lo usa también el aviso de venta
     /// por WhatsApp para mandarle la cuenta corriente al interno). Devuelve null si el cliente no existe.</summary>
+    [NonAction]
     public async Task<EstadoCuentaDto?> GetEstadoCuentaAsync(int id)
     {
         var cliente = await _db.CafeClientes.FindAsync(id);
