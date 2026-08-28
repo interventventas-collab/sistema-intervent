@@ -1619,16 +1619,21 @@ public class WhatsAppTwilioController : ControllerBase
     // la Cloud API (Canal=CLOUD, tiene wamid) la reaccion SE MANDA al WhatsApp del cliente — la ve
     // en su celu como una reaccion comun. Quitar la reaccion tambien se la saca al cliente.
     // OJO: WhatsApp permite UNA reaccion nuestra por mensaje: si marcas dos emojis, el cliente ve el ultimo.
-    public record ReaccionRequest(int MensajeId, string Emoji);
+    // 2026-08-28: Firma = abreviatura de QUIEN reacciona (oficina os/ger/ga del PIN; Deposito alex/walter...).
+    // El toggle es por (mensaje + emoji + firma): asi dos personas pueden marcar el mismo emoji sin
+    // borrarse la reaccion entre ellas. Sin firma (null) se comporta igual que siempre.
+    public record ReaccionRequest(int MensajeId, string Emoji, string? Firma = null);
 
-    /// <summary>POST /reacciones — toggle: si ya existe ese emoji para ese mensaje, lo borra; sino lo crea.</summary>
+    /// <summary>POST /reacciones — toggle: si ya existe esa reaccion (mensaje+emoji+firma), la borra; sino la crea.</summary>
     [HttpPost("reacciones")]
     [Authorize]
     public async Task<IActionResult> ToggleReaccion([FromBody] ReaccionRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Emoji)) return BadRequest();
-        var existing = await _db.WhatsAppTwilioReacciones
-            .FirstOrDefaultAsync(r => r.MensajeId == req.MensajeId && r.Emoji == req.Emoji);
+        var firma = string.IsNullOrWhiteSpace(req.Firma) ? null : req.Firma.Trim();
+        var q = _db.WhatsAppTwilioReacciones.Where(r => r.MensajeId == req.MensajeId && r.Emoji == req.Emoji);
+        q = firma == null ? q.Where(r => r.Firma == null) : q.Where(r => r.Firma == firma);
+        var existing = await q.FirstOrDefaultAsync();
         bool removed;
         if (existing != null)
         {
@@ -1642,6 +1647,7 @@ public class WhatsAppTwilioController : ControllerBase
             {
                 MensajeId = req.MensajeId,
                 Emoji = req.Emoji,
+                Firma = firma,
                 CreatedAt = DateTime.UtcNow
             });
             await _db.SaveChangesAsync();
@@ -1658,10 +1664,20 @@ public class WhatsAppTwilioController : ControllerBase
                 && !string.IsNullOrWhiteSpace(msg.TwilioMessageSid)
                 && msg.TwilioMessageSid.StartsWith("wamid.", StringComparison.OrdinalIgnoreCase))
             {
-                // Al quitar mandamos emoji vacio (Meta la saca del celu del cliente).
+                // 2026-08-28: WhatsApp muestra UNA sola reaccion nuestra por mensaje, asi que le mandamos
+                // siempre la ULTIMA que quedo puesta de nuestro lado (la nueva pisa a la anterior: 💻 -> 📦).
+                // Al quitar: si todavia queda alguna, va esa; si no queda ninguna, emoji vacio (Meta la borra).
+                var emojiParaElCliente = req.Emoji;
+                if (removed)
+                {
+                    emojiParaElCliente = await _db.WhatsAppTwilioReacciones.AsNoTracking()
+                        .Where(r => r.MensajeId == req.MensajeId && (r.UsuarioId == null || r.UsuarioId != -1))
+                        .OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id)
+                        .Select(r => r.Emoji).FirstOrDefaultAsync() ?? "";
+                }
                 // 2026-07-23 (multi-línea): la reacción sale por la línea del propio mensaje.
-                var sid = await _meta.SendReactionAsync(msg.Numero, msg.TwilioMessageSid, removed ? "" : req.Emoji, lineaPhoneId: msg.LineaPhoneId);
-                enviadaAlCliente = sid != null && !removed;
+                var sid = await _meta.SendReactionAsync(msg.Numero, msg.TwilioMessageSid, emojiParaElCliente, lineaPhoneId: msg.LineaPhoneId);
+                enviadaAlCliente = sid != null && emojiParaElCliente.Length > 0;
             }
         }
         catch (Exception ex)
@@ -1818,13 +1834,20 @@ public class WhatsAppTwilioController : ControllerBase
         var ids = msgs.Select(m => m.Id).ToList();
         // 2026-08-05: EsCliente = la reacción la puso el CLIENTE (UsuarioId = -1 desde el webhook),
         // no nosotros. Sirve para mostrarla distinta en el chat.
-        var reacciones = await _db.WhatsAppTwilioReacciones.AsNoTracking()
+        // 2026-08-28: se agrupa en memoria (son pocas filas) para poder devolver ademas las FIRMAS,
+        // o sea quien puso cada emoji: "💻 os", "📦 alex". SQL no sabe juntar textos con coma.
+        var reacFilas = await _db.WhatsAppTwilioReacciones.AsNoTracking()
             .Where(r => ids.Contains(r.MensajeId))
-            .GroupBy(r => new { r.MensajeId, r.Emoji })
-            .Select(g => new { g.Key.MensajeId, g.Key.Emoji, Count = g.Count(), EsCliente = g.Max(x => x.UsuarioId) == -1 })
+            .Select(r => new { r.MensajeId, r.Emoji, r.UsuarioId, r.Firma })
             .ToListAsync();
-        var reacByMsg = reacciones.GroupBy(r => r.MensajeId)
-            .ToDictionary(g => g.Key, g => g.Select(x => new { x.Emoji, x.Count, x.EsCliente }).ToList());
+        var reacByMsg = reacFilas.GroupBy(r => r.MensajeId)
+            .ToDictionary(g => g.Key, g => g.GroupBy(x => x.Emoji).Select(ge => new
+            {
+                Emoji = ge.Key,
+                Count = ge.Count(),
+                EsCliente = ge.Max(x => x.UsuarioId) == -1,
+                Firmas = string.Join(" · ", ge.Select(x => x.Firma).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct())
+            }).ToList());
         var result = msgs.Select(m =>
         {
             string? replyPreview = null;

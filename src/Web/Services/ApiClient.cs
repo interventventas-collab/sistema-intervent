@@ -7249,7 +7249,9 @@ public class ApiClient
         List<TwClienteVinculadoDto>? Clientes = null);
     /// <summary>2026-08-20: una razón social colgada de un teléfono de WhatsApp.</summary>
     public record TwClienteVinculadoDto(int Id, string Nombre, string? Codigo);
-    public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false);
+    // 2026-08-28: Firmas = quien(es) pusieron ese emoji ("os", "alex", o "os · ger" si fueron varios).
+    // Viene vacio en los chats comunes, donde las reacciones siguen sin firma.
+    public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false, string? Firmas = null);
     // 2026-08-05: ReplyToSid/ReplyPreview/ReplyFromMe = "responder citando" (burbuja del mensaje citado).
     public record TwMsgDto(int Id, string Direccion, string Numero, string? NombrePerfil, string? Cuerpo, string? MediaUrl, string? MediaFilename, int? NumMedia, bool Procesado, string? RespuestaEnviada, DateTime CreatedAt, string? EstadoEntrega, List<TwReaccionDto>? Reacciones, string? ReplyToSid = null, string? ReplyPreview = null, bool ReplyFromMe = false, bool OcultoDeposito = false,
         // 2026-08-18: identificador propio del mensaje. Sirve para ubicar el mensaje citado al tocar la cajita gris.
@@ -8014,9 +8016,9 @@ public class ApiClient
     }
 
     public record TwReaccionResp(bool Ok, bool Removed, bool EnviadaAlCliente);
-    public async Task<TwReaccionResp?> ToggleReaccionAsync(int mensajeId, string emoji)
+    public async Task<TwReaccionResp?> ToggleReaccionAsync(int mensajeId, string emoji, string? firma = null)
     {
-        var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/reacciones", new { MensajeId = mensajeId, Emoji = emoji });
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/reacciones", new { MensajeId = mensajeId, Emoji = emoji, Firma = firma });
         if (!resp.IsSuccessStatusCode) return null;
         return await resp.Content.ReadFromJsonAsync<TwReaccionResp>();
     }

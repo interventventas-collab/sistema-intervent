@@ -34,6 +34,9 @@ public class WhatsAppTwilioReaccion
     public int MensajeId { get; set; }
     [MaxLength(20)] public string Emoji { get; set; } = "";
     public int? UsuarioId { get; set; }
+    // 2026-08-28: abreviatura de quien reacciono (os/ger/ga del PIN, alex/walter... de Deposito).
+    // NULL = reaccion sin firma (el resto de los chats sigue funcionando igual que antes).
+    [MaxLength(20)] public string? Firma { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

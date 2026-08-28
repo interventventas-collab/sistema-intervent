@@ -89,6 +89,8 @@ BEGIN
         [MensajeId]  INT          NOT NULL,
         [Emoji]      NVARCHAR(20) NOT NULL,
         [UsuarioId]  INT          NULL,
+        -- 2026-08-28: abreviatura de QUIEN reacciono (os/ger/ga, alex/walter...). NULL = sin firma.
+        [Firma]      NVARCHAR(20) NULL,
         [CreatedAt]  DATETIME2    NOT NULL CONSTRAINT DF_WATwReac_Created DEFAULT SYSUTCDATETIME()
     );
     CREATE INDEX IX_WATwReac_Mensaje ON [WhatsApp_TwilioReacciones]([MensajeId]);

@@ -1091,10 +1091,13 @@
                                     </div>
                                     @if (pickerOpenMsgId == m.Id)
                                     {
+                                        @* 2026-08-28: en los chats de Depósito la tira cambia segun quien mira:
+                                           oficina 💻/⛔, Depósito 📦/🚧 (ver DepositoChats.EmojisPara). *@
                                         <div class="wa-emoji-picker">
-                                            @foreach (var em in QuickEmojis)
+                                            @foreach (var em in EmojisPickerWa)
                                             {
-                                                <button class="wa-emoji-pick" @onclick="() => ReaccionarA(m.Id, em)">@em</button>
+                                                <button class="wa-emoji-pick @(em.Que.Length > 0 ? "conletra" : "")" title="@em.Que"
+                                                        @onclick="() => ReaccionarA(m.Id, em.Emoji)">@em.Emoji@(em.Que.Length > 0 ? $" {em.Que}" : "")</button>
                                             }
                                         </div>
                                     }
@@ -1113,8 +1116,10 @@
                                             }
                                             else
                                             {
-                                                <button class="wa-reaccion-chip" @onclick="() => ReaccionarA(m.Id, r.Emoji)" title="Click para quitar">
-                                                    @r.Emoji @if (r.Count > 1) { <span>@r.Count</span> }
+                                                @* 2026-08-28: si la puso alguien con firma (chats de Depósito), el chip
+                                                   muestra QUIEN fue y solo esa persona puede sacarla. *@
+                                                <button class="wa-reaccion-chip" @onclick="() => QuitarReaccionChip(m.Id, r)" title="@TituloReaccionWa(r)">
+                                                    @r.Emoji @if (!string.IsNullOrWhiteSpace(r.Firmas)) { <span>@r.Firmas</span> } else if (r.Count > 1) { <span>@r.Count</span> }
                                                 </button>
                                             }
                                         }
@@ -4046,6 +4051,8 @@
     .wa-emoji-pick { background: transparent; border: none; padding: 0.2rem 0.35rem; font-size: 1.1rem; cursor: pointer; border-radius: 50%; transition: background 0.1s, transform 0.1s; }
     .wa-emoji-pick:hover { background: #f3f4f6; transform: scale(1.2); }
     .wa-reacciones { display: flex; gap: 0.2rem; margin-top: 0.1rem; flex-wrap: wrap; }
+    /* 2026-08-28: emojis con significado (chats de Depósito) — van con la palabra al lado */
+    .wa-emoji-pick.conletra { font-size: 0.82rem; white-space: nowrap; padding: 0.2rem 0.5rem; }
     .wa-reaccion-chip { background: #fff; border: 1px solid #d1d5db; padding: 0.1rem 0.4rem; border-radius: 12px; font-size: 0.78rem; cursor: pointer; transition: background 0.1s; }
     .wa-reaccion-chip:hover { background: #fee2e2; }
     .wa-reaccion-chip span { color: #6b7280; font-size: 0.7rem; margin-left: 0.15rem; }
@@ -6814,10 +6821,48 @@
         pickerOpenMsgId = pickerOpenMsgId == msgId ? null : msgId;
     }
 
+    // 2026-08-28: emojis del selector. En los chats de Depósito, los DOS de cada equipo con su
+    // significado; en el resto, la tira comun de siempre.
+    (string Emoji, string Que)[] EmojisPickerWa => EsChatVisibleDeposito
+        ? Web.Services.DepositoChats.EmojisPara(esDeposito)
+        : QuickEmojis.Select(e => (Emoji: e, Que: "")).ToArray();
+
+    // Quien firma la reaccion: oficina = operador del PIN (os/ger/ga); Depósito = el de la barrita.
+    string? FirmaReaccionWa()
+    {
+        if (!EsChatVisibleDeposito) return null;
+        if (esDeposito) return string.IsNullOrWhiteSpace(firmante) ? null : firmante;
+        var f = Web.Services.OperatorService.FirmaCorta(Op.Current);
+        return string.IsNullOrEmpty(f) ? null : f;
+    }
+
+    static string TituloReaccionWa(ApiClient.TwReaccionDto r)
+    {
+        var que = Web.Services.DepositoChats.QueSignifica(r.Emoji);
+        if (que.Length == 0) return "Click para quitar";
+        return string.IsNullOrWhiteSpace(r.Firmas) ? que : $"{que} — {r.Firmas}";
+    }
+
+    /// <summary>Click en un chip = sacar la reaccion. Solo se puede sacar la PROPIA: la de otro se avisa.</summary>
+    async Task QuitarReaccionChip(int msgId, ApiClient.TwReaccionDto r)
+    {
+        if (!string.IsNullOrWhiteSpace(r.Firmas))
+        {
+            var mia = FirmaReaccionWa();
+            var duenios = r.Firmas!.Split(" · ", StringSplitOptions.RemoveEmptyEntries);
+            if (mia is null || !duenios.Contains(mia))
+            {
+                Toast.Info($"Esa reacción la puso {r.Firmas} — solo la puede sacar quien la puso");
+                return;
+            }
+        }
+        await ReaccionarA(msgId, r.Emoji);
+    }
+
     async Task ReaccionarA(int msgId, string emoji)
     {
         pickerOpenMsgId = null;
-        var r = await Api.ToggleReaccionAsync(msgId, emoji);
+        var r = await Api.ToggleReaccionAsync(msgId, emoji, FirmaReaccionWa());
         if (r is null) { Toast.Error("No se pudo reaccionar"); return; }
         // 2026-07-23: si el mensaje entró por la API de Meta, la reacción viaja al celu del cliente
         if (r.EnviadaAlCliente) Toast.Success($"{emoji} enviada — el cliente la ve en su WhatsApp");

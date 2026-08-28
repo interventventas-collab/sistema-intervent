@@ -106,7 +106,7 @@
                                     <div class="waf-reacciones">
                                         @foreach (var r in m.Reacciones)
                                         {
-                                            <span class="waf-reaccion-chip">@r.Emoji@(r.Count > 1 ? $" {r.Count}" : "")</span>
+                                            <span class="waf-reaccion-chip" title="@DepositoChats.QueSignifica(r.Emoji)">@r.Emoji@(!string.IsNullOrWhiteSpace(r.Firmas) ? $" {r.Firmas}" : (r.Count > 1 ? $" {r.Count}" : ""))</span>
                                         }
                                     </div>
                                 }
@@ -200,9 +200,10 @@
             <div class="waf-msgmenu-backdrop" @onclick="CerrarMenuMsgWaf">
                 <div class="waf-msgmenu" @onclick:stopPropagation="true">
                     <div class="waf-msgmenu-emojis">
-                        @foreach (var em in QuickEmojisWaf)
+                        @* 2026-08-28: en los chats de Depósito, los dos emojis de oficina (💻 / ⛔). *@
+                        @foreach (var em in EmojisMenuWaf)
                         {
-                            <button type="button" class="waf-msgmenu-emoji" @onclick="() => ReaccionarWaf(_mm.Id, em)">@em</button>
+                            <button type="button" class="waf-msgmenu-emoji" title="@em.Que" @onclick="() => ReaccionarWaf(_mm.Id, em.Emoji)">@em.Emoji@(em.Que.Length > 0 ? $" {em.Que}" : "")</button>
                         }
                     </div>
                     @if (VentanaWafAbierta())
@@ -358,10 +359,18 @@
     private void PressEndWaf() => pressCtsWaf?.Cancel();
     private void CerrarMenuMsgWaf() { menuMsgIdWaf = null; }
 
+    // 2026-08-28: en los chats de Depósito, los emojis con significado de oficina (este flotante
+    // lo usan admin/oficina). En el resto, la tira comun.
+    private bool EsChatVisibleDepositoWaf => chatAbierto is not null && DepositoChats.EsVisible(chatAbierto.Numero, chatAbierto.Linea);
+    private (string Emoji, string Que)[] EmojisMenuWaf => EsChatVisibleDepositoWaf
+        ? DepositoChats.EmojisPara(esDeposito: false)
+        : QuickEmojisWaf.Select(e => (Emoji: e, Que: "")).ToArray();
+
     private async Task ReaccionarWaf(int msgId, string emoji)
     {
         menuMsgIdWaf = null;
-        var r = await Api.ToggleReaccionAsync(msgId, emoji);
+        var firma = EsChatVisibleDepositoWaf ? OperatorService.FirmaCorta(Op.Current) : null;
+        var r = await Api.ToggleReaccionAsync(msgId, emoji, string.IsNullOrEmpty(firma) ? null : firma);
         if (r is null) { ToastService.Error("No se pudo reaccionar"); return; }
         if (r.EnviadaAlCliente) ToastService.Success($"{emoji} enviada — el cliente la ve en su WhatsApp");
         await CargarMensajes();

@@ -171,7 +171,7 @@
                             <div class="pwa-reacciones">
                                 @foreach (var r in m.Reacciones)
                                 {
-                                    <span class="pwa-reaccion-chip">@r.Emoji@(r.Count > 1 ? $" {r.Count}" : "")</span>
+                                    <span class="pwa-reaccion-chip" title="@TituloReaccionPwa(r)">@r.Emoji@(EtiquetaReaccionPwa(r))</span>
                                 }
                             </div>
                         }
@@ -418,10 +418,13 @@
     {
         <div class="pwa-msgmenu-backdrop" @onclick="CerrarMenuMsg">
             <div class="pwa-msgmenu" @onclick:stopPropagation="true">
-                <div class="pwa-msgmenu-emojis">
-                    @foreach (var em in QuickEmojisPwa)
+                @* 2026-08-28: en los chats de Depósito la tira de emojis cambia segun QUIEN mira:
+                   oficina ve 💻/⛔ y Depósito ve 📦/🚧 (ver DepositoChats.EmojisPara). En el resto
+                   de los chats sigue la tira de siempre. *@
+                <div class="pwa-msgmenu-emojis @(EsChatVisibleDeposito ? "conletra" : "")">
+                    @foreach (var em in EmojisMenuPwa)
                     {
-                        <button type="button" class="pwa-msgmenu-emoji" @onclick="() => ReaccionarPwa(_mm.Id, em)">@em</button>
+                        <button type="button" class="pwa-msgmenu-emoji" @onclick="() => ReaccionarPwa(_mm.Id, em.Emoji)">@em.Emoji@(em.Que.Length > 0 ? $" {em.Que}" : "")</button>
                     }
                 </div>
                 @* 2026-08-20: REENVIAR. En el celular esto directamente no existía: había que ir a la
@@ -932,6 +935,9 @@
     .pwa-msgmenu { width: 100%; background: #fff; border-top-left-radius: 16px; border-top-right-radius: 16px;
         box-shadow: 0 -6px 20px rgba(0,0,0,0.18); padding: 10px 12px 14px; }
     .pwa-msgmenu-emojis { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 8px; }
+    /* 2026-08-28: cuando los emojis tienen significado (chats de Depósito) van con la palabra al lado */
+    .pwa-msgmenu-emojis.conletra { flex-direction: column; gap: 6px; }
+    .pwa-msgmenu-emojis.conletra .pwa-msgmenu-emoji { width: 100%; text-align: left; font-size: 15px; padding: 8px 12px; }
     .pwa-msgmenu-emoji { flex: 1; border: none; background: #f3f4f6; border-radius: 999px;
         padding: 8px 0; font-size: 1.35rem; cursor: pointer; transition: transform 0.1s, background 0.1s; }
     .pwa-msgmenu-emoji:hover { background: #e5e7eb; transform: scale(1.12); }
@@ -1503,10 +1509,37 @@
         => string.IsNullOrWhiteSpace(nombre) ? "?" : nombre.Trim()[0].ToString().ToUpperInvariant();
     private void CerrarMenuMsg() { menuMsgId = null; }
 
+    // 2026-08-28: emojis del menu. En los chats de Depósito son los DOS de cada equipo (con su
+    // significado al lado); en el resto, la tira comun de siempre (sin texto).
+    private (string Emoji, string Que)[] EmojisMenuPwa => EsChatVisibleDeposito
+        ? Web.Services.DepositoChats.EmojisPara(esDeposito)
+        : QuickEmojisPwa.Select(e => (Emoji: e, Que: "")).ToArray();
+
+    // Quien firma la reaccion: oficina = operador del PIN (os/ger/ga); Depósito = el de la barrita.
+    // Fuera de los chats de Depósito no se firma (las reacciones siguen siendo anonimas como antes).
+    private string? FirmaReaccionPwa()
+    {
+        if (!EsChatVisibleDeposito) return null;
+        if (esDeposito) return string.IsNullOrWhiteSpace(firmante) ? null : firmante;
+        var f = Web.Services.OperatorService.FirmaCorta(Op.Current);
+        return string.IsNullOrEmpty(f) ? null : f;
+    }
+
+    private static string EtiquetaReaccionPwa(ApiClient.TwReaccionDto r)
+        => !string.IsNullOrWhiteSpace(r.Firmas) ? $" {r.Firmas}" : (r.Count > 1 ? $" {r.Count}" : "");
+
+    private static string TituloReaccionPwa(ApiClient.TwReaccionDto r)
+    {
+        var que = Web.Services.DepositoChats.QueSignifica(r.Emoji);
+        if (r.EsCliente) return "Reacción del cliente";
+        if (que.Length == 0) return "";
+        return string.IsNullOrWhiteSpace(r.Firmas) ? que : $"{que} — {r.Firmas}";
+    }
+
     private async Task ReaccionarPwa(int msgId, string emoji)
     {
         menuMsgId = null;
-        var r = await Api.ToggleReaccionAsync(msgId, emoji);
+        var r = await Api.ToggleReaccionAsync(msgId, emoji, FirmaReaccionPwa());
         if (r is null) { Toast.Error("No se pudo reaccionar"); return; }
         if (r.EnviadaAlCliente) Toast.Success($"{emoji} enviada — el cliente la ve en su WhatsApp");
         await Cargar();
