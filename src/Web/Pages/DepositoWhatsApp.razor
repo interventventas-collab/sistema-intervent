@@ -2,24 +2,46 @@
    El chat flotante (DepositoWaFloating) tiene un botón ⤢ que abre esta pantalla en otra ventana
    del navegador, así la pueden dejar abierta en un costado (o en el segundo monitor) mientras
    trabajan en el sistema. Es el MISMO chat de siempre (PinnedWaChat), a pantalla completa.
-   Cualquier usuario logueado puede entrar: adentro solo se ve ESTE chat, no la lista de todos. *@
+   Los chats salen de DepositoChats (los asigna oficina desde el menú ⋮ de cada chat); si hay
+   más de uno, arriba aparece la fila para elegir cuál mirar.
+   Cualquier usuario logueado puede entrar: adentro solo se ven ESOS chats, no la lista de todos. *@
 @page "/deposito/whatsapp"
 @attribute [Authorize]
+@using Web.Services
+@inject ApiClient Api
 @inject Microsoft.JSInterop.IJSRuntime JS
 
-<PageTitle>WhatsApp — @Titulo</PageTitle>
+<PageTitle>WhatsApp — @(Actual?.TituloLindo ?? "Depósito")</PageTitle>
 
 @* position: fixed + inset 0 = tapa el menú del sistema y ocupa toda la ventana. *@
 <div class="depwaf-full">
     <div class="depwaf-bar">
-        <span class="depwaf-bar-title">💬 WhatsApp — @Titulo</span>
+        <span class="depwaf-bar-title">💬 WhatsApp — @(Actual?.TituloLindo ?? "")</span>
         <button type="button" class="depwaf-bar-btn" @onclick="Cerrar"
                 title="Cerrar esta ventana">✕ Cerrar</button>
     </div>
+    @if (Chats.Count > 1)
+    {
+        <div class="depwaf-tabs">
+            @foreach (var c in Chats)
+            {
+                <button type="button" class="depwaf-tab @(EsActual(c) ? "on" : "")"
+                        @onclick="() => Elegir(c)">@c.TituloLindo</button>
+            }
+        </div>
+    }
     <div class="depwaf-body">
-        <PinnedWaChat Numero="@Numero" LineaPhoneId="@Linea"
-                      TituloContacto="@Titulo" NombreLinea="@NombreLinea"
-                      PuedeAbrirEnGrande="false" />
+        @if (Actual is DepositoChats.ChatRef ch)
+        {
+            <PinnedWaChat @key="@(ch.Numero + "|" + ch.LineaPhoneId)"
+                          Numero="@ch.Numero" LineaPhoneId="@ch.LineaPhoneId"
+                          TituloContacto="@ch.TituloLindo" NombreLinea="@ch.LineaNombre"
+                          PuedeAbrirEnGrande="false" />
+        }
+        else
+        {
+            <p class="depwaf-vacio">Todavía no hay ningún chat asignado a Depósito.</p>
+        }
     </div>
 </div>
 
@@ -33,7 +55,13 @@
     .depwaf-bar-btn { background: rgba(255,255,255,0.18); border: none; color: #fff;
         border-radius: 7px; padding: 4px 10px; cursor: pointer; font-size: 0.8rem; font-weight: 700; }
     .depwaf-bar-btn:hover { background: rgba(255,255,255,0.34); }
+    .depwaf-tabs { display: flex; gap: 6px; padding: 7px 14px; background: #e7f3ec;
+        border-bottom: 1px solid #cfe3d8; overflow-x: auto; flex: none; }
+    .depwaf-tab { flex: none; background: #fff; border: 1px solid #cfe3d8; border-radius: 999px;
+        padding: 4px 12px; font-size: 0.82rem; color: #0b7a4b; cursor: pointer; white-space: nowrap; }
+    .depwaf-tab.on { background: #0b7a4b; border-color: #0b7a4b; color: #fff; font-weight: 800; }
     .depwaf-body { flex: 1; min-height: 0; }
+    .depwaf-vacio { padding: 2rem; text-align: center; color: #6b7280; }
     /* PinnedWaChat trae su propio marco; acá lo dejamos a ras, ocupando todo. */
     .depwaf-body .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
     /* En una pantalla ancha, un mensaje corto no tiene que cruzar todo el monitor. */
@@ -41,11 +69,20 @@
 </style>
 
 @code {
-    // Mismo chat que el flotante de Depósito (ver Shared/DepositoWaFloating.razor).
-    private const string Numero = "whatsapp:+5491158464160";
-    private const string Linea = "1195191513683780";
-    private const string Titulo = "Gabriel Palanica";
-    private const string NombreLinea = "FIJO TRANSRADIO";
+    private DepositoChats.ChatRef? elegido;
+
+    private IReadOnlyList<DepositoChats.ChatRef> Chats => DepositoChats.Chats;
+    private DepositoChats.ChatRef? Actual => elegido ?? (Chats.Count > 0 ? Chats[0] : null);
+    private bool EsActual(DepositoChats.ChatRef c)
+        => Actual is not null && c.Numero == Actual.Numero && c.LineaPhoneId == Actual.LineaPhoneId;
+
+    private void Elegir(DepositoChats.ChatRef c) { elegido = c; StateHasChanged(); }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await DepositoChats.CargarAsync(Api, forzar: true);
+        StateHasChanged();
+    }
 
     /// <summary>Cierra la ventana. Si el navegador no deja (no la abrió un script), no pasa nada.</summary>
     private async Task Cerrar()

@@ -7249,6 +7249,24 @@ public class ApiClient
         List<TwClienteVinculadoDto>? Clientes = null);
     /// <summary>2026-08-20: una razón social colgada de un teléfono de WhatsApp.</summary>
     public record TwClienteVinculadoDto(int Id, string Nombre, string? Codigo);
+    // ── 2026-08-28: chats que ve Depósito (la lista se configura desde el menú ⋮ del chat) ──
+    public record DepositoChatDto(string Numero, string Linea, string Titulo, string LineaNombre);
+
+    public async Task<List<DepositoChatDto>?> GetDepositoChatsAsync()
+    {
+        try { return await _http.GetFromJsonAsync<List<DepositoChatDto>>("/api/whatsapp/twilio/deposito-chats"); }
+        catch { return null; }
+    }
+
+    /// <summary>Asigna (o saca) un chat a Depósito. Devuelve la lista nueva, o null si falló.</summary>
+    public async Task<List<DepositoChatDto>?> SetDepositoChatAsync(string numero, string linea, string? titulo, string? lineaNombre, bool asignado)
+    {
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/deposito-chats",
+            new { Numero = numero, Linea = linea, Titulo = titulo, LineaNombre = lineaNombre, Asignado = asignado });
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<List<DepositoChatDto>>();
+    }
+
     // 2026-08-28: Firmas = quien(es) pusieron ese emoji ("os", "alex", o "os · ger" si fueron varios).
     // Viene vacio en los chats comunes, donde las reacciones siguen sin firma.
     public record TwReaccionDto(string Emoji, int Count, bool EsCliente = false, string? Firmas = null);

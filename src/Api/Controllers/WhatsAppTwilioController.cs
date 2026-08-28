@@ -1614,6 +1614,76 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(new { ok = true, numero = numeroNuevoStd, cambiados = msgs.Count });
     }
 
+    // ===== 2026-08-28: chats que ve DEPOSITO (configurables desde la pantalla de WhatsApp) =====
+    // Antes la lista estaba escrita en el codigo (Web/Services/DepositoChats.cs) y sumar un chat
+    // era tocar el programa. Ahora vive en AppSettings["whatsapp.deposito.chats"] como JSON y se
+    // asigna desde el menu ⋮ del chat. Si la clave no existe, vale la lista historica de siempre.
+    private const string KeyDepositoChats = "whatsapp.deposito.chats";
+
+    public record DepositoChatDto(string Numero, string Linea, string Titulo, string LineaNombre);
+    public record DepositoChatToggleRequest(string Numero, string Linea, string? Titulo, string? LineaNombre, bool Asignado);
+
+    private static readonly DepositoChatDto[] DepositoChatsPorDefecto =
+    {
+        new("whatsapp:+5491158464160", "1195191513683780", "Gabriel Palanica", "FIJO TRANSRADIO")
+    };
+
+    /// <summary>Compara numeros/lineas por DIGITOS: "whatsapp:+549..." y "549..." son lo mismo.</summary>
+    private static string DigitosDe(string? s)
+        => string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
+
+    private async Task<List<DepositoChatDto>> LeerDepositoChatsAsync()
+    {
+        var fila = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == KeyDepositoChats);
+        if (fila is null || string.IsNullOrWhiteSpace(fila.Value)) return DepositoChatsPorDefecto.ToList();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<DepositoChatDto>>(fila.Value) ?? new();
+        }
+        catch
+        {
+            _logger.LogWarning("La lista de chats de Deposito quedo ilegible; se usa la de por defecto.");
+            return DepositoChatsPorDefecto.ToList();
+        }
+    }
+
+    /// <summary>GET /deposito-chats — que chats ve Deposito. Lo lee cualquiera (Deposito tambien).</summary>
+    [HttpGet("deposito-chats")]
+    [Authorize]
+    public async Task<IActionResult> GetDepositoChats() => Ok(await LeerDepositoChatsAsync());
+
+    /// <summary>POST /deposito-chats — asigna o saca un chat de la lista. Deposito NO puede.</summary>
+    [HttpPost("deposito-chats")]
+    [Authorize]
+    public async Task<IActionResult> SetDepositoChat([FromBody] DepositoChatToggleRequest req)
+    {
+        if (await EsDepositoAsync()) return Forbid();
+        var num = DigitosDe(req.Numero);
+        var lin = DigitosDe(req.Linea);
+        // Sin linea no se puede: la lista identifica un chat por numero + linea nuestra.
+        if (num.Length == 0 || lin.Length == 0)
+            return BadRequest(new { error = "Falta el numero o la linea de este chat." });
+
+        var lista = await LeerDepositoChatsAsync();
+        lista.RemoveAll(c => DigitosDe(c.Numero) == num && DigitosDe(c.Linea) == lin);
+        if (req.Asignado)
+        {
+            lista.Add(new DepositoChatDto(
+                req.Numero.Trim(),
+                req.Linea.Trim(),
+                string.IsNullOrWhiteSpace(req.Titulo) ? req.Numero.Trim() : req.Titulo!.Trim(),
+                (req.LineaNombre ?? "").Trim()));
+        }
+
+        var json = System.Text.Json.JsonSerializer.Serialize(lista);
+        var fila = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == KeyDepositoChats);
+        if (fila is null)
+            _db.AppSettings.Add(new AppSetting { Key = KeyDepositoChats, Value = json, UpdatedAt = DateTime.UtcNow });
+        else { fila.Value = json; fila.UpdatedAt = DateTime.UtcNow; }
+        await _db.SaveChangesAsync();
+        return Ok(lista);
+    }
+
     // ===== Reacciones a mensajes =====
     // 2026-07-23 (pedido Osmar): ademas de guardarse como etiqueta interna, si el mensaje entro por
     // la Cloud API (Canal=CLOUD, tiene wamid) la reaccion SE MANDA al WhatsApp del cliente — la ve

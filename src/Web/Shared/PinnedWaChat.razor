@@ -1208,6 +1208,8 @@
             var user = await AuthSvc.GetUserAsync();
             var perms = user?.Permissions ?? new();
             esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
+            // 2026-08-28: la lista de chats de Depósito la manda el servidor (se arma desde el ⋮ del chat).
+            await Web.Services.DepositoChats.CargarAsync(Api);
         }
         catch { esDeposito = false; }
         // 2026-08-15: tema (claro/oscuro) de esta línea + letra elegida

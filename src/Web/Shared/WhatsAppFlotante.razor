@@ -447,6 +447,8 @@
         if (firstRender && !sonidoPrefCargada)
         {
             sonidoPrefCargada = true;
+            // 2026-08-28: qué chats ve Depósito (para saber si acá van los emojis con significado).
+            await DepositoChats.CargarAsync(Api);
             await CargarLineaSonidos();
             try
             {

@@ -670,6 +670,16 @@
                                         <a class="wa-hdr-menu-op" href="/cafe/clientes?edit=@_cidm" target="_blank" @onclick="@(() => showMasMenu = false)">📂 Abrir ficha completa ↗</a>
                                     }
                                     <button class="wa-hdr-menu-op" @onclick="@(() => { showMasMenu = false; AbrirCorregirNumero(); })">✏️ Corregir el número</button>
+                                    @* 2026-08-28: sumar/sacar este chat de los que ve Depósito. Antes la lista
+                                       estaba escrita en el código y había que tocar el programa para agregar uno. *@
+                                    @if (!esDeposito)
+                                    {
+                                        <button class="wa-hdr-menu-op" disabled="@guardandoChatDep"
+                                                @onclick="@(() => { showMasMenu = false; _ = ToggleChatDeposito(); })"
+                                                title="Depósito solo ve los chats que le asignes acá">
+                                            @(EsChatVisibleDeposito ? "👷 Sacarle este chat a Depósito" : "👷 Que Depósito vea este chat")
+                                        </button>
+                                    }
                                 </div>
                             }
                         </span>
@@ -6249,6 +6259,8 @@
         var perms = user?.Permissions ?? new();
         miUsuario = user?.Username;   // 2026-08-06: para la presencia (no mostrarme a mí mismo)
         esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
+        // 2026-08-28: qué chats ve Depósito. Se arma desde el ⋮ de cada chat, no está en el código.
+        await Web.Services.DepositoChats.CargarAsync(Api);
         // 2026-08-05: NO recordar el último firmante. Cada vez que se abre la pantalla arranca
         // en blanco y el que responde tiene que pinchar SÍ o SÍ su nombre antes de enviar (así
         // nadie manda firmando con el nombre de otro por error). Limpiamos el valor viejo por si
@@ -6819,6 +6831,33 @@
     void TogglePicker(int msgId)
     {
         pickerOpenMsgId = pickerOpenMsgId == msgId ? null : msgId;
+    }
+
+    // 2026-08-28: sumar o sacar ESTE chat de los que ve Depósito (menú ⋮ del encabezado).
+    bool guardandoChatDep;
+    async Task ToggleChatDeposito()
+    {
+        if (selectedNumero is null || guardandoChatDep) return;
+        if (string.IsNullOrWhiteSpace(selectedLinea))
+        {
+            Toast.Error("Este chat no tiene línea identificada, no se puede asignar a Depósito");
+            return;
+        }
+        var asignar = !EsChatVisibleDeposito;
+        var titulo = MostrarNombre(SelectedConv());
+        var lineaNom = LineaNombre(selectedLinea, SelectedConv()?.LineaNumero);
+        guardandoChatDep = true;
+        try
+        {
+            var lista = await Api.SetDepositoChatAsync(selectedNumero, selectedLinea!, titulo, lineaNom, asignar);
+            if (lista is null) { Toast.Error("No se pudo cambiar (¿tenés permiso?)"); return; }
+            await Web.Services.DepositoChats.CargarAsync(Api, forzar: true);
+            Toast.Success(asignar
+                ? $"Listo: Depósito ahora ve el chat de {titulo}"
+                : $"Listo: Depósito ya no ve el chat de {titulo}");
+        }
+        finally { guardandoChatDep = false; }
+        StateHasChanged();
     }
 
     // 2026-08-28: emojis del selector. En los chats de Depósito, los DOS de cada equipo con su

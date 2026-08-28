@@ -4,16 +4,20 @@
    - Al abrir, aparece una ventanita que se puede mover por toda la pantalla (se agarra del
      encabezado; funciona con mouse y con el dedo, reusa window.waDraggable).
    - Adentro va el mini-chat PinnedWaChat, que para Depósito ya trae la barrita de FIRMA.
-   Solo se muestra si el usuario es de Depósito; los demás no lo ven. *@
+   Solo se muestra si el usuario es de Depósito; los demás no lo ven.
+
+   2026-08-28: los chats ya no están escritos acá. Salen de DepositoChats (los arma oficina desde
+   el menú ⋮ de cada chat). Si hay más de uno, arriba aparece una fila para elegir cuál mirar. *@
 @using Web.Services
 @inject Web.Services.AuthService AuthSvc
+@inject ApiClient Api
 @inject Microsoft.JSInterop.IJSRuntime JS
 
-@if (esDeposito)
+@if (esDeposito && Chats.Count > 0)
 {
     @if (!abierto)
     {
-        <button class="depwa-bubble" @onclick="Abrir" title="Abrir el chat de WhatsApp de Gabriel">
+        <button class="depwa-bubble" @onclick="Abrir" title="Abrir el chat de WhatsApp">
             <span class="depwa-bubble-ic">💬</span>
         </button>
     }
@@ -22,17 +26,28 @@
         <div class="depwa-panel" id="dep-wa-panel">
             <div class="depwa-bar">
                 @* El "agarre" para arrastrar es el título, así el botón ✕ sigue tocable en el celu. *@
-                <span class="depwa-bar-title" id="dep-wa-handle">💬 WhatsApp — @Titulo</span>
-                @* 2026-08-28: agrandar = abrir el chat en OTRA VENTANA del navegador (pedido del
-                   usuario), así lo pueden dejar a un costado o en el segundo monitor mientras
-                   trabajan en el sistema. La pantalla es Pages/DepositoWhatsApp.razor. *@
+                <span class="depwa-bar-title" id="dep-wa-handle">💬 WhatsApp — @Actual.TituloLindo</span>
+                @* 2026-08-28: agrandar = abrir el chat en OTRA VENTANA del navegador, así lo pueden
+                   dejar a un costado o en el segundo monitor. Pantalla: Pages/DepositoWhatsApp.razor. *@
                 <button type="button" class="depwa-bar-btn" @onclick="AbrirEnVentanaAparte"
                         title="Abrir el chat en una ventana aparte, a pantalla completa">⤢</button>
                 <button type="button" class="depwa-bar-btn" @onclick="Cerrar" title="Cerrar (queda el globito abajo)">✕</button>
             </div>
+            @* Con un solo chat no hay nada que elegir: la fila aparece recién con el segundo. *@
+            @if (Chats.Count > 1)
+            {
+                <div class="depwa-tabs">
+                    @foreach (var c in Chats)
+                    {
+                        <button type="button" class="depwa-tab @(EsActual(c) ? "on" : "")"
+                                @onclick="() => Elegir(c)" title="@c.TituloLindo">@c.TituloLindo</button>
+                    }
+                </div>
+            }
             <div class="depwa-body">
-                <PinnedWaChat Numero="@Numero" LineaPhoneId="@Linea"
-                              TituloContacto="@Titulo" NombreLinea="@NombreLinea"
+                <PinnedWaChat @key="@(Actual.Numero + "|" + Actual.LineaPhoneId)"
+                              Numero="@Actual.Numero" LineaPhoneId="@Actual.LineaPhoneId"
+                              TituloContacto="@Actual.TituloLindo" NombreLinea="@Actual.LineaNombre"
                               PuedeAbrirEnGrande="false" />
             </div>
         </div>
@@ -72,6 +87,13 @@
         border-radius: 7px; width: 28px; height: 26px; cursor: pointer; font-size: 0.85rem;
         flex: none; display: flex; align-items: center; justify-content: center; }
     .depwa-bar-btn:hover { background: rgba(255,255,255,0.34); }
+    /* 2026-08-28: fila para elegir chat (solo si hay más de uno) */
+    .depwa-tabs { display: flex; gap: 4px; padding: 6px 8px; background: #e7f3ec;
+        border-bottom: 1px solid #cfe3d8; overflow-x: auto; flex: none; }
+    .depwa-tab { flex: none; max-width: 150px; background: #fff; border: 1px solid #cfe3d8;
+        border-radius: 999px; padding: 3px 10px; font-size: 0.76rem; color: #0b7a4b; cursor: pointer;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .depwa-tab.on { background: #0b7a4b; border-color: #0b7a4b; color: #fff; font-weight: 800; }
     .depwa-body { flex: 1; min-height: 0; }
     /* PinnedWaChat trae su propio marco; adentro del panel lo dejamos a ras. */
     .depwa-body .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
@@ -84,15 +106,17 @@
 </style>
 
 @code {
-    // Conversación FIJADA (misma que el Dashboard): Gabriel Palanica por la línea FIJO TRANSRADIO.
-    private const string Numero = "whatsapp:+5491158464160";
-    private const string Linea = "1195191513683780";
-    private const string Titulo = "Gabriel Palanica";
-    private const string NombreLinea = "FIJO TRANSRADIO";
-
     private bool esDeposito;
     private bool abierto;
     private bool _attachPending;
+    private DepositoChats.ChatRef? elegido;
+
+    private IReadOnlyList<DepositoChats.ChatRef> Chats => DepositoChats.Chats;
+    private DepositoChats.ChatRef Actual => elegido ?? Chats[0];
+    private bool EsActual(DepositoChats.ChatRef c)
+        => c.Numero == Actual.Numero && c.LineaPhoneId == Actual.LineaPhoneId;
+
+    private void Elegir(DepositoChats.ChatRef c) { elegido = c; StateHasChanged(); }
 
     protected override async Task OnInitializedAsync()
     {
@@ -103,6 +127,13 @@
             esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
         }
         catch { esDeposito = false; }
+
+        if (esDeposito)
+        {
+            // Qué chats le asignaron. Si oficina le suma otro, aparece al recargar la pantalla.
+            await DepositoChats.CargarAsync(Api);
+            StateHasChanged();
+        }
     }
 
     /// <summary>Abre la ventanita flotante (la puede llamar el layout desde el ítem del menú).</summary>
@@ -114,6 +145,7 @@
         try { await JS.InvokeVoidAsync("open", "/deposito/whatsapp", "depwaFull", "width=1100,height=860"); }
         catch { }
     }
+
     public void Cerrar() { abierto = false; StateHasChanged(); }
     public void Toggle() { if (abierto) Cerrar(); else Abrir(); }
 
