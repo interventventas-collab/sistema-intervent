@@ -19,10 +19,14 @@
     }
     else
     {
-        <div class="depwa-panel" id="dep-wa-panel">
+        <div class="depwa-panel @(maximizado ? "max" : "")" id="dep-wa-panel">
             <div class="depwa-bar">
                 @* El "agarre" para arrastrar es el título, así el botón ✕ sigue tocable en el celu. *@
                 <span class="depwa-bar-title" id="dep-wa-handle">💬 WhatsApp — @Titulo</span>
+                @* 2026-08-28: pantalla completa. En el celular ya ocupaba todo; esto es para la
+                   computadora, donde la ventanita de 360px quedaba chica para trabajar. *@
+                <button type="button" class="depwa-bar-btn @(maximizado ? "wide" : "")" @onclick="ToggleMaximizado"
+                        title="@(maximizado ? "Volver a la ventanita chica" : "Ver el chat en toda la pantalla")">@(maximizado ? "⤡ Achicar" : "⤢")</button>
                 <button type="button" class="depwa-bar-btn" @onclick="Cerrar" title="Cerrar (queda el globito abajo)">✕</button>
             </div>
             <div class="depwa-body">
@@ -67,9 +71,18 @@
         border-radius: 7px; width: 28px; height: 26px; cursor: pointer; font-size: 0.85rem;
         flex: none; display: flex; align-items: center; justify-content: center; }
     .depwa-bar-btn:hover { background: rgba(255,255,255,0.34); }
+    .depwa-bar-btn.wide { width: auto; padding: 0 9px; gap: 4px; font-size: 0.8rem; font-weight: 700; }
     .depwa-body { flex: 1; min-height: 0; }
     /* PinnedWaChat trae su propio marco; adentro del panel lo dejamos a ras. */
     .depwa-body .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
+
+    /* 2026-08-28: pantalla completa a pedido (botón ⤢). !important para que gane aunque la
+       ventanita se haya arrastrado antes (el arrastre deja left/top pegados al elemento). */
+    .depwa-panel.max { inset: 0 !important; width: auto !important; height: auto !important;
+        max-height: none !important; border-radius: 0; }
+    /* En una pantalla ancha, el globito de un mensaje corto no tiene que cruzar todo el monitor:
+       se corta a 720px y queda como en WhatsApp Web. */
+    .depwa-panel.max .pwa-bubble { max-width: min(78%, 720px); }
 
     /* En el celu: pantalla completa. !important para que gane aunque se haya arrastrado. */
     @@media (max-width: 640px) {
@@ -88,6 +101,10 @@
     private bool esDeposito;
     private bool abierto;
     private bool _attachPending;
+    // 2026-08-28: pantalla completa. Se recuerda en el navegador, así el que la deja grande la
+    // encuentra grande la próxima vez (cada compu/celu la suya).
+    private bool maximizado;
+    private const string ClaveMax = "depwa_max";
 
     protected override async Task OnInitializedAsync()
     {
@@ -102,11 +119,30 @@
 
     /// <summary>Abre la ventanita flotante (la puede llamar el layout desde el ítem del menú).</summary>
     public void Abrir() { abierto = true; _attachPending = true; StateHasChanged(); }
+
+    /// <summary>Agranda el chat a toda la pantalla (o lo vuelve a la ventanita).</summary>
+    private async Task ToggleMaximizado()
+    {
+        maximizado = !maximizado;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveMax, maximizado ? "1" : "0"); }
+        catch { }
+        StateHasChanged();
+    }
     public void Cerrar() { abierto = false; StateHasChanged(); }
     public void Toggle() { if (abierto) Cerrar(); else Abrir(); }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            // Cómo lo dejó la última vez: chico o a pantalla completa.
+            try
+            {
+                var v = await JS.InvokeAsync<string?>("localStorage.getItem", ClaveMax);
+                if (v == "1") { maximizado = true; StateHasChanged(); }
+            }
+            catch { }
+        }
         // Cuando se abre, enganchamos el arrastre por el encabezado (mouse + dedo).
         if (_attachPending && abierto)
         {
