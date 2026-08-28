@@ -165,6 +165,22 @@
                                 <span class="@TildeCss(m.EstadoEntrega)" title="@TildeTitulo(m.EstadoEntrega, m.EntregaError)">@TildeTexto(m.EstadoEntrega)</span>
                             }
                         </div>
+                        @* 2026-08-28: los DOS botones de marcar, A LA VISTA, sobre los mensajes que
+                           manda el cliente. Antes la única forma de marcar era el toque sostenido
+                           (medio segundo con el dedo/el mouse apretado) y nadie lo encontraba: en
+                           Depósito directamente no lo usaban. Solo en los chats de Depósito. *@
+                        @if (EsChatVisibleDeposito && !mine && !(esDeposito && m.OcultoDeposito))
+                        {
+                            <div class="pwa-marcas">
+                                @foreach (var e in Web.Services.DepositoChats.EmojisPara(esDeposito))
+                                {
+                                    <button type="button" class="pwa-marca @(TieneReaccionPwa(m, e.Emoji) ? "on" : "")"
+                                            @onclick="() => ReaccionarPwa(m.Id, e.Emoji)"
+                                            @onpointerdown:stopPropagation="true"
+                                            title="@(TieneReaccionPwa(m, e.Emoji) ? $"Sacar la marca «{e.Que}»" : $"Marcar «{e.Que}»")">@e.Emoji @e.Que</button>
+                                }
+                            </div>
+                        }
                         @* 2026-08-07: reacciones (solo se muestran) *@
                         @if (!(esDeposito && m.OcultoDeposito) && m.Reacciones != null && m.Reacciones.Count > 0)
                         {
@@ -669,6 +685,12 @@
     .pwa-reply-text { display: block; font-size: 0.74rem; color: #4b5563;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
     /* Reacciones (chips) */
+    /* 2026-08-28: botones de marcar (chats de Depósito) */
+    .pwa-marcas { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+    .pwa-marca { background: #fff; border: 1px solid #d1d5db; border-radius: 999px;
+        padding: 3px 10px; font-size: 0.78rem; color: #374151; cursor: pointer; line-height: 1.35; }
+    .pwa-marca:hover { background: #f3f4f6; }
+    .pwa-marca.on { background: #d9fdd3; border-color: #25d366; color: #0b7a4b; font-weight: 800; }
     .pwa-reacciones { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
     .pwa-reaccion-chip { background: #fff; border: 1px solid #e5e7eb; border-radius: 999px;
         padding: 0 5px; font-size: 0.8rem; line-height: 1.35; box-shadow: 0 1px 1px rgba(0,0,0,0.08); }
@@ -1524,6 +1546,10 @@
         var f = Web.Services.OperatorService.FirmaCorta(Op.Current);
         return string.IsNullOrEmpty(f) ? null : f;
     }
+
+    /// <summary>¿Este mensaje ya tiene puesta esa marca? (para dejar el botón en verde)</summary>
+    private static bool TieneReaccionPwa(ApiClient.TwMsgDto m, string emoji)
+        => m.Reacciones != null && m.Reacciones.Any(r => r.Emoji == emoji);
 
     private static string EtiquetaReaccionPwa(ApiClient.TwReaccionDto r)
         => !string.IsNullOrWhiteSpace(r.Firmas) ? $" {r.Firmas}" : (r.Count > 1 ? $" {r.Count}" : "");

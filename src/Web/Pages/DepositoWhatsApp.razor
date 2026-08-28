@@ -1,0 +1,56 @@
+@* 2026-08-28: el chat de Depósito EN UNA VENTANA APARTE.
+   El chat flotante (DepositoWaFloating) tiene un botón ⤢ que abre esta pantalla en otra ventana
+   del navegador, así la pueden dejar abierta en un costado (o en el segundo monitor) mientras
+   trabajan en el sistema. Es el MISMO chat de siempre (PinnedWaChat), a pantalla completa.
+   Cualquier usuario logueado puede entrar: adentro solo se ve ESTE chat, no la lista de todos. *@
+@page "/deposito/whatsapp"
+@attribute [Authorize]
+@inject Microsoft.JSInterop.IJSRuntime JS
+
+<PageTitle>WhatsApp — @Titulo</PageTitle>
+
+@* position: fixed + inset 0 = tapa el menú del sistema y ocupa toda la ventana. *@
+<div class="depwaf-full">
+    <div class="depwaf-bar">
+        <span class="depwaf-bar-title">💬 WhatsApp — @Titulo</span>
+        <button type="button" class="depwaf-bar-btn" @onclick="Cerrar"
+                title="Cerrar esta ventana">✕ Cerrar</button>
+    </div>
+    <div class="depwaf-body">
+        <PinnedWaChat Numero="@Numero" LineaPhoneId="@Linea"
+                      TituloContacto="@Titulo" NombreLinea="@NombreLinea"
+                      PuedeAbrirEnGrande="false" />
+    </div>
+</div>
+
+<style>
+    .depwaf-full { position: fixed; inset: 0; z-index: 9000; background: #fff;
+        display: flex; flex-direction: column; }
+    .depwaf-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        background: #0b7a4b; color: #fff; padding: 8px 14px; user-select: none; flex: none; }
+    .depwaf-bar-title { font-weight: 800; font-size: 0.95rem; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap; }
+    .depwaf-bar-btn { background: rgba(255,255,255,0.18); border: none; color: #fff;
+        border-radius: 7px; padding: 4px 10px; cursor: pointer; font-size: 0.8rem; font-weight: 700; }
+    .depwaf-bar-btn:hover { background: rgba(255,255,255,0.34); }
+    .depwaf-body { flex: 1; min-height: 0; }
+    /* PinnedWaChat trae su propio marco; acá lo dejamos a ras, ocupando todo. */
+    .depwaf-body .pwa-card { height: 100%; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
+    /* En una pantalla ancha, un mensaje corto no tiene que cruzar todo el monitor. */
+    .depwaf-body .pwa-bubble { max-width: min(78%, 720px); }
+</style>
+
+@code {
+    // Mismo chat que el flotante de Depósito (ver Shared/DepositoWaFloating.razor).
+    private const string Numero = "whatsapp:+5491158464160";
+    private const string Linea = "1195191513683780";
+    private const string Titulo = "Gabriel Palanica";
+    private const string NombreLinea = "FIJO TRANSRADIO";
+
+    /// <summary>Cierra la ventana. Si el navegador no deja (no la abrió un script), no pasa nada.</summary>
+    private async Task Cerrar()
+    {
+        try { await JS.InvokeVoidAsync("close"); }
+        catch { }
+    }
+}
