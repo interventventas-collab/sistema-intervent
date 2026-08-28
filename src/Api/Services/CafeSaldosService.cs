@@ -116,9 +116,11 @@ public class CafeSaldosService
     /// Hasta hoy no entraban en la cuenta corriente: un alquiler facturado y sin cobrar no
     /// aparecía en "quién me debe" ni en el estado de cuenta, solo en la pantalla de Reservas.
     ///
-    /// Entran cuando se les emite la factura (decisión de Osmar 27/08), y se van cuando esa
-    /// factura se anula con nota de crédito. Lo pagado es seña + cobrado (el cobro del repartidor
-    /// por QR y lo que se impute desde Tesorería, que suma a MontoCobrado).
+    /// 2026-08-28: entran TODAS las reservas con saldo, facturadas o no — igual que las cotizaciones
+    /// de Ventas. (Al principio era "solo las facturadas", pero dejaba $4M en 23 reservas fuera de la
+    /// cuenta corriente y no se le podía cobrar a un cliente que no pidiera factura.)
+    /// Lo pagado es seña + cobrado (el cobro del repartidor por QR y lo que se impute desde
+    /// Tesorería, que suma a MontoCobrado).
     ///
     /// Se devuelven con Id NEGATIVO para que nunca choquen con el Id de una venta si alguien
     /// arma un diccionario por Id sobre esta lista.
@@ -127,8 +129,7 @@ public class CafeSaldosService
     {
         if (soloSinCliente) return new List<VentaCuenta>(); // toda reserva tiene cliente
 
-        var q = _db.AlqReservas.Where(r => r.ArcaEstado == "autorizado" && r.ArcaCae != null
-                                        && r.NcEstado != "autorizado" && r.Estado != "cancelado");
+        var q = _db.AlqReservas.Where(r => r.Estado != "cancelado");
         if (clienteId.HasValue) q = q.Where(r => r.ClienteId == clienteId.Value);
 
         var reservas = await q

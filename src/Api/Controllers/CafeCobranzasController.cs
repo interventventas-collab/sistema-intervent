@@ -165,13 +165,14 @@ public class CafeCobranzasController : ControllerBase
     /// 2026-08-27 — RESERVAS DE ALQUILER que se pueden cobrar. Hasta hoy los alquileres se cobraban
     /// aparte (solo el repartidor con el QR) y no figuraban en la cuenta corriente del cliente; ahora
     /// entran al mismo recibo que las ventas.
-    /// Cobrable = tiene factura con CAE (Osmar 27/08: entra a la cuenta corriente cuando se factura,
-    /// no antes) y esa factura no fue anulada con nota de credito.
+    /// Cobrable = cualquier reserva no cancelada con saldo, ESTE O NO FACTURADA (Osmar 28/08: al
+    /// principio se habia puesto "solo facturadas", pero 23 reservas por $4M quedaban afuera y no se
+    /// le podia cobrar a nadie que no pidiera factura. Ahora funciona igual que las cotizaciones de
+    /// Ventas, que tambien se cobran sin factura).
     /// </summary>
     private async Task<List<ReservaCobrableRow>> ReservasCobrablesAsync(List<int> clienteIds) =>
         await _db.AlqReservas
-            .Where(r => clienteIds.Contains(r.ClienteId) && r.ArcaEstado == "autorizado" && r.ArcaCae != null
-                     && r.NcEstado != "autorizado" && r.Estado != "cancelado")
+            .Where(r => clienteIds.Contains(r.ClienteId) && r.Estado != "cancelado")
             .Select(r => new ReservaCobrableRow(r.Id, r.Numero, r.FechaEntrega, r.ArcaImpTotal, r.MontoTotal,
                                                 r.Sena, r.MontoCobrado, r.ClienteId, r.TipoComprobante,
                                                 r.ArcaPtoVta, r.ArcaCbteNro))
@@ -574,8 +575,8 @@ public class CafeCobranzasController : ControllerBase
                 var reserva = await _db.AlqReservas.FindAsync(comp.ReservaId!.Value);
                 if (reserva is null)
                     return BadRequest(new { error = $"La reserva {comp.ReservaId} no existe" });
-                if (reserva.ArcaEstado != "autorizado" || string.IsNullOrEmpty(reserva.ArcaCae))
-                    return BadRequest(new { error = $"La reserva {reserva.Numero} todavía no está facturada — no se puede cobrar desde acá." });
+                if (reserva.Estado == "cancelado")
+                    return BadRequest(new { error = $"La reserva {reserva.Numero} está cancelada — no se puede cobrar." });
                 reserva.MontoCobrado += comp.Importe;
                 reserva.UpdatedAt = DateTime.UtcNow;
             }
