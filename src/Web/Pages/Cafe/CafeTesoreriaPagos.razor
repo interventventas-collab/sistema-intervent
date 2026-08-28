@@ -153,7 +153,8 @@
                         }
                         <div style="display:flex; align-items:center; gap:0.5rem;">
                             <label class="form-check"><input type="checkbox" @bind="aCuentaActivo" @bind:after="RecalcularTotal" /> A cuenta:</label>
-                            <input class="form-input" type="number" step="0.01" style="width:140px;"
+                            @* 2026-08-28: idem Cobranzas — type=number vaciaba el casillero. *@
+                            <input class="form-input" type="text" inputmode="decimal" style="width:140px;"
                                    @bind="ACuentaImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" disabled="@(!aCuentaActivo)" />
                         </div>
                         <div style="margin-top:0.5rem; text-align:right; font-weight:700;">
@@ -178,7 +179,8 @@
                                         }
                                     }
                                 </select>
-                                <input class="form-input" type="number" step="0.01" placeholder="Importe"
+                                @* 2026-08-28: idem Cobranzas — type=number vaciaba el casillero. *@
+                                <input class="form-input" type="text" inputmode="decimal" placeholder="Importe"
                                        @bind="m.ImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" disabled="@(m.ChequeExistenteId.HasValue)" />
                                 <input class="form-input" placeholder="Referencia" @bind="m.Referencia" />
                                 <button class="btn-icon" @onclick="() => formMedios.RemoveAt(idx)">🗑</button>

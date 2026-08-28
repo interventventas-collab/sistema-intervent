@@ -647,7 +647,11 @@
                                         }
                                     }
                                 </select>
-                                <input class="form-input" type="number" step="0.01" placeholder="Importe"
+                                @* 2026-08-28: era type=number con el importe a la argentina ("50.000,00"): el navegador
+                                   descarta ese valor y el casillero se VACIA solo apenas salis del campo (el total quedaba
+                                   bien, pero no se veia lo tipeado). Mismo arreglo que el resto de los importes el 18/08,
+                                   que a este se le habia pasado por alto. *@
+                                <input class="form-input" type="text" inputmode="decimal" placeholder="Importe"
                                        @bind="m.ImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
                                 <input class="form-input" placeholder="Referencia (opcional)" @bind="m.Referencia" />
                                 <button class="btn-icon" @onclick="() => formMedios.RemoveAt(idx)" title="Quitar">🗑</button>
