@@ -533,7 +533,7 @@ async function sendWhatsAppMessageWithFile(phone, caption, fileBuffer, fileName)
             break;
           }
         }
-        composeBox = await state.page.$('div[contenteditable="true"][data-tab="10"], footer div[contenteditable="true"]');
+        composeBox = await findComposeBox(state.page);
         if (composeBox) break;
         await sleep(500);
       }
@@ -809,12 +809,42 @@ async function acquireWaLockWait(opName, maxWaitMs = 30000) {
 // Despues de clickear un chat en el sidebar, esperar el footer + esperar nodos de mensaje +
 // scrollear al final + extraer mensajes del DOM. Devuelve { ok, messages, debug, error? }.
 // Compartido entre open-by-name y open-by-index para no duplicar la logica de extraccion.
+// 2026-08-29: el cuadro de escribir ya NO vive siempre dentro de <footer> — WhatsApp lo movio y
+// 'footer div[contenteditable=true]' devolvia null, asi que abrir un chat moria con
+// "Timeout abriendo chat (footer no encontrado)" aunque el click en la lista SI hubiera andado.
+// Se prueba en cascada, de lo mas especifico a lo mas general.
+// OJO: NUNCA usar 'div[contenteditable=true]' pelado — eso matchea el BUSCADOR del panel
+// izquierdo (#side) y nos haria creer que hay un chat abierto cuando no lo hay. Todo lo de
+// abajo esta acotado a #main / footer / data-tab=10, y el ultimo recurso descarta #side a mano.
+const COMPOSE_SELECTORS = [
+  'footer div[contenteditable="true"]',
+  '#main footer div[contenteditable="true"]',
+  '#main div[contenteditable="true"][data-tab="10"]',
+  'div[contenteditable="true"][data-tab="10"]',
+  '#main div[role="textbox"][contenteditable="true"]',
+  '#main div[contenteditable="true"]',
+];
+
+async function findComposeBox(page) {
+  for (const sel of COMPOSE_SELECTORS) {
+    const el = await page.$(sel).catch(() => null);
+    if (el) return el;
+  }
+  // Ultimo recurso: cualquier cuadro editable que no sea el buscador del panel izquierdo.
+  const todos = await page.$$('div[contenteditable="true"]').catch(() => []);
+  for (const el of todos) {
+    const enSidebar = await el.evaluate((n) => !!n.closest('#side')).catch(() => true);
+    if (!enSidebar) return el;
+  }
+  return null;
+}
+
 async function waitAndExtractMessagesFromPanel(page, label) {
   // 1) Esperar footer (chat abierto)
   let composeBox = null;
   const footerDeadline = Date.now() + 20000;
   while (Date.now() < footerDeadline) {
-    composeBox = await page.$('footer div[contenteditable="true"]').catch(() => null);
+    composeBox = await findComposeBox(page);
     if (composeBox) break;
     await sleep(500);
   }
