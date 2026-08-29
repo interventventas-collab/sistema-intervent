@@ -31,6 +31,20 @@ public class MeliPublicacionesV2Service
 
     public MeliPublicacionesV2Service(AppDbContext db) => _db = db;
 
+    /// <summary>La palabra que Osmar escribe en el SKU para marcar "hay que arreglarla".
+    /// Configurable en AppSettings (`meli.sku_marca_revisar`); si no está, es PAUSAR.</summary>
+    private string? _marcaRevisar;
+
+    private async Task<string> GetMarcaRevisarAsync(CancellationToken ct)
+    {
+        if (_marcaRevisar is not null) return _marcaRevisar;
+        var v = await _db.AppSettings.AsNoTracking()
+            .Where(x => x.Key == "meli.sku_marca_revisar")
+            .Select(x => x.Value).FirstOrDefaultAsync(ct);
+        _marcaRevisar = string.IsNullOrWhiteSpace(v) ? "PAUSAR" : v.Trim();
+        return _marcaRevisar;
+    }
+
     public record ComponenteDto(string? Sku, string Nombre, decimal Cantidad, int Stock, int Alcanza, bool Frena);
 
     public record FilaDto(
@@ -77,13 +91,26 @@ public class MeliPublicacionesV2Service
             // quiere es la familia entera. MercadoLibre muestra los números así: "#1421759403".
             var t = f.Texto.Trim().TrimStart('#').Trim();
 
-            // ¿Es un identificador (número de publicación, de familia, o MLAU) o texto suelto?
-            // Solo con un identificador se abre el grupo: con texto libre sería impredecible.
-            var esIdentificador = t.Length >= 6
-                && (t.All(char.IsDigit) || t.StartsWith("MLA", StringComparison.OrdinalIgnoreCase));
+            // 2026-08-29 — CORRECCIÓN. Lo de arriba se estaba aplicando a los DOS casos y estaba mal.
+            // Osmar, textual: *"si busco por número de publicación debería traerme número de
+            // publicación, ¿no te parece?"*. Y tiene razón. Son dos búsquedas distintas:
+            //   • un MLA (MLA1126305168)  → ESA publicación, sola.
+            //   • un número suelto (#1421759403, el número de FAMILIA que muestra MeLi)
+            //     → la familia entera, que es lo que pidió el 26/08.
+            // El caso que lo destapó: buscó un MLA marcado con PAUSAR y le vinieron 171 juntas.
+            var esMla = t.Length >= 6 && t.StartsWith("MLA", StringComparison.OrdinalIgnoreCase);
+            var esNumeroDeFamilia = t.Length >= 6 && t.All(char.IsDigit);
 
             var abrioGrupo = false;
-            if (esIdentificador)
+
+            if (esMla)
+            {
+                // Exacto. Es lo único que puede querer alguien que pega un número de publicación.
+                var mla = t.ToUpperInvariant();
+                q = q.Where(m => m.MeliItemId == mla);
+                abrioGrupo = true;
+            }
+            else if (esNumeroDeFamilia)
             {
                 var claves = await _db.MeliItems.AsNoTracking()
                     .Where(m => m.VariationId == null
@@ -97,7 +124,15 @@ public class MeliPublicacionesV2Service
                 {
                     var fams = claves.Where(x => !string.IsNullOrEmpty(x.FamilyId)).Select(x => x.FamilyId!).Distinct().ToList();
                     var ups = claves.Where(x => !string.IsNullOrEmpty(x.UserProductId)).Select(x => x.UserProductId!).Distinct().ToList();
-                    var sks = claves.Where(x => !string.IsNullOrEmpty(x.Sku)).Select(x => x.Sku!).Distinct().ToList();
+                    // 2026-08-29 — La marca de "para revisar" (PAUSAR) NO es una familia.
+                    // Osmar la escribe en el SKU de MercadoLibre para marcar lo que hay que arreglar,
+                    // así que la comparten CIENTOS de publicaciones que no tienen nada que ver entre
+                    // sí. Sin esto, buscar un número de publicación marcada devolvía las 171 juntas y
+                    // parecía que el buscador no andaba. Ver [[SkuAnterior]] en MeliItemSyncConfig.
+                    var marcaRevisar = await GetMarcaRevisarAsync(ct);
+                    var sks = claves.Where(x => !string.IsNullOrEmpty(x.Sku)
+                                                && !string.Equals(x.Sku, marcaRevisar, StringComparison.OrdinalIgnoreCase))
+                        .Select(x => x.Sku!).Distinct().ToList();
 
                     q = q.Where(m => (m.FamilyId != null && fams.Contains(m.FamilyId))
                                      || (m.UserProductId != null && ups.Contains(m.UserProductId))
