@@ -73,6 +73,36 @@
     .p2-rec b { color: #6b7280; font-weight: 600; }
     .p2-rec .frena { color: #b91c1c; font-weight: 700; }
     .p2-rec .arma { color: #6b7280; font-weight: 700; }
+    .p2-rec.tocable { cursor: pointer; border-bottom: 1px dotted #cbd5e1; width: fit-content; max-width: 100%; }
+    .p2-rec.tocable:hover, .p2-rec.on { color: #1d4f80; border-bottom-color: #1d4f80; }
+    .p2-receta { grid-column: 1 / -1; background: #f8fafc; border: 1px solid #e3e7e0; border-radius: .5rem;
+                 padding: .7rem .8rem; margin: .1rem 0 .3rem; }
+    .p2-receta h4 { margin: 0 0 .5rem; font-size: .8rem; color: #1f2937; }
+    .p2-receta .comp { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+                       padding: .4rem .5rem; background: #fff; border: 1px solid #e5e7eb;
+                       border-radius: .4rem; margin-bottom: .3rem; }
+    .p2-receta .comp .nom { font-size: .78rem; font-weight: 600; color: #1f2937; }
+    .p2-receta .comp .cod { font-size: .7rem; color: #6b7280; }
+    .p2-receta .comp .dato { font-size: .7rem; color: #6b7280; }
+    .p2-receta .comp .mal { color: #b91c1c; font-weight: 700; font-size: .7rem; }
+    .p2-receta .comp .ojo { color: #b45309; font-weight: 600; font-size: .7rem; }
+    .p2-receta .comp input { width: 78px; text-align: right; font-size: .78rem; font-weight: 700;
+                             border: 1px solid #cbd5e1; border-radius: .3rem; padding: .15rem .3rem; }
+    .p2-receta .btn { font-size: .72rem; font-weight: 700; padding: .28rem .6rem; border-radius: .35rem;
+                      border: 1px solid #cbd5e1; background: #fff; cursor: pointer; font-family: inherit; }
+    .p2-receta .btn:hover { border-color: #9ca3af; }
+    .p2-receta .btn.go { background: #15803d; border-color: #15803d; color: #fff; }
+    .p2-receta .btn.del { color: #b91c1c; border-color: #fecaca; }
+    .p2-receta .btn[disabled] { opacity: .5; cursor: default; }
+    .p2-receta .buscar { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; margin-top: .5rem; }
+    .p2-receta .buscar input.q { flex: 1; min-width: 220px; font-size: .78rem; padding: .3rem .5rem;
+                                 border: 1px solid #cbd5e1; border-radius: .35rem; }
+    .p2-receta .lista { max-height: 190px; overflow-y: auto; border: 1px solid #e5e7eb;
+                        border-radius: .4rem; margin-top: .35rem; background: #fff; }
+    .p2-receta .lista .op { padding: .3rem .5rem; font-size: .76rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; }
+    .p2-receta .lista .op:hover { background: #f0fdf4; }
+    .p2-receta .lista .op .cod { color: #6b7280; font-size: .7rem; }
+    .p2-receta .nota { font-size: .7rem; color: #6b7280; margin-top: .45rem; }
 
     .p2-price { display: block; font-weight: 700; font-size: .8rem; }
     .p2-rango { display: block; font-weight: 700; font-size: .76rem; color: #b91c1c; }
@@ -513,7 +543,11 @@
                                     </button>
                                 </span>
                             }
-                            <span class="p2-rec">@RecetaFragment(it)</span>
+                            @* 2026-08-29 · el renglón de la receta se toca y se edita ahí mismo.
+                               Era lo último que obligaba a volver a la pantalla vieja. *@
+                            <span class="p2-rec tocable @(recetaAbierta == it.MeliItemId ? "on" : "")"
+                                  title="Tocá para ver y corregir de qué se compone esta publicación"
+                                  @onclick="() => ToggleReceta(it.MeliItemId)" @onclick:stopPropagation="true">@RecetaFragment(it)</span>
                         </span>
 
                         <span class="p2-h" @onclick:stopPropagation="true">
@@ -675,6 +709,107 @@
                             }
                         </span>
                     </div>
+
+                    @* 2026-08-29 · RECETA editable. Hasta hoy la pantalla nueva mostraba de qué se
+                       compone la publicación pero no dejaba tocarlo, y había que ir a la vieja. *@
+                    @if (recetaAbierta == it.MeliItemId)
+                    {
+                        <div class="p2-receta" @onclick:stopPropagation="true">
+                            <h4>🧩 De qué se compone esta publicación</h4>
+
+                            @if (it.Receta is null || it.Receta.Count == 0)
+                            {
+                                <div class="nota" style="color:#b91c1c; font-weight:600;">
+                                    Todavía no está vinculada a ningún producto del sistema. Por eso no se sabe
+                                    ni el costo ni el stock. Buscá el producto acá abajo.
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var c in it.Receta)
+                                {
+                                    <div class="comp">
+                                        <span class="nom">@c.Nombre</span>
+                                        <span class="cod">@(c.Sku ?? "sin código")</span>
+                                        <span class="dato">·</span>
+                                        <span class="dato">cada venta descuenta</span>
+                                        @if (c.Id > 0)
+                                        {
+                                            <input type="number" min="1" step="1" value="@CantTexto(c)"
+                                                   @oninput="e => recetaCantEdit[c.Id] = e.Value?.ToString() ?? string.Empty" />
+                                            @if (CantCambiada(c))
+                                            {
+                                                <button class="btn go" disabled="@recetaGuardando"
+                                                        @onclick="() => GuardarCantidad(it, c)">✓ Guardar</button>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="dato"><b>@c.Cantidad.ToString("0.##", ar)</b></span>
+                                        }
+                                        <span class="dato">· hay <b>@c.Stock.ToString("N0", ar)</b> · alcanza para <b>@c.Alcanza</b></span>
+
+                                        @if (c.Costo <= 0)
+                                        {
+                                            <span class="mal">⚠ sin costo cargado</span>
+                                        }
+                                        else if (c.Costo <= 1)
+                                        {
+                                            <span class="ojo" title="Algunos productos están en $1 a propósito (por ejemplo las tapas que vienen con la caja). Si no es el caso, hay que corregirlo.">⚠ costo $1 — ¿es a propósito?</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="dato">costo @Plata(c.Costo)</span>
+                                        }
+
+                                        <span style="flex:1;"></span>
+                                        @if (c.Id > 0)
+                                        {
+                                            <button class="btn del" disabled="@recetaGuardando"
+                                                    title="Sacar este producto de la receta"
+                                                    @onclick="() => QuitarComponente(it, c)">🗑 Sacar</button>
+                                        }
+                                    </div>
+                                }
+                            }
+
+                            <div class="buscar">
+                                <input class="q" placeholder="Buscá el producto por código o nombre…"
+                                       @bind="recetaBusqueda" @bind:event="oninput" />
+                                <span class="dato" style="font-size:.72rem; color:#6b7280;">cantidad</span>
+                                <input type="number" min="1" step="1" style="width:86px; text-align:right; font-size:.78rem; font-weight:700; border:1px solid #cbd5e1; border-radius:.3rem; padding:.15rem .3rem;"
+                                       @bind="recetaCantidadNueva" />
+                            </div>
+
+                            @if (productosCargando)
+                            {
+                                <div class="nota">Cargando los productos…</div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(recetaBusqueda))
+                            {
+                                var encontrados = BuscarProductos(recetaBusqueda);
+                                <div class="lista">
+                                    @if (encontrados.Count == 0)
+                                    {
+                                        <div class="op" style="cursor:default; color:#9ca3af;">No encontré ningún producto con eso.</div>
+                                    }
+                                    @foreach (var pr in encontrados)
+                                    {
+                                        <div class="op" @onclick="() => AgregarComponente(it, pr)">
+                                            <b>@pr.Nombre</b>
+                                            <span class="cod">· @(pr.Sku ?? "sin código") · stock @pr.StockUnidades.ToString("N0", ar) · costo @Plata(pr.Costo)</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            <div class="nota">
+                                Si la publicación vende un pack, poné cuántas unidades lleva (por ejemplo <b>100</b>).
+                                Si vende una sola unidad, poné <b>1</b>.
+                                Al guardar, el sistema le manda el stock a MercadoLibre.
+                            </div>
+                        </div>
+                    }
 
                     @if (fotosAbiertas == it.MeliItemId)
                     {
@@ -1879,6 +2014,157 @@
     // al instante. Es de a UNA a propósito — nunca en lote.
     // NO hay eliminar: en MeLi es irreversible y se pierde antigüedad, historial de ventas,
     // preguntas y posición en el buscador. Pausada tampoco vende, y se vuelve.
+
+    // ─────────────── 2026-08-29 · RECETA EDITABLE DESDE LA FILA ───────────────
+    // Era lo último que obligaba a volver a la pantalla vieja: para vincular una publicación a su
+    // producto había que salir de acá. Y el botón 🔗 de la vieja encima está roto (apunta a unas
+    // tablas viejas vacías y dice "no hay productos creados"), así que era fácil terminar creando
+    // el producto de nuevo y partiendo el stock en dos.
+    //
+    // Reusa los endpoints que ya existían (POST/PUT/DELETE /api/meli/componente): esos ya
+    // re-pushean el stock solos, así que al guardar la publicación queda con el stock correcto.
+
+    private string? recetaAbierta;
+    private bool recetaGuardando, productosCargando;
+    private string recetaBusqueda = "";
+    private decimal recetaCantidadNueva = 1;
+    private List<CafeProductoDto>? productos;
+    private readonly Dictionary<int, string> recetaCantEdit = new();
+
+    private async Task ToggleReceta(string mla)
+    {
+        if (recetaAbierta == mla) { recetaAbierta = null; return; }
+
+        // Los paneles se excluyen: dos abiertos a la vez es un lío en una fila angosta.
+        recetaAbierta = mla;
+        fotosAbiertas = null;
+        medidasAbiertas = null;
+        recetaBusqueda = "";
+        recetaCantidadNueva = 1;
+        recetaCantEdit.Clear();
+
+        // La lista de productos se trae UNA vez y se filtra acá: son ~1.900 y buscar contra el
+        // servidor en cada tecla es peor que traerlos una vez.
+        if (productos is null && !productosCargando)
+        {
+            productosCargando = true;
+            try { productos = await Api.GetCafeProductosAsync("OTROS"); }
+            catch (Exception ex) { ToastService.Error("No se pudieron traer los productos: " + ex.Message); }
+            finally { productosCargando = false; }
+        }
+    }
+
+    /// <summary>Busca por código o por nombre, con varias palabras. El código exacto va primero:
+    /// es lo que uno tipea cuando ya sabe cuál quiere.</summary>
+    private List<CafeProductoDto> BuscarProductos(string texto)
+    {
+        if (productos is null) return new();
+        var q = texto.Trim().ToLowerInvariant();
+        if (q.Length < 2) return new();
+        var palabras = q.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        return productos
+            .Where(p => palabras.All(w =>
+                (p.Sku ?? "").ToLowerInvariant().Contains(w) || p.Nombre.ToLowerInvariant().Contains(w)))
+            .OrderByDescending(p => string.Equals(p.Sku, q, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(p => (p.Sku ?? "").StartsWith(q, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(p => p.Nombre)
+            .Take(25)
+            .ToList();
+    }
+
+    private async Task AgregarComponente(ApiClient.PubV2Fila it, CafeProductoDto prod)
+    {
+        if (recetaGuardando) return;
+        if (recetaCantidadNueva <= 0) { ToastService.Error("La cantidad tiene que ser mayor que cero."); return; }
+
+        // La cantidad es el error caro de este formulario: dejarla en 1 cuando la publicación vende
+        // un pack manda MILES de unidades a MercadoLibre. Por eso se confirma mostrando la cuenta.
+        var alcanza = (int)Math.Floor(prod.StockUnidades / recetaCantidadNueva);
+        var aviso = $"Vinculo esta publicación a:\n\n{prod.Nombre} ({prod.Sku})\n\n"
+                  + $"Cada venta va a descontar {recetaCantidadNueva.ToString("0.##", ar)} unidad(es).\n"
+                  + $"Como hay {prod.StockUnidades.ToString("N0", ar)} en el depósito, le voy a mandar "
+                  + $"{alcanza.ToString("N0", ar)} a MercadoLibre.\n\n¿Va así?";
+        if (!await JS.InvokeAsync<bool>("confirm", aviso)) return;
+
+        recetaGuardando = true;
+        StateHasChanged();
+        try
+        {
+            await Api.CreateComponenteAsync(it.MeliItemId, prod.Id, recetaCantidadNueva);
+            ToastService.Success($"Listo: {prod.Sku} × {recetaCantidadNueva.ToString("0.##", ar)}.");
+            recetaBusqueda = "";
+            await RefrescarFila(it.MeliItemId);
+            await AvisarSiElStockNoLlego(it.MeliItemId, alcanza);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo vincular: " + ex.Message); }
+        finally { recetaGuardando = false; }
+    }
+
+    /// <summary>Lo que muestra el campo: lo que el usuario está tipeando, o la cantidad guardada.</summary>
+    private string CantTexto(ApiClient.PubV2Componente c)
+        => recetaCantEdit.TryGetValue(c.Id, out var v) ? v : c.Cantidad.ToString("0.##", ar);
+
+    private bool CantCambiada(ApiClient.PubV2Componente c)
+        => recetaCantEdit.TryGetValue(c.Id, out var v) && v != c.Cantidad.ToString("0.##", ar);
+
+    private async Task GuardarCantidad(ApiClient.PubV2Fila it, ApiClient.PubV2Componente c)
+    {
+        if (recetaGuardando || !recetaCantEdit.TryGetValue(c.Id, out var txt)) return;
+        if (!decimal.TryParse(txt.Replace(',', '.'), System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var cant) || cant <= 0)
+        { ToastService.Error("Poné una cantidad mayor que cero."); return; }
+
+        recetaGuardando = true;
+        StateHasChanged();
+        try
+        {
+            if (await Api.UpdateComponenteAsync(c.Id, cant))
+            {
+                ToastService.Success($"Ahora cada venta descuenta {cant.ToString("0.##", ar)}.");
+                recetaCantEdit.Remove(c.Id);
+                await RefrescarFila(it.MeliItemId);
+            }
+            else ToastService.Error("No se pudo cambiar la cantidad.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cambiar la cantidad: " + ex.Message); }
+        finally { recetaGuardando = false; }
+    }
+
+    private async Task QuitarComponente(ApiClient.PubV2Fila it, ApiClient.PubV2Componente c)
+    {
+        if (recetaGuardando) return;
+        if (!await JS.InvokeAsync<bool>("confirm",
+            $"Saco «{c.Nombre}» de la receta.\n\nSi era el único, la publicación queda sin producto "
+            + "y el sistema no va a saber ni su costo ni su stock.\n\n¿Dale?")) return;
+
+        recetaGuardando = true;
+        StateHasChanged();
+        try
+        {
+            if (await Api.DeleteComponenteAsync(c.Id))
+            {
+                ToastService.Success("Sacado de la receta.");
+                await RefrescarFila(it.MeliItemId);
+            }
+            else ToastService.Error("No se pudo sacar.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo sacar: " + ex.Message); }
+        finally { recetaGuardando = false; }
+    }
+
+    /// <summary>El endpoint que vincula ya manda el stock, pero si eso falla se lo traga y contesta
+    /// que salió bien (nos pasó con las tapas de 8 onzas: quedó en 24 en vez de 147). Acá se compara
+    /// contra lo que quedó y, si no coincide, se avisa en vez de dejarlo pasar.</summary>
+    private async Task AvisarSiElStockNoLlego(string mla, int esperado)
+    {
+        var fila = datos?.Items.FirstOrDefault(x => x.MeliItemId == mla);
+        if (fila is null) return;
+        if (fila.StockMeli != esperado)
+            ToastService.Error($"Ojo: quedó vinculada, pero MercadoLibre sigue con {fila.StockMeli} "
+                             + $"en vez de {esperado}. Tildala y usá 📦 Mandar stock.");
+        await Task.CompletedTask;
+    }
 
     private string? estadoEnCurso;
     private string? skuEnCurso;

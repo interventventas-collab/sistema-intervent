@@ -45,7 +45,11 @@ public class MeliPublicacionesV2Service
         return _marcaRevisar;
     }
 
-    public record ComponenteDto(string? Sku, string Nombre, decimal Cantidad, int Stock, int Alcanza, bool Frena);
+    /// <summary>Un renglón de la receta. Desde el 29/08 viaja también el Id del componente, el id
+    /// del producto y su costo: son los que hacen falta para poder EDITAR la receta desde la fila
+    /// (cambiar la cantidad, cambiar el producto) y para marcar los costos que faltan.</summary>
+    public record ComponenteDto(string? Sku, string Nombre, decimal Cantidad, int Stock, int Alcanza, bool Frena,
+        int Id = 0, int ProductoId = 0, decimal Costo = 0m);
 
     public record FilaDto(
         string MeliItemId, string? Sku, string Titulo, string? Thumbnail, string? Permalink,
@@ -254,7 +258,7 @@ public class MeliPublicacionesV2Service
             from c in _db.MeliItemComponentes.AsNoTracking()
             join p in _db.CafeProductos.AsNoTracking() on c.CafeProductoId equals p.Id
             where ids.Contains(c.MeliItemId)
-            select new { c.MeliItemId, c.CafeProductoId, c.Cantidad, p.Sku, p.Nombre, p.Costo }
+            select new { c.Id, c.MeliItemId, c.CafeProductoId, c.Cantidad, p.Sku, p.Nombre, p.Costo }
         ).ToListAsync(ct);
 
         var prodIds = comps.Select(c => c.CafeProductoId).Distinct().ToList();
@@ -321,7 +325,8 @@ public class MeliPublicacionesV2Service
                 {
                     var stock = stockPorProd.GetValueOrDefault(c.CafeProductoId, 0);
                     var alcanza = c.Cantidad > 0 ? (int)Math.Floor(stock / c.Cantidad) : 0;
-                    receta.Add(new ComponenteDto(c.Sku, c.Nombre, c.Cantidad, stock, alcanza, false));
+                    receta.Add(new ComponenteDto(c.Sku, c.Nombre, c.Cantidad, stock, alcanza, false,
+                        c.Id, c.CafeProductoId, c.Costo));
                     if (arma is null || alcanza < arma) arma = alcanza;
                 }
                 // Marcar cuál frena (el más escaso). Si empatan, se marcan todos los que empatan.
@@ -333,7 +338,8 @@ public class MeliPublicacionesV2Service
                 var stock = stockPorProd.GetValueOrDefault(r.CafeProductoId.Value, 0);
                 costo = lp.Costo;
                 arma = stock;
-                receta.Add(new ComponenteDto(lp.Sku, lp.Nombre, 1m, stock, stock, false));
+                receta.Add(new ComponenteDto(lp.Sku, lp.Nombre, 1m, stock, stock, false,
+                    0, r.CafeProductoId.Value, lp.Costo));
             }
 
             // Comisión real: comisión + cargo fijo + ENVÍO a tu cargo.

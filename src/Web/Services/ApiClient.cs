@@ -320,6 +320,23 @@ public class ApiClient
         return resp?.AvailableQuantity;
     }
 
+    /// <summary>Cambia la cantidad de un componente ya cargado. El backend re-pushea el stock.</summary>
+    public async Task<bool> UpdateComponenteAsync(int id, decimal cantidad)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _httpLong.PutAsJsonAsync($"/api/meli/componente/{id}",
+            new { cantidad, formato = (string?)null });
+        return resp.IsSuccessStatusCode;
+    }
+
+    /// <summary>Saca un componente de la receta. El backend re-pushea el stock.</summary>
+    public async Task<bool> DeleteComponenteAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _httpLong.DeleteAsync($"/api/meli/componente/{id}");
+        return resp.IsSuccessStatusCode;
+    }
+
     // 2026-08-13: poner/cambiar el SKU de una publicación en MeLi (esté o no vinculada). Devuelve el SKU aplicado.
     public async Task<string?> SetItemSkuAsync(string meliItemId, string sku)
     {
@@ -5071,7 +5088,8 @@ public class ApiClient
         return await resp.Content.ReadFromJsonAsync<ListingTypeLoteDto>();
     }
     // ─── 2026-08-25: pantalla NUEVA de publicaciones (/publicaciones-nueva) ───
-    public record PubV2Componente(string? Sku, string Nombre, decimal Cantidad, int Stock, int Alcanza, bool Frena);
+    public record PubV2Componente(string? Sku, string Nombre, decimal Cantidad, int Stock, int Alcanza, bool Frena,
+        int Id = 0, int ProductoId = 0, decimal Costo = 0m);
     public record PubV2Fila(
         string MeliItemId, string? Sku, string Titulo, string? Thumbnail, string? Permalink,
         decimal Precio, string? Estado, string? Tipo, string? Cuotas, bool EnvioGratis, string? Envio,
