@@ -11,6 +11,10 @@ const AdmZip = require('adm-zip');
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const DATA_DIR = '/data/whatsapp-session';
 const STORAGE_STATE_PATH = path.join(DATA_DIR, 'storage-state.json');
+// 2026-08-29: carpeta del PERFIL de Chrome. Ver el comentario largo en launchContext:
+// storage-state.json solo guarda cookies + localStorage, y las llaves de WhatsApp viven en
+// IndexedDB, que ahi NO entra. Por eso la sesion se perdia en cada reinicio del container.
+const PROFILE_DIR = path.join(DATA_DIR, 'perfil-chrome');
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -90,26 +94,46 @@ async function saveStorageState() {
   }
 }
 
+// 2026-08-29 — POR QUE LA SESION SE PERDIA EN CADA REINICIO.
+// Antes: chromium.launch() + newContext({ storageState }). storageState() de Playwright guarda
+// SOLO cookies + localStorage. Las llaves con las que WhatsApp reconoce el dispositivo vinculado
+// viven en IndexedDB, que ahi NO entra. Al reiniciar restauraba media llave, WhatsApp no la
+// reconocia y el log decia "storage-state invalido, cerrando" -> a escanear el QR de nuevo.
+// Como el container se recrea en cada publicacion, la linea se caia todo el tiempo.
+//
+// Ahora: launchPersistentContext(PROFILE_DIR). Chrome guarda su PERFIL ENTERO en esa carpeta
+// (IndexedDB incluido) y la carpeta vive en el volume, asi que sobrevive reinicios y rebuilds.
+//
+// storage-state.json se sigue escribiendo, pero YA NO ES la sesion: queda como MARCA de
+// "hay una cuenta vinculada". Varios endpoints preguntan por ese archivo para decidir si
+// intentan restaurar o responden "WhatsApp no esta vinculado"; se deja para no tocarlos.
 async function launchContext(useStorageState) {
-  const browser = await chromium.launch({
+  if (!fs.existsSync(PROFILE_DIR)) fs.mkdirSync(PROFILE_DIR, { recursive: true });
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: true,
     args: [
       '--no-sandbox',
       '--disable-dev-shm-usage',
       '--disable-blink-features=AutomationControlled',
     ],
-  });
-  const contextOptions = {
     userAgent:
       'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     viewport: { width: 1280, height: 800 },
-  };
-  if (useStorageState && fs.existsSync(STORAGE_STATE_PATH)) {
-    contextOptions.storageState = STORAGE_STATE_PATH;
+  });
+  const page = context.pages()[0] || (await context.newPage());
+  // En un contexto persistente no hay objeto browser aparte: cerrando el context se cierra todo.
+  return { browser: null, context, page };
+}
+
+// Borra el perfil de Chrome = olvidar la cuenta vinculada. OJO: el navegador tiene que estar
+// CERRADO antes de llamar a esto, si no Chrome reescribe los archivos que acabamos de borrar.
+function borrarPerfilChrome() {
+  try {
+    if (fs.existsSync(PROFILE_DIR)) fs.rmSync(PROFILE_DIR, { recursive: true, force: true });
+    console.log('[wa] perfil de Chrome borrado (cuenta olvidada)');
+  } catch (err) {
+    console.error('[wa] no se pudo borrar el perfil:', err.message);
   }
-  const context = await browser.newContext(contextOptions);
-  const page = await context.newPage();
-  return { browser, context, page };
 }
 
 async function isLinkedOnPage(page) {
@@ -148,6 +172,40 @@ async function isLinkedOnPage(page) {
   return false;
 }
 
+// 2026-08-29 — LA CAUSA REAL de que no se pudiera abrir ningun chat ni adjuntar nada.
+// WhatsApp Web muestra carteles ("What's new on WhatsApp Web", avisos de novedades) que TAPAN
+// la aplicacion entera. El robot no los cerraba nunca, asi que:
+//   - LEER la lista seguia andando (leer el DOM atraviesa el cartel), por eso parecia medio sano;
+//   - CLICKEAR cualquier cosa no, porque el cartel se come el click. De ahi el 504 al abrir un
+//     chat y el "subtree intercepts pointer events" al adjuntar, que reintentaba 60 veces.
+// WhatsApp saca carteles nuevos seguido, asi que esto hay que correrlo antes de cada click, no
+// una sola vez al arrancar.
+async function cerrarCartelesBloqueantes(page) {
+  let cerrados = 0;
+  for (let i = 0; i < 3; i++) {   // pueden venir encadenados
+    const cerro = await page.evaluate(() => {
+      const TEXTOS = /^(continuar|continue|ok|aceptar|entendido|got it|listo|empezar|start|no gracias|not now|ahora no|omitir|skip|mas tarde|later)$/i;
+      const dialogos = Array.from(document.querySelectorAll(
+        'div[role="dialog"], [data-animate-modal-body], [data-testid="popup-contents"]'
+      ));
+      for (const d of dialogos) {
+        if (d.getClientRects().length === 0) continue;   // no esta visible
+        const botones = Array.from(d.querySelectorAll('button, div[role="button"], [role="button"]'));
+        const b = botones.find((x) => TEXTOS.test((x.innerText || '').trim()));
+        if (b) { b.click(); return true; }
+        const x = d.querySelector('[aria-label="Close"], [aria-label="Cerrar"], [data-icon="x"], [data-icon="close"]');
+        if (x) { (x.closest('button, [role="button"]') || x).click(); return true; }
+      }
+      return false;
+    }).catch(() => false);
+    if (!cerro) break;
+    cerrados++;
+    await sleep(600);
+  }
+  if (cerrados > 0) console.log(`[wa] cerre ${cerrados} cartel(es) de WhatsApp que tapaban la pantalla`);
+  return cerrados;
+}
+
 async function startSession({ useStorageState }) {
   await closeBrowserSafely();
   const { browser, context, page } = await launchContext(useStorageState);
@@ -159,6 +217,8 @@ async function startSession({ useStorageState }) {
     waitUntil: 'domcontentloaded',
     timeout: 60000,
   });
+  await sleep(1500);
+  await cerrarCartelesBloqueantes(page);
   return page;
 }
 
@@ -185,10 +245,15 @@ app.post('/whatsapp/link', async (req, res) => {
     state.isLinking = true;
     state.lastInfo = 'Abriendo WhatsApp Web...';
 
-    // Siempre empezar desde cero para mostrar QR (sin storageState)
+    // Siempre empezar desde cero para mostrar QR.
+    // 2026-08-29: con perfil persistente NO alcanza con borrar storage-state.json — Chrome
+    // restauraria la cuenta anterior desde el perfil y no apareceria ningun QR. Hay que cerrar
+    // el navegador y borrar el perfil, en ese orden (con Chrome vivo, reescribe lo borrado).
     if (fs.existsSync(STORAGE_STATE_PATH)) {
       try { fs.unlinkSync(STORAGE_STATE_PATH); } catch {}
     }
+    await closeBrowserSafely();
+    borrarPerfilChrome();
 
     await startSession({ useStorageState: false });
 
@@ -367,6 +432,9 @@ app.post('/whatsapp/unlink', async (req, res) => {
     if (fs.existsSync(STORAGE_STATE_PATH)) {
       try { fs.unlinkSync(STORAGE_STATE_PATH); } catch {}
     }
+    // 2026-08-29: la sesion real vive en el perfil de Chrome, asi que desvincular es borrarlo.
+    // (closeBrowserSafely ya corrio arriba, el navegador esta cerrado.)
+    borrarPerfilChrome();
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -539,6 +607,11 @@ async function sendWhatsAppMessageWithFile(phone, caption, fileBuffer, fileName)
       }
       if (invalidPopup) return { success: false, message: 'Numero invalido o no tiene WhatsApp' };
       if (!composeBox) { lastError = 'Timeout abriendo chat'; continue; }
+
+      // 2026-08-29: cerrar carteles recien ACA — despues de descartar el popup de numero
+      // invalido. Si lo hicieramos antes, le apretariamos el "OK" a ese aviso y creeriamos
+      // que el numero es bueno cuando no lo es.
+      await cerrarCartelesBloqueantes(state.page);
 
       // 3) Click en el clip (Adjuntar). WhatsApp tiene varias variantes del selector.
       const clipSelectors = [
@@ -1285,6 +1358,9 @@ app.post('/whatsapp/chat/open-by-index', async (req, res) => {
     }
     console.log(`[wa] open-by-index: sidebar tiene ${sidebarItems} items antes de buscar idx=${index}`);
 
+    // 2026-08-29: cerrar carteles ANTES de clickear — si no, el click se lo come el overlay.
+    await cerrarCartelesBloqueantes(state.page);
+
     // Click directo en el nth listitem. Hace scrollIntoView por si esta fuera del viewport.
     const clickResult = await state.page.evaluate(({ idx, expected }) => {
       // 2026-08-29: cascada identica a la de chats/list (ver comentario arriba).
@@ -1426,6 +1502,7 @@ app.post('/whatsapp/chats/list', async (req, res) => {
     }
 
     await sleep(700);
+    await cerrarCartelesBloqueantes(state.page);
 
     // Extraer los chats del DOM. Multi-fallback por cambios en clases de WhatsApp.
     const chats = await state.page.evaluate((max) => {
