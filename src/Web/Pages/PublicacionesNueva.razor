@@ -639,13 +639,13 @@
                             </button>
                             <button class="p2-sw @(FilaAbierta(it) ? "tocable" : "")"
                                     disabled="@(!FilaAbierta(it) || sincroEnCurso == it.MeliItemId)"
-                                    title="@(FilaAbierta(it) ? (it.SyncPrecio ? "Tocá para APAGAR el sincro de precio (queda a mano)" : "Tocá para PRENDER el sincro de precio (lo mantiene el sistema)") : (it.SyncPrecio ? "Precio sincronizado: el sistema lo mantiene" : "Precio a mano: el sistema no lo toca"))"
+                                    title="@(FilaAbierta(it) ? (it.SyncPrecio ? "Tocá para APAGAR el sincro de precio (queda a mano)" : "Tocá para PRENDER el sincro de precio — te pregunta si querés aplicarlo ahora") : (it.SyncPrecio ? "Precio sincronizado: el sistema lo mantiene" : "Precio a mano: el sistema no lo toca"))"
                                     @onclick="() => CambiarSincroFila(it, !it.SyncPrecio, null)" @onclick:stopPropagation="true">
                                 💲<span class="p2-led @(it.SyncPrecio ? "on" : "")"></span>
                             </button>
                             <button class="p2-sw @(FilaAbierta(it) ? "tocable" : "")"
                                     disabled="@(!FilaAbierta(it) || sincroEnCurso == it.MeliItemId)"
-                                    title="@(FilaAbierta(it) ? (it.SyncStock ? "Tocá para APAGAR el sincro de stock" : "Tocá para PRENDER el sincro de stock") : (it.SyncStock ? "Stock sincronizado: se pushea solo" : "Stock a mano"))"
+                                    title="@(FilaAbierta(it) ? (it.SyncStock ? "Tocá para APAGAR el sincro de stock" : "Tocá para PRENDER el sincro de stock — y se lo mando a MercadoLibre ahora") : (it.SyncStock ? "Stock sincronizado: se pushea solo" : "Stock a mano"))"
                                     @onclick="() => CambiarSincroFila(it, null, !it.SyncStock)" @onclick:stopPropagation="true">
                                 📦<span class="p2-led @(it.SyncStock ? "on" : "")"></span>
                             </button>
@@ -1811,11 +1811,66 @@
 
             var que = precio.HasValue
                 ? (precio.Value ? "Precio sincronizado: el sistema lo mantiene." : "Precio a mano: el sistema no lo toca más.")
-                : (stock!.Value ? "Stock sincronizado: se pushea solo." : "Stock a mano.");
+                : (stock!.Value ? "Stock sincronizado." : "Stock a mano.");
             ToastService.Success(que);
+
+            // ─── 2026-08-29 · prender el verde tiene que DEJARLO BIEN, no sólo anotar la intención ───
+            // Osmar: *"si aprieto el verde de stock y precio, ya debería estar ok, ¿no te parece?"*.
+            // Tenía razón: prender el sincro y que el número siga viejo no se entiende. Antes esto
+            // sólo guardaba la configuración y el valor recién se emparejaba cuando algo se movía.
+            //
+            // El stock va solo; el precio NO. El precio se ve al instante en MercadoLibre y está la
+            // trampa del escalón de los $33.000 — un toque distraído puede fundir una publicación
+            // (le pasó con la silla Reina). Así que ahí se pregunta.
+
+            if (stock == true)
+            {
+                var r = await Api.AccionStockAsync(new List<string> { it.MeliItemId });
+                var fila = r?.Detalle.FirstOrDefault();
+                if (r is not null && r.Ok > 0) ToastService.Success("Stock mandado a MercadoLibre. " + (fila?.Mensaje ?? ""));
+                else ToastService.Error("El sincro quedó prendido, pero el stock no se pudo mandar: "
+                                        + (fila?.Mensaje ?? "probá con 📦 Mandar stock"));
+                await RefrescarFila(it.MeliItemId);
+            }
+            else if (precio == true)
+            {
+                if (it.ObjetivoPct is null)
+                {
+                    ToastService.Info("Ojo: esta publicación no tiene objetivo de ganancia cargado, "
+                                      + "así que el sistema todavía no sabe qué precio ponerle.");
+                }
+                else if (await JS.InvokeAsync<bool>("confirm",
+                    $"El sincro quedó prendido.\n\n¿Querés que además le aplique el precio AHORA, "
+                    + $"según el objetivo del {it.ObjetivoPct.Value.ToString("0.#", ar)}%?\n\n"
+                    + "Esto se ve en MercadoLibre al instante. Si decís que no, el precio se va a "
+                    + "acomodar solo la próxima vez que el sistema pase."))
+                {
+                    var r = await Api.AccionPrecioAsync(new List<string> { it.MeliItemId });
+                    var fila = r?.Detalle.FirstOrDefault();
+                    if (r is not null && r.Ok > 0) ToastService.Success("Precio aplicado. " + (fila?.Mensaje ?? ""));
+                    else ToastService.Error("No se pudo aplicar el precio: " + (fila?.Mensaje ?? "sin detalle"));
+                    await RefrescarFila(it.MeliItemId);
+                }
+            }
         }
         catch (Exception ex) { ToastService.Error("No se pudo cambiar el sincro: " + ex.Message); }
         finally { sincroEnCurso = null; }
+    }
+
+    /// <summary>Vuelve a pedir UNA sola fila y la reemplaza en la lista. Se usa después de mandar
+    /// stock o precio: recargar la lista entera hace saltar el scroll y se pierde de vista la
+    /// publicación con la que se estaba trabajando.</summary>
+    private async Task RefrescarFila(string mla)
+    {
+        try
+        {
+            var page = await Api.GetPublicacionesV2Async(texto: mla, porPagina: 1);
+            var fresca = page?.Items.FirstOrDefault(x => x.MeliItemId == mla);
+            if (fresca is null || datos is null) return;
+            var idx = datos.Items.FindIndex(x => x.MeliItemId == mla);
+            if (idx >= 0) datos.Items[idx] = fresca;
+        }
+        catch { /* si no se puede refrescar, la fila queda con el dato viejo y no pasa nada grave */ }
     }
 
     // ─────────────── 2026-08-27 · PAUSAR Y ACTIVAR DESDE LA FILA ───────────────
