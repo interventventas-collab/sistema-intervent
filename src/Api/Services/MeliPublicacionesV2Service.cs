@@ -42,7 +42,9 @@ public class MeliPublicacionesV2Service
         bool ComisionVieja, List<ComponenteDto> Receta, int? Arma,
         int PublisFamilia, decimal? PrecioMin, decimal? PrecioMax, bool VariosPrecios,
         bool SyncPrecio, bool SyncStock, decimal? ObjetivoPct,
-        string? Cuenta);
+        string? Cuenta,
+        // 2026-08-27: el SKU que tenía antes de que la marcaran para revisar (ver MeliItemSyncConfig).
+        string? SkuAnterior);
 
     public record PageDto(int Total, int Pagina, int PorPagina, List<FilaDto> Items);
 
@@ -237,7 +239,7 @@ public class MeliPublicacionesV2Service
         // ── 3) Config de sincronización ──
         var cfgs = await _db.MeliItemSyncConfigs.AsNoTracking()
             .Where(c => ids.Contains(c.MeliItemId))
-            .Select(c => new { c.MeliItemId, c.SyncPrecio, c.SyncStock, c.GananciaObjetivoPct })
+            .Select(c => new { c.MeliItemId, c.SyncPrecio, c.SyncStock, c.GananciaObjetivoPct, c.SkuAnterior })
             .ToDictionaryAsync(c => c.MeliItemId, ct);
 
         // ── 4) Familia: cuántas publicaciones activas por SKU y su rango de precios ──
@@ -353,7 +355,7 @@ public class MeliPublicacionesV2Service
                 variosPrecios ? cond.Max : fam?.Max,
                 variosPrecios,
                 cfg?.SyncPrecio ?? false, cfg?.SyncStock ?? false, cfg?.GananciaObjetivoPct,
-                r.Cuenta));
+                r.Cuenta, cfg?.SkuAnterior));
         }
 
         // Filtros que dependen de datos calculados (se aplican sobre la página).

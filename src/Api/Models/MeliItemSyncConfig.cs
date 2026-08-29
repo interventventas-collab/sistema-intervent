@@ -92,6 +92,27 @@ public class MeliItemSyncConfig
 
     /// <summary>2026-07-02: Cuando se cargo/actualizo el objetivo.</summary>
     public DateTime? GananciaObjetivoAt { get; set; }
+
+    // ==========================================
+    // 2026-08-27: el SKU que había antes de marcarla para revisar
+    // ==========================================
+
+    /// <summary>El SKU que tenía la publicación en MercadoLibre ANTES de que se lo pisaran con la
+    /// marca de "para revisar" (hoy, la palabra PAUSAR).
+    ///
+    /// Por qué existe: Osmar marca las publicaciones a arreglar escribiendo PAUSAR en el SKU, y eso
+    /// **borra el SKU verdadero**. Cuando la arregla tiene que escribirlo de memoria — y si se
+    /// equivoca, la publicación vuelve enganchada al producto equivocado. Medido el 27/08 en
+    /// producción: 170 publicaciones marcadas, y de las 170 el SKU original **ya no estaba en
+    /// ningún lado** (sólo 8 se pudieron sacar del historial de avisos).
+    ///
+    /// Se guarda solo, cuando la sincronización ve que el SKU pasó a ser la marca. No cambia nada
+    /// más: es únicamente para poder devolvérselo después.</summary>
+    [MaxLength(100)]
+    public string? SkuAnterior { get; set; }
+
+    /// <summary>Cuándo se guardó ese SKU (o sea, cuándo se marcó la publicación).</summary>
+    public DateTime? SkuAnteriorAt { get; set; }
 }
 
 /// <summary>

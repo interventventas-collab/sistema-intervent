@@ -143,6 +143,65 @@ public class MeliEstadoService
             detalle.Count > 0 ? string.Join(" · ", detalle) : null);
     }
 
+    // ─── 2026-08-27 · devolver el SKU que se había perdido al marcarla ───
+
+    /// <summary>TOCA MELI, pero SÓLO el SKU: le devuelve a la publicación el SKU que tenía antes de
+    /// que la marcaran para revisar.
+    ///
+    /// ⚠ **NO la activa y NO le toca el precio.** Queda pausada igual que estaba. Activarla es una
+    /// decisión aparte y sigue siendo del usuario, con el cartel de estado de la fila — que además
+    /// avisa qué margen deja antes de despertarla. Osmar fue explícito: nada se reactiva solo.</summary>
+    public async Task<Resultado> DevolverSkuAsync(string meliItemId, CancellationToken ct = default)
+    {
+        var (item, error) = await BuscarAsync(meliItemId, ct);
+        if (error is not null) return error;
+
+        var cfg = await _db.MeliItemSyncConfigs.FirstOrDefaultAsync(c => c.MeliItemId == meliItemId, ct);
+        var skuViejo = cfg?.SkuAnterior?.Trim();
+        if (string.IsNullOrWhiteSpace(skuViejo))
+            return new Resultado(false, "De esta publicación no tengo guardado el SKU anterior.", null, null);
+
+        if (string.Equals(item!.Sku?.Trim(), skuViejo, StringComparison.OrdinalIgnoreCase))
+        {
+            // Ya lo tiene puesto: limpiar la marca y listo, sin molestar a MeLi.
+            cfg!.SkuAnterior = null;
+            cfg.SkuAnteriorAt = null;
+            cfg.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return new Resultado(true, $"Ya tenía el SKU {skuViejo}.", item.Status, null);
+        }
+
+        var (token, sinToken) = await TokenAsync(item, ct);
+        if (sinToken is not null) return sinToken;
+
+        // Los dos campos: seller_custom_field para las categorías viejas y el atributo SELLER_SKU
+        // para las nuevas. Es el mismo par que ya usa el cambio de SKU de los combos.
+        var payload = new
+        {
+            seller_custom_field = skuViejo,
+            attributes = new[] { new { id = "SELLER_SKU", value_name = skuViejo } }
+        };
+
+        var (ok, err) = await MandarAsync(token!, meliItemId, payload, ct);
+        if (!ok) return new Resultado(false, err!, null, null);
+
+        // Reflejarlo en nuestra copia y soltar la marca: ya cumplió su función.
+        var filas = await _db.MeliItems.Where(i => i.MeliItemId == meliItemId).ToListAsync(ct);
+        foreach (var f in filas) { f.Sku = skuViejo; f.UpdatedAt = DateTime.UtcNow; }
+        cfg!.SkuAnterior = null;
+        cfg.SkuAnteriorAt = null;
+        cfg.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogWarning("[SkuMarca] {Mla}: SKU devuelto a «{Sku}» (sigue {Estado})",
+            meliItemId, skuViejo, item.Status);
+
+        return new Resultado(true,
+            $"Listo, le devolví el SKU {skuViejo}. Sigue {(item.Status == "paused" ? "pausada" : "activa")}: " +
+            "no la desperté. Cuando quieras, activala con el cartel de la derecha.",
+            item.Status, null);
+    }
+
     // ── auxiliares ──
 
     /// <summary>Busca la publicación y descarta los casos que no tiene sentido intentar.

@@ -1918,6 +1918,60 @@ public class MeliItemService
         return synced;
     }
 
+    /// <summary>2026-08-27 — La palabra que Osmar escribe en el SKU de MercadoLibre para marcar
+    /// una publicación como "hay que arreglarla". Vive en AppSettings (`meli.sku_marca_revisar`)
+    /// para poder cambiarla sin tocar el código; si no está configurada, es PAUSAR.</summary>
+    private string? _marcaRevisarCache;
+
+    private async Task<string> GetMarcaRevisarAsync()
+    {
+        if (_marcaRevisarCache is not null) return _marcaRevisarCache;
+        var v = await _db.AppSettings.AsNoTracking()
+            .Where(s => s.Key == "meli.sku_marca_revisar")
+            .Select(s => s.Value).FirstOrDefaultAsync();
+        _marcaRevisarCache = string.IsNullOrWhiteSpace(v) ? "PAUSAR" : v.Trim();
+        return _marcaRevisarCache;
+    }
+
+    /// <summary>Guarda el SKU que había, si lo están reemplazando por la marca de "para revisar".
+    ///
+    /// Sólo escribe en ese caso puntual — que es raro —, así que no le agrega trabajo a la
+    /// sincronización de las 5.900 publicaciones. NO cambia el SKU, ni el precio, ni el estado:
+    /// lo único que hace es recordar, para poder devolvérselo cuando la publicación se arregle.</summary>
+    private async Task GuardarSkuAnteriorSiSeMarcaAsync(string meliItemId, string? skuViejo, string? skuNuevo)
+    {
+        var marca = await GetMarcaRevisarAsync();
+
+        // Sólo cuando ENTRA a la marca: el nuevo es la marca y el viejo era un SKU de verdad.
+        if (!string.Equals(skuNuevo?.Trim(), marca, StringComparison.OrdinalIgnoreCase)) return;
+        if (string.IsNullOrWhiteSpace(skuViejo)) return;
+        if (string.Equals(skuViejo.Trim(), marca, StringComparison.OrdinalIgnoreCase)) return;
+
+        try
+        {
+            var cfg = await _db.MeliItemSyncConfigs.FirstOrDefaultAsync(c => c.MeliItemId == meliItemId);
+            if (cfg is null)
+            {
+                cfg = new MeliItemSyncConfig { MeliItemId = meliItemId, CreatedAt = DateTime.UtcNow };
+                _db.MeliItemSyncConfigs.Add(cfg);
+            }
+            // Si ya había uno guardado no se pisa: el primero es el bueno. Marcar dos veces
+            // seguidas no puede hacer que el SKU original se pierda de nuevo.
+            if (!string.IsNullOrWhiteSpace(cfg.SkuAnterior)) return;
+
+            cfg.SkuAnterior = skuViejo.Trim();
+            cfg.SkuAnteriorAt = DateTime.UtcNow;
+            cfg.UpdatedAt = DateTime.UtcNow;
+            _logger.LogWarning("[SkuMarca] {Mla}: se marcó como «{Marca}», guardo el SKU anterior «{Sku}»",
+                meliItemId, marca, cfg.SkuAnterior);
+        }
+        catch (Exception ex)
+        {
+            // Nunca frenar la sincronización por esto: es una ayuda, no una obligación.
+            _logger.LogWarning(ex, "[SkuMarca] {Mla}: no se pudo guardar el SKU anterior", meliItemId);
+        }
+    }
+
     // SKU: prioriza atributo SELLER_SKU, cae a seller_custom_field si no esta.
     private static string? ExtractSku(JsonElement element)
     {
@@ -2254,6 +2308,10 @@ public class MeliItemService
             existing.ListingTypeId = listingTypeId;
             existing.Thumbnail = thumbnail;
             existing.Permalink = permalink;
+            // 2026-08-27 — ANTES de pisar el SKU: si lo están reemplazando por la marca de "para
+            // revisar" (la palabra PAUSAR), guardarse el que había. Es la única oportunidad de
+            // capturarlo: un renglón más abajo se pierde para siempre. Ver MeliItemSyncConfig.SkuAnterior.
+            await GuardarSkuAnteriorSiSeMarcaAsync(meliItemId, existing.Sku, sku);
             existing.Sku = sku;
             existing.UserProductId = userProductId;
             existing.FamilyId = familyId;

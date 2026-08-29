@@ -127,6 +127,14 @@
                   padding: .12rem .26rem; font-size: .74rem; line-height: 1; cursor: pointer; }
     .p2-candado:hover { border-color: #9ca3af; }
     .p2-candado.abierto { background: #fef3c7; border-color: #f59e0b; }
+    .p2-marca { display: inline-flex; align-items: center; gap: .35rem; flex-wrap: wrap; font-size: .68rem;
+                color: #7c2d12; background: #fffbeb; border: 1px solid #fcd34d; border-radius: .35rem;
+                padding: .12rem .4rem; margin-top: .1rem; width: fit-content; }
+    .p2-marca button { font-size: .68rem; font-weight: 700; font-family: inherit; cursor: pointer;
+                       border: 1px solid #b45309; background: #fff; color: #b45309;
+                       border-radius: .3rem; padding: .05rem .35rem; }
+    .p2-marca button:hover { background: #fef3c7; }
+    .p2-marca button[disabled] { opacity: .5; cursor: default; }
     .p2-st.tocable { cursor: pointer; font-family: inherit; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
     .p2-st.tocable:hover { filter: brightness(.94); }
     .p2-st.tocable[disabled] { opacity: .6; cursor: default; }
@@ -492,6 +500,19 @@
                                 {
                                     <span class="p2-cta @ClaseCuenta(it.Cuenta)" title="Publicada en la cuenta @it.Cuenta">@it.Cuenta</span>
                                 }@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)@(it.Vendidas > 0 ? $" · {it.Vendidas} vendidas" : "") <span class="p2-envio @ClaseEnvio(it.Envio)" title="@TituloEnvio(it)">@EnvioTexto(it.Envio)@(it.EnvioGratis ? " · lo pagás vos" : "")</span></span>
+                            @* 2026-08-27 · si el SKU dice la marca de "para revisar", se avisa acá y
+                               se ofrece devolverle el SKU verdadero, que el sistema guardó al marcarla. *@
+                            @if (!string.IsNullOrEmpty(it.SkuAnterior))
+                            {
+                                <span class="p2-marca" @onclick:stopPropagation="true">
+                                    📌 Marcada para revisar · el SKU de verdad es <b>@it.SkuAnterior</b>
+                                    <button disabled="@(skuEnCurso == it.MeliItemId)"
+                                            title="Le devuelve el SKU @it.SkuAnterior en MercadoLibre. NO la activa: queda como está."
+                                            @onclick="() => DevolverSku(it)" @onclick:stopPropagation="true">
+                                        @(skuEnCurso == it.MeliItemId ? "···" : "↩ Devolvérselo")
+                                    </button>
+                                </span>
+                            }
                             <span class="p2-rec">@RecetaFragment(it)</span>
                         </span>
 
@@ -1805,6 +1826,41 @@
     // preguntas y posición en el buscador. Pausada tampoco vende, y se vuelve.
 
     private string? estadoEnCurso;
+    private string? skuEnCurso;
+
+    /// <summary>Le devuelve a la publicación el SKU que tenía antes de que la marcaran.
+    /// ⚠ NO la activa: eso queda para el cartel de estado, que además avisa el margen.</summary>
+    private async Task DevolverSku(ApiClient.PubV2Fila it)
+    {
+        if (string.IsNullOrEmpty(it.SkuAnterior) || skuEnCurso is not null) return;
+
+        var aviso = $"Le vuelvo a poner el SKU:\n\n{it.SkuAnterior}\n\n"
+                  + "En MercadoLibre va a dejar de decir la marca y va a decir el SKU de verdad.\n\n"
+                  + "NO la voy a activar: queda como está ahora. Cuando la quieras despertar, "
+                  + "tocás el cartel de la derecha.\n\n¿Dale?";
+        if (!await JS.InvokeAsync<bool>("confirm", aviso)) return;
+
+        skuEnCurso = it.MeliItemId;
+        StateHasChanged();
+        try
+        {
+            var (res, error) = await Api.DevolverSkuAsync(it.MeliItemId);
+            if (res is null || !res.Ok)
+            {
+                ToastService.Error(error ?? res?.Mensaje ?? "No se pudo devolver el SKU.");
+                return;
+            }
+
+            var idx = datos?.Items.FindIndex(x => x.MeliItemId == it.MeliItemId) ?? -1;
+            if (idx >= 0 && datos is not null)
+                datos.Items[idx] = datos.Items[idx] with { Sku = it.SkuAnterior, SkuAnterior = null };
+
+            ToastService.Success(res.Mensaje);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo devolver el SKU: " + ex.Message); }
+        finally { skuEnCurso = null; }
+    }
+
 
     /// <summary>Sólo las activas y las pausadas, y sólo con el candado abierto. Una cerrada o en
     /// revisión no se puede tocar, así que ni se muestra como botón.</summary>

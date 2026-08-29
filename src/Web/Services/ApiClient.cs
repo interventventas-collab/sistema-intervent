@@ -5080,7 +5080,8 @@ public class ApiClient
         decimal? ComisionMonto, decimal? ComisionPct, decimal? ComisionPorcentaje, decimal? ComisionFija, decimal? ComisionEnvio,
         bool ComisionVieja, List<PubV2Componente> Receta, int? Arma,
         int PublisFamilia, decimal? PrecioMin, decimal? PrecioMax, bool VariosPrecios,
-        bool SyncPrecio, bool SyncStock, decimal? ObjetivoPct, string? Cuenta);
+        bool SyncPrecio, bool SyncStock, decimal? ObjetivoPct, string? Cuenta,
+        string? SkuAnterior);
     public record PubV2Page(int Total, int Pagina, int PorPagina, List<PubV2Fila> Items);
 
     public async Task<PubV2Page?> GetPublicacionesV2Async(string? texto = null, string? sku = null,
@@ -5245,6 +5246,9 @@ public class ApiClient
         => CambiarEstadoAsync(mla, "pausar");
     public Task<(PubV2EstadoResultado? res, string? error)> ActivarPublicacionV2Async(string mla)
         => CambiarEstadoAsync(mla, "activar");
+    /// <summary>Le devuelve el SKU que tenía antes de marcarla. NO la activa.</summary>
+    public Task<(PubV2EstadoResultado? res, string? error)> DevolverSkuAsync(string mla)
+        => CambiarEstadoAsync(mla, "devolver-sku");
 
     // ─── 2026-08-27 · EXCEL EDITABLE ───
     // Tres pasos y el del medio no se saltea: bajar → vista previa → aplicar lo tildado.
