@@ -138,7 +138,12 @@
                             else { <span>@chatMessages.Count mensajes</span> }
                         </div>
                     </div>
-                    <button @onclick="CerrarChat" style="margin-left:auto; background:transparent; border:0; font-size:1.3rem; cursor:pointer; color:#6b7280;">×</button>
+                    @* 2026-08-29: al sacar el refresco automático del chat abierto, queda este
+                       botón para releerlo cuando vos quieras. *@
+                    <button @onclick="RefrescarChatAbierto" disabled="@loadingMessages"
+                            title="Volver a leer esta conversación"
+                            style="margin-left:auto; background:transparent; border:0; font-size:1.05rem; cursor:pointer; color:#6b7280;">↻</button>
+                    <button @onclick="CerrarChat" style="background:transparent; border:0; font-size:1.3rem; cursor:pointer; color:#6b7280;">×</button>
                 </div>
                 <div class="ww-chat-body" id="ww-chat-body">
                     @if (loadingMessages && chatMessages.Count == 0)
@@ -188,18 +193,14 @@
     private string newMessageText = "";
     private bool sending = false;
 
-    private System.Threading.Timer? _refreshChatsTimer;
-    private System.Threading.Timer? _refreshOpenChatTimer;
-
     protected override async Task OnInitializedAsync()
     {
         await RecargarChats();
-        _refreshChatsTimer = new System.Threading.Timer(_ => _ = InvokeAsync(async () => await RecargarChats(silent: true)),
-            null, 30000, 30000);
-        // Refresco del chat abierto cada 20 segundos (era 8 — congestionaba el container Playwright
-        // porque el scrape tarda ~6s y se acumulaban requests).
-        _refreshOpenChatTimer = new System.Threading.Timer(_ => _ = InvokeAsync(async () => await RefrescarChatAbierto()),
-            null, 20000, 20000);
+        // 2026-08-29 (pedido del dueño): SE SACARON los dos refrescos automáticos (lista cada 30s
+        // y chat abierto cada 20s). Motivo: el robot atiende de a UNA cosa por vez (candado global),
+        // y esos dos despertadores le robaban el turno a los clics de la persona — hacías clic en un
+        // chat y hacías la cola detrás de un refresco que nadie pidió. De ahí la sensación de lento.
+        // Ahora se recarga SOLO a mano: botón "Refrescar" (lista) y "↻" (chat abierto).
     }
 
     private async Task RecargarChats(bool silent = false)
@@ -210,7 +211,7 @@
             var st = await Api.GetWhatsAppStatusAsync();
             linkedDetected = st?.Linked == true;
             if (!linkedDetected) chats = new();
-            else chats = await Api.GetWhatsAppChatsAsync(80);
+            else chats = await Api.GetWhatsAppChatsAsync(25);   // 2026-08-29: era 80. Los de arriba son los que importan.
         }
         catch { }
         loadingChats = false;
@@ -250,16 +251,21 @@
     private async Task RefrescarChatAbierto()
     {
         if (selectedIndex < 0 || sending || loadingMessages) return;
+        // 2026-08-29: ahora esto lo dispara la persona con el botón ↻ (antes era un temporizador
+        // invisible), así que se muestra "cargando mensajes…" — si no, apretás y no pasa nada visible.
+        loadingMessages = true;
+        await InvokeAsync(StateHasChanged);
         try
         {
             var dto = await Api.OpenWhatsAppChatByIndexAsync(selectedIndex, selectedName);
             if (selectedIndex >= 0 && dto.Messages.Count > 0)
             {
                 chatMessages = dto.Messages;
-                await InvokeAsync(StateHasChanged);
             }
         }
         catch { }
+        loadingMessages = false;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task EnviarMensaje()
@@ -310,7 +316,6 @@
 
     public void Dispose()
     {
-        try { _refreshChatsTimer?.Dispose(); } catch { }
-        try { _refreshOpenChatTimer?.Dispose(); } catch { }
+        // 2026-08-29: ya no hay temporizadores que soltar (se sacaron los refrescos automáticos).
     }
 }

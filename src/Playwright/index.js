@@ -584,23 +584,46 @@ async function sendWhatsAppMessageWithFile(phone, caption, fileBuffer, fileName)
         buffer: fileBuffer,
       });
 
-      // 5) Esperar el preview del archivo + el caption box (hasta 20s)
+      // 5) Esperar el preview del archivo + el cuadro de texto DE LA VENTANITA.
+      // 2026-08-29 (ESTE era el bug del adjunto): el selector viejo agarraba el PRIMER
+      // contenteditable de la pagina, que es el del CHAT — y ese queda TAPADO por la ventanita
+      // de vista previa. Playwright intentaba clickearlo, el overlay le interceptaba el click y
+      // reintentaba 60 veces hasta morir a los 30s ("subtree intercepts pointer events").
+      // Nunca llegaba a apretar Enviar, asi que el archivo no salia.
+      //
+      // Ahora: 1) se prefiere la caja que WhatsApp etiqueta como "comentario/caption";
+      //        2) si no, la ultima que NO viva en el <footer> (esa es la del chat de atras)
+      //           ni en #side (esa es el buscador del panel izquierdo — si escribiamos ahi,
+      //           el texto se iba al buscador y no al mensaje);
+      //        3) se ENFOCA por JS con focus() en vez de clickear, asi da igual que haya algo
+      //           encima: no hay click que interceptar.
       const previewDeadline = Date.now() + 20000;
-      let captionBox = null;
+      let captionReady = false;
       while (Date.now() < previewDeadline) {
-        // El caption box es el contenteditable que aparece DEBAJO del preview
-        captionBox = await state.page.$('div[role="textbox"][contenteditable="true"], div[contenteditable="true"][data-tab="undefined"]');
-        if (captionBox) break;
+        captionReady = await state.page.evaluate(() => {
+          const escribibles = Array.from(document.querySelectorAll('div[contenteditable="true"]'));
+          const porEtiqueta = escribibles.find((el) => {
+            const et = ((el.getAttribute('aria-label') || '') + ' ' +
+                        (el.getAttribute('aria-placeholder') || '')).toLowerCase();
+            return /caption|comentario|leyenda|descripc/.test(et);
+          });
+          const candidatos = escribibles.filter((el) => !el.closest('footer') && !el.closest('#side'));
+          const caja = porEtiqueta || candidatos[candidatos.length - 1];
+          if (!caja) return false;
+          caja.focus();
+          return document.activeElement === caja;
+        }).catch(() => false);
+        if (captionReady) break;
         await sleep(500);
       }
 
-      // 6) Si hay caption, escribirla
-      if (caption) {
-        if (captionBox) {
-          await captionBox.click();
-          await state.page.keyboard.type(caption, { delay: 10 });
-          await sleep(300);
-        }
+      // 6) Si hay caption, escribirla (la caja de la ventanita ya quedo enfocada arriba).
+      // Si NO se encontro la caja, se manda el archivo sin texto en vez de colgarse.
+      if (caption && captionReady) {
+        await state.page.keyboard.type(caption, { delay: 10 });
+        await sleep(300);
+      } else if (caption && !captionReady) {
+        console.warn('[wa] send-with-pdf: no aparecio el cuadro de comentario; mando el archivo solo');
       }
 
       // 7) Click en el boton de enviar (avion de papel)
@@ -1218,9 +1241,15 @@ app.post('/whatsapp/chat/open-by-index', async (req, res) => {
     const sidebarDeadline = Date.now() + 15000;
     let sidebarItems = 0;
     while (Date.now() < sidebarDeadline) {
-      sidebarItems = await state.page.evaluate(() =>
-        document.querySelectorAll('#pane-side div[role="listitem"]').length
-      ).catch(() => 0);
+      sidebarItems = await state.page.evaluate(() => {
+        // 2026-08-29: MISMA cascada que /whatsapp/chats/list. WhatsApp dejo de usar
+        // role="listitem" y aca quedaba en 0 items -> "no se pudo clickear" en TODOS los
+        // chats, mientras el listado si andaba porque el plan B ya lo tenia.
+        // Los dos lados TIENEN que resolver igual o los indices no coinciden.
+        let n = document.querySelectorAll('#pane-side div[role="listitem"]').length;
+        if (n === 0) n = document.querySelectorAll('[data-testid="cell-frame-container"]').length;
+        return n;
+      }).catch(() => 0);
       if (sidebarItems > 0) break;
       await sleep(400);
     }
@@ -1228,7 +1257,11 @@ app.post('/whatsapp/chat/open-by-index', async (req, res) => {
 
     // Click directo en el nth listitem. Hace scrollIntoView por si esta fuera del viewport.
     const clickResult = await state.page.evaluate(({ idx, expected }) => {
-      const items = document.querySelectorAll('#pane-side div[role="listitem"]');
+      // 2026-08-29: cascada identica a la de chats/list (ver comentario arriba).
+      let items = document.querySelectorAll('#pane-side div[role="listitem"]');
+      if (items.length === 0) {
+        items = document.querySelectorAll('[data-testid="cell-frame-container"]');
+      }
       if (items.length === 0) {
         return { ok: false, reason: 'no items', total: 0 };
       }
