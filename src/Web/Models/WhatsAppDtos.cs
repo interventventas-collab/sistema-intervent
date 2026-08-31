@@ -34,6 +34,10 @@ public class WhatsAppStatusDto
     public string? LastHeartbeatAt { get; set; }
     /// <summary>2026-06-23: cuando paso de linked=true a linked=false la ultima vez.</summary>
     public string? LastDisconnectedAt { get; set; }
+    /// <summary>2026-08-31: hay una cuenta escaneada guardada en el disco. NO es lo mismo que
+    /// Linked: al reiniciar, la sesión tarda unos segundos en levantar y Linked da false aunque
+    /// la cuenta siga vinculada. El menú usa este dato para no aparecer y desaparecer solo.</summary>
+    public bool HayCuenta { get; set; }
 }
 
 public class WhatsAppLinkedDto

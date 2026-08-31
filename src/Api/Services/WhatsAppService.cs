@@ -396,6 +396,11 @@ public class WhatsAppStatusDto
     /// <summary>2026-06-23: timestamp ISO de la ultima vez que paso de linked=true a linked=false.
     /// Util para mostrar "Se desvinculo hace X" en la UI.</summary>
     public string? LastDisconnectedAt { get; set; }
+    /// <summary>2026-08-31: hay una cuenta escaneada guardada en disco. Distinto de Linked, que
+    /// dice si la sesion esta viva AHORA: al reiniciar el container el navegador tarda unos
+    /// segundos y Linked da false aunque la cuenta siga vinculada. El menu se guia por esto para
+    /// no aparecer y desaparecer solo en cada reinicio.</summary>
+    public bool HayCuenta { get; set; }
 }
 
 public class WhatsAppLinkedDto

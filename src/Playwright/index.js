@@ -365,6 +365,12 @@ app.get('/whatsapp/status', async (req, res) => {
       info: state.lastInfo,
       lastHeartbeatAt: state.lastHeartbeatAt || null,
       lastDisconnectedAt: state.lastDisconnectedAt || null,
+      // 2026-08-31: "hay una cuenta escaneada guardada en el disco", que NO es lo mismo que
+      // "la sesion esta viva en este momento". Al reiniciar el container el navegador todavia
+      // no abrio, asi que linked da false por unos segundos aunque la cuenta siga vinculada.
+      // El menu del sistema usa ESTE dato para decidir si muestra la pantalla: si usara
+      // linked, la entrada aparecería y desaparecería sola en cada reinicio.
+      hayCuenta: fs.existsSync(PROFILE_DIR) && fs.existsSync(STORAGE_STATE_PATH),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
