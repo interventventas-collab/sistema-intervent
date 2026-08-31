@@ -1253,6 +1253,33 @@
                     <div class="form-error">@formError</div>
                 }
 
+                @* 2026-08-31: cartel de "factura sin CAE" DENTRO de la edicion. Antes el boton de
+                   reintentar vivia solo en el visor del comprobante y nadie lo encontraba: el
+                   operador entraba a editar, corregia el dato que hizo rebotar la factura, guardaba
+                   y la factura seguia pendiente. Ahora se ve el motivo del rechazo aca mismo y
+                   "Guardar" reemite solo. *@
+                @if (editingVentaId.HasValue && editingVentaArcaEstado == "pendiente"
+                     && editingVentaTipoOriginal is "FA" or "FB" or "FC")
+                {
+                    <div style="background:#fff7ed; border:2px solid #fb923c; border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.7rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                            <strong style="color:#9a3412; font-size:0.9rem;">⚠ Esta factura todavía NO tiene CAE</strong>
+                            <span style="font-size:0.78rem; color:#7c2d12;">Corregí lo que haga falta y guardá: se vuelve a emitir sola.</span>
+                            <button type="button" class="btn" style="margin-left:auto; background:#ea580c; color:#fff; border-color:#ea580c; font-size:0.8rem; padding:0.3rem 0.7rem;"
+                                    @onclick="ConfirmarEmision"
+                                    disabled="@(saving || arcaRetrying || formItems.Count == 0 || cotizacion?.TodoOk != true)">
+                                @(saving || arcaRetrying ? "Emitiendo..." : "🔄 Guardar y reintentar emisión")
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(editingVentaArcaError))
+                        {
+                            <div style="margin-top:0.35rem; font-size:0.78rem; color:#7c2d12; white-space:pre-wrap; border-top:1px dashed #fdba74; padding-top:0.35rem;">
+                                <strong>ARCA dijo:</strong> @editingVentaArcaError
+                            </div>
+                        }
+                    </div>
+                }
+
                 @* 2026-06-17: ① y ② lado a lado cuando NO esta en Venta Rapida (que ocupa todo el ancho con sus campos extra).
                    En Venta Rapida se apilan como antes para que entren bien los campos manuales del cliente. *@
                 @* 2026-06-30 v2: Header simplificado — Fila 1 con los 4 campos chicos (Tipo, IVA, Pago,
@@ -3139,7 +3166,9 @@
                                 <button id="nv-emitir" class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
                                     @(saving
                                         ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
-                                        : (editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
+                                        : (editingVentaId.HasValue
+                                            ? (EditArcaPendiente ? "💾 Guardar y reintentar emisión" : "💾 Guardar cambios")
+                                            : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
                                 </button>
                             }
                         </div>
@@ -3152,7 +3181,9 @@
                 <div style="padding: 0.7rem 1rem; background: #f9fafb; border-top: 1px solid #e5e7eb; display: flex; gap: 0.4rem; justify-content: flex-end; position: sticky; bottom: 0; z-index: 6; box-shadow: 0 -4px 10px rgba(0,0,0,0.06);">
                     <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
                     <button class="btn btn-primary" disabled="true" title="Agregá productos para emitir">
-                        @(editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}")
+                        @(editingVentaId.HasValue
+                            ? (EditArcaPendiente ? "💾 Guardar y reintentar emisión" : "💾 Guardar cambios")
+                            : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}")
                     </button>
                 </div>
             }
@@ -4579,7 +4610,7 @@
     private decimal cobroOcasionalSaldo;
     private decimal cobroOcasionalMonto;
     private int cobroOcasionalCajaId;
-    private DateTime cobroOcasionalFecha = DateTime.Today;
+    private DateTime cobroOcasionalFecha = DateTimeExt.AhoraAr().Date;
     private string cobroOcasionalNota = "";
     private bool cobroOcasionalGuardando;
     private List<CafeCajaDto>? cobroOcasionalCajas;
@@ -4590,7 +4621,7 @@
         cobroOcasionalSaldo = saldo;
         cobroOcasionalMonto = saldo;
         cobroOcasionalCajaId = 0;
-        cobroOcasionalFecha = DateTime.Today;
+        cobroOcasionalFecha = DateTimeExt.AhoraAr().Date;
         cobroOcasionalNota = "";
         cobroOcasionalGuardando = false;
         if (cobroOcasionalCajas is null)
@@ -4653,7 +4684,7 @@
     private List<RepartidorDto> repartidoresLista = new();
     // 2026-06-25: campos para marcar "Ya entregada" desde el mismo modal
     private bool marcarEntregadaToggle;
-    private DateTime fechaEntregaInput = DateTime.Now;
+    private DateTime fechaEntregaInput = DateTimeExt.AhoraAr();
     private string comentarioEntregaInput = "";
 
     private async Task AbrirReasignar(CafeVentaDto v)
@@ -4661,7 +4692,7 @@
         ventaReasignar = v;
         nuevoRepartidorId = 0;
         marcarEntregadaToggle = false;
-        fechaEntregaInput = DateTime.Now;
+        fechaEntregaInput = DateTimeExt.AhoraAr();
         comentarioEntregaInput = "";
         if (repartidoresLista.Count == 0)
         {
@@ -4770,7 +4801,7 @@
     /// del dropdown junto al botón de exportar.</summary>
     private void AplicarPresetExport()
     {
-        var hoy = DateTime.Today;
+        var hoy = DateTimeExt.AhoraAr().Date;
         switch (rangoExportPreset)
         {
             case "HOY":
@@ -4803,7 +4834,7 @@
         exportando = true;
         try
         {
-            var hoy = DateTime.Today;
+            var hoy = DateTimeExt.AhoraAr().Date;
             var d = filtroFechaDesde ?? new DateTime(hoy.Year, hoy.Month, 1);
             var h = filtroFechaHasta ?? hoy;
             var bytes = await Api.ExportCafeProductosVendidosAsync(d, h);
@@ -5271,7 +5302,10 @@
     private string vrTelefono = "";
     private string vrDomicilioEntrega = "";
 
-    private DateTime formFecha = DateTime.Today;
+    // 2026-08-31 FIX: la fecha del comprobante SIEMPRE es la de Argentina, nunca la del reloj
+    // del navegador. El usuario opera desde Espana (+5hs): con DateTime.Today, toda venta hecha
+    // despues de las 19hs hora Argentina salia fechada MANANA y ARCA rebotaba la factura.
+    private DateTime formFecha = DateTimeExt.AhoraAr().Date;
     private decimal formDescuento;
     private string formObservaciones = "";
     private string formTipoComprobante = "X";
@@ -5374,6 +5408,13 @@
     private string? editingVentaTipoOriginal;
     private bool editingVentaTieneCae;
     private string? editingVentaArcaEstado;  // 2026-06-18: si la venta ya intento emitir y quedo "pendiente", no usar mi flujo (existe Reintentar emision)
+    private string? editingVentaArcaError;   // 2026-08-31: motivo del rechazo de ARCA, para mostrarlo dentro de la edicion
+
+    /// <summary>2026-08-31: estoy editando una factura que ARCA rechazo (quedo sin CAE).
+    /// En ese caso el boton de guardar dice "Guardar y reintentar emision" y reemite solo.</summary>
+    private bool EditArcaPendiente
+        => editingVentaId.HasValue && editingVentaArcaEstado == "pendiente"
+           && editingVentaTipoOriginal is "FA" or "FB" or "FC";
     private bool EditModoEmitirCae
         => editingVentaId.HasValue
            && formTipoComprobante is "FA" or "FB" or "FC"
@@ -5593,7 +5634,7 @@
                 // que difiere de la lista impresa (ej F6 Bracol 1/2 kg: $19.500 vs $22.000 real).
                 bool usaFraccFuturo = (settings?.CostoFraccionamientoFuturo).HasValue
                     && (settings?.FechaAplicaFraccionamientoFuturo).HasValue
-                    && DateTime.Today >= settings!.FechaAplicaFraccionamientoFuturo!.Value.Date;
+                    && DateTimeExt.AhoraAr().Date >= settings!.FechaAplicaFraccionamientoFuturo!.Value.Date;
                 decimal costoFracc = usaFraccFuturo
                     ? settings!.CostoFraccionamientoFuturo!.Value
                     : (settings?.CostoFraccionamiento ?? 0m);
@@ -6652,7 +6693,7 @@
         clienteSearch = ""; clienteSearchOpen = false;
         modoVentaRapida = false;
         vrNombre = vrRazonSocial = vrCuit = vrDireccion = vrLocalidad = vrCiudad = vrCp = vrTelefono = vrDomicilioEntrega = "";
-        formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
+        formFecha = DateTimeExt.AhoraAr().Date; formDescuento = 0; formObservaciones = "";
         formTipoComprobante = "X"; formCondicionIva = "CF"; formCondicionPago = "EFECTIVO";
         formMostrarIvaProforma = true;
         formConcepto = 1; formConceptoServDesde = null; formConceptoServHasta = null;
@@ -7548,7 +7589,7 @@
         copiaWaSeleccion.Clear();
     }
 
-    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; autoRetryArcaPostEdit = false; editingVentaTipoOriginal = null; editingVentaTieneCae = false; editingVentaArcaEstado = null; CerrarChatWaFlotanteReset(); }
+    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; autoRetryArcaPostEdit = false; editingVentaTipoOriginal = null; editingVentaTieneCae = false; editingVentaArcaEstado = null; editingVentaArcaError = null; CerrarChatWaFlotanteReset(); }
 
     /// <summary>Apaga y olvida el chat flotante de WhatsApp al cerrar/abrir el form de venta,
     /// así no queda colgado ni arrastra el cliente anterior.</summary>
@@ -7733,7 +7774,7 @@
             formClienteId = payload.ClienteId ?? 0;
             formClienteTipo = payload.ClienteTipo;
             clienteSearch = ""; clienteSearchOpen = false;
-            formFecha = DateTime.Today; // fecha de HOY, no la del original
+            formFecha = DateTimeExt.AhoraAr().Date; // fecha de HOY (hora Argentina), no la del original
             formDescuento = 0;
             formObservaciones = payload.Observaciones ?? "";
             formTipoComprobante = payload.TipoComprobante;
@@ -9971,6 +10012,11 @@
         editingVentaTipoOriginal = string.IsNullOrWhiteSpace(v.TipoComprobante) ? "X" : v.TipoComprobante;
         editingVentaTieneCae = !string.IsNullOrEmpty(v.ArcaCae);
         editingVentaArcaEstado = v.ArcaEstado;
+        editingVentaArcaError = v.ArcaError;
+        // 2026-08-31: si la factura quedo sin CAE, guardar SIEMPRE reintenta la emision — no hace
+        // falta que el operador haya entrado por el boton "Editar y reintentar" del visor.
+        if (v.ArcaEstado == "pendiente" && v.TipoComprobante is "FA" or "FB" or "FC")
+            autoRetryArcaPostEdit = true;
         showForm = true;
         // Refrescar saldo anterior + sugerencias del cliente y cotizar precios.
         await RecomputeUnpaidPrevSalesAsync();
