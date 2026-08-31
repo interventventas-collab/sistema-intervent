@@ -36,7 +36,15 @@
     #leafletMap { width: 100%; height: 100%; flex: 1 1 auto; min-height: 0; }
     /* Botones-dock del borde izquierdo en pantalla completa (con cartelito al pasar el cursor). */
     /* Dock flotante moderno: un panel oscuro translúcido con los botones adentro. */
-    .mapeo-dock { display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 7px; background: rgba(17,24,39,0.94); border-radius: 18px; box-shadow: 0 8px 26px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); }
+    /* 2026-08-31: la barra crece con cada zona/repartidor y antes se salía de la pantalla
+       (los botones de abajo quedaban tapados y no había forma de llegar). Ahora nunca pasa
+       del alto de la pantalla: si no entra, la barra misma se desliza por dentro. */
+    .mapeo-dock { display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 7px; background: rgba(17,24,39,0.94); border-radius: 18px; box-shadow: 0 8px 26px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08);
+        max-height: calc(100vh - 16px); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+        scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.35) transparent; }
+    .mapeo-dock::-webkit-scrollbar { width: 8px; }
+    .mapeo-dock::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 999px; }
+    .mapeo-dock::-webkit-scrollbar-track { background: transparent; }
     .mapeo-dock-sep { height: 1px; margin: 3px 9px; background: rgba(255,255,255,0.14); border-radius: 1px; }
     .mapeo-dock-btn { position: relative; width: auto; min-width: 46px; height: 44px; border-radius: 12px; border: none; background: transparent; color: #e5e7eb; font-size: 1.25rem; cursor: pointer; display: flex; align-items: center; justify-content: flex-start; gap: 10px; padding: 0 12px; text-decoration: none; transition: background .15s ease, color .15s ease, transform .08s ease; }
     .mapeo-dock-label { font-size: 0.82rem; font-weight: 600; white-space: nowrap; }
@@ -2788,7 +2796,7 @@
     <div class="modal-overlay" @onclick="() => showDriversModal = false">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width:640px;">
             <div class="modal-header" style="background:#dbeafe;">
-                <h3 style="margin:0;">👥 Repartidores</h3>
+                <h3 style="margin:0;">🎨 Colores del mapa</h3>
                 <button class="btn-close" @onclick="() => showDriversModal = false">&times;</button>
             </div>
             <div class="modal-body">
@@ -2822,6 +2830,52 @@
                         </tbody>
                     </table>
                 }
+
+                @* ═══════ Colores de las ZONAS (además del de cada repartidor) ═══════
+                   2026-08-31: el color de cada zona era fijo por número. Ahora se elige a mano y
+                   queda guardado para todos (no solo en esta compu). *@
+                @{
+                    var slotsEnUso = (stops ?? new()).Where(s => s.AssignedVehicleSlot.HasValue)
+                        .Select(s => s.AssignedVehicleSlot!.Value).Distinct().OrderBy(x => x).ToList();
+                }
+                <div style="margin-top:1rem; padding-top:0.8rem; border-top:1px solid #e5e7eb;">
+                    <h4 style="margin:0 0 0.4rem;">📍 Zonas</h4>
+                    <div style="font-size:0.78rem; color:#374151; margin-bottom:0.6rem; padding:0.5rem 0.6rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px;">
+                        Elegí el color de cada <strong>zona</strong>. Es el color con el que se ven sus globitos
+                        mientras la zona <strong>todavía no tiene repartidor</strong>; cuando le asignás uno,
+                        manda el color del repartidor.
+                    </div>
+                    @if (slotsEnUso.Count == 0)
+                    {
+                        <p style="text-align:center; color:#6b7280; padding:0.6rem;">Todavía no hay zonas creadas.</p>
+                    }
+                    else
+                    {
+                        <table class="data-table" style="font-size:0.9rem;">
+                            <thead><tr><th>Color</th><th>Zona</th><th>Envíos</th><th></th></tr></thead>
+                            <tbody>
+                            @foreach (var sl in slotsEnUso)
+                            {
+                                var slotLocal = sl;
+                                <tr>
+                                    <td><input type="color" value="@VehicleColor(slotLocal)"
+                                               @onchange="@(e => GuardarZonaColor(slotLocal, e.Value?.ToString()))"
+                                               style="width:34px; height:26px; border:none; padding:0;" /></td>
+                                    <td style="font-weight:600;">Zona @slotLocal</td>
+                                    <td>@((stops ?? new()).Count(x => x.AssignedVehicleSlot == slotLocal))</td>
+                                    <td style="white-space:nowrap;">
+                                        @if (zonaColores.ContainsKey(slotLocal))
+                                        {
+                                            <button class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem;"
+                                                    @onclick="() => RestaurarZonaColor(slotLocal)" title="Volver al color de fábrica de esta zona">↩ Color original</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="() => showDriversModal = false">Cerrar</button>
@@ -4729,7 +4783,72 @@
         "#1d4ed8", "#dc2626", "#16a34a", "#d97706", "#7c3aed",
         "#0891b2", "#be185d", "#65a30d", "#ea580c", "#4338ca"
     };
-    private static string VehicleColor(int slot) => VEHICLE_COLORS[(slot - 1) % VEHICLE_COLORS.Length];
+    // 2026-08-31: el color de cada ZONA ahora se puede elegir a mano (antes era fijo por número).
+    // Se guarda en la configuración del sistema (clave mapeo.zonaColores) para que lo vea todo el
+    // equipo y no solo el navegador que lo cambió. Formato: {"1":"#1d4ed8","2":"#dc2626"}.
+    private const string ZONA_COLORES_KEY = "mapeo.zonaColores";
+    private Dictionary<int, string> zonaColores = new();
+    private string VehicleColor(int slot)
+        => zonaColores.TryGetValue(slot, out var c) && !string.IsNullOrWhiteSpace(c)
+           ? c
+           : VEHICLE_COLORS[(slot - 1) % VEHICLE_COLORS.Length];
+
+    // "benjamin" -> "BEN". Las 3 primeras letras del repartidor, para el cartelito del globito.
+    private static string TresLetras(string? nombre)
+    {
+        var t = (nombre ?? "").Trim();
+        if (t.Length == 0) return "";
+        return (t.Length <= 3 ? t : t.Substring(0, 3)).ToUpperInvariant();
+    }
+
+    // Trae los colores de zona guardados (si no hay nada, quedan los de fábrica).
+    private async Task CargarZonaColores()
+    {
+        try
+        {
+            var raw = await Api.GetSettingAsync(ZONA_COLORES_KEY);
+            if (string.IsNullOrWhiteSpace(raw)) return;
+            var dic = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(raw!);
+            if (dic is null) return;
+            var nuevo = new Dictionary<int, string>();
+            foreach (var kv in dic)
+                if (int.TryParse(kv.Key, out var slot) && !string.IsNullOrWhiteSpace(kv.Value))
+                    nuevo[slot] = kv.Value;
+            zonaColores = nuevo;
+        }
+        catch { }
+    }
+
+    // Guarda el color elegido para una zona y repinta el mapa con el color nuevo.
+    private async Task GuardarZonaColor(int slot, string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return;
+        zonaColores[slot] = hex!;
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                zonaColores.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value));
+            var ok = await Api.UpdateSettingAsync(ZONA_COLORES_KEY, json);
+            if (ok) ToastService.Success($"🎨 Color de la Zona {slot} guardado");
+            else ToastService.Error("No se pudo guardar el color de la zona");
+        }
+        catch { ToastService.Error("No se pudo guardar el color de la zona"); }
+        await RenderMap(true);
+    }
+
+    // Vuelve una zona al color de fábrica (el que le tocaba por su número).
+    private async Task RestaurarZonaColor(int slot)
+    {
+        if (!zonaColores.Remove(slot)) return;
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                zonaColores.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value));
+            await Api.UpdateSettingAsync(ZONA_COLORES_KEY, json);
+        }
+        catch { }
+        await RenderMap(true);
+    }
 
     // Badge de ORIGEN de una parada: de dónde salió el envío (venta del sistema, alquiler o carga a mano).
     // Los Flex/ME1 tienen su propio badge (📦 FLEX / 🏎 ME1), así que acá cubrimos el resto.
@@ -4765,6 +4884,7 @@
             try { startPoint = await Api.GetMapeoStartPointAsync(); } catch { }
             try { var pu = await Api.GetMapeoPublicBaseUrlAsync(); publicBaseUrl = string.IsNullOrWhiteSpace(pu?.Url) ? null : pu.Url; } catch { }
             await LoadDrivers();
+            await CargarZonaColores();   // colores de zona elegidos a mano (antes de dibujar el mapa)
             await LoadFavoritos();
             await LoadClientesMapeados();
             await Api.ClearStaleMapeoStopsAsync(); // limpiar lo de días anteriores; lo de hoy queda
@@ -5005,6 +5125,9 @@
                 // Número SOLO cuando la parada tiene orden de ruta (armada a mano u optimizada).
                 // Sin orden → pin limpio, sin número (el total de la zona se ve en la lista).
                 string label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString() : "";
+                // 2026-08-31: cartelito con las 3 PRIMERAS LETRAS del repartidor, al lado del globito.
+                // Sirve para reconocer de quién es cada envío sin depender solo del color.
+                string tag = TresLetras(st.AssignedDriverName);
                 // Modo "Armar ruta guiada": resaltamos en el mapa la parada elegida como PRIMERA (verde 1°),
                 // ÚLTIMA (rojo Ú) y las clavadas del medio (azul ★), para que se vea de un vistazo cuál es cuál.
                 if (modoGuiada)
@@ -5081,6 +5204,7 @@
                     label,
                     color,
                     shape,
+                    tag,
                     inRoute = enRutaSt,
                     delivered = entregadaStop,
                     // Candado: si la parada está desbloqueada, su pin se puede arrastrar para ajustar la ubicación.

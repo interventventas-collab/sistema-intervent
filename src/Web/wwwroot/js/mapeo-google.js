@@ -248,7 +248,30 @@
     // cerrar siempre queda a la vista.
     function wrapIw(html) { return '<div class="mapeo-iw">' + (html || '') + '</div>'; }
 
-    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, streetView, cancelStreetView, wrapIw };
+
+    // ── Cartelito con las 3 primeras letras del repartidor, al lado del globito ──
+    // 2026-08-31: de un vistazo se ve DE QUIÉN es cada envío sin abrirlo ni mirar el color.
+    // Devuelve el icono de Google listo, con el anchor corrido para que el cartelito
+    // quede a la DERECHA de la cabeza del pin (nunca encima).
+    const TAG_H = 18;                  // alto del cartelito en px (ni grande ni chico)
+    function tagIcon(text, color) {
+        const t = escapeXml(('' + text).toUpperCase());
+        const w = Math.round(12 + t.length * 8.2);
+        const bg = color || '#1d4ed8';
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + TAG_H + '" viewBox="0 0 ' + w + ' ' + TAG_H + '">' +
+            '<rect x="1" y="1" width="' + (w - 2) + '" height="' + (TAG_H - 2) + '" rx="6" ry="6" fill="' + bg + '" stroke="#ffffff" stroke-width="2"/>' +
+            '<text x="' + (w / 2) + '" y="' + (TAG_H / 2 + 4) + '" text-anchor="middle" font-size="11" font-weight="800" fill="#ffffff" font-family="Inter,Arial,sans-serif" letter-spacing="0.4">' + t + '</text>' +
+            '</svg>';
+        return {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new google.maps.Size(w, TAG_H),
+            // anchor negativo en X = el cartelito se dibuja a la derecha del punto;
+            // en Y lo subimos a la altura de la cabeza del pin.
+            anchor: new google.maps.Point(-16, TAG_H / 2 + 28)
+        };
+    }
+
+    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, tagIcon, streetView, cancelStreetView, wrapIw };
 })();
 
 // ══════════ Mapa grande (pantalla Mapeo) ══════════
@@ -786,6 +809,15 @@ window.mapeoFlex = (function () {
 
                 marker.__ids = ids; // para poder "hacerlo saltar" cuando tocás su fila en el listado
                 markers.push(marker);
+
+                // 2026-08-31: CARTELITO con las 3 primeras letras del repartidor, pegado al globito.
+                // Sale del campo 'tag' que manda Blazor (vacío = no se dibuja nada).
+                if (first.tag) {
+                    markers.push(new google.maps.Marker({
+                        position: pos, map: map, clickable: false, zIndex: 1100,
+                        icon: H.tagIcon(first.tag, first.tagColor || first.color)
+                    }));
+                }
 
                 // 2026-08-15: AUTITO. Al lado de la ULTIMA parada que cada repartidor marco como
                 // entregada le ponemos un 🚗 con su color: de un vistazo se ve por donde va cada uno,
@@ -1397,6 +1429,50 @@ window.mapeoDock = (function () {
         dock.classList.toggle('anchor-left', !enDerecha);
     }
 
+    // La barra arranca centrada con transform:translateY(-50%). Ese transform hace que los
+    // menuitos "fijos" se posicionen respecto de la barra y no de la pantalla (y se iban lejos).
+    // Acá pasamos esa posición centrada a un left/top concretos, sin mover nada a la vista.
+    function normalizarPos(dock, parent) {
+        if (!parent) return;
+        const t = dock.style.transform;
+        if (!t || t === 'none') return;
+        const pr = parent.getBoundingClientRect();
+        const dr = dock.getBoundingClientRect();
+        const cs = getComputedStyle(parent);
+        const bl = parseFloat(cs.borderLeftWidth) || 0;
+        const bt = parseFloat(cs.borderTopWidth) || 0;
+        dock.style.left = (dr.left - pr.left - bl) + 'px';
+        dock.style.top = (dr.top - pr.top - bt) + 'px';
+        dock.style.right = 'auto';
+        dock.style.transform = 'none';
+    }
+
+    // 2026-08-31: la barra ahora se desliza por dentro cuando no entra en la pantalla.
+    // Los menuitos que se abren AL COSTADO (elegir repartidor, tramos de la ruta…) quedarían
+    // cortados por ese deslizamiento, así que los sacamos del recorte: los pasamos a posición
+    // fija y les calculamos el lugar al lado de su tarjeta.
+    function posicionarFlyouts(dock) {
+        const flys = dock.querySelectorAll('.mapeo-flyout');
+        if (!flys.length) return;
+        const abreALaIzquierda = !dock.classList.contains('anchor-left');
+        for (const fly of flys) {
+            const card = fly.parentElement;
+            if (!card) continue;
+            fly.style.position = 'fixed';
+            fly.style.right = 'auto';
+            fly.style.bottom = 'auto';
+            fly.style.marginLeft = '0';
+            fly.style.marginRight = '0';
+            const cr = card.getBoundingClientRect();
+            const w = fly.offsetWidth, h = fly.offsetHeight;
+            let left = abreALaIzquierda ? (cr.left - w - 8) : (cr.right + 8);
+            left = clamp(left, 8, Math.max(8, window.innerWidth - w - 8));
+            let top = clamp(cr.top, 8, Math.max(8, window.innerHeight - h - 8));
+            fly.style.left = left + 'px';
+            fly.style.top = top + 'px';
+        }
+    }
+
     // Aplica la posición guardada (si existe), clampeada dentro del mapa.
     function applySaved(dock, parent) {
         let pos = null;
@@ -1420,10 +1496,17 @@ window.mapeoDock = (function () {
             if (!handle) return;
 
             applySaved(dock, parent);
+            normalizarPos(dock, parent);
             updateAnchor(dock, parent);
+            posicionarFlyouts(dock);
 
             if (dock.__dragBound) return; // no reenganchar dos veces
             dock.__dragBound = true;
+
+            // Al deslizar la barra por dentro (o al cambiar el tamaño de la ventana) los
+            // menuitos abiertos tienen que seguir a su tarjeta.
+            dock.addEventListener('scroll', function () { posicionarFlyouts(dock); }, { passive: true });
+            window.addEventListener('resize', function () { posicionarFlyouts(dock); });
 
             let startX = 0, startY = 0, startLeft = 0, startTop = 0, dragging = false;
 
@@ -1435,6 +1518,7 @@ window.mapeoDock = (function () {
                 dock.style.left = nl + 'px';
                 dock.style.top = nt + 'px';
                 updateAnchor(dock, parent);
+                posicionarFlyouts(dock);
                 e.preventDefault();
             }
             function onUp(e) {
