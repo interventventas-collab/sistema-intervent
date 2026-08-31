@@ -30,6 +30,7 @@
         <div class="calc-tabs">
             <button class="calc-tab @(tab == "precios" ? "active" : "")" @onclick='() => tab = "precios"'>🏷️ Precios</button>
             <button class="calc-tab @(tab == "numeros" ? "active" : "")" @onclick='() => tab = "numeros"'>🔢 Números</button>
+            <button class="calc-tab @(tab == "alquiler" ? "active" : "")" @onclick="AbrirAlquiler">🎪 Alquiler</button>
         </div>
 
         <div class="calc-body">
@@ -61,6 +62,115 @@
                 <button class="calc-btn" @onclick='() => Digit("0")'>0</button>
                 <button class="calc-btn" @onclick="Decimal">,</button>
                 <button class="calc-btn calc-eq" @onclick="Equals">=</button>
+            </div>
+        }
+        else if (tab == "alquiler")
+        {
+            <div class="ca-panel">
+                <div class="cp-search">
+                    <input class="cp-input" placeholder="Buscar silla, mesa…"
+                           value="@equipoBusq" @oninput="OnEquipoInput" />
+                </div>
+
+                @if (equipoSugs.Count > 0)
+                {
+                    <div class="cp-suggest">
+                        @foreach (var eq in equipoSugs)
+                        {
+                            <button class="cp-sug-item" @onclick="() => AgregarEquipo(eq)">
+                                <span class="cp-sug-name">@Trunc(eq.Nombre, 26)</span>
+                                <span class="ca-sug-precio">@Money(eq.PrecioDiario)</span>
+                            </button>
+                        }
+                    </div>
+                }
+                else if (cargandoAlq)
+                {
+                    <div class="cp-hint">Trayendo los equipos…</div>
+                }
+
+                @if (alqLineas.Count == 0)
+                {
+                    <div class="cp-hint">Buscá un equipo arriba y tocalo para sumarlo.</div>
+                }
+                else
+                {
+                    <div class="ca-lineas">
+                        @foreach (var l in alqLineas)
+                        {
+                            <div class="ca-linea">
+                                <div class="ca-linea-top">
+                                    <span class="ca-nombre" title="@l.Nombre">@Trunc(l.Nombre, 24)</span>
+                                    <button class="ca-quitar" @onclick="() => QuitarLinea(l)" title="Sacar">×</button>
+                                </div>
+                                <div class="ca-linea-bot">
+                                    <span class="ca-unit">@Money(l.Precio) c/u</span>
+                                    <span class="ca-cant">
+                                        <button class="ca-mas" @onclick="() => SumarCant(l, -1)">−</button>
+                                        <input class="ca-cant-inp" value="@l.CantStr"
+                                               @oninput="(e) => OnCantInput(l, e)" onfocus="this.select()" inputmode="numeric" />
+                                        <button class="ca-mas" @onclick="() => SumarCant(l, 1)">+</button>
+                                    </span>
+                                    <b class="ca-sub">@Money(l.Subtotal)</b>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="ca-bloque">
+                    <div class="ca-bloque-tit">🚚 Flete</div>
+                    @if (fletes.Count > 0)
+                    {
+                        <input class="cp-input" placeholder="Buscar zona…"
+                               value="@fleteBusq" @oninput="OnFleteInput" />
+                        @if (fleteSugs.Count > 0)
+                        {
+                            <div class="cp-suggest">
+                                @foreach (var f in fleteSugs)
+                                {
+                                    <button class="cp-sug-item" @onclick="() => ElegirFlete(f)">
+                                        <span class="cp-sug-name">@Trunc(f.Zona, 24)</span>
+                                        <span class="ca-sug-precio">@Money(f.Precio)</span>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="cp-hint">Todavía no cargaste fletes. Se cargan en Alquileres → Fletes.</div>
+                    }
+                    <div class="ca-campo">
+                        <label>@(string.IsNullOrWhiteSpace(fleteZona) ? "Monto del flete" : fleteZona)</label>
+                        <input class="cp-input" inputmode="decimal" placeholder="0"
+                               @bind="fleteMontoStr" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                <div class="ca-bloque">
+                    <div class="ca-campo">
+                        <label>Descuento</label>
+                        <input class="cp-input" inputmode="decimal" placeholder="0"
+                               @bind="descuentoStr" @bind:event="oninput" />
+                    </div>
+                    <div class="ca-campo">
+                        <label>Referencia (sale en el texto)</label>
+                        <input class="cp-input" placeholder="ej: sábado 12/09"
+                               @bind="alqReferencia" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                <div class="ca-total">
+                    <span>Total</span>
+                    <b>@Money(AlqTotal)</b>
+                </div>
+
+                <div class="ca-acciones">
+                    <button class="ca-btn ca-btn-main" @onclick="CopiarCotizacion"
+                            disabled="@(alqLineas.Count == 0 && AlqFleteMonto == 0m)">📋 Copiar</button>
+                    <button class="ca-btn" @onclick="LimpiarCotizacion">Limpiar</button>
+                </div>
             </div>
         }
         else
@@ -332,12 +442,64 @@
     .cp-field label { display: block; font-size: 0.72rem; color: #9ca3af; margin-bottom: 3px; }
     .cp-result { margin-top: 4px; border-top: 1px solid #374151; padding-top: 6px; }
     .cp-hint { font-size: 0.76rem; color: #6b7280; margin-top: 2px; }
+
+    /* Solapa Alquiler: cotizar sillas/mesas + flete y copiar el texto al WhatsApp. 2026-08-31 */
+    .ca-panel { padding: 10px; user-select: text; -webkit-user-select: text; }
+    .ca-sug-precio { font-size: 0.8rem; font-weight: 700; color: #34d399; }
+    .cp-sug-item .cp-sug-name { font-size: 0.82rem; color: #e5e7eb; }
+    .ca-lineas { margin-bottom: 10px; }
+    .ca-linea { border-bottom: 1px solid #1f2937; padding: 6px 0; }
+    .ca-linea-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .ca-nombre { font-size: 0.84rem; color: #e5e7eb; }
+    .ca-quitar {
+        background: none; border: none; color: #6b7280; font-size: 1rem;
+        line-height: 1; cursor: pointer; padding: 0 2px;
+    }
+    .ca-quitar:hover { color: #f87171; }
+    .ca-linea-bot {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 6px; margin-top: 4px;
+    }
+    .ca-unit { font-size: 0.72rem; color: #9ca3af; }
+    .ca-cant { display: flex; align-items: center; gap: 3px; }
+    .ca-mas {
+        width: 22px; height: 22px; background: #111827; border: 1px solid #374151;
+        color: #e5e7eb; border-radius: 5px; cursor: pointer; font-size: 0.85rem; line-height: 1;
+    }
+    .ca-mas:hover { background: #1e293b; }
+    .ca-cant-inp {
+        width: 46px; text-align: center; background: #111827; border: 1px solid #374151;
+        color: #f9fafb; border-radius: 5px; padding: 3px 2px; font-size: 0.85rem; font-weight: 700;
+    }
+    .ca-cant-inp:focus { outline: none; border-color: #3b82f6; }
+    .ca-sub { font-size: 0.82rem; color: #f9fafb; min-width: 70px; text-align: right; }
+    .ca-bloque {
+        background: #111827; border: 1px solid #374151; border-radius: 8px;
+        padding: 0.6rem 0.7rem; margin-bottom: 8px;
+    }
+    .ca-bloque-tit { font-size: 0.8rem; color: #93c5fd; font-weight: 700; margin-bottom: 6px; }
+    .ca-campo { margin-top: 6px; }
+    .ca-campo label { display: block; font-size: 0.72rem; color: #9ca3af; margin-bottom: 3px; }
+    .ca-total {
+        display: flex; justify-content: space-between; align-items: baseline;
+        padding: 6px 2px 10px; font-size: 0.85rem; color: #9ca3af;
+    }
+    .ca-total b { font-size: 1.25rem; color: #34d399; }
+    .ca-acciones { display: flex; gap: 6px; }
+    .ca-btn {
+        flex: 1; background: #111827; border: 1px solid #374151; color: #e5e7eb;
+        border-radius: 6px; padding: 0.5rem 0.4rem; font-size: 0.82rem; cursor: pointer;
+    }
+    .ca-btn:hover:not(:disabled) { background: #1e293b; }
+    .ca-btn:disabled { opacity: 0.45; cursor: default; }
+    .ca-btn-main { background: #2563eb; border-color: #2563eb; font-weight: 700; }
+    .ca-btn-main:hover:not(:disabled) { background: #1d4ed8; }
 </style>
 
 @code {
     // Estado expuesto al MainLayout para poder abrir/cerrar desde el botón de la topbar.
     private bool visible = false;
-    private string tab = "precios"; // "precios" | "numeros"
+    private string tab = "precios"; // "precios" | "numeros" | "alquiler"
     private double posX = 100, posY = 100;
     private string display = "0";
     private string history = "";
@@ -577,6 +739,177 @@
         s = s.Trim().Replace(" ", "");
         if (s.Contains(',') && s.Contains('.')) s = s.Replace(".", "").Replace(",", ".");
         else s = s.Replace(",", ".");
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var n) ? n : (decimal?)null;
+    }
+
+    // ─── Panel Alquiler (cotizar rápido y pegar en WhatsApp). 2026-08-31 ───
+    // Los precios salen del catálogo de Alquileres → Equipos (precio por día) y los fletes
+    // de Alquileres → Fletes. Cotiza UN día: si el evento dura más, por ahora se ajusta a mano.
+    private class AlqLinea
+    {
+        public int EquipoId;
+        public string Nombre = "";
+        public decimal Precio;
+        public int Cant = 1;
+        public string CantStr = "1";
+        public decimal Subtotal => Precio * Cant;
+    }
+
+    private readonly List<AlqLinea> alqLineas = new();
+    private List<AlqEquipoDto> equipos = new();
+    private List<AlqEquipoDto> equipoSugs = new();
+    private List<AlqFleteDto> fletes = new();
+    private List<AlqFleteDto> fleteSugs = new();
+    private string equipoBusq = "";
+    private string fleteBusq = "";
+    private string fleteZona = "";
+    private string fleteMontoStr = "";
+    private string descuentoStr = "";
+    private string alqReferencia = "";
+    private bool cargandoAlq = false;
+    private bool alqCargado = false;
+
+    private decimal AlqFleteMonto => ParseMoney(fleteMontoStr) ?? 0m;
+    private decimal AlqDescuento => ParseMoney(descuentoStr) ?? 0m;
+    private decimal AlqEquiposTotal => alqLineas.Sum(l => l.Subtotal);
+    private decimal AlqTotal => AlqEquiposTotal + AlqFleteMonto - AlqDescuento;
+
+    private async Task AbrirAlquiler()
+    {
+        tab = "alquiler";
+        if (alqCargado) return;
+        cargandoAlq = true;
+        StateHasChanged();
+        try
+        {
+            var eqs = await Api.GetAlqEquiposAsync();
+            equipos = (eqs ?? new()).Where(e => e.IsActive).ToList();
+            var fls = await Api.GetAlqFletesAsync(soloActivos: true);
+            fletes = fls ?? new();
+            alqCargado = true;
+        }
+        catch (Exception ex) { ToastService.Error("No se pudieron traer los precios: " + ex.Message); }
+        finally { cargandoAlq = false; StateHasChanged(); }
+    }
+
+    private void OnEquipoInput(ChangeEventArgs e)
+    {
+        equipoBusq = e.Value?.ToString() ?? "";
+        var q = equipoBusq.Trim();
+        if (q.Length < 2) { equipoSugs = new(); return; }
+        equipoSugs = equipos
+            .Where(x => x.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
+                     || x.Sku.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(x => x.Nombre.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(x => x.Nombre)
+            .Take(8)
+            .ToList();
+    }
+
+    private void AgregarEquipo(AlqEquipoDto eq)
+    {
+        equipoBusq = "";
+        equipoSugs = new();
+        var ya = alqLineas.FirstOrDefault(l => l.EquipoId == eq.Id);
+        if (ya is not null) { SumarCant(ya, 1); return; }
+        alqLineas.Add(new AlqLinea { EquipoId = eq.Id, Nombre = eq.Nombre, Precio = eq.PrecioDiario });
+    }
+
+    private void QuitarLinea(AlqLinea l) => alqLineas.Remove(l);
+
+    private void SumarCant(AlqLinea l, int delta)
+    {
+        l.Cant = Math.Max(1, l.Cant + delta);
+        l.CantStr = l.Cant.ToString();
+    }
+
+    private void OnCantInput(AlqLinea l, ChangeEventArgs e)
+    {
+        // Se ata a texto, no a número: si se ata a int, borrar el campo lo deja en 0
+        // y tipear "1" sobre el 0 termina dando 10.
+        var s = (e.Value?.ToString() ?? "").Trim();
+        l.CantStr = s;
+        l.Cant = int.TryParse(s, out var n) && n > 0 ? n : 1;
+    }
+
+    private void OnFleteInput(ChangeEventArgs e)
+    {
+        fleteBusq = e.Value?.ToString() ?? "";
+        var q = fleteBusq.Trim();
+        if (q.Length < 1) { fleteSugs = new(); return; }
+        fleteSugs = fletes
+            .Where(f => f.Zona.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => f.Zona.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(f => f.Zona)
+            .Take(6)
+            .ToList();
+    }
+
+    private void ElegirFlete(AlqFleteDto f)
+    {
+        fleteZona = f.Zona;
+        fleteMontoStr = f.Precio.ToString("0.##", ARS);
+        fleteBusq = "";
+        fleteSugs = new();
+    }
+
+    private void LimpiarCotizacion()
+    {
+        alqLineas.Clear();
+        equipoBusq = ""; equipoSugs = new();
+        fleteBusq = ""; fleteSugs = new(); fleteZona = ""; fleteMontoStr = "";
+        descuentoStr = ""; alqReferencia = "";
+    }
+
+    /// <summary>Arma el texto del presupuesto y lo deja en el portapapeles, listo para pegar.</summary>
+    private async Task CopiarCotizacion()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("*Presupuesto alquiler*");
+        if (!string.IsNullOrWhiteSpace(alqReferencia)) sb.AppendLine(alqReferencia.Trim());
+        sb.AppendLine();
+
+        foreach (var l in alqLineas)
+            sb.AppendLine($"{l.Cant} x {l.Nombre} — {Money(l.Subtotal)}");
+
+        if (AlqFleteMonto != 0m)
+        {
+            var etiqueta = string.IsNullOrWhiteSpace(fleteZona) ? "Flete" : $"Flete {fleteZona}";
+            sb.AppendLine($"{etiqueta} — {Money(AlqFleteMonto)}");
+        }
+        if (AlqDescuento != 0m)
+            sb.AppendLine($"Descuento — -{Money(AlqDescuento)}");
+
+        sb.AppendLine();
+        sb.Append($"*Total: {Money(AlqTotal)}*");
+
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", sb.ToString());
+            ToastService.Success("Presupuesto copiado — pegalo en el chat");
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
+    /// <summary>
+    /// Plata como la escribe una persona: "35000", "35.000", "35000,50".
+    /// La coma siempre es decimal; el punto es miles cuando lo siguen 3 dígitos.
+    /// </summary>
+    private static decimal? ParseMoney(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Trim().Replace(" ", "").Replace("$", "");
+        if (s.Length == 0) return null;
+        if (s.Contains(','))
+        {
+            s = s.Replace(".", "").Replace(",", ".");
+        }
+        else if (s.Contains('.'))
+        {
+            var partes = s.Split('.');
+            var ultima = partes[^1];
+            if (partes.Length > 1 && ultima.Length == 3 && ultima.All(char.IsDigit)) s = s.Replace(".", "");
+        }
         return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var n) ? n : (decimal?)null;
     }
 
