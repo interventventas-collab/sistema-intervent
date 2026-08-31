@@ -2135,6 +2135,17 @@ public class CafeVentasController : ControllerBase
                 });
             }
 
+            // 2026-08-31 FIX FECHA: ARCA no acepta un comprobante con fecha POSTERIOR al dia de hoy.
+            // El operador trabaja desde Espana (+5hs), asi que despues de las 19hs hora Argentina el
+            // navegador ya marcaba el dia siguiente y la venta salia fechada manana => ARCA la rebotaba
+            // y quedaba "pendiente". Al emitir, la fecha nunca puede pasar de HOY en hora Argentina.
+            var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
+            if (venta.Fecha.Date > hoyAr)
+            {
+                venta.Fecha = hoyAr;
+                await _db.SaveChangesAsync();
+            }
+
             // 6. Armar el request y llamar al ArcaInvoiceService
             var req = new EmitirComprobanteRequest
             {
