@@ -8703,6 +8703,14 @@ public class ApiClient
         catch { return (0, null); }
     }
     private record SeedAvisoVentanaResp(int Creadas, string? Detalle);
+
+    // ── 2026-08-31: Panorama (las 4 patas del negocio en una sola pantalla) ──
+    // Trae TODO de una: resumen, serie de 12 meses, rankings y avisos. Cambiar de solapa
+    // en la pantalla no vuelve a pegarle al servidor; cambiar de periodo si.
+    public async Task<PanoramaDto?> GetPanoramaAsync(string periodo = "mes", int meses = 12)
+    {
+        return await GetAsync<PanoramaDto>($"/api/panorama?periodo={Uri.EscapeDataString(periodo)}&meses={meses}");
+    }
 }
 
 // 2026-08-03: resultado del borrado de cliente.

@@ -600,6 +600,11 @@
         {
             <NavItem Href="/" Label="Dashboard" Icon="@SvgIcons.Dashboard"
                      IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
+
+            @* 2026-08-31: las 4 patas del negocio en una sola pantalla (Intervent, Frikaf,
+               Intereventos y la logística propia), con rankings y avisos. *@
+            <NavItem Href="/panorama" Label="🧭 Panorama" Icon="@SvgIcons.Dashboard"
+                     IsActive="@IsActive("/panorama")" OnClick="@(() => NavigateTo("/panorama"))" />
         }
 
         @* ═════════════ CHAT INTERNO ═════════════
