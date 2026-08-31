@@ -147,6 +147,126 @@ public class MeliPromocionesService
         return new Resultado(cuentas.Count, campanias, aMarcar.Count, limpiadas, detalle);
     }
 
+    // ─── 2026-08-31 · ENTRAR Y SALIR de una campaña ───
+    // Es lo único de este servicio que ESCRIBE en MercadoLibre. De a UNA publicación por vez y
+    // siempre disparado por el usuario: nunca en lote, nunca automático.
+    //
+    // ⚠ DATO CLAVE que aportó Osmar: **si después le cambiás el precio a la publicación, se le cae
+    // el descuento**. Por eso el orden importa y la pantalla lo avisa: primero se sale de la
+    // campaña, después se toca el precio, y recién ahí se vuelve a entrar.
+
+    public record AccionResultado(bool Ok, string Mensaje, decimal? PrecioAplicado, decimal? MargenPct);
+
+    /// <summary>TOCA MELI: mete la publicación en una campaña al precio indicado.</summary>
+    public async Task<AccionResultado> AplicarAsync(string meliItemId, string? promoId, string tipo,
+        decimal precio, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(tipo))
+            return new AccionResultado(false, "Falta saber de qué tipo de promoción se trata.", null, null);
+        if (precio <= 0)
+            return new AccionResultado(false, "El precio de la promoción tiene que ser mayor que cero.", null, null);
+
+        var item = await _db.MeliItems.Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+        if (item?.MeliAccount is null)
+            return new AccionResultado(false, "No encuentro esta publicación en el sistema.", null, null);
+        if (precio >= item.Price)
+            return new AccionResultado(false,
+                $"El precio de la promoción ({precio:N0}) tiene que ser MENOR que el de lista ({item.Price:N0}).", null, null);
+
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (string.IsNullOrWhiteSpace(token))
+            return new AccionResultado(false, "Sin token de MercadoLibre. Reconectá la cuenta.", null, null);
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // El cuerpo cambia según el tipo: las campañas de MeLi llevan el id; el descuento propio no.
+        var cuerpo = new Dictionary<string, object> { ["promotion_type"] = tipo, ["deal_price"] = precio };
+        if (!string.IsNullOrWhiteSpace(promoId)) cuerpo["promotion_id"] = promoId!;
+
+        var body = new StringContent(JsonSerializer.Serialize(cuerpo), System.Text.Encoding.UTF8, "application/json");
+        var resp = await http.PostAsync(
+            $"https://api.mercadolibre.com/seller-promotions/items/{meliItemId}?app_version=v2", body, ct);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync(ct);
+            _logger.LogWarning("[Promos] {Mla} no entró a {Promo}: {Code} {Err}", meliItemId, promoId, (int)resp.StatusCode, err);
+            return new AccionResultado(false, Amable(err, (int)resp.StatusCode), null, null);
+        }
+
+        var costo = await CostoDeAsync(meliItemId, ct);
+        var margen = Margen(precio, item, costo);
+
+        item.PromoPrecio = precio;
+        item.PromoTipo = tipo;
+        item.PromoCapturadaAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogWarning("[Promos] {Mla} ENTRÓ a {Promo} ({Tipo}) a ${Precio}", meliItemId, promoId, tipo, precio);
+        return new AccionResultado(true,
+            $"Listo: entró a la promoción y se vende a ${precio:N0}."
+            + (margen.HasValue ? $" Te queda {margen.Value:0.#}% sobre el costo." : ""),
+            precio, margen);
+    }
+
+    /// <summary>TOCA MELI: saca la publicación de una campaña. Vuelve a su precio de lista.</summary>
+    public async Task<AccionResultado> SacarAsync(string meliItemId, string? promoId, string tipo,
+        CancellationToken ct = default)
+    {
+        var item = await _db.MeliItems.Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+        if (item?.MeliAccount is null)
+            return new AccionResultado(false, "No encuentro esta publicación en el sistema.", null, null);
+
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (string.IsNullOrWhiteSpace(token))
+            return new AccionResultado(false, "Sin token de MercadoLibre. Reconectá la cuenta.", null, null);
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var url = $"https://api.mercadolibre.com/seller-promotions/items/{meliItemId}?app_version=v2"
+                + $"&promotion_type={Uri.EscapeDataString(tipo)}"
+                + (string.IsNullOrWhiteSpace(promoId) ? "" : $"&promotion_id={Uri.EscapeDataString(promoId!)}");
+
+        var resp = await http.DeleteAsync(url, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync(ct);
+            _logger.LogWarning("[Promos] {Mla} no salió de {Promo}: {Code} {Err}", meliItemId, promoId, (int)resp.StatusCode, err);
+            return new AccionResultado(false, Amable(err, (int)resp.StatusCode), null, null);
+        }
+
+        item.PromoPrecio = null;
+        item.PromoNombre = null;
+        item.PromoTipo = null;
+        item.PromoHasta = null;
+        item.PromoCapturadaAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogWarning("[Promos] {Mla} SALIÓ de {Promo}", meliItemId, promoId);
+        return new AccionResultado(true,
+            $"Salió de la promoción. Vuelve a venderse a ${item.Price:N0}.", item.Price, null);
+    }
+
+    /// <summary>Los rechazos de MeLi, en castellano. Los que de verdad pasan.</summary>
+    private static string Amable(string err, int code)
+    {
+        if (err.Contains("invalid_price") || err.Contains("price_out_of_range"))
+            return "MercadoLibre no acepta ese precio para esta promoción: está fuera del rango que te deja.";
+        if (err.Contains("already") || err.Contains("duplicated"))
+            return "La publicación ya estaba en esa promoción.";
+        if (err.Contains("not_found") || code == 404)
+            return "MercadoLibre no encuentra esa promoción. Puede que se haya terminado — volvé a abrir el panel.";
+        if (err.Contains("not_eligible") || err.Contains("invalid_item"))
+            return "Esta publicación no puede entrar a esa promoción.";
+        if (code == 403)
+            return "MercadoLibre no te deja hacer este cambio en esta publicación.";
+        return $"MercadoLibre rechazó el cambio ({code}). " + (err.Length > 160 ? err[..160] : err);
+    }
+
     // ─── 2026-08-31 · las promociones de UNA publicación, con el margen de cada opción ───
 
     public record OpcionDto(
@@ -158,7 +278,10 @@ public class MeliPromocionesService
         decimal? PoneMeliPct, decimal? PonesVosPct);
 
     public record DeItemDto(string MeliItemId, decimal PrecioLista, decimal? Costo,
-        decimal? ObjetivoPct, List<OpcionDto> Opciones, string? Aviso);
+        decimal? ObjetivoPct, List<OpcionDto> Opciones, string? Aviso,
+        // Para que la pantalla pueda mostrar qué queda mientras se escribe un precio, sin ir y
+        // volver al servidor en cada tecla. El número FINO lo devuelve el servidor al aplicar.
+        decimal? ComisionPct = null, decimal? ComisionFija = null, decimal? Envio = null);
 
     /// <summary>Qué campañas tiene disponibles esta publicación y, en cada una, QUÉ TE QUEDA.
     ///
@@ -224,7 +347,8 @@ public class MeliPromocionesService
             .ToList();
 
         return new DeItemDto(meliItemId, item.Price, costo, objetivo, opciones,
-            costo is null or <= 0 ? "Esta publicación no tiene costo cargado, así que no se puede saber qué te deja cada promoción." : null);
+            costo is null or <= 0 ? "Esta publicación no tiene costo cargado, así que no se puede saber qué te deja cada promoción." : null,
+            item.SaleFeePercentageFee, item.SaleFeeFixedFee, item.SaleFeeShippingCost);
     }
 
     /// <summary>Qué te queda, sobre el costo, si la publicación se vendiera a ese precio.

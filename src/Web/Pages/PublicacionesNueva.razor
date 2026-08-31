@@ -816,6 +816,9 @@
                                                 {
                                                     <span class="@MargenClase(o.MargenSugeridoPct ?? o.MargenMaximoPct)">te queda @((o.MargenSugeridoPct ?? o.MargenMaximoPct)!.Value.ToString("0.#", ar))%</span>
                                                 }
+                                                <button class="btn del" disabled="@promoAccionEnCurso"
+                                                        title="Saca la publicación de esta campaña. Vuelve a su precio de lista."
+                                                        @onclick="() => SacarPromo(it, o)">Sacar de la campaña</button>
                                             }
                                             else
                                             {
@@ -832,6 +835,24 @@
                                                         <span class="@MargenClase(o.MargenMinimoPct)">@o.MargenMinimoPct.Value.ToString("0.#", ar)%</span>
                                                     </span>
                                                 }
+
+                                                <span class="dato">entrar a</span>
+                                                <input type="number" step="1" style="width:104px;"
+                                                       value="@PrecioEntrarTexto(o)"
+                                                       @oninput="e => precioEntrar[ClavePromo(o)] = e.Value?.ToString() ?? string.Empty" />
+                                                @if (MargenEscrito(o) is decimal mEsc)
+                                                {
+                                                    <span class="@MargenClase(mEsc)">deja @mEsc.ToString("0.#", ar)%</span>
+                                                }
+                                                @if (o.PrecioParaElObjetivo is > 0)
+                                                {
+                                                    <button class="btn" title="Pone el precio más bajo con el que todavía llegás a tu objetivo"
+                                                            @onclick="() => UsarPrecioObjetivo(o)">
+                                                        usar el de mi objetivo
+                                                    </button>
+                                                }
+                                                <button class="btn go" disabled="@promoAccionEnCurso"
+                                                        @onclick="() => AplicarPromo(it, o)">Entrar</button>
                                             }
                                         </div>
                                     }
@@ -2165,7 +2186,7 @@
     // Panel de promociones de UNA publicación (el botón 🏷️ de la fila).
     private string? promosAbiertas;
     private bool promosItemCargando;
-    private ApiClient.PubV2PromosDeItem? promosItem;
+    private ApiClient.PubV2PromosDeItemExt? promosItem;
 
     private async Task TogglePromosItem(string mla)
     {
@@ -2182,6 +2203,97 @@
         try { promosItem = await Api.GetPromocionesDeItemAsync(mla); }
         catch (Exception ex) { ToastService.Error("No se pudieron leer las promociones: " + ex.Message); }
         finally { promosItemCargando = false; }
+    }
+
+    // ── Entrar y salir de campañas ──
+    // De a UNA y siempre confirmando: esto se ve en MercadoLibre al instante.
+
+    private bool promoAccionEnCurso;
+    private readonly Dictionary<string, string> precioEntrar = new();
+
+    private static string ClavePromo(ApiClient.PubV2PromoOpcion o) => (o.Id ?? "") + "|" + o.Tipo;
+
+    /// <summary>El precio que se va a mandar: lo que el usuario escribió, o el que sugiere MeLi.</summary>
+    private string PrecioEntrarTexto(ApiClient.PubV2PromoOpcion o)
+        => precioEntrar.TryGetValue(ClavePromo(o), out var v) ? v
+           : (o.PrecioSugerido is > 0 ? o.PrecioSugerido.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture) : "");
+
+    private decimal? PrecioEntrarValor(ApiClient.PubV2PromoOpcion o)
+        => decimal.TryParse(PrecioEntrarTexto(o).Replace(',', '.'),
+               System.Globalization.NumberStyles.Any,
+               System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0 ? v : null;
+
+    /// <summary>Qué deja el precio que se está escribiendo. Es una CUENTA DE PANTALLA para no ir y
+    /// volver al servidor en cada tecla; usa el porcentaje, el cargo fijo y el envío que ya mandó
+    /// el servidor. El número que vale es el que devuelve el servidor al aplicar.</summary>
+    private decimal? MargenEscrito(ApiClient.PubV2PromoOpcion o)
+    {
+        var precio = PrecioEntrarValor(o);
+        if (precio is null || promosItem?.Costo is not > 0 || promosItem.ComisionPct is not > 0) return null;
+        var comision = precio.Value * (promosItem.ComisionPct.Value / 100m) + (promosItem.ComisionFija ?? 0m);
+        var neto = (precio.Value - comision - (promosItem.Envio ?? 0m)) / 1.21m;
+        return Math.Round((neto - promosItem.Costo.Value) / promosItem.Costo.Value * 100m, 1);
+    }
+
+    /// <summary>Completa el campo con el precio más bajo que todavía llega al objetivo.</summary>
+    private void UsarPrecioObjetivo(ApiClient.PubV2PromoOpcion o)
+    {
+        if (o.PrecioParaElObjetivo is not > 0) return;
+        precioEntrar[ClavePromo(o)] = o.PrecioParaElObjetivo.Value
+            .ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private async Task AplicarPromo(ApiClient.PubV2Fila it, ApiClient.PubV2PromoOpcion o)
+    {
+        if (promoAccionEnCurso) return;
+        var precio = PrecioEntrarValor(o);
+        if (precio is null) { ToastService.Error("Poné a qué precio querés entrar."); return; }
+
+        var margen = MargenEscrito(o);
+        var objetivo = promosItem?.ObjetivoPct ?? 50m;
+
+        var aviso = $"Vas a meter esta publicación en:\n\n{o.Nombre}\n\n"
+                  + $"Se va a vender a ${precio.Value:N0} en vez de ${promosItem?.PrecioLista ?? it.Precio:N0}.\n";
+        if (margen.HasValue)
+            aviso += $"Te quedaría {margen.Value.ToString("0.#", ar)}% sobre el costo"
+                   + (margen.Value < objetivo ? $" — POR DEBAJO del {objetivo.ToString("0", ar)}% que pedís." : ".") + "\n";
+        aviso += "\nOjo: mientras esté en la campaña, si le cambiás el precio se le cae el descuento.\n\n¿Dale?";
+
+        if (!await JS.InvokeAsync<bool>("confirm", aviso)) return;
+
+        promoAccionEnCurso = true;
+        StateHasChanged();
+        try
+        {
+            var (res, error) = await Api.AplicarPromocionAsync(it.MeliItemId, o.Id, o.Tipo, precio.Value);
+            if (res is null || !res.Ok) { ToastService.Error(error ?? res?.Mensaje ?? "No se pudo entrar a la promoción."); return; }
+            ToastService.Success(res.Mensaje);
+            await RefrescarFila(it.MeliItemId);
+            promosItem = await Api.GetPromocionesDeItemAsync(it.MeliItemId);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo entrar a la promoción: " + ex.Message); }
+        finally { promoAccionEnCurso = false; }
+    }
+
+    private async Task SacarPromo(ApiClient.PubV2Fila it, ApiClient.PubV2PromoOpcion o)
+    {
+        if (promoAccionEnCurso) return;
+        if (!await JS.InvokeAsync<bool>("confirm",
+            $"Vas a sacar esta publicación de:\n\n{o.Nombre}\n\n"
+            + $"Va a volver a venderse a ${promosItem?.PrecioLista ?? it.Precio:N0}, sin el descuento.\n\n¿Dale?")) return;
+
+        promoAccionEnCurso = true;
+        StateHasChanged();
+        try
+        {
+            var (res, error) = await Api.SacarPromocionAsync(it.MeliItemId, o.Id, o.Tipo);
+            if (res is null || !res.Ok) { ToastService.Error(error ?? res?.Mensaje ?? "No se pudo sacar de la promoción."); return; }
+            ToastService.Success(res.Mensaje);
+            await RefrescarFila(it.MeliItemId);
+            promosItem = await Api.GetPromocionesDeItemAsync(it.MeliItemId);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo sacar de la promoción: " + ex.Message); }
+        finally { promoAccionEnCurso = false; }
     }
 
     /// <summary>Verde si llega al objetivo, ámbar si se acerca, rojo si no da. Mismo criterio que

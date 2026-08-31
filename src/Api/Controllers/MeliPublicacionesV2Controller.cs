@@ -263,6 +263,26 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return Ok(r);
     }
 
+    public record PromoAccionRequest(string? PromocionId, string Tipo, decimal Precio);
+
+    /// <summary>TOCA MELI: mete la publicación en una campaña al precio indicado. De a UNA.</summary>
+    [HttpPost("publicaciones/{mla}/promociones/aplicar")]
+    public async Task<IActionResult> AplicarPromocion(string mla,
+        [FromBody] PromoAccionRequest req, [FromServices] MeliPromocionesService svc)
+    {
+        var r = await svc.AplicarAsync(mla, req.PromocionId, req.Tipo, req.Precio, HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
+    /// <summary>TOCA MELI: saca la publicación de una campaña. Vuelve al precio de lista.</summary>
+    [HttpPost("publicaciones/{mla}/promociones/sacar")]
+    public async Task<IActionResult> SacarPromocion(string mla,
+        [FromBody] PromoAccionRequest req, [FromServices] MeliPromocionesService svc)
+    {
+        var r = await svc.SacarAsync(mla, req.PromocionId, req.Tipo, HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
     /// <summary>Contadores para los chips de filtro.</summary>
     [HttpGet("resumen")]
     public async Task<IActionResult> GetResumen()

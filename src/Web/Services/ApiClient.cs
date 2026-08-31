@@ -5430,8 +5430,36 @@ public class ApiClient
     public record PubV2PromosDeItem(string MeliItemId, decimal PrecioLista, decimal? Costo,
         decimal? ObjetivoPct, List<PubV2PromoOpcion> Opciones, string? Aviso);
 
-    public async Task<PubV2PromosDeItem?> GetPromocionesDeItemAsync(string mla)
-        => await GetAsync<PubV2PromosDeItem>($"/api/meli/v2/publicaciones/{mla}/promociones");
+    public record PubV2PromosDeItemExt(string MeliItemId, decimal PrecioLista, decimal? Costo,
+        decimal? ObjetivoPct, List<PubV2PromoOpcion> Opciones, string? Aviso,
+        decimal? ComisionPct, decimal? ComisionFija, decimal? Envio);
+
+    public async Task<PubV2PromosDeItemExt?> GetPromocionesDeItemAsync(string mla)
+        => await GetAsync<PubV2PromosDeItemExt>($"/api/meli/v2/publicaciones/{mla}/promociones");
+
+    public record PubV2PromoAccion(bool Ok, string Mensaje, decimal? PrecioAplicado, decimal? MargenPct);
+
+    private async Task<(PubV2PromoAccion? res, string? error)> PromoAccionAsync(
+        string mla, string accion, string? promocionId, string tipo, decimal precio)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PostAsJsonAsync(
+                $"/api/meli/v2/publicaciones/{mla}/promociones/{accion}",
+                new { PromocionId = promocionId, Tipo = tipo, Precio = precio });
+            var body = await resp.Content.ReadFromJsonAsync<PubV2PromoAccion>();
+            if (resp.IsSuccessStatusCode) return (body, null);
+            return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public Task<(PubV2PromoAccion? res, string? error)> AplicarPromocionAsync(string mla, string? promocionId, string tipo, decimal precio)
+        => PromoAccionAsync(mla, "aplicar", promocionId, tipo, precio);
+
+    public Task<(PubV2PromoAccion? res, string? error)> SacarPromocionAsync(string mla, string? promocionId, string tipo)
+        => PromoAccionAsync(mla, "sacar", promocionId, tipo, 0);
 
     public async Task<Dictionary<string, int>?> GetResumenV2Async()
         => await GetAsync<Dictionary<string, int>>("/api/meli/v2/resumen");
