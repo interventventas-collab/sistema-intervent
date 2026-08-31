@@ -574,7 +574,205 @@ app.post('/whatsapp/send-with-pdf', async (req, res) => {
 // Flujo: abre el chat, clickea el clip (Adjuntar), busca el input[type=file] que acepta
 // documentos, hace setInputFiles, espera el preview, escribe la caption en el caption-box
 // y manda. Selectores defensivos con multiples fallbacks porque WhatsApp Web cambia seguido.
-async function sendWhatsAppMessageWithFile(phone, caption, fileBuffer, fileName) {
+// 2026-08-31: adjuntar un archivo al chat que YA ESTA ABIERTO en pantalla.
+// Se separo de sendWhatsAppMessageWithFile para poder usarlo tambien desde la pantalla del
+// sistema, donde no hay telefono a mano: la lista de la izquierda da NOMBRES, no numeros, y
+// los grupos directamente no tienen numero.
+//
+// Devuelve { success, message, retryable }. retryable = true significa "todavia NO tocamos
+// Enviar", y ahi el que llama puede reintentar tranquilo. Una vez apretado Enviar NUNCA es
+// retryable: un reintento podria mandarle el mismo comprobante dos veces al cliente.
+async function adjuntarEnChatAbierto(page, { caption, fileBuffer, fileName, mimeType }) {
+  const tipo = mimeType || 'application/octet-stream';
+
+  // 1) Tocar el clip (Adjuntar). WhatsApp tiene varias variantes del selector.
+  // Solo cuenta como clickeado si el click funciono de verdad: antes hacia .catch(() => {})
+  // y seguia igual, creyendo que el menu estaba abierto cuando no lo estaba.
+  const clipSelectors = [
+    'div[title="Attach"]',
+    'div[title="Adjuntar"]',
+    'div[title="Anexar"]',
+    'span[data-icon="clip"]',
+    'span[data-icon="plus"]',
+    'button[aria-label="Attach"]',
+    'button[aria-label="Adjuntar"]',
+  ];
+  let clipClicked = false;
+  for (const sel of clipSelectors) {
+    try {
+      const el = await page.$(sel);
+      if (!el) continue;
+      await el.click({ timeout: 8000 });
+      clipClicked = true;
+      break;
+    } catch { /* tapado o se movio: probamos el siguiente selector */ }
+  }
+  if (!clipClicked) return { success: false, message: 'No se pudo tocar el boton Adjuntar', retryable: true };
+  await sleep(800); // que se despliegue el menu
+
+  // Diagnostico barato (2 lineas). Fue lo que destrabo todo esto: mostro que hoy existe UN
+  // SOLO input de archivos y es el de fotos. Si WhatsApp vuelve a cambiar, el log lo canta.
+  try {
+    const diag = await page.evaluate(() => ({
+      inputs: Array.from(document.querySelectorAll('input[type="file"]'))
+        .map((i) => i.getAttribute('accept') || '(sin accept)'),
+      menu: Array.from(document.querySelectorAll('[role="menuitem"], [role="menu"] li'))
+        .map((m) => (m.innerText || '').trim()).filter(Boolean).slice(0, 10),
+    }));
+    console.log('[wa] adjuntar — inputs:', JSON.stringify(diag.inputs), '| menu:', JSON.stringify(diag.menu));
+  } catch { /* el diagnostico nunca debe romper el envio */ }
+
+  // 2) Marcar los cuadros de texto que YA existen: cuando abra la vista previa, el de la
+  // caption sera el unico SIN marca. Antes se lo buscaba por descarte ("el que no esta en el
+  // footer") y fallo, porque WhatsApp saco del footer al cuadro del chat y le escribiamos a el.
+  // De paso se limpia texto colgado de un intento anterior: esto es un envio automatico, no
+  // hay borradores de nadie que respetar.
+  await page.evaluate(() => {
+    const cajas = Array.from(document.querySelectorAll('div[contenteditable="true"]'));
+    for (const c of cajas) {
+      if (!c.closest('#side') && (c.innerText || '').trim()) {
+        c.textContent = '';
+        c.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      }
+      c.setAttribute('data-wa-previo', '1');
+    }
+  }).catch(() => {});
+
+  // 3) Elegir "Documento" y entregar el archivo.
+  // El input de documentos NO EXISTE hasta que se toca esa opcion: el unico input presente
+  // antes es accept="image/*", y empujarle un PDF ahi no hace absolutamente nada (WhatsApp lo
+  // descarta en silencio, la vista previa no abre y el envio termina sin archivo).
+  // Se manda TODO como documento a proposito, tambien las fotos: asi el archivo llega tal cual,
+  // sin que WhatsApp lo recomprima. Un comprobante tiene que llegar legible.
+  const marcoDocumento = await page.evaluate(() => {
+    const ES_DOC = /^(documento|document)$/i;
+    const cands = Array.from(document.querySelectorAll('[role="menuitem"], li, [role="button"], div, span'))
+      .filter((el) => ES_DOC.test((el.innerText || '').trim()));
+    if (cands.length === 0) return false;
+    cands.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);
+    const fila = cands[0].closest('[role="menuitem"], li, [role="button"]') || cands[0];
+    fila.setAttribute('data-wa-doc', '1');
+    return true;
+  }).catch(() => false);
+  if (!marcoDocumento) {
+    return { success: false, message: 'No aparecio la opcion Documento en el menu del clip', retryable: true };
+  }
+
+  try {
+    // Click con el MOUSE de Playwright: React ignora los clicks sinteticos de JS (misma
+    // leccion que al abrir un chat desde la lista).
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser', { timeout: 15000 }),
+      page.locator('[data-wa-doc="1"]').first().click({ timeout: 10000 }),
+    ]);
+    await chooser.setFiles({ name: fileName, mimeType: tipo, buffer: fileBuffer });
+  } catch (err) {
+    // Plan B: un input que acepte documentos. NUNCA el de image/*: se traga el archivo.
+    const inputs = await page.$$('input[type="file"]');
+    let docInput = null;
+    for (const inp of inputs) {
+      const accept = (await inp.getAttribute('accept')) || '';
+      if (!accept || accept === '*' || accept === '*/*' ||
+          accept.includes('pdf') || accept.includes('application')) {
+        docInput = inp;
+        break;
+      }
+    }
+    if (!docInput) {
+      return {
+        success: false,
+        message: 'No se pudo entregar el archivo: ' + ((err && err.message) || 'sin file chooser'),
+        retryable: true,
+      };
+    }
+    await docInput.setInputFiles({ name: fileName, mimeType: tipo, buffer: fileBuffer });
+  }
+
+  // 4) Esperar la ventanita de vista previa y ubicar SU cuadro de texto: el unico sin marca.
+  const previewDeadline = Date.now() + 20000;
+  let captionReady = false;
+  while (Date.now() < previewDeadline) {
+    captionReady = await page.evaluate(() => {
+      const nueva = Array.from(document.querySelectorAll('div[contenteditable="true"]'))
+        .find((el) => !el.hasAttribute('data-wa-previo'));
+      if (!nueva) return false;
+      nueva.focus();
+      return document.activeElement === nueva;
+    }).catch(() => false);
+    if (captionReady) break;
+    await sleep(500);
+  }
+
+  // 5) Escribir el texto que acompaña al archivo.
+  // Primero VACIAR la caja: al adjuntar, WhatsApp arrastra a la caption lo que hubiera en el
+  // cuadro del chat, y asi salio un envio con el texto de un intento anterior pegado adelante.
+  if (captionReady) {
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Backspace');
+    await sleep(150);
+  }
+  if (caption && captionReady) {
+    await page.keyboard.type(caption, { delay: 10 });
+    await sleep(300);
+  } else if (caption && !captionReady) {
+    console.warn('[wa] adjuntar: no aparecio el cuadro de la ventanita; mando el archivo sin texto');
+  }
+
+  // 6) Apretar Enviar. Desde aca ya NO se puede reintentar.
+  const sendSelectors = [
+    'span[data-icon="send"]',
+    'span[data-testid="send"]',
+    'button[aria-label="Send"]',
+    'button[aria-label="Enviar"]',
+    'div[role="button"][aria-label="Send"]',
+    'div[role="button"][aria-label="Enviar"]',
+  ];
+  let sendClicked = false;
+  for (const sel of sendSelectors) {
+    try {
+      const el = await page.$(sel);
+      if (!el) continue;
+      await el.click({ timeout: 8000 });
+      sendClicked = true;
+      break;
+    } catch { /* probamos el siguiente */ }
+  }
+  if (!sendClicked) await page.keyboard.press('Enter'); // ultimo recurso
+
+  // 7) VERIFICAR DE VERDAD que salio: que el nombre del archivo aparezca en la conversacion.
+  // Lo de antes era mentira: buscaba las tildes de enviado en CUALQUIER parte de la pagina, y
+  // un chat con historial siempre las tiene, asi que decia "Enviado" pasara lo que pasara.
+  // Acotado a #main a proposito: el panel izquierdo tambien muestra el nombre del adjunto en
+  // la vista previa del chat, y buscar en toda la pagina daria un falso positivo.
+  const baseNombre = String(fileName).replace(/\.[^.]+$/, '');
+  const aguja = baseNombre.slice(0, Math.min(15, baseNombre.length)).toLowerCase();
+  const verifyDeadline = Date.now() + 30000;
+  let confirmado = false;
+  while (Date.now() < verifyDeadline) {
+    confirmado = await page.evaluate((ag) => {
+      const main = document.querySelector('#main');
+      if (!main) return false;
+      return (main.innerText || '').toLowerCase().includes(ag);
+    }, aguja).catch(() => false);
+    if (confirmado) break;
+    await sleep(800);
+  }
+
+  if (!confirmado) {
+    console.error('[wa] adjuntar: se apreto Enviar pero el archivo NO aparecio en la conversacion');
+    return {
+      success: false,
+      retryable: false,
+      message: 'No se pudo confirmar el envio: el archivo no aparecio en la conversacion. Revisar a mano antes de reenviar.',
+    };
+  }
+
+  console.log(`[wa] adjuntar: confirmado, "${fileName}" aparece en la conversacion`);
+  return { success: true, message: 'Enviado y confirmado en la conversacion', retryable: false };
+}
+
+// Adjuntar POR NUMERO: abre el chat de ese telefono y despues delega en adjuntarEnChatAbierto.
+async function sendWhatsAppMessageWithFile(phone, caption, fileBuffer, fileName, mimeType) {
   const MAX_RETRIES = 2;
   const BACKOFFS = [3000, 8000];
   let lastError = 'Error desconocido';
@@ -583,11 +781,11 @@ async function sendWhatsAppMessageWithFile(phone, caption, fileBuffer, fileName)
     try {
       if (attempt > 0) await sleep(BACKOFFS[attempt - 1]);
 
-      // 1) Abrir chat (sin texto en URL, lo metemos como caption del adjunto despues)
+      // 1) Abrir chat (sin texto en la URL: el texto va como caption del adjunto).
       const url = `https://web.whatsapp.com/send?phone=${encodeURIComponent(phone)}`;
       await state.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
 
-      // 2) Esperar a que aparezca el compose box (o popup de numero invalido)
+      // 2) Esperar el cuadro de escribir (o el popup de numero invalido).
       const deadline = Date.now() + 25000;
       let composeBox = null;
       let invalidPopup = false;
@@ -608,222 +806,14 @@ async function sendWhatsAppMessageWithFile(phone, caption, fileBuffer, fileName)
       if (invalidPopup) return { success: false, message: 'Numero invalido o no tiene WhatsApp' };
       if (!composeBox) { lastError = 'Timeout abriendo chat'; continue; }
 
-      // 2026-08-29: cerrar carteles recien ACA — despues de descartar el popup de numero
-      // invalido. Si lo hicieramos antes, le apretariamos el "OK" a ese aviso y creeriamos
-      // que el numero es bueno cuando no lo es.
+      // Cerrar carteles recien ACA, despues de descartar el popup de numero invalido: si no,
+      // le apretariamos el "OK" a ese aviso y creeriamos que el numero es bueno cuando no lo es.
       await cerrarCartelesBloqueantes(state.page);
 
-      // 3) Click en el clip (Adjuntar). WhatsApp tiene varias variantes del selector.
-      const clipSelectors = [
-        'div[title="Attach"]',
-        'div[title="Adjuntar"]',
-        'div[title="Anexar"]',
-        'span[data-icon="clip"]',
-        'span[data-icon="plus"]',
-        'button[aria-label="Attach"]',
-        'button[aria-label="Adjuntar"]',
-      ];
-      // 2026-08-31: antes hacia .click().catch(() => {}) y marcaba clipClicked = true IGUAL,
-      // aunque el click hubiera fallado. Misma mentira que teniamos en el paso 8: seguiamos
-      // como si el menu de adjuntar estuviera abierto cuando no lo estaba. Ahora solo cuenta
-      // como clickeado si el click realmente funciono.
-      let clipClicked = false;
-      for (const sel of clipSelectors) {
-        try {
-          const el = await state.page.$(sel);
-          if (!el) continue;
-          await el.click({ timeout: 8000 });
-          clipClicked = true;
-          break;
-        } catch { /* tapado o se movio: probamos el siguiente selector */ }
-      }
-      if (!clipClicked) { lastError = 'No se pudo tocar el boton Adjuntar'; continue; }
-      await sleep(800); // que se desplieguen las opciones
-
-      // 2026-08-31 DIAGNOSTICO: que aparece realmente al tocar el clip.
-      try {
-        const diag = await state.page.evaluate(() => {
-          const inputs = Array.from(document.querySelectorAll('input[type="file"]'))
-            .map((i) => ({ accept: i.getAttribute('accept') || '(sin accept)', multiple: i.multiple }));
-          const menu = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"], [role="menu"] li, [role="application"] [role="button"]'))
-            .map((m) => (m.innerText || '').trim()).filter(Boolean).slice(0, 12);
-          return { inputs, menu };
-        });
-        console.log('[wa] DIAG inputs de archivo:', JSON.stringify(diag.inputs));
-        console.log('[wa] DIAG menu del clip:', JSON.stringify(diag.menu));
-      } catch (e) { console.log('[wa] DIAG fallo:', e.message); }
-
-      // 4) Elegir "Documento" en el menu del clip y entregar el archivo.
-      //
-      // 2026-08-31 — POR QUE NUNCA SE ADJUNTABA NADA. El codigo viejo buscaba un
-      // input[type=file] y le metia el PDF. El diagnostico mostro que en el WhatsApp de hoy
-      // hay UN SOLO input y es accept="image/*": el de fotos. Le empujabamos un PDF, WhatsApp
-      // lo ignoraba, la vista previa no abria nunca, y despues la caption terminaba escrita en
-      // el cuadro del chat. El input de documentos NO EXISTE hasta que tocas "Documento" en el
-      // menu del clip.
-      //
-      // Ahora: se marca el item "Documento" desde JS, se lo clickea con el MOUSE de Playwright
-      // (React ignora los clicks sinteticos — misma lección que al abrir un chat) y el archivo
-      // se entrega por el file chooser que dispara ese click.
-
-      // Marcar los cuadros de texto que YA existen: cuando abra la vista previa, el de la
-      // caption sera el unico sin marca. Antes lo buscabamos por descarte ("el que no esta en
-      // el footer") y fallaba, porque WhatsApp saco del footer al cuadro del chat.
-      // De paso se limpia cualquier texto colgado de un intento anterior: este es un envio
-      // automatico del sistema, ahi no hay borradores de nadie que respetar.
-      await state.page.evaluate(() => {
-        const cajas = Array.from(document.querySelectorAll('div[contenteditable="true"]'));
-        for (const c of cajas) {
-          if (!c.closest('#side') && (c.innerText || '').trim()) {
-            c.textContent = '';
-            c.dispatchEvent(new InputEvent('input', { bubbles: true }));
-          }
-          c.setAttribute('data-wa-previo', '1');
-        }
-      }).catch(() => {});
-
-      const marcoDocumento = await state.page.evaluate(() => {
-        const ES_DOC = /^(documento|document)$/i;
-        const cands = Array.from(document.querySelectorAll('[role="menuitem"], li, [role="button"], div, span'))
-          .filter((el) => ES_DOC.test((el.innerText || '').trim()));
-        if (cands.length === 0) return false;
-        // el nodo mas "hoja" (el que contiene solo esa palabra), y despues su fila clickeable
-        cands.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);
-        const el = cands[0];
-        const fila = el.closest('[role="menuitem"], li, [role="button"]') || el;
-        fila.setAttribute('data-wa-doc', '1');
-        return true;
-      }).catch(() => false);
-
-      if (!marcoDocumento) { lastError = 'No aparecio la opcion Documento en el menu del clip'; continue; }
-
-      try {
-        const [chooser] = await Promise.all([
-          state.page.waitForEvent('filechooser', { timeout: 15000 }),
-          state.page.locator('[data-wa-doc="1"]').first().click({ timeout: 10000 }),
-        ]);
-        await chooser.setFiles({
-          name: fileName,
-          mimeType: 'application/pdf',
-          buffer: fileBuffer,
-        });
-      } catch (err) {
-        // Plan B: si no salto el file chooser, buscar un input que acepte documentos
-        // (NO el de image/*: ese se traga el PDF sin hacer nada).
-        const inputs = await state.page.$$('input[type="file"]');
-        let docInput = null;
-        for (const inp of inputs) {
-          const accept = (await inp.getAttribute('accept')) || '';
-          if (!accept || accept === '*' || accept === '*/*' ||
-              accept.includes('pdf') || accept.includes('application')) {
-            docInput = inp;
-            break;
-          }
-        }
-        if (!docInput) {
-          lastError = 'No se pudo entregar el archivo: ' + ((err && err.message) || 'sin file chooser');
-          continue;
-        }
-        await docInput.setInputFiles({ name: fileName, mimeType: 'application/pdf', buffer: fileBuffer });
-      }
-
-      // 5) Esperar la ventanita de vista previa y ubicar SU cuadro de texto.
-      // 2026-08-31: el cuadro de la caption es el unico contenteditable SIN la marca que
-      // pusimos arriba, o sea: el que aparecio recien, con la ventanita. Si no aparece
-      // ninguno nuevo, NO se escribe en ningun lado — se manda el archivo sin texto.
-      // Nunca, jamas, escribir en un cuadro que ya existia: ese es el del chat.
-      const previewDeadline = Date.now() + 20000;
-      let captionReady = false;
-      while (Date.now() < previewDeadline) {
-        captionReady = await state.page.evaluate(() => {
-          const nueva = Array.from(document.querySelectorAll('div[contenteditable="true"]'))
-            .find((el) => !el.hasAttribute('data-wa-previo'));
-          if (!nueva) return false;
-          nueva.focus();
-          return document.activeElement === nueva;
-        }).catch(() => false);
-        if (captionReady) break;
-        await sleep(500);
-      }
-
-      // 6) Escribir la caption en la ventanita (ya quedo enfocada arriba).
-      // 2026-08-31: primero VACIAR la caja. Cuando adjuntas, WhatsApp arrastra a la caption
-      // lo que hubiera en el cuadro del chat — asi salio un envio con el texto de un intento
-      // anterior pegado adelante ("Prueba tecnica. Ignorar.Prueba tecnica del sistema..."").
-      // Limpiarla aca, con la caja ya enfocada, es a prueba de eso: no importa de donde vino
-      // el texto viejo. Un comprobante tiene que salir con SU texto y nada mas.
-      if (captionReady) {
-        await state.page.keyboard.press('Control+A');
-        await state.page.keyboard.press('Backspace');
-        await sleep(150);
-      }
-      if (caption && captionReady) {
-        await state.page.keyboard.type(caption, { delay: 10 });
-        await sleep(300);
-      } else if (caption && !captionReady) {
-        console.warn('[wa] send-with-pdf: no aparecio el cuadro de la ventanita; mando el archivo sin texto');
-      }
-
-      // 7) Apretar Enviar. Con el mouse de Playwright (no con click() de JS: WhatsApp es React
-      // y no le da bola a los clicks sinteticos — mismo problema que teniamos al abrir un chat).
-      const sendSelectors = [
-        'span[data-icon="send"]',
-        'span[data-testid="send"]',
-        'button[aria-label="Send"]',
-        'button[aria-label="Enviar"]',
-        'div[role="button"][aria-label="Send"]',
-        'div[role="button"][aria-label="Enviar"]',
-      ];
-      let sendClicked = false;
-      for (const sel of sendSelectors) {
-        try {
-          const el = await state.page.$(sel);
-          if (!el) continue;
-          await el.click({ timeout: 8000 });
-          sendClicked = true;
-          break;
-        } catch { /* tapado o se movio: probamos el siguiente */ }
-      }
-      if (!sendClicked) {
-        await state.page.keyboard.press('Enter');   // ultimo recurso
-      }
-
-      // 8) VERIFICAR DE VERDAD que salio.
-      // 2026-08-31: lo de antes era mentira. Buscaba las tildes de enviado en CUALQUIER parte
-      // de la pagina, y un chat con historial siempre las tiene: daba "Enviado" incluso cuando
-      // no habia salido nada. Peor: si no encontraba nada en 25s, lo daba por enviado igual
-      // ("aceptacion conservadora"). Asi el sistema te dice que el comprobante llego cuando no.
-      //
-      // Ahora la prueba es que el NOMBRE DEL ARCHIVO aparezca en la conversacion (#main).
-      // Acotado a #main a proposito: el panel izquierdo muestra el nombre del adjunto en la
-      // vista previa del chat, asi que buscar en toda la pagina daria falsos positivos.
-      const baseNombre = String(fileName).replace(/\.[^.]+$/, '');
-      const aguja = baseNombre.slice(0, Math.min(15, baseNombre.length)).toLowerCase();
-      const verifyDeadline = Date.now() + 30000;
-      let confirmado = false;
-      while (Date.now() < verifyDeadline) {
-        confirmado = await state.page.evaluate((ag) => {
-          const main = document.querySelector('#main');
-          if (!main) return false;
-          return (main.innerText || '').toLowerCase().includes(ag);
-        }, aguja).catch(() => false);
-        if (confirmado) break;
-        await sleep(800);
-      }
-
-      if (!confirmado) {
-        // OJO: NO reintentar aca. Llegamos a apretar Enviar; si reintentaramos y el envio si
-        // habia salido, el cliente recibiria el comprobante DOS VECES. Preferimos avisar que
-        // no pudimos confirmarlo y que una persona mire, antes que duplicar.
-        console.error('[wa] send-with-pdf: se apreto Enviar pero el archivo NO aparecio en la conversacion');
-        return {
-          success: false,
-          message: 'No se pudo confirmar el envio: el archivo no aparecio en la conversacion. Revisar a mano antes de reenviar.',
-        };
-      }
-
-      console.log(`[wa] send-with-pdf: confirmado, "${fileName}" aparece en la conversacion`);
-      return { success: true, message: 'Enviado y confirmado en la conversacion' };
+      const r = await adjuntarEnChatAbierto(state.page, { caption, fileBuffer, fileName, mimeType });
+      if (r.success) return { success: true, message: r.message };
+      if (!r.retryable) return { success: false, message: r.message };
+      lastError = r.message;
     } catch (err) {
       lastError = err.message || 'Error';
       console.error(`[wa] send-with-pdf intento ${attempt + 1} fallo:`, lastError);
@@ -831,7 +821,6 @@ async function sendWhatsAppMessageWithFile(phone, caption, fileBuffer, fileName)
   }
   return { success: false, message: lastError };
 }
-
 // --- Lógica de envío ---
 async function sendWhatsAppMessage(phone, text) {
   const MAX_RETRIES = 3;
@@ -1561,6 +1550,53 @@ app.post('/whatsapp/chat/send-to-current', async (req, res) => {
 // este cargado, esperar al pane-side y scrapear cada celda. WhatsApp Web cambia clases seguido, asi
 // que usamos roles ARIA y data-testid con fallbacks.
 // ============================================================
+// ============================================================
+// POST /whatsapp/chat/send-file-to-current
+// body: { fileBase64, fileName, mimeType?, caption? }
+// 2026-08-31: manda un archivo al chat que la persona tiene ABIERTO en la pantalla del
+// sistema. Distinto de /whatsapp/send-with-pdf, que abre el chat por numero: aca no hay
+// numero — la lista de la izquierda da nombres, y los grupos ni siquiera tienen numero.
+// Asume que ya se abrio el chat con /whatsapp/chat/open-by-index.
+// ============================================================
+app.post('/whatsapp/chat/send-file-to-current', async (req, res) => {
+  const { fileBase64, fileName, mimeType, caption } = req.body || {};
+  if (!fileBase64) return res.status(400).json({ error: 'fileBase64 requerido' });
+  if (!fileName) return res.status(400).json({ error: 'fileName requerido' });
+
+  if (!await acquireWaLockWait('send-file-to-current', 30000)) {
+    return res.status(429).json({ error: 'busy', message: 'Otra operacion de WhatsApp en curso' });
+  }
+  try {
+    if (!state.page || state.page.isClosed()) {
+      return res.status(503).json({ error: 'WhatsApp no esta vinculado' });
+    }
+    // Tiene que haber un chat abierto: si no, el clip no existe y no hay a quien mandarle.
+    const composeBox = await findComposeBox(state.page);
+    if (!composeBox) {
+      return res.status(409).json({ error: 'No hay ningun chat abierto. Abri el chat y proba de nuevo.' });
+    }
+    await cerrarCartelesBloqueantes(state.page);
+
+    const buffer = Buffer.from(fileBase64, 'base64');
+    const r = await adjuntarEnChatAbierto(state.page, {
+      caption: (caption || '').toString(),
+      fileBuffer: buffer,
+      fileName: String(fileName),
+      mimeType: mimeType || undefined,
+    });
+    if (r.success) {
+      try { await saveStorageState(); } catch {}
+      return res.json({ success: true, message: r.message });
+    }
+    return res.status(500).json({ success: false, error: r.message });
+  } catch (err) {
+    console.error('[wa] send-file-to-current error:', err.message || err);
+    return res.status(500).json({ success: false, error: err.message || 'error' });
+  } finally {
+    releaseWaLock();
+  }
+});
+
 app.post('/whatsapp/chats/list', async (req, res) => {
   const limit = Math.min(parseInt((req.body && req.body.limit) || 50, 10) || 50, 200);
 

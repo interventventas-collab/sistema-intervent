@@ -86,6 +86,39 @@ public class WhatsAppController : ControllerBase
         return ok ? Ok(new { ok = true }) : StatusCode(500, new { error = "No se pudo mandar" });
     }
 
+    /// <summary>2026-08-31: manda un archivo al chat abierto en WhatsApp Web.
+    /// El archivo viaja en base64 dentro del JSON (mismo camino que ya usa el envío de
+    /// comprobantes). Tope 10 MB: el robot recibe el archivo en base64, que ocupa un tercio
+    /// más que el original, y su buzón de entrada aguanta 15 MB. 10 MB de archivo entran
+    /// justos; más que eso lo rebota el robot con un error feo en vez de un aviso claro.</summary>
+    [HttpPost("chats/send-file")]
+    public async Task<IActionResult> SendFileToOpenChat([FromBody] SendFileToChatRequest req)
+    {
+        if (req is null || string.IsNullOrWhiteSpace(req.FileBase64))
+            return BadRequest(new { error = "Falta el archivo" });
+        if (string.IsNullOrWhiteSpace(req.FileName))
+            return BadRequest(new { error = "Falta el nombre del archivo" });
+
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(req.FileBase64); }
+        catch { return BadRequest(new { error = "El archivo llegó dañado" }); }
+
+        if (bytes.Length == 0) return BadRequest(new { error = "El archivo está vacío" });
+        if (bytes.Length > 10 * 1024 * 1024)
+            return BadRequest(new { error = "El archivo pesa más de 10 MB. Probá con uno más chico." });
+
+        var (ok, error) = await _wa.SendFileToCurrentChatAsync(bytes, req.FileName!, req.MimeType, req.Caption);
+        return ok ? Ok(new { ok = true }) : StatusCode(500, new { error = error ?? "No se pudo mandar el archivo" });
+    }
+
+    public class SendFileToChatRequest
+    {
+        public string? FileBase64 { get; set; }
+        public string? FileName { get; set; }
+        public string? MimeType { get; set; }
+        public string? Caption { get; set; }
+    }
+
     public class OpenChatRequest { public string Name { get; set; } = ""; }
     public class OpenChatByIndexRequest { public int Index { get; set; } public string? Name { get; set; } }
     public class SendToChatRequest { public string Text { get; set; } = ""; }

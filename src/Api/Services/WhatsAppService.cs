@@ -143,6 +143,47 @@ public class WhatsAppService
 
     /// <summary>2026-06-23: Manda un mensaje al chat actualmente abierto en WhatsApp Web.
     /// Asume que se llamo OpenChatByNameAsync antes (o el chat ya estaba abierto).</summary>
+    /// <summary>2026-08-31: manda un ARCHIVO al chat que está abierto en la pantalla de
+    /// WhatsApp Web. Devuelve (Ok, Error) — el error viene explicado del robot para poder
+    /// mostrárselo a la persona: si no se pudo confirmar que salió, hay que avisar, no
+    /// decir "listo" a ciegas (el robot antes mentía y por eso un comprobante podía figurar
+    /// como enviado sin haber salido).</summary>
+    public async Task<(bool Ok, string? Error)> SendFileToCurrentChatAsync(
+        byte[] contenido, string nombreArchivo, string? mimeType, string? caption)
+    {
+        try
+        {
+            var body = new
+            {
+                fileBase64 = Convert.ToBase64String(contenido),
+                fileName = nombreArchivo,
+                mimeType,
+                caption
+            };
+            var resp = await _http.PostAsJsonAsync("/whatsapp/chat/send-file-to-current", body);
+            if (resp.IsSuccessStatusCode) return (true, null);
+
+            var crudo = await resp.Content.ReadAsStringAsync();
+            string? detalle = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(crudo);
+                if (doc.RootElement.TryGetProperty("error", out var e)) detalle = e.GetString();
+                else if (doc.RootElement.TryGetProperty("message", out var m)) detalle = m.GetString();
+            }
+            catch { /* no era JSON: nos quedamos con el texto crudo */ }
+
+            var msg = detalle ?? (string.IsNullOrWhiteSpace(crudo) ? $"El robot respondió {(int)resp.StatusCode}" : crudo);
+            _logger.LogWarning("[WA Web] adjuntar falló: {Msg}", msg);
+            return (false, msg);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error mandando archivo al chat actual");
+            return (false, "No se pudo hablar con el robot de WhatsApp: " + ex.Message);
+        }
+    }
+
     public async Task<bool> SendToCurrentChatAsync(string text)
     {
         try

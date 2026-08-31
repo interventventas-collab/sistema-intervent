@@ -4891,6 +4891,36 @@ public class ApiClient
     }
 
     /// <summary>2026-06-23: Manda mensaje al chat actualmente abierto.</summary>
+    /// <summary>2026-08-31: manda un archivo al chat abierto en WhatsApp Web.
+    /// Devuelve el motivo cuando falla: el robot ahora sabe distinguir "no salió" de "salió",
+    /// y esa diferencia se le tiene que mostrar a la persona.</summary>
+    public async Task<(bool Ok, string? Error)> SendFileToWhatsAppOpenChatAsync(
+        byte[] contenido, string nombreArchivo, string? mimeType, string? caption)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/chats/send-file", new
+            {
+                fileBase64 = Convert.ToBase64String(contenido),
+                fileName = nombreArchivo,
+                mimeType,
+                caption
+            });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var crudo = await resp.Content.ReadAsStringAsync();
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(crudo);
+                if (doc.RootElement.TryGetProperty("error", out var e))
+                    return (false, e.GetString());
+            }
+            catch { }
+            return (false, string.IsNullOrWhiteSpace(crudo) ? "No se pudo mandar el archivo" : crudo);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<bool> SendToWhatsAppOpenChatAsync(string text)
     {
         await SetAuthHeaderAsync();

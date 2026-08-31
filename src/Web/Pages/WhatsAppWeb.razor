@@ -47,6 +47,10 @@
                     font-size: 0.92rem; background: white; outline: none; line-height: 1.3;
                     min-height: calc(2.6em + 1.1rem); max-height: 100px;
                     font-family: inherit; }
+    .ww-clip-btn { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px;
+                    border-radius: 50%; cursor: pointer; flex-shrink: 0; color: #54656f;
+                    transition: background 120ms; }
+    .ww-clip-btn:hover { background: #e5e7eb; }
     .ww-send-btn { background: #25d366; color: white; border: 0; border-radius: 50%; width: 40px; height: 40px;
                     cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
                     transition: background 120ms; }
@@ -168,6 +172,14 @@
                     }
                 </div>
                 <div class="ww-chat-footer">
+                    @* 2026-08-31: clip para adjuntar. Lo que haya escrito en el cuadro de al
+                       lado viaja como texto del archivo (igual que en WhatsApp de verdad). *@
+                    <label class="ww-clip-btn" title="Adjuntar un archivo (hasta 10 MB)">
+                        @if (enviandoArchivo) { <span class="ww-spinner"></span> }
+                        else { <span style="font-size:1.25rem;">📎</span> }
+                        <InputFile OnChange="AdjuntarArchivo" disabled="@(enviandoArchivo || sending)"
+                                   style="display:none;" />
+                    </label>
                     <textarea class="ww-textarea" @bind="newMessageText" @bind:event="oninput"
                               placeholder="Escribí un mensaje…" rows="1"
                               @onkeydown="HandleTextareaKey" disabled="@(sending || loadingMessages)"></textarea>
@@ -291,6 +303,53 @@
         }
         catch (Exception ex) { Toast.Error("Error: " + ex.Message); }
         sending = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private bool enviandoArchivo;
+
+    /// <summary>2026-08-31: manda el archivo elegido al chat abierto. El texto que haya en el
+    /// cuadro de escribir viaja como pie del archivo y se limpia solo si sale bien.
+    /// Si el robot no puede CONFIRMAR que salió, se muestra el error tal cual: no decimos
+    /// "listo" a ciegas — el robot antes mentía y un comprobante podía figurar como enviado
+    /// sin haber salido nunca.</summary>
+    private async Task AdjuntarArchivo(InputFileChangeEventArgs e)
+    {
+        var archivo = e.File;
+        if (archivo is null || enviandoArchivo) return;
+
+        const long TOPE = 10 * 1024 * 1024;
+        if (archivo.Size > TOPE)
+        {
+            Toast.Error($"\"{archivo.Name}\" pesa más de 10 MB. Probá con uno más chico.");
+            return;
+        }
+
+        enviandoArchivo = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            using var ms = new MemoryStream();
+            await archivo.OpenReadStream(TOPE).CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            var pie = string.IsNullOrWhiteSpace(newMessageText) ? null : newMessageText.Trim();
+            var (ok, error) = await Api.SendFileToWhatsAppOpenChatAsync(
+                bytes, archivo.Name, archivo.ContentType, pie);
+
+            if (ok)
+            {
+                Toast.Success($"📎 {archivo.Name} enviado");
+                newMessageText = "";
+                await RefrescarChatAbierto();
+            }
+            else
+            {
+                Toast.Error(error ?? "No se pudo mandar el archivo");
+            }
+        }
+        catch (Exception ex) { Toast.Error("Error mandando el archivo: " + ex.Message); }
+        enviandoArchivo = false;
         await InvokeAsync(StateHasChanged);
     }
 
