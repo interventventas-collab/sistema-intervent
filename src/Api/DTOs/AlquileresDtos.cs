@@ -29,6 +29,26 @@ public class UpdateAlqEquipoRequest
     public bool? IsActive { get; set; }
 }
 
+// ===== Fletes por zona (2026-08-31) =====
+public record AlqFleteDto(
+    int Id, string Zona, decimal Precio, string? Notas,
+    bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+
+public class CreateAlqFleteRequest
+{
+    public string Zona { get; set; } = string.Empty;
+    public decimal Precio { get; set; }
+    public string? Notas { get; set; }
+}
+
+public class UpdateAlqFleteRequest
+{
+    public string? Zona { get; set; }
+    public decimal? Precio { get; set; }
+    public string? Notas { get; set; }
+    public bool? IsActive { get; set; }
+}
+
 // ===== Clientes =====
 public record AlqClienteDto(
     int Id, string Nombre, string? Empresa, string? DniCuit,

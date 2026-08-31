@@ -275,3 +275,30 @@ public class AlqCondicionesDto
 {
     public string Texto { get; set; } = "";
 }
+
+// ===== Fletes por zona (2026-08-31) =====
+public class AlqFleteDto
+{
+    public int Id { get; set; }
+    public string Zona { get; set; } = string.Empty;
+    public decimal Precio { get; set; }
+    public string? Notas { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public class CreateAlqFleteRequest
+{
+    public string Zona { get; set; } = string.Empty;
+    public decimal Precio { get; set; }
+    public string? Notas { get; set; }
+}
+
+public class UpdateAlqFleteRequest
+{
+    public string? Zona { get; set; }
+    public decimal? Precio { get; set; }
+    public string? Notas { get; set; }
+    public bool? IsActive { get; set; }
+}

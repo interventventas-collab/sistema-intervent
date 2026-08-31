@@ -432,6 +432,19 @@ public class ApiClient
     public async Task<bool> DeleteAlqEquipoAsync(int id)
         => await DeleteAsync($"/api/alquileres/equipos/{id}");
 
+    // --- Alquileres: Fletes por zona (2026-08-31) ---
+    public async Task<List<AlqFleteDto>?> GetAlqFletesAsync(bool soloActivos = false)
+        => await GetAsync<List<AlqFleteDto>>($"/api/alquileres/fletes?soloActivos={soloActivos.ToString().ToLowerInvariant()}");
+
+    public async Task<AlqFleteDto?> CreateAlqFleteAsync(CreateAlqFleteRequest request)
+        => await PostAsync<AlqFleteDto>("/api/alquileres/fletes", request);
+
+    public async Task<AlqFleteDto?> UpdateAlqFleteAsync(int id, UpdateAlqFleteRequest request)
+        => await PutAsync<AlqFleteDto>($"/api/alquileres/fletes/{id}", request);
+
+    public async Task<bool> DeleteAlqFleteAsync(int id)
+        => await DeleteAsync($"/api/alquileres/fletes/{id}");
+
     // --- Alquileres: Clientes ---
     public async Task<List<AlqClienteDto>?> GetAlqClientesAsync()
         => await GetAsync<List<AlqClienteDto>>("/api/alquileres/clientes");

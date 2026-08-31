@@ -2070,6 +2070,22 @@ BEGIN
 END
 GO
 
+-- 2026-08-31: precios de flete por zona/localidad, para cotizar alquileres rapido.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_Fletes' AND xtype='U')
+BEGIN
+    CREATE TABLE Alq_Fletes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Zona NVARCHAR(120) NOT NULL,
+        Precio DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Notas NVARCHAR(300) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_AlqFletes_Zona UNIQUE (Zona)
+    );
+END
+GO
+
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_Clientes' AND xtype='U')
 BEGIN
     CREATE TABLE Alq_Clientes (

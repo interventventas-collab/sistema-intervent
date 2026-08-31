@@ -1,0 +1,255 @@
+@page "/alquileres/fletes"
+@attribute [Authorize]
+@using System.Globalization
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>
+            🚚 Fletes por zona
+            <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(fletes?.Count ?? 0))</span>
+        </h3>
+    </div>
+    <div class="card-body">
+        <p class="text-muted" style="margin: 0 0 1rem; font-size: 0.85rem;">
+            Cargá acá cuánto cobrás de flete a cada zona. Después, al cotizar con la calculadora,
+            elegís la zona de una lista y el precio se pone solo.
+        </p>
+
+        @if (isLoading)
+        {
+            <p class="text-muted">Cargando…</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Zona o localidad</th>
+                            <th style="width: 150px;">Precio</th>
+                            <th>Aclaración</th>
+                            <th style="width: 110px;">Estado</th>
+                            <th style="width: 140px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in fletes!)
+                        {
+                            var e = Edit(f.Id);
+                            <tr>
+                                <td><input class="form-input" @bind="e.Zona" @bind:event="oninput" /></td>
+                                <td><input class="form-input" inputmode="decimal" @bind="e.PrecioStr" @bind:event="oninput" /></td>
+                                <td><input class="form-input" @bind="e.Notas" @bind:event="oninput" placeholder="ej: ida y vuelta" /></td>
+                                <td>
+                                    <button class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.78rem;"
+                                            @onclick="() => ToggleActivo(f, e)">
+                                        @(e.IsActive ? "Activo" : "Inactivo")
+                                    </button>
+                                </td>
+                                <td class="actions-cell">
+                                    @if (Cambio(f, e))
+                                    {
+                                        <button class="btn btn-primary" style="padding: 0.25rem 0.6rem; font-size: 0.78rem;"
+                                                @onclick="() => Guardar(f, e)" disabled="@guardando">Guardar</button>
+                                    }
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmarBorrar(f)" title="Borrar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+
+                        <tr>
+                            <td><input class="form-input" @bind="nuevoZona" @bind:event="oninput" placeholder="Zona nueva…" /></td>
+                            <td><input class="form-input" inputmode="decimal" @bind="nuevoPrecioStr" @bind:event="oninput" placeholder="0" /></td>
+                            <td><input class="form-input" @bind="nuevoNotas" @bind:event="oninput" placeholder="Opcional" /></td>
+                            <td></td>
+                            <td class="actions-cell">
+                                <button class="btn btn-primary" style="padding: 0.25rem 0.6rem; font-size: 0.78rem;"
+                                        @onclick="Agregar"
+                                        disabled="@(guardando || string.IsNullOrWhiteSpace(nuevoZona))">Agregar</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (borrando is not null)
+{
+    <div class="modal-overlay" @onclick="() => borrando = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Borrar flete</h4>
+                <button class="btn-close" @onclick="() => borrando = null" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>¿Borrar el flete de <strong>@borrando.Zona</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">
+                    Si es una zona que dejaste de cubrir pero querés conservarla, mejor ponela en "Inactivo".
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => borrando = null">Cancelar</button>
+                <button class="btn btn-danger" @onclick="Borrar">Borrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<AlqFleteDto>? fletes;
+    private bool isLoading = true;
+    private bool guardando;
+    private AlqFleteDto? borrando;
+
+    private string nuevoZona = "";
+    private string nuevoPrecioStr = "";
+    private string nuevoNotas = "";
+
+    // Estado editable de cada fila (se arma al vuelo y se conserva mientras no se recargue).
+    private readonly Dictionary<int, FilaEdit> ediciones = new();
+
+    private class FilaEdit
+    {
+        public string Zona = "";
+        public string PrecioStr = "";
+        public string Notas = "";
+        public bool IsActive = true;
+    }
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        isLoading = true;
+        ediciones.Clear();
+        try { fletes = await Api.GetAlqFletesAsync() ?? new(); }
+        catch { ToastService.Error("No se pudieron cargar los fletes"); fletes = new(); }
+        isLoading = false;
+    }
+
+    private FilaEdit Edit(int id)
+    {
+        if (!ediciones.TryGetValue(id, out var e))
+        {
+            var f = fletes!.First(x => x.Id == id);
+            e = new FilaEdit
+            {
+                Zona = f.Zona,
+                PrecioStr = f.Precio.ToString("0.##", ARS),
+                Notas = f.Notas ?? "",
+                IsActive = f.IsActive
+            };
+            ediciones[id] = e;
+        }
+        return e;
+    }
+
+    private static bool Cambio(AlqFleteDto f, FilaEdit e)
+        => e.Zona.Trim() != f.Zona
+           || (ParseNum(e.PrecioStr) ?? -1m) != f.Precio
+           || e.Notas.Trim() != (f.Notas ?? "");
+
+    private async Task ToggleActivo(AlqFleteDto f, FilaEdit e)
+    {
+        e.IsActive = !e.IsActive;
+        try
+        {
+            var upd = await Api.UpdateAlqFleteAsync(f.Id, new UpdateAlqFleteRequest { IsActive = e.IsActive });
+            if (upd is null) { ToastService.Error("No se pudo cambiar el estado"); e.IsActive = !e.IsActive; return; }
+            f.IsActive = e.IsActive;
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); e.IsActive = !e.IsActive; }
+    }
+
+    private async Task Guardar(AlqFleteDto f, FilaEdit e)
+    {
+        var precio = ParseNum(e.PrecioStr);
+        if (string.IsNullOrWhiteSpace(e.Zona)) { ToastService.Error("La zona no puede quedar vacía"); return; }
+        if (precio is null) { ToastService.Error("El precio no se entiende. Poné solo números."); return; }
+
+        guardando = true;
+        try
+        {
+            var upd = await Api.UpdateAlqFleteAsync(f.Id, new UpdateAlqFleteRequest
+            {
+                Zona = e.Zona.Trim(),
+                Precio = precio.Value,
+                Notas = e.Notas
+            });
+            if (upd is null) { ToastService.Error("No se pudo guardar"); return; }
+            ToastService.Success("Flete guardado");
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task Agregar()
+    {
+        var precio = ParseNum(nuevoPrecioStr) ?? 0m;
+        if (string.IsNullOrWhiteSpace(nuevoZona)) return;
+        guardando = true;
+        try
+        {
+            var creado = await Api.CreateAlqFleteAsync(new CreateAlqFleteRequest
+            {
+                Zona = nuevoZona.Trim(),
+                Precio = precio,
+                Notas = nuevoNotas
+            });
+            if (creado is null) { ToastService.Error("No se pudo agregar (¿ya existe esa zona?)"); return; }
+            nuevoZona = ""; nuevoPrecioStr = ""; nuevoNotas = "";
+            ToastService.Success("Flete agregado");
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private void ConfirmarBorrar(AlqFleteDto f) => borrando = f;
+
+    private async Task Borrar()
+    {
+        if (borrando is null) return;
+        try
+        {
+            var ok = await Api.DeleteAlqFleteAsync(borrando.Id);
+            if (ok) { ToastService.Success("Flete borrado"); await Load(); }
+            else ToastService.Error("No se pudo borrar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { borrando = null; }
+    }
+
+    private static readonly CultureInfo ARS = CultureInfo.GetCultureInfo("es-AR");
+
+    /// <summary>
+    /// Plata escrita como la escribe una persona: "35000", "35.000", "35000,50", "$35.000".
+    /// La coma SIEMPRE es el decimal (formato argentino). El punto es separador de miles
+    /// cuando lo siguen exactamente 3 digitos ("35.000" = treinta y cinco mil), si no es decimal.
+    /// </summary>
+    public static decimal? ParseNum(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Trim().Replace(" ", "").Replace("$", "");
+        if (s.Length == 0) return null;
+
+        if (s.Contains(','))
+        {
+            // Hay coma: es el decimal. Todo punto que haya es separador de miles.
+            s = s.Replace(".", "").Replace(",", ".");
+        }
+        else if (s.Contains('.'))
+        {
+            var partes = s.Split('.');
+            var ultima = partes[^1];
+            bool milesFinal = partes.Length > 1 && ultima.Length == 3 && ultima.All(char.IsDigit);
+            if (milesFinal) s = s.Replace(".", "");
+        }
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var n) ? n : (decimal?)null;
+    }
+}

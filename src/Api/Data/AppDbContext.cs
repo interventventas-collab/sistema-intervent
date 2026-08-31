@@ -91,6 +91,8 @@ public class AppDbContext : DbContext
     public DbSet<AlqReservaComprobante> AlqReservaComprobantes => Set<AlqReservaComprobante>();
     public DbSet<AlqQrEscaneo> AlqQrEscaneos => Set<AlqQrEscaneo>();
     public DbSet<AlqCobranzaPendiente> AlqCobranzasPendientes => Set<AlqCobranzaPendiente>();
+    // 2026-08-31: precios de flete por zona, para cotizar alquileres desde la calculadora.
+    public DbSet<AlqFlete> AlqFletes => Set<AlqFlete>();
     // Modulo Nominas (independiente)
     public DbSet<NomEmpleado> NomEmpleados => Set<NomEmpleado>();
     public DbSet<NomLiquidacion> NomLiquidaciones => Set<NomLiquidacion>();
