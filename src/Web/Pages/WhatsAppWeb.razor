@@ -9,7 +9,15 @@
 
 <style>
     .ww-outer { background: #f0f2f5; min-height: calc(100vh - 60px); padding: 0; }
-    .ww-root { display: grid; grid-template-columns: 380px 1fr; gap: 0; height: calc(100vh - 60px); background: white;
+    .ww-topbar { display: flex; align-items: center; gap: 0.8rem; padding: 0.55rem 1rem;
+                  background: white; border-bottom: 1px solid #e5e7eb; }
+    .ww-linea-badge { display: flex; align-items: center; gap: 0.4rem; background: #fef3c7; color: #78350f;
+                       border-radius: 999px; padding: 0.3rem 0.75rem; font-size: 0.85rem; font-weight: 600; }
+    .ww-volver { margin-left: auto; font-size: 0.82rem; color: #2563eb; text-decoration: none; }
+    .ww-volver:hover { text-decoration: underline; }
+    .ww-aviso { background: #fffbeb; border-bottom: 1px solid #fde68a; color: #78350f;
+                 padding: 0.5rem 1rem; font-size: 0.82rem; line-height: 1.45; }
+    .ww-root { display: grid; grid-template-columns: 380px 1fr; gap: 0; height: calc(100vh - 150px); background: white;
                 box-shadow: 0 0 0 1px #e5e7eb; }
     .ww-sidebar { display: flex; flex-direction: column; border-right: 1px solid #e5e7eb; background: white; overflow: hidden; }
     .ww-side-header { padding: 0.9rem 1rem; border-bottom: 1px solid #e5e7eb; background: #f6f6f6; }
@@ -69,6 +77,19 @@
 </style>
 
 <div class="ww-outer">
+    @* 2026-08-31: barra de arriba que hace de puente con la pantalla oficial. Se entra acá desde
+       el selector de líneas de /whatsapp, así que tiene que quedar claro dónde estás parado y
+       cómo volver. El cartel ámbar dice qué NO tiene esta línea: es preferible decirlo de frente
+       a que alguien pierda diez minutos buscando el buscador global o el modo Venta. *@
+    <div class="ww-topbar">
+        <div class="ww-linea-badge">🔳 <span>Línea por QR</span></div>
+        <a href="/whatsapp" class="ww-volver">← Volver a las líneas oficiales</a>
+    </div>
+    <div class="ww-aviso">
+        <strong>Estás en la línea por QR.</strong>
+        Es un teléfono escaneado, no la línea oficial. Acá no hay buscador global, estados,
+        ficha del cliente ni modo Venta — eso vive en las líneas oficiales.
+    </div>
     <div class="ww-root">
         <div class="ww-sidebar">
             <div class="ww-side-header">

@@ -75,6 +75,22 @@
                 {
                     <div class="wa-linea-hint">💡 Cuando conectes el 2° número de WhatsApp va a aparecer acá para elegir con cuál trabajar. Ya está todo listo para ese momento.</div>
                 }
+                @* 2026-08-31: la LÍNEA POR QR (un celular escaneado, no la API oficial de Meta).
+                   Va al final y SEPARADA a propósito. Metida entre las oficiales, en dos semanas
+                   nadie se acuerda de que es distinta — y ahí aparece el cruce que hay que evitar:
+                   creer que estás escribiendo por una línea cuando estás en la otra.
+                   Va en ámbar y con el ícono del QR para que se note sin leer.
+                   Es una PANTALLA aparte (/whatsapp-web) porque atrás tiene otro motor: sus
+                   mensajes no están en nuestra base, los lee un robot de la pantalla de WhatsApp. *@
+                <div style="border-top:1px solid #eef1f5; margin-top:0.25rem; padding-top:0.35rem;">
+                    <div style="font-size:0.72rem; color:#94a3b8; padding:0.15rem 0.7rem 0.25rem;">Otra forma de conectarse</div>
+                    <button class="wa-linea-opt" style="background:#fef3c7; color:#78350f;"
+                            @onclick="@(() => Nav.NavigateTo("/whatsapp-web"))"
+                            title="Un teléfono común escaneado por QR. Es otra pantalla: no tiene buscador global, estados, ficha del cliente ni modo Venta.">
+                        <span>🔳 @(waQrHayCuenta ? "Línea por QR" : "Conectar un teléfono")</span>
+                    </button>
+                </div>
+
                 @* 2026-08-15: colores (claro/oscuro por línea) y letra de la pantalla *@
                 <button class="wa-linea-opt" style="border-top:1px solid #eef1f5; border-radius:0 0 10px 10px; margin-top:0.25rem;"
                         @onclick="AbrirApariencia" title="Elegir si cada línea se ve clara u oscura, y con qué letra">
@@ -6252,6 +6268,10 @@
     private bool esDeposito;
     private string? firmante;   // empleado elegido (se recuerda en localStorage)
 
+    /// <summary>2026-08-31: hay un teléfono escaneado en la línea por QR. Solo cambia el texto
+    /// de esa entrada del selector; esta pantalla no usa el robot para nada más.</summary>
+    private bool waQrHayCuenta;
+
     protected override async Task OnInitializedAsync()
     {
         // ¿El que entró es un usuario SOLO de Depósito? (mismo criterio que el Dashboard)
@@ -6261,6 +6281,10 @@
         esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
         // 2026-08-28: qué chats ve Depósito. Se arma desde el ⋮ de cada chat, no está en el código.
         await Web.Services.DepositoChats.CargarAsync(Api);
+        // 2026-08-31: ¿hay un teléfono escaneado por QR? Solo para que el selector de líneas diga
+        // "Línea por QR" o "Conectar un teléfono". Si el robot no contesta, queda en false y la
+        // entrada invita a conectar: nunca rompe esta pantalla, que no depende de él para nada.
+        try { waQrHayCuenta = (await Api.GetWhatsAppStatusAsync())?.HayCuenta == true; } catch { }
         // 2026-08-05: NO recordar el último firmante. Cada vez que se abre la pantalla arranca
         // en blanco y el que responde tiene que pinchar SÍ o SÍ su nombre antes de enviar (así
         // nadie manda firmando con el nombre de otro por error). Limpiamos el valor viejo por si
