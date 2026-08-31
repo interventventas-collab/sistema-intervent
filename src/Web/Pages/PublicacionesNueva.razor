@@ -86,6 +86,7 @@
     .p2-receta .comp .dato { font-size: .7rem; color: #6b7280; }
     .p2-receta .comp .mal { color: #b91c1c; font-weight: 700; font-size: .7rem; }
     .p2-receta .comp .ojo { color: #b45309; font-weight: 600; font-size: .7rem; }
+    .p2-receta .comp .ok-verde { color: #15803d; font-weight: 700; font-size: .7rem; }
     .p2-receta .comp input { width: 78px; text-align: right; font-size: .78rem; font-weight: 700;
                              border: 1px solid #cbd5e1; border-radius: .3rem; padding: .15rem .3rem; }
     .p2-receta .btn { font-size: .72rem; font-weight: 700; padding: .28rem .6rem; border-radius: .35rem;
@@ -543,6 +544,11 @@
                                          title="Ver y cambiar las fotos de esta publicación"
                                          @onclick="() => ToggleFotos(it.MeliItemId)" />
                                 }
+                                @* 2026-08-31 · promociones de ESTA publicación: en qué campañas puede
+                                   entrar y qué margen le queda con cada precio. *@
+                                <button class="p2-balanza @(promosAbiertas == it.MeliItemId ? "on" : "")"
+                                        title="Promociones: en qué campañas puede entrar y qué te queda con cada una"
+                                        @onclick="() => TogglePromosItem(it.MeliItemId)" @onclick:stopPropagation="true">🏷️</button>
                                 <button class="p2-balanza @(medidasAbiertas == it.MeliItemId ? "on" : "")"
                                         title="Peso y medidas del paquete — de acá sale el envío"
                                         @onclick="() => ToggleMedidas(it.MeliItemId)">⚖</button>
@@ -740,6 +746,105 @@
                             }
                         </span>
                     </div>
+
+                    @* 2026-08-31 · PROMOCIONES de esta publicación. Lo que no se ve en ningún lado:
+                       MercadoLibre dice hasta dónde podés bajar, el sistema sabe tu costo. *@
+                    @if (promosAbiertas == it.MeliItemId)
+                    {
+                        <div class="p2-receta" @onclick:stopPropagation="true">
+                            <h4>🏷️ Promociones de esta publicación</h4>
+
+                            @if (promosItemCargando)
+                            {
+                                <div class="nota">Preguntándole a MercadoLibre…</div>
+                            }
+                            else if (promosItem is null)
+                            {
+                                <div class="nota" style="color:#b91c1c;">No se pudieron leer las promociones.</div>
+                            }
+                            else
+                            {
+                                @if (!string.IsNullOrEmpty(promosItem.Aviso))
+                                {
+                                    <div class="nota" style="color:#b45309; font-weight:600;">@promosItem.Aviso</div>
+                                }
+                                @if (promosItem.Opciones.Count == 0)
+                                {
+                                    <div class="nota">MercadoLibre no le ofrece ninguna promoción a esta publicación hoy.</div>
+                                }
+                                else
+                                {
+                                    <div class="nota" style="margin-bottom:.4rem;">
+                                        Precio de lista <b>@Plata(promosItem.PrecioLista)</b>
+                                        @if (promosItem.Costo is > 0)
+                                        {
+                                            <span> · costo <b>@Plata(promosItem.Costo.Value)</b></span>
+                                        }
+                                        @if (promosItem.Opciones.FirstOrDefault(o => o.PrecioParaElObjetivo is > 0) is { } refe)
+                                        {
+                                            <span> · para que te quede el @((promosItem.ObjetivoPct ?? 50m).ToString("0", ar))% no deberías bajar de <b>@Plata(refe.PrecioParaElObjetivo!.Value)</b></span>
+                                        }
+                                    </div>
+
+                                    @foreach (var o in promosItem.Opciones)
+                                    {
+                                        <div class="comp" style="@(o.Estado == "started" ? "border-color:#fdba74; background:#fff7ed;" : "")">
+                                            <span class="nom">@o.Nombre</span>
+                                            @if (o.Estado == "started")
+                                            {
+                                                <span class="ojo">● ESTÁ ADENTRO</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="dato">puede entrar</span>
+                                            }
+                                            @if (o.Hasta.HasValue)
+                                            {
+                                                <span class="dato">· hasta @o.Hasta.Value.ToString("dd/MM")</span>
+                                            }
+                                            @if (o.PoneMeliPct is > 0)
+                                            {
+                                                <span class="dato">· MercadoLibre pone @o.PoneMeliPct.Value.ToString("0.#", ar)%</span>
+                                            }
+
+                                            <span style="flex:1;"></span>
+
+                                            @if (o.Estado == "started" && o.PrecioActual is > 0)
+                                            {
+                                                <span class="dato">se vende a <b>@Plata(o.PrecioActual.Value)</b></span>
+                                                @if (o.MargenSugeridoPct.HasValue || o.MargenMaximoPct.HasValue)
+                                                {
+                                                    <span class="@MargenClase(o.MargenSugeridoPct ?? o.MargenMaximoPct)">te queda @((o.MargenSugeridoPct ?? o.MargenMaximoPct)!.Value.ToString("0.#", ar))%</span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                @if (o.PrecioSugerido is > 0)
+                                                {
+                                                    <span class="dato">sugerido <b>@Plata(o.PrecioSugerido.Value)</b></span>
+                                                    <span class="@MargenClase(o.MargenSugeridoPct)">
+                                                        @(o.MargenSugeridoPct.HasValue ? $"te queda {o.MargenSugeridoPct.Value.ToString("0.#", ar)}%" : "no se puede calcular")
+                                                    </span>
+                                                }
+                                                @if (o.PrecioMinimo is > 0 && o.MargenMinimoPct.HasValue)
+                                                {
+                                                    <span class="dato">· si bajás al máximo (@Plata(o.PrecioMinimo.Value)) te queda
+                                                        <span class="@MargenClase(o.MargenMinimoPct)">@o.MargenMinimoPct.Value.ToString("0.#", ar)%</span>
+                                                    </span>
+                                                }
+                                            }
+                                        </div>
+                                    }
+
+                                    <div class="nota">
+                                        ⚠ Ojo: si le cambiás el precio a una publicación que está adentro de una campaña,
+                                        <b>se le cae el descuento</b>. Todavía no se puede entrar ni salir de una campaña
+                                        desde acá — por ahora eso se hace en MercadoLibre.
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
 
                     @* 2026-08-29 · RECETA editable. Hasta hoy la pantalla nueva mostraba de qué se
                        compone la publicación pero no dejaba tocarlo, y había que ir a la vieja. *@
@@ -2056,6 +2161,39 @@
     // todo el catálogo), no una por publicación.
 
     private bool promosCargando;
+
+    // Panel de promociones de UNA publicación (el botón 🏷️ de la fila).
+    private string? promosAbiertas;
+    private bool promosItemCargando;
+    private ApiClient.PubV2PromosDeItem? promosItem;
+
+    private async Task TogglePromosItem(string mla)
+    {
+        if (promosAbiertas == mla) { promosAbiertas = null; promosItem = null; return; }
+
+        promosAbiertas = mla;
+        promosItem = null;
+        recetaAbierta = null;   // los paneles se excluyen
+        fotosAbiertas = null;
+        medidasAbiertas = null;
+
+        promosItemCargando = true;
+        StateHasChanged();
+        try { promosItem = await Api.GetPromocionesDeItemAsync(mla); }
+        catch (Exception ex) { ToastService.Error("No se pudieron leer las promociones: " + ex.Message); }
+        finally { promosItemCargando = false; }
+    }
+
+    /// <summary>Verde si llega al objetivo, ámbar si se acerca, rojo si no da. Mismo criterio que
+    /// la columna "te queda", para no tener dos semáforos distintos en la misma pantalla.</summary>
+    private string MargenClase(decimal? margen)
+    {
+        if (margen is null) return "dato";
+        var obj = promosItem?.ObjetivoPct ?? 50m;
+        if (margen.Value >= obj) return "ok-verde";
+        return margen.Value >= obj * 0.6m ? "ojo" : "mal";
+    }
+
 
     private async Task TraerPromociones()
     {

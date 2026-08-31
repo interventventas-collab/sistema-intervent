@@ -147,6 +147,156 @@ public class MeliPromocionesService
         return new Resultado(cuentas.Count, campanias, aMarcar.Count, limpiadas, detalle);
     }
 
+    // ─── 2026-08-31 · las promociones de UNA publicación, con el margen de cada opción ───
+
+    public record OpcionDto(
+        string? Id, string Tipo, string Nombre, string Estado,
+        DateTime? Desde, DateTime? Hasta,
+        decimal? PrecioSugerido, decimal? PrecioMinimo, decimal? PrecioMaximo, decimal? PrecioActual,
+        decimal? MargenSugeridoPct, decimal? MargenMinimoPct, decimal? MargenMaximoPct,
+        decimal? PrecioParaElObjetivo,
+        decimal? PoneMeliPct, decimal? PonesVosPct);
+
+    public record DeItemDto(string MeliItemId, decimal PrecioLista, decimal? Costo,
+        decimal? ObjetivoPct, List<OpcionDto> Opciones, string? Aviso);
+
+    /// <summary>Qué campañas tiene disponibles esta publicación y, en cada una, QUÉ TE QUEDA.
+    ///
+    /// Esto es lo que no se ve en ningún lado, ni en MercadoLibre: MeLi te dice hasta dónde podés
+    /// bajar, pero no sabe tu costo. Acá se juntan las dos cosas, así entrar a una campaña deja de
+    /// ser a ciegas. También se calcula al revés: **a qué precio deberías entrar para que te siga
+    /// quedando tu objetivo**.
+    ///
+    /// Sólo LEE. Es una llamada a MeLi, así que va cuando el usuario abre el panel de una fila.</summary>
+    public async Task<DeItemDto?> LeerDeItemAsync(string meliItemId, CancellationToken ct = default)
+    {
+        var item = await _db.MeliItems.Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+        if (item?.MeliAccount is null) return null;
+
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (string.IsNullOrWhiteSpace(token))
+            return new DeItemDto(meliItemId, item.Price, null, null, new(), "Sin token de MercadoLibre. Reconectá la cuenta.");
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var json = await LeerAsync(http,
+            $"https://api.mercadolibre.com/seller-promotions/items/{meliItemId}?app_version=v2", ct);
+        if (json is null)
+            return new DeItemDto(meliItemId, item.Price, null, null, new(), "MercadoLibre no contestó. Probá de nuevo.");
+
+        // El costo y el objetivo salen del sistema: son la mitad que MeLi no tiene.
+        var costo = await CostoDeAsync(meliItemId, ct);
+        var objetivo = await _db.MeliItemSyncConfigs.AsNoTracking()
+            .Where(c => c.MeliItemId == meliItemId).Select(c => c.GananciaObjetivoPct).FirstOrDefaultAsync(ct);
+
+        var opciones = new List<OpcionDto>();
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var p in doc.RootElement.EnumerateArray())
+            {
+                var tipo = Txt(p, "type") ?? "";
+                var nombre = Txt(p, "name");
+                if (string.IsNullOrWhiteSpace(nombre)) nombre = LindoTipo(tipo);
+
+                var sugerido = Dec(p, "suggested_discounted_price");
+                var minimo = Dec(p, "min_discounted_price");
+                var maximo = Dec(p, "max_discounted_price");
+                var actual = Dec(p, "price");
+                if (actual is <= 0) actual = null;
+
+                opciones.Add(new OpcionDto(
+                    Txt(p, "id"), tipo, nombre!, Txt(p, "status") ?? "",
+                    Fecha(p, "start_date"), Fecha(p, "finish_date"),
+                    sugerido, minimo, maximo, actual,
+                    Margen(sugerido, item, costo), Margen(minimo, item, costo), Margen(maximo, item, costo),
+                    PrecioParaObjetivo(item, costo, objetivo),
+                    Dec(p, "meli_percentage"), Dec(p, "seller_percentage")));
+            }
+        }
+
+        // Las que ya están en marcha primero: son las que están afectando la plata hoy.
+        opciones = opciones
+            .OrderByDescending(o => o.Estado == "started")
+            .ThenBy(o => o.Nombre)
+            .ToList();
+
+        return new DeItemDto(meliItemId, item.Price, costo, objetivo, opciones,
+            costo is null or <= 0 ? "Esta publicación no tiene costo cargado, así que no se puede saber qué te deja cada promoción." : null);
+    }
+
+    /// <summary>Qué te queda, sobre el costo, si la publicación se vendiera a ese precio.
+    /// La comisión se calcula con el porcentaje y el cargo fijo que MeLi ya nos dijo; el envío se
+    /// suma entero si lo pagás vos (no cambia con el precio: la caja pesa lo mismo).</summary>
+    private static decimal? Margen(decimal? precio, Models.MeliItem item, decimal? costo)
+    {
+        if (precio is null or <= 0 || costo is null or <= 0) return null;
+
+        decimal comision;
+        if (item.SaleFeePercentageFee is > 0)
+            comision = precio.Value * (item.SaleFeePercentageFee.Value / 100m) + (item.SaleFeeFixedFee ?? 0m);
+        else if (item.SaleFeeAmount is > 0 && item.Price > 0)
+            comision = item.SaleFeeAmount.Value / item.Price * precio.Value;   // sin desglose, se escala
+        else
+            return null;
+
+        var neto = (precio.Value - comision - (item.SaleFeeShippingCost ?? 0m)) / IVA_;
+        return Math.Round((neto - costo.Value) / costo.Value * 100m, 1);
+    }
+
+    /// <summary>La cuenta al revés: a qué precio habría que entrar a la campaña para que te siga
+    /// quedando tu objetivo. Es el número que hace falta para decidir sin probar a mano.</summary>
+    private static decimal? PrecioParaObjetivo(Models.MeliItem item, decimal? costo, decimal? objetivoPct)
+    {
+        if (costo is null or <= 0) return null;
+        var obj = objetivoPct is > 0 ? objetivoPct.Value : 50m;
+        if (item.SaleFeePercentageFee is not > 0) return null;
+
+        // neto = (p − p·pct − fijo − envío) / IVA  y  neto = costo · (1 + obj/100)
+        var netoBuscado = costo.Value * (1m + obj / 100m);
+        var pct = item.SaleFeePercentageFee.Value / 100m;
+        var resto = (item.SaleFeeFixedFee ?? 0m) + (item.SaleFeeShippingCost ?? 0m);
+        var precio = (netoBuscado * IVA_ + resto) / (1m - pct);
+        return precio > 0 ? Math.Round(precio, 2) : null;
+    }
+
+    private const decimal IVA_ = 1.21m;
+
+    private async Task<decimal?> CostoDeAsync(string meliItemId, CancellationToken ct)
+    {
+        var porReceta = await (
+            from c in _db.MeliItemComponentes.AsNoTracking()
+            join p in _db.CafeProductos.AsNoTracking() on c.CafeProductoId equals p.Id
+            where c.MeliItemId == meliItemId
+            select new { p.Costo, c.Cantidad, p.Sku }
+        ).ToListAsync(ct);
+
+        if (porReceta.Count > 0)
+            return porReceta.GroupBy(x => x.Sku).Select(g => g.First()).Sum(x => x.Costo * x.Cantidad);
+
+        return await (
+            from i in _db.MeliItems.AsNoTracking()
+            join p in _db.CafeProductos.AsNoTracking() on i.CafeProductoId equals p.Id
+            where i.MeliItemId == meliItemId && i.VariationId == null
+            select (decimal?)p.Costo
+        ).FirstOrDefaultAsync(ct);
+    }
+
+    private static string LindoTipo(string tipo) => tipo switch
+    {
+        "PRICE_DISCOUNT" => "Descuento tuyo",
+        "DEAL" => "Campaña de MercadoLibre",
+        "SMART" => "Promoción inteligente",
+        "LIGHTNING" => "Oferta relámpago",
+        "PRICE_MATCHING" => "Ganarle a la competencia",
+        "PRE_NEGOTIATED" => "Acordada con MercadoLibre",
+        "UNHEALTHY_STOCK" => "Stock que no rota",
+        "" => "Promoción",
+        _ => tipo
+    };
+
     /// <summary>Trae las publicaciones que están participando de verdad (status=started) de una
     /// campaña, paginando. Las que están "candidate" NO cuentan: son las que PODRÍAN entrar.</summary>
     private async Task<int> LeerItemsDeCampaniaAsync(HttpClient http, string promoId, string tipo,

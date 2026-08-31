@@ -5420,6 +5420,19 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    public record PubV2PromoOpcion(
+        string? Id, string Tipo, string Nombre, string Estado,
+        DateTime? Desde, DateTime? Hasta,
+        decimal? PrecioSugerido, decimal? PrecioMinimo, decimal? PrecioMaximo, decimal? PrecioActual,
+        decimal? MargenSugeridoPct, decimal? MargenMinimoPct, decimal? MargenMaximoPct,
+        decimal? PrecioParaElObjetivo, decimal? PoneMeliPct, decimal? PonesVosPct);
+
+    public record PubV2PromosDeItem(string MeliItemId, decimal PrecioLista, decimal? Costo,
+        decimal? ObjetivoPct, List<PubV2PromoOpcion> Opciones, string? Aviso);
+
+    public async Task<PubV2PromosDeItem?> GetPromocionesDeItemAsync(string mla)
+        => await GetAsync<PubV2PromosDeItem>($"/api/meli/v2/publicaciones/{mla}/promociones");
+
     public async Task<Dictionary<string, int>?> GetResumenV2Async()
         => await GetAsync<Dictionary<string, int>>("/api/meli/v2/resumen");
 

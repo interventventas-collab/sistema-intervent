@@ -253,6 +253,16 @@ public class MeliPublicacionesV2Controller : ControllerBase
     public async Task<IActionResult> RefrescarPromociones([FromServices] MeliPromocionesService svc)
         => Ok(await svc.RefrescarAsync(HttpContext.RequestAborted));
 
+    /// <summary>SEGURO: qué campañas tiene disponibles esta publicación y, en cada una, QUÉ TE QUEDA.
+    /// Junta lo que sabe MeLi (hasta dónde podés bajar) con lo que sabe el sistema (tu costo).</summary>
+    [HttpGet("publicaciones/{mla}/promociones")]
+    public async Task<IActionResult> PromocionesDeItem(string mla, [FromServices] MeliPromocionesService svc)
+    {
+        var r = await svc.LeerDeItemAsync(mla, HttpContext.RequestAborted);
+        if (r is null) return NotFound(new { error = "Publicación no encontrada o sin cuenta MeLi" });
+        return Ok(r);
+    }
+
     /// <summary>Contadores para los chips de filtro.</summary>
     [HttpGet("resumen")]
     public async Task<IActionResult> GetResumen()
