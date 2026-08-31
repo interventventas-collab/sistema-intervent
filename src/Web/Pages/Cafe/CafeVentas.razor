@@ -6044,6 +6044,8 @@
         await TryHandleConvertirPedidoWAAsync();
         // 2026-06-20: Nueva venta desde chat /whatsapp Twilio con notas + clienteId precargados
         await TryHandleNuevaVentaTwilioAsync();
+        // 2026-08-31: ?duplicarVentaId=X — duplicar un comprobante desde la ficha del chat
+        await TryHandleDuplicarVentaAsync();
         // Cargar count de pedidos pendientes para mostrar en el botón
         await RefrescarPedidoWACount();
     }
@@ -6142,6 +6144,22 @@
         subventanaWAMin = !subventanaWAMin;
         if (subventanaWAMin) { pedidoWAHeight = 40; }
         else { pedidoWAHeight = 280; }
+    }
+
+    /// <summary>2026-08-31: si la URL trae ?duplicarVentaId=X, abre Nueva Venta ya cargada con ese
+    /// comprobante. Lo usa el botón "📄 Duplicar" del visor de facturas del chat de WhatsApp.
+    /// La venta nueva se crea recién cuando se aprieta "Emitir comprobante", como siempre.</summary>
+    private int? lastDuplicarQuery = null;
+    private async Task TryHandleDuplicarVentaAsync()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var idStr = query["duplicarVentaId"];
+        if (string.IsNullOrEmpty(idStr)) return;
+        if (!int.TryParse(idStr, out var ventaId)) return;
+        if (lastDuplicarQuery == ventaId) return;   // no repetirlo en cada render
+        lastDuplicarQuery = ventaId;
+        await DuplicarComprobantePorIdAsync(ventaId);
     }
 
     /// <summary>Si la URL trae ?pedidoId=X, abre el modal de Nueva Venta y muestra el pedido en la sub-ventana flotante.</summary>
@@ -7694,11 +7712,15 @@
     /// <summary>Pide al backend un payload con los datos del comprobante a duplicar y abre
     /// el modal de Nueva Venta pre-cargado con esos datos. La venta NUEVA se crea recién
     /// cuando el usuario aprieta "Emitir comprobante" en el modal (descuenta stock + ARCA si corresponde).</summary>
-    private async Task DuplicarComprobante(CafeVentaDto v)
+    private async Task DuplicarComprobante(CafeVentaDto v) => await DuplicarComprobantePorIdAsync(v.Id);
+
+    /// <summary>2026-08-31: el duplicado por ID, para poder dispararlo también desde el chat de
+    /// WhatsApp con ?duplicarVentaId=X (botón "Duplicar" del visor de comprobantes de la ficha).</summary>
+    private async Task DuplicarComprobantePorIdAsync(int ventaId)
     {
         try
         {
-            var payload = await Api.DuplicarCafeVentaAsync(v.Id);
+            var payload = await Api.DuplicarCafeVentaAsync(ventaId);
             if (payload is null)
             {
                 ToastService.Error("No se pudo obtener los datos para duplicar.");

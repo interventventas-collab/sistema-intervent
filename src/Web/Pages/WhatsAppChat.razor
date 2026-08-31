@@ -560,6 +560,13 @@
                     </div>
                     <span class="wa-avatar-rol-label">@RolLabel(SelectedConv()?.Rol)</span>
                 </button>
+                @* 2026-08-31: el 👁️ estaba enterrado en el ⋮ y es de lo que más se usa. Va acá,
+                   pegado al circulito, a un toque. Solo si el chat tiene cliente vinculado. *@
+                @if (SelectedConv()?.ClienteId is int)
+                {
+                    <button class="wa-hdr-ojo @(mostrarFichaCliente ? "on" : "")" @onclick="ToggleFichaCliente"
+                            title="Ficha del cliente: saldo, últimas facturas y ubicación">👁️</button>
+                }
                 <div style="flex:1; min-width:0;">
                     @* 2026-08-27: RENGLÓN 1 del encabezado. El nombre tiene un ancho FIJO y se corta con
                        puntitos: así los iconitos caen SIEMPRE en el mismo lugar, no importa si el contacto
@@ -682,7 +689,8 @@
                                     </button>
                                     @if (SelectedConv()?.ClienteId is int _cidm)
                                     {
-                                        <button class="wa-hdr-menu-op" @onclick="@(() => { showMasMenu = false; ToggleFichaCliente(); })">👁️ Ver ficha del cliente</button>
+                                        @* 2026-08-31: "Ver ficha del cliente" se fue de acá: ahora es el 👁️
+                                           fijo al lado del avatar. Estaba muy escondido para lo que se usa. *@
                                         <a class="wa-hdr-menu-op" href="/cafe/clientes?edit=@_cidm" target="_blank" @onclick="@(() => showMasMenu = false)">📂 Abrir ficha completa ↗</a>
                                     }
                                     <button class="wa-hdr-menu-op" @onclick="@(() => { showMasMenu = false; AbrirCorregirNumero(); })">✏️ Corregir el número</button>
@@ -874,6 +882,12 @@
                                                 title="Mandarle esta factura al cliente por este mismo chat de WhatsApp">
                                             @(enviandoFacturaId == fac.Id ? "⏳ Mandando…" : "🟢 Mandar")
                                         </button>
+                                        @* 2026-08-31: repetir este comprobante. Abre la carga de venta de
+                                           siempre en otra pestaña, ya cargada con estos productos. No crea
+                                           nada hasta que se aprieta "Emitir comprobante" allá. *@
+                                        <button type="button" class="wa-ficha-visor-btn"
+                                                @onclick="() => DuplicarComprobanteEnPestania(fac)"
+                                                title="Repetir esta venta: abre la carga de venta en otra pestaña con todo cargado">📄 Duplicar</button>
                                         <button type="button" class="wa-ficha-visor-x" @onclick="CerrarFactura" title="Cerrar la factura">×</button>
                                     </div>
                                     <iframe class="wa-ficha-visor-frame" src="/api/cafe/ventas/@fac.Id/pdf?inline=true#toolbar=0&navpanes=0&view=FitH"
@@ -3472,6 +3486,11 @@
     .wa-saldo-cli { display: block; width: 100%; text-align: left; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.5rem 0.6rem; margin-bottom: 0.3rem; font-size: 0.85rem; cursor: pointer; }
     .wa-saldo-cli:hover:not(:disabled) { background: #25d366; color: #fff; border-color: #25d366; }
     .wa-saldo-cli.destacado { background: #e9f5ff; border-color: #25d366; }
+    .wa-hdr-ojo { flex-shrink: 0; background: none; border: 1px solid transparent; border-radius: 8px;
+        font-size: 1.15rem; line-height: 1; padding: 0.25rem 0.35rem; cursor: pointer; margin-right: 0.15rem; }
+    .wa-hdr-ojo:hover { background: #f0fff6; border-color: #25d366; }
+    .wa-hdr-ojo.on { background: #dcfce7; border-color: #25d366; }
+
     .wa-cbu-btn { font-size: 1.2rem; }
     .wa-cbu-solo-alias { margin-left: 1rem; width: calc(100% - 1rem); background: #fbfbfd; font-size: 0.8rem; color: #6b7280; }
     .wa-saldo-cli:disabled { opacity: 0.6; cursor: wait; }
@@ -5905,6 +5924,17 @@
     // 2026-08-20: factura que estás mirando en el visor grande. Antes esto era "previewFacturaId"
     // y se prendía SOLO con el mouse por encima: la vista cambiaba sola y se apagaba al salir de
     // la lista. Ahora se toca la factura y queda abierta hasta que toques otra o la cierres.
+    /// <summary>2026-08-31: abre la carga de venta tradicional en otra pestaña, precargada con este
+    /// comprobante (?duplicarVentaId=). Él prefirió pestaña aparte antes que el modo venta al lado.</summary>
+    async Task DuplicarComprobanteEnPestania(ApiClient.FichaChatVentaDto fac)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("open", $"/cafe/ventas?duplicarVentaId={fac.Id}", "_blank");
+        }
+        catch (Exception ex) { Toast.Error("No pude abrir la venta: " + ex.Message); }
+    }
+
     int? facturaAbierta = null;
     int? enviandoFacturaId = null;   // mientras sale el WhatsApp con esa factura
 
