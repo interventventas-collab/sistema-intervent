@@ -217,6 +217,8 @@ builder.Services.AddHostedService<MisAlertasBackgroundService>();
 builder.Services.AddHostedService<AvisoVentanaBackgroundService>();
 // 2026-07-22: resumen diario por Telegram de lo que debe cada cliente (cuenta corriente), 08:00 ART.
 builder.Services.AddScoped<CafeSaldosService>();
+// 2026-08-31: motor de la pantalla "Panorama" (las 4 patas del negocio en una sola vista).
+builder.Services.AddScoped<PanoramaService>();
 builder.Services.AddScoped<DeudoresDiarioNotifier>();
 builder.Services.AddHostedService<DeudoresDiarioService>();
 // 2026-07-23: resumen financiero de la mañana por Telegram (Galicia + Shell + cheques), 08:00 ART.
