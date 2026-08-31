@@ -1850,7 +1850,7 @@
     {
         @* 2026-08-27: este espacio ya no es un panel que se abre y se cierra a mano. Aparece SOLO
            cuando entrás al Modo venta 🛒 o al Modo MercadoLibre 🤝, y se va cuando los cerrás con su ×. *@
-        @if (modoVenta || modoMeli)
+        @if (modoVenta || modoMeli || modoAlquiler)
         {
             @* 2026-08-20: MODO VENTA — el panel de la derecha se transforma en el armado de la
                venta, SIN salir del chat ni abrir otra pestaña. Pedido del dueño: "que el chat se
@@ -2510,6 +2510,120 @@
                     }
                 </aside>
             }
+            @* ══════════ 2026-08-31: MODO ALQUILER — cotizar y MANDAR, nada más.
+               Pedido del dueño: "cargo lo que me pide en un pedo, visualizo el total y mando".
+               Al cliente le llega el detalle, el flete, el total y la fecha. NO crea reserva:
+               eso se sigue haciendo en Alquileres como siempre. ══════════ *@
+            else if (modoAlquiler)
+            {
+                <aside class="wa-ctx wa-alq">
+                    <div class="wa-mv-top">
+                        <span class="wa-mv-tit">🎪 Cotizar alquiler</span>
+                        <button class="wa-ficha-x" @onclick="CerrarModoAlquiler" title="Salir">×</button>
+                    </div>
+
+                    <div class="wa-alq-body">
+                        <input class="wa-mv-inp" placeholder="Buscar silla, mesa…"
+                               value="@alqBusq" @oninput="OnBuscarEquipoAlq" autocomplete="off" />
+
+                        @if (alqCargando)
+                        {
+                            <div class="wa-mv-vacio">⏳ Trayendo los equipos…</div>
+                        }
+                        else if (alqSugs.Count > 0)
+                        {
+                            <div class="wa-alq-sugs">
+                                @foreach (var eq in alqSugs)
+                                {
+                                    <button class="wa-alq-sug" @onclick="() => SumarEquipoAlq(eq)">
+                                        <span class="wa-alq-sug-n">@eq.Nombre</span>
+                                        <span class="wa-alq-sug-p">@Plata(eq.PrecioDiario)</span>
+                                    </button>
+                                }
+                            </div>
+                        }
+
+                        @if (alqLineas.Count == 0)
+                        {
+                            <div class="wa-mv-vacio">Buscá arriba y tocá lo que se lleva.</div>
+                        }
+                        else
+                        {
+                            @foreach (var l in alqLineas)
+                            {
+                                <div class="wa-alq-li">
+                                    <div class="wa-alq-li-top">
+                                        <span class="wa-alq-li-n">@l.Nombre</span>
+                                        <button class="wa-alq-li-x" @onclick="() => QuitarLineaAlq(l)" title="Sacar">×</button>
+                                    </div>
+                                    <div class="wa-alq-li-bot">
+                                        <span class="wa-alq-li-u">@Plata(l.Precio) c/u</span>
+                                        <span class="wa-alq-cant">
+                                            <button class="wa-alq-mas" @onclick="() => SumarCantAlq(l, -1)">−</button>
+                                            <input class="wa-alq-cant-inp" value="@l.CantTxt" inputmode="numeric"
+                                                   onfocus="this.select()" @oninput="(e) => CambiarCantAlq(l, e.Value?.ToString())" />
+                                            <button class="wa-alq-mas" @onclick="() => SumarCantAlq(l, 1)">+</button>
+                                        </span>
+                                        <b class="wa-alq-li-s">@Plata(l.Subtotal)</b>
+                                    </div>
+                                </div>
+                            }
+                        }
+
+                        <div class="wa-alq-sec">🚚 Flete</div>
+                        @if (alqFletes.Count > 0)
+                        {
+                            <input class="wa-mv-inp" placeholder="Buscar zona…"
+                                   value="@alqFleteBusq" @oninput="OnBuscarFleteAlq" autocomplete="off" />
+                            @if (alqFleteSugs.Count > 0)
+                            {
+                                <div class="wa-alq-sugs">
+                                    @foreach (var f in alqFleteSugs)
+                                    {
+                                        <button class="wa-alq-sug" @onclick="() => ElegirFleteAlq(f)">
+                                            <span class="wa-alq-sug-n">
+                                                @f.Zona
+                                                @if (!string.IsNullOrWhiteSpace(f.Notas))
+                                                {
+                                                    <span class="wa-alq-sug-nota">@f.Notas</span>
+                                                }
+                                            </span>
+                                            <span class="wa-alq-sug-p">@Plata(f.Precio)</span>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="wa-mv-vacio">No hay fletes cargados (Alquileres → Fletes). Podés poner el monto a mano.</div>
+                        }
+                        <div class="wa-alq-2col">
+                            <div>
+                                <label class="wa-mv-det-lbl">@(string.IsNullOrWhiteSpace(alqFleteZona) ? "Monto del flete" : alqFleteZona)</label>
+                                <input class="wa-mv-inp wa-mv-inp-plata" inputmode="decimal" placeholder="0"
+                                       value="@alqFleteTxt" onfocus="this.select()"
+                                       @oninput="OnMontoFleteAlq" />
+                            </div>
+                            <div>
+                                <label class="wa-mv-det-lbl">Fecha del evento</label>
+                                <input class="wa-mv-inp" type="date" @bind="alqFecha" />
+                            </div>
+                        </div>
+
+                        <div class="wa-alq-total">
+                            <span>Total</span>
+                            <b>@Plata(AlqTotalChat)</b>
+                        </div>
+
+                        <button class="wa-alq-mandar" @onclick="MandarCotizacionAlq"
+                                disabled="@(alqMandando || (alqLineas.Count == 0 && AlqFleteMontoChat == 0m))">
+                            @(alqMandando ? "Mandando…" : "📤 Mandar la cotización")
+                        </button>
+                        <button class="wa-mv-limpiar" @onclick="LimpiarAlq" disabled="@alqMandando">Vaciar y empezar de nuevo</button>
+                    </div>
+                </aside>
+            }
             @* 2026-08-27: acá vivía el panel de CONTACTO / CONVERSACIÓN. Se borró entero: después de
                subir estado, responsable, nota, editar contacto y vincular al encabezado del chat, no le
                quedaba nada propio — era una lista de botones repetidos. Lo poco que sí era suyo (sumar y
@@ -2546,6 +2660,10 @@
                pedido y se abre Nueva Venta en una pestaña nueva (mismo circuito de siempre). *@
             <button class="wa-ctx-rail-btn @(modoElegirVenta ? "on" : "")" @onclick="IniciarCrearVenta"
                     title="Crear venta: tildá los mensajes del pedido y se abre Nueva Venta en una pestaña nueva">🧾</button>
+            @* 2026-08-31: COTIZAR ALQUILER — sillas, mesas y flete acá al lado, y el presupuesto
+               sale como mensaje sin copiar ni pegar. *@
+            <button class="wa-ctx-rail-btn @(modoAlquiler ? "on" : "")" @onclick="AbrirModoAlquiler"
+                    title="Cotizar alquiler: cargá sillas, mesas y flete, y mandale el presupuesto">🎪</button>
         }
         @* 2026-08-27: PEDIDOS Y CONFIGURACIÓN. Estaba arriba como solapa y le comía alto a la charla.
            Va separado por una rayita y en azul porque es lo único de esta tira que te SACA del chat:
@@ -3602,6 +3720,45 @@
     .wa-mv-libre-ok { font-family: inherit; font-size: 0.76rem; font-weight: 700; background: #16a34a; color: #fff; border: none; border-radius: 7px; padding: 0.25rem 0.6rem; cursor: pointer; }
     .wa-mv-libre-x { background: none; border: none; color: #cbd5e1; cursor: pointer; font-size: 0.85rem; }
     .wa-mv-libre-x:hover { color: #ef4444; }
+
+    /* ===== 2026-08-31: MODO ALQUILER — cotizar y mandar ===== */
+    .wa-alq-body { padding: 0 0.7rem 0.7rem; }
+    .wa-alq-body .wa-mv-inp { margin-bottom: 0.35rem; }
+    .wa-alq-sugs { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; margin-bottom: 0.5rem; overflow: hidden; }
+    .wa-alq-sug { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; width: 100%;
+        background: none; border: none; border-bottom: 1px solid #f1f5f9; padding: 0.35rem 0.5rem; cursor: pointer; text-align: left; font-family: inherit; }
+    .wa-alq-sug:last-child { border-bottom: none; }
+    .wa-alq-sug:hover { background: #f0fff6; }
+    .wa-alq-sug-n { font-size: 0.78rem; color: #334155; min-width: 0; }
+    .wa-alq-sug-nota { display: block; font-size: 0.68rem; color: #94a3b8; }
+    .wa-alq-sug-p { font-size: 0.78rem; font-weight: 700; color: #047857; white-space: nowrap; }
+    .wa-alq-li { border-bottom: 1px solid #f1f5f9; padding: 0.35rem 0; }
+    .wa-alq-li-top { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+    .wa-alq-li-n { font-size: 0.8rem; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-alq-li-x { background: none; border: none; color: #cbd5e1; cursor: pointer; font-size: 0.9rem; line-height: 1; }
+    .wa-alq-li-x:hover { color: #ef4444; }
+    .wa-alq-li-bot { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; margin-top: 0.2rem; }
+    .wa-alq-li-u { font-size: 0.7rem; color: #94a3b8; }
+    .wa-alq-li-s { font-size: 0.8rem; color: #334155; }
+    .wa-alq-cant { display: flex; align-items: center; gap: 0.15rem; }
+    .wa-alq-mas { width: 22px; height: 22px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+        color: #334155; cursor: pointer; font-size: 0.85rem; line-height: 1; font-family: inherit; }
+    .wa-alq-mas:hover { background: #ecfdf5; border-color: #16a34a; }
+    .wa-alq-cant-inp { width: 46px; text-align: center; font-family: inherit; font-size: 0.8rem; font-weight: 700;
+        border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.15rem 0.1rem; }
+    .wa-alq-sec { font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase;
+        letter-spacing: 0.03em; margin: 0.7rem 0 0.3rem; }
+    .wa-alq-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-top: 0.3rem; }
+    .wa-alq-2col .wa-mv-det-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-alq-total { display: flex; align-items: baseline; justify-content: space-between;
+        margin-top: 0.7rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0; font-size: 0.8rem; color: #64748b; }
+    .wa-alq-total b { font-size: 1.15rem; color: #047857; }
+    .wa-alq-mandar { display: block; width: 100%; margin-top: 0.5rem; font-family: inherit; font-size: 0.85rem;
+        font-weight: 700; background: #16a34a; color: #fff; border: none; border-radius: 9px;
+        padding: 0.5rem; cursor: pointer; }
+    .wa-alq-mandar:hover:not(:disabled) { background: #15803d; }
+    .wa-alq-mandar:disabled { background: #cbd5e1; cursor: default; }
+    .wa-alq .wa-mv-limpiar { width: 100%; margin: 0.3rem 0 0; }
 
     /* Resumen del bloque ③ */
     .wa-mv-resu { margin: 0.5rem 0.7rem 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 9px; padding: 0.4rem 0.55rem; }
@@ -5081,6 +5238,7 @@
     {
         modoVenta = true;
         modoMeli = false;
+        modoAlquiler = false;
         mvPaso = 1;
         var conv = SelectedConv();
         mvClienteId = conv?.ClienteId;
@@ -5819,6 +5977,182 @@
     bool _fichaAttachPending = false;   // para engancharle el "arrastrar" cuando se renderiza la ventana flotante
 
     /// <summary>Abre/cierra la tarjeta de ficha del cliente. Al abrir, la carga desde la API.</summary>
+    // ===== 2026-08-31: MODO ALQUILER — cotizar rapido y MANDAR el presupuesto =====
+    // Pedido del dueño: "cargo lo que me pide en un pedo, visualizo el total y mando".
+    // Los precios salen del catalogo de Alquileres → Equipos y los fletes de Alquileres → Fletes.
+    // Cotiza UN dia (lo de multiplicar por dias quedo para mas adelante). NO crea la reserva.
+    class AlqLineaChat
+    {
+        public int EquipoId;
+        public string Nombre = "";
+        public decimal Precio;
+        public int Cant = 1;
+        public string CantTxt = "1";
+        public decimal Subtotal => Precio * Cant;
+    }
+
+    bool modoAlquiler = false;
+    bool alqCargado = false;
+    bool alqCargando = false;
+    bool alqMandando = false;
+    List<AlqEquipoDto> alqEquipos = new();
+    List<AlqEquipoDto> alqSugs = new();
+    List<AlqFleteDto> alqFletes = new();
+    List<AlqFleteDto> alqFleteSugs = new();
+    List<AlqLineaChat> alqLineas = new();
+    string alqBusq = "";
+    string alqFleteBusq = "";
+    string alqFleteZona = "";
+    string alqFleteTxt = "";
+    DateTime? alqFecha = null;
+
+    decimal AlqFleteMontoChat => ParsePlataAlq(alqFleteTxt) ?? 0m;
+    decimal AlqTotalChat => alqLineas.Sum(l => l.Subtotal) + AlqFleteMontoChat;
+
+    async Task AbrirModoAlquiler()
+    {
+        modoAlquiler = true;
+        modoVenta = false;
+        modoMeli = false;
+        if (alqCargado) return;
+        alqCargando = true;
+        StateHasChanged();
+        try
+        {
+            var eqs = await Api.GetAlqEquiposAsync();
+            alqEquipos = (eqs ?? new()).Where(e => e.IsActive).ToList();
+            alqFletes = await Api.GetAlqFletesAsync(soloActivos: true) ?? new();
+            alqCargado = true;
+        }
+        catch (Exception ex) { Toast.Error("No pude traer los precios: " + ex.Message); }
+        finally { alqCargando = false; StateHasChanged(); }
+    }
+
+    void CerrarModoAlquiler() => modoAlquiler = false;
+
+    void OnBuscarEquipoAlq(ChangeEventArgs e)
+    {
+        alqBusq = e.Value?.ToString() ?? "";
+        var q = alqBusq.Trim();
+        if (q.Length < 2) { alqSugs = new(); return; }
+        alqSugs = alqEquipos
+            .Where(x => x.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
+                     || x.Sku.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(x => x.Nombre.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(x => x.Nombre)
+            .Take(6)
+            .ToList();
+    }
+
+    void SumarEquipoAlq(AlqEquipoDto eq)
+    {
+        alqBusq = ""; alqSugs = new();
+        var ya = alqLineas.FirstOrDefault(l => l.EquipoId == eq.Id);
+        if (ya is not null) { SumarCantAlq(ya, 1); return; }
+        alqLineas.Add(new AlqLineaChat { EquipoId = eq.Id, Nombre = eq.Nombre, Precio = eq.PrecioDiario });
+    }
+
+    void QuitarLineaAlq(AlqLineaChat l) => alqLineas.Remove(l);
+
+    void SumarCantAlq(AlqLineaChat l, int delta)
+    {
+        l.Cant = Math.Max(1, l.Cant + delta);
+        l.CantTxt = l.Cant.ToString();
+    }
+
+    // Se ata a TEXTO, no a numero: atado a int, borrar el campo lo deja en 0 y tipear 1 da 10.
+    void CambiarCantAlq(AlqLineaChat l, string? txt)
+    {
+        var t = (txt ?? "").Trim();
+        l.CantTxt = t;
+        l.Cant = int.TryParse(t, out var n) && n > 0 ? n : 1;
+    }
+
+    // Busca por zona Y por la aclaracion: el dueño escribe "CABA"/"PROVINCIA" en la aclaracion,
+    // y la zona se llama "zona 1", "zona 2".
+    void OnBuscarFleteAlq(ChangeEventArgs e)
+    {
+        alqFleteBusq = e.Value?.ToString() ?? "";
+        var q = alqFleteBusq.Trim();
+        if (q.Length < 1) { alqFleteSugs = new(); return; }
+        alqFleteSugs = alqFletes
+            .Where(f => f.Zona.Contains(q, StringComparison.OrdinalIgnoreCase)
+                     || (f.Notas ?? "").Contains(q, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => f.Zona.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(f => f.Zona)
+            .Take(6)
+            .ToList();
+    }
+
+    void ElegirFleteAlq(AlqFleteDto f)
+    {
+        alqFleteZona = f.Zona;
+        alqFleteTxt = f.Precio.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+        alqFleteBusq = ""; alqFleteSugs = new();
+    }
+
+    void OnMontoFleteAlq(ChangeEventArgs e) => alqFleteTxt = e.Value?.ToString() ?? "";
+
+    void LimpiarAlq()
+    {
+        alqLineas = new();
+        alqBusq = ""; alqSugs = new();
+        alqFleteBusq = ""; alqFleteSugs = new(); alqFleteZona = ""; alqFleteTxt = "";
+        alqFecha = null;
+    }
+
+    /// <summary>Arma el presupuesto como lo lee el cliente y lo manda al chat.</summary>
+    async Task MandarCotizacionAlq()
+    {
+        if (alqMandando) return;
+        alqMandando = true;
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("*Presupuesto*");
+            if (alqFecha is DateTime f)
+                sb.AppendLine($"Fecha: {f:dd/MM/yyyy}");
+            sb.AppendLine();
+
+            foreach (var l in alqLineas)
+                sb.AppendLine($"{l.Cant} x {l.Nombre} — {Plata(l.Subtotal)}");
+
+            if (AlqFleteMontoChat != 0m)
+            {
+                var et = string.IsNullOrWhiteSpace(alqFleteZona) ? "Flete" : $"Flete {alqFleteZona}";
+                sb.AppendLine($"{et} — {Plata(AlqFleteMontoChat)}");
+            }
+
+            sb.AppendLine();
+            sb.Append($"*TOTAL: {Plata(AlqTotalChat)}*");
+
+            var ok = await EnviarTexto(sb.ToString());
+            if (ok) Toast.Success("Cotización enviada");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo mandar: " + ex.Message); }
+        finally { alqMandando = false; StateHasChanged(); }
+    }
+
+    /// <summary>Plata como la escribe una persona: la coma es decimal; el punto es miles si lo siguen 3 digitos.</summary>
+    static decimal? ParsePlataAlq(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Trim().Replace(" ", "").Replace("$", "");
+        if (s.Length == 0) return null;
+        if (s.Contains(','))
+        {
+            s = s.Replace(".", "").Replace(",", ".");
+        }
+        else if (s.Contains('.'))
+        {
+            var partes = s.Split('.');
+            var ult = partes[^1];
+            if (partes.Length > 1 && ult.Length == 3 && ult.All(char.IsDigit)) s = s.Replace(".", "");
+        }
+        return decimal.TryParse(s, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : (decimal?)null;
+    }
+
     // ===== 2026-08-21: MODO MELI — toda la info del comprador de MercadoLibre, dentro del chat =====
     // Pedido del dueño: "si me escribe alguien preguntando por una publicación o porque compró,
     // pongo su usuario y me aparece toda su información para resolver".
@@ -5946,7 +6280,7 @@
     async Task AbrirFichaDelAviso()
     {
         if (mmAviso is null) return;
-        modoMeli = true; modoVenta = false;
+        modoMeli = true; modoVenta = false; modoAlquiler = false;
         await AbrirFichaMeli(mmAviso.BuyerId);
     }
 
@@ -5981,7 +6315,7 @@
     /// si es un número de venta, busca de quién es.</summary>
     async Task AbrirCodigoMeli(string codigo)
     {
-        modoMeli = true; modoVenta = false;
+        modoMeli = true; modoVenta = false; modoAlquiler = false;
         if (codigo.StartsWith("MLA", StringComparison.OrdinalIgnoreCase))
         {
             await VerPublicacionMeli(codigo);

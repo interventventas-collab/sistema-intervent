@@ -129,9 +129,15 @@
                             <div class="cp-suggest">
                                 @foreach (var f in fleteSugs)
                                 {
-                                    <button class="cp-sug-item" @onclick="() => ElegirFlete(f)">
-                                        <span class="cp-sug-name">@Trunc(f.Zona, 24)</span>
-                                        <span class="ca-sug-precio">@Money(f.Precio)</span>
+                                    <button class="cp-sug-item ca-sug-flete" @onclick="() => ElegirFlete(f)">
+                                        <span class="ca-sug-linea">
+                                            <span class="cp-sug-name">@f.Zona</span>
+                                            <span class="ca-sug-precio">@Money(f.Precio)</span>
+                                        </span>
+                                        @if (!string.IsNullOrWhiteSpace(f.Notas))
+                                        {
+                                            <span class="ca-sug-nota">@f.Notas</span>
+                                        }
                                     </button>
                                 }
                             </div>
@@ -446,6 +452,9 @@
     /* Solapa Alquiler: cotizar sillas/mesas + flete y copiar el texto al WhatsApp. 2026-08-31 */
     .ca-panel { padding: 10px; user-select: text; -webkit-user-select: text; }
     .ca-sug-precio { font-size: 0.8rem; font-weight: 700; color: #34d399; }
+    .ca-sug-flete { align-items: stretch; }
+    .ca-sug-linea { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; width: 100%; }
+    .ca-sug-nota { font-size: 0.68rem; color: #9ca3af; margin-top: 1px; }
     .cp-sug-item .cp-sug-name { font-size: 0.82rem; color: #e5e7eb; }
     .ca-lineas { margin-bottom: 10px; }
     .ca-linea { border-bottom: 1px solid #1f2937; padding: 6px 0; }
@@ -837,8 +846,11 @@
         fleteBusq = e.Value?.ToString() ?? "";
         var q = fleteBusq.Trim();
         if (q.Length < 1) { fleteSugs = new(); return; }
+        // Busca por zona Y por la aclaración: las zonas se llaman "zona 1"/"zona 2" y el
+        // dato que uno recuerda ("CABA", "PROVINCIA") está en la aclaración.
         fleteSugs = fletes
-            .Where(f => f.Zona.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .Where(f => f.Zona.Contains(q, StringComparison.OrdinalIgnoreCase)
+                     || (f.Notas ?? "").Contains(q, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(f => f.Zona.StartsWith(q, StringComparison.OrdinalIgnoreCase))
             .ThenBy(f => f.Zona)
             .Take(6)
