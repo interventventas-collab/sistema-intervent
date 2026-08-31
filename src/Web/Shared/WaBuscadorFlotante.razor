@@ -74,6 +74,28 @@
                         {
                             <button type="button" class="wabf-linea-chip @(filtroLinea == l.Id ? "on" : "")" @onclick="@(() => filtroLinea = l.Id)">@l.Nombre</button>
                         }
+                        @* 2026-08-31: la LÍNEA POR QR (un celular escaneado, no la API oficial).
+                           En ámbar y al final, igual que en el selector de la pantalla grande: no se
+                           mezcla con las oficiales para que nadie la confunda con una de ellas.
+                           No filtra la lista de acá — lleva a su propia pantalla, porque sus mensajes
+                           no están en nuestra base: los lee un robot mirando WhatsApp Web. *@
+                        <button type="button" class="wabf-linea-chip wabf-chip-qr"
+                                @onclick="@(() => Nav.NavigateTo("/whatsapp-web"))"
+                                title="Un teléfono común escaneado por QR. Se abre en su propia pantalla.">
+                            🔳 @(qrHayCuenta ? "Línea por QR" : "Conectar teléfono")
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    @* Con una sola línea oficial los chips no se muestran, pero la del QR sí tiene
+                       que estar: si no, desde acá no habría forma de llegar. *@
+                    <div class="wabf-lineas">
+                        <button type="button" class="wabf-linea-chip wabf-chip-qr"
+                                @onclick="@(() => Nav.NavigateTo("/whatsapp-web"))"
+                                title="Un teléfono común escaneado por QR. Se abre en su propia pantalla.">
+                            🔳 @(qrHayCuenta ? "Línea por QR" : "Conectar teléfono")
+                        </button>
                     </div>
                 }
                 @* ----- Buscador + lista ----- *@
@@ -163,6 +185,8 @@
         padding: 4px 11px; font-size: 0.76rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
     .wabf-linea-chip:hover { background: #f3f4f6; }
     .wabf-linea-chip.on { background: #0b7a4b; color: #fff; border-color: #0b7a4b; }
+    .wabf-chip-qr { background: #fef3c7; color: #78350f; border-color: #fcd34d; }
+    .wabf-chip-qr:hover { background: #fde68a; }
 
     .wabf-search { padding: 8px; background: #f8fafb; border-bottom: 1px solid #eef0f2; flex: 0 0 auto; }
     .wabf-search-input { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db;
@@ -222,6 +246,10 @@
     // Selector de línea (FRIKAF by INTERVENT / FIJO TRANSRADIO / …)
     private List<ApiClient.TwLineaConfigDto> lineasConfig = new();
     private string? filtroLinea;   // null = todas
+    /// <summary>2026-08-31: hay un teléfono escaneado en la línea por QR. Solo cambia el texto de
+    /// esa pastilla. Si el robot no contesta queda en false y la pastilla invita a conectar: este
+    /// panel NO depende de él para nada.</summary>
+    private bool qrHayCuenta;
     // QR "llevar al celu"
     private bool mostrandoQr;
     private string? qrWaDataUri;
@@ -266,6 +294,19 @@
         _attachPending = true;
         StateHasChanged();
         _ = CargarConversaciones();
+        // 2026-08-31: se pregunta al abrir, no al arrancar la app: este panel vive en el layout y
+        // consultarlo en cada carga de pantalla seria un pedido al servidor que casi nunca se usa.
+        _ = CargarEstadoQr();
+    }
+
+    private async Task CargarEstadoQr()
+    {
+        try
+        {
+            qrHayCuenta = (await Api.GetWhatsAppStatusAsync())?.HayCuenta == true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* si el robot no contesta, la pastilla queda invitando a conectar */ }
     }
 
     public void Cerrar() { abierto = false; StateHasChanged(); }
