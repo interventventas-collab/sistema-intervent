@@ -62,7 +62,9 @@ public class MeliPublicacionesV2Service
         bool SyncPrecio, bool SyncStock, decimal? ObjetivoPct,
         string? Cuenta,
         // 2026-08-27: el SKU que tenía antes de que la marcaran para revisar (ver MeliItemSyncConfig).
-        string? SkuAnterior);
+        string? SkuAnterior,
+        // 2026-08-31: si está en una campaña de MeLi, lo que el comprador paga DE VERDAD.
+        decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null);
 
     public record PageDto(int Total, int Pagina, int PorPagina, List<FilaDto> Items);
 
@@ -245,6 +247,7 @@ public class MeliPublicacionesV2Service
                 m.MeliItemId, m.Sku, m.Title, m.Thumbnail, m.Permalink, m.Price, m.Status,
                 m.ListingTypeId, m.InstallmentTag, m.FreeShipping, m.LogisticType, m.AvailableQuantity, m.SoldQuantity,
                 m.SaleFeeAmount, m.SaleFeePercentageFee, m.SaleFeeFixedFee, m.SaleFeeShippingCost, m.SaleFeePriceSnapshot,
+                m.PromoPrecio, m.PromoNombre, m.PromoHasta,
                 m.CafeProductoId, m.CafeFormato, m.MeliAccountId,
                 Cuenta = m.MeliAccount != null ? m.MeliAccount.Nickname : null
             })
@@ -359,10 +362,25 @@ public class MeliPublicacionesV2Service
             // número verde y tranquilizador calculado COMO SI MELI NO COBRARA NADA.
             // Caso real: MLA1683493719 mostraba 80,3% cuando su hermana, con la comisión ya
             // cargada, daba 25,4%. Ahora se devuelve vacío y la pantalla dice qué falta.
+            // 2026-08-31 — SI ESTÁ EN PROMOCIÓN, LA CUENTA VA CON EL PRECIO DE LA PROMOCIÓN.
+            // `Price` es el precio de lista; si la publicación entró a una campaña el comprador
+            // paga menos, y calcular el margen sobre el precio de lista lo infla — que es el lado
+            // peligroso del error. Caso real del 31/08: el azúcar MLA2048049400 figuraba a
+            // $23.998,99 y se vendía a $17.999,24 por "CYBER FEST 09.09".
+            //
+            // La comisión guardada se capturó al precio de lista, así que se la escala: MeLi cobra
+            // un porcentaje del precio, y ese porcentaje no cambia. El envío NO se escala — cuesta
+            // lo mismo la caja, valga lo que valga adentro.
+            var precioReal = (r.PromoPrecio is > 0 && r.PromoPrecio < r.Price) ? r.PromoPrecio.Value : r.Price;
+
             decimal? neto = null, ganancia = null, margen = null;
             if (r.Price > 0 && r.SaleFeeAmount.HasValue)
             {
-                neto = Math.Round((r.Price - seLlevaMeli) / IVA, 2);
+                var comisionReal = r.SaleFeeAmount.Value;
+                if (precioReal != r.Price)
+                    comisionReal = Math.Round(r.SaleFeeAmount.Value / r.Price * precioReal, 2);
+
+                neto = Math.Round((precioReal - comisionReal - (r.SaleFeeShippingCost ?? 0m)) / IVA, 2);
                 if (costo is > 0)
                 {
                     ganancia = Math.Round(neto.Value - costo.Value, 2);
@@ -396,7 +414,8 @@ public class MeliPublicacionesV2Service
                 variosPrecios ? cond.Max : fam?.Max,
                 variosPrecios,
                 cfg?.SyncPrecio ?? false, cfg?.SyncStock ?? false, cfg?.GananciaObjetivoPct,
-                r.Cuenta, cfg?.SkuAnterior));
+                r.Cuenta, cfg?.SkuAnterior,
+                r.PromoPrecio, r.PromoNombre, r.PromoHasta));
         }
 
         // Filtros que dependen de datos calculados (se aplican sobre la página).

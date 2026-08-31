@@ -1,3 +1,6 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace Api.Models;
 
 public class MeliItem
@@ -86,6 +89,33 @@ public class MeliItem
     [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")]
     public decimal? SaleFeePriceSnapshot { get; set; }
     public DateTime? SaleFeeCapturedAt { get; set; }
+
+    // ── 2026-08-31: promociones de MercadoLibre ──
+    // El campo Price es el precio DE LISTA. Si la publicación entró a una campaña, el comprador
+    // paga menos y el margen calculado sobre Price es mentira. Medido el 31/08 en la cuenta real:
+    // el azúcar MLA2048049400 figuraba a $23.998,99 y se estaba vendiendo a $17.999,24 por la
+    // campaña "CYBER FEST 09.09" (y a $16.799,29 para compradores de nivel 6).
+    //
+    // Se captura aparte y en lote (ver MeliPromocionesService): pedir promoción por publicación
+    // sería una llamada por cada una de las 5.900.
+
+    /// <summary>Lo que el comprador paga hoy por la promoción. NULL = no está en ninguna.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PromoPrecio { get; set; }
+
+    /// <summary>Nombre de la campaña, para poder decirle al usuario por qué está más barata.</summary>
+    [MaxLength(120)]
+    public string? PromoNombre { get; set; }
+
+    /// <summary>DEAL, SMART, LIGHTNING, PRICE_DISCOUNT…</summary>
+    [MaxLength(40)]
+    public string? PromoTipo { get; set; }
+
+    /// <summary>Hasta cuándo dura. Sirve para avisar y para limpiar lo vencido.</summary>
+    public DateTime? PromoHasta { get; set; }
+
+    /// <summary>Cuándo se capturó. Si es viejo, el dato puede no valer.</summary>
+    public DateTime? PromoCapturadaAt { get; set; }
 
     public int? CafeComboId { get; set; }   // Promo de cafe fraccionado (Cafe_Combos)
     public int? CafeKitId { get; set; }     // Kit compuesto / BOM (Cafe_Kits)

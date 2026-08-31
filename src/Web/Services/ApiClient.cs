@@ -5150,7 +5150,8 @@ public class ApiClient
         bool ComisionVieja, List<PubV2Componente> Receta, int? Arma,
         int PublisFamilia, decimal? PrecioMin, decimal? PrecioMax, bool VariosPrecios,
         bool SyncPrecio, bool SyncStock, decimal? ObjetivoPct, string? Cuenta,
-        string? SkuAnterior);
+        string? SkuAnterior,
+        decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null);
     public record PubV2Page(int Total, int Pagina, int PorPagina, List<PubV2Fila> Items);
 
     public async Task<PubV2Page?> GetPublicacionesV2Async(string? texto = null, string? sku = null,
@@ -5399,6 +5400,22 @@ public class ApiClient
             if (!resp.IsSuccessStatusCode)
                 return (null, $"No se pudieron aplicar los cambios (error {(int)resp.StatusCode}).");
             return (await resp.Content.ReadFromJsonAsync<PubV2ExcelAplicado>(), null);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    // ─── 2026-08-31 · promociones ───
+    public record PubV2PromosResultado(int Cuentas, int Campanias, int ConPromo, int Limpiadas, List<string> Detalle);
+
+    /// <summary>Le pregunta a MercadoLibre qué publicaciones venden con descuento. Sólo mira.</summary>
+    public async Task<(PubV2PromosResultado? res, string? error)> RefrescarPromocionesAsync()
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PostAsJsonAsync("/api/meli/v2/promociones/refrescar", new { });
+            if (!resp.IsSuccessStatusCode) return (null, $"Error {(int)resp.StatusCode}");
+            return (await resp.Content.ReadFromJsonAsync<PubV2PromosResultado>(), null);
         }
         catch (Exception ex) { return (null, ex.Message); }
     }

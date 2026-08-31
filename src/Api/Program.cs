@@ -199,6 +199,8 @@ builder.Services.AddScoped<MeliPrecioManualService>();
 builder.Services.AddScoped<MeliPublicacionesExcelService>();
 // 2026-08-27: pausar y activar desde la fila (el cartelito Activa/Pausada se toca).
 builder.Services.AddScoped<MeliEstadoService>();
+// 2026-08-31: promociones — saber qué publicaciones venden con descuento (el margen dependía de esto).
+builder.Services.AddScoped<MeliPromocionesService>();
 builder.Services.AddScoped<MeliPisoMasivoService>();
 builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();

@@ -244,6 +244,15 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return Ok(r);
     }
 
+    // ─── 2026-08-31 · PROMOCIONES ───
+
+    /// <summary>SEGURO: le pregunta a MercadoLibre qué publicaciones están vendiendo con descuento
+    /// y a qué precio, y lo guarda. NO aplica ni saca promociones — sólo mira.
+    /// Sale barato: ~15 llamadas para todo el catálogo (una por campaña).</summary>
+    [HttpPost("promociones/refrescar")]
+    public async Task<IActionResult> RefrescarPromociones([FromServices] MeliPromocionesService svc)
+        => Ok(await svc.RefrescarAsync(HttpContext.RequestAborted));
+
     /// <summary>Contadores para los chips de filtro.</summary>
     [HttpGet("resumen")]
     public async Task<IActionResult> GetResumen()

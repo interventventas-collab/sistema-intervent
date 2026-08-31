@@ -157,6 +157,10 @@
                   padding: .12rem .26rem; font-size: .74rem; line-height: 1; cursor: pointer; }
     .p2-candado:hover { border-color: #9ca3af; }
     .p2-candado.abierto { background: #fef3c7; border-color: #f59e0b; }
+    .p2-promo { display: block; font-size: .68rem; font-weight: 700; color: #7c2d12;
+                background: #fff7ed; border: 1px solid #fdba74; border-radius: .3rem;
+                padding: .05rem .3rem; margin-top: .15rem; width: fit-content; max-width: 100%; }
+    .p2-promo small { font-weight: 400; color: #9a5b2d; margin-left: .2rem; }
     .p2-marca { display: inline-flex; align-items: center; gap: .35rem; flex-wrap: wrap; font-size: .68rem;
                 color: #7c2d12; background: #fffbeb; border: 1px solid #fcd34d; border-radius: .35rem;
                 padding: .12rem .4rem; margin-top: .1rem; width: fit-content; }
@@ -411,6 +415,12 @@
                 @(excelLeyendo ? "⏳ Leyendo…" : "⬆ Subir Excel")
                 <InputFile OnChange="SubirExcel" accept=".xlsx" style="display:none;" disabled="@excelLeyendo" />
             </label>
+            @* 2026-08-31 · promociones. Sale barato (una llamada por campaña), así que es un botón
+               y no un proceso nocturno: se aprieta cuando uno quiere el dato al día. *@
+            <button class="p2-btn" @onclick="TraerPromociones" disabled="@promosCargando"
+                    title="Le pregunta a MercadoLibre qué publicaciones están vendiendo con descuento. No aplica ni saca nada.">
+                @(promosCargando ? "⏳ Mirando promociones…" : "🏷️ Promociones")
+            </button>
             <button class="p2-btn" @onclick='() => Nav.NavigateTo("/publicaciones")'>⛶ Volver a la pantalla de siempre</button>
         </span>
     </div>
@@ -582,6 +592,15 @@
                             {
                                 <span class="p2-price editable" title="Tocá para escribir otro precio"
                                       @onclick="() => EmpezarPrecio(it)" @onclick:stopPropagation="true">✎ @Plata(it.Precio)</span>
+                                @* 2026-08-31 · si está en campaña, el comprador paga MENOS que el precio de
+                                   lista. Sin este cartel, el "te queda" de al lado no se entiende. *@
+                                @if (it.PromoPrecio is > 0)
+                                {
+                                    <span class="p2-promo" title="Está en una campaña de MercadoLibre: el comprador paga @Plata(it.PromoPrecio!.Value). El margen de al lado ya está calculado con ese precio.">
+                                        🏷️ @Plata(it.PromoPrecio!.Value)
+                                        <small>@(it.PromoNombre ?? "en promoción")@(it.PromoHasta.HasValue ? $" · hasta {it.PromoHasta.Value:dd/MM}" : "")</small>
+                                    </span>
+                                }
                             }
                             @if (it.VariosPrecios && it.PrecioMin.HasValue && it.PrecioMax.HasValue)
                             {
@@ -2026,6 +2045,43 @@
     // al instante. Es de a UNA a propósito — nunca en lote.
     // NO hay eliminar: en MeLi es irreversible y se pierde antigüedad, historial de ventas,
     // preguntas y posición en el buscador. Pausada tampoco vende, y se vuelve.
+
+    // ─────────────── 2026-08-31 · PROMOCIONES ───────────────
+    // El precio que muestra la publicación es el DE LISTA. Si entró a una campaña de MercadoLibre,
+    // el comprador paga menos y el margen calculado sobre el precio de lista queda inflado — que es
+    // el lado peligroso del error. Caso real medido ese día: el azúcar figuraba a $23.998,99 y se
+    // vendía a $17.999,24 por "CYBER FEST 09.09".
+    //
+    // Es un botón y no un proceso nocturno porque sale barato: una llamada por campaña (~15 para
+    // todo el catálogo), no una por publicación.
+
+    private bool promosCargando;
+
+    private async Task TraerPromociones()
+    {
+        if (promosCargando) return;
+        promosCargando = true;
+        StateHasChanged();
+        try
+        {
+            var (res, error) = await Api.RefrescarPromocionesAsync();
+            if (res is null) { ToastService.Error(error ?? "No se pudieron traer las promociones."); return; }
+
+            if (res.ConPromo == 0)
+                ToastService.Info($"Miré {res.Campanias} campañas: hoy no tenés ninguna publicación vendiendo con descuento.");
+            else
+                ToastService.Success($"{res.ConPromo} publicación(es) están vendiendo con descuento. "
+                                   + "El margen de esas filas ya está calculado con el precio de la promoción.");
+
+            foreach (var d in res.Detalle.Take(6)) ToastService.Info(d);
+            if (res.Limpiadas > 0)
+                ToastService.Info($"{res.Limpiadas} salieron de promoción y volvieron a su precio de lista.");
+
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudieron traer las promociones: " + ex.Message); }
+        finally { promosCargando = false; }
+    }
 
     // ─────────────── 2026-08-31 · TRAER DE MERCADOLIBRE ───────────────
     // Era lo último que obligaba a volver a la pantalla vieja. "🔄 Actualizar lista" sólo relee lo
