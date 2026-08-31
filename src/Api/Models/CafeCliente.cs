@@ -62,6 +62,15 @@ public class CafeCliente
     [MaxLength(500)]
     public string? DomicilioEntrega { get; set; }
 
+    /// <summary>2026-08-31 — La localidad del domicilio de ENTREGA, que puede ser otra que la
+    /// fiscal. Antes sólo existía `Localidad`, que es la del domicilio fiscal (la que completa
+    /// ARCA con el CUIT). Osmar: *"pongo dirección pero no hay localidad para elegir"*.
+    ///
+    /// Sirve para dos cosas concretas: que el reparto sepa a qué pueblo va, y que el mapa pueda
+    /// encontrar el punto — geocodificar "Calle 123" sin localidad es una lotería.
+    /// Si queda vacía, se usa la fiscal.</summary>
+    public string? LocalidadEntrega { get; set; }
+
     [MaxLength(500)]
     public string? Notas { get; set; }
 

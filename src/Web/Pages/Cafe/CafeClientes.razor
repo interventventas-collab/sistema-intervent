@@ -409,6 +409,18 @@
                         <input class="form-input" @bind="formDomicilioEntrega" placeholder="Donde se entregan los pedidos (si difiere del fiscal)" />
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal. Es el domicilio de siempre (su entre calles y enlace de Maps van acá abajo). Si el cliente entrega en más de un lugar, sumá domicilios alternativos.</p>
                     </div>
+                    @* 2026-08-31 · Localidad de la ENTREGA. Antes sólo existía la fiscal (la que
+                       completa ARCA con el CUIT) y quedaba abajo, en otra sección. El reparto y el
+                       mapa necesitan ésta: buscar "Calle 123" sin localidad es una lotería. *@
+                    <div class="form-group">
+                        <label class="form-label">Localidad de entrega</label>
+                        <input class="form-input" list="datalist-localidades" @bind="formLocalidadEntrega"
+                               placeholder="Ej: La Plata" />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            La localidad a donde se entrega. Si la dejás vacía se usa la del domicilio fiscal.
+                            Las sugerencias salen de la provincia que esté cargada abajo, pero podés escribir libre.
+                        </p>
+                    </div>
                     <div class="form-group">
                         <label class="form-label">Entre calles</label>
                         <input class="form-input" @bind="formEntreCalles" placeholder="Ej: entre Larroque y Beruti (referencia para la entrega)" />
@@ -828,6 +840,7 @@
     private int? editingId;
     private string formNombre = "", formTipo = "OTRO", formCuit = "", formTelefono = "", formEmail = "", formDireccion = "", formNotas = "";
     private string formRazonSocial = "", formDomicilioEntrega = "", formComentariosComprobante = "";
+    private string formLocalidadEntrega = "";   // 2026-08-31: la localidad del domicilio de ENTREGA
     private string formTelefono2 = "", formEntreCalles = "";
     private int? formCodigoInterno;
     private string formMapeoLink = "";
@@ -1164,7 +1177,7 @@
     {
         isEditing = false; editingId = null; finalizandoAltaId = null;
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
-        formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = "";
+        formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = ""; formLocalidadEntrega = "";
         formTelefono2 = ""; formEntreCalles = "";
         formLocalidad = ""; formCiudad = ""; formCp = ""; formCondicionIvaDefault = "";
         formCodigoInterno = null; formMapeoLink = "";
@@ -1186,6 +1199,7 @@
         formDireccion = c.Direccion ?? ""; formNotas = c.Notas ?? "";
         formRazonSocial = c.RazonSocial ?? "";
         formDomicilioEntrega = c.DomicilioEntrega ?? "";
+        formLocalidadEntrega = c.LocalidadEntrega ?? "";
         formTelefono2 = c.Telefono2 ?? ""; formEntreCalles = c.EntreCalles ?? "";
         formComentariosComprobante = c.ComentariosComprobante ?? "";
         formLocalidad = c.Localidad ?? ""; formCiudad = c.Ciudad ?? "";
@@ -1406,6 +1420,7 @@
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
                     Cuit = formCuit, Telefono = formTelefono, Telefono2 = formTelefono2, Email = formEmail,
                     Direccion = formDireccion, EntreCalles = formEntreCalles, DomicilioEntrega = formDomicilioEntrega,
+                    LocalidadEntrega = formLocalidadEntrega,
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
@@ -1433,6 +1448,7 @@
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
                     Cuit = formCuit, Telefono = formTelefono, Telefono2 = formTelefono2, Email = formEmail,
                     Direccion = formDireccion, EntreCalles = formEntreCalles, DomicilioEntrega = formDomicilioEntrega,
+                    LocalidadEntrega = formLocalidadEntrega,
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,

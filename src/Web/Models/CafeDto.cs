@@ -18,6 +18,7 @@ public class CafeClienteDto
     public string? Cp { get; set; }
     public string? CondicionIvaDefault { get; set; }
     public string? DomicilioEntrega { get; set; }
+    public string? LocalidadEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public bool IsActive { get; set; }
@@ -62,6 +63,7 @@ public class CreateCafeClienteRequest
     public string? Cp { get; set; }
     public string? CondicionIvaDefault { get; set; }
     public string? DomicilioEntrega { get; set; }
+    public string? LocalidadEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public string? MapeoLink { get; set; }
@@ -92,6 +94,7 @@ public class UpdateCafeClienteRequest
     public string? Cp { get; set; }
     public string? CondicionIvaDefault { get; set; }
     public string? DomicilioEntrega { get; set; }
+    public string? LocalidadEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public bool? IsActive { get; set; }
