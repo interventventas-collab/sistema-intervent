@@ -1415,7 +1415,12 @@
             @if (!IsRoleWithCustomSidebar())
             {
                 <MeliCambiosBell />
-                <WhatsAppPedidosBell />
+                @* 2026-08-31 (pedido del dueño): se saco <WhatsAppPedidosBell />, la campanita verde
+                   con el contador. Estaba pegada al boton "Alertas" y al lado del boton verde de
+                   WhatsApp: tres cosas verdes seguidas, todas con el logo de WhatsApp, y cada una
+                   llevaba a un lado distinto. Encima su numero parecia mensajes sin leer y en
+                   realidad eran PEDIDOS pendientes. A los pedidos se sigue entrando por el menu
+                   (Ventas por fuera → Favoritos → 📥 WhatsApp · Pedidos). *@
                 <MisAlertasBell />
             }
             @if (UploadProgress.IsUploading)
@@ -1622,19 +1627,23 @@
                     </button>
                 </div>
                 @* 2026-06-29: el boton 'Cobranzas' suelto se movio al dropdown Ventas (abajo de Ventas) *@
-                @* 2026-06-19: boton WhatsApp llamativo verde — chat Twilio para pedidos de hermanos/empleados *@
-                @* 2026-06-23: si Playwright esta linked -> va al chat. Si NO -> abre modal QR directo. *@
+                @* 2026-08-31 (pedido del dueño): este boton ahora va DERECHO a /whatsapp.
+                   Antes abria el panel flotante WhatsAppFlotante, que es un SEGUNDO panel casi
+                   igual al del circulito verde de abajo (WaBuscadorFlotante) pero PEOR: sin los
+                   filtros de linea. Dos botones para lo mismo, y el mejor escondido. Ahora cada
+                   uno tiene un trabajo: el circulito abre el panel rapido, este lleva a la
+                   pantalla completa de una, sin tener que buscar la flechita ↗.
+
+                   Se le saco tambien el puntito de estado y el gris de "desvinculado": ese dato
+                   es del robot de la linea por QR, y este boton lleva a la linea OFICIAL. Tenerlo
+                   ahi hacia que el WhatsApp de todos los dias pareciera roto cuando el que estaba
+                   caido era el robot — un cruce de cables entre dos cosas que no se tocan. *@
                 <button class="topbar-action-whatsapp"
-                        style="@(waDesvinculado ? "background:#9ca3af !important; box-shadow:none !important; position:relative;" : "position:relative;")"
-                        @onclick="ToggleWaFlotante"
-                        title="WhatsApp — abrir el panel de conversaciones (↗ para verlo en una pestaña aparte)"
+                        @onclick='() => NavigateTo("/whatsapp")'
+                        title="WhatsApp — abrir la pantalla de conversaciones"
                         aria-label="WhatsApp">
                     @SvgIcons.MessageCircle
                     <span>WhatsApp</span>
-                    @if (waStatus is not null)
-                    {
-                        <span style="@($"position:absolute; top:4px; right:4px; width:10px; height:10px; border-radius:50%; background:{(waLinked ? "#22c55e" : "#ef4444")}; border:2px solid white; box-shadow:0 0 0 1px rgba(0,0,0,0.1); {(waLinked ? "" : "animation: wa-pulse 1.5s ease-in-out infinite;")}")"></span>
-                    }
                 </button>
             }
             @* 2026-07-08: el grupo de iconitos (Widgets/Apps, Buscar, Actualizar, campanas,
@@ -1928,7 +1937,14 @@
 @* 2026-07-23: panel flotante de WhatsApp (API oficial de Meta). Se abre con el boton verde
    de la topbar y permite responder sin salir de la pantalla donde estas trabajando.
    Tiene un boton ↗ para abrirlo en una pestaña aparte. *@
-<WhatsAppFlotante @ref="waFlotanteRef" />
+@* 2026-08-31: se dejo de dibujar <WhatsAppFlotante />. Era el panel que abria el boton verde
+   rectangular; ese boton ahora va derecho a /whatsapp, asi que no habia forma de abrirlo.
+   No alcanzaba con dejarlo puesto: el componente arranca un refresco cada 10 segundos en
+   OnInitialized, o sea que le pegaba al servidor cada 10s, para siempre, en cada pantalla y para
+   cada usuario, por un panel que nadie podia ver.
+   El panel rapido que SI se usa es el del circulito verde de abajo (WaBuscadorFlotante), que
+   ademas tiene los filtros por linea. Si algun dia se quiere volver atras: devolver esta linea
+   y el boton al @onclick="ToggleWaFlotante". *@
 
 @* 2026-08-06: chat de WhatsApp flotante y arrastrable SOLO para Depósito (Gabriel + FIJO
    TRANSRADIO), con barrita de firma. Se auto-oculta si el usuario no es de Depósito. El globito
@@ -2523,8 +2539,6 @@
     private async Task TogglePostits() { if (postitsRef is not null) await postitsRef.ToggleAsync(); }
 
     // 2026-07-23: panel flotante de WhatsApp (API oficial de Meta).
-    private WhatsAppFlotante? waFlotanteRef;
-    private async Task ToggleWaFlotante() { if (waFlotanteRef is not null) await waFlotanteRef.ToggleAsync(); }
 
     // 2026-08-06: chat flotante/arrastrable de WhatsApp para Depósito (lo abre el ítem del menú).
     private DepositoWaFloating? depWaRef;
