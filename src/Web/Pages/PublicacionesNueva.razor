@@ -427,6 +427,18 @@
             <input placeholder="Buscar por título, ID o N° de publicación (MLA)…" @bind="fTexto" @bind:event="oninput" @onkeyup="OnEnter" />
             <input placeholder="SKU" style="max-width:170px;" @bind="fSku" @bind:event="oninput" @onkeyup="OnEnter" />
             <button class="p2-btn" style="background:#1f6b45;border-color:#1f6b45;" @onclick="BuscarDesdeCero">Buscar</button>
+            @* 2026-08-31 · traer los datos frescos de MercadoLibre sin volver a la pantalla vieja.
+               Aparece solo cuando lo escrito es un número: con texto libre no habría qué traer.
+               No hay menú de opciones — el sistema mira lo que escribiste y hace lo que corresponde. *@
+            @if (PuedeTraerDeMeli)
+            {
+                <button class="p2-btn" style="background:#1d4f80;border-color:#1d4f80;"
+                        disabled="@trayendoDeMeli"
+                        title="@(EsMla(fTexto) ? "Le pregunta a MercadoLibre cómo está ESTA publicación ahora" : "Trae de MercadoLibre todas las publicaciones de esta familia")"
+                        @onclick="TraerDeMeli">
+                    @(trayendoDeMeli ? (traerProgreso ?? "⏳ Trayendo…") : "⬇ Traer de MercadoLibre")
+                </button>
+            }
         </div>
 
         <div class="p2-filters">
@@ -2014,6 +2026,83 @@
     // al instante. Es de a UNA a propósito — nunca en lote.
     // NO hay eliminar: en MeLi es irreversible y se pierde antigüedad, historial de ventas,
     // preguntas y posición en el buscador. Pausada tampoco vende, y se vuelve.
+
+    // ─────────────── 2026-08-31 · TRAER DE MERCADOLIBRE ───────────────
+    // Era lo último que obligaba a volver a la pantalla vieja. "🔄 Actualizar lista" sólo relee lo
+    // que el sistema ya tenía guardado; esto le pregunta a MercadoLibre de verdad.
+    //
+    // Sin menú de opciones: se mira lo que el usuario escribió en el buscador y se hace lo que
+    // corresponde. Un MLA trae esa publicación; un número suelto (el de FAMILIA que muestra MeLi)
+    // trae la familia entera. Es el mismo criterio que usa el buscador, así que no hay dos reglas
+    // distintas que aprender.
+
+    private bool trayendoDeMeli;
+    private string? traerProgreso;
+
+    private static bool EsMla(string? t)
+    {
+        var v = (t ?? "").Trim().TrimStart('#').Trim();
+        return v.Length >= 6 && v.StartsWith("MLA", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool EsNumeroDeFamilia(string? t)
+    {
+        var v = (t ?? "").Trim().TrimStart('#').Trim();
+        return v.Length >= 6 && v.All(char.IsDigit);
+    }
+
+    private bool PuedeTraerDeMeli => EsMla(fTexto) || EsNumeroDeFamilia(fTexto);
+
+    private async Task TraerDeMeli()
+    {
+        if (trayendoDeMeli) return;
+        var t = fTexto.Trim().TrimStart('#').Trim();
+
+        trayendoDeMeli = true;
+        traerProgreso = null;
+        StateHasChanged();
+        try
+        {
+            if (EsMla(t))
+            {
+                var (res, error) = await Api.SyncMeliItemByIdAsync(t.ToUpperInvariant());
+                if (res is null) { ToastService.Error(error ?? "No se pudo traer de MercadoLibre."); return; }
+                if (res.TotalSynced > 0)
+                    ToastService.Success($"Traída de MercadoLibre: {res.TotalSynced} publicación(es) al día.");
+                else
+                    ToastService.Error("MercadoLibre no devolvió nada para ese número. Fijate que esté bien escrito.");
+            }
+            else
+            {
+                // La familia puede tener muchas publicaciones: el backend devuelve un número de
+                // seguimiento y se va preguntando cómo viene, para no dejar la pantalla muda.
+                var progressId = await Api.SyncMeliFamilyAsync(t);
+                if (progressId is null) { ToastService.Error("No se pudo empezar a traer la familia."); return; }
+
+                for (var i = 0; i < 200; i++)   // ~5 minutos de techo
+                {
+                    await Task.Delay(1500);
+                    var pr = await Api.GetSyncProgressAsync(progressId);
+                    if (pr is null) break;
+                    traerProgreso = $"⏳ {pr.ItemsSynced} de {pr.TotalItemsFound}…";
+                    StateHasChanged();
+                    if (string.Equals(pr.Status, "completed", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(pr.Status, "error", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (string.Equals(pr.Status, "error", StringComparison.OrdinalIgnoreCase))
+                            ToastService.Error("MercadoLibre cortó a mitad de camino. Probá de nuevo.");
+                        else
+                            ToastService.Success($"Familia traída: {pr.ItemsSynced} publicaciones al día.");
+                        break;
+                    }
+                }
+            }
+
+            await Cargar();   // la lista tiene que mostrar lo que se acaba de traer
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo traer de MercadoLibre: " + ex.Message); }
+        finally { trayendoDeMeli = false; traerProgreso = null; }
+    }
 
     // ─────────────── 2026-08-29 · RECETA EDITABLE DESDE LA FILA ───────────────
     // Era lo último que obligaba a volver a la pantalla vieja: para vincular una publicación a su
