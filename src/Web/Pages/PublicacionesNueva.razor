@@ -445,9 +445,9 @@
             {
                 <button class="p2-btn" style="background:#1d4f80;border-color:#1d4f80;"
                         disabled="@trayendoDeMeli"
-                        title="@(EsMla(fTexto) ? "Le pregunta a MercadoLibre cómo está ESTA publicación ahora" : "Trae de MercadoLibre todas las publicaciones de esta familia")"
+                        title="@TituloTraer"
                         @onclick="TraerDeMeli">
-                    @(trayendoDeMeli ? (traerProgreso ?? "⏳ Trayendo…") : "⬇ Traer de MercadoLibre")
+                    @(trayendoDeMeli ? (traerProgreso ?? "⏳ Trayendo…") : TextoTraer)
                 </button>
             }
         </div>
@@ -2380,12 +2380,29 @@
         return v.Length >= 6 && v.All(char.IsDigit);
     }
 
-    private bool PuedeTraerDeMeli => EsMla(fTexto) || EsNumeroDeFamilia(fTexto);
+    /// <summary>El botón aparece cuando se sabe QUÉ traer: una publicación, una familia, o —con el
+    /// buscador vacío— el catálogo entero. Con texto libre no aparece: no habría qué pedirle a MeLi.</summary>
+    private bool PuedeTraerDeMeli => string.IsNullOrWhiteSpace(fTexto) || EsMla(fTexto) || EsNumeroDeFamilia(fTexto);
+
+    private string TextoTraer => string.IsNullOrWhiteSpace(fTexto)
+        ? "⬇ Traer TODO de MercadoLibre" : "⬇ Traer de MercadoLibre";
+
+    private string TituloTraer => string.IsNullOrWhiteSpace(fTexto)
+        ? "Trae de MercadoLibre las 5.900 publicaciones. Tarda varios minutos."
+        : (EsMla(fTexto) ? "Le pregunta a MercadoLibre cómo está ESTA publicación ahora"
+                         : "Trae de MercadoLibre todas las publicaciones de esta familia");
 
     private async Task TraerDeMeli()
     {
         if (trayendoDeMeli) return;
-        var t = fTexto.Trim().TrimStart('#').Trim();
+        var t = (fTexto ?? "").Trim().TrimStart('#').Trim();
+
+        // Traer TODO son varios minutos y muchas llamadas a MercadoLibre: se confirma aparte.
+        if (t.Length == 0 && !await JS.InvokeAsync<bool>("confirm",
+            "Vas a traer de MercadoLibre TODAS las publicaciones.\n\n"
+            + "Tarda varios minutos y no conviene cerrar la pantalla mientras corre.\n\n"
+            + "Si sólo querés una publicación o una familia, escribí su número en el buscador "
+            + "y el botón trae nada más que eso.\n\n¿Dale?")) return;
 
         trayendoDeMeli = true;
         traerProgreso = null;
@@ -2401,36 +2418,62 @@
                 else
                     ToastService.Error("MercadoLibre no devolvió nada para ese número. Fijate que esté bien escrito.");
             }
+            else if (t.Length == 0)
+            {
+                // Todo el catálogo. Mismo seguimiento que la familia: el backend devuelve un
+                // número y se va preguntando cómo viene.
+                var res = await Api.SyncMeliItemsAsync();
+                if (res is null || string.IsNullOrEmpty(res.ProgressId))
+                {
+                    ToastService.Error("No se pudo empezar a traer.");
+                    return;
+                }
+                await SeguirProgresoAsync(res.ProgressId!, "Catálogo traído");
+            }
             else
             {
                 // La familia puede tener muchas publicaciones: el backend devuelve un número de
                 // seguimiento y se va preguntando cómo viene, para no dejar la pantalla muda.
                 var progressId = await Api.SyncMeliFamilyAsync(t);
                 if (progressId is null) { ToastService.Error("No se pudo empezar a traer la familia."); return; }
-
-                for (var i = 0; i < 200; i++)   // ~5 minutos de techo
-                {
-                    await Task.Delay(1500);
-                    var pr = await Api.GetSyncProgressAsync(progressId);
-                    if (pr is null) break;
-                    traerProgreso = $"⏳ {pr.ItemsSynced} de {pr.TotalItemsFound}…";
-                    StateHasChanged();
-                    if (string.Equals(pr.Status, "completed", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(pr.Status, "error", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (string.Equals(pr.Status, "error", StringComparison.OrdinalIgnoreCase))
-                            ToastService.Error("MercadoLibre cortó a mitad de camino. Probá de nuevo.");
-                        else
-                            ToastService.Success($"Familia traída: {pr.ItemsSynced} publicaciones al día.");
-                        break;
-                    }
-                }
+                await SeguirProgresoAsync(progressId, "Familia traída");
             }
 
             await Cargar();   // la lista tiene que mostrar lo que se acaba de traer
         }
         catch (Exception ex) { ToastService.Error("No se pudo traer de MercadoLibre: " + ex.Message); }
         finally { trayendoDeMeli = false; traerProgreso = null; }
+    }
+
+    /// <summary>Va preguntando cómo viene el traído y muestra "12 de 30…" en el botón. Sin esto la
+    /// pantalla queda muda varios minutos y uno no sabe si está funcionando o se colgó.</summary>
+    private async Task SeguirProgresoAsync(string progressId, string textoFinal)
+    {
+        for (var i = 0; i < 600; i++)   // ~15 minutos de techo
+        {
+            await Task.Delay(1500);
+            var pr = await Api.GetSyncProgressAsync(progressId);
+            if (pr is null) break;
+
+            traerProgreso = pr.TotalItemsFound > 0
+                ? $"⏳ {pr.ItemsSynced} de {pr.TotalItemsFound}…"
+                : "⏳ Trayendo…";
+            StateHasChanged();
+
+            if (string.Equals(pr.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            {
+                ToastService.Success($"{textoFinal}: {pr.ItemsSynced} publicaciones al día."
+                                   + (pr.TotalErrors > 0 ? $" ({pr.TotalErrors} con error)" : ""));
+                return;
+            }
+            if (string.Equals(pr.Status, "error", StringComparison.OrdinalIgnoreCase))
+            {
+                ToastService.Error("MercadoLibre cortó a mitad de camino. Probá de nuevo.");
+                return;
+            }
+        }
+        ToastService.Info("Está tardando más de lo normal. Podés seguir usando la pantalla; "
+                        + "el traído sigue corriendo por atrás.");
     }
 
     // ─────────────── 2026-08-29 · RECETA EDITABLE DESDE LA FILA ───────────────
