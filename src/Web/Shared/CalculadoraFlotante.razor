@@ -881,16 +881,13 @@
         if (!string.IsNullOrWhiteSpace(alqReferencia)) sb.AppendLine(alqReferencia.Trim());
         sb.AppendLine();
 
+        // 2026-08-31 (pedido del dueño): el cliente ve QUÉ y CUÁNTO, sin precio por renglón.
+        // El único importe del mensaje es el TOTAL.
         foreach (var l in alqLineas)
-            sb.AppendLine($"{l.Cant} x {l.Nombre} — {Money(l.Subtotal)}");
+            sb.AppendLine($"{l.Cant} x {l.Nombre}");
 
         if (AlqFleteMonto != 0m)
-        {
-            var etiqueta = string.IsNullOrWhiteSpace(fleteZona) ? "Flete" : $"Flete {fleteZona}";
-            sb.AppendLine($"{etiqueta} — {Money(AlqFleteMonto)}");
-        }
-        if (AlqDescuento != 0m)
-            sb.AppendLine($"Descuento — -{Money(AlqDescuento)}");
+            sb.AppendLine(string.IsNullOrWhiteSpace(fleteZona) ? "Flete" : $"Flete {fleteZona}");
 
         sb.AppendLine();
         sb.Append($"*Total: {Money(AlqTotal)}*");

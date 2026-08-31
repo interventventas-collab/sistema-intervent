@@ -2523,51 +2523,50 @@
                     </div>
 
                     <div class="wa-alq-body">
-                        <input class="wa-mv-inp" placeholder="Buscar silla, mesa…"
-                               value="@alqBusq" @oninput="OnBuscarEquipoAlq" autocomplete="off" />
-
+                        @* 2026-08-31: la lista entera a la vista. Son pocos equipos y buscar de a uno
+                           era más lento que verlos todos: se toca el + y listo. El filtro de arriba
+                           está por si algún día la lista crece. *@
                         @if (alqCargando)
                         {
                             <div class="wa-mv-vacio">⏳ Trayendo los equipos…</div>
                         }
-                        else if (alqSugs.Count > 0)
-                        {
-                            <div class="wa-alq-sugs">
-                                @foreach (var eq in alqSugs)
-                                {
-                                    <button class="wa-alq-sug" @onclick="() => SumarEquipoAlq(eq)">
-                                        <span class="wa-alq-sug-n">@eq.Nombre</span>
-                                        <span class="wa-alq-sug-p">@Plata(eq.PrecioDiario)</span>
-                                    </button>
-                                }
-                            </div>
-                        }
-
-                        @if (alqLineas.Count == 0)
-                        {
-                            <div class="wa-mv-vacio">Buscá arriba y tocá lo que se lleva.</div>
-                        }
                         else
                         {
-                            @foreach (var l in alqLineas)
+                            @if (alqEquipos.Count > 8)
                             {
-                                <div class="wa-alq-li">
-                                    <div class="wa-alq-li-top">
-                                        <span class="wa-alq-li-n">@l.Nombre</span>
-                                        <button class="wa-alq-li-x" @onclick="() => QuitarLineaAlq(l)" title="Sacar">×</button>
-                                    </div>
-                                    <div class="wa-alq-li-bot">
-                                        <span class="wa-alq-li-u">@Plata(l.Precio) c/u</span>
-                                        <span class="wa-alq-cant">
-                                            <button class="wa-alq-mas" @onclick="() => SumarCantAlq(l, -1)">−</button>
-                                            <input class="wa-alq-cant-inp" value="@l.CantTxt" inputmode="numeric"
-                                                   onfocus="this.select()" @oninput="(e) => CambiarCantAlq(l, e.Value?.ToString())" />
-                                            <button class="wa-alq-mas" @onclick="() => SumarCantAlq(l, 1)">+</button>
-                                        </span>
-                                        <b class="wa-alq-li-s">@Plata(l.Subtotal)</b>
-                                    </div>
-                                </div>
+                                <input class="wa-mv-inp" placeholder="Filtrar…"
+                                       value="@alqBusq" @oninput="OnFiltrarEquipoAlq" autocomplete="off" />
                             }
+
+                            @if (EquiposAlqVisibles().Count == 0)
+                            {
+                                <div class="wa-mv-vacio">No hay equipos cargados (Alquileres → Equipos).</div>
+                            }
+
+                            <div class="wa-alq-lista">
+                                @foreach (var eq in EquiposAlqVisibles())
+                                {
+                                    var cant = CantDe(eq.Id);
+                                    <div class="wa-alq-fila @(cant > 0 ? "puesto" : "")">
+                                        <div class="wa-alq-fila-n">
+                                            <span class="wa-alq-fila-nom">@eq.Nombre</span>
+                                            <span class="wa-alq-fila-p">
+                                                @Plata(eq.PrecioDiario) c/u
+                                                @if (cant > 0)
+                                                {
+                                                    <b class="wa-alq-fila-sub">@Plata(eq.PrecioDiario * cant)</b>
+                                                }
+                                            </span>
+                                        </div>
+                                        <span class="wa-alq-cant">
+                                            <button class="wa-alq-mas" @onclick="() => SumarCantAlq(eq.Id, -1)">−</button>
+                                            <input class="wa-alq-cant-inp" value="@CantTxtDe(eq.Id)" inputmode="numeric"
+                                                   onfocus="this.select()" @oninput="(e) => CambiarCantAlq(eq.Id, e.Value?.ToString())" />
+                                            <button class="wa-alq-mas" @onclick="() => SumarCantAlq(eq.Id, 1)">+</button>
+                                        </span>
+                                    </div>
+                                }
+                            </div>
                         }
 
                         <div class="wa-alq-sec">🚚 Flete</div>
@@ -2598,18 +2597,17 @@
                         {
                             <div class="wa-mv-vacio">No hay fletes cargados (Alquileres → Fletes). Podés poner el monto a mano.</div>
                         }
-                        <div class="wa-alq-2col">
-                            <div>
-                                <label class="wa-mv-det-lbl">@(string.IsNullOrWhiteSpace(alqFleteZona) ? "Monto del flete" : alqFleteZona)</label>
-                                <input class="wa-mv-inp wa-mv-inp-plata" inputmode="decimal" placeholder="0"
-                                       value="@alqFleteTxt" onfocus="this.select()"
-                                       @oninput="OnMontoFleteAlq" />
-                            </div>
-                            <div>
-                                <label class="wa-mv-det-lbl">Fecha del evento</label>
-                                <input class="wa-mv-inp" type="date" @bind="alqFecha" />
-                            </div>
-                        </div>
+                        @if (!string.IsNullOrWhiteSpace(alqFleteZona))
+                        {
+                            <div class="wa-alq-zona-ok">@alqFleteZona</div>
+                        }
+                        <label class="wa-mv-det-lbl">Monto del flete</label>
+                        <input class="wa-mv-inp wa-mv-inp-plata" inputmode="decimal" placeholder="0"
+                               value="@alqFleteTxt" onfocus="this.select()"
+                               @oninput="OnMontoFleteAlq" />
+
+                        <label class="wa-mv-det-lbl" style="margin-top:.4rem">Fecha del evento</label>
+                        <input class="wa-mv-inp" type="date" @bind="alqFecha" />
 
                         <div class="wa-alq-total">
                             <span>Total</span>
@@ -2617,7 +2615,7 @@
                         </div>
 
                         <button class="wa-alq-mandar" @onclick="MandarCotizacionAlq"
-                                disabled="@(alqMandando || (alqLineas.Count == 0 && AlqFleteMontoChat == 0m))">
+                                disabled="@(alqMandando || (!AlqHayAlgo && AlqFleteMontoChat == 0m))">
                             @(alqMandando ? "Mandando…" : "📤 Mandar la cotización")
                         </button>
                         <button class="wa-mv-limpiar" @onclick="LimpiarAlq" disabled="@alqMandando">Vaciar y empezar de nuevo</button>
@@ -3732,14 +3730,17 @@
     .wa-alq-sug-n { font-size: 0.78rem; color: #334155; min-width: 0; }
     .wa-alq-sug-nota { display: block; font-size: 0.68rem; color: #94a3b8; }
     .wa-alq-sug-p { font-size: 0.78rem; font-weight: 700; color: #047857; white-space: nowrap; }
-    .wa-alq-li { border-bottom: 1px solid #f1f5f9; padding: 0.35rem 0; }
-    .wa-alq-li-top { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
-    .wa-alq-li-n { font-size: 0.8rem; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .wa-alq-li-x { background: none; border: none; color: #cbd5e1; cursor: pointer; font-size: 0.9rem; line-height: 1; }
-    .wa-alq-li-x:hover { color: #ef4444; }
-    .wa-alq-li-bot { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; margin-top: 0.2rem; }
-    .wa-alq-li-u { font-size: 0.7rem; color: #94a3b8; }
-    .wa-alq-li-s { font-size: 0.8rem; color: #334155; }
+    .wa-alq-lista { border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; overflow: hidden; }
+    .wa-alq-fila { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem;
+        padding: 0.3rem 0.45rem; border-bottom: 1px solid #f1f5f9; }
+    .wa-alq-fila:last-child { border-bottom: none; }
+    .wa-alq-fila.puesto { background: #f0fdf4; }
+    .wa-alq-fila-n { min-width: 0; }
+    .wa-alq-fila-nom { display: block; font-size: 0.78rem; color: #334155; line-height: 1.25; }
+    .wa-alq-fila-p { display: block; font-size: 0.68rem; color: #94a3b8; }
+    .wa-alq-fila-sub { color: #047857; margin-left: 0.3rem; }
+    .wa-alq-zona-ok { font-size: 0.72rem; color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0;
+        border-radius: 7px; padding: 0.2rem 0.4rem; margin-bottom: 0.35rem; }
     .wa-alq-cant { display: flex; align-items: center; gap: 0.15rem; }
     .wa-alq-mas { width: 22px; height: 22px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
         color: #334155; cursor: pointer; font-size: 0.85rem; line-height: 1; font-family: inherit; }
@@ -5981,25 +5982,16 @@
     // Pedido del dueño: "cargo lo que me pide en un pedo, visualizo el total y mando".
     // Los precios salen del catalogo de Alquileres → Equipos y los fletes de Alquileres → Fletes.
     // Cotiza UN dia (lo de multiplicar por dias quedo para mas adelante). NO crea la reserva.
-    class AlqLineaChat
-    {
-        public int EquipoId;
-        public string Nombre = "";
-        public decimal Precio;
-        public int Cant = 1;
-        public string CantTxt = "1";
-        public decimal Subtotal => Precio * Cant;
-    }
-
     bool modoAlquiler = false;
     bool alqCargado = false;
     bool alqCargando = false;
     bool alqMandando = false;
     List<AlqEquipoDto> alqEquipos = new();
-    List<AlqEquipoDto> alqSugs = new();
     List<AlqFleteDto> alqFletes = new();
     List<AlqFleteDto> alqFleteSugs = new();
-    List<AlqLineaChat> alqLineas = new();
+    // Cantidad puesta en cada equipo (equipoId -> cantidad). Lo que tiene 0 no entra en la cotización.
+    Dictionary<int, int> alqCant = new();
+    Dictionary<int, string> alqCantTxt = new();
     string alqBusq = "";
     string alqFleteBusq = "";
     string alqFleteZona = "";
@@ -6007,7 +5999,23 @@
     DateTime? alqFecha = null;
 
     decimal AlqFleteMontoChat => ParsePlataAlq(alqFleteTxt) ?? 0m;
-    decimal AlqTotalChat => alqLineas.Sum(l => l.Subtotal) + AlqFleteMontoChat;
+    decimal AlqEquiposTotalChat => alqEquipos.Sum(e => e.PrecioDiario * CantDe(e.Id));
+    decimal AlqTotalChat => AlqEquiposTotalChat + AlqFleteMontoChat;
+    bool AlqHayAlgo => alqEquipos.Any(e => CantDe(e.Id) > 0);
+
+    int CantDe(int equipoId) => alqCant.TryGetValue(equipoId, out var n) ? n : 0;
+    string CantTxtDe(int equipoId) => alqCantTxt.TryGetValue(equipoId, out var t) ? t : "0";
+
+    /// <summary>La lista que se ve: todos los equipos, o los que matchean el filtro si escribió algo.</summary>
+    List<AlqEquipoDto> EquiposAlqVisibles()
+    {
+        var q = (alqBusq ?? "").Trim();
+        if (q.Length == 0) return alqEquipos;
+        return alqEquipos
+            .Where(x => x.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
+                     || x.Sku.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
 
     async Task AbrirModoAlquiler()
     {
@@ -6030,42 +6038,21 @@
 
     void CerrarModoAlquiler() => modoAlquiler = false;
 
-    void OnBuscarEquipoAlq(ChangeEventArgs e)
-    {
-        alqBusq = e.Value?.ToString() ?? "";
-        var q = alqBusq.Trim();
-        if (q.Length < 2) { alqSugs = new(); return; }
-        alqSugs = alqEquipos
-            .Where(x => x.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
-                     || x.Sku.Contains(q, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(x => x.Nombre.StartsWith(q, StringComparison.OrdinalIgnoreCase))
-            .ThenBy(x => x.Nombre)
-            .Take(6)
-            .ToList();
-    }
+    void OnFiltrarEquipoAlq(ChangeEventArgs e) => alqBusq = e.Value?.ToString() ?? "";
 
-    void SumarEquipoAlq(AlqEquipoDto eq)
+    void SumarCantAlq(int equipoId, int delta)
     {
-        alqBusq = ""; alqSugs = new();
-        var ya = alqLineas.FirstOrDefault(l => l.EquipoId == eq.Id);
-        if (ya is not null) { SumarCantAlq(ya, 1); return; }
-        alqLineas.Add(new AlqLineaChat { EquipoId = eq.Id, Nombre = eq.Nombre, Precio = eq.PrecioDiario });
-    }
-
-    void QuitarLineaAlq(AlqLineaChat l) => alqLineas.Remove(l);
-
-    void SumarCantAlq(AlqLineaChat l, int delta)
-    {
-        l.Cant = Math.Max(1, l.Cant + delta);
-        l.CantTxt = l.Cant.ToString();
+        var n = Math.Max(0, CantDe(equipoId) + delta);
+        alqCant[equipoId] = n;
+        alqCantTxt[equipoId] = n.ToString();
     }
 
     // Se ata a TEXTO, no a numero: atado a int, borrar el campo lo deja en 0 y tipear 1 da 10.
-    void CambiarCantAlq(AlqLineaChat l, string? txt)
+    void CambiarCantAlq(int equipoId, string? txt)
     {
         var t = (txt ?? "").Trim();
-        l.CantTxt = t;
-        l.Cant = int.TryParse(t, out var n) && n > 0 ? n : 1;
+        alqCantTxt[equipoId] = t;
+        alqCant[equipoId] = int.TryParse(t, out var n) && n > 0 ? n : 0;
     }
 
     // Busca por zona Y por la aclaracion: el dueño escribe "CABA"/"PROVINCIA" en la aclaracion,
@@ -6095,8 +6082,8 @@
 
     void LimpiarAlq()
     {
-        alqLineas = new();
-        alqBusq = ""; alqSugs = new();
+        alqCant = new(); alqCantTxt = new();
+        alqBusq = "";
         alqFleteBusq = ""; alqFleteSugs = new(); alqFleteZona = ""; alqFleteTxt = "";
         alqFecha = null;
     }
@@ -6114,14 +6101,16 @@
                 sb.AppendLine($"Fecha: {f:dd/MM/yyyy}");
             sb.AppendLine();
 
-            foreach (var l in alqLineas)
-                sb.AppendLine($"{l.Cant} x {l.Nombre} — {Plata(l.Subtotal)}");
+            // 2026-08-31 (pedido del dueño): el cliente ve QUÉ y CUÁNTO, sin precio por renglón.
+            // El único importe del mensaje es el TOTAL.
+            foreach (var eq in alqEquipos)
+            {
+                var c = CantDe(eq.Id);
+                if (c > 0) sb.AppendLine($"{c} x {eq.Nombre}");
+            }
 
             if (AlqFleteMontoChat != 0m)
-            {
-                var et = string.IsNullOrWhiteSpace(alqFleteZona) ? "Flete" : $"Flete {alqFleteZona}";
-                sb.AppendLine($"{et} — {Plata(AlqFleteMontoChat)}");
-            }
+                sb.AppendLine(string.IsNullOrWhiteSpace(alqFleteZona) ? "Flete" : $"Flete {alqFleteZona}");
 
             sb.AppendLine();
             sb.Append($"*TOTAL: {Plata(AlqTotalChat)}*");
