@@ -81,7 +81,8 @@
             </div>
             @if (!linkedDetected && !loadingChats)
             {
-                <div class="ww-banner-warn">⚠️ <span>WhatsApp no vinculado.</span></div>
+                @* El aviso completo, con el QR, vive en el panel de la derecha. *@
+                <div class="ww-banner-warn">⚠️ <span>Sin teléfono conectado.</span></div>
             }
             <div class="ww-conv-list">
                 @if (loadingChats && chats.Count == 0)
@@ -119,8 +120,48 @@
             </div>
         </div>
 
-        @* Panel derecho: si no hay chat seleccionado, placeholder. Si hay, mensajes + footer. *@
-        @if (string.IsNullOrEmpty(selectedName))
+        @* 2026-08-31 (pedido del dueño): si NO hay linea vinculada, el QR se escanea ACA MISMO.
+           Antes habia que ir a Integraciones a buscarlo, y encima la entrada del menu solo
+           aparecia con una linea ya vinculada: sin linea, no habia forma de llegar a esta
+           pantalla ni para escanear. La puerta quedaba cerrada con la llave adentro. *@
+        @if (!linkedDetected && !loadingChats)
+        {
+            <div class="ww-empty-pane">
+                <div style="font-size:2.6rem; margin-bottom:0.6rem;">📱</div>
+                <div style="font-size:1.15rem; font-weight:600; color:#374151;">Conectá un teléfono</div>
+                <div style="font-size:0.88rem; max-width:420px; margin-top:0.6rem; line-height:1.5;">
+                    Esta pantalla trabaja con un WhatsApp común, el de un celular, escaneando un código
+                    igual que el WhatsApp Web del navegador.
+                </div>
+
+                @if (!mostrandoQr)
+                {
+                    <button class="btn btn-primary" style="margin-top:1.4rem;" @onclick="EmpezarVinculacion" disabled="@preparandoQr">
+                        @if (preparandoQr) { <span>Abriendo WhatsApp…</span> }
+                        else { <span>Mostrar el código QR</span> }
+                    </button>
+                    <div style="font-size:0.78rem; color:#9ca3af; margin-top:0.9rem; max-width:420px;">
+                        Usá un número que no sea el principal del negocio.
+                    </div>
+                }
+                else
+                {
+                    <div style="background:white; padding:1rem; border-radius:12px; margin-top:1.2rem;
+                                box-shadow:0 1px 4px rgba(0,0,0,0.12);">
+                        <img src="@qrUrl" alt="Código QR de WhatsApp" style="width:264px; height:264px; display:block;" />
+                    </div>
+                    <div style="font-size:0.88rem; margin-top:1rem; max-width:420px; line-height:1.6; color:#374151;">
+                        En el celular: <strong>WhatsApp</strong> → <strong>Configuración</strong> →
+                        <strong>Dispositivos vinculados</strong> → <strong>Vincular un dispositivo</strong>.
+                    </div>
+                    <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.9rem; font-size:0.82rem; color:#6b7280;">
+                        <span class="ww-spinner"></span> <span>Esperando que lo escanees…</span>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" style="margin-top:1rem;" @onclick="CancelarVinculacion">Cancelar</button>
+                }
+            </div>
+        }
+        else if (string.IsNullOrEmpty(selectedName))
         {
             <div class="ww-empty-pane">
                 <div style="font-size:3rem; margin-bottom:0.5rem;">💬</div>
@@ -308,6 +349,81 @@
 
     private bool enviandoArchivo;
 
+    // ── 2026-08-31: vincular el teléfono sin salir de esta pantalla ──
+    private bool mostrandoQr;
+    private bool preparandoQr;
+    private string qrUrl = "";
+    private CancellationTokenSource? qrPollCts;
+
+    /// <summary>Le pide al robot que abra WhatsApp Web y muestre el QR, y después queda
+    /// preguntando cada 3 segundos si ya lo escanearon. El QR se refresca en cada vuelta
+    /// porque WhatsApp lo rota cada tanto; sin eso, el que ves se vence y no pasa nada.</summary>
+    private async Task EmpezarVinculacion()
+    {
+        if (preparandoQr) return;
+        preparandoQr = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            if (!await Api.StartWhatsAppLinkAsync())
+            {
+                Toast.Error("No se pudo abrir WhatsApp para mostrar el código");
+                return;
+            }
+            // El robot necesita unos segundos para abrir el navegador y dibujar el QR.
+            await Task.Delay(4000);
+            qrUrl = $"/api/whatsapp/qr?t={DateTimeOffset.Now.ToUnixTimeMilliseconds()}";
+            mostrandoQr = true;
+            ArrancarEsperaDelQr();
+        }
+        catch (Exception ex) { Toast.Error("Error abriendo el código: " + ex.Message); }
+        finally
+        {
+            preparandoQr = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ArrancarEsperaDelQr()
+    {
+        qrPollCts?.Cancel();
+        qrPollCts = new CancellationTokenSource();
+        var token = qrPollCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(3000, token);
+                    if (token.IsCancellationRequested) break;
+
+                    qrUrl = $"/api/whatsapp/qr?t={DateTimeOffset.Now.ToUnixTimeMilliseconds()}";
+                    var vinculado = await Api.CheckWhatsAppLinkedAsync();
+                    await InvokeAsync(StateHasChanged);
+                    if (vinculado)
+                    {
+                        mostrandoQr = false;
+                        linkedDetected = true;
+                        Toast.Success("Teléfono conectado");
+                        await RecargarChats(silent: true);   // que los chats aparezcan solos
+                        break;
+                    }
+                }
+                catch (TaskCanceledException) { break; }
+                catch { /* el robot puede tardar; seguimos preguntando */ }
+            }
+        }, token);
+    }
+
+    private void CancelarVinculacion()
+    {
+        qrPollCts?.Cancel();
+        mostrandoQr = false;
+        qrUrl = "";
+    }
+
+
     /// <summary>2026-08-31: manda el archivo elegido al chat abierto. El texto que haya en el
     /// cuadro de escribir viaja como pie del archivo y se limpia solo si sale bien.
     /// Si el robot no puede CONFIRMAR que salió, se muestra el error tal cual: no decimos
@@ -376,5 +492,8 @@
     public void Dispose()
     {
         // 2026-08-29: ya no hay temporizadores que soltar (se sacaron los refrescos automáticos).
+        // 2026-08-31: pero sí hay que cortar la espera del QR si la persona se va de la pantalla,
+        // o queda un bucle preguntando para siempre contra una pantalla que ya no existe.
+        try { qrPollCts?.Cancel(); } catch { }
     }
 }

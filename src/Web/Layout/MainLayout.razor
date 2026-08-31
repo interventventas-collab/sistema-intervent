@@ -712,15 +712,11 @@
                            Hasta hoy NO habia forma de llegar: no estaba en el menu y el boton verde
                            de arriba abre el panel flotante de la linea oficial. Habia que escribir
                            /whatsapp-web a mano — por eso quedo abandonada meses sin que nadie lo note.
-                           Solo se muestra si hay una cuenta escaneada: si no, seria una puerta a una
-                           pantalla vacia. Se mira HayCuenta y no Linked a proposito: Linked dice si
-                           la sesion esta viva EN ESTE SEGUNDO y da false por unos segundos despues
-                           de cada reinicio, asi que la entrada aparecería y desaparecería sola. *@
-                        @if (waStatus?.HayCuenta == true)
-                        {
-                            <NavItem Href="/whatsapp-web" Label="📱 WhatsApp · Línea QR" Icon="@SvgIcons.MessageCircle"
-                                     IsActive="@IsActive("/whatsapp-web")" OnClick="@(() => NavigateTo("/whatsapp-web"))" />
-                        }
+                           Se muestra SIEMPRE. Al principio la condicione a que ya hubiera una linea
+                           vinculada, pero eso dejaba la llave adentro: sin linea no se podia entrar
+                           a la pantalla, y el QR para vincular ahora vive justamente ahi. *@
+                        <NavItem Href="/whatsapp-web" Label="📱 WhatsApp · Línea QR" Icon="@SvgIcons.MessageCircle"
+                                 IsActive="@IsActive("/whatsapp-web")" OnClick="@(() => NavigateTo("/whatsapp-web"))" />
                         @* Stock unificado: entra a Stock masivo, y desde la pantalla hay boton para abrir Stock movil. *@
                         <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
                                  IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
