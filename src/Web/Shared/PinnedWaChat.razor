@@ -550,6 +550,9 @@
                     <button type="button" class="pwa-mas-op" @onclick="AbrirServidor">📁 Adjuntar del servidor</button>
                     <button type="button" class="pwa-mas-op" @onclick="AbrirContacto">👤 Compartir un contacto</button>
                     <button type="button" class="pwa-mas-op" @onclick="AbrirSaldo">💰 Mandar el saldo de un cliente</button>
+                    @* 2026-08-31: el 🏦 existía solo en la compu y en el celu no estaba. Lo pidió el
+                       dueño: "no la encuentro y es muy importante". Mismas cuentas de ⚙️ Configuración. *@
+                    <button type="button" class="pwa-mas-op" @onclick="AbrirCbu">🏦 Pasar CBU / datos bancarios</button>
                 }
                 else if (masVista == "servidor")
                 {
@@ -630,6 +633,36 @@
                     @if (salCargando)
                     {
                         <div class="pwa-mas-info">Trayendo saldo…</div>
+                    }
+                }
+                else if (masVista == "cbu")
+                {
+                    @if (cbusCargando)
+                    {
+                        <div class="pwa-mas-info">Trayendo las cuentas…</div>
+                    }
+                    else if (cbus.Count == 0)
+                    {
+                        <div class="pwa-mas-info">Todavía no cargaste ninguna cuenta. Se cargan en la compu, en ⚙️ Configuración → "Datos bancarios / CBUs".</div>
+                    }
+                    @foreach (var cb in cbus)
+                    {
+                        <button type="button" class="pwa-mas-item" @onclick="() => PonerCbuTexto(cb)">
+                            <span class="pwa-mas-item-ic">🏦</span>
+                            <span class="pwa-mas-item-txt">
+                                <span class="pwa-mas-item-lbl">@cb.Nombre@(string.IsNullOrWhiteSpace(cb.Banco) ? "" : $" · {cb.Banco}")</span>
+                            </span>
+                        </button>
+                        @if (!string.IsNullOrWhiteSpace(cb.Alias))
+                        {
+                            <button type="button" class="pwa-mas-item pwa-cbu-alias" disabled="@enviandoAliasPwa"
+                                    @onclick="() => EnviarSoloAliasPwa(cb)">
+                                <span class="pwa-mas-item-txt">
+                                    <span class="pwa-mas-item-lbl">↳ Solo alias: @cb.Alias</span>
+                                    <span class="pwa-mas-item-sub">@(enviandoAliasPwa ? "enviando…" : "se manda solo (2 mensajes)")</span>
+                                </span>
+                            </button>
+                        }
                     }
                 }
             </div>
@@ -847,6 +880,8 @@
     .pwa-mas-op { display: block; width: 100%; text-align: left; border: 1px solid #e5e7eb; background: #fff;
         border-radius: 12px; padding: 14px; margin-bottom: 8px; font-size: 0.95rem; font-weight: 700; color: #111827; cursor: pointer; }
     .pwa-mas-op:hover { background: #f0fdf4; }
+    .pwa-cbu-alias { margin-left: 1.1rem; width: calc(100% - 1.1rem); background: #fbfbfd; }
+    .pwa-cbu-alias .pwa-mas-item-lbl { font-size: 0.86rem; color: #4b5563; }
     .pwa-mas-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
     .pwa-mas-tab { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 999px;
         padding: 5px 11px; font-size: 0.76rem; font-weight: 700; cursor: pointer; white-space: nowrap; flex: none; }
@@ -1743,6 +1778,7 @@
         "servidor" => "🗂️ Adjuntar del servidor",
         "contacto" => "👤 Compartir contacto",
         "saldo" => "💰 Mandar saldo",
+        "cbu" => "🏦 Datos bancarios",
         _ => "➕ Más"
     };
 
@@ -1831,6 +1867,98 @@
             mostrarMas = false;
         }
         finally { salCargando = false; StateHasChanged(); }
+    }
+
+    // === 2026-08-31: DATOS BANCARIOS / CBU en el celular ===
+    // En la compu esto es el botón 🏦 del composer; en el celu no existía y él lo buscaba.
+    // Mismas cuentas (⚙️ Configuración → Datos bancarios) y mismo texto que arma la compu.
+    private List<ApiClient.TwCbuDto> cbus = new();
+    private bool cbusCargando;
+    private bool cbusCargados;
+    private bool enviandoAliasPwa;
+    private string? _ultAliasTxt; private DateTime _ultAliasCuando = DateTime.MinValue;
+
+    private async Task AbrirCbu()
+    {
+        masVista = "cbu";
+        StateHasChanged();
+        if (cbusCargados) return;
+        cbusCargando = true; StateHasChanged();
+        try
+        {
+            cbus = (await Api.GetTwDatosBancariosAsync()).Where(c => c.Activo).ToList();
+            cbusCargados = true;
+        }
+        catch { Toast.Error("No pude traer las cuentas"); }
+        finally { cbusCargando = false; StateHasChanged(); }
+    }
+
+    /// <summary>Deja los datos completos en el cuadro de escribir; se revisa y se manda con Enviar.</summary>
+    private async Task PonerCbuTexto(ApiClient.TwCbuDto cb)
+    {
+        var texto = FormatearCbuPwa(cb);
+        composer = string.IsNullOrWhiteSpace(composer) ? texto : composer.TrimEnd() + "\n\n" + texto;
+        await SincronizarComposer();
+        mostrarMas = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Manda DOS mensajes: los datos de la cuenta en un renglón y atrás el alias solito, para que
+    /// el cliente lo copie de un toque. Igual que en la compu (ver EnviarSoloAlias del escritorio).
+    /// </summary>
+    private async Task EnviarSoloAliasPwa(ApiClient.TwCbuDto cb)
+    {
+        var alias = (cb.Alias ?? "").Trim();
+        if (alias.Length == 0 || enviandoAliasPwa) return;
+
+        // Mismo candado que la compu: el mismo alias dos veces seguidas casi siempre es el dedo.
+        if (_ultAliasTxt == alias && (DateTime.Now - _ultAliasCuando).TotalSeconds < 20)
+        {
+            mostrarMas = false;
+            Toast.Info("Ese alias se lo mandaste recién.");
+            return;
+        }
+
+        enviandoAliasPwa = true;
+        mostrarMas = false;
+        StateHasChanged();
+        try
+        {
+            // Si el primero no sale, NO mandamos el alias: quedaría suelto sin decir de quién es.
+            var (ok1, err1) = await Api.SendTwMensajeAsync(Numero, TextoDatosCuentaPwa(cb), LineaPhoneId, null);
+            if (!ok1) { Toast.Error(string.IsNullOrWhiteSpace(err1) ? "No salió el mensaje" : err1); return; }
+            var (ok2, err2) = await Api.SendTwMensajeAsync(Numero, alias, LineaPhoneId, null);
+            if (!ok2) { Toast.Error(string.IsNullOrWhiteSpace(err2) ? "No salió el alias" : err2); return; }
+            _ultAliasTxt = alias; _ultAliasCuando = DateTime.Now;
+            await Cargar();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo mandar: " + ex.Message); }
+        finally { enviandoAliasPwa = false; StateHasChanged(); }
+    }
+
+    private static string FormatearCbuPwa(ApiClient.TwCbuDto cb)
+    {
+        var sb = new System.Text.StringBuilder();
+        var banco = string.IsNullOrWhiteSpace(cb.Banco) ? cb.Nombre : cb.Banco;
+        var tipo = string.IsNullOrWhiteSpace(cb.TipoCuenta) ? "" : $" ({cb.TipoCuenta})";
+        sb.Append($"🏦 Datos bancarios – {banco}{tipo}");
+        if (!string.IsNullOrWhiteSpace(cb.Titular)) sb.Append($"\nTitular: {cb.Titular}");
+        if (!string.IsNullOrWhiteSpace(cb.Cuit)) sb.Append($"\nCUIT: {cb.Cuit}");
+        if (!string.IsNullOrWhiteSpace(cb.Cbu)) sb.Append($"\nCBU: {cb.Cbu}");
+        if (!string.IsNullOrWhiteSpace(cb.Alias)) sb.Append($"\nAlias: {cb.Alias}");
+        if (!string.IsNullOrWhiteSpace(cb.Mail)) sb.Append($"\n📧 Comprobante a: {cb.Mail}");
+        return sb.ToString();
+    }
+
+    private static string TextoDatosCuentaPwa(ApiClient.TwCbuDto cb)
+    {
+        var partes = new List<string>();
+        var banco = string.IsNullOrWhiteSpace(cb.Banco) ? cb.Nombre : cb.Banco;
+        if (!string.IsNullOrWhiteSpace(banco)) partes.Add(banco.Trim());
+        if (!string.IsNullOrWhiteSpace(cb.Titular)) partes.Add(cb.Titular!.Trim());
+        if (!string.IsNullOrWhiteSpace(cb.Cuit)) partes.Add($"CUIT {cb.Cuit!.Trim()}");
+        return $"🏦 {string.Join(" · ", partes)}, te paso el alias 👇:";
     }
 
     // === 2026-08-06: adjuntar foto/archivo (sube y manda, reusa el camino del WhatsApp grande) ===
