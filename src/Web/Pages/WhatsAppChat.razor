@@ -2572,34 +2572,19 @@
                         <div class="wa-alq-sec">🚚 Flete</div>
                         @if (alqFletes.Count > 0)
                         {
-                            <input class="wa-mv-inp" placeholder="Buscar zona…"
-                                   value="@alqFleteBusq" @oninput="OnBuscarFleteAlq" autocomplete="off" />
-                            @if (alqFleteSugs.Count > 0)
-                            {
-                                <div class="wa-alq-sugs">
-                                    @foreach (var f in alqFleteSugs)
-                                    {
-                                        <button class="wa-alq-sug" @onclick="() => ElegirFleteAlq(f)">
-                                            <span class="wa-alq-sug-n">
-                                                @f.Zona
-                                                @if (!string.IsNullOrWhiteSpace(f.Notas))
-                                                {
-                                                    <span class="wa-alq-sug-nota">@f.Notas</span>
-                                                }
-                                            </span>
-                                            <span class="wa-alq-sug-p">@Plata(f.Precio)</span>
-                                        </button>
-                                    }
-                                </div>
-                            }
+                            @* 2026-08-31: desplegable en vez de buscador (pedido del dueño): son pocas
+                               zonas y buscarlas era una vuelta al pedo. Al elegir, completa el monto. *@
+                            <select class="wa-mv-inp" value="@alqFleteSel" @onchange="ElegirFleteAlq">
+                                <option value="">— Sin flete —</option>
+                                @foreach (var f in alqFletes)
+                                {
+                                    <option value="@f.Id">@f.Zona@(string.IsNullOrWhiteSpace(f.Notas) ? "" : $" · {f.Notas}") — @Plata(f.Precio)</option>
+                                }
+                            </select>
                         }
                         else
                         {
                             <div class="wa-mv-vacio">No hay fletes cargados (Alquileres → Fletes). Podés poner el monto a mano.</div>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(alqFleteZona))
-                        {
-                            <div class="wa-alq-zona-ok">@alqFleteZona</div>
                         }
                         <label class="wa-mv-det-lbl">Monto del flete</label>
                         <input class="wa-mv-inp wa-mv-inp-plata" inputmode="decimal" placeholder="0"
@@ -2614,11 +2599,13 @@
                             <b>@Plata(AlqTotalChat)</b>
                         </div>
 
-                        <button class="wa-alq-mandar" @onclick="MandarCotizacionAlq"
-                                disabled="@(alqMandando || (!AlqHayAlgo && AlqFleteMontoChat == 0m))">
-                            @(alqMandando ? "Mandando…" : "📤 Mandar la cotización")
+                        @* 2026-08-31: NO envía. Escribe la cotización en el cuadro de abajo y el
+                           envío lo decide el operador con el botón Enviar de siempre. *@
+                        <button class="wa-alq-mandar" @onclick="EscribirCotizacionAlq"
+                                disabled="@(!AlqHayAlgo && AlqFleteMontoChat == 0m)">
+                            📝 Escribir la cotización
                         </button>
-                        <button class="wa-mv-limpiar" @onclick="LimpiarAlq" disabled="@alqMandando">Vaciar y empezar de nuevo</button>
+                        <button class="wa-mv-limpiar" @onclick="LimpiarAlq">Vaciar y empezar de nuevo</button>
                     </div>
                 </aside>
             }
@@ -5985,15 +5972,13 @@
     bool modoAlquiler = false;
     bool alqCargado = false;
     bool alqCargando = false;
-    bool alqMandando = false;
     List<AlqEquipoDto> alqEquipos = new();
     List<AlqFleteDto> alqFletes = new();
-    List<AlqFleteDto> alqFleteSugs = new();
+    string alqFleteSel = "";   // id del flete elegido en el desplegable ("" = sin flete)
     // Cantidad puesta en cada equipo (equipoId -> cantidad). Lo que tiene 0 no entra en la cotización.
     Dictionary<int, int> alqCant = new();
     Dictionary<int, string> alqCantTxt = new();
     string alqBusq = "";
-    string alqFleteBusq = "";
     string alqFleteZona = "";
     string alqFleteTxt = "";
     DateTime? alqFecha = null;
@@ -6055,27 +6040,19 @@
         alqCant[equipoId] = int.TryParse(t, out var n) && n > 0 ? n : 0;
     }
 
-    // Busca por zona Y por la aclaracion: el dueño escribe "CABA"/"PROVINCIA" en la aclaracion,
-    // y la zona se llama "zona 1", "zona 2".
-    void OnBuscarFleteAlq(ChangeEventArgs e)
+    /// <summary>Eligió una zona en el desplegable: se completa el monto (después lo puede pisar).</summary>
+    void ElegirFleteAlq(ChangeEventArgs e)
     {
-        alqFleteBusq = e.Value?.ToString() ?? "";
-        var q = alqFleteBusq.Trim();
-        if (q.Length < 1) { alqFleteSugs = new(); return; }
-        alqFleteSugs = alqFletes
-            .Where(f => f.Zona.Contains(q, StringComparison.OrdinalIgnoreCase)
-                     || (f.Notas ?? "").Contains(q, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(f => f.Zona.StartsWith(q, StringComparison.OrdinalIgnoreCase))
-            .ThenBy(f => f.Zona)
-            .Take(6)
-            .ToList();
-    }
-
-    void ElegirFleteAlq(AlqFleteDto f)
-    {
+        alqFleteSel = e.Value?.ToString() ?? "";
+        if (!int.TryParse(alqFleteSel, out var id))
+        {
+            alqFleteZona = ""; alqFleteTxt = "";
+            return;
+        }
+        var f = alqFletes.FirstOrDefault(x => x.Id == id);
+        if (f is null) return;
         alqFleteZona = f.Zona;
         alqFleteTxt = f.Precio.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
-        alqFleteBusq = ""; alqFleteSugs = new();
     }
 
     void OnMontoFleteAlq(ChangeEventArgs e) => alqFleteTxt = e.Value?.ToString() ?? "";
@@ -6084,16 +6061,17 @@
     {
         alqCant = new(); alqCantTxt = new();
         alqBusq = "";
-        alqFleteBusq = ""; alqFleteSugs = new(); alqFleteZona = ""; alqFleteTxt = "";
+        alqFleteSel = ""; alqFleteZona = ""; alqFleteTxt = "";
         alqFecha = null;
     }
 
-    /// <summary>Arma el presupuesto como lo lee el cliente y lo manda al chat.</summary>
-    async Task MandarCotizacionAlq()
+    /// <summary>
+    /// Arma el presupuesto como lo lee el cliente y lo DEJA ESCRITO en el cuadro de abajo.
+    /// No lo manda: el envío lo decide el operador con el botón Enviar de siempre (pedido del dueño
+    /// 2026-08-31, así se puede revisar o agregarle algo antes).
+    /// </summary>
+    void EscribirCotizacionAlq()
     {
-        if (alqMandando) return;
-        alqMandando = true;
-        try
         {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("*Presupuesto*");
@@ -6115,11 +6093,14 @@
             sb.AppendLine();
             sb.Append($"*TOTAL: {Plata(AlqTotalChat)}*");
 
-            var ok = await EnviarTexto(sb.ToString());
-            if (ok) Toast.Success("Cotización enviada");
+            // Si venías escribiendo algo, no se pisa: la cotización va abajo de lo tuyo.
+            composerText = string.IsNullOrWhiteSpace(composerText)
+                ? sb.ToString()
+                : composerText.TrimEnd() + "\n\n" + sb.ToString();
+            GuardarBorradorDelChat();
+            Toast.Success("Cotización escrita abajo — revisala y tocá Enviar");
+            StateHasChanged();
         }
-        catch (Exception ex) { Toast.Error("No se pudo mandar: " + ex.Message); }
-        finally { alqMandando = false; StateHasChanged(); }
     }
 
     /// <summary>Plata como la escribe una persona: la coma es decimal; el punto es miles si lo siguen 3 digitos.</summary>
@@ -7642,6 +7623,9 @@
         mostrarFichaCliente = false; fichaCliente = null; facturaAbierta = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
         LimpiarModoMeli();          // 2026-08-21: la ficha de MercadoLibre era del comprador del chat anterior
         LimpiarModoVenta();         // 2026-08-21: el carrito y las ventas para repetir eran del cliente anterior
+        // 2026-08-31: la cotización de alquiler era para el cliente ANTERIOR. Se apaga el modo y se
+        // vacía todo: si quedara prendido, el próximo "mandar" le tira el presupuesto de otro.
+        modoAlquiler = false; LimpiarAlq();
         showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
         // 2026-08-26: los mensajes programados son de CADA chat: se limpian y se piden de nuevo.
         showProgramarPanel = false; progModo = "MENSAJE"; progPendientes = new(); progResueltos = new();
