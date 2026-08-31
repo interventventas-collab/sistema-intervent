@@ -157,7 +157,16 @@ else
         @if (chatAbierto is not null)
         {
             <button type="button" class="wam-hbtn" @onclick="Volver" title="Volver a la lista">←</button>
-            <span class="wam-title" title="@NombreDe(chatAbierto)">@NombreDe(chatAbierto)</span>
+            @* 2026-08-31: abajo del nombre va el TELEFONO y la CATEGORIA del contacto (Alquiler,
+               Cafe, ...). Antes en el celu solo se veia el nombre y no habia forma de saber a que
+               numero le estabas escribiendo sin salir del chat. *@
+            <div class="wam-title" title="@NombreDe(chatAbierto)">
+                <div class="wam-title-n">@NombreDe(chatAbierto)</div>
+                @if (SubLinea(chatAbierto) is string _hsub && _hsub.Length > 0)
+                {
+                    <div class="wam-title-sub">@_hsub</div>
+                }
+            </div>
             @* 2026-08-20: lupa para buscar una palabra DENTRO de esta charla. El buscador vive en
                PinnedWaChat (que es el que tiene los mensajes); acá solo se lo abrimos. *@
             <button type="button" class="wam-hbtn" @onclick="AbrirBuscadorChat"
@@ -255,6 +264,14 @@ else
                             <div class="wam-avatar">@Inicial(c)</div>
                             <div class="wam-conv-txt">
                                 <div class="wam-conv-nombre" title="@NombreDe(c)">@(c.Fijado ? "📌 " : "")@NombreDe(c)</div>
+                                @* 2026-08-31: renglon chico con el TELEFONO y la ETIQUETA de categoria,
+                                   igual que en la pantalla grande. Solo aparece si hay algo que decir:
+                                   si el contacto no tiene nombre (el renglon grande YA es el numero) no
+                                   se repite, y si no tiene categoria no se muestra nada. *@
+                                @if (SubLinea(c) is string _sub && _sub.Length > 0)
+                                {
+                                    <div class="wam-conv-sub">@_sub</div>
+                                }
                                 <div class="wam-conv-ultimo">@Recortar(UltimoTexto(c), 44)</div>
                             </div>
                             <div class="wam-conv-meta">
@@ -335,7 +352,12 @@ else
 
     .wam-header { display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
         background: #075e54; color: #fff; padding: 12px 14px; padding-top: max(12px, env(safe-area-inset-top)); }
-    .wam-title { font-weight: 800; font-size: 1.05rem; flex: 1;
+    .wam-title { font-weight: 800; font-size: 1.05rem; flex: 1; min-width: 0;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* 2026-08-31: en el chat abierto el título son DOS renglones (nombre arriba, teléfono y
+       categoría abajo). Cada uno se corta solo con puntitos si no entra. */
+    .wam-title-n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+    .wam-title-sub { font-size: 0.72rem; font-weight: 600; opacity: 0.85; line-height: 1.25;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .wam-hbtn { background: rgba(255,255,255,0.18); border: none; color: #fff; border-radius: 8px;
         width: 34px; height: 32px; font-size: 1.1rem; cursor: pointer; flex: none; }
@@ -369,6 +391,10 @@ else
     .wam-conv-nombre { font-weight: 700; color: #111827; font-size: 1rem;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .wam-conv-ultimo { font-size: 0.85rem; color: #6b7280;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* 2026-08-31: teléfono + categoría, abajo del nombre. Gris y chico a propósito: es un dato
+       de apoyo, el que manda sigue siendo el nombre. */
+    .wam-conv-sub { font-size: 0.76rem; color: #6b7280; margin: 1px 0;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* 2026-08-18: hora + punto de "sin leer", como WhatsApp */
     .wam-conv-txt { flex: 1; }
@@ -1257,6 +1283,47 @@ else
         => !string.IsNullOrWhiteSpace(c.ClienteNombre) ? c.ClienteNombre!
          : !string.IsNullOrWhiteSpace(c.NombrePerfil) ? c.NombrePerfil!
          : (c.Numero ?? "Contacto").Replace("whatsapp:", "").Replace("ig:", "IG ");
+
+    // ── 2026-08-31: renglón chico de abajo del nombre (celu) ──────────────────────────────
+    // Pedido del dueño: "que me aparezca el teléfono del cliente abajo del nombre, y el icono
+    // indicando la categoría". Sale como texto plano separado por " · " (nada de cartelitos de
+    // colores) y solo con lo que de verdad aporta:
+    //   · el TELÉFONO, salvo que el renglón de arriba YA sea el número (contacto sin nombre)
+    //     o que la charla sea de Instagram, donde no hay teléfono que mostrar.
+    //   · la CATEGORÍA del contacto (🎪 Alquiler, ☕ Café, 🚚 Proveedor, …), la misma que se pone
+    //     desde el 🏷️ de la pantalla grande. Si el contacto no tiene categoría, no se muestra nada.
+    private static string SubLinea(ApiClient.TwConvDto c)
+    {
+        var partes = new List<string>();
+        var tel = TelefonoDe(c);
+        if (!string.IsNullOrEmpty(tel) && tel != NombreDe(c)) partes.Add(tel);
+        var cat = CategoriaEtiqueta(c.Rol);
+        if (!string.IsNullOrEmpty(cat)) partes.Add(cat);
+        return string.Join(" · ", partes);
+    }
+
+    /// <summary>El número de teléfono tal cual, sin el "whatsapp:" de adelante. En Instagram
+    /// devuelve vacio: ahi el contacto es un usuario de Instagram, no un telefono.</summary>
+    private static string TelefonoDe(ApiClient.TwConvDto c)
+    {
+        var n = (c.Numero ?? "").Trim();
+        if (n.StartsWith("ig:")) return "";
+        return n.Replace("whatsapp:", "").Trim();
+    }
+
+    /// <summary>Categoría del contacto con su iconito. Mismas opciones que el menú 🏷️ de la
+    /// pantalla grande, así se lee igual en los dos lados.</summary>
+    private static string CategoriaEtiqueta(string? rol) => rol switch
+    {
+        "cliente"   => "🛍️ Cliente",
+        "empleado"  => "👷 Empleado",
+        "hermano"   => "👨\u200d👦 Hermano",
+        "proveedor" => "🚚 Proveedor",
+        "alquiler"  => "🎪 Alquiler",
+        "cafe"      => "☕ Café",
+        "otro"      => "🏷️ Otro",
+        _ => ""
+    };
 
     private static string Inicial(ApiClient.TwConvDto c)
     {

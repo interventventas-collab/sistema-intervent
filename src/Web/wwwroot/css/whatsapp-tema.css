@@ -281,6 +281,8 @@
 .wa-dark .wam-conv:active { background: var(--wad-panel2); }
 .wa-dark .wam-conv-nombre { color: var(--wad-txt); }
 .wa-dark .wam-conv-ultimo, .wa-dark .wam-vacio { color: var(--wad-txt2); }
+/* 2026-08-31: renglon del telefono + categoria abajo del nombre (lista del celu) */
+.wa-dark .wam-conv-sub { color: var(--wad-txt3); }
 
 /* ==========================================================================
    3) CHAT FLOTANTE / EL DEL CELULAR POR DENTRO  (Shared/PinnedWaChat.razor)
