@@ -178,6 +178,7 @@
                     <button class="wa-filtro-op @(filtroRol=="hermano" ? "sel" : "")" @onclick='() => PickFiltro("hermano")'>👨‍👦 Hermanos</button>
                     <button class="wa-filtro-op @(filtroRol=="alquiler" ? "sel" : "")" @onclick='() => PickFiltro("alquiler")'>🎪 Alquiler</button>
                     <button class="wa-filtro-op @(filtroRol=="cafe" ? "sel" : "")" @onclick='() => PickFiltro("cafe")'>☕ Café</button>
+                    <button class="wa-filtro-op @(filtroRol=="meli" ? "sel" : "")" @onclick='() => PickFiltro("meli")'>🛒 MELI</button>
                     <button class="wa-filtro-op @(filtroRol=="sin" ? "sel" : "")" @onclick='() => PickFiltro("sin")' title="Charlas de gente sin tipo asignado">❓ Sin asignar</button>
                     <button class="wa-filtro-op @(filtroRol=="pedido" ? "sel" : "")" @onclick='() => PickFiltro("pedido")' title="Charlas donde el último mensaje parece un pedido">📋 Pedidos</button>
 
@@ -370,6 +371,7 @@
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("proveedor")'>🚚 Proveedor</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("alquiler")'>🎪 Alquiler</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("cafe")'>☕ Café</button>
+                <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("meli")'>🛒 MELI</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("otro")'>🏷️ Otro</button>
                 <button class="wa-rolmenu-cancel" @onclick="() => rolMenuConv = null">Cancelar</button>
             </div>
@@ -2726,6 +2728,7 @@
                     <option value="proveedor">🚚 Proveedor</option>
                     <option value="alquiler">🎪 Alquiler</option>
                     <option value="cafe">☕ Café</option>
+                    <option value="meli">🛒 MELI</option>
                     <option value="otro">Otro</option>
                 </select>
             </div>
@@ -3287,6 +3290,7 @@
     .wa-rol-tag.rol-proveedor { background: #fff7ed; color: #c2410c; }
     .wa-rol-tag.rol-alquiler  { background: #fdf2f8; color: #be185d; }
     .wa-rol-tag.rol-cafe      { background: #fefce8; color: #a16207; }
+    .wa-rol-tag.rol-meli      { background: #fef9c3; color: #2d3277; }
     .wa-rol-tag.rol-otro      { background: #f1f5f9; color: #64748b; }
     .wa-estado-chip { color: #fff; font-size: 0.63rem; font-weight: 700; padding: 0.08rem 0.42rem; border-radius: 8px; letter-spacing: .2px; }
     .wa-pasada-chip { background: #f59e0b; color: #fff; font-size: 0.63rem; font-weight: 700; padding: 0.08rem 0.42rem; border-radius: 8px; }
@@ -8690,6 +8694,9 @@
         "hermano" => "👨‍👦 Hermanos",
         "empleado" => "👷 Empleados",
         "cliente" => "🛍️ Clientes",
+        "alquiler" => "🎪 Alquiler",
+        "cafe" => "☕ Café",
+        "meli" => "🛒 MELI",
         "sin" => "❓ Sin asignar",
         "mios" => "🙋 Míos",
         "en_curso" => "🟡 En curso",
@@ -9228,6 +9235,7 @@
         "proveedor" => "🚚",
         "alquiler" => "🎪",
         "cafe" => "☕",
+        "meli" => "🛒",
         _ => ""
     };
     string RolLabel(string? rol) => rol switch
@@ -9238,6 +9246,7 @@
         "proveedor" => "Proveedor",
         "alquiler" => "Alquiler",
         "cafe" => "Café",
+        "meli" => "MELI",
         "otro" => "Otro",
         _ => "Sin categoría"
     };
@@ -9252,6 +9261,7 @@
         "proveedor" => "rol-proveedor",
         "alquiler" => "rol-alquiler",
         "cafe" => "rol-cafe",
+        "meli" => "rol-meli",
         _ => "rol-otro"
     };
 
@@ -9265,6 +9275,7 @@
             "proveedor" => "#8b5cf6",
             "alquiler" => "#ec4899",
             "cafe" => "#b45309",
+            "meli" => "#2d3277",
             _ => "#25d366"
         };
         return $"background:{bg};";
