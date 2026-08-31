@@ -2,6 +2,7 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject Web.Services.ApiClient Api
 @inject Web.Services.ToastService Toast
+@inject IJSRuntime JS
 @inject Microsoft.AspNetCore.Components.NavigationManager Nav
 @implements IDisposable
 
@@ -13,7 +14,11 @@
                   background: white; border-bottom: 1px solid #e5e7eb; }
     .ww-linea-badge { display: flex; align-items: center; gap: 0.4rem; background: #fef3c7; color: #78350f;
                        border-radius: 999px; padding: 0.3rem 0.75rem; font-size: 0.85rem; font-weight: 600; }
-    .ww-volver { margin-left: auto; font-size: 0.82rem; color: #2563eb; text-decoration: none; }
+    .ww-desconectar { margin-left: auto; background: transparent; border: 1px solid #fca5a5; color: #b91c1c;
+                       border-radius: 8px; padding: 0.25rem 0.7rem; font-size: 0.8rem; cursor: pointer; }
+    .ww-desconectar:hover:not(:disabled) { background: #fef2f2; }
+    .ww-desconectar:disabled { opacity: 0.6; cursor: default; }
+    .ww-volver { font-size: 0.82rem; color: #2563eb; text-decoration: none; }
     .ww-volver:hover { text-decoration: underline; }
     .ww-aviso { background: #fffbeb; border-bottom: 1px solid #fde68a; color: #78350f;
                  padding: 0.5rem 1rem; font-size: 0.82rem; line-height: 1.45; }
@@ -47,6 +52,8 @@
     .ww-bubble-in { background: white; align-self: flex-start; border-top-left-radius: 0; }
     .ww-bubble-out { background: #d9fdd3; align-self: flex-end; border-top-right-radius: 0; }
     .ww-bubble-row { display: flex; flex-direction: column; }
+    .ww-bubble-autor { font-size: 0.78rem; font-weight: 600; color: #2563eb; margin-bottom: 0.1rem; }
+    .ww-bubble-hora { font-size: 0.68rem; color: #8696a0; text-align: right; margin-top: 0.15rem; }
     .ww-chat-footer { background: #f0f2f5; padding: 0.6rem 1rem; border-top: 1px solid #e5e7eb;
                        display: flex; gap: 0.5rem; align-items: center; flex-shrink: 0; }
     /* 2026-08-20: arranca en DOS renglones (antes uno: min-height 38px = un renglon justo).
@@ -83,6 +90,15 @@
        a que alguien pierda diez minutos buscando el buscador global o el modo Venta. *@
     <div class="ww-topbar">
         <div class="ww-linea-badge">🔳 <span>Línea por QR</span></div>
+        @* 2026-08-31 (pedido del dueño): desconectar el teléfono desde acá. Antes había que ir
+           a Integraciones, que es donde se conecta pero no donde uno está parado cuando quiere
+           soltarlo. Pregunta antes: desconectar obliga a volver a escanear el QR. *@
+        @if (linkedDetected)
+        {
+            <button class="ww-desconectar" @onclick="DesconectarTelefono" disabled="@desconectando">
+                @(desconectando ? "Desconectando…" : "Desconectar el teléfono")
+            </button>
+        }
         <a href="/whatsapp" class="ww-volver">← Volver a las líneas oficiales</a>
     </div>
     <div class="ww-aviso">
@@ -228,7 +244,23 @@
                             @foreach (var m in chatMessages)
                             {
                                 var txt = string.IsNullOrWhiteSpace(m.Text) ? "📎 [multimedia o sin texto]" : m.Text;
-                                <div class="ww-bubble @(m.FromMe ? "ww-bubble-out" : "ww-bubble-in")">@txt</div>
+                                @* 2026-08-31: el autor se muestra SOLO en los mensajes que entran y
+                                   cuando no es el nombre del propio chat — o sea, en los grupos, que
+                                   es donde hace falta saber quién habló. En un chat de a dos repetir
+                                   el nombre en cada burbuja es ruido. *@
+                                var mostrarAutor = !m.FromMe && !string.IsNullOrWhiteSpace(m.Autor)
+                                                   && !string.Equals(m.Autor, selectedName, StringComparison.OrdinalIgnoreCase);
+                                <div class="ww-bubble @(m.FromMe ? "ww-bubble-out" : "ww-bubble-in")">
+                                    @if (mostrarAutor)
+                                    {
+                                        <div class="ww-bubble-autor">@m.Autor</div>
+                                    }
+                                    <div>@txt</div>
+                                    @if (!string.IsNullOrWhiteSpace(m.Hora))
+                                    {
+                                        <div class="ww-bubble-hora">@m.Hora</div>
+                                    }
+                                </div>
                             }
                         </div>
                     }
@@ -435,6 +467,35 @@
                 catch { /* el robot puede tardar; seguimos preguntando */ }
             }
         }, token);
+    }
+
+    private bool desconectando;
+
+    /// <summary>2026-08-31: suelta el teléfono vinculado. Pregunta primero porque no es
+    /// reversible con un clic: para volver hay que tener el celular a mano y escanear otra vez.</summary>
+    private async Task DesconectarTelefono()
+    {
+        if (desconectando) return;
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            "¿Desconectar el teléfono de esta línea?\n\nSe cierra la sesión de WhatsApp. Para volver a usarla vas a tener que escanear el código QR de nuevo, con el celular en la mano.");
+        if (!ok) return;
+
+        desconectando = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            if (await Api.UnlinkWhatsAppAsync())
+            {
+                linkedDetected = false;
+                chats = new();
+                CerrarChat();
+                Toast.Success("Teléfono desconectado");
+            }
+            else { Toast.Error("No se pudo desconectar"); }
+        }
+        catch (Exception ex) { Toast.Error("Error desconectando: " + ex.Message); }
+        desconectando = false;
+        await InvokeAsync(StateHasChanged);
     }
 
     private void CancelarVinculacion()

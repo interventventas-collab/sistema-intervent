@@ -16,6 +16,12 @@ public class WhatsAppMessageDto
     public string Id { get; set; } = "";
     public string Text { get; set; } = "";
     public bool FromMe { get; set; }
+    /// <summary>2026-08-31: hora, fecha y quién lo mandó, sacados del dato que WhatsApp deja en
+    /// cada burbuja ("[18:11, 26/8/2026] osmar palanica:"). En los grupos el autor es la única
+    /// forma de saber quién habló. Vacíos si el mensaje no lo trae (fotos, audios).</summary>
+    public string? Hora { get; set; }
+    public string? Fecha { get; set; }
+    public string? Autor { get; set; }
 }
 
 public class WhatsAppChatMessagesDto

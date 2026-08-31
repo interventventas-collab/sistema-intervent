@@ -1101,13 +1101,47 @@ async function waitAndExtractMessagesFromPanel(page, label) {
       if (tag === 'header' || tag === 'footer') return;
       const hasTextContent = node.querySelector('.copyable-text, span.selectable-text, [data-pre-plain-text], .message-in, .message-out')
                           || node.classList.contains('message-in') || node.classList.contains('message-out');
-      const fromMe = node.classList.contains('message-out')
-                  || String(id).startsWith('true_')
-                  || /^[A-F0-9]+_true/i.test(String(id))
-                  || (node.querySelector('[data-pre-plain-text]') !== null && node.classList.toString().toLowerCase().includes('out'));
+      // 2026-08-31 — DE QUIEN ES CADA MENSAJE.
+      // Antes se miraba la clase 'message-out' y un id que empezaba con true_/false_. WhatsApp
+      // dejo de usar las dos cosas: hoy las clases son codigos sin sentido (xa0aww2, xscbp6u) y
+      // el id es hexadecimal pelado. Resultado: TODO venia como entrante y en la pantalla salia
+      // todo del mismo lado, sin colores y sin saber quien hablaba.
+      //
+      // Ahora se mira DONDE ESTA PARADA la burbuja: las nuestras van pegadas a la derecha y las
+      // del otro a la izquierda. Medido en vivo: un mensaje nuestro daba 485px libres a la
+      // izquierda y 64 a la derecha; uno ajeno, 71 y 517. Eso es diseño de WhatsApp, no un
+      // nombre interno, asi que sobrevive a que sigan ofuscando clases.
+      let fromMe = node.classList.contains('message-out') || String(id).startsWith('true_');
+      let llenaLaFila = false;
+      try {
+        const filaR = node.getBoundingClientRect();
+        const burbuja = node.querySelector('.copyable-text') || node.firstElementChild;
+        if (burbuja) {
+          const bR = burbuja.getBoundingClientRect();
+          const libreIzq = bR.left - filaR.left;
+          const libreDer = filaR.right - bR.right;
+          llenaLaFila = libreIzq <= 1 && libreDer <= 1;
+          if (!llenaLaFila) fromMe = libreIzq > libreDer;
+        }
+      } catch {}
+
+      // [18:11, 26/8/2026] osmar palanica:  ->  hora + fecha + quien lo mando.
+      // En los grupos es la unica forma de saber quien hablo; sin esto todos los mensajes
+      // parecian del mismo. Si el atributo no esta (fotos, audios) quedan vacios y no pasa nada.
+      let hora = '', fecha = '', autor = '';
+      const nodoPre = node.querySelector('[data-pre-plain-text]');
+      if (nodoPre) {
+        const pre = nodoPre.getAttribute('data-pre-plain-text') || '';
+        const m = pre.match(/^\[([^,\]]+),\s*([^\]]+)\]\s*(.*?):\s*$/);
+        if (m) { hora = m[1].trim(); fecha = m[2].trim(); autor = m[3].trim(); }
+      }
+
       const text = extractTextFromNode(node);
+      // Las filas de "hoy"/"ayer"/la hora suelta ocupan TODA la fila y no traen el dato de arriba:
+      // son separadores, no mensajes. Antes se colaban como burbujas vacias.
+      if (llenaLaFila && !nodoPre) return;
       if (!text && !hasTextContent) return;
-      items.push({ id: String(id), text, fromMe });
+      items.push({ id: String(id), text, fromMe, hora, fecha, autor });
     });
 
     return { messages: items, debug };
