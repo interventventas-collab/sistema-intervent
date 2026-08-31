@@ -162,10 +162,11 @@ else
                numero le estabas escribiendo sin salir del chat. *@
             <div class="wam-title" title="@NombreDe(chatAbierto)">
                 <div class="wam-title-n">@NombreDe(chatAbierto)</div>
-                @if (SubLinea(chatAbierto) is string _hsub && _hsub.Length > 0)
-                {
-                    <div class="wam-title-sub">@_hsub</div>
-                }
+                @* 2026-08-31: el renglon de abajo se TOCA y abre el panel de categoria. Cuando el
+                   contacto todavia no tiene ninguna, lo dice ("Poner categoria") para que se vea
+                   que hay algo para tocar y no quede escondido. *@
+                <button type="button" class="wam-title-sub" @onclick="() => rolMenuConv = chatAbierto"
+                        title="Poner la categoría de este contacto">@SubLineaChat(chatAbierto)</button>
             </div>
             @* 2026-08-20: lupa para buscar una palabra DENTRO de esta charla. El buscador vive en
                PinnedWaChat (que es el que tiene los mensajes); acá solo se lo abrimos. *@
@@ -281,11 +282,21 @@ else
                                     <span class="wam-conv-punto" title="Mensaje sin leer"></span>
                                 }
                             </div>
-                            @* 2026-08-19: chinche para fijar el chat arriba de todo (hasta 5, igual
-                               que en la pantalla grande; lo que fijás acá se ve tambien alla). *@
-                            <button class="wam-conv-pin @(c.Fijado ? "on" : "")" type="button"
-                                    title="@(c.Fijado ? "Sacar de los fijados" : "Fijar arriba de todo")"
-                                    @onclick:stopPropagation="true" @onclick="() => FijarChat(c)">📌</button>
+                            @* 2026-08-31: los dos botoncitos de la derecha, uno arriba del otro para
+                               no comerle ancho al nombre en un celu de 390 px. *@
+                            <div class="wam-conv-btns">
+                                @* categoria del contacto — el mismo 🏷️ que en la pantalla grande *@
+                                @* Queda siempre apagadito: es un BOTON para tocar, no un cartel. Qué
+                                   categoría tiene ya lo dice el renglón de abajo del nombre. *@
+                                <button class="wam-conv-tag" type="button"
+                                        title="@(string.IsNullOrEmpty(c.Rol) ? "Poner categoría" : "Cambiar la categoría")"
+                                        @onclick:stopPropagation="true" @onclick="() => rolMenuConv = c">🏷️</button>
+                                @* 2026-08-19: chinche para fijar el chat arriba de todo (hasta 5, igual
+                                   que en la pantalla grande; lo que fijás acá se ve tambien alla). *@
+                                <button class="wam-conv-pin @(c.Fijado ? "on" : "")" type="button"
+                                        title="@(c.Fijado ? "Sacar de los fijados" : "Fijar arriba de todo")"
+                                        @onclick:stopPropagation="true" @onclick="() => FijarChat(c)">📌</button>
+                            </div>
                         </div>
                     }
                 }
@@ -299,6 +310,30 @@ else
                           TituloContacto="@NombreDe(chatAbierto)"
                           NombreLinea="@(chatAbierto.LineaNumero ?? chatAbierto.Linea ?? "WhatsApp")"
                           PuedeAbrirEnGrande="false" AccionesCompletas="true" Movil="true" />
+        </div>
+    }
+
+    @* ═══ 2026-08-31: CATEGORÍA DEL CONTACTO (🏷️) ═══
+       La misma que se ponía solo desde la pantalla grande. Se abre desde el 🏷️ de cada renglón de
+       la lista o tocando el renglón chico del encabezado del chat. Panel de abajo, como el del
+       tamaño de la letra, para que se toque fácil con el pulgar. *@
+    @if (rolMenuConv is not null)
+    {
+        <div class="wam-esc-fondo" @onclick="() => rolMenuConv = null">
+            <div class="wam-esc-panel" @onclick:stopPropagation="true">
+                <div class="wam-esc-titulo">🏷️ Categoría del contacto</div>
+                <div class="wam-esc-sub">@NombreDe(rolMenuConv)@(TelefonoDe(rolMenuConv) is { Length: > 0 } _rt && _rt != NombreDe(rolMenuConv) ? " · " + _rt : "")</div>
+                @foreach (var op in CategoriasDisponibles)
+                {
+                    var elegida = rolMenuConv.Rol == op.Key;
+                    <button type="button" class="wam-esc-op @(elegida ? "on" : "")"
+                            @onclick="() => PonerCategoria(op.Key)">
+                        <span>@op.Label</span>
+                        @if (elegida) { <span class="wam-esc-tilde">✓</span> }
+                    </button>
+                }
+                <button type="button" class="wam-esc-listo" @onclick="() => rolMenuConv = null">Cancelar</button>
+            </div>
         </div>
     }
 
@@ -357,8 +392,12 @@ else
     /* 2026-08-31: en el chat abierto el título son DOS renglones (nombre arriba, teléfono y
        categoría abajo). Cada uno se corta solo con puntitos si no entra. */
     .wam-title-n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
-    .wam-title-sub { font-size: 0.72rem; font-weight: 600; opacity: 0.85; line-height: 1.25;
+    /* Es un boton (se toca para poner la categoria) pero tiene que verse como texto comun. */
+    .wam-title-sub { display: block; max-width: 100%; background: transparent; border: none; padding: 0;
+        text-align: left; color: inherit; font-family: inherit; cursor: pointer;
+        font-size: 0.72rem; font-weight: 600; opacity: 0.85; line-height: 1.25;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wam-title-sub:active { opacity: 1; }
     .wam-hbtn { background: rgba(255,255,255,0.18); border: none; color: #fff; border-radius: 8px;
         width: 34px; height: 32px; font-size: 1.1rem; cursor: pointer; flex: none; }
 
@@ -407,8 +446,11 @@ else
     /* 2026-08-19: chats FIJADOS (chinche 📌) — van arriba de todo, con fondo apenas distinto */
     .wam-conv.fijado { background: #fffbeb; }
     .wam-conv.fijado:active { background: #fef3c7; }
-    .wam-conv-pin { flex: none; background: transparent; border: none; font-size: 1.05rem; padding: 6px;
-        line-height: 1; cursor: pointer; opacity: 0.25; filter: grayscale(1); }
+    /* 2026-08-31: los dos botoncitos de la derecha van en columna (categoria arriba, chinche
+       abajo). Uno al lado del otro le comian 34 px al nombre en un celu angosto. */
+    .wam-conv-btns { flex: none; display: flex; flex-direction: column; gap: 2px; }
+    .wam-conv-pin, .wam-conv-tag { flex: none; background: transparent; border: none; font-size: 1.05rem;
+        padding: 6px; line-height: 1; cursor: pointer; opacity: 0.25; filter: grayscale(1); }
     .wam-conv-pin.on { opacity: 1; filter: none; }
 
     .wam-chat { flex: 1; min-height: 0; }
@@ -1096,6 +1138,7 @@ else
         var n = 0;
         if (chatAbierto is not null) n++;
         if (panelEscala) n++;
+        if (rolMenuConv is not null) n++;
         if (chatRef?.BuscadorAbierto == true) n++;
         return n;
     }
@@ -1113,6 +1156,7 @@ else
     public async Task AtrasDelCelular()
     {
         if (chatRef?.BuscadorAbierto == true) { chatRef.ToggleBuscador(); StateHasChanged(); return; }
+        if (rolMenuConv is not null) { rolMenuConv = null; StateHasChanged(); return; }
         if (panelEscala) { panelEscala = false; StateHasChanged(); return; }
         if (chatAbierto is not null) { await CerrarChat(); return; }
         StateHasChanged();   // no habia nada abierto: igual reacomodamos las marcas
@@ -1311,19 +1355,63 @@ else
         return n.Replace("whatsapp:", "").Trim();
     }
 
-    /// <summary>Categoría del contacto con su iconito. Mismas opciones que el menú 🏷️ de la
-    /// pantalla grande, así se lee igual en los dos lados.</summary>
-    private static string CategoriaEtiqueta(string? rol) => rol switch
+    /// <summary>Las categorias que se pueden poner, con su iconito. Son EXACTAMENTE las mismas
+    /// que el menu de la pantalla grande (/whatsapp), asi se lee igual en los dos lados.</summary>
+    private static readonly (string Key, string Label)[] CategoriasDisponibles = new[]
     {
-        "cliente"   => "🛍️ Cliente",
-        "empleado"  => "👷 Empleado",
-        "hermano"   => "👨\u200d👦 Hermano",
-        "proveedor" => "🚚 Proveedor",
-        "alquiler"  => "🎪 Alquiler",
-        "cafe"      => "☕ Café",
-        "otro"      => "🏷️ Otro",
-        _ => ""
+        ("cliente",   "🛍️ Cliente"),
+        ("empleado",  "👷 Empleado"),
+        ("hermano",   "👨\u200d👦 Hermano"),
+        ("proveedor", "🚚 Proveedor"),
+        ("alquiler",  "🎪 Alquiler"),
+        ("cafe",      "☕ Café"),
+        ("otro",      "🏷️ Otro"),
     };
+
+    /// <summary>Etiqueta de la categoria de un contacto. Vacio si no tiene ninguna.</summary>
+    private static string CategoriaEtiqueta(string? rol)
+        => string.IsNullOrWhiteSpace(rol) ? "" : (CategoriasDisponibles.FirstOrDefault(x => x.Key == rol).Label ?? "");
+
+    /// <summary>Lo mismo que SubLinea, pero para el encabezado del chat abierto: ahi el renglon es
+    /// un boton, asi que cuando el contacto no tiene categoria igual decimos que se puede poner
+    /// (si no, el boton quedaria invisible y nadie sabria que esta).</summary>
+    private static string SubLineaChat(ApiClient.TwConvDto c)
+    {
+        var partes = new List<string>();
+        var tel = TelefonoDe(c);
+        if (!string.IsNullOrEmpty(tel) && tel != NombreDe(c)) partes.Add(tel);
+        var cat = CategoriaEtiqueta(c.Rol);
+        partes.Add(string.IsNullOrEmpty(cat) ? "🏷️ Poner categoría" : cat);
+        return string.Join(" · ", partes);
+    }
+
+    // -- Panel de categoria (se abre con el boton de la lista o tocando el renglon del encabezado) --
+    private ApiClient.TwConvDto? rolMenuConv;
+
+    /// <summary>Guarda la categoria del contacto. Es la MISMA que la de la pantalla grande: se
+    /// guarda por numero (no por chat), asi que vale para las dos lineas y para la compu.</summary>
+    private async Task PonerCategoria(string rol)
+    {
+        var c = rolMenuConv;
+        rolMenuConv = null;
+        if (c == null) return;
+        // El nombre solo se manda por si el contacto todavia no existe en la agenda: en ese caso
+        // el servidor lo crea con el nombre de perfil de WhatsApp en vez de con el numero pelado.
+        var nombre = string.IsNullOrWhiteSpace(c.NombrePerfil) ? null : c.NombrePerfil;
+        var (ok, err) = await Api.SetTwContactoRolAsync(c.Numero, rol, nombre);
+        if (!ok)
+        {
+            await JS.InvokeVoidAsync("alert", err ?? "No se pudo poner la categoría");
+            return;
+        }
+        try { convs = await Api.GetTwConversacionesAsync(); } catch { }
+        // Si el chat estaba abierto, hay que volver a agarrar SU fila de la lista nueva: el DTO es
+        // de solo lectura, asi que sin esto el encabezado seguiria mostrando la categoria vieja.
+        if (chatAbierto is not null)
+            chatAbierto = convs.FirstOrDefault(x => x.Numero == chatAbierto.Numero && x.Linea == chatAbierto.Linea)
+                          ?? chatAbierto;
+        StateHasChanged();
+    }
 
     private static string Inicial(ApiClient.TwConvDto c)
     {
