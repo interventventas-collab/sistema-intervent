@@ -872,6 +872,9 @@ public class CafeVentasController : ControllerBase
 
     public record SendEmailRequest(string To, string? Subject, string? Body, string? PublicUrl);
     public record SendWhatsappInternoRequest(string Phone, string? Caption);
+    /// <summary>2026-08-31: para el envío al chat abierto no hay teléfono, así que lleva su propio
+    /// tipo. Reusar el de arriba obligaría a mandar un Phone falso solo para que el modelo ate.</summary>
+    public record SendComprobanteChatRequest(string? Caption);
 
     /// <summary>Genera el PDF del comprobante y lo manda por email al destinatario indicado.
     /// Usa la configuracion SMTP guardada en Integrations (provider: "email-smtp").</summary>
@@ -983,18 +986,17 @@ public class CafeVentasController : ControllerBase
         }
     }
 
-    /// <summary>Genera el PDF del comprobante y lo manda por WhatsApp via el container
-    /// (Playwright /whatsapp/send-with-pdf). El contenedor debe estar vinculado.</summary>
-    [HttpPost("{id:int}/send-whatsapp-interno")]
-    public async Task<IActionResult> SendWhatsappInterno(int id, [FromBody] SendWhatsappInternoRequest req)
+    /// <summary>2026-08-31: arma el PDF del comprobante y el texto que lo acompaña.
+    /// Se separó de SendWhatsappInterno para que el envío por teléfono y el envío al chat abierto
+    /// de la línea por QR usen EXACTAMENTE el mismo comprobante. Si quedaran duplicados, el día
+    /// que se toque el PDF uno de los dos caminos se queda con la versión vieja y nadie se entera
+    /// hasta que un cliente recibe un comprobante distinto al de la pantalla.</summary>
+    private async Task<(CafeVenta? Venta, byte[]? Pdf, string? Nombre, string? Texto)> ArmarComprobanteAsync(int id, string? captionPropia)
     {
-        if (req is null || string.IsNullOrWhiteSpace(req.Phone))
-            return BadRequest(new { error = "Telefono vacio" });
+        var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav)
+                                    .FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return (null, null, null, null);
 
-        var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav).FirstOrDefaultAsync(x => x.Id == id);
-        if (v is null) return NotFound(new { error = "Venta no encontrada" });
-
-        // Generar el PDF (mismo criterio que en GetPdf)
         var cfg = await _db.CafeSettings.FindAsync(1);
         byte[] pdfBytes;
         var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC" or "NCA" or "NCB" or "NCC";
@@ -1005,24 +1007,52 @@ public class CafeVentasController : ControllerBase
         else
         {
             var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
-            // 2026-06-08: combosMap para PDF
             var comboIdsW = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
-            var combosMapW = comboIdsW.Count > 0
-                ? await BuildCombosMapAsync(comboIdsW) : null;
+            var combosMapW = comboIdsW.Count > 0 ? await BuildCombosMapAsync(comboIdsW) : null;
             await HydrateCfgFromEmisorAsync(cfg);
             pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapW);
         }
 
-        // Caption por default si no viene. Monto = total real con IVA si es factura ARCA.
-        var montoCaption = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
-        var caption = string.IsNullOrWhiteSpace(req.Caption)
-            ? $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)}, te paso el comprobante {v.Numero} por ${montoCaption:N2}. Saludos!"
-            : req.Caption!;
+        // El monto es el total real con IVA cuando es factura de ARCA.
+        var monto = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+        var texto = string.IsNullOrWhiteSpace(captionPropia)
+            ? $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)}, te paso el comprobante {v.Numero} por ${monto:N2}. Saludos!"
+            : captionPropia!;
 
-        var result = await _whatsAppService.SendMessageWithPdfAsync(req.Phone, caption, pdfBytes, BuildPdfFilename(v));
+        return (v, pdfBytes, BuildPdfFilename(v), texto);
+    }
+
+    /// <summary>Genera el PDF del comprobante y lo manda por WhatsApp via el container
+    /// (Playwright /whatsapp/send-with-pdf). El contenedor debe estar vinculado.</summary>
+    [HttpPost("{id:int}/send-whatsapp-interno")]
+    public async Task<IActionResult> SendWhatsappInterno(int id, [FromBody] SendWhatsappInternoRequest req)
+    {
+        if (req is null || string.IsNullOrWhiteSpace(req.Phone))
+            return BadRequest(new { error = "Telefono vacio" });
+
+        var (v, pdfBytes, nombre, texto) = await ArmarComprobanteAsync(id, req.Caption);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        var result = await _whatsAppService.SendMessageWithPdfAsync(req.Phone, texto!, pdfBytes!, nombre!);
         if (result.Success)
             return Ok(new { sent = true, message = result.Message });
         return BadRequest(new { sent = false, error = result.Message });
+    }
+
+    /// <summary>2026-08-31: manda el comprobante al chat que está ABIERTO en la pantalla de la
+    /// línea por QR. Distinto de send-whatsapp-interno, que abre el chat por número: acá no hay
+    /// número — la lista de esa pantalla da NOMBRES, y los grupos ni siquiera tienen número.
+    /// Devuelve el error tal cual lo da el robot: si no se pudo CONFIRMAR que salió hay que
+    /// decirlo, no dar por enviado un comprobante que quizá no llegó.</summary>
+    [HttpPost("{id:int}/send-whatsapp-chat-abierto")]
+    public async Task<IActionResult> SendWhatsappChatAbierto(int id, [FromBody] SendComprobanteChatRequest? req)
+    {
+        var (v, pdfBytes, nombre, texto) = await ArmarComprobanteAsync(id, req?.Caption);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        var (ok, error) = await _whatsAppService.SendFileToCurrentChatAsync(pdfBytes!, nombre!, "application/pdf", texto);
+        if (ok) return Ok(new { sent = true, numero = v.Numero });
+        return StatusCode(500, new { sent = false, error = error ?? "No se pudo mandar el comprobante" });
     }
 
     // ═══════════════════════════════════════════════════════════════════════

@@ -62,6 +62,20 @@
                     font-size: 0.92rem; background: white; outline: none; line-height: 1.3;
                     min-height: calc(2.6em + 1.1rem); max-height: 100px;
                     font-family: inherit; }
+    .ww-ventas-panel { background: white; border-top: 1px solid #e5e7eb; padding: 0.6rem 0.9rem; flex-shrink: 0; }
+    .ww-ventas-head { display: flex; align-items: center; margin-bottom: 0.45rem; }
+    .ww-ventas-x { margin-left: auto; background: transparent; border: 0; font-size: 1.2rem; cursor: pointer; color: #6b7280; }
+    .ww-ventas-input { width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 0.86rem; outline: none; }
+    .ww-ventas-input:focus { border-color: #25d366; }
+    .ww-ventas-buscar { margin-top: 0.4rem; background: #25d366; color: white; border: 0; border-radius: 8px;
+                         padding: 0.35rem 0.9rem; font-size: 0.82rem; cursor: pointer; }
+    .ww-ventas-buscar:disabled { background: #9ca3af; cursor: default; }
+    .ww-ventas-lista { max-height: 190px; overflow-y: auto; margin-top: 0.5rem; }
+    .ww-ventas-vacio { font-size: 0.8rem; color: #9ca3af; padding: 0.5rem 0.1rem; }
+    .ww-venta-fila { display: flex; align-items: center; gap: 0.6rem; width: 100%; background: transparent;
+                      border: 0; border-bottom: 1px solid #f3f4f6; padding: 0.45rem 0.2rem; cursor: pointer; text-align: left; }
+    .ww-venta-fila:hover:not(:disabled) { background: #f0fdf4; }
+    .ww-venta-fila:disabled { opacity: 0.55; cursor: default; }
     .ww-clip-btn { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px;
                     border-radius: 50%; cursor: pointer; flex-shrink: 0; color: #54656f;
                     transition: background 120ms; }
@@ -265,9 +279,56 @@
                         </div>
                     }
                 </div>
+                @if (mostrarBuscadorVentas)
+                {
+                    <div class="ww-ventas-panel">
+                        <div class="ww-ventas-head">
+                            <strong style="font-size:0.9rem;">🧾 Mandar un comprobante</strong>
+                            <button class="ww-ventas-x" @onclick="CerrarBuscadorVentas">×</button>
+                        </div>
+                        <input class="ww-ventas-input" placeholder="Buscá por número de venta, cliente, CUIT…"
+                               @bind="ventaBusqueda" @bind:event="oninput" @onkeydown="BuscarVentasKey" />
+                        <button class="ww-ventas-buscar" @onclick="BuscarVentas" disabled="@buscandoVentas">
+                            @(buscandoVentas ? "Buscando…" : "Buscar")
+                        </button>
+                        <div class="ww-ventas-lista">
+                            @if (buscandoVentas)
+                            {
+                                <div class="ww-ventas-vacio">Buscando…</div>
+                            }
+                            else if (ventasEncontradas.Count == 0 && ventaBuscada)
+                            {
+                                <div class="ww-ventas-vacio">No encontré ninguna venta con eso.</div>
+                            }
+                            else
+                            {
+                                @foreach (var v in ventasEncontradas)
+                                {
+                                    <button class="ww-venta-fila" @onclick="() => MandarVenta(v)" disabled="@(mandandoVentaId != null)">
+                                        <div style="flex:1; min-width:0;">
+                                            <div style="font-weight:600; font-size:0.85rem;">@v.Numero</div>
+                                            <div style="font-size:0.76rem; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                                @(string.IsNullOrWhiteSpace(v.ClienteNombre) ? "Sin cliente" : v.ClienteNombre) · @v.Fecha.ToString("dd/MM/yyyy")
+                                            </div>
+                                        </div>
+                                        <div style="font-size:0.85rem; font-weight:600; white-space:nowrap;">
+                                            @(mandandoVentaId == v.Id ? "enviando…" : "$" + v.Total.ToString("N2"))
+                                        </div>
+                                    </button>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
                 <div class="ww-chat-footer">
                     @* 2026-08-31: clip para adjuntar. Lo que haya escrito en el cuadro de al
                        lado viaja como texto del archivo (igual que en WhatsApp de verdad). *@
+                    @* 2026-08-31: mandar el comprobante de una venta sin salir del chat. El PDF
+                       lo arma el servidor, el mismo que sale por la línea oficial. *@
+                    <button class="ww-clip-btn" @onclick="AbrirBuscadorVentas"
+                            title="Mandar el comprobante de una venta" disabled="@(enviandoArchivo || sending)">
+                        <span style="font-size:1.15rem;">🧾</span>
+                    </button>
                     <label class="ww-clip-btn" title="Adjuntar un archivo (hasta 10 MB)">
                         @if (enviandoArchivo) { <span class="ww-spinner"></span> }
                         else { <span style="font-size:1.25rem;">📎</span> }
@@ -401,6 +462,86 @@
     }
 
     private bool enviandoArchivo;
+
+    // ── 2026-08-31: mandar el comprobante de una venta sin salir del chat ──
+    private bool mostrarBuscadorVentas;
+    private string ventaBusqueda = "";
+    private bool buscandoVentas;
+    private bool ventaBuscada;
+    private int? mandandoVentaId;
+    private List<Web.Models.CafeVentaDto> ventasEncontradas = new();
+
+    private void AbrirBuscadorVentas()
+    {
+        mostrarBuscadorVentas = true;
+        ventaBusqueda = "";
+        ventasEncontradas = new();
+        ventaBuscada = false;
+    }
+
+    private void CerrarBuscadorVentas()
+    {
+        mostrarBuscadorVentas = false;
+        ventasEncontradas = new();
+    }
+
+    private async Task BuscarVentasKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarVentas();
+    }
+
+    /// <summary>Busca en TODO el historial de ventas (número, cliente, CUIT, teléfono…), el mismo
+    /// buscador que usa el listado. Se muestran las 15 más nuevas: en el ancho de un chat una lista
+    /// larga no se puede leer, y si no aparece lo que buscabas conviene afinar el texto.</summary>
+    private async Task BuscarVentas()
+    {
+        var q = (ventaBusqueda ?? "").Trim();
+        if (q.Length < 2)
+        {
+            Toast.Error("Escribí al menos 2 letras o números para buscar");
+            return;
+        }
+        buscandoVentas = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var res = await Api.BuscarCafeVentasAsync(q);
+            ventasEncontradas = (res ?? new()).OrderByDescending(v => v.Fecha).Take(15).ToList();
+            ventaBuscada = true;
+        }
+        catch (Exception ex) { Toast.Error("Error buscando: " + ex.Message); }
+        buscandoVentas = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Manda el comprobante al chat abierto. El PDF lo arma el servidor — el mismo que
+    /// sale por la línea oficial, así no hay dos comprobantes distintos dando vueltas.
+    /// Si el robot no puede CONFIRMAR que salió se muestra el error: nada de dar por enviado
+    /// un comprobante que quizá nunca llegó.</summary>
+    private async Task MandarVenta(Web.Models.CafeVentaDto v)
+    {
+        if (mandandoVentaId != null) return;
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"¿Mandar el comprobante {v.Numero} a \"{selectedName}\"?\n\nCliente: {(string.IsNullOrWhiteSpace(v.ClienteNombre) ? "sin cliente" : v.ClienteNombre)}\nTotal: ${v.Total:N2}");
+        if (!ok) return;
+
+        mandandoVentaId = v.Id;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var (enviado, error) = await Api.SendVentaAlChatAbiertoAsync(v.Id);
+            if (enviado)
+            {
+                Toast.Success($"🧾 Comprobante {v.Numero} enviado");
+                CerrarBuscadorVentas();
+                await RefrescarChatAbierto();
+            }
+            else { Toast.Error(error ?? "No se pudo mandar el comprobante"); }
+        }
+        catch (Exception ex) { Toast.Error("Error mandando el comprobante: " + ex.Message); }
+        mandandoVentaId = null;
+        await InvokeAsync(StateHasChanged);
+    }
 
     // ── 2026-08-31: vincular el teléfono sin salir de esta pantalla ──
     private bool mostrandoQr;

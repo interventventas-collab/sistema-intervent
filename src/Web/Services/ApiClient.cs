@@ -4921,6 +4921,27 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    /// <summary>2026-08-31: manda el comprobante de una venta al chat abierto en la línea por QR.
+    /// El PDF lo arma el servidor (mismo comprobante que el envío por teléfono).</summary>
+    public async Task<(bool Ok, string? Error)> SendVentaAlChatAbiertoAsync(int ventaId, string? caption = null)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"/api/cafe/ventas/{ventaId}/send-whatsapp-chat-abierto", new { caption });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var crudo = await resp.Content.ReadAsStringAsync();
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(crudo);
+                if (doc.RootElement.TryGetProperty("error", out var e)) return (false, e.GetString());
+            }
+            catch { }
+            return (false, string.IsNullOrWhiteSpace(crudo) ? "No se pudo mandar el comprobante" : crudo);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<bool> SendToWhatsAppOpenChatAsync(string text)
     {
         await SetAuthHeaderAsync();
