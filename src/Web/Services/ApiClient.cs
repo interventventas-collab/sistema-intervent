@@ -5158,7 +5158,7 @@ public class ApiClient
         string? estado = null, decimal? comisionMinPct = null, string? cuotas = null, string? tipo = null,
         bool variosPrecios = false, bool precioAMano = false, bool sinCosto = false,
         decimal? noLleganAlPct = null, bool comisionVieja = false, int pagina = 1, int porPagina = 100,
-        int? cuentaId = null)
+        int? cuentaId = null, bool enPromo = false)
     {
         var qs = new List<string>();
         if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
@@ -5172,6 +5172,7 @@ public class ApiClient
         if (precioAMano) qs.Add("precioAMano=true");
         if (sinCosto) qs.Add("sinCosto=true");
         if (comisionVieja) qs.Add("comisionVieja=true");
+        if (enPromo) qs.Add("enPromo=true");
         if (noLleganAlPct.HasValue) qs.Add($"noLleganAlPct={noLleganAlPct.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         qs.Add($"pagina={pagina}");
         qs.Add($"porPagina={porPagina}");

@@ -72,7 +72,9 @@ public class MeliPublicacionesV2Service
         string? Texto = null, string? Sku = null, string? Estado = null, int? CuentaId = null,
         decimal? ComisionMinPct = null, string? Cuotas = null, string? Tipo = null,
         bool VariosPrecios = false, bool PrecioAMano = false, bool SinSincroPrecio = false,
-        bool SinCosto = false, decimal? NoLleganAlPct = null, bool ComisionVieja = false, int Pagina = 1, int PorPagina = 100);
+        bool SinCosto = false, decimal? NoLleganAlPct = null, bool ComisionVieja = false, int Pagina = 1, int PorPagina = 100,
+        // 2026-08-31: sólo las que están vendiendo con descuento por una campaña de MeLi.
+        bool EnPromo = false);
 
     public async Task<PageDto> GetAsync(Filtros f, CancellationToken ct = default)
     {
@@ -196,6 +198,9 @@ public class MeliPublicacionesV2Service
                 .Select(g => g.Key.Sku);
             q = q.Where(m => m.Sku != null && skusMulti.Contains(m.Sku));
         }
+
+        // Sólo las que están en una campaña de MercadoLibre (el precio que se paga es otro).
+        if (f.EnPromo) q = q.Where(m => m.PromoPrecio != null && m.PromoPrecio > 0);
 
         // Datos viejos: la comisión se capturó a un precio que ya cambió más de 5%.
         if (f.ComisionVieja)

@@ -475,6 +475,7 @@
             <span class="p2-chip nue @(fPrecioAMano ? "on" : "")" @onclick="TogglePrecioMano">Precio a mano</span>
             <span class="p2-chip nue @(fSinCosto ? "on" : "")" @onclick="ToggleSinCosto">Sin costo cargado</span>
             <span class="p2-chip nue @(fComisionVieja ? "on" : "")" @onclick="ToggleComisionVieja">⚠ Con datos viejos</span>
+            <span class="p2-chip nue @(fEnPromo ? "on" : "")" @onclick="ToggleEnPromo">🏷️ En promoción</span>
             <span class="p2-chip nue @(fCuotas == "12x_campaign" ? "on" : "")" @onclick='() => SetCuotas("12x_campaign")'>Cuotas: 12x</span>
             <span class="p2-chip nue @(fCuotas == "sin" ? "on" : "")" @onclick='() => SetCuotas("sin")'>Sin cuotas</span>
             @if (HayFiltros)
@@ -1407,13 +1408,14 @@
     private int? edPeso;
     private decimal? edLargo, edAncho, edAlto;
     private bool fComisionVieja;
+    private bool fEnPromo;   // 2026-08-31: sólo las que venden con descuento por una campaña
 
     // 2026-08-27 — Osmar no tenia forma de saber si una publicacion era de FRIKAF o de GROVAS:
     // la fila no lo mostraba aunque el dato ya venia del servidor. Etiqueta en la fila + filtro.
     private int? fCuentaId;
     private List<MeliAccountDto> cuentas = new();
 
-    private bool HayFiltros => fComisionVieja || fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
+    private bool HayFiltros => fEnPromo || fComisionVieja || fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
                                || !string.IsNullOrEmpty(fCuotas) || !string.IsNullOrEmpty(fEstado)
                                || !string.IsNullOrWhiteSpace(fTexto) || !string.IsNullOrWhiteSpace(fSku)
                                || fCuentaId.HasValue;
@@ -1435,7 +1437,7 @@
         try
         {
             datos = await Api.GetPublicacionesV2Async(fTexto, fSku, fEstado, fComision, fCuotas, null,
-                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId);
+                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId, fEnPromo);
         }
         catch (Exception ex)
         {
@@ -1810,6 +1812,14 @@
 
     private void EmpezarPrecio(ApiClient.PubV2Fila it)
     {
+        // 2026-08-31 — Si está en una campaña, el número que muestra el simulador NO es lo que
+        // pasaría de verdad: el simulador calcula sobre el precio de lista y acá hay un descuento
+        // encima. Y, según MercadoLibre, tocar el precio TUMBA el descuento. Se avisa antes de
+        // que escriba, no después de que lo publique.
+        if (it.PromoPrecio is > 0)
+            ToastService.Info($"Ojo: esta publicación está en «{it.PromoNombre}» y se vende a {Plata(it.PromoPrecio.Value)}. "
+                            + "Si le cambiás el precio, MercadoLibre le saca el descuento.");
+
         editandoPrecio = it.MeliItemId;
         precioEscrito = it.Precio.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         simulacion = null;
@@ -1875,6 +1885,18 @@
         }
         if (precio == it.Precio) { CancelarPrecio(); return; }
 
+        // 2026-08-31 — La publicación está en campaña: cambiarle el precio le saca el descuento.
+        // Es una consecuencia que no se ve por ningún lado, así que se pregunta antes.
+        if (it.PromoPrecio is > 0)
+        {
+            var seguir = await JS.InvokeAsync<bool>("confirm",
+                $"Esta publicación está en «{it.PromoNombre}» y hoy se vende a {Plata(it.PromoPrecio.Value)}.\n\n"
+                + $"Si le ponés {Plata(precio)}, MercadoLibre le va a SACAR el descuento y se va a vender a ese precio.\n\n"
+                + "Si lo que querés es cambiar el precio y seguir en la campaña, hay que salir de la campaña primero, "
+                + "cambiar el precio, y volver a entrar (el botón 🏷️ de la fila).\n\n¿Seguimos igual?");
+            if (!seguir) return;
+        }
+
         // La pregunta que evita que el precio "se cambie solo" a la noche: si esta publicación
         // está en modo porcentaje, el sistema lo va a recalcular salvo que se apague el sincro.
         var quedaFijo = true;
@@ -1915,6 +1937,7 @@
     private async Task ToggleVarios() { fVariosPrecios = !fVariosPrecios; await BuscarDesdeCero(); }
     private async Task TogglePrecioMano() { fPrecioAMano = !fPrecioAMano; await BuscarDesdeCero(); }
     private async Task ToggleComisionVieja() { fComisionVieja = !fComisionVieja; await BuscarDesdeCero(); }
+    private async Task ToggleEnPromo() { fEnPromo = !fEnPromo; await BuscarDesdeCero(); }
     private async Task ToggleSinCosto() { fSinCosto = !fSinCosto; await BuscarDesdeCero(); }
     private async Task SetCuenta(int id) { fCuentaId = fCuentaId == id ? null : id; await BuscarDesdeCero(); }
 
