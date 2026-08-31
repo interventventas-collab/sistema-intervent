@@ -547,6 +547,12 @@
                                 }
                                 @* 2026-08-31 · promociones de ESTA publicación: en qué campañas puede
                                    entrar y qué margen le queda con cada precio. *@
+                                @* 2026-08-31 · ficha técnica. Los atributos son de donde salen los
+                                   filtros de búsqueda de MeLi: si falta el color o la medida, la
+                                   publicación no aparece cuando alguien filtra por eso. *@
+                                <button class="p2-balanza @(fichaAbierta == it.MeliItemId ? "on" : "")"
+                                        title="Ficha técnica: qué datos le faltan para que la encuentren en los filtros de MercadoLibre"
+                                        @onclick="() => ToggleFicha(it.MeliItemId)" @onclick:stopPropagation="true">📋</button>
                                 <button class="p2-balanza @(promosAbiertas == it.MeliItemId ? "on" : "")"
                                         title="Promociones: en qué campañas puede entrar y qué te queda con cada una"
                                         @onclick="() => TogglePromosItem(it.MeliItemId)" @onclick:stopPropagation="true">🏷️</button>
@@ -747,6 +753,106 @@
                             }
                         </span>
                     </div>
+
+                    @* 2026-08-31 · FICHA TÉCNICA. Se muestra primero QUÉ FALTA, no un formulario
+                       de 40 campos: lo que uno necesita saber en dos segundos es si está completa. *@
+                    @if (fichaAbierta == it.MeliItemId)
+                    {
+                        <div class="p2-receta" @onclick:stopPropagation="true">
+                            <h4>📋 Ficha técnica</h4>
+
+                            @if (fichaCargando)
+                            {
+                                <div class="nota">Preguntándole a MercadoLibre…</div>
+                            }
+                            else if (fichaDatos is null)
+                            {
+                                <div class="nota" style="color:#b91c1c;">No se pudo leer la ficha técnica.</div>
+                            }
+                            else
+                            {
+                                @if (fichaDeCatalogo)
+                                {
+                                    <div class="nota" style="color:#b45309; font-weight:600;">
+                                        Es una publicación de catálogo: la ficha técnica la maneja MercadoLibre y no se puede editar.
+                                    </div>
+                                }
+
+                                @if (FichaFaltan.Count == 0)
+                                {
+                                    <div class="nota" style="color:#15803d; font-weight:700;">
+                                        ✓ No le falta ningún dato obligatorio.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="nota" style="color:#b91c1c; font-weight:700; margin-bottom:.4rem;">
+                                        ⚠ Le faltan @FichaFaltan.Count dato(s) que MercadoLibre pide.
+                                        Sin eso, no aparece cuando alguien filtra por ellos.
+                                    </div>
+                                }
+
+                                @foreach (var f in (fichaTodos ? fichaDatos : FichaFaltan))
+                                {
+                                    <div class="comp">
+                                        <span class="nom">@f.Name</span>
+                                        @if (f.Required)
+                                        {
+                                            <span class="mal">obligatorio</span>
+                                        }
+                                        <span style="flex:1;"></span>
+                                        @if (f.Values.Count > 0)
+                                        {
+                                            <select style="max-width:260px; font-size:.78rem; padding:.2rem .3rem; border:1px solid #cbd5e1; border-radius:.3rem;"
+                                                    disabled="@fichaDeCatalogo"
+                                                    value="@fichaInput.GetValueOrDefault(f.Id, "")"
+                                                    @onchange="e => fichaInput[f.Id] = e.Value?.ToString() ?? string.Empty">
+                                                <option value="">— sin completar —</option>
+                                                @foreach (var op in f.Values)
+                                                {
+                                                    <option value="@op.Id">@op.Name</option>
+                                                }
+                                            </select>
+                                        }
+                                        else
+                                        {
+                                            <input style="max-width:260px; font-size:.78rem;" disabled="@fichaDeCatalogo"
+                                                   placeholder="@(string.IsNullOrEmpty(f.ValueType) ? "" : f.ValueType)"
+                                                   value="@fichaInput.GetValueOrDefault(f.Id, "")"
+                                                   @oninput="e => fichaInput[f.Id] = e.Value?.ToString() ?? string.Empty" />
+                                        }
+                                        @if (fichaLlenadosIA.Contains(f.Id))
+                                        {
+                                            <span class="ojo">✨ lo puso la IA — revisalo</span>
+                                        }
+                                    </div>
+                                }
+
+                                <div class="buscar">
+                                    @if (!fichaDeCatalogo)
+                                    {
+                                        <button class="btn" disabled="@(fichaIACargando || fichaGuardando)"
+                                                title="Mira la publicación y propone los datos que faltan. No pisa lo que ya está cargado."
+                                                @onclick="() => CompletarFichaConIA(it)">
+                                            @(fichaIACargando ? "Pensando…" : "✨ Completar lo que falta")
+                                        </button>
+                                        <button class="btn go" disabled="@(fichaGuardando || fichaIACargando)"
+                                                @onclick="() => GuardarFicha(it)">
+                                            @(fichaGuardando ? "Guardando…" : "💾 Guardar en MercadoLibre")
+                                        </button>
+                                    }
+                                    <button class="btn" @onclick="() => fichaTodos = !fichaTodos">
+                                        @(fichaTodos ? "Ver sólo lo que falta" : $"Ver los {fichaDatos.Count} campos")
+                                    </button>
+                                </div>
+
+                                <div class="nota">
+                                    Estos datos son los que usa MercadoLibre para sus filtros de búsqueda
+                                    (color, medida, material…). Cuantos más tenga, en más búsquedas aparece.
+                                </div>
+                            }
+                        </div>
+                    }
 
                     @* 2026-08-31 · PROMOCIONES de esta publicación. Lo que no se ve en ningún lado:
                        MercadoLibre dice hasta dónde podés bajar, el sistema sabe tu costo. *@
@@ -2226,6 +2332,148 @@
         try { promosItem = await Api.GetPromocionesDeItemAsync(mla); }
         catch (Exception ex) { ToastService.Error("No se pudieron leer las promociones: " + ex.Message); }
         finally { promosItemCargando = false; }
+    }
+
+    // ─────────────── 2026-08-31 · FICHA TÉCNICA ───────────────
+    // Traída de la pantalla vieja (donde estaba desde el 22/07), pero dada vuelta: primero se
+    // muestra QUÉ FALTA y no un formulario de 40 campos. Lo que uno necesita saber en dos segundos
+    // es si esa publicación está completa o no.
+    //
+    // Por qué importa: los atributos son de donde salen los FILTROS DE BÚSQUEDA de MercadoLibre.
+    // Si le falta el color o la medida, la publicación no aparece cuando alguien filtra por eso —
+    // se pierden ventas sin enterarse.
+    //
+    // Reusa los endpoints que ya existían: GET/PUT /api/meli/items/{id}/attributes y
+    // POST .../suggest-attributes (el que completa con IA).
+
+    private string? fichaAbierta;
+    private bool fichaCargando, fichaGuardando, fichaIACargando, fichaDeCatalogo, fichaTodos;
+    private List<MeliAttributeFieldDto>? fichaDatos;
+    private readonly Dictionary<string, string> fichaInput = new();
+    private readonly HashSet<string> fichaLlenadosIA = new();
+
+    /// <summary>Los obligatorios que están vacíos. Es lo primero que se muestra.</summary>
+    private List<MeliAttributeFieldDto> FichaFaltan => fichaDatos?
+        .Where(f => f.Required && string.IsNullOrWhiteSpace(fichaInput.GetValueOrDefault(f.Id)))
+        .ToList() ?? new();
+
+    private async Task ToggleFicha(string mla)
+    {
+        if (fichaAbierta == mla) { fichaAbierta = null; fichaDatos = null; return; }
+
+        fichaAbierta = mla;
+        fichaDatos = null;
+        fichaInput.Clear();
+        fichaLlenadosIA.Clear();
+        fichaTodos = false;
+        fichaDeCatalogo = false;
+        // Los paneles se excluyen: dos abiertos en una fila angosta es un lío.
+        promosAbiertas = null;
+        recetaAbierta = null;
+        fotosAbiertas = null;
+        medidasAbiertas = null;
+
+        fichaCargando = true;
+        StateHasChanged();
+        try
+        {
+            var dto = await Api.GetMeliItemAttributesAsync(mla);
+            if (dto is null) return;
+            fichaDeCatalogo = dto.CatalogListing;
+            fichaDatos = dto.Attributes;
+            foreach (var f in fichaDatos)
+                fichaInput[f.Id] = f.Values.Count > 0 ? (f.CurrentValueId ?? "") : (f.CurrentValueName ?? "");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo leer la ficha técnica: " + ex.Message); }
+        finally { fichaCargando = false; }
+    }
+
+    /// <summary>Le pide a la IA los datos que faltan. NO pisa lo que ya está cargado: lo que puso
+    /// una persona vale más que lo que adivina la máquina.</summary>
+    private async Task CompletarFichaConIA(ApiClient.PubV2Fila it)
+    {
+        if (fichaDatos is null || fichaIACargando) return;
+        fichaIACargando = true;
+        StateHasChanged();
+        try
+        {
+            var sugs = await Api.SuggestItemAttributesAsync(it.MeliItemId);
+            if (sugs is null) { ToastService.Error("No se pudo consultar la IA."); return; }
+
+            var puestos = 0;
+            foreach (var sug in sugs)
+            {
+                var campo = fichaDatos.FirstOrDefault(x => x.Id == sug.AttributeId);
+                if (campo is null) continue;
+                if (!string.IsNullOrWhiteSpace(fichaInput.GetValueOrDefault(campo.Id))) continue;
+
+                if (campo.Values.Count > 0)
+                {
+                    // Desplegable: hay que mandar un valor de la lista, no texto libre.
+                    var op = campo.Values.FirstOrDefault(o => o.Id == sug.ValueId)
+                             ?? campo.Values.FirstOrDefault(o => string.Equals(o.Name, sug.ValueName, StringComparison.OrdinalIgnoreCase));
+                    if (op is null) continue;
+                    fichaInput[campo.Id] = op.Id;
+                }
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(sug.ValueName)) continue;
+                    fichaInput[campo.Id] = sug.ValueName!;
+                }
+                fichaLlenadosIA.Add(campo.Id);
+                puestos++;
+            }
+
+            if (puestos == 0) ToastService.Info("La IA no encontró nada nuevo para completar.");
+            else ToastService.Success($"La IA completó {puestos} dato(s). Revisalos y después guardá — todavía no se mandó nada.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo consultar la IA: " + ex.Message); }
+        finally { fichaIACargando = false; }
+    }
+
+    private async Task GuardarFicha(ApiClient.PubV2Fila it)
+    {
+        if (fichaDatos is null || fichaGuardando) return;
+
+        var aCargar = fichaInput.Where(kv => !string.IsNullOrWhiteSpace(kv.Value)).ToList();
+        if (aCargar.Count == 0) { ToastService.Error("No hay nada para guardar."); return; }
+
+        var conIA = fichaLlenadosIA.Count;
+        var aviso = $"Voy a guardar {aCargar.Count} dato(s) en MercadoLibre."
+                  + (conIA > 0 ? $"\n\n{conIA} los completó la IA — fijate que estén bien antes de mandarlos." : "")
+                  + "\n\n¿Dale?";
+        if (!await JS.InvokeAsync<bool>("confirm", aviso)) return;
+
+        fichaGuardando = true;
+        StateHasChanged();
+        try
+        {
+            var inputs = aCargar.Select(kv =>
+            {
+                var campo = fichaDatos.First(f => f.Id == kv.Key);
+                return campo.Values.Count > 0
+                    ? new SaveAttributeInput { Id = kv.Key, ValueId = kv.Value }
+                    : new SaveAttributeInput { Id = kv.Key, ValueName = kv.Value };
+            }).ToList();
+
+            var (res, err) = await Api.UpdateMeliItemAttributesAsync(it.MeliItemId,
+                new UpdateItemAttributesRequest { Attributes = inputs });
+
+            if (res is null) { ToastService.Error(err ?? "No se pudo guardar la ficha técnica."); return; }
+
+            fichaDatos = res.Attributes;
+            fichaInput.Clear();
+            foreach (var f in fichaDatos)
+                fichaInput[f.Id] = f.Values.Count > 0 ? (f.CurrentValueId ?? "") : (f.CurrentValueName ?? "");
+            fichaLlenadosIA.Clear();
+
+            var faltan = FichaFaltan.Count;
+            ToastService.Success(faltan == 0
+                ? "Ficha técnica guardada. Ya no le falta ningún dato obligatorio."
+                : $"Ficha técnica guardada. Todavía le faltan {faltan} dato(s) obligatorio(s).");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+        finally { fichaGuardando = false; }
     }
 
     // ── Entrar y salir de campañas ──
