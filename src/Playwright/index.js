@@ -1364,9 +1364,11 @@ app.post('/whatsapp/chat/open-by-index', async (req, res) => {
     // Click directo en el nth listitem. Hace scrollIntoView por si esta fuera del viewport.
     const clickResult = await state.page.evaluate(({ idx, expected }) => {
       // 2026-08-29: cascada identica a la de chats/list (ver comentario arriba).
-      let items = document.querySelectorAll('#pane-side div[role="listitem"]');
+      let sel = '#pane-side div[role="listitem"]';
+      let items = document.querySelectorAll(sel);
       if (items.length === 0) {
-        items = document.querySelectorAll('[data-testid="cell-frame-container"]');
+        sel = '[data-testid="cell-frame-container"]';
+        items = document.querySelectorAll(sel);
       }
       if (items.length === 0) {
         return { ok: false, reason: 'no items', total: 0 };
@@ -1385,8 +1387,7 @@ app.post('/whatsapp/chat/open-by-index', async (req, res) => {
         }
       }
       target.scrollIntoView({ block: 'center', behavior: 'instant' });
-      target.click();
-      return { ok: true, name: actualName };
+      return { ok: true, name: actualName, sel };
     }, { idx: index, expected: expectedName });
 
     if (!clickResult.ok) {
@@ -1398,6 +1399,22 @@ app.post('/whatsapp/chat/open-by-index', async (req, res) => {
         return res.status(404).json({ error: 'index fuera de rango', detail: clickResult });
       }
       return res.status(500).json({ error: 'no se pudo clickear', detail: clickResult });
+    }
+
+    // 2026-08-31 — POR QUE NO SE ABRIA NINGUN CHAT (segunda causa, despues del cartel).
+    // El click se hacia con target.click() DESDE ADENTRO de la pagina. WhatsApp esta hecho en
+    // React y no le da bola a un click sintetico disparado por JS: para nosotros la fila quedaba
+    // clickeada, pero el chat no se abria nunca. Despues moriamos esperando el cuadro de escribir
+    // y devolviamos 504, con la foto mostrando el panel derecho todavia en la bienvenida.
+    // Ahora el evaluate de arriba SOLO valida y posiciona, y el click lo hace Playwright con el
+    // mouse de verdad, como una persona.
+    try {
+      await state.page.locator(clickResult.sel).nth(index).click({ timeout: 15000 });
+    } catch (err) {
+      return res.status(500).json({
+        error: 'no se pudo clickear la fila del chat',
+        detail: (err && err.message) || String(err),
+      });
     }
 
     const extracted = await waitAndExtractMessagesFromPanel(state.page, `open-by-index[${index}] "${clickResult.name}"`);
