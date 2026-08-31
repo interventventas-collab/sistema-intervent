@@ -665,17 +665,30 @@ public class MetaWhatsAppWebhookController : ControllerBase
             // Nivel 2: eligió una acción
             var (respuesta, rol) = textos.AccionNivel2(accion ?? "", empresa);
 
-            // Etiquetar como contacto (solo si todavía no existe — no pisamos contactos cargados a mano)
-            if (!await db.WhatsAppTwilioContactos.AnyAsync(c => c.Numero == numero))
+            // Etiquetar como contacto con la categoría de la pata que eligió (Frikaf → café,
+            // Intereventos → alquiler, el tercero → MELI).
+            // 2026-08-31: antes esto solo corría para números DESCONOCIDOS, y como el menú se manda
+            // muchas veces a mano a un chat que YA tiene contacto, la categoría no se ponía nunca.
+            // Ahora también le completa la categoría al contacto que ya existe pero está SIN
+            // categoría. Al que ya tiene una puesta a mano NO se le toca nada.
+            var notaBot = $"🤖 Bot {DateTime.UtcNow.AddHours(-3):dd/MM HH:mm}: eligió {textos.NombreBoton(empresa)} → {accion}";
+            var contactoBot = await db.WhatsAppTwilioContactos.FirstOrDefaultAsync(c => c.Numero == numero);
+            if (contactoBot == null)
             {
                 db.WhatsAppTwilioContactos.Add(new WhatsAppTwilioContacto
                 {
                     Numero = numero,
                     Nombre = string.IsNullOrWhiteSpace(nombrePerfil) ? numero.Replace("whatsapp:", "") : nombrePerfil!,
                     Rol = rol,
-                    Notas = $"🤖 Bot {DateTime.UtcNow.AddHours(-3):dd/MM HH:mm}: eligió {WhatsAppBotFlow.NombreEmpresa(empresa)} → {accion}",
+                    Notas = notaBot,
                     Activo = true
                 });
+                await db.SaveChangesAsync();
+            }
+            else if (string.IsNullOrWhiteSpace(contactoBot.Rol))
+            {
+                contactoBot.Rol = rol;
+                contactoBot.Notas = string.IsNullOrWhiteSpace(contactoBot.Notas) ? notaBot : contactoBot.Notas + "\n" + notaBot;
                 await db.SaveChangesAsync();
             }
 
@@ -705,7 +718,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
             return;
 
         var sid1 = await meta.SendButtonsAsync(fromWaId, textos.CuerpoNivel1, textos.BotonesNivel1, lineaPhoneId: lineaId);
-        await RegistrarSalienteAsync(db, numero, textos.CuerpoNivel1 + " [botones: Frikaf / Intervent / Intereventos]", sid1, lineaId: lineaId);
+        await RegistrarSalienteAsync(db, numero, textos.CuerpoNivel1 + $" [botones: {textos.BotonesNivel1Resumen}]", sid1, lineaId: lineaId);
     }
 
     /// <summary>Manda por el bot el PDF de la lista de precios GENERAL activa más reciente

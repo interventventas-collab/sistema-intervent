@@ -218,7 +218,7 @@ public class WhatsAppTwilioController : ControllerBase
                 {
                     Direccion = "OUTGOING",
                     Numero = numero,
-                    Cuerpo = textos.CuerpoNivel1 + " [botones: Frikaf / Intervent / Intereventos]",
+                    Cuerpo = textos.CuerpoNivel1 + $" [botones: {textos.BotonesNivel1Resumen}]",
                     TwilioMessageSid = sid,
                     Canal = "CLOUD",
                     LineaPhoneId = lineaConv,

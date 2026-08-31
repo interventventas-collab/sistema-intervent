@@ -38,15 +38,26 @@ public static class WhatsAppBotFlow
         _ => clave
     };
 
-    /// <summary>Rol de contacto (cliente / proveedor / otro) para cada acción. Estructural: alimenta
-    /// los filtros del chat, NO es editable.</summary>
-    public static string RolDeAccion(string accion) => accion switch
+    /// <summary>Categoría del contacto según lo que tocó en el menú. 2026-08-31: manda la EMPRESA,
+    /// no la acción. Cada botón del paso 1 es una pata del negocio y esa es la categoría que se ve
+    /// después en el chat: Frikaf → café, Intereventos → alquiler, el tercero → MELI. Así el contacto
+    /// queda etiquetado solo, sin que nadie le toque el 🏷️. La única excepción es "soy proveedor",
+    /// que no depende de la empresa. Estructural: alimenta los filtros del chat, NO es editable.
+    ///
+    /// OJO con el tercero: su clave interna sigue siendo "intervent" aunque el botón hoy muestre
+    /// "🏢 Mercado Libre" (el texto se cambia desde ⚙️ → 🤖). La clave NO se renombra: rompería el
+    /// historial de los contactos que ya eligieron ese botón.</summary>
+    public static string RolDeBoton(string empresa, string accion)
     {
-        "pedido" => "cliente",
-        "lista" => "cliente",
-        "proveedor" => "proveedor",
-        _ => "otro"
-    };
+        if (accion == "proveedor") return "proveedor";
+        return empresa switch
+        {
+            "frikaf" => "cafe",
+            "intereventos" => "alquiler",
+            "intervent" => "meli",
+            _ => "otro"
+        };
+    }
 
     /// <summary>Parsea un id de botón/lista del bot. Devuelve null si no es nuestro.</summary>
     public static (string Nivel, string Empresa, string? Accion)? ParseId(string? id)
@@ -190,6 +201,19 @@ public sealed class BotTextos
     public (string Id, string Title)[] BotonesNivel1 =>
         WhatsAppBotFlow.Empresas.Select(e => ($"bot:emp:{e}", V($"boton.{e}"))).ToArray();
 
+    /// <summary>Los nombres de los 3 botones tal cual salen HOY, para dejar constancia en el
+    /// historial del chat. Antes esta lista estaba escrita a mano en el código y quedó vieja
+    /// (decía "Intervent" cuando al cliente ya le llegaba "Mercado Libre").</summary>
+    public string BotonesNivel1Resumen => string.Join(" / ", BotonesNivel1.Select(b => b.Title));
+
+    /// <summary>El nombre del botón de una empresa tal cual se ve hoy (ej. "🏢 Mercado Libre"),
+    /// no el nombre interno.</summary>
+    public string NombreBoton(string empresa)
+    {
+        var t = V($"boton.{empresa}");
+        return string.IsNullOrWhiteSpace(t) ? WhatsAppBotFlow.NombreEmpresa(empresa) : t;
+    }
+
     // ── Nivel 2 ──
     public string CuerpoNivel2(string empresa) => V($"nivel2.cuerpo.{empresa}");
 
@@ -213,6 +237,6 @@ public sealed class BotTextos
         var resp = PorClave.ContainsKey(clave)
             ? V(clave)
             : "¡Gracias por escribirnos! En breve te atendemos.";
-        return (resp, WhatsAppBotFlow.RolDeAccion(accion));
+        return (resp, WhatsAppBotFlow.RolDeBoton(empresa, accion));
     }
 }
