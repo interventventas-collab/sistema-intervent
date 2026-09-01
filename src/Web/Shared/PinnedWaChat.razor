@@ -553,6 +553,9 @@
                     @* 2026-08-31: el 🏦 existía solo en la compu y en el celu no estaba. Lo pidió el
                        dueño: "no la encuentro y es muy importante". Mismas cuentas de ⚙️ Configuración. *@
                     <button type="button" class="pwa-mas-op" @onclick="AbrirCbu">🏦 Pasar CBU / datos bancarios</button>
+                    @* 2026-09-01: cotizar un alquiler desde el celular. Mismo cotizador que la compu,
+                       en modo celu (botones grandes, lo cargado arriba, total pegado abajo). *@
+                    <button type="button" class="pwa-mas-op" @onclick="AbrirCotizador">🎪 Cotizar alquiler</button>
                 }
                 else if (masVista == "servidor")
                 {
@@ -634,6 +637,13 @@
                     {
                         <div class="pwa-mas-info">Trayendo saldo…</div>
                     }
+                }
+                else if (masVista == "cotizar")
+                {
+                    <CotizadorAlquiler @ref="cotizadorMovilRef" Movil="true"
+                                       Telefono="@Numero"
+                                       TextoBoton="📝 Escribir la cotización"
+                                       OnListo="PonerCotizacionEnElCuadro" />
                 }
                 else if (masVista == "cbu")
                 {
@@ -1772,6 +1782,21 @@
     private string masVista = "menu";
     private void AbrirMas() { mostrarMas = true; masVista = "menu"; StateHasChanged(); }
     private void CerrarMas() { mostrarMas = false; StateHasChanged(); }
+
+    // 2026-09-01: si el componente se reusa para OTRO chat, la cotización a medio cargar era del
+    // número anterior. Se vacía y se cierra el panel: mandarle a alguien el presupuesto de otro
+    // sería el peor error posible acá.
+    private string? _numeroCotizador;
+
+    protected override void OnParametersSet()
+    {
+        if (_numeroCotizador is not null && _numeroCotizador != Numero)
+        {
+            cotizadorMovilRef?.Limpiar();
+            if (masVista == "cotizar") { mostrarMas = false; masVista = "menu"; }
+        }
+        _numeroCotizador = Numero;
+    }
     private void VolverMenuMas() { masVista = "menu"; StateHasChanged(); }
     private string TituloMas() => masVista switch
     {
@@ -1779,6 +1804,7 @@
         "contacto" => "👤 Compartir contacto",
         "saldo" => "💰 Mandar saldo",
         "cbu" => "🏦 Datos bancarios",
+        "cotizar" => "🎪 Cotizar alquiler",
         _ => "➕ Más"
     };
 
@@ -1867,6 +1893,28 @@
             mostrarMas = false;
         }
         finally { salCargando = false; StateHasChanged(); }
+    }
+
+    // === 2026-09-01: COTIZADOR DE ALQUILERES en el celular ===
+    // Es el MISMO componente que usan el chat de la compu, la calculadora y las preguntas de MeLi
+    // (Shared/CotizadorAlquiler.razor), en modo Movil. NO manda solo: deja el presupuesto escrito
+    // en el cuadro y el envío lo decide la persona, como el saldo y el CBU.
+    private CotizadorAlquiler? cotizadorMovilRef;
+
+    private void AbrirCotizador()
+    {
+        masVista = "cotizar";
+        StateHasChanged();
+    }
+
+    private async Task PonerCotizacionEnElCuadro(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+        composer = string.IsNullOrWhiteSpace(composer) ? texto : composer.TrimEnd() + "\n\n" + texto;
+        await SincronizarComposer();
+        mostrarMas = false;
+        Toast.Info("Cotización escrita abajo — revisala y tocá Enviar");
+        StateHasChanged();
     }
 
     // === 2026-08-31: DATOS BANCARIOS / CBU en el celular ===

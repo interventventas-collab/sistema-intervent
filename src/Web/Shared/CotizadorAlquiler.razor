@@ -27,7 +27,7 @@
 @inject ApiClient Api
 @inject ToastService Toast
 
-<div class="cotalq @(Oscuro ? "cotalq-dark" : "")">
+<div class="cotalq @(Oscuro ? "cotalq-dark" : "") @(Movil ? "cotalq-movil" : "")">
     @if (cargando)
     {
         <div class="cotalq-info">⏳ Trayendo los equipos…</div>
@@ -46,28 +46,24 @@
             </div>
         }
 
+        @* En el celular, lo que ya cargaste va arriba de todo: en una pantalla chica, si no,
+           hay que scrollear hasta abajo para acordarse qué llevaba el pedido. *@
+        @if (Movil && Elegidos().Count > 0)
+        {
+            <div class="cotalq-sec">Lo que va</div>
+            <div class="cotalq-lista">
+                @foreach (var eq in Elegidos())
+                {
+                    @FilaEquipo(eq)
+                }
+            </div>
+            <div class="cotalq-sec">Agregar</div>
+        }
+
         <div class="cotalq-lista">
-            @foreach (var eq in Visibles())
+            @foreach (var eq in (Movil ? NoElegidos() : Visibles()))
             {
-                var cant = CantDe(eq.Id);
-                <div class="cotalq-fila @(cant > 0 ? "puesto" : "")">
-                    <div class="cotalq-fila-n">
-                        <span class="cotalq-nom">@eq.Nombre</span>
-                        <span class="cotalq-pre">
-                            @Plata(eq.PrecioDiario) c/u
-                            @if (cant > 0)
-                            {
-                                <b class="cotalq-sub">@Plata(eq.PrecioDiario * cant)</b>
-                            }
-                        </span>
-                    </div>
-                    <span class="cotalq-cant">
-                        <button class="cotalq-mas" @onclick="() => Sumar(eq.Id, -1)">−</button>
-                        <input class="cotalq-cant-inp" value="@CantTxtDe(eq.Id)" inputmode="numeric"
-                               onfocus="this.select()" @oninput="(e) => CambiarCant(eq.Id, e.Value?.ToString())" />
-                        <button class="cotalq-mas" @onclick="() => Sumar(eq.Id, 1)">+</button>
-                    </span>
-                </div>
+                @FilaEquipo(eq)
             }
         </div>
 
@@ -101,15 +97,17 @@
                    value="@descuentoTxt" onfocus="this.select()" @oninput="OnDescuento" />
         }
 
-        <div class="cotalq-total">
-            <span>Total</span>
-            <b>@Plata(Total)</b>
-        </div>
+        <div class="cotalq-pie">
+            <div class="cotalq-total">
+                <span>Total</span>
+                <b>@Plata(Total)</b>
+            </div>
 
-        <button class="cotalq-btn-main" @onclick="Listo" disabled="@(!HayAlgo && FleteMonto == 0m)">
-            @TextoBoton
-        </button>
-        <button class="cotalq-btn-limpiar" @onclick="Limpiar">Vaciar y empezar de nuevo</button>
+            <button class="cotalq-btn-main" @onclick="Listo" disabled="@(!HayAlgo && FleteMonto == 0m)">
+                @TextoBoton
+            </button>
+            <button class="cotalq-btn-limpiar" @onclick="Limpiar">Vaciar y empezar de nuevo</button>
+        </div>
     }
 </div>
 
@@ -155,6 +153,24 @@
     .cotalq-btn-limpiar { display: block; width: 100%; background: none; border: none; color: #94a3b8;
         font-size: 0.75rem; cursor: pointer; padding: 0.25rem; margin-top: 0.3rem; font-family: inherit; }
 
+    /* ── Modo celular: para el dedo, no para el mouse ── */
+    .cotalq-movil { font-size: 0.9rem; }
+    .cotalq-movil .cotalq-nom { font-size: 0.92rem; line-height: 1.3; }
+    .cotalq-movil .cotalq-pre { font-size: 0.78rem; }
+    .cotalq-movil .cotalq-fila { padding: 0.5rem; gap: 0.5rem; }
+    .cotalq-movil .cotalq-mas { width: 38px; height: 38px; font-size: 1.15rem; border-radius: 9px; }
+    .cotalq-movil .cotalq-cant-inp { width: 56px; height: 38px; font-size: 1rem; }
+    .cotalq-movil .cotalq-inp { font-size: 1rem; padding: 0.5rem; border-radius: 9px; }
+    .cotalq-movil .cotalq-lbl { font-size: 0.72rem; }
+    .cotalq-movil .cotalq-sec { font-size: 0.78rem; margin: 0.8rem 0 0.35rem; }
+    /* El total y el botón, clavados abajo: si no, al scrollear la lista se pierde de vista
+       en cuánto va el pedido, que es justo lo que uno mira mientras carga. */
+    .cotalq-movil .cotalq-pie { position: sticky; bottom: 0; background: #fff; padding-top: 0.4rem;
+        margin-top: 0.6rem; border-top: 1px solid #e2e8f0; box-shadow: 0 -8px 12px -8px rgba(0,0,0,0.18); }
+    .cotalq-movil .cotalq-total { margin-top: 0; border-top: none; padding-top: 0; font-size: 0.9rem; }
+    .cotalq-movil .cotalq-total b { font-size: 1.35rem; }
+    .cotalq-movil .cotalq-btn-main { font-size: 0.95rem; padding: 0.7rem; border-radius: 11px; }
+
     /* Tema oscuro: la calculadora flotante tiene fondo gris oscuro y la misma pieza tiene que
        verse bien ahí adentro. Solo cambian los colores, la estructura es la misma. */
     .cotalq-dark .cotalq-inp,
@@ -185,6 +201,12 @@
 
     /// <summary>Colores para fondo oscuro (la calculadora flotante).</summary>
     [Parameter] public bool Oscuro { get; set; }
+
+    /// <summary>
+    /// Modo celular: botones grandes para el dedo, lo ya cargado arriba de todo, y el total con el
+    /// botón clavados abajo (si no, al scrollear la lista se pierde de vista en cuánto va el pedido).
+    /// </summary>
+    [Parameter] public bool Movil { get; set; }
 
     /// <summary>Casillero de descuento: baja el total pero NO sale en el texto del cliente.</summary>
     [Parameter] public bool MostrarDescuento { get; set; }
@@ -265,6 +287,32 @@
                      || x.Sku.Contains(q, StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
+
+    /// <summary>Lo que ya tiene cantidad puesta (en el celu va arriba de todo).</summary>
+    private List<AlqEquipoDto> Elegidos() => Visibles().Where(e => CantDe(e.Id) > 0).ToList();
+
+    /// <summary>Lo que todavía no se cargó (en el celu va abajo, para agregar).</summary>
+    private List<AlqEquipoDto> NoElegidos() => Visibles().Where(e => CantDe(e.Id) == 0).ToList();
+
+    /// <summary>Una fila de la lista. Está definida UNA vez y la usan las dos listas del celular.</summary>
+    private RenderFragment FilaEquipo(AlqEquipoDto eq) => @<div class="cotalq-fila @(CantDe(eq.Id) > 0 ? "puesto" : "")">
+        <div class="cotalq-fila-n">
+            <span class="cotalq-nom">@eq.Nombre</span>
+            <span class="cotalq-pre">
+                @Plata(eq.PrecioDiario) c/u
+                @if (CantDe(eq.Id) > 0)
+                {
+                    <b class="cotalq-sub">@Plata(eq.PrecioDiario * CantDe(eq.Id))</b>
+                }
+            </span>
+        </div>
+        <span class="cotalq-cant">
+            <button class="cotalq-mas" @onclick="() => Sumar(eq.Id, -1)">−</button>
+            <input class="cotalq-cant-inp" value="@CantTxtDe(eq.Id)" inputmode="numeric"
+                   onfocus="this.select()" @oninput="(e) => CambiarCant(eq.Id, e.Value?.ToString())" />
+            <button class="cotalq-mas" @onclick="() => Sumar(eq.Id, 1)">+</button>
+        </span>
+    </div>;
 
     private void OnFiltrar(ChangeEventArgs e) => filtro = e.Value?.ToString() ?? "";
     private void OnMontoFlete(ChangeEventArgs e) => fleteTxt = e.Value?.ToString() ?? "";
