@@ -8770,9 +8770,12 @@ public class ApiClient
     // ── 2026-08-31: Panorama (las 4 patas del negocio en una sola pantalla) ──
     // Trae TODO de una: resumen, serie de 12 meses, rankings y avisos. Cambiar de solapa
     // en la pantalla no vuelve a pegarle al servidor; cambiar de periodo si.
-    public async Task<PanoramaDto?> GetPanoramaAsync(string periodo = "mes", int meses = 12)
+    // mes (yyyy-MM) opcional: planta la pantalla en ese mes calendario.
+    public async Task<PanoramaDto?> GetPanoramaAsync(string periodo = "mes", int meses = 12, string? mes = null)
     {
-        return await GetAsync<PanoramaDto>($"/api/panorama?periodo={Uri.EscapeDataString(periodo)}&meses={meses}");
+        var url = $"/api/panorama?periodo={Uri.EscapeDataString(periodo)}&meses={meses}";
+        if (!string.IsNullOrWhiteSpace(mes)) url += $"&mes={Uri.EscapeDataString(mes)}";
+        return await GetAsync<PanoramaDto>(url);
     }
 }
 

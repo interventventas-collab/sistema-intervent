@@ -60,6 +60,20 @@
     <script>
         // 2026-06-15: helper genérico para descargar un archivo desde Blazor
         // (lo usan los reportes de stock para exportar Excel/CSV).
+        // 2026-09-01 (Panorama): el gráfico de barras se arma como texto SVG desde Blazor, así que
+        // no se le puede colgar un @onclick a cada barra. Se anota acá cuál fue la última columna
+        // tocada y Blazor la lee para plantarse en ese mes.
+        window.__panoramaMes = null;
+        document.addEventListener('pointerdown', function (e) {
+            var col = e.target && e.target.closest ? e.target.closest('.pan-chart .col[data-mes]') : null;
+            window.__panoramaMes = col ? col.getAttribute('data-mes') : null;
+        }, true);
+        window.panoramaUltimoMesTocado = function () {
+            var m = window.__panoramaMes;
+            window.__panoramaMes = null;   // se consume una sola vez
+            return m;
+        };
+
         window.downloadFile = function (fileName, mimeType, base64Content) {
             const a = document.createElement('a');
             a.href = 'data:' + mimeType + ';base64,' + base64Content;

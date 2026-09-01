@@ -40,14 +40,31 @@
             </p>
         </div>
 
-        <div class="pan-pills" role="group" aria-label="Período">
-            @foreach (var p in Periodos)
+        <div class="pan-nav">
+            @* Las flechitas solo aparecen cuando estás parado en un mes: en "7 días" o "el año"
+               no significan nada. La de atrás frena en el primer mes que tiene datos cargados. *@
+            @if (MesActual() is not null && data is not null)
             {
-                <button type="button" class="pan-pill @(periodo == p.Key ? "on" : "")"
-                        aria-pressed="@(periodo == p.Key ? "true" : "false")"
-                        disabled="@cargando"
-                        @onclick="() => CambiarPeriodo(p.Key)">@p.Label</button>
+                <div class="pan-flechas">
+                    <button type="button" class="pan-flecha" disabled="@(cargando || !HayMesAnterior())"
+                            title="Mes anterior" aria-label="Mes anterior"
+                            @onclick="() => MoverMes(-1)">‹</button>
+                    <span class="pan-mes-actual">@data.Etiqueta</span>
+                    <button type="button" class="pan-flecha" disabled="@(cargando || !HayMesSiguiente())"
+                            title="Mes siguiente" aria-label="Mes siguiente"
+                            @onclick="() => MoverMes(1)">›</button>
+                </div>
             }
+
+            <div class="pan-pills" role="group" aria-label="Período">
+                @foreach (var p in Periodos)
+                {
+                    <button type="button" class="pan-pill @(periodo == p.Key && mesAnclado is null ? "on" : "")"
+                            aria-pressed="@(periodo == p.Key && mesAnclado is null ? "true" : "false")"
+                            disabled="@cargando"
+                            @onclick="() => CambiarPeriodo(p.Key)">@p.Label</button>
+                }
+            </div>
         </div>
     </div>
 
@@ -61,6 +78,20 @@
     }
     else if (data is not null)
     {
+        @if (MirandoMesViejo())
+        {
+            var iv = data.Patas.FirstOrDefault(x => x.Clave == "iv");
+            <p class="pan-ojo @(iv?.Margen < 0 ? "alarma" : "")">
+                Estás mirando un mes cerrado. El margen de <b>Intervent</b> está calculado con los
+                <b>costos de hoy</b>, que no son los de ese mes: cuanto más atrás vas, menos sirve ese número.
+                @if (iv?.Margen < 0)
+                {
+                    <span>Por eso da en contra — no quiere decir que ese mes hayas perdido plata.</span>
+                }
+                El de <b>Frikaf</b> sí es exacto siempre: cada venta guarda su propio costo.
+            </p>
+        }
+
         <div class="pan-patas @(cargando ? "pan-cargando" : "")">
             @foreach (var pata in data.Patas)
             {
@@ -180,9 +211,12 @@
                 }
             </div>
 
-            <div class="pan-chart-scroll">
+            @* El gráfico se arma como texto SVG, así que el clic se atrapa una sola vez acá y se
+               resuelve leyendo el mes de la columna tocada. Cada columna es un botón real. *@
+            <div class="pan-chart-scroll" @onclick="ClicEnGrafico" @onclick:preventDefault="false">
                 @Grafico()
             </div>
+            <p class="pan-nota">Tocá una barra para ver ese mes completo: las cuatro patas, los rankings y los avisos.</p>
 
             @{
                 var primerConDatos = data.Serie.FirstOrDefault(x => x.Iv != 0 || x.Ie != 0 || x.Fk != 0);
@@ -359,6 +393,22 @@
     .pan-h1 { margin:0; font-size:1.5rem; font-weight:700; letter-spacing:-0.02em; color:var(--text-primary); }
     .pan-sub { margin:0.2rem 0 0; color:var(--text-secondary); font-size:0.87rem; }
 
+    .pan-nav { display:flex; align-items:center; gap:0.85rem; flex-wrap:wrap; }
+    .pan-flechas { display:inline-flex; align-items:center; gap:0.2rem; }
+    .pan-flecha { appearance:none; border:1px solid var(--border); background:var(--card-bg);
+                  color:var(--text-secondary); font:inherit; font-size:1rem; line-height:1;
+                  width:28px; height:28px; border-radius:7px; cursor:pointer; }
+    .pan-flecha:hover:not(:disabled) { color:var(--text-primary); border-color:var(--text-muted); }
+    .pan-flecha:disabled { opacity:.35; cursor:default; }
+    .pan-flecha:focus-visible { outline:2px solid #1d4ed8; outline-offset:2px; }
+    .pan-mes-actual { font-size:0.87rem; font-weight:600; color:var(--text-primary);
+                      min-width:8.5rem; text-align:center; }
+
+    .pan-ojo { margin:0.75rem 0 0.6rem; font-size:0.8rem; line-height:1.55; color:var(--text-secondary);
+               border-left:3px solid var(--text-muted); padding-left:0.7rem; max-width:88ch; }
+    .pan-ojo.alarma { border-left-color:#dc2626; }
+    .pan-ojo b { color:var(--text-primary); font-weight:600; }
+
     .pan-pills { display:inline-flex; gap:2px; background:#eef1f5; border:1px solid var(--border); border-radius:9px; padding:3px; }
     .pan-pills.sm .pan-pill { font-size:0.78rem; padding:4px 10px; }
     .pan-pill { appearance:none; border:0; background:transparent; color:var(--text-secondary); font:inherit;
@@ -418,7 +468,11 @@
     .pan-chart text.val.neg { fill:#dc2626; }
     .pan-chart text.sindatos { font-size:9.5px; fill:var(--text-muted); font-style:italic; }
     .pan-chart .gl.cero { stroke:rgba(15,20,27,.28); }
+    .pan-chart .col { cursor:pointer; }
     .pan-chart .col:hover .hit { fill:rgba(15,20,27,.05); }
+    .pan-chart .col.sel .hit { fill:rgba(29,78,216,.07); }
+    .pan-chart .col.sel text.mes { fill:var(--text-primary); font-weight:700; }
+    .pan-chart .col:focus-visible .hit { fill:rgba(29,78,216,.12); }
 
     /* ── rankings ── */
     .pan-grid2 { display:grid; grid-template-columns:1.45fr 1fr; gap:1rem; align-items:start; }
@@ -482,6 +536,9 @@
     private string? error;
 
     private string periodo = "mes";
+    /// <summary>Mes en el que está plantada la pantalla, formato yyyy-MM. Null = período relativo
+    /// (las pastillas de arriba). Lo setean las flechitas y el clic sobre una barra del gráfico.</summary>
+    private string? mesAnclado;
     private string metrica = "facturado";
     private string orden = "valor";
     private string tab = "clientes";
@@ -504,9 +561,66 @@
 
     private async Task CambiarPeriodo(string p)
     {
-        if (periodo == p || cargando) return;
+        if (periodo == p && mesAnclado is null) return;
+        if (cargando) return;
         periodo = p;
+        mesAnclado = null;          // volver a un período relativo suelta el mes anclado
         await Cargar();
+    }
+
+    /// <summary>Se planta en un mes concreto. Lo usan las flechitas y el clic sobre una barra.</summary>
+    private async Task IrAlMes(int anio, int mes)
+    {
+        if (cargando) return;
+        var destino = $"{anio:D4}-{mes:D2}";
+        if (mesAnclado == destino) return;
+        mesAnclado = destino;
+        periodo = "mes";
+        await Cargar();
+    }
+
+    private async Task MoverMes(int deltaMeses)
+    {
+        var actual = MesActual();
+        if (actual is null) return;
+        var d = actual.Value.AddMonths(deltaMeses);
+        await IrAlMes(d.Year, d.Month);
+    }
+
+    /// <summary>El mes en el que estamos parados, o null si el período no es un mes
+    /// (7 días, 90 días, el año). Las flechitas solo tienen sentido sobre un mes.</summary>
+    private DateTime? MesActual()
+    {
+        if (mesAnclado is not null
+            && DateTime.TryParseExact(mesAnclado + "-01", "yyyy-MM-dd",
+                   CultureInfo.InvariantCulture, DateTimeStyles.None, out var m))
+            return m;
+        if (periodo == "mes" && data is not null)
+            return new DateTime(data.Desde.Year, data.Desde.Month, 1);
+        return null;
+    }
+
+    private bool HayMesAnterior()
+    {
+        var a = MesActual(); if (a is null) return false;
+        var piso = data?.PrimerMesConDatos;
+        return piso is null || a.Value.AddMonths(-1) >= new DateTime(piso.Value.Year, piso.Value.Month, 1);
+    }
+
+    private bool HayMesSiguiente()
+    {
+        var a = MesActual(); if (a is null) return false;
+        var hoyAr = DateTime.UtcNow.AddHours(-3);
+        return a.Value.AddMonths(1) <= new DateTime(hoyAr.Year, hoyAr.Month, 1);
+    }
+
+    /// <summary>True cuando estamos parados en un mes CERRADO (no el actual). Ahí el margen de
+    /// MercadoLibre hay que leerlo con pinzas: está calculado con los costos de hoy.</summary>
+    private bool MirandoMesViejo()
+    {
+        var a = MesActual(); if (a is null) return false;
+        var hoyAr = DateTime.UtcNow.AddHours(-3);
+        return a.Value < new DateTime(hoyAr.Year, hoyAr.Month, 1);
     }
 
     private void CambiarTab(string t)
@@ -524,7 +638,7 @@
         StateHasChanged();
         try
         {
-            var r = await Api.GetPanoramaAsync(periodo, 12);
+            var r = await Api.GetPanoramaAsync(periodo, 12, mesAnclado);
             if (r is null) { error = "el servidor no devolvió nada."; }
             else
             {
@@ -627,6 +741,21 @@
             : rank.Filas.ToList();
     }
 
+    /// <summary>Un solo handler para todo el gráfico: pregunta al navegador qué columna quedó
+    /// marcada por el último clic y se planta en ese mes.</summary>
+    private async Task ClicEnGrafico()
+    {
+        try
+        {
+            var mes = await JS.InvokeAsync<string?>("panoramaUltimoMesTocado");
+            if (string.IsNullOrWhiteSpace(mes)) return;
+            var partes = mes.Split('-');
+            if (partes.Length == 2 && int.TryParse(partes[0], out var a) && int.TryParse(partes[1], out var m))
+                await IrAlMes(a, m);
+        }
+        catch { /* si el navegador no colaboró, no pasa nada: el gráfico sigue siendo de mirar */ }
+    }
+
     // ── el gráfico de barras ──────────────────────────────────────────────
     private RenderFragment Grafico() => builder =>
     {
@@ -674,12 +803,15 @@
         // Los meses ANTERIORES al primero con datos no son meses sin ventas: son meses en los que
         // el sistema todavía no estaba cargando. Dibujarlos en cero hace pensar que no vendió nada.
         var primerMes = serie.FindIndex(x => x.Iv != 0 || x.Ie != 0 || x.Fk != 0);
+        var elegido = MesActual();
 
         for (var i = 0; i < serie.Count; i++)
         {
             var p = serie[i];
             var cx = ml + bw * i + bw / 2;
-            sb.Append("<g class=\"col\">");
+            var seleccionado = elegido is not null && elegido.Value.Year == p.Anio && elegido.Value.Month == p.Mes;
+            sb.Append($"<g class=\"col{(seleccionado ? " sel" : "")}\" data-mes=\"{p.Anio:D4}-{p.Mes:D2}\" ")
+              .Append($"role=\"button\" tabindex=\"0\" aria-label=\"Ver {Escapar(p.Etiqueta)} {p.Anio}\">");
 
             if (primerMes > 0 && i < primerMes)
             {

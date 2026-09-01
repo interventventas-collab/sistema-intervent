@@ -38,4 +38,6 @@ public record PanoramaDto(
     List<PanoramaPuntoDto> Serie,
     List<PanoramaRankingDto> Rankings,
     List<PanoramaAvisoDto> Avisos,
+    // Primer día del primer mes con datos cargados. Antes de eso la pantalla no deja ir.
+    DateTime? PrimerMesConDatos,
     DateTime GeneradoAt);
