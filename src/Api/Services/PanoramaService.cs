@@ -48,11 +48,36 @@ public class PanoramaService
                         string Etiqueta, string Comparacion);
 
     /// <summary>Traduce "hoy | 7d | mes | 90d | anio" a fechas argentinas, con el período
-    /// anterior comparable al lado. Desde inclusive, Hasta exclusive.</summary>
-    public static Rango ResolverPeriodo(string? periodo)
+    /// anterior comparable al lado. Desde inclusive, Hasta exclusive.
+    ///
+    /// Si viene <paramref name="mes"/> con formato yyyy-MM, se planta en ESE mes calendario
+    /// (es lo que usan las flechitas y el clic sobre una barra del gráfico).
+    ///
+    /// El mes EN CURSO se compara contra el mismo tramo del mes anterior, no contra el mes
+    /// entero: si no, todos los días 1 la pantalla avisaba que todo se derrumbó 100%.</summary>
+    public static Rango ResolverPeriodo(string? periodo, string? mes = null)
     {
         var hoy = AhoraAr().Date;
         var manana = hoy.AddDays(1);
+
+        // ── Mes anclado: "2026-06" ──
+        if (!string.IsNullOrWhiteSpace(mes)
+            && DateTime.TryParseExact(mes.Trim() + "-01", "yyyy-MM-dd",
+                   System.Globalization.CultureInfo.InvariantCulture,
+                   System.Globalization.DateTimeStyles.None, out var ancla))
+        {
+            var iniA = new DateTime(ancla.Year, ancla.Month, 1);
+            var esMesEnCurso = iniA.Year == hoy.Year && iniA.Month == hoy.Month;
+            var finA = esMesEnCurso ? manana : iniA.AddMonths(1);
+            var antA = iniA.AddMonths(-1);
+            // Mes en curso → tramo parejo del mes anterior (del 1 al mismo día).
+            var finAnt = esMesEnCurso ? MinFecha(antA.AddDays((finA - iniA).Days), iniA) : iniA;
+            return new Rango(iniA, finA, antA, finAnt,
+                $"{Mes(iniA.Month)} {iniA.Year}",
+                esMesEnCurso
+                    ? $"comparado con el mismo tramo de {Mes(antA.Month).ToLowerInvariant()}"
+                    : $"comparado con {Mes(antA.Month).ToLowerInvariant()}");
+        }
 
         switch ((periodo ?? "mes").ToLowerInvariant())
         {
@@ -78,14 +103,18 @@ public class PanoramaService
 
             default:
             {
-                var ini = new DateTime(hoy.Year, hoy.Month, 1);
-                var fin = ini.AddMonths(1);
-                var iniAnt = ini.AddMonths(-1);
-                return new Rango(ini, fin, iniAnt, ini,
-                    $"{Mes(ini.Month)} {ini.Year}", $"comparado con {Mes(iniAnt.Month).ToLowerInvariant()}");
+                var iniM = new DateTime(hoy.Year, hoy.Month, 1);
+                var antM = iniM.AddMonths(-1);
+                // Mismo criterio que arriba: tramo contra tramo parejo.
+                var finAntM = MinFecha(antM.AddDays((manana - iniM).Days), iniM);
+                return new Rango(iniM, manana, antM, finAntM,
+                    $"{Mes(iniM.Month)} {iniM.Year}",
+                    $"comparado con el mismo tramo de {Mes(antM.Month).ToLowerInvariant()}");
             }
         }
     }
+
+    private static DateTime MinFecha(DateTime a, DateTime b) => a < b ? a : b;
 
     private static string Mes(int m) => m switch
     {
@@ -137,16 +166,20 @@ public class PanoramaService
         List<PuntoSerieDto> Serie,
         List<RankingDto> Rankings,
         List<AvisoDto> Avisos,
+        // Primer día del primer mes que tiene algún dato cargado. Antes de eso no hay nada
+        // en este sistema (está en Contadora), así que la pantalla no deja ir más atrás.
+        DateTime? PrimerMesConDatos,
         DateTime GeneradoAt);
 
     // ════════════════════════════════════════════════════════════════════════
     // Punto de entrada: todo en una sola llamada
     // ════════════════════════════════════════════════════════════════════════
 
-    public async Task<PanoramaDto> GetAsync(string? periodo, int meses = 12, CancellationToken ct = default)
+    public async Task<PanoramaDto> GetAsync(string? periodo, int meses = 12,
+        string? mes = null, CancellationToken ct = default)
     {
         meses = Math.Clamp(meses, 3, 24);
-        var r = ResolverPeriodo(periodo);
+        var r = ResolverPeriodo(periodo, mes);
 
         // El costo por publicación de MeLi se arma UNA vez y se reusa en todo el cálculo.
         var costoMeli = await CostoPorPublicacionAsync(ct);
@@ -157,6 +190,7 @@ public class PanoramaService
         var serie = await SerieAsync(meses, costoMeli, ct);
         var rankings = await RankingsAsync(r, costoMeli, ct);
         var avisos = await AvisosAsync(r, costoMeli, ct);
+        var primerMes = await PrimerMesConDatosAsync(ct);
 
         return new PanoramaDto(
             (periodo ?? "mes").ToLowerInvariant(), r.Etiqueta, r.Comparacion, r.Desde, r.Hasta,
@@ -167,8 +201,32 @@ public class PanoramaService
             "Intervent + Frikaf",
             totalOps, varTotal,
             Math.Round(kg, 2), kgVar,
-            serie, rankings, avisos,
+            serie, rankings, avisos, primerMes,
             DateTime.UtcNow);
+    }
+
+    /// <summary>El mes más viejo que tiene algo cargado en este sistema, mirando las tres
+    /// fuentes que alimentan la pantalla. Sirve para no dejar navegar a meses que siempre
+    /// van a estar vacíos: lo de antes vive en Contadora, no acá.</summary>
+    private async Task<DateTime?> PrimerMesConDatosAsync(CancellationToken ct)
+    {
+        var meli = await _db.MeliOrders.AsNoTracking()
+            .Where(o => EstadosVentaMeli.Contains(o.Status))
+            .MinAsync(o => (DateTime?)o.DateCreated, ct);
+
+        var cafe = await _db.CafeVentas.AsNoTracking()
+            .Where(v => v.Estado != "anulado" && v.FacturadaComoVentaId == null
+                        && !_db.CafeSaldosMigracion.Any(sm => sm.VentaId == v.Id))
+            .MinAsync(v => (DateTime?)v.Fecha, ct);
+
+        var alq = await _db.AlqReservas.AsNoTracking()
+            .Where(x => x.Estado != "cancelado")
+            .MinAsync(x => (DateTime?)x.FechaEntrega, ct);
+
+        var fechas = new[] { meli, cafe, alq }.Where(f => f.HasValue).Select(f => f!.Value).ToList();
+        if (fechas.Count == 0) return null;
+        var min = fechas.Min();
+        return new DateTime(min.Year, min.Month, 1);
     }
 
     // ════════════════════════════════════════════════════════════════════════

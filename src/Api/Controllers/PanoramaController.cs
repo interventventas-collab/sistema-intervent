@@ -21,12 +21,15 @@ public class PanoramaController : ControllerBase
 
     /// <param name="periodo">hoy | 7d | mes | 90d | anio. Default: mes.</param>
     /// <param name="meses">Cuántos meses trae el gráfico de barras (3 a 24). Default: 12.</param>
+    /// <param name="mes">Opcional, formato yyyy-MM. Planta la pantalla en ese mes calendario
+    /// (las flechitas y el clic sobre una barra del gráfico). Si viene, manda sobre "periodo".</param>
     [HttpGet]
     public async Task<IActionResult> Get([FromQuery] string? periodo = "mes",
                                          [FromQuery] int meses = 12,
+                                         [FromQuery] string? mes = null,
                                          CancellationToken ct = default)
     {
-        var data = await _svc.GetAsync(periodo, meses, ct);
+        var data = await _svc.GetAsync(periodo, meses, mes, ct);
         return Ok(data);
     }
 }
