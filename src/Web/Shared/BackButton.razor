@@ -46,7 +46,10 @@
 
     private async Task VolverAtras()
     {
+        // 2026-09-01: el fallback apuntaba a "/dashboard", que NO es una ruta de la app
+        // (el dashboard vive en "/"), asi que si history.back fallaba caias en "Pagina no
+        // encontrada". Ahora cae en el inicio de verdad.
         try { await JS.InvokeVoidAsync("history.back"); }
-        catch { Navigation.NavigateTo("/dashboard"); }
+        catch { Navigation.NavigateTo("/"); }
     }
 }

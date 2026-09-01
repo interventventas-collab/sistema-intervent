@@ -2493,14 +2493,37 @@
     private bool showCompanyModal;
     private bool showCompanyAdminPasswordModal;
     private bool showCompanyNamesEditModal;
+    // 2026-09-01: los desplegables de la topbar (Empleados / Ventas / Widgets) eran independientes:
+    // cada Toggle solo prendia o apagaba SU flag. Abrir "Ventas" y despues "Empleados" dejaba los DOS
+    // abiertos, y al elegir una opcion de Empleados se cerraba solo Empleados -> "Ventas" quedaba
+    // PEGADO abierto encima de la pantalla nueva. Ahora abrir uno cierra los otros, navegar los
+    // cierra todos, y OnLocationChanged es la red de seguridad (sidebar, boton Volver, atras del
+    // navegador: nada puede dejar un menu colgado).
+    private void CerrarDropdownsTopbar()
+    {
+        showEmpleadosDropdown = false;
+        showVentasDropdown = false;
+        showWidgetsDropdown = false;
+    }
+
     // 2026-06-06: dropdown atajos Empleados en topbar
     private bool showEmpleadosDropdown;
-    private void ToggleEmpleadosDropdown() { showEmpleadosDropdown = !showEmpleadosDropdown; }
-    private void NavigateAndCloseEmpleados(string url) { showEmpleadosDropdown = false; NavigateTo(url); }
+    private void ToggleEmpleadosDropdown()
+    {
+        var abrir = !showEmpleadosDropdown;
+        CerrarDropdownsTopbar();
+        showEmpleadosDropdown = abrir;
+    }
+    private void NavigateAndCloseEmpleados(string url) { CerrarDropdownsTopbar(); NavigateTo(url); }
     // 2026-06-29: dropdown Ventas (mismo estilo que Empleados)
     private bool showVentasDropdown;
-    private void ToggleVentasDropdown() { showVentasDropdown = !showVentasDropdown; }
-    private void NavigateAndCloseVentas(string url) { showVentasDropdown = false; NavigateTo(url); }
+    private void ToggleVentasDropdown()
+    {
+        var abrir = !showVentasDropdown;
+        CerrarDropdownsTopbar();
+        showVentasDropdown = abrir;
+    }
+    private void NavigateAndCloseVentas(string url) { CerrarDropdownsTopbar(); NavigateTo(url); }
     // 2026-06-30: solo mostrar AssistantWidget en el dashboard (ruta "/")
     private bool IsOnDashboard
     {
@@ -2516,7 +2539,9 @@
     private int zoomLevel = 100;
     private async Task ToggleWidgetsDropdown()
     {
-        showWidgetsDropdown = !showWidgetsDropdown;
+        var abrir = !showWidgetsDropdown;
+        CerrarDropdownsTopbar();
+        showWidgetsDropdown = abrir;
         if (showWidgetsDropdown)
         {
             try { zoomLevel = await JS.InvokeAsync<int>("uiZoom.get"); } catch { }
@@ -2765,6 +2790,9 @@
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
+        // 2026-09-01: se cambio de pantalla -> ningun desplegable de la topbar puede quedar abierto,
+        // venga la navegacion de donde venga (menu lateral, boton Volver, atras del navegador).
+        CerrarDropdownsTopbar();
         CheckRoutePermission();
         _ = InvokeAsync(async () => await JS.InvokeVoidAsync("updatePageTitle", BrandSettings.BrandName));
         // 2026-06-15: cada vez que navegas, refrescamos el timestamp de "última actividad"
