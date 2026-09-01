@@ -452,6 +452,16 @@ public class ApiClient
     public async Task<bool> BorrarAlqCotizacionAsync(int id)
         => await DeleteAsync($"/api/alquileres/cotizaciones/{id}");
 
+    // --- Alquileres: texto fijo del presupuesto, encabezado y pie (2026-09-01) ---
+    public async Task<AlqPresupuestoTextoDto?> GetAlqPresupuestoTextoAsync()
+        => await GetAsync<AlqPresupuestoTextoDto>("/api/alquileres/cotizaciones/texto");
+
+    public async Task<bool> SaveAlqPresupuestoTextoAsync(AlqPresupuestoTextoDto txt)
+    {
+        var resp = await _http.PutAsJsonAsync("/api/alquileres/cotizaciones/texto", txt);
+        return resp.IsSuccessStatusCode;
+    }
+
     // --- Alquileres: Fletes por zona (2026-08-31) ---
     public async Task<List<AlqFleteDto>?> GetAlqFletesAsync(bool soloActivos = false)
         => await GetAsync<List<AlqFleteDto>>($"/api/alquileres/fletes?soloActivos={soloActivos.ToString().ToLowerInvariant()}");

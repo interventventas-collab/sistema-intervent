@@ -1032,7 +1032,7 @@
         @if (HasPerm("alquileres"))
         {
             <NavGroup Label="Alquileres" Icon="@SvgIcons.Calendar"
-                      HasActiveChild="@(IsActive("/alquileres") || IsActive("/alquileres/equipos") || IsActive("/alquileres/fletes") || IsActive("/alquileres/clientes") || IsActive("/alquileres/reservas") || IsActive("/alquileres/calendario") || IsActive("/alquileres/cobranzas-pendientes"))">
+                      HasActiveChild="@(IsActive("/alquileres") || IsActive("/alquileres/equipos") || IsActive("/alquileres/fletes") || IsActive("/alquileres/texto") || IsActive("/alquileres/clientes") || IsActive("/alquileres/reservas") || IsActive("/alquileres/calendario") || IsActive("/alquileres/cobranzas-pendientes"))">
                 <NavItem Href="/alquileres" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/alquileres")" OnClick="@(() => NavigateTo("/alquileres"))" />
                 <NavItem Href="/alquileres/reservas" Label="Reservas" Icon="@SvgIcons.Tag"
@@ -1043,6 +1043,8 @@
                          IsActive="@IsActive("/alquileres/equipos")" OnClick="@(() => NavigateTo("/alquileres/equipos"))" />
                 <NavItem Href="/alquileres/fletes" Label="Fletes" Icon="@SvgIcons.Box"
                          IsActive="@IsActive("/alquileres/fletes")" OnClick="@(() => NavigateTo("/alquileres/fletes"))" />
+                <NavItem Href="/alquileres/texto" Label="Texto del presupuesto" Icon="@SvgIcons.Edit"
+                         IsActive="@IsActive("/alquileres/texto")" OnClick="@(() => NavigateTo("/alquileres/texto"))" />
                 <NavItem Href="/alquileres/cobranzas-pendientes" Label="Cobros repartidor" Icon="@SvgIcons.Tag"
                          IsActive="@IsActive("/alquileres/cobranzas-pendientes")" OnClick="@(() => NavigateTo("/alquileres/cobranzas-pendientes"))" />
             </NavGroup>
@@ -2632,6 +2634,7 @@
         { "alquileres", "alquileres" },
         { "alquileres/equipos", "alquileres" },
         { "alquileres/fletes", "alquileres" },
+        { "alquileres/texto", "alquileres" },
         { "alquileres/clientes", "alquileres" },
         { "alquileres/reservas", "alquileres" },
         { "alquileres/calendario", "alquileres" },

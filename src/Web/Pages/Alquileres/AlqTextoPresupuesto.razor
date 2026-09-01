@@ -1,0 +1,158 @@
+@page "/alquileres/texto"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* ══════════════════════════════════════════════════════════════════════════════════
+   TEXTO DEL PRESUPUESTO — 2026-09-01.
+
+   El armazon del presupuesto (la palabra "Presupuesto", la fecha, los renglones y el TOTAL)
+   lo arma Shared/CotizadorAlquiler.razor y no se toca desde ninguna pantalla. Lo que SI se
+   edita aca son dos textos libres que lo envuelven: uno arriba y otro abajo del TOTAL.
+
+   Nace de un pedido concreto: las condiciones de pago ("se abona 50% para la reserva...")
+   se mandaban aparte con una respuesta rapida. Ahora salen pegadas en el MISMO mensaje.
+
+   Vale para los tres lados donde se cotiza: el chat de WhatsApp (modo alquiler), la
+   calculadora flotante y la bandeja de preguntas de MeLi.
+   ══════════════════════════════════════════════════════════════════════════════════ *@
+
+<div class="card">
+    <div class="card-header">
+        <h3>📝 Texto del presupuesto</h3>
+    </div>
+    <div class="card-body">
+        <p class="text-muted" style="margin: 0 0 1rem; font-size: 0.85rem;">
+            Lo que escribas acá sale <strong>siempre</strong> en el presupuesto de alquiler, sin
+            que nadie se tenga que acordar: el de arriba antes del detalle y el de abajo después
+            del total. Se usa en el chat de WhatsApp, en la calculadora y en las preguntas de
+            Mercado Libre. Si dejás un campo vacío, no sale nada.
+        </p>
+
+        @if (cargando)
+        {
+            <p class="text-muted">Cargando…</p>
+        }
+        else
+        {
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; align-items: start;">
+                <div>
+                    <div class="form-group">
+                        <label class="form-label">Arriba del presupuesto</label>
+                        <textarea class="form-input" rows="4" @bind="encabezado" @bind:event="oninput"
+                                  style="font-family: inherit; line-height: 1.5;"
+                                  placeholder="Opcional. Ej: Hola! Te paso el presupuesto:"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Abajo del total</label>
+                        <textarea class="form-input" rows="7" @bind="pie" @bind:event="oninput"
+                                  style="font-family: inherit; line-height: 1.5;"
+                                  placeholder="Ej: se abona 50% para la reserva por transferencia y el 50% RESTANTE EN EFECTIVO DURANTE LA ENTREGA"></textarea>
+                        <small class="text-muted">Acá suelen ir las condiciones de pago.</small>
+                    </div>
+
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="btn btn-primary" @onclick="Guardar" disabled="@(guardando || !Cambio)">
+                            @(guardando ? "Guardando…" : "Guardar")
+                        </button>
+                        @if (Cambio)
+                        {
+                            <button class="btn btn-secondary" @onclick="Deshacer" disabled="@guardando">Deshacer</button>
+                        }
+                    </div>
+
+                    <p class="text-muted" style="margin: 1rem 0 0; font-size: 0.8rem;">
+                        Para negrita en WhatsApp, poné la frase entre asteriscos: *así*.
+                    </p>
+                </div>
+
+                <div>
+                    <label class="form-label">Así le va a llegar</label>
+                    <div style="white-space: pre-wrap; font-size: 0.88rem; line-height: 1.5;
+                                border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.9rem;
+                                background: #f9fafb; color: #111827;">@Muestra()</div>
+                    <small class="text-muted">
+                        Los renglones y el total son un ejemplo: cambian según lo que cotices.
+                    </small>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string encabezado = "";
+    private string pie = "";
+    private string encabezadoOrig = "";
+    private string pieOrig = "";
+    private bool cargando = true;
+    private bool guardando;
+
+    private bool Cambio => encabezado != encabezadoOrig || pie != pieOrig;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var txt = await Api.GetAlqPresupuestoTextoAsync();
+            encabezado = encabezadoOrig = txt?.Encabezado ?? "";
+            pie = pieOrig = txt?.Pie ?? "";
+        }
+        catch (Exception ex) { ToastService.Error("No pude traer el texto: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private async Task Guardar()
+    {
+        guardando = true;
+        try
+        {
+            var ok = await Api.SaveAlqPresupuestoTextoAsync(new AlqPresupuestoTextoDto
+            {
+                Encabezado = encabezado ?? "",
+                Pie = pie ?? ""
+            });
+            if (ok)
+            {
+                encabezadoOrig = encabezado ?? "";
+                pieOrig = pie ?? "";
+                ToastService.Success("Guardado — desde ahora sale así en cada presupuesto");
+            }
+            else ToastService.Error("No se pudo guardar");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private void Deshacer()
+    {
+        encabezado = encabezadoOrig;
+        pie = pieOrig;
+    }
+
+    /// <summary>El mensaje de ejemplo, armado igual que Shared/CotizadorAlquiler.razor.</summary>
+    private string Muestra()
+    {
+        var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(encabezado))
+        {
+            sb.AppendLine(encabezado.Trim());
+            sb.AppendLine();
+        }
+        sb.AppendLine("*Presupuesto*");
+        sb.AppendLine($"Fecha: {DateTime.Today:dd/MM/yyyy}");
+        sb.AppendLine();
+        sb.AppendLine("20 x SILLAS SIN APOYABRAZOS BLANCA");
+        sb.AppendLine("Flete Entrega y retiro en puerta ZONA 1");
+        sb.AppendLine();
+        sb.Append("*TOTAL: $75.000,00*");
+        if (!string.IsNullOrWhiteSpace(pie))
+        {
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.Append(pie.Trim());
+        }
+        return sb.ToString();
+    }
+}

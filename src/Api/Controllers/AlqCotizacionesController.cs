@@ -113,6 +113,43 @@ public class AlqCotizacionesController : ControllerBase
         return Ok(new { deleted = true });
     }
 
+    // ===== 2026-09-01: texto fijo del presupuesto (encabezado y pie) =====
+    // Antes el presupuesto salia SIEMPRE igual y las condiciones de pago habia que mandarlas
+    // aparte con una respuesta rapida. Ahora el dueño escribe dos textos libres desde
+    // Alquileres -> Texto del presupuesto y salen pegados arriba y abajo del mismo mensaje.
+    // Viven en AppSettings (mismo criterio que "alq.condiciones" del PDF de la reserva).
+    private const string KeyEncabezado = "alq.presupuesto.encabezado";
+    private const string KeyPie = "alq.presupuesto.pie";
+
+    public record PresupuestoTextoDto(string Encabezado, string Pie);
+
+    /// <summary>GET /texto — los dos textos libres que envuelven al presupuesto.</summary>
+    [HttpGet("texto")]
+    public async Task<IActionResult> GetTexto()
+    {
+        var enc = await _db.AppSettings.FindAsync(KeyEncabezado);
+        var pie = await _db.AppSettings.FindAsync(KeyPie);
+        return Ok(new PresupuestoTextoDto(enc?.Value ?? "", pie?.Value ?? ""));
+    }
+
+    /// <summary>PUT /texto — los guarda. Vacio es valido: significa "no pongas nada".</summary>
+    [HttpPut("texto")]
+    public async Task<IActionResult> SetTexto([FromBody] PresupuestoTextoDto req)
+    {
+        await GuardarAsync(KeyEncabezado, req.Encabezado);
+        await GuardarAsync(KeyPie, req.Pie);
+        await _db.SaveChangesAsync();
+        return Ok(new PresupuestoTextoDto(req.Encabezado ?? "", req.Pie ?? ""));
+    }
+
+    private async Task GuardarAsync(string key, string? valor)
+    {
+        var fila = await _db.AppSettings.FindAsync(key);
+        if (fila is null)
+            _db.AppSettings.Add(new AppSetting { Key = key, Value = valor ?? "", UpdatedAt = DateTime.UtcNow });
+        else { fila.Value = valor ?? ""; fila.UpdatedAt = DateTime.UtcNow; }
+    }
+
     private static string SoloDigitos(string? s)
         => new((s ?? "").Where(char.IsDigit).ToArray());
 }

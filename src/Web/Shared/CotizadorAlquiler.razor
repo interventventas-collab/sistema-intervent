@@ -16,6 +16,10 @@
    ⚠ El texto que le llega al cliente lleva el detalle SIN precio por renglón: el único
    importe es el TOTAL. Es un pedido expreso del dueño, no lo cambies sin preguntarle.
 
+   2026-09-01: arriba y abajo del presupuesto salen dos textos libres (encabezado y pie) que
+   el dueño edita en Alquileres → Texto del presupuesto (/alquileres/texto). El caso típico es
+   el pie con las condiciones de pago, que antes iban aparte con una respuesta rápida.
+
    Cotiza UN día. Multiplicar por cantidad de días quedó para más adelante.
    ══════════════════════════════════════════════════════════════════════════════════ *@
 
@@ -213,6 +217,12 @@
     private DateTime? fecha = null;
     private bool cargando = true;
 
+    // 2026-09-01: texto fijo que el dueño escribe en Alquileres → Texto del presupuesto.
+    // Sale SIEMPRE: el encabezado arriba de todo y el pie abajo del TOTAL (tipico: las
+    // condiciones de pago, que antes habia que mandar aparte con una respuesta rapida).
+    private string txtEncabezado = "";
+    private string txtPie = "";
+
     protected override async Task OnInitializedAsync() => await Cargar();
 
     private async Task Cargar()
@@ -224,6 +234,15 @@
             var eqs = await Api.GetAlqEquiposAsync();
             equipos = (eqs ?? new()).Where(e => e.IsActive).ToList();
             fletes = await Api.GetAlqFletesAsync(soloActivos: true) ?? new();
+
+            // Si no se puede traer, el presupuesto sale igual: sin encabezado ni pie.
+            try
+            {
+                var txt = await Api.GetAlqPresupuestoTextoAsync();
+                txtEncabezado = (txt?.Encabezado ?? "").Trim();
+                txtPie = (txt?.Pie ?? "").Trim();
+            }
+            catch { txtEncabezado = ""; txtPie = ""; }
         }
         catch (Exception ex) { Toast.Error("No pude traer los precios: " + ex.Message); }
         finally { cargando = false; }
@@ -364,6 +383,11 @@
     public string ArmarTexto()
     {
         var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(txtEncabezado))
+        {
+            sb.AppendLine(txtEncabezado);
+            sb.AppendLine();
+        }
         sb.AppendLine("*Presupuesto*");
         if (fecha is DateTime f) sb.AppendLine($"Fecha: {f:dd/MM/yyyy}");
         sb.AppendLine();
@@ -379,6 +403,13 @@
 
         sb.AppendLine();
         sb.Append($"*TOTAL: {Plata(Total)}*");
+
+        if (!string.IsNullOrWhiteSpace(txtPie))
+        {
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.Append(txtPie);
+        }
         return sb.ToString();
     }
 

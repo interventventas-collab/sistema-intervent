@@ -352,3 +352,12 @@ public class CrearAlqCotizacionItemRequest
     public int Cantidad { get; set; }
     public decimal PrecioUnitario { get; set; }
 }
+
+// ===== Texto fijo del presupuesto de alquiler (2026-09-01) =====
+// Dos textos libres que el dueño escribe una vez y salen SIEMPRE: uno arriba del presupuesto
+// y otro abajo del TOTAL (tipico: las condiciones de pago). Se editan en /alquileres/texto.
+public class AlqPresupuestoTextoDto
+{
+    public string Encabezado { get; set; } = "";
+    public string Pie { get; set; } = "";
+}
