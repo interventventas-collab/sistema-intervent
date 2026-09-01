@@ -290,9 +290,14 @@ public class HorasExtrasController : ControllerBase
     // (falta entrada o salida) -> la UI no muestra nada en ese dia.
     // MinutosDia (no horas decimales): el usuario no queria leer "9,8 h" y hacer la cuenta mental.
     // Mandamos los minutos EXACTOS y la UI los muestra como "9h 48m".
-    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida, int? MinutosDia);
+    // 2026-09-01 (2): DiferenciaMin = trabajado - jornada esperada de ESE dia de la semana.
+    // Positivo = le sobro, negativo = le falto, 0 = justo (la UI no muestra nada). null = no se
+    // puede calcular. Feriado -> jornada esperada 0 (todo cuenta como excedente), igual criterio
+    // que el cuadro del ciclo, para que los dos numeros no se contradigan.
+    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida,
+        int? MinutosDia, int? DiferenciaMin);
     public record HorasMesDto(int Anio, int Mes, string MesLabel, bool PuedeAnterior, bool PuedeSiguiente,
-        List<HorasMesDiaDto> Dias, bool MostrarHoras);
+        List<HorasMesDiaDto> Dias, bool MostrarHoras, bool MostrarExtras, int TotalDiferenciaMin);
 
     [HttpGet("publica/{slug}/{clave}/horas-mes")]
     [AllowAnonymous]
@@ -322,17 +327,45 @@ public class HorasExtrasController : ControllerBase
             .OrderByDescending(r => r.Fecha)
             .ToListAsync();
 
+        // Feriados del mes: ese dia la jornada esperada es 0, asi que TODO lo trabajado es excedente.
+        var feriados = new HashSet<DateTime>(await _db.HorasExtrasFeriados
+            .Where(f => f.Fecha >= desde && f.Fecha <= hasta)
+            .Select(f => f.Fecha.Date).ToListAsync());
+
+        // SEGURO PARA LOS SOCIOS: a los socios hermanos no se les controla el horario y por eso
+        // tienen la jornada TODA en 0 (caso German). Con jornada 0 el sistema entiende "no trabaja
+        // ese dia" y cada fichada contaria como excedente completo ("+10h todos los dias"). Si la
+        // semana suma 0, no mostramos el +/- aunque el tilde este prendido.
+        var jornadaSemanal = emp.HorasLunes + emp.HorasMartes + emp.HorasMiercoles + emp.HorasJueves
+                           + emp.HorasViernes + emp.HorasSabado + emp.HorasDomingo;
+        var mostrarExtras = emp.MostrarExtrasAlEmpleado && jornadaSemanal > 0m;
+
+        // Diferencia del dia = trabajado - jornada esperada. Solo si se pudo calcular lo trabajado.
+        int? DiferenciaDelDia(HorasExtrasRegistro r)
+        {
+            var trabajado = MinutosTrabajados(r);
+            if (!trabajado.HasValue) return null;
+            var jornadaHs = feriados.Contains(r.Fecha.Date) ? 0m : emp.HorasParaDia(r.Fecha.DayOfWeek);
+            return trabajado.Value - (int)Math.Round(jornadaHs * 60m, MidpointRounding.AwayFromZero);
+        }
+
         // Solo calculamos las horas del dia si estan las DOS puntas. Con una sola (todavia
         // trabajando, o se olvido de fichar la salida) HorasTrabajadas caeria a r.Cantidad = 0
         // y mostrariamos "0 h", que confunde. En ese caso va null y no se muestra nada.
         var dias = regs.Select(r => new HorasMesDiaDto(
-                r.Fecha, FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida), MinutosTrabajados(r)))
+                r.Fecha, FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida),
+                MinutosTrabajados(r), DiferenciaDelDia(r)))
             .ToList();
+
+        // Saldo del mes = suma NETA (lo que sobro menos lo que falto). Es un balance para que el
+        // empleado se ubique, NO la liquidacion: el calculo de extras a pagar del ciclo suma solo
+        // los positivos y sigue viviendo aparte, sin tocar.
+        var totalDif = dias.Sum(d => d.DiferenciaMin ?? 0);
         var es = new System.Globalization.CultureInfo("es-AR");
         var label = pedido.ToString("MMMM yyyy", es);
         label = char.ToUpper(label[0]) + label.Substring(1);   // "Julio 2026"
         return Ok(new HorasMesDto(pedido.Year, pedido.Month, label, pedido > mesMin, pedido < mesActual,
-            dias, emp.MostrarHorasTrabajadasDia));
+            dias, emp.MostrarHorasTrabajadasDia, mostrarExtras, totalDif));
     }
 
     /// <summary>Devuelve "HH:mm" o null. Lo usamos en el JSON para que el input type=time del browser

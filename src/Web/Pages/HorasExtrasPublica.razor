@@ -33,6 +33,21 @@
     .he-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #f3f4f6; font-size: 0.9rem; }
     .he-row-fecha { color: #4b5563; text-transform: capitalize; }
     .he-row-hs { font-weight: 700; color: #1d4ed8; }
+    /* 2026-09-01: excedente (+) / faltante (-) del dia, abajo del total. Aca el color SI es la
+       informacion: verde sobro, rojo falto. El dia justo no muestra nada. */
+    .he-row-dif { display: block; font-size: 0.78rem; font-weight: 700; margin-top: 1px; }
+    .he-row-dif.mas { color: #16a34a; }
+    .he-row-dif.menos { color: #dc2626; }
+    .he-saldo { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+                border-radius: 10px; padding: 0.6rem 0.9rem; margin: 0.8rem 0 0.2rem; border: 1px solid; }
+    .he-saldo span { font-size: 0.85rem; font-weight: 600; color: #374151; }
+    .he-saldo b { font-size: 1.2rem; white-space: nowrap; }
+    .he-saldo.mas { background: #f0fdf4; border-color: #bbf7d0; }
+    .he-saldo.mas b { color: #16a34a; }
+    .he-saldo.menos { background: #fef2f2; border-color: #fecaca; }
+    .he-saldo.menos b { color: #dc2626; }
+    .he-saldo.justo { background: #f9fafb; border-color: #e5e7eb; }
+    .he-saldo.justo b { color: #6b7280; font-size: 1rem; }
     .he-row.hoy { background: #fef3c7; padding: 0.5rem 0.6rem; border-radius: 6px; border: none; }
     .he-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #16a34a; color: white; padding: 0.7rem 1.4rem; border-radius: 999px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 9999; }
 
@@ -244,6 +259,15 @@
             @* 2026-07-31: vista por MES — el empleado ve solo el horario entrada→salida de cada día,
                navegando de mes en mes (hasta 2 meses para atrás). Sin números de horas ni extras. *@
             <div class="he-history">
+                @* 2026-09-01: saldo del mes (lo que sobro menos lo que falto). Solo si el admin
+                   habilito los extras para este empleado y hay al menos un dia calculable. *@
+                @if (horasMes is not null && horasMes.MostrarExtras && horasMes.Dias.Any(x => x.DiferenciaMin.HasValue))
+                {
+                    <div class="he-saldo @SaldoClase(horasMes.TotalDiferenciaMin)">
+                        <span>@SaldoTitulo(horasMes)</span>
+                        <b>@SaldoValor(horasMes.TotalDiferenciaMin)</b>
+                    </div>
+                }
                 <div style="display:flex; align-items:center; justify-content:space-between; margin:0.8rem 0 0.5rem; gap:0.5rem;">
                     <button @onclick="MesAnterior" disabled="@(horasMes is null || !horasMes.PuedeAnterior)"
                             style="width:38px; height:38px; border-radius:9px; border:2px solid #e5e7eb; background:white; font-size:1rem; cursor:pointer; @(horasMes is null || !horasMes.PuedeAnterior ? "opacity:0.35; cursor:default;" : "")">◀</button>
@@ -264,17 +288,28 @@
                     @foreach (var d in horasMes.Dias)
                     {
                         var esHoy = d.Fecha.Date == datos.HoyFecha.Date;
+                        var verHoras = horasMes.MostrarHoras && d.MinutosDia.HasValue;
+                        var dif = horasMes.MostrarExtras ? d.DiferenciaMin : null;
+                        var verDif = dif.HasValue && dif.Value != 0;   // el dia justo no muestra nada
                         <div class="he-row @(esHoy ? "hoy" : "")">
                             <span class="he-row-fecha" style="flex:1; text-transform:capitalize;">@FechaLabel(d.Fecha) @(esHoy ? "(hoy)" : "")</span>
                             <span style="font-weight:700; color:#1f2937; font-size:0.95rem; white-space:nowrap;">
                                 🕒 @(string.IsNullOrEmpty(d.HoraEntrada) ? "—" : d.HoraEntrada) → @(string.IsNullOrEmpty(d.HoraSalida) ? "—" : d.HoraSalida)
                             </span>
-                            @* 2026-09-01: total de horas del dia, a la derecha. Solo si el admin lo habilito
-                               para este empleado y el dia tiene entrada Y salida. *@
-                            @if (horasMes.MostrarHoras && d.MinutosDia.HasValue)
+                            @* 2026-09-01: total de horas del dia y, abajo, cuanto le sobro o le falto.
+                               Cada uno tiene su tilde propio en la ficha del empleado, asi que puede
+                               verse uno, el otro, o los dos. *@
+                            @if (verHoras || verDif)
                             {
-                                <span class="he-row-hs" style="white-space:nowrap; margin-left:0.6rem; min-width:64px; text-align:right;">
-                                    @FormatoHsMin(d.MinutosDia.Value)
+                                <span class="he-row-hs" style="white-space:nowrap; margin-left:0.6rem; min-width:66px; text-align:right;">
+                                    @if (verHoras)
+                                    {
+                                        @FormatoHsMin(d.MinutosDia!.Value)
+                                    }
+                                    @if (verDif)
+                                    {
+                                        <span class="he-row-dif @(dif!.Value > 0 ? "mas" : "menos")">@(dif.Value > 0 ? "+" : "−")@FormatoDif(Math.Abs(dif.Value))</span>
+                                    }
                                 </span>
                             }
                         </div>
@@ -474,9 +509,10 @@
     // 2026-07-31: vista de horas por mes (solo horario entrada→salida)
     // 2026-09-01: HorasDia + MostrarHoras — vuelve el total de horas de cada dia (lo controla el
     // tilde "mostrar horas trabajadas del dia" de la ficha del empleado en el panel de Horario).
-    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida, int? MinutosDia);
+    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida,
+        int? MinutosDia, int? DiferenciaMin);
     public record HorasMesDto(int Anio, int Mes, string MesLabel, bool PuedeAnterior, bool PuedeSiguiente,
-        List<HorasMesDiaDto> Dias, bool MostrarHoras);
+        List<HorasMesDiaDto> Dias, bool MostrarHoras, bool MostrarExtras, int TotalDiferenciaMin);
 
     protected override async Task OnInitializedAsync()
     {
@@ -709,6 +745,36 @@
 
     /// <summary>Minutos → "9h 48m". Si son horas justas, "9h" a secas (no "9h 00m").
     /// El usuario pidio explicitamente NO ver horas decimales tipo "9,8 h": no se entiende de un vistazo.</summary>
+    /// <summary>Igual que FormatoHsMin pero para la DIFERENCIA: abajo de una hora va "12m" pelado,
+    /// no "0h 12m" (se veia feo y el usuario lo marco al ver el render).</summary>
+    private static string FormatoDif(int minutos)
+    {
+        var h = minutos / 60;
+        var m = minutos % 60;
+        if (h == 0) return $"{m}m";
+        return m == 0 ? $"{h}h" : $"{h}h {m:D2}m";
+    }
+
+    /// <summary>Nombre del mes en minuscula, sacado del label que manda la API ("Agosto 2026" → "agosto").</summary>
+    private static string MesEnFrase(HorasMesDto h)
+    {
+        var partes = (h.MesLabel ?? "").Split(' ');
+        return partes.Length > 0 && partes[0].Length > 0 ? partes[0].ToLowerInvariant() : "el mes";
+    }
+
+    /// <summary>El titulo cambia con el signo: si el saldo es negativo decir "Excedente" seria mentira.</summary>
+    private static string SaldoTitulo(HorasMesDto h) => h.TotalDiferenciaMin switch
+    {
+        > 0 => $"Excedente de {MesEnFrase(h)}",
+        < 0 => $"Faltante de {MesEnFrase(h)}",
+        _ => $"Balance de {MesEnFrase(h)}"
+    };
+
+    private static string SaldoClase(int total) => total > 0 ? "mas" : (total < 0 ? "menos" : "justo");
+
+    private static string SaldoValor(int total) =>
+        total == 0 ? "justo" : (total > 0 ? "+" : "−") + FormatoDif(Math.Abs(total));
+
     private static string FormatoHsMin(int minutos)
     {
         if (minutos < 0) minutos = 0;
