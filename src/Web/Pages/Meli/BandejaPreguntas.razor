@@ -164,7 +164,22 @@
                                     }
                                     <div style="margin-top:4px">
                                         <button class="bp-chip bp-chip-manage" @onclick="OpenQuickReplies">✏️ Editar respuestas rápidas</button>
+                                        @* 2026-08-31: cotizar un alquiler sin salir de la bandeja. Es el MISMO
+                                           cotizador del chat de WhatsApp; acá el presupuesto cae en el cuadro
+                                           de respuesta y se manda con "Responder", como cualquier otra. *@
+                                        <button class="bp-chip bp-chip-cotiz @(mostrarCotizador ? "on" : "")"
+                                                @onclick="() => mostrarCotizador = !mostrarCotizador">🎪 Cotizar alquiler</button>
                                     </div>
+                                    @if (mostrarCotizador)
+                                    {
+                                        <div class="bp-cotiz">
+                                            <div class="bp-cotiz-aviso">
+                                                ⚠️ Ojo: la respuesta de MercadoLibre es <b>pública</b> — el presupuesto lo ve cualquiera que entre a la publicación.
+                                            </div>
+                                            <CotizadorAlquiler TextoBoton="📝 Poner en la respuesta"
+                                                               OnListo="PonerCotizacionEnRespuesta" />
+                                        </div>
+                                    }
                                 </div>
                                 <div class="bp-composer">
                                     <textarea class="form-input bp-ta" rows="3" placeholder="Escribí tu respuesta..."
@@ -388,6 +403,7 @@
     private MeliQuestionDetailDto? detail;
     private List<MeliQuickReplyDto> quickReplies = new();
     private string draft = "";
+    private bool mostrarCotizador = false;
     private bool loading = true, loadingDetail, sending, refreshing;
 
     // Editor de respuestas rápidas
@@ -490,6 +506,15 @@
         try { detail = await Api.GetMeliQuestionDetailAsync(id); }
         catch (Exception ex) { Toast.Error("No se pudo cargar el detalle: " + ex.Message); }
         finally { loadingDetail = false; }
+    }
+
+    /// <summary>2026-08-31: el presupuesto armado cae en el cuadro de respuesta; lo manda él con "Responder".</summary>
+    private void PonerCotizacionEnRespuesta(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+        draft = string.IsNullOrWhiteSpace(draft) ? texto : draft.TrimEnd() + "\n\n" + texto;
+        mostrarCotizador = false;
+        Toast.Success("Presupuesto puesto en la respuesta — revisalo y tocá Responder");
     }
 
     private void InsertCanned(string body)
@@ -665,6 +690,11 @@
     .bp-chip { font-size: .78rem; font-family: inherit; text-align: left; border: 1px dashed rgba(148,163,184,.5); background: rgba(148,163,184,.06); color: var(--text-muted,#4b5563); border-radius: 9px; padding: 6px 10px; cursor: pointer; max-width: 100%; text-decoration: none; }
     .bp-chip:hover { background: rgba(245,158,11,.12); border-color: #f59e0b; border-style: solid; color: inherit; }
     .bp-chip-manage { border-style: solid; border-color: rgba(148,163,184,.3); background: transparent; color: #2563c9; font-weight: 700; }
+    .bp-chip-cotiz { border-style: solid; border-color: rgba(148,163,184,.3); background: transparent; color: #047857; font-weight: 700; }
+    .bp-chip-cotiz.on { background: #dcfce7; border-color: #16a34a; }
+    .bp-cotiz { margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px; background: #f8fafc; }
+    .bp-cotiz-aviso { font-size: 0.72rem; color: #92400e; background: #fef3c7; border: 1px solid #fde68a;
+        border-radius: 7px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.4; }
     .bp-composer { display: flex; gap: 10px; align-items: flex-end; }
     .bp-ta { flex: 1; resize: vertical; font-family: inherit; min-height: 76px; }
     .bp-send-col { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
