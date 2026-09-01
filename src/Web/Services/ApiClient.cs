@@ -429,8 +429,28 @@ public class ApiClient
     public async Task<AlqEquipoDto?> UpdateAlqEquipoAsync(int id, UpdateAlqEquipoRequest request)
         => await PutAsync<AlqEquipoDto>($"/api/alquileres/equipos/{id}", request);
 
+    /// <summary>Guarda el orden de los equipos del cotizador (los ids en el orden final). 2026-08-31.</summary>
+    public async Task<bool> GuardarOrdenAlqEquiposAsync(List<int> ids)
+    {
+        var resp = await _http.PutAsJsonAsync("/api/alquileres/equipos/orden", new { ids });
+        return resp.IsSuccessStatusCode;
+    }
+
     public async Task<bool> DeleteAlqEquipoAsync(int id)
         => await DeleteAsync($"/api/alquileres/equipos/{id}");
+
+    // --- Alquileres: Cotizaciones pegadas al telefono (2026-08-31) ---
+    public async Task<List<AlqCotizacionDto>?> GetAlqCotizacionesAsync(string telefono, int limit = 20)
+        => await GetAsync<List<AlqCotizacionDto>>($"/api/alquileres/cotizaciones?telefono={Uri.EscapeDataString(telefono)}&limit={limit}");
+
+    public async Task<AlqCotizacionDto?> GetAlqCotizacionAsync(int id)
+        => await GetAsync<AlqCotizacionDto>($"/api/alquileres/cotizaciones/{id}");
+
+    public async Task<AlqCotizacionDto?> CrearAlqCotizacionAsync(CrearAlqCotizacionRequest req)
+        => await PostAsync<AlqCotizacionDto>("/api/alquileres/cotizaciones", req);
+
+    public async Task<bool> BorrarAlqCotizacionAsync(int id)
+        => await DeleteAsync($"/api/alquileres/cotizaciones/{id}");
 
     // --- Alquileres: Fletes por zona (2026-08-31) ---
     public async Task<List<AlqFleteDto>?> GetAlqFletesAsync(bool soloActivos = false)

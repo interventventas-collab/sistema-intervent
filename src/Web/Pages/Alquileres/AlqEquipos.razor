@@ -12,6 +12,9 @@
         <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Equipo</button>
     </div>
     <div class="card-body" style="padding: 0;">
+        <p class="text-muted" style="margin: 0; padding: 0.6rem 1rem 0; font-size: 0.8rem;">
+            El orden de esta lista es el que vas a ver al cotizar un alquiler. Movelos con ▲ ▼ y poné arriba lo que más alquilás.
+        </p>
         @if (isLoading)
         {
             <p class="text-muted" style="padding: 1.5rem;">Cargando equipos...</p>
@@ -28,6 +31,7 @@
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 62px;" title="Orden en el que aparecen al cotizar">Orden</th>
                             <th style="width: 110px;">SKU</th>
                             <th>Nombre</th>
                             <th>Categoría</th>
@@ -40,7 +44,16 @@
                     <tbody>
                         @foreach (var e in equipos)
                         {
+                            var idx = equipos.IndexOf(e);
                             <tr>
+                                @* 2026-08-31: mover arriba/abajo. El orden que armes acá es el que ves
+                                   al cotizar (chat, calculadora y preguntas de MeLi). *@
+                                <td style="white-space: nowrap;">
+                                    <button class="btn-icon" title="Subir" disabled="@(idx == 0 || guardandoOrden)"
+                                            @onclick="() => Mover(idx, -1)" style="padding:0 4px;">▲</button>
+                                    <button class="btn-icon" title="Bajar" disabled="@(idx == equipos.Count - 1 || guardandoOrden)"
+                                            @onclick="() => Mover(idx, 1)" style="padding:0 4px;">▼</button>
+                                </td>
                                 <td style="font-family: monospace; color: #374151;">@e.Sku</td>
                                 <td><strong>@e.Nombre</strong>@if (!string.IsNullOrEmpty(e.Descripcion)) { <div style="font-size: 0.78rem; color: #6b7280;">@e.Descripcion</div>}</td>
                                 <td style="color: #6b7280; font-size: 0.85rem;">@(e.Categoria ?? "—")</td>
@@ -195,6 +208,26 @@
         try { equipos = await Api.GetAlqEquiposAsync() ?? new(); }
         catch { ToastService.Error("Error al cargar los equipos"); equipos = new(); }
         isLoading = false;
+    }
+
+    private bool guardandoOrden;
+
+    /// <summary>Mueve un equipo arriba o abajo y guarda el orden nuevo. 2026-08-31.</summary>
+    private async Task Mover(int idx, int delta)
+    {
+        if (equipos is null) return;
+        var destino = idx + delta;
+        if (idx < 0 || idx >= equipos.Count || destino < 0 || destino >= equipos.Count) return;
+
+        (equipos[idx], equipos[destino]) = (equipos[destino], equipos[idx]);   // en pantalla, al toque
+        guardandoOrden = true;
+        try
+        {
+            var ok = await Api.GuardarOrdenAlqEquiposAsync(equipos.Select(x => x.Id).ToList());
+            if (!ok) { ToastService.Error("No se pudo guardar el orden"); await Load(); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); await Load(); }
+        finally { guardandoOrden = false; }
     }
 
     private void ShowCreate()

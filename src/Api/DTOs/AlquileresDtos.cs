@@ -4,7 +4,7 @@ namespace Api.DTOs;
 public record AlqEquipoDto(
     int Id, string Sku, string Nombre, string? Categoria, string? Descripcion,
     int StockTotal, decimal PrecioDiario, decimal? PrecioReposicion,
-    bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+    bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt, int Orden);
 
 public class CreateAlqEquipoRequest
 {
@@ -27,6 +27,43 @@ public class UpdateAlqEquipoRequest
     public decimal? PrecioDiario { get; set; }
     public decimal? PrecioReposicion { get; set; }
     public bool? IsActive { get; set; }
+    public int? Orden { get; set; }
+}
+
+// ===== Cotizaciones de alquiler (2026-08-31) =====
+public record AlqCotizacionItemDto(int Id, int? EquipoId, string Nombre, int Cantidad, decimal PrecioUnitario);
+
+public record AlqCotizacionDto(
+    int Id, string Telefono, int? ClienteId, DateTime? FechaEvento,
+    string? FleteZona, decimal FleteMonto, decimal Descuento, decimal Total,
+    string? Texto, string? Operador, int? ReservaId, DateTime CreatedAt,
+    List<AlqCotizacionItemDto> Items);
+
+public class CrearAlqCotizacionRequest
+{
+    public string Telefono { get; set; } = string.Empty;
+    public int? ClienteId { get; set; }
+    public DateTime? FechaEvento { get; set; }
+    public string? FleteZona { get; set; }
+    public decimal FleteMonto { get; set; }
+    public decimal Descuento { get; set; }
+    public string? Texto { get; set; }
+    public string? Operador { get; set; }
+    public List<CrearAlqCotizacionItemRequest> Items { get; set; } = new();
+}
+
+public class CrearAlqCotizacionItemRequest
+{
+    public int? EquipoId { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public int Cantidad { get; set; }
+    public decimal PrecioUnitario { get; set; }
+}
+
+public class GuardarOrdenEquiposRequest
+{
+    /// <summary>Los ids en el orden final: el primero queda arriba de todo.</summary>
+    public List<int> Ids { get; set; } = new();
 }
 
 // ===== Fletes por zona (2026-08-31) =====

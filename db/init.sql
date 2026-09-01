@@ -2070,6 +2070,49 @@ BEGIN
 END
 GO
 
+-- 2026-08-31: presupuestos de alquiler pasados por WhatsApp. Van pegados al TELEFONO
+-- (muchos consultan sin ser clientes); los renglones guardan nombre y precio congelados.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_Cotizaciones' AND xtype='U')
+BEGIN
+    CREATE TABLE Alq_Cotizaciones (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Telefono NVARCHAR(30) NOT NULL,
+        ClienteId INT NULL,
+        FechaEvento DATETIME2 NULL,
+        FleteZona NVARCHAR(200) NULL,
+        FleteMonto DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Descuento DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Total DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Texto NVARCHAR(4000) NULL,
+        Operador NVARCHAR(60) NULL,
+        ReservaId INT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+    );
+    CREATE INDEX IX_AlqCotizaciones_Telefono ON Alq_Cotizaciones (Telefono);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_CotizacionItems' AND xtype='U')
+BEGIN
+    CREATE TABLE Alq_CotizacionItems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        CotizacionId INT NOT NULL,
+        EquipoId INT NULL,
+        Nombre NVARCHAR(200) NOT NULL,
+        Cantidad INT NOT NULL DEFAULT 0,
+        PrecioUnitario DECIMAL(18,2) NOT NULL DEFAULT 0,
+        CONSTRAINT FK_AlqCotizacionItems_Cotizacion FOREIGN KEY (CotizacionId)
+            REFERENCES Alq_Cotizaciones(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_AlqCotizacionItems_Cotizacion ON Alq_CotizacionItems (CotizacionId);
+END
+GO
+
+-- 2026-08-31: orden a mano de los equipos en el cotizador (0 = sin ordenar, va al final).
+IF COL_LENGTH('Alq_Equipos','Orden') IS NULL
+    ALTER TABLE Alq_Equipos ADD Orden INT NOT NULL DEFAULT 0;
+GO
+
 -- 2026-08-31: precios de flete por zona/localidad, para cotizar alquileres rapido.
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_Fletes' AND xtype='U')
 BEGIN

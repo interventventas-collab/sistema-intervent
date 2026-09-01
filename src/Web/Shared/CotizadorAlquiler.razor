@@ -185,6 +185,22 @@
     /// <summary>Casillero de descuento: baja el total pero NO sale en el texto del cliente.</summary>
     [Parameter] public bool MostrarDescuento { get; set; }
 
+    /// <summary>
+    /// Teléfono del chat. Si viene, la cotización QUEDA GUARDADA contra ese teléfono al darle al
+    /// botón — así, si el mismo número escribe en tres meses, está a mano lo que se le presupuestó.
+    /// Sin teléfono (calculadora flotante, preguntas de MeLi) no se guarda nada.
+    /// </summary>
+    [Parameter] public string? Telefono { get; set; }
+
+    /// <summary>Si el chat ya está vinculado a un cliente, queda anotado en la cotización.</summary>
+    [Parameter] public int? ClienteId { get; set; }
+
+    /// <summary>Quién la hizo (operador del PIN).</summary>
+    [Parameter] public string? Operador { get; set; }
+
+    /// <summary>Se dispara cuando la cotización quedó guardada (para refrescar el historial).</summary>
+    [Parameter] public EventCallback OnGuardada { get; set; }
+
     private List<AlqEquipoDto> equipos = new();
     private List<AlqFleteDto> fletes = new();
     private readonly Dictionary<int, int> cant = new();
@@ -204,6 +220,7 @@
         cargando = true;
         try
         {
+            // Vienen en el orden que él armó en Alquileres → Equipos (flechitas ↑↓): NO reordenar acá.
             var eqs = await Api.GetAlqEquiposAsync();
             equipos = (eqs ?? new()).Where(e => e.IsActive).ToList();
             fletes = await Api.GetAlqFletesAsync(soloActivos: true) ?? new();
@@ -268,7 +285,77 @@
         StateHasChanged();
     }
 
-    private async Task Listo() => await OnListo.InvokeAsync(ArmarTexto());
+    private async Task Listo()
+    {
+        var texto = ArmarTexto();
+        await OnListo.InvokeAsync(texto);
+        await GuardarSiHayTelefono(texto);
+    }
+
+    /// <summary>Deja el presupuesto guardado contra el teléfono. Si falla, no molesta: el
+    /// presupuesto ya está escrito y lo importante es que lo pueda mandar.</summary>
+    private async Task GuardarSiHayTelefono(string texto)
+    {
+        var tel = new string((Telefono ?? "").Where(char.IsDigit).ToArray());
+        if (tel.Length == 0) return;
+
+        try
+        {
+            var req = new CrearAlqCotizacionRequest
+            {
+                Telefono = tel,
+                ClienteId = ClienteId,
+                FechaEvento = fecha,
+                FleteZona = fleteZona,
+                FleteMonto = FleteMonto,
+                Descuento = Descuento,
+                Texto = texto,
+                Operador = Operador,
+                Items = equipos
+                    .Where(e => CantDe(e.Id) > 0)
+                    .Select(e => new CrearAlqCotizacionItemRequest
+                    {
+                        EquipoId = e.Id,
+                        Nombre = e.Nombre,          // congelado: en 3 meses el nombre puede cambiar
+                        Cantidad = CantDe(e.Id),
+                        PrecioUnitario = e.PrecioDiario   // congelado: el precio de HOY
+                    }).ToList()
+            };
+            var guardada = await Api.CrearAlqCotizacionAsync(req);
+            if (guardada is not null) await OnGuardada.InvokeAsync();
+        }
+        catch { /* que no se pierda el presupuesto por no poder guardarlo */ }
+    }
+
+    /// <summary>
+    /// Carga una cotización vieja para repetirla. Los precios se recalculan con los de HOY
+    /// (por eso avisa si alguno cambió): la vieja queda guardada tal cual se le pasó.
+    /// </summary>
+    public void CargarDesde(AlqCotizacionDto cot)
+    {
+        cant.Clear(); cantTxt.Clear();
+        var faltan = 0;
+        foreach (var it in cot.Items)
+        {
+            var eq = it.EquipoId is int eid ? equipos.FirstOrDefault(e => e.Id == eid) : null;
+            if (eq is null) { faltan++; continue; }
+            cant[eq.Id] = it.Cantidad;
+            cantTxt[eq.Id] = it.Cantidad.ToString();
+        }
+
+        fecha = cot.FechaEvento;
+        fleteZona = cot.FleteZona ?? "";
+        fleteTxt = cot.FleteMonto > 0m ? cot.FleteMonto.ToString("0.##", ARS) : "";
+        fleteSel = fletes.FirstOrDefault(f => f.Zona == cot.FleteZona)?.Id.ToString() ?? "";
+        descuentoTxt = cot.Descuento > 0m ? cot.Descuento.ToString("0.##", ARS) : "";
+
+        if (faltan > 0)
+            Toast.Warning($"{faltan} cosa(s) de esa cotización ya no están en el catálogo: revisá antes de mandar.");
+        else if (Total != cot.Total)
+            Toast.Info("Ojo: con los precios de hoy el total da distinto al de esa cotización.");
+
+        StateHasChanged();
+    }
 
     /// <summary>
     /// El presupuesto como lo lee el cliente: qué y cuánto, SIN precio por renglón.

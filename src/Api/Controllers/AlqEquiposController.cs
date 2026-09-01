@@ -19,12 +19,16 @@ public class AlqEquiposController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
+        // 2026-08-31: manda el orden a mano (Alquileres → Equipos, flechitas ↑↓).
+        // Los que nunca se ordenaron (Orden = 0) van al final, alfabéticos.
         var list = await _db.AlqEquipos
-            .OrderBy(e => e.Nombre)
+            .OrderBy(e => e.Orden == 0 ? 1 : 0)
+            .ThenBy(e => e.Orden)
+            .ThenBy(e => e.Nombre)
             .Select(e => new AlqEquipoDto(
                 e.Id, e.Sku, e.Nombre, e.Categoria, e.Descripcion,
                 e.StockTotal, e.PrecioDiario, e.PrecioReposicion,
-                e.IsActive, e.CreatedAt, e.UpdatedAt))
+                e.IsActive, e.CreatedAt, e.UpdatedAt, e.Orden))
             .ToListAsync();
         return Ok(list);
     }
@@ -35,7 +39,7 @@ public class AlqEquiposController : ControllerBase
         var e = await _db.AlqEquipos.FindAsync(id);
         if (e is null) return NotFound(new { error = "Equipo no encontrado" });
         return Ok(new AlqEquipoDto(e.Id, e.Sku, e.Nombre, e.Categoria, e.Descripcion,
-            e.StockTotal, e.PrecioDiario, e.PrecioReposicion, e.IsActive, e.CreatedAt, e.UpdatedAt));
+            e.StockTotal, e.PrecioDiario, e.PrecioReposicion, e.IsActive, e.CreatedAt, e.UpdatedAt, e.Orden));
     }
 
     [HttpPost]
@@ -66,7 +70,7 @@ public class AlqEquiposController : ControllerBase
         _db.AlqEquipos.Add(e);
         await _db.SaveChangesAsync();
         return Ok(new AlqEquipoDto(e.Id, e.Sku, e.Nombre, e.Categoria, e.Descripcion,
-            e.StockTotal, e.PrecioDiario, e.PrecioReposicion, e.IsActive, e.CreatedAt, e.UpdatedAt));
+            e.StockTotal, e.PrecioDiario, e.PrecioReposicion, e.IsActive, e.CreatedAt, e.UpdatedAt, e.Orden));
     }
 
     [HttpPut("{id:int}")]
@@ -94,11 +98,30 @@ public class AlqEquiposController : ControllerBase
         if (req.PrecioDiario.HasValue) e.PrecioDiario = req.PrecioDiario.Value;
         if (req.PrecioReposicion.HasValue) e.PrecioReposicion = req.PrecioReposicion.Value;
         if (req.IsActive.HasValue) e.IsActive = req.IsActive.Value;
+        if (req.Orden.HasValue) e.Orden = Math.Max(0, req.Orden.Value);
         e.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
         return Ok(new AlqEquipoDto(e.Id, e.Sku, e.Nombre, e.Categoria, e.Descripcion,
-            e.StockTotal, e.PrecioDiario, e.PrecioReposicion, e.IsActive, e.CreatedAt, e.UpdatedAt));
+            e.StockTotal, e.PrecioDiario, e.PrecioReposicion, e.IsActive, e.CreatedAt, e.UpdatedAt, e.Orden));
+    }
+
+    /// <summary>2026-08-31: guarda el orden de la lista de una sola vez (los ids en el orden final).
+    /// Lo usa el botón de las flechitas de Alquileres → Equipos.</summary>
+    [HttpPut("orden")]
+    public async Task<IActionResult> GuardarOrden([FromBody] GuardarOrdenEquiposRequest req)
+    {
+        if (req.Ids is null || req.Ids.Count == 0) return BadRequest(new { error = "No mandaste ningún equipo" });
+        var equipos = await _db.AlqEquipos.Where(e => req.Ids.Contains(e.Id)).ToListAsync();
+        for (int i = 0; i < req.Ids.Count; i++)
+        {
+            var eq = equipos.FirstOrDefault(x => x.Id == req.Ids[i]);
+            if (eq is null) continue;
+            eq.Orden = i + 1;          // 1, 2, 3… (0 queda reservado para "sin ordenar")
+            eq.UpdatedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, ordenados = equipos.Count });
     }
 
     [HttpDelete("{id:int}")]

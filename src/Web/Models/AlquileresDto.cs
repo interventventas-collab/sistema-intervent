@@ -13,6 +13,7 @@ public class AlqEquipoDto
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public int Orden { get; set; }
 }
 
 public class CreateAlqEquipoRequest
@@ -36,6 +37,7 @@ public class UpdateAlqEquipoRequest
     public decimal? PrecioDiario { get; set; }
     public decimal? PrecioReposicion { get; set; }
     public bool? IsActive { get; set; }
+    public int? Orden { get; set; }
 }
 
 public class AlqClienteDto
@@ -301,4 +303,52 @@ public class UpdateAlqFleteRequest
     public decimal? Precio { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
+}
+
+// ===== Cotizaciones de alquiler (2026-08-31) =====
+public class AlqCotizacionItemDto
+{
+    public int Id { get; set; }
+    public int? EquipoId { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public int Cantidad { get; set; }
+    public decimal PrecioUnitario { get; set; }
+}
+
+public class AlqCotizacionDto
+{
+    public int Id { get; set; }
+    public string Telefono { get; set; } = string.Empty;
+    public int? ClienteId { get; set; }
+    public DateTime? FechaEvento { get; set; }
+    public string? FleteZona { get; set; }
+    public decimal FleteMonto { get; set; }
+    public decimal Descuento { get; set; }
+    public decimal Total { get; set; }
+    public string? Texto { get; set; }
+    public string? Operador { get; set; }
+    public int? ReservaId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public List<AlqCotizacionItemDto> Items { get; set; } = new();
+}
+
+public class CrearAlqCotizacionRequest
+{
+    public string Telefono { get; set; } = string.Empty;
+    public int? ClienteId { get; set; }
+    public DateTime? FechaEvento { get; set; }
+    public string? FleteZona { get; set; }
+    public decimal FleteMonto { get; set; }
+    public decimal Descuento { get; set; }
+    public string? Texto { get; set; }
+    public string? Operador { get; set; }
+    public List<CrearAlqCotizacionItemRequest> Items { get; set; } = new();
+}
+
+public class CrearAlqCotizacionItemRequest
+{
+    public int? EquipoId { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public int Cantidad { get; set; }
+    public decimal PrecioUnitario { get; set; }
 }
