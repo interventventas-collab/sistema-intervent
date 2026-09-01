@@ -401,6 +401,9 @@
     .pan-chart text.mes { font-size:11px; fill:var(--text-secondary); }
     .pan-chart .gl { stroke:rgba(15,20,27,.08); stroke-width:1; }
     .pan-chart .hit { fill:transparent; }
+    .pan-chart text.val { font-size:10px; font-weight:600; fill:var(--text-secondary); }
+    .pan-chart text.val.neg { fill:#dc2626; }
+    .pan-chart .gl.cero { stroke:rgba(15,20,27,.28); }
     .pan-chart .col:hover .hit { fill:rgba(15,20,27,.05); }
 
     /* ── rankings ── */
@@ -571,9 +574,12 @@
     /// <summary>Para los ejes del gráfico: $1,2 M cuando el número es grande.</summary>
     private static string PlataCorta(decimal v)
     {
-        if (Math.Abs(v) >= 1_000_000m) return "$" + (v / 1_000_000m).ToString("0.#", Ar) + " M";
-        if (Math.Abs(v) >= 1_000m) return "$" + (v / 1_000m).ToString("0", Ar) + " mil";
-        return "$" + Math.Round(v, 0).ToString("N0", Ar);
+        // El signo va ANTES del peso: "-$47 M", no "$-47 M".
+        var signo = v < 0 ? "-" : "";
+        var a = Math.Abs(v);
+        if (a >= 1_000_000m) return signo + "$" + (a / 1_000_000m).ToString("0.#", Ar) + " M";
+        if (a >= 1_000m) return signo + "$" + (a / 1_000m).ToString("0", Ar) + " mil";
+        return signo + "$" + Math.Round(a, 0).ToString("N0", Ar);
     }
 
     private static string Miles(decimal v) => Math.Round(v, 0).ToString("N0", Ar);
@@ -615,20 +621,27 @@
         var serie = data.Serie;
         var series = SeriesVisibles();
 
-        const double W = 760, H = 250, ml = 52, mr = 8, mt = 12, mb = 26;
+        const double W = 760, H = 260, ml = 56, mr = 10, mt = 24, mb = 26;
         var iw = W - ml - mr;
         var ih = H - mt - mb;
 
-        var totales = serie.Select(p => series.Sum(s => ValorSerie(p, s))).ToList();
-        var max = totales.Count > 0 ? totales.Max() : 0m;
-        if (max <= 0) max = 1m;
+        // El margen puede dar NEGATIVO en un mes. Antes esas barras simplemente no se dibujaban,
+        // así que un mes malo se veía igual que un mes sin datos. Ahora la escala baja del cero
+        // y la barra se dibuja para abajo: si un mes fue en contra, se tiene que ver.
+        var positivos = serie.Select(p => series.Sum(x => Math.Max(0m, ValorSerie(p, x)))).ToList();
+        var negativos = serie.Select(p => series.Sum(x => Math.Min(0m, ValorSerie(p, x)))).ToList();
+        var arriba = positivos.Count > 0 ? positivos.Max() : 0m;
+        var abajo = negativos.Count > 0 ? negativos.Min() : 0m;
+        if (arriba <= 0 && abajo >= 0) arriba = 1m;
 
-        // Escala "linda": el tope es un múltiplo redondo, con 4 rayas.
-        var paso = PasoLindo(max / 4m);
-        var tope = Math.Ceiling(max / paso) * paso;
-        if (tope <= 0) tope = paso;
+        var paso = PasoLindo(Math.Max(arriba, Math.Abs(abajo)) / 4m);
+        var tope = arriba > 0 ? Math.Ceiling(arriba / paso) * paso : 0m;
+        var piso = abajo < 0 ? Math.Floor(abajo / paso) * paso : 0m;
+        if (tope <= 0 && piso >= 0) tope = paso;
+        var rango = tope - piso;
+        if (rango <= 0) rango = paso;
 
-        Func<decimal, double> y = v => mt + ih - (double)(v / tope) * ih;
+        Func<decimal, double> y = v => mt + ih - (double)((v - piso) / rango) * ih;
         var bw = iw / serie.Count;
         var bar = Math.Min(30.0, bw * 0.56);
 
@@ -636,11 +649,11 @@
         sb.Append($"<svg class=\"pan-chart\" viewBox=\"0 0 {Inv(W)} {Inv(H)}\" role=\"img\" ")
           .Append($"aria-label=\"{EtiquetaMetrica()} por mes, últimos {serie.Count} meses\">");
 
-        // rayas horizontales + números del eje
-        for (decimal t = 0; t <= tope + 0.0001m; t += paso)
+        for (var t = piso; t <= tope + 0.0001m; t += paso)
         {
             var yy = y(t);
-            sb.Append($"<line class=\"gl\" x1=\"{Inv(ml)}\" y1=\"{Inv(yy)}\" x2=\"{Inv(W - mr)}\" y2=\"{Inv(yy)}\"/>");
+            var clase = t == 0m && piso < 0m ? "gl cero" : "gl";
+            sb.Append($"<line class=\"{clase}\" x1=\"{Inv(ml)}\" y1=\"{Inv(yy)}\" x2=\"{Inv(W - mr)}\" y2=\"{Inv(yy)}\"/>");
             sb.Append($"<text x=\"{Inv(ml - 8)}\" y=\"{Inv(yy + 3.5)}\" text-anchor=\"end\">{Escapar(EtiquetaEje(t))}</text>");
         }
 
@@ -652,19 +665,31 @@
             sb.Append($"<rect class=\"hit\" x=\"{Inv(ml + bw * i)}\" y=\"{Inv(mt)}\" width=\"{Inv(bw)}\" height=\"{Inv(ih)}\">");
             sb.Append($"<title>{Escapar(TituloColumna(p, series))}</title></rect>");
 
-            decimal acum = 0m;
-            foreach (var s in series)
+            // Positivos apilados para arriba desde el cero; negativos para abajo.
+            decimal accP = 0m, accN = 0m;
+            foreach (var sName in series)
             {
-                var v = ValorSerie(p, s);
-                if (v <= 0) continue;
-                var alto = (double)(v / tope) * ih;
-                var top = y(acum + v);
-                // 2px de aire entre tramo y tramo: si no, dos colores pegados se leen como uno.
+                var v = ValorSerie(p, sName);
+                if (v == 0m) continue;
+                double top, alto;
+                if (v > 0) { top = y(accP + v); alto = y(accP) - top; accP += v; }
+                else { top = y(accN); alto = y(accN + v) - top; accN += v; }
+                // 2px de aire entre tramo y tramo: dos colores pegados se leen como uno solo.
                 var alt = Math.Max(0.0, alto - (series.Length > 1 ? 2.0 : 0.0));
+                if (alt <= 0) continue;
                 sb.Append($"<rect x=\"{Inv(cx - bar / 2)}\" y=\"{Inv(top)}\" width=\"{Inv(bar)}\" ")
-                  .Append($"height=\"{Inv(alt)}\" fill=\"{ColorPata(s)}\"><title>")
-                  .Append(Escapar($"{NombrePata(s)} · {EtiquetaValor(v)}")).Append("</title></rect>");
-                acum += v;
+                  .Append($"height=\"{Inv(alt)}\" fill=\"{ColorPata(sName)}\"><title>")
+                  .Append(Escapar($"{NombrePata(sName)} · {EtiquetaValor(v)}")).Append("</title></rect>");
+            }
+
+            // El número escrito arriba de la barra (o abajo, si el mes dio en contra).
+            var neto = accP + accN;
+            if (neto != 0m)
+            {
+                var yTxt = neto >= 0 ? y(accP) - 7 : y(accN) + 14;
+                var clase = neto < 0 ? "val neg" : "val";
+                sb.Append($"<text class=\"{clase}\" x=\"{Inv(cx)}\" y=\"{Inv(yTxt)}\" text-anchor=\"middle\">")
+                  .Append(Escapar(EtiquetaBarra(neto))).Append("</text>");
             }
 
             sb.Append($"<text class=\"mes\" x=\"{Inv(cx)}\" y=\"{Inv(H - 8)}\" text-anchor=\"middle\">")
@@ -696,6 +721,15 @@
     {
         "ops" => Miles(v),
         "kg" => Math.Round(v, 0).ToString("N0", Ar) + " kg",
+        _ => PlataCorta(v)
+    };
+
+    /// <summary>El número que va escrito arriba de cada barra. Va cortito a propósito:
+    /// hay 12 barras y el detalle completo se ve al pasar el mouse.</summary>
+    private string EtiquetaBarra(decimal v) => metrica switch
+    {
+        "ops" => Miles(v),
+        "kg" => Math.Round(v, 0).ToString("N0", Ar),
         _ => PlataCorta(v)
     };
 
