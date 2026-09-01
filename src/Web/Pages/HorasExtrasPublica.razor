@@ -271,10 +271,10 @@
                             </span>
                             @* 2026-09-01: total de horas del dia, a la derecha. Solo si el admin lo habilito
                                para este empleado y el dia tiene entrada Y salida. *@
-                            @if (horasMes.MostrarHoras && d.HorasDia.HasValue)
+                            @if (horasMes.MostrarHoras && d.MinutosDia.HasValue)
                             {
-                                <span class="he-row-hs" style="white-space:nowrap; margin-left:0.6rem; min-width:52px; text-align:right;">
-                                    @d.HorasDia.Value.ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("es-AR")) h
+                                <span class="he-row-hs" style="white-space:nowrap; margin-left:0.6rem; min-width:64px; text-align:right;">
+                                    @FormatoHsMin(d.MinutosDia.Value)
                                 </span>
                             }
                         </div>
@@ -474,7 +474,7 @@
     // 2026-07-31: vista de horas por mes (solo horario entrada→salida)
     // 2026-09-01: HorasDia + MostrarHoras — vuelve el total de horas de cada dia (lo controla el
     // tilde "mostrar horas trabajadas del dia" de la ficha del empleado en el panel de Horario).
-    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida, decimal? HorasDia);
+    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida, int? MinutosDia);
     public record HorasMesDto(int Anio, int Mes, string MesLabel, bool PuedeAnterior, bool PuedeSiguiente,
         List<HorasMesDiaDto> Dias, bool MostrarHoras);
 
@@ -705,6 +705,16 @@
             errorMsg = "Error: " + ex.Message;
         }
         finally { guardando = false; }
+    }
+
+    /// <summary>Minutos → "9h 48m". Si son horas justas, "9h" a secas (no "9h 00m").
+    /// El usuario pidio explicitamente NO ver horas decimales tipo "9,8 h": no se entiende de un vistazo.</summary>
+    private static string FormatoHsMin(int minutos)
+    {
+        if (minutos < 0) minutos = 0;
+        var h = minutos / 60;
+        var m = minutos % 60;
+        return m == 0 ? $"{h}h" : $"{h}h {m:D2}m";
     }
 
     private static string FechaLabel(DateTime d)

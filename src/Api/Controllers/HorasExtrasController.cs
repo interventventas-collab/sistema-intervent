@@ -288,7 +288,9 @@ public class HorasExtrasController : ControllerBase
     // reemplazar "Ultimos 7 dias" por esta vista por mes: el tilde admin MostrarHorasTrabajadasDia
     // seguia existiendo pero el dato nunca llegaba a la pantalla. null = no se puede calcular
     // (falta entrada o salida) -> la UI no muestra nada en ese dia.
-    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida, decimal? HorasDia);
+    // MinutosDia (no horas decimales): el usuario no queria leer "9,8 h" y hacer la cuenta mental.
+    // Mandamos los minutos EXACTOS y la UI los muestra como "9h 48m".
+    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida, int? MinutosDia);
     public record HorasMesDto(int Anio, int Mes, string MesLabel, bool PuedeAnterior, bool PuedeSiguiente,
         List<HorasMesDiaDto> Dias, bool MostrarHoras);
 
@@ -324,8 +326,7 @@ public class HorasExtrasController : ControllerBase
         // trabajando, o se olvido de fichar la salida) HorasTrabajadas caeria a r.Cantidad = 0
         // y mostrariamos "0 h", que confunde. En ese caso va null y no se muestra nada.
         var dias = regs.Select(r => new HorasMesDiaDto(
-                r.Fecha, FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida),
-                (r.HoraEntrada.HasValue && r.HoraSalida.HasValue) ? HorasTrabajadas(r) : (decimal?)null))
+                r.Fecha, FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida), MinutosTrabajados(r)))
             .ToList();
         var es = new System.Globalization.CultureInfo("es-AR");
         var label = pedido.ToString("MMMM yyyy", es);
@@ -871,6 +872,18 @@ public class HorasExtrasController : ControllerBase
         var dur = r.HoraSalida.Value - r.HoraEntrada.Value;
         if (dur.TotalHours < 0) dur += TimeSpan.FromHours(24);
         return Math.Round((decimal)dur.TotalHours, 2, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>2026-09-01: minutos trabajados EXACTOS (salida - entrada). Devuelve null si falta
+    /// alguna de las dos puntas: con una sola (todavia trabajando, o se olvido de fichar la salida)
+    /// no hay nada que calcular y la UI no muestra nada. A diferencia de HorasTrabajadas NO cae a
+    /// r.Cantidad, asi que nunca muestra "0h" enganoso. Cruza medianoche = suma 24 hs.</summary>
+    private static int? MinutosTrabajados(HorasExtrasRegistro r)
+    {
+        if (!r.HoraEntrada.HasValue || !r.HoraSalida.HasValue) return null;
+        var dur = r.HoraSalida.Value - r.HoraEntrada.Value;
+        if (dur.TotalMinutes < 0) dur += TimeSpan.FromHours(24);
+        return (int)Math.Round(dur.TotalMinutes, MidpointRounding.AwayFromZero);
     }
 
     public class CreateEmpleadoRequest
