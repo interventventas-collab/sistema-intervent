@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService Toast
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <div class="bp-page">
 
@@ -32,7 +33,20 @@
             🗂️ Historial <span class="bp-pill muted">@(hist?.Count ?? 0)</span>
         </button>
         <span class="bp-filters-hint">Se actualiza sola cuando entran preguntas</span>
+        @* 2026-08-31: el cotizador de alquileres, siempre a mano. Adentro de una pregunta el
+           presupuesto cae en la respuesta; acá arriba se copia, para usarlo aunque no haya
+           ninguna pregunta esperando. *@
+        <button class="bp-filter bp-filter-cotiz @(cotizArriba ? "active" : "")"
+                @onclick="() => cotizArriba = !cotizArriba">🎪 Cotizar alquiler</button>
     </div>
+
+    @if (cotizArriba)
+    {
+        <div class="bp-cotiz bp-cotiz-arriba">
+            <CotizadorAlquiler TextoBoton="📋 Copiar el presupuesto"
+                               OnListo="CopiarCotizacionPreguntas" />
+        </div>
+    }
 
     @if (loading)
     {
@@ -404,6 +418,7 @@
     private List<MeliQuickReplyDto> quickReplies = new();
     private string draft = "";
     private bool mostrarCotizador = false;
+    private bool cotizArriba = false;
     private bool loading = true, loadingDetail, sending, refreshing;
 
     // Editor de respuestas rápidas
@@ -506,6 +521,18 @@
         try { detail = await Api.GetMeliQuestionDetailAsync(id); }
         catch (Exception ex) { Toast.Error("No se pudo cargar el detalle: " + ex.Message); }
         finally { loadingDetail = false; }
+    }
+
+    /// <summary>El de arriba no tiene a quién responderle: copia el presupuesto para pegarlo donde sea.</summary>
+    private async Task CopiarCotizacionPreguntas(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", texto);
+            Toast.Success("Presupuesto copiado — pegalo donde quieras");
+        }
+        catch { Toast.Error("No se pudo copiar"); }
     }
 
     /// <summary>2026-08-31: el presupuesto armado cae en el cuadro de respuesta; lo manda él con "Responder".</summary>
@@ -690,6 +717,8 @@
     .bp-chip { font-size: .78rem; font-family: inherit; text-align: left; border: 1px dashed rgba(148,163,184,.5); background: rgba(148,163,184,.06); color: var(--text-muted,#4b5563); border-radius: 9px; padding: 6px 10px; cursor: pointer; max-width: 100%; text-decoration: none; }
     .bp-chip:hover { background: rgba(245,158,11,.12); border-color: #f59e0b; border-style: solid; color: inherit; }
     .bp-chip-manage { border-style: solid; border-color: rgba(148,163,184,.3); background: transparent; color: #2563c9; font-weight: 700; }
+    .bp-filter-cotiz { color: #047857; }
+    .bp-cotiz-arriba { max-width: 460px; margin: 8px 0 12px; }
     .bp-chip-cotiz { border-style: solid; border-color: rgba(148,163,184,.3); background: transparent; color: #047857; font-weight: 700; }
     .bp-chip-cotiz.on { background: #dcfce7; border-color: #16a34a; }
     .bp-cotiz { margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px; background: #f8fafc; }

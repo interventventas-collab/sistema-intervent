@@ -940,7 +940,7 @@
         @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos") || HasPerm("mapeo") || HasPerm("me1")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
         {
             <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
-                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas") || IsActive("/cafe/telefonos-clientes-meli") || IsActive("/meli/respuestas-automaticas") || IsActive("/meli/postventa-cafe"))">
+                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas") || IsActive("/cafe/telefonos-clientes-meli") || IsActive("/meli/preguntas") || IsActive("/meli/respuestas-automaticas") || IsActive("/meli/postventa-cafe"))">
                 @if (HasPerm("publicaciones"))
                 {
                     <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
@@ -986,6 +986,11 @@
                 }
                 @if (HasPerm("publicaciones"))
                 {
+                    @* 2026-08-31: la bandeja de Preguntas no estaba en el menú — se llegaba solo por la
+                       campanita (que aparece cuando hay pendientes) o desde las pantallas hermanas.
+                       Así se puede entrar cuando uno quiere, aunque esté todo respondido, y mirar el historial. *@
+                    <NavItem Href="/meli/preguntas" Label="📥 Preguntas" Icon="@SvgIcons.MessageCircle"
+                             IsActive="@IsActive("/meli/preguntas")" OnClick="@(() => NavigateTo("/meli/preguntas"))" />
                     <NavItem Href="/meli/respuestas-automaticas" Label="🤖 Respuestas automáticas" Icon="@SvgIcons.Store"
                              IsActive="@IsActive("/meli/respuestas-automaticas")" OnClick="@(() => NavigateTo("/meli/respuestas-automaticas"))" />
                     <NavItem Href="/meli/postventa-cafe" Label="☕ Post-venta café (molienda)" Icon="@SvgIcons.Store"
@@ -2586,6 +2591,7 @@
         { "ordenes", "ordenes" },
         { "mapeo", "mapeo" },
         { "meli/me1/entregas", "me1" },
+        { "meli/preguntas", "publicaciones" },
         { "meli/me1/publicaciones", "me1" },
         { "meli/me1/codigos-postales", "me1" },
         { "tesoreria", "tesoreria" },
