@@ -2532,96 +2532,16 @@
                eso se sigue haciendo en Alquileres como siempre. ══════════ *@
             else if (modoAlquiler)
             {
+                @* 2026-08-31: el cotizador vive en Shared/CotizadorAlquiler.razor — la MISMA pieza
+                   que usa la calculadora flotante y la bandeja de preguntas. Acá solo decimos qué
+                   hacer con el texto: dejarlo escrito abajo para que lo revise y lo mande él. *@
                 <aside class="wa-ctx wa-alq">
                     <div class="wa-mv-top">
                         <span class="wa-mv-tit">🎪 Cotizar alquiler</span>
                         <button class="wa-ficha-x" @onclick="CerrarModoAlquiler" title="Salir">×</button>
                     </div>
-
                     <div class="wa-alq-body">
-                        @* 2026-08-31: la lista entera a la vista. Son pocos equipos y buscar de a uno
-                           era más lento que verlos todos: se toca el + y listo. El filtro de arriba
-                           está por si algún día la lista crece. *@
-                        @if (alqCargando)
-                        {
-                            <div class="wa-mv-vacio">⏳ Trayendo los equipos…</div>
-                        }
-                        else
-                        {
-                            @if (alqEquipos.Count > 8)
-                            {
-                                <input class="wa-mv-inp" placeholder="Filtrar…"
-                                       value="@alqBusq" @oninput="OnFiltrarEquipoAlq" autocomplete="off" />
-                            }
-
-                            @if (EquiposAlqVisibles().Count == 0)
-                            {
-                                <div class="wa-mv-vacio">No hay equipos cargados (Alquileres → Equipos).</div>
-                            }
-
-                            <div class="wa-alq-lista">
-                                @foreach (var eq in EquiposAlqVisibles())
-                                {
-                                    var cant = CantDe(eq.Id);
-                                    <div class="wa-alq-fila @(cant > 0 ? "puesto" : "")">
-                                        <div class="wa-alq-fila-n">
-                                            <span class="wa-alq-fila-nom">@eq.Nombre</span>
-                                            <span class="wa-alq-fila-p">
-                                                @Plata(eq.PrecioDiario) c/u
-                                                @if (cant > 0)
-                                                {
-                                                    <b class="wa-alq-fila-sub">@Plata(eq.PrecioDiario * cant)</b>
-                                                }
-                                            </span>
-                                        </div>
-                                        <span class="wa-alq-cant">
-                                            <button class="wa-alq-mas" @onclick="() => SumarCantAlq(eq.Id, -1)">−</button>
-                                            <input class="wa-alq-cant-inp" value="@CantTxtDe(eq.Id)" inputmode="numeric"
-                                                   onfocus="this.select()" @oninput="(e) => CambiarCantAlq(eq.Id, e.Value?.ToString())" />
-                                            <button class="wa-alq-mas" @onclick="() => SumarCantAlq(eq.Id, 1)">+</button>
-                                        </span>
-                                    </div>
-                                }
-                            </div>
-                        }
-
-                        <div class="wa-alq-sec">🚚 Flete</div>
-                        @if (alqFletes.Count > 0)
-                        {
-                            @* 2026-08-31: desplegable en vez de buscador (pedido del dueño): son pocas
-                               zonas y buscarlas era una vuelta al pedo. Al elegir, completa el monto. *@
-                            <select class="wa-mv-inp" value="@alqFleteSel" @onchange="ElegirFleteAlq">
-                                <option value="">— Sin flete —</option>
-                                @foreach (var f in alqFletes)
-                                {
-                                    <option value="@f.Id">@f.Zona@(string.IsNullOrWhiteSpace(f.Notas) ? "" : $" · {f.Notas}") — @Plata(f.Precio)</option>
-                                }
-                            </select>
-                        }
-                        else
-                        {
-                            <div class="wa-mv-vacio">No hay fletes cargados (Alquileres → Fletes). Podés poner el monto a mano.</div>
-                        }
-                        <label class="wa-mv-det-lbl">Monto del flete</label>
-                        <input class="wa-mv-inp wa-mv-inp-plata" inputmode="decimal" placeholder="0"
-                               value="@alqFleteTxt" onfocus="this.select()"
-                               @oninput="OnMontoFleteAlq" />
-
-                        <label class="wa-mv-det-lbl" style="margin-top:.4rem">Fecha del evento</label>
-                        <input class="wa-mv-inp" type="date" @bind="alqFecha" />
-
-                        <div class="wa-alq-total">
-                            <span>Total</span>
-                            <b>@Plata(AlqTotalChat)</b>
-                        </div>
-
-                        @* 2026-08-31: NO envía. Escribe la cotización en el cuadro de abajo y el
-                           envío lo decide el operador con el botón Enviar de siempre. *@
-                        <button class="wa-alq-mandar" @onclick="EscribirCotizacionAlq"
-                                disabled="@(!AlqHayAlgo && AlqFleteMontoChat == 0m)">
-                            📝 Escribir la cotización
-                        </button>
-                        <button class="wa-mv-limpiar" @onclick="LimpiarAlq">Vaciar y empezar de nuevo</button>
+                        <CotizadorAlquiler @ref="cotizadorRef" OnListo="EscribirCotizacionAlq" />
                     </div>
                 </aside>
             }
@@ -3732,44 +3652,7 @@
     /* ===== 2026-08-31: MODO ALQUILER — cotizar y mandar ===== */
     .wa-alq-body { padding: 0 0.7rem 0.7rem; }
     .wa-alq-body .wa-mv-inp { margin-bottom: 0.35rem; }
-    .wa-alq-sugs { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; margin-bottom: 0.5rem; overflow: hidden; }
-    .wa-alq-sug { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; width: 100%;
-        background: none; border: none; border-bottom: 1px solid #f1f5f9; padding: 0.35rem 0.5rem; cursor: pointer; text-align: left; font-family: inherit; }
-    .wa-alq-sug:last-child { border-bottom: none; }
-    .wa-alq-sug:hover { background: #f0fff6; }
-    .wa-alq-sug-n { font-size: 0.78rem; color: #334155; min-width: 0; }
-    .wa-alq-sug-nota { display: block; font-size: 0.68rem; color: #94a3b8; }
-    .wa-alq-sug-p { font-size: 0.78rem; font-weight: 700; color: #047857; white-space: nowrap; }
-    .wa-alq-lista { border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; overflow: hidden; }
-    .wa-alq-fila { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem;
-        padding: 0.3rem 0.45rem; border-bottom: 1px solid #f1f5f9; }
-    .wa-alq-fila:last-child { border-bottom: none; }
-    .wa-alq-fila.puesto { background: #f0fdf4; }
-    .wa-alq-fila-n { min-width: 0; }
-    .wa-alq-fila-nom { display: block; font-size: 0.78rem; color: #334155; line-height: 1.25; }
-    .wa-alq-fila-p { display: block; font-size: 0.68rem; color: #94a3b8; }
-    .wa-alq-fila-sub { color: #047857; margin-left: 0.3rem; }
-    .wa-alq-zona-ok { font-size: 0.72rem; color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0;
-        border-radius: 7px; padding: 0.2rem 0.4rem; margin-bottom: 0.35rem; }
-    .wa-alq-cant { display: flex; align-items: center; gap: 0.15rem; }
-    .wa-alq-mas { width: 22px; height: 22px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
-        color: #334155; cursor: pointer; font-size: 0.85rem; line-height: 1; font-family: inherit; }
-    .wa-alq-mas:hover { background: #ecfdf5; border-color: #16a34a; }
-    .wa-alq-cant-inp { width: 46px; text-align: center; font-family: inherit; font-size: 0.8rem; font-weight: 700;
-        border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.15rem 0.1rem; }
-    .wa-alq-sec { font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase;
-        letter-spacing: 0.03em; margin: 0.7rem 0 0.3rem; }
-    .wa-alq-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-top: 0.3rem; }
-    .wa-alq-2col .wa-mv-det-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .wa-alq-total { display: flex; align-items: baseline; justify-content: space-between;
-        margin-top: 0.7rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0; font-size: 0.8rem; color: #64748b; }
-    .wa-alq-total b { font-size: 1.15rem; color: #047857; }
-    .wa-alq-mandar { display: block; width: 100%; margin-top: 0.5rem; font-family: inherit; font-size: 0.85rem;
-        font-weight: 700; background: #16a34a; color: #fff; border: none; border-radius: 9px;
-        padding: 0.5rem; cursor: pointer; }
-    .wa-alq-mandar:hover:not(:disabled) { background: #15803d; }
-    .wa-alq-mandar:disabled { background: #cbd5e1; cursor: default; }
-    .wa-alq .wa-mv-limpiar { width: 100%; margin: 0.3rem 0 0; }
+    /* Lo demás del cotizador (lista, flete, total, botones) lo pone el componente CotizadorAlquiler. */
 
     /* Resumen del bloque ③ */
     .wa-mv-resu { margin: 0.5rem 0.7rem 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 9px; padding: 0.4rem 0.55rem; }
@@ -5999,162 +5882,41 @@
     bool _fichaAttachPending = false;   // para engancharle el "arrastrar" cuando se renderiza la ventana flotante
 
     /// <summary>Abre/cierra la tarjeta de ficha del cliente. Al abrir, la carga desde la API.</summary>
-    // ===== 2026-08-31: MODO ALQUILER — cotizar rapido y MANDAR el presupuesto =====
-    // Pedido del dueño: "cargo lo que me pide en un pedo, visualizo el total y mando".
-    // Los precios salen del catalogo de Alquileres → Equipos y los fletes de Alquileres → Fletes.
-    // Cotiza UN dia (lo de multiplicar por dias quedo para mas adelante). NO crea la reserva.
+    // ===== 2026-08-31: MODO ALQUILER — cotizar rapido y dejar el presupuesto escrito =====
+    // La cotizacion la arma el componente Shared/CotizadorAlquiler.razor: la MISMA pieza que usan la
+    // calculadora flotante y la bandeja de preguntas de MeLi. Antes estaba escrito dos veces y cada
+    // arreglo habia que hacerlo en los dos lados.
+    // Aca solo queda el prender/apagar y que hacer con el texto: NO se envia, se escribe en el cuadro
+    // de abajo y el envio lo decide el operador con el boton Enviar de siempre.
     bool modoAlquiler = false;
-    bool alqCargado = false;
-    bool alqCargando = false;
-    List<AlqEquipoDto> alqEquipos = new();
-    List<AlqFleteDto> alqFletes = new();
-    string alqFleteSel = "";   // id del flete elegido en el desplegable ("" = sin flete)
-    // Cantidad puesta en cada equipo (equipoId -> cantidad). Lo que tiene 0 no entra en la cotización.
-    Dictionary<int, int> alqCant = new();
-    Dictionary<int, string> alqCantTxt = new();
-    string alqBusq = "";
-    string alqFleteZona = "";
-    string alqFleteTxt = "";
-    DateTime? alqFecha = null;
+    CotizadorAlquiler? cotizadorRef;
 
-    decimal AlqFleteMontoChat => ParsePlataAlq(alqFleteTxt) ?? 0m;
-    decimal AlqEquiposTotalChat => alqEquipos.Sum(e => e.PrecioDiario * CantDe(e.Id));
-    decimal AlqTotalChat => AlqEquiposTotalChat + AlqFleteMontoChat;
-    bool AlqHayAlgo => alqEquipos.Any(e => CantDe(e.Id) > 0);
-
-    int CantDe(int equipoId) => alqCant.TryGetValue(equipoId, out var n) ? n : 0;
-    string CantTxtDe(int equipoId) => alqCantTxt.TryGetValue(equipoId, out var t) ? t : "0";
-
-    /// <summary>La lista que se ve: todos los equipos, o los que matchean el filtro si escribió algo.</summary>
-    List<AlqEquipoDto> EquiposAlqVisibles()
-    {
-        var q = (alqBusq ?? "").Trim();
-        if (q.Length == 0) return alqEquipos;
-        return alqEquipos
-            .Where(x => x.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
-                     || x.Sku.Contains(q, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-    }
-
-    async Task AbrirModoAlquiler()
+    void AbrirModoAlquiler()
     {
         modoAlquiler = true;
         modoVenta = false;
         modoMeli = false;
-        if (alqCargado) return;
-        alqCargando = true;
-        StateHasChanged();
-        try
-        {
-            var eqs = await Api.GetAlqEquiposAsync();
-            alqEquipos = (eqs ?? new()).Where(e => e.IsActive).ToList();
-            alqFletes = await Api.GetAlqFletesAsync(soloActivos: true) ?? new();
-            alqCargado = true;
-        }
-        catch (Exception ex) { Toast.Error("No pude traer los precios: " + ex.Message); }
-        finally { alqCargando = false; StateHasChanged(); }
     }
 
     void CerrarModoAlquiler() => modoAlquiler = false;
 
-    void OnFiltrarEquipoAlq(ChangeEventArgs e) => alqBusq = e.Value?.ToString() ?? "";
-
-    void SumarCantAlq(int equipoId, int delta)
+    /// <summary>Deja el presupuesto escrito abajo, sin pisar lo que ya venias escribiendo.</summary>
+    private void EscribirCotizacionAlq(string texto)
     {
-        var n = Math.Max(0, CantDe(equipoId) + delta);
-        alqCant[equipoId] = n;
-        alqCantTxt[equipoId] = n.ToString();
+        if (string.IsNullOrWhiteSpace(texto)) return;
+        composerText = string.IsNullOrWhiteSpace(composerText)
+            ? texto
+            : composerText.TrimEnd() + "\n\n" + texto;
+        GuardarBorradorDelChat();
+        Toast.Success("Cotización escrita abajo — revisala y tocá Enviar");
+        StateHasChanged();
     }
 
-    // Se ata a TEXTO, no a numero: atado a int, borrar el campo lo deja en 0 y tipear 1 da 10.
-    void CambiarCantAlq(int equipoId, string? txt)
+    /// <summary>Al cambiar de chat: se apaga y se vacia (la cotizacion era del cliente anterior).</summary>
+    private void LimpiarModoAlquiler()
     {
-        var t = (txt ?? "").Trim();
-        alqCantTxt[equipoId] = t;
-        alqCant[equipoId] = int.TryParse(t, out var n) && n > 0 ? n : 0;
-    }
-
-    /// <summary>Eligió una zona en el desplegable: se completa el monto (después lo puede pisar).</summary>
-    void ElegirFleteAlq(ChangeEventArgs e)
-    {
-        alqFleteSel = e.Value?.ToString() ?? "";
-        if (!int.TryParse(alqFleteSel, out var id))
-        {
-            alqFleteZona = ""; alqFleteTxt = "";
-            return;
-        }
-        var f = alqFletes.FirstOrDefault(x => x.Id == id);
-        if (f is null) return;
-        alqFleteZona = f.Zona;
-        alqFleteTxt = f.Precio.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
-    }
-
-    void OnMontoFleteAlq(ChangeEventArgs e) => alqFleteTxt = e.Value?.ToString() ?? "";
-
-    void LimpiarAlq()
-    {
-        alqCant = new(); alqCantTxt = new();
-        alqBusq = "";
-        alqFleteSel = ""; alqFleteZona = ""; alqFleteTxt = "";
-        alqFecha = null;
-    }
-
-    /// <summary>
-    /// Arma el presupuesto como lo lee el cliente y lo DEJA ESCRITO en el cuadro de abajo.
-    /// No lo manda: el envío lo decide el operador con el botón Enviar de siempre (pedido del dueño
-    /// 2026-08-31, así se puede revisar o agregarle algo antes).
-    /// </summary>
-    void EscribirCotizacionAlq()
-    {
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine("*Presupuesto*");
-            if (alqFecha is DateTime f)
-                sb.AppendLine($"Fecha: {f:dd/MM/yyyy}");
-            sb.AppendLine();
-
-            // 2026-08-31 (pedido del dueño): el cliente ve QUÉ y CUÁNTO, sin precio por renglón.
-            // El único importe del mensaje es el TOTAL.
-            foreach (var eq in alqEquipos)
-            {
-                var c = CantDe(eq.Id);
-                if (c > 0) sb.AppendLine($"{c} x {eq.Nombre}");
-            }
-
-            if (AlqFleteMontoChat != 0m)
-                sb.AppendLine(string.IsNullOrWhiteSpace(alqFleteZona) ? "Flete" : $"Flete {alqFleteZona}");
-
-            sb.AppendLine();
-            sb.Append($"*TOTAL: {Plata(AlqTotalChat)}*");
-
-            // Si venías escribiendo algo, no se pisa: la cotización va abajo de lo tuyo.
-            composerText = string.IsNullOrWhiteSpace(composerText)
-                ? sb.ToString()
-                : composerText.TrimEnd() + "\n\n" + sb.ToString();
-            GuardarBorradorDelChat();
-            Toast.Success("Cotización escrita abajo — revisala y tocá Enviar");
-            StateHasChanged();
-        }
-    }
-
-    /// <summary>Plata como la escribe una persona: la coma es decimal; el punto es miles si lo siguen 3 digitos.</summary>
-    static decimal? ParsePlataAlq(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return null;
-        s = s.Trim().Replace(" ", "").Replace("$", "");
-        if (s.Length == 0) return null;
-        if (s.Contains(','))
-        {
-            s = s.Replace(".", "").Replace(",", ".");
-        }
-        else if (s.Contains('.'))
-        {
-            var partes = s.Split('.');
-            var ult = partes[^1];
-            if (partes.Length > 1 && ult.Length == 3 && ult.All(char.IsDigit)) s = s.Replace(".", "");
-        }
-        return decimal.TryParse(s, System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : (decimal?)null;
+        modoAlquiler = false;
+        cotizadorRef?.Limpiar();
     }
 
     // ===== 2026-08-21: MODO MELI — toda la info del comprador de MercadoLibre, dentro del chat =====
@@ -7659,7 +7421,7 @@
         LimpiarModoVenta();         // 2026-08-21: el carrito y las ventas para repetir eran del cliente anterior
         // 2026-08-31: la cotización de alquiler era para el cliente ANTERIOR. Se apaga el modo y se
         // vacía todo: si quedara prendido, el próximo "mandar" le tira el presupuesto de otro.
-        modoAlquiler = false; LimpiarAlq();
+        LimpiarModoAlquiler();
         showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
         // 2026-08-26: los mensajes programados son de CADA chat: se limpian y se piden de nuevo.
         showProgramarPanel = false; progModo = "MENSAJE"; progPendientes = new(); progResueltos = new();

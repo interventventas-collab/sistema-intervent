@@ -1,0 +1,322 @@
+@* ══════════════════════════════════════════════════════════════════════════════════
+   COTIZADOR DE ALQUILERES — la pieza única. 2026-08-31.
+
+   Antes esto estaba escrito DOS veces (la calculadora flotante y el chat de WhatsApp) y
+   cada arreglo había que hacerlo en los dos lados. Ahora vive acá una sola vez y se
+   enchufa donde haga falta: el chat, la calculadora, la bandeja de preguntas de MeLi.
+
+   Qué hace: muestra TODOS los equipos de Alquileres → Equipos con − 0 + (son pocos y
+   buscarlos de a uno era más lento que verlos), el flete por zona en un desplegable
+   (Alquileres → Fletes), la fecha del evento, y el total.
+
+   Qué NO hace: mandar. Arma el texto del presupuesto y se lo pasa al que lo usó por
+   OnListo — el que decide qué hacer con él (escribirlo en el chat, copiarlo, pegarlo en
+   una respuesta). El envío SIEMPRE lo decide una persona.
+
+   ⚠ El texto que le llega al cliente lleva el detalle SIN precio por renglón: el único
+   importe es el TOTAL. Es un pedido expreso del dueño, no lo cambies sin preguntarle.
+
+   Cotiza UN día. Multiplicar por cantidad de días quedó para más adelante.
+   ══════════════════════════════════════════════════════════════════════════════════ *@
+
+@using System.Globalization
+@inject ApiClient Api
+@inject ToastService Toast
+
+<div class="cotalq @(Oscuro ? "cotalq-dark" : "")">
+    @if (cargando)
+    {
+        <div class="cotalq-info">⏳ Trayendo los equipos…</div>
+    }
+    else
+    {
+        @if (equipos.Count > 8)
+        {
+            <input class="cotalq-inp" placeholder="Filtrar…" value="@filtro" @oninput="OnFiltrar" autocomplete="off" />
+        }
+
+        @if (Visibles().Count == 0)
+        {
+            <div class="cotalq-info">
+                @(equipos.Count == 0 ? "No hay equipos cargados (Alquileres → Equipos)." : "Nada con ese filtro.")
+            </div>
+        }
+
+        <div class="cotalq-lista">
+            @foreach (var eq in Visibles())
+            {
+                var cant = CantDe(eq.Id);
+                <div class="cotalq-fila @(cant > 0 ? "puesto" : "")">
+                    <div class="cotalq-fila-n">
+                        <span class="cotalq-nom">@eq.Nombre</span>
+                        <span class="cotalq-pre">
+                            @Plata(eq.PrecioDiario) c/u
+                            @if (cant > 0)
+                            {
+                                <b class="cotalq-sub">@Plata(eq.PrecioDiario * cant)</b>
+                            }
+                        </span>
+                    </div>
+                    <span class="cotalq-cant">
+                        <button class="cotalq-mas" @onclick="() => Sumar(eq.Id, -1)">−</button>
+                        <input class="cotalq-cant-inp" value="@CantTxtDe(eq.Id)" inputmode="numeric"
+                               onfocus="this.select()" @oninput="(e) => CambiarCant(eq.Id, e.Value?.ToString())" />
+                        <button class="cotalq-mas" @onclick="() => Sumar(eq.Id, 1)">+</button>
+                    </span>
+                </div>
+            }
+        </div>
+
+        <div class="cotalq-sec">🚚 Flete</div>
+        @if (fletes.Count > 0)
+        {
+            <select class="cotalq-inp" value="@fleteSel" @onchange="ElegirFlete">
+                <option value="">— Sin flete —</option>
+                @foreach (var f in fletes)
+                {
+                    <option value="@f.Id">@f.Zona@(string.IsNullOrWhiteSpace(f.Notas) ? "" : $" · {f.Notas}") — @Plata(f.Precio)</option>
+                }
+            </select>
+        }
+        else
+        {
+            <div class="cotalq-info">No hay fletes cargados (Alquileres → Fletes). Podés poner el monto a mano.</div>
+        }
+
+        <label class="cotalq-lbl">Monto del flete</label>
+        <input class="cotalq-inp cotalq-plata" inputmode="decimal" placeholder="0"
+               value="@fleteTxt" onfocus="this.select()" @oninput="OnMontoFlete" />
+
+        <label class="cotalq-lbl">Fecha del evento</label>
+        <input class="cotalq-inp" type="date" @bind="fecha" />
+
+        @if (MostrarDescuento)
+        {
+            <label class="cotalq-lbl">Descuento (baja el total, no sale en el texto)</label>
+            <input class="cotalq-inp cotalq-plata" inputmode="decimal" placeholder="0"
+                   value="@descuentoTxt" onfocus="this.select()" @oninput="OnDescuento" />
+        }
+
+        <div class="cotalq-total">
+            <span>Total</span>
+            <b>@Plata(Total)</b>
+        </div>
+
+        <button class="cotalq-btn-main" @onclick="Listo" disabled="@(!HayAlgo && FleteMonto == 0m)">
+            @TextoBoton
+        </button>
+        <button class="cotalq-btn-limpiar" @onclick="Limpiar">Vaciar y empezar de nuevo</button>
+    }
+</div>
+
+<style>
+    .cotalq { font-size: 0.8rem; }
+    .cotalq-info { font-size: 0.78rem; color: #94a3b8; padding: 0.35rem 0; line-height: 1.45; }
+    .cotalq-inp { display: block; width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.8rem;
+        border: 1px solid #e2e8f0; border-radius: 7px; padding: 0.25rem 0.4rem; margin-bottom: 0.35rem;
+        background: #fff; color: #1f2937; }
+    .cotalq-inp:focus { outline: none; border-color: #3b82f6; }
+    .cotalq-plata { text-align: right; font-weight: 600; }
+    .cotalq-lbl { display: block; font-size: 0.68rem; font-weight: 700; color: #94a3b8;
+        text-transform: uppercase; letter-spacing: 0.03em; margin: 0.35rem 0 0.1rem;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .cotalq-lista { border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; overflow: hidden; }
+    .cotalq-fila { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem;
+        padding: 0.3rem 0.45rem; border-bottom: 1px solid #f1f5f9; }
+    .cotalq-fila:last-child { border-bottom: none; }
+    .cotalq-fila.puesto { background: #f0fdf4; }
+    .cotalq-fila-n { min-width: 0; }
+    .cotalq-nom { display: block; font-size: 0.78rem; color: #334155; line-height: 1.25; }
+    .cotalq-pre { display: block; font-size: 0.68rem; color: #94a3b8; }
+    .cotalq-sub { color: #047857; margin-left: 0.3rem; }
+    .cotalq-cant { display: flex; align-items: center; gap: 0.15rem; }
+    .cotalq-mas { width: 22px; height: 22px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+        color: #334155; cursor: pointer; font-size: 0.85rem; line-height: 1; font-family: inherit; }
+    .cotalq-mas:hover { background: #ecfdf5; border-color: #16a34a; }
+    .cotalq-cant-inp { width: 46px; text-align: center; font-family: inherit; font-size: 0.8rem; font-weight: 700;
+        border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.15rem 0.1rem; background: #fff; color: #1f2937; }
+    .cotalq-cant-inp:focus { outline: none; border-color: #3b82f6; }
+
+    .cotalq-sec { font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase;
+        letter-spacing: 0.03em; margin: 0.7rem 0 0.3rem; }
+    .cotalq-total { display: flex; align-items: baseline; justify-content: space-between;
+        margin-top: 0.7rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0; font-size: 0.8rem; color: #64748b; }
+    .cotalq-total b { font-size: 1.15rem; color: #047857; }
+    .cotalq-btn-main { display: block; width: 100%; margin-top: 0.5rem; font-family: inherit; font-size: 0.85rem;
+        font-weight: 700; background: #16a34a; color: #fff; border: none; border-radius: 9px;
+        padding: 0.5rem; cursor: pointer; }
+    .cotalq-btn-main:hover:not(:disabled) { background: #15803d; }
+    .cotalq-btn-main:disabled { background: #cbd5e1; cursor: default; }
+    .cotalq-btn-limpiar { display: block; width: 100%; background: none; border: none; color: #94a3b8;
+        font-size: 0.75rem; cursor: pointer; padding: 0.25rem; margin-top: 0.3rem; font-family: inherit; }
+
+    /* Tema oscuro: la calculadora flotante tiene fondo gris oscuro y la misma pieza tiene que
+       verse bien ahí adentro. Solo cambian los colores, la estructura es la misma. */
+    .cotalq-dark .cotalq-inp,
+    .cotalq-dark .cotalq-cant-inp { background: #111827; border-color: #374151; color: #f9fafb; }
+    .cotalq-dark .cotalq-lista { background: #0b1220; border-color: #374151; }
+    .cotalq-dark .cotalq-fila { border-bottom-color: #1f2937; }
+    .cotalq-dark .cotalq-fila.puesto { background: #052e1a; }
+    .cotalq-dark .cotalq-nom { color: #e5e7eb; }
+    .cotalq-dark .cotalq-pre { color: #9ca3af; }
+    .cotalq-dark .cotalq-sub { color: #34d399; }
+    .cotalq-dark .cotalq-mas { background: #111827; border-color: #374151; color: #e5e7eb; }
+    .cotalq-dark .cotalq-mas:hover { background: #1e293b; }
+    .cotalq-dark .cotalq-sec { color: #93c5fd; }
+    .cotalq-dark .cotalq-total { border-top-color: #374151; color: #9ca3af; }
+    .cotalq-dark .cotalq-total b { color: #34d399; }
+    .cotalq-dark .cotalq-btn-main { background: #2563eb; }
+    .cotalq-dark .cotalq-btn-main:hover:not(:disabled) { background: #1d4ed8; }
+    .cotalq-dark .cotalq-btn-main:disabled { background: #374151; color: #9ca3af; }
+    .cotalq-dark .cotalq-info { color: #6b7280; }
+</style>
+
+@code {
+    /// <summary>Texto del botón principal ("📝 Escribir la cotización", "📋 Copiar"…).</summary>
+    [Parameter] public string TextoBoton { get; set; } = "📝 Escribir la cotización";
+
+    /// <summary>Se dispara con el presupuesto ya armado. El que lo usa decide qué hacer con el texto.</summary>
+    [Parameter] public EventCallback<string> OnListo { get; set; }
+
+    /// <summary>Colores para fondo oscuro (la calculadora flotante).</summary>
+    [Parameter] public bool Oscuro { get; set; }
+
+    /// <summary>Casillero de descuento: baja el total pero NO sale en el texto del cliente.</summary>
+    [Parameter] public bool MostrarDescuento { get; set; }
+
+    private List<AlqEquipoDto> equipos = new();
+    private List<AlqFleteDto> fletes = new();
+    private readonly Dictionary<int, int> cant = new();
+    private readonly Dictionary<int, string> cantTxt = new();
+    private string filtro = "";
+    private string fleteSel = "";
+    private string fleteZona = "";
+    private string fleteTxt = "";
+    private string descuentoTxt = "";
+    private DateTime? fecha = null;
+    private bool cargando = true;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true;
+        try
+        {
+            var eqs = await Api.GetAlqEquiposAsync();
+            equipos = (eqs ?? new()).Where(e => e.IsActive).ToList();
+            fletes = await Api.GetAlqFletesAsync(soloActivos: true) ?? new();
+        }
+        catch (Exception ex) { Toast.Error("No pude traer los precios: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private int CantDe(int id) => cant.TryGetValue(id, out var n) ? n : 0;
+    private string CantTxtDe(int id) => cantTxt.TryGetValue(id, out var t) ? t : "0";
+
+    private decimal FleteMonto => ParsePlata(fleteTxt) ?? 0m;
+    private decimal Descuento => MostrarDescuento ? (ParsePlata(descuentoTxt) ?? 0m) : 0m;
+    private decimal Total => equipos.Sum(e => e.PrecioDiario * CantDe(e.Id)) + FleteMonto - Descuento;
+    private bool HayAlgo => equipos.Any(e => CantDe(e.Id) > 0);
+
+    private List<AlqEquipoDto> Visibles()
+    {
+        var q = (filtro ?? "").Trim();
+        if (q.Length == 0) return equipos;
+        return equipos
+            .Where(x => x.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
+                     || x.Sku.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private void OnFiltrar(ChangeEventArgs e) => filtro = e.Value?.ToString() ?? "";
+    private void OnMontoFlete(ChangeEventArgs e) => fleteTxt = e.Value?.ToString() ?? "";
+    private void OnDescuento(ChangeEventArgs e) => descuentoTxt = e.Value?.ToString() ?? "";
+
+    private void Sumar(int id, int delta)
+    {
+        var n = Math.Max(0, CantDe(id) + delta);
+        cant[id] = n;
+        cantTxt[id] = n.ToString();
+    }
+
+    // Se ata a TEXTO, no a número: atado a int, borrar el campo lo deja en 0 y tipear 1 da 10.
+    private void CambiarCant(int id, string? txt)
+    {
+        var t = (txt ?? "").Trim();
+        cantTxt[id] = t;
+        cant[id] = int.TryParse(t, out var n) && n > 0 ? n : 0;
+    }
+
+    private void ElegirFlete(ChangeEventArgs e)
+    {
+        fleteSel = e.Value?.ToString() ?? "";
+        if (!int.TryParse(fleteSel, out var id)) { fleteZona = ""; fleteTxt = ""; return; }
+        var f = fletes.FirstOrDefault(x => x.Id == id);
+        if (f is null) return;
+        fleteZona = f.Zona;
+        fleteTxt = f.Precio.ToString("0.##", ARS);
+    }
+
+    /// <summary>Vacía la cotización. Se puede llamar desde afuera (ej. al cambiar de chat).</summary>
+    public void Limpiar()
+    {
+        cant.Clear(); cantTxt.Clear();
+        filtro = ""; fleteSel = ""; fleteZona = ""; fleteTxt = "";
+        descuentoTxt = ""; fecha = null;
+        StateHasChanged();
+    }
+
+    private async Task Listo() => await OnListo.InvokeAsync(ArmarTexto());
+
+    /// <summary>
+    /// El presupuesto como lo lee el cliente: qué y cuánto, SIN precio por renglón.
+    /// El único importe es el TOTAL (pedido expreso del dueño).
+    /// </summary>
+    public string ArmarTexto()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("*Presupuesto*");
+        if (fecha is DateTime f) sb.AppendLine($"Fecha: {f:dd/MM/yyyy}");
+        sb.AppendLine();
+
+        foreach (var eq in equipos)
+        {
+            var c = CantDe(eq.Id);
+            if (c > 0) sb.AppendLine($"{c} x {eq.Nombre}");
+        }
+
+        if (FleteMonto != 0m)
+            sb.AppendLine(string.IsNullOrWhiteSpace(fleteZona) ? "Flete" : $"Flete {fleteZona}");
+
+        sb.AppendLine();
+        sb.Append($"*TOTAL: {Plata(Total)}*");
+        return sb.ToString();
+    }
+
+    private static readonly CultureInfo ARS = CultureInfo.GetCultureInfo("es-AR");
+    private static string Plata(decimal v) => "$" + v.ToString("N2", ARS);
+
+    /// <summary>
+    /// Plata como la escribe una persona: "35000", "35.000", "35000,50", "$35.000".
+    /// La coma SIEMPRE es el decimal; el punto es separador de miles cuando lo siguen 3 dígitos.
+    /// </summary>
+    private static decimal? ParsePlata(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Trim().Replace(" ", "").Replace("$", "");
+        if (s.Length == 0) return null;
+        if (s.Contains(','))
+        {
+            s = s.Replace(".", "").Replace(",", ".");
+        }
+        else if (s.Contains('.'))
+        {
+            var partes = s.Split('.');
+            var ult = partes[^1];
+            if (partes.Length > 1 && ult.Length == 3 && ult.All(char.IsDigit)) s = s.Replace(".", "");
+        }
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var n) ? n : (decimal?)null;
+    }
+}
