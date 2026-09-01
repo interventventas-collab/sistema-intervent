@@ -183,6 +183,19 @@
             <div class="pan-chart-scroll">
                 @Grafico()
             </div>
+
+            @{
+                var primerConDatos = data.Serie.FirstOrDefault(x => x.Iv != 0 || x.Ie != 0 || x.Fk != 0);
+            }
+            @if (primerConDatos is not null && data.Serie.IndexOf(primerConDatos) > 0)
+            {
+                <p class="pan-nota">
+                    Los meses marcados <em>sin datos</em> no son meses sin ventas: son meses en los que este
+                    sistema todavía no estaba cargando. Las facturas de esos meses están en
+                    <a class="pan-link inline" href="/contadora" style="margin-left:0;">Contadora</a>,
+                    que las trae de ARCA. Acá se empieza a ver desde @primerConDatos.Etiqueta @primerConDatos.Anio.
+                </p>
+            }
         </div>
 
         @* ─────────── Rankings + avisos ─────────── *@
@@ -403,6 +416,7 @@
     .pan-chart .hit { fill:transparent; }
     .pan-chart text.val { font-size:10px; font-weight:600; fill:var(--text-secondary); }
     .pan-chart text.val.neg { fill:#dc2626; }
+    .pan-chart text.sindatos { font-size:9.5px; fill:var(--text-muted); font-style:italic; }
     .pan-chart .gl.cero { stroke:rgba(15,20,27,.28); }
     .pan-chart .col:hover .hit { fill:rgba(15,20,27,.05); }
 
@@ -657,11 +671,23 @@
             sb.Append($"<text x=\"{Inv(ml - 8)}\" y=\"{Inv(yy + 3.5)}\" text-anchor=\"end\">{Escapar(EtiquetaEje(t))}</text>");
         }
 
+        // Los meses ANTERIORES al primero con datos no son meses sin ventas: son meses en los que
+        // el sistema todavía no estaba cargando. Dibujarlos en cero hace pensar que no vendió nada.
+        var primerMes = serie.FindIndex(x => x.Iv != 0 || x.Ie != 0 || x.Fk != 0);
+
         for (var i = 0; i < serie.Count; i++)
         {
             var p = serie[i];
             var cx = ml + bw * i + bw / 2;
             sb.Append("<g class=\"col\">");
+
+            if (primerMes > 0 && i < primerMes)
+            {
+                sb.Append($"<text class=\"sindatos\" x=\"{Inv(cx)}\" y=\"{Inv(y(0m) - 7)}\" text-anchor=\"middle\">sin datos</text>");
+                sb.Append($"<text class=\"mes\" x=\"{Inv(cx)}\" y=\"{Inv(H - 8)}\" text-anchor=\"middle\">")
+                  .Append(Escapar(p.Etiqueta)).Append("</text></g>");
+                continue;
+            }
             sb.Append($"<rect class=\"hit\" x=\"{Inv(ml + bw * i)}\" y=\"{Inv(mt)}\" width=\"{Inv(bw)}\" height=\"{Inv(ih)}\">");
             sb.Append($"<title>{Escapar(TituloColumna(p, series))}</title></rect>");
 
