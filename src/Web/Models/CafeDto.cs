@@ -256,6 +256,18 @@ public class CafeProductoDto
     public decimal? Pvp1ConIva => Pvp1.HasValue ? Math.Round(Pvp1.Value * (1 + IvaPct / 100m), 2) : null;
     public decimal? Pvp2ConIva => Pvp2.HasValue ? Math.Round(Pvp2.Value * (1 + IvaPct / 100m), 2) : null;
 
+    // 2026-09-01 — Precio que el sistema COBRA de verdad (el que usa CafePricingService en ventas
+    // y listas de precios): PrecioBar / PrecioOtro. Pvp1/Pvp2 quedaron como espejo legacy.
+    // Hasta hoy la pantalla de CAFE mostraba Pvp1/Pvp2, y si se desincronizaban (pasó con F1:
+    // Pvp1=37000 pero PrecioBar=36000) el listado mentía sobre el precio real. Estos calculados
+    // muestran siempre el vigente, con el legacy solo como respaldo.
+    public decimal? PrecioBarEfectivo => PrecioBar ?? Pvp1;
+    public decimal? PrecioOtroEfectivo => PrecioOtro ?? Pvp2;
+    public decimal? PrecioBarEfectivoConIva => PrecioBarEfectivo.HasValue
+        ? Math.Round(PrecioBarEfectivo.Value * (1 + IvaPct / 100m), 2) : null;
+    public decimal? PrecioOtroEfectivoConIva => PrecioOtroEfectivo.HasValue
+        ? Math.Round(PrecioOtroEfectivo.Value * (1 + IvaPct / 100m), 2) : null;
+
     // OEM "sin IVA" calculado a partir del PvpConIva del OEM. Cuando hay OEM linkeado, este es el "sugerido real".
     public decimal? OemPvpSinIva => OemPvpConIva.HasValue && OemIvaPct.HasValue && OemIvaPct.Value > 0
         ? Math.Round(OemPvpConIva.Value / (1 + OemIvaPct.Value / 100m), 2)

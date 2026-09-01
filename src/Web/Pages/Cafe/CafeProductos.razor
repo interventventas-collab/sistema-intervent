@@ -225,18 +225,18 @@
                                 @if (esCafe)
                                 {
                                     <td style="text-align: right; font-weight: 700; color: #1d4ed8;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
-                                        @if (p.Pvp1.HasValue)
+                                        @if (p.PrecioBarEfectivo.HasValue)
                                         {
-                                            <div>$@FormatMoney(p.Pvp1.Value)/kg</div>
-                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.Pvp1ConIva!.Value)</div>
+                                            <div>$@FormatMoney(p.PrecioBarEfectivo.Value)/kg</div>
+                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.PrecioBarEfectivoConIva!.Value)</div>
                                         }
                                         else { <span>—</span> }
                                     </td>
                                     <td style="text-align: right; font-weight: 700; color: #15803d;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
-                                        @if (p.Pvp2.HasValue)
+                                        @if (p.PrecioOtroEfectivo.HasValue)
                                         {
-                                            <div>$@FormatMoney(p.Pvp2.Value)/kg</div>
-                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.Pvp2ConIva!.Value)</div>
+                                            <div>$@FormatMoney(p.PrecioOtroEfectivo.Value)/kg</div>
+                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.PrecioOtroEfectivoConIva!.Value)</div>
                                         }
                                         else { <span>—</span> }
                                     </td>
@@ -469,26 +469,30 @@
                                 <option value="10.5">10.5%</option>
                             </select>
                         </div>
+                        @* 2026-09-01: estos dos casilleros escriben PrecioBar/PrecioOtro (lo que el sistema
+                           COBRA en ventas y en las listas de precios). Pvp1/Pvp2 se guardan en espejo porque
+                           todavia los leen los combos. Antes escribian SOLO Pvp1/Pvp2, que el motor ignora:
+                           cambiabas el precio de un cafe, se guardaba, y la venta seguia con el precio viejo. *@
                         <div class="form-group" style="flex: 1;">
-                            <label class="form-label">PVP 1 — clientes BAR (sin IVA, $/kg)</label>
+                            <label class="form-label">Precio BAR — mayorista (sin IVA, $/kg)</label>
                             <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp1" />
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            <p style="font-size: 0.7rem; color: #166534; margin: 0.2rem 0 0;">
                                 @if (formPvp1.HasValue)
                                 {
-                                    <span>Con IVA: <b>$@FormatMoney(Math.Round(formPvp1.Value * (1 + formIvaPct / 100m), 2))</b>/kg</span>
+                                    <span>Con IVA: <b>$@FormatMoney(Math.Round(formPvp1.Value * (1 + formIvaPct / 100m), 2))</b>/kg · es el que se cobra en la venta y sale en la lista</span>
                                 }
-                                else { <span>Precio por kg, sin IVA. El con IVA se calcula automáticamente.</span> }
+                                else { <span>Lo que le cobrás al bar. Precio por kg sin IVA; el con IVA se calcula solo.</span> }
                             </p>
                         </div>
                         <div class="form-group" style="flex: 1;">
-                            <label class="form-label">PVP 2 — otros clientes (sin IVA, $/kg)</label>
+                            <label class="form-label">Precio OTRO — resto de clientes (sin IVA, $/kg)</label>
                             <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" />
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            <p style="font-size: 0.7rem; color: #166534; margin: 0.2rem 0 0;">
                                 @if (formPvp2.HasValue)
                                 {
-                                    <span>Con IVA: <b>$@FormatMoney(Math.Round(formPvp2.Value * (1 + formIvaPct / 100m), 2))</b>/kg</span>
+                                    <span>Con IVA: <b>$@FormatMoney(Math.Round(formPvp2.Value * (1 + formIvaPct / 100m), 2))</b>/kg · es el que se cobra en la venta y sale en la lista</span>
                                 }
-                                else { <span>Precio por kg, sin IVA. El con IVA se calcula automáticamente.</span> }
+                                else { <span>Lo que le cobrás al resto. Precio por kg sin IVA; el con IVA se calcula solo.</span> }
                             </p>
                         </div>
                     </div>
@@ -1985,7 +1989,11 @@
         _ = LoadStockDetail(p.Id); // fire-and-forget: carga el panel mientras se renderiza el modal
         formNombre = p.Nombre; formSku = p.Sku ?? ""; formBarcode = p.Barcode ?? "";
         formCategoria = p.Categoria; formMarca = p.Marca ?? "";
-        formCosto = p.Costo; formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
+        formCosto = p.Costo;
+        // 2026-09-01: para CAFE los casilleros "Precio BAR/OTRO por kg" atan a formPvp1/formPvp2,
+        // pero lo que valen son PrecioBar/PrecioOtro. Mostramos el VIGENTE (legacy solo de respaldo)
+        // para que la pantalla no mienta sobre lo que se cobra.
+        formPvp1 = p.PrecioBarEfectivo; formPvp2 = p.PrecioOtroEfectivo;
         formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
         formBarPct = p.BarPctSobreCosto;
         // Modelo NUEVO de precios. Si NO están cargados (producto migrado del modelo viejo),
@@ -2004,6 +2012,9 @@
             if (!formPrecioBar.HasValue) formPrecioBar = Math.Round(p.Costo * 2m, 2);
             if (!formPrecioOtro.HasValue) formPrecioOtro = Math.Round(p.Costo * 2m, 2);
         }
+        // 2026-09-01: en CAFE el precio se edita en formPvp1/formPvp2. Espejamos aca para que el
+        // bloque de precios FUTUROS muestre como referencia el precio actual de verdad.
+        if (p.Categoria == "CAFE") { formPrecioBar = formPvp1; formPrecioOtro = formPvp2; }
         // Calculamos los márgenes iniciales (sincronizado con los precios pre-cargados)
         formMargenBar = formPrecioBar.HasValue && p.Costo > 0
             ? Math.Round((formPrecioBar.Value / p.Costo - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
@@ -2063,11 +2074,13 @@
         formCategoria = p.Categoria;
         formMarca = p.Marca ?? "";
         formCosto = p.Costo;
-        formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
+        // 2026-09-01: copiar el precio VIGENTE (PrecioBar/PrecioOtro), no el espejo legacy.
+        formPvp1 = p.PrecioBarEfectivo; formPvp2 = p.PrecioOtroEfectivo;
         formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
         formBarPct = p.BarPctSobreCosto;
         formPrecioOtro = p.PrecioOtro ?? p.Pvp2 ?? p.Pvp1;
         formPrecioBar = p.PrecioBar;
+        if (p.Categoria == "CAFE") { formPrecioBar = formPvp1; formPrecioOtro = formPvp2; }
         formSinPrecioBar = p.SinPrecioBar;
         formMargenBar = formPrecioBar.HasValue && p.Costo > 0
             ? Math.Round((formPrecioBar.Value / p.Costo - 1m) * 100m, 2, MidpointRounding.AwayFromZero) : (decimal?)null;
@@ -2187,11 +2200,14 @@
                     ClearStockMinimoMeLi = !formStockMinimoMeli.HasValue,
                     Notas = formNotas, IsActive = formIsActive,
                     IvaPct = formIvaPct,
-                    // Modelo NUEVO de precios (solo OTROS):
-                    PrecioOtro = formCategoria == "OTROS" ? formPrecioOtro : null,
-                    PrecioBar = formCategoria == "OTROS" ? formPrecioBar : null,
-                    ClearPrecioOtro = formCategoria == "OTROS" && !formPrecioOtro.HasValue,
-                    ClearPrecioBar = formCategoria == "OTROS" && !formPrecioBar.HasValue,
+                    // Modelo NUEVO de precios — PrecioBar/PrecioOtro es lo que COBRA el sistema.
+                    // 2026-09-01: CAFE tambien los manda. Sus casilleros por kg atan a formPvp1/formPvp2,
+                    // asi que el precio se guarda en los dos lados (nuevo + espejo legacy). Antes CAFE
+                    // mandaba null aca y el cambio de precio no llegaba nunca a las ventas ni a las listas.
+                    PrecioOtro = formCategoria == "CAFE" ? formPvp2 : formPrecioOtro,
+                    PrecioBar = formCategoria == "CAFE" ? formPvp1 : formPrecioBar,
+                    ClearPrecioOtro = formCategoria == "CAFE" ? !formPvp2.HasValue : !formPrecioOtro.HasValue,
+                    ClearPrecioBar = formCategoria == "CAFE" ? !formPvp1.HasValue : !formPrecioBar.HasValue,
                     // 2026-06-10: tilde "sin precio diferenciado BAR"
                     SinPrecioBar = formCategoria == "OTROS" ? formSinPrecioBar : (bool?)false,
                     // Precio del bulto (descuento por volumen, SOLO OTROS):
@@ -2253,9 +2269,10 @@
                     StockMinimoMeLi = formStockMinimoMeli,
                     Notas = formNotas,
                     IvaPct = formIvaPct,
-                    // Modelo NUEVO de precios (solo OTROS):
-                    PrecioOtro = formCategoria == "OTROS" ? formPrecioOtro : null,
-                    PrecioBar = formCategoria == "OTROS" ? formPrecioBar : null,
+                    // Modelo NUEVO de precios — ver nota en el Update: CAFE tambien los manda
+                    // (2026-09-01), tomandolos de los casilleros por kg.
+                    PrecioOtro = formCategoria == "CAFE" ? formPvp2 : formPrecioOtro,
+                    PrecioBar = formCategoria == "CAFE" ? formPvp1 : formPrecioBar,
                     // 2026-06-10: tilde "sin precio diferenciado BAR"
                     SinPrecioBar = formCategoria == "OTROS" && formSinPrecioBar,
                     // Precio del bulto (descuento por volumen, SOLO OTROS):
