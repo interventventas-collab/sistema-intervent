@@ -1362,8 +1362,14 @@ public class WhatsAppTwilioController : ControllerBase
             .Select(m => (DateTime?)m.CreatedAt)
             .FirstOrDefaultAsync();
 
-        var tieneChat = await _db.WhatsAppTwilioMensajes.AsNoTracking()
-            .AnyAsync(m => claves.Contains(m.Numero));
+        // El ultimo mensaje sirve para dos cosas: saber si YA hay charla abierta, y con que numero
+        // exacto + por que linea abrirla (la conversacion se identifica por numero + linea).
+        var ultimoMsj = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => claves.Contains(m.Numero))
+            .OrderByDescending(m => m.CreatedAt)
+            .Select(m => new { m.Numero, m.LineaPhoneId })
+            .FirstOrDefaultAsync();
+        var tieneChat = ultimoMsj != null;
 
         var lin = string.IsNullOrWhiteSpace(linea) ? null : linea.Trim();
         var limite = DateTime.UtcNow.AddHours(-24);
@@ -1404,6 +1410,8 @@ public class WhatsAppTwilioController : ControllerBase
             Deuda = deuda,
             UltimoEntrante = ultimoEntrante,
             TieneChat = tieneChat,
+            NumeroChat = ultimoMsj?.Numero,
+            Linea = ultimoMsj?.LineaPhoneId,
             Disponible = disponible
         });
     }

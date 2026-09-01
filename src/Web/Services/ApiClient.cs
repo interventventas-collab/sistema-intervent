@@ -7441,16 +7441,38 @@ public class ApiClient
     // 2026-08-25: DireccionEntrega = la direccion de ENTREGA que coincidio con lo que se busco
     // (un cliente puede tener varias). Viene solo cuando el match fue por ahi, para mostrarla.
     public record TwClienteBuscarDto(int Id, string Nombre, string? CodigoInterno, string? Telefono, string? Direccion = null, string? Localidad = null, string? DireccionEntrega = null);
-    public record TwDestinatarioDto(string Nombre, string Numero, string Origen, bool Disponible = false);
+    public record TwDestinatarioDto(string Nombre, string Numero, string Origen, bool Disponible = false,
+                                    int? ClienteId = null, bool TieneChat = false);
+
+    /// <summary>2026-08-31: el "quién es" del contacto elegido en "Nueva conversación": categoría,
+    /// cuándo habló por última vez y si debe plata. Con 3.726 clientes hay homónimos.</summary>
+    public record TwDestinatarioFichaDto(string Numero, string? Rol, string? Nombre, int? ClienteId,
+                                         string? ClienteNombre, decimal? Deuda, DateTime? UltimoEntrante,
+                                         bool TieneChat, string? NumeroChat, string? Linea, bool Disponible);
+
+    public async Task<TwDestinatarioFichaDto?> GetTwDestinatarioFichaAsync(string numero, int? clienteId = null, string? linea = null)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<TwDestinatarioFichaDto>(
+                $"/api/whatsapp/twilio/destinatario-ficha?numero={Uri.EscapeDataString(numero ?? "")}"
+                + (clienteId.HasValue ? $"&clienteId={clienteId.Value}" : "")
+                + (string.IsNullOrEmpty(linea) ? "" : $"&linea={Uri.EscapeDataString(linea)}"));
+        }
+        catch { return null; }
+    }
     /// <summary>
     /// 2026-08-20: <paramref name="linea"/> = por qué línea NUESTRA se le va a escribir. Sirve para
     /// que el "🟢 le podés escribir" mire la ventana de 24 hs DE ESA LÍNEA y no de cualquiera: si
     /// el contacto te escribió por FRIKAF y le vas a mandar por TRANSRADIO, Meta lo rechaza igual.
     /// Null = como siempre (cualquier línea).
     /// </summary>
-    public async Task<List<TwDestinatarioDto>> BuscarTwDestinatariosAsync(string q, string? linea = null)
+    /// <summary>2026-08-31: <paramref name="q"/> vacío = las últimas charlas (el listado que se ve al
+    /// abrir, sin escribir); una sola letra = los que EMPIEZAN con esa letra; 2+ = el buscador de
+    /// siempre. <paramref name="skip"/> es para seguir cargando de a poco.</summary>
+    public async Task<List<TwDestinatarioDto>> BuscarTwDestinatariosAsync(string q, string? linea = null, int top = 20, int skip = 0)
         => await _http.GetFromJsonAsync<List<TwDestinatarioDto>>(
-               $"/api/whatsapp/twilio/destinatarios-buscar?q={Uri.EscapeDataString(q ?? "")}"
+               $"/api/whatsapp/twilio/destinatarios-buscar?q={Uri.EscapeDataString(q ?? "")}&top={top}&skip={skip}"
                + (string.IsNullOrEmpty(linea) ? "" : $"&linea={Uri.EscapeDataString(linea)}")) ?? new();
     public async Task<List<TwConvDto>> GetTwConversacionesAsync()
     {

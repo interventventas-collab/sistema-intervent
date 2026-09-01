@@ -448,14 +448,58 @@
                                 </div>
                                 <button type="button" class="wa-nv-btn-ghost" @onclick="LimpiarNvCliente" title="Elegir otro contacto o número">✏️ Cambiar</button>
                             </div>
+
+                            @* 2026-08-31: QUIÉN ES, antes de escribirle. Con 3.726 clientes hay homónimos
+                               y es fácil mandarle el mensaje al equivocado. Texto plano: color solo la deuda. *@
+                            @if (nvCargandoFicha)
+                            {
+                                <div class="wa-nv-quien">Buscando quién es…</div>
+                            }
+                            else if (nvFicha != null)
+                            {
+                                <div class="wa-nv-quien">
+                                    @if (!string.IsNullOrWhiteSpace(nvFicha.Rol))
+                                    {
+                                        <span>@RolEmoji(nvFicha.Rol) @RolLabel(nvFicha.Rol)</span>
+                                        <span class="sep">·</span>
+                                    }
+                                    <span>@NvUltimaVezTexto()</span>
+                                    @if (nvFicha.Deuda is decimal deudaNv && deudaNv > 0)
+                                    {
+                                        <span class="sep">·</span>
+                                        <span class="debe">debe @Plata(deudaNv)</span>
+                                    }
+                                </div>
+
+                                @if (nvFicha.TieneChat)
+                                {
+                                    <div class="wa-nv-yatiene">
+                                        💬 Ya tenés una charla con esta persona.
+                                        <button type="button" class="wa-nv-ir" @onclick="IrAlChatDelDestinatario">Abrir esa charla</button>
+                                    </div>
+                                }
+                            }
                         }
                         else
                         {
                             <div class="wa-nv-field" style="position:relative;">
                                 <label class="wa-nv-label">¿A quién le escribís? <span style="color:#dc2626;">*</span></label>
-                                <input class="wa-nv-input wa-nv-search" placeholder="🔍 Escribí un nombre o un número…"
+                                <input class="wa-nv-input wa-nv-search" placeholder="🔍 Nombre, número, dirección o CUIT…"
                                        @bind="nvClienteQuery" @bind:event="oninput" @onkeyup="BuscarNvClientes" />
-                                <span class="wa-nv-hint">Buscá por nombre (clientes, WhatsApp, MercadoLibre) o escribí el número: característica SIN el 0 y número SIN el 15 (ej 1165387009). El 54 y el 9 los pone el sistema. Del exterior, con + y su país (ej +34643013190).</span>
+                                <span class="wa-nv-hint">Buscá por nombre, dirección o CUIT (clientes, WhatsApp, MercadoLibre), o escribí el número: característica SIN el 0 y número SIN el 15 (ej 1165387009). El 54 y el 9 los pone el sistema. Del exterior, con + y su país (ej +34643013190).</span>
+
+                                @* 2026-08-31: no hace falta escribir. El reloj muestra tus últimas charlas
+                                   (es lo que aparece al abrir) y cada letra los que EMPIEZAN con ella. *@
+                                <div class="wa-nv-letras">
+                                    <button type="button" class="wa-nv-letra @(nvLetra == "" ? "sel" : "")"
+                                            @onclick='() => PickNvLetra("")' title="Tus últimas charlas">🕒</button>
+                                    @foreach (var letra in NV_LETRAS)
+                                    {
+                                        <button type="button" class="wa-nv-letra @(nvLetra == letra ? "sel" : "")"
+                                                @onclick="() => PickNvLetra(letra)">@letra</button>
+                                    }
+                                </div>
+                                <div class="wa-nv-listado-tit">@NvTituloListado()</div>
 
                                 @if (nvBuscandoCliente)
                                 {
@@ -493,17 +537,44 @@
                                                     <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(cli.Numero)</div>
                                                 </div>
                                                 <span class="wa-nv-origen">@OrigenLindo(cli.Origen)</span>
+                                                @if (cli.TieneChat)
+                                                {
+                                                    <span class="wa-nv-origen" title="Ya tenés una charla con este contacto">💬</span>
+                                                }
                                             </button>
                                         }
                                     </div>
                                 }
-                                else if (!string.IsNullOrWhiteSpace(nvClienteQuery) && nvClienteQuery.Length >= 2 && !nvBuscandoCliente)
+                                else if (!nvBuscandoCliente)
                                 {
-                                    <div class="wa-nv-muted">Sin contactos para esa búsqueda. Si es un número nuevo, escribilo completo con el código de país (54) y el 9 de celular.</div>
+                                    <div class="wa-nv-muted">
+                                        @(nvClienteQuery.Length >= 2
+                                            ? "Sin contactos para esa búsqueda. Si es un número nuevo, escribilo completo con el código de país (54) y el 9 de celular."
+                                            : nvLetra != ""
+                                                ? $"Ningún contacto empieza con {nvLetra}."
+                                                : "Todavía no hay charlas para mostrar.")
+                                    </div>
+                                }
+                                @if (nvHayMas && directo == null && !nvBuscandoCliente)
+                                {
+                                    <button type="button" class="wa-nv-mas" @onclick="() => RefrescarNvDestinatarios(true)" disabled="@nvCargandoMas">
+                                        @(nvCargandoMas ? "Cargando…" : "Ver más contactos")
+                                    </button>
                                 }
                             </div>
                         }
 
+                        @* 2026-08-31: si te escribió hace menos de 24 hs NO hace falta plantilla: WhatsApp
+                           te deja escribirle lo que quieras. Antes te la pedía igual, un paso al pedo. *@
+                        @if (NvEsLibre())
+                        {
+                            <div class="wa-nv-field">
+                                <label class="wa-nv-label">🟢 Te escribió hace poco: escribile libre, sin plantilla</label>
+                                <textarea class="wa-nv-libre" placeholder="Escribí el mensaje…" @bind="nvTextoLibre" @bind:event="oninput"></textarea>
+                            </div>
+                        }
+                        else
+                        {
                         <div class="wa-nv-field">
                             <label class="wa-nv-label">Plantilla <span style="color:#dc2626;">*</span></label>
                             <select class="wa-nv-input" value="@nvPlantillaName" @onchange="OnPlantillaChange">
@@ -537,10 +608,12 @@
                                 <div class="wa-nv-preview">@PreviewTexto()</div>
                             </div>
                         }
+                        }
 
                         <div class="wa-nv-actions">
                             <button class="wa-nv-btn-ghost" @onclick="AbrirNuevaConv" title="Limpiar y empezar de nuevo">🧹 Limpiar</button>
-                            <button class="wa-nv-send" disabled="@(nvEnviando || PlantillaSel() == null || string.IsNullOrWhiteSpace(nvNumero))" @onclick="EnviarNuevaConv">
+                            <button class="wa-nv-send" disabled="@(nvEnviando || string.IsNullOrWhiteSpace(nvNumero)
+                                        || (NvEsLibre() ? string.IsNullOrWhiteSpace(nvTextoLibre) : PlantillaSel() == null))" @onclick="EnviarNuevaConv">
                                 @(nvEnviando ? "Enviando…" : "📨 Enviar mensaje")
                             </button>
                         </div>
@@ -3879,6 +3952,25 @@
     .wa-nv-input:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
     .wa-nv-search { font-size: 1.02rem; }
     .wa-nv-results { border: 1px solid #e5e7eb; border-radius: 14px; margin-top: 0.5rem; max-height: 300px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    /* 2026-08-31: tira de letras A-Z + el listado que se ve sin escribir nada */
+    .wa-nv-letras { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 0.5rem; }
+    .wa-nv-letra { border: 0; background: transparent; color: #64748b; font-size: 0.72rem; font-weight: 700;
+        padding: 0.15rem 0.32rem; border-radius: 6px; cursor: pointer; line-height: 1.1; }
+    .wa-nv-letra:hover { background: #f1f5f9; color: #0f172a; }
+    .wa-nv-letra.sel { background: #dcfce7; color: #166534; }
+    .wa-nv-listado-tit { font-size: 0.72rem; color: #9ca3af; margin-top: 0.5rem; }
+    .wa-nv-mas { width: 100%; margin-top: 0.4rem; border: 1px solid #e5e7eb; background: #f8fafc; color: #475569;
+        font-size: 0.8rem; padding: 0.4rem; border-radius: 8px; cursor: pointer; }
+    /* el "quien es" del elegido: texto plano, sin cartelitos. Color solo si debe plata. */
+    .wa-nv-quien { font-size: 0.78rem; color: #64748b; margin: -0.7rem 0 0.9rem 0.2rem; }
+    .wa-nv-quien .sep { margin: 0 0.3rem; color: #cbd5e1; }
+    .wa-nv-quien .debe { color: #b91c1c; font-weight: 700; }
+    .wa-nv-yatiene { font-size: 0.8rem; color: #334155; background: #f8fafc; border: 1px solid #e5e7eb;
+        border-radius: 10px; padding: 0.5rem 0.65rem; margin-bottom: 0.9rem; }
+    .wa-nv-ir { border: 0; background: #25d366; color: #fff; font-weight: 700; font-size: 0.78rem;
+        padding: 0.25rem 0.6rem; border-radius: 7px; margin-left: 0.4rem; cursor: pointer; }
+    .wa-nv-libre { width: 100%; min-height: 92px; border: 1px solid #d1d5db; border-radius: 10px; padding: 0.6rem;
+        font-size: 0.9rem; font-family: inherit; resize: vertical; }
     .wa-nv-chip { display: flex; align-items: center; gap: 0.7rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 16px; padding: 0.7rem 0.85rem; margin-bottom: 1rem; }
     .wa-nv-preview { background: #dcf8c6; border-radius: 14px; padding: 0.8rem 1rem; font-size: 0.92rem; white-space: pre-wrap; color: #111; }
     .wa-nv-actions { display: flex; gap: 0.7rem; align-items: center; margin-top: 1.2rem; }
@@ -6412,6 +6504,8 @@
         // 2026-08-03: dejar listo el panel de "Nueva conversación" (se muestra cuando no hay chat abierto)
         await EnsureNvCargado();
         nvLineaPhoneId ??= LineaDefaultPhoneId();
+        // 2026-08-31: el listado de últimas charlas ya viene cargado, así el panel nunca arranca vacío.
+        _ = RefrescarNvDestinatarios();
         // 2026-08-06: conectar la presencia en vivo ANTES de abrir el chat inicial (así el "join" pega).
         await IniciarPresencia();
         if (!string.IsNullOrWhiteSpace(NumeroInicial))
@@ -7110,6 +7204,15 @@
     string? nvClienteSeleccionado = null;
     bool nvBuscandoCliente = false;
     List<ApiClient.TwDestinatarioDto> nvClienteResultados = new();
+    // 2026-08-31: el buscador ya no obliga a escribir. Sin nada = tus últimas charlas; con una letra
+    // apretada = los que empiezan con ella; escribiendo 2+ = el buscador de siempre.
+    static readonly string[] NV_LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".Select(c => c.ToString()).ToArray();
+    const int NV_PAGINA = 20;
+    string nvLetra = "";                 // "" = ninguna letra apretada (se ven las últimas charlas)
+    bool nvHayMas = false, nvCargandoMas = false;
+    ApiClient.TwDestinatarioFichaDto? nvFicha;   // el "quién es" del elegido
+    bool nvCargandoFicha = false;
+    string nvTextoLibre = "";            // mensaje sin plantilla (cuando te escribió hace < 24 hs)
 
     // 2026-08-03: ahora el formulario vive inline en el panel derecho. "Abrir" = deseleccionar el chat + limpiar.
     async Task AbrirNuevaConv()
@@ -7117,10 +7220,13 @@
         VolverALista();   // deseleccionar el chat abierto => se ve el panel de nueva conversación
         nvNumero = ""; nvPlantillaName = ""; nvVariables = new();
         nvClienteQuery = ""; nvClienteSeleccionado = null; nvClienteResultados = new();
+        nvLetra = ""; nvFicha = null; nvTextoLibre = ""; nvHayMas = false;
         await EnsureNvCargado();
         // Línea por defecto: FRIKAF by INTERVENT si está (la principal), sino la primera conectada
         nvLineaPhoneId = LineaDefaultPhoneId();
         StateHasChanged();
+        // 2026-08-31: y el listado de últimas charlas ya cargado, para no arrancar con la pantalla vacía.
+        await RefrescarNvDestinatarios();
     }
 
     // Cargar plantillas + líneas una sola vez (para tener el panel siempre listo)
@@ -7167,21 +7273,96 @@
     async Task BuscarNvClientes()
     {
         var q = (nvClienteQuery ?? "").Trim();
-        if (q.Length < 2) { nvClienteResultados = new(); return; }
-        nvBuscandoCliente = true;
+        // Con UNA sola letra tipeada no buscamos: para eso está la tira A-Z (si no, cada letra que
+        // escribís dispara una búsqueda enorme que después pisás con la siguiente).
+        if (q.Length == 1) return;
+        if (q.Length >= 2) nvLetra = "";     // si escribís, la letra apretada se apaga
+        await RefrescarNvDestinatarios();
+    }
+
+    /// <summary>Qué le pedimos al servidor: lo tipeado (2+), la letra apretada, o nada (últimas charlas).</summary>
+    string NvConsulta()
+    {
+        var q = (nvClienteQuery ?? "").Trim();
+        if (q.Length >= 2) return q;
+        return nvLetra;                      // "" = las últimas charlas
+    }
+
+    string NvTituloListado()
+    {
+        if ((nvClienteQuery ?? "").Trim().Length >= 2) return "Resultados de tu búsqueda";
+        if (nvLetra != "") return $"Los que empiezan con {nvLetra}";
+        return "Tus últimas charlas — o apretá una letra";
+    }
+
+    /// <summary>Trae la página siguiente (mas: true) o vuelve a armar la lista desde cero.</summary>
+    async Task RefrescarNvDestinatarios(bool mas = false)
+    {
+        if (mas) nvCargandoMas = true;
+        else { nvBuscandoCliente = true; nvClienteResultados = new(); }
         StateHasChanged();
-        try { nvClienteResultados = await Api.BuscarTwDestinatariosAsync(q); }
-        catch { nvClienteResultados = new(); }
-        nvBuscandoCliente = false;
+        try
+        {
+            var pag = await Api.BuscarTwDestinatariosAsync(NvConsulta(), nvLineaPhoneId, NV_PAGINA,
+                                                           mas ? nvClienteResultados.Count : 0);
+            if (mas) nvClienteResultados.AddRange(pag); else nvClienteResultados = pag;
+            nvHayMas = pag.Count >= NV_PAGINA;
+        }
+        catch { if (!mas) nvClienteResultados = new(); nvHayMas = false; }
+        nvBuscandoCliente = false; nvCargandoMas = false;
         StateHasChanged();
     }
 
-    void SeleccionarNvCliente(ApiClient.TwDestinatarioDto cli)
+    /// <summary>Apretar una letra de la tira. La misma letra otra vez la apaga y vuelven las últimas charlas.</summary>
+    async Task PickNvLetra(string letra)
+    {
+        nvLetra = (nvLetra == letra) ? "" : letra;
+        nvClienteQuery = "";
+        await RefrescarNvDestinatarios();
+    }
+
+    async Task SeleccionarNvCliente(ApiClient.TwDestinatarioDto cli)
     {
         nvNumero = cli.Numero;               // ya viene normalizado del servidor
         nvClienteSeleccionado = cli.Nombre;
         nvClienteResultados = new();
         nvClienteQuery = "";
+        await CargarNvFicha(cli.Numero, cli.ClienteId);
+    }
+
+    /// <summary>2026-08-31: el "quién es" del elegido (categoría, última vez que habló, si debe plata)
+    /// y si ya hay charla abierta con él.</summary>
+    async Task CargarNvFicha(string numero, int? clienteId)
+    {
+        nvFicha = null; nvTextoLibre = ""; nvCargandoFicha = true;
+        StateHasChanged();
+        nvFicha = await Api.GetTwDestinatarioFichaAsync(numero, clienteId, nvLineaPhoneId);
+        nvCargandoFicha = false;
+        StateHasChanged();
+    }
+
+    /// <summary>¿Le puedo escribir libre? Solo si nos escribió en las últimas 24 hs POR ESTA LÍNEA.</summary>
+    bool NvEsLibre() => nvFicha?.Disponible == true;
+
+    string NvUltimaVezTexto()
+    {
+        if (nvFicha?.UltimoEntrante is not DateTime u) return "nunca te escribió";
+        var dias = (DateTimeExt.AhoraAr() - u.ToArTime()).TotalDays;
+        if (dias < 1) return "te escribió hoy";
+        if (dias < 2) return "te escribió ayer";
+        if (dias < 30) return $"te escribió hace {(int)dias} días";
+        return $"te escribió el {u.ToArTime():dd/MM/yy}";
+    }
+
+    /// <summary>Abre la charla que YA existe con este contacto, en vez de arrancar una nueva.
+    /// El número y la línea vienen de la ficha (el último mensaje), así funciona aunque esa charla
+    /// no esté entre las que tenés cargadas en la lista de la izquierda.</summary>
+    async Task IrAlChatDelDestinatario()
+    {
+        var num = nvFicha?.NumeroChat;
+        if (string.IsNullOrWhiteSpace(num)) { Toast.Warning("No encontré esa charla"); return; }
+        var conv = conversaciones.FirstOrDefault(c => c.Numero == num);
+        await SelectConv(num, conv?.Linea ?? nvFicha?.Linea);
     }
 
     // 2026-08-03: si lo que se escribió parece un número (sin letras y con 8+ dígitos), ofrecer mandarle directo
@@ -7226,20 +7407,23 @@
         return null;
     }
 
-    void UsarNumeroDirecto(string digitos)
+    async Task UsarNumeroDirecto(string digitos)
     {
         nvNumero = digitos;
         nvClienteSeleccionado = "un número nuevo";
         nvClienteResultados = new();
         nvClienteQuery = "";
+        // Aunque lo hayas tipeado a mano puede ser alguien con quien YA hablás: la ficha lo dice.
+        await CargarNvFicha(digitos, null);
     }
 
-    void LimpiarNvCliente()
+    async Task LimpiarNvCliente()
     {
         nvNumero = "";
         nvClienteSeleccionado = null;
-        nvClienteResultados = new();
         nvClienteQuery = "";
+        nvFicha = null; nvTextoLibre = ""; nvLetra = "";
+        await RefrescarNvDestinatarios();   // volvés a ver el listado, no una pantalla vacía
     }
 
     // Inicial para el circulito (avatar) — como en WhatsApp
@@ -7383,9 +7567,31 @@
 
     async Task EnviarNuevaConv()
     {
+        if (string.IsNullOrWhiteSpace(nvNumero)) { Toast.Warning("Poné el número de destino"); return; }
+
+        // 2026-08-31: si te escribió hace menos de 24 hs (por ESTA línea) no hace falta plantilla:
+        // va texto libre por el mismo camino que el chat normal. El número se manda en el formato
+        // que guarda el sistema ("whatsapp:+549…"), si no queda una conversación duplicada.
+        if (NvEsLibre())
+        {
+            if (string.IsNullOrWhiteSpace(nvTextoLibre)) { Toast.Warning("Escribí el mensaje"); return; }
+            var numeroChat = nvFicha?.NumeroChat ?? ("whatsapp:+" + nvNumero.Trim());
+            nvEnviando = true;
+            StateHasChanged();
+            var (okLibre, errLibre) = await Api.SendTwMensajeAsync(numeroChat, nvTextoLibre.Trim(), nvLineaPhoneId);
+            nvEnviando = false;
+            if (!okLibre) { Toast.Error(errLibre ?? "No se pudo enviar"); return; }
+            Toast.Success("Mensaje enviado ✓");
+            var lineaChat = nvFicha?.Linea ?? nvLineaPhoneId;
+            nvNumero = ""; nvTextoLibre = ""; nvClienteSeleccionado = null; nvClienteQuery = ""; nvFicha = null;
+            await LoadConversaciones(silent: true);
+            await SelectConv(numeroChat, conversaciones.FirstOrDefault(c => c.Numero == numeroChat)?.Linea ?? lineaChat);
+            StateHasChanged();
+            return;
+        }
+
         var p = PlantillaSel();
         if (p == null) { Toast.Warning("Elegí una plantilla"); return; }
-        if (string.IsNullOrWhiteSpace(nvNumero)) { Toast.Warning("Poné el número de destino"); return; }
         for (int i = 0; i < p.VariableCount; i++)
             if (i >= nvVariables.Count || string.IsNullOrWhiteSpace(nvVariables[i]))
             { Toast.Warning("Completá todos los datos de la plantilla"); return; }
@@ -7399,7 +7605,7 @@
         Toast.Success("Mensaje enviado ✓");
         // limpiar el panel para el próximo, y abrir el chat recién creado abajo
         nvNumero = ""; nvPlantillaName = ""; nvVariables = new();
-        nvClienteSeleccionado = null; nvClienteQuery = "";
+        nvClienteSeleccionado = null; nvClienteQuery = ""; nvFicha = null; nvTextoLibre = "";
         await LoadConversaciones(silent: true);
         if (!string.IsNullOrEmpty(numero))
             await SelectConv(numero, conversaciones.FirstOrDefault(c => c.Numero == numero)?.Linea);
