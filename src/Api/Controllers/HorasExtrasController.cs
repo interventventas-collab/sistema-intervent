@@ -284,8 +284,13 @@ public class HorasExtrasController : ControllerBase
     // "Mis horas" por MES (2026-07-31) — el empleado ve SOLO el horario entrada→salida
     // de cada día, navegando por mes (nombre + año). Solo puede ir hasta 2 meses para atrás.
     // ════════════════════════════════════════════════════════════════════════════
-    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida);
-    public record HorasMesDto(int Anio, int Mes, string MesLabel, bool PuedeAnterior, bool PuedeSiguiente, List<HorasMesDiaDto> Dias);
+    // 2026-09-01: HorasDia vuelve a viajar al celular del empleado. Se habia perdido el 31/07 al
+    // reemplazar "Ultimos 7 dias" por esta vista por mes: el tilde admin MostrarHorasTrabajadasDia
+    // seguia existiendo pero el dato nunca llegaba a la pantalla. null = no se puede calcular
+    // (falta entrada o salida) -> la UI no muestra nada en ese dia.
+    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida, decimal? HorasDia);
+    public record HorasMesDto(int Anio, int Mes, string MesLabel, bool PuedeAnterior, bool PuedeSiguiente,
+        List<HorasMesDiaDto> Dias, bool MostrarHoras);
 
     [HttpGet("publica/{slug}/{clave}/horas-mes")]
     [AllowAnonymous]
@@ -315,11 +320,18 @@ public class HorasExtrasController : ControllerBase
             .OrderByDescending(r => r.Fecha)
             .ToListAsync();
 
-        var dias = regs.Select(r => new HorasMesDiaDto(r.Fecha, FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida))).ToList();
+        // Solo calculamos las horas del dia si estan las DOS puntas. Con una sola (todavia
+        // trabajando, o se olvido de fichar la salida) HorasTrabajadas caeria a r.Cantidad = 0
+        // y mostrariamos "0 h", que confunde. En ese caso va null y no se muestra nada.
+        var dias = regs.Select(r => new HorasMesDiaDto(
+                r.Fecha, FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida),
+                (r.HoraEntrada.HasValue && r.HoraSalida.HasValue) ? HorasTrabajadas(r) : (decimal?)null))
+            .ToList();
         var es = new System.Globalization.CultureInfo("es-AR");
         var label = pedido.ToString("MMMM yyyy", es);
         label = char.ToUpper(label[0]) + label.Substring(1);   // "Julio 2026"
-        return Ok(new HorasMesDto(pedido.Year, pedido.Month, label, pedido > mesMin, pedido < mesActual, dias));
+        return Ok(new HorasMesDto(pedido.Year, pedido.Month, label, pedido > mesMin, pedido < mesActual,
+            dias, emp.MostrarHorasTrabajadasDia));
     }
 
     /// <summary>Devuelve "HH:mm" o null. Lo usamos en el JSON para que el input type=time del browser

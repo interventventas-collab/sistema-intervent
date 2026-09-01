@@ -269,6 +269,14 @@
                             <span style="font-weight:700; color:#1f2937; font-size:0.95rem; white-space:nowrap;">
                                 🕒 @(string.IsNullOrEmpty(d.HoraEntrada) ? "—" : d.HoraEntrada) → @(string.IsNullOrEmpty(d.HoraSalida) ? "—" : d.HoraSalida)
                             </span>
+                            @* 2026-09-01: total de horas del dia, a la derecha. Solo si el admin lo habilito
+                               para este empleado y el dia tiene entrada Y salida. *@
+                            @if (horasMes.MostrarHoras && d.HorasDia.HasValue)
+                            {
+                                <span class="he-row-hs" style="white-space:nowrap; margin-left:0.6rem; min-width:52px; text-align:right;">
+                                    @d.HorasDia.Value.ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("es-AR")) h
+                                </span>
+                            }
                         </div>
                     }
                 }
@@ -464,8 +472,11 @@
         bool MostrarAreaPersonal = false);
 
     // 2026-07-31: vista de horas por mes (solo horario entrada→salida)
-    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida);
-    public record HorasMesDto(int Anio, int Mes, string MesLabel, bool PuedeAnterior, bool PuedeSiguiente, List<HorasMesDiaDto> Dias);
+    // 2026-09-01: HorasDia + MostrarHoras — vuelve el total de horas de cada dia (lo controla el
+    // tilde "mostrar horas trabajadas del dia" de la ficha del empleado en el panel de Horario).
+    public record HorasMesDiaDto(DateTime Fecha, string? HoraEntrada, string? HoraSalida, decimal? HorasDia);
+    public record HorasMesDto(int Anio, int Mes, string MesLabel, bool PuedeAnterior, bool PuedeSiguiente,
+        List<HorasMesDiaDto> Dias, bool MostrarHoras);
 
     protected override async Task OnInitializedAsync()
     {
