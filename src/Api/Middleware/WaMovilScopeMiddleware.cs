@@ -45,6 +45,31 @@ public class WaMovilScopeMiddleware
         => ruta.StartsWith("/api/cafe/clientes/", StringComparison.OrdinalIgnoreCase)
            && ruta.EndsWith("/estado-cuenta", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 2026-09-01 — Excepción puntual para el cotizador de alquileres del celular (el 🎪 del ➕).
+    ///
+    /// Se abre lo MÍNIMO y mirando también el método, no el módulo entero: leer el catálogo de
+    /// equipos y los fletes, y guardar/leer las cotizaciones del chat. Con la huella NO se puede
+    /// crear ni borrar equipos, ni tocar reservas, clientes o cobranzas de alquileres: esas
+    /// direcciones siguen cerradas.
+    /// </summary>
+    private static bool EsCotizadorAlquiler(string ruta, string metodo)
+    {
+        // Sin barra al final y sin subrutas: /api/alquileres/equipos/5 (borrar, editar) NO entra acá.
+        bool EsListado(string q) => ruta.Equals(q, StringComparison.OrdinalIgnoreCase);
+
+        // Los precios: solo leer.
+        if (metodo == "GET" && (EsListado("/api/alquileres/equipos") || EsListado("/api/alquileres/fletes")))
+            return true;
+
+        // Las cotizaciones del chat: leer las de un teléfono y guardar la nueva. Borrar, no.
+        if (ruta.StartsWith("/api/alquileres/cotizaciones", StringComparison.OrdinalIgnoreCase)
+            && (metodo == "GET" || metodo == "POST"))
+            return true;
+
+        return false;
+    }
+
     public WaMovilScopeMiddleware(RequestDelegate next, ILogger<WaMovilScopeMiddleware> logger)
     {
         _next = next;
@@ -61,8 +86,10 @@ public class WaMovilScopeMiddleware
         }
 
         var ruta = ctx.Request.Path.Value ?? "";
+        var metodo = ctx.Request.Method?.ToUpperInvariant() ?? "";
         var permitido = Permitido.Any(p => ruta.StartsWith(p, StringComparison.OrdinalIgnoreCase))
-                        || EsEstadoDeCuenta(ruta);
+                        || EsEstadoDeCuenta(ruta)
+                        || EsCotizadorAlquiler(ruta, metodo);
 
         if (!permitido)
         {
