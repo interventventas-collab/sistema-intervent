@@ -1216,6 +1216,10 @@
     }
     // Atajo de teclado "N + A": ?nueva=<timestamp> abre +Nueva Reserva desde cualquier pantalla. 2026-07-08
     [SupplyParameterFromQuery(Name = "nueva")] public string? NuevaParam { get; set; }
+    // 2026-08-31: ?cotizacion=ID — abrir Nueva Reserva ya cargada con un presupuesto que se pasó
+    // por WhatsApp (botón "📅 Pasar a reserva" del cotizador del chat).
+    [SupplyParameterFromQuery(Name = "cotizacion")] public int? CotizacionParam { get; set; }
+    private int? lastCotizacionHandled;
     private string? lastNuevaHandled;
 
     private List<AlqReservaDto>? reservas;
@@ -1765,6 +1769,14 @@
             await ShowCreate();
             return;
         }
+        // 2026-08-31: ?cotizacion=ID — Nueva Reserva con los equipos y el flete del presupuesto ya puestos.
+        if (CotizacionParam is int cotId && cotId > 0 && lastCotizacionHandled != cotId)
+        {
+            lastCotizacionHandled = cotId;
+            if (clientes is null || equipos is null) await LoadCatalogos();
+            await AplicarCotizacionAsync(cotId);
+            return;
+        }
         if (deepLinkApplied) return;
         // Si venimos del calendario con ?openId=N => abrir esa reserva en edicion
         if (OpenIdParam.HasValue && OpenIdParam.Value > 0)
@@ -1789,6 +1801,71 @@
             deepLinkApplied = true;
             Nav.NavigateTo("/alquileres/reservas", replace: true);
         }
+    }
+
+    /// <summary>
+    /// 2026-08-31: trae la cotización que se pasó por WhatsApp y abre Nueva Reserva con todo puesto:
+    /// los equipos con sus cantidades y el flete como un renglón de descripción libre.
+    /// Lo que la cotización NO sabe lo completa el usuario: fecha de entrega, fecha de retiro,
+    /// dirección y seña. La reserva no existe hasta que aprieta Guardar.
+    /// ⚠ Los precios que se cargan son los de la COTIZACIÓN (los que se le pasaron al cliente),
+    /// no los del catálogo de hoy: es lo que se le prometió.
+    /// </summary>
+    private async Task AplicarCotizacionAsync(int cotizacionId)
+    {
+        AlqCotizacionDto? cot = null;
+        try { cot = await Api.GetAlqCotizacionAsync(cotizacionId); }
+        catch (Exception ex) { ToastService.Error("No pude traer la cotización: " + ex.Message); }
+        if (cot is null) { ToastService.Warning("No encontré esa cotización."); return; }
+
+        await ShowCreate();
+
+        // El cliente: si la cotización quedó atada a uno, va puesto. Si no, lo elige él.
+        if (cot.ClienteId is int cid && clientes?.Any(c => c.Id == cid) == true)
+            formClienteId = cid;
+
+        // La fecha del evento sí la sabemos; entrega y retiro las acomoda OnEventoChanged.
+        if (cot.FechaEvento is DateTime fe)
+        {
+            formFechaEvento = fe.Date;
+            await OnEventoChanged();
+        }
+
+        formItems = new();
+        foreach (var it in cot.Items.Where(i => i.Cantidad > 0))
+        {
+            var existe = equipos?.Any(e => e.Id == it.EquipoId) == true;
+            formItems.Add(new CreateAlqReservaItemRequest
+            {
+                // Si el equipo ya no está en el catálogo, entra como renglón de texto para no perderlo.
+                EquipoId = existe ? it.EquipoId : null,
+                Descripcion = existe ? null : it.Nombre,
+                Cantidad = it.Cantidad,
+                PrecioUnitario = it.PrecioUnitario
+            });
+        }
+
+        if (cot.FleteMonto > 0m)
+        {
+            formItems.Add(new CreateAlqReservaItemRequest
+            {
+                EquipoId = null,
+                Descripcion = string.IsNullOrWhiteSpace(cot.FleteZona) ? "Flete" : $"Flete {cot.FleteZona}",
+                Cantidad = 1,
+                PrecioUnitario = cot.FleteMonto
+            });
+        }
+
+        if (cot.Descuento > 0m) formDescuento = cot.Descuento;
+
+        var falta = new List<string>();
+        if (formClienteId <= 0) falta.Add("el cliente");
+        if (cot.FechaEvento is null) falta.Add("las fechas");
+        falta.Add("la dirección");
+        ToastService.Info($"Cotización del {cot.CreatedAt.ToLocalTime():dd/MM/yy} cargada. Completá {string.Join(", ", falta)} y guardá.");
+
+        deepLinkApplied = true;
+        StateHasChanged();
     }
 
     private async Task Load()
