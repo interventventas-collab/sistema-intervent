@@ -1127,34 +1127,72 @@ public class WhatsAppTwilioController : ControllerBase
     }
 
     /// <summary>
-    /// GET /api/whatsapp/twilio/destinatarios-buscar?q=texto
+    /// GET /api/whatsapp/twilio/destinatarios-buscar?q=texto&top=&skip=&linea=
     /// Buscador UNIFICADO de contactos para "Nueva conversacion": junta clientes del cafe,
     /// contactos de conversaciones de WhatsApp (nombre de perfil), compradores de MercadoLibre
     /// y la agenda de contactos de WhatsApp. Saca repetidos por numero.
+    ///
+    /// 2026-08-31 — TRES MODOS, para no obligar a escribir. Pedido del dueño: "estaria bueno que se
+    /// vea el listado sin tener que escribir, que me deje scrolear" + "apretar la P y que aparezcan
+    /// todas":
+    ///   · SIN texto  → tus ULTIMAS CHARLAS, la mas reciente primero. Es lo que se ve al abrir.
+    ///   · UNA letra  → los que EMPIEZAN con esa letra, alfabetico (la tira A-Z).
+    ///   · 2+ letras  → el buscador de siempre, que ahora ademas mira CUIT y DIRECCION.
+    /// `skip` es para seguir cargando al scrollear (la lista de una letra puede ser larga).
+    ///
+    /// ⚠ La agenda cruda de WhatsApp (~7.900 contactos, muchos son solo un numero sin nombre) NO
+    /// entra en el modo por letra: apretabas la P y salian numeros sueltos mezclados. Limpiarla
+    /// quedo para otro momento; hasta entonces la letra mira clientes + gente que te escribio.
     /// </summary>
     [HttpGet("destinatarios-buscar")]
     [Authorize]
-    public async Task<IActionResult> BuscarDestinatarios([FromQuery] string q = "", [FromQuery] int top = 20, [FromQuery] string? linea = null)
+    public async Task<IActionResult> BuscarDestinatarios([FromQuery] string q = "", [FromQuery] int top = 20, [FromQuery] string? linea = null, [FromQuery] int skip = 0)
     {
         q = (q ?? "").Trim();
-        if (q.Length < 2) return Ok(new List<object>());
         int cap = Math.Clamp(top, 1, 50);
-        var acc = new List<(string Nombre, string? Tel, string Origen)>();
+        int desde = Math.Max(0, skip);
+        var acc = new List<(string Nombre, string? Tel, string Origen, int? ClienteId)>();
 
+        if (q.Length == 0)
+        {
+            acc.AddRange(await UltimasCharlasAsync(desde, cap));
+        }
+        else if (q.Length == 1)
+        {
+            acc.AddRange(await DestinatariosPorLetraAsync(q, desde, cap));
+        }
+        else
+        {
         // 1) Clientes del cafe
         int.TryParse(q, out var qNum);
         var patronDestEmpieza = CafePreventasController.EscaparLike(q) + "%";
         var patronDestPalabra = "% " + CafePreventasController.EscaparLike(q) + "%";
+        // 2026-08-31: tambien por CUIT y por DIRECCION. Las direcciones de ENTREGA viven en otra
+        // tabla (Cafe_ClienteDirecciones), asi que primero saco a que clientes pertenecen — igual
+        // que en clientes-buscar. El collate _CI_AI es para que "olavarria" encuentre "OLAVARRÍA".
+        var patronDestDir = "%" + CafePreventasController.EscaparLike(q) + "%";
+        var qDigitos = new string(q.Where(char.IsDigit).ToArray());
+        var idsDirDest = await _db.CafeClienteDirecciones.AsNoTracking()
+            .Where(d => d.IsActive && (
+                   EF.Functions.Like(EF.Functions.Collate(d.Direccion, COLLATE_SIN_TILDES), patronDestDir)
+                || (d.Etiqueta != null && EF.Functions.Like(EF.Functions.Collate(d.Etiqueta, COLLATE_SIN_TILDES), patronDestDir))
+                || (d.Localidad != null && EF.Functions.Like(EF.Functions.Collate(d.Localidad, COLLATE_SIN_TILDES), patronDestDir))))
+            .Select(d => d.ClienteId).Distinct().Take(200).ToListAsync();
         acc.AddRange((await _db.CafeClientes.AsNoTracking()
-            .Where(c => (c.Nombre.Contains(q) || (qNum > 0 && c.CodigoInterno == qNum) || (c.Telefono != null && c.Telefono.Contains(q)))
+            .Where(c => (c.Nombre.Contains(q) || (qNum > 0 && c.CodigoInterno == qNum) || (c.Telefono != null && c.Telefono.Contains(q))
+                         || idsDirDest.Contains(c.Id)
+                         || (qDigitos.Length >= 6 && c.Cuit != null && c.Cuit.Replace("-", "").Replace(" ", "").Contains(qDigitos))
+                         || (c.Direccion != null && EF.Functions.Like(EF.Functions.Collate(c.Direccion, COLLATE_SIN_TILDES), patronDestDir))
+                         || (c.DomicilioEntrega != null && EF.Functions.Like(EF.Functions.Collate(c.DomicilioEntrega, COLLATE_SIN_TILDES), patronDestDir))
+                         || (c.RazonSocial != null && EF.Functions.Like(EF.Functions.Collate(c.RazonSocial, COLLATE_SIN_TILDES), patronDestDir)))
                         && c.Telefono != null && c.Telefono != "")
             // 2026-08-21: por relevancia, no alfabetico: si no, cortar en `cap` esconde al cliente
             // buscado cuando hay muchos homonimos (ver clientes-buscar).
             .OrderByDescending(c => EF.Functions.Like(c.Nombre, patronDestEmpieza))
             .ThenByDescending(c => EF.Functions.Like(c.Nombre, patronDestPalabra))
             .ThenBy(c => c.Nombre).Take(cap)
-            .Select(c => new { c.Nombre, c.Telefono }).ToListAsync())
-            .Select(c => (c.Nombre, (string?)c.Telefono, "Cliente")));
+            .Select(c => new { c.Id, c.Nombre, c.Telefono }).ToListAsync())
+            .Select(c => (c.Nombre, (string?)c.Telefono, "Cliente", (int?)c.Id)));
 
         // 2) Contactos de conversaciones de WhatsApp (por nombre de perfil o numero)
         acc.AddRange((await _db.WhatsAppTwilioMensajes.AsNoTracking()
@@ -1163,7 +1201,7 @@ public class WhatsAppTwilioController : ControllerBase
             .GroupBy(m => m.Numero)
             .Select(g => new { Numero = g.Key, Nombre = g.Max(x => x.NombrePerfil) })
             .Take(cap).ToListAsync())
-            .Select(m => (m.Nombre ?? "", (string?)m.Numero, "WhatsApp")));
+            .Select(m => (m.Nombre ?? "", (string?)m.Numero, "WhatsApp", (int?)null)));
 
         // 3) Compradores de MercadoLibre (base "Telefonos")
         acc.AddRange((await _db.MeliClientes.AsNoTracking()
@@ -1173,46 +1211,201 @@ public class WhatsAppTwilioController : ControllerBase
                             || c.Phone.Contains(q)))
             .OrderByDescending(c => c.LastPurchaseAt).Take(cap)
             .Select(c => new { Nombre = c.ReceiverName ?? c.Nickname, c.Phone }).ToListAsync())
-            .Select(c => (c.Nombre ?? "", (string?)c.Phone, "MercadoLibre")));
+            .Select(c => (c.Nombre ?? "", (string?)c.Phone, "MercadoLibre", (int?)null)));
 
         // 4) Agenda de contactos de WhatsApp
         acc.AddRange((await _db.WhatsAppTwilioContactos.AsNoTracking()
             .Where(c => c.Nombre.Contains(q) || c.Numero.Contains(q))
             .Take(cap)
-            .Select(c => new { c.Nombre, c.Numero }).ToListAsync())
-            .Select(c => (c.Nombre, (string?)c.Numero, "Agenda")));
+            .Select(c => new { c.Nombre, c.Numero, c.ClienteId }).ToListAsync())
+            .Select(c => (c.Nombre, (string?)c.Numero, "Agenda", c.ClienteId)));
+        }
 
         // Normalizar + sacar repetidos por numero
         var vistos = new HashSet<string>();
-        var items = new List<(string Nombre, string Numero, string Origen)>();
-        foreach (var (Nombre, Tel, Origen) in acc)
+        var items = new List<(string Nombre, string Numero, string Origen, int? ClienteId)>();
+        foreach (var (Nombre, Tel, Origen, CliId) in acc)
         {
             var num = NormalizarNumeroWa(Tel);
             if (num.Length < 8) continue;                 // sin numero usable
             if (!vistos.Add(num)) continue;               // ya lo tenemos
-            items.Add((string.IsNullOrWhiteSpace(Nombre) ? num : Nombre, num, Origen));
+            items.Add((string.IsNullOrWhiteSpace(Nombre) ? num : Nombre, num, Origen, CliId));
             if (items.Count >= cap) break;
         }
 
-        // 2026-08-04: ¿le puedo escribir LIBRE? WhatsApp solo deja si el contacto nos escribió
+        // 2026-08-04: ¿le puedo escribir LIBRE? WhatsApp solo deja si el contacto nos escribio
         // en las ultimas 24hs. Marcamos "Disponible" a los que tienen un ENTRANTE reciente.
         // 2026-08-20: la ventana de 24 hs es POR LÍNEA, no por contacto. Si el que llama dice por
         // qué línea va a escribir (el reenvío lo sabe), se mira SOLO esa: antes un contacto que te
         // escribió por FRIKAF salía "🟢 le podés escribir" aunque le fueras a mandar por TRANSRADIO,
         // donde Meta lo iba a rechazar. Sin línea se mantiene el comportamiento de siempre.
+        //
+        // ⚠ 2026-08-31 (FIX): esto NUNCA daba true. Los numeros de `items` estan normalizados (solo
+        // digitos, "549…") y en la tabla de mensajes viven como "whatsapp:+549…", asi que comparar
+        // `nums.Contains(m.Numero)` no matcheaba jamas y el 🟢 no se prendia nunca. Ahora se compara
+        // armando las dos formas guardadas y se vuelve a digitos para cruzar.
         var nums = items.Select(i => i.Numero).ToList();
+        var numsWa = nums.Select(n => "whatsapp:+" + n).Concat(nums.Select(n => "whatsapp:" + n)).ToList();
         var limite = DateTime.UtcNow.AddHours(-24);
         var lin = string.IsNullOrWhiteSpace(linea) ? null : linea.Trim();
         var disponibles = (await _db.WhatsAppTwilioMensajes.AsNoTracking()
-            .Where(m => m.Direccion == "INCOMING" && m.CreatedAt >= limite && nums.Contains(m.Numero)
+            .Where(m => m.Direccion == "INCOMING" && m.CreatedAt >= limite && numsWa.Contains(m.Numero)
                         && (lin == null || m.LineaPhoneId == lin))
             .Select(m => m.Numero).Distinct().ToListAsync())
-            .ToHashSet();
+            .Select(SoloDigitos).ToHashSet();
+
+        // 2026-08-31: ¿ya tenes una charla abierta con este? Si la tenes, la ventana te lleva a ese
+        // chat en vez de arrancar una conversacion nueva (asi no queda la misma persona en dos lados).
+        var conChat = (await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => numsWa.Contains(m.Numero))
+            .Select(m => m.Numero).Distinct().ToListAsync())
+            .Select(SoloDigitos).ToHashSet();
 
         var salida = items
-            .Select(i => new { i.Nombre, i.Numero, i.Origen, Disponible = disponibles.Contains(i.Numero) })
+            .Select(i => new
+            {
+                i.Nombre,
+                i.Numero,
+                i.Origen,
+                i.ClienteId,
+                Disponible = disponibles.Contains(i.Numero),
+                TieneChat = conChat.Contains(i.Numero)
+            })
             .ToList<object>();
         return Ok(salida);
+    }
+
+    /// <summary>Solo los digitos de un numero guardado ("whatsapp:+549…" → "549…").</summary>
+    private static string SoloDigitos(string? s) => string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
+
+    /// <summary>Las ultimas charlas: un renglon por numero, la mas reciente primero. Es lo que
+    /// muestra "Nueva conversacion" apenas se abre, sin escribir nada. Son ~250 numeros (la gente
+    /// con la que hablas de verdad), no los ~11.700 del buscador entero.</summary>
+    private async Task<List<(string Nombre, string? Tel, string Origen, int? ClienteId)>> UltimasCharlasAsync(int desde, int cap)
+    {
+        var pag = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => m.Numero != null && m.Numero != "" && !m.Numero.StartsWith("ig:"))
+            .GroupBy(m => m.Numero)
+            .Select(g => new { Numero = g.Key, Ultimo = g.Max(x => x.CreatedAt), Perfil = g.Max(x => x.NombrePerfil) })
+            .OrderByDescending(x => x.Ultimo)
+            .Skip(desde).Take(cap)
+            .ToListAsync();
+
+        // El nombre bueno es el de la agenda si esta cargado: ahi estan los que pusieron a mano.
+        var numeros = pag.Select(x => x.Numero).ToList();
+        var agenda = await _db.WhatsAppTwilioContactos.AsNoTracking()
+            .Where(c => numeros.Contains(c.Numero))
+            .Select(c => new { c.Numero, c.Nombre, c.ClienteId })
+            .ToListAsync();
+        var porNumero = agenda.GroupBy(a => a.Numero).ToDictionary(g => g.Key, g => g.First());
+
+        return pag.Select(x =>
+        {
+            porNumero.TryGetValue(x.Numero, out var ag);
+            var nom = !string.IsNullOrWhiteSpace(ag?.Nombre) ? ag!.Nombre : (x.Perfil ?? "");
+            return (nom, (string?)x.Numero, "Charla", ag?.ClienteId);
+        }).ToList();
+    }
+
+    /// <summary>Los contactos cuyo nombre EMPIEZA con una letra, en orden alfabetico (la tira A-Z).
+    /// Mira los clientes del sistema y la gente con la que charlaste. La agenda cruda de WhatsApp
+    /// queda AFUERA a proposito — ver el comentario del endpoint.</summary>
+    private async Task<List<(string Nombre, string? Tel, string Origen, int? ClienteId)>> DestinatariosPorLetraAsync(string letra, int desde, int cap)
+    {
+        var patron = CafePreventasController.EscaparLike(letra) + "%";
+        const int TECHO = 800;   // cuantos junta antes de ordenar y paginar en memoria
+
+        var clientes = await _db.CafeClientes.AsNoTracking()
+            .Where(c => c.Telefono != null && c.Telefono != ""
+                        && EF.Functions.Like(EF.Functions.Collate(c.Nombre, COLLATE_SIN_TILDES), patron))
+            .OrderBy(c => c.Nombre).Take(TECHO)
+            .Select(c => new { c.Id, c.Nombre, c.Telefono })
+            .ToListAsync();
+
+        var charlas = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => m.NombrePerfil != null && m.NombrePerfil != "" && !m.Numero.StartsWith("ig:")
+                        && EF.Functions.Like(EF.Functions.Collate(m.NombrePerfil, COLLATE_SIN_TILDES), patron))
+            .GroupBy(m => m.Numero)
+            .Select(g => new { Numero = g.Key, Nombre = g.Max(x => x.NombrePerfil) })
+            .Take(TECHO).ToListAsync();
+
+        return clientes.Select(c => (c.Nombre, (string?)c.Telefono, "Cliente", (int?)c.Id))
+            .Concat(charlas.Select(m => (m.Nombre ?? "", (string?)m.Numero, "WhatsApp", (int?)null)))
+            .OrderBy(x => x.Item1)
+            .Skip(desde).Take(cap)
+            .ToList();
+    }
+
+    /// <summary>
+    /// GET /api/whatsapp/twilio/destinatario-ficha?numero=549…&clienteId=&linea=
+    /// 2026-08-31: el "quien es" del contacto que elegiste en "Nueva conversacion", ANTES de
+    /// escribirle: su categoria, cuando hablo por ultima vez y si debe plata. Con 3.726 clientes
+    /// hay nombres repetidos y es facil mandarle el mensaje al homonimo equivocado.
+    /// Tambien dice si ya tenes chat abierto con el y si le podes escribir libre (< 24 hs).
+    /// </summary>
+    [HttpGet("destinatario-ficha")]
+    [Authorize]
+    public async Task<IActionResult> FichaDestinatario([FromQuery] string numero = "", [FromQuery] int? clienteId = null,
+                                                       [FromQuery] string? linea = null, [FromServices] CafeSaldosService? saldos = null)
+    {
+        var d = SoloDigitos(numero);
+        if (d.Length < 8) return BadRequest(new { error = "Numero invalido" });
+        // El numero se guarda como "whatsapp:+549…"; probamos las dos formas por las dudas.
+        var claves = new[] { "whatsapp:+" + d, "whatsapp:" + d };
+
+        var contacto = await _db.WhatsAppTwilioContactos.AsNoTracking()
+            .FirstOrDefaultAsync(c => claves.Contains(c.Numero));
+
+        var ultimoEntrante = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => claves.Contains(m.Numero) && m.Direccion == "INCOMING")
+            .OrderByDescending(m => m.CreatedAt)
+            .Select(m => (DateTime?)m.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        var tieneChat = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .AnyAsync(m => claves.Contains(m.Numero));
+
+        var lin = string.IsNullOrWhiteSpace(linea) ? null : linea.Trim();
+        var limite = DateTime.UtcNow.AddHours(-24);
+        var disponible = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .AnyAsync(m => claves.Contains(m.Numero) && m.Direccion == "INCOMING" && m.CreatedAt >= limite
+                        && (lin == null || m.LineaPhoneId == lin));
+
+        // ¿Que cliente del sistema es? El que vino del buscador, si no el del contacto, si no el
+        // primero de la lista de vinculos del numero (un telefono puede tener varias razones sociales).
+        var cliId = clienteId ?? contacto?.ClienteId;
+        cliId ??= await _db.WhatsAppContactoClientes.AsNoTracking()
+            .Where(v => claves.Contains(v.Numero))
+            .OrderBy(v => v.Orden)
+            .Select(v => (int?)v.ClienteId)
+            .FirstOrDefaultAsync();
+
+        string? clienteNombre = null;
+        decimal? deuda = null;
+        if (cliId.HasValue)
+        {
+            clienteNombre = await _db.CafeClientes.AsNoTracking()
+                .Where(c => c.Id == cliId.Value).Select(c => c.Nombre).FirstOrDefaultAsync();
+            // La MISMA formula del panel "quien me debe" (CafeSaldosService), no una cuenta propia.
+            if (saldos != null && clienteNombre != null)
+            {
+                try { deuda = await saldos.GetSaldoClienteAsync(cliId.Value); }
+                catch (Exception ex) { _logger.LogWarning(ex, "No se pudo calcular el saldo del cliente {Id}", cliId); }
+            }
+        }
+
+        return Ok(new
+        {
+            Numero = d,
+            Rol = contacto?.Rol,
+            Nombre = contacto?.Nombre,
+            ClienteId = cliId,
+            ClienteNombre = clienteNombre,
+            Deuda = deuda,
+            UltimoEntrante = ultimoEntrante,
+            TieneChat = tieneChat,
+            Disponible = disponible
+        });
     }
 
     /// <summary>Deja un telefono en formato WhatsApp (solo digitos, con codigo de pais).
