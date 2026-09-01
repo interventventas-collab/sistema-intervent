@@ -349,7 +349,11 @@ public class PanoramaService
         _db.CafeVentas.AsNoTracking()
             .Where(v => v.Estado != "anulado"
                         && v.Fecha >= d && v.Fecha < h
-                        && v.FacturadaComoVentaId == null);
+                        && v.FacturadaComoVentaId == null
+                        // Los saldos que se migraron del sistema viejo se guardaron como ventas,
+                        // pero NO son ventas: es deuda que ya venía de antes. Contarlas inflaba
+                        // enero 2026 en $19 M con "margen" del 100% y 0 kg de café.
+                        && !_db.CafeSaldosMigracion.Any(sm => sm.VentaId == v.Id));
 
     private static int SignoComprobante(string? tipo) =>
         tipo != null && tipo.StartsWith("NC", StringComparison.OrdinalIgnoreCase) ? -1 : 1;
@@ -447,6 +451,7 @@ public class PanoramaService
         // ── Café (cabecera) ──
         var cafe = await _db.CafeVentas.AsNoTracking()
             .Where(v => v.Estado != "anulado" && v.FacturadaComoVentaId == null
+                        && !_db.CafeSaldosMigracion.Any(sm => sm.VentaId == v.Id)
                         && v.Fecha >= iniVentana && v.Fecha < finVentana)
             .Select(v => new { v.Id, v.Fecha, v.Total, v.Margen, v.TipoComprobante, v.EntregaPor })
             .ToListAsync(ct);
@@ -456,6 +461,7 @@ public class PanoramaService
             from i in _db.CafeVentaItems.AsNoTracking()
             join v in _db.CafeVentas.AsNoTracking() on i.VentaId equals v.Id
             where v.Estado != "anulado" && v.FacturadaComoVentaId == null
+                  && !_db.CafeSaldosMigracion.Any(sm => sm.VentaId == v.Id)
                   && v.Fecha >= iniVentana && v.Fecha < finVentana
                   && i.Categoria == "CAFE"
             select new { v.Fecha, i.GramosDescontados, v.TipoComprobante }
