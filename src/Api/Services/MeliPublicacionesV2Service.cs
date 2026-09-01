@@ -355,9 +355,29 @@ public class MeliPublicacionesV2Service
             // 1.508 publicaciones con envío gratis pasan de 17,2% promedio (solo comisión) a 33,4%
             // con el envío. Hay casos de 94,7% (mesa de $98.400 con $74.490 de envío).
             // SaleFeeShippingCost solo viene cargado cuando el envío es gratis (lo pagás vos).
-            var seLlevaMeli = (r.SaleFeeAmount ?? 0m) + (r.SaleFeeShippingCost ?? 0m);
-            decimal? comPct = (r.SaleFeeAmount.HasValue && r.Price > 0)
-                ? Math.Round(seLlevaMeli / r.Price * 100m, 1) : null;
+            // 2026-09-01 — El precio y la comisión REALES se calculan una sola vez acá arriba, y de
+            // ahí sale TODO lo de la fila. Antes la columna "se lleva MeLi" usaba la comisión del
+            // precio de lista mientras el margen usaba la de la promoción: dos números de la misma
+            // fila que no coincidían. Eso es justo lo que hace que uno deje de creerle a la pantalla.
+            var precioReal = (r.PromoPrecio is > 0 && r.PromoPrecio < r.Price) ? r.PromoPrecio.Value : r.Price;
+
+            // EL CARGO FIJO NO SE ENCOGE. El porcentaje acompaña al precio; el cargo fijo es el
+            // mismo valga $7.999 o $5.445. Caso real (agitadores MLA1758461065, 14,35% + $1.250):
+            // a $5.445 la cuenta vieja daba $1.632 de comisión y mostraba 133,4% de margen; la
+            // correcta da $2.031 y deja 109% — 24 puntos de más, para el lado peligroso.
+            // Mismo error del cargo fijo que se arregló el 25/08 en el motor de precios.
+            // Sólo si no tenemos el desglose se cae a la proporción, que es una estimación.
+            var comisionReal = r.SaleFeeAmount ?? 0m;
+            if (r.SaleFeeAmount.HasValue && precioReal != r.Price && r.Price > 0)
+            {
+                comisionReal = r.SaleFeePercentageFee is > 0
+                    ? Math.Round(precioReal * (r.SaleFeePercentageFee.Value / 100m) + (r.SaleFeeFixedFee ?? 0m), 2)
+                    : Math.Round(r.SaleFeeAmount.Value / r.Price * precioReal, 2);
+            }
+
+            var seLlevaMeli = comisionReal + (r.SaleFeeShippingCost ?? 0m);
+            decimal? comPct = (r.SaleFeeAmount.HasValue && precioReal > 0)
+                ? Math.Round(seLlevaMeli / precioReal * 100m, 1) : null;
 
             // Lo que REALMENTE queda: se descuenta lo que se lleva MeLi (comisión + envío) y el IVA.
             // Se muestran las dos cosas juntas — el % sobre el costo y la plata — porque el %
@@ -367,24 +387,9 @@ public class MeliPublicacionesV2Service
             // número verde y tranquilizador calculado COMO SI MELI NO COBRARA NADA.
             // Caso real: MLA1683493719 mostraba 80,3% cuando su hermana, con la comisión ya
             // cargada, daba 25,4%. Ahora se devuelve vacío y la pantalla dice qué falta.
-            // 2026-08-31 — SI ESTÁ EN PROMOCIÓN, LA CUENTA VA CON EL PRECIO DE LA PROMOCIÓN.
-            // `Price` es el precio de lista; si la publicación entró a una campaña el comprador
-            // paga menos, y calcular el margen sobre el precio de lista lo infla — que es el lado
-            // peligroso del error. Caso real del 31/08: el azúcar MLA2048049400 figuraba a
-            // $23.998,99 y se vendía a $17.999,24 por "CYBER FEST 09.09".
-            //
-            // La comisión guardada se capturó al precio de lista, así que se la escala: MeLi cobra
-            // un porcentaje del precio, y ese porcentaje no cambia. El envío NO se escala — cuesta
-            // lo mismo la caja, valga lo que valga adentro.
-            var precioReal = (r.PromoPrecio is > 0 && r.PromoPrecio < r.Price) ? r.PromoPrecio.Value : r.Price;
-
             decimal? neto = null, ganancia = null, margen = null;
             if (r.Price > 0 && r.SaleFeeAmount.HasValue)
             {
-                var comisionReal = r.SaleFeeAmount.Value;
-                if (precioReal != r.Price)
-                    comisionReal = Math.Round(r.SaleFeeAmount.Value / r.Price * precioReal, 2);
-
                 neto = Math.Round((precioReal - comisionReal - (r.SaleFeeShippingCost ?? 0m)) / IVA, 2);
                 if (costo is > 0)
                 {
