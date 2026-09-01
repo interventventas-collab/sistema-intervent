@@ -46,22 +46,26 @@
             </div>
         }
 
-        @* En el celular, lo que ya cargaste va arriba de todo: en una pantalla chica, si no,
-           hay que scrollear hasta abajo para acordarse qué llevaba el pedido. *@
+        @* 2026-09-01: en el celular, arriba va un RESUMEN de lo cargado — texto, sin casilleros.
+           Antes eran dos listas ("lo que va" / "agregar") y las filas SALTABAN de una a otra al
+           pasar de 0: el casillero que tenías abajo del dedo pasaba a ser el de otro equipo y
+           terminabas cargándole la cantidad al que no era. La lista de abajo ahora NO se mueve nunca. *@
         @if (Movil && Elegidos().Count > 0)
         {
-            <div class="cotalq-sec">Lo que va</div>
-            <div class="cotalq-lista">
+            <div class="cotalq-resumen">
+                <div class="cotalq-resumen-t">Lo que va</div>
                 @foreach (var eq in Elegidos())
                 {
-                    @FilaEquipo(eq)
+                    <div class="cotalq-resumen-l">
+                        <span>@CantDe(eq.Id) × @eq.Nombre</span>
+                        <b>@Plata(eq.PrecioDiario * CantDe(eq.Id))</b>
+                    </div>
                 }
             </div>
-            <div class="cotalq-sec">Agregar</div>
         }
 
         <div class="cotalq-lista">
-            @foreach (var eq in (Movil ? NoElegidos() : Visibles()))
+            @foreach (var eq in Visibles())
             {
                 @FilaEquipo(eq)
             }
@@ -152,6 +156,14 @@
     .cotalq-btn-main:disabled { background: #cbd5e1; cursor: default; }
     .cotalq-btn-limpiar { display: block; width: 100%; background: none; border: none; color: #94a3b8;
         font-size: 0.75rem; cursor: pointer; padding: 0.25rem; margin-top: 0.3rem; font-family: inherit; }
+
+    .cotalq-resumen { border: 1px solid #a7f3d0; background: #f0fdf4; border-radius: 9px;
+        padding: 0.5rem 0.6rem; margin-bottom: 0.6rem; }
+    .cotalq-resumen-t { font-size: 0.72rem; font-weight: 700; color: #047857; text-transform: uppercase;
+        letter-spacing: 0.03em; margin-bottom: 0.25rem; }
+    .cotalq-resumen-l { display: flex; justify-content: space-between; align-items: baseline;
+        gap: 0.5rem; font-size: 0.85rem; color: #334155; padding: 0.1rem 0; }
+    .cotalq-resumen-l b { color: #047857; white-space: nowrap; }
 
     /* ── Modo celular: para el dedo, no para el mouse ── */
     .cotalq-movil { font-size: 0.9rem; }
@@ -291,11 +303,8 @@
     /// <summary>Lo que ya tiene cantidad puesta (en el celu va arriba de todo).</summary>
     private List<AlqEquipoDto> Elegidos() => Visibles().Where(e => CantDe(e.Id) > 0).ToList();
 
-    /// <summary>Lo que todavía no se cargó (en el celu va abajo, para agregar).</summary>
-    private List<AlqEquipoDto> NoElegidos() => Visibles().Where(e => CantDe(e.Id) == 0).ToList();
-
     /// <summary>Una fila de la lista. Está definida UNA vez y la usan las dos listas del celular.</summary>
-    private RenderFragment FilaEquipo(AlqEquipoDto eq) => @<div class="cotalq-fila @(CantDe(eq.Id) > 0 ? "puesto" : "")">
+    private RenderFragment FilaEquipo(AlqEquipoDto eq) => @<div @key="eq.Id" class="cotalq-fila @(CantDe(eq.Id) > 0 ? "puesto" : "")">
         <div class="cotalq-fila-n">
             <span class="cotalq-nom">@eq.Nombre</span>
             <span class="cotalq-pre">
