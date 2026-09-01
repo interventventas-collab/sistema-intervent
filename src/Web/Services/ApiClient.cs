@@ -2579,6 +2579,17 @@ public class ApiClient
     public async Task<CafeListaPreciosPreviewDto?> GetCafeListaPreciosPreviewAsync(CafeListaPreciosFiltroRequest req)
         => await PostAsync<CafeListaPreciosPreviewDto>("/api/cafe/listas-precios/preview", req);
 
+    // --- Cafe: Control de precios de packs (2026-09-01) ---
+    public async Task<List<PackControlDto>?> ListarPacksControlAsync()
+        => await GetAsync<List<PackControlDto>>("/api/cafe/packs-control");
+
+    public async Task<bool> ActualizarPrecioPackAsync(int packId, decimal? precioAMano, bool seguirAlProducto)
+    {
+        var r = await PutAsync<object>($"/api/cafe/packs-control/{packId}",
+            new { precioAMano, seguirAlProducto });
+        return r is not null;
+    }
+
     // --- Cafe: Listas de precios personalizadas (Fase 1) ---
     public async Task<List<ListaCustomDto>?> ListarListasCustomAsync()
         => await GetAsync<List<ListaCustomDto>>("/api/cafe/listas-custom");

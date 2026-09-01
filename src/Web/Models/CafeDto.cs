@@ -2034,6 +2034,31 @@ public class VentaOcasionalSaldoDto
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Control de precios de packs (2026-09-01)
+// Un pack puede tener precio escrito a mano, que NO sigue al del producto.
+// Esta pantalla compara los dos para encontrar los que quedaron viejos.
+// ─────────────────────────────────────────────────────────────────────
+public class PackControlDto
+{
+    public int PackId { get; set; }
+    public int ProductoId { get; set; }
+    public string? Sku { get; set; }
+    public string ProductoNombre { get; set; } = "";
+    public string? Marca { get; set; }
+    public int Cantidad { get; set; }
+    public string PackNombre { get; set; } = "";
+    /// <summary>Precio escrito a mano. null = el pack sigue al producto.</summary>
+    public decimal? PrecioAMano { get; set; }
+    public decimal? PrecioUnitario { get; set; }
+    /// <summary>PrecioUnitario x Cantidad — lo que costaria si siguiera al producto.</summary>
+    public decimal? PrecioCalculado { get; set; }
+    /// <summary>Negativo = el pack se vende MAS BARATO que la suma de sus unidades.</summary>
+    public decimal? DesvioPct { get; set; }
+
+    public bool SigueAlProducto => !PrecioAMano.HasValue;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Listas de precios personalizadas (Fase 1 - 2026-06-09)
 // ─────────────────────────────────────────────────────────────────────
 public class ListaCustomDto

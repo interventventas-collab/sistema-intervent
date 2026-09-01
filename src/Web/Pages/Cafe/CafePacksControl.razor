@@ -1,0 +1,248 @@
+@page "/cafe/packs-control"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* 2026-09-01 — Control de precios de packs.
+   Un pack puede tener precio escrito a mano, que NO sigue al del producto. Cuando sube el
+   producto, esos packs quedan con el precio viejo y se sigue vendiendo por debajo sin que
+   nadie se entere. Esta pantalla los pone a todos juntos, ordenados por cuanto se separaron. *@
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3>📦 Precios de packs</h3>
+        <button class="btn btn-secondary" @onclick="Load" disabled="@cargando">@(cargando ? "Cargando..." : "Refrescar")</button>
+    </div>
+    <div class="card-body">
+        <p style="color:#6b7280; font-size:0.9rem; margin-top:0;">
+            Cada pack puede tener un <b>precio propio</b>, escrito a mano, que no sigue al del producto.
+            Acá ves ese precio al lado de <b>lo que costaría si siguiera al producto</b>, para encontrar
+            los que quedaron viejos después de un aumento.
+            Un pack más barato que sus unidades sueltas puede ser a propósito (descuento por cantidad):
+            <b>vos decidís cuál corregir</b>.
+        </p>
+
+        @if (cargando && items is null)
+        {
+            <p style="color:#6b7280;">Cargando...</p>
+        }
+        else if (items is null)
+        {
+            <p style="color:#b91c1c;">No pude traer los packs. Probá con Refrescar.</p>
+        }
+        else
+        {
+            <div style="font-size:0.88rem; color:#374151; margin-bottom:0.7rem;">
+                @items.Count packs ·
+                @items.Count(x => !x.SigueAlProducto) con precio a mano ·
+                @items.Count(x => x.SigueAlProducto) siguen al producto ·
+                <b style="color:@(CuantosAlarma > 0 ? "#b91c1c" : "#374151")">@CuantosAlarma</b>
+                más de @UMBRAL% por debajo
+            </div>
+
+            <div style="display:flex; gap:0.8rem; align-items:center; flex-wrap:wrap; margin-bottom:0.8rem;">
+                <input class="form-input" style="max-width:280px;" placeholder="🔍 Código, producto o marca..."
+                       @bind="busqueda" @bind:event="oninput" />
+                <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.85rem; cursor:pointer; user-select:none;">
+                    <input type="checkbox" @bind="soloDesviados" />
+                    Sólo los que están por debajo del producto
+                </label>
+            </div>
+
+            @if (Filtrados.Count == 0)
+            {
+                <p style="color:#6b7280;">No hay packs que coincidan.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="data-table" style="font-size:0.9rem;">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Producto</th>
+                                <th style="text-align:right;">Cant.</th>
+                                <th style="text-align:right;">Precio a mano</th>
+                                <th style="text-align:right;">Si siguiera al producto</th>
+                                <th style="text-align:right;">Diferencia</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var it in Filtrados)
+                        {
+                            var editando = editandoPackId == it.PackId;
+                            <tr>
+                                <td style="font-family:monospace; white-space:nowrap;">@(it.Sku ?? "—")</td>
+                                <td>
+                                    @it.ProductoNombre
+                                    <div style="font-size:0.75rem; color:#6b7280;">
+                                        @it.PackNombre@(string.IsNullOrEmpty(it.Marca) ? "" : $" · {it.Marca}")
+                                    </div>
+                                </td>
+                                <td style="text-align:right;">@it.Cantidad</td>
+
+                                @* Precio a mano — editable en el lugar *@
+                                <td style="text-align:right; white-space:nowrap;">
+                                    @if (editando)
+                                    {
+                                        <input class="form-input" type="number" step="0.01" min="0"
+                                               style="width:120px; text-align:right; display:inline-block;"
+                                               @bind="precioEditado" @bind:event="oninput" />
+                                    }
+                                    else if (it.PrecioAMano.HasValue)
+                                    {
+                                        <span style="font-weight:600;">$@FormatMoney(it.PrecioAMano.Value)</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#6b7280;">sigue al producto</span>
+                                    }
+                                </td>
+
+                                <td style="text-align:right; white-space:nowrap; color:#6b7280;">
+                                    @(it.PrecioCalculado.HasValue ? $"${FormatMoney(it.PrecioCalculado.Value)}" : "—")
+                                </td>
+
+                                @* Diferencia — color SOLO cuando es alarma *@
+                                <td style="text-align:right; white-space:nowrap;">
+                                    @if (it.DesvioPct is decimal d)
+                                    {
+                                        var alarma = d <= -UMBRAL;
+                                        <span style="font-weight:@(alarma ? "700" : "400"); color:@(alarma ? "#b91c1c" : "#374151");">
+                                            @(d > 0 ? "+" : "")@d.ToString("0.#")%
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#9ca3af;">—</span>
+                                    }
+                                </td>
+
+                                <td style="text-align:right; white-space:nowrap;">
+                                    @if (editando)
+                                    {
+                                        <button class="btn btn-primary" style="font-size:0.75rem; padding:0.25rem 0.5rem;"
+                                                @onclick="() => GuardarPrecio(it)" disabled="@guardando">Guardar</button>
+                                        <button class="btn btn-secondary" style="font-size:0.75rem; padding:0.25rem 0.5rem;"
+                                                @onclick="CancelarEdicion" disabled="@guardando">Cancelar</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-secondary" style="font-size:0.75rem; padding:0.25rem 0.5rem;"
+                                                @onclick="() => Editar(it)" title="Escribir otro precio a mano">Cambiar</button>
+                                        @if (it.PrecioCalculado.HasValue && it.PrecioAMano != it.PrecioCalculado)
+                                        {
+                                            <button class="btn btn-secondary" style="font-size:0.75rem; padding:0.25rem 0.5rem;"
+                                                    @onclick="() => UsarCalculado(it)" disabled="@guardando"
+                                                    title="Ponerle el precio que sale de multiplicar el del producto">
+                                                Usar $@FormatMoney(it.PrecioCalculado.Value)
+                                            </button>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    // Debajo de este % por debajo del producto, la diferencia se muestra en rojo.
+    private const decimal UMBRAL = 15m;
+
+    private List<PackControlDto>? items;
+    private bool cargando;
+    private bool guardando;
+    private string busqueda = "";
+    private bool soloDesviados;
+
+    private int? editandoPackId;
+    private decimal? precioEditado;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        cargando = true;
+        editandoPackId = null;
+        try { items = await Api.ListarPacksControlAsync(); }
+        catch { items = null; }
+        cargando = false;
+    }
+
+    private int CuantosAlarma => items?.Count(x => x.DesvioPct is decimal d && d <= -UMBRAL) ?? 0;
+
+    private List<PackControlDto> Filtrados
+    {
+        get
+        {
+            if (items is null) return new();
+            IEnumerable<PackControlDto> q = items;
+
+            if (soloDesviados)
+                q = q.Where(x => x.DesvioPct is decimal d && d < 0);
+
+            var b = busqueda?.Trim();
+            if (!string.IsNullOrEmpty(b))
+                q = q.Where(x =>
+                    (x.Sku ?? "").Contains(b, StringComparison.OrdinalIgnoreCase)
+                    || x.ProductoNombre.Contains(b, StringComparison.OrdinalIgnoreCase)
+                    || (x.Marca ?? "").Contains(b, StringComparison.OrdinalIgnoreCase)
+                    || x.PackNombre.Contains(b, StringComparison.OrdinalIgnoreCase));
+
+            return q.ToList();
+        }
+    }
+
+    private void Editar(PackControlDto it)
+    {
+        editandoPackId = it.PackId;
+        precioEditado = it.PrecioAMano ?? it.PrecioCalculado;
+    }
+
+    private void CancelarEdicion()
+    {
+        editandoPackId = null;
+        precioEditado = null;
+    }
+
+    private async Task GuardarPrecio(PackControlDto it)
+    {
+        if (!precioEditado.HasValue) { ToastService.Error("Escribí un precio"); return; }
+        await Aplicar(it, precioEditado.Value);
+    }
+
+    private async Task UsarCalculado(PackControlDto it)
+    {
+        if (!it.PrecioCalculado.HasValue) return;
+        await Aplicar(it, it.PrecioCalculado.Value);
+    }
+
+    private async Task Aplicar(PackControlDto it, decimal precio)
+    {
+        guardando = true;
+        var ok = await Api.ActualizarPrecioPackAsync(it.PackId, precio, false);
+        guardando = false;
+
+        if (!ok) { ToastService.Error("No pude guardar el precio"); return; }
+
+        // Actualizamos la fila en memoria en vez de recargar todo: si recargamos, la lista se
+        // reordena por desvio y el renglon que acaba de tocar se le va a otro lado de la pantalla.
+        it.PrecioAMano = precio;
+        it.DesvioPct = it.PrecioCalculado.HasValue && it.PrecioCalculado.Value > 0
+            ? Math.Round((precio - it.PrecioCalculado.Value) * 100m / it.PrecioCalculado.Value, 1)
+            : null;
+
+        editandoPackId = null;
+        precioEditado = null;
+        ToastService.Success($"{it.Sku} {it.PackNombre}: ${FormatMoney(precio)}");
+    }
+
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+}
