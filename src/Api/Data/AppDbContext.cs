@@ -93,6 +93,9 @@ public class AppDbContext : DbContext
     public DbSet<AlqCobranzaPendiente> AlqCobranzasPendientes => Set<AlqCobranzaPendiente>();
     // 2026-08-31: precios de flete por zona, para cotizar alquileres desde la calculadora.
     public DbSet<AlqFlete> AlqFletes => Set<AlqFlete>();
+    // 2026-08-31: presupuestos de alquiler pasados por WhatsApp, pegados al telefono.
+    public DbSet<AlqCotizacion> AlqCotizaciones => Set<AlqCotizacion>();
+    public DbSet<AlqCotizacionItem> AlqCotizacionItems => Set<AlqCotizacionItem>();
     // Modulo Nominas (independiente)
     public DbSet<NomEmpleado> NomEmpleados => Set<NomEmpleado>();
     public DbSet<NomLiquidacion> NomLiquidaciones => Set<NomLiquidacion>();
