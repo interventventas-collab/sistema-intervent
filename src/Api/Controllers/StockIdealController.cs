@@ -73,12 +73,16 @@ public class StockIdealController : ControllerBase
         var prods = await CargarProductosAsync(marca, q, categoria);
 
         // Todas las marcas activas (para el combo del filtro), sin depender de los filtros actuales.
-        var marcas = await _db.CafeProductos.AsNoTracking()
+        var marcasRaw = await _db.CafeProductos.AsNoTracking()
             .Where(p => p.IsActive)
-            .Select(p => p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null))
-            .Where(m => m != null && m != "")
-            .Distinct().OrderBy(m => m)
+            .Select(p => new { p.Marca, MarcaTabla = p.MarcaNav != null ? p.MarcaNav.Nombre : null })
             .ToListAsync();
+        var marcas = marcasRaw
+            .Select(m => m.Marca ?? m.MarcaTabla)
+            .Where(m => !string.IsNullOrWhiteSpace(m))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(m => m, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         // Ultima entrada de stock, solo de los productos que vamos a mostrar.
         var ids = prods.Select(p => p.Id).ToList();
@@ -130,7 +134,10 @@ public class StockIdealController : ControllerBase
         if (!string.IsNullOrWhiteSpace(marca))
         {
             var m = marca.Trim();
-            query = query.Where(p => (p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null)) == m);
+            // Se escribe como dos condiciones (y no con ??) para que EF lo pueda pasar a SQL.
+            query = query.Where(p =>
+                (p.Marca != null && p.Marca == m) ||
+                (p.Marca == null && p.MarcaNav != null && p.MarcaNav.Nombre == m));
         }
         if (!string.IsNullOrWhiteSpace(q))
         {
@@ -138,13 +145,19 @@ public class StockIdealController : ControllerBase
             query = query.Where(p => p.Nombre.Contains(t) || (p.Sku != null && p.Sku.Contains(t)));
         }
 
-        return await query
+        // OJO: el OrderBy por marca NO va en el query. La marca sale de dos lados (el texto suelto
+        // o la tabla de marcas) y EF no sabe traducir ese "uno u otro" a SQL → tira 500.
+        var lista = await query
             .Select(p => new ProdInfo(
                 p.Id, p.Sku, p.Nombre,
                 p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null),
                 p.Categoria, p.StockUnidades, p.StockIdeal))
-            .OrderBy(p => p.Marca).ThenBy(p => p.Nombre)
             .ToListAsync();
+
+        return lista
+            .OrderBy(p => p.Marca ?? "", StringComparer.OrdinalIgnoreCase)
+            .ThenBy(p => p.Nombre, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     /// <summary>Fecha de la ultima entrada de stock de cada producto (movimientos que SUMARON
