@@ -890,12 +890,13 @@
                     @* 2026-09-02: stock ideal — cuanto queremos tener siempre. Es SOLO para armar
                        pedidos (pantalla /stock/ideal), no toca lo que ve MeLi. *@
                     <div class="form-group">
-                        <label class="form-label">📦 Stock ideal</label>
+                        <label class="form-label">📦 Stock ideal @(formCategoria == "CAFE" ? "(en kilos)" : "(en unidades)")</label>
                         <input class="form-input" type="number" step="1" min="0" placeholder="Vacío = no se controla"
                                @bind="formStockIdeal" />
                         <small style="display:block; margin-top:0.3rem; color:#6b7280; font-size:0.72rem;">
-                            Cuántas unidades querés tener siempre. Si el stock baja de acá, el producto aparece en
-                            <b>Stock ideal / Faltantes</b> para pedirle al proveedor. No cambia lo que ve MeLi.
+                            Cuánto querés tener siempre @(formCategoria == "CAFE" ? "de este café, en kilos" : "de este producto, en unidades").
+                            Si el stock baja de acá, aparece en <b>Stock ideal / Faltantes</b> para pedirle al proveedor.
+                            No cambia lo que ve MeLi.
                         </small>
                     </div>
                     <div class="form-group" style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.6rem;">

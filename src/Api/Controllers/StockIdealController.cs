@@ -32,12 +32,15 @@ public class StockIdealController : ControllerBase
 
     // ───────────────────────── DTOs ─────────────────────────
 
+    /// <summary>Una fila de la pantalla. OJO con la unidad: los productos de CAFE llevan el stock
+    /// en GRAMOS (StockUnidades siempre 0), asi que para ellos el stock y el ideal se cuentan en
+    /// KILOS. Los de OTROS van en unidades. Por eso StockActual es decimal y viaja la Unidad.</summary>
     public record StockIdealRow(
         int ProductoId, string? Codigo, string Nombre, string? Marca, string? Categoria,
-        int StockActual, int? StockIdeal, int Faltan, DateTime? UltimaEntrada);
+        decimal StockActual, int? StockIdeal, decimal Faltan, string Unidad, DateTime? UltimaEntrada);
 
     public record StockIdealListResult(
-        int Total, int ConIdeal, int Faltantes, int EnCero, int UnidadesFaltantes,
+        int Total, int ConIdeal, int Faltantes, int EnCero, decimal UnidadesFaltantes,
         List<string> Marcas, List<StockIdealRow> Filas);
 
     public record StockIdealBulkItem(int ProductoId, int? StockIdeal);
@@ -57,7 +60,16 @@ public class StockIdealController : ControllerBase
 
     // Proyeccion liviana: lo justo para armar las filas sin traer la entidad entera.
     private record ProdInfo(int Id, string? Sku, string Nombre, string? Marca, string? Categoria,
-        int StockUnidades, int? StockIdeal);
+        int StockUnidades, decimal StockGramos, int? StockIdeal);
+
+    /// <summary>El cafe se mide en kilos (viene guardado en gramos); todo lo demas, en unidades.</summary>
+    private static bool EsCafe(string? categoria)
+        => string.Equals(categoria, "CAFE", StringComparison.OrdinalIgnoreCase);
+
+    private static decimal StockDe(ProdInfo p)
+        => EsCafe(p.Categoria) ? Math.Round(p.StockGramos / 1000m, 2) : p.StockUnidades;
+
+    private static string UnidadDe(string? categoria) => EsCafe(categoria) ? "kg" : "u";
 
     // ───────────────────────── LISTA ─────────────────────────
 
@@ -89,11 +101,14 @@ public class StockIdealController : ControllerBase
         var ultimasEntradas = await UltimasEntradasAsync(ids);
 
         var filas = prods
-            .Select(p => new StockIdealRow(
-                p.Id, p.Sku, p.Nombre, p.Marca, p.Categoria,
-                p.StockUnidades, p.StockIdeal,
-                Faltante(p.StockIdeal, p.StockUnidades),
-                ultimasEntradas.TryGetValue(p.Id, out var f) ? f : null))
+            .Select(p =>
+            {
+                var stock = StockDe(p);
+                return new StockIdealRow(
+                    p.Id, p.Sku, p.Nombre, p.Marca, p.Categoria,
+                    stock, p.StockIdeal, Faltante(p.StockIdeal, stock), UnidadDe(p.Categoria),
+                    ultimasEntradas.TryGetValue(p.Id, out var f) ? f : null);
+            })
             .ToList();
 
         // Los totales se calculan SIEMPRE sobre todo lo filtrado, aunque despues mostremos
@@ -101,7 +116,7 @@ public class StockIdealController : ControllerBase
         int conIdeal = filas.Count(f => f.StockIdeal.HasValue);
         var faltantes = filas.Where(f => f.Faltan > 0).ToList();
         int enCero = faltantes.Count(f => f.StockActual <= 0);
-        int unidadesFaltantes = faltantes.Sum(f => f.Faltan);
+        decimal unidadesFaltantes = faltantes.Sum(f => f.Faltan);
 
         var visibles = soloFaltantes ? faltantes : filas;
 
@@ -119,8 +134,8 @@ public class StockIdealController : ControllerBase
     }
 
     /// <summary>Cuanto falta para llegar al ideal. Sin ideal cargado no se controla (0).</summary>
-    private static int Faltante(int? ideal, int stock)
-        => ideal.HasValue ? Math.Max(0, ideal.Value - stock) : 0;
+    private static decimal Faltante(int? ideal, decimal stock)
+        => ideal.HasValue ? Math.Max(0m, ideal.Value - stock) : 0m;
 
     private async Task<List<ProdInfo>> CargarProductosAsync(string? marca, string? q, string? categoria)
     {
@@ -151,7 +166,7 @@ public class StockIdealController : ControllerBase
             .Select(p => new ProdInfo(
                 p.Id, p.Sku, p.Nombre,
                 p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null),
-                p.Categoria, p.StockUnidades, p.StockIdeal))
+                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal))
             .ToListAsync();
 
         return lista
@@ -213,7 +228,7 @@ public class StockIdealController : ControllerBase
     {
         var prods = await CargarProductosAsync(marca, q, categoria);
         var faltantes = prods
-            .Select(p => new { P = p, Faltan = Faltante(p.StockIdeal, p.StockUnidades) })
+            .Select(p => new { P = p, Stock = StockDe(p), Faltan = Faltante(p.StockIdeal, StockDe(p)) })
             .Where(x => x.Faltan > 0)
             .OrderBy(x => x.P.Marca).ThenBy(x => x.P.Nombre)
             .ToList();
@@ -229,7 +244,7 @@ public class StockIdealController : ControllerBase
             + (string.IsNullOrWhiteSpace(marca) ? "" : $" · Marca: {marca}");
         ws.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#6b7280");
 
-        var headers = new[] { "codigo", "producto", "marca", "stock actual", "stock ideal", "PEDIR" };
+        var headers = new[] { "codigo", "producto", "marca", "stock actual", "stock ideal", "PEDIR", "unidad" };
         for (int i = 0; i < headers.Length; i++)
         {
             var cell = ws.Cell(4, i + 1);
@@ -239,6 +254,7 @@ public class StockIdealController : ControllerBase
             cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             cell.Style.Fill.BackgroundColor = (i == 5)
                 ? XLColor.FromHtml("#dbeafe") : XLColor.FromHtml("#e5e7eb");
+            // (la columna 'unidad' aclara si se pide en unidades o en kilos — el cafe va en kilos)
         }
 
         int r = 5;
@@ -247,13 +263,14 @@ public class StockIdealController : ControllerBase
             ws.Cell(r, 1).Value = x.P.Sku ?? "";
             ws.Cell(r, 2).Value = x.P.Nombre;
             ws.Cell(r, 3).Value = x.P.Marca ?? "";
-            ws.Cell(r, 4).Value = x.P.StockUnidades;
+            ws.Cell(r, 4).Value = x.Stock;
             ws.Cell(r, 5).Value = x.P.StockIdeal ?? 0;
             ws.Cell(r, 6).Value = x.Faltan;
             ws.Cell(r, 6).Style.Font.Bold = true;
             ws.Cell(r, 6).Style.Fill.BackgroundColor = XLColor.FromHtml("#eff6ff");
+            ws.Cell(r, 7).Value = UnidadDe(x.P.Categoria) == "kg" ? "kilos" : "unidades";
             // Los que estan en cero van marcados: son los urgentes.
-            if (x.P.StockUnidades <= 0)
+            if (x.Stock <= 0)
                 ws.Cell(r, 4).Style.Font.FontColor = XLColor.FromHtml("#b91c1c");
             r++;
         }
@@ -262,9 +279,16 @@ public class StockIdealController : ControllerBase
         {
             ws.Cell(r, 5).Value = "TOTAL";
             ws.Cell(r, 5).Style.Font.Bold = true;
-            ws.Cell(r, 6).Value = faltantes.Sum(x => x.Faltan);
+            // Solo se suma si todo el pedido va en la misma unidad: sumar kilos con unidades no significa nada.
+            var unidades = faltantes.Select(x => UnidadDe(x.P.Categoria)).Distinct().ToList();
+            if (unidades.Count == 1)
+            {
+                ws.Cell(r, 6).Value = faltantes.Sum(x => x.Faltan);
+                ws.Cell(r, 7).Value = unidades[0] == "kg" ? "kilos" : "unidades";
+            }
+            else ws.Cell(r, 6).Value = "—";
             ws.Cell(r, 6).Style.Font.Bold = true;
-            ws.Range(r, 1, r, 6).Style.Border.TopBorder = XLBorderStyleValues.Thin;
+            ws.Range(r, 1, r, 7).Style.Border.TopBorder = XLBorderStyleValues.Thin;
         }
         else
         {
@@ -294,7 +318,7 @@ public class StockIdealController : ControllerBase
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Stock ideal");
 
-        var headers = new[] { "id", "codigo", "descripcion", "marca", "stock_actual", "stock_ideal" };
+        var headers = new[] { "id", "codigo", "descripcion", "marca", "stock_actual", "stock_ideal", "unidad" };
         for (int i = 0; i < headers.Length; i++)
         {
             var cell = ws.Cell(1, i + 1);
@@ -318,8 +342,10 @@ public class StockIdealController : ControllerBase
             ws.Cell(r, 2).Value = p.Sku ?? "";
             ws.Cell(r, 3).Value = p.Nombre;
             ws.Cell(r, 4).Value = p.Marca ?? "";
-            ws.Cell(r, 5).Value = p.StockUnidades;
+            ws.Cell(r, 5).Value = StockDe(p);
             if (p.StockIdeal.HasValue) ws.Cell(r, 6).Value = p.StockIdeal.Value;
+            ws.Cell(r, 7).Value = UnidadDe(p.Categoria) == "kg" ? "kilos" : "unidades";
+            ws.Cell(r, 7).Style.Fill.BackgroundColor = XLColor.FromHtml("#f9fafb");
             for (int c = 1; c <= 5; c++) ws.Cell(r, c).Style.Fill.BackgroundColor = XLColor.FromHtml("#f9fafb");
             r++;
         }
@@ -339,6 +365,7 @@ public class StockIdealController : ControllerBase
         L("2) Poné cuantas unidades queres tener SIEMPRE de ese producto en el deposito.");
         L("   Ejemplo: si ponés 40 y te quedan 18, el producto aparece en Faltantes y dice 'faltan 22'.");
         L("3) Deja la celda VACIA para no controlar ese producto (no va a aparecer nunca en Faltantes).");
+        L("   Mira la columna 'unidad': el cafe se cuenta en KILOS y todo lo demas en UNIDADES.");
         L("4) NO cambies la columna 'id' (se usa para reconocer cada producto).");
         L("5) Podes borrar las filas de los productos que no queres tocar: solo se aplican los que dejes.");
         L("6) Guarda el archivo y subilo con el boton 'Subir Excel'. Antes de aplicar vas a ver una vista previa.");

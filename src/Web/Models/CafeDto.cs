@@ -1729,9 +1729,12 @@ public class StockIdealRowDto
     public string Nombre { get; set; } = "";
     public string? Marca { get; set; }
     public string? Categoria { get; set; }
-    public int StockActual { get; set; }
+    /// <summary>Ojo: el café se cuenta en KILOS (viene guardado en gramos) y el resto en unidades.
+    /// Por eso es decimal y viaja la Unidad ("u" o "kg").</summary>
+    public decimal StockActual { get; set; }
     public int? StockIdeal { get; set; }
-    public int Faltan { get; set; }
+    public decimal Faltan { get; set; }
+    public string Unidad { get; set; } = "u";
     public DateTime? UltimaEntrada { get; set; }
 }
 
@@ -1741,7 +1744,7 @@ public class StockIdealListResultDto
     public int ConIdeal { get; set; }
     public int Faltantes { get; set; }
     public int EnCero { get; set; }
-    public int UnidadesFaltantes { get; set; }
+    public decimal UnidadesFaltantes { get; set; }
     public List<string> Marcas { get; set; } = new();
     public List<StockIdealRowDto> Filas { get; set; } = new();
 }

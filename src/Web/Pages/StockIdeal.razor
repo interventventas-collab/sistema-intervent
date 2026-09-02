@@ -90,7 +90,7 @@
             {
                 <span>
                     <strong>@resumen.Faltantes</strong> productos abajo del ideal ·
-                    faltan <strong>@resumen.UnidadesFaltantes.ToString("N0", CultureInfo.GetCultureInfo("es-AR")) unidades</strong> en total
+                    faltan <strong>@Num(resumen.UnidadesFaltantes)</strong> en total (entre unidades y kilos)
                     @if (resumen.EnCero > 0)
                     {
                         <span style="color:#b91c1c;"> · @resumen.EnCero en cero</span>
@@ -125,6 +125,7 @@
                                 <th style="text-align:right;">Tenés</th>
                                 <th style="text-align:right;">Ideal</th>
                                 <th style="text-align:right;">Faltan</th>
+                                <th></th>
                                 <th>Última entrada</th>
                             </tr>
                         </thead>
@@ -135,9 +136,10 @@
                                     <td><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
                                     <td>@f.Nombre</td>
                                     <td>@(f.Marca ?? "—")</td>
-                                    <td style="text-align:right; @(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@f.StockActual</td>
+                                    <td style="text-align:right; @(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockActual)</td>
                                     <td style="text-align:right; color:#6b7280;">@(f.StockIdeal?.ToString() ?? "—")</td>
-                                    <td style="text-align:right; font-weight:700; color:#b91c1c;">@f.Faltan</td>
+                                    <td style="text-align:right; font-weight:700; color:#b91c1c;">@Num(f.Faltan)</td>
+                                    <td class="text-muted" style="font-size:0.78rem;">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
                                     <td class="text-muted">@FechaCorta(f.UltimaEntrada)</td>
                                 </tr>
                             }
@@ -151,8 +153,9 @@
             @* ===== Solapa Configurar ===== *@
             <div style="padding:0.8rem 1rem; border-bottom:1px solid #e5e7eb; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                 <span class="text-muted" style="font-size:0.82rem; flex:1; min-width:240px;">
-                    Escribí cuántas unidades querés tener siempre de cada producto. Se guarda solo al salir del casillero.
-                    Dejalo vacío para no controlar ese producto.
+                    Escribí cuánto querés tener siempre de cada producto. Se guarda solo al salir del casillero.
+                    Dejalo vacío para no controlar ese producto. Mirá la columna de la derecha: el café va en
+                    <b>kilos</b> y el resto en <b>unidades</b>.
                 </span>
                 <button class="btn btn-secondary" @onclick="BajarExcelConfig" disabled="@bajandoConfig">
                     @(bajandoConfig ? "Generando..." : "⬇ Bajar Excel")
@@ -240,6 +243,7 @@
                                 <th>Marca</th>
                                 <th style="text-align:right;">Stock hoy</th>
                                 <th style="text-align:right;">Stock ideal</th>
+                                <th></th>
                                 <th style="width:90px;"></th>
                             </tr>
                         </thead>
@@ -251,13 +255,14 @@
                                     <td><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
                                     <td>@f.Nombre</td>
                                     <td>@(f.Marca ?? "—")</td>
-                                    <td style="text-align:right; @(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@f.StockActual</td>
+                                    <td style="text-align:right; @(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockActual)</td>
                                     <td style="text-align:right;">
                                         <input type="text" inputmode="numeric" class="si-input @(f.StockIdeal.HasValue ? "set" : "")"
                                                value="@(edits.TryGetValue(pid, out var v) ? v : (f.StockIdeal?.ToString() ?? ""))"
                                                placeholder="—"
                                                @onchange="@(e => OnIdealChange(pid, e.Value?.ToString()))" />
                                     </td>
+                                    <td class="text-muted" style="font-size:0.78rem;">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
                                     <td style="font-size:0.75rem;">
                                         @if (guardados.Contains(pid))
                                         {
@@ -389,7 +394,7 @@
             if (fila is not null)
             {
                 fila.StockIdeal = nuevo;
-                fila.Faltan = nuevo.HasValue ? Math.Max(0, nuevo.Value - fila.StockActual) : 0;
+                fila.Faltan = nuevo.HasValue ? Math.Max(0m, nuevo.Value - fila.StockActual) : 0m;
             }
             edits.Remove(productoId);
             guardados.Add(productoId);
@@ -467,6 +472,13 @@
     private void CancelarExcel()
     {
         preview = null; archivo = null; archivoBytes = null; errorExcel = null;
+    }
+
+    /// <summary>Muestra el número lindo: sin decimales si es entero, con coma si tiene kilos partidos.</summary>
+    private static string Num(decimal v)
+    {
+        var ar = CultureInfo.GetCultureInfo("es-AR");
+        return v == Math.Truncate(v) ? v.ToString("N0", ar) : v.ToString("N2", ar);
     }
 
     private static string FechaCorta(DateTime? utc)
