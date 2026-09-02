@@ -254,7 +254,9 @@ public class CafeListaPreciosPdfService
                     // AVISO IVA — fijo, visible siempre
                     col.Item().PaddingTop(8).Background(Colors.Red.Lighten4).Border(1).BorderColor(Colors.Red.Medium)
                         .Padding(6).AlignCenter()
-                        .Text("⚠ LOS PRECIOS NO INCLUYEN IVA").FontSize(10).Bold().FontColor(Colors.Red.Darken3);
+                        // 2026-09-02: sin el simbolo ⚠ — la fuente del PDF no lo tiene y salia un cuadradito
+                        // roto en las listas que se le mandan al cliente.
+                        .Text("LOS PRECIOS NO INCLUYEN IVA").FontSize(10).Bold().FontColor(Colors.Red.Darken3);
                 });
 
                 // ── FOOTER ──

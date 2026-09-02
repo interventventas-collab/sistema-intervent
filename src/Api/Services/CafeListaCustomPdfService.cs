@@ -116,6 +116,14 @@ public class CafeListaCustomPdfService
                     headerCol.Item().PaddingTop(4).PaddingBottom(2).AlignCenter()
                         .Text(inp.Lista.Nombre.ToUpperInvariant()).FontSize(24).Bold()
                         .FontColor(Colors.Grey.Medium).LetterSpacing(1f);
+
+                    // 2026-09-02: aviso de IVA, igual que en la lista de precios estandar
+                    // (CafeListaPreciosPdfService). Estas listas armadas a mano no lo traian, y
+                    // desde que la brecha bares/comerciales pasa por el IVA se presta a confusion
+                    // — sobre todo con un comercial que despues pide factura.
+                    headerCol.Item().PaddingBottom(4).AlignCenter()
+                        .Text("LOS PRECIOS NO INCLUYEN IVA").FontSize(10).Bold()
+                        .FontColor(Colors.Red.Darken3);
                 });
 
                 // ═══════════ CONTENIDO ═══════════
