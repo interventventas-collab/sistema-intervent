@@ -4314,16 +4314,17 @@
     private RutaOverviewDto? RutaDe(string key) => rutasResumen.FirstOrDefault(r => r.Key == key);
 
     // ══════════ 2026-09-02: "última entrega" y "🏁 terminó" de cada chofer ══════════
-    // Un chofer TERMINÓ cuando entregó TODAS sus paradas, sin excepción (los Flex incluidos).
-    // Si le queda una sola sin entregar, NO terminó: por eso además mostramos cuántas le faltan,
-    // así se entiende POR QUÉ no dice "terminó" (el caso típico: un Flex que MercadoLibre todavía
-    // no confirmó lo deja en "falta 1" toda la noche).
-    // La HORA que se muestra es siempre la de su entrega MÁS RECIENTE — sirva o no para el
-    // "terminó", el usuario quiere saber por dónde anda cada uno.
+    // Un chofer TERMINÓ cuando no le queda ninguna parada PENDIENTE. Pendiente = ni entregada ni
+    // "cerrada sin entregar" (cancelada, no la encontró, o MercadoLibre avisó que el envío no se
+    // entregó y vuelve al remitente). Antes exigíamos que TODAS estuvieran entregadas y una sola
+    // cancelada lo dejaba en "falta 1" toda la noche, aunque ya no hubiera nada que hacer.
+    // Los números siguen diciendo la verdad: una cancelada NO se suma a las entregas.
+    // La HORA que se muestra es siempre la de su entrega MÁS RECIENTE (una real, no una cancelada).
 
     /// <summary>Cómo viene el reparto de un chofer: hora de su última entrega (UTC), cuántas le
-    /// faltan, cuántas tiene en total y en qué parada fue esa última entrega (ahí va la 🏁).</summary>
-    private sealed record FinChofer(DateTime? UltimaEntregaUtc, int Pendientes, int Total, int? UltimaStopId);
+    /// faltan, cuántas tiene en total, en qué parada fue esa última entrega (ahí va la 🏁) y
+    /// cuántas quedaron cerradas SIN llegar al cliente.</summary>
+    private sealed record FinChofer(DateTime? UltimaEntregaUtc, int Pendientes, int Total, int? UltimaStopId, int SinEntregar);
 
     /// <summary>¿Esta parada está entregada? La confirma MercadoLibre (Flex/ME1), la marcaron a mano
     /// desde el reparto, o tiene hora de entrega registrada.</summary>
@@ -4331,6 +4332,29 @@
         => string.Equals(st.MeliStatus, "delivered", StringComparison.OrdinalIgnoreCase)
         || string.Equals(st.InternalStatus, "entregado", StringComparison.OrdinalIgnoreCase)
         || st.DateDelivered.HasValue;
+
+    /// <summary>Estados FINALES de MercadoLibre que quieren decir "este paquete ya no le llega al
+    /// cliente": no se entregó, vuelve al remitente, o el envío se canceló.</summary>
+    private static readonly string[] MeliEstadosNoEntregado = { "not_delivered", "returning_to_sender", "cancelled" };
+
+    /// <summary>¿Esta parada está CERRADA SIN ENTREGAR? Ya no hay nada más que hacer hoy con ella,
+    /// pero nunca llegó al cliente: la marcaron a mano en el mapa (cancelada / no la encontró) o
+    /// MercadoLibre avisó que el envío no se entregó. Una entregada NUNCA cuenta acá.</summary>
+    private static bool ParadaCerradaSinEntregar(MapeoStopDto st)
+        => !ParadaEntregada(st)
+        && (string.Equals(st.InternalStatus, "cancelado", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(st.InternalStatus, "no_encontrado", StringComparison.OrdinalIgnoreCase)
+            || MeliEstadosNoEntregado.Any(x => string.Equals(x, st.MeliStatus, StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>Lo mismo, pero para un envío de MercadoLibre que todavía NO se importó como parada
+    /// (los pines del Flex crudo). Así la ✗ del mapa significa lo mismo en los dos tipos de pin.</summary>
+    private static bool EnvioCerradoSinEntregar(MeliShipmentDto s)
+    {
+        var k = EffectiveKey(s);
+        if (k == "entregado") return false;
+        return k is "cancelled" or "cancelado" or "no_encontrado"
+            || MeliEstadosNoEntregado.Any(x => string.Equals(x, s.Status, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>Resumen por chofer (solo los que tienen paradas asignadas). Las zonas SIN chofer
     /// no entran acá: son zonas, no personas.</summary>
@@ -4340,15 +4364,20 @@
         foreach (var g in (stops ?? new()).Where(s => s.AssignedDriverId.HasValue)
                                           .GroupBy(s => s.AssignedDriverId!.Value))
         {
+            // La 🏁 y la hora salen de una entrega REAL: las cerradas sin entregar no tienen hora
+            // de entrega registrada, así que nunca ganan este orden.
             var ult = g.Where(s => s.DateDelivered.HasValue)
                        .OrderByDescending(s => s.DateDelivered!.Value)
                        .FirstOrDefault();
-            res[g.Key] = new FinChofer(ult?.DateDelivered, g.Count(s => !ParadaEntregada(s)), g.Count(), ult?.Id);
+            var sinEntregar = g.Count(ParadaCerradaSinEntregar);
+            var pendientes = g.Count(s => !ParadaEntregada(s) && !ParadaCerradaSinEntregar(s));
+            res[g.Key] = new FinChofer(ult?.DateDelivered, pendientes, g.Count(), ult?.Id, sinEntregar);
         }
         return res;
     }
 
-    /// <summary>El renglón de texto del dock: "última entrega 18:57 · faltan 3" o "🏁 terminó 18:57".</summary>
+    /// <summary>El renglón de texto del dock: "última entrega 18:57 · faltan 3" o "🏁 terminó 18:57".
+    /// El "· N sin entregar" NO va acá: se agrega aparte para poder pintarlo en rojo.</summary>
     private static string TextoFinChofer(FinChofer f)
     {
         // La hora viene en UTC: se muestra SIEMPRE en hora argentina.
@@ -4360,15 +4389,26 @@
 
     /// <summary>Texto de ayuda del renglón (se ve al pasar el mouse).</summary>
     private static string TituloFinChofer(FinChofer f)
-        => f.Pendientes == 0
-            ? $"Terminó el recorrido: entregó las {f.Total} paradas. La hora es la de su última entrega."
-            : $"Le faltan {f.Pendientes} de {f.Total} paradas por entregar (los Flex cuentan: si MercadoLibre todavía no confirmó uno, sigue contando como pendiente). La hora es la de su última entrega.";
+    {
+        var cola = f.SinEntregar == 0
+            ? ""
+            : f.SinEntregar == 1
+                ? " Hay 1 parada que quedó cerrada SIN entregar (cancelada, no la encontró, o MercadoLibre avisó que el envío no se entregó): cuenta como terminada, pero no como entrega."
+                : $" Hay {f.SinEntregar} paradas que quedaron cerradas SIN entregar (canceladas, no las encontró, o MercadoLibre avisó que el envío no se entregó): cuentan como terminadas, pero no como entregas.";
+        return f.Pendientes == 0
+            ? $"Terminó el recorrido: no le queda ninguna parada pendiente de las {f.Total} que tenía. La hora es la de su última entrega.{cola}"
+            : $"Le faltan {f.Pendientes} de {f.Total} paradas por entregar (los Flex cuentan: si MercadoLibre todavía no confirmó uno, sigue contando como pendiente). La hora es la de su última entrega.{cola}";
+    }
 
-    /// <summary>Renglón "última entrega 18:57 · faltan 3" (o "🏁 terminó 18:57") de la tarjeta del
-    /// chofer en el dock. Texto plano, sin cajita ni color: es información, no una alarma.</summary>
+    /// <summary>Renglón "última entrega 18:57 · faltan 3" (o "🏁 terminó 18:57 · 1 sin entregar") de
+    /// la tarjeta del chofer en el dock. Texto plano, sin cajita. Lo único con color es el
+    /// "sin entregar": una entrega que no se hizo SÍ es una alarma.</summary>
     private RenderFragment RenglonFinChofer(FinChofer f) => @<div
         style="font-size:0.66rem; font-weight:700; color:#fff; opacity:0.9; white-space:nowrap; text-align:center; line-height:1.2;"
-        title="@TituloFinChofer(f)">@TextoFinChofer(f)</div>;
+        title="@TituloFinChofer(f)"><span>@TextoFinChofer(f)</span>@if (f.Pendientes == 0 && f.SinEntregar > 0)
+        {
+            <span style="color:#fecaca;"> · @(f.SinEntregar == 1 ? "1 sin entregar" : $"{f.SinEntregar} sin entregar")</span>
+        }</div>;
 
     /// <summary>Renglón "⏱ 4h 26min · 80,0 km" que va DENTRO de la tarjeta de color. Si la ruta tiene
     /// tramos, se puede tocar para desplegar el detalle parada por parada.</summary>
@@ -5181,6 +5221,9 @@
                     dimmed = false,
                     inRoute = enRuta,
                     delivered = entregadaFlex,
+                    // ✗ roja: el envío quedó cerrado sin llegar al cliente (cancelado, no entregado
+                    // o volviendo al remitente).
+                    failed = EnvioCerradoSinEntregar(s),
                     popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(esMe1 ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em>{horaEntregaFlexHtml}<div class='mapeo-vinfo' data-ship='{s.MeliShipmentId}'></div><button onclick=\"window.mapeoActions.toggleRoute({s.Id}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBg}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxt}</button></div>"
                 };
             }));
@@ -5261,6 +5304,9 @@
                 var entregadaStop = string.Equals(st.MeliStatus, "delivered", StringComparison.OrdinalIgnoreCase)
                                     || string.Equals(st.InternalStatus, "entregado", StringComparison.OrdinalIgnoreCase)
                                     || st.DateDelivered.HasValue;
+                // Cerrada SIN entregar (cancelada, no la encontró, o MercadoLibre avisó que el envío
+                // no se entregó / vuelve al remitente): el pin lleva una ✗ roja en vez del tilde.
+                var falladaStop = ParadaCerradaSinEntregar(st);
                 // Cartelito verde dentro del globito: "✔ Entregado" + la hora si la conocemos.
                 var horaEntregaStopHtml = entregadaStop
                     ? $"<div style='margin-top:0.35rem; color:#15803d; font-weight:700; font-size:0.72rem;'>✔ Entregado{(st.DateDelivered.HasValue ? " · 🕒 " + st.DateDelivered.Value.ToArTime().ToString("dd/MM 'a las' HH:mm") + " hs" : "")}</div>"
@@ -5294,6 +5340,7 @@
                     tag,
                     inRoute = enRutaSt,
                     delivered = entregadaStop,
+                    failed = falladaStop,
                     // Candado: si la parada está desbloqueada, su pin se puede arrastrar para ajustar la ubicación.
                     draggable = paradasDesbloqueadas.Contains(st.Id),
                     stopId = st.Id,

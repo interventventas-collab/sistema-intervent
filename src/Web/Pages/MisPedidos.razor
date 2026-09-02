@@ -176,9 +176,12 @@
         </div>
 
         @* ─── 2026-09-02: ¿terminó su recorrido? — es lo primero que mira el repartidor ───
-           "Terminó" = TODAS las paradas del mapa que le asignaron están entregadas, sin excepción
-           (los Flex también). Si le queda una sola, no terminó.
-           "Hora de fin" y "última entrega" son lo mismo: la hora de su entrega más reciente.
+           "Terminó" = ninguna parada del mapa le quedó pendiente. Pendiente = ni entregada ni
+           cerrada sin entregar (cancelada, no encontró a nadie, MeLi la dio por no entregada,
+           venta anulada). Con esas ya no hay nada que hacer hoy, así que no lo dejan "en ruta"
+           para siempre — pero tampoco son entregas: se cuentan aparte.
+           "Hora de fin" y "última entrega" son lo mismo: la hora de su entrega más reciente; si
+           no entregó nada en todo el día no hay hora que mostrar y el cartel va sin ella.
            Texto plano con · como separador: acá no hay nada que alarmar, es una buena noticia. *@
         @if (ParadasTotal > 0)
         {
@@ -189,7 +192,14 @@
                         🏁 Terminaste tu recorrido@(UltimaEntregaUtc is { } finAt ? " " + HoraEntregaFrase(finAt) : "")
                     </div>
                     <div style="font-size:0.78rem; color:#6b7280;">
-                        @ParadasTotal parada@(ParadasTotal == 1 ? "" : "s") · todas entregadas
+                        @if (ParadasSinEntregar > 0)
+                        {
+                            <text>@ParadasTotal parada@(ParadasTotal == 1 ? "" : "s") · @ParadasEntregadas entregada@(ParadasEntregadas == 1 ? "" : "s") · @ParadasSinEntregar sin entregar</text>
+                        }
+                        else
+                        {
+                            <text>@ParadasTotal parada@(ParadasTotal == 1 ? "" : "s") · todas entregadas</text>
+                        }
                     </div>
                 }
                 else
@@ -203,6 +213,11 @@
                         <span style="font-weight:800;">te falta@(ParadasFaltan == 1 ? "" : "n") @ParadasFaltan</span>
                         <span style="color:#9ca3af;">&nbsp;·&nbsp;</span>
                         <span style="color:#6b7280;">@ParadasEntregadas de @ParadasTotal listas</span>
+                        @if (ParadasSinEntregar > 0)
+                        {
+                            <span style="color:#9ca3af;">&nbsp;·&nbsp;</span>
+                            <span style="color:#6b7280;">@ParadasSinEntregar sin entregar</span>
+                        }
                     </div>
                     @if (FaltanEnviosDeMeli)
                     {
@@ -374,7 +389,10 @@
                 // tarjeta muda: dirección y cómo llegar. Antes solo salían las Flex/manuales y encima
                 // escondidas atrás del botón "Ver Flex" — una ruta sin Flex quedaba invisible en el celu.
                 // Los Flex siguen atrás del botón porque son muchos y se cierran en la app de MeLi.
-                else if (!st.Entregado && (st.Origin != "flex" || verFlex)) { entradas.Add((orden, "flex", null, null, null, st)); }
+                @* 2026-09-02: las cerradas sin entregar (canceladas, "no encontró", o que MercadoLibre
+                   dio por no entregadas) tampoco se listan: ya no hay nada que hacer con ellas, y si
+                   arriba dice "terminaste" no puede quedar una tarjeta pidiendo que la entregue. *@
+                else if (!st.Entregado && !st.NoEntregada && (st.Origin != "flex" || verFlex)) { entradas.Add((orden, "flex", null, null, null, st)); }
             }
             entradas = entradas.OrderBy(e => e.orden).ToList();
 
@@ -1048,16 +1066,23 @@
 
     // ─── 2026-09-02: "¿ya terminé?" y "¿a qué hora entregué lo último?" ───
     // La fuente de verdad son las paradas del MAPA (mapeoRuta): son las que le asignaron.
-    // Terminó SOLO si TODAS están entregadas, sin excepción (Flex incluidos). Si le queda una, no.
     // Ojo: `Entregado` de la parada ya vale para todos los orígenes (lo calcula MapeoEntregasService).
+    //
+    // Una parada puede cerrarse SIN llegar al cliente (`NoEntregada`): la cancelaron, no encontró
+    // a nadie, MeLi avisó que el envío no se entregó, o se anuló la venta. Con esas ya no hay nada
+    // que hacer hoy, así que NO son pendientes — antes dejaban el cartel en "te falta 1" para
+    // siempre. Pero tampoco son entregas: van contadas aparte y nunca suman a las entregadas.
+    // (El servidor garantiza que una parada nunca viene con Entregado y NoEntregada a la vez;
+    //  igual lo chequeamos por las dudas, así los tres números siempre cierran con el total.)
     private int ParadasTotal => mapeoRuta.Count;
     private int ParadasEntregadas => mapeoRuta.Count(s => s.Entregado);
-    private int ParadasFaltan => ParadasTotal - ParadasEntregadas;
+    private int ParadasSinEntregar => mapeoRuta.Count(s => !s.Entregado && s.NoEntregada);
+    private int ParadasFaltan => ParadasTotal - ParadasEntregadas - ParadasSinEntregar;
     private bool TerminoRecorrido => ParadasTotal > 0 && ParadasFaltan == 0;
 
     // ¿Entre lo que le falta hay envíos de MercadoLibre? Sirve para explicarle por qué sigue
     // figurando pendiente algo que él ya entregó: MeLi tarda en confirmarlo.
-    private bool FaltanEnviosDeMeli => mapeoRuta.Any(s => !s.Entregado && (s.Origin == "flex" || s.Origin == "me1"));
+    private bool FaltanEnviosDeMeli => mapeoRuta.Any(s => !s.Entregado && !s.NoEntregada && (s.Origin == "flex" || s.Origin == "me1"));
 
     /// <summary>Hora (en UTC, como viene de la API) de su entrega más reciente. null = todavía no entregó nada.</summary>
     private DateTime? UltimaEntregaUtc

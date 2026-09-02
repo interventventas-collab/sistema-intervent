@@ -106,11 +106,20 @@
               `<text x="38" y="10.5" text-anchor="middle" font-size="9" font-weight="800" fill="#ffffff" font-family="Inter,Arial,sans-serif">+${extras}</text>`
             : '';
 
-        // Tilde verde ✓ arriba a la izquierda cuando MeLi confirmó la entrega.
+        // Arriba a la izquierda del pin va UN solo sello, nunca los dos:
+        //   ✓ verde  = entregado (lo confirmó MeLi o lo marcaron a mano).
+        //   ✗ roja   = "cerrada sin entregar": cancelada, no la encontró, o MercadoLibre avisó que
+        //              el envío no se entregó / vuelve al remitente. Ya no hay nada que hacer, pero
+        //              NUNCA llegó al cliente — por eso va en rojo.
+        // Si en el mismo domicilio hay una entregada y una cancelada, gana el tilde.
         const delivered = group.some(x => x.delivered === true);
+        const failed = !delivered && group.some(x => x.failed === true);
         const check = delivered
             ? `<circle cx="10" cy="8" r="8.5" fill="#16a34a" stroke="#ffffff" stroke-width="2"/>` +
               `<path d="M5.8 8.2 L8.6 11 L14 5.4" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
+            : failed
+            ? `<circle cx="10" cy="8" r="8.5" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>` +
+              `<path d="M6.9 4.9 L13.1 11.1 M13.1 4.9 L6.9 11.1" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
             : '';
 
         // Cartelito "OJO, calle no asfaltada" abajo a la izquierda del pin: para estar atentos

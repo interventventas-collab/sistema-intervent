@@ -72,6 +72,9 @@ public class MisPedidosMapeoDto
     public long? NumeroVenta { get; set; }
     public bool Entregado { get; set; }
     public DateTime? DateDelivered { get; set; }
+    /// <summary>2026-09-02: cerrada SIN entregar (cancelada, "no encontró", o MercadoLibre avisó
+    /// que no se entregó). No es una entrega, pero tampoco le queda pendiente.</summary>
+    public bool NoEntregada { get; set; }
 }
 
 public class PublicRouteDto

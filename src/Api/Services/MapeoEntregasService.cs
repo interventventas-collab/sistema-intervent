@@ -100,4 +100,68 @@ public class MapeoEntregasService
 
         return res;
     }
+
+    /// <summary>
+    /// 2026-09-02: paradas CERRADAS SIN ENTREGAR — ya no hay nada que hacer con ellas hoy, pero
+    /// nunca llegaron al cliente. Cuentan como cerradas para decidir si el repartidor terminó su
+    /// recorrido, pero NO se suman a "entregadas": los números tienen que seguir diciendo la verdad.
+    ///
+    /// Son tres casos:
+    ///   - la marcaron a mano en el mapa como cancelada o "no encontró";
+    ///   - MercadoLibre avisó que el envío no se entregó (not_delivered / returning_to_sender) o
+    ///     que se canceló — son estados FINALES, el envío vuelve al remitente;
+    ///   - la venta se anuló.
+    /// </summary>
+    public async Task<HashSet<int>> NoEntregadasAsync(IReadOnlyCollection<MapeoStop> stops)
+    {
+        var res = new HashSet<int>();
+        if (stops.Count == 0) return res;
+
+        // --- Marcadas a mano en el mapa ---
+        foreach (var s in stops)
+            if (string.Equals(s.InternalStatus, "cancelado", StringComparison.OrdinalIgnoreCase)
+             || string.Equals(s.InternalStatus, "no_encontrado", StringComparison.OrdinalIgnoreCase))
+                res.Add(s.Id);
+
+        // --- MercadoLibre avisó que no se entregó ---
+        var shipRefs = stops
+            .Where(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null)
+            .Select(s => long.TryParse(s.OriginRefId, out var v) ? v : 0L)
+            .Where(v => v != 0L).Distinct().ToList();
+        if (shipRefs.Count > 0)
+        {
+            var ships = await _db.MeliShipments
+                .Where(m => shipRefs.Contains(m.MeliShipmentId))
+                .Select(m => new { m.MeliShipmentId, m.Status })
+                .ToListAsync();
+            var cerrados = ships
+                .Where(m => m.Status != null && FinalSinEntregar.Contains(m.Status!.ToLowerInvariant()))
+                .Select(m => m.MeliShipmentId).ToHashSet();
+            foreach (var s in stops.Where(x => x.Origin is "flex" or "me1" && x.OriginRefId != null))
+                if (long.TryParse(s.OriginRefId, out var id) && cerrados.Contains(id))
+                    res.Add(s.Id);
+        }
+
+        // --- Ventas anuladas ---
+        var ventaRefs = stops
+            .Where(s => s.Origin == "venta_cafe" && s.OriginRefId != null)
+            .Select(s => int.TryParse(s.OriginRefId, out var v) ? v : 0)
+            .Where(v => v != 0).Distinct().ToList();
+        if (ventaRefs.Count > 0)
+        {
+            var anuladas = await _db.CafeVentas
+                .Where(v => ventaRefs.Contains(v.Id) && v.Estado == "anulado")
+                .Select(v => v.Id).ToListAsync();
+            var set = anuladas.ToHashSet();
+            foreach (var s in stops.Where(x => x.Origin == "venta_cafe" && x.OriginRefId != null))
+                if (int.TryParse(s.OriginRefId, out var id) && set.Contains(id))
+                    res.Add(s.Id);
+        }
+
+        return res;
+    }
+
+    /// <summary>Estados de MercadoLibre que cierran el envío sin que haya llegado al cliente.</summary>
+    private static readonly HashSet<string> FinalSinEntregar = new()
+        { "cancelled", "not_delivered", "returning_to_sender" };
 }

@@ -194,8 +194,12 @@ else
                        cada módulo por su lado: antes la tarjeta nunca decía cuánto le faltaba de
                        verdad. Sale del mismo cálculo que usa el mapa, así los dos números coinciden.
                        Debajo, por dónde anda: el último domicilio que marcó entregado y a qué hora. *@
+                    @* 2026-09-02: las paradas cerradas SIN entregar (canceladas, no encontró a nadie,
+                       MeLi las dio por no entregadas, venta anulada) también son paradas del día, así
+                       que entran en el total: si no, un repartidor con todas las paradas canceladas no
+                       mostraría la tarjeta. `RutaFaltan` ya viene descontándolas del servidor. *@
                     @{
-                        var rutaTotal = emp.RutaEntregadas + emp.RutaFaltan;
+                        var rutaTotal = emp.RutaEntregadas + emp.RutaFaltan + emp.RutaNoEntregadas;
                     }
                     @if (emp.TieneRepartidor && rutaTotal > 0)
                     {
@@ -214,6 +218,12 @@ else
                                            terminó. Antes decía solo "terminó la ruta" y había que buscar el
                                            horario en el renglón de abajo. *@
                                         <span class="dash-chip dash-chip-ok" title="Terminó toda su ruta">🏁 terminó@(string.IsNullOrWhiteSpace(emp.UltimaEntregaHora) ? "" : $" {emp.UltimaEntregaHora} hs")</span>
+                                    }
+                                    @* 2026-09-02: paradas que se cerraron sin llegar al cliente. Acá el rojo
+                                       sí corresponde: una entrega que no se hizo es algo para mirar. *@
+                                    @if (emp.RutaNoEntregadas > 0)
+                                    {
+                                        <span class="dash-chip dash-chip-bad" title="Paradas cerradas sin llegar al cliente: canceladas, no encontró a nadie, MercadoLibre las dio por no entregadas o se anuló la venta">✖ @emp.RutaNoEntregadas sin entregar</span>
                                     }
                                 </div>
                             </div>
@@ -1293,6 +1303,7 @@ else
     .dash-chip-ok     { background: #dcfce7; color: #166534; border-color: #86efac; }
     .dash-chip-blue   { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
     .dash-chip-purple { background: #f3e8ff; color: #6b21a8; border-color: #d8b4fe; }
+    .dash-chip-bad    { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
 
     /* 2026-07-04: mini gráfico de 12 meses en la card "Ventas del mes".
        Barras clickeables + tooltip flotante con desglose cotizaciones / facturas. */

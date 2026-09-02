@@ -317,6 +317,9 @@ public class DashboardController : ControllerBase
         // en el mapa (no sobre cada modulo por separado), asi los numeros de las dos pantallas
         // coinciden siempre. Y por donde va: el ultimo domicilio que marco entregado y a que hora.
         int RutaEntregadas = 0, int RutaFaltan = 0,
+        // 2026-09-02: paradas cerradas SIN entregar (canceladas, "no encontro", o MeLi aviso que no
+        // se entrego). No cuentan como entregadas ni como pendientes: ya no hay nada que hacer.
+        int RutaNoEntregadas = 0,
         string? UltimoDomicilio = null, string? UltimaEntregaHora = null,
         // Minutos desde la última entrega. Si pasa mucho tiempo, algo le pasó (se trabó, se le
         // rompió algo, se olvidó de marcar) y conviene llamarlo. -1 = todavía no entregó nada.
@@ -395,6 +398,7 @@ public class DashboardController : ControllerBase
         // faltaba de verdad. Ahora sale del mapa: entregadas, cuantas faltan, y donde estuvo por
         // ultima vez. Un MapeoDriver es el chofer del mapa; CafeRepartidorId lo ata al repartidor real.
         var rutaEntByRep = new Dictionary<int, int>();
+        var rutaNoEntByRep = new Dictionary<int, int>();
         var rutaFaltanByRep = new Dictionary<int, int>();
         var ultimoDomByRep = new Dictionary<int, string>();
         var ultimaHoraByRep = new Dictionary<int, string>();
@@ -413,11 +417,16 @@ public class DashboardController : ControllerBase
                     .Where(s => s.AssignedDriverId != null && driverIds.Contains(s.AssignedDriverId!.Value))
                     .ToListAsync();
                 var entregasPorStop = await _entregas.EntregasAsync(paradas);
+                var noEntregadas = await _entregas.NoEntregadasAsync(paradas);
                 foreach (var grupo in paradas.GroupBy(s => repPorDriver[s.AssignedDriverId!.Value]))
                 {
                     var entregadas = grupo.Where(s => entregasPorStop.TryGetValue(s.Id, out var e) && e.HasValue).ToList();
+                    // Cerradas sin entregar: no son entregas, pero tampoco le quedan pendientes.
+                    var cerradas = grupo.Count(s => !entregasPorStop.TryGetValue(s.Id, out var e2) || !e2.HasValue
+                                                    ? noEntregadas.Contains(s.Id) : false);
                     rutaEntByRep[grupo.Key] = entregadas.Count;
-                    rutaFaltanByRep[grupo.Key] = grupo.Count() - entregadas.Count;
+                    rutaNoEntByRep[grupo.Key] = cerradas;
+                    rutaFaltanByRep[grupo.Key] = grupo.Count() - entregadas.Count - cerradas;
                     // La ultima entrega = la de hora mas reciente. Es "por donde anda" el repartidor.
                     var ultima = entregadas
                         .Select(s => new { Stop = s, Hora = entregasPorStop[s.Id]!.Value })
@@ -536,7 +545,7 @@ public class DashboardController : ControllerBase
 
             decimal porRendir = 0m, porRendirVentas = 0m, porRendirAlq = 0m;
             int ventasPend = 0, ventasEntHoy = 0, alqEntHoy = 0, alqRetHoy = 0;
-            int rutaEnt = 0, rutaFaltan = 0;
+            int rutaEnt = 0, rutaFaltan = 0, rutaNoEnt = 0;
             string? ultimoDom = null, ultimaHora = null;
             int minsSinMarcar = -1;
             bool tieneRepartidor = repByEmp.TryGetValue(e.Id, out var rep);
@@ -551,6 +560,7 @@ public class DashboardController : ControllerBase
                 alqEntByRep.TryGetValue(rep.Id, out alqEntHoy);
                 alqRetByRep.TryGetValue(rep.Id, out alqRetHoy);
                 rutaEntByRep.TryGetValue(rep.Id, out rutaEnt);
+                rutaNoEntByRep.TryGetValue(rep.Id, out rutaNoEnt);
                 rutaFaltanByRep.TryGetValue(rep.Id, out rutaFaltan);
                 ultimoDomByRep.TryGetValue(rep.Id, out ultimoDom);
                 ultimaHoraByRep.TryGetValue(rep.Id, out ultimaHora);
@@ -572,7 +582,7 @@ public class DashboardController : ControllerBase
                 porRendir, pagado, leDebo, tieneRepartidor,
                 porRendirVentas, porRendirAlq,
                 ventasPend, ventasEntHoy, alqEntHoy, alqRetHoy,
-                rutaEnt, rutaFaltan, ultimoDom, ultimaHora, minsSinMarcar);
+                rutaEnt, rutaFaltan, rutaNoEnt, ultimoDom, ultimaHora, minsSinMarcar);
         })
         .OrderBy(x => OrdenPersonalizado(x.Nombre))
         .ThenBy(x => x.Nombre)

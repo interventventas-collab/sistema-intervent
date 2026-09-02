@@ -895,7 +895,10 @@ public class CafeRepartidorPublicController : ControllerBase
         string? Nombre, string Direccion, string? Localidad,
         decimal Latitude, decimal Longitude, string? Telefono,
         string? Comprador, long? NumeroVenta,
-        bool Entregado, DateTime? DateDelivered
+        bool Entregado, DateTime? DateDelivered,
+        // 2026-09-02: cerrada SIN entregar (cancelada, "no encontró", o MeLi avisó que no se
+        // entregó). No cuenta como entregada, pero tampoco le queda pendiente.
+        bool NoEntregada = false
     );
 
     /// <summary>Paradas del Mapeo asignadas a este repartidor (vía MapeoDrivers.CafeRepartidorId),
@@ -926,6 +929,7 @@ public class CafeRepartidorPublicController : ControllerBase
         // ¿Ya se entregó? Lo contesta el mismo servicio que usan el mapa y el dashboard, así los tres
         // dicen lo mismo — y vale para TODOS los orígenes, no solo los de MeLi. 2026-09-02
         var entregasPorStop = await _entregas.EntregasAsync(stops);
+        var noEntregadas = await _entregas.NoEntregadasAsync(stops);
 
         var result = stops.Select(s =>
         {
@@ -943,7 +947,8 @@ public class CafeRepartidorPublicController : ControllerBase
                 s.Id, s.OrderInRoute, s.Origin, s.OriginRefId,
                 s.Alias ?? s.ContactName, s.Direccion, s.Localidad,
                 s.Latitude, s.Longitude, s.Telefono,
-                comprador, numeroVenta, entregado, dd);
+                comprador, numeroVenta, entregado, dd,
+                !entregado && noEntregadas.Contains(s.Id));
         }).ToList();
 
         return Ok(result);
@@ -1053,6 +1058,19 @@ public class CafeRepartidorPublicController : ControllerBase
                 var escaneosCargado = await _db.CafeQrEscaneos
                     .Where(e => e.VentaId == v.Id && e.Accion == "cargado").ToListAsync();
                 _db.CafeQrEscaneos.RemoveRange(escaneosCargado);
+                // 2026-09-02: sacarla TAMBIÉN de su ruta en el mapa. Antes la venta se le iba de la
+                // lista pero la parada le quedaba asignada, así que le contaba como pendiente para
+                // siempre y su recorrido nunca figuraba terminado. Mismo criterio que rechazar una
+                // parada del mapa: vuelve al pool para que la oficina se la dé a otro.
+                var refVenta = v.Id.ToString();
+                var stopVenta = await _db.MapeoStops
+                    .FirstOrDefaultAsync(s => s.Origin == "venta_cafe" && s.OriginRefId == refVenta);
+                if (stopVenta is not null && stopVenta.AssignedDriverId.HasValue)
+                {
+                    stopVenta.AssignedDriverId = null;
+                    stopVenta.OrderInRoute = null;
+                    stopVenta.UpdatedAt = DateTime.UtcNow;
+                }
                 break;
             }
             case "me1":
