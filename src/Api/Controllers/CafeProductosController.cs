@@ -80,6 +80,7 @@ public class CafeProductosController : ControllerBase
             .Select(pk => new CafeProductoPackDto(pk.Id, pk.Cantidad, pk.Nombre, pk.PrecioOverride, pk.IsActive, pk.SortOrder))
             .ToList() ?? new List<CafeProductoPackDto>(),
         StockMinimoMeLi: p.StockMinimoMeLi,
+        StockIdeal: p.StockIdeal,
         MultiplicadorOem: p.MultiplicadorOem,
         SinPrecioBar: p.SinPrecioBar,
         FormatoPorDefecto: p.FormatoPorDefecto);
@@ -809,6 +810,9 @@ public class CafeProductosController : ControllerBase
             StockUnidades = Math.Max(0, req.StockUnidades ?? 0),
             StockMinimoMeLi = req.StockMinimoMeLi.HasValue && req.StockMinimoMeLi.Value >= 0
                 ? req.StockMinimoMeLi.Value : (int?)null,
+            // 2026-09-02: stock ideal (para armar pedidos). No dispara push a MeLi: es interno.
+            StockIdeal = req.StockIdeal.HasValue && req.StockIdeal.Value >= 0
+                ? req.StockIdeal.Value : (int?)null,
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
             IvaPct = NormalizeIva(req.IvaPct),
             IsActive = true,
@@ -946,6 +950,12 @@ public class CafeProductosController : ControllerBase
         if (req.ClearStockMinimoMeLi) p.StockMinimoMeLi = null;
         else if (req.StockMinimoMeLi.HasValue && req.StockMinimoMeLi.Value >= 0) p.StockMinimoMeLi = req.StockMinimoMeLi.Value;
         bool stockMinimoCambio = oldStockMinimoMeLi != p.StockMinimoMeLi;
+
+        // 2026-09-02: stock ideal. Es SOLO interno (armar pedidos), no toca lo que ve MeLi,
+        // asi que a proposito NO dispara stockCambio ni push.
+        if (req.ClearStockIdeal) p.StockIdeal = null;
+        else if (req.StockIdeal.HasValue && req.StockIdeal.Value >= 0) p.StockIdeal = req.StockIdeal.Value;
+
         if (stockMinimoCambio)
         {
             stockCambio = true;

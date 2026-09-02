@@ -833,7 +833,7 @@
                    2026-06-09: Stock masivo + Historial stock vuelven aca tambien (ademas de Favoritos)
                    porque el usuario penso que Favoritos era solo acceso directo y no encontraba Stock. *@
                 <NavGroup Label="📦 Stock y compras" Icon="@SvgIcons.Store" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/stock/reposicion") || IsActive("/stock/ranking") || IsActive("/stock/valuacion"))">
+                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/stock/reposicion") || IsActive("/stock/ranking") || IsActive("/stock/valuacion") || IsActive("/stock/ideal"))">
                     <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
                              IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
                     <NavItem Href="/cafe/historial-stock" Label="📊 Historial stock" Icon="@SvgIcons.Tag"
@@ -844,6 +844,9 @@
                     @* 2026-06-15: reportes nuevos — reposición (pedidos a proveedor) y ranking *@
                     <NavItem Href="/stock/reposicion" Label="📦 Reposición / Pedidos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/stock/reposicion")" OnClick="@(() => NavigateTo("/stock/reposicion"))" />
+                    @* 2026-09-02: stock ideal — cuanto queremos tener siempre + lista de faltantes para pedir *@
+                    <NavItem Href="/stock/ideal" Label="📦 Stock ideal / Faltantes" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/stock/ideal")" OnClick="@(() => NavigateTo("/stock/ideal"))" />
                     <NavItem Href="/stock/ranking" Label="🏆 Ranking productos" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/stock/ranking")" OnClick="@(() => NavigateTo("/stock/ranking"))" />
                     @* 2026-07-09: valor de stock a costo (con exclusión de stock falso por marca/producto) *@
@@ -2313,6 +2316,8 @@
         "cafe/historial-stock",
         "cafe/preparacion",
         "cafe/depositos",
+        // 2026-09-02: deposito tambien arma los pedidos (stock ideal / faltantes)
+        "stock/ideal",
         "",   // Dashboard
     };
 
@@ -2351,6 +2356,7 @@
         // Stock / pedidos
         { "cafe/stock-masivo", ("📦", "Stock", "/cafe/stock-masivo") },
         { "cafe/historial-stock", ("📊", "Historial stock", "/cafe/historial-stock") },
+        { "stock/ideal", ("📦", "Stock ideal / Faltantes", "/stock/ideal") },
         { "cafe/preparacion", ("📋", "Imprimir pedidos de Osmar", "/cafe/preparacion") },
         { "cafe/pedidos-whatsapp", ("💬", "Pedidos WhatsApp", "/cafe/pedidos-whatsapp") },
         { "cafe/preventas", ("🛒", "Pedidos de Gaby", "/cafe/preventas") },

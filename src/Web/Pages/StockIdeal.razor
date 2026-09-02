@@ -1,0 +1,478 @@
+@page "/stock/ideal"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Forms
+
+@* 2026-09-02: "Stock ideal" — cuánto queremos tener siempre de cada producto, para armar
+   los pedidos al proveedor. Dos solapas: Faltantes (lo que hay que pedir) y Configurar
+   (la planilla donde se cargan los ideales, a mano o por Excel).
+   OJO: el "stock ideal" NO es el "stock mínimo para MeLi" (ese vive en la ficha del
+   producto y en Stock masivo). Son dos números distintos a propósito. *@
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <div>
+            <h3 style="margin:0;">📦 Stock ideal</h3>
+            <p class="text-muted" style="margin:0.3rem 0 0; font-size:0.82rem;">
+                Lo que hay que pedir para volver a tener el stock que querés tener siempre.
+            </p>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+            <button class="btn btn-secondary" @onclick="CargarAsync" disabled="@cargando">🔄 Actualizar</button>
+            @if (solapa == "faltantes")
+            {
+                <button class="btn btn-primary" @onclick="BajarExcelPedido"
+                        disabled="@(bajandoPedido || resumen is null || resumen.Faltantes == 0)">
+                    @(bajandoPedido ? "Generando..." : "📄 Bajar Excel del pedido")
+                </button>
+            }
+        </div>
+    </div>
+
+    @* ===== Solapas ===== *@
+    <div style="display:flex; gap:2px; padding:0 1rem; background:#f9fafb; border-bottom:1px solid #e5e7eb;">
+        <button class="si-tab @(solapa == "faltantes" ? "on" : "")" @onclick='() => CambiarSolapa("faltantes")'>
+            Faltantes@(resumen is not null ? $" ({resumen.Faltantes})" : "")
+        </button>
+        <button class="si-tab @(solapa == "config" ? "on" : "")" @onclick='() => CambiarSolapa("config")'>
+            Configurar los ideales
+        </button>
+    </div>
+
+    @* ===== Filtros (compartidos por las dos solapas) ===== *@
+    <div class="card-body" style="background:#f8fafc; border-bottom:1px solid #e5e7eb; padding:0.8rem 1rem;">
+        <div style="display:flex; gap:0.7rem; flex-wrap:wrap; align-items:flex-end;">
+            <div style="min-width:170px;">
+                <label class="form-label">Marca</label>
+                <select class="form-control" @bind="marca" @bind:after="CargarAsync">
+                    <option value="">— Todas —</option>
+                    @foreach (var m in marcas)
+                    {
+                        <option value="@m">@m</option>
+                    }
+                </select>
+            </div>
+            <div style="min-width:200px;">
+                <label class="form-label">Buscar</label>
+                <input type="text" class="form-control" placeholder="código o nombre"
+                       @bind="busqueda" @bind:event="oninput" @onkeyup="OnBuscarKeyUp" />
+            </div>
+            <div style="min-width:140px;">
+                <label class="form-label">Categoría</label>
+                <select class="form-control" @bind="categoria" @bind:after="CargarAsync">
+                    <option value="">— Todas —</option>
+                    <option value="CAFE">CAFE</option>
+                    <option value="OTROS">OTROS</option>
+                </select>
+            </div>
+            <button class="btn btn-secondary" @onclick="CargarAsync" disabled="@cargando">
+                @(cargando ? "Buscando..." : "🔍 Buscar")
+            </button>
+        </div>
+    </div>
+
+    @* ===== Resumen ===== *@
+    @if (resumen is not null && !cargando)
+    {
+        <div style="padding:0.7rem 1rem; font-size:0.85rem; color:#374151; border-bottom:1px solid #e5e7eb;">
+            @if (resumen.ConIdeal == 0)
+            {
+                <span>Todavía no cargaste ningún stock ideal. Andá a <strong>Configurar los ideales</strong> y poné cuánto querés tener de cada producto.</span>
+            }
+            else if (resumen.Faltantes == 0)
+            {
+                <span>✅ No falta nada · @resumen.ConIdeal productos con ideal cargado, todos por encima.</span>
+            }
+            else
+            {
+                <span>
+                    <strong>@resumen.Faltantes</strong> productos abajo del ideal ·
+                    faltan <strong>@resumen.UnidadesFaltantes.ToString("N0", CultureInfo.GetCultureInfo("es-AR")) unidades</strong> en total
+                    @if (resumen.EnCero > 0)
+                    {
+                        <span style="color:#b91c1c;"> · @resumen.EnCero en cero</span>
+                    }
+                    <span class="text-muted"> · @resumen.ConIdeal de @resumen.Total productos tienen ideal cargado</span>
+                </span>
+            }
+        </div>
+    }
+
+    @* ===== Contenido ===== *@
+    <div class="card-body" style="padding:0;">
+        @if (cargando)
+        {
+            <p class="text-muted" style="padding:1.5rem;">Cargando...</p>
+        }
+        else if (solapa == "faltantes")
+        {
+            @if (filas.Count == 0)
+            {
+                <p class="text-muted" style="padding:1.5rem;">No hay productos por debajo del stock ideal con esos filtros.</p>
+            }
+            else
+            {
+                <div style="overflow-x:auto;">
+                    <table class="table" style="margin:0; font-size:0.85rem;">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Producto</th>
+                                <th>Marca</th>
+                                <th style="text-align:right;">Tenés</th>
+                                <th style="text-align:right;">Ideal</th>
+                                <th style="text-align:right;">Faltan</th>
+                                <th>Última entrada</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in filas)
+                            {
+                                <tr>
+                                    <td><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
+                                    <td>@f.Nombre</td>
+                                    <td>@(f.Marca ?? "—")</td>
+                                    <td style="text-align:right; @(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@f.StockActual</td>
+                                    <td style="text-align:right; color:#6b7280;">@(f.StockIdeal?.ToString() ?? "—")</td>
+                                    <td style="text-align:right; font-weight:700; color:#b91c1c;">@f.Faltan</td>
+                                    <td class="text-muted">@FechaCorta(f.UltimaEntrada)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+        else
+        {
+            @* ===== Solapa Configurar ===== *@
+            <div style="padding:0.8rem 1rem; border-bottom:1px solid #e5e7eb; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                <span class="text-muted" style="font-size:0.82rem; flex:1; min-width:240px;">
+                    Escribí cuántas unidades querés tener siempre de cada producto. Se guarda solo al salir del casillero.
+                    Dejalo vacío para no controlar ese producto.
+                </span>
+                <button class="btn btn-secondary" @onclick="BajarExcelConfig" disabled="@bajandoConfig">
+                    @(bajandoConfig ? "Generando..." : "⬇ Bajar Excel")
+                </button>
+                <label class="btn btn-secondary" style="margin:0; cursor:pointer;">
+                    ⬆ Subir Excel
+                    <InputFile OnChange="OnArchivoChange" style="display:none;" accept=".xlsx" />
+                </label>
+            </div>
+
+            @* --- Vista previa del Excel subido --- *@
+            @if (errorExcel is not null)
+            {
+                <div style="padding:0.8rem 1rem; background:#fef2f2; border-bottom:1px solid #fecaca; color:#991b1b; font-size:0.85rem;">
+                    @errorExcel
+                </div>
+            }
+            @if (preview is not null)
+            {
+                <div style="padding:0.8rem 1rem; background:#fffbeb; border-bottom:1px solid #fde68a; font-size:0.85rem;">
+                    <div style="margin-bottom:0.5rem;">
+                        <strong>Vista previa de @(archivo?.Name ?? "el Excel")</strong> — todavía no se aplicó nada.
+                    </div>
+                    <div style="margin-bottom:0.6rem;">
+                        @preview.Asignan con ideal nuevo · @preview.Quitan a los que se les saca el ideal ·
+                        @preview.SinCambios sin cambios
+                        @if (preview.NoEncontrados > 0)
+                        {
+                            <span style="color:#b91c1c;"> · @preview.NoEncontrados filas no se pudieron emparejar</span>
+                        }
+                    </div>
+                    @if (preview.Errores.Count > 0)
+                    {
+                        <ul style="margin:0 0 0.6rem; padding-left:1.2rem; color:#92400e;">
+                            @foreach (var e in preview.Errores.Take(10))
+                            {
+                                <li>@e</li>
+                            }
+                        </ul>
+                    }
+                    @if (preview.Cambios.Count > 0)
+                    {
+                        <div style="max-height:220px; overflow:auto; background:#fff; border:1px solid #fde68a; border-radius:6px; margin-bottom:0.6rem;">
+                            <table class="table" style="margin:0; font-size:0.8rem;">
+                                <thead><tr><th>Código</th><th>Producto</th><th style="text-align:right;">Antes</th><th style="text-align:right;">Ahora</th></tr></thead>
+                                <tbody>
+                                    @foreach (var c in preview.Cambios.Take(200))
+                                    {
+                                        <tr>
+                                            <td><code>@(c.Codigo ?? "—")</code></td>
+                                            <td>@c.Descripcion</td>
+                                            <td style="text-align:right; color:#6b7280;">@(c.IdealViejo?.ToString() ?? "—")</td>
+                                            <td style="text-align:right; font-weight:600;">@(c.IdealNuevo?.ToString() ?? "sin ideal")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (preview.Cambios.Count > 200)
+                        {
+                            <p class="text-muted" style="margin:0 0 0.6rem; font-size:0.8rem;">(se muestran los primeros 200 de @preview.Cambios.Count)</p>
+                        }
+                    }
+                    <div style="display:flex; gap:0.5rem;">
+                        <button class="btn btn-primary" @onclick="AplicarExcel" disabled="@(procesando || preview.Cambios.Count == 0)">
+                            @(procesando ? "Aplicando..." : $"Aplicar {preview.Cambios.Count} cambios")
+                        </button>
+                        <button class="btn btn-secondary" @onclick="CancelarExcel" disabled="@procesando">Cancelar</button>
+                    </div>
+                </div>
+            }
+
+            @if (filas.Count == 0)
+            {
+                <p class="text-muted" style="padding:1.5rem;">No hay productos con esos filtros.</p>
+            }
+            else
+            {
+                <div style="overflow-x:auto;">
+                    <table class="table" style="margin:0; font-size:0.85rem;">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Producto</th>
+                                <th>Marca</th>
+                                <th style="text-align:right;">Stock hoy</th>
+                                <th style="text-align:right;">Stock ideal</th>
+                                <th style="width:90px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in filas)
+                            {
+                                var pid = f.ProductoId;
+                                <tr>
+                                    <td><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
+                                    <td>@f.Nombre</td>
+                                    <td>@(f.Marca ?? "—")</td>
+                                    <td style="text-align:right; @(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@f.StockActual</td>
+                                    <td style="text-align:right;">
+                                        <input type="text" inputmode="numeric" class="si-input @(f.StockIdeal.HasValue ? "set" : "")"
+                                               value="@(edits.TryGetValue(pid, out var v) ? v : (f.StockIdeal?.ToString() ?? ""))"
+                                               placeholder="—"
+                                               @onchange="@(e => OnIdealChange(pid, e.Value?.ToString()))" />
+                                    </td>
+                                    <td style="font-size:0.75rem;">
+                                        @if (guardados.Contains(pid))
+                                        {
+                                            <span style="color:#16a34a;">guardado</span>
+                                        }
+                                        else if (!f.StockIdeal.HasValue)
+                                        {
+                                            <span class="text-muted">sin ideal</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+.si-tab {
+    background:transparent; border:none; border-bottom:2px solid transparent;
+    padding:0.65rem 1rem; font-size:0.88rem; color:#6b7280; cursor:pointer;
+}
+.si-tab.on { color:#111827; font-weight:600; border-bottom-color:#2563eb; background:#fff; }
+.si-input {
+    width:80px; border:1px solid #d1d5db; border-radius:6px;
+    padding:0.25rem 0.45rem; text-align:right; font-size:0.85rem;
+}
+.si-input.set { background:#fffbeb; border-color:#fcd34d; }
+</style>
+
+@code {
+    private string solapa = "faltantes";
+    private bool cargando;
+    private string? marca;
+    private string? categoria;
+    private string busqueda = "";
+
+    private List<string> marcas = new();
+    private List<StockIdealRowDto> filas = new();
+    private StockIdealListResultDto? resumen;
+
+    // Lo que el usuario está tipeando en la planilla (por producto), para que no se pierda
+    // si la fila se vuelve a dibujar antes de que llegue la respuesta del guardado.
+    private readonly Dictionary<int, string> edits = new();
+    private readonly HashSet<int> guardados = new();
+
+    private bool bajandoPedido, bajandoConfig, procesando;
+    private IBrowserFile? archivo;
+    private byte[]? archivoBytes;
+    private StockIdealPreviewDto? preview;
+    private string? errorExcel;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CambiarSolapa(string s)
+    {
+        if (solapa == s) return;
+        solapa = s;
+        CancelarExcel();
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        edits.Clear();
+        guardados.Clear();
+        try
+        {
+            // En Faltantes solo se traen los que están abajo del ideal; en Configurar, todos.
+            var res = await Api.GetStockIdealListaAsync(
+                soloFaltantes: solapa == "faltantes",
+                marca: marca, q: busqueda, categoria: categoria);
+            if (res is null) { ToastService.Error("No se pudo cargar la lista"); return; }
+            resumen = res;
+            filas = res.Filas;
+            if (res.Marcas.Count > 0) marcas = res.Marcas;
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private async Task OnBuscarKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CargarAsync();
+    }
+
+    /// <summary>Guarda el ideal de una fila apenas el usuario sale del casillero.
+    /// Vacío = sacarle el ideal. Texto que no sea número = se ignora y se deja como estaba.</summary>
+    private async Task OnIdealChange(int productoId, string? valor)
+    {
+        var texto = (valor ?? "").Trim();
+        edits[productoId] = texto;
+
+        int? nuevo;
+        if (texto.Length == 0) nuevo = null;
+        else
+        {
+            // Aguanta que escriban "1.500" (separador de miles argentino).
+            var limpio = texto.Replace(".", "").Replace(" ", "");
+            if (!int.TryParse(limpio, NumberStyles.Any, CultureInfo.InvariantCulture, out var n))
+            {
+                ToastService.Error($"'{texto}' no es un número");
+                edits.Remove(productoId);
+                return;
+            }
+            nuevo = Math.Max(0, n);
+        }
+
+        var fila = filas.FirstOrDefault(f => f.ProductoId == productoId);
+        if (fila is not null && fila.StockIdeal == nuevo) { edits.Remove(productoId); return; }
+
+        try
+        {
+            var req = new StockIdealBulkRequestDto
+            {
+                Items = new List<StockIdealBulkItemDto>
+                {
+                    new StockIdealBulkItemDto { ProductoId = productoId, StockIdeal = nuevo }
+                }
+            };
+            var res = await Api.SaveStockIdealBulkAsync(req);
+            if (res is null) { ToastService.Error("No se pudo guardar"); return; }
+
+            // Actualizo la fila en memoria para no tener que recargar toda la lista.
+            if (fila is not null)
+            {
+                fila.StockIdeal = nuevo;
+                fila.Faltan = nuevo.HasValue ? Math.Max(0, nuevo.Value - fila.StockActual) : 0;
+            }
+            edits.Remove(productoId);
+            guardados.Add(productoId);
+        }
+        catch (Exception ex) { ToastService.Error("Error al guardar: " + ex.Message); }
+    }
+
+    private async Task BajarExcelPedido()
+    {
+        bajandoPedido = true;
+        try
+        {
+            var bytes = await Api.DownloadStockIdealPedidoExcelAsync(marca, busqueda, categoria);
+            if (bytes is null) { ToastService.Error("No se pudo generar el Excel"); return; }
+            await JS.InvokeVoidAsync("downloadFile", "pedido.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { bajandoPedido = false; }
+    }
+
+    private async Task BajarExcelConfig()
+    {
+        bajandoConfig = true;
+        try
+        {
+            var bytes = await Api.DownloadStockIdealExcelAsync();
+            if (bytes is null) { ToastService.Error("No se pudo generar el Excel"); return; }
+            await JS.InvokeVoidAsync("downloadFile", "stock-ideal.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { bajandoConfig = false; }
+    }
+
+    private async Task OnArchivoChange(InputFileChangeEventArgs e)
+    {
+        errorExcel = null; preview = null; archivoBytes = null;
+        archivo = e.File;
+        try
+        {
+            using var src = archivo.OpenReadStream(maxAllowedSize: 100_000_000);
+            using var ms = new MemoryStream();
+            await src.CopyToAsync(ms);
+            archivoBytes = ms.ToArray();
+
+            // Muestro la vista previa sola, sin pedir otro clic.
+            using var ms2 = new MemoryStream(archivoBytes);
+            preview = await Api.PreviewStockIdealAsync(ms2, archivo.Name);
+        }
+        catch (Exception ex) { errorExcel = "No pude leer el archivo: " + ex.Message; archivo = null; }
+    }
+
+    private async Task AplicarExcel()
+    {
+        if (archivoBytes is null) return;
+        procesando = true; errorExcel = null;
+        try
+        {
+            using var ms = new MemoryStream(archivoBytes);
+            var res = await Api.ApplyStockIdealAsync(ms, archivo?.Name ?? "stock-ideal.xlsx");
+            if (res is not null)
+            {
+                ToastService.Success($"Listo: {res.Actualizados} con ideal, {res.Quitados} sin ideal");
+                CancelarExcel();
+                await CargarAsync();
+            }
+        }
+        catch (Exception ex) { errorExcel = ex.Message; }
+        finally { procesando = false; }
+    }
+
+    private void CancelarExcel()
+    {
+        preview = null; archivo = null; archivoBytes = null; errorExcel = null;
+    }
+
+    private static string FechaCorta(DateTime? utc)
+    {
+        if (utc is null) return "—";
+        // Las fechas se guardan en UTC; se muestran en hora argentina.
+        return utc.Value.AddHours(-3).ToString("dd/MM/yy");
+    }
+}

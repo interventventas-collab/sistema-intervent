@@ -5413,6 +5413,12 @@ GO
 -- 2026-05-25: Stock mínimo MeLi por producto (override del global reserva_interna)
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='StockMinimoMeLi' AND object_id=OBJECT_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD StockMinimoMeLi INT NULL;
+
+-- 2026-09-02: "Stock ideal" = cuantas unidades queremos tener siempre de cada producto.
+-- Se usa para armar pedidos al proveedor (pantalla /stock/ideal). Null = no se controla.
+-- Ojo: es OTRO numero, distinto de StockMinimoMeLi (ese es la reserva que se le esconde a MeLi).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='StockIdeal' AND object_id=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD StockIdeal INT NULL;
 GO
 
 -- 2026-05-28: Integración Google Drive — track de cuándo se subió el PDF

@@ -177,6 +177,9 @@ public class CafeProductoDto
     /// <summary>Override por producto: reserva interna que se descuenta del stock al pushear a MeLi.
     /// null = usa el global. 0 = sin reserva. N = reservar N unidades.</summary>
     public int? StockMinimoMeLi { get; set; }
+    /// <summary>2026-09-02 — Stock ideal: cuánto queremos tener siempre en el depósito.
+    /// Null = no se controla. Es OTRO número, no tiene que ver con StockMinimoMeLi.</summary>
+    public int? StockIdeal { get; set; }
     /// <summary>2026-06-01 — Stock armable (cuantos productos "shell" se pueden armar desde
     /// los componentes linkeados via MeLi). Null si no aplica (productos físicos normales).</summary>
     public int? StockArmable { get; set; }
@@ -311,6 +314,7 @@ public class CreateCafeProductoRequest
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
     public int? StockMinimoMeLi { get; set; }
+    public int? StockIdeal { get; set; }
     public string? Notas { get; set; }
     public decimal? IvaPct { get; set; }
     // Modelo NUEVO de precios (solo OTROS):
@@ -350,6 +354,8 @@ public class UpdateCafeProductoRequest
     public int? StockUnidades { get; set; }
     public int? StockMinimoMeLi { get; set; }
     public bool ClearStockMinimoMeLi { get; set; }
+    public int? StockIdeal { get; set; }
+    public bool ClearStockIdeal { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
     public decimal? IvaPct { get; set; }
@@ -1708,6 +1714,79 @@ public class StockMinimoPreviewDto
 }
 
 public class StockMinimoApplyResultDto
+{
+    public int Actualizados { get; set; }
+    public int Quitados { get; set; }
+    public int NoEncontrados { get; set; }
+    public List<string> Errores { get; set; } = new();
+}
+
+// 2026-09-02: Stock ideal — lista de faltantes, planilla y carga masiva por Excel
+public class StockIdealRowDto
+{
+    public int ProductoId { get; set; }
+    public string? Codigo { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Marca { get; set; }
+    public string? Categoria { get; set; }
+    public int StockActual { get; set; }
+    public int? StockIdeal { get; set; }
+    public int Faltan { get; set; }
+    public DateTime? UltimaEntrada { get; set; }
+}
+
+public class StockIdealListResultDto
+{
+    public int Total { get; set; }
+    public int ConIdeal { get; set; }
+    public int Faltantes { get; set; }
+    public int EnCero { get; set; }
+    public int UnidadesFaltantes { get; set; }
+    public List<string> Marcas { get; set; } = new();
+    public List<StockIdealRowDto> Filas { get; set; } = new();
+}
+
+public class StockIdealBulkItemDto
+{
+    public int ProductoId { get; set; }
+    public int? StockIdeal { get; set; }
+}
+
+public class StockIdealBulkRequestDto
+{
+    public List<StockIdealBulkItemDto> Items { get; set; } = new();
+}
+
+public class StockIdealBulkResultDto
+{
+    public int Actualizados { get; set; }
+    public int Quitados { get; set; }
+    public int NoEncontrados { get; set; }
+}
+
+public class StockIdealCambioDto
+{
+    public int ProductoId { get; set; }
+    public string? Codigo { get; set; }
+    public string Descripcion { get; set; } = "";
+    public int? IdealViejo { get; set; }
+    public int? IdealNuevo { get; set; }
+    public bool Asigna { get; set; }
+    public bool Quita { get; set; }
+}
+
+public class StockIdealPreviewDto
+{
+    public int TotalFilas { get; set; }
+    public int SinCambios { get; set; }
+    public int Asignan { get; set; }
+    public int Quitan { get; set; }
+    public int NoEncontrados { get; set; }
+    public List<StockIdealCambioDto> Cambios { get; set; } = new();
+    public List<string> Errores { get; set; } = new();
+}
+
+public class StockIdealApplyResultDto
 {
     public int Actualizados { get; set; }
     public int Quitados { get; set; }

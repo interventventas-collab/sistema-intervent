@@ -3065,6 +3065,77 @@ public class ApiClient
         return null;
     }
 
+    // 2026-09-02: Stock ideal (cuánto queremos tener siempre) — lista de faltantes + planilla + Excel
+    public async Task<StockIdealListResultDto?> GetStockIdealListaAsync(
+        bool soloFaltantes, string? marca = null, string? q = null, string? categoria = null)
+    {
+        var qs = new List<string> { $"soloFaltantes={(soloFaltantes ? "true" : "false")}" };
+        if (!string.IsNullOrWhiteSpace(marca)) qs.Add($"marca={Uri.EscapeDataString(marca)}");
+        if (!string.IsNullOrWhiteSpace(q)) qs.Add($"q={Uri.EscapeDataString(q)}");
+        if (!string.IsNullOrWhiteSpace(categoria)) qs.Add($"categoria={Uri.EscapeDataString(categoria)}");
+        return await GetAsync<StockIdealListResultDto>($"/api/stock/ideal/lista?{string.Join("&", qs)}");
+    }
+
+    public async Task<StockIdealBulkResultDto?> SaveStockIdealBulkAsync(StockIdealBulkRequestDto req)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync("/api/stock/ideal/bulk", req);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<StockIdealBulkResultDto>();
+        await ThrowIfErrorAsync(resp);
+        return null;
+    }
+
+    public async Task<byte[]?> DownloadStockIdealPedidoExcelAsync(
+        string? marca = null, string? q = null, string? categoria = null)
+    {
+        await SetAuthHeaderAsync();
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(marca)) qs.Add($"marca={Uri.EscapeDataString(marca)}");
+        if (!string.IsNullOrWhiteSpace(q)) qs.Add($"q={Uri.EscapeDataString(q)}");
+        if (!string.IsNullOrWhiteSpace(categoria)) qs.Add($"categoria={Uri.EscapeDataString(categoria)}");
+        var url = "/api/stock/ideal/pedido.xlsx" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        var resp = await _http.GetAsync(url);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
+    public async Task<byte[]?> DownloadStockIdealExcelAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/stock/ideal/export");
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
+    public async Task<StockIdealPreviewDto?> PreviewStockIdealAsync(Stream fileStream, string fileName)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var sc = new StreamContent(fileStream);
+        sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(sc, "file", fileName);
+        var resp = await _http.PostAsync("/api/stock/ideal/preview", content);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<StockIdealPreviewDto>();
+        await ThrowIfErrorAsync(resp);
+        return null;
+    }
+
+    public async Task<StockIdealApplyResultDto?> ApplyStockIdealAsync(Stream fileStream, string fileName)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var sc = new StreamContent(fileStream);
+        sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(sc, "file", fileName);
+        var resp = await _http.PostAsync("/api/stock/ideal/apply", content);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<StockIdealApplyResultDto>();
+        await ThrowIfErrorAsync(resp);
+        return null;
+    }
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");

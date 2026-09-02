@@ -887,6 +887,17 @@
                         <label class="form-label">Stock (unidades)</label>
                         <input class="form-input" type="number" step="1" min="0" @bind="formStockUnidades" />
                     </div>
+                    @* 2026-09-02: stock ideal — cuanto queremos tener siempre. Es SOLO para armar
+                       pedidos (pantalla /stock/ideal), no toca lo que ve MeLi. *@
+                    <div class="form-group">
+                        <label class="form-label">📦 Stock ideal</label>
+                        <input class="form-input" type="number" step="1" min="0" placeholder="Vacío = no se controla"
+                               @bind="formStockIdeal" />
+                        <small style="display:block; margin-top:0.3rem; color:#6b7280; font-size:0.72rem;">
+                            Cuántas unidades querés tener siempre. Si el stock baja de acá, el producto aparece en
+                            <b>Stock ideal / Faltantes</b> para pedirle al proveedor. No cambia lo que ve MeLi.
+                        </small>
+                    </div>
                     <div class="form-group" style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.6rem;">
                         <label class="form-label" style="color:#9a3412;">🛒 Stock mínimo para MeLi</label>
                         <input class="form-input" type="number" step="1" min="0" placeholder="Vacío = sin reserva"
@@ -1564,6 +1575,8 @@
     private int formStockUnidades;
     // 2026-05-25: stock mínimo de reserva para MeLi (override por producto). Null = usar default global.
     private int? formStockMinimoMeli;
+    // 2026-09-02: stock ideal (cuanto queremos tener siempre). Null = no se controla ese producto.
+    private int? formStockIdeal;
     private string formNotas = "";
     private bool formIsActive = true;
 
@@ -2031,7 +2044,7 @@
         formPrecioBultoOtroFuturo = null;
         formOemId = 0; oemSearch = ""; oemSearchOpen = false;
         // Producto NUEVO: arranca con 1 reservado (default razonable de seguridad). El usuario puede borrarlo si no quiere reserva.
-        formStockGramos = 0; formStockUnidades = 0; formStockMinimoMeli = 1;
+        formStockGramos = 0; formStockUnidades = 0; formStockMinimoMeli = 1; formStockIdeal = null;
         formStockKg = 0;
         formNotas = ""; formIsActive = true;
         formError = null; showForm = true;
@@ -2121,6 +2134,7 @@
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
         formStockMinimoMeli = p.StockMinimoMeLi;
+        formStockIdeal = p.StockIdeal;
         formStockKg = Math.Round(p.StockGramos / 1000m, 3, MidpointRounding.AwayFromZero);
         formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
         formError = null; showForm = true;
@@ -2178,7 +2192,7 @@
             }).ToList() ?? new();
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
         // Producto NUEVO: stock arranca en 0, reserva 1 (default seguro).
-        formStockGramos = 0; formStockUnidades = 0; formStockMinimoMeli = 1;
+        formStockGramos = 0; formStockUnidades = 0; formStockMinimoMeli = 1; formStockIdeal = null;
         formStockKg = 0;
         formNotas = p.Notas ?? "";
         formIsActive = true;
@@ -2268,6 +2282,8 @@
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
                     StockMinimoMeLi = formStockMinimoMeli,
                     ClearStockMinimoMeLi = !formStockMinimoMeli.HasValue,
+                    StockIdeal = formStockIdeal,
+                    ClearStockIdeal = !formStockIdeal.HasValue,
                     Notas = formNotas, IsActive = formIsActive,
                     IvaPct = formIvaPct,
                     // Modelo NUEVO de precios — PrecioBar/PrecioOtro es lo que COBRA el sistema.
@@ -2337,6 +2353,7 @@
                     StockGramos = stockGramosFinal,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
                     StockMinimoMeLi = formStockMinimoMeli,
+                    StockIdeal = formStockIdeal,
                     Notas = formNotas,
                     IvaPct = formIvaPct,
                     // Modelo NUEVO de precios — ver nota en el Update: CAFE tambien los manda

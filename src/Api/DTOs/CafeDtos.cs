@@ -152,6 +152,9 @@ public record CafeProductoDto(
     List<CafeProductoPackDto>? Packs = null,
     // 2026-05-25: stock mínimo de reserva al pushear a MeLi (override por producto, null = global)
     int? StockMinimoMeLi = null,
+    // 2026-09-02: stock ideal = cuánto queremos tener siempre en el depósito (para armar pedidos).
+    // Null = no se controla. OJO: no confundir con StockMinimoMeLi, son dos números distintos.
+    int? StockIdeal = null,
     // 2026-06-01: para productos "shell" linkeados a publicaciones MeLi via componentes,
     // cantidad de cestos/combos armables a partir del stock real de los componentes (min).
     // Null si no aplica (productos físicos normales con stock propio).
@@ -207,6 +210,8 @@ public class CreateCafeProductoRequest
     /// <summary>Override por producto: reserva interna que se le resta al stock al pushear a MeLi.
     /// Null = usar el global de AppSettings (default 1). 0 = sin reserva. N = reservar N unidades.</summary>
     public int? StockMinimoMeLi { get; set; }
+    /// <summary>2026-09-02 — Stock ideal (cuánto queremos tener siempre). Null = no se controla.</summary>
+    public int? StockIdeal { get; set; }
     public string? Notas { get; set; }
     public decimal? IvaPct { get; set; }
     // Modelo nuevo de precios para OTROS:
@@ -312,6 +317,9 @@ public class UpdateCafeProductoRequest
     /// Null = no cambiar. 0 explícito = sin reserva. ClearStockMinimoMeLi=true → poner null.</summary>
     public int? StockMinimoMeLi { get; set; }
     public bool ClearStockMinimoMeLi { get; set; }
+    /// <summary>2026-09-02 — Stock ideal. Null = no cambiar. ClearStockIdeal=true → poner null.</summary>
+    public int? StockIdeal { get; set; }
+    public bool ClearStockIdeal { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
     public decimal? IvaPct { get; set; }

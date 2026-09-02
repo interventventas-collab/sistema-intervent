@@ -145,6 +145,13 @@ public class CafeProducto
     /// Si pongo 2 → MeLi ve (stock-2), o sea quedan 2 reservadas para mí.</summary>
     public int? StockMinimoMeLi { get; set; }
 
+    /// <summary>2026-09-02 — "Stock ideal": cuantas unidades queremos tener SIEMPRE de este
+    /// producto en el deposito. Sirve para armar pedidos al proveedor: si StockUnidades queda
+    /// por debajo, el producto aparece en la lista de faltantes con (StockIdeal - StockUnidades).
+    /// Null = no se controla este producto. NO tiene NADA que ver con StockMinimoMeLi (ese es
+    /// la reserva que se le esconde a MeLi); son dos numeros distintos a proposito.</summary>
+    public int? StockIdeal { get; set; }
+
     [MaxLength(500)]
     public string? Notas { get; set; }
 
