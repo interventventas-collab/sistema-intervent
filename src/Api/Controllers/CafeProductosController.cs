@@ -263,11 +263,102 @@ public class CafeProductosController : ControllerBase
         ws.Column(3).Width = 18;
         for (int c = 4; c <= totalCols; c++) ws.Column(c).Width = 16;
 
+        // 2026-09-02: hoja aparte con los precios del cafe por 1 kg / 1/2 kg / 1/4 kg.
+        // Va en su propia solapa para no ensuciar la de stock (que tiene una columna por deposito).
+        // Los numeros salen de CafePricingService — el MISMO motor que usa la venta, la lista de
+        // precios y MeLi — asi que coinciden con lo que se cobra de verdad.
+        await AgregarHojaPreciosCafeAsync(wb, ids, orden);
+
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
         return File(ms.ToArray(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "productos-stock.xlsx");
+    }
+
+    /// <summary>2026-09-02 — Solapa "Precios café" del Excel de productos.
+    /// Una fila por café con el precio de 1 kg, 1/2 kg y 1/4 kg, para BARES y para el resto,
+    /// sin IVA y con IVA. Las fracciones NO son el kilo dividido: llevan el costo de
+    /// fraccionamiento y el redondeo que define CafePricingService, igual que en una venta real.
+    /// Si en la selección no hay café, la solapa directamente no se crea.</summary>
+    private async Task AgregarHojaPreciosCafeAsync(XLWorkbook wb, List<int> ids, Dictionary<int, int> orden)
+    {
+        var cafes = await _db.CafeProductos.AsNoTracking()
+            .Where(p => ids.Contains(p.Id) && p.Categoria == "CAFE")
+            .ToListAsync();
+        if (cafes.Count == 0) return;
+
+        cafes = cafes.OrderBy(p => orden.TryGetValue(p.Id, out var i) ? i : int.MaxValue).ToList();
+        var settings = await _db.CafeSettings.AsNoTracking().FirstOrDefaultAsync() ?? new CafeSetting();
+
+        var ws = wb.Worksheets.Add("Precios café");
+
+        // Fila 1: los dos grandes bloques (BARES / RESTO DE CLIENTES). Fila 2: el detalle.
+        ws.Cell(1, 4).Value = "BARES";
+        ws.Range(1, 4, 1, 9).Merge();
+        ws.Cell(1, 10).Value = "RESTO DE CLIENTES";
+        ws.Range(1, 10, 1, 15).Merge();
+        foreach (var (col, hex) in new[] { (4, "#1d4ed8"), (10, "#15803d") })
+        {
+            var c = ws.Cell(1, col);
+            c.Style.Font.Bold = true;
+            c.Style.Font.FontColor = XLColor.White;
+            c.Style.Fill.BackgroundColor = XLColor.FromHtml(hex);
+            c.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        var headers = new List<string>
+        {
+            "SKU", "Nombre", "Costo s/IVA",
+            "1 kg s/IVA", "½ kg s/IVA", "¼ kg s/IVA", "1 kg c/IVA", "½ kg c/IVA", "¼ kg c/IVA",
+            "1 kg s/IVA", "½ kg s/IVA", "¼ kg s/IVA", "1 kg c/IVA", "½ kg c/IVA", "¼ kg c/IVA"
+        };
+        for (int i = 0; i < headers.Count; i++)
+        {
+            var cell = ws.Cell(2, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml(i < 3 ? "#1f2937" : i < 9 ? "#1d4ed8" : "#15803d");
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+        ws.Cell(2, 5).GetComment().AddText(
+            "El ½ kg y el ¼ kg no son el kilo dividido: llevan sumado el costo de fraccionamiento " +
+            $"(${settings.CostoFraccionamiento:N0}) y después se redondean para arriba. " +
+            "Es la misma cuenta que hace el sistema al cargar una venta.");
+
+        int r = 3;
+        foreach (var p in cafes)
+        {
+            decimal Precio(string formato, string tipo)
+                => CafePricingService.CalcularPrecioBreakdown(p, formato, tipo, settings).PrecioLista;
+            decimal ConIva(decimal v) => Math.Round(v * (1m + p.IvaPct / 100m), 2, MidpointRounding.AwayFromZero);
+
+            ws.Cell(r, 1).Value = p.Sku ?? "";
+            ws.Cell(r, 2).Value = p.Nombre;
+            ws.Cell(r, 3).Value = p.Costo;
+
+            int col = 4;
+            foreach (var tipo in new[] { CafePricingService.TIPO_BAR, CafePricingService.TIPO_OTRO })
+            {
+                var kg = Precio(CafePricingService.FORMATO_1KG, tipo);
+                var medio = Precio(CafePricingService.FORMATO_MEDIO, tipo);
+                var cuarto = Precio(CafePricingService.FORMATO_CUARTO, tipo);
+                foreach (var v in new[] { kg, medio, cuarto, ConIva(kg), ConIva(medio), ConIva(cuarto) })
+                    ws.Cell(r, col++).Value = v;
+            }
+
+            for (int c = 3; c <= 15; c++) ws.Cell(r, c).Style.NumberFormat.Format = "$ #,##0.00";
+            if (r % 2 == 0)
+                for (int c = 1; c <= 15; c++) ws.Cell(r, c).Style.Fill.BackgroundColor = XLColor.FromHtml("#f9fafb");
+            r++;
+        }
+
+        ws.SheetView.FreezeRows(2);
+        ws.Range(2, 1, r - 1, 15).SetAutoFilter();
+        ws.Column(1).Width = 16;
+        ws.Column(2).Width = 46;
+        for (int c = 3; c <= 15; c++) ws.Column(c).Width = 14;
     }
 
     /// <summary>2026-06-01 — Calcula el stock armable (en lote) para una lista de productos.
