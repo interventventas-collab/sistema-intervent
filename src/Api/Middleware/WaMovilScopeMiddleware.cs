@@ -39,6 +39,26 @@ public class WaMovilScopeMiddleware
         "/api/auth/logout",      // salir
     };
 
+    /// <summary>
+    /// 2026-09-02 — Enlaces que ya son públicos: la llave de la huella NO los tiene que tapar.
+    ///
+    /// Bug que reportó Osmar: el enlace fijo del repartidor (/mis-pedidos/{token}) mostraba
+    /// "No pudimos cargar tus pedidos" en los celulares. La causa era este mismo candado: esos
+    /// controladores son [AllowAnonymous] — se abren solo con el código largo de la URL, sin
+    /// sesión — pero el celular que había entrado con la huella arrastraba la marca `wa-movil`
+    /// y quedaba frenado acá. En la compu, o en incógnito, andaba bien.
+    ///
+    /// Dejarlos pasar no debilita nada: cualquiera con la dirección ya los abre hoy sin clave, así
+    /// que taparlos solo para la huella no protegía, únicamente rompía. La huella sigue sin poder
+    /// entrar a ventas, cobranzas ni administración.
+    /// </summary>
+    private static readonly string[] PublicoConToken =
+    {
+        "/api/cafe/repartidor-public/",        // /mis-pedidos/{token} — pedidos, entrega, cobro
+        "/api/alquileres/repartidor-public/",  // los alquileres del mismo repartidor
+        "/api/public/",                        // picking de depósito, rutas del mapeo, fotos de producto
+    };
+
     /// <summary>Excepción puntual: el saldo del cliente se muestra arriba del chat.
     /// Es de solo lectura y de UN cliente, no la lista completa.</summary>
     private static bool EsEstadoDeCuenta(string ruta)
@@ -88,6 +108,7 @@ public class WaMovilScopeMiddleware
         var ruta = ctx.Request.Path.Value ?? "";
         var metodo = ctx.Request.Method?.ToUpperInvariant() ?? "";
         var permitido = Permitido.Any(p => ruta.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+                        || PublicoConToken.Any(p => ruta.StartsWith(p, StringComparison.OrdinalIgnoreCase))
                         || EsEstadoDeCuenta(ruta)
                         || EsCotizadorAlquiler(ruta, metodo);
 
