@@ -22,10 +22,11 @@ public class CafeRepartidorPublicController : ControllerBase
     private readonly MeliShipmentService _me1Service;
     private readonly TelegramService _telegram;
     private readonly WhatsAppOutboundService _wa;
+    private readonly MapeoEntregasService _entregas;
     public CafeRepartidorPublicController(AppDbContext db, MeliShipmentService me1Service,
-        TelegramService telegram, WhatsAppOutboundService wa)
+        TelegramService telegram, WhatsAppOutboundService wa, MapeoEntregasService entregas)
     {
-        _db = db; _me1Service = me1Service; _telegram = telegram; _wa = wa;
+        _db = db; _me1Service = me1Service; _telegram = telegram; _wa = wa; _entregas = entregas;
     }
 
     public record RepartidorListItemDto(int Id, string Nombre);
@@ -922,16 +923,21 @@ public class CafeRepartidorPublicController : ControllerBase
             ? new Dictionary<long, MeliShipment>()
             : await _db.MeliShipments.Where(m => refs.Contains(m.MeliShipmentId)).ToDictionaryAsync(m => m.MeliShipmentId);
 
+        // ¿Ya se entregó? Lo contesta el mismo servicio que usan el mapa y el dashboard, así los tres
+        // dicen lo mismo — y vale para TODOS los orígenes, no solo los de MeLi. 2026-09-02
+        var entregasPorStop = await _entregas.EntregasAsync(stops);
+
         var result = stops.Select(s =>
         {
-            string? comprador = null; long? numeroVenta = null; bool entregado = false; DateTime? dd = null;
+            string? comprador = null; long? numeroVenta = null;
+            entregasPorStop.TryGetValue(s.Id, out var entregadaAt);
+            bool entregado = entregadaAt.HasValue;
+            DateTime? dd = entregadaAt;
             if ((s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
                 && long.TryParse(s.OriginRefId, out var sid) && ships.TryGetValue(sid, out var m))
             {
                 comprador = m.BuyerNickname;
                 numeroVenta = m.MeliOrderId;
-                entregado = string.Equals(m.Status, "delivered", StringComparison.OrdinalIgnoreCase);
-                dd = m.DateDelivered;
             }
             return new MisPedidosMapeoDto(
                 s.Id, s.OrderInRoute, s.Origin, s.OriginRefId,

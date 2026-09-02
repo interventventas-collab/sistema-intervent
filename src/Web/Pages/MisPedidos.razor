@@ -307,7 +307,7 @@
                 @<div class="mp-card" style="background:white; border:1px solid #e5e7eb; border-left:6px solid #0891b2; margin-bottom:0.6rem; padding:0.6rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem;">
                         <span style="font-weight:700; font-size:1rem; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(fx.Nombre ?? "Parada")</span>
-                        <span style="background:#dbeafe; color:#1e40af; font-size:0.62rem; font-weight:800; padding:0.05rem 0.35rem; border-radius:4px; flex:0 0 auto;">FLEX (solo ver)</span>
+                        <span style="background:#dbeafe; color:#1e40af; font-size:0.62rem; font-weight:800; padding:0.05rem 0.35rem; border-radius:4px; flex:0 0 auto;">@(fx.Origin == "flex" ? "FLEX (solo ver)" : "SOLO VER")</span>
                     </div>
                     <div style="font-size:0.85rem; color:#374151; margin-top:0.25rem;">@fx.Direccion</div>
                     @if (!string.IsNullOrEmpty(fx.Localidad)) { <div style="font-size:0.75rem; color:#6b7280;">@fx.Localidad</div> }
@@ -330,7 +330,11 @@
                 if (st.Origin == "venta_cafe" && ventaById.TryGetValue(refInt, out var pv)) { entradas.Add((orden, "venta", pv, null, null, null)); vistasVenta.Add(refInt); }
                 else if (st.Origin == "me1" && me1ByShip.TryGetValue(refLong, out var m1)) { entradas.Add((orden, "me1", null, m1, null, null)); vistasMe1.Add(refLong); }
                 else if (st.Origin == "alquiler" && alqById.TryGetValue(refInt, out var al)) { entradas.Add((orden, "alq", null, null, al, null)); vistasAlq.Add(refInt); }
-                else if ((st.Origin == "flex" || st.Origin == "manual" || st.Origin == "favorito") && verFlex) { entradas.Add((orden, "flex", null, null, null, st)); }
+                // Cualquier otra parada de la ruta (Flex, cargada a mano, favorito, visita) se ve como
+                // tarjeta muda: dirección y cómo llegar. Antes solo salían las Flex/manuales y encima
+                // escondidas atrás del botón "Ver Flex" — una ruta sin Flex quedaba invisible en el celu.
+                // Los Flex siguen atrás del botón porque son muchos y se cierran en la app de MeLi.
+                else if (!st.Entregado && (st.Origin != "flex" || verFlex)) { entradas.Add((orden, "flex", null, null, null, st)); }
             }
             entradas = entradas.OrderBy(e => e.orden).ToList();
 
