@@ -112,7 +112,17 @@
         <div style="padding:0.7rem 1rem; font-size:0.85rem; color:#374151; border-bottom:1px solid #e5e7eb;">
             @if (resumen.ConIdeal == 0)
             {
-                <span>Todavía no cargaste ningún stock ideal. Andá a <strong>Configurar los ideales</strong> y poné cuánto querés tener de cada producto.</span>
+                <span>
+                    Todavía no cargaste ningún stock ideal.
+                    @if (solapa != "config")
+                    {
+                        <text>Andá a <strong>Configurar los ideales</strong> y poné cuánto querés tener de cada producto.</text>
+                    }
+                    else
+                    {
+                        <text>Empezá a poner números en la columna amarilla.</text>
+                    }
+                </span>
             }
             else if (resumen.Faltantes == 0)
             {
@@ -154,15 +164,18 @@
                     <table class="table" style="margin:0; font-size:0.85rem;">
                         <thead>
                             <tr>
-                                <th>Código</th>
-                                <th>Producto</th>
-                                <th>Marca</th>
-                                <th style="text-align:right;">Tenía</th>
-                                <th style="text-align:right;">Tiene ahora</th>
-                                <th style="text-align:right;">Ideal</th>
-                                <th style="text-align:right;">Faltan</th>
-                                <th></th>
-                                <th>Anotado</th>
+                                <th class="si-cod">Código</th>
+                                <th class="si-prod">Producto</th>
+                                @if (SinFiltroDeMarca)
+                                {
+                                    <th class="si-marca">Marca</th>
+                                }
+                                <th class="si-num">Tenía</th>
+                                <th class="si-num">Tiene ahora</th>
+                                <th class="si-num">Ideal</th>
+                                <th class="si-num">Faltan</th>
+                                <th class="si-uni"></th>
+                                <th class="si-uni">Anotado</th>
                                 <th style="width:150px;"></th>
                             </tr>
                         </thead>
@@ -171,21 +184,24 @@
                             {
                                 var id = f.Id;
                                 <tr style="@(f.YaRepuesto ? "background:#f9fafb;" : "")">
-                                    <td><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
-                                    <td>
+                                    <td class="si-cod"><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
+                                    <td class="si-prod">
                                         @f.Nombre
                                         @if (f.YaRepuesto)
                                         {
                                             <span class="text-muted" style="font-size:0.75rem;"> · ya repuesto</span>
                                         }
                                     </td>
-                                    <td>@(f.Marca ?? "—")</td>
-                                    <td class="text-muted" style="text-align:right;">@Num(f.StockAlDetectar)</td>
-                                    <td style="text-align:right; @(f.StockAhora <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockAhora)</td>
-                                    <td style="text-align:right; color:#6b7280;">@(f.IdealAhora?.ToString() ?? f.IdealAlDetectar.ToString())</td>
-                                    <td style="text-align:right; font-weight:700; @(f.Faltan > 0 ? "color:#b91c1c;" : "color:#9ca3af;")">@Num(f.Faltan)</td>
-                                    <td class="text-muted" style="font-size:0.78rem;">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
-                                    <td class="text-muted" style="font-size:0.78rem;">@FechaCorta(f.DetectadoAt)</td>
+                                    @if (SinFiltroDeMarca)
+                                    {
+                                        <td class="si-marca">@(f.Marca ?? "—")</td>
+                                    }
+                                    <td class="si-num text-muted">@Num(f.StockAlDetectar)</td>
+                                    <td class="si-num" style="@(f.StockAhora <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockAhora)</td>
+                                    <td class="si-num" style="color:#6b7280;">@(f.IdealAhora?.ToString() ?? f.IdealAlDetectar.ToString())</td>
+                                    <td class="si-num" style="font-weight:700; @(f.Faltan > 0 ? "color:#b91c1c;" : "color:#9ca3af;")">@Num(f.Faltan)</td>
+                                    <td class="si-uni text-muted">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
+                                    <td class="si-uni text-muted">@FechaCorta(f.DetectadoAt)</td>
                                     <td style="white-space:nowrap;">
                                         <button class="btn btn-sm btn-primary" style="font-size:0.75rem;"
                                                 @onclick="() => MarcarPedido(id)" disabled="@resolviendo">✓ Ya lo pedí</button>
@@ -212,28 +228,34 @@
                     <table class="table" style="margin:0; font-size:0.85rem;">
                         <thead>
                             <tr>
-                                <th>Código</th>
-                                <th>Producto</th>
-                                <th>Marca</th>
-                                <th style="text-align:right;">Tenés</th>
-                                <th style="text-align:right;">Ideal</th>
-                                <th style="text-align:right;">Faltan</th>
-                                <th></th>
-                                <th>Última entrada</th>
+                                <th class="si-cod">Código</th>
+                                <th class="si-prod">Producto</th>
+                                @if (SinFiltroDeMarca)
+                                {
+                                    <th class="si-marca">Marca</th>
+                                }
+                                <th class="si-num">Tenés</th>
+                                <th class="si-num">Ideal</th>
+                                <th class="si-num">Faltan</th>
+                                <th class="si-uni"></th>
+                                <th class="si-uni">Última entrada</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var f in filas)
                             {
                                 <tr>
-                                    <td><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
-                                    <td>@f.Nombre</td>
-                                    <td>@(f.Marca ?? "—")</td>
-                                    <td style="text-align:right; @(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockActual)</td>
-                                    <td style="text-align:right; color:#6b7280;">@(f.StockIdeal?.ToString() ?? "—")</td>
-                                    <td style="text-align:right; font-weight:700; color:#b91c1c;">@Num(f.Faltan)</td>
-                                    <td class="text-muted" style="font-size:0.78rem;">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
-                                    <td class="text-muted">@FechaCorta(f.UltimaEntrada)</td>
+                                    <td class="si-cod"><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
+                                    <td class="si-prod">@f.Nombre</td>
+                                    @if (SinFiltroDeMarca)
+                                    {
+                                        <td class="si-marca">@(f.Marca ?? "—")</td>
+                                    }
+                                    <td class="si-num" style="@(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockActual)</td>
+                                    <td class="si-num" style="color:#6b7280;">@(f.StockIdeal?.ToString() ?? "—")</td>
+                                    <td class="si-num" style="font-weight:700; color:#b91c1c;">@Num(f.Faltan)</td>
+                                    <td class="si-uni text-muted">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
+                                    <td class="si-uni text-muted">@FechaCorta(f.UltimaEntrada)</td>
                                 </tr>
                             }
                         </tbody>
@@ -331,12 +353,15 @@
                     <table class="table" style="margin:0; font-size:0.85rem;">
                         <thead>
                             <tr>
-                                <th>Código</th>
-                                <th>Producto</th>
-                                <th>Marca</th>
-                                <th style="text-align:right;">Stock hoy</th>
-                                <th style="text-align:right;">Stock ideal</th>
-                                <th></th>
+                                <th class="si-cod">Código</th>
+                                <th class="si-prod">Producto</th>
+                                @if (SinFiltroDeMarca)
+                                {
+                                    <th class="si-marca">Marca</th>
+                                }
+                                <th class="si-num">Stock hoy</th>
+                                <th class="si-num">Stock ideal</th>
+                                <th class="si-uni"></th>
                                 <th style="width:90px;"></th>
                             </tr>
                         </thead>
@@ -345,17 +370,20 @@
                             {
                                 var pid = f.ProductoId;
                                 <tr>
-                                    <td><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
-                                    <td>@f.Nombre</td>
-                                    <td>@(f.Marca ?? "—")</td>
-                                    <td style="text-align:right; @(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockActual)</td>
-                                    <td style="text-align:right;">
+                                    <td class="si-cod"><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
+                                    <td class="si-prod">@f.Nombre</td>
+                                    @if (SinFiltroDeMarca)
+                                    {
+                                        <td class="si-marca">@(f.Marca ?? "—")</td>
+                                    }
+                                    <td class="si-num" style="@(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockActual)</td>
+                                    <td class="si-num">
                                         <input type="text" inputmode="numeric" class="si-input @(f.StockIdeal.HasValue ? "set" : "")"
                                                value="@(edits.TryGetValue(pid, out var v) ? v : (f.StockIdeal?.ToString() ?? ""))"
                                                placeholder="—"
                                                @onchange="@(e => OnIdealChange(pid, e.Value?.ToString()))" />
                                     </td>
-                                    <td class="text-muted" style="font-size:0.78rem;">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
+                                    <td class="si-uni text-muted">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
                                     <td style="font-size:0.75rem;">
                                         @if (guardados.Contains(pid))
                                         {
@@ -387,6 +415,13 @@
     padding:0.25rem 0.45rem; text-align:right; font-size:0.85rem;
 }
 .si-input.set { background:#fffbeb; border-color:#fcd34d; }
+/* Las columnas se pisaban ("MARCA STOCK HOY" pegado): el nombre del producto se comia todo
+   el ancho. Los numeros y las etiquetas van en una sola linea y con aire a la izquierda. */
+.si-num { text-align:right; white-space:nowrap; padding-left:1.1rem !important; }
+.si-uni { white-space:nowrap; font-size:0.78rem; padding-left:0.8rem !important; }
+.si-cod { white-space:nowrap; }
+.si-marca { white-space:nowrap; padding-left:0.8rem !important; }
+.si-prod { min-width:220px; }
 </style>
 
 @code {
@@ -537,6 +572,9 @@
         finally { resolviendo = false; }
     }
 
+    /// <summary>Si ya filtraste por una marca, repetirla en cada renglón no aporta: se esconde.</summary>
+    private bool SinFiltroDeMarca => string.IsNullOrWhiteSpace(marca);
+
     /// <summary>Lo que llaman los botones y los filtros de la pantalla.</summary>
     private Task Recargar() => CargarAsync();
 
@@ -582,14 +620,38 @@
             var res = await Api.SaveStockIdealBulkAsync(req);
             if (res is null) { ToastService.Error("No se pudo guardar"); return; }
 
-            // Actualizo la fila en memoria para no tener que recargar toda la lista.
+            // Actualizo la fila en memoria para no tener que recargar toda la lista (recargar
+            // mientras está tipeando le sacaría el foco del casillero).
             if (fila is not null)
             {
+                bool teniaIdeal = fila.StockIdeal.HasValue;
+                bool faltabaAntes = fila.Faltan > 0;
+                decimal faltabanAntes = fila.Faltan;
+
                 fila.StockIdeal = nuevo;
                 fila.Faltan = nuevo.HasValue ? Math.Max(0m, nuevo.Value - fila.StockActual) : 0m;
+
+                // Y los contadores de arriba, si no el cartel sigue diciendo "todavía no
+                // cargaste ningún stock ideal" cuando ya cargaste diez.
+                if (resumen is not null)
+                {
+                    if (!teniaIdeal && nuevo.HasValue) resumen.ConIdeal++;
+                    else if (teniaIdeal && !nuevo.HasValue) resumen.ConIdeal--;
+
+                    bool faltaAhora = fila.Faltan > 0;
+                    if (faltaAhora != faltabaAntes)
+                    {
+                        resumen.Faltantes += faltaAhora ? 1 : -1;
+                        if (fila.StockActual <= 0) resumen.EnCero += faltaAhora ? 1 : -1;
+                    }
+                    resumen.UnidadesFaltantes += fila.Faltan - faltabanAntes;
+                }
             }
             edits.Remove(productoId);
             guardados.Add(productoId);
+            // El contador de "Para pedir" queda viejo: los productos se enganchan recién cuando
+            // se abre esa solapa. Lo dejo sin número en vez de mostrar uno que miente.
+            pendientes = null;
         }
         catch (Exception ex) { ToastService.Error("Error al guardar: " + ex.Message); }
     }
