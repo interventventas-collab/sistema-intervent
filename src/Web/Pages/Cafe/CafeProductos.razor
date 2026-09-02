@@ -45,13 +45,20 @@
                     <span style="background:@(soloConReserva ? "#d97706" : "#9ca3af"); color:white; padding:0.05rem 0.4rem; border-radius:10px; font-size:0.72rem;">@totalReservados</span>
                 }
             </label>
+            @* 2026-09-02: mostrar/ocultar el precio de 1/2 y 1/4 kg debajo del precio por kilo (solo CAFE). *@
+            <button class="btn @(mostrarFracciones ? "btn-secondary" : "btn-secondary")"
+                    style="@(mostrarFracciones ? "" : "opacity:0.65;")"
+                    @onclick="() => mostrarFracciones = !mostrarFracciones"
+                    title="Mostrar u ocultar el precio de 1/2 kg y 1/4 kg debajo del precio por kilo">
+                ☕ @(mostrarFracciones ? "Ver ½ y ¼ kg" : "Solo por kg")
+            </button>
             <button class="btn @(modoEdicion ? "btn-warning" : "btn-secondary")"
                     @onclick="() => modoEdicion = !modoEdicion" title="Edicion rapida de marca y nombre">
                 @(modoEdicion ? "🔓 Edicion ON" : "🔒 Edicion OFF")
             </button>
             @* 2026-08-25: baja a Excel lo que quedó filtrado en pantalla (no todo el catálogo). *@
             <button class="btn btn-success" @onclick="BajarExcel" disabled="@(bajandoExcel || productosVisibles.Count == 0)"
-                    title="Bajar un Excel con los productos que estás viendo: SKU, nombre, marca y stock">
+                    title="Bajar un Excel con los productos que estás viendo. Solapa 1: SKU, nombre, marca y stock. Solapa 2 (si hay cafés): precios de 1 kg, ½ kg y ¼ kg, con y sin IVA.">
                 @(bajandoExcel ? "⏳ Armando..." : $"⬇ Bajar Excel ({productosVisibles.Count})")
             </button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Producto</button>
@@ -229,6 +236,17 @@
                                         {
                                             <div>$@FormatMoney(p.PrecioBarEfectivo.Value)/kg</div>
                                             <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.PrecioBarEfectivoConIva!.Value)</div>
+                                            @if (mostrarFracciones)
+                                            {
+                                                var mBar = PrecioFraccion(p.PrecioBarEfectivo.Value, 2m, true);
+                                                var cBar = PrecioFraccion(p.PrecioBarEfectivo.Value, 4m, true);
+                                                <div style="font-size: 0.72rem; color: #374151; font-weight: 600; margin-top: 3px; white-space: nowrap;" title="Precio de 1/2 kg y 1/4 kg — ya incluye el costo de fraccionamiento y el redondeo">
+                                                    ½ $@FormatMoneyCorto(mBar) · ¼ $@FormatMoneyCorto(cBar)
+                                                </div>
+                                                <div style="font-size: 0.66rem; color: #9ca3af; font-weight: 500; white-space: nowrap;">
+                                                    c/IVA $@FormatMoneyCorto(ConIva(mBar, p.IvaPct)) · $@FormatMoneyCorto(ConIva(cBar, p.IvaPct))
+                                                </div>
+                                            }
                                         }
                                         else { <span>—</span> }
                                     </td>
@@ -237,6 +255,17 @@
                                         {
                                             <div>$@FormatMoney(p.PrecioOtroEfectivo.Value)/kg</div>
                                             <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.PrecioOtroEfectivoConIva!.Value)</div>
+                                            @if (mostrarFracciones)
+                                            {
+                                                var mOtro = PrecioFraccion(p.PrecioOtroEfectivo.Value, 2m, false);
+                                                var cOtro = PrecioFraccion(p.PrecioOtroEfectivo.Value, 4m, false);
+                                                <div style="font-size: 0.72rem; color: #374151; font-weight: 600; margin-top: 3px; white-space: nowrap;" title="Precio de 1/2 kg y 1/4 kg — ya incluye el costo de fraccionamiento y el redondeo">
+                                                    ½ $@FormatMoneyCorto(mOtro) · ¼ $@FormatMoneyCorto(cOtro)
+                                                </div>
+                                                <div style="font-size: 0.66rem; color: #9ca3af; font-weight: 500; white-space: nowrap;">
+                                                    c/IVA $@FormatMoneyCorto(ConIva(mOtro, p.IvaPct)) · $@FormatMoneyCorto(ConIva(cOtro, p.IvaPct))
+                                                </div>
+                                            }
                                         }
                                         else { <span>—</span> }
                                     </td>
@@ -1329,6 +1358,46 @@
     // 2026-06-15: filtro "solo con reserva" (ventas MeLi pendientes de despacho)
     private bool soloConReserva = false;
 
+    // 2026-09-02: precios de 1/2 y 1/4 kg debajo del precio por kilo (solo CAFE). Pedido de Osmar:
+    // "los cafes se venden x 1 kg, 1/2 kg y 1/4 kg, estaria bueno que me aparezca tambien el precio".
+    private bool mostrarFracciones = true;
+
+    /// <summary>Settings de cafe — necesarios para calcular las fracciones con el MISMO criterio
+    /// que CafePricingService (costo de fraccionamiento + redondeo hacia arriba). Sin esto la
+    /// pantalla mostraria precioKg/2 plano, que NO es lo que termina cobrando la venta.</summary>
+    private CafeSettingDto? settings;
+
+    private async Task LoadSettings()
+    {
+        try { settings = await Api.GetCafeSettingsAsync(); }
+        catch { settings = null; }
+    }
+
+    /// <summary>Precio de una fraccion de cafe (divisor 2 = 1/2 kg, 4 = 1/4 kg), sin IVA.
+    /// Replica exactamente CafePricingService.CalcularPrecioBreakdown: (precioKg / divisor) +
+    /// costoFraccionamiento, y redondeo hacia arriba al multiplo configurado. El redondeo aplica
+    /// a todas las fracciones cuando esta vigente el "fraccionamiento futuro"; en el modo legacy
+    /// solo a 1/2 kg de clientes OTRO.</summary>
+    private decimal PrecioFraccion(decimal precioKg, decimal divisor, bool esBar)
+    {
+        bool usaFraccFuturo = (settings?.CostoFraccionamientoFuturo).HasValue
+            && (settings?.FechaAplicaFraccionamientoFuturo).HasValue
+            && DateTimeExt.AhoraAr().Date >= settings!.FechaAplicaFraccionamientoFuturo!.Value.Date;
+        decimal costoFracc = usaFraccFuturo
+            ? settings!.CostoFraccionamientoFuturo!.Value
+            : (settings?.CostoFraccionamiento ?? 0m);
+        decimal redondeoMult = settings?.RedondeoMultiplo ?? 0m;
+
+        var raw = (precioKg / divisor) + costoFracc;
+        bool aplicarRedondeo = usaFraccFuturo || (divisor == 2m && !esBar);
+        if (redondeoMult > 0m && aplicarRedondeo)
+            raw = Math.Ceiling(raw / redondeoMult) * redondeoMult;
+        return Math.Round(raw, 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static decimal ConIva(decimal sinIva, decimal ivaPct)
+        => Math.Round(sinIva * (1m + ivaPct / 100m), 2, MidpointRounding.AwayFromZero);
+
     // 2026-08-25: bajar a Excel lo que se ve en pantalla.
     private bool bajandoExcel;
 
@@ -1711,11 +1780,13 @@
         var loadMarcas = LoadMarcasCatalog();
         var loadReglas = LoadReglasPrecios();
         var loadThumbs = LoadThumbnails();
+        var loadSettings = LoadSettings();
         await Load();
         await loadOems;
         await loadMarcas;
         await loadReglas;
         await loadThumbs;
+        await loadSettings;
     }
 
     private async Task LoadThumbnails()
@@ -2322,6 +2393,13 @@
 
     private static string FormatMoney(decimal v)
         => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    /// <summary>Igual que FormatMoney pero sin decimales. Para los renglones de 1/2 y 1/4 kg,
+    /// que van en letra chica dentro de una columna angosta: con ",00" el texto se partia en
+    /// dos lineas y quedaba ilegible. Los precios de fraccion son siempre redondos (redondeo
+    /// al millar), asi que no se pierde informacion.</summary>
+    private static string FormatMoneyCorto(decimal v)
+        => v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
 
     /// <summary>UX: siempre mostramos stock de cafe en kg con 2 decimales (regla del usuario).
     /// Internamente almacenamos en gramos pero NO se exponen al usuario.</summary>
