@@ -377,6 +377,15 @@
         {
             <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
         }
+        else if (fallóLaCarga)
+        {
+            <p style="padding: 1.5rem; color:#b91c1c;">
+                <strong>No pudimos cargar las ventas.</strong> Esto NO quiere decir que no haya ventas:
+                no se pudieron traer. Probá de nuevo con <strong>Actualizar</strong>; si sigue igual,
+                puede ser que hayas entrado con la huella (que abre solo el WhatsApp) o que se haya
+                cortado la conexión.
+            </p>
+        }
         else if (ventas is null || ventas.Count == 0)
         {
             <p class="text-muted" style="padding: 1.5rem;">
@@ -6543,9 +6552,14 @@
     // dias para mostrar en el banner azul + recargar correctamente. null = no hay rango activo.
     private int? rangoUltimosDias = null;
 
+    /// <summary>2026-09-02: true cuando la última carga se cayó. Sirve para no confundir
+    /// "no hay ventas" con "no pudimos traerlas".</summary>
+    private bool fallóLaCarga;
+
     private async Task Load()
     {
         loading = true;
+        fallóLaCarga = false;
         try
         {
             if (traerTodoActivo)
@@ -6574,7 +6588,15 @@
             }
             catch { saldosPorVenta = new(); }
         }
-        catch { ToastService.Error("Error al cargar ventas"); ventas = new(); }
+        catch
+        {
+            // 2026-09-02: antes esto dejaba la lista vacía y la pantalla mostraba "No hay ventas",
+            // o sea le decía al usuario que no tenía ventas cuando en realidad la consulta falló.
+            // Ahora queda la marca para mostrar el cartel correcto.
+            ToastService.Error("Error al cargar ventas");
+            ventas = new();
+            fallóLaCarga = true;
+        }
         loading = false;
     }
 

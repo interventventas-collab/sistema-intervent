@@ -5779,6 +5779,22 @@ public class ApiClient
             _navigation.NavigateTo("/login", forceLoad: true);
     }
 
+    /// <summary>2026-09-02 — El celular que entró con la HUELLA solo puede abrir WhatsApp; el
+    /// resto del sistema le contesta 403 con la marca "X-Solo-Whatsapp".
+    ///
+    /// Antes cada pantalla hacía lo suyo con ese 403: el listado de ventas lo tragaba y mostraba
+    /// "No hay ventas" — o sea, le decía al usuario que no tenía ventas cuando en realidad no lo
+    /// habían dejado verlas. Ahora se atiende UNA sola vez acá y se lo manda a una pantalla que
+    /// le explica qué pasó y cómo entrar bien. Devuelve true si era este caso.</summary>
+    private bool EsBloqueoDeHuella(HttpResponseMessage response)
+    {
+        if (response.StatusCode != HttpStatusCode.Forbidden) return false;
+        if (!response.Headers.Contains("X-Solo-Whatsapp")) return false;
+        if (!_navigation.Uri.Contains("/solo-whatsapp", StringComparison.OrdinalIgnoreCase))
+            _navigation.NavigateTo("/solo-whatsapp");
+        return true;
+    }
+
     // --- Banco Galicia (scraping Office Banking empresas) ---
     public async Task<Web.Models.GaliciaAccountDto?> GetGaliciaAccountAsync()
         => await GetAsync<Web.Models.GaliciaAccountDto>("/api/galicia/account");
@@ -5985,6 +6001,8 @@ public class ApiClient
             return default;
         }
 
+        if (EsBloqueoDeHuella(response)) return default;
+
         // 204 = el endpoint devolvió null (ej. un bot que todavía no existe). No hay JSON que leer.
         if (response.StatusCode == HttpStatusCode.NoContent)
             return default;
@@ -6037,6 +6055,8 @@ public class ApiClient
             return default;
         }
 
+        if (EsBloqueoDeHuella(response)) return default;
+
         await ThrowIfErrorAsync(response);
         return await response.Content.ReadFromJsonAsync<T>();
     }
@@ -6051,6 +6071,8 @@ public class ApiClient
             await HandleUnauthorizedAsync();
             return default;
         }
+
+        if (EsBloqueoDeHuella(response)) return default;
 
         await ThrowIfErrorAsync(response);
         return await response.Content.ReadFromJsonAsync<T>();
@@ -6082,6 +6104,8 @@ public class ApiClient
             await HandleUnauthorizedAsync();
             return false;
         }
+
+        if (EsBloqueoDeHuella(response)) return false;
 
         return response.IsSuccessStatusCode;
     }

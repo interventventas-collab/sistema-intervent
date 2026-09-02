@@ -1,0 +1,72 @@
+@page "/solo-whatsapp"
+@attribute [AllowAnonymous]
+@layout LoginLayout
+@inject NavigationManager Navigation
+@inject AuthService Auth
+
+@* 2026-09-02 — Adonde va a parar el celular que entró con la HUELLA cuando toca algo que la
+   huella no abre (ventas, cobranzas, stock, administración).
+
+   Antes no existía esta pantalla y cada lugar hacía lo suyo con el 403: el listado de ventas
+   mostraba "No hay ventas" — le decía al usuario que no tenía ventas cuando en realidad no lo
+   dejaban verlas. Eso es peor que un error: es un dato falso sobre su negocio.
+
+   La regla de seguridad NO cambia (la huella sigue abriendo solo WhatsApp, pedido de Osmar);
+   lo único que cambia es que ahora se avisa en castellano y se ofrece la salida. *@
+
+<div class="sw-wrap">
+    <div class="sw-card">
+        <div class="sw-icono">🔒</div>
+        <h1>Esto no se abre con la huella</h1>
+        <p class="sw-texto">
+            Entraste con la huella, y la huella abre <strong>solamente el WhatsApp</strong> del celular.
+            Es a propósito: así, si alguien agarra el teléfono, no puede entrar a las ventas ni a la plata.
+        </p>
+        <p class="sw-texto">
+            Para ver el resto del sistema, entrá con tu <strong>usuario y clave</strong>.
+        </p>
+
+        <div class="sw-botones">
+            <button class="sw-btn sw-btn-primario" @onclick="IrAlWhatsApp">💬 Volver al WhatsApp</button>
+            <button class="sw-btn" @onclick="IrAlLogin">🔑 Entrar con usuario y clave</button>
+        </div>
+
+        <p class="sw-nota">
+            Si estabas mirando el listado de ventas y te aparecía vacío, no era que no había ventas:
+            era esto.
+        </p>
+    </div>
+</div>
+
+<style>
+.sw-wrap {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 1.5rem; background: #f3f4f6;
+}
+.sw-card {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 14px;
+    padding: 2rem 1.6rem; max-width: 460px; width: 100%; text-align: center;
+}
+.sw-icono { font-size: 2.6rem; line-height: 1; margin-bottom: 0.6rem; }
+.sw-card h1 { font-size: 1.25rem; margin: 0 0 1rem; color: #111827; }
+.sw-texto { font-size: 0.95rem; color: #374151; line-height: 1.5; margin: 0 0 0.9rem; }
+.sw-botones { display: flex; flex-direction: column; gap: 0.6rem; margin: 1.4rem 0 1rem; }
+.sw-btn {
+    padding: 0.8rem 1rem; border-radius: 9px; border: 1px solid #d1d5db;
+    background: #fff; color: #374151; font-size: 0.95rem; cursor: pointer;
+}
+.sw-btn-primario { background: #16a34a; border-color: #16a34a; color: #fff; font-weight: 600; }
+.sw-nota { font-size: 0.8rem; color: #9ca3af; margin: 0; line-height: 1.45; }
+</style>
+
+@code {
+    private void IrAlWhatsApp() => Navigation.NavigateTo("/whatsapp-movil", forceLoad: true);
+
+    /// <summary>Se limpia la sesión de la huella antes de mandarlo al login: si no, vuelve a
+    /// entrar con la misma llave limitada y el problema se repite.</summary>
+    private async Task IrAlLogin()
+    {
+        await Auth.LogoutAsync();
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

@@ -119,10 +119,15 @@ public class WaMovilScopeMiddleware
             _logger.LogWarning("[WaMovil] Sesión de huella ({Quien}) quiso entrar a {Ruta} — bloqueado",
                 ctx.User?.Identity?.Name ?? "?", ruta);
             ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            // 2026-09-02: marca para que el FRONT sepa que este 403 es la llave de la huella y no
+            // otro error. Sin esto, las pantallas mostraban el listado VACIO ("No hay ventas")
+            // como si de verdad no hubiera nada — el usuario creia que habia perdido las ventas.
+            ctx.Response.Headers["X-Solo-Whatsapp"] = "1";
             await ctx.Response.WriteAsJsonAsync(new
             {
                 error = "Entraste con la huella, que abre solo el WhatsApp del celular. " +
-                        "Para el resto del sistema entrá con tu usuario y clave."
+                        "Para el resto del sistema entrá con tu usuario y clave.",
+                codigo = "solo-whatsapp"
             });
             return;
         }

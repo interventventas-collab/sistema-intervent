@@ -44,6 +44,9 @@
                             || relPath.StartsWith("wa?", StringComparison.OrdinalIgnoreCase)
                             || relPath.Equals("whatsapp-movil", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("whatsapp-movil?", StringComparison.OrdinalIgnoreCase)
+                            // 2026-09-02: el cartel "esto no se abre con la huella". Va sin el menu
+                            // del sistema, porque justamente el que llega ahi no tiene acceso a el.
+                            || relPath.Equals("solo-whatsapp", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("login", StringComparison.OrdinalIgnoreCase);
             }
             @if (isPublic)
