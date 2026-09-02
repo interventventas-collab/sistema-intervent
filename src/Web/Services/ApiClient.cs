@@ -3087,17 +3087,42 @@ public class ApiClient
     }
 
     public async Task<byte[]?> DownloadStockIdealPedidoExcelAsync(
-        string? marca = null, string? q = null, string? categoria = null)
+        string? marca = null, string? q = null, string? categoria = null, string origen = "pendientes")
     {
         await SetAuthHeaderAsync();
-        var qs = new List<string>();
+        var qs = new List<string> { $"origen={Uri.EscapeDataString(origen)}" };
         if (!string.IsNullOrWhiteSpace(marca)) qs.Add($"marca={Uri.EscapeDataString(marca)}");
         if (!string.IsNullOrWhiteSpace(q)) qs.Add($"q={Uri.EscapeDataString(q)}");
         if (!string.IsNullOrWhiteSpace(categoria)) qs.Add($"categoria={Uri.EscapeDataString(categoria)}");
-        var url = "/api/stock/ideal/pedido.xlsx" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
-        var resp = await _http.GetAsync(url);
+        var resp = await _http.GetAsync("/api/stock/ideal/pedido.xlsx?" + string.Join("&", qs));
         if (!resp.IsSuccessStatusCode) return null;
         return await resp.Content.ReadAsByteArrayAsync();
+    }
+
+    // Lista de "para pedir": se acumula sola; el producto sale cuando lo marcan como pedido.
+    public async Task<StockIdealPendientesResultDto?> GetStockIdealPendientesAsync(
+        string? marca = null, string? q = null)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(marca)) qs.Add($"marca={Uri.EscapeDataString(marca)}");
+        if (!string.IsNullOrWhiteSpace(q)) qs.Add($"q={Uri.EscapeDataString(q)}");
+        var url = "/api/stock/ideal/pendientes" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<StockIdealPendientesResultDto>(url);
+    }
+
+    public async Task<bool> MarcarStockIdealPedidoAsync(int id, decimal? cantidadPedida = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/stock/ideal/pendientes/{id}/pedido",
+            new { cantidadPedida });
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> DescartarStockIdealPendienteAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/stock/ideal/pendientes/{id}");
+        return resp.IsSuccessStatusCode;
     }
 
     public async Task<byte[]?> DownloadStockIdealExcelAsync()

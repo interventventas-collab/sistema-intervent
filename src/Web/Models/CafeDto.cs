@@ -1797,6 +1797,37 @@ public class StockIdealApplyResultDto
     public List<string> Errores { get; set; } = new();
 }
 
+// 2026-09-02: lista de "para pedir" — se acumula sola y el producto queda anotado hasta
+// que alguien lo marca como pedido (aunque en el medio entre algo de stock).
+public class StockIdealPendienteDto
+{
+    public int Id { get; set; }
+    public int ProductoId { get; set; }
+    public string? Codigo { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Marca { get; set; }
+    /// <summary>Cuánto había cuando se anotó (la foto de ese momento).</summary>
+    public decimal StockAlDetectar { get; set; }
+    public int IdealAlDetectar { get; set; }
+    public DateTime DetectadoAt { get; set; }
+    public decimal StockAhora { get; set; }
+    public int? IdealAhora { get; set; }
+    public decimal Faltan { get; set; }
+    public string Unidad { get; set; } = "u";
+    /// <summary>Ya volvió a estar por encima del ideal, pero sigue anotado hasta que lo saquen.</summary>
+    public bool YaRepuesto { get; set; }
+}
+
+public class StockIdealPendientesResultDto
+{
+    public int Total { get; set; }
+    public int YaRepuestos { get; set; }
+    public int EnCero { get; set; }
+    /// <summary>Cuántos entraron a la lista en esta misma consulta (recién detectados).</summary>
+    public int NuevosEnganchados { get; set; }
+    public List<StockIdealPendienteDto> Filas { get; set; } = new();
+}
+
 // === Descuentos por tipo de cliente y marca ===
 public class CafeDescuentoGrillaFila
 {

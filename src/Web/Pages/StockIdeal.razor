@@ -7,10 +7,16 @@
 @using Microsoft.AspNetCore.Components.Forms
 
 @* 2026-09-02: "Stock ideal" — cuánto queremos tener siempre de cada producto, para armar
-   los pedidos al proveedor. Dos solapas: Faltantes (lo que hay que pedir) y Configurar
-   (la planilla donde se cargan los ideales, a mano o por Excel).
+   los pedidos al proveedor. Tres solapas:
+     · Para pedir  — la lista que se acumula sola. El producto entra cuando cruza por debajo
+                     del ideal y QUEDA hasta que alguien lo marca como pedido, aunque en el
+                     medio entren unas pocas unidades (ese caso se perdía antes).
+     · Faltantes   — la foto de ahora: los que están por debajo en este momento.
+     · Configurar  — la planilla donde se cargan los ideales, a mano o por Excel.
+   La lista se refresca sola cada minuto, para el que la deja abierta en el depósito.
    OJO: el "stock ideal" NO es el "stock mínimo para MeLi" (ese vive en la ficha del
    producto y en Stock masivo). Son dos números distintos a propósito. *@
+@implements IDisposable
 
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
@@ -21,11 +27,10 @@
             </p>
         </div>
         <div style="display:flex; gap:0.5rem;">
-            <button class="btn btn-secondary" @onclick="CargarAsync" disabled="@cargando">🔄 Actualizar</button>
-            @if (solapa == "faltantes")
+            <button class="btn btn-secondary" @onclick="Recargar" disabled="@cargando">🔄 Actualizar</button>
+            @if (solapa != "config")
             {
-                <button class="btn btn-primary" @onclick="BajarExcelPedido"
-                        disabled="@(bajandoPedido || resumen is null || resumen.Faltantes == 0)">
+                <button class="btn btn-primary" @onclick="BajarExcelPedido" disabled="@(bajandoPedido || SinNadaQuePedir)">
                     @(bajandoPedido ? "Generando..." : "📄 Bajar Excel del pedido")
                 </button>
             }
@@ -33,9 +38,12 @@
     </div>
 
     @* ===== Solapas ===== *@
-    <div style="display:flex; gap:2px; padding:0 1rem; background:#f9fafb; border-bottom:1px solid #e5e7eb;">
+    <div style="display:flex; gap:2px; padding:0 1rem; background:#f9fafb; border-bottom:1px solid #e5e7eb; flex-wrap:wrap;">
+        <button class="si-tab @(solapa == "pedir" ? "on" : "")" @onclick='() => CambiarSolapa("pedir")'>
+            Para pedir@(pendientes is not null ? $" ({pendientes.Total})" : "")
+        </button>
         <button class="si-tab @(solapa == "faltantes" ? "on" : "")" @onclick='() => CambiarSolapa("faltantes")'>
-            Faltantes@(resumen is not null ? $" ({resumen.Faltantes})" : "")
+            Faltantes ahora@(resumen is not null ? $" ({resumen.Faltantes})" : "")
         </button>
         <button class="si-tab @(solapa == "config" ? "on" : "")" @onclick='() => CambiarSolapa("config")'>
             Configurar los ideales
@@ -47,7 +55,7 @@
         <div style="display:flex; gap:0.7rem; flex-wrap:wrap; align-items:flex-end;">
             <div style="min-width:170px;">
                 <label class="form-label">Marca</label>
-                <select class="form-control" @bind="marca" @bind:after="CargarAsync">
+                <select class="form-control" @bind="marca" @bind:after="Recargar">
                     <option value="">— Todas —</option>
                     @foreach (var m in marcas)
                     {
@@ -60,22 +68,46 @@
                 <input type="text" class="form-control" placeholder="código o nombre"
                        @bind="busqueda" @bind:event="oninput" @onkeyup="OnBuscarKeyUp" />
             </div>
-            <div style="min-width:140px;">
+            <div style="min-width:140px; @(solapa == "pedir" ? "display:none;" : "")">
                 <label class="form-label">Categoría</label>
-                <select class="form-control" @bind="categoria" @bind:after="CargarAsync">
+                <select class="form-control" @bind="categoria" @bind:after="Recargar">
                     <option value="">— Todas —</option>
                     <option value="CAFE">CAFE</option>
                     <option value="OTROS">OTROS</option>
                 </select>
             </div>
-            <button class="btn btn-secondary" @onclick="CargarAsync" disabled="@cargando">
+            <button class="btn btn-secondary" @onclick="Recargar" disabled="@cargando">
                 @(cargando ? "Buscando..." : "🔍 Buscar")
             </button>
         </div>
     </div>
 
     @* ===== Resumen ===== *@
-    @if (resumen is not null && !cargando)
+    @if (solapa == "pedir" && pendientes is not null && !cargando)
+    {
+        <div style="padding:0.7rem 1rem; font-size:0.85rem; color:#374151; border-bottom:1px solid #e5e7eb;">
+            @if (pendientes.Total == 0)
+            {
+                <span>✅ No hay nada anotado para pedir. Los productos entran solos acá cuando su stock queda por debajo del ideal.</span>
+            }
+            else
+            {
+                <span>
+                    <strong>@pendientes.Total</strong> productos anotados para pedir
+                    @if (pendientes.EnCero > 0)
+                    {
+                        <span style="color:#b91c1c;"> · @pendientes.EnCero en cero</span>
+                    }
+                    @if (pendientes.YaRepuestos > 0)
+                    {
+                        <span class="text-muted"> · @pendientes.YaRepuestos ya se repusieron (quedan anotados hasta que los saques)</span>
+                    }
+                </span>
+            }
+            <span class="text-muted"> · se actualiza sola cada minuto</span>
+        </div>
+    }
+    else if (solapa != "pedir" && resumen is not null && !cargando)
     {
         <div style="padding:0.7rem 1rem; font-size:0.85rem; color:#374151; border-bottom:1px solid #e5e7eb;">
             @if (resumen.ConIdeal == 0)
@@ -106,6 +138,67 @@
         @if (cargando)
         {
             <p class="text-muted" style="padding:1.5rem;">Cargando...</p>
+        }
+        else if (solapa == "pedir")
+        {
+            @if (pendientes is null || pendientes.Filas.Count == 0)
+            {
+                <p class="text-muted" style="padding:1.5rem;">
+                    Todavía no hay nada anotado. Cargá el stock ideal de tus productos en
+                    <strong>Configurar los ideales</strong> y acá van a ir apareciendo solos los que bajen.
+                </p>
+            }
+            else
+            {
+                <div style="overflow-x:auto;">
+                    <table class="table" style="margin:0; font-size:0.85rem;">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Producto</th>
+                                <th>Marca</th>
+                                <th style="text-align:right;">Tenía</th>
+                                <th style="text-align:right;">Tiene ahora</th>
+                                <th style="text-align:right;">Ideal</th>
+                                <th style="text-align:right;">Faltan</th>
+                                <th></th>
+                                <th>Anotado</th>
+                                <th style="width:150px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in pendientes.Filas)
+                            {
+                                var id = f.Id;
+                                <tr style="@(f.YaRepuesto ? "background:#f9fafb;" : "")">
+                                    <td><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
+                                    <td>
+                                        @f.Nombre
+                                        @if (f.YaRepuesto)
+                                        {
+                                            <span class="text-muted" style="font-size:0.75rem;"> · ya repuesto</span>
+                                        }
+                                    </td>
+                                    <td>@(f.Marca ?? "—")</td>
+                                    <td class="text-muted" style="text-align:right;">@Num(f.StockAlDetectar)</td>
+                                    <td style="text-align:right; @(f.StockAhora <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockAhora)</td>
+                                    <td style="text-align:right; color:#6b7280;">@(f.IdealAhora?.ToString() ?? f.IdealAlDetectar.ToString())</td>
+                                    <td style="text-align:right; font-weight:700; @(f.Faltan > 0 ? "color:#b91c1c;" : "color:#9ca3af;")">@Num(f.Faltan)</td>
+                                    <td class="text-muted" style="font-size:0.78rem;">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
+                                    <td class="text-muted" style="font-size:0.78rem;">@FechaCorta(f.DetectadoAt)</td>
+                                    <td style="white-space:nowrap;">
+                                        <button class="btn btn-sm btn-primary" style="font-size:0.75rem;"
+                                                @onclick="() => MarcarPedido(id)" disabled="@resolviendo">✓ Ya lo pedí</button>
+                                        <button class="btn btn-sm btn-secondary" style="font-size:0.75rem;"
+                                                title="Sacarlo de la lista sin pedirlo"
+                                                @onclick="() => Descartar(id)" disabled="@resolviendo">✕</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         }
         else if (solapa == "faltantes")
         {
@@ -297,8 +390,14 @@
 </style>
 
 @code {
-    private string solapa = "faltantes";
+    // Arranca en "Para pedir": es la lista que se usa todos los días.
+    private string solapa = "pedir";
     private bool cargando;
+    private bool resolviendo;
+    private StockIdealPendientesResultDto? pendientes;
+    private System.Threading.Timer? autoRefresh;
+    // Cada minuto: alcanza para el que la deja abierta en el depósito y no castiga a la API.
+    private const int SegundosRefresco = 60;
     private string? marca;
     private string? categoria;
     private string busqueda = "";
@@ -318,7 +417,29 @@
     private StockIdealPreviewDto? preview;
     private string? errorExcel;
 
-    protected override async Task OnInitializedAsync() => await CargarAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarAsync();
+        // Refresco solo: si el stock se mueve mientras la pantalla está abierta, la lista se
+        // actualiza sin que nadie toque nada. No corre en la solapa de configurar, para no
+        // pisarle lo que está tipeando.
+        autoRefresh = new System.Threading.Timer(async _ =>
+        {
+            if (cargando || solapa == "config") return;
+            await InvokeAsync(async () =>
+            {
+                await CargarAsync(silencioso: true);
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(SegundosRefresco), TimeSpan.FromSeconds(SegundosRefresco));
+    }
+
+    public void Dispose() => autoRefresh?.Dispose();
+
+    /// <summary>Con qué se llena el botón de Excel y si tiene sentido habilitarlo.</summary>
+    private bool SinNadaQuePedir => solapa == "pedir"
+        ? (pendientes is null || pendientes.Filas.Count(f => f.Faltan > 0) == 0)
+        : (resumen is null || resumen.Faltantes == 0);
 
     private async Task CambiarSolapa(string s)
     {
@@ -328,25 +449,96 @@
         await CargarAsync();
     }
 
-    private async Task CargarAsync()
+    /// <summary>silencioso = viene del refresco automático: no muestra el "Cargando..." ni
+    /// molesta con un cartel de error si justo falló la red.</summary>
+    private async Task CargarAsync(bool silencioso = false)
     {
-        cargando = true;
-        edits.Clear();
-        guardados.Clear();
+        if (!silencioso) cargando = true;
         try
         {
+            if (solapa == "pedir")
+            {
+                var pend = await Api.GetStockIdealPendientesAsync(marca, busqueda);
+                if (pend is null)
+                {
+                    if (!silencioso) ToastService.Error("No se pudo cargar la lista");
+                    return;
+                }
+                // Si el refresco encontró productos nuevos, avisar: es la gracia de la pantalla.
+                if (silencioso && pend.NuevosEnganchados > 0)
+                    ToastService.Info(pend.NuevosEnganchados == 1
+                        ? "Entró un producto nuevo a la lista para pedir"
+                        : $"Entraron {pend.NuevosEnganchados} productos nuevos a la lista para pedir");
+                pendientes = pend;
+                // Las marcas para el filtro salen de la otra consulta; si todavía no están, se piden.
+                if (marcas.Count == 0)
+                {
+                    var res0 = await Api.GetStockIdealListaAsync(true, null, null, null);
+                    if (res0 is not null && res0.Marcas.Count > 0) marcas = res0.Marcas;
+                }
+                return;
+            }
+
+            edits.Clear();
+            guardados.Clear();
             // En Faltantes solo se traen los que están abajo del ideal; en Configurar, todos.
             var res = await Api.GetStockIdealListaAsync(
                 soloFaltantes: solapa == "faltantes",
                 marca: marca, q: busqueda, categoria: categoria);
-            if (res is null) { ToastService.Error("No se pudo cargar la lista"); return; }
+            if (res is null)
+            {
+                if (!silencioso) ToastService.Error("No se pudo cargar la lista");
+                return;
+            }
             resumen = res;
             filas = res.Filas;
             if (res.Marcas.Count > 0) marcas = res.Marcas;
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { cargando = false; }
+        catch (Exception ex)
+        {
+            if (!silencioso) ToastService.Error("Error: " + ex.Message);
+        }
+        finally { if (!silencioso) cargando = false; }
     }
+
+    /// <summary>"Ya lo pedí": sale de la lista y queda registrado quién y cuándo.</summary>
+    private async Task MarcarPedido(int id)
+    {
+        resolviendo = true;
+        try
+        {
+            if (await Api.MarcarStockIdealPedidoAsync(id))
+            {
+                pendientes?.Filas.RemoveAll(f => f.Id == id);
+                if (pendientes is not null) pendientes.Total = pendientes.Filas.Count;
+                ToastService.Success("Anotado como pedido");
+            }
+            else ToastService.Error("No se pudo marcar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { resolviendo = false; }
+    }
+
+    /// <summary>Sacarlo de la lista sin pedirlo (se anotó de más, ya no hace falta).</summary>
+    private async Task Descartar(int id)
+    {
+        resolviendo = true;
+        try
+        {
+            if (await Api.DescartarStockIdealPendienteAsync(id))
+            {
+                pendientes?.Filas.RemoveAll(f => f.Id == id);
+                if (pendientes is not null) pendientes.Total = pendientes.Filas.Count;
+                ToastService.Success("Lo saqué de la lista");
+            }
+            else ToastService.Error("No se pudo sacar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { resolviendo = false; }
+    }
+
+    /// <summary>Lo que llaman los botones y los filtros de la pantalla.</summary>
+    private Task Recargar() => CargarAsync();
 
     private async Task OnBuscarKeyUp(KeyboardEventArgs e)
     {
@@ -407,7 +599,8 @@
         bajandoPedido = true;
         try
         {
-            var bytes = await Api.DownloadStockIdealPedidoExcelAsync(marca, busqueda, categoria);
+            var bytes = await Api.DownloadStockIdealPedidoExcelAsync(
+                marca, busqueda, categoria, origen: solapa == "pedir" ? "pendientes" : "ahora");
             if (bytes is null) { ToastService.Error("No se pudo generar el Excel"); return; }
             await JS.InvokeVoidAsync("downloadFile", "pedido.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -212,6 +212,9 @@ builder.Services.AddHostedService<ShellAutoSyncBackgroundService>();
 builder.Services.AddHostedService<MpAutoSyncBackgroundService>();
 // 2026-07-10: motor de alertas configurables ("Mis Alertas"). Revisa las reglas cada 5 min.
 builder.Services.AddHostedService<MisAlertasBackgroundService>();
+// 2026-09-02: arma sola la lista de "para pedir" (productos por debajo del stock ideal). Cada 10 min.
+builder.Services.AddScoped<StockFaltantesService>();
+builder.Services.AddHostedService<StockFaltantesBackgroundService>();
 // 2026-08-13: avisos de cierre de ventana de WhatsApp (24hs). Vigila las conversaciones abiertas
 // y avisa (al equipo o al cliente) cuando falta poco para que se cierre la ventana. Revisa cada 2 min.
 builder.Services.AddHostedService<AvisoVentanaBackgroundService>();

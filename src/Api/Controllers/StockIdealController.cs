@@ -1,9 +1,12 @@
 using Api.Data;
+using Api.Models;
+using Api.Services;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using System.Security.Claims;
 
 namespace Api.Controllers;
 
@@ -28,7 +31,12 @@ namespace Api.Controllers;
 public class StockIdealController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public StockIdealController(AppDbContext db) { _db = db; }
+    private readonly StockFaltantesService _faltantes;
+    public StockIdealController(AppDbContext db, StockFaltantesService faltantes)
+    {
+        _db = db;
+        _faltantes = faltantes;
+    }
 
     // ───────────────────────── DTOs ─────────────────────────
 
@@ -217,21 +225,124 @@ public class StockIdealController : ControllerBase
         return Ok(new StockIdealBulkResult(actualizados, quitados, noEncontrados));
     }
 
+
+    // ═════════════════════ LISTA "PARA PEDIR" (acumulada) ═════════════════════
+    // A diferencia de /lista (que es la foto de AHORA), esta lista se acumula: el producto entra
+    // cuando cruza por debajo del ideal y QUEDA hasta que alguien lo marque como pedido, aunque
+    // en el medio entren unas pocas unidades. Ese era el caso que se perdia antes.
+
+    public record PendienteRow(
+        int Id, int ProductoId, string? Codigo, string Nombre, string? Marca,
+        decimal StockAlDetectar, int IdealAlDetectar, DateTime DetectadoAt,
+        decimal StockAhora, int? IdealAhora, decimal Faltan, string Unidad, bool YaRepuesto);
+
+    public record PendientesResult(
+        int Total, int YaRepuestos, int EnCero, int NuevosEnganchados, List<PendienteRow> Filas);
+
+    public record MarcarPedidoRequest(decimal? CantidadPedida);
+
+    /// <summary>GET /api/stock/ideal/pendientes — la lista de para pedir. Antes de devolverla
+    /// engancha los que hayan quedado por debajo desde la ultima vez (asi la pantalla se llena
+    /// sola aunque el robot no haya pasado todavia).</summary>
+    [HttpGet("pendientes")]
+    public async Task<IActionResult> Pendientes([FromQuery] string? marca = null, [FromQuery] string? q = null)
+    {
+        int nuevos = await _faltantes.EngancharAsync();
+
+        var filas = await _db.CafeStockFaltantes.AsNoTracking()
+            .Where(f => f.Estado == "PENDIENTE")
+            .Select(f => new
+            {
+                f.Id, f.ProductoId, f.StockAlDetectar, f.IdealAlDetectar, f.DetectadoAt,
+                Codigo = f.Producto!.Sku,
+                f.Producto.Nombre,
+                Marca = f.Producto.Marca ?? (f.Producto.MarcaNav != null ? f.Producto.MarcaNav.Nombre : null),
+                f.Producto.Categoria,
+                f.Producto.StockUnidades,
+                f.Producto.StockGramos,
+                IdealAhora = f.Producto.StockIdeal,
+            })
+            .ToListAsync();
+
+        // Filtros en memoria: la lista de pendientes es chica (decenas), no vale la pena en SQL.
+        if (!string.IsNullOrWhiteSpace(marca))
+            filas = filas.Where(f => string.Equals(f.Marca, marca.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var t = q.Trim();
+            filas = filas.Where(f =>
+                f.Nombre.Contains(t, StringComparison.OrdinalIgnoreCase) ||
+                (f.Codigo ?? "").Contains(t, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        var rows = filas.Select(f =>
+        {
+            var stockAhora = StockFaltantesService.StockDe(f.Categoria, f.StockUnidades, f.StockGramos);
+            var ideal = f.IdealAhora ?? f.IdealAlDetectar;
+            var faltan = Math.Max(0m, ideal - stockAhora);
+            return new PendienteRow(
+                f.Id, f.ProductoId, f.Codigo, f.Nombre, f.Marca,
+                f.StockAlDetectar, f.IdealAlDetectar, f.DetectadoAt,
+                stockAhora, f.IdealAhora, faltan,
+                StockFaltantesService.UnidadDe(f.Categoria),
+                YaRepuesto: faltan <= 0);
+        })
+        // Primero lo que sigue faltando (y de eso, lo que esta en cero); al final lo ya repuesto.
+        .OrderBy(r => r.YaRepuesto)
+        .ThenByDescending(r => r.StockAhora <= 0)
+        .ThenByDescending(r => r.Faltan)
+        .ThenBy(r => r.Nombre)
+        .ToList();
+
+        return Ok(new PendientesResult(
+            rows.Count,
+            rows.Count(r => r.YaRepuesto),
+            rows.Count(r => r.StockAhora <= 0),
+            nuevos,
+            rows));
+    }
+
+    /// <summary>POST /api/stock/ideal/pendientes/{id}/pedido — "ya lo pedi": sale de la lista.</summary>
+    [HttpPost("pendientes/{id:int}/pedido")]
+    public async Task<IActionResult> MarcarPedido(int id, [FromBody] MarcarPedidoRequest? req)
+        => await ResolverAsync(id, "PEDIDO", req?.CantidadPedida);
+
+    /// <summary>DELETE /api/stock/ideal/pendientes/{id} — sacarlo de la lista sin pedirlo
+    /// (se anotó de más, ya no hace falta, etc.).</summary>
+    [HttpDelete("pendientes/{id:int}")]
+    public async Task<IActionResult> Descartar(int id)
+        => await ResolverAsync(id, "DESCARTADO", null);
+
+    private async Task<IActionResult> ResolverAsync(int id, string estado, decimal? cantidad)
+    {
+        var f = await _db.CafeStockFaltantes.FirstOrDefaultAsync(x => x.Id == id);
+        if (f is null) return NotFound(new { error = "Ese renglón ya no está en la lista." });
+        if (f.Estado != "PENDIENTE") return Ok(new { ok = true, yaEstaba = true });
+
+        f.Estado = estado;
+        f.ResueltoAt = DateTime.UtcNow;
+        f.ResueltoPor = User.FindFirst(ClaimTypes.Name)?.Value;
+        if (cantidad.HasValue && cantidad.Value > 0) f.CantidadPedida = cantidad.Value;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     // ───────────────────────── EXCEL DEL PEDIDO ─────────────────────────
 
-    /// <summary>GET /api/stock/ideal/pedido.xlsx — Excel con los faltantes para mandarle al proveedor.</summary>
+    /// <summary>GET /api/stock/ideal/pedido.xlsx — Excel para mandarle al proveedor.
+    /// origen=pendientes (default) usa la lista de "para pedir" acumulada; origen=ahora usa la
+    /// foto del momento (los que estan por debajo justo ahora).</summary>
     [HttpGet("pedido.xlsx")]
     public async Task<IActionResult> ExportPedido(
         [FromQuery] string? marca = null,
         [FromQuery] string? q = null,
-        [FromQuery] string? categoria = null)
+        [FromQuery] string? categoria = null,
+        [FromQuery] string origen = "pendientes")
     {
-        var prods = await CargarProductosAsync(marca, q, categoria);
-        var faltantes = prods
-            .Select(p => new { P = p, Stock = StockDe(p), Faltan = Faltante(p.StockIdeal, StockDe(p)) })
-            .Where(x => x.Faltan > 0)
-            .OrderBy(x => x.P.Marca).ThenBy(x => x.P.Nombre)
-            .ToList();
+        // Fila del Excel, venga de donde venga.
+        var faltantes = string.Equals(origen, "ahora", StringComparison.OrdinalIgnoreCase)
+            ? await FilasPedidoDeAhoraAsync(marca, q, categoria)
+            : await FilasPedidoDePendientesAsync(marca, q);
 
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Pedido");
@@ -260,15 +371,15 @@ public class StockIdealController : ControllerBase
         int r = 5;
         foreach (var x in faltantes)
         {
-            ws.Cell(r, 1).Value = x.P.Sku ?? "";
-            ws.Cell(r, 2).Value = x.P.Nombre;
-            ws.Cell(r, 3).Value = x.P.Marca ?? "";
+            ws.Cell(r, 1).Value = x.Codigo ?? "";
+            ws.Cell(r, 2).Value = x.Nombre;
+            ws.Cell(r, 3).Value = x.Marca ?? "";
             ws.Cell(r, 4).Value = x.Stock;
-            ws.Cell(r, 5).Value = x.P.StockIdeal ?? 0;
+            ws.Cell(r, 5).Value = x.Ideal;
             ws.Cell(r, 6).Value = x.Faltan;
             ws.Cell(r, 6).Style.Font.Bold = true;
             ws.Cell(r, 6).Style.Fill.BackgroundColor = XLColor.FromHtml("#eff6ff");
-            ws.Cell(r, 7).Value = UnidadDe(x.P.Categoria) == "kg" ? "kilos" : "unidades";
+            ws.Cell(r, 7).Value = x.Unidad == "kg" ? "kilos" : "unidades";
             // Los que estan en cero van marcados: son los urgentes.
             if (x.Stock <= 0)
                 ws.Cell(r, 4).Style.Font.FontColor = XLColor.FromHtml("#b91c1c");
@@ -280,7 +391,7 @@ public class StockIdealController : ControllerBase
             ws.Cell(r, 5).Value = "TOTAL";
             ws.Cell(r, 5).Style.Font.Bold = true;
             // Solo se suma si todo el pedido va en la misma unidad: sumar kilos con unidades no significa nada.
-            var unidades = faltantes.Select(x => UnidadDe(x.P.Categoria)).Distinct().ToList();
+            var unidades = faltantes.Select(x => x.Unidad).Distinct().ToList();
             if (unidades.Count == 1)
             {
                 ws.Cell(r, 6).Value = faltantes.Sum(x => x.Faltan);
@@ -305,6 +416,66 @@ public class StockIdealController : ControllerBase
         return File(ms.ToArray(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"pedido-{hoyAr:yyyyMMdd-HHmm}.xlsx");
+    }
+
+    /// <summary>Una fila del Excel del pedido, venga de la lista acumulada o de la foto de ahora.</summary>
+    private record FilaPedido(string? Codigo, string Nombre, string? Marca,
+        decimal Stock, int Ideal, decimal Faltan, string Unidad);
+
+    /// <summary>Los que estan por debajo del ideal JUSTO AHORA.</summary>
+    private async Task<List<FilaPedido>> FilasPedidoDeAhoraAsync(string? marca, string? q, string? categoria)
+    {
+        var prods = await CargarProductosAsync(marca, q, categoria);
+        return prods
+            .Select(p => new FilaPedido(p.Sku, p.Nombre, p.Marca, StockDe(p), p.StockIdeal ?? 0,
+                Faltante(p.StockIdeal, StockDe(p)), UnidadDe(p.Categoria)))
+            .Where(x => x.Faltan > 0)
+            .OrderBy(x => x.Marca).ThenBy(x => x.Nombre)
+            .ToList();
+    }
+
+    /// <summary>La lista de "para pedir" acumulada. Incluye los ya repuestos (siguen anotados
+    /// hasta que alguien los marque), pero para el Excel se piden solo los que todavia faltan.</summary>
+    private async Task<List<FilaPedido>> FilasPedidoDePendientesAsync(string? marca, string? q)
+    {
+        await _faltantes.EngancharAsync();
+
+        var filas = await _db.CafeStockFaltantes.AsNoTracking()
+            .Where(f => f.Estado == "PENDIENTE")
+            .Select(f => new
+            {
+                f.IdealAlDetectar,
+                Codigo = f.Producto!.Sku,
+                f.Producto.Nombre,
+                Marca = f.Producto.Marca ?? (f.Producto.MarcaNav != null ? f.Producto.MarcaNav.Nombre : null),
+                f.Producto.Categoria,
+                f.Producto.StockUnidades,
+                f.Producto.StockGramos,
+                IdealAhora = f.Producto.StockIdeal,
+            })
+            .ToListAsync();
+
+        if (!string.IsNullOrWhiteSpace(marca))
+            filas = filas.Where(f => string.Equals(f.Marca, marca.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var t = q.Trim();
+            filas = filas.Where(f =>
+                f.Nombre.Contains(t, StringComparison.OrdinalIgnoreCase) ||
+                (f.Codigo ?? "").Contains(t, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        return filas
+            .Select(f =>
+            {
+                var stock = StockFaltantesService.StockDe(f.Categoria, f.StockUnidades, f.StockGramos);
+                var ideal = f.IdealAhora ?? f.IdealAlDetectar;
+                return new FilaPedido(f.Codigo, f.Nombre, f.Marca, stock, ideal,
+                    Math.Max(0m, ideal - stock), StockFaltantesService.UnidadDe(f.Categoria));
+            })
+            .Where(x => x.Faltan > 0)
+            .OrderBy(x => x.Marca).ThenBy(x => x.Nombre)
+            .ToList();
     }
 
     // ───────────────────────── EXCEL DE CONFIGURACION ─────────────────────────

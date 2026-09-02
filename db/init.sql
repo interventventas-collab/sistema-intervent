@@ -5421,6 +5421,36 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='StockIdeal' AND object_id=O
     ALTER TABLE Cafe_Productos ADD StockIdeal INT NULL;
 GO
 
+-- 2026-09-02: lista de "para pedir". Cuando un producto queda por debajo de su StockIdeal se
+-- le anota un renglon aca y QUEDA hasta que alguien lo marque como pedido (no se borra solo
+-- cuando vuelve a entrar stock: si no, entran 5 unidades sueltas y nadie se acuerda de pedirlo).
+-- El indice filtrado (WHERE Estado='PENDIENTE') exige QUOTED_IDENTIFIER ON, si no falla con
+-- "CREATE INDEX failed because the following SET options have incorrect settings".
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sysobjects WHERE name='Cafe_StockFaltantes' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_StockFaltantes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ProductoId INT NOT NULL,
+        DetectadoAt DATETIME2 NOT NULL CONSTRAINT DF_CafeStockFaltantes_Detectado DEFAULT SYSUTCDATETIME(),
+        StockAlDetectar DECIMAL(18,3) NOT NULL CONSTRAINT DF_CafeStockFaltantes_Stock DEFAULT 0,
+        IdealAlDetectar INT NOT NULL CONSTRAINT DF_CafeStockFaltantes_Ideal DEFAULT 0,
+        Estado NVARCHAR(20) NOT NULL CONSTRAINT DF_CafeStockFaltantes_Estado DEFAULT 'PENDIENTE',
+        ResueltoAt DATETIME2 NULL,
+        ResueltoPor NVARCHAR(120) NULL,
+        CantidadPedida DECIMAL(18,3) NULL,
+        CONSTRAINT FK_CafeStockFaltantes_Producto FOREIGN KEY (ProductoId)
+            REFERENCES Cafe_Productos(Id) ON DELETE CASCADE
+    );
+    -- Un producto no puede estar anotado dos veces al mismo tiempo.
+    CREATE UNIQUE INDEX UX_CafeStockFaltantes_ProductoPendiente
+        ON Cafe_StockFaltantes(ProductoId) WHERE Estado = 'PENDIENTE';
+    CREATE INDEX IX_CafeStockFaltantes_Estado ON Cafe_StockFaltantes(Estado, DetectadoAt DESC);
+END
+GO
+
 -- 2026-05-28: Integración Google Drive — track de cuándo se subió el PDF
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DriveFileId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD DriveFileId NVARCHAR(100) NULL;
