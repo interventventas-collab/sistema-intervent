@@ -271,7 +271,42 @@
         };
     }
 
-    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, tagIcon, streetView, cancelStreetView, wrapIw };
+    // ── Banderita a cuadros: "este chofer terminó su recorrido" ──
+    // 2026-09-02: se planta sobre la ÚLTIMA parada que entregó un chofer que ya entregó TODAS
+    // las suyas (llegó a la meta). Es blanco y negro a propósito: los colores del mapa son de
+    // los repartidores y de las alarmas, la banderita no compite con ellos.
+    // Mismo patrón que tagIcon: un segundo Marker con SVG inline (sin imágenes externas) y el
+    // anchor corrido, en este caso a la IZQUIERDA de la cabeza del pin (a la derecha ya están
+    // el cartelito de las 3 letras y el autito 🚗, así no se pisan).
+    const FLAG_W = 32, FLAG_H = 32;
+    function flagIcon() {
+        const cell = 5, x0 = 8, y0 = 3, cols = 4, rows = 3;
+        let cuadros = '';
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if ((r + c) % 2 === 0) {
+                    cuadros += '<rect x="' + (x0 + c * cell) + '" y="' + (y0 + r * cell) + '" width="' + cell + '" height="' + cell + '" fill="#111827"/>';
+                }
+            }
+        }
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + FLAG_W + '" height="' + FLAG_H + '" viewBox="0 0 ' + FLAG_W + ' ' + FLAG_H + '">' +
+            // Mástil (con halo blanco para que se lea sobre cualquier mapa).
+            '<rect x="4.2" y="2" width="3" height="28" rx="1.4" fill="#111827" stroke="#ffffff" stroke-width="1.2"/>' +
+            // Paño: fondo blanco + cuadraditos negros alternados + borde negro.
+            '<rect x="' + x0 + '" y="' + y0 + '" width="' + (cols * cell) + '" height="' + (rows * cell) + '" fill="#ffffff"/>' +
+            cuadros +
+            '<rect x="' + x0 + '" y="' + y0 + '" width="' + (cols * cell) + '" height="' + (rows * cell) + '" fill="none" stroke="#111827" stroke-width="1.4"/>' +
+            '</svg>';
+        return {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new google.maps.Size(FLAG_W, FLAG_H),
+            // anchor.x mayor que el ancho = la banderita se dibuja a la IZQUIERDA del punto;
+            // en Y queda a la altura de la cabeza del pin (nunca encima de la punta).
+            anchor: new google.maps.Point(FLAG_W + 12, FLAG_H / 2 + 28)
+        };
+    }
+
+    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, tagIcon, flagIcon, streetView, cancelStreetView, wrapIw };
 })();
 
 // ══════════ Mapa grande (pantalla Mapeo) ══════════
@@ -726,7 +761,11 @@ window.mapeoFlex = (function () {
         // keepView = true: redibuja los globitos SIN mover el mapa (ni zoom ni centro).
         // Se usa en el refresco automático, para que los envíos escaneados aparezcan solos
         // sin saltarte la vista mientras estás mirando una zona.
-        renderMarkers(items, keepView) {
+        // flags = banderitas 🏁 de los choferes que YA terminaron todo su recorrido: [{lat, lng, title}].
+        // Vienen aparte de los globitos porque la parada donde va la bandera está entregada y puede
+        // estar escondida por el filtro "no mostrar entregados" (si viniera en items, además, se
+        // agruparía con el pin y lo haría parecer "2 entregas en este domicilio").
+        renderMarkers(items, keepView, flags) {
             if (!map || !window.google) return;
             // Refresco automático con un globito abierto: no lo pisamos, lo dejamos como está.
             if (keepView && infoOpen) return;
@@ -864,6 +903,24 @@ window.mapeoFlex = (function () {
                         loc: (+first.lat).toFixed(6) + ',' + (+first.lng).toFixed(6),
                         ver: markersVersion
                     });
+                }
+            }
+
+            // 2026-09-02: 🏁 BANDERITA A CUADROS sobre la última entrega de cada chofer que terminó
+            // TODO su recorrido. Se guardan en 'markers' para que el próximo dibujo las borre solas.
+            // OJO: no tocamos routeLines ni llamamos a clearRoutes acá — las líneas de ruta las
+            // repinta Blazor después de este render.
+            if (Array.isArray(flags)) {
+                for (const f of flags) {
+                    if (!f || f.lat == null || f.lng == null) continue;
+                    markers.push(new google.maps.Marker({
+                        position: { lat: +f.lat, lng: +f.lng },
+                        map: map,
+                        clickable: false,
+                        zIndex: 1300,           // por encima del pin, del cartelito y del autito
+                        title: f.title || '',
+                        icon: H.flagIcon()
+                    }));
                 }
             }
 

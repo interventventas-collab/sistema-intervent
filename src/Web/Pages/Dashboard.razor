@@ -210,7 +210,10 @@ else
                                     }
                                     else
                                     {
-                                        <span class="dash-chip dash-chip-ok" title="Terminó toda su ruta">🎉 terminó la ruta</span>
+                                        @* 2026-09-02: con la hora de la última entrega, que es la hora en que
+                                           terminó. Antes decía solo "terminó la ruta" y había que buscar el
+                                           horario en el renglón de abajo. *@
+                                        <span class="dash-chip dash-chip-ok" title="Terminó toda su ruta">🏁 terminó@(string.IsNullOrWhiteSpace(emp.UltimaEntregaHora) ? "" : $" {emp.UltimaEntregaHora} hs")</span>
                                     }
                                 </div>
                             </div>

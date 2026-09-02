@@ -175,6 +175,46 @@
             </div>
         </div>
 
+        @* ─── 2026-09-02: ¿terminó su recorrido? — es lo primero que mira el repartidor ───
+           "Terminó" = TODAS las paradas del mapa que le asignaron están entregadas, sin excepción
+           (los Flex también). Si le queda una sola, no terminó.
+           "Hora de fin" y "última entrega" son lo mismo: la hora de su entrega más reciente.
+           Texto plano con · como separador: acá no hay nada que alarmar, es una buena noticia. *@
+        @if (ParadasTotal > 0)
+        {
+            <div style="margin:-0.35rem 0 0.85rem; padding:0 0.2rem; line-height:1.5;">
+                @if (TerminoRecorrido)
+                {
+                    <div style="font-size:1.02rem; font-weight:800; color:#111827;">
+                        🏁 Terminaste tu recorrido@(UltimaEntregaUtc is { } finAt ? " " + HoraEntregaFrase(finAt) : "")
+                    </div>
+                    <div style="font-size:0.78rem; color:#6b7280;">
+                        @ParadasTotal parada@(ParadasTotal == 1 ? "" : "s") · todas entregadas
+                    </div>
+                }
+                else
+                {
+                    <div style="font-size:0.95rem; color:#111827;">
+                        @if (UltimaEntregaUtc is { } ultAt)
+                        {
+                            <span>Última entrega @HoraEntregaTexto(ultAt)</span>
+                            <span style="color:#9ca3af;">&nbsp;·&nbsp;</span>
+                        }
+                        <span style="font-weight:800;">te falta@(ParadasFaltan == 1 ? "" : "n") @ParadasFaltan</span>
+                        <span style="color:#9ca3af;">&nbsp;·&nbsp;</span>
+                        <span style="color:#6b7280;">@ParadasEntregadas de @ParadasTotal listas</span>
+                    </div>
+                    @if (FaltanEnviosDeMeli)
+                    {
+                        <div style="font-size:0.78rem; color:#6b7280; margin-top:0.15rem;">
+                            Los envíos de MercadoLibre cuentan como entregados recién cuando MercadoLibre lo confirma:
+                            aunque ya lo hayas dejado, puede seguir figurando como pendiente un rato.
+                        </div>
+                    }
+                }
+            </div>
+        }
+
         @* ACCIONES *@
         <div class="mp-actions">
             <button class="mp-btn-scan" @onclick="EscanearQR" disabled="@escaneando">
@@ -1004,6 +1044,50 @@
             var es = new System.Globalization.CultureInfo("es-AR");
             return DateTime.UtcNow.AddHours(-3).ToString("dddd dd 'de' MMMM", es);
         }
+    }
+
+    // ─── 2026-09-02: "¿ya terminé?" y "¿a qué hora entregué lo último?" ───
+    // La fuente de verdad son las paradas del MAPA (mapeoRuta): son las que le asignaron.
+    // Terminó SOLO si TODAS están entregadas, sin excepción (Flex incluidos). Si le queda una, no.
+    // Ojo: `Entregado` de la parada ya vale para todos los orígenes (lo calcula MapeoEntregasService).
+    private int ParadasTotal => mapeoRuta.Count;
+    private int ParadasEntregadas => mapeoRuta.Count(s => s.Entregado);
+    private int ParadasFaltan => ParadasTotal - ParadasEntregadas;
+    private bool TerminoRecorrido => ParadasTotal > 0 && ParadasFaltan == 0;
+
+    // ¿Entre lo que le falta hay envíos de MercadoLibre? Sirve para explicarle por qué sigue
+    // figurando pendiente algo que él ya entregó: MeLi tarda en confirmarlo.
+    private bool FaltanEnviosDeMeli => mapeoRuta.Any(s => !s.Entregado && (s.Origin == "flex" || s.Origin == "me1"));
+
+    /// <summary>Hora (en UTC, como viene de la API) de su entrega más reciente. null = todavía no entregó nada.</summary>
+    private DateTime? UltimaEntregaUtc
+    {
+        get
+        {
+            DateTime? max = null;
+            foreach (var s in mapeoRuta)
+            {
+                if (!s.Entregado || !s.DateDelivered.HasValue) continue;
+                if (max is null || s.DateDelivered.Value > max.Value) max = s.DateDelivered.Value;
+            }
+            return max;
+        }
+    }
+
+    // Las fechas viajan en UTC: ToArTime() las pasa a hora argentina (el mismo helper que usa
+    // la sección "✅ Entregadas"). Si la entrega no fue hoy, además se muestra el día.
+    private string HoraEntregaTexto(DateTime utc)
+    {
+        var ar = utc.ToArTime();
+        return ar.Date == DateTimeExt.AhoraAr().Date ? ar.ToString("HH:mm") : ar.ToString("dd/MM HH:mm");
+    }
+
+    private string HoraEntregaFrase(DateTime utc)
+    {
+        var ar = utc.ToArTime();
+        return ar.Date == DateTimeExt.AhoraAr().Date
+            ? $"a las {ar:HH:mm}"
+            : $"el {ar:dd/MM} a las {ar:HH:mm}";
     }
 
     private System.Threading.Timer? refreshTimer;

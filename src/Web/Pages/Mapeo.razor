@@ -1414,6 +1414,9 @@
                     var zonasSlot = (stops ?? new())
                         .Where(s => s.AssignedVehicleSlot.HasValue && !s.AssignedDriverId.HasValue)
                         .Select(s => s.AssignedVehicleSlot!.Value).Distinct().OrderBy(x => x).ToList();
+                    // 2026-09-02: hora de la última entrega de cada chofer y si ya terminó todo.
+                    // Solo choferes (personas): las zonas sin chofer no llevan este renglón.
+                    var finChoferes = FinPorChofer();
                 }
                 @if (zonasCreadas.Count == 0 && zonasSlot.Count == 0)
                 {
@@ -1474,6 +1477,8 @@
                                 </div>
                                 @* 2026-08-15: el tiempo y los km de la ruta, que antes estaban en el panel flotante. *@
                                 @if (rutaZ is not null) { @RenglonTiempoRuta(rutaZ) }
+                                @* 2026-09-02: a qué hora fue su última entrega y, si ya entregó TODO, "🏁 terminó". *@
+                                @if (finChoferes.TryGetValue(z.DriverId, out var finZ)) { @RenglonFinChofer(finZ) }
                             </div>
                             @if (rutaZ is not null && rutasExpandidas.Contains(rutaZ.Key) && (rutaZ.Legs?.Count ?? 0) > 0)
                             {
@@ -4308,6 +4313,63 @@
     /// "d5" = zona del chofer 5, "v2" = Zona 2 sin chofer, "none" = las que están sin asignar.</summary>
     private RutaOverviewDto? RutaDe(string key) => rutasResumen.FirstOrDefault(r => r.Key == key);
 
+    // ══════════ 2026-09-02: "última entrega" y "🏁 terminó" de cada chofer ══════════
+    // Un chofer TERMINÓ cuando entregó TODAS sus paradas, sin excepción (los Flex incluidos).
+    // Si le queda una sola sin entregar, NO terminó: por eso además mostramos cuántas le faltan,
+    // así se entiende POR QUÉ no dice "terminó" (el caso típico: un Flex que MercadoLibre todavía
+    // no confirmó lo deja en "falta 1" toda la noche).
+    // La HORA que se muestra es siempre la de su entrega MÁS RECIENTE — sirva o no para el
+    // "terminó", el usuario quiere saber por dónde anda cada uno.
+
+    /// <summary>Cómo viene el reparto de un chofer: hora de su última entrega (UTC), cuántas le
+    /// faltan, cuántas tiene en total y en qué parada fue esa última entrega (ahí va la 🏁).</summary>
+    private sealed record FinChofer(DateTime? UltimaEntregaUtc, int Pendientes, int Total, int? UltimaStopId);
+
+    /// <summary>¿Esta parada está entregada? La confirma MercadoLibre (Flex/ME1), la marcaron a mano
+    /// desde el reparto, o tiene hora de entrega registrada.</summary>
+    private static bool ParadaEntregada(MapeoStopDto st)
+        => string.Equals(st.MeliStatus, "delivered", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(st.InternalStatus, "entregado", StringComparison.OrdinalIgnoreCase)
+        || st.DateDelivered.HasValue;
+
+    /// <summary>Resumen por chofer (solo los que tienen paradas asignadas). Las zonas SIN chofer
+    /// no entran acá: son zonas, no personas.</summary>
+    private Dictionary<int, FinChofer> FinPorChofer()
+    {
+        var res = new Dictionary<int, FinChofer>();
+        foreach (var g in (stops ?? new()).Where(s => s.AssignedDriverId.HasValue)
+                                          .GroupBy(s => s.AssignedDriverId!.Value))
+        {
+            var ult = g.Where(s => s.DateDelivered.HasValue)
+                       .OrderByDescending(s => s.DateDelivered!.Value)
+                       .FirstOrDefault();
+            res[g.Key] = new FinChofer(ult?.DateDelivered, g.Count(s => !ParadaEntregada(s)), g.Count(), ult?.Id);
+        }
+        return res;
+    }
+
+    /// <summary>El renglón de texto del dock: "última entrega 18:57 · faltan 3" o "🏁 terminó 18:57".</summary>
+    private static string TextoFinChofer(FinChofer f)
+    {
+        // La hora viene en UTC: se muestra SIEMPRE en hora argentina.
+        var hora = f.UltimaEntregaUtc.HasValue ? f.UltimaEntregaUtc.Value.ToArTime().ToString("HH:mm") : null;
+        if (f.Pendientes == 0) return hora is null ? "🏁 terminó" : $"🏁 terminó {hora}";
+        var faltan = f.Pendientes == 1 ? "falta 1" : $"faltan {f.Pendientes}";
+        return hora is null ? $"sin entregas todavía · {faltan}" : $"última entrega {hora} · {faltan}";
+    }
+
+    /// <summary>Texto de ayuda del renglón (se ve al pasar el mouse).</summary>
+    private static string TituloFinChofer(FinChofer f)
+        => f.Pendientes == 0
+            ? $"Terminó el recorrido: entregó las {f.Total} paradas. La hora es la de su última entrega."
+            : $"Le faltan {f.Pendientes} de {f.Total} paradas por entregar (los Flex cuentan: si MercadoLibre todavía no confirmó uno, sigue contando como pendiente). La hora es la de su última entrega.";
+
+    /// <summary>Renglón "última entrega 18:57 · faltan 3" (o "🏁 terminó 18:57") de la tarjeta del
+    /// chofer en el dock. Texto plano, sin cajita ni color: es información, no una alarma.</summary>
+    private RenderFragment RenglonFinChofer(FinChofer f) => @<div
+        style="font-size:0.66rem; font-weight:700; color:#fff; opacity:0.9; white-space:nowrap; text-align:center; line-height:1.2;"
+        title="@TituloFinChofer(f)">@TextoFinChofer(f)</div>;
+
     /// <summary>Renglón "⏱ 4h 26min · 80,0 km" que va DENTRO de la tarjeta de color. Si la ruta tiene
     /// tramos, se puede tocar para desplegar el detalle parada por parada.</summary>
     private RenderFragment RenglonTiempoRuta(RutaOverviewDto r) => @<div
@@ -5037,6 +5099,31 @@
             .Select(g => g.OrderByDescending(s => s.DateDelivered!.Value).First().Id)
             .ToHashSet();
 
+        // 2026-09-02: 🏁 BANDERITA A CUADROS del chofer que YA TERMINÓ todo su recorrido (entregó
+        // TODAS sus paradas, Flex incluidos). Va sobre su ÚLTIMA entrega: "llegó a la meta".
+        // Se manda aparte de los globitos porque esa parada está entregada y puede estar escondida
+        // por el filtro de entregados (si fuera un globito más, además, el pin diría "2 entregas acá").
+        // Respeta lo mismo que los pines: el ojito 🚫 de la zona y el chip "Todos / Zona N" de arriba.
+        var banderasFin = FinPorChofer()
+            .Where(kv => kv.Value.Pendientes == 0 && kv.Value.UltimaStopId.HasValue)
+            .Where(kv => !zonasOcultasMapa.Contains(kv.Key))
+            .Select(kv => new
+            {
+                DriverId = kv.Key,
+                Fin = kv.Value,
+                Stop = (stops ?? new()).FirstOrDefault(s => s.Id == kv.Value.UltimaStopId!.Value)
+            })
+            .Where(x => x.Stop is not null && (x.Stop!.Latitude != 0 || x.Stop!.Longitude != 0))
+            .Where(x => vehiculoFiltro == null || (vehiculoFiltro > 0 && x.Stop!.AssignedVehicleSlot == vehiculoFiltro))
+            .Select(x => (object)new
+            {
+                lat = x.Stop!.Latitude,
+                lng = x.Stop!.Longitude,
+                title = $"🏁 {x.Stop!.AssignedDriverName ?? "El chofer"} terminó su recorrido"
+                      + (x.Fin.UltimaEntregaUtc.HasValue ? " — última entrega " + x.Fin.UltimaEntregaUtc.Value.ToArTime().ToString("HH:mm") + " hs" : "")
+            })
+            .ToArray();
+
         var list = new List<object>();
         if (startPoint?.Lat is not null && startPoint?.Lng is not null)
         {
@@ -5216,7 +5303,7 @@
                 };
             }));
         }
-        await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", list.ToArray(), keepView);
+        await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", list.ToArray(), keepView, banderasFin);
         // Redibujar los globitos BORRA todas las líneas de ruta (renderMarkers → clearRoutes en el JS).
         // Antes había que acordarse de repintarlas botón por botón: de 74 lugares que redibujan el mapa
         // solo 12 lo hacían, y por eso las líneas "desaparecían solas". Ahora se repintan SIEMPRE acá.
