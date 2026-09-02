@@ -5642,10 +5642,9 @@
                 decimal calcFrac(decimal divisor)
                 {
                     var raw = (precioKg / divisor) + costoFracc;
-                    bool aplicarRedondeo;
-                    if (usaFraccFuturo) aplicarRedondeo = true;
-                    else aplicarRedondeo = addFormato == "MEDIO" && !esBar;
-                    if (redondeoMult > 0m && aplicarRedondeo)
+                    // 2026-09-02: el redondeo aplica SIEMPRE a las fracciones, ya no depende de
+                    // usaFraccFuturo (ver CafePricingService — el flag decidia dos cosas a la vez).
+                    if (redondeoMult > 0m)
                         raw = Math.Ceiling(raw / redondeoMult) * redondeoMult;
                     return raw;
                 }

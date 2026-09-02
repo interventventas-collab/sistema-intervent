@@ -238,8 +238,8 @@
                                             <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.PrecioBarEfectivoConIva!.Value)</div>
                                             @if (mostrarFracciones)
                                             {
-                                                var mBar = PrecioFraccion(p.PrecioBarEfectivo.Value, 2m, true);
-                                                var cBar = PrecioFraccion(p.PrecioBarEfectivo.Value, 4m, true);
+                                                var mBar = PrecioFraccion(p.PrecioBarEfectivo.Value, 2m);
+                                                var cBar = PrecioFraccion(p.PrecioBarEfectivo.Value, 4m);
                                                 <div style="font-size: 0.72rem; color: #374151; font-weight: 600; margin-top: 3px; white-space: nowrap;" title="Precio de 1/2 kg y 1/4 kg — ya incluye el costo de fraccionamiento y el redondeo">
                                                     ½ $@FormatMoneyCorto(mBar) · ¼ $@FormatMoneyCorto(cBar)
                                                 </div>
@@ -257,8 +257,8 @@
                                             <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.PrecioOtroEfectivoConIva!.Value)</div>
                                             @if (mostrarFracciones)
                                             {
-                                                var mOtro = PrecioFraccion(p.PrecioOtroEfectivo.Value, 2m, false);
-                                                var cOtro = PrecioFraccion(p.PrecioOtroEfectivo.Value, 4m, false);
+                                                var mOtro = PrecioFraccion(p.PrecioOtroEfectivo.Value, 2m);
+                                                var cOtro = PrecioFraccion(p.PrecioOtroEfectivo.Value, 4m);
                                                 <div style="font-size: 0.72rem; color: #374151; font-weight: 600; margin-top: 3px; white-space: nowrap;" title="Precio de 1/2 kg y 1/4 kg — ya incluye el costo de fraccionamiento y el redondeo">
                                                     ½ $@FormatMoneyCorto(mOtro) · ¼ $@FormatMoneyCorto(cOtro)
                                                 </div>
@@ -1376,9 +1376,9 @@
     /// <summary>Precio de una fraccion de cafe (divisor 2 = 1/2 kg, 4 = 1/4 kg), sin IVA.
     /// Replica exactamente CafePricingService.CalcularPrecioBreakdown: (precioKg / divisor) +
     /// costoFraccionamiento, y redondeo hacia arriba al multiplo configurado. El redondeo aplica
-    /// a todas las fracciones cuando esta vigente el "fraccionamiento futuro"; en el modo legacy
-    /// solo a 1/2 kg de clientes OTRO.</summary>
-    private decimal PrecioFraccion(decimal precioKg, decimal divisor, bool esBar)
+    /// SIEMPRE a las fracciones, para BAR y para OTRO (2026-09-02: antes dependia de que hubiera
+    /// un "fraccionamiento futuro" vigente, ver el comentario en CafePricingService).</summary>
+    private decimal PrecioFraccion(decimal precioKg, decimal divisor)
     {
         bool usaFraccFuturo = (settings?.CostoFraccionamientoFuturo).HasValue
             && (settings?.FechaAplicaFraccionamientoFuturo).HasValue
@@ -1389,8 +1389,7 @@
         decimal redondeoMult = settings?.RedondeoMultiplo ?? 0m;
 
         var raw = (precioKg / divisor) + costoFracc;
-        bool aplicarRedondeo = usaFraccFuturo || (divisor == 2m && !esBar);
-        if (redondeoMult > 0m && aplicarRedondeo)
+        if (redondeoMult > 0m)
             raw = Math.Ceiling(raw / redondeoMult) * redondeoMult;
         return Math.Round(raw, 2, MidpointRounding.AwayFromZero);
     }

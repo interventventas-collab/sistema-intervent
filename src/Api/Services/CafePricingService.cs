@@ -214,23 +214,18 @@ public static class CafePricingService
                 FORMATO_CUARTO => (listaBase / 4m) + costoFracc,
                 _ => 0m
             };
-            // Redondeo HACIA ARRIBA al multiplo de RedondeoMultiplo (default $1000).
-            // - Si estamos en modo "fraccionamiento futuro": aplica a TODAS las fracciones
-            //   (1/2 y 1/4) y a TODOS los tipos (BAR y OTRO).
-            // - Si estamos en modo actual (legacy): solo 1/2 OTRO, como ajuste temporal del
-            //   14/05/2026 para que coincida con la lista FV impresa.
+            // Redondeo HACIA ARRIBA al multiplo de RedondeoMultiplo (default $1000), para TODAS
+            // las fracciones (1/2 y 1/4) y TODOS los tipos de cliente (BAR y OTRO).
+            //
+            // 2026-09-02: esto ANTES colgaba de usaFraccFuturo — el mismo flag elegia el costo
+            // de fraccionamiento Y decidia a que se le redondeaba (en modo legacy, solo 1/2 OTRO,
+            // un ajuste temporal del 14/05/2026 para calzar con la lista FV impresa). Efecto
+            // colateral: limpiar de Settings un "fraccionamiento futuro" ya vencido apagaba el
+            // redondeo y BAJABA 71 precios sin ningun aviso (medido sobre los 31 cafes de dev).
+            // La regla vigente desde el 01/06/2026 queda fija y ya no depende de la config.
             bool esFraccion = formato == FORMATO_MEDIO || formato == FORMATO_CUARTO;
             if (settings.RedondeoMultiplo > 0 && esFraccion)
-            {
-                bool aplicarRedondeo;
-                if (usaFraccFuturo)
-                    aplicarRedondeo = true;
-                else
-                    aplicarRedondeo = formato == FORMATO_MEDIO && tipoCliente?.ToUpperInvariant() == "OTRO";
-
-                if (aplicarRedondeo)
-                    lista = Math.Ceiling(lista / settings.RedondeoMultiplo) * settings.RedondeoMultiplo;
-            }
+                lista = Math.Ceiling(lista / settings.RedondeoMultiplo) * settings.RedondeoMultiplo;
         }
         else
         {
