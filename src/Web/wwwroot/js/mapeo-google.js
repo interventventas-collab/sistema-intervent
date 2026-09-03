@@ -54,6 +54,29 @@
     // Path de la gota (icono material "location_on" escalado x2): cabeza en (24,18), punta en (24,44).
     const PIN_PATH = 'M24 4C16.26 4 10 10.26 10 18c0 10.5 14 26 14 26s14-15.5 14-26c0-7.74-6.26-14-14-14z';
 
+    // ── Techo de TOLDO para los domicilios COMERCIALES ──
+    // 2026-09-03 (3ra vuelta): el toldo dejó de ser un marcador aparte. Antes flotaba al costado
+    // del pin y, con el cartelito de las 3 letras del repartidor tambien suelto, el globito quedaba
+    // rodeado de piezas separadas ("no esta bueno"). Ahora el toldo ES el techo del propio globito:
+    // una franja de rayas rojas y blancas con las ondas abajo, recortada DENTRO de la cabeza.
+    // Al ser parte del mismo dibujo nunca se separa, no tapa a los pines vecinos, no pelea con las
+    // chapitas de las esquinas, y se adapta solo a cualquier forma de cabeza (gota, cuadrado,
+    // hexagono, rombo o triangulo) porque el recorte usa el mismo path que la cabeza.
+    function techoToldo() {
+        const n = 7, x0 = 8, w = 32, sw = w / n, yTop = 2, yBot = 9;
+        let rayas = '';
+        for (let i = 0; i < n; i++) {
+            const c = (i % 2) ? '#ffffff' : '#dc2626';
+            rayas += '<rect x="' + (x0 + i * sw).toFixed(2) + '" y="' + yTop + '" width="' + sw.toFixed(2) + '" height="' + (yBot - yTop) + '" fill="' + c + '"/>';
+        }
+        // ondas de la orilla del toldo
+        for (let i = 0; i < n; i++) {
+            const c = (i % 2) ? '#ffffff' : '#dc2626';
+            rayas += '<circle cx="' + (x0 + i * sw + sw / 2).toFixed(2) + '" cy="' + yBot + '" r="' + (sw / 2).toFixed(2) + '" fill="' + c + '"/>';
+        }
+        return '<g clip-path="url(#hd)">' + rayas + '</g>';
+    }
+
     // Construye el marcador como un pin gota estilo Google (data URI SVG).
     // Conserva el color del repartidor y el número/etiqueta adentro de la cabeza.
     function markerSvg(group) {
@@ -149,13 +172,21 @@
             : '';
 
         return `<svg xmlns="http://www.w3.org/2000/svg" width="${PIN_VB_W}" height="${PIN_VB_H}" viewBox="0 0 ${PIN_VB_W} ${PIN_VB_H}">` +
-            `<defs><filter id="sh" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-opacity="0.4"/></filter></defs>` +
+            `<defs><filter id="sh" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-opacity="0.4"/></filter>` +
+            (comercial ? `<clipPath id="hd"><path d="${headPath}"/></clipPath>` : '') +
+            `</defs>` +
             `${ring}` +
-            // 2026-09-03: si el domicilio es COMERCIAL el pin lleva borde oscuro en vez de blanco.
-            // Es la mitad de la señal (la otra es el toldo de arriba): aunque el toldo quede tapado
-            // por otro pin, el borde ya te dice que ahi hay un negocio.
+            // 2026-09-03: si el domicilio es COMERCIAL el pin lleva borde oscuro en vez de blanco,
+            // ademas del techo de toldo. El borde solo ya se lee de lejos, cuando el mapa esta
+            // alejado y las rayitas del toldo todavia no se distinguen.
             `<path d="${headPath}" fill="${body}" stroke="${comercial ? '#1f2937' : '#ffffff'}" stroke-width="2" filter="url(#sh)"/>` +
-            `<text x="${PIN_HEAD_CX}" y="${labelY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>` +
+            // El toldo va DESPUES del relleno (para pintar arriba) y antes de repasar el contorno,
+            // asi el borde de la cabeza queda prolijo y no lo comen las rayas.
+            (comercial ? techoToldo() + `<path d="${headPath}" fill="none" stroke="#1f2937" stroke-width="2"/>` : '') +
+            // En los comerciales el numero lleva un halo del color del pin: si el toldo le queda
+            // cerca (formas de cabeza bajitas, como el triangulo), igual se lee.
+            `<text x="${PIN_HEAD_CX}" y="${labelY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif"` +
+            (comercial ? ` stroke="${body}" stroke-width="2.6" paint-order="stroke"` : '') + `>${label}</text>` +
             `${badge}${check}${surfaceBadge}</svg>`;
     }
 
@@ -296,7 +327,10 @@
             scaledSize: new google.maps.Size(w, TAG_H),
             // anchor negativo en X = el cartelito se dibuja a la derecha del punto;
             // en Y lo subimos a la altura de la cabeza del pin.
-            anchor: new google.maps.Point(-16, TAG_H / 2 + 28)
+            // 2026-09-03: de -16 a -12. El borde de la cabeza cae en +14, asi que antes quedaba un
+            // hueco y el cartelito parecia una pieza suelta al costado; ahora se apoya contra el
+            // globito y los dos se leen como una sola cosa.
+            anchor: new google.maps.Point(-12, TAG_H / 2 + 28)
         };
     }
 
@@ -335,44 +369,7 @@
         };
     }
 
-    // ── Cartelito "COM" = el domicilio es COMERCIAL (así sale en la etiqueta del Flex) ──
-    // 2026-09-02: se ve DESDE AFUERA, sin abrir el globito, porque cambia con qué se encuentra
-    // el repartidor y a qué hora conviene ir (un negocio no atiende igual que una casa).
-    // Mismo patrón que tagIcon/flagIcon (segundo Marker con SVG inline y el anchor corrido), pero
-    // ARRIBA de la cabeza del pin: a la derecha ya viven las 3 letras del repartidor y el autito,
-    // y a la izquierda la banderita de "terminó".
-    // Gris grafito a propósito: no es una alarma, es un dato — los colores son de los repartidores.
-    // 2026-09-03 (2da vuelta): el toldo arrancó del ANCHO DEL PIN ENTERO y en el mapa real, con
-    // 40 pines juntos, tapaba media Capital ("es una brutalidad"). Ahora mide el ancho de la CABEZA
-    // del pin, la mitad de alto, y va DETRÁS del pin (zIndex por debajo): asoma solo el techo, como
-    // un toldo de verdad. De paso el pin siempre gana, así que nunca tapa el número ni la chapita
-    // naranja de atrasado, y no hace falta correrlo para esquivarlas.
-    const TOLDO_W = 30, TOLDO_H = 16;
-    function toldoIcon() {
-        const n = 5, w = 26, h = 8, sw = w / n, x0 = 2, y0 = 4;
-        let rayas = '';
-        for (let i = 0; i < n; i++) {
-            const c = (i % 2) ? '#ffffff' : '#dc2626';
-            rayas += '<rect x="' + (x0 + i * sw).toFixed(2) + '" y="' + y0 + '" width="' + sw.toFixed(2) + '" height="' + h + '" fill="' + c + '"/>';
-        }
-        for (let i = 0; i < n; i++) {
-            const c = (i % 2) ? '#ffffff' : '#dc2626';
-            rayas += '<circle cx="' + (x0 + i * sw + sw / 2).toFixed(2) + '" cy="' + (y0 + h) + '" r="' + (sw / 2).toFixed(2) + '" fill="' + c + '"/>';
-        }
-        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + TOLDO_W + '" height="' + TOLDO_H + '" viewBox="0 0 ' + TOLDO_W + ' ' + TOLDO_H + '">' +
-            rayas +
-            // barral de arriba, oscuro, que le da el remate de toldo
-            '<rect x="' + (x0 - 1.5) + '" y="' + (y0 - 3.2) + '" width="' + (w + 3) + '" height="3.4" rx="1.7" fill="#1f2937"/>' +
-            '</svg>';
-        return {
-            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-            scaledSize: new google.maps.Size(TOLDO_W, TOLDO_H),
-            // centrado en X y METIDO detrás de la cabeza del pin (la punta cae en 44): asoma el techo.
-            anchor: new google.maps.Point(TOLDO_W / 2, TOLDO_H + 34)
-        };
-    }
-
-    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, tagIcon, flagIcon, toldoIcon, streetView, cancelStreetView, wrapIw };
+    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, tagIcon, flagIcon, streetView, cancelStreetView, wrapIw };
 })();
 
 // ══════════ Mapa grande (pantalla Mapeo) ══════════
@@ -925,20 +922,6 @@ window.mapeoFlex = (function () {
                         position: pos, map: map, clickable: false, zIndex: 1100,
                         icon: H.tagIcon(first.tag, first.tagColor || first.color)
                     }));
-                }
-
-                // 2026-09-02: CARTELITO "COM" arriba del pin cuando el domicilio es COMERCIAL
-                // (dato de MercadoLibre, el mismo que sale en la etiqueta del Flex). Se ve sin abrir
-                // el globito, y si lo pinchás se abre el mismo globito que el pin (ahí está el
-                // comentario del comprador, que es donde avisan los horarios del negocio).
-                if (group.some(g => g.comercial === true)) {
-                    const comMarker = new google.maps.Marker({
-                        position: pos, map: map, clickable: true, zIndex: 0,
-                        title: 'Domicilio comercial — tocá para ver el comentario del comprador',
-                        icon: H.toldoIcon()
-                    });
-                    comMarker.addListener('click', abrirGlobito);
-                    markers.push(comMarker);
                 }
 
                 // 2026-08-15: AUTITO. Al lado de la ULTIMA parada que cada repartidor marco como
