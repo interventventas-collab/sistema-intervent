@@ -419,6 +419,25 @@ window.mapeoFlex = (function () {
     let surfaceQueue = [];        // pines pendientes de consultar { marker, group, loc, ver }
     let surfaceActive = 0;        // consultas en vuelo (limitamos cuántas a la vez)
     let markersVersion = 0;       // sube en cada renderMarkers: descarta pines de un dibujo viejo
+
+    // ══════════ 2026-09-03: el mapa se destapa a medida que te acercás ══════════
+    // Con 66 paradas en el AMBA, el mapa alejado era ilegible: cada pin arrastra su cartelito de 3
+    // letras (que mide el TRIPLE que el pin) y todos se pisaban entre sí — "de lejos está muy
+    // incómodo visualmente, pero al hacer zoom mejora", palabras del usuario.
+    // Solución: LEJOS el pin se achica y el cartelito no se dibuja (el COLOR ya te dice de quién es
+    // la parada, que es lo único que se lee a esa distancia); al acercarte vuelve todo.
+    // Deliberadamente NO agregamos texto nuevo al acercar: la idea era sacar ruido, no sumarlo.
+    const ZOOM_DETALLE = 12;      // de acá para arriba: pin grande + cartelito de 3 letras
+    const PIN_H_LEJOS = 32, PIN_H_CERCA = 50;
+    let lastItems = null, lastFlags = null;   // último dibujo, para poder rehacerlo al cambiar el zoom
+    let detalleActual = null;                 // true = cerca (con cartelitos) · false = lejos
+
+    /// ¿Estamos lo bastante cerca como para mostrar el detalle? Si el mapa todavía no arrancó,
+    /// asumimos que sí para no dibujar chiquito de entrada.
+    function hayDetalle() {
+        try { const z = map && map.getZoom(); return (typeof z === 'number') ? z >= ZOOM_DETALLE : true; }
+        catch (e) { return true; }
+    }
     const SURFACE_MAX_PARALELO = 4;
 
     // Le pone (o saca) el cartelito al pin según el tipo de calle que llegó.
@@ -808,6 +827,18 @@ window.mapeoFlex = (function () {
                 fullscreenControl: true,
                 zoomControl: true
             });
+            // 2026-09-03: al cruzar el nivel de zoom (lejos ⇄ cerca) redibujamos los pines para que
+            // cambien de tamaño y aparezcan/desaparezcan los cartelitos. Escuchamos 'idle' y no
+            // 'zoom_changed' porque el segundo dispara muchas veces durante el pellizco del celular;
+            // 'idle' avisa una sola vez, cuando el mapa quedó quieto. Y solo redibujamos si el nivel
+            // CAMBIÓ: mover el mapa sin cambiar el zoom no cuesta nada.
+            map.addListener('idle', () => {
+                if (!lastItems) return;
+                const detalle = hayDetalle();
+                if (detalle === detalleActual) return;
+                if (infoOpen) return;   // con un globito abierto no le pisamos la pantalla
+                try { window.mapeoFlex.renderMarkers(lastItems, true, lastFlags); } catch (e) { }
+            });
             infoWindow = new google.maps.InfoWindow();
             infoWindow.addListener('closeclick', () => { infoOpen = false; });
             // Cada vez que el globito muestra su contenido (incluye el re-dibujo por la fotito de
@@ -832,6 +863,11 @@ window.mapeoFlex = (function () {
             if (!map || !window.google) return;
             // Refresco automático con un globito abierto: no lo pisamos, lo dejamos como está.
             if (keepView && infoOpen) return;
+            // Guardamos el último dibujo para poder rehacerlo solo cuando cambia el nivel de zoom.
+            lastItems = items; lastFlags = flags;
+            const detalle = hayDetalle();
+            detalleActual = detalle;
+            const pinH = detalle ? PIN_H_CERCA : PIN_H_LEJOS;
             for (const t of autoBlinkTimers) clearInterval(t);
             autoBlinkTimers = [];
             for (const m of markers) m.setMap(null);
@@ -861,7 +897,7 @@ window.mapeoFlex = (function () {
                 const marker = new google.maps.Marker({
                     position: pos,
                     map: map,
-                    icon: H.markerIcon(H.markerSvg(group), 50),
+                    icon: H.markerIcon(H.markerSvg(group), pinH),
                     draggable: esArrastrable,
                     title: esArrastrable ? 'Arrastrame para ajustar el punto de partida' : undefined,
                     zIndex: group.some(g => g.inRoute) ? 1000 : (esArrastrable ? 900 : 1)
@@ -917,7 +953,8 @@ window.mapeoFlex = (function () {
 
                 // 2026-08-31: CARTELITO con las 3 primeras letras del repartidor, pegado al globito.
                 // Sale del campo 'tag' que manda Blazor (vacío = no se dibuja nada).
-                if (first.tag) {
+                // 2026-09-03: el cartelito solo se dibuja de cerca. De lejos era el que tapaba todo.
+                if (first.tag && detalle) {
                     markers.push(new google.maps.Marker({
                         position: pos, map: map, clickable: false, zIndex: 1100,
                         icon: H.tagIcon(first.tag, first.tagColor || first.color)
