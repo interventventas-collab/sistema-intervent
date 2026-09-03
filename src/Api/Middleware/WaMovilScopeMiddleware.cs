@@ -59,6 +59,20 @@ public class WaMovilScopeMiddleware
         "/api/public/",                        // picking de depósito, rutas del mapeo, fotos de producto
     };
 
+    /// <summary>
+    /// 2026-09-02 — La LETRA del WhatsApp del celular (AppSettings "whatsapp.fuente").
+    ///
+    /// Bug que reportó Osmar el mismo día: la pantalla del celu pide esta configuración al abrir,
+    /// quedaba frenada acá, y como ese 403 ahora manda al cartel "esto no se abre con la huella",
+    /// la Frisaap escupía al usuario apenas entraba — justo la pantalla que la huella SÍ tiene que
+    /// abrir. Antes el 403 pasaba desapercibido (la pantalla seguía con la letra por defecto).
+    ///
+    /// Se abre SOLO esa clave y SOLO para leer: es cómo se ve la letra, no hay dato del negocio.
+    /// </summary>
+    private static bool EsLetraDelWhatsApp(string ruta, string metodo)
+        => metodo == "GET"
+           && ruta.Equals("/api/settings/whatsapp.fuente", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Excepción puntual: el saldo del cliente se muestra arriba del chat.
     /// Es de solo lectura y de UN cliente, no la lista completa.</summary>
     private static bool EsEstadoDeCuenta(string ruta)
@@ -110,6 +124,7 @@ public class WaMovilScopeMiddleware
         var permitido = Permitido.Any(p => ruta.StartsWith(p, StringComparison.OrdinalIgnoreCase))
                         || PublicoConToken.Any(p => ruta.StartsWith(p, StringComparison.OrdinalIgnoreCase))
                         || EsEstadoDeCuenta(ruta)
+                        || EsLetraDelWhatsApp(ruta, metodo)
                         || EsCotizadorAlquiler(ruta, metodo);
 
         if (!permitido)
