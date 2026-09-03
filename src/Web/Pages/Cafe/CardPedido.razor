@@ -292,9 +292,8 @@
                         }
                         @if (stockTexto is not null)
                         {
-                            var alcanza = StockAlcanza(it);
-                            <div class="prep-item-stock @(alcanza ? "ok" : "bajo")"
-                                 title="Stock que figura en el sistema. Compará con lo físico al armar.">
+                            var semaforo = ColorDelStock(it);
+                            <div class="prep-item-stock @semaforo.Clase" title="@semaforo.Ayuda">
                                 <div class="prep-item-stock-label">STOCK</div>
                                 <div class="prep-item-stock-label">SISTEMA</div>
                                 <div class="prep-item-stock-valor">@stockTexto</div>
@@ -682,15 +681,54 @@
     private static string? StockTextoSistema(CafePreparacionItemDto it)
     {
         if (it.EsConceptoLibre) return null;
+        // 2026-09-02: con punto de miles — "45.000 u." se lee de un vistazo, "45000 u." no.
+        var ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
         if (it.Categoria == "CAFE")
         {
             if (!it.StockGramos.HasValue) return null;
             var kg = it.StockGramos.Value / 1000m;
-            return $"{kg.ToString("0.##")} kg";
+            return $"{kg.ToString(kg == Math.Truncate(kg) ? "N0" : "N2", ar)} kg";
         }
-        if (it.StockUnidades.HasValue) return $"{it.StockUnidades.Value} u.";
+        if (it.StockUnidades.HasValue) return $"{it.StockUnidades.Value.ToString("N0", ar)} u.";
         return null;
     }
+
+    /// <summary>2026-09-02 — El color del cuadradito de stock, con TRES estados (antes eran dos):
+    ///   verde    = alcanza para el pedido y el stock queda bien parado
+    ///   amarillo = alcanza, PERO al entregarlo el stock queda por debajo del piso → hay que pedir
+    ///   rojo     = no alcanza para lo que pidió el cliente
+    /// El amarillo solo aparece en los productos que tengan piso o ideal cargado: sin eso el
+    /// sistema no tiene contra qué comparar. Pedido de Osmar (02/09).</summary>
+    private static (string Clase, string Ayuda) ColorDelStock(CafePreparacionItemDto it)
+    {
+        if (!StockAlcanza(it))
+            return ("bajo", "El stock del sistema NO alcanza para lo que pidió el cliente.");
+
+        var disparador = it.StockPiso ?? it.StockIdeal;
+        if (disparador.HasValue)
+        {
+            // Lo que va a quedar DESPUÉS de armar este pedido, en la unidad que corresponda.
+            decimal queda = it.Categoria == "CAFE"
+                ? Math.Round(((it.StockGramos ?? 0m) - GramosPedidos(it)) / 1000m, 2)
+                : (it.StockUnidades ?? 0) - it.Cantidad;
+
+            if (queda <= disparador.Value)
+                return ("aviso",
+                    $"Alcanza para este pedido, pero después quedan {queda:0.##} y queremos tener " +
+                    $"al menos {disparador.Value}. Hay que reponer.");
+        }
+        return ("ok", "Stock que figura en el sistema. Compará con lo físico al armar.");
+    }
+
+    /// <summary>Los gramos que se llevan de este renglón, según el formato.</summary>
+    private static decimal GramosPedidos(CafePreparacionItemDto it)
+        => it.Cantidad * (it.Formato switch
+        {
+            "1KG" => 1000m,
+            "MEDIO" => 500m,
+            "CUARTO" => 250m,
+            _ => 1000m
+        });
 
     // Verde si el stock alcanza para lo pedido, rojo si no. Para CAFE compara en kg según formato.
     private static bool StockAlcanza(CafePreparacionItemDto it)

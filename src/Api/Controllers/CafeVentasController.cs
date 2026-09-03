@@ -3973,6 +3973,10 @@ public class CafeVentasController : ControllerBase
                     // 2026-06-15: stock del sistema al lado del SKU — el armador ve cuánto debería haber físico.
                     stockUnidades = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => (int?)p.StockUnidades).FirstOrDefault() : null,
                     stockGramos = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => (decimal?)p.StockGramos).FirstOrDefault() : null,
+                    // 2026-09-02: el piso/ideal viajan para que el que arma vea en AMARILLO cuando
+                    // el pedido alcanza pero deja el stock por debajo de lo que queremos tener.
+                    stockIdeal = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.StockIdeal).FirstOrDefault() : null,
+                    stockPiso = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.StockPiso).FirstOrDefault() : null,
                     formato = i.Formato,
                     cantidad = i.Cantidad,
                     molienda = i.Molienda,

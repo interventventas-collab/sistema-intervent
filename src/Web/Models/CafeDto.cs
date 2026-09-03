@@ -684,6 +684,9 @@ public class CafePreparacionItemDto
     // 2026-06-15: stock del sistema al lado del SKU — el armador ve cuánto debería haber físico.
     public int? StockUnidades { get; set; }
     public decimal? StockGramos { get; set; }
+    /// <summary>2026-09-02: para avisar en amarillo si el pedido deja el stock por debajo del piso.</summary>
+    public int? StockIdeal { get; set; }
+    public int? StockPiso { get; set; }
     public string Formato { get; set; } = "";
     public int Cantidad { get; set; }
     public string? Molienda { get; set; }
