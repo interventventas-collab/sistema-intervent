@@ -202,28 +202,50 @@
                         }
                     </div>
                 }
+                else if (RecorridoTerminadoParaEl)
+                {
+                    @* 2026-09-02: ya pasó por todas — lo que queda son envíos que él tildó y que
+                       MercadoLibre todavía no confirmó. Para él el día terminó, así que se lo
+                       decimos; el número fino (el que ve la oficina en el mapa) sigue estricto. *@
+                    <div style="font-size:1.02rem; font-weight:800; color:#111827;">
+                        🏁 Terminaste tu recorrido@(UltimaEntregaUtc is { } finEl ? " " + HoraEntregaFrase(finEl) : "")
+                    </div>
+                    <div style="font-size:0.78rem; color:#6b7280;">
+                        @* Ojo con el texto: solo los envíos de MeLi los confirma MercadoLibre. Una
+                           parada suelta que él tildó no la confirma nadie, así que no digamos que
+                           la estamos esperando de allá. *@
+                        @if (ParadasEsperandoMeliDeMeli == ParadasEsperandoMeli)
+                        {
+                            <text>Quedan @ParadasEsperandoMeli esperando que MercadoLibre las confirme.</text>
+                        }
+                        else
+                        {
+                            <text>Quedan @ParadasEsperandoMeli que marcaste vos, sin confirmar todavía.</text>
+                        }
+                    </div>
+                }
                 else
                 {
-                    <div style="font-size:0.95rem; color:#111827;">
+                    @* Arriba lo que necesita de un vistazo; el detalle fino abajo, en chico.
+                       "Te faltan" = lo que todavía tiene que hacer, el mismo número que muestra la
+                       lista de abajo. Las que él tildó y MeLi no confirmó no las tiene que rehacer. *@
+                    <div style="font-size:1rem; color:#111827;">
+                        <span style="font-weight:800;">Te falta@(ParadasPorHacer == 1 ? "" : "n") @ParadasPorHacer</span>
                         @if (UltimaEntregaUtc is { } ultAt)
                         {
-                            <span>Última entrega @HoraEntregaTexto(ultAt)</span>
                             <span style="color:#9ca3af;">&nbsp;·&nbsp;</span>
+                            <span style="color:#374151;">última @HoraEntregaTexto(ultAt)</span>
                         }
-                        <span style="font-weight:800;">te falta@(ParadasFaltan == 1 ? "" : "n") @ParadasFaltan</span>
-                        <span style="color:#9ca3af;">&nbsp;·&nbsp;</span>
-                        <span style="color:#6b7280;">@ParadasEntregadas de @ParadasTotal listas</span>
-                        @if (ParadasSinEntregar > 0)
-                        {
-                            <span style="color:#9ca3af;">&nbsp;·&nbsp;</span>
-                            <span style="color:#6b7280;">@ParadasSinEntregar sin entregar</span>
-                        }
+                    </div>
+                    <div style="font-size:0.78rem; color:#6b7280;">
+                        <span>@ParadasEntregadas de @ParadasTotal entregadas</span>
+                        @if (ParadasEsperandoMeli > 0) { <span> · @ParadasEsperandoMeli esperando a MercadoLibre</span> }
+                        @if (ParadasSinEntregar > 0) { <span> · @ParadasSinEntregar sin entregar</span> }
                     </div>
                     @if (FaltanEnviosDeMeli)
                     {
-                        <div style="font-size:0.78rem; color:#6b7280; margin-top:0.15rem;">
-                            Los envíos de MercadoLibre cuentan como entregados recién cuando MercadoLibre lo confirma:
-                            aunque ya lo hayas dejado, puede seguir figurando como pendiente un rato.
+                        <div style="font-size:0.76rem; color:#9ca3af; margin-top:0.2rem;">
+                            Los envíos de MercadoLibre tardan en confirmarse. Si ya lo dejaste, tocá "Listo, seguir" y la lista avanza.
                         </div>
                     }
                 }
@@ -372,64 +394,121 @@
                         @if (fx.Entregado) { <span style="color:#15803d; font-weight:700;">✔ Entregado</span> }
                     </div>
                     <a href="@($"https://www.google.com/maps/dir/?api=1&destination={fx.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{fx.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}")" target="_blank" rel="noopener" style="display:block; margin-top:0.5rem; text-align:center; background:#0891b2; color:white; padding:0.55rem; border-radius:8px; font-size:0.9rem; font-weight:700; text-decoration:none;">🧭 Cómo llegar</a>
+                    @* 2026-09-02: los Flex se cierran en la app de MercadoLibre y MeLi tarda en
+                       confirmarlos. Este botón NO entrega nada: solo hace avanzar la lista para que
+                       el repartidor no tenga que buscar dónde estaba parado. *@
+                    <button type="button" @onclick="() => MarcarParadaVista(fx, true)" disabled="@(marcandoVisto == fx.Id)"
+                            style="width:100%; margin-top:0.5rem; padding:0.6rem; background:white; color:#0f766e; border:1.5px solid #0f766e; border-radius:8px; font-size:0.92rem; font-weight:700; cursor:pointer;">
+                        @(marcandoVisto == fx.Id ? "..." : "✓ Listo, seguir")
+                    </button>
+                    <div style="font-size:0.7rem; color:#9ca3af; text-align:center; margin-top:0.2rem;">Solo mueve tu lista. No marca la entrega.</div>
                     <button type="button" class="mp-card-btn-rechazar" @onclick="@(() => AbrirRechazo("mapeo", fx.Id, $"{fx.Nombre} · {fx.Direccion}"))">🚫 Rechazar esta parada</button>
                 </div>;
 
-            // Entradas EN ORDEN de la ruta del mapa.
-            var entradas = new List<(int orden, string tipo, PedidoDto? venta, Me1PedidoDto? me1, AlqReservaItem? alq, MisPedidosMapeoDto? flex)>();
+            @* Renglón chico de una parada YA HECHA, cuando el repartidor la abre para mirarla. *@
+            RenderFragment<MisPedidosMapeoDto> hechaCard = hc =>
+                @<div style="background:white; border:1px solid #e5e7eb; border-radius:8px; padding:0.6rem; margin-bottom:0.5rem;">
+                    <div style="font-weight:700; color:#111827;">@(hc.Nombre ?? "Parada")</div>
+                    <div style="font-size:0.85rem; color:#374151; margin-top:0.15rem;">@hc.Direccion</div>
+                    @if (!string.IsNullOrEmpty(hc.Localidad)) { <div style="font-size:0.75rem; color:#6b7280;">@hc.Localidad</div> }
+                    <div style="font-size:0.8rem; color:#6b7280; margin-top:0.35rem;">@TextoParadaHecha(hc)</div>
+                    @if (hc.Visto && !hc.Entregado && !hc.NoEntregada)
+                    {
+                        <button type="button" @onclick="() => MarcarParadaVista(hc, false)" disabled="@(marcandoVisto == hc.Id)"
+                                style="width:100%; margin-top:0.5rem; padding:0.5rem; background:white; color:#6b7280; border:1px solid #d1d5db; border-radius:8px; font-size:0.85rem; font-weight:600; cursor:pointer;">
+                            ↩ Me equivoqué, volver a ponerla
+                        </button>
+                    }
+                </div>;
+
+            @* ─── 2026-09-02: UNA sola lista, en el orden de la ruta ───
+               Antes los Flex vivían escondidos atrás de un botón y las paradas ya hechas
+               desaparecían, así que el repartidor tenía que acordarse dónde había quedado.
+               Ahora entran TODAS —ventas, alquileres, ME1, Flex y paradas sueltas— en el orden
+               del mapa: las hechas quedan arriba en un renglón chiquito con la hora, la que le
+               toca ahora se ve grande y abierta, y las que vienen en renglones simples que se
+               abren de un toque. *@
+            var entradas = new List<(int orden, string tipo, PedidoDto? venta, Me1PedidoDto? me1, AlqReservaItem? alq, MisPedidosMapeoDto st)>();
             foreach (var st in mapeoRuta)
             {
                 var orden = st.OrderInRoute ?? 99998;
                 int refInt = int.TryParse(st.OriginRefId, out var ri) ? ri : 0;
                 long refLong = long.TryParse(st.OriginRefId, out var rl) ? rl : 0L;
-                if (st.Origin == "venta_cafe" && ventaById.TryGetValue(refInt, out var pv)) { entradas.Add((orden, "venta", pv, null, null, null)); vistasVenta.Add(refInt); }
-                else if (st.Origin == "me1" && me1ByShip.TryGetValue(refLong, out var m1)) { entradas.Add((orden, "me1", null, m1, null, null)); vistasMe1.Add(refLong); }
-                else if (st.Origin == "alquiler" && alqById.TryGetValue(refInt, out var al)) { entradas.Add((orden, "alq", null, null, al, null)); vistasAlq.Add(refInt); }
-                // Cualquier otra parada de la ruta (Flex, cargada a mano, favorito, visita) se ve como
-                // tarjeta muda: dirección y cómo llegar. Antes solo salían las Flex/manuales y encima
-                // escondidas atrás del botón "Ver Flex" — una ruta sin Flex quedaba invisible en el celu.
-                // Los Flex siguen atrás del botón porque son muchos y se cierran en la app de MeLi.
-                @* 2026-09-02: las cerradas sin entregar (canceladas, "no encontró", o que MercadoLibre
-                   dio por no entregadas) tampoco se listan: ya no hay nada que hacer con ellas, y si
-                   arriba dice "terminaste" no puede quedar una tarjeta pidiendo que la entregue. *@
-                else if (!st.Entregado && !st.NoEntregada && (st.Origin != "flex" || verFlex)) { entradas.Add((orden, "flex", null, null, null, st)); }
+                if (ParadaHecha(st))
+                {
+                    // Entregada, cerrada sin entregar, o tildada por él. Va como renglón chico.
+                    entradas.Add((orden, "hecha", null, null, null, st));
+                }
+                else if (st.Origin == "venta_cafe" && ventaById.TryGetValue(refInt, out var pv)) { entradas.Add((orden, "venta", pv, null, null, st)); vistasVenta.Add(refInt); }
+                else if (st.Origin == "me1" && me1ByShip.TryGetValue(refLong, out var m1)) { entradas.Add((orden, "me1", null, m1, null, st)); vistasMe1.Add(refLong); }
+                else if (st.Origin == "alquiler" && alqById.TryGetValue(refInt, out var al)) { entradas.Add((orden, "alq", null, null, al, st)); vistasAlq.Add(refInt); }
+                else { entradas.Add((orden, "muda", null, null, null, st)); }
             }
             entradas = entradas.OrderBy(e => e.orden).ToList();
+
+            // Cuál se ve abierta: la que él tocó, o si no la primera que le falta hacer.
+            var abiertaId = paradaAbiertaManual ?? ParadaActualId;
 
             var otrosMe1 = me1Pend.Where(m => !vistasMe1.Contains(m.MeliShipmentId)).ToList();
             var otrosAlq = alqPend.Where(a => !vistasAlq.Contains(a.Id)).ToList();
             var otrosVenta = ventaPend.Where(p => !vistasVenta.Contains(p.Id)).ToList();
             var hayFlexRuta = mapeoRuta.Any(x => x.Origin == "flex");
             var totalPend = me1Pend.Count + alqPend.Count + ventaPend.Count;
+            // Lo que le queda POR HACER de verdad: las paradas de la ruta que todavía no hizo, más
+            // lo que tiene asignado pero nadie puso en el mapa. El contador de arriba tiene que
+            // decir lo mismo que muestra la lista.
+            var porHacer = entradas.Count(x => x.tipo != "hecha") + otrosMe1.Count + otrosAlq.Count + otrosVenta.Count;
 
         <div class="mp-section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-            <span>📋 Mis pedidos <span class="badge">@totalPend</span></span>
-            @if (hayFlexRuta)
-            {
-                <button type="button" @onclick="() => verFlex = !verFlex"
-                        style="margin-left:auto; font-size:0.72rem; font-weight:700; border:1px solid #0891b2; background:@(verFlex ? "#0891b2" : "white"); color:@(verFlex ? "white" : "#0891b2"); padding:0.2rem 0.6rem; border-radius:999px; cursor:pointer;">
-                    @(verFlex ? "Ocultar Flex" : "Ver Flex")
-                </button>
-            }
+            <span>📋 Mis pedidos <span class="badge">@porHacer</span></span>
         </div>
         @if (entradas.Count > 0)
         {
-            <div style="font-size:0.72rem; color:#6b7280; margin:0 0 0.5rem;">💡 En el orden de la ruta que armaste en el mapa.</div>
+            <div style="font-size:0.72rem; color:#6b7280; margin:0 0 0.5rem;">💡 En el orden de la ruta que armaste en el mapa. Tocá cualquiera para abrirla.</div>
         }
         @foreach (var e in entradas)
         {
-            <div style="display:flex; gap:0.4rem; align-items:flex-start;">
+            var st = e.st;
+            var abierta = abiertaId == st.Id;
+            var esActual = ParadaActualId == st.Id;
+            <div id="@($"mp-parada-{st.Id}")" style="display:flex; gap:0.4rem; align-items:flex-start;">
                 @if (e.orden < 99998)
                 {
-                    <div style="flex:0 0 auto; margin-top:0.55rem; background:#0891b2; color:white; font-weight:800; font-size:0.78rem; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center;">@e.orden</div>
+                    <div style="flex:0 0 auto; margin-top:@(abierta ? "0.55rem" : "0.35rem"); background:@(e.tipo == "hecha" ? "#d1d5db" : "#0891b2"); color:white; font-weight:800; font-size:0.72rem; width:@(abierta ? "24px" : "20px"); height:@(abierta ? "24px" : "20px"); border-radius:50%; display:flex; align-items:center; justify-content:center;">@e.orden</div>
                 }
                 <div style="flex:1; min-width:0;">
-                    @if (e.tipo == "venta") { @ventaCard(e.venta!) }
-                    else if (e.tipo == "me1") { @me1Card(e.me1!) }
-                    else if (e.tipo == "alq") { @alqCard(e.alq!) }
-                    else if (e.tipo == "flex") { @flexCard(e.flex!) }
+                    @if (abierta && e.tipo == "venta") { @ventaCard(e.venta!) }
+                    else if (abierta && e.tipo == "me1") { @me1Card(e.me1!) }
+                    else if (abierta && e.tipo == "alq") { @alqCard(e.alq!) }
+                    else if (abierta && e.tipo == "hecha") { @hechaCard(st) }
+                    else if (abierta) { @flexCard(st) }
+                    else if (e.tipo == "hecha")
+                    {
+                        @* Ya hecha: renglón chiquito, gris, con la hora. *@
+                        <div @onclick="() => AbrirParada(st.Id)" style="display:flex; align-items:center; gap:0.4rem; padding:0.3rem 0.1rem; font-size:0.82rem; color:#9ca3af; cursor:pointer;">
+                            <span style="flex:0 0 auto; color:@(st.Entregado ? "#15803d" : (st.NoEntregada ? "#b91c1c" : "#9ca3af")); font-weight:800;">@(st.Entregado ? "✓" : (st.NoEntregada ? "✕" : "✓"))</span>
+                            <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-decoration:@(st.NoEntregada ? "line-through" : "none");">@(st.Nombre ?? "Parada")</span>
+                            <span style="flex:0 0 auto;">@TextoParadaHecha(st)</span>
+                        </div>
+                    }
+                    else
+                    {
+                        @* Todavía no le tocó: renglón simple, se abre de un toque. *@
+                        <div @onclick="() => AbrirParada(st.Id)" style="display:flex; align-items:center; gap:0.4rem; padding:0.45rem 0.1rem; font-size:0.9rem; color:#374151; cursor:pointer; border-top:1px solid #f3f4f6;">
+                            <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(st.Nombre ?? "Parada")</span>
+                            <span style="flex:0 0 auto; font-size:0.7rem; color:#9ca3af;">@EtiquetaTipoParada(st)</span>
+                        </div>
+                    }
                 </div>
             </div>
+        }
+        @* Botón para volver a la parada que le toca, cuando se fue a mirar otra cosa. *@
+        @if (ParadaActualId is int actualId)
+        {
+            <button type="button" @onclick="() => IrAParadaActual(true)"
+                    style="position:fixed; right:0.8rem; bottom:1.1rem; z-index:40; padding:0.6rem 0.9rem; background:#0f766e; color:white; border:none; border-radius:999px; font-size:0.85rem; font-weight:800; box-shadow:0 4px 12px rgba(0,0,0,0.25); cursor:pointer;">
+                ⤓ La que sigue
+            </button>
         }
         @if (otrosMe1.Count + otrosAlq.Count + otrosVenta.Count > 0)
         {
@@ -438,7 +517,7 @@
             @foreach (var a in otrosAlq) { @alqCard(a) }
             @foreach (var p in otrosVenta) { @ventaCard(p) }
         }
-        @if (totalPend == 0)
+        @if (porHacer == 0 && entradas.Count == 0)
         {
             <div class="mp-empty" style="background:white; border-radius:12px;">
                 <div style="font-size:2.2rem;">✅</div>
@@ -1005,7 +1084,6 @@
         if (pts.Count < 2) return null;
         return "https://www.google.com/maps/dir/" + string.Join("/", pts) + "/?travelmode=driving";
     }
-    private bool verFlex = false; // filtro "Ver Flex" — los Flex arrancan OCULTOS por default
     // 2026-06-26: Alquileres asignados al repartidor
     private List<AlqReservaItem> alqReservas = new();
     private List<AlqCobroItem> alqCobros = new();
@@ -1083,6 +1161,92 @@
     // ¿Entre lo que le falta hay envíos de MercadoLibre? Sirve para explicarle por qué sigue
     // figurando pendiente algo que él ya entregó: MeLi tarda en confirmarlo.
     private bool FaltanEnviosDeMeli => mapeoRuta.Any(s => !s.Entregado && !s.NoEntregada && (s.Origin == "flex" || s.Origin == "me1"));
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2026-09-02: LA LISTA QUE AVANZA SOLA.
+    //
+    // Una parada está "hecha" cuando ya no hay nada que hacer con ella: la entregó, se cerró sin
+    // entregar, o él la tildó a mano. Ese último caso es SOLO visual y existe por los Flex, que se
+    // cierran en la app de MercadoLibre y tardan en confirmarse: sin el tilde, el envío que ya dejó
+    // se le queda arriba de la lista mientras él va tres cuadras más adelante.
+    //
+    // "La que le toca" = la primera de la ruta que todavía no está hecha. Es la que se ve abierta,
+    // y a la que la pantalla se acomoda sola al abrir y después de cada entrega.
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    private int? paradaAbiertaManual;      // la que él tocó para abrir (le gana a la automática)
+    private int marcandoVisto;             // id de la parada que está guardando el tilde (0 = ninguna)
+    private bool acomodarPantalla;         // pedirle al navegador que se acomode en la próxima pintada
+
+    private bool ParadaHecha(MisPedidosMapeoDto st) => st.Entregado || st.NoEntregada || st.Visto;
+
+    /// <summary>Ya pasó por todas, pero algunas las tildó él y MeLi todavía no las confirmó.
+    /// Para él el recorrido terminó; para los números de la oficina, todavía no.</summary>
+    private bool RecorridoTerminadoParaEl => ParadasTotal > 0 && !TerminoRecorrido && mapeoRuta.All(ParadaHecha);
+    private int ParadasEsperandoMeli => mapeoRuta.Count(s => !s.Entregado && !s.NoEntregada && s.Visto);
+    /// <summary>De las que él tildó, cuántas son envíos de MercadoLibre (los únicos que MeLi confirma).</summary>
+    private int ParadasEsperandoMeliDeMeli => mapeoRuta.Count(s => !s.Entregado && !s.NoEntregada && s.Visto && (s.Origin == "flex" || s.Origin == "me1"));
+
+    /// <summary>Lo que todavía tiene que hacer: ni entregada, ni cerrada, ni tildada por él.
+    /// Es el número que tiene que coincidir con la lista que ve abajo.</summary>
+    private int ParadasPorHacer => mapeoRuta.Count(s => !ParadaHecha(s));
+
+    /// <summary>La primera parada de la ruta que todavía no está hecha. null = terminó todo.</summary>
+    private int? ParadaActualId => mapeoRuta.FirstOrDefault(s => !ParadaHecha(s))?.Id;
+
+    /// <summary>Abrir/cerrar una parada de un toque. Volver a tocar la abierta la cierra y la lista
+    /// vuelve a seguir sola a la que le toca.</summary>
+    private void AbrirParada(int id) => paradaAbiertaManual = (paradaAbiertaManual == id) ? null : id;
+
+    /// <summary>Qué mostrar al costado de una parada ya hecha: la hora si la sabemos.</summary>
+    private string TextoParadaHecha(MisPedidosMapeoDto st)
+    {
+        if (st.NoEntregada) return "no se entregó";
+        if (st.DateDelivered is { } d) return d.ToArTime().ToString("HH:mm");
+        if (st.Visto) return "listo";
+        return "";
+    }
+
+    private static string EtiquetaTipoParada(MisPedidosMapeoDto st) => st.Origin switch
+    {
+        "venta_cafe" => "venta",
+        "alquiler" => "alquiler",
+        "me1" => "ME1",
+        "flex" => "Flex",
+        "visita" => "visita",
+        _ => "parada"
+    };
+
+    /// <summary>Tilde SOLO VISUAL: hace avanzar la lista. No entrega, no cobra, no toca MercadoLibre.</summary>
+    private async Task MarcarParadaVista(MisPedidosMapeoDto st, bool visto)
+    {
+        if (marcandoVisto != 0) return;
+        marcandoVisto = st.Id;
+        try
+        {
+            bool ok;
+            try
+            {
+                var resp = await Http.PostAsJsonAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/visto/{st.Id}", new { visto });
+                ok = resp.IsSuccessStatusCode;
+            }
+            catch { ok = false; }
+            if (!ok) { MostrarToast("No pude guardarlo. Probá de nuevo.", true); return; }
+            st.Visto = visto;
+            paradaAbiertaManual = null;   // que la lista vuelva a seguir sola
+            acomodarPantalla = true;
+        }
+        finally { marcandoVisto = 0; }
+    }
+
+    /// <summary>Lleva la pantalla hasta la parada que le toca.</summary>
+    private async Task IrAParadaActual(bool tambienCerrarLaAbierta = false)
+    {
+        if (tambienCerrarLaAbierta) paradaAbiertaManual = null;
+        if (ParadaActualId is not int id) return;
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("mpIrAParada", $"mp-parada-{id}"); } catch { }
+    }
 
     /// <summary>Hora (en UTC, como viene de la API) de su entrega más reciente. null = todavía no entregó nada.</summary>
     private DateTime? UltimaEntregaUtc
@@ -1165,6 +1329,10 @@
             {
                 var mp = await Http.GetFromJsonAsync<List<Web.Models.MisPedidosMapeoDto>>($"api/cafe/repartidor-public/mis-pedidos/{Token}/mapeo");
                 mapeoRuta = mp ?? new();
+                // Cada vez que se refresca la lista (al abrir, al entregar, al tocar 🔄) la pantalla
+                // se vuelve a acomodar en la parada que le toca.
+                acomodarPantalla = true;
+                paradaAbiertaManual = null;
             }
             catch { mapeoRuta = new(); }
             // Si el mapa embebido está abierto, redibujarlo con la ruta recién traída.
@@ -1299,6 +1467,17 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // 2026-09-02: acomodar la pantalla en la parada que le toca. Solo al abrir y después de
+        // marcar algo — nunca en cada dibujo, así no se le mueve la pantalla mientras mira.
+        if (acomodarPantalla && !loading)
+        {
+            acomodarPantalla = false;
+            if (ParadaActualId is int actual)
+            {
+                try { await JS.InvokeVoidAsync("mpIrAParada", $"mp-parada-{actual}"); } catch { }
+            }
+        }
+
         // Inicializar Sortable cada vez que el contenedor existe pero todavía no se enganchó
         if (!loading && !sortableInicializado && pedidos.Any(p => !p.YaEntregada))
         {

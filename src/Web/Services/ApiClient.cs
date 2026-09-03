@@ -7188,6 +7188,7 @@ public class ApiClient
     // Paso 2: paradas del Mapeo (solo-lectura) para el teléfono del repartidor.
     public async Task<List<MisPedidosMapeoDto>?> GetMisPedidosMapeoAsync(string tokenRepartidor)
         => await GetAsync<List<MisPedidosMapeoDto>>($"/api/cafe/repartidor-public/mis-pedidos/{Uri.EscapeDataString(tokenRepartidor)}/mapeo");
+
     public async Task<bool> DeleteMapeoDriverAsync(int id)
         => await DeleteAsync($"/api/mapeo/drivers/{id}");
     public async Task<string?> GenerateMapeoDriverShareTokenAsync(int id, bool regenerate = false)

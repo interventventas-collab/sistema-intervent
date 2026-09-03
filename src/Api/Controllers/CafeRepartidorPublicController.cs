@@ -898,7 +898,12 @@ public class CafeRepartidorPublicController : ControllerBase
         bool Entregado, DateTime? DateDelivered,
         // 2026-09-02: cerrada SIN entregar (cancelada, "no encontró", o MeLi avisó que no se
         // entregó). No cuenta como entregada, pero tampoco le queda pendiente.
-        bool NoEntregada = false
+        bool NoEntregada = false,
+        // 2026-09-02: el repartidor la tildó a mano en su lista. Es SOLO visual — sirve para que la
+        // lista avance a la parada siguiente. No toca MercadoLibre, no genera cobranza y no cuenta
+        // como entrega en ningún número. Se usa sobre todo en los Flex, que se cierran en la app de
+        // MeLi y tardan en confirmarse.
+        bool Visto = false
     );
 
     /// <summary>Paradas del Mapeo asignadas a este repartidor (vía MapeoDrivers.CafeRepartidorId),
@@ -930,6 +935,7 @@ public class CafeRepartidorPublicController : ControllerBase
         // dicen lo mismo — y vale para TODOS los orígenes, no solo los de MeLi. 2026-09-02
         var entregasPorStop = await _entregas.EntregasAsync(stops);
         var noEntregadas = await _entregas.NoEntregadasAsync(stops);
+        var vistos = await LeerVistosAsync(r.Id);
 
         var result = stops.Select(s =>
         {
@@ -948,10 +954,79 @@ public class CafeRepartidorPublicController : ControllerBase
                 s.Alias ?? s.ContactName, s.Direccion, s.Localidad,
                 s.Latitude, s.Longitude, s.Telefono,
                 comprador, numeroVenta, entregado, dd,
-                !entregado && noEntregadas.Contains(s.Id));
+                !entregado && noEntregadas.Contains(s.Id),
+                vistos.Contains(s.Id));
         }).ToList();
 
         return Ok(result);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2026-09-02: TILDE VISUAL de la lista del repartidor.
+    //
+    // Los Flex se cierran en la app de MercadoLibre, no acá, y MeLi tarda en confirmarlos. Sin esto
+    // el envío ya entregado se le queda arriba de la lista sin tildar mientras él va tres cuadras
+    // más adelante, y la lista deja de servirle para ubicarse.
+    //
+    // El tilde es SOLO visual: hace avanzar su lista y nada más. No toca MercadoLibre, no marca
+    // entregado, no genera cobranza y NO cuenta como entrega en ningún número del sistema. Cuando
+    // MeLi después confirma de verdad, el renglón pasa solo a entregado real.
+    //
+    // Se guarda en AppSettings (una fila por repartidor y por día) para no tocar el esquema de la
+    // base: agregar una columna obligaría a correr un ALTER a mano en producción. Es el mismo
+    // criterio que ya usan los colores de zona del mapa y los chats de Depósito.
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Clave del día para ese repartidor. La fecha va en hora argentina: la lista es "la de hoy".</summary>
+    private static string VistosKey(int repartidorId)
+        => $"mapeo.visto.rep{repartidorId}.{DateTime.UtcNow.AddHours(-3):yyyy-MM-dd}";
+
+    private async Task<HashSet<int>> LeerVistosAsync(int repartidorId)
+    {
+        var s = await _db.AppSettings.FindAsync(VistosKey(repartidorId));
+        if (s is null || string.IsNullOrWhiteSpace(s.Value)) return new HashSet<int>();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<int>>(s.Value)?.ToHashSet()
+                   ?? new HashSet<int>();
+        }
+        catch { return new HashSet<int>(); }   // dato raro: arrancamos limpio, no rompemos la pantalla
+    }
+
+    public record VistoRequest(bool Visto);
+
+    /// <summary>Tilda (o destilda) una parada en la lista del repartidor. Solo visual — ver el bloque
+    /// de arriba. Valida que la parada sea de él, igual que el resto de la pantalla.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/visto/{stopId:int}")]
+    public async Task<IActionResult> MarcarVisto(string tokenRepartidor, int stopId, [FromBody] VistoRequest req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+
+        var driverIds = await _db.MapeoDrivers.Where(d => d.CafeRepartidorId == r.Id).Select(d => d.Id).ToListAsync();
+        var stop = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Id == stopId);
+        if (stop is null) return NotFound(new { error = "Parada no encontrada" });
+        if (stop.AssignedDriverId == null || !driverIds.Contains(stop.AssignedDriverId.Value))
+            return BadRequest(new { error = "Esa parada no es tuya" });
+
+        var vistos = await LeerVistosAsync(r.Id);
+        if (req.Visto) vistos.Add(stopId); else vistos.Remove(stopId);
+
+        var key = VistosKey(r.Id);
+        var valor = System.Text.Json.JsonSerializer.Serialize(vistos.OrderBy(x => x).ToList());
+        var setting = await _db.AppSettings.FindAsync(key);
+        if (setting is null) _db.AppSettings.Add(new AppSetting { Key = key, Value = valor, UpdatedAt = DateTime.UtcNow });
+        else { setting.Value = valor; setting.UpdatedAt = DateTime.UtcNow; }
+
+        // Limpieza: los tildes son del día. Borramos los de más de una semana para no acumular filas.
+        var corte = $"mapeo.visto.rep{r.Id}.{DateTime.UtcNow.AddHours(-3).AddDays(-7):yyyy-MM-dd}";
+        var viejos = await _db.AppSettings
+            .Where(x => x.Key.StartsWith($"mapeo.visto.rep{r.Id}.") && string.Compare(x.Key, corte) < 0)
+            .ToListAsync();
+        if (viejos.Count > 0) _db.AppSettings.RemoveRange(viejos);
+
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, visto = req.Visto });
     }
 
     /// <summary>2026-06-17: lista las ME1 asignadas al repartidor (pendientes + las que el repartidor entrego).

@@ -75,6 +75,9 @@ public class MisPedidosMapeoDto
     /// <summary>2026-09-02: cerrada SIN entregar (cancelada, "no encontró", o MercadoLibre avisó
     /// que no se entregó). No es una entrega, pero tampoco le queda pendiente.</summary>
     public bool NoEntregada { get; set; }
+    /// <summary>2026-09-02: el repartidor la tildó a mano para que su lista avance. SOLO visual:
+    /// no toca MercadoLibre, no marca entregado y no cuenta como entrega en ningún número.</summary>
+    public bool Visto { get; set; }
 }
 
 public class PublicRouteDto

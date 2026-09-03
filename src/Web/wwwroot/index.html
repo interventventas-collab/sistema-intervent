@@ -1691,6 +1691,17 @@
         // Compat con versión anterior por si quedó cache
         window.mpScrollToPendientes = window.mpScrollToTop;
 
+        // 2026-09-02: la lista del repartidor se ubica sola en la parada que sigue.
+        // Se llama al abrir la pantalla y cada vez que marca una entrega — NO en cada dibujo,
+        // asi que mientras el mira otra cosa la pantalla no se le mueve sola de abajo del dedo.
+        window.mpIrAParada = function(elId) {
+            try {
+                const el = document.getElementById(elId);
+                if (!el) return;
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (e) {}
+        };
+
         // ───── 2026-06-08: Drag&drop del widget Mis Post-its (PostitsFlotantes.razor) ─────
         // Se invoca desde OnAfterRenderAsync del componente. Engancha mousedown sobre el
         // .postit-drag-handle y arrastra el #postit-flotante-root por toda la pantalla.
