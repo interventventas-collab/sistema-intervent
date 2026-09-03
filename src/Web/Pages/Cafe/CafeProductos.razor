@@ -895,8 +895,20 @@
                                @bind="formStockIdeal" />
                         <small style="display:block; margin-top:0.3rem; color:#6b7280; font-size:0.72rem;">
                             Cuánto querés tener siempre @(formCategoria == "CAFE" ? "de este café, en kilos" : "de este producto, en unidades").
-                            Si el stock baja de acá, aparece en <b>Stock ideal / Faltantes</b> para pedirle al proveedor.
-                            No cambia lo que ve MeLi.
+                            A esto se repone cuando hay que pedir. No cambia lo que ve MeLi.
+                        </small>
+                    </div>
+                    @* 2026-09-02: el piso es el punto de pedido — decide CUANDO avisar. *@
+                    <div class="form-group">
+                        <label class="form-label">⚠️ Stock piso @(formCategoria == "CAFE" ? "(en kilos)" : "(en unidades)")</label>
+                        <input class="form-input" type="number" step="1" min="0" placeholder="Vacío = avisa apenas baja del ideal"
+                               @bind="formStockPiso" />
+                        <small style="display:block; margin-top:0.3rem; color:#6b7280; font-size:0.72rem;">
+                            Cuando el stock baja de acá, el producto aparece en <b>Stock ideal / Faltantes</b>.
+                            Ejemplo: ideal @(formStockIdeal?.ToString() ?? "100") y piso @(formStockPiso?.ToString() ?? "10") →
+                            mientras tengas más de @(formStockPiso?.ToString() ?? "10") no molesta; cuando baja, te dice que pidas
+                            hasta llegar a @(formStockIdeal?.ToString() ?? "100").
+                            Si lo dejás vacío, avisa apenas bajás del ideal.
                         </small>
                     </div>
                     <div class="form-group" style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.6rem;">
@@ -1578,6 +1590,8 @@
     private int? formStockMinimoMeli;
     // 2026-09-02: stock ideal (cuanto queremos tener siempre). Null = no se controla ese producto.
     private int? formStockIdeal;
+    // 2026-09-02: stock piso (punto de pedido). Null = avisa apenas baja del ideal.
+    private int? formStockPiso;
     private string formNotas = "";
     private bool formIsActive = true;
 
@@ -2045,7 +2059,7 @@
         formPrecioBultoOtroFuturo = null;
         formOemId = 0; oemSearch = ""; oemSearchOpen = false;
         // Producto NUEVO: arranca con 1 reservado (default razonable de seguridad). El usuario puede borrarlo si no quiere reserva.
-        formStockGramos = 0; formStockUnidades = 0; formStockMinimoMeli = 1; formStockIdeal = null;
+        formStockGramos = 0; formStockUnidades = 0; formStockMinimoMeli = 1; formStockIdeal = null; formStockPiso = null;
         formStockKg = 0;
         formNotas = ""; formIsActive = true;
         formError = null; showForm = true;
@@ -2136,6 +2150,7 @@
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
         formStockMinimoMeli = p.StockMinimoMeLi;
         formStockIdeal = p.StockIdeal;
+        formStockPiso = p.StockPiso;
         formStockKg = Math.Round(p.StockGramos / 1000m, 3, MidpointRounding.AwayFromZero);
         formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
         formError = null; showForm = true;
@@ -2193,7 +2208,7 @@
             }).ToList() ?? new();
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
         // Producto NUEVO: stock arranca en 0, reserva 1 (default seguro).
-        formStockGramos = 0; formStockUnidades = 0; formStockMinimoMeli = 1; formStockIdeal = null;
+        formStockGramos = 0; formStockUnidades = 0; formStockMinimoMeli = 1; formStockIdeal = null; formStockPiso = null;
         formStockKg = 0;
         formNotas = p.Notas ?? "";
         formIsActive = true;
@@ -2285,6 +2300,8 @@
                     ClearStockMinimoMeLi = !formStockMinimoMeli.HasValue,
                     StockIdeal = formStockIdeal,
                     ClearStockIdeal = !formStockIdeal.HasValue,
+                    StockPiso = formStockPiso,
+                    ClearStockPiso = !formStockPiso.HasValue,
                     Notas = formNotas, IsActive = formIsActive,
                     IvaPct = formIvaPct,
                     // Modelo NUEVO de precios — PrecioBar/PrecioOtro es lo que COBRA el sistema.
@@ -2355,6 +2372,7 @@
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
                     StockMinimoMeLi = formStockMinimoMeli,
                     StockIdeal = formStockIdeal,
+                    StockPiso = formStockPiso,
                     Notas = formNotas,
                     IvaPct = formIvaPct,
                     // Modelo NUEVO de precios — ver nota en el Update: CAFE tambien los manda

@@ -180,6 +180,9 @@ public class CafeProductoDto
     /// <summary>2026-09-02 — Stock ideal: cuánto queremos tener siempre en el depósito.
     /// Null = no se controla. Es OTRO número, no tiene que ver con StockMinimoMeLi.</summary>
     public int? StockIdeal { get; set; }
+    /// <summary>2026-09-02 — Punto de pedido: cuando el stock baja de acá, salta el aviso.
+    /// Null = sin piso (avisa apenas baja del ideal).</summary>
+    public int? StockPiso { get; set; }
     /// <summary>2026-06-01 — Stock armable (cuantos productos "shell" se pueden armar desde
     /// los componentes linkeados via MeLi). Null si no aplica (productos físicos normales).</summary>
     public int? StockArmable { get; set; }
@@ -315,6 +318,7 @@ public class CreateCafeProductoRequest
     public int? StockUnidades { get; set; }
     public int? StockMinimoMeLi { get; set; }
     public int? StockIdeal { get; set; }
+    public int? StockPiso { get; set; }
     public string? Notas { get; set; }
     public decimal? IvaPct { get; set; }
     // Modelo NUEVO de precios (solo OTROS):
@@ -356,6 +360,8 @@ public class UpdateCafeProductoRequest
     public bool ClearStockMinimoMeLi { get; set; }
     public int? StockIdeal { get; set; }
     public bool ClearStockIdeal { get; set; }
+    public int? StockPiso { get; set; }
+    public bool ClearStockPiso { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
     public decimal? IvaPct { get; set; }
@@ -1733,6 +1739,7 @@ public class StockIdealRowDto
     /// Por eso es decimal y viaja la Unidad ("u" o "kg").</summary>
     public decimal StockActual { get; set; }
     public int? StockIdeal { get; set; }
+    public int? StockPiso { get; set; }
     public decimal Faltan { get; set; }
     public string Unidad { get; set; } = "u";
     public DateTime? UltimaEntrada { get; set; }
@@ -1753,6 +1760,12 @@ public class StockIdealBulkItemDto
 {
     public int ProductoId { get; set; }
     public int? StockIdeal { get; set; }
+    /// <summary>Null NO significa "borrar": mirá TocaPiso.</summary>
+    public int? StockPiso { get; set; }
+    /// <summary>Solo si es true se toca el piso. Así la planilla puede guardar uno sin pisar el otro.</summary>
+    public bool TocaPiso { get; set; }
+    /// <summary>Idem para el ideal.</summary>
+    public bool TocaIdeal { get; set; } = true;
 }
 
 public class StockIdealBulkRequestDto
@@ -1774,6 +1787,8 @@ public class StockIdealCambioDto
     public string Descripcion { get; set; } = "";
     public int? IdealViejo { get; set; }
     public int? IdealNuevo { get; set; }
+    public int? PisoViejo { get; set; }
+    public int? PisoNuevo { get; set; }
     public bool Asigna { get; set; }
     public bool Quita { get; set; }
 }

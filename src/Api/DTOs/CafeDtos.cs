@@ -155,6 +155,8 @@ public record CafeProductoDto(
     // 2026-09-02: stock ideal = cuánto queremos tener siempre en el depósito (para armar pedidos).
     // Null = no se controla. OJO: no confundir con StockMinimoMeLi, son dos números distintos.
     int? StockIdeal = null,
+    // 2026-09-02: punto de pedido. Null = sin piso (dispara con el ideal).
+    int? StockPiso = null,
     // 2026-06-01: para productos "shell" linkeados a publicaciones MeLi via componentes,
     // cantidad de cestos/combos armables a partir del stock real de los componentes (min).
     // Null si no aplica (productos físicos normales con stock propio).
@@ -212,6 +214,8 @@ public class CreateCafeProductoRequest
     public int? StockMinimoMeLi { get; set; }
     /// <summary>2026-09-02 — Stock ideal (cuánto queremos tener siempre). Null = no se controla.</summary>
     public int? StockIdeal { get; set; }
+    /// <summary>2026-09-02 — Punto de pedido. Null = sin piso (dispara con el ideal).</summary>
+    public int? StockPiso { get; set; }
     public string? Notas { get; set; }
     public decimal? IvaPct { get; set; }
     // Modelo nuevo de precios para OTROS:
@@ -320,6 +324,8 @@ public class UpdateCafeProductoRequest
     /// <summary>2026-09-02 — Stock ideal. Null = no cambiar. ClearStockIdeal=true → poner null.</summary>
     public int? StockIdeal { get; set; }
     public bool ClearStockIdeal { get; set; }
+    public int? StockPiso { get; set; }
+    public bool ClearStockPiso { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
     public decimal? IvaPct { get; set; }

@@ -5419,6 +5419,12 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='StockMinimoMeLi' AND object
 -- Ojo: es OTRO numero, distinto de StockMinimoMeLi (ese es la reserva que se le esconde a MeLi).
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='StockIdeal' AND object_id=OBJECT_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD StockIdeal INT NULL;
+
+-- 2026-09-02: "Stock piso" = el punto de pedido. Mientras el stock este por encima, el producto
+-- no aparece; cuando lo cruza para abajo, entra a faltantes y se pide hasta llegar al ideal.
+-- Null = sin piso: dispara con el ideal, como venia funcionando.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='StockPiso' AND object_id=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD StockPiso INT NULL;
 GO
 
 -- 2026-09-02: lista de "para pedir". Cuando un producto queda por debajo de su StockIdeal se

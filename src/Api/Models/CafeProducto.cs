@@ -152,6 +152,14 @@ public class CafeProducto
     /// la reserva que se le esconde a MeLi); son dos numeros distintos a proposito.</summary>
     public int? StockIdeal { get; set; }
 
+    /// <summary>2026-09-02 — "Stock piso": el punto de pedido. Mientras el stock esté POR ENCIMA
+    /// de este número, el producto no molesta; cuando lo cruza para abajo entra a la lista de
+    /// faltantes y se pide hasta volver al StockIdeal.
+    /// Ejemplo del usuario: ideal 100, piso 10 → con 10 o menos avisa, y se piden ~90.
+    /// Null = no hay piso: dispara con el ideal (como funcionaba antes de tener este campo).
+    /// Misma unidad que el ideal: unidades, salvo el cafe que va en kilos.</summary>
+    public int? StockPiso { get; set; }
+
     [MaxLength(500)]
     public string? Notas { get; set; }
 

@@ -235,6 +235,7 @@
                                     <th class="si-marca">Marca</th>
                                 }
                                 <th class="si-num">Tenés</th>
+                                <th class="si-num">Piso</th>
                                 <th class="si-num">Ideal</th>
                                 <th class="si-num">Faltan</th>
                                 <th class="si-uni"></th>
@@ -252,6 +253,7 @@
                                         <td class="si-marca">@(f.Marca ?? "—")</td>
                                     }
                                     <td class="si-num" style="@(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockActual)</td>
+                                    <td class="si-num" style="color:#6b7280;">@(f.StockPiso?.ToString() ?? "—")</td>
                                     <td class="si-num" style="color:#6b7280;">@(f.StockIdeal?.ToString() ?? "—")</td>
                                     <td class="si-num" style="font-weight:700; color:#b91c1c;">@Num(f.Faltan)</td>
                                     <td class="si-uni text-muted">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
@@ -268,9 +270,11 @@
             @* ===== Solapa Configurar ===== *@
             <div style="padding:0.8rem 1rem; border-bottom:1px solid #e5e7eb; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                 <span class="text-muted" style="font-size:0.82rem; flex:1; min-width:240px;">
-                    Escribí cuánto querés tener siempre de cada producto. Se guarda solo al salir del casillero.
-                    Dejalo vacío para no controlar ese producto. Mirá la columna de la derecha: el café va en
-                    <b>kilos</b> y el resto en <b>unidades</b>.
+                    <b>Stock ideal</b>: cuánto querés tener siempre (a eso se repone).
+                    <b>Stock piso</b>: cuando el stock baja de ahí, el producto aparece en la lista para pedir.
+                    Ejemplo: ideal 100 y piso 10 → mientras tengas más de 10 no te molesta; cuando baja, te dice
+                    que pidas hasta llegar a 100. Si dejás el piso vacío, avisa apenas bajás del ideal.
+                    Se guarda solo al salir del casillero. El café va en <b>kilos</b> y el resto en <b>unidades</b>.
                 </span>
                 <button class="btn btn-secondary" @onclick="BajarExcelConfig" disabled="@bajandoConfig">
                     @(bajandoConfig ? "Generando..." : "⬇ Bajar Excel")
@@ -361,6 +365,7 @@
                                 }
                                 <th class="si-num">Stock hoy</th>
                                 <th class="si-num">Stock ideal</th>
+                                <th class="si-num">Stock piso</th>
                                 <th class="si-uni"></th>
                                 <th style="width:90px;"></th>
                             </tr>
@@ -382,6 +387,12 @@
                                                value="@(edits.TryGetValue(pid, out var v) ? v : (f.StockIdeal?.ToString() ?? ""))"
                                                placeholder="—"
                                                @onchange="@(e => OnIdealChange(pid, e.Value?.ToString()))" />
+                                    </td>
+                                    <td class="si-num">
+                                        <input type="text" inputmode="numeric" class="si-input @(f.StockPiso.HasValue ? "set" : "")"
+                                               value="@(editsPiso.TryGetValue(pid, out var vp) ? vp : (f.StockPiso?.ToString() ?? ""))"
+                                               placeholder="—" title="Cuando el stock baja de acá, salta el aviso"
+                                               @onchange="@(e => OnPisoChange(pid, e.Value?.ToString()))" />
                                     </td>
                                     <td class="si-uni text-muted">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
                                     <td style="font-size:0.75rem;">
@@ -444,6 +455,7 @@
     // Lo que el usuario está tipeando en la planilla (por producto), para que no se pierda
     // si la fila se vuelve a dibujar antes de que llegue la respuesta del guardado.
     private readonly Dictionary<int, string> edits = new();
+    private readonly Dictionary<int, string> editsPiso = new();
     private readonly HashSet<int> guardados = new();
 
     private bool bajandoPedido, bajandoConfig, procesando;
@@ -515,6 +527,7 @@
             }
 
             edits.Clear();
+            editsPiso.Clear();
             guardados.Clear();
             // En Faltantes solo se traen los que están abajo del ideal; en Configurar, todos.
             var res = await Api.GetStockIdealListaAsync(
@@ -583,6 +596,64 @@
         if (e.Key == "Enter") await CargarAsync();
     }
 
+    /// <summary>Lee lo que tipearon. Devuelve (false, _) si no es un número.
+    /// Aguanta el "1.500" con punto de miles.</summary>
+    private bool LeerNumero(string texto, out int? valor)
+    {
+        valor = null;
+        if (texto.Length == 0) return true;
+        var limpio = texto.Replace(".", "").Replace(" ", "");
+        if (!int.TryParse(limpio, NumberStyles.Any, CultureInfo.InvariantCulture, out var n))
+            return false;
+        valor = Math.Max(0, n);
+        return true;
+    }
+
+    /// <summary>Guarda el PISO de una fila al salir del casillero. Vacío = sin piso (avisa con el ideal).</summary>
+    private async Task OnPisoChange(int productoId, string? valor)
+    {
+        var texto = (valor ?? "").Trim();
+        editsPiso[productoId] = texto;
+
+        if (!LeerNumero(texto, out var nuevo))
+        {
+            ToastService.Error($"'{texto}' no es un número");
+            editsPiso.Remove(productoId);
+            return;
+        }
+
+        var fila = filas.FirstOrDefault(f => f.ProductoId == productoId);
+        if (fila is not null && fila.StockPiso == nuevo) { editsPiso.Remove(productoId); return; }
+
+        try
+        {
+            var req = new StockIdealBulkRequestDto
+            {
+                Items = new List<StockIdealBulkItemDto>
+                {
+                    // TocaIdeal=false: si no, guardar el piso le borraría el ideal.
+                    new StockIdealBulkItemDto
+                    {
+                        ProductoId = productoId, StockPiso = nuevo,
+                        TocaPiso = true, TocaIdeal = false
+                    }
+                }
+            };
+            var res = await Api.SaveStockIdealBulkAsync(req);
+            if (res is null) { ToastService.Error("No se pudo guardar"); return; }
+
+            if (fila is not null)
+            {
+                fila.StockPiso = nuevo;
+                RecalcularFila(fila);
+            }
+            editsPiso.Remove(productoId);
+            guardados.Add(productoId);
+            pendientes = null;
+        }
+        catch (Exception ex) { ToastService.Error("Error al guardar: " + ex.Message); }
+    }
+
     /// <summary>Guarda el ideal de una fila apenas el usuario sale del casillero.
     /// Vacío = sacarle el ideal. Texto que no sea número = se ignora y se deja como estaba.</summary>
     private async Task OnIdealChange(int productoId, string? valor)
@@ -590,19 +661,11 @@
         var texto = (valor ?? "").Trim();
         edits[productoId] = texto;
 
-        int? nuevo;
-        if (texto.Length == 0) nuevo = null;
-        else
+        if (!LeerNumero(texto, out var nuevo))
         {
-            // Aguanta que escriban "1.500" (separador de miles argentino).
-            var limpio = texto.Replace(".", "").Replace(" ", "");
-            if (!int.TryParse(limpio, NumberStyles.Any, CultureInfo.InvariantCulture, out var n))
-            {
-                ToastService.Error($"'{texto}' no es un número");
-                edits.Remove(productoId);
-                return;
-            }
-            nuevo = Math.Max(0, n);
+            ToastService.Error($"'{texto}' no es un número");
+            edits.Remove(productoId);
+            return;
         }
 
         var fila = filas.FirstOrDefault(f => f.ProductoId == productoId);
@@ -614,7 +677,7 @@
             {
                 Items = new List<StockIdealBulkItemDto>
                 {
-                    new StockIdealBulkItemDto { ProductoId = productoId, StockIdeal = nuevo }
+                    new StockIdealBulkItemDto { ProductoId = productoId, StockIdeal = nuevo, TocaIdeal = true }
                 }
             };
             var res = await Api.SaveStockIdealBulkAsync(req);
@@ -625,26 +688,12 @@
             if (fila is not null)
             {
                 bool teniaIdeal = fila.StockIdeal.HasValue;
-                bool faltabaAntes = fila.Faltan > 0;
-                decimal faltabanAntes = fila.Faltan;
-
                 fila.StockIdeal = nuevo;
-                fila.Faltan = nuevo.HasValue ? Math.Max(0m, nuevo.Value - fila.StockActual) : 0m;
-
-                // Y los contadores de arriba, si no el cartel sigue diciendo "todavía no
-                // cargaste ningún stock ideal" cuando ya cargaste diez.
+                RecalcularFila(fila);
                 if (resumen is not null)
                 {
                     if (!teniaIdeal && nuevo.HasValue) resumen.ConIdeal++;
-                    else if (teniaIdeal && !nuevo.HasValue) resumen.ConIdeal--;
-
-                    bool faltaAhora = fila.Faltan > 0;
-                    if (faltaAhora != faltabaAntes)
-                    {
-                        resumen.Faltantes += faltaAhora ? 1 : -1;
-                        if (fila.StockActual <= 0) resumen.EnCero += faltaAhora ? 1 : -1;
-                    }
-                    resumen.UnidadesFaltantes += fila.Faltan - faltabanAntes;
+                    else if (teniaIdeal && !nuevo.HasValue && !fila.StockPiso.HasValue) resumen.ConIdeal--;
                 }
             }
             edits.Remove(productoId);
@@ -654,6 +703,38 @@
             pendientes = null;
         }
         catch (Exception ex) { ToastService.Error("Error al guardar: " + ex.Message); }
+    }
+
+    /// <summary>Vuelve a sacar la cuenta de una fila y acomoda los contadores de arriba.
+    /// La regla es la misma que en el servidor: dispara el PISO (o el ideal si no hay piso),
+    /// y se pide hasta el IDEAL. Si esto se desincroniza del backend, la pantalla miente.</summary>
+    private void RecalcularFila(StockIdealRowDto fila)
+    {
+        bool faltabaAntes = fila.Faltan > 0;
+        decimal faltabanAntes = fila.Faltan;
+
+        // Misma regla que el servidor: con piso se avisa al TOCARLO (<=); sin piso, al bajar
+        // del ideal (<). Ver StockFaltantesService.HayQuePedir.
+        bool hayQuePedir = fila.StockPiso.HasValue
+            ? fila.StockActual <= fila.StockPiso.Value
+            : fila.StockIdeal.HasValue && fila.StockActual < fila.StockIdeal.Value;
+
+        decimal ahora = 0m;
+        if (hayQuePedir)
+        {
+            var hasta = fila.StockIdeal ?? fila.StockPiso ?? 0;
+            ahora = Math.Max(0m, hasta - fila.StockActual);
+        }
+        fila.Faltan = ahora;
+
+        if (resumen is null) return;
+        bool faltaAhora = fila.Faltan > 0;
+        if (faltaAhora != faltabaAntes)
+        {
+            resumen.Faltantes += faltaAhora ? 1 : -1;
+            if (fila.StockActual <= 0) resumen.EnCero += faltaAhora ? 1 : -1;
+        }
+        resumen.UnidadesFaltantes += fila.Faltan - faltabanAntes;
     }
 
     private async Task BajarExcelPedido()

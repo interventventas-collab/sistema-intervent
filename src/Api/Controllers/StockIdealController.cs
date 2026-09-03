@@ -45,19 +45,25 @@ public class StockIdealController : ControllerBase
     /// KILOS. Los de OTROS van en unidades. Por eso StockActual es decimal y viaja la Unidad.</summary>
     public record StockIdealRow(
         int ProductoId, string? Codigo, string Nombre, string? Marca, string? Categoria,
-        decimal StockActual, int? StockIdeal, decimal Faltan, string Unidad, DateTime? UltimaEntrada);
+        decimal StockActual, int? StockIdeal, int? StockPiso, decimal Faltan, string Unidad,
+        DateTime? UltimaEntrada);
 
     public record StockIdealListResult(
         int Total, int ConIdeal, int Faltantes, int EnCero, decimal UnidadesFaltantes,
         List<string> Marcas, List<StockIdealRow> Filas);
 
-    public record StockIdealBulkItem(int ProductoId, int? StockIdeal);
+    /// <summary>Un renglon de la planilla. TocaIdeal/TocaPiso dicen QUE campo se esta guardando:
+    /// sin eso, guardar el piso borraria el ideal (llega null y no se sabe si es "vacialo" o
+    /// "no lo toques").</summary>
+    public record StockIdealBulkItem(int ProductoId, int? StockIdeal, int? StockPiso = null,
+        bool TocaIdeal = true, bool TocaPiso = false);
     public record StockIdealBulkRequest(List<StockIdealBulkItem> Items);
     public record StockIdealBulkResult(int Actualizados, int Quitados, int NoEncontrados);
 
     public record StockIdealCambioDto(
         int ProductoId, string? Codigo, string Descripcion,
-        int? IdealViejo, int? IdealNuevo, bool Asigna, bool Quita);
+        int? IdealViejo, int? IdealNuevo, bool Asigna, bool Quita,
+        int? PisoViejo = null, int? PisoNuevo = null);
 
     public record StockIdealPreviewDto(
         int TotalFilas, int SinCambios, int Asignan, int Quitan, int NoEncontrados,
@@ -68,7 +74,7 @@ public class StockIdealController : ControllerBase
 
     // Proyeccion liviana: lo justo para armar las filas sin traer la entidad entera.
     private record ProdInfo(int Id, string? Sku, string Nombre, string? Marca, string? Categoria,
-        int StockUnidades, decimal StockGramos, int? StockIdeal);
+        int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso);
 
     /// <summary>El cafe se mide en kilos (viene guardado en gramos); todo lo demas, en unidades.</summary>
     private static bool EsCafe(string? categoria)
@@ -114,14 +120,15 @@ public class StockIdealController : ControllerBase
                 var stock = StockDe(p);
                 return new StockIdealRow(
                     p.Id, p.Sku, p.Nombre, p.Marca, p.Categoria,
-                    stock, p.StockIdeal, Faltante(p.StockIdeal, stock), UnidadDe(p.Categoria),
+                    stock, p.StockIdeal, p.StockPiso,
+                    Faltante(p.StockIdeal, p.StockPiso, stock), UnidadDe(p.Categoria),
                     ultimasEntradas.TryGetValue(p.Id, out var f) ? f : null);
             })
             .ToList();
 
         // Los totales se calculan SIEMPRE sobre todo lo filtrado, aunque despues mostremos
         // solo los faltantes: asi el resumen de arriba no cambia al tildar la casilla.
-        int conIdeal = filas.Count(f => f.StockIdeal.HasValue);
+        int conIdeal = filas.Count(f => f.StockIdeal.HasValue || f.StockPiso.HasValue);
         var faltantes = filas.Where(f => f.Faltan > 0).ToList();
         int enCero = faltantes.Count(f => f.StockActual <= 0);
         decimal unidadesFaltantes = faltantes.Sum(f => f.Faltan);
@@ -141,9 +148,11 @@ public class StockIdealController : ControllerBase
             marcas.Select(m => m!).ToList(), visibles));
     }
 
-    /// <summary>Cuanto falta para llegar al ideal. Sin ideal cargado no se controla (0).</summary>
-    private static decimal Faltante(int? ideal, decimal stock)
-        => ideal.HasValue ? Math.Max(0m, ideal.Value - stock) : 0m;
+    /// <summary>Cuanto hay que pedir. El PISO decide si hay que pedir; el IDEAL, hasta donde.
+    /// Sin piso cargado dispara el ideal (como funcionaba antes). La cuenta vive en
+    /// StockFaltantesService para que la pantalla, el robot y los Excel usen la MISMA.</summary>
+    private static decimal Faltante(int? ideal, int? piso, decimal stock)
+        => StockFaltantesService.CuantoPedir(ideal, piso, stock);
 
     private async Task<List<ProdInfo>> CargarProductosAsync(string? marca, string? q, string? categoria)
     {
@@ -174,7 +183,7 @@ public class StockIdealController : ControllerBase
             .Select(p => new ProdInfo(
                 p.Id, p.Sku, p.Nombre,
                 p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null),
-                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal))
+                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal, p.StockPiso))
             .ToListAsync();
 
         return lista
@@ -213,12 +222,29 @@ public class StockIdealController : ControllerBase
         {
             if (!dic.TryGetValue(item.ProductoId, out var p)) { noEncontrados++; continue; }
 
-            int? nuevo = item.StockIdeal.HasValue ? Math.Max(0, item.StockIdeal.Value) : (int?)null;
-            if (p.StockIdeal == nuevo) continue;
-
-            p.StockIdeal = nuevo;
+            bool cambio = false;
+            if (item.TocaIdeal)
+            {
+                int? nuevo = item.StockIdeal.HasValue ? Math.Max(0, item.StockIdeal.Value) : (int?)null;
+                if (p.StockIdeal != nuevo)
+                {
+                    p.StockIdeal = nuevo;
+                    if (nuevo.HasValue) actualizados++; else quitados++;
+                    cambio = true;
+                }
+            }
+            if (item.TocaPiso)
+            {
+                int? nuevoPiso = item.StockPiso.HasValue ? Math.Max(0, item.StockPiso.Value) : (int?)null;
+                if (p.StockPiso != nuevoPiso)
+                {
+                    p.StockPiso = nuevoPiso;
+                    if (nuevoPiso.HasValue) actualizados++; else quitados++;
+                    cambio = true;
+                }
+            }
+            if (!cambio) continue;
             p.UpdatedAt = DateTime.UtcNow;
-            if (nuevo.HasValue) actualizados++; else quitados++;
         }
 
         if (actualizados > 0 || quitados > 0) await _db.SaveChangesAsync();
@@ -261,6 +287,7 @@ public class StockIdealController : ControllerBase
                 f.Producto.StockUnidades,
                 f.Producto.StockGramos,
                 IdealAhora = f.Producto.StockIdeal,
+                PisoAhora = f.Producto.StockPiso,
             })
             .ToListAsync();
 
@@ -279,7 +306,8 @@ public class StockIdealController : ControllerBase
         {
             var stockAhora = StockFaltantesService.StockDe(f.Categoria, f.StockUnidades, f.StockGramos);
             var ideal = f.IdealAhora ?? f.IdealAlDetectar;
-            var faltan = Math.Max(0m, ideal - stockAhora);
+            // "Ya repuesto" = volvio a estar por encima del PISO (o del ideal si no hay piso).
+            var faltan = StockFaltantesService.CuantoPedir(ideal, f.PisoAhora, stockAhora);
             return new PendienteRow(
                 f.Id, f.ProductoId, f.Codigo, f.Nombre, f.Marca,
                 f.StockAlDetectar, f.IdealAlDetectar, f.DetectadoAt,
@@ -428,7 +456,7 @@ public class StockIdealController : ControllerBase
         var prods = await CargarProductosAsync(marca, q, categoria);
         return prods
             .Select(p => new FilaPedido(p.Sku, p.Nombre, p.Marca, StockDe(p), p.StockIdeal ?? 0,
-                Faltante(p.StockIdeal, StockDe(p)), UnidadDe(p.Categoria)))
+                Faltante(p.StockIdeal, p.StockPiso, StockDe(p)), UnidadDe(p.Categoria)))
             .Where(x => x.Faltan > 0)
             .OrderBy(x => x.Marca).ThenBy(x => x.Nombre)
             .ToList();
@@ -452,6 +480,7 @@ public class StockIdealController : ControllerBase
                 f.Producto.StockUnidades,
                 f.Producto.StockGramos,
                 IdealAhora = f.Producto.StockIdeal,
+                PisoAhora = f.Producto.StockPiso,
             })
             .ToListAsync();
 
@@ -471,7 +500,8 @@ public class StockIdealController : ControllerBase
                 var stock = StockFaltantesService.StockDe(f.Categoria, f.StockUnidades, f.StockGramos);
                 var ideal = f.IdealAhora ?? f.IdealAlDetectar;
                 return new FilaPedido(f.Codigo, f.Nombre, f.Marca, stock, ideal,
-                    Math.Max(0m, ideal - stock), StockFaltantesService.UnidadDe(f.Categoria));
+                    StockFaltantesService.CuantoPedir(ideal, f.PisoAhora, stock),
+                    StockFaltantesService.UnidadDe(f.Categoria));
             })
             .Where(x => x.Faltan > 0)
             .OrderBy(x => x.Marca).ThenBy(x => x.Nombre)
@@ -489,7 +519,7 @@ public class StockIdealController : ControllerBase
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Stock ideal");
 
-        var headers = new[] { "id", "codigo", "descripcion", "marca", "stock_actual", "stock_ideal", "unidad" };
+        var headers = new[] { "id", "codigo", "descripcion", "marca", "stock_actual", "stock_ideal", "stock_piso", "unidad" };
         for (int i = 0; i < headers.Length; i++)
         {
             var cell = ws.Cell(1, i + 1);
@@ -498,13 +528,15 @@ public class StockIdealController : ControllerBase
             cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             // La columna editable en amarillo; las de solo-lectura en gris.
-            cell.Style.Fill.BackgroundColor = (i == 5)
+            // Las DOS editables (ideal y piso) en amarillo; el resto en gris.
+            cell.Style.Fill.BackgroundColor = (i == 5 || i == 6)
                 ? XLColor.FromHtml("#fef08a") : XLColor.FromHtml("#e5e7eb");
         }
         ws.Cell(1, 1).GetComment().AddText("NO TOCAR. Se usa para emparejar el producto al subir el Excel.");
         ws.Cell(1, 2).GetComment().AddText("Codigo del producto (referencia, no se modifica).");
         ws.Cell(1, 5).GetComment().AddText("Stock actual (referencia, no se modifica).");
-        ws.Cell(1, 6).GetComment().AddText("EDITA ACA. Cuantas unidades queres tener siempre. Dejalo vacio para no controlar este producto.");
+        ws.Cell(1, 6).GetComment().AddText("EDITA ACA. Cuantas unidades queres tener siempre (a eso se repone).");
+        ws.Cell(1, 7).GetComment().AddText("EDITA ACA. El aviso salta cuando el stock baja de este numero. Vacio = avisa apenas baja del ideal.");
 
         int r = 2;
         foreach (var p in prods)
@@ -515,8 +547,9 @@ public class StockIdealController : ControllerBase
             ws.Cell(r, 4).Value = p.Marca ?? "";
             ws.Cell(r, 5).Value = StockDe(p);
             if (p.StockIdeal.HasValue) ws.Cell(r, 6).Value = p.StockIdeal.Value;
-            ws.Cell(r, 7).Value = UnidadDe(p.Categoria) == "kg" ? "kilos" : "unidades";
-            ws.Cell(r, 7).Style.Fill.BackgroundColor = XLColor.FromHtml("#f9fafb");
+            if (p.StockPiso.HasValue) ws.Cell(r, 7).Value = p.StockPiso.Value;
+            ws.Cell(r, 8).Value = UnidadDe(p.Categoria) == "kg" ? "kilos" : "unidades";
+            ws.Cell(r, 8).Style.Fill.BackgroundColor = XLColor.FromHtml("#f9fafb");
             for (int c = 1; c <= 5; c++) ws.Cell(r, c).Style.Fill.BackgroundColor = XLColor.FromHtml("#f9fafb");
             r++;
         }
@@ -533,13 +566,16 @@ public class StockIdealController : ControllerBase
         int rr = 3;
         void L(string t, bool bold = false) { var cc = info.Cell(rr, 1); cc.Value = t; cc.Style.Font.Bold = bold; rr++; }
         L("1) Edita SOLO la columna amarilla 'stock_ideal' en la hoja 'Stock ideal'.");
-        L("2) Poné cuantas unidades queres tener SIEMPRE de ese producto en el deposito.");
-        L("   Ejemplo: si ponés 40 y te quedan 18, el producto aparece en Faltantes y dice 'faltan 22'.");
-        L("3) Deja la celda VACIA para no controlar ese producto (no va a aparecer nunca en Faltantes).");
+        L("2) 'stock_ideal': cuantas unidades queres tener SIEMPRE de ese producto. A eso se repone.");
+        L("3) 'stock_piso': cuando el stock baja de ese numero, salta el aviso.");
+        L("   Ejemplo: ideal 100 y piso 10 → mientras tengas mas de 10 no te molesta; cuando");
+        L("   quedan 10 o menos aparece en Faltantes y te dice que pidas hasta llegar a 100.");
+        L("   Si dejas el piso VACIO, avisa apenas bajas del ideal (puede ser mucho ruido).");
+        L("4) Deja el ideal VACIO para no controlar ese producto (no aparece nunca en Faltantes).");
         L("   Mira la columna 'unidad': el cafe se cuenta en KILOS y todo lo demas en UNIDADES.");
-        L("4) NO cambies la columna 'id' (se usa para reconocer cada producto).");
-        L("5) Podes borrar las filas de los productos que no queres tocar: solo se aplican los que dejes.");
-        L("6) Guarda el archivo y subilo con el boton 'Subir Excel'. Antes de aplicar vas a ver una vista previa.");
+        L("5) NO cambies la columna 'id' (se usa para reconocer cada producto).");
+        L("6) Podes borrar las filas de los productos que no queres tocar: solo se aplican los que dejes.");
+        L("7) Guarda el archivo y subilo con el boton 'Subir Excel'. Antes de aplicar vas a ver una vista previa.");
         L("");
         L("OJO: esto NO es el 'stock minimo para MeLi'.", true);
         L("El stock minimo para MeLi son unidades que se le esconden a Mercado Libre.");
@@ -588,6 +624,7 @@ public class StockIdealController : ControllerBase
         {
             if (!dic.TryGetValue(c.ProductoId, out var p)) continue;
             p.StockIdeal = c.IdealNuevo;
+            p.StockPiso = c.PisoNuevo;
             p.UpdatedAt = DateTime.UtcNow;
             if (c.IdealNuevo.HasValue) actualizados++; else quitados++;
         }
@@ -640,11 +677,13 @@ public class StockIdealController : ControllerBase
             int colId = cols.GetValueOrDefault("id");
             int colCodigo = cols.GetValueOrDefault("codigo");
             int colIdeal = cols["stock_ideal"];
+            // 2026-09-02: el piso es opcional — un Excel bajado antes de que existiera sigue sirviendo.
+            int colPiso = cols.GetValueOrDefault("stock_piso");
 
             // Base actual, para comparar. Traigo todos los activos: son pocos miles.
             var todos = await _db.CafeProductos.AsNoTracking()
                 .Where(p => p.IsActive)
-                .Select(p => new { p.Id, p.Sku, p.Nombre, p.StockIdeal })
+                .Select(p => new { p.Id, p.Sku, p.Nombre, p.StockIdeal, p.StockPiso })
                 .ToListAsync();
             var porId = todos.ToDictionary(p => p.Id);
             var porSku = todos.Where(p => !string.IsNullOrWhiteSpace(p.Sku))
@@ -685,25 +724,36 @@ public class StockIdealController : ControllerBase
                     continue;
                 }
 
-                // Celda vacia => sacar el ideal (null). Numero (incluye 0) => asignar.
-                var celda = row.Cell(colIdeal).GetString().Trim();
-                int? nuevo;
-                if (string.IsNullOrWhiteSpace(celda)) nuevo = null;
-                else if (decimal.TryParse(celda.Replace(".", "").Replace(",", "."),
-                            NumberStyles.Any, CultureInfo.InvariantCulture, out var dec))
-                    nuevo = Math.Max(0, (int)Math.Round(dec));
-                else
+                // Celda vacia => sacar ese numero (null). Numero (incluye 0) => asignar.
+                // Devuelve (ok, valor). ok=false cuando lo escrito no es un numero.
+                (bool ok, int? valor) LeerNumero(int columna)
                 {
-                    errores.Add($"Fila {r}: '{celda}' no es un número, se ignora esa fila.");
-                    continue;
+                    if (columna <= 0) return (true, null);
+                    var txt = row.Cell(columna).GetString().Trim();
+                    if (string.IsNullOrWhiteSpace(txt)) return (true, null);
+                    if (decimal.TryParse(txt.Replace(".", "").Replace(",", "."),
+                            NumberStyles.Any, CultureInfo.InvariantCulture, out var d))
+                        return (true, Math.Max(0, (int)Math.Round(d)));
+                    errores.Add($"Fila {r}: '{txt}' no es un número, se ignora esa fila.");
+                    return (false, null);
                 }
 
+                var (okIdeal, nuevo) = LeerNumero(colIdeal);
+                if (!okIdeal) continue;
+                var (okPiso, nuevoPiso) = LeerNumero(colPiso);
+                if (!okPiso) continue;
+
                 int? viejo = (int?)prod.StockIdeal;
-                if (viejo == nuevo) continue;
+                int? viejoPiso = (int?)prod.StockPiso;
+                // Si el Excel no trae la columna del piso, el piso NO se toca.
+                if (colPiso <= 0) nuevoPiso = viejoPiso;
+
+                if (viejo == nuevo && viejoPiso == nuevoPiso) continue;
 
                 cambios.Add(new StockIdealCambioDto(
                     prodId, (string?)prod.Sku, (string)prod.Nombre,
-                    viejo, nuevo, Asigna: nuevo.HasValue, Quita: !nuevo.HasValue));
+                    viejo, nuevo, Asigna: nuevo.HasValue, Quita: !nuevo.HasValue,
+                    PisoViejo: viejoPiso, PisoNuevo: nuevoPiso));
             }
 
             return (cambios, errores, noEncontrados, totalFilas);

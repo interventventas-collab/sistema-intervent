@@ -81,6 +81,7 @@ public class CafeProductosController : ControllerBase
             .ToList() ?? new List<CafeProductoPackDto>(),
         StockMinimoMeLi: p.StockMinimoMeLi,
         StockIdeal: p.StockIdeal,
+        StockPiso: p.StockPiso,
         MultiplicadorOem: p.MultiplicadorOem,
         SinPrecioBar: p.SinPrecioBar,
         FormatoPorDefecto: p.FormatoPorDefecto);
@@ -813,6 +814,8 @@ public class CafeProductosController : ControllerBase
             // 2026-09-02: stock ideal (para armar pedidos). No dispara push a MeLi: es interno.
             StockIdeal = req.StockIdeal.HasValue && req.StockIdeal.Value >= 0
                 ? req.StockIdeal.Value : (int?)null,
+            StockPiso = req.StockPiso.HasValue && req.StockPiso.Value >= 0
+                ? req.StockPiso.Value : (int?)null,
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
             IvaPct = NormalizeIva(req.IvaPct),
             IsActive = true,
@@ -955,6 +958,8 @@ public class CafeProductosController : ControllerBase
         // asi que a proposito NO dispara stockCambio ni push.
         if (req.ClearStockIdeal) p.StockIdeal = null;
         else if (req.StockIdeal.HasValue && req.StockIdeal.Value >= 0) p.StockIdeal = req.StockIdeal.Value;
+        if (req.ClearStockPiso) p.StockPiso = null;
+        else if (req.StockPiso.HasValue && req.StockPiso.Value >= 0) p.StockPiso = req.StockPiso.Value;
 
         if (stockMinimoCambio)
         {
