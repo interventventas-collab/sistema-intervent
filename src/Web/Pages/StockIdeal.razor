@@ -198,7 +198,7 @@
                                     }
                                     <td class="si-num text-muted">@Num(f.StockAlDetectar)</td>
                                     <td class="si-num" style="@(f.StockAhora <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockAhora)</td>
-                                    <td class="si-num" style="color:#6b7280;">@(f.IdealAhora?.ToString() ?? f.IdealAlDetectar.ToString())</td>
+                                    <td class="si-num" style="color:#6b7280;">@Miles(f.IdealAhora ?? f.IdealAlDetectar)</td>
                                     <td class="si-num" style="font-weight:700; @(f.Faltan > 0 ? "color:#b91c1c;" : "color:#9ca3af;")">@Num(f.Faltan)</td>
                                     <td class="si-uni text-muted">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
                                     <td class="si-uni text-muted">@FechaCorta(f.DetectadoAt)</td>
@@ -253,8 +253,8 @@
                                         <td class="si-marca">@(f.Marca ?? "—")</td>
                                     }
                                     <td class="si-num" style="@(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockActual)</td>
-                                    <td class="si-num" style="color:#6b7280;">@(f.StockPiso?.ToString() ?? "—")</td>
-                                    <td class="si-num" style="color:#6b7280;">@(f.StockIdeal?.ToString() ?? "—")</td>
+                                    <td class="si-num" style="color:#6b7280;">@(f.StockPiso.HasValue ? Miles(f.StockPiso) : "—")</td>
+                                    <td class="si-num" style="color:#6b7280;">@(f.StockIdeal.HasValue ? Miles(f.StockIdeal) : "—")</td>
                                     <td class="si-num" style="font-weight:700; color:#b91c1c;">@Num(f.Faltan)</td>
                                     <td class="si-uni text-muted">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
                                     <td class="si-uni text-muted">@FechaCorta(f.UltimaEntrada)</td>
@@ -270,12 +270,24 @@
             @* ===== Solapa Configurar ===== *@
             <div style="padding:0.8rem 1rem; border-bottom:1px solid #e5e7eb; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                 <span class="text-muted" style="font-size:0.82rem; flex:1; min-width:240px;">
-                    <b>Stock ideal</b>: cuánto querés tener siempre (a eso se repone).
-                    <b>Stock piso</b>: cuando el stock baja de ahí, el producto aparece en la lista para pedir.
-                    Ejemplo: ideal 100 y piso 10 → mientras tengas más de 10 no te molesta; cuando baja, te dice
-                    que pidas hasta llegar a 100. Si dejás el piso vacío, avisa apenas bajás del ideal.
-                    Se guarda solo al salir del casillero. El café va en <b>kilos</b> y el resto en <b>unidades</b>.
+                    <b>Ideal</b>: cuánto querés tener siempre · <b>Piso</b>: cuando baja de ahí, te avisa.
+                    Se guarda solo al salir del casillero.
+                    <a href="javascript:void(0)" @onclick="@(() => mostrarAyuda = !mostrarAyuda)"
+                       style="color:#2563eb; text-decoration:none;">@(mostrarAyuda ? "ocultar" : "¿cómo funciona?")</a>
+                    @if (mostrarAyuda)
+                    {
+                        <span style="display:block; margin-top:0.4rem;">
+                            Ejemplo: ideal 100 y piso 10 → mientras tengas más de 10 no te molesta; cuando llegás
+                            a 10 te dice que pidas hasta volver a 100. Si dejás el piso vacío, avisa apenas bajás
+                            del ideal. Con <b>Enter</b> saltás al casillero de abajo. El café se cuenta en
+                            <b>kilos</b> y el resto en <b>unidades</b>.
+                        </span>
+                    }
                 </span>
+                <button class="btn btn-secondary" @onclick="PonerPisoMitad" disabled="@(aplicandoMitad || filas.Count == 0)"
+                        title="A todos los que tengas filtrados con ideal cargado">
+                    @(aplicandoMitad ? "Calculando..." : "⚡ Piso = mitad del ideal")
+                </button>
                 <button class="btn btn-secondary" @onclick="BajarExcelConfig" disabled="@bajandoConfig">
                     @(bajandoConfig ? "Generando..." : "⬇ Bajar Excel")
                 </button>
@@ -354,20 +366,18 @@
             else
             {
                 <div style="overflow-x:auto;">
-                    <table class="table" style="margin:0; font-size:0.85rem;">
+                    <table class="table si-compacta" style="margin:0; font-size:0.85rem;">
                         <thead>
                             <tr>
-                                <th class="si-cod">Código</th>
                                 <th class="si-prod">Producto</th>
                                 @if (SinFiltroDeMarca)
                                 {
                                     <th class="si-marca">Marca</th>
                                 }
-                                <th class="si-num">Stock hoy</th>
-                                <th class="si-num">Stock ideal</th>
-                                <th class="si-num">Stock piso</th>
-                                <th class="si-uni"></th>
-                                <th style="width:90px;"></th>
+                                <th class="si-num">Hoy</th>
+                                <th class="si-num">Ideal</th>
+                                <th class="si-num">Piso</th>
+                                <th style="width:28px;"></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -375,34 +385,39 @@
                             {
                                 var pid = f.ProductoId;
                                 <tr>
-                                    <td class="si-cod"><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
-                                    <td class="si-prod">@f.Nombre</td>
+                                    <td class="si-prod">
+                                        @f.Nombre
+                                        @if (!string.IsNullOrWhiteSpace(f.Codigo))
+                                        {
+                                            <span class="si-cod-chico">@f.Codigo</span>
+                                        }
+                                    </td>
                                     @if (SinFiltroDeMarca)
                                     {
                                         <td class="si-marca">@(f.Marca ?? "—")</td>
                                     }
-                                    <td class="si-num" style="@(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">@Num(f.StockActual)</td>
+                                    <td class="si-num" style="@(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">
+                                        @Num(f.StockActual)@if (f.Unidad == "kg") { <span class="si-cod-chico">kg</span> }
+                                    </td>
                                     <td class="si-num">
                                         <input type="text" inputmode="numeric" class="si-input @(f.StockIdeal.HasValue ? "set" : "")"
-                                               value="@(edits.TryGetValue(pid, out var v) ? v : (f.StockIdeal?.ToString() ?? ""))"
-                                               placeholder="—"
+                                               value="@(edits.TryGetValue(pid, out var v) ? v : Miles(f.StockIdeal))"
+                                               placeholder="—" data-fila="@pid" data-campo="ideal"
+                                               @onkeydown="@(e => OnCasilleroKeyDown(e, pid, "ideal"))"
                                                @onchange="@(e => OnIdealChange(pid, e.Value?.ToString()))" />
                                     </td>
                                     <td class="si-num">
                                         <input type="text" inputmode="numeric" class="si-input @(f.StockPiso.HasValue ? "set" : "")"
-                                               value="@(editsPiso.TryGetValue(pid, out var vp) ? vp : (f.StockPiso?.ToString() ?? ""))"
+                                               value="@(editsPiso.TryGetValue(pid, out var vp) ? vp : Miles(f.StockPiso))"
                                                placeholder="—" title="Cuando el stock baja de acá, salta el aviso"
+                                               data-fila="@pid" data-campo="piso"
+                                               @onkeydown="@(e => OnCasilleroKeyDown(e, pid, "piso"))"
                                                @onchange="@(e => OnPisoChange(pid, e.Value?.ToString()))" />
                                     </td>
-                                    <td class="si-uni text-muted">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
-                                    <td style="font-size:0.75rem;">
+                                    <td style="font-size:0.9rem; text-align:center;">
                                         @if (guardados.Contains(pid))
                                         {
-                                            <span style="color:#16a34a;">guardado</span>
-                                        }
-                                        else if (!f.StockIdeal.HasValue)
-                                        {
-                                            <span class="text-muted">sin ideal</span>
+                                            <span style="color:#16a34a;" title="Guardado">✓</span>
                                         }
                                     </td>
                                 </tr>
@@ -432,7 +447,12 @@
 .si-uni { white-space:nowrap; font-size:0.78rem; padding-left:0.8rem !important; }
 .si-cod { white-space:nowrap; }
 .si-marca { white-space:nowrap; padding-left:0.8rem !important; }
-.si-prod { min-width:220px; }
+.si-prod { min-width:220px; max-width:420px; }
+/* El codigo ya no ocupa una columna: va chiquito al lado del nombre. */
+.si-cod-chico { color:#9ca3af; font-size:0.72rem; margin-left:0.4rem; }
+/* Filas mas bajas: entra casi el doble de productos sin scrollear. */
+.si-compacta td { padding-top:0.28rem !important; padding-bottom:0.28rem !important; }
+.si-compacta tbody tr:nth-child(even) { background:#fcfcfd; }
 </style>
 
 @code {
@@ -459,6 +479,8 @@
     private readonly HashSet<int> guardados = new();
 
     private bool bajandoPedido, bajandoConfig, procesando;
+    private bool aplicandoMitad;
+    private bool mostrarAyuda;
     private IBrowserFile? archivo;
     private byte[]? archivoBytes;
     private StockIdealPreviewDto? preview;
@@ -590,6 +612,81 @@
 
     /// <summary>Lo que llaman los botones y los filtros de la pantalla.</summary>
     private Task Recargar() => CargarAsync();
+
+    /// <summary>Enter baja al mismo casillero de la fila siguiente, para cargar de corrido sin mouse.
+    /// El salto se hace por JS porque Blazor no tiene forma directa de mover el foco a otro elemento.</summary>
+    private async Task OnCasilleroKeyDown(KeyboardEventArgs e, int productoId, string campo)
+    {
+        if (e.Key != "Enter") return;
+        var idx = filas.FindIndex(f => f.ProductoId == productoId);
+        if (idx < 0 || idx + 1 >= filas.Count) return;
+        var siguiente = filas[idx + 1].ProductoId;
+        try { await JS.InvokeVoidAsync("focusCasilleroStock", siguiente, campo); }
+        catch { /* si falla, no pasa nada: se sigue pudiendo con Tab */ }
+    }
+
+    /// <summary>Botón "piso = mitad del ideal": lo aplica a TODO lo que esté filtrado y tenga ideal.
+    /// Es la regla que viene usando a mano (6/3, 4/2, 50.000/25.000), así carga de a muchos.</summary>
+    private async Task PonerPisoMitad()
+    {
+        var candidatos = filas.Where(f => f.StockIdeal.HasValue && f.StockIdeal.Value > 0).ToList();
+        if (candidatos.Count == 0)
+        {
+            ToastService.Info("Primero cargá el stock ideal: el piso se calcula a partir de él.");
+            return;
+        }
+
+        // Los que ya tienen justo la mitad no se tocan.
+        var cambios = candidatos
+            .Select(f => new { Fila = f, Mitad = Math.Max(1, (int)Math.Round(f.StockIdeal!.Value / 2.0)) })
+            .Where(x => x.Fila.StockPiso != x.Mitad)
+            .ToList();
+        if (cambios.Count == 0)
+        {
+            ToastService.Info("Ya están todos con el piso en la mitad del ideal.");
+            return;
+        }
+
+        var ejemplo = cambios.First();
+        if (!await Confirmar($"Voy a poner el piso en la mitad del ideal en {cambios.Count} productos. " +
+                             $"Por ejemplo: {ejemplo.Fila.Nombre} pasa a piso {Miles(ejemplo.Mitad)} (ideal {Miles(ejemplo.Fila.StockIdeal)}). ¿Sigo?"))
+            return;
+
+        aplicandoMitad = true;
+        try
+        {
+            var req = new StockIdealBulkRequestDto
+            {
+                Items = cambios.Select(x => new StockIdealBulkItemDto
+                {
+                    ProductoId = x.Fila.ProductoId,
+                    StockPiso = x.Mitad,
+                    TocaPiso = true,
+                    TocaIdeal = false,
+                }).ToList()
+            };
+            var res = await Api.SaveStockIdealBulkAsync(req);
+            if (res is null) { ToastService.Error("No se pudo guardar"); return; }
+
+            foreach (var x in cambios)
+            {
+                x.Fila.StockPiso = x.Mitad;
+                RecalcularFila(x.Fila);
+                guardados.Add(x.Fila.ProductoId);
+            }
+            editsPiso.Clear();
+            pendientes = null;
+            ToastService.Success($"Listo: {cambios.Count} productos con el piso en la mitad del ideal");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { aplicandoMitad = false; }
+    }
+
+    private async Task<bool> Confirmar(string mensaje)
+    {
+        try { return await JS.InvokeAsync<bool>("confirm", mensaje); }
+        catch { return false; }
+    }
 
     private async Task OnBuscarKeyUp(KeyboardEventArgs e)
     {
@@ -809,6 +906,12 @@
     {
         preview = null; archivo = null; archivoBytes = null; errorExcel = null;
     }
+
+    /// <summary>2026-09-02 — Los números de los casilleros SIEMPRE con punto de miles: el usuario
+    /// pidió "el número lo necesito con puntos para ubicar los miles" (50.000, no 50000).
+    /// Al leer ya se acepta el punto, así que lo que escribe y lo que ve coinciden.</summary>
+    private static string Miles(int? v)
+        => v.HasValue ? v.Value.ToString("N0", CultureInfo.GetCultureInfo("es-AR")) : "";
 
     /// <summary>Muestra el número lindo: sin decimales si es entero, con coma si tiene kilos partidos.</summary>
     private static string Num(decimal v)

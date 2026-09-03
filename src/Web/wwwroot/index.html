@@ -83,6 +83,18 @@
             document.body.removeChild(a);
         };
 
+        // 2026-09-02: Enter en la planilla de Stock ideal salta al mismo casillero de la fila de
+        // abajo, para cargar de corrido sin ir con el dedo a cada casillero. Devuelve false si no
+        // encontro el casillero (por ejemplo, si era la ultima fila).
+        window.focusCasilleroStock = function (productoId, campo) {
+            const el = document.querySelector(
+                'input[data-fila="' + productoId + '"][data-campo="' + campo + '"]');
+            if (!el) return false;
+            el.focus();
+            el.select();
+            return true;
+        };
+
         // 2026-07-10: "ding" para la campanita de Mis Alertas. Genera el sonido con Web Audio
         // (sin archivo). Dos notas cortas tipo timbre. Si el navegador bloquea el audio (por no
         // haber interactuado aún), simplemente no suena y no rompe nada.
