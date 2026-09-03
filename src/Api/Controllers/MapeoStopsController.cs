@@ -34,6 +34,9 @@ public class MapeoStopsController : ControllerBase
         string? Localidad = null,
         // Datos del envío de MeLi enlazado (para paradas Flex/ME1 escaneadas): usuario, nº venta, entregado.
         long? MeliOrderId = null, string? BuyerNickname = null, string? MeliStatus = null,
+        // 2026-09-02: el detalle de MeLi ("destinatario ausente" y compañía). El estado general dice
+        // "en camino" aunque el repartidor ya haya pasado y no haya podido: el motivo está acá.
+        string? MotivoMeli = null,
         DateTime? DateDelivered = null, string? ReceiverName = null);
 
     private static StopDto Map(MapeoStop s) => new(
@@ -72,6 +75,7 @@ public class MapeoStopsController : ControllerBase
                     MeliOrderId = m.MeliOrderId,
                     BuyerNickname = m.BuyerNickname,
                     MeliStatus = m.Status,
+                    MotivoMeli = MapeoEntregasService.MotivoMeli(m.Status, m.Substatus),
                     ReceiverName = m.ReceiverName
                 };
             }
@@ -602,6 +606,34 @@ public class MapeoStopsController : ControllerBase
 
         var deleted = await _db.MapeoStops.Where(s => s.CreatedAt < hoyInicioUtc).ExecuteDeleteAsync();
         return Ok(new { cleared = deleted });
+    }
+
+    /// <summary>
+    /// 2026-09-02: deja una parada que quedó de un día anterior como si fuera nueva — pendiente, sin
+    /// repartidor, sin orden y sin la marca de "no se pudo entregar". Se usa cuando vuelven a
+    /// escanear la misma etiqueta al otro día, que es lo que pasa con los Flex que no se entregaron.
+    /// </summary>
+    private static bool RevivirSiEsDeUnDiaAnterior(MapeoStop stop)
+    {
+        var hoyInicioUtc = DateTime.UtcNow.AddHours(-3).Date.AddHours(3);   // 00:00 de Argentina, en UTC
+        if (stop.CreatedAt >= hoyInicioUtc) return false;
+
+        stop.CreatedAt = DateTime.UtcNow;
+        stop.InternalStatus = "pending";
+        stop.AssignedDriverId = null;
+        stop.AssignedVehicleSlot = null;
+        stop.OrderInRoute = null;
+        stop.Notas = SinMarcaDeNoEntregada(stop.Notas);
+        stop.UpdatedAt = DateTime.UtcNow;
+        return true;
+    }
+
+    /// <summary>Saca de las notas el motivo de "no se pudo entregar" de ayer, dejando el resto.</summary>
+    private static string? SinMarcaDeNoEntregada(string? notas)
+    {
+        if (string.IsNullOrWhiteSpace(notas) || !notas.StartsWith("⚠ No se pudo entregar:")) return notas;
+        var i = notas.IndexOf(" · ", StringComparison.Ordinal);
+        return i < 0 ? null : notas.Substring(i + 3);
     }
 
     // ===== Asignacion visual a vehiculos (slot) =====
@@ -1288,7 +1320,16 @@ public class MapeoStopsController : ControllerBase
         var refId = sh.MeliShipmentId.ToString();
         var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId == refId);
         if (existente is not null)
-            return new { ok = true, yaEstaba = true, id = sh.MeliShipmentId, nombre = sh.ReceiverName, localidad = sh.City, stopId = existente.Id, mensaje = "Ya estaba en el mapa." };
+        {
+            // 2026-09-02: si quedó del día anterior, la revivimos limpia. Sin esto, un envío que
+            // ayer no se pudo entregar y hoy se vuelve a escanear entraba con la marca de fallido
+            // puesta: figuraba cerrado y nadie lo entregaba. (Normalmente la limpieza del día ya
+            // borró las viejas, pero si alguien escanea antes de abrir el mapa, no.)
+            var revivida = RevivirSiEsDeUnDiaAnterior(existente);
+            if (revivida) await _db.SaveChangesAsync();
+            return new { ok = true, yaEstaba = !revivida, id = sh.MeliShipmentId, nombre = sh.ReceiverName, localidad = sh.City, stopId = existente.Id,
+                         mensaje = revivida ? "Estaba en el mapa de ayer — la puse como nueva." : "Ya estaba en el mapa." };
+        }
 
         var stop = new MapeoStop
         {

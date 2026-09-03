@@ -4344,6 +4344,10 @@
         => !ParadaEntregada(st)
         && (string.Equals(st.InternalStatus, "cancelado", StringComparison.OrdinalIgnoreCase)
             || string.Equals(st.InternalStatus, "no_encontrado", StringComparison.OrdinalIgnoreCase)
+            // 2026-09-02: MercadoLibre cuenta que el repartidor pasó y no pudo (destinatario ausente
+            // y compañía). Para ellos el envío sigue "en camino" porque lo reintentan, así que el
+            // estado general no alcanza: el motivo viene en MotivoMeli.
+            || !string.IsNullOrEmpty(st.MotivoMeli)
             || MeliEstadosNoEntregado.Any(x => string.Equals(x, st.MeliStatus, StringComparison.OrdinalIgnoreCase)));
 
     /// <summary>Lo mismo, pero para un envío de MercadoLibre que todavía NO se importó como parada
@@ -5311,6 +5315,17 @@
                 var horaEntregaStopHtml = entregadaStop
                     ? $"<div style='margin-top:0.35rem; color:#15803d; font-weight:700; font-size:0.72rem;'>✔ Entregado{(st.DateDelivered.HasValue ? " · 🕒 " + st.DateDelivered.Value.ToArTime().ToString("dd/MM 'a las' HH:mm") + " hs" : "")}</div>"
                     : "";
+                // 2026-09-02: si NO se pudo entregar, el globito dice POR QUÉ. Puede venir de dos
+                // lados: lo contó MercadoLibre (MotivoMeli) o lo marcó el repartidor desde el celu
+                // (queda al principio de las notas). Sin esto veías la cruz roja y no sabías qué pasó.
+                var motivoFalla = !string.IsNullOrWhiteSpace(st.MotivoMeli)
+                    ? st.MotivoMeli!
+                    : (!string.IsNullOrWhiteSpace(st.Notas) && st.Notas!.StartsWith("⚠ No se pudo entregar:")
+                        ? st.Notas!.Split(" · ")[0].Replace("⚠ ", "")
+                        : (falladaStop ? "No se pudo entregar" : ""));
+                var motivoFallaHtml = falladaStop && motivoFalla.Length > 0
+                    ? $"<div style='margin-top:0.35rem; color:#b91c1c; font-weight:700; font-size:0.72rem;'>✗ {System.Net.WebUtility.HtmlEncode(motivoFalla)}</div>"
+                    : "";
                 // 2026-08-04: cajita "Puesto en la ruta" dentro del globito. El usuario escribe el número
                 // que quiere y aprieta "Poner acá" → la parada queda en ese puesto y corre las demás de la
                 // misma zona hacia adelante. Solo aparece si la parada está en una zona (repartidor o V).
@@ -5346,7 +5361,7 @@
                     stopId = st.Id,
                     // 🚗 al lado: esta fue la última que entregó su repartidor.
                     ultimaEntrega = ultimaEntregaPorChofer.Contains(st.Id),
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Zona'>📍</span><select onchange=\"window.mapeoActions.assignZone({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:{selBg}; color:{selFg}; font-weight:700;'>{zonaOpts}</select></div>{puestoRowHtml}{vinfoStopHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button>{favBtnHtml}<button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.editStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#1d4ed8; border:1px solid #93c5fd; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>✏️ Editar datos</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}{motivoFallaHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Zona'>📍</span><select onchange=\"window.mapeoActions.assignZone({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:{selBg}; color:{selFg}; font-weight:700;'>{zonaOpts}</select></div>{puestoRowHtml}{vinfoStopHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button>{favBtnHtml}<button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.editStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#1d4ed8; border:1px solid #93c5fd; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>✏️ Editar datos</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
                 };
             }));
         }

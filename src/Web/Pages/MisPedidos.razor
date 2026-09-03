@@ -115,6 +115,40 @@
     }
     .mp-card-btn-rechazar:active { background: #fef2f2; }
 
+    /* 2026-09-02: "No la pude entregar" = fui y no se pudo.
+       Va sobrio a proposito: le pasa todos los dias, no es una alarma.
+       El rojo fuerte de la tarjeta sigue siendo solo el de Rechazar. */
+    .mp-btn-nopude {
+        width: 100%; margin-top: 0.45rem; padding: 0.65rem 0.5rem;
+        background: transparent; color: #92400e; border: 1px solid #fcd34d;
+        border-radius: 8px; font-size: 0.9rem; font-weight: 700; cursor: pointer;
+    }
+    .mp-btn-nopude:active { background: #fffbeb; }
+
+    /* La eleccion de motivo, ahi mismo en la tarjeta: botones grandes,
+       uno abajo del otro, para tocar con el pulgar y el celu en la mano. */
+    .mp-nopude-panel { margin-top: 0.5rem; border-top: 1px solid #e5e7eb; padding-top: 0.55rem; }
+    .mp-nopude-titulo { font-size: 0.8rem; color: #6b7280; margin-bottom: 0.45rem; }
+    .mp-nopude-motivo {
+        display: block; width: 100%; margin-bottom: 0.4rem; padding: 0.85rem 0.7rem;
+        background: white; color: #374151; border: 1px solid #d1d5db; border-radius: 10px;
+        font-size: 0.98rem; font-weight: 600; text-align: left; cursor: pointer;
+    }
+    .mp-nopude-motivo:active { background: #f9fafb; }
+    .mp-nopude-input {
+        width: 100%; box-sizing: border-box; margin-bottom: 0.4rem; padding: 0.75rem 0.7rem;
+        border: 1px solid #d1d5db; border-radius: 10px; font-size: 0.95rem; color: #374151;
+    }
+    .mp-nopude-confirmar {
+        display: block; width: 100%; margin-bottom: 0.4rem; padding: 0.85rem 0.7rem;
+        background: #92400e; color: white; border: none; border-radius: 10px;
+        font-size: 0.98rem; font-weight: 800; cursor: pointer;
+    }
+    .mp-nopude-cancelar {
+        display: block; width: 100%; padding: 0.6rem; background: transparent;
+        color: #6b7280; border: none; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    }
+
     /* 2026-06-08: comentario que dejó el repartidor al entregar */
     .mp-card-comentario {
         margin-top: 0.5rem; padding: 0.5rem 0.7rem;
@@ -399,22 +433,56 @@
                          nadie más, así que el tilde ES la entrega y la oficina la ve entregada.
                        · Flex y demás: se cierran en su propio circuito y MeLi tarda en confirmar,
                          así que el botón SOLO hace avanzar la lista. *@
-                    @if (EsParadaSuelta(fx))
+                    @* 2026-09-02: mientras elige el motivo de "no la pude entregar", la tarjeta
+                       muestra SOLO esa pregunta. Si dejáramos abajo el rojo de Rechazar, con el
+                       pulgar y el celu en la mano se toca el equivocado. *@
+                    @if (noEntregadaStopId == fx.Id)
                     {
-                        <button type="button" @onclick="() => MarcarParadaVista(fx, true)" disabled="@(marcandoVisto == fx.Id)"
-                                style="width:100%; margin-top:0.5rem; padding:0.7rem; background:#15803d; color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:800; cursor:pointer;">
-                            @(marcandoVisto == fx.Id ? "..." : "✅ Entregué esta parada")
-                        </button>
+                        <div class="mp-nopude-panel">
+                            <div class="mp-nopude-titulo">¿Qué pasó? · tocá el motivo</div>
+                            @foreach (var motivo in MotivosNoEntrega)
+                            {
+                                <button type="button" class="mp-nopude-motivo" disabled="@enviandoNoEntregada"
+                                        @onclick="() => EnviarNoEntregada(fx, motivo)">@motivo</button>
+                            }
+                            @if (!noEntregadaOtro)
+                            {
+                                <button type="button" class="mp-nopude-motivo" disabled="@enviandoNoEntregada"
+                                        @onclick="AbrirOtroMotivo">Otro motivo</button>
+                            }
+                            else
+                            {
+                                <input class="mp-nopude-input" type="text" maxlength="200" placeholder="Contá en pocas palabras qué pasó"
+                                       @bind="noEntregadaTexto" @bind:event="oninput" />
+                                <button type="button" class="mp-nopude-confirmar" disabled="@enviandoNoEntregada"
+                                        @onclick="() => EnviarNoEntregada(fx, noEntregadaTexto)">
+                                    @(enviandoNoEntregada ? "Guardando..." : "Confirmar")
+                                </button>
+                            }
+                            <button type="button" class="mp-nopude-cancelar" disabled="@enviandoNoEntregada" @onclick="CerrarNoEntregada">Cancelar</button>
+                        </div>
                     }
                     else
                     {
-                        <button type="button" @onclick="() => MarcarParadaVista(fx, true)" disabled="@(marcandoVisto == fx.Id)"
-                                style="width:100%; margin-top:0.5rem; padding:0.6rem; background:white; color:#0f766e; border:1.5px solid #0f766e; border-radius:8px; font-size:0.92rem; font-weight:700; cursor:pointer;">
-                            @(marcandoVisto == fx.Id ? "..." : "✓ Listo, seguir")
-                        </button>
-                        <div style="font-size:0.7rem; color:#9ca3af; text-align:center; margin-top:0.2rem;">Solo mueve tu lista. No marca la entrega.</div>
+                        if (EsParadaSuelta(fx))
+                        {
+                            <button type="button" @onclick="() => MarcarParadaVista(fx, true)" disabled="@(marcandoVisto == fx.Id)"
+                                    style="width:100%; margin-top:0.5rem; padding:0.7rem; background:#15803d; color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:800; cursor:pointer;">
+                                @(marcandoVisto == fx.Id ? "..." : "✅ Entregué esta parada")
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" @onclick="() => MarcarParadaVista(fx, true)" disabled="@(marcandoVisto == fx.Id)"
+                                    style="width:100%; margin-top:0.5rem; padding:0.6rem; background:white; color:#0f766e; border:1.5px solid #0f766e; border-radius:8px; font-size:0.92rem; font-weight:700; cursor:pointer;">
+                                @(marcandoVisto == fx.Id ? "..." : "✓ Listo, seguir")
+                            </button>
+                            <div style="font-size:0.7rem; color:#9ca3af; text-align:center; margin-top:0.2rem;">Solo mueve tu lista. No marca la entrega.</div>
+                        }
+                        <button type="button" class="mp-btn-nopude" @onclick="() => AbrirNoEntregada(fx.Id)">No la pude entregar</button>
+                        <div style="font-size:0.7rem; color:#9ca3af; text-align:center; margin-top:0.2rem;">Fuiste y no se pudo · queda anotada y avisamos a la oficina.</div>
+                        <button type="button" class="mp-card-btn-rechazar" @onclick="@(() => AbrirRechazo("mapeo", fx.Id, $"{fx.Nombre} · {fx.Direccion}"))">🚫 Rechazar esta parada</button>
                     }
-                    <button type="button" class="mp-card-btn-rechazar" @onclick="@(() => AbrirRechazo("mapeo", fx.Id, $"{fx.Nombre} · {fx.Direccion}"))">🚫 Rechazar esta parada</button>
                 </div>;
 
             @* Renglón chico de una parada YA HECHA, cuando el repartidor la abre para mirarla. *@
@@ -1271,6 +1339,86 @@
         finally { marcandoVisto = 0; }
     }
 
+    // ── 2026-09-02: "No la pude entregar" ─────────────────────────────────────────
+    // Fue hasta el domicilio y no se pudo. NO es rechazar: rechazar suena a "no me la
+    // llevo" y por eso nadie lo tocaba, así que la parada quedaba abierta toda la noche
+    // y el recorrido nunca figuraba terminado.
+    // Acá la parada LE QUEDA a él, marcada, porque se gastó el viaje; deja de contar
+    // como pendiente (su recorrido puede cerrar) pero no cuenta como entrega. Le llega
+    // el aviso a la oficina en el momento. Es todo interno: no le escribe nada a MeLi.
+
+    /// <summary>Los motivos de siempre, de un toque. "Otro motivo" abre el campo de texto.</summary>
+    private static readonly string[] MotivosNoEntrega =
+    {
+        "No había nadie",
+        "Estaba cerrado",
+        "Dirección equivocada",
+        "No me atendieron"
+    };
+
+    private int? noEntregadaStopId;            // parada con la elección de motivo abierta (null = ninguna)
+    private bool noEntregadaOtro;              // ya tocó "Otro motivo": se ve el campo de texto
+    private string noEntregadaTexto = "";      // lo que escribió en "Otro motivo"
+    private bool enviandoNoEntregada;
+
+    private void AbrirNoEntregada(int stopId)
+    {
+        noEntregadaStopId = stopId;
+        noEntregadaOtro = false;
+        noEntregadaTexto = "";
+    }
+
+    private void AbrirOtroMotivo() => noEntregadaOtro = true;
+
+    private void CerrarNoEntregada()
+    {
+        if (enviandoNoEntregada) return;
+        noEntregadaStopId = null;
+        noEntregadaOtro = false;
+        noEntregadaTexto = "";
+    }
+
+    /// <summary>Manda el motivo y recarga la lista: la parada queda marcada del lado del
+    /// servidor, así que lo más confiable es traer todo de nuevo. Al volver, la lista avanza
+    /// sola a la parada siguiente, igual que cuando marca una entrega.</summary>
+    private async Task EnviarNoEntregada(MisPedidosMapeoDto st, string motivo)
+    {
+        if (enviandoNoEntregada) return;
+        motivo = (motivo ?? "").Trim();
+        if (motivo.Length == 0) { MostrarToast("Contá en pocas palabras qué pasó.", true); return; }
+
+        enviandoNoEntregada = true; StateHasChanged();
+        try
+        {
+            HttpResponseMessage resp;
+            try
+            {
+                resp = await Http.PostAsJsonAsync(
+                    $"api/cafe/repartidor-public/mis-pedidos/{Token}/no-entregada/{st.Id}",
+                    new { motivo });
+            }
+            catch { MostrarToast("No pude guardarlo. Probá de nuevo.", true); return; }
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                string detalle = "";
+                try { detalle = (await resp.Content.ReadFromJsonAsync<ErrorResp>())?.Error ?? ""; } catch { }
+                MostrarToast(string.IsNullOrWhiteSpace(detalle) ? "No pude guardarlo. Probá de nuevo." : detalle, true);
+                return;
+            }
+
+            noEntregadaStopId = null;
+            noEntregadaOtro = false;
+            noEntregadaTexto = "";
+            st.NoEntregada = true;             // que se vea marcada aunque la recarga tarde
+            paradaAbiertaManual = null;        // la lista vuelve a seguir sola
+            acomodarPantalla = true;
+            MostrarToast("Anotada · ya avisamos a la oficina.", false);
+            await Recargar();
+        }
+        finally { enviandoNoEntregada = false; StateHasChanged(); }
+    }
+
     /// <summary>Lleva la pantalla hasta la parada que le toca.</summary>
     private async Task IrAParadaActual(bool tambienCerrarLaAbierta = false)
     {
@@ -1333,7 +1481,8 @@
         {
             await InvokeAsync(async () =>
             {
-                if (modal is null && !escaneando && rechazoOrigen is null && me1ConfirmEntrega is null) await Recargar();
+                // Si está eligiendo el motivo de "no la pude entregar", no le pisamos la pantalla.
+                if (modal is null && !escaneando && rechazoOrigen is null && me1ConfirmEntrega is null && noEntregadaStopId is null) await Recargar();
             });
         }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }

@@ -132,10 +132,11 @@ public class MapeoEntregasService
         {
             var ships = await _db.MeliShipments
                 .Where(m => shipRefs.Contains(m.MeliShipmentId))
-                .Select(m => new { m.MeliShipmentId, m.Status })
+                .Select(m => new { m.MeliShipmentId, m.Status, m.Substatus })
                 .ToListAsync();
             var cerrados = ships
-                .Where(m => m.Status != null && FinalSinEntregar.Contains(m.Status!.ToLowerInvariant()))
+                .Where(m => (m.Status != null && FinalSinEntregar.Contains(m.Status!.ToLowerInvariant()))
+                         || VisitaFallida(m.Substatus))
                 .Select(m => m.MeliShipmentId).ToHashSet();
             foreach (var s in stops.Where(x => x.Origin is "flex" or "me1" && x.OriginRefId != null))
                 if (long.TryParse(s.OriginRefId, out var id) && cerrados.Contains(id))
@@ -164,4 +165,33 @@ public class MapeoEntregasService
     /// <summary>Estados de MercadoLibre que cierran el envío sin que haya llegado al cliente.</summary>
     private static readonly HashSet<string> FinalSinEntregar = new()
         { "cancelled", "not_delivered", "returning_to_sender" };
+
+    /// <summary>
+    /// 2026-09-02: el detalle con el que MercadoLibre cuenta que el repartidor PASÓ y no pudo
+    /// entregar. Ojo: para MeLi el envío sigue "en camino" (lo reintentan), así que el estado
+    /// general no alcanza — hay que mirar este detalle. Sin esto, el envío del que ya se sabe que
+    /// falló se quedaba contando como pendiente y el recorrido del repartidor nunca cerraba.
+    ///
+    /// No se escribe nada: es una LECTURA. Si mañana MeLi dice "entregado" porque lo reintentaron,
+    /// la parada pasa sola a entregada sin que nadie tenga que corregir nada.
+    /// </summary>
+    private static readonly HashSet<string> VisitaFallidaSubstatus = new()
+        { "receiver_absent", "buyer_absent", "not_localized", "refused_delivery", "delivery_failed" };
+
+    public static bool VisitaFallida(string? substatus)
+        => substatus != null && VisitaFallidaSubstatus.Contains(substatus.ToLowerInvariant());
+
+    /// <summary>Cómo contarle al usuario, en castellano, por qué MercadoLibre la dio por fallida.</summary>
+    public static string? MotivoMeli(string? status, string? substatus)
+    {
+        var sub = substatus?.ToLowerInvariant();
+        var est = status?.ToLowerInvariant();
+        if (sub is "receiver_absent" or "buyer_absent") return "MercadoLibre: no había nadie";
+        if (sub == "not_localized") return "MercadoLibre: no encontró el domicilio";
+        if (sub == "refused_delivery") return "MercadoLibre: no la quisieron recibir";
+        if (sub == "delivery_failed") return "MercadoLibre: no se pudo entregar";
+        if (sub == "returning_to_sender" || est == "not_delivered") return "MercadoLibre: vuelve al remitente";
+        if (est == "cancelled") return "MercadoLibre: cancelado";
+        return null;
+    }
 }

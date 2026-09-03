@@ -993,6 +993,67 @@ public class CafeRepartidorPublicController : ControllerBase
         catch { return new HashSet<int>(); }   // dato raro: arrancamos limpio, no rompemos la pantalla
     }
 
+    public record NoEntregadaRequest(string Motivo);
+
+    /// <summary>
+    /// 2026-09-02: "FUI Y NO SE PUDO". El repartidor pasó por el domicilio y no pudo entregar.
+    ///
+    /// Ojo con la diferencia, que es la que se nos escapó y dejó una ruta abierta toda la noche:
+    ///   · RECHAZAR  = "esta no me la llevo" → la parada le sale de la ruta y vuelve al pool.
+    ///   · ACÁ       = "fui y no se pudo"    → la parada LE QUEDA, marcada como fallida, porque se
+    ///                                          gastó el viaje y eso tiene que verse en el día.
+    ///
+    /// Cierra la parada (deja de contar como pendiente, así su recorrido puede terminar) pero NO es
+    /// una entrega: en el mapa sale con la cruz roja y el motivo. Es todo INTERNO — no le escribe
+    /// nada a MercadoLibre; el Flex se sigue cerrando en la app de ellos.
+    /// </summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/no-entregada/{stopId:int}")]
+    public async Task<IActionResult> MarcarNoEntregada(string tokenRepartidor, int stopId, [FromBody] NoEntregadaRequest req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+
+        var motivo = (req?.Motivo ?? "").Trim();
+        if (motivo.Length == 0) return BadRequest(new { error = "Decinos por qué no se pudo entregar" });
+        if (motivo.Length > 200) motivo = motivo.Substring(0, 200);
+
+        var driverIds = await _db.MapeoDrivers.Where(d => d.CafeRepartidorId == r.Id).Select(d => d.Id).ToListAsync();
+        var stop = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Id == stopId);
+        if (stop is null) return NotFound(new { error = "Parada no encontrada" });
+        if (stop.AssignedDriverId == null || !driverIds.Contains(stop.AssignedDriverId.Value))
+            return BadRequest(new { error = "Esa parada no es tuya" });
+
+        stop.InternalStatus = "no_encontrado";
+        // El motivo va adelante de las notas para que se lea primero en el globito del mapa,
+        // sin borrar lo que ya hubiera anotado (nº de venta, "tocar timbre 3 veces", etc).
+        var marca = $"⚠ No se pudo entregar: {motivo} ({r.Nombre})";
+        stop.Notas = string.IsNullOrWhiteSpace(stop.Notas) ? marca : $"{marca} · {stop.Notas}";
+        if (stop.Notas.Length > 500) stop.Notas = stop.Notas.Substring(0, 500);
+        stop.UpdatedAt = DateTime.UtcNow;
+
+        // Si la había tildado a mano, ese tilde ya no hace falta.
+        var vistos = await LeerVistosAsync(r.Id);
+        if (vistos.Remove(stopId))
+        {
+            var k = VistosKey(r.Id);
+            var setting = await _db.AppSettings.FindAsync(k);
+            if (setting is not null)
+            {
+                setting.Value = System.Text.Json.JsonSerializer.Serialize(vistos.OrderBy(x => x).ToList());
+                setting.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        await _db.SaveChangesAsync();
+
+        var descripcion = (stop.Alias ?? stop.ContactName ?? "Parada") +
+            (string.IsNullOrWhiteSpace(stop.Direccion) ? "" : $" · {stop.Direccion}") +
+            (string.IsNullOrWhiteSpace(stop.Localidad) ? "" : $" · {stop.Localidad}");
+        await NotificarEnvioRechazadoAsync(r.Nombre, descripcion, motivo, noPudoEntregar: true);
+
+        return Ok(new { ok = true, motivo });
+    }
+
     public record VistoRequest(bool Visto);
 
     /// <summary>Tilda (o destilda) una parada en la lista del repartidor. Solo visual — ver el bloque
@@ -1221,16 +1282,22 @@ public class CafeRepartidorPublicController : ControllerBase
     /// rechaza un envío. Respeta los canales/destinatarios configurados en Automatizaciones y Alertas
     /// (campanita 🔔 / Telegram 📲 / WhatsApp 📱). Mismo mecanismo que FICHADA / ALTA_CLIENTE.
     /// Nunca rompe el rechazo si un canal falla.</summary>
-    private async Task NotificarEnvioRechazadoAsync(string repartidorNombre, string descripcion, string motivo)
+    private async Task NotificarEnvioRechazadoAsync(string repartidorNombre, string descripcion, string motivo,
+        bool noPudoEntregar = false)
     {
+        // 2026-09-02: el mismo aviso sirve para los dos casos, con distinto texto — así el usuario
+        // no tiene que configurar una alerta nueva (y no hay que sembrar una fila a mano en prod).
+        var titulo = noPudoEntregar ? "Un repartidor no pudo entregar" : "Un repartidor rechazó un envío";
+        var icono = noPudoEntregar ? "⚠" : "🚫";
+        var verbo = noPudoEntregar ? "no pudo entregar" : "rechazó";
         try
         {
             var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "ENVIO_RECHAZADO");
             if (alerta is null || !alerta.Activa) return;
             if (!alerta.CanalCampanita && !alerta.CanalTelegram && !alerta.CanalWhatsApp) return;
 
-            var detalleCorto = $"{repartidorNombre} rechazó: {descripcion} — motivo: {motivo}";
-            var texto = $"🚫 <b>Un repartidor rechazó un envío</b>\n" +
+            var detalleCorto = $"{repartidorNombre} {verbo}: {descripcion} — motivo: {motivo}";
+            var texto = $"{icono} <b>{titulo}</b>\n" +
                         $"🧑 {repartidorNombre}\n" +
                         $"📦 {descripcion}\n" +
                         $"📝 Motivo: {motivo}";
@@ -1250,7 +1317,7 @@ public class CafeRepartidorPublicController : ControllerBase
                     .Select(d => d.PersonaId).ToListAsync();
                 var personas = await _db.AutoPersonas
                     .Where(p => p.Activo && idsDest.Contains(p.Id) && p.WhatsAppNumero != null).ToListAsync();
-                var textoWa = $"🚫 Un repartidor rechazó un envío\n🧑 {repartidorNombre}\n📦 {descripcion}\n📝 Motivo: {motivo}";
+                var textoWa = $"{icono} {titulo}\n🧑 {repartidorNombre}\n📦 {descripcion}\n📝 Motivo: {motivo}";
                 foreach (var per in personas)
                 {
                     try
@@ -1283,7 +1350,7 @@ public class CafeRepartidorPublicController : ControllerBase
             {
                 AlertaId = alerta.Id,
                 Tipo = "ENVIO_RECHAZADO",
-                Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Repartidor rechazó un envío" : alerta.Mensaje,
+                Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? titulo : alerta.Mensaje,
                 Detalle = detalleCorto,
                 Alcance = string.IsNullOrWhiteSpace(alerta.Alcance) ? "admin,oficina" : alerta.Alcance,
                 PorTelegram = alerta.CanalTelegram,

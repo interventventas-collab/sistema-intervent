@@ -133,6 +133,9 @@ public class MapeoStopDto
     public long? MeliOrderId { get; set; }
     public string? BuyerNickname { get; set; }
     public string? MeliStatus { get; set; }
+    /// <summary>2026-09-02: por qué MercadoLibre la dio por no entregada, en castellano
+    /// ("MercadoLibre: no había nadie"). null = no hay nada que contar.</summary>
+    public string? MotivoMeli { get; set; }
     public DateTime? DateDelivered { get; set; }
     public string? ReceiverName { get; set; }
 }
