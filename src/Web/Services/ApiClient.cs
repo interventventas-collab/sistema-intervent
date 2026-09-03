@@ -6028,12 +6028,13 @@ public class ApiClient
     }
 
     // Escaneo de etiqueta Flex: manda el texto del QR y suma la parada al mapa.
-    public async Task<ScanFlexResult?> ScanFlexAsync(string code)
-        => await PostAsync<ScanFlexResult>("/api/mapeo/stops/scan-flex", new { code });
+    // `fecha` = a qué día de reparto va la parada. null = hoy (como fue siempre).
+    public async Task<ScanFlexResult?> ScanFlexAsync(string code, DateTime? fecha = null)
+        => await PostAsync<ScanFlexResult>("/api/mapeo/stops/scan-flex", new { code, fecha });
 
     // Traer por NÚMERO (sin escanear): venta propia, alquiler o envío MeLi (nº de envío o de venta).
-    public async Task<TraerPorNumeroResult?> TraerPorNumeroAsync(string number)
-        => await PostAsync<TraerPorNumeroResult>("/api/mapeo/stops/by-number", new { number });
+    public async Task<TraerPorNumeroResult?> TraerPorNumeroAsync(string number, DateTime? fecha = null)
+        => await PostAsync<TraerPorNumeroResult>("/api/mapeo/stops/by-number", new { number, fecha });
 
     // Suma una venta al mapa de reparto. Si el cliente no tiene domicilio, se puede pasar
     // direccion/link para cargarlo en el momento (queda guardado en la ficha del cliente).
@@ -6045,8 +6046,8 @@ public class ApiClient
         => await PostAsync<SumarAlMapaResult>($"/api/alquileres/reservas/{reservaId}/sumar-al-mapa", new { direccion, link });
 
     // Suma un envío ME1/Flex de MercadoLibre al mapa (botón "Al mapa" en la pantalla de ME1).
-    public async Task<SumarAlMapaResult?> AgregarShipmentAlMapaAsync(int shipmentId, string? direccion = null, string? link = null)
-        => await PostAsync<SumarAlMapaResult>("/api/mapeo/stops/from-shipment", new { shipmentId, direccion, link });
+    public async Task<SumarAlMapaResult?> AgregarShipmentAlMapaAsync(int shipmentId, string? direccion = null, string? link = null, DateTime? fecha = null)
+        => await PostAsync<SumarAlMapaResult>("/api/mapeo/stops/from-shipment", new { shipmentId, direccion, link, fecha });
 
     // 2026-08-13: resuelve un link de Google Maps (incluido el corto) a coordenadas, para el modo
     // "Corregir ubicación" del mapa (pegás el link y el pin salta ahí).
@@ -6054,11 +6055,9 @@ public class ApiClient
     public async Task<ResolverLinkResult?> ResolverMapeoLinkAsync(string link)
         => await PostAsync<ResolverLinkResult>("/api/mapeo/stops/resolver-link", new { link });
 
-    // Limpia las paradas de días anteriores al abrir el mapa (lo de hoy se mantiene).
-    public async Task ClearStaleMapeoStopsAsync()
-    {
-        try { await PostAsync<object>("/api/mapeo/stops/clear-stale", new { }); } catch { }
-    }
+    // 2026-09-03: se sacó ClearStaleMapeoStopsAsync. Antes, al abrir el mapa se borraban las
+    // paradas de días anteriores. Ahora cada parada tiene su día de reparto y los días pasados
+    // SON el historial: no se borra nada.
 
     private async Task<T?> PostAsync<T>(string url, object data)
     {
@@ -7212,6 +7211,8 @@ public class ApiClient
     private class TokenResponse { public string? Token { get; set; } }
 
     // Descargar / Compartir ruta: trae el listado de la ruta como texto plano (para pegar en WhatsApp).
+    // El día del reparto viaja DENTRO de `query` (la pantalla del mapa lo arma con "fecha=aaaa-mm-dd"),
+    // así el Excel/PDF y el texto de WhatsApp salen siempre del mismo día que estás mirando.
     public async Task<string?> GetMapeoRutaTextoAsync(string query)
     {
         await SetAuthHeaderAsync();
@@ -7247,30 +7248,42 @@ public class ApiClient
         => await GetAsync<object>($"/api/mapeo/snapshots/{id}");
 
     // ===== Mapeo: Stops (paradas a repartir) =====
-    public async Task<List<MapeoStopDto>?> GetMapeoStopsAsync(int? driverId = null, string? internalStatus = null)
+    // 2026-09-03: el mapa dejó de ser uno solo ("ahora"). Cada parada tiene su día de reparto, así
+    // que todos estos métodos aceptan `fecha` al final. Si no se manda (null) el server usa HOY,
+    // que es exactamente como se portaban antes: las pantallas que no eligen día (MapeoMovil, el
+    // mapa flotante, el mini-mapa del Dashboard) siguen funcionando igual sin tocarlas.
+    private static string FechaQs(DateTime? fecha, string sep = "&")
+        => fecha.HasValue ? $"{sep}fecha={fecha.Value:yyyy-MM-dd}" : "";
+
+    public async Task<List<MapeoStopDto>?> GetMapeoStopsAsync(int? driverId = null, string? internalStatus = null, DateTime? fecha = null)
     {
         var qs = new List<string>();
         if (driverId.HasValue) qs.Add($"driverId={driverId.Value}");
         if (!string.IsNullOrWhiteSpace(internalStatus)) qs.Add($"internalStatus={Uri.EscapeDataString(internalStatus)}");
+        if (fecha.HasValue) qs.Add($"fecha={fecha.Value:yyyy-MM-dd}");
         var url = "/api/mapeo/stops" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
         return await GetAsync<List<MapeoStopDto>>(url);
     }
     public async Task<MapeoStopDto?> CreateMapeoStopAsync(string origin, string? originRefId, string? alias,
-        string direccion, decimal lat, decimal lng, string? contact, string? tel, string? notas)
+        string direccion, decimal lat, decimal lng, string? contact, string? tel, string? notas, DateTime? fecha = null)
         => await PostAsync<MapeoStopDto>("/api/mapeo/stops", new {
             origin, originRefId, alias, direccion, latitude = lat, longitude = lng,
-            contactName = contact, telefono = tel, notas
+            contactName = contact, telefono = tel, notas, fecha
         });
+    // Update / Delete / vehicle-slot / reorder / poner-en-puesto / ubicación / asignar-cliente y
+    // armar-ruta-guiada NO llevan fecha: trabajan sobre paradas por Id, y cada parada ya sabe de
+    // qué día es. El día sale de la parada, no del pedido.
     public async Task<MapeoStopDto?> UpdateMapeoStopAsync(int id, object req)
         => await PutAsync<MapeoStopDto>($"/api/mapeo/stops/{id}", req);
     public async Task<bool> DeleteMapeoStopAsync(int id)
         => await DeleteAsync($"/api/mapeo/stops/{id}");
-    public async Task<bool> ClearMapeoStopsAsync()
-        => await DeleteAsync("/api/mapeo/stops");
-    public async Task<object?> ImportFlexAsStopsAsync(string mode = "today")
-        => await PostAsync<object>($"/api/mapeo/stops/import-flex?mode={Uri.EscapeDataString(mode)}", new { });
-    public async Task<ImportFlexPreviewDto?> ImportFlexPreviewAsync(string mode = "today")
-        => await GetAsync<ImportFlexPreviewDto>($"/api/mapeo/stops/import-flex-preview?mode={Uri.EscapeDataString(mode)}");
+    // Vacía un DÍA entero de paradas (el que se le pase; null = hoy).
+    public async Task<bool> ClearMapeoStopsAsync(DateTime? fecha = null)
+        => await DeleteAsync("/api/mapeo/stops" + FechaQs(fecha, "?"));
+    public async Task<object?> ImportFlexAsStopsAsync(string mode = "today", DateTime? fecha = null)
+        => await PostAsync<object>($"/api/mapeo/stops/import-flex?mode={Uri.EscapeDataString(mode)}{FechaQs(fecha)}", new { });
+    public async Task<ImportFlexPreviewDto?> ImportFlexPreviewAsync(string mode = "today", DateTime? fecha = null)
+        => await GetAsync<ImportFlexPreviewDto>($"/api/mapeo/stops/import-flex-preview?mode={Uri.EscapeDataString(mode)}{FechaQs(fecha)}");
 
     public async Task<object?> AssignBulkStopsAsync(List<int> stopIds, int? driverId)
         => await PostAsync<object>("/api/mapeo/stops/assign-bulk", new { stopIds, driverId });
@@ -7297,10 +7310,10 @@ public class ApiClient
     public async Task<MapeoStopDto?> SetMapeoStopUbicacionAsync(int id, double lat, double lng, string? direccion, bool guardarEnCliente = true)
         => await PostAsync<MapeoStopDto>($"/api/mapeo/stops/{id}/ubicacion", new { lat, lng, direccion, guardarEnCliente });
 
-    public async Task<object?> AutoAssignStopsAsync(bool reassignAll = false)
-        => await PostAsync<object>($"/api/mapeo/stops/auto-assign?reassignAll={reassignAll.ToString().ToLower()}", new { });
+    public async Task<object?> AutoAssignStopsAsync(bool reassignAll = false, DateTime? fecha = null)
+        => await PostAsync<object>($"/api/mapeo/stops/auto-assign?reassignAll={reassignAll.ToString().ToLower()}{FechaQs(fecha)}", new { });
 
-    public async Task<object?> OptimizeStopsOrderAsync(int? driverId = null, int? vehicleSlot = null, bool all = false)
+    public async Task<object?> OptimizeStopsOrderAsync(int? driverId = null, int? vehicleSlot = null, bool all = false, DateTime? fecha = null)
     {
         var qs = new List<string>();
         if (all) qs.Add("all=true");
@@ -7309,26 +7322,27 @@ public class ApiClient
             if (driverId.HasValue && driverId.Value > 0) qs.Add($"driverId={driverId.Value}");
             if (vehicleSlot.HasValue && vehicleSlot.Value > 0) qs.Add($"vehicleSlot={vehicleSlot.Value}");
         }
+        if (fecha.HasValue) qs.Add($"fecha={fecha.Value:yyyy-MM-dd}");
         var url = "/api/mapeo/stops/optimize-order" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
         return await PostAsync<object>(url, new { });
     }
 
     // refresh=true: ignora el recorrido guardado en el servidor y se lo vuelve a preguntar a Google
     // (cuesta plata). Solo cuando el usuario pide expresamente refrescar.
-    public async Task<List<RutaOverviewDto>?> GetRoutesOverviewAsync(bool single = false, bool refresh = false)
-        => await GetAsync<List<RutaOverviewDto>>($"/api/mapeo/stops/routes-overview?single={(single ? "true" : "false")}&refresh={(refresh ? "true" : "false")}");
+    public async Task<List<RutaOverviewDto>?> GetRoutesOverviewAsync(bool single = false, bool refresh = false, DateTime? fecha = null)
+        => await GetAsync<List<RutaOverviewDto>>($"/api/mapeo/stops/routes-overview?single={(single ? "true" : "false")}&refresh={(refresh ? "true" : "false")}{FechaQs(fecha)}");
 
-    public async Task<List<RutaAhorroDto>?> GetRoutesSavingsAsync()
-        => await GetAsync<List<RutaAhorroDto>>("/api/mapeo/stops/routes-savings");
+    public async Task<List<RutaAhorroDto>?> GetRoutesSavingsAsync(DateTime? fecha = null)
+        => await GetAsync<List<RutaAhorroDto>>("/api/mapeo/stops/routes-savings" + FechaQs(fecha, "?"));
 
     public async Task<object?> AssignVehicleSlotAsync(int stopId, int? slot)
         => await PutAsync<object>($"/api/mapeo/stops/{stopId}/vehicle-slot", new { slot });
 
-    public async Task<object?> ClearVehicleAssignmentsAsync()
-        => await PostAsync<object>("/api/mapeo/stops/clear-vehicle-assignments", new { });
+    public async Task<object?> ClearVehicleAssignmentsAsync(DateTime? fecha = null)
+        => await PostAsync<object>("/api/mapeo/stops/clear-vehicle-assignments" + FechaQs(fecha, "?"), new { });
 
-    public async Task<object?> AssignDriverToSlotAsync(int slot, int? driverId)
-        => await PostAsync<object>("/api/mapeo/stops/assign-driver-to-slot", new { slot, driverId });
+    public async Task<object?> AssignDriverToSlotAsync(int slot, int? driverId, DateTime? fecha = null)
+        => await PostAsync<object>("/api/mapeo/stops/assign-driver-to-slot", new { slot, driverId, fecha });
 
     // ===== MeLi Questions =====
     public async Task<MeliQuestionsUnreadDto?> GetMeliQuestionsUnreadCountAsync()

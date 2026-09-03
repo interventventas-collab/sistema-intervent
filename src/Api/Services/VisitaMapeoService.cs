@@ -30,7 +30,7 @@ public class VisitaMapeoService
         public bool SinUbicacion { get; set; }
     }
 
-    public async Task<Result> SumarVisitaAsync(Visita v)
+    public async Task<Result> SumarVisitaAsync(Visita v, DateTime? fecha = null)
     {
         decimal? lat = v.MapeoLat, lng = v.MapeoLng;
         bool sinUbicacion = false;
@@ -52,8 +52,9 @@ public class VisitaMapeoService
 
         if (lat is null || lng is null) { lat = 0m; lng = 0m; sinUbicacion = true; }
 
+        var dia = (fecha ?? DateTime.UtcNow.AddHours(-3)).Date;
         var refId = v.Id.ToString();
-        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "visita" && s.OriginRefId == refId);
+        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "visita" && s.OriginRefId == refId && s.FechaReparto == dia);
         if (existente is not null)
         {
             // No pisar una ubicación buena con 0,0 si ahora tampoco la tenemos.
@@ -88,6 +89,7 @@ public class VisitaMapeoService
             Telefono = v.Telefono,
             Notas = $"Visita N° {v.Numero:D4}" + (string.IsNullOrWhiteSpace(desc) ? "" : " — " + desc),
             InternalStatus = "pending",
+            FechaReparto = dia,
             CreatedAt = DateTime.UtcNow
         };
         _db.MapeoStops.Add(stop);

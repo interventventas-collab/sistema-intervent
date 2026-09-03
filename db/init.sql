@@ -3938,6 +3938,26 @@ BEGIN
 END
 GO
 
+-- 2026-09-03: PARA QUE DIA es cada parada del mapa. Antes el mapa era uno solo (siempre "hoy") y
+-- lo de dias anteriores se borraba al abrirlo. Con esto se pueden ver los dias pasados y armar los
+-- que vienen. OJO: en produccion este ALTER hay que correrlo A MANO antes de subir la API.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='FechaReparto' AND Object_ID=Object_ID('MapeoStops'))
+BEGIN
+    ALTER TABLE MapeoStops ADD FechaReparto DATE NULL;
+END
+GO
+-- Backfill: las paradas que ya existian son del dia en que se cargaron (hora argentina).
+UPDATE MapeoStops SET FechaReparto = CAST(DATEADD(hour,-3,CreatedAt) AS date) WHERE FechaReparto IS NULL;
+GO
+IF EXISTS (SELECT * FROM sys.columns WHERE Name='FechaReparto' AND Object_ID=Object_ID('MapeoStops') AND is_nullable=1)
+BEGIN
+    ALTER TABLE MapeoStops ALTER COLUMN FechaReparto DATE NOT NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_MapeoStops_FechaReparto' AND object_id=Object_ID('MapeoStops'))
+    CREATE NONCLUSTERED INDEX IX_MapeoStops_FechaReparto ON MapeoStops (FechaReparto);
+GO
+
 -- 2026-09-02: tipo de domicilio que manda MercadoLibre ("residential" / "business"). Es lo que en
 -- la etiqueta del Flex sale como COMERCIAL. Lo pidio el usuario para verlo en el mapa sin abrir nada.
 -- OJO: en produccion este ALTER hay que correrlo A MANO (init.sql no se re-ejecuta sobre una base viva).

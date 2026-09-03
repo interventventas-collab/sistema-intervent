@@ -42,7 +42,7 @@ public class VentaMapeoService
     private static string? FirstNonEmpty(params string?[] vals) => vals.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
 
     /// <summary>Suma la venta al mapa. La venta debe venir con ClienteNav incluido.</summary>
-    public async Task<Result> SumarVentaAsync(CafeVenta v, string? direccion = null, string? link = null)
+    public async Task<Result> SumarVentaAsync(CafeVenta v, string? direccion = null, string? link = null, DateTime? fecha = null)
     {
         var cli = v.ClienteNav;
         var nombre = FirstNonEmpty(v.ClienteNombreSnapshot, cli?.Nombre) ?? "Cliente";
@@ -98,9 +98,11 @@ public class VentaMapeoService
             if (!string.IsNullOrWhiteSpace(link)) cli.MapeoLink = link.Trim();
         }
 
-        // Crear/actualizar la parada (idempotente).
+        // Crear/actualizar la parada (idempotente DENTRO DEL DÍA). 2026-09-03: el mapa tiene días;
+        // la misma venta puede haber estado en el mapa de ayer (historial) y entrar de nuevo hoy.
+        var dia = (fecha ?? DateTime.UtcNow.AddHours(-3)).Date;
         var refId = v.Id.ToString();
-        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "venta_cafe" && s.OriginRefId == refId);
+        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "venta_cafe" && s.OriginRefId == refId && s.FechaReparto == dia);
         if (existente is not null)
         {
             // Si ya estaba y ahora tampoco tenemos ubicación, NO le pisamos una ubicación buena con 0,0.
@@ -124,6 +126,7 @@ public class VentaMapeoService
             Telefono = telefono,
             Notas = $"Venta {v.Numero}",
             InternalStatus = "pending",
+            FechaReparto = dia,
             CreatedAt = DateTime.UtcNow
         };
         _db.MapeoStops.Add(stop);

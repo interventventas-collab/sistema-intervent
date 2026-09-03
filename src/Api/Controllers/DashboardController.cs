@@ -413,8 +413,11 @@ public class DashboardController : ControllerBase
             {
                 var repPorDriver = driversMapa.ToDictionary(d => d.Id, d => d.RepId);
                 var driverIds = repPorDriver.Keys.ToList();
+                // 2026-09-03: "Ruta de hoy" es literal — el mapa ahora tiene días y puede haber
+                // paradas armadas para mañana. Sin este filtro, la tarjeta contaría las de otros días.
                 var paradas = await _db.MapeoStops
-                    .Where(s => s.AssignedDriverId != null && driverIds.Contains(s.AssignedDriverId!.Value))
+                    .Where(s => s.AssignedDriverId != null && driverIds.Contains(s.AssignedDriverId!.Value)
+                             && s.FechaReparto == hoy)
                     .ToListAsync();
                 var entregasPorStop = await _entregas.EntregasAsync(paradas);
                 var noEntregadas = await _entregas.NoEntregadasAsync(paradas);

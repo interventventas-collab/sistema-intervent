@@ -33,8 +33,11 @@ public class MapeoPublicController : ControllerBase
         var driver = await _db.MapeoDrivers.FirstOrDefaultAsync(d => d.ShareToken == token);
         if (driver is null) return NotFound(new { error = "Token invalido" });
 
+        // 2026-09-03: el link que se le pasa al chofer muestra SOLO el día de hoy (ver la regla de oro
+        // en MapeoStop.FechaReparto): lo que esté armado para mañana no es asunto suyo todavía.
+        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
         var stops = await _db.MapeoStops
-            .Where(s => s.AssignedDriverId == driver.Id)
+            .Where(s => s.AssignedDriverId == driver.Id && s.FechaReparto == hoyAr)
             .OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id)
             .ToListAsync();
 

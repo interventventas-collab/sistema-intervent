@@ -62,9 +62,14 @@ public class MapeoAsignacionService
             : (await _db.CafeRepartidores.Where(r => repIds.Contains(r.Id) && r.IsActive)
                 .Select(r => r.Id).ToListAsync()).ToHashSet();
 
+        // ⚠ 2026-09-03: armar el reparto de MAÑANA no puede cargarle nada al celu HOY. Si la parada
+        // no es de hoy, se le asigna el chofer en el mapa y nada más: la venta se le carga al
+        // repartidor el día que corresponde (cuando se vuelva a tocar la asignación de ese día).
+        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
         int cambios = 0;
         foreach (var s in stops)
         {
+            if (s.FechaReparto.Date != hoyAr) continue;
             int? repId = null;
             if (s.AssignedDriverId.HasValue
                 && repPorDriver.TryGetValue(s.AssignedDriverId.Value, out var rid)

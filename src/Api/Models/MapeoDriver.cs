@@ -68,6 +68,18 @@ public class MapeoStop
 
     public int? OrderInRoute { get; set; }
 
+    /// <summary>
+    /// 2026-09-03: PARA QUÉ DÍA es esta parada (fecha de Argentina, sin hora). Antes el mapa era uno
+    /// solo y "hoy" era lo único que existía: lo de días anteriores se borraba al abrir el mapa y no
+    /// se podía preparar el reparto de mañana. Ahora cada parada sabe a qué día pertenece, así se
+    /// pueden mirar los días pasados (solo lectura) y armar los que vienen sin tocar el de hoy.
+    ///
+    /// ⚠ REGLA DE ORO: al celular del repartidor SOLO le llegan las paradas de HOY. Todo lo que lea
+    /// paradas fuera del mapa (celu, tablero, link compartido, PDF) tiene que filtrar por este campo.
+    /// </summary>
+    [Column(TypeName = "date")]
+    public DateTime FechaReparto { get; set; } = DateTime.UtcNow.AddHours(-3).Date;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

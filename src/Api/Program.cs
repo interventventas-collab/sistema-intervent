@@ -209,6 +209,9 @@ builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();
 // 2026-07-08: trae los envios ME1 (manuales) solos cada 1 hora, ultimos 30 dias.
 builder.Services.AddHostedService<Me1AutoSyncBackgroundService>();
+// 2026-09-03: arma solo el mapa de MAÑANA con los envios que MeLi promete para mañana.
+// ARRANCA APAGADO: mira la clave 'mapeo.autoarmar.activo' en AppSettings cada vuelta.
+builder.Services.AddHostedService<MapeoAutoArmarBackgroundService>();
 builder.Services.AddHostedService<MeliClientesBackgroundService>();
 builder.Services.AddHostedService<GaliciaAutoSyncBackgroundService>();
 builder.Services.AddHostedService<ShellAutoSyncBackgroundService>();

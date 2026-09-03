@@ -32,6 +32,8 @@ public class MapeoStopsController : ControllerBase
         string InternalStatus, int? AssignedDriverId, string? AssignedDriverName, string? AssignedDriverColor,
         int? AssignedVehicleSlot, int? OrderInRoute, DateTime CreatedAt,
         string? Localidad = null,
+        // 2026-09-03: para qué día es esta parada.
+        DateTime? FechaReparto = null,
         // Datos del envío de MeLi enlazado (para paradas Flex/ME1 escaneadas): usuario, nº venta, entregado.
         long? MeliOrderId = null, string? BuyerNickname = null, string? MeliStatus = null,
         // 2026-09-02: el detalle de MeLi ("destinatario ausente" y compañía). El estado general dice
@@ -42,16 +44,36 @@ public class MapeoStopsController : ControllerBase
         bool EsComercial = false,
         DateTime? DateDelivered = null, string? ReceiverName = null);
 
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2026-09-03: EL MAPA AHORA TIENE DÍAS.
+    //
+    // Antes había un solo mapa —el de ahora— y al abrirlo se borraba todo lo de días anteriores.
+    // Ahora cada parada sabe para qué día es (MapeoStop.FechaReparto), así se puede mirar lo que
+    // pasó los días pasados y armar los que vienen sin ensuciar el de hoy.
+    //
+    // ⚠ REGLA DE ORO: al celular del repartidor le llega SOLO el día de hoy. Ver
+    // CafeRepartidorPublicController y DashboardController, que filtran por HoyAr().
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Hoy en Argentina, sin hora. Es "el día" del mapa.</summary>
+    private static DateTime HoyAr() => DateTime.UtcNow.AddHours(-3).Date;
+
+    /// <summary>La fecha pedida, o hoy si no vino ninguna. Nunca devuelve hora.</summary>
+    private static DateTime FechaDelMapa(DateTime? fecha) => (fecha ?? HoyAr()).Date;
+
     private static StopDto Map(MapeoStop s) => new(
         s.Id, s.Origin, s.OriginRefId, s.Alias, s.Direccion, s.Latitude, s.Longitude,
         s.ContactName, s.Telefono, s.Notas, s.InternalStatus,
         s.AssignedDriverId, s.AssignedDriver?.Nombre, s.AssignedDriver?.Color,
-        s.AssignedVehicleSlot, s.OrderInRoute, s.CreatedAt, s.Localidad);
+        s.AssignedVehicleSlot, s.OrderInRoute, s.CreatedAt, s.Localidad, s.FechaReparto);
 
+    /// <summary>Las paradas de UN día. Sin `fecha` devuelve las de hoy, que es lo que hacía siempre.</summary>
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] int? driverId = null, [FromQuery] string? internalStatus = null)
+    public async Task<IActionResult> List([FromQuery] int? driverId = null, [FromQuery] string? internalStatus = null,
+        [FromQuery] DateTime? fecha = null)
     {
-        var q = _db.MapeoStops.Include(s => s.AssignedDriver).AsQueryable();
+        var dia = FechaDelMapa(fecha);
+        var q = _db.MapeoStops.Include(s => s.AssignedDriver).Where(s => s.FechaReparto == dia).AsQueryable();
         if (driverId.HasValue) q = q.Where(s => s.AssignedDriverId == driverId.Value);
         if (!string.IsNullOrWhiteSpace(internalStatus)) q = q.Where(s => s.InternalStatus == internalStatus);
         var list = await q.OrderBy(s => s.AssignedDriverId).ThenBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id).ToListAsync();
@@ -166,7 +188,9 @@ public class MapeoStopsController : ControllerBase
 
     public record CreateStopRequest(string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
-        string? Localidad = null);
+        string? Localidad = null,
+        // 2026-09-03: para qué día es. Si no viene, hoy — que es lo que hacía siempre.
+        DateTime? Fecha = null);
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateStopRequest req)
@@ -186,6 +210,7 @@ public class MapeoStopsController : ControllerBase
             Telefono = string.IsNullOrWhiteSpace(req.Telefono) ? null : req.Telefono.Trim(),
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
             InternalStatus = "pending",
+            FechaReparto = FechaDelMapa(req.Fecha),
             CreatedAt = DateTime.UtcNow
         };
         _db.MapeoStops.Add(s);
@@ -372,7 +397,9 @@ public class MapeoStopsController : ControllerBase
             .Select(s => s.AssignedDriverId.HasValue ? $"d{s.AssignedDriverId.Value}"
                         : (s.AssignedVehicleSlot.HasValue ? $"v{s.AssignedVehicleSlot.Value}" : null))
             .Where(k => k != null).Select(k => k!).Distinct().ToList();
-        if (zonasTocadas.Count > 0) await NormalizarZonasAsync(zonasTocadas, now);
+        // El día sale de las propias paradas que se reordenaron (todas son del mismo día del mapa).
+        var diaReorder = stops.Count > 0 ? stops[0].FechaReparto.Date : HoyAr();
+        if (zonasTocadas.Count > 0) await NormalizarZonasAsync(zonasTocadas, now, diaReorder);
 
         return Ok(new { updated = order - 1 });
     }
@@ -382,15 +409,15 @@ public class MapeoStopsController : ControllerBase
     /// ya tienen orden (por ese orden), después las que estaban sin numerar (por Id). Así ninguna parada de
     /// una zona en uso queda sin número ni afuera de la ruta. Idempotente.
     /// </summary>
-    private async Task NormalizarZonasAsync(List<string> zonaKeys, DateTime now)
+    private async Task NormalizarZonasAsync(List<string> zonaKeys, DateTime now, DateTime dia)
     {
         foreach (var key in zonaKeys)
         {
             List<MapeoStop> zona;
             if (key.StartsWith("d") && int.TryParse(key[1..], out var did))
-                zona = await _db.MapeoStops.Where(s => s.AssignedDriverId == did).ToListAsync();
+                zona = await _db.MapeoStops.Where(s => s.AssignedDriverId == did && s.FechaReparto == dia).ToListAsync();
             else if (key.StartsWith("v") && int.TryParse(key[1..], out var slot))
-                zona = await _db.MapeoStops.Where(s => s.AssignedVehicleSlot == slot && s.AssignedDriverId == null).ToListAsync();
+                zona = await _db.MapeoStops.Where(s => s.AssignedVehicleSlot == slot && s.AssignedDriverId == null && s.FechaReparto == dia).ToListAsync();
             else continue;
 
             var ordenadas = zona.OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id).ToList();
@@ -422,9 +449,9 @@ public class MapeoStopsController : ControllerBase
         // Zona a renumerar: preferimos el repartidor; si no tiene, el vehículo (sólo las sin repartidor).
         List<MapeoStop> zona;
         if (s.AssignedDriverId.HasValue)
-            zona = await _db.MapeoStops.Where(x => x.AssignedDriverId == s.AssignedDriverId).ToListAsync();
+            zona = await _db.MapeoStops.Where(x => x.AssignedDriverId == s.AssignedDriverId && x.FechaReparto == s.FechaReparto).ToListAsync();
         else if (s.AssignedVehicleSlot.HasValue)
-            zona = await _db.MapeoStops.Where(x => x.AssignedVehicleSlot == s.AssignedVehicleSlot && x.AssignedDriverId == null).ToListAsync();
+            zona = await _db.MapeoStops.Where(x => x.AssignedVehicleSlot == s.AssignedVehicleSlot && x.AssignedDriverId == null && x.FechaReparto == s.FechaReparto).ToListAsync();
         else
             return BadRequest(new { error = "Primero asigná este envío a un repartidor (o a un vehículo) para poder darle un puesto." });
 
@@ -475,9 +502,9 @@ public class MapeoStopsController : ControllerBase
         // Zona a ordenar: la de la PRIMERA (repartidor si tiene; si no, el vehículo sin repartidor).
         List<MapeoStop> zona;
         if (primera.AssignedDriverId.HasValue)
-            zona = await _db.MapeoStops.Where(x => x.AssignedDriverId == primera.AssignedDriverId).ToListAsync();
+            zona = await _db.MapeoStops.Where(x => x.AssignedDriverId == primera.AssignedDriverId && x.FechaReparto == primera.FechaReparto).ToListAsync();
         else if (primera.AssignedVehicleSlot.HasValue)
-            zona = await _db.MapeoStops.Where(x => x.AssignedVehicleSlot == primera.AssignedVehicleSlot && x.AssignedDriverId == null).ToListAsync();
+            zona = await _db.MapeoStops.Where(x => x.AssignedVehicleSlot == primera.AssignedVehicleSlot && x.AssignedDriverId == null && x.FechaReparto == primera.FechaReparto).ToListAsync();
         else
             return BadRequest(new { error = "La zona no está armada todavía (la parada no está en ningún vehículo ni repartidor)." });
 
@@ -561,13 +588,14 @@ public class MapeoStopsController : ControllerBase
     }
 
     [HttpDelete]
-    public async Task<IActionResult> ClearAll()
+    public async Task<IActionResult> ClearAll([FromQuery] DateTime? fecha = null)
     {
+        var dia = FechaDelMapa(fecha);
         // Snapshot automático antes de borrar — para no perder lo que armó el usuario
         try
         {
             var snap = await MapeoSnapshotsController.BuildSnapshotAsync(_db, "Auto-guardado antes de Empezar desde cero",
-                User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null);
+                User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null, dia);
             if (snap is not null)
             {
                 _db.MapeoRouteSnapshots.Add(snap);
@@ -576,7 +604,10 @@ public class MapeoStopsController : ControllerBase
         }
         catch { /* tolerar — preferimos limpiar igual */ }
 
-        await _db.MapeoStops.ExecuteDeleteAsync();
+        // 2026-09-03: vacía SOLO el día que se está mirando. Antes borraba el mapa entero, que era lo
+        // mismo porque había un mapa solo; ahora borraría también lo que preparaste para mañana y el
+        // historial de días pasados.
+        await _db.MapeoStops.Where(s => s.FechaReparto == dia).ExecuteDeleteAsync();
         return Ok(new { ok = true });
     }
 
@@ -586,61 +617,72 @@ public class MapeoStopsController : ControllerBase
     /// cargando ahora aunque se recargue la pagina). Hace un respaldo (snapshot) antes de borrar.
     /// Se llama automaticamente al abrir el mapa.
     /// </summary>
-    [HttpPost("clear-stale")]
-    public async Task<IActionResult> ClearStale()
-    {
-        var nowLocal = DateTime.UtcNow.AddHours(-3);         // Argentina
-        var hoyInicioUtc = nowLocal.Date.AddHours(3);        // 00:00 ART expresado en UTC
-
-        var staleCount = await _db.MapeoStops.CountAsync(s => s.CreatedAt < hoyInicioUtc);
-        if (staleCount == 0) return Ok(new { cleared = 0 });
-
-        // Respaldo automatico antes de borrar (tolerante a fallo: preferimos limpiar igual).
-        try
-        {
-            var snap = await MapeoSnapshotsController.BuildSnapshotAsync(_db, "Auto-respaldo antes de limpiar dia anterior",
-                User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null);
-            if (snap is not null)
-            {
-                _db.MapeoRouteSnapshots.Add(snap);
-                await _db.SaveChangesAsync();
-            }
-        }
-        catch { }
-
-        var deleted = await _db.MapeoStops.Where(s => s.CreatedAt < hoyInicioUtc).ExecuteDeleteAsync();
-        return Ok(new { cleared = deleted });
-    }
-
     /// <summary>
-    /// 2026-09-02: deja una parada que quedó de un día anterior como si fuera nueva — pendiente, sin
-    /// repartidor, sin orden y sin la marca de "no se pudo entregar". Se usa cuando vuelven a
-    /// escanear la misma etiqueta al otro día, que es lo que pasa con los Flex que no se entregaron.
+    /// 2026-09-03: YA NO BORRA NADA. Antes, al abrir el mapa, esto borraba todas las paradas de días
+    /// anteriores (guardaba una foto y las eliminaba) porque el mapa era uno solo y había que
+    /// limpiarlo. Con los días, esas paradas SON el historial: el usuario las quiere para mirar lo
+    /// que pasó y sacar estadísticas, y ocupan nada (unos 9 MB por año).
+    ///
+    /// Se deja el endpoint respondiendo OK para no romper a quien lo llame, pero no borra.
+    /// Si alguna vez hace falta purgar de verdad, que sea un pedido explícito y por fecha, nunca
+    /// algo que se dispare solo al abrir una pantalla.
     /// </summary>
-    private static bool RevivirSiEsDeUnDiaAnterior(MapeoStop stop)
-    {
-        var hoyInicioUtc = DateTime.UtcNow.AddHours(-3).Date.AddHours(3);   // 00:00 de Argentina, en UTC
-        if (stop.CreatedAt >= hoyInicioUtc) return false;
+    [HttpPost("clear-stale")]
+    public IActionResult ClearStale() => Ok(new { cleared = 0, mensaje = "Las paradas de días anteriores ya no se borran: son el historial." });
 
-        stop.CreatedAt = DateTime.UtcNow;
-        stop.InternalStatus = "pending";
-        stop.AssignedDriverId = null;
-        stop.AssignedVehicleSlot = null;
-        stop.OrderInRoute = null;
-        stop.Notas = SinMarcaDeNoEntregada(stop.Notas);
-        stop.UpdatedAt = DateTime.UtcNow;
-        return true;
+    // ══════════ 2026-09-03: armar un día con los envíos que MeLi promete para ese día ══════════
+
+    /// <summary>Cuántos envíos de MercadoLibre hay prometidos para ese día que todavía no están en
+    /// el mapa de ese día, y si el llenado automático está prendido o apagado.</summary>
+    [HttpGet("auto-armar/estado")]
+    public async Task<IActionResult> AutoArmarEstado([FromQuery] DateTime? fecha = null)
+    {
+        var dia = FechaDelMapa(fecha);
+        var d1 = dia.AddHours(3);
+        var d2 = dia.AddDays(1).AddHours(3);
+        var candidatos = await _db.MeliShipments
+            .Where(s => (s.LogisticType == "self_service" || s.Mode == "me1")
+                     && s.Latitude != null && s.Longitude != null
+                     && s.Status != "delivered" && s.Status != "cancelled" && s.Status != "not_delivered"
+                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) >= d1
+                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < d2)
+            .Select(s => s.MeliShipmentId.ToString()).ToListAsync();
+        var yaEstan = await _db.MapeoStops
+            .Where(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
+                     && candidatos.Contains(s.OriginRefId) && s.FechaReparto == dia)
+            .CountAsync();
+        var activo = (await _db.AppSettings.FindAsync(MapeoAutoArmarBackgroundService.SettingKey))?.Value;
+        return Ok(new
+        {
+            faltan = candidatos.Count - yaEstan,
+            total = candidatos.Count,
+            automatico = string.Equals(activo, "true", StringComparison.OrdinalIgnoreCase)
+        });
     }
 
-    /// <summary>Saca de las notas el motivo de "no se pudo entregar" de ayer, dejando el resto.</summary>
-    private static string? SinMarcaDeNoEntregada(string? notas)
+    /// <summary>Trae ahora los envíos de MeLi prometidos para ese día. Idempotente.</summary>
+    [HttpPost("auto-armar")]
+    public async Task<IActionResult> AutoArmar([FromQuery] DateTime? fecha = null)
     {
-        if (string.IsNullOrWhiteSpace(notas) || !notas.StartsWith("⚠ No se pudo entregar:")) return notas;
-        var i = notas.IndexOf(" · ", StringComparison.Ordinal);
-        return i < 0 ? null : notas.Substring(i + 3);
+        var dia = FechaDelMapa(fecha);
+        var creadas = await MapeoAutoArmarBackgroundService.ArmarDiaAsync(_db, dia);
+        return Ok(new { creadas, mensaje = creadas == 0 ? "No había envíos nuevos para ese día." : $"Sumé {creadas} al mapa del {dia:dd/MM}." });
     }
 
-    // ===== Asignacion visual a vehiculos (slot) =====
+    public record AutoArmarConfigRequest(bool Activo);
+
+    /// <summary>Prende o apaga el llenado automático del mapa de mañana. Arranca APAGADO.</summary>
+    [HttpPost("auto-armar/config")]
+    public async Task<IActionResult> AutoArmarConfig([FromBody] AutoArmarConfigRequest req)
+    {
+        var key = MapeoAutoArmarBackgroundService.SettingKey;
+        var st = await _db.AppSettings.FindAsync(key);
+        if (st is null) _db.AppSettings.Add(new AppSetting { Key = key, Value = req.Activo ? "true" : "false", UpdatedAt = DateTime.UtcNow });
+        else { st.Value = req.Activo ? "true" : "false"; st.UpdatedAt = DateTime.UtcNow; }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, automatico = req.Activo });
+    }
+
     public record AssignSlotRequest(int? Slot);
 
     [HttpPut("{id:int}/vehicle-slot")]
@@ -655,15 +697,16 @@ public class MapeoStopsController : ControllerBase
     }
 
     [HttpPost("clear-vehicle-assignments")]
-    public async Task<IActionResult> ClearVehicleAssignments()
+    public async Task<IActionResult> ClearVehicleAssignments([FromQuery] DateTime? fecha = null)
     {
-        await _db.MapeoStops.ExecuteUpdateAsync(set => set
+        var dia = FechaDelMapa(fecha);
+        await _db.MapeoStops.Where(s => s.FechaReparto == dia).ExecuteUpdateAsync(set => set
             .SetProperty(s => s.AssignedVehicleSlot, (int?)null)
             .SetProperty(s => s.UpdatedAt, DateTime.UtcNow));
         return Ok(new { ok = true });
     }
 
-    public record AssignDriverToSlotRequest(int Slot, int? DriverId);
+    public record AssignDriverToSlotRequest(int Slot, int? DriverId, DateTime? Fecha = null);
 
     /// <summary>Asigna un chofer a todas las paradas de un slot (vehículo del día).</summary>
     [HttpPost("assign-driver-to-slot")]
@@ -671,10 +714,11 @@ public class MapeoStopsController : ControllerBase
     {
         if (req.Slot <= 0) return BadRequest(new { error = "Slot inválido" });
         int? did = req.DriverId.HasValue && req.DriverId.Value > 0 ? req.DriverId.Value : null;
-        var ids = await _db.MapeoStops.Where(s => s.AssignedVehicleSlot == req.Slot)
+        var dia = FechaDelMapa(req.Fecha);
+        var ids = await _db.MapeoStops.Where(s => s.AssignedVehicleSlot == req.Slot && s.FechaReparto == dia)
             .Select(s => s.Id).ToListAsync();
         var n = await _db.MapeoStops
-            .Where(s => s.AssignedVehicleSlot == req.Slot)
+            .Where(s => s.AssignedVehicleSlot == req.Slot && s.FechaReparto == dia)
             .ExecuteUpdateAsync(set => set
                 .SetProperty(s => s.AssignedDriverId, did)
                 .SetProperty(s => s.UpdatedAt, DateTime.UtcNow));
@@ -706,12 +750,13 @@ public class MapeoStopsController : ControllerBase
     /// usando la distancia geografica (haversine simplificado).
     /// </summary>
     [HttpPost("auto-assign")]
-    public async Task<IActionResult> AutoAssign([FromQuery] bool reassignAll = false)
+    public async Task<IActionResult> AutoAssign([FromQuery] bool reassignAll = false, [FromQuery] DateTime? fecha = null)
     {
         var drivers = await _db.MapeoDrivers.Where(d => d.IsActive).OrderBy(d => d.Id).ToListAsync();
         if (drivers.Count == 0) return BadRequest(new { error = "No hay drivers activos" });
 
-        var stopsQ = _db.MapeoStops.AsQueryable();
+        var diaAuto = FechaDelMapa(fecha);
+        var stopsQ = _db.MapeoStops.Where(s => s.FechaReparto == diaAuto).AsQueryable();
         if (!reassignAll) stopsQ = stopsQ.Where(s => s.AssignedDriverId == null);
         var stops = await stopsQ.ToListAsync();
         if (stops.Count == 0) return Ok(new { assigned = 0 });
@@ -765,7 +810,7 @@ public class MapeoStopsController : ControllerBase
     /// Optimiza el orden de las paradas de un driver (o de todos) usando nearest-neighbor desde el punto de partida.
     /// </summary>
     [HttpPost("optimize-order")]
-    public async Task<IActionResult> OptimizeOrder([FromQuery] int? driverId = null, [FromQuery] int? vehicleSlot = null, [FromQuery] bool all = false)
+    public async Task<IActionResult> OptimizeOrder([FromQuery] int? driverId = null, [FromQuery] int? vehicleSlot = null, [FromQuery] bool all = false, [FromQuery] DateTime? fecha = null)
     {
         // Punto de partida (de AppSettings)
         double? startLat = null, startLng = null;
@@ -775,27 +820,29 @@ public class MapeoStopsController : ControllerBase
         if (double.TryParse(lngStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo)) startLng = lo;
 
         // Determinar grupos a optimizar: TODO junto (all), por VEHICULO (slot), por DRIVER, o todos los drivers.
+        // 2026-09-03: siempre dentro del día que se está mirando — si no, optimizaría mezclando días.
+        var diaOpt = FechaDelMapa(fecha);
         var grupos = new List<List<MapeoStop>>();
         if (all)
         {
             // "Armar ruta óptima" de TODAS las paradas cargadas como una sola ruta (aunque no tengan chofer).
-            var todas = await _db.MapeoStops.ToListAsync();
+            var todas = await _db.MapeoStops.Where(s => s.FechaReparto == diaOpt).ToListAsync();
             if (todas.Count > 0) grupos.Add(todas);
         }
         else if (vehicleSlot.HasValue && vehicleSlot.Value > 0)
         {
-            var stopsV = await _db.MapeoStops.Where(s => s.AssignedVehicleSlot == vehicleSlot.Value).ToListAsync();
+            var stopsV = await _db.MapeoStops.Where(s => s.AssignedVehicleSlot == vehicleSlot.Value && s.FechaReparto == diaOpt).ToListAsync();
             if (stopsV.Count > 0) grupos.Add(stopsV);
         }
         else
         {
             IEnumerable<int?> driverIds;
             if (driverId.HasValue && driverId.Value > 0) driverIds = new int?[] { driverId.Value };
-            else driverIds = await _db.MapeoStops.Where(s => s.AssignedDriverId != null)
+            else driverIds = await _db.MapeoStops.Where(s => s.AssignedDriverId != null && s.FechaReparto == diaOpt)
                 .Select(s => s.AssignedDriverId).Distinct().ToListAsync();
             foreach (var did in driverIds)
             {
-                var stopsD = await _db.MapeoStops.Where(s => s.AssignedDriverId == did).ToListAsync();
+                var stopsD = await _db.MapeoStops.Where(s => s.AssignedDriverId == did && s.FechaReparto == diaOpt).ToListAsync();
                 if (stopsD.Count > 0) grupos.Add(stopsD);
             }
         }
@@ -859,7 +906,7 @@ public class MapeoStopsController : ControllerBase
     /// refresh=true saltea lo guardado y se lo vuelve a preguntar a Google (botón "Actualizar").
     /// </summary>
     [HttpGet("routes-overview")]
-    public async Task<IActionResult> RoutesOverview([FromQuery] bool single = false, [FromQuery] bool refresh = false)
+    public async Task<IActionResult> RoutesOverview([FromQuery] bool single = false, [FromQuery] bool refresh = false, [FromQuery] DateTime? fecha = null)
     {
         double? startLat = null, startLng = null;
         var latStr = (await _db.AppSettings.FindAsync("mapeo.start.lat"))?.Value;
@@ -867,7 +914,8 @@ public class MapeoStopsController : ControllerBase
         if (double.TryParse(latStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la)) startLat = la;
         if (double.TryParse(lngStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo)) startLng = lo;
 
-        var conOrden = await _db.MapeoStops.Include(x => x.AssignedDriver)
+        var diaRuta = FechaDelMapa(fecha);
+        var conOrden = await _db.MapeoStops.Include(x => x.AssignedDriver).Where(x => x.FechaReparto == diaRuta)
             .Where(s => s.OrderInRoute != null).ToListAsync();
         // Sin paradas ordenadas no hay recorrido que dibujar: cortamos acá y NO le preguntamos nada a
         // Google (abrir el Mapeo antes de armar las rutas no cuesta un peso).
@@ -1005,7 +1053,7 @@ public class MapeoStopsController : ControllerBase
     /// puede calcular el óptimo en una sola consulta y se marca Calculable=false.
     /// </summary>
     [HttpGet("routes-savings")]
-    public async Task<IActionResult> RoutesSavings()
+    public async Task<IActionResult> RoutesSavings([FromQuery] DateTime? fecha = null)
     {
         double? startLat = null, startLng = null;
         var latStr = (await _db.AppSettings.FindAsync("mapeo.start.lat"))?.Value;
@@ -1013,7 +1061,8 @@ public class MapeoStopsController : ControllerBase
         if (double.TryParse(latStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la)) startLat = la;
         if (double.TryParse(lngStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo)) startLng = lo;
 
-        var conOrden = await _db.MapeoStops.Include(x => x.AssignedDriver)
+        var diaRuta = FechaDelMapa(fecha);
+        var conOrden = await _db.MapeoStops.Include(x => x.AssignedDriver).Where(x => x.FechaReparto == diaRuta)
             .Where(s => s.OrderInRoute != null && s.AssignedDriverId != null).ToListAsync();
         var grupos = conOrden.GroupBy(s => s.AssignedDriverId)
             .Select(g => (drv: g.First().AssignedDriver, ordered: g.OrderBy(s => s.OrderInRoute).ToList()))
@@ -1080,10 +1129,21 @@ public class MapeoStopsController : ControllerBase
     /// Aplica el filtro por modo de entrega (today / tomorrow / overdue / all) usando EstimatedDeliveryLimit.
     /// Refleja la misma logica que MeliShipmentsController.ListFlex para mantener coherencia entre vistas.
     /// </summary>
-    private IQueryable<MeliShipment> ApplyDeliveryModeFilter(IQueryable<MeliShipment> q, string mode)
+    private IQueryable<MeliShipment> ApplyDeliveryModeFilter(IQueryable<MeliShipment> q, string mode, DateTime? fecha = null)
     {
         var nowLocal = DateTime.UtcNow.AddHours(-3); // Argentina
         var todayLocal = nowLocal.Date;
+        // 2026-09-03: con los días del mapa, "el día que estoy mirando" es un modo más. MercadoLibre
+        // nos dice para cuándo promete cada envío (EstimatedDeliveryLimit) y le acierta: sobre 2.101
+        // envíos entregados, 1.963 llegaron exactamente el día prometido. Por eso se puede armar el
+        // mapa de un día futuro con los envíos que MeLi promete para ese día.
+        if (string.Equals(mode, "dia", StringComparison.OrdinalIgnoreCase) && fecha.HasValue)
+        {
+            var d1 = fecha.Value.Date.AddHours(3);
+            var d2 = fecha.Value.Date.AddDays(1).AddHours(3);
+            return q.Where(s => (s.EstimatedDeliveryLimit ?? s.DateCreated) >= d1
+                             && (s.EstimatedDeliveryLimit ?? s.DateCreated) < d2);
+        }
         switch ((mode ?? "today").ToLowerInvariant())
         {
             case "today":
@@ -1184,18 +1244,19 @@ public class MapeoStopsController : ControllerBase
 
     /// <summary>Cuenta cuantos Flex pendientes hay para importar (dado un rango de dias). Sirve para el preview antes de confirmar.</summary>
     [HttpGet("import-flex-preview")]
-    public async Task<IActionResult> ImportFlexPreview([FromQuery] string mode = "today")
+    public async Task<IActionResult> ImportFlexPreview([FromQuery] string mode = "today", [FromQuery] DateTime? fecha = null)
     {
         // Mismo modo que el filtro principal del Mapeo: today / tomorrow / overdue / all.
         var q = _db.MeliShipments
             .Where(s => s.LogisticType == "self_service"
                      && s.Status != "delivered" && s.Status != "cancelled"
                      && s.Latitude != null && s.Longitude != null);
-        q = ApplyDeliveryModeFilter(q, mode);
+        q = ApplyDeliveryModeFilter(q, mode, fecha);
         var ships = await q
             .Select(s => new { s.MeliShipmentId, s.ReceiverName, s.City, s.AddressLine })
             .ToListAsync();
-        var existingRefs = await _db.MapeoStops
+        var diaImport = FechaDelMapa(fecha);
+        var existingRefs = await _db.MapeoStops.Where(s => s.FechaReparto == diaImport)
             .Where(s => s.Origin == "flex")
             .Select(s => s.OriginRefId)
             .ToListAsync();
@@ -1212,17 +1273,18 @@ public class MapeoStopsController : ControllerBase
 
     /// <summary>Importa todos los shipments Flex pendientes como paradas (si todavía no existen).</summary>
     [HttpPost("import-flex")]
-    public async Task<IActionResult> ImportFlex([FromQuery] string mode = "today")
+    public async Task<IActionResult> ImportFlex([FromQuery] string mode = "today", [FromQuery] DateTime? fecha = null)
     {
         var q = _db.MeliShipments
             .Where(s => s.LogisticType == "self_service"
                      && s.Status != "delivered" && s.Status != "cancelled"
                      && s.Latitude != null && s.Longitude != null);
-        q = ApplyDeliveryModeFilter(q, mode);
+        q = ApplyDeliveryModeFilter(q, mode, fecha);
         var ships = await q
             .ToListAsync();
         // Excluir las que ya están como stops
-        var existingRefs = await _db.MapeoStops
+        var diaImport = FechaDelMapa(fecha);
+        var existingRefs = await _db.MapeoStops.Where(s => s.FechaReparto == diaImport)
             .Where(s => s.Origin == "flex")
             .Select(s => s.OriginRefId)
             .ToListAsync();
@@ -1253,7 +1315,7 @@ public class MapeoStopsController : ControllerBase
         return Ok(new { created, total = ships.Count });
     }
 
-    public record ScanFlexRequest(string Code);
+    public record ScanFlexRequest(string Code, DateTime? Fecha = null);
 
     /// <summary>
     /// Suma UNA parada al mapa a partir del QR de una etiqueta Flex escaneada con el celular.
@@ -1311,29 +1373,26 @@ public class MapeoStopsController : ControllerBase
         }
         if (sh is null)
             return Ok(new { ok = false, motivo = "no_encontrado", id = id.Value, mensaje = $"No pude traer el envio {id.Value} de MercadoLibre. Puede ser de otra cuenta, o muy nuevo (esperá unos minutos)." });
-        return Ok(await AddFlexStopFromShipmentAsync(sh));
+        return Ok(await AddFlexStopFromShipmentAsync(sh, req?.Fecha));
     }
 
     /// <summary>Crea (o reconoce) la parada de un envío MeLi Flex/ME1 ya sincronizado. Idempotente por
     /// OriginRefId = MeliShipmentId. Devuelve el mismo shape que scan-flex.</summary>
-    private async Task<object> AddFlexStopFromShipmentAsync(MeliShipment sh)
+    private async Task<object> AddFlexStopFromShipmentAsync(MeliShipment sh, DateTime? fecha = null)
     {
         if (sh.Latitude is null || sh.Longitude is null)
             return new { ok = false, motivo = "sin_ubicacion", id = sh.MeliShipmentId, nombre = sh.ReceiverName, mensaje = "Ese envio no tiene ubicacion cargada, no lo puedo poner en el mapa." };
 
+        // 2026-09-03: la parada es de UN día. Si el mismo envío ya estuvo en el mapa de otro día
+        // (ayer no se pudo entregar y hoy se vuelve a escanear), esa queda como historial y hoy nace
+        // una nueva, limpia. Antes se "revivía" la vieja, que era el parche de cuando había un solo mapa.
+        var dia = FechaDelMapa(fecha);
         var refId = sh.MeliShipmentId.ToString();
-        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId == refId);
+        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s =>
+            (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId == refId && s.FechaReparto == dia);
         if (existente is not null)
-        {
-            // 2026-09-02: si quedó del día anterior, la revivimos limpia. Sin esto, un envío que
-            // ayer no se pudo entregar y hoy se vuelve a escanear entraba con la marca de fallido
-            // puesta: figuraba cerrado y nadie lo entregaba. (Normalmente la limpieza del día ya
-            // borró las viejas, pero si alguien escanea antes de abrir el mapa, no.)
-            var revivida = RevivirSiEsDeUnDiaAnterior(existente);
-            if (revivida) await _db.SaveChangesAsync();
-            return new { ok = true, yaEstaba = !revivida, id = sh.MeliShipmentId, nombre = sh.ReceiverName, localidad = sh.City, stopId = existente.Id,
-                         mensaje = revivida ? "Estaba en el mapa de ayer — la puse como nueva." : "Ya estaba en el mapa." };
-        }
+            return new { ok = true, yaEstaba = true, id = sh.MeliShipmentId, nombre = sh.ReceiverName, localidad = sh.City, stopId = existente.Id,
+                         mensaje = "Ya estaba en el mapa de ese día." };
 
         var stop = new MapeoStop
         {
@@ -1348,6 +1407,7 @@ public class MapeoStopsController : ControllerBase
             Telefono = sh.ReceiverPhone,
             Notas = sh.Comment,
             InternalStatus = "pending",
+            FechaReparto = dia,
             CreatedAt = DateTime.UtcNow
         };
         _db.MapeoStops.Add(stop);
@@ -1355,7 +1415,7 @@ public class MapeoStopsController : ControllerBase
         return new { ok = true, yaEstaba = false, id = sh.MeliShipmentId, nombre = sh.ReceiverName, localidad = sh.City, stopId = stop.Id, mensaje = "Agregado al mapa." };
     }
 
-    public record ByNumberRequest(string Number);
+    public record ByNumberRequest(string Number, DateTime? Fecha = null);
 
     /// <summary>
     /// Trae UNA parada al mapa a partir de un NÚMERO tipeado a mano (plan B si falla el escáner/impresora).
@@ -1441,7 +1501,7 @@ public class MapeoStopsController : ControllerBase
             }
             if (sh is not null)
             {
-                var res = await AddFlexStopFromShipmentAsync(sh);
+                var res = await AddFlexStopFromShipmentAsync(sh, req?.Fecha);
                 return Ok(res);
             }
         }
@@ -1497,7 +1557,7 @@ public class MapeoStopsController : ControllerBase
         return m.Success ? m.Groups[1].Value : null;
     }
 
-    public record FromShipmentRequest(int ShipmentId, string? Direccion, string? Link);
+    public record FromShipmentRequest(int ShipmentId, string? Direccion, string? Link, DateTime? Fecha = null);
 
     /// <summary>
     /// Suma un envío de MercadoLibre (ME1 o Flex) al mapa desde su pantalla (botón "Al mapa").
@@ -1542,7 +1602,8 @@ public class MapeoStopsController : ControllerBase
         }
 
         var refId = sh.MeliShipmentId.ToString();
-        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => (s.Origin == "me1" || s.Origin == "flex") && s.OriginRefId == refId);
+        var diaFrom = FechaDelMapa(req?.Fecha);
+        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => (s.Origin == "me1" || s.Origin == "flex") && s.OriginRefId == refId && s.FechaReparto == diaFrom);
         if (existente is not null)
         {
             existente.Latitude = lat!.Value;
@@ -1637,9 +1698,11 @@ public class MapeoStopsController : ControllerBase
         [FromQuery] bool repartidor = true,
         [FromQuery] bool estado = false,
         [FromQuery] bool ventaMeli = false,
-        [FromQuery] bool incluirEntregados = true)
+        [FromQuery] bool incluirEntregados = true,
+        [FromQuery] DateTime? fecha = null)
     {
-        var stops = await _db.MapeoStops.Include(s => s.AssignedDriver)
+        var diaExport = FechaDelMapa(fecha);
+        var stops = await _db.MapeoStops.Include(s => s.AssignedDriver).Where(s => s.FechaReparto == diaExport)
             .Where(s => driverId == null || s.AssignedDriverId == driverId)
             .OrderBy(s => s.AssignedDriverId).ThenBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id)
             .ToListAsync();

@@ -109,10 +109,15 @@ public class MapeoSnapshotsController : ControllerBase
     /// Devuelve null si no hay paradas.
     /// </summary>
     [NonAction]
-    public static async Task<MapeoRouteSnapshot?> BuildSnapshotAsync(AppDbContext db, string? notes, string? username)
+    /// <summary>2026-09-03: la foto es de UN día. Antes agarraba todas las paradas porque el mapa era
+    /// uno solo; ahora, sin filtrar, una foto del sábado se llevaría también lo de hoy.</summary>
+    public static async Task<MapeoRouteSnapshot?> BuildSnapshotAsync(AppDbContext db, string? notes, string? username,
+        DateTime? fecha = null)
     {
+        var dia = (fecha ?? DateTime.UtcNow.AddHours(-3)).Date;
         var stops = await db.MapeoStops
             .Include(s => s.AssignedDriver)
+            .Where(s => s.FechaReparto == dia)
             .ToListAsync();
         if (stops.Count == 0) return null;
 

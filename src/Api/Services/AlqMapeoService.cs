@@ -41,7 +41,7 @@ public class AlqMapeoService
     private static string? FirstNonEmpty(params string?[] vals) => vals.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
 
     /// <summary>Suma la reserva al mapa. La reserva debe venir con ClienteNav incluido.</summary>
-    public async Task<Result> SumarReservaAsync(AlqReserva r, string? direccion = null, string? link = null)
+    public async Task<Result> SumarReservaAsync(AlqReserva r, string? direccion = null, string? link = null, DateTime? fecha = null)
     {
         var cli = r.ClienteNav;
         var nombre = FirstNonEmpty(cli?.Nombre) ?? "Cliente";
@@ -91,15 +91,21 @@ public class AlqMapeoService
             r.LongitudEvento = lng;
         }
 
+        // 2026-09-03: el alquiler es el caso que mejor se acomoda solo — la reserva YA sabe para qué
+        // día es. Si no nos dicen otra cosa, la parada nace en el día de ENTREGA de la reserva (y si
+        // esa fecha ya pasó, hoy: sirve para el "me lo olvidé, ponelo igual").
+        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
+        var diaEntrega = r.FechaEntrega.Date;
+        var dia = (fecha?.Date) ?? (diaEntrega >= hoyAr ? diaEntrega : hoyAr);
         var refId = r.Id.ToString();
-        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "alquiler" && s.OriginRefId == refId);
+        var existente = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Origin == "alquiler" && s.OriginRefId == refId && s.FechaReparto == dia);
         if (existente is not null)
         {
             existente.Latitude = lat!.Value;
             existente.Longitude = lng!.Value;
             existente.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
-            return new Result { Ok = true, YaEstaba = true, Mensaje = "Ya estaba en el mapa (actualicé la ubicación).", Nombre = nombre, Localidad = localidad, StopId = existente.Id };
+            return new Result { Ok = true, YaEstaba = true, Mensaje = $"Ya estaba en el mapa del {dia:dd/MM} (actualicé la ubicación).", Nombre = nombre, Localidad = localidad, StopId = existente.Id };
         }
 
         var stop = new MapeoStop
@@ -115,10 +121,13 @@ public class AlqMapeoService
             Telefono = telefono,
             Notas = $"Alquiler {r.Numero}",
             InternalStatus = "pending",
+            FechaReparto = dia,
             CreatedAt = DateTime.UtcNow
         };
         _db.MapeoStops.Add(stop);
         await _db.SaveChangesAsync();
-        return new Result { Ok = true, YaEstaba = false, Mensaje = "Agregado al mapa.", Nombre = nombre, Localidad = localidad, StopId = stop.Id };
+        return new Result { Ok = true, YaEstaba = false,
+            Mensaje = dia == hoyAr ? "Agregado al mapa de hoy." : $"Agregado al mapa del {dia:dddd dd/MM}.",
+            Nombre = nombre, Localidad = localidad, StopId = stop.Id };
     }
 }

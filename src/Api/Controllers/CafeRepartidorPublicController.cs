@@ -925,8 +925,13 @@ public class CafeRepartidorPublicController : ControllerBase
         var driverIds = await _db.MapeoDrivers.Where(d => d.CafeRepartidorId == r.Id).Select(d => d.Id).ToListAsync();
         if (driverIds.Count == 0) return Ok(new List<MisPedidosMapeoDto>());
 
+        // ⚠ 2026-09-03 REGLA DE ORO: al repartidor le llega SOLO el día de hoy. En el mapa se puede
+        // estar armando el reparto de mañana o del sábado, con zonas y choferes ya asignados —
+        // nada de eso tiene que aparecerle en el celular hasta que llegue ese día.
+        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
         var stops = await _db.MapeoStops
-            .Where(s => s.AssignedDriverId != null && driverIds.Contains(s.AssignedDriverId.Value))
+            .Where(s => s.AssignedDriverId != null && driverIds.Contains(s.AssignedDriverId.Value)
+                     && s.FechaReparto == hoyAr)
             .OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id)
             .ToListAsync();
 
