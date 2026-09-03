@@ -367,10 +367,8 @@
         return {
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
             scaledSize: new google.maps.Size(TOLDO_W, TOLDO_H),
-            // 2026-09-03: apoyado justo sobre el techo de la cabeza (la punta cae en 44) y corrido
-            // un toque a la derecha, para que se vean las ONDULACIONES de abajo del toldo. Si queda
-            // más abajo el pin se las come; si queda más arriba, flota.
-            anchor: new google.maps.Point(TOLDO_W / 2 - 5, TOLDO_H + 39)
+            // centrado en X y METIDO detrás de la cabeza del pin (la punta cae en 44): asoma el techo.
+            anchor: new google.maps.Point(TOLDO_W / 2, TOLDO_H + 34)
         };
     }
 
