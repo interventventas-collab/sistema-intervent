@@ -154,7 +154,7 @@
             // 2026-09-03: si el domicilio es COMERCIAL el pin lleva borde oscuro en vez de blanco.
             // Es la mitad de la señal (la otra es el toldo de arriba): aunque el toldo quede tapado
             // por otro pin, el borde ya te dice que ahi hay un negocio.
-            `<path d="${headPath}" fill="${body}" stroke="${comercial ? '#1f2937' : '#ffffff'}" stroke-width="${comercial ? 3 : 2}" filter="url(#sh)"/>` +
+            `<path d="${headPath}" fill="${body}" stroke="${comercial ? '#1f2937' : '#ffffff'}" stroke-width="2" filter="url(#sh)"/>` +
             `<text x="${PIN_HEAD_CX}" y="${labelY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>` +
             `${badge}${check}${surfaceBadge}</svg>`;
     }
@@ -366,7 +366,7 @@
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
             scaledSize: new google.maps.Size(TOLDO_W, TOLDO_H),
             // centrado en X y apoyado sobre el techo de la cabeza del pin (la punta cae en 44).
-            anchor: new google.maps.Point(TOLDO_W / 2, TOLDO_H + 32)
+            anchor: new google.maps.Point(TOLDO_W / 2, TOLDO_H + 42)
         };
     }
 
