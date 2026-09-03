@@ -1009,6 +1009,27 @@ public class CafeRepartidorPublicController : ControllerBase
         if (stop.AssignedDriverId == null || !driverIds.Contains(stop.AssignedDriverId.Value))
             return BadRequest(new { error = "Esa parada no es tuya" });
 
+        // 2026-09-02: las paradas SUELTAS (las que se cargan a mano en el mapa, sin venta ni envío
+        // atrás) no las confirma nadie más: no hay factura, ni MercadoLibre, ni otro circuito que
+        // las cierre. Para esas el tilde del repartidor ES la entrega, y la oficina la ve entregada
+        // en el mapa. Para todo el resto (ventas, alquileres, Flex, ME1, visitas) el tilde sigue
+        // siendo solo visual, porque cada una tiene su propia forma de cerrarse de verdad.
+        var esParadaSuelta = stop.Origin is "manual" or "favorito";
+        if (esParadaSuelta)
+        {
+            stop.InternalStatus = req.Visto ? "entregado" : "pending";
+            stop.UpdatedAt = DateTime.UtcNow;
+            var vistosSuelta = await LeerVistosAsync(r.Id);
+            if (vistosSuelta.Remove(stopId))   // si venía tildada a mano, ya no hace falta
+            {
+                var k = VistosKey(r.Id);
+                var st2 = await _db.AppSettings.FindAsync(k);
+                if (st2 is not null) st2.Value = System.Text.Json.JsonSerializer.Serialize(vistosSuelta.OrderBy(x => x).ToList());
+            }
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, visto = req.Visto, entregada = req.Visto });
+        }
+
         var vistos = await LeerVistosAsync(r.Id);
         if (req.Visto) vistos.Add(stopId); else vistos.Remove(stopId);
 
@@ -1026,7 +1047,7 @@ public class CafeRepartidorPublicController : ControllerBase
         if (viejos.Count > 0) _db.AppSettings.RemoveRange(viejos);
 
         await _db.SaveChangesAsync();
-        return Ok(new { ok = true, visto = req.Visto });
+        return Ok(new { ok = true, visto = req.Visto, entregada = false });
     }
 
     /// <summary>2026-06-17: lista las ME1 asignadas al repartidor (pendientes + las que el repartidor entrego).

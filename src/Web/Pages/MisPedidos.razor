@@ -384,7 +384,7 @@
                 @<div class="mp-card" style="background:white; border:1px solid #e5e7eb; border-left:6px solid #0891b2; margin-bottom:0.6rem; padding:0.6rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem;">
                         <span style="font-weight:700; font-size:1rem; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(fx.Nombre ?? "Parada")</span>
-                        <span style="background:#dbeafe; color:#1e40af; font-size:0.62rem; font-weight:800; padding:0.05rem 0.35rem; border-radius:4px; flex:0 0 auto;">@(fx.Origin == "flex" ? "FLEX (solo ver)" : "SOLO VER")</span>
+                        <span style="background:#dbeafe; color:#1e40af; font-size:0.62rem; font-weight:800; padding:0.05rem 0.35rem; border-radius:4px; flex:0 0 auto;">@(fx.Origin == "flex" ? "FLEX (solo ver)" : (EsParadaSuelta(fx) ? "PARADA" : "SOLO VER"))</span>
                     </div>
                     <div style="font-size:0.85rem; color:#374151; margin-top:0.25rem;">@fx.Direccion</div>
                     @if (!string.IsNullOrEmpty(fx.Localidad)) { <div style="font-size:0.75rem; color:#6b7280;">@fx.Localidad</div> }
@@ -394,14 +394,26 @@
                         @if (fx.Entregado) { <span style="color:#15803d; font-weight:700;">✔ Entregado</span> }
                     </div>
                     <a href="@($"https://www.google.com/maps/dir/?api=1&destination={fx.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{fx.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}")" target="_blank" rel="noopener" style="display:block; margin-top:0.5rem; text-align:center; background:#0891b2; color:white; padding:0.55rem; border-radius:8px; font-size:0.9rem; font-weight:700; text-decoration:none;">🧭 Cómo llegar</a>
-                    @* 2026-09-02: los Flex se cierran en la app de MercadoLibre y MeLi tarda en
-                       confirmarlos. Este botón NO entrega nada: solo hace avanzar la lista para que
-                       el repartidor no tenga que buscar dónde estaba parado. *@
-                    <button type="button" @onclick="() => MarcarParadaVista(fx, true)" disabled="@(marcandoVisto == fx.Id)"
-                            style="width:100%; margin-top:0.5rem; padding:0.6rem; background:white; color:#0f766e; border:1.5px solid #0f766e; border-radius:8px; font-size:0.92rem; font-weight:700; cursor:pointer;">
-                        @(marcandoVisto == fx.Id ? "..." : "✓ Listo, seguir")
-                    </button>
-                    <div style="font-size:0.7rem; color:#9ca3af; text-align:center; margin-top:0.2rem;">Solo mueve tu lista. No marca la entrega.</div>
+                    @* 2026-09-02: dos botones distintos según qué sea la parada.
+                       · Parada suelta (cargada a mano, sin venta ni envío atrás): no la confirma
+                         nadie más, así que el tilde ES la entrega y la oficina la ve entregada.
+                       · Flex y demás: se cierran en su propio circuito y MeLi tarda en confirmar,
+                         así que el botón SOLO hace avanzar la lista. *@
+                    @if (EsParadaSuelta(fx))
+                    {
+                        <button type="button" @onclick="() => MarcarParadaVista(fx, true)" disabled="@(marcandoVisto == fx.Id)"
+                                style="width:100%; margin-top:0.5rem; padding:0.7rem; background:#15803d; color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:800; cursor:pointer;">
+                            @(marcandoVisto == fx.Id ? "..." : "✅ Entregué esta parada")
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" @onclick="() => MarcarParadaVista(fx, true)" disabled="@(marcandoVisto == fx.Id)"
+                                style="width:100%; margin-top:0.5rem; padding:0.6rem; background:white; color:#0f766e; border:1.5px solid #0f766e; border-radius:8px; font-size:0.92rem; font-weight:700; cursor:pointer;">
+                            @(marcandoVisto == fx.Id ? "..." : "✓ Listo, seguir")
+                        </button>
+                        <div style="font-size:0.7rem; color:#9ca3af; text-align:center; margin-top:0.2rem;">Solo mueve tu lista. No marca la entrega.</div>
+                    }
                     <button type="button" class="mp-card-btn-rechazar" @onclick="@(() => AbrirRechazo("mapeo", fx.Id, $"{fx.Nombre} · {fx.Direccion}"))">🚫 Rechazar esta parada</button>
                 </div>;
 
@@ -412,7 +424,7 @@
                     <div style="font-size:0.85rem; color:#374151; margin-top:0.15rem;">@hc.Direccion</div>
                     @if (!string.IsNullOrEmpty(hc.Localidad)) { <div style="font-size:0.75rem; color:#6b7280;">@hc.Localidad</div> }
                     <div style="font-size:0.8rem; color:#6b7280; margin-top:0.35rem;">@TextoParadaHecha(hc)</div>
-                    @if (hc.Visto && !hc.Entregado && !hc.NoEntregada)
+                    @if ((hc.Visto || (hc.Entregado && EsParadaSuelta(hc))) && !hc.NoEntregada)
                     {
                         <button type="button" @onclick="() => MarcarParadaVista(hc, false)" disabled="@(marcandoVisto == hc.Id)"
                                 style="width:100%; margin-top:0.5rem; padding:0.5rem; background:white; color:#6b7280; border:1px solid #d1d5db; border-radius:8px; font-size:0.85rem; font-weight:600; cursor:pointer;">
@@ -1180,6 +1192,13 @@
 
     private bool ParadaHecha(MisPedidosMapeoDto st) => st.Entregado || st.NoEntregada || st.Visto;
 
+    /// <summary>Parada suelta: la cargaron a mano en el mapa y no tiene venta, alquiler ni envío
+    /// atrás. Nadie más la confirma, así que cuando el repartidor la marca queda entregada de
+    /// verdad y la oficina la ve cerrada en el mapa.</summary>
+    private static bool EsParadaSuelta(MisPedidosMapeoDto st) => st.Origin is "manual" or "favorito";
+
+    private class MarcarVistoResp { public bool Ok { get; set; } public bool Visto { get; set; } public bool Entregada { get; set; } }
+
     /// <summary>Ya pasó por todas, pero algunas las tildó él y MeLi todavía no las confirmó.
     /// Para él el recorrido terminó; para los números de la oficina, todavía no.</summary>
     private bool RecorridoTerminadoParaEl => ParadasTotal > 0 && !TerminoRecorrido && mapeoRuta.All(ParadaHecha);
@@ -1224,15 +1243,28 @@
         marcandoVisto = st.Id;
         try
         {
-            bool ok;
+            bool ok; bool entregadaDeVerdad = false;
             try
             {
                 var resp = await Http.PostAsJsonAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/visto/{st.Id}", new { visto });
                 ok = resp.IsSuccessStatusCode;
+                if (ok)
+                {
+                    var r = await resp.Content.ReadFromJsonAsync<MarcarVistoResp>();
+                    entregadaDeVerdad = r?.Entregada ?? false;
+                }
             }
             catch { ok = false; }
             if (!ok) { MostrarToast("No pude guardarlo. Probá de nuevo.", true); return; }
-            st.Visto = visto;
+            // Las paradas sueltas quedan entregadas DE VERDAD (la oficina también las ve así);
+            // el resto solo se tilda en su lista.
+            if (EsParadaSuelta(st))
+            {
+                st.Entregado = entregadaDeVerdad;
+                st.DateDelivered = entregadaDeVerdad ? DateTime.UtcNow : null;
+                st.Visto = false;
+            }
+            else st.Visto = visto;
             paradaAbiertaManual = null;   // que la lista vuelva a seguir sola
             acomodarPantalla = true;
         }
