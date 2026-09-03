@@ -688,6 +688,7 @@ public class MapeoStopsController : ControllerBase
     public async Task<IActionResult> TraerAtrasados([FromQuery] DateTime? fecha = null)
     {
         var dia = FechaDelMapa(fecha);
+        await SincronizarFlexDeMeliAsync();
         var n = await SumarEnviosAsync(await FlexAtrasadosAsync(dia), dia);
         return Ok(new { creadas = n, mensaje = Mensaje(n, "atrasados nuevos", dia) });
     }
@@ -713,8 +714,31 @@ public class MapeoStopsController : ControllerBase
     public async Task<IActionResult> TraerFlex([FromQuery] DateTime? fecha = null)
     {
         var dia = FechaDelMapa(fecha);
+        // 2026-09-03: PRIMERO le preguntamos a MercadoLibre. La sincronización automática solo
+        // REFRESCA los envíos que ya tenemos: los Flex nuevos del día entran nada más cuando alguien
+        // aprieta "Sincronizar" a mano en la pantalla de MeLi. Sin esta línea el botón miraba una
+        // base vacía y decía "0" toda la mañana, que es justo lo que pasó el primer día.
+        var buscados = await SincronizarFlexDeMeliAsync();
         var n = await SumarEnviosAsync(await FlexDelDiaAsync(dia), dia);
-        return Ok(new { creadas = n, mensaje = Mensaje(n, "Flex nuevos", dia) });
+        var msg = Mensaje(n, "Flex nuevos", dia);
+        if (n == 0 && buscados == 0) msg = "Le pregunté a MercadoLibre y todavía no hay Flex para ese día.";
+        return Ok(new { creadas = n, mensaje = msg });
+    }
+
+    /// <summary>Le pide a MercadoLibre los envíos Flex de los últimos días y los guarda. Tolera el
+    /// error: si MeLi no contesta, seguimos con lo que ya tenemos guardado.</summary>
+    private async Task<int> SincronizarFlexDeMeliAsync()
+    {
+        try
+        {
+            var r = await _shipmentSvc.SyncFlexAsync(daysBack: 3, maxOrdersPerAccount: 200);
+            return r?.TotalSynced ?? 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Traer Flex: no pude preguntarle a MercadoLibre, sigo con lo guardado");
+            return 0;
+        }
     }
 
     [HttpPost("traer/me1")]
