@@ -7280,10 +7280,34 @@ public class ApiClient
     // Vacía un DÍA entero de paradas (el que se le pase; null = hoy).
     public async Task<bool> ClearMapeoStopsAsync(DateTime? fecha = null)
         => await DeleteAsync("/api/mapeo/stops" + FechaQs(fecha, "?"));
+    // Importar Flex por período (hoy / mañana / atrasados / todos). 2026-09-03: la ventanita que
+    // usaba esto se sacó del mapa (tenía una lista desplegable y el usuario las odia). El caso
+    // normal lo cubren los tres botones "Traer" de acá abajo; se dejan estos dos por si algún día
+    // hace falta volver a traer los ATRASADOS, que los botones nuevos no miran.
     public async Task<object?> ImportFlexAsStopsAsync(string mode = "today", DateTime? fecha = null)
         => await PostAsync<object>($"/api/mapeo/stops/import-flex?mode={Uri.EscapeDataString(mode)}{FechaQs(fecha)}", new { });
     public async Task<ImportFlexPreviewDto?> ImportFlexPreviewAsync(string mode = "today", DateTime? fecha = null)
         => await GetAsync<ImportFlexPreviewDto>($"/api/mapeo/stops/import-flex-preview?mode={Uri.EscapeDataString(mode)}{FechaQs(fecha)}");
+
+    // ===== Mapeo: los tres botones de "Traer" (2026-09-03) =====
+    // En vez de ir a buscar las cosas a cada pantalla, el mapa las trae de un toque PARA EL DÍA en
+    // el que estás parado. Los tres POST son idempotentes: llamarlos de nuevo no duplica nada.
+
+    /// <summary>Cuántos hay para traer de cada cosa, sin traer nada (alimenta el número del botón).</summary>
+    public async Task<MapeoTraerEstadoDto?> GetMapeoTraerEstadoAsync(DateTime? fecha = null)
+        => await GetAsync<MapeoTraerEstadoDto>("/api/mapeo/stops/traer/estado" + FechaQs(fecha, "?"));
+    /// <summary>Los Flex que MercadoLibre promete para ese día.</summary>
+    public async Task<MapeoTraerResult?> TraerFlexAlMapaAsync(DateTime? fecha = null)
+        => await PostAsync<MapeoTraerResult>("/api/mapeo/stops/traer/flex" + FechaQs(fecha, "?"), new { });
+    /// <summary>Los ME1 que están sin entregar.</summary>
+    public async Task<MapeoTraerResult?> TraerMe1AlMapaAsync(DateTime? fecha = null)
+        => await PostAsync<MapeoTraerResult>("/api/mapeo/stops/traer/me1" + FechaQs(fecha, "?"), new { });
+    /// <summary>Las ventas de hoy y ayer sin entregar.</summary>
+    public async Task<MapeoTraerResult?> TraerVentasAlMapaAsync(DateTime? fecha = null)
+        => await PostAsync<MapeoTraerResult>("/api/mapeo/stops/traer/ventas" + FechaQs(fecha, "?"), new { });
+    /// <summary>Los Flex ATRASADOS: prometidos para un dia anterior y todavia sin entregar.</summary>
+    public async Task<MapeoTraerResult?> TraerAtrasadosAlMapaAsync(DateTime? fecha = null)
+        => await PostAsync<MapeoTraerResult>("/api/mapeo/stops/traer/atrasados" + FechaQs(fecha, "?"), new { });
 
     public async Task<object?> AssignBulkStopsAsync(List<int> stopIds, int? driverId)
         => await PostAsync<object>("/api/mapeo/stops/assign-bulk", new { stopIds, driverId });
@@ -8933,3 +8957,10 @@ public class ApiClient
 // 2026-08-03: resultado del borrado de cliente.
 // Deleted = se borro de verdad. SoftDeleted = no se pudo borrar (tiene movimientos) y quedo Inactivo.
 public record DeleteClienteResult(bool Deleted, bool SoftDeleted, string? Message);
+
+// 2026-09-03: los tres botones de "Traer" del mapa.
+// Cuántos hay para traer de cada cosa en ese día (sin traer nada todavía).
+public record MapeoTraerEstadoDto(int Flex, int Me1, int Ventas, int Atrasados, string? Dia);
+// Qué pasó al traer: cuántas paradas entraron, cuántas quedaron sin ubicación (hay que buscarlas
+// a mano en el mapa) y el mensaje listo para mostrarle al usuario.
+public record MapeoTraerResult(int Creadas, int SinUbicacion, string? Mensaje);

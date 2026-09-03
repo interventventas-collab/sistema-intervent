@@ -630,6 +630,142 @@ public class MapeoStopsController : ControllerBase
     [HttpPost("clear-stale")]
     public IActionResult ClearStale() => Ok(new { cleared = 0, mensaje = "Las paradas de días anteriores ya no se borran: son el historial." });
 
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 2026-09-03: LOS TRES BOTONES DE "TRAER". Idea del usuario: en vez de ir a buscar las cosas a
+    // cada pantalla, que el mapa las traiga de un toque, para el día en el que estás parado.
+    //
+    // ⚠ El corte de las VENTAS lo eligió él y tiene razón de ser: "pendientes" a secas son 782, de
+    // las cuales 683 son cotizaciones viejas de todo el año que nadie va a entregar (ni siquiera
+    // están cargadas a un repartidor). Con "hoy y ayer" quedan las que de verdad hay que repartir.
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    private const int VentasDiasAtras = 1;   // hoy y ayer
+
+    /// <summary>Cuántos hay para traer de cada cosa, sin traer nada. Alimenta el número de los botones.</summary>
+    [HttpGet("traer/estado")]
+    public async Task<IActionResult> TraerEstado([FromQuery] DateTime? fecha = null)
+    {
+        var dia = FechaDelMapa(fecha);
+        var yaEnElDia = await _db.MapeoStops.Where(s => s.FechaReparto == dia)
+            .Select(s => new { s.Origin, s.OriginRefId }).ToListAsync();
+        var refsMeli = yaEnElDia.Where(x => x.Origin is "flex" or "me1" && x.OriginRefId != null).Select(x => x.OriginRefId!).ToHashSet();
+        var refsVenta = yaEnElDia.Where(x => x.Origin == "venta_cafe" && x.OriginRefId != null).Select(x => x.OriginRefId!).ToHashSet();
+
+        var flex = (await FlexDelDiaAsync(dia)).Count(x => !refsMeli.Contains(x.MeliShipmentId.ToString()));
+        var me1 = (await Me1PendientesAsync()).Count(x => !refsMeli.Contains(x.MeliShipmentId.ToString()));
+        var ventas = (await VentasRecientesAsync(dia)).Count(v => !refsVenta.Contains(v.Id.ToString()));
+        var atrasados = (await FlexAtrasadosAsync(dia)).Count(x => !refsMeli.Contains(x.MeliShipmentId.ToString()));
+        return Ok(new { flex, me1, ventas, atrasados, dia = dia.ToString("yyyy-MM-dd") });
+    }
+
+    private async Task<List<MeliShipment>> FlexDelDiaAsync(DateTime dia)
+    {
+        var d1 = dia.AddHours(3); var d2 = dia.AddDays(1).AddHours(3);
+        return await _db.MeliShipments
+            .Where(s => s.LogisticType == "self_service" && s.Latitude != null && s.Longitude != null
+                     && s.Status != "delivered" && s.Status != "cancelled" && s.Status != "not_delivered"
+                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) >= d1
+                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < d2)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Flex ATRASADOS: MercadoLibre los prometió para un día anterior y siguen sin entregar. Sin esto
+    /// se perdían — "Traer Flex" mira solo el día en el que estás parado, así que un envío prometido
+    /// para el lunes que el miércoles sigue dando vueltas no aparecía en ningún botón.
+    /// </summary>
+    private async Task<List<MeliShipment>> FlexAtrasadosAsync(DateTime dia)
+    {
+        var d1 = dia.AddHours(3);   // 00:00 del día que estoy mirando, en UTC
+        return await _db.MeliShipments
+            .Where(s => s.LogisticType == "self_service" && s.Latitude != null && s.Longitude != null
+                     && s.Status != "delivered" && s.Status != "cancelled" && s.Status != "not_delivered"
+                     && s.EstimatedDeliveryLimit != null && s.EstimatedDeliveryLimit < d1)
+            .ToListAsync();
+    }
+
+    [HttpPost("traer/atrasados")]
+    public async Task<IActionResult> TraerAtrasados([FromQuery] DateTime? fecha = null)
+    {
+        var dia = FechaDelMapa(fecha);
+        var n = await SumarEnviosAsync(await FlexAtrasadosAsync(dia), dia);
+        return Ok(new { creadas = n, mensaje = Mensaje(n, "atrasados nuevos", dia) });
+    }
+
+    /// <summary>ME1 sin entregar. No van por fecha prometida: son pocos y se manejan a mano.</summary>
+    private async Task<List<MeliShipment>> Me1PendientesAsync()
+        => await _db.MeliShipments
+            .Where(s => s.Mode == "me1" && s.Latitude != null && s.Longitude != null
+                     && s.Status != "delivered" && s.Status != "cancelled" && s.Status != "not_delivered")
+            .ToListAsync();
+
+    /// <summary>Ventas de hoy y ayer sin entregar, con algún domicilio para ubicarlas.</summary>
+    private async Task<List<CafeVenta>> VentasRecientesAsync(DateTime dia)
+    {
+        var desde = dia.AddDays(-VentasDiasAtras);
+        return await _db.CafeVentas.Include(v => v.ClienteNav)
+            .Where(v => v.EntregadoPorRepartidorId == null && v.Estado != "anulado"
+                     && v.Fecha >= desde && v.Fecha < dia.AddDays(1))
+            .ToListAsync();
+    }
+
+    [HttpPost("traer/flex")]
+    public async Task<IActionResult> TraerFlex([FromQuery] DateTime? fecha = null)
+    {
+        var dia = FechaDelMapa(fecha);
+        var n = await SumarEnviosAsync(await FlexDelDiaAsync(dia), dia);
+        return Ok(new { creadas = n, mensaje = Mensaje(n, "Flex nuevos", dia) });
+    }
+
+    [HttpPost("traer/me1")]
+    public async Task<IActionResult> TraerMe1([FromQuery] DateTime? fecha = null)
+    {
+        var dia = FechaDelMapa(fecha);
+        var n = await SumarEnviosAsync(await Me1PendientesAsync(), dia);
+        return Ok(new { creadas = n, mensaje = Mensaje(n, "ME1 nuevos", dia) });
+    }
+
+    /// <summary>Suma al día los envíos que todavía no están, y devuelve cuántos entraron. Se fija
+    /// primero cuáles faltan (en vez de adivinar por la respuesta de cada uno), así el número que
+    /// le mostramos al usuario es el de verdad.</summary>
+    private async Task<int> SumarEnviosAsync(List<MeliShipment> envios, DateTime dia)
+    {
+        if (envios.Count == 0) return 0;
+        var refs = envios.Select(s => s.MeliShipmentId.ToString()).ToList();
+        var yaEstan = (await _db.MapeoStops
+            .Where(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
+                     && refs.Contains(s.OriginRefId) && s.FechaReparto == dia)
+            .Select(s => s.OriginRefId!).ToListAsync()).ToHashSet();
+
+        int n = 0;
+        foreach (var sh in envios)
+        {
+            if (yaEstan.Contains(sh.MeliShipmentId.ToString())) continue;
+            await AddFlexStopFromShipmentAsync(sh, dia);
+            n++;
+        }
+        return n;
+    }
+
+    [HttpPost("traer/ventas")]
+    public async Task<IActionResult> TraerVentas([FromQuery] DateTime? fecha = null)
+    {
+        var dia = FechaDelMapa(fecha);
+        int n = 0, sinUbicacion = 0;
+        foreach (var v in await VentasRecientesAsync(dia))
+        {
+            var r = await _ventaMapeo.SumarVentaAsync(v, fecha: dia);
+            if (r.Ok && !r.YaEstaba) { n++; if (r.SinUbicacion) sinUbicacion++; }
+        }
+        var msg = Mensaje(n, "ventas nuevas", dia);
+        if (sinUbicacion > 0) msg += $" · {sinUbicacion} sin ubicación, buscalas en el mapa";
+        return Ok(new { creadas = n, sinUbicacion, mensaje = msg });
+    }
+
+    private static string Mensaje(int n, string que, DateTime dia)
+        => n == 0 ? $"No hay {que} para sumar a ese día."
+                  : $"Sumé {n} al mapa del {dia:dd/MM}.";
+
     // ══════════ 2026-09-03: armar un día con los envíos que MeLi promete para ese día ══════════
 
     /// <summary>Cuántos envíos de MercadoLibre hay prometidos para ese día que todavía no están en

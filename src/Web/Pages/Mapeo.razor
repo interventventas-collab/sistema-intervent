@@ -1357,6 +1357,42 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                     <span class="mapeo-dock-label">Agregar parada</span>
                 </button>
+                @* Los tres "Traer": el mapa va a buscar solo lo que hay que repartir ESE día, en vez
+                   de tener que ir pantalla por pantalla. Al lado del texto va CUÁNTOS hay, así se
+                   sabe qué va a pasar antes de tocar. Si hay 0, el botón queda apagado (no se
+                   esconde: que se vea que existe y que hoy no hay nada). *@
+                <button class="mapeo-dock-btn" @onclick="TraerFlexAlMapa"
+                        disabled="@(traerBusy is not null || TraerFlexN == 0)"
+                        style="@(TraerFlexN == 0 ? EstiloApagado : null)"
+                        title="Los envíos Flex que MercadoLibre promete para ese día">
+                    <svg class="@(TrayendoFlex ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    <span class="mapeo-dock-label">Traer Flex · @TraerFlexN</span>
+                </button>
+                <button class="mapeo-dock-btn" @onclick="TraerMe1AlMapa"
+                        disabled="@(traerBusy is not null || TraerMe1N == 0)"
+                        style="@(TraerMe1N == 0 ? EstiloApagado : null)"
+                        title="Los envíos ME1 que están sin entregar">
+                    <svg class="@(TrayendoMe1 ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                    <span class="mapeo-dock-label">Traer ME1 · @TraerMe1N</span>
+                </button>
+                <button class="mapeo-dock-btn" @onclick="TraerVentasAlMapa"
+                        disabled="@(traerBusy is not null || TraerVentasN == 0)"
+                        style="@(TraerVentasN == 0 ? EstiloApagado : null)"
+                        title="Las ventas de hoy y de ayer que todavía no se entregaron">
+                    <svg class="@(TrayendoVentas ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                    <span class="mapeo-dock-label">Traer ventas · @TraerVentasN</span>
+                </button>
+                @* Atrasados: solo aparece si HAY. Son los Flex que MercadoLibre prometió para un día
+                   anterior y siguen dando vueltas — si no estuviera este botón, no los trae ninguno
+                   de los otros, porque miran el día en el que estás parado. *@
+                @if (TraerAtrasadosN > 0)
+                {
+                    <button class="mapeo-dock-btn" @onclick="TraerAtrasadosAlMapa" disabled="@(traerBusy is not null)"
+                            title="Flex prometidos para un día anterior que siguen sin entregar">
+                        <svg class="@(TrayendoAtrasados ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        <span class="mapeo-dock-label">Traer atrasados · @TraerAtrasadosN</span>
+                    </button>
+                }
                 }
                 @* ═══════════ 2do · Armar la ruta ═══════════
                    En días pasados queda solo "Ver líneas" (mirar el recorrido que se hizo). *@
@@ -2653,65 +2689,10 @@
     </div>
 }
 
-@if (showImportFlexModal)
-{
-    <div class="modal-overlay" @onclick="() => showImportFlexModal = false">
-        <div class="modal-card modal-small" @onclick:stopPropagation="true">
-            <div class="modal-header" style="background:#dbeafe;">
-                <h3 style="margin:0;">📥 Sumar Flex a paradas</h3>
-                <button class="btn-close" @onclick="() => showImportFlexModal = false">&times;</button>
-            </div>
-            <div class="modal-body" style="font-size:0.9rem;">
-                <div class="form-group">
-                    <label class="form-label">Período a importar</label>
-                    <select class="form-input" @bind="importFlexDays" @bind:after="LoadImportPreview">
-                        <option value="today">Hoy</option>
-                        <option value="tomorrow">Mañana</option>
-                        <option value="overdue">⚠ Atrasados</option>
-                        <option value="all">Todos los pendientes</option>
-                    </select>
-                </div>
-                @if (importPreview is null)
-                {
-                    <p class="text-muted" style="text-align:center;">Cargando preview...</p>
-                }
-                else
-                {
-                    <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:0.6rem; margin-bottom:0.6rem;">
-                        <div style="font-size:0.85rem;">
-                            <strong>📊 Encontrados:</strong> @importPreview.Total Flex en el período<br/>
-                            <strong>✅ Ya en paradas:</strong> @importPreview.YaCargados<br/>
-                            <strong style="color:#15803d; font-size:1.05rem;">➕ A importar: @importPreview.AImportar</strong>
-                        </div>
-                    </div>
-                    @if (importPreview.AImportar == 0)
-                    {
-                        <p style="color:#6b7280; text-align:center; padding:0.5rem;">No hay Flex nuevos para importar en este período.</p>
-                    }
-                    else if (importPreview.Sample.Count > 0)
-                    {
-                        <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.3rem;">Primeros @importPreview.Sample.Count de @importPreview.AImportar:</div>
-                        <ul style="font-size:0.78rem; color:#4b5563; padding-left:1.2rem; margin:0;">
-                            @foreach (var s in importPreview.Sample)
-                            {
-                                <li><strong>@(s.ReceiverName ?? "—")</strong> · @(s.City ?? "") · @(s.AddressLine ?? "")</li>
-                            }
-                            @if (importPreview.AImportar > importPreview.Sample.Count)
-                            { <li style="color:#9ca3af;">... y @(importPreview.AImportar - importPreview.Sample.Count) más</li> }
-                        </ul>
-                    }
-                }
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="() => showImportFlexModal = false" disabled="@importingFlex">Cancelar</button>
-                <button class="btn btn-primary" @onclick="ConfirmImportFlex"
-                        disabled="@(importingFlex || importPreview is null || importPreview.AImportar == 0)">
-                    @(importingFlex ? "Importando..." : $"Importar {(importPreview?.AImportar ?? 0)}")
-                </button>
-            </div>
-        </div>
-    </div>
-}
+@* 2026-09-03: se sacó la ventanita "📥 Sumar Flex a paradas". Tenía una lista desplegable de
+   período (hoy / mañana / atrasados / todos) y el usuario no las quiere. El caso normal ahora
+   lo hacen los botones "Traer Flex / Traer ME1 / Traer ventas" de la barra negra, que trabajan
+   siempre sobre el día que estás mirando. *@
 
 @if (showArmarRutaModal)
 {
@@ -2731,7 +2712,7 @@
                 else if ((stops?.Count ?? 0) == 0)
                 {
                     <div style="background:#fef3c7; border-left:3px solid #d97706; padding:0.7rem; margin-bottom:0.7rem; font-size:0.9rem;">
-                        ⚠ No hay paradas. Tocá <strong>📥 Sumar Flex a paradas</strong> o <strong>➕ Agregar parada</strong> arriba.
+                        ⚠ No hay paradas. Tocá <strong>Traer Flex</strong>, <strong>Traer ME1</strong> o <strong>Traer ventas</strong> en la barra negra, o sumá una a mano con <strong>Agregar parada</strong>.
                     </div>
                 }
                 else
@@ -4278,12 +4259,13 @@
     private List<CafeClienteDto>? clientesTodos;
 
     // Armar ruta
-    private bool showArmarRutaModal, importingFlex, routeBusy;
+    private bool showArmarRutaModal, routeBusy;
 
-    // Importar Flex
-    private bool showImportFlexModal;
-    private string importFlexDays = "today"; // se reemplaza al abrir el modal con el filtro principal
-    private ImportFlexPreviewDto? importPreview;
+    // Los tres botones de "Traer" (Flex / ME1 / ventas) de la barra negra.
+    // traerEstado = cuántos hay para traer de cada cosa en el día que se está mirando.
+    // traerBusy = cuál de los tres se está trayendo ahora ("flex" | "me1" | "ventas"), o null.
+    private MapeoTraerEstadoDto? traerEstado;
+    private string? traerBusy;
 
     private bool reseteandoTodo;
     // Historial de rutas (snapshots)
@@ -4413,6 +4395,7 @@
 
         await LoadStops();
         ReconstruirZonasCreadas();
+        await CargarTraerEstado();   // cada día tiene lo suyo para traer
         await LoadAndRender();
         await PrenderLineasAlEntrar();
         StateHasChanged();
@@ -5231,6 +5214,7 @@
             await LoadClientesMapeados();
             await LoadStops();
             ReconstruirZonasCreadas(); // rearma los cuadraditos "Zona N" desde las paradas guardadas (sobrevive al refresco)
+            await CargarTraerEstado(); // números de los botones "Traer Flex / ME1 / ventas"
             await CargarNotas();
             await LoadAndRender();
             await PrenderLineasAlEntrar(); // las líneas de los recorridos arrancan visibles
@@ -8058,36 +8042,78 @@
         catch { ToastService.Error("No se pudo copiar"); }
     }
 
-    private async Task OpenImportFlexModal()
+    // ══════════ Los tres botones de "Traer" (2026-09-03) ══════════
+    // Reemplazan a la vieja ventanita "Sumar Flex a paradas". Traen lo que hay que repartir EL DÍA
+    // que se está mirando, de un toque y sin desplegables. Los tres endpoints son idempotentes:
+    // tocar de nuevo no duplica paradas.
+
+    /// <summary>Cuántos hay para traer de cada cosa. Es lo que se muestra al lado del texto del botón.</summary>
+    private int CuantosParaTraer(string que) => que switch
     {
-        // Arranca con el mismo modo que el filtro principal del Mapeo
-        importFlexDays = diasFiltro;
-        importPreview = null;
-        showImportFlexModal = true;
-        await LoadImportPreview();
+        "flex"   => traerEstado?.Flex ?? 0,
+        "me1"    => traerEstado?.Me1 ?? 0,
+        "ventas" => traerEstado?.Ventas ?? 0,
+        "atrasados" => traerEstado?.Atrasados ?? 0,
+        _        => 0,
+    };
+
+    // Atajos para el HTML de los botones (así el markup no lleva textos entre comillas adentro).
+    private int TraerFlexN => CuantosParaTraer("flex");
+    private int TraerMe1N => CuantosParaTraer("me1");
+    private int TraerVentasN => CuantosParaTraer("ventas");
+    private bool TrayendoFlex => traerBusy == "flex";
+    private bool TrayendoMe1 => traerBusy == "me1";
+    private bool TrayendoVentas => traerBusy == "ventas";
+    private int TraerAtrasadosN => CuantosParaTraer("atrasados");
+    private bool TrayendoAtrasados => traerBusy == "atrasados";
+    private const string EstiloApagado = "opacity:0.4;";   // no hay nada para traer
+    private const string ClaseGirando = "mapeo-dock-spin"; // mientras está trayendo
+
+    private Task TraerFlexAlMapa() => TraerAlMapa("flex");
+    private Task TraerMe1AlMapa() => TraerAlMapa("me1");
+    private Task TraerVentasAlMapa() => TraerAlMapa("ventas");
+    private Task TraerAtrasadosAlMapa() => TraerAlMapa("atrasados");
+
+    /// <summary>Vuelve a preguntar cuántos hay. Se llama al abrir el mapa, al cambiar de día y
+    /// después de traer algo. En días pasados no se pregunta: ahí no se trae nada.</summary>
+    private async Task CargarTraerEstado()
+    {
+        if (SoloLectura) { traerEstado = null; return; }
+        try { traerEstado = await Api.GetMapeoTraerEstadoAsync(FechaMapa); }
+        catch { traerEstado = null; }   // si falla, los botones quedan en 0 y apagados
     }
 
-    private async Task LoadImportPreview()
-    {
-        importPreview = null;
-        try { importPreview = await Api.ImportFlexPreviewAsync(importFlexDays, FechaMapa); }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-    }
-
-    private async Task ConfirmImportFlex()
+    private async Task TraerAlMapa(string que)
     {
         if (DiaPasadoNoSeToca()) return;   // día pasado = historial: se mira, no se toca
-        importingFlex = true;
+        if (traerBusy is not null) return;
+        if (CuantosParaTraer(que) == 0) return;   // botón apagado: no hay nada que traer
+        traerBusy = que;
+        StateHasChanged();
         try
         {
-            await Api.ImportFlexAsStopsAsync(importFlexDays, FechaMapa);
+            MapeoTraerResult? r;
+            if (que == "flex") r = await Api.TraerFlexAlMapaAsync(FechaMapa);
+            else if (que == "me1") r = await Api.TraerMe1AlMapaAsync(FechaMapa);
+            else if (que == "ventas") r = await Api.TraerVentasAlMapaAsync(FechaMapa);
+            else if (que == "atrasados") r = await Api.TraerAtrasadosAlMapaAsync(FechaMapa);
+            else return;
+            var msg = string.IsNullOrWhiteSpace(r?.Mensaje) ? "Listo." : r!.Mensaje!;
+            // El mensaje de las ventas ya viene diciendo cuántas quedaron sin ubicación; cuando pasa
+            // eso lo avisamos más fuerte, porque hay que ir a buscarlas a mano en el mapa.
+            if ((r?.SinUbicacion ?? 0) > 0) ToastService.Warning(msg);
+            else if ((r?.Creadas ?? 0) > 0) ToastService.Success(msg);
+            else ToastService.Info(msg);
             await LoadStops();
-            ToastService.Success($"Importados {importPreview?.AImportar ?? 0} Flex a la lista de paradas");
-            showImportFlexModal = false;
             await RenderMap();
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { importingFlex = false; }
+        catch (Exception ex) { ToastService.Error("No se pudo traer: " + ex.Message); }
+        finally
+        {
+            traerBusy = null;
+            await CargarTraerEstado();   // los números quedan al día después de traer
+            StateHasChanged();
+        }
     }
 
     private void OpenArmarRutaModal() => showArmarRutaModal = true;
