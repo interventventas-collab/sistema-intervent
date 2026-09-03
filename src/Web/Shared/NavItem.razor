@@ -11,6 +11,12 @@ else
         <a href="@Href" class="nav-item @(IsActive ? "active" : "")" @onclick="OnClick" @onclick:preventDefault>
             <span class="nav-icon">@Icon</span>
             <span class="nav-label">@Label</span>
+            @* 2026-09-02: numerito rojo (como el de WhatsApp) para avisar sin tener que entrar.
+               Se usa en "Stock ideal / Faltantes": dice cuántos productos hay para pedir. *@
+            @if (Badge is int n && n > 0)
+            {
+                <span class="nav-badge" title="@BadgeTitle">@(n > 99 ? "99+" : n.ToString())</span>
+            }
         </a>
         @* 2026-05-28: chips D/O para modo edición del admin. Solo se muestran si EditMode=true y hay MenuKey. *@
         @if (EditMode && !string.IsNullOrEmpty(MenuKey))
@@ -36,6 +42,11 @@ else
         align-items: center;
     }
     .nav-item-wrap > .nav-item { flex: 1; }
+    .nav-badge {
+        background: #dc2626; color: #fff; font-size: 0.66rem; font-weight: 700;
+        border-radius: 999px; padding: 0.05rem 0.38rem; margin-left: auto;
+        line-height: 1.35; flex-shrink: 0;
+    }
     .nav-edit-chips {
         display: flex;
         gap: 4px;
@@ -75,6 +86,9 @@ else
     // 2026-05-28: modo edición para que el admin tilde D/O al lado del item.
     [Parameter] public bool EditMode { get; set; } = false;
     [Parameter] public string? MenuKey { get; set; }
+    /// <summary>2026-09-02 — Numerito rojo al lado del texto. Null o 0 = no se muestra nada.</summary>
+    [Parameter] public int? Badge { get; set; }
+    [Parameter] public string? BadgeTitle { get; set; }
     [Parameter] public bool DepoEnabled { get; set; }
     [Parameter] public bool OfiEnabled { get; set; }
     [Parameter] public EventCallback<(string Role, bool Enabled)> OnToggleVisibility { get; set; }

@@ -330,6 +330,16 @@ public class StockIdealController : ControllerBase
             rows));
     }
 
+    /// <summary>GET /api/stock/ideal/pendientes/contador — solo el numero, para el menu.
+    /// A proposito NO engancha (no busca productos nuevos): tiene que ser barato porque lo pide
+    /// el menu en cada pantalla. De enganchar se ocupan el robot y la pantalla al entrar.</summary>
+    [HttpGet("pendientes/contador")]
+    public async Task<IActionResult> ContadorPendientes()
+    {
+        var total = await _db.CafeStockFaltantes.CountAsync(f => f.Estado == "PENDIENTE");
+        return Ok(new { total });
+    }
+
     /// <summary>POST /api/stock/ideal/pendientes/{id}/pedido — "ya lo pedi": sale de la lista.</summary>
     [HttpPost("pendientes/{id:int}/pedido")]
     public async Task<IActionResult> MarcarPedido(int id, [FromBody] MarcarPedidoRequest? req)

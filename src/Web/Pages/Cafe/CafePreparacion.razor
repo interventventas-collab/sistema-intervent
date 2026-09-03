@@ -148,6 +148,8 @@
     }
     .prep-item-stock.ok { background: #dcfce7; border-color: #86efac; color: #166534; }
     .prep-item-stock.bajo { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+    /* 2026-09-02: tercer estado — alcanza para el pedido, pero deja el stock por debajo del piso. */
+    .prep-item-stock.aviso { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
     .prep-item-stock-label { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.5px; line-height: 1.1; }
     .prep-item-stock-valor { font-size: 0.95rem; font-weight: 700; margin-top: 2px; }
     .prep-item:last-child { border-bottom: none; }
@@ -644,6 +646,16 @@
     .prep-scan-q .q { font-size: 0.9rem; color: #111827; font-weight: 600; }
     .prep-scan-q .a { font-size: 0.85rem; color: #166534; margin-top: 0.15rem; padding-left: 0.9rem; }
     .prep-scan-q .a.sin { color: #b91c1c; }
+    /* 2026-09-02: aviso de faltantes arriba de todo. Ámbar, no rojo: no es una alarma, es un
+       recordatorio de que hay que pedir. */
+    .prep-faltantes {
+        display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;
+        margin: 0.5rem 0 0; padding: 0.55rem 0.8rem;
+        background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px;
+        font-size: 0.88rem; color: #78350f; cursor: pointer;
+    }
+    .prep-faltantes:hover { background: #fef3c7; }
+    .prep-faltantes-link { margin-left: auto; color: #92400e; font-weight: 600; font-size: 0.82rem; }
 </style>
 
 <div class="content-container" style="padding: 0.8rem;">
@@ -681,6 +693,19 @@
             Auto-refresh cada 10 s · última: @ultimaActualizacion.ToString("HH:mm:ss")
         </span>
     </div>
+
+    @* 2026-09-02: aviso de lo que hay que pedirle al proveedor. Esta pantalla es la que el
+       depósito mira todo el día, así que el faltante les cae a la vista sin ir a buscarlo.
+       Si no falta nada, no aparece nada: no molesta. *@
+    @if (faltantesParaPedir > 0)
+    {
+        <div class="prep-faltantes" @onclick='() => Navigation.NavigateTo("/stock/ideal")'
+             title="Ver la lista y bajar el Excel del pedido">
+            📦 <strong>@faltantesParaPedir</strong>
+            @(faltantesParaPedir == 1 ? "producto quedó" : "productos quedaron") por debajo del stock que queremos tener
+            <span class="prep-faltantes-link">ver qué hay que pedir →</span>
+        </div>
+    }
 
     @* 2026-06-08: buscador en vivo que filtra cards por número de factura/comprobante o cliente.
        Se aplica a "Para armar" y "Ya armados" simultaneamente. *@
@@ -1207,12 +1232,17 @@
         else ToastService.Error("No se pudo sacar la visita");
     }
 
+    /// <summary>2026-09-02 — Productos por debajo del stock ideal/piso. 0 = no se muestra el aviso.</summary>
+    private int faltantesParaPedir;
+
     protected override async Task OnInitializedAsync()
     {
         await Operator.LoadAsync();
         await Cargar();
         // Camino al picking: estado del celu del deposito (no bloquea si falla)
         try { pickingDispositivo = await Api.GetPickingDispositivoAsync(); } catch { }
+        // 2026-09-02: cuántos productos hay para pedir, para el aviso de arriba.
+        try { faltantesParaPedir = await Api.GetStockIdealPendientesContadorAsync(); } catch { }
         // Auto-refresh cada 10 segundos
         refreshTimer = new System.Threading.Timer(async _ => await InvokeAsync(Cargar), null, 10000, 10000);
     }

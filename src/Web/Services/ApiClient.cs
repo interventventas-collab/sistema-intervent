@@ -3110,6 +3110,19 @@ public class ApiClient
         return await GetAsync<StockIdealPendientesResultDto>(url);
     }
 
+    /// <summary>Solo el número de productos para pedir. Lo usa el menú, así que es liviano.</summary>
+    public async Task<int> GetStockIdealPendientesContadorAsync()
+    {
+        try
+        {
+            var r = await GetAsync<ContadorDto>("/api/stock/ideal/pendientes/contador");
+            return r?.Total ?? 0;
+        }
+        catch { return 0; }
+    }
+
+    private class ContadorDto { public int Total { get; set; } }
+
     public async Task<bool> MarcarStockIdealPedidoAsync(int id, decimal? cantidadPedida = null)
     {
         await SetAuthHeaderAsync();

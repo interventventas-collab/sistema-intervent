@@ -654,7 +654,11 @@
                     {
                         var href = entry.Href;
                         var label = $"{entry.Emoji} {entry.Label}";
+                        // El numerito de "para pedir" también acá: depósito entra por este menú.
+                        var badge = k.Equals("stock/ideal", StringComparison.OrdinalIgnoreCase)
+                            ? faltantesParaPedir : (int?)null;
                         <NavItem Href="@href" Label="@label" Icon="@SvgIcons.Package"
+                                 Badge="@badge" BadgeTitle="Productos abajo del stock ideal, para pedir"
                                  IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
                     }
                 }
@@ -846,6 +850,7 @@
                              IsActive="@IsActive("/stock/reposicion")" OnClick="@(() => NavigateTo("/stock/reposicion"))" />
                     @* 2026-09-02: stock ideal — cuanto queremos tener siempre + lista de faltantes para pedir *@
                     <NavItem Href="/stock/ideal" Label="📦 Stock ideal / Faltantes" Icon="@SvgIcons.Package"
+                             Badge="@faltantesParaPedir" BadgeTitle="Productos abajo del stock ideal, para pedir"
                              IsActive="@IsActive("/stock/ideal")" OnClick="@(() => NavigateTo("/stock/ideal"))" />
                     <NavItem Href="/stock/ranking" Label="🏆 Ranking productos" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/stock/ranking")" OnClick="@(() => NavigateTo("/stock/ranking"))" />
@@ -2236,6 +2241,11 @@
     // Al activarlo, todos los NavItems muestran chips D/O al lado para tildar quién los ve.
     [Inject] private MenuVisibilityService MenuVisibility { get; set; } = default!;
     private bool menuEditMode = false;
+
+    // 2026-09-02: cuántos productos hay para pedir (stock abajo del ideal/piso). Se muestra como
+    // numerito rojo al lado del ítem del menú, para que salte a la vista sin entrar a mirar.
+    private int? faltantesParaPedir;
+    private System.Threading.Timer? timerFaltantes;
     private bool showMenuEditPasswordModal = false;
     private string menuEditPassword = "";
     private string? menuEditPasswordError;
@@ -2684,6 +2694,10 @@
     {
         SyncProgress.OnChange += OnSyncProgressChanged;
         UploadProgress.OnChanged += OnUploadProgressChanged;
+        _ = CargarFaltantesAsync();
+        // Cada 5 minutos alcanza: el robot que engancha corre cada 10.
+        timerFaltantes = new System.Threading.Timer(async _ => await CargarFaltantesAsync(),
+            null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
         Operator.OnChange += OnOperatorChanged;
         Company.OnChange += OnCompanyChanged;
         var user = await AuthService.GetUserAsync();
@@ -3066,8 +3080,22 @@
         catch { /* el servicio puede estar caído; el polling vuelve a intentar en 60s */ }
     }
 
+    /// <summary>Trae el número para el badge. Si falla, no molesta a nadie: el menú queda sin numerito.</summary>
+    private async Task CargarFaltantesAsync()
+    {
+        try
+        {
+            var n = await Api.GetStockIdealPendientesContadorAsync();
+            if (n == (faltantesParaPedir ?? 0)) return;
+            faltantesParaPedir = n;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* el numerito es un plus, nunca puede romper el menú */ }
+    }
+
     public void Dispose()
     {
+        timerFaltantes?.Dispose();
         try { cmdPalRef?.Dispose(); } catch { }
         try { _pinLockTimer?.Dispose(); } catch { }
         try { _topChipsTimer?.Dispose(); } catch { }
