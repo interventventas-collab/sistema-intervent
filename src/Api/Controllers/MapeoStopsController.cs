@@ -42,6 +42,9 @@ public class MapeoStopsController : ControllerBase
         // 2026-09-02: domicilio COMERCIAL (lo que sale en la etiqueta del Flex). Se ve en el mapa
         // sin abrir nada, porque cambia con qué se encuentra el repartidor y a qué hora conviene ir.
         bool EsComercial = false,
+        // 2026-09-03: cuántos días hace que MercadoLibre lo prometió y sigue sin entregar. null = al
+        // día. Uno de ayer y uno de hace cinco días no son lo mismo, y el mapa lo tiene que decir.
+        int? DiasAtraso = null,
         DateTime? DateDelivered = null, string? ReceiverName = null);
 
     // ══════════════════════════════════════════════════════════════════════════════
@@ -60,6 +63,21 @@ public class MapeoStopsController : ControllerBase
 
     /// <summary>La fecha pedida, o hoy si no vino ninguna. Nunca devuelve hora.</summary>
     private static DateTime FechaDelMapa(DateTime? fecha) => (fecha ?? HoyAr()).Date;
+
+    /// <summary>
+    /// 2026-09-03: días de atraso de un envío de MeLi — lo prometieron para un día anterior y sigue
+    /// sin entregar. Devuelve null si está al día, ya se entregó, o si el envío se cerró (cancelado /
+    /// no entregado): en esos casos no hay nada que apurar.
+    /// </summary>
+    private static int? DiasDeAtraso(MeliShipment m)
+    {
+        if (m.EstimatedDeliveryLimit is null) return null;
+        var est = m.Status?.ToLowerInvariant();
+        if (est is "delivered" or "cancelled" or "not_delivered") return null;
+        var prometido = m.EstimatedDeliveryLimit.Value.AddHours(-3).Date;   // hora argentina
+        var dias = (HoyAr() - prometido).Days;
+        return dias > 0 ? dias : null;
+    }
 
     private static StopDto Map(MapeoStop s) => new(
         s.Id, s.Origin, s.OriginRefId, s.Alias, s.Direccion, s.Latitude, s.Longitude,
@@ -102,6 +120,7 @@ public class MapeoStopsController : ControllerBase
                     MeliStatus = m.Status,
                     MotivoMeli = MapeoEntregasService.MotivoMeli(m.Status, m.Substatus),
                     EsComercial = string.Equals(m.DeliveryPreference, "business", StringComparison.OrdinalIgnoreCase),
+                    DiasAtraso = DiasDeAtraso(m),
                     ReceiverName = m.ReceiverName
                 };
             }

@@ -120,17 +120,28 @@
         // Si en el mismo domicilio hay una entregada y una cancelada, gana el tilde.
         const delivered = group.some(x => x.delivered === true);
         const failed = !delivered && group.some(x => x.failed === true);
+        // 2026-09-03: ATRASADO — MercadoLibre lo prometio para un dia anterior y sigue sin entregar.
+        // Va en el MISMO lugar que el tilde y la cruz porque los tres se excluyen: un atrasado no
+        // esta entregado (no hay tilde) ni cerrado (no hay cruz), asi que ese espacio esta libre.
+        // Naranja y no rojo: el rojo del mapa significa "no se pudo entregar", esto es "todavia puedo".
+        const lateDias = (!delivered && !failed)
+            ? Math.max.apply(null, group.map(x => (typeof x.late === 'number' && x.late > 0) ? x.late : 0))
+            : 0;
         const check = delivered
             ? `<circle cx="10" cy="8" r="8.5" fill="#16a34a" stroke="#ffffff" stroke-width="2"/>` +
               `<path d="M5.8 8.2 L8.6 11 L14 5.4" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
             : failed
             ? `<circle cx="10" cy="8" r="8.5" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>` +
               `<path d="M6.9 4.9 L13.1 11.1 M13.1 4.9 L6.9 11.1" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
+            : lateDias > 0
+            ? `<circle cx="10" cy="8" r="9" fill="#ea580c" stroke="#ffffff" stroke-width="2"/>` +
+              `<text x="10" y="11.4" text-anchor="middle" font-size="${lateDias > 9 ? 8 : 9.5}" font-weight="800" fill="#ffffff" font-family="Inter,Arial,sans-serif">${lateDias > 99 ? '+' : lateDias}d</text>`
             : '';
 
         // Cartelito "OJO, calle no asfaltada" abajo a la izquierda del pin: para estar atentos
         // en ese envío sin abrir el globito. Marrón = tierra · gris piedra = empedrado.
         // Lo prende el pase de fondo que consulta el tipo de calle (first.surface).
+        const comercial = group.some(x => x.comercial === true);
         const surf = first.surface;
         const surfaceBadge = (surf === 'tierra' || surf === 'empedrado')
             ? `<circle cx="10" cy="30" r="8.5" fill="${surf === 'tierra' ? '#b45309' : '#57534e'}" stroke="#ffffff" stroke-width="2"/>` +
@@ -140,7 +151,10 @@
         return `<svg xmlns="http://www.w3.org/2000/svg" width="${PIN_VB_W}" height="${PIN_VB_H}" viewBox="0 0 ${PIN_VB_W} ${PIN_VB_H}">` +
             `<defs><filter id="sh" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-opacity="0.4"/></filter></defs>` +
             `${ring}` +
-            `<path d="${headPath}" fill="${body}" stroke="#ffffff" stroke-width="2" filter="url(#sh)"/>` +
+            // 2026-09-03: si el domicilio es COMERCIAL el pin lleva borde oscuro en vez de blanco.
+            // Es la mitad de la señal (la otra es el toldo de arriba): aunque el toldo quede tapado
+            // por otro pin, el borde ya te dice que ahi hay un negocio.
+            `<path d="${headPath}" fill="${body}" stroke="${comercial ? '#1f2937' : '#ffffff'}" stroke-width="${comercial ? 3 : 2}" filter="url(#sh)"/>` +
             `<text x="${PIN_HEAD_CX}" y="${labelY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>` +
             `${badge}${check}${surfaceBadge}</svg>`;
     }
@@ -328,22 +342,35 @@
     // ARRIBA de la cabeza del pin: a la derecha ya viven las 3 letras del repartidor y el autito,
     // y a la izquierda la banderita de "terminó".
     // Gris grafito a propósito: no es una alarma, es un dato — los colores son de los repartidores.
-    const COM_W = 34, COM_H = 16;
-    function comIcon() {
-        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + COM_W + '" height="' + COM_H + '" viewBox="0 0 ' + COM_W + ' ' + COM_H + '">' +
-            '<rect x="1" y="1" width="' + (COM_W - 2) + '" height="' + (COM_H - 2) + '" rx="5" ry="5" fill="#374151" stroke="#ffffff" stroke-width="2"/>' +
-            '<text x="' + (COM_W / 2) + '" y="' + (COM_H / 2 + 3.6) + '" text-anchor="middle" font-size="9.5" font-weight="800" fill="#ffffff" font-family="Inter,Arial,sans-serif" letter-spacing="0.3">COM</text>' +
+    const TOLDO_W = 48, TOLDO_H = 24;
+    /// 2026-09-03: TOLDO de negocio, como techito ARRIBA del pin. Reemplaza al cartelito "COM",
+    /// que era casi tan grande como el pin y flotaba lejos. El usuario lo eligio mirando cinco
+    /// tamanos: este va centrado sobre la cabeza, se lee entre 40 pines y no tapa el numero de orden.
+    function toldoIcon() {
+        const n = 6, w = 40, h = 13, sw = w / n, x0 = 4, y0 = 5;
+        let rayas = '';
+        for (let i = 0; i < n; i++) {
+            const c = (i % 2) ? '#ffffff' : '#dc2626';
+            rayas += '<rect x="' + (x0 + i * sw).toFixed(2) + '" y="' + y0 + '" width="' + sw.toFixed(2) + '" height="' + h + '" fill="' + c + '"/>';
+        }
+        for (let i = 0; i < n; i++) {
+            const c = (i % 2) ? '#ffffff' : '#dc2626';
+            rayas += '<circle cx="' + (x0 + i * sw + sw / 2).toFixed(2) + '" cy="' + (y0 + h) + '" r="' + (sw / 2).toFixed(2) + '" fill="' + c + '"/>';
+        }
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + TOLDO_W + '" height="' + TOLDO_H + '" viewBox="0 0 ' + TOLDO_W + ' ' + TOLDO_H + '">' +
+            rayas +
+            // barral de arriba, oscuro, que le da el remate de toldo
+            '<rect x="' + (x0 - 3) + '" y="' + (y0 - 4) + '" width="' + (w + 6) + '" height="4.5" rx="2.2" fill="#1f2937"/>' +
             '</svg>';
         return {
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-            scaledSize: new google.maps.Size(COM_W, COM_H),
-            // anchor centrado en X (queda alineado con el pin) y en Y por ENCIMA de la cabeza:
-            // 50px arriba de la punta = despegado del techo del pin y del badge "+N".
-            anchor: new google.maps.Point(COM_W / 2, COM_H + 50)
+            scaledSize: new google.maps.Size(TOLDO_W, TOLDO_H),
+            // centrado en X y apoyado sobre el techo de la cabeza del pin (la punta cae en 44).
+            anchor: new google.maps.Point(TOLDO_W / 2, TOLDO_H + 32)
         };
     }
 
-    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, tagIcon, flagIcon, comIcon, streetView, cancelStreetView, wrapIw };
+    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, tagIcon, flagIcon, toldoIcon, streetView, cancelStreetView, wrapIw };
 })();
 
 // ══════════ Mapa grande (pantalla Mapeo) ══════════
@@ -906,7 +933,7 @@ window.mapeoFlex = (function () {
                     const comMarker = new google.maps.Marker({
                         position: pos, map: map, clickable: true, zIndex: 1150,
                         title: 'Domicilio comercial — tocá para ver el comentario del comprador',
-                        icon: H.comIcon()
+                        icon: H.toldoIcon()
                     });
                     comMarker.addListener('click', abrirGlobito);
                     markers.push(comMarker);

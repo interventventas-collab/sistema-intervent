@@ -143,6 +143,9 @@ public class MapeoStopDto
     public string? MotivoMeli { get; set; }
     /// <summary>2026-09-02: domicilio COMERCIAL, tal como sale en la etiqueta del Flex.</summary>
     public bool EsComercial { get; set; }
+    /// <summary>2026-09-03: días que hace que MercadoLibre lo prometió y sigue sin entregar.
+    /// null = está al día (o ya se cerró, y entonces no hay nada que apurar).</summary>
+    public int? DiasAtraso { get; set; }
     public DateTime? DateDelivered { get; set; }
     public string? ReceiverName { get; set; }
 }

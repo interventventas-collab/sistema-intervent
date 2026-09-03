@@ -716,6 +716,16 @@
                                 {
                                     <span style="flex:0 0 auto; font-size:0.6rem; font-weight:700; background:#dc2626; color:#fff; border-radius:8px; padding:0.02rem 0.3rem;">×@g.Count</span>
                                 }
+                                @* 2026-09-03: ATRASADO y COMERCIAL en la vista compacta, que es la que el
+                                   usuario mira todo el día. En el mapa son dibujos; acá la palabra. *@
+                                @if (stRed?.DiasAtraso is int diasRed && diasRed > 0)
+                                {
+                                    <span style="flex:0 0 auto; font-size:0.6rem; font-weight:800; padding:0.03rem 0.4rem; border-radius:999px; background:#fee2e2; color:#991b1b;" title="MercadoLibre lo prometió hace @diasRed día@(diasRed == 1 ? "" : "s") y sigue sin entregar">ATRASADO @(diasRed)d</span>
+                                }
+                                @if (stRed?.EsComercial == true)
+                                {
+                                    <span style="flex:0 0 auto; font-size:0.6rem; font-weight:800; padding:0.03rem 0.4rem; border-radius:999px; background:#e5e7eb; color:#374151;" title="MercadoLibre dice que el domicilio es un negocio">COMERCIAL</span>
+                                }
                                 <span style="flex:0 0 auto; font-size:0.6rem; font-weight:800; padding:0.03rem 0.4rem; border-radius:999px; background:@tb.Bg; color:@tb.Color;" title="Tipo: @tb.Label">@tb.Label</span>
                                 <span style="flex:0 0 auto; color:#9ca3af; font-size:0.85rem;">›</span>
                             </div>
@@ -990,6 +1000,14 @@
                                                title="Incluir en la ruta de Google Maps" />
                                         @{ var obE = OrigenBadge(st.Origin); }
                                         <span title="Origen del envío: @obE.Label" style="background:@obE.Bg; color:@obE.Color; padding:0.05rem 0.35rem; border-radius:4px; font-size:0.6rem; font-weight:800; letter-spacing:0.5px; white-space:nowrap;">@obE.Emoji @obE.Label</span>
+                                        @if (st.DiasAtraso is int dAtrE && dAtrE > 0)
+                                        {
+                                            <span title="MercadoLibre lo prometió hace @dAtrE día@(dAtrE == 1 ? "" : "s") y sigue sin entregar" style="background:#fee2e2; color:#991b1b; padding:0.05rem 0.35rem; border-radius:4px; font-size:0.6rem; font-weight:800; white-space:nowrap;">ATRASADO @(dAtrE)d</span>
+                                        }
+                                        @if (st.EsComercial)
+                                        {
+                                            <span title="MercadoLibre dice que el domicilio es un negocio" style="background:#e5e7eb; color:#374151; padding:0.05rem 0.35rem; border-radius:4px; font-size:0.6rem; font-weight:800; white-space:nowrap;">COMERCIAL</span>
+                                        }
                                         <strong>@(st.Alias ?? st.ContactName ?? "Parada")</strong>
                                         @if (g.Count > 1)
                                         {
@@ -5458,6 +5476,7 @@
                     failed = EnvioCerradoSinEntregar(s),
                     // Cartelito COM arriba del pin: el domicilio es comercial (dato de MercadoLibre).
                     comercial = s.EsComercial,
+                    late = (int?)null,
                     popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(esMe1 ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em>{horaEntregaFlexHtml}{comercialFlexHtml}<div class='mapeo-vinfo' data-ship='{s.MeliShipmentId}'></div><button onclick=\"window.mapeoActions.toggleRoute({s.Id}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBg}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxt}</button></div>"
                 };
             }));
@@ -5628,6 +5647,8 @@
                     ultimaEntrega = ultimaEntregaPorChofer.Contains(st.Id),
                     // Cartelito COM arriba del pin: el domicilio es comercial (dato de MercadoLibre).
                     comercial = st.EsComercial,
+                    // 2026-09-03: dias de atraso → chapita naranja arriba a la izquierda del pin.
+                    late = st.DiasAtraso,
                     popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}{motivoFallaHtml}{meliHtml}{zonaRowHtml}{vinfoStopHtml}{comercialHtml}{notaCompradorHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button>{favBtnHtml}{accionesStopHtml}</div></div>"
                 };
             }));
