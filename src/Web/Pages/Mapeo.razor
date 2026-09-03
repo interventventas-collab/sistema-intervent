@@ -5211,6 +5211,10 @@
                 var horaEntregaFlexHtml = entregadaFlex
                     ? $"<div style='margin-top:0.3rem; color:#15803d; font-weight:700; font-size:0.72rem;'>✔ Entregado{(s.DateDelivered.HasValue ? " · 🕒 " + s.DateDelivered.Value.ToArTime().ToString("dd/MM 'a las' HH:mm") + " hs" : "")}</div>"
                     : "";
+                // 2026-09-02: domicilio COMERCIAL (lo dice MercadoLibre, sale en la etiqueta del Flex).
+                var comercialFlexHtml = s.EsComercial
+                    ? "<div style='margin-top:0.3rem; font-size:0.72rem; font-weight:700; color:#374151;'>🏢 Comercial · el domicilio es un negocio</div>"
+                    : "";
                 return (object)new
                 {
                     id = s.Id,
@@ -5228,7 +5232,9 @@
                     // ✗ roja: el envío quedó cerrado sin llegar al cliente (cancelado, no entregado
                     // o volviendo al remitente).
                     failed = EnvioCerradoSinEntregar(s),
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(esMe1 ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em>{horaEntregaFlexHtml}<div class='mapeo-vinfo' data-ship='{s.MeliShipmentId}'></div><button onclick=\"window.mapeoActions.toggleRoute({s.Id}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBg}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxt}</button></div>"
+                    // Cartelito COM arriba del pin: el domicilio es comercial (dato de MercadoLibre).
+                    comercial = s.EsComercial,
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(esMe1 ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em>{horaEntregaFlexHtml}{comercialFlexHtml}<div class='mapeo-vinfo' data-ship='{s.MeliShipmentId}'></div><button onclick=\"window.mapeoActions.toggleRoute({s.Id}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBg}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxt}</button></div>"
                 };
             }));
         }
@@ -5272,13 +5278,17 @@
                 }
                 // Forma del marker según el origen, para reconocer el tipo de un vistazo:
                 // CÍRCULO=Flex · CUADRADO=ME1 · ROMBO=Alquiler · TRIÁNGULO=Venta por fuera (café)
-                // · CÍRCULO=manual/favorito (default). El color sigue indicando el repartidor/asignación.
+                // · HEXÁGONO=cargada a mano o desde favoritos. El color sigue indicando el
+                // repartidor/asignación. 2026-09-02: antes las cargadas a mano eran círculo igual
+                // que las Flex y no se podían distinguir.
                 string shape = st.Origin switch
                 {
                     "flex" => "circle",
                     "me1" => "square",
                     "alquiler" => "diamond",
                     "venta_cafe" => "triangle",
+                    "manual" => "hexagon",
+                    "favorito" => "hexagon",
                     _ => "circle"
                 };
                 var markerId = -1000 - st.Id;
@@ -5344,6 +5354,20 @@
                 var vinfoStopHtml = (st.Origin == "flex" || st.Origin == "me1") && !string.IsNullOrEmpty(st.OriginRefId)
                     ? $"<div class='mapeo-vinfo' data-ship='{st.OriginRefId}'></div>"
                     : "";
+                // 2026-09-02: domicilio COMERCIAL (lo dice MercadoLibre, es lo que sale en la etiqueta
+                // del Flex). Va sobrio, en gris: no es una alarma, es un dato que cambia con qué se
+                // encuentra el repartidor y a qué hora conviene ir.
+                var comercialHtml = st.EsComercial
+                    ? "<div style='margin-top:0.35rem; font-size:0.72rem; font-weight:700; color:#374151;'>🏢 Comercial · el domicilio es un negocio</div>"
+                    : "";
+                // 2026-09-02: el COMENTARIO DEL COMPRADOR, entero y sin recortar (ahí escriben cosas
+                // como "es una escuela, entregar de 8 a 17 hs"). Si la parada quedó marcada como "no se
+                // pudo entregar", ese motivo va al principio de las notas y ya se muestra arriba
+                // (motivoFallaHtml): acá mostramos solo lo que viene DESPUÉS, para no repetirlo.
+                var notaComprador = NotaSinMarcaDeNoEntregada(st.Notas);
+                var notaCompradorHtml = !string.IsNullOrWhiteSpace(notaComprador)
+                    ? $"<div style='margin-top:0.35rem; font-size:0.72rem; line-height:1.35; color:#78350f; background:#fef3c7; padding:0.25rem 0.5rem; border-radius:6px; white-space:pre-wrap;'>💬 {System.Net.WebUtility.HtmlEncode(notaComprador)}</div>"
+                    : "";
                 return (object)new
                 {
                     id = markerId,
@@ -5361,7 +5385,9 @@
                     stopId = st.Id,
                     // 🚗 al lado: esta fue la última que entregó su repartidor.
                     ultimaEntrega = ultimaEntregaPorChofer.Contains(st.Id),
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}{motivoFallaHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Zona'>📍</span><select onchange=\"window.mapeoActions.assignZone({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:{selBg}; color:{selFg}; font-weight:700;'>{zonaOpts}</select></div>{puestoRowHtml}{vinfoStopHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button>{favBtnHtml}<button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.editStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#1d4ed8; border:1px solid #93c5fd; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>✏️ Editar datos</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
+                    // Cartelito COM arriba del pin: el domicilio es comercial (dato de MercadoLibre).
+                    comercial = st.EsComercial,
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}{motivoFallaHtml}<div style='margin-top:0.35rem; display:flex; align-items:center; gap:0.25rem;'><span title='Zona'>📍</span><select onchange=\"window.mapeoActions.assignZone({markerId}, this.value); event.stopPropagation();\" onclick=\"event.stopPropagation();\" style='flex:1; max-width:170px; padding:0.15rem 0.25rem; border:2px solid {driverBorde}; border-radius:4px; font-size:0.72rem; background:{selBg}; color:{selFg}; font-weight:700;'>{zonaOpts}</select></div>{puestoRowHtml}{vinfoStopHtml}{comercialHtml}{notaCompradorHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button>{favBtnHtml}<button onclick=\"window.mapeoActions.correctLocation({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#92400e; border:1px solid #f59e0b; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>📍 Corregir ubicación</button><button onclick=\"window.mapeoActions.editStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#1d4ed8; border:1px solid #93c5fd; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>✏️ Editar datos</button><button onclick=\"window.mapeoActions.removeStop({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:white; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>🗑 Quitar del mapa</button></div></div>"
                 };
             }));
         }
@@ -5371,6 +5397,17 @@
         // solo 12 lo hacían, y por eso las líneas "desaparecían solas". Ahora se repintan SIEMPRE acá.
         if (rutasResumen.Count > 0) await PintarRutas();
         else lineasPintadas = 0;
+    }
+
+    /// <summary>Devuelve la nota del comprador SIN el motivo de "no se pudo entregar" que el
+    /// repartidor deja pegado al principio ("⚠ No se pudo entregar: … · resto de la nota").
+    /// Ese motivo ya se muestra aparte en el globito, así que acá lo sacamos para no repetirlo.
+    /// Mismo criterio que MapeoStopsController.SinMarcaDeNoEntregada.</summary>
+    private static string? NotaSinMarcaDeNoEntregada(string? notas)
+    {
+        if (string.IsNullOrWhiteSpace(notas) || !notas.StartsWith("⚠ No se pudo entregar:")) return notas;
+        var i = notas.IndexOf(" · ", StringComparison.Ordinal);
+        return i < 0 ? null : notas.Substring(i + 3);
     }
 
     private static string ColorFor(string s) => s switch

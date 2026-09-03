@@ -3883,6 +3883,7 @@ BEGIN
         Longitude DECIMAL(10,7) NULL,
         GeolocationType NVARCHAR(50) NULL,
         Comment NVARCHAR(500) NULL,
+        DeliveryPreference NVARCHAR(20) NULL,
         ItemsSummary NVARCHAR(500) NULL,
         OrderTotal DECIMAL(18,2) NULL,
         DateCreated DATETIME2 NULL,
@@ -3934,6 +3935,15 @@ IF NOT EXISTS (SELECT TOP 1 1 FROM MeliShipments WHERE MapsNoteSentAt IS NOT NUL
    AND EXISTS (SELECT TOP 1 1 FROM MeliShipments)
 BEGIN
     UPDATE MeliShipments SET MapsNoteSentAt = SYSUTCDATETIME();
+END
+GO
+
+-- 2026-09-02: tipo de domicilio que manda MercadoLibre ("residential" / "business"). Es lo que en
+-- la etiqueta del Flex sale como COMERCIAL. Lo pidio el usuario para verlo en el mapa sin abrir nada.
+-- OJO: en produccion este ALTER hay que correrlo A MANO (init.sql no se re-ejecuta sobre una base viva).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DeliveryPreference' AND Object_ID=Object_ID('MeliShipments'))
+BEGIN
+    ALTER TABLE MeliShipments ADD DeliveryPreference NVARCHAR(20) NULL;
 END
 GO
 

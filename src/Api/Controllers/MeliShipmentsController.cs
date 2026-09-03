@@ -175,6 +175,8 @@ public class MeliShipmentsController : ControllerBase
             longitude = s.Longitude,
             geolocationType = s.GeolocationType,
             comment = s.Comment,
+            // 2026-09-02: "business" = lo que la etiqueta imprime como COMERCIAL.
+            esComercial = string.Equals(s.DeliveryPreference, "business", StringComparison.OrdinalIgnoreCase),
             itemsSummary = s.ItemsSummary,
             orderTotal = s.OrderTotal,
             dateCreated = s.DateCreated,

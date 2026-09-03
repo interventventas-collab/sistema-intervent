@@ -497,6 +497,8 @@ public class MeliShipmentService
             existing.StreetName = StrProp(ra, "street_name", 200);
             existing.StreetNumber = StrProp(ra, "street_number", 20);
             existing.Comment = StrProp(ra, "comment", 500);
+            // "residential" / "business" — lo que la etiqueta imprime como COMERCIAL.
+            existing.DeliveryPreference = StrProp(ra, "delivery_preference", 20);
             existing.ZipCode = StrProp(ra, "zip_code", 20);
             existing.GeolocationType = StrProp(ra, "geolocation_type", 50);
             existing.Latitude = DecProp(ra, "latitude");

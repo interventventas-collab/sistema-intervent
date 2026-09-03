@@ -903,7 +903,13 @@ public class CafeRepartidorPublicController : ControllerBase
         // lista avance a la parada siguiente. No toca MercadoLibre, no genera cobranza y no cuenta
         // como entrega en ningún número. Se usa sobre todo en los Flex, que se cierran en la app de
         // MeLi y tardan en confirmarse.
-        bool Visto = false
+        bool Visto = false,
+        // 2026-09-02: lo que el comprador escribió del domicilio ("entregar de 8 a 17 hs", "no hay
+        // timbre"). Ya lo guardábamos y no se veía en ningún lado: el repartidor lo necesita ANTES
+        // de bajarse. Si la parada se marcó como no entregada, el motivo va adelante con "⚠ ... · ".
+        string? Notas = null,
+        // Domicilio COMERCIAL segun MercadoLibre (lo que la etiqueta imprime asi).
+        bool EsComercial = false
     );
 
     /// <summary>Paradas del Mapeo asignadas a este repartidor (vía MapeoDrivers.CafeRepartidorId),
@@ -955,7 +961,11 @@ public class CafeRepartidorPublicController : ControllerBase
                 s.Latitude, s.Longitude, s.Telefono,
                 comprador, numeroVenta, entregado, dd,
                 !entregado && noEntregadas.Contains(s.Id),
-                vistos.Contains(s.Id));
+                vistos.Contains(s.Id),
+                s.Notas,
+                (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
+                    && long.TryParse(s.OriginRefId, out var sid2) && ships.TryGetValue(sid2, out var m2)
+                    && string.Equals(m2.DeliveryPreference, "business", StringComparison.OrdinalIgnoreCase));
         }).ToList();
 
         return Ok(result);

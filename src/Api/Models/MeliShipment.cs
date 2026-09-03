@@ -43,6 +43,11 @@ public class MeliShipment
     [MaxLength(50)] public string? GeolocationType { get; set; }
 
     [MaxLength(500)] public string? Comment { get; set; }
+
+    /// <summary>2026-09-02: tipo de domicilio segun MercadoLibre — "residential" o "business".
+    /// Es lo que en la etiqueta del Flex se imprime como COMERCIAL. Sirve para saber con que se va
+    /// a encontrar el repartidor y para armar la ruta (los comercios cierran al mediodia).</summary>
+    [MaxLength(20)] public string? DeliveryPreference { get; set; }
     [MaxLength(500)] public string? ItemsSummary { get; set; }
     [Column(TypeName = "decimal(18,2)")] public decimal? OrderTotal { get; set; }
 

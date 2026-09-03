@@ -37,6 +37,9 @@ public class MapeoStopsController : ControllerBase
         // 2026-09-02: el detalle de MeLi ("destinatario ausente" y compañía). El estado general dice
         // "en camino" aunque el repartidor ya haya pasado y no haya podido: el motivo está acá.
         string? MotivoMeli = null,
+        // 2026-09-02: domicilio COMERCIAL (lo que sale en la etiqueta del Flex). Se ve en el mapa
+        // sin abrir nada, porque cambia con qué se encuentra el repartidor y a qué hora conviene ir.
+        bool EsComercial = false,
         DateTime? DateDelivered = null, string? ReceiverName = null);
 
     private static StopDto Map(MapeoStop s) => new(
@@ -76,6 +79,7 @@ public class MapeoStopsController : ControllerBase
                     BuyerNickname = m.BuyerNickname,
                     MeliStatus = m.Status,
                     MotivoMeli = MapeoEntregasService.MotivoMeli(m.Status, m.Substatus),
+                    EsComercial = string.Equals(m.DeliveryPreference, "business", StringComparison.OrdinalIgnoreCase),
                     ReceiverName = m.ReceiverName
                 };
             }

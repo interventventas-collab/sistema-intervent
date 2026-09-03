@@ -78,6 +78,11 @@ public class MisPedidosMapeoDto
     /// <summary>2026-09-02: el repartidor la tildó a mano para que su lista avance. SOLO visual:
     /// no toca MercadoLibre, no marca entregado y no cuenta como entrega en ningún número.</summary>
     public bool Visto { get; set; }
+    /// <summary>2026-09-02: lo que el comprador escribió del domicilio ("entregar de 8 a 17 hs").
+    /// Si la parada se marcó como no entregada, el motivo va adelante con "⚠ ... · ".</summary>
+    public string? Notas { get; set; }
+    /// <summary>2026-09-02: domicilio COMERCIAL, tal como sale en la etiqueta del Flex.</summary>
+    public bool EsComercial { get; set; }
 }
 
 public class PublicRouteDto
@@ -136,6 +141,8 @@ public class MapeoStopDto
     /// <summary>2026-09-02: por qué MercadoLibre la dio por no entregada, en castellano
     /// ("MercadoLibre: no había nadie"). null = no hay nada que contar.</summary>
     public string? MotivoMeli { get; set; }
+    /// <summary>2026-09-02: domicilio COMERCIAL, tal como sale en la etiqueta del Flex.</summary>
+    public bool EsComercial { get; set; }
     public DateTime? DateDelivered { get; set; }
     public string? ReceiverName { get; set; }
 }

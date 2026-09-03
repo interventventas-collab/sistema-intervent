@@ -427,6 +427,24 @@
                         @if (fx.NumeroVenta.HasValue) { <span style="font-family:monospace;">🧾 @fx.NumeroVenta.Value</span> }
                         @if (fx.Entregado) { <span style="color:#15803d; font-weight:700;">✔ Entregado</span> }
                     </div>
+                    @* 2026-09-02: lo que el repartidor necesita saber ANTES de bajarse del auto.
+                       Va arriba del botón de "Cómo llegar" a propósito: si queda abajo lo lee
+                       cuando ya arrancó a manejar y no le sirve.
+                       · COMERCIAL lo manda MercadoLibre y es lo que la etiqueta del Flex imprime
+                         así. Es un dato, no una alarma: por eso gris y chiquito, no rojo.
+                       · La nota es lo que escribió el comprador, ENTERA y tal cual. Ahí avisan
+                         horarios ("entregar de 8 a 17 hs"), timbres y referencias. No se recorta. *@
+                    @if (fx.EsComercial)
+                    {
+                        <div style="margin-top:0.4rem;">
+                            <span style="background:#e5e7eb; color:#374151; font-size:0.62rem; font-weight:800; padding:0.05rem 0.35rem; border-radius:4px;">COMERCIAL</span>
+                        </div>
+                    }
+                    @{ var notaFx = NotaDelComprador(fx.Notas); }
+                    @if (!string.IsNullOrWhiteSpace(notaFx))
+                    {
+                        <div style="margin-top:0.4rem; padding:0.4rem 0.55rem; color:#78350f; background:#fef3c7; border-radius:6px; font-size:0.82rem; line-height:1.35; white-space:pre-wrap; overflow-wrap:anywhere;">💬 @notaFx</div>
+                    }
                     <a href="@($"https://www.google.com/maps/dir/?api=1&destination={fx.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{fx.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}")" target="_blank" rel="noopener" style="display:block; margin-top:0.5rem; text-align:center; background:#0891b2; color:white; padding:0.55rem; border-radius:8px; font-size:0.9rem; font-weight:700; text-decoration:none;">🧭 Cómo llegar</a>
                     @* 2026-09-02: dos botones distintos según qué sea la parada.
                        · Parada suelta (cargada a mano, sin venta ni envío atrás): no la confirma
@@ -1292,6 +1310,21 @@
         if (st.DateDelivered is { } d) return d.ToArTime().ToString("HH:mm");
         if (st.Visto) return "listo";
         return "";
+    }
+
+    /// <summary>2026-09-02: la nota del comprador, tal cual la escribió y sin recortar.
+    /// Única salvedad: cuando la parada se marcó como "no la pude entregar", el motivo queda
+    /// guardado ADELANTE de las notas con el formato "⚠ No se pudo entregar: ... · resto".
+    /// En ese caso devolvemos solo lo que viene después del " · ", que es el comentario original
+    /// del comprador — el motivo ya se lee en el renglón de la parada hecha, no hace falta
+    /// repetirlo acá. Si no quedaba nada atrás del motivo, no hay nota que mostrar.</summary>
+    private static string? NotaDelComprador(string? notas)
+    {
+        if (string.IsNullOrWhiteSpace(notas)) return null;
+        var t = notas.Trim();
+        if (!t.StartsWith("⚠ No se pudo entregar:", StringComparison.Ordinal)) return t;
+        var i = t.IndexOf(" · ", StringComparison.Ordinal);
+        return i < 0 ? null : t.Substring(i + 3).Trim();
     }
 
     private static string EtiquetaTipoParada(MisPedidosMapeoDto st) => st.Origin switch

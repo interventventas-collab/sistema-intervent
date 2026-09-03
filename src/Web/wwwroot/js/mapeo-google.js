@@ -73,7 +73,7 @@
         const fs = rawLabel.length >= 2 ? 13 : 17;
 
         // FORMA de la cabeza del pin según el tipo de envío (la punta siempre cae en 24,44):
-        //   circle=Flex/manual · square=ME1 · diamond=Alquiler · triangle=Venta por fuera.
+        //   circle=Flex · square=ME1 · diamond=Alquiler · triangle=Venta por fuera · hexagon=cargada a mano.
         // El color sigue indicando repartidor/asignación; la forma indica el TIPO.
         const shape = first.shape || 'circle';
         let headPath, labelY;
@@ -81,6 +81,12 @@
             case 'square':   // ME1 — cuadrado con puntita
                 headPath = 'M13 4 H35 Q38 4 38 7 V27 Q38 30 35 30 H29 L24 44 L19 30 H13 Q10 30 10 27 V7 Q10 4 13 4 Z';
                 labelY = 17;
+                break;
+            case 'hexagon':  // Cargada a MANO (o favorito) — hexágono con puntita
+                // Techo y piso rectos + puntas a los costados: a 28px se distingue tanto de la
+                // gota (redonda) como del cuadrado (esquinas redondeadas). Adentro entra el número.
+                headPath = 'M16 5 H32 L38 18 L32 31 H28 L24 44 L20 31 H16 L10 18 Z';
+                labelY = 18;
                 break;
             case 'diamond':  // Alquiler — rombo (cometa)
                 headPath = 'M24 3 L39 19 L24 44 L9 19 Z';
@@ -90,7 +96,7 @@
                 headPath = 'M10 7 Q10 5 12 5 H36 Q38 5 38 7 L24 44 Z';
                 labelY = 13;
                 break;
-            default:         // circle — Flex / manual / favorito (gota redonda de siempre)
+            default:         // circle — Flex (gota redonda de siempre)
                 headPath = PIN_PATH;
                 labelY = 18;
         }
@@ -315,7 +321,29 @@
         };
     }
 
-    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, tagIcon, flagIcon, streetView, cancelStreetView, wrapIw };
+    // ── Cartelito "COM" = el domicilio es COMERCIAL (así sale en la etiqueta del Flex) ──
+    // 2026-09-02: se ve DESDE AFUERA, sin abrir el globito, porque cambia con qué se encuentra
+    // el repartidor y a qué hora conviene ir (un negocio no atiende igual que una casa).
+    // Mismo patrón que tagIcon/flagIcon (segundo Marker con SVG inline y el anchor corrido), pero
+    // ARRIBA de la cabeza del pin: a la derecha ya viven las 3 letras del repartidor y el autito,
+    // y a la izquierda la banderita de "terminó".
+    // Gris grafito a propósito: no es una alarma, es un dato — los colores son de los repartidores.
+    const COM_W = 34, COM_H = 16;
+    function comIcon() {
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + COM_W + '" height="' + COM_H + '" viewBox="0 0 ' + COM_W + ' ' + COM_H + '">' +
+            '<rect x="1" y="1" width="' + (COM_W - 2) + '" height="' + (COM_H - 2) + '" rx="5" ry="5" fill="#374151" stroke="#ffffff" stroke-width="2"/>' +
+            '<text x="' + (COM_W / 2) + '" y="' + (COM_H / 2 + 3.6) + '" text-anchor="middle" font-size="9.5" font-weight="800" fill="#ffffff" font-family="Inter,Arial,sans-serif" letter-spacing="0.3">COM</text>' +
+            '</svg>';
+        return {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new google.maps.Size(COM_W, COM_H),
+            // anchor centrado en X (queda alineado con el pin) y en Y por ENCIMA de la cabeza:
+            // 50px arriba de la punta = despegado del techo del pin y del badge "+N".
+            anchor: new google.maps.Point(COM_W / 2, COM_H + 50)
+        };
+    }
+
+    window.__mapeoHelpers = { ensureGoogle, ZONE_COLORS, escapeXml, markerSvg, markerIcon, tagIcon, flagIcon, comIcon, streetView, cancelStreetView, wrapIw };
 })();
 
 // ══════════ Mapa grande (pantalla Mapeo) ══════════
@@ -841,7 +869,9 @@ window.mapeoFlex = (function () {
                 // Mostramos la fotito de Street View solo en un domicilio único (no en clusters
                 // ni en la casita del punto de partida, que se puede arrastrar).
                 const conStreetView = !isCluster && !esArrastrable;
-                marker.addListener('click', () => {
+                // Abrir el globito de esta parada. Lo dejamos en una función aparte porque lo
+                // dispara tanto el pin como el cartelito COM que le ponemos al lado.
+                const abrirGlobito = () => {
                     // Modo "Armar ruta": el toque agrega el envío a la ruta (no abre el globito).
                     if (armarOn) { armarAddPoint(first.id, +first.lat, +first.lng); return; }
                     if (infoWindow) {
@@ -853,7 +883,8 @@ window.mapeoFlex = (function () {
                     if (!dotNetRef) return;
                     if (isCluster) dotNetRef.invokeMethodAsync('OnClusterClicked', ids);
                     else dotNetRef.invokeMethodAsync('OnMarkerClicked', first.id);
-                });
+                };
+                marker.addListener('click', abrirGlobito);
 
                 marker.__ids = ids; // para poder "hacerlo saltar" cuando tocás su fila en el listado
                 markers.push(marker);
@@ -865,6 +896,20 @@ window.mapeoFlex = (function () {
                         position: pos, map: map, clickable: false, zIndex: 1100,
                         icon: H.tagIcon(first.tag, first.tagColor || first.color)
                     }));
+                }
+
+                // 2026-09-02: CARTELITO "COM" arriba del pin cuando el domicilio es COMERCIAL
+                // (dato de MercadoLibre, el mismo que sale en la etiqueta del Flex). Se ve sin abrir
+                // el globito, y si lo pinchás se abre el mismo globito que el pin (ahí está el
+                // comentario del comprador, que es donde avisan los horarios del negocio).
+                if (group.some(g => g.comercial === true)) {
+                    const comMarker = new google.maps.Marker({
+                        position: pos, map: map, clickable: true, zIndex: 1150,
+                        title: 'Domicilio comercial — tocá para ver el comentario del comprador',
+                        icon: H.comIcon()
+                    });
+                    comMarker.addListener('click', abrirGlobito);
+                    markers.push(comMarker);
                 }
 
                 // 2026-08-15: AUTITO. Al lado de la ULTIMA parada que cada repartidor marco como

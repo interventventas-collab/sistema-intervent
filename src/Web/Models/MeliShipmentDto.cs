@@ -26,6 +26,8 @@ public class MeliShipmentDto
     public decimal? Longitude { get; set; }
     public string? GeolocationType { get; set; }
     public string? Comment { get; set; }
+    /// <summary>2026-09-02: domicilio COMERCIAL (lo que la etiqueta del Flex imprime así).</summary>
+    public bool EsComercial { get; set; }
     public string? ItemsSummary { get; set; }
     public decimal? OrderTotal { get; set; }
     public DateTime? DateCreated { get; set; }
