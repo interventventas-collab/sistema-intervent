@@ -4315,6 +4315,9 @@
     private static DateTime HoyAr => DateTimeExt.AhoraAr().Date;
 
     private bool EsDiaDeHoy => fechaSeleccionada == HoyAr;
+    /// <summary>Escapa un texto para meterlo entre comillas simples dentro de un onclick del globito.</summary>
+    private static string JsSafe(string t) => t.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n", " ").Replace("\r", " ");
+
     private bool EsDiaPasado => fechaSeleccionada < HoyAr;
     private bool EsDiaFuturo => fechaSeleccionada > HoyAr;
 
@@ -5552,6 +5555,15 @@
                     : (!string.IsNullOrWhiteSpace(st.Notas) && st.Notas!.StartsWith("⚠ No se pudo entregar:")
                         ? st.Notas!.Split(" · ")[0].Replace("⚠ ", "")
                         : (falladaStop ? "No se pudo entregar" : ""));
+                // 2026-09-03: usuario de MercadoLibre y N° de venta DENTRO del globito, para copiarlos
+                // de un toque sin salir del mapa (antes solo estaban en el listado de la izquierda).
+                var chipCopiar = "cursor:pointer; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:6px; padding:1px 6px; font-size:0.72rem; color:#374151;";
+                var usuarioHtml = string.IsNullOrWhiteSpace(st.BuyerNickname) ? "" :
+                    $"<span style='{chipCopiar}' title='Tocá para copiar el usuario' onclick=\"window.mapeoCopiar(this, '{JsSafe(st.BuyerNickname!)}'); event.stopPropagation();\">👤 {System.Net.WebUtility.HtmlEncode(st.BuyerNickname)} 📋</span>";
+                var ventaHtml = !st.MeliOrderId.HasValue ? "" :
+                    $"<span style='{chipCopiar} font-family:monospace;' title='Tocá para copiar el N° de venta' onclick=\"window.mapeoCopiar(this, '{st.MeliOrderId.Value}'); event.stopPropagation();\">🧾 {st.MeliOrderId.Value} 📋</span>";
+                var meliHtml = (usuarioHtml.Length + ventaHtml.Length) == 0 ? "" :
+                    $"<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'>{usuarioHtml}{ventaHtml}</div>";
                 var motivoFallaHtml = falladaStop && motivoFalla.Length > 0
                     ? $"<div style='margin-top:0.35rem; color:#b91c1c; font-weight:700; font-size:0.72rem;'>✗ {System.Net.WebUtility.HtmlEncode(motivoFalla)}</div>"
                     : "";
@@ -5614,7 +5626,7 @@
                     ultimaEntrega = ultimaEntregaPorChofer.Contains(st.Id),
                     // Cartelito COM arriba del pin: el domicilio es comercial (dato de MercadoLibre).
                     comercial = st.EsComercial,
-                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}{motivoFallaHtml}{zonaRowHtml}{vinfoStopHtml}{comercialHtml}{notaCompradorHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button>{favBtnHtml}{accionesStopHtml}</div></div>"
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· Zona {st.AssignedVehicleSlot}</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}{horaEntregaStopHtml}{motivoFallaHtml}{meliHtml}{zonaRowHtml}{vinfoStopHtml}{comercialHtml}{notaCompradorHtml}<div style='margin-top:0.35rem; display:flex; gap:0.3rem; flex-wrap:wrap;'><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button>{favBtnHtml}{accionesStopHtml}</div></div>"
                 };
             }));
         }

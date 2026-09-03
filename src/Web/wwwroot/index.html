@@ -787,6 +787,17 @@
             input.click();
         };
 
+        // 2026-09-03: copiar el usuario / nº de venta desde el globito del mapa, con un "copiado"
+        // que dura un segundo. El globito es HTML suelto (no Blazor), por eso va acá.
+        window.mapeoCopiar = function(el, texto) {
+            try { window.copyToClipboard(texto); } catch (e) {}
+            try {
+                var antes = el.innerHTML;
+                el.innerHTML = '✓ copiado';
+                setTimeout(function () { el.innerHTML = antes; }, 1100);
+            } catch (e) {}
+        };
+
         window.copyToClipboard = function(text) {
             if (navigator.clipboard && window.isSecureContext) {
                 return navigator.clipboard.writeText(text);
