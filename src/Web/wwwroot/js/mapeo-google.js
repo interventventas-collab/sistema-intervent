@@ -342,12 +342,14 @@
     // ARRIBA de la cabeza del pin: a la derecha ya viven las 3 letras del repartidor y el autito,
     // y a la izquierda la banderita de "terminó".
     // Gris grafito a propósito: no es una alarma, es un dato — los colores son de los repartidores.
-    const TOLDO_W = 48, TOLDO_H = 24;
-    /// 2026-09-03: TOLDO de negocio, como techito ARRIBA del pin. Reemplaza al cartelito "COM",
-    /// que era casi tan grande como el pin y flotaba lejos. El usuario lo eligio mirando cinco
-    /// tamanos: este va centrado sobre la cabeza, se lee entre 40 pines y no tapa el numero de orden.
+    // 2026-09-03 (2da vuelta): el toldo arrancó del ANCHO DEL PIN ENTERO y en el mapa real, con
+    // 40 pines juntos, tapaba media Capital ("es una brutalidad"). Ahora mide el ancho de la CABEZA
+    // del pin, la mitad de alto, y va DETRÁS del pin (zIndex por debajo): asoma solo el techo, como
+    // un toldo de verdad. De paso el pin siempre gana, así que nunca tapa el número ni la chapita
+    // naranja de atrasado, y no hace falta correrlo para esquivarlas.
+    const TOLDO_W = 30, TOLDO_H = 16;
     function toldoIcon() {
-        const n = 6, w = 40, h = 13, sw = w / n, x0 = 4, y0 = 5;
+        const n = 5, w = 26, h = 8, sw = w / n, x0 = 2, y0 = 4;
         let rayas = '';
         for (let i = 0; i < n; i++) {
             const c = (i % 2) ? '#ffffff' : '#dc2626';
@@ -360,13 +362,13 @@
         const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + TOLDO_W + '" height="' + TOLDO_H + '" viewBox="0 0 ' + TOLDO_W + ' ' + TOLDO_H + '">' +
             rayas +
             // barral de arriba, oscuro, que le da el remate de toldo
-            '<rect x="' + (x0 - 3) + '" y="' + (y0 - 4) + '" width="' + (w + 6) + '" height="4.5" rx="2.2" fill="#1f2937"/>' +
+            '<rect x="' + (x0 - 1.5) + '" y="' + (y0 - 3.2) + '" width="' + (w + 3) + '" height="3.4" rx="1.7" fill="#1f2937"/>' +
             '</svg>';
         return {
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
             scaledSize: new google.maps.Size(TOLDO_W, TOLDO_H),
-            // centrado en X y apoyado sobre el techo de la cabeza del pin (la punta cae en 44).
-            anchor: new google.maps.Point(TOLDO_W / 2, TOLDO_H + 42)
+            // centrado en X y METIDO detrás de la cabeza del pin (la punta cae en 44): asoma el techo.
+            anchor: new google.maps.Point(TOLDO_W / 2, TOLDO_H + 34)
         };
     }
 
@@ -931,7 +933,7 @@ window.mapeoFlex = (function () {
                 // comentario del comprador, que es donde avisan los horarios del negocio).
                 if (group.some(g => g.comercial === true)) {
                     const comMarker = new google.maps.Marker({
-                        position: pos, map: map, clickable: true, zIndex: 1150,
+                        position: pos, map: map, clickable: true, zIndex: 0,
                         title: 'Domicilio comercial — tocá para ver el comentario del comprador',
                         icon: H.toldoIcon()
                     });
