@@ -526,23 +526,28 @@
                del mapa: las hechas quedan arriba en un renglón chiquito con la hora, la que le
                toca ahora se ve grande y abierta, y las que vienen en renglones simples que se
                abren de un toque. *@
-            var entradas = new List<(int orden, string tipo, PedidoDto? venta, Me1PedidoDto? me1, AlqReservaItem? alq, MisPedidosMapeoDto st)>();
+            // 2026-09-03: los paquetes que van a la MISMA puerta vuelven a quedar juntos. Ver
+            // AgruparPorDomicilio(): el mapa los junta en un pin y numera el pin, así que los
+            // hermanos quedaban sin número y caían sueltos al fondo de esta lista.
+            var grupoDe = AgruparPorDomicilio();
+            var entradas = new List<(int orden, int idx, int total, string tipo, PedidoDto? venta, Me1PedidoDto? me1, AlqReservaItem? alq, MisPedidosMapeoDto st)>();
             foreach (var st in mapeoRuta)
             {
-                var orden = st.OrderInRoute ?? 99998;
+                if (!grupoDe.TryGetValue(st.Id, out var g)) g = (st.OrderInRoute ?? 99998, 1, 1);
+                var orden = g.orden; var idx = g.idx; var total = g.total;
                 int refInt = int.TryParse(st.OriginRefId, out var ri) ? ri : 0;
                 long refLong = long.TryParse(st.OriginRefId, out var rl) ? rl : 0L;
                 if (ParadaHecha(st))
                 {
                     // Entregada, cerrada sin entregar, o tildada por él. Va como renglón chico.
-                    entradas.Add((orden, "hecha", null, null, null, st));
+                    entradas.Add((orden, idx, total, "hecha", null, null, null, st));
                 }
-                else if (st.Origin == "venta_cafe" && ventaById.TryGetValue(refInt, out var pv)) { entradas.Add((orden, "venta", pv, null, null, st)); vistasVenta.Add(refInt); }
-                else if (st.Origin == "me1" && me1ByShip.TryGetValue(refLong, out var m1)) { entradas.Add((orden, "me1", null, m1, null, st)); vistasMe1.Add(refLong); }
-                else if (st.Origin == "alquiler" && alqById.TryGetValue(refInt, out var al)) { entradas.Add((orden, "alq", null, null, al, st)); vistasAlq.Add(refInt); }
-                else { entradas.Add((orden, "muda", null, null, null, st)); }
+                else if (st.Origin == "venta_cafe" && ventaById.TryGetValue(refInt, out var pv)) { entradas.Add((orden, idx, total, "venta", pv, null, null, st)); vistasVenta.Add(refInt); }
+                else if (st.Origin == "me1" && me1ByShip.TryGetValue(refLong, out var m1)) { entradas.Add((orden, idx, total, "me1", null, m1, null, st)); vistasMe1.Add(refLong); }
+                else if (st.Origin == "alquiler" && alqById.TryGetValue(refInt, out var al)) { entradas.Add((orden, idx, total, "alq", null, null, al, st)); vistasAlq.Add(refInt); }
+                else { entradas.Add((orden, idx, total, "muda", null, null, null, st)); }
             }
-            entradas = entradas.OrderBy(e => e.orden).ToList();
+            entradas = entradas.OrderBy(e => e.orden).ThenBy(e => e.idx).ToList();
 
             // Cuál se ve abierta: la que él tocó, o si no la primera que le falta hacer.
             var abiertaId = paradaAbiertaManual ?? ParadaActualId;
@@ -570,9 +575,15 @@
             var abierta = abiertaId == st.Id;
             var esActual = ParadaActualId == st.Id;
             <div id="@($"mp-parada-{st.Id}")" style="display:flex; gap:0.4rem; align-items:flex-start;">
-                @if (e.orden < 99998)
+                @if (e.orden < 99998 && e.idx == 1)
                 {
                     <div style="flex:0 0 auto; margin-top:@(abierta ? "0.55rem" : "0.35rem"); background:@(e.tipo == "hecha" ? "#d1d5db" : "#0891b2"); color:white; font-weight:800; font-size:0.72rem; width:@(abierta ? "24px" : "20px"); height:@(abierta ? "24px" : "20px"); border-radius:50%; display:flex; align-items:center; justify-content:center;">@e.orden</div>
+                }
+                else if (e.total > 1)
+                {
+                    @* Paquete hermano: mismo domicilio que el de arriba. No repetimos el número,
+                       dejamos una guía para que se vea que cuelga de la misma parada. *@
+                    <div style="flex:0 0 auto; margin-top:@(abierta ? "0.55rem" : "0.35rem"); width:@(abierta ? "24px" : "20px"); height:@(abierta ? "24px" : "20px"); color:#cbd5e1; font-size:0.9rem; display:flex; align-items:center; justify-content:center;">└</div>
                 }
                 <div style="flex:1; min-width:0;">
                     @if (abierta && e.tipo == "venta") { @ventaCard(e.venta!) }
@@ -585,16 +596,29 @@
                         @* Ya hecha: renglón chiquito, gris, con la hora. *@
                         <div @onclick="() => AbrirParada(st.Id)" style="display:flex; align-items:center; gap:0.4rem; padding:0.3rem 0.1rem; font-size:0.82rem; color:#9ca3af; cursor:pointer;">
                             <span style="flex:0 0 auto; color:@(st.Entregado ? "#15803d" : (st.NoEntregada ? "#b91c1c" : "#9ca3af")); font-weight:800;">@(st.Entregado ? "✓" : (st.NoEntregada ? "✕" : "✓"))</span>
-                            <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-decoration:@(st.NoEntregada ? "line-through" : "none");">@(st.Nombre ?? "Parada")</span>
+                            <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-decoration:@(st.NoEntregada ? "line-through" : "none");">@RenglonPrincipal(st)</span>
                             <span style="flex:0 0 auto;">@TextoParadaHecha(st)</span>
                         </div>
                     }
                     else
                     {
-                        @* Todavía no le tocó: renglón simple, se abre de un toque. *@
-                        <div @onclick="() => AbrirParada(st.Id)" style="display:flex; align-items:center; gap:0.4rem; padding:0.45rem 0.1rem; font-size:0.9rem; color:#374151; cursor:pointer; border-top:1px solid #f3f4f6;">
-                            <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(st.Nombre ?? "Parada")</span>
-                            <span style="flex:0 0 auto; font-size:0.7rem; color:#9ca3af;">@EtiquetaTipoParada(st)</span>
+                        @* Todavía no le tocó: renglón simple, se abre de un toque.
+                           2026-09-03: adelante y en negrita va la DIRECCIÓN (es lo que le sirve
+                           manejando); abajo chiquito la localidad y el nombre; a la derecha la
+                           chapita de color con el tipo. *@
+                        var chip = ChipTipoParada(st);
+                        var sub = RenglonSecundario(st);
+                        <div @onclick="() => AbrirParada(st.Id)" style="display:flex; align-items:center; gap:0.5rem; padding:0.45rem 0.1rem; color:#374151; cursor:pointer; border-top:1px solid #f3f4f6;">
+                            <div style="flex:1; min-width:0;">
+                                <div style="font-size:0.9rem; font-weight:700; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                    @RenglonPrincipal(st)@if (e.total > 1 && e.idx == 1) { <span style="font-weight:800; color:#0f766e;"> · @e.total paquetes</span> }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(sub))
+                                {
+                                    <div style="font-size:0.74rem; color:#9ca3af; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@sub</div>
+                                }
+                            </div>
+                            <span style="flex:0 0 auto; font-size:0.66rem; font-weight:800; letter-spacing:0.03em; padding:3px 8px; border-radius:6px; background:@chip.Bg; color:@chip.Fg;">@chip.Txt</span>
                         </div>
                     }
                 </div>
@@ -1336,6 +1360,73 @@
         "visita" => "visita",
         _ => "parada"
     };
+
+    /// <summary>2026-09-03: chapita de color con el TIPO de parada. Antes el tipo iba en gris chiquito
+    /// y no se distinguía de un vistazo manejando. Amarillo y naranja = lo de MercadoLibre (se leen
+    /// como familia), verde = venta propia, violeta = alquiler, gris = lo que no es entrega.</summary>
+    private static (string Bg, string Fg, string Txt) ChipTipoParada(MisPedidosMapeoDto st) => st.Origin switch
+    {
+        "flex"       => ("#fef08a", "#854d0e", "FLEX"),
+        "me1"        => ("#fed7aa", "#9a3412", "ME1"),
+        "venta_cafe" => ("#bbf7d0", "#166534", "VENTA"),
+        "alquiler"   => ("#e9d5ff", "#6b21a8", "ALQUILER"),
+        "visita"     => ("#cffafe", "#155e75", "VISITA"),
+        _            => ("#e5e7eb", "#4b5563", "PARADA")
+    };
+
+    /// <summary>2026-09-03: lo que se lee GRANDE en cada renglón es la DIRECCIÓN, que es lo que le
+    /// sirve al repartidor manejando. Si la parada no tiene dirección cargada, cae al nombre.</summary>
+    private static string RenglonPrincipal(MisPedidosMapeoDto st)
+        => !string.IsNullOrWhiteSpace(st.Direccion) ? st.Direccion : (st.Nombre ?? "Parada");
+
+    /// <summary>Segundo renglón, chiquito: localidad y nombre. El nombre no se pierde (sirve para
+    /// preguntar por la persona), pero deja de competir por el lugar principal.</summary>
+    private static string RenglonSecundario(MisPedidosMapeoDto st)
+    {
+        var partes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(st.Localidad)) partes.Add(st.Localidad!);
+        // Si no había dirección, el nombre ya se usó arriba: no lo repetimos.
+        if (!string.IsNullOrWhiteSpace(st.Nombre) && !string.IsNullOrWhiteSpace(st.Direccion)) partes.Add(st.Nombre!);
+        return string.Join(" · ", partes);
+    }
+
+    /// <summary>
+    /// 2026-09-03: junta los paquetes que van al MISMO domicilio.
+    ///
+    /// En el mapa, las entregas a la misma puerta se dibujan como UN solo pin (con la chapita "+N"),
+    /// porque el repartidor pasa una vez. Al armar el orden de la ruta se numera el PIN, así que de
+    /// 4 paquetes a la misma dirección solo UNO se lleva el número y los otros tres quedan con el
+    /// orden vacío. En la lista del celular eso los mandaba sueltos al fondo, sin número, y el
+    /// repartidor no sabía cuándo hacerlos (caso real: 4 envíos de un mismo comprador).
+    ///
+    /// Acá los hermanos sin número toman el del que sí lo tiene y se muestran seguidos.
+    /// Devuelve, por parada: qué número le toca, cuál es dentro del grupo y cuántos son.
+    /// </summary>
+    private Dictionary<int, (int orden, int idx, int total)> AgruparPorDomicilio()
+    {
+        var res = new Dictionary<int, (int, int, int)>();
+        // Misma clave que usa el mapa para juntar pines (coordenadas a 5 decimales). Si la parada no
+        // tiene coordenadas, se agrupa por la dirección escrita.
+        var porDomicilio = mapeoRuta.GroupBy(s =>
+            (s.Latitude != 0 || s.Longitude != 0)
+                ? $"{s.Latitude.ToString("0.00000", System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.ToString("0.00000", System.Globalization.CultureInfo.InvariantCulture)}"
+                : "dir:" + st_dir(s));
+
+        foreach (var g in porDomicilio)
+        {
+            var miembros = g.OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id).ToList();
+            // El número del grupo es el más chico de los que tienen: así el grupo queda donde lo puso
+            // la ruta, y los que vinieron sin número no se van al fondo.
+            var orden = miembros.Where(s => s.OrderInRoute.HasValue).Select(s => s.OrderInRoute!.Value)
+                                .DefaultIfEmpty(99998).Min();
+            for (int i = 0; i < miembros.Count; i++)
+                res[miembros[i].Id] = (orden, i + 1, miembros.Count);
+        }
+        return res;
+
+        static string st_dir(MisPedidosMapeoDto s)
+            => (s.Direccion ?? "").Trim().ToUpperInvariant();
+    }
 
     /// <summary>Tilde SOLO VISUAL: hace avanzar la lista. No entrega, no cobra, no toca MercadoLibre.</summary>
     private async Task MarcarParadaVista(MisPedidosMapeoDto st, bool visto)
