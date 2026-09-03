@@ -175,8 +175,13 @@ public class MapeoEntregasService
     /// No se escribe nada: es una LECTURA. Si mañana MeLi dice "entregado" porque lo reintentaron,
     /// la parada pasa sola a entregada sin que nadie tenga que corregir nada.
     /// </summary>
+    /// 2026-09-02 (mismo día, mirando un caso real): MeLi encadena los estados. El envío de Helguera
+    /// pasó de "receiver_absent" a "rescheduled_by_meli" en el mismo día: fueron, no había nadie, y
+    /// ellos lo reprogramaron para otro día. Para la ruta de HOY las dos cosas significan lo mismo —
+    /// no se entregó y el repartidor no vuelve — así que las dos cierran la parada.
     private static readonly HashSet<string> VisitaFallidaSubstatus = new()
-        { "receiver_absent", "buyer_absent", "not_localized", "refused_delivery", "delivery_failed" };
+        { "receiver_absent", "buyer_absent", "not_localized", "refused_delivery", "delivery_failed",
+          "rescheduled_by_meli", "buyer_rescheduled" };
 
     public static bool VisitaFallida(string? substatus)
         => substatus != null && VisitaFallidaSubstatus.Contains(substatus.ToLowerInvariant());
@@ -190,6 +195,8 @@ public class MapeoEntregasService
         if (sub == "not_localized") return "MercadoLibre: no encontró el domicilio";
         if (sub == "refused_delivery") return "MercadoLibre: no la quisieron recibir";
         if (sub == "delivery_failed") return "MercadoLibre: no se pudo entregar";
+        if (sub == "rescheduled_by_meli") return "MercadoLibre: reprogramado, lo reintentan";
+        if (sub == "buyer_rescheduled") return "El comprador pidió reprogramarlo";
         if (sub == "returning_to_sender" || est == "not_delivered") return "MercadoLibre: vuelve al remitente";
         if (est == "cancelled") return "MercadoLibre: cancelado";
         return null;
