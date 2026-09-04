@@ -46,7 +46,17 @@ public class MeliClonService
 
     // ---------------------------------------------------------------- TRAER
 
-    /// <summary>Lee una publicacion de MeLi (propia o ajena) y devuelve todo lo clonable.</summary>
+    /// <summary>
+    /// Lee una publicacion de MeLi y devuelve todo lo clonable.
+    ///
+    /// 04/09/2026 — COMPROBADO contra la API: MeLi devuelve 403 en /items/{id} de CUALQUIER
+    /// publicacion que no sea del dueño del token (probado con las dos cuentas: cada una ve solo
+    /// lo suyo). Por eso hay dos caminos:
+    ///   · publicacion NUESTRA  -> se lee con el token de ESA cuenta (con el de la otra da 403).
+    ///   · publicacion AJENA    -> si el producto esta en CATALOGO, el clon se arma con la ficha
+    ///     del catalogo (/products/{id}), que es de MercadoLibre y se lee sin permiso de nadie.
+    ///     Es la misma puerta que usa Integraly para "obtener publicaciones de terceros".
+    /// </summary>
     public async Task<ClonPreviewDto> TraerAsync(string referencia)
     {
         if (string.IsNullOrWhiteSpace(referencia))
@@ -56,16 +66,48 @@ public class MeliClonService
         if (http is null)
             return new ClonPreviewDto { Error = "No hay ninguna cuenta de MercadoLibre conectada." };
 
+        var prodId = ProductoDeCatalogo(referencia);
         var itemId = await ResolverItemIdAsync(referencia, http);
-        if (itemId is null)
-            return new ClonPreviewDto { Error = "No pude reconocer la publicación en ese link. Probá pegando el código (MLA...) o el link largo del aviso." };
 
+        // Si la publicacion es NUESTRA hay que preguntar con el token de SU cuenta: con el de la
+        // otra, MeLi contesta 403 igual que si fuera de un desconocido (era el bug de GROVAS).
+        if (itemId is not null)
+        {
+            var duenaId = await _db.MeliItems.Where(i => i.MeliItemId == itemId)
+                                             .Select(i => (int?)i.MeliAccountId).FirstOrDefaultAsync();
+            if (duenaId is int cid)
+                http = await CrearHttpConTokenAsync(cid) ?? http;
+        }
+
+        if (itemId is not null)
+        {
+            var (dtoItem, prohibido) = await LeerItemAsync(itemId, http);
+            if (dtoItem is not null) return dtoItem;
+
+            if (prodId is null)
+                return new ClonPreviewDto
+                {
+                    Error = prohibido
+                        ? "Esa publicación es de otro vendedor y MercadoLibre no deja leerla por sistema. Si el producto está en catálogo, pegá el link de catálogo (el que tiene /p/ en la dirección) y la traigo desde la ficha de MercadoLibre."
+                        : $"MercadoLibre no me dejó leer la publicación {itemId}. Puede estar dada de baja."
+                };
+        }
+
+        if (prodId is not null)
+            return await TraerDeCatalogoAsync(prodId, itemId, http);
+
+        return new ClonPreviewDto { Error = "No pude reconocer la publicación en ese link. Probá pegando el código (MLA...) o el link del aviso." };
+    }
+
+    /// <summary>Lee /items/{id}. Devuelve dto=null si no se pudo, y prohibido=true cuando MeLi dio 403.</summary>
+    private async Task<(ClonPreviewDto? Dto, bool Prohibido)> LeerItemAsync(string itemId, HttpClient http)
+    {
         var resp = await http.GetAsync($"https://api.mercadolibre.com/items/{itemId}");
         if (!resp.IsSuccessStatusCode)
         {
             var body = await resp.Content.ReadAsStringAsync();
-            _logger.LogWarning("Clon: no pude leer {Item}: {Body}", itemId, body);
-            return new ClonPreviewDto { Error = $"MercadoLibre no me dejó leer la publicación {itemId}. Puede estar dada de baja." };
+            _logger.LogWarning("Clon: no pude leer {Item} ({Code}): {Body}", itemId, (int)resp.StatusCode, body);
+            return (null, resp.StatusCode == System.Net.HttpStatusCode.Forbidden);
         }
 
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
@@ -180,7 +222,7 @@ public class MeliClonService
         }
 
         dto.Ok = true;
-        return dto;
+        return (dto, false);
     }
 
     // ------------------------------------------------------------- PUBLICAR
@@ -345,20 +387,39 @@ public class MeliClonService
     }
 
     /// <summary>Saca el MLAxxxx de un link pegado (largo, corto /sec/, de catalogo /p/) o de un codigo suelto.</summary>
+    /// <summary>Codigo del producto de CATALOGO del link (/p/MLAxxx), o null si no es de catalogo.</summary>
+    private static string? ProductoDeCatalogo(string texto)
+    {
+        var m = Regex.Match(texto, @"/p/(ML[A-Z]\d{6,})", RegexOptions.IgnoreCase);
+        return m.Success ? m.Groups[1].Value.ToUpperInvariant() : null;
+    }
+
+    /// <summary>
+    /// Saca el codigo de publicacion (MLA...) de un link o texto.
+    ///
+    /// 04/09/2026 — antes, con un link de catalogo SIN "ganador de la caja de compra", terminaba
+    /// devolviendo el codigo del CATALOGO como si fuera una publicacion y el error era confuso.
+    /// Ahora el orden es: 1) el wid= del link (la publicacion que el usuario esta mirando de verdad),
+    /// 2) el codigo suelto, 3) el ganador de la caja, 4) el vendedor del pdp_filters, 5) la mas
+    /// barata del catalogo. NUNCA devuelve el id de /p/.
+    /// </summary>
     private async Task<string?> ResolverItemIdAsync(string referencia, HttpClient http)
     {
         var texto = referencia.Trim();
+        var prodId = ProductoDeCatalogo(texto);
 
-        // Codigo suelto o dentro del link largo: MLA-1234 o MLA1234
+        // 1) wid=MLAxxxx — MeLi pone ahi la publicacion concreta que se esta viendo.
+        var wid = Regex.Match(texto, @"[?&#]wid=(ML[A-Z]\d{6,})", RegexOptions.IgnoreCase);
+        if (wid.Success) return wid.Groups[1].Value.ToUpperInvariant();
+
+        // 2) Codigo suelto o dentro de un link normal (no de catalogo): MLA-1234 o MLA1234
         var m = Regex.Match(texto, @"\bML[A-Z]-?(\d{6,})\b", RegexOptions.IgnoreCase);
-        if (m.Success && !texto.Contains("/p/", StringComparison.OrdinalIgnoreCase))
+        if (m.Success && prodId is null)
             return (texto.Substring(m.Index, 3) + m.Groups[1].Value).ToUpperInvariant();
 
-        // Link de CATALOGO (/p/MLAxxxx): pedimos el producto y usamos el ganador de la caja de compra.
-        var cat = Regex.Match(texto, @"/p/(ML[A-Z]\d{6,})", RegexOptions.IgnoreCase);
-        if (cat.Success)
+        if (prodId is not null)
         {
-            var prodId = cat.Groups[1].Value.ToUpperInvariant();
+            // 3) El ganador de la caja de compra. Ojo: muchos productos NO tienen ninguno.
             try
             {
                 var pr = await http.GetAsync($"https://api.mercadolibre.com/products/{prodId}");
@@ -373,9 +434,34 @@ public class MeliClonService
                 }
             }
             catch { }
+
+            // 4 y 5) Sin ganador: la del vendedor que venia en el link, o la primera del catalogo.
+            var vend = Regex.Match(texto, @"seller_id(?:%3A|:)(\d+)", RegexOptions.IgnoreCase);
+            try
+            {
+                var ir = await http.GetAsync($"https://api.mercadolibre.com/products/{prodId}/items?limit=20");
+                if (ir.IsSuccessStatusCode)
+                {
+                    using var idoc = JsonDocument.Parse(await ir.Content.ReadAsStringAsync());
+                    if (idoc.RootElement.TryGetProperty("results", out var res) && res.ValueKind == JsonValueKind.Array
+                        && res.GetArrayLength() > 0)
+                    {
+                        if (vend.Success)
+                            foreach (var r in res.EnumerateArray())
+                                if (r.TryGetProperty("seller_id", out var sid) && sid.ValueKind == JsonValueKind.Number
+                                    && sid.GetInt64().ToString() == vend.Groups[1].Value)
+                                    return Str(r, "item_id");
+                        return Str(res.EnumerateArray().First(), "item_id");
+                    }
+                }
+            }
+            catch { }
+
+            // Es de catalogo: el que llama arma el clon con la ficha, no hace falta la publicacion.
+            return null;
         }
 
-        // Link corto (mercadolibre.com/sec/xxxx) u otro: seguimos el redirect y buscamos el codigo.
+        // 6) Link corto (mercadolibre.com/sec/xxxx) u otro: seguimos el redirect y buscamos el codigo.
         if (texto.StartsWith("http", StringComparison.OrdinalIgnoreCase))
         {
             try
@@ -385,8 +471,11 @@ public class MeliClonService
                 plain.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0");
                 var r = await plain.GetAsync(texto);
                 var final = r.RequestMessage?.RequestUri?.ToString() ?? "";
-                var m2 = Regex.Match(final, @"\bML[A-Z]-?(\d{6,})\b", RegexOptions.IgnoreCase);
-                if (m2.Success) return (final.Substring(m2.Index, 3) + m2.Groups[1].Value).ToUpperInvariant();
+                if (ProductoDeCatalogo(final) is null)
+                {
+                    var m2 = Regex.Match(final, @"\bML[A-Z]-?(\d{6,})\b", RegexOptions.IgnoreCase);
+                    if (m2.Success) return (final.Substring(m2.Index, 3) + m2.Groups[1].Value).ToUpperInvariant();
+                }
                 var html = await r.Content.ReadAsStringAsync();
                 var m3 = Regex.Match(html, @"\b(ML[A-Z]\d{9,})\b");
                 if (m3.Success) return m3.Groups[1].Value.ToUpperInvariant();
@@ -395,6 +484,130 @@ public class MeliClonService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Arma el clon desde la FICHA DE CATALOGO. Es el unico camino valido para partir de la
+    /// publicacion de otro: la ficha es de MercadoLibre, no del vendedor, y se lee sin permiso.
+    /// La ficha NO trae categoria — sale de /products/{id}/items, que ademas nos dice a que precio
+    /// lo tienen los que ya compiten por ese catalogo.
+    /// </summary>
+    private async Task<ClonPreviewDto> TraerDeCatalogoAsync(string prodId, string? itemPreferido, HttpClient http)
+    {
+        var resp = await http.GetAsync($"https://api.mercadolibre.com/products/{prodId}");
+        if (!resp.IsSuccessStatusCode)
+            return new ClonPreviewDto { Error = $"No pude leer la ficha de catálogo {prodId} en MercadoLibre." };
+
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var root = doc.RootElement;
+
+        var dto = new ClonPreviewDto
+        {
+            MeliItemId = itemPreferido ?? "",
+            Titulo = Str(root, "name") ?? "",
+            Condition = "new",
+            Stock = 1,
+            FreeShipping = true,
+            EsCatalogo = true,
+            CatalogProductId = prodId,
+            DesdeCatalogo = true,
+            Permalink = Str(root, "permalink")
+        };
+
+        if (root.TryGetProperty("pictures", out var pics) && pics.ValueKind == JsonValueKind.Array)
+            foreach (var pic in pics.EnumerateArray())
+            {
+                var url = Str(pic, "secure_url") ?? Str(pic, "url");
+                if (!string.IsNullOrEmpty(url)) dto.Fotos.Add(url);
+            }
+        dto.Thumbnail = dto.Fotos.FirstOrDefault();
+
+        if (root.TryGetProperty("attributes", out var attrs) && attrs.ValueKind == JsonValueKind.Array)
+            foreach (var a in attrs.EnumerateArray())
+            {
+                var id = Str(a, "id");
+                if (string.IsNullOrEmpty(id) || AtributosNoCopiables.Contains(id)) continue;
+                var valueId = Str(a, "value_id");
+                var valueName = Str(a, "value_name");
+                if (valueId == "-1") valueId = null;
+                if (valueName == "-1") valueName = null;
+                if (valueId is null && string.IsNullOrWhiteSpace(valueName)) continue;
+                dto.Atributos.Add(new ClonAtributoDto
+                {
+                    Id = id,
+                    Nombre = Str(a, "name") ?? id,
+                    ValueId = valueId,
+                    ValueName = valueName
+                });
+            }
+
+        // La descripcion de la ficha viene como objeto { type, content }.
+        if (root.TryGetProperty("short_description", out var sd))
+            dto.Descripcion = sd.ValueKind == JsonValueKind.Object ? Str(sd, "content")
+                            : sd.ValueKind == JsonValueKind.String ? sd.GetString() : null;
+
+        // Categoria + quienes ya lo venden.
+        try
+        {
+            var ir = await http.GetAsync($"https://api.mercadolibre.com/products/{prodId}/items?limit=20");
+            if (ir.IsSuccessStatusCode)
+            {
+                using var idoc = JsonDocument.Parse(await ir.Content.ReadAsStringAsync());
+                if (idoc.RootElement.TryGetProperty("results", out var res) && res.ValueKind == JsonValueKind.Array)
+                {
+                    var mias = await _db.MeliAccounts.Select(c => c.MeliUserId).ToListAsync();
+                    foreach (var r in res.EnumerateArray())
+                    {
+                        var comp = new ClonCompetidorDto
+                        {
+                            MeliItemId = Str(r, "item_id") ?? "",
+                            Precio = r.TryGetProperty("price", out var pp) && pp.ValueKind == JsonValueKind.Number ? pp.GetDecimal() : 0m,
+                            ListingTypeId = Str(r, "listing_type_id"),
+                            SellerId = r.TryGetProperty("seller_id", out var sid) && sid.ValueKind == JsonValueKind.Number ? sid.GetInt64() : 0L
+                        };
+                        comp.EsMio = mias.Contains(comp.SellerId);
+                        dto.Competidores.Add(comp);
+                        if (string.IsNullOrEmpty(dto.CategoryId))
+                        {
+                            var cat = Str(r, "category_id");
+                            if (!string.IsNullOrEmpty(cat)) dto.CategoryId = cat;
+                        }
+                    }
+                    dto.Competidores = dto.Competidores.OrderBy(c => c.Precio).ToList();
+                }
+            }
+        }
+        catch { }
+
+        // Precio de arranque: el de la publicacion que venia en el link; si no, la mas barata.
+        var elegido = dto.Competidores.FirstOrDefault(c => c.MeliItemId == itemPreferido);
+        dto.Precio = elegido?.Precio ?? dto.Competidores.FirstOrDefault()?.Precio ?? 0m;
+        if (elegido is not null && !string.IsNullOrWhiteSpace(elegido.ListingTypeId))
+            dto.ListingTypeId = elegido.ListingTypeId!;
+
+        dto.CategoriaNombre = await NombreCategoriaAsync(http, dto.CategoryId);
+
+        if (string.IsNullOrWhiteSpace(dto.Titulo))
+            return new ClonPreviewDto { Error = "La ficha de catálogo no trajo título. Probá con el link del aviso." };
+
+        dto.Ok = true;
+        return dto;
+    }
+
+    /// <summary>"Herramientas › Discos › ..." para que el usuario vea donde va a caer.</summary>
+    private async Task<string?> NombreCategoriaAsync(HttpClient http, string? categoryId)
+    {
+        if (string.IsNullOrWhiteSpace(categoryId)) return null;
+        try
+        {
+            var catResp = await http.GetAsync($"https://api.mercadolibre.com/categories/{categoryId}");
+            if (!catResp.IsSuccessStatusCode) return null;
+            using var catDoc = JsonDocument.Parse(await catResp.Content.ReadAsStringAsync());
+            if (catDoc.RootElement.TryGetProperty("path_from_root", out var path) && path.ValueKind == JsonValueKind.Array)
+                return string.Join(" › ", path.EnumerateArray().Select(x => Str(x, "name")).Where(n => !string.IsNullOrEmpty(n)));
+            return Str(catDoc.RootElement, "name");
+        }
+        catch { return null; }
     }
 
     private async Task<HttpClient?> CrearHttpConTokenAsync(int? cuentaId = null)

@@ -9,6 +9,17 @@ public class ClonAtributoDto
     public string? ValueName { get; set; }
 }
 
+/// <summary>2026-09-04: una publicación que compite por el mismo producto de catálogo.</summary>
+public class ClonCompetidorDto
+{
+    public string MeliItemId { get; set; } = "";
+    public long SellerId { get; set; }
+    public decimal Precio { get; set; }
+    public string? ListingTypeId { get; set; }
+    /// <summary>True si esa publicación es de una de nuestras cuentas.</summary>
+    public bool EsMio { get; set; }
+}
+
 /// <summary>Todo lo que se pudo leer de la publicación original, listo para editar y publicar.</summary>
 public class ClonPreviewDto
 {
@@ -38,6 +49,14 @@ public class ClonPreviewDto
     public string? CatalogProductId { get; set; }
     /// <summary>Cantidad de variantes del original. Esta versión NO las clona.</summary>
     public int CantidadVariantes { get; set; }
+
+    /// <summary>
+    /// 2026-09-04: los datos NO salieron de la publicación de un vendedor (MeLi lo prohíbe) sino de
+    /// la FICHA DE CATÁLOGO de MercadoLibre. Es el camino válido para clonar algo de otro.
+    /// </summary>
+    public bool DesdeCatalogo { get; set; }
+    /// <summary>Los que ya venden ese producto de catálogo, del más barato al más caro.</summary>
+    public List<ClonCompetidorDto> Competidores { get; set; } = new();
 
     /// <summary>True si la publicación es de una de nuestras cuentas.</summary>
     public bool EsPropia { get; set; }

@@ -9,8 +9,23 @@ public class ClonAtributoDto
     public string? ValueName { get; set; }
 }
 
+/// <summary>2026-09-04: una publicación que ya compite por el mismo producto de catálogo.</summary>
+public class ClonCompetidorDto
+{
+    public string MeliItemId { get; set; } = "";
+    public long SellerId { get; set; }
+    public decimal Precio { get; set; }
+    public string? ListingTypeId { get; set; }
+    public bool EsMio { get; set; }
+}
+
 public class ClonPreviewDto
 {
+    /// <summary>2026-09-04: los datos salieron de la FICHA DE CATÁLOGO de MeLi, no de la publicación de un vendedor.</summary>
+    public bool DesdeCatalogo { get; set; }
+    /// <summary>Los que ya venden ese producto, del más barato al más caro.</summary>
+    public List<ClonCompetidorDto> Competidores { get; set; } = new();
+
     public bool Ok { get; set; }
     public string? Error { get; set; }
 

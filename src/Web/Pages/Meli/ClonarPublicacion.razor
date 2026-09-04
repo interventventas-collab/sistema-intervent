@@ -46,6 +46,10 @@
     .cl-largo > label { width: 105px; min-width: 105px; color: #6b7280; font-size: 0.8rem; padding-top: 0.4rem; }
     .cl-largo textarea { flex: 1; min-height: 110px; padding: 0.5rem 0.6rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; font-family: inherit; }
     .cl-nota { color: #9ca3af; font-size: 0.75rem; }
+    .cl-competencia { margin-top: 0.45rem; font-size: 0.8rem; color: #374151; }
+    .cl-comp-lista { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.25rem; }
+    .cl-comp { border: 1px solid #e5e7eb; border-radius: 6px; padding: 1px 7px; font-size: 0.78rem; color: #374151; }
+    .cl-comp.mio { border-color: #16a34a; color: #15803d; font-weight: 700; }
 
     .cl-chip { border: 1px solid #d1d5db; background: #fff; color: #374151; padding: 0.3rem 0.65rem; border-radius: 999px; font-size: 0.82rem; cursor: pointer; }
     .cl-chip.on { background: #1f2937; color: #fff; border-color: #1f2937; }
@@ -99,22 +103,41 @@
                 <img src="@origen.Thumbnail" alt="" />
             }
             <div>
-                <div>
-                    <b>@origen.MeliItemId</b> ·
-                    @if (origen.EsPropia)
-                    {
-                        <span>tuya, en @origen.CuentaOrigenNombre</span>
-                    }
-                    else
-                    {
-                        <span>de @(string.IsNullOrEmpty(origen.VendedorNickname) ? "otro vendedor" : origen.VendedorNickname)</span>
-                    }
-                    · $@origen.Precio.ToString("N0") · @origen.Vendidas vendidas
-                    @if (!string.IsNullOrEmpty(origen.Permalink))
-                    {
-                        <span> · <a href="@origen.Permalink" target="_blank">ver el original ↗</a></span>
-                    }
-                </div>
+                @* 2026-09-04: cuando el producto esta en catalogo, los datos NO salen de la
+                   publicacion del otro (MeLi no la deja leer) sino de la ficha del catalogo. *@
+                @if (origen.DesdeCatalogo)
+                {
+                    <div>
+                        <b>Ficha de catálogo de MercadoLibre</b>
+                        @if (!string.IsNullOrEmpty(origen.CatalogProductId))
+                        {
+                            <span class="cl-nota"> · @origen.CatalogProductId</span>
+                        }
+                        @if (!string.IsNullOrEmpty(origen.Permalink))
+                        {
+                            <span> · <a href="@origen.Permalink" target="_blank">ver la ficha ↗</a></span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div>
+                        <b>@origen.MeliItemId</b> ·
+                        @if (origen.EsPropia)
+                        {
+                            <span>tuya, en @origen.CuentaOrigenNombre</span>
+                        }
+                        else
+                        {
+                            <span>de @(string.IsNullOrEmpty(origen.VendedorNickname) ? "otro vendedor" : origen.VendedorNickname)</span>
+                        }
+                        · $@origen.Precio.ToString("N0") · @origen.Vendidas vendidas
+                        @if (!string.IsNullOrEmpty(origen.Permalink))
+                        {
+                            <span> · <a href="@origen.Permalink" target="_blank">ver el original ↗</a></span>
+                        }
+                    </div>
+                }
                 @if (!string.IsNullOrEmpty(origen.CategoriaNombre))
                 {
                     <div class="cl-nota">@origen.CategoriaNombre</div>
@@ -127,13 +150,34 @@
                 {
                     <div class="cl-aviso">⚠ El original tiene @origen.CantidadVariantes variantes. El clon se publica SIN variantes (una sola).</div>
                 }
-                @if (origen.EsCatalogo)
+                @if (origen.EsCatalogo && !origen.DesdeCatalogo)
                 {
                     <div class="cl-aviso">⚠ El original es una publicación de catálogo. El clon se crea como publicación normal.</div>
                 }
-                @if (!origen.EsPropia)
+                @if (origen.DesdeCatalogo)
+                {
+                    <div class="cl-nota">Título, fotos y ficha técnica salen del catálogo de MercadoLibre, no de la publicación de otro vendedor.</div>
+                    <div class="cl-aviso">⚠ Igual conviene <b>modificarla</b>: cambiá el título y sumá fotos tuyas. Publicar una copia idéntica es lo que MercadoLibre penaliza.</div>
+                }
+                else if (!origen.EsPropia)
                 {
                     <div class="cl-aviso">⚠ Las fotos y el texto son del otro vendedor: si te denuncian, MeLi baja la publicación. Conviene dejar la ficha técnica y cambiar título y fotos por las tuyas.</div>
+                }
+
+                @* Los que ya lo venden: sirve para poner el precio sabiendo donde estas parado. *@
+                @if (origen.Competidores.Count > 0)
+                {
+                    <div class="cl-competencia">
+                        <b>Ya lo venden @origen.Competidores.Count</b> — del más barato al más caro:
+                        <div class="cl-comp-lista">
+                            @foreach (var c in origen.Competidores)
+                            {
+                                <span class="cl-comp @(c.EsMio ? "mio" : "")" title="@c.MeliItemId">
+                                    $@c.Precio.ToString("N0")@(c.EsMio ? " (tuya)" : "")
+                                </span>
+                            }
+                        </div>
+                    </div>
                 }
             </div>
         </div>
