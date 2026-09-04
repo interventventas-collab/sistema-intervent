@@ -7650,9 +7650,11 @@ public class ApiClient
         }
         catch { return false; }
     }
-    public record TwRespRapidaDto(int Id, string Nombre, string Texto, int Orden, bool Activo);
+    // 2026-09-04: Color = clave de la paleta del boton en el cajon del chat ("rojo", "verde", ...).
+    // NULL o vacio = el celeste de siempre.
+    public record TwRespRapidaDto(int Id, string Nombre, string Texto, int Orden, bool Activo, string? Color = null);
     public record TwContactoDto(int Id, string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId, string? ClienteNombre, string? ClienteCodigo);
-    public record TwRespUpsert(string Nombre, string Texto, int Orden, bool Activo);
+    public record TwRespUpsert(string Nombre, string Texto, int Orden, bool Activo, string? Color = null);
     public record TwContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId);
     // 2026-08-25: DireccionEntrega = la direccion de ENTREGA que coincidio con lo que se busco
     // (un cliente puede tener varias). Viene solo cuando el match fue por ahi, para mostrarla.

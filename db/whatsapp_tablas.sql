@@ -165,3 +165,17 @@ BEGIN
 END
 ELSE PRINT 'WhatsApp_Catalogos ya existia (no se toca).';
 GO
+
+-- 8) Color del boton de cada respuesta rapida (2026-09-04) -------------------
+--    Para que el operador distinga las respuestas de un vistazo en el cajon del
+--    chat. NULL = el celeste de siempre. Se guarda la clave del color
+--    ("rojo", "verde", ...), NO un codigo hexadecimal: asi el dia que cambie la
+--    paleta no hay que tocar la base.
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+               WHERE TABLE_NAME = 'WhatsApp_TwilioRespuestasRapidas' AND COLUMN_NAME = 'Color')
+BEGIN
+    ALTER TABLE [WhatsApp_TwilioRespuestasRapidas] ADD [Color] NVARCHAR(20) NULL;
+    PRINT 'Columna Color agregada a WhatsApp_TwilioRespuestasRapidas.';
+END
+ELSE PRINT 'Columna Color ya existia (no se toca).';
+GO

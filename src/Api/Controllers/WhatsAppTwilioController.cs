@@ -849,7 +849,7 @@ public class WhatsAppTwilioController : ControllerBase
     }
 
     // ===== Respuestas rapidas CRUD =====
-    public record RespuestaUpsert(string Nombre, string Texto, int Orden, bool Activo);
+    public record RespuestaUpsert(string Nombre, string Texto, int Orden, bool Activo, string? Color = null);
 
     [HttpGet("respuestas-rapidas")]
     [Authorize]
@@ -871,7 +871,8 @@ public class WhatsAppTwilioController : ControllerBase
             Nombre = req.Nombre.Trim(),
             Texto = req.Texto,
             Orden = req.Orden,
-            Activo = req.Activo
+            Activo = req.Activo,
+            Color = NormalizarColorResp(req.Color)
         };
         _db.WhatsAppTwilioRespuestasRapidas.Add(r);
         await _db.SaveChangesAsync();
@@ -888,8 +889,18 @@ public class WhatsAppTwilioController : ControllerBase
         r.Texto = req.Texto;
         r.Orden = req.Orden;
         r.Activo = req.Activo;
+        r.Color = NormalizarColorResp(req.Color);
         await _db.SaveChangesAsync();
         return Ok(r);
+    }
+
+    // 2026-09-04: solo dejamos entrar las claves de la paleta. Cualquier otra cosa
+    // (o vacio) queda en NULL = el celeste de siempre.
+    static readonly string[] ColoresRespuesta = { "rojo", "naranja", "amarillo", "verde", "celeste", "violeta", "rosa", "gris" };
+    static string? NormalizarColorResp(string? c)
+    {
+        var v = (c ?? "").Trim().ToLowerInvariant();
+        return ColoresRespuesta.Contains(v) ? v : null;
     }
 
     [HttpDelete("respuestas-rapidas/{id:int}")]
@@ -2652,7 +2663,7 @@ public class WhatsAppTwilioController : ControllerBase
                     "ALQUILER", r.Id, $"Reserva {r.Numero}",
                     r.ClienteNav != null ? r.ClienteNav.Nombre : "—",
                     $"${r.MontoTotal:N0}",
-                    r.CreatedAt, null, "🎪"))
+                    r.CreatedAt, null, "🪑"))
                 .ToListAsync();
             return Ok(list);
         }

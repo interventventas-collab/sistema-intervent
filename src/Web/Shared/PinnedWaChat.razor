@@ -555,7 +555,7 @@
                     <button type="button" class="pwa-mas-op" @onclick="AbrirCbu">🏦 Pasar CBU / datos bancarios</button>
                     @* 2026-09-01: cotizar un alquiler desde el celular. Mismo cotizador que la compu,
                        en modo celu (botones grandes, lo cargado arriba, total pegado abajo). *@
-                    <button type="button" class="pwa-mas-op" @onclick="AbrirCotizador">🎪 Cotizar alquiler</button>
+                    <button type="button" class="pwa-mas-op" @onclick="AbrirCotizador">🪑 Cotizar alquiler</button>
                 }
                 else if (masVista == "servidor")
                 {
@@ -1804,7 +1804,7 @@
         "contacto" => "👤 Compartir contacto",
         "saldo" => "💰 Mandar saldo",
         "cbu" => "🏦 Datos bancarios",
-        "cotizar" => "🎪 Cotizar alquiler",
+        "cotizar" => "🪑 Cotizar alquiler",
         _ => "➕ Más"
     };
 
@@ -1812,7 +1812,7 @@
     private static readonly (string Key, string Label)[] SrvTabs = new[]
     {
         ("CATALOGO", "📚 Catálogos"), ("LISTA", "💲 Listas"), ("VENTA", "🧾 Facturas"),
-        ("COBRANZA", "💰 Recibos"), ("ALQUILER", "🎪 Alquileres"), ("VISITA", "📋 Visitas"), ("UPLOAD", "📁 Subidos")
+        ("COBRANZA", "💰 Recibos"), ("ALQUILER", "🪑 Alquileres"), ("VISITA", "📋 Visitas"), ("UPLOAD", "📁 Subidos")
     };
     private string srvTab = "CATALOGO";
     private string srvSearch = "";

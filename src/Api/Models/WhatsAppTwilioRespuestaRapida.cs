@@ -11,6 +11,9 @@ public class WhatsAppTwilioRespuestaRapida
     public string Texto { get; set; } = "";
     public int Orden { get; set; }
     public bool Activo { get; set; } = true;
+    // 2026-09-04: color del boton en el cajon del chat, para distinguirlas de un vistazo.
+    // Guarda la CLAVE del color ("rojo", "verde", ...), no un hexadecimal. NULL = celeste de siempre.
+    [MaxLength(20)] public string? Color { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

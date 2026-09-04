@@ -176,7 +176,7 @@
                     <button class="wa-filtro-op @(filtroRol=="cliente" ? "sel" : "")" @onclick='() => PickFiltro("cliente")'>🛍️ Clientes</button>
                     <button class="wa-filtro-op @(filtroRol=="empleado" ? "sel" : "")" @onclick='() => PickFiltro("empleado")'>👷 Empleados</button>
                     <button class="wa-filtro-op @(filtroRol=="hermano" ? "sel" : "")" @onclick='() => PickFiltro("hermano")'>👨‍👦 Hermanos</button>
-                    <button class="wa-filtro-op @(filtroRol=="alquiler" ? "sel" : "")" @onclick='() => PickFiltro("alquiler")'>🎪 Alquiler</button>
+                    <button class="wa-filtro-op @(filtroRol=="alquiler" ? "sel" : "")" @onclick='() => PickFiltro("alquiler")'>🪑 Alquiler</button>
                     <button class="wa-filtro-op @(filtroRol=="cafe" ? "sel" : "")" @onclick='() => PickFiltro("cafe")'>☕ Café</button>
                     <button class="wa-filtro-op @(filtroRol=="meli" ? "sel" : "")" @onclick='() => PickFiltro("meli")'>🛒 MELI</button>
                     <button class="wa-filtro-op @(filtroRol=="sin" ? "sel" : "")" @onclick='() => PickFiltro("sin")' title="Charlas de gente sin tipo asignado">❓ Sin asignar</button>
@@ -369,7 +369,7 @@
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("empleado")'>👷 Empleado</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("hermano")'>👨‍👦 Hermano</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("proveedor")'>🚚 Proveedor</button>
-                <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("alquiler")'>🎪 Alquiler</button>
+                <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("alquiler")'>🪑 Alquiler</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("cafe")'>☕ Café</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("meli")'>🛒 MELI</button>
                 <button class="wa-rolmenu-op" @onclick='() => AsignarRolRapido("otro")'>🏷️ Otro</button>
@@ -1809,7 +1809,7 @@
                                         @foreach (var r in respuestas.Where(x => x.Activo || qrVerApagadas).OrderBy(x => x.Orden))
                                         {
                                             <div class="wa-qr-row">
-                                                <button class="wa-chip @(r.Activo ? "" : "apagada")" @onclick="@(() => { InsertarRespuesta(r); showQuickReplies = false; })" title="@r.Texto">
+                                                <button class="wa-chip qr-c-@(string.IsNullOrEmpty(r.Color) ? "def" : r.Color) @(r.Activo ? "" : "apagada")" @onclick="@(() => { InsertarRespuesta(r); showQuickReplies = false; })" title="@r.Texto">
                                                     @r.Nombre
                                                 </button>
                                                 <button class="wa-qr-lapiz" title="Cambiar el nombre o el texto de esta respuesta" @onclick="@(() => AbrirEditorResp(r))">✏️</button>
@@ -2631,7 +2631,7 @@
                    hacer con el texto: dejarlo escrito abajo para que lo revise y lo mande él. *@
                 <aside class="wa-ctx wa-alq">
                     <div class="wa-mv-top">
-                        <span class="wa-mv-tit">🎪 Cotizar alquiler</span>
+                        <span class="wa-mv-tit">🪑 Cotizar alquiler</span>
                         <button class="wa-ficha-x" @onclick="CerrarModoAlquiler" title="Salir">×</button>
                     </div>
                     <div class="wa-alq-body">
@@ -2717,7 +2717,7 @@
             @* 2026-08-31: COTIZAR ALQUILER — sillas, mesas y flete acá al lado, y el presupuesto
                sale como mensaje sin copiar ni pegar. *@
             <button class="wa-ctx-rail-btn @(modoAlquiler ? "on" : "")" @onclick="AbrirModoAlquiler"
-                    title="Cotizar alquiler: cargá sillas, mesas y flete, y mandale el presupuesto">🎪</button>
+                    title="Cotizar alquiler: cargá sillas, mesas y flete, y mandale el presupuesto">🪑</button>
         }
         @* 2026-08-27: PEDIDOS Y CONFIGURACIÓN. Estaba arriba como solapa y le comía alto a la charla.
            Va separado por una rayita y en azul porque es lo único de esta tira que te SACA del chat:
@@ -2779,7 +2779,7 @@
                     <option value="empleado">👷 Empleado</option>
                     <option value="cliente">🛍️ Cliente</option>
                     <option value="proveedor">🚚 Proveedor</option>
-                    <option value="alquiler">🎪 Alquiler</option>
+                    <option value="alquiler">🪑 Alquiler</option>
                     <option value="cafe">☕ Café</option>
                     <option value="meli">🛒 MELI</option>
                     <option value="otro">Otro</option>
@@ -3152,6 +3152,17 @@
                     ⤵️ Usar lo que estoy escribiendo
                 </button>
             }
+
+            <label style="font-size:0.78rem; color:#6b7280; display:block; margin-top:0.8rem;">Color del botón</label>
+            <div class="wa-qr-paleta">
+                @foreach (var c in ColoresRespuesta)
+                {
+                    <button type="button" class="wa-qr-color qr-c-@c.Clave @((editRespColor ?? "def") == c.Clave ? "elegido" : "")"
+                            title="@c.Nombre" @onclick="@(() => editRespColor = c.Clave == "def" ? null : c.Clave)">
+                        @(( (editRespColor ?? "def") == c.Clave) ? "✓" : "Aa")
+                    </button>
+                }
+            </div>
 
             <div style="display:flex; gap:0.9rem; align-items:center; margin-top:0.8rem;">
                 <div>
@@ -4025,10 +4036,41 @@
     /* 2026-09-04: cada respuesta = el botón que inserta + el lapicito que la edita */
     .wa-qr-row { display: flex; align-items: center; gap: 0.25rem; }
     .wa-qr-row .wa-chip { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .wa-qr-row .wa-chip.apagada { background: #f3f4f6; border-color: #e5e7eb; color: #9ca3af; }
     .wa-qr-lapiz { background: none; border: none; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0.3rem; border-radius: 6px; opacity: 0.75; }
     .wa-qr-lapiz:hover { opacity: 1; background: #f1f5f9; }
     .wa-qr-vacio { font-size: 0.78rem; color: #9ca3af; text-align: center; padding: 0.4rem 0.2rem; }
+    /* 2026-09-04: color por respuesta. Fondo suave + letra del mismo tono oscuro, para que se lea. */
+    .wa-chip.qr-c-rojo     { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+    .wa-chip.qr-c-naranja  { background: #ffedd5; border-color: #fdba74; color: #9a3412; }
+    .wa-chip.qr-c-amarillo { background: #fef3c7; border-color: #fcd34d; color: #854d0e; }
+    .wa-chip.qr-c-verde    { background: #dcfce7; border-color: #86efac; color: #166534; }
+    .wa-chip.qr-c-celeste  { background: #cffafe; border-color: #67e8f9; color: #155e75; }
+    .wa-chip.qr-c-violeta  { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
+    .wa-chip.qr-c-rosa     { background: #fce7f3; border-color: #f9a8d4; color: #9d174d; }
+    .wa-chip.qr-c-gris     { background: #f1f5f9; border-color: #cbd5e1; color: #334155; }
+    .wa-chip.qr-c-rojo:hover     { background: #991b1b; border-color: #991b1b; color: #fff; }
+    .wa-chip.qr-c-naranja:hover  { background: #9a3412; border-color: #9a3412; color: #fff; }
+    .wa-chip.qr-c-amarillo:hover { background: #854d0e; border-color: #854d0e; color: #fff; }
+    .wa-chip.qr-c-verde:hover    { background: #166534; border-color: #166534; color: #fff; }
+    .wa-chip.qr-c-celeste:hover  { background: #155e75; border-color: #155e75; color: #fff; }
+    .wa-chip.qr-c-violeta:hover  { background: #5b21b6; border-color: #5b21b6; color: #fff; }
+    .wa-chip.qr-c-rosa:hover     { background: #9d174d; border-color: #9d174d; color: #fff; }
+    .wa-chip.qr-c-gris:hover     { background: #334155; border-color: #334155; color: #fff; }
+    /* la respuesta apagada se ve gris SIEMPRE, aunque tenga color elegido */
+    .wa-qr-row .wa-chip.apagada { background: #f3f4f6; border-color: #e5e7eb; color: #9ca3af; }
+    /* paleta del cartelito de edición */
+    .wa-qr-paleta { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
+    .wa-qr-color { width: 40px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 0.78rem; font-weight: 700;
+                   background: #eaf1fb; border: 1px solid #d5e3f7; color: #1d4ed8; }
+    .wa-qr-color.qr-c-rojo     { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+    .wa-qr-color.qr-c-naranja  { background: #ffedd5; border-color: #fdba74; color: #9a3412; }
+    .wa-qr-color.qr-c-amarillo { background: #fef3c7; border-color: #fcd34d; color: #854d0e; }
+    .wa-qr-color.qr-c-verde    { background: #dcfce7; border-color: #86efac; color: #166534; }
+    .wa-qr-color.qr-c-celeste  { background: #cffafe; border-color: #67e8f9; color: #155e75; }
+    .wa-qr-color.qr-c-violeta  { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
+    .wa-qr-color.qr-c-rosa     { background: #fce7f3; border-color: #f9a8d4; color: #9d174d; }
+    .wa-qr-color.qr-c-gris     { background: #f1f5f9; border-color: #cbd5e1; color: #334155; }
+    .wa-qr-color.elegido { outline: 2px solid #111827; outline-offset: 1px; }
     .wa-qr-pie { border-top: 1px solid #eef1f5; margin-top: 0.25rem; padding-top: 0.35rem; display: flex; flex-direction: column; gap: 0.2rem; }
     .wa-qr-nueva, .wa-qr-apagadas { background: none; border: none; cursor: pointer; font-size: 0.78rem; padding: 0.3rem 0.35rem; border-radius: 6px; text-align: left; color: #374151; }
     .wa-qr-nueva:hover, .wa-qr-apagadas:hover { background: #f1f5f9; }
@@ -4554,7 +4596,7 @@
             <button class="wa-srv-tab @(srvTab == "COBRANZA" ? "active" : "")" @onclick='() => CambiarTabServidor("COBRANZA")'>💰 Recibos cobranza</button>
             <button class="wa-srv-tab @(srvTab == "LISTA" ? "active" : "")" @onclick='() => CambiarTabServidor("LISTA")'>💲 Listas de precios</button>
             <button class="wa-srv-tab @(srvTab == "CATALOGO" ? "active" : "")" @onclick='() => CambiarTabServidor("CATALOGO")'>📚 Catálogos</button>
-            <button class="wa-srv-tab @(srvTab == "ALQUILER" ? "active" : "")" @onclick='() => CambiarTabServidor("ALQUILER")'>🎪 Alquileres</button>
+            <button class="wa-srv-tab @(srvTab == "ALQUILER" ? "active" : "")" @onclick='() => CambiarTabServidor("ALQUILER")'>🪑 Alquileres</button>
             <button class="wa-srv-tab @(srvTab == "VISITA" ? "active" : "")" @onclick='() => CambiarTabServidor("VISITA")'>📋 Recibos de visita</button>
             <button class="wa-srv-tab @(srvTab == "UPLOAD" ? "active" : "")" @onclick='() => CambiarTabServidor("UPLOAD")'>📁 Mis subidos</button>
         </div>
@@ -4889,7 +4931,17 @@
     string editRespTexto = "";
     int editRespOrden = 0;
     bool editRespActivo = true;
+    string? editRespColor = null;    // 2026-09-04: null = el celeste de siempre
     bool editRespGuardando = false;
+
+    // 2026-09-04: paleta cerrada para el botón de la respuesta. Pocos colores a propósito:
+    // con una paleta infinita terminan todas de un color distinto y no se distingue nada.
+    // Las claves tienen que coincidir con las de la API (NormalizarColorResp).
+    static readonly (string Clave, string Nombre)[] ColoresRespuesta = new[]
+    {
+        ("def", "Celeste (el de siempre)"), ("rojo", "Rojo"), ("naranja", "Naranja"), ("amarillo", "Amarillo"),
+        ("verde", "Verde"), ("celeste", "Celeste fuerte"), ("violeta", "Violeta"), ("rosa", "Rosa"), ("gris", "Gris"),
+    };
     // 2026-07-29: Datos bancarios / CBUs
     List<ApiClient.TwCbuDto> datosBancarios = new();
     bool showCbuPanel = false;
@@ -7353,6 +7405,7 @@
         editRespTexto = r?.Texto ?? "";
         editRespOrden = r?.Orden ?? (respuestas.Count == 0 ? 1 : respuestas.Max(x => x.Orden) + 1);
         editRespActivo = r?.Activo ?? true;
+        editRespColor = string.IsNullOrEmpty(r?.Color) ? null : r!.Color;
         showEditResp = true;
     }
 
@@ -7373,7 +7426,7 @@
         bool ok;
         try
         {
-            var dto = new ApiClient.TwRespUpsert(editRespNombre.Trim(), editRespTexto, editRespOrden, editRespActivo);
+            var dto = new ApiClient.TwRespUpsert(editRespNombre.Trim(), editRespTexto, editRespOrden, editRespActivo, editRespColor);
             ok = editRespId > 0
                 ? await Api.UpdateTwRespuestaAsync(editRespId, dto)
                 : await Api.CreateTwRespuestaAsync(dto);
@@ -8906,7 +8959,7 @@
         "hermano" => "👨‍👦 Hermanos",
         "empleado" => "👷 Empleados",
         "cliente" => "🛍️ Clientes",
-        "alquiler" => "🎪 Alquiler",
+        "alquiler" => "🪑 Alquiler",
         "cafe" => "☕ Café",
         "meli" => "🛒 MELI",
         "sin" => "❓ Sin asignar",
@@ -9445,7 +9498,7 @@
         "empleado" => "👷",
         "cliente" => "🛍️",
         "proveedor" => "🚚",
-        "alquiler" => "🎪",
+        "alquiler" => "🪑",
         "cafe" => "☕",
         "meli" => "🛒",
         _ => ""

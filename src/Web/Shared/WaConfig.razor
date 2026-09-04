@@ -476,7 +476,10 @@
 
     async Task GuardarResp(ApiClient.TwRespRapidaDto r)
     {
-        var ok = await Api.UpdateTwRespuestaAsync(r.Id, new ApiClient.TwRespUpsert(editRespNombre[r.Id], editRespTexto[r.Id], editRespOrden[r.Id], editRespActivo[r.Id]));
+        // 2026-09-04: se reenvia r.Color tal cual. El color se elige desde el cajon del chat;
+        // esta tabla no lo muestra, pero si no lo mandara lo borraria sin querer al guardar.
+        var ok = await Api.UpdateTwRespuestaAsync(r.Id,
+            new ApiClient.TwRespUpsert(editRespNombre[r.Id], editRespTexto[r.Id], editRespOrden[r.Id], editRespActivo[r.Id], r.Color));
         if (ok) { Toast.Success("Guardado"); await LoadRespuestas(); }
         else Toast.Error("Error al guardar");
     }
