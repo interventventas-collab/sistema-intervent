@@ -950,11 +950,14 @@
         @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos") || HasPerm("mapeo") || HasPerm("me1")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
         {
             <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
-                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas") || IsActive("/cafe/telefonos-clientes-meli") || IsActive("/meli/preguntas") || IsActive("/meli/respuestas-automaticas") || IsActive("/meli/postventa-cafe"))">
+                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/meli/clonar") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas") || IsActive("/cafe/telefonos-clientes-meli") || IsActive("/meli/preguntas") || IsActive("/meli/respuestas-automaticas") || IsActive("/meli/postventa-cafe"))">
                 @if (HasPerm("publicaciones"))
                 {
                     <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/publicaciones")" OnClick="@(() => NavigateTo("/publicaciones"))" />
+                    @* 2026-09-04: clonar una publicacion (propia o de otro vendedor) y duplicarla entre cuentas. *@
+                    <NavItem Href="/meli/clonar" Label="⧉ Clonar publicación" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/meli/clonar")" OnClick="@(() => NavigateTo("/meli/clonar"))" />
                 }
                 @if (HasPerm("ordenes"))
                 {

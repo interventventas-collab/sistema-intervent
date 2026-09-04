@@ -1293,6 +1293,12 @@
                 <button class="p2-ac meli" @onclick="AccPrecio" disabled="@accionEnCurso">💵 Publicar precio</button>
                 <button class="p2-ac meli" @onclick="AccStock" disabled="@accionEnCurso">📦 Mandar stock</button>
 
+                @* 2026-09-04: duplicar las tildadas a la otra cuenta de MeLi (solo si hay dos conectadas). *@
+                @if (cuentas.Count == 2)
+                {
+                    <button class="p2-ac meli" @onclick="AccDuplicar" disabled="@accionEnCurso">⧉ Duplicar a la otra cuenta</button>
+                }
+
                 <button class="p2-ac" @onclick="() => { tildadas.Clear(); resultado = null; }" disabled="@accionEnCurso">✕ Limpiar</button>
 
                 @if (accionEnCurso)
@@ -1637,6 +1643,41 @@
     private Task AccStock()
         => Correr("mandando stock…", l => Api.AccionStockAsync(l), true,
             $"Esto manda el stock del sistema a MercadoLibre en {tildadas.Count} publicaciones. Las que queden en 0 MeLi las pausa. ¿Seguro?");
+
+    /// <summary>2026-09-04: publica de nuevo cada tildada en la OTRA cuenta de MeLi, con el mismo
+    /// titulo/precio/fotos/ficha, y le copia el vinculo con el producto del sistema (comparten stock).
+    /// Va de a una porque cada duplicado es un alta contra MeLi.</summary>
+    private Task AccDuplicar()
+        => Correr("duplicando a la otra cuenta…", async l =>
+        {
+            var detalle = new List<ApiClient.PubV2AccionFila>();
+            int ok = 0, errores = 0;
+            foreach (var mla in l)
+            {
+                try
+                {
+                    var r = await Api.ClonDuplicarAsync(new ClonDuplicarRequest { MeliItemId = mla });
+                    if (r is not null && r.Ok)
+                    {
+                        ok++;
+                        detalle.Add(new ApiClient.PubV2AccionFila(mla, true,
+                            $"duplicada en {r.CuentaDestinoNombre} como {r.MeliItemId}" + (r.VinculoCopiado ? " (con stock vinculado)" : "")));
+                    }
+                    else
+                    {
+                        errores++;
+                        detalle.Add(new ApiClient.PubV2AccionFila(mla, false, r?.Error ?? "no se pudo duplicar"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errores++;
+                    detalle.Add(new ApiClient.PubV2AccionFila(mla, false, ex.Message));
+                }
+            }
+            return new ApiClient.PubV2AccionResultado(l.Count, ok, errores, detalle);
+        }, true,
+            $"Esto CREA {tildadas.Count} publicaciones nuevas en la otra cuenta de MercadoLibre, copiando título, precio, fotos y ficha. ¿Seguro?");
 
     private async Task ToggleMedidas(string mla)
     {

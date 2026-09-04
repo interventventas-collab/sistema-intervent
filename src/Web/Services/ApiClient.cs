@@ -4923,6 +4923,33 @@ public class ApiClient
         return await response.Content.ReadFromJsonAsync<PublishItemResponse>();
     }
 
+    // --- Clonar publicaciones (2026-09-04) ---
+    // Los tres endpoints devuelven SIEMPRE el DTO (tambien cuando la respuesta es 400 con el
+    // motivo adentro), asi la pantalla puede mostrar el error tal cual lo cuenta MercadoLibre.
+    public async Task<ClonPreviewDto?> ClonTraerAsync(string referencia)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.GetAsync($"/api/meli/clon/traer?referencia={Uri.EscapeDataString(referencia)}");
+        if (response.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        try { return await response.Content.ReadFromJsonAsync<ClonPreviewDto>(); }
+        catch { return new ClonPreviewDto { Error = $"Error del servidor ({(int)response.StatusCode})" }; }
+    }
+
+    public async Task<ClonPublicarResponse?> ClonPublicarAsync(ClonPublicarRequest req)
+        => await ClonPostAsync("/api/meli/clon/publicar", req);
+
+    public async Task<ClonPublicarResponse?> ClonDuplicarAsync(ClonDuplicarRequest req)
+        => await ClonPostAsync("/api/meli/clon/duplicar", req);
+
+    private async Task<ClonPublicarResponse?> ClonPostAsync(string url, object req)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync(url, req);
+        if (response.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        try { return await response.Content.ReadFromJsonAsync<ClonPublicarResponse>(); }
+        catch { return new ClonPublicarResponse { Error = $"Error del servidor ({(int)response.StatusCode})" }; }
+    }
+
     // --- Settings ---
     public async Task<Dictionary<string, string>?> GetSettingsAsync()
     {

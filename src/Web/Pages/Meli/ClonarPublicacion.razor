@@ -1,0 +1,458 @@
+@page "/meli/clonar"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService Toast
+@inject IJSRuntime JS
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Clonar publicación — pedido de Osmar 04/09/2026.
+   "Si pongo una publicación de alguien que se clone y hacerle modificaciones
+    rápido" + "duplicar una publicación de una cuenta de MeLi a la otra".
+
+   Un solo formulario: pegás el link (o el MLA), se trae TODO (título, categoría,
+   ficha técnica, fotos, descripción), lo retocás y se publica en la cuenta que
+   elijas. Si la publicación es tuya, arriba aparece el atajo de un botón para
+   duplicarla tal cual a la otra cuenta (y ahí también se copia el vínculo con el
+   producto del sistema, así comparten stock).
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    .cl-wrap { max-width: 1100px; margin: 0 auto; padding: 0.6rem; }
+    .cl-wrap h2 { margin: 0 0 0.15rem; font-size: 1.15rem; color: #1f2937; }
+    .cl-sub { color: #6b7280; font-size: 0.82rem; margin-bottom: 0.9rem; }
+
+    .cl-buscar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    .cl-buscar input { flex: 1; min-width: 280px; padding: 0.5rem 0.7rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.92rem; }
+    .cl-btn { border: 1px solid #d1d5db; background: #fff; color: #374151; padding: 0.45rem 0.8rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+    .cl-btn:hover:not(:disabled) { background: #f9fafb; }
+    .cl-btn:disabled { opacity: 0.5; cursor: default; }
+    .cl-btn.go { background: #1f2937; color: #fff; border-color: #1f2937; font-weight: 600; }
+    .cl-btn.meli { background: #ffe600; border-color: #e5cf00; color: #2d3277; font-weight: 700; }
+
+    .cl-origen { border-top: 1px solid #e5e7eb; padding-top: 0.7rem; margin-top: 0.7rem; font-size: 0.86rem; color: #374151; display: flex; gap: 0.6rem; align-items: flex-start; }
+    .cl-origen img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb; }
+    .cl-origen a { color: #1d4ed8; text-decoration: none; }
+    .cl-aviso { color: #b45309; font-size: 0.8rem; margin-top: 0.25rem; }
+    .cl-error { color: #b91c1c; font-size: 0.86rem; margin-top: 0.5rem; }
+
+    .cl-form { margin-top: 0.9rem; display: grid; gap: 0.7rem; }
+    .cl-fila { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+    .cl-fila > label { width: 105px; min-width: 105px; color: #6b7280; font-size: 0.8rem; }
+    .cl-fila input[type=text], .cl-fila input[type=number] { padding: 0.4rem 0.6rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.9rem; }
+    .cl-fila input.ancho { flex: 1; min-width: 260px; }
+    .cl-fila .chico { width: 120px; }
+    .cl-largo { display: flex; gap: 0.6rem; align-items: flex-start; }
+    .cl-largo > label { width: 105px; min-width: 105px; color: #6b7280; font-size: 0.8rem; padding-top: 0.4rem; }
+    .cl-largo textarea { flex: 1; min-height: 110px; padding: 0.5rem 0.6rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; font-family: inherit; }
+    .cl-nota { color: #9ca3af; font-size: 0.75rem; }
+
+    .cl-chip { border: 1px solid #d1d5db; background: #fff; color: #374151; padding: 0.3rem 0.65rem; border-radius: 999px; font-size: 0.82rem; cursor: pointer; }
+    .cl-chip.on { background: #1f2937; color: #fff; border-color: #1f2937; }
+
+    .cl-fotos { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+    .cl-foto { position: relative; width: 76px; height: 76px; }
+    .cl-foto img { width: 76px; height: 76px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb; }
+    .cl-foto .x { position: absolute; top: -6px; right: -6px; background: #fff; border: 1px solid #d1d5db; border-radius: 999px; width: 20px; height: 20px; line-height: 17px; text-align: center; cursor: pointer; font-size: 0.75rem; color: #b91c1c; }
+    .cl-foto .p { position: absolute; bottom: 2px; left: 2px; background: rgba(31,41,55,0.8); color: #fff; font-size: 0.62rem; border-radius: 4px; padding: 0 4px; cursor: pointer; }
+    .cl-foto.portada img { border-color: #1f2937; border-width: 2px; }
+
+    table.cl-attrs { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    table.cl-attrs td { padding: 0.25rem 0.3rem; border-bottom: 1px solid #f3f4f6; }
+    table.cl-attrs td.nom { color: #6b7280; width: 230px; }
+    table.cl-attrs input { width: 100%; padding: 0.3rem 0.45rem; border: 1px solid #e5e7eb; border-radius: 5px; font-size: 0.83rem; }
+    table.cl-attrs td.acc { width: 30px; text-align: center; }
+    table.cl-attrs .x { cursor: pointer; color: #b91c1c; }
+
+    .cl-listo { border: 1px solid #d1d5db; border-radius: 8px; padding: 0.7rem 0.9rem; margin-top: 0.9rem; font-size: 0.9rem; }
+    .cl-listo a { color: #1d4ed8; }
+</style>
+
+<div class="cl-wrap">
+    <h2>Clonar publicación</h2>
+    <div class="cl-sub">
+        Pegá el link de una publicación (tuya o de otro vendedor) y traé todos sus datos para retocarlos y publicarla en tu cuenta.
+    </div>
+
+    <div class="cl-buscar">
+        <input type="text" @bind="referencia" @bind:event="oninput" @onkeydown="AlTeclear"
+               placeholder="https://articulo.mercadolibre.com.ar/MLA-... o MLA1234567890" />
+        <button class="cl-btn go" @onclick="Traer" disabled="@(trayendo || string.IsNullOrWhiteSpace(referencia))">
+            @(trayendo ? "Trayendo..." : "Traer")
+        </button>
+        @if (origen is not null)
+        {
+            <button class="cl-btn" @onclick="Limpiar">✕ Empezar de nuevo</button>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="cl-error">@error</div>
+    }
+
+    @if (origen is not null)
+    {
+        <div class="cl-origen">
+            @if (!string.IsNullOrEmpty(origen.Thumbnail))
+            {
+                <img src="@origen.Thumbnail" alt="" />
+            }
+            <div>
+                <div>
+                    <b>@origen.MeliItemId</b> ·
+                    @if (origen.EsPropia)
+                    {
+                        <span>tuya, en @origen.CuentaOrigenNombre</span>
+                    }
+                    else
+                    {
+                        <span>de @(string.IsNullOrEmpty(origen.VendedorNickname) ? "otro vendedor" : origen.VendedorNickname)</span>
+                    }
+                    · $@origen.Precio.ToString("N0") · @origen.Vendidas vendidas
+                    @if (!string.IsNullOrEmpty(origen.Permalink))
+                    {
+                        <span> · <a href="@origen.Permalink" target="_blank">ver el original ↗</a></span>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(origen.CategoriaNombre))
+                {
+                    <div class="cl-nota">@origen.CategoriaNombre</div>
+                }
+                @if (origen.EsPropia && !string.IsNullOrEmpty(origen.ProductoVinculadoNombre))
+                {
+                    <div class="cl-nota">Producto del sistema: @origen.ProductoVinculadoNombre (el clon queda vinculado igual, comparten stock)</div>
+                }
+                @if (origen.CantidadVariantes > 0)
+                {
+                    <div class="cl-aviso">⚠ El original tiene @origen.CantidadVariantes variantes. El clon se publica SIN variantes (una sola).</div>
+                }
+                @if (origen.EsCatalogo)
+                {
+                    <div class="cl-aviso">⚠ El original es una publicación de catálogo. El clon se crea como publicación normal.</div>
+                }
+                @if (!origen.EsPropia)
+                {
+                    <div class="cl-aviso">⚠ Las fotos y el texto son del otro vendedor: si te denuncian, MeLi baja la publicación. Conviene dejar la ficha técnica y cambiar título y fotos por las tuyas.</div>
+                }
+            </div>
+        </div>
+
+        @if (origen.EsPropia && OtraCuenta is not null)
+        {
+            <div style="margin-top:0.7rem">
+                <button class="cl-btn meli" @onclick="DuplicarAOtraCuenta" disabled="@publicando">
+                    ⧉ Duplicar tal cual a @OtraCuenta.Nickname
+                </button>
+                <span class="cl-nota"> — sin tocar nada: mismo título, precio, fotos y ficha. También copia el vínculo de stock.</span>
+            </div>
+        }
+
+        <div class="cl-form">
+            <div class="cl-fila">
+                <label>Publicar en</label>
+                @foreach (var c in cuentas)
+                {
+                    <button class="cl-chip @(cuentaDestinoId == c.Id ? "on" : "")" @onclick="() => cuentaDestinoId = c.Id">@c.Nickname</button>
+                }
+                @if (cuentas.Count == 0)
+                {
+                    <span class="cl-nota">No hay ninguna cuenta de MercadoLibre conectada.</span>
+                }
+            </div>
+
+            <div class="cl-fila">
+                <label>Título</label>
+                <input type="text" class="ancho" @bind="titulo" @bind:event="oninput" maxlength="60" />
+                <span class="cl-nota">@(titulo?.Length ?? 0)/60</span>
+            </div>
+
+            <div class="cl-fila">
+                <label>Precio</label>
+                <input type="text" class="chico" @bind="precioTexto" />
+                <label style="width:auto">Stock</label>
+                <input type="text" class="chico" @bind="stockTexto" />
+                <label style="width:auto">SKU</label>
+                <input type="text" class="chico" @bind="sku" />
+            </div>
+
+            <div class="cl-fila">
+                <label>Tipo</label>
+                <button class="cl-chip @(listingType == "gold_special" ? "on" : "")" @onclick='() => listingType = "gold_special"'>Clásica</button>
+                <button class="cl-chip @(listingType == "gold_pro" ? "on" : "")" @onclick='() => listingType = "gold_pro"'>Premium</button>
+                <label style="width:auto">Envío gratis</label>
+                <input type="checkbox" @bind="envioGratis" />
+                <label style="width:auto">Estado</label>
+                <button class="cl-chip @(condicion == "new" ? "on" : "")" @onclick='() => condicion = "new"'>Nuevo</button>
+                <button class="cl-chip @(condicion == "used" ? "on" : "")" @onclick='() => condicion = "used"'>Usado</button>
+            </div>
+
+            <div class="cl-fila">
+                <label>Categoría</label>
+                <input type="text" class="chico" @bind="categoryId" />
+                <span class="cl-nota">@origen.CategoriaNombre</span>
+            </div>
+
+            <div class="cl-largo">
+                <label>Fotos (@fotos.Count)</label>
+                <div style="flex:1">
+                    <div class="cl-fotos">
+                        @for (var i = 0; i < fotos.Count; i++)
+                        {
+                            var idx = i;
+                            <div class="cl-foto @(idx == 0 ? "portada" : "")">
+                                <img src="@fotos[idx]" alt="" />
+                                <span class="x" title="Sacar esta foto" @onclick="() => fotos.RemoveAt(idx)">✕</span>
+                                @if (idx > 0)
+                                {
+                                    <span class="p" title="Poner de portada" @onclick="() => Portada(idx)">portada</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="cl-fila" style="margin-top:0.4rem">
+                        <input type="text" class="ancho" @bind="fotoNueva" placeholder="Pegá el link de una foto tuya para sumarla" />
+                        <button class="cl-btn" @onclick="AgregarFoto" disabled="@string.IsNullOrWhiteSpace(fotoNueva)">+ Sumar foto</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cl-largo">
+                <label>Descripción</label>
+                <textarea @bind="descripcion"></textarea>
+            </div>
+
+            <div class="cl-largo">
+                <label>Ficha técnica</label>
+                <div style="flex:1">
+                    <div class="cl-nota" style="margin-bottom:0.3rem">
+                        @atributos.Count datos copiados. Si cambiás un valor a mano y MeLi no lo reconoce, lo publica igual como texto libre.
+                    </div>
+                    <table class="cl-attrs">
+                        @for (var i = 0; i < atributos.Count; i++)
+                        {
+                            var a = atributos[i];
+                            var idx = i;
+                            <tr>
+                                <td class="nom">@a.Nombre</td>
+                                <td>
+                                    <input type="text" value="@(a.ValueName ?? a.ValueId)"
+                                           @onchange="e => CambiarAtributo(idx, e.Value?.ToString())" />
+                                </td>
+                                <td class="acc"><span class="x" title="Sacar este dato" @onclick="() => atributos.RemoveAt(idx)">✕</span></td>
+                            </tr>
+                        }
+                    </table>
+                </div>
+            </div>
+
+            <div class="cl-fila">
+                <label></label>
+                <button class="cl-btn meli" @onclick="Publicar" disabled="@(publicando || cuentaDestinoId <= 0)">
+                    @(publicando ? "Publicando..." : $"Publicar en {NombreCuenta(cuentaDestinoId)}")
+                </button>
+                @if (origen.EsPropia)
+                {
+                    <span class="cl-nota">Se copia también el vínculo con el producto del sistema.</span>
+                }
+            </div>
+        </div>
+    }
+
+    @if (resultado is not null && resultado.Ok)
+    {
+        <div class="cl-listo">
+            ✓ Publicada en @resultado.CuentaDestinoNombre · <b>@resultado.MeliItemId</b>
+            @if (!string.IsNullOrEmpty(resultado.Permalink))
+            {
+                <span> · <a href="@resultado.Permalink" target="_blank">verla en MercadoLibre ↗</a></span>
+            }
+            @if (resultado.VinculoCopiado)
+            {
+                <div class="cl-nota">Quedó vinculada al mismo producto del sistema: el stock se le manda solo.</div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<MeliAccountDto> cuentas = new();
+    private string referencia = "";
+    private bool trayendo;
+    private bool publicando;
+    private string? error;
+
+    private ClonPreviewDto? origen;
+    private ClonPublicarResponse? resultado;
+
+    // Campos editables del clon
+    private int cuentaDestinoId;
+    private string titulo = "";
+    private string precioTexto = "";
+    private string stockTexto = "1";
+    private string? sku;
+    private string listingType = "gold_special";
+    private string condicion = "new";
+    private bool envioGratis = true;
+    private string categoryId = "";
+    private string? descripcion;
+    private List<string> fotos = new();
+    private List<ClonAtributoDto> atributos = new();
+    private string fotoNueva = "";
+
+    // La "otra" cuenta: solo tiene sentido el atajo cuando hay exactamente dos conectadas.
+    private MeliAccountDto? OtraCuenta =>
+        origen is not null && origen.EsPropia && cuentas.Count == 2
+            ? cuentas.FirstOrDefault(c => c.Id != origen.CuentaOrigenId)
+            : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        cuentas = await Api.GetMeliAccountsAsync() ?? new();
+    }
+
+    private string NombreCuenta(int id) => cuentas.FirstOrDefault(c => c.Id == id)?.Nickname ?? "la cuenta";
+
+    private async Task AlTeclear(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Traer();
+    }
+
+    private async Task Traer()
+    {
+        if (string.IsNullOrWhiteSpace(referencia)) return;
+        trayendo = true; error = null; resultado = null;
+        try
+        {
+            var r = await Api.ClonTraerAsync(referencia.Trim());
+            if (r is null) { error = "No pude comunicarme con el servidor."; return; }
+            if (!r.Ok) { error = r.Error; origen = null; return; }
+
+            origen = r;
+            titulo = r.Titulo.Length > 60 ? r.Titulo[..60] : r.Titulo;
+            precioTexto = r.Precio.ToString("0.##");
+            stockTexto = r.Stock.ToString();
+            sku = r.Sku;
+            listingType = r.ListingTypeId;
+            condicion = r.Condition;
+            envioGratis = r.FreeShipping;
+            categoryId = r.CategoryId;
+            descripcion = r.Descripcion;
+            fotos = new List<string>(r.Fotos);
+            atributos = r.Atributos.Select(a => new ClonAtributoDto { Id = a.Id, Nombre = a.Nombre, ValueId = a.ValueId, ValueName = a.ValueName }).ToList();
+
+            // Por defecto se publica en la OTRA cuenta si la publicación es propia; si no, en la primera.
+            cuentaDestinoId = OtraCuenta?.Id ?? cuentas.FirstOrDefault()?.Id ?? 0;
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { trayendo = false; }
+    }
+
+    private void Limpiar()
+    {
+        origen = null; resultado = null; error = null; referencia = "";
+        fotos.Clear(); atributos.Clear();
+    }
+
+    private void Portada(int idx)
+    {
+        if (idx <= 0 || idx >= fotos.Count) return;
+        var f = fotos[idx];
+        fotos.RemoveAt(idx);
+        fotos.Insert(0, f);
+    }
+
+    private void AgregarFoto()
+    {
+        if (string.IsNullOrWhiteSpace(fotoNueva)) return;
+        fotos.Add(fotoNueva.Trim());
+        fotoNueva = "";
+    }
+
+    // Si el usuario escribe el valor a mano, se suelta el value_id de MeLi (ya no coincide)
+    // y se manda como texto libre.
+    private void CambiarAtributo(int idx, string? texto)
+    {
+        if (idx < 0 || idx >= atributos.Count) return;
+        var a = atributos[idx];
+        var nuevo = texto?.Trim() ?? "";
+        var anterior = a.ValueName ?? a.ValueId;
+        if (nuevo == anterior) return;
+        a.ValueName = nuevo;
+        a.ValueId = null;
+    }
+
+    private decimal ParsePrecio()
+    {
+        var t = (precioTexto ?? "").Replace(".", "").Replace(",", ".").Trim();
+        return decimal.TryParse(t, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0m;
+    }
+
+    private int ParseStock()
+    {
+        return int.TryParse((stockTexto ?? "").Trim(), out var n) && n > 0 ? n : 1;
+    }
+
+    private async Task Publicar()
+    {
+        if (origen is null || cuentaDestinoId <= 0) return;
+        var precio = ParsePrecio();
+        if (precio <= 0) { Toast.Error("Poné un precio."); return; }
+
+        var confirmar = await JS.InvokeAsync<bool>("confirm",
+            $"Se va a publicar \"{titulo}\" en {NombreCuenta(cuentaDestinoId)} a ${precio:N0}. ¿Publico?");
+        if (!confirmar) return;
+
+        publicando = true; error = null; resultado = null;
+        try
+        {
+            var r = await Api.ClonPublicarAsync(new ClonPublicarRequest
+            {
+                CuentaDestinoId = cuentaDestinoId,
+                MeliItemOrigen = origen.EsPropia ? origen.MeliItemId : null,
+                Titulo = titulo,
+                CategoryId = categoryId,
+                Descripcion = descripcion,
+                Precio = precio,
+                Stock = ParseStock(),
+                Condition = condicion,
+                ListingTypeId = listingType,
+                FreeShipping = envioGratis,
+                Sku = sku,
+                Fotos = fotos,
+                Atributos = atributos,
+                CopiarVinculoStock = origen.EsPropia
+            });
+            if (r is null) { error = "No pude comunicarme con el servidor."; return; }
+            if (!r.Ok) { error = r.Error; return; }
+            resultado = r;
+            Toast.Success("Publicación creada");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { publicando = false; }
+    }
+
+    private async Task DuplicarAOtraCuenta()
+    {
+        if (origen is null || OtraCuenta is null) return;
+        var confirmar = await JS.InvokeAsync<bool>("confirm",
+            $"Se va a duplicar \"{origen.Titulo}\" tal cual en {OtraCuenta.Nickname}. ¿Duplico?");
+        if (!confirmar) return;
+
+        publicando = true; error = null; resultado = null;
+        try
+        {
+            var r = await Api.ClonDuplicarAsync(new ClonDuplicarRequest
+            {
+                MeliItemId = origen.MeliItemId,
+                CuentaDestinoId = OtraCuenta.Id
+            });
+            if (r is null) { error = "No pude comunicarme con el servidor."; return; }
+            if (!r.Ok) { error = r.Error; return; }
+            resultado = r;
+            Toast.Success($"Duplicada en {OtraCuenta.Nickname}");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { publicando = false; }
+    }
+}
