@@ -415,7 +415,7 @@
                     }
                     else if (nvPlantillas.Count == 0)
                     {
-                        <div style="text-align:center; padding:1rem; color:#b91c1c; font-size:0.9rem;">No hay plantillas aprobadas disponibles. Revisá que la cuenta de WhatsApp esté configurada.</div>
+                        <div class="wa-nv-error">No hay plantillas aprobadas disponibles. Revisá que la cuenta de WhatsApp esté configurada.</div>
                     }
                     else
                     {
@@ -443,7 +443,7 @@
                             <div class="wa-nv-chip">
                                 <div class="wa-nv-avatar" style="background:#25d366;">@InicialDe(nvClienteSeleccionado)</div>
                                 <div style="flex:1; min-width:0; line-height:1.25;">
-                                    <div style="font-weight:700; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Le vas a escribir a @nvClienteSeleccionado</div>
+                                    <div class="wa-nv-nom" style="font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Le vas a escribir a @nvClienteSeleccionado</div>
                                     <div style="font-size:0.85rem; color:#16a34a;">@BonitoNumero(nvNumero)</div>
                                 </div>
                                 <button type="button" class="wa-nv-btn-ghost" @onclick="LimpiarNvCliente" title="Elegir otro contacto o número">✏️ Cambiar</button>
@@ -519,7 +519,7 @@
                                             <button type="button" class="wa-nv-item" @onclick="() => UsarNumeroDirecto(directoFinal)">
                                                 <div class="wa-nv-avatar" style="background:#2563eb;">📱</div>
                                                 <div style="flex:1; min-width:0;">
-                                                    <div style="font-weight:700; color:#111;">Enviar a este número nuevo</div>
+                                                    <div class="wa-nv-nom" style="font-weight:700;">Enviar a este número nuevo</div>
                                                     <div style="font-size:0.85rem; color:#2563eb;">@BonitoNumero(directoFinal)</div>
                                                     @if (avisoNum != null)
                                                     {
@@ -533,8 +533,8 @@
                                             <button type="button" class="wa-nv-item" @onclick="() => SeleccionarNvCliente(cli)">
                                                 <div class="wa-nv-avatar">@InicialDe(cli.Nombre)</div>
                                                 <div style="flex:1; min-width:0;">
-                                                    <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@cli.Nombre</div>
-                                                    <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(cli.Numero)</div>
+                                                    <div class="wa-nv-nom" style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@cli.Nombre</div>
+                                                    <div class="wa-nv-tel">@BonitoNumero(cli.Numero)</div>
                                                 </div>
                                                 <span class="wa-nv-origen">@OrigenLindo(cli.Origen)</span>
                                                 @if (cli.TieneChat)
@@ -1299,7 +1299,7 @@
                                 <button type="button" class="wa-nv-item" @onclick="() => AgregarDestinoDirecto(fwdDirecto!)">
                                     <div class="wa-nv-avatar" style="background:#2563eb;">📱</div>
                                     <div style="flex:1; min-width:0;">
-                                        <div style="font-weight:700; color:#111;">Reenviar a este número</div>
+                                        <div class="wa-nv-nom" style="font-weight:700;">Reenviar a este número</div>
                                         <div style="font-size:0.85rem; color:#2563eb;">@BonitoNumero(fwdDirecto)</div>
                                     </div>
                                 </button>
@@ -1315,8 +1315,8 @@
                                 <button type="button" class="wa-nv-item @(ya ? "wa-fwd-sel" : "")" @onclick="() => ToggleDestino(dstB)">
                                     <div class="wa-nv-avatar">@InicialDe(cli.Nombre)</div>
                                     <div style="flex:1; min-width:0;">
-                                        <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@cli.Nombre</div>
-                                        <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(cli.Numero)</div>
+                                        <div class="wa-nv-nom" style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@cli.Nombre</div>
+                                        <div class="wa-nv-tel">@BonitoNumero(cli.Numero)</div>
                                         <span class="wa-fwd-linea">📤 sale por <b>@NombreDeLinea(selectedLinea)</b></span>
                                         @if (!cli.Disponible)
                                         {
@@ -1348,7 +1348,7 @@
                                         @onclick="() => ToggleDestino(dst)">
                                     <div class="wa-nv-avatar">@InicialDe(dst.Nombre)</div>
                                     <div style="flex:1; min-width:0;">
-                                        <div style="font-weight:600; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@dst.Nombre</div>
+                                        <div class="wa-nv-nom" style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@dst.Nombre</div>
                                         <div style="font-size:0.85rem; color:#6b7280;">@BonitoNumero(dst.Numero)</div>
                                         @* 2026-08-20: POR DÓNDE SALE. Antes esto no se veía y el sistema
                                            elegía solo: si el cliente le hablaba a las dos empresas, la
@@ -4122,6 +4122,12 @@
     .wa-nv-head-ico { font-size: 1.7rem; background: #dcf8c6; width: 52px; height: 52px; border-radius: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .wa-nv-title { font-size: 1.35rem; font-weight: 800; color: #111827; line-height: 1.1; }
     .wa-nv-sub { font-size: 0.85rem; color: #6b7280; }
+    /* 2026-09-04: el nombre y el teléfono del contacto tenían el color escrito a mano en el HTML
+       (style="color:#111"). Un color puesto así le gana a CUALQUIER regla, así que en modo oscuro
+       quedaban negros sobre negro: invisibles. Ahora son clases y el tema oscuro los puede dar vuelta. */
+    .wa-nv-nom { color: #111; }
+    .wa-nv-tel { font-size: 0.85rem; color: #6b7280; }
+    .wa-nv-error { text-align: center; padding: 1rem; color: #b91c1c; font-size: 0.9rem; }
     .wa-nv-info { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 14px; padding: 0.7rem 0.9rem; font-size: 0.82rem; color: #1e40af; margin-bottom: 1.1rem; }
     .wa-nv-field { margin-bottom: 1rem; }
     .wa-nv-label { display: block; font-size: 0.82rem; font-weight: 600; color: #374151; margin-bottom: 0.35rem; }

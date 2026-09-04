@@ -102,6 +102,22 @@
 .wa-dark .wa-conv-item.wa-conv-fijado:hover { background: #363423; }
 .wa-dark .wa-conv-item.wa-conv-fijado.active { background: #2a3942; border-left-color: var(--wad-verde); }
 .wa-dark .wa-conv-pinbtn:hover { background: var(--wad-panel3); }
+
+/* 2026-09-04 — LAS QUE ESTÁN SIN RESPONDER, DE NOCHE.
+   En el tema claro la fila sin responder se pinta casi NEGRA para que salte a la vista sobre el
+   fondo blanco (.wa-conv-item.sin-responder ...). De noche eso la volvía INVISIBLE: negro sobre
+   negro. Osmar lo vio en la línea FIJO TRANSRADIO, que la tiene en oscuro.
+   Acá se da vuelta: en vez de negro, BLANCO — que es lo que hace resaltar sobre el fondo oscuro.
+   Los selectores llevan .wa-conv-item.sin-responder adelante para pesar más que la regla clara. */
+.wa-dark .wa-conv-item.sin-responder .wa-conv-name { color: #ffffff; }
+.wa-dark .wa-conv-item.sin-responder .wa-conv-last { color: var(--wad-txt); }
+.wa-dark .wa-conv-item.sin-responder .wa-conv-hora { color: #25d366; }
+
+/* Nombre y teléfono del contacto en "Nueva conversación" y en "Reenviar". */
+.wa-dark .wa-nv-nom { color: var(--wad-txt); }
+.wa-dark .wa-nv-tel { color: var(--wad-txt2); }
+/* El aviso rojo de "no hay plantillas": el rojo oscuro casi no se lee de noche. */
+.wa-dark .wa-nv-error { color: #f87171; }
 .wa-dark .wa-linea-activa-chip { background: #0b3d2e; border-color: #14543f; color: #6ee7b7; }
 .wa-dark .wa-linea-activa-x { color: #6ee7b7; }
 
