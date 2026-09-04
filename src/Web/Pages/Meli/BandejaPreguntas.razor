@@ -37,7 +37,7 @@
            presupuesto cae en la respuesta; acá arriba se copia, para usarlo aunque no haya
            ninguna pregunta esperando. *@
         <button class="bp-filter bp-filter-cotiz @(cotizArriba ? "active" : "")"
-                @onclick="() => cotizArriba = !cotizArriba">🎪 Cotizar alquiler</button>
+                @onclick="() => cotizArriba = !cotizArriba">🪑 Cotizar alquiler</button>
     </div>
 
     @if (cotizArriba)
@@ -182,7 +182,7 @@
                                            cotizador del chat de WhatsApp; acá el presupuesto cae en el cuadro
                                            de respuesta y se manda con "Responder", como cualquier otra. *@
                                         <button class="bp-chip bp-chip-cotiz @(mostrarCotizador ? "on" : "")"
-                                                @onclick="() => mostrarCotizador = !mostrarCotizador">🎪 Cotizar alquiler</button>
+                                                @onclick="() => mostrarCotizador = !mostrarCotizador">🪑 Cotizar alquiler</button>
                                     </div>
                                     @if (mostrarCotizador)
                                     {

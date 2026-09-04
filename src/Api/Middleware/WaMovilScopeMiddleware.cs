@@ -80,7 +80,7 @@ public class WaMovilScopeMiddleware
            && ruta.EndsWith("/estado-cuenta", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 2026-09-01 — Excepción puntual para el cotizador de alquileres del celular (el 🎪 del ➕).
+    /// 2026-09-01 — Excepción puntual para el cotizador de alquileres del celular (el 🪑 del ➕).
     ///
     /// Se abre lo MÍNIMO y mirando también el método, no el módulo entero: leer el catálogo de
     /// equipos y los fletes, y guardar/leer las cotizaciones del chat. Con la huella NO se puede
