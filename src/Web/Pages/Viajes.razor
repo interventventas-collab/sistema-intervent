@@ -29,6 +29,8 @@
     .vj-tab-regs { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
     .vj-tab-regs th { background: #f3f4f6; padding: 0.4rem; text-align: left; font-size: 0.75rem; }
     .vj-tab-regs td { padding: 0.4rem; border-bottom: 1px solid #f3f4f6; }
+    .vj-emp-card.auto { border-left-color: #0f766e; }
+    .linea-auto { font-size: 0.88rem; color: #374151; margin-top: 0.45rem; }
 </style>
 
 <div class="vj-wrap">
@@ -46,15 +48,48 @@
                     <label class="form-label">Nombre</label>
                     <input class="form-input" @bind="formNombre" placeholder="Ej: Lucio, Nicolás..." />
                 </div>
-                <div>
-                    <label class="form-label">Tarifa CABA</label>
-                    <input class="form-input" type="number" min="0" step="500" @bind="formTarifaCABA" />
-                </div>
-                <div>
-                    <label class="form-label">Tarifa PCIA</label>
-                    <input class="form-input" type="number" min="0" step="500" @bind="formTarifaPCIA" />
-                </div>
+                @if (!formAuto)
+                {
+                    <div>
+                        <label class="form-label">Tarifa CABA</label>
+                        <input class="form-input" type="number" min="0" step="500" @bind="formTarifaCABA" />
+                    </div>
+                    <div>
+                        <label class="form-label">Tarifa PCIA</label>
+                        <input class="form-input" type="number" min="0" step="500" @bind="formTarifaPCIA" />
+                    </div>
+                }
+                else
+                {
+                    <div>
+                        <label class="form-label">Tarifa por entrega</label>
+                        <input class="form-input" type="number" min="0" step="500" @bind="formTarifaViaje" />
+                    </div>
+                    <div>
+                        <label class="form-label">Chofer del mapa</label>
+                        <select class="form-input" @bind="formDriverId">
+                            <option value="0">— elegir —</option>
+                            @if (choferes is not null)
+                            {
+                                @foreach (var c in choferes)
+                                {
+                                    <option value="@c.Id">@c.Nombre</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                }
             </div>
+            <label style="display:block; font-size:0.85rem; margin-top:0.6rem;">
+                <input type="checkbox" @bind="formAuto" /> Cobra por entrega — los viajes se cuentan solos
+            </label>
+            @if (formAuto)
+            {
+                <div style="font-size:0.8rem; color:#6b7280; margin-top:0.25rem;">
+                    Cada parada que entrega en el mapa le suma una tarifa. No carga nada a mano.
+                    Elegí con qué nombre figura en el mapa, si no, no hay de dónde contar.
+                </div>
+            }
             @if (editingId.HasValue)
             {
                 <div style="display:flex; gap:1rem; margin-top:0.5rem;">
@@ -94,6 +129,34 @@
         </div>
     }
 
+    @if (showFormAjuste)
+    {
+        <div class="vj-card" style="border: 2px solid #0f766e;">
+            <h3 style="margin: 0 0 0.5rem;">➕ Sumar viajes a mano a @(empleadoSelAjuste?.Nombre ?? "?")</h3>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 3fr; gap:0.5rem; align-items:end;">
+                <div>
+                    <label class="form-label">Día</label>
+                    <input class="form-input" type="date" @bind="ajusteFecha" />
+                </div>
+                <div>
+                    <label class="form-label">Cuántos viajes</label>
+                    <input class="form-input" type="number" step="1" @bind="ajusteCantidad" />
+                </div>
+                <div>
+                    <label class="form-label">Por qué</label>
+                    <input class="form-input" @bind="ajusteDetalle" placeholder="Ej: fue a buscar mercadería a Aliafor" />
+                </div>
+            </div>
+            <div style="font-size:0.8rem; color:#6b7280; margin-top:0.4rem;">
+                En negativo le descuenta (por ejemplo -1 si se contó de más).
+            </div>
+            <div style="display:flex; gap:0.5rem; margin-top:0.6rem;">
+                <button class="btn btn-primary" @onclick="GuardarAjuste" disabled="@savingAjuste">@(savingAjuste ? "..." : "Guardar")</button>
+                <button class="btn btn-secondary" @onclick="@(() => showFormAjuste = false)">Cancelar</button>
+            </div>
+        </div>
+    }
+
     @* Empleados *@
     <div class="vj-card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.6rem;">
@@ -117,28 +180,110 @@
                 var saldoLabel = saldo > 0 ? $"Le debemos ${saldo.ToString("N0", new System.Globalization.CultureInfo("es-AR"))}"
                                 : saldo < 0 ? $"Nos debe ${Math.Abs(saldo).ToString("N0", new System.Globalization.CultureInfo("es-AR"))}"
                                 : "Sin saldo";
-                <div class="vj-emp-card @(e.IsActive ? "" : "inactive")">
+                <div class="vj-emp-card @(e.IsActive ? "" : "inactive") @(e.ModoAutomatico ? "auto" : "")">
                     <div class="vj-emp-header">
                         <span class="vj-emp-nombre">@e.Nombre @(e.IsActive ? "" : " (inactivo)")</span>
-                        <span class="vj-emp-tarifas">CABA $@e.TarifaCABA.ToString("N0", new System.Globalization.CultureInfo("es-AR")) · PCIA $@e.TarifaPCIA.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span>
+                        @if (e.ModoAutomatico)
+                        {
+                            <span class="vj-emp-tarifas">$@Plata(e.TarifaViaje) por entrega · suma solo@(string.IsNullOrEmpty(e.MapeoDriverNombre) ? "" : $" con \"{e.MapeoDriverNombre}\" del mapa")</span>
+                        }
+                        else
+                        {
+                            <span class="vj-emp-tarifas">CABA $@Plata(e.TarifaCABA) · PCIA $@Plata(e.TarifaPCIA)</span>
+                        }
                         <span class="vj-saldo-pill @saldoClass">@saldoLabel</span>
                     </div>
-                    <div class="vj-totals">
-                        <div class="vj-totals-box">Mes: <span class="vj-totals-num">@e.TotalViajesMes viajes</span></div>
-                        <div class="vj-totals-box">A cobrar: <span class="vj-totals-num">$@e.TotalACobrarMes.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span></div>
-                        <div class="vj-totals-box">Pagado: <span class="vj-totals-num" style="color:#16a34a;">$@e.TotalPagadoMes.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span></div>
-                        <div class="vj-totals-box">Saldo mes: <span class="vj-totals-num" style="color: @(e.SaldoMes >= 0 ? "#16a34a" : "#b91c1c");">$@e.SaldoMes.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span></div>
-                        @if (e.UltimaCargaAt.HasValue)
+
+                    @if (e.ModoAutomatico)
+                    {
+                        @if (e.MapeoDriverId is null)
                         {
-                            <div class="vj-totals-box" style="color:#9ca3af;">Última carga: @e.UltimaCargaAt.Value.ToArTime().ToString("dd/MM HH:mm")</div>
+                            <div style="font-size:0.85rem; color:#b91c1c; margin-top:0.4rem;">
+                                ⚠ Falta elegirle el chofer del mapa: sin eso no se le cuenta ningún viaje.
+                            </div>
                         }
-                    </div>
+                        <div class="linea-auto">
+                            Hoy: <b>@e.ViajesHoy</b> @(e.ViajesHoy == 1 ? "entrega" : "entregas") · $@Plata(e.ImporteHoy)
+                            @if (e.ViajesPendientes > 0)
+                            {
+                                <text> · sin liquidar desde el <b>@e.PendienteDesde!.Value.ToString("dd/MM")</b>: <b>@e.ViajesPendientes</b> @(e.ViajesPendientes == 1 ? "viaje" : "viajes") · <b>$@Plata(e.ImportePendiente)</b></text>
+                            }
+                            else
+                            {
+                                <text> · sin viajes pendientes de pago</text>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="vj-totals">
+                            <div class="vj-totals-box">Mes: <span class="vj-totals-num">@e.TotalViajesMes viajes</span></div>
+                            <div class="vj-totals-box">A cobrar: <span class="vj-totals-num">$@Plata(e.TotalACobrarMes)</span></div>
+                            <div class="vj-totals-box">Pagado: <span class="vj-totals-num" style="color:#16a34a;">$@Plata(e.TotalPagadoMes)</span></div>
+                            <div class="vj-totals-box">Saldo mes: <span class="vj-totals-num" style="color: @(e.SaldoMes >= 0 ? "#16a34a" : "#b91c1c");">$@Plata(e.SaldoMes)</span></div>
+                            @if (e.UltimaCargaAt.HasValue)
+                            {
+                                <div class="vj-totals-box" style="color:#9ca3af;">Última carga: @e.UltimaCargaAt.Value.ToArTime().ToString("dd/MM HH:mm")</div>
+                            }
+                        </div>
+                    }
+
                     <div class="vj-btn-row">
+                        @if (e.ModoAutomatico)
+                        {
+                            <button class="vj-btn-mini pago" disabled="@(e.ViajesPendientes == 0 || liquidando == e.Id)"
+                                    @onclick="@(() => Liquidar(e))">
+                                @(liquidando == e.Id ? "Liquidando..." : $"💵 Liquidar ${Plata(e.ImportePendiente)}")
+                            </button>
+                            <button class="vj-btn-mini" @onclick="@(() => VerDetalle(e))">📋 @(detalleEmpId == e.Id ? "Ocultar" : "Día por día")</button>
+                            <button class="vj-btn-mini" @onclick="@(() => ShowAjuste(e))">➕ Sumar viaje a mano</button>
+                        }
                         <button class="vj-btn-mini pago" @onclick="@(() => ShowCreatePago(e))">💵 Registrar pago</button>
                         <button class="vj-btn-mini link" @onclick="@(() => CopiarLink(e))">📋 Copiar link</button>
                         <button class="vj-btn-mini wa" @onclick="@(() => MandarWhatsapp(e))">📱 WhatsApp</button>
                         <button class="vj-btn-mini" @onclick="@(() => ShowEditEmpleado(e))">✏ Editar</button>
                     </div>
+
+                    @if (detalleEmpId == e.Id)
+                    {
+                        @if (detalle is null)
+                        {
+                            <p style="color:#6b7280; font-size:0.85rem; margin:0.6rem 0 0;">Cargando...</p>
+                        }
+                        else if (detalle.Dias.Count == 0)
+                        {
+                            <p style="color:#6b7280; font-size:0.85rem; margin:0.6rem 0 0;">Todavía no hay entregas contadas.</p>
+                        }
+                        else
+                        {
+                            <table class="vj-tab-regs" style="margin-top:0.6rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Día</th>
+                                        <th style="text-align:center;">Viajes</th>
+                                        <th>Dónde</th>
+                                        <th style="text-align:right;">Importe</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var d in detalle.Dias)
+                                    {
+                                        <tr>
+                                            <td>@d.Fecha.ToString("ddd dd/MM", ar)</td>
+                                            <td style="text-align:center; font-weight:700;">@d.Cantidad</td>
+                                            <td style="color:#6b7280; font-size:0.82rem;">@Resumir(d)</td>
+                                            <td style="text-align:right; font-weight:700;">$@Plata(d.Importe)</td>
+                                            <td style="color:#9ca3af; font-size:0.75rem;">@(d.Liquidado ? "pagado" : "")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <div style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">
+                                Las que no se pudieron entregar no figuran: no se cobran.
+                            </div>
+                        }
+                    }
                 </div>
             }
         }
@@ -227,7 +372,17 @@
         decimal TarifaCABA, decimal TarifaPCIA,
         int TotalViajesMes, decimal TotalACobrarMes, decimal TotalPagadoMes,
         decimal SaldoMes, decimal SaldoAcumulado,
-        DateTime? UltimaCargaAt, DateTime CreatedAt);
+        DateTime? UltimaCargaAt, DateTime CreatedAt,
+        bool ModoAutomatico, int? MapeoDriverId, string? MapeoDriverNombre, decimal TarifaViaje,
+        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde,
+        int ViajesHoy, decimal ImporteHoy);
+    public record ChoferDto(int Id, string Nombre);
+    public record AdminEntregaDto(int Id, DateTime Fecha, string Origen, string? Direccion,
+        string? Cliente, DateTime? EntregadoAt, decimal Tarifa, bool Manual, string? Detalle, bool Liquidado);
+    public record AdminDiaDto(DateTime Fecha, int Cantidad, decimal Importe, bool Liquidado,
+        List<AdminEntregaDto> Entregas);
+    public record AdminEntregasResumenDto(int EmpleadoId, string Nombre, decimal TarifaViaje,
+        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, List<AdminDiaDto> Dias);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         int CantidadCABA, int CantidadPCIA, decimal SubtotalCABA, decimal SubtotalPCIA, decimal Total,
         string? Anotaciones, DateTime CreatedAt, DateTime? UpdatedAt);
@@ -244,6 +399,34 @@
     private string formNombre = "";
     private decimal formTarifaCABA = 6000m, formTarifaPCIA = 8000m;
     private bool formActive = true, formRegenToken;
+
+    // Viajes que se cuentan solos (Nacho)
+    private static readonly System.Globalization.CultureInfo ar = new("es-AR");
+    private List<ChoferDto>? choferes;
+    private bool formAuto;
+    private decimal formTarifaViaje = 8500m;
+    private int formDriverId;
+    private int? detalleEmpId;
+    private AdminEntregasResumenDto? detalle;
+    private int? liquidando;
+    private AdminEmpleadoDto? empleadoSelAjuste;
+    private bool showFormAjuste, savingAjuste;
+    private DateTime ajusteFecha = DateTime.Today;
+    private int ajusteCantidad = 1;
+    private string ajusteDetalle = "";
+
+    private static string Plata(decimal v) => v.ToString("N0", ar);
+
+    /// <summary>Las localidades/clientes del día, cortito, para poder controlar de un vistazo.</summary>
+    private static string Resumir(AdminDiaDto d)
+    {
+        var partes = d.Entregas
+            .Select(e => e.Manual ? (e.Detalle ?? "ajuste a mano") : (e.Cliente ?? e.Direccion ?? "—"))
+            .ToList();
+        var txt = string.Join(" · ", partes.Take(4));
+        if (partes.Count > 4) txt += $" · +{partes.Count - 4}";
+        return txt;
+    }
 
     private AdminEmpleadoDto? empleadoSelPago;
     private DateTime pagoFecha = DateTime.Today;
@@ -268,12 +451,15 @@
         empleados = await Http.GetFromJsonAsync<List<AdminEmpleadoDto>>("api/viajes/admin/empleados");
         registros = await Http.GetFromJsonAsync<List<AdminRegistroDto>>("api/viajes/admin/registros");
         pagos = await Http.GetFromJsonAsync<List<AdminPagoDto>>("api/viajes/admin/pagos");
+        choferes ??= await Http.GetFromJsonAsync<List<ChoferDto>>("api/viajes/admin/choferes");
+        if (detalleEmpId.HasValue) await CargarDetalle(detalleEmpId.Value);
     }
 
     private void ShowCreateEmpleado()
     {
         editingId = null; formNombre = ""; formTarifaCABA = 6000m; formTarifaPCIA = 8000m;
         formActive = true; formRegenToken = false; showFormEmp = true;
+        formAuto = false; formTarifaViaje = 8500m; formDriverId = 0;
     }
 
     private void ShowEditEmpleado(AdminEmpleadoDto e)
@@ -281,6 +467,7 @@
         editingId = e.Id; formNombre = e.Nombre;
         formTarifaCABA = e.TarifaCABA; formTarifaPCIA = e.TarifaPCIA;
         formActive = e.IsActive; formRegenToken = false; showFormEmp = true;
+        formAuto = e.ModoAutomatico; formTarifaViaje = e.TarifaViaje; formDriverId = e.MapeoDriverId ?? 0;
     }
 
     private async Task GuardarEmpleado()
@@ -292,14 +479,16 @@
             if (editingId.HasValue)
             {
                 var resp = await Http.PutAsJsonAsync($"api/viajes/admin/empleados/{editingId.Value}",
-                    new { Nombre = formNombre, IsActive = formActive, TarifaCABA = formTarifaCABA, TarifaPCIA = formTarifaPCIA, RegenerarToken = formRegenToken });
+                    new { Nombre = formNombre, IsActive = formActive, TarifaCABA = formTarifaCABA, TarifaPCIA = formTarifaPCIA, RegenerarToken = formRegenToken,
+                          ModoAutomatico = formAuto, MapeoDriverId = formDriverId, TarifaViaje = formTarifaViaje });
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
                 else { ToastService.Error("Error actualizando"); return; }
             }
             else
             {
                 var resp = await Http.PostAsJsonAsync("api/viajes/admin/empleados",
-                    new { Nombre = formNombre, TarifaCABA = formTarifaCABA, TarifaPCIA = formTarifaPCIA });
+                    new { Nombre = formNombre, TarifaCABA = formTarifaCABA, TarifaPCIA = formTarifaPCIA,
+                          ModoAutomatico = formAuto, MapeoDriverId = formDriverId, TarifaViaje = formTarifaViaje });
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado creado");
                 else { ToastService.Error("Error creando"); return; }
             }
@@ -351,6 +540,68 @@
         if (!await JS.InvokeAsync<bool>("confirm", "¿Borrar este pago?")) return;
         var resp = await Http.DeleteAsync($"api/viajes/admin/pagos/{id}");
         if (resp.IsSuccessStatusCode) { ToastService.Success("Borrado"); await RecargarTodo(); }
+    }
+
+    private async Task VerDetalle(AdminEmpleadoDto e)
+    {
+        if (detalleEmpId == e.Id) { detalleEmpId = null; detalle = null; return; }
+        detalleEmpId = e.Id; detalle = null;
+        await CargarDetalle(e.Id);
+    }
+
+    private async Task CargarDetalle(int empId)
+    {
+        detalle = await Http.GetFromJsonAsync<AdminEntregasResumenDto>(
+            $"api/viajes/admin/empleados/{empId}/entregas?dias=30");
+    }
+
+    private async Task Liquidar(AdminEmpleadoDto e)
+    {
+        if (e.ViajesPendientes == 0) return;
+        var msg = $"¿Liquidar {e.ViajesPendientes} viajes por ${Plata(e.ImportePendiente)} a {e.Nombre}?\n\n" +
+                  "Se registra el pago y esos viajes quedan cerrados.";
+        if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
+        liquidando = e.Id;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/viajes/admin/empleados/{e.Id}/liquidar", new { });
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success($"Liquidado ${Plata(e.ImportePendiente)} a {e.Nombre}");
+                await RecargarTodo();
+            }
+            else ToastService.Error("No se pudo liquidar");
+        }
+        finally { liquidando = null; }
+    }
+
+    private void ShowAjuste(AdminEmpleadoDto e)
+    {
+        empleadoSelAjuste = e;
+        ajusteFecha = DateTime.Today;
+        ajusteCantidad = 1;
+        ajusteDetalle = "";
+        showFormAjuste = true;
+    }
+
+    private async Task GuardarAjuste()
+    {
+        if (empleadoSelAjuste is null) return;
+        if (string.IsNullOrWhiteSpace(ajusteDetalle)) { ToastService.Error("Poné por qué es el ajuste"); return; }
+        savingAjuste = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/viajes/admin/empleados/{empleadoSelAjuste.Id}/ajuste",
+                new { Fecha = ajusteFecha, Cantidad = ajusteCantidad, Detalle = ajusteDetalle });
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success("Ajuste cargado");
+                showFormAjuste = false;
+                await RecargarTodo();
+            }
+            else ToastService.Error("No se pudo cargar el ajuste");
+        }
+        finally { savingAjuste = false; }
     }
 
     private async Task CopiarLink(AdminEmpleadoDto e)

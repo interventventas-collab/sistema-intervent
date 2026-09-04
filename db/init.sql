@@ -7298,3 +7298,48 @@ IF COL_LENGTH('Cafe_CobranzasComprobantes','ReservaId') IS NOT NULL
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CafeCobranzasComprobantes_Reserva')
     CREATE INDEX IX_CafeCobranzasComprobantes_Reserva ON Cafe_CobranzasComprobantes (ReservaId);
 GO
+
+-- ============================================================================
+-- 2026-09-04: VIAJES QUE SE CUENTAN SOLOS (pedido por Nacho, que reparte con su propio auto
+-- y cobra $8.500 por cada entrega). Antes el repartidor tenia que entrar a su link y tipear
+-- cuantos viajes habia hecho — nadie lo hacia. Ahora cada parada del mapa que queda ENTREGADA
+-- le suma un viaje sola, y el dueno liquida cada tantos dias.
+-- ⚠ En PRODUCCION estos ALTER hay que correrlos A MANO (init.sql solo corre en base nueva).
+-- ============================================================================
+IF COL_LENGTH('Viajes_Empleados','ModoAutomatico') IS NULL
+    ALTER TABLE Viajes_Empleados ADD ModoAutomatico BIT NOT NULL DEFAULT 0;
+GO
+IF COL_LENGTH('Viajes_Empleados','MapeoDriverId') IS NULL
+    ALTER TABLE Viajes_Empleados ADD MapeoDriverId INT NULL;
+GO
+IF COL_LENGTH('Viajes_Empleados','TarifaViaje') IS NULL
+    ALTER TABLE Viajes_Empleados ADD TarifaViaje DECIMAL(18,2) NOT NULL DEFAULT 8500;
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Viajes_Entregas')
+BEGIN
+    CREATE TABLE Viajes_Entregas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        EmpleadoId INT NOT NULL,
+        -- Parada del mapa que genero el viaje. NULL = ajuste cargado a mano.
+        StopId INT NULL,
+        -- Dia del REPARTO (no el dia en que MeLi confirmo la entrega).
+        Fecha DATE NOT NULL,
+        -- Tarifa CONGELADA: cambiarle el precio al empleado no recalcula lo viejo.
+        Tarifa DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Origen NVARCHAR(20) NOT NULL DEFAULT 'manual',
+        Direccion NVARCHAR(300) NULL,
+        Cliente NVARCHAR(150) NULL,
+        EntregadoAt DATETIME2 NULL,
+        Detalle NVARCHAR(300) NULL,
+        -- Pago con el que se liquido. NULL = todavia se le debe.
+        LiquidadoPagoId INT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_ViajesEntregas_Empleado FOREIGN KEY (EmpleadoId) REFERENCES Viajes_Empleados(Id) ON DELETE CASCADE
+    );
+    -- Una parada suma UNA sola vez por empleado (los ajustes a mano tienen StopId NULL y no entran).
+    CREATE UNIQUE INDEX UX_ViajesEntregas_EmpStop ON Viajes_Entregas(EmpleadoId, StopId) WHERE StopId IS NOT NULL;
+    CREATE INDEX IX_ViajesEntregas_EmpFecha ON Viajes_Entregas(EmpleadoId, Fecha);
+END
+GO

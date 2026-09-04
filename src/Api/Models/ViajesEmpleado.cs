@@ -27,6 +27,23 @@ public class ViajesEmpleado
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// 2026-09-04 (Nacho): el empleado NO carga sus viajes a mano — se los cuenta el sistema.
+    /// Cada parada del mapa que quedo ENTREGADA le suma un viaje a la tarifa <see cref="TarifaViaje"/>.
+    /// false = modo viejo (el empleado tipea cuantos viajes hizo en CABA y en PCIA). Walter sigue asi.
+    /// </summary>
+    public bool ModoAutomatico { get; set; }
+
+    /// <summary>Chofer del mapa (MapeoDrivers.Id) del que se cuentan las entregas. Solo en modo automatico.</summary>
+    public int? MapeoDriverId { get; set; }
+
+    /// <summary>
+    /// Tarifa PLANA por entrega en modo automatico: da lo mismo Flex, venta de cafe, CABA o Provincia.
+    /// Se congela en cada entrega al momento de contarla, asi cambiarla no recalcula la deuda vieja.
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal TarifaViaje { get; set; } = 8500m;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
@@ -88,6 +105,68 @@ public class ViajesPago
 
     [Column(TypeName = "decimal(18,2)")]
     public decimal Importe { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// 2026-09-04: UN viaje ya contado del empleado que cobra por entrega (modo automatico).
+///
+/// Por que una tabla propia y no calcularlo al vuelo sobre las paradas del mapa:
+///   - las paradas del mapa se pueden borrar o re-asignar; la plata que se le debe a alguien no
+///     puede depender de eso;
+///   - la tarifa se CONGELA acá al contar la entrega, asi subirle el precio manana no recalcula
+///     lo que ya se le pago;
+///   - lo LIQUIDADO queda cerrado: una vez pagado, ese viaje no se toca mas (ver LiquidadoPagoId).
+///
+/// StopId es la clave contra duplicados: una parada suma UNA sola vez, aunque MercadoLibre confirme
+/// la entrega dos veces o el sincronizador corra mil veces. Los ajustes a mano van con StopId NULL.
+/// </summary>
+[Table("Viajes_Entregas")]
+public class ViajesEntrega
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int EmpleadoId { get; set; }
+
+    [ForeignKey(nameof(EmpleadoId))]
+    public ViajesEmpleado? Empleado { get; set; }
+
+    /// <summary>Parada del mapa (MapeoStops.Id) que genero este viaje. NULL = ajuste cargado a mano.</summary>
+    public int? StopId { get; set; }
+
+    /// <summary>Dia del REPARTO (fecha argentina). Si MeLi confirma la entrega a la noche o al otro
+    /// dia, el viaje igual cae en el dia que salio a repartir.</summary>
+    [Column(TypeName = "date")]
+    public DateTime Fecha { get; set; }
+
+    /// <summary>Lo que se le paga por esta entrega. Congelado al momento de contarla.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Tarifa { get; set; }
+
+    /// <summary>flex | me1 | venta_cafe | alquiler | visita | manual</summary>
+    [MaxLength(20)]
+    public string Origen { get; set; } = "manual";
+
+    [MaxLength(300)]
+    public string? Direccion { get; set; }
+
+    [MaxLength(150)]
+    public string? Cliente { get; set; }
+
+    /// <summary>Hora en que se dio por entregada (la que informo MeLi o la marca del repartidor).</summary>
+    public DateTime? EntregadoAt { get; set; }
+
+    /// <summary>Ajuste a mano: por que se le suma o se le resta (puede ser importe negativo).</summary>
+    [MaxLength(300)]
+    public string? Detalle { get; set; }
+
+    /// <summary>Pago (Viajes_Pagos.Id) con el que se liquido este viaje. NULL = todavia se le debe.
+    /// Un viaje liquidado NO se borra ni se recalcula aunque cambie la parada de origen.</summary>
+    public int? LiquidadoPagoId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

@@ -142,6 +142,8 @@ builder.Services.AddScoped<VisitaMapeoService>();
 // Un solo lugar que sabe si una parada ya se entregó (lo usan el mapa y el dashboard, así los
 // números de las dos pantallas siempre coinciden).
 builder.Services.AddScoped<MapeoEntregasService>();
+// 2026-09-04: cuenta solo los viajes del repartidor que cobra por entrega (Nacho).
+builder.Services.AddScoped<ViajesAutoService>();
 // Un solo lugar que lleva lo que se asigna en el mapa al celular del repartidor (ventas, alquileres
 // y ME1). Sin esto, elegir los choferes por zona armaba la ruta pero no le cargaba nada al celu.
 builder.Services.AddScoped<MapeoAsignacionService>();

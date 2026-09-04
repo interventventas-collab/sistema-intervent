@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +29,8 @@ namespace Api.Controllers;
 public class ViajesController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public ViajesController(AppDbContext db) { _db = db; }
+    private readonly ViajesAutoService _auto;
+    public ViajesController(AppDbContext db, ViajesAutoService auto) { _db = db; _auto = auto; }
 
     // ============================================================
     // ENDPOINTS PUBLICOS (sin auth, por token)
@@ -46,7 +48,11 @@ public class ViajesController : ControllerBase
         decimal TotalPagadoMes,
         decimal SaldoMes,            // a favor del empleado si > 0
         decimal SaldoAcumulado,      // saldo historico desde siempre (todos los registros vs todos los pagos)
-        List<PublicPagoDto> UltimosPagos);
+        List<PublicPagoDto> UltimosPagos,
+        // 2026-09-04: el que cobra por entrega no carga nada — solo mira como le va sumando.
+        bool ModoAutomatico, decimal TarifaViaje,
+        int ViajesHoy, decimal ImporteHoy,
+        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde);
 
     [HttpGet("publica/{token}")]
     [AllowAnonymous]
@@ -55,6 +61,9 @@ public class ViajesController : ControllerBase
         if (string.IsNullOrWhiteSpace(token)) return NotFound();
         var emp = await _db.ViajesEmpleados.FirstOrDefaultAsync(e => e.Token == token && e.IsActive);
         if (emp is null) return NotFound(new { error = "Token inválido o empleado inactivo" });
+
+        // Si cobra por entrega, primero ponemos al dia lo que le sumo el mapa.
+        await _auto.SincronizarAsync(emp);
 
         var hoy = FechaArgentinaHoy();
         var fechaSel = hoy;
@@ -77,21 +86,30 @@ public class ViajesController : ControllerBase
             .OrderByDescending(p => p.Fecha)
             .ToListAsync();
 
+        // Viajes contados solos (modo automatico). En modo manual esta lista viene vacia.
+        var entregas = await _db.ViajesEntregas.Where(x => x.EmpleadoId == emp.Id).ToListAsync();
+
         // Totales del MES en curso
         var regsMes = registros.Where(r => r.Fecha >= inicioMes).ToList();
+        var entMes = entregas.Where(x => x.Fecha >= inicioMes).ToList();
         var pagosMes = pagos.Where(p => p.Fecha >= inicioMes).ToList();
-        var totalViajesMes = regsMes.Sum(r => r.CantidadCABA + r.CantidadPCIA);
+        var totalViajesMes = regsMes.Sum(r => r.CantidadCABA + r.CantidadPCIA) + entMes.Count;
         // Cada viaje se valua con SU tarifa congelada (no la actual del empleado).
-        var totalACobrarMes = regsMes.Sum(r => r.CantidadCABA * r.TarifaCABA + r.CantidadPCIA * r.TarifaPCIA);
+        var totalACobrarMes = regsMes.Sum(r => r.CantidadCABA * r.TarifaCABA + r.CantidadPCIA * r.TarifaPCIA)
+                            + entMes.Sum(x => x.Tarifa);
         var totalPagadoMes = pagosMes.Sum(p => p.Importe);
         var saldoMes = totalACobrarMes - totalPagadoMes;
 
         // Saldo acumulado (historico, todas las fechas) — para esto pido TODO de la DB.
         var totalACobrarAll = await _db.ViajesRegistros
             .Where(r => r.EmpleadoId == emp.Id)
-            .SumAsync(r => (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA);
+            .SumAsync(r => (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA)
+            + entregas.Sum(x => x.Tarifa);
         var totalPagadoAll = await _db.ViajesPagos.Where(p => p.EmpleadoId == emp.Id).SumAsync(p => p.Importe);
         var saldoAcum = totalACobrarAll - totalPagadoAll;
+
+        var entHoy = entregas.Where(x => x.Fecha == hoy).ToList();
+        var entPend = entregas.Where(x => x.LiquidadoPagoId is null).ToList();
 
         var regSel = registros.FirstOrDefault(r => r.Fecha == fechaSel);
         var ultimos7 = registros.Where(r => r.Fecha >= hace7 && r.Fecha <= hoy)
@@ -109,7 +127,11 @@ public class ViajesController : ControllerBase
             ultimos7,
             totalViajesMes, totalACobrarMes,
             totalPagadoMes, saldoMes,
-            saldoAcum, ultimosPagos));
+            saldoAcum, ultimosPagos,
+            emp.ModoAutomatico, emp.TarifaViaje,
+            entHoy.Count, entHoy.Sum(x => x.Tarifa),
+            entPend.Count, entPend.Sum(x => x.Tarifa),
+            entPend.Count == 0 ? null : entPend.Min(x => x.Fecha)));
     }
 
     public class CargarViajesRequest
@@ -127,6 +149,9 @@ public class ViajesController : ControllerBase
         if (string.IsNullOrWhiteSpace(token)) return NotFound();
         var emp = await _db.ViajesEmpleados.FirstOrDefaultAsync(e => e.Token == token && e.IsActive);
         if (emp is null) return NotFound(new { error = "Token inválido o empleado inactivo" });
+
+        // El que cobra por entrega no carga nada a mano: sus viajes los cuenta el mapa.
+        if (emp.ModoAutomatico) return BadRequest(new { error = "Tus viajes se cuentan solos con las entregas. No hace falta que cargues nada." });
 
         if (req.CantidadCABA < 0 || req.CantidadCABA > 200) return BadRequest(new { error = "Cantidad CABA inválida (0–200)" });
         if (req.CantidadPCIA < 0 || req.CantidadPCIA > 200) return BadRequest(new { error = "Cantidad PCIA inválida (0–200)" });
@@ -172,41 +197,87 @@ public class ViajesController : ControllerBase
         decimal TarifaCABA, decimal TarifaPCIA,
         int TotalViajesMes, decimal TotalACobrarMes, decimal TotalPagadoMes,
         decimal SaldoMes, decimal SaldoAcumulado,
-        DateTime? UltimaCargaAt, DateTime CreatedAt);
+        DateTime? UltimaCargaAt, DateTime CreatedAt,
+        // 2026-09-04: los que cobran por entrega (Nacho). En modo manual estos campos van en cero.
+        bool ModoAutomatico, int? MapeoDriverId, string? MapeoDriverNombre, decimal TarifaViaje,
+        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde,
+        int ViajesHoy, decimal ImporteHoy);
 
     [HttpGet("admin/empleados")]
     [Authorize]
     public async Task<IActionResult> ListEmpleados()
     {
+        // Antes de mostrar nada, ponemos al dia a los que cobran por entrega: sus viajes salen de
+        // las paradas entregadas del mapa, no de lo que ellos carguen.
+        await _auto.SincronizarTodosAsync();
+
         var emps = await _db.ViajesEmpleados.OrderBy(e => e.Nombre).ToListAsync();
         var hoy = FechaArgentinaHoy();
         var inicioMes = new DateTime(hoy.Year, hoy.Month, 1);
 
-        var regsMes = await _db.ViajesRegistros.Where(r => r.Fecha >= inicioMes).ToListAsync();
-        var pagosMes = await _db.ViajesPagos.Where(p => p.Fecha >= inicioMes).ToListAsync();
         var regsAll = await _db.ViajesRegistros.ToListAsync();
         var pagosAll = await _db.ViajesPagos.ToListAsync();
+        var entAll = await _db.ViajesEntregas.ToListAsync();
+        var drivers = await _db.MapeoDrivers.ToDictionaryAsync(d => d.Id, d => d.Nombre);
+
         var ultimasCargas = regsAll.GroupBy(r => r.EmpleadoId)
             .ToDictionary(g => g.Key, g => g.Max(r => (DateTime?)(r.UpdatedAt ?? r.CreatedAt)));
+        var ultimasEntregas = entAll.GroupBy(e => e.EmpleadoId)
+            .ToDictionary(g => g.Key, g => g.Max(e => (DateTime?)(e.UpdatedAt ?? e.CreatedAt)));
 
         var result = emps.Select(e =>
         {
-            var totalACobrarMes = regsMes.Where(r => r.EmpleadoId == e.Id)
-                .Sum(r => r.CantidadCABA * r.TarifaCABA + r.CantidadPCIA * r.TarifaPCIA);
-            var totalPagadoMes = pagosMes.Where(p => p.EmpleadoId == e.Id).Sum(p => p.Importe);
-            var totalACobrarAll = regsAll.Where(r => r.EmpleadoId == e.Id)
-                .Sum(r => r.CantidadCABA * r.TarifaCABA + r.CantidadPCIA * r.TarifaPCIA);
-            var totalPagadoAll = pagosAll.Where(p => p.EmpleadoId == e.Id).Sum(p => p.Importe);
+            var regs = regsAll.Where(r => r.EmpleadoId == e.Id).ToList();
+            var ents = entAll.Where(x => x.EmpleadoId == e.Id).ToList();
+            var pagos = pagosAll.Where(p => p.EmpleadoId == e.Id).ToList();
+
+            // UNA sola formula para los dos modos: el que carga a mano suma registros, el que cobra
+            // por entrega suma entregas. El que no usa un modo lo tiene vacio y suma cero.
+            decimal ACobrar(DateTime? desde) =>
+                  regs.Where(r => desde == null || r.Fecha >= desde).Sum(r => r.CantidadCABA * r.TarifaCABA + r.CantidadPCIA * r.TarifaPCIA)
+                + ents.Where(x => desde == null || x.Fecha >= desde).Sum(x => x.Tarifa);
+            int Viajes(DateTime? desde) =>
+                  regs.Where(r => desde == null || r.Fecha >= desde).Sum(r => r.CantidadCABA + r.CantidadPCIA)
+                + ents.Count(x => desde == null || x.Fecha >= desde);
+
+            var totalACobrarMes = ACobrar(inicioMes);
+            var totalPagadoMes = pagos.Where(p => p.Fecha >= inicioMes).Sum(p => p.Importe);
+            var saldoAcum = ACobrar(null) - pagos.Sum(p => p.Importe);
+
+            // Pendiente = lo que todavia no se le liquido (solo aplica al modo automatico).
+            var pend = ents.Where(x => x.LiquidadoPagoId is null).ToList();
+            var hoyEnts = ents.Where(x => x.Fecha == hoy).ToList();
+
+            var ultima = ultimasCargas.TryGetValue(e.Id, out var u1) ? u1 : null;
+            var ultimaEnt = ultimasEntregas.TryGetValue(e.Id, out var u2) ? u2 : null;
+            if (ultimaEnt.HasValue && (!ultima.HasValue || ultimaEnt > ultima)) ultima = ultimaEnt;
+
             return new AdminEmpleadoDto(e.Id, e.Nombre, e.Token, e.IsActive,
                 e.TarifaCABA, e.TarifaPCIA,
-                regsMes.Where(r => r.EmpleadoId == e.Id).Sum(r => r.CantidadCABA + r.CantidadPCIA),
-                totalACobrarMes, totalPagadoMes,
+                Viajes(inicioMes), totalACobrarMes, totalPagadoMes,
                 totalACobrarMes - totalPagadoMes,
-                totalACobrarAll - totalPagadoAll,
-                ultimasCargas.TryGetValue(e.Id, out var u) ? u : null,
-                e.CreatedAt);
+                saldoAcum,
+                ultima, e.CreatedAt,
+                e.ModoAutomatico, e.MapeoDriverId,
+                e.MapeoDriverId.HasValue && drivers.TryGetValue(e.MapeoDriverId.Value, out var dn) ? dn : null,
+                e.TarifaViaje,
+                pend.Count, pend.Sum(x => x.Tarifa),
+                pend.Count == 0 ? null : pend.Min(x => x.Fecha),
+                hoyEnts.Count, hoyEnts.Sum(x => x.Tarifa));
         }).ToList();
         return Ok(result);
+    }
+
+    /// <summary>Choferes del mapa, para elegir de cual se cuentan las entregas.</summary>
+    [HttpGet("admin/choferes")]
+    [Authorize]
+    public async Task<IActionResult> ListChoferes()
+    {
+        var ds = await _db.MapeoDrivers.Where(d => d.IsActive)
+            .OrderBy(d => d.Nombre)
+            .Select(d => new { d.Id, d.Nombre })
+            .ToListAsync();
+        return Ok(ds);
     }
 
     public class CreateEmpleadoRequest
@@ -214,6 +285,9 @@ public class ViajesController : ControllerBase
         public string Nombre { get; set; } = "";
         public decimal? TarifaCABA { get; set; }
         public decimal? TarifaPCIA { get; set; }
+        public bool ModoAutomatico { get; set; }
+        public int? MapeoDriverId { get; set; }
+        public decimal? TarifaViaje { get; set; }
     }
 
     [HttpPost("admin/empleados")]
@@ -227,11 +301,16 @@ public class ViajesController : ControllerBase
             Token = Guid.NewGuid().ToString("N"),
             TarifaCABA = req.TarifaCABA ?? 6000m,
             TarifaPCIA = req.TarifaPCIA ?? 8000m,
+            ModoAutomatico = req.ModoAutomatico,
+            MapeoDriverId = req.ModoAutomatico ? req.MapeoDriverId : null,
+            TarifaViaje = req.TarifaViaje ?? 8500m,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
         _db.ViajesEmpleados.Add(emp);
         await _db.SaveChangesAsync();
+        // Si nace en modo automatico, ya le traemos los viajes de los ultimos dias.
+        await _auto.SincronizarAsync(emp);
         return Ok(emp);
     }
 
@@ -242,6 +321,9 @@ public class ViajesController : ControllerBase
         public decimal? TarifaCABA { get; set; }
         public decimal? TarifaPCIA { get; set; }
         public bool RegenerarToken { get; set; }
+        public bool? ModoAutomatico { get; set; }
+        public int? MapeoDriverId { get; set; }
+        public decimal? TarifaViaje { get; set; }
     }
 
     [HttpPut("admin/empleados/{id:int}")]
@@ -259,8 +341,14 @@ public class ViajesController : ControllerBase
         if (req.TarifaCABA.HasValue && req.TarifaCABA.Value >= 0) emp.TarifaCABA = req.TarifaCABA.Value;
         if (req.TarifaPCIA.HasValue && req.TarifaPCIA.Value >= 0) emp.TarifaPCIA = req.TarifaPCIA.Value;
         if (req.RegenerarToken) emp.Token = Guid.NewGuid().ToString("N");
+        if (req.ModoAutomatico.HasValue) emp.ModoAutomatico = req.ModoAutomatico.Value;
+        if (req.MapeoDriverId.HasValue) emp.MapeoDriverId = req.MapeoDriverId.Value > 0 ? req.MapeoDriverId.Value : null;
+        // La tarifa nueva vale de aca en mas: los viajes ya contados tienen la suya congelada.
+        if (req.TarifaViaje.HasValue && req.TarifaViaje.Value >= 0) emp.TarifaViaje = req.TarifaViaje.Value;
+        if (!emp.ModoAutomatico) emp.MapeoDriverId = null;
         emp.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await _auto.SincronizarAsync(emp);
         return Ok(emp);
     }
 
@@ -392,9 +480,181 @@ public class ViajesController : ControllerBase
     {
         var p = await _db.ViajesPagos.FindAsync(id);
         if (p is null) return NotFound();
+        // Si este pago era una liquidacion, los viajes que cerro vuelven a quedar impagos
+        // (si no, desaparecerian de "pendiente" y nadie los volveria a cobrar).
+        var liquidados = await _db.ViajesEntregas.Where(e => e.LiquidadoPagoId == id).ToListAsync();
+        foreach (var e in liquidados) { e.LiquidadoPagoId = null; e.UpdatedAt = DateTime.UtcNow; }
         _db.ViajesPagos.Remove(p);
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
+    }
+
+    // ============================================================
+    // VIAJES QUE SE CUENTAN SOLOS (modo automatico) — 2026-09-04
+    // El repartidor no carga nada: cada parada entregada del mapa le suma un viaje.
+    // ============================================================
+
+    public record AdminEntregaDto(int Id, DateTime Fecha, string Origen, string? Direccion,
+        string? Cliente, DateTime? EntregadoAt, decimal Tarifa, bool Manual, string? Detalle,
+        bool Liquidado);
+
+    public record AdminDiaDto(DateTime Fecha, int Cantidad, decimal Importe, bool Liquidado,
+        List<AdminEntregaDto> Entregas);
+
+    public record AdminEntregasResumenDto(int EmpleadoId, string Nombre, decimal TarifaViaje,
+        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde,
+        List<AdminDiaDto> Dias);
+
+    /// <summary>Dia por dia de los viajes contados (y los ajustes a mano) de un empleado.</summary>
+    [HttpGet("admin/empleados/{id:int}/entregas")]
+    [Authorize]
+    public async Task<IActionResult> ListEntregas(int id, [FromQuery] int dias = 30,
+        [FromQuery] bool soloPendientes = false)
+    {
+        var emp = await _db.ViajesEmpleados.FindAsync(id);
+        if (emp is null) return NotFound();
+        await _auto.SincronizarAsync(emp);
+
+        var hoy = FechaArgentinaHoy();
+        var desde = hoy.AddDays(-Math.Clamp(dias, 1, 365));
+
+        var q = _db.ViajesEntregas.Where(e => e.EmpleadoId == id && e.Fecha >= desde);
+        if (soloPendientes) q = q.Where(e => e.LiquidadoPagoId == null);
+        var ents = await q.ToListAsync();
+
+        var pend = await _db.ViajesEntregas
+            .Where(e => e.EmpleadoId == id && e.LiquidadoPagoId == null).ToListAsync();
+
+        var dias_ = ents.GroupBy(e => e.Fecha)
+            .OrderByDescending(g => g.Key)
+            .Select(g => new AdminDiaDto(
+                g.Key,
+                g.Count(),
+                g.Sum(x => x.Tarifa),
+                g.All(x => x.LiquidadoPagoId != null),
+                g.OrderBy(x => x.EntregadoAt ?? x.CreatedAt)
+                 .Select(x => new AdminEntregaDto(x.Id, x.Fecha, x.Origen, x.Direccion, x.Cliente,
+                     x.EntregadoAt, x.Tarifa, x.StopId == null, x.Detalle, x.LiquidadoPagoId != null))
+                 .ToList()))
+            .ToList();
+
+        return Ok(new AdminEntregasResumenDto(emp.Id, emp.Nombre, emp.TarifaViaje,
+            pend.Count, pend.Sum(x => x.Tarifa),
+            pend.Count == 0 ? null : pend.Min(x => x.Fecha),
+            dias_));
+    }
+
+    public class AjusteRequest
+    {
+        public DateTime? Fecha { get; set; }
+        /// <summary>Cuantos viajes sumar (o restar, en negativo). Si viene Importe, se ignora.</summary>
+        public int Cantidad { get; set; } = 1;
+        /// <summary>Importe exacto, si no se quiere usar la tarifa. Puede ser negativo (descuento).</summary>
+        public decimal? Importe { get; set; }
+        public string? Detalle { get; set; }
+    }
+
+    /// <summary>Suma (o resta) viajes a mano: un extra que le reconoces, ir a buscar mercaderia, etc.</summary>
+    [HttpPost("admin/empleados/{id:int}/ajuste")]
+    [Authorize]
+    public async Task<IActionResult> CrearAjuste(int id, [FromBody] AjusteRequest req)
+    {
+        var emp = await _db.ViajesEmpleados.FindAsync(id);
+        if (emp is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(req.Detalle)) return BadRequest(new { error = "Poné por qué es el ajuste" });
+
+        var hoy = FechaArgentinaHoy();
+        var fecha = (req.Fecha?.Date ?? hoy);
+        if (fecha > hoy) return BadRequest(new { error = "No podés cargar fechas futuras" });
+
+        var creados = new List<ViajesEntrega>();
+        if (req.Importe.HasValue && req.Importe.Value != 0)
+        {
+            creados.Add(new ViajesEntrega
+            {
+                EmpleadoId = id, Fecha = fecha, Tarifa = req.Importe.Value, Origen = "manual",
+                Detalle = req.Detalle!.Trim(), CreatedAt = DateTime.UtcNow
+            });
+        }
+        else
+        {
+            var cant = req.Cantidad == 0 ? 1 : req.Cantidad;
+            if (Math.Abs(cant) > 50) return BadRequest(new { error = "Cantidad demasiado grande (máx 50)" });
+            var signo = cant < 0 ? -1 : 1;
+            for (var i = 0; i < Math.Abs(cant); i++)
+                creados.Add(new ViajesEntrega
+                {
+                    EmpleadoId = id, Fecha = fecha, Tarifa = signo * emp.TarifaViaje, Origen = "manual",
+                    Detalle = req.Detalle!.Trim(), CreatedAt = DateTime.UtcNow
+                });
+        }
+        _db.ViajesEntregas.AddRange(creados);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, cantidad = creados.Count, importe = creados.Sum(x => x.Tarifa) });
+    }
+
+    /// <summary>Borra un ajuste cargado a mano. Los viajes que vienen del mapa no se borran de acá
+    /// (se corrigen en el mapa) y los ya liquidados no se tocan.</summary>
+    [HttpDelete("admin/entregas/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> DeleteEntrega(int id)
+    {
+        var e = await _db.ViajesEntregas.FindAsync(id);
+        if (e is null) return NotFound();
+        if (e.LiquidadoPagoId is not null) return BadRequest(new { error = "Ya está liquidado: borrá el pago primero" });
+        if (e.StopId is not null) return BadRequest(new { error = "Este viaje viene de una entrega del mapa. Si no corresponde, corregí la parada en el mapa." });
+        _db.ViajesEntregas.Remove(e);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    public class LiquidarRequest
+    {
+        public DateTime? Hasta { get; set; }
+        public string? Descripcion { get; set; }
+    }
+
+    /// <summary>
+    /// Cierra todo lo pendiente hasta una fecha: registra el pago por ese total y deja esos viajes
+    /// marcados como liquidados (congelados: no se recalculan mas aunque cambie el mapa).
+    /// </summary>
+    [HttpPost("admin/empleados/{id:int}/liquidar")]
+    [Authorize]
+    public async Task<IActionResult> Liquidar(int id, [FromBody] LiquidarRequest req)
+    {
+        var emp = await _db.ViajesEmpleados.FindAsync(id);
+        if (emp is null) return NotFound();
+        await _auto.SincronizarAsync(emp);
+
+        var hoy = FechaArgentinaHoy();
+        var hasta = (req.Hasta?.Date ?? hoy);
+
+        var pend = await _db.ViajesEntregas
+            .Where(e => e.EmpleadoId == id && e.LiquidadoPagoId == null && e.Fecha <= hasta)
+            .ToListAsync();
+        if (pend.Count == 0) return BadRequest(new { error = "No hay viajes pendientes para liquidar" });
+
+        var total = pend.Sum(x => x.Tarifa);
+        var desde = pend.Min(x => x.Fecha);
+        var desc = string.IsNullOrWhiteSpace(req.Descripcion)
+            ? $"Liquidación {pend.Count} viajes ({desde:dd/MM} al {hasta:dd/MM})"
+            : req.Descripcion!.Trim();
+
+        var pago = new ViajesPago
+        {
+            EmpleadoId = id,
+            Fecha = hoy,
+            Descripcion = desc,
+            Importe = total,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.ViajesPagos.Add(pago);
+        await _db.SaveChangesAsync();
+
+        foreach (var e in pend) { e.LiquidadoPagoId = pago.Id; e.UpdatedAt = DateTime.UtcNow; }
+        await _db.SaveChangesAsync();
+
+        return Ok(new { ok = true, pagoId = pago.Id, cantidad = pend.Count, importe = total });
     }
 
     // ============================================================
