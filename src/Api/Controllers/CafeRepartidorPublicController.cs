@@ -23,10 +23,47 @@ public class CafeRepartidorPublicController : ControllerBase
     private readonly TelegramService _telegram;
     private readonly WhatsAppOutboundService _wa;
     private readonly MapeoEntregasService _entregas;
+    private readonly ViajesAutoService _viajes;
     public CafeRepartidorPublicController(AppDbContext db, MeliShipmentService me1Service,
-        TelegramService telegram, WhatsAppOutboundService wa, MapeoEntregasService entregas)
+        TelegramService telegram, WhatsAppOutboundService wa, MapeoEntregasService entregas,
+        ViajesAutoService viajes)
     {
         _db = db; _me1Service = me1Service; _telegram = telegram; _wa = wa; _entregas = entregas;
+        _viajes = viajes;
+    }
+
+    /// <summary>
+    /// 2026-09-04: lo que lleva ganado hoy el repartidor que cobra POR ENTREGA (Nacho, que va con
+    /// su propio auto). Devuelve null-ish (Aplica = false) para todos los demas, que cobran sueldo.
+    /// </summary>
+    public record MisViajesDto(bool Aplica, decimal Tarifa, int ViajesHoy, decimal ImporteHoy,
+        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde);
+
+    [HttpGet("mis-pedidos/{tokenRepartidor}/viajes")]
+    public async Task<IActionResult> MisViajes(string tokenRepartidor)
+    {
+        var vacio = new MisViajesDto(false, 0, 0, 0, 0, 0, null);
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return Ok(vacio);
+
+        var driverIds = await _db.MapeoDrivers.Where(d => d.CafeRepartidorId == r.Id).Select(d => d.Id).ToListAsync();
+        if (driverIds.Count == 0) return Ok(vacio);
+
+        var emp = await _db.ViajesEmpleados.FirstOrDefaultAsync(e =>
+            e.IsActive && e.ModoAutomatico && e.MapeoDriverId != null && driverIds.Contains(e.MapeoDriverId.Value));
+        if (emp is null) return Ok(vacio);
+
+        await _viajes.SincronizarAsync(emp);
+
+        var hoy = ViajesAutoService.HoyAr();
+        var ents = await _db.ViajesEntregas.Where(x => x.EmpleadoId == emp.Id).ToListAsync();
+        var hoyEnts = ents.Where(x => x.Fecha == hoy).ToList();
+        var pend = ents.Where(x => x.LiquidadoPagoId is null).ToList();
+
+        return Ok(new MisViajesDto(true, emp.TarifaViaje,
+            hoyEnts.Count, hoyEnts.Sum(x => x.Tarifa),
+            pend.Count, pend.Sum(x => x.Tarifa),
+            pend.Count == 0 ? null : pend.Min(x => x.Fecha)));
     }
 
     public record RepartidorListItemDto(int Id, string Nombre);

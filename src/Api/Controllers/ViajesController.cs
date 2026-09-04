@@ -498,8 +498,8 @@ public class ViajesController : ControllerBase
         string? Cliente, DateTime? EntregadoAt, decimal Tarifa, bool Manual, string? Detalle,
         bool Liquidado);
 
-    public record AdminDiaDto(DateTime Fecha, int Cantidad, decimal Importe, bool Liquidado,
-        List<AdminEntregaDto> Entregas);
+    public record AdminDiaDto(DateTime Fecha, int Cantidad, decimal Importe, decimal ImportePendiente,
+        bool Liquidado, List<AdminEntregaDto> Entregas);
 
     public record AdminEntregasResumenDto(int EmpleadoId, string Nombre, decimal TarifaViaje,
         int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde,
@@ -531,6 +531,7 @@ public class ViajesController : ControllerBase
                 g.Key,
                 g.Count(),
                 g.Sum(x => x.Tarifa),
+                g.Where(x => x.LiquidadoPagoId == null).Sum(x => x.Tarifa),
                 g.All(x => x.LiquidadoPagoId != null),
                 g.OrderBy(x => x.EntregadoAt ?? x.CreatedAt)
                  .Select(x => new AdminEntregaDto(x.Id, x.Fecha, x.Origen, x.Direccion, x.Cliente,

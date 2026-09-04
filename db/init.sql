@@ -7338,8 +7338,19 @@ BEGIN
         UpdatedAt DATETIME2 NULL,
         CONSTRAINT FK_ViajesEntregas_Empleado FOREIGN KEY (EmpleadoId) REFERENCES Viajes_Empleados(Id) ON DELETE CASCADE
     );
-    -- Una parada suma UNA sola vez por empleado (los ajustes a mano tienen StopId NULL y no entran).
-    CREATE UNIQUE INDEX UX_ViajesEntregas_EmpStop ON Viajes_Entregas(EmpleadoId, StopId) WHERE StopId IS NOT NULL;
-    CREATE INDEX IX_ViajesEntregas_EmpFecha ON Viajes_Entregas(EmpleadoId, Fecha);
 END
+GO
+-- Los indices van aparte: el UNIQUE es FILTRADO (ignora los ajustes a mano, que tienen StopId NULL)
+-- y SQL Server solo deja crear indices filtrados con QUOTED_IDENTIFIER ON. Corriendo init.sql por
+-- sqlcmd la opcion viene apagada y el CREATE INDEX falla en silencio si esta pegado al CREATE TABLE.
+SET QUOTED_IDENTIFIER ON;
+GO
+-- Una parada suma UNA sola vez por empleado.
+IF OBJECT_ID('Viajes_Entregas') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_ViajesEntregas_EmpStop')
+    CREATE UNIQUE INDEX UX_ViajesEntregas_EmpStop ON Viajes_Entregas(EmpleadoId, StopId) WHERE StopId IS NOT NULL;
+GO
+IF OBJECT_ID('Viajes_Entregas') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_ViajesEntregas_EmpFecha')
+    CREATE INDEX IX_ViajesEntregas_EmpFecha ON Viajes_Entregas(EmpleadoId, Fecha);
 GO

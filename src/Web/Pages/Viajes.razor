@@ -274,7 +274,10 @@
                                             <td style="text-align:center; font-weight:700;">@d.Cantidad</td>
                                             <td style="color:#6b7280; font-size:0.82rem;">@Resumir(d)</td>
                                             <td style="text-align:right; font-weight:700;">$@Plata(d.Importe)</td>
-                                            <td style="color:#9ca3af; font-size:0.75rem;">@(d.Liquidado ? "pagado" : "")</td>
+                                            <td style="color:#9ca3af; font-size:0.75rem;">
+                                                @if (d.Liquidado) { <text>pagado</text> }
+                                                else if (d.ImportePendiente < d.Importe) { <text>falta pagar $@Plata(d.ImportePendiente)</text> }
+                                            </td>
                                         </tr>
                                     }
                                 </tbody>
@@ -298,9 +301,10 @@
 
         @if (tabActiva == "regs")
         {
-            <h3 style="margin: 0 0 0.5rem;">Viajes diarios (últimos 60 días)</h3>
+            <h3 style="margin: 0 0 0.5rem;">Viajes cargados a mano (últimos 60 días)</h3>
+            <div style="font-size:0.78rem; color:#6b7280; margin:-0.3rem 0 0.5rem;">Los de quienes cobran por entrega no salen acá: se ven en su ficha, con el botón “Día por día”.</div>
             @if (registros is null) { <p style="color:#6b7280;">Cargando...</p> }
-            else if (registros.Count == 0) { <p style="color:#6b7280;">Sin viajes cargados todavía.</p> }
+            else if (registros.Count == 0) { <p style="color:#6b7280;">Nadie cargó viajes a mano todavía.</p> }
             else
             {
                 <table class="vj-tab-regs">
@@ -379,8 +383,8 @@
     public record ChoferDto(int Id, string Nombre);
     public record AdminEntregaDto(int Id, DateTime Fecha, string Origen, string? Direccion,
         string? Cliente, DateTime? EntregadoAt, decimal Tarifa, bool Manual, string? Detalle, bool Liquidado);
-    public record AdminDiaDto(DateTime Fecha, int Cantidad, decimal Importe, bool Liquidado,
-        List<AdminEntregaDto> Entregas);
+    public record AdminDiaDto(DateTime Fecha, int Cantidad, decimal Importe, decimal ImportePendiente,
+        bool Liquidado, List<AdminEntregaDto> Entregas);
     public record AdminEntregasResumenDto(int EmpleadoId, string Nombre, decimal TarifaViaje,
         int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, List<AdminDiaDto> Dias);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
