@@ -950,10 +950,16 @@
         @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos") || HasPerm("mapeo") || HasPerm("me1")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
         {
             <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
-                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/meli/clonar") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas") || IsActive("/cafe/telefonos-clientes-meli") || IsActive("/meli/preguntas") || IsActive("/meli/respuestas-automaticas") || IsActive("/meli/postventa-cafe"))">
+                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/publicaciones-nueva") || IsActive("/meli/clonar") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas") || IsActive("/cafe/telefonos-clientes-meli") || IsActive("/meli/preguntas") || IsActive("/meli/respuestas-automaticas") || IsActive("/meli/postventa-cafe"))">
                 @if (HasPerm("publicaciones"))
                 {
-                    <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
+                    @* 2026-09-04: hasta hoy la pantalla NUEVA no estaba en el menú y NADA la enlazaba
+                       — Osmar entraba por un marcador del navegador. Ahora es la "Publicaciones" de
+                       verdad, y la vieja queda abajo, marcada, hasta que se le mude lo que falta
+                       (Premium→Clásica, piso masivo, combos, cuotas, infracciones de fotos...). *@
+                    <NavItem Href="/publicaciones-nueva" Label="Publicaciones" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/publicaciones-nueva")" OnClick="@(() => NavigateTo("/publicaciones-nueva"))" />
+                    <NavItem Href="/publicaciones" Label="Publicaciones (vieja)" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/publicaciones")" OnClick="@(() => NavigateTo("/publicaciones"))" />
                     @* 2026-09-04: clonar una publicacion (propia o de otro vendedor) y duplicarla entre cuentas. *@
                     <NavItem Href="/meli/clonar" Label="⧉ Clonar publicación" Icon="@SvgIcons.Tag"
@@ -981,7 +987,7 @@
                               HasActiveChild="@(IsActive("/meli/me1/entregas") || IsActive("/meli/me1/publicaciones") || IsActive("/meli/me1/codigos-postales"))">
                         <NavItem Href="/meli/me1/entregas" Label="Entregas" Icon="@SvgIcons.Check"
                                  IsActive="@IsActive("/meli/me1/entregas")" OnClick="@(() => NavigateTo("/meli/me1/entregas"))" />
-                        <NavItem Href="/meli/me1/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Package"
+                        <NavItem Href="/meli/me1/publicaciones" Label="Publicaciones ME1" Icon="@SvgIcons.Package"
                                  IsActive="@IsActive("/meli/me1/publicaciones")" OnClick="@(() => NavigateTo("/meli/me1/publicaciones"))" />
                         <NavItem Href="/meli/me1/codigos-postales" Label="Códigos postales" Icon="@SvgIcons.Table"
                                  IsActive="@IsActive("/meli/me1/codigos-postales")" OnClick="@(() => NavigateTo("/meli/me1/codigos-postales"))" />
