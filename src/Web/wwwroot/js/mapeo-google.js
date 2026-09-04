@@ -1590,21 +1590,27 @@ window.mapeoDock = (function () {
     }
 
     // La barra arranca centrada con transform:translateY(-50%). Ese transform hace que los
-    // menuitos "fijos" se posicionen respecto de la barra y no de la pantalla (y se iban lejos).
-    // Acá pasamos esa posición centrada a un left/top concretos, sin mover nada a la vista.
-    function normalizarPos(dock, parent) {
-        if (!parent) return;
-        const t = dock.style.transform;
-        if (!t || t === 'none') return;
-        const pr = parent.getBoundingClientRect();
-        const dr = dock.getBoundingClientRect();
-        const cs = getComputedStyle(parent);
-        const bl = parseFloat(cs.borderLeftWidth) || 0;
-        const bt = parseFloat(cs.borderTopWidth) || 0;
-        dock.style.left = (dr.left - pr.left - bl) + 'px';
-        dock.style.top = (dr.top - pr.top - bt) + 'px';
-        dock.style.right = 'auto';
+    // menuitos "fijos" se posicionen respecto de la barra y no de la pantalla (y se iban lejos),
+    // así que se lo sacamos. El alto lo pone ajustarAlMapa.
+    //
+    // 2026-09-04: antes acá también se pasaba la posición a un `left` en píxeles. Eso rompía al
+    // mover la ventana de un monitor grande a uno más chico: el `left` quedaba viejo y la barra
+    // se iba fuera de la pantalla (cortada, o directamente invisible). Mientras el usuario no la
+    // haya arrastrado, la barra queda pegada a la derecha (right) y se acomoda sola a cualquier ancho.
+    function anclarDerecha(dock) {
+        dock.style.left = 'auto';
+        dock.style.right = '8px';
         dock.style.transform = 'none';
+    }
+
+    // Si el usuario SÍ la arrastró, la posición guardada es un `left` en píxeles: hay que
+    // reclampearlo cada vez que cambia el ancho (cambio de monitor, achicar la ventana).
+    function ajustarHorizontal(dock, parent) {
+        if (!parent) return;
+        const izq = parseFloat(dock.style.left);
+        if (isNaN(izq)) return;   // sigue pegada a la derecha: no hay nada que corregir
+        // clientWidth (no getBoundingClientRect) porque left se mide desde el borde INTERNO del contenedor.
+        dock.style.left = clamp(izq, 0, Math.max(0, parent.clientWidth - dock.offsetWidth)) + 'px';
     }
 
     // 2026-08-31: la barra ahora se desliza por dentro cuando no entra en la pantalla.
@@ -1648,8 +1654,9 @@ window.mapeoDock = (function () {
     function rangoVertical(parent) {
         const mr = rectMapa();
         const pr = parent.getBoundingClientRect();
-        if (!mr) return { arriba: 0, abajo: pr.height };
-        return { arriba: mr.top - pr.top + 8, abajo: mr.bottom - pr.top - 8 };
+        const cero = pr.top + parent.clientTop;   // borde INTERNO: desde ahí se mide el top
+        if (!mr) return { arriba: 0, abajo: parent.clientHeight };
+        return { arriba: mr.top - cero + 8, abajo: mr.bottom - cero - 8 };
     }
 
     // Le pone el alto máximo del mapa y la acomoda dentro de ese rango.
@@ -1687,9 +1694,8 @@ window.mapeoDock = (function () {
         let pos = null;
         try { pos = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { pos = null; }
         if (!pos || !parent) return false;
-        const pr = parent.getBoundingClientRect();
-        const left = clamp(pos.left, 0, Math.max(0, pr.width - dock.offsetWidth));
-        const top = clamp(pos.top, 0, Math.max(0, pr.height - dock.offsetHeight));
+        const left = clamp(pos.left, 0, Math.max(0, parent.clientWidth - dock.offsetWidth));
+        const top = clamp(pos.top, 0, Math.max(0, parent.clientHeight - dock.offsetHeight));
         dock.style.left = left + 'px';
         dock.style.top = top + 'px';
         dock.style.right = 'auto';
@@ -1711,7 +1717,7 @@ window.mapeoDock = (function () {
             if (!handle) return;
 
             const habiaGuardada = applySaved(dock, parent);
-            normalizarPos(dock, parent);
+            if (habiaGuardada) { ajustarHorizontal(dock, parent); } else { anclarDerecha(dock); }
             ajustarAlMapa(dock, parent, !habiaGuardada);
             updateAnchor(dock, parent);
             posicionarFlyouts(dock);
@@ -1723,6 +1729,7 @@ window.mapeoDock = (function () {
             // menuitos abiertos tienen que seguir a su tarjeta.
             dock.addEventListener('scroll', function () { posicionarFlyouts(dock); }, { passive: true });
             window.addEventListener('resize', function () {
+                ajustarHorizontal(dock, parent);
                 ajustarAlMapa(dock, parent, false);
                 updateAnchor(dock, parent);
                 posicionarFlyouts(dock);
@@ -1732,9 +1739,8 @@ window.mapeoDock = (function () {
 
             function onMove(e) {
                 if (!dragging) return;
-                const pr = parent.getBoundingClientRect();
                 const rv = rangoVertical(parent);
-                let nl = clamp(startLeft + (e.clientX - startX), 0, pr.width - dock.offsetWidth);
+                let nl = clamp(startLeft + (e.clientX - startX), 0, Math.max(0, parent.clientWidth - dock.offsetWidth));
                 // Vertical: solo dentro del mapa, así nunca vuelve a taparle los botones de arriba.
                 let nt = clamp(startTop + (e.clientY - startY), rv.arriba, Math.max(rv.arriba, rv.abajo - dock.offsetHeight));
                 dock.style.left = nl + 'px';
@@ -1764,8 +1770,9 @@ window.mapeoDock = (function () {
                 const pr = parent.getBoundingClientRect();
                 const dr = dock.getBoundingClientRect();
                 // Fijamos left/top numéricos (convertimos desde right/transform del arranque).
-                startLeft = dr.left - pr.left;
-                startTop = dr.top - pr.top;
+                // Se miden desde el borde INTERNO del contenedor (clientLeft/clientTop).
+                startLeft = dr.left - pr.left - parent.clientLeft;
+                startTop = dr.top - pr.top - parent.clientTop;
                 dock.style.left = startLeft + 'px';
                 dock.style.top = startTop + 'px';
                 dock.style.right = 'auto';
