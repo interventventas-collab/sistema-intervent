@@ -180,8 +180,7 @@
                 <label>Tipo</label>
                 <button class="cl-chip @(listingType == "gold_special" ? "on" : "")" @onclick='() => listingType = "gold_special"'>Clásica</button>
                 <button class="cl-chip @(listingType == "gold_pro" ? "on" : "")" @onclick='() => listingType = "gold_pro"'>Premium</button>
-                <label style="width:auto">Envío gratis</label>
-                <input type="checkbox" @bind="envioGratis" />
+                <label style="width:auto"><input type="checkbox" @bind="envioGratis" /> Envío gratis</label>
                 <label style="width:auto">Estado</label>
                 <button class="cl-chip @(condicion == "new" ? "on" : "")" @onclick='() => condicion = "new"'>Nuevo</button>
                 <button class="cl-chip @(condicion == "used" ? "on" : "")" @onclick='() => condicion = "used"'>Usado</button>
