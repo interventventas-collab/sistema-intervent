@@ -62,6 +62,26 @@
             </div>
 
             <div class="meli-q-body">
+                @* 2026-09-04: el cotizador de alquileres, el MISMO del chat de WhatsApp y de la
+                   bandeja. Acá arriba anda siempre —haya o no preguntas— y copia al portapapeles;
+                   adentro de cada pregunta el presupuesto cae en el cuadro de respuesta. *@
+                <div class="mqc-bar">
+                    <button type="button" class="mqc-toggle @(cotizArriba ? "on" : "")"
+                            @onclick="ToggleCotizArriba"
+                            title="Armar un presupuesto de alquiler y copiarlo">
+                        🪑 Cotizar alquiler
+                        <span class="mqr-caret">@(cotizArriba ? "▲" : "▼")</span>
+                    </button>
+                    <span class="mqc-hint">Sillas, mesas y flete · se copia para pegarlo donde quieras</span>
+                </div>
+                @if (cotizArriba)
+                {
+                    <div class="mqc-box mqc-box-arriba">
+                        <CotizadorAlquiler TextoBoton="📋 Copiar el presupuesto"
+                                           OnListo="CopiarCotizacion" />
+                    </div>
+                }
+
                 @if (loadingList)
                 {
                     <p class="text-muted" style="padding:2rem; text-align:center;">Cargando preguntas...</p>
@@ -163,6 +183,24 @@
                                             }
                                         </div>
                                     }
+                                }
+                                <div class="mqc-bar mqc-bar-item">
+                                    <button type="button" class="mqc-toggle @(cotizOpen.Contains(q.Id) ? "on" : "")"
+                                            @onclick="() => ToggleCotiz(q.Id)"
+                                            title="Armar un presupuesto de alquiler y ponerlo en la respuesta">
+                                        🪑 Cotizar alquiler
+                                        <span class="mqr-caret">@(cotizOpen.Contains(q.Id) ? "▲" : "▼")</span>
+                                    </button>
+                                </div>
+                                @if (cotizOpen.Contains(q.Id))
+                                {
+                                    <div class="mqc-box">
+                                        <div class="mqc-aviso">
+                                            ⚠️ Ojo: la respuesta de MercadoLibre es <b>pública</b> — el presupuesto lo ve cualquiera que entre a la publicación.
+                                        </div>
+                                        <CotizadorAlquiler TextoBoton="📝 Poner en la respuesta"
+                                                           OnListo="@(t => PonerEnRespuesta(q.Id, t))" />
+                                    </div>
                                 }
                                 <textarea class="form-input meli-q-answer-input" rows="3" placeholder="Escribí tu respuesta acá..."
                                           @bind="answerDrafts[q.Id]" @bind:event="oninput"></textarea>
@@ -352,6 +390,25 @@
     }
     .mqr-toggle:hover { background: rgba(245,158,11,.18); }
     .mqr-caret { font-size: 0.6rem; opacity: .8; }
+    /* 2026-09-04: cotizador de alquileres dentro del cartel. Mismo verde sobrio que en la bandeja. */
+    .mqc-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
+    .mqc-bar-item { margin-bottom: 7px; }
+    .mqc-toggle {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 0.78rem; font-weight: 700; font-family: inherit;
+        color: #047857; background: rgba(16,185,129,.08);
+        border: 1px solid rgba(16,185,129,.35); border-radius: 999px;
+        padding: 4px 11px; cursor: pointer;
+    }
+    .mqc-toggle:hover { background: rgba(16,185,129,.16); }
+    .mqc-toggle.on { background: #dcfce7; border-color: #16a34a; }
+    .mqc-hint { font-size: .74rem; color: #9ca3af; }
+    .mqc-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px; background: #fff; margin-bottom: 10px; }
+    .mqc-box-arriba { max-width: 460px; }
+    .mqc-aviso {
+        font-size: 0.72rem; color: #92400e; background: #fef3c7; border: 1px solid #fde68a;
+        border-radius: 7px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.4;
+    }
     .mqr-groups { display: flex; flex-direction: column; gap: 7px; margin-bottom: 9px; }
     .mqr-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .mqr-chip {
@@ -396,6 +453,10 @@
     // Qué preguntas tienen la tira desplegada. Con varias preguntas juntas el cartel se hace larguísimo
     // si se muestran todas, asi que arranca abierta solo la primera.
     private HashSet<int> qrOpen = new();
+    // 2026-09-04: qué preguntas tienen abierto el cotizador de alquileres, y el de arriba (que
+    // anda aunque no haya ninguna pregunta esperando).
+    private HashSet<int> cotizOpen = new();
+    private bool cotizArriba;
     // 2026-06-04: control de auto-show. Si ya intentamos abrir y el usuario lo cerro (snooze),
     // no volvemos a abrir hasta que pase la ventana O hasta que cambie el count (nueva pregunta).
     private int lastTotalSeenForAutoShow = 0;
@@ -516,6 +577,35 @@
         if (!qrOpen.Remove(id)) qrOpen.Add(id);
     }
 
+    private void ToggleCotiz(int id)
+    {
+        if (!cotizOpen.Remove(id)) cotizOpen.Add(id);
+    }
+
+    private void ToggleCotizArriba() => cotizArriba = !cotizArriba;
+
+    /// <summary>El de arriba no le responde a nadie: copia el presupuesto para pegarlo donde sea.</summary>
+    private async Task CopiarCotizacion(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", texto);
+            ToastService.Success("Presupuesto copiado — pegalo donde quieras");
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
+    /// <summary>El presupuesto cae en el cuadro de respuesta; lo manda él con "Responder".</summary>
+    private void PonerEnRespuesta(int id, string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+        var cur = GetDraft(id);
+        answerDrafts[id] = string.IsNullOrWhiteSpace(cur) ? texto : cur.TrimEnd() + "\n\n" + texto;
+        cotizOpen.Remove(id);
+        ToastService.Success("Presupuesto puesto en la respuesta — revisalo y tocá Responder");
+    }
+
     /// <summary>Deja abierta la tira de la primera pregunta (el caso normal es que haya una sola).
     /// Si el usuario ya abrió/cerró alguna a mano, no le tocamos nada.</summary>
     private void AbrirPrimeraTira()
@@ -584,6 +674,10 @@
     private async Task CloseAndSnooze()
     {
         showModal = false;
+        // Al cerrar el cartel el cotizador se destruye igual: dejamos los paneles cerrados
+        // para que la próxima vez arranque limpio y no muestre un presupuesto a medio armar.
+        cotizArriba = false;
+        cotizOpen.Clear();
         try { await JS.InvokeVoidAsync("meliQ_snooze", 5); } catch { }
         StateHasChanged();
     }
