@@ -638,9 +638,14 @@ public class ViajesController : ControllerBase
         // ⚠ 2026-09-04: el pago es el SALDO REAL, no la suma cruda de los viajes pendientes.
         // Si el dueño ya le habia registrado un pago a cuenta, liquidar por la suma cruda le
         // pagaria dos veces lo mismo. Liquidar significa "dejar el saldo en cero".
+        //
+        // ⚠ Y se mira SOLO hasta la fecha de corte: cerrando "hasta el miercoles" no se le puede
+        // pagar lo que hizo el jueves (paso de verdad el 04/09: liquide hasta ayer y me registro
+        // $8.500 de un envio de hoy). Los pagos se imputan siempre a lo mas viejo primero.
         var totalViajes = pend.Sum(x => x.Tarifa);
-        var saldo = await SaldoAsync(id);
-        var total = saldo > 0 ? saldo : 0m;
+        var ganadoHasta = await GanadoHastaAsync(id, hasta);
+        var pagadoTotal = await _db.ViajesPagos.Where(p => p.EmpleadoId == id).SumAsync(p => p.Importe);
+        var total = Math.Clamp(ganadoHasta - pagadoTotal, 0m, totalViajes);
         var desde = pend.Min(x => x.Fecha);
         var desc = string.IsNullOrWhiteSpace(req.Descripcion)
             ? (total == totalViajes
@@ -677,16 +682,15 @@ public class ViajesController : ControllerBase
     private static string Plata(decimal v) => v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
 
     /// <summary>
-    /// Lo que se le debe HOY a un empleado: todo lo que gano (viajes cargados a mano + entregas
-    /// contadas solas) menos TODO lo que se le pago, sea liquidacion o pago suelto a cuenta.
-    /// Es la unica cuenta que vale: la ficha, el boton Liquidar y el celu miran esta.
+    /// Todo lo que el empleado gano hasta una fecha (viajes cargados a mano + entregas contadas
+    /// solas). Restandole TODO lo pagado sale lo que se le debe de esa fecha para atras.
     /// </summary>
-    private async Task<decimal> SaldoAsync(int empleadoId)
+    private async Task<decimal> GanadoHastaAsync(int empleadoId, DateTime hasta)
     {
-        var aCobrarRegs = await _db.ViajesRegistros.Where(r => r.EmpleadoId == empleadoId)
+        var regs = await _db.ViajesRegistros.Where(r => r.EmpleadoId == empleadoId && r.Fecha <= hasta)
             .SumAsync(r => (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA);
-        var aCobrarEnt = await _db.ViajesEntregas.Where(e => e.EmpleadoId == empleadoId).SumAsync(e => e.Tarifa);
-        var pagado = await _db.ViajesPagos.Where(p => p.EmpleadoId == empleadoId).SumAsync(p => p.Importe);
-        return aCobrarRegs + aCobrarEnt - pagado;
+        var ents = await _db.ViajesEntregas.Where(e => e.EmpleadoId == empleadoId && e.Fecha <= hasta)
+            .SumAsync(e => e.Tarifa);
+        return regs + ents;
     }
 }
