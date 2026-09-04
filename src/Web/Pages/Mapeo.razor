@@ -57,13 +57,19 @@
     .mapeo-dock-btn svg { width: 24px; height: 24px; display: block; }
     /* Tarjetas de zona/chofer del dock. Antes cada tarjeta repetía estos valores en su propio
        style; pasaron a esta clase para poder achicarlas de una sola vez en pantallas bajas. */
+    /* Filas del desplegable "Traer masivo" (Flex / ME1 / Ventas / Atrasados). */
+    .mapeo-traer-fila { display: flex; width: 100%; align-items: center; gap: 0.55rem; font-size: 0.85rem;
+        padding: 0.42rem 0.6rem; background: transparent; color: #1f2937; border: none; text-align: left; }
+    .mapeo-traer-fila:hover:not(:disabled) { background: #eff6ff; }
+    .mapeo-traer-fila svg { width: 17px; height: 17px; flex: 0 0 17px; color: #6b7280; }
+    .mapeo-traer-num { font-weight: 800; color: #374151; min-width: 22px; text-align: right; }
     .mapeo-zona-card { flex-direction: column; gap: 6px; width: auto; min-width: 104px; height: auto; padding: 9px 10px; }
-    /* ✕ para esconder la barra entera y dejar el mapa libre (vive en la manija de arrastre). */
+    /* Flechita › para plegar la barra entera (vive en la manija de arrastre), gemela de la ‹ del listado. */
     .mapeo-dock-hide { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 22px; height: 22px;
         display: flex; align-items: center; justify-content: center; border: none; background: transparent;
         color: rgba(255,255,255,0.5); cursor: pointer; border-radius: 6px; padding: 0; }
     .mapeo-dock-hide:hover { background: rgba(255,255,255,0.16); color: #fff; }
-    .mapeo-dock-hide svg { width: 15px; height: 15px; }
+    .mapeo-dock-hide svg { width: 16px; height: 16px; }
     /* Tirita para traer la barra de vuelta cuando está escondida (como la del listado de la izquierda). */
     .mapeo-dock-reabrir { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 530; display: flex; flex-direction: column;
         align-items: center; justify-content: center; gap: 7px; width: 30px; padding: 13px 0;
@@ -1390,9 +1396,10 @@
                 @* Manija para arrastrar toda la barra. *@
                 <div class="mapeo-dock-handle" title="Arrastrame para mover la barra a donde quieras">
                     <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                    @* ✕ : esconde la barra entera y deja el mapa libre. Vuelve con la tirita del borde. *@
-                    <button class="mapeo-dock-hide" @onclick="ToggleDockCollapsed" title="Esconder la barra (deja todo el mapa libre)">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    @* Flechita › : pliega la barra entera, igual que la ‹ del listado de la izquierda.
+                       Vuelve con la tirita que queda pegada al borde. *@
+                    <button class="mapeo-dock-hide" @onclick="ToggleDockCollapsed" title="Plegar la barra (deja todo el mapa libre)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>
                     </button>
                 </div>
                 @* ═══════════ 1ro · Sumar envíos ═══════════
@@ -1422,44 +1429,59 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                     <span class="mapeo-dock-label">Agregar parada</span>
                 </button>
-                @* Los tres "Traer": el mapa va a buscar solo lo que hay que repartir ESE día, en vez
-                   de tener que ir pantalla por pantalla. Al lado del texto va CUÁNTOS hay, así se
-                   sabe qué va a pasar antes de tocar. Si hay 0, el botón queda apagado (no se
-                   esconde: que se vea que existe y que hoy no hay nada). *@
-                @* Ojo: este NO se apaga cuando dice 0. Los Flex nuevos del día no están en nuestra
-                   base hasta que alguien los pide, así que al tocarlo primero le preguntamos a
-                   MercadoLibre y después traemos. Si se apagara, no habría forma de ir a buscarlos. *@
-                <button class="mapeo-dock-btn" @onclick="TraerFlexAlMapa"
-                        disabled="@(traerBusy is not null)"
-                        title="Le pregunta a MercadoLibre por los Flex de ese día y los suma al mapa">
-                    <svg class="@(TrayendoFlex ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                    <span class="mapeo-dock-label">Traer Flex · @TraerFlexN</span>
-                </button>
-                <button class="mapeo-dock-btn" @onclick="TraerMe1AlMapa"
-                        disabled="@(traerBusy is not null || TraerMe1N == 0)"
-                        style="@(TraerMe1N == 0 ? EstiloApagado : null)"
-                        title="Los envíos ME1 que están sin entregar">
-                    <svg class="@(TrayendoMe1 ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
-                    <span class="mapeo-dock-label">Traer ME1 · @TraerMe1N</span>
-                </button>
-                <button class="mapeo-dock-btn" @onclick="TraerVentasAlMapa"
-                        disabled="@(traerBusy is not null || TraerVentasN == 0)"
-                        style="@(TraerVentasN == 0 ? EstiloApagado : null)"
-                        title="Las ventas de hoy y de ayer que todavía no se entregaron">
-                    <svg class="@(TrayendoVentas ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
-                    <span class="mapeo-dock-label">Traer ventas · @TraerVentasN</span>
-                </button>
-                @* Atrasados: solo aparece si HAY. Son los Flex que MercadoLibre prometió para un día
-                   anterior y siguen dando vueltas — si no estuviera este botón, no los trae ninguno
-                   de los otros, porque miran el día en el que estás parado. *@
-                @if (TraerAtrasadosN > 0)
-                {
-                    <button class="mapeo-dock-btn" @onclick="TraerAtrasadosAlMapa" disabled="@(traerBusy is not null)"
-                            title="Flex prometidos para un día anterior que siguen sin entregar">
-                        <svg class="@(TrayendoAtrasados ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                        <span class="mapeo-dock-label">Traer atrasados · @TraerAtrasadosN</span>
+                @* ═ "Traer masivo" ═ Los tres (o cuatro) "Traer" viven adentro de este desplegable.
+                   Antes eran 3 renglones sueltos de la barra y en una notebook eso se paga caro.
+                   El número del botón es el TOTAL: de un vistazo se sigue sabiendo si hay algo
+                   esperando, sin tener que abrirlo. Si hay atrasados, el botón se pone naranja. *@
+                <div style="position:relative;">
+                    <button class="mapeo-dock-btn @(showTraerMenu ? "activo" : "")" @onclick="() => showTraerMenu = !showTraerMenu"
+                            style="@(TraerAtrasadosN > 0 && !showTraerMenu ? "color:#fdba74;" : null)"
+                            title="Traer al mapa lo que hay para repartir: Flex, ME1 y ventas del día">
+                        <svg class="@(traerBusy is not null ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                        <span class="mapeo-dock-label">Traer masivo · @TraerMasivoN</span>
                     </button>
-                }
+                    @if (showTraerMenu)
+                    {
+                        <div class="mapeo-flyout" style="min-width:238px;">
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; padding:0.2rem 0.4rem 0.25rem 0.6rem;">
+                                <span style="font-size:0.7rem; color:#6b7280; font-weight:700;">Traer al mapa</span>
+                                <button @onclick="() => showTraerMenu = false" title="Cerrar"
+                                        style="border:none; background:transparent; color:#6b7280; font-size:1.1rem; line-height:1; cursor:pointer; padding:0 0.2rem;">&times;</button>
+                            </div>
+                            @* Flex NO se apaga cuando dice 0: los Flex nuevos del día no están en nuestra base
+                               hasta que alguien los pide, así que al tocarlo primero le preguntamos a MercadoLibre. *@
+                            <button class="btn mapeo-traer-fila" @onclick="TraerFlexAlMapa" disabled="@(traerBusy is not null)"
+                                    title="Le pregunta a MercadoLibre por los Flex de ese día y los suma al mapa">
+                                <svg class="@(TrayendoFlex ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                                <span style="flex:1;">Flex</span>
+                                <span class="mapeo-traer-num">@TraerFlexN</span>
+                            </button>
+                            <button class="btn mapeo-traer-fila" @onclick="TraerMe1AlMapa" disabled="@(traerBusy is not null || TraerMe1N == 0)"
+                                    style="@(TraerMe1N == 0 ? EstiloApagado : null)" title="Los envíos ME1 que están sin entregar">
+                                <svg class="@(TrayendoMe1 ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                                <span style="flex:1;">ME1</span>
+                                <span class="mapeo-traer-num">@TraerMe1N</span>
+                            </button>
+                            <button class="btn mapeo-traer-fila" @onclick="TraerVentasAlMapa" disabled="@(traerBusy is not null || TraerVentasN == 0)"
+                                    style="@(TraerVentasN == 0 ? EstiloApagado : null)" title="Las ventas de hoy y de ayer que todavía no se entregaron">
+                                <svg class="@(TrayendoVentas ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                                <span style="flex:1;">Ventas</span>
+                                <span class="mapeo-traer-num">@TraerVentasN</span>
+                            </button>
+                            @* Atrasados: solo si HAY. Son Flex prometidos para un día anterior que siguen dando
+                               vueltas — no los trae ninguno de los otros, porque miran el día en el que estás parado. *@
+                            @if (TraerAtrasadosN > 0)
+                            {
+                                <button class="btn mapeo-traer-fila" @onclick="TraerAtrasadosAlMapa" disabled="@(traerBusy is not null)"
+                                        title="Flex prometidos para un día anterior que siguen sin entregar">
+                                    <svg class="@(TrayendoAtrasados ? ClaseGirando : null)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                    <span style="flex:1;">Atrasados</span>
+                                    <span class="mapeo-traer-num" style="color:#b45309;">@TraerAtrasadosN</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
                 }
                 @* ═══════════ 2do · Armar la ruta ═══════════
                    En días pasados queda solo "Ver líneas" (mirar el recorrido que se hizo). *@
@@ -4495,6 +4517,7 @@
     private bool mapaFullscreen = true; // el Mapeo es SIEMPRE pantalla completa (mapa como app)
     private bool sideCollapsed = false;  // en pantalla completa: panel izquierdo plegado (más mapa)
     private bool dockCollapsed = false;  // barra negra escondida (deja todo el mapa libre)
+    private bool showTraerMenu = false;  // desplegable "Traer masivo" (Flex / ME1 / ventas / atrasados)
 
     // ✕ de la manija / tirita del borde: esconde y trae de vuelta la barra negra.
     // Se recuerda en el navegador, igual que el listado plegado.
@@ -8160,6 +8183,9 @@
     private bool TrayendoVentas => traerBusy == "ventas";
     private int TraerAtrasadosN => CuantosParaTraer("atrasados");
     private bool TrayendoAtrasados => traerBusy == "atrasados";
+    /// <summary>Total del botón "Traer masivo": la suma de todo lo que hay esperando. Va en el
+    /// botón para no perder de vista que hay algo pendiente sin tener que abrir el desplegable.</summary>
+    private int TraerMasivoN => TraerFlexN + TraerMe1N + TraerVentasN + TraerAtrasadosN;
     private const string EstiloApagado = "opacity:0.4;";   // no hay nada para traer
     private const string ClaseGirando = "mapeo-dock-spin"; // mientras está trayendo
 
