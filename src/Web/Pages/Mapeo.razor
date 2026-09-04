@@ -55,8 +55,25 @@
     .mapeo-dock-btn:active { transform: scale(0.93); }
     .mapeo-dock-btn.activo { background: #2563eb; color: #fff; box-shadow: 0 2px 10px rgba(37,99,235,0.5); }
     .mapeo-dock-btn svg { width: 24px; height: 24px; display: block; }
+    /* Tarjetas de zona/chofer del dock. Antes cada tarjeta repetía estos valores en su propio
+       style; pasaron a esta clase para poder achicarlas de una sola vez en pantallas bajas. */
+    .mapeo-zona-card { flex-direction: column; gap: 6px; width: auto; min-width: 104px; height: auto; padding: 9px 10px; }
+    /* ✕ para esconder la barra entera y dejar el mapa libre (vive en la manija de arrastre). */
+    .mapeo-dock-hide { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 22px; height: 22px;
+        display: flex; align-items: center; justify-content: center; border: none; background: transparent;
+        color: rgba(255,255,255,0.5); cursor: pointer; border-radius: 6px; padding: 0; }
+    .mapeo-dock-hide:hover { background: rgba(255,255,255,0.16); color: #fff; }
+    .mapeo-dock-hide svg { width: 15px; height: 15px; }
+    /* Tirita para traer la barra de vuelta cuando está escondida (como la del listado de la izquierda). */
+    .mapeo-dock-reabrir { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 530; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 7px; width: 30px; padding: 13px 0;
+        background: rgba(17,24,39,0.94); color: #e5e7eb; border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 14px; box-shadow: 0 8px 26px rgba(0,0,0,0.4); cursor: pointer; }
+    .mapeo-dock-reabrir:hover { background: rgba(17,24,39,1); color: #fff; }
+    .mapeo-dock-reabrir svg { width: 16px; height: 16px; }
+    .mapeo-dock-reabrir span { writing-mode: vertical-rl; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; }
     /* Agarre para arrastrar el dock a cualquier lado de la pantalla. */
-    .mapeo-dock-handle { width: 100%; height: 22px; display: flex; align-items: center; justify-content: center; gap: 3px; cursor: grab; color: rgba(255,255,255,0.45); touch-action: none; user-select: none; margin-bottom: 2px; }
+    .mapeo-dock-handle { position: relative; width: 100%; height: 22px; display: flex; align-items: center; justify-content: center; gap: 3px; cursor: grab; color: rgba(255,255,255,0.45); touch-action: none; user-select: none; margin-bottom: 2px; }
     .mapeo-dock-handle:hover { color: rgba(255,255,255,0.85); }
     .mapeo-dock-handle:active { cursor: grabbing; }
     .mapeo-dock-handle .dot { width: 4px; height: 4px; border-radius: 999px; background: currentColor; }
@@ -73,6 +90,21 @@
     .mapeo-dock.anchor-right .mapeo-flyout { right: 100%; margin-right: 8px; }
     /* Antes de que el JS calcule el lado: el dock arranca a la derecha, así que abrimos a la izquierda. */
     .mapeo-dock:not(.anchor-left):not(.anchor-right) .mapeo-flyout { right: 100%; margin-right: 8px; }
+    /* 2026-09-04: notebooks y pantallas no tan altas. Antes la barra se estiraba de punta a punta
+       (tapaba "Abrir en otra ventana" y "← Volver") y lo de abajo quedaba cortado. Ahora, además de
+       vivir DENTRO del mapa (lo hace el JS), en pantallas bajas se achica sola para que entre más. */
+    @@media (max-height: 1000px) {
+        .mapeo-dock { gap: 4px; padding: 6px; }
+        .mapeo-dock-handle { height: 16px; margin-bottom: 0; }
+        .mapeo-dock-btn { height: 34px; padding: 0 10px; gap: 8px; }
+        .mapeo-dock-btn svg { width: 20px; height: 20px; flex: 0 0 20px; }
+        .mapeo-dock-label { font-size: 0.78rem; }
+        .mapeo-dock-head { padding: 3px 10px 0; font-size: 0.68rem; }
+        .mapeo-dock-legend { padding: 0 10px 2px; }
+        .mapeo-dock-sep { margin: 1px 9px; }
+        /* Va DESPUÉS de .mapeo-dock-btn a propósito: las tarjetas no tienen alto fijo. */
+        .mapeo-zona-card { height: auto; gap: 3px; padding: 6px 8px; }
+    }
     .mapeo-status-pill { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
     .copy-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.05rem 0.35rem; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; cursor: pointer; transition: all 0.12s; }
     .copy-chip:hover { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; }
@@ -1343,10 +1375,25 @@
                Ahora vive en la fila del buscador, arriba. *@
             @* Columna de botones (dock). Aparece a la DERECHA por defecto; se puede arrastrar
                de la manija (⣿) a cualquier lado y la posición queda guardada. *@
+            @if (dockCollapsed)
+            {
+                @* Barra escondida: queda esta tirita pegada al borde derecho para traerla de vuelta. *@
+                <button id="mapeoDockReabrir" class="mapeo-dock-reabrir" @onclick="ToggleDockCollapsed"
+                        title="Mostrar la barra de herramientas del mapa">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"></polyline></svg>
+                    <span>Herramientas</span>
+                </button>
+            }
+            else
+            {
             <div id="mapeoDock" class="mapeo-dock" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); z-index:530;">
                 @* Manija para arrastrar toda la barra. *@
                 <div class="mapeo-dock-handle" title="Arrastrame para mover la barra a donde quieras">
                     <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                    @* ✕ : esconde la barra entera y deja el mapa libre. Vuelve con la tirita del borde. *@
+                    <button class="mapeo-dock-hide" @onclick="ToggleDockCollapsed" title="Esconder la barra (deja todo el mapa libre)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
                 </div>
                 @* ═══════════ 1ro · Sumar envíos ═══════════
                    En un día que ya pasó no se suma nada: todo este bloque no aparece. *@
@@ -1524,7 +1571,7 @@
                     @* "TODO" = las paradas todavía SIN asignar. Arriba el título; abajo el ojito (mostrar/ocultar) y la cantidad. *@
                     var rutaSinAsignar = RutaDe("none");
                     <div style="position:relative;">
-                        <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(sinAsignarOcultos ? "#9ca3af" : "#eab308"); @(sinAsignarOcultos ? "opacity:0.55;" : "")">
+                        <div class="mapeo-dock-btn mapeo-zona-card" style="background:@(sinAsignarOcultos ? "#9ca3af" : "#eab308"); @(sinAsignarOcultos ? "opacity:0.55;" : "")">
                             <span style="font-size:0.82rem; font-weight:800; line-height:1; color:#fff;">TODO (sin asignar)</span>
                             <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
                                 <span @onclick="ToggleSinAsignarVisible" style="cursor:pointer; font-size:1.35rem; line-height:1;"
@@ -1549,7 +1596,7 @@
                         var zNombreCorto = string.IsNullOrWhiteSpace(z.DriverName) ? "?" : z.DriverName.Split(' ')[0];
                         var rutaZ = RutaDe(ZonaKeyDriver(z.DriverId));   // tiempo y km de ESTE repartidor
                         <div style="position:relative;">
-                            <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
+                            <div class="mapeo-dock-btn mapeo-zona-card" style="background:@(zVisible ? z.Color : "#9ca3af"); @(zVisible ? "" : "opacity:0.55;")">
                                 @* Arriba: "Z1 (Juan)" — tocar hace foco en la zona. *@
                                 <span @onclick="() => FocoZona(z)" style="cursor:pointer; font-size:0.9rem; font-weight:800; line-height:1.1; color:#fff; text-align:center; white-space:nowrap; max-width:170px; overflow:hidden; text-overflow:ellipsis;"
                                       title="@($"Zona de {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para hacer foco en esta zona")">
@@ -1619,7 +1666,7 @@
                         var svCount = (stops ?? new()).Count(s => s.AssignedVehicleSlot == slot && !s.AssignedDriverId.HasValue);
                         var rutaSv = RutaDe(ZonaKeySlot(slot));          // tiempo y km de ESTA zona
                         <div style="position:relative;">
-                            <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(svVisible ? svColor : "#9ca3af"); @(svVisible ? "" : "opacity:0.55;")">
+                            <div class="mapeo-dock-btn mapeo-zona-card" style="background:@(svVisible ? svColor : "#9ca3af"); @(svVisible ? "" : "opacity:0.55;")">
                                 <span @onclick="() => FocoVehiculo(slot)" style="cursor:pointer; font-size:0.9rem; font-weight:800; line-height:1.1; color:#fff; text-align:center; white-space:nowrap;"
                                       title="@($"Zona {slot} (sin chofer todavía) · {svCount} envío(s) — tocá para hacer foco")">
                                     Zona @slot
@@ -1689,7 +1736,7 @@
                 @foreach (var rs in rutasSueltas)
                 {
                     <div style="position:relative;">
-                        <div class="mapeo-dock-btn" style="flex-direction:column; gap:6px; width:auto; min-width:104px; height:auto; padding:9px 10px; background:@(string.IsNullOrEmpty(rs.Color) ? "#0d9488" : rs.Color);">
+                        <div class="mapeo-dock-btn mapeo-zona-card" style="background:@(string.IsNullOrEmpty(rs.Color) ? "#0d9488" : rs.Color);">
                             <span style="font-size:0.82rem; font-weight:800; line-height:1; color:#fff; white-space:nowrap; max-width:170px; overflow:hidden; text-overflow:ellipsis;"
                                   title="@($"{rs.Label} · {rs.StopCount} parada(s)")">
                                 🚦 @rs.Label
@@ -1819,6 +1866,7 @@
                     }
                 </div>
             </div>
+            }
         }
         @* 2026-08-15: el panel flotante "🛣️ Rutas (tránsito)" se sacó de acá. Tapaba la esquina de
            arriba a la derecha (justo encima del botón "Ver dirección") y repetía info que ya está en
@@ -4446,6 +4494,15 @@
     private bool showScanModal = false; // cartel (modal) con el QR + enlace para escanear desde el celu
     private bool mapaFullscreen = true; // el Mapeo es SIEMPRE pantalla completa (mapa como app)
     private bool sideCollapsed = false;  // en pantalla completa: panel izquierdo plegado (más mapa)
+    private bool dockCollapsed = false;  // barra negra escondida (deja todo el mapa libre)
+
+    // ✕ de la manija / tirita del borde: esconde y trae de vuelta la barra negra.
+    // Se recuerda en el navegador, igual que el listado plegado.
+    private async Task ToggleDockCollapsed()
+    {
+        dockCollapsed = !dockCollapsed;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "mapeoDockCollapsed", dockCollapsed ? "true" : "false"); } catch { }
+    }
 
     private async Task ToggleSideCollapsed()
     {
@@ -5224,6 +5281,8 @@
             {
                 var guardado = await JS.InvokeAsync<string?>("localStorage.getItem", "mapeoSideCollapsed");
                 if (guardado == "true") sideCollapsed = true;
+                var guardadoDock = await JS.InvokeAsync<string?>("localStorage.getItem", "mapeoDockCollapsed");
+                if (guardadoDock == "true") dockCollapsed = true;
             }
             catch { }
             await JS.InvokeVoidAsync("mapeoFlex.init", "leafletMap", selfRef);

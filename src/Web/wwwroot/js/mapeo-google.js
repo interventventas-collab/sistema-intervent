@@ -1633,11 +1633,60 @@ window.mapeoDock = (function () {
         }
     }
 
+    // 2026-09-04: la barra tiene que quedar DENTRO del mapa, nunca por encima de la fila de
+    // botones de arriba. Antes su alto máximo era el de la PANTALLA entera: en una notebook eso
+    // la estiraba de punta a punta, tapaba "Abrir en otra ventana" y "← Volver", y lo de abajo
+    // (Tránsito, Historial, ⚙) quedaba cortado fuera de la pantalla.
+    function rectMapa() {
+        const el = document.getElementById('leafletMap');
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return r.height > 80 ? r : null;
+    }
+
+    // Devuelve el rango vertical (en coordenadas del contenedor) donde puede vivir la barra.
+    function rangoVertical(parent) {
+        const mr = rectMapa();
+        const pr = parent.getBoundingClientRect();
+        if (!mr) return { arriba: 0, abajo: pr.height };
+        return { arriba: mr.top - pr.top + 8, abajo: mr.bottom - pr.top - 8 };
+    }
+
+    // Le pone el alto máximo del mapa y la acomoda dentro de ese rango.
+    // centrar = true cuando no hay posición guardada (arranque): queda centrada en el mapa.
+    function ajustarAlMapa(dock, parent, centrar) {
+        if (!parent) return;
+        const mr = rectMapa();
+        if (!mr) return;
+        const r = rangoVertical(parent);
+        dock.style.maxHeight = Math.max(120, r.abajo - r.arriba) + 'px';
+        const h = dock.offsetHeight;          // alto real, ya con el tope puesto
+        const tope = Math.max(r.arriba, r.abajo - h);
+        const actual = parseFloat(dock.style.top);
+        const top = centrar || isNaN(actual)
+            ? r.arriba + Math.max(0, (r.abajo - r.arriba - h) / 2)
+            : clamp(actual, r.arriba, tope);
+        dock.style.top = top + 'px';
+        dock.style.transform = 'none';
+    }
+
+    // Con la barra escondida queda la tirita del borde: la centramos en el mapa igual que la barra.
+    function ajustarTirita() {
+        const tira = document.getElementById('mapeoDockReabrir');
+        if (!tira) return;
+        const parent = tira.offsetParent;
+        if (!parent) return;
+        const r = rangoVertical(parent);
+        tira.style.top = (r.arriba + Math.max(0, (r.abajo - r.arriba - tira.offsetHeight) / 2)) + 'px';
+        tira.style.transform = 'none';
+    }
+
     // Aplica la posición guardada (si existe), clampeada dentro del mapa.
+    // Devuelve true si había una posición guardada.
     function applySaved(dock, parent) {
         let pos = null;
         try { pos = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { pos = null; }
-        if (!pos || !parent) return;
+        if (!pos || !parent) return false;
         const pr = parent.getBoundingClientRect();
         const left = clamp(pos.left, 0, Math.max(0, pr.width - dock.offsetWidth));
         const top = clamp(pos.top, 0, Math.max(0, pr.height - dock.offsetHeight));
@@ -1645,18 +1694,25 @@ window.mapeoDock = (function () {
         dock.style.top = top + 'px';
         dock.style.right = 'auto';
         dock.style.transform = 'none';
+        return true;
     }
+
+    // Con la barra escondida no hay nada a lo que engancharle listeners, así que la tirita
+    // se reacomoda desde acá cuando cambia el tamaño de la ventana.
+    window.addEventListener('resize', ajustarTirita);
 
     return {
         enableDrag() {
             const dock = document.getElementById('mapeoDock');
-            if (!dock) return;
+            // Barra escondida: solo hay que acomodar la tirita del borde.
+            if (!dock) { ajustarTirita(); return; }
             const parent = dock.offsetParent || dock.parentElement;
             const handle = dock.querySelector('.mapeo-dock-handle');
             if (!handle) return;
 
-            applySaved(dock, parent);
+            const habiaGuardada = applySaved(dock, parent);
             normalizarPos(dock, parent);
+            ajustarAlMapa(dock, parent, !habiaGuardada);
             updateAnchor(dock, parent);
             posicionarFlyouts(dock);
 
@@ -1666,15 +1722,21 @@ window.mapeoDock = (function () {
             // Al deslizar la barra por dentro (o al cambiar el tamaño de la ventana) los
             // menuitos abiertos tienen que seguir a su tarjeta.
             dock.addEventListener('scroll', function () { posicionarFlyouts(dock); }, { passive: true });
-            window.addEventListener('resize', function () { posicionarFlyouts(dock); });
+            window.addEventListener('resize', function () {
+                ajustarAlMapa(dock, parent, false);
+                updateAnchor(dock, parent);
+                posicionarFlyouts(dock);
+            });
 
             let startX = 0, startY = 0, startLeft = 0, startTop = 0, dragging = false;
 
             function onMove(e) {
                 if (!dragging) return;
                 const pr = parent.getBoundingClientRect();
+                const rv = rangoVertical(parent);
                 let nl = clamp(startLeft + (e.clientX - startX), 0, pr.width - dock.offsetWidth);
-                let nt = clamp(startTop + (e.clientY - startY), 0, pr.height - dock.offsetHeight);
+                // Vertical: solo dentro del mapa, así nunca vuelve a taparle los botones de arriba.
+                let nt = clamp(startTop + (e.clientY - startY), rv.arriba, Math.max(rv.arriba, rv.abajo - dock.offsetHeight));
                 dock.style.left = nl + 'px';
                 dock.style.top = nt + 'px';
                 updateAnchor(dock, parent);
@@ -1696,6 +1758,8 @@ window.mapeoDock = (function () {
                 } catch (x) { /* localStorage lleno o bloqueado: no pasa nada */ }
             }
             function onDown(e) {
+                // El ✕ (esconder la barra) vive dentro de la manija: ahí no se arrastra, se toca.
+                if (e.target && e.target.closest && e.target.closest('.mapeo-dock-hide')) return;
                 dragging = true;
                 const pr = parent.getBoundingClientRect();
                 const dr = dock.getBoundingClientRect();
