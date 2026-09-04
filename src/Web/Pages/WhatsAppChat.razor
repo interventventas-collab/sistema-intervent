@@ -823,9 +823,13 @@
                            el panel de la derecha, escribirla y apretar Guardar. Ahora se escribe acá y se
                            guarda sola al salir del campo — solo pega al servidor si de verdad cambió. *@
                         <span class="wa-hdr-sep">·</span>
-                        <span class="wa-hdr-nota" title="Nota de esta conversación — se guarda sola al salir del campo">
+                        @* 2026-09-04: la nota se leía mal (gris finito + itálica + ancho fijo que la cortaba).
+                           Osmar eligió el papelito amarillo. Sólo se pinta si HAY nota escrita: vacía queda
+                           apagada para no ensuciar la barra. Ver también la regla oscura en whatsapp-tema.css. *@
+                        <span class="wa-hdr-nota @(string.IsNullOrWhiteSpace(asignarNota) ? "vacia" : "")" title="Nota de esta conversación — se guarda sola al salir del campo">
+                            <span class="wa-hdr-nota-ico">📝</span>
                             <input class="wa-hdr-nota-inp @(string.IsNullOrWhiteSpace(asignarNota) ? "vacia" : "")"
-                                   placeholder="+ nota" maxlength="300"
+                                   placeholder="agregar nota" maxlength="300"
                                    @bind="asignarNota" @bind:event="oninput" @onblur="GuardarNotaAlSalir" />
                             @if (guardandoNota) { <span class="wa-hdr-nota-est">⏳</span> }
                             else if (NotaSinGuardar) { <span class="wa-hdr-nota-est pend" title="Todavía sin guardar — salí del campo y se guarda">•</span> }
@@ -4276,17 +4280,29 @@
     .wa-hdr-menu-op.sel { background: #eafcf1; color: #15803d; }
     .wa-hdr-menu-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
     .wa-hdr-menu-tick { margin-left: auto; color: #22c55e; font-weight: 800; }
-    /* La nota: parece texto suelto hasta que la tocás, para no ensuciar la barra. */
-    .wa-hdr-l2 > .wa-hdr-nota { display: inline-flex; align-items: center; gap: 0.2rem; flex: 0 1 230px; min-width: 90px; }
-    .wa-hdr-nota-ico { font-size: 0.85rem; flex: 0 0 auto; }
-    .wa-hdr-nota-inp { flex: 1 1 auto; min-width: 0; border: 1px solid transparent; border-radius: 7px;
-        background: transparent; padding: 0.1rem 0.35rem; font-size: 0.75rem; font-family: inherit;
-        color: #64748b; font-style: italic; }
-    /* Vacía se ve como un "+ nota" apagadito; con texto, se lee la nota. */
-    .wa-hdr-nota-inp.vacia { color: #94a3b8; }
-    .wa-hdr-nota-inp::placeholder { color: #b6c0cd; }
-    .wa-hdr-nota-inp:hover { border-color: #cbd5e1; background: #fff; }
-    .wa-hdr-nota-inp:focus { outline: none; background: #fff; border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
+    /* 2026-09-04: LA NOTA = papelito amarillo. Antes era gris en itálica y no se leía; además tenía
+       ancho fijo (230px) y las notas largas se cortaban. Ahora se estira con lo que sobra del renglón.
+       Es la única cajita de color de la barra a propósito: es lo único acá que se escribe. */
+    .wa-hdr-l2 > .wa-hdr-nota { display: inline-flex; align-items: center; gap: 0.3rem; flex: 1 1 auto;
+        min-width: 120px; background: #fef9c3; border: 1px solid #fde68a; border-radius: 7px; padding: 1px 5px; }
+    /* Sin nota escrita NO se pinta: un papelito vacío sería ruido en todos los chats sin nota. */
+    /* Con nota, se queda con todo el espacio libre del renglón (por eso el separador de la
+       derecha deja de estirarse). Sin nota, se achica y no ocupa media barra al pedo. */
+    .wa-hdr-l2 > .wa-hdr-nota.vacia { background: transparent; border-color: transparent; flex: 0 1 auto; min-width: 0; }
+    .wa-hdr-l2 > .wa-hdr-espacio { flex: 0 0 0.5rem; }
+    .wa-hdr-l2 > .wa-hdr-nota.vacia ~ .wa-hdr-espacio { flex: 1 1 auto; }
+    .wa-hdr-nota-ico { font-size: 0.8rem; flex: 0 0 auto; }
+    .wa-hdr-nota.vacia .wa-hdr-nota-ico { opacity: 0.4; }
+    .wa-hdr-nota-inp { flex: 1 1 auto; min-width: 0; border: none; border-radius: 5px;
+        background: transparent; padding: 0.1rem 0.2rem; font-size: 0.78rem; font-family: inherit;
+        color: #713f12; font-weight: 600; }
+    /* Vacía va en el MISMO gris que el resto del renglón (medido 4.71): apagada respecto del
+       papelito, pero legible. El #94a3b8 de antes daba 2.50 — no se leía. */
+    .wa-hdr-nota-inp.vacia { color: #6b7280; font-weight: 400; }
+    .wa-hdr-nota-inp::placeholder { color: #6b7280; font-weight: 400; opacity: 1; }
+    .wa-hdr-nota.vacia:hover { background: #fffdf0; border-color: #fde68a; }
+    .wa-hdr-nota-inp:focus { outline: none; box-shadow: none; }
+    .wa-hdr-nota:focus-within { border-color: #eab308; box-shadow: 0 0 0 3px rgba(234,179,8,0.18); }
     .wa-hdr-nota-est { font-size: 0.8rem; flex: 0 0 auto; }
     .wa-hdr-nota-est.pend { color: #f59e0b; font-size: 1.1rem; line-height: 1; }
 

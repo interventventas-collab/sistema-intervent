@@ -243,6 +243,17 @@
 .wa-dark .wa-ficha-saldo-lbl { color: var(--wad-txt2); }
 .wa-dark .wa-ficha-notas { background: #3a2c17; border-color: #5a441f; color: #fde68a; }
 
+/* 2026-09-04: la NOTA del encabezado (papelito amarillo). En oscuro usa el mismo amarillo que la
+   nota de la ficha, de acá arriba. OJO: es un <input>, y la regla generica de .wa-thread-header solo
+   pinta los <span> — sin esto se quedaba con el color claro y desaparecia sobre el fondo negro. */
+.wa-dark .wa-hdr-l2 > .wa-hdr-nota { background: #3a2c17; border-color: #5a441f; }
+.wa-dark .wa-hdr-l2 > .wa-hdr-nota.vacia { background: transparent; border-color: transparent; }
+.wa-dark .wa-hdr-l2 > .wa-hdr-nota.vacia:hover { background: #2b3942; border-color: #3f5560; }
+.wa-dark .wa-hdr-nota-inp { color: #fde68a; }
+.wa-dark .wa-hdr-nota-inp.vacia { color: var(--wad-txt2); }
+.wa-dark .wa-hdr-nota-inp::placeholder { color: var(--wad-txt2); }
+.wa-dark .wa-hdr-l2 > .wa-hdr-nota:focus-within { border-color: #eab308; box-shadow: 0 0 0 3px rgba(234,179,8,0.22); }
+
 /* Panel "Nueva conversación" (ocupa el lugar del chat) */
 .wa-dark .wa-nv-panel { background: var(--wad-fondo); }
 .wa-dark .wa-nv-card { background: var(--wad-panel); border-color: var(--wad-borde); box-shadow: none; }
