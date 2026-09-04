@@ -297,13 +297,22 @@
                     <span style="font-weight:700; color:#166534;">$@misViajes.ImporteHoy.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span>
                 </div>
                 <div style="font-size:0.76rem; color:#6b7280; margin-top:0.15rem;">
-                    @if (misViajes.ViajesPendientes > 0)
+                    @* Lo que vale es el SALDO: si le adelantaron plata, la suma cruda de los viajes
+                       sin cerrar dice de más. El detalle de viajes solo se muestra si coinciden. *@
+                    @if (misViajes.Saldo > 0)
                     {
                         <text>
                             Sin cobrar@(misViajes.PendienteDesde is { } dsd ? $" desde el {dsd:dd/MM}" : ""):
-                            $@misViajes.ImportePendiente.ToString("N0", new System.Globalization.CultureInfo("es-AR"))
-                            (@misViajes.ViajesPendientes viaje@(misViajes.ViajesPendientes == 1 ? "" : "s"))
+                            $@misViajes.Saldo.ToString("N0", new System.Globalization.CultureInfo("es-AR"))
+                            @if (misViajes.Saldo == misViajes.ImportePendiente && misViajes.ViajesPendientes > 0)
+                            {
+                                <text>(@misViajes.ViajesPendientes viaje@(misViajes.ViajesPendientes == 1 ? "" : "s"))</text>
+                            }
                         </text>
+                    }
+                    else if (misViajes.Saldo < 0)
+                    {
+                        <text>Tenés $@Math.Abs(misViajes.Saldo).ToString("N0", new System.Globalization.CultureInfo("es-AR")) cobrados de más.</text>
                     }
                     else
                     {
@@ -1206,7 +1215,7 @@
 
     // 2026-09-04: viajes que cobra por entrega (solo para el repartidor con auto propio).
     public record MisViajesDto(bool Aplica, decimal Tarifa, int ViajesHoy, decimal ImporteHoy,
-        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde);
+        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, decimal Saldo);
     private MisViajesDto? misViajes;
 
     // 2026-07-28: mapa embebido con los puntos numerados (Leaflet, dentro de esta pantalla)

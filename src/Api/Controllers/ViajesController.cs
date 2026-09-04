@@ -635,10 +635,17 @@ public class ViajesController : ControllerBase
             .ToListAsync();
         if (pend.Count == 0) return BadRequest(new { error = "No hay viajes pendientes para liquidar" });
 
-        var total = pend.Sum(x => x.Tarifa);
+        // ⚠ 2026-09-04: el pago es el SALDO REAL, no la suma cruda de los viajes pendientes.
+        // Si el dueño ya le habia registrado un pago a cuenta, liquidar por la suma cruda le
+        // pagaria dos veces lo mismo. Liquidar significa "dejar el saldo en cero".
+        var totalViajes = pend.Sum(x => x.Tarifa);
+        var saldo = await SaldoAsync(id);
+        var total = saldo > 0 ? saldo : 0m;
         var desde = pend.Min(x => x.Fecha);
         var desc = string.IsNullOrWhiteSpace(req.Descripcion)
-            ? $"Liquidación {pend.Count} viajes ({desde:dd/MM} al {hasta:dd/MM})"
+            ? (total == totalViajes
+                ? $"Liquidación {pend.Count} viajes ({desde:dd/MM} al {hasta:dd/MM})"
+                : $"Liquidación {pend.Count} viajes ({desde:dd/MM} al {hasta:dd/MM}) — ${Plata(totalViajes)} menos ${Plata(totalViajes - total)} ya pagados")
             : req.Descripcion!.Trim();
 
         var pago = new ViajesPago
@@ -655,7 +662,8 @@ public class ViajesController : ControllerBase
         foreach (var e in pend) { e.LiquidadoPagoId = pago.Id; e.UpdatedAt = DateTime.UtcNow; }
         await _db.SaveChangesAsync();
 
-        return Ok(new { ok = true, pagoId = pago.Id, cantidad = pend.Count, importe = total });
+        return Ok(new { ok = true, pagoId = pago.Id, cantidad = pend.Count, importe = total,
+                        viajes = totalViajes, yaPagado = totalViajes - total });
     }
 
     // ============================================================
@@ -663,4 +671,22 @@ public class ViajesController : ControllerBase
     // ============================================================
 
     private static DateTime FechaArgentinaHoy() => DateTime.UtcNow.AddHours(-3).Date;
+
+    /// <summary>Plata como la escribimos acá: $34.000, no $34,000. El contenedor corre con formato
+    /// invariante, asi que hay que pedir es-AR explicitamente.</summary>
+    private static string Plata(decimal v) => v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+
+    /// <summary>
+    /// Lo que se le debe HOY a un empleado: todo lo que gano (viajes cargados a mano + entregas
+    /// contadas solas) menos TODO lo que se le pago, sea liquidacion o pago suelto a cuenta.
+    /// Es la unica cuenta que vale: la ficha, el boton Liquidar y el celu miran esta.
+    /// </summary>
+    private async Task<decimal> SaldoAsync(int empleadoId)
+    {
+        var aCobrarRegs = await _db.ViajesRegistros.Where(r => r.EmpleadoId == empleadoId)
+            .SumAsync(r => (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA);
+        var aCobrarEnt = await _db.ViajesEntregas.Where(e => e.EmpleadoId == empleadoId).SumAsync(e => e.Tarifa);
+        var pagado = await _db.ViajesPagos.Where(p => p.EmpleadoId == empleadoId).SumAsync(p => p.Importe);
+        return aCobrarRegs + aCobrarEnt - pagado;
+    }
 }

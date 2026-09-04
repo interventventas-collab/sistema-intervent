@@ -36,13 +36,16 @@ public class CafeRepartidorPublicController : ControllerBase
     /// 2026-09-04: lo que lleva ganado hoy el repartidor que cobra POR ENTREGA (Nacho, que va con
     /// su propio auto). Devuelve null-ish (Aplica = false) para todos los demas, que cobran sueldo.
     /// </summary>
+    /// <summary>Saldo = lo que se le debe DE VERDAD (todo lo ganado menos todo lo pagado, incluidos
+    /// los pagos sueltos a cuenta). ImportePendiente es la suma cruda de los viajes sin cerrar: si
+    /// el dueño ya le adelanto plata, los dos numeros NO coinciden y el que vale es Saldo.</summary>
     public record MisViajesDto(bool Aplica, decimal Tarifa, int ViajesHoy, decimal ImporteHoy,
-        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde);
+        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, decimal Saldo);
 
     [HttpGet("mis-pedidos/{tokenRepartidor}/viajes")]
     public async Task<IActionResult> MisViajes(string tokenRepartidor)
     {
-        var vacio = new MisViajesDto(false, 0, 0, 0, 0, 0, null);
+        var vacio = new MisViajesDto(false, 0, 0, 0, 0, 0, null, 0);
         var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
         if (r is null) return Ok(vacio);
 
@@ -60,10 +63,16 @@ public class CafeRepartidorPublicController : ControllerBase
         var hoyEnts = ents.Where(x => x.Fecha == hoy).ToList();
         var pend = ents.Where(x => x.LiquidadoPagoId is null).ToList();
 
+        var registros = await _db.ViajesRegistros.Where(r => r.EmpleadoId == emp.Id)
+            .SumAsync(r => (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA);
+        var pagado = await _db.ViajesPagos.Where(x => x.EmpleadoId == emp.Id).SumAsync(x => x.Importe);
+        var saldo = registros + ents.Sum(x => x.Tarifa) - pagado;
+
         return Ok(new MisViajesDto(true, emp.TarifaViaje,
             hoyEnts.Count, hoyEnts.Sum(x => x.Tarifa),
             pend.Count, pend.Sum(x => x.Tarifa),
-            pend.Count == 0 ? null : pend.Min(x => x.Fecha)));
+            pend.Count == 0 ? null : pend.Min(x => x.Fecha),
+            saldo));
     }
 
     public record RepartidorListItemDto(int Id, string Nombre);

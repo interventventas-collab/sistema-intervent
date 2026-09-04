@@ -207,6 +207,10 @@
                             @if (e.ViajesPendientes > 0)
                             {
                                 <text> · sin liquidar desde el <b>@e.PendienteDesde!.Value.ToString("dd/MM")</b>: <b>@e.ViajesPendientes</b> @(e.ViajesPendientes == 1 ? "viaje" : "viajes") · <b>$@Plata(e.ImportePendiente)</b></text>
+                                @if (e.ImportePendiente != APagar(e))
+                                {
+                                    <text> · ya le pagaste <b>$@Plata(e.ImportePendiente - APagar(e))</b> a cuenta, falta <b>$@Plata(APagar(e))</b></text>
+                                }
                             }
                             else
                             {
@@ -231,9 +235,13 @@
                     <div class="vj-btn-row">
                         @if (e.ModoAutomatico)
                         {
+                            @* Lo que se le paga es el SALDO: si ya le registraste un pago a cuenta,
+                               liquidar por la suma cruda de los viajes seria pagarle dos veces. *@
                             <button class="vj-btn-mini pago" disabled="@(e.ViajesPendientes == 0 || liquidando == e.Id)"
                                     @onclick="@(() => Liquidar(e))">
-                                @(liquidando == e.Id ? "Liquidando..." : $"💵 Liquidar ${Plata(e.ImportePendiente)}")
+                                @(liquidando == e.Id ? "Liquidando..."
+                                  : APagar(e) > 0 ? $"💵 Liquidar ${Plata(APagar(e))}"
+                                  : "✔ Cerrar viajes (ya pagados)")
                             </button>
                             <button class="vj-btn-mini" @onclick="@(() => VerDetalle(e))">📋 @(detalleEmpId == e.Id ? "Ocultar" : "Día por día")</button>
                             <button class="vj-btn-mini" @onclick="@(() => ShowAjuste(e))">➕ Sumar viaje a mano</button>
@@ -421,6 +429,10 @@
 
     private static string Plata(decimal v) => v.ToString("N0", ar);
 
+    /// <summary>Lo que hay que ponerle de plata para dejarlo en cero: el saldo, no la suma cruda de
+    /// los viajes sin cerrar (si ya se le adelanto plata, esos dos numeros no coinciden).</summary>
+    private static decimal APagar(AdminEmpleadoDto e) => e.SaldoAcumulado > 0 ? e.SaldoAcumulado : 0m;
+
     /// <summary>Las localidades/clientes del día, cortito, para poder controlar de un vistazo.</summary>
     private static string Resumir(AdminDiaDto d)
     {
@@ -562,8 +574,12 @@
     private async Task Liquidar(AdminEmpleadoDto e)
     {
         if (e.ViajesPendientes == 0) return;
-        var msg = $"¿Liquidar {e.ViajesPendientes} viajes por ${Plata(e.ImportePendiente)} a {e.Nombre}?\n\n" +
-                  "Se registra el pago y esos viajes quedan cerrados.";
+        var msg = APagar(e) > 0
+            ? $"¿Liquidar {e.ViajesPendientes} viajes a {e.Nombre} por ${Plata(APagar(e))}?\n\n" +
+              (e.ImportePendiente != APagar(e)
+                 ? $"Los viajes suman ${Plata(e.ImportePendiente)}, pero ya le pagaste ${Plata(e.ImportePendiente - APagar(e))} a cuenta.\n\n" : "") +
+              "Se registra el pago y esos viajes quedan cerrados."
+            : $"Los {e.ViajesPendientes} viajes de {e.Nombre} ya están cubiertos por los pagos que registraste.\n\n¿Los cierro sin registrar plata nueva?";
         if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
         liquidando = e.Id;
         try
@@ -571,7 +587,9 @@
             var resp = await Http.PostAsJsonAsync($"api/viajes/admin/empleados/{e.Id}/liquidar", new { });
             if (resp.IsSuccessStatusCode)
             {
-                ToastService.Success($"Liquidado ${Plata(e.ImportePendiente)} a {e.Nombre}");
+                ToastService.Success(APagar(e) > 0
+                    ? $"Liquidado ${Plata(APagar(e))} a {e.Nombre}"
+                    : $"Viajes de {e.Nombre} cerrados (ya estaban pagados)");
                 await RecargarTodo();
             }
             else ToastService.Error("No se pudo liquidar");
