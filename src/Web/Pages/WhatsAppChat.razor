@@ -1792,7 +1792,12 @@
                         <button class="wa-alta-cliente-btn" @onclick="InsertarLinkAltaCliente" title="Insertar el link de alta de clientes en el mensaje">
                             🔗 Alta de clientes
                         </button>
-                        @if (respuestas.Any(r => r.Activo) && (Ventana24Abierta() || EsChatInstagram()))
+                        @* 2026-09-04: el cajón de respuestas ahora se EDITA desde acá mismo. Cada una tiene su
+                           lapicito ✏️ y abajo está "Nueva respuesta". Antes había que salir del chat, ir a
+                           "Pedidos y configuración" y volver a buscar la conversación. Ojo: el botón ya no
+                           depende de que haya respuestas activas — si no hay ninguna, igual tiene que
+                           aparecer para poder crear la primera. *@
+                        @if (Ventana24Abierta() || EsChatInstagram())
                         {
                             <div class="wa-qr">
                                 <button class="wa-qr-toggle @(showQuickReplies ? "abierto" : "")" @onclick="@(() => showQuickReplies = !showQuickReplies)" title="Respuestas rápidas guardadas — insertan el texto en el mensaje">
@@ -1801,12 +1806,28 @@
                                 @if (showQuickReplies)
                                 {
                                     <div class="wa-qr-dropdown">
-                                        @foreach (var r in respuestas.Where(x => x.Activo).OrderBy(x => x.Orden))
+                                        @foreach (var r in respuestas.Where(x => x.Activo || qrVerApagadas).OrderBy(x => x.Orden))
                                         {
-                                            <button class="wa-chip" @onclick="@(() => { InsertarRespuesta(r); showQuickReplies = false; })" title="@r.Texto">
-                                                @r.Nombre
-                                            </button>
+                                            <div class="wa-qr-row">
+                                                <button class="wa-chip @(r.Activo ? "" : "apagada")" @onclick="@(() => { InsertarRespuesta(r); showQuickReplies = false; })" title="@r.Texto">
+                                                    @r.Nombre
+                                                </button>
+                                                <button class="wa-qr-lapiz" title="Cambiar el nombre o el texto de esta respuesta" @onclick="@(() => AbrirEditorResp(r))">✏️</button>
+                                            </div>
                                         }
+                                        @if (!respuestas.Any(x => x.Activo || qrVerApagadas))
+                                        {
+                                            <div class="wa-qr-vacio">Todavía no hay respuestas guardadas.</div>
+                                        }
+                                        <div class="wa-qr-pie">
+                                            <button class="wa-qr-nueva" @onclick="@(() => AbrirEditorResp(null))">➕ Nueva respuesta</button>
+                                            @if (respuestas.Any(x => !x.Activo))
+                                            {
+                                                <button class="wa-qr-apagadas" @onclick="@(() => qrVerApagadas = !qrVerApagadas)">
+                                                    @(qrVerApagadas ? "Ocultar las apagadas" : $"Ver las apagadas ({respuestas.Count(x => !x.Activo)})")
+                                                </button>
+                                            }
+                                        </div>
                                     </div>
                                 }
                             </div>
@@ -3104,6 +3125,57 @@
     </div>
 }
 
+@* 2026-09-04: crear o cambiar una respuesta rápida SIN salir del chat. Se abre desde el lapicito
+   ✏️ o desde "➕ Nueva respuesta" del cajón ⚡ Respuestas. Al guardar vuelve al mismo lugar, con el
+   cajón abierto y la conversación intacta. *@
+@if (showEditResp)
+{
+    <div class="wa-modal-backdrop" @onclick="CerrarEditorResp"></div>
+    <div class="wa-modal" style="max-width:520px;">
+        <div class="wa-modal-header">
+            <h3 style="margin:0; flex:1; font-size:1.05rem;">@(editRespId > 0 ? "✏️ Cambiar respuesta rápida" : "➕ Nueva respuesta rápida")</h3>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="CerrarEditorResp">×</button>
+        </div>
+        <div class="wa-modal-body">
+            <label style="font-size:0.78rem; color:#6b7280; display:block;">Nombre del botón (corto)</label>
+            <input class="form-control form-control-sm" style="width:100%;" @bind="editRespNombre" placeholder="Ej: ENTREGA SABADO" maxlength="80" />
+
+            <label style="font-size:0.78rem; color:#6b7280; display:block; margin-top:0.7rem;">Texto que se escribe en el mensaje</label>
+            <textarea class="form-control form-control-sm" style="width:100%; font-family:inherit; font-size:0.9rem;" rows="5" @bind="editRespTexto" placeholder="Ej: Hola {nombre}! La entrega es el sábado por la mañana."></textarea>
+            <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.25rem;">
+                Podés usar <code>{nombre}</code> y <code>{numero}</code>: se cambian solos por los del cliente.
+            </div>
+            @if (editRespId == 0 && !string.IsNullOrWhiteSpace(composerText))
+            {
+                <button class="btn btn-sm btn-outline-secondary" style="margin-top:0.4rem; font-size:0.75rem;"
+                        @onclick="@(() => editRespTexto = composerText)">
+                    ⤵️ Usar lo que estoy escribiendo
+                </button>
+            }
+
+            <div style="display:flex; gap:0.9rem; align-items:center; margin-top:0.8rem;">
+                <div>
+                    <label style="font-size:0.78rem; color:#6b7280; display:block;">Orden en la lista</label>
+                    <input type="number" class="form-control form-control-sm" style="width:90px;" @bind="editRespOrden" />
+                </div>
+                <label style="font-size:0.82rem; color:#374151; display:flex; align-items:center; gap:0.35rem; margin-top:1rem;">
+                    <input type="checkbox" @bind="editRespActivo" /> Que aparezca en el cajón
+                </label>
+            </div>
+
+            <div style="display:flex; gap:0.5rem; align-items:center; margin-top:1.1rem;">
+                @if (editRespId > 0)
+                {
+                    <button class="btn btn-outline-danger btn-sm" disabled="@editRespGuardando" @onclick="BorrarEditorResp">🗑 Borrar</button>
+                }
+                <span style="flex:1;"></span>
+                <button class="btn btn-secondary btn-sm" @onclick="CerrarEditorResp">Cancelar</button>
+                <button class="btn btn-success btn-sm" disabled="@editRespGuardando" @onclick="GuardarEditorResp">@(editRespGuardando ? "Guardando…" : "✓ Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
 @* 2026-08-15: cómo se ve el WhatsApp — color por línea (claro/oscuro) + letra de la pantalla *@
 @if (showApariencia)
 {
@@ -3950,6 +4022,17 @@
     .wa-qr-toggle.abierto { background: #0284c7; border-color: #0284c7; color: #fff; }
     .wa-qr-dropdown { position: absolute; bottom: calc(100% + 6px); left: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 10px 28px rgba(0,0,0,0.18); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.32rem; min-width: 190px; max-height: 340px; overflow-y: auto; z-index: 60; }
     .wa-qr-dropdown .wa-chip { width: 100%; text-align: center; }
+    /* 2026-09-04: cada respuesta = el botón que inserta + el lapicito que la edita */
+    .wa-qr-row { display: flex; align-items: center; gap: 0.25rem; }
+    .wa-qr-row .wa-chip { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .wa-qr-row .wa-chip.apagada { background: #f3f4f6; border-color: #e5e7eb; color: #9ca3af; }
+    .wa-qr-lapiz { background: none; border: none; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0.3rem; border-radius: 6px; opacity: 0.75; }
+    .wa-qr-lapiz:hover { opacity: 1; background: #f1f5f9; }
+    .wa-qr-vacio { font-size: 0.78rem; color: #9ca3af; text-align: center; padding: 0.4rem 0.2rem; }
+    .wa-qr-pie { border-top: 1px solid #eef1f5; margin-top: 0.25rem; padding-top: 0.35rem; display: flex; flex-direction: column; gap: 0.2rem; }
+    .wa-qr-nueva, .wa-qr-apagadas { background: none; border: none; cursor: pointer; font-size: 0.78rem; padding: 0.3rem 0.35rem; border-radius: 6px; text-align: left; color: #374151; }
+    .wa-qr-nueva:hover, .wa-qr-apagadas:hover { background: #f1f5f9; }
+    .wa-qr-apagadas { color: #9ca3af; }
     /* 2026-08-17: los avisos en UN renglón fino (antes: dos carteles + la explicación larga). */
     .wa-avisos-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; padding: 0.15rem 1rem 0.4rem; font-size: 0.78rem; }
     .wa-avisos-regla { cursor: help; font-size: 0.9rem; }
@@ -4798,6 +4881,15 @@
     List<ApiClient.TwRespRapidaDto> respuestas = new();
     List<ApiClient.TwContactoDto> contactos = new();
     bool showQuickReplies = false;   // 2026-08-05: desplegable de respuestas rápidas arriba del botón Enviar
+    // 2026-09-04: crear/editar respuestas rápidas sin salir del chat (lapicito ✏️ del cajón)
+    bool qrVerApagadas = false;
+    bool showEditResp = false;
+    int editRespId = 0;              // 0 = es una nueva
+    string editRespNombre = "";
+    string editRespTexto = "";
+    int editRespOrden = 0;
+    bool editRespActivo = true;
+    bool editRespGuardando = false;
     // 2026-07-29: Datos bancarios / CBUs
     List<ApiClient.TwCbuDto> datosBancarios = new();
     bool showCbuPanel = false;
@@ -7251,6 +7343,63 @@
     {
         var texto = ReemplazarVariables(r.Texto);
         composerText = string.IsNullOrWhiteSpace(composerText) ? texto : composerText + " " + texto;
+    }
+
+    // 2026-09-04: abrir el cartelito de edición. r == null => es una respuesta nueva.
+    void AbrirEditorResp(ApiClient.TwRespRapidaDto? r)
+    {
+        editRespId = r?.Id ?? 0;
+        editRespNombre = r?.Nombre ?? "";
+        editRespTexto = r?.Texto ?? "";
+        editRespOrden = r?.Orden ?? (respuestas.Count == 0 ? 1 : respuestas.Max(x => x.Orden) + 1);
+        editRespActivo = r?.Activo ?? true;
+        showEditResp = true;
+    }
+
+    void CerrarEditorResp()
+    {
+        showEditResp = false;
+        showQuickReplies = true;   // el cajón queda abierto: volvés justo donde estabas
+    }
+
+    async Task GuardarEditorResp()
+    {
+        if (string.IsNullOrWhiteSpace(editRespNombre) || string.IsNullOrWhiteSpace(editRespTexto))
+        {
+            Toast.Error("Falta el nombre del botón o el texto del mensaje");
+            return;
+        }
+        editRespGuardando = true;
+        bool ok;
+        try
+        {
+            var dto = new ApiClient.TwRespUpsert(editRespNombre.Trim(), editRespTexto, editRespOrden, editRespActivo);
+            ok = editRespId > 0
+                ? await Api.UpdateTwRespuestaAsync(editRespId, dto)
+                : await Api.CreateTwRespuestaAsync(dto);
+        }
+        catch { ok = false; }
+        editRespGuardando = false;
+        if (!ok) { Toast.Error("No se pudo guardar la respuesta"); return; }
+        Toast.Success(editRespId > 0 ? "Respuesta actualizada" : "Respuesta creada");
+        await LoadRespuestas();
+        CerrarEditorResp();
+    }
+
+    async Task BorrarEditorResp()
+    {
+        if (editRespId <= 0) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Borrar la respuesta \"{editRespNombre}\"? Esto la saca para todos."))
+            return;
+        editRespGuardando = true;
+        bool ok;
+        try { ok = await Api.DeleteTwRespuestaAsync(editRespId); }
+        catch { ok = false; }
+        editRespGuardando = false;
+        if (!ok) { Toast.Error("No se pudo borrar"); return; }
+        Toast.Success("Respuesta borrada");
+        await LoadRespuestas();
+        CerrarEditorResp();
     }
 
     // 2026-08-05: link fijo de alta de clientes, para pasarlo con un click
