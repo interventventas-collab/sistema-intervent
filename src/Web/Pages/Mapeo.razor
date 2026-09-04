@@ -2071,56 +2071,10 @@
                 </div>
             </div>
         }
-        @* ═════════ Barra del DÍA (2026-09-03) ═════════
-           Lo más importante de la pantalla: de qué día es el reparto que estás mirando.
-           Flechas ◀ ▶ para moverte de a un día, accesos rápidos a ayer / hoy / mañana, y a la
-           derecha cuántas paradas y zonas tiene ese día. *@
-        @{
-            var diaAyer = HoyAr.AddDays(-1);
-            var diaManiana = HoyAr.AddDays(1);
-            var diaParadas = stops?.Count ?? 0;
-            var diaZonas = (stops ?? new()).Where(s => s.AssignedDriverId.HasValue).Select(s => s.AssignedDriverId!.Value).Distinct().Count()
-                         + (stops ?? new()).Where(s => !s.AssignedDriverId.HasValue && s.AssignedVehicleSlot.HasValue).Select(s => s.AssignedVehicleSlot!.Value).Distinct().Count();
-        }
-        <div style="flex:0 0 auto; padding:0.5rem 0.6rem 0.35rem; border-bottom:1px solid #e5e7eb; display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
-            <button type="button" @onclick="DiaAnterior" title="Ir al día anterior"
-                    style="flex:0 0 auto; font-size:1rem; line-height:1; padding:0.35rem 0.6rem; border:1px solid #d1d5db; background:#fff; color:#374151; border-radius:6px; cursor:pointer;">◀</button>
-            <div style="display:flex; align-items:baseline; gap:0.4rem; min-width:0;">
-                <span style="font-size:1.15rem; font-weight:800; color:#111827; white-space:nowrap;">@Mayus(FechaEnCastellano(fechaSeleccionada))</span>
-                <span style="font-size:0.9rem; color:#6b7280; white-space:nowrap;">· @ComoCaeElDia(fechaSeleccionada)</span>
-            </div>
-            <button type="button" @onclick="DiaSiguiente" title="Ir al día siguiente"
-                    style="flex:0 0 auto; font-size:1rem; line-height:1; padding:0.35rem 0.6rem; border:1px solid #d1d5db; background:#fff; color:#374151; border-radius:6px; cursor:pointer;">▶</button>
-            <span style="color:#d1d5db;">·</span>
-            @* Accesos rápidos: ayer · hoy · mañana. El día en el que estás parado va en negrita y subrayado. *@
-            <div style="display:flex; align-items:center; gap:0.35rem; font-size:0.85rem;">
-                <button type="button" @onclick="() => IrAlDia(diaAyer)" title="@FechaEnCastellano(diaAyer)"
-                        style="@EstiloAccesoDia(diaAyer)">ayer</button>
-                <span style="color:#d1d5db;">·</span>
-                <button type="button" @onclick="() => IrAlDia(HoyAr)" title="@FechaEnCastellano(HoyAr)"
-                        style="@EstiloAccesoDia(HoyAr)">hoy</button>
-                <span style="color:#d1d5db;">·</span>
-                <button type="button" @onclick="() => IrAlDia(diaManiana)" title="@FechaEnCastellano(diaManiana)"
-                        style="@EstiloAccesoDia(diaManiana)">mañana</button>
-            </div>
-            <div style="margin-left:auto; font-size:0.85rem; color:#6b7280; white-space:nowrap;">
-                @diaParadas @(diaParadas == 1 ? "parada" : "paradas") · @diaZonas @(diaZonas == 1 ? "zona" : "zonas")
-            </div>
-        </div>
-        @* Días que ya pasaron: son el historial. Se ven pero no se tocan (lo pidió el usuario). *@
-        @if (EsDiaPasado)
-        {
-            <div style="flex:0 0 auto; padding:0.4rem 0.65rem; border-bottom:1px solid #e5e7eb; background:#f9fafb; font-size:0.85rem; color:#4b5563;">
-                Estás mirando el @FechaEnCastellano(fechaSeleccionada), un día que ya pasó. Se ve pero no se toca.
-            </div>
-        }
-        @* Días que vienen: se puede armar todo, pero conviene tenerlo presente. *@
-        @if (EsDiaFuturo)
-        {
-            <div style="flex:0 0 auto; padding:0.4rem 0.65rem; border-bottom:1px solid #e5e7eb; background:#f9fafb; font-size:0.85rem; color:#4b5563;">
-                Estás armando el reparto del @FechaEnCastellano(fechaSeleccionada). Lo que sumes acá va a ese día, y los repartidores no lo ven hasta que llegue.
-            </div>
-        }
+        @* 2026-09-04: la "Barra del DÍA" dejó de tener fila propia — se comía ~45px de alto para decir
+           una sola cosa, y en una notebook eso es mapa que se pierde. Ahora la fecha vive al principio
+           del renglón del buscador (más abajo), y los carteles de "día pasado / día futuro" son una
+           etiquetita al lado de la fecha en vez de otra fila entera. *@
         @{
             var vehiclesActivos = stops?.Where(s => s.AssignedVehicleSlot.HasValue)
                 .GroupBy(s => s.AssignedVehicleSlot!.Value)
@@ -2223,6 +2177,35 @@
                DERECHA  = clientes del sistema + la ⭐ que despliega los favoritos.
                Así no hay que acordarse de en qué cajón está guardado cada lugar. *@
             <div style="display:flex; gap:0.5rem; align-items:stretch; flex-wrap:wrap;">
+                @* ═ El DÍA que estás mirando ═ Antes tenía una fila propia arriba. Las flechas ◀ ▶ te
+                   mueven de a un día; el botón "hoy" aparece SOLO cuando estás parado en otro día
+                   (o sea, casi nunca ocupa lugar). La etiquetita gris avisa si ese día ya pasó o
+                   todavía no llegó — lo que antes era un renglón entero. *@
+                <div style="flex:0 0 auto; display:flex; align-items:center; gap:0.3rem;">
+                    <button type="button" @onclick="DiaAnterior" title="Ir al día anterior"
+                            style="flex:0 0 auto; font-size:0.95rem; line-height:1; padding:0.5rem 0.55rem; border:1.5px solid #d1d5db; background:#fff; color:#374151; border-radius:8px; cursor:pointer;">◀</button>
+                    <div style="display:flex; align-items:baseline; gap:0.3rem; padding:0 0.15rem;">
+                        <span style="font-size:1.02rem; font-weight:800; color:#111827; white-space:nowrap;">@Mayus(FechaEnCastellano(fechaSeleccionada))</span>
+                        <span style="font-size:0.82rem; color:#6b7280; white-space:nowrap;">· @ComoCaeElDia(fechaSeleccionada)</span>
+                    </div>
+                    <button type="button" @onclick="DiaSiguiente" title="Ir al día siguiente"
+                            style="flex:0 0 auto; font-size:0.95rem; line-height:1; padding:0.5rem 0.55rem; border:1.5px solid #d1d5db; background:#fff; color:#374151; border-radius:8px; cursor:pointer;">▶</button>
+                    @if (!EsDiaDeHoy)
+                    {
+                        <button type="button" @onclick="() => IrAlDia(HoyAr)" title="Volver al reparto de hoy"
+                                style="flex:0 0 auto; font-size:0.82rem; font-weight:700; line-height:1; padding:0.45rem 0.6rem; border:1.5px solid #d1d5db; background:#fff; color:#374151; border-radius:8px; cursor:pointer; white-space:nowrap;">hoy</button>
+                    }
+                    @if (EsDiaPasado)
+                    {
+                        <span title="Estás mirando un día que ya pasó: se ve pero no se toca."
+                              style="flex:0 0 auto; font-size:0.72rem; font-weight:700; color:#6b7280; background:#f3f4f6; border-radius:999px; padding:0.2rem 0.5rem; white-space:nowrap;">solo mirar</span>
+                    }
+                    else if (EsDiaFuturo)
+                    {
+                        <span title="Lo que sumes acá va a ese día. Los repartidores no lo ven hasta que llegue."
+                              style="flex:0 0 auto; font-size:0.72rem; font-weight:700; color:#6b7280; background:#f3f4f6; border-radius:999px; padding:0.2rem 0.5rem; white-space:nowrap;">todavía no llega</span>
+                    }
+                </div>
                 @* 2026-08-15: type=search + name propio + los data-* de los gestores de claves para que
                    Chrome NO ofrezca la clave guardada del sistema al tocar el buscador (lo tomaba como
                    si fuera el casillero de usuario y aparecía el cartelito "ADMIN / 20301359366"). *@
@@ -4492,16 +4475,6 @@
         await LoadAndRender();
         await PrenderLineasAlEntrar();
         StateHasChanged();
-    }
-
-    /// <summary>Estilo del acceso rápido (ayer / hoy / mañana): el día en el que estás parado
-    /// va en negrita y subrayado. Sin colores: el color se guarda para las alarmas.</summary>
-    private string EstiloAccesoDia(DateTime dia)
-    {
-        var elegido = fechaSeleccionada == dia.Date;
-        return "background:none; border:none; padding:0.1rem 0.15rem; cursor:pointer; font-size:0.85rem;"
-             + (elegido ? " font-weight:800; color:#111827; border-bottom:2px solid #111827;"
-                        : " font-weight:500; color:#6b7280; border-bottom:2px solid transparent;");
     }
 
     private Task DiaAnterior() => IrAlDia(fechaSeleccionada.AddDays(-1));
