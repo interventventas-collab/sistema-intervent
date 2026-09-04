@@ -35,6 +35,13 @@
     .cl-origen a { color: #1d4ed8; text-decoration: none; }
     .cl-aviso { color: #b45309; font-size: 0.8rem; margin-top: 0.25rem; }
     .cl-error { color: #b91c1c; font-size: 0.86rem; margin-top: 0.5rem; }
+    .cl-sugs { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; max-width: 700px; }
+    .cl-sug { display: flex; align-items: center; gap: 0.6rem; text-align: left; font-family: inherit;
+        font-size: 0.86rem; color: #1f2937; background: #fff; border: 1px solid #d1d5db;
+        border-radius: 8px; padding: 0.35rem 0.6rem; cursor: pointer; }
+    .cl-sug:hover:not(:disabled) { border-color: #1f2937; background: #f9fafb; }
+    .cl-sug:disabled { opacity: 0.5; cursor: default; }
+    .cl-sug img { width: 40px; height: 40px; object-fit: cover; border-radius: 5px; border: 1px solid #e5e7eb; flex: 0 0 auto; }
 
     .cl-form { margin-top: 0.9rem; display: grid; gap: 0.7rem; }
     .cl-fila { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
@@ -93,6 +100,24 @@
     @if (!string.IsNullOrEmpty(error))
     {
         <div class="cl-error">@error</div>
+    }
+
+    @* 2026-09-04: si no se pudo traer directo, MeLi nos dice qué productos de catálogo pueden ser.
+       Un toque y se trae, sin tener que ir a buscar el link bueno a mano. *@
+    @if (sugerencias.Count > 0)
+    {
+        <div class="cl-sugs">
+            @foreach (var c in sugerencias)
+            {
+                <button type="button" class="cl-sug" @onclick="() => TraerCandidato(c)" disabled="@trayendo">
+                    @if (!string.IsNullOrEmpty(c.Foto))
+                    {
+                        <img src="@c.Foto" alt="" />
+                    }
+                    <span>@c.Nombre</span>
+                </button>
+            }
+        </div>
     }
 
     @if (origen is not null)
@@ -326,6 +351,8 @@
     private string? error;
 
     private ClonPreviewDto? origen;
+    /// <summary>2026-09-04: productos de catálogo que propone MeLi cuando no se pudo traer directo.</summary>
+    private List<ClonCandidatoDto> sugerencias = new();
     private ClonPublicarResponse? resultado;
 
     // Campos editables del clon
@@ -361,6 +388,14 @@
         if (e.Key == "Enter") await Traer();
     }
 
+    /// <summary>Elegir uno de los productos de catálogo que propuso MeLi: se trae ese.</summary>
+    private async Task TraerCandidato(ClonCandidatoDto c)
+    {
+        referencia = $"https://www.mercadolibre.com.ar/p/{c.ProductId}";
+        sugerencias = new();
+        await Traer();
+    }
+
     private async Task Traer()
     {
         if (string.IsNullOrWhiteSpace(referencia)) return;
@@ -369,8 +404,9 @@
         {
             var r = await Api.ClonTraerAsync(referencia.Trim());
             if (r is null) { error = "No pude comunicarme con el servidor."; return; }
-            if (!r.Ok) { error = r.Error; origen = null; return; }
+            if (!r.Ok) { error = r.Error; origen = null; sugerencias = r.Sugerencias ?? new(); return; }
 
+            sugerencias = new();
             origen = r;
             titulo = r.Titulo.Length > 60 ? r.Titulo[..60] : r.Titulo;
             precioTexto = r.Precio.ToString("0.##");
@@ -394,6 +430,7 @@
     private void Limpiar()
     {
         origen = null; resultado = null; error = null; referencia = "";
+        sugerencias = new();
         fotos.Clear(); atributos.Clear();
     }
 

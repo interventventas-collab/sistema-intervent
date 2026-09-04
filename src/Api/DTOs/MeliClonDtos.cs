@@ -20,6 +20,14 @@ public class ClonCompetidorDto
     public bool EsMio { get; set; }
 }
 
+/// <summary>2026-09-04: un producto de catálogo que puede ser el que el usuario está buscando.</summary>
+public class ClonCandidatoDto
+{
+    public string ProductId { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public string? Foto { get; set; }
+}
+
 /// <summary>Todo lo que se pudo leer de la publicación original, listo para editar y publicar.</summary>
 public class ClonPreviewDto
 {
@@ -57,6 +65,12 @@ public class ClonPreviewDto
     public bool DesdeCatalogo { get; set; }
     /// <summary>Los que ya venden ese producto de catálogo, del más barato al más caro.</summary>
     public List<ClonCompetidorDto> Competidores { get; set; } = new();
+
+    /// <summary>
+    /// 2026-09-04: cuando no se pudo traer (link que no es de catálogo, publicación ajena, o texto
+    /// suelto), estos son los productos de catálogo que MeLi encontró. El usuario elige uno.
+    /// </summary>
+    public List<ClonCandidatoDto> Sugerencias { get; set; } = new();
 
     /// <summary>True si la publicación es de una de nuestras cuentas.</summary>
     public bool EsPropia { get; set; }

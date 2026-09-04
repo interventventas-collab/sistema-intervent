@@ -85,18 +85,34 @@ public class MeliClonService
             if (dtoItem is not null) return dtoItem;
 
             if (prodId is null)
+            {
+                // No se pudo leer la publicacion. En vez de dejarlo a pie, buscamos el producto en
+                // el CATALOGO con el texto del propio link: es lo que el usuario iba a hacer a mano.
+                var sug = await BuscarCatalogoAsync(referencia, http);
                 return new ClonPreviewDto
                 {
                     Error = prohibido
-                        ? "Esa publicación es de otro vendedor y MercadoLibre no deja leerla por sistema. Si el producto está en catálogo, pegá el link de catálogo (el que tiene /p/ en la dirección) y la traigo desde la ficha de MercadoLibre."
-                        : $"MercadoLibre no me dejó leer la publicación {itemId}. Puede estar dada de baja."
+                        ? (sug.Count > 0
+                            ? "Esa publicación es de otro vendedor y MercadoLibre no deja leerla. Pero encontré el producto en el catálogo — elegí cuál es:"
+                            : "Esa publicación es de otro vendedor y MercadoLibre no deja leerla por sistema, y el producto no aparece en el catálogo. Probá pegando el nombre del producto.")
+                        : $"MercadoLibre no me dejó leer la publicación {itemId}. Puede estar dada de baja.",
+                    Sugerencias = sug
                 };
+            }
         }
 
         if (prodId is not null)
             return await TraerDeCatalogoAsync(prodId, itemId, http);
 
-        return new ClonPreviewDto { Error = "No pude reconocer la publicación en ese link. Probá pegando el código (MLA...) o el link del aviso." };
+        // Ni link reconocible ni codigo: puede ser el NOMBRE del producto escrito a mano.
+        var sugerencias = await BuscarCatalogoAsync(referencia, http);
+        return new ClonPreviewDto
+        {
+            Error = sugerencias.Count > 0
+                ? "No reconocí una publicación ahí, pero encontré esto en el catálogo — elegí cuál es:"
+                : "No pude reconocer la publicación. Pegá el link del aviso, el código (MLA...) o directamente el nombre del producto.",
+            Sugerencias = sugerencias
+        };
     }
 
     /// <summary>Lee /items/{id}. Devuelve dto=null si no se pudo, y prohibido=true cuando MeLi dio 403.</summary>
@@ -387,6 +403,86 @@ public class MeliClonService
     }
 
     /// <summary>Saca el MLAxxxx de un link pegado (largo, corto /sec/, de catalogo /p/) o de un codigo suelto.</summary>
+    /// <summary>
+    /// 04/09/2026 — Osmar: "me los trae al toque pero es dificil", porque hay que ir a buscar a mano
+    /// el link de catalogo. Esto lo busca solo: saca el texto del propio link (el pedacito con
+    /// guiones que es el nombre del producto) y pregunta al buscador de catalogo de MeLi, que SI
+    /// nos deja usarlo (a diferencia de /sites/MLA/search, que da 403).
+    /// </summary>
+    private async Task<List<ClonCandidatoDto>> BuscarCatalogoAsync(string referencia, HttpClient http)
+    {
+        var texto = TextoDeBusqueda(referencia);
+        if (string.IsNullOrWhiteSpace(texto) || texto.Length < 4) return new();
+
+        try
+        {
+            var url = $"https://api.mercadolibre.com/products/search?site_id=MLA&q={Uri.EscapeDataString(texto)}&limit=8";
+            var resp = await http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Clon: el buscador de catalogo devolvio {Code} para '{Texto}'", (int)resp.StatusCode, texto);
+                return new();
+            }
+
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var salida = new List<ClonCandidatoDto>();
+            if (doc.RootElement.TryGetProperty("results", out var res) && res.ValueKind == JsonValueKind.Array)
+                foreach (var r in res.EnumerateArray())
+                {
+                    var id = Str(r, "id");
+                    var nombre = Str(r, "name");
+                    if (string.IsNullOrEmpty(id) || string.IsNullOrWhiteSpace(nombre)) continue;
+                    if (Str(r, "status") is string st && st != "active") continue;
+                    string? foto = null;
+                    if (r.TryGetProperty("pictures", out var pics) && pics.ValueKind == JsonValueKind.Array
+                        && pics.GetArrayLength() > 0)
+                        foto = Str(pics[0], "secure_url") ?? Str(pics[0], "url");
+                    salida.Add(new ClonCandidatoDto { ProductId = id, Nombre = nombre!, Foto = foto });
+                    if (salida.Count >= 6) break;
+                }
+            return salida;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Clon: fallo la busqueda de catalogo");
+            return new();
+        }
+    }
+
+    /// <summary>
+    /// Saca de un link el pedacito con guiones que es el NOMBRE del producto
+    /// ("/disco-flap-115-mm-grano-60-.../up/MLAU123" -> "disco flap 115 mm grano 60 ...").
+    /// Si no es un link, devuelve el texto tal cual (el usuario escribio el nombre a mano).
+    /// </summary>
+    private static string TextoDeBusqueda(string referencia)
+    {
+        var texto = referencia.Trim();
+        if (!texto.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return Regex.IsMatch(texto, @"^ML[A-Z]U?-?\d+$", RegexOptions.IgnoreCase) ? "" : texto;
+
+        // Fuera lo que viene despues de ? o #
+        var corte = texto.IndexOfAny(new[] { '?', '#' });
+        if (corte > 0) texto = texto.Substring(0, corte);
+
+        // El tramo con mas guiones es el nombre del producto.
+        var tramo = texto.Split('/')
+                         .Where(t => t.Contains('-'))
+                         .OrderByDescending(t => t.Count(c => c == '-'))
+                         .FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(tramo)) return "";
+
+        // Sacar el codigo de adelante (MLA-123456-) y la cola tipo -_JM
+        tramo = Regex.Replace(tramo, @"^ML[A-Z]U?-?\d+-?", "", RegexOptions.IgnoreCase);
+        tramo = Regex.Replace(tramo, @"-?_JM.*$", "", RegexOptions.IgnoreCase);
+        tramo = tramo.Replace('-', ' ').Trim();
+
+        // Sacar palabras que son codigos sueltos y no ayudan a buscar.
+        var palabras = tramo.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                            .Where(w => !Regex.IsMatch(w, @"^ML[A-Z]U?\d+$", RegexOptions.IgnoreCase))
+                            .Take(12);
+        return string.Join(" ", palabras);
+    }
+
     /// <summary>Codigo del producto de CATALOGO del link (/p/MLAxxx), o null si no es de catalogo.</summary>
     private static string? ProductoDeCatalogo(string texto)
     {

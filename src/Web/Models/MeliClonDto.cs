@@ -19,8 +19,19 @@ public class ClonCompetidorDto
     public bool EsMio { get; set; }
 }
 
+/// <summary>2026-09-04: un producto de catálogo candidato, para que el usuario elija.</summary>
+public class ClonCandidatoDto
+{
+    public string ProductId { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public string? Foto { get; set; }
+}
+
 public class ClonPreviewDto
 {
+    /// <summary>Productos de catálogo que pueden ser el que busca (cuando no se pudo traer directo).</summary>
+    public List<ClonCandidatoDto> Sugerencias { get; set; } = new();
+
     /// <summary>2026-09-04: los datos salieron de la FICHA DE CATÁLOGO de MeLi, no de la publicación de un vendedor.</summary>
     public bool DesdeCatalogo { get; set; }
     /// <summary>Los que ya venden ese producto, del más barato al más caro.</summary>
