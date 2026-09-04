@@ -35,6 +35,9 @@
     .cl-origen a { color: #1d4ed8; text-decoration: none; }
     .cl-aviso { color: #b45309; font-size: 0.8rem; margin-top: 0.25rem; }
     .cl-error { color: #b91c1c; font-size: 0.86rem; margin-top: 0.5rem; }
+    .cl-ayuda { margin-top: 0.5rem; font-size: 0.86rem; color: #374151; background: #f8fafc;
+        border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.5rem 0.7rem; max-width: 700px; }
+    .cl-ayuda a { color: #1d4ed8; font-weight: 600; }
     .cl-sugs { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; max-width: 700px; }
     .cl-sug { display: flex; align-items: center; gap: 0.6rem; text-align: left; font-family: inherit;
         font-size: 0.86rem; color: #1f2937; background: #fff; border: 1px solid #d1d5db;
@@ -104,6 +107,18 @@
 
     @* 2026-09-04: si no se pudo traer directo, MeLi nos dice qué productos de catálogo pueden ser.
        Un toque y se trae, sin tener que ir a buscar el link bueno a mano. *@
+    @* 2026-09-04: si pegó un código pelado de otro vendedor no tenemos con qué buscar en el
+       catálogo (MeLi no nos deja leer el título). Le damos el link para abrirla, copiar el
+       título y pegarlo acá: por ese camino sí la encuentra. *@
+    @if (!string.IsNullOrEmpty(error) && sugerencias.Count == 0 && LinkDelAviso() is string _lnk)
+    {
+        <div class="cl-ayuda">
+            👉 <a href="@_lnk" target="_blank">Abrí la publicación en MercadoLibre ↗</a>,
+            copiá el <b>título</b> y pegalo acá arriba. Con el título sí la encuentro en el catálogo
+            — y la ficha del catálogo suele traer más fotos y más datos que la publicación original.
+        </div>
+    }
+
     @if (sugerencias.Count > 0)
     {
         <div class="cl-sugs">
@@ -386,6 +401,20 @@
     private async Task AlTeclear(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await Traer();
+    }
+
+    /// <summary>
+    /// Link para abrir en MercadoLibre lo que el usuario pegó, y poder copiar el título de ahí.
+    /// Si pegó un link, es ese mismo; si pegó un código MLA, se arma el link del aviso.
+    /// </summary>
+    private string? LinkDelAviso()
+    {
+        var t = (referencia ?? "").Trim();
+        if (t.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return t;
+        var m = System.Text.RegularExpressions.Regex.Match(t, @"^(ML[A-Z])-?(\d{6,})$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!m.Success) return null;
+        return $"https://articulo.mercadolibre.com.ar/{m.Groups[1].Value.ToUpperInvariant()}-{m.Groups[2].Value}-_JM";
     }
 
     /// <summary>Elegir uno de los productos de catálogo que propuso MeLi: se trae ese.</summary>
