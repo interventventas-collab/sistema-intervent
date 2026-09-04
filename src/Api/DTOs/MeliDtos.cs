@@ -428,7 +428,11 @@ public class SuggestedAttributeDto
 
 public class PublishItemRequest
 {
-    public int ProductId { get; set; }
+    // 2026-09-04: nullable para poder publicar un CLON que todavia no esta atado a un producto
+    // del sistema (pantalla /meli/clonar). Si viene null, el MeliItem nuevo queda sin ProductId.
+    public int? ProductId { get; set; }
+    /// <summary>2026-09-04: SKU a mandar como seller_custom_field. Si es null se usa el del producto.</summary>
+    public string? SellerCustomField { get; set; }
     public int MeliAccountId { get; set; }
     public string CategoryId { get; set; } = "";
     public string Title { get; set; } = "";

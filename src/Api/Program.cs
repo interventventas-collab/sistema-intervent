@@ -194,6 +194,7 @@ builder.Services.AddScoped<MeliStockPushService>();
 builder.Services.AddScoped<MeliPricePushService>();
 builder.Services.AddScoped<MeliListingTypeService>();
 builder.Services.AddScoped<MeliPublicacionesV2Service>();
+builder.Services.AddScoped<MeliClonService>();
 builder.Services.AddScoped<MeliMedidasService>();
 builder.Services.AddScoped<MeliAccionesLoteService>();
 builder.Services.AddScoped<MeliFotosService>();

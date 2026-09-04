@@ -3723,8 +3723,9 @@ public class MeliItemService
                 itemBody["title"] = request.Title;
             if (pictures.Any()) itemBody["pictures"] = pictures;
             if (attributes.Any()) itemBody["attributes"] = attributes;
-            var product = await _db.Products.FindAsync(request.ProductId);
-            if (product?.Sku is not null) itemBody["seller_custom_field"] = product.Sku;
+            var product = request.ProductId is int pid ? await _db.Products.FindAsync(pid) : null;
+            var sellerSku = !string.IsNullOrWhiteSpace(request.SellerCustomField) ? request.SellerCustomField : product?.Sku;
+            if (sellerSku is not null) itemBody["seller_custom_field"] = sellerSku;
             var jsonBody = JsonSerializer.Serialize(itemBody);
             var bodyContent = new StringContent(jsonBody, Encoding.UTF8, "application/json");
             var meliResponse = await http.PostAsync("https://api.mercadolibre.com/items", bodyContent);
@@ -3832,7 +3833,7 @@ public class MeliItemService
                 CategoryId = request.CategoryId, Price = request.Price, CurrencyId = "ARS",
                 AvailableQuantity = request.AvailableQuantity, Status = "active", Condition = request.Condition,
                 ListingTypeId = request.ListingTypeId, FreeShipping = request.FreeShipping,
-                Permalink = permalink, Sku = product?.Sku, ProductId = request.ProductId,
+                Permalink = permalink, Sku = sellerSku, ProductId = request.ProductId,
                 UserProductId = respUserProductId, FamilyName = respFamilyName,
                 DateCreated = DateTime.UtcNow, LastUpdated = DateTime.UtcNow
             };
@@ -4617,7 +4618,7 @@ public class MeliItemService
         catch { }
 
         // Obtener datos del producto
-        var product = await _db.Products.FindAsync(request.ProductId);
+        var product = request.ProductId is int aiPid ? await _db.Products.FindAsync(aiPid) : null;
 
         // Pedir sugerencias a la IA
         var suggestRequest = new SuggestAttributesRequest(
