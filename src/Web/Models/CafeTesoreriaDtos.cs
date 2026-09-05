@@ -42,6 +42,19 @@ public class CafeArqueoResultDto
     public decimal Diferencia { get; set; }
 }
 
+// A quién se le puede redirigir una cobranza (05/09/2026).
+public class CafeDestinatarioDto
+{
+    public int EmpleadoId { get; set; }
+    public string Nombre { get; set; } = "";
+    /// <summary>Si además cobra por entrega, hay que preguntar contra qué se imputa.</summary>
+    public bool TieneViajes { get; set; }
+    public int? ViajesEmpleadoId { get; set; }
+    public decimal DeudaViajes { get; set; }
+    public decimal DeudaSueldo { get; set; }
+    public int? LiquidacionId { get; set; }
+}
+
 // ========== Cheques ==========
 public class CafeChequeDto
 {

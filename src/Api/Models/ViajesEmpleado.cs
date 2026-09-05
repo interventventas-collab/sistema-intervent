@@ -44,6 +44,13 @@ public class ViajesEmpleado
     [Column(TypeName = "decimal(18,2)")]
     public decimal TarifaViaje { get; set; } = 8500m;
 
+    /// <summary>
+    /// Con qué empleado de nómina es la misma persona (05/09/2026). Nacho es Walter Ignacio
+    /// Carrizo: cobra sueldo fijo Y por entrega. Sin esto, redirigir una cobranza "a Nacho" no
+    /// sabría que es el mismo tipo que cobra el sueldo.
+    /// </summary>
+    public int? NomEmpleadoId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

@@ -4204,6 +4204,17 @@ GO
 IF COL_LENGTH('Nom_Pagos','CajaMovimientoId') IS NULL
     ALTER TABLE Nom_Pagos ADD CajaMovimientoId INT NULL;
 GO
+-- 05/09/2026: cobro REDIRIGIDO — el cliente paga y la plata se la queda un empleado.
+-- Nacho es Walter Ignacio Carrizo: cobra sueldo fijo Y por entrega, por eso hay que saber
+-- que la ficha de viajes y la de nomina son la misma persona.
+IF COL_LENGTH('Viajes_Empleados','NomEmpleadoId') IS NULL
+    ALTER TABLE Viajes_Empleados ADD NomEmpleadoId INT NULL;
+GO
+IF COL_LENGTH('Cafe_CobranzasMedios','RedirigidoEmpleadoId') IS NULL
+    ALTER TABLE Cafe_CobranzasMedios ADD RedirigidoEmpleadoId INT NULL,
+        RedirigidoDestino NVARCHAR(10) NULL, RedirigidoPagoId INT NULL,
+        RedirigidoMovimientoId INT NULL;
+GO
 -- 05/09/2026: los movimientos de caja se anulan, no se borran (quedan tachados en la lista).
 IF COL_LENGTH('Cafe_CajaMovimientos','AnuladoAt') IS NULL
     ALTER TABLE Cafe_CajaMovimientos ADD AnuladoAt DATETIME2 NULL, AnuladoPor NVARCHAR(100) NULL;

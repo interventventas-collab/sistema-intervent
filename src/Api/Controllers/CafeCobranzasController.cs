@@ -137,7 +137,11 @@ public class CafeCobranzasController : ControllerBase
     public record CrearMedioItem(
         int CajaId, decimal Importe, string? Referencia,
         // Datos del cheque si es medio cheque (CajaId apunta a una caja tipo CHEQUES_CARTERA)
-        CrearChequeItem? Cheque);
+        CrearChequeItem? Cheque,
+        // Cobro REDIRIGIDO (05/09/2026): la plata se la queda un empleado y le cuenta como pago.
+        // Solo aplica cuando la caja es la de paso (tipo V_PRIVADO).
+        int? RedirigidoEmpleadoId = null,
+        string? RedirigidoDestino = null);
 
     public record CrearChequeItem(
         string Numero, string Banco, string? Emisor, decimal Importe,
@@ -611,14 +615,30 @@ public class CafeCobranzasController : ControllerBase
                 chequeId = ch.Id;
             }
 
-            _db.CafeCobranzasMedios.Add(new CafeCobranzaMedio
+            var medio = new CafeCobranzaMedio
             {
                 CobranzaId = cobranza.Id,
                 CajaId = med.CajaId,
                 Importe = med.Importe,
                 Referencia = med.Referencia,
                 ChequeId = chequeId
-            });
+            };
+            _db.CafeCobranzasMedios.Add(medio);
+
+            // Cobro REDIRIGIDO: la plata nunca pasa por ninguna caja nuestra, se la queda el
+            // empleado y le cuenta como pago. Se cargan las dos patas de una sola vez.
+            if (caja.Tipo == "V_PRIVADO" && med.RedirigidoEmpleadoId is > 0)
+            {
+                await _db.SaveChangesAsync();   // necesito el Id del medio
+                var (error, pagoId, movId) = await RedirigirAsync(
+                    medio, caja, med.RedirigidoEmpleadoId.Value, med.RedirigidoDestino,
+                    cobranza.Fecha, cliente?.Nombre);
+                if (error is not null) return BadRequest(new { error });
+                medio.RedirigidoEmpleadoId = med.RedirigidoEmpleadoId;
+                medio.RedirigidoDestino = med.RedirigidoDestino;
+                medio.RedirigidoPagoId = pagoId;
+                medio.RedirigidoMovimientoId = movId;
+            }
         }
         await _db.SaveChangesAsync();
 
@@ -772,6 +792,11 @@ public class CafeCobranzasController : ControllerBase
         // de Dulce Lugar del 21/08, mas otros 5 movimientos trabados desde mayo.
         var movsBanco = await _db.CafeExtractoMovimientos.Where(m => m.CobranzaUsadaId == id).ToListAsync();
         foreach (var mb in movsBanco) mb.CobranzaUsadaId = null;
+        // Cobro redirigido: se borra el pago que se le habia hecho al empleado (le vuelve a quedar
+        // la deuda) y se anula el renglon que cerraba la caja de paso.
+        foreach (var m in c.Medios.Where(m => m.RedirigidoPagoId.HasValue || m.RedirigidoMovimientoId.HasValue))
+            await DeshacerRedireccionAsync(m);
+
         // Si algun medio creo un cheque EN_CARTERA, lo marcamos como rechazado (cobranza revertida)
         foreach (var m in c.Medios.Where(m => m.ChequeId.HasValue))
         {
@@ -995,5 +1020,187 @@ public class CafeCobranzasController : ControllerBase
         await _audit.LogAsync("CafeCobranza", a.CobranzaId.ToString(), "ADJUNTO_DELETE",
             $"{a.Tipo}: {a.NombreOriginal}");
         return Ok(new { ok = true });
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // COBRO REDIRIGIDO (05/09/2026)
+    //
+    // El cliente paga una venta nuestra pero la plata se la queda un empleado, y eso le cuenta
+    // como pago de lo que le debemos. Es UNA sola operación: entra la cobranza y sale el pago al
+    // mismo tiempo, sin que la plata pase por ninguna caja nuestra.
+    //
+    // Antes esto se cargaba por la mitad — sólo la entrada — y por eso la caja de paso habia
+    // juntado $27.316.100 en 252 cobranzas que no eran plata de nadie.
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    public record DestinatarioDto(
+        int EmpleadoId, string Nombre, bool TieneViajes, int? ViajesEmpleadoId,
+        decimal DeudaViajes, decimal DeudaSueldo, int? LiquidacionId);
+
+    /// <summary>
+    /// A quién se le puede redirigir una cobranza: los empleados activos. Los que además cobran
+    /// por entrega (hoy sólo Nacho) vienen con las dos deudas, para que la pantalla pregunte
+    /// contra cuál se imputa.
+    /// </summary>
+    [HttpGet("destinatarios")]
+    public async Task<IActionResult> Destinatarios()
+    {
+        var empleados = await _db.NomEmpleados.Where(e => e.IsActive)
+            .OrderBy(e => e.Nombre).ToListAsync();
+        var fichasViajes = await _db.ViajesEmpleados
+            .Where(v => v.IsActive && v.NomEmpleadoId != null).ToListAsync();
+
+        var salida = new List<DestinatarioDto>();
+        foreach (var e in empleados)
+        {
+            var ficha = fichasViajes.FirstOrDefault(v => v.NomEmpleadoId == e.Id);
+
+            decimal deudaViajes = 0m;
+            if (ficha is not null)
+            {
+                var ganado = await _db.ViajesEntregas.Where(x => x.EmpleadoId == ficha.Id).SumAsync(x => (decimal?)x.Tarifa) ?? 0m;
+                var regs = await _db.ViajesRegistros.Where(r => r.EmpleadoId == ficha.Id)
+                    .SumAsync(r => (decimal?)((decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA)) ?? 0m;
+                var pagado = await _db.ViajesPagos.Where(x => x.EmpleadoId == ficha.Id).SumAsync(x => (decimal?)x.Importe) ?? 0m;
+                deudaViajes = ganado + regs - pagado;
+            }
+
+            // La liquidación más vieja que todavía debe plata: es contra la que se imputa.
+            var liq = await _db.NomLiquidaciones
+                .Where(l => l.EmpleadoId == e.Id && l.Estado != "anulada" && l.Estado != "pagado")
+                .OrderBy(l => l.Anio).ThenBy(l => l.Mes).FirstOrDefaultAsync();
+            decimal deudaSueldo = 0m;
+            if (liq is not null)
+            {
+                var pagadoLiq = await _db.NomPagos.Where(p => p.LiquidacionId == liq.Id).SumAsync(p => (decimal?)p.Monto) ?? 0m;
+                deudaSueldo = liq.NetoAPagar - pagadoLiq;
+            }
+
+            salida.Add(new DestinatarioDto(e.Id, e.Nombre, ficha is not null, ficha?.Id,
+                deudaViajes, deudaSueldo, liq?.Id));
+        }
+        return Ok(salida);
+    }
+
+    /// <summary>
+    /// Le imputa la plata al empleado. Devuelve el error (si algo no cierra), el id del pago que
+    /// generó y el del renglón que deja la caja de paso en cero.
+    /// </summary>
+    private async Task<(string? error, int? pagoId, int? movId)> RedirigirAsync(
+        CafeCobranzaMedio medio, Models.CafeCaja caja, int nomEmpleadoId, string? destino,
+        DateTime fecha, string? clienteNombre)
+    {
+        var emp = await _db.NomEmpleados.FindAsync(nomEmpleadoId);
+        if (emp is null) return ("El empleado al que se redirige no existe", null, null);
+
+        var deQuien = string.IsNullOrWhiteSpace(clienteNombre) ? "" : $" de {clienteNombre}";
+        var esViajes = string.Equals(destino, "viajes", StringComparison.OrdinalIgnoreCase);
+        int? pagoId;
+
+        if (esViajes)
+        {
+            var ficha = await _db.ViajesEmpleados
+                .FirstOrDefaultAsync(v => v.NomEmpleadoId == nomEmpleadoId && v.IsActive);
+            if (ficha is null) return ($"{emp.Nombre} no cobra por entrega, elegí el sueldo", null, null);
+
+            // Si es más de lo que se le debe queda a favor: el saldo de viajes se va en negativo y
+            // se descuenta solo de los viajes que vaya haciendo (decisión del dueño, 05/09).
+            var pago = new Models.ViajesPago
+            {
+                EmpleadoId = ficha.Id,
+                Fecha = fecha.Date,
+                Descripcion = $"Cobranza redirigida{deQuien}",
+                Importe = medio.Importe
+            };
+            _db.ViajesPagos.Add(pago);
+            await _db.SaveChangesAsync();
+            pagoId = pago.Id;
+        }
+        else
+        {
+            var liq = await _db.NomLiquidaciones
+                .Where(l => l.EmpleadoId == nomEmpleadoId && l.Estado != "anulada" && l.Estado != "pagado")
+                .OrderBy(l => l.Anio).ThenBy(l => l.Mes).FirstOrDefaultAsync();
+            if (liq is null) return ($"{emp.Nombre} no tiene ninguna liquidación cargada para imputarle esto", null, null);
+
+            var pagado = await _db.NomPagos.Where(p => p.LiquidacionId == liq.Id).SumAsync(p => (decimal?)p.Monto) ?? 0m;
+            var saldo = liq.NetoAPagar - pagado;
+            if (medio.Importe > saldo + 0.01m)
+                return ($"Le estás pasando más de lo que le debés de sueldo (queda ${saldo:N2}). " +
+                        $"Cargá el resto aparte o imputalo a los viajes.", null, null);
+
+            var pago = new Models.NomPago
+            {
+                LiquidacionId = liq.Id,
+                FechaPago = fecha.Date,
+                Metodo = "redirigido",
+                Monto = medio.Importe,
+                Concepto = "sueldo",
+                Detalle = $"Cobranza redirigida{deQuien}",
+                CajaId = null   // no sale de ninguna caja: la plata nunca fue nuestra
+            };
+            _db.NomPagos.Add(pago);
+            if (pagado + medio.Importe >= liq.NetoAPagar - 0.01m) liq.Estado = "pagado";
+            await _db.SaveChangesAsync();
+            pagoId = pago.Id;
+        }
+
+        // La caja de paso tiene que quedar en cero: la cobranza la sube, este renglón la baja.
+        // Si algún día no cierra, ese saldo es el aviso de que quedó una mitad sin imputar.
+        var mov = new Models.CafeCajaMovimiento
+        {
+            CajaId = caja.Id,
+            Fecha = fecha.Date,
+            Tipo = "REDIRIGIDO",
+            Importe = -Math.Abs(medio.Importe),
+            Motivo = $"Redirigido a {emp.Nombre} ({(esViajes ? "viajes" : "sueldo")}){deQuien}",
+            CargadoPor = User?.Identity?.Name
+        };
+        _db.CafeCajaMovimientos.Add(mov);
+        await _db.SaveChangesAsync();
+
+        return (null, pagoId, mov.Id);
+    }
+
+    /// <summary>Deshace la redirección: al empleado le vuelve a quedar la deuda.</summary>
+    private async Task DeshacerRedireccionAsync(CafeCobranzaMedio medio)
+    {
+        if (medio.RedirigidoPagoId.HasValue)
+        {
+            if (string.Equals(medio.RedirigidoDestino, "viajes", StringComparison.OrdinalIgnoreCase))
+            {
+                var pv = await _db.ViajesPagos.FindAsync(medio.RedirigidoPagoId.Value);
+                if (pv is not null)
+                {
+                    // Los viajes que ese pago habia cerrado vuelven a quedar pendientes.
+                    var entregas = await _db.ViajesEntregas.Where(x => x.LiquidadoPagoId == pv.Id).ToListAsync();
+                    foreach (var en in entregas) en.LiquidadoPagoId = null;
+                    _db.ViajesPagos.Remove(pv);
+                }
+            }
+            else
+            {
+                var pn = await _db.NomPagos.FindAsync(medio.RedirigidoPagoId.Value);
+                if (pn is not null)
+                {
+                    var liq = await _db.NomLiquidaciones.FindAsync(pn.LiquidacionId);
+                    if (liq is not null && liq.Estado == "pagado") liq.Estado = "pendiente";
+                    _db.NomPagos.Remove(pn);
+                }
+            }
+            medio.RedirigidoPagoId = null;
+        }
+
+        if (medio.RedirigidoMovimientoId.HasValue)
+        {
+            var mov = await _db.CafeCajaMovimientos.FindAsync(medio.RedirigidoMovimientoId.Value);
+            if (mov is not null && mov.AnuladoAt == null)
+            {
+                mov.AnuladoAt = DateTime.UtcNow;
+                mov.AnuladoPor = User?.Identity?.Name;
+            }
+            medio.RedirigidoMovimientoId = null;
+        }
+        await _db.SaveChangesAsync();
     }
 }

@@ -96,6 +96,24 @@ public class CafeCobranzaMedio
 
     /// <summary>Si el medio fue un cheque, apunta al registro creado en Cafe_Cheques.</summary>
     public int? ChequeId { get; set; }
+
+    // ── Cobro REDIRIGIDO (05/09/2026) ────────────────────────────────────────────────────────
+    // El cliente paga, pero la plata se la queda un empleado y le cuenta como pago. Es UNA sola
+    // operación: entra la cobranza y sale el pago al mismo tiempo. Antes se cargaba sólo la mitad
+    // (la entrada), y por eso la caja "V" habia juntado $27.316.100 que no existian.
+
+    /// <summary>El empleado de NÓMINA que se queda con la plata.</summary>
+    public int? RedirigidoEmpleadoId { get; set; }
+
+    /// <summary>Contra qué se imputa: "viajes" o "sueldo".</summary>
+    [MaxLength(10)]
+    public string? RedirigidoDestino { get; set; }
+
+    /// <summary>El pago que se generó (Viajes_Pagos o Nom_Pagos), para poder deshacerlo.</summary>
+    public int? RedirigidoPagoId { get; set; }
+
+    /// <summary>El renglón que cierra la caja de paso, para que quede en cero.</summary>
+    public int? RedirigidoMovimientoId { get; set; }
     [ForeignKey(nameof(ChequeId))]
     public CafeCheque? Cheque { get; set; }
 }

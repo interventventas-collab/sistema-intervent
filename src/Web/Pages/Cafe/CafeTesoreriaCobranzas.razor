@@ -656,6 +656,51 @@
                                 <input class="form-input" placeholder="Referencia (opcional)" @bind="m.Referencia" />
                                 <button class="btn-icon" @onclick="() => formMedios.RemoveAt(idx)" title="Quitar">🗑</button>
                             </div>
+                            @* 05/09/2026: cobro REDIRIGIDO — el cliente paga y la plata se la queda un
+                               empleado, que le cuenta como pago. Se carga todo de una. *@
+                            @if (m.EsRedirigido)
+                            {
+                                <div style="margin-left:1rem; padding:0.6rem; background:white; border-radius:6px; margin-bottom:0.5rem;">
+                                    <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.35rem;">
+                                        ¿A quién se le pasa esta plata?
+                                    </div>
+                                    <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
+                                        @foreach (var d in destinatarios)
+                                        {
+                                            <button class="btn @(m.RedirigidoEmpleadoId == d.EmpleadoId ? "btn-primary" : "btn-secondary")"
+                                                    style="font-size:0.8rem;"
+                                                    @onclick="() => ElegirDestinatario(idx, d)">@d.Nombre</button>
+                                        }
+                                    </div>
+                                    @if (m.RedirigidoEmpleadoId > 0)
+                                    {
+                                        var dest = destinatarios.FirstOrDefault(x => x.EmpleadoId == m.RedirigidoEmpleadoId);
+                                        @if (dest is not null && dest.TieneViajes)
+                                        {
+                                            <div style="margin-top:0.5rem;">
+                                                <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.25rem;">¿De qué se lo descuento?</div>
+                                                <button class="btn @(m.RedirigidoDestino == "viajes" ? "btn-primary" : "btn-secondary")"
+                                                        style="font-size:0.8rem;" @onclick="() => ElegirDeDonde(idx, DestinoViajes)">
+                                                    Viajes · le debemos @Plata(dest.DeudaViajes)
+                                                </button>
+                                                <button class="btn @(m.RedirigidoDestino == "sueldo" ? "btn-primary" : "btn-secondary")"
+                                                        style="font-size:0.8rem;" @onclick="() => ElegirDeDonde(idx, DestinoSueldo)">
+                                                    Sueldo · le debemos @Plata(dest.DeudaSueldo)
+                                                </button>
+                                            </div>
+                                        }
+                                        else if (dest is not null)
+                                        {
+                                            <p style="font-size:0.75rem; color:#6b7280; margin:0.4rem 0 0;">
+                                                Se le descuenta del sueldo · le debemos @Plata(dest.DeudaSueldo)
+                                            </p>
+                                        }
+                                    }
+                                    <p style="font-size:0.72rem; color:#9ca3af; margin:0.45rem 0 0;">
+                                        Esta plata no entra a ninguna caja: se la queda quien elijas y le cuenta como pago.
+                                    </p>
+                                </div>
+                            }
                             @if (m.EsCheque)
                             {
                                 <div style="margin-left:1rem; padding:0.6rem; background:white; border-radius:6px; margin-bottom:0.5rem;">
@@ -1436,6 +1481,7 @@
 
     private List<CafeClienteDto>? clientes;
     private List<CafeCajaDto>? cajas;
+    private List<CafeDestinatarioDto> destinatarios = new();
 
     private bool showNueva, guardando;
     // 2026-06-25: adjuntos a subir cuando se guarde la nueva cobranza
@@ -1518,6 +1564,10 @@
         }
         public string? Referencia { get; set; }
         public bool EsCheque => TipoCaja == "CHEQUES_CARTERA";
+        /// <summary>La caja de paso del cobro redirigido (05/09/2026).</summary>
+        public bool EsRedirigido => TipoCaja == "V_PRIVADO";
+        public int RedirigidoEmpleadoId { get; set; }
+        public string? RedirigidoDestino { get; set; }
         public string ChequeBanco { get; set; } = "";
         public string ChequeNumero { get; set; } = "";
         public string? ChequeEmisor { get; set; }
@@ -1574,6 +1624,7 @@
     {
         clientes = await Api.GetCafeClientesAsync() ?? new();
         cajas = await Api.GetCafeCajasAsync() ?? new();
+        try { destinatarios = await Api.GetCafeDestinatariosAsync() ?? new(); } catch { destinatarios = new(); }
         await Load();
         // 2026-06-06: atajo desde topbar — ?nueva=1 abre el modal vacío para elegir cliente
         if (PreNueva.HasValue && PreNueva.Value == 1 && (!PreClienteId.HasValue || PreClienteId.Value <= 0))
@@ -1902,7 +1953,30 @@
         }
     }
 
+    private static string Plata(decimal v)
+    {
+        var ar = new System.Globalization.CultureInfo("es-AR");
+        return (v < 0 ? "-$" : "$") + Math.Abs(v).ToString("N0", ar);
+    }
+
     private void AgregarMedio() => formMedios.Add(new MedioForm());
+
+    /// <summary>
+    /// Al elegir a quién se le pasa la plata: si esa persona sólo cobra sueldo no hay nada más que
+    /// preguntar. Sólo los que además cobran por entrega tienen que elegir de dónde se descuenta.
+    /// </summary>
+    private const string DestinoViajes = "viajes";
+    private const string DestinoSueldo = "sueldo";
+
+    /// <summary>Contra qué cuenta se imputa: sólo se pregunta a quien cobra sueldo Y por entrega.</summary>
+    private void ElegirDeDonde(int idx, string destino) => formMedios[idx].RedirigidoDestino = destino;
+
+    private void ElegirDestinatario(int idx, CafeDestinatarioDto d)
+    {
+        var m = formMedios[idx];
+        m.RedirigidoEmpleadoId = d.EmpleadoId;
+        m.RedirigidoDestino = d.TieneViajes ? null : "sueldo";
+    }
 
     /// <summary>Tilda/destilda un movimiento del banco para usarlo como forma de cobro.
     /// Al tildar: agrega un medio nuevo con datos pre-rellenados. Al destildar: lo saca.</summary>
@@ -2001,7 +2075,9 @@
             m.CajaId, m.Importe, m.Referencia,
             m.EsCheque ? new ApiClient.CrearChequeItemRequest(
                 m.ChequeNumero, m.ChequeBanco, m.ChequeEmisor, m.Importe,
-                m.ChequeFechaVencimiento, m.ChequeFechaVencimiento, null) : null
+                m.ChequeFechaVencimiento, m.ChequeFechaVencimiento, null) : null,
+            m.EsRedirigido && m.RedirigidoEmpleadoId > 0 ? m.RedirigidoEmpleadoId : null,
+            m.EsRedirigido ? m.RedirigidoDestino : null
         )).ToList();
 
         guardando = true;

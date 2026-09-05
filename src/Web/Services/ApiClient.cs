@@ -6275,7 +6275,13 @@ public class ApiClient
 
     public record CrearComprobanteItemRequest(int? VentaId, decimal Importe, int? ReservaId = null);
     public record CrearChequeItemRequest(string Numero, string Banco, string? Emisor, decimal Importe, DateTime? FechaCobro, DateTime? FechaVencimiento, string? Observaciones);
-    public record CrearMedioItemRequest(int CajaId, decimal Importe, string? Referencia, CrearChequeItemRequest? Cheque);
+    public record CrearMedioItemRequest(int CajaId, decimal Importe, string? Referencia, CrearChequeItemRequest? Cheque,
+        // Cobro redirigido (05/09/2026): a qué empleado se le pasa y contra qué se imputa.
+        int? RedirigidoEmpleadoId = null, string? RedirigidoDestino = null);
+
+    /// <summary>A quién se le puede redirigir una cobranza (empleados activos).</summary>
+    public async Task<List<CafeDestinatarioDto>?> GetCafeDestinatariosAsync()
+        => await GetAsync<List<CafeDestinatarioDto>>("/api/cafe/cobranzas/destinatarios");
     public record CrearCobranzaResultDto(int Id, string Numero);
 
     // 2026-06-06: clienteId nullable para permitir cobrar "ventas ocasionales" (sin cliente
