@@ -36,12 +36,6 @@ public static class MenuDefinition
         {
             new MenuItem("ventas", "Comprobantes", "/ventas")
         }),
-        new MenuGroup("finanzas", "Finanzas", new[]
-        {
-            new MenuItem("tesoreria", "Tesoreria", "/tesoreria"),
-            new MenuItem("empleados", "Empleados", "/empleados"),
-            new MenuItem("sueldos", "Sueldos", "/sueldos")
-        }),
         new MenuGroup("cafe", "Café (independiente)", new[]
         {
             new MenuItem("cafe", "Café", "/cafe"),

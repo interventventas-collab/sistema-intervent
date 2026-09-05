@@ -1018,32 +1018,6 @@
             </NavGroup>
         }
 
-        @* ═════════════ 6. FINANZAS Y RRHH (DESACTIVADO) ═════════════
-           Reemplazado por el modulo "Nominas" que ya cubre Empleados+Sueldos del flujo nuevo.
-           Los datos viejos en las tablas siguen intactos. Para reactivar el menu,
-           cambiá ENABLE_FINANZAS a true. *@
-        @{ const bool ENABLE_FINANZAS = false; }
-        @if (ENABLE_FINANZAS && (HasPerm("tesoreria") || HasPerm("empleados") || HasPerm("sueldos")))
-        {
-            <NavGroup Label="Finanzas" Icon="@SvgIcons.Admin"
-                      HasActiveChild="@(IsActive("/tesoreria") || IsActive("/empleados") || IsActive("/sueldos"))">
-                @if (HasPerm("tesoreria"))
-                {
-                    <NavItem Href="/tesoreria" Label="Tesoreria" Icon="@SvgIcons.ShoppingBag"
-                             IsActive="@IsActive("/tesoreria")" OnClick="@(() => NavigateTo("/tesoreria"))" />
-                }
-                @if (HasPerm("empleados"))
-                {
-                    <NavItem Href="/empleados" Label="Empleados" Icon="@SvgIcons.Users"
-                             IsActive="@IsActive("/empleados")" OnClick="@(() => NavigateTo("/empleados"))" />
-                }
-                @if (HasPerm("sueldos"))
-                {
-                    <NavItem Href="/sueldos" Label="Sueldos" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/sueldos")" OnClick="@(() => NavigateTo("/sueldos"))" />
-                }
-            </NavGroup>
-        }
 
         @* ═════════════ 7. ALQUILERES (modulo independiente) ═════════════
            Modulo aparte para alquiler de equipos para eventos.
