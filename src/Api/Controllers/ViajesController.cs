@@ -693,4 +693,38 @@ public class ViajesController : ControllerBase
             .SumAsync(e => e.Tarifa);
         return regs + ents;
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Avisos del repartidor (05/09/2026)
+    // Los manda desde su celu cuando algo de su cuenta no le cierra.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    public record ReporteDto(int Id, int EmpleadoId, string EmpleadoNombre, string Texto,
+        DateTime CreatedAt, string Estado);
+
+    /// <summary>Los avisos sin atender (o todos, si se pide).</summary>
+    [HttpGet("admin/reportes")]
+    [Authorize]
+    public async Task<IActionResult> ListReportes([FromQuery] bool incluirVistos = false)
+    {
+        var q = _db.ViajesReportes.Include(r => r.Empleado).AsQueryable();
+        if (!incluirVistos) q = q.Where(r => r.Estado == "NUEVO");
+        var l = await q.OrderByDescending(r => r.Id).Take(50).ToListAsync();
+        return Ok(l.Select(r => new ReporteDto(r.Id, r.EmpleadoId,
+            r.Empleado?.Nombre ?? "", r.Texto, r.CreatedAt, r.Estado)));
+    }
+
+    /// <summary>Marcar un aviso como atendido.</summary>
+    [HttpPost("admin/reportes/{id:int}/visto")]
+    [Authorize]
+    public async Task<IActionResult> MarcarReporteVisto(int id)
+    {
+        var r = await _db.ViajesReportes.FindAsync(id);
+        if (r is null) return NotFound();
+        r.Estado = "VISTO";
+        r.VistoAt = DateTime.UtcNow;
+        r.VistoPor = User?.Identity?.Name;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
 }

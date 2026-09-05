@@ -75,6 +75,81 @@ public class CafeRepartidorPublicController : ControllerBase
             saldo));
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    // "Mi cuenta": el detalle completo, para que el repartidor no tenga que preguntar cuánto se
+    // le debe ni por qué le bajó. Pedido del dueño el 05/09/2026.
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+
+    public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado, List<string> Donde);
+    public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle);
+    public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
+        decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos);
+
+    /// <summary>Todo su historial: día por día lo que hizo, y todo lo que cobró.</summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}/viajes/detalle")]
+    public async Task<IActionResult> MiCuenta(string tokenRepartidor)
+    {
+        var emp = await EmpleadoDeViajesAsync(tokenRepartidor);
+        if (emp is null) return Ok(new MiCuentaDto(false, 0, 0, 0, 0, new(), new()));
+
+        await _viajes.SincronizarAsync(emp);
+
+        var ents = await _db.ViajesEntregas.Where(x => x.EmpleadoId == emp.Id).ToListAsync();
+
+        var dias = ents.GroupBy(x => x.Fecha)
+            .OrderByDescending(g => g.Key)
+            .Select(g => new MiDiaDto(
+                g.Key, g.Count(), g.Sum(x => x.Tarifa),
+                g.All(x => x.LiquidadoPagoId != null),
+                g.OrderBy(x => x.Id)
+                 .Select(x => !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
+                        : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion!
+                        : (x.Detalle ?? "entrega")))
+                 .Take(6).ToList()))
+            .ToList();
+
+        var pagos = await _db.ViajesPagos.Where(x => x.EmpleadoId == emp.Id)
+            .OrderByDescending(x => x.Fecha).ThenByDescending(x => x.Id).ToListAsync();
+
+        var registros = await _db.ViajesRegistros.Where(r => r.EmpleadoId == emp.Id)
+            .SumAsync(r => (decimal?)((decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA)) ?? 0m;
+        var ganado = registros + ents.Sum(x => x.Tarifa);
+        var cobrado = pagos.Sum(x => x.Importe);
+
+        return Ok(new MiCuentaDto(true, emp.TarifaViaje, ganado, cobrado, ganado - cobrado, dias,
+            pagos.Select(p => new MiPagoDto(p.Fecha, p.Importe, p.Descripcion ?? "pago")).ToList()));
+    }
+
+    public record ReportarRequest(string Texto);
+
+    /// <summary>El repartidor avisa que algo de su cuenta no le cierra.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/viajes/reporte")]
+    public async Task<IActionResult> Reportar(string tokenRepartidor, [FromBody] ReportarRequest req)
+    {
+        var emp = await EmpleadoDeViajesAsync(tokenRepartidor);
+        if (emp is null) return NotFound(new { error = "No encontramos tu ficha" });
+        if (string.IsNullOrWhiteSpace(req?.Texto))
+            return BadRequest(new { error = "Escribí qué es lo que no te cierra" });
+
+        var texto = req.Texto.Trim();
+        if (texto.Length > 500) texto = texto[..500];
+
+        _db.ViajesReportes.Add(new Models.ViajesReporte { EmpleadoId = emp.Id, Texto = texto });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>La ficha de viajes del repartidor que abrió el link, o null si cobra sueldo.</summary>
+    private async Task<Models.ViajesEmpleado?> EmpleadoDeViajesAsync(string tokenRepartidor)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return null;
+        var driverIds = await _db.MapeoDrivers.Where(d => d.CafeRepartidorId == r.Id).Select(d => d.Id).ToListAsync();
+        if (driverIds.Count == 0) return null;
+        return await _db.ViajesEmpleados.FirstOrDefaultAsync(e =>
+            e.IsActive && e.ModoAutomatico && e.MapeoDriverId != null && driverIds.Contains(e.MapeoDriverId.Value));
+    }
+
     public record RepartidorListItemDto(int Id, string Nombre);
     public record InfoVentaDto(int VentaId, string Numero, DateTime Fecha,
         string? ClienteNombre, string? ClienteDireccion, string? ClienteLocalidad, string? ClienteCiudad,

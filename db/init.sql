@@ -4204,6 +4204,21 @@ GO
 IF COL_LENGTH('Nom_Pagos','CajaMovimientoId') IS NULL
     ALTER TABLE Nom_Pagos ADD CajaMovimientoId INT NULL;
 GO
+-- 05/09/2026: avisos que manda el repartidor desde el celu cuando algo de su cuenta no cierra.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Viajes_Reportes')
+BEGIN
+    CREATE TABLE Viajes_Reportes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        EmpleadoId INT NOT NULL,
+        Texto NVARCHAR(500) NOT NULL,
+        Estado NVARCHAR(10) NOT NULL CONSTRAINT DF_ViajesReportes_Estado DEFAULT 'NUEVO',
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_ViajesReportes_Created DEFAULT SYSUTCDATETIME(),
+        VistoAt DATETIME2 NULL,
+        VistoPor NVARCHAR(100) NULL,
+        CONSTRAINT FK_ViajesReportes_Empleado FOREIGN KEY (EmpleadoId) REFERENCES Viajes_Empleados(Id)
+    );
+END
+GO
 -- 05/09/2026: cobro REDIRIGIDO — el cliente paga y la plata se la queda un empleado.
 -- Nacho es Walter Ignacio Carrizo: cobra sueldo fijo Y por entrega, por eso hay que saber
 -- que la ficha de viajes y la de nomina son la misma persona.

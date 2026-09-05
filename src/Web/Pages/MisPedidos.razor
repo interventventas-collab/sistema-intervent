@@ -180,6 +180,34 @@
         box-shadow: 0 12px 40px rgba(0,0,0,0.35);
     }
     .mp-toast.error { background: #dc2626; }
+    /* ── Mi cuenta (05/09/2026): el detalle completo, pensado para el celular ── */
+    .mp-ver-cuenta { margin-top:0.5rem; width:100%; padding:0.5rem; border:1px solid #d1d5db;
+        background:#f9fafb; border-radius:8px; font-size:0.85rem; color:#374151; font-weight:600; }
+    .mp-cuenta-fondo { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9000;
+        display:flex; align-items:flex-end; justify-content:center; }
+    .mp-cuenta-hoja { background:#fff; width:100%; max-width:560px; max-height:88vh; overflow-y:auto;
+        border-radius:14px 14px 0 0; padding:0 0 1.2rem; }
+    .mp-cuenta-top { position:sticky; top:0; background:#fff; display:flex; justify-content:space-between;
+        align-items:center; padding:0.85rem 1rem; border-bottom:1px solid #eee; font-size:1.05rem; }
+    .mp-cuenta-x { background:none; border:none; font-size:1.6rem; line-height:1; color:#6b7280; }
+    .mp-cuenta-resumen { padding:0.8rem 1rem; background:#f0fdf4; font-size:0.88rem; color:#374151; }
+    .mp-cuenta-saldo { font-size:1.25rem; font-weight:800; color:#166534; margin-top:0.2rem; }
+    .mp-cuenta-seccion { padding:0.9rem 1rem 0.3rem; font-size:0.72rem; letter-spacing:0.06em;
+        text-transform:uppercase; color:#9ca3af; font-weight:700; }
+    .mp-cuenta-fila { display:flex; justify-content:space-between; gap:0.7rem; align-items:flex-start;
+        padding:0.6rem 1rem; border-bottom:1px solid #f3f4f6; font-size:0.9rem; }
+    .mp-cuenta-donde { font-size:0.75rem; color:#9ca3af; margin-top:0.15rem; }
+    .mp-cuenta-importe { font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .mp-cuenta-importe.cobrado { color:#166534; }
+    .mp-cuenta-tag { font-size:0.68rem; color:#166534; background:#dcfce7; border-radius:4px;
+        padding:0.05rem 0.35rem; margin-left:0.3rem; }
+    .mp-cuenta-tag.pend { color:#92400e; background:#fef3c7; }
+    .mp-cuenta-vacio { padding:0.6rem 1rem; color:#9ca3af; font-size:0.85rem; }
+    .mp-cuenta-texto { width:calc(100% - 2rem); margin:0 1rem; padding:0.6rem; border:1px solid #d1d5db;
+        border-radius:8px; font-size:0.9rem; font-family:inherit; }
+    .mp-cuenta-enviar { margin:0.5rem 1rem 0; padding:0.6rem 1.2rem; background:#0f766e; color:#fff;
+        border:none; border-radius:8px; font-size:0.9rem; font-weight:700; }
+    .mp-cuenta-ok { padding:0.6rem 1rem; color:#166534; font-size:0.9rem; font-weight:600; }
 </style>
 
 <div class="mp-wrap">
@@ -319,8 +347,95 @@
                         <text>Está todo cobrado.</text>
                     }
                 </div>
+                @* 05/09/2026: que pueda ver TODO su detalle sin tener que preguntar, y avisar si
+                   algo no le cierra. Pedido del dueño. *@
+                <button class="mp-ver-cuenta" @onclick="AbrirMiCuenta">📋 Ver mi cuenta</button>
             </div>
         }
+
+@* ── Mi cuenta: todo el detalle, día por día y todos los pagos ───────────────────────────── *@
+@if (verMiCuenta)
+{
+    <div class="mp-cuenta-fondo" @onclick="() => verMiCuenta = false">
+        <div class="mp-cuenta-hoja" @onclick:stopPropagation="true">
+            <div class="mp-cuenta-top">
+                <b>Mi cuenta</b>
+                <button class="mp-cuenta-x" @onclick="() => verMiCuenta = false">&times;</button>
+            </div>
+
+            @if (miCuenta is null)
+            {
+                <p style="padding:1rem; color:#6b7280;">Cargando...</p>
+            }
+            else
+            {
+                <div class="mp-cuenta-resumen">
+                    <div>Hiciste <b>@Plata(miCuenta.TotalGanado)</b> · cobraste <b>@Plata(miCuenta.TotalCobrado)</b></div>
+                    <div class="mp-cuenta-saldo">
+                        @if (miCuenta.Saldo > 0) { <text>Te debemos @Plata(miCuenta.Saldo)</text> }
+                        else if (miCuenta.Saldo < 0) { <text>Cobraste @Plata(Math.Abs(miCuenta.Saldo)) de más</text> }
+                        else { <text>Está todo cobrado</text> }
+                    </div>
+                </div>
+
+                <div class="mp-cuenta-seccion">Mis viajes</div>
+                @if (miCuenta.Dias.Count == 0)
+                {
+                    <p class="mp-cuenta-vacio">Todavía no hay viajes cargados.</p>
+                }
+                else
+                {
+                    @foreach (var d in miCuenta.Dias)
+                    {
+                        <div class="mp-cuenta-fila">
+                            <div>
+                                <b>@d.Fecha.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</b>
+                                · @d.Viajes viaje@(d.Viajes == 1 ? "" : "s")
+                                @if (d.Cobrado) { <span class="mp-cuenta-tag">cobrado</span> }
+                                else { <span class="mp-cuenta-tag pend">falta cobrar</span> }
+                                <div class="mp-cuenta-donde">@string.Join(" · ", d.Donde)</div>
+                            </div>
+                            <div class="mp-cuenta-importe">@Plata(d.Importe)</div>
+                        </div>
+                    }
+                }
+
+                <div class="mp-cuenta-seccion">Lo que cobré</div>
+                @if (miCuenta.Pagos.Count == 0)
+                {
+                    <p class="mp-cuenta-vacio">Todavía no cobraste nada.</p>
+                }
+                else
+                {
+                    @foreach (var pg in miCuenta.Pagos)
+                    {
+                        <div class="mp-cuenta-fila">
+                            <div>
+                                <b>@pg.Fecha.ToString("dd/MM")</b>
+                                <div class="mp-cuenta-donde">@pg.Detalle</div>
+                            </div>
+                            <div class="mp-cuenta-importe cobrado">@Plata(pg.Importe)</div>
+                        </div>
+                    }
+                }
+
+                <div class="mp-cuenta-seccion">¿Algo no te cierra?</div>
+                @if (reporteEnviado)
+                {
+                    <p class="mp-cuenta-ok">✓ Listo, ya le avisamos. Te van a responder.</p>
+                }
+                else
+                {
+                    <textarea class="mp-cuenta-texto" rows="3" @bind="reporteTexto"
+                              placeholder="Contá qué es lo que no te cierra. Ej: el jueves hice 12 entregas y me figuran 10."></textarea>
+                    <button class="mp-cuenta-enviar" @onclick="EnviarReporte" disabled="@enviandoReporte">
+                        Avisar
+                    </button>
+                }
+            }
+        </div>
+    </div>
+}
 
         @* ACCIONES *@
         <div class="mp-actions">
@@ -1217,6 +1332,42 @@
     public record MisViajesDto(bool Aplica, decimal Tarifa, int ViajesHoy, decimal ImporteHoy,
         int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, decimal Saldo);
     private MisViajesDto? misViajes;
+    private bool verMiCuenta;
+    private MiCuentaDto? miCuenta;
+    private string reporteTexto = "";
+    private bool enviandoReporte, reporteEnviado;
+
+    public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado, List<string> Donde);
+    public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle);
+    public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
+        decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos);
+
+    private static string Plata(decimal v)
+        => "$" + v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+
+    private async Task AbrirMiCuenta()
+    {
+        verMiCuenta = true;
+        miCuenta = null;
+        reporteEnviado = false;
+        reporteTexto = "";
+        try { miCuenta = await Http.GetFromJsonAsync<MiCuentaDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/detalle"); }
+        catch { miCuenta = new MiCuentaDto(false, 0, 0, 0, 0, new(), new()); }
+    }
+
+    private async Task EnviarReporte()
+    {
+        if (string.IsNullOrWhiteSpace(reporteTexto) || enviandoReporte) return;
+        enviandoReporte = true;
+        try
+        {
+            var r = await Http.PostAsJsonAsync(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/reporte", new { Texto = reporteTexto });
+            reporteEnviado = r.IsSuccessStatusCode;
+        }
+        catch { reporteEnviado = false; }
+        finally { enviandoReporte = false; }
+    }
 
     // 2026-07-28: mapa embebido con los puntos numerados (Leaflet, dentro de esta pantalla)
     private bool verMapaRuta = false;

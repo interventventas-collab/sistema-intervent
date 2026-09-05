@@ -8,6 +8,12 @@
 
 <style>
     .vj-wrap { padding: 1rem; }
+    .vj-reportes { margin-bottom: 1rem; }
+    .vj-reporte { display:flex; justify-content:space-between; align-items:flex-start; gap:0.8rem;
+        background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:0.7rem 0.9rem;
+        margin-bottom:0.5rem; }
+    .vj-reporte-cuando { color:#9ca3af; font-size:0.78rem; }
+    .vj-reporte-texto { margin-top:0.2rem; color:#374151; }
     .vj-card { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 1rem; }
     .vj-emp-card { border-left: 4px solid #1d4ed8; padding: 0.8rem; margin-bottom: 0.6rem; background: #f9fafb; border-radius: 8px; }
     .vj-emp-card.inactive { opacity: 0.5; }
@@ -38,6 +44,24 @@
         <h2 style="margin:0;">🚚 Viajes</h2>
         <button class="btn btn-primary" @onclick="ShowCreateEmpleado">+ Nuevo empleado</button>
     </div>
+
+    @* 05/09/2026: los avisos que manda el repartidor desde su celu cuando su cuenta no le cierra. *@
+    @if (reportes.Count > 0)
+    {
+        <div class="vj-reportes">
+            @foreach (var rp in reportes)
+            {
+                <div class="vj-reporte">
+                    <div>
+                        <b>@rp.EmpleadoNombre</b> avisó
+                        <span class="vj-reporte-cuando">· @rp.CreatedAt.AddHours(-3).ToString("dd/MM HH:mm")</span>
+                        <div class="vj-reporte-texto">@rp.Texto</div>
+                    </div>
+                    <button class="btn btn-secondary" @onclick="() => MarcarVisto(rp)">Listo</button>
+                </div>
+            }
+        </div>
+    }
 
     @if (showFormEmp)
     {
@@ -451,6 +475,19 @@
 
     private System.Threading.Timer? autoRefreshTimer;
 
+    private List<ViajesReporteDto> reportes = new();
+
+    /// <summary>Marca el aviso como atendido: desaparece el cartel.</summary>
+    private async Task MarcarVisto(ViajesReporteDto rp)
+    {
+        try
+        {
+            await Http.PostAsJsonAsync($"api/viajes/admin/reportes/{rp.Id}/visto", new { });
+            reportes.Remove(rp);
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await RecargarTodo();
@@ -468,6 +505,8 @@
         registros = await Http.GetFromJsonAsync<List<AdminRegistroDto>>("api/viajes/admin/registros");
         pagos = await Http.GetFromJsonAsync<List<AdminPagoDto>>("api/viajes/admin/pagos");
         choferes ??= await Http.GetFromJsonAsync<List<ChoferDto>>("api/viajes/admin/choferes");
+        try { reportes = await Http.GetFromJsonAsync<List<ViajesReporteDto>>("api/viajes/admin/reportes") ?? new(); }
+        catch { /* si falla, el resto de la pantalla tiene que seguir andando igual */ }
         if (detalleEmpId.HasValue) await CargarDetalle(detalleEmpId.Value);
     }
 

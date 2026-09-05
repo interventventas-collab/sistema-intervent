@@ -55,6 +55,17 @@ public class CafeDestinatarioDto
     public int? LiquidacionId { get; set; }
 }
 
+// Aviso que manda el repartidor desde su celu (05/09/2026).
+public class ViajesReporteDto
+{
+    public int Id { get; set; }
+    public int EmpleadoId { get; set; }
+    public string EmpleadoNombre { get; set; } = "";
+    public string Texto { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public string Estado { get; set; } = "NUEVO";
+}
+
 // ========== Cheques ==========
 public class CafeChequeDto
 {

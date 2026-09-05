@@ -6238,6 +6238,12 @@ public class ApiClient
     public async Task<bool> EliminarCafeCajaAsync(int id)
         => await DeleteAsync($"/api/cafe/cajas/{id}");
 
+    // Avisos que manda el repartidor desde su celu — 05/09/2026
+    public async Task<List<ViajesReporteDto>?> GetViajesReportesAsync(bool incluirVistos = false)
+        => await GetAsync<List<ViajesReporteDto>>($"/api/viajes/admin/reportes?incluirVistos={(incluirVistos ? "true" : "false")}");
+    public async Task<bool> MarcarViajeReporteVistoAsync(int id)
+        => (await PostAsync<CafeOkDto>($"/api/viajes/admin/reportes/{id}/visto", new { }))?.Ok == true;
+
     // Movimientos de caja (salidas, transferencias y arqueos) — 05/09/2026
     public async Task<List<CafeCajaMovimientoDto>?> GetCafeCajaMovimientosAsync(int? cajaId = null, int dias = 60)
         => await GetAsync<List<CafeCajaMovimientoDto>>($"/api/cafe/cajas/movimientos?dias={dias}" + (cajaId.HasValue ? $"&cajaId={cajaId}" : ""));
