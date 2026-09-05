@@ -208,6 +208,11 @@
     .mp-cuenta-enviar { margin:0.5rem 1rem 0; padding:0.6rem 1.2rem; background:#0f766e; color:#fff;
         border:none; border-radius:8px; font-size:0.9rem; font-weight:700; }
     .mp-cuenta-ok { padding:0.6rem 1rem; color:#166534; font-size:0.9rem; font-weight:600; }
+    .mp-cuenta-medio { font-size:0.78rem; color:#166534; margin-left:0.3rem; }
+    .mp-cuenta-tag.nuevo { color:#1d4ed8; background:#dbeafe; }
+    .mp-pago-nuevo { margin-top:0.5rem; padding:0.6rem 0.7rem; background:#166534; color:#fff;
+        border-radius:8px; font-weight:800; font-size:0.95rem; cursor:pointer; }
+    .mp-pago-nuevo-sub { font-weight:500; font-size:0.75rem; opacity:0.85; margin-top:0.1rem; }
 </style>
 
 <div class="mp-wrap">
@@ -347,6 +352,15 @@
                         <text>Está todo cobrado.</text>
                     }
                 </div>
+                @* 05/09/2026: si le pagaron y todavía no lo vio, se lo decimos de frente. El cartel
+                   desaparece solo cuando abre su cuenta. *@
+                @if (misViajes.PagosSinVer > 0)
+                {
+                    <div class="mp-pago-nuevo" @onclick="AbrirMiCuenta">
+                        💰 Te pagamos @Plata(misViajes.PagosSinVer)
+                        <div class="mp-pago-nuevo-sub">Tocá para ver el detalle</div>
+                    </div>
+                }
                 @* 05/09/2026: que pueda ver TODO su detalle sin tener que preguntar, y avisar si
                    algo no le cierra. Pedido del dueño. *@
                 <button class="mp-ver-cuenta" @onclick="AbrirMiCuenta">📋 Ver mi cuenta</button>
@@ -356,11 +370,11 @@
 @* ── Mi cuenta: todo el detalle, día por día y todos los pagos ───────────────────────────── *@
 @if (verMiCuenta)
 {
-    <div class="mp-cuenta-fondo" @onclick="() => verMiCuenta = false">
+    <div class="mp-cuenta-fondo" @onclick="CerrarMiCuenta">
         <div class="mp-cuenta-hoja" @onclick:stopPropagation="true">
             <div class="mp-cuenta-top">
                 <b>Mi cuenta</b>
-                <button class="mp-cuenta-x" @onclick="() => verMiCuenta = false">&times;</button>
+                <button class="mp-cuenta-x" @onclick="CerrarMiCuenta">&times;</button>
             </div>
 
             @if (miCuenta is null)
@@ -412,6 +426,11 @@
                         <div class="mp-cuenta-fila">
                             <div>
                                 <b>@pg.Fecha.ToString("dd/MM")</b>
+                                @if (!string.IsNullOrWhiteSpace(pg.Medio))
+                                {
+                                    <span class="mp-cuenta-medio">@pg.Medio</span>
+                                }
+                                @if (pg.EsNuevo) { <span class="mp-cuenta-tag nuevo">nuevo</span> }
                                 <div class="mp-cuenta-donde">@pg.Detalle</div>
                             </div>
                             <div class="mp-cuenta-importe cobrado">@Plata(pg.Importe)</div>
@@ -1330,7 +1349,8 @@
 
     // 2026-09-04: viajes que cobra por entrega (solo para el repartidor con auto propio).
     public record MisViajesDto(bool Aplica, decimal Tarifa, int ViajesHoy, decimal ImporteHoy,
-        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, decimal Saldo);
+        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, decimal Saldo,
+        decimal PagosSinVer, int CantidadPagosSinVer);
     private MisViajesDto? misViajes;
     private bool verMiCuenta;
     private MiCuentaDto? miCuenta;
@@ -1338,7 +1358,7 @@
     private bool enviandoReporte, reporteEnviado;
 
     public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado, List<string> Donde);
-    public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle);
+    public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle, string Medio, bool EsNuevo);
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
         decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos);
 
@@ -1353,6 +1373,14 @@
         reporteTexto = "";
         try { miCuenta = await Http.GetFromJsonAsync<MiCuentaDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/detalle"); }
         catch { miCuenta = new MiCuentaDto(false, 0, 0, 0, 0, new(), new()); }
+    }
+
+    /// <summary>Al cerrar la cuenta refrescamos el resumen: los pagos ya quedaron vistos.</summary>
+    private async Task CerrarMiCuenta()
+    {
+        verMiCuenta = false;
+        try { misViajes = await Http.GetFromJsonAsync<MisViajesDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes"); }
+        catch { }
     }
 
     private async Task EnviarReporte()

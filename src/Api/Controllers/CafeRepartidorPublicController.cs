@@ -40,12 +40,14 @@ public class CafeRepartidorPublicController : ControllerBase
     /// los pagos sueltos a cuenta). ImportePendiente es la suma cruda de los viajes sin cerrar: si
     /// el dueño ya le adelanto plata, los dos numeros NO coinciden y el que vale es Saldo.</summary>
     public record MisViajesDto(bool Aplica, decimal Tarifa, int ViajesHoy, decimal ImporteHoy,
-        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, decimal Saldo);
+        int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, decimal Saldo,
+        // 05/09/2026: lo que le pagaron y todavia no vio, para avisarle con un cartel.
+        decimal PagosSinVer, int CantidadPagosSinVer);
 
     [HttpGet("mis-pedidos/{tokenRepartidor}/viajes")]
     public async Task<IActionResult> MisViajes(string tokenRepartidor)
     {
-        var vacio = new MisViajesDto(false, 0, 0, 0, 0, 0, null, 0);
+        var vacio = new MisViajesDto(false, 0, 0, 0, 0, 0, null, 0, 0, 0);
         var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
         if (r is null) return Ok(vacio);
 
@@ -68,11 +70,15 @@ public class CafeRepartidorPublicController : ControllerBase
         var pagado = await _db.ViajesPagos.Where(x => x.EmpleadoId == emp.Id).SumAsync(x => x.Importe);
         var saldo = registros + ents.Sum(x => x.Tarifa) - pagado;
 
+        var sinVer = await _db.ViajesPagos
+            .Where(x => x.EmpleadoId == emp.Id && x.VistoPorEmpleadoAt == null && x.Importe > 0)
+            .ToListAsync();
+
         return Ok(new MisViajesDto(true, emp.TarifaViaje,
             hoyEnts.Count, hoyEnts.Sum(x => x.Tarifa),
             pend.Count, pend.Sum(x => x.Tarifa),
             pend.Count == 0 ? null : pend.Min(x => x.Fecha),
-            saldo));
+            saldo, sinVer.Sum(x => x.Importe), sinVer.Count));
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -81,7 +87,7 @@ public class CafeRepartidorPublicController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────────────────────────
 
     public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado, List<string> Donde);
-    public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle);
+    public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle, string Medio, bool EsNuevo);
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
         decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos);
 
@@ -111,13 +117,43 @@ public class CafeRepartidorPublicController : ControllerBase
         var pagos = await _db.ViajesPagos.Where(x => x.EmpleadoId == emp.Id)
             .OrderByDescending(x => x.Fecha).ThenByDescending(x => x.Id).ToListAsync();
 
+        // Cómo le pagaron, dicho en criollo. Sale del tipo de caja de la que salió la plata.
+        var tiposCaja = await _db.CafeCajas.ToDictionaryAsync(c => c.Id, c => c.Tipo);
+
+        // Al abrir su cuenta da por vistos los pagos: el cartel de "te pagamos" deja de aparecer.
+        var sinVer = pagos.Where(p => p.VistoPorEmpleadoAt == null).ToList();
+        foreach (var p in sinVer) p.VistoPorEmpleadoAt = DateTime.UtcNow;
+        if (sinVer.Count > 0) await _db.SaveChangesAsync();
+
         var registros = await _db.ViajesRegistros.Where(r => r.EmpleadoId == emp.Id)
             .SumAsync(r => (decimal?)((decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA)) ?? 0m;
         var ganado = registros + ents.Sum(x => x.Tarifa);
         var cobrado = pagos.Sum(x => x.Importe);
 
         return Ok(new MiCuentaDto(true, emp.TarifaViaje, ganado, cobrado, ganado - cobrado, dias,
-            pagos.Select(p => new MiPagoDto(p.Fecha, p.Importe, p.Descripcion ?? "pago")).ToList()));
+            pagos.Select(p => new MiPagoDto(p.Fecha, p.Importe, p.Descripcion ?? "pago",
+                MedioEnCriollo(p.CajaId, tiposCaja, p.Descripcion),
+                sinVer.Any(x => x.Id == p.Id))).ToList()));
+    }
+
+    /// <summary>"en efectivo", "por transferencia"... para que el repartidor sepa cómo le pagaron.</summary>
+    private static string MedioEnCriollo(int? cajaId, Dictionary<int, string> tipos, string? descripcion)
+    {
+        if (cajaId.HasValue && tipos.TryGetValue(cajaId.Value, out var tipo))
+            return tipo switch
+            {
+                "EFECTIVO" => "en efectivo",
+                "BANCO" => "por transferencia",
+                "BILLETERA_VIRTUAL" => "por billetera virtual",
+                "CHEQUES_CARTERA" => "con cheque",
+                "V_PRIVADO" => "redirigido",
+                _ => ""
+            };
+        // Los pagos viejos no dicen de dónde salieron; los redirigidos se reconocen por el texto.
+        if (!string.IsNullOrWhiteSpace(descripcion) &&
+            descripcion.StartsWith("Cobranza redirigida", StringComparison.OrdinalIgnoreCase))
+            return "cobranza que te quedaste vos";
+        return "";
     }
 
     public record ReportarRequest(string Texto);

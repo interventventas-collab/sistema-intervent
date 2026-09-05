@@ -428,6 +428,8 @@ public class ViajesController : ControllerBase
         public DateTime Fecha { get; set; }
         public string Descripcion { get; set; } = "";
         public decimal Importe { get; set; }
+        /// <summary>De qué caja sale la plata. NULL = no descontar de ninguna.</summary>
+        public int? CajaId { get; set; }
     }
 
     [HttpPost("admin/pagos")]
@@ -445,10 +447,12 @@ public class ViajesController : ControllerBase
             Fecha = req.Fecha.Date,
             Descripcion = req.Descripcion.Trim(),
             Importe = req.Importe,
+            CajaId = req.CajaId,
             CreatedAt = DateTime.UtcNow
         };
         _db.ViajesPagos.Add(p);
         await _db.SaveChangesAsync();
+        if (!await DescontarDeCajaAsync(p, emp)) return BadRequest(new { error = "La caja elegida no existe" });
         return Ok(p);
     }
 
@@ -484,6 +488,16 @@ public class ViajesController : ControllerBase
         // (si no, desaparecerian de "pendiente" y nadie los volveria a cobrar).
         var liquidados = await _db.ViajesEntregas.Where(e => e.LiquidadoPagoId == id).ToListAsync();
         foreach (var e in liquidados) { e.LiquidadoPagoId = null; e.UpdatedAt = DateTime.UtcNow; }
+        // La plata vuelve a la caja: el renglón queda tachado, no se borra.
+        if (p.CajaMovimientoId.HasValue)
+        {
+            var mov = await _db.CafeCajaMovimientos.FindAsync(p.CajaMovimientoId.Value);
+            if (mov is not null && mov.AnuladoAt == null)
+            {
+                mov.AnuladoAt = DateTime.UtcNow;
+                mov.AnuladoPor = User?.Identity?.Name;
+            }
+        }
         _db.ViajesPagos.Remove(p);
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
@@ -613,6 +627,8 @@ public class ViajesController : ControllerBase
     {
         public DateTime? Hasta { get; set; }
         public string? Descripcion { get; set; }
+        /// <summary>De qué caja sale la plata. NULL = no descontar de ninguna.</summary>
+        public int? CajaId { get; set; }
     }
 
     /// <summary>
@@ -659,10 +675,12 @@ public class ViajesController : ControllerBase
             Fecha = hoy,
             Descripcion = desc,
             Importe = total,
+            CajaId = total > 0 ? req.CajaId : null,   // un cierre de $0 no mueve ninguna caja
             CreatedAt = DateTime.UtcNow
         };
         _db.ViajesPagos.Add(pago);
         await _db.SaveChangesAsync();
+        if (!await DescontarDeCajaAsync(pago, emp)) return BadRequest(new { error = "La caja elegida no existe" });
 
         foreach (var e in pend) { e.LiquidadoPagoId = pago.Id; e.UpdatedAt = DateTime.UtcNow; }
         await _db.SaveChangesAsync();
@@ -726,5 +744,30 @@ public class ViajesController : ControllerBase
         r.VistoPor = User?.Identity?.Name;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
+    }
+
+    /// <summary>
+    /// Deja el renglón en la caja de la que salió la plata (05/09/2026). Sin esto el pago al
+    /// repartidor se anotaba al costado y la caja no bajaba nunca, igual que pasaba con los sueldos.
+    /// </summary>
+    private async Task<bool> DescontarDeCajaAsync(ViajesPago pago, ViajesEmpleado emp)
+    {
+        if (!pago.CajaId.HasValue || pago.Importe == 0) return true;
+        if (!await _db.CafeCajas.AnyAsync(c => c.Id == pago.CajaId.Value)) return false;
+
+        var mov = new Models.CafeCajaMovimiento
+        {
+            CajaId = pago.CajaId.Value,
+            Fecha = pago.Fecha.Date,
+            Tipo = "VIAJES",
+            Importe = -Math.Abs(pago.Importe),
+            Motivo = $"Viajes de {emp.Nombre} · {pago.Descripcion}",
+            CargadoPor = User?.Identity?.Name
+        };
+        _db.CafeCajaMovimientos.Add(mov);
+        await _db.SaveChangesAsync();
+        pago.CajaMovimientoId = mov.Id;
+        await _db.SaveChangesAsync();
+        return true;
     }
 }

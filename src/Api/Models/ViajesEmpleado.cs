@@ -113,6 +113,19 @@ public class ViajesPago
     [Column(TypeName = "decimal(18,2)")]
     public decimal Importe { get; set; }
 
+    /// <summary>
+    /// De qué caja salió la plata (05/09/2026). Si viene, el pago descuenta de esa caja y el
+    /// repartidor ve en su celu si le pagaron en efectivo, por transferencia o lo que sea.
+    /// NULL en los pagos viejos y en las cobranzas redirigidas (esa plata nunca fue nuestra).
+    /// </summary>
+    public int? CajaId { get; set; }
+
+    /// <summary>El renglón que dejó en la caja, para poder darlo de baja si se borra el pago.</summary>
+    public int? CajaMovimientoId { get; set; }
+
+    /// <summary>Cuándo lo vio el repartidor en su celu. NULL = todavía no lo vio: se le avisa.</summary>
+    public DateTime? VistoPorEmpleadoAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

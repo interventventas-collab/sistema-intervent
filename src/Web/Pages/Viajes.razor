@@ -9,6 +9,10 @@
 <style>
     .vj-wrap { padding: 1rem; }
     .vj-reportes { margin-bottom: 1rem; }
+    .vj-liq-fondo { position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:8000;
+        display:flex; align-items:center; justify-content:center; }
+    .vj-liq-caja { background:#fff; border-radius:10px; padding:1.1rem 1.2rem; max-width:520px;
+        width:calc(100% - 2rem); box-shadow:0 10px 30px rgba(0,0,0,0.2); }
     .vj-reporte { display:flex; justify-content:space-between; align-items:flex-start; gap:0.8rem;
         background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:0.7rem 0.9rem;
         margin-bottom:0.5rem; }
@@ -60,6 +64,54 @@
                     <button class="btn btn-secondary" @onclick="() => MarcarVisto(rp)">Listo</button>
                 </div>
             }
+        </div>
+    }
+
+    @* 05/09/2026: al liquidar hay que decir de qué caja sale la plata — el confirm del navegador
+       no puede preguntar eso. *@
+    @if (liqEmpleado is not null)
+    {
+        <div class="vj-liq-fondo" @onclick="() => liqEmpleado = null">
+            <div class="vj-liq-caja" @onclick:stopPropagation="true">
+                <h3 style="margin:0 0 0.5rem;">Liquidar a @liqEmpleado.Nombre</h3>
+                @if (APagar(liqEmpleado) > 0)
+                {
+                    <p style="margin:0 0 0.3rem;">
+                        Le pagás <b>$@Plata(APagar(liqEmpleado))</b> y se cierran
+                        @liqEmpleado.ViajesPendientes @(liqEmpleado.ViajesPendientes == 1 ? "viaje" : "viajes").
+                    </p>
+                    @if (liqEmpleado.ImportePendiente != APagar(liqEmpleado))
+                    {
+                        <p style="margin:0 0 0.6rem; color:#92400e; font-size:0.88rem;">
+                            Los viajes suman $@Plata(liqEmpleado.ImportePendiente), pero ya le pagaste
+                            $@Plata(liqEmpleado.ImportePendiente - APagar(liqEmpleado)) a cuenta.
+                        </p>
+                    }
+                    <label class="form-label">¿De qué caja sale?</label>
+                    <div style="display:flex; gap:0.35rem; flex-wrap:wrap; margin-bottom:0.8rem;">
+                        @foreach (var c in cajas)
+                        {
+                            <button class="btn @(liqCajaId == c.Id ? "btn-primary" : "btn-secondary")"
+                                    style="font-size:0.82rem;" @onclick="() => liqCajaId = c.Id">@c.Nombre</button>
+                        }
+                        <button class="btn @(liqCajaId == 0 ? "btn-primary" : "btn-secondary")"
+                                style="font-size:0.82rem;" @onclick="() => liqCajaId = 0">— no descontar —</button>
+                    </div>
+                }
+                else
+                {
+                    <p style="margin:0 0 0.8rem;">
+                        Los @liqEmpleado.ViajesPendientes viajes ya están cubiertos por los pagos que
+                        registraste. Se cierran sin registrar plata nueva.
+                    </p>
+                }
+                <div style="display:flex; gap:0.5rem;">
+                    <button class="btn btn-primary" @onclick="ConfirmarLiquidar" disabled="@(liquidando == liqEmpleado.Id)">
+                        @(liquidando == liqEmpleado.Id ? "..." : "Confirmar")
+                    </button>
+                    <button class="btn btn-secondary" @onclick="() => liqEmpleado = null">Cancelar</button>
+                </div>
+            </div>
         </div>
     }
 
@@ -144,6 +196,18 @@
                 <div>
                     <label class="form-label">Importe</label>
                     <input class="form-input" type="number" min="0" step="100" @bind="pagoImporte" />
+                </div>
+                @* 05/09/2026: de qué caja sale la plata. Además de descontarla, es lo que ve el
+                   repartidor en su celu ("en efectivo", "por transferencia"). *@
+                <div>
+                    <label class="form-label">Sale de</label>
+                    <select class="form-input" @bind="pagoCajaId">
+                        <option value="0">— no descontar —</option>
+                        @foreach (var c in cajas)
+                        {
+                            <option value="@c.Id">@c.Nombre</option>
+                        }
+                    </select>
                 </div>
             </div>
             <div style="display:flex; gap:0.5rem; margin-top:0.6rem;">
@@ -476,6 +540,8 @@
     private System.Threading.Timer? autoRefreshTimer;
 
     private List<ViajesReporteDto> reportes = new();
+    private List<CafeCajaDto> cajas = new();
+    private int pagoCajaId;   // 0 = no descontar de ninguna caja
 
     /// <summary>Marca el aviso como atendido: desaparece el cartel.</summary>
     private async Task MarcarVisto(ViajesReporteDto rp)
@@ -507,6 +573,11 @@
         choferes ??= await Http.GetFromJsonAsync<List<ChoferDto>>("api/viajes/admin/choferes");
         try { reportes = await Http.GetFromJsonAsync<List<ViajesReporteDto>>("api/viajes/admin/reportes") ?? new(); }
         catch { /* si falla, el resto de la pantalla tiene que seguir andando igual */ }
+        if (cajas.Count == 0)
+        {
+            try { cajas = await Http.GetFromJsonAsync<List<CafeCajaDto>>("api/cafe/cajas") ?? new(); }
+            catch { }
+        }
         if (detalleEmpId.HasValue) await CargarDetalle(detalleEmpId.Value);
     }
 
@@ -559,6 +630,7 @@
         pagoFecha = DateTime.Today;
         pagoDescripcion = "";
         pagoImporte = 0;
+        pagoCajaId = cajas.FirstOrDefault(c => c.Tipo == "EFECTIVO")?.Id ?? 0;
         showFormPago = true;
     }
 
@@ -571,7 +643,8 @@
         try
         {
             var resp = await Http.PostAsJsonAsync("api/viajes/admin/pagos",
-                new { EmpleadoId = empleadoSelPago.Id, Fecha = pagoFecha, Descripcion = pagoDescripcion, Importe = pagoImporte });
+                new { EmpleadoId = empleadoSelPago.Id, Fecha = pagoFecha, Descripcion = pagoDescripcion,
+                      Importe = pagoImporte, CajaId = pagoCajaId == 0 ? (int?)null : pagoCajaId });
             if (resp.IsSuccessStatusCode)
             {
                 ToastService.Success($"Pago de ${pagoImporte:N0} registrado a {empleadoSelPago.Nombre}");
@@ -610,20 +683,26 @@
             $"api/viajes/admin/empleados/{empId}/entregas?dias=30");
     }
 
-    private async Task Liquidar(AdminEmpleadoDto e)
+    private AdminEmpleadoDto? liqEmpleado;
+    private int liqCajaId;
+
+    /// <summary>Abre el cartel: hay que elegir de qué caja sale antes de confirmar.</summary>
+    private void Liquidar(AdminEmpleadoDto e)
     {
         if (e.ViajesPendientes == 0) return;
-        var msg = APagar(e) > 0
-            ? $"¿Liquidar {e.ViajesPendientes} viajes a {e.Nombre} por ${Plata(APagar(e))}?\n\n" +
-              (e.ImportePendiente != APagar(e)
-                 ? $"Los viajes suman ${Plata(e.ImportePendiente)}, pero ya le pagaste ${Plata(e.ImportePendiente - APagar(e))} a cuenta.\n\n" : "") +
-              "Se registra el pago y esos viajes quedan cerrados."
-            : $"Los {e.ViajesPendientes} viajes de {e.Nombre} ya están cubiertos por los pagos que registraste.\n\n¿Los cierro sin registrar plata nueva?";
-        if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
+        liqEmpleado = e;
+        liqCajaId = cajas.FirstOrDefault(c => c.Tipo == "EFECTIVO")?.Id ?? 0;
+    }
+
+    private async Task ConfirmarLiquidar()
+    {
+        var e = liqEmpleado;
+        if (e is null) return;
         liquidando = e.Id;
         try
         {
-            var resp = await Http.PostAsJsonAsync($"api/viajes/admin/empleados/{e.Id}/liquidar", new { });
+            var resp = await Http.PostAsJsonAsync($"api/viajes/admin/empleados/{e.Id}/liquidar",
+                new { CajaId = liqCajaId == 0 ? (int?)null : liqCajaId });
             if (resp.IsSuccessStatusCode)
             {
                 ToastService.Success(APagar(e) > 0
@@ -633,7 +712,7 @@
             }
             else ToastService.Error("No se pudo liquidar");
         }
-        finally { liquidando = null; }
+        finally { liquidando = null; liqEmpleado = null; }
     }
 
     private void ShowAjuste(AdminEmpleadoDto e)

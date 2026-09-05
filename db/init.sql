@@ -4204,6 +4204,11 @@ GO
 IF COL_LENGTH('Nom_Pagos','CajaMovimientoId') IS NULL
     ALTER TABLE Nom_Pagos ADD CajaMovimientoId INT NULL;
 GO
+-- 05/09/2026: el pago de viajes dice de que caja salio y si el repartidor ya lo vio.
+IF COL_LENGTH('Viajes_Pagos','CajaId') IS NULL
+    ALTER TABLE Viajes_Pagos ADD CajaId INT NULL, CajaMovimientoId INT NULL,
+        VistoPorEmpleadoAt DATETIME2 NULL;
+GO
 -- 05/09/2026: avisos que manda el repartidor desde el celu cuando algo de su cuenta no cierra.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Viajes_Reportes')
 BEGIN
