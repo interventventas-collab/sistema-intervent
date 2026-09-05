@@ -64,6 +64,8 @@ public class ViajesReporteDto
     public string Texto { get; set; } = "";
     public DateTime CreatedAt { get; set; }
     public string Estado { get; set; } = "NUEVO";
+    public string? Respuesta { get; set; }
+    public DateTime? RespuestaAt { get; set; }
 }
 
 // ========== Cheques ==========

@@ -42,12 +42,14 @@ public class CafeRepartidorPublicController : ControllerBase
     public record MisViajesDto(bool Aplica, decimal Tarifa, int ViajesHoy, decimal ImporteHoy,
         int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, decimal Saldo,
         // 05/09/2026: lo que le pagaron y todavia no vio, para avisarle con un cartel.
-        decimal PagosSinVer, int CantidadPagosSinVer);
+        decimal PagosSinVer, int CantidadPagosSinVer,
+        // 05/09/2026: respuestas del dueño que todavia no leyo.
+        int RespuestasSinLeer);
 
     [HttpGet("mis-pedidos/{tokenRepartidor}/viajes")]
     public async Task<IActionResult> MisViajes(string tokenRepartidor)
     {
-        var vacio = new MisViajesDto(false, 0, 0, 0, 0, 0, null, 0, 0, 0);
+        var vacio = new MisViajesDto(false, 0, 0, 0, 0, 0, null, 0, 0, 0, 0);
         var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
         if (r is null) return Ok(vacio);
 
@@ -78,7 +80,9 @@ public class CafeRepartidorPublicController : ControllerBase
             hoyEnts.Count, hoyEnts.Sum(x => x.Tarifa),
             pend.Count, pend.Sum(x => x.Tarifa),
             pend.Count == 0 ? null : pend.Min(x => x.Fecha),
-            saldo, sinVer.Sum(x => x.Importe), sinVer.Count));
+            saldo, sinVer.Sum(x => x.Importe), sinVer.Count,
+            await _db.ViajesReportes.CountAsync(a => a.EmpleadoId == emp.Id
+                && a.Respuesta != null && a.RespuestaVistaAt == null)));
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -88,15 +92,16 @@ public class CafeRepartidorPublicController : ControllerBase
 
     public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado, List<string> Donde);
     public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle, string Medio, bool EsNuevo);
+    public record MiAvisoDto(DateTime Fecha, string Texto, string? Respuesta, DateTime? RespuestaAt);
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
-        decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos);
+        decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos);
 
     /// <summary>Todo su historial: día por día lo que hizo, y todo lo que cobró.</summary>
     [HttpGet("mis-pedidos/{tokenRepartidor}/viajes/detalle")]
     public async Task<IActionResult> MiCuenta(string tokenRepartidor)
     {
         var emp = await EmpleadoDeViajesAsync(tokenRepartidor);
-        if (emp is null) return Ok(new MiCuentaDto(false, 0, 0, 0, 0, new(), new()));
+        if (emp is null) return Ok(new MiCuentaDto(false, 0, 0, 0, 0, new(), new(), new()));
 
         await _viajes.SincronizarAsync(emp);
 
@@ -125,6 +130,13 @@ public class CafeRepartidorPublicController : ControllerBase
         foreach (var p in sinVer) p.VistoPorEmpleadoAt = DateTime.UtcNow;
         if (sinVer.Count > 0) await _db.SaveChangesAsync();
 
+        // Sus avisos y lo que le contestaron. Al abrirlos se dan por leídos.
+        var avisos = await _db.ViajesReportes.Where(a => a.EmpleadoId == emp.Id)
+            .OrderByDescending(a => a.Id).Take(20).ToListAsync();
+        var respSinLeer = avisos.Where(a => a.Respuesta != null && a.RespuestaVistaAt == null).ToList();
+        foreach (var a in respSinLeer) a.RespuestaVistaAt = DateTime.UtcNow;
+        if (respSinLeer.Count > 0) await _db.SaveChangesAsync();
+
         var registros = await _db.ViajesRegistros.Where(r => r.EmpleadoId == emp.Id)
             .SumAsync(r => (decimal?)((decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA)) ?? 0m;
         var ganado = registros + ents.Sum(x => x.Tarifa);
@@ -133,7 +145,8 @@ public class CafeRepartidorPublicController : ControllerBase
         return Ok(new MiCuentaDto(true, emp.TarifaViaje, ganado, cobrado, ganado - cobrado, dias,
             pagos.Select(p => new MiPagoDto(p.Fecha, p.Importe, p.Descripcion ?? "pago",
                 MedioEnCriollo(p.CajaId, tiposCaja, p.Descripcion),
-                sinVer.Any(x => x.Id == p.Id))).ToList()));
+                sinVer.Any(x => x.Id == p.Id))).ToList(),
+            avisos.Select(a => new MiAvisoDto(a.CreatedAt, a.Texto, a.Respuesta, a.RespuestaAt)).ToList()));
     }
 
     /// <summary>"en efectivo", "por transferencia"... para que el repartidor sepa cómo le pagaron.</summary>

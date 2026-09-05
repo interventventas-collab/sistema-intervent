@@ -4209,6 +4209,11 @@ IF COL_LENGTH('Viajes_Pagos','CajaId') IS NULL
     ALTER TABLE Viajes_Pagos ADD CajaId INT NULL, CajaMovimientoId INT NULL,
         VistoPorEmpleadoAt DATETIME2 NULL;
 GO
+-- 05/09/2026: el dueño puede CONTESTAR el aviso del repartidor.
+IF COL_LENGTH('Viajes_Reportes','Respuesta') IS NULL
+    ALTER TABLE Viajes_Reportes ADD Respuesta NVARCHAR(500) NULL, RespuestaAt DATETIME2 NULL,
+        RespuestaPor NVARCHAR(100) NULL, RespuestaVistaAt DATETIME2 NULL;
+GO
 -- 05/09/2026: avisos que manda el repartidor desde el celu cuando algo de su cuenta no cierra.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Viajes_Reportes')
 BEGIN

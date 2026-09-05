@@ -213,6 +213,12 @@
     .mp-pago-nuevo { margin-top:0.5rem; padding:0.6rem 0.7rem; background:#166534; color:#fff;
         border-radius:8px; font-weight:800; font-size:0.95rem; cursor:pointer; }
     .mp-pago-nuevo-sub { font-weight:500; font-size:0.75rem; opacity:0.85; margin-top:0.1rem; }
+    .mp-resp-nueva { margin-top:0.5rem; padding:0.6rem 0.7rem; background:#1d4ed8; color:#fff;
+        border-radius:8px; font-weight:800; font-size:0.95rem; cursor:pointer; }
+    .mp-cuenta-aviso { padding:0.5rem 1rem 0.6rem; border-bottom:1px solid #f3f4f6; }
+    .mp-cuenta-aviso-mio { font-size:0.9rem; color:#374151; }
+    .mp-cuenta-aviso-resp { margin-top:0.4rem; padding:0.5rem 0.6rem; background:#eff6ff;
+        border-radius:8px; font-size:0.9rem; color:#1e3a8a; }
 </style>
 
 <div class="mp-wrap">
@@ -354,6 +360,13 @@
                 </div>
                 @* 05/09/2026: si le pagaron y todavía no lo vio, se lo decimos de frente. El cartel
                    desaparece solo cuando abre su cuenta. *@
+                @if (misViajes.RespuestasSinLeer > 0)
+                {
+                    <div class="mp-resp-nueva" @onclick="AbrirMiCuenta">
+                        💬 Osmar te respondió
+                        <div class="mp-pago-nuevo-sub">Tocá para leerlo</div>
+                    </div>
+                }
                 @if (misViajes.PagosSinVer > 0)
                 {
                     <div class="mp-pago-nuevo" @onclick="AbrirMiCuenta">
@@ -434,6 +447,30 @@
                                 <div class="mp-cuenta-donde">@pg.Detalle</div>
                             </div>
                             <div class="mp-cuenta-importe cobrado">@Plata(pg.Importe)</div>
+                        </div>
+                    }
+                }
+
+                @if (miCuenta.Avisos.Count > 0)
+                {
+                    <div class="mp-cuenta-seccion">Lo que avisaste</div>
+                    @foreach (var av in miCuenta.Avisos)
+                    {
+                        <div class="mp-cuenta-aviso">
+                            <div class="mp-cuenta-aviso-mio">
+                                <span class="mp-cuenta-donde">@av.Fecha.AddHours(-3).ToString("dd/MM HH:mm")</span>
+                                <div>@av.Texto</div>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(av.Respuesta))
+                            {
+                                <div class="mp-cuenta-aviso-resp">
+                                    <b>Osmar:</b> @av.Respuesta
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="mp-cuenta-donde" style="padding:0.2rem 0 0.4rem;">Todavía sin respuesta</div>
+                            }
                         </div>
                     }
                 }
@@ -1350,7 +1387,7 @@
     // 2026-09-04: viajes que cobra por entrega (solo para el repartidor con auto propio).
     public record MisViajesDto(bool Aplica, decimal Tarifa, int ViajesHoy, decimal ImporteHoy,
         int ViajesPendientes, decimal ImportePendiente, DateTime? PendienteDesde, decimal Saldo,
-        decimal PagosSinVer, int CantidadPagosSinVer);
+        decimal PagosSinVer, int CantidadPagosSinVer, int RespuestasSinLeer);
     private MisViajesDto? misViajes;
     private bool verMiCuenta;
     private MiCuentaDto? miCuenta;
@@ -1359,8 +1396,9 @@
 
     public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado, List<string> Donde);
     public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle, string Medio, bool EsNuevo);
+    public record MiAvisoDto(DateTime Fecha, string Texto, string? Respuesta, DateTime? RespuestaAt);
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
-        decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos);
+        decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos);
 
     private static string Plata(decimal v)
         => "$" + v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
@@ -1372,7 +1410,7 @@
         reporteEnviado = false;
         reporteTexto = "";
         try { miCuenta = await Http.GetFromJsonAsync<MiCuentaDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/detalle"); }
-        catch { miCuenta = new MiCuentaDto(false, 0, 0, 0, 0, new(), new()); }
+        catch { miCuenta = new MiCuentaDto(false, 0, 0, 0, 0, new(), new(), new()); }
     }
 
     /// <summary>Al cerrar la cuenta refrescamos el resumen: los pagos ya quedaron vistos.</summary>
@@ -1392,6 +1430,11 @@
             var r = await Http.PostAsJsonAsync(
                 $"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/reporte", new { Texto = reporteTexto });
             reporteEnviado = r.IsSuccessStatusCode;
+            if (reporteEnviado)
+            {
+                try { miCuenta = await Http.GetFromJsonAsync<MiCuentaDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/detalle"); }
+                catch { }
+            }
         }
         catch { reporteEnviado = false; }
         finally { enviandoReporte = false; }

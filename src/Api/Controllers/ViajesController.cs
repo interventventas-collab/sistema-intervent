@@ -718,7 +718,9 @@ public class ViajesController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────────────
 
     public record ReporteDto(int Id, int EmpleadoId, string EmpleadoNombre, string Texto,
-        DateTime CreatedAt, string Estado);
+        DateTime CreatedAt, string Estado, string? Respuesta, DateTime? RespuestaAt);
+
+    public record ResponderReporteRequest(string Texto);
 
     /// <summary>Los avisos sin atender (o todos, si se pide).</summary>
     [HttpGet("admin/reportes")]
@@ -729,7 +731,31 @@ public class ViajesController : ControllerBase
         if (!incluirVistos) q = q.Where(r => r.Estado == "NUEVO");
         var l = await q.OrderByDescending(r => r.Id).Take(50).ToListAsync();
         return Ok(l.Select(r => new ReporteDto(r.Id, r.EmpleadoId,
-            r.Empleado?.Nombre ?? "", r.Texto, r.CreatedAt, r.Estado)));
+            r.Empleado?.Nombre ?? "", r.Texto, r.CreatedAt, r.Estado, r.Respuesta, r.RespuestaAt)));
+    }
+
+    /// <summary>
+    /// Contestarle al repartidor. La respuesta le llega a su celu con un cartel, y el aviso queda
+    /// atendido de una (no hace falta apretar "Listo" aparte).
+    /// </summary>
+    [HttpPost("admin/reportes/{id:int}/responder")]
+    [Authorize]
+    public async Task<IActionResult> ResponderReporte(int id, [FromBody] ResponderReporteRequest req)
+    {
+        var r = await _db.ViajesReportes.FindAsync(id);
+        if (r is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(req?.Texto)) return BadRequest(new { error = "Escribí la respuesta" });
+
+        var texto = req.Texto.Trim();
+        r.Respuesta = texto.Length > 500 ? texto[..500] : texto;
+        r.RespuestaAt = DateTime.UtcNow;
+        r.RespuestaPor = User?.Identity?.Name;
+        r.RespuestaVistaAt = null;          // que le vuelva a saltar el cartel
+        r.Estado = "VISTO";
+        r.VistoAt = DateTime.UtcNow;
+        r.VistoPor = User?.Identity?.Name;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     /// <summary>Marcar un aviso como atendido.</summary>

@@ -18,6 +18,9 @@
         margin-bottom:0.5rem; }
     .vj-reporte-cuando { color:#9ca3af; font-size:0.78rem; }
     .vj-reporte-texto { margin-top:0.2rem; color:#374151; }
+    .vj-reporte-resp { display:flex; gap:0.4rem; margin-top:0.5rem; }
+    .vj-reporte-resp .form-input { flex:1; font-size:0.85rem; padding:0.35rem 0.5rem; }
+    .vj-reporte-resp .btn { font-size:0.8rem; padding:0.35rem 0.7rem; }
     .vj-card { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 1rem; }
     .vj-emp-card { border-left: 4px solid #1d4ed8; padding: 0.8rem; margin-bottom: 0.6rem; background: #f9fafb; border-radius: 8px; }
     .vj-emp-card.inactive { opacity: 0.5; }
@@ -56,10 +59,17 @@
             @foreach (var rp in reportes)
             {
                 <div class="vj-reporte">
-                    <div>
+                    <div style="flex:1;">
                         <b>@rp.EmpleadoNombre</b> avisó
                         <span class="vj-reporte-cuando">· @rp.CreatedAt.AddHours(-3).ToString("dd/MM HH:mm")</span>
                         <div class="vj-reporte-texto">@rp.Texto</div>
+                        @* 05/09/2026: contestarle de acá mismo. La respuesta le llega al celu. *@
+                        <div class="vj-reporte-resp">
+                            <input class="form-input" placeholder="Contestale..."
+                                   value="@(respuestas.TryGetValue(rp.Id, out var t) ? t : "")"
+                                   @onchange="@(e => respuestas[rp.Id] = e.Value?.ToString() ?? "")" />
+                            <button class="btn btn-primary" @onclick="() => Responder(rp)">Responder</button>
+                        </div>
                     </div>
                     <button class="btn btn-secondary" @onclick="() => MarcarVisto(rp)">Listo</button>
                 </div>
@@ -542,6 +552,27 @@
     private List<ViajesReporteDto> reportes = new();
     private List<CafeCajaDto> cajas = new();
     private int pagoCajaId;   // 0 = no descontar de ninguna caja
+
+    private Dictionary<int, string> respuestas = new();
+
+    /// <summary>Le contesta al repartidor: la respuesta le llega al celu y el aviso queda atendido.</summary>
+    private async Task Responder(ViajesReporteDto rp)
+    {
+        if (!respuestas.TryGetValue(rp.Id, out var texto) || string.IsNullOrWhiteSpace(texto))
+        {
+            ToastService.Error("Escribí la respuesta");
+            return;
+        }
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/viajes/admin/reportes/{rp.Id}/responder", new { Texto = texto });
+            if (!resp.IsSuccessStatusCode) { ToastService.Error("No se pudo responder"); return; }
+            ToastService.Success($"Le respondiste a {rp.EmpleadoNombre}");
+            respuestas.Remove(rp.Id);
+            reportes.Remove(rp);
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
 
     /// <summary>Marca el aviso como atendido: desaparece el cartel.</summary>
     private async Task MarcarVisto(ViajesReporteDto rp)

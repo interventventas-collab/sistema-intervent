@@ -25,6 +25,18 @@ public class ViajesReporte
     [Required, MaxLength(10)]
     public string Estado { get; set; } = "NUEVO";
 
+    /// <summary>Lo que le contestó el dueño (05/09/2026). El repartidor lo ve en su celu.</summary>
+    [MaxLength(500)]
+    public string? Respuesta { get; set; }
+
+    public DateTime? RespuestaAt { get; set; }
+
+    [MaxLength(100)]
+    public string? RespuestaPor { get; set; }
+
+    /// <summary>Cuándo leyó la respuesta. NULL = todavía no la vio: se le avisa con un cartel.</summary>
+    public DateTime? RespuestaVistaAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? VistoAt { get; set; }
 
