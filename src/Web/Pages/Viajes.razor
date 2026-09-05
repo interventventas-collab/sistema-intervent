@@ -439,6 +439,7 @@
                                 <tr>
                                     <th>Día</th><th>Qué pasó</th>
                                     <th class="n">Le sumó</th><th class="n">Le pagaste</th><th class="n">Le debemos</th>
+                                    <th></th>
                                 </tr>
                                 @foreach (var m in movimientos)
                                 {
@@ -456,11 +457,21 @@
                                         <td class="n">@(m.Suma > 0 ? $"${Plata(m.Suma)}" : "")</td>
                                         <td class="n pago">@(m.Pago != 0 ? $"${Plata(m.Pago)}" : "")</td>
                                         <td class="n">$@Plata(m.Saldo)</td>
+                                        <td style="width:34px;">
+                                            @* Las entregas del mapa no se borran acá: se corrigen en el mapa.
+                                               Lo cargado a mano y los pagos sí, salvo que ya estén liquidados. *@
+                                            @if (m.Tipo is "extra" or "pago" or "registro")
+                                            {
+                                                <button class="btn-icon" title="@(m.Liquidado ? "Ya está liquidado: borrá el pago primero" : "Borrar")"
+                                                        disabled="@m.Liquidado"
+                                                        @onclick="@(() => BorrarMovimiento(e, m))">🗑</button>
+                                            }
+                                        </td>
                                     </tr>
                                 }
                                 <tr class="cierre">
                                     <td></td><td>Le debemos hoy</td><td class="n"></td><td class="n"></td>
-                                    <td class="n">$@Plata(e.SaldoAcumulado)</td>
+                                    <td class="n">$@Plata(e.SaldoAcumulado)</td><td></td>
                                 </tr>
                             </table>
                             <div style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">
@@ -786,8 +797,41 @@
     }
 
     public record MovimientoCtaDto(DateTime Fecha, string Que, string? Detalle,
-        decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra);
+        decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
+        string Tipo, List<int> Ids, bool Liquidado);
     private List<MovimientoCtaDto>? movimientos;
+
+    /// <summary>
+    /// Borra un renglón de la cuenta. Un pago borrado devuelve la plata a la caja y deja los viajes
+    /// que había cerrado como pendientes otra vez.
+    /// </summary>
+    private async Task BorrarMovimiento(AdminEmpleadoDto e, MovimientoCtaDto m)
+    {
+        var que = m.EsPago ? $"el pago de ${Plata(m.Pago)}" : $"\"{m.Que}\" de ${Plata(m.Suma)}";
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Borrar {que} de {e.Nombre}?")) return;
+        try
+        {
+            foreach (var id in m.Ids)
+            {
+                var url = m.Tipo switch
+                {
+                    "pago" => $"api/viajes/admin/pagos/{id}",
+                    "registro" => $"api/viajes/admin/registros/{id}",
+                    _ => $"api/viajes/admin/entregas/{id}"
+                };
+                var resp = await Http.DeleteAsync(url);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var txt = await resp.Content.ReadAsStringAsync();
+                    ToastService.Error(txt.Contains("liquidado") ? "Ya está liquidado: borrá primero el pago que lo cerró." : "No se pudo borrar");
+                    return;
+                }
+            }
+            ToastService.Success("Borrado");
+            await RecargarTodo();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
 
     private async Task CargarDetalle(int empId)
     {

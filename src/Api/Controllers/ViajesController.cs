@@ -817,8 +817,13 @@ public class ViajesController : ControllerBase
     // adentro de las entregas, asi que el dueño no veía lo que él mismo había cargado.
     // ─────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Un renglón de la cuenta. Ids y Tipo van para poder borrarlo desde la misma tabla: las
+    /// entregas del mapa no se tocan, pero lo cargado a mano y los pagos sí.
+    /// </summary>
     public record MovimientoCtaDto(DateTime Fecha, string Que, string? Detalle,
-        decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra);
+        decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
+        string Tipo, List<int> Ids, bool Liquidado);
 
     [HttpGet("admin/empleados/{id:int}/movimientos")]
     [Authorize]
@@ -832,7 +837,8 @@ public class ViajesController : ControllerBase
         var regs = await _db.ViajesRegistros.Where(x => x.EmpleadoId == id).ToListAsync();
 
         // Un renglón por día para las entregas del mapa, y uno por cada cosa cargada a mano.
-        var filas = new List<(DateTime fecha, int orden, string que, string? det, decimal suma, decimal pago, bool esPago, bool esExtra)>();
+        var filas = new List<(DateTime fecha, int orden, string que, string? det, decimal suma,
+            decimal pago, bool esPago, bool esExtra, string tipo, List<int> ids, bool liq)>();
 
         foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
         {
@@ -843,19 +849,22 @@ public class ViajesController : ControllerBase
             var resto = g.Count() - quienes.Count;
             filas.Add((g.Key, 0, $"{g.Count()} entrega{(g.Count() == 1 ? "" : "s")}",
                 string.Join(" · ", quienes) + (resto > 0 ? $" · +{resto}" : ""),
-                g.Sum(x => x.Tarifa), 0m, false, false));
+                g.Sum(x => x.Tarifa), 0m, false, false, "entregas",
+                g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null)));
         }
 
         foreach (var g in ents.Where(x => x.StopId == null).GroupBy(x => new { x.Fecha, Det = x.Detalle ?? "Ajuste" }))
-            filas.Add((g.Key.Fecha, 1, g.Key.Det, null, g.Sum(x => x.Tarifa), 0m, false, true));
+            filas.Add((g.Key.Fecha, 1, g.Key.Det, null, g.Sum(x => x.Tarifa), 0m, false, true,
+                "extra", g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null)));
 
         foreach (var r in regs)
             filas.Add((r.Fecha, 1, $"{r.CantidadCABA + r.CantidadPCIA} viajes cargados a mano", r.Anotaciones,
-                (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA, 0m, false, true));
+                (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA, 0m, false, true,
+                "registro", new List<int> { r.Id }, false));
 
         foreach (var p in pagos)
             filas.Add((p.Fecha, 2, "Pago" + (string.IsNullOrWhiteSpace(p.Descripcion) ? "" : " · " + p.Descripcion),
-                null, 0m, p.Importe, true, false));
+                null, 0m, p.Importe, true, false, "pago", new List<int> { p.Id }, false));
 
         // El saldo se calcula desde el principio de los tiempos, si no el número no cerraría.
         var orden = filas.OrderBy(f => f.fecha).ThenBy(f => f.orden).ToList();
@@ -864,7 +873,8 @@ public class ViajesController : ControllerBase
         foreach (var f in orden)
         {
             acum += f.suma - f.pago;
-            salida.Add(new MovimientoCtaDto(f.fecha, f.que, f.det, f.suma, f.pago, acum, f.esPago, f.esExtra));
+            salida.Add(new MovimientoCtaDto(f.fecha, f.que, f.det, f.suma, f.pago, acum,
+                f.esPago, f.esExtra, f.tipo, f.ids, f.liq));
         }
 
         // Y recién ahí se recorta a los últimos días pedidos.
