@@ -136,7 +136,12 @@ public class CafeCajasController : ControllerBase
         void Sumar(int cajaId, decimal importe)
             => acum[cajaId] = (acum.TryGetValue(cajaId, out var v) ? v : 0m) + importe;
 
+        // ⚠ 05/09/2026: sólo las cobranzas VIGENTES. Una cobranza anulada deja sus renglones en
+        // Cafe_CobranzasMedios (no se borran), asi que sin este filtro la caja seguia contando
+        // plata que ya se habia dado de baja: el dueño anuló dos cobranzas de $37.000 y el saldo
+        // no bajó.
         var cobranzas = await _db.CafeCobranzasMedios
+            .Where(m => m.Cobranza!.Estado == "VIGENTE")
             .GroupBy(m => m.CajaId)
             .Select(g => new { CajaId = g.Key, Total = g.Sum(x => x.Importe) })
             .ToListAsync();
@@ -145,6 +150,7 @@ public class CafeCajasController : ControllerBase
         // Los pagos a proveedor todavia no se usan (0 al 05/09/2026), pero si algun dia se cargan
         // tienen que restar solos, sin que haya que acordarse de tocar esto.
         var pagos = await _db.CafePagosProveedorMedios
+            .Where(m => m.Pago!.Estado == "VIGENTE")
             .GroupBy(m => m.CajaId)
             .Select(g => new { CajaId = g.Key, Total = g.Sum(x => x.Importe) })
             .ToListAsync();
