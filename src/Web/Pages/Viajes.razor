@@ -48,6 +48,28 @@
     .vj-tab-regs td { padding: 0.4rem; border-bottom: 1px solid #f3f4f6; }
     .vj-emp-card.auto { border-left-color: #0f766e; }
     .linea-auto { font-size: 0.9rem; color: #374151; margin-top: 0.6rem; line-height: 1.55; }
+    /* Dos columnas: la cuenta a la izquierda y el resumen al costado. En pantallas chicas
+       la de la derecha se va abajo sola. */
+    .vj-grid { display:grid; grid-template-columns:1fr 340px; gap:1rem; align-items:start; }
+    @@media (max-width: 1100px) { .vj-grid { grid-template-columns:1fr; } }
+    .vj-lat-card { padding:0; }
+    .vj-lat { padding:1rem 1.1rem; }
+    .vj-lat + .vj-lat { border-top:1px solid #f3f4f6; }
+    .vj-lat-tit { font-size:0.72rem; font-weight:800; letter-spacing:0.07em; text-transform:uppercase; color:#9ca3af; }
+    .vj-barra { display:flex; align-items:center; gap:0.55rem; margin-top:0.55rem; font-size:0.83rem; }
+    .vj-barra .d { width:56px; color:#6b7280; white-space:nowrap; }
+    .vj-barra .t { flex:1; background:#f3f4f6; border-radius:4px; height:22px; position:relative; overflow:hidden; }
+    .vj-barra .t i { position:absolute; left:0; top:0; bottom:0; background:#0f766e; border-radius:4px; }
+    .vj-barra .c { width:26px; text-align:right; font-weight:700; }
+    .vj-jorn { font-size:0.76rem; color:#9ca3af; margin-left:61px; }
+    .vj-prom { margin-top:0.75rem; font-size:0.83rem; color:#6b7280; }
+    .vj-orig { display:flex; justify-content:space-between; padding:0.35rem 0; font-size:0.87rem;
+        border-bottom:1px solid #f5f5f5; }
+    .vj-orig:last-child { border-bottom:none; }
+    .vj-aviso { background:#fffbeb; border:1px solid #fde68a; border-radius:9px; padding:0.6rem 0.7rem;
+        font-size:0.85rem; margin-top:0.55rem; }
+    .vj-aviso .cu { color:#9ca3af; font-size:0.73rem; }
+    .vj-vacio { color:#9ca3af; font-size:0.85rem; margin-top:0.5rem; }
     .vj-cintas { display:flex; gap:0.6rem; flex-wrap:wrap; margin-top:0.75rem; }
     .vj-cinta { background:#f9fafb; border:1px solid #f0f0f0; border-radius:9px; padding:0.5rem 0.8rem;
         font-size:0.84rem; color:#374151; }
@@ -307,6 +329,8 @@
         </div>
     }
 
+    <div class="vj-grid">
+    <div>
     @* Empleados *@
     <div class="vj-card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.6rem;">
@@ -413,7 +437,6 @@
                     <div class="vj-btn-row secundaria">
                         @if (e.ModoAutomatico)
                         {
-                            <button class="vj-btn-mini" @onclick="@(() => VerDetalle(e))">📋 @(detalleEmpId == e.Id ? "Ocultar movimientos" : "Ver movimientos")</button>
                         }
                         <button class="vj-btn-mini link" @onclick="@(() => CopiarLink(e))">📋 Copiar link</button>
                         <button class="vj-btn-mini wa" @onclick="@(() => MandarWhatsapp(e))">📱 WhatsApp</button>
@@ -423,7 +446,7 @@
                     @* 05/09/2026: la cuenta corriente — viajes y pagos mezclados en orden, con el
                        saldo corriendo. Antes esto era "Día por día" y los viajes cargados a mano
                        venían sumados adentro de las entregas, asi que no se veían. *@
-                    @if (detalleEmpId == e.Id)
+                    @if (e.ModoAutomatico)
                     {
                         @if (movimientos is null)
                         {
@@ -482,6 +505,98 @@
                 </div>
             }
         }
+    </div>
+
+    </div>
+
+    @* 05/09/2026: la columna del costado. Antes sobraba media pantalla en blanco. *@
+    <div class="vj-card vj-lat-card">
+        @{ var auto = empleados?.FirstOrDefault(x => x.ModoAutomatico && x.IsActive); }
+        @if (auto is not null && resumen is not null)
+        {
+            <div class="vj-lat">
+                <div class="vj-lat-tit">Cómo viene la semana</div>
+                @{ var tope = resumen.Dias.Count == 0 ? 1 : Math.Max(1, resumen.Dias.Max(d => d.Entregas)); }
+                @foreach (var d in resumen.Dias)
+                {
+                    <div class="vj-barra">
+                        <span class="d">@d.Fecha.ToString("ddd dd", ar)</span>
+                        <span class="t">
+                            @if (d.Entregas > 0)
+                            {
+                                <i style="width:@(d.Entregas * 100 / tope)%"></i>
+                            }
+                        </span>
+                        <span class="c">@d.Entregas</span>
+                    </div>
+                    <div class="vj-jorn">
+                        @if (d.Desde is { } de && d.Hasta is { } ha)
+                        {
+                            var mins = (ha - de).TotalMinutes;
+                            <text>@de.ToArTime().ToString("HH:mm") → @ha.ToArTime().ToString("HH:mm") · @((int)(mins / 60)) h @((int)(mins % 60)) min</text>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(d.Nota))
+                        {
+                            <text>no salió · @d.Nota</text>
+                        }
+                        else
+                        {
+                            <text>no salió</text>
+                        }
+                    </div>
+                }
+                @if (resumen.DiasQueSalio > 0)
+                {
+                    <div class="vj-prom">
+                        Promedio <b>@resumen.PromedioEntregas entregas</b> por día que sale · <b>$@Plata(resumen.PromedioImporte)</b>
+                    </div>
+                }
+            </div>
+
+            @if (resumen.Origenes.Count > 0)
+            {
+                <div class="vj-lat">
+                    <div class="vj-lat-tit">De dónde salen los viajes</div>
+                    @foreach (var o in resumen.Origenes)
+                    {
+                        <div class="vj-orig"><span>@NombreOrigen(o.Origen)</span><b>@o.Cantidad</b></div>
+                    }
+                </div>
+            }
+        }
+
+        <div class="vj-lat">
+            <div class="vj-lat-tit">Lo que te avisó</div>
+            @if (avisosTodos.Count == 0)
+            {
+                <div class="vj-vacio">Todavía no te avisó nada.</div>
+            }
+            else
+            {
+                @foreach (var a in avisosTodos.Take(5))
+                {
+                    <div class="vj-aviso">
+                        <div class="cu">
+                            @a.CreatedAt.AddHours(-3).ToString("ddd dd/MM · HH:mm", ar)
+                            @(string.IsNullOrWhiteSpace(a.Respuesta) ? "— sin responder" : "— respondido")
+                        </div>
+                        @a.Texto
+                    </div>
+                }
+            }
+        </div>
+
+        @if (auto is not null)
+        {
+            <div class="vj-lat">
+                <div class="vj-lat-tit">Su pantalla</div>
+                <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.5rem;">
+                    <button class="vj-btn-mini wa" @onclick="@(() => MandarWhatsapp(auto))">📱 Mandársela por WhatsApp</button>
+                    <button class="vj-btn-mini link" @onclick="@(() => CopiarLink(auto))">📋 Copiar el link</button>
+                </div>
+            </div>
+        }
+    </div>
     </div>
 
     @* Tab selector: Viajes o Pagos *@
@@ -638,6 +753,19 @@
     private System.Threading.Timer? autoRefreshTimer;
 
     private List<ViajesReporteDto> reportes = new();
+    private List<ViajesReporteDto> avisosTodos = new();
+
+    /// <summary>De dónde salió el viaje, dicho para el dueño.</summary>
+    private static string NombreOrigen(string o) => o switch
+    {
+        "flex" => "📦 Flex de MercadoLibre",
+        "me1" => "📦 Mercado Envíos",
+        "venta_cafe" => "☕ Ventas del café",
+        "alquiler" => "🎪 Alquileres",
+        "visita" => "🚗 Visitas",
+        "manual" => "✍ Cargados a mano",
+        _ => o
+    };
     private List<CafeCajaDto> cajas = new();
     private int pagoCajaId;   // 0 = no descontar de ninguna caja
 
@@ -690,8 +818,18 @@
         registros = await Http.GetFromJsonAsync<List<AdminRegistroDto>>("api/viajes/admin/registros");
         pagos = await Http.GetFromJsonAsync<List<AdminPagoDto>>("api/viajes/admin/pagos");
         choferes ??= await Http.GetFromJsonAsync<List<ChoferDto>>("api/viajes/admin/choferes");
+        // 05/09/2026: la cuenta y el resumen se cargan de una, sin apretar nada: la pantalla estaba
+        // vacía y lo importante quedaba escondido detrás de un botón.
+        var auto = empleados?.FirstOrDefault(x => x.ModoAutomatico && x.IsActive);
+        if (auto is not null)
+        {
+            try { movimientos = await Http.GetFromJsonAsync<List<MovimientoCtaDto>>($"api/viajes/admin/empleados/{auto.Id}/movimientos?dias=60"); } catch { }
+            try { resumen = await Http.GetFromJsonAsync<ResumenEmpleadoDto>($"api/viajes/admin/empleados/{auto.Id}/resumen?dias=7"); } catch { }
+        }
         try { reportes = await Http.GetFromJsonAsync<List<ViajesReporteDto>>("api/viajes/admin/reportes") ?? new(); }
         catch { /* si falla, el resto de la pantalla tiene que seguir andando igual */ }
+        try { avisosTodos = await Http.GetFromJsonAsync<List<ViajesReporteDto>>("api/viajes/admin/reportes?incluirVistos=true") ?? new(); }
+        catch { }
         if (cajas.Count == 0)
         {
             try { cajas = await Http.GetFromJsonAsync<List<CafeCajaDto>>("api/cafe/cajas") ?? new(); }
@@ -795,6 +933,13 @@
         detalleEmpId = e.Id; detalle = null;
         await CargarDetalle(e.Id);
     }
+
+    public record DiaResumenDto(DateTime Fecha, int Entregas, decimal Importe,
+        DateTime? Desde, DateTime? Hasta, string? Nota);
+    public record OrigenResumenDto(string Origen, int Cantidad);
+    public record ResumenEmpleadoDto(List<DiaResumenDto> Dias, List<OrigenResumenDto> Origenes,
+        int DiasQueSalio, decimal PromedioEntregas, decimal PromedioImporte);
+    private ResumenEmpleadoDto? resumen;
 
     public record MovimientoCtaDto(DateTime Fecha, string Que, string? Detalle,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,

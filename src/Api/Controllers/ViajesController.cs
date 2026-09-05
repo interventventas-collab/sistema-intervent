@@ -108,7 +108,7 @@ public class ViajesController : ControllerBase
         var totalPagadoAll = await _db.ViajesPagos.Where(p => p.EmpleadoId == emp.Id).SumAsync(p => p.Importe);
         var saldoAcum = totalACobrarAll - totalPagadoAll;
 
-        var entHoy = entregas.Where(x => x.Fecha == hoy).ToList();
+        var entHoy = entregas.Where(x => x.Fecha == hoy && x.StopId != null).ToList();
         var entPend = entregas.Where(x => x.LiquidadoPagoId is null).ToList();
 
         var regSel = registros.FirstOrDefault(r => r.Fecha == fechaSel);
@@ -246,7 +246,9 @@ public class ViajesController : ControllerBase
 
             // Pendiente = lo que todavia no se le liquido (solo aplica al modo automatico).
             var pend = ents.Where(x => x.LiquidadoPagoId is null).ToList();
-            var hoyEnts = ents.Where(x => x.Fecha == hoy).ToList();
+            // Sólo las entregas de verdad: lo cargado a mano (un día en el depósito, un premio) no
+            // es una entrega y hacía decir "hoy 1 entrega" un día que no salió a repartir.
+            var hoyEnts = ents.Where(x => x.Fecha == hoy && x.StopId != null).ToList();
 
             var ultima = ultimasCargas.TryGetValue(e.Id, out var u1) ? u1 : null;
             var ultimaEnt = ultimasEntregas.TryGetValue(e.Id, out var u2) ? u2 : null;
@@ -899,5 +901,58 @@ public class ViajesController : ControllerBase
         // Y recién ahí se recorta a los últimos días pedidos.
         var desde = FechaArgentinaHoy().AddDays(-Math.Max(1, dias));
         return Ok(salida.Where(x => x.Fecha >= desde).ToList());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Resumen para el costado de la pantalla (05/09/2026)
+    // Cómo viene la semana, de dónde salen los viajes y a qué hora sale y termina.
+    // La jornada sale de la hora en que se confirmó cada entrega (EntregadoAt, en UTC:
+    // la pantalla la pasa a hora argentina con ToArTime()).
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    public record DiaResumenDto(DateTime Fecha, int Entregas, decimal Importe,
+        DateTime? Desde, DateTime? Hasta, string? Nota);
+    public record OrigenResumenDto(string Origen, int Cantidad);
+    public record ResumenEmpleadoDto(List<DiaResumenDto> Dias, List<OrigenResumenDto> Origenes,
+        int DiasQueSalio, decimal PromedioEntregas, decimal PromedioImporte);
+
+    [HttpGet("admin/empleados/{id:int}/resumen")]
+    [Authorize]
+    public async Task<IActionResult> Resumen(int id, [FromQuery] int dias = 7)
+    {
+        var emp = await _db.ViajesEmpleados.FindAsync(id);
+        if (emp is null) return NotFound();
+
+        var hoy = FechaArgentinaHoy();
+        var desde = hoy.AddDays(-(Math.Max(1, dias) - 1));
+        var ents = await _db.ViajesEntregas
+            .Where(x => x.EmpleadoId == id && x.Fecha >= desde).ToListAsync();
+
+        var lista = new List<DiaResumenDto>();
+        for (var d = desde; d <= hoy; d = d.AddDays(1))
+        {
+            var delDia = ents.Where(x => x.Fecha == d).ToList();
+            var reales = delDia.Where(x => x.StopId != null).ToList();
+            // Si ese día no salió pero le cargaste algo a mano, se muestra el motivo.
+            var nota = reales.Count == 0
+                ? string.Join(" · ", delDia.Where(x => !string.IsNullOrWhiteSpace(x.Detalle))
+                        .Select(x => x.Detalle!).Distinct())
+                : null;
+            lista.Add(new DiaResumenDto(d, reales.Count, delDia.Sum(x => x.Tarifa),
+                reales.Count == 0 ? null : reales.Min(x => x.EntregadoAt),
+                reales.Count == 0 ? null : reales.Max(x => x.EntregadoAt),
+                string.IsNullOrWhiteSpace(nota) ? null : nota));
+        }
+
+        // De dónde salen: se mira todo el historial, no sólo la semana.
+        var todas = await _db.ViajesEntregas.Where(x => x.EmpleadoId == id).ToListAsync();
+        var origenes = todas.GroupBy(x => x.Origen ?? "manual")
+            .Select(g => new OrigenResumenDto(g.Key, g.Count()))
+            .OrderByDescending(x => x.Cantidad).ToList();
+
+        var salio = lista.Where(x => x.Entregas > 0).ToList();
+        return Ok(new ResumenEmpleadoDto(lista, origenes, salio.Count,
+            salio.Count == 0 ? 0 : Math.Round((decimal)salio.Sum(x => x.Entregas) / salio.Count, 1),
+            salio.Count == 0 ? 0 : Math.Round(salio.Sum(x => x.Importe) / salio.Count, 0)));
     }
 }
