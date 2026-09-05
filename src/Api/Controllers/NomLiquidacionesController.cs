@@ -1104,12 +1104,21 @@ public class NomLiquidacionesController : ControllerBase
         return mov;
     }
 
-    /// <summary>Borra el renglon que este pago habia dejado en la caja (la plata "vuelve").</summary>
+    /// <summary>
+    /// Da de baja el renglon que este pago habia dejado en la caja: la plata "vuelve", pero el
+    /// renglon NO se borra — queda tachado en el historial de movimientos (pedido del dueño el
+    /// 05/09/2026, para no perder el rastro de lo que se anuló).
+    /// </summary>
     private async Task SacarMovimientoDeCajaAsync(Models.NomPago pago)
     {
         if (!pago.CajaMovimientoId.HasValue) return;
         var viejo = await _db.CafeCajaMovimientos.FindAsync(pago.CajaMovimientoId.Value);
-        if (viejo is not null) _db.CafeCajaMovimientos.Remove(viejo);
+        if (viejo is not null && viejo.AnuladoAt == null)
+        {
+            viejo.AnuladoAt = DateTime.UtcNow;
+            viejo.AnuladoPor = User?.Identity?.Name;
+            viejo.UpdatedAt = DateTime.UtcNow;
+        }
         pago.CajaMovimientoId = null;
         await _db.SaveChangesAsync();
     }

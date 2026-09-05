@@ -114,7 +114,8 @@ public class CafeCajasController : ControllerBase
 
     public record MovimientoDto(
         int Id, int CajaId, string CajaNombre, DateTime Fecha, string Tipo,
-        decimal Importe, string Motivo, int? TransferenciaGrupoId, string? CargadoPor);
+        decimal Importe, string Motivo, int? TransferenciaGrupoId, string? CargadoPor,
+        bool Anulado, string? AnuladoPor);
 
     public record SalidaRequest(DateTime? Fecha, decimal Importe, string Motivo);
     public record TransferenciaRequest(int DesdeCajaId, int HaciaCajaId, DateTime? Fecha, decimal Importe, string? Motivo);
@@ -157,6 +158,7 @@ public class CafeCajasController : ControllerBase
         foreach (var x in pagos) Sumar(x.CajaId, -x.Total);
 
         var movs = await _db.CafeCajaMovimientos
+            .Where(m => m.AnuladoAt == null)
             .GroupBy(m => m.CajaId)
             .Select(g => new { CajaId = g.Key, Total = g.Sum(x => x.Importe) })
             .ToListAsync();
@@ -175,7 +177,7 @@ public class CafeCajasController : ControllerBase
         var movs = await q.OrderByDescending(m => m.Fecha).ThenByDescending(m => m.Id).Take(500).ToListAsync();
         return Ok(movs.Select(m => new MovimientoDto(
             m.Id, m.CajaId, m.Caja?.Nombre ?? "", m.Fecha, m.Tipo, m.Importe, m.Motivo,
-            m.TransferenciaGrupoId, m.CargadoPor)));
+            m.TransferenciaGrupoId, m.CargadoPor, m.AnuladoAt != null, m.AnuladoPor)));
     }
 
     /// <summary>Plata que sale de una caja: nafta, un adelanto, lo que sea.</summary>
@@ -272,21 +274,32 @@ public class CafeCajasController : ControllerBase
         return Ok(new { ok = true, saldoSistema, diferencia, id = mov.Id });
     }
 
-    /// <summary>Borra un movimiento. Si es una transferencia se van las dos patas juntas.</summary>
+    /// <summary>
+    /// Anula un movimiento: el saldo lo deja de contar pero el renglon queda, tachado en la lista.
+    /// El dueño lo pidio asi (05/09/2026) para no perder el rastro de lo que se dio de baja.
+    /// Si es una transferencia se anulan las dos patas juntas.
+    /// </summary>
     [HttpDelete("movimientos/{id:int}")]
-    public async Task<IActionResult> BorrarMovimiento(int id)
+    public async Task<IActionResult> AnularMovimiento(int id)
     {
         var mov = await _db.CafeCajaMovimientos.FindAsync(id);
         if (mov is null) return NotFound();
-        if (mov.TransferenciaGrupoId.HasValue)
+        if (mov.AnuladoAt != null) return Ok(new { ok = true, yaEstaba = true });
+
+        var aAnular = mov.TransferenciaGrupoId.HasValue
+            ? await _db.CafeCajaMovimientos
+                .Where(m => m.TransferenciaGrupoId == mov.TransferenciaGrupoId && m.AnuladoAt == null)
+                .ToListAsync()
+            : new List<Models.CafeCajaMovimiento> { mov };
+
+        foreach (var m in aAnular)
         {
-            var patas = await _db.CafeCajaMovimientos
-                .Where(m => m.TransferenciaGrupoId == mov.TransferenciaGrupoId).ToListAsync();
-            _db.CafeCajaMovimientos.RemoveRange(patas);
+            m.AnuladoAt = DateTime.UtcNow;
+            m.AnuladoPor = User?.Identity?.Name;
+            m.UpdatedAt = DateTime.UtcNow;
         }
-        else _db.CafeCajaMovimientos.Remove(mov);
         await _db.SaveChangesAsync();
-        return Ok(new { ok = true });
+        return Ok(new { ok = true, anulados = aAnular.Count });
     }
 
     /// <summary>Plata como la escribimos acá: $34.000. El contenedor corre en formato invariante.</summary>

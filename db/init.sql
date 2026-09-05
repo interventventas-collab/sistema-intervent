@@ -4204,6 +4204,10 @@ GO
 IF COL_LENGTH('Nom_Pagos','CajaMovimientoId') IS NULL
     ALTER TABLE Nom_Pagos ADD CajaMovimientoId INT NULL;
 GO
+-- 05/09/2026: los movimientos de caja se anulan, no se borran (quedan tachados en la lista).
+IF COL_LENGTH('Cafe_CajaMovimientos','AnuladoAt') IS NULL
+    ALTER TABLE Cafe_CajaMovimientos ADD AnuladoAt DATETIME2 NULL, AnuladoPor NVARCHAR(100) NULL;
+GO
 -- Cafe_CajaMovimientos: todo lo que mueve plata en una caja y NO es una cobranza.
 -- Sin esto la caja solo sumaba (el 04/09/2026 "Efectivo" mostraba $142.736.024 acumulados).
 -- El Importe lleva el signo: negativo sale, positivo entra.
@@ -4219,6 +4223,8 @@ BEGIN
         Motivo NVARCHAR(300) NOT NULL,
         TransferenciaGrupoId INT NULL,
         CargadoPor NVARCHAR(100) NULL,
+        AnuladoAt DATETIME2 NULL,
+        AnuladoPor NVARCHAR(100) NULL,
         CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeCajaMov_Created DEFAULT SYSUTCDATETIME(),
         UpdatedAt DATETIME2 NULL,
         CONSTRAINT FK_CafeCajaMov_Caja FOREIGN KEY (CajaId) REFERENCES Cafe_Cajas(Id)

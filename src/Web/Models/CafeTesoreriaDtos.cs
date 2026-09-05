@@ -26,6 +26,9 @@ public class CafeCajaMovimientoDto
     public string Motivo { get; set; } = "";
     public int? TransferenciaGrupoId { get; set; }
     public string? CargadoPor { get; set; }
+    /// <summary>Anulado: sigue en la lista pero tachado, y el saldo no lo cuenta.</summary>
+    public bool Anulado { get; set; }
+    public string? AnuladoPor { get; set; }
 }
 
 public class CafeOkDto { public bool Ok { get; set; } }

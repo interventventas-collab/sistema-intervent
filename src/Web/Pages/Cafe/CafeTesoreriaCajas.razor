@@ -73,7 +73,7 @@
             <div class="movs-lista">
                 @foreach (var m in movs)
                 {
-                    <div class="mov-fila">
+                    <div class="mov-fila @(m.Anulado ? "anulado" : "")">
                         <div class="mov-texto">
                             <span class="mov-fecha">@m.Fecha.ToString("dd/MM")</span>
                             <b>@m.CajaNombre</b> · @m.Motivo
@@ -82,8 +82,15 @@
                                 <span class="mov-quien"> · lo cargó @m.CargadoPor</span>
                             }
                         </div>
-                        <div class="mov-importe @(m.Importe < 0 ? "en-rojo" : "")">@Plata(m.Importe)</div>
-                        <button class="btn-icon" @onclick="() => BorrarMov(m)" title="Borrar">🗑</button>
+                        <div class="mov-importe @(m.Importe < 0 && !m.Anulado ? "en-rojo" : "")">@Plata(m.Importe)</div>
+                        @if (m.Anulado)
+                        {
+                            <span class="mov-anulado">anulado</span>
+                        }
+                        else
+                        {
+                            <button class="btn-icon" @onclick="() => AnularMov(m)" title="Anular">🗑</button>
+                        }
                     </div>
                 }
             </div>
@@ -259,6 +266,11 @@
     .mov-quien { color:#9ca3af; font-size:0.8rem; }
     .mov-importe { font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
     .destinos { display:flex; gap:0.35rem; flex-wrap:wrap; }
+    /* Anulado: queda a la vista pero apagado y tachado, para no perder el rastro. */
+    .mov-fila.anulado .mov-texto, .mov-fila.anulado .mov-importe {
+        text-decoration:line-through; color:#9ca3af; }
+    .mov-anulado { font-size:0.72rem; color:#9ca3af; border:1px solid #e5e7eb;
+        border-radius:4px; padding:0.05rem 0.35rem; white-space:nowrap; }
     /* En el celular las tarjetas van una abajo de la otra y los botones entran con el dedo. */
     @@media (max-width: 640px) {
         .cajas-grid { grid-template-columns:1fr; }
@@ -373,12 +385,15 @@
         finally { saving = false; }
     }
 
-    private async Task BorrarMov(CafeCajaMovimientoDto m)
+    /// <summary>No borra: lo tacha. El renglon queda a la vista y el saldo lo deja de contar.</summary>
+    private async Task AnularMov(CafeCajaMovimientoDto m)
     {
         try
         {
-            await Api.BorrarCafeCajaMovimientoAsync(m.Id);
-            ToastService.Success(m.TransferenciaGrupoId.HasValue ? "Transferencia borrada (las dos patas)" : "Movimiento borrado");
+            await Api.AnularCafeCajaMovimientoAsync(m.Id);
+            ToastService.Success(m.TransferenciaGrupoId.HasValue
+                ? "Transferencia anulada (las dos patas)"
+                : "Movimiento anulado");
             await Load();
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }

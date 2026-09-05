@@ -40,6 +40,16 @@ public class CafeCajaMovimiento
     [MaxLength(100)]
     public string? CargadoPor { get; set; }
 
+    /// <summary>
+    /// Cuándo se anuló (05/09/2026). Los movimientos NO se borran: quedan tachados en la lista y
+    /// el saldo los ignora, igual que una cobranza anulada. El dueño lo pidió asi para que quede
+    /// el rastro de lo que se dio de baja.
+    /// </summary>
+    public DateTime? AnuladoAt { get; set; }
+
+    [MaxLength(100)]
+    public string? AnuladoPor { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

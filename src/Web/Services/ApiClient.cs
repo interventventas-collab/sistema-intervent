@@ -6247,7 +6247,8 @@ public class ApiClient
         => (await PostAsync<CafeOkDto>("/api/cafe/cajas/transferencia", new { desdeCajaId, haciaCajaId, fecha, importe, motivo }))?.Ok == true;
     public async Task<CafeArqueoResultDto?> CafeCajaArqueoAsync(int cajaId, DateTime fecha, decimal contadoReal, string? notas)
         => await PostAsync<CafeArqueoResultDto>($"/api/cafe/cajas/{cajaId}/arqueo", new { fecha, contadoReal, notas });
-    public async Task<bool> BorrarCafeCajaMovimientoAsync(int id)
+    /// <summary>No borra el movimiento: lo anula (queda tachado en la lista).</summary>
+    public async Task<bool> AnularCafeCajaMovimientoAsync(int id)
         => await DeleteAsync($"/api/cafe/cajas/movimientos/{id}");
 
     // ===== Tesoreria Cafe: Cobranzas =====
