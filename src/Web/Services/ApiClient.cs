@@ -6248,11 +6248,11 @@ public class ApiClient
     public async Task<List<CafeCajaMovimientoDto>?> GetCafeCajaMovimientosAsync(int? cajaId = null, int dias = 60)
         => await GetAsync<List<CafeCajaMovimientoDto>>($"/api/cafe/cajas/movimientos?dias={dias}" + (cajaId.HasValue ? $"&cajaId={cajaId}" : ""));
     public async Task<bool> CafeCajaSalidaAsync(int cajaId, DateTime fecha, decimal importe, string motivo)
-        => (await PostAsync<CafeOkDto>($"/api/cafe/cajas/{cajaId}/salida", new { fecha, importe, motivo }))?.Ok == true;
+        => (await PostAsync<CafeOkDto>($"/api/cafe/cajas/{cajaId}/salida", new { fechaStr = fecha.ToString("yyyy-MM-dd"), importe, motivo }))?.Ok == true;
     public async Task<bool> CafeCajaTransferenciaAsync(int desdeCajaId, int haciaCajaId, DateTime fecha, decimal importe, string? motivo)
-        => (await PostAsync<CafeOkDto>("/api/cafe/cajas/transferencia", new { desdeCajaId, haciaCajaId, fecha, importe, motivo }))?.Ok == true;
+        => (await PostAsync<CafeOkDto>("/api/cafe/cajas/transferencia", new { desdeCajaId, haciaCajaId, fechaStr = fecha.ToString("yyyy-MM-dd"), importe, motivo }))?.Ok == true;
     public async Task<CafeArqueoResultDto?> CafeCajaArqueoAsync(int cajaId, DateTime fecha, decimal contadoReal, string? notas)
-        => await PostAsync<CafeArqueoResultDto>($"/api/cafe/cajas/{cajaId}/arqueo", new { fecha, contadoReal, notas });
+        => await PostAsync<CafeArqueoResultDto>($"/api/cafe/cajas/{cajaId}/arqueo", new { fechaStr = fecha.ToString("yyyy-MM-dd"), contadoReal, notas });
     /// <summary>No borra el movimiento: lo anula (queda tachado en la lista).</summary>
     public async Task<bool> AnularCafeCajaMovimientoAsync(int id)
         => await DeleteAsync($"/api/cafe/cajas/movimientos/{id}");

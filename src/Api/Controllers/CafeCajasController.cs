@@ -117,12 +117,26 @@ public class CafeCajasController : ControllerBase
         decimal Importe, string Motivo, int? TransferenciaGrupoId, string? CargadoPor,
         bool Anulado, string? AnuladoPor);
 
-    public record SalidaRequest(DateTime? Fecha, decimal Importe, string Motivo);
-    public record TransferenciaRequest(int DesdeCajaId, int HaciaCajaId, DateTime? Fecha, decimal Importe, string? Motivo);
-    public record ArqueoRequest(DateTime? Fecha, decimal ContadoReal, string? Notas);
+    public record SalidaRequest(DateTime? Fecha, decimal Importe, string Motivo, string? FechaStr = null);
+    public record TransferenciaRequest(int DesdeCajaId, int HaciaCajaId, DateTime? Fecha, decimal Importe, string? Motivo, string? FechaStr = null);
+    public record ArqueoRequest(DateTime? Fecha, decimal ContadoReal, string? Notas, string? FechaStr = null);
 
     /// <summary>Fecha argentina de hoy: el servidor va en UTC y a la noche ya esta en el dia siguiente.</summary>
     private static DateTime HoyAr() => DateTime.UtcNow.AddHours(-3).Date;
+
+    /// <summary>
+    /// ⚠ 05/09/2026: la fecha se manda como texto "yyyy-MM-dd". Como DateTime el navegador la
+    /// serializa con SU zona y el dia se corre — el dueño trabaja desde España (UTC+2) y todo lo
+    /// que cargaba quedaba guardado el dia anterior.
+    /// </summary>
+    private static DateTime LeerFecha(string? txt, DateTime? fecha)
+    {
+        if (!string.IsNullOrWhiteSpace(txt) &&
+            DateTime.TryParseExact(txt.Trim(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var d))
+            return d.Date;
+        return (fecha ?? HoyAr()).Date;
+    }
 
     private string? QuienSoy() => User?.Identity?.Name;
 
@@ -192,7 +206,7 @@ public class CafeCajasController : ControllerBase
         var mov = new Models.CafeCajaMovimiento
         {
             CajaId = id,
-            Fecha = (req.Fecha ?? HoyAr()).Date,
+            Fecha = LeerFecha(req.FechaStr, req.Fecha),
             Tipo = "SALIDA",
             Importe = -Math.Abs(req.Importe),   // el signo lo pone el servidor, no la pantalla
             Motivo = req.Motivo.Trim(),
@@ -213,7 +227,7 @@ public class CafeCajasController : ControllerBase
         var hacia = await _db.CafeCajas.FindAsync(req.HaciaCajaId);
         if (desde is null || hacia is null) return NotFound(new { error = "No existe alguna de las cajas" });
 
-        var fecha = (req.Fecha ?? HoyAr()).Date;
+        var fecha = LeerFecha(req.FechaStr, req.Fecha);
         var quien = QuienSoy();
         var detalle = string.IsNullOrWhiteSpace(req.Motivo) ? "" : $" · {req.Motivo.Trim()}";
 
@@ -262,7 +276,7 @@ public class CafeCajasController : ControllerBase
         var mov = new Models.CafeCajaMovimiento
         {
             CajaId = id,
-            Fecha = (req.Fecha ?? HoyAr()).Date,
+            Fecha = LeerFecha(req.FechaStr, req.Fecha),
             Tipo = "ARQUEO",
             Importe = diferencia,
             Motivo = $"Arqueo: contaste {Plata(req.ContadoReal)} y el sistema decía {Plata(saldoSistema)}"

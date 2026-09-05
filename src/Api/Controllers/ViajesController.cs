@@ -426,6 +426,8 @@ public class ViajesController : ControllerBase
     {
         public int EmpleadoId { get; set; }
         public DateTime Fecha { get; set; }
+        /// <summary>La fecha como texto "yyyy-MM-dd", sin hora ni zona. Ver LeerFecha.</summary>
+        public string? FechaStr { get; set; }
         public string Descripcion { get; set; } = "";
         public decimal Importe { get; set; }
         /// <summary>De qué caja sale la plata. NULL = no descontar de ninguna.</summary>
@@ -444,7 +446,7 @@ public class ViajesController : ControllerBase
         var p = new ViajesPago
         {
             EmpleadoId = req.EmpleadoId,
-            Fecha = req.Fecha.Date,
+            Fecha = LeerFecha(req.FechaStr, req.Fecha, FechaArgentinaHoy()),
             Descripcion = req.Descripcion.Trim(),
             Importe = req.Importe,
             CajaId = req.CajaId,
@@ -562,6 +564,8 @@ public class ViajesController : ControllerBase
     public class AjusteRequest
     {
         public DateTime? Fecha { get; set; }
+        /// <summary>La fecha como texto "yyyy-MM-dd", sin hora ni zona. Ver LeerFecha.</summary>
+        public string? FechaStr { get; set; }
         /// <summary>Cuantos viajes sumar (o restar, en negativo). Si viene Importe, se ignora.</summary>
         public int Cantidad { get; set; } = 1;
         /// <summary>Importe exacto, si no se quiere usar la tarifa. Puede ser negativo (descuento).</summary>
@@ -579,7 +583,7 @@ public class ViajesController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Detalle)) return BadRequest(new { error = "Poné por qué es el ajuste" });
 
         var hoy = FechaArgentinaHoy();
-        var fecha = (req.Fecha?.Date ?? hoy);
+        var fecha = LeerFecha(req.FechaStr, req.Fecha, hoy);
         if (fecha > hoy) return BadRequest(new { error = "No podés cargar fechas futuras" });
 
         var creados = new List<ViajesEntrega>();
@@ -694,6 +698,21 @@ public class ViajesController : ControllerBase
     // ============================================================
 
     private static DateTime FechaArgentinaHoy() => DateTime.UtcNow.AddHours(-3).Date;
+
+    /// <summary>
+    /// Lee la fecha que mandó la pantalla. Si vino como texto "yyyy-MM-dd" se usa tal cual, sin
+    /// tocarle la zona horaria; si no, se cae al DateTime de siempre.
+    /// ⚠ 05/09/2026: mandada como DateTime, el navegador la serializa con SU zona y el día se
+    /// corre. El dueño trabaja desde España (UTC+2): cargó un ajuste el sábado y quedó el viernes.
+    /// </summary>
+    private static DateTime LeerFecha(string? txt, DateTime? fecha, DateTime siNoHay)
+    {
+        if (!string.IsNullOrWhiteSpace(txt) &&
+            DateTime.TryParseExact(txt.Trim(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var d))
+            return d.Date;
+        return (fecha?.Date ?? siNoHay);
+    }
 
     /// <summary>Plata como la escribimos acá: $34.000, no $34,000. El contenedor corre con formato
     /// invariante, asi que hay que pedir es-AR explicitamente.</summary>

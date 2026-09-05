@@ -762,7 +762,7 @@
         try
         {
             var resp = await Http.PostAsJsonAsync("api/viajes/admin/pagos",
-                new { EmpleadoId = empleadoSelPago.Id, Fecha = pagoFecha, Descripcion = pagoDescripcion,
+                new { EmpleadoId = empleadoSelPago.Id, FechaStr = pagoFecha.ToString("yyyy-MM-dd"), Descripcion = pagoDescripcion,
                       Importe = pagoImporte, CajaId = pagoCajaId == 0 ? (int?)null : pagoCajaId });
             if (resp.IsSuccessStatusCode)
             {
@@ -891,7 +891,7 @@
         try
         {
             var resp = await Http.PostAsJsonAsync($"api/viajes/admin/empleados/{empleadoSelAjuste.Id}/ajuste",
-                new { Fecha = ajusteFecha, Cantidad = ajustePorImporte ? 0 : ajusteCantidad,
+                new { FechaStr = ajusteFecha.ToString("yyyy-MM-dd"), Cantidad = ajustePorImporte ? 0 : ajusteCantidad,
                       Importe = ajustePorImporte ? ajusteImporte : (decimal?)null, Detalle = ajusteDetalle });
             if (resp.IsSuccessStatusCode)
             {
