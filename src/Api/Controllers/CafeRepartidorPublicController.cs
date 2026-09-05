@@ -90,7 +90,13 @@ public class CafeRepartidorPublicController : ControllerBase
     // le debe ni por qué le bajó. Pedido del dueño el 05/09/2026.
     // ─────────────────────────────────────────────────────────────────────────────────────────
 
-    public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado, List<string> Donde);
+    /// <summary>
+    /// Un renglón de lo que hizo. Las entregas de un día van juntas en uno solo; cada cosa cargada
+    /// a mano (un día en el depósito, un premio) va en su propio renglón con su motivo, porque
+    /// decir "1 viaje · $20.000" no se entiende.
+    /// </summary>
+    public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado,
+        List<string> Donde, string Que, bool EsExtra);
     public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle, string Medio, bool EsNuevo);
     public record MiAvisoDto(DateTime Fecha, string Texto, string? Respuesta, DateTime? RespuestaAt);
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
@@ -107,17 +113,27 @@ public class CafeRepartidorPublicController : ControllerBase
 
         var ents = await _db.ViajesEntregas.Where(x => x.EmpleadoId == emp.Id).ToListAsync();
 
-        var dias = ents.GroupBy(x => x.Fecha)
-            .OrderByDescending(g => g.Key)
-            .Select(g => new MiDiaDto(
-                g.Key, g.Count(), g.Sum(x => x.Tarifa),
-                g.All(x => x.LiquidadoPagoId != null),
-                g.OrderBy(x => x.Id)
-                 .Select(x => !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
-                        : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion!
-                        : (x.Detalle ?? "entrega")))
-                 .Take(6).ToList()))
-            .ToList();
+        var dias = new List<MiDiaDto>();
+        foreach (var g in ents.GroupBy(x => x.Fecha).OrderByDescending(g => g.Key))
+        {
+            // Las entregas de verdad (una parada del mapa) van juntas.
+            var entregas = g.Where(x => x.StopId != null).ToList();
+            if (entregas.Count > 0)
+                dias.Add(new MiDiaDto(g.Key, entregas.Count, entregas.Sum(x => x.Tarifa),
+                    entregas.All(x => x.LiquidadoPagoId != null),
+                    entregas.OrderBy(x => x.Id)
+                        .Select(x => !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
+                               : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion! : "entrega"))
+                        .Take(6).ToList(),
+                    $"{entregas.Count} entrega{(entregas.Count == 1 ? "" : "s")}", false));
+
+            // Y lo cargado a mano va aparte, agrupado por su motivo.
+            foreach (var extra in g.Where(x => x.StopId == null)
+                                   .GroupBy(x => x.Detalle ?? "Ajuste"))
+                dias.Add(new MiDiaDto(g.Key, extra.Count(), extra.Sum(x => x.Tarifa),
+                    extra.All(x => x.LiquidadoPagoId != null), new List<string>(),
+                    extra.Key, true));
+        }
 
         var pagos = await _db.ViajesPagos.Where(x => x.EmpleadoId == emp.Id)
             .OrderByDescending(x => x.Fecha).ThenByDescending(x => x.Id).ToListAsync();

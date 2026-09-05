@@ -190,8 +190,44 @@
     .mp-cuenta-top { position:sticky; top:0; background:#fff; display:flex; justify-content:space-between;
         align-items:center; padding:0.85rem 1rem; border-bottom:1px solid #eee; font-size:1.05rem; }
     .mp-cuenta-x { background:none; border:none; font-size:1.6rem; line-height:1; color:#6b7280; }
-    .mp-cuenta-resumen { padding:0.8rem 1rem; background:#f0fdf4; font-size:0.88rem; color:#374151; }
-    .mp-cuenta-saldo { font-size:1.25rem; font-weight:800; color:#166534; margin-top:0.2rem; }
+    /* Mi cuenta rearmada el 05/09/2026: el chorizo largo se partio en tres solapas y las filas
+       pasaron a tener la fecha grande a la izquierda, tipo agenda. */
+    .mp-res { padding:1rem; background:#f0fdf4; border-bottom:1px solid #dcfce7; }
+    .mp-res-q { font-size:0.72rem; letter-spacing:0.07em; text-transform:uppercase; color:#15803d; font-weight:700; }
+    .mp-res-n { font-size:2.3rem; font-weight:800; color:#166534; line-height:1.1; font-variant-numeric:tabular-nums; }
+    .mp-res-sub { color:#4b5563; font-size:0.82rem; margin-top:0.25rem; }
+    .mp-tabs { display:flex; border-bottom:1px solid #e5e7eb; background:#fff; position:sticky; top:0; z-index:2; }
+    .mp-tab { flex:1; text-align:center; padding:0.75rem 0.25rem; font-size:0.9rem; font-weight:600;
+        color:#6b7280; border-bottom:2.5px solid transparent; cursor:pointer; position:relative; }
+    .mp-tab.on { color:#0f766e; border-bottom-color:#0f766e; }
+    .mp-punto { position:absolute; top:0.55rem; margin-left:0.25rem; width:7px; height:7px;
+        background:#dc2626; border-radius:50%; }
+    .mp-fila { display:flex; gap:0.75rem; padding:0.8rem 1rem; border-bottom:1px solid #f3f4f6; align-items:flex-start; }
+    .mp-fecha { width:52px; flex:none; text-align:center; line-height:1.15; }
+    .mp-fecha-d { font-size:1.35rem; font-weight:800; color:#111; }
+    .mp-fecha-m { font-size:0.68rem; text-transform:uppercase; color:#9ca3af; font-weight:700; letter-spacing:0.04em; }
+    .mp-cuerpo { flex:1; min-width:0; }
+    .mp-que { font-weight:600; }
+    .mp-donde { color:#9ca3af; font-size:0.78rem; margin-top:0.2rem; overflow:hidden;
+        display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+    .mp-plata { font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; font-size:1.02rem; }
+    .mp-plata.verde { color:#166534; }
+    .mp-chip { display:inline-block; font-size:0.68rem; font-weight:700; padding:0.1rem 0.45rem;
+        border-radius:5px; margin-top:0.3rem; }
+    .mp-chip.falta { background:#fef3c7; color:#92400e; }
+    .mp-chip.ok { background:#dcfce7; color:#166534; }
+    .mp-chip.extra { background:#e0e7ff; color:#3730a3; }
+    .mp-chip.nuevo { background:#dbeafe; color:#1d4ed8; }
+    .mp-av { padding:0.8rem 1rem; border-bottom:1px solid #f3f4f6; }
+    .mp-av-cuando { color:#9ca3af; font-size:0.75rem; }
+    .mp-av-mio { margin-top:0.2rem; }
+    .mp-av-resp { margin-top:0.5rem; background:#eff6ff; border-radius:10px; padding:0.55rem 0.7rem;
+        color:#1e3a8a; font-size:0.92rem; }
+    .mp-escribir { padding:0.9rem 1rem; }
+    .mp-escribir textarea { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:10px;
+        padding:0.6rem; font:inherit; font-size:0.92rem; resize:none; }
+    .mp-escribir button { margin-top:0.5rem; background:#0f766e; color:#fff; border:none; border-radius:10px;
+        padding:0.7rem 1.2rem; font-weight:700; font-size:0.92rem; width:100%; }
     .mp-cuenta-seccion { padding:0.9rem 1rem 0.3rem; font-size:0.72rem; letter-spacing:0.06em;
         text-transform:uppercase; color:#9ca3af; font-weight:700; }
     .mp-cuenta-fila { display:flex; justify-content:space-between; gap:0.7rem; align-items:flex-start;
@@ -396,97 +432,106 @@
             }
             else
             {
-                <div class="mp-cuenta-resumen">
-                    <div>Hiciste <b>@Plata(miCuenta.TotalGanado)</b> · cobraste <b>@Plata(miCuenta.TotalCobrado)</b></div>
-                    <div class="mp-cuenta-saldo">
-                        @if (miCuenta.Saldo > 0) { <text>Te debemos @Plata(miCuenta.Saldo)</text> }
-                        else if (miCuenta.Saldo < 0) { <text>Cobraste @Plata(Math.Abs(miCuenta.Saldo)) de más</text> }
-                        else { <text>Está todo cobrado</text> }
+                <div class="mp-res">
+                    <div class="mp-res-q">@(miCuenta.Saldo > 0 ? "Te debemos" : miCuenta.Saldo < 0 ? "Cobraste de más" : "Está todo cobrado")</div>
+                    @if (miCuenta.Saldo != 0)
+                    {
+                        <div class="mp-res-n">@Plata(Math.Abs(miCuenta.Saldo))</div>
+                    }
+                    <div class="mp-res-sub">Hiciste @Plata(miCuenta.TotalGanado) · cobraste @Plata(miCuenta.TotalCobrado)</div>
+                </div>
+
+                @* 05/09/2026: tres solapas para que no tenga que scrollear todo para encontrar algo. *@
+                <div class="mp-tabs">
+                    <div class="mp-tab @(solapa == 0 ? "on" : "")" @onclick="() => solapa = 0">Viajes</div>
+                    <div class="mp-tab @(solapa == 1 ? "on" : "")" @onclick="() => solapa = 1">Pagos</div>
+                    <div class="mp-tab @(solapa == 2 ? "on" : "")" @onclick="() => solapa = 2">
+                        Avisos
+                        @if (miCuenta.Avisos.Any(a => !string.IsNullOrWhiteSpace(a.Respuesta)))
+                        {
+                            <span class="mp-punto"></span>
+                        }
                     </div>
                 </div>
 
-                <div class="mp-cuenta-seccion">Mis viajes</div>
-                @if (miCuenta.Dias.Count == 0)
+                @if (solapa == 0)
                 {
-                    <p class="mp-cuenta-vacio">Todavía no hay viajes cargados.</p>
-                }
-                else
-                {
+                    @if (miCuenta.Dias.Count == 0)
+                    {
+                        <p class="mp-cuenta-vacio">Todavía no hay viajes cargados.</p>
+                    }
                     @foreach (var d in miCuenta.Dias)
                     {
-                        <div class="mp-cuenta-fila">
-                            <div>
-                                <b>@d.Fecha.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</b>
-                                · @d.Viajes viaje@(d.Viajes == 1 ? "" : "s")
-                                @if (d.Cobrado) { <span class="mp-cuenta-tag">cobrado</span> }
-                                else { <span class="mp-cuenta-tag pend">falta cobrar</span> }
-                                <div class="mp-cuenta-donde">@string.Join(" · ", d.Donde)</div>
+                        <div class="mp-fila">
+                            <div class="mp-fecha">
+                                <div class="mp-fecha-d">@d.Fecha.ToString("dd")</div>
+                                <div class="mp-fecha-m">@d.Fecha.ToString("ddd", new System.Globalization.CultureInfo("es-AR"))</div>
                             </div>
-                            <div class="mp-cuenta-importe">@Plata(d.Importe)</div>
+                            <div class="mp-cuerpo">
+                                <div class="mp-que">@d.Que</div>
+                                @if (d.Donde.Count > 0)
+                                {
+                                    <div class="mp-donde">@string.Join(" · ", d.Donde)</div>
+                                }
+                                @if (d.EsExtra) { <span class="mp-chip extra">extra</span> }
+                                else if (d.Cobrado) { <span class="mp-chip ok">cobrado</span> }
+                                else { <span class="mp-chip falta">falta cobrar</span> }
+                            </div>
+                            <div class="mp-plata">@Plata(d.Importe)</div>
                         </div>
                     }
                 }
-
-                <div class="mp-cuenta-seccion">Lo que cobré</div>
-                @if (miCuenta.Pagos.Count == 0)
+                else if (solapa == 1)
                 {
-                    <p class="mp-cuenta-vacio">Todavía no cobraste nada.</p>
+                    @if (miCuenta.Pagos.Count == 0)
+                    {
+                        <p class="mp-cuenta-vacio">Todavía no cobraste nada.</p>
+                    }
+                    @foreach (var pg in miCuenta.Pagos)
+                    {
+                        <div class="mp-fila">
+                            <div class="mp-fecha">
+                                <div class="mp-fecha-d">@pg.Fecha.ToString("dd")</div>
+                                <div class="mp-fecha-m">@pg.Fecha.ToString("ddd", new System.Globalization.CultureInfo("es-AR"))</div>
+                            </div>
+                            <div class="mp-cuerpo">
+                                <div class="mp-que">@(string.IsNullOrWhiteSpace(pg.Medio) ? "Pago" : Mayuscula(pg.Medio))</div>
+                                <div class="mp-donde">@pg.Detalle</div>
+                                @if (pg.EsNuevo) { <span class="mp-chip nuevo">nuevo</span> }
+                            </div>
+                            <div class="mp-plata verde">@Plata(pg.Importe)</div>
+                        </div>
+                    }
                 }
                 else
                 {
-                    @foreach (var pg in miCuenta.Pagos)
-                    {
-                        <div class="mp-cuenta-fila">
-                            <div>
-                                <b>@pg.Fecha.ToString("dd/MM")</b>
-                                @if (!string.IsNullOrWhiteSpace(pg.Medio))
-                                {
-                                    <span class="mp-cuenta-medio">@pg.Medio</span>
-                                }
-                                @if (pg.EsNuevo) { <span class="mp-cuenta-tag nuevo">nuevo</span> }
-                                <div class="mp-cuenta-donde">@pg.Detalle</div>
-                            </div>
-                            <div class="mp-cuenta-importe cobrado">@Plata(pg.Importe)</div>
-                        </div>
-                    }
-                }
-
-                @if (miCuenta.Avisos.Count > 0)
-                {
-                    <div class="mp-cuenta-seccion">Lo que avisaste</div>
                     @foreach (var av in miCuenta.Avisos)
                     {
-                        <div class="mp-cuenta-aviso">
-                            <div class="mp-cuenta-aviso-mio">
-                                <span class="mp-cuenta-donde">@av.Fecha.AddHours(-3).ToString("dd/MM HH:mm")</span>
-                                <div>@av.Texto</div>
-                            </div>
+                        <div class="mp-av">
+                            <div class="mp-av-cuando">@av.Fecha.AddHours(-3).ToString("dddd dd/MM · HH:mm", new System.Globalization.CultureInfo("es-AR"))</div>
+                            <div class="mp-av-mio">@av.Texto</div>
                             @if (!string.IsNullOrWhiteSpace(av.Respuesta))
                             {
-                                <div class="mp-cuenta-aviso-resp">
-                                    <b>Osmar:</b> @av.Respuesta
-                                </div>
+                                <div class="mp-av-resp"><b>Osmar:</b> @av.Respuesta</div>
                             }
                             else
                             {
-                                <div class="mp-cuenta-donde" style="padding:0.2rem 0 0.4rem;">Todavía sin respuesta</div>
+                                <div class="mp-av-cuando" style="margin-top:0.3rem;">Todavía sin respuesta</div>
                             }
                         </div>
                     }
-                }
-
-                <div class="mp-cuenta-seccion">¿Algo no te cierra?</div>
-                @if (reporteEnviado)
-                {
-                    <p class="mp-cuenta-ok">✓ Listo, ya le avisamos. Te van a responder.</p>
-                }
-                else
-                {
-                    <textarea class="mp-cuenta-texto" rows="3" @bind="reporteTexto"
-                              placeholder="Contá qué es lo que no te cierra. Ej: el jueves hice 12 entregas y me figuran 10."></textarea>
-                    <button class="mp-cuenta-enviar" @onclick="EnviarReporte" disabled="@enviandoReporte">
-                        Avisar
-                    </button>
+                    <div class="mp-escribir">
+                        @if (reporteEnviado)
+                        {
+                            <p class="mp-cuenta-ok">✓ Listo, ya le avisamos. Te van a responder.</p>
+                        }
+                        else
+                        {
+                            <textarea rows="3" @bind="reporteTexto"
+                                      placeholder="¿Algo no te cierra? Contámelo acá."></textarea>
+                            <button @onclick="EnviarReporte" disabled="@enviandoReporte">Avisar</button>
+                        }
+                    </div>
                 }
             }
         </div>
@@ -1391,10 +1436,12 @@
     private MisViajesDto? misViajes;
     private bool verMiCuenta;
     private MiCuentaDto? miCuenta;
+    private int solapa;                 // 0 viajes · 1 pagos · 2 avisos
     private string reporteTexto = "";
     private bool enviandoReporte, reporteEnviado;
 
-    public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado, List<string> Donde);
+    public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado,
+        List<string> Donde, string Que, bool EsExtra);
     public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle, string Medio, bool EsNuevo);
     public record MiAvisoDto(DateTime Fecha, string Texto, string? Respuesta, DateTime? RespuestaAt);
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
@@ -1403,10 +1450,14 @@
     private static string Plata(decimal v)
         => "$" + v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
 
+    private static string Mayuscula(string t)
+        => string.IsNullOrEmpty(t) ? t : char.ToUpper(t[0]) + t[1..];
+
     private async Task AbrirMiCuenta()
     {
         verMiCuenta = true;
         miCuenta = null;
+        solapa = 0;
         reporteEnviado = false;
         reporteTexto = "";
         try { miCuenta = await Http.GetFromJsonAsync<MiCuentaDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/detalle"); }

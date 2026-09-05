@@ -236,23 +236,50 @@
     @if (showFormAjuste)
     {
         <div class="vj-card" style="border: 2px solid #0f766e;">
-            <h3 style="margin: 0 0 0.5rem;">➕ Sumar viajes a mano a @(empleadoSelAjuste?.Nombre ?? "?")</h3>
+            <h3 style="margin: 0 0 0.5rem;">➕ Sumar a mano a @(empleadoSelAjuste?.Nombre ?? "?")</h3>
+            @* 05/09/2026: no todo se cuenta en viajes. Hay días que se queda en el depósito y se le
+               paga un importe suelto, asi que se puede cargar de las dos formas. *@
+            <div style="display:flex; gap:0.4rem; margin-bottom:0.6rem;">
+                <button class="vj-btn-mini @(ajustePorImporte ? "" : "pago")" @onclick="() => ajustePorImporte = false">Por viajes</button>
+                <button class="vj-btn-mini @(ajustePorImporte ? "pago" : "")" @onclick="() => ajustePorImporte = true">Por un importe</button>
+            </div>
             <div style="display:grid; grid-template-columns: 1fr 1fr 3fr; gap:0.5rem; align-items:end;">
                 <div>
                     <label class="form-label">Día</label>
                     <input class="form-input" type="date" @bind="ajusteFecha" />
                 </div>
-                <div>
-                    <label class="form-label">Cuántos viajes</label>
-                    <input class="form-input" type="number" step="1" @bind="ajusteCantidad" />
-                </div>
-                <div>
-                    <label class="form-label">Por qué</label>
-                    <input class="form-input" @bind="ajusteDetalle" placeholder="Ej: fue a buscar mercadería a Aliafor" />
-                </div>
+                @if (ajustePorImporte)
+                {
+                    <div>
+                        <label class="form-label">Cuánto le pagás</label>
+                        <input class="form-input" type="number" step="100" @bind="ajusteImporte" />
+                    </div>
+                    <div>
+                        <label class="form-label">Por qué</label>
+                        <input class="form-input" @bind="ajusteDetalle" placeholder="Ej: se quedó en el depósito" />
+                    </div>
+                }
+                else
+                {
+                    <div>
+                        <label class="form-label">Cuántos viajes</label>
+                        <input class="form-input" type="number" step="1" @bind="ajusteCantidad" />
+                    </div>
+                    <div>
+                        <label class="form-label">Por qué</label>
+                        <input class="form-input" @bind="ajusteDetalle" placeholder="Ej: fue a buscar mercadería a Aliafor" />
+                    </div>
+                }
             </div>
             <div style="font-size:0.8rem; color:#6b7280; margin-top:0.4rem;">
-                En negativo le descuenta (por ejemplo -1 si se contó de más).
+                @if (ajustePorImporte)
+                {
+                    <text>Se le suma ese importe tal cual, sin contarlo como viaje. En negativo se lo descontás.</text>
+                }
+                else
+                {
+                    <text>Cada viaje vale $@Plata(empleadoSelAjuste?.TarifaViaje ?? 0). En negativo le descuenta (por ejemplo -1 si se contó de más).</text>
+                }
             </div>
             <div style="display:flex; gap:0.5rem; margin-top:0.6rem;">
                 <button class="btn btn-primary" @onclick="GuardarAjuste" disabled="@savingAjuste">@(savingAjuste ? "..." : "Guardar")</button>
@@ -545,6 +572,8 @@
     private bool showFormAjuste, savingAjuste;
     private DateTime ajusteFecha = DateTime.Today;
     private int ajusteCantidad = 1;
+    private bool ajustePorImporte;      // false = por cantidad de viajes
+    private decimal ajusteImporte;
     private string ajusteDetalle = "";
 
     private static string Plata(decimal v) => v.ToString("N0", ar);
@@ -773,6 +802,8 @@
         empleadoSelAjuste = e;
         ajusteFecha = DateTime.Today;
         ajusteCantidad = 1;
+        ajusteImporte = 0;
+        ajustePorImporte = false;
         ajusteDetalle = "";
         showFormAjuste = true;
     }
@@ -781,11 +812,13 @@
     {
         if (empleadoSelAjuste is null) return;
         if (string.IsNullOrWhiteSpace(ajusteDetalle)) { ToastService.Error("Poné por qué es el ajuste"); return; }
+        if (ajustePorImporte && ajusteImporte == 0) { ToastService.Error("Poné cuánto le pagás"); return; }
         savingAjuste = true;
         try
         {
             var resp = await Http.PostAsJsonAsync($"api/viajes/admin/empleados/{empleadoSelAjuste.Id}/ajuste",
-                new { Fecha = ajusteFecha, Cantidad = ajusteCantidad, Detalle = ajusteDetalle });
+                new { Fecha = ajusteFecha, Cantidad = ajustePorImporte ? 0 : ajusteCantidad,
+                      Importe = ajustePorImporte ? ajusteImporte : (decimal?)null, Detalle = ajusteDetalle });
             if (resp.IsSuccessStatusCode)
             {
                 ToastService.Success("Ajuste cargado");
