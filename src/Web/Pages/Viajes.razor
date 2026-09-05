@@ -27,10 +27,14 @@
     .vj-emp-header { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
     .vj-emp-nombre { font-weight: 700; font-size: 1.05rem; flex: 1; min-width: 130px; }
     .vj-emp-tarifas { font-size: 0.78rem; color: #6b7280; }
-    .vj-saldo-pill { padding: 0.3rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.85rem; }
-    .vj-saldo-pill.aFavor { background: #dcfce7; color: #166534; }
-    .vj-saldo-pill.enContra { background: #fee2e2; color: #b91c1c; }
-    .vj-saldo-pill.cero { background: #f3f4f6; color: #4b5563; }
+    .vj-emp-header { align-items: flex-start; justify-content: space-between; }
+    .vj-emp-quien { flex: 1; min-width: 180px; }
+    .vj-emp-nombre { font-size: 1.15rem; }
+    .vj-saldo { text-align: right; white-space: nowrap; }
+    .vj-saldo-que { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+    .vj-saldo-num { font-size: 1.8rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .vj-saldo.aFavor .vj-saldo-num { color: #166534; }
+    .vj-saldo.enContra .vj-saldo-num { color: #b91c1c; }
     .vj-totals { display: flex; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap; }
     .vj-totals-box { background: white; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem; border: 1px solid #e5e7eb; }
     .vj-totals-num { font-weight: 700; color: #1d4ed8; }
@@ -43,7 +47,9 @@
     .vj-tab-regs th { background: #f3f4f6; padding: 0.4rem; text-align: left; font-size: 0.75rem; }
     .vj-tab-regs td { padding: 0.4rem; border-bottom: 1px solid #f3f4f6; }
     .vj-emp-card.auto { border-left-color: #0f766e; }
-    .linea-auto { font-size: 0.88rem; color: #374151; margin-top: 0.45rem; }
+    .linea-auto { font-size: 0.9rem; color: #374151; margin-top: 0.6rem; line-height: 1.55; }
+    .vj-btn-row.secundaria { margin-top: 0.35rem; opacity: 0.85; }
+    .vj-btn-row .vj-btn-mini { font-size: 0.82rem; padding: 0.4rem 0.7rem; }
 </style>
 
 <div class="vj-wrap">
@@ -279,17 +285,27 @@
                                 : saldo < 0 ? $"Nos debe ${Math.Abs(saldo).ToString("N0", new System.Globalization.CultureInfo("es-AR"))}"
                                 : "Sin saldo";
                 <div class="vj-emp-card @(e.IsActive ? "" : "inactive") @(e.ModoAutomatico ? "auto" : "")">
+                    @* 05/09/2026: el número que importa va grande y solo. Antes venía en una
+                       pastillita al costado, del mismo tamaño que el resto. *@
                     <div class="vj-emp-header">
-                        <span class="vj-emp-nombre">@e.Nombre @(e.IsActive ? "" : " (inactivo)")</span>
-                        @if (e.ModoAutomatico)
-                        {
-                            <span class="vj-emp-tarifas">$@Plata(e.TarifaViaje) por entrega · suma solo@(string.IsNullOrEmpty(e.MapeoDriverNombre) ? "" : $" con \"{e.MapeoDriverNombre}\" del mapa")</span>
-                        }
-                        else
-                        {
-                            <span class="vj-emp-tarifas">CABA $@Plata(e.TarifaCABA) · PCIA $@Plata(e.TarifaPCIA)</span>
-                        }
-                        <span class="vj-saldo-pill @saldoClass">@saldoLabel</span>
+                        <div class="vj-emp-quien">
+                            <div class="vj-emp-nombre">@e.Nombre @(e.IsActive ? "" : " (inactivo)")</div>
+                            @if (e.ModoAutomatico)
+                            {
+                                <div class="vj-emp-tarifas">$@Plata(e.TarifaViaje) por entrega@(string.IsNullOrEmpty(e.MapeoDriverNombre) ? "" : $" · suma con \"{e.MapeoDriverNombre}\" del mapa")</div>
+                            }
+                            else
+                            {
+                                <div class="vj-emp-tarifas">CABA $@Plata(e.TarifaCABA) · PCIA $@Plata(e.TarifaPCIA)</div>
+                            }
+                        </div>
+                        <div class="vj-saldo @saldoClass">
+                            <div class="vj-saldo-que">@(saldo > 0 ? "Le debemos" : saldo < 0 ? "Nos debe" : "Sin saldo")</div>
+                            @if (saldo != 0)
+                            {
+                                <div class="vj-saldo-num">$@Plata(Math.Abs(saldo))</div>
+                            }
+                        </div>
                     </div>
 
                     @if (e.ModoAutomatico)
@@ -301,18 +317,22 @@
                             </div>
                         }
                         <div class="linea-auto">
-                            Hoy: <b>@e.ViajesHoy</b> @(e.ViajesHoy == 1 ? "entrega" : "entregas") · $@Plata(e.ImporteHoy)
+                            <div>Hoy <b>@e.ViajesHoy</b> @(e.ViajesHoy == 1 ? "entrega" : "entregas") · $@Plata(e.ImporteHoy)</div>
                             @if (e.ViajesPendientes > 0)
                             {
-                                <text> · sin liquidar desde el <b>@e.PendienteDesde!.Value.ToString("dd/MM")</b>: <b>@e.ViajesPendientes</b> @(e.ViajesPendientes == 1 ? "viaje" : "viajes") · <b>$@Plata(e.ImportePendiente)</b></text>
+                                <div>
+                                    <b>@e.ViajesPendientes</b> @(e.ViajesPendientes == 1 ? "viaje" : "viajes")
+                                    sin liquidar desde el <b>@e.PendienteDesde!.Value.ToString("dd/MM")</b>
+                                    · <b>$@Plata(e.ImportePendiente)</b>
+                                </div>
                                 @if (e.ImportePendiente != APagar(e))
                                 {
-                                    <text> · ya le pagaste <b>$@Plata(e.ImportePendiente - APagar(e))</b> a cuenta, falta <b>$@Plata(APagar(e))</b></text>
+                                    <div>Ya le pagaste <b>$@Plata(e.ImportePendiente - APagar(e))</b> a cuenta</div>
                                 }
                             }
                             else
                             {
-                                <text> · sin viajes pendientes de pago</text>
+                                <div>Sin viajes pendientes de pago</div>
                             }
                         </div>
                     }
@@ -345,6 +365,8 @@
                             <button class="vj-btn-mini" @onclick="@(() => ShowAjuste(e))">➕ Sumar viaje a mano</button>
                         }
                         <button class="vj-btn-mini pago" @onclick="@(() => ShowCreatePago(e))">💵 Registrar pago</button>
+                    </div>
+                    <div class="vj-btn-row secundaria">
                         <button class="vj-btn-mini link" @onclick="@(() => CopiarLink(e))">📋 Copiar link</button>
                         <button class="vj-btn-mini wa" @onclick="@(() => MandarWhatsapp(e))">📱 WhatsApp</button>
                         <button class="vj-btn-mini" @onclick="@(() => ShowEditEmpleado(e))">✏ Editar</button>
