@@ -161,6 +161,8 @@ public class CreateNomPagoRequest
     public string Concepto { get; set; } = "sueldo";
     public string? Detalle { get; set; }
     public string? Notas { get; set; }
+    /// <summary>De qué caja sale la plata. NULL = no descontar de ninguna.</summary>
+    public int? CajaId { get; set; }
 }
 
 /// <summary>Editar un pago existente. Requiere operador + clave (misma password global
@@ -174,6 +176,8 @@ public class UpdateNomPagoRequest
     public string? Concepto { get; set; }
     public string? Detalle { get; set; }
     public string? Notas { get; set; }
+    /// <summary>De qué caja sale. Si cambia, el movimiento viejo se borra y se hace uno nuevo.</summary>
+    public int? CajaId { get; set; }
     /// <summary>Nombre del operador autorizado (sales.delete_allowed_operator, default OSMAR).</summary>
     public string? Operator { get; set; }
     /// <summary>Clave de seguridad (sales.delete_password). Sin esto no se ejecuta el update.</summary>

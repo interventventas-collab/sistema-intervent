@@ -530,6 +530,17 @@
                                             <option value="otro">Otro</option>
                                         </select>
                                     </div>
+                                    @* 05/09/2026: de acá sale la plata. Se elige sola segun el método. *@
+                                    <div class="form-group">
+                                        <label class="form-label" style="font-size: 0.75rem;">Sale de</label>
+                                        <select class="form-input" @bind="pagoCajaId">
+                                            <option value="0">— no descontar —</option>
+                                            @foreach (var c in cajasPago)
+                                            {
+                                                <option value="@c.Id">@c.Nombre</option>
+                                            }
+                                        </select>
+                                    </div>
                                 </div>
 
                                 @* 2026-08-24: el detalle y las notas van ARRIBA del boton a proposito. Antes estaban
@@ -864,6 +875,8 @@
     // Pago form
     private DateTime pagoFecha = DateTime.Today;
     private string pagoMetodo = "efectivo";
+    private int pagoCajaId;                        // 0 = no descontar de ninguna caja
+    private List<CafeCajaDto> cajasPago = new();
     private string pagoConcepto = "sueldo";
     private string pagoDetalle = "";
     private string pagoNotas = "";
@@ -1079,6 +1092,8 @@
     {
         await LoadEmpleados();
         await Load();
+        try { cajasPago = await Api.GetCafeCajasAsync() ?? new(); } catch { cajasPago = new(); }
+        pagoCajaId = CajaSegunMetodo(pagoMetodo);
     }
 
     private async Task LoadEmpleados()
@@ -1229,6 +1244,7 @@
     private void LimpiarPagoForm()
     {
         pagoFecha = DateTime.Today; pagoMetodo = "efectivo"; pagoConcepto = "sueldo";
+        pagoCajaId = CajaSegunMetodo(pagoMetodo);
         pagoMontoTxt = ""; pagoDetalle = ""; pagoNotas = "";
         avisoPagoAccion = null;
     }
@@ -1355,6 +1371,24 @@
         finally { pagoGuardando = false; }
     }
 
+    /// <summary>
+    /// Empareja el método con la caja: los tipos de caja se llaman igual que los métodos.
+    /// Si no encaja ninguna devuelve 0 y el pago no descuenta de ningún lado.
+    /// </summary>
+    private int CajaSegunMetodo(string metodo)
+    {
+        var tipo = metodo switch
+        {
+            "efectivo" => "EFECTIVO",
+            "transferencia" => "BANCO",
+            "billetera_virtual" => "BILLETERA_VIRTUAL",
+            "cheque" => "CHEQUES_CARTERA",
+            "v_privado" => "V_PRIVADO",
+            _ => ""
+        };
+        return cajasPago.FirstOrDefault(c => c.Tipo == tipo)?.Id ?? 0;
+    }
+
     /// <summary>Manda el pago al servidor y limpia el formulario. Devuelve si salio bien.</summary>
     private async Task<bool> GrabarPago()
     {
@@ -1366,6 +1400,7 @@
                 LiquidacionId = editingId.Value,
                 FechaPagoStr = pagoFecha.ToString("yyyy-MM-dd"),  // 2026-07-01: sin zona horaria (no corre el día)
                 Metodo = pagoMetodo,
+                CajaId = pagoCajaId == 0 ? null : pagoCajaId,
                 Monto = PagoMonto,
                 Concepto = pagoConcepto,
                 Detalle = pagoDetalle,

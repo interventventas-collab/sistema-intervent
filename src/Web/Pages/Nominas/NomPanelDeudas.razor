@@ -272,6 +272,19 @@
                     </div>
                 </div>
 
+                @* 05/09/2026: de acá sale la plata de verdad. Se elige sola segun el método, pero
+                   se puede cambiar, o dejar "no descontar" para que la caja quede quieta. *@
+                <div class="form-group">
+                    <label class="form-label">Sale de</label>
+                    <select class="form-input" @bind="pagarCajaId">
+                        <option value="0">— no descontar de ninguna caja —</option>
+                        @foreach (var c in cajas)
+                        {
+                            <option value="@c.Id">@c.Nombre</option>
+                        }
+                    </select>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label">Fecha</label>
                     <input type="date" class="form-input" @bind="pagarFecha" />
@@ -316,6 +329,8 @@
     private decimal pagarPendiente;
     private decimal pagarMonto;
     private string pagarMetodo = "efectivo";
+    private int pagarCajaId;                       // 0 = no descontar
+    private List<CafeCajaDto> cajas = new();
     private DateTime pagarFecha = DateTime.Today;
     private string pagarNotas = "";
     private string pagarOperator = "OSMAR";
@@ -323,7 +338,11 @@
     private string? pagarError;
     private bool pagarSaving;
 
-    protected override async Task OnInitializedAsync() => await Cargar();
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        try { cajas = await Api.GetCafeCajasAsync() ?? new(); } catch { cajas = new(); }
+    }
 
     private async Task Cargar()
     {
@@ -388,6 +407,7 @@
         pagarPendiente = c?.Pendiente ?? liq.Saldo;
         pagarMonto = pagarPendiente;
         pagarMetodo = "efectivo";
+        pagarCajaId = CajaSegunMetodo(pagarMetodo);
         pagarFecha = DateTime.Today;
         pagarNotas = "";
         pagarOperator = "OSMAR";
@@ -404,6 +424,25 @@
         pagarPassword = "";
     }
 
+    /// <summary>
+    /// Empareja el método con la caja: los tipos de caja se llaman igual que los métodos
+    /// (efectivo, transferencia→BANCO, billetera_virtual, cheque→CHEQUES_CARTERA, v_privado).
+    /// Si no hay ninguna que encaje devuelve 0 y no se descuenta de ningún lado.
+    /// </summary>
+    private int CajaSegunMetodo(string metodo)
+    {
+        var tipo = metodo switch
+        {
+            "efectivo" => "EFECTIVO",
+            "transferencia" => "BANCO",
+            "billetera_virtual" => "BILLETERA_VIRTUAL",
+            "cheque" => "CHEQUES_CARTERA",
+            "v_privado" => "V_PRIVADO",
+            _ => ""
+        };
+        return cajas.FirstOrDefault(c => c.Tipo == tipo)?.Id ?? 0;
+    }
+
     private async Task DoPagar()
     {
         if (pagarLiq is null) return;
@@ -418,6 +457,7 @@
                 Concepto = pagarConcepto,
                 Monto = pagarMonto,
                 Metodo = pagarMetodo,
+                CajaId = pagarCajaId == 0 ? null : pagarCajaId,
                 FechaPagoStr = pagarFecha.ToString("yyyy-MM-dd"),  // 2026-07-01: sin zona horaria
                 Notas = string.IsNullOrWhiteSpace(pagarNotas) ? null : pagarNotas
             });

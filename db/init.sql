@@ -4197,6 +4197,13 @@ BEGIN
     );
 END
 GO
+-- 05/09/2026: el pago de sueldo dice de que caja salio y deja su renglon en la caja.
+IF COL_LENGTH('Nom_Pagos','CajaId') IS NULL
+    ALTER TABLE Nom_Pagos ADD CajaId INT NULL;
+GO
+IF COL_LENGTH('Nom_Pagos','CajaMovimientoId') IS NULL
+    ALTER TABLE Nom_Pagos ADD CajaMovimientoId INT NULL;
+GO
 -- Cafe_CajaMovimientos: todo lo que mueve plata en una caja y NO es una cobranza.
 -- Sin esto la caja solo sumaba (el 04/09/2026 "Efectivo" mostraba $142.736.024 acumulados).
 -- El Importe lleva el signo: negativo sale, positivo entra.

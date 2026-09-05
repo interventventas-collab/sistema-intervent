@@ -122,5 +122,15 @@ public class NomPago
     [MaxLength(500)]
     public string? Notas { get; set; }
 
+    /// <summary>
+    /// De qué caja sale la plata (05/09/2026). Hasta ahora el sueldo se anotaba al costado y no
+    /// descontaba de ningún lado, asi que la caja sólo subía. Si viene en NULL el pago no toca
+    /// ninguna caja, que es como quedaron los 154 pagos viejos.
+    /// </summary>
+    public int? CajaId { get; set; }
+
+    /// <summary>El renglon que este pago genero en la caja, para poder deshacerlo si se borra.</summary>
+    public int? CajaMovimientoId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

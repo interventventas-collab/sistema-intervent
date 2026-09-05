@@ -255,9 +255,19 @@ public class NomLiquidacionesController : ControllerBase
             Concepto = concepto,
             Detalle = string.IsNullOrWhiteSpace(req.Detalle) ? null : req.Detalle.Trim(),
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
+            CajaId = req.CajaId,
             CreatedAt = DateTime.UtcNow
         };
         _db.NomPagos.Add(pago);
+
+        // 05/09/2026: el sueldo ahora sale de una caja de verdad. Antes se anotaba al costado y la
+        // caja nunca bajaba. Sin caja elegida no se toca nada (los 154 pagos viejos quedan asi).
+        if (req.CajaId.HasValue)
+        {
+            var movNuevo = await DescontarDeCajaAsync(req.CajaId.Value, pago.Monto, liq, pago);
+            if (movNuevo is null) return BadRequest(new { error = "La caja elegida no existe" });
+            pago.CajaMovimientoId = movNuevo.Id;
+        }
 
         // Si con este pago se cancela la liquidacion → estado pagado
         if (pagado + req.Monto >= liq.NetoAPagar - 0.01m)
@@ -319,6 +329,19 @@ public class NomLiquidacionesController : ControllerBase
         if (req.Detalle is not null) pago.Detalle = string.IsNullOrWhiteSpace(req.Detalle) ? null : req.Detalle.Trim();
         if (req.Notas is not null) pago.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
 
+        // La plata que ya habia salido de la caja se rehace: se borra el renglon viejo y, si sigue
+        // habiendo caja, se hace uno nuevo con el monto que quedo. Asi no queda plata fantasma.
+        var cajaNueva = req.CajaId ?? pago.CajaId;
+        await SacarMovimientoDeCajaAsync(pago);
+        if (cajaNueva.HasValue)
+        {
+            var movEditado = await DescontarDeCajaAsync(cajaNueva.Value, pago.Monto, liq, pago);
+            if (movEditado is null) return BadRequest(new { error = "La caja elegida no existe" });
+            pago.CajaId = cajaNueva;
+            pago.CajaMovimientoId = movEditado.Id;
+        }
+        else { pago.CajaId = null; pago.CajaMovimientoId = null; }
+
         // ── Recalcular estado de la liquidacion segun el total pagado ──
         var totalPagado = liq.Pagos.Sum(p => p.Monto);
         if (totalPagado >= liq.NetoAPagar - 0.01m && liq.Estado != "anulada")
@@ -345,6 +368,7 @@ public class NomLiquidacionesController : ControllerBase
         var pago = await _db.NomPagos.FindAsync(id);
         if (pago is null) return NotFound(new { error = "Pago no encontrado" });
         var liq = await _db.NomLiquidaciones.FindAsync(pago.LiquidacionId);
+        await SacarMovimientoDeCajaAsync(pago);   // si habia salido de una caja, la plata vuelve
         _db.NomPagos.Remove(pago);
         // Si estaba pagada y ahora queda saldo → vuelve a pendiente
         if (liq is not null && liq.Estado == "pagado")
@@ -483,6 +507,8 @@ public class NomLiquidacionesController : ControllerBase
         public string? FechaPagoStr { get; set; }  // 2026-07-01: fecha "yyyy-MM-dd" sin zona horaria
         public string? Detalle { get; set; }
         public string? Notas { get; set; }
+        /// <summary>De qué caja sale la plata. NULL = no descontar de ninguna.</summary>
+        public int? CajaId { get; set; }
         public string? Operator { get; set; }
         public string? Password { get; set; }
     }
@@ -521,9 +547,16 @@ public class NomLiquidacionesController : ControllerBase
             Concepto = concepto,
             Detalle = string.IsNullOrWhiteSpace(req.Detalle) ? null : req.Detalle.Trim(),
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
+            CajaId = req.CajaId,
             CreatedAt = DateTime.UtcNow
         };
         _db.NomPagos.Add(pago);
+        if (req.CajaId.HasValue)
+        {
+            var movDash = await DescontarDeCajaAsync(req.CajaId.Value, pago.Monto, liq, pago);
+            if (movDash is null) return BadRequest(new { error = "La caja elegida no existe" });
+            pago.CajaMovimientoId = movDash.Id;
+        }
         if (pagado + req.Monto >= liq.NetoAPagar - 0.01m)
         {
             liq.Estado = "pagado";
@@ -1031,5 +1064,53 @@ public class NomLiquidacionesController : ControllerBase
         var bytes = ms.ToArray();
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"liquidaciones-{DateTime.Now:yyyyMMdd-HHmm}.xlsx");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Los sueldos descuentan de la caja (05/09/2026)
+    // Antes el pago se anotaba en Nom_Pagos y ninguna caja bajaba: la caja solo sumaba cobranzas.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Anota en la caja que salio la plata de este pago. Devuelve null si la caja no existe.</summary>
+    private async Task<Models.CafeCajaMovimiento?> DescontarDeCajaAsync(
+        int cajaId, decimal monto, Models.NomLiquidacion liq, Models.NomPago pago)
+    {
+        if (!await _db.CafeCajas.AnyAsync(c => c.Id == cajaId)) return null;
+
+        var quien = await _db.NomEmpleados.Where(e => e.Id == liq.EmpleadoId)
+                        .Select(e => e.Nombre).FirstOrDefaultAsync() ?? "empleado";
+        var queCosa = pago.Concepto switch
+        {
+            "sueldo" => "Sueldo",
+            "comision_cafe" => "Comisión",
+            "horas_extra" => "Horas extra",
+            "bono" => "Bono",
+            "adelanto" => "Adelanto",
+            "aguinaldo" => "Aguinaldo",
+            _ => "Pago"
+        };
+
+        var mov = new Models.CafeCajaMovimiento
+        {
+            CajaId = cajaId,
+            Fecha = pago.FechaPago.Date,
+            Tipo = "SUELDO",
+            Importe = -Math.Abs(monto),
+            Motivo = $"{queCosa} de {quien} · {liq.Mes:00}/{liq.Anio}",
+            CargadoPor = User?.Identity?.Name
+        };
+        _db.CafeCajaMovimientos.Add(mov);
+        await _db.SaveChangesAsync();
+        return mov;
+    }
+
+    /// <summary>Borra el renglon que este pago habia dejado en la caja (la plata "vuelve").</summary>
+    private async Task SacarMovimientoDeCajaAsync(Models.NomPago pago)
+    {
+        if (!pago.CajaMovimientoId.HasValue) return;
+        var viejo = await _db.CafeCajaMovimientos.FindAsync(pago.CajaMovimientoId.Value);
+        if (viejo is not null) _db.CafeCajaMovimientos.Remove(viejo);
+        pago.CajaMovimientoId = null;
+        await _db.SaveChangesAsync();
     }
 }
