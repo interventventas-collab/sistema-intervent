@@ -6238,6 +6238,18 @@ public class ApiClient
     public async Task<bool> EliminarCafeCajaAsync(int id)
         => await DeleteAsync($"/api/cafe/cajas/{id}");
 
+    // Movimientos de caja (salidas, transferencias y arqueos) — 05/09/2026
+    public async Task<List<CafeCajaMovimientoDto>?> GetCafeCajaMovimientosAsync(int? cajaId = null, int dias = 60)
+        => await GetAsync<List<CafeCajaMovimientoDto>>($"/api/cafe/cajas/movimientos?dias={dias}" + (cajaId.HasValue ? $"&cajaId={cajaId}" : ""));
+    public async Task<bool> CafeCajaSalidaAsync(int cajaId, DateTime fecha, decimal importe, string motivo)
+        => (await PostAsync<CafeOkDto>($"/api/cafe/cajas/{cajaId}/salida", new { fecha, importe, motivo }))?.Ok == true;
+    public async Task<bool> CafeCajaTransferenciaAsync(int desdeCajaId, int haciaCajaId, DateTime fecha, decimal importe, string? motivo)
+        => (await PostAsync<CafeOkDto>("/api/cafe/cajas/transferencia", new { desdeCajaId, haciaCajaId, fecha, importe, motivo }))?.Ok == true;
+    public async Task<CafeArqueoResultDto?> CafeCajaArqueoAsync(int cajaId, DateTime fecha, decimal contadoReal, string? notas)
+        => await PostAsync<CafeArqueoResultDto>($"/api/cafe/cajas/{cajaId}/arqueo", new { fecha, contadoReal, notas });
+    public async Task<bool> BorrarCafeCajaMovimientoAsync(int id)
+        => await DeleteAsync($"/api/cafe/cajas/movimientos/{id}");
+
     // ===== Tesoreria Cafe: Cobranzas =====
     public async Task<List<ComprobantePendienteDto>?> GetComprobantesPendientesAsync(int clienteId, bool incluirMismoCuit = false)
         => await GetAsync<List<ComprobantePendienteDto>>($"/api/cafe/cobranzas/comprobantes-pendientes/{clienteId}?incluirMismoCuit={incluirMismoCuit.ToString().ToLowerInvariant()}");

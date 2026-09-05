@@ -13,6 +13,32 @@ public class CafeCajaDto
     public decimal SaldoActual { get; set; }
 }
 
+// Movimientos de caja: todo lo que mueve plata y NO es una cobranza (05/09/2026).
+// El Importe viene con signo: negativo lo que sale, positivo lo que entra.
+public class CafeCajaMovimientoDto
+{
+    public int Id { get; set; }
+    public int CajaId { get; set; }
+    public string CajaNombre { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public string Tipo { get; set; } = "SALIDA";
+    public decimal Importe { get; set; }
+    public string Motivo { get; set; } = "";
+    public int? TransferenciaGrupoId { get; set; }
+    public string? CargadoPor { get; set; }
+}
+
+public class CafeOkDto { public bool Ok { get; set; } }
+
+// Resultado de un arqueo: qué decía el sistema y cuánto se corrigió.
+public class CafeArqueoResultDto
+{
+    public bool Ok { get; set; }
+    public bool SinCambios { get; set; }
+    public decimal SaldoSistema { get; set; }
+    public decimal Diferencia { get; set; }
+}
+
 // ========== Cheques ==========
 public class CafeChequeDto
 {

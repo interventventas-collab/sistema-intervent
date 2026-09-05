@@ -4197,6 +4197,28 @@ BEGIN
     );
 END
 GO
+-- Cafe_CajaMovimientos: todo lo que mueve plata en una caja y NO es una cobranza.
+-- Sin esto la caja solo sumaba (el 04/09/2026 "Efectivo" mostraba $142.736.024 acumulados).
+-- El Importe lleva el signo: negativo sale, positivo entra.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_CajaMovimientos')
+BEGIN
+    CREATE TABLE Cafe_CajaMovimientos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        CajaId INT NOT NULL,
+        Fecha DATE NOT NULL,
+        -- SALIDA | ENTRADA | TRANSFERENCIA | ARQUEO
+        Tipo NVARCHAR(20) NOT NULL,
+        Importe DECIMAL(18,2) NOT NULL,
+        Motivo NVARCHAR(300) NOT NULL,
+        TransferenciaGrupoId INT NULL,
+        CargadoPor NVARCHAR(100) NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeCajaMov_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeCajaMov_Caja FOREIGN KEY (CajaId) REFERENCES Cafe_Cajas(Id)
+    );
+    CREATE INDEX IX_CafeCajaMov_Caja_Fecha ON Cafe_CajaMovimientos (CajaId, Fecha DESC);
+END
+GO
 -- Seed inicial: las 5 cajas acordadas con el usuario (idempotente)
 IF NOT EXISTS (SELECT 1 FROM Cafe_Cajas WHERE Nombre='Efectivo')
     INSERT INTO Cafe_Cajas (Nombre, Tipo, Orden) VALUES ('Efectivo', 'EFECTIVO', 1);

@@ -210,6 +210,7 @@ public class AppDbContext : DbContext
     public DbSet<CafeCompraItem> CafeCompraItems => Set<CafeCompraItem>();
     // Tesoreria (Fase 1, 2026-05-12)
     public DbSet<CafeCaja> CafeCajas => Set<CafeCaja>();
+    public DbSet<CafeCajaMovimiento> CafeCajaMovimientos => Set<CafeCajaMovimiento>();
     public DbSet<CafeCheque> CafeCheques => Set<CafeCheque>();
     public DbSet<CafeCobranza> CafeCobranzas => Set<CafeCobranza>();
     public DbSet<CafeCobranzaComprobante> CafeCobranzasComprobantes => Set<CafeCobranzaComprobante>();

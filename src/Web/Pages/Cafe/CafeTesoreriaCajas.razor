@@ -3,58 +3,198 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 
+@* Pantalla pensada para que sirva igual en la compu y en el celular: las cajas son tarjetas que
+   se acomodan solas en una o varias columnas, y los botones son grandes para el dedo. *@
+
 <div class="card">
-    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
-        <h3 style="margin:0;">💰 Tesorería · Cajas (@(cajas?.Count ?? 0))</h3>
-        <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva caja</button>
+    <div class="card-header cajas-header">
+        <h3 style="margin:0;">💰 Cajas</h3>
+        @if (cajas is not null && cajas.Any(c => c.IsActive))
+        {
+            <span class="cajas-total">Total: <b>@Plata(cajas.Where(c => c.IsActive).Sum(c => c.SaldoActual))</b></span>
+        }
+        <button class="btn btn-secondary" @onclick="ShowCreate">+ Nueva caja</button>
     </div>
-    <div class="card-body" style="padding:0;">
+    <div class="card-body">
         @if (loading)
         {
-            <p class="text-muted" style="padding:1rem;">Cargando...</p>
+            <p class="text-muted">Cargando...</p>
         }
         else if (cajas is null || cajas.Count == 0)
         {
-            <p class="text-muted" style="padding:1rem;">Sin cajas configuradas.</p>
+            <p class="text-muted">Sin cajas configuradas.</p>
         }
         else
         {
-            <table class="table table-compact">
-                <thead>
-                    <tr>
-                        <th style="width:60px;">Orden</th>
-                        <th>Nombre</th>
-                        <th>Tipo</th>
-                        <th style="text-align:right;">Saldo inicial</th>
-                        <th style="text-align:right;">Saldo actual</th>
-                        <th>Estado</th>
-                        <th style="width:120px;"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var c in cajas.OrderBy(x => x.Orden).ThenBy(x => x.Nombre))
-                    {
-                        <tr style="@(c.IsActive ? "" : "opacity:0.5;")">
-                            <td>@c.Orden</td>
-                            <td><b>@c.Nombre</b>@if (!string.IsNullOrWhiteSpace(c.Notas)) { <div style="font-size:0.75rem; color:#6b7280;">@c.Notas</div> }</td>
-                            <td><span class="badge badge-secondary">@FormatTipo(c.Tipo)</span></td>
-                            <td style="text-align:right;">$@c.SaldoInicial.ToString("N2")</td>
-                            <td style="text-align:right; font-weight:700; color:@(c.SaldoActual >= 0 ? "#059669" : "#dc2626");">
-                                $@c.SaldoActual.ToString("N2")
-                            </td>
-                            <td>@(c.IsActive ? "Activa" : "Inactiva")</td>
-                            <td>
-                                <button class="btn-icon" @onclick="() => ShowEdit(c)" title="Editar">✎</button>
-                                <button class="btn-icon" @onclick="() => Eliminar(c)" title="Eliminar" disabled="@(c.SaldoActual != c.SaldoInicial)">🗑</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <div class="cajas-grid">
+                @foreach (var c in cajas.Where(x => x.IsActive).OrderBy(x => x.Orden).ThenBy(x => x.Nombre))
+                {
+                    <div class="caja-item">
+                        <div class="caja-nombre">@c.Nombre <span class="caja-tipo">· @FormatTipo(c.Tipo)</span></div>
+                        <div class="caja-saldo @(c.SaldoActual < 0 ? "en-rojo" : "")">@Plata(c.SaldoActual)</div>
+                        <div class="caja-acciones">
+                            <button class="btn btn-secondary" @onclick="() => AbrirSalida(c)">− Salida</button>
+                            <button class="btn btn-secondary" @onclick="() => AbrirTransfer(c)">⇄ Transferir</button>
+                            <button class="btn btn-secondary" @onclick="() => AbrirArqueo(c)">✓ Arqueo</button>
+                            <button class="btn-icon" @onclick="() => ShowEdit(c)" title="Editar caja">✎</button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @if (cajas.Any(x => !x.IsActive))
+            {
+                <p class="text-muted" style="margin-top:0.8rem; font-size:0.85rem;">
+                    Inactivas: @string.Join(" · ", cajas.Where(x => !x.IsActive).Select(x => $"{x.Nombre} ({Plata(x.SaldoActual)})"))
+                </p>
+            }
         }
     </div>
 </div>
 
+<div class="card" style="margin-top:1rem;">
+    <div class="card-header">
+        <h3 style="margin:0;">Últimos movimientos</h3>
+    </div>
+    <div class="card-body">
+        @if (movs is null)
+        {
+            <p class="text-muted">Cargando...</p>
+        }
+        else if (movs.Count == 0)
+        {
+            <p class="text-muted">
+                Todavía no cargaste ninguna salida. Las cobranzas entran solas; lo que sale del cajón
+                hay que anotarlo acá para que el saldo sea el de verdad.
+            </p>
+        }
+        else
+        {
+            <div class="movs-lista">
+                @foreach (var m in movs)
+                {
+                    <div class="mov-fila">
+                        <div class="mov-texto">
+                            <span class="mov-fecha">@m.Fecha.ToString("dd/MM")</span>
+                            <b>@m.CajaNombre</b> · @m.Motivo
+                            @if (!string.IsNullOrWhiteSpace(m.CargadoPor))
+                            {
+                                <span class="mov-quien"> · lo cargó @m.CargadoPor</span>
+                            }
+                        </div>
+                        <div class="mov-importe @(m.Importe < 0 ? "en-rojo" : "")">@Plata(m.Importe)</div>
+                        <button class="btn-icon" @onclick="() => BorrarMov(m)" title="Borrar">🗑</button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@* ── Salida ───────────────────────────────────────────────────────────────── *@
+@if (modo == "salida" && cajaElegida is not null)
+{
+    <div class="modal-overlay" @onclick="Cerrar">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h4 style="margin:0;">Sale plata de @cajaElegida.Nombre</h4>
+                <button class="btn-close" @onclick="Cerrar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">¿Cuánto?</label>
+                    <input class="form-input" inputmode="numeric" @bind="fImporte" placeholder="0" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">¿Para qué fue?</label>
+                    <input class="form-input" @bind="fMotivo" placeholder="ej: nafta de la camioneta" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Fecha</label>
+                    <input type="date" class="form-input" @bind="fFecha" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="Cerrar">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarSalida" disabled="@saving">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Transferencia ────────────────────────────────────────────────────────── *@
+@if (modo == "transfer" && cajaElegida is not null)
+{
+    <div class="modal-overlay" @onclick="Cerrar">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h4 style="margin:0;">Pasar plata de @cajaElegida.Nombre</h4>
+                <button class="btn-close" @onclick="Cerrar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">¿A qué caja va?</label>
+                    <div class="destinos">
+                        @foreach (var d in (cajas ?? new()).Where(x => x.IsActive && x.Id != cajaElegida.Id))
+                        {
+                            <button class="btn @(fDestino == d.Id ? "btn-primary" : "btn-secondary")"
+                                    @onclick="() => fDestino = d.Id">@d.Nombre</button>
+                        }
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">¿Cuánto?</label>
+                    <input class="form-input" inputmode="numeric" @bind="fImporte" placeholder="0" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Fecha</label>
+                    <input type="date" class="form-input" @bind="fFecha" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="Cerrar">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarTransfer" disabled="@saving">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Arqueo ───────────────────────────────────────────────────────────────── *@
+@if (modo == "arqueo" && cajaElegida is not null)
+{
+    <div class="modal-overlay" @onclick="Cerrar">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h4 style="margin:0;">Arqueo de @cajaElegida.Nombre</h4>
+                <button class="btn-close" @onclick="Cerrar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted" style="margin-top:0;">
+                    El sistema dice que hay <b>@Plata(cajaElegida.SaldoActual)</b>.
+                    Poné lo que contaste de verdad y la diferencia queda anotada.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">¿Cuánto hay?</label>
+                    <input class="form-input" inputmode="numeric" @bind="fImporte" placeholder="0" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nota (opcional)</label>
+                    <input class="form-input" @bind="fMotivo" placeholder="ej: conté con Walter" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Fecha</label>
+                    <input type="date" class="form-input" @bind="fFecha" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="Cerrar">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarArqueo" disabled="@saving">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Alta / edición de la caja ────────────────────────────────────────────── *@
 @if (showForm)
 {
     <div class="modal-overlay" @onclick="CloseForm">
@@ -71,21 +211,16 @@
                 <div class="form-group">
                     <label class="form-label">Tipo</label>
                     <select class="form-input" @bind="formTipo">
-                        <option value="EFECTIVO">Efectivo</option>
-                        <option value="BANCO">Banco</option>
-                        <option value="BILLETERA_VIRTUAL">Billetera virtual (MP, Modo, etc.)</option>
-                        <option value="CHEQUES_CARTERA">Cheques en cartera</option>
-                        <option value="V_PRIVADO">V / Privada (triangulación)</option>
+                        <option value="EFECTIVO">💵 Efectivo</option>
+                        <option value="BANCO">🏦 Banco</option>
+                        <option value="BILLETERA_VIRTUAL">📱 Billetera virtual</option>
+                        <option value="CHEQUES_CARTERA">📄 Cheques en cartera</option>
+                        <option value="V_PRIVADO">🔀 V / Privada</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Saldo inicial</label>
-                    <input class="form-input" type="number" step="0.01" @bind="formSaldoInicial" />
-                    <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Lo que tenés HOY en esta caja al arrancar el sistema.</p>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Orden de aparición</label>
-                    <input class="form-input" type="number" @bind="formOrden" />
+                    <input class="form-input" inputmode="numeric" @bind="formSaldoInicial" />
                 </div>
                 <div class="form-group">
                     <label class="form-label">Notas</label>
@@ -93,30 +228,67 @@
                 </div>
                 @if (editing is not null)
                 {
-                    <div class="form-group">
-                        <label class="form-check">
-                            <input type="checkbox" @bind="formIsActive" /> Activa
-                        </label>
-                    </div>
+                    <label class="form-label" style="display:flex; align-items:center; gap:0.4rem;">
+                        <input type="checkbox" @bind="formIsActive" /> Activa
+                    </label>
                 }
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm">Cancelar</button>
-                <button class="btn btn-primary" @onclick="Guardar" disabled="@saving">@(saving ? "..." : "Guardar")</button>
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@saving">Guardar</button>
             </div>
         </div>
     </div>
 }
 
+<style>
+    .cajas-header { display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap; }
+    .cajas-total { color:#374151; font-size:0.95rem; margin-left:auto; margin-right:0.6rem; }
+    .cajas-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(270px, 1fr)); gap:0.9rem; }
+    .caja-item { border-bottom:1px solid #ececec; padding:0.7rem 0; }
+    .caja-nombre { font-weight:600; }
+    .caja-tipo { color:#6b7280; font-weight:400; font-size:0.85rem; }
+    .caja-saldo { font-size:1.6rem; font-weight:700; font-variant-numeric:tabular-nums; margin:0.15rem 0 0.5rem; }
+    .caja-saldo.en-rojo, .mov-importe.en-rojo { color:#b42318; }
+    .caja-acciones { display:flex; gap:0.35rem; flex-wrap:wrap; }
+    .caja-acciones .btn { font-size:0.8rem; padding:0.35rem 0.6rem; }
+    .movs-lista { display:flex; flex-direction:column; }
+    .mov-fila { display:flex; align-items:center; gap:0.6rem; padding:0.5rem 0; border-bottom:1px solid #f1f1f1; }
+    .mov-texto { flex:1; min-width:0; }
+    .mov-fecha { color:#6b7280; margin-right:0.4rem; font-variant-numeric:tabular-nums; }
+    .mov-quien { color:#9ca3af; font-size:0.8rem; }
+    .mov-importe { font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .destinos { display:flex; gap:0.35rem; flex-wrap:wrap; }
+    /* En el celular las tarjetas van una abajo de la otra y los botones entran con el dedo. */
+    @@media (max-width: 640px) {
+        .cajas-grid { grid-template-columns:1fr; }
+        .caja-acciones .btn { flex:1; font-size:0.85rem; padding:0.5rem 0.4rem; }
+        .cajas-total { width:100%; margin:0; order:3; }
+    }
+</style>
+
 @code {
     private List<CafeCajaDto>? cajas;
-    private bool loading = true;
-    private bool showForm, saving;
+    private List<CafeCajaMovimientoDto>? movs;
+    private bool loading = true, saving;
+
+    // Formularios de salida / transferencia / arqueo
+    private string? modo;                 // salida | transfer | arqueo
+    private CafeCajaDto? cajaElegida;
+    private string fImporte = "";
+    private string fMotivo = "";
+    private DateTime fFecha = HoyAr();
+    private int fDestino;
+
+    // Alta y edición de la caja
+    private bool showForm;
     private CafeCajaDto? editing;
     private string formNombre = "", formTipo = "EFECTIVO", formNotas = "";
     private decimal formSaldoInicial = 0;
-    private int formOrden = 0;
     private bool formIsActive = true;
+
+    /// <summary>Hoy en Argentina: el navegador puede estar en otro huso y la fecha se corre.</summary>
+    private static DateTime HoyAr() => DateTime.UtcNow.AddHours(-3).Date;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -124,16 +296,99 @@
     {
         loading = true;
         try { cajas = await Api.GetCafeCajasAsync(incluirInactivas: true) ?? new(); }
-        catch { ToastService.Error("Error al cargar cajas"); cajas = new(); }
+        catch { ToastService.Error("Error al cargar las cajas"); cajas = new(); }
+        try { movs = await Api.GetCafeCajaMovimientosAsync() ?? new(); }
+        catch { movs = new(); }
         loading = false;
+    }
+
+    private void AbrirSalida(CafeCajaDto c) { cajaElegida = c; modo = "salida"; fImporte = ""; fMotivo = ""; fFecha = HoyAr(); }
+    private void AbrirTransfer(CafeCajaDto c) { cajaElegida = c; modo = "transfer"; fImporte = ""; fDestino = 0; fFecha = HoyAr(); }
+    private void AbrirArqueo(CafeCajaDto c) { cajaElegida = c; modo = "arqueo"; fImporte = ""; fMotivo = ""; fFecha = HoyAr(); }
+    private void Cerrar() { if (!saving) { modo = null; cajaElegida = null; } }
+
+    /// <summary>
+    /// Acepta lo que el usuario escriba: 45.000, 45000 o 45.000,50. El campo es texto a proposito:
+    /// con type=number, escribir una coma deja el campo VACIO y se pierde el importe.
+    /// </summary>
+    private static decimal? LeerPlata(string txt)
+    {
+        if (string.IsNullOrWhiteSpace(txt)) return null;
+        var limpio = txt.Trim().Replace("$", "").Replace(" ", "").Replace(".", "").Replace(",", ".");
+        return decimal.TryParse(limpio, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+    }
+
+    private async Task GuardarSalida()
+    {
+        var imp = LeerPlata(fImporte);
+        if (imp is null || imp <= 0) { ToastService.Error("Poné cuánto salió"); return; }
+        if (string.IsNullOrWhiteSpace(fMotivo)) { ToastService.Error("Poné para qué fue"); return; }
+        saving = true;
+        try
+        {
+            await Api.CafeCajaSalidaAsync(cajaElegida!.Id, fFecha, imp.Value, fMotivo);
+            ToastService.Success($"Anotado: salieron {Plata(imp.Value)} de {cajaElegida.Nombre}");
+            modo = null; cajaElegida = null;
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task GuardarTransfer()
+    {
+        var imp = LeerPlata(fImporte);
+        if (fDestino == 0) { ToastService.Error("Elegí a qué caja va"); return; }
+        if (imp is null || imp <= 0) { ToastService.Error("Poné cuánto pasás"); return; }
+        saving = true;
+        try
+        {
+            await Api.CafeCajaTransferenciaAsync(cajaElegida!.Id, fDestino, fFecha, imp.Value, null);
+            ToastService.Success("Transferencia anotada");
+            modo = null; cajaElegida = null;
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task GuardarArqueo()
+    {
+        var imp = LeerPlata(fImporte);
+        if (imp is null) { ToastService.Error("Poné cuánto contaste"); return; }
+        saving = true;
+        try
+        {
+            var r = await Api.CafeCajaArqueoAsync(cajaElegida!.Id, fFecha, imp.Value, fMotivo);
+            if (r is not null && r.SinCambios) ToastService.Success("Justo: el saldo ya era ese");
+            else if (r is not null)
+                ToastService.Success(r.Diferencia < 0
+                    ? $"Faltaban {Plata(Math.Abs(r.Diferencia))}, quedó anotado"
+                    : $"Sobraban {Plata(r.Diferencia)}, quedó anotado");
+            modo = null; cajaElegida = null;
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task BorrarMov(CafeCajaMovimientoDto m)
+    {
+        try
+        {
+            await Api.BorrarCafeCajaMovimientoAsync(m.Id);
+            ToastService.Success(m.TransferenciaGrupoId.HasValue ? "Transferencia borrada (las dos patas)" : "Movimiento borrado");
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
     private void ShowCreate()
     {
         editing = null;
         formNombre = ""; formTipo = "EFECTIVO"; formNotas = "";
-        formSaldoInicial = 0; formOrden = (cajas?.Max(c => (int?)c.Orden) ?? 0) + 1;
-        formIsActive = true;
+        formSaldoInicial = 0; formIsActive = true;
         showForm = true;
     }
 
@@ -141,15 +396,11 @@
     {
         editing = c;
         formNombre = c.Nombre; formTipo = c.Tipo; formNotas = c.Notas ?? "";
-        formSaldoInicial = c.SaldoInicial; formOrden = c.Orden; formIsActive = c.IsActive;
+        formSaldoInicial = c.SaldoInicial; formIsActive = c.IsActive;
         showForm = true;
     }
 
-    private void CloseForm()
-    {
-        if (saving) return;
-        showForm = false;
-    }
+    private void CloseForm() { if (!saving) showForm = false; }
 
     private async Task Guardar()
     {
@@ -158,9 +409,9 @@
         try
         {
             if (editing is null)
-                await Api.CrearCafeCajaAsync(formNombre, formTipo, formSaldoInicial, formOrden, formNotas);
+                await Api.CrearCafeCajaAsync(formNombre, formTipo, formSaldoInicial, null, formNotas);
             else
-                await Api.EditarCafeCajaAsync(editing.Id, formNombre, formTipo, formSaldoInicial, formOrden, formIsActive, formNotas);
+                await Api.EditarCafeCajaAsync(editing.Id, formNombre, formTipo, formSaldoInicial, editing.Orden, formIsActive, formNotas);
             ToastService.Success("Caja guardada");
             showForm = false;
             await Load();
@@ -169,27 +420,20 @@
         finally { saving = false; }
     }
 
-    private async Task Eliminar(CafeCajaDto c)
+    /// <summary>El menos va antes del signo pesos: -$25.200, no $-25.200.</summary>
+    private static string Plata(decimal v)
     {
-        if (!await ConfirmAsync($"Eliminar la caja \"{c.Nombre}\"? Solo se puede si no tiene movimientos.")) return;
-        try
-        {
-            await Api.EliminarCafeCajaAsync(c.Id);
-            ToastService.Success("Caja eliminada");
-            await Load();
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
+        var ar = new System.Globalization.CultureInfo("es-AR");
+        return (v < 0 ? "-$" : "$") + Math.Abs(v).ToString("N0", ar);
     }
-
-    private Task<bool> ConfirmAsync(string msg) => Task.FromResult(true); // placeholder simple
 
     private static string FormatTipo(string t) => t switch
     {
-        "EFECTIVO" => "💵 Efectivo",
-        "BANCO" => "🏦 Banco",
-        "BILLETERA_VIRTUAL" => "📱 Billetera virtual",
-        "CHEQUES_CARTERA" => "📄 Cheques en cartera",
-        "V_PRIVADO" => "🔀 V / Privada",
-        _ => t
+        "EFECTIVO" => "efectivo",
+        "BANCO" => "banco",
+        "BILLETERA_VIRTUAL" => "billetera",
+        "CHEQUES_CARTERA" => "cheques",
+        "V_PRIVADO" => "privada",
+        _ => t.ToLowerInvariant()
     };
 }
