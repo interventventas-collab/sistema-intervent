@@ -1392,7 +1392,13 @@
                                 <option value="CREDITO">Tarjeta de crédito</option>
                                 <option value="CTA_CORRIENTE">Cuenta corriente</option>
                                 <option value="CHEQUE">Cheque</option>
-                                <option value="V_PRIVADO">*V********</option>
+                                @* 05/09/2026: el cobro REDIRIGIDO es un arreglo interno (la plata se la
+                                   queda otro). En una FACTURA no tiene que aparecer ni imprimirse: sólo
+                                   se ofrece en comprobantes internos (X y presupuesto). *@
+                                @if (formTipoComprobante is "X" or "PRO")
+                                {
+                                    <option value="V_PRIVADO">Redirigido (antes V)</option>
+                                }
                             </select>
                         </div>
                         <div class="form-group" style="margin: 0;">
@@ -10260,11 +10266,11 @@
     {
         "TRANSFERENCIA" => "Transferencia",
         "MERCADOPAGO" => "Mercado Pago",
+        "V_PRIVADO" => "Redirigido",
         "DEBITO" => "Tarjeta de débito",
         "CREDITO" => "Tarjeta de crédito",
         "CTA_CORRIENTE" => "Cuenta corriente",
         "CHEQUE" => "Cheque",
-        "V_PRIVADO" => "*V********",
         _ => "Efectivo"
     };
 }

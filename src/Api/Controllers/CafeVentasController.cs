@@ -1375,7 +1375,10 @@ public class CafeVentasController : ControllerBase
                 "CREDITO" => "Crédito",
                 "CTA_CORRIENTE" => "Cuenta corriente",
                 "CHEQUE" => "Cheque",
-                "V_PRIVADO" => "Venta privada",
+                // ⚠ 05/09/2026: el cobro REDIRIGIDO es un arreglo interno nuestro (la plata se la
+                // queda un empleado o se va a un gasto). En un comprobante fiscal NO se imprime:
+                // antes salía "Venta privada" en el PDF de la factura.
+                "V_PRIVADO" => null,
                 _ => null
             },
         };
