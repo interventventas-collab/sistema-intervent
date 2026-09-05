@@ -453,7 +453,7 @@ public class ViajesController : ControllerBase
         _db.ViajesPagos.Add(p);
         await _db.SaveChangesAsync();
         if (!await DescontarDeCajaAsync(p, emp)) return BadRequest(new { error = "La caja elegida no existe" });
-        return Ok(p);
+        return Ok(PagoPlano(p));
     }
 
     public class UpdatePagoRequest
@@ -475,7 +475,7 @@ public class ViajesController : ControllerBase
         if (req.Importe.HasValue) p.Importe = req.Importe.Value;
         p.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(p);
+        return Ok(PagoPlano(p));
     }
 
     [HttpDelete("admin/pagos/{id:int}")]
@@ -796,4 +796,16 @@ public class ViajesController : ControllerBase
         await _db.SaveChangesAsync();
         return true;
     }
+
+    /// <summary>
+    /// ⚠ 05/09/2026: devolver la entidad tal cual reventaba con "object cycle" — el pago apunta al
+    /// empleado, el empleado a sus pagos, y asi al infinito. Se guardaba bien pero la pantalla veia
+    /// un error 500 y el dueño lo cargaba dos veces (le paso con $18.500 a Nacho).
+    /// Nunca devolver entidades de EF con navegaciones: siempre un objeto plano.
+    /// </summary>
+    private static object PagoPlano(ViajesPago p) => new
+    {
+        p.Id, p.EmpleadoId, p.Fecha, p.Descripcion, p.Importe,
+        p.CajaId, p.CajaMovimientoId, p.CreatedAt
+    };
 }
