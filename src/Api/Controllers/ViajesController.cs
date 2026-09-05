@@ -808,4 +808,67 @@ public class ViajesController : ControllerBase
         p.Id, p.EmpleadoId, p.Fecha, p.Descripcion, p.Importe,
         p.CajaId, p.CajaMovimientoId, p.CreatedAt
     };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Cuenta corriente del repartidor (05/09/2026)
+    //
+    // Viajes y pagos mezclados en orden, con el saldo corriendo al costado — como el resumen del
+    // banco. Antes había que abrir "Día por día" y ahí los viajes cargados a mano venían sumados
+    // adentro de las entregas, asi que el dueño no veía lo que él mismo había cargado.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    public record MovimientoCtaDto(DateTime Fecha, string Que, string? Detalle,
+        decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra);
+
+    [HttpGet("admin/empleados/{id:int}/movimientos")]
+    [Authorize]
+    public async Task<IActionResult> Movimientos(int id, [FromQuery] int dias = 60)
+    {
+        var emp = await _db.ViajesEmpleados.FindAsync(id);
+        if (emp is null) return NotFound();
+
+        var ents = await _db.ViajesEntregas.Where(x => x.EmpleadoId == id).ToListAsync();
+        var pagos = await _db.ViajesPagos.Where(x => x.EmpleadoId == id).ToListAsync();
+        var regs = await _db.ViajesRegistros.Where(x => x.EmpleadoId == id).ToListAsync();
+
+        // Un renglón por día para las entregas del mapa, y uno por cada cosa cargada a mano.
+        var filas = new List<(DateTime fecha, int orden, string que, string? det, decimal suma, decimal pago, bool esPago, bool esExtra)>();
+
+        foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
+        {
+            var quienes = g.OrderBy(x => x.Id)
+                .Select(x => !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
+                       : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion! : "entrega"))
+                .Take(4).ToList();
+            var resto = g.Count() - quienes.Count;
+            filas.Add((g.Key, 0, $"{g.Count()} entrega{(g.Count() == 1 ? "" : "s")}",
+                string.Join(" · ", quienes) + (resto > 0 ? $" · +{resto}" : ""),
+                g.Sum(x => x.Tarifa), 0m, false, false));
+        }
+
+        foreach (var g in ents.Where(x => x.StopId == null).GroupBy(x => new { x.Fecha, Det = x.Detalle ?? "Ajuste" }))
+            filas.Add((g.Key.Fecha, 1, g.Key.Det, null, g.Sum(x => x.Tarifa), 0m, false, true));
+
+        foreach (var r in regs)
+            filas.Add((r.Fecha, 1, $"{r.CantidadCABA + r.CantidadPCIA} viajes cargados a mano", r.Anotaciones,
+                (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA, 0m, false, true));
+
+        foreach (var p in pagos)
+            filas.Add((p.Fecha, 2, "Pago" + (string.IsNullOrWhiteSpace(p.Descripcion) ? "" : " · " + p.Descripcion),
+                null, 0m, p.Importe, true, false));
+
+        // El saldo se calcula desde el principio de los tiempos, si no el número no cerraría.
+        var orden = filas.OrderBy(f => f.fecha).ThenBy(f => f.orden).ToList();
+        var salida = new List<MovimientoCtaDto>(orden.Count);
+        decimal acum = 0m;
+        foreach (var f in orden)
+        {
+            acum += f.suma - f.pago;
+            salida.Add(new MovimientoCtaDto(f.fecha, f.que, f.det, f.suma, f.pago, acum, f.esPago, f.esExtra));
+        }
+
+        // Y recién ahí se recorta a los últimos días pedidos.
+        var desde = FechaArgentinaHoy().AddDays(-Math.Max(1, dias));
+        return Ok(salida.Where(x => x.Fecha >= desde).ToList());
+    }
 }

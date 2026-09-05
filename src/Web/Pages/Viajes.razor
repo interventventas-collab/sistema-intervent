@@ -48,6 +48,25 @@
     .vj-tab-regs td { padding: 0.4rem; border-bottom: 1px solid #f3f4f6; }
     .vj-emp-card.auto { border-left-color: #0f766e; }
     .linea-auto { font-size: 0.9rem; color: #374151; margin-top: 0.6rem; line-height: 1.55; }
+    .vj-cintas { display:flex; gap:0.6rem; flex-wrap:wrap; margin-top:0.75rem; }
+    .vj-cinta { background:#f9fafb; border:1px solid #f0f0f0; border-radius:9px; padding:0.5rem 0.8rem;
+        font-size:0.84rem; color:#374151; }
+    .vj-cinta b { display:block; font-size:1.05rem; color:#111; }
+    /* Cuenta corriente: viajes y pagos mezclados, con el saldo corriendo. */
+    .vj-mov { width:100%; border-collapse:collapse; margin-top:0.5rem; }
+    .vj-mov th { text-align:left; font-size:0.71rem; text-transform:uppercase; letter-spacing:0.05em;
+        color:#9ca3af; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb; font-weight:700; }
+    .vj-mov td { padding:0.6rem; border-bottom:1px solid #f5f5f5; font-size:0.88rem; vertical-align:top; }
+    .vj-mov th.n, .vj-mov td.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .vj-mov td.n { font-weight:600; }
+    .vj-mov tr.esPago { background:#fbfefb; }
+    .vj-mov td.pago { color:#166534; }
+    .vj-mov .quien { color:#9ca3af; font-size:0.78rem; margin-top:0.15rem; }
+    .vj-mov .dia { white-space:nowrap; color:#6b7280; font-size:0.84rem; }
+    .vj-mov tr.cierre td { background:#f0fdf4; font-weight:700; }
+    .vj-tag { font-size:0.66rem; font-weight:700; padding:0.05rem 0.35rem; border-radius:5px;
+        background:#e0e7ff; color:#3730a3; margin-left:0.3rem; }
+    .vj-tag.mapa { background:#f3f4f6; color:#4b5563; }
     .vj-btn-row.secundaria { margin-top: 0.35rem; opacity: 0.85; }
     .vj-btn-row .vj-btn-mini { font-size: 0.82rem; padding: 0.4rem 0.7rem; }
 </style>
@@ -343,23 +362,22 @@
                                 ⚠ Falta elegirle el chofer del mapa: sin eso no se le cuenta ningún viaje.
                             </div>
                         }
-                        <div class="linea-auto">
-                            <div>Hoy <b>@e.ViajesHoy</b> @(e.ViajesHoy == 1 ? "entrega" : "entregas") · $@Plata(e.ImporteHoy)</div>
+                        @* 05/09/2026: los datos del día en recuadritos, para leerlos de un vistazo.
+                           El desglose de dónde sale el número vive abajo, en los movimientos. *@
+                        <div class="vj-cintas">
+                            <div class="vj-cinta">Hoy <b>@e.ViajesHoy @(e.ViajesHoy == 1 ? "entrega" : "entregas")</b></div>
                             @if (e.ViajesPendientes > 0)
                             {
-                                <div>
-                                    <b>@e.ViajesPendientes</b> @(e.ViajesPendientes == 1 ? "viaje" : "viajes")
-                                    sin liquidar desde el <b>@e.PendienteDesde!.Value.ToString("dd/MM")</b>
-                                    · <b>$@Plata(e.ImportePendiente)</b>
-                                </div>
+                                <div class="vj-cinta">Sin liquidar <b>$@Plata(e.ImportePendiente)</b></div>
                                 @if (e.ImportePendiente != APagar(e))
                                 {
-                                    <div>Ya le pagaste <b>$@Plata(e.ImportePendiente - APagar(e))</b> a cuenta</div>
+                                    <div class="vj-cinta">Ya le pagaste <b>$@Plata(e.ImportePendiente - APagar(e))</b></div>
                                 }
+                                <div class="vj-cinta">Desde <b>@e.PendienteDesde!.Value.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</b></div>
                             }
                             else
                             {
-                                <div>Sin viajes pendientes de pago</div>
+                                <div class="vj-cinta">Sin viajes <b>pendientes de pago</b></div>
                             }
                         </div>
                     }
@@ -388,57 +406,65 @@
                                   : APagar(e) > 0 ? $"💵 Liquidar ${Plata(APagar(e))}"
                                   : "✔ Cerrar viajes (ya pagados)")
                             </button>
-                            <button class="vj-btn-mini" @onclick="@(() => VerDetalle(e))">📋 @(detalleEmpId == e.Id ? "Ocultar" : "Día por día")</button>
-                            <button class="vj-btn-mini" @onclick="@(() => ShowAjuste(e))">➕ Sumar viaje a mano</button>
+                            <button class="vj-btn-mini" @onclick="@(() => ShowAjuste(e))">➕ Sumar a mano</button>
                         }
                         <button class="vj-btn-mini pago" @onclick="@(() => ShowCreatePago(e))">💵 Registrar pago</button>
                     </div>
                     <div class="vj-btn-row secundaria">
+                        @if (e.ModoAutomatico)
+                        {
+                            <button class="vj-btn-mini" @onclick="@(() => VerDetalle(e))">📋 @(detalleEmpId == e.Id ? "Ocultar movimientos" : "Ver movimientos")</button>
+                        }
                         <button class="vj-btn-mini link" @onclick="@(() => CopiarLink(e))">📋 Copiar link</button>
                         <button class="vj-btn-mini wa" @onclick="@(() => MandarWhatsapp(e))">📱 WhatsApp</button>
                         <button class="vj-btn-mini" @onclick="@(() => ShowEditEmpleado(e))">✏ Editar</button>
                     </div>
 
+                    @* 05/09/2026: la cuenta corriente — viajes y pagos mezclados en orden, con el
+                       saldo corriendo. Antes esto era "Día por día" y los viajes cargados a mano
+                       venían sumados adentro de las entregas, asi que no se veían. *@
                     @if (detalleEmpId == e.Id)
                     {
-                        @if (detalle is null)
+                        @if (movimientos is null)
                         {
                             <p style="color:#6b7280; font-size:0.85rem; margin:0.6rem 0 0;">Cargando...</p>
                         }
-                        else if (detalle.Dias.Count == 0)
+                        else if (movimientos.Count == 0)
                         {
-                            <p style="color:#6b7280; font-size:0.85rem; margin:0.6rem 0 0;">Todavía no hay entregas contadas.</p>
+                            <p style="color:#6b7280; font-size:0.85rem; margin:0.6rem 0 0;">Todavía no hay movimientos.</p>
                         }
                         else
                         {
-                            <table class="vj-tab-regs" style="margin-top:0.6rem;">
-                                <thead>
-                                    <tr>
-                                        <th>Día</th>
-                                        <th style="text-align:center;">Viajes</th>
-                                        <th>Dónde</th>
-                                        <th style="text-align:right;">Importe</th>
-                                        <th></th>
+                            <table class="vj-mov">
+                                <tr>
+                                    <th>Día</th><th>Qué pasó</th>
+                                    <th class="n">Le sumó</th><th class="n">Le pagaste</th><th class="n">Le debemos</th>
+                                </tr>
+                                @foreach (var m in movimientos)
+                                {
+                                    <tr class="@(m.EsPago ? "esPago" : "")">
+                                        <td class="dia">@m.Fecha.ToString("ddd dd/MM", ar)</td>
+                                        <td>
+                                            @m.Que
+                                            @if (m.EsExtra) { <span class="vj-tag">a mano</span> }
+                                            else if (!m.EsPago) { <span class="vj-tag mapa">del mapa</span> }
+                                            @if (!string.IsNullOrWhiteSpace(m.Detalle))
+                                            {
+                                                <div class="quien">@m.Detalle</div>
+                                            }
+                                        </td>
+                                        <td class="n">@(m.Suma > 0 ? $"${Plata(m.Suma)}" : "")</td>
+                                        <td class="n pago">@(m.Pago != 0 ? $"${Plata(m.Pago)}" : "")</td>
+                                        <td class="n">$@Plata(m.Saldo)</td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var d in detalle.Dias)
-                                    {
-                                        <tr>
-                                            <td>@d.Fecha.ToString("ddd dd/MM", ar)</td>
-                                            <td style="text-align:center; font-weight:700;">@d.Cantidad</td>
-                                            <td style="color:#6b7280; font-size:0.82rem;">@Resumir(d)</td>
-                                            <td style="text-align:right; font-weight:700;">$@Plata(d.Importe)</td>
-                                            <td style="color:#9ca3af; font-size:0.75rem;">
-                                                @if (d.Liquidado) { <text>pagado</text> }
-                                                else if (d.ImportePendiente < d.Importe) { <text>falta pagar $@Plata(d.ImportePendiente)</text> }
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
+                                }
+                                <tr class="cierre">
+                                    <td></td><td>Le debemos hoy</td><td class="n"></td><td class="n"></td>
+                                    <td class="n">$@Plata(e.SaldoAcumulado)</td>
+                                </tr>
                             </table>
                             <div style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">
-                                Las que no se pudieron entregar no figuran: no se cobran.
+                                Las que no se pudieron entregar no figuran: no se cobran, salvo que las cargues a mano.
                             </div>
                         }
                     }
@@ -759,10 +785,14 @@
         await CargarDetalle(e.Id);
     }
 
+    public record MovimientoCtaDto(DateTime Fecha, string Que, string? Detalle,
+        decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra);
+    private List<MovimientoCtaDto>? movimientos;
+
     private async Task CargarDetalle(int empId)
     {
-        detalle = await Http.GetFromJsonAsync<AdminEntregasResumenDto>(
-            $"api/viajes/admin/empleados/{empId}/entregas?dias=30");
+        movimientos = await Http.GetFromJsonAsync<List<MovimientoCtaDto>>(
+            $"api/viajes/admin/empleados/{empId}/movimientos?dias=60");
     }
 
     private AdminEmpleadoDto? liqEmpleado;
