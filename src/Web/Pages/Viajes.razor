@@ -70,6 +70,19 @@
         font-size:0.85rem; margin-top:0.55rem; }
     .vj-aviso .cu { color:#9ca3af; font-size:0.73rem; }
     .vj-vacio { color:#9ca3af; font-size:0.85rem; margin-top:0.5rem; }
+    .vj-acciones { display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-top:0.9rem;
+        padding-top:0.9rem; border-top:1px solid #f0f0f0; }
+    .vj-sep { flex:1; }
+    .vj-b { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.55rem 0.9rem;
+        font-size:0.87rem; font-weight:600; color:#374151; cursor:pointer; }
+    .vj-b:hover { background:#f9fafb; }
+    .vj-b.principal { background:#166534; border-color:#166534; color:#fff; font-size:1rem;
+        padding:0.75rem 1.3rem; }
+    .vj-b.principal:hover { background:#14532d; }
+    .vj-b.principal:disabled { background:#e5e7eb; border-color:#e5e7eb; color:#9ca3af; cursor:default; }
+    .vj-ico { border:1px solid #e5e7eb; background:#fff; border-radius:8px; width:38px; height:38px;
+        font-size:1rem; cursor:pointer; color:#4b5563; }
+    .vj-ico:hover { background:#f9fafb; }
     .vj-cintas { display:flex; gap:0.6rem; flex-wrap:wrap; margin-top:0.75rem; }
     .vj-cinta { background:#f9fafb; border:1px solid #f0f0f0; border-radius:9px; padding:0.5rem 0.8rem;
         font-size:0.84rem; color:#374151; }
@@ -419,28 +432,30 @@
                         </div>
                     }
 
-                    <div class="vj-btn-row">
+                    @* 06/09/2026: los botones estaban todos iguales y amontonados. Ahora la acción
+                       principal manda, las de carga van al lado, y las de contacto son iconos
+                       al final para que no compitan. *@
+                    <div class="vj-acciones">
                         @if (e.ModoAutomatico)
                         {
                             @* Lo que se le paga es el SALDO: si ya le registraste un pago a cuenta,
                                liquidar por la suma cruda de los viajes seria pagarle dos veces. *@
-                            <button class="vj-btn-mini pago" disabled="@(e.ViajesPendientes == 0 || liquidando == e.Id)"
+                            <button class="vj-b principal" disabled="@(e.ViajesPendientes == 0 || liquidando == e.Id)"
                                     @onclick="@(() => Liquidar(e))">
                                 @(liquidando == e.Id ? "Liquidando..."
                                   : APagar(e) > 0 ? $"💵 Liquidar ${Plata(APagar(e))}"
                                   : "✔ Cerrar viajes (ya pagados)")
                             </button>
-                            <button class="vj-btn-mini" @onclick="@(() => ShowAjuste(e))">➕ Sumar a mano</button>
                         }
-                        <button class="vj-btn-mini pago" @onclick="@(() => ShowCreatePago(e))">💵 Registrar pago</button>
-                    </div>
-                    <div class="vj-btn-row secundaria">
+                        <button class="vj-b" @onclick="@(() => ShowCreatePago(e))">💵 Registrar pago</button>
                         @if (e.ModoAutomatico)
                         {
+                            <button class="vj-b" @onclick="@(() => ShowAjuste(e))">➕ Sumar a mano</button>
                         }
-                        <button class="vj-btn-mini link" @onclick="@(() => CopiarLink(e))">📋 Copiar link</button>
-                        <button class="vj-btn-mini wa" @onclick="@(() => MandarWhatsapp(e))">📱 WhatsApp</button>
-                        <button class="vj-btn-mini" @onclick="@(() => ShowEditEmpleado(e))">✏ Editar</button>
+                        <span class="vj-sep"></span>
+                        <button class="vj-ico" title="Mandarle su pantalla por WhatsApp" @onclick="@(() => MandarWhatsapp(e))">📱</button>
+                        <button class="vj-ico" title="Copiar el link de su pantalla" @onclick="@(() => CopiarLink(e))">📋</button>
+                        <button class="vj-ico" title="Editar la ficha" @onclick="@(() => ShowEditEmpleado(e))">✏</button>
                     </div>
 
                     @* 05/09/2026: la cuenta corriente — viajes y pagos mezclados en orden, con el
