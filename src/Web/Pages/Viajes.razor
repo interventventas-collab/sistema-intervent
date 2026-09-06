@@ -33,8 +33,10 @@
     .vj-saldo { text-align: right; white-space: nowrap; }
     .vj-saldo-que { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
     .vj-saldo-num { font-size: 1.8rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
-    .vj-saldo.aFavor .vj-saldo-num { color: #166534; }
-    .vj-saldo.enContra .vj-saldo-num { color: #b91c1c; }
+    /* 06/09/2026: lo que le debemos va en ROJO — es plata que tenemos que sacar. Al revés,
+       cuando nos debe a nosotros, va en verde. */
+    .vj-saldo.aFavor .vj-saldo-num { color: #b42318; }
+    .vj-saldo.enContra .vj-saldo-num { color: #166534; }
     .vj-totals { display: flex; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap; }
     .vj-totals-box { background: white; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem; border: 1px solid #e5e7eb; }
     .vj-totals-num { font-weight: 700; color: #1d4ed8; }
@@ -88,6 +90,15 @@
         font-size:0.84rem; color:#374151; }
     .vj-cinta b { display:block; font-size:1.05rem; color:#111; }
     /* Cuenta corriente: viajes y pagos mezclados, con el saldo corriendo. */
+    .vj-cuenta { background:#fafafa; border:1px solid #f0f0f0; border-radius:10px;
+        padding:0.75rem 1rem; margin:0.9rem 0 0.4rem; max-width:420px; }
+    .vj-cuenta .ren { display:flex; justify-content:space-between; gap:1.5rem; padding:0.2rem 0;
+        font-size:0.92rem; color:#374151; }
+    .vj-cuenta .ren b { font-variant-numeric:tabular-nums; }
+    .vj-cuenta .menos { color:#166534; }
+    .vj-cuenta .final { border-top:1px solid #e5e7eb; margin-top:0.35rem; padding-top:0.5rem;
+        font-size:1.05rem; font-weight:700; color:#111; }
+    .vj-cuenta .final b { color:#b42318; font-size:1.25rem; }
     .vj-mov { width:100%; border-collapse:collapse; margin-top:0.5rem; }
     .vj-mov th { text-align:left; font-size:0.71rem; text-transform:uppercase; letter-spacing:0.05em;
         color:#9ca3af; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb; font-weight:700; }
@@ -99,6 +110,8 @@
     .vj-mov .quien { color:#9ca3af; font-size:0.78rem; margin-top:0.15rem; }
     .vj-mov .dia { white-space:nowrap; color:#6b7280; font-size:0.84rem; }
     .vj-mov tr.cierre td { background:#f0fdf4; font-weight:700; }
+    .vj-mov td.quedo { color:#b42318; }
+    .vj-mov tr:first-of-type + tr td.quedo { font-weight:800; }
     .vj-tag { font-size:0.66rem; font-weight:700; padding:0.05rem 0.35rem; border-radius:5px;
         background:#e0e7ff; color:#3730a3; margin-left:0.3rem; }
     .vj-tag.mapa { background:#f3f4f6; color:#4b5563; }
@@ -473,18 +486,24 @@
                         }
                         else
                         {
+                            @* 06/09/2026: la columna del saldo corriendo se sacó. Con lo último
+                               arriba se leía al revés y no se entendía de dónde salía el número.
+                               Ahora la cuenta va en tres renglones, como la hace él. *@
+                            <div class="vj-cuenta">
+                                <div class="ren"><span>Ganó en total</span><b>$@Plata(cuenta!.Ganado)</b></div>
+                                <div class="ren"><span>Le pagaste</span><b class="menos">− $@Plata(cuenta.Pagado)</b></div>
+                                <div class="ren final"><span>Le debemos</span><b>$@Plata(cuenta.Saldo)</b></div>
+                            </div>
+
                             <table class="vj-mov">
                                 <tr>
                                     <th>Día</th><th>Qué pasó</th>
-                                    <th class="n">Le sumó</th><th class="n">Le pagaste</th><th class="n">Le debemos</th>
+                                    <th class="n">Le sumó</th><th class="n">Le pagaste</th>
+                                    <th class="n">Quedó debiendo</th>
                                     <th></th>
                                 </tr>
                                 @* 06/09/2026: lo último arriba. El saldo de cada renglón sigue siendo
                                    el que había en ese momento, asi que el de arriba es el de hoy. *@
-                                <tr class="cierre">
-                                    <td></td><td>Le debemos hoy</td><td class="n"></td><td class="n"></td>
-                                    <td class="n">$@Plata(e.SaldoAcumulado)</td><td></td>
-                                </tr>
                                 @foreach (var m in Enumerable.Reverse(movimientos))
                                 {
                                     <tr class="@(m.EsPago ? "esPago" : "")">
@@ -499,8 +518,10 @@
                                             }
                                         </td>
                                         <td class="n">@(m.Suma > 0 ? $"${Plata(m.Suma)}" : "")</td>
-                                        <td class="n pago">@(m.Pago != 0 ? $"${Plata(m.Pago)}" : "")</td>
-                                        <td class="n">$@Plata(m.Saldo)</td>
+                                        <td class="n pago">@(m.Pago != 0 ? $"− ${Plata(m.Pago)}" : "")</td>
+                                        @* El saldo DESPUÉS de este movimiento. Con la lista al revés,
+                                           el de arriba es el de hoy y para abajo se va para atrás. *@
+                                        <td class="n quedo">$@Plata(m.Saldo)</td>
                                         <td style="width:34px;">
                                             @* Las entregas del mapa no se borran acá: se corrigen en el mapa.
                                                Lo cargado a mano y los pagos sí, salvo que ya estén liquidados. *@
@@ -844,7 +865,7 @@
         var auto = empleados?.FirstOrDefault(x => x.ModoAutomatico && x.IsActive);
         if (auto is not null)
         {
-            try { movimientos = await Http.GetFromJsonAsync<List<MovimientoCtaDto>>($"api/viajes/admin/empleados/{auto.Id}/movimientos?dias=60"); } catch { }
+            try { cuenta = await Http.GetFromJsonAsync<CuentaDto>($"api/viajes/admin/empleados/{auto.Id}/movimientos?dias=60"); } catch { }
             try { resumen = await Http.GetFromJsonAsync<ResumenEmpleadoDto>($"api/viajes/admin/empleados/{auto.Id}/resumen?dias=7"); } catch { }
         }
         try { reportes = await Http.GetFromJsonAsync<List<ViajesReporteDto>>("api/viajes/admin/reportes") ?? new(); }
@@ -965,7 +986,9 @@
     public record MovimientoCtaDto(DateTime Fecha, string Que, string? Detalle,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
         string Tipo, List<int> Ids, bool Liquidado);
-    private List<MovimientoCtaDto>? movimientos;
+    public record CuentaDto(decimal Ganado, decimal Pagado, decimal Saldo, List<MovimientoCtaDto> Movimientos);
+    private CuentaDto? cuenta;
+    private List<MovimientoCtaDto>? movimientos => cuenta?.Movimientos;
 
     /// <summary>
     /// Borra un renglón de la cuenta. Un pago borrado devuelve la plata a la caja y deja los viajes
@@ -1001,7 +1024,7 @@
 
     private async Task CargarDetalle(int empId)
     {
-        movimientos = await Http.GetFromJsonAsync<List<MovimientoCtaDto>>(
+        cuenta = await Http.GetFromJsonAsync<CuentaDto>(
             $"api/viajes/admin/empleados/{empId}/movimientos?dias=60");
     }
 

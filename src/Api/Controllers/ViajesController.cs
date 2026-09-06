@@ -846,6 +846,12 @@ public class ViajesController : ControllerBase
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
         string Tipo, List<int> Ids, bool Liquidado);
 
+    /// <summary>
+    /// La cuenta con su total. Los totales son de TODA la historia, no de los días que se muestran:
+    /// si no, el "le debemos" no cerraría con el de arriba.
+    /// </summary>
+    public record CuentaDto(decimal Ganado, decimal Pagado, decimal Saldo, List<MovimientoCtaDto> Movimientos);
+
     [HttpGet("admin/empleados/{id:int}/movimientos")]
     [Authorize]
     public async Task<IActionResult> Movimientos(int id, [FromQuery] int dias = 60)
@@ -898,9 +904,13 @@ public class ViajesController : ControllerBase
                 f.esPago, f.esExtra, f.tipo, f.ids, f.liq));
         }
 
+        var ganado = filas.Sum(f => f.suma);
+        var pagado = filas.Sum(f => f.pago);
+
         // Y recién ahí se recorta a los últimos días pedidos.
         var desde = FechaArgentinaHoy().AddDays(-Math.Max(1, dias));
-        return Ok(salida.Where(x => x.Fecha >= desde).ToList());
+        return Ok(new CuentaDto(ganado, pagado, ganado - pagado,
+            salida.Where(x => x.Fecha >= desde).ToList()));
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
