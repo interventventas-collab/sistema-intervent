@@ -111,6 +111,13 @@
     .vj-mov .dia { white-space:nowrap; color:#6b7280; font-size:0.84rem; }
     .vj-mov tr.cierre td { background:#f0fdf4; font-weight:700; }
     .vj-mov td.quedo { color:#b42318; }
+    .vj-mov tr.banda td { background:#fafafa; }
+    .vj-mov tr.esPago td { background:#f6fdf7; }
+    .vj-mov tr.banda.esPago td { background:#eefaf0; }
+    .vj-flecha { border:none; background:none; color:#6b7280; font-size:0.9rem; cursor:pointer;
+        padding:0 0.3rem 0 0; }
+    .vj-lista { margin:0.4rem 0 0 1rem; padding:0; color:#6b7280; font-size:0.82rem; }
+    .vj-lista li { padding:0.1rem 0; }
     .vj-mov tr:first-of-type + tr td.quedo { font-weight:800; }
     .vj-tag { font-size:0.66rem; font-weight:700; padding:0.05rem 0.35rem; border-radius:5px;
         background:#e0e7ff; color:#3730a3; margin-left:0.3rem; }
@@ -489,10 +496,19 @@
                             @* 06/09/2026: la columna del saldo corriendo se sacó. Con lo último
                                arriba se leía al revés y no se entendía de dónde salía el número.
                                Ahora la cuenta va en tres renglones, como la hace él. *@
+                            @* 06/09/2026: la cuenta se hace sobre lo que falta liquidar, no sobre
+                               todo lo que gano desde siempre — ese numero no le decia nada y encima
+                               chocaba con el "sin liquidar" de arriba. *@
                             <div class="vj-cuenta">
-                                <div class="ren"><span>Ganó en total</span><b>$@Plata(cuenta!.Ganado)</b></div>
-                                <div class="ren"><span>Le pagaste</span><b class="menos">− $@Plata(cuenta.Pagado)</b></div>
-                                <div class="ren final"><span>Le debemos</span><b>$@Plata(cuenta.Saldo)</b></div>
+                                <div class="ren">
+                                    <span>Sin liquidar@(e.PendienteDesde is { } dsd ? $" desde el {dsd:dd/MM}" : "")</span>
+                                    <b>$@Plata(e.ImportePendiente)</b>
+                                </div>
+                                @if (e.ImportePendiente != APagar(e))
+                                {
+                                    <div class="ren"><span>Ya le pagaste a cuenta</span><b class="menos">− $@Plata(e.ImportePendiente - APagar(e))</b></div>
+                                }
+                                <div class="ren final"><span>Le debemos</span><b>$@Plata(e.SaldoAcumulado)</b></div>
                             </div>
 
                             <table class="vj-mov">
@@ -504,15 +520,30 @@
                                 </tr>
                                 @* 06/09/2026: lo último arriba. El saldo de cada renglón sigue siendo
                                    el que había en ese momento, asi que el de arriba es el de hoy. *@
+                                @{ var diaPrevio = DateTime.MinValue; var banda = false; }
                                 @foreach (var m in Enumerable.Reverse(movimientos))
                                 {
-                                    <tr class="@(m.EsPago ? "esPago" : "")">
+                                    @* Los días se alternan con un tono para que no sea una pared de
+                                       renglones iguales. *@
+                                    @if (m.Fecha != diaPrevio) { banda = !banda; diaPrevio = m.Fecha; }
+                                    var abierto = desplegados.Contains(ClaveMov(m));
+                                    <tr class="@(banda ? "banda" : "") @(m.EsPago ? "esPago" : "")">
                                         <td class="dia">@m.Fecha.ToString("ddd dd/MM", ar)</td>
                                         <td>
+                                            @if (m.Items.Count > 1)
+                                            {
+                                                <button class="vj-flecha" @onclick="() => Desplegar(m)">@(abierto ? "▾" : "▸")</button>
+                                            }
                                             @m.Que
                                             @if (m.EsExtra) { <span class="vj-tag">a mano</span> }
                                             else if (!m.EsPago) { <span class="vj-tag mapa">del mapa</span> }
-                                            @if (!string.IsNullOrWhiteSpace(m.Detalle))
+                                            @if (abierto)
+                                            {
+                                                <ol class="vj-lista">
+                                                    @foreach (var it in m.Items) { <li>@it</li> }
+                                                </ol>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(m.Detalle))
                                             {
                                                 <div class="quien">@m.Detalle</div>
                                             }
@@ -985,7 +1016,7 @@
 
     public record MovimientoCtaDto(DateTime Fecha, string Que, string? Detalle,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
-        string Tipo, List<int> Ids, bool Liquidado);
+        string Tipo, List<int> Ids, bool Liquidado, List<string> Items);
     public record CuentaDto(decimal Ganado, decimal Pagado, decimal Saldo, List<MovimientoCtaDto> Movimientos);
     private CuentaDto? cuenta;
     private List<MovimientoCtaDto>? movimientos => cuenta?.Movimientos;
@@ -994,6 +1025,17 @@
     /// Borra un renglón de la cuenta. Un pago borrado devuelve la plata a la caja y deja los viajes
     /// que había cerrado como pendientes otra vez.
     /// </summary>
+    private readonly HashSet<string> desplegados = new();
+
+    /// <summary>Un renglón se identifica por su día + qué pasó (no tiene id propio).</summary>
+    private static string ClaveMov(MovimientoCtaDto m) => $"{m.Fecha:yyyyMMdd}|{m.Que}";
+
+    private void Desplegar(MovimientoCtaDto m)
+    {
+        var k = ClaveMov(m);
+        if (!desplegados.Remove(k)) desplegados.Add(k);
+    }
+
     private async Task BorrarMovimiento(AdminEmpleadoDto e, MovimientoCtaDto m)
     {
         var que = m.EsPago ? $"el pago de ${Plata(m.Pago)}" : $"\"{m.Que}\" de ${Plata(m.Suma)}";

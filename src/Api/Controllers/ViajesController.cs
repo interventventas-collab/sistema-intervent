@@ -844,7 +844,9 @@ public class ViajesController : ControllerBase
     /// </summary>
     public record MovimientoCtaDto(DateTime Fecha, string Que, string? Detalle,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
-        string Tipo, List<int> Ids, bool Liquidado);
+        string Tipo, List<int> Ids, bool Liquidado,
+        // Todos los clientes del día, para poder desplegar el renglón y verlos.
+        List<string> Items);
 
     /// <summary>
     /// La cuenta con su total. Los totales son de TODA la historia, no de los días que se muestran:
@@ -865,33 +867,35 @@ public class ViajesController : ControllerBase
 
         // Un renglón por día para las entregas del mapa, y uno por cada cosa cargada a mano.
         var filas = new List<(DateTime fecha, int orden, string que, string? det, decimal suma,
-            decimal pago, bool esPago, bool esExtra, string tipo, List<int> ids, bool liq)>();
+            decimal pago, bool esPago, bool esExtra, string tipo, List<int> ids, bool liq,
+            List<string> items)>();
 
         foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
         {
-            var quienes = g.OrderBy(x => x.Id)
+            var todos = g.OrderBy(x => x.Id)
                 .Select(x => !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
                        : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion! : "entrega"))
-                .Take(4).ToList();
-            var resto = g.Count() - quienes.Count;
+                .ToList();
+            var quienes = todos.Take(3).ToList();
+            var resto = todos.Count - quienes.Count;
             filas.Add((g.Key, 0, $"{g.Count()} entrega{(g.Count() == 1 ? "" : "s")}",
-                string.Join(" · ", quienes) + (resto > 0 ? $" · +{resto}" : ""),
+                string.Join(" · ", quienes) + (resto > 0 ? $" · +{resto} más" : ""),
                 g.Sum(x => x.Tarifa), 0m, false, false, "entregas",
-                g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null)));
+                g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null), todos));
         }
 
         foreach (var g in ents.Where(x => x.StopId == null).GroupBy(x => new { x.Fecha, Det = x.Detalle ?? "Ajuste" }))
             filas.Add((g.Key.Fecha, 1, g.Key.Det, null, g.Sum(x => x.Tarifa), 0m, false, true,
-                "extra", g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null)));
+                "extra", g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null), new List<string>()));
 
         foreach (var r in regs)
             filas.Add((r.Fecha, 1, $"{r.CantidadCABA + r.CantidadPCIA} viajes cargados a mano", r.Anotaciones,
                 (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA, 0m, false, true,
-                "registro", new List<int> { r.Id }, false));
+                "registro", new List<int> { r.Id }, false, new List<string>()));
 
         foreach (var p in pagos)
             filas.Add((p.Fecha, 2, "Pago" + (string.IsNullOrWhiteSpace(p.Descripcion) ? "" : " · " + p.Descripcion),
-                null, 0m, p.Importe, true, false, "pago", new List<int> { p.Id }, false));
+                null, 0m, p.Importe, true, false, "pago", new List<int> { p.Id }, false, new List<string>()));
 
         // El saldo se calcula desde el principio de los tiempos, si no el número no cerraría.
         var orden = filas.OrderBy(f => f.fecha).ThenBy(f => f.orden).ToList();
@@ -901,7 +905,7 @@ public class ViajesController : ControllerBase
         {
             acum += f.suma - f.pago;
             salida.Add(new MovimientoCtaDto(f.fecha, f.que, f.det, f.suma, f.pago, acum,
-                f.esPago, f.esExtra, f.tipo, f.ids, f.liq));
+                f.esPago, f.esExtra, f.tipo, f.ids, f.liq, f.items));
         }
 
         var ganado = filas.Sum(f => f.suma);
