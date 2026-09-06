@@ -806,6 +806,10 @@
         await RecargarTodo();
         autoRefreshTimer = new System.Threading.Timer(async _ =>
         {
+            // ⚠ 06/09/2026: NO refrescar mientras hay un formulario abierto. Refrescaba cada 30
+            // segundos y si el usuario estaba tipeando la fecha se la borraba a mitad de camino
+            // (quedaba "04/01/0001"). Le pasó dos veces.
+            if (showFormAjuste || showFormPago || showFormEmp || liqEmpleado is not null) return;
             await InvokeAsync(async () => { await RecargarTodo(); StateHasChanged(); });
         }, null, 30000, 30000);
     }
