@@ -196,6 +196,13 @@
     .mp-res-q { font-size:0.72rem; letter-spacing:0.07em; text-transform:uppercase; color:#15803d; font-weight:700; }
     .mp-res-n { font-size:2.3rem; font-weight:800; color:#166534; line-height:1.1; font-variant-numeric:tabular-nums; }
     .mp-res-sub { color:#4b5563; font-size:0.82rem; margin-top:0.25rem; }
+    .mp-res-cta .ren { display:flex; justify-content:space-between; gap:1rem; padding:0.2rem 0;
+        font-size:0.92rem; color:#374151; }
+    .mp-res-cta .ren b { font-variant-numeric:tabular-nums; }
+    .mp-res-cta .menos { color:#166534; }
+    .mp-res-cta .final { border-top:1px solid #bbf7d0; margin-top:0.35rem; padding-top:0.5rem;
+        font-size:1.05rem; font-weight:700; color:#111; }
+    .mp-res-cta .final b { color:#166534; font-size:1.5rem; }
     .mp-tabs { display:flex; border-bottom:1px solid #e5e7eb; background:#fff; position:sticky; top:0; z-index:2; }
     .mp-tab { flex:1; text-align:center; padding:0.75rem 0.25rem; font-size:0.9rem; font-weight:600;
         color:#6b7280; border-bottom:2.5px solid transparent; cursor:pointer; position:relative; }
@@ -432,13 +439,26 @@
             }
             else
             {
+                @* 06/09/2026: el mismo resumen que ve el dueño, para que los dos miren la misma
+                   cuenta y no haya discusión de dónde sale el número. *@
                 <div class="mp-res">
-                    <div class="mp-res-q">@(miCuenta.Saldo > 0 ? "Te debemos" : miCuenta.Saldo < 0 ? "Cobraste de más" : "Está todo cobrado")</div>
-                    @if (miCuenta.Saldo != 0)
-                    {
-                        <div class="mp-res-n">@Plata(Math.Abs(miCuenta.Saldo))</div>
-                    }
-                    <div class="mp-res-sub">Hiciste @Plata(miCuenta.TotalGanado) · cobraste @Plata(miCuenta.TotalCobrado)</div>
+                    <div class="mp-res-cta">
+                        <div class="ren">
+                            <span>Sin cobrar@(miCuenta.DesdeCuando is { } dc ? $" desde el {dc:dd/MM}" : "")</span>
+                            <b>@Plata(miCuenta.SinCobrar)</b>
+                        </div>
+                        @if (miCuenta.ACuenta > 0)
+                        {
+                            <div class="ren"><span>Ya cobraste a cuenta</span><b class="menos">− @Plata(miCuenta.ACuenta)</b></div>
+                        }
+                        <div class="ren final">
+                            <span>@(miCuenta.Saldo > 0 ? "Te debemos" : miCuenta.Saldo < 0 ? "Cobraste de más" : "Está todo cobrado")</span>
+                            @if (miCuenta.Saldo != 0)
+                            {
+                                <b>@Plata(Math.Abs(miCuenta.Saldo))</b>
+                            }
+                        </div>
+                    </div>
                 </div>
 
                 @* 05/09/2026: tres solapas para que no tenga que scrollear todo para encontrar algo. *@
@@ -1445,7 +1465,8 @@
     public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle, string Medio, bool EsNuevo);
     public record MiAvisoDto(DateTime Fecha, string Texto, string? Respuesta, DateTime? RespuestaAt);
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
-        decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos);
+        decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos,
+        decimal SinCobrar, DateTime? DesdeCuando, decimal ACuenta);
 
     private static string Plata(decimal v)
         => "$" + v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
@@ -1461,7 +1482,7 @@
         reporteEnviado = false;
         reporteTexto = "";
         try { miCuenta = await Http.GetFromJsonAsync<MiCuentaDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/detalle"); }
-        catch { miCuenta = new MiCuentaDto(false, 0, 0, 0, 0, new(), new(), new()); }
+        catch { miCuenta = new MiCuentaDto(false, 0, 0, 0, 0, new(), new(), new(), 0, null, 0); }
     }
 
     /// <summary>Al cerrar la cuenta refrescamos el resumen: los pagos ya quedaron vistos.</summary>

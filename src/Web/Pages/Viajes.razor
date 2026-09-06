@@ -99,7 +99,13 @@
     .vj-cuenta .final { border-top:1px solid #e5e7eb; margin-top:0.35rem; padding-top:0.5rem;
         font-size:1.05rem; font-weight:700; color:#111; }
     .vj-cuenta .final b { color:#b42318; font-size:1.25rem; }
-    .vj-mov { width:100%; border-collapse:collapse; margin-top:0.5rem; }
+    /* 06/09/2026: en pantalla grande la tabla se estiraba y el importe quedaba lejísimos del
+       texto; el ojo perdía el renglón. Se le pone un ancho máximo, columnas de plata fijas y
+       una línea que se marca al pasar el mouse. */
+    .vj-mov { width:100%; max-width:1080px; border-collapse:collapse; margin-top:0.5rem; }
+    .vj-mov th.n, .vj-mov td.n { width:150px; }
+    .vj-mov td.dia { width:110px; }
+    .vj-mov tbody tr:hover td, .vj-mov tr:hover td { background:#eef2ff !important; }
     .vj-mov th { text-align:left; font-size:0.71rem; text-transform:uppercase; letter-spacing:0.05em;
         color:#9ca3af; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb; font-weight:700; }
     .vj-mov td { padding:0.6rem; border-bottom:1px solid #f5f5f5; font-size:0.88rem; vertical-align:top; }

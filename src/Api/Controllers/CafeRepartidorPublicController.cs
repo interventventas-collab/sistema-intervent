@@ -100,14 +100,16 @@ public class CafeRepartidorPublicController : ControllerBase
     public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle, string Medio, bool EsNuevo);
     public record MiAvisoDto(DateTime Fecha, string Texto, string? Respuesta, DateTime? RespuestaAt);
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
-        decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos);
+        decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos,
+        // 06/09/2026: el mismo resumen que ve el dueño — sin cobrar menos lo cobrado a cuenta.
+        decimal SinCobrar, DateTime? DesdeCuando, decimal ACuenta);
 
     /// <summary>Todo su historial: día por día lo que hizo, y todo lo que cobró.</summary>
     [HttpGet("mis-pedidos/{tokenRepartidor}/viajes/detalle")]
     public async Task<IActionResult> MiCuenta(string tokenRepartidor)
     {
         var emp = await EmpleadoDeViajesAsync(tokenRepartidor);
-        if (emp is null) return Ok(new MiCuentaDto(false, 0, 0, 0, 0, new(), new(), new()));
+        if (emp is null) return Ok(new MiCuentaDto(false, 0, 0, 0, 0, new(), new(), new(), 0, null, 0));
 
         await _viajes.SincronizarAsync(emp);
 
@@ -158,11 +160,17 @@ public class CafeRepartidorPublicController : ControllerBase
         var ganado = registros + ents.Sum(x => x.Tarifa);
         var cobrado = pagos.Sum(x => x.Importe);
 
+        // Lo que todavía no se cerró, y desde cuándo viene arrastrando.
+        var pend = ents.Where(x => x.LiquidadoPagoId is null).ToList();
+        var sinCobrar = pend.Sum(x => x.Tarifa);
+        var desdeCuando = pend.Count == 0 ? (DateTime?)null : pend.Min(x => x.Fecha);
+
         return Ok(new MiCuentaDto(true, emp.TarifaViaje, ganado, cobrado, ganado - cobrado, dias,
             pagos.Select(p => new MiPagoDto(p.Fecha, p.Importe, p.Descripcion ?? "pago",
                 MedioEnCriollo(p.CajaId, tiposCaja, p.Descripcion),
                 sinVer.Any(x => x.Id == p.Id))).ToList(),
-            avisos.Select(a => new MiAvisoDto(a.CreatedAt, a.Texto, a.Respuesta, a.RespuestaAt)).ToList()));
+            avisos.Select(a => new MiAvisoDto(a.CreatedAt, a.Texto, a.Respuesta, a.RespuestaAt)).ToList(),
+            sinCobrar, desdeCuando, Math.Max(0m, sinCobrar - (ganado - cobrado))));
     }
 
     /// <summary>"en efectivo", "por transferencia"... para que el repartidor sepa cómo le pagaron.</summary>
