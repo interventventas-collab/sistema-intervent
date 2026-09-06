@@ -464,7 +464,13 @@
                                     <th class="n">Le sumó</th><th class="n">Le pagaste</th><th class="n">Le debemos</th>
                                     <th></th>
                                 </tr>
-                                @foreach (var m in movimientos)
+                                @* 06/09/2026: lo último arriba. El saldo de cada renglón sigue siendo
+                                   el que había en ese momento, asi que el de arriba es el de hoy. *@
+                                <tr class="cierre">
+                                    <td></td><td>Le debemos hoy</td><td class="n"></td><td class="n"></td>
+                                    <td class="n">$@Plata(e.SaldoAcumulado)</td><td></td>
+                                </tr>
+                                @foreach (var m in Enumerable.Reverse(movimientos))
                                 {
                                     <tr class="@(m.EsPago ? "esPago" : "")">
                                         <td class="dia">@m.Fecha.ToString("ddd dd/MM", ar)</td>
@@ -492,10 +498,6 @@
                                         </td>
                                     </tr>
                                 }
-                                <tr class="cierre">
-                                    <td></td><td>Le debemos hoy</td><td class="n"></td><td class="n"></td>
-                                    <td class="n">$@Plata(e.SaldoAcumulado)</td><td></td>
-                                </tr>
                             </table>
                             <div style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">
                                 Las que no se pudieron entregar no figuran: no se cobran, salvo que las cargues a mano.
