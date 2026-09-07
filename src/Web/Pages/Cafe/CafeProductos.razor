@@ -1645,7 +1645,11 @@
         try
         {
             var d = await Api.GetDolarBnaAsync();
-            if (d?.Venta is > 0) { dolarVenta = d.Venta; dolarFecha = d.Fecha; }
+            if (d?.Venta is > 0)
+            {
+                dolarVenta = d.Venta; dolarFecha = d.Fecha;
+                StateHasChanged();   // llega despues del primer render: hay que repintar
+            }
         }
         catch { /* sin cotizacion la pantalla funciona igual */ }
     }
@@ -1990,14 +1994,17 @@
         var loadReglas = LoadReglasPrecios();
         var loadThumbs = LoadThumbnails();
         var loadSettings = LoadSettings();
-        var loadDolar = LoadDolar();   // 2026-09-07: para las equivalencias de costos en dolares
         await Load();
         await loadOems;
         await loadMarcas;
         await loadReglas;
         await loadThumbs;
         await loadSettings;
-        await loadDolar;
+        // 2026-09-07: la cotizacion se busca APARTE y sin esperarla. Es un scraping al sitio del
+        // BNA con 10s de timeout: si lo esperaramos aca, un dia que el BNA no conteste la pantalla
+        // de productos tardaria 10 segundos de mas en abrir. Solo sirve para mostrar equivalencias,
+        // asi que llega cuando llega y refrescamos.
+        _ = LoadDolar();
     }
 
     private async Task LoadThumbnails()
