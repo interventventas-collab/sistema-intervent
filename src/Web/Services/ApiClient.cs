@@ -1422,6 +1422,10 @@ public class ApiClient
         => await PutAsync<CafeSettingDto>("/api/cafe/settings", request);
 
     // --- Cafe: Ventas ---
+    /// <summary>2026-09-07: resumen del listado de Ventas (pendientes + total del mes).</summary>
+    public async Task<CafeVentasResumenDto?> GetCafeVentasResumenAsync()
+        => await GetAsync<CafeVentasResumenDto>("/api/cafe/ventas/resumen-listado");
+
     public async Task<List<CafeVentaDto>?> GetCafeVentasAsync(DateTime? from = null, DateTime? to = null)
     {
         var qs = new List<string>();

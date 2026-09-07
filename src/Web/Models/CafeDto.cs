@@ -504,6 +504,22 @@ public class CafeVentaEnvioDto
     public bool EsError => Estado == "ERROR";
 }
 
+/// <summary>2026-09-07: resumen que se muestra arriba del listado de Ventas —
+/// lo que quedó pendiente y cuánto va del mes. Lo calcula el servidor.</summary>
+public class CafeVentasResumenDto
+{
+    public int SinEntregar { get; set; }
+    public int SinCobrar { get; set; }
+    public int SinCae { get; set; }
+    public DateTime MesDesde { get; set; }
+    public int FacturasCant { get; set; }
+    public decimal FacturasMonto { get; set; }
+    public int NotasCreditoCant { get; set; }
+    public int CotizacionesCant { get; set; }
+    public decimal CotizacionesMonto { get; set; }
+    public decimal TotalMes => FacturasMonto + CotizacionesMonto;
+}
+
 public class CafeVentaDto
 {
     public int Id { get; set; }

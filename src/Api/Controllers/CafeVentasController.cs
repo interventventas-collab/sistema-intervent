@@ -4497,4 +4497,61 @@ public class CafeVentasController : ControllerBase
         }
         if (existentes.Count > 0 || repMatch is not null) await _db.SaveChangesAsync();
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 2026-09-07: RESUMEN del listado de Ventas — el renglon que se ve apenas entras.
+    // Se calcula ACA y no en el frontend porque el listado trae de a 50 por pagina:
+    // contar sobre lo cargado daria numeros falsos (y los pendientes viejos, de enero
+    // o junio, ni siquiera estarian en la pagina).
+    // ═══════════════════════════════════════════════════════════════════════════
+    [HttpGet("resumen-listado")]
+    public async Task<IActionResult> ResumenListado([FromServices] CafeSaldosService saldos)
+    {
+        // Pendiente de cobro con la formula UNICA de la cuenta corriente, para que este
+        // numero nunca discrepe con el panel "Quien me debe".
+        // Id negativo = reserva de alquiler: no va en el listado de Ventas.
+        var conCliente = await saldos.GetVentasCuentaAsync();
+        var ocasionales = await saldos.GetVentasCuentaAsync(soloSinCliente: true);
+        var sinCobrar = conCliente.Concat(ocasionales).Count(c => c.Id > 0 && c.Pendiente);
+
+        var sinEntregar = await _db.CafeVentas.CountAsync(v =>
+            v.Estado != "anulado" && v.EntregadoAt == null && v.EstadoPreparacion != null);
+
+        var sinCae = await _db.CafeVentas.CountAsync(v =>
+            v.Estado != "anulado" && v.ArcaEstado == "pendiente");
+
+        // Mes en curso segun el reloj ARGENTINO (el server corre en UTC).
+        var hoyAr = PanoramaService.AhoraAr().Date;
+        var desde = new DateTime(hoyAr.Year, hoyAr.Month, 1);
+        var hasta = desde.AddMonths(1);
+
+        // Los presupuestos (PRO) no son venta. El monto cobrable es el de ARCA cuando hay CAE.
+        var delMes = await _db.CafeVentas
+            .Where(v => v.Estado != "anulado" && v.TipoComprobante != "PRO"
+                     && v.Fecha >= desde && v.Fecha < hasta)
+            .Select(v => new
+            {
+                v.TipoComprobante,
+                Monto = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total
+            })
+            .ToListAsync();
+
+        var facturas = delMes.Where(x => x.TipoComprobante == "FA" || x.TipoComprobante == "FB" || x.TipoComprobante == "FC").ToList();
+        // Las notas de credito RESTAN de lo facturado (misma convencion de signos que CafeSaldosService).
+        var notasCredito = delMes.Where(x => x.TipoComprobante != null && x.TipoComprobante.StartsWith("NC")).ToList();
+        var cotizaciones = delMes.Where(x => x.TipoComprobante == "X").ToList();
+
+        return Ok(new
+        {
+            sinEntregar,
+            sinCobrar,
+            sinCae,
+            mesDesde = desde,
+            facturasCant = facturas.Count,
+            facturasMonto = facturas.Sum(x => x.Monto) - notasCredito.Sum(x => x.Monto),
+            notasCreditoCant = notasCredito.Count,
+            cotizacionesCant = cotizaciones.Count,
+            cotizacionesMonto = cotizaciones.Sum(x => x.Monto)
+        });
+    }
 }

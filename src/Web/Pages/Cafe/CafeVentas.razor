@@ -206,6 +206,13 @@
         cursor: pointer; line-height: 1; font-family: inherit;
     }
     .nv-min-close:hover { background: rgba(255,255,255,0.3); }
+    /* 2026-09-07: los pendientes del renglón de arriba. Son texto, no botones con caja:
+       se subrayan al pasar por encima para que se note que se pueden tocar. */
+    .resumen-link {
+        background: none; border: none; padding: 0; margin: 0; font: inherit;
+        color: #374151; cursor: pointer; text-decoration: none;
+    }
+    .resumen-link:hover { text-decoration: underline; }
 </style>
 
 @* overflow:visible para que el tooltip de la celda Cliente no quede recortado por el wrapper .card
@@ -231,6 +238,50 @@
             }
         </h3>
     </div>
+    @* ─── 2026-09-07: renglón de arriba. Izquierda: cuánto va del mes. Derecha: lo que quedó
+         pendiente, tocable (cada uno trae TODAS las que corresponden, no solo la página). ─── *@
+    @if (resumen is not null && !ModoPresupuestos)
+    {
+        <div style="padding:0.5rem 1rem; border-bottom:1px solid #e5e7eb; display:flex; flex-wrap:wrap; gap:0.5rem 1.1rem; align-items:baseline; font-size:0.85rem; color:#374151;">
+            <span>
+                <strong>@MesLargo(resumen.MesDesde)</strong>
+                <span style="color:#6b7280;"> · va </span><strong>$@FormatMoneyCorto(resumen.TotalMes)</strong>
+            </span>
+            <span style="color:#6b7280;">
+                🧾 Facturas <strong style="color:#374151;">$@FormatMoneyCorto(resumen.FacturasMonto)</strong> (@resumen.FacturasCant)@(resumen.NotasCreditoCant > 0 ? $" − {resumen.NotasCreditoCant} NC" : "")
+                · 📄 Cotizaciones <strong style="color:#374151;">$@FormatMoneyCorto(resumen.CotizacionesMonto)</strong> (@resumen.CotizacionesCant)
+            </span>
+
+            <span style="margin-left:auto; display:flex; flex-wrap:wrap; gap:0.4rem 0.9rem; align-items:baseline;">
+                @if (resumen.SinEntregar > 0)
+                {
+                    <button type="button" class="resumen-link" @onclick="VerSinEntregar"
+                            title="Ver las @resumen.SinEntregar ventas que están en el tablero y todavía no se entregaron">
+                        ⏳ @resumen.SinEntregar sin entregar
+                    </button>
+                }
+                @if (resumen.SinCobrar > 0)
+                {
+                    <button type="button" class="resumen-link" @onclick="VerSinCobrar"
+                            title="Ver las @resumen.SinCobrar ventas con saldo pendiente. Es el mismo criterio que el panel ¿Quién me debe?">
+                        💰 @resumen.SinCobrar sin cobrar
+                    </button>
+                }
+                @if (resumen.SinCae > 0)
+                {
+                    @* Rojo a propósito: una factura sin CAE no es válida ante ARCA hasta que se autorice. *@
+                    <button type="button" class="resumen-link" style="color:#b91c1c;" @onclick="VerSinCae"
+                            title="Facturas que quedaron sin autorizar en ARCA — no son válidas hasta que salga el CAE">
+                        ⚠ @resumen.SinCae sin CAE
+                    </button>
+                }
+                @if (resumen.SinEntregar == 0 && resumen.SinCobrar == 0 && resumen.SinCae == 0)
+                {
+                    <span style="color:#6b7280;">✓ Nada pendiente</span>
+                }
+            </span>
+        </div>
+    }
     @* 2026-06-22: banner unificado para gestionar el RANGO de ventas cargadas. Solo aparece
        cuando NO estamos en paginado por default (es decir, hay filtros + rango activo, o el
        usuario eligio ver todas). Ofrece chips para cambiar de rango facil. *@
@@ -4821,6 +4872,48 @@
         await GuardarPinAsync();
     }
 
+    // ===== 2026-09-07: resumen de arriba =====
+    private CafeVentasResumenDto? resumen;
+
+    /// <summary>Trae el resumen del servidor. Si falla, el renglón simplemente no se muestra
+    /// (nunca rompe el listado, que es lo importante de la pantalla).</summary>
+    private async Task CargarResumen()
+    {
+        try { resumen = await Api.GetCafeVentasResumenAsync(); }
+        catch { resumen = null; }
+    }
+
+    private static string MesLargo(DateTime d)
+    {
+        var nombres = new[] { "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                              "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre" };
+        var m = nombres[Math.Clamp(d.Month, 1, 12) - 1];
+        return d.Year == DateTime.UtcNow.AddHours(-3).Year ? m : $"{m} {d.Year}";
+    }
+
+    /// <summary>Los tres atajos del renglón traen TODAS las ventas antes de filtrar. Sin esto
+    /// el filtro correría sobre la página de 50 (o sobre los últimos 30 días) y mostraría
+    /// menos de las que el propio renglón acaba de contar.</summary>
+    private async Task AplicarFiltroDesdeResumen(Action aplicar)
+    {
+        LimpiarFiltrosEnMemoria();
+        aplicar();
+        if (!traerTodoActivo) await VerTodas();
+    }
+
+    private Task VerSinEntregar() => AplicarFiltroDesdeResumen(() => filtroPreparacion = "__PENDIENTES__");
+    private Task VerSinCobrar()   => AplicarFiltroDesdeResumen(() => filtroSaldo = "CON_SALDO");
+    private Task VerSinCae()      => AplicarFiltroDesdeResumen(() => filtroCae = "PENDIENTE");
+
+    /// <summary>Deja los filtros en blanco sin tocar el modo de carga (paginado / todas).</summary>
+    private void LimpiarFiltrosEnMemoria()
+    {
+        filtroFechaDesde = null; filtroFechaHasta = null;
+        filtroCliente = ""; filtroTipo = ModoPresupuestos ? "PRO" : "TODOS";
+        filtroEstado = "TODOS"; filtroCae = "TODOS"; filtroSaldo = "TODOS";
+        filtroRepartidor = "TODOS"; filtroPreparacion = "TODOS"; filtroSinEnviar = false;
+    }
+
     // ===== Filtros del listado =====
     private DateTime? filtroFechaDesde;
     private DateTime? filtroFechaHasta;
@@ -6642,6 +6735,9 @@
             fallóLaCarga = true;
         }
         loading = false;
+        // 2026-09-07: el renglón de arriba se refresca en cada carga del listado, así los
+        // pendientes bajan solos a medida que se cobra/entrega, sin recargar la pantalla.
+        await CargarResumen();
     }
 
     // 2026-07-07: busqueda de texto contra el servidor (todo el historial), con debounce.
@@ -10092,6 +10188,11 @@
     // ── Helpers ──
     private static string FormatMoney(decimal v)
         => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    /// <summary>2026-09-07: plata SIN centavos, para el renglón de arriba. Con montos de millones
+    /// el ",00" es ruido y hace más difícil leer la cifra de un vistazo.</summary>
+    private static string FormatMoneyCorto(decimal v)
+        => v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
 
     /// <summary>UX: siempre mostramos stock de cafe en kg con 2 decimales (regla del usuario).</summary>
     private static string FormatGramos(decimal g)
