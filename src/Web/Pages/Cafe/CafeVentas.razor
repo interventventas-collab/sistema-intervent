@@ -329,6 +329,21 @@
                     <option value="SIN_SALDO">✅ Sin saldo (pagadas)</option>
                 </select>
             </div>
+            @* 2026-09-07: filtro por estado de preparación/entrega (el mismo chip que se ve en la columna Estado).
+               "Entregado" incluye las que marcó el repartidor desde el celular aunque nunca hayan pasado por el tablero. *@
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 170px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Preparación / Entrega</label>
+                <select class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" @bind="filtroPreparacion">
+                    <option value="TODOS">Todas</option>
+                    <option value="__PENDIENTES__">⏳ Falta entregar (todas)</option>
+                    <option value="PARA_PREPARAR">📋 Para armar</option>
+                    <option value="EN_PREPARACION">🔨 Armando</option>
+                    <option value="LISTO">📦 Listo</option>
+                    <option value="EN_CAMINO">🚚 En camino</option>
+                    <option value="ENTREGADO">✅ Entregado</option>
+                    <option value="__SIN_ESTADO__">· Sin estado (no entró al tablero)</option>
+                </select>
+            </div>
             @* 2026-06-08: filtro por repartidor (quien la tiene o quien la entregó) *@
             <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 160px;">
                 <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Repartidor</label>
@@ -4877,6 +4892,10 @@
     // 2026-06-08: filtro por repartidor (matchea EscaneadoPorRepartidorNombre o EntregadoPorRepartidorNombre).
     // TODOS = sin filtro. "__SIN_ASIGNAR__" = ventas sin escaneo ni entrega. Otro valor = nombre exacto.
     private string filtroRepartidor = "TODOS";
+    // 2026-09-07: filtro por estado del tablero de Preparación.
+    // TODOS = sin filtro. __PENDIENTES__ = todo lo que todavia no se entrego (cualquier paso del flujo).
+    // __SIN_ESTADO__ = ventas que nunca entraron al tablero. Otro valor = estado exacto.
+    private string filtroPreparacion = "TODOS";
 
     /// <summary>2026-06-08: nombres únicos de repartidores que aparecen en las ventas cargadas,
     /// combinando los que la tienen escaneada y los que la entregaron. Se usa para llenar el dropdown.</summary>
@@ -4946,6 +4965,22 @@
                     return filtroSaldo == "CON_SALDO" ? s > 0.01m : s <= 0.01m;
                 });
             }
+            // 2026-09-07: filtro por estado de preparación/entrega.
+            if (filtroPreparacion != "TODOS")
+            {
+                q = filtroPreparacion switch
+                {
+                    // Entregada de verdad: el tablero dice ENTREGADO o el repartidor la marco desde el celu
+                    // (hay ventas entregadas que nunca entraron al tablero y por eso no tienen EstadoPreparacion).
+                    "ENTREGADO" => q.Where(v => v.EstadoPreparacion == "ENTREGADO" || v.EntregadoAt != null),
+                    "__SIN_ESTADO__" => q.Where(v => string.IsNullOrEmpty(v.EstadoPreparacion) && v.EntregadoAt == null),
+                    "__PENDIENTES__" => q.Where(v => !string.IsNullOrEmpty(v.EstadoPreparacion)
+                                                  && v.EstadoPreparacion != "ENTREGADO"
+                                                  && v.EntregadoAt == null),
+                    _ => q.Where(v => v.EstadoPreparacion == filtroPreparacion && v.EntregadoAt == null)
+                };
+            }
+
             // 2026-06-08: filtro por repartidor — matchea "lo tiene" o "lo entregó".
             // "__SIN_ASIGNAR__" = ventas sin escaneo ni entrega registrada.
             if (filtroRepartidor != "TODOS")
@@ -4988,6 +5023,7 @@
         || filtroTipo != "TODOS" || filtroEstado != "TODOS" || filtroCae != "TODOS"
         || filtroSaldo != "TODOS"
         || filtroRepartidor != "TODOS"    // 2026-06-08
+        || filtroPreparacion != "TODOS"   // 2026-09-07
         || filtroSinEnviar;               // 2026-08-20
 
     // 2026-07-07: filtros SIN contar el texto de "Buscar venta". El buscador de texto ahora
@@ -4998,7 +5034,8 @@
         filtroFechaDesde.HasValue || filtroFechaHasta.HasValue
         || filtroTipo != "TODOS" || filtroEstado != "TODOS" || filtroCae != "TODOS"
         || filtroSaldo != "TODOS"
-        || filtroRepartidor != "TODOS";
+        || filtroRepartidor != "TODOS"
+        || filtroPreparacion != "TODOS";
 
     private async Task LimpiarFiltros()
     {
@@ -5006,6 +5043,7 @@
         filtroCliente = ""; filtroTipo = "TODOS"; filtroEstado = "TODOS"; filtroCae = "TODOS";
         filtroSaldo = "TODOS";
         filtroRepartidor = "TODOS";   // 2026-06-08
+        filtroPreparacion = "TODOS";  // 2026-09-07
         filtroSinEnviar = false;      // 2026-08-20
         // Si venimos de una busqueda de servidor, volver al listado paginado normal.
         if (busquedaServidorActiva)
