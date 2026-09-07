@@ -627,6 +627,15 @@ public class CafeCobranzasController : ControllerBase
 
             // Cobro REDIRIGIDO: la plata nunca pasa por ninguna caja nuestra, se la queda el
             // empleado y le cuenta como pago. Se cargan las dos patas de una sola vez.
+            // 07/09/2026 — no se puede guardar la mitad del cobro redirigido. Sin destinatario la
+            // plata queda colgada en la caja de paso (era la mitad que faltaba en 252 cobranzas
+            // viejas), y sin decir "viajes o sueldo" se iba callada al sueldo.
+            if (caja.Tipo == "V_PRIVADO" && !(med.RedirigidoEmpleadoId is > 0))
+                return BadRequest(new { error = "Elegiste Redirigido pero no dijiste a quién se le pasa la plata." });
+            if (caja.Tipo == "V_PRIVADO" && string.IsNullOrWhiteSpace(med.RedirigidoDestino)
+                && await _db.ViajesEmpleados.AnyAsync(v => v.NomEmpleadoId == med.RedirigidoEmpleadoId && v.IsActive))
+                return BadRequest(new { error = "Falta decir de qué se lo descontás: viajes o sueldo." });
+
             if (caja.Tipo == "V_PRIVADO" && med.RedirigidoEmpleadoId is > 0)
             {
                 await _db.SaveChangesAsync();   // necesito el Id del medio
