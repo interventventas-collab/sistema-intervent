@@ -630,9 +630,15 @@ public class CafeCobranzasController : ControllerBase
             // 07/09/2026 — no se puede guardar la mitad del cobro redirigido. Sin destinatario la
             // plata queda colgada en la caja de paso (era la mitad que faltaba en 252 cobranzas
             // viejas), y sin decir "viajes o sueldo" se iba callada al sueldo.
-            if (caja.Tipo == "V_PRIVADO" && !(med.RedirigidoEmpleadoId is > 0))
+            // Destino "privada" = el uso de siempre de esta caja (no se lo queda ningún empleado):
+            // es una respuesta válida y se guarda para que quede dicho a propósito.
+            var vaALaPrivada = string.Equals(med.RedirigidoDestino, "privada", StringComparison.OrdinalIgnoreCase);
+            if (caja.Tipo == "V_PRIVADO" && !(med.RedirigidoEmpleadoId is > 0) && !vaALaPrivada)
                 return BadRequest(new { error = "Elegiste Redirigido pero no dijiste a quién se le pasa la plata." });
-            if (caja.Tipo == "V_PRIVADO" && string.IsNullOrWhiteSpace(med.RedirigidoDestino)
+            if (caja.Tipo == "V_PRIVADO" && vaALaPrivada)
+                medio.RedirigidoDestino = "privada";
+            if (caja.Tipo == "V_PRIVADO" && med.RedirigidoEmpleadoId is > 0
+                && string.IsNullOrWhiteSpace(med.RedirigidoDestino)
                 && await _db.ViajesEmpleados.AnyAsync(v => v.NomEmpleadoId == med.RedirigidoEmpleadoId && v.IsActive))
                 return BadRequest(new { error = "Falta decir de qué se lo descontás: viajes o sueldo." });
 

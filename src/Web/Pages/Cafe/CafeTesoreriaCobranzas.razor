@@ -674,6 +674,13 @@
                                                     style="font-size:0.8rem;"
                                                     @onclick="() => ElegirDestinatario(idx, d)">@d.Nombre</button>
                                         }
+                                        @* 07/09/2026 — esta caja hace dos cosas: la de siempre (cobros que van a la
+                                           privada, 198 en tres meses) y la nueva (se la queda un empleado). Sin este
+                                           boton, exigir destinatario le rompia el laburo diario al que la usa como
+                                           siempre. Ahora las dos se dicen a proposito y ninguna queda a medias. *@
+                                        <button class="btn @(m.RedirigidoDestino == DestinoPrivada ? "btn-primary" : "btn-secondary")"
+                                                style="font-size:0.8rem;"
+                                                @onclick="() => ElegirPrivada(idx)">A nadie · queda en la privada</button>
                                     </div>
                                     @if (m.RedirigidoEmpleadoId > 0)
                                     {
@@ -700,7 +707,9 @@
                                         }
                                     }
                                     <p style="font-size:0.72rem; color:#9ca3af; margin:0.45rem 0 0;">
-                                        Esta plata no entra a ninguna caja: se la queda quien elijas y le cuenta como pago.
+                                        @(m.RedirigidoDestino == DestinoPrivada
+                                            ? "Esta plata no entra a ninguna caja del negocio y no se le descuenta a nadie: queda en la privada."
+                                            : "Esta plata no entra a ninguna caja: se la queda quien elijas y le cuenta como pago.")
                                     </p>
                                 </div>
                             }
@@ -1970,6 +1979,8 @@
     /// </summary>
     private const string DestinoViajes = "viajes";
     private const string DestinoSueldo = "sueldo";
+    /// <summary>07/09/2026 — el uso de siempre de esta caja: no se lo pasa a nadie, queda en la privada.</summary>
+    private const string DestinoPrivada = "privada";
 
     /// <summary>Contra qué cuenta se imputa: sólo se pregunta a quien cobra sueldo Y por entrega.</summary>
     private void ElegirDeDonde(int idx, string destino) => formMedios[idx].RedirigidoDestino = destino;
@@ -1978,7 +1989,15 @@
     {
         var m = formMedios[idx];
         m.RedirigidoEmpleadoId = d.EmpleadoId;
-        m.RedirigidoDestino = d.TieneViajes ? null : "sueldo";
+        m.RedirigidoDestino = d.TieneViajes ? null : DestinoSueldo;
+    }
+
+    /// <summary>No se lo pasa a nadie: la plata queda en la privada, como se venía usando esta caja.</summary>
+    private void ElegirPrivada(int idx)
+    {
+        var m = formMedios[idx];
+        m.RedirigidoEmpleadoId = 0;
+        m.RedirigidoDestino = DestinoPrivada;
     }
 
     /// <summary>Tilda/destilda un movimiento del banco para usarlo como forma de cobro.
@@ -2065,9 +2084,12 @@
         // la plata entraba a la caja de paso y no le quedaba anotada a nadie (paso con $27.500 de
         // julieta ochoa), o se elegia al empleado sin decir de donde y se iba callado al SUELDO
         // (paso con $75.000 de Gisella Luna, que iban a los viajes). Ahora no deja guardar a medias.
-        if (formMedios.Any(m => m.EsRedirigido && !(m.RedirigidoEmpleadoId > 0)))
+        // "A nadie · queda en la privada" es una respuesta válida: es el uso de siempre de esta caja.
+        // Lo que no se puede es no contestar nada.
+        if (formMedios.Any(m => m.EsRedirigido && !(m.RedirigidoEmpleadoId > 0)
+                                && m.RedirigidoDestino != DestinoPrivada))
         {
-            ToastService.Error("⚠️ Elegiste Redirigido pero no dijiste a QUIÉN se le pasa la plata. Si no, queda colgada y no se la descuenta a nadie.");
+            ToastService.Error("⚠️ Elegiste Redirigido pero no dijiste a QUIÉN se le pasa la plata. Si va a la privada, apretá \"A nadie · queda en la privada\".");
             return;
         }
         var sinDeDonde = formMedios.FirstOrDefault(m => m.EsRedirigido && m.RedirigidoEmpleadoId > 0
