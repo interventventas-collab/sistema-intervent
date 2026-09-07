@@ -84,7 +84,10 @@ public class CafeProductosController : ControllerBase
         StockPiso: p.StockPiso,
         MultiplicadorOem: p.MultiplicadorOem,
         SinPrecioBar: p.SinPrecioBar,
-        FormatoPorDefecto: p.FormatoPorDefecto);
+        FormatoPorDefecto: p.FormatoPorDefecto,
+        CostoUsd: p.CostoUsd,
+        CostoUsdCotizacion: p.CostoUsdCotizacion,
+        CostoUsdFecha: p.CostoUsdFecha);
 
     /// <summary>Búsqueda rápida (solo Id, Sku, Nombre, StockUnidades). Usado por la UI de
     /// edición de componentes MeLi en /cafe/skus-meli (selector de producto).</summary>
@@ -818,6 +821,14 @@ public class CafeProductosController : ControllerBase
                 ? req.StockPiso.Value : (int?)null,
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
             IvaPct = NormalizeIva(req.IvaPct),
+            // 2026-09-07: costo en dolares de referencia. No participa de ningun calculo:
+            // el Costo en pesos de arriba sigue siendo el unico que usa el sistema.
+            CostoUsd = req.CostoUsd.HasValue && req.CostoUsd.Value > 0 ? req.CostoUsd.Value : null,
+            CostoUsdCotizacion = req.CostoUsd.HasValue && req.CostoUsd.Value > 0
+                && req.CostoUsdCotizacion.HasValue && req.CostoUsdCotizacion.Value > 0
+                ? req.CostoUsdCotizacion.Value : null,
+            CostoUsdFecha = req.CostoUsd.HasValue && req.CostoUsd.Value > 0
+                ? ViajesAutoService.HoyAr() : null,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -915,6 +926,22 @@ public class CafeProductosController : ControllerBase
         if (req.ClearFormatoPorDefecto) p.FormatoPorDefecto = null;
         else if (!string.IsNullOrWhiteSpace(req.FormatoPorDefecto))
             p.FormatoPorDefecto = req.FormatoPorDefecto == "UNIT" ? null : req.FormatoPorDefecto;
+        // 2026-09-07: costo en DOLARES (solo referencia). Cada vez que se toca, se re-sella
+        // con la cotizacion que el usuario tenia a la vista y la fecha argentina, para poder
+        // mostrar despues "lo cargaste el X con el dolar a Y".
+        if (req.ClearCostoUsd)
+        {
+            p.CostoUsd = null;
+            p.CostoUsdCotizacion = null;
+            p.CostoUsdFecha = null;
+        }
+        else if (req.CostoUsd.HasValue && req.CostoUsd.Value > 0)
+        {
+            p.CostoUsd = req.CostoUsd.Value;
+            if (req.CostoUsdCotizacion.HasValue && req.CostoUsdCotizacion.Value > 0)
+                p.CostoUsdCotizacion = req.CostoUsdCotizacion.Value;
+            p.CostoUsdFecha = ViajesAutoService.HoyAr();
+        }
         // Precios FUTUROS (cambio programado)
         if (req.FechaAplicaPreciosFuturos.HasValue) p.FechaAplicaPreciosFuturos = req.FechaAplicaPreciosFuturos.Value.Date;
         else if (req.ClearFechaAplicaPreciosFuturos) p.FechaAplicaPreciosFuturos = null;

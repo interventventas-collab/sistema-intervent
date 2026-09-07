@@ -37,6 +37,27 @@ public class CafeProducto
     [Column(TypeName = "decimal(18,2)")]
     public decimal? PrecioPorKg { get; set; }
 
+    // ─── 2026-09-07: costo en DOLARES como referencia (pedido del usuario) ───
+    // El costo que manda sigue siendo Costo (en pesos): es el que usan margenes de MeLi,
+    // valuacion de stock, listas de precios y panorama. CostoUsd NO se usa para calcular
+    // nada — solo sirve para que la UI muestre "a cuanto equivale hoy" y avise cuando el
+    // costo en pesos quedo viejo. Pasar el valor al costo es SIEMPRE una accion manual.
+
+    /// <summary>Costo del producto en dolares, tal como lo cotiza el proveedor. Null = el
+    /// producto se compra en pesos (caso normal).</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? CostoUsd { get; set; }
+
+    /// <summary>Cotizacion del dolar vigente el dia que se cargo/actualizo el Costo en pesos
+    /// junto con el CostoUsd. Sirve para mostrar "lo cargaste con el dolar a X".</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? CostoUsdCotizacion { get; set; }
+
+    /// <summary>Cuando se cargo por ultima vez el costo en dolares.</summary>
+    [Column(TypeName = "date")]
+    public DateTime? CostoUsdFecha { get; set; }
+
+
     /// <summary>PVP 1 — clientes BAR. Se guarda SIN IVA. El precio con IVA se calcula con IvaPct.</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal? Pvp1 { get; set; }

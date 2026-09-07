@@ -174,7 +174,12 @@ public record CafeProductoDto(
     bool SinPrecioBar = false,
     // 2026-07-07: formato que sale PREDETERMINADO al cargar el producto en una venta
     // (null/"UNIT" = Suelto; "PACK_{N}" = un pack; "BULTO"; o CAFE "1KG"/"MEDIO"/"CUARTO").
-    string? FormatoPorDefecto = null);
+    string? FormatoPorDefecto = null,
+    // 2026-09-07: costo en DOLARES, solo referencia. No se usa para calcular margenes ni precios.
+    // CostoUsdCotizacion = a cuanto estaba el dolar cuando se cargo el costo en pesos.
+    decimal? CostoUsd = null,
+    decimal? CostoUsdCotizacion = null,
+    DateTime? CostoUsdFecha = null);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,
@@ -230,6 +235,11 @@ public class CreateCafeProductoRequest
     public string? FormatoPorDefecto { get; set; }
     /// <summary>Packs prearmados a crear junto con el producto. Opcional. Solo OTROS.</summary>
     public List<CafeProductoPackRequest>? Packs { get; set; }
+    /// <summary>2026-09-07 — costo en dolares (referencia). Null = el producto se compra en pesos.</summary>
+    public decimal? CostoUsd { get; set; }
+    /// <summary>Cotizacion del dolar que la UI tenia a la vista al cargar. Si viene null y hay
+    /// CostoUsd, la API la completa con el dolar BNA del momento.</summary>
+    public decimal? CostoUsdCotizacion { get; set; }
 }
 
 // ===== Kits (productos compuestos / BOM) =====
@@ -345,6 +355,14 @@ public class UpdateCafeProductoRequest
     /// (Suelto). Si trae valor → se guarda ese. Si ambos vacios/null → no cambia.</summary>
     public string? FormatoPorDefecto { get; set; }
     public bool ClearFormatoPorDefecto { get; set; }
+
+    /// <summary>2026-09-07 — costo en dolares (referencia). Null = no cambiar.
+    /// ClearCostoUsd=true → borrar el costo en dolares (el producto vuelve a ser solo en pesos).</summary>
+    public decimal? CostoUsd { get; set; }
+    public bool ClearCostoUsd { get; set; }
+    /// <summary>Cotizacion del dolar a la vista en la UI al momento de guardar. Si viene null
+    /// y hay CostoUsd, la API la completa con el dolar BNA del momento.</summary>
+    public decimal? CostoUsdCotizacion { get; set; }
 
     // Precios FUTUROS (cambio programado). Si vienen cargados, se guardan y se aplican
     // automaticamente cuando hoy >= FechaAplicaPreciosFuturos.

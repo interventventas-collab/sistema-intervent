@@ -203,6 +203,10 @@ public class CafeProductoDto
     public decimal? PrecioBultoOtro { get; set; }
     /// <summary>2026-07-07: formato por defecto al vender (null/"UNIT" = Suelto).</summary>
     public string? FormatoPorDefecto { get; set; }
+    // 2026-09-07: costo en DOLARES, solo referencia. No entra en ningun calculo del sistema.
+    public decimal? CostoUsd { get; set; }
+    public decimal? CostoUsdCotizacion { get; set; }
+    public DateTime? CostoUsdFecha { get; set; }
     // Precios FUTUROS (cambio programado de precios — pedido 2026-05-20)
     public DateTime? FechaAplicaPreciosFuturos { get; set; }
     public decimal? PrecioPorKgFuturo { get; set; }
@@ -333,6 +337,9 @@ public class CreateCafeProductoRequest
     public string? FormatoPorDefecto { get; set; }
     /// <summary>Packs prearmados a crear junto con el producto. Opcional, solo OTROS.</summary>
     public List<CafeProductoPackRequest>? Packs { get; set; }
+    /// <summary>2026-09-07: costo en dolares (referencia). Null = el producto se compra en pesos.</summary>
+    public decimal? CostoUsd { get; set; }
+    public decimal? CostoUsdCotizacion { get; set; }
 }
 
 public class UpdateCafeProductoRequest
@@ -380,6 +387,12 @@ public class UpdateCafeProductoRequest
     /// <summary>2026-07-07: formato por defecto al vender. ClearFormatoPorDefecto=true → Suelto.</summary>
     public string? FormatoPorDefecto { get; set; }
     public bool ClearFormatoPorDefecto { get; set; }
+
+    /// <summary>2026-09-07: costo en dolares (referencia). Null = no cambiar.
+    /// ClearCostoUsd=true → borrarlo (el producto vuelve a ser solo en pesos).</summary>
+    public decimal? CostoUsd { get; set; }
+    public bool ClearCostoUsd { get; set; }
+    public decimal? CostoUsdCotizacion { get; set; }
 
     // Precios FUTUROS (cambio programado)
     public DateTime? FechaAplicaPreciosFuturos { get; set; }

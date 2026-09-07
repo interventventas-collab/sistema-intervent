@@ -45,6 +45,25 @@
                     <span style="background:@(soloConReserva ? "#d97706" : "#9ca3af"); color:white; padding:0.05rem 0.4rem; border-radius:10px; font-size:0.72rem;">@totalReservados</span>
                 }
             </label>
+            @* 2026-09-07: filtro para revisar de una sentada los costos en dolares que quedaron
+               viejos. El boton solo aparece si hay algun producto cargado en dolares, para no
+               ensuciar la barra de quien compra todo en pesos. *@
+            @{
+                var enDolares = (productos ?? new()).Where(x => x.CostoUsd.HasValue).ToList();
+                var desactualizados = enDolares.Count(x => CostoUsdDesactualizado(x.Costo, x.CostoUsd));
+            }
+            @if (enDolares.Count > 0)
+            {
+                <label style="display:flex; align-items:center; gap:0.3rem; padding:0.35rem 0.7rem; border-radius:6px; border:1px solid @(soloDolarDesactualizado ? "#d97706" : "#d1d5db"); background:@(soloDolarDesactualizado ? "#fef3c7" : "white"); cursor:pointer; font-size:0.85rem; font-weight:600; color:@(soloDolarDesactualizado ? "#9a3412" : "#374151");"
+                       title="Mostrar solo los productos con costo en dólares cuyo costo en pesos se despegó más de @DesvioCostoUsdAviso.ToString("0")% de lo que sale hoy">
+                    <input type="checkbox" @bind="soloDolarDesactualizado" />
+                    💵 Dólar desactualizado
+                    @if (desactualizados > 0)
+                    {
+                        <span style="background:@(soloDolarDesactualizado ? "#d97706" : "#9ca3af"); color:white; padding:0.05rem 0.4rem; border-radius:10px; font-size:0.72rem;">@desactualizados</span>
+                    }
+                </label>
+            }
             @* 2026-09-02: mostrar/ocultar el precio de 1/2 y 1/4 kg debajo del precio por kilo (solo CAFE). *@
             <button class="btn @(mostrarFracciones ? "btn-secondary" : "btn-secondary")"
                     style="@(mostrarFracciones ? "" : "opacity:0.65;")"
@@ -228,7 +247,23 @@
                                         <span style="color: #d1d5db;">—</span>
                                     }
                                 </td>
-                                <td style="text-align: right;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">$@FormatMoney(p.Costo)</td>
+                                <td style="text-align: right;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
+                                    <div>$@FormatMoney(p.Costo)</div>
+                                    @* 2026-09-07: renglon de referencia. Solo sale en los productos que tienen
+                                       cargado un costo en dolares — el resto queda igual que siempre. *@
+                                    @if (p.CostoUsd.HasValue && EnPesosHoy(p.CostoUsd) is decimal eqLista)
+                                    {
+                                        var viejo = CostoUsdDesactualizado(p.Costo, p.CostoUsd);
+                                        <div style="font-size: 0.7rem; font-weight: 500; color: @(viejo ? "#92400e" : "#9ca3af");"
+                                             title="@(viejo ? $"El costo cargado se despegó más de {DesvioCostoUsdAviso:0}% de lo que sale hoy en dólares. Abrí el producto para revisarlo." : "Costo en dólares, solo como referencia.")">
+                                            U$D @FormatUsd(p.CostoUsd.Value) · hoy $@FormatMoneyCorto(eqLista)@(viejo ? " ⚠" : "")
+                                        </div>
+                                    }
+                                    else if (p.CostoUsd.HasValue)
+                                    {
+                                        <div style="font-size: 0.7rem; font-weight: 500; color: #9ca3af;">U$D @FormatUsd(p.CostoUsd.Value)</div>
+                                    }
+                                </td>
                                 @if (esCafe)
                                 {
                                     <td style="text-align: right; font-weight: 700; color: #1d4ed8;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
@@ -483,7 +518,65 @@
                         <label class="form-label">Costo (sin IVA) ($)</label>
                         <input class="form-input" type="number" step="0.01" min="0"
                                @bind="formCosto" @bind:event="oninput" @bind:after="RecalcularMargenesDesdeCosto" />
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Costo interno del producto, sin IVA.</p>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Costo interno del producto, sin IVA. Es el que usa todo el sistema.</p>
+                    </div>
+                </div>
+
+                @* 2026-09-07: costo en dolares. Es SOLO una referencia: no se usa para calcular
+                   margenes, precios ni valuacion de stock. Sirve para ver si el costo de arriba
+                   quedo viejo cuando el proveedor cotiza en dolares. *@
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Costo en dólares (opcional)</label>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                            <span style="color: #6b7280; font-size: 0.85rem;">U$D</span>
+                            <input class="form-input" type="text" inputmode="decimal" style="max-width: 140px;"
+                                   placeholder="ej: 10,50"
+                                   @bind="formCostoUsdStr" @bind:event="oninput" />
+                            @if (FormCostoUsd.HasValue && EnPesosHoy(FormCostoUsd) is decimal eq)
+                            {
+                                <span style="font-size: 0.8rem; color: #6b7280;">
+                                    ≈ $@FormatMoneyCorto(eq) al dólar de hoy · @FormatMoneyCorto(dolarVenta!.Value)@(string.IsNullOrWhiteSpace(dolarFecha) ? "" : " · BNA " + dolarFecha)
+                                </span>
+                            }
+                            else if (FormCostoUsd.HasValue)
+                            {
+                                <span style="font-size: 0.8rem; color: #6b7280;">no pudimos traer la cotización del día</span>
+                            }
+                        </div>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.3rem 0 0;">
+                            Solo referencia: no cambia precios ni márgenes. Dejalo vacío si el producto se compra en pesos.
+                        </p>
+
+                        @if (FormCostoUsd.HasValue && EnPesosHoy(FormCostoUsd) is decimal eqp)
+                        {
+                            var desvio = DesvioCostoUsdPct(formCosto, FormCostoUsd);
+                            <div style="margin-top: 0.6rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                                @if (desvio.HasValue && Math.Abs(desvio.Value) >= DesvioCostoUsdAviso)
+                                {
+                                    <span style="font-size: 0.8rem; background: #fef3c7; color: #92400e; padding: 0.25rem 0.6rem; border-radius: 6px;">
+                                        ⚠ tu costo quedó @Math.Abs(desvio.Value).ToString("0")% @(desvio.Value > 0 ? "abajo" : "arriba") — hoy serían $@FormatMoneyCorto(eqp)
+                                    </span>
+                                }
+                                else if (desvio.HasValue)
+                                {
+                                    <span style="font-size: 0.8rem; color: #6b7280;">
+                                        el costo cargado está @Math.Abs(desvio.Value).ToString("0")% @(desvio.Value >= 0 ? "abajo" : "arriba") — está al día
+                                    </span>
+                                }
+                                <button type="button" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.25rem 0.6rem;"
+                                        @onclick="PasarCostoUsdAlCosto"
+                                        title="Copia el equivalente en pesos al campo Costo de arriba. No se aplica solo.">
+                                    Pasar $@FormatMoneyCorto(eqp) al costo
+                                </button>
+                            </div>
+                            @if (formCostoUsdCotizacionOriginal.HasValue)
+                            {
+                                <p style="font-size: 0.7rem; color: #9ca3af; margin: 0.35rem 0 0;">
+                                    Lo cargaste@(formCostoUsdFecha.HasValue ? " el " + formCostoUsdFecha.Value.ToString("dd/MM/yyyy") : "") con el dólar a @FormatMoneyCorto(formCostoUsdCotizacionOriginal.Value).
+                                </p>
+                            }
+                        }
                     </div>
                 </div>
 
@@ -1379,6 +1472,8 @@
     private string filtroTipo = "";
     private string filtroMarca = "";
     private string filtroTexto = "";
+    // 2026-09-07: filtro "solo los costos en dolares que quedaron viejos"
+    private bool soloDolarDesactualizado;
     // 2026-06-15: filtro "solo con reserva" (ventas MeLi pendientes de despacho)
     private bool soloConReserva = false;
 
@@ -1471,6 +1566,90 @@
     private string formCategoria = "CAFE";
     private string formMarca = "";
     private decimal formCosto;
+
+    // ─── 2026-09-07: costo en DOLARES (solo referencia) ───────────────────────────
+    // Se guarda atado a STRING y no a decimal a proposito: con type=number, si el usuario
+    // escribe la coma decimal el campo se vacia solo (ya nos paso con el stock).
+    private string formCostoUsdStr = "";
+    /// <summary>Cotizacion con la que se habia cargado el costo del producto que estamos
+    /// editando. Sirve para mostrar "lo cargaste con el dolar a X".</summary>
+    private decimal? formCostoUsdCotizacionOriginal;
+    private DateTime? formCostoUsdFecha;
+    /// <summary>Dolar BNA (venta) de hoy. Es SOLO para mostrar equivalencias: ningun precio
+    /// ni margen del sistema se calcula con esto.</summary>
+    private decimal? dolarVenta;
+    private string? dolarFecha;
+    /// <summary>A partir de cuanto de diferencia entre el costo cargado en pesos y el que da
+    /// la cuenta en dolares consideramos que el costo quedo viejo.</summary>
+    private const decimal DesvioCostoUsdAviso = 15m;
+
+    /// <summary>Lee un importe tipeado a mano aceptando tanto coma como punto decimal.</summary>
+    private static decimal? ParseImporte(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var t = raw.Trim().Replace(" ", "").Replace("$", "").Replace("U$D", "").Replace("u$d", "");
+        // Si tiene los dos separadores, el ultimo es el decimal y el otro es de miles.
+        if (t.Contains(',') && t.Contains('.'))
+            t = t.LastIndexOf(',') > t.LastIndexOf('.')
+                ? t.Replace(".", "").Replace(',', '.')
+                : t.Replace(",", "");
+        else t = t.Replace(',', '.');
+        return decimal.TryParse(t, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
+
+    /// <summary>Costo en dolares del formulario, ya parseado. Null si esta vacio o no es un numero.</summary>
+    private decimal? FormCostoUsd
+    {
+        get { var v = ParseImporte(formCostoUsdStr); return v.HasValue && v.Value > 0 ? v : null; }
+    }
+
+    /// <summary>Cuanto sale hoy en pesos un costo cargado en dolares. Null si no hay costo en
+    /// dolares o si no pudimos traer la cotizacion.</summary>
+    private decimal? EnPesosHoy(decimal? costoUsd)
+        => costoUsd.HasValue && dolarVenta.HasValue && dolarVenta.Value > 0
+            ? Math.Round(costoUsd.Value * dolarVenta.Value, 2, MidpointRounding.AwayFromZero)
+            : null;
+
+    /// <summary>Cuanto se despego el costo cargado en pesos de lo que da la cuenta en dolares.
+    /// Positivo = el costo cargado quedo ABAJO (estamos vendiendo mas barato de lo que creemos).
+    /// Null si falta algun dato.</summary>
+    private decimal? DesvioCostoUsdPct(decimal costoPesos, decimal? costoUsd)
+    {
+        var hoy = EnPesosHoy(costoUsd);
+        if (!hoy.HasValue || costoPesos <= 0) return null;
+        return Math.Round((hoy.Value / costoPesos - 1m) * 100m, 0, MidpointRounding.AwayFromZero);
+    }
+
+    private bool CostoUsdDesactualizado(decimal costoPesos, decimal? costoUsd)
+    {
+        var d = DesvioCostoUsdPct(costoPesos, costoUsd);
+        return d.HasValue && Math.Abs(d.Value) >= DesvioCostoUsdAviso;
+    }
+
+    /// <summary>Copia al campo Costo (en pesos) el equivalente de hoy del costo en dolares.
+    /// Es una accion MANUAL: el sistema nunca la dispara solo, porque tocar el costo mueve
+    /// los margenes de MeLi y las listas de precios.</summary>
+    private void PasarCostoUsdAlCosto()
+    {
+        var eq = EnPesosHoy(FormCostoUsd);
+        if (!eq.HasValue) return;
+        formCosto = eq.Value;
+        RecalcularMargenesDesdeCosto();
+    }
+
+    /// <summary>Trae el dolar BNA para las equivalencias. Si falla, la pantalla sigue andando:
+    /// simplemente no muestra el "equivale a" (nunca rompe la carga de productos).</summary>
+    private async Task LoadDolar()
+    {
+        try
+        {
+            var d = await Api.GetDolarBnaAsync();
+            if (d?.Venta is > 0) { dolarVenta = d.Venta; dolarFecha = d.Fecha; }
+        }
+        catch { /* sin cotizacion la pantalla funciona igual */ }
+    }
+
     private decimal? formPvp1;
     private decimal? formPvp2;
     // Bind como string para evitar que el "." de "10.5" lo lea el browser en es-AR como 105.
@@ -1629,6 +1808,9 @@
             // 2026-06-15: filtro solo con reserva (ventas MeLi pendientes de despacho)
             if (soloConReserva)
                 q = q.Where(p => reservasPorProducto.TryGetValue(p.Id, out var r) && r > 0);
+            // 2026-09-07: solo los que tienen costo en dolares y se despegaron del costo en pesos
+            if (soloDolarDesactualizado)
+                q = q.Where(p => p.CostoUsd.HasValue && CostoUsdDesactualizado(p.Costo, p.CostoUsd));
             // 2026-06-18: filtro de tipo (Simple vs Compuesto)
             if (filtroTipo == "SIMPLE")
                 q = q.Where(p => !p.EsCompuestoFake);
@@ -1808,12 +1990,14 @@
         var loadReglas = LoadReglasPrecios();
         var loadThumbs = LoadThumbnails();
         var loadSettings = LoadSettings();
+        var loadDolar = LoadDolar();   // 2026-09-07: para las equivalencias de costos en dolares
         await Load();
         await loadOems;
         await loadMarcas;
         await loadReglas;
         await loadThumbs;
         await loadSettings;
+        await loadDolar;
     }
 
     private async Task LoadThumbnails()
@@ -2041,6 +2225,7 @@
         formNombre = ""; formSku = ""; formBarcode = "";
         formCategoria = "CAFE"; formMarca = "";
         formCosto = 0; formPvp1 = null; formPvp2 = null;
+        formCostoUsdStr = ""; formCostoUsdCotizacionOriginal = null; formCostoUsdFecha = null;
         formIvaPctStr = "21";
         formBarPct = 100m; formUxB = null;
         formPrecioOtro = null; formPrecioBar = null;
@@ -2088,6 +2273,11 @@
         formNombre = p.Nombre; formSku = p.Sku ?? ""; formBarcode = p.Barcode ?? "";
         formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo;
+        // 2026-09-07: costo en dolares (referencia). Guardamos tambien con que cotizacion y
+        // cuando se cargo, para poder mostrarlo abajo del campo.
+        formCostoUsdStr = p.CostoUsd.HasValue ? p.CostoUsd.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "";
+        formCostoUsdCotizacionOriginal = p.CostoUsdCotizacion;
+        formCostoUsdFecha = p.CostoUsdFecha;
         // 2026-09-01: para CAFE los casilleros "Precio BAR/OTRO por kg" atan a formPvp1/formPvp2,
         // pero lo que valen son PrecioBar/PrecioOtro. Mostramos el VIGENTE (legacy solo de respaldo)
         // para que la pantalla no mienta sobre lo que se cobra.
@@ -2174,6 +2364,11 @@
         formCategoria = p.Categoria;
         formMarca = p.Marca ?? "";
         formCosto = p.Costo;
+        // 2026-09-07: costo en dolares (referencia). Guardamos tambien con que cotizacion y
+        // cuando se cargo, para poder mostrarlo abajo del campo.
+        formCostoUsdStr = p.CostoUsd.HasValue ? p.CostoUsd.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "";
+        formCostoUsdCotizacionOriginal = p.CostoUsdCotizacion;
+        formCostoUsdFecha = p.CostoUsdFecha;
         // 2026-09-01: copiar el precio VIGENTE (PrecioBar/PrecioOtro), no el espejo legacy.
         formPvp1 = p.PrecioBarEfectivo; formPvp2 = p.PrecioOtroEfectivo;
         formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
@@ -2291,6 +2486,10 @@
                     Sku = formSku, Barcode = formBarcode,
                     Nombre = formNombre, Categoria = formCategoria, Marca = formMarca,
                     Costo = formCosto, Pvp1 = formPvp1, Pvp2 = formPvp2,
+                    // 2026-09-07: costo en dolares (referencia). Vacio = se borra.
+                    CostoUsd = FormCostoUsd,
+                    ClearCostoUsd = !FormCostoUsd.HasValue,
+                    CostoUsdCotizacion = dolarVenta,
                     BarPctSobreCosto = barPctFinal, ClearBarPctSobreCosto = clearBarPct,
                     UxB = uxBFinal, ClearUxB = clearUxB,
                     OemId = oemIdFinal, ClearOemId = clearOemId,
@@ -2365,6 +2564,9 @@
                     Sku = formSku, Barcode = formBarcode,
                     Nombre = formNombre, Categoria = formCategoria, Marca = formMarca,
                     Costo = formCosto, Pvp1 = formPvp1, Pvp2 = formPvp2,
+                    // 2026-09-07: costo en dolares (referencia).
+                    CostoUsd = FormCostoUsd,
+                    CostoUsdCotizacion = dolarVenta,
                     BarPctSobreCosto = barPctFinal,
                     UxB = uxBFinal,
                     OemId = oemIdFinal,
@@ -2433,6 +2635,13 @@
     /// que van en letra chica dentro de una columna angosta: con ",00" el texto se partia en
     /// dos lineas y quedaba ilegible. Los precios de fraccion son siempre redondos (redondeo
     /// al millar), asi que no se pierde informacion.</summary>
+    /// <summary>2026-09-07: importes en dolares. Sin decimales cuando el numero es redondo
+    /// (U$D 8, no U$D 8,00), con dos cuando tiene centavos (U$D 5,95).</summary>
+    private static string FormatUsd(decimal v)
+        => v == Math.Truncate(v)
+            ? v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
+            : v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
     private static string FormatMoneyCorto(decimal v)
         => v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
 

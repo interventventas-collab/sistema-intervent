@@ -5526,6 +5526,21 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='StockIdeal' AND object_id=O
 -- Null = sin piso: dispara con el ideal, como venia funcionando.
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='StockPiso' AND object_id=OBJECT_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD StockPiso INT NULL;
+
+-- 2026-09-07: costo del producto en DOLARES, solo como referencia.
+-- El costo que usa TODO el sistema (margenes MeLi, valuacion de stock, listas de precios,
+-- panorama) sigue siendo la columna Costo, en pesos. Estas tres columnas no participan de
+-- ningun calculo: solo permiten mostrar a cuanto equivale hoy el costo en dolares y avisar
+-- cuando el costo en pesos quedo viejo. Pasar el valor al costo es siempre manual.
+-- CostoUsd           = lo que cotiza el proveedor en U$D. NULL = el producto se compra en pesos.
+-- CostoUsdCotizacion = a cuanto estaba el dolar cuando se cargo/actualizo el costo.
+-- CostoUsdFecha      = cuando se cargo por ultima vez (fecha argentina).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='CostoUsd' AND object_id=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD CostoUsd DECIMAL(18,2) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='CostoUsdCotizacion' AND object_id=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD CostoUsdCotizacion DECIMAL(18,2) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='CostoUsdFecha' AND object_id=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD CostoUsdFecha DATE NULL;
 GO
 
 -- 2026-09-02: lista de "para pedir". Cuando un producto queda por debajo de su StockIdeal se
