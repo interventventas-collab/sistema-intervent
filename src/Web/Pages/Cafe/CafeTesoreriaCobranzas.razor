@@ -2058,6 +2058,23 @@
         if (medioSinCaja && medioSinImporte) { ToastService.Error("⚠️ Te falta elegir la CAJA y poner el IMPORTE en algún medio de cobro"); return; }
         if (medioSinCaja) { ToastService.Error("⚠️ Elegí la CAJA (Efectivo / Banco / Mercado Pago / etc.) en cada forma de cobro"); return; }
         if (medioSinImporte) { ToastService.Error("⚠️ Poné el IMPORTE en cada forma de cobro (no puede ser 0)"); return; }
+        // 07/09/2026 — el cobro REDIRIGIDO tiene dos patas y hasta hoy se podia guardar con una sola:
+        // la plata entraba a la caja de paso y no le quedaba anotada a nadie (paso con $27.500 de
+        // julieta ochoa), o se elegia al empleado sin decir de donde y se iba callado al SUELDO
+        // (paso con $75.000 de Gisella Luna, que iban a los viajes). Ahora no deja guardar a medias.
+        if (formMedios.Any(m => m.EsRedirigido && !(m.RedirigidoEmpleadoId > 0)))
+        {
+            ToastService.Error("⚠️ Elegiste Redirigido pero no dijiste a QUIÉN se le pasa la plata. Si no, queda colgada y no se la descuenta a nadie.");
+            return;
+        }
+        var sinDeDonde = formMedios.FirstOrDefault(m => m.EsRedirigido && m.RedirigidoEmpleadoId > 0
+            && string.IsNullOrWhiteSpace(m.RedirigidoDestino));
+        if (sinDeDonde is not null)
+        {
+            var quien = destinatarios.FirstOrDefault(x => x.EmpleadoId == sinDeDonde.RedirigidoEmpleadoId)?.Nombre ?? "esa persona";
+            ToastService.Error($"⚠️ Falta decir de qué se le descuenta a {quien}: VIAJES o SUELDO.");
+            return;
+        }
 
         var comps = new List<ApiClient.CrearComprobanteItemRequest>();
         foreach (var kv in imputaciones)
