@@ -4734,10 +4734,17 @@
             {
                 new ApiClient.CrearComprobanteItemRequest(cobroOcasionalVenta.Id, cobroOcasionalMonto)
             };
+            // 07/09/2026: acá no hay dónde elegir a quién se le pasa la plata, así que si eligen la
+            // caja Redirigido va con el significado de siempre — queda en la privada, no se le
+            // descuenta a nadie. Sin esto el servidor lo rechaza (pide destinatario) y el cobro no
+            // se puede cargar desde esta pantalla. Los redirigidos a un empleado se cargan desde
+            // Tesorería → Cobranzas, que sí pregunta.
+            var esRedirigida = cobroOcasionalCajas?.FirstOrDefault(x => x.Id == cobroOcasionalCajaId)?.Tipo == "V_PRIVADO";
             var medios = new List<ApiClient.CrearMedioItemRequest>
             {
                 new ApiClient.CrearMedioItemRequest(cobroOcasionalCajaId, cobroOcasionalMonto,
-                    string.IsNullOrWhiteSpace(cobroOcasionalNota) ? null : cobroOcasionalNota, null)
+                    string.IsNullOrWhiteSpace(cobroOcasionalNota) ? null : cobroOcasionalNota, null,
+                    null, esRedirigida ? "privada" : null)
             };
             // 2026-06-06: ClienteId null = cobranza de venta ocasional
             var r = await Api.CrearCafeCobranzaAsync(null, 0m, Operator.Current, cobroOcasionalNota, comps, medios);
