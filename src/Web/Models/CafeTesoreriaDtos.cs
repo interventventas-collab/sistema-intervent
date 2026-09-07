@@ -28,6 +28,8 @@ public class CafeCajaMovimientoDto
     public string? CargadoPor { get; set; }
     /// <summary>Anulado: sigue en la lista pero tachado, y el saldo no lo cuenta.</summary>
     public bool Anulado { get; set; }
+    /// <summary>Hora real en que se cargo (UTC). La Fecha es solo el dia y se puede antedatar.</summary>
+    public DateTime CreatedAt { get; set; }
     public string? AnuladoPor { get; set; }
 }
 

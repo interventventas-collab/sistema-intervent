@@ -112,10 +112,12 @@ public class CafeCajasController : ControllerBase
     // ser: saldo inicial + cobranzas − pagos a proveedor − salidas + entradas ± ajustes de arqueo.
     // ─────────────────────────────────────────────────────────────────────────────
 
+    // CreatedAt (07/09/2026): la Fecha del movimiento es solo el dia (se puede antedatar), asi que
+    // la HORA real de carga vive aca. Va al listado junto con quien lo cargo.
     public record MovimientoDto(
         int Id, int CajaId, string CajaNombre, DateTime Fecha, string Tipo,
         decimal Importe, string Motivo, int? TransferenciaGrupoId, string? CargadoPor,
-        bool Anulado, string? AnuladoPor);
+        bool Anulado, string? AnuladoPor, DateTime CreatedAt);
 
     public record SalidaRequest(DateTime? Fecha, decimal Importe, string Motivo, string? FechaStr = null);
     public record TransferenciaRequest(int DesdeCajaId, int HaciaCajaId, DateTime? Fecha, decimal Importe, string? Motivo, string? FechaStr = null);
@@ -191,7 +193,7 @@ public class CafeCajasController : ControllerBase
         var movs = await q.OrderByDescending(m => m.Fecha).ThenByDescending(m => m.Id).Take(500).ToListAsync();
         return Ok(movs.Select(m => new MovimientoDto(
             m.Id, m.CajaId, m.Caja?.Nombre ?? "", m.Fecha, m.Tipo, m.Importe, m.Motivo,
-            m.TransferenciaGrupoId, m.CargadoPor, m.AnuladoAt != null, m.AnuladoPor)));
+            m.TransferenciaGrupoId, m.CargadoPor, m.AnuladoAt != null, m.AnuladoPor, m.CreatedAt)));
     }
 
     /// <summary>Plata que sale de una caja: nafta, un adelanto, lo que sea.</summary>

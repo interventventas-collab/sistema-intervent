@@ -77,9 +77,12 @@
                         <div class="mov-texto">
                             <span class="mov-fecha">@m.Fecha.ToString("dd/MM")</span>
                             <b>@m.CajaNombre</b> · @m.Motivo
-                            @if (!string.IsNullOrWhiteSpace(m.CargadoPor))
+                            @* 07/09/2026: antes solo se veia el dia. La hora de verdad es la de CreatedAt
+                               (la Fecha se puede antedatar), asi que si el movimiento se cargo otro dia
+                               lo decimos con todas las letras en vez de mezclar dia y hora. *@
+                            @if (!string.IsNullOrWhiteSpace(m.CargadoPor) || m.CreatedAt != default)
                             {
-                                <span class="mov-quien"> · lo cargó @m.CargadoPor</span>
+                                <span class="mov-quien">@QuienYCuando(m)</span>
                             }
                         </div>
                         <div class="mov-importe @(m.Importe < 0 && !m.Anulado ? "en-rojo" : "")">@Plata(m.Importe)</div>
@@ -301,6 +304,25 @@
 
     /// <summary>Hoy en Argentina: el navegador puede estar en otro huso y la fecha se corre.</summary>
     private static DateTime HoyAr() => DateTime.UtcNow.AddHours(-3).Date;
+
+    /// <summary>
+    /// 07/09/2026 — "quién lo cargó y a qué hora", en un solo renglón y en castellano.
+    /// La hora sale de CreatedAt (hora argentina); la Fecha del movimiento es solo el día y se
+    /// puede antedatar, así que cuando no coinciden lo aclaramos en vez de mezclarlos.
+    /// </summary>
+    private static string QuienYCuando(CafeCajaMovimientoDto m)
+    {
+        var quien = string.IsNullOrWhiteSpace(m.CargadoPor) ? "" : $" · lo cargó {m.CargadoPor}";
+        if (m.CreatedAt == default) return quien;
+        var ar = m.CreatedAt.ToArTime();
+        if (string.IsNullOrWhiteSpace(quien))
+            return ar.Date == m.Fecha.Date
+                ? $" · a las {ar:HH:mm}"
+                : $" · cargado el {ar:dd/MM} a las {ar:HH:mm}";
+        return ar.Date == m.Fecha.Date
+            ? $"{quien} a las {ar:HH:mm}"
+            : $"{quien} el {ar:dd/MM} a las {ar:HH:mm}";
+    }
 
     protected override async Task OnInitializedAsync() => await Load();
 

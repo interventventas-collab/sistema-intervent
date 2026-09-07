@@ -105,7 +105,10 @@
                         @* --- Col 1: número + fecha --- *@
                         <div>
                             <div style="font-weight:700; font-family:monospace; color:#111827; font-size:.95rem; @(esAnulada ? "text-decoration:line-through;" : "")">@c.Numero</div>
-                            <div style="color:#6b7280; font-size:.78rem; margin-top:.15rem;">📅 @c.Fecha.ToArTime().ToString("dd/MM/yyyy")</div>
+                            @* 07/09/2026: la fecha de la cobranza es el momento exacto en que se cargo,
+                               asi que mostramos tambien la hora (argentina) para poder rastrear quien
+                               hizo que y cuando. *@
+                            <div style="color:#6b7280; font-size:.78rem; margin-top:.15rem;">📅 @c.Fecha.ToArTime().ToString("dd/MM/yyyy") · @c.Fecha.ToArTime().ToString("HH:mm")</div>
                         </div>
 
                         @* --- Col 2: cliente + fantasía + entrega + chips de comprobantes --- *@
