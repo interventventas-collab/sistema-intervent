@@ -654,20 +654,38 @@
                            avatar). Osmar: "tanto color marea". Se leen igual y no gritan.
                            Con VARIAS razones sociales esto se convierte en los cartelitos con tilde: ahí el
                            color SÍ hace falta, porque tenés que elegir con cuál facturás. *@
+                        @* 2026-09-07: con 4 razones sociales la fila del encabezado se estiraba tanto que
+                           tapaba el estado y el responsable. Ahora se ve SOLO con la que estás facturando
+                           (que es el dato que importa) y las otras viven en una listita que baja al tocarla. *@
                         @if (VariasRazones)
                         {
                             <span class="wa-hdr-sep">·</span>
-                            <span class="wa-razones" title="Este teléfono factura a varias razones sociales. Tocá la que estés usando ahora: la ficha, la venta y el comprobante salen a nombre de ésa.">
+                            <span class="wa-hdr-menu-wrap wa-razones-wrap">
                                 <span class="wa-razones-t">Facturo a:</span>
-                                @foreach (var rs in RazonesSociales)
+                                <button class="wa-razon on"
+                                        @onclick="@(() => { showRazonesMenu = !showRazonesMenu; showEstadoMenu = false; showPasarMenu = false; showMasMenu = false; })"
+                                        disabled="@cambiandoRazon"
+                                        title="@($"Estás facturando a {RazonActivaNombre}. Este teléfono tiene {RazonesSociales.Count} razones sociales — tocá para cambiar.")">
+                                    <span class="wa-razon-tilde">✓</span>
+                                    <span class="wa-razon-nom">@RazonActivaNombre</span>
+                                    <span class="wa-razon-mas">+@(RazonesSociales.Count - 1) ▾</span>
+                                </button>
+                                @if (showRazonesMenu)
                                 {
-                                    <button class="wa-razon @(EsRazonActiva(rs.Id) ? "on" : "")"
-                                            @onclick="() => ElegirRazon(rs.Id)"
-                                            disabled="@cambiandoRazon"
-                                            title="@(EsRazonActiva(rs.Id) ? $"Estás trabajando con {rs.Nombre}" : $"Pasar a {rs.Nombre}")">
-                                        <span class="wa-razon-tilde">@(EsRazonActiva(rs.Id) ? "✓" : "")</span>
-                                        <span class="wa-razon-nom">@rs.Nombre</span>
-                                    </button>
+                                    <div class="wa-hdr-menu-back" @onclick="@(() => showRazonesMenu = false)"></div>
+                                    <div class="wa-hdr-menu wa-razones-menu">
+                                        <div class="wa-razones-menu-t">Este teléfono factura a @RazonesSociales.Count razones sociales. Tocá con cuál estás trabajando: la ficha, la venta y el comprobante salen a nombre de ésa.</div>
+                                        @foreach (var rs in RazonesSociales)
+                                        {
+                                            <button class="wa-hdr-menu-op @(EsRazonActiva(rs.Id) ? "sel" : "")"
+                                                    @onclick="() => ElegirRazon(rs.Id)"
+                                                    disabled="@cambiandoRazon"
+                                                    title="@(EsRazonActiva(rs.Id) ? $"Estás trabajando con {rs.Nombre}" : $"Pasar a {rs.Nombre}")">
+                                                <span class="wa-razon-nom">@rs.Nombre</span>
+                                                @if (EsRazonActiva(rs.Id)) { <span class="wa-hdr-menu-tick">✓</span> }
+                                            </button>
+                                        }
+                                    </div>
                                 }
                             </span>
                         }
@@ -4334,6 +4352,15 @@
     .wa-razon-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .wa-razon-ficha { text-decoration: none; color: #047857; font-size: 0.75rem; padding: 0 0.2rem; }
     .wa-razon-ficha:hover { color: #065f46; }
+    /* 2026-09-07: la lista se pliega. Queda a la vista la razón social tildada + "+N ▾"; el resto
+       baja en una listita (misma que la de Estado/Responsable) para que el renglón no se estire. */
+    .wa-razones-wrap { display: inline-flex; align-items: center; gap: 0.28rem; }
+    .wa-razon-mas { font-size: 0.62rem; font-weight: 700; opacity: 0.75; margin-left: 0.1rem; flex: 0 0 auto; }
+    .wa-razones-menu { right: auto; left: 0; min-width: 250px; max-width: 360px; }
+    .wa-razones-menu-t { font-size: 0.68rem; font-weight: 500; color: #94a3b8; padding: 0.3rem 0.6rem 0.45rem;
+        border-bottom: 1px solid #f1f5f9; margin-bottom: 0.25rem; line-height: 1.35; }
+    .wa-razones-menu .wa-hdr-menu-op { font-size: 0.82rem; }
+    .wa-razones-menu .wa-hdr-menu-op:disabled { cursor: wait; opacity: 0.6; }
     /* Sacar una razón social del teléfono (panel derecho) */
     .wa-ctx-quitar-razon { display: block; width: 100%; text-align: left; background: #fff; color: #9ca3af;
         border: 1px dashed #e5e7eb; border-radius: 7px; padding: 0.25rem 0.45rem; margin-top: 0.2rem;
@@ -6015,6 +6042,9 @@
     // El tilde es de CADA OPERADOR (lo guarda el servidor por firma del PIN): Osmar puede estar en
     // ACOYTE y Germán en AVENIDA LA PLATA en la misma charla, al mismo tiempo, sin pisarse.
     bool cambiandoRazon = false;
+    // 2026-09-07: con 4 razones sociales el renglón del encabezado quedaba larguísimo. Se muestra
+    // sólo la tildada y las demás caen en esta listita.
+    bool showRazonesMenu = false;
 
     List<ApiClient.TwClienteVinculadoDto> RazonesSociales => SelectedConv()?.Clientes ?? new();
 
@@ -6022,12 +6052,18 @@
     /// se ve igual que siempre (cartelito 🛍️ Cliente: ...).</summary>
     bool VariasRazones => RazonesSociales.Count > 1;
 
+    /// <summary>Nombre de la razón social con la que estás facturando ahora (la única que se ve
+    /// sin desplegar la listita).</summary>
+    string RazonActivaNombre => RazonesSociales.FirstOrDefault(r => EsRazonActiva(r.Id))?.Nombre
+        ?? RazonesSociales.FirstOrDefault()?.Nombre ?? "";
+
     bool EsRazonActiva(int clienteId) => SelectedConv()?.ClienteId == clienteId;
 
     /// <summary>Tildar con cuál de las razones sociales estoy trabajando ahora. Lo que cambia:
     /// la ficha 👁️ (saldo y facturas), la venta que se cree desde el chat y el comprobante.</summary>
     async Task ElegirRazon(int clienteId)
     {
+        showRazonesMenu = false;   // se cerró la listita, elijas o no
         if (selectedNumero == null || cambiandoRazon) return;
         if (EsRazonActiva(clienteId)) return;   // ya está tildada, no hago nada
         cambiandoRazon = true;
@@ -7957,7 +7993,7 @@
         CerrarBuscador(); textoAbierto.Clear(); modoSeleccion = false;
         asignarNota = SelectedConv()?.AsignadoNota ?? "";   // 2026-08-06: precargar la nota guardada de este chat (editable)
         notaGuardada = asignarNota;                        // 2026-08-27: lo que vino del servidor ya está guardado
-        showEstadoMenu = false; showPasarMenu = false; showMasMenu = false;   // 2026-08-27: si quedó una listita abierta, se cierra al cambiar de chat
+        showEstadoMenu = false; showPasarMenu = false; showMasMenu = false; showRazonesMenu = false;   // 2026-08-27: si quedó una listita abierta, se cierra al cambiar de chat
         _ = CargarAvisoMeli();   // 2026-08-21: en paralelo, que el chat no espere por esto
         // 2026-08-24: la ficha del cliente se carga sola (en paralelo, sin abrir la ventanita) para
         // que la barra de arriba pueda mostrar la dirección y si debe plata. De paso, cuando tocás
