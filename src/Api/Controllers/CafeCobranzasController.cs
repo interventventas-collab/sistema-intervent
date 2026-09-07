@@ -534,6 +534,28 @@ public class CafeCobranzasController : ControllerBase
         if (Math.Abs(sumComprobantes - (sumMedios + retenciones)) > 0.01m)
             return BadRequest(new { error = $"No cuadra: imputado a comprobantes ${sumComprobantes:N2} vs medios+retenciones ${(sumMedios+retenciones):N2}" });
 
+        // 07/09/2026 — TODO lo que se pueda rechazar de las formas de cobro se revisa ACA, antes de
+        // crear nada. Crear no corre dentro de una transaccion: si rechazamos mas abajo, la cabecera
+        // de la cobranza ya quedo guardada sin medios y igual le acredita saldo al cliente (paso en
+        // dev con la cobranza 0100-00000010).
+        foreach (var med in req.Medios ?? new())
+        {
+            var cajaChk = await _db.CafeCajas.FindAsync(med.CajaId);
+            if (cajaChk is null)
+                return BadRequest(new { error = $"Caja {med.CajaId} no existe" });
+            if (cajaChk.Tipo != "V_PRIVADO") continue;
+
+            // Destino "privada" = el uso de siempre de esta caja (no se lo queda ningun empleado):
+            // es una respuesta valida. Lo que no se puede es no contestar nada.
+            var privada = string.Equals(med.RedirigidoDestino, "privada", StringComparison.OrdinalIgnoreCase);
+            if (!(med.RedirigidoEmpleadoId is > 0) && !privada)
+                return BadRequest(new { error = "Elegiste Redirigido pero no dijiste a quién se le pasa la plata." });
+            // Sin decir "viajes o sueldo" se iba callado al sueldo: paso con $75.000 el 07/09.
+            if (med.RedirigidoEmpleadoId is > 0 && string.IsNullOrWhiteSpace(med.RedirigidoDestino)
+                && await _db.ViajesEmpleados.AnyAsync(v => v.NomEmpleadoId == med.RedirigidoEmpleadoId && v.IsActive))
+                return BadRequest(new { error = "Falta decir de qué se lo descontás: viajes o sueldo." });
+        }
+
         // Generar numero correlativo
         var ultimoNum = await _db.CafeCobranzas
             .Select(c => c.Numero)
@@ -627,20 +649,11 @@ public class CafeCobranzasController : ControllerBase
 
             // Cobro REDIRIGIDO: la plata nunca pasa por ninguna caja nuestra, se la queda el
             // empleado y le cuenta como pago. Se cargan las dos patas de una sola vez.
-            // 07/09/2026 — no se puede guardar la mitad del cobro redirigido. Sin destinatario la
-            // plata queda colgada en la caja de paso (era la mitad que faltaba en 252 cobranzas
-            // viejas), y sin decir "viajes o sueldo" se iba callada al sueldo.
-            // Destino "privada" = el uso de siempre de esta caja (no se lo queda ningún empleado):
-            // es una respuesta válida y se guarda para que quede dicho a propósito.
-            var vaALaPrivada = string.Equals(med.RedirigidoDestino, "privada", StringComparison.OrdinalIgnoreCase);
-            if (caja.Tipo == "V_PRIVADO" && !(med.RedirigidoEmpleadoId is > 0) && !vaALaPrivada)
-                return BadRequest(new { error = "Elegiste Redirigido pero no dijiste a quién se le pasa la plata." });
-            if (caja.Tipo == "V_PRIVADO" && vaALaPrivada)
+            // "A nadie · queda en la privada": no genera pago ni movimiento, pero se guarda para que
+            // quede dicho a proposito y no parezca una mitad sin cerrar. Ya se valido mas arriba.
+            if (caja.Tipo == "V_PRIVADO"
+                && string.Equals(med.RedirigidoDestino, "privada", StringComparison.OrdinalIgnoreCase))
                 medio.RedirigidoDestino = "privada";
-            if (caja.Tipo == "V_PRIVADO" && med.RedirigidoEmpleadoId is > 0
-                && string.IsNullOrWhiteSpace(med.RedirigidoDestino)
-                && await _db.ViajesEmpleados.AnyAsync(v => v.NomEmpleadoId == med.RedirigidoEmpleadoId && v.IsActive))
-                return BadRequest(new { error = "Falta decir de qué se lo descontás: viajes o sueldo." });
 
             if (caja.Tipo == "V_PRIVADO" && med.RedirigidoEmpleadoId is > 0)
             {
