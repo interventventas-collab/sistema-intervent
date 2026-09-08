@@ -1695,7 +1695,35 @@
                                     </div>
                                 }
 
-                                @* 2026-07-02: link de Google Maps del domicilio de entrega (override por venta) *@
+                                @* ═══ 2026-09-08: aviso de PRECIOS PACTADOS con este cliente ═══
+                     Pedido de Osmar: *"cuando cargo una venta a un cliente con precios especiales,
+                     que me aparezca un cartel que diga que tiene precios especiales"*.
+                     Va en texto plano, sin caja de color: no es una alarma, es un dato.
+                     Muestra los primeros 3 con su precio; el resto se despliega. *@
+                @if (preciosEspecialesLista.Count > 0)
+                {
+                    var visibles = pactosDesplegados ? preciosEspecialesLista : preciosEspecialesLista.Take(3).ToList();
+                    var restantes = preciosEspecialesLista.Count - visibles.Count;
+                    <div style="margin-top: 0.4rem; font-size: 0.78rem; color: #374151; line-height: 1.45;">
+                        <span style="font-weight: 700;">🏷 Tiene @preciosEspecialesLista.Count precio@(preciosEspecialesLista.Count == 1 ? "" : "s") pactado@(preciosEspecialesLista.Count == 1 ? "" : "s")</span>
+                        @foreach (var pe in visibles)
+                        {
+                            <span style="color: #6b7280;"> · @(string.IsNullOrWhiteSpace(pe.Sku) ? pe.ProductoNombre : pe.Sku) @pe.FormatoLabel $@FormatMoney(pe.Precio)</span>
+                        }
+                        @if (restantes > 0)
+                        {
+                            <button type="button" @onclick="() => pactosDesplegados = true"
+                                    style="background:none; border:none; padding:0 0 0 0.35rem; color:#1d4ed8; font-size:0.78rem; cursor:pointer; text-decoration:underline;">+@restantes más</button>
+                        }
+                        else if (pactosDesplegados && preciosEspecialesLista.Count > 3)
+                        {
+                            <button type="button" @onclick="() => pactosDesplegados = false"
+                                    style="background:none; border:none; padding:0 0 0 0.35rem; color:#1d4ed8; font-size:0.78rem; cursor:pointer; text-decoration:underline;">ver menos</button>
+                        }
+                    </div>
+                }
+
+                @* 2026-07-02: link de Google Maps del domicilio de entrega (override por venta) *@
                                 <div style="margin-top: 0.4rem;">
                                     <label class="form-label" style="font-size: 0.72rem;">📍 Ubicación en Google Maps <span style="font-weight:400; color:#9ca3af;">· opcional</span></label>
                                     <div style="display: flex; gap: 0.3rem; align-items: center;">
@@ -2206,6 +2234,12 @@
                                                         <span style="color: #6b7280; font-size: 0.78rem;"> · @p.Marca</span>
                                                     }
                                                     <span style="color: #6b7280; font-size: 0.78rem;"> · stock: @stockTxt</span>
+                                                    @* 2026-09-08: se marca ACÁ, antes de elegirlo, porque es el momento
+                                                       en que el operador todavía puede darse cuenta. *@
+                                                    @if (productosConPacto.Contains(pId))
+                                                    {
+                                                        <span style="color: #374151; font-size: 0.72rem; font-weight: 700; margin-left: 0.35rem;">· pactado</span>
+                                                    }
                                                 </div>
                                             }
                                             @* 2026-06-01: combos marcados como "compuesto" tambien aparecen aca *@
@@ -2565,7 +2599,7 @@
                                                    pactado con este cliente, para que nadie lo "corrija" pensando que está mal. *@
                                                 @if (ci.EsPrecioEspecial)
                                                 {
-                                                    <div style="font-size:0.65rem; color:#6b7280; margin-top:0.15rem;" title="Este cliente tiene un precio pactado para este producto en este formato. Se carga desde su ficha.">precio pactado con el cliente</div>
+                                                    <div style="font-size:0.7rem; color:#374151; font-weight:700; margin-top:0.15rem;" title="Este cliente tiene un precio pactado para este producto en este formato. Se carga desde su ficha.">precio pactado</div>
                                                 }
                                                 @if (formItem.PrecioUnitarioOverride.HasValue)
                                                 {
@@ -5778,6 +5812,12 @@
     // Sin esto el preview mostraría el precio de catálogo y la línea saldría con otro número.
     private int preciosEspecialesClienteId = -1;
     private Dictionary<string, decimal> preciosEspeciales = new();
+    // 2026-09-08: además del mapa para calcular, guardamos la lista completa (nombre, formato,
+    // precio) para poder AVISAR arriba qué tiene pactado este cliente, y un set de productos
+    // para marcarlos en el buscador antes de que el operador los elija.
+    private List<CafePrecioEspecialDto> preciosEspecialesLista = new();
+    private HashSet<int> productosConPacto = new();
+    private bool pactosDesplegados;
 
     private static string ClavePrecioPactado(int productoId, string? formato)
         => $"{productoId}|{(formato ?? "UNIT").Trim().ToUpperInvariant()}";
@@ -5794,11 +5834,18 @@
         if (preciosEspecialesClienteId == formClienteId) return;
         preciosEspecialesClienteId = formClienteId;
         preciosEspeciales = new();
+        preciosEspecialesLista = new();
+        productosConPacto = new();
+        pactosDesplegados = false;
         if (formClienteId <= 0) return;
         try
         {
-            foreach (var f in await Api.GetPreciosEspecialesMapaAsync(formClienteId))
+            preciosEspecialesLista = await Api.GetPreciosEspecialesAsync(formClienteId);
+            foreach (var f in preciosEspecialesLista)
+            {
                 preciosEspeciales[ClavePrecioPactado(f.ProductoId, f.Formato)] = f.Precio;
+                productosConPacto.Add(f.ProductoId);
+            }
         }
         catch
         {
