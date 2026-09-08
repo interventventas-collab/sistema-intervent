@@ -140,7 +140,13 @@ public class CafeCajasController : ControllerBase
         return (fecha ?? HoyAr()).Date;
     }
 
-    private string? QuienSoy() => User?.Identity?.Name;
+    /// <summary>08/09/2026: el login es "admin" para todos, así que el nombre de verdad (OSMAR /
+    /// GABRIEL / GERMÁN) sale del operador elegido en la pantalla, igual que en la auditoría.</summary>
+    private string? QuienSoy()
+    {
+        var op = Request?.Headers["X-Operator-Name"].FirstOrDefault();
+        return string.IsNullOrWhiteSpace(op) ? User?.Identity?.Name : op.Trim();
+    }
 
     /// <summary>
     /// Lo que cada caja movio desde su saldo inicial: cobranzas que entraron, pagos a proveedor que
