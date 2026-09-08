@@ -7456,3 +7456,34 @@ GO
 IF OBJECT_ID('Viajes_Registros') IS NOT NULL AND COL_LENGTH('Viajes_Registros','CargadoPor') IS NULL
     ALTER TABLE Viajes_Registros ADD CargadoPor NVARCHAR(100) NULL;
 GO
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 08/09/2026 — El repartidor da el VISTO BUENO de cada pago.
+-- Sobre todo por las cobranzas redirigidas: esa plata nunca pasa por la empresa, se la queda el
+-- repartidor de mano del cliente, y hasta hoy nadie chequeaba que le hubiera llegado de verdad.
+--   Confirmado: NULL = no contesto todavia | 1 = "si, la recibi" | 0 = "no me llego"
+--   PideConfirmacion: solo los pagos nuevos se le preguntan; los viejos quedan como estan.
+-- ⚠ Su respuesta NO mueve ningun numero: es un visto bueno, no una operacion.
+-- ⚠ En PROD estos ALTER hay que correrlos a mano.
+-- ─────────────────────────────────────────────────────────────────────────────
+IF OBJECT_ID('Viajes_Pagos') IS NOT NULL AND COL_LENGTH('Viajes_Pagos','Confirmado') IS NULL
+    ALTER TABLE Viajes_Pagos ADD Confirmado BIT NULL;
+GO
+IF OBJECT_ID('Viajes_Pagos') IS NOT NULL AND COL_LENGTH('Viajes_Pagos','ConfirmadoAt') IS NULL
+    ALTER TABLE Viajes_Pagos ADD ConfirmadoAt DATETIME2 NULL;
+GO
+IF OBJECT_ID('Viajes_Pagos') IS NOT NULL AND COL_LENGTH('Viajes_Pagos','PideConfirmacion') IS NULL
+    ALTER TABLE Viajes_Pagos ADD PideConfirmacion BIT NOT NULL DEFAULT 0;
+GO
+-- Historial: si dice "no me llego" y despues entra la plata, quedan las DOS respuestas.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Viajes_PagoConfirmaciones')
+BEGIN
+    CREATE TABLE Viajes_PagoConfirmaciones (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        PagoId INT NOT NULL,
+        Recibio BIT NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_ViajesPagoConf_Pago FOREIGN KEY (PagoId) REFERENCES Viajes_Pagos(Id) ON DELETE CASCADE
+    );
+END
+GO

@@ -455,6 +455,8 @@ public class ViajesController : ControllerBase
             Importe = req.Importe,
             CajaId = req.CajaId,
             CargadoPor = QuienCarga(),
+            // 08/09/2026: al repartidor se le pregunta si esta plata le llegó de verdad.
+            PideConfirmacion = true,
             CreatedAt = DateTime.UtcNow
         };
         _db.ViajesPagos.Add(p);
@@ -686,6 +688,8 @@ public class ViajesController : ControllerBase
             Importe = total,
             CajaId = total > 0 ? req.CajaId : null,   // un cierre de $0 no mueve ninguna caja
             CargadoPor = QuienCarga(),
+            // Un cierre de $0 no le movió plata: no tiene nada que confirmar.
+            PideConfirmacion = total > 0,
             CreatedAt = DateTime.UtcNow
         };
         _db.ViajesPagos.Add(pago);
@@ -867,7 +871,9 @@ public class ViajesController : ControllerBase
         // a hora argentina). En las entregas del mapa no la carga nadie: van Desde/Hasta, que es
         // entre qué horas se entregaron, y CargadoPor en null.
         DateTime? Hora = null, string? CargadoPor = null,
-        DateTime? Desde = null, DateTime? Hasta = null);
+        DateTime? Desde = null, DateTime? Hasta = null,
+        // 08/09/2026 — el visto bueno del repartidor, sólo en los pagos.
+        bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null);
 
     /// <summary>
     /// La cuenta con su total. Los totales son de TODA la historia, no de los días que se muestran:
@@ -889,7 +895,8 @@ public class ViajesController : ControllerBase
         // Un renglón por día para las entregas del mapa, y uno por cada cosa cargada a mano.
         var filas = new List<(DateTime fecha, int orden, string que, string? det, decimal suma,
             decimal pago, bool esPago, bool esExtra, string tipo, List<int> ids, bool liq,
-            List<string> items, DateTime? hora, string? quien, DateTime? desde, DateTime? hasta)>();
+            List<string> items, DateTime? hora, string? quien, DateTime? desde, DateTime? hasta,
+            bool pide, bool? confirmado, DateTime? confirmadoAt)>();
 
         foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
         {
@@ -904,25 +911,27 @@ public class ViajesController : ControllerBase
                 g.Sum(x => x.Tarifa), 0m, false, false, "entregas",
                 g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null), todos,
                 null, null,
-                g.Min(x => x.EntregadoAt), g.Max(x => x.EntregadoAt)));
+                g.Min(x => x.EntregadoAt), g.Max(x => x.EntregadoAt),
+                false, null, null));
         }
 
         foreach (var g in ents.Where(x => x.StopId == null).GroupBy(x => new { x.Fecha, Det = x.Detalle ?? "Ajuste" }))
             filas.Add((g.Key.Fecha, 1, g.Key.Det, null, g.Sum(x => x.Tarifa), 0m, false, true,
                 "extra", g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null), new List<string>(),
                 g.Min(x => x.CreatedAt), g.Select(x => x.CargadoPor).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
-                null, null));
+                null, null, false, null, null));
 
         foreach (var r in regs)
             filas.Add((r.Fecha, 1, $"{r.CantidadCABA + r.CantidadPCIA} viajes cargados a mano", r.Anotaciones,
                 (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA, 0m, false, true,
                 "registro", new List<int> { r.Id }, false, new List<string>(),
-                r.UpdatedAt ?? r.CreatedAt, r.CargadoPor, null, null));
+                r.UpdatedAt ?? r.CreatedAt, r.CargadoPor, null, null, false, null, null));
 
         foreach (var p in pagos)
             filas.Add((p.Fecha, 2, "Pago" + (string.IsNullOrWhiteSpace(p.Descripcion) ? "" : " · " + p.Descripcion),
                 null, 0m, p.Importe, true, false, "pago", new List<int> { p.Id }, false, new List<string>(),
-                p.CreatedAt, p.CargadoPor, null, null));
+                p.CreatedAt, p.CargadoPor, null, null,
+                p.PideConfirmacion, p.Confirmado, p.ConfirmadoAt));
 
         // El saldo se calcula desde el principio de los tiempos, si no el número no cerraría.
         var orden = filas.OrderBy(f => f.fecha).ThenBy(f => f.orden).ToList();
@@ -933,7 +942,8 @@ public class ViajesController : ControllerBase
             acum += f.suma - f.pago;
             salida.Add(new MovimientoCtaDto(f.fecha, f.que, f.det, f.suma, f.pago, acum,
                 f.esPago, f.esExtra, f.tipo, f.ids, f.liq, f.items,
-                f.hora, f.quien, f.desde, f.hasta));
+                f.hora, f.quien, f.desde, f.hasta,
+                f.pide, f.confirmado, f.confirmadoAt));
         }
 
         var ganado = filas.Sum(f => f.suma);

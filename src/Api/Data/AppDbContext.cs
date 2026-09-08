@@ -184,6 +184,8 @@ public class AppDbContext : DbContext
     public DbSet<ViajesEmpleado> ViajesEmpleados => Set<ViajesEmpleado>();
     public DbSet<ViajesRegistro> ViajesRegistros => Set<ViajesRegistro>();
     public DbSet<ViajesPago> ViajesPagos => Set<ViajesPago>();
+    /// <summary>08/09/2026: el historial de "sí la recibí / no me llegó" de cada pago.</summary>
+    public DbSet<ViajesPagoConfirmacion> ViajesPagoConfirmaciones => Set<ViajesPagoConfirmacion>();
     public DbSet<ViajesReporte> ViajesReportes => Set<ViajesReporte>();
     // 2026-09-04: viajes contados solos desde las entregas del mapa (Nacho cobra por entrega).
     public DbSet<ViajesEntrega> ViajesEntregas => Set<ViajesEntrega>();

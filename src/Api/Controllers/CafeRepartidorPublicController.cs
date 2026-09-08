@@ -108,7 +108,11 @@ public class CafeRepartidorPublicController : ControllerBase
     /// </summary>
     public record MiMovDto(DateTime Fecha, string Que, List<string> Donde,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
-        DateTime? Hora, string? CargadoPor, DateTime? Desde, DateTime? Hasta);
+        DateTime? Hora, string? CargadoPor, DateTime? Desde, DateTime? Hasta,
+        // 08/09/2026 — visto bueno del repartidor, sólo en los pagos.
+        // PideConfirmacion: si se le pregunta (los pagos viejos no).
+        // Confirmado: null = no contestó · true = "sí, la recibí" · false = "no me llegó".
+        int PagoId = 0, bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null);
 
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
         decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos,
@@ -185,7 +189,8 @@ public class CafeRepartidorPublicController : ControllerBase
         // historia (si no, el saldo de cada renglón no cerraría con el total de arriba).
         var filas = new List<(DateTime fecha, int orden, string que, List<string> donde, decimal suma,
             decimal pago, bool esPago, bool esExtra, DateTime? hora, string? quien,
-            DateTime? desde, DateTime? hasta)>();
+            DateTime? desde, DateTime? hasta,
+            int pagoId, bool pide, bool? confirmado, DateTime? confirmadoAt)>();
 
         foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
         {
@@ -199,23 +204,27 @@ public class CafeRepartidorPublicController : ControllerBase
             filas.Add((g.Key, 0, $"{g.Count()} entrega{(g.Count() == 1 ? "" : "s")}",
                 muestra,
                 g.Sum(x => x.Tarifa), 0m, false, false,
-                null, null, g.Min(x => x.EntregadoAt), g.Max(x => x.EntregadoAt)));
+                null, null, g.Min(x => x.EntregadoAt), g.Max(x => x.EntregadoAt),
+                0, false, null, null));
         }
 
         foreach (var g in ents.Where(x => x.StopId == null).GroupBy(x => new { x.Fecha, Det = x.Detalle ?? "Ajuste" }))
             filas.Add((g.Key.Fecha, 1, g.Key.Det, new List<string>(), g.Sum(x => x.Tarifa), 0m, false, true,
                 g.Min(x => x.CreatedAt),
-                g.Select(x => x.CargadoPor).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)), null, null));
+                g.Select(x => x.CargadoPor).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)), null, null,
+                0, false, null, null));
 
         foreach (var r in regs)
             filas.Add((r.Fecha, 1, $"{r.CantidadCABA + r.CantidadPCIA} viajes cargados a mano",
                 new List<string>(),
                 (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA, 0m, false, true,
-                r.UpdatedAt ?? r.CreatedAt, r.CargadoPor, null, null));
+                r.UpdatedAt ?? r.CreatedAt, r.CargadoPor, null, null,
+                0, false, null, null));
 
         foreach (var p in pagos)
             filas.Add((p.Fecha, 2, "Pago" + (string.IsNullOrWhiteSpace(p.Descripcion) ? "" : " · " + p.Descripcion),
-                new List<string>(), 0m, p.Importe, true, false, p.CreatedAt, p.CargadoPor, null, null));
+                new List<string>(), 0m, p.Importe, true, false, p.CreatedAt, p.CargadoPor, null, null,
+                p.Id, p.PideConfirmacion, p.Confirmado, p.ConfirmadoAt));
 
         var movimientos = new List<MiMovDto>(filas.Count);
         decimal acum = 0m;
@@ -223,7 +232,8 @@ public class CafeRepartidorPublicController : ControllerBase
         {
             acum += f.suma - f.pago;
             movimientos.Add(new MiMovDto(f.fecha, f.que, f.donde, f.suma, f.pago, acum,
-                f.esPago, f.esExtra, f.hora, f.quien, f.desde, f.hasta));
+                f.esPago, f.esExtra, f.hora, f.quien, f.desde, f.hasta,
+                f.pagoId, f.pide, f.confirmado, f.confirmadoAt));
         }
         movimientos.Reverse();   // lo último arriba, como en la oficina
 
@@ -287,6 +297,39 @@ public class CafeRepartidorPublicController : ControllerBase
     }
 
     /// <summary>La ficha de viajes del repartidor que abrió el link, o null si cobra sueldo.</summary>
+    public class ConfirmarPagoRequest { public bool Recibio { get; set; } }
+
+    /// <summary>
+    /// 08/09/2026 — El repartidor da el visto bueno de un pago: "sí, la recibí" o "no me llegó".
+    /// ⚠ NO mueve ningún número: es un visto bueno, no una operación. Si moviera plata, un dedazo
+    /// en el colectivo le descuadraría la cuenta a la oficina.
+    /// Puede cambiar de opinión (dijo que no y después entró la transferencia): se guarda la
+    /// respuesta nueva y la vieja queda en el historial, no se pisa.
+    /// </summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/viajes/pagos/{pagoId:int}/confirmar")]
+    public async Task<IActionResult> ConfirmarPago(string tokenRepartidor, int pagoId,
+        [FromBody] ConfirmarPagoRequest req)
+    {
+        var emp = await EmpleadoDeViajesAsync(tokenRepartidor);
+        if (emp is null) return NotFound(new { error = "No encontramos tu ficha" });
+
+        // El pago tiene que ser SUYO: el token no puede servir para tocar la cuenta de otro.
+        var pago = await _db.ViajesPagos.FirstOrDefaultAsync(p => p.Id == pagoId && p.EmpleadoId == emp.Id);
+        if (pago is null) return NotFound(new { error = "Ese pago no es tuyo" });
+
+        pago.Confirmado = req.Recibio;
+        pago.ConfirmadoAt = DateTime.UtcNow;
+        pago.UpdatedAt = DateTime.UtcNow;
+        _db.ViajesPagoConfirmaciones.Add(new Models.ViajesPagoConfirmacion
+        {
+            PagoId = pago.Id,
+            Recibio = req.Recibio,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, confirmado = pago.Confirmado, confirmadoAt = pago.ConfirmadoAt });
+    }
+
     private async Task<Models.ViajesEmpleado?> EmpleadoDeViajesAsync(string tokenRepartidor)
     {
         var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);

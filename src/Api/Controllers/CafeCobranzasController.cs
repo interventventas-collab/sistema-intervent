@@ -1140,7 +1140,10 @@ public class CafeCobranzasController : ControllerBase
                 Descripcion = $"Cobranza redirigida{deQuien}",
                 Importe = medio.Importe,
                 // 08/09/2026: quien lo cargo, para que se vea en la cuenta del repartidor.
-                CargadoPor = QuienCarga()
+                CargadoPor = QuienCarga(),
+                // Y que el repartidor confirme si esa plata le llegó: es justo el caso donde la
+                // plata nunca pasa por nosotros, asi que nadie mas puede chequearlo.
+                PideConfirmacion = true
             };
             _db.ViajesPagos.Add(pago);
             await _db.SaveChangesAsync();

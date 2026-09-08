@@ -136,6 +136,21 @@ public class ViajesPago
     [MaxLength(100)]
     public string? CargadoPor { get; set; }
 
+    // ── Visto bueno del repartidor (08/09/2026) ──────────────────────────────────────────────
+    // Las cobranzas redirigidas nunca pasan por la empresa: el cliente le paga a él en la mano o
+    // por CBU. Hasta hoy nadie chequeaba que esa plata le hubiera llegado de verdad.
+    // ⚠ Su respuesta NO mueve ningún número: es un visto bueno, no una operación contable.
+
+    /// <summary>NULL = todavía no contestó · true = "sí, la recibí" · false = "no me llegó".</summary>
+    public bool? Confirmado { get; set; }
+
+    /// <summary>Cuándo contestó (la última vez: el historial completo va en Viajes_PagoConfirmaciones).</summary>
+    public DateTime? ConfirmadoAt { get; set; }
+
+    /// <summary>Si se le pregunta. Los pagos anteriores al 08/09 quedan en false para no llenarle
+    /// el celu de cosas viejas para contestar.</summary>
+    public bool PideConfirmacion { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
@@ -205,4 +220,27 @@ public class ViajesEntrega
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// 08/09/2026 — Cada vez que el repartidor contesta si un pago le llegó o no. Se guarda el
+/// historial entero (no se pisa) porque puede decir "no me llegó" y al rato entrar la plata:
+/// las dos respuestas tienen que quedar escritas.
+/// </summary>
+[Table("Viajes_PagoConfirmaciones")]
+public class ViajesPagoConfirmacion
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int PagoId { get; set; }
+
+    [ForeignKey(nameof(PagoId))]
+    public ViajesPago? Pago { get; set; }
+
+    /// <summary>true = "sí, la recibí" · false = "no me llegó".</summary>
+    public bool Recibio { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
