@@ -172,6 +172,10 @@ else
                PinnedWaChat (que es el que tiene los mensajes); acá solo se lo abrimos. *@
             <button type="button" class="wam-hbtn" @onclick="AbrirBuscadorChat"
                     title="Buscar una palabra en esta charla">🔍</button>
+            @* 2026-09-08: archivar de un toque, sin entrar a ningún menú. Al archivar volvés
+               a la lista (en el celu saltar solo a otra charla desorienta). *@
+            <button type="button" class="wam-hbtn" @onclick="() => ArchivarChat(chatAbierto)"
+                    title="Archivar esta charla y volver a la lista">🗂️</button>
             @* 2026-08-20: tamaño de la letra de ESTA pantalla, guardado en ESTE celular. *@
             <button type="button" class="wam-hbtn" @onclick="() => panelEscala = true"
                     title="Tamaño de la letra">Aa</button>
@@ -282,6 +286,20 @@ else
                                     <span class="wam-conv-punto" title="Mensaje sin leer"></span>
                                 }
                             </div>
+                            @* 2026-09-08: ARCHIVAR sin abrir la charla. Va suelto y centrado, a la
+                               izquierda de los otros dos: apilado como tercero estiraba el renglón de
+                               82 a 110 px (medido), y metido en la columna de al lado quedaba colgando
+                               debajo del 🏷️ sin que se entienda que es otra cosa. *@
+                            @if (c.Archivado)
+                            {
+                                <button class="wam-conv-arch on" type="button" title="Traer este chat de vuelta al listado"
+                                        @onclick:stopPropagation="true" @onclick="() => DesarchivarChat(c)">📤</button>
+                            }
+                            else
+                            {
+                                <button class="wam-conv-arch" type="button" title="Archivar este chat"
+                                        @onclick:stopPropagation="true" @onclick="() => ArchivarChat(c)">🗂️</button>
+                            }
                             @* 2026-08-31: los dos botoncitos de la derecha, uno arriba del otro para
                                no comerle ancho al nombre en un celu de 390 px. *@
                             <div class="wam-conv-btns">
@@ -310,6 +328,18 @@ else
                           TituloContacto="@NombreDe(chatAbierto)"
                           NombreLinea="@(chatAbierto.LineaNumero ?? chatAbierto.Linea ?? "WhatsApp")"
                           PuedeAbrirEnGrande="false" AccionesCompletas="true" Movil="true" />
+        </div>
+    }
+
+    @* 2026-09-08: barrita de DESHACER. En el celular es la red de seguridad principal: acá no
+       hay vista de "Archivados", así que si se archiva algo sin querer, esto lo devuelve de una.
+       (Igual queda encontrable con el buscador.) Se va sola a los 8 segundos. *@
+    @if (undoNumero is not null)
+    {
+        <div class="wam-undo">
+            <span class="wam-undo-txt">🗂️ Archivaste <b>@undoNombre</b></span>
+            <button type="button" class="wam-undo-btn" @onclick="DeshacerArchivado">Deshacer</button>
+            <button type="button" class="wam-undo-x" @onclick="CerrarUndo" title="Cerrar">✕</button>
         </div>
     }
 
@@ -452,6 +482,22 @@ else
     .wam-conv-pin, .wam-conv-tag { flex: none; background: transparent; border: none; font-size: 1.05rem;
         padding: 6px; line-height: 1; cursor: pointer; opacity: 0.25; filter: grayscale(1); }
     .wam-conv-pin.on { opacity: 1; filter: none; }
+    /* 2026-09-08: archivar desde el renglón. Mismo tamaño y apagado que el 📌 — en el celular
+       no hay "pasar el mouse", así que se ve siempre, pero apagadito para no gritar. */
+    .wam-conv-arch { flex: none; align-self: center; background: transparent; border: none; font-size: 1.15rem;
+        padding: 8px 6px; line-height: 1; cursor: pointer; opacity: 0.3; filter: grayscale(1); }
+    .wam-conv-arch.on { opacity: 1; filter: none; }
+
+    /* Barrita de deshacer: ancho completo, pegada abajo, arriba de todo. En el celu es la ÚNICA
+       forma rápida de volver atrás (no hay vista de Archivados). */
+    .wam-undo { position: fixed; left: 8px; right: 8px; bottom: 10px; z-index: 9800; display: flex;
+        align-items: center; gap: 10px; background: #111827; color: #f9fafb; border-radius: 10px;
+        padding: 10px 12px; font-size: 0.9rem; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
+    .wam-undo-txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wam-undo-btn { flex: none; background: transparent; border: 1px solid #6b7280; color: #f9fafb;
+        border-radius: 8px; padding: 6px 12px; font-size: 0.9rem; font-weight: 700; cursor: pointer; }
+    .wam-undo-x { flex: none; background: transparent; border: none; color: #9ca3af; font-size: 1rem;
+        cursor: pointer; padding: 0 4px; }
 
     .wam-chat { flex: 1; min-height: 0; }
     /* PinnedWaChat trae su propio marco; acá lo dejamos a ras, ocupando toda la pantalla. */
@@ -1224,7 +1270,12 @@ else
         IEnumerable<ApiClient.TwConvDto> src = convs;
         // 2026-08-18: las charlas archivadas NO van en el listado (igual que en la pantalla grande).
         // Si el cliente vuelve a escribir, el backend las desarchiva solo y reaparecen.
-        src = src.Where(c => !c.Archivado);
+        // 2026-09-08: EXCEPTO cuando estás buscando. Desde que se puede archivar de un toque hacía
+        // falta una forma de volver a encontrarlas: en el celular no existe la vista "Archivados",
+        // así que sin esto una charla archivada por error quedaba invisible hasta que el cliente
+        // escribiera. Es la misma regla que ya usa la pantalla grande.
+        bool buscando = !string.IsNullOrWhiteSpace(busqueda);
+        if (!buscando) src = src.Where(c => !c.Archivado);
         if (filtroLinea != null) src = src.Where(c => c.Linea == filtroLinea);
         if (string.IsNullOrWhiteSpace(busqueda))
             return src.Take(60);
@@ -1289,6 +1340,76 @@ else
         if (!ok)
         {
             await JS.InvokeVoidAsync("alert", error ?? "No se pudo fijar el chat");
+            return;
+        }
+        try { convs = await Api.GetTwConversacionesAsync(); } catch { }
+        StateHasChanged();
+    }
+
+    // ═══ 2026-09-08: ARCHIVAR desde el celular ═══
+    // Osmar pidió lo mismo que en la compu. Diferencias que impone el celu:
+    //  · No hay "pasar el mouse": el 🗂️ está SIEMPRE visible en el renglón (como el 📌 y el 🏷️).
+    //  · Al archivar el chat abierto NO saltamos a otro: en un celular aparecer de golpe adentro
+    //    de la charla de otra persona desorienta. Se cierra y volvés a la lista, que es lo que
+    //    hace WhatsApp.
+    //  · Acá NO existe la vista "🗂️ Archivados" (ver Filtradas()), así que el "deshacer" es la
+    //    única red: por eso además el BUSCADOR ahora sí encuentra las archivadas.
+    private string? undoNumero, undoLinea, undoNombre;
+    private int undoToken;
+
+    private void MostrarUndo(ApiClient.TwConvDto c)
+    {
+        undoNumero = c.Numero; undoLinea = c.Linea; undoNombre = NombreDe(c);
+        var mio = ++undoToken;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(8000);
+            if (undoToken != mio) return;
+            undoNumero = null; undoLinea = null; undoNombre = null;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void CerrarUndo() { undoToken++; undoNumero = null; undoLinea = null; undoNombre = null; }
+
+    /// <summary>Archiva un chat. Si es el que está abierto, además vuelve a la lista.</summary>
+    private async Task ArchivarChat(ApiClient.TwConvDto c)
+    {
+        var eraElAbierto = chatAbierto is not null
+            && chatAbierto.Numero == c.Numero && chatAbierto.Linea == c.Linea;
+
+        if (!await Api.ArchivarConversacionAsync(c.Numero, c.Linea, true))
+        {
+            await JS.InvokeVoidAsync("alert", "No se pudo archivar el chat");
+            return;
+        }
+        MostrarUndo(c);
+        if (eraElAbierto) { chatAbierto = null; }
+        try { convs = await Api.GetTwConversacionesAsync(); } catch { }
+        StateHasChanged();
+    }
+
+    /// <summary>Traer de vuelta una charla archivada. En el celu sólo aparece al buscarla.</summary>
+    private async Task DesarchivarChat(ApiClient.TwConvDto c)
+    {
+        if (!await Api.ArchivarConversacionAsync(c.Numero, c.Linea, false))
+        {
+            await JS.InvokeVoidAsync("alert", "No se pudo traer el chat de vuelta");
+            return;
+        }
+        CerrarUndo();
+        try { convs = await Api.GetTwConversacionesAsync(); } catch { }
+        StateHasChanged();
+    }
+
+    private async Task DeshacerArchivado()
+    {
+        if (undoNumero is null) return;
+        var num = undoNumero; var lin = undoLinea;
+        CerrarUndo();
+        if (!await Api.ArchivarConversacionAsync(num, lin, false))
+        {
+            await JS.InvokeVoidAsync("alert", "No se pudo traer el chat de vuelta");
             return;
         }
         try { convs = await Api.GetTwConversacionesAsync(); } catch { }
