@@ -67,7 +67,7 @@ public class CafePreciosEspecialesController : ControllerBase
             var lista = CafePricingService.CalcularPrecioBreakdown(p, formato, tipo, settings).PrecioLista;
             res.Add(new FormatoOpcionDto(
                 formato,
-                CafePricingService.FormatoLabel(formato),
+                LabelFormato(p, formato),
                 lista,
                 Math.Round(lista * (1m + p.IvaPct / 100m), 2, MidpointRounding.AwayFromZero)));
         }
@@ -92,6 +92,18 @@ public class CafePreciosEspecialesController : ControllerBase
             Add(CafePricingService.FORMATO_PACK_PREFIX + pack.Cantidad);
 
         return res;
+    }
+
+    /// <summary>2026-09-08 — Etiqueta del formato con el TAMAÑO del bulto adentro
+    /// ("bulto x 1250"). Osmar: *"estaría bueno que aclare de cuánto es el bulto"* — sin eso,
+    /// "bulto · lista $86.000" no dice si son 100 vasos o 1.250, que es justo lo que hace falta
+    /// para saber si el precio pactado está bien. El pack ya trae la cantidad en su nombre.
+    /// No se toca CafePricingService.FormatoLabel porque esa la usan los PDFs y comprobantes.</summary>
+    private static string LabelFormato(CafeProducto p, string formato)
+    {
+        if (formato == CafePricingService.FORMATO_BULTO && p.UxB is int uxb && uxb > 0)
+            return $"bulto x {uxb}";
+        return CafePricingService.FormatoLabel(formato);
     }
 
     private static string NormFormato(string? f)
@@ -135,7 +147,7 @@ public class CafePreciosEspecialesController : ControllerBase
 
             res.Add(new PrecioEspecialDto(
                 f.Id, p.Id, p.Sku, p.Nombre, p.Marca,
-                f.Formato, CafePricingService.FormatoLabel(f.Formato),
+                f.Formato, LabelFormato(p, f.Formato),
                 f.Precio, Math.Round(f.Precio * iva, 2, MidpointRounding.AwayFromZero),
                 lista, Math.Round(lista * iva, 2, MidpointRounding.AwayFromZero),
                 difPct, lista > 0m && lista < f.Precio,
@@ -212,7 +224,7 @@ public class CafePreciosEspecialesController : ControllerBase
         var tipo = CafePricingService.ResolverTipo(cliente.Tipo);
         var formatosOk = FormatosDe(prod, tipo, settings).Select(f => f.Formato).ToHashSet();
         if (!formatosOk.Contains(formato))
-            return BadRequest(new { error = $"Este producto no se puede vender como '{CafePricingService.FormatoLabel(formato)}'" });
+            return BadRequest(new { error = $"Este producto no se puede vender como '{LabelFormato(prod, formato)}'" });
 
         // Si ya había un pacto para (cliente, producto, formato), se repisa en vez de duplicar.
         var fila = await _db.CafePreciosEspecialesCliente
