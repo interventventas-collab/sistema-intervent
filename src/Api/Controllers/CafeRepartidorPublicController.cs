@@ -99,10 +99,24 @@ public class CafeRepartidorPublicController : ControllerBase
         List<string> Donde, string Que, bool EsExtra);
     public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle, string Medio, bool EsNuevo);
     public record MiAvisoDto(DateTime Fecha, string Texto, string? Respuesta, DateTime? RespuestaAt);
+    /// <summary>
+    /// 08/09/2026 — Un renglón de la cuenta, igual que el que ve la oficina: los viajes y los pagos
+    /// mezclados en orden, con el saldo corriendo. Antes el celu los tenía en dos solapas separadas,
+    /// así que el repartidor veía "ya cobraste a cuenta $X" sin poder ver de dónde salía.
+    /// Hora/CargadoPor: cuándo y quién lo cargó. Las entregas del mapa no las carga una persona:
+    /// de esas van Desde/Hasta, entre qué horas se entregaron.
+    /// </summary>
+    public record MiMovDto(DateTime Fecha, string Que, List<string> Donde,
+        decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
+        DateTime? Hora, string? CargadoPor, DateTime? Desde, DateTime? Hasta);
+
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
         decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos,
         // 06/09/2026: el mismo resumen que ve el dueño — sin cobrar menos lo cobrado a cuenta.
-        decimal SinCobrar, DateTime? DesdeCuando, decimal ACuenta);
+        decimal SinCobrar, DateTime? DesdeCuando, decimal ACuenta,
+        // 08/09/2026: la cuenta unificada + el resumen del mes que corre.
+        List<MiMovDto>? Movimientos = null,
+        int EntregasMes = 0, decimal GanadoMes = 0, decimal PagadoMes = 0, decimal Arrastre = 0);
 
     /// <summary>Todo su historial: día por día lo que hizo, y todo lo que cobró.</summary>
     [HttpGet("mis-pedidos/{tokenRepartidor}/viajes/detalle")]
@@ -155,8 +169,9 @@ public class CafeRepartidorPublicController : ControllerBase
         foreach (var a in respSinLeer) a.RespuestaVistaAt = DateTime.UtcNow;
         if (respSinLeer.Count > 0) await _db.SaveChangesAsync();
 
-        var registros = await _db.ViajesRegistros.Where(r => r.EmpleadoId == emp.Id)
-            .SumAsync(r => (decimal?)((decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA)) ?? 0m;
+        // La lista completa (no sólo la suma): los cargados a mano también son renglones de la cuenta.
+        var regs = await _db.ViajesRegistros.Where(r => r.EmpleadoId == emp.Id).ToListAsync();
+        var registros = regs.Sum(r => (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA);
         var ganado = registros + ents.Sum(x => x.Tarifa);
         var cobrado = pagos.Sum(x => x.Importe);
 
@@ -165,12 +180,71 @@ public class CafeRepartidorPublicController : ControllerBase
         var sinCobrar = pend.Sum(x => x.Tarifa);
         var desdeCuando = pend.Count == 0 ? (DateTime?)null : pend.Min(x => x.Fecha);
 
+        // ── 08/09/2026: la cuenta unificada, igual que la de la oficina ──
+        // Viajes y pagos en una sola lista, en orden, con el saldo corriendo. Se arma sobre TODA la
+        // historia (si no, el saldo de cada renglón no cerraría con el total de arriba).
+        var filas = new List<(DateTime fecha, int orden, string que, List<string> donde, decimal suma,
+            decimal pago, bool esPago, bool esExtra, DateTime? hora, string? quien,
+            DateTime? desde, DateTime? hasta)>();
+
+        foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
+        {
+            // En el celu entran pocos nombres por renglón: tres y "+N más", como en la oficina.
+            var todos = g.OrderBy(x => x.Id)
+                .Select(x => !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
+                       : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion! : "entrega"))
+                .ToList();
+            var muestra = todos.Take(3).ToList();
+            if (todos.Count > muestra.Count) muestra.Add($"+{todos.Count - muestra.Count} más");
+            filas.Add((g.Key, 0, $"{g.Count()} entrega{(g.Count() == 1 ? "" : "s")}",
+                muestra,
+                g.Sum(x => x.Tarifa), 0m, false, false,
+                null, null, g.Min(x => x.EntregadoAt), g.Max(x => x.EntregadoAt)));
+        }
+
+        foreach (var g in ents.Where(x => x.StopId == null).GroupBy(x => new { x.Fecha, Det = x.Detalle ?? "Ajuste" }))
+            filas.Add((g.Key.Fecha, 1, g.Key.Det, new List<string>(), g.Sum(x => x.Tarifa), 0m, false, true,
+                g.Min(x => x.CreatedAt),
+                g.Select(x => x.CargadoPor).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)), null, null));
+
+        foreach (var r in regs)
+            filas.Add((r.Fecha, 1, $"{r.CantidadCABA + r.CantidadPCIA} viajes cargados a mano",
+                new List<string>(),
+                (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA, 0m, false, true,
+                r.UpdatedAt ?? r.CreatedAt, r.CargadoPor, null, null));
+
+        foreach (var p in pagos)
+            filas.Add((p.Fecha, 2, "Pago" + (string.IsNullOrWhiteSpace(p.Descripcion) ? "" : " · " + p.Descripcion),
+                new List<string>(), 0m, p.Importe, true, false, p.CreatedAt, p.CargadoPor, null, null));
+
+        var movimientos = new List<MiMovDto>(filas.Count);
+        decimal acum = 0m;
+        foreach (var f in filas.OrderBy(f => f.fecha).ThenBy(f => f.orden))
+        {
+            acum += f.suma - f.pago;
+            movimientos.Add(new MiMovDto(f.fecha, f.que, f.donde, f.suma, f.pago, acum,
+                f.esPago, f.esExtra, f.hora, f.quien, f.desde, f.hasta));
+        }
+        movimientos.Reverse();   // lo último arriba, como en la oficina
+
+        // Resumen del mes que corre. El arrastre es lo que venía debiéndose de meses anteriores:
+        // sin ese renglón la cuenta de arriba no cerraría a partir del 1 de octubre.
+        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;   // el server va en UTC
+        var inicioMes = new DateTime(hoyAr.Year, hoyAr.Month, 1);
+        var entregasMes = ents.Count(x => x.Fecha >= inicioMes && x.StopId != null)
+                        + regs.Where(r => r.Fecha >= inicioMes).Sum(r => r.CantidadCABA + r.CantidadPCIA);
+        var ganadoMes = ents.Where(x => x.Fecha >= inicioMes).Sum(x => x.Tarifa)
+                      + regs.Where(r => r.Fecha >= inicioMes)
+                            .Sum(r => (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA);
+        var pagadoMes = pagos.Where(p => p.Fecha >= inicioMes).Sum(p => p.Importe);
+
         return Ok(new MiCuentaDto(true, emp.TarifaViaje, ganado, cobrado, ganado - cobrado, dias,
             pagos.Select(p => new MiPagoDto(p.Fecha, p.Importe, p.Descripcion ?? "pago",
                 MedioEnCriollo(p.CajaId, tiposCaja, p.Descripcion),
                 sinVer.Any(x => x.Id == p.Id))).ToList(),
             avisos.Select(a => new MiAvisoDto(a.CreatedAt, a.Texto, a.Respuesta, a.RespuestaAt)).ToList(),
-            sinCobrar, desdeCuando, Math.Max(0m, sinCobrar - (ganado - cobrado))));
+            sinCobrar, desdeCuando, Math.Max(0m, sinCobrar - (ganado - cobrado)),
+            movimientos, entregasMes, ganadoMes, pagadoMes, (ganado - cobrado) - (ganadoMes - pagadoMes)));
     }
 
     /// <summary>"en efectivo", "por transferencia"... para que el repartidor sepa cómo le pagaron.</summary>
