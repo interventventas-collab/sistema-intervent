@@ -7440,3 +7440,19 @@ IF OBJECT_ID('Viajes_Entregas') IS NOT NULL
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_ViajesEntregas_EmpFecha')
     CREATE INDEX IX_ViajesEntregas_EmpFecha ON Viajes_Entregas(EmpleadoId, Fecha);
 GO
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 08/09/2026 — Quien cargo cada movimiento de viajes (OSMAR / GABRIEL / GERMAN).
+-- Sale del header X-Operator-Name, el mismo que usa la auditoria. Las entregas que
+-- cuenta el mapa quedan en NULL: esas no las carga una persona.
+-- ⚠ En PROD estos ALTER hay que correrlos a mano (init.sql solo corre en base nueva).
+-- ─────────────────────────────────────────────────────────────────────────────
+IF OBJECT_ID('Viajes_Pagos') IS NOT NULL AND COL_LENGTH('Viajes_Pagos','CargadoPor') IS NULL
+    ALTER TABLE Viajes_Pagos ADD CargadoPor NVARCHAR(100) NULL;
+GO
+IF OBJECT_ID('Viajes_Entregas') IS NOT NULL AND COL_LENGTH('Viajes_Entregas','CargadoPor') IS NULL
+    ALTER TABLE Viajes_Entregas ADD CargadoPor NVARCHAR(100) NULL;
+GO
+IF OBJECT_ID('Viajes_Registros') IS NOT NULL AND COL_LENGTH('Viajes_Registros','CargadoPor') IS NULL
+    ALTER TABLE Viajes_Registros ADD CargadoPor NVARCHAR(100) NULL;
+GO

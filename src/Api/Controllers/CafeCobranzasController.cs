@@ -1138,7 +1138,9 @@ public class CafeCobranzasController : ControllerBase
                 EmpleadoId = ficha.Id,
                 Fecha = fecha.Date,
                 Descripcion = $"Cobranza redirigida{deQuien}",
-                Importe = medio.Importe
+                Importe = medio.Importe,
+                // 08/09/2026: quien lo cargo, para que se vea en la cuenta del repartidor.
+                CargadoPor = QuienCarga()
             };
             _db.ViajesPagos.Add(pago);
             await _db.SaveChangesAsync();
@@ -1188,6 +1190,14 @@ public class CafeCobranzasController : ControllerBase
         await _db.SaveChangesAsync();
 
         return (null, pagoId, mov.Id);
+    }
+
+    /// <summary>Quién está cargando esto: el operador elegido en la pantalla (OSMAR / GABRIEL /
+    /// GERMÁN), que es lo mismo que guarda la auditoría. El login es "admin" para todos.</summary>
+    private string? QuienCarga()
+    {
+        var op = Request?.Headers["X-Operator-Name"].FirstOrDefault();
+        return string.IsNullOrWhiteSpace(op) ? User?.Identity?.Name : op.Trim();
     }
 
     /// <summary>Deshace la redirección: al empleado le vuelve a quedar la deuda.</summary>

@@ -88,6 +88,11 @@ public class ViajesRegistro
     [MaxLength(500)]
     public string? Anotaciones { get; set; }
 
+    /// <summary>08/09/2026: quién lo cargó. Si lo cargó el propio repartidor desde su celu va su
+    /// nombre; desde la oficina, el operador (OSMAR / GABRIEL / GERMÁN).</summary>
+    [MaxLength(100)]
+    public string? CargadoPor { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
@@ -125,6 +130,11 @@ public class ViajesPago
 
     /// <summary>Cuándo lo vio el repartidor en su celu. NULL = todavía no lo vio: se le avisa.</summary>
     public DateTime? VistoPorEmpleadoAt { get; set; }
+
+    /// <summary>08/09/2026: quién lo cargó (OSMAR / GABRIEL / GERMÁN), del header X-Operator-Name.
+    /// NULL en los pagos viejos, de antes de que se guardara.</summary>
+    [MaxLength(100)]
+    public string? CargadoPor { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
@@ -187,6 +197,11 @@ public class ViajesEntrega
     /// <summary>Pago (Viajes_Pagos.Id) con el que se liquido este viaje. NULL = todavia se le debe.
     /// Un viaje liquidado NO se borra ni se recalcula aunque cambie la parada de origen.</summary>
     public int? LiquidadoPagoId { get; set; }
+
+    /// <summary>08/09/2026: quién la cargó a mano. Las que cuenta el mapa quedan en NULL — esas no
+    /// las carga una persona.</summary>
+    [MaxLength(100)]
+    public string? CargadoPor { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

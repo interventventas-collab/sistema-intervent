@@ -174,6 +174,8 @@ public class ViajesController : ControllerBase
                 TarifaCABA = emp.TarifaCABA,
                 TarifaPCIA = emp.TarifaPCIA,
                 Anotaciones = string.IsNullOrWhiteSpace(req.Anotaciones) ? null : req.Anotaciones.Trim(),
+                // Lo carga el propio repartidor desde su celu, asi que el nombre es el de el.
+                CargadoPor = emp.Nombre,
                 CreatedAt = DateTime.UtcNow
             };
             _db.ViajesRegistros.Add(existente);
@@ -452,6 +454,7 @@ public class ViajesController : ControllerBase
             Descripcion = req.Descripcion.Trim(),
             Importe = req.Importe,
             CajaId = req.CajaId,
+            CargadoPor = QuienCarga(),
             CreatedAt = DateTime.UtcNow
         };
         _db.ViajesPagos.Add(p);
@@ -594,7 +597,7 @@ public class ViajesController : ControllerBase
             creados.Add(new ViajesEntrega
             {
                 EmpleadoId = id, Fecha = fecha, Tarifa = req.Importe.Value, Origen = "manual",
-                Detalle = req.Detalle!.Trim(), CreatedAt = DateTime.UtcNow
+                Detalle = req.Detalle!.Trim(), CargadoPor = QuienCarga(), CreatedAt = DateTime.UtcNow
             });
         }
         else
@@ -606,7 +609,7 @@ public class ViajesController : ControllerBase
                 creados.Add(new ViajesEntrega
                 {
                     EmpleadoId = id, Fecha = fecha, Tarifa = signo * emp.TarifaViaje, Origen = "manual",
-                    Detalle = req.Detalle!.Trim(), CreatedAt = DateTime.UtcNow
+                    Detalle = req.Detalle!.Trim(), CargadoPor = QuienCarga(), CreatedAt = DateTime.UtcNow
                 });
         }
         _db.ViajesEntregas.AddRange(creados);
@@ -682,6 +685,7 @@ public class ViajesController : ControllerBase
             Descripcion = desc,
             Importe = total,
             CajaId = total > 0 ? req.CajaId : null,   // un cierre de $0 no mueve ninguna caja
+            CargadoPor = QuienCarga(),
             CreatedAt = DateTime.UtcNow
         };
         _db.ViajesPagos.Add(pago);
@@ -698,6 +702,18 @@ public class ViajesController : ControllerBase
     // ============================================================
     // Helpers
     // ============================================================
+
+    /// <summary>
+    /// 08/09/2026 — Quién está cargando esto. El login es uno solo ("admin") para todos, así que el
+    /// nombre de verdad (OSMAR / GABRIEL / GERMÁN) viene en el header X-Operator-Name, el mismo que
+    /// usa la auditoría. Si no vino, cae al usuario del token.
+    /// </summary>
+    private string? QuienCarga()
+    {
+        var op = Request?.Headers["X-Operator-Name"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(op)) return op.Trim();
+        return User?.Identity?.Name;
+    }
 
     private static DateTime FechaArgentinaHoy() => DateTime.UtcNow.AddHours(-3).Date;
 
@@ -846,7 +862,12 @@ public class ViajesController : ControllerBase
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
         string Tipo, List<int> Ids, bool Liquidado,
         // Todos los clientes del día, para poder desplegar el renglón y verlos.
-        List<string> Items);
+        List<string> Items,
+        // 08/09/2026 — cuándo y quién. Hora = el momento en que se cargó (UTC, la pantalla la pasa
+        // a hora argentina). En las entregas del mapa no la carga nadie: van Desde/Hasta, que es
+        // entre qué horas se entregaron, y CargadoPor en null.
+        DateTime? Hora = null, string? CargadoPor = null,
+        DateTime? Desde = null, DateTime? Hasta = null);
 
     /// <summary>
     /// La cuenta con su total. Los totales son de TODA la historia, no de los días que se muestran:
@@ -868,7 +889,7 @@ public class ViajesController : ControllerBase
         // Un renglón por día para las entregas del mapa, y uno por cada cosa cargada a mano.
         var filas = new List<(DateTime fecha, int orden, string que, string? det, decimal suma,
             decimal pago, bool esPago, bool esExtra, string tipo, List<int> ids, bool liq,
-            List<string> items)>();
+            List<string> items, DateTime? hora, string? quien, DateTime? desde, DateTime? hasta)>();
 
         foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
         {
@@ -881,21 +902,27 @@ public class ViajesController : ControllerBase
             filas.Add((g.Key, 0, $"{g.Count()} entrega{(g.Count() == 1 ? "" : "s")}",
                 string.Join(" · ", quienes) + (resto > 0 ? $" · +{resto} más" : ""),
                 g.Sum(x => x.Tarifa), 0m, false, false, "entregas",
-                g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null), todos));
+                g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null), todos,
+                null, null,
+                g.Min(x => x.EntregadoAt), g.Max(x => x.EntregadoAt)));
         }
 
         foreach (var g in ents.Where(x => x.StopId == null).GroupBy(x => new { x.Fecha, Det = x.Detalle ?? "Ajuste" }))
             filas.Add((g.Key.Fecha, 1, g.Key.Det, null, g.Sum(x => x.Tarifa), 0m, false, true,
-                "extra", g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null), new List<string>()));
+                "extra", g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null), new List<string>(),
+                g.Min(x => x.CreatedAt), g.Select(x => x.CargadoPor).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
+                null, null));
 
         foreach (var r in regs)
             filas.Add((r.Fecha, 1, $"{r.CantidadCABA + r.CantidadPCIA} viajes cargados a mano", r.Anotaciones,
                 (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA, 0m, false, true,
-                "registro", new List<int> { r.Id }, false, new List<string>()));
+                "registro", new List<int> { r.Id }, false, new List<string>(),
+                r.UpdatedAt ?? r.CreatedAt, r.CargadoPor, null, null));
 
         foreach (var p in pagos)
             filas.Add((p.Fecha, 2, "Pago" + (string.IsNullOrWhiteSpace(p.Descripcion) ? "" : " · " + p.Descripcion),
-                null, 0m, p.Importe, true, false, "pago", new List<int> { p.Id }, false, new List<string>()));
+                null, 0m, p.Importe, true, false, "pago", new List<int> { p.Id }, false, new List<string>(),
+                p.CreatedAt, p.CargadoPor, null, null));
 
         // El saldo se calcula desde el principio de los tiempos, si no el número no cerraría.
         var orden = filas.OrderBy(f => f.fecha).ThenBy(f => f.orden).ToList();
@@ -905,7 +932,8 @@ public class ViajesController : ControllerBase
         {
             acum += f.suma - f.pago;
             salida.Add(new MovimientoCtaDto(f.fecha, f.que, f.det, f.suma, f.pago, acum,
-                f.esPago, f.esExtra, f.tipo, f.ids, f.liq, f.items));
+                f.esPago, f.esExtra, f.tipo, f.ids, f.liq, f.items,
+                f.hora, f.quien, f.desde, f.hasta));
         }
 
         var ganado = filas.Sum(f => f.suma);
