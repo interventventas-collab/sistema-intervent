@@ -83,8 +83,23 @@ public static class CafePricingService
 
     public static PrecioBreakdown CalcularPrecioBreakdown(
         CafeProducto producto, string formato, string tipoCliente, CafeSetting settings,
-        decimal descuentoPct = 0m, DateTime? fechaPara = null)
+        decimal descuentoPct = 0m, DateTime? fechaPara = null, decimal? precioEspecialCliente = null)
     {
+        // 2026-09-08: PRECIO ESPECIAL PACTADO CON EL CLIENTE (Cafe_PreciosEspecialesCliente).
+        // Si existe una fila para (este cliente, este producto, ESTE formato), ese numero es la
+        // lista y se salta TODO el motor: tipo de cliente, precio de bulto, OEM, fraccionamiento
+        // y redondeo de cafe. Decision explicita del usuario (08/09/2026): lo pactado manda
+        // siempre, aunque la lista general le quede mas barata.
+        // El descuento manual de linea se sigue aplicando arriba del pactado, igual que antes.
+        if (precioEspecialCliente is decimal esp && esp >= 0m)
+        {
+            var dEsp = Math.Max(0m, Math.Min(100m, descuentoPct));
+            var listaEsp = Math.Round(esp, 2, MidpointRounding.AwayFromZero);
+            return new PrecioBreakdown(
+                listaEsp, dEsp,
+                Math.Round(listaEsp * (1m - dEsp / 100m), 2, MidpointRounding.AwayFromZero));
+        }
+
         // Modelo UNIFICADO (post 2026-05-12): se eliminaron los descuentos automaticos por matriz.
         // Tanto CAFE como OTROS usan PrecioBar / PrecioOtro como precios directos:
         //   - Cliente BAR:  PrecioBar  (fallback PrecioOtro si BAR esta vacio)
@@ -239,8 +254,23 @@ public static class CafePricingService
     }
 
     /// <summary>Calcula el precio unitario final (compat con codigo existente).</summary>
-    public static decimal CalcularPrecioUnitario(CafeProducto producto, string formato, string tipoCliente, CafeSetting settings)
-        => CalcularPrecioBreakdown(producto, formato, tipoCliente, settings).PrecioFinal;
+    public static decimal CalcularPrecioUnitario(CafeProducto producto, string formato, string tipoCliente, CafeSetting settings, decimal? precioEspecialCliente = null)
+        => CalcularPrecioBreakdown(producto, formato, tipoCliente, settings, 0m, null, precioEspecialCliente).PrecioFinal;
+
+    /// <summary>Clave del diccionario de precios especiales por cliente: producto + formato.
+    /// El formato es parte del pacto ("VT120 x bulto"), asi que dos formatos del mismo producto
+    /// son dos precios distintos.</summary>
+    public static string ClavePrecioEspecial(int productoId, string? formato)
+        => $"{productoId}|{(formato ?? FORMATO_UNIT).Trim().ToUpperInvariant()}";
+
+    /// <summary>Busca el precio pactado para (producto, formato) en el diccionario del cliente.
+    /// Si el diccionario es null (venta sin cliente, o cliente sin pactos), devuelve null y el
+    /// motor calcula como siempre.</summary>
+    public static decimal? BuscarPrecioEspecial(Dictionary<string, decimal>? especiales, int productoId, string? formato)
+    {
+        if (especiales is null || especiales.Count == 0) return null;
+        return especiales.TryGetValue(ClavePrecioEspecial(productoId, formato), out var v) ? v : null;
+    }
 
     /// <summary>Subtotal de linea: cantidad × precioUnitFinal, redondeado.
     ///

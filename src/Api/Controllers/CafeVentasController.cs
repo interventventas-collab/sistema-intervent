@@ -1445,13 +1445,17 @@ public class CafeVentasController : ControllerBase
         var cliente = await _db.CafeClientes.FindAsync(clienteId);
         var tipo = CafePricingService.ResolverTipo(cliente?.Tipo);
         var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
+        // 2026-09-08: en "Mas comprados" tambien se muestra el precio PACTADO del cliente,
+        // asi el numero que ve el operador antes de agregar el item es el que va a cobrar.
+        var preciosEspeciales = await CargarPreciosEspecialesAsync(clienteId);
 
         var result = new List<CafeTopProductoClienteDto>();
         foreach (var g in filtered)
         {
             var p = productos.FirstOrDefault(x => x.Id == g.ProductoId);
             if (p is null) continue;
-            var precio = CafePricingService.CalcularPrecioUnitario(p, g.Formato, tipo, settings);
+            var precio = CafePricingService.CalcularPrecioUnitario(p, g.Formato, tipo, settings,
+                CafePricingService.BuscarPrecioEspecial(preciosEspeciales, p.Id, g.Formato));
             result.Add(new CafeTopProductoClienteDto(
                 p.Id, p.Sku, p.Nombre, p.Categoria, p.Marca,
                 g.Formato,
@@ -1538,7 +1542,7 @@ public class CafeVentasController : ControllerBase
         // 2026-06-18: si se está editando una venta, le pasamos su Id al cotizador para que
         // sume al stock disponible las cantidades que esa misma venta ya tiene reservadas
         // (evita falso "stock insuficiente" al editar/convertir-a-factura una cotización).
-        return Ok(await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings, req.EditandoVentaId, NormTipoComprobante(req.TipoComprobante)));
+        return Ok(await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings, req.EditandoVentaId, NormTipoComprobante(req.TipoComprobante), req.ClienteId));
     }
 
     /// <summary>
@@ -1557,7 +1561,7 @@ public class CafeVentasController : ControllerBase
         var tipo = await ResolverTipoAsync(req.ClienteId, req.ClienteTipoOverride);
 
         // Cotizamos para conseguir los items con precios calculados.
-        var cot = await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings);
+        var cot = await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings, null, null, req.ClienteId);
 
         // Resolver datos del cliente (para los snapshots).
         CafeCliente? cli = null;
@@ -1664,7 +1668,7 @@ public class CafeVentasController : ControllerBase
 
         // 2026-07-14: pasamos el tipo de comprobante para que un PRESUPUESTO (PRO) no se
         // bloquee por falta de stock (no descuenta). X y Facturas sí validan stock.
-        var cot = await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings, null, NormTipoComprobante(req.TipoComprobante));
+        var cot = await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings, null, NormTipoComprobante(req.TipoComprobante), req.ClienteId);
         if (!cot.TodoOk)
             return BadRequest(new { error = "No hay stock suficiente para alguno de los items. Revisá la cotización." });
 
@@ -3007,7 +3011,7 @@ public class CafeVentasController : ControllerBase
                 var tipo = v.ClienteTipoSnapshot ?? "OTRO";
                 var descuentoNuevo = req.Descuento ?? v.Descuento;
                 // 2026-07-14: un presupuesto (PRO) no valida stock al editar tampoco.
-                var cot = await CotizarInternoAsync(req.Items, tipo, descuentoNuevo, settings, null, NormTipoComprobante(v.TipoComprobante));
+                var cot = await CotizarInternoAsync(req.Items, tipo, descuentoNuevo, settings, null, NormTipoComprobante(v.TipoComprobante), v.ClienteId);
                 if (!cot.TodoOk)
                 {
                     await tx.RollbackAsync();
@@ -3289,9 +3293,28 @@ public class CafeVentasController : ControllerBase
         return dict;
     }
 
-    private async Task<CafeCotizadoDto> CotizarInternoAsync(List<CafeCotizarItemRequest> items, string tipo, decimal descuento, CafeSetting settings, int? editandoVentaId = null, string? tipoComprobante = null)
+    /// <summary>2026-09-08 — Precios pactados con este cliente (Cafe_PreciosEspecialesCliente),
+    /// indexados por producto+formato. Si el cliente no tiene ninguno (el caso normal), devuelve
+    /// null y el motor de precios calcula exactamente como antes.</summary>
+    private async Task<Dictionary<string, decimal>?> CargarPreciosEspecialesAsync(int? clienteId)
+    {
+        if (!clienteId.HasValue || clienteId.Value <= 0) return null;
+        var filas = await _db.CafePreciosEspecialesCliente.AsNoTracking()
+            .Where(x => x.ClienteId == clienteId.Value && x.IsActive)
+            .Select(x => new { x.ProductoId, x.Formato, x.Precio })
+            .ToListAsync();
+        if (filas.Count == 0) return null;
+        var dict = new Dictionary<string, decimal>();
+        foreach (var f in filas)
+            dict[CafePricingService.ClavePrecioEspecial(f.ProductoId, f.Formato)] = f.Precio;
+        return dict;
+    }
+
+    private async Task<CafeCotizadoDto> CotizarInternoAsync(List<CafeCotizarItemRequest> items, string tipo, decimal descuento, CafeSetting settings, int? editandoVentaId = null, string? tipoComprobante = null, int? clienteId = null)
     {
         var cotizadoItems = new List<CafeCotizadoItemDto>();
+        // 2026-09-08: precios pactados del cliente. Pisan el catalogo linea por linea.
+        var preciosEspeciales = await CargarPreciosEspecialesAsync(clienteId);
         decimal subtotal = 0m, costoTotal = 0m;
         bool todoOk = true;
 
@@ -3559,7 +3582,10 @@ public class CafeVentasController : ControllerBase
             // Descuento de linea: solo el manual del request. Sin matriz automatica.
             var descPct = descPctManual;
 
-            var breakdown = CafePricingService.CalcularPrecioBreakdown(prod, it.Formato, tipo, settings, descPct);
+            // 2026-09-08: si hay un precio PACTADO con este cliente para este producto+formato,
+            // ese numero pisa el catalogo (lo pactado manda, aunque la lista quede mas barata).
+            var precioPactado = CafePricingService.BuscarPrecioEspecial(preciosEspeciales, prod.Id, it.Formato);
+            var breakdown = CafePricingService.CalcularPrecioBreakdown(prod, it.Formato, tipo, settings, descPct, null, precioPactado);
             var precioUnit = breakdown.PrecioLista;     // lista (sin descuento) — lo que se ve en P. Unitario
             var precioFinal = breakdown.PrecioFinal;
             // Override manual: si el operador pisó el precio a mano, ese valor pasa a ser la "lista"
@@ -3629,7 +3655,10 @@ public class CafeVentasController : ControllerBase
                 stockOk, aviso,
                 NormMolienda(it.Molienda), it.EsDoyPack && esCafe,
                 descPct,
-                it.EsEnvasePlateado && esCafe && !it.EsDoyPack));
+                it.EsEnvasePlateado && esCafe && !it.EsDoyPack,
+                // 2026-09-08: solo se marca como "precio pactado" si el pactado es el que
+                // realmente manda. Si el operador ademas piso el precio a mano, gana la mano.
+                EsPrecioEspecial: precioPactado.HasValue && !it.PrecioUnitarioOverride.HasValue));
 
             subtotal += subtotalLinea;
             costoTotal += costoUnit * it.Cantidad;

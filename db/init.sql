@@ -7487,3 +7487,37 @@ BEGIN
     );
 END
 GO
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 08/09/2026 — PRECIOS ESPECIALES POR CLIENTE.
+-- Osmar: "algunos clientes tienen un precio pactado en productos puntuales, por ejemplo
+-- Nucleo si compra vasos VT120 x bulto".
+-- Hasta hoy el precio salia SOLO de (tipo de cliente x formato), y lo unico que se podia
+-- hacer era pisarlo a mano en cada venta — y acordarse la proxima vez.
+--   Una fila = un cliente + un producto + un FORMATO puntual (UNIT / BULTO / PACK_100 /
+--   1KG / MEDIO / CUARTO). El formato importa: el pacto es "x bulto", no "el producto".
+--   Precio: SIN IVA, igual que Cafe_Productos.PrecioBar / PrecioOtro.
+--   Decision del usuario: el pactado MANDA siempre, aunque la lista quede mas barata.
+-- ⚠ En PROD esta tabla hay que crearla a mano.
+-- ─────────────────────────────────────────────────────────────────────────────
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_PreciosEspecialesCliente')
+BEGIN
+    CREATE TABLE Cafe_PreciosEspecialesCliente (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ClienteId INT NOT NULL,
+        ProductoId INT NOT NULL,
+        Formato NVARCHAR(20) NOT NULL,
+        Precio DECIMAL(18,2) NOT NULL,
+        Notas NVARCHAR(300) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CreatedBy NVARCHAR(100) NULL,
+        CONSTRAINT FK_CafePreciosEsp_Cliente FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CafePreciosEsp_Producto FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_CafePreciosEsp_Cliente ON Cafe_PreciosEspecialesCliente (ClienteId) WHERE IsActive = 1;
+    CREATE UNIQUE INDEX UX_CafePreciosEsp_Cli_Prod_Fmt
+        ON Cafe_PreciosEspecialesCliente (ClienteId, ProductoId, Formato) WHERE IsActive = 1;
+END
+GO

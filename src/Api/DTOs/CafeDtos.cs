@@ -602,7 +602,11 @@ public record CafeCotizadoItemDto(
     decimal DescuentoPct,
     bool EsEnvasePlateado = false,
     int? KitId = null,           // 2026-06-01: si != null, este item es un Kit (producto compuesto)
-    string? KitSku = null);       // SKU del kit para mostrar en la grilla
+    string? KitSku = null,        // SKU del kit para mostrar en la grilla
+    // 2026-09-08: true si el precio de esta linea sale de un precio PACTADO con el cliente
+    // (Cafe_PreciosEspecialesCliente) y no del catalogo. La venta lo muestra con un cartelito
+    // para que el que carga entienda por que el numero es distinto al de la lista.
+    bool EsPrecioEspecial = false);
 
 public record CafeCotizadoDto(
     string ClienteTipoUsado,  // BAR | OTRO
