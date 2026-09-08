@@ -780,11 +780,24 @@
                                                 </label>
                                             }
                                         </div>
+                                        @* 2026-09-08: si el producto sólo se vende suelto, el operador no encuentra
+                                           "bulto" y no entiende por qué. El motivo es de la ficha del PRODUCTO, no de acá. *@
+                                        @if (peOpciones.Formatos.Count == 1 && peOpciones.Formatos[0].Formato == "UNIT")
+                                        {
+                                            <p style="font-size: 0.72rem; color: #6b7280; margin: 0.3rem 0 0;">
+                                                Hoy este producto sólo se vende suelto. Para pactarle un precio x bulto o x pack,
+                                                primero cargale en Productos las unidades por bulto y el precio del bulto.
+                                            </p>
+                                        }
                                         <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-top: 0.55rem;">
                                             <input class="form-input" type="text" @bind="peNuevoPrecioStr" @bind:event="oninput"
                                                    style="width: 150px; font-size: 0.85rem; padding: 0.35rem 0.55rem;" placeholder="Precio sin IVA" />
                                             <input class="form-input" type="text" @bind="peNuevoNotas" @bind:event="oninput"
                                                    style="flex: 1; min-width: 180px; font-size: 0.85rem; padding: 0.35rem 0.55rem;" placeholder="Por qué se pactó (opcional)" />
+                                            @if (PeEchoPrecio(peNuevoPrecioStr) is string echoNuevo)
+                                            {
+                                                <span style="font-size: 0.76rem; color: #374151;">queda en @echoNuevo</span>
+                                            }
                                             <button type="button" class="btn btn-primary" style="font-size: 0.76rem; padding: 0.35rem 0.7rem;"
                                                     @onclick="GuardarPrecioEspecialNuevo" disabled="@peGuardando">@(peGuardando ? "Guardando…" : "Guardar pacto")</button>
                                             <button type="button" class="btn btn-secondary" style="font-size: 0.76rem; padding: 0.35rem 0.7rem;"
@@ -1513,20 +1526,48 @@
     private string? peFormato;
     private string peNuevoPrecioStr = "", peNuevoNotas = "";
 
-    /// <summary>Lee un importe tipeado a mano aceptando tanto coma como punto decimal.
-    /// Con type="number" un "1.234,50" queda VACÍO, por eso el campo es texto.</summary>
+    /// <summary>Lee un importe tipeado a mano, con la convención argentina: el punto es
+    /// separador de MILES y la coma es el decimal. Con type="number" un "1.234,50" queda
+    /// VACÍO, por eso el campo es texto.
+    ///
+    /// 2026-09-08: acá se escriben precios de bulto (decenas de miles), así que lo que se
+    /// tipea es "33.500". Leerlo como 33,50 sería un error de mil veces y silencioso —
+    /// probado: pasó en la primera prueba de esta pantalla. Regla: si sólo hay puntos y el
+    /// último grupo tiene exactamente 3 dígitos, son miles ("33.500" → 33500). Si tiene 1 o 2
+    /// dígitos, es un decimal escrito con punto ("91.96" → 91,96).</summary>
     private static decimal? PeParseImporte(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var t = raw.Trim().Replace(" ", "").Replace("$", "");
-        // Si tiene los dos separadores, el ultimo es el decimal y el otro es de miles.
         if (t.Contains(',') && t.Contains('.'))
+        {
+            // Con los dos separadores, el último es el decimal y el otro es de miles.
             t = t.LastIndexOf(',') > t.LastIndexOf('.')
                 ? t.Replace(".", "").Replace(',', '.')
                 : t.Replace(",", "");
-        else t = t.Replace(',', '.');
+        }
+        else if (t.Contains('.') && !t.Contains(','))
+        {
+            var ultimo = t.Substring(t.LastIndexOf('.') + 1);
+            bool sonMiles = t.IndexOf('.') > 0
+                            && ultimo.Length == 3 && ultimo.All(char.IsDigit)
+                            && (t.Count(c => c == '.') > 1 || t.IndexOf('.') <= 3);
+            if (sonMiles) t = t.Replace(".", "");
+        }
+        else
+        {
+            t = t.Replace(',', '.');
+        }
         return decimal.TryParse(t, System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
+
+    /// <summary>Cómo va a quedar guardado lo que está tipeando. Se muestra debajo del campo
+    /// para que nadie guarde $33,50 creyendo que puso $33.500.</summary>
+    private string? PeEchoPrecio(string? raw)
+    {
+        var v = PeParseImporte(raw);
+        return v.HasValue && v.Value > 0 ? PeMoneda(v.Value) : null;
     }
 
     private static string PeMoneda(decimal v)
