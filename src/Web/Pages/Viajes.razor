@@ -106,6 +106,11 @@
     .vj-mov th.n, .vj-mov td.n { width:150px; }
     .vj-mov td.dia { width:110px; }
     .vj-mov tbody tr:hover td, .vj-mov tr:hover td { background:#eef2ff !important; }
+    /* 08/09/2026: qué contestó el repartidor sobre ese pago. El rojo es el único que es alarma. */
+    .vj-mov .vb { font-size:0.76rem; margin-top:0.15rem; }
+    .vj-mov .vb.ok { color:#6b7280; }
+    .vj-mov .vb.pend { color:#9ca3af; }
+    .vj-mov .vb.mal { color:#b91c1c; font-weight:700; }
     .vj-mov th { text-align:left; font-size:0.71rem; text-transform:uppercase; letter-spacing:0.05em;
         color:#9ca3af; padding:0.4rem 0.6rem; border-bottom:1px solid #e5e7eb; font-weight:700; }
     .vj-mov td { padding:0.6rem; border-bottom:1px solid #f5f5f5; font-size:0.88rem; vertical-align:top; }
@@ -562,6 +567,24 @@
                                             @if (!string.IsNullOrWhiteSpace(cuando))
                                             {
                                                 <div class="quien">@cuando</div>
+                                            }
+                                            @* 08/09/2026: qué contestó el repartidor sobre este pago.
+                                               "Sin responder" es el que hay que mirar: significa que
+                                               todavía no dijo si esa plata le llegó. *@
+                                            @if (m.EsPago && m.PideConfirmacion)
+                                            {
+                                                @if (m.Confirmado == true)
+                                                {
+                                                    <div class="vb ok">✅ Él confirmó que la recibió@(m.ConfirmadoAt is { } c1 ? $" · {c1.ToArTime():dd/MM HH:mm}" : "")</div>
+                                                }
+                                                else if (m.Confirmado == false)
+                                                {
+                                                    <div class="vb mal">❌ Él dice que NO le llegó@(m.ConfirmadoAt is { } c2 ? $" · {c2.ToArTime():dd/MM HH:mm}" : "")</div>
+                                                }
+                                                else
+                                                {
+                                                    <div class="vb pend">⏳ Sin responder todavía</div>
+                                                }
                                             }
                                         </td>
                                         <td class="n">@(m.Suma > 0 ? $"${Plata(m.Suma)}" : "")</td>
@@ -1064,7 +1087,8 @@
         // 08/09/2026: cuándo se cargó y quién. Las entregas del mapa no las carga nadie: de esas
         // viene entre qué horas se entregaron.
         DateTime? Hora = null, string? CargadoPor = null,
-        DateTime? Desde = null, DateTime? Hasta = null);
+        DateTime? Desde = null, DateTime? Hasta = null,
+        bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null);
     public record CuentaDto(decimal Ganado, decimal Pagado, decimal Saldo, List<MovimientoCtaDto> Movimientos);
     private CuentaDto? cuenta;
     private List<MovimientoCtaDto>? movimientos => cuenta?.Movimientos;
