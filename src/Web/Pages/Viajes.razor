@@ -568,7 +568,9 @@
                                         <td class="n pago">@(m.Pago != 0 ? $"− ${Plata(m.Pago)}" : "")</td>
                                         @* El saldo DESPUÉS de este movimiento. Con la lista al revés,
                                            el de arriba es el de hoy y para abajo se va para atrás. *@
-                                        <td class="n quedo">$@Plata(m.Saldo)</td>
+                                        @* Saldo al revés (le habíamos pagado más de lo ganado): "$-100.000"
+                                           no se entiende, se dice con palabras. *@
+                                        <td class="n quedo">@(m.Saldo >= 0 ? "" : "cobró de más ")$@Plata(Math.Abs(m.Saldo))</td>
                                         <td style="width:34px;">
                                             @* Las entregas del mapa no se borran acá: se corrigen en el mapa.
                                                Lo cargado a mano y los pagos sí, salvo que ya estén liquidados. *@
