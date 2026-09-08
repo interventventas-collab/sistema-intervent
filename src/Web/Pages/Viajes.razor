@@ -427,21 +427,13 @@
                         }
                         @* 05/09/2026: los datos del día en recuadritos, para leerlos de un vistazo.
                            El desglose de dónde sale el número vive abajo, en los movimientos. *@
+                        @* 08/09/2026: antes acá decía "Sin liquidar" y "Ya le pagaste a cuenta", que
+                           son pedazos de la cuenta y no se entendían de un vistazo. Ahora va lo que
+                           él quiere ver: cómo viene el mes. La cuenta completa está abajo. *@
                         <div class="vj-cintas">
                             <div class="vj-cinta">Hoy <b>@e.ViajesHoy @(e.ViajesHoy == 1 ? "entrega" : "entregas")</b></div>
-                            @if (e.ViajesPendientes > 0)
-                            {
-                                <div class="vj-cinta">Sin liquidar <b>$@Plata(e.ImportePendiente)</b></div>
-                                @if (e.ImportePendiente != APagar(e))
-                                {
-                                    <div class="vj-cinta">Ya le pagaste <b>$@Plata(e.ImportePendiente - APagar(e))</b></div>
-                                }
-                                <div class="vj-cinta">Desde <b>@e.PendienteDesde!.Value.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</b></div>
-                            }
-                            else
-                            {
-                                <div class="vj-cinta">Sin viajes <b>pendientes de pago</b></div>
-                            }
+                            <div class="vj-cinta">@MesEnCurso() <b>@e.TotalViajesMes @(e.TotalViajesMes == 1 ? "entrega" : "entregas")</b></div>
+                            @* La plata del mes no se repite acá: está abajo, en la cuenta que suma. *@
                         </div>
                     }
                     else
@@ -505,14 +497,25 @@
                             @* 06/09/2026: la cuenta se hace sobre lo que falta liquidar, no sobre
                                todo lo que gano desde siempre — ese numero no le decia nada y encima
                                chocaba con el "sin liquidar" de arriba. *@
+                            @* 08/09/2026: la cuenta del MES, que es como la mira él: lo que le sumó,
+                               lo que ya le pagó, y recién ahí el total. Lo que quedó debiendo de
+                               meses anteriores va en su propio renglón para que la suma cierre. *@
+                            var arrastre = e.SaldoAcumulado - e.SaldoMes;
                             <div class="vj-cuenta">
                                 <div class="ren">
-                                    <span>Sin liquidar@(e.PendienteDesde is { } dsd ? $" desde el {dsd:dd/MM}" : "")</span>
-                                    <b>$@Plata(e.ImportePendiente)</b>
+                                    <span>@MesEnCurso() · @e.TotalViajesMes @(e.TotalViajesMes == 1 ? "entrega" : "entregas")</span>
+                                    <b>$@Plata(e.TotalACobrarMes)</b>
                                 </div>
-                                @if (e.ImportePendiente != APagar(e))
+                                @if (e.TotalPagadoMes != 0)
                                 {
-                                    <div class="ren"><span>Ya le pagaste a cuenta</span><b class="menos">− $@Plata(e.ImportePendiente - APagar(e))</b></div>
+                                    <div class="ren"><span>Le pagaste este mes</span><b class="menos">− $@Plata(e.TotalPagadoMes)</b></div>
+                                }
+                                @if (arrastre != 0)
+                                {
+                                    <div class="ren">
+                                        <span>@(arrastre > 0 ? "Venía debiendo de antes" : "Le habías pagado de más antes")</span>
+                                        <b class="@(arrastre < 0 ? "menos" : "")">@(arrastre < 0 ? "− " : "")$@Plata(Math.Abs(arrastre))</b>
+                                    </div>
                                 }
                                 <div class="ren final"><span>Le debemos</span><b>$@Plata(e.SaldoAcumulado)</b></div>
                             </div>
@@ -552,6 +555,13 @@
                                             else if (!string.IsNullOrWhiteSpace(m.Detalle))
                                             {
                                                 <div class="quien">@m.Detalle</div>
+                                            }
+                                            @* 08/09/2026: a qué hora y quién lo cargó. Pedido de él:
+                                               "que cada movimiento diga también hora y quién lo cargó". *@
+                                            @{ var cuando = CuandoYQuien(m); }
+                                            @if (!string.IsNullOrWhiteSpace(cuando))
+                                            {
+                                                <div class="quien">@cuando</div>
                                             }
                                         </td>
                                         <td class="n">@(m.Suma > 0 ? $"${Plata(m.Suma)}" : "")</td>
@@ -809,6 +819,32 @@
     /// los viajes sin cerrar (si ya se le adelanto plata, esos dos numeros no coinciden).</summary>
     private static decimal APagar(AdminEmpleadoDto e) => e.SaldoAcumulado > 0 ? e.SaldoAcumulado : 0m;
 
+    /// <summary>El mes que corre, con mayúscula: "Septiembre". En hora argentina.</summary>
+    private static string MesEnCurso()
+    {
+        var m = DateTime.UtcNow.ToArTime().ToString("MMMM", new System.Globalization.CultureInfo("es-AR"));
+        return char.ToUpper(m[0]) + m[1..];
+    }
+
+    /// <summary>
+    /// 08/09/2026 — cuándo y quién, para cada renglón de la cuenta. Las entregas del mapa no las
+    /// carga nadie: de esas mostramos entre qué horas se entregaron.
+    /// </summary>
+    private static string CuandoYQuien(MovimientoCtaDto m)
+    {
+        if (m.Desde is { } d && m.Hasta is { } h)
+        {
+            var de = d.ToArTime(); var a = h.ToArTime();
+            return de.ToString("HH:mm") == a.ToString("HH:mm")
+                ? $"entregadas {de:HH:mm}"
+                : $"entregadas {de:HH:mm} → {a:HH:mm}";
+        }
+        var partes = new List<string>();
+        if (m.Hora is { } hr) partes.Add(hr.ToArTime().ToString("HH:mm"));
+        if (!string.IsNullOrWhiteSpace(m.CargadoPor)) partes.Add($"lo cargó {m.CargadoPor}");
+        return string.Join(" · ", partes);
+    }
+
     /// <summary>Las localidades/clientes del día, cortito, para poder controlar de un vistazo.</summary>
     private static string Resumir(AdminDiaDto d)
     {
@@ -1022,7 +1058,11 @@
 
     public record MovimientoCtaDto(DateTime Fecha, string Que, string? Detalle,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
-        string Tipo, List<int> Ids, bool Liquidado, List<string> Items);
+        string Tipo, List<int> Ids, bool Liquidado, List<string> Items,
+        // 08/09/2026: cuándo se cargó y quién. Las entregas del mapa no las carga nadie: de esas
+        // viene entre qué horas se entregaron.
+        DateTime? Hora = null, string? CargadoPor = null,
+        DateTime? Desde = null, DateTime? Hasta = null);
     public record CuentaDto(decimal Ganado, decimal Pagado, decimal Saldo, List<MovimientoCtaDto> Movimientos);
     private CuentaDto? cuenta;
     private List<MovimientoCtaDto>? movimientos => cuenta?.Movimientos;
