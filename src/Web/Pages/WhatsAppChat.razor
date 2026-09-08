@@ -355,6 +355,17 @@
                         <button class="wa-conv-pinbtn @(c.Fijado ? "on" : "")"
                                 title="@(c.Fijado ? "Sacar de los fijados" : $"Fijar arriba de todo (hasta {MaxFijados})")"
                                 @onclick:stopPropagation="true" @onclick="() => FijarConv(c)">📌</button>
+                        @* 2026-09-08: archivar SIN abrir el chat. Es lo más rápido para vaciar la bandeja. *@
+                        @if (c.Archivado)
+                        {
+                            <button class="wa-conv-archbtn on" title="Traer este chat de vuelta al listado"
+                                    @onclick:stopPropagation="true" @onclick="() => DesarchivarDesdeLista(c)">📤</button>
+                        }
+                        else
+                        {
+                            <button class="wa-conv-archbtn" title="Archivar este chat sin abrirlo. Vuelve solo si el cliente escribe."
+                                    @onclick:stopPropagation="true" @onclick="() => ArchivarDesdeLista(c)">🗂️</button>
+                        }
                     </div>
                 }
             }
@@ -711,7 +722,10 @@
                             <button class="wa-hdr-pill"
                                     @onclick="@(() => { showEstadoMenu = !showEstadoMenu; showPasarMenu = false; })"
                                     title="Estado de esta conversación — tocá para cambiarlo">
-                                <span class="wa-hdr-dot" style="background:@EstadoColor(_estHdr);"></span>@EstadoLabel(_estHdr)<span class="wa-hdr-pill-caret">▾</span>
+                                @* 2026-09-08: el cartelito ahora se LLAMA "Estado" — antes decía solo
+                                   "Nueva" y no se entendía de qué era ese desplegable, sobre todo desde
+                                   que archivar tiene botón propio al lado. Se conserva cuál está puesto. *@
+                                <span class="wa-hdr-dot" style="background:@EstadoColor(_estHdr);"></span><span class="wa-hdr-pill-tit">Estado</span> · @EstadoLabel(_estHdr)<span class="wa-hdr-pill-caret">▾</span>
                             </button>
                             @if (showEstadoMenu)
                             {
@@ -756,6 +770,18 @@
                                 </div>
                             }
                         </span>
+                        @* 2026-09-08: ARCHIVAR con botón propio, un solo toque. Antes había que abrir
+                           el desplegable de Estado y buscarlo ahí adentro. *@
+                        @if (_estHdr == "archivado")
+                        {
+                            <button class="wa-hdr-arch on" @onclick="@(() => ArchivarConvActual(false))"
+                                    title="Traer este chat de vuelta al listado">📤 Desarchivar</button>
+                        }
+                        else
+                        {
+                            <button class="wa-hdr-arch" @onclick="@(() => ArchivarConvActual(true))"
+                                    title="Sacar este chat del listado y pasar al siguiente. Vuelve solo si el cliente escribe.">🗂️ Archivar</button>
+                        }
                         @* 2026-08-20: lupa para buscar una palabra DENTRO de esta charla. *@
                         <button class="wa-busc-lupa-btn @(buscadorAbierto ? "activo" : "")" @onclick="ToggleBuscador"
                                 title="Buscar una palabra en esta charla">🔍</button>
@@ -2753,6 +2779,18 @@
 </div>
 </div> @* fin .wa-fs — pantalla completa *@
 
+@* 2026-09-08: barrita de DESHACER. Con el botón de archivar a un toque se va a comer alguno
+   por error yendo rápido; sin esto habría que ir a buscarlo a la vista "Archivados".
+   Se va sola a los 8 segundos. *@
+@if (undoNumero is not null)
+{
+    <div class="wa-undo">
+        <span>🗂️ Archivaste <b>@undoNombre</b></span>
+        <button class="wa-undo-btn" @onclick="DeshacerArchivado">Deshacer</button>
+        <button class="wa-undo-x" @onclick="CerrarUndo" title="Cerrar este aviso">✕</button>
+    </div>
+}
+
 @* 2026-08-03: ventana FLOTANTE (se puede mover) con el texto completo del pedido antes de crear la venta.
    No lleva fondo oscuro a propósito: querés seguir viendo el chat mientras la movés y comparás. *@
 @if (showPedidoFloat)
@@ -3384,6 +3422,30 @@
     .wa-conv-item:hover .wa-conv-pinbtn { opacity: 0.75; }
     .wa-conv-pinbtn:hover { background: #fef3c7; opacity: 1 !important; filter: none; }
     .wa-conv-pinbtn.on { opacity: 1; filter: none; }
+    /* 2026-09-08: archivar desde el renglón. Mismo comportamiento que el 📌: invisible hasta
+       que pasás el mouse por la fila, para no llenar la lista de iconos. */
+    .wa-conv-archbtn { flex: 0 0 auto; align-self: center; background: transparent; border: none; cursor: pointer; font-size: 1rem; opacity: 0; padding: 0.15rem 0.3rem; border-radius: 6px; filter: grayscale(1); }
+    .wa-conv-item:hover .wa-conv-archbtn { opacity: 0.75; }
+    .wa-conv-archbtn:hover { background: #e0e7ff; opacity: 1 !important; filter: none; }
+    .wa-conv-archbtn.on { opacity: 1; filter: none; }
+
+    /* Botón Archivar del encabezado del chat. Va con el mismo lenguaje que los cartelitos de
+       Estado/Responsable (borde fino, sin relleno de color): no es una alarma, es una acción. */
+    .wa-hdr-arch { flex: 0 0 auto; background: #fff; border: 1px solid #d1d5db; color: #374151; border-radius: 6px; padding: 0.16rem 0.5rem; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .wa-hdr-arch:hover { background: #f3f4f6; border-color: #9ca3af; }
+    .wa-hdr-arch.on { border-color: #1d4ed8; color: #1d4ed8; }
+    /* El "Estado" del cartelito va más apagado que el valor: lo que importa leer es cuál está puesto. */
+    .wa-hdr-pill-tit { color: #9ca3af; font-weight: 600; }
+
+    /* Barrita de deshacer: abajo a la izquierda, arriba de todo. */
+    .wa-undo { position: fixed; left: 1rem; bottom: 1rem; z-index: 9600; display: flex; align-items: center; gap: 0.6rem;
+               background: #111827; color: #f9fafb; border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.85rem;
+               box-shadow: 0 4px 14px rgba(0,0,0,0.25); max-width: 420px; }
+    .wa-undo b { font-weight: 700; }
+    .wa-undo-btn { background: transparent; border: 1px solid #6b7280; color: #f9fafb; border-radius: 6px; padding: 0.15rem 0.55rem; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+    .wa-undo-btn:hover { background: #374151; }
+    .wa-undo-x { background: transparent; border: none; color: #9ca3af; font-size: 0.9rem; cursor: pointer; padding: 0 0.15rem; }
+    .wa-undo-x:hover { color: #f9fafb; }
     .wa-rolmenu-backdrop { position: fixed; inset: 0; z-index: 1090; background: rgba(0,0,0,0.15); }
     .wa-rolmenu { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 1100; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,0.22); padding: 0.6rem; min-width: 235px; }
     .wa-rolmenu-title { font-size: 0.85rem; color: #334155; padding: 0.3rem 0.5rem 0.5rem; border-bottom: 1px solid #f1f5f9; margin-bottom: 0.35rem; }
@@ -9498,16 +9560,103 @@
         StateHasChanged();
     }
 
+    // ═══ 2026-09-08: ARCHIVAR RÁPIDO ═══
+    // Osmar: *"necesito que el botón archivar esté más a la vista, que sea más rápido archivar"*.
+    // Antes vivía adentro del desplegable de Estado, mezclado con Nueva/En curso/…, que son otra
+    // cosa: archivar no es un estado de la charla, es sacarla de la vista. Ahora hay botón propio
+    // en el encabezado Y en cada renglón de la lista (sin abrir el chat), salta solo al siguiente,
+    // y queda un "deshacer" por si se le fue la mano yendo rápido.
+    // La opción vieja del desplegable NO se sacó: sigue estando para quien la tenga en el dedo.
+
+    // Lo último que se archivó, para poder volver atrás. Se borra solo a los 8 segundos.
+    string? undoNumero, undoLinea, undoNombre;
+    int undoToken;
+
+    void MostrarUndo(string numero, string? linea, string? nombre)
+    {
+        undoNumero = numero; undoLinea = linea;
+        undoNombre = string.IsNullOrWhiteSpace(nombre) ? numero : nombre;
+        var mio = ++undoToken;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(8000);
+            if (undoToken != mio) return;   // se archivó otra cosa mientras tanto
+            undoNumero = null; undoLinea = null; undoNombre = null;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    void CerrarUndo() { undoToken++; undoNumero = null; undoLinea = null; undoNombre = null; }
+
+    // Desarchivar desde el renglón (aparece en la vista "🗂️ Archivados").
+    async Task DesarchivarDesdeLista(ApiClient.TwConvDto c)
+    {
+        if (await Api.ArchivarConversacionAsync(c.Numero, c.Linea, false))
+        {
+            CerrarUndo();
+            Toast.Success("Chat de vuelta en el listado 📤");
+            await LoadConversaciones(silent: true);
+        }
+        else Toast.Error("No se pudo traer el chat de vuelta");
+    }
+
+    async Task DeshacerArchivado()
+    {
+        if (undoNumero is null) return;
+        var num = undoNumero; var lin = undoLinea;
+        CerrarUndo();
+        if (await Api.ArchivarConversacionAsync(num, lin, false))
+        {
+            Toast.Success("Listo, el chat volvió al listado 📤");
+            await LoadConversaciones(silent: true);
+            await SelectConv(num, lin);
+        }
+        else Toast.Error("No se pudo traer el chat de vuelta");
+    }
+
+    // Archivar desde el RENGLÓN de la lista, sin abrir el chat. Es lo más rápido para vaciar
+    // la bandeja: no hace falta entrar a cada charla.
+    async Task ArchivarDesdeLista(ApiClient.TwConvDto c)
+    {
+        // Si justo es la que está abierta, se comporta igual que el botón del encabezado
+        // (avisa, deshace y salta a la siguiente).
+        if (c.Numero == selectedNumero && c.Linea == selectedLinea) { await ArchivarConvActual(true); return; }
+
+        if (await Api.ArchivarConversacionAsync(c.Numero, c.Linea, true))
+        {
+            MostrarUndo(c.Numero, c.Linea, c.NombrePerfil ?? PrettyNumero(c.Numero));
+            Toast.Success("Chat archivado 🗂️");
+            await LoadConversaciones(silent: true);
+        }
+        else Toast.Error("No se pudo archivar");
+    }
+
     // 2026-08-09: archivar/desarchivar la conversación abierta. archivar=true la saca del listado general
     // (vuelve sola si el cliente escribe de nuevo, o al buscarla). Compartido para todo el equipo.
     async Task ArchivarConvActual(bool archivar)
     {
         if (selectedNumero == null) return;
+
+        // 2026-09-08: quién sigue en la lista se calcula ANTES de archivar — después de recargar,
+        // la charla archivada ya no está y se pierde la referencia de dónde estábamos parados.
+        ApiClient.TwConvDto? siguiente = null;
+        if (archivar)
+        {
+            var lista = conversacionesFiltradas;
+            var idx = lista.FindIndex(x => x.Numero == selectedNumero && x.Linea == selectedLinea);
+            if (idx >= 0)
+                siguiente = idx + 1 < lista.Count ? lista[idx + 1] : (idx > 0 ? lista[idx - 1] : null);
+        }
+        var numArch = selectedNumero; var linArch = selectedLinea; var nomArch = SelectedConv()?.NombrePerfil ?? PrettyNumero(selectedNumero);
+
         var ok = await Api.ArchivarConversacionAsync(selectedNumero, selectedLinea, archivar);
         if (ok)
         {
+            if (archivar) MostrarUndo(numArch!, linArch, nomArch); else CerrarUndo();
             Toast.Success(archivar ? "Chat archivado 🗂️" : "Chat de vuelta en el listado 📤");
             await LoadConversaciones(silent: true);
+            // Saltar sola a la charla siguiente para poder archivar en cadena sin volver a la lista.
+            if (archivar && siguiente is not null) await SelectConv(siguiente.Numero, siguiente.Linea);
         }
         else Toast.Error("No se pudo archivar");
     }
