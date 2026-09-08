@@ -226,6 +226,18 @@
     .mp-chip.extra { background:#e0e7ff; color:#3730a3; }
     .mp-chip.nuevo { background:#dbeafe; color:#1d4ed8; }
     .mp-chip.mapa { background:#eef2ff; color:#4338ca; }
+    /* 08/09/2026: visto bueno del pago — botones grandes, que se aprieten con el dedo */
+    .mp-vb { display:flex; gap:0.4rem; margin-top:0.5rem; }
+    .mp-vb button { flex:1; padding:0.55rem 0.3rem; font-size:0.85rem; font-weight:700;
+                    border-radius:8px; border:1px solid; background:white; }
+    .mp-vb-si { border-color:#86efac; color:#166534; }
+    .mp-vb-no { border-color:#fecaca; color:#b91c1c; }
+    .mp-vb-hecho { display:flex; align-items:center; justify-content:space-between; gap:0.5rem;
+                   margin-top:0.5rem; font-size:0.8rem; }
+    .mp-vb-hecho.si { color:#166534; }
+    .mp-vb-hecho.no { color:#b91c1c; font-weight:700; }
+    .mp-vb-cambiar { background:none; border:none; color:#6b7280; font-size:0.78rem;
+                     text-decoration:underline; padding:0.2rem 0.3rem; }
     /* 08/09/2026: la cuenta unificada — el importe y el saldo que va quedando, uno en cada punta */
     .mp-fila.esPago { background:#f4fbf6; }
     .mp-linea-plata { display:flex; justify-content:space-between; align-items:baseline;
@@ -542,6 +554,36 @@
                                         <b>@Plata(Math.Abs(m.Saldo))</b>
                                     </span>
                                 </div>
+                                @* 08/09/2026 — el visto bueno del pago. Sólo en los pagos, y sólo en
+                                   los nuevos: a los viejos no se le pregunta. Su respuesta NO mueve
+                                   ningún número, es sólo decir si esa plata le llegó de verdad
+                                   (las cobranzas redirigidas nunca pasan por la empresa). *@
+                                @if (m.EsPago && m.PideConfirmacion)
+                                {
+                                    @if (m.Confirmado is null)
+                                    {
+                                        <div class="mp-vb">
+                                            <button class="mp-vb-si" disabled="@(confirmando == m.PagoId)"
+                                                    @onclick="() => ConfirmarPago(m.PagoId, true)">✅ Sí, la recibí</button>
+                                            <button class="mp-vb-no" disabled="@(confirmando == m.PagoId)"
+                                                    @onclick="() => ConfirmarPago(m.PagoId, false)">❌ No me llegó</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="mp-vb-hecho @(m.Confirmado == true ? "si" : "no")">
+                                            <span>
+                                                @(m.Confirmado == true ? "✅ Dijiste que la recibiste" : "❌ Dijiste que no te llegó")
+                                                @if (m.ConfirmadoAt is { } ca)
+                                                {
+                                                    <text> · @ca.AddHours(-3).ToString("dd/MM HH:mm")</text>
+                                                }
+                                            </span>
+                                            <button class="mp-vb-cambiar" disabled="@(confirmando == m.PagoId)"
+                                                    @onclick="() => ConfirmarPago(m.PagoId, m.Confirmado != true)">cambiar</button>
+                                        </div>
+                                    }
+                                }
                             </div>
                         </div>
                     }
@@ -1512,7 +1554,8 @@
     /// <summary>08/09/2026: un renglón de la cuenta, con viajes y pagos mezclados y el saldo corriendo.</summary>
     public record MiMovDto(DateTime Fecha, string Que, List<string> Donde,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
-        DateTime? Hora, string? CargadoPor, DateTime? Desde, DateTime? Hasta);
+        DateTime? Hora, string? CargadoPor, DateTime? Desde, DateTime? Hasta,
+        int PagoId = 0, bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null);
 
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
         decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos,
@@ -1521,6 +1564,25 @@
         int EntregasMes = 0, decimal GanadoMes = 0, decimal PagadoMes = 0, decimal Arrastre = 0);
 
     private List<MiMovDto> movs => miCuenta?.Movimientos ?? new();
+    private int confirmando;
+
+    /// <summary>El visto bueno de un pago. No mueve ningún número: sólo deja dicho si le llegó.</summary>
+    private async Task ConfirmarPago(int pagoId, bool recibio)
+    {
+        if (pagoId <= 0 || confirmando != 0) return;
+        confirmando = pagoId;
+        try
+        {
+            var r = await Http.PostAsJsonAsync(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/pagos/{pagoId}/confirmar",
+                new { Recibio = recibio });
+            if (r.IsSuccessStatusCode)
+                miCuenta = await Http.GetFromJsonAsync<MiCuentaDto>(
+                    $"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/detalle");
+        }
+        catch { /* si falla, el botón vuelve solo: no se pierde nada */ }
+        finally { confirmando = 0; }
+    }
 
     /// <summary>El mes que corre, con mayúscula. En hora argentina.</summary>
     private static string MesEnCurso()
