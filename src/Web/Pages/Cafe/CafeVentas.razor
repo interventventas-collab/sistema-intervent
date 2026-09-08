@@ -2294,7 +2294,7 @@
                             @if (AddPrecioPreview > 0)
                             {
                                 <span style="font-size: 1.05rem; font-weight: 800; color: #065f46;">$ @FormatMoney(AddPrecioPreview)</span>
-                                <span style="color: #6b7280; font-size: 0.7rem;">@(formClienteTipo == "BAR" ? "BAR" : "Comercial") · @AddPrecioPreviewLabel</span>
+                                <span style="color: #6b7280; font-size: 0.7rem;">@(AddTienePrecioPactado ? "precio pactado" : (formClienteTipo == "BAR" ? "BAR" : "Comercial")) · @AddPrecioPreviewLabel</span>
                             }
                             else
                             {
@@ -2561,6 +2561,12 @@
                                                        value="@ci.PrecioUnitario.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
                                                        @onchange="@(e => OnItemPrecioOverrideChanged(i, e.Value?.ToString()))"
                                                        title="@(formItem.PrecioUnitarioOverride.HasValue ? "Precio modificado manualmente — click derecho o ✕ para volver al precio del catálogo" : "Precio del catálogo. Editá el valor para pisarlo manualmente.")" />
+                                                @* 2026-09-08: avisa que el número no salió de la lista sino de un precio
+                                                   pactado con este cliente, para que nadie lo "corrija" pensando que está mal. *@
+                                                @if (ci.EsPrecioEspecial)
+                                                {
+                                                    <div style="font-size:0.65rem; color:#6b7280; margin-top:0.15rem;" title="Este cliente tiene un precio pactado para este producto en este formato. Se carga desde su ficha.">precio pactado con el cliente</div>
+                                                }
                                                 @if (formItem.PrecioUnitarioOverride.HasValue)
                                                 {
                                                     <div style="display:flex; gap:0.2rem; justify-content:flex-end; align-items:center; margin-top:0.15rem;">
@@ -5766,6 +5772,45 @@
         }
     }
 
+    // ═══ 2026-09-08: PRECIOS PACTADOS con este cliente (Cafe_PreciosEspecialesCliente) ═══
+    // Se cargan desde la ficha del cliente. Acá se usan SOLO para el preview del panel
+    // "agregar producto": el precio de la línea ya cargada lo decide el backend al cotizar.
+    // Sin esto el preview mostraría el precio de catálogo y la línea saldría con otro número.
+    private int preciosEspecialesClienteId = -1;
+    private Dictionary<string, decimal> preciosEspeciales = new();
+
+    private static string ClavePrecioPactado(int productoId, string? formato)
+        => $"{productoId}|{(formato ?? "UNIT").Trim().ToUpperInvariant()}";
+
+    /// <summary>Precio pactado (sin IVA) para ese producto en ESE formato, o null si no hay pacto.</summary>
+    private decimal? PrecioPactadoDe(int productoId, string? formato)
+        => preciosEspeciales.Count > 0
+           && preciosEspeciales.TryGetValue(ClavePrecioPactado(productoId, formato), out var v)
+           ? v : (decimal?)null;
+
+    /// <summary>Trae los pactos del cliente una sola vez por cliente. Si no cambió, no pide nada.</summary>
+    private async Task EnsurePreciosEspecialesAsync()
+    {
+        if (preciosEspecialesClienteId == formClienteId) return;
+        preciosEspecialesClienteId = formClienteId;
+        preciosEspeciales = new();
+        if (formClienteId <= 0) return;
+        try
+        {
+            foreach (var f in await Api.GetPreciosEspecialesMapaAsync(formClienteId))
+                preciosEspeciales[ClavePrecioPactado(f.ProductoId, f.Formato)] = f.Precio;
+        }
+        catch
+        {
+            // Si falla la consulta no rompemos la venta: se reintenta en la próxima cotización.
+            preciosEspecialesClienteId = -1;
+        }
+    }
+
+    /// <summary>true si lo que está por agregarse tiene precio pactado con este cliente.</summary>
+    private bool AddTienePrecioPactado
+        => addProductoId > 0 && PrecioPactadoDe(addProductoId, addFormato).HasValue;
+
     /// <summary>2026-06-17: Preview del precio del item a agregar (antes de tocar + Agregar).
     /// Calcula el precio unitario según producto + formato + tipo cliente, y lo multiplica por la cantidad.
     /// Si no hay producto seleccionado o no hay precio, devuelve 0.</summary>
@@ -5775,6 +5820,10 @@
         {
             var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
             if (p is null) return 0m;
+            // 2026-09-08: si hay precio PACTADO con el cliente para este producto + formato,
+            // ese es el que se va a cobrar — así que es el que tiene que mostrar el preview.
+            var pactado = PrecioPactadoDe(p.Id, addFormato);
+            if (pactado.HasValue) return pactado.Value * addCantidad;
             var esBar = ClienteTipoActual() == "BAR";
             decimal precioUnit = 0m;
 
@@ -5878,13 +5927,15 @@
             if (uxb <= 0 || addCantidad < uxb) return null;
 
             // Calculo precio suelto vs precio bulto segun tipo de cliente actual.
+            // 2026-09-08: si el cliente tiene precio PACTADO para el suelto o para el bulto,
+            // ese pisa a la lista — sin esto el aviso mostraria un ahorro que no es el real.
             var tipo = ClienteTipoActual();
-            var precioUnit = tipo == "BAR"
+            var precioUnit = PrecioPactadoDe(p.Id, "UNIT") ?? (tipo == "BAR"
                 ? (p.PrecioBar ?? p.PrecioOtro ?? p.Pvp1 ?? 0m)
-                : (p.PrecioOtro ?? p.PrecioBar ?? p.Pvp2 ?? 0m);
-            var precioBulto = tipo == "BAR"
+                : (p.PrecioOtro ?? p.PrecioBar ?? p.Pvp2 ?? 0m));
+            var precioBulto = PrecioPactadoDe(p.Id, "BULTO") ?? (tipo == "BAR"
                 ? (p.PrecioBulto ?? p.PrecioBultoOtro)
-                : (p.PrecioBultoOtro ?? p.PrecioBulto);
+                : (p.PrecioBultoOtro ?? p.PrecioBulto));
             if (!precioBulto.HasValue || precioBulto.Value <= 0 || precioUnit <= 0) return null;
 
             var bultosCompletos = addCantidad / uxb;        // div entera
@@ -9298,6 +9349,10 @@
 
     private async Task Cotizar()
     {
+        // 2026-09-08: los precios pactados del cliente se piden acá porque Cotizar() se llama
+        // desde TODOS los caminos que fijan el cliente (elegirlo a mano, restaurar un borrador,
+        // abrir una preventa, editar una venta). El método no pide nada si el cliente no cambió.
+        await EnsurePreciosEspecialesAsync();
         if (formItems.Count == 0) { cotizacion = null; return; }
         try
         {

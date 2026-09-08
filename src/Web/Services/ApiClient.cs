@@ -1356,6 +1356,37 @@ public class ApiClient
     public async Task<bool> DeleteCafeDireccionAsync(int dirId)
         => await DeleteAsync($"/api/cafe/clientes/direcciones/{dirId}");
 
+    // ─────────────────────────────────────────────────────────────────────
+    // 2026-09-08: precios PACTADOS con un cliente puntual (ficha del cliente).
+    // ─────────────────────────────────────────────────────────────────────
+    public async Task<List<CafePrecioEspecialDto>> GetPreciosEspecialesAsync(int clienteId)
+        => await GetAsync<List<CafePrecioEspecialDto>>($"/api/cafe/precios-especiales/cliente/{clienteId}") ?? new();
+
+    /// <summary>Formatos en los que se puede vender ese producto (suelto / bulto / pack x N,
+    /// o kilo y fracciones si es café) con el precio que hoy paga ese cliente.</summary>
+    public async Task<CafePrecioEspecialOpcionesDto?> GetPrecioEspecialOpcionesAsync(int clienteId, int productoId)
+        => await GetAsync<CafePrecioEspecialOpcionesDto>($"/api/cafe/precios-especiales/opciones?clienteId={clienteId}&productoId={productoId}");
+
+    /// <summary>Mapa (producto+formato → precio) para el preview de la pantalla de Ventas.</summary>
+    public async Task<List<CafePrecioEspecialMapaDto>> GetPreciosEspecialesMapaAsync(int clienteId)
+        => await GetAsync<List<CafePrecioEspecialMapaDto>>($"/api/cafe/precios-especiales/mapa/{clienteId}") ?? new();
+
+    public async Task<bool> GuardarPrecioEspecialAsync(int clienteId, int productoId, string formato, decimal precio, string? notas)
+    {
+        var r = await PostAsync<GuardarPrecioEspecialResult>("/api/cafe/precios-especiales",
+            new { clienteId, productoId, formato, precio, notas });
+        return r is not null;
+    }
+
+    public async Task<bool> ActualizarPrecioEspecialAsync(int id, decimal precio, string? notas)
+        => await PutAsync<OkResult>($"/api/cafe/precios-especiales/{id}", new { precio, notas }) is not null;
+
+    public async Task<bool> BorrarPrecioEspecialAsync(int id)
+        => await DeleteAsync($"/api/cafe/precios-especiales/{id}");
+
+    private class GuardarPrecioEspecialResult { public int Id { get; set; } }
+    private class OkResult { public bool Ok { get; set; } }
+
     /// <summary>Asigna un código interno correlativo al cliente (max + 1).</summary>
     public async Task<CafeClienteDto?> AsignarCodigoInternoAsync(int id)
         => await PostAsync<CafeClienteDto>($"/api/cafe/clientes/{id}/asignar-codigo-interno", new { });

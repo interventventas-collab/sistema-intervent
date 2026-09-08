@@ -32,7 +32,7 @@ public class CafePrecioEspecialCliente
 
     /// <summary>UNIT | BULTO | PACK_N | 1KG | MEDIO | CUARTO (constantes de CafePricingService).</summary>
     [Required, MaxLength(20)]
-    public string Formato { get; set; } = CafePricingServiceFormatos.Unit;
+    public string Formato { get; set; } = "UNIT";
 
     [Column(TypeName = "decimal(18,2)")]
     public decimal Precio { get; set; }
@@ -48,10 +48,4 @@ public class CafePrecioEspecialCliente
 
     [MaxLength(100)]
     public string? CreatedBy { get; set; }
-}
-
-/// <summary>Constante suelta para no arrastrar Api.Services dentro del modelo.</summary>
-internal static class CafePricingServiceFormatos
-{
-    public const string Unit = "UNIT";
 }

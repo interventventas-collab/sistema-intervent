@@ -633,6 +633,186 @@
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Default que se sugiere al emitir comprobantes para este cliente. Define si la factura es A o B.</p>
                     </div>
                 </div>
+
+                @* ═══════════════ 2026-09-08 · Sección 3: Precios especiales (pactados) ═══════════════
+                     Sólo con el cliente ya guardado: el pacto se guarda contra su Id.
+                     El precio es FIJO (no un %) y va por producto + FORMATO (suelto / bulto / pack /
+                     1 kg / ½ kg / ¼ kg). Todo SIN IVA, igual que el resto del sistema. *@
+                @if (isEditing && editingId is > 0)
+                {
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.1rem; margin-top: 1rem;">
+                        <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #e2e8f0;">
+                            <span style="background: #f1f5f9; color: #334155; font-size: 0.78rem; padding: 0.28rem 0.7rem; border-radius: 6px; font-weight: 700;">
+                                🏷 3 · Precios especiales
+                            </span>
+                            <span style="font-size: 0.78rem; color: #6b7280;">precios pactados con este cliente · siempre mandan sobre la lista</span>
+                        </div>
+
+                        @if (peCargando)
+                        {
+                            <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Cargando…</p>
+                        }
+                        else if (preciosEspeciales.Count == 0)
+                        {
+                            <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.6rem;">
+                                Este cliente paga la lista que le corresponde. Si le pactaste un precio fijo para algún producto y formato, cargalo acá.
+                            </p>
+                        }
+                        else
+                        {
+                            <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.7rem;">
+                                @foreach (var pe in preciosEspeciales)
+                                {
+                                    <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem;">
+                                        <div style="display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap;">
+                                            <span style="font-weight: 600; font-size: 0.85rem; color: #111827;">
+                                                @(string.IsNullOrWhiteSpace(pe.Sku) ? "" : pe.Sku + " · ")@pe.ProductoNombre
+                                            </span>
+                                            <span style="font-size: 0.78rem; color: #4b5563;">· @pe.FormatoLabel</span>
+                                            <span style="font-size: 0.88rem; font-weight: 700; color: #111827;">· @PeMoneda(pe.Precio)</span>
+                                            <span style="font-size: 0.72rem; color: #6b7280;">(con IVA @PeMoneda(pe.PrecioConIva))</span>
+                                            <span style="margin-left: auto; display: flex; gap: 0.3rem;">
+                                                <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.4rem;"
+                                                        @onclick="() => EmpezarEditarPrecioEspecial(pe)" disabled="@peGuardando" title="Cambiar el precio pactado">✏️</button>
+                                                <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.4rem; color: #dc2626;"
+                                                        @onclick="() => BorrarPrecioEspecial(pe)" disabled="@peGuardando" title="Sacar este precio pactado">🗑</button>
+                                            </span>
+                                        </div>
+                                        <div style="font-size: 0.72rem; color: #6b7280; margin-top: 0.1rem;">
+                                            lista: @PeMoneda(pe.PrecioLista)
+                                            @if (pe.DiferenciaPct != 0)
+                                            {
+                                                <span>· @(pe.DiferenciaPct > 0 ? "+" : "")@pe.DiferenciaPct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(pe.Notas))
+                                            {
+                                                <span>· @pe.Notas</span>
+                                            }
+                                        </div>
+                                        @if (pe.ListaMasBarata)
+                                        {
+                                            <div style="font-size: 0.74rem; color: #b45309; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; padding: 0.25rem 0.5rem; margin-top: 0.25rem;">
+                                                ojo · la lista está más barata (@PeMoneda(pe.PrecioLista)) y igual se le cobra el pactado
+                                            </div>
+                                        }
+                                        @if (peEditandoId == pe.Id)
+                                        {
+                                            <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-top: 0.4rem;">
+                                                <input class="form-input" type="text" @bind="peEditPrecioStr" @bind:event="oninput"
+                                                       style="width: 130px; font-size: 0.82rem; padding: 0.3rem 0.5rem;" placeholder="Precio sin IVA" />
+                                                <input class="form-input" type="text" @bind="peEditNotas" @bind:event="oninput"
+                                                       style="flex: 1; min-width: 160px; font-size: 0.82rem; padding: 0.3rem 0.5rem;" placeholder="Por qué se pactó (opcional)" />
+                                                <button type="button" class="btn btn-primary" style="font-size: 0.72rem; padding: 0.3rem 0.6rem;"
+                                                        @onclick="GuardarEdicionPrecioEspecial" disabled="@peGuardando">@(peGuardando ? "Guardando…" : "Guardar")</button>
+                                                <button type="button" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.3rem 0.6rem;"
+                                                        @onclick="CancelarEdicionPrecioEspecial" disabled="@peGuardando">Cancelar</button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @if (!peAgregando)
+                        {
+                            <button type="button" class="btn btn-primary" style="font-size: 0.78rem; padding: 0.4rem 0.85rem;"
+                                    @onclick="AbrirAgregarPrecioEspecial" disabled="@peGuardando">➕ Pactar un precio</button>
+                        }
+                        else
+                        {
+                            <div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.6rem 0.7rem;">
+                                @if (peOpciones is null)
+                                {
+                                    <label class="form-label" style="font-size: 0.8rem;">Buscá el producto</label>
+                                    <input class="form-input" type="text" @bind="peBuscar" @bind:event="oninput"
+                                           style="font-size: 0.85rem; padding: 0.4rem 0.6rem;" placeholder="Nombre o SKU (ej: VT120)" />
+                                    @if (peProductosCargando)
+                                    {
+                                        <p style="font-size: 0.74rem; color: #6b7280; margin: 0.35rem 0 0;">Cargando productos…</p>
+                                    }
+                                    else if (peBuscar.Trim().Length < 2)
+                                    {
+                                        <p style="font-size: 0.74rem; color: #6b7280; margin: 0.35rem 0 0;">Escribí al menos 2 letras.</p>
+                                    }
+                                    else if (PeResultados.Count == 0)
+                                    {
+                                        <p style="font-size: 0.74rem; color: #6b7280; margin: 0.35rem 0 0;">Nada con "<strong>@peBuscar</strong>".</p>
+                                    }
+                                    else
+                                    {
+                                        <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem; max-height: 230px; overflow-y: auto;">
+                                            @foreach (var prod in PeResultados)
+                                            {
+                                                <button type="button" @onclick="() => ElegirProductoPrecioEspecial(prod)"
+                                                        style="text-align: left; background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.35rem 0.55rem; cursor: pointer; font-size: 0.82rem; color: #111827;">
+                                                    @(string.IsNullOrWhiteSpace(prod.Sku) ? "" : prod.Sku + " · ")@prod.Nombre
+                                                    @if (!string.IsNullOrWhiteSpace(prod.Marca)) { <span style="color: #6b7280;"> · @prod.Marca</span> }
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                    <button type="button" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.3rem 0.6rem; margin-top: 0.5rem;"
+                                            @onclick="CancelarAgregarPrecioEspecial">Cancelar</button>
+                                }
+                                else
+                                {
+                                    <div style="font-size: 0.85rem; font-weight: 600; color: #111827;">
+                                        @(string.IsNullOrWhiteSpace(peOpciones.Sku) ? "" : peOpciones.Sku + " · ")@peOpciones.Nombre
+                                        @if (!string.IsNullOrWhiteSpace(peOpciones.Marca)) { <span style="font-weight: 400; color: #6b7280;"> · @peOpciones.Marca</span> }
+                                        <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.45rem; margin-left: 0.4rem;"
+                                                @onclick="VolverABuscarPrecioEspecial" disabled="@peGuardando">cambiar</button>
+                                    </div>
+                                    @if (peOpciones.Formatos.Count == 0)
+                                    {
+                                        <p style="font-size: 0.76rem; color: #6b7280; margin: 0.4rem 0 0;">Este producto no tiene formatos con precio para pactar.</p>
+                                    }
+                                    else
+                                    {
+                                        <p style="font-size: 0.76rem; color: #6b7280; margin: 0.5rem 0 0.25rem;">Elegí el formato pactado (el precio de hoy es el de al lado):</p>
+                                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                            @foreach (var f in peOpciones.Formatos)
+                                            {
+                                                <label style="display: flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; cursor: pointer;">
+                                                    <input type="radio" name="pe-formato" checked="@(peFormato == f.Formato)"
+                                                           @onchange="() => peFormato = f.Formato" style="cursor: pointer;" />
+                                                    <span>@f.Label</span>
+                                                    <span style="color: #6b7280; font-size: 0.75rem;">· lista @PeMoneda(f.PrecioLista) (con IVA @PeMoneda(f.PrecioListaConIva))</span>
+                                                </label>
+                                            }
+                                        </div>
+                                        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-top: 0.55rem;">
+                                            <input class="form-input" type="text" @bind="peNuevoPrecioStr" @bind:event="oninput"
+                                                   style="width: 150px; font-size: 0.85rem; padding: 0.35rem 0.55rem;" placeholder="Precio sin IVA" />
+                                            <input class="form-input" type="text" @bind="peNuevoNotas" @bind:event="oninput"
+                                                   style="flex: 1; min-width: 180px; font-size: 0.85rem; padding: 0.35rem 0.55rem;" placeholder="Por qué se pactó (opcional)" />
+                                            <button type="button" class="btn btn-primary" style="font-size: 0.76rem; padding: 0.35rem 0.7rem;"
+                                                    @onclick="GuardarPrecioEspecialNuevo" disabled="@peGuardando">@(peGuardando ? "Guardando…" : "Guardar pacto")</button>
+                                            <button type="button" class="btn btn-secondary" style="font-size: 0.76rem; padding: 0.35rem 0.7rem;"
+                                                    @onclick="CancelarAgregarPrecioEspecial" disabled="@peGuardando">Cancelar</button>
+                                        </div>
+                                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.3rem 0 0;">
+                                            El precio va SIN IVA, como en el resto del sistema. Se le cobra siempre este, aunque la lista quede más barata.
+                                        </p>
+                                        @if (PeNuevoMasCaroQueLista is not null)
+                                        {
+                                            <div style="font-size: 0.74rem; color: #b45309; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; padding: 0.25rem 0.5rem; margin-top: 0.3rem;">
+                                                ojo · la lista está más barata (@PeMoneda(PeNuevoMasCaroQueLista.Value)) y igual se le cobra el pactado
+                                            </div>
+                                        }
+                                    }
+                                }
+                                @if (!string.IsNullOrEmpty(peError))
+                                {
+                                    <p style="color: #dc2626; font-size: 0.78rem; margin: 0.4rem 0 0;">@peError</p>
+                                }
+                            </div>
+                        }
+                        @if (!peAgregando && !string.IsNullOrEmpty(peError))
+                        {
+                            <p style="color: #dc2626; font-size: 0.78rem; margin: 0.4rem 0 0;">@peError</p>
+                        }
+                    </div>
+                }
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
@@ -1188,6 +1368,7 @@
         formEnviarSiempreEmail = false; formEnviarSiempreWhatsapp = false;
         formError = null; showForm = true;
         direccionesCliente = new(); ResetSubformDireccion();
+        preciosEspeciales = new(); ResetSubformPrecioEspecial();
         await Task.CompletedTask;
     }
 
@@ -1215,7 +1396,9 @@
         formEnviarSiempreEmail = c.EnviarSiempreEmail; formEnviarSiempreWhatsapp = c.EnviarSiempreWhatsapp;
         formError = null; showForm = true;
         ResetSubformDireccion();
+        preciosEspeciales = new(); ResetSubformPrecioEspecial();
         await LoadDirecciones(c.Id);
+        await LoadPreciosEspeciales(c.Id);
     }
 
     // ===== 2026-07-29: Direcciones de entrega múltiples =====
@@ -1314,6 +1497,192 @@
         }
         catch (Exception ex) { dirError = "Error: " + ex.Message; }
         finally { dirGuardando = false; }
+    }
+
+    // ═════════ 2026-09-08: Precios especiales (pactados) con este cliente ═════════
+    // Precio FIJO por producto + FORMATO. Todo SIN IVA (el con-IVA se muestra al lado
+    // como referencia). Lo pactado le gana siempre a la lista, aunque la lista baje.
+    private List<CafePrecioEspecialDto> preciosEspeciales = new();
+    private bool peCargando, peGuardando, peAgregando, peProductosCargando;
+    private string? peError;
+    private int? peEditandoId;
+    private string peEditPrecioStr = "", peEditNotas = "";
+    private string peBuscar = "";
+    private List<CafeProductoDto> peProductos = new();
+    private CafePrecioEspecialOpcionesDto? peOpciones;
+    private string? peFormato;
+    private string peNuevoPrecioStr = "", peNuevoNotas = "";
+
+    /// <summary>Lee un importe tipeado a mano aceptando tanto coma como punto decimal.
+    /// Con type="number" un "1.234,50" queda VACÍO, por eso el campo es texto.</summary>
+    private static decimal? PeParseImporte(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var t = raw.Trim().Replace(" ", "").Replace("$", "");
+        // Si tiene los dos separadores, el ultimo es el decimal y el otro es de miles.
+        if (t.Contains(',') && t.Contains('.'))
+            t = t.LastIndexOf(',') > t.LastIndexOf('.')
+                ? t.Replace(".", "").Replace(',', '.')
+                : t.Replace(",", "");
+        else t = t.Replace(',', '.');
+        return decimal.TryParse(t, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
+
+    private static string PeMoneda(decimal v)
+        => "$" + v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    /// <summary>Productos que matchean lo tipeado (busca por nombre o SKU). Máximo 10.</summary>
+    private List<CafeProductoDto> PeResultados
+    {
+        get
+        {
+            var q = (peBuscar ?? "").Trim();
+            if (q.Length < 2) return new();
+            return peProductos
+                .Where(p => (p.Nombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+                         || (p.Sku ?? "").Contains(q, StringComparison.OrdinalIgnoreCase))
+                .Take(10).ToList();
+        }
+    }
+
+    /// <summary>Si el precio que está tipeando queda MÁS CARO que la lista de ese formato,
+    /// devuelve el precio de lista (para avisarlo). Null si está bien o si falta algo.</summary>
+    private decimal? PeNuevoMasCaroQueLista
+    {
+        get
+        {
+            if (peOpciones is null || string.IsNullOrEmpty(peFormato)) return null;
+            var f = peOpciones.Formatos.FirstOrDefault(x => x.Formato == peFormato);
+            if (f is null) return null;
+            var p = PeParseImporte(peNuevoPrecioStr);
+            return p.HasValue && p.Value > f.PrecioLista ? f.PrecioLista : null;
+        }
+    }
+
+    private async Task LoadPreciosEspeciales(int clienteId)
+    {
+        peCargando = true;
+        try { preciosEspeciales = await Api.GetPreciosEspecialesAsync(clienteId); }
+        catch { preciosEspeciales = new(); }
+        finally { peCargando = false; }
+    }
+
+    private void ResetSubformPrecioEspecial()
+    {
+        peAgregando = false; peEditandoId = null; peError = null;
+        peBuscar = ""; peOpciones = null; peFormato = null;
+        peNuevoPrecioStr = ""; peNuevoNotas = "";
+        peEditPrecioStr = ""; peEditNotas = "";
+    }
+
+    private async Task AbrirAgregarPrecioEspecial()
+    {
+        ResetSubformPrecioEspecial();
+        peAgregando = true;
+        if (peProductos.Count == 0)
+        {
+            peProductosCargando = true;
+            try
+            {
+                var todos = await Api.GetCafeProductosAsync();
+                peProductos = (todos ?? new()).Where(p => p.IsActive).ToList();
+            }
+            catch { peProductos = new(); peError = "No se pudieron traer los productos."; }
+            finally { peProductosCargando = false; }
+        }
+    }
+
+    private void CancelarAgregarPrecioEspecial() => ResetSubformPrecioEspecial();
+
+    private void VolverABuscarPrecioEspecial()
+    {
+        peOpciones = null; peFormato = null;
+        peNuevoPrecioStr = ""; peNuevoNotas = ""; peError = null;
+    }
+
+    private async Task ElegirProductoPrecioEspecial(CafeProductoDto p)
+    {
+        if (!editingId.HasValue) return;
+        peError = null; peFormato = null; peNuevoPrecioStr = "";
+        try
+        {
+            peOpciones = await Api.GetPrecioEspecialOpcionesAsync(editingId.Value, p.Id);
+            if (peOpciones is null) { peError = "No se pudieron traer los formatos de ese producto."; return; }
+            // Si tiene un solo formato posible, ya lo dejamos elegido.
+            if (peOpciones.Formatos.Count == 1) peFormato = peOpciones.Formatos[0].Formato;
+        }
+        catch (Exception ex) { peError = "Error: " + ex.Message; }
+    }
+
+    private async Task GuardarPrecioEspecialNuevo()
+    {
+        if (!editingId.HasValue || peOpciones is null) return;
+        if (string.IsNullOrEmpty(peFormato)) { peError = "Elegí el formato pactado."; return; }
+        var precio = PeParseImporte(peNuevoPrecioStr);
+        if (!precio.HasValue || precio.Value <= 0) { peError = "Escribí el precio pactado (sin IVA)."; return; }
+        peGuardando = true; peError = null;
+        try
+        {
+            var ok = await Api.GuardarPrecioEspecialAsync(editingId.Value, peOpciones.ProductoId, peFormato!,
+                precio.Value, string.IsNullOrWhiteSpace(peNuevoNotas) ? null : peNuevoNotas.Trim());
+            if (!ok) { peError = "No se pudo guardar el precio pactado."; return; }
+            await LoadPreciosEspeciales(editingId.Value);
+            ResetSubformPrecioEspecial();
+            ToastService.Success("Precio pactado guardado ✔");
+        }
+        catch (Exception ex) { peError = "Error: " + ex.Message; }
+        finally { peGuardando = false; }
+    }
+
+    private void EmpezarEditarPrecioEspecial(CafePrecioEspecialDto pe)
+    {
+        peEditandoId = pe.Id;
+        peEditPrecioStr = pe.Precio.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        peEditNotas = pe.Notas ?? "";
+        peError = null;
+    }
+
+    private void CancelarEdicionPrecioEspecial()
+    {
+        peEditandoId = null; peEditPrecioStr = ""; peEditNotas = ""; peError = null;
+    }
+
+    private async Task GuardarEdicionPrecioEspecial()
+    {
+        if (!editingId.HasValue || !peEditandoId.HasValue) return;
+        var precio = PeParseImporte(peEditPrecioStr);
+        if (!precio.HasValue || precio.Value <= 0) { peError = "Escribí el precio pactado (sin IVA)."; return; }
+        peGuardando = true; peError = null;
+        try
+        {
+            var ok = await Api.ActualizarPrecioEspecialAsync(peEditandoId.Value, precio.Value,
+                string.IsNullOrWhiteSpace(peEditNotas) ? null : peEditNotas.Trim());
+            if (!ok) { peError = "No se pudo guardar el cambio."; return; }
+            await LoadPreciosEspeciales(editingId.Value);
+            CancelarEdicionPrecioEspecial();
+            ToastService.Success("Precio pactado actualizado ✔");
+        }
+        catch (Exception ex) { peError = "Error: " + ex.Message; }
+        finally { peGuardando = false; }
+    }
+
+    private async Task BorrarPrecioEspecial(CafePrecioEspecialDto pe)
+    {
+        if (!editingId.HasValue) return;
+        var texto = $"¿Sacar el precio pactado de {pe.ProductoNombre} ({pe.FormatoLabel})? Va a volver a pagar la lista que le corresponde.";
+        if (!await JS.InvokeAsync<bool>("confirm", texto)) return;
+        peGuardando = true; peError = null;
+        try
+        {
+            var ok = await Api.BorrarPrecioEspecialAsync(pe.Id);
+            if (!ok) { peError = "No se pudo sacar el precio pactado."; return; }
+            if (peEditandoId == pe.Id) CancelarEdicionPrecioEspecial();
+            await LoadPreciosEspeciales(editingId.Value);
+            ToastService.Success("Precio pactado eliminado ✔");
+        }
+        catch (Exception ex) { peError = "Error: " + ex.Message; }
+        finally { peGuardando = false; }
     }
 
     private async Task ReExtraerCoords()

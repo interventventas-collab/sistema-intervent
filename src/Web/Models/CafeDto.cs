@@ -891,6 +891,9 @@ public class CafeCotizadoItemDto
     public bool EsDoyPack { get; set; }
     public decimal DescuentoPct { get; set; }
     public bool EsEnvasePlateado { get; set; }
+    /// <summary>2026-09-08: el precio de esta línea sale de un precio PACTADO con el cliente,
+    /// no del catálogo. La grilla lo muestra con un cartelito para que se entienda la diferencia.</summary>
+    public bool EsPrecioEspecial { get; set; }
 }
 
 public class CafeCotizadoDto
@@ -2319,4 +2322,61 @@ public class SaveBorradorRequest
     public string? ClienteNombre { get; set; }
     public int ItemsCount { get; set; }
     public decimal Total { get; set; }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-09-08 — Precios PACTADOS con un cliente puntual (Cafe_PreciosEspecialesCliente).
+// Se cargan desde la ficha del cliente y pisan el precio de catálogo en las ventas.
+// Todos los precios viajan SIN IVA (igual que PrecioBar / PrecioOtro del producto).
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class CafePrecioEspecialDto
+{
+    public int Id { get; set; }
+    public int ProductoId { get; set; }
+    public string? Sku { get; set; }
+    public string ProductoNombre { get; set; } = "";
+    public string? Marca { get; set; }
+    public string Formato { get; set; } = "UNIT";
+    public string FormatoLabel { get; set; } = "";
+    public decimal Precio { get; set; }
+    public decimal PrecioConIva { get; set; }
+    /// <summary>Lo que le saldría hoy SIN el pacto. Sirve para ver la diferencia de un vistazo.</summary>
+    public decimal PrecioLista { get; set; }
+    public decimal PrecioListaConIva { get; set; }
+    public decimal DiferenciaPct { get; set; }
+    /// <summary>true si la lista quedó MÁS BARATA que el pactado (se cobra el pactado igual).</summary>
+    public bool ListaMasBarata { get; set; }
+    public string? Notas { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public string? CreatedBy { get; set; }
+}
+
+public class CafePrecioEspecialFormatoDto
+{
+    public string Formato { get; set; } = "UNIT";
+    public string Label { get; set; } = "";
+    public decimal PrecioLista { get; set; }
+    public decimal PrecioListaConIva { get; set; }
+}
+
+public class CafePrecioEspecialOpcionesDto
+{
+    public int ProductoId { get; set; }
+    public string? Sku { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Marca { get; set; }
+    public string Categoria { get; set; } = "OTROS";
+    public List<CafePrecioEspecialFormatoDto> Formatos { get; set; } = new();
+}
+
+/// <summary>Mapa liviano que usa la pantalla de Ventas para mostrar el precio pactado
+/// en el preview, antes de agregar la línea.</summary>
+public class CafePrecioEspecialMapaDto
+{
+    public int ProductoId { get; set; }
+    public string Formato { get; set; } = "UNIT";
+    public decimal Precio { get; set; }
 }
