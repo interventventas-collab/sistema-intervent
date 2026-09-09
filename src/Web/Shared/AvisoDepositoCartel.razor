@@ -48,8 +48,69 @@
     </div>
 }
 
+@* 2026-09-09 — HISTORIAL. Pedido de él: "¿ellos ven el historial en algún lado?".
+   Los @ojo de Gabriel quedan en el chat (son mensajes de WhatsApp), pero los avisos que manda la
+   oficina con el botón NO: los veían una vez, tocaban "Lo vi" y no había dónde volver a leerlos.
+   El botón vive abajo a la izquierda, chiquito, y sólo lo ve Depósito. *@
+@if (esDeposito && aviso is null)
+{
+    <button class="avdep-hist-btn" @onclick="AbrirHistorial" title="Ver los últimos avisos">🔔</button>
+}
+
+@if (esDeposito && showHist)
+{
+    <div class="avdep-fondo" style="background:rgba(15,23,42,0.55);" @onclick="@(() => showHist = false)">
+        <div class="avdep-card" @onclick:stopPropagation="true">
+            <div class="avdep-head" style="background:#e0e7ff;">
+                <span style="font-size:1.3rem;">🔔</span>
+                <span class="avdep-titulo" style="color:#3730a3;">Últimos avisos</span>
+            </div>
+            <div class="avdep-body" style="max-height:60vh; overflow-y:auto;">
+                @if (cargandoHist)
+                {
+                    <p style="color:#6b7280; margin:0;">Cargando…</p>
+                }
+                else if (historial.Count == 0)
+                {
+                    <p style="color:#6b7280; margin:0;">Todavía no hubo ningún aviso.</p>
+                }
+                else
+                {
+                    @foreach (var h in historial)
+                    {
+                        <div style="border-bottom:1px solid #f3f4f6; padding:0.55rem 0;">
+                            <div style="font-size:0.75rem; color:#6b7280;">
+                                @FechaLinda(h.CreatedAt) · @(h.Origen == "boton" ? (h.CreadoPor ?? "la oficina") : "por WhatsApp")
+                            </div>
+                            <div style="font-size:0.95rem; color:#111827; line-height:1.4;">@h.Texto</div>
+                            <div style="font-size:0.75rem; margin-top:0.15rem; color:@(h.VistoAt is null ? "#b45309" : "#166534"); font-weight:700;">
+                                @(h.VistoAt is null
+                                    ? "todavía nadie lo vio"
+                                    : $"lo vio {h.VistoPor} a las {h.VistoAt.Value.ToArTime():HH:mm}")
+                            </div>
+                        </div>
+                    }
+                }
+                <button class="avdep-btn" style="width:100%; margin-top:0.9rem;" @onclick="@(() => showHist = false)">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private ApiClient.AvisoDepDto? aviso;
+    private bool showHist, cargandoHist;
+    private List<ApiClient.AvisoDepDto> historial = new();
+
+    private async Task AbrirHistorial()
+    {
+        showHist = true;
+        cargandoHist = true;
+        try { historial = await Api.GetUltimosAvisosDepositoAsync(null, null, 25); }
+        catch { historial = new(); }
+        cargandoHist = false;
+    }
+
     /// <summary>El cartel es SÓLO para Depósito: a la oficina no le tapa nada.</summary>
     private bool esDeposito;
     private bool marcando;
@@ -220,4 +281,10 @@
     .avdep-btn-ok { flex: 2; background: #16a34a; border-color: #16a34a; color: #fff; }
     .avdep-btn-ok:hover { background: #15803d; }
     .avdep-nota { font-size: 0.78rem; color: #9ca3af; margin-top: 0.7rem; text-align: center; }
+    /* Botoncito del historial: abajo a la IZQUIERDA, para no chocar con el globito del chat
+       (que vive abajo a la derecha). Apagadito: es para consultar, no para llamar la atención. */
+    .avdep-hist-btn { position: fixed; left: 14px; bottom: 14px; z-index: 9000; width: 42px; height: 42px;
+        border-radius: 50%; border: 1px solid #d1d5db; background: #fff; font-size: 1.1rem; cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.18); opacity: 0.75; }
+    .avdep-hist-btn:hover { opacity: 1; }
 </style>

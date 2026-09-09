@@ -6350,8 +6350,8 @@ public class ApiClient
     public async Task<AvisoDepDto?> MandarAvisoDepositoAsync(string? numero, string? linea, string texto)
         => await PostAsync<AvisoDepDto>("/api/whatsapp/twilio/avisos-deposito", new { numero, linea, texto });
 
-    public async Task<List<AvisoDepDto>> GetUltimosAvisosDepositoAsync(string? numero, string? linea)
-        => await GetAsync<List<AvisoDepDto>>($"/api/whatsapp/twilio/avisos-deposito/ultimos?numero={Uri.EscapeDataString(numero ?? "")}&linea={Uri.EscapeDataString(linea ?? "")}") ?? new();
+    public async Task<List<AvisoDepDto>> GetUltimosAvisosDepositoAsync(string? numero, string? linea, int limite = 5)
+        => await GetAsync<List<AvisoDepDto>>($"/api/whatsapp/twilio/avisos-deposito/ultimos?numero={Uri.EscapeDataString(numero ?? "")}&linea={Uri.EscapeDataString(linea ?? "")}&limite={limite}") ?? new();
 
     /// <summary>A quién se le puede redirigir una cobranza (empleados activos).</summary>
     public async Task<List<CafeDestinatarioDto>?> GetCafeDestinatariosAsync()

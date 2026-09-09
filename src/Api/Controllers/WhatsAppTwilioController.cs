@@ -2255,14 +2255,18 @@ public class WhatsAppTwilioController : ControllerBase
         return Ok(MapAviso(a));
     }
 
-    /// <summary>Los últimos avisos de un chat, con quién los vio. Lo mira la oficina.</summary>
+    /// <summary>Los últimos avisos, con quién los vio. Sin `numero` devuelve todos: así lo pide
+    /// Depósito para su historial (2026-09-09) — antes, una vez que tocaban "Lo vi" el aviso
+    /// desaparecía y no tenían dónde volver a leerlo.</summary>
     [Authorize]
     [HttpGet("avisos-deposito/ultimos")]
-    public async Task<IActionResult> UltimosAvisos([FromQuery] string? numero, [FromQuery] string? linea)
+    public async Task<IActionResult> UltimosAvisos([FromQuery] string? numero, [FromQuery] string? linea,
+        [FromQuery] int limite = 5)
     {
+        var top = Math.Clamp(limite, 1, 50);
         var q = _db.WhatsAppAvisosDeposito.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(numero)) q = q.Where(a => a.Numero == numero);
-        var lista = await q.OrderByDescending(a => a.CreatedAt).Take(5).ToListAsync();
+        var lista = await q.OrderByDescending(a => a.CreatedAt).Take(top).ToListAsync();
         return Ok(lista.Select(MapAviso).ToList());
     }
 
