@@ -2193,6 +2193,7 @@ public class WhatsAppTwilioController : ControllerBase
 
     /// <summary>Los avisos que NADIE tocó todavía. Es lo que levanta la pantalla al abrirse, para que
     /// un aviso no se pierda si en ese momento no había ninguna pantalla prendida.</summary>
+    [Authorize]
     [HttpGet("avisos-deposito/pendientes")]
     public async Task<IActionResult> AvisosDepositoPendientes()
     {
@@ -2206,6 +2207,7 @@ public class WhatsAppTwilioController : ControllerBase
     }
 
     /// <summary>Uno puntual (lo pide la pantalla cuando le llega el empujón en vivo).</summary>
+    [Authorize]
     [HttpGet("avisos-deposito/{id:int}")]
     public async Task<IActionResult> AvisoDeposito(int id)
     {
@@ -2216,6 +2218,7 @@ public class WhatsAppTwilioController : ControllerBase
     public record VistoRequest(string? Quien);
 
     /// <summary>"Lo vi". Guarda quién y cuándo — es la vuelta que hoy no existe.</summary>
+    [Authorize]
     [HttpPost("avisos-deposito/{id:int}/visto")]
     public async Task<IActionResult> MarcarAvisoVisto(int id, [FromBody] VistoRequest? req)
     {
@@ -2236,6 +2239,7 @@ public class WhatsAppTwilioController : ControllerBase
 
     /// <summary>El botón de la oficina: les suena y les tapa la pantalla. Depósito NO puede usarlo
     /// (si no, se avisan entre ellos y el cartel deja de significar algo).</summary>
+    [Authorize]
     [HttpPost("avisos-deposito")]
     public async Task<IActionResult> CrearAvisoDeposito(
         [FromBody] CrearAvisoRequest req, [FromServices] Services.AvisoDepositoService svc)
@@ -2252,6 +2256,7 @@ public class WhatsAppTwilioController : ControllerBase
     }
 
     /// <summary>Los últimos avisos de un chat, con quién los vio. Lo mira la oficina.</summary>
+    [Authorize]
     [HttpGet("avisos-deposito/ultimos")]
     public async Task<IActionResult> UltimosAvisos([FromQuery] string? numero, [FromQuery] string? linea)
     {
