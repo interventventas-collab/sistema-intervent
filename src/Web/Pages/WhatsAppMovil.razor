@@ -279,7 +279,18 @@ else
                              @onpointerleave="TerminarPress"
                              @onpointercancel="TerminarPress"
                              @oncontextmenu:preventDefault="true">
-                            <div class="wam-avatar">@Inicial(c)</div>
+                            @* 2026-09-09: la CATEGORÍA baja debajo del globito como etiqueta de color,
+                               igual que en la pantalla de escritorio. Osmar la pidió acá también: el
+                               color es lo que te deja barrer la lista con el ojo sin leer nada.
+                               Mismos colores que /whatsapp a propósito — si en la compu "Alquiler" es
+                               rosa, en el celu tiene que ser rosa. *@
+                            <div class="wam-avatar-col">
+                                <div class="wam-avatar">@Inicial(c)</div>
+                                @if (!string.IsNullOrEmpty(c.Rol))
+                                {
+                                    <span class="wam-rol-tag @RolClase(c.Rol)" title="Categoría del contacto">@RolLabel(c.Rol)</span>
+                                }
+                            </div>
                             <div class="wam-conv-txt">
                                 <div class="wam-conv-nombre" title="@NombreDe(c)">@(c.Fijado ? "📌 " : "")@NombreDe(c)</div>
                                 @* 2026-08-31: renglon chico con el TELEFONO y la ETIQUETA de categoria,
@@ -491,6 +502,19 @@ else
     .wam-conv:active { background: #f0fdf4; }
     .wam-avatar { width: 46px; height: 46px; border-radius: 50%; background: #25d366; color: #fff;
         display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem; flex: none; }
+    /* 2026-09-09: el globito con la etiqueta de categoría debajo, como en la compu. */
+    .wam-avatar-col { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .wam-rol-tag { font-size: 0.62rem; font-weight: 800; padding: 1px 6px; border-radius: 6px;
+        line-height: 1.25; white-space: nowrap; max-width: 62px; overflow: hidden; text-overflow: ellipsis; }
+    /* Mismos colores que .wa-rol-tag de /whatsapp — que "Alquiler" sea del mismo color en los dos lados. */
+    .wam-rol-tag.rol-hermano   { background: #eef2ff; color: #4338ca; }
+    .wam-rol-tag.rol-empleado  { background: #f0f9ff; color: #0369a1; }
+    .wam-rol-tag.rol-cliente   { background: #ecfdf5; color: #047857; }
+    .wam-rol-tag.rol-proveedor { background: #fff7ed; color: #c2410c; }
+    .wam-rol-tag.rol-alquiler  { background: #fdf2f8; color: #be185d; }
+    .wam-rol-tag.rol-cafe      { background: #fefce8; color: #a16207; }
+    .wam-rol-tag.rol-meli      { background: #fef9c3; color: #2d3277; }
+    .wam-rol-tag.rol-otro      { background: #f1f5f9; color: #64748b; }
     .wam-conv-txt { min-width: 0; }
     .wam-conv-nombre { font-weight: 700; color: #111827; font-size: 1rem;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1589,13 +1613,43 @@ else
     //     o que la charla sea de Instagram, donde no hay teléfono que mostrar.
     //   · la CATEGORÍA del contacto (🪑 Alquiler, ☕ Café, 🚚 Proveedor, …), la misma que se pone
     //     desde el 🏷️ de la pantalla grande. Si el contacto no tiene categoría, no se muestra nada.
+    /// <summary>Nombre corto de la categoría. Calcado de RolLabel de /whatsapp para que los dos
+    /// lados digan exactamente lo mismo.</summary>
+    private static string RolLabel(string? rol) => rol switch
+    {
+        "hermano" => "Hermano",
+        "empleado" => "Empleado",
+        "cliente" => "Cliente",
+        "proveedor" => "Proveedor",
+        "alquiler" => "Alquiler",
+        "cafe" => "Café",
+        "meli" => "MELI",
+        "otro" => "Otro",
+        _ => "Sin categoría"
+    };
+
+    /// <summary>Color de la categoría. Mismos nombres de clase y mismos colores que /whatsapp:
+    /// si cambia allá, cambiar acá también.</summary>
+    private static string RolClase(string? rol) => rol switch
+    {
+        "hermano" => "rol-hermano",
+        "empleado" => "rol-empleado",
+        "cliente" => "rol-cliente",
+        "proveedor" => "rol-proveedor",
+        "alquiler" => "rol-alquiler",
+        "cafe" => "rol-cafe",
+        "meli" => "rol-meli",
+        _ => "rol-otro"
+    };
+
     private static string SubLinea(ApiClient.TwConvDto c)
     {
         var partes = new List<string>();
         var tel = TelefonoDe(c);
         if (!string.IsNullOrEmpty(tel) && tel != NombreDe(c)) partes.Add(tel);
-        var cat = CategoriaEtiqueta(c.Rol);
-        if (!string.IsNullOrEmpty(cat)) partes.Add(cat);
+        // 2026-09-09: la categoría ya NO va acá — ahora se ve como etiqueta de color debajo del
+        // globito (igual que en la compu). Repetirla en este renglón era decir lo mismo dos veces
+        // y le comía lugar al teléfono.
         return string.Join(" · ", partes);
     }
 
