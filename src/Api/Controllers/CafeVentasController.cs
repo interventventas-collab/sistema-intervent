@@ -685,7 +685,8 @@ public class CafeVentasController : ControllerBase
     /// y DriveSubidoAt en la venta para mostrar "Ver en Drive" en lugar del botón de subir.
     /// </summary>
     [HttpPost("{id:int}/drive-upload")]
-    public async Task<IActionResult> SubirADrive(int id, [FromServices] GoogleDriveService driveSvc)
+    public async Task<IActionResult> SubirADrive(int id, [FromServices] GoogleDriveService driveSvc,
+        [FromServices] TelegramService telegram, [FromServices] WhatsAppOutboundService waOut)
     {
         var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
@@ -758,12 +759,143 @@ public class CafeVentasController : ControllerBase
             driveError = ex.Message;
         }
 
+        // 2026-09-09: subio bien -> si el aviso "Drive caido" estaba encendido, se apaga solo.
+        // Asi la campanita no queda prendida para siempre despues de reconectar.
+        if (driveError is null) await ApagarAvisoDriveCaidoAsync();
+
         await _db.SaveChangesAsync();
 
         if (driveError is not null)
-            return BadRequest(new { error = "La venta SI entro a Preparacion de pedidos, pero el PDF no se pudo subir a Drive: " + driveError });
+        {
+            // 2026-09-09: el permiso de Google se vence/revoca cada tanto (si la app OAuth quedo en
+            // modo "testing", Google lo mata cada 7 dias). Ese caso tiene arreglo concreto —
+            // reconectar — asi que se lo decimos con todas las letras en vez del error crudo.
+            var permisoVencido = driveError.Contains("invalid_grant", StringComparison.OrdinalIgnoreCase)
+                                 || driveError.Contains("expired or revoked", StringComparison.OrdinalIgnoreCase)
+                                 || driveError.Contains("no esta conectado", StringComparison.OrdinalIgnoreCase)
+                                 || driveError.Contains("no está conectado", StringComparison.OrdinalIgnoreCase);
+
+            await NotificarDriveCaidoAsync(telegram, waOut, v.Numero, permisoVencido, driveError);
+
+            // El texto arranca por lo que SI paso (el pedido se puede armar) y sigue por lo que falta.
+            // Antes decia "La venta SI entro a Preparacion" y era mentira a medias: entraba al estado
+            // pero el tablero la escondia, asi que el deposito nunca la veia.
+            var mensaje = permisoVencido
+                ? "Se venció el permiso de Google Drive. El pedido SÍ está en el tablero de Preparación y se puede armar "
+                  + "(aparece con el cartel rojo SIN DRIVE). Lo único que falta es el PDF guardado en Drive: "
+                  + "andá a Integraciones → Google Drive → Conectar con Google, y después volvé a tocar la nubecita ☁️ en esta venta."
+                : "El pedido SÍ está en el tablero de Preparación y se puede armar (aparece con el cartel rojo SIN DRIVE), "
+                  + "pero el PDF no se pudo guardar en Google Drive. Detalle: " + driveError;
+
+            return BadRequest(new { error = mensaje, enPreparacion = true, driveCaido = true, permisoVencido, detalle = driveError });
+        }
 
         return Ok(new { ok = true, fileId, link, subidoAt = v.DriveSubidoAt, subidasCount = v.DriveSubidasCount });
+    }
+
+    /// <summary>2026-09-09: apaga el aviso "Drive caido" cuando una subida vuelve a funcionar.
+    /// Solo toca la entidad; el SaveChanges lo hace quien llama.</summary>
+    private async Task ApagarAvisoDriveCaidoAsync()
+    {
+        try
+        {
+            var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "DRIVE_CAIDO");
+            if (alerta is null || !alerta.EstaDisparada) return;
+            alerta.EstaDisparada = false;
+            alerta.Vista = false;
+            alerta.DisparadaAt = null;
+            alerta.UltimoDetalle = null;
+            alerta.UpdatedAt = DateTime.UtcNow;
+        }
+        catch { /* nunca romper la subida por el aviso */ }
+    }
+
+    /// <summary>2026-09-09: dispara el aviso "DRIVE_CAIDO" de Mis Alertas cuando el PDF de una venta
+    /// no se puede guardar en Google Drive. Sirve para enterarse EN EL MOMENTO de que el permiso se
+    /// vencio, en vez de descubrirlo dias despues por un pedido sin PDF. Respeta los canales de la
+    /// pantalla Alertas (campanita / Telegram / WhatsApp). Nunca rompe la venta si un canal falla.
+    ///
+    /// Anti-spam: mientras Drive siga caido, cada venta que se suba volveria a avisar. Por eso solo
+    /// avisa si no hubo aviso en las ultimas 2 horas (DisparadaAt hace de marca del ultimo aviso,
+    /// se setea aunque la campanita este apagada).</summary>
+    private async Task NotificarDriveCaidoAsync(TelegramService telegram, WhatsAppOutboundService waOut,
+        string numeroVenta, bool permisoVencido, string detalle)
+    {
+        try
+        {
+            var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "DRIVE_CAIDO");
+            if (alerta is null || !alerta.Activa) return;
+            if (!alerta.CanalCampanita && !alerta.CanalTelegram && !alerta.CanalWhatsApp) return;
+            if (alerta.DisparadaAt.HasValue && alerta.DisparadaAt.Value > DateTime.UtcNow.AddHours(-2)) return;
+
+            var queHacer = permisoVencido
+                ? "Se vencio el permiso. Reconectar en Integraciones -> Google Drive -> Conectar con Google."
+                : "Detalle: " + detalle;
+            var detalleCorto = $"Comprobante {numeroVenta} sin PDF en Drive. {queHacer}";
+
+            var texto = "☁️ <b>Google Drive no esta guardando los PDF</b>\n" +
+                        $"🧾 Ultimo pedido afectado: {numeroVenta}\n" +
+                        "📦 Los pedidos ENTRAN igual al tablero de Preparacion (con el cartel rojo SIN DRIVE).\n" +
+                        $"🔧 {queHacer}";
+
+            bool enviadoTg = false;
+            if (alerta.CanalTelegram)
+            {
+                var (ok, _) = await telegram.SendMessageAsync(texto, categoria: "ALERTAS");
+                enviadoTg = ok;
+            }
+
+            if (alerta.CanalWhatsApp)
+            {
+                var idsDest = await _db.AutoDestinatarios.Where(d => d.AutoKey == $"alerta:{alerta.Id}")
+                    .Select(d => d.PersonaId).ToListAsync();
+                var personas = await _db.AutoPersonas
+                    .Where(pe => pe.Activo && idsDest.Contains(pe.Id) && pe.WhatsAppNumero != null).ToListAsync();
+                var textoWa = "☁️ Google Drive no esta guardando los PDF\n" +
+                              $"🧾 Ultimo pedido afectado: {numeroVenta}\n" +
+                              "📦 Los pedidos entran igual al tablero de Preparacion (cartel rojo SIN DRIVE).\n" +
+                              $"🔧 {queHacer}";
+                foreach (var per in personas)
+                {
+                    try
+                    {
+                        var num = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
+                        var (sid, canal, lin) = await waOut.SendTextAsync(num, textoWa, lineaOverride: alerta.LineaPhoneId);
+                        if (sid != null)
+                            _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
+                            {
+                                Direccion = "OUTGOING", Numero = num, Cuerpo = textoWa,
+                                TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
+                            });
+                    }
+                    catch { /* seguir con el resto */ }
+                }
+            }
+
+            if (alerta.CanalCampanita)
+            {
+                alerta.EstaDisparada = true;
+                alerta.Vista = false;
+            }
+            // DisparadaAt se setea SIEMPRE: es la marca de "ya avise" que corta el spam aunque la
+            // campanita este apagada y el aviso salga solo por Telegram.
+            alerta.DisparadaAt = DateTime.UtcNow;
+            alerta.UltimoDetalle = detalleCorto;
+            alerta.UpdatedAt = DateTime.UtcNow;
+
+            _db.MisAlertasHistorial.Add(new MisAlertaHistorial
+            {
+                AlertaId = alerta.Id,
+                Tipo = "DRIVE_CAIDO",
+                Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Google Drive desconectado" : alerta.Mensaje,
+                Detalle = detalleCorto,
+                Alcance = string.IsNullOrWhiteSpace(alerta.Alcance) ? "admin,oficina" : alerta.Alcance,
+                PorTelegram = alerta.CanalTelegram,
+                EnviadoTelegram = enviadoTg
+            });
+            await _db.SaveChangesAsync();
+        }
+        catch { /* nunca romper la venta por un aviso */ }
     }
 
     /// <summary>Genera los bytes del PDF de una venta (ARCA si esta autorizada, cotizacion sino).
@@ -3946,18 +4078,22 @@ public class CafeVentasController : ControllerBase
     public async Task<IActionResult> ListarPreparacion([FromQuery] int dias = 7)
     {
         var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
-        // 2026-06-05 v3: SOLO ventas con Drive subido aparecen en el tablero. Las que se
-        // cargaron desde oficina (sin tildar "Enviar a IMPRIMIR PEDIDOS DE OSMAR") no van
-        // a aparecer porque su DriveSubidoAt queda en null. Si una venta de armado falla
-        // al subir, el operador puede re-subirla a mano desde el listado de ventas (boton ☁️).
+        // 2026-09-09: lo que decide si una venta esta en el tablero es SU ESTADO, no Drive.
+        // Antes se exigia ademas DriveSubidoAt != null, y eso volvia INVISIBLE para el deposito
+        // a toda venta cargada mientras Google tenia el permiso vencido: el cartel decia "la venta
+        // SI entro a Preparacion" (y era cierto, quedaba en PARA_PREPARAR) pero el armador nunca
+        // la veia. Ahora entra igual y se distingue con el chip rojo "SIN DRIVE" de la card
+        // (CardPedido.razor), que estaba escrito desde el 05/06 y nunca podia aparecer.
+        // El caso EstadoPreparacion == null sigue atado a Drive a proposito: son ventas viejas
+        // que entraron al tablero antes de que se guardara el estado. Sin esa atadura entrarian
+        // TODAS las ventas de oficina que nunca se mandaron a armar.
         var ventas = await _db.CafeVentas
             .Include(v => v.Items)
             .Where(v => v.PreparacionOcultoAt == null
-                && (v.EstadoPreparacion == null
-                    || v.EstadoPreparacion == "PARA_PREPARAR"
-                    || v.EstadoPreparacion == "EN_PREPARACION")
+                && (v.EstadoPreparacion == "PARA_PREPARAR"
+                    || v.EstadoPreparacion == "EN_PREPARACION"
+                    || (v.EstadoPreparacion == null && v.DriveSubidoAt != null))
                 && v.Estado != "anulado"
-                && v.DriveSubidoAt != null
                 && v.CreatedAt >= desde)
             // Orden: las que tienen Drive primero por DriveSubidoAt desc, las sin Drive al final por CreatedAt desc
             .OrderByDescending(v => v.DriveSubidoAt ?? v.CreatedAt)
@@ -4300,12 +4436,13 @@ public class CafeVentasController : ControllerBase
     {
         var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
         var ahora = DateTime.UtcNow;
+        // 2026-09-09: mismo filtro que GET /preparacion (incluye las SIN DRIVE). Si no, "limpiar
+        // tablero" dejaba pegadas justo las que fallaron al subir y el tablero no quedaba vacio.
         var ventas = await _db.CafeVentas
-            .Where(v => v.DriveSubidoAt != null
-                && v.PreparacionOcultoAt == null
-                && (v.EstadoPreparacion == null
-                    || v.EstadoPreparacion == "PARA_PREPARAR"
-                    || v.EstadoPreparacion == "EN_PREPARACION")
+            .Where(v => v.PreparacionOcultoAt == null
+                && (v.EstadoPreparacion == "PARA_PREPARAR"
+                    || v.EstadoPreparacion == "EN_PREPARACION"
+                    || (v.EstadoPreparacion == null && v.DriveSubidoAt != null))
                 && v.CreatedAt >= desde
                 && v.Estado != "anulado")
             .ToListAsync();
@@ -4355,10 +4492,11 @@ public class CafeVentasController : ControllerBase
             }
         }
 
+        // 2026-09-09: sin el filtro de Drive (ver GET /preparacion). Un pedido que se armo con el
+        // permiso de Google caido tambien tiene que figurar en "Ya armados".
         var query = _db.CafeVentas
             .Include(v => v.Items)
-            .Where(v => v.DriveSubidoAt != null
-                && v.PreparacionOcultoAt == null
+            .Where(v => v.PreparacionOcultoAt == null
                 && (v.EstadoPreparacion == "LISTO"
                     || v.EstadoPreparacion == "EN_CAMINO"
                     || v.EstadoPreparacion == "ENTREGADO")
