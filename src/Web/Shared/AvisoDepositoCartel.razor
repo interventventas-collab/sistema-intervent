@@ -1,0 +1,214 @@
+@inject ApiClient Api
+@inject AuthService AuthSvc
+@inject PresenceService Presence
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@implements IDisposable
+
+@*
+   2026-09-09 — El cartel que le tapa la pantalla a Depósito.
+
+   Osmar: "si Gaby escribe @ojo que les aparezca en la pantalla y les suene, que lo tengan que ver
+   sí o sí. Y yo, desde mi sesión, un botón que les dé un zumbido".
+
+   Por qué tapa y no avisa al costado: el problema era justamente que los mensajes importantes
+   quedaban enterrados. Un aviso que se puede ignorar no resuelve nada. Sale del paso con "Lo vi",
+   y eso queda grabado con nombre y hora — que es la vuelta que hoy no existe.
+
+   El sonido corta al minuto pero el cartel NO se va: si el @ojo entra un domingo con el depósito
+   vacío, no queremos que suene hasta el lunes, pero el aviso tiene que estar esperando.
+*@
+
+@if (esDeposito && aviso is not null)
+{
+    <div class="avdep-fondo">
+        <div class="avdep-card">
+            <div class="avdep-head">
+                <span class="avdep-camp">🔔</span>
+                <span class="avdep-titulo">@aviso.Titulo</span>
+            </div>
+            <div class="avdep-body">
+                <div class="avdep-meta">@FechaLinda(aviso.CreatedAt)</div>
+                <div class="avdep-texto">@aviso.Texto</div>
+                <div class="avdep-botones">
+                    <button class="avdep-btn avdep-btn-ok" @onclick="LoVi" disabled="@marcando">
+                        @(marcando ? "…" : "Lo vi")
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(aviso.Numero))
+                    {
+                        <button class="avdep-btn" @onclick="IrAlChat" disabled="@marcando">Ir al chat</button>
+                    }
+                </div>
+                @if (!sonando)
+                {
+                    <div class="avdep-nota">El aviso queda acá hasta que alguien toque “Lo vi”.</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ApiClient.AvisoDepDto? aviso;
+    /// <summary>El cartel es SÓLO para Depósito: a la oficina no le tapa nada.</summary>
+    private bool esDeposito;
+    private bool marcando;
+    private bool sonando;
+    private System.Threading.Timer? timerSonido;
+    private System.Threading.Timer? timerRespaldo;
+    private int tokenSonido;
+
+    /// <summary>Cuánto suena antes de callarse (el cartel se queda igual).</summary>
+    private const int SegundosDeSonido = 60;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var user = await AuthSvc.GetUserAsync();
+            var perms = user?.Permissions ?? new();
+            esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
+        }
+        catch { esDeposito = false; }
+        if (!esDeposito) return;
+
+        Presence.OnAvisoDeposito += AvisoLlego;
+        await CargarPendienteAsync();
+        // Respaldo: si el empujón en vivo no llega (se cortó la conexión, el navegador durmió),
+        // igual lo levantamos. Sin esto un aviso puede quedar invisible justo cuando importa.
+        timerRespaldo = new System.Threading.Timer(async _ =>
+        {
+            if (aviso is null) await InvokeAsync(CargarPendienteAsync);
+        }, null, 45000, 45000);
+    }
+
+    private void AvisoLlego(int id) => _ = InvokeAsync(async () =>
+    {
+        if (aviso is not null) return;      // ya hay uno tapando: el nuevo espera su turno
+        try
+        {
+            var a = await Api.GetAvisoDepositoAsync(id);
+            if (a is not null && a.VistoAt is null) await MostrarAsync(a);
+        }
+        catch { }
+    });
+
+    private async Task CargarPendienteAsync()
+    {
+        try
+        {
+            var pend = await Api.GetAvisosDepositoPendientesAsync();
+            var a = pend.FirstOrDefault();
+            if (a is not null && aviso is null) await MostrarAsync(a);
+        }
+        catch { }
+    }
+
+    private async Task MostrarAsync(ApiClient.AvisoDepDto a)
+    {
+        aviso = a;
+        sonando = true;
+        StateHasChanged();
+        await SonarAsync();
+    }
+
+    /// <summary>Suena cada 3 segundos durante un minuto. El navegador puede negarse si nadie tocó
+    /// la pantalla todavía — por eso el cartel es lo que manda, no el sonido.</summary>
+    private async Task SonarAsync()
+    {
+        var mio = ++tokenSonido;
+        try { await JS.InvokeVoidAsync("waTestSound", "chime"); } catch { }
+        timerSonido?.Dispose();
+        var vueltas = 0;
+        timerSonido = new System.Threading.Timer(async _ =>
+        {
+            if (tokenSonido != mio || aviso is null) return;
+            vueltas++;
+            if (vueltas * 3 >= SegundosDeSonido)
+            {
+                sonando = false;
+                timerSonido?.Dispose();
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            try { await JS.InvokeVoidAsync("waTestSound", "chime"); } catch { }
+        }, null, 3000, 3000);
+    }
+
+    private void PararSonido()
+    {
+        tokenSonido++;
+        sonando = false;
+        timerSonido?.Dispose();
+        timerSonido = null;
+    }
+
+    private async Task LoVi()
+    {
+        if (aviso is null) return;
+        marcando = true;
+        PararSonido();
+        try
+        {
+            var quien = await OperadorAsync();
+            await Api.MarcarAvisoDepositoVistoAsync(aviso.Id, quien);
+        }
+        catch { }
+        marcando = false;
+        aviso = null;
+        StateHasChanged();
+        // Si había más de uno esperando, aparece el siguiente.
+        await CargarPendienteAsync();
+    }
+
+    private async Task IrAlChat()
+    {
+        var num = aviso?.Numero;
+        await LoVi();
+        if (!string.IsNullOrWhiteSpace(num)) Nav.NavigateTo("/deposito/whatsapp");
+    }
+
+    /// <summary>Quién está mirando: el operador elegido en la barrita (alex, walter…).</summary>
+    private async Task<string?> OperadorAsync()
+    {
+        try { return await JS.InvokeAsync<string?>("localStorage.getItem", "current_operator"); }
+        catch { return null; }
+    }
+
+    private static string FechaLinda(DateTime utc)
+    {
+        var l = utc.ToArTime();
+        var hoy = DateTimeExt.AhoraAr().Date;
+        return l.Date == hoy ? $"hoy {l:HH:mm}" : l.ToString("dd/MM HH:mm");
+    }
+
+    public void Dispose()
+    {
+        Presence.OnAvisoDeposito -= AvisoLlego;
+        timerSonido?.Dispose();
+        timerRespaldo?.Dispose();
+    }
+}
+
+<style>
+    /* Tapa TODO a propósito: es un aviso que no se puede saltear. */
+    .avdep-fondo { position: fixed; inset: 0; z-index: 99000; background: rgba(15,23,42,0.72);
+        display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .avdep-card { background: #fff; border-radius: 14px; width: 100%; max-width: 430px;
+        overflow: hidden; box-shadow: 0 18px 50px rgba(0,0,0,0.45); }
+    .avdep-head { background: #fee2e2; padding: 0.9rem 1.1rem; display: flex; align-items: center; gap: 0.6rem; }
+    .avdep-camp { font-size: 1.5rem; animation: avdep-toc 1s ease-in-out infinite; }
+    @@keyframes avdep-toc { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
+    .avdep-titulo { font-size: 1.05rem; font-weight: 800; color: #991b1b; }
+    .avdep-body { padding: 1.1rem; }
+    .avdep-meta { font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; }
+    .avdep-texto { font-size: 1.15rem; line-height: 1.5; color: #111827;
+        border-left: 4px solid #d1d5db; padding-left: 0.8rem; white-space: pre-wrap; word-break: break-word; }
+    .avdep-botones { display: flex; gap: 0.6rem; margin-top: 1.2rem; }
+    .avdep-btn { flex: 1; padding: 0.85rem; border-radius: 10px; border: 1px solid #d1d5db;
+        background: #fff; font-size: 1rem; font-weight: 700; color: #374151; cursor: pointer; }
+    .avdep-btn:hover { background: #f3f4f6; }
+    .avdep-btn-ok { flex: 2; background: #16a34a; border-color: #16a34a; color: #fff; }
+    .avdep-btn-ok:hover { background: #15803d; }
+    .avdep-nota { font-size: 0.78rem; color: #9ca3af; margin-top: 0.7rem; text-align: center; }
+</style>

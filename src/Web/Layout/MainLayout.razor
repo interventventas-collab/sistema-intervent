@@ -1954,6 +1954,10 @@
 @if (!IsEmbedded)
 {
     <DepositoWaFloating @ref="depWaRef" />
+    @* 2026-09-09: el cartel del AVISO IMPORTANTE (@@ojo / 🔴 o el botón de la oficina).
+       Se monta para todos pero él solo se apaga si el usuario no es de Depósito, igual que el
+       globito de arriba. Va en el layout para que tape la pantalla estén donde estén. *@
+    <AvisoDepositoCartel />
 }
 
 @* 2026-08-06: cartel con QR para abrir la pantalla actual en el celu (botón QR de la barra). *@

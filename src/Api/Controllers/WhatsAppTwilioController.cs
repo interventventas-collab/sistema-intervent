@@ -2180,6 +2180,87 @@ public class WhatsAppTwilioController : ControllerBase
 
     /// <summary>2026-08-07: ¿el usuario logueado es de DEPÓSITO? (mismo criterio que el frontend:
     /// permiso "deposito" y NO "cafe"/"oficina"). El admin NO es depósito.</summary>
+    // ═════════ 2026-09-09: AVISO IMPORTANTE PARA DEPOSITO ═════════
+    // El cartel que les tapa la pantalla hasta que alguien toca "Lo vi".
+
+    public record AvisoDepDto(int Id, string Titulo, string Texto, string Origen,
+        string? Numero, string? Linea, string? CreadoPor, DateTime CreatedAt,
+        string? VistoPor, DateTime? VistoAt);
+
+    private static AvisoDepDto MapAviso(Models.WhatsAppAvisoDeposito a) => new(
+        a.Id, a.Titulo, a.Texto, a.Origen, a.Numero, a.LineaPhoneId,
+        a.CreadoPor, a.CreatedAt, a.VistoPor, a.VistoAt);
+
+    /// <summary>Los avisos que NADIE tocó todavía. Es lo que levanta la pantalla al abrirse, para que
+    /// un aviso no se pierda si en ese momento no había ninguna pantalla prendida.</summary>
+    [HttpGet("avisos-deposito/pendientes")]
+    public async Task<IActionResult> AvisosDepositoPendientes()
+    {
+        // Un aviso de hace tres días ya no sirve y sería un cartel imposible de sacar.
+        var desde = DateTime.UtcNow.AddHours(-12);
+        var lista = await _db.WhatsAppAvisosDeposito.AsNoTracking()
+            .Where(a => a.VistoAt == null && a.CreatedAt >= desde)
+            .OrderBy(a => a.CreatedAt)
+            .ToListAsync();
+        return Ok(lista.Select(MapAviso).ToList());
+    }
+
+    /// <summary>Uno puntual (lo pide la pantalla cuando le llega el empujón en vivo).</summary>
+    [HttpGet("avisos-deposito/{id:int}")]
+    public async Task<IActionResult> AvisoDeposito(int id)
+    {
+        var a = await _db.WhatsAppAvisosDeposito.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        return a is null ? NotFound() : Ok(MapAviso(a));
+    }
+
+    public record VistoRequest(string? Quien);
+
+    /// <summary>"Lo vi". Guarda quién y cuándo — es la vuelta que hoy no existe.</summary>
+    [HttpPost("avisos-deposito/{id:int}/visto")]
+    public async Task<IActionResult> MarcarAvisoVisto(int id, [FromBody] VistoRequest? req)
+    {
+        var a = await _db.WhatsAppAvisosDeposito.FirstOrDefaultAsync(x => x.Id == id);
+        if (a is null) return NotFound();
+        if (a.VistoAt is null)
+        {
+            a.VistoAt = DateTime.UtcNow;
+            a.VistoPor = string.IsNullOrWhiteSpace(req?.Quien)
+                ? (Request?.Headers["X-Operator-Name"].FirstOrDefault() ?? User?.Identity?.Name)
+                : req!.Quien!.Trim();
+            await _db.SaveChangesAsync();
+        }
+        return Ok(MapAviso(a));
+    }
+
+    public record CrearAvisoRequest(string? Numero, string? Linea, string? Texto);
+
+    /// <summary>El botón de la oficina: les suena y les tapa la pantalla. Depósito NO puede usarlo
+    /// (si no, se avisan entre ellos y el cartel deja de significar algo).</summary>
+    [HttpPost("avisos-deposito")]
+    public async Task<IActionResult> CrearAvisoDeposito(
+        [FromBody] CrearAvisoRequest req, [FromServices] Services.AvisoDepositoService svc)
+    {
+        if (await EsDepositoAsync()) return Forbid();
+        var texto = (req.Texto ?? "").Trim();
+        if (texto.Length == 0) return BadRequest(new { error = "Escribí qué les querés avisar." });
+
+        var quien = Request?.Headers["X-Operator-Name"].FirstOrDefault() ?? User?.Identity?.Name;
+        var titulo = string.IsNullOrWhiteSpace(quien) ? "Aviso de la oficina" : $"Aviso de {quien}";
+        var a = await svc.CrearAsync(req.Numero, req.Linea, titulo, texto,
+            Models.WhatsAppAvisoDeposito.OrigenBoton, quien);
+        return Ok(MapAviso(a));
+    }
+
+    /// <summary>Los últimos avisos de un chat, con quién los vio. Lo mira la oficina.</summary>
+    [HttpGet("avisos-deposito/ultimos")]
+    public async Task<IActionResult> UltimosAvisos([FromQuery] string? numero, [FromQuery] string? linea)
+    {
+        var q = _db.WhatsAppAvisosDeposito.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(numero)) q = q.Where(a => a.Numero == numero);
+        var lista = await q.OrderByDescending(a => a.CreatedAt).Take(5).ToListAsync();
+        return Ok(lista.Select(MapAviso).ToList());
+    }
+
     private async Task<bool> EsDepositoAsync()
     {
         var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value

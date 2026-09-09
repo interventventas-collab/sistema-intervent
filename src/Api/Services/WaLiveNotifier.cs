@@ -30,6 +30,25 @@ public class WaLiveNotifier
     /// <summary>convId con el MISMO formato que usa la presencia: "{numero}|{linea}".</summary>
     public static string ConvId(string? numero, string? lineaPhoneId) => $"{numero}|{lineaPhoneId}";
 
+    /// <summary>2026-09-09: empuja el AVISO IMPORTANTE de Depósito a todas las pantallas abiertas.
+    /// El cartel tiene que aparecer en el momento; si el aviso no llega, la pantalla igual lo
+    /// levanta en su próxima consulta de respaldo (más lento, pero no se pierde).</summary>
+    public async Task AvisarDepositoAsync(int avisoId)
+    {
+        try
+        {
+            await _hub.Clients.Group("presence-all").SendAsync("AvisoDeposito", avisoId);
+            // Y despertar los teléfonos con la pantalla cerrada, igual que con un mensaje nuevo.
+            using var scope = _scopes.CreateScope();
+            var push = scope.ServiceProvider.GetRequiredService<WaPushService>();
+            await push.AvisarAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[WaLive] no se pudo empujar el aviso de deposito {Id}", avisoId);
+        }
+    }
+
     /// <summary>Avisa a todas las pantallas abiertas. <paramref name="direccion"/> = INCOMING | OUTGOING.</summary>
     public async Task AvisarAsync(string? numero, string? lineaPhoneId, string direccion)
     {

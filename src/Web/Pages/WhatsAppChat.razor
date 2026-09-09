@@ -770,6 +770,15 @@
                                 </div>
                             }
                         </span>
+                        @* 2026-09-09: AVISAR A DEPÓSITO. Les suena y les tapa la pantalla en el acto.
+                           Sólo aparece en los chats que Depósito ve: en el resto no tendría a quién
+                           avisarle. Es lo mismo que dispara el @@ojo de Gabriel, pero a mano. *@
+                        @if (EsChatDeDeposito())
+                        {
+                            <button class="wa-hdr-arch" style="border-color:#fca5a5; color:#b91c1c;"
+                                    @onclick="@(async () => { showAvisoDep = true; avisoDepTexto = ""; await CargarUltimosAvisosDep(); })"
+                                    title="Mandarle un aviso a Depósito: les suena y les tapa la pantalla hasta que lo ven">🔔 Avisar a Depósito</button>
+                        }
                         @* 2026-09-08: ARCHIVAR con botón propio, un solo toque. Antes había que abrir
                            el desplegable de Estado y buscarlo ahí adentro. *@
                         @if (_estHdr == "archivado")
@@ -2793,6 +2802,53 @@
 
 @* 2026-08-03: ventana FLOTANTE (se puede mover) con el texto completo del pedido antes de crear la venta.
    No lleva fondo oscuro a propósito: querés seguir viendo el chat mientras la movés y comparás. *@
+@* 2026-09-09: ventanita para mandarle el aviso a Depósito. *@
+@if (showAvisoDep)
+{
+    <div class="modal-overlay" style="z-index:9700;" @onclick="@(() => showAvisoDep = false)">
+        <div class="modal-card" style="max-width:520px; width:min(520px,96vw);" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#fee2e2;">
+                <h3 style="color:#991b1b; margin:0;">🔔 Avisarle a Depósito</h3>
+                <button class="btn-icon" @onclick="@(() => showAvisoDep = false)">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:0.85rem; color:#6b7280; margin:0 0 0.5rem;">
+                    Les va a sonar y les va a tapar la pantalla hasta que alguien toque “Lo vi”.
+                    Usalo para lo que no puede esperar.
+                </p>
+                <textarea class="form-input" rows="3" @bind="avisoDepTexto" @bind:event="oninput"
+                          placeholder="Ej: frenen el pedido de Núcleo, me confundí"></textarea>
+                @if (ultimosAvisosDep.Count > 0)
+                {
+                    <div style="margin-top:0.7rem; font-size:0.78rem; color:#6b7280;">
+                        <div style="font-weight:700; margin-bottom:0.2rem;">Últimos avisos de este chat</div>
+                        @foreach (var a in ultimosAvisosDep)
+                        {
+                            <div>
+                                @a.CreatedAt.ToArTime().ToString("dd/MM HH:mm") · @a.Texto
+                                @if (a.VistoAt is not null)
+                                {
+                                    <strong style="color:#166534;"> · lo vio @a.VistoPor a las @a.VistoAt.Value.ToArTime().ToString("HH:mm")</strong>
+                                }
+                                else
+                                {
+                                    <strong style="color:#b45309;"> · todavía nadie lo vio</strong>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="@(() => showAvisoDep = false)" disabled="@mandandoAviso">Cancelar</button>
+                <button class="btn btn-primary" @onclick="MandarAvisoDeposito" disabled="@mandandoAviso">
+                    @(mandandoAviso ? "Mandando…" : "🔔 Avisar ahora")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showPedidoFloat)
 {
     <div class="wa-float" id="wa-pedido-float">
@@ -9629,6 +9685,43 @@
             await LoadConversaciones(silent: true);
         }
         else Toast.Error("No se pudo archivar");
+    }
+
+    // ═══ 2026-09-09: AVISAR A DEPÓSITO desde el chat ═══
+    // El mismo cartel que dispara el @ojo de Gabriel, pero a mano. Sólo en los chats que
+    // Depósito ve: en el resto no hay a quién avisarle.
+    bool showAvisoDep;
+    string avisoDepTexto = "";
+    bool mandandoAviso;
+    List<ApiClient.AvisoDepDto> ultimosAvisosDep = new();
+
+    bool EsChatDeDeposito()
+        => selectedNumero is not null && Web.Services.DepositoChats.EsVisible(selectedNumero, selectedLinea);
+
+    async Task MandarAvisoDeposito()
+    {
+        var t = (avisoDepTexto ?? "").Trim();
+        if (t.Length == 0) { Toast.Error("Escribí qué les querés avisar"); return; }
+        mandandoAviso = true;
+        try
+        {
+            var a = await Api.MandarAvisoDepositoAsync(selectedNumero, selectedLinea, t);
+            if (a is null) { Toast.Error("No se pudo mandar el aviso"); return; }
+            Toast.Success("Aviso mandado — les está sonando 🔔");
+            showAvisoDep = false;
+            avisoDepTexto = "";
+            await CargarUltimosAvisosDep();
+        }
+        catch (Exception ex) { Toast.Error("No se pudo mandar: " + ex.Message); }
+        finally { mandandoAviso = false; }
+    }
+
+    /// <summary>Para ver quién lo vio y cuándo. Sin esto el aviso es a ciegas.</summary>
+    async Task CargarUltimosAvisosDep()
+    {
+        if (!EsChatDeDeposito()) { ultimosAvisosDep = new(); return; }
+        try { ultimosAvisosDep = await Api.GetUltimosAvisosDepositoAsync(selectedNumero, selectedLinea); }
+        catch { ultimosAvisosDep = new(); }
     }
 
     // 2026-08-09: archivar/desarchivar la conversación abierta. archivar=true la saca del listado general

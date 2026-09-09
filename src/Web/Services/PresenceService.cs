@@ -57,6 +57,10 @@ public class PresenceService : IAsyncDisposable
     /// avisa el servidor (webhook de Meta / endpoint de envío). Sirve para refrescar al instante en
     /// vez de preguntar cada 12–15 s, que es lo que hacía sentir lento al celular.</summary>
     public event Action<string, string, DateTime>? OnNuevoMensaje;
+
+    /// <summary>2026-09-09: llegó un AVISO IMPORTANTE para Depósito (@ojo / 🔴 o el botón de la
+    /// oficina). Trae el id; la pantalla se trae el aviso y lo muestra.</summary>
+    public event Action<int>? OnAvisoDeposito;
     /// <summary>2026-08-20: se recuperó la conexión después de un corte. Mientras estuvo cortada NO
     /// llegó ningún aviso, así que la pantalla tiene que ir a buscar lo que se perdió.</summary>
     public event Action? OnReconectado;
@@ -81,6 +85,7 @@ public class PresenceService : IAsyncDisposable
                 (convId, uid, uname, at) => OnMessageSent?.Invoke(convId, uid, uname, at));
             _hub.On<string, string, DateTime>("WaNuevoMensaje",
                 (convId, direccion, at) => OnNuevoMensaje?.Invoke(convId, direccion, at));
+            _hub.On<int>("AvisoDeposito", id => OnAvisoDeposito?.Invoke(id));
 
             // Volvió solo después de un corte: hay que traer lo que entró mientras no había canal.
             _hub.Reconnected += _ => { OnReconectado?.Invoke(); return Task.CompletedTask; };

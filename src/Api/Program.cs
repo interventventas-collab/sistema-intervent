@@ -120,6 +120,8 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<Api.Hubs.PresenceTracker>();
 // 2026-08-18: aviso en vivo de mensajes de WhatsApp (para que el celu no tenga que preguntar cada 12 s).
 builder.Services.AddSingleton<Api.Services.WaLiveNotifier>();
+// 2026-09-09: el aviso que le tapa la pantalla a Deposito (@ojo / 🔴 y el boton de la oficina).
+builder.Services.AddScoped<Api.Services.AvisoDepositoService>();
 // 2026-08-18: avisos de WhatsApp con la pantalla cerrada (Web Push).
 builder.Services.AddScoped<Api.Services.WaPushService>();
 builder.Services.AddHostedService<Api.Hubs.PresenceSweeper>();

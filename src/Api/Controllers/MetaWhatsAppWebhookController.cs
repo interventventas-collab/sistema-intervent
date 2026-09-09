@@ -99,6 +99,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
         var pagoBot = sp.GetRequiredService<WhatsAppPagoBotService>();
         // 2026-08-06: aviso de venta a internos (atiende los botones comprobante/cuenta corriente/detalle)
         var avisoSvc = sp.GetRequiredService<VentaAvisoWhatsAppService>();
+        var avisoDep = sp.GetRequiredService<AvisoDepositoService>();
 
         using var doc = JsonDocument.Parse(raw);
         var root = doc.RootElement;
@@ -165,7 +166,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 }
 
                 foreach (var m in messages.EnumerateArray())
-                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, empBot, pagoBot, avisoSvc, m, nombres, baseUrl, lineaId);
+                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, empBot, pagoBot, avisoSvc, avisoDep, m, nombres, baseUrl, lineaId);
             }
         }
     }
@@ -434,6 +435,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
     private async Task ProcesarMensajeAsync(AppDbContext db, MetaWhatsAppService meta,
         WhatsAppPedidoService pedidoSvc, Api.Controllers.CafeListasCustomController listasCtrl,
         WhatsAppEmpleadoBotService empBot, WhatsAppPagoBotService pagoBot, VentaAvisoWhatsAppService avisoSvc,
+        AvisoDepositoService avisoDep,
         JsonElement m, Dictionary<string, string> nombres, string baseUrl, string? lineaId)
     {
         var wamid = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
@@ -560,6 +562,13 @@ public class MetaWhatsAppWebhookController : ControllerBase
         // 2026-08-18: avisar EN EL MOMENTO a las pantallas abiertas (celu incluido). Va antes de
         // los bots para que el mensaje se vea enseguida aunque despues haya procesamiento.
         await _waLive.AvisarAsync(numero, lineaId, "INCOMING");
+
+        // 2026-09-09: AVISO IMPORTANTE PARA DEPOSITO (@ojo / 🔴).
+        // ⚠ Va ACA, antes del corte de "linea sin automatismos": la linea de Gabriel es justamente
+        // la que no tiene robots, y es la unica desde la que se dispara esto. Si lo ponia mas
+        // abajo, no se ejecutaba nunca.
+        try { await avisoDep.RevisarMensajeAsync(numero, lineaId, cuerpo, nombrePerfil); }
+        catch (Exception ex) { _logger.LogError(ex, "[Meta WA webhook] aviso de deposito"); }
         _logger.LogInformation("[Meta WA webhook] IN {Numero} ({Name}): {Body}", numero, nombrePerfil, cuerpo);
 
         // 2026-08-05 (pedido del usuario): la línea FIJO TRANSRADIO NO tiene automatismos.

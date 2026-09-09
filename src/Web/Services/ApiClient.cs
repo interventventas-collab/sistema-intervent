@@ -6322,6 +6322,37 @@ public class ApiClient
         // 09/09/2026: o a qué PROVEEDOR, y contra qué factura suya (null = "a cuenta").
         int? RedirigidoProveedorId = null, int? RedirigidoCompraId = null);
 
+    // ─── 09/09/2026: AVISO IMPORTANTE PARA DEPÓSITO ───────────────────────────────────────
+    public class AvisoDepDto
+    {
+        public int Id { get; set; }
+        public string Titulo { get; set; } = "";
+        public string Texto { get; set; } = "";
+        public string Origen { get; set; } = "";
+        public string? Numero { get; set; }
+        public string? Linea { get; set; }
+        public string? CreadoPor { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public string? VistoPor { get; set; }
+        public DateTime? VistoAt { get; set; }
+    }
+
+    public async Task<List<AvisoDepDto>> GetAvisosDepositoPendientesAsync()
+        => await GetAsync<List<AvisoDepDto>>("/api/whatsapp/twilio/avisos-deposito/pendientes") ?? new();
+
+    public async Task<AvisoDepDto?> GetAvisoDepositoAsync(int id)
+        => await GetAsync<AvisoDepDto>($"/api/whatsapp/twilio/avisos-deposito/{id}");
+
+    public async Task<AvisoDepDto?> MarcarAvisoDepositoVistoAsync(int id, string? quien)
+        => await PostAsync<AvisoDepDto>($"/api/whatsapp/twilio/avisos-deposito/{id}/visto", new { quien });
+
+    /// <summary>El botón de la oficina: les suena y les tapa la pantalla.</summary>
+    public async Task<AvisoDepDto?> MandarAvisoDepositoAsync(string? numero, string? linea, string texto)
+        => await PostAsync<AvisoDepDto>("/api/whatsapp/twilio/avisos-deposito", new { numero, linea, texto });
+
+    public async Task<List<AvisoDepDto>> GetUltimosAvisosDepositoAsync(string? numero, string? linea)
+        => await GetAsync<List<AvisoDepDto>>($"/api/whatsapp/twilio/avisos-deposito/ultimos?numero={Uri.EscapeDataString(numero ?? "")}&linea={Uri.EscapeDataString(linea ?? "")}") ?? new();
+
     /// <summary>A quién se le puede redirigir una cobranza (empleados activos).</summary>
     public async Task<List<CafeDestinatarioDto>?> GetCafeDestinatariosAsync()
         => await GetAsync<List<CafeDestinatarioDto>>("/api/cafe/cobranzas/destinatarios");
