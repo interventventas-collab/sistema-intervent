@@ -1890,8 +1890,17 @@
                             </div>
                         }
                     </div>
-                    @* 2026-07-23: @bind:event="oninput" es CLAVE — sin esto el texto solo se guarda al salir del
-   campo, y al apretar Enter el sistema veia el mensaje vacio (no enviaba nada). *@
+                    @* 2026-07-23: hacia falta que el texto se guardara en cada tecla — sin eso, al apretar
+   Enter el sistema veia el mensaje vacio y no enviaba nada.
+   2026-09-09: pero hacerlo con @bind:event="oninput" salia carisimo. Cada tecla obligaba a
+   REDIBUJAR el chat entero (los mensajes, la lista de la izquierda, la ficha) y se sentia como
+   teclado trabado: el chiste de la oficina era que la maquina era una Pentium 2. Encima el
+   refresco automatico le reescribia el texto al cuadro en medio de la palabra.
+   Ahora el texto lo maneja el navegador (instantaneo) y .NET solo se entera del cambio; se
+   redibuja unicamente cuando importa: al pasar de vacio a escrito, o al reves (ahi cambia el
+   boton Enviar). Cuando .NET necesita ESCRIBIR en el cuadro (respuesta rapida, borrador, error
+   al enviar) lo hace por waComposer.setValor desde OnAfterRenderAsync.
+   Es el mismo arreglo que ya andaba en Shared/PinnedWaChat.razor desde el 18/08. *@
                     @* 2026-08-17: rows="1" + el crecimiento automático de wa-composer.js. Antes tenía
                        145 px de alto fijo aunque escribieras una palabra. La LETRA sigue grande. *@
                     @* 2026-08-26: mientras el panel del reloj está abierto, ESTE cuadro pasa a "modo
@@ -1906,7 +1915,7 @@
                         </div>
                     }
                     <div class="wa-composer-main @(ProgramandoDesdeComposer() ? "programando" : "")">
-                        <textarea class="form-control wa-composer-input" placeholder="@(ProgramandoDesdeComposer() ? $"Escribí lo que se manda {CuandoLindo(progCuando)}… (Enter para dejarlo programado)" : "Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)")" @bind="composerText" @bind:event="oninput" rows="1"></textarea>
+                        <textarea class="form-control wa-composer-input" placeholder="@(ProgramandoDesdeComposer() ? $"Escribí lo que se manda {CuandoLindo(progCuando)}… (Enter para dejarlo programado)" : "Escribir mensaje… (Enter para enviar, Shift+Enter para renglón nuevo)")" @ref="composerRef" @oninput="OnComposerInput" rows="1"></textarea>
                         @if (ProgramandoDesdeComposer())
                         {
                             <button class="btn wa-enviar-btn wa-programar-btn" @onclick="ProgramarAhora" disabled="@(progGuardando || !SePuedeProgramar())">
@@ -4991,6 +5000,32 @@
     // Así el mismo contacto en 2 líneas nuestras son 2 chats distintos y no se cruzan.
     string? selectedLinea;
     string composerText = "";
+    // 2026-09-09: el cuadro de escribir ya no esta atado tecla por tecla (ver el comentario del
+    // textarea). Estas tres piezas son lo que lo reemplaza.
+    ElementReference composerRef;      // el cuadro, para poder escribirle desde .NET
+    string _composerEnPantalla = "";   // que texto tiene el cuadro AHORA segun nosotros
+    bool _saltarRender;                // "esta tecla no cambia nada visible: no redibujes"
+
+    /// <summary>Cada tecla que escribis. Guarda el texto SIN redibujar la pantalla, salvo que el
+    /// cuadro haya pasado de vacio a escrito (o al reves): ahi si, porque cambia el boton Enviar,
+    /// el resumen del mensaje programado y el boton de guardar respuesta rapida.</summary>
+    void OnComposerInput(ChangeEventArgs e)
+    {
+        var nuevo = e.Value?.ToString() ?? "";
+        var estabaVacio = string.IsNullOrWhiteSpace(composerText);
+        var quedaVacio = string.IsNullOrWhiteSpace(nuevo);
+        composerText = nuevo;
+        // El cuadro ya muestra esto (lo escribiste vos): que OnAfterRender no te lo vuelva a
+        // escribir, porque eso te patearia el cursor al final en medio de una correccion.
+        _composerEnPantalla = nuevo;
+        _saltarRender = estabaVacio == quedaVacio;
+    }
+
+    protected override bool ShouldRender()
+    {
+        if (_saltarRender) { _saltarRender = false; return false; }
+        return true;
+    }
 
     // 2026-08-26: cada chat se acuerda de lo que dejaste escrito y de los archivos que cargaste,
     // como WhatsApp. Antes el texto y los adjuntos NO se limpiaban al cambiar de conversación:
@@ -6973,6 +7008,17 @@
             _fichaAttachPending = false;
             try { await JS.InvokeVoidAsync("waDraggable.attach", "wa-ficha-float-head", "wa-ficha-float"); }
             catch { /* si el JS no cargó, la ventana igual se ve, solo que no se mueve */ }
+        }
+        // 2026-09-09: el cuadro de escribir ya no lo pinta Blazor en cada dibujo (ver el textarea).
+        // Entonces, cuando el texto lo cambia el PROGRAMA y no vos —una respuesta rápida, el
+        // borrador al volver a un chat, el texto que se devuelve si falló el envío, el pie de una
+        // foto— hay que escribírselo al cuadro a mano. Este es el ÚNICO lugar que lo hace, así no
+        // hay que acordarse en los 25 lugares que tocan el texto.
+        if (composerText != _composerEnPantalla)
+        {
+            _composerEnPantalla = composerText;
+            try { await JS.InvokeVoidAsync("waComposer.setValor", composerRef, composerText); }
+            catch { /* no hay chat abierto (no existe el cuadro) o el JS no cargó: nada que hacer */ }
         }
     }
 
