@@ -7576,3 +7576,22 @@ BEGIN
     CREATE INDEX IX_WaAvisosDeposito_Pendientes ON WhatsApp_AvisosDeposito (CreatedAt) WHERE VistoAt IS NULL;
 END
 GO
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 2026-09-09 · INDICE de la tabla de mensajes de WhatsApp (la mas grande del sistema).
+-- El problema: la lista de chats se arma agrupando la tabla ENTERA por (Numero + Linea)
+-- y sacando el ultimo mensaje de cada grupo; y abrir un chat pide sus mensajes ordenados
+-- por fecha. Sin indice, las dos cosas leian la tabla completa cada vez. La pantalla de
+-- la compu ademas repetia las dos cada 10 segundos: de ahi que "el WhatsApp va lento".
+-- Este indice le da el orden ya hecho a las dos consultas.
+-- NO incluye Cuerpo a proposito (es texto libre sin tope): incluirlo duplicaria en disco
+-- todos los mensajes de la historia para ganar muy poco.
+-- ⚠ Correr A MANO en PROD. Idempotente, se hace en caliente y NO corta nada.
+-- ─────────────────────────────────────────────────────────────────────────────
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='WhatsApp_TwilioMensajes')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_WaMensajes_NumLinea_Fecha'
+                     AND object_id=OBJECT_ID('WhatsApp_TwilioMensajes'))
+    CREATE NONCLUSTERED INDEX IX_WaMensajes_NumLinea_Fecha
+        ON WhatsApp_TwilioMensajes (Numero, LineaPhoneId, CreatedAt DESC)
+        INCLUDE (Direccion);
+GO
