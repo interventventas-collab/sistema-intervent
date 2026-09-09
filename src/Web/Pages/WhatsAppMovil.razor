@@ -265,7 +265,17 @@ else
                     foreach (var c in filtradas)
                     {
                         var sinLeer = NoLeido(c);
-                        <div class="wam-conv @(sinLeer ? "nuevo" : "") @(c.Fijado ? "fijado" : "")" @onclick="() => AbrirChat(c)">
+                        @* 2026-09-08 (2ª vuelta): MANTENER APRETADO abre el menú de opciones, como en
+                           el WhatsApp de verdad. Antes archivar era un botón suelto en el renglón y
+                           Osmar avisó que "queda muy expuesto y te lo archiva muy fácil": un roce al
+                           scrollear y ya estaba. Ahora hay que sostener el dedo medio segundo. *@
+                        <div class="wam-conv @(sinLeer ? "nuevo" : "") @(c.Fijado ? "fijado" : "")"
+                             @onclick="() => AbrirChat(c)"
+                             @onpointerdown="() => EmpezarPress(c)"
+                             @onpointerup="TerminarPress"
+                             @onpointerleave="TerminarPress"
+                             @onpointercancel="TerminarPress"
+                             @oncontextmenu:preventDefault="true">
                             <div class="wam-avatar">@Inicial(c)</div>
                             <div class="wam-conv-txt">
                                 <div class="wam-conv-nombre" title="@NombreDe(c)">@(c.Fijado ? "📌 " : "")@NombreDe(c)</div>
@@ -286,20 +296,6 @@ else
                                     <span class="wam-conv-punto" title="Mensaje sin leer"></span>
                                 }
                             </div>
-                            @* 2026-09-08: ARCHIVAR sin abrir la charla. Va suelto y centrado, a la
-                               izquierda de los otros dos: apilado como tercero estiraba el renglón de
-                               82 a 110 px (medido), y metido en la columna de al lado quedaba colgando
-                               debajo del 🏷️ sin que se entienda que es otra cosa. *@
-                            @if (c.Archivado)
-                            {
-                                <button class="wam-conv-arch on" type="button" title="Traer este chat de vuelta al listado"
-                                        @onclick:stopPropagation="true" @onclick="() => DesarchivarChat(c)">📤</button>
-                            }
-                            else
-                            {
-                                <button class="wam-conv-arch" type="button" title="Archivar este chat"
-                                        @onclick:stopPropagation="true" @onclick="() => ArchivarChat(c)">🗂️</button>
-                            }
                             @* 2026-08-31: los dos botoncitos de la derecha, uno arriba del otro para
                                no comerle ancho al nombre en un celu de 390 px. *@
                             <div class="wam-conv-btns">
@@ -328,6 +324,42 @@ else
                           TituloContacto="@NombreDe(chatAbierto)"
                           NombreLinea="@(chatAbierto.LineaNumero ?? chatAbierto.Linea ?? "WhatsApp")"
                           PuedeAbrirEnGrande="false" AccionesCompletas="true" Movil="true" />
+        </div>
+    }
+
+    @* ═══ 2026-09-08 (2ª vuelta): OPCIONES DE LA CHARLA (mantener apretado) ═══
+       Igual que el WhatsApp de verdad: sostenés el dedo sobre el renglón y sube este panel.
+       Todo lo que se puede hacer con esa charla vive acá — así el renglón queda limpio y no se
+       archiva nada de un roce. *@
+    @if (menuConv is not null)
+    {
+        <div class="wam-esc-fondo" @onclick="CerrarMenuConv">
+            <div class="wam-esc-panel" @onclick:stopPropagation="true">
+                <div class="wam-esc-titulo">@NombreDe(menuConv)</div>
+                <div class="wam-esc-sub">@(TelefonoDe(menuConv) is { Length: > 0 } _mt ? _mt : "Opciones de esta charla")</div>
+
+                <button type="button" class="wam-esc-op" @onclick="() => MenuArchivar(menuConv)">
+                    <span>@(menuConv.Archivado ? "📤 Sacar de archivados" : "🗂️ Archivar")</span>
+                </button>
+
+                <button type="button" class="wam-esc-op" @onclick="() => MenuFijar(menuConv)">
+                    <span>@(menuConv.Fijado ? "📌 Sacar de los fijados" : "📌 Fijar arriba de todo")</span>
+                </button>
+
+                <button type="button" class="wam-esc-op" @onclick="() => AlternarLeido(menuConv)">
+                    <span>@(NoLeido(menuConv) ? "✅ Marcar como leída" : "🔵 Marcar como NO leída")</span>
+                </button>
+
+                <button type="button" class="wam-esc-op" @onclick="() => MenuCategoria(menuConv)">
+                    <span>🏷️ Categoría del contacto</span>
+                </button>
+
+                @* El "marcar como no leída" es de ESTE celular: el visto se guarda en el navegador,
+                   no en el servidor. Se dice para que nadie espere verlo en la compu. *@
+                <div class="wam-esc-nota">El “no leída” queda sólo en este celular · lo archivado vuelve solo si el cliente escribe</div>
+
+                <button type="button" class="wam-esc-cerrar" @onclick="CerrarMenuConv">Cancelar</button>
+            </div>
         </div>
     }
 
@@ -484,9 +516,12 @@ else
     .wam-conv-pin.on { opacity: 1; filter: none; }
     /* 2026-09-08: archivar desde el renglón. Mismo tamaño y apagado que el 📌 — en el celular
        no hay "pasar el mouse", así que se ve siempre, pero apagadito para no gritar. */
-    .wam-conv-arch { flex: none; align-self: center; background: transparent; border: none; font-size: 1.15rem;
-        padding: 8px 6px; line-height: 1; cursor: pointer; opacity: 0.3; filter: grayscale(1); }
-    .wam-conv-arch.on { opacity: 1; filter: none; }
+    /* 2026-09-08: mantener apretado no tiene que seleccionar el texto ni sacar el menú del
+       navegador — si no, aparece "copiar/pegar" encima del nuestro. */
+    .wam-conv { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .wam-esc-nota { font-size: 0.78rem; color: #6b7280; line-height: 1.35; margin-top: 0.5rem; }
+    .wam-esc-cerrar { width: 100%; margin-top: 0.7rem; background: #f3f4f6; border: none; border-radius: 12px;
+        padding: 12px; font-size: 1rem; font-weight: 700; color: #374151; cursor: pointer; }
 
     /* Barrita de deshacer: ancho completo, pegada abajo, arriba de todo. En el celu es la ÚNICA
        forma rápida de volver atrás (no hay vista de Archivados). */
@@ -1152,6 +1187,8 @@ else
 
     private async Task AbrirChat(ApiClient.TwConvDto c)
     {
+        // 2026-09-08: si el toque fue un "mantener apretado", ya abrimos el menú — no entrar al chat.
+        if (pressDisparado) { pressDisparado = false; return; }
         chatAbierto = c;
         await MarcarLeido(c);   // 2026-08-18: al abrirla deja de estar "sin leer"
         StateHasChanged();
@@ -1321,6 +1358,10 @@ else
     // El sistema no lleva leido/no-leido por usuario, y como cada uno usa su propio celu
     // (igual que el codigo de 4 digitos), guardarlo en el telefono alcanza.
     private const string VistosKey = "wamovil.vistos";
+    /// <summary>Charlas que marcaste a mano como "no leídas" desde el menú de mantener apretado.
+    /// Vive en ESTE celular, igual que los vistos.</summary>
+    private const string NoLeidasKey = "wamovil.noleidas";
+    private HashSet<string> noLeidasManual = new();
     private Dictionary<string, DateTime> vistos = new();
 
     private static string ClaveConv(ApiClient.TwConvDto c) => (c.Numero ?? "") + "|" + (c.Linea ?? "");
@@ -1356,6 +1397,70 @@ else
     //    única red: por eso además el BUSCADOR ahora sí encuentra las archivadas.
     private string? undoNumero, undoLinea, undoNombre;
     private int undoToken;
+
+    // ═══ 2026-09-08 (2ª vuelta): MANTENER APRETADO = menú de opciones, como el WhatsApp normal ═══
+    // El botón suelto en el renglón archivaba de más ("queda muy expuesto y te lo archiva muy fácil").
+    // Medio segundo con el dedo apoyado abre el panel de abajo con TODO lo que se puede hacer con
+    // esa charla. Se cancela solo si soltás antes, si sacás el dedo o si el navegador manda
+    // pointercancel — que es justo lo que pasa cuando empezás a scrollear la lista.
+    private ApiClient.TwConvDto? menuConv;      // charla del menú abierto
+    private bool pressDisparado;                // hubo press largo → el click posterior NO abre el chat
+    private int pressToken;
+    private const int MsPressLargo = 500;
+
+    private void EmpezarPress(ApiClient.TwConvDto c)
+    {
+        pressDisparado = false;
+        var mio = ++pressToken;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(MsPressLargo);
+            if (pressToken != mio) return;      // soltó antes, o se puso a scrollear
+            pressDisparado = true;
+            menuConv = c;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void TerminarPress() => pressToken++;
+
+    private void CerrarMenuConv() { menuConv = null; pressDisparado = false; }
+
+    /// <summary>Marcar como NO leída (o como leída) para que quede pendiente de contestar.
+    /// ⚠ Es de ESTE celular: el "visto" vive en el navegador, no en el servidor.</summary>
+    private async Task AlternarLeido(ApiClient.TwConvDto c)
+    {
+        var clave = ClaveConv(c);
+        if (NoLeido(c))
+        {
+            await MarcarLeido(c);   // también saca la marca manual
+        }
+        else
+        {
+            noLeidasManual.Add(clave);
+            await GuardarNoLeidasAsync();
+        }
+        CerrarMenuConv();
+        StateHasChanged();
+    }
+
+    private async Task MenuArchivar(ApiClient.TwConvDto c)
+    {
+        CerrarMenuConv();
+        if (c.Archivado) await DesarchivarChat(c); else await ArchivarChat(c);
+    }
+
+    private async Task MenuFijar(ApiClient.TwConvDto c)
+    {
+        CerrarMenuConv();
+        await FijarChat(c);
+    }
+
+    private void MenuCategoria(ApiClient.TwConvDto c)
+    {
+        CerrarMenuConv();
+        rolMenuConv = c;
+    }
 
     private void MostrarUndo(ApiClient.TwConvDto c)
     {
@@ -1418,6 +1523,11 @@ else
 
     private bool NoLeido(ApiClient.TwConvDto c)
     {
+        // 2026-09-08: si la marcaste a mano como "no leída" desde el menú, manda esa marca.
+        // Sin esto la opción no hacía NADA en las charlas donde el último mensaje es NUESTRO
+        // (que son justo las que querés dejar pendientes de respuesta) — el sistema deduce el
+        // "sin leer" de la dirección del último mensaje, no de una marca propia.
+        if (noLeidasManual.Contains(ClaveConv(c))) return true;
         if (c.UltimoDireccion != "INCOMING") return false;   // lo ultimo lo mandamos nosotros
         return !vistos.TryGetValue(ClaveConv(c), out var visto) || c.UltimoAt > visto;
     }
@@ -1431,10 +1541,29 @@ else
                 vistos = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, DateTime>>(json!) ?? new();
         }
         catch { vistos = new(); }
+        try
+        {
+            var jn = await JS.InvokeAsync<string?>("localStorage.getItem", NoLeidasKey);
+            if (!string.IsNullOrWhiteSpace(jn))
+                noLeidasManual = System.Text.Json.JsonSerializer.Deserialize<HashSet<string>>(jn!) ?? new();
+        }
+        catch { noLeidasManual = new(); }
+    }
+
+    private async Task GuardarNoLeidasAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", NoLeidasKey,
+                System.Text.Json.JsonSerializer.Serialize(noLeidasManual));
+        }
+        catch { }
     }
 
     private async Task MarcarLeido(ApiClient.TwConvDto c)
     {
+        // Abrir la charla borra la marca manual: ya la leíste.
+        if (noLeidasManual.Remove(ClaveConv(c))) await GuardarNoLeidasAsync();
         vistos[ClaveConv(c)] = c.UltimoAt;
         try
         {
