@@ -172,10 +172,13 @@ else
                PinnedWaChat (que es el que tiene los mensajes); acá solo se lo abrimos. *@
             <button type="button" class="wam-hbtn" @onclick="AbrirBuscadorChat"
                     title="Buscar una palabra en esta charla">🔍</button>
-            @* 2026-09-08: archivar de un toque, sin entrar a ningún menú. Al archivar volvés
-               a la lista (en el celu saltar solo a otra charla desorienta). *@
-            <button type="button" class="wam-hbtn" @onclick="() => ArchivarChat(chatAbierto)"
-                    title="Archivar esta charla y volver a la lista">🗂️</button>
+            @* 2026-09-09: acá había un 🗂️ que archivaba de UN toque. Osmar: *"me parece que sigue
+               estando visible el botón de archivar"* — y tenía razón: lo saqué de la lista pero me
+               quedó adentro del chat, al lado de la lupa, a un roce de distancia.
+               Ahora es un ⋮ que abre EL MISMO panel de opciones que el de mantener apretado, igual
+               que el WhatsApp de verdad. Archivar pasa a ser dos toques a propósito. *@
+            <button type="button" class="wam-hbtn" @onclick="() => menuConv = chatAbierto"
+                    title="Opciones de esta charla">⋮</button>
             @* 2026-08-20: tamaño de la letra de ESTA pantalla, guardado en ESTE celular. *@
             <button type="button" class="wam-hbtn" @onclick="() => panelEscala = true"
                     title="Tamaño de la letra">Aa</button>
