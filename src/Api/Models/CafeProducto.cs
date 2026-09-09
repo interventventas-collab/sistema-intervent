@@ -45,7 +45,11 @@ public class CafeProducto
 
     /// <summary>Costo del producto en dolares, tal como lo cotiza el proveedor. Null = el
     /// producto se compra en pesos (caso normal).</summary>
-    [Column(TypeName = "decimal(18,2)")]
+    // 2026-09-09: 6 decimales, no 2. Con 2, un vaso de $41 y otro de $52 quedaban los DOS en
+    // US$ 0,03 y al volver a pesos daba $45,90 para los dos. El error del redondeo (hasta 18%)
+    // era mayor que el 15% que dispara el aviso de "dolar desactualizado", asi que el aviso
+    // se prendia o se callaba por el redondeo y no por el precio.
+    [Column(TypeName = "decimal(18,6)")]
     public decimal? CostoUsd { get; set; }
 
     /// <summary>Cotizacion del dolar vigente el dia que se cargo/actualizo el Costo en pesos

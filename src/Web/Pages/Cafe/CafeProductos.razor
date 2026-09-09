@@ -531,7 +531,7 @@
                         <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                             <span style="color: #6b7280; font-size: 0.85rem;">U$D</span>
                             <input class="form-input" type="text" inputmode="decimal" style="max-width: 140px;"
-                                   placeholder="ej: 10,50"
+                                   placeholder="ej: 10,50 o 0,0268"
                                    @bind="formCostoUsdStr" @bind:event="oninput" />
                             @if (FormCostoUsd.HasValue && EnPesosHoy(FormCostoUsd) is decimal eq)
                             {
@@ -2282,7 +2282,7 @@
         formCosto = p.Costo;
         // 2026-09-07: costo en dolares (referencia). Guardamos tambien con que cotizacion y
         // cuando se cargo, para poder mostrarlo abajo del campo.
-        formCostoUsdStr = p.CostoUsd.HasValue ? p.CostoUsd.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "";
+        formCostoUsdStr = p.CostoUsd.HasValue ? p.CostoUsd.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) : "";
         formCostoUsdCotizacionOriginal = p.CostoUsdCotizacion;
         formCostoUsdFecha = p.CostoUsdFecha;
         // 2026-09-01: para CAFE los casilleros "Precio BAR/OTRO por kg" atan a formPvp1/formPvp2,
@@ -2373,7 +2373,7 @@
         formCosto = p.Costo;
         // 2026-09-07: costo en dolares (referencia). Guardamos tambien con que cotizacion y
         // cuando se cargo, para poder mostrarlo abajo del campo.
-        formCostoUsdStr = p.CostoUsd.HasValue ? p.CostoUsd.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "";
+        formCostoUsdStr = p.CostoUsd.HasValue ? p.CostoUsd.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) : "";
         formCostoUsdCotizacionOriginal = p.CostoUsdCotizacion;
         formCostoUsdFecha = p.CostoUsdFecha;
         // 2026-09-01: copiar el precio VIGENTE (PrecioBar/PrecioOtro), no el espejo legacy.
@@ -2644,10 +2644,16 @@
     /// al millar), asi que no se pierde informacion.</summary>
     /// <summary>2026-09-07: importes en dolares. Sin decimales cuando el numero es redondo
     /// (U$D 8, no U$D 8,00), con dos cuando tiene centavos (U$D 5,95).</summary>
+    /// <summary>2026-09-09: muestra los decimales que HAY, hasta 6. Con "N2" fijo, un costo de
+    /// US$ 0,026797 se veía como 0,03 y parecía que el sistema lo había guardado mal.
+    /// Los enteros siguen sin decimales (US$ 12, no US$ 12,000000).</summary>
     private static string FormatUsd(decimal v)
-        => v == Math.Truncate(v)
-            ? v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))
-            : v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+    {
+        var ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+        if (v == Math.Truncate(v)) return v.ToString("N0", ar);
+        var txt = v.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+        return txt.Replace('.', ',');
+    }
 
     private static string FormatMoneyCorto(decimal v)
         => v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
