@@ -141,7 +141,11 @@ public class CafeCobranzasController : ControllerBase
         // Cobro REDIRIGIDO (05/09/2026): la plata se la queda un empleado y le cuenta como pago.
         // Solo aplica cuando la caja es la de paso (tipo V_PRIVADO).
         int? RedirigidoEmpleadoId = null,
-        string? RedirigidoDestino = null);
+        string? RedirigidoDestino = null,
+        // 09/09/2026: el destinatario también puede ser un PROVEEDOR.
+        // RedirigidoCompraId null = "a cuenta" (el caso normal hoy, sin compras cargadas).
+        int? RedirigidoProveedorId = null,
+        int? RedirigidoCompraId = null);
 
     public record CrearChequeItem(
         string Numero, string Banco, string? Emisor, decimal Importe,
@@ -548,7 +552,26 @@ public class CafeCobranzasController : ControllerBase
             // Destino "privada" = el uso de siempre de esta caja (no se lo queda ningun empleado):
             // es una respuesta valida. Lo que no se puede es no contestar nada.
             var privada = string.Equals(med.RedirigidoDestino, "privada", StringComparison.OrdinalIgnoreCase);
-            if (!(med.RedirigidoEmpleadoId is > 0) && !privada)
+            // 09/09/2026: elegir un PROVEEDOR también contesta la pregunta "¿a quién se le pasa?".
+            var aProveedor = med.RedirigidoProveedorId is > 0;
+            if (aProveedor && med.RedirigidoEmpleadoId is > 0)
+                return BadRequest(new { error = "Elegí una sola cosa: o un empleado o un proveedor." });
+            if (aProveedor)
+            {
+                var prov = await _db.CafeProveedores.FindAsync(med.RedirigidoProveedorId!.Value);
+                if (prov is null) return BadRequest(new { error = "El proveedor al que se redirige no existe" });
+                // El tilde de la ficha no es sólo para acortar la lista: es el control de a quién
+                // se le puede mandar plata. Si no está habilitado, no pasa.
+                if (!prov.AceptaRedirigido)
+                    return BadRequest(new { error = $"{prov.Nombre} no está habilitado para recibir cobros redirigidos. Tildalo en su ficha primero." });
+                if (med.RedirigidoCompraId is > 0)
+                {
+                    var compra = await _db.CafeCompras.FindAsync(med.RedirigidoCompraId.Value);
+                    if (compra is null || compra.ProveedorId != prov.Id || compra.Estado == "ANULADA")
+                        return BadRequest(new { error = "Esa factura no es de ese proveedor o está anulada" });
+                }
+            }
+            if (!(med.RedirigidoEmpleadoId is > 0) && !aProveedor && !privada)
                 return BadRequest(new { error = "Elegiste Redirigido pero no dijiste a quién se le pasa la plata." });
             // Sin decir "viajes o sueldo" se iba callado al sueldo: paso con $75.000 el 07/09.
             if (med.RedirigidoEmpleadoId is > 0 && string.IsNullOrWhiteSpace(med.RedirigidoDestino)
@@ -664,6 +687,21 @@ public class CafeCobranzasController : ControllerBase
                 if (error is not null) return BadRequest(new { error });
                 medio.RedirigidoEmpleadoId = med.RedirigidoEmpleadoId;
                 medio.RedirigidoDestino = med.RedirigidoDestino;
+                medio.RedirigidoPagoId = pagoId;
+                medio.RedirigidoMovimientoId = movId;
+            }
+
+            // 09/09/2026: misma jugada pero el que se queda con la plata es un PROVEEDOR.
+            if (caja.Tipo == "V_PRIVADO" && med.RedirigidoProveedorId is > 0)
+            {
+                await _db.SaveChangesAsync();   // necesito el Id del medio
+                var (error, pagoId, movId) = await RedirigirAProveedorAsync(
+                    medio, caja, med.RedirigidoProveedorId.Value, med.RedirigidoCompraId,
+                    cobranza.Fecha, cliente?.Nombre);
+                if (error is not null) return BadRequest(new { error });
+                medio.RedirigidoProveedorId = med.RedirigidoProveedorId;
+                medio.RedirigidoCompraId = med.RedirigidoCompraId;
+                medio.RedirigidoDestino = "proveedor";
                 medio.RedirigidoPagoId = pagoId;
                 medio.RedirigidoMovimientoId = movId;
             }
@@ -1110,6 +1148,80 @@ public class CafeCobranzasController : ControllerBase
         return Ok(salida);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────────────
+    //  09/09/2026 — Proveedores que pueden recibir un cobro redirigido.
+    //  Sólo los tildados en su ficha: hay 560 activos y una lista así es un dedazo asegurado.
+    // ─────────────────────────────────────────────────────────────────────────────────────
+
+    public record ProveedorRedirDto(int Id, string Nombre, decimal Saldo, int FacturasPendientes);
+    public record FacturaProvDto(int Id, string Numero, DateTime Fecha, decimal Total, decimal Saldo, string? Comprobante);
+
+    [HttpGet("destinatarios-proveedores")]
+    public async Task<IActionResult> DestinatariosProveedores()
+    {
+        var provs = await _db.CafeProveedores
+            .Where(p => p.IsActive && p.AceptaRedirigido)
+            .OrderBy(p => p.Nombre)
+            .Select(p => new { p.Id, p.Nombre })
+            .ToListAsync();
+        if (provs.Count == 0) return Ok(new List<ProveedorRedirDto>());
+
+        var ids = provs.Select(p => p.Id).ToList();
+
+        // Saldo = lo que le compramos menos lo que le pagamos. Positivo = le debemos.
+        // ProveedorId es nullable en Cafe_Compras (hay compras sin proveedor cargado).
+        var compras = await _db.CafeCompras
+            .Where(c => c.ProveedorId != null && ids.Contains(c.ProveedorId.Value) && c.Estado != "ANULADA")
+            .GroupBy(c => c.ProveedorId!.Value)
+            .Select(g => new { Prov = g.Key, Total = g.Sum(x => x.Total) })
+            .ToListAsync();
+        var pagos = await _db.CafePagosProveedor
+            .Where(p => ids.Contains(p.ProveedorId) && p.Estado == "VIGENTE")
+            .GroupBy(p => p.ProveedorId)
+            .Select(g => new { Prov = g.Key, Total = g.Sum(x => x.Total + x.Retenciones) })
+            .ToListAsync();
+
+        var pendientes = new Dictionary<int, int>();
+        foreach (var id in ids) pendientes[id] = (await FacturasPendientesAsync(id)).Count;
+
+        var salida = provs.Select(p => new ProveedorRedirDto(
+            p.Id, p.Nombre,
+            (compras.FirstOrDefault(c => c.Prov == p.Id)?.Total ?? 0m) - (pagos.FirstOrDefault(x => x.Prov == p.Id)?.Total ?? 0m),
+            pendientes.TryGetValue(p.Id, out var n) ? n : 0)).ToList();
+
+        return Ok(salida);
+    }
+
+    /// <summary>Las facturas de ese proveedor que todavía deben plata. Si devuelve vacío, la
+    /// cobranza va "a cuenta" — que es lo normal hoy, porque las compras no se cargan todavía.</summary>
+    [HttpGet("proveedor/{proveedorId:int}/facturas-pendientes")]
+    public async Task<IActionResult> FacturasPendientes(int proveedorId)
+        => Ok(await FacturasPendientesAsync(proveedorId));
+
+    private async Task<List<FacturaProvDto>> FacturasPendientesAsync(int proveedorId)
+    {
+        var compras = await _db.CafeCompras
+            .Where(c => c.ProveedorId == proveedorId && c.Estado != "ANULADA")
+            .Select(c => new { c.Id, c.Numero, c.Fecha, c.Total, c.NumeroComprobante })
+            .ToListAsync();
+        if (compras.Count == 0) return new List<FacturaProvDto>();
+
+        var compraIds = compras.Select(c => c.Id).ToList();
+        var pagado = await _db.CafePagosProveedorComprobantes
+            .Where(c => c.CompraId != null && compraIds.Contains(c.CompraId!.Value) && c.Pago!.Estado == "VIGENTE")
+            .GroupBy(c => c.CompraId!.Value)
+            .Select(g => new { CompraId = g.Key, Total = g.Sum(x => x.Importe) })
+            .ToListAsync();
+        var dict = pagado.ToDictionary(p => p.CompraId, p => p.Total);
+
+        return compras
+            .Select(c => new FacturaProvDto(c.Id, c.Numero, c.Fecha, c.Total,
+                c.Total - (dict.TryGetValue(c.Id, out var p) ? p : 0m), c.NumeroComprobante))
+            .Where(x => x.Saldo > 0.01m)
+            .OrderBy(x => x.Fecha)
+            .ToList();
+    }
+
     /// <summary>
     /// Le imputa la plata al empleado. Devuelve el error (si algo no cierra), el id del pago que
     /// generó y el del renglón que deja la caja de paso en cero.
@@ -1195,6 +1307,75 @@ public class CafeCobranzasController : ControllerBase
         return (null, pagoId, mov.Id);
     }
 
+    /// <summary>
+    /// 09/09/2026 — Le imputa la plata a un PROVEEDOR: genera el pago (el mismo que se carga a mano
+    /// en "Pagos a proveedores") y el renglón que deja la caja de paso en cero.
+    ///
+    /// ⚠ El pago se crea SIN medio de pago a propósito. El saldo de las cajas ya resta los
+    /// Cafe_PagosProveedorMedios (ver CafeCajasController): si le pusiera un medio contra la caja
+    /// Redirigido, esa plata se restaría DOS veces —una por el medio y otra por el movimiento— y la
+    /// caja quedaría en negativo. Como acá la plata nunca fue nuestra, no hay medio: igual que el
+    /// pago de sueldo redirigido, que va con CajaId = null.
+    /// Por eso Total se setea a mano: el estado de cuenta del proveedor usa ese campo.
+    /// </summary>
+    private async Task<(string? error, int? pagoId, int? movId)> RedirigirAProveedorAsync(
+        CafeCobranzaMedio medio, Models.CafeCaja caja, int proveedorId, int? compraId,
+        DateTime fecha, string? clienteNombre)
+    {
+        var prov = await _db.CafeProveedores.FindAsync(proveedorId);
+        if (prov is null) return ("El proveedor al que se redirige no existe", null, null);
+
+        var deQuien = string.IsNullOrWhiteSpace(clienteNombre) ? "" : $" de {clienteNombre}";
+
+        // Numero correlativo, con el mismo formato que los pagos cargados a mano (OP-00000001).
+        var numeros = await _db.CafePagosProveedor.Select(x => x.Numero).ToListAsync();
+        int maxSec = 0;
+        foreach (var n in numeros)
+        {
+            var parts = (n ?? "").Split('-');
+            if (parts.Length >= 2 && int.TryParse(parts[^1], out var k) && k > maxSec) maxSec = k;
+        }
+
+        var pago = new Models.CafePagoProveedor
+        {
+            Numero = $"OP-{(maxSec + 1):D8}",
+            Fecha = fecha.Date,
+            ProveedorId = proveedorId,
+            Total = medio.Importe,
+            Retenciones = 0m,
+            Operador = QuienCarga(),
+            Observaciones = $"Cobranza redirigida{deQuien}",
+            Estado = "VIGENTE"
+        };
+        _db.CafePagosProveedor.Add(pago);
+        await _db.SaveChangesAsync();
+
+        // Contra qué factura va. Sin factura queda "a cuenta": el saldo del proveedor sale bien
+        // igual porque la cuenta corriente se lleva por totales, y cuando carguen las compras
+        // atrasadas se acomoda solo.
+        _db.CafePagosProveedorComprobantes.Add(new Models.CafePagoProveedorComprobante
+        {
+            PagoId = pago.Id,
+            CompraId = compraId is > 0 ? compraId : null,
+            Importe = medio.Importe
+        });
+        await _db.SaveChangesAsync();
+
+        var mov = new Models.CafeCajaMovimiento
+        {
+            CajaId = caja.Id,
+            Fecha = fecha.Date,
+            Tipo = "REDIRIGIDO",
+            Importe = -Math.Abs(medio.Importe),
+            Motivo = $"Redirigido a {prov.Nombre} (proveedor){deQuien}",
+            CargadoPor = User?.Identity?.Name
+        };
+        _db.CafeCajaMovimientos.Add(mov);
+        await _db.SaveChangesAsync();
+
+        return (null, pago.Id, mov.Id);
+    }
+
     /// <summary>Quién está cargando esto: el operador elegido en la pantalla (OSMAR / GABRIEL /
     /// GERMÁN), que es lo mismo que guarda la auditoría. El login es "admin" para todos.</summary>
     private string? QuienCarga()
@@ -1208,7 +1389,19 @@ public class CafeCobranzasController : ControllerBase
     {
         if (medio.RedirigidoPagoId.HasValue)
         {
-            if (string.Equals(medio.RedirigidoDestino, "viajes", StringComparison.OrdinalIgnoreCase))
+            // 09/09/2026: si fue a un PROVEEDOR, el pago se anula (no se borra) para que quede el
+            // rastro, igual que cualquier otro pago a proveedor anulado. Con Estado != VIGENTE deja
+            // de contar en su cuenta corriente y la deuda le vuelve sola.
+            if (string.Equals(medio.RedirigidoDestino, "proveedor", StringComparison.OrdinalIgnoreCase))
+            {
+                var pp = await _db.CafePagosProveedor.FindAsync(medio.RedirigidoPagoId.Value);
+                if (pp is not null && pp.Estado == "VIGENTE")
+                {
+                    pp.Estado = "ANULADA";   // así lo escribe el resto del sistema (CafePagosProveedorController)
+                    pp.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+            else if (string.Equals(medio.RedirigidoDestino, "viajes", StringComparison.OrdinalIgnoreCase))
             {
                 var pv = await _db.ViajesPagos.FindAsync(medio.RedirigidoPagoId.Value);
                 if (pv is not null)

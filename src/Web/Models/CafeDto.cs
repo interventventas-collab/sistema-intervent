@@ -1056,6 +1056,8 @@ public class CafeProveedorDto
     public DateTime? UpdatedAt { get; set; }
     public int ComprasCount { get; set; }
     public decimal TotalComprado { get; set; }
+    /// <summary>09/09/2026 — si está habilitado para recibir cobros redirigidos.</summary>
+    public bool AceptaRedirigido { get; set; }
 }
 
 public class CreateCafeProveedorRequest
@@ -1089,6 +1091,8 @@ public class UpdateCafeProveedorRequest
     public string? Ciudad { get; set; }
     public string? Web { get; set; }
     public bool? IsActive { get; set; }
+    /// <summary>09/09/2026 — habilita al proveedor a recibir COBROS REDIRIGIDOS.</summary>
+    public bool? AceptaRedirigido { get; set; }
 }
 
 // ===== Compras =====

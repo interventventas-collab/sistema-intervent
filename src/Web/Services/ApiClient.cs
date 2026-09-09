@@ -6318,11 +6318,20 @@ public class ApiClient
     public record CrearChequeItemRequest(string Numero, string Banco, string? Emisor, decimal Importe, DateTime? FechaCobro, DateTime? FechaVencimiento, string? Observaciones);
     public record CrearMedioItemRequest(int CajaId, decimal Importe, string? Referencia, CrearChequeItemRequest? Cheque,
         // Cobro redirigido (05/09/2026): a qué empleado se le pasa y contra qué se imputa.
-        int? RedirigidoEmpleadoId = null, string? RedirigidoDestino = null);
+        int? RedirigidoEmpleadoId = null, string? RedirigidoDestino = null,
+        // 09/09/2026: o a qué PROVEEDOR, y contra qué factura suya (null = "a cuenta").
+        int? RedirigidoProveedorId = null, int? RedirigidoCompraId = null);
 
     /// <summary>A quién se le puede redirigir una cobranza (empleados activos).</summary>
     public async Task<List<CafeDestinatarioDto>?> GetCafeDestinatariosAsync()
         => await GetAsync<List<CafeDestinatarioDto>>("/api/cafe/cobranzas/destinatarios");
+
+    // 09/09/2026: proveedores habilitados a recibir cobros redirigidos, y sus facturas impagas.
+    public async Task<List<CafeProveedorRedirDto>> GetCafeProveedoresRedirigidoAsync()
+        => await GetAsync<List<CafeProveedorRedirDto>>("/api/cafe/cobranzas/destinatarios-proveedores") ?? new();
+
+    public async Task<List<CafeFacturaProvDto>> GetCafeFacturasPendientesProveedorAsync(int proveedorId)
+        => await GetAsync<List<CafeFacturaProvDto>>($"/api/cafe/cobranzas/proveedor/{proveedorId}/facturas-pendientes") ?? new();
     public record CrearCobranzaResultDto(int Id, string Numero);
 
     // 2026-06-06: clienteId nullable para permitir cobrar "ventas ocasionales" (sin cliente

@@ -131,6 +131,8 @@ public class CafeProveedoresController : ControllerBase
             p.Cuit = nuevoCuit;
         }
         if (req.CategoriaImpositiva is not null) p.CategoriaImpositiva = NullIfEmpty(req.CategoriaImpositiva)?.ToUpperInvariant();
+        // 09/09/2026: el tilde que lo habilita a recibir cobros redirigidos.
+        if (req.AceptaRedirigido.HasValue) p.AceptaRedirigido = req.AceptaRedirigido.Value;
         if (req.Direccion is not null) p.Direccion = NullIfEmpty(req.Direccion);
         if (req.CodigoPostal is not null) p.CodigoPostal = NullIfEmpty(req.CodigoPostal);
         if (req.Provincia is not null) p.Provincia = NullIfEmpty(req.Provincia);
@@ -167,7 +169,7 @@ public class CafeProveedoresController : ControllerBase
         p.Id, p.Nombre, p.Contacto, p.Telefono, p.Email, p.Notas,
         p.Cuit, p.CategoriaImpositiva,
         p.Direccion, p.CodigoPostal, p.Provincia, p.Ciudad, p.Web,
-        p.IsActive, p.CreatedAt, p.UpdatedAt, comprasCount, totalComprado);
+        p.IsActive, p.CreatedAt, p.UpdatedAt, comprasCount, totalComprado, p.AceptaRedirigido);
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 

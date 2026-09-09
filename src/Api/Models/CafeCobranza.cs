@@ -114,6 +114,19 @@ public class CafeCobranzaMedio
 
     /// <summary>El renglón que cierra la caja de paso, para que quede en cero.</summary>
     public int? RedirigidoMovimientoId { get; set; }
+
+    // ── 09/09/2026: el destinatario también puede ser un PROVEEDOR ───────────────────────────
+    // Mismo circuito que con un empleado: el cliente paga, la plata se la queda el proveedor y
+    // le cancela lo que le debemos. Se distingue por RedirigidoDestino = "proveedor", y en ese
+    // caso RedirigidoPagoId guarda el id del Cafe_PagosProveedor generado.
+
+    /// <summary>El proveedor que se queda con la plata (solo los que tienen AceptaRedirigido).</summary>
+    public int? RedirigidoProveedorId { get; set; }
+
+    /// <summary>Contra qué factura de compra se imputa. NULL = "a cuenta" — que es el caso normal
+    /// hoy, porque todavía no se cargan las compras. El saldo del proveedor sale igual: la cuenta
+    /// corriente se lleva por totales, no factura por factura.</summary>
+    public int? RedirigidoCompraId { get; set; }
     [ForeignKey(nameof(ChequeId))]
     public CafeCheque? Cheque { get; set; }
 }

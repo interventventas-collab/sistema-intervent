@@ -709,3 +709,29 @@ public class EstadoCuentaDto
     public decimal Saldo { get; set; }
     public List<MovimientoCuentaDto> Movimientos { get; set; } = new();
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 09/09/2026 — Proveedores que pueden recibir un COBRO REDIRIGIDO.
+// Sólo los tildados en su ficha: hay 560 activos y una lista así sería un dedazo.
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class CafeProveedorRedirDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    /// <summary>Positivo = le debemos. Negativo = le pagamos de más (o todavía no cargamos las compras).</summary>
+    public decimal Saldo { get; set; }
+    /// <summary>Cuántas facturas suyas están sin pagar. Si es 0, la cobranza va "a cuenta".</summary>
+    public int FacturasPendientes { get; set; }
+}
+
+public class CafeFacturaProvDto
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public decimal Total { get; set; }
+    public decimal Saldo { get; set; }
+    public string? Comprobante { get; set; }
+}

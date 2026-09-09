@@ -760,7 +760,9 @@ public record CafeProveedorDto(
     string? Cuit, string? CategoriaImpositiva,
     string? Direccion, string? CodigoPostal, string? Provincia, string? Ciudad, string? Web,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
-    int ComprasCount, decimal TotalComprado);
+    int ComprasCount, decimal TotalComprado,
+    // 09/09/2026: si está habilitado para recibir cobros redirigidos.
+    bool AceptaRedirigido = false);
 
 public class CreateCafeProveedorRequest
 {
@@ -793,6 +795,8 @@ public class UpdateCafeProveedorRequest
     public string? Ciudad { get; set; }
     public string? Web { get; set; }
     public bool? IsActive { get; set; }
+    /// <summary>09/09/2026 — habilita a este proveedor para recibir COBROS REDIRIGIDOS.</summary>
+    public bool? AceptaRedirigido { get; set; }
 }
 
 // ===== Compras =====

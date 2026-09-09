@@ -50,6 +50,12 @@ public class CafeProveedor
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>09/09/2026 — Si está tildado, este proveedor aparece como destinatario posible de
+    /// un COBRO REDIRIGIDO (el cliente le paga a él y eso cancela lo que le debemos).
+    /// Arranca apagado a propósito: hay 560 proveedores activos y elegir de una lista así es
+    /// pedir un dedazo. Sólo aparecen los que se habilitan a mano.</summary>
+    public bool AceptaRedirigido { get; set; } = false;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

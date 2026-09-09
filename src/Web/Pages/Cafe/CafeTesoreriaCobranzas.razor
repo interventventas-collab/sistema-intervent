@@ -682,6 +682,79 @@
                                                 style="font-size:0.8rem;"
                                                 @onclick="() => ElegirPrivada(idx)">A nadie · queda en la privada</button>
                                     </div>
+
+                                    @* 09/09/2026: PROVEEDORES. Sólo los tildados en su ficha — hay 560
+                                       activos y listarlos todos sería un dedazo asegurado. *@
+                                    <div style="font-size:0.78rem; color:#6b7280; margin:0.6rem 0 0.35rem;">
+                                        …o a un proveedor:
+                                    </div>
+                                    <div style="display:flex; gap:0.35rem; flex-wrap:wrap; align-items:center;">
+                                        @foreach (var pr in provRedir)
+                                        {
+                                            <button class="btn @(m.RedirigidoProveedorId == pr.Id ? "btn-primary" : "btn-secondary")"
+                                                    style="font-size:0.8rem;"
+                                                    @onclick="() => ElegirProveedor(idx, pr.Id)">@pr.Nombre</button>
+                                        }
+                                        <button class="btn btn-secondary" style="font-size:0.8rem;"
+                                                @onclick="() => AbrirBuscadorProveedor(idx)">no está acá…</button>
+                                    </div>
+
+                                    @if (buscandoProvIdx == idx)
+                                    {
+                                        <div style="margin-top:0.5rem; padding:0.5rem; background:#f8fafc; border-radius:6px;">
+                                            <input class="form-input" @bind="buscarProv" @bind:event="oninput"
+                                                   style="font-size:0.82rem;" placeholder="Buscá el proveedor por nombre…" />
+                                            @foreach (var pb in ProveedoresQueMatchean())
+                                            {
+                                                <button class="btn btn-secondary" style="font-size:0.8rem; margin:0.3rem 0.3rem 0 0;"
+                                                        disabled="@habilitandoProv"
+                                                        @onclick="() => HabilitarYElegir(idx, pb)">@pb.Nombre</button>
+                                            }
+                                            <p style="font-size:0.72rem; color:#9ca3af; margin:0.4rem 0 0;">
+                                                Al elegirlo queda habilitado en su ficha y ya aparece siempre en esta lista.
+                                            </p>
+                                        </div>
+                                    }
+
+                                    @if (m.RedirigidoProveedorId > 0)
+                                    {
+                                        var prSel = provRedir.FirstOrDefault(x => x.Id == m.RedirigidoProveedorId);
+                                        var facts = facturasProv.TryGetValue(m.RedirigidoProveedorId, out var ff) ? ff : new();
+                                        <div style="margin-top:0.5rem;">
+                                            @if (facts.Count == 0)
+                                            {
+                                                <p style="font-size:0.75rem; color:#6b7280; margin:0;">
+                                                    Va <strong>a cuenta</strong>: no tiene facturas cargadas con saldo.
+                                                    Cuando cargues las compras, el saldo se acomoda solo.
+                                                </p>
+                                            }
+                                            else
+                                            {
+                                                <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.25rem;">¿Contra qué factura?</div>
+                                                <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
+                                                    <button class="btn @(m.RedirigidoCompraId == 0 ? "btn-primary" : "btn-secondary")"
+                                                            style="font-size:0.8rem;" @onclick="() => ElegirFactura(idx, 0)">A cuenta</button>
+                                                    @foreach (var f in facts)
+                                                    {
+                                                        <button class="btn @(m.RedirigidoCompraId == f.Id ? "btn-primary" : "btn-secondary")"
+                                                                style="font-size:0.8rem;" @onclick="() => ElegirFactura(idx, f.Id)">
+                                                            @(string.IsNullOrWhiteSpace(f.Comprobante) ? f.Numero : f.Comprobante) · debe @Plata(f.Saldo)
+                                                        </button>
+                                                    }
+                                                </div>
+                                            }
+                                            @if (prSel is not null)
+                                            {
+                                                <p style="font-size:0.75rem; color:#6b7280; margin:0.4rem 0 0;">
+                                                    @(prSel.Saldo > 0
+                                                        ? $"Hoy le debemos {Plata(prSel.Saldo)}."
+                                                        : prSel.Saldo < 0
+                                                            ? $"Hoy tiene {Plata(-prSel.Saldo)} a favor nuestro (o faltan cargar compras)."
+                                                            : "Hoy su cuenta está en cero.")
+                                                </p>
+                                            }
+                                        </div>
+                                    }
                                     @if (m.RedirigidoEmpleadoId > 0)
                                     {
                                         var dest = destinatarios.FirstOrDefault(x => x.EmpleadoId == m.RedirigidoEmpleadoId);
@@ -1494,6 +1567,14 @@
     private List<CafeClienteDto>? clientes;
     private List<CafeCajaDto>? cajas;
     private List<CafeDestinatarioDto> destinatarios = new();
+    // 09/09/2026 — proveedores habilitados a recibir un cobro redirigido, y las facturas del elegido.
+    private List<CafeProveedorRedirDto> provRedir = new();
+    private Dictionary<int, List<CafeFacturaProvDto>> facturasProv = new();
+    /// <summary>Índice del medio donde se abrió "no está acá" para buscar entre TODOS los proveedores.</summary>
+    private int? buscandoProvIdx;
+    private string buscarProv = "";
+    private List<CafeProveedorDto> todosProv = new();
+    private bool habilitandoProv;
 
     private bool showNueva, guardando;
     // 2026-06-25: adjuntos a subir cuando se guarde la nueva cobranza
@@ -1580,6 +1661,10 @@
         public bool EsRedirigido => TipoCaja == "V_PRIVADO";
         public int RedirigidoEmpleadoId { get; set; }
         public string? RedirigidoDestino { get; set; }
+        // 09/09/2026: el destinatario también puede ser un PROVEEDOR.
+        public int RedirigidoProveedorId { get; set; }
+        /// <summary>Contra qué factura suya. 0 = "a cuenta" (el caso normal hoy).</summary>
+        public int RedirigidoCompraId { get; set; }
         public string ChequeBanco { get; set; } = "";
         public string ChequeNumero { get; set; } = "";
         public string? ChequeEmisor { get; set; }
@@ -1637,6 +1722,7 @@
         clientes = await Api.GetCafeClientesAsync() ?? new();
         cajas = await Api.GetCafeCajasAsync() ?? new();
         try { destinatarios = await Api.GetCafeDestinatariosAsync() ?? new(); } catch { destinatarios = new(); }
+        try { provRedir = await Api.GetCafeProveedoresRedirigidoAsync(); } catch { provRedir = new(); }
         await Load();
         // 2026-06-06: atajo desde topbar — ?nueva=1 abre el modal vacío para elegir cliente
         if (PreNueva.HasValue && PreNueva.Value == 1 && (!PreClienteId.HasValue || PreClienteId.Value <= 0))
@@ -1989,7 +2075,66 @@
     {
         var m = formMedios[idx];
         m.RedirigidoEmpleadoId = d.EmpleadoId;
+        m.RedirigidoProveedorId = 0;    // es uno o el otro
         m.RedirigidoDestino = d.TieneViajes ? null : DestinoSueldo;
+    }
+
+    // ─── 09/09/2026: destinatario PROVEEDOR ───────────────────────────────────────────────
+    // Elegir un proveedor apaga al empleado y viceversa: es uno o el otro, nunca los dos.
+
+    private async Task ElegirProveedor(int idx, int proveedorId)
+    {
+        var m = formMedios[idx];
+        m.RedirigidoProveedorId = proveedorId;
+        m.RedirigidoEmpleadoId = 0;
+        m.RedirigidoDestino = null;
+        m.RedirigidoCompraId = 0;     // arranca "a cuenta"
+        buscandoProvIdx = null;
+        if (!facturasProv.ContainsKey(proveedorId))
+        {
+            try { facturasProv[proveedorId] = await Api.GetCafeFacturasPendientesProveedorAsync(proveedorId); }
+            catch { facturasProv[proveedorId] = new(); }
+        }
+    }
+
+    private void ElegirFactura(int idx, int compraId) => formMedios[idx].RedirigidoCompraId = compraId;
+
+    /// <summary>"No está acá": abre el buscador entre TODOS los proveedores. Sin esto, la primera vez
+    /// que falta uno hay que abandonar la cobranza, ir a Proveedores, tildarlo y volver a empezar.</summary>
+    private async Task AbrirBuscadorProveedor(int idx)
+    {
+        buscandoProvIdx = idx;
+        buscarProv = "";
+        if (todosProv.Count == 0)
+        {
+            try { todosProv = await Api.GetCafeProveedoresAsync() ?? new(); } catch { todosProv = new(); }
+        }
+    }
+
+    private List<CafeProveedorDto> ProveedoresQueMatchean()
+    {
+        var q = (buscarProv ?? "").Trim();
+        if (q.Length < 2) return new();
+        return todosProv
+            .Where(p => p.IsActive && !p.AceptaRedirigido
+                     && (p.Nombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase))
+            .Take(8).ToList();
+    }
+
+    /// <summary>Lo tilda en su ficha y lo elige, sin salir de la cobranza.</summary>
+    private async Task HabilitarYElegir(int idx, CafeProveedorDto p)
+    {
+        habilitandoProv = true;
+        try
+        {
+            await Api.UpdateCafeProveedorAsync(p.Id, new UpdateCafeProveedorRequest { AceptaRedirigido = true });
+            provRedir = await Api.GetCafeProveedoresRedirigidoAsync();
+            todosProv = new();      // se relee la próxima vez, ya sin este
+            await ElegirProveedor(idx, p.Id);
+            ToastService.Success($"{p.Nombre} quedó habilitado para cobros redirigidos");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo habilitar: " + ex.Message); }
+        finally { habilitandoProv = false; }
     }
 
     /// <summary>No se lo pasa a nadie: la plata queda en la privada, como se venía usando esta caja.</summary>
@@ -1997,6 +2142,7 @@
     {
         var m = formMedios[idx];
         m.RedirigidoEmpleadoId = 0;
+        m.RedirigidoProveedorId = 0;
         m.RedirigidoDestino = DestinoPrivada;
     }
 
@@ -2086,7 +2232,9 @@
         // (paso con $75.000 de Gisella Luna, que iban a los viajes). Ahora no deja guardar a medias.
         // "A nadie · queda en la privada" es una respuesta válida: es el uso de siempre de esta caja.
         // Lo que no se puede es no contestar nada.
+        // 09/09/2026: elegir un PROVEEDOR también contesta la pregunta.
         if (formMedios.Any(m => m.EsRedirigido && !(m.RedirigidoEmpleadoId > 0)
+                                && !(m.RedirigidoProveedorId > 0)
                                 && m.RedirigidoDestino != DestinoPrivada))
         {
             ToastService.Error("⚠️ Elegiste Redirigido pero no dijiste a QUIÉN se le pasa la plata. Si va a la privada, apretá \"A nadie · queda en la privada\".");
@@ -2119,7 +2267,9 @@
                 m.ChequeNumero, m.ChequeBanco, m.ChequeEmisor, m.Importe,
                 m.ChequeFechaVencimiento, m.ChequeFechaVencimiento, null) : null,
             m.EsRedirigido && m.RedirigidoEmpleadoId > 0 ? m.RedirigidoEmpleadoId : null,
-            m.EsRedirigido ? m.RedirigidoDestino : null
+            m.EsRedirigido ? m.RedirigidoDestino : null,
+            m.EsRedirigido && m.RedirigidoProveedorId > 0 ? m.RedirigidoProveedorId : null,
+            m.EsRedirigido && m.RedirigidoProveedorId > 0 && m.RedirigidoCompraId > 0 ? m.RedirigidoCompraId : null
         )).ToList();
 
         guardando = true;

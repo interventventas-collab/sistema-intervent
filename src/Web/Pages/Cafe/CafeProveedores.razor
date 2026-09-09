@@ -212,6 +212,20 @@
                         </select>
                     </div>
                 }
+                @* 09/09/2026: habilita a este proveedor como destinatario de un COBRO REDIRIGIDO
+                   (el cliente le paga a él y eso cancela lo que le debemos). Arranca apagado a
+                   propósito: hay 560 proveedores y sin el tilde la lista de la cobranza sería
+                   inusable. Además es un control — la plata sólo puede terminar en uno habilitado. *@
+                <div class="form-group">
+                    <label class="form-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+                        <input type="checkbox" @bind="formAceptaRedirigido" style="cursor:pointer;" />
+                        <span>Puede recibir cobros redirigidos</span>
+                    </label>
+                    <p style="font-size:0.75rem; color:#6b7280; margin:0.25rem 0 0;">
+                        Tildalo si alguna vez le cobrás a un cliente y esa plata se la queda este proveedor
+                        para cancelar lo que le debemos. Sin el tilde no aparece en la lista de la cobranza.
+                    </p>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
@@ -267,6 +281,7 @@
     private string formCiudad = "";
     private string formWeb = "";
     private bool formIsActive = true;
+    private bool formAceptaRedirigido = false;
 
     // Datalists para provincia/localidad (cargados desde CpService)
     private List<string> provincias = new();
@@ -315,7 +330,7 @@
         formCuit = ""; formCategoriaImpositiva = ""; formDireccion = "";
         formCodigoPostal = ""; formProvincia = ""; formCiudad = ""; formWeb = "";
         localidadesSugeridas = new();
-        formIsActive = true; formError = null; showForm = true;
+        formIsActive = true; formAceptaRedirigido = false; formError = null; showForm = true;
     }
 
     private async Task ShowEdit(CafeProveedorDto p)
@@ -328,6 +343,7 @@
         formProvincia = p.Provincia ?? ""; formCiudad = p.Ciudad ?? ""; formWeb = p.Web ?? "";
         localidadesSugeridas = await CpService.GetLocalidadesAsync(formProvincia);
         formIsActive = p.IsActive;
+        formAceptaRedirigido = p.AceptaRedirigido;
         formError = null; showForm = true;
     }
 
@@ -360,7 +376,8 @@
                     Cuit = formCuit, CategoriaImpositiva = formCategoriaImpositiva,
                     Direccion = formDireccion, CodigoPostal = formCodigoPostal,
                     Provincia = formProvincia, Ciudad = formCiudad, Web = formWeb,
-                    IsActive = formIsActive
+                    IsActive = formIsActive,
+                    AceptaRedirigido = formAceptaRedirigido
                 });
                 ToastService.Success("Proveedor actualizado");
             }
