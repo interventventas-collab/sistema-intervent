@@ -6970,7 +6970,12 @@
         await LoadRespuestas();
         await LoadContactos();
         await LoadDatosBancarios();
-        refreshTimer = new System.Threading.Timer(async _ => await OnTick(), null, 10_000, 10_000);
+        // 2026-09-09: era cada 10 segundos. Cada vuelta vuelve a pedir TODA la lista de chats y
+        // TODOS los mensajes del chat abierto, y redibuja la pantalla entera: es la pantalla mas
+        // pesada del sistema y lo hacia 6 veces por minuto, escribieras o no. Los mensajes nuevos
+        // NO dependen de esto (entran al instante por la conexion en vivo, SignalR): este timer es
+        // la red de seguridad por si esa conexion se cae. Con 30 s alcanza de sobra.
+        refreshTimer = new System.Threading.Timer(async _ => await OnTick(), null, 30_000, 30_000);
     }
 
     // 2026-07-29: registrar el pegado de capturas (Ctrl+V / Win+V) una sola vez, al montar la pantalla.
