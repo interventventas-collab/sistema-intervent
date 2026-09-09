@@ -57,6 +57,7 @@
                     <option value="FECHA_MES">📅 Recordatorios de fecha</option>
                     <option value="ENVIO_RECHAZADO">🚫 Envíos rechazados por repartidor</option>
                     <option value="UBICACION_ERRONEA">📍 Ubicaciones mal cargadas</option>
+                    <option value="DRIVE_CAIDO">☁️ Google Drive desconectado</option>
                 </select>
             </div>
             <button class="btn-secondary" @onclick="CargarHistorial" title="Actualizar">🔄 Actualizar</button>
@@ -668,6 +669,7 @@ else
         "PUBLI_MELI" => "Publicaciones MeLi para revisar (precio)",
         "ENVIO_RECHAZADO" => "Repartidor rechazó un envío",
         "UBICACION_ERRONEA" => "Repartidor reportó ubicación mal cargada",
+        "DRIVE_CAIDO" => "Google Drive dejó de guardar los PDF",
         _ => tipo
     };
 
@@ -678,6 +680,7 @@ else
         "PUBLI_MELI" => "Te aviso cuando una publicación pausada recibe stock (el robot NO la activa) o cuando una publicación se reactiva — para que revises el precio antes de vender.",
         "ENVIO_RECHAZADO" => "Te aviso cuando un repartidor rechaza un envío que le asignaste, con el motivo que escribió. El envío vuelve a estar disponible para reasignar.",
         "UBICACION_ERRONEA" => "Te aviso cuando un repartidor marca que la ubicación de un cliente está mal. NO la cambia él: te llega el aviso para que la corrijas desde el sistema (al armar la ruta, con el botón 📍 Corregir ubicación).",
+        "DRIVE_CAIDO" => "Te aviso apenas Google Drive deja de guardar los PDF de los comprobantes (normalmente porque se venció el permiso). Los pedidos entran igual al tablero de Preparación y se pueden armar, con el cartel rojo SIN DRIVE. Se arregla en Integraciones → Google Drive → Conectar con Google, y el aviso se apaga solo cuando el primer PDF vuelve a subir.",
         _ => ""
     };
 
@@ -728,6 +731,7 @@ else
         "PUBLI_MELI" => "⚠️",
         "ENVIO_RECHAZADO" => "🚫",
         "UBICACION_ERRONEA" => "📍",
+        "DRIVE_CAIDO" => "☁️",
         _ => "🔔"
     };
 

@@ -34,6 +34,13 @@ public class MisAlertasBackgroundService : BackgroundService
     private static readonly TimeSpan FirstDelay = TimeSpan.FromMinutes(1);
     private const int ARG_OFFSET_HOURS = -3;
 
+    /// <summary>2026-09-09: los únicos tipos que este robot sabe evaluar (los mismos que el usuario
+    /// puede crear desde la pantalla). El resto son alertas por EVENTO: las prende el hecho real
+    /// (una venta de MeLi, un rechazo del repartidor, un PDF que no subió a Drive) y el robot NO
+    /// las tiene que tocar, porque no sabe si la condición sigue o no y las apagaría sola.</summary>
+    private static readonly string[] TiposQueEvaluaElRobot =
+        { "SHELL_BAJO", "BANCO_BAJO", "CHEQUE_VENCE", "FECHA_MES", "EMAIL_REMITENTE" };
+
     public MisAlertasBackgroundService(IServiceScopeFactory scopeFactory, ILogger<MisAlertasBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
@@ -59,10 +66,16 @@ public class MisAlertasBackgroundService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        // Las alertas del sistema (VENTA_MELI / FICHADA) NO se evalúan acá: se disparan desde el evento
-        // real (venta MeLi / fichada). Si las tocáramos, resetearíamos su campanita en cada vuelta.
+        // El robot evalúa SOLO los tipos que sabe mirar (saldo, cheques, fecha, correo).
+        // 2026-09-09: antes esto era una lista NEGRA de dos tipos ("todo menos VENTA_MELI y FICHADA")
+        // y eso rompía en silencio a todas las alertas por EVENTO que se fueron sumando después
+        // (PUBLI_MELI, ALTA_CLIENTE, ENVIO_RECHAZADO, UBICACION_ERRONEA, PAGO_WHATSAPP, DRIVE_CAIDO):
+        // el evento las prendía y, como EvaluarAsync no sabe evaluarlas, devolvía "no se cumple" y
+        // la vuelta siguiente del robot (≤5 min) les apagaba la campanita. El Telegram sí salía, pero
+        // la campanita duraba minutos. Ahora es una lista BLANCA: lo que el robot no sabe evaluar,
+        // no lo toca. Al sumar un tipo NUEVO evaluado por robot, hay que agregarlo acá.
         var reglas = await db.MisAlertas
-            .Where(a => a.Activa && a.Tipo != "VENTA_MELI" && a.Tipo != "FICHADA")
+            .Where(a => a.Activa && TiposQueEvaluaElRobot.Contains(a.Tipo))
             .ToListAsync();
         if (reglas.Count == 0) return;
 

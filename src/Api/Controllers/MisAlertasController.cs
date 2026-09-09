@@ -30,7 +30,7 @@ public class MisAlertasController : ControllerBase
     // 2026-07-11: alertas "del sistema" (eventos automáticos que antes vivían en la pantalla de Telegram).
     // Se siembran solas (Program.cs), no se pueden crear ni borrar, solo prender/apagar y elegir canal.
     // Un robot NO las evalúa: se disparan desde el evento real (venta MeLi / fichada).
-    private static readonly string[] TiposSistema = { "VENTA_MELI", "FICHADA", "PUBLI_MELI", "ENVIO_RECHAZADO", "UBICACION_ERRONEA" };
+    private static readonly string[] TiposSistema = { "VENTA_MELI", "FICHADA", "PUBLI_MELI", "ENVIO_RECHAZADO", "UBICACION_ERRONEA", "DRIVE_CAIDO" };
 
     private int? GetUserId()
     {
@@ -225,7 +225,10 @@ public class MisAlertasController : ControllerBase
         var a = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Id == id && x.Alcance.Contains(bucket));
         if (a is null) return NotFound();
         a.Activa = !a.Activa;
-        if (!a.Activa) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; }
+        // 2026-09-09: se limpia tambien DisparadaAt. Las alertas por evento la usan como marca de
+        // "ya avise" para no repetir el aviso; si no se borra, apagar y prender no sirve para
+        // destrabarlas y el proximo aviso queda mudo.
+        if (!a.Activa) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; a.DisparadaAt = null; }
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(Map(a));
@@ -253,7 +256,8 @@ public class MisAlertasController : ControllerBase
         // o tildar un canal NO borra la línea elegida.
         if (r.LineaSet) a.LineaPhoneId = string.IsNullOrWhiteSpace(r.LineaPhoneId) ? null : r.LineaPhoneId.Trim();
         // Si se apaga o se saca la campanita, limpiamos el estado de "disparada" para que no quede colgado.
-        if (!a.Activa || !a.CanalCampanita) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; }
+        // 2026-09-09: DisparadaAt tambien (ver Toggle): es la marca de "ya avise" de las alertas por evento.
+        if (!a.Activa || !a.CanalCampanita) { a.EstaDisparada = false; a.Vista = false; a.UltimoDetalle = null; a.DisparadaAt = null; }
         a.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         await GuardarDestinatariosAsync(a.Id, r.Destinatarios);

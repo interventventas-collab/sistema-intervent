@@ -567,6 +567,9 @@ using (var scope = app.Services.CreateScope())
         await EnsureSistemaAlerta("UBICACION_ERRONEA", "📍 Repartidor reportó ubicación mal cargada", true, canalCampanita: true);
         // 2026-08-13: alguien cargó un pago escribiendo "PAGO" por WhatsApp → falta confirmarlo en Tesorería.
         await EnsureSistemaAlerta("PAGO_WHATSAPP", "💵 Pago cargado por WhatsApp para confirmar", true, canalCampanita: true);
+        // 2026-09-09: Google le vence/revoca el permiso a Drive cada tanto y los PDF dejan de guardarse
+        // sin que nadie se entere hasta que falta un comprobante. Arranca prendida con campanita.
+        await EnsureSistemaAlerta("DRIVE_CAIDO", "☁️ Google Drive desconectado — los PDF no se guardan", true, canalCampanita: true);
         await db.SaveChangesAsync();
     }
     catch (Exception ex) { logger.LogWarning(ex, "No se pudieron sembrar las alertas del sistema (Ventas/Fichadas)."); }
