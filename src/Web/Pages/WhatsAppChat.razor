@@ -1102,6 +1102,19 @@
                 }
                 else
                 {
+                    @* 2026-09-09: la charla abre con los ultimos 100 mensajes (antes 200, y los
+                       dibujaba todos en cada refresco). Si hay mas atras, este boton los va
+                       trayendo de a 100. Aparece solo cuando puede haber mas: si ya trajiste toda
+                       la historia, se va solo. *@
+                    @if (HayMasViejos())
+                    {
+                        <div class="wa-mas-viejos-fila">
+                            <button type="button" class="wa-mas-viejos" @onclick="TraerMasViejos" disabled="@cargandoViejos"
+                                    title="Trae los 100 mensajes anteriores de esta misma charla">
+                                @(cargandoViejos ? "Buscando…" : "↑ Ver mensajes más viejos")
+                            </button>
+                        </div>
+                    }
                     @* 2026-08-20: cartelitos "Hoy" / "Ayer" para partir la charla por dia, como
                        WhatsApp. Acá los mensajes van del mas viejo al mas nuevo y en orden normal,
                        asi que el cartelito va ANTES del primer mensaje de cada dia. (En el celular
@@ -3675,6 +3688,14 @@
     .wa-busc-aviso { background: #fffbeb; border-bottom: 1px solid #fde68a; color: #92400e;
         font-size: 0.76rem; padding: 5px 12px; flex: none; }
     .wa-bubble.wa-hit { box-shadow: 0 0 0 2px #f5c518; }
+    /* 2026-09-09: "ver mensajes mas viejos". Va arriba de todo en la charla y a proposito NO
+       lleva color ni recuadro llamativo: es texto gris que se subraya al pasar por arriba, para
+       que no compita con los mensajes ni parezca una alarma. */
+    .wa-mas-viejos-fila { display: flex; justify-content: center; padding: 0.5rem 0 0.2rem; }
+    .wa-mas-viejos { background: none; border: none; color: #6b7280; font-size: 0.8rem;
+                     cursor: pointer; padding: 0.25rem 0.6rem; }
+    .wa-mas-viejos:hover:not(:disabled) { text-decoration: underline; color: #374151; }
+    .wa-mas-viejos:disabled { cursor: default; opacity: 0.6; }
     .wa-fecha-sep { display: flex; justify-content: center; margin: 0.6rem 0 0.3rem; }
     .wa-fecha-sep span { background: #e7f1e8; color: #4b5563; font-size: 0.78rem; font-weight: 700;
         padding: 3px 14px; border-radius: 999px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.1); white-space: nowrap; }
@@ -4848,7 +4869,9 @@
     // Busca en los mensajes que la pantalla ya trajo (los últimos 200 de cada charla). En producción
     // 189 de 193 charlas tienen menos de 200, así que para casi todas es toda la historia; en las
     // que se pasan, el cartelito amarillo dice hasta dónde se miró.
-    private const int TopeCargadosBusq = 200;
+    // 2026-09-09: era el tope fijo de 200 que traia la pantalla. Ahora la cantidad cargada la
+    // decide topMensajes (arranca en 100 y sube con "ver mensajes mas viejos"), asi que el aviso
+    // del buscador se compara contra ESE numero. La constante quedaria mintiendo.
 
     private bool buscadorAbierto;
     private string busqTexto = "";
@@ -4971,8 +4994,13 @@
             }
         }
 
-        if (mensajes.Count >= TopeCargadosBusq)
-            busqAviso = $"Busqué en los últimos {mensajes.Count} mensajes de esta charla, que son los que están cargados.";
+        // 2026-09-09: el aviso tiene que mirar la tanda cargada AHORA (topMensajes), no un numero
+        // fijo. Si no, con 100 cargados de una charla de 400 diria "no esta en toda esta charla",
+        // que es MENTIRA: esta mas atras, sin traer. Por eso el aviso manda al boton de arriba.
+        if (mensajes.Count >= topMensajes)
+            busqAviso = HayMasViejos()
+                ? $"Busqué en los últimos {mensajes.Count} mensajes, que son los cargados. Si no aparece, tocá «Ver mensajes más viejos» arriba de todo y buscá de nuevo."
+                : $"Busqué en los últimos {mensajes.Count} mensajes de esta charla, que son los que están cargados.";
         else if (busqHits.Count == 0)
             busqAviso = "No encontré esa palabra en toda esta charla.";
     }
@@ -5000,6 +5028,30 @@
     // Así el mismo contacto en 2 líneas nuestras son 2 chats distintos y no se cruzan.
     string? selectedLinea;
     string composerText = "";
+
+    // 2026-09-09: cuantos mensajes se piden y se dibujan del chat abierto. Arranca en 100 (antes
+    // eran 200 fijos) y sube de a 100 con el boton "ver mensajes mas viejos". Se vuelve a 100 al
+    // cambiar de chat. El tope de la API es 500.
+    const int MensajesPorTanda = 100;
+    const int MensajesTope = 500;
+    int topMensajes = MensajesPorTanda;
+    bool _trayendoViejos;       // para NO saltar al ultimo mensaje cuando trajiste los viejos
+    bool cargandoViejos;        // para el cartelito del boton mientras van llegando
+
+    /// <summary>¿Puede haber mensajes mas viejos sin traer? Si la tanda vino LLENA, es que hay mas
+    /// atras (o justo entraban exactos, y entonces el proximo clic no trae nada nuevo y el boton
+    /// desaparece solo).</summary>
+    bool HayMasViejos() => mensajes.Count >= topMensajes && topMensajes < MensajesTope;
+
+    async Task TraerMasViejos()
+    {
+        if (cargandoViejos) return;
+        cargandoViejos = true;
+        topMensajes = Math.Min(topMensajes + MensajesPorTanda, MensajesTope);
+        _trayendoViejos = true;
+        await LoadMensajes(silent: true);
+        cargandoViejos = false;
+    }
     // 2026-09-09: el cuadro de escribir ya no esta atado tecla por tecla (ver el comentario del
     // textarea). Estas tres piezas son lo que lo reemplaza.
     ElementReference composerRef;      // el cuadro, para poder escribirle desde .NET
@@ -8143,6 +8195,7 @@
         GuardarBorradorDelChat();
         selectedNumero = numero;
         selectedLinea = linea;
+        topMensajes = MensajesPorTanda;   // 2026-09-09: cada chat arranca por la primera tanda
         RestaurarBorradorDelChat();
         chatPlantillaName = ""; chatVariables = new();   // 2026-08-05: resetear el selector de plantilla al cambiar de chat
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
@@ -8205,7 +8258,10 @@
     {
         if (selectedNumero == null) return;
         if (!silent) loadingMsg = true;
-        try { mensajes = await Api.GetTwMensajesAsync(selectedNumero, selectedLinea ?? "null"); }
+        // 2026-09-09: antes traia SIEMPRE los ultimos 200 (el default de la API) y los dibujaba a
+        // todos, en cada refresco automatico. Ahora arranca en 100 y sube de a tandas solo si el
+        // usuario pide ver mas viejos. Ver topMensajes.
+        try { mensajes = await Api.GetTwMensajesAsync(selectedNumero, selectedLinea ?? "null", topMensajes); }
         catch { }
         loadingMsg = false;
 
@@ -8218,6 +8274,10 @@
 
         var hayNuevos = mensajes.Count != ultimaCantidadMensajes;
         ultimaCantidadMensajes = mensajes.Count;
+        // 2026-09-09: si acabas de pedir mensajes MAS VIEJOS, entraron 100 burbujas nuevas arriba y
+        // "hayNuevos" da true — pero saltar al ultimo mensaje seria justo lo contrario de lo que
+        // pediste. En ese caso no se mueve el scroll.
+        if (_trayendoViejos) { _trayendoViejos = false; return; }
         if (!silent || hayNuevos) await ScrollAlUltimoMensaje();
     }
 

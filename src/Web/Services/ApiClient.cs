@@ -7978,10 +7978,14 @@ public class ApiClient
         catch { return null; }
     }
 
-    public async Task<List<TwMsgDto>> GetTwMensajesAsync(string numero, string? linea = null)
+    // 2026-09-09: "top" = cuantos mensajes traer (los mas nuevos). Antes siempre traia los 200 que
+    // pone la API por default; ahora la pantalla arranca pidiendo 100 y sube de a tandas cuando el
+    // usuario toca "ver mensajes mas viejos". Menos burbujas dibujadas = pantalla mas liviana.
+    public async Task<List<TwMsgDto>> GetTwMensajesAsync(string numero, string? linea = null, int? top = null)
         => await _http.GetFromJsonAsync<List<TwMsgDto>>(
                $"/api/whatsapp/twilio/mensajes?numero={Uri.EscapeDataString(numero)}"
-               + (linea != null ? $"&linea={Uri.EscapeDataString(linea)}" : "")) ?? new();
+               + (linea != null ? $"&linea={Uri.EscapeDataString(linea)}" : "")
+               + (top != null ? $"&top={top}" : "")) ?? new();
 
     public async Task<(bool ok, string? error)> SendTwMensajeAsync(string numero, string mensaje, string? lineaPhoneId = null, int? replyToMensajeId = null)
     {
