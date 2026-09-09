@@ -73,13 +73,22 @@
         if (!esDeposito) return;
 
         Presence.OnAvisoDeposito += AvisoLlego;
+        // 2026-09-09 (mismo día, reportado por Depósito: "sólo aparece cuando volvemos a abrir la
+        // pantalla"): el empujón en vivo viaja por SignalR, y la conexión sólo la abría quien
+        // tuviera el CHAT abierto. Estando en cualquier otra pantalla no había conexión, así que
+        // el aviso llegaba recién por el chequeo de respaldo — y el navegador frena esos chequeos
+        // cuando la pestaña está de fondo. Ahora el cartel abre la conexión él mismo.
+        try { await Presence.EnsureStartedAsync(); } catch { }
         await CargarPendienteAsync();
         // Respaldo: si el empujón en vivo no llega (se cortó la conexión, el navegador durmió),
         // igual lo levantamos. Sin esto un aviso puede quedar invisible justo cuando importa.
         timerRespaldo = new System.Threading.Timer(async _ =>
         {
+            // Si la conexión en vivo se cayó (wifi del depósito, pantalla dormida), se levanta sola
+            // acá. Y si igual no hay conexión, el chequeo trae el aviso pendiente.
+            try { await Presence.EnsureStartedAsync(); } catch { }
             if (aviso is null) await InvokeAsync(CargarPendienteAsync);
-        }, null, 45000, 45000);
+        }, null, 30000, 30000);
     }
 
     private void AvisoLlego(int id) => _ = InvokeAsync(async () =>
