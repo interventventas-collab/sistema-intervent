@@ -221,8 +221,10 @@ public class MeliAccionesLoteService
     private static string Describir(bool? precio, bool? stock)
     {
         var p = new List<string>();
-        if (precio.HasValue) p.Add(precio.Value ? "precio sincronizado" : "precio a mano");
-        if (stock.HasValue) p.Add(stock.Value ? "stock sincronizado" : "stock a mano");
+        // 2026-09-10: los textos dicen que quedo CONFIGURADO, no que se haya mandado nada a MeLi.
+        // El de antes ("stock sincronizado") hacia creer que la publicacion ya tenia el stock al dia.
+        if (precio.HasValue) p.Add(precio.Value ? "queda al día solo (precio)" : "precio a mano");
+        if (stock.HasValue) p.Add(stock.Value ? "queda al día solo (stock) — todavía no le mandé nada" : "stock a mano");
         return string.Join(" · ", p);
     }
 }

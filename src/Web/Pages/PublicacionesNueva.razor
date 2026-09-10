@@ -1284,9 +1284,13 @@
                 </span>
                 <button class="p2-ac" @onclick="() => AccObjetivo(false)" disabled="@accionEnCurso">Guardar objetivo</button>
 
-                <button class="p2-ac" @onclick="() => AccSincro(true, null)" disabled="@accionEnCurso">💲 Prender precio</button>
-                <button class="p2-ac" @onclick="() => AccSincro(false, null)" disabled="@accionEnCurso">💲 Apagar precio</button>
-                <button class="p2-ac" @onclick="() => AccSincro(null, true)" disabled="@accionEnCurso">📦 Prender stock</button>
+                <button class="p2-ac" @onclick="() => AccSincro(true, null)" disabled="@accionEnCurso"
+                        title="Deja el precio sincronizándose solo de acá en adelante. NO publica el precio ahora: para eso usá 💵 Publicar precio.">💲 Sincro de precio: prender</button>
+                <button class="p2-ac" @onclick="() => AccSincro(false, null)" disabled="@accionEnCurso"
+                        title="El precio pasa a manejarse a mano: el sistema deja de publicarlo solo.">💲 Sincro de precio: apagar</button>
+                @* 2026-09-10: aclara que esto NO manda nada — el que manda es "Mandar stock" (ámbar). *@
+                <button class="p2-ac" @onclick="() => AccSincro(null, true)" disabled="@accionEnCurso"
+                        title="Deja el stock sincronizándose solo de acá en adelante. NO le manda el stock ahora: para eso usá 📦 Mandar stock.">📦 Sincro de stock: prender</button>
 
                 <span class="sep"></span>
                 <button class="p2-ac meli" @onclick="() => AccObjetivo(true)" disabled="@accionEnCurso">🎯 Aplicar objetivo y publicar</button>
