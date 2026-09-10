@@ -1751,6 +1751,25 @@
     private bool savingCondiciones;
 
     private decimal Subtotal => formItems.Sum(i => i.Cantidad * i.PrecioUnitario);
+
+    /// <summary>
+    /// 2026-09-10: los renglones tal como se guardan. En modo "SOLO TOTAL" (tilde "Usar precios"
+    /// destildado) viajan SIN precio, porque el comprobante del cliente decide si imprime el desglose
+    /// mirando justamente eso: si algún renglón tiene precio, lo imprime. Guardarlos con precio y a la
+    /// vez escribir el total a mano dejaba una reserva que en pantalla mostraba solo el total pero al
+    /// cliente le mandaba el detalle de cada cosa.
+    /// No toca formItems: los precios siguen en el formulario por si tilda la casilla.
+    /// </summary>
+    private List<CreateAlqReservaItemRequest> ItemsParaGuardar()
+        => formUsarPrecios
+            ? formItems
+            : formItems.Select(i => new CreateAlqReservaItemRequest
+              {
+                  EquipoId = i.EquipoId,
+                  Descripcion = i.Descripcion,
+                  Cantidad = i.Cantidad,
+                  PrecioUnitario = 0m
+              }).ToList();
     private decimal Total => formUsarPrecios
         ? Math.Max(0m, Subtotal - Math.Max(0m, formDescuento))
         : Math.Max(0m, formTotalManual);
@@ -1877,6 +1896,16 @@
         }
 
         if (cot.Descuento > 0m) formDescuento = cot.Descuento;
+
+        // 2026-09-10: el presupuesto entra en modo "SOLO TOTAL", con el total ya escrito.
+        // Antes quedaba destildado pero con el total en CERO y había que reescribirlo a mano; peor
+        // todavía, los renglones llegaban con su precio adentro y el comprobante del cliente
+        // (AlqReservaPdfService: "conPrecios = algún item con precio > 0") le imprimía el desglose
+        // completo aunque en pantalla se viera un total escrito a mano.
+        // Los precios igual quedan cargados en el formulario: si tilda "Usar precios", ve el detalle
+        // y el total se recalcula solo (Subtotal − Descuento da exactamente el total del presupuesto).
+        formUsarPrecios = false;
+        formTotalManual = cot.Total;
 
         var falta = new List<string>();
         if (formClienteId <= 0) falta.Add("el cliente");
@@ -2285,7 +2314,7 @@
                     NotasInternas = formNotasInternas,
                     MapeoLink = formMapeoLink,
                     GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
-                    Items = formItems,
+                    Items = ItemsParaGuardar(),
                     // ARCA — config de facturación (la emisión es aparte, por botón)
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
@@ -2318,7 +2347,7 @@
                     NotasInternas = formNotasInternas,
                     MapeoLink = formMapeoLink,
                     GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
-                    Items = formItems,
+                    Items = ItemsParaGuardar(),
                     // ARCA — config de facturación (la emisión es aparte, por botón)
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
