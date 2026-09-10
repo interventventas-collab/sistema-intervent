@@ -686,15 +686,27 @@
                                     <div class="wa-hdr-menu-back" @onclick="@(() => showRazonesMenu = false)"></div>
                                     <div class="wa-hdr-menu wa-razones-menu">
                                         <div class="wa-razones-menu-t">Este teléfono factura a @RazonesSociales.Count razones sociales. Tocá con cuál estás trabajando: la ficha, la venta y el comprobante salen a nombre de ésa.</div>
+                                        @* 2026-09-10: la crucecita para SACAR una razón social vive acá.
+                                           Existía desde el 20/08 pero solo dentro de "editar contacto", tres
+                                           clicks abajo: cuando aparece una razón social de más (un cliente
+                                           borrado, un duplicado) el usuario la ve ACÁ, y acá tiene que poder
+                                           sacarla. No borra el cliente: lo despega del teléfono. *@
                                         @foreach (var rs in RazonesSociales)
                                         {
-                                            <button class="wa-hdr-menu-op @(EsRazonActiva(rs.Id) ? "sel" : "")"
-                                                    @onclick="() => ElegirRazon(rs.Id)"
-                                                    disabled="@cambiandoRazon"
-                                                    title="@(EsRazonActiva(rs.Id) ? $"Estás trabajando con {rs.Nombre}" : $"Pasar a {rs.Nombre}")">
-                                                <span class="wa-razon-nom">@rs.Nombre</span>
-                                                @if (EsRazonActiva(rs.Id)) { <span class="wa-hdr-menu-tick">✓</span> }
-                                            </button>
+                                            var razon = rs;
+                                            <div class="wa-razon-fila">
+                                                <button class="wa-hdr-menu-op @(EsRazonActiva(razon.Id) ? "sel" : "")"
+                                                        @onclick="() => ElegirRazon(razon.Id)"
+                                                        disabled="@cambiandoRazon"
+                                                        title="@(EsRazonActiva(razon.Id) ? $"Estás trabajando con {razon.Nombre}" : $"Pasar a {razon.Nombre}")">
+                                                    <span class="wa-razon-nom">@razon.Nombre</span>
+                                                    @if (EsRazonActiva(razon.Id)) { <span class="wa-hdr-menu-tick">✓</span> }
+                                                </button>
+                                                <button class="wa-razon-sacar"
+                                                        @onclick="() => QuitarRazonDesdeMenu(razon.Id, razon.Nombre)"
+                                                        disabled="@cambiandoRazon"
+                                                        title="Sacar @razon.Nombre de este chat — el cliente NO se borra, solo deja de estar colgado de este teléfono">✕</button>
+                                            </div>
                                         }
                                     </div>
                                 }
@@ -4508,6 +4520,13 @@
     .wa-razones-menu-t { font-size: 0.68rem; font-weight: 500; color: #94a3b8; padding: 0.3rem 0.6rem 0.45rem;
         border-bottom: 1px solid #f1f5f9; margin-bottom: 0.25rem; line-height: 1.35; }
     .wa-razones-menu .wa-hdr-menu-op { font-size: 0.82rem; }
+    /* 2026-09-10: cada razón social del menú es una fila = elegirla + sacarla. */
+    .wa-razon-fila { display: flex; align-items: center; gap: 0.15rem; }
+    .wa-razon-fila > .wa-hdr-menu-op { flex: 1 1 auto; min-width: 0; }
+    .wa-razon-sacar { flex: 0 0 auto; background: transparent; border: none; border-radius: 7px;
+        padding: 0.3rem 0.4rem; color: #cbd5e1; cursor: pointer; font-size: 0.8rem; font-family: inherit; }
+    .wa-razon-sacar:hover { background: #fee2e2; color: #b91c1c; }
+    .wa-razon-sacar:disabled { cursor: wait; opacity: 0.5; }
     .wa-razones-menu .wa-hdr-menu-op:disabled { cursor: wait; opacity: 0.6; }
     /* Sacar una razón social del teléfono (panel derecho) */
     .wa-ctx-quitar-razon { display: block; width: 100%; text-align: left; background: #fff; color: #9ca3af;
@@ -6818,6 +6837,14 @@
         showQuickContact = false;
         AbrirVincularCliente();
     }
+    /// <summary>2026-09-10: sacar una razón social desde el menú del encabezado. Cierra el menú
+    /// primero para que no quede abierto sobre una lista que ya cambió.</summary>
+    async Task QuitarRazonDesdeMenu(int clienteId, string nombre)
+    {
+        showRazonesMenu = false;
+        await QuitarRazon(clienteId, nombre);
+    }
+
     async Task QuitarRazonDesdeContacto(int clienteId, string nombre)
     {
         await QuitarRazon(clienteId, nombre);
