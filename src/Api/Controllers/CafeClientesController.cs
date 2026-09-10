@@ -498,11 +498,42 @@ public class CafeClientesController : ControllerBase
 
         if (!tieneVentas && !tieneCobranzas && !tieneCheques)
         {
+            // 2026-09-10: antes de borrarlo de verdad hay que DESPEGARLO de los telefonos de
+            // WhatsApp. Si no, el vinculo queda colgado de un cliente que ya no existe: el chat
+            // muestra "Cliente #1234" en vez de un nombre y —peor— si alguien lo tenia tildado,
+            // la venta o la factura salen a nombre de un cliente fantasma. Paso el 10/09/2026 con
+            // un duplicado que borro el usuario (chat BERAZA CAFE).
+            // Va DENTRO del mismo SaveChanges: si el borrado falla y cae al borrado suave, esto
+            // se revierte junto con todo lo demas y el cliente sigue colgado de su telefono.
+            var vincWa = await _db.WhatsAppContactoClientes.Where(v => v.ClienteId == id).ToListAsync();
+            var numerosTocados = vincWa.Select(v => v.Numero).Distinct().ToList();
+            if (vincWa.Count > 0) _db.WhatsAppContactoClientes.RemoveRange(vincWa);
+            var elegWa = await _db.WhatsAppClientesElegidos.Where(e => e.ClienteId == id).ToListAsync();
+            if (elegWa.Count > 0) _db.WhatsAppClientesElegidos.RemoveRange(elegWa);
+            var contactosWa = await _db.WhatsAppTwilioContactos.Where(x => x.ClienteId == id).ToListAsync();
+            foreach (var ct in contactosWa) ct.ClienteId = null;
+
             // No tiene nada enganchado (de lo conocido) -> intentamos el borrado real.
             _db.CafeClientes.Remove(c);
             try
             {
                 await _db.SaveChangesAsync();
+
+                // Si al telefono le quedaban otras razones sociales, la primera pasa a ser la
+                // principal (mismo criterio que "desvincular" a mano desde el chat).
+                if (numerosTocados.Count > 0)
+                {
+                    var huerfanos = await _db.WhatsAppTwilioContactos
+                        .Where(x => x.ClienteId == null && numerosTocados.Contains(x.Numero)).ToListAsync();
+                    foreach (var ct in huerfanos)
+                    {
+                        ct.ClienteId = await _db.WhatsAppContactoClientes
+                            .Where(v => v.Numero == ct.Numero)
+                            .OrderBy(v => v.Orden).ThenBy(v => v.Id)
+                            .Select(v => (int?)v.ClienteId).FirstOrDefaultAsync();
+                    }
+                    if (huerfanos.Count > 0) await _db.SaveChangesAsync();
+                }
                 return Ok(new { deleted = true });
             }
             catch (DbUpdateException)
