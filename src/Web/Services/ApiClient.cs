@@ -3173,6 +3173,15 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    /// <summary>Se marcó "ya lo pedí" por error: vuelve a la lista de lo que hay que pedir.</summary>
+    public async Task<bool> DeshacerStockIdealPedidoAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync(
+            $"/api/stock/ideal/pendientes/{id}/deshacer-pedido", new { });
+        return resp.IsSuccessStatusCode;
+    }
+
     public async Task<byte[]?> DownloadStockIdealExcelAsync()
     {
         await SetAuthHeaderAsync();

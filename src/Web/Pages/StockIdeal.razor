@@ -9,8 +9,14 @@
 @* 2026-09-02: "Stock ideal" — cuánto queremos tener siempre de cada producto, para armar
    los pedidos al proveedor. Tres solapas:
      · Para pedir  — la lista que se acumula sola. El producto entra cuando cruza por debajo
-                     del ideal y QUEDA hasta que alguien lo marca como pedido, aunque en el
-                     medio entren unas pocas unidades (ese caso se perdía antes).
+                     del ideal y QUEDA anotado aunque en el medio entren unas pocas unidades
+                     (ese caso se perdía antes).
+                     2026-09-10: "✓ Ya lo pedí" ya NO lo saca de la lista — lo marca y lo manda
+                     al fondo. El producto sigue faltando hasta que entra la mercadería, y
+                     sacarlo hacía que el robot lo volviera a anotar al minuto como si fuera
+                     nuevo. El renglón se cierra solo cuando el stock vuelve a subir.
+                     La columna "Bultos" dice cuántas cajas pedir (siempre para arriba, porque
+                     al proveedor no se le pide media caja); sale del UxB del producto.
      · Faltantes   — la foto de ahora: los que están por debajo en este momento.
      · Configurar  — la planilla donde se cargan los ideales, a mano o por Excel.
    La lista se refresca sola cada minuto, para el que la deja abierta en el depósito.
@@ -93,7 +99,12 @@
             else
             {
                 <span>
-                    <strong>@pendientes.Total</strong> productos anotados para pedir
+                    @* Los ya pedidos se cuentan aparte: siguen faltando, pero no hay que volver a pedirlos. *@
+                    <strong>@(pendientes.Total - pendientes.YaPedidos)</strong> para pedir
+                    @if (pendientes.YaPedidos > 0)
+                    {
+                        <span class="text-muted"> · @pendientes.YaPedidos ya pedidos, esperando que llegue</span>
+                    }
                     @if (pendientes.EnCero > 0)
                     {
                         <span style="color:#b91c1c;"> · @pendientes.EnCero en cero</span>
@@ -175,7 +186,9 @@
                                 <th class="si-num">Ideal</th>
                                 <th class="si-num">Faltan</th>
                                 <th class="si-uni"></th>
+                                <th class="si-num" title="Cajas enteras que hay que pedir. Siempre redondeado para arriba: al proveedor no se le puede pedir media caja.">Bultos</th>
                                 <th class="si-uni">Anotado</th>
+                                <th class="si-uni">Ya pedido</th>
                                 <th style="width:150px;"></th>
                             </tr>
                         </thead>
@@ -183,9 +196,9 @@
                             @foreach (var f in pendientes.Filas)
                             {
                                 var id = f.Id;
-                                <tr style="@(f.YaRepuesto ? "background:#f9fafb;" : "")">
+                                <tr style="@(f.YaRepuesto || f.Pedido ? "background:#f9fafb;" : "")">
                                     <td class="si-cod"><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
-                                    <td class="si-prod">
+                                    <td class="si-prod" style="@(f.Pedido ? "color:#6b7280;" : "")">
                                         @f.Nombre
                                         @if (f.YaRepuesto)
                                         {
@@ -201,12 +214,50 @@
                                     <td class="si-num" style="color:#6b7280;">@Miles(f.IdealAhora ?? f.IdealAlDetectar)</td>
                                     <td class="si-num" style="font-weight:700; @(f.Faltan > 0 ? "color:#b91c1c;" : "color:#9ca3af;")">@Num(f.Faltan)</td>
                                     <td class="si-uni text-muted">@(f.Unidad == "kg" ? "kilos" : "unidades")</td>
+                                    <td class="si-num">
+                                        @if (f.Bultos.HasValue)
+                                        {
+                                            <span style="font-weight:700;"
+                                                  title="@($"{f.Bultos} bultos de {Miles(f.UnidadesPorBulto ?? 0)} = {Num(f.UnidadesSiPidoBultos ?? 0)} unidades")">@f.Bultos</span>
+                                            <span class="text-muted" style="font-size:0.72rem;"> × @Miles(f.UnidadesPorBulto ?? 0)</span>
+                                        }
+                                        else if (f.Unidad == "u" && f.Faltan > 0)
+                                        {
+                                            @* Gris, no naranja: es un dato que falta, no una alarma. *@
+                                            <span class="text-muted" style="font-size:0.72rem;"
+                                                  title="Este producto no tiene cargadas las unidades por bulto (UxB). Cargalas en la ficha del producto y el pedido se calcula solo.">falta UxB</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
                                     <td class="si-uni text-muted">@FechaCorta(f.DetectadoAt)</td>
+                                    <td class="si-uni">
+                                        @if (f.Pedido)
+                                        {
+                                            <span style="color:#15803d; font-weight:600;"
+                                                  title="@($"Lo marcó {(string.IsNullOrWhiteSpace(f.PedidoPor) ? "alguien" : f.PedidoPor)}")">✓ @(f.PedidoAt.HasValue ? FechaCorta(f.PedidoAt.Value) : "sí")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
                                     <td style="white-space:nowrap;">
-                                        <button class="btn btn-sm btn-primary" style="font-size:0.75rem;"
-                                                @onclick="() => MarcarPedido(id)" disabled="@resolviendo">✓ Ya lo pedí</button>
+                                        @if (f.Pedido)
+                                        {
+                                            <button class="btn btn-sm btn-secondary" style="font-size:0.75rem;"
+                                                    title="Se marcó por error: vuelve a la lista de lo que hay que pedir"
+                                                    @onclick="() => DeshacerPedido(id)" disabled="@resolviendo">↶ Deshacer</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-primary" style="font-size:0.75rem;"
+                                                    @onclick="() => MarcarPedido(id)" disabled="@resolviendo">✓ Ya lo pedí</button>
+                                        }
                                         <button class="btn btn-sm btn-secondary" style="font-size:0.75rem;"
-                                                title="Sacarlo de la lista sin pedirlo"
+                                                title="Sacarlo de la lista"
                                                 @onclick="() => Descartar(id)" disabled="@resolviendo">✕</button>
                                     </td>
                                 </tr>
@@ -571,7 +622,9 @@
         finally { if (!silencioso) cargando = false; }
     }
 
-    /// <summary>"Ya lo pedí": sale de la lista y queda registrado quién y cuándo.</summary>
+    /// <summary>"Ya lo pedí": el renglón NO se va de la lista (el producto sigue faltando hasta
+    /// que entra la mercadería), queda marcado y baja al fondo. Antes se lo sacaba, y como pedir
+    /// no sube el stock, el robot lo volvía a anotar al minuto como si fuera nuevo.</summary>
     private async Task MarcarPedido(int id)
     {
         resolviendo = true;
@@ -579,11 +632,28 @@
         {
             if (await Api.MarcarStockIdealPedidoAsync(id))
             {
-                pendientes?.Filas.RemoveAll(f => f.Id == id);
-                if (pendientes is not null) pendientes.Total = pendientes.Filas.Count;
-                ToastService.Success("Anotado como pedido");
+                // Se recarga para que quede marcado y reordenado como lo devuelve el servidor.
+                await CargarAsync(silencioso: true);
+                ToastService.Success("Anotado como pedido · queda en la lista hasta que llegue");
             }
             else ToastService.Error("No se pudo marcar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { resolviendo = false; }
+    }
+
+    /// <summary>Se marcó "ya lo pedí" por error: vuelve a la lista de lo que hay que pedir.</summary>
+    private async Task DeshacerPedido(int id)
+    {
+        resolviendo = true;
+        try
+        {
+            if (await Api.DeshacerStockIdealPedidoAsync(id))
+            {
+                await CargarAsync(silencioso: true);
+                ToastService.Success("Volvió a la lista para pedir");
+            }
+            else ToastService.Error("No se pudo deshacer");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { resolviendo = false; }

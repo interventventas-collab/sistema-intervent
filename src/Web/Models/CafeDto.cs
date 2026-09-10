@@ -1870,6 +1870,21 @@ public class StockIdealPendienteDto
     public string Unidad { get; set; } = "u";
     /// <summary>Ya volvió a estar por encima del ideal, pero sigue anotado hasta que lo saquen.</summary>
     public bool YaRepuesto { get; set; }
+
+    // 2026-09-10 — Bultos: al proveedor se le compra por caja entera, así que el pedido se
+    // redondea SIEMPRE para arriba. Todo null si el producto no tiene cargadas las unidades
+    // por bulto, o si se mide en kilos (el café).
+    public int? UnidadesPorBulto { get; set; }
+    public int? Bultos { get; set; }
+    /// <summary>Cuántas unidades terminás comprando si pedís esas cajas enteras.</summary>
+    public decimal? UnidadesSiPidoBultos { get; set; }
+
+    // 2026-09-10 — "Ya lo pedí" ya no lo saca de la lista: el producto sigue faltando hasta
+    // que entra la mercadería. Queda marcado para no pedirlo dos veces.
+    public bool Pedido { get; set; }
+    public DateTime? PedidoAt { get; set; }
+    public string? PedidoPor { get; set; }
+    public decimal? CantidadPedida { get; set; }
 }
 
 public class StockIdealPendientesResultDto
@@ -1879,6 +1894,8 @@ public class StockIdealPendientesResultDto
     public int EnCero { get; set; }
     /// <summary>Cuántos entraron a la lista en esta misma consulta (recién detectados).</summary>
     public int NuevosEnganchados { get; set; }
+    /// <summary>Cuántos de la lista ya están pedidos y esperando que llegue la mercadería.</summary>
+    public int YaPedidos { get; set; }
     public List<StockIdealPendienteDto> Filas { get; set; } = new();
 }
 
