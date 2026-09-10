@@ -91,6 +91,15 @@ public class MapeoStopsController : ControllerBase
         [FromQuery] DateTime? fecha = null)
     {
         var dia = FechaDelMapa(fecha);
+        // 2026-09-10: antes de mostrar, acomodar las paradas de ventas que quedaron sin ubicación (0,0)
+        // y cuyo cliente YA tiene la ubicación cargada (en la ficha o en su domicilio de entrega). Pasaba
+        // que se cargaba la ubicación después de que la venta entrara al mapa y la parada quedaba muerta:
+        // se veía en el listado pero sin chinche. Los días pasados no se tocan (son solo lectura).
+        if (dia >= HoyAr())
+        {
+            try { await _ventaMapeo.RefrescarSinUbicacionAsync(dia); }
+            catch (Exception ex) { _logger.LogWarning(ex, "No pude refrescar las paradas sin ubicación del {Dia}", dia); }
+        }
         var q = _db.MapeoStops.Include(s => s.AssignedDriver).Where(s => s.FechaReparto == dia).AsQueryable();
         if (driverId.HasValue) q = q.Where(s => s.AssignedDriverId == driverId.Value);
         if (!string.IsNullOrWhiteSpace(internalStatus)) q = q.Where(s => s.InternalStatus == internalStatus);
