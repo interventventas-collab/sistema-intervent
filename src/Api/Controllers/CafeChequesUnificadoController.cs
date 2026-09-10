@@ -145,11 +145,12 @@ public class CafeChequesUnificadoController : ControllerBase
                 b.Tipo == "EMITIDO" ? b.ContraparteNombre : b.LibradorNombre,
                 null, b.Tipo == "EMITIDO" ? null : b.ContraparteNombre,
                 b.Importe, b.FechaPago, v, estado,
-                // Un e-cheq del banco todavia no es un cheque "del sistema": lo unico que se puede
-                // hacer es imputarlo a un cliente (asociar-cobranza), que ademas lo trae a cartera.
+                // Un e-cheq del banco todavia no es un cheque "del sistema", pero la pantalla ofrece
+                // las mismas acciones: antes de ejecutarlas lo trae a cartera (traer-a-cartera).
+                // Asi el usuario no tiene que imputarselo a un cliente solo para poder endosarlo.
                 PuedeImputar: v == EN_MANO,
-                PuedeDepositar: false, PuedeVentanilla: false, PuedeEndosar: false,
-                PuedeRechazar: false, PuedeAcreditar: false,
+                PuedeDepositar: v == EN_MANO, PuedeVentanilla: v == EN_MANO, PuedeEndosar: v == EN_MANO,
+                PuedeRechazar: v == EN_MANO, PuedeAcreditar: false,
                 null, null, null, b.Motivo));
         }
 
@@ -210,6 +211,52 @@ public class CafeChequesUnificadoController : ControllerBase
             .ToList();
 
         return Ok(new UnificadoResponse(conteos, resumen, deLaVista));
+    }
+
+    /// <summary>
+    /// Trae un e-cheq del banco a la cartera del sistema: crea el CafeCheque "espejo" en
+    /// EN_CARTERA vinculado al e-cheq, SIN cobranza (no toca la deuda de ningun cliente ni
+    /// mueve caja — igual que un alta manual). Hace falta porque las acciones (depositar,
+    /// ventanilla, endosar, rebotar) viven sobre CafeCheque: hasta ahora, para endosar un
+    /// cheque que solo estaba en el listado del banco, habia que imputarselo a un cliente
+    /// primero. Devuelve el id del cheque de cartera; si ya existia, devuelve ese.
+    /// </summary>
+    [HttpPost("traer-a-cartera/{echeqId:int}")]
+    public async Task<IActionResult> TraerACartera(int echeqId)
+    {
+        var b = await _db.CafeChequesBanco.FindAsync(echeqId);
+        if (b is null) return NotFound(new { error = "No encontré el cheque del banco" });
+        if (b.CafeChequeId.HasValue) return Ok(new { chequeId = b.CafeChequeId.Value, yaEstaba = true });
+        if (b.Tipo == "EMITIDO")
+            return BadRequest(new { error = "Ese cheque lo firmaste vos, no es un cheque que hayas recibido" });
+        if (!string.Equals(b.Estado, "Disponible", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = $"El cheque no está disponible en el banco (está {b.Estado})" });
+
+        var ch = new CafeCheque
+        {
+            Numero = b.Numero,
+            Banco = b.BancoEmisor ?? "(sin nombre)",
+            BancoId = b.BancoId,
+            Emisor = b.LibradorNombre,
+            Importe = b.Importe,
+            FechaCobro = b.FechaPago,
+            FechaVencimiento = b.FechaPago,
+            Estado = "EN_CARTERA",
+            FechaCambioEstado = DateTime.UtcNow,
+            ChequeBancoId = b.Id,
+            Observaciones = $"Del listado del banco (ID banco: {b.IdBanco})",
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.CafeCheques.Add(ch);
+        await _db.SaveChangesAsync();
+
+        b.CafeChequeId = ch.Id;
+        b.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync("CafeCheque", ch.Id.ToString(), "TRAER_A_CARTERA",
+            $"E-cheq del banco #{b.Id} ({b.BancoEmisor} N° {b.Numero} por ${b.Importe:N2}) traído a cartera");
+        return Ok(new { chequeId = ch.Id, yaEstaba = false });
     }
 
     public record UnirRequest(int ChequeCarteraId, int ChequeBancoId);

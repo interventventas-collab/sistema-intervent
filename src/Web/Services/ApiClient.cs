@@ -7021,6 +7021,23 @@ public class ApiClient
         return await GetAsync<ChequesUnificadoResponse>(url);
     }
 
+    /// <summary>Trae un cheque del listado del banco a la cartera del sistema, sin imputarlo a
+    /// ningun cliente. Hace falta para poder depositarlo, cobrarlo por ventanilla o endosarlo.
+    /// Devuelve el id del cheque de cartera.</summary>
+    public async Task<(int? chequeId, string? error)> TraerChequeACarteraAsync(int echeqId)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"/api/cafe/cheques-unificado/traer-a-cartera/{echeqId}", new { });
+            var body = await resp.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (resp.IsSuccessStatusCode)
+                return (doc.RootElement.TryGetProperty("chequeId", out var id) ? id.GetInt32() : null, null);
+            return (null, doc.RootElement.TryGetProperty("error", out var e) ? e.GetString() : "No se pudo traer el cheque");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     /// <summary>Une el cheque de cartera con su gemelo del banco (es el mismo papel cargado dos veces).</summary>
     public async Task<(bool ok, string? error)> UnirChequeDuplicadoAsync(int chequeCarteraId, int chequeBancoId)
     {

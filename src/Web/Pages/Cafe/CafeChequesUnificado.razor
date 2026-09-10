@@ -601,14 +601,39 @@
     }
 
     // ═══════════════ Acciones del renglon ═══════════════
+
+    /// <summary>Devuelve el id del cheque DENTRO del sistema (tabla de cartera). Si la fila viene
+    /// del listado del banco, primero lo trae a cartera: las acciones (depositar, ventanilla,
+    /// endosar, rebotar) viven sobre esa tabla. Es transparente para el usuario — el toca
+    /// "endosar" y listo, no tiene que saber que hay dos tablas.</summary>
+    private async Task<int?> ResolverIdCartera(ChequeUniDto f)
+    {
+        if (f.Origen != "BANCO") return f.Id;
+        var (id, err) = await Api.TraerChequeACarteraAsync(f.Id);
+        if (id is null) ToastService.Error(err ?? "No se pudo traer el cheque del banco");
+        return id;
+    }
+
     private async Task MandarAlBanco(ChequeUniDto f)
     {
-        try { await Api.MandarChequeAlBancoAsync(f.Id); ToastService.Success("Anotado: está en el banco esperando"); await Load(); }
+        try
+        {
+            var id = await ResolverIdCartera(f); if (id is null) return;
+            await Api.MandarChequeAlBancoAsync(id.Value);
+            ToastService.Success("Anotado: está en el banco esperando");
+            await Load();
+        }
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
     private async Task Depositar(ChequeUniDto f)
     {
-        try { await Api.DepositarChequeAsync(f.Id); ToastService.Success("Depositado y acreditado"); await Load(); }
+        try
+        {
+            var id = await ResolverIdCartera(f); if (id is null) return;
+            await Api.DepositarChequeAsync(id.Value);
+            ToastService.Success("Depositado y acreditado");
+            await Load();
+        }
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
     private async Task Acreditar(ChequeUniDto f)
@@ -618,13 +643,25 @@
     }
     private async Task CobrarVentanilla(ChequeUniDto f)
     {
-        try { await Api.CobrarChequeVentanillaAsync(f.Id); ToastService.Success("Cobrado por ventanilla"); await Load(); }
+        try
+        {
+            var id = await ResolverIdCartera(f); if (id is null) return;
+            await Api.CobrarChequeVentanillaAsync(id.Value);
+            ToastService.Success("Cobrado por ventanilla");
+            await Load();
+        }
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
     private async Task Rechazar(ChequeUniDto f)
     {
         if (!await JS.InvokeAsync<bool>("confirm", $"¿Marcar como rebotado el cheque N° {f.Numero} de ${f.Importe:N2}?")) return;
-        try { await Api.RechazarChequeAsync(f.Id); ToastService.Success("Marcado como rebotado"); await Load(); }
+        try
+        {
+            var id = await ResolverIdCartera(f); if (id is null) return;
+            await Api.RechazarChequeAsync(id.Value);
+            ToastService.Success("Marcado como rebotado");
+            await Load();
+        }
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
@@ -878,14 +915,18 @@
         if (sobra > 0.01m) comps.Add(new ApiClient.CrearCompraItemRequest(null, sobra));
         if (comps.Count == 0) { endError = "No hay nada para pagar"; return; }
 
-        var medios = new List<ApiClient.CrearMedioPagoRequest>
-        {
-            new(caja.Id, endChe.Importe, $"Cheque N° {endChe.Numero} ({endChe.Banco})", endChe.Id)
-        };
-
         endGuardando = true;
         try
         {
+            // Si el cheque solo estaba en el listado del banco, lo traemos a cartera para poder endosarlo.
+            var chequeId = await ResolverIdCartera(endChe);
+            if (chequeId is null) { endError = "No se pudo preparar el cheque para endosarlo"; return; }
+
+            var medios = new List<ApiClient.CrearMedioPagoRequest>
+            {
+                new(caja.Id, endChe.Importe, $"Cheque N° {endChe.Numero} ({endChe.Banco})", chequeId.Value)
+            };
+
             var r = await Api.CrearCafePagoProveedorAsync(endProv.Id, 0m, null,
                 string.IsNullOrWhiteSpace(endObservaciones)
                     ? $"Endoso del cheque {endChe.Banco} N° {endChe.Numero}"
