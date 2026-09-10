@@ -1,6 +1,7 @@
 using Api.Data;
 using Api.DTOs;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,7 @@ public class AlqCotizacionesController : ControllerBase
                 c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList(),
                 // 2026-09-10: si ya se paso a reserva, el numero para mostrarlo en el historial.
                 // Si la reserva se borro despues, esto vuelve null y el presupuesto se puede pasar de nuevo.
+                c.Dias,
                 _db.AlqReservas.Where(r => r.Id == c.ReservaId).Select(r => r.Numero).FirstOrDefault()))
             .ToListAsync();
 
@@ -62,7 +64,7 @@ public class AlqCotizacionesController : ControllerBase
             c.FleteZona, c.FleteMonto, c.Descuento, c.Total,
             c.Texto, c.Operador, c.ReservaId, c.CreatedAt,
             c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList(),
-            numero));
+            c.Dias, numero));
     }
 
     [HttpPost]
@@ -77,7 +79,11 @@ public class AlqCotizacionesController : ControllerBase
         if (items.Count == 0 && req.FleteMonto == 0m)
             return BadRequest(new { error = "La cotización está vacía" });
 
-        var total = items.Sum(i => i.PrecioUnitario * i.Cantidad) + req.FleteMonto - req.Descuento;
+        // 2026-09-10: alquiler por varios dias. Primer dia entero, cada extra a un porcentaje
+        // (configurable, 50% por default). El FLETE queda afuera del factor: va una sola vez.
+        var dias = AlqDiasPricing.Normalizar(req.Dias);
+        var factor = AlqDiasPricing.Factor(dias, await AlqDiasPricing.PorcentajeAsync(_db));
+        var total = items.Sum(i => i.PrecioUnitario * i.Cantidad) * factor + req.FleteMonto - req.Descuento;
 
         var c = new AlqCotizacion
         {
@@ -90,6 +96,7 @@ public class AlqCotizacionesController : ControllerBase
             Total = total,
             Texto = req.Texto,
             Operador = string.IsNullOrWhiteSpace(req.Operador) ? null : req.Operador.Trim(),
+            Dias = dias,
             CreatedAt = DateTime.UtcNow,
             Items = items.Select(i => new AlqCotizacionItem
             {
@@ -107,7 +114,8 @@ public class AlqCotizacionesController : ControllerBase
             c.Id, c.Telefono, c.ClienteId, c.FechaEvento,
             c.FleteZona, c.FleteMonto, c.Descuento, c.Total,
             c.Texto, c.Operador, c.ReservaId, c.CreatedAt,
-            c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList()));
+            c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList(),
+            c.Dias, null));
     }
 
     [HttpDelete("{id:int}")]
@@ -148,6 +156,28 @@ public class AlqCotizacionesController : ControllerBase
         await GuardarAsync(KeyPie, req.Pie);
         await _db.SaveChangesAsync();
         return Ok(new PresupuestoTextoDto(req.Encabezado ?? "", req.Pie ?? ""));
+    }
+
+    // ===== 2026-09-10: porcentaje del dia extra =====
+    // Cuanto se cobra cada dia despues del primero. 50 = mitad de precio, que es como lo venian
+    // haciendo a mano. Editable porque el dueño lo pidio: "que se pueda cambiar".
+    public record DiasPorcentajeDto(decimal Porcentaje);
+
+    /// <summary>GET /dias-porcentaje — cuanto vale cada dia extra, en porcentaje del primero.</summary>
+    [HttpGet("dias-porcentaje")]
+    public async Task<IActionResult> GetDiasPorcentaje()
+        => Ok(new DiasPorcentajeDto(await AlqDiasPricing.PorcentajeAsync(_db)));
+
+    /// <summary>PUT /dias-porcentaje — lo guarda. Se acota a 0-100: mas de 100 haria que el dia
+    /// extra salga mas caro que el primero, que nunca es lo que se quiso escribir.</summary>
+    [HttpPut("dias-porcentaje")]
+    public async Task<IActionResult> SetDiasPorcentaje([FromBody] DiasPorcentajeDto req)
+    {
+        var pct = AlqDiasPricing.NormalizarPorcentaje(req.Porcentaje);
+        await GuardarAsync(AlqDiasPricing.KeyPorcentaje,
+            pct.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        await _db.SaveChangesAsync();
+        return Ok(new DiasPorcentajeDto(pct));
     }
 
     private async Task GuardarAsync(string key, string? valor)

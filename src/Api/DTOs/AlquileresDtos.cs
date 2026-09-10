@@ -38,6 +38,8 @@ public record AlqCotizacionDto(
     string? FleteZona, decimal FleteMonto, decimal Descuento, decimal Total,
     string? Texto, string? Operador, int? ReservaId, DateTime CreatedAt,
     List<AlqCotizacionItemDto> Items,
+    // 2026-09-10: dias cobrados (1 = como venia). El flete NO se multiplica.
+    int Dias,
     // 2026-09-10: el numero de la reserva en la que se convirtio ("A-0123"), para mostrarlo
     // en el historial del chat sin tener que ir a buscar la reserva.
     string? ReservaNumero = null);
@@ -52,6 +54,8 @@ public class CrearAlqCotizacionRequest
     public decimal Descuento { get; set; }
     public string? Texto { get; set; }
     public string? Operador { get; set; }
+    /// <summary>2026-09-10: dias cobrados. 1 (o 0/vacio) = un solo dia, la cuenta de siempre.</summary>
+    public int Dias { get; set; } = 1;
     public List<CrearAlqCotizacionItemRequest> Items { get; set; } = new();
 }
 
@@ -132,7 +136,9 @@ public class UpdateAlqClienteRequest
 
 // ===== Reservas =====
 // EquipoId null + EsLibre=true => item de "descripción libre" (texto). EquipoNombre trae la descripción.
-public record AlqReservaItemDto(int Id, int? EquipoId, string EquipoSku, string EquipoNombre, int Cantidad, decimal PrecioUnitario, bool EsLibre = false);
+public record AlqReservaItemDto(int Id, int? EquipoId, string EquipoSku, string EquipoNombre, int Cantidad, decimal PrecioUnitario, bool EsLibre = false,
+    // 2026-09-10: si se multiplica por los dias cobrados (el flete no).
+    bool MultiplicaPorDias = true);
 
 public record AlqReservaDto(
     int Id, string Numero,
@@ -186,7 +192,9 @@ public record AlqReservaDto(
     decimal? NcImpTotal = null,
     DateTime? NcFecha = null,
     string? NcMotivo = null,
-    string? NcError = null);
+    string? NcError = null,
+    // 2026-09-10: dias cobrados. 1 = un solo dia (todo lo anterior a esta fecha).
+    int Dias = 1);
 
 public class CreateAlqReservaItemRequest
 {
@@ -196,6 +204,11 @@ public class CreateAlqReservaItemRequest
     public string? Descripcion { get; set; }
     public int Cantidad { get; set; }
     public decimal PrecioUnitario { get; set; }
+    /// <summary>
+    /// 2026-09-10: si este renglon se multiplica por los dias cobrados. Los equipos del catalogo si,
+    /// los de texto libre (el tipico "Flete Moron") no. Default true; el front lo manda explicito.
+    /// </summary>
+    public bool MultiplicaPorDias { get; set; } = true;
 }
 
 public class CreateAlqReservaRequest
@@ -226,6 +239,8 @@ public class CreateAlqReservaRequest
     /// (si no, quedaban dos reservas y el stock se comia dos veces).
     /// </summary>
     public int? CotizacionId { get; set; }
+    /// <summary>2026-09-10: dias cobrados. Se hereda del presupuesto; 1 = la cuenta de siempre.</summary>
+    public int Dias { get; set; } = 1;
     public List<CreateAlqReservaItemRequest> Items { get; set; } = new();
     // ===== ARCA — facturación (2026-07-04). Todos opcionales; si TipoComprobante="X" no se factura. =====
     public string? TipoComprobante { get; set; }
@@ -241,6 +256,8 @@ public class CreateAlqReservaRequest
 
 public class UpdateAlqReservaRequest
 {
+    /// <summary>2026-09-10: dias cobrados. Null = no lo toques (compatibilidad con lo que ya andaba).</summary>
+    public int? Dias { get; set; }
     public int? ClienteId { get; set; }
     public DateTime? FechaEntrega { get; set; }
     public DateTime? FechaRetiro { get; set; }

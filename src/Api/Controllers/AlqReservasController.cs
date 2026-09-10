@@ -77,7 +77,7 @@ public class AlqReservasController : ControllerBase
         var cfg = await _db.CafeSettings.FindAsync(1);
         var qr = await _qr.GenerarQrAlquilerAsync(r.PublicToken);
         var condiciones = (await _db.AppSettings.FindAsync("alq.condiciones"))?.Value;
-        var bytes = _pdf.Generar(r, cfg, qr, condiciones);
+        var bytes = _pdf.Generar(r, cfg, qr, condiciones, await AlqDiasPricing.PorcentajeAsync(_db));
         return (bytes, BuildPdfFilename(r));
     }
 
@@ -368,11 +368,13 @@ public class AlqReservasController : ControllerBase
         var consolidados = req.Items
             .Where(i => i.EquipoId is > 0)
             .GroupBy(i => i.EquipoId!.Value)
-            .Select(g => new { EquipoId = g.Key, Cantidad = g.Sum(x => x.Cantidad), PrecioUnitario = g.First().PrecioUnitario })
+            .Select(g => new { EquipoId = g.Key, Cantidad = g.Sum(x => x.Cantidad), PrecioUnitario = g.First().PrecioUnitario,
+                               MultiplicaPorDias = g.First().MultiplicaPorDias })
             .ToList();
         var libres = req.Items
             .Where(i => (i.EquipoId is null or <= 0) && !string.IsNullOrWhiteSpace(i.Descripcion))
-            .Select(i => new { Descripcion = i.Descripcion!.Trim(), Cantidad = i.Cantidad, PrecioUnitario = i.PrecioUnitario })
+            .Select(i => new { Descripcion = i.Descripcion!.Trim(), Cantidad = i.Cantidad, PrecioUnitario = i.PrecioUnitario,
+                               MultiplicaPorDias = i.MultiplicaPorDias })
             .ToList();
         if (consolidados.Count == 0 && libres.Count == 0)
             return BadRequest(new { error = "Agregá al menos un equipo o una descripción a la reserva" });
@@ -399,7 +401,16 @@ public class AlqReservasController : ControllerBase
 
         // Estado y subtotal
         var estado = NormalizarEstado(req.Estado) ?? "reservado";
-        var subtotal = consolidados.Sum(i => i.Cantidad * i.PrecioUnitario) + libres.Sum(i => i.Cantidad * i.PrecioUnitario);
+
+        // 2026-09-10: alquiler por varios dias. El primer dia entero y cada uno extra a un porcentaje
+        // (configurable, 50% por default). Los renglones con MultiplicaPorDias=false — el FLETE — se
+        // cobran una sola vez, sean 1 o 5 dias.
+        var dias = AlqDiasPricing.Normalizar(req.Dias);
+        var factor = AlqDiasPricing.Factor(dias, await AlqDiasPricing.PorcentajeAsync(_db));
+        decimal PorDias(decimal monto, bool multiplica) => multiplica ? monto * factor : monto;
+
+        var subtotal = consolidados.Sum(i => PorDias(i.Cantidad * i.PrecioUnitario, i.MultiplicaPorDias))
+                     + libres.Sum(i => PorDias(i.Cantidad * i.PrecioUnitario, i.MultiplicaPorDias));
         var total = req.MontoTotalManual.HasValue
             ? Math.Max(0m, req.MontoTotalManual.Value)
             : Math.Max(0m, subtotal - Math.Max(0m, req.Descuento));
@@ -431,17 +442,20 @@ public class AlqReservasController : ControllerBase
             FacturaResumida = req.FacturaResumida,
             ResumenDescripcion = string.IsNullOrWhiteSpace(req.ResumenDescripcion) ? null : req.ResumenDescripcion.Trim(),
             CreatedAt = DateTime.UtcNow,
+            Dias = dias,
             Items = consolidados.Select(i => new AlqReservaItem
             {
                 EquipoId = i.EquipoId,
                 Cantidad = i.Cantidad,
-                PrecioUnitario = i.PrecioUnitario
+                PrecioUnitario = i.PrecioUnitario,
+                MultiplicaPorDias = i.MultiplicaPorDias
             }).Concat(libres.Select(l => new AlqReservaItem
             {
                 EquipoId = null,
                 Descripcion = l.Descripcion,
                 Cantidad = l.Cantidad,
-                PrecioUnitario = l.PrecioUnitario
+                PrecioUnitario = l.PrecioUnitario,
+                MultiplicaPorDias = l.MultiplicaPorDias
             })).ToList()
         };
         _db.AlqReservas.Add(reserva);
@@ -496,6 +510,12 @@ public class AlqReservasController : ControllerBase
 
         var errAnio = ErrorAnio(req.FechaEntrega, "entrega") ?? ErrorAnio(req.FechaRetiro, "retiro") ?? ErrorAnio(req.FechaEvento, "evento");
         if (errAnio is not null) return BadRequest(new { error = errAnio });
+
+        // 2026-09-10: dias cobrados. Si no vienen, se deja el que ya tenia la reserva (asi las
+        // pantallas viejas y los otros endpoints no le cambian el precio sin querer).
+        if (req.Dias.HasValue) reserva.Dias = AlqDiasPricing.Normalizar(req.Dias.Value);
+        var factor = AlqDiasPricing.Factor(reserva.Dias, await AlqDiasPricing.PorcentajeAsync(_db));
+        decimal PorDias(decimal monto, bool multiplica) => multiplica ? monto * factor : monto;
 
         if (req.ClienteId.HasValue) reserva.ClienteId = req.ClienteId.Value;
         if (req.FechaEntrega.HasValue) reserva.FechaEntrega = req.FechaEntrega.Value.Date;
@@ -553,11 +573,13 @@ public class AlqReservasController : ControllerBase
             var consolidados = req.Items
                 .Where(i => i.EquipoId is > 0)
                 .GroupBy(i => i.EquipoId!.Value)
-                .Select(g => new { EquipoId = g.Key, Cantidad = g.Sum(x => x.Cantidad), PrecioUnitario = g.First().PrecioUnitario })
+                .Select(g => new { EquipoId = g.Key, Cantidad = g.Sum(x => x.Cantidad), PrecioUnitario = g.First().PrecioUnitario,
+                                   MultiplicaPorDias = g.First().MultiplicaPorDias })
                 .ToList();
             var libres = req.Items
                 .Where(i => (i.EquipoId is null or <= 0) && !string.IsNullOrWhiteSpace(i.Descripcion))
-                .Select(i => new { Descripcion = i.Descripcion!.Trim(), Cantidad = i.Cantidad, PrecioUnitario = i.PrecioUnitario })
+                .Select(i => new { Descripcion = i.Descripcion!.Trim(), Cantidad = i.Cantidad, PrecioUnitario = i.PrecioUnitario,
+                                   MultiplicaPorDias = i.MultiplicaPorDias })
                 .ToList();
             if (consolidados.Count == 0 && libres.Count == 0)
                 return BadRequest(new { error = "La reserva debe tener al menos un equipo o una descripción" });
@@ -586,15 +608,18 @@ public class AlqReservasController : ControllerBase
             {
                 EquipoId = i.EquipoId,
                 Cantidad = i.Cantidad,
-                PrecioUnitario = i.PrecioUnitario
+                PrecioUnitario = i.PrecioUnitario,
+                MultiplicaPorDias = i.MultiplicaPorDias
             }).Concat(libres.Select(l => new AlqReservaItem
             {
                 EquipoId = null,
                 Descripcion = l.Descripcion,
                 Cantidad = l.Cantidad,
-                PrecioUnitario = l.PrecioUnitario
+                PrecioUnitario = l.PrecioUnitario,
+                MultiplicaPorDias = l.MultiplicaPorDias
             })).ToList();
-            var subtotal = consolidados.Sum(i => i.Cantidad * i.PrecioUnitario) + libres.Sum(i => i.Cantidad * i.PrecioUnitario);
+            var subtotal = consolidados.Sum(i => PorDias(i.Cantidad * i.PrecioUnitario, i.MultiplicaPorDias))
+                         + libres.Sum(i => PorDias(i.Cantidad * i.PrecioUnitario, i.MultiplicaPorDias));
             reserva.MontoTotal = req.MontoTotalManual.HasValue
                 ? Math.Max(0m, req.MontoTotalManual.Value)
                 : Math.Max(0m, subtotal - reserva.Descuento);
@@ -602,7 +627,7 @@ public class AlqReservasController : ControllerBase
         else
         {
             // Sin items nuevos: usar el total a mano si vino, si no recalcular desde los items existentes
-            var subtotal = reserva.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
+            var subtotal = reserva.Items.Sum(i => PorDias(i.Cantidad * i.PrecioUnitario, i.MultiplicaPorDias));
             reserva.MontoTotal = req.MontoTotalManual.HasValue
                 ? Math.Max(0m, req.MontoTotalManual.Value)
                 : Math.Max(0m, subtotal - reserva.Descuento);
@@ -761,7 +786,8 @@ public class AlqReservasController : ControllerBase
             i.Id, i.EquipoId,
             i.EquipoId.HasValue ? (i.EquipoNav?.Sku ?? "—") : "",
             i.EquipoId.HasValue ? (i.EquipoNav?.Nombre ?? "—") : (i.Descripcion ?? "—"),
-            i.Cantidad, i.PrecioUnitario, EsLibre: !i.EquipoId.HasValue)).ToList(),
+            i.Cantidad, i.PrecioUnitario, EsLibre: !i.EquipoId.HasValue,
+            MultiplicaPorDias: i.MultiplicaPorDias)).ToList(),
         r.FechaEvento,
         r.MapeoLink,
         r.PublicToken, r.MontoCobrado,
@@ -778,7 +804,8 @@ public class AlqReservasController : ControllerBase
         r.NotasInternas,
         // Nota de credito (2026-08-27)
         r.NcEstado, r.NcCae, r.NcPtoVta, r.NcCbteNro, r.NcCbteTipoNum,
-        r.NcImpTotal, r.NcFecha, r.NcMotivo, r.NcError);
+        r.NcImpTotal, r.NcFecha, r.NcMotivo, r.NcError,
+        r.Dias);
 
     /// <summary>Texto del renglón resumen de una factura resumida. Si la reserva tiene ResumenDescripcion
     /// cargado a mano se usa ese; sino se arma juntando los equipos: "180 SILLAS + 38 MESA...".</summary>

@@ -56,6 +56,13 @@ public class AlqReserva
     [MaxLength(30)]
     public string Estado { get; set; } = "reservado";
 
+    /// <summary>
+    /// 2026-09-10: dias cobrados. Viene heredado del presupuesto; en la reserva solo se recalcula si
+    /// se estan usando los precios por renglon (en modo "solo total" el sistema no sabe cuanto vale
+    /// cada cosa). Aparte de FechaEntrega/FechaRetiro, que son logistica.
+    /// </summary>
+    public int Dias { get; set; } = 1;
+
     /// <summary>Observaciones que SÍ se imprimen en el comprobante de la reserva.</summary>
     [MaxLength(1000)]
     public string? Notas { get; set; }
@@ -197,6 +204,13 @@ public class AlqReservaItem
 
     // 2026-07-06: nullable — un item puede ser de "descripción libre" (texto), sin equipo del catálogo.
     public int? EquipoId { get; set; }
+
+    /// <summary>
+    /// 2026-09-10: si este renglón se multiplica por los días cobrados. Los equipos del catálogo sí;
+    /// los renglones escritos a mano (el típico "Flete Morón") no — el flete se cobra una sola vez.
+    /// Se puede cambiar renglón por renglón desde la pantalla.
+    /// </summary>
+    public bool MultiplicaPorDias { get; set; } = true;
 
     [ForeignKey(nameof(EquipoId))]
     public AlqEquipo? EquipoNav { get; set; }

@@ -53,6 +53,13 @@ public class AlqCotizacion
     /// <summary>Se marca cuando esta cotización se convirtió en una reserva de verdad.</summary>
     public int? ReservaId { get; set; }
 
+    /// <summary>
+    /// 2026-09-10: cuantos dias se le cobran. El primero entero y cada uno extra a un porcentaje
+    /// (AppSettings "alq.dias.porcentaje", 50 por default). NO tiene nada que ver con las fechas de
+    /// entrega y retiro, que son logistica nuestra. Arranca en 1.
+    /// </summary>
+    public int Dias { get; set; } = 1;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<AlqCotizacionItem> Items { get; set; } = new List<AlqCotizacionItem>();

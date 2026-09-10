@@ -7666,3 +7666,38 @@ BEGIN
     ');
 END
 GO
+
+-- ============================================================
+-- 2026-09-10: ALQUILER POR VARIOS DIAS
+-- El primer dia se cobra entero y cada dia extra a un porcentaje (por default 50%).
+-- El FLETE no se multiplica: va una sola vez, sean 1 o 5 dias.
+--
+-- Los dias NO se deducen de FechaEntrega/FechaRetiro: esas son logistica nuestra (cuando
+-- conviene dejar y retirar el equipo) y no tienen nada que ver con lo que se le cobra al
+-- cliente. Los dias cobrados son un numero aparte que se elige a mano, y arranca en 1.
+-- ============================================================
+
+IF COL_LENGTH('Alq_Cotizaciones','Dias') IS NULL
+    ALTER TABLE Alq_Cotizaciones ADD Dias INT NOT NULL CONSTRAINT DF_AlqCotizaciones_Dias DEFAULT 1 WITH VALUES;
+GO
+
+IF COL_LENGTH('Alq_Reservas','Dias') IS NULL
+    ALTER TABLE Alq_Reservas ADD Dias INT NOT NULL CONSTRAINT DF_AlqReservas_Dias DEFAULT 1 WITH VALUES;
+GO
+
+-- El tilde por renglon: los equipos del catalogo se multiplican por los dias, los renglones
+-- escritos a mano (tipico: "Flete Moron") no. Se puede cambiar renglon por renglon.
+IF COL_LENGTH('Alq_ReservaItems','MultiplicaPorDias') IS NULL
+    ALTER TABLE Alq_ReservaItems ADD MultiplicaPorDias BIT NOT NULL CONSTRAINT DF_AlqReservaItems_MultDias DEFAULT 1 WITH VALUES;
+GO
+
+-- Los renglones que ya existen y son de texto libre (flete y demas) NO se multiplican:
+-- si no, la primera vez que alguien tocara los dias de una reserva vieja el flete se duplicaba.
+IF COL_LENGTH('Alq_ReservaItems','MultiplicaPorDias') IS NOT NULL
+    UPDATE Alq_ReservaItems SET MultiplicaPorDias = 0 WHERE EquipoId IS NULL AND MultiplicaPorDias = 1;
+GO
+
+-- El porcentaje del dia extra, editable desde Alquileres -> Equipos. 50 = mitad de precio.
+IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'alq.dias.porcentaje')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('alq.dias.porcentaje', '50');
+GO

@@ -20,7 +20,9 @@ public class AlqReservaPdfService
     private static string Money(decimal v) => "$" + v.ToString("N2", Es);
     private static string FechaLarga(DateTime d) => d.ToString("dddd dd 'de' MMMM 'de' yyyy", Es);
 
-    public byte[] Generar(AlqReserva r, CafeSetting? cfg, byte[]? qr, string? condiciones)
+    /// <param name="diasPorcentaje">Cuánto vale cada día extra (50 = mitad). 2026-09-10.</param>
+    public byte[] Generar(AlqReserva r, CafeSetting? cfg, byte[]? qr, string? condiciones,
+                          decimal diasPorcentaje = AlqDiasPricing.PorcentajeDefault)
     {
         cfg ??= new CafeSetting();
         // 2026-07-01: las reservas de alquiler usan la marca/contacto propios de INTEREVENTOS (no la del café).
@@ -28,7 +30,11 @@ public class AlqReservaPdfService
         const string webAlquileres = "www.intereventos.com.ar";
         const string telAlquileres = "15-2252-5458";
         var conPrecios = r.Items.Any(i => i.PrecioUnitario > 0);
-        var subtotal = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
+        // 2026-09-10: alquiler por varios días. El subtotal impreso tiene que salir con el mismo
+        // factor que se usó para calcular el total, si no el comprobante se contradice solo.
+        // Los renglones con MultiplicaPorDias=false (el flete) van una sola vez.
+        var factorDias = AlqDiasPricing.Factor(r.Dias, diasPorcentaje);
+        var subtotal = r.Items.Sum(i => i.Cantidad * i.PrecioUnitario * (i.MultiplicaPorDias ? factorDias : 1m));
         var saldo = Math.Max(0m, r.MontoTotal - r.Sena - r.MontoCobrado);
 
         var pdf = Document.Create(doc =>
@@ -153,6 +159,9 @@ public class AlqReservaPdfService
                             if (r.Descuento > 0)
                                 c.Item().Row(rw => { rw.RelativeItem().Text("Descuento:"); rw.ConstantItem(100).AlignRight().Text("- " + Money(r.Descuento)).FontColor("#dc2626"); });
                         }
+                        // 2026-09-10: que el cliente vea por cuántos días se le está cobrando.
+                        if (r.Dias > 1)
+                            c.Item().Row(rw => { rw.RelativeItem().Text(AlqDiasPricing.Leyenda(r.Dias)).Italic().FontColor("#4b5563"); });
                         c.Item().PaddingVertical(3).LineHorizontal(0.5f).LineColor("#d1d5db");
                         c.Item().Row(rw => { rw.RelativeItem().Text("TOTAL:").Bold(); rw.ConstantItem(100).AlignRight().Text(Money(r.MontoTotal)).Bold().FontColor("#059669"); });
                         c.Item().Row(rw => { rw.RelativeItem().Text("Seña pagada:"); rw.ConstantItem(100).AlignRight().Text(Money(r.Sena)).FontColor("#059669"); });
