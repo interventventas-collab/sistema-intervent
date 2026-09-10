@@ -9,8 +9,11 @@ namespace Api.Services;
 /// <summary>
 /// Job de respaldo del push event-driven stock sistema → MeLi.
 ///
-/// Corre cada 15 minutos y revisa si hay productos con StockChangedAt > LastPushedToMeli
-/// que NO se pushearon en el momento por algun motivo (excepcion, MeLi caido, etc).
+/// Corre cada 15 minutos y revisa si hay PUBLICACIONES a las que les cambio el stock de alguno
+/// de sus productos despues de la ultima vez que se les mando (MeliItems.LastStockPushedAt), o sea
+/// las que NO se pushearon en el momento por algun motivo (excepcion, MeLi caido, etc).
+/// 2026-09-10: antes miraba producto por producto, y mandarle el stock a UNA publicacion tapaba
+/// a las hermanas — quedaban con el numero viejo de MeLi para siempre.
 ///
 /// Esto es la red de seguridad: el flujo normal es event-driven (CafeVentas / MeliStock
 /// disparan el push apenas cambia el stock). Si todo va bien, este job no encuentra nada.

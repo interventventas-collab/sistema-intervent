@@ -70,7 +70,7 @@ public class MeliItemDto
     public string? VariationAttributes { get; set; }
 
     /// <summary>Última vez que se pusheó stock a MeLi para esta publicación.
-    /// Calculado como MAX(LastPushedToMeli) entre el CafeProducto linkeado + componentes.
+    /// Es la fecha propia de la publicación; si no la tiene, se aproxima con la de sus productos.
     /// Null = nunca pusheado.</summary>
     public DateTime? LastStockPushedToMeli { get; set; }
 

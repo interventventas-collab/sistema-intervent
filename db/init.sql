@@ -7617,3 +7617,52 @@ IF EXISTS (SELECT 1 FROM sys.columns c JOIN sys.types t ON t.user_type_id=c.user
            WHERE c.object_id=OBJECT_ID('Cafe_Productos') AND c.name='CostoUsd' AND c.scale < 6)
     ALTER TABLE Cafe_Productos ALTER COLUMN CostoUsd DECIMAL(18,6) NULL;
 GO
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 10/09/2026 — El stock que se le manda a MeLi se marcaba POR PRODUCTO, no por publicacion.
+--
+-- El problema, medido en PROD el 10/09: el cesto C1924NEG (producto 373) tiene 72 unidades
+-- en el sistema, pero en MeLi sus publicaciones decian 5, 12, 12 y 72. MercadoLibre le resta
+-- 1 a SU contador por cada venta, y nosotros solo le mandamos el numero real cuando cambia el
+-- stock del producto aca. Hasta ahi, esperable.
+--
+-- Lo que lo hacia permanente: al mandar el stock de UNA sola publicacion, el codigo marcaba
+-- Cafe_Productos.LastPushedToMeli del producto entero. El job de respaldo (cada 15 min) busca
+-- productos con StockChangedAt > LastPushedToMeli, veia el producto marcado, y NO volvia a
+-- mirar a las publicaciones hermanas que habian quedado sin mandar. Quedaban desfasadas para
+-- siempre, hasta que alguien tocara el stock del producto otra vez.
+--
+-- El arreglo necesita saber, publicacion por publicacion, cuando se le mando el stock.
+--
+-- El relleno inicial corre UNA sola vez (adentro del IF que crea la columna): hereda la fecha
+-- del producto, asi el dia que se publica esto el job NO sale a pushear 6.000 publicaciones
+-- de golpe. Las desfasadas se emparejan aparte, a mano y mirando la lista.
+--
+-- ⚠ Correr A MANO en PROD. Agregar una columna vacia NO pierde datos y NO corta nada.
+-- ─────────────────────────────────────────────────────────────────────────────
+IF COL_LENGTH('MeliItems','LastStockPushedAt') IS NULL
+BEGIN
+    ALTER TABLE MeliItems ADD LastStockPushedAt DATETIME2 NULL;
+
+    -- Relleno inicial: la fecha mas nueva entre el producto linkeado directo y los componentes.
+    EXEC('
+    WITH UltimoPorItem AS (
+        SELECT mi.MeliItemId, MAX(p.LastPushedToMeli) AS Ultimo
+          FROM MeliItems mi
+          JOIN Cafe_Productos p ON p.Id = mi.CafeProductoId
+         WHERE p.LastPushedToMeli IS NOT NULL
+         GROUP BY mi.MeliItemId
+        UNION ALL
+        SELECT mc.MeliItemId, MAX(p.LastPushedToMeli) AS Ultimo
+          FROM MeliItemComponentes mc
+          JOIN Cafe_Productos p ON p.Id = mc.CafeProductoId
+         WHERE p.LastPushedToMeli IS NOT NULL
+         GROUP BY mc.MeliItemId
+    )
+    UPDATE mi
+       SET LastStockPushedAt = x.Ultimo
+      FROM MeliItems mi
+      JOIN (SELECT MeliItemId, MAX(Ultimo) AS Ultimo FROM UltimoPorItem GROUP BY MeliItemId) x
+        ON x.MeliItemId = mi.MeliItemId;
+    ');
+END
+GO

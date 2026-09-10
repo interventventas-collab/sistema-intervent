@@ -131,5 +131,13 @@ public class MeliItem
     /// <summary>"" / "99" / "999" / "000" — terminación al redondear hacia arriba.</summary>
     public string? AjusteRedondeoOverride { get; set; }
 
+    /// <summary>2026-09-10: última vez que se le mandó el stock a MeLi a ESTA publicación.
+    /// Antes esto se deducía del producto (CafeProducto.LastPushedToMeli), y eso mentía: mandarle
+    /// el stock a UNA publicación marcaba al producto entero como "ya avisado", así que el job de
+    /// respaldo nunca volvía a mirar a las hermanas y se quedaban con el número viejo de MeLi
+    /// (caso real 10/09: el cesto C1924NEG tenía 72 en el sistema y 5, 12 y 12 en tres publicaciones).
+    /// Ahora se marca publicación por publicación. Null = nunca se le mandó.</summary>
+    public DateTime? LastStockPushedAt { get; set; }
+
     public MeliAccount? MeliAccount { get; set; }
 }

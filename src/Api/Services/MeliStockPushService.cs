@@ -236,25 +236,34 @@ public class MeliStockPushService
 
         int ok = 0, skipped = 0, err = 0;
         var mensajes = new List<string>();
+        // 2026-09-10: resultado de cada publicacion, para marcar LastStockPushedAt solo en las
+        // que realmente se resolvieron (Ok o Skipped a proposito). Las que dieron Error quedan
+        // sin marcar y el job de respaldo las reintenta.
+        var resultadoPorItem = new Dictionary<string, PushOutcome>();
 
         // 2026-05-30 — Dedup por UserProductId ANTES de agrupar: cuando 2+ publicaciones MeLi
         // comparten el mismo user_product_id (caso "catálogo MeLi" = misma publicación aparece
         // como normal + catálogo con stock compartido), pushear a una sola alcanza. Antes se
         // hacía 1 PUT por MLA, llegando 2 PUTs al mismo destino.
-        var seenUpgKeys = new HashSet<string>();
+        var seenUpgKeys = new Dictionary<string, string>();   // key -> MeliItemId que SI se pushea
         var skipMeliItemIds = new HashSet<string>();
+        // 2026-09-10: de quien es hermana cada publicacion salteada, para poder marcarle la fecha
+        // de push a ella tambien (comparten el stock, el PUT del hermano ya la cubrio).
+        var hermanaDe = new Dictionary<string, string>();
         foreach (var rep in meliItems
             .GroupBy(m => m.MeliItemId)
             .Select(g => g.First()))
         {
             if (string.IsNullOrEmpty(rep.UserProductId)) continue;
             var key = $"{rep.MeliAccountId}|{rep.UserProductId}";
-            if (!seenUpgKeys.Add(key))
+            if (seenUpgKeys.TryGetValue(key, out var duenio))
             {
                 skipMeliItemIds.Add(rep.MeliItemId);
+                hermanaDe[rep.MeliItemId] = duenio;
                 _logger.LogInformation("[StockPush] Skip {Mla}: UserProductId {Upg} ya procesado en este batch (catálogo compartido)",
                     rep.MeliItemId, rep.UserProductId);
             }
+            else seenUpgKeys[key] = rep.MeliItemId;
         }
 
         // Agrupar por (cuenta MeLi, MeliItemId) para emitir 1 PUT por publicacion.
@@ -306,6 +315,7 @@ public class MeliStockPushService
                     case PushOutcome.Skipped: skipped++; break;
                     case PushOutcome.Error: err++; break;
                 }
+                resultadoPorItem[grupo.Key.MeliItemId] = resultStatus;
                 if (!string.IsNullOrEmpty(msg)) mensajes.Add($"{grupo.Key.MeliItemId}: {msg}");
 
                 // rate limit defensivo (~6 req/s max)
@@ -319,19 +329,34 @@ public class MeliStockPushService
             }
         }
 
-        // Marcar productos como pusheados.
-        // Solo marcamos LastPushedToMeli para los productos que efectivamente forman parte de
-        // alguna publicacion donde el PUT fue OK. Por simplicidad: marcamos todos los productos
-        // referenciados. Si el push fallo, el job de respaldo va a reintentar.
+        // ── Marcar lo pusheado ──
+        // 2026-09-10: la marca que MANDA es la de cada publicacion (MeliItems.LastStockPushedAt).
+        // Antes solo se marcaba el producto, y eso hacia que mandarle el stock a UNA publicacion
+        // tapara a las hermanas: el job de respaldo veia el producto marcado y no volvia a mirarlas
+        // nunca mas. Se marca la publicacion cuando se resolvio (Ok) o cuando se salteo a proposito
+        // (pausada, hermana de catalogo, modo conservador). Si dio Error queda sin marcar y el job
+        // de respaldo la reintenta.
+        var ahora = DateTime.UtcNow;
+        var itemsMarcados = new HashSet<string>();
+        foreach (var kv in resultadoPorItem)
+            if (kv.Value != PushOutcome.Error) itemsMarcados.Add(kv.Key);
+        // Las salteadas por catalogo compartido: las cubre el PUT de su hermana.
+        foreach (var kv in hermanaDe)
+            if (resultadoPorItem.TryGetValue(kv.Value, out var res) && res != PushOutcome.Error)
+                itemsMarcados.Add(kv.Key);
+
+        if (itemsMarcados.Count > 0)
+            foreach (var fila in meliItems.Where(mi => itemsMarcados.Contains(mi.MeliItemId)))
+                fila.LastStockPushedAt = ahora;
+
+        // El producto se sigue marcando (lo usan la pantalla de reactivar pausadas y los avisos),
+        // pero ya NO es lo que decide si el job de respaldo vuelve a pasar.
         if (ok > 0)
-        {
-            var now = DateTime.UtcNow;
             foreach (var prod in productos.Values)
-            {
-                prod.LastPushedToMeli = now;
-            }
+                prod.LastPushedToMeli = ahora;
+
+        if (itemsMarcados.Count > 0 || ok > 0)
             await _db.SaveChangesAsync(ct);
-        }
 
         return new PushStockResult(grupos.Count, ok, skipped, err, mensajes);
     }
@@ -753,33 +778,49 @@ public class MeliStockPushService
     }
 
     /// <summary>
-    /// Identifica productos con StockChangedAt > LastPushedToMeli (o LastPushedToMeli null) y los pushea.
+    /// Identifica las PUBLICACIONES a las que les falta mandarles el stock (algun producto suyo
+    /// cambio de stock despues de la ultima vez que se le mando a esa publicacion) y las pushea.
     /// Es la "red de seguridad" — si el push event-driven fallo por alguna razon, este job lo recupera.
     /// </summary>
     public async Task<PushStockResult> PushPendingAsync(int maxProductos = 200, CancellationToken ct = default)
     {
-        var pendientes = await _db.CafeProductos
-            .Where(p => p.IsActive
-                && p.StockChangedAt != null
-                && (p.LastPushedToMeli == null || p.StockChangedAt > p.LastPushedToMeli))
-            .OrderBy(p => p.LastPushedToMeli) // primero los que mas tiempo llevan sin pushear (nulls first)
-            .Take(maxProductos)
-            .Select(p => p.Id)
+        // 2026-09-10: se busca PUBLICACION por PUBLICACION, no producto por producto.
+        // Antes la pregunta era "¿que productos cambiaron de stock despues del ultimo push?", y el
+        // push de una sola publicacion marcaba al producto entero — las hermanas quedaban afuera
+        // para siempre. Ahora la pregunta es "¿a que publicacion le cambio el stock de alguno de
+        // sus productos despues de la ultima vez que LE mandamos el stock a ELLA?".
+        var estadosMuertos = new[] { "deleted", "closed" };
+
+        // a) linkeo directo (una publicacion = un producto)
+        var pendLegacy = await (from mi in _db.MeliItems
+                                join p in _db.CafeProductos on mi.CafeProductoId equals p.Id
+                                where p.IsActive && p.StockChangedAt != null
+                                      && !estadosMuertos.Contains(mi.Status)
+                                      && (mi.LastStockPushedAt == null || p.StockChangedAt > mi.LastStockPushedAt)
+                                select new { mi.MeliItemId, Cambio = p.StockChangedAt })
             .ToListAsync(ct);
 
-        if (pendientes.Count == 0)
-            return new PushStockResult(0, 0, 0, 0, new());
+        // b) linkeo por componentes (packs / combos: cualquier componente que se haya movido)
+        var pendComp = await (from mc in _db.MeliItemComponentes
+                              join mi in _db.MeliItems on mc.MeliItemId equals mi.MeliItemId
+                              join p in _db.CafeProductos on mc.CafeProductoId equals p.Id
+                              where p.IsActive && p.StockChangedAt != null
+                                    && !estadosMuertos.Contains(mi.Status)
+                                    && (mi.LastStockPushedAt == null || p.StockChangedAt > mi.LastStockPushedAt)
+                              select new { mc.MeliItemId, Cambio = p.StockChangedAt })
+            .ToListAsync(ct);
 
-        // Resolver todos los MeliItemIds afectados por estos productos (legacy + componentes).
-        var meliFromLegacy = await _db.MeliItems
-            .Where(mi => mi.CafeProductoId != null && pendientes.Contains(mi.CafeProductoId!.Value))
-            .Select(mi => mi.MeliItemId)
-            .Distinct().ToListAsync(ct);
-        var meliFromComps = await _db.MeliItemComponentes
-            .Where(c => pendientes.Contains(c.CafeProductoId))
-            .Select(c => c.MeliItemId)
-            .Distinct().ToListAsync(ct);
-        var allMeliIds = meliFromLegacy.Concat(meliFromComps).Distinct().ToList();
+        // Primero las que hace mas tiempo que esperan (el cambio de stock mas viejo sin mandar).
+        var allMeliIds = pendLegacy.Concat(pendComp)
+            .GroupBy(x => x.MeliItemId)
+            .Select(g => new { Mla = g.Key, Cambio = g.Min(x => x.Cambio) })
+            .OrderBy(x => x.Cambio)
+            .Take(maxProductos)
+            .Select(x => x.Mla)
+            .ToList();
+
+        if (allMeliIds.Count == 0)
+            return new PushStockResult(0, 0, 0, 0, new());
 
         return await PushStockForMeliItemsAsync(allMeliIds, ct);
     }

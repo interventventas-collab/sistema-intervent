@@ -153,9 +153,10 @@ public record MeliItemDto(
     // Cada variante se guarda como una fila en MeliItems con el mismo MeliItemId y un VariationId distinto.
     string? VariationId = null,
     string? VariationAttributes = null,
-    // Última vez que se pusheó stock a MeLi para ESTE item.
-    // Calculado como MAX(LastPushedToMeli) entre el CafeProducto linkeado directo + todos los componentes.
-    // Null = nunca se pusheó.
+    // Última vez que se le mandó el stock a MeLi a ESTA publicación (MeliItems.LastStockPushedAt).
+    // Si todavía no tiene fecha propia (publicaciones anteriores al 10/09/2026), se cae al
+    // MAX(LastPushedToMeli) de sus productos, que es una aproximación.
+    // Null = nunca se le mandó.
     DateTime? LastStockPushedToMeli = null,
     // 2026-05-29: ajustes desde MeliItem_SyncConfig (tabla unificada).
     // Antes habia 3 columnas en MeliItems (AjustePctOverride/etc) que se eliminaran

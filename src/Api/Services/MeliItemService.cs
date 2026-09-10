@@ -129,8 +129,10 @@ public class MeliItemService
         }
 
         // ── Calcular LastStockPushedToMeli por cada item ──
-        // Es el MAX(LastPushedToMeli) entre: el CafeProductoId directo (legacy) + todos los productos linkeados via MeliItemComponentes.
-        // Si no hay ningún producto linkeado pusheado, queda null = nunca pusheado.
+        // 2026-09-10: ahora manda la fecha REAL de esta publicacion (MeliItems.LastStockPushedAt).
+        // El MAX(LastPushedToMeli) de los productos queda solo de respaldo para las publicaciones
+        // viejas que todavia no tienen fecha propia: ese numero mentia — decia "pusheada hoy"
+        // porque se habia pusheado una HERMANA del mismo producto, no ella.
         var allItemIds = items.Select(it => it.MeliItemId).ToHashSet();
         if (allItemIds.Count > 0)
         {
@@ -163,6 +165,14 @@ public class MeliItemService
                         lastPushByItem[cp.MeliItemId] = cp.LastPushedToMeli.Value;
                 }
             }
+            // La fecha propia de cada publicacion pisa a la heredada del producto.
+            var propias = await _db.MeliItems
+                .Where(mi => allItemIds.Contains(mi.MeliItemId) && mi.LastStockPushedAt != null)
+                .Select(mi => new { mi.MeliItemId, mi.LastStockPushedAt })
+                .ToListAsync();
+            foreach (var pr in propias)
+                lastPushByItem[pr.MeliItemId] = pr.LastStockPushedAt!.Value;
+
             for (int k = 0; k < items.Count; k++)
             {
                 if (lastPushByItem.TryGetValue(items[k].MeliItemId, out var lp))
