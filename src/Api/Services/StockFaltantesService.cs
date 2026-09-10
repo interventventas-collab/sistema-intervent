@@ -74,11 +74,15 @@ public class StockFaltantesService
             .ToListAsync(ct);
         if (candidatos.Count == 0) return 0;
 
-        var pendientes = await _db.CafeStockFaltantes
-            .Where(f => f.Estado == "PENDIENTE")
+        // 2026-09-10: cuenta PENDIENTE *y* PEDIDO. Antes miraba solo PENDIENTE, y como pedirle
+        // al proveedor no sube el stock, apenas alguien tildaba "ya lo pedi" el producto volvia
+        // a engancharse al minuto siguiente como si fuera nuevo. El renglon PEDIDO sigue vivo en
+        // la lista (marcado "ya pedido") hasta que entra la mercaderia o alguien lo saca.
+        var yaEnLaLista = await _db.CafeStockFaltantes
+            .Where(f => f.Estado == "PENDIENTE" || f.Estado == "PEDIDO")
             .Select(f => f.ProductoId)
             .ToListAsync(ct);
-        var yaAnotados = pendientes.ToHashSet();
+        var yaAnotados = yaEnLaLista.ToHashSet();
 
         var nuevos = new List<CafeStockFaltante>();
         foreach (var p in candidatos)
@@ -98,6 +102,12 @@ public class StockFaltantesService
             });
         }
 
+        // 2026-09-10: los que estaban PEDIDO y ya tienen la mercaderia adentro se cierran solos.
+        // Sin esto el renglon quedaria vivo para siempre y, como ahora los PEDIDO tambien frenan
+        // el enganche, el producto no podria volver a anotarse la proxima vez que baje.
+        await CerrarPedidosRepuestosAsync(candidatos.ToDictionary(c => c.Id,
+            c => (c.Categoria, c.StockUnidades, c.StockGramos, c.StockIdeal, c.StockPiso)), ct);
+
         if (nuevos.Count == 0) return 0;
 
         _db.CafeStockFaltantes.AddRange(nuevos);
@@ -114,5 +124,35 @@ public class StockFaltantesService
             return 0;
         }
         return nuevos.Count;
+    }
+
+    /// <summary>Cierra los renglones marcados "ya lo pedi" cuyo producto volvio a estar por
+    /// encima del disparador: la mercaderia entro, no hay nada mas que hacer con ese renglon.
+    /// Los PENDIENTE NO se tocan a proposito — esos nunca se pidieron, asi que tienen que
+    /// quedar a la vista (marcados "ya repuesto") hasta que alguien los saque.</summary>
+    private async Task CerrarPedidosRepuestosAsync(
+        Dictionary<int, (string Categoria, int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso)> porProducto,
+        CancellationToken ct)
+    {
+        var pedidos = await _db.CafeStockFaltantes
+            .Where(f => f.Estado == "PEDIDO")
+            .ToListAsync(ct);
+        if (pedidos.Count == 0) return;
+
+        var cerrados = 0;
+        foreach (var f in pedidos)
+        {
+            if (!porProducto.TryGetValue(f.ProductoId, out var p)) continue;
+            var stock = StockDe(p.Categoria, p.StockUnidades, p.StockGramos);
+            if (HayQuePedir(p.StockIdeal, p.StockPiso, stock)) continue;  // sigue faltando
+
+            f.Estado = "REPUESTO";
+            f.ResueltoAt = DateTime.UtcNow;
+            cerrados++;
+        }
+
+        if (cerrados == 0) return;
+        await _db.SaveChangesAsync(ct);
+        _logger.LogInformation("[StockFaltantes] {N} renglones pedidos se cerraron solos (entro la mercaderia)", cerrados);
     }
 }

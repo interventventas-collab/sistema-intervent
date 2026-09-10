@@ -74,7 +74,7 @@ public class StockIdealController : ControllerBase
 
     // Proyeccion liviana: lo justo para armar las filas sin traer la entidad entera.
     private record ProdInfo(int Id, string? Sku, string Nombre, string? Marca, string? Categoria,
-        int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso);
+        int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso, int? UxB);
 
     /// <summary>El cafe se mide en kilos (viene guardado en gramos); todo lo demas, en unidades.</summary>
     private static bool EsCafe(string? categoria)
@@ -183,7 +183,7 @@ public class StockIdealController : ControllerBase
             .Select(p => new ProdInfo(
                 p.Id, p.Sku, p.Nombre,
                 p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null),
-                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal, p.StockPiso))
+                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal, p.StockPiso, p.UxB))
             .ToListAsync();
 
         return lista
@@ -260,10 +260,17 @@ public class StockIdealController : ControllerBase
     public record PendienteRow(
         int Id, int ProductoId, string? Codigo, string Nombre, string? Marca,
         decimal StockAlDetectar, int IdealAlDetectar, DateTime DetectadoAt,
-        decimal StockAhora, int? IdealAhora, decimal Faltan, string Unidad, bool YaRepuesto);
+        decimal StockAhora, int? IdealAhora, decimal Faltan, string Unidad, bool YaRepuesto,
+        // Bultos: cuantas cajas hay que pedir para cubrir lo que falta. Siempre para ARRIBA,
+        // porque al proveedor se le compra por caja entera. Null si el producto no tiene
+        // cargadas las unidades por bulto (UxB) o si se mide en kilos.
+        int? UnidadesPorBulto, int? Bultos, decimal? UnidadesSiPidoBultos,
+        // "Ya lo pedi": el renglon sigue en la lista pero marcado, para no pedirlo dos veces.
+        bool Pedido, DateTime? PedidoAt, string? PedidoPor, decimal? CantidadPedida);
 
     public record PendientesResult(
-        int Total, int YaRepuestos, int EnCero, int NuevosEnganchados, List<PendienteRow> Filas);
+        int Total, int YaRepuestos, int EnCero, int NuevosEnganchados, int YaPedidos,
+        List<PendienteRow> Filas);
 
     public record MarcarPedidoRequest(decimal? CantidadPedida);
 
@@ -275,11 +282,14 @@ public class StockIdealController : ControllerBase
     {
         int nuevos = await _faltantes.EngancharAsync();
 
+        // PEDIDO tambien entra: el producto ya se le pidio al proveedor pero la mercaderia no
+        // llego, asi que sigue faltando. Se muestra marcado para que nadie lo pida dos veces.
         var filas = await _db.CafeStockFaltantes.AsNoTracking()
-            .Where(f => f.Estado == "PENDIENTE")
+            .Where(f => f.Estado == "PENDIENTE" || f.Estado == "PEDIDO")
             .Select(f => new
             {
                 f.Id, f.ProductoId, f.StockAlDetectar, f.IdealAlDetectar, f.DetectadoAt,
+                f.Estado, f.ResueltoAt, f.ResueltoPor, f.CantidadPedida,
                 Codigo = f.Producto!.Sku,
                 f.Producto.Nombre,
                 Marca = f.Producto.Marca ?? (f.Producto.MarcaNav != null ? f.Producto.MarcaNav.Nombre : null),
@@ -288,6 +298,7 @@ public class StockIdealController : ControllerBase
                 f.Producto.StockGramos,
                 IdealAhora = f.Producto.StockIdeal,
                 PisoAhora = f.Producto.StockPiso,
+                f.Producto.UxB,
             })
             .ToListAsync();
 
@@ -308,15 +319,24 @@ public class StockIdealController : ControllerBase
             var ideal = f.IdealAhora ?? f.IdealAlDetectar;
             // "Ya repuesto" = volvio a estar por encima del PISO (o del ideal si no hay piso).
             var faltan = StockFaltantesService.CuantoPedir(ideal, f.PisoAhora, stockAhora);
+            var (uxb, bultos, unidadesBultos) = CalcularBultos(f.Categoria, f.UxB, faltan);
+            var pedido = f.Estado == "PEDIDO";
             return new PendienteRow(
                 f.Id, f.ProductoId, f.Codigo, f.Nombre, f.Marca,
                 f.StockAlDetectar, f.IdealAlDetectar, f.DetectadoAt,
                 stockAhora, f.IdealAhora, faltan,
                 StockFaltantesService.UnidadDe(f.Categoria),
-                YaRepuesto: faltan <= 0);
+                YaRepuesto: faltan <= 0,
+                UnidadesPorBulto: uxb, Bultos: bultos, UnidadesSiPidoBultos: unidadesBultos,
+                Pedido: pedido,
+                PedidoAt: pedido ? f.ResueltoAt : null,
+                PedidoPor: pedido ? f.ResueltoPor : null,
+                CantidadPedida: pedido ? f.CantidadPedida : null);
         })
-        // Primero lo que sigue faltando (y de eso, lo que esta en cero); al final lo ya repuesto.
+        // Arriba lo que hay que pedir (y de eso, lo que esta en cero). Despues lo ya pedido,
+        // que sigue faltando pero no hay que volver a pedirlo. Al final lo ya repuesto.
         .OrderBy(r => r.YaRepuesto)
+        .ThenBy(r => r.Pedido)
         .ThenByDescending(r => r.StockAhora <= 0)
         .ThenByDescending(r => r.Faltan)
         .ThenBy(r => r.Nombre)
@@ -327,7 +347,22 @@ public class StockIdealController : ControllerBase
             rows.Count(r => r.YaRepuesto),
             rows.Count(r => r.StockAhora <= 0),
             nuevos,
+            rows.Count(r => r.Pedido),
             rows));
+    }
+
+    /// <summary>Cuantas cajas hay que pedir para cubrir lo que falta. Redondea siempre para
+    /// ARRIBA: al proveedor se le compra la caja entera, no se puede pedir media.
+    /// Devuelve todo en null si el producto no tiene cargadas las unidades por bulto, o si se
+    /// mide en kilos (el cafe), donde "bulto" no significa nada.</summary>
+    private static (int? Uxb, int? Bultos, decimal? Unidades) CalcularBultos(
+        string? categoria, int? uxb, decimal faltan)
+    {
+        if (StockFaltantesService.UnidadDe(categoria) != "u") return (null, null, null);
+        if (uxb is null || uxb.Value <= 0) return (null, null, null);
+        if (faltan <= 0) return (uxb, null, null);   // ya repuesto: el dato sirve, el pedido no
+        var bultos = (int)Math.Ceiling(faltan / uxb.Value);
+        return (uxb, bultos, bultos * (decimal)uxb.Value);
     }
 
     /// <summary>GET /api/stock/ideal/pendientes/contador — solo el numero, para el menu.
@@ -351,11 +386,46 @@ public class StockIdealController : ControllerBase
     public async Task<IActionResult> Descartar(int id)
         => await ResolverAsync(id, "DESCARTADO", null);
 
+    /// <summary>POST /api/stock/ideal/pendientes/{id}/deshacer-pedido — se marco "ya lo pedi"
+    /// por error: el renglon vuelve a la lista de lo que hay que pedir.</summary>
+    [HttpPost("pendientes/{id:int}/deshacer-pedido")]
+    public async Task<IActionResult> DeshacerPedido(int id)
+    {
+        var f = await _db.CafeStockFaltantes.FirstOrDefaultAsync(x => x.Id == id);
+        if (f is null) return NotFound(new { error = "Ese renglón ya no está en la lista." });
+        if (f.Estado == "PENDIENTE") return Ok(new { ok = true, yaEstaba = true });
+        if (f.Estado != "PEDIDO")
+            return BadRequest(new { error = "Ese renglón no está marcado como pedido." });
+
+        // El indice unico solo deja UN renglon PENDIENTE por producto. Si mientras tanto se
+        // engancho otro, este sobra: lo descartamos en vez de chocar contra la base.
+        var yaHayPendiente = await _db.CafeStockFaltantes
+            .AnyAsync(x => x.ProductoId == f.ProductoId && x.Estado == "PENDIENTE" && x.Id != f.Id);
+        if (yaHayPendiente)
+        {
+            f.Estado = "DESCARTADO";
+            f.ResueltoAt = DateTime.UtcNow;
+            f.ResueltoPor = User.FindFirst(ClaimTypes.Name)?.Value;
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, deduplicado = true });
+        }
+
+        f.Estado = "PENDIENTE";
+        f.ResueltoAt = null;
+        f.ResueltoPor = null;
+        f.CantidadPedida = null;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     private async Task<IActionResult> ResolverAsync(int id, string estado, decimal? cantidad)
     {
         var f = await _db.CafeStockFaltantes.FirstOrDefaultAsync(x => x.Id == id);
         if (f is null) return NotFound(new { error = "Ese renglón ya no está en la lista." });
-        if (f.Estado != "PENDIENTE") return Ok(new { ok = true, yaEstaba = true });
+        // PEDIDO tambien se puede sacar con la ✕ (el renglon sigue vivo en la lista hasta que
+        // entra la mercaderia, asi que tiene que poder descartarse igual que un PENDIENTE).
+        if (f.Estado != "PENDIENTE" && f.Estado != "PEDIDO") return Ok(new { ok = true, yaEstaba = true });
+        if (f.Estado == estado) return Ok(new { ok = true, yaEstaba = true });
 
         f.Estado = estado;
         f.ResueltoAt = DateTime.UtcNow;
@@ -393,7 +463,10 @@ public class StockIdealController : ControllerBase
             + (string.IsNullOrWhiteSpace(marca) ? "" : $" · Marca: {marca}");
         ws.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#6b7280");
 
-        var headers = new[] { "codigo", "producto", "marca", "stock actual", "stock ideal", "PEDIR", "unidad" };
+        // 'bultos' y 'unid. x bulto' salen del UxB del producto: al proveedor se le compra por
+        // caja entera, asi que el pedido redondeado para arriba es el numero que se manda.
+        var headers = new[] { "codigo", "producto", "marca", "stock actual", "stock ideal",
+                              "PEDIR", "unidad", "bultos", "unid. x bulto", "unidades si pido bultos" };
         for (int i = 0; i < headers.Length; i++)
         {
             var cell = ws.Cell(4, i + 1);
@@ -418,6 +491,21 @@ public class StockIdealController : ControllerBase
             ws.Cell(r, 6).Style.Font.Bold = true;
             ws.Cell(r, 6).Style.Fill.BackgroundColor = XLColor.FromHtml("#eff6ff");
             ws.Cell(r, 7).Value = x.Unidad == "kg" ? "kilos" : "unidades";
+            if (x.Bultos.HasValue)
+            {
+                ws.Cell(r, 8).Value = x.Bultos.Value;
+                ws.Cell(r, 8).Style.Font.Bold = true;
+                ws.Cell(r, 8).Style.Fill.BackgroundColor = XLColor.FromHtml("#eff6ff");
+                ws.Cell(r, 9).Value = x.UxB!.Value;
+                ws.Cell(r, 10).Value = x.UnidadesSiPidoBultos!.Value;
+            }
+            else if (x.Unidad == "u")
+            {
+                // Sin UxB no se puede calcular: se avisa en vez de dejar el hueco en blanco.
+                ws.Cell(r, 8).Value = "—";
+                ws.Cell(r, 9).Value = "falta cargar";
+                ws.Cell(r, 9).Style.Font.FontColor = XLColor.FromHtml("#b45309");
+            }
             // Los que estan en cero van marcados: son los urgentes.
             if (x.Stock <= 0)
                 ws.Cell(r, 4).Style.Font.FontColor = XLColor.FromHtml("#b91c1c");
@@ -437,7 +525,13 @@ public class StockIdealController : ControllerBase
             }
             else ws.Cell(r, 6).Value = "—";
             ws.Cell(r, 6).Style.Font.Bold = true;
-            ws.Range(r, 1, r, 7).Style.Border.TopBorder = XLBorderStyleValues.Thin;
+            var totalBultos = faltantes.Sum(x => x.Bultos ?? 0);
+            if (totalBultos > 0)
+            {
+                ws.Cell(r, 8).Value = totalBultos;
+                ws.Cell(r, 8).Style.Font.Bold = true;
+            }
+            ws.Range(r, 1, r, 10).Style.Border.TopBorder = XLBorderStyleValues.Thin;
         }
         else
         {
@@ -458,7 +552,14 @@ public class StockIdealController : ControllerBase
 
     /// <summary>Una fila del Excel del pedido, venga de la lista acumulada o de la foto de ahora.</summary>
     private record FilaPedido(string? Codigo, string Nombre, string? Marca,
-        decimal Stock, int Ideal, decimal Faltan, string Unidad);
+        decimal Stock, int Ideal, decimal Faltan, string Unidad, int? UxB)
+    {
+        /// <summary>Cajas enteras a pedir (siempre para arriba). Null si no hay UxB o va en kilos.</summary>
+        public int? Bultos => UnidadesPorBultoValidas ? (int)Math.Ceiling(Faltan / UxB!.Value) : null;
+        /// <summary>Cuantas unidades terminas comprando si pedis esas cajas enteras.</summary>
+        public decimal? UnidadesSiPidoBultos => Bultos.HasValue ? Bultos.Value * (decimal)UxB!.Value : null;
+        private bool UnidadesPorBultoValidas => Unidad == "u" && UxB is > 0 && Faltan > 0;
+    }
 
     /// <summary>Los que estan por debajo del ideal JUSTO AHORA.</summary>
     private async Task<List<FilaPedido>> FilasPedidoDeAhoraAsync(string? marca, string? q, string? categoria)
@@ -466,7 +567,7 @@ public class StockIdealController : ControllerBase
         var prods = await CargarProductosAsync(marca, q, categoria);
         return prods
             .Select(p => new FilaPedido(p.Sku, p.Nombre, p.Marca, StockDe(p), p.StockIdeal ?? 0,
-                Faltante(p.StockIdeal, p.StockPiso, StockDe(p)), UnidadDe(p.Categoria)))
+                Faltante(p.StockIdeal, p.StockPiso, StockDe(p)), UnidadDe(p.Categoria), p.UxB))
             .Where(x => x.Faltan > 0)
             .OrderBy(x => x.Marca).ThenBy(x => x.Nombre)
             .ToList();
@@ -491,6 +592,7 @@ public class StockIdealController : ControllerBase
                 f.Producto.StockGramos,
                 IdealAhora = f.Producto.StockIdeal,
                 PisoAhora = f.Producto.StockPiso,
+                f.Producto.UxB,
             })
             .ToListAsync();
 
@@ -511,7 +613,7 @@ public class StockIdealController : ControllerBase
                 var ideal = f.IdealAhora ?? f.IdealAlDetectar;
                 return new FilaPedido(f.Codigo, f.Nombre, f.Marca, stock, ideal,
                     StockFaltantesService.CuantoPedir(ideal, f.PisoAhora, stock),
-                    StockFaltantesService.UnidadDe(f.Categoria));
+                    StockFaltantesService.UnidadDe(f.Categoria), f.UxB);
             })
             .Where(x => x.Faltan > 0)
             .OrderBy(x => x.Marca).ThenBy(x => x.Nombre)
