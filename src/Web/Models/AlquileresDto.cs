@@ -104,6 +104,8 @@ public class AlqReservaItemDto
     public decimal PrecioUnitario { get; set; }
     /// <summary>true si es un item de "descripción libre" (texto, sin equipo del catálogo).</summary>
     public bool EsLibre { get; set; }
+    /// <summary>2026-09-10: si se multiplica por los dias cobrados (el flete no).</summary>
+    public bool MultiplicaPorDias { get; set; } = true;
 }
 
 public class AlqReservaDto
@@ -124,6 +126,8 @@ public class AlqReservaDto
     public decimal Descuento { get; set; }
     public decimal Sena { get; set; }
     public string Estado { get; set; } = "reservado";
+    /// <summary>2026-09-10: dias cobrados.</summary>
+    public int Dias { get; set; } = 1;
     public string? Notas { get; set; }
     public string? NotasInternas { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -182,6 +186,8 @@ public class CreateAlqReservaItemRequest
     public string? Descripcion { get; set; }
     public int Cantidad { get; set; }
     public decimal PrecioUnitario { get; set; }
+    /// <summary>2026-09-10: si este renglon se multiplica por los dias. El FLETE va en false.</summary>
+    public bool MultiplicaPorDias { get; set; } = true;
 }
 
 public class CreateAlqReservaRequest
@@ -189,6 +195,8 @@ public class CreateAlqReservaRequest
     /// <summary>2026-09-10: si la reserva nace de un PRESUPUESTO, su id va aca. La API marca esa
     /// cotizacion con el numero de reserva y ya no deja pasarla a reserva una segunda vez.</summary>
     public int? CotizacionId { get; set; }
+    /// <summary>2026-09-10: dias cobrados, heredados del presupuesto.</summary>
+    public int Dias { get; set; } = 1;
     public int ClienteId { get; set; }
     public DateTime FechaEntrega { get; set; }
     public DateTime FechaRetiro { get; set; }
@@ -239,6 +247,8 @@ public record AlqCobranzaPendienteDto(
 
 public class UpdateAlqReservaRequest
 {
+    /// <summary>2026-09-10: dias cobrados. Null = no lo toques.</summary>
+    public int? Dias { get; set; }
     public int? ClienteId { get; set; }
     public DateTime? FechaEntrega { get; set; }
     public DateTime? FechaRetiro { get; set; }
@@ -331,6 +341,8 @@ public class AlqCotizacionDto
     public string? Texto { get; set; }
     public string? Operador { get; set; }
     public int? ReservaId { get; set; }
+    /// <summary>2026-09-10: dias cobrados. 1 = un solo dia (la cuenta de siempre).</summary>
+    public int Dias { get; set; } = 1;
     /// <summary>2026-09-10: numero de la reserva en la que se convirtio ("A-0123"). Null = todavia
     /// no se paso a reserva (o la reserva se borro y el presupuesto volvio a quedar libre).</summary>
     public string? ReservaNumero { get; set; }
@@ -340,6 +352,8 @@ public class AlqCotizacionDto
 
 public class CrearAlqCotizacionRequest
 {
+    /// <summary>2026-09-10: dias cobrados. 1 = un solo dia.</summary>
+    public int Dias { get; set; } = 1;
     public string Telefono { get; set; } = string.Empty;
     public int? ClienteId { get; set; }
     public DateTime? FechaEvento { get; set; }

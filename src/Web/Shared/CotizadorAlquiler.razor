@@ -91,6 +91,21 @@
         <input class="cotalq-inp cotalq-plata" inputmode="decimal" placeholder="0"
                value="@fleteTxt" onfocus="this.select()" @oninput="OnMontoFlete" />
 
+        <label class="cotalq-lbl">Días de alquiler</label>
+        <select class="cotalq-inp" @bind="dias">
+            @for (var d = 1; d <= 15; d++)
+            {
+                var v = d;
+                <option value="@v">@(v == 1 ? "1 día" : $"{v} días")</option>
+            }
+        </select>
+        @if (dias > 1)
+        {
+            <div class="cotalq-info">
+                El 1º día entero y cada día extra al @(diasPorcentaje.ToString("0.##"))%. El flete se cobra una sola vez.
+            </div>
+        }
+
         <label class="cotalq-lbl">Fecha del evento</label>
         <input class="cotalq-inp" type="date" @bind="fecha" />
 
@@ -277,6 +292,8 @@
                 txtPie = (txt?.Pie ?? "").Trim();
             }
             catch { txtEncabezado = ""; txtPie = ""; }
+
+            await CargarDiasPorcentajeAsync();
         }
         catch (Exception ex) { Toast.Error("No pude traer los precios: " + ex.Message); }
         finally { cargando = false; }
@@ -287,7 +304,19 @@
 
     private decimal FleteMonto => ParsePlata(fleteTxt) ?? 0m;
     private decimal Descuento => MostrarDescuento ? (ParsePlata(descuentoTxt) ?? 0m) : 0m;
-    private decimal Total => equipos.Sum(e => e.PrecioDiario * CantDe(e.Id)) + FleteMonto - Descuento;
+
+    // ===== 2026-09-10: alquiler por varios dias =====
+    // El primer dia entero y cada dia extra a un porcentaje del precio (50% por default, se cambia
+    // en Alquileres -> Equipos). El FLETE queda AFUERA: se cobra una sola vez, sean 1 o 5 dias.
+    // Ojo: estos dias NO son las fechas de entrega y retiro de la reserva — esas son logistica.
+    private int dias = 1;
+    private decimal diasPorcentaje = 50m;
+
+    /// <summary>Por cuanto se multiplican los equipos. 1 dia -> 1. Con 50%: 2 dias -> 1,5.</summary>
+    private decimal FactorDias => 1m + (Math.Clamp(dias, 1, 365) - 1) * (Math.Clamp(diasPorcentaje, 0m, 100m) / 100m);
+
+    private decimal SubtotalEquipos => equipos.Sum(e => e.PrecioDiario * CantDe(e.Id)) * FactorDias;
+    private decimal Total => SubtotalEquipos + FleteMonto - Descuento;
     private bool HayAlgo => equipos.Any(e => CantDe(e.Id) > 0);
 
     private List<AlqEquipoDto> Visibles()
@@ -326,6 +355,17 @@
     private void OnFiltrar(ChangeEventArgs e) => filtro = e.Value?.ToString() ?? "";
     private void OnMontoFlete(ChangeEventArgs e) => fleteTxt = e.Value?.ToString() ?? "";
     private void OnDescuento(ChangeEventArgs e) => descuentoTxt = e.Value?.ToString() ?? "";
+
+    /// <summary>Trae el porcentaje del día extra. Si falla, queda en 50% (lo que venían haciendo).</summary>
+    private async Task CargarDiasPorcentajeAsync()
+    {
+        try
+        {
+            var v = await Api.GetAlqDiasPorcentajeAsync();
+            if (v is not null) diasPorcentaje = v.Porcentaje;
+        }
+        catch { /* 50% */ }
+    }
 
     private void Sumar(int id, int delta)
     {
@@ -387,6 +427,7 @@
                 Descuento = Descuento,
                 Texto = texto,
                 Operador = Operador,
+                Dias = dias,
                 Items = equipos
                     .Where(e => CantDe(e.Id) > 0)
                     .Select(e => new CrearAlqCotizacionItemRequest
@@ -424,6 +465,7 @@
         fleteTxt = cot.FleteMonto > 0m ? cot.FleteMonto.ToString("0.##", ARS) : "";
         fleteSel = fletes.FirstOrDefault(f => f.Zona == cot.FleteZona)?.Id.ToString() ?? "";
         descuentoTxt = cot.Descuento > 0m ? cot.Descuento.ToString("0.##", ARS) : "";
+        dias = Math.Clamp(cot.Dias <= 0 ? 1 : cot.Dias, 1, 365);
 
         if (faltan > 0)
             Toast.Warning($"{faltan} cosa(s) de esa cotización ya no están en el catálogo: revisá antes de mandar.");
@@ -459,6 +501,7 @@
             sb.AppendLine(string.IsNullOrWhiteSpace(fleteZona) ? "Flete" : $"Flete {fleteZona}");
 
         sb.AppendLine();
+        if (dias > 1) sb.AppendLine($"_Alquiler por {dias} días_");
         sb.Append($"*TOTAL: {Plata(Total)}*");
 
         if (!string.IsNullOrWhiteSpace(txtPie))

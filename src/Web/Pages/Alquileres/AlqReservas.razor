@@ -462,6 +462,36 @@
                         Usar precios de los equipos (calcular el total solo). Si lo dejás destildado, cargás solo los equipos y escribís el importe total a mano.
                     </label>
 
+                    @* 2026-09-10: días cobrados. Vienen del presupuesto, que es donde se armó el precio.
+                       Sin "Usar precios" el sistema no sabe cuánto vale cada cosa, así que ahí solo se
+                       muestran: cambiarlos no podría recalcular nada y el número quedaría mintiendo. *@
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.7rem; font-size: 0.85rem; color: #374151;">
+                        <span>📅 Días de alquiler:</span>
+                        @if (formUsarPrecios)
+                        {
+                            <select class="form-input" @bind="formDias" style="max-width: 110px; padding: 0.25rem;">
+                                @for (var d = 1; d <= 15; d++)
+                                {
+                                    var v = d;
+                                    <option value="@v">@(v == 1 ? "1 día" : $"{v} días")</option>
+                                }
+                            </select>
+                            @if (formDias > 1)
+                            {
+                                <span style="color:#6b7280; font-size: 0.78rem;">
+                                    · el 1º entero y cada día extra al @(formDiasPorcentaje.ToString("0.##"))% · destildá “× días” en el flete
+                                </span>
+                            }
+                        }
+                        else
+                        {
+                            <strong>@(formDias == 1 ? "1 día" : $"{formDias} días")</strong>
+                            <span style="color:#6b7280; font-size: 0.78rem;">
+                                · vienen del presupuesto. Para cambiarlos, tildá “Usar precios de los equipos”.
+                            </span>
+                        }
+                    </div>
+
                     <div class="form-row" style="align-items: end;">
                         <div class="form-group" style="flex: 0 0 90px;">
                             <label class="form-label" style="font-size: 0.75rem;">Cantidad</label>
@@ -516,6 +546,10 @@
                                         @if (formUsarPrecios)
                                         {
                                             <th style="width: 130px; text-align: right;">P. Unit.</th>
+                                            @if (formDias > 1)
+                                            {
+                                                <th style="width: 70px; text-align: center;" title="Tildado: este renglón se multiplica por los días. El flete va destildado.">× días</th>
+                                            }
                                             <th style="width: 130px; text-align: right;">Subtotal</th>
                                         }
                                         <th style="width: 50px;"></th>
@@ -528,7 +562,7 @@
                                         var it = formItems[i];
                                         var esLibre = !it.EquipoId.HasValue;
                                         var eq = it.EquipoId.HasValue ? equipos?.FirstOrDefault(x => x.Id == it.EquipoId.Value) : null;
-                                        var subtotal = it.Cantidad * it.PrecioUnitario;
+                                        var subtotal = it.Cantidad * it.PrecioUnitario * (it.MultiplicaPorDias ? FactorDias : 1m);
                                         var disp = it.EquipoId.HasValue ? DisponibleDe(it.EquipoId.Value) : null;
                                         var excedido = disp.HasValue && it.Cantidad > disp.Value;
                                         <tr style="@(excedido ? "background: #fef2f2;" : "")">
@@ -555,6 +589,13 @@
                                                 <td>
                                                     <input class="form-input" type="number" step="0.01" min="0" @bind="it.PrecioUnitario" style="text-align: right; padding: 0.25rem;" />
                                                 </td>
+                                                @if (formDias > 1)
+                                                {
+                                                    <td style="text-align: center;">
+                                                        <input type="checkbox" @bind="it.MultiplicaPorDias" style="width:16px; height:16px; cursor:pointer;"
+                                                               title="Si está tildado, este renglón se cobra por los @formDias días. El flete va destildado: se cobra una sola vez." />
+                                                    </td>
+                                                }
                                                 <td style="text-align: right; font-weight: 700;">$@FormatMoney(subtotal)</td>
                                             }
                                             <td>
@@ -1709,6 +1750,13 @@
     // 2026-09-10: de qué PRESUPUESTO viene esta reserva (llega por ?cotizacion=ID desde el chat).
     // Viaja al guardar para que el presupuesto quede marcado y no se pueda pasar dos veces.
     private int? formCotizacionId;
+
+    // ===== 2026-09-10: alquiler por varios dias =====
+    // Se heredan del PRESUPUESTO. Aca solo se pueden cambiar con "Usar precios" tildado: en modo
+    // "solo total" el sistema no sabe cuanto vale cada cosa, asi que no tiene con que recalcular.
+    private int formDias = 1;
+    private decimal formDiasPorcentaje = 50m;
+    private decimal FactorDias => 1m + (Math.Clamp(formDias, 1, 365) - 1) * (Math.Clamp(formDiasPorcentaje, 0m, 100m) / 100m);
     private decimal formSena;
     private bool formUsarPrecios;
     private decimal formTotalManual;
@@ -1750,7 +1798,7 @@
     private string condicionesEditor = "";
     private bool savingCondiciones;
 
-    private decimal Subtotal => formItems.Sum(i => i.Cantidad * i.PrecioUnitario);
+    private decimal Subtotal => formItems.Sum(i => i.Cantidad * i.PrecioUnitario * (i.MultiplicaPorDias ? FactorDias : 1m));
 
     /// <summary>
     /// 2026-09-10: los renglones tal como se guardan. En modo "SOLO TOTAL" (tilde "Usar precios"
@@ -1768,7 +1816,8 @@
                   EquipoId = i.EquipoId,
                   Descripcion = i.Descripcion,
                   Cantidad = i.Cantidad,
-                  PrecioUnitario = 0m
+                  PrecioUnitario = 0m,
+                  MultiplicaPorDias = i.MultiplicaPorDias
               }).ToList();
     private decimal Total => formUsarPrecios
         ? Math.Max(0m, Subtotal - Math.Max(0m, formDescuento))
@@ -1930,6 +1979,10 @@
         try
         {
             // 2026-07-02: alquileres usa la base de clientes GENERAL (unificada con ventas).
+            // 2026-09-10: el porcentaje del día extra (si falla queda en 50%, que es lo de siempre).
+            try { var pd = await Api.GetAlqDiasPorcentajeAsync(); if (pd is not null) formDiasPorcentaje = pd.Porcentaje; }
+            catch { }
+
             var tClientes = Api.GetCafeClientesAsync();
             var tEquipos = Api.GetAlqEquiposAsync();
             var tReps = Api.GetRepartidoresAsync();
@@ -2099,11 +2152,13 @@
             EquipoId = i.EquipoId,
             Descripcion = i.EsLibre ? i.EquipoNombre : null,
             Cantidad = i.Cantidad,
-            PrecioUnitario = i.PrecioUnitario
+            PrecioUnitario = i.PrecioUnitario,
+            MultiplicaPorDias = i.MultiplicaPorDias
         }).ToList();
         // Si la reserva no tiene precios cargados en los items, fue hecha con importe a mano
         formUsarPrecios = r.Items.Any(i => i.PrecioUnitario > 0);
         formTotalManual = r.MontoTotal;
+        formDias = r.Dias <= 0 ? 1 : r.Dias;   // 2026-09-10
         await RefreshDisponibilidad();
         showForm = true;
     }
@@ -2120,6 +2175,7 @@
         formMapeoLink = ""; formGuardarMapeoEnCliente = false; formSumarAlMapaReserva = false;
         formDescuento = 0m; formSena = 0m;
         formCotizacionId = null;
+        formDias = 1;
         formUsarPrecios = false; formTotalManual = 0m;
         formEstado = "reservado";
         formNotas = "";
@@ -2298,6 +2354,7 @@
             {
                 var updated = await Api.UpdateAlqReservaAsync(editingId.Value, new UpdateAlqReservaRequest
                 {
+                    Dias = formDias,
                     ClienteId = formClienteId,
                     FechaEntrega = EntregaEff(),
                     FechaRetiro = RetiroEff(),

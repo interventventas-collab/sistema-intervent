@@ -449,6 +449,19 @@ public class ApiClient
     public async Task<AlqCotizacionDto?> CrearAlqCotizacionAsync(CrearAlqCotizacionRequest req)
         => await PostAsync<AlqCotizacionDto>("/api/alquileres/cotizaciones", req);
 
+    // 2026-09-10: porcentaje del dia extra en los alquileres de varios dias.
+    public record AlqDiasPorcentajeDto(decimal Porcentaje);
+
+    public async Task<AlqDiasPorcentajeDto?> GetAlqDiasPorcentajeAsync()
+        => await GetAsync<AlqDiasPorcentajeDto>("/api/alquileres/cotizaciones/dias-porcentaje");
+
+    public async Task<bool> SetAlqDiasPorcentajeAsync(decimal pct)
+    {
+        var resp = await _http.PutAsJsonAsync("/api/alquileres/cotizaciones/dias-porcentaje",
+                                              new AlqDiasPorcentajeDto(pct));
+        return resp.IsSuccessStatusCode;
+    }
+
     public async Task<bool> BorrarAlqCotizacionAsync(int id)
         => await DeleteAsync($"/api/alquileres/cotizaciones/{id}");
 
