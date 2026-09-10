@@ -7,8 +7,9 @@ namespace Api.Services;
 /// <summary>
 /// Suma una reserva de alquiler al mapa de reparto como parada. Espejo de <see cref="VentaMapeoService"/>
 /// pero para <see cref="AlqReserva"/>. La reserva tiene coords propias del EVENTO, así que la prioridad es:
-/// LatitudEvento/LongitudEvento de la reserva → MapeoLink de la reserva → coords del cliente →
-/// MapeoLink del cliente → geocoding de la dirección del evento.
+/// LatitudEvento/LongitudEvento de la reserva → MapeoLink de la reserva → domicilio de entrega del
+/// cliente que coincida con la dirección del evento → coords del cliente → MapeoLink del cliente →
+/// geocoding de la dirección del evento.
 ///
 /// Si el usuario manda dirección/link (cargar en el momento), los resuelve y los GUARDA EN LA RESERVA
 /// (no en el cliente, porque el evento puede ser en otra dirección que la casa del cliente).
@@ -39,6 +40,20 @@ public class AlqMapeoService
     }
 
     private static string? FirstNonEmpty(params string?[] vals) => vals.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+
+    /// <summary>
+    /// 2026-09-10: busca, entre los domicilios de entrega del cliente, el que coincide con la dirección
+    /// del evento. Se reconoce igual que en las ventas: la dirección del evento arranca con el texto de
+    /// ese domicilio. Devuelve null si el evento es en otro lado (lo normal en un alquiler) o si el
+    /// cliente no tiene domicilios cargados.
+    /// </summary>
+    private async Task<CafeClienteDireccion?> BuscarDomicilioPorDireccionAsync(CafeCliente? cli, string? direccionEvento)
+    {
+        if (cli is null || string.IsNullOrWhiteSpace(direccionEvento)) return null;
+        var alts = await _db.CafeClienteDirecciones.Where(d => d.ClienteId == cli.Id && d.IsActive).ToListAsync();
+        return alts.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.Direccion)
+            && direccionEvento!.StartsWith(d.Direccion, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>Suma la reserva al mapa. La reserva debe venir con ClienteNav incluido.</summary>
     public async Task<Result> SumarReservaAsync(AlqReserva r, string? direccion = null, string? link = null, DateTime? fecha = null)
@@ -72,6 +87,14 @@ public class AlqMapeoService
             if (r.LatitudEvento is not null && r.LongitudEvento is not null) { lat = r.LatitudEvento; lng = r.LongitudEvento; }
             if (lat is null && !string.IsNullOrWhiteSpace(r.MapeoLink))
             { var x = await _mapsResolver.TryResolverCoordenadasAsync(r.MapeoLink); if (x.HasValue) { lat = x.Value.lat; lng = x.Value.lng; guardarEnReserva = true; } }
+            // 2026-09-10: los DOMICILIOS DE ENTREGA del cliente (Cafe_ClienteDirecciones) tienen su propia
+            // ubicación cargada y hasta hoy el mapa no los miraba — igual que pasaba con las ventas. Si la
+            // dirección del evento es uno de esos domicilios, usamos SU ubicación: es más precisa que la
+            // del domicilio de siempre, que puede estar en la otra punta.
+            var alt = lat is null ? await BuscarDomicilioPorDireccionAsync(cli, r.DireccionEvento) : null;
+            if (lat is null && alt?.MapeoLat is not null && alt.MapeoLng is not null) { lat = alt.MapeoLat; lng = alt.MapeoLng; }
+            if (lat is null && !string.IsNullOrWhiteSpace(alt?.MapeoLink))
+            { var x = await _mapsResolver.TryResolverCoordenadasAsync(alt!.MapeoLink); if (x.HasValue) { lat = x.Value.lat; lng = x.Value.lng; } }
             if (lat is null && cli?.MapeoLat is not null && cli.MapeoLng is not null) { lat = cli.MapeoLat; lng = cli.MapeoLng; }
             if (lat is null && !string.IsNullOrWhiteSpace(cli?.MapeoLink))
             { var x = await _mapsResolver.TryResolverCoordenadasAsync(cli!.MapeoLink); if (x.HasValue) { lat = x.Value.lat; lng = x.Value.lng; } }
