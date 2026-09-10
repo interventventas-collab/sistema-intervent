@@ -37,7 +37,10 @@ public record AlqCotizacionDto(
     int Id, string Telefono, int? ClienteId, DateTime? FechaEvento,
     string? FleteZona, decimal FleteMonto, decimal Descuento, decimal Total,
     string? Texto, string? Operador, int? ReservaId, DateTime CreatedAt,
-    List<AlqCotizacionItemDto> Items);
+    List<AlqCotizacionItemDto> Items,
+    // 2026-09-10: el numero de la reserva en la que se convirtio ("A-0123"), para mostrarlo
+    // en el historial del chat sin tener que ir a buscar la reserva.
+    string? ReservaNumero = null);
 
 public class CrearAlqCotizacionRequest
 {
@@ -217,6 +220,12 @@ public class CreateAlqReservaRequest
     public string? MapeoLink { get; set; }
     /// <summary>Si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
     public bool GuardarMapeoEnCliente { get; set; }
+    /// <summary>
+    /// 2026-09-10: si la reserva nace de un PRESUPUESTO, su id viene aca. Al guardar, la
+    /// cotizacion queda marcada con el ReservaId y ya no se puede volver a pasar a reserva
+    /// (si no, quedaban dos reservas y el stock se comia dos veces).
+    /// </summary>
+    public int? CotizacionId { get; set; }
     public List<CreateAlqReservaItemRequest> Items { get; set; } = new();
     // ===== ARCA — facturación (2026-07-04). Todos opcionales; si TipoComprobante="X" no se factura. =====
     public string? TipoComprobante { get; set; }

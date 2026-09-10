@@ -1706,6 +1706,9 @@
         finally { emitiendoId = null; }
     }
     private decimal formDescuento;
+    // 2026-09-10: de qué PRESUPUESTO viene esta reserva (llega por ?cotizacion=ID desde el chat).
+    // Viaja al guardar para que el presupuesto quede marcado y no se pueda pasar dos veces.
+    private int? formCotizacionId;
     private decimal formSena;
     private bool formUsarPrecios;
     private decimal formTotalManual;
@@ -1818,7 +1821,24 @@
         catch (Exception ex) { ToastService.Error("No pude traer la cotización: " + ex.Message); }
         if (cot is null) { ToastService.Warning("No encontré esa cotización."); return; }
 
+        // 2026-09-10: si ese presupuesto YA se pasó a reserva, no abrimos una nueva: lo mostramos.
+        // Antes se podía repetir la operación una y otra vez y quedaban reservas mellizas, cada una
+        // comiéndose el stock de los mismos equipos en las mismas fechas.
+        if (!string.IsNullOrWhiteSpace(cot.ReservaNumero))
+        {
+            ToastService.Warning($"Ese presupuesto ya se pasó a la reserva {cot.ReservaNumero}. Te la abro, no hace falta crear otra.");
+            if (reservas is null || reservas.Count == 0) await Load();
+            var yaR = reservas?.FirstOrDefault(x => x.Id == cot.ReservaId)
+                      ?? (cot.ReservaId is int rid ? await Api.GetAlqReservaAsync(rid) : null);
+            if (yaR is not null) await ShowEdit(yaR);
+            else busqueda = cot.ReservaNumero!;   // por las dudas: al menos la deja filtrada en la lista
+            deepLinkApplied = true;
+            StateHasChanged();
+            return;
+        }
+
         await ShowCreate();
+        formCotizacionId = cot.Id;   // va DESPUÉS de ShowCreate: ese limpia el formulario
 
         // El cliente: si la cotización quedó atada a uno, va puesto. Si no, lo elige él.
         if (cot.ClienteId is int cid && clientes?.Any(c => c.Id == cid) == true)
@@ -2070,6 +2090,7 @@
         formDireccionEvento = "";
         formMapeoLink = ""; formGuardarMapeoEnCliente = false; formSumarAlMapaReserva = false;
         formDescuento = 0m; formSena = 0m;
+        formCotizacionId = null;
         formUsarPrecios = false; formTotalManual = 0m;
         formEstado = "reservado";
         formNotas = "";
@@ -2281,6 +2302,7 @@
             {
                 var created = await Api.CreateAlqReservaAsync(new CreateAlqReservaRequest
                 {
+                    CotizacionId = formCotizacionId,
                     ClienteId = formClienteId,
                     FechaEntrega = EntregaEff(),
                     FechaRetiro = RetiroEff(),

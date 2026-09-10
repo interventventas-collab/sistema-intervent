@@ -335,6 +335,34 @@ public class AlqReservasController : ControllerBase
         var cliente = await _db.CafeClientes.FindAsync(req.ClienteId);
         if (cliente is null) return BadRequest(new { error = "Cliente no encontrado" });
 
+        // 2026-09-10: si la reserva nace de un PRESUPUESTO, frenamos acá el doble pasaje.
+        // No alcanza con esconder el botón en la pantalla: dos pestañas abiertas, un doble clic o
+        // el botón "atrás" del navegador alcanzaban para crear la reserva dos veces, y cada copia
+        // se come el stock de los equipos en esas fechas aunque en realidad esté libre.
+        AlqCotizacion? cotizacion = null;
+        if (req.CotizacionId is int cotId and > 0)
+        {
+            cotizacion = await _db.AlqCotizaciones.FirstOrDefaultAsync(x => x.Id == cotId);
+            if (cotizacion is null) return BadRequest(new { error = "No encontré ese presupuesto" });
+
+            if (cotizacion.ReservaId is int yaId)
+            {
+                // Si la reserva se borró después, el presupuesto vuelve a quedar libre.
+                var ya = await _db.AlqReservas.AsNoTracking()
+                    .Where(r => r.Id == yaId)
+                    .Select(r => new { r.Id, r.Numero })
+                    .FirstOrDefaultAsync();
+                if (ya is not null)
+                    return BadRequest(new
+                    {
+                        error = $"Ese presupuesto ya se pasó a la reserva {ya.Numero}. Abrila desde el historial en vez de crear una nueva.",
+                        reservaId = ya.Id,
+                        reservaNumero = ya.Numero
+                    });
+                cotizacion.ReservaId = null;
+            }
+        }
+
         // Separar items del catálogo (con EquipoId) de los items de "descripción libre" (texto).
         // Consolidar los del catálogo por EquipoId; los libres pasan tal cual (con descripción no vacía).
         var consolidados = req.Items
@@ -425,7 +453,28 @@ public class AlqReservasController : ControllerBase
             cliente.MapeoLat = null; cliente.MapeoLng = null; // se re-resuelven del nuevo link cuando corresponda
         }
 
-        await _db.SaveChangesAsync();
+        // El presupuesto queda pegado a la reserva. Recién después de guardar existe el Id de la
+        // reserva, así que son dos escrituras: van juntas en una transacción para que no pueda
+        // quedar la reserva creada y el presupuesto sin marcar (ahí se podría pasar dos veces).
+        if (cotizacion is not null)
+        {
+            // El contexto tiene reintentos automáticos (EnableRetryOnFailure), y con eso EF no acepta
+            // una transacción abierta a mano: hay que pasarle el bloque entero para que, si reintenta,
+            // reintente las dos escrituras juntas.
+            var estrategia = _db.Database.CreateExecutionStrategy();
+            await estrategia.ExecuteAsync(async () =>
+            {
+                using var tx = await _db.Database.BeginTransactionAsync();
+                await _db.SaveChangesAsync();
+                cotizacion.ReservaId = reserva.Id;
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+            });
+        }
+        else
+        {
+            await _db.SaveChangesAsync();
+        }
 
         // Recargo con includes para devolver el DTO completo
         var saved = await _db.AlqReservas

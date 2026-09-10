@@ -36,7 +36,10 @@ public class AlqCotizacionesController : ControllerBase
                 c.Id, c.Telefono, c.ClienteId, c.FechaEvento,
                 c.FleteZona, c.FleteMonto, c.Descuento, c.Total,
                 c.Texto, c.Operador, c.ReservaId, c.CreatedAt,
-                c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList()))
+                c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList(),
+                // 2026-09-10: si ya se paso a reserva, el numero para mostrarlo en el historial.
+                // Si la reserva se borro despues, esto vuelve null y el presupuesto se puede pasar de nuevo.
+                _db.AlqReservas.Where(r => r.Id == c.ReservaId).Select(r => r.Numero).FirstOrDefault()))
             .ToListAsync();
 
         return Ok(list);
@@ -50,11 +53,16 @@ public class AlqCotizacionesController : ControllerBase
             .FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return NotFound(new { error = "Cotización no encontrada" });
 
+        var numero = c.ReservaId is int rid
+            ? await _db.AlqReservas.Where(r => r.Id == rid).Select(r => r.Numero).FirstOrDefaultAsync()
+            : null;
+
         return Ok(new AlqCotizacionDto(
             c.Id, c.Telefono, c.ClienteId, c.FechaEvento,
             c.FleteZona, c.FleteMonto, c.Descuento, c.Total,
             c.Texto, c.Operador, c.ReservaId, c.CreatedAt,
-            c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList()));
+            c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList(),
+            numero));
     }
 
     [HttpPost]

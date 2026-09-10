@@ -186,6 +186,9 @@ public class CreateAlqReservaItemRequest
 
 public class CreateAlqReservaRequest
 {
+    /// <summary>2026-09-10: si la reserva nace de un PRESUPUESTO, su id va aca. La API marca esa
+    /// cotizacion con el numero de reserva y ya no deja pasarla a reserva una segunda vez.</summary>
+    public int? CotizacionId { get; set; }
     public int ClienteId { get; set; }
     public DateTime FechaEntrega { get; set; }
     public DateTime FechaRetiro { get; set; }
@@ -328,6 +331,9 @@ public class AlqCotizacionDto
     public string? Texto { get; set; }
     public string? Operador { get; set; }
     public int? ReservaId { get; set; }
+    /// <summary>2026-09-10: numero de la reserva en la que se convirtio ("A-0123"). Null = todavia
+    /// no se paso a reserva (o la reserva se borro y el presupuesto volvio a quedar libre).</summary>
+    public string? ReservaNumero { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<AlqCotizacionItemDto> Items { get; set; } = new();
 }
