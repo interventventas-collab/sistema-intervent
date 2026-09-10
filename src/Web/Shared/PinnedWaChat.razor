@@ -640,10 +640,41 @@
                 }
                 else if (masVista == "cotizar")
                 {
+                    @* 2026-09-10: lo que ya se le presupuestó a este teléfono, igual que en la compu.
+                       Los que ya se confirmaron muestran el número de reserva, así desde el celu se ve
+                       de una si ese presupuesto quedó cerrado o sigue en el aire.
+                       ⚠ Acá NO va el botón "pasar a reserva": crear reservas está cerrado a propósito
+                       para las sesiones que entran con la huella. La reserva se hace en la compu. *@
+                    @if (alqCotsMovil.Count > 0)
+                    {
+                        <div class="pwa-cot-hist">
+                            <div class="pwa-cot-hist-t">Ya le cotizaste</div>
+                            @foreach (var c in alqCotsMovil)
+                            {
+                                <div class="pwa-cot-hist-i">
+                                    <div class="pwa-cot-hist-l1">
+                                        <span class="pwa-cot-hist-f">@c.CreatedAt.ToLocalTime().ToString("dd/MM/yy")</span>
+                                        <b class="pwa-cot-hist-tot">@PlataCot(c.Total)</b>
+                                    </div>
+                                    <div class="pwa-cot-hist-l2">@ResumenCot(c)</div>
+                                    <div class="pwa-cot-hist-acc">
+                                        <button type="button" class="pwa-cot-hist-b" @onclick="() => RepetirCot(c)">↻ Repetir</button>
+                                        <button type="button" class="pwa-cot-hist-b" @onclick="() => VolverAMandarCot(c)">📄 Volver a pasarla</button>
+                                        @if (!string.IsNullOrWhiteSpace(c.ReservaNumero))
+                                        {
+                                            <span class="pwa-cot-hist-ok">✅ Reservado @c.ReservaNumero</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+
                     <CotizadorAlquiler @ref="cotizadorMovilRef" Movil="true"
                                        Telefono="@Numero"
                                        TextoBoton="📝 Escribir la cotización"
-                                       OnListo="PonerCotizacionEnElCuadro" />
+                                       OnListo="PonerCotizacionEnElCuadro"
+                                       OnGuardada="CargarCotsMovil" />
                 }
                 else if (masVista == "cbu")
                 {
@@ -900,6 +931,20 @@
         padding: 10px 12px; font-size: 16px; font-family: inherit; margin: 8px 0; }
     .pwa-mas-search:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 2px rgba(37,211,102,0.18); }
     .pwa-mas-info { color: #6b7280; font-size: 0.85rem; text-align: center; padding: 1rem; }
+    /* 2026-09-10: historial de presupuestos en el celu. Sin colores de adorno: el ✅ ya avisa. */
+    .pwa-cot-hist { border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; margin: 0 0 0.6rem; overflow: hidden; }
+    .pwa-cot-hist-t { font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase;
+                      padding: 0.35rem 0.55rem; background: #f9fafb; border-bottom: 1px solid #f3f4f6; }
+    .pwa-cot-hist-i { padding: 0.45rem 0.55rem; border-bottom: 1px solid #f3f4f6; }
+    .pwa-cot-hist-i:last-child { border-bottom: none; }
+    .pwa-cot-hist-l1 { display: flex; align-items: baseline; justify-content: space-between; gap: 0.4rem; }
+    .pwa-cot-hist-f { font-size: 0.76rem; color: #9ca3af; }
+    .pwa-cot-hist-tot { font-size: 0.9rem; color: #047857; }
+    .pwa-cot-hist-l2 { font-size: 0.76rem; color: #6b7280; line-height: 1.3; margin-top: 0.1rem; }
+    .pwa-cot-hist-acc { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-top: 0.4rem; }
+    .pwa-cot-hist-b { font-family: inherit; font-size: 0.76rem; background: #f9fafb; border: 1px solid #e5e7eb;
+                      border-radius: 7px; padding: 0.3rem 0.5rem; color: #374151; }
+    .pwa-cot-hist-ok { font-size: 0.76rem; color: #047857; font-weight: 600; }
     .pwa-mas-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
         border: none; border-bottom: 1px solid #f3f4f6; background: transparent; padding: 10px 6px; cursor: pointer; }
     .pwa-mas-item:hover { background: #f0fdf4; }
@@ -1793,6 +1838,7 @@
         if (_numeroCotizador is not null && _numeroCotizador != Numero)
         {
             cotizadorMovilRef?.Limpiar();
+            alqCotsMovil = new();   // eran los del teléfono anterior
             if (masVista == "cotizar") { mostrarMas = false; masVista = "menu"; }
         }
         _numeroCotizador = Numero;
@@ -1901,10 +1947,42 @@
     // en el cuadro y el envío lo decide la persona, como el saldo y el CBU.
     private CotizadorAlquiler? cotizadorMovilRef;
 
-    private void AbrirCotizador()
+    private async Task AbrirCotizador()
     {
         masVista = "cotizar";
         StateHasChanged();
+        await CargarCotsMovil();
+    }
+
+    // === 2026-09-10: historial de presupuestos de ESTE teléfono, también en el celu ===
+    // En la compu ya estaba; acá no, y desde el celular no había forma de saber si un presupuesto
+    // ya se había confirmado. Solo lectura: la reserva se crea en la compu.
+    private List<AlqCotizacionDto> alqCotsMovil = new();
+
+    private async Task CargarCotsMovil()
+    {
+        if (string.IsNullOrWhiteSpace(Numero)) { alqCotsMovil = new(); return; }
+        try { alqCotsMovil = await Api.GetAlqCotizacionesAsync(Numero, 10) ?? new(); }
+        catch { alqCotsMovil = new(); }
+        StateHasChanged();
+    }
+
+    private static string PlataCot(decimal v) => "$" + v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+
+    private static string ResumenCot(AlqCotizacionDto c)
+    {
+        if (c.Items.Count == 0) return "solo flete";
+        var txt = string.Join(" + ", c.Items.Take(2).Select(i => $"{i.Cantidad} {i.Nombre}"));
+        if (c.Items.Count > 2) txt += $" +{c.Items.Count - 2} más";
+        return txt;
+    }
+
+    private void RepetirCot(AlqCotizacionDto c) => cotizadorMovilRef?.CargarDesde(c);
+
+    private async Task VolverAMandarCot(AlqCotizacionDto c)
+    {
+        if (string.IsNullOrWhiteSpace(c.Texto)) { Toast.Warning("Esa cotización no guardó el texto."); return; }
+        await PonerCotizacionEnElCuadro(c.Texto!);
     }
 
     private async Task PonerCotizacionEnElCuadro(string texto)
