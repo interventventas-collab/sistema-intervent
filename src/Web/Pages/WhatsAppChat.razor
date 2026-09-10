@@ -2752,8 +2752,19 @@
                                                     title="Cargarla acá abajo para recotizar con los precios de hoy">↻ Repetir</button>
                                             <button class="wa-alq-hist-b" @onclick="() => VolverAMandarCotizacion(c)"
                                                     title="Escribir abajo el mismo presupuesto que le pasaste">📄 Volver a pasarla</button>
-                                            <button class="wa-alq-hist-b wa-alq-hist-res" @onclick="() => PasarAReserva(c)"
-                                                    title="Abrir la reserva ya cargada con esto (se completa entrega, retiro y dirección)">📅 Pasar a reserva</button>
+                                            @* 2026-09-10: una vez confirmado, el botón deja de estar y queda el número de la
+                                               reserva. Si se ofrece "pasar a reserva" de nuevo quedan reservas mellizas y el
+                                               stock de esos equipos se descuenta dos veces para las mismas fechas. *@
+                                            @if (!string.IsNullOrWhiteSpace(c.ReservaNumero))
+                                            {
+                                                <button class="wa-alq-hist-b wa-alq-hist-ok" @onclick="() => AbrirReservaDeCotizacion(c)"
+                                                        title="Este presupuesto ya está confirmado. Abrir la reserva.">✅ Reservado @c.ReservaNumero</button>
+                                            }
+                                            else
+                                            {
+                                                <button class="wa-alq-hist-b wa-alq-hist-res" @onclick="() => PasarAReserva(c)"
+                                                        title="Abrir la reserva ya cargada con esto (se completa entrega, retiro y dirección)">📅 Pasar a reserva</button>
+                                            }
                                         </div>
                                     </div>
                                 }
@@ -4043,6 +4054,9 @@
         border-radius: 6px; padding: 0.15rem 0.4rem; cursor: pointer; color: #334155; }
     .wa-alq-hist-b:hover { background: #ecfdf5; border-color: #16a34a; }
     .wa-alq-hist-res { color: #6d28d9; }
+    /* 2026-09-10: presupuesto ya confirmado. Sin fondo ni recuadro: el ✅ ya avisa y el color
+       queda reservado para las alarmas. */
+    .wa-alq-hist-ok { color: #047857; font-weight: 600; }
     .wa-alq-body .wa-mv-inp { margin-bottom: 0.35rem; }
     /* Lo demás del cotizador (lista, flete, total, botones) lo pone el componente CotizadorAlquiler. */
 
@@ -6507,7 +6521,23 @@
     /// <summary>Abre la pantalla de reservas con esta cotización cargada, en otra pestaña.</summary>
     async Task PasarAReserva(AlqCotizacionDto c)
     {
-        try { await JS.InvokeVoidAsync("open", $"/alquileres/reservas?cotizacion={c.Id}", "_blank"); }
+        try
+        {
+            await JS.InvokeVoidAsync("open", $"/alquileres/reservas?cotizacion={c.Id}", "_blank");
+            Toast.Info("Completá cliente, entrega, retiro y dirección en la otra pestaña. Cuando guardes, acá va a decir ✅ Reservado.");
+        }
+        catch (Exception ex) { Toast.Error("No pude abrir la reserva: " + ex.Message); }
+    }
+
+    /// <summary>
+    /// 2026-09-10: el presupuesto ya confirmado abre SU reserva, buscada por número.
+    /// La reserva se crea en la otra pestaña, así que al volver acá el historial todavía la muestra
+    /// sin confirmar: lo recargamos para que aparezca el ✅ sin tener que cerrar y abrir el modo.
+    /// </summary>
+    async Task AbrirReservaDeCotizacion(AlqCotizacionDto c)
+    {
+        if (c.ReservaId is not int rid) { Toast.Warning("No tengo el número de esa reserva."); return; }
+        try { await JS.InvokeVoidAsync("open", $"/alquileres/reservas?openId={rid}", "_blank"); }
         catch (Exception ex) { Toast.Error("No pude abrir la reserva: " + ex.Message); }
     }
 
