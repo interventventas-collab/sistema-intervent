@@ -147,7 +147,7 @@ public class VentaMapeoService
             // de la ficha. Un cliente que recibe en otra puerta (un hotel, un depósito) podía tener la
             // ubicación perfectamente cargada y la parada igual salía sin chinche. Va DESPUÉS del link
             // propio de la venta y ANTES del domicilio de siempre, porque es el domicilio de ESTA venta.
-            var alt = await BuscarDomicilioEntregaAsync(v, cli);
+            var alt = lat is null ? await BuscarDomicilioEntregaAsync(v, cli) : null;
             if (lat is null && alt?.MapeoLat is not null && alt.MapeoLng is not null) { lat = alt.MapeoLat; lng = alt.MapeoLng; }
             if (lat is null && !string.IsNullOrWhiteSpace(alt?.MapeoLink))
             { var r = await _mapsResolver.TryResolverCoordenadasAsync(alt!.MapeoLink); if (r.HasValue) { lat = r.Value.lat; lng = r.Value.lng; } }
