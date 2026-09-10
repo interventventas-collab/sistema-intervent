@@ -2,7 +2,6 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
-@inject NavigationManager Navigation
 @inject IJSRuntime JS
 @using Web.Models
 
@@ -45,8 +44,20 @@
             <input class="form-input chq-buscador" placeholder="Buscar por número, banco, emisor, cliente o importe"
                    @bind="busqueda" @bind:event="oninput" @bind:after="OnBuscar" />
             <button class="btn btn-secondary" style="font-size:0.82rem;" @onclick="AbrirNuevo">Cargar uno a mano</button>
-            <button class="btn btn-secondary" style="font-size:0.82rem;"
-                    @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-banco")'>Importar del banco</button>
+            @* 2026-09-10: subir los Excel del banco desde aca — era lo unico que obligaba a
+               volver a la pantalla vieja. Mismo endpoint de siempre (import es idempotente:
+               dedup por el ID del cheque que da el banco, se puede resubir el mismo archivo). *@
+            <label class="btn btn-secondary" style="font-size:0.82rem; cursor:pointer; margin:0;">
+                @if (importando)
+                {
+                    <span>Subiendo...</span>
+                }
+                else
+                {
+                    <span>Subir los archivos del banco</span>
+                    <InputFile OnChange="OnArchivosBanco" multiple style="display:none;" accept=".xlsx,.xls" />
+                }
+            </label>
         </div>
 
         <div class="chq-tabs">
@@ -552,6 +563,46 @@
         "A_PAGAR" => conteos.APagar,
         _ => 0
     };
+
+    // ═══════════════ Subir los Excel del banco ═══════════════
+    private bool importando;
+
+    /// <summary>Sube los listados del banco (recibidos / emitidos / endosados). El backend
+    /// autodetecta el tipo de cada archivo y no duplica si se resube el mismo.</summary>
+    private async Task OnArchivosBanco(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(5);
+        if (files.Count == 0) return;
+        importando = true;
+        try
+        {
+            var streams = new List<Stream>();
+            var items = new List<(string name, Stream stream)>();
+            foreach (var f in files)
+            {
+                var st = f.OpenReadStream(50 * 1024 * 1024);
+                streams.Add(st);
+                items.Add((f.Name, st));
+            }
+            var result = await Api.ImportChequesBancoAsync(items);
+            foreach (var st in streams) try { st.Dispose(); } catch { }
+            if (result is null) { ToastService.Error("No se pudo leer el archivo"); return; }
+            foreach (var r in result)
+            {
+                if (r.TipoDetectado == "ERROR")
+                    ToastService.Error($"{r.Archivo}: {string.Join(" · ", r.Errores)}");
+                else
+                {
+                    var msg = $"{r.Archivo}: {r.Nuevos} nuevos, {r.Actualizados} actualizados, {r.SinCambios} ya estaban";
+                    if (r.Errores.Count > 0) msg += $" ({r.Errores.Count} con error)";
+                    ToastService.Success(msg);
+                }
+            }
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { importando = false; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
