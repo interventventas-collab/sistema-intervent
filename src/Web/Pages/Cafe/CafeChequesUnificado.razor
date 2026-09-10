@@ -224,6 +224,20 @@
                     }
                     else
                     {
+                        @* 2026-09-10: si el CUIT del que firma el cheque coincide con un cliente,
+                           lo proponemos de un toque (cuando es uno solo ya viene elegido). *@
+                        @if (cobSugerencias is { Count: > 0 })
+                        {
+                            <div style="margin-bottom:0.4rem; font-size:0.85rem;">
+                                <span style="color:#6b7280;">Por el CUIT del cheque puede ser:</span>
+                                @foreach (var sg in cobSugerencias)
+                                {
+                                    var sug = sg;
+                                    <button type="button" class="btn btn-secondary" style="font-size:0.8rem; padding:0.2rem 0.5rem; margin-left:0.3rem;"
+                                            @onclick="() => ElegirClienteSugerido(sug)">@sug.Nombre</button>
+                                }
+                            </div>
+                        }
                         <input class="form-input" @bind="cobClienteSearch" @bind:event="oninput" placeholder="Buscar por nombre, código o CUIT..." />
                         @if (!string.IsNullOrWhiteSpace(cobClienteSearch) && clientes is not null)
                         {
@@ -733,6 +747,8 @@
     private CafeClienteDto? cobCliente;
     private string cobClienteSearch = "";
     private List<ComprobantePendienteDto>? cobComprobantes;
+    /// <summary>Clientes cuyo CUIT coincide con el del librador del e-cheq (solo cheques del banco).</summary>
+    private List<SugerenciaClienteEcheqDto>? cobSugerencias;
     private class SelState
     {
         public bool Tildado;
@@ -763,7 +779,7 @@
     private async Task AbrirCobranza(ChequeUniDto f)
     {
         cobChe = f;
-        cobCliente = null; cobClienteSearch = ""; cobComprobantes = null;
+        cobCliente = null; cobClienteSearch = ""; cobComprobantes = null; cobSugerencias = null;
         cobSeleccion = new(); cobRetenciones = 0m; cobObservaciones = ""; cobError = null;
         try
         {
@@ -771,7 +787,15 @@
             if (f.ClienteId.HasValue)
             {
                 var pre = clientes.FirstOrDefault(c => c.Id == f.ClienteId.Value);
-                if (pre is not null) await ElegirClienteCobranza(pre);
+                if (pre is not null) { await ElegirClienteCobranza(pre); return; }
+            }
+            // Cheque del banco: el extracto trae el CUIT del que lo firmo. Si matchea con un
+            // cliente, lo elegimos solo; si matchea con varios (sucursales del mismo CUIT),
+            // los ofrecemos como botones.
+            if (f.Origen == "BANCO")
+            {
+                cobSugerencias = await Api.GetClienteSugeridoECheqAsync(f.Id) ?? new();
+                if (cobSugerencias.Count == 1) await ElegirClienteSugerido(cobSugerencias[0]);
             }
         }
         catch (Exception ex) { cobError = "Error cargando clientes: " + ex.Message; }
@@ -800,6 +824,15 @@
         }
         catch (Exception ex) { cobError = "Error cargando comprobantes: " + ex.Message; }
         finally { cobCargandoComp = false; }
+    }
+
+    /// <summary>Elige un cliente propuesto por el CUIT del cheque. La sugerencia viene con
+    /// menos campos que la ficha completa, asi que buscamos el cliente de verdad por Id.</summary>
+    private async Task ElegirClienteSugerido(SugerenciaClienteEcheqDto sug)
+    {
+        var cli = clientes?.FirstOrDefault(c => c.Id == sug.Id);
+        if (cli is null) { cobError = "No encontré la ficha de ese cliente"; return; }
+        await ElegirClienteCobranza(cli);
     }
 
     private void QuitarClienteCobranza()
