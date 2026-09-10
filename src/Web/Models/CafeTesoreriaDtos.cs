@@ -735,3 +735,58 @@ public class CafeFacturaProvDto
     public decimal Saldo { get; set; }
     public string? Comprobante { get; set; }
 }
+
+// ========== Cheques: vista unificada (2026-09-10) ==========
+// Una sola lista con los cheques de las DOS tablas (cartera + banco), agrupados por la
+// situacion en la que estan. Ver CafeChequesUnificadoController en la API.
+public class ChequeUniDto
+{
+    public string Key { get; set; } = "";
+    /// <summary>CARTERA (Cafe_Cheques) | BANCO (Cafe_ChequesBanco)</summary>
+    public string Origen { get; set; } = "";
+    public int Id { get; set; }
+    public string Numero { get; set; } = "";
+    public string Banco { get; set; } = "";
+    public string? Emisor { get; set; }
+    public int? ClienteId { get; set; }
+    public string? ClienteNombre { get; set; }
+    public decimal Importe { get; set; }
+    public DateTime? Vence { get; set; }
+    public string Vista { get; set; } = "";
+    public string EstadoTexto { get; set; } = "";
+    public bool PuedeImputar { get; set; }
+    public bool PuedeDepositar { get; set; }
+    public bool PuedeVentanilla { get; set; }
+    public bool PuedeEndosar { get; set; }
+    public bool PuedeRechazar { get; set; }
+    public bool PuedeAcreditar { get; set; }
+    /// <summary>Cuando no es null, este cheque esta cargado DOS VECES (por los dos caminos).</summary>
+    public string? DuplicadoKey { get; set; }
+    public int? DuplicadoCarteraId { get; set; }
+    public int? DuplicadoBancoId { get; set; }
+    public string? Observaciones { get; set; }
+}
+
+public class ChequesUniConteosDto
+{
+    public int EnMano { get; set; }
+    public int EnBanco { get; set; }
+    public int Usados { get; set; }
+    public int Rechazados { get; set; }
+    public int APagar { get; set; }
+    public int Duplicados { get; set; }
+}
+
+public class ChequesUniResumenDto
+{
+    public int Cantidad { get; set; }
+    public decimal Importe { get; set; }
+    public DateTime? PrimerVencimiento { get; set; }
+}
+
+public class ChequesUnificadoResponse
+{
+    public ChequesUniConteosDto Conteos { get; set; } = new();
+    public ChequesUniResumenDto Resumen { get; set; } = new();
+    public List<ChequeUniDto> Filas { get; set; } = new();
+}

@@ -689,7 +689,7 @@ else
     </div>
 
     @* Cheques por pagar — próximos a pagar (misma data que el botón de la topbar) *@
-    <div class="dashboard-detail-card mac-stat-card accent-amber @(AlertaCard("CHEQUE_VENCE") is not null ? "dash-card-alerta" : "")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-banco")' title="Ir a Cheques del banco">
+    <div class="dashboard-detail-card mac-stat-card accent-amber @(AlertaCard("CHEQUE_VENCE") is not null ? "dash-card-alerta" : "")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-todos?vista=A_PAGAR")' title="Ir a los cheques que tengo que pagar">
         @if (AlertaCard("CHEQUE_VENCE") is string msgCheq)
         {
             <div class="dash-card-alerta-ribbon">⚠️ @msgCheq</div>
@@ -1069,7 +1069,7 @@ else
     </div>
     <div class="dash-resumen-grid">
         @* Cheques a cubrir hoy *@
-        <div class="dash-resumen-block" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques")' title="Ir a cheques">
+        <div class="dash-resumen-block" style="cursor:pointer;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-todos?vista=A_PAGAR")' title="Ir a los cheques que tengo que pagar">
             <div class="dash-resumen-head">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
                 Cheques a cubrir hoy

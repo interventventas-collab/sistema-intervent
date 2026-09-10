@@ -1,0 +1,957 @@
+@page "/cafe/tesoreria/cheques-todos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════════
+   Pantalla UNICA de cheques (2026-09-10).
+   Pedido del usuario: "cuando quiero cobrar o endosar cheques no se donde buscarlos,
+   al estar en varios lados me marea".
+   Junta las dos listas que antes vivian separadas (cartera + banco) y las agrupa por
+   la SITUACION del cheque. Las acciones estan en el renglon, incluido el endoso, que
+   antes solo se podia hacer desde Tesoreria -> Pagos con una lista desplegable.
+   ════════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    .chq-top { display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.8rem; }
+    .chq-top h2 { margin:0; font-size:1.25rem; }
+    .chq-buscador { flex:1; min-width:240px; }
+    .chq-tabs { display:flex; gap:0.15rem; flex-wrap:wrap; border-bottom:1px solid #e5e7eb; margin-bottom:0.2rem; }
+    .chq-tab { padding:0.45rem 0.8rem; border:none; background:none; cursor:pointer; font-size:0.9rem; color:#6b7280; border-bottom:2px solid transparent; }
+    .chq-tab:hover { color:#111827; }
+    .chq-tab.on { color:#111827; font-weight:600; border-bottom-color:#111827; }
+    .chq-tab .n { color:#9ca3af; font-weight:400; }
+    .chq-tab.on .n { color:#6b7280; }
+    .chq-sep { border-left:1px solid #e5e7eb; margin-left:0.4rem; padding-left:0.6rem; }
+    .chq-tabla { width:100%; border-collapse:collapse; font-size:0.88rem; }
+    .chq-tabla th { text-align:left; font-weight:400; font-size:0.76rem; color:#9ca3af; padding:0.6rem 0.4rem; }
+    .chq-tabla td { padding:0.6rem 0.4rem; border-top:1px solid #f1f2f4; vertical-align:top; }
+    .chq-tabla tr.dup td { background:#fffbeb; }
+    .chq-sub { font-size:0.74rem; color:#9ca3af; }
+    .chq-acc { background:none; border:none; padding:0 0.1rem; cursor:pointer; color:#374151; font-size:0.8rem; text-decoration:underline; text-underline-offset:2px; }
+    .chq-acc:hover { color:#111827; }
+    .chq-acc.alarma { color:#b45309; }
+    .chq-pie { border-top:1px solid #e5e7eb; margin-top:0.4rem; padding-top:0.6rem; font-size:0.85rem; color:#6b7280; }
+    .chq-aviso { background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; padding:0.5rem 0.7rem; font-size:0.85rem; color:#92400e; margin-bottom:0.7rem; }
+</style>
+
+<div class="card">
+    <div class="card-body">
+        <div class="chq-top">
+            <h2>Cheques</h2>
+            <input class="form-input chq-buscador" placeholder="Buscar por número, banco, emisor, cliente o importe"
+                   @bind="busqueda" @bind:event="oninput" @bind:after="OnBuscar" />
+            <button class="btn btn-secondary" style="font-size:0.82rem;" @onclick="AbrirNuevo">Cargar uno a mano</button>
+            <button class="btn btn-secondary" style="font-size:0.82rem;"
+                    @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-banco")'>Importar del banco</button>
+        </div>
+
+        <div class="chq-tabs">
+            @foreach (var t in Solapas)
+            {
+                var k = t.key;
+                <button class="chq-tab @(vista == k ? "on" : "")" @onclick="() => CambiarVista(k)">
+                    @t.label <span class="n">@Conteo(k)</span>
+                </button>
+            }
+        </div>
+
+        @if (conteos.Duplicados > 0 && vista == "EN_MANO")
+        {
+            <div class="chq-aviso" style="margin-top:0.7rem;">
+                Ojo: @conteos.Duplicados @(conteos.Duplicados == 1 ? "cheque está cargado" : "cheques están cargados") dos veces —
+                una vez a mano y otra desde el archivo del banco. Están marcados abajo: tocá <strong>unir</strong> para dejar uno solo.
+                Si no los unís, la plata se cuenta doble.
+            </div>
+        }
+
+        @if (loading)
+        {
+            <p class="text-muted" style="padding:0.8rem 0;">Cargando...</p>
+        }
+        else if (filas.Count == 0)
+        {
+            <p class="text-muted" style="padding:0.8rem 0;">
+                @(string.IsNullOrWhiteSpace(busqueda) ? "No hay cheques en esta situación." : "No encontré ningún cheque con eso.")
+            </p>
+        }
+        else
+        {
+            <div style="overflow-x:auto;">
+                <table class="chq-tabla">
+                    <thead>
+                        <tr>
+                            <th style="width:24%;">@(vista == "A_PAGAR" ? "A quién se lo di" : "Quién lo dio")</th>
+                            <th style="width:22%;">Cheque</th>
+                            <th style="width:13%; text-align:right;">Importe</th>
+                            <th style="width:11%;">@(vista == "A_PAGAR" ? "Se paga" : "Vence")</th>
+                            <th>Qué hago</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in filas)
+                        {
+                            var fila = f;
+                            <tr class="@(fila.DuplicadoKey is not null ? "dup" : "")">
+                                <td>
+                                    @(fila.ClienteNombre ?? fila.Emisor ?? "—")
+                                    <div class="chq-sub">
+                                        @(fila.Origen == "BANCO" ? "del banco" : "cargado a mano")
+                                        @if (fila.ClienteNombre is not null && !string.IsNullOrWhiteSpace(fila.Emisor) && fila.Emisor != fila.ClienteNombre)
+                                        {
+                                            <text> · firma @fila.Emisor</text>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    @fila.Banco · N° @fila.Numero
+                                    <div class="chq-sub">@fila.EstadoTexto</div>
+                                </td>
+                                <td style="text-align:right;">$@fila.Importe.ToString("N2")</td>
+                                <td>@(fila.Vence?.ToString("dd/MM/yy") ?? "—")</td>
+                                <td>
+                                    @if (fila.DuplicadoKey is not null)
+                                    {
+                                        <span style="color:#92400e;">Está dos veces · </span>
+                                        <button class="chq-acc alarma" @onclick="() => Unir(fila)"
+                                                title="Dejar un solo cheque: el del banco se engancha con el que ya tenías">unir</button>
+                                    }
+                                    else
+                                    {
+                                        @if (fila.PuedeImputar)
+                                        {
+                                            <button class="chq-acc" @onclick="() => AbrirCobranza(fila)"
+                                                    title="Descontarle la deuda al cliente con este cheque">cobrar al cliente</button>
+                                            <span style="color:#d1d5db;"> · </span>
+                                        }
+                                        @if (fila.PuedeDepositar)
+                                        {
+                                            <button class="chq-acc" @onclick="() => MandarAlBanco(fila)" title="Lo llevé al banco, todavía no se acreditó">al banco</button>
+                                            <span style="color:#d1d5db;"> · </span>
+                                            <button class="chq-acc" @onclick="() => Depositar(fila)" title="Depositado y ya acreditado, en un solo paso">depositar</button>
+                                            <span style="color:#d1d5db;"> · </span>
+                                        }
+                                        @if (fila.PuedeVentanilla)
+                                        {
+                                            <button class="chq-acc" @onclick="() => CobrarVentanilla(fila)" title="Lo cobré en efectivo por ventanilla">ventanilla</button>
+                                            <span style="color:#d1d5db;"> · </span>
+                                        }
+                                        @if (fila.PuedeEndosar)
+                                        {
+                                            <button class="chq-acc" @onclick="() => AbrirEndoso(fila)" title="Pasarle este cheque a un proveedor para pagarle">endosar</button>
+                                            <span style="color:#d1d5db;"> · </span>
+                                        }
+                                        @if (fila.PuedeAcreditar)
+                                        {
+                                            <button class="chq-acc" @onclick="() => Acreditar(fila)" title="El banco ya lo acreditó">se acreditó</button>
+                                            <span style="color:#d1d5db;"> · </span>
+                                        }
+                                        @if (fila.PuedeRechazar)
+                                        {
+                                            <button class="chq-acc alarma" @onclick="() => Rechazar(fila)" title="El cheque rebotó">rebotó</button>
+                                        }
+                                        @if (!fila.PuedeImputar && !fila.PuedeDepositar && !fila.PuedeVentanilla
+                                             && !fila.PuedeEndosar && !fila.PuedeAcreditar && !fila.PuedeRechazar)
+                                        {
+                                            <span style="color:#9ca3af;">—</span>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="chq-pie">
+                @resumen.Cantidad @(resumen.Cantidad == 1 ? "cheque" : "cheques") · $@resumen.Importe.ToString("N2")
+                @if (resumen.PrimerVencimiento.HasValue)
+                {
+                    <text> · el primero @(vista == "A_PAGAR" ? "se paga" : "vence") el @resumen.PrimerVencimiento.Value.ToString("dd/MM/yy")</text>
+                }
+                @if (!string.IsNullOrWhiteSpace(busqueda))
+                {
+                    <text> · buscando "@busqueda" se ven @filas.Count</text>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@* ════════════ Cobrarle al cliente con este cheque ════════════
+   Sirve igual para un cheque de cartera (POST /cheques/{id}/cobranza) que para un e-cheq
+   del banco (POST /cheques-banco/{id}/asociar-cobranza). Los dos endpoints ya existian:
+   lo unico nuevo es que ahora se llega desde la MISMA pantalla. *@
+@if (cobChe is not null)
+{
+    <div class="modal-overlay">
+        <div class="modal-card" style="max-width:720px; width:92vw; max-height:90vh; overflow-y:auto;">
+            <div class="modal-header">
+                <h3 style="margin:0;">Cobrarle al cliente — cheque N° @cobChe.Numero</h3>
+                <button class="btn-close" @onclick="CerrarCobranza">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size:0.88rem; color:#6b7280; margin-bottom:0.8rem;">
+                    @cobChe.Banco · $@cobChe.Importe.ToString("N2")
+                    @if (cobChe.Vence.HasValue) { <text> · vence @cobChe.Vence.Value.ToString("dd/MM/yyyy")</text> }
+                    @if (!string.IsNullOrWhiteSpace(cobChe.Emisor)) { <text> · firma @cobChe.Emisor</text> }
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Cliente que pagó *</label>
+                    @if (cobCliente is not null)
+                    {
+                        <div style="display:flex; justify-content:space-between; align-items:center; border:1px solid #d1d5db; padding:0.5rem 0.7rem; border-radius:6px;">
+                            <div>
+                                <strong>@(cobCliente.CodigoInterno?.ToString() ?? "—") · @cobCliente.Nombre</strong>
+                                @if (!string.IsNullOrEmpty(cobCliente.Cuit)) { <span class="chq-sub"> · CUIT @cobCliente.Cuit</span> }
+                            </div>
+                            <button class="btn-icon" @onclick="QuitarClienteCobranza" title="Cambiar cliente">✕</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="cobClienteSearch" @bind:event="oninput" placeholder="Buscar por nombre, código o CUIT..." />
+                        @if (!string.IsNullOrWhiteSpace(cobClienteSearch) && clientes is not null)
+                        {
+                            var matches = clientes.Where(c => c.IsActive &&
+                                (c.Nombre.MatchesSearch(cobClienteSearch) ||
+                                 (c.RazonSocial ?? "").MatchesSearch(cobClienteSearch) ||
+                                 (c.Cuit ?? "").Contains(cobClienteSearch, StringComparison.OrdinalIgnoreCase) ||
+                                 (c.CodigoInterno?.ToString() ?? "").Contains(cobClienteSearch)))
+                                .Take(10).ToList();
+                            <div style="max-height:200px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:4px; margin-top:0.3rem;">
+                                @foreach (var c in matches)
+                                {
+                                    var cli = c;
+                                    <div style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6;" @onclick="() => ElegirClienteCobranza(cli)">
+                                        <strong>@(cli.CodigoInterno?.ToString() ?? "—") · @cli.Nombre</strong>
+                                        @if (!string.IsNullOrEmpty(cli.Cuit)) { <span class="chq-sub"> · CUIT @cli.Cuit</span> }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+
+                @if (cobCliente is not null)
+                {
+                    @if (cobCargandoComp)
+                    {
+                        <p class="text-muted">Cargando comprobantes pendientes...</p>
+                    }
+                    else if (cobComprobantes is { Count: > 0 })
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Facturas que cubre este cheque</label>
+                            <p class="chq-sub" style="margin:0 0 0.4rem;">
+                                Imputado $@CobTotalImputar.ToString("N2") de $@CobTotalEsperado.ToString("N2")
+                                @(cobRetenciones > 0 ? $"(cheque ${cobChe.Importe:N2} + retenciones ${cobRetenciones:N2})" : "")
+                            </p>
+                            <table style="width:100%; font-size:0.85rem;">
+                                <thead>
+                                    <tr style="border-bottom:1px solid #e5e7eb;">
+                                        <th style="width:30px;"></th>
+                                        <th style="text-align:left;">Comprobante</th>
+                                        <th style="text-align:right;">Saldo</th>
+                                        <th style="width:130px; text-align:right;">A imputar</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int i = 0; i < cobComprobantes.Count; i++)
+                                    {
+                                        var idx = i;
+                                        var comp = cobComprobantes[idx];
+                                        var sel = cobSeleccion[idx];
+                                        <tr>
+                                            <td><input type="checkbox" checked="@sel.Tildado"
+                                                       @onchange="@(e => OnTildarComprobanteCobranza(idx, (bool)e.Value!))" /></td>
+                                            <td><strong>@comp.Numero</strong> <span class="chq-sub">@comp.Fecha.ToString("dd/MM/yyyy")</span></td>
+                                            <td style="text-align:right;">$@comp.Saldo.ToString("N2")</td>
+                                            <td style="text-align:right;">
+                                                <input class="form-input" type="text" inputmode="decimal" style="text-align:right; padding:0.2rem 0.4rem; font-size:0.85rem;"
+                                                       @bind="sel.ImporteTexto" @bind:event="onchange" disabled="@(!sel.Tildado)" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p style="font-size:0.82rem; color:#6b7280;">Este cliente no tiene facturas con saldo. Se registra como "a cuenta".</p>
+                    }
+
+                    @if (CobFaltaCubrir > 0.01m)
+                    {
+                        <div style="border:1px solid #e5e7eb; border-radius:6px; padding:0.6rem 0.8rem; margin-bottom:0.6rem; font-size:0.85rem;">
+                            Las facturas tildadas suman <strong>$@CobSaldoTildado.ToString("N2")</strong> y el cheque es de
+                            <strong>$@cobChe.Importe.ToString("N2")</strong>: quedan <strong>$@CobFaltaCubrir.ToString("N2")</strong> sin cubrir.
+                            <button type="button" class="btn btn-secondary" style="font-size:0.78rem; padding:0.25rem 0.6rem; margin-top:0.4rem;"
+                                    @onclick="PonerFaltanteComoRetencionCobranza">
+                                Poner $@CobFaltaCubrir.ToString("N2") como retención y saldar las facturas
+                            </button>
+                        </div>
+                    }
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Retenciones</label>
+                            <input class="form-input" type="text" inputmode="decimal" @bind="CobRetencionesTexto" @bind:event="onchange" />
+                        </div>
+                        <div class="form-group" style="flex:2;">
+                            <label class="form-label">Observaciones (opcional)</label>
+                            <input class="form-input" @bind="cobObservaciones" placeholder="Notas internas" />
+                        </div>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(cobError))
+                {
+                    <div style="background:#fee2e2; color:#991b1b; padding:0.5rem 0.7rem; border-radius:4px; font-size:0.82rem; margin-top:0.5rem;">@cobError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarCobranza" disabled="@cobGuardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarCobranza" disabled="@(cobGuardando || cobCliente is null)">
+                    @(cobGuardando ? "Guardando..." : "Confirmar cobranza")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ════════════ Endosar el cheque a un proveedor ════════════
+   Antes esto vivia SOLO en Tesoreria -> Pagos, adentro del formulario de pago y con una
+   lista desplegable de cheques. Aca se hace desde el renglon. Por debajo llama al MISMO
+   endpoint de pagos a proveedor (POST /api/cafe/pagos-proveedor) con el cheque como medio:
+   no se duplico ninguna regla — el endoso, la anulacion y la vuelta a cartera siguen igual. *@
+@if (endChe is not null)
+{
+    <div class="modal-overlay">
+        <div class="modal-card" style="max-width:680px; width:92vw; max-height:90vh; overflow-y:auto;">
+            <div class="modal-header">
+                <h3 style="margin:0;">Endosar el cheque N° @endChe.Numero</h3>
+                <button class="btn-close" @onclick="CerrarEndoso">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size:0.88rem; color:#6b7280; margin-bottom:0.8rem;">
+                    @endChe.Banco · $@endChe.Importe.ToString("N2")
+                    @if (endChe.Vence.HasValue) { <text> · vence @endChe.Vence.Value.ToString("dd/MM/yyyy")</text> }
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Proveedor al que se lo doy *</label>
+                    @if (endProv is not null)
+                    {
+                        <div style="display:flex; justify-content:space-between; align-items:center; border:1px solid #d1d5db; padding:0.5rem 0.7rem; border-radius:6px;">
+                            <div>
+                                <strong>@endProv.Nombre</strong>
+                                @if (!string.IsNullOrEmpty(endProv.Cuit)) { <span class="chq-sub"> · CUIT @endProv.Cuit</span> }
+                            </div>
+                            <button class="btn-icon" @onclick="QuitarProveedorEndoso" title="Cambiar proveedor">✕</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="endProvSearch" @bind:event="oninput" placeholder="Buscar proveedor por nombre o CUIT..." />
+                        @if (!string.IsNullOrWhiteSpace(endProvSearch) && proveedores is not null)
+                        {
+                            var provs = proveedores.Where(p => p.IsActive &&
+                                ((p.Nombre ?? "").Contains(endProvSearch, StringComparison.OrdinalIgnoreCase) ||
+                                 (p.Cuit ?? "").Contains(endProvSearch, StringComparison.OrdinalIgnoreCase)))
+                                .Take(10).ToList();
+                            <div style="max-height:200px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:4px; margin-top:0.3rem;">
+                                @foreach (var p in provs)
+                                {
+                                    var prov = p;
+                                    <div style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6;" @onclick="() => ElegirProveedorEndoso(prov)">
+                                        <strong>@prov.Nombre</strong>
+                                        @if (!string.IsNullOrEmpty(prov.Cuit)) { <span class="chq-sub"> · CUIT @prov.Cuit</span> }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+
+                @if (endProv is not null)
+                {
+                    @if (endCargando)
+                    {
+                        <p class="text-muted">Buscando lo que le debemos...</p>
+                    }
+                    else if (endCompras is { Count: > 0 })
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Facturas del proveedor que paga este cheque</label>
+                            <p class="chq-sub" style="margin:0 0 0.4rem;">
+                                Tildadas $@EndTotalImputado.ToString("N2") de $@endChe.Importe.ToString("N2").
+                                Lo que sobre queda a cuenta del proveedor.
+                            </p>
+                            <table style="width:100%; font-size:0.85rem;">
+                                <thead>
+                                    <tr style="border-bottom:1px solid #e5e7eb;">
+                                        <th style="width:30px;"></th>
+                                        <th style="text-align:left;">Compra</th>
+                                        <th style="text-align:right;">Saldo</th>
+                                        <th style="width:130px; text-align:right;">A pagar</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int i = 0; i < endCompras.Count; i++)
+                                    {
+                                        var idx = i;
+                                        var comp = endCompras[idx];
+                                        var sel = endSeleccion[idx];
+                                        <tr>
+                                            <td><input type="checkbox" checked="@sel.Tildado"
+                                                       @onchange="@(e => OnTildarCompraEndoso(idx, (bool)e.Value!))" /></td>
+                                            <td>
+                                                <strong>@(string.IsNullOrWhiteSpace(comp.NumeroComprobanteProveedor) ? comp.Numero : comp.NumeroComprobanteProveedor)</strong>
+                                                <span class="chq-sub">@comp.Fecha.ToString("dd/MM/yyyy")</span>
+                                            </td>
+                                            <td style="text-align:right;">$@comp.Saldo.ToString("N2")</td>
+                                            <td style="text-align:right;">
+                                                <input class="form-input" type="text" inputmode="decimal" style="text-align:right; padding:0.2rem 0.4rem; font-size:0.85rem;"
+                                                       @bind="sel.ImporteTexto" @bind:event="onchange" disabled="@(!sel.Tildado)" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p style="font-size:0.82rem; color:#6b7280;">No le debemos facturas a este proveedor. El cheque queda a cuenta.</p>
+                    }
+                    <div class="form-group">
+                        <label class="form-label">Observaciones (opcional)</label>
+                        <input class="form-input" @bind="endObservaciones" placeholder="Notas internas" />
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(endError))
+                {
+                    <div style="background:#fee2e2; color:#991b1b; padding:0.5rem 0.7rem; border-radius:4px; font-size:0.82rem; margin-top:0.5rem;">@endError</div>
+                }
+                <div style="font-size:0.78rem; color:#6b7280; margin-top:0.5rem;">
+                    Al confirmar se genera la orden de pago al proveedor con este cheque como forma de pago.
+                    El cheque sale de "en mano" y queda como endosado. Si te equivocás, anulás el pago desde
+                    Tesorería → Pagos y el cheque vuelve solo.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarEndoso" disabled="@endGuardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarEndoso" disabled="@(endGuardando || endProv is null)">
+                    @(endGuardando ? "Guardando..." : "Confirmar endoso")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ════════════ Cargar un cheque a mano ════════════ *@
+@if (showNuevo)
+{
+    <div class="modal-overlay">
+        <div class="modal-card" style="max-width:560px;">
+            <div class="modal-header">
+                <h3 style="margin:0;">Cargar un cheque a mano</h3>
+                <button class="btn-close" @onclick="CerrarNuevo">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="chq-sub" style="margin:0 0 0.7rem;">
+                    Un cheque de papel que recibiste. Entra "en mano" sin cliente; cuando lo uses para
+                    cobrarle a alguien queda asociado a ese cliente.
+                </p>
+                <div class="form-row">
+                    <div class="form-group" style="flex:2;">
+                        <label class="form-label">Banco *</label>
+                        <select class="form-input" @bind="fBancoId">
+                            <option value="0">— Elegí un banco —</option>
+                            @if (bancos is not null)
+                            {
+                                @foreach (var b in bancos.OrderBy(x => x.SortOrder).ThenBy(x => x.Display))
+                                {
+                                    <option value="@b.Id">@b.Display</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:1.2;">
+                        <label class="form-label">Número *</label>
+                        <input class="form-input" @bind="fNumero" placeholder="Ej: 12345678" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Quién lo firma (opcional)</label>
+                    <input class="form-input" @bind="fEmisor" placeholder="Razón social o nombre" />
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Importe *</label>
+                        <input class="form-input" type="text" inputmode="decimal" @bind="FImporteTexto" @bind:event="onchange" />
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Vence</label>
+                        <input class="form-input" type="date"
+                               value="@(fVenc?.ToString("yyyy-MM-dd"))"
+                               @onchange="@(e => fVenc = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!))" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Observaciones (opcional)</label>
+                    <textarea class="form-input" rows="2" @bind="fObs"></textarea>
+                </div>
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div style="background:#fee2e2; color:#991b1b; padding:0.5rem 0.7rem; border-radius:4px; font-size:0.82rem; margin-top:0.5rem;">@formError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarNuevo" disabled="@savingNuevo">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarNuevo" disabled="@savingNuevo">@(savingNuevo ? "Guardando..." : "Guardar cheque")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Permite entrar directo a una solapa: /cafe/tesoreria/cheques-todos?vista=A_PAGAR
+    /// (lo usan las tarjetas del dashboard).</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "vista")] public string? VistaQuery { get; set; }
+
+    // ═══════════════ Listado ═══════════════
+    private string vista = "EN_MANO";
+    private string busqueda = "";
+    private bool loading = true;
+    private List<ChequeUniDto> todas = new();     // todo lo de la vista, tal cual vino
+    private List<ChequeUniDto> filas = new();     // lo que se ve (todas + buscador)
+    private ChequesUniConteosDto conteos = new();
+    private ChequesUniResumenDto resumen = new();
+
+    private static readonly (string key, string label)[] Solapas = new[]
+    {
+        ("EN_MANO", "Tengo en mano"),
+        ("EN_BANCO", "En el banco"),
+        ("USADOS", "Ya los usé"),
+        ("RECHAZADOS", "Rebotaron"),
+        ("A_PAGAR", "Que tengo que pagar"),
+    };
+
+    private int Conteo(string k) => k switch
+    {
+        "EN_MANO" => conteos.EnMano,
+        "EN_BANCO" => conteos.EnBanco,
+        "USADOS" => conteos.Usados,
+        "RECHAZADOS" => conteos.Rechazados,
+        "A_PAGAR" => conteos.APagar,
+        _ => 0
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(VistaQuery)
+            && Solapas.Any(x => x.key == VistaQuery.ToUpperInvariant()))
+            vista = VistaQuery.ToUpperInvariant();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            var r = await Api.GetChequesUnificadoAsync(vista);
+            todas = r?.Filas ?? new();
+            conteos = r?.Conteos ?? new();
+            resumen = r?.Resumen ?? new();
+        }
+        catch (Exception ex) { ToastService.Error("Error al cargar: " + ex.Message); todas = new(); }
+        FiltrarLocal();
+        loading = false;
+    }
+
+    private async Task CambiarVista(string k)
+    {
+        if (vista == k) return;
+        vista = k;
+        await Load();
+    }
+
+    /// <summary>El buscador filtra sobre lo que ya esta en pantalla: no vuelve a pegarle a la API
+    /// en cada tecla (eso era lo que hacia lento el chat de WhatsApp en la compu).</summary>
+    private void OnBuscar() => FiltrarLocal();
+
+    private void FiltrarLocal()
+    {
+        var t = (busqueda ?? "").Trim();
+        if (t.Length == 0) { filas = todas.ToList(); return; }
+        var digitos = new string(t.Where(char.IsDigit).ToArray());
+        bool Tiene(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        filas = todas.Where(f =>
+            Tiene(f.Numero) || Tiene(f.Banco) || Tiene(f.Emisor) || Tiene(f.ClienteNombre) || Tiene(f.Observaciones)
+            || (digitos.Length > 0 && f.Numero.TrimStart('0').Contains(digitos))
+            || (digitos.Length >= 3 && ((long)f.Importe).ToString().Contains(digitos)))
+            .ToList();
+    }
+
+    // ═══════════════ Acciones del renglon ═══════════════
+    private async Task MandarAlBanco(ChequeUniDto f)
+    {
+        try { await Api.MandarChequeAlBancoAsync(f.Id); ToastService.Success("Anotado: está en el banco esperando"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+    private async Task Depositar(ChequeUniDto f)
+    {
+        try { await Api.DepositarChequeAsync(f.Id); ToastService.Success("Depositado y acreditado"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+    private async Task Acreditar(ChequeUniDto f)
+    {
+        try { await Api.AcreditarChequeAsync(f.Id); ToastService.Success("Acreditado"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+    private async Task CobrarVentanilla(ChequeUniDto f)
+    {
+        try { await Api.CobrarChequeVentanillaAsync(f.Id); ToastService.Success("Cobrado por ventanilla"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+    private async Task Rechazar(ChequeUniDto f)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Marcar como rebotado el cheque N° {f.Numero} de ${f.Importe:N2}?")) return;
+        try { await Api.RechazarChequeAsync(f.Id); ToastService.Success("Marcado como rebotado"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task Unir(ChequeUniDto f)
+    {
+        if (!f.DuplicadoCarteraId.HasValue || !f.DuplicadoBancoId.HasValue) return;
+        if (!await JS.InvokeAsync<bool>("confirm",
+            $"El cheque N° {f.Numero} de ${f.Importe:N2} está cargado dos veces. ¿Los uno y dejo uno solo?")) return;
+        var (ok, err) = await Api.UnirChequeDuplicadoAsync(f.DuplicadoCarteraId.Value, f.DuplicadoBancoId.Value);
+        if (!ok) { ToastService.Error(err ?? "No se pudieron unir"); return; }
+        ToastService.Success("Listo, quedó uno solo");
+        await Load();
+    }
+
+    // ═══════════════ Cobrarle al cliente ═══════════════
+    private ChequeUniDto? cobChe;
+    private List<CafeClienteDto>? clientes;
+    private CafeClienteDto? cobCliente;
+    private string cobClienteSearch = "";
+    private List<ComprobantePendienteDto>? cobComprobantes;
+    private class SelState
+    {
+        public bool Tildado;
+        public decimal Importe;
+        public string ImporteTexto
+        {
+            get => MontoInput.Formato(Importe);
+            set { MontoInput.TryParse(value, out var v); Importe = v; }
+        }
+    }
+    private List<SelState> cobSeleccion = new();
+    private decimal cobRetenciones;
+    private string CobRetencionesTexto
+    {
+        get => MontoInput.Formato(cobRetenciones);
+        set { MontoInput.TryParse(value, out cobRetenciones); }
+    }
+    private string cobObservaciones = "";
+    private bool cobCargandoComp, cobGuardando;
+    private string? cobError;
+
+    private decimal CobTotalImputar => cobSeleccion.Where(x => x.Tildado).Sum(x => x.Importe);
+    private decimal CobTotalEsperado => (cobChe?.Importe ?? 0m) + cobRetenciones;
+    private decimal CobSaldoTildado => cobComprobantes is null ? 0m
+        : cobSeleccion.Select((s, i) => s.Tildado ? cobComprobantes[i].Saldo : 0m).Sum();
+    private decimal CobFaltaCubrir => Math.Round(CobSaldoTildado - ((cobChe?.Importe ?? 0m) + cobRetenciones), 2);
+
+    private async Task AbrirCobranza(ChequeUniDto f)
+    {
+        cobChe = f;
+        cobCliente = null; cobClienteSearch = ""; cobComprobantes = null;
+        cobSeleccion = new(); cobRetenciones = 0m; cobObservaciones = ""; cobError = null;
+        try
+        {
+            clientes ??= await Api.GetCafeClientesAsync() ?? new();
+            if (f.ClienteId.HasValue)
+            {
+                var pre = clientes.FirstOrDefault(c => c.Id == f.ClienteId.Value);
+                if (pre is not null) await ElegirClienteCobranza(pre);
+            }
+        }
+        catch (Exception ex) { cobError = "Error cargando clientes: " + ex.Message; }
+    }
+
+    private void CerrarCobranza() { if (!cobGuardando) cobChe = null; }
+
+    private async Task ElegirClienteCobranza(CafeClienteDto c)
+    {
+        cobCliente = c;
+        cobClienteSearch = "";
+        cobCargandoComp = true;
+        try
+        {
+            cobComprobantes = await Api.GetComprobantesPendientesAsync(c.Id, true) ?? new();
+            cobSeleccion = cobComprobantes.Select(_ => new SelState()).ToList();
+            decimal restante = cobChe?.Importe ?? 0m;
+            for (int i = 0; i < cobComprobantes.Count && restante > 0.01m; i++)
+            {
+                var aImputar = Math.Min(cobComprobantes[i].Saldo, restante);
+                if (aImputar <= 0m) continue;
+                cobSeleccion[i].Tildado = true;
+                cobSeleccion[i].Importe = Math.Round(aImputar, 2);
+                restante -= aImputar;
+            }
+        }
+        catch (Exception ex) { cobError = "Error cargando comprobantes: " + ex.Message; }
+        finally { cobCargandoComp = false; }
+    }
+
+    private void QuitarClienteCobranza()
+    {
+        cobCliente = null; cobComprobantes = null; cobSeleccion = new();
+    }
+
+    private void OnTildarComprobanteCobranza(int idx, bool tildado)
+    {
+        if (idx < 0 || idx >= cobSeleccion.Count) return;
+        cobSeleccion[idx].Tildado = tildado;
+        if (tildado && cobSeleccion[idx].Importe <= 0m && cobComprobantes is not null)
+            cobSeleccion[idx].Importe = cobComprobantes[idx].Saldo;
+        if (!tildado) cobSeleccion[idx].Importe = 0m;
+    }
+
+    private void PonerFaltanteComoRetencionCobranza()
+    {
+        if (cobComprobantes is null) return;
+        var falta = CobFaltaCubrir;
+        if (falta <= 0.01m) return;
+        cobRetenciones = Math.Round(cobRetenciones + falta, 2);
+        for (int i = 0; i < cobSeleccion.Count; i++)
+            if (cobSeleccion[i].Tildado) cobSeleccion[i].Importe = cobComprobantes[i].Saldo;
+    }
+
+    private async Task ConfirmarCobranza()
+    {
+        if (cobChe is null || cobCliente is null) { cobError = "Falta elegir el cliente"; return; }
+        cobError = null;
+
+        var items = cobSeleccion
+            .Select((sel, i) => new { sel, comp = cobComprobantes![i] })
+            .Where(x => x.sel.Tildado && x.sel.Importe > 0m)
+            .Select(x => new ImputarComprobanteItem { VentaId = x.comp.VentaId, Importe = x.sel.Importe })
+            .ToList();
+
+        var diferencia = Math.Round(CobTotalEsperado - CobTotalImputar, 2);
+        if (diferencia < -0.01m)
+        {
+            cobError = $"Imputaste ${CobTotalImputar:N2} pero el cheque + retenciones suman ${CobTotalEsperado:N2}. Reducí algún importe.";
+            return;
+        }
+        if (diferencia > 0.01m)
+            items.Add(new ImputarComprobanteItem { VentaId = null, Importe = diferencia });
+        if (items.Count == 0) { cobError = "No hay nada para imputar"; return; }
+
+        var req = new AsociarECheqRequest
+        {
+            ClienteId = cobCliente.Id,
+            Retenciones = cobRetenciones,
+            Observaciones = string.IsNullOrWhiteSpace(cobObservaciones) ? null : cobObservaciones.Trim(),
+            Comprobantes = items
+        };
+
+        cobGuardando = true;
+        try
+        {
+            // El camino depende de donde vive el cheque: si es del banco, ademas lo trae a cartera.
+            if (cobChe.Origen == "BANCO")
+            {
+                var (_, numero, err) = await Api.AsociarECheqACobranzaAsync(cobChe.Id, req);
+                if (err is not null) { cobError = err; return; }
+                ToastService.Success($"Cobranza {numero} creada con el cheque N° {cobChe.Numero}");
+            }
+            else
+            {
+                var (numero, err) = await Api.CrearCobranzaDesdeChequeAsync(cobChe.Id, req);
+                if (err is not null) { cobError = err; return; }
+                ToastService.Success($"Cobranza {numero} creada con el cheque N° {cobChe.Numero}");
+            }
+            cobChe = null;
+            await Load();
+        }
+        finally { cobGuardando = false; }
+    }
+
+    // ═══════════════ Endosar a un proveedor ═══════════════
+    private ChequeUniDto? endChe;
+    private List<CafeProveedorDto>? proveedores;
+    private List<CafeCajaDto>? cajas;
+    private CafeProveedorDto? endProv;
+    private string endProvSearch = "";
+    private List<CompraPendienteDto>? endCompras;
+    private List<SelState> endSeleccion = new();
+    private string endObservaciones = "";
+    private bool endCargando, endGuardando;
+    private string? endError;
+
+    private decimal EndTotalImputado => endSeleccion.Where(x => x.Tildado).Sum(x => x.Importe);
+
+    private async Task AbrirEndoso(ChequeUniDto f)
+    {
+        endChe = f;
+        endProv = null; endProvSearch = ""; endCompras = null; endSeleccion = new();
+        endObservaciones = ""; endError = null;
+        try
+        {
+            proveedores ??= await Api.GetCafeProveedoresAsync() ?? new();
+            cajas ??= await Api.GetCafeCajasAsync() ?? new();
+        }
+        catch (Exception ex) { endError = "Error cargando proveedores: " + ex.Message; }
+    }
+
+    private void CerrarEndoso() { if (!endGuardando) endChe = null; }
+
+    private async Task ElegirProveedorEndoso(CafeProveedorDto p)
+    {
+        endProv = p;
+        endProvSearch = "";
+        endCargando = true;
+        try
+        {
+            endCompras = await Api.GetComprasPendientesAsync(p.Id) ?? new();
+            endSeleccion = endCompras.Select(_ => new SelState()).ToList();
+            decimal restante = endChe?.Importe ?? 0m;
+            for (int i = 0; i < endCompras.Count && restante > 0.01m; i++)
+            {
+                var aPagar = Math.Min(endCompras[i].Saldo, restante);
+                if (aPagar <= 0m) continue;
+                endSeleccion[i].Tildado = true;
+                endSeleccion[i].Importe = Math.Round(aPagar, 2);
+                restante -= aPagar;
+            }
+        }
+        catch (Exception ex) { endError = "Error trayendo las compras: " + ex.Message; }
+        finally { endCargando = false; }
+    }
+
+    private void QuitarProveedorEndoso()
+    {
+        endProv = null; endCompras = null; endSeleccion = new();
+    }
+
+    private void OnTildarCompraEndoso(int idx, bool tildado)
+    {
+        if (idx < 0 || idx >= endSeleccion.Count) return;
+        endSeleccion[idx].Tildado = tildado;
+        if (tildado && endSeleccion[idx].Importe <= 0m && endCompras is not null)
+            endSeleccion[idx].Importe = endCompras[idx].Saldo;
+        if (!tildado) endSeleccion[idx].Importe = 0m;
+    }
+
+    private async Task ConfirmarEndoso()
+    {
+        if (endChe is null || endProv is null) { endError = "Falta elegir el proveedor"; return; }
+        endError = null;
+
+        var caja = cajas?.FirstOrDefault(c => c.Tipo == "CHEQUES_CARTERA" && c.IsActive);
+        if (caja is null) { endError = "No hay una caja de tipo 'Cheques en cartera' configurada"; return; }
+
+        var comps = endSeleccion
+            .Select((sel, i) => new { sel, comp = endCompras![i] })
+            .Where(x => x.sel.Tildado && x.sel.Importe > 0m)
+            .Select(x => new ApiClient.CrearCompraItemRequest(x.comp.CompraId, x.sel.Importe))
+            .ToList();
+
+        var sobra = Math.Round(endChe.Importe - EndTotalImputado, 2);
+        if (sobra < -0.01m)
+        {
+            endError = $"Tildaste ${EndTotalImputado:N2} y el cheque es de ${endChe.Importe:N2}. Bajá algún importe.";
+            return;
+        }
+        if (sobra > 0.01m) comps.Add(new ApiClient.CrearCompraItemRequest(null, sobra));
+        if (comps.Count == 0) { endError = "No hay nada para pagar"; return; }
+
+        var medios = new List<ApiClient.CrearMedioPagoRequest>
+        {
+            new(caja.Id, endChe.Importe, $"Cheque N° {endChe.Numero} ({endChe.Banco})", endChe.Id)
+        };
+
+        endGuardando = true;
+        try
+        {
+            var r = await Api.CrearCafePagoProveedorAsync(endProv.Id, 0m, null,
+                string.IsNullOrWhiteSpace(endObservaciones)
+                    ? $"Endoso del cheque {endChe.Banco} N° {endChe.Numero}"
+                    : endObservaciones.Trim(),
+                comps, medios);
+            if (r is null) { endError = "No se pudo endosar. Fijate que el cheque siga en mano."; return; }
+            ToastService.Success($"Cheque endosado a {endProv.Nombre} · orden de pago {r.Numero}");
+            endChe = null;
+            await Load();
+        }
+        catch (Exception ex) { endError = ex.Message; }
+        finally { endGuardando = false; }
+    }
+
+    // ═══════════════ Alta a mano ═══════════════
+    private bool showNuevo, savingNuevo;
+    private string? formError;
+    private int fBancoId;
+    private string fNumero = "";
+    private string fEmisor = "";
+    private decimal fImporte;
+    private string FImporteTexto
+    {
+        get => MontoInput.Formato(fImporte);
+        set { MontoInput.TryParse(value, out fImporte); }
+    }
+    private DateTime? fVenc;
+    private string fObs = "";
+    private List<CafeBancoDto>? bancos;
+
+    private async Task AbrirNuevo()
+    {
+        fBancoId = 0; fNumero = ""; fEmisor = ""; fImporte = 0; fVenc = null; fObs = "";
+        formError = null;
+        try { bancos = await Api.GetBancosAsync() ?? new(); }
+        catch { bancos = new(); }
+        showNuevo = true;
+    }
+
+    private void CerrarNuevo() { if (!savingNuevo) showNuevo = false; }
+
+    private async Task GuardarNuevo()
+    {
+        formError = null;
+        if (fBancoId <= 0) { formError = "Elegí un banco"; return; }
+        if (string.IsNullOrWhiteSpace(fNumero)) { formError = "Falta el número"; return; }
+        if (fImporte <= 0) { formError = "El importe tiene que ser mayor a 0"; return; }
+        savingNuevo = true;
+        try
+        {
+            var (cheque, err) = await Api.CrearChequeAsync(new CreateChequeRequest
+            {
+                BancoId = fBancoId,
+                Numero = fNumero.Trim(),
+                Emisor = string.IsNullOrWhiteSpace(fEmisor) ? null : fEmisor.Trim(),
+                Importe = fImporte,
+                FechaVencimiento = fVenc,
+                FechaCobro = fVenc,
+                Observaciones = string.IsNullOrWhiteSpace(fObs) ? null : fObs.Trim()
+            });
+            if (cheque is null) { formError = err ?? "No se pudo guardar"; return; }
+            ToastService.Success($"Cheque {cheque.Banco} N° {cheque.Numero} cargado");
+            showNuevo = false;
+            vista = "EN_MANO";
+            await Load();
+        }
+        finally { savingNuevo = false; }
+    }
+}

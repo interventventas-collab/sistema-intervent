@@ -7011,6 +7011,36 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // ===== Cheques: vista unificada (2026-09-10) =====
+    /// <summary>Trae los cheques de las DOS tablas (cartera + banco) en una sola lista, filtrados
+    /// por la vista (solapa) pedida. vista: EN_MANO | EN_BANCO | USADOS | RECHAZADOS | A_PAGAR.</summary>
+    public async Task<ChequesUnificadoResponse?> GetChequesUnificadoAsync(string vista, string? q = null)
+    {
+        var url = $"/api/cafe/cheques-unificado?vista={Uri.EscapeDataString(vista)}";
+        if (!string.IsNullOrWhiteSpace(q)) url += $"&q={Uri.EscapeDataString(q)}";
+        return await GetAsync<ChequesUnificadoResponse>(url);
+    }
+
+    /// <summary>Une el cheque de cartera con su gemelo del banco (es el mismo papel cargado dos veces).</summary>
+    public async Task<(bool ok, string? error)> UnirChequeDuplicadoAsync(int chequeCarteraId, int chequeBancoId)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/cafe/cheques-unificado/unir",
+                new { chequeCarteraId, chequeBancoId });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "No se pudieron unir";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<List<CafeChequeDto>?> GetCafeChequesAsync(string? estado = null)
         => await GetAsync<List<CafeChequeDto>>("/api/cafe/cheques" + (string.IsNullOrWhiteSpace(estado) ? "" : $"?estado={Uri.EscapeDataString(estado)}"));
     /// <summary>Alta manual de cheque (papel) que entra a cartera. Devuelve (cheque, error).

@@ -16,10 +16,10 @@
         <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
             @* 2026-08-18: accesos a cheques acá, que es donde se imputan los pagos (antes solo estaban
                escondidos dos niveles adentro del menú Tesorería). *@
-            <button class="btn btn-secondary" title="Cheques que llegaron al banco — asociarlos a un cliente y a sus facturas"
-                    @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-banco")'>💳 Cheques del banco</button>
-            <button class="btn btn-secondary" title="Cheques que tenés en cartera — depositar, cobrar por ventanilla o marcar rechazado"
-                    @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques")'>📄 Cheques en cartera</button>
+            @* 2026-09-10: antes eran dos botones a dos pantallas distintas. Ahora los cheques
+               (los del banco y los cargados a mano) viven todos en la misma. *@
+            <button class="btn btn-secondary" title="Todos los cheques: cobrarlos al cliente, depositarlos, endosarlos"
+                    @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-todos")'>📄 Cheques</button>
             <button class="btn btn-primary" @onclick="ShowNueva">+ Nueva cobranza</button>
         </div>
     </div>
