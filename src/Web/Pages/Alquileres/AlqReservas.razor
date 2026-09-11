@@ -1908,6 +1908,11 @@
         await ShowCreate();
         formCotizacionId = cot.Id;   // va DESPUÉS de ShowCreate: ese limpia el formulario
 
+        // 2026-09-11: los DÍAS del presupuesto. Sin esto la reserva arrancaba siempre en "1 día":
+        // el total escrito a mano era el correcto, pero si él tildaba "Usar precios" para tocar algo,
+        // el detalle se recalculaba por 1 día y el total se le desplomaba sin aviso.
+        formDias = Math.Clamp(cot.Dias <= 0 ? 1 : cot.Dias, 1, 365);
+
         // El cliente: si la cotización quedó atada a uno, va puesto. Si no, lo elige él.
         if (cot.ClienteId is int cid && clientes?.Any(c => c.Id == cid) == true)
             formClienteId = cid;
@@ -1940,7 +1945,11 @@
                 EquipoId = null,
                 Descripcion = string.IsNullOrWhiteSpace(cot.FleteZona) ? "Flete" : $"Flete {cot.FleteZona}",
                 Cantidad = 1,
-                PrecioUnitario = cot.FleteMonto
+                PrecioUnitario = cot.FleteMonto,
+                // 2026-09-11: el flete se cobra UNA sola vez, no por dia. Sin esto el renglon
+                // entraba tildado (el default es true, que es lo correcto para un equipo escrito
+                // a mano) y al pasar a "Usar precios" el flete se multiplicaba por los dias.
+                MultiplicaPorDias = false
             });
         }
 
