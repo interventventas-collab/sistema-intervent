@@ -7685,16 +7685,17 @@ IF COL_LENGTH('Alq_Reservas','Dias') IS NULL
     ALTER TABLE Alq_Reservas ADD Dias INT NOT NULL CONSTRAINT DF_AlqReservas_Dias DEFAULT 1 WITH VALUES;
 GO
 
--- El tilde por renglon: los equipos del catalogo se multiplican por los dias, los renglones
--- escritos a mano (tipico: "Flete Moron") no. Se puede cambiar renglon por renglon.
+-- El tilde por renglon. Arranca en 1 (se multiplica) para TODOS, que es lo correcto para un
+-- equipo. El flete lo marca en 0 quien arma la reserva: al pasar un presupuesto ya entra
+-- destildado solo (AlqReservas.razor::AplicarCotizacionAsync), y a mano se destilda con el tilde.
+--
+-- 2026-09-11: ACA HABIA un UPDATE que apagaba el multiplicador en TODOS los renglones de texto
+-- libre que ya existian, dando por hecho que "texto libre = flete". En la base de produccion es
+-- al reves: los 3 renglones a mano que hay son EQUIPOS de verdad (banquetas negras, un mantel,
+-- un contenedor), y apagarselos los habria cobrado por 1 dia aunque el alquiler fuera de 5.
+-- Fletes cargados como renglon no habia ninguno. Se saco: el default 1 ya es el correcto.
 IF COL_LENGTH('Alq_ReservaItems','MultiplicaPorDias') IS NULL
     ALTER TABLE Alq_ReservaItems ADD MultiplicaPorDias BIT NOT NULL CONSTRAINT DF_AlqReservaItems_MultDias DEFAULT 1 WITH VALUES;
-GO
-
--- Los renglones que ya existen y son de texto libre (flete y demas) NO se multiplican:
--- si no, la primera vez que alguien tocara los dias de una reserva vieja el flete se duplicaba.
-IF COL_LENGTH('Alq_ReservaItems','MultiplicaPorDias') IS NOT NULL
-    UPDATE Alq_ReservaItems SET MultiplicaPorDias = 0 WHERE EquipoId IS NULL AND MultiplicaPorDias = 1;
 GO
 
 -- El porcentaje del dia extra, editable desde Alquileres -> Equipos. 50 = mitad de precio.
