@@ -7855,7 +7855,8 @@ public class ApiClient
     // 2026-08-25: DireccionEntrega = la direccion de ENTREGA que coincidio con lo que se busco
     // (un cliente puede tener varias). Viene solo cuando el match fue por ahi, para mostrarla.
     public record TwClienteBuscarDto(int Id, string Nombre, string? CodigoInterno, string? Telefono, string? Direccion = null, string? Localidad = null, string? DireccionEntrega = null,
-                                     string? Tipo = null, string? Cuit = null, string? DomicilioEntrega = null, string? LocalidadEntrega = null, string? Ciudad = null, string? Cp = null);
+                                     string? Tipo = null, string? Cuit = null, string? DomicilioEntrega = null, string? LocalidadEntrega = null, string? Ciudad = null, string? Cp = null,
+                                     string? Codigo = null);
     public record TwDestinatarioDto(string Nombre, string Numero, string Origen, bool Disponible = false,
                                     int? ClienteId = null, bool TieneChat = false);
 

@@ -3151,7 +3151,9 @@
                     var locCli = DomicilioTexto.Puntos(dirCli.Localidad, cli.Ciudad, cli.Cp);
                     <button class="wa-vincular-opt wa-cli-row" @onclick="() => ElegirClienteYSeguir(cli.Id, cli.Nombre)">
                         <div class="wa-cli-l1">
-                            <span class="wa-cli-cod">#@(string.IsNullOrEmpty(cli.CodigoInterno) ? "—" : cli.CodigoInterno)</span>
+                            @* Igual que la venta normal: manda el código interno (el que pone el operador)
+                               y si no tiene, cae en el código viejo. El guión es el último recurso. *@
+                            <span class="wa-cli-cod">#@(!string.IsNullOrEmpty(cli.CodigoInterno) ? cli.CodigoInterno : (!string.IsNullOrEmpty(cli.Codigo) ? cli.Codigo : "—"))</span>
                             <strong class="wa-cli-nom">@cli.Nombre</strong>
                             @if (!string.IsNullOrEmpty(cli.Tipo)) { <span class="wa-cli-dato">· @cli.Tipo</span> }
                             @if (!string.IsNullOrEmpty(cli.Cuit)) { <span class="wa-cli-dato">· @cli.Cuit</span> }
