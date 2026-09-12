@@ -80,6 +80,21 @@ public class WaMovilScopeMiddleware
            && ruta.EndsWith("/estado-cuenta", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// 2026-09-12 — Excepción puntual: el pin de Google Maps arriba del chat del celular.
+    ///
+    /// Se abre `/api/cafe/clientes/{id}/ubicacion` y SOLO para leer. Ese endpoint devuelve
+    /// únicamente los domicilios y el link del mapa de UN cliente: no toca saldo, CUIT, mail ni
+    /// facturas. La ficha entera (`/ficha-chat`) sigue cerrada con la huella, a propósito.
+    ///
+    /// Es el mismo criterio que <see cref="EsEstadoDeCuenta"/>: un dato puntual del cliente que
+    /// ya se está mirando en la charla, no la base de clientes.
+    /// </summary>
+    private static bool EsUbicacionDelCliente(string ruta, string metodo)
+        => metodo == "GET"
+           && ruta.StartsWith("/api/cafe/clientes/", StringComparison.OrdinalIgnoreCase)
+           && ruta.EndsWith("/ubicacion", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// 2026-09-01 — Excepción puntual para el cotizador de alquileres del celular (el 🪑 del ➕).
     ///
     /// Se abre lo MÍNIMO y mirando también el método, no el módulo entero: leer el catálogo de
@@ -124,6 +139,7 @@ public class WaMovilScopeMiddleware
         var permitido = Permitido.Any(p => ruta.StartsWith(p, StringComparison.OrdinalIgnoreCase))
                         || PublicoConToken.Any(p => ruta.StartsWith(p, StringComparison.OrdinalIgnoreCase))
                         || EsEstadoDeCuenta(ruta)
+                        || EsUbicacionDelCliente(ruta, metodo)
                         || EsLetraDelWhatsApp(ruta, metodo)
                         || EsCotizadorAlquiler(ruta, metodo);
 

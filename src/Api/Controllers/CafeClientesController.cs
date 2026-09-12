@@ -115,9 +115,14 @@ public class CafeClientesController : ControllerBase
     // todo sin salir de la conversación.
     public record FichaChatVentaDto(
         int Id, DateTime Fecha, string Numero, string? Tipo, decimal Total, decimal Pagado, decimal Saldo, string Estado);
+    // 2026-09-12: DOMICILIO DE ENTREGA. El chat mostraba el domicilio FISCAL (`Direccion`) pero el
+    // link del mapa sale del `MapeoLink`, que en la practica apunta a donde se ENTREGA. Osmar:
+    // *"te aparece escrito el domicilio fiscal pero cuando pinchas te lleva al de entrega, es como
+    // una contradiccion"*. Ahora viajan los dos y la pantalla muestra el de entrega cuando existe.
     public record FichaChatDto(
         int ClienteId, string Nombre, string? RazonSocial, string? Cuit, string? CondicionIva,
         string? Telefono, string? Telefono2, string? Email, string? Direccion, string? Localidad,
+        string? DomicilioEntrega, string? LocalidadEntrega,
         string? MapeoLink, string? Notas, string? ComentariosComprobante,
         int? CodigoInterno, decimal Saldo, List<FichaChatVentaDto> Ventas);
 
@@ -148,8 +153,35 @@ public class CafeClientesController : ControllerBase
         return Ok(new FichaChatDto(
             c.Id, c.Nombre, c.RazonSocial, c.Cuit, c.CondicionIvaDefault,
             c.Telefono, c.Telefono2, c.Email, c.Direccion, c.Localidad,
+            c.DomicilioEntrega, c.LocalidadEntrega,
             c.MapeoLink, c.Notas, c.ComentariosComprobante,
             c.CodigoInterno, saldo, ventasDto));
+    }
+
+    // 2026-09-12: SOLO LA UBICACION de un cliente. Existe aparte de `ficha-chat` por el celular:
+    // la pantalla del WhatsApp del celu se abre con la HUELLA y esa sesion esta encerrada por
+    // WaMovilScopeMiddleware, que (bien) no la deja leer la ficha entera —ahi van saldo, CUIT,
+    // mail y las ultimas 8 facturas—. Para pintar el pin de Google Maps arriba del chat alcanza
+    // con la direccion y el link, que es lo unico que devuelve esto.
+    //
+    // Los domicilios viajan crudos (fiscal y entrega, cada uno con su localidad): cual se MUESTRA
+    // lo decide una sola regla que vive en el frontend (Web/Services/DomicilioTexto.cs), para que
+    // la compu y el celu no puedan discrepar.
+    public record UbicacionClienteDto(
+        int ClienteId, string Nombre, string? Direccion, string? Localidad,
+        string? DomicilioEntrega, string? LocalidadEntrega, string? MapeoLink);
+
+    [HttpGet("{id:int}/ubicacion")]
+    public async Task<IActionResult> Ubicacion(int id)
+    {
+        var c = await _db.CafeClientes.AsNoTracking()
+            .Where(x => x.Id == id)
+            .Select(x => new UbicacionClienteDto(
+                x.Id, x.Nombre, x.Direccion, x.Localidad,
+                x.DomicilioEntrega, x.LocalidadEntrega, x.MapeoLink))
+            .FirstOrDefaultAsync();
+        if (c is null) return NotFound(new { error = "Cliente no encontrado" });
+        return Ok(c);
     }
 
     [HttpPost]

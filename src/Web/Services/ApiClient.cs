@@ -7854,7 +7854,8 @@ public class ApiClient
     public record TwContactoUpsert(string Numero, string Nombre, string Rol, string? Notas, bool Activo, int? ClienteId);
     // 2026-08-25: DireccionEntrega = la direccion de ENTREGA que coincidio con lo que se busco
     // (un cliente puede tener varias). Viene solo cuando el match fue por ahi, para mostrarla.
-    public record TwClienteBuscarDto(int Id, string Nombre, string? CodigoInterno, string? Telefono, string? Direccion = null, string? Localidad = null, string? DireccionEntrega = null);
+    public record TwClienteBuscarDto(int Id, string Nombre, string? CodigoInterno, string? Telefono, string? Direccion = null, string? Localidad = null, string? DireccionEntrega = null,
+                                     string? Tipo = null, string? Cuit = null, string? DomicilioEntrega = null, string? LocalidadEntrega = null, string? Ciudad = null, string? Cp = null);
     public record TwDestinatarioDto(string Nombre, string Numero, string Origen, bool Disponible = false,
                                     int? ClienteId = null, bool TieneChat = false);
 
@@ -8501,11 +8502,26 @@ public class ApiClient
 
     // 2026-08-05: ficha rápida del cliente para la tarjeta desplegable dentro del chat.
     public record FichaChatVentaDto(int Id, DateTime Fecha, string Numero, string? Tipo, decimal Total, decimal Pagado, decimal Saldo, string Estado);
+    // 2026-09-12: Direccion/Localidad son las FISCALES (las de la factura) y DomicilioEntrega/
+    // LocalidadEntrega son las de ENTREGA. En el chat mandan las de entrega: es a donde va el
+    // reparto y es a donde apunta el MapeoLink.
     public record FichaChatDto(
         int ClienteId, string Nombre, string? RazonSocial, string? Cuit, string? CondicionIva,
         string? Telefono, string? Telefono2, string? Email, string? Direccion, string? Localidad,
+        string? DomicilioEntrega, string? LocalidadEntrega,
         string? MapeoLink, string? Notas, string? ComentariosComprobante,
         int? CodigoInterno, decimal Saldo, List<FichaChatVentaDto> Ventas);
+    // 2026-09-12: SOLO la ubicación de un cliente (domicilios + link de Maps). La usa el chat del
+    // CELULAR, que entra con la huella y no tiene permiso para leer la ficha entera.
+    public record UbicacionClienteDto(
+        int ClienteId, string Nombre, string? Direccion, string? Localidad,
+        string? DomicilioEntrega, string? LocalidadEntrega, string? MapeoLink);
+    public async Task<UbicacionClienteDto?> GetUbicacionClienteAsync(int clienteId)
+    {
+        try { return await _http.GetFromJsonAsync<UbicacionClienteDto>($"/api/cafe/clientes/{clienteId}/ubicacion"); }
+        catch { return null; }
+    }
+
     public async Task<FichaChatDto?> GetFichaChatAsync(int clienteId)
     {
         try { return await _http.GetFromJsonAsync<FichaChatDto>($"/api/cafe/clientes/{clienteId}/ficha-chat"); }

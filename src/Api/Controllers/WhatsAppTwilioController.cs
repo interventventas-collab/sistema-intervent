@@ -1126,12 +1126,19 @@ public class WhatsAppTwilioController : ControllerBase
             .ThenByDescending(c => EF.Functions.Like(c.Nombre, patronPrimPalabra))
             .ThenBy(c => c.Nombre)
             .Take(Math.Clamp(top, 1, 50))
-            .Select(c => new { c.Id, c.Nombre, CodigoInterno = c.CodigoInterno.HasValue ? c.CodigoInterno.ToString() : null, c.Telefono, c.Direccion, c.Localidad })
+            // 2026-09-12: ahora viajan tambien Tipo, CUIT, ciudad, CP y el DOMICILIO DE ENTREGA.
+            // El resultado de este buscador (el del "modo venta" dentro del chat) mostraba solo el
+            // domicilio FISCAL y quedaba mas pobre que el de la carga de venta normal, que es el
+            // que a Osmar le gusta. Con estos campos el renglon se arma igual en las dos pantallas.
+            .Select(c => new { c.Id, c.Nombre, CodigoInterno = c.CodigoInterno.HasValue ? c.CodigoInterno.ToString() : null,
+                               c.Telefono, c.Direccion, c.Localidad, c.Tipo, c.Cuit,
+                               c.DomicilioEntrega, c.LocalidadEntrega, c.Ciudad, c.Cp })
             .ToListAsync();
         // La dirección de entrega que matcheó viaja aparte para poder mostrarla debajo del nombre.
         var result = list.Select(c => new
         {
             c.Id, c.Nombre, c.CodigoInterno, c.Telefono, c.Direccion, c.Localidad,
+            c.Tipo, c.Cuit, c.DomicilioEntrega, c.LocalidadEntrega, c.Ciudad, c.Cp,
             DireccionEntrega = dirPorCliente.TryGetValue(c.Id, out var dtxt) ? dtxt : null
         }).ToList();
         return Ok(result);
