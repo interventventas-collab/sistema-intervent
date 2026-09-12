@@ -647,11 +647,25 @@
                     <span class="wa-avatar-rol-label">@RolLabel(SelectedConv()?.Rol)</span>
                 </button>
                 @* 2026-08-31: el 👁️ estaba enterrado en el ⋮ y es de lo que más se usa. Va acá,
-                   pegado al circulito, a un toque. Solo si el chat tiene cliente vinculado. *@
+                   pegado al circulito, a un toque. Solo si el chat tiene cliente vinculado.
+                   2026-09-12: debajo del 👁️ va el pin de Google Maps, pedido de Osmar: *"me gustaría
+                   que al lado aparezca el botón de google maps abajo del ojito"*. La dirección de la
+                   barra ya era tocable pero no se notaba (texto gris con un subrayadito), y peor:
+                   cuando el cliente NO tiene la ubicación cargada se ve igual y no abre nada. El pin
+                   sale SOLO si hay ubicación, así de un vistazo sabés cuál tiene mapa y cuál no. *@
                 @if (SelectedConv()?.ClienteId is int)
                 {
-                    <button class="wa-hdr-ojo @(mostrarFichaCliente ? "on" : "")" @onclick="ToggleFichaCliente"
-                            title="Ficha del cliente: saldo, últimas facturas y ubicación">👁️</button>
+                    <div class="wa-hdr-clibtns">
+                        <button class="wa-hdr-ojo @(mostrarFichaCliente ? "on" : "")" @onclick="ToggleFichaCliente"
+                                title="Ficha del cliente: saldo, últimas facturas y ubicación">👁️</button>
+                        @if (FichaDelChat() is ApiClient.FichaChatDto fmap && !string.IsNullOrWhiteSpace(fmap.MapeoLink))
+                        {
+                            <a class="wa-hdr-maps" href="@fmap.MapeoLink" target="_blank" rel="noopener"
+                               title="@TituloMapa(fmap)">
+                                <img src="/img/maps-icon.svg" alt="Ver la ubicación en Google Maps" />
+                            </a>
+                        }
+                    </div>
                 }
                 <div style="flex:1; min-width:0;">
                     @* 2026-08-27: RENGLÓN 1 del encabezado. El nombre tiene un ancho FIJO y se corta con
@@ -870,11 +884,11 @@
                                 <span class="wa-hdr-sep">·</span>
                                 @if (!string.IsNullOrWhiteSpace(fh.MapeoLink))
                                 {
-                                    <a href="@fh.MapeoLink" target="_blank" class="wa-hdr-dir" title="Dirección de @fh.Nombre: @dirh (tocala para abrirla en el mapa)"><span class="wa-hdr-txt">@dirh</span></a>
+                                    <a href="@fh.MapeoLink" target="_blank" class="wa-hdr-dir" title="@TituloDireccion(fh, dirh)"><span class="wa-hdr-txt">@dirh</span></a>
                                 }
                                 else
                                 {
-                                    <span class="wa-hdr-sub" title="Dirección de @fh.Nombre: @dirh"><span class="wa-hdr-txt">@dirh</span></span>
+                                    <span class="wa-hdr-sub" title="@TituloDireccion(fh, dirh)"><span class="wa-hdr-txt">@dirh</span></span>
                                 }
                             }
                             <span class="wa-hdr-sep">·</span>
@@ -3090,7 +3104,10 @@
 @if (showElegirCli)
 {
     <div class="wa-modal-backdrop" @onclick="@(() => showElegirCli = false)"></div>
-    <div class="wa-modal" style="max-width:460px;" @onclick:stopPropagation="true">
+    @* 2026-09-12: de 460 a 680 px. Osmar comparó este buscador con el de la carga de venta normal:
+       *"como está en la carga normal me gusta más, y además más amplio"*. Con 460 px el renglón se
+       partía en tres líneas y la dirección quedaba cortada. *@
+    <div class="wa-modal" style="max-width:680px;" @onclick:stopPropagation="true">
         <div class="wa-modal-header">
             <h3 style="margin:0; flex:1; font-size:1.05rem;">@elegirCliTitulo</h3>
             <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showElegirCli = false)">×</button>
@@ -3123,23 +3140,37 @@
                 <div style="padding:0.5rem; color:#9ca3af; font-size:0.85rem;">Sin resultados. Probá con otro dato.</div>
             }
             <div style="margin-top:0.4rem; max-height:220px; overflow-y:auto;">
+                @* 2026-09-12: el renglón quedó calcado al del buscador de la carga de venta normal
+                   (CafeVentas.razor), que es el que Osmar marcó como el bueno: código, nombre, tipo,
+                   CUIT y teléfono arriba; dirección con localidad, ciudad y CP abajo.
+                   El cambio de fondo es CUÁL dirección se escribe: antes era siempre la FISCAL y
+                   ahora manda la de ENTREGA, que es a dónde se lleva el pedido (ver DomicilioTexto). *@
                 @foreach (var cli in elegirCliResultados)
                 {
-                    <button class="wa-vincular-opt" @onclick="() => ElegirClienteYSeguir(cli.Id, cli.Nombre)">
-                        <div>
-                            🛍️ <b>@cli.Nombre</b>
-                            @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.75rem;"> · #@cli.CodigoInterno</span> }
-                            @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#9ca3af; font-size:0.72rem;"> · 📞 @cli.Telefono</span> }
+                    var dirCli = DomicilioTexto.Elegir(cli.Direccion, cli.Localidad, cli.DomicilioEntrega, cli.LocalidadEntrega);
+                    var locCli = DomicilioTexto.Puntos(dirCli.Localidad, cli.Ciudad, cli.Cp);
+                    <button class="wa-vincular-opt wa-cli-row" @onclick="() => ElegirClienteYSeguir(cli.Id, cli.Nombre)">
+                        <div class="wa-cli-l1">
+                            <span class="wa-cli-cod">#@(string.IsNullOrEmpty(cli.CodigoInterno) ? "—" : cli.CodigoInterno)</span>
+                            <strong class="wa-cli-nom">@cli.Nombre</strong>
+                            @if (!string.IsNullOrEmpty(cli.Tipo)) { <span class="wa-cli-dato">· @cli.Tipo</span> }
+                            @if (!string.IsNullOrEmpty(cli.Cuit)) { <span class="wa-cli-dato">· @cli.Cuit</span> }
+                            @if (!string.IsNullOrEmpty(cli.Telefono)) { <span class="wa-cli-dato">· 📞 @cli.Telefono</span> }
                         </div>
-                        @if (!string.IsNullOrEmpty(cli.Direccion) || !string.IsNullOrEmpty(cli.Localidad))
+                        @if (dirCli.Direccion.Length > 0 || locCli.Length > 0)
                         {
-                            <div style="color:#9ca3af; font-size:0.72rem; margin-top:0.1rem;">📍 @($"{cli.Direccion} {cli.Localidad}".Trim())</div>
+                            <div class="wa-cli-dir" title="@(dirCli.EsEntrega ? "Domicilio de ENTREGA (a dónde se le lleva)" : "Domicilio fiscal — este cliente no tiene cargado uno de entrega")">
+                                @if (dirCli.Direccion.Length > 0) { <span>📍 @dirCli.Direccion</span> }
+                                @if (dirCli.Direccion.Length > 0 && locCli.Length > 0) { <span> · </span> }
+                                @if (locCli.Length > 0) { <span>@locCli</span> }
+                            </div>
                         }
-                        @* 2026-08-25: si apareció porque coincidió una dirección de ENTREGA (el cliente puede
-                           tener varias), la mostramos para que se entienda por qué está en la lista. *@
-                        @if (!string.IsNullOrEmpty(cli.DireccionEntrega))
+                        @* 2026-08-25: si apareció porque coincidió una dirección de ENTREGA de la lista
+                           (un cliente puede tener varias), la mostramos para que se entienda por qué
+                           está en la lista. Solo si no es la misma que ya se está mostrando arriba. *@
+                        @if (!string.IsNullOrEmpty(cli.DireccionEntrega) && DomicilioTexto.Limpiar(cli.DireccionEntrega) != dirCli.Direccion)
                         {
-                            <div style="color:#10b981; font-size:0.72rem; margin-top:0.1rem;">🚚 @cli.DireccionEntrega</div>
+                            <div class="wa-cli-dir-ent">🚚 @DomicilioTexto.Limpiar(cli.DireccionEntrega)</div>
                         }
                     </button>
                 }
@@ -3798,10 +3829,20 @@
     .wa-saldo-cli { display: block; width: 100%; text-align: left; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.5rem 0.6rem; margin-bottom: 0.3rem; font-size: 0.85rem; cursor: pointer; }
     .wa-saldo-cli:hover:not(:disabled) { background: #25d366; color: #fff; border-color: #25d366; }
     .wa-saldo-cli.destacado { background: #e9f5ff; border-color: #25d366; }
+    /* 2026-09-12: el 👁️ y el pin de Google Maps, uno arriba del otro, pegados al avatar.
+       Van en columna para no comerle ancho al nombre (que ya tiene ancho fijo) ni empujar el
+       estado y el responsable, que viven a la derecha de la misma fila. */
+    .wa-hdr-clibtns { display: flex; flex-direction: column; align-items: center; gap: 2px;
+        flex: 0 0 auto; margin-right: 0.15rem; }
     .wa-hdr-ojo { flex-shrink: 0; background: none; border: 1px solid transparent; border-radius: 8px;
-        font-size: 1.15rem; line-height: 1; padding: 0.25rem 0.35rem; cursor: pointer; margin-right: 0.15rem; }
+        font-size: 1.15rem; line-height: 1; padding: 0.25rem 0.35rem; cursor: pointer; }
     .wa-hdr-ojo:hover { background: #f0fff6; border-color: #25d366; }
     .wa-hdr-ojo.on { background: #dcfce7; border-color: #25d366; }
+    .wa-hdr-maps { display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid transparent; border-radius: 8px; padding: 0.15rem 0.25rem; line-height: 1;
+        text-decoration: none; }
+    .wa-hdr-maps img { width: 17px; height: 17px; display: block; }
+    .wa-hdr-maps:hover { background: #fef2f2; border-color: #ea4335; }
 
     .wa-cbu-btn { font-size: 1.2rem; }
     .wa-cbu-solo-alias { margin-left: 1rem; width: calc(100% - 1rem); background: #fbfbfd; font-size: 0.8rem; color: #6b7280; }
@@ -4196,6 +4237,16 @@
     .wa-elegircli-def-nom { flex: 1; font-size: 0.92rem; font-weight: 700; color: #065f46; }
     .wa-elegircli-def-cta { font-size: 0.78rem; font-weight: 700; color: #16a34a; white-space: nowrap; }
     .wa-elegircli-o { text-align: center; font-size: 0.75rem; color: #9ca3af; margin: 0.6rem 0 0.4rem; }
+    /* 2026-09-12: renglón de resultado del buscador de cliente, calcado al de la carga de venta
+       normal (que es el que Osmar prefiere). El código en azul y monoespaciado es lo que deja
+       barrer la lista con el ojo sin leer los nombres. */
+    .wa-cli-row { line-height: 1.25; }
+    .wa-cli-l1 { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .wa-cli-cod { font-family: monospace; color: #1d4ed8; font-weight: 700; font-size: 0.9rem; }
+    .wa-cli-nom { font-size: 0.95rem; }
+    .wa-cli-dato { color: #6b7280; font-size: 0.75rem; }
+    .wa-cli-dir { color: #9ca3af; font-size: 0.78rem; margin-top: 0.1rem; }
+    .wa-cli-dir-ent { color: #10b981; font-size: 0.75rem; margin-top: 0.1rem; }
     /* 2026-08-17: los redondeles ya no son una columna al costado: van en la tira de arriba. */
     .wa-composer-tools { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
     /* MENÚ ROL — botón de la tira. La miniatura de lo que le llega al cliente se muestra
@@ -6366,14 +6417,49 @@
 
     /// <summary>Dirección + localidad en un solo renglón para la barra de arriba. Si el cliente no
     /// tiene dirección cargada devuelve null y el cartelito directamente no aparece.</summary>
+    // 2026-09-12: acá se mostraba el domicilio FISCAL mientras el link del mapa (MapeoLink) apunta
+    // al de ENTREGA — decía una dirección y te llevaba a otra. Ahora manda el de entrega, que es el
+    // dato que importa en el chat: a dónde se le lleva. La regla vive en DomicilioTexto, compartida
+    // con el buscador del modo venta y con el celular, y de paso limpia el "Piso:- Dpto:- S:- T:- M:-"
+    // que viene pegado adentro del dato.
     static string? DireccionCorta(ApiClient.FichaChatDto f)
+        => DomicilioTexto.Renglon(f.Direccion, f.Localidad, f.DomicilioEntrega, f.LocalidadEntrega);
+
+    /// <summary>true si lo que se está mostrando es el domicilio de ENTREGA (y no el fiscal).
+    /// Sirve para que el globito de ayuda lo diga y nadie confunda uno con el otro.</summary>
+    static bool DireccionEsEntrega(ApiClient.FichaChatDto f)
+        => DomicilioTexto.Elegir(f.Direccion, f.Localidad, f.DomicilioEntrega, f.LocalidadEntrega).EsEntrega;
+
+    /// <summary>El domicilio FISCAL limpio, para nombrarlo en el globito cuando es distinto del de
+    /// entrega. Devuelve null si no hay o si es el mismo que se está mostrando.</summary>
+    static string? FiscalSiEsOtro(ApiClient.FichaChatDto f)
     {
-        var dir = (f.Direccion ?? "").Trim();
-        var loc = (f.Localidad ?? "").Trim();
-        if (dir.Length == 0 && loc.Length == 0) return null;
-        if (dir.Length == 0) return loc;
-        if (loc.Length == 0) return dir;
-        return $"{dir}, {loc}";
+        if (!DireccionEsEntrega(f)) return null;
+        var fis = DomicilioTexto.Renglon(f.Direccion, f.Localidad, null, null);
+        return string.IsNullOrWhiteSpace(fis) ? null : fis;
+    }
+
+    /// <summary>Globito del pin de Google Maps: dice a qué domicilio te lleva, para que nadie
+    /// espere que lo abra en el fiscal cuando el pin está puesto en el de entrega.</summary>
+    static string TituloMapa(ApiClient.FichaChatDto f)
+    {
+        var dir = DireccionCorta(f);
+        var qué = DireccionEsEntrega(f) ? "domicilio de ENTREGA" : "domicilio";
+        return dir is null
+            ? $"Abrir la ubicación de {f.Nombre} en Google Maps"
+            : $"Abrir en Google Maps el {qué} de {f.Nombre}: {dir}";
+    }
+
+    /// <summary>El texto del globito de la dirección. Dice CUÁL de los dos domicilios estás viendo,
+    /// y cuál es el otro, porque la confusión entre fiscal y entrega es justo la que trajo el pedido.</summary>
+    static string TituloDireccion(ApiClient.FichaChatDto f, string dir)
+    {
+        var qué = DireccionEsEntrega(f) ? "Domicilio de ENTREGA" : "Domicilio fiscal";
+        var t = $"{qué} de {f.Nombre}: {dir}";
+        if (FiscalSiEsOtro(f) is string fis) t += $"\n(el fiscal, el de la factura, es otro: {fis})";
+        t += string.IsNullOrWhiteSpace(f.MapeoLink) ? "\nEste cliente no tiene la ubicación cargada en el mapa."
+                                                    : "\nTocala para abrirla en Google Maps.";
+        return t;
     }
 
     // El saldo se lee igual que en la ficha: positivo = te debe, negativo = tiene plata a favor.
