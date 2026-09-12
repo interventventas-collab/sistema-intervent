@@ -168,6 +168,17 @@ else
                 <button type="button" class="wam-title-sub" @onclick="() => rolMenuConv = chatAbierto"
                         title="Poner la categoría de este contacto">@SubLineaChat(chatAbierto)</button>
             </div>
+            @* 2026-09-12: PIN DE GOOGLE MAPS. En el celu no había forma de ver a dónde se le lleva
+               al cliente sin salir del WhatsApp — ni la dirección se mostraba. Sale SOLO si el
+               cliente tiene la ubicación cargada, así el botón nunca aparece "muerto".
+               Abre el domicilio de ENTREGA (que es a donde apunta el pin), no el fiscal. *@
+            @if (UbicacionMovil is ApiClient.UbicacionClienteDto ubi && !string.IsNullOrWhiteSpace(ubi.MapeoLink))
+            {
+                <a class="wam-hbtn wam-maps" href="@ubi.MapeoLink" target="_blank" rel="noopener"
+                   title="@TituloMapaMovil(ubi)">
+                    <img src="/img/maps-icon.svg" alt="Ver la ubicación en Google Maps" />
+                </a>
+            }
             @* 2026-08-20: lupa para buscar una palabra DENTRO de esta charla. El buscador vive en
                PinnedWaChat (que es el que tiene los mensajes); acá solo se lo abrimos. *@
             <button type="button" class="wam-hbtn" @onclick="AbrirBuscadorChat"
@@ -476,6 +487,14 @@ else
     .wam-title-sub:active { opacity: 1; }
     .wam-hbtn { background: rgba(255,255,255,0.18); border: none; color: #fff; border-radius: 8px;
         width: 34px; height: 32px; font-size: 1.1rem; cursor: pointer; flex: none; }
+    /* 2026-09-12: el pin de Google Maps. Es un enlace, no un boton, asi que hay que centrarlo
+       a mano y sacarle el subrayado. El fondo va mas claro que el resto de los botones porque
+       el pin es rojo y sobre el verde oscuro de la barra se apagaba.
+       OJO: NO escribir etiquetas HTML dentro de estos comentarios de CSS — Razor las lee como
+       etiquetas de verdad y el build revienta con "Unclosed tag". Ya nos paso el 31/08. */
+    .wam-maps { display: inline-flex; align-items: center; justify-content: center;
+        text-decoration: none; background: rgba(255,255,255,0.92); }
+    .wam-maps img { width: 20px; height: 20px; display: block; }
 
     /* 2026-08-20: gap 8->6 y padding 14->11 para que las dos lineas propias + el "+" entren en
        UN solo renglon en un celu de 390 px (antes el "+" se caia solo abajo). El alto del boton
@@ -1219,6 +1238,35 @@ else
         chatAbierto = c;
         await MarcarLeido(c);   // 2026-08-18: al abrirla deja de estar "sin leer"
         StateHasChanged();
+        await CargarUbicacionMovil(c);   // 2026-09-12: el pin de Maps de la barra de arriba
+    }
+
+    // ═══ 2026-09-12: LA UBICACION DEL CLIENTE, para el pin de Google Maps de la barra ═══
+    // Se pide aparte y DESPUES de dibujar el chat: es un dato de adorno, no puede hacer esperar a
+    // los mensajes. Si el chat no tiene cliente vinculado (o falla), el pin simplemente no sale.
+    private ApiClient.UbicacionClienteDto? UbicacionMovil;
+
+    private async Task CargarUbicacionMovil(ApiClient.TwConvDto? c)
+    {
+        UbicacionMovil = null;
+        if (c?.ClienteId is not int cid) { StateHasChanged(); return; }
+        try { UbicacionMovil = await Api.GetUbicacionClienteAsync(cid); }
+        catch { UbicacionMovil = null; }
+        // Puede haber cambiado de charla mientras tardaba: no pisar la nueva con la vieja.
+        if (chatAbierto?.ClienteId != cid) UbicacionMovil = null;
+        StateHasChanged();
+    }
+
+    /// <summary>Globito del pin: dice a qué domicilio te lleva, para que no se confunda con el
+    /// fiscal (son datos distintos y el pin apunta al de entrega).</summary>
+    private static string TituloMapaMovil(ApiClient.UbicacionClienteDto u)
+    {
+        var esEntrega = DomicilioTexto.Elegir(u.Direccion, u.Localidad, u.DomicilioEntrega, u.LocalidadEntrega).EsEntrega;
+        var renglon = DomicilioTexto.Renglon(u.Direccion, u.Localidad, u.DomicilioEntrega, u.LocalidadEntrega);
+        var qué = esEntrega ? "domicilio de ENTREGA" : "domicilio";
+        return renglon is null
+            ? $"Abrir la ubicación de {u.Nombre} en Google Maps"
+            : $"Abrir en Google Maps el {qué} de {u.Nombre}: {renglon}";
     }
     /// <summary>La flecha de arriba. Cierra la charla igual que el boton "atras" del celular.</summary>
     private Task Volver() => CerrarChat();
@@ -1233,6 +1281,7 @@ else
             await MarcarLeido(actual);
         }
         chatAbierto = null;
+        UbicacionMovil = null;
         StateHasChanged();
     }
 
