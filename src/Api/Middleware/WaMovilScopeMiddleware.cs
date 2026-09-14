@@ -119,6 +119,34 @@ public class WaMovilScopeMiddleware
         return false;
     }
 
+    /// <summary>
+    /// 2026-09-14 — Cargar una cobranza desde el chat del celular (💵, efectivo o redirigido).
+    ///
+    /// Osmar decidió que la puede cargar CUALQUIERA que entre con la huella. Se abre sólo lo que usa
+    /// Shared/CobranzaChat.razor, mirando método y forma exacta de la ruta: con la huella NO se
+    /// puede listar, anular, editar ni borrar cobranzas. Y el controlador pone dos trabas más para
+    /// estas sesiones: la cobranza sólo puede ir a efectivo o redirigido, y a los empleados no se
+    /// les ve lo que se les debe.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex[] CobranzaGet =
+    {
+        new(@"^/api/cafe/cobranzas/cajas-chat$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+        new(@"^/api/cafe/cobranzas/comprobantes-pendientes/\d+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+        new(@"^/api/cafe/cobranzas/destinatarios(-proveedores)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+        new(@"^/api/cafe/cobranzas/proveedor/\d+/facturas-pendientes$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+    };
+    private static readonly System.Text.RegularExpressions.Regex[] CobranzaPost =
+    {
+        new(@"^/api/cafe/cobranzas/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+        new(@"^/api/cafe/cobranzas/leer-comprobante-whatsapp$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+        new(@"^/api/cafe/cobranzas/\d+/adjuntos/desde-whatsapp$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+        new(@"^/api/cafe/cobranzas/\d+/enviar$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+    };
+
+    private static bool EsCobranzaDesdeChat(string ruta, string metodo)
+        => (metodo == "GET" && CobranzaGet.Any(r => r.IsMatch(ruta)))
+           || (metodo == "POST" && CobranzaPost.Any(r => r.IsMatch(ruta)));
+
     public WaMovilScopeMiddleware(RequestDelegate next, ILogger<WaMovilScopeMiddleware> logger)
     {
         _next = next;
@@ -141,7 +169,8 @@ public class WaMovilScopeMiddleware
                         || EsEstadoDeCuenta(ruta)
                         || EsUbicacionDelCliente(ruta, metodo)
                         || EsLetraDelWhatsApp(ruta, metodo)
-                        || EsCotizadorAlquiler(ruta, metodo);
+                        || EsCotizadorAlquiler(ruta, metodo)
+                        || EsCobranzaDesdeChat(ruta, metodo);
 
         if (!permitido)
         {

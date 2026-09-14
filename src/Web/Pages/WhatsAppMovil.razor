@@ -350,7 +350,8 @@ else
             <PinnedWaChat @ref="chatRef" Numero="@chatAbierto.Numero" LineaPhoneId="@chatAbierto.Linea"
                           TituloContacto="@NombreDe(chatAbierto)"
                           NombreLinea="@(chatAbierto.LineaNumero ?? chatAbierto.Linea ?? "WhatsApp")"
-                          PuedeAbrirEnGrande="false" AccionesCompletas="true" Movil="true" />
+                          PuedeAbrirEnGrande="false" AccionesCompletas="true" Movil="true"
+                          ClienteId="@chatAbierto.ClienteId" ClienteNombre="@chatAbierto.ClienteNombre" />
         </div>
     }
 

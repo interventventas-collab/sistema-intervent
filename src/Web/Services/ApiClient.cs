@@ -6407,6 +6407,12 @@ public class ApiClient
     public record LecturaComprobanteDto(bool EsPago, decimal? Importe, string? Fecha, string? PagadoA,
         string? Referencia, int? EmpleadoId, int? ProveedorId);
 
+    public record CajaChatDto(int Id, string Nombre, string Tipo);
+
+    /// <summary>Efectivo y la de paso del redirigido, sin saldos (lo pide también el celular con la huella).</summary>
+    public async Task<List<CajaChatDto>> GetCajasChatAsync()
+        => await GetAsync<List<CajaChatDto>>("/api/cafe/cobranzas/cajas-chat") ?? new();
+
     public async Task<LecturaComprobanteDto?> LeerComprobanteWhatsappAsync(string mediaUrl)
         => await PostAsync<LecturaComprobanteDto>("/api/cafe/cobranzas/leer-comprobante-whatsapp", new { mediaUrl });
 

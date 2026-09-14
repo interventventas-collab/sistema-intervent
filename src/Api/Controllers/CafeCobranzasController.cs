@@ -520,6 +520,20 @@ public class CafeCobranzasController : ControllerBase
         if (req.Comprobantes == null || req.Comprobantes.Count == 0)
             return BadRequest(new { error = "Hay que cobrar al menos un comprobante (o agregar como 'a cuenta')" });
 
+        // 14/09/2026: desde la huella del celular sólo se carga lo que ofrece el chat — efectivo o
+        // redirigido, con cliente, sin cheques ni retenciones. Banco, Mercado Pago y cheques siguen
+        // cargándose en la compu (las transferencias al Galicia entran por el extracto).
+        if (EsSesionDeHuella())
+        {
+            if (cliente is null) return BadRequest(new { error = "Desde el celular la cobranza tiene que tener cliente." });
+            if (req.Retenciones > 0m || (req.Medios ?? new()).Any(m => m.Cheque is not null))
+                return BadRequest(new { error = "Retenciones y cheques se cargan desde la compu." });
+            var cajaIdsReq = (req.Medios ?? new()).Select(m => m.CajaId).Distinct().ToList();
+            var tiposReq = await _db.CafeCajas.Where(c => cajaIdsReq.Contains(c.Id)).Select(c => c.Tipo).ToListAsync();
+            if (tiposReq.Count != cajaIdsReq.Count || tiposReq.Any(t => t != "EFECTIVO" && t != "V_PRIVADO"))
+                return BadRequest(new { error = "Desde el celular sólo se cargan pagos en efectivo o redirigidos." });
+        }
+
         var sumComprobantes = req.Comprobantes.Sum(c => c.Importe);
         var sumMedios = (req.Medios ?? new()).Sum(m => m.Importe);
         var retenciones = Math.Max(0m, req.Retenciones);
@@ -1095,6 +1109,21 @@ public class CafeCobranzasController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────────────────────
 
     public record DesdeWhatsappRequest(string? MediaUrl, string? Tipo = null);
+    public record CajaChatDto(int Id, string Nombre, string Tipo);
+
+    /// <summary>Las cajas en las que se puede cargar un pago desde el chat: efectivo y la de paso del
+    /// redirigido. Sin saldos — el listado de Tesorería → Cajas los trae y el celular no los tiene que ver.</summary>
+    [HttpGet("cajas-chat")]
+    public async Task<IActionResult> CajasChat()
+        => Ok(await _db.CafeCajas
+            .Where(c => c.IsActive && (c.Tipo == "EFECTIVO" || c.Tipo == "V_PRIVADO"))
+            .OrderBy(c => c.Orden).ThenBy(c => c.Nombre)
+            .Select(c => new CajaChatDto(c.Id, c.Nombre, c.Tipo))
+            .ToListAsync());
+
+    /// <summary>La sesión nació de la huella del WhatsApp del celular (ver WaMovilScopeMiddleware).</summary>
+    private bool EsSesionDeHuella()
+        => User.FindFirst(Api.Middleware.WaMovilScopeMiddleware.ClaimScope)?.Value == Api.Middleware.WaMovilScopeMiddleware.ScopeWaMovil;
 
     /// <summary>Lee con IA el comprobante que mandó el cliente. Es una sugerencia: si no se
     /// entiende devuelve EsPago=false y la cobranza se carga a mano.</summary>
@@ -1205,6 +1234,10 @@ public class CafeCobranzasController : ControllerBase
             salida.Add(new DestinatarioDto(e.Id, e.Nombre, ficha is not null, ficha?.Id,
                 deudaViajes, deudaSueldo, liq?.Id));
         }
+        // 14/09/2026: con la huella del celu carga cobranzas cualquiera del equipo. Lo que se le debe
+        // de sueldo y viajes a cada empleado NO es para que lo vea todo el mundo: va en cero.
+        if (EsSesionDeHuella())
+            salida = salida.Select(d => d with { DeudaViajes = 0m, DeudaSueldo = 0m }).ToList();
         return Ok(salida);
     }
 
@@ -1248,6 +1281,7 @@ public class CafeCobranzasController : ControllerBase
             p.Id, p.Nombre,
             (compras.FirstOrDefault(c => c.Prov == p.Id)?.Total ?? 0m) - (pagos.FirstOrDefault(x => x.Prov == p.Id)?.Total ?? 0m),
             pendientes.TryGetValue(p.Id, out var n) ? n : 0)).ToList();
+        if (EsSesionDeHuella()) salida = salida.Select(x => x with { Saldo = 0m }).ToList();
 
         return Ok(salida);
     }

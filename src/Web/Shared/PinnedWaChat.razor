@@ -448,6 +448,12 @@
                    VentanaWaAbierta() de abajo a propósito: reenviar es mandarle algo a OTRO contacto,
                    así que no depende de si ESTA charla tiene la ventana de 24 hs abierta. *@
                 <button type="button" class="pwa-msgmenu-op" @onclick="() => AbrirReenviarPwa(_mm)">↪️ Reenviar</button>
+                @* 2026-09-14: la foto o el PDF del pago que mandó el cliente → cargar la cobranza con ese
+                   comprobante adjunto. Mismo panel que el 💵 de la compu (Shared/CobranzaChat.razor). *@
+                @if (PuedeCargarCobranza && _mm.Direccion == "INCOMING" && EsComprobanteAdjunto(_mm.MediaUrl))
+                {
+                    <button type="button" class="pwa-msgmenu-op" style="margin-top:6px;" @onclick="() => AbrirCobranza(_mm.MediaUrl)">💵 Cargar cobranza con este comprobante</button>
+                }
                 @if (VentanaWaAbierta())
                 {
                     <button type="button" class="pwa-msgmenu-op" style="margin-top:6px;" @onclick="() => IniciarResponderPwa(_mm)">↩️ Responder</button>
@@ -556,6 +562,11 @@
                     @* 2026-09-01: cotizar un alquiler desde el celular. Mismo cotizador que la compu,
                        en modo celu (botones grandes, lo cargado arriba, total pegado abajo). *@
                     <button type="button" class="pwa-mas-op" @onclick="AbrirCotizador">🪑 Cotizar alquiler</button>
+                    @if (PuedeCargarCobranza)
+                    {
+                        @* 2026-09-14: un pago en efectivo o redirigido, sin foto. *@
+                        <button type="button" class="pwa-mas-op" @onclick="() => AbrirCobranza(null)">💵 Cargar cobranza</button>
+                    }
                 }
                 else if (masVista == "servidor")
                 {
@@ -636,6 +647,38 @@
                     @if (salCargando)
                     {
                         <div class="pwa-mas-info">Trayendo saldo…</div>
+                    }
+                }
+                else if (masVista == "cobranza")
+                {
+                    <CobranzaChat ClienteId="@cobClienteId"
+                                  ClienteNombre="@cobClienteNombre"
+                                  Numero="@Numero"
+                                  Linea="@LineaPhoneId"
+                                  MediaUrl="@cobMediaUrl"
+                                  Movil="true"
+                                  OnCambiarCliente="AbrirCobranzaCliente"
+                                  OnQuitarFoto="() => cobMediaUrl = null" />
+                }
+                else if (masVista == "cobranza-cliente")
+                {
+                    <input class="pwa-mas-search" placeholder="Buscar el cliente por nombre…" value="@cobCliQuery" @oninput="BuscarCobranzaCliente" />
+                    @if (cobCliBuscando)
+                    {
+                        <div class="pwa-mas-info">Buscando…</div>
+                    }
+                    else if (cobCliQuery.Trim().Length >= 2 && cobCliResult.Count == 0)
+                    {
+                        <div class="pwa-mas-info">Sin resultados.</div>
+                    }
+                    @foreach (var cli in cobCliResult)
+                    {
+                        <button type="button" class="pwa-mas-item" @onclick="() => ElegirCobranzaCliente(cli.Id, cli.Nombre)">
+                            <span class="pwa-mas-item-ic">💵</span>
+                            <span class="pwa-mas-item-txt">
+                                <span class="pwa-mas-item-lbl">@cli.Nombre @(string.IsNullOrWhiteSpace(cli.CodigoInterno) ? "" : $"(#{cli.CodigoInterno})")</span>
+                            </span>
+                        </button>
                     }
                 }
                 else if (masVista == "cotizar")
@@ -1186,6 +1229,74 @@
     }
 
     [Parameter] public bool Movil { get; set; } = false;
+
+    // ═══════ 2026-09-14: CARGAR COBRANZA desde el chat del celular ═══════
+    // Efectivo o redirigido, con el comprobante que mandó el cliente adjunto. El panel es el MISMO de
+    // la compu (Shared/CobranzaChat.razor) en modo Movil. Osmar: la puede cargar cualquiera que entre
+    // con la huella (el servidor le abre sólo esas rutas, ver WaMovilScopeMiddleware.EsCobranzaDesdeChat).
+    /// <summary>Cliente vinculado a la charla (la razón social tildada).</summary>
+    [Parameter] public int? ClienteId { get; set; }
+    [Parameter] public string? ClienteNombre { get; set; }
+
+    private bool PuedeCargarCobranza => Movil && AccionesCompletas && !Numero.StartsWith("ig:");
+    private int? cobClienteId;
+    private string? cobClienteNombre;
+    private string? cobMediaUrl;
+    private string cobCliQuery = "";
+    private bool cobCliBuscando;
+    private List<ApiClient.TwClienteBuscarDto> cobCliResult = new();
+
+    private static bool EsComprobanteAdjunto(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || EsAudio(url) || EsSticker(url)) return false;
+        return EsImagen(url) || url.Split('?')[0].EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void AbrirCobranza(string? mediaUrl)
+    {
+        menuMsgId = null;
+        if (!masVista.StartsWith("cobranza") || !mostrarMas)
+        {
+            cobClienteId = ClienteId;
+            cobClienteNombre = ClienteNombre;
+            cobMediaUrl = null;     // la foto de la vez anterior no es de este pago
+        }
+        if (mediaUrl is not null) cobMediaUrl = mediaUrl;
+        mostrarMas = true;
+        masVista = "cobranza";
+        StateHasChanged();
+    }
+
+    private void LimpiarCobranza()
+    {
+        cobClienteId = null; cobClienteNombre = null; cobMediaUrl = null;
+        cobCliQuery = ""; cobCliResult = new();
+    }
+
+    private void AbrirCobranzaCliente()
+    {
+        cobCliQuery = ""; cobCliResult = new();
+        masVista = "cobranza-cliente";
+    }
+
+    private async Task BuscarCobranzaCliente(ChangeEventArgs e)
+    {
+        cobCliQuery = e.Value?.ToString() ?? "";
+        var q = cobCliQuery.Trim();
+        if (q.Length < 2) { cobCliResult = new(); return; }
+        cobCliBuscando = true;
+        try { cobCliResult = await Api.BuscarTwClientesAsync(q); }
+        catch { cobCliResult = new(); }
+        if (q != cobCliQuery.Trim()) return;   // siguió escribiendo
+        cobCliBuscando = false;
+    }
+
+    private void ElegirCobranzaCliente(int id, string nombre)
+    {
+        cobClienteId = id;
+        cobClienteNombre = nombre;
+        masVista = "cobranza";
+    }
 
     private List<ApiClient.TwMsgDto>? mensajes;
     private string composer = "";
@@ -1840,10 +1951,13 @@
             cotizadorMovilRef?.Limpiar();
             alqCotsMovil = new();   // eran los del teléfono anterior
             if (masVista == "cotizar") { mostrarMas = false; masVista = "menu"; }
+            // 2026-09-14: el pago se le cargaría al cliente del chat anterior.
+            LimpiarCobranza();
+            if (masVista.StartsWith("cobranza")) { mostrarMas = false; masVista = "menu"; }
         }
         _numeroCotizador = Numero;
     }
-    private void VolverMenuMas() { masVista = "menu"; StateHasChanged(); }
+    private void VolverMenuMas() { masVista = masVista == "cobranza-cliente" ? "cobranza" : "menu"; StateHasChanged(); }
     private string TituloMas() => masVista switch
     {
         "servidor" => "🗂️ Adjuntar del servidor",
@@ -1851,6 +1965,8 @@
         "saldo" => "💰 Mandar saldo",
         "cbu" => "🏦 Datos bancarios",
         "cotizar" => "🪑 Cotizar alquiler",
+        "cobranza" => "💵 Cargar cobranza",
+        "cobranza-cliente" => "💵 ¿A qué cliente?",
         _ => "➕ Más"
     };
 

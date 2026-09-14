@@ -25,7 +25,7 @@
 @inject ToastService Toast
 @inject IJSRuntime JS
 
-<div class="cobch">
+<div class="cobch @(Movil ? "cobch-movil" : "")">
     @if (ClienteId is null)
     {
         <div class="cobch-info">Este chat no tiene un cliente vinculado.</div>
@@ -136,13 +136,13 @@
                     {
                         <div class="cobch-t">¿De qué se lo descuento?</div>
                         <div class="cobch-chips">
-                            <button class="cobch-chip @(destino == DestinoViajes ? "on" : "")" @onclick="() => destino = DestinoViajes">Viajes · le debemos @Plata(de.DeudaViajes)</button>
-                            <button class="cobch-chip @(destino == DestinoSueldo ? "on" : "")" @onclick="() => destino = DestinoSueldo">Sueldo · le debemos @Plata(de.DeudaSueldo)</button>
+                            <button class="cobch-chip @(destino == DestinoViajes ? "on" : "")" @onclick="() => destino = DestinoViajes">Viajes@(Movil ? "" : $" · le debemos {Plata(de.DeudaViajes)}")</button>
+                            <button class="cobch-chip @(destino == DestinoSueldo ? "on" : "")" @onclick="() => destino = DestinoSueldo">Sueldo@(Movil ? "" : $" · le debemos {Plata(de.DeudaSueldo)}")</button>
                         </div>
                     }
                     else
                     {
-                        <div class="cobch-sub cobch-pad">Se le descuenta del sueldo · le debemos @Plata(de.DeudaSueldo)</div>
+                        <div class="cobch-sub cobch-pad">Se le descuenta del sueldo@(Movil ? "" : $" · le debemos {Plata(de.DeudaSueldo)}")</div>
                     }
                 }
                 @if (proveedorId > 0)
@@ -170,7 +170,7 @@
                     @(destino == DestinoPrivada
                         ? "No entra a ninguna caja del negocio y no se le descuenta a nadie."
                         : "No entra a ninguna caja: se la queda quien elijas y le cuenta como pago.")
-                    ¿No está en la lista? Cargala desde Tesorería → Cobranzas.
+                    ¿No está en la lista? Cargala desde la compu, en Tesorería → Cobranzas.
                 </div>
             }
 
@@ -286,6 +286,23 @@
     .cobch-ok { margin: 0.5rem 0; line-height: 1.5; }
     .cobch-ok-sub { font-size: 0.76rem; color: #64748b; }
 
+    /* Celular: todo se toca con el dedo. */
+    .cobch-movil { font-size: 0.95rem; padding: 0.2rem 0.2rem 1rem; }
+    .cobch-movil .cobch-cli { font-size: 0.95rem; padding: 0.6rem 0.7rem; }
+    .cobch-movil .cobch-modo { font-size: 1rem; padding: 0.7rem; }
+    .cobch-movil .cobch-modo.on { padding: calc(0.7rem - 1px); }
+    .cobch-movil .cobch-chip { font-size: 0.92rem; padding: 0.5rem 0.7rem; }
+    .cobch-movil .cobch-chip.on { padding: calc(0.5rem - 1px) calc(0.7rem - 1px); }
+    .cobch-movil .cobch-imp { width: 160px; font-size: 1.15rem; padding: 0.5rem 0.6rem; }
+    .cobch-movil .cobch-t { font-size: 0.85rem; }
+    .cobch-movil .cobch-sub, .cobch-movil .cobch-ayuda { font-size: 0.82rem; }
+    .cobch-movil .cobch-fact { padding: 0.5rem 0; }
+    .cobch-movil .cobch-fact input, .cobch-movil .cobch-recibo input { width: 20px; height: 20px; }
+    .cobch-movil .cobch-link { font-size: 0.88rem; padding: 0.5rem 0; }
+    .cobch-movil .cobch-go { font-size: 1.05rem; padding: 0.85rem; position: sticky; bottom: 0; }
+    .cobch-movil .cobch-foto img, .cobch-movil .cobch-foto-pdf { width: 56px; height: 56px; }
+    .cobch-movil .cobch-x { font-size: 1.5rem; padding: 0 0.5rem; }
+
     .wa-dark .cobch { color: var(--wad-txt); }
     .wa-dark .cobch-cli, .wa-dark .cobch-modo, .wa-dark .cobch-chip, .wa-dark .cobch-inp { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
     .wa-dark .cobch-modo.on, .wa-dark .cobch-chip.on { border-color: var(--wad-verde); color: #6ee7b7; }
@@ -309,6 +326,9 @@
     [Parameter] public EventCallback OnQuitarFoto { get; set; }
     /// <summary>Se cargó la cobranza: el chat actualiza la deuda de la barra de arriba.</summary>
     [Parameter] public EventCallback OnCreada { get; set; }
+    /// <summary>En el celular: botones más grandes y SIN lo que se le debe a cada empleado (con la
+    /// huella entra cualquiera del equipo; el servidor igual lo manda en cero).</summary>
+    [Parameter] public bool Movil { get; set; }
 
     private const string ModoEfectivo = "EFECTIVO";
     private const string ModoRedirigido = "REDIRIGIDO";
@@ -325,8 +345,8 @@
         set { MontoInput.TryParse(value, out var v); Importe = Math.Max(0, v); }
     }
 
-    private List<CafeCajaDto> cajas = new();
-    private List<CafeCajaDto> cajasEfectivo = new();
+    private List<ApiClient.CajaChatDto> cajas = new();
+    private List<ApiClient.CajaChatDto> cajasEfectivo = new();
     private int cajaEfectivoId;
     private List<CafeDestinatarioDto> destinatarios = new();
     private List<CafeProveedorRedirDto> provRedir = new();
@@ -374,7 +394,7 @@
     }
 
     private decimal ACuenta => Importe - Reparto().Sum(x => x.imp);
-    /// <summary>La deuda del cliente con la MISMA cuenta que la barra de arriba del chat (ficha-chat →
+    /// <summary>La deuda del cliente con la MISMA cuenta que la barra de arriba del chat (estado-cuenta →
     /// CafeSaldosService). Sumar las facturas de la lista daba otro número (no descuenta notas de
     /// crédito ni plata a favor) y dos "debe" distintos en la misma pantalla no se entienden.</summary>
     private decimal? saldoCliente;
@@ -385,7 +405,7 @@
         if (!fijosCargados)
         {
             fijosCargados = true;
-            try { cajas = await Api.GetCafeCajasAsync() ?? new(); } catch { cajas = new(); }
+            try { cajas = await Api.GetCajasChatAsync(); } catch { cajas = new(); }
             cajasEfectivo = cajas.Where(c => c.Tipo == "EFECTIVO").ToList();
             cajaEfectivoId = cajasEfectivo.FirstOrDefault()?.Id ?? 0;
             try { destinatarios = await Api.GetCafeDestinatariosAsync() ?? new(); } catch { destinatarios = new(); }
@@ -420,7 +440,9 @@
 
     private async Task CargarSaldoAsync(int cid)
     {
-        try { saldoCliente = (await Api.GetFichaChatAsync(cid))?.Saldo; }
+        // estado-cuenta y no ficha-chat: es la misma cuenta (CafeSaldosService) y es la que el celular
+        // con huella tiene abierta. Pedir ficha-chat desde el celu lo sacaría del WhatsApp.
+        try { saldoCliente = (await Api.GetClienteSaldoAsync(cid))?.Saldo; }
         catch { saldoCliente = null; }
     }
 
