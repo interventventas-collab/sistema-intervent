@@ -50,8 +50,18 @@ window.webAuthnCreate = async function (optionsFromServer) {
     }
 };
 
-// Llama al browser para usar una credencial existente (login con huella)
-window.webAuthnGet = async function (optionsFromServer) {
+// 2026-09-14: el pedido de huella que está esperando (si hay uno). El teléfono acepta uno solo a
+// la vez: si quedó uno colgado, el siguiente falla o también se cuelga.
+let _webAuthnPendiente = null;
+
+// Llama al browser para usar una credencial existente (login con huella).
+// 2026-09-14: `esperaMaxMs` (opcional) corta la espera. En el WhatsApp del celu el lector a veces no
+// aparecía y la pantalla quedaba "Tocá el lector…" hasta que el teléfono se rendía solo (~1 min).
+// Ahora: cada pedido nuevo CANCELA el que haya quedado colgado, y si pasa el tiempo se corta y
+// devuelve _error = "timeout". Sin el parámetro se comporta como antes (lo usa el fichador).
+window.webAuthnGet = async function (optionsFromServer, esperaMaxMs) {
+    let reloj = null;
+    let control = null;
     try {
         const options = JSON.parse(JSON.stringify(optionsFromServer));
         options.challenge = base64UrlToArrayBuffer(options.challenge);
@@ -61,7 +71,22 @@ window.webAuthnGet = async function (optionsFromServer) {
             }));
         }
 
-        const cred = await navigator.credentials.get({ publicKey: options });
+        if (_webAuthnPendiente) { try { _webAuthnPendiente.abort('reemplazado'); } catch (_) { } }
+        control = new AbortController();
+        _webAuthnPendiente = control;
+        let vencio = false;
+        if (esperaMaxMs > 0) {
+            reloj = setTimeout(() => { vencio = true; try { control.abort('timeout'); } catch (_) { } }, esperaMaxMs);
+        }
+
+        let cred;
+        try {
+            cred = await navigator.credentials.get({ publicKey: options, signal: control.signal });
+        } catch (e) {
+            if (vencio) return { _error: 'timeout', _nombre: 'timeout' };
+            if (control.signal.aborted) return { _error: 'reemplazado', _nombre: 'reemplazado' };
+            throw e;
+        }
 
         return {
             id: cred.id,
@@ -76,8 +101,24 @@ window.webAuthnGet = async function (optionsFromServer) {
             }
         };
     } catch (e) {
-        return { _error: e.message || e.toString() };
+        return { _error: e.message || e.toString(), _nombre: e.name || '' };
+    } finally {
+        if (reloj) clearTimeout(reloj);
+        if (control && _webAuthnPendiente === control) _webAuthnPendiente = null;
     }
+};
+
+// 2026-09-14: deja anotado en el registro del servidor web POR QUÉ falló la huella (el nombre del
+// error que da el teléfono). Hasta hoy fallaba sin dejar rastro y no había cómo saber la causa.
+// Es un pedido a una dirección que no existe: el servidor contesta cualquier cosa y lo anota.
+window.webAuthnAnotarFallo = function (pantalla, nombre, detalle) {
+    try {
+        const q = new URLSearchParams({
+            p: pantalla || '', n: nombre || '', d: (detalle || '').slice(0, 200),
+            vis: document.visibilityState, foco: document.hasFocus() ? '1' : '0'
+        });
+        fetch('/diag/huella?' + q.toString(), { method: 'HEAD', keepalive: true, cache: 'no-store' }).catch(() => { });
+    } catch (_) { }
 };
 
 // True si el browser soporta WebAuthn con autenticador de plataforma (huella, FaceID, Windows Hello)

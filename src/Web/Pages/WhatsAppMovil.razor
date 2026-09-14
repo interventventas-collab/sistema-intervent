@@ -87,7 +87,9 @@
             {
                 @* ── Entrada principal: la huella ── *@
                 <div class="wam-lock-sub">Entrá con tu huella</div>
-                <button type="button" class="wam-huella-grande" @onclick="EntrarConHuella" disabled="@(verificando || huellaOcupada)">
+                @* 2026-09-14: mientras espera el lector el botón NO se traba: si el lector no aparece,
+                   tocarlo de nuevo cancela el pedido colgado y lo vuelve a pedir. *@
+                <button type="button" class="wam-huella-grande" @onclick="EntrarConHuella" disabled="@verificando">
                     <span class="wam-huella-ic">👆</span>
                     <span>@(huellaOcupada ? "Tocá el lector…" : "Entrar con huella")</span>
                 </button>
@@ -783,6 +785,15 @@ else
     // 2026-08-19: el teclado está pidiendo el código PARA REGISTRAR la huella (no para entrar).
     private bool modoRegistroHuella;
     private const string HuellaRegistradaKey = "wamovil.huellaRegistrada";
+    // 2026-09-14: el lector a veces no aparecía y la pantalla quedaba "Tocá el lector…" ~1 minuto.
+    // (1) El pedido al servidor se hace ANTES de que toquen el botón, así al tocar el teléfono pide
+    //     el dedo en el acto (Android es quisquilloso si pasa tiempo entre el toque y el pedido).
+    // (2) Si en 30 segundos no pasó nada se corta y se avisa, en vez de esperar al teléfono.
+    // (3) Tocar de nuevo cancela el pedido colgado y arranca uno nuevo.
+    private ApiClient.WaHuellaBeginResp? huellaPreparada;
+    private DateTime huellaPreparadaAt;
+    private int huellaIntento;
+    private const int EsperaHuellaMs = 30000;
 
     // Avisos (campanita): sonido + aviso visual del sistema al llegar un mensaje nuevo (pantalla abierta).
     private bool avisos;
@@ -858,6 +869,8 @@ else
         }
         catch { }
         StateHasChanged();
+        // 2026-09-14: si quedó el candado puesto, dejar lista la huella para cuando toquen.
+        if (!desbloqueado) _ = PrepararHuellaAsync();
     }
 
     /// <summary>2026-08-19: el navegador a veces contesta "este teléfono no tiene huella" aunque
@@ -872,13 +885,32 @@ else
                   + "si no aparece el lector, fijate que el teléfono tenga bloqueo de pantalla configurado.";
     }
 
-    private async Task EntrarConHuella()
+    /// <summary>2026-09-14: pide al servidor el "desafío" de la huella antes de que toquen el botón
+    /// (ver huellaPreparada). Si falla no pasa nada: al tocar se pide en el momento.</summary>
+    private async Task PrepararHuellaAsync()
     {
-        AvisarSiNoHayHuella();
-        huellaOcupada = true; huellaMsg = "Tocá la huella…"; pinError = null; StateHasChanged();
+        if (desbloqueado || modoClave) return;
         try
         {
-            var begin = await Api.WaHuellaLoginBeginAsync();
+            var b = await Api.WaHuellaLoginBeginAsync();
+            if (b is not null && b.Ok) { huellaPreparada = b; huellaPreparadaAt = DateTime.UtcNow; }
+        }
+        catch { }
+    }
+
+    private async Task EntrarConHuella()
+    {
+        var intento = ++huellaIntento;
+        AvisarSiNoHayHuella();
+        huellaOcupada = true; huellaMsg = "¿No aparece el lector? Tocá el botón de nuevo."; pinError = null; StateHasChanged();
+        try
+        {
+            // El servidor guarda el desafío 5 minutos: si el preparado tiene más de 4, se pide otro.
+            var begin = huellaPreparada is not null && (DateTime.UtcNow - huellaPreparadaAt).TotalMinutes < 4
+                ? huellaPreparada
+                : await Api.WaHuellaLoginBeginAsync();
+            huellaPreparada = null;   // un desafío por intento
+            if (intento != huellaIntento) return;
             if (begin is null || !begin.Ok)
             {
                 // Todavía nadie registró su huella: se registra desde el teclado, con el código.
@@ -887,10 +919,21 @@ else
                 modoClave = true;
                 return;
             }
-            var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnGet", begin.Options!);
+            var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnGet", begin.Options!, EsperaHuellaMs);
+            // Si mientras tanto tocaron de nuevo, este intento quedó reemplazado: manda el nuevo.
+            if (intento != huellaIntento) return;
             if (credJs.TryGetProperty("_error", out var errEl2))
             {
-                huellaMsg = "No se pudo leer la huella: " + (errEl2.GetString() ?? "sin detalle") + ". Podés entrar con el código.";
+                var detalle = errEl2.GetString() ?? "";
+                var nombre = credJs.TryGetProperty("_nombre", out var nEl) ? nEl.GetString() ?? "" : "";
+                try { await JS.InvokeVoidAsync("webAuthnAnotarFallo", "wa", nombre, detalle); } catch { }
+                huellaMsg = nombre switch
+                {
+                    "timeout" => "No apareció el lector. Tocá \"Entrar con huella\" de nuevo.",
+                    "NotAllowedError" => "El lector se cerró o no reconoció el dedo. Tocá \"Entrar con huella\" de nuevo.",
+                    _ => "No se pudo leer la huella (" + detalle + "). Tocá de nuevo o entrá con el código."
+                };
+                _ = PrepararHuellaAsync();   // así el próximo toque sale en el acto
                 return;
             }
             var comp = await Api.WaHuellaLoginCompleteAsync(new { SessionId = begin.SessionId, AssertionResponse = credJs });
@@ -914,8 +957,16 @@ else
             desbloqueado = true;
             await CargarConversaciones();
         }
-        catch { huellaMsg = "No se pudo usar la huella."; }
-        finally { huellaOcupada = false; StateHasChanged(); }
+        catch (Exception ex)
+        {
+            if (intento != huellaIntento) return;
+            huellaMsg = "No se pudo usar la huella. Tocá de nuevo o entrá con el código.";
+            try { await JS.InvokeVoidAsync("webAuthnAnotarFallo", "wa", "excepcion", ex.Message); } catch { }
+        }
+        finally
+        {
+            if (intento == huellaIntento) { huellaOcupada = false; StateHasChanged(); }
+        }
     }
 
     /// <summary>Arranca el registro: pide el código en el teclado y, al completarlo, registra la huella.</summary>
@@ -1036,6 +1087,7 @@ else
         modoClave = !huellaDisponible;   // 2026-08-19: si el celu tiene huella, se pide la huella
         huellaMsg = $"Pasaron más de {MinutosCandado} minutos. Entrá de nuevo.";
         StateHasChanged();
+        _ = PrepararHuellaAsync();   // 2026-09-14: que el toque en la huella salga en el acto
         return Task.CompletedTask;
     }
 
