@@ -1292,6 +1292,13 @@
                                        clic) y abre directo la lista de contactos. *@
                                     <button class="wa-fwd-btn" @onclick="() => ReenviarEsteMensaje(m)" @onclick:stopPropagation="true"
                                             title="Reenviar este mensaje a otro contacto">↪</button>
+                                    @* 2026-09-14: la foto o el PDF del pago que mandó el cliente → cargar la cobranza con ese
+                                       comprobante ya adjunto. Solo en lo que llega (no en lo que mandamos) y no en audios/stickers. *@
+                                    @if (m.Direccion == "INCOMING" && EsComprobanteAdjunto(m) && !esDeposito)
+                                    {
+                                        <button class="wa-fwd-btn" @onclick="() => AbrirModoCobranza(m.MediaUrl)" @onclick:stopPropagation="true"
+                                                title="Cargar la cobranza con este comprobante adjunto">💵</button>
+                                    }
                                     @* 2026-08-07: ocultar/mostrar este mensaje a Depósito — solo admin/oficina.
                                        2026-08-12: y SOLO en los chats que ve Depósito (en el resto no tiene sentido). *@
                                     @if (!esDeposito && EsChatVisibleDeposito)
@@ -2065,7 +2072,7 @@
     {
         @* 2026-08-27: este espacio ya no es un panel que se abre y se cierra a mano. Aparece SOLO
            cuando entrás al Modo venta 🛒 o al Modo MercadoLibre 🤝, y se va cuando los cerrás con su ×. *@
-        @if (modoVenta || modoMeli || modoAlquiler)
+        @if (modoVenta || modoMeli || modoAlquiler || modoCobranza)
         {
             @* 2026-08-20: MODO VENTA — el panel de la derecha se transforma en el armado de la
                venta, SIN salir del chat ni abrir otra pestaña. Pedido del dueño: "que el chat se
@@ -2794,6 +2801,27 @@
                     </div>
                 </aside>
             }
+            @* ══════════ 2026-09-14: MODO COBRANZA — cargar el pago en EFECTIVO o REDIRIGIDO sin salir
+               del chat. Se abre con el 💵 de la tira o con el 💵 de la foto del pago que mandó el
+               cliente (esa foto queda adjunta). Las transferencias al Galicia NO van por acá: siguen
+               entrando por el extracto del banco. La pieza vive en Shared/CobranzaChat.razor. ══════════ *@
+            else if (modoCobranza)
+            {
+                <aside class="wa-ctx wa-mv wa-cob">
+                    <div class="wa-mv-top">
+                        <span class="wa-mv-tit">💵 Cargar cobranza</span>
+                        <button class="wa-ficha-x" @onclick="CerrarModoCobranza" title="Salir">×</button>
+                    </div>
+                    <CobranzaChat ClienteId="@mcClienteId"
+                                  ClienteNombre="@mcClienteNombre"
+                                  Numero="@selectedNumero"
+                                  Linea="@selectedLinea"
+                                  MediaUrl="@mcMediaUrl"
+                                  OnCambiarCliente="CambiarClienteCobranza"
+                                  OnQuitarFoto="() => mcMediaUrl = null"
+                                  OnCreada="CargarFichaCliente" />
+                </aside>
+            }
             @* 2026-08-27: acá vivía el panel de CONTACTO / CONVERSACIÓN. Se borró entero: después de
                subir estado, responsable, nota, editar contacto y vincular al encabezado del chat, no le
                quedaba nada propio — era una lista de botones repetidos. Lo poco que sí era suyo (sumar y
@@ -2834,6 +2862,9 @@
                sale como mensaje sin copiar ni pegar. *@
             <button class="wa-ctx-rail-btn @(modoAlquiler ? "on" : "")" @onclick="AbrirModoAlquiler"
                     title="Cotizar alquiler: cargá sillas, mesas y flete, y mandale el presupuesto">🪑</button>
+            @* 2026-09-14: cargar un pago en efectivo o redirigido acá al lado. *@
+            <button class="wa-ctx-rail-btn @(modoCobranza ? "on" : "")" @onclick="() => AbrirModoCobranza(null)"
+                    title="Cargar cobranza: un pago en efectivo o redirigido, sin salir del chat">💵</button>
         }
         @* 2026-08-27: PEDIDOS Y CONFIGURACIÓN. Estaba arriba como solapa y le comía alto a la charla.
            Va separado por una rayita y en azul porque es lo único de esta tira que te SACA del chat:
@@ -5763,6 +5794,7 @@
         modoVenta = true;
         modoMeli = false;
         modoAlquiler = false;
+        modoCobranza = false;
         mvPaso = 1;
         var conv = SelectedConv();
         mvClienteId = conv?.ClienteId;
@@ -6570,6 +6602,7 @@
         modoAlquiler = true;
         modoVenta = false;
         modoMeli = false;
+        modoCobranza = false;
         await CargarCotizacionesAlq();
     }
 
@@ -6650,6 +6683,56 @@
         cotizadorRef?.Limpiar();
     }
 
+    // ===== 2026-09-14: MODO COBRANZA — pago en efectivo o redirigido desde el chat =====
+    // La pantalla la arma Shared/CobranzaChat.razor. Acá solo: prender/apagar, a qué cliente va y
+    // qué foto del chat se adjunta. ⚠ Es estado POR CHAT: se limpia en SelectConv y VolverALista,
+    // si no el pago del chat siguiente se le cargaría al cliente anterior.
+    bool modoCobranza = false;
+    int? mcClienteId;
+    string? mcClienteNombre;
+    string? mcMediaUrl;
+
+    void AbrirModoCobranza(string? mediaUrl)
+    {
+        if (!modoCobranza)
+        {
+            var conv = SelectedConv();
+            mcClienteId = conv?.ClienteId;
+            mcClienteNombre = conv?.ClienteNombre;
+        }
+        modoCobranza = true;
+        modoVenta = false;
+        modoMeli = false;
+        modoAlquiler = false;
+        if (mediaUrl is not null) mcMediaUrl = mediaUrl;
+    }
+
+    void CerrarModoCobranza() => LimpiarModoCobranza();
+
+    void LimpiarModoCobranza()
+    {
+        modoCobranza = false;
+        mcClienteId = null;
+        mcClienteNombre = null;
+        mcMediaUrl = null;
+    }
+
+    /// <summary>Cargarle el pago a otra razón social o a otro cliente, sin cambiar el cliente del CHAT.</summary>
+    void CambiarClienteCobranza()
+    {
+        var conv = SelectedConv();
+        AbrirElegirCliente("💵 ¿A qué cliente se le carga el pago?", conv?.ClienteId, conv?.ClienteNombre, (cid, nombre) =>
+        {
+            if (cid is int nuevo) { mcClienteId = nuevo; mcClienteNombre = nombre; }
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>Foto o PDF que puede ser el comprobante de un pago (no audios ni stickers).</summary>
+    bool EsComprobanteAdjunto(ApiClient.TwMsgDto m) => !string.IsNullOrEmpty(m.MediaUrl)
+        && !IsAudio(m.MediaUrl) && !EsSticker(m.MediaUrl)
+        && (IsImage(m.MediaUrl) || m.MediaUrl.Split('?')[0].EndsWith(".pdf", StringComparison.OrdinalIgnoreCase));
+
     // ===== 2026-08-21: MODO MELI — toda la info del comprador de MercadoLibre, dentro del chat =====
     // Pedido del dueño: "si me escribe alguien preguntando por una publicación o porque compró,
     // pongo su usuario y me aparece toda su información para resolver".
@@ -6671,6 +6754,7 @@
     {
         modoMeli = true;
         modoVenta = false;
+        modoCobranza = false;
         if (mmFicha is not null || mmResultados.Count > 0 || string.IsNullOrWhiteSpace(selectedNumero)) return;
 
         // 1) ¿Ya guardamos qué usuario de MeLi escribe desde este teléfono? Entonces la ficha
@@ -8350,6 +8434,7 @@
         // 2026-08-31: la cotización de alquiler era para el cliente ANTERIOR. Se apaga el modo y se
         // vacía todo: si quedara prendido, el próximo "mandar" le tira el presupuesto de otro.
         LimpiarModoAlquiler();
+        LimpiarModoCobranza();      // 2026-09-14: el pago se le cargaría al cliente del chat anterior
         showQuickReplies = false;   // 2026-08-05: cerrar el desplegable de respuestas rápidas al cambiar de chat
         // 2026-08-26: los mensajes programados son de CADA chat: se limpian y se piden de nuevo.
         showProgramarPanel = false; progModo = "MENSAJE"; progPendientes = new(); progResueltos = new();
@@ -8391,6 +8476,7 @@
         sugerenciaCliente = null;
         mostrarFichaCliente = false; fichaCliente = null; facturaAbierta = null;
         LimpiarModoVenta();         // 2026-08-21: mismo agujero que al cambiar de chat
+        LimpiarModoCobranza();
         // 2026-08-06: presencia — salir del chat que estaba mirando.
         _ = CambiarPresenciaConv(null);
     }

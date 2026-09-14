@@ -1088,6 +1088,66 @@ public class CafeCobranzasController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────────────
+    //  14/09/2026 — COBRANZA DESDE EL CHAT DE WHATSAPP.
+    //  El cliente manda la foto del pago y la cobranza se carga ahí mismo: la IA lee el importe
+    //  y a quién se le pagó, y la foto queda adjunta sin bajarla ni volverla a subir.
+    // ─────────────────────────────────────────────────────────────────────────────────────
+
+    public record DesdeWhatsappRequest(string? MediaUrl, string? Tipo = null);
+
+    /// <summary>Lee con IA el comprobante que mandó el cliente. Es una sugerencia: si no se
+    /// entiende devuelve EsPago=false y la cobranza se carga a mano.</summary>
+    [HttpPost("leer-comprobante-whatsapp")]
+    public async Task<IActionResult> LeerComprobanteWhatsapp([FromBody] DesdeWhatsappRequest req,
+        [FromServices] ComprobantePagoLectorService lector)
+        => Ok(await lector.LeerAsync(req.MediaUrl));
+
+    /// <summary>Copia a la cobranza el archivo que el cliente mandó por WhatsApp.</summary>
+    [HttpPost("{cobranzaId:int}/adjuntos/desde-whatsapp")]
+    public async Task<IActionResult> AdjuntarDesdeWhatsapp(int cobranzaId, [FromBody] DesdeWhatsappRequest req,
+        [FromServices] ComprobantePagoLectorService lector)
+    {
+        var c = await _db.CafeCobranzas.FirstOrDefaultAsync(x => x.Id == cobranzaId);
+        if (c is null) return NotFound(new { error = "Cobranza no encontrada" });
+        if (c.Estado == "ANULADA") return BadRequest(new { error = "Cobranza anulada — no se pueden agregar adjuntos" });
+
+        var (up, origen) = await lector.ResolverAdjuntoAsync(req.MediaUrl);
+        if (up is null || origen is null) return NotFound(new { error = "No encontré el archivo del chat" });
+
+        var tipoNorm = (req.Tipo ?? "OTRO").ToUpperInvariant();
+        if (!AdjuntoTiposValidos.Contains(tipoNorm)) tipoNorm = "OTRO";
+        var ext = Path.GetExtension(up.StoredFilename).ToLowerInvariant();
+        if (!AdjuntoExtensionesValidas.Contains(ext))
+            return BadRequest(new { error = $"Formato no permitido. Usa: {string.Join(", ", AdjuntoExtensionesValidas)}" });
+        var tamano = new FileInfo(origen).Length;
+        if (tamano > AdjuntoMaxBytes)
+            return BadRequest(new { error = $"Archivo demasiado grande (max {AdjuntoMaxBytes / 1024 / 1024} MB)" });
+
+        var relativeDir = $"cobranzas/{cobranzaId}";
+        var absDir = _files.ResolveSafe(relativeDir);
+        Directory.CreateDirectory(absDir);
+        var fileName = $"{Guid.NewGuid():N}{ext}";
+        System.IO.File.Copy(origen, Path.Combine(absDir, fileName));
+
+        var adjunto = new CafeCobranzaAdjunto
+        {
+            CobranzaId = cobranzaId,
+            Tipo = tipoNorm,
+            FilePath = $"{relativeDir}/{fileName}",
+            NombreOriginal = string.IsNullOrWhiteSpace(up.OriginalFilename) ? $"comprobante{ext}" : up.OriginalFilename,
+            MimeType = up.ContentType,
+            Tamano = tamano,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.CafeCobranzaAdjuntos.Add(adjunto);
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync("CafeCobranza", cobranzaId.ToString(), "ADJUNTO_UPLOAD",
+            $"{tipoNorm} desde WhatsApp: {adjunto.NombreOriginal} ({adjunto.Tamano} bytes)");
+        return Ok(MapAdjunto(adjunto));
+    }
+
     // ═════════════════════════════════════════════════════════════════════════════════════════
     // COBRO REDIRIGIDO (05/09/2026)
     //

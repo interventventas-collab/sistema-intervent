@@ -1,0 +1,615 @@
+@* ══════════════════════════════════════════════════════════════════════════════════
+   COBRANZA DESDE EL CHAT DE WHATSAPP — 14/09/2026.
+
+   Pedido del dueño: "poder cargar la cobranza fácil desde el mismo chat". Es para EFECTIVO y
+   para el COBRO REDIRIGIDO (el cliente le pasa la plata directo a un empleado o proveedor).
+   ⚠ Las transferencias que entran al Galicia NO van por acá: siguen entrando por el extracto
+   del banco como siempre (lo dijo él). Por eso no hay opción "transferencia" ni "banco".
+
+   Qué hace:
+   - Si se abrió desde una foto o PDF del cliente, la IA lee el importe y a quién se le pagó
+     (es una sugerencia, se ve y se corrige), y la foto queda adjunta a la cobranza.
+   - El importe se reparte solo de la factura más vieja a la más nueva. Destildar una la saltea.
+     Lo que sobra queda "a cuenta".
+   - El recibo por WhatsApp sale SÓLO si se tilda (decisión de él: lo tilda cada vez).
+
+   Las reglas de la plata son las MISMAS de Tesorería → Cobranzas (CafeTesoreriaCobranzas.razor):
+   la caja Redirigido (V_PRIVADO), viajes o sueldo, proveedor con su factura o a cuenta, y
+   "a nadie · queda en la privada". Si alguna cambia allá, cambiarla acá también.
+
+   Vive como pieza aparte para poder usarla después en el celular.
+   ══════════════════════════════════════════════════════════════════════════════════ *@
+
+@using System.Globalization
+@inject ApiClient Api
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<div class="cobch">
+    @if (ClienteId is null)
+    {
+        <div class="cobch-info">Este chat no tiene un cliente vinculado.</div>
+        <button class="cobch-cli" @onclick="OnCambiarCliente">Elegir a qué cliente se le carga el pago</button>
+    }
+    else
+    {
+        <button class="cobch-cli" @onclick="OnCambiarCliente" title="Cargarle el pago a otro cliente">
+            <span class="cobch-cli-nom">@ClienteNombre</span>
+            <span class="cobch-cli-cta">cambiar</span>
+        </button>
+
+        @if (creada is not null)
+        {
+            <div class="cobch-ok">
+                <div>✅ Cobranza <b>@creada</b> cargada · @Plata(creadaImporte)</div>
+                @if (!string.IsNullOrEmpty(creadaAviso))
+                {
+                    <div class="cobch-ok-sub">@creadaAviso</div>
+                }
+                <button class="cobch-link" @onclick="CargarOtra">Cargar otro pago</button>
+            </div>
+        }
+        else
+        {
+            <div class="cobch-modos">
+                <button class="cobch-modo @(modo == ModoEfectivo ? "on" : "")" @onclick="() => ElegirModo(ModoEfectivo)">💵 Efectivo</button>
+                <button class="cobch-modo @(modo == ModoRedirigido ? "on" : "")" @onclick="() => ElegirModo(ModoRedirigido)">↪ Redirigido</button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(MediaUrl))
+            {
+                <div class="cobch-foto">
+                    @if (EsImagen(MediaUrl))
+                    {
+                        <img src="@MediaUrl" alt="comprobante" />
+                    }
+                    else
+                    {
+                        <span class="cobch-foto-pdf">📄</span>
+                    }
+                    <div class="cobch-foto-txt">
+                        <div>Comprobante adjunto</div>
+                        @if (leyendo)
+                        {
+                            <div class="cobch-sub">⏳ Leyendo la foto…</div>
+                        }
+                        else if (lectura is { EsPago: true })
+                        {
+                            <div class="cobch-sub">
+                                Según la foto: @(lectura.Importe is decimal li ? Plata(li) : "importe sin leer")@(string.IsNullOrWhiteSpace(lectura.PagadoA) ? "" : $" · para {lectura.PagadoA}")
+                            </div>
+                        }
+                        else if (lectura is not null)
+                        {
+                            <div class="cobch-sub">No pude leer un pago en la foto: poné el importe a mano.</div>
+                        }
+                    </div>
+                    <button class="cobch-x" title="No adjuntar este comprobante" @onclick="QuitarFoto">×</button>
+                </div>
+            }
+
+            <div class="cobch-fila">
+                <label class="cobch-lbl" for="cobch-imp">Importe</label>
+                <input id="cobch-imp" class="cobch-inp cobch-imp" type="text" inputmode="decimal" placeholder="0"
+                       @bind="ImporteTexto" @bind:event="onchange" onfocus="this.select()" />
+            </div>
+
+            @if (modo == ModoEfectivo)
+            {
+                @if (cajasEfectivo.Count > 1)
+                {
+                    <div class="cobch-t">¿A qué caja entra?</div>
+                    <div class="cobch-chips">
+                        @foreach (var c in cajasEfectivo)
+                        {
+                            <button class="cobch-chip @(cajaEfectivoId == c.Id ? "on" : "")" @onclick="() => cajaEfectivoId = c.Id">@c.Nombre</button>
+                        }
+                    </div>
+                }
+                else if (cajasEfectivo.Count == 1)
+                {
+                    <div class="cobch-sub cobch-pad">Entra a la caja @cajasEfectivo[0].Nombre</div>
+                }
+                else if (cargado)
+                {
+                    <div class="cobch-alerta">⚠ No hay ninguna caja de efectivo activa (Tesorería → Cajas).</div>
+                }
+            }
+            else
+            {
+                <div class="cobch-t">¿A quién se le pasó la plata?</div>
+                <div class="cobch-chips">
+                    @foreach (var d in destinatarios)
+                    {
+                        <button class="cobch-chip @(empleadoId == d.EmpleadoId ? "on" : "")" @onclick="() => ElegirEmpleado(d)">@d.Nombre</button>
+                    }
+                    @foreach (var p in provRedir)
+                    {
+                        <button class="cobch-chip @(proveedorId == p.Id ? "on" : "")" @onclick="() => ElegirProveedor(p.Id)">@p.Nombre</button>
+                    }
+                    <button class="cobch-chip @(destino == DestinoPrivada ? "on" : "")" @onclick="ElegirPrivada">A nadie · queda en la privada</button>
+                </div>
+
+                @if (EmpleadoElegido is { } de)
+                {
+                    @if (de.TieneViajes)
+                    {
+                        <div class="cobch-t">¿De qué se lo descuento?</div>
+                        <div class="cobch-chips">
+                            <button class="cobch-chip @(destino == DestinoViajes ? "on" : "")" @onclick="() => destino = DestinoViajes">Viajes · le debemos @Plata(de.DeudaViajes)</button>
+                            <button class="cobch-chip @(destino == DestinoSueldo ? "on" : "")" @onclick="() => destino = DestinoSueldo">Sueldo · le debemos @Plata(de.DeudaSueldo)</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="cobch-sub cobch-pad">Se le descuenta del sueldo · le debemos @Plata(de.DeudaSueldo)</div>
+                    }
+                }
+                @if (proveedorId > 0)
+                {
+                    var facts = facturasProv.TryGetValue(proveedorId, out var ff) ? ff : new();
+                    @if (facts.Count == 0)
+                    {
+                        <div class="cobch-sub cobch-pad">Va a cuenta del proveedor: no tiene facturas cargadas con saldo.</div>
+                    }
+                    else
+                    {
+                        <div class="cobch-t">¿Contra qué factura del proveedor?</div>
+                        <div class="cobch-chips">
+                            <button class="cobch-chip @(compraId == 0 ? "on" : "")" @onclick="() => compraId = 0">A cuenta</button>
+                            @foreach (var f in facts)
+                            {
+                                <button class="cobch-chip @(compraId == f.Id ? "on" : "")" @onclick="() => compraId = f.Id">
+                                    @(string.IsNullOrWhiteSpace(f.Comprobante) ? f.Numero : f.Comprobante) · debe @Plata(f.Saldo)
+                                </button>
+                            }
+                        </div>
+                    }
+                }
+                <div class="cobch-ayuda">
+                    @(destino == DestinoPrivada
+                        ? "No entra a ninguna caja del negocio y no se le descuenta a nadie."
+                        : "No entra a ninguna caja: se la queda quien elijas y le cuenta como pago.")
+                    ¿No está en la lista? Cargala desde Tesorería → Cobranzas.
+                </div>
+            }
+
+            <div class="cobch-t">Paga estas facturas <span class="cobch-t-sub">de la más vieja a la más nueva</span></div>
+            @if (!cargado)
+            {
+                <div class="cobch-sub cobch-pad">⏳ Trayendo lo que debe…</div>
+            }
+            else if (Deudas.Count == 0)
+            {
+                <div class="cobch-sub cobch-pad">No debe ninguna factura: el pago queda a cuenta.</div>
+            }
+            else
+            {
+                <div class="cobch-facts">
+                    @foreach (var (p, imp) in Reparto().Take(verTodas ? int.MaxValue : MaxFacturas))
+                    {
+                        var excl = excluidas.Contains(p.Clave);
+                        <label class="cobch-fact @(imp > 0 ? "paga" : "")">
+                            <input type="checkbox" checked="@(!excl)" @onchange="() => ToggleExcluida(p.Clave)" />
+                            <span class="cobch-fact-n">@NombreComprobante(p) · @p.Fecha.ToString("dd/MM")</span>
+                            <span class="cobch-fact-imp">
+                                @if (imp > 0 && imp < p.Saldo - 0.01m)
+                                {
+                                    <span class="cobch-sub">@Plata(imp) de @Plata(p.Saldo)</span>
+                                }
+                                else
+                                {
+                                    @Plata(p.Saldo)
+                                }
+                            </span>
+                        </label>
+                    }
+                    @if (!verTodas && Deudas.Count > MaxFacturas)
+                    {
+                        <button class="cobch-link" @onclick="() => verTodas = true">Ver las @Deudas.Count facturas</button>
+                    }
+                </div>
+                @if (Importe > 0)
+                {
+                    <div class="cobch-resumen">
+                        @if (ACuenta > 0.01m)
+                        {
+                            <div>Sobran @Plata(ACuenta): quedan a cuenta.</div>
+                        }
+                        @if (QuedaDebiendo is decimal qd)
+                        {
+                            <div>@(qd > 0.01m ? $"Queda debiendo {Plata(qd)}" : qd < -0.01m ? $"Queda con {Plata(-qd)} a favor" : "Queda al día")</div>
+                        }
+                    </div>
+                }
+            }
+
+            <label class="cobch-recibo">
+                <input type="checkbox" @bind="mandarRecibo" />
+                <span>Mandarle el recibo por WhatsApp</span>
+            </label>
+
+            <button class="cobch-go" disabled="@guardando" @onclick="Cargar">
+                @(guardando ? "Cargando…" : Importe > 0 ? $"Cargar cobranza de {Plata(Importe)}" : "Cargar cobranza")
+            </button>
+        }
+    }
+</div>
+
+<style>
+    .cobch { font-size: 0.82rem; color: #334155; padding: 0 0.7rem 0.8rem; }
+    .cobch-info { color: #64748b; padding: 0.6rem 0 0.4rem; }
+    .cobch-cli { display: flex; align-items: center; gap: 0.4rem; width: 100%; margin: 0.5rem 0 0.3rem; text-align: left;
+        font-family: inherit; font-size: 0.84rem; font-weight: 700; color: #334155; background: #fff;
+        border: 1px solid #e2e8f0; border-radius: 9px; padding: 0.4rem 0.55rem; cursor: pointer; }
+    .cobch-cli:hover { border-color: #94a3b8; }
+    .cobch-cli-nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cobch-cli-cta { font-size: 0.7rem; font-weight: 600; color: #64748b; }
+    .cobch-modos { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; margin: 0.35rem 0 0.5rem; }
+    .cobch-modo { font-family: inherit; font-size: 0.86rem; font-weight: 600; padding: 0.45rem; border-radius: 9px;
+        border: 1px solid #e2e8f0; background: #fff; color: #334155; cursor: pointer; }
+    .cobch-modo.on { border: 2px solid #16a34a; padding: calc(0.45rem - 1px); color: #166534; }
+    .cobch-foto { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .cobch-foto img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid #e2e8f0; }
+    .cobch-foto-pdf { font-size: 1.6rem; width: 44px; text-align: center; }
+    .cobch-foto-txt { flex: 1; min-width: 0; line-height: 1.35; }
+    .cobch-x { background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer; padding: 0 0.2rem; }
+    .cobch-x:hover { color: #334155; }
+    .cobch-sub { font-size: 0.74rem; color: #64748b; }
+    .cobch-pad { padding: 0.15rem 0 0.35rem; }
+    .cobch-fila { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin: 0.2rem 0 0.4rem; }
+    .cobch-lbl { color: #64748b; }
+    .cobch-inp { font-family: inherit; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.35rem 0.5rem; background: #fff; color: #1f2937; }
+    .cobch-inp:focus { outline: none; border-color: #16a34a; }
+    .cobch-imp { width: 140px; text-align: right; font-size: 1rem; font-weight: 700; }
+    .cobch-t { font-size: 0.74rem; color: #64748b; margin: 0.55rem 0 0.25rem; }
+    .cobch-t-sub { color: #94a3b8; }
+    .cobch-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    .cobch-chip { font-family: inherit; font-size: 0.78rem; padding: 0.25rem 0.5rem; border-radius: 8px;
+        border: 1px solid #e2e8f0; background: #fff; color: #334155; cursor: pointer; }
+    .cobch-chip:hover { border-color: #94a3b8; }
+    .cobch-chip.on { border: 2px solid #16a34a; padding: calc(0.25rem - 1px) calc(0.5rem - 1px); color: #166534; font-weight: 600; }
+    .cobch-ayuda { font-size: 0.72rem; color: #94a3b8; margin-top: 0.35rem; line-height: 1.4; }
+    .cobch-alerta { font-size: 0.78rem; color: #b91c1c; padding: 0.2rem 0 0.35rem; }
+    .cobch-facts { display: flex; flex-direction: column; }
+    .cobch-fact { display: flex; align-items: center; gap: 0.35rem; padding: 0.22rem 0; border-bottom: 1px solid #f1f5f9; cursor: pointer; color: #64748b; }
+    .cobch-fact.paga { color: #1f2937; }
+    .cobch-fact-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cobch-fact-imp { white-space: nowrap; text-align: right; }
+    .cobch-link { background: none; border: none; color: #64748b; font-size: 0.76rem; cursor: pointer; padding: 0.3rem 0; text-align: left; text-decoration: underline; }
+    .cobch-resumen { margin-top: 0.4rem; color: #334155; line-height: 1.5; }
+    .cobch-recibo { display: flex; align-items: center; gap: 0.4rem; margin: 0.7rem 0 0.5rem; cursor: pointer; }
+    .cobch-go { width: 100%; font-family: inherit; font-size: 0.9rem; font-weight: 700; padding: 0.55rem; border-radius: 9px;
+        border: none; background: #16a34a; color: #fff; cursor: pointer; }
+    .cobch-go:hover:not(:disabled) { background: #15803d; }
+    .cobch-go:disabled { opacity: 0.6; cursor: wait; }
+    .cobch-ok { margin: 0.5rem 0; line-height: 1.5; }
+    .cobch-ok-sub { font-size: 0.76rem; color: #64748b; }
+
+    .wa-dark .cobch { color: var(--wad-txt); }
+    .wa-dark .cobch-cli, .wa-dark .cobch-modo, .wa-dark .cobch-chip, .wa-dark .cobch-inp { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt); }
+    .wa-dark .cobch-modo.on, .wa-dark .cobch-chip.on { border-color: var(--wad-verde); color: #6ee7b7; }
+    .wa-dark .cobch-fact { border-bottom-color: var(--wad-borde); color: var(--wad-txt3); }
+    .wa-dark .cobch-fact.paga, .wa-dark .cobch-resumen { color: var(--wad-txt); }
+    .wa-dark .cobch-sub, .wa-dark .cobch-t, .wa-dark .cobch-lbl, .wa-dark .cobch-info, .wa-dark .cobch-link, .wa-dark .cobch-cli-cta, .wa-dark .cobch-ok-sub { color: var(--wad-txt2); }
+    .wa-dark .cobch-alerta { color: #fca5a5; }
+</style>
+
+@code {
+    /// <summary>A quién se le carga el pago (la razón social tildada del chat, o la que se eligió).</summary>
+    [Parameter] public int? ClienteId { get; set; }
+    [Parameter] public string? ClienteNombre { get; set; }
+    /// <summary>Número del chat: el recibo sale a este número, no al de la ficha.</summary>
+    [Parameter] public string? Numero { get; set; }
+    /// <summary>Línea del chat: el recibo sale por la misma línea por la que escribe el cliente.</summary>
+    [Parameter] public string? Linea { get; set; }
+    /// <summary>La foto/PDF del pago que mandó el cliente (opcional).</summary>
+    [Parameter] public string? MediaUrl { get; set; }
+    [Parameter] public EventCallback OnCambiarCliente { get; set; }
+    [Parameter] public EventCallback OnQuitarFoto { get; set; }
+    /// <summary>Se cargó la cobranza: el chat actualiza la deuda de la barra de arriba.</summary>
+    [Parameter] public EventCallback OnCreada { get; set; }
+
+    private const string ModoEfectivo = "EFECTIVO";
+    private const string ModoRedirigido = "REDIRIGIDO";
+    private const string DestinoViajes = "viajes";
+    private const string DestinoSueldo = "sueldo";
+    private const string DestinoPrivada = "privada";
+    private const int MaxFacturas = 6;
+
+    private string modo = ModoEfectivo;
+    private decimal Importe;
+    private string ImporteTexto
+    {
+        get => Importe > 0 ? MontoInput.Formato(Importe) : "";
+        set { MontoInput.TryParse(value, out var v); Importe = Math.Max(0, v); }
+    }
+
+    private List<CafeCajaDto> cajas = new();
+    private List<CafeCajaDto> cajasEfectivo = new();
+    private int cajaEfectivoId;
+    private List<CafeDestinatarioDto> destinatarios = new();
+    private List<CafeProveedorRedirDto> provRedir = new();
+    private readonly Dictionary<int, List<CafeFacturaProvDto>> facturasProv = new();
+    private bool fijosCargados;
+
+    private int empleadoId;
+    private int proveedorId;
+    private int compraId;
+    private string? destino;
+
+    private List<ComprobantePendienteDto> pendientes = new();
+    private readonly HashSet<int> excluidas = new();
+    private bool cargado;
+    private bool verTodas;
+    private bool mandarRecibo;
+
+    private bool leyendo;
+    private ApiClient.LecturaComprobanteDto? lectura;
+    private bool guardando;
+    private string? creada;
+    private decimal creadaImporte;
+    private string? creadaAviso;
+
+    private int? clienteCargado;
+    private string? mediaLeida;
+
+    private CafeDestinatarioDto? EmpleadoElegido => destinatarios.FirstOrDefault(d => d.EmpleadoId == empleadoId && empleadoId > 0);
+
+    /// <summary>Lo que debe: facturas con saldo positivo. Las notas de crédito y lo pagado de más
+    /// se compensan desde Tesorería → Cobranzas, acá no se tocan.</summary>
+    private List<ComprobantePendienteDto> Deudas => pendientes.Where(p => p.Saldo > 0.01m).OrderBy(p => p.Fecha).ToList();
+
+    /// <summary>El importe repartido de la factura más vieja a la más nueva, salteando las destildadas.</summary>
+    private IEnumerable<(ComprobantePendienteDto p, decimal imp)> Reparto()
+    {
+        var resto = Importe;
+        foreach (var p in Deudas)
+        {
+            if (excluidas.Contains(p.Clave)) { yield return (p, 0m); continue; }
+            var imp = Math.Min(resto, p.Saldo);
+            resto -= imp;
+            yield return (p, imp);
+        }
+    }
+
+    private decimal ACuenta => Importe - Reparto().Sum(x => x.imp);
+    /// <summary>La deuda del cliente con la MISMA cuenta que la barra de arriba del chat (ficha-chat →
+    /// CafeSaldosService). Sumar las facturas de la lista daba otro número (no descuenta notas de
+    /// crédito ni plata a favor) y dos "debe" distintos en la misma pantalla no se entienden.</summary>
+    private decimal? saldoCliente;
+    private decimal? QuedaDebiendo => saldoCliente is decimal sc ? sc - Importe : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!fijosCargados)
+        {
+            fijosCargados = true;
+            try { cajas = await Api.GetCafeCajasAsync() ?? new(); } catch { cajas = new(); }
+            cajasEfectivo = cajas.Where(c => c.Tipo == "EFECTIVO").ToList();
+            cajaEfectivoId = cajasEfectivo.FirstOrDefault()?.Id ?? 0;
+            try { destinatarios = await Api.GetCafeDestinatariosAsync() ?? new(); } catch { destinatarios = new(); }
+            try { provRedir = await Api.GetCafeProveedoresRedirigidoAsync(); } catch { provRedir = new(); }
+        }
+
+        if (ClienteId != clienteCargado)
+        {
+            clienteCargado = ClienteId;
+            // Las facturas eran del cliente anterior: si quedaran tildadas, el pago iría a otro.
+            pendientes = new(); excluidas.Clear(); verTodas = false; creada = null; cargado = false; saldoCliente = null;
+            if (ClienteId is int cid)
+            {
+                try { pendientes = await Api.GetComprobantesPendientesAsync(cid) ?? new(); }
+                catch { pendientes = new(); }
+                await CargarSaldoAsync(cid);
+            }
+            cargado = true;
+        }
+
+        if (MediaUrl != mediaLeida)
+        {
+            mediaLeida = MediaUrl;
+            lectura = null;
+            if (!string.IsNullOrEmpty(MediaUrl))
+            {
+                creada = null;
+                _ = LeerFotoAsync(MediaUrl);
+            }
+        }
+    }
+
+    private async Task CargarSaldoAsync(int cid)
+    {
+        try { saldoCliente = (await Api.GetFichaChatAsync(cid))?.Saldo; }
+        catch { saldoCliente = null; }
+    }
+
+    private async Task LeerFotoAsync(string url)
+    {
+        leyendo = true;
+        StateHasChanged();
+        ApiClient.LecturaComprobanteDto? r = null;
+        try { r = await Api.LeerComprobanteWhatsappAsync(url); } catch { }
+        if (url != MediaUrl) return;     // mientras leía, tocaron otra foto
+        leyendo = false;
+        lectura = r ?? new ApiClient.LecturaComprobanteDto(false, null, null, null, null, null, null);
+        if (lectura.EsPago)
+        {
+            if (lectura.Importe is decimal imp && Importe <= 0) Importe = imp;
+            // Si la foto dice a quién fue la plata y es alguien de la lista, es un redirigido.
+            if (lectura.EmpleadoId is int eid && destinatarios.FirstOrDefault(d => d.EmpleadoId == eid) is { } d)
+            {
+                modo = ModoRedirigido;
+                ElegirEmpleado(d);
+            }
+            else if (lectura.ProveedorId is int pid && provRedir.Any(p => p.Id == pid))
+            {
+                modo = ModoRedirigido;
+                await ElegirProveedor(pid);
+            }
+        }
+        StateHasChanged();
+    }
+
+    private void ElegirModo(string m)
+    {
+        modo = m;
+        if (m == ModoEfectivo) { empleadoId = 0; proveedorId = 0; compraId = 0; destino = null; }
+    }
+
+    private void ElegirEmpleado(CafeDestinatarioDto d)
+    {
+        empleadoId = d.EmpleadoId;
+        proveedorId = 0;
+        compraId = 0;
+        destino = d.TieneViajes ? null : DestinoSueldo;
+    }
+
+    private async Task ElegirProveedor(int id)
+    {
+        proveedorId = id;
+        empleadoId = 0;
+        destino = null;
+        compraId = 0;
+        if (!facturasProv.ContainsKey(id))
+        {
+            try { facturasProv[id] = await Api.GetCafeFacturasPendientesProveedorAsync(id); }
+            catch { facturasProv[id] = new(); }
+        }
+    }
+
+    private void ElegirPrivada()
+    {
+        empleadoId = 0;
+        proveedorId = 0;
+        compraId = 0;
+        destino = DestinoPrivada;
+    }
+
+    private void ToggleExcluida(int clave)
+    {
+        if (!excluidas.Remove(clave)) excluidas.Add(clave);
+    }
+
+    private Task QuitarFoto() => OnQuitarFoto.InvokeAsync();
+
+    private void CargarOtra()
+    {
+        creada = null;
+        creadaAviso = null;
+    }
+
+    private async Task Cargar()
+    {
+        if (guardando || ClienteId is not int cid) return;
+        if (Importe <= 0) { Toast.Error("Poné el importe que pagó."); return; }
+
+        var cajaId = 0;
+        string forma;
+        if (modo == ModoEfectivo)
+        {
+            cajaId = cajaEfectivoId;
+            if (cajaId == 0) { Toast.Error("No hay caja de efectivo activa."); return; }
+            forma = $"en efectivo ({cajas.FirstOrDefault(c => c.Id == cajaId)?.Nombre})";
+        }
+        else
+        {
+            // La caja de paso se llama "Redirigido" desde el 05/09; si hubiera otra V_PRIVADO vieja, va la renombrada.
+            var paso = cajas.Where(c => c.Tipo == "V_PRIVADO").ToList();
+            cajaId = (paso.FirstOrDefault(c => c.Nombre.Contains("Redirig", StringComparison.OrdinalIgnoreCase)) ?? paso.FirstOrDefault())?.Id ?? 0;
+            if (cajaId == 0) { Toast.Error("No hay caja Redirigido activa (Tesorería → Cajas)."); return; }
+            // Mismas dos trabas que la pantalla de Cobranzas (07/09): no se guarda a medias.
+            if (empleadoId <= 0 && proveedorId <= 0 && destino != DestinoPrivada)
+            { Toast.Error("Elegí a QUIÉN se le pasó la plata (o \"A nadie · queda en la privada\")."); return; }
+            if (empleadoId > 0 && string.IsNullOrWhiteSpace(destino))
+            { Toast.Error($"Falta decir de qué se le descuenta a {EmpleadoElegido?.Nombre}: VIAJES o SUELDO."); return; }
+            forma = empleadoId > 0 ? $"redirigido a {EmpleadoElegido?.Nombre} ({destino})"
+                  : proveedorId > 0 ? $"redirigido a {provRedir.FirstOrDefault(p => p.Id == proveedorId)?.Nombre}"
+                  : "redirigido a la privada";
+        }
+
+        var reparto = Reparto().Where(x => x.imp > 0.009m).ToList();
+        var comps = reparto.Select(x => x.p.Clave < 0
+            ? new ApiClient.CrearComprobanteItemRequest(null, x.imp, -x.p.Clave)
+            : new ApiClient.CrearComprobanteItemRequest(x.p.Clave, x.imp)).ToList();
+        var aCuenta = Importe - reparto.Sum(x => x.imp);
+        if (aCuenta > 0.009m) comps.Add(new ApiClient.CrearComprobanteItemRequest(null, aCuenta));
+
+        var confirmTxt = $"¿Cargar una cobranza de {Plata(Importe)} {forma} a {ClienteNombre}?\n\n" +
+            (reparto.Count > 0 ? "Paga: " + string.Join(", ", reparto.Select(x => NombreComprobante(x.p))) : "Queda toda a cuenta") +
+            (reparto.Count > 0 && aCuenta > 0.009m ? $" · {Plata(aCuenta)} a cuenta" : "") +
+            (mandarRecibo ? "\nSe le manda el recibo por WhatsApp." : "");
+        if (!await JS.InvokeAsync<bool>("confirm", confirmTxt)) return;
+
+        var esRedir = modo == ModoRedirigido;
+        var medio = new ApiClient.CrearMedioItemRequest(cajaId, Importe, null, null,
+            esRedir && empleadoId > 0 ? empleadoId : null,
+            esRedir ? destino : null,
+            esRedir && proveedorId > 0 ? proveedorId : null,
+            esRedir && proveedorId > 0 && compraId > 0 ? compraId : null);
+
+        guardando = true;
+        try
+        {
+            var r = await Api.CrearCafeCobranzaAsync(cid, 0m, null, null, comps, new() { medio });
+            if (r is null) { Toast.Error("No se pudo cargar la cobranza."); return; }
+
+            var avisos = new List<string>();
+            if (!string.IsNullOrEmpty(MediaUrl))
+            {
+                try
+                {
+                    var adj = await Api.AdjuntarCobranzaDesdeWhatsappAsync(r.Id, MediaUrl, esRedir ? "TRANSFERENCIA" : "OTRO");
+                    avisos.Add(adj is null ? "⚠ el comprobante no se pudo adjuntar" : "comprobante adjunto");
+                }
+                catch (Exception ex) { avisos.Add("⚠ el comprobante no se pudo adjuntar: " + ex.Message); }
+            }
+            if (mandarRecibo)
+            {
+                try
+                {
+                    var destinoWa = (Numero ?? "").Replace("whatsapp:", "");
+                    var env = await Api.EnviarReciboCobranzaAsync(r.Id, false, true, destinoWa, Linea);
+                    avisos.Add(env?.WhatsappOk == true ? "recibo enviado" : "⚠ el recibo no salió: " + (env?.WhatsappError ?? "error"));
+                }
+                catch (Exception ex) { avisos.Add("⚠ el recibo no salió: " + ex.Message); }
+            }
+
+            creada = r.Numero;
+            creadaImporte = Importe;
+            creadaAviso = string.Join(" · ", avisos);
+            Toast.Success($"Cobranza {r.Numero} cargada");
+
+            // Queda listo para otro pago del mismo cliente: con lo que debe AHORA.
+            Importe = 0; excluidas.Clear(); verTodas = false; mandarRecibo = false; lectura = null;
+            empleadoId = 0; proveedorId = 0; compraId = 0; destino = null;
+            try { pendientes = await Api.GetComprobantesPendientesAsync(cid) ?? new(); } catch { }
+            await CargarSaldoAsync(cid);
+            try { destinatarios = await Api.GetCafeDestinatariosAsync() ?? destinatarios; } catch { }
+            if (!string.IsNullOrEmpty(MediaUrl)) await OnQuitarFoto.InvokeAsync();
+            await OnCreada.InvokeAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private static string NombreComprobante(ComprobantePendienteDto p)
+    {
+        if (p.EsAlquiler) return $"Alquiler {p.Numero}";
+        if (p.ArcaPtoVta is int pv && p.ArcaCbteNro is int nro && !string.IsNullOrEmpty(p.TipoComprobante))
+            return $"{p.TipoComprobante} {pv:D4}-{nro:D8}";
+        return p.Numero;
+    }
+
+    private static bool EsImagen(string url)
+    {
+        var u = url.Split('?')[0].ToLowerInvariant();
+        return u.EndsWith(".jpg") || u.EndsWith(".jpeg") || u.EndsWith(".png") || u.EndsWith(".webp") || u.EndsWith(".gif");
+    }
+
+    private static string Plata(decimal v)
+    {
+        var ar = CultureInfo.GetCultureInfo("es-AR");
+        return (v < 0 ? "-$" : "$") + Math.Abs(v).ToString("N0", ar);
+    }
+}
