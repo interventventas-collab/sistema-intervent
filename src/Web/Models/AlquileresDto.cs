@@ -243,7 +243,8 @@ public record AlqCobranzaPendienteDto(
     int RepartidorId, string RepartidorNombre,
     decimal Importe, string Tipo, bool MarcadoEntregado, bool MarcadoRetirado,
     string? Notas, string Estado, string? RechazadaMotivo,
-    DateTime CreatedAt, decimal ReservaSaldo);
+    DateTime CreatedAt, decimal ReservaSaldo,
+    int? ClienteId = null, int? CobranzaCreadaId = null);
 
 public class UpdateAlqReservaRequest
 {

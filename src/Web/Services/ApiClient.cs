@@ -663,13 +663,6 @@ public class ApiClient
         return r?.Count ?? 0;
     }
 
-    public async Task<bool> AprobarAlqCobranzaAsync(int id, string? operador)
-    {
-        await SetAuthHeaderAsync();
-        var resp = await _http.PostAsJsonAsync($"/api/alquileres/cobranzas-pendientes/{id}/aprobar", new { operador });
-        return resp.IsSuccessStatusCode;
-    }
-
     /// <summary>Anula un cobro de alquiler ya aprobado (pide clave). Devuelve (ok, error).</summary>
     public async Task<(bool ok, string? error)> AnularAlqCobranzaAsync(int id, string password, string? operador)
     {
@@ -684,6 +677,19 @@ public class ApiClient
     {
         await SetAuthHeaderAsync();
         var resp = await _http.PostAsJsonAsync($"/api/alquileres/cobranzas-pendientes/{id}/rechazar", new { motivo, operador });
+        return resp.IsSuccessStatusCode;
+    }
+
+    /// <summary>2026-09-14: un cobro de alquiler puntual, para precargar la Nueva cobranza de Tesorería.</summary>
+    public async Task<AlqCobranzaPendienteDto?> GetAlqCobranzaPendienteAsync(int id)
+        => await GetAsync<AlqCobranzaPendienteDto>($"/api/alquileres/cobranzas-pendientes/{id}");
+
+    /// <summary>2026-09-14: se procesó en Tesorería → queda aprobada atada a esa cobranza.</summary>
+    public async Task<bool> VincularAlqCobranzaPendienteAsync(int pendienteId, int cobranzaId, string? operador = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/alquileres/cobranzas-pendientes/{pendienteId}/vincular",
+            new { CobranzaId = cobranzaId, Operador = operador });
         return resp.IsSuccessStatusCode;
     }
 

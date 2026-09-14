@@ -40,13 +40,16 @@
     .cp-btn-export:disabled { opacity: 0.5; cursor: wait; }
     .cp-resumen { background: #eff6ff; border-left: 4px solid #1d4ed8; border-radius: 6px; padding: 0.5rem 0.8rem; margin-bottom: 0.7rem; font-size: 0.88rem; }
     .cp-resumen strong { color: #1e40af; font-size: 1rem; }
+    /* 2026-09-14: de qué es el cobro, en texto (sin cajita): ventas y alquileres van en la misma lista. */
+    .cp-kind { font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.35rem; }
+    .cp-nota-recibo { font-size: 0.78rem; color: #6b7280; margin-top: 0.5rem; }
 </style>
 
 <div class="cp-wrap">
     <div class="cp-header">
         <h1 style="margin: 0;">💰 Cobranzas a aprobar</h1>
         <p style="color: #6b7280; margin: 0.3rem 0 0; font-size: 0.9rem;">
-            Cobranzas que los repartidores cargaron desde la pantalla móvil. Revisalas y aprobá las correctas.
+            Lo que cobraron los repartidores con el QR de las ventas y de los alquileres. Revisalo y procesá lo correcto.
         </p>
     </div>
 
@@ -86,23 +89,23 @@
         <div style="flex: 1;"></div>
         <div class="cp-toolbar-group">
             <label>&nbsp;</label>
-            <button class="cp-btn-export excel" @onclick="DescargarExcel" disabled="@descargando" title="Descargar planilla en Excel">
+            <button class="cp-btn-export excel" @onclick="DescargarExcel" disabled="@descargando" title="Descargar planilla en Excel (por ahora solo trae los cobros de ventas)">
                 @(descargando ? "Descargando..." : "📊 Excel")
             </button>
         </div>
         <div class="cp-toolbar-group">
             <label>&nbsp;</label>
-            <button class="cp-btn-export pdf" @onclick="DescargarPdf" disabled="@descargando" title="Descargar planilla en PDF">
+            <button class="cp-btn-export pdf" @onclick="DescargarPdf" disabled="@descargando" title="Descargar planilla en PDF (por ahora solo trae los cobros de ventas)">
                 @(descargando ? "Descargando..." : "📄 PDF")
             </button>
         </div>
     </div>
 
-    @if (lista.Count > 0)
+    @if (Filas.Count > 0)
     {
-        var totalLista = lista.Sum(c => c.Importe);
+        var totalLista = Filas.Sum(f => f.Importe);
         <div class="cp-resumen">
-            📋 <strong>@lista.Count</strong> cobranza(s) · 💰 Total: <strong>$@totalLista.ToString("N2")</strong>
+            📋 <strong>@Filas.Count</strong> cobranza(s) · 💰 Total: <strong>$@totalLista.ToString("N2")</strong>
         </div>
     }
 
@@ -110,19 +113,80 @@
     {
         <p style="text-align: center;">Cargando...</p>
     }
-    else if (lista.Count == 0)
+    else if (Filas.Count == 0)
     {
         <p style="text-align: center; color: #9ca3af; padding: 2rem;">No hay cobranzas en este estado.</p>
     }
     else
     {
-        @foreach (var c in lista)
+        @foreach (var f in Filas)
         {
+          @if (f.Alq is { } a)
+          {
+            @* 2026-09-14: cobro de ALQUILER — antes vivía en /alquileres/cobranzas-pendientes y se "aprobaba"
+               sin recibo ni caja. Ahora se procesa igual que el de ventas. *@
+            var cardClassA = a.Estado == "APROBADA" ? "aprobada" : (a.Estado == "RECHAZADA" ? "rechazada" : "");
+            <div class="cp-card @cardClassA">
+                <div class="cp-row">
+                    <div class="cp-info">
+                        <span class="cp-kind">Alquiler</span><b>@a.ReservaNumero — @a.ClienteNombre</b>
+                        @if (a.MarcadoEntregado)
+                        {
+                            <span class="cp-tag">✅ ENTREGÓ</span>
+                        }
+                        @if (a.MarcadoRetirado)
+                        {
+                            <span class="cp-tag">🔙 RETIRÓ</span>
+                        }
+                        <div class="meta">
+                            🚚 @a.RepartidorNombre · 🕒 @a.CreatedAt.ToArTime().ToString("dd/MM HH:mm")
+                            · cobrado al @(a.Tipo == "retiro" ? "retirar" : "entregar")
+                            · saldo de la reserva $@a.ReservaSaldo.ToString("N2")
+                            @if (!string.IsNullOrEmpty(a.Notas))
+                            {
+                                <span> · 📝 @a.Notas</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="cp-importe">$@a.Importe.ToString("N2")</div>
+                </div>
+                @if (a.Estado == "PENDIENTE")
+                {
+                    <div class="cp-actions">
+                        <button class="cp-btn aprobar" @onclick="() => IrACobrarAlq(a)" title="Te abre la Nueva cobranza con el cliente, el efectivo y la reserva ya tildada — sale recibo y la plata entra a la caja">💰 Procesar cobranza →</button>
+                        <button class="cp-btn rechazar" @onclick="() => PedirRechazarAlq(a)">✗ Rechazar</button>
+                    </div>
+                }
+                else if (a.Estado == "APROBADA" && a.CobranzaCreadaId is null)
+                {
+                    @* Aprobadas con el botón viejo (sin recibo): se anulan acá, como siempre. *@
+                    <div class="cp-actions">
+                        <button class="cp-btn rechazar" @onclick="() => PedirAnularAlq(a)" title="Anular este cobro (se cargó por error)">↩ Anular</button>
+                    </div>
+                }
+                else if (a.Estado == "APROBADA")
+                {
+                    <div class="cp-nota-recibo">Tiene recibo: si hay que anularlo, se anula el recibo en Tesorería → Cobranzas.</div>
+                }
+                else if (a.Estado == "RECHAZADA")
+                {
+                    <div class="cp-actions">
+                        @if (!string.IsNullOrEmpty(a.RechazadaMotivo))
+                        {
+                            <span style="font-size:0.8rem; color:#991b1b; align-self:center;">@a.RechazadaMotivo</span>
+                        }
+                        <button class="cp-btn" style="background:#e5e7eb; color:#374151;" @onclick="() => RestaurarAlq(a)" title="Volver este cobro a Pendiente">↩ Restaurar</button>
+                    </div>
+                }
+            </div>
+          }
+          else if (f.Venta is { } c)
+          {
             var cardClass = c.Estado == "APROBADA" ? "aprobada" : (c.Estado == "RECHAZADA" ? "rechazada" : "");
             <div class="cp-card @cardClass">
                 <div class="cp-row">
                     <div class="cp-info">
-                        <b>@c.VentaNumero — @(c.ClienteNombre ?? "(sin cliente)")</b>
+                        <span class="cp-kind">Venta</span><b>@c.VentaNumero — @(c.ClienteNombre ?? "(sin cliente)")</b>
                         @if (c.MarcadoEntregado)
                         {
                             <span class="cp-tag">✅ ENTREGADO</span>
@@ -155,6 +219,7 @@
                     </div>
                 }
             </div>
+          }
         }
     }
 </div>
@@ -169,7 +234,7 @@
                 <button class="btn-close" style="color:white;" @onclick="() => rechazarTarget = null">&times;</button>
             </div>
             <div class="modal-body">
-                <p>¿Estás seguro que querés rechazar el cobro de <strong>$@rechazarTarget.Importe.ToString("N2")</strong> de <strong>@rechazarTarget.VentaNumero</strong> (@rechazarTarget.RepartidorNombre)?</p>
+                <p>¿Estás seguro que querés rechazar el cobro de <strong>$@rechazarTarget.Importe.ToString("N2")</strong> de <strong>@rechazarTarget.Numero</strong> (@rechazarTarget.RepartidorNombre)?</p>
                 <label class="form-label">Motivo (opcional)</label>
                 <input class="form-input" @bind="rechazarMotivo" @bind:event="oninput" placeholder="Ej: se cargó por error" />
                 <p class="text-muted" style="font-size:0.85rem; margin-top:0.5rem;">Si te arrepentís, después la podés restaurar desde la solapa "Rechazadas".</p>
@@ -184,14 +249,58 @@
     </div>
 }
 
+@* Anular un cobro de alquiler aprobado con el botón viejo (sin recibo): pide clave, le devuelve el saldo a la reserva. *@
+@if (anularAlqTarget is not null)
+{
+    <div class="modal-overlay" @onclick="() => anularAlqTarget = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dc3545; color:white;">
+                <h4 style="margin:0;">↩ Anular cobro de alquiler</h4>
+                <button class="btn-close" style="color:white;" @onclick="() => anularAlqTarget = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a anular el cobro de <strong>$@anularAlqTarget.Importe.ToString("N2")</strong> de la reserva <strong>@anularAlqTarget.ReservaNumero</strong> (@anularAlqTarget.RepartidorNombre).</p>
+                <p class="text-muted" style="font-size:0.85rem;">Esto le devuelve el saldo a la reserva. Usalo solo si se cargó por error.</p>
+                <label class="form-label">Ingresá tu clave para confirmar</label>
+                <input class="form-input" type="password" @bind="anularPassword" @bind:event="oninput" placeholder="Tu clave de acceso" />
+                @if (!string.IsNullOrEmpty(anularError)) { <div style="color:#b91c1c; font-size:0.85rem; font-weight:600; margin-top:0.4rem;">⚠ @anularError</div> }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => anularAlqTarget = null" disabled="@procesando">Cancelar</button>
+                <button class="btn btn-danger" disabled="@(procesando || string.IsNullOrWhiteSpace(anularPassword))" @onclick="ConfirmarAnularAlq">
+                    @(procesando ? "Anulando..." : "Anular definitivamente")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<CobranzaPendienteDto> lista = new();
+    // 2026-09-14: los cobros de ALQUILER del repartidor, en la misma lista (antes pantalla aparte).
+    private List<AlqCobranzaPendienteDto> listaAlq = new();
+    private AlqCobranzaPendienteDto? anularAlqTarget;
+    private string anularPassword = "";
+    private string? anularError;
+
+    /// <summary>Un renglón de la lista: o un cobro de venta o uno de alquiler.</summary>
+    private sealed record Fila(CobranzaPendienteDto? Venta, AlqCobranzaPendienteDto? Alq)
+    {
+        public DateTime CreatedAt => Venta?.CreatedAt ?? Alq!.CreatedAt;
+        public decimal Importe => Venta?.Importe ?? Alq!.Importe;
+    }
+
+    /// <summary>Lo que se rechaza en el modal (sirve para los dos tipos).</summary>
+    private sealed record RechazoTarget(bool EsAlquiler, int Id, decimal Importe, string Numero, string RepartidorNombre);
+
+    private List<Fila> filas = new();
+    private List<Fila> Filas => filas;
     private bool loading = true;
     private bool procesando;
     private string tab = "PENDIENTE";
     private int countPendientes;
     // Rechazar con doble confirmación (modal)
-    private CobranzaPendienteDto? rechazarTarget;
+    private RechazoTarget? rechazarTarget;
     private string rechazarMotivo = "";
     // 2026-06-10: filtros + descargas
     private List<RepartidorDto>? repartidores;
@@ -214,7 +323,16 @@
         {
             var repId = filtroRepartidorId > 0 ? (int?)filtroRepartidorId : null;
             lista = await Api.GetCobranzasPendientesAsync(tab, repId, filtroDesde, filtroHasta) ?? new();
-            countPendientes = await Api.GetCountCobranzasPendientesAsync();
+            // Los de alquiler no tienen filtro de fechas en el servidor: se filtra acá con el mismo
+            // criterio que el de ventas (CreatedAt desde el día "desde" hasta el día "hasta" inclusive).
+            var alq = await Api.GetAlqCobranzasPendientesAsync(tab, repId) ?? new();
+            if (filtroDesde.HasValue) alq = alq.Where(a => a.CreatedAt >= filtroDesde.Value.Date).ToList();
+            if (filtroHasta.HasValue) alq = alq.Where(a => a.CreatedAt < filtroHasta.Value.Date.AddDays(1)).ToList();
+            listaAlq = alq;
+            filas = lista.Select(v => new Fila(v, null))
+                .Concat(listaAlq.Select(a => new Fila(null, a)))
+                .OrderByDescending(x => x.CreatedAt).ToList();
+            countPendientes = await Api.GetCountCobranzasPendientesAsync() + await Api.GetCountAlqCobranzasPendientesAsync();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { loading = false; }
@@ -285,8 +403,59 @@
 
     private void PedirRechazar(CobranzaPendienteDto c)
     {
-        rechazarTarget = c;
+        rechazarTarget = new RechazoTarget(false, c.Id, c.Importe, c.VentaNumero, c.RepartidorNombre);
         rechazarMotivo = "";
+    }
+
+    private void PedirRechazarAlq(AlqCobranzaPendienteDto a)
+    {
+        rechazarTarget = new RechazoTarget(true, a.Id, a.Importe, a.ReservaNumero, a.RepartidorNombre);
+        rechazarMotivo = "";
+    }
+
+    /// <summary>2026-09-14: igual que el de ventas, pero con la reserva tildada. Al guardar la cobranza
+    /// este cobro queda aprobado y atado al recibo.</summary>
+    private void IrACobrarAlq(AlqCobranzaPendienteDto a)
+    {
+        if (a.ClienteId is null)
+        {
+            ToastService.Error("La reserva no tiene cliente asociado, no se puede cobrar");
+            return;
+        }
+        Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={a.ClienteId.Value}&alqPendienteId={a.Id}");
+    }
+
+    private async Task RestaurarAlq(AlqCobranzaPendienteDto a)
+    {
+        procesando = true;
+        try
+        {
+            var ok = await Api.RestaurarAlqCobranzaAsync(a.Id, Operator.Current);
+            if (ok) { ToastService.Success("Restaurada — volvió a Pendientes"); await Recargar(); }
+            else ToastService.Error("No se pudo restaurar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { procesando = false; }
+    }
+
+    private void PedirAnularAlq(AlqCobranzaPendienteDto a) { anularAlqTarget = a; anularPassword = ""; anularError = null; }
+
+    private async Task ConfirmarAnularAlq()
+    {
+        if (anularAlqTarget is null || string.IsNullOrWhiteSpace(anularPassword)) return;
+        procesando = true; anularError = null;
+        try
+        {
+            var (ok, error) = await Api.AnularAlqCobranzaAsync(anularAlqTarget.Id, anularPassword, Operator.Current);
+            if (ok)
+            {
+                ToastService.Success($"Cobro anulado — volvió el saldo a {anularAlqTarget.ReservaNumero}");
+                anularAlqTarget = null; anularPassword = "";
+                await Recargar();
+            }
+            else anularError = error ?? "No se pudo anular";
+        }
+        finally { procesando = false; }
     }
 
     private async Task ConfirmarRechazar()
@@ -295,8 +464,10 @@
         procesando = true;
         try
         {
-            var ok = await Api.RechazarCobranzaPendienteAsync(rechazarTarget.Id,
-                new RechazarCobranzaPendienteRequest { Motivo = rechazarMotivo, Operador = Operator.Current });
+            var ok = rechazarTarget.EsAlquiler
+                ? await Api.RechazarAlqCobranzaAsync(rechazarTarget.Id, rechazarMotivo, Operator.Current)
+                : await Api.RechazarCobranzaPendienteAsync(rechazarTarget.Id,
+                    new RechazarCobranzaPendienteRequest { Motivo = rechazarMotivo, Operador = Operator.Current });
             if (ok) { ToastService.Info("Rechazada"); rechazarTarget = null; await Recargar(); }
             else ToastService.Error("No se pudo rechazar");
         }

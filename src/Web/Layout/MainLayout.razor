@@ -1042,8 +1042,9 @@
                          IsActive="@IsActive("/alquileres/fletes")" OnClick="@(() => NavigateTo("/alquileres/fletes"))" />
                 <NavItem Href="/alquileres/texto" Label="Texto del presupuesto" Icon="@SvgIcons.Edit"
                          IsActive="@IsActive("/alquileres/texto")" OnClick="@(() => NavigateTo("/alquileres/texto"))" />
-                <NavItem Href="/alquileres/cobranzas-pendientes" Label="Cobros repartidor" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/alquileres/cobranzas-pendientes")" OnClick="@(() => NavigateTo("/alquileres/cobranzas-pendientes"))" />
+                @* 2026-09-14: los cobros del repartidor de alquiler viven en la lista unificada de Cobranzas a aprobar. *@
+                <NavItem Href="/cafe/cobranzas-pendientes" Label="Cobros repartidor" Icon="@SvgIcons.Tag"
+                         IsActive="false" OnClick="@(() => NavigateTo("/cafe/cobranzas-pendientes"))" />
             </NavGroup>
         }
 
@@ -1413,8 +1414,8 @@
                quiere que deposito vea las preguntas para responderlas. *@
             @if (!IsRoleWithCustomSidebar())
             {
+                @* 2026-09-14: el 💰 cuenta ventas Y alquileres (la 🪑 aparte se sacó: una sola lista). *@
                 <CobranzasPendientesBell />
-                <AlqCobranzasPendientesBell />
             }
             <ChatBell />
             <MeliQuestionsBell />

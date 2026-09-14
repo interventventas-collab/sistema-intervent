@@ -7,9 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Api.Controllers;
 
 /// <summary>
-/// Admin: revisa y aprueba/rechaza las cobranzas que los repartidores precargaron en alquileres.
-/// Al aprobar, el importe se suma a Alq_Reservas.MontoCobrado (baja el saldo de la reserva) y,
-/// si el repartidor habia tildado entrega/retiro junto al cobro, se refleja en la reserva.
+/// Admin: revisa y rechaza las cobranzas que los repartidores precargaron en alquileres.
+/// 2026-09-14: se procesan en Tesorería como las de ventas (recibo + caja) y quedan aprobadas por Vincular.
 /// Espejo de CafeCobranzasPendientesController. Pedido 2026-06-26.
 /// </summary>
 [ApiController]
@@ -25,7 +24,10 @@ public class AlqCobranzasPendientesController : ControllerBase
         int RepartidorId, string RepartidorNombre,
         decimal Importe, string Tipo, bool MarcadoEntregado, bool MarcadoRetirado,
         string? Notas, string Estado, string? RechazadaMotivo,
-        DateTime CreatedAt, decimal ReservaSaldo);
+        DateTime CreatedAt, decimal ReservaSaldo,
+        // 2026-09-14: para "Procesar cobranza →" (abre Tesorería con este cliente) y para saber si
+        // ya tiene recibo (entonces se anula desde Tesorería, no desde acá).
+        int? ClienteId = null, int? CobranzaCreadaId = null);
 
     [HttpGet]
     public async Task<IActionResult> Get([FromQuery] string? estado = null, [FromQuery] int? repartidorId = null)
@@ -46,9 +48,72 @@ public class AlqCobranzasPendientesController : ControllerBase
             p.Importe, p.Tipo, p.MarcadoEntregado, p.MarcadoRetirado,
             p.Notas, p.Estado, p.RechazadaMotivo,
             p.CreatedAt,
-            p.Reserva is null ? 0m : Math.Max(0m, p.Reserva.MontoTotal - p.Reserva.Sena - p.Reserva.MontoCobrado)
+            p.Reserva is null ? 0m : Math.Max(0m, p.Reserva.MontoTotal - p.Reserva.Sena - p.Reserva.MontoCobrado),
+            p.Reserva?.ClienteId, p.CobranzaCreadaId
         )).ToList();
         return Ok(dto);
+    }
+
+    /// <summary>Un cobro puntual, para precargar la Nueva cobranza de Tesorería.</summary>
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        var p = await _db.AlqCobranzasPendientes
+            .Include(x => x.Reserva).ThenInclude(r => r!.ClienteNav)
+            .Include(x => x.Repartidor)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null) return NotFound();
+        return Ok(new PendienteDto(
+            p.Id, p.ReservaId, p.Reserva?.Numero ?? "?", p.Reserva?.ClienteNav?.Nombre ?? "—",
+            p.RepartidorId, p.Repartidor?.Nombre ?? "—",
+            p.Importe, p.Tipo, p.MarcadoEntregado, p.MarcadoRetirado,
+            p.Notas, p.Estado, p.RechazadaMotivo, p.CreatedAt,
+            p.Reserva is null ? 0m : Math.Max(0m, p.Reserva.MontoTotal - p.Reserva.Sena - p.Reserva.MontoCobrado),
+            p.Reserva?.ClienteId, p.CobranzaCreadaId));
+    }
+
+    public record VincularRequest(int CobranzaId, string? Operador);
+
+    /// <summary>
+    /// 2026-09-14 — Se procesó en Tesorería: queda APROBADA atada a esa cobranza.
+    ///
+    /// ⚠ NO suma a MontoCobrado: eso ya lo hizo la cobranza al imputarle la reserva
+    /// (CafeCobranzasController.Crear). Si se sumara acá también, la reserva quedaría cobrada
+    /// dos veces. Lo único que se copia del "Aprobar" viejo es marcar la entrega o el retiro.
+    /// </summary>
+    [HttpPost("{id:int}/vincular")]
+    public async Task<IActionResult> Vincular(int id, [FromBody] VincularRequest req)
+    {
+        var p = await _db.AlqCobranzasPendientes.Include(x => x.Reserva).FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null) return NotFound();
+        if (p.Estado != "PENDIENTE") return BadRequest(new { error = $"Ya esta {p.Estado}" });
+        var cobranzaOk = await _db.CafeCobranzas.AnyAsync(c => c.Id == req.CobranzaId && c.Estado == "VIGENTE");
+        if (!cobranzaOk) return BadRequest(new { error = "La cobranza no existe o está anulada" });
+
+        var now = DateTime.UtcNow;
+        if (p.Reserva is not null)
+        {
+            // Con la fecha en que el repartidor lo marcó, no la de la aprobación (mismo arreglo que ventas 03/07).
+            if (p.MarcadoEntregado && !p.Reserva.EntregadoPorRepartidorId.HasValue)
+            {
+                p.Reserva.EntregadoPorRepartidorId = p.RepartidorId;
+                p.Reserva.EntregadoAt = p.CreatedAt;
+                if (p.Reserva.Estado == "reservado" || p.Reserva.Estado == "confirmado") p.Reserva.Estado = "entregado";
+            }
+            if (p.MarcadoRetirado && !p.Reserva.RetiradoPorRepartidorId.HasValue)
+            {
+                p.Reserva.RetiradoPorRepartidorId = p.RepartidorId;
+                p.Reserva.RetiradoAt = p.CreatedAt;
+                p.Reserva.Estado = "finalizado";
+            }
+            p.Reserva.UpdatedAt = now;
+        }
+        p.Estado = "APROBADA";
+        p.CobranzaCreadaId = req.CobranzaId;
+        p.RevisadaPor = req.Operador;
+        p.RevisadaAt = now;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     [HttpGet("count-pendientes")]
@@ -58,45 +123,9 @@ public class AlqCobranzasPendientesController : ControllerBase
         return Ok(new { count });
     }
 
-    public record AprobarRequest(string? Operador);
-
-    [HttpPost("{id:int}/aprobar")]
-    public async Task<IActionResult> Aprobar(int id, [FromBody] AprobarRequest req)
-    {
-        var p = await _db.AlqCobranzasPendientes
-            .Include(x => x.Reserva).Include(x => x.Repartidor)
-            .FirstOrDefaultAsync(x => x.Id == id);
-        if (p is null) return NotFound();
-        if (p.Estado != "PENDIENTE") return BadRequest(new { error = $"Ya esta {p.Estado}" });
-        if (p.Reserva is null) return BadRequest(new { error = "La reserva asociada no existe" });
-
-        var now = DateTime.UtcNow;
-        // Sumar al cobrado de la reserva (baja el saldo)
-        p.Reserva.MontoCobrado += p.Importe;
-
-        // Reflejar entrega/retiro si el repartidor las tildo junto al cobro
-        if (p.MarcadoEntregado && !p.Reserva.EntregadoPorRepartidorId.HasValue)
-        {
-            p.Reserva.EntregadoPorRepartidorId = p.RepartidorId;
-            p.Reserva.EntregadoAt = now;
-            if (p.Reserva.Estado == "reservado" || p.Reserva.Estado == "confirmado") p.Reserva.Estado = "entregado";
-        }
-        if (p.MarcadoRetirado && !p.Reserva.RetiradoPorRepartidorId.HasValue)
-        {
-            p.Reserva.RetiradoPorRepartidorId = p.RepartidorId;
-            p.Reserva.RetiradoAt = now;
-            p.Reserva.Estado = "finalizado";
-        }
-        p.Reserva.UpdatedAt = now;
-
-        p.Estado = "APROBADA";
-        p.RevisadaPor = req.Operador;
-        p.RevisadaAt = now;
-
-        await _db.SaveChangesAsync();
-        var saldo = Math.Max(0m, p.Reserva.MontoTotal - p.Reserva.Sena - p.Reserva.MontoCobrado);
-        return Ok(new { id = p.Id, reservaSaldo = saldo });
-    }
+    // 2026-09-14: acá estaba "Aprobar", que sumaba a MontoCobrado sin recibo ni caja. Se sacó a propósito:
+    // los cobros de alquiler ahora se procesan en Tesorería (ver Vincular), igual que los de ventas.
+    // Dejarlo vivo era dejar abierta la puerta para que la plata no entre a la caja Efectivo.
 
     public record RechazarRequest(string? Motivo, string? Operador);
 
@@ -142,6 +171,10 @@ public class AlqCobranzasPendientesController : ControllerBase
         var p = await _db.AlqCobranzasPendientes.Include(x => x.Reserva).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound();
         if (p.Estado != "APROBADA") return BadRequest(new { error = $"Solo se puede anular una cobranza APROBADA (esta está {p.Estado})." });
+        // 2026-09-14: si se procesó con recibo, la plata está en la caja y en la reserva POR la cobranza.
+        // Anular acá restaría la reserva sin sacar la plata de la caja: se anula el recibo en Tesorería.
+        if (p.CobranzaCreadaId.HasValue)
+            return BadRequest(new { error = "Este cobro tiene recibo: anulalo desde Tesorería → Cobranzas." });
 
         // Pedir clave del usuario actual (acción sensible: mueve plata).
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value

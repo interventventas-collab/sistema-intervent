@@ -412,7 +412,19 @@ public class CafeCobranzasController : ControllerBase
                 p.RevisadaAt
             })
             .ToListAsync();
-        var pendMap = pendientesLink
+        // 2026-09-14: los cobros de alquiler del repartidor también se procesan con recibo.
+        var pendientesAlq = await _db.AlqCobranzasPendientes
+            .Include(p => p.Repartidor)
+            .Where(p => p.CobranzaCreadaId != null && cobIds.Contains(p.CobranzaCreadaId!.Value))
+            .Select(p => new {
+                CobranzaId = p.CobranzaCreadaId!.Value,
+                RepartidorNombre = p.Repartidor != null ? p.Repartidor.Nombre : null,
+                p.CreatedAt,
+                p.RevisadaPor,
+                p.RevisadaAt
+            })
+            .ToListAsync();
+        var pendMap = pendientesLink.Concat(pendientesAlq)
             .GroupBy(x => x.CobranzaId)
             .ToDictionary(g => g.Key, g => g.OrderBy(x => x.CreatedAt).First());
 

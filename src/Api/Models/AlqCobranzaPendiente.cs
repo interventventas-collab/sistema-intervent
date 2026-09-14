@@ -5,8 +5,8 @@ namespace Api.Models;
 
 /// <summary>
 /// Cobranza precargada por un repartidor desde la pantalla mobile /alquiler/{token}.
-/// Queda PENDIENTE hasta que el admin la apruebe en /alquileres/cobranzas-pendientes,
-/// momento en el cual el importe se suma a Alq_Reservas.MontoCobrado (baja el saldo de la reserva).
+/// Queda PENDIENTE hasta que el admin la procese en /cafe/cobranzas-pendientes (desde 2026-09-14 con recibo;
+/// la cobranza de Tesorería es la que suma a Alq_Reservas.MontoCobrado).
 /// El admin tambien puede rechazarla. Espejo de Cafe_CobranzasPendientes. Pedido 2026-06-26.
 /// </summary>
 [Table("Alq_CobranzasPendientes")]
@@ -47,6 +47,11 @@ public class AlqCobranzaPendiente
     public string? RevisadaPor { get; set; }
 
     public DateTime? RevisadaAt { get; set; }
+
+    /// <summary>2026-09-14: la cobranza de Tesorería que se hizo con este cobro ("Procesar cobranza →",
+    /// igual que las de ventas). Null = se aprobó con el botón viejo, que solo bajaba el saldo de la
+    /// reserva sin recibo ni caja.</summary>
+    public int? CobranzaCreadaId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

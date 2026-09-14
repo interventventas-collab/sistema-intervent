@@ -7702,3 +7702,13 @@ GO
 IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'alq.dias.porcentaje')
     INSERT INTO AppSettings ([Key], [Value]) VALUES ('alq.dias.porcentaje', '50');
 GO
+
+-- ============================================================
+-- 2026-09-14: los cobros de ALQUILER del repartidor se procesan igual que los de VENTAS.
+-- "Procesar cobranza ->" abre la cobranza de Tesoreria con la reserva tildada: sale recibo y la
+-- plata entra a la caja Efectivo. Esta columna guarda que cobranza se hizo con cada cobro
+-- (espejo de Cafe_CobranzasPendientes.CobranzaCreadaId). Null = aprobado con el boton viejo.
+-- ============================================================
+IF COL_LENGTH('Alq_CobranzasPendientes','CobranzaCreadaId') IS NULL
+    ALTER TABLE Alq_CobranzasPendientes ADD CobranzaCreadaId INT NULL;
+GO

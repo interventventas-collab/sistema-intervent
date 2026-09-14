@@ -344,6 +344,18 @@
                             </div>
                         </div>
                     }
+                    @if (alqPendienteOrigen is not null)
+                    {
+                        <div style="margin: 0.8rem 0; padding: 0.7rem 0.9rem; background: #dcfce7; border: 1px solid #16a34a; border-radius: 8px; display: flex; gap: 0.6rem; align-items: center;">
+                            <span style="font-size: 1.5rem;">🪑</span>
+                            <div style="flex: 1; font-size: 0.88rem;">
+                                <b>Cobro de alquiler del repartidor @alqPendienteOrigen.RepartidorNombre</b> por <b style="color:#16a34a;">$@alqPendienteOrigen.Importe.ToString("N2")</b>
+                                <div style="font-size: 0.78rem; color: #166534; margin-top: 0.15rem;">
+                                    Para la reserva @alqPendienteOrigen.ReservaNumero (ya está tildada abajo). Revisá y guardá.
+                                </div>
+                            </div>
+                        </div>
+                    }
                     @* --- Comprobantes a cobrar --- *@
                     <div style="margin: 1rem 0; padding: 0.8rem; background: #f9fafb; border-radius: 8px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
@@ -1603,6 +1615,10 @@
     /// <summary>Si vino desde Cobranzas pendientes (repartidor cargo desde QR), precargamos
     /// la cobranza con efectivo + importe. Al guardar vinculamos la pendiente.</summary>
     [Parameter, SupplyParameterFromQuery(Name = "pendienteId")] public int? PrePendienteId { get; set; }
+    /// <summary>2026-09-14: lo mismo para un cobro de ALQUILER del repartidor: efectivo + la reserva tildada.
+    /// Al guardar se vincula (y ahí la plata entra a la caja, cosa que el "Aprobar" viejo no hacía).</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "alqPendienteId")] public int? PreAlqPendienteId { get; set; }
+    private AlqCobranzaPendienteDto? alqPendienteOrigen;
     // 2026-06-06: abre el modal de Nueva Cobranza vacío (atajo desde topbar)
     [Parameter, SupplyParameterFromQuery(Name = "nueva")] public int? PreNueva { get; set; }
     private CobranzaPendienteDto? pendienteOrigen;
@@ -1744,6 +1760,8 @@
             // Si viene desde una cobranza pendiente del repartidor, precargamos efectivo
             if (PrePendienteId.HasValue && PrePendienteId.Value > 0)
                 await PrecargarDesdePendienteAsync(PrePendienteId.Value);
+            if (PreAlqPendienteId.HasValue && PreAlqPendienteId.Value > 0)
+                await PrecargarDesdeAlqPendienteAsync(PreAlqPendienteId.Value);
             RecalcularTotal();
         }
     }
@@ -1770,6 +1788,44 @@
             }
             formObservaciones = $"Cobranza precargada por {pendienteOrigen.RepartidorNombre} desde el QR" +
                 (string.IsNullOrEmpty(pendienteOrigen.Notas) ? "" : $". Notas: {pendienteOrigen.Notas}");
+        }
+        catch { /* no critico */ }
+    }
+
+    /// <summary>2026-09-14: cobro de ALQUILER del repartidor → efectivo + la reserva tildada con lo que
+    /// alcanza (lo que sobre queda para que el operador lo ponga a cuenta o en otra factura).
+    /// En la lista de comprobantes el alquiler va con la clave = -ReservaId (ver ComprobantePendienteDto.Clave).</summary>
+    private async Task PrecargarDesdeAlqPendienteAsync(int alqPendienteId)
+    {
+        try
+        {
+            alqPendienteOrigen = await Api.GetAlqCobranzaPendienteAsync(alqPendienteId);
+            if (alqPendienteOrigen is null) return;
+            if (alqPendienteOrigen.Estado != "PENDIENTE")
+            {
+                ToastService.Error($"Ese cobro de alquiler ya está {alqPendienteOrigen.Estado.ToLower()}.");
+                alqPendienteOrigen = null;
+                return;
+            }
+            var cajaEf = cajas?.FirstOrDefault(c => c.IsActive && c.Tipo == "EFECTIVO");
+            if (cajaEf is not null)
+            {
+                formMedios.Add(new MedioForm
+                {
+                    CajaId = cajaEf.Id,
+                    TipoCaja = cajaEf.Tipo,
+                    Importe = alqPendienteOrigen.Importe,
+                    Referencia = $"Cobrado por {alqPendienteOrigen.RepartidorNombre} (QR alquiler)"
+                });
+            }
+            if (imputaciones.TryGetValue(-alqPendienteOrigen.ReservaId, out var imp))
+            {
+                var linea = pendientes?.FirstOrDefault(p => p.Clave == -alqPendienteOrigen.ReservaId);
+                imp.Seleccionado = true;
+                imp.Importe = linea is null ? alqPendienteOrigen.Importe : Math.Min(alqPendienteOrigen.Importe, linea.Saldo);
+            }
+            formObservaciones = $"Cobro de alquiler {alqPendienteOrigen.ReservaNumero} precargado por {alqPendienteOrigen.RepartidorNombre} desde el QR" +
+                (string.IsNullOrEmpty(alqPendienteOrigen.Notas) ? "" : $". Notas: {alqPendienteOrigen.Notas}");
         }
         catch { /* no critico */ }
     }
@@ -1836,6 +1892,10 @@
         formMedios = new();
         formRetenciones = 0;
         formObservaciones = null;
+        // 2026-09-14: el cobro del repartidor es de ESTA apertura. Si quedaba de antes, la próxima
+        // cobranza hecha a mano lo marcaba aprobado atado a un recibo que no era suyo.
+        pendienteOrigen = null;
+        alqPendienteOrigen = null;
         showNueva = true;
     }
 
@@ -1873,6 +1933,8 @@
         showNueva = false;
         adjRetencionFile = null;
         adjTransferenciaFile = null;
+        pendienteOrigen = null;
+        alqPendienteOrigen = null;
     }
 
     private async Task OnClienteChange()
@@ -2290,6 +2352,12 @@
                 try { await Api.VincularCobranzaPendienteAsync(pendienteOrigen.Id, r.Id, Operator.Current); }
                 catch { /* no critico */ }
                 pendienteOrigen = null;
+            }
+            if (alqPendienteOrigen is not null)
+            {
+                try { await Api.VincularAlqCobranzaPendienteAsync(alqPendienteOrigen.Id, r.Id, Operator.Current); }
+                catch { /* no critico */ }
+                alqPendienteOrigen = null;
             }
             // 2026-06-25: subir adjuntos pendientes (comprobante de retencion / transferencia)
             await SubirAdjuntoPendienteAsync(r.Id, adjRetencionFile, "RETENCION");
