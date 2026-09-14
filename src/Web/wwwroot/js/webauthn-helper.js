@@ -57,9 +57,15 @@ let _webAuthnPendiente = null;
 // Llama al browser para usar una credencial existente (login con huella).
 // 2026-09-14: `esperaMaxMs` (opcional) corta la espera. En el WhatsApp del celu el lector a veces no
 // aparecía y la pantalla quedaba "Tocá el lector…" hasta que el teléfono se rendía solo (~1 min).
-// Ahora: cada pedido nuevo CANCELA el que haya quedado colgado, y si pasa el tiempo se corta y
-// devuelve _error = "timeout". Sin el parámetro se comporta como antes (lo usa el fichador).
+// Sin el parámetro se comporta como antes (lo usa el fichador).
+// LO QUE APRENDIMOS (el registro lo mostró): en Android, cancelar un pedido NO lo libera en el acto.
+// Si se pide otra vez enseguida, el teléfono contesta "A request is already pending" una y otra vez.
+// Por eso: (a) mientras hay uno esperando NO se lanza otro (devuelve _nombre "pendiente");
+// (b) se le avisa al teléfono que la huella es la del propio celu ("internal"), así no se queda
+//     buscando llaves de seguridad externas sin mostrar nada;
+// (c) el propio teléfono se rinde a los `esperaMaxMs` (options.timeout), no a los 60 s del servidor.
 window.webAuthnGet = async function (optionsFromServer, esperaMaxMs) {
+    if (esperaMaxMs > 0 && _webAuthnPendiente) return { _error: 'pendiente', _nombre: 'pendiente' };
     let reloj = null;
     let control = null;
     try {
@@ -67,16 +73,18 @@ window.webAuthnGet = async function (optionsFromServer, esperaMaxMs) {
         options.challenge = base64UrlToArrayBuffer(options.challenge);
         if (options.allowCredentials) {
             options.allowCredentials = options.allowCredentials.map(c => ({
-                ...c, id: base64UrlToArrayBuffer(c.id)
+                ...c, id: base64UrlToArrayBuffer(c.id),
+                ...(esperaMaxMs > 0 ? { transports: ['internal'] } : {})
             }));
         }
+        if (esperaMaxMs > 0) options.timeout = esperaMaxMs;
 
-        if (_webAuthnPendiente) { try { _webAuthnPendiente.abort('reemplazado'); } catch (_) { } }
         control = new AbortController();
         _webAuthnPendiente = control;
         let vencio = false;
         if (esperaMaxMs > 0) {
-            reloj = setTimeout(() => { vencio = true; try { control.abort('timeout'); } catch (_) { } }, esperaMaxMs);
+            // Unos segundos después del plazo del teléfono, por si no se rinde solo.
+            reloj = setTimeout(() => { vencio = true; try { control.abort('timeout'); } catch (_) { } }, esperaMaxMs + 3000);
         }
 
         let cred;
@@ -84,7 +92,6 @@ window.webAuthnGet = async function (optionsFromServer, esperaMaxMs) {
             cred = await navigator.credentials.get({ publicKey: options, signal: control.signal });
         } catch (e) {
             if (vencio) return { _error: 'timeout', _nombre: 'timeout' };
-            if (control.signal.aborted) return { _error: 'reemplazado', _nombre: 'reemplazado' };
             throw e;
         }
 

@@ -87,9 +87,9 @@
             {
                 @* ── Entrada principal: la huella ── *@
                 <div class="wam-lock-sub">Entrá con tu huella</div>
-                @* 2026-09-14: mientras espera el lector el botón NO se traba: si el lector no aparece,
-                   tocarlo de nuevo cancela el pedido colgado y lo vuelve a pedir. *@
-                <button type="button" class="wam-huella-grande" @onclick="EntrarConHuella" disabled="@verificando">
+                @* 2026-09-14: mientras espera el lector el botón queda quieto: pedir otra vez enseguida
+                   traba al teléfono ("A request is already pending"). Como mucho espera 25 segundos. *@
+                <button type="button" class="wam-huella-grande" @onclick="EntrarConHuella" disabled="@(verificando || huellaOcupada)">
                     <span class="wam-huella-ic">👆</span>
                     <span>@(huellaOcupada ? "Tocá el lector…" : "Entrar con huella")</span>
                 </button>
@@ -789,11 +789,11 @@ else
     // (1) El pedido al servidor se hace ANTES de que toquen el botón, así al tocar el teléfono pide
     //     el dedo en el acto (Android es quisquilloso si pasa tiempo entre el toque y el pedido).
     // (2) Si en 30 segundos no pasó nada se corta y se avisa, en vez de esperar al teléfono.
-    // (3) Tocar de nuevo cancela el pedido colgado y arranca uno nuevo.
+    // (3) Mientras espera no se lanza otro pedido: en Android eso lo traba ("already pending").
     private ApiClient.WaHuellaBeginResp? huellaPreparada;
     private DateTime huellaPreparadaAt;
     private int huellaIntento;
-    private const int EsperaHuellaMs = 30000;
+    private const int EsperaHuellaMs = 25000;
 
     // Avisos (campanita): sonido + aviso visual del sistema al llegar un mensaje nuevo (pantalla abierta).
     private bool avisos;
@@ -900,9 +900,10 @@ else
 
     private async Task EntrarConHuella()
     {
+        if (huellaOcupada) return;
         var intento = ++huellaIntento;
         AvisarSiNoHayHuella();
-        huellaOcupada = true; huellaMsg = "¿No aparece el lector? Tocá el botón de nuevo."; pinError = null; StateHasChanged();
+        huellaOcupada = true; huellaMsg = "Apoyá el dedo en el lector."; pinError = null; StateHasChanged();
         try
         {
             // El servidor guarda el desafío 5 minutos: si el preparado tiene más de 4, se pide otro.
@@ -927,9 +928,14 @@ else
                 var detalle = errEl2.GetString() ?? "";
                 var nombre = credJs.TryGetProperty("_nombre", out var nEl) ? nEl.GetString() ?? "" : "";
                 try { await JS.InvokeVoidAsync("webAuthnAnotarFallo", "wa", nombre, detalle); } catch { }
+                const string cerrarApp = "Cerrá la aplicación del todo (sacala de las apps abiertas) y volvé a abrirla.";
                 huellaMsg = nombre switch
                 {
-                    "timeout" => "No apareció el lector. Tocá \"Entrar con huella\" de nuevo.",
+                    "pendiente" => "Todavía está esperando el lector de antes. Esperá unos segundos.",
+                    "timeout" => "No apareció el lector. " + cerrarApp,
+                    // El teléfono quedó con un pedido anterior colgado: sólo se libera cerrando la app.
+                    "OperationError" when detalle.Contains("pending", StringComparison.OrdinalIgnoreCase)
+                        => "El celu quedó trabado con un pedido de huella anterior. " + cerrarApp,
                     "NotAllowedError" => "El lector se cerró o no reconoció el dedo. Tocá \"Entrar con huella\" de nuevo.",
                     _ => "No se pudo leer la huella (" + detalle + "). Tocá de nuevo o entrá con el código."
                 };
