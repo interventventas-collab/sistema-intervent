@@ -7,8 +7,8 @@
    del banco como siempre (lo dijo él). Por eso no hay opción "transferencia" ni "banco".
 
    Qué hace:
-   - Si se abrió desde una foto o PDF del cliente, la IA lee el importe y a quién se le pagó
-     (es una sugerencia, se ve y se corrige), y la foto queda adjunta a la cobranza.
+   - Si se abrió desde una foto o PDF del cliente, esa foto queda adjunta a la cobranza.
+     ⚠ SIN IA: se probó leer el importe con IA y el dueño no la quiere (14/09). Se carga a mano.
    - El importe se reparte solo de la factura más vieja a la más nueva. Destildar una la saltea.
      Lo que sobra queda "a cuenta".
    - El recibo por WhatsApp sale SÓLO si se tilda (decisión de él: lo tilda cada vez).
@@ -69,20 +69,7 @@
                     }
                     <div class="cobch-foto-txt">
                         <div>Comprobante adjunto</div>
-                        @if (leyendo)
-                        {
-                            <div class="cobch-sub">⏳ Leyendo la foto…</div>
-                        }
-                        else if (lectura is { EsPago: true })
-                        {
-                            <div class="cobch-sub">
-                                Según la foto: @(lectura.Importe is decimal li ? Plata(li) : "importe sin leer")@(string.IsNullOrWhiteSpace(lectura.PagadoA) ? "" : $" · para {lectura.PagadoA}")
-                            </div>
-                        }
-                        else if (lectura is not null)
-                        {
-                            <div class="cobch-sub">No pude leer un pago en la foto: poné el importe a mano.</div>
-                        }
+                        <div class="cobch-sub">Queda guardado con la cobranza</div>
                     </div>
                     <button class="cobch-x" title="No adjuntar este comprobante" @onclick="QuitarFoto">×</button>
                 </div>
@@ -364,15 +351,13 @@
     private bool verTodas;
     private bool mandarRecibo;
 
-    private bool leyendo;
-    private ApiClient.LecturaComprobanteDto? lectura;
     private bool guardando;
     private string? creada;
     private decimal creadaImporte;
     private string? creadaAviso;
 
     private int? clienteCargado;
-    private string? mediaLeida;
+    private string? mediaVista;
 
     private CafeDestinatarioDto? EmpleadoElegido => destinatarios.FirstOrDefault(d => d.EmpleadoId == empleadoId && empleadoId > 0);
 
@@ -426,15 +411,10 @@
             cargado = true;
         }
 
-        if (MediaUrl != mediaLeida)
+        if (MediaUrl != mediaVista)
         {
-            mediaLeida = MediaUrl;
-            lectura = null;
-            if (!string.IsNullOrEmpty(MediaUrl))
-            {
-                creada = null;
-                _ = LeerFotoAsync(MediaUrl);
-            }
+            mediaVista = MediaUrl;
+            if (!string.IsNullOrEmpty(MediaUrl)) creada = null;   // tocaron otra foto: es otro pago
         }
     }
 
@@ -444,33 +424,6 @@
         // con huella tiene abierta. Pedir ficha-chat desde el celu lo sacaría del WhatsApp.
         try { saldoCliente = (await Api.GetClienteSaldoAsync(cid))?.Saldo; }
         catch { saldoCliente = null; }
-    }
-
-    private async Task LeerFotoAsync(string url)
-    {
-        leyendo = true;
-        StateHasChanged();
-        ApiClient.LecturaComprobanteDto? r = null;
-        try { r = await Api.LeerComprobanteWhatsappAsync(url); } catch { }
-        if (url != MediaUrl) return;     // mientras leía, tocaron otra foto
-        leyendo = false;
-        lectura = r ?? new ApiClient.LecturaComprobanteDto(false, null, null, null, null, null, null);
-        if (lectura.EsPago)
-        {
-            if (lectura.Importe is decimal imp && Importe <= 0) Importe = imp;
-            // Si la foto dice a quién fue la plata y es alguien de la lista, es un redirigido.
-            if (lectura.EmpleadoId is int eid && destinatarios.FirstOrDefault(d => d.EmpleadoId == eid) is { } d)
-            {
-                modo = ModoRedirigido;
-                ElegirEmpleado(d);
-            }
-            else if (lectura.ProveedorId is int pid && provRedir.Any(p => p.Id == pid))
-            {
-                modo = ModoRedirigido;
-                await ElegirProveedor(pid);
-            }
-        }
-        StateHasChanged();
     }
 
     private void ElegirModo(string m)
@@ -603,7 +556,7 @@
             Toast.Success($"Cobranza {r.Numero} cargada");
 
             // Queda listo para otro pago del mismo cliente: con lo que debe AHORA.
-            Importe = 0; excluidas.Clear(); verTodas = false; mandarRecibo = false; lectura = null;
+            Importe = 0; excluidas.Clear(); verTodas = false; mandarRecibo = false;
             empleadoId = 0; proveedorId = 0; compraId = 0; destino = null;
             try { pendientes = await Api.GetComprobantesPendientesAsync(cid) ?? new(); } catch { }
             await CargarSaldoAsync(cid);

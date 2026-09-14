@@ -138,7 +138,6 @@ public class WaMovilScopeMiddleware
     private static readonly System.Text.RegularExpressions.Regex[] CobranzaPost =
     {
         new(@"^/api/cafe/cobranzas/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
-        new(@"^/api/cafe/cobranzas/leer-comprobante-whatsapp$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
         new(@"^/api/cafe/cobranzas/\d+/adjuntos/desde-whatsapp$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
         new(@"^/api/cafe/cobranzas/\d+/enviar$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
     };

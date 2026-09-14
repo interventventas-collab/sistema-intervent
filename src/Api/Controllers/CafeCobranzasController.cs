@@ -1104,8 +1104,8 @@ public class CafeCobranzasController : ControllerBase
 
     // ─────────────────────────────────────────────────────────────────────────────────────
     //  14/09/2026 — COBRANZA DESDE EL CHAT DE WHATSAPP.
-    //  El cliente manda la foto del pago y la cobranza se carga ahí mismo: la IA lee el importe
-    //  y a quién se le pagó, y la foto queda adjunta sin bajarla ni volverla a subir.
+    //  El cliente manda la foto del pago y la cobranza se carga ahí mismo: la foto queda adjunta
+    //  sin bajarla ni volverla a subir. (Sin IA: el dueño no la quiere, 14/09.)
     // ─────────────────────────────────────────────────────────────────────────────────────
 
     public record DesdeWhatsappRequest(string? MediaUrl, string? Tipo = null);
@@ -1125,23 +1125,33 @@ public class CafeCobranzasController : ControllerBase
     private bool EsSesionDeHuella()
         => User.FindFirst(Api.Middleware.WaMovilScopeMiddleware.ClaimScope)?.Value == Api.Middleware.WaMovilScopeMiddleware.ScopeWaMovil;
 
-    /// <summary>Lee con IA el comprobante que mandó el cliente. Es una sugerencia: si no se
-    /// entiende devuelve EsPago=false y la cobranza se carga a mano.</summary>
-    [HttpPost("leer-comprobante-whatsapp")]
-    public async Task<IActionResult> LeerComprobanteWhatsapp([FromBody] DesdeWhatsappRequest req,
-        [FromServices] ComprobantePagoLectorService lector)
-        => Ok(await lector.LeerAsync(req.MediaUrl));
+    /// <summary>
+    /// Busca el archivo del chat a partir de su URL (".../api/whatsapp/twilio/files/{token}.jpg").
+    /// Sólo se acepta un token de la tabla de adjuntos: nunca se arma una ruta con lo que manda el navegador.
+    /// </summary>
+    private async Task<(WhatsAppTwilioUpload? up, string? path)> ResolverAdjuntoWhatsappAsync(string? mediaUrl)
+    {
+        if (string.IsNullOrWhiteSpace(mediaUrl)) return (null, null);
+        var i = mediaUrl.IndexOf("/files/", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return (null, null);
+        var token = Path.GetFileNameWithoutExtension(mediaUrl[(i + "/files/".Length)..].Split('?', '#')[0]);
+        if (string.IsNullOrWhiteSpace(token)) return (null, null);
+
+        var up = await _db.WhatsAppTwilioUploads.AsNoTracking().FirstOrDefaultAsync(u => u.Token == token);
+        if (up is null) return (null, null);
+        var path = Path.Combine("/data/whatsapp-uploads", Path.GetFileName(up.StoredFilename));
+        return System.IO.File.Exists(path) ? (up, path) : (up, null);
+    }
 
     /// <summary>Copia a la cobranza el archivo que el cliente mandó por WhatsApp.</summary>
     [HttpPost("{cobranzaId:int}/adjuntos/desde-whatsapp")]
-    public async Task<IActionResult> AdjuntarDesdeWhatsapp(int cobranzaId, [FromBody] DesdeWhatsappRequest req,
-        [FromServices] ComprobantePagoLectorService lector)
+    public async Task<IActionResult> AdjuntarDesdeWhatsapp(int cobranzaId, [FromBody] DesdeWhatsappRequest req)
     {
         var c = await _db.CafeCobranzas.FirstOrDefaultAsync(x => x.Id == cobranzaId);
         if (c is null) return NotFound(new { error = "Cobranza no encontrada" });
         if (c.Estado == "ANULADA") return BadRequest(new { error = "Cobranza anulada — no se pueden agregar adjuntos" });
 
-        var (up, origen) = await lector.ResolverAdjuntoAsync(req.MediaUrl);
+        var (up, origen) = await ResolverAdjuntoWhatsappAsync(req.MediaUrl);
         if (up is null || origen is null) return NotFound(new { error = "No encontré el archivo del chat" });
 
         var tipoNorm = (req.Tipo ?? "OTRO").ToUpperInvariant();

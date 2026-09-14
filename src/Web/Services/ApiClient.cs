@@ -6403,18 +6403,12 @@ public class ApiClient
         => await PostAsync<EnviarReciboResultDto>($"/api/cafe/cobranzas/{cobranzaId}/enviar",
             new { email, whatsapp, whatsappDestino, lineaPhoneId });
 
-    // 14/09/2026: cobranza desde el chat de WhatsApp — la IA lee la foto del pago y la foto queda adjunta.
-    public record LecturaComprobanteDto(bool EsPago, decimal? Importe, string? Fecha, string? PagadoA,
-        string? Referencia, int? EmpleadoId, int? ProveedorId);
-
+    // 14/09/2026: cobranza desde el chat de WhatsApp — la foto del pago queda adjunta.
     public record CajaChatDto(int Id, string Nombre, string Tipo);
 
     /// <summary>Efectivo y la de paso del redirigido, sin saldos (lo pide también el celular con la huella).</summary>
     public async Task<List<CajaChatDto>> GetCajasChatAsync()
         => await GetAsync<List<CajaChatDto>>("/api/cafe/cobranzas/cajas-chat") ?? new();
-
-    public async Task<LecturaComprobanteDto?> LeerComprobanteWhatsappAsync(string mediaUrl)
-        => await PostAsync<LecturaComprobanteDto>("/api/cafe/cobranzas/leer-comprobante-whatsapp", new { mediaUrl });
 
     public async Task<CobranzaAdjuntoDto?> AdjuntarCobranzaDesdeWhatsappAsync(int cobranzaId, string mediaUrl, string tipo)
         => await PostAsync<CobranzaAdjuntoDto>($"/api/cafe/cobranzas/{cobranzaId}/adjuntos/desde-whatsapp", new { mediaUrl, tipo });
