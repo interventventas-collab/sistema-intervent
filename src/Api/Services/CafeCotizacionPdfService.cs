@@ -267,9 +267,12 @@ public class CafeCotizacionPdfService
                         // en 2 lineas sin cortarse, manteniendo el QR a tamaño grande.
                         row.RelativeItem(1.25f).PaddingLeft(8).Row(rqr =>
                         {
-                            var domicilio = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot)
-                                ? v.ClienteDomicilioEntregaSnapshot
-                                : v.ClienteDireccionSnapshot;
+                            // 2026-09-15: DomicilioEntregaImpreso trae la localidad sumada (lo arma el controller).
+                            var domicilio = !string.IsNullOrWhiteSpace(v.DomicilioEntregaImpreso)
+                                ? v.DomicilioEntregaImpreso
+                                : !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot)
+                                    ? v.ClienteDomicilioEntregaSnapshot
+                                    : v.ClienteDireccionSnapshot;
                             var tieneEntrega = !string.IsNullOrWhiteSpace(domicilio);
                             var tieneQr = qrRepartidor is not null;
 
@@ -326,7 +329,8 @@ public class CafeCotizacionPdfService
                             // Sub-columna derecha: QR grande + caption
                             if (tieneQr)
                             {
-                                rqr.ConstantItem(110).Column(cQr =>
+                                // 2026-09-15: QR más chico (110 → 85), se usa cada vez menos.
+                                rqr.ConstantItem(85).Column(cQr =>
                                 {
                                     cQr.Item().Image(qrRepartidor!);
                                     cQr.Item().AlignCenter().PaddingTop(2).Text("QR ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken3);

@@ -675,6 +675,7 @@ public class CafeVentasController : ControllerBase
         var comboIds = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
         var combosMap = await BuildCombosMapAsync(comboIds);
         await HydrateCfgFromEmisorAsync(cfg);
+        CompletarDomicilioEntregaImpreso(v);
         var bytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMap);
         return inline ? File(bytes, "application/pdf") : File(bytes, "application/pdf", BuildPdfFilename(v));
     }
@@ -925,6 +926,7 @@ public class CafeVentasController : ControllerBase
         var comboIds = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
         var combosMap = await BuildCombosMapAsync(comboIds);
         await HydrateCfgFromEmisorAsync(cfg);
+        CompletarDomicilioEntregaImpreso(v);
         return _pdfService.GenerarPdfBytes(v, cfg, qr, combosMap);
     }
 
@@ -990,6 +992,7 @@ public class CafeVentasController : ControllerBase
                 ? await BuildCombosMapAsync(comboIdsPub) : null;
         }
         if (!(esFacturaArca && autorizada)) await HydrateCfgFromEmisorAsync(cfg);
+        CompletarDomicilioEntregaImpreso(v);
         byte[] pdfBytes = (esFacturaArca && autorizada) ? BuildArcaPdf(v, cfg!) : _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapPub);
         return File(pdfBytes, "application/pdf", BuildPdfFilename(v));
     }
@@ -1075,6 +1078,7 @@ public class CafeVentasController : ControllerBase
             var combosMapM = comboIdsM.Count > 0
                 ? await BuildCombosMapAsync(comboIdsM) : null;
             await HydrateCfgFromEmisorAsync(cfg);
+            CompletarDomicilioEntregaImpreso(v);
             pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapM);
         }
 
@@ -1149,6 +1153,7 @@ public class CafeVentasController : ControllerBase
             var comboIdsW = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
             var combosMapW = comboIdsW.Count > 0 ? await BuildCombosMapAsync(comboIdsW) : null;
             await HydrateCfgFromEmisorAsync(cfg);
+            CompletarDomicilioEntregaImpreso(v);
             pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapW);
         }
 
@@ -1317,9 +1322,72 @@ public class CafeVentasController : ControllerBase
     /// Arma el PdfEmisor + PdfComprobante + PdfReceptor a partir de los datos de la venta
     /// del Café y los datos del negocio, y genera el PDF de factura ARCA (con CAE y QR).
     /// </summary>
+    /// <summary>2026-09-15: el recuadro DOMICILIO DE ENTREGA de facturas y cotizaciones salía sin
+    /// localidad ("UTN") aunque el cliente la tuviera cargada. El domicilio ALTERNATIVO ya se guardaba
+    /// como "Dirección, Localidad", pero el de siempre guardaba solo la calle. Se completa al imprimir
+    /// (no en el snapshot) para que también salga al reimprimir comprobantes viejos y para no tocar
+    /// el texto que usan el mapa y el celular del repartidor.
+    /// Localidad según de dónde salió el domicilio: alternativo → su Localidad (o Ciudad);
+    /// el de siempre → LocalidadEntrega del cliente; sin domicilio de entrega (se imprime el
+    /// fiscal) → la localidad fiscal de la venta. Si ya está escrita en el texto, no se repite.</summary>
+    [NonAction]
+    public void CompletarDomicilioEntregaImpreso(CafeVenta v)
+    {
+        try
+        {
+            var entrega = v.ClienteDomicilioEntregaSnapshot?.Trim();
+            string? texto;
+            string? localidad = null;
+            if (!string.IsNullOrWhiteSpace(entrega))
+            {
+                texto = entrega;
+                if (v.ClienteId.HasValue && v.ClienteId.Value > 0)
+                {
+                    var alt = _db.CafeClienteDirecciones.AsNoTracking()
+                        .Where(d => d.ClienteId == v.ClienteId.Value && d.IsActive)
+                        .Select(d => new { d.Direccion, d.Localidad, d.Ciudad })
+                        .ToList()
+                        .Where(d => !string.IsNullOrWhiteSpace(d.Direccion)
+                                    && entrega.StartsWith(d.Direccion.Trim(), StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(d => d.Direccion.Length)
+                        .FirstOrDefault();
+                    if (alt is not null)
+                        localidad = !string.IsNullOrWhiteSpace(alt.Localidad) ? alt.Localidad : alt.Ciudad;
+                    else
+                    {
+                        var cli = _db.CafeClientes.AsNoTracking()
+                            .Where(c => c.Id == v.ClienteId.Value)
+                            .Select(c => new { c.DomicilioEntrega, c.LocalidadEntrega })
+                            .FirstOrDefault();
+                        if (cli is not null && !string.IsNullOrWhiteSpace(cli.DomicilioEntrega)
+                            && entrega.StartsWith(cli.DomicilioEntrega.Trim(), StringComparison.OrdinalIgnoreCase))
+                            localidad = cli.LocalidadEntrega;
+                    }
+                }
+            }
+            else
+            {
+                texto = v.ClienteDireccionSnapshot?.Trim();
+                localidad = v.ClienteLocalidadSnapshot;
+            }
+            if (string.IsNullOrWhiteSpace(texto)) { v.DomicilioEntregaImpreso = null; return; }
+            localidad = localidad?.Trim();
+            v.DomicilioEntregaImpreso = !string.IsNullOrWhiteSpace(localidad)
+                                        && !texto.Contains(localidad, StringComparison.OrdinalIgnoreCase)
+                ? $"{texto}, {localidad}"
+                : texto;
+        }
+        catch
+        {
+            // Nunca romper un comprobante por esto: queda el domicilio como estaba.
+            v.DomicilioEntregaImpreso = null;
+        }
+    }
+
     [NonAction]
     public byte[] BuildArcaPdf(CafeVenta v, CafeSetting cfg)
     {
+        CompletarDomicilioEntregaImpreso(v);
         // El emisor del PDF debe ser el CUIT con el que se FACTURÓ (no el CUIT del negocio por default),
         // así una factura emitida con la sociedad de hecho sale con SUS datos y su QR de AFIP.
         var cuitEmisorPdf = cfg?.NegocioCuit ?? "";
@@ -1403,7 +1471,7 @@ public class CafeVentasController : ControllerBase
             ComentariosCliente = v.ClienteComentariosComprobante,
             Observaciones = v.Observaciones,
             CondicionPago = v.CondicionPago,
-            DomicilioEntrega = v.ClienteDomicilioEntregaSnapshot,
+            DomicilioEntrega = v.DomicilioEntregaImpreso ?? v.ClienteDomicilioEntregaSnapshot,
             EntregaPor = v.EntregaPor,
             // 2026-06-12: el QR de entrega del repartidor también va en las facturas con CAE
             QrRepartidorBytes = _qrRepartidorService.GenerarQrAsync(v.PublicToken).GetAwaiter().GetResult(),
@@ -1792,6 +1860,7 @@ public class CafeVentasController : ControllerBase
         var combosMapPrev = comboIdsPrev.Count > 0
             ? await BuildCombosMapAsync(comboIdsPrev) : null;
         await HydrateCfgFromEmisorAsync(cfg);
+        CompletarDomicilioEntregaImpreso(ventaPreview);
         var bytes = _pdfService.GenerarPdfBytes(ventaPreview, cfg, null, combosMapPrev);
         return File(bytes, "application/pdf", "preview.pdf");
     }

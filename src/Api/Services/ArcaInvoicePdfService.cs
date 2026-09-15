@@ -593,9 +593,10 @@ public class ArcaInvoicePdfService
             // Derecha: QR ENTREGA GRANDE (140px ≈ 3× del anterior 65px)
             if (tieneQr)
             {
-                r.ConstantItem(150).PaddingLeft(6).Column(qc =>
+                // 2026-09-15: QR más chico (140 → 100), se usa cada vez menos.
+                r.ConstantItem(108).PaddingLeft(6).Column(qc =>
                 {
-                    qc.Item().AlignCenter().Width(140).Image(comp.QrRepartidorBytes!);
+                    qc.Item().AlignCenter().Width(100).Image(comp.QrRepartidorBytes!);
                     qc.Item().AlignCenter().PaddingTop(2).Text("QR ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken3);
                 });
             }

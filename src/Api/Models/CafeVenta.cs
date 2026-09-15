@@ -35,6 +35,12 @@ public class CafeVenta
     [MaxLength(500)]
     public string? ClienteDomicilioEntregaSnapshot { get; set; }
 
+    /// <summary>2026-09-15: texto del recuadro DOMICILIO DE ENTREGA del PDF, con la localidad sumada.
+    /// No se guarda: lo arma CafeVentasController.CompletarDomicilioEntregaImpreso justo antes de
+    /// generar el PDF. Si queda null, el PDF usa el snapshot como antes.</summary>
+    [NotMapped]
+    public string? DomicilioEntregaImpreso { get; set; }
+
     public string? ClienteComentariosComprobante { get; set; }
 
     [MaxLength(50)]
