@@ -4913,6 +4913,41 @@ textarea.form-input {
     padding: 0.3rem 0.4rem;
 }
 
+/* 2026-09-15: flechitas para subir/bajar un renglón en Nueva Venta, al lado de la × */
+.nv-item-acciones {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+}
+
+.nv-item-mover {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.nv-item-mover button {
+    border: none;
+    background: transparent;
+    color: #6b7280;
+    font-size: 0.8rem;
+    line-height: 1;
+    padding: 0.2rem 0.35rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.nv-item-mover button:hover:not(:disabled) {
+    color: #111827;
+    background: #f3f4f6;
+}
+
+.nv-item-mover button:disabled {
+    color: #e5e7eb;
+    cursor: default;
+}
+
 /* Grilla 2 columnas: detalle + caja de totales */
 .venta-final-grid {
     display: grid;
