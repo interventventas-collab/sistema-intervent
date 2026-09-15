@@ -958,6 +958,10 @@ public class CreateCafeVentaRequest
     public bool GuardarMapeoEnCliente { get; set; }
     /// <summary>2026-07-03: certificado/CUIT con el que se factura (multi-sociedad). Null = default.</summary>
     public int? ArcaWebserviceAccountId { get; set; }
+    /// <summary>2026-09-15: tilde "Ya entregado" (quién lo entregó es opcional).</summary>
+    public bool YaEntregado { get; set; }
+    public int? EntregadoPorRepartidorId { get; set; }
+    public bool EntregadoRetiroCliente { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest
@@ -1016,6 +1020,10 @@ public class UpdateCafeVentaRequest
     public string? MapeoLink { get; set; }
     /// <summary>2026-07-02: si true, además guarda el link en la ficha del cliente (para futuras entregas).</summary>
     public bool GuardarMapeoEnCliente { get; set; }
+    /// <summary>2026-09-15: tilde "Ya entregado" al editar. Null = no tocar la entrega.</summary>
+    public bool? YaEntregado { get; set; }
+    public int? EntregadoPorRepartidorId { get; set; }
+    public bool? EntregadoRetiroCliente { get; set; }
 }
 
 public class DeleteCafeVentaRequest

@@ -124,7 +124,9 @@ public class CafeRepartidoresController : ControllerBase
     {
         var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == ventaId);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
-        if (!v.EntregadoPorRepartidorId.HasValue)
+        // 2026-09-15: antes exigía repartidor, y las "retiró el cliente" o las marcadas con el tilde
+        // "Ya entregado" sin decir quién no se podían desmarcar.
+        if (!v.EntregadoPorRepartidorId.HasValue && v.EntregadoAt is null)
             return BadRequest(new { error = "Esta venta no esta marcada como entregada" });
 
         // Limpiar campos de entrega

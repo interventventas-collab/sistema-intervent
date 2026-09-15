@@ -271,6 +271,12 @@
     .nv-res-acts .btn { width: 100%; justify-content: center; }
     .nv-res-par { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
     .nv-res-emitir { padding: 0.7rem !important; font-size: 1rem !important; font-weight: 700 !important; }
+    .nv-entregado { border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; padding: 0.5rem 0; }
+    .nv-entregado-chk { display: flex; align-items: center; gap: 0.45rem; font-size: 0.88rem; font-weight: 600; color: #374151; cursor: pointer; }
+    .nv-entregado-chk input { width: 16px; height: 16px; margin: 0; }
+    .nv-quien { font-family: inherit; font-size: 0.76rem; padding: 0.22rem 0.55rem; border-radius: 999px; border: 1px solid #d1d5db; background: #fff; color: #374151; cursor: pointer; }
+    .nv-quien:hover { border-color: #9ca3af; }
+    .nv-quien.on { background: #1f2937; border-color: #1f2937; color: #fff; }
     .nv-res-cancelar { background: none !important; border-color: transparent !important; color: #6b7280 !important; }
     /* Lo que más compra (columna derecha) */
     .nv-top { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
@@ -818,6 +824,21 @@
                                               title="Retirada por el cliente el @(fh?.ToString("dddd dd/MM/yyyy 'a las' HH:mm") ?? "—"). Tocá para desmarcar (admin)."
                                               @onclick="@(() => PedirDesmarcarEntrega(v))">
                                             <span>✅ Retiró cliente ▼</span>
+                                            @if (fh.HasValue)
+                                            {
+                                                <span style="font-size:.65rem; font-weight:500; color:#15803d;">📅 @fh.Value.ToString("dd/MM") · 🕒 @fh.Value.ToString("HH:mm") hs</span>
+                                            }
+                                        </span>
+                                    }
+                                    else if (v.EntregadoAt is not null)
+                                    {
+                                        @* 2026-09-15: entregada sin decir quién (tilde "Ya entregado" de la venta). Antes no se
+                                           veía en el listado ni se podía desmarcar. *@
+                                        var fh = v.EntregadoAt?.ToArTime();
+                                        <span style="display:inline-flex; flex-direction:column; padding:.25rem .55rem; background:#dcfce7; color:#166534; border-radius:8px; font-size:.7rem; font-weight:700; margin-left:.2rem; line-height:1.3; cursor:pointer; vertical-align:top;"
+                                              title="Entregado el @(fh?.ToString("dddd dd/MM/yyyy 'a las' HH:mm") ?? "—"). Tocá para desmarcar (admin)."
+                                              @onclick="@(() => PedirDesmarcarEntrega(v))">
+                                            <span>✅ Entregado ▼</span>
                                             @if (fh.HasValue)
                                             {
                                                 <span style="font-size:.65rem; font-weight:500; color:#15803d;">📅 @fh.Value.ToString("dd/MM") · 🕒 @fh.Value.ToString("HH:mm") hs</span>
@@ -3208,6 +3229,29 @@
                                         : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
                             </button>
                         }
+                        @* 2026-09-15: tilde "Ya entregado" — pedido del dueño: "que me deje marcar como ya entregado
+                           y que sea opcional elegir quién lo entregó". Al tildarlo se destilda "Imprimir pedidos". *@
+                        <div class="nv-entregado">
+                            <label class="nv-entregado-chk">
+                                <input type="checkbox" tabindex="-1" checked="@formYaEntregado" @onchange="e => ToggleYaEntregado((bool)e.Value!)" />
+                                <span>Ya entregado</span>
+                            </label>
+                            @if (formYaEntregado)
+                            {
+                                <div class="nv-lbl" style="margin: 0.35rem 0 0.3rem;">¿Quién lo entregó? <span style="color:#9ca3af;">(opcional)</span></div>
+                                <div style="display:flex; flex-wrap:wrap; gap:0.3rem;">
+                                    <button type="button" tabindex="-1" class="nv-quien @(formEntregadoRetiroCliente ? "on" : "")"
+                                            @onclick="() => ElegirQuienEntrego(null, true)">Retiró el cliente</button>
+                                    @foreach (var rep in repartidoresLista.Where(r => r.IsActive || r.Id == formEntregadoRepartidorId))
+                                    {
+                                        var repId = rep.Id;
+                                        <button type="button" tabindex="-1" class="nv-quien @(formEntregadoRepartidorId == repId && !formEntregadoRetiroCliente ? "on" : "")"
+                                                @onclick="() => ElegirQuienEntrego(repId, false)">@rep.Nombre</button>
+                                    }
+                                </div>
+                                <div class="nv-lbl" style="margin-top:0.35rem; color:#9ca3af;">No va al tablero de Preparación: ya se entregó.</div>
+                            }
+                        </div>
                         <div class="nv-res-par" style="@(editingVentaId.HasValue ? "grid-template-columns: 1fr;" : "")">
                             @* 2026-07-14: parkear la venta como borrador compartido y empezar otra limpia *@
                             @if (!editingVentaId.HasValue)
@@ -4830,7 +4874,8 @@
     // 2026-06-05: desmarcar entrega (admin) — para pruebas o correcciones
     private async Task PedirDesmarcarEntrega(CafeVentaDto v)
     {
-        var msg = $"¿Desmarcar la entrega de {v.Numero} ({v.EntregadoPorRepartidorNombre})?\n\nLa venta vuelve a estado 'pendiente de armar' y se borra el registro de entrega.";
+        var quienMsg = !string.IsNullOrEmpty(v.EntregadoPorRepartidorNombre) ? $" ({v.EntregadoPorRepartidorNombre})" : (v.Retira ? " (retiró el cliente)" : "");
+        var msg = $"¿Desmarcar la entrega de {v.Numero}{quienMsg}?\n\nLa venta vuelve a estado 'pendiente de armar' y se borra el registro de entrega.";
         if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
         try
         {
@@ -5524,6 +5569,41 @@
     private bool formEnRadar = false;
     // 2026-06-01: "RETIRA" — el cliente retira la mercaderia en el local (no se reparte).
     private bool formRetira = false;
+    // 2026-09-15: tilde "Ya entregado" abajo de Emitir. Quién lo entregó es opcional:
+    // un repartidor (Cafe_Repartidores), "retiró el cliente", o nadie.
+    private bool formYaEntregado;
+    private int? formEntregadoRepartidorId;
+    private bool formEntregadoRetiroCliente;
+
+    private async Task ToggleYaEntregado(bool valor)
+    {
+        formYaEntregado = valor;
+        if (valor)
+        {
+            // Ya se entregó: no hay nada que armar, así que no va al tablero de Preparación.
+            if (editingVentaId.HasValue) envioDriveEdit = false; else envioDrive = false;
+            if (repartidoresLista.Count == 0)
+            {
+                try { repartidoresLista = await Api.GetRepartidoresAsync() ?? new(); } catch { }
+            }
+        }
+    }
+
+    private void ElegirQuienEntrego(int? repartidorId, bool retiroCliente)
+    {
+        var yaElegido = retiroCliente ? formEntregadoRetiroCliente : (repartidorId is not null && formEntregadoRepartidorId == repartidorId);
+        if (yaElegido)
+        {
+            // Tocar de nuevo el que estaba elegido lo destilda: "quién" es opcional.
+            formEntregadoRepartidorId = null;
+            formEntregadoRetiroCliente = false;
+            return;
+        }
+        formEntregadoRetiroCliente = retiroCliente;
+        formEntregadoRepartidorId = retiroCliente ? null : repartidorId;
+        // Mantener coherente el botón RETIRA de la tarjeta Entrega.
+        formRetira = retiroCliente;
+    }
     // 2026-06-05: "TRANSPORTE" — la venta se despacha por empresa de transporte. Excluyente con RADAR/RETIRA.
     private bool formPorTransporte = false;
     private string formTransporteEmpresa = "";
@@ -6990,6 +7070,7 @@
         addComboId = 0; addComboCantidad = 1;
         comboSearch = ""; comboSearchOpen = false;
         formWeekDays = new(); formEnRadar = false; formRetira = false; formIsPaid = false; formEntregaPor = "";
+        formYaEntregado = false; formEntregadoRepartidorId = null; formEntregadoRetiroCliente = false;
         formPorTransporte = false; formTransporteEmpresa = ""; formTransporteDestino = "";
         formTransporteId = 0; formCantidadBultos = null; formEsFragil = false;
         formComentarioArmado = "";
@@ -7991,7 +8072,10 @@
                     CondicionPago = formCondicionPago,
                     MostrarIvaProforma = formMostrarIvaProforma,
                     EntregaPor = formEntregaPor,
-                    ComentarioArmado = formComentarioArmado
+                    ComentarioArmado = formComentarioArmado,
+                    YaEntregado = formYaEntregado,
+                    EntregadoPorRepartidorId = formYaEntregado ? formEntregadoRepartidorId : null,
+                    EntregadoRetiroCliente = formYaEntregado && formEntregadoRetiroCliente
                 });
                 if (upd is null) { convertirError = "No se pudieron guardar los cambios de la venta."; return; }
             }
@@ -9595,7 +9679,10 @@
                     EntregaPor = formEntregaPor,
                     ComentarioArmado = formComentarioArmado,
                     MapeoLink = string.IsNullOrWhiteSpace(formMapeoLink) ? null : formMapeoLink.Trim(),
-                    GuardarMapeoEnCliente = formGuardarMapeoEnCliente
+                    GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
+                    YaEntregado = formYaEntregado,
+                    EntregadoPorRepartidorId = formYaEntregado ? formEntregadoRepartidorId : null,
+                    EntregadoRetiroCliente = formYaEntregado && formEntregadoRetiroCliente
                 });
                 if (v is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success($"Comprobante {v.Numero} actualizado");
@@ -9694,7 +9781,10 @@
                     MapeoLink = string.IsNullOrWhiteSpace(formMapeoLink) ? null : formMapeoLink.Trim(),
                     GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
                     // 2026-07-03: con qué empresa se factura (solo aplica a FA/FB/FC).
-                    ArcaWebserviceAccountId = formTipoComprobante is "FA" or "FB" or "FC" ? formArcaAccountId : null
+                    ArcaWebserviceAccountId = formTipoComprobante is "FA" or "FB" or "FC" ? formArcaAccountId : null,
+                    YaEntregado = formYaEntregado,
+                    EntregadoPorRepartidorId = formYaEntregado ? formEntregadoRepartidorId : null,
+                    EntregadoRetiroCliente = formYaEntregado && formEntregadoRetiroCliente
                 });
                 if (v is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
@@ -10254,6 +10344,14 @@
         formIsPaid = v.IsPaid;
         formEntregaPor = v.EntregaPor ?? "";
         formComentarioArmado = v.ComentarioArmado ?? "";
+        // 2026-09-15: el tilde "Ya entregado" arranca como está la venta.
+        formYaEntregado = v.EntregadoAt is not null;
+        formEntregadoRepartidorId = v.EntregadoPorRepartidorId;
+        formEntregadoRetiroCliente = v.EntregadoAt is not null && v.EntregadoPorRepartidorId is null && v.Retira;
+        if (formYaEntregado && repartidoresLista.Count == 0)
+        {
+            try { repartidoresLista = await Api.GetRepartidoresAsync() ?? new(); } catch { }
+        }
         // Items: convertir a CafeCotizarItemRequest para que el form los muestre y los pueda editar.
         formItems = v.Items.Select(i => new CafeCotizarItemRequest
         {

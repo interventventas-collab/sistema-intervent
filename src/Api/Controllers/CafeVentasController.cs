@@ -725,6 +725,13 @@ public class CafeVentasController : ControllerBase
                 CreatedAt = DateTime.UtcNow
             });
         }
+        else if (string.IsNullOrEmpty(v.EstadoPreparacion) && v.EntregadoAt is not null)
+        {
+            // 2026-09-15: se cargó con el tilde "Ya entregado": el PDF va a Drive pero no hay nada que
+            // armar, así que no se mete en "Para armar" del tablero.
+            v.EstadoPreparacion = "ENTREGADO";
+            v.PreparacionUpdatedAt = DateTime.UtcNow;
+        }
         else if (string.IsNullOrEmpty(v.EstadoPreparacion))
         {
             v.EstadoPreparacion = "PARA_PREPARAR";
@@ -1935,6 +1942,18 @@ public class CafeVentasController : ControllerBase
                 ? req.ArcaWebserviceAccountId.Value : null
         };
 
+        // 2026-09-15: tilde "Ya entregado" (quién lo entregó es opcional). Al crear no hay log de
+        // preparación: la venta todavía no entró al tablero y, ya entregada, no tiene por qué entrar.
+        if (req.YaEntregado)
+        {
+            if (req.EntregadoPorRepartidorId is int repIdCrear && !req.EntregadoRetiroCliente
+                && !await _db.CafeRepartidores.AnyAsync(r => r.Id == repIdCrear))
+                return BadRequest(new { error = "El repartidor elegido no existe." });
+            venta.EntregadoAt = DateTime.UtcNow;
+            venta.EntregadoPorRepartidorId = req.EntregadoRetiroCliente ? null : req.EntregadoPorRepartidorId;
+            if (req.EntregadoRetiroCliente) venta.Retira = true;
+        }
+
         // 2026-07-02: si pidió guardar el link también en la ficha del cliente (para futuras ventas)
         if (req.GuardarMapeoEnCliente && !string.IsNullOrWhiteSpace(req.MapeoLink) && req.ClienteId.HasValue && req.ClienteId.Value > 0)
         {
@@ -3006,6 +3025,13 @@ public class CafeVentasController : ControllerBase
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
         if (req.EntregaPor is not null) v.EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim();
         if (req.ComentarioArmado is not null) v.ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim();
+        // 2026-09-15: tilde "Ya entregado" también al editar.
+        if (req.YaEntregado.HasValue)
+        {
+            var errEntrega = await AplicarYaEntregadoAsync(v, req.YaEntregado.Value, req.EntregadoPorRepartidorId,
+                req.EntregadoRetiroCliente == true, NormOperatorName(Request.Headers["X-Operator-Name"].FirstOrDefault()));
+            if (errEntrega is not null) return BadRequest(new { error = errEntrega });
+        }
         // 2026-06-23: Concepto AFIP. Solo aplica al editar antes de emitir (post-emision no toca esto).
         if (req.Concepto.HasValue && (req.Concepto.Value == 1 || req.Concepto.Value == 2 || req.Concepto.Value == 3))
             v.Concepto = req.Concepto.Value;
@@ -4038,6 +4064,55 @@ public class CafeVentasController : ControllerBase
     // auditoria Cafe_VentaPreparacionLog.
     // ═══════════════════════════════════════════════════════════════════════════
     private static readonly string[] EstadosPreparacion = { "PARA_PREPARAR", "EN_PREPARACION", "LISTO", "EN_CAMINO", "ENTREGADO" };
+
+    /// <summary>
+    /// 2026-09-15 — Tilde "Ya entregado" de la ventana de venta (al editar).
+    /// true: queda entregada. Si ya lo estaba, se respeta la fecha original y solo se actualiza QUIÉN
+    /// (repartidor, "retiró el cliente" o nadie). Si estaba en el tablero, pasa a ENTREGADO.
+    /// false: si estaba entregada se desmarca igual que "Desmarcar entrega" del listado
+    /// (CafeRepartidoresController.DesmarcarEntrega): vuelve a Para armar si estaba en el tablero.
+    /// </summary>
+    private async Task<string?> AplicarYaEntregadoAsync(CafeVenta v, bool yaEntregado, int? repartidorId, bool retiroCliente, string? operador)
+    {
+        if (yaEntregado)
+        {
+            if (repartidorId is int rid && !retiroCliente && !await _db.CafeRepartidores.AnyAsync(r => r.Id == rid))
+                return "El repartidor elegido no existe.";
+            v.EntregadoAt ??= DateTime.UtcNow;
+            v.EntregadoPorRepartidorId = retiroCliente ? null : repartidorId;
+            if (retiroCliente) v.Retira = true;
+            if (!string.IsNullOrEmpty(v.EstadoPreparacion) && v.EstadoPreparacion != "ENTREGADO")
+            {
+                _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+                {
+                    VentaId = v.Id, EstadoAnterior = v.EstadoPreparacion, EstadoNuevo = "ENTREGADO",
+                    OperadorNombre = operador ?? "admin", Notas = "Tilde \"Ya entregado\" al editar la venta",
+                    CreatedAt = DateTime.UtcNow
+                });
+                v.EstadoPreparacion = "ENTREGADO";
+                v.PreparacionUpdatedAt = DateTime.UtcNow;
+            }
+            return null;
+        }
+
+        if (v.EntregadoAt is null) return null;
+        v.EntregadoAt = null;
+        v.EntregadoPorRepartidorId = null;
+        if (v.EstadoPreparacion == "ENTREGADO")
+        {
+            _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+            {
+                VentaId = v.Id, EstadoAnterior = "ENTREGADO", EstadoNuevo = "PARA_PREPARAR",
+                OperadorNombre = operador ?? "admin", Notas = "Destildó \"Ya entregado\" al editar la venta — vuelve a Para armar",
+                CreatedAt = DateTime.UtcNow
+            });
+            v.EstadoPreparacion = "PARA_PREPARAR";
+            v.PreparacionUpdatedAt = DateTime.UtcNow;
+        }
+        var escaneos = await _db.CafeQrEscaneos.Where(e => e.VentaId == v.Id && e.Accion == "entregado").ToListAsync();
+        _db.CafeQrEscaneos.RemoveRange(escaneos);
+        return null;
+    }
 
     public record CambiarEstadoPreparacionRequest(string EstadoNuevo, string? OperadorNombre, string? Notas);
 

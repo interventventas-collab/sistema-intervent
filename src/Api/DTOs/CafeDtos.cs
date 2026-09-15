@@ -675,6 +675,11 @@ public class CreateCafeVentaRequest
     /// <summary>2026-07-03: certificado/CUIT con el que se factura (multi-sociedad). Null = CUIT del
     /// negocio por default. Solo aplica a FA/FB/FC.</summary>
     public int? ArcaWebserviceAccountId { get; set; }
+    /// <summary>2026-09-15: tilde "Ya entregado" abajo de Emitir. Quién lo entregó es OPCIONAL:
+    /// un repartidor, "retiró el cliente", o ninguno.</summary>
+    public bool YaEntregado { get; set; }
+    public int? EntregadoPorRepartidorId { get; set; }
+    public bool EntregadoRetiroCliente { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest
@@ -738,6 +743,11 @@ public class UpdateCafeVentaRequest
     public string? MapeoLink { get; set; }
     /// <summary>2026-07-02: si es true, ademas guarda el link en la ficha del cliente (para futuras entregas).</summary>
     public bool GuardarMapeoEnCliente { get; set; }
+    /// <summary>2026-09-15: tilde "Ya entregado" al editar. Null = no tocar la entrega.
+    /// true = queda entregada (con quién, opcional); false = se desmarca si estaba entregada.</summary>
+    public bool? YaEntregado { get; set; }
+    public int? EntregadoPorRepartidorId { get; set; }
+    public bool? EntregadoRetiroCliente { get; set; }
 }
 
 public class DeleteCafeVentaRequest
