@@ -366,6 +366,10 @@
                             {
                                 <li><strong>@importResult.VariantesPropagadas</strong> variante@(importResult.VariantesPropagadas == 1 ? "" : "s") con precios actualizados (propagación automática)</li>
                             }
+                            @if (importResult.ProductosEnviadosAMeli > 0)
+                            {
+                                <li><strong>@importResult.ProductosEnviadosAMeli</strong> producto@(importResult.ProductosEnviadosAMeli == 1 ? "" : "s") con precio nuevo: se actualizan en MercadoLibre las publicaciones que tienen la sincronización de precio prendida (tarda unos minutos)</li>
+                            }
                         </ul>
                     </div>
                     @if (importResult.Errores.Count > 0)

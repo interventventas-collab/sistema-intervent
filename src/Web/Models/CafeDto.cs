@@ -1715,6 +1715,7 @@ public class CafeOemImportResultDto
     public string? Proveedor { get; set; }
     public int VariantesPropagadas { get; set; }
     public List<string> Errores { get; set; } = new();
+    public int ProductosEnviadosAMeli { get; set; }
 }
 
 // 2026-07-10: vista previa de importacion de OEMs (dry-run)

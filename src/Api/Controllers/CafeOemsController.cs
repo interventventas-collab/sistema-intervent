@@ -28,6 +28,28 @@ public class CafeOemsController : ControllerBase
     /// <summary>2026-07-13: dispara re-push de PRECIO a MeLi en background (fire-and-forget) para un producto,
     /// cuando cambia el costo/PVP del OEM. Solo pushea publicaciones "claimed" (SyncPrecio=true); las con
     /// objetivo recalculan el precio para mantener el %. Mismo patrón que CafeProductosController.</summary>
+    /// <summary>2026-09-15: igual que FireAndForgetPushPrecio pero para muchos productos (importacion por Excel).
+    /// Los procesa de a UNO en un solo hilo de fondo: disparar cientos en paralelo saturaria la API de MeLi.</summary>
+    private void FireAndForgetPushPrecioLote(List<int> cafeProductoIds)
+    {
+        if (cafeProductoIds.Count == 0) return;
+        var scopeFactory = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            using var scope = scopeFactory.CreateScope();
+            var pushSvc = scope.ServiceProvider.GetRequiredService<MeliPricePushService>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<CafeOemsController>>();
+            int ok = 0;
+            foreach (var pid in cafeProductoIds)
+            {
+                try { ok += await pushSvc.PushPrecioForProductoAsync(pid); }
+                catch (Exception ex) { logger.LogError(ex, "[OEM import] push de precio del producto {Pid} fallo", pid); }
+            }
+            logger.LogInformation("[OEM import] push de precio terminado: {N} productos, {Ok} publicaciones actualizadas",
+                cafeProductoIds.Count, ok);
+        });
+    }
+
     private void FireAndForgetPushPrecio(int cafeProductoId)
     {
         var scopeFactory = _scopeFactory;
@@ -361,6 +383,8 @@ public class CafeOemsController : ControllerBase
         var ahora = DateTime.UtcNow;
 
         var oemsTocados = new HashSet<int>();
+        // 2026-09-15: OEMs a los que el Excel les cambio el costo o el PVP → hay que avisarle a MeLi (como al editar de a uno).
+        var oemsConPrecioCambiado = new HashSet<int>();
         try
         {
             List<ParsedOemRow> filas;
@@ -379,6 +403,10 @@ public class CafeOemsController : ControllerBase
                     existente.Descripcion = fila.Titulo ?? existente.Descripcion;
                     existente.Marca = fila.Marca ?? existente.Marca;
                     // Solo pisar costo/pvp/iva si vino valor (columna presente + celda con dato).
+                    if (existente.Id != 0
+                        && ((fila.Costo.HasValue && fila.Costo.Value != existente.Costo)
+                            || (fila.Pvp.HasValue && fila.Pvp.Value != existente.PvpConIva)))
+                        oemsConPrecioCambiado.Add(existente.Id);
                     if (fila.Costo.HasValue) existente.Costo = fila.Costo.Value;
                     if (fila.Pvp.HasValue) existente.PvpConIva = fila.Pvp.Value;
                     if (fila.Iva.HasValue) existente.IvaPct = fila.Iva.Value;
@@ -431,7 +459,15 @@ public class CafeOemsController : ControllerBase
         if (totalVariantesPropagadas > 0)
             await _db.SaveChangesAsync();
 
-        return Ok(new CafeOemImportResultDto(creados, actualizados, omitidos, prov, totalVariantesPropagadas, errores));
+        // 2026-09-15: antes el Excel cambiaba el precio en el sistema pero NO en MeLi (solo lo hacia el editar de a uno).
+        // Mismo criterio que Update: solo se pushean las publicaciones con sincronizacion de precio (SyncPrecio=true).
+        var productosAPushear = oemsConPrecioCambiado.Count == 0 ? new List<int>()
+            : await _db.CafeProductos.Where(p => p.OemId != null && oemsConPrecioCambiado.Contains(p.OemId.Value))
+                .Select(p => p.Id).ToListAsync();
+        FireAndForgetPushPrecioLote(productosAPushear);
+
+        return Ok(new CafeOemImportResultDto(creados, actualizados, omitidos, prov, totalVariantesPropagadas, errores,
+            productosAPushear.Count));
     }
 
     /// <summary>2026-07-10: vista previa (dry-run) de la importacion. NO aplica nada.
