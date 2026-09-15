@@ -405,8 +405,16 @@
                         </div>
                     }
 
+                    @if (FilasConAlerta > 0)
+                    {
+                        @* 2026-09-15: alarma — filas raras (costo x100, datos del ejemplo, nombre que no se parece…) *@
+                        <div style="background: #fef2f2; border: 1px solid #dc2626; border-radius: 8px; padding: 0.7rem; margin-bottom: 0.8rem; font-size: 0.85rem; color: #991b1b;">
+                            <strong>⚠ @FilasConAlerta fila@(FilasConAlerta == 1 ? "" : "s") para revisar</strong> (marcada@(FilasConAlerta == 1 ? "" : "s") en rojo, arriba de todo).
+                            Cada una dice qué tiene de raro. Si algo está mal, tocá <strong>← Volver</strong>, corregí el Excel, guardalo y elegilo de nuevo.
+                        </div>
+                    }
                     <p style="font-size: 0.82rem; color: #4b5563; margin: 0 0 0.4rem;">
-                        <strong>@CambiosRelevantes.Count</strong> fila@(CambiosRelevantes.Count == 1 ? "" : "s") con cambios de precio o nuevas
+                        <strong>@CambiosRelevantes.Count</strong> fila@(CambiosRelevantes.Count == 1 ? "" : "s") con cambios de precio, nuevas o para revisar
                         (de @importPreview.Cambios.Count en total):
                     </p>
                     <div style="max-height: 280px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px;">
@@ -422,12 +430,22 @@
                             <tbody>
                                 @foreach (var c in CambiosRelevantes.Take(500))
                                 {
-                                    <tr>
+                                    var tieneAlerta = c.Alertas is { Count: > 0 };
+                                    <tr style="@(tieneAlerta ? "background:#fef2f2;" : "")">
                                         <td>
                                             <strong>@c.Codigo</strong>
                                             @if (c.EsNuevo) { <span style="background:#16a34a;color:white;border-radius:4px;padding:0 4px;font-size:0.68rem;margin-left:4px;">NUEVO</span> }
                                         </td>
-                                        <td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@c.Descripcion</td>
+                                        <td style="max-width: 260px;">
+                                            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@c.Descripcion</div>
+                                            @if (tieneAlerta)
+                                            {
+                                                foreach (var a in c.Alertas!)
+                                                {
+                                                    <div style="color:#b91c1c; font-size:0.74rem; white-space:normal; margin-top:2px;">⚠ @a</div>
+                                                }
+                                            }
+                                        </td>
                                         <td style="text-align: right;">
                                             @if (c.CambiaCosto && !c.EsNuevo)
                                             {
@@ -461,6 +479,13 @@
                     {
                         <p style="font-size: 0.75rem; color: #6b7280; margin: 0.4rem 0 0;">Mostrando las primeras 500. Al confirmar se aplican todas.</p>
                     }
+                    @if (FilasConAlerta > 0)
+                    {
+                        <label style="display:flex; gap:0.5rem; align-items:center; margin-top:0.7rem; font-size:0.85rem; color:#991b1b; cursor:pointer;">
+                            <input type="checkbox" @bind="alertasRevisadas" />
+                            Revisé las filas marcadas en rojo y están bien
+                        </label>
+                    }
                     @if (!string.IsNullOrEmpty(importError))
                     {
                         <div class="form-error" style="margin-top: 0.6rem;">@importError</div>
@@ -474,7 +499,7 @@
                         <strong>"⬇️ Descargar plantilla"</strong> para bajar el modelo con las columnas correctas.
                     </p>
                     <p style="font-size: 0.78rem; color: #6b7280; margin-bottom: 0.8rem;">
-                        <strong>Comportamiento:</strong> Si un código ya existe, se actualiza el costo / PVP / etc.
+                        <strong>Comportamiento:</strong> Si un código ya existe, se actualiza lo que cargaste (lo vacío queda como estaba).
                         Si no existe, se crea nuevo. <strong>Nada se elimina.</strong> Antes de aplicar vas a ver una vista previa.
                     </p>
                     <div class="form-group">
@@ -483,7 +508,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Archivo .xlsx</label>
-                        <InputFile OnChange="OnFileChange" accept=".xlsx" class="form-input" />
+                        <InputFile @key="inputFileKey" OnChange="OnFileChange" accept=".xlsx" class="form-input" />
                         @if (importFile is not null)
                         {
                             <p style="font-size: 0.78rem; color: #15803d; margin: 0.3rem 0 0;">
@@ -505,7 +530,8 @@
                 else if (importPreview is not null)
                 {
                     <button class="btn btn-secondary" @onclick="VolverAElegirArchivo" disabled="@isImporting">← Volver</button>
-                    <button class="btn" style="background: #16a34a; color: white; border: none;" @onclick="DoImport" disabled="@isImporting">
+                    <button class="btn" style="background: #16a34a; color: white; border: none; @(FilasConAlerta > 0 && !alertasRevisadas ? "opacity: 0.45; cursor: not-allowed;" : "")" @onclick="DoImport" disabled="@(isImporting || (FilasConAlerta > 0 && !alertasRevisadas))"
+                            title="@(FilasConAlerta > 0 && !alertasRevisadas ? "Primero tildá que revisaste las filas en rojo" : "")">
                         @(isImporting ? "Aplicando..." : "✓ Confirmar e importar")
                     </button>
                 }
@@ -676,8 +702,15 @@
     private CafeOemImportPreviewDto? importPreview;
     private CafeOemImportResultDto? importResult;
     // Filas nuevas o con cambio de precio (lo que le interesa ver al usuario en la previa).
+    // 2026-09-15: también las filas con alertas, y esas primero.
     private List<CafeOemImportCambioDto> CambiosRelevantes =>
-        importPreview?.Cambios.Where(c => c.EsNuevo || c.CambiaCosto || c.CambiaPvp).ToList() ?? new();
+        importPreview?.Cambios.Where(c => c.EsNuevo || c.CambiaCosto || c.CambiaPvp || c.Alertas is { Count: > 0 })
+            .OrderByDescending(c => c.Alertas is { Count: > 0 }).ToList() ?? new();
+    private int FilasConAlerta => importPreview?.Cambios.Count(c => c.Alertas is { Count: > 0 }) ?? 0;
+    private bool alertasRevisadas;
+    // 2026-09-15: al volver se re-crea el selector de archivo para obligar a elegirlo de nuevo. Antes se reusaban
+    // los bytes ya leídos → si corregías el Excel y volvías a previsualizar, seguías viendo (e importando) el viejo.
+    private int inputFileKey;
 
     // Variantes vinculadas (ver impacto de un cambio de precio)
     private bool showVariantes;
@@ -963,6 +996,10 @@
     {
         importPreview = null;
         importError = null;
+        importFile = null;
+        importBytes = null;
+        alertasRevisadas = false;
+        inputFileKey++;
     }
 
     // Paso 2: genera la vista previa (dry-run). Lee el archivo UNA vez y lo bufferea.
@@ -981,6 +1018,7 @@
             }
             using var stream = new MemoryStream(importBytes);
             importPreview = await Api.PreviewCafeOemsAsync(stream, importFile.Name, importProveedor);
+            alertasRevisadas = false;
         }
         catch (Exception ex) { importError = ex.Message; }
         finally { isPreviewing = false; }

@@ -989,7 +989,8 @@ public record CafeOemImportCambioDto(
     bool EsNuevo,
     decimal? CostoViejo, decimal? CostoNuevo,
     decimal? PvpViejo, decimal? PvpNuevo,
-    bool CambiaCosto, bool CambiaPvp);
+    bool CambiaCosto, bool CambiaPvp,
+    List<string>? Alertas = null);
 
 public record CafeOemImportPreviewDto(
     int Creados, int Actualizados, int Omitidos,

@@ -268,6 +268,55 @@ public class CafeOemsController : ControllerBase
         public string? Barcode;
         public int? Uxb;
         public string? UrlWeb;
+        // 2026-09-15: avisos de parseo para mostrar en la vista previa (ej: datos del ejemplo ignorados).
+        public List<string> Avisos = new();
+    }
+
+    // 2026-09-15: valores de la fila de EJEMPLO que traian las plantillas viejas. Si alguien escribe un codigo real
+    // encima de "EJEMPLO-9381" y deja el resto gris, esos valores se colaban como datos reales (caso real: OEM 60
+    // iba a quedar con el titulo del ejemplo y costo $823.275). Se detecta la fila y se ignoran esas celdas.
+    private static readonly Dictionary<string, string> EjemploPlantillaVieja = new()
+    {
+        ["titulo"] = "COL BOX CUADRADO X 15 LTS",
+        ["marca"] = "COLOMBRARO",
+        ["precio_costo"] = "8232.75",
+        ["precio_venta_con_iva"] = "19500",
+        ["iva"] = "21",
+        ["codigo_de_barras"] = "7790733093815",
+        ["uxb"] = "6",
+        ["web"] = "https://colombraro.com.ar/...",
+    };
+
+    /// <summary>2026-09-15: interpreta un numero escrito como texto como lo leeria una persona.
+    /// Antes se borraban TODOS los puntos → "8232.75" se leia 823.275. Reglas:
+    /// - con punto y coma: el ultimo de los dos es el decimal ("1.845,00" / "1,845.00")
+    /// - solo coma: una sola = decimal ("8232,75"); varias = miles
+    /// - solo punto: uno seguido de exactamente 3 digitos = miles ("19.500"); si no, decimal ("8232.75"); varios = miles</summary>
+    internal static decimal? ParseNumeroFlexible(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return null;
+        var t = texto.Trim().Replace("$", "").Replace(" ", "").Replace("\u00a0", "");
+        if (t.Length == 0) return null;
+        int puntos = t.Count(ch => ch == '.'), comas = t.Count(ch => ch == ',');
+        if (puntos > 0 && comas > 0)
+        {
+            var decimalEsComa = t.LastIndexOf(',') > t.LastIndexOf('.');
+            t = decimalEsComa ? t.Replace(".", "").Replace(",", ".") : t.Replace(",", "");
+        }
+        else if (comas > 0)
+        {
+            t = comas == 1 ? t.Replace(",", ".") : t.Replace(",", "");
+        }
+        else if (puntos > 1)
+        {
+            t = t.Replace(".", "");
+        }
+        else if (puntos == 1)
+        {
+            var decimales = t.Length - t.IndexOf('.') - 1;
+            if (decimales == 3) t = t.Replace(".", "");
+        }
+        return decimal.TryParse(t, NumberStyles.Number | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var d) ? d : null;
     }
 
     // 2026-07-10: lee el .xlsx y devuelve las filas parseadas. NO toca la base.
@@ -333,15 +382,39 @@ public class CafeOemsController : ControllerBase
             // 2026-07-10: la fila de ejemplo de la plantilla arranca con "EJEMPLO" -> no se importa.
             if (codigo.StartsWith("EJEMPLO", StringComparison.OrdinalIgnoreCase)) { omitidos++; continue; }
 
-            string? Get(int? col) => col is null ? null : (row.Cell(col.Value).IsEmpty() ? null : row.Cell(col.Value).GetString().Trim());
+            // 2026-09-15: ¿es la fila de ejemplo de una plantilla vieja con un codigo real escrito encima?
+            // Se reconoce si coinciden al menos 2 de los valores bien distintivos del ejemplo.
+            var ignorarCols = new HashSet<int>();
+            if (codigo != "9381")
+            {
+                bool Coincide(string colName)
+                {
+                    if (!colIx.TryGetValue(colName, out var ix)) return false;
+                    var cell = row.Cell(ix);
+                    if (cell.IsEmpty()) return false;
+                    var ejemplo = EjemploPlantillaVieja[colName];
+                    if (cell.GetString().Trim() == ejemplo) return true;
+                    // Por si Excel lo convirtio a numero (8232.75 / 7790733093815 / 19500)
+                    var ejNum = ParseNumeroFlexible(ejemplo);
+                    return ejNum.HasValue && cell.DataType == XLDataType.Number && (decimal)cell.GetDouble() == ejNum.Value;
+                }
+                var distintivos = new[] { "titulo", "precio_costo", "codigo_de_barras", "web" }.Count(Coincide);
+                if (distintivos >= 2)
+                {
+                    foreach (var colName in EjemploPlantillaVieja.Keys)
+                        if (Coincide(colName)) ignorarCols.Add(colIx[colName]);
+                }
+            }
+
+            string? Get(int? col) => col is null || ignorarCols.Contains(col.Value) ? null
+                : (row.Cell(col.Value).IsEmpty() ? null : row.Cell(col.Value).GetString().Trim());
             decimal? GetNum(int? col)
             {
-                if (col is null) return null;
+                if (col is null || ignorarCols.Contains(col.Value)) return null;
                 var cell = row.Cell(col.Value);
                 if (cell.IsEmpty()) return null;
                 if (cell.DataType == XLDataType.Number) return (decimal)cell.GetDouble();
-                var s = cell.GetString().Trim().Replace("$", "").Replace(" ", "").Replace(".", "").Replace(",", ".");
-                return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : null;
+                return ParseNumeroFlexible(cell.GetString());
             }
 
             var uxbDec = GetNum(cUxB);
@@ -358,6 +431,8 @@ public class CafeOemsController : ControllerBase
                 Uxb = uxbDec.HasValue ? (int)uxbDec.Value : null,
                 UrlWeb = Get(cUrlWeb),
             });
+            if (ignorarCols.Count > 0)
+                filas[^1].Avisos.Add("tenía datos del EJEMPLO de la plantilla: esos datos se ignoran (solo se usa lo que cargaste vos)");
         }
 
         return filas;
@@ -521,13 +596,55 @@ public class CafeOemsController : ControllerBase
                 esNuevo,
                 costoViejo, costoNuevo,
                 pvpViejo, pvpNuevo,
-                cambiaCosto, cambiaPvp));
+                cambiaCosto, cambiaPvp,
+                AlertasDeFila(fila, ex, costoNuevo, pvpNuevo, cambiaCosto, cambiaPvp)));
         }
 
         return Ok(new CafeOemImportPreviewDto(
             creados, actualizados, omitidos, prov,
             tieneCosto, tienePvp,
             cambios, errores));
+    }
+
+    /// <summary>2026-09-15: cosas raras de una fila que el usuario tiene que mirar antes de confirmar
+    /// (se muestran en rojo y piden tildar "Revisé las filas marcadas").</summary>
+    private static List<string> AlertasDeFila(ParsedOemRow fila, CafeOem? ex,
+        decimal? costoNuevo, decimal? pvpNuevo, bool cambiaCosto, bool cambiaPvp)
+    {
+        var alertas = new List<string>(fila.Avisos);
+        var ar = CultureInfo.GetCultureInfo("es-AR");
+        string Plata(decimal v) => "$" + v.ToString("#,##0.##", ar);
+
+        void Salto(string que, decimal? viejo, decimal? nuevo)
+        {
+            if (viejo is not decimal v || v <= 0 || nuevo is not decimal n) return;
+            if (n <= 0) alertas.Add($"el {que} queda en $0");
+            else if (n >= v * 2) alertas.Add($"el {que} sube más del doble: {Plata(v)} → {Plata(n)}");
+            else if (n * 2 <= v) alertas.Add($"el {que} baja a menos de la mitad: {Plata(v)} → {Plata(n)}");
+        }
+        if (cambiaCosto) Salto("costo", ex?.Costo, costoNuevo);
+        if (cambiaPvp) Salto("precio de venta", ex?.PvpConIva, pvpNuevo);
+
+        if ((cambiaCosto || cambiaPvp) && costoNuevo is decimal c && pvpNuevo is decimal p && c > 0 && p > 0 && c >= p)
+            alertas.Add($"el costo ({Plata(c)}) queda igual o más alto que el precio de venta ({Plata(p)})");
+
+        // Nombre: solo si el nuevo no comparte ninguna palabra con el viejo (un retoque de la lista oficial no alarma).
+        if (ex is not null && !string.IsNullOrWhiteSpace(fila.Titulo) && !string.IsNullOrWhiteSpace(ex.Descripcion))
+        {
+            static HashSet<string> Palabras(string t) => t.ToUpperInvariant()
+                .Split(new[] { ' ', '.', ',', '/', '-', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length >= 4).ToHashSet();
+            var viejas = Palabras(ex.Descripcion);
+            var nuevas = Palabras(fila.Titulo);
+            if (viejas.Count > 0 && nuevas.Count > 0 && !viejas.Overlaps(nuevas))
+                alertas.Add($"cambia el nombre por otro que no se parece: «{ex.Descripcion}» → «{fila.Titulo}»");
+        }
+
+        if (ex is not null && !string.IsNullOrWhiteSpace(fila.Barcode) && !string.IsNullOrWhiteSpace(ex.Barcode)
+            && fila.Barcode != ex.Barcode)
+            alertas.Add($"cambia el código de barras: {ex.Barcode} → {fila.Barcode} (también en los productos de este OEM)");
+
+        return alertas;
     }
 
     /// <summary>2026-07-10: descarga un Excel plantilla con todas las columnas posibles,
@@ -569,12 +686,8 @@ public class CafeOemsController : ControllerBase
             cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             var etiqueta = nivel == 0 ? "OBLIGATORIO" : (nivel == 1 ? "Recomendado (para actualizar precios)" : "Opcional");
             cell.GetComment().AddText($"{etiqueta}. {ayuda}");
-
-            // Fila 2: ejemplo (arranca con EJEMPLO en el codigo -> el importador la ignora).
-            var ej = ws.Cell(2, i + 1);
-            ej.Value = i == 0 ? "EJEMPLO-9381" : ejemplo;
-            ej.Style.Font.Italic = true;
-            ej.Style.Font.FontColor = XLColor.FromHtml("#9ca3af");
+            // 2026-09-15: ya NO va una fila de ejemplo acá: al escribir un código encima quedaban los datos
+            // grises y se importaban como reales. El ejemplo vive en la hoja LEEME.
         }
 
         ws.SheetView.FreezeRows(1);
@@ -595,9 +708,11 @@ public class CafeOemsController : ControllerBase
             rr++;
         }
         Linea("1) Completá los datos en la hoja 'OEMs', debajo de cada título. NO cambies los títulos.");
-        Linea("2) Borrá la fila de EJEMPLO (la que arranca con 'EJEMPLO-9381') antes de importar.");
-        Linea("   (Si te la olvidás, igual no se importa: el sistema ignora las filas que arrancan con EJEMPLO.)");
-        Linea("3) Guardá el archivo y subilo con el botón 'Importar Excel'.");
+        Linea("2) Solo el código es obligatorio. Lo que dejes VACÍO no se modifica (queda como estaba).");
+        Linea("3) Guardá el archivo y subilo con el botón 'Importar Excel'. Antes de aplicar vas a ver una vista previa.");
+        Linea("");
+        Linea("EJEMPLO DE UNA FILA", true);
+        Linea(string.Join("   |   ", cols.Select(c => $"{c.Header}: {c.Ejemplo}")));
         Linea("");
         Linea("COLUMNAS", true);
         foreach (var (headerName, nivel, ayuda, _) in cols)
@@ -606,7 +721,7 @@ public class CafeOemsController : ControllerBase
             Linea($"• {headerName}  {etiqueta}  →  {ayuda}");
         }
         Linea("");
-        Linea("Los precios pueden ir con $ y puntos (ej: $ 19.500,00) o como número (19500). El sistema los entiende igual.");
+        Linea("Los precios pueden ir con $ y puntos de miles (ej: $ 19.500,00), con decimales (8232,75 o 8232.75) o como número (19500). El sistema los entiende igual.");
         Linea("Al importar: si el código ya existe se ACTUALIZA; si no existe se CREA. Nada se elimina.");
         wsInfo.Columns().AdjustToContents();
 

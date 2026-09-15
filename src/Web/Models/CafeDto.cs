@@ -1730,6 +1730,7 @@ public class CafeOemImportCambioDto
     public decimal? PvpNuevo { get; set; }
     public bool CambiaCosto { get; set; }
     public bool CambiaPvp { get; set; }
+    public List<string>? Alertas { get; set; }
 }
 
 public class CafeOemImportPreviewDto
