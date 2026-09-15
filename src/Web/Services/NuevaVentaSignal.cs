@@ -11,4 +11,12 @@ public class NuevaVentaSignal
 {
     public event Action? OnRequest;
     public void Request() => OnRequest?.Invoke();
+
+    /// <summary>
+    /// 2026-09-15 — Pedido del dueño: cuando carga una venta, el menú de la izquierda arranca
+    /// PLEGADO para dejarle lugar a la ventana. CafeVentas avisa cuando la ventana se abre (true)
+    /// o se cierra/minimiza (false) y MainLayout pliega el menú y después lo deja como estaba.
+    /// </summary>
+    public event Action<bool>? OnVentaAbierta;
+    public void VentaAbierta(bool abierta) => OnVentaAbierta?.Invoke(abierta);
 }

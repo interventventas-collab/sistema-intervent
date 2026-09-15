@@ -2686,6 +2686,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        NuevaVentaSignal.OnVentaAbierta += OnVentaAbierta;
         SyncProgress.OnChange += OnSyncProgressChanged;
         UploadProgress.OnChanged += OnUploadProgressChanged;
         _ = CargarFaltantesAsync();
@@ -3089,6 +3090,7 @@
 
     public void Dispose()
     {
+        NuevaVentaSignal.OnVentaAbierta -= OnVentaAbierta;
         timerFaltantes?.Dispose();
         try { cmdPalRef?.Dispose(); } catch { }
         try { _pinLockTimer?.Dispose(); } catch { }
@@ -3310,8 +3312,27 @@
 
     private void ToggleSidebar() => sidebarOpen = !sidebarOpen;
     private void CloseSidebar() => sidebarOpen = false;
+    // 2026-09-15: con la ventana de venta abierta el menú se pliega solo, sin guardarlo en el
+    // navegador. Al cerrarla vuelve a como estaba. Si en el medio lo toca a mano, manda lo que eligió.
+    private bool? menuAntesDeLaVenta;
+    private void OnVentaAbierta(bool abierta)
+    {
+        if (abierta)
+        {
+            menuAntesDeLaVenta ??= sidebarCollapsed;
+            sidebarCollapsed = true;
+        }
+        else if (menuAntesDeLaVenta is bool antes)
+        {
+            sidebarCollapsed = antes;
+            menuAntesDeLaVenta = null;
+        }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     private async Task ToggleCollapse()
     {
+        menuAntesDeLaVenta = null;   // lo tocó a mano: al cerrar la venta no se lo cambiamos
         sidebarCollapsed = !sidebarCollapsed;
         userMenuOpen = false;
         // 2026-07-21: recordar la elección en el navegador para próximas visitas.

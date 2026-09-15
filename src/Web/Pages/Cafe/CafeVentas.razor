@@ -6229,8 +6229,21 @@
     // entraria en loop infinito cada render.
     private bool _filtrosEstabanActivos = false;
 
+    // 2026-09-15: avisarle al menú de la izquierda que se pliegue mientras la ventana de venta está
+    // abierta (y que vuelva a como estaba al cerrarla o minimizarla). Se mira en cada render porque
+    // la ventana se abre desde muchos lados (nueva, editar, duplicar, desde el chat, borradores).
+    private bool avisoVentaAbierta;
+    private void AvisarMenuSiCambioLaVentana()
+    {
+        var abierta = showForm && formModalMode != "MINIMIZADO";
+        if (abierta == avisoVentaAbierta) return;
+        avisoVentaAbierta = abierta;
+        NuevaVentaSignal.VentaAbierta(abierta);
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        AvisarMenuSiCambioLaVentana();
         // 2026-06-22: cuando el usuario activa un filtro (escribe en el buscador, selecciona
         // un tipo, etc.) y estamos en modo paginado, automaticamente cargamos los ultimos 30
         // dias para que el filtro busque en un rango razonable y no solo en las 50 de la pagina.
@@ -6746,6 +6759,8 @@
         Operator.OnChange -= OnOperatorChange;
         Navigation.LocationChanged -= OnLocationChanged;
         NuevaVentaSignal.OnRequest -= OnNuevaVentaSignal;
+        // Si se va de la pantalla con la venta abierta, el menú vuelve a como estaba.
+        if (avisoVentaAbierta) NuevaVentaSignal.VentaAbierta(false);
     }
 
     /// <summary>Disparado cuando el FAB "Nueva Venta" del topbar emite la señal,
