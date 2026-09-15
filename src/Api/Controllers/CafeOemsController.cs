@@ -36,6 +36,9 @@ public class CafeOemsController : ControllerBase
         var scopeFactory = _scopeFactory;
         _ = Task.Run(async () =>
         {
+            // Mientras el lote corre, el job de respaldo espera: si no, agarraria los productos que el lote
+            // todavia no llego a mandar y les pushearia el mismo precio dos veces.
+            using var _ = MeliPricePushService.MarcarLoteEnCurso();
             using var scope = scopeFactory.CreateScope();
             var pushSvc = scope.ServiceProvider.GetRequiredService<MeliPricePushService>();
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<CafeOemsController>>();
@@ -48,6 +51,17 @@ public class CafeOemsController : ControllerBase
             logger.LogInformation("[OEM import] push de precio terminado: {N} productos, {Ok} publicaciones actualizadas",
                 cafeProductoIds.Count, ok);
         });
+    }
+
+    /// <summary>2026-09-15: marca PriceChangedAt en los productos cuyo OEM cambio de costo/PVP, igual que editar el
+    /// producto. Sin esta marca el job de respaldo (MeliPricePushBackgroundService) nunca se enteraba: si el push en
+    /// el momento fallaba (MeLi caido, token vencido, reinicio de la API a mitad del lote) el precio quedaba viejo en MeLi.</summary>
+    private async Task MarcarPrecioCambiadoAsync(List<int> cafeProductoIds)
+    {
+        if (cafeProductoIds.Count == 0) return;
+        var ahora = DateTime.UtcNow;
+        await _db.CafeProductos.Where(p => cafeProductoIds.Contains(p.Id))
+            .ExecuteUpdateAsync(u => u.SetProperty(p => p.PriceChangedAt, ahora));
     }
 
     private void FireAndForgetPushPrecio(int cafeProductoId)
@@ -236,6 +250,7 @@ public class CafeOemsController : ControllerBase
         if (req.Costo.HasValue || req.PvpConIva.HasValue)
         {
             var productoIds = await _db.CafeProductos.Where(p => p.OemId == o.Id).Select(p => p.Id).ToListAsync();
+            await MarcarPrecioCambiadoAsync(productoIds);
             foreach (var pid in productoIds) FireAndForgetPushPrecio(pid);
         }
 
@@ -539,6 +554,7 @@ public class CafeOemsController : ControllerBase
         var productosAPushear = oemsConPrecioCambiado.Count == 0 ? new List<int>()
             : await _db.CafeProductos.Where(p => p.OemId != null && oemsConPrecioCambiado.Contains(p.OemId.Value))
                 .Select(p => p.Id).ToListAsync();
+        await MarcarPrecioCambiadoAsync(productosAPushear);
         FireAndForgetPushPrecioLote(productosAPushear);
 
         return Ok(new CafeOemImportResultDto(creados, actualizados, omitidos, prov, totalVariantesPropagadas, errores,

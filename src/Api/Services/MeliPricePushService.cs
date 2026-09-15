@@ -260,9 +260,20 @@ public class MeliPricePushService
     /// solo se reintenta durante VentanaReintento (una publicación que MeLi rechaza no se martilla para siempre).</summary>
     public async Task<(int Procesados, int Ok)> PushPendingPrecioAsync(int maxProductos = 100, CancellationToken ct = default)
     {
-        var desde = DateTime.UtcNow - VentanaReintento;
+        // Un lote grande (importar OEMs por Excel) puede tardar mucho: mientras corre, los que le faltan figuran
+        // como pendientes y el respaldo los mandaria dos veces. Se espera al ciclo siguiente.
+        if (Volatile.Read(ref _lotesEnCurso) > 0)
+        {
+            _logger.LogInformation("[PricePush bg] Hay un lote de precios mandandose — este ciclo no hace nada");
+            return (0, 0);
+        }
+
+        var ahora = DateTime.UtcNow;
+        var desde = ahora - VentanaReintento;
+        // Los cambios de los ultimos minutos los esta mandando el push en el momento; no pisarlo.
+        var hasta = ahora - EsperaPushEnElMomento;
         var candidatos = await _db.CafeProductos
-            .Where(p => p.PriceChangedAt != null && p.PriceChangedAt >= desde)
+            .Where(p => p.PriceChangedAt != null && p.PriceChangedAt >= desde && p.PriceChangedAt <= hasta)
             .Where(p =>
                 // linkeo directo
                 _db.MeliItems.Any(i => i.CafeProductoId == p.Id
@@ -300,6 +311,28 @@ public class MeliPricePushService
 
     /// <summary>Cuánto tiempo sigue reintentando el job de respaldo un cambio de precio que no llegó a MeLi.</summary>
     private static readonly TimeSpan VentanaReintento = TimeSpan.FromHours(48);
+
+    /// <summary>Cuánto espera el respaldo antes de tocar un cambio reciente (el push en el momento todavía puede estar corriendo).</summary>
+    private static readonly TimeSpan EsperaPushEnElMomento = TimeSpan.FromMinutes(10);
+
+    private static int _lotesEnCurso;
+
+    /// <summary>Marca que hay un lote de pushes de precio corriendo (hasta que se haga Dispose). Mientras tanto
+    /// el job de respaldo no hace nada, para no mandar dos veces el mismo precio.</summary>
+    public static IDisposable MarcarLoteEnCurso()
+    {
+        Interlocked.Increment(ref _lotesEnCurso);
+        return new LoteEnCurso();
+    }
+
+    private sealed class LoteEnCurso : IDisposable
+    {
+        private int _disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) Interlocked.Decrement(ref _lotesEnCurso);
+        }
+    }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
