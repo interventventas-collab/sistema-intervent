@@ -9,8 +9,8 @@ namespace Api.Services;
 /// <summary>
 /// Job de respaldo del push event-driven de PRECIO sistema → MeLi (paralelo al de stock).
 ///
-/// Corre cada 15 minutos. Busca productos con PriceChangedAt seteado y pushea las
-/// publicaciones "claimed" (SyncPrecio=true) linkeadas que estén pendientes.
+/// Corre cada 15 minutos. Busca productos con PriceChangedAt de las últimas 48 h y pushea solo las
+/// publicaciones "claimed" (SyncPrecio=true) linkeadas que quedaron atrás (LastSyncAt &lt; PriceChangedAt).
 ///
 /// El flujo normal es event-driven (CafeProductosController dispara fire-and-forget al
 /// editar el precio). Este job es la red de seguridad por si falla en el momento.

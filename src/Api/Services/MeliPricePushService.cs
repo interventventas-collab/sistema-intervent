@@ -181,7 +181,10 @@ public class MeliPricePushService
     /// MeLi linkeadas (directas o vía componentes) que están "claimed" (SyncPrecio=true) y
     /// les hace push automático. Las no-claimed se ignoran. Llamado desde
     /// CafeProductosController fire-and-forget al editar precio.</summary>
-    public async Task<int> PushPrecioForProductoAsync(int cafeProductoId, CancellationToken ct = default)
+    /// <param name="soloPendientesAntesDe">Si viene (lo usa el job de respaldo), solo pushea las publicaciones cuyo
+    /// último push de precio (LastSyncAt) es anterior a esa fecha — las que ya recibieron el precio nuevo se saltean.</param>
+    public async Task<int> PushPrecioForProductoAsync(int cafeProductoId, CancellationToken ct = default,
+        DateTime? soloPendientesAntesDe = null)
     {
         // Linkeo directo (item.CafeProductoId)
         var itemsDirectos = await _db.MeliItems
@@ -213,7 +216,8 @@ public class MeliPricePushService
         // Filtrar solo los "claimed" (SyncPrecio=true)
         var claimedItems = await _db.MeliItems
             .Where(i => allItemIds.Contains(i.Id))
-            .Join(_db.MeliItemSyncConfigs.Where(c => c.SyncPrecio),
+            .Join(_db.MeliItemSyncConfigs.Where(c => c.SyncPrecio
+                    && (soloPendientesAntesDe == null || c.LastSyncAt == null || c.LastSyncAt < soloPendientesAntesDe)),
                   i => i.MeliItemId, c => c.MeliItemId,
                   (i, c) => i.Id)
             .ToListAsync(ct);
@@ -245,34 +249,57 @@ public class MeliPricePushService
     }
 
     /// <summary>Backup: busca productos con PriceChangedAt reciente que tengan publicaciones
-    /// claimed sin actualizar (LastSyncAt < PriceChangedAt). Procesa hasta maxProductos.
-    /// Usado por MeliPricePushBackgroundService cada 15 min.</summary>
+    /// claimed sin actualizar (LastSyncAt < PriceChangedAt) y pushea SOLO esas. Procesa hasta maxProductos.
+    /// Usado por MeliPricePushBackgroundService cada 15 min.
+    ///
+    /// 2026-09-15 — antes tomaba los 100 productos con PriceChangedAt más viejo SIN mirar si ya se habían
+    /// pusheado (nadie limpia PriceChangedAt). Resultado en prod: cada ciclo reenviaba el mismo precio a las
+    /// mismas ~352 publicaciones (268 recibieron el mismo precio 5 veces en 2 horas) y los productos que
+    /// cambiaban después nunca entraban. Tocar el precio en MeLi puede tumbar descuentos de promociones.
+    /// Ahora: solo entra un producto si alguna publicación claimed quedó atrás de su cambio de precio, y
+    /// solo se reintenta durante VentanaReintento (una publicación que MeLi rechaza no se martilla para siempre).</summary>
     public async Task<(int Procesados, int Ok)> PushPendingPrecioAsync(int maxProductos = 100, CancellationToken ct = default)
     {
+        var desde = DateTime.UtcNow - VentanaReintento;
         var candidatos = await _db.CafeProductos
-            .Where(p => p.PriceChangedAt != null)
+            .Where(p => p.PriceChangedAt != null && p.PriceChangedAt >= desde)
+            .Where(p =>
+                // linkeo directo
+                _db.MeliItems.Any(i => i.CafeProductoId == p.Id
+                    && (i.Status == "active" || i.Status == "paused")
+                    && _db.MeliItemSyncConfigs.Any(c => c.MeliItemId == i.MeliItemId && c.SyncPrecio
+                        && (c.LastSyncAt == null || c.LastSyncAt < p.PriceChangedAt)))
+                // linkeo vía componentes
+                || _db.MeliItemComponentes.Any(mc => mc.CafeProductoId == p.Id
+                    && _db.MeliItems.Any(i => i.MeliItemId == mc.MeliItemId
+                        && (i.Status == "active" || i.Status == "paused"))
+                    && _db.MeliItemSyncConfigs.Any(c => c.MeliItemId == mc.MeliItemId && c.SyncPrecio
+                        && (c.LastSyncAt == null || c.LastSyncAt < p.PriceChangedAt))))
             .OrderBy(p => p.PriceChangedAt) // procesar los más viejos primero
             .Take(maxProductos)
-            .Select(p => p.Id)
+            .Select(p => new { p.Id, p.PriceChangedAt })
             .ToListAsync(ct);
 
         int procesados = 0, ok = 0;
-        foreach (var pid in candidatos)
+        foreach (var c in candidatos)
         {
             if (ct.IsCancellationRequested) break;
             try
             {
-                var r = await PushPrecioForProductoAsync(pid, ct);
+                var r = await PushPrecioForProductoAsync(c.Id, ct, soloPendientesAntesDe: c.PriceChangedAt);
                 procesados++;
                 ok += r;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[PricePush bg] Producto {Pid} falló", pid);
+                _logger.LogError(ex, "[PricePush bg] Producto {Pid} falló", c.Id);
             }
         }
         return (procesados, ok);
     }
+
+    /// <summary>Cuánto tiempo sigue reintentando el job de respaldo un cambio de precio que no llegó a MeLi.</summary>
+    private static readonly TimeSpan VentanaReintento = TimeSpan.FromHours(48);
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
