@@ -2654,7 +2654,19 @@ async function galiciaOpenAndFill(usuario, password) {
       await sleep(1500);
     }
   }
-  await userInput.waitFor({ state: 'visible', timeout: 20000 });
+  try {
+    await userInput.waitFor({ state: 'visible', timeout: 20000 });
+  } catch (e) {
+    // Diagnóstico: foto de lo que muestra el banco cuando no aparece el login.
+    try {
+      fs.mkdirSync('/data/galicia-diag', { recursive: true });
+      const foto = `/data/galicia-diag/login-${Date.now()}.png`;
+      await page.screenshot({ path: foto, fullPage: true });
+      const txt = ((await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')) || '').replace(/\s+/g, ' ').slice(0, 400);
+      console.log(`[galicia][LOGIN][FOTO] ${foto} url="${page.url()}" title="${await page.title().catch(() => '')}" texto: ${txt}`);
+    } catch {}
+    throw new Error('La página de entrada del banco no terminó de cargar (no apareció el campo de usuario). Probá de nuevo en unos minutos.');
+  }
 
   // IMPORTANTE: escribir letra por letra (pressSequentially), NO fill().
   // El SPA mantiene "Ingresar" deshabilitado hasta detectar tipeo real.
