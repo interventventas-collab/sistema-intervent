@@ -5916,8 +5916,14 @@ public class ApiClient
         => await GetAsync<Web.Models.GaliciaTestStatusDto>("/api/galicia/test/status");
 
     /// <summary>Sincroniza movimientos (robot baja CSV + importa). Puede tardar ~1 min.</summary>
+    // Timeout largo: si el banco tarda en cargar, el robot reintenta y puede pasar el minuto y medio.
     public async Task<Web.Models.GaliciaSincronizarResultDto?> SincronizarGaliciaAsync()
-        => await PostAsync<Web.Models.GaliciaSincronizarResultDto>("/api/galicia/sincronizar", new { });
+    {
+        var resp = await _httpLong.PostAsJsonAsync("/api/galicia/sincronizar", new { });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<Web.Models.GaliciaSincronizarResultDto>();
+    }
 
     // Cheques: baja 3 listados, tarda más → cliente de timeout largo (4 min).
     public async Task<Web.Models.GaliciaChequesSincronizarResultDto?> SincronizarChequesGaliciaAsync()

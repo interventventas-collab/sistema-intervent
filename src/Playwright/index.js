@@ -2689,6 +2689,8 @@ async function galiciaSubmitLogin(page) {
 
   galiciaState.step = 'Verificando ingreso...';
   await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+  // Si el banco está lento, salir del login puede tardar más de unos segundos.
+  await page.waitForURL((u) => !u.toString().includes('/login'), { timeout: 20000 }).catch(() => {});
   await sleep(4000);
 
   const url = page.url();
@@ -2743,39 +2745,49 @@ async function runGaliciaMovimientos({ usuario, password }) {
     return;
   }
 
-  // Ir a la cuenta y abrir Movimientos.
-  galiciaState.step = 'Abriendo Cuentas...';
-  await page.goto('https://empresas.bancogalicia.com.ar/cuentas', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-  await sleep(4500);
-
-  galiciaState.step = 'Abriendo movimientos de la cuenta...';
-  // Click en la primera fila de cuenta (la que tiene "N° ####"). Si falla, navegación directa.
-  const cuentaRow = page.locator('text=/N°\\s*\\d{5,}/').first();
-  try {
-    await cuentaRow.click({ timeout: 8000 });
-  } catch {
-    await page.goto('https://empresas.bancogalicia.com.ar/cuentas/movimientos', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-  }
-  await sleep(5000);
-
   // Abrir el menú de descarga y elegir .CSV.
   // El trigger es un dropdown con clase "download-button" (clase "download-b..." +
   // "brk-dropdown"); las opciones son elementos con title ".CSV"/".PDF"/etc.
-  galiciaState.step = 'Abriendo el menú de descarga...';
+  // A veces el banco tarda en dibujar la página de movimientos (queda en blanco):
+  // por eso esperamos a que aparezca el botón y, si no aparece, recargamos y
+  // probamos una vez más antes de rendirnos.
   const csvOption = page.locator('[title=".CSV"]').first();
-  const triggers = [
-    page.locator('[class*="download-b"]').first(),
-    page.locator('[class*="brk-dropdown"][class*="download"]').first(),
-    page.locator('[class*="brk-dropdown"]').last(),
-  ];
   let menuOpen = false;
-  for (const t of triggers) {
+  for (let intento = 1; intento <= 2 && !menuOpen; intento++) {
+    // Ir a la cuenta y abrir Movimientos.
+    galiciaState.step = intento === 1 ? 'Abriendo Cuentas...' : 'El banco no terminó de cargar, reintentando...';
+    await page.goto('https://empresas.bancogalicia.com.ar/cuentas', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await sleep(3000);
+
+    galiciaState.step = 'Abriendo movimientos de la cuenta...';
+    // Click en la primera fila de cuenta (la que tiene "N° ####"). Si falla, navegación directa.
+    const cuentaRow = page.locator('text=/N°\\s*\\d{5,}/').first();
     try {
-      if (!(await t.isVisible().catch(() => false))) continue;
-      await t.click({ timeout: 5000 });
-      await sleep(1200);
-      if (await csvOption.isVisible().catch(() => false)) { menuOpen = true; break; }
-    } catch {}
+      await cuentaRow.waitFor({ state: 'visible', timeout: 15000 });
+      await cuentaRow.click({ timeout: 8000 });
+    } catch {
+      await page.goto('https://empresas.bancogalicia.com.ar/cuentas/movimientos', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    }
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await sleep(2000);
+
+    galiciaState.step = 'Abriendo el menú de descarga...';
+    await page.locator('[class*="download-b"]').first().waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+    const triggers = [
+      page.locator('[class*="download-b"]').first(),
+      page.locator('[class*="brk-dropdown"][class*="download"]').first(),
+      page.locator('[class*="brk-dropdown"]').last(),
+    ];
+    for (const t of triggers) {
+      try {
+        if (!(await t.isVisible().catch(() => false))) continue;
+        await t.click({ timeout: 5000 });
+        await sleep(1200);
+        if (await csvOption.isVisible().catch(() => false)) { menuOpen = true; break; }
+      } catch {}
+    }
+    console.log(`[galicia][MOV] intento ${intento}: menuOpen=${menuOpen}`);
   }
   if (!menuOpen) {
     // Diagnóstico: dumpear los botones/clickables de la página al log del server
@@ -2844,27 +2856,39 @@ async function galiciaBajarChequesXls(page, tipo, errores) {
   // La opción del menú es un texto "Detalle de cheques en .XLS".
   const xlsOption = page.locator('text=/Detalle de cheques en \\.XLS/i').first();
 
-  galiciaState.step = `Abriendo el menú de descarga (${tipo})...`;
-  // Playwright pierce shadow DOM en sus locators; probamos varios candidatos.
-  const triggers = [
-    page.getByRole('button', { name: /descargar/i }).first(),
-    page.locator('[aria-label*="escargar"]').first(),
-    page.locator('[title*="escargar"]').first(),
-    page.locator('[class*="download"]').first(),
-    page.locator('[data-testid*="download" i]').first(),
-    page.locator('[class*="brk-dropdown"]').last(),
-  ];
+  // A veces el banco deja la página en blanco (no termina de cargar): si no aparece
+  // el menú, recargamos y probamos una vez más.
   let menuOpen = false, triggerUsado = -1;
-  for (let ti = 0; ti < triggers.length; ti++) {
-    const t = triggers[ti];
-    try {
-      if (!(await t.isVisible().catch(() => false))) continue;
-      await t.click({ timeout: 5000 });
-      await sleep(1200);
-      if (await xlsOption.isVisible().catch(() => false)) { menuOpen = true; triggerUsado = ti; break; }
-    } catch {}
+  for (let intentoMenu = 1; intentoMenu <= 2 && !menuOpen; intentoMenu++) {
+    if (intentoMenu === 2) {
+      galiciaState.step = `El banco no terminó de cargar cheques ${tipo}, reintentando...`;
+      await page.goto(`https://empresas.bancogalicia.com.ar/cheques/${tipo}`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+      await sleep(4000);
+      await page.getByText('Listado', { exact: false }).first().waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+      await sleep(1500);
+    }
+    galiciaState.step = `Abriendo el menú de descarga (${tipo})...`;
+    // Playwright pierce shadow DOM en sus locators; probamos varios candidatos.
+    const triggers = [
+      page.getByRole('button', { name: /descargar/i }).first(),
+      page.locator('[aria-label*="escargar"]').first(),
+      page.locator('[title*="escargar"]').first(),
+      page.locator('[class*="download"]').first(),
+      page.locator('[data-testid*="download" i]').first(),
+      page.locator('[class*="brk-dropdown"]').last(),
+    ];
+    for (let ti = 0; ti < triggers.length; ti++) {
+      const t = triggers[ti];
+      try {
+        if (!(await t.isVisible().catch(() => false))) continue;
+        await t.click({ timeout: 5000 });
+        await sleep(1200);
+        if (await xlsOption.isVisible().catch(() => false)) { menuOpen = true; triggerUsado = ti; break; }
+      } catch {}
+    }
+    console.log(`[galicia][CHEQUES] ${tipo}: menuOpen=${menuOpen} triggerUsado=${triggerUsado} (intento ${intentoMenu})`);
   }
-  console.log(`[galicia][CHEQUES] ${tipo}: menuOpen=${menuOpen} triggerUsado=${triggerUsado}`);
   if (!menuOpen) {
     // Diagnóstico shadow-DOM + iframe aware: recorre shadow roots e iframes accesibles
     // y lista los clickeables (Backbase esconde los botones en shadow DOM, por eso un

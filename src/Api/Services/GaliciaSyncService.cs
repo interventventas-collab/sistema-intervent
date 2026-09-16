@@ -27,6 +27,19 @@ public class GaliciaSyncService
     public record SyncResult(bool Ok, int Nuevos, int SinCambios, string? Error, List<string>? Detalles);
     public record ChequesSyncResult(bool Ok, int Nuevos, int Actualizados, int SinCambios, string? Error, List<string>? Detalles);
 
+    // El robot corre una operación a la vez y, después de dejar el resultado, tarda unos
+    // segundos en cerrar el navegador. Antes de arrancar otra (ej: cheques justo después
+    // de movimientos) esperamos a que quede libre.
+    private async Task EsperarRobotLibreAsync()
+    {
+        for (int i = 0; i < 30; i++)
+        {
+            var st = await _scraping.GetStatusAsync();
+            if (!st.Running) return;
+            await Task.Delay(1000);
+        }
+    }
+
     public async Task<SyncResult> SincronizarAsync()
     {
         var dto = await _accounts.GetAsync();
@@ -36,16 +49,18 @@ public class GaliciaSyncService
         if (string.IsNullOrEmpty(password))
             return new SyncResult(false, 0, 0, "No se pudo leer la clave", null);
 
+        await EsperarRobotLibreAsync();
         var (ok, error) = await _scraping.StartMovimientosAsync(dto.Usuario, password);
         if (!ok) return new SyncResult(false, 0, 0, error, null);
 
-        // Esperar al robot (~85s máx).
+        // Esperar al robot (~3 min máx: si el banco tarda en cargar, el robot reintenta).
+        // Cortamos apenas hay resultado, sin esperar a que el robot cierre el navegador.
         GaliciaTestResultDto? result = null;
-        for (int i = 0; i < 57; i++)
+        for (int i = 0; i < 120; i++)
         {
             await Task.Delay(1500);
             var st = await _scraping.GetStatusAsync();
-            if (!st.Running) { result = st.Result; break; }
+            if (!st.Running || st.Result is not null) { result = st.Result; break; }
         }
         if (result is null)
             return new SyncResult(false, 0, 0, "El robot tardó demasiado. Probá de nuevo.", null);
@@ -85,16 +100,18 @@ public class GaliciaSyncService
         if (string.IsNullOrEmpty(password))
             return new ChequesSyncResult(false, 0, 0, 0, "No se pudo leer la clave", null);
 
+        await EsperarRobotLibreAsync();
         var (ok, error) = await _scraping.StartChequesAsync(dto.Usuario, password);
         if (!ok) return new ChequesSyncResult(false, 0, 0, 0, error, null);
 
-        // Esperar al robot. Baja 3 archivos, así que damos más margen (~140s).
+        // Esperar al robot. Baja 3 archivos y puede reintentar si el banco tarda (~3,5 min máx, para no pasar los 4 min de la pantalla).
+        // Cortamos apenas hay resultado, sin esperar a que el robot cierre el navegador.
         GaliciaTestResultDto? result = null;
-        for (int i = 0; i < 95; i++)
+        for (int i = 0; i < 145; i++)
         {
             await Task.Delay(1500);
             var st = await _scraping.GetStatusAsync();
-            if (!st.Running) { result = st.Result; break; }
+            if (!st.Running || st.Result is not null) { result = st.Result; break; }
         }
         if (result is null)
             return new ChequesSyncResult(false, 0, 0, 0, "El robot tardó demasiado. Probá de nuevo.", null);
