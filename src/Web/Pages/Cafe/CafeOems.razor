@@ -413,9 +413,24 @@
                             Cada una dice qué tiene de raro. Si algo está mal, tocá <strong>← Volver</strong>, corregí el Excel, guardalo y elegilo de nuevo.
                         </div>
                     }
+                    @* 2026-09-15: filtros de la vista previa — cuáles suben, bajan, quedan igual (botones, sin desplegable) *@
+                    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin: 0 0 0.5rem;">
+                        @foreach (var (clave, etiqueta, n) in ChipsPrevia)
+                        {
+                            if (n == 0 && clave is "nuevos" or "revisar") continue;
+                            var activo = filtroPrevia == clave;
+                            var rojo = clave == "revisar";
+                            <button type="button" @onclick="() => filtroPrevia = clave"
+                                    style="font-size:0.78rem; padding:0.2rem 0.6rem; border-radius:999px; cursor:pointer;
+                                           border:1px solid @(activo ? (rojo ? "#b91c1c" : "#374151") : "#d1d5db");
+                                           background:@(activo ? (rojo ? "#fef2f2" : "#f3f4f6") : "white");
+                                           color:@(rojo ? "#b91c1c" : "#374151"); font-weight:@(activo ? "600" : "400");">
+                                @etiqueta <strong>@n</strong>
+                            </button>
+                        }
+                    </div>
                     <p style="font-size: 0.82rem; color: #4b5563; margin: 0 0 0.4rem;">
-                        <strong>@CambiosRelevantes.Count</strong> fila@(CambiosRelevantes.Count == 1 ? "" : "s") con cambios de precio, nuevas o para revisar
-                        (de @importPreview.Cambios.Count en total):
+                        Mostrando <strong>@FilasPrevia.Count</strong> de @importPreview.Cambios.Count fila@(importPreview.Cambios.Count == 1 ? "" : "s"):
                     </p>
                     <div style="max-height: 280px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px;">
                         <table class="data-table" style="font-size: 0.78rem;">
@@ -428,7 +443,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var c in CambiosRelevantes.Take(500))
+                                @foreach (var c in FilasPrevia.Take(500))
                                 {
                                     var tieneAlerta = c.Alertas is { Count: > 0 };
                                     <tr style="@(tieneAlerta ? "background:#fef2f2;" : "")">
@@ -456,6 +471,7 @@
                                             {
                                                 <strong>$@FormatMoney(c.CostoNuevo.Value)</strong>
                                             }
+                                            else if (c.CostoViejo.HasValue) { <span style="color:#9ca3af;">$@FormatMoney(c.CostoViejo.Value) =</span> }
                                             else { <span style="color:#9ca3af;">=</span> }
                                         </td>
                                         <td style="text-align: right;">
@@ -468,6 +484,7 @@
                                             {
                                                 <strong style="color:#15803d;">$@FormatMoney(c.PvpNuevo.Value)</strong>
                                             }
+                                            else if (c.PvpViejo.HasValue) { <span style="color:#9ca3af;">$@FormatMoney(c.PvpViejo.Value) =</span> }
                                             else { <span style="color:#9ca3af;">=</span> }
                                         </td>
                                     </tr>
@@ -475,7 +492,7 @@
                             </tbody>
                         </table>
                     </div>
-                    @if (CambiosRelevantes.Count > 500)
+                    @if (FilasPrevia.Count > 500)
                     {
                         <p style="font-size: 0.75rem; color: #6b7280; margin: 0.4rem 0 0;">Mostrando las primeras 500. Al confirmar se aplican todas.</p>
                     }
@@ -706,6 +723,52 @@
     private List<CafeOemImportCambioDto> CambiosRelevantes =>
         importPreview?.Cambios.Where(c => c.EsNuevo || c.CambiaCosto || c.CambiaPvp || c.Alertas is { Count: > 0 })
             .OrderByDescending(c => c.Alertas is { Count: > 0 }).ToList() ?? new();
+    // 2026-09-15: filtro de la vista previa. Sube/baja mira el precio de venta; si ese no cambia, el costo.
+    private string filtroPrevia = "cambian";
+    private static string DireccionPrevia(CafeOemImportCambioDto c)
+    {
+        if (c.EsNuevo) return "nuevo";
+        if (c.CambiaPvp && c.PvpNuevo.HasValue && c.PvpViejo.HasValue && c.PvpNuevo != c.PvpViejo)
+            return c.PvpNuevo > c.PvpViejo ? "sube" : "baja";
+        if (c.CambiaCosto && c.CostoNuevo.HasValue && c.CostoViejo.HasValue && c.CostoNuevo != c.CostoViejo)
+            return c.CostoNuevo > c.CostoViejo ? "sube" : "baja";
+        return "igual";
+    }
+    private List<(string Clave, string Etiqueta, int N)> ChipsPrevia
+    {
+        get
+        {
+            var cs = importPreview?.Cambios ?? new();
+            return new()
+            {
+                ("todos", "Todas", cs.Count),
+                ("cambian", "Con cambios", CambiosRelevantes.Count),
+                ("sube", "↑ Suben", cs.Count(c => DireccionPrevia(c) == "sube")),
+                ("baja", "↓ Bajan", cs.Count(c => DireccionPrevia(c) == "baja")),
+                ("igual", "= Quedan igual", cs.Count(c => DireccionPrevia(c) == "igual")),
+                ("nuevos", "Nuevos", cs.Count(c => c.EsNuevo)),
+                ("revisar", "⚠ Para revisar", FilasConAlerta),
+            };
+        }
+    }
+    private List<CafeOemImportCambioDto> FilasPrevia
+    {
+        get
+        {
+            var cs = importPreview?.Cambios ?? new();
+            IEnumerable<CafeOemImportCambioDto> q = filtroPrevia switch
+            {
+                "todos" => cs,
+                "sube" => cs.Where(c => DireccionPrevia(c) == "sube"),
+                "baja" => cs.Where(c => DireccionPrevia(c) == "baja"),
+                "igual" => cs.Where(c => DireccionPrevia(c) == "igual"),
+                "nuevos" => cs.Where(c => c.EsNuevo),
+                "revisar" => cs.Where(c => c.Alertas is { Count: > 0 }),
+                _ => CambiosRelevantes,
+            };
+            return q.OrderByDescending(c => c.Alertas is { Count: > 0 }).ToList();
+        }
+    }
     private int FilasConAlerta => importPreview?.Cambios.Count(c => c.Alertas is { Count: > 0 }) ?? 0;
     private bool alertasRevisadas;
     // 2026-09-15: al volver se re-crea el selector de archivo para obligar a elegirlo de nuevo. Antes se reusaban
@@ -999,6 +1062,7 @@
         importFile = null;
         importBytes = null;
         alertasRevisadas = false;
+        filtroPrevia = "cambian";
         inputFileKey++;
     }
 
@@ -1019,6 +1083,7 @@
             using var stream = new MemoryStream(importBytes);
             importPreview = await Api.PreviewCafeOemsAsync(stream, importFile.Name, importProveedor);
             alertasRevisadas = false;
+            filtroPrevia = "cambian";
         }
         catch (Exception ex) { importError = ex.Message; }
         finally { isPreviewing = false; }
