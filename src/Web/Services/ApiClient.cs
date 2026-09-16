@@ -13,6 +13,8 @@ public class ApiClient
     // Cliente con timeout largo para operaciones lentas (ej: leer saldo de Shell,
     // que espera el token del mail). Mismo origen → la cookie de auth viaja igual.
     private readonly HttpClient _httpLong;
+    // Robot del banco Galicia: si el banco está lento puede tardar hasta ~9 min.
+    private readonly HttpClient _httpGalicia;
     private readonly AuthService _authService;
     private readonly NavigationManager _navigation;
     private readonly OperatorService _operator;
@@ -27,6 +29,7 @@ public class ApiClient
     {
         _http = http;
         _httpLong = new HttpClient { BaseAddress = http.BaseAddress, Timeout = TimeSpan.FromMinutes(4) };
+        _httpGalicia = new HttpClient { BaseAddress = http.BaseAddress, Timeout = TimeSpan.FromMinutes(10) };
         _authService = authService;
         _navigation = navigation;
         _operator = op;
@@ -5916,19 +5919,19 @@ public class ApiClient
         => await GetAsync<Web.Models.GaliciaTestStatusDto>("/api/galicia/test/status");
 
     /// <summary>Sincroniza movimientos (robot baja CSV + importa). Puede tardar ~1 min.</summary>
-    // Timeout largo: si el banco tarda en cargar, el robot reintenta y puede pasar el minuto y medio.
+    // Timeout largo: si el banco está lento, el robot le tiene paciencia y puede tardar varios minutos.
     public async Task<Web.Models.GaliciaSincronizarResultDto?> SincronizarGaliciaAsync()
     {
-        var resp = await _httpLong.PostAsJsonAsync("/api/galicia/sincronizar", new { });
+        var resp = await _httpGalicia.PostAsJsonAsync("/api/galicia/sincronizar", new { });
         if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
         await ThrowIfErrorAsync(resp);
         return await resp.Content.ReadFromJsonAsync<Web.Models.GaliciaSincronizarResultDto>();
     }
 
-    // Cheques: baja 3 listados, tarda más → cliente de timeout largo (4 min).
+    // Cheques: baja 3 listados, tarda más → cliente de timeout largo (10 min).
     public async Task<Web.Models.GaliciaChequesSincronizarResultDto?> SincronizarChequesGaliciaAsync()
     {
-        var resp = await _httpLong.PostAsJsonAsync("/api/galicia/sincronizar-cheques", new { });
+        var resp = await _httpGalicia.PostAsJsonAsync("/api/galicia/sincronizar-cheques", new { });
         if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
         await ThrowIfErrorAsync(resp);
         return await resp.Content.ReadFromJsonAsync<Web.Models.GaliciaChequesSincronizarResultDto>();

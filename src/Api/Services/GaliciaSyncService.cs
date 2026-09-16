@@ -53,17 +53,17 @@ public class GaliciaSyncService
         var (ok, error) = await _scraping.StartMovimientosAsync(dto.Usuario, password);
         if (!ok) return new SyncResult(false, 0, 0, error, null);
 
-        // Esperar al robot (~3 min máx: si el banco tarda en cargar, el robot reintenta).
+        // Esperar al robot (~8 min máx: si el banco está lento, el robot le tiene paciencia y reintenta).
         // Cortamos apenas hay resultado, sin esperar a que el robot cierre el navegador.
         GaliciaTestResultDto? result = null;
-        for (int i = 0; i < 120; i++)
+        for (int i = 0; i < 320; i++)
         {
             await Task.Delay(1500);
             var st = await _scraping.GetStatusAsync();
             if (!st.Running || st.Result is not null) { result = st.Result; break; }
         }
         if (result is null)
-            return new SyncResult(false, 0, 0, "El robot tardó demasiado. Probá de nuevo.", null);
+            return new SyncResult(false, 0, 0, "El banco está muy lento: el robot esperó varios minutos y no terminó. Probá de nuevo más tarde.", null);
         if (!result.Ok || string.IsNullOrEmpty(result.CsvBase64))
         {
             var msg = result.NeedsToken == true
@@ -104,17 +104,18 @@ public class GaliciaSyncService
         var (ok, error) = await _scraping.StartChequesAsync(dto.Usuario, password);
         if (!ok) return new ChequesSyncResult(false, 0, 0, 0, error, null);
 
-        // Esperar al robot. Baja 3 archivos y puede reintentar si el banco tarda (~3,5 min máx, para no pasar los 4 min de la pantalla).
+        // Esperar al robot. Baja 3 archivos y puede reintentar si el banco está lento (~9 min máx,
+        // por debajo de los 10 min que nginx deja abierto un pedido).
         // Cortamos apenas hay resultado, sin esperar a que el robot cierre el navegador.
         GaliciaTestResultDto? result = null;
-        for (int i = 0; i < 145; i++)
+        for (int i = 0; i < 360; i++)
         {
             await Task.Delay(1500);
             var st = await _scraping.GetStatusAsync();
             if (!st.Running || st.Result is not null) { result = st.Result; break; }
         }
         if (result is null)
-            return new ChequesSyncResult(false, 0, 0, 0, "El robot tardó demasiado. Probá de nuevo.", null);
+            return new ChequesSyncResult(false, 0, 0, 0, "El banco está muy lento: el robot esperó varios minutos y no terminó. Probá de nuevo más tarde.", null);
 
         var algo = result.ChequesRecibidosB64 ?? result.ChequesEmitidosB64 ?? result.ChequesEndosadosB64;
         if (!result.Ok || string.IsNullOrEmpty(algo))

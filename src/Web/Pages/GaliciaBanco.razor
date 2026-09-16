@@ -137,7 +137,7 @@
             <p style="color:#6b7280; font-size:0.85rem;">
                 El robot entra, baja el extracto (CSV) y lo carga en <strong>Extracto de Banco</strong>.
                 Con eso, el <strong>saldo</strong> y las <strong>transferencias para cobranzas</strong> quedan al día solos.
-                Tarda cerca de un minuto — no cierres esta pantalla.
+                Tarda cerca de un minuto (si el banco está lento, puede tardar varios) — no cierres esta pantalla.
             </p>
 
             <button class="btn btn-primary" @onclick="Sincronizar"
@@ -189,7 +189,7 @@
                 El robot entra a la sección <strong>Cheques</strong> del banco, baja los 3 listados
                 (<strong>Recibidos</strong>, <strong>Emitidos</strong> y <strong>Endosados</strong>) y los carga
                 en <strong>Tesorería → Cheques del banco</strong>. Ya no hace falta subir los Excel a mano.
-                Tarda un poco más que los movimientos (baja 3 archivos) — no cierres esta pantalla.
+                Tarda un poco más que los movimientos (baja 3 archivos; si el banco está lento, varios minutos) — no cierres esta pantalla.
             </p>
 
             <button class="btn btn-primary" @onclick="SincronizarCheques"

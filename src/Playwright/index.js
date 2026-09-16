@@ -2485,6 +2485,14 @@ const galiciaState = {
   startedAt: null,
 };
 
+// Paciencia con el banco: cuando está lento, cada paso puede tardar bastante.
+// El robot tiene un presupuesto total por operación y solo reintenta si queda tiempo,
+// para terminar siempre antes de que el sistema deje de esperarlo (~8 min).
+const GALICIA_PRESUPUESTO_MS = 7 * 60 * 1000;
+function galiciaQuedaTiempo(msNecesarios) {
+  return !galiciaState.startedAt || (Date.now() - galiciaState.startedAt) + msNecesarios < GALICIA_PRESUPUESTO_MS;
+}
+
 async function closeGaliciaBrowserSafely() {
   try { if (galiciaState.page && !galiciaState.page.isClosed()) await galiciaState.page.close().catch(() => {}); } catch {}
   try { if (galiciaState.context) await galiciaState.context.close().catch(() => {}); } catch {}
@@ -2640,8 +2648,8 @@ async function galiciaOpenAndFill(usuario, password) {
   galiciaState.step = 'Abriendo login de Office Banking...';
   await page.goto('https://empresas.bancogalicia.com.ar/login', {
     waitUntil: 'domcontentloaded',
-    timeout: 40000,
-  });
+    timeout: 90000,
+  }).catch(() => {});
   await sleep(3000); // SPA: dar tiempo a renderizar
 
   // Asegurar el formulario COMPLETO. Si hay usuario recordado, muestra solo la clave.
@@ -2654,9 +2662,20 @@ async function galiciaOpenAndFill(usuario, password) {
       await sleep(1500);
     }
   }
-  try {
-    await userInput.waitFor({ state: 'visible', timeout: 20000 });
-  } catch (e) {
+  let loginVisible = await userInput.waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
+  if (!loginVisible) {
+    // Banco lento: recargar una vez y volver a esperar.
+    galiciaState.step = 'El banco está lento, recargando la pantalla de entrada...';
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 }).catch(() => {});
+    await sleep(3000);
+    const cambiar2 = page.locator('text=Cambiar de usuario').first();
+    if (!(await userInput.isVisible().catch(() => false)) && await cambiar2.isVisible().catch(() => false)) {
+      await cambiar2.click().catch(() => {});
+      await sleep(1500);
+    }
+    loginVisible = await userInput.waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
+  }
+  if (!loginVisible) {
     // Diagnóstico: foto de lo que muestra el banco cuando no aparece el login.
     try {
       fs.mkdirSync('/data/galicia-diag', { recursive: true });
@@ -2665,7 +2684,7 @@ async function galiciaOpenAndFill(usuario, password) {
       const txt = ((await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')) || '').replace(/\s+/g, ' ').slice(0, 400);
       console.log(`[galicia][LOGIN][FOTO] ${foto} url="${page.url()}" title="${await page.title().catch(() => '')}" texto: ${txt}`);
     } catch {}
-    throw new Error('La página de entrada del banco no terminó de cargar (no apareció el campo de usuario). Probá de nuevo en unos minutos.');
+    throw new Error('La página de entrada del banco no terminó de cargar (esperé más de 2 minutos). El banco está muy lento: probá de nuevo más tarde.');
   }
 
   // IMPORTANTE: escribir letra por letra (pressSequentially), NO fill().
@@ -2689,10 +2708,10 @@ async function galiciaOpenAndFill(usuario, password) {
 async function galiciaSubmitLogin(page) {
   galiciaState.step = 'Ingresando (apretando "Ingresar")...';
   const btnIngresar = page.getByRole('button', { name: 'Ingresar' }).first();
-  try { await btnIngresar.waitFor({ state: 'visible', timeout: 8000 }); } catch {}
+  try { await btnIngresar.waitFor({ state: 'visible', timeout: 20000 }); } catch {}
   let clicked = false;
   try {
-    await btnIngresar.click({ timeout: 12000 });
+    await btnIngresar.click({ timeout: 30000 });
     clicked = true;
   } catch {
     try { await page.locator('#userPassword').press('Enter'); clicked = true; } catch {}
@@ -2702,7 +2721,7 @@ async function galiciaSubmitLogin(page) {
   galiciaState.step = 'Verificando ingreso...';
   await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
   // Si el banco está lento, salir del login puede tardar más de unos segundos.
-  await page.waitForURL((u) => !u.toString().includes('/login'), { timeout: 20000 }).catch(() => {});
+  await page.waitForURL((u) => !u.toString().includes('/login'), { timeout: 90000 }).catch(() => {});
   await sleep(4000);
 
   const url = page.url();
@@ -2766,26 +2785,30 @@ async function runGaliciaMovimientos({ usuario, password }) {
   const csvOption = page.locator('[title=".CSV"]').first();
   let menuOpen = false;
   for (let intento = 1; intento <= 2 && !menuOpen; intento++) {
+    if (intento === 2 && !galiciaQuedaTiempo(150000)) {
+      console.log('[galicia][MOV] sin tiempo para reintentar');
+      break;
+    }
     // Ir a la cuenta y abrir Movimientos.
     galiciaState.step = intento === 1 ? 'Abriendo Cuentas...' : 'El banco no terminó de cargar, reintentando...';
-    await page.goto('https://empresas.bancogalicia.com.ar/cuentas', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.goto('https://empresas.bancogalicia.com.ar/cuentas', { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
     await sleep(3000);
 
     galiciaState.step = 'Abriendo movimientos de la cuenta...';
     // Click en la primera fila de cuenta (la que tiene "N° ####"). Si falla, navegación directa.
     const cuentaRow = page.locator('text=/N°\\s*\\d{5,}/').first();
     try {
-      await cuentaRow.waitFor({ state: 'visible', timeout: 15000 });
+      await cuentaRow.waitFor({ state: 'visible', timeout: 45000 });
       await cuentaRow.click({ timeout: 8000 });
     } catch {
-      await page.goto('https://empresas.bancogalicia.com.ar/cuentas/movimientos', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      await page.goto('https://empresas.bancogalicia.com.ar/cuentas/movimientos', { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
     }
-    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
     await sleep(2000);
 
     galiciaState.step = 'Abriendo el menú de descarga...';
-    await page.locator('[class*="download-b"]').first().waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+    await page.locator('[class*="download-b"]').first().waitFor({ state: 'visible', timeout: 60000 }).catch(() => {});
     const triggers = [
       page.locator('[class*="download-b"]').first(),
       page.locator('[class*="brk-dropdown"][class*="download"]').first(),
@@ -2859,7 +2882,7 @@ async function runGaliciaMovimientos({ usuario, password }) {
   galiciaState.step = 'Descargando CSV...';
   let csvBase64 = null;
   try {
-    const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
+    const downloadPromise = page.waitForEvent('download', { timeout: 90000 });
     await csvOption.click({ timeout: 5000 });
     const download = await downloadPromise;
     const filePath = await download.path();
@@ -2887,12 +2910,12 @@ async function runGaliciaMovimientos({ usuario, password }) {
 // y elige "Detalle de cheques en .XLS". Devuelve base64 o null (y empuja el motivo a errores[]).
 async function galiciaBajarChequesXls(page, tipo, errores) {
   galiciaState.step = `Abriendo cheques ${tipo}...`;
-  await page.goto(`https://empresas.bancogalicia.com.ar/cheques/${tipo}`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  await page.goto(`https://empresas.bancogalicia.com.ar/cheques/${tipo}`, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   // Esperar a que el listado (micro-frontend Backbase) termine de cargar.
   await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
   await sleep(6000);
   // Esperar a que aparezca el texto "Listado" (o la tabla) antes de buscar el botón.
-  await page.getByText('Listado', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+  await page.getByText('Listado', { exact: false }).first().waitFor({ state: 'visible', timeout: 45000 }).catch(() => {});
   await sleep(1500);
 
   // La opción del menú es un texto "Detalle de cheques en .XLS".
@@ -2903,11 +2926,12 @@ async function galiciaBajarChequesXls(page, tipo, errores) {
   let menuOpen = false, triggerUsado = -1;
   for (let intentoMenu = 1; intentoMenu <= 2 && !menuOpen; intentoMenu++) {
     if (intentoMenu === 2) {
+      if (!galiciaQuedaTiempo(120000)) { console.log(`[galicia][CHEQUES] ${tipo}: sin tiempo para reintentar`); break; }
       galiciaState.step = `El banco no terminó de cargar cheques ${tipo}, reintentando...`;
-      await page.goto(`https://empresas.bancogalicia.com.ar/cheques/${tipo}`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      await page.goto(`https://empresas.bancogalicia.com.ar/cheques/${tipo}`, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
       await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
       await sleep(4000);
-      await page.getByText('Listado', { exact: false }).first().waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+      await page.getByText('Listado', { exact: false }).first().waitFor({ state: 'visible', timeout: 45000 }).catch(() => {});
       await sleep(1500);
     }
     galiciaState.step = `Abriendo el menú de descarga (${tipo})...`;
@@ -3035,7 +3059,7 @@ async function galiciaBajarChequesXls(page, tipo, errores) {
 
     // Esperar a que aparezca la descarga (de la página o de un popup).
     const t0 = Date.now();
-    while (!captured && Date.now() - t0 < 30000) { await sleep(1000); }
+    while (!captured && Date.now() - t0 < 60000) { await sleep(1000); }
 
     try { page.off('download', onDownload); } catch {}
     try { context.off('page', onNewPage); } catch {}
