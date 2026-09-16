@@ -2788,6 +2788,36 @@ async function runGaliciaMovimientos({ usuario, password }) {
       } catch {}
     }
     console.log(`[galicia][MOV] intento ${intento}: menuOpen=${menuOpen}`);
+    if (!menuOpen) {
+      // Diagnóstico: foto de lo que ve el robot + texto visible (atravesando shadow DOM,
+      // que es donde el banco dibuja todo) para saber qué le tapa o cambia la pantalla.
+      try {
+        const dir = '/data/galicia-diag';
+        fs.mkdirSync(dir, { recursive: true });
+        const foto = `${dir}/mov-${Date.now()}-intento${intento}.png`;
+        await page.screenshot({ path: foto, fullPage: true }).catch(() => {});
+        const info = await page.evaluate(() => {
+          const textos = [];
+          function walk(root, depth) {
+            if (!root || depth > 12) return;
+            let nodes;
+            try { nodes = root.querySelectorAll('*'); } catch { return; }
+            for (const e of nodes) {
+              if (e.shadowRoot) walk(e.shadowRoot, depth + 1);
+              if (e.children && e.children.length === 0) {
+                const t = (e.textContent || '').trim().replace(/\s+/g, ' ');
+                if (t && t.length < 80) textos.push(t);
+              }
+            }
+          }
+          walk(document, 0);
+          return { url: location.href, texto: [...new Set(textos)].join(' · ').slice(0, 1500) };
+        });
+        console.log(`[galicia][MOV][FOTO] ${foto} url="${info.url}" texto: ${info.texto}`);
+      } catch (e) {
+        console.log('[galicia][MOV][FOTO] no se pudo:', e?.message);
+      }
+    }
   }
   if (!menuOpen) {
     // Diagnóstico: dumpear los botones/clickables de la página al log del server
@@ -2888,6 +2918,14 @@ async function galiciaBajarChequesXls(page, tipo, errores) {
       } catch {}
     }
     console.log(`[galicia][CHEQUES] ${tipo}: menuOpen=${menuOpen} triggerUsado=${triggerUsado} (intento ${intentoMenu})`);
+    if (!menuOpen) {
+      try {
+        fs.mkdirSync('/data/galicia-diag', { recursive: true });
+        const foto = `/data/galicia-diag/cheques-${tipo}-${Date.now()}-intento${intentoMenu}.png`;
+        await page.screenshot({ path: foto, fullPage: true });
+        console.log(`[galicia][CHEQUES][FOTO] ${foto}`);
+      } catch {}
+    }
   }
   if (!menuOpen) {
     // Diagnóstico shadow-DOM + iframe aware: recorre shadow roots e iframes accesibles
