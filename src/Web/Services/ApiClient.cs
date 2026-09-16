@@ -3041,7 +3041,8 @@ public class ApiClient
     public async Task<CafeOemScrapeMasivoStatusDto?> GetCafeOemScrapeMasivoStatusAsync()
         => await GetAsync<CafeOemScrapeMasivoStatusDto>("/api/cafe/oems/scrape-web/masivo/status");
 
-    public async Task<CafeOemImportResultDto?> ImportCafeOemsAsync(Stream fileStream, string fileName, string proveedor)
+    public async Task<CafeOemImportResultDto?> ImportCafeOemsAsync(Stream fileStream, string fileName, string proveedor,
+        IEnumerable<string>? codigosExcluidos = null)
     {
         await SetAuthHeaderAsync();
         using var content = new MultipartFormDataContent();
@@ -3049,6 +3050,9 @@ public class ApiClient
         streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         content.Add(streamContent, "file", fileName);
         content.Add(new StringContent(proveedor ?? ""), "proveedor");
+        // 2026-09-15: códigos destildados en la vista previa (uno por línea) → el servidor no los toca.
+        if (codigosExcluidos is not null)
+            content.Add(new StringContent(string.Join("\n", codigosExcluidos)), "excluir");
         var response = await _http.PostAsync("/api/cafe/oems/import", content);
         if (response.IsSuccessStatusCode)
             return await response.Content.ReadFromJsonAsync<CafeOemImportResultDto>();

@@ -460,7 +460,8 @@ public class CafeOemsController : ControllerBase
     [HttpPost("import")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(50_000_000)]
-    public async Task<IActionResult> Import([FromForm] IFormFile? file, [FromForm] string? proveedor = "COLOMBRARO")
+    public async Task<IActionResult> Import([FromForm] IFormFile? file, [FromForm] string? proveedor = "COLOMBRARO",
+        [FromForm] string? excluir = null)
     {
         if (file is null || file.Length == 0)
             return BadRequest(new { error = "Subi un archivo .xlsx" });
@@ -472,6 +473,7 @@ public class CafeOemsController : ControllerBase
         var errores = new List<string>();
         var ahora = DateTime.UtcNow;
 
+        var excluidos = 0;
         var oemsTocados = new HashSet<int>();
         // 2026-09-15: OEMs a los que el Excel les cambio el costo o el PVP → hay que avisarle a MeLi (como al editar de a uno).
         var oemsConPrecioCambiado = new HashSet<int>();
@@ -482,6 +484,17 @@ public class CafeOemsController : ControllerBase
             using (var stream = file.OpenReadStream())
                 filas = ParseOemExcel(stream, out _, out _, out omitidos, out error);
             if (error is not null) return BadRequest(new { error });
+
+            // 2026-09-15: codigos que el usuario destildo en la vista previa → no se tocan (ni precio, ni datos, ni MeLi).
+            var codigosExcluidos = (excluir ?? "")
+                .Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet();
+            if (codigosExcluidos.Count > 0)
+            {
+                var antes = filas.Count;
+                filas = filas.Where(f => !codigosExcluidos.Contains(f.Codigo)).ToList();
+                excluidos = antes - filas.Count;
+            }
 
             // Cache existentes por codigo
             var existentes = await _db.CafeOems.ToDictionaryAsync(x => x.Codigo, x => x);
@@ -558,7 +571,7 @@ public class CafeOemsController : ControllerBase
         FireAndForgetPushPrecioLote(productosAPushear);
 
         return Ok(new CafeOemImportResultDto(creados, actualizados, omitidos, prov, totalVariantesPropagadas, errores,
-            productosAPushear.Count));
+            productosAPushear.Count, excluidos));
     }
 
     /// <summary>2026-07-10: vista previa (dry-run) de la importacion. NO aplica nada.

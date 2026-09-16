@@ -980,7 +980,8 @@ public record CafeOemImportResultDto(
     string? Proveedor,
     int VariantesPropagadas,
     List<string> Errores,
-    int ProductosEnviadosAMeli = 0);
+    int ProductosEnviadosAMeli = 0,
+    int Excluidos = 0);
 
 // 2026-07-10: vista previa de importacion de OEMs (dry-run, no aplica nada)
 public record CafeOemImportCambioDto(

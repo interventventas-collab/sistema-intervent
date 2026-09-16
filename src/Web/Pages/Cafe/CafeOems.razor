@@ -357,6 +357,10 @@
                         <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.85rem;">
                             <li><strong>@importResult.Creados</strong> nuevos</li>
                             <li><strong>@importResult.Actualizados</strong> actualizados</li>
+                            @if (importResult.Excluidos > 0)
+                            {
+                                <li><strong>@importResult.Excluidos</strong> dejado@(importResult.Excluidos == 1 ? "" : "s") afuera (no se tocaron)</li>
+                            }
                             @if (importResult.Omitidos > 0)
                             {
                                 <li><strong>@importResult.Omitidos</strong> omitidos (filas vacías o de ejemplo)</li>
@@ -417,7 +421,7 @@
                     <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin: 0 0 0.5rem;">
                         @foreach (var (clave, etiqueta, n) in ChipsPrevia)
                         {
-                            if (n == 0 && clave is "nuevos" or "revisar") continue;
+                            if (n == 0 && clave is "nuevos" or "revisar" or "afuera") continue;
                             var activo = filtroPrevia == clave;
                             var rojo = clave == "revisar";
                             <button type="button" @onclick="() => filtroPrevia = clave"
@@ -430,12 +434,21 @@
                         }
                     </div>
                     <p style="font-size: 0.82rem; color: #4b5563; margin: 0 0 0.4rem;">
-                        Mostrando <strong>@FilasPrevia.Count</strong> de @importPreview.Cambios.Count fila@(importPreview.Cambios.Count == 1 ? "" : "s"):
+                        Mostrando <strong>@FilasPrevia.Count</strong> de @importPreview.Cambios.Count fila@(importPreview.Cambios.Count == 1 ? "" : "s").
+                        @if (CodigosExcluidosEnPrevia.Count > 0)
+                        {
+                            <span>Se van a aplicar <strong>@(importPreview.Cambios.Count - CodigosExcluidosEnPrevia.Count)</strong> · <strong>@CodigosExcluidosEnPrevia.Count</strong> dejado@(CodigosExcluidosEnPrevia.Count == 1 ? "" : "s") afuera (no se toca@(CodigosExcluidosEnPrevia.Count == 1 ? "" : "n")).</span>
+                        }
+                        else
+                        {
+                            <span style="color:#6b7280;">Destildá los que no quieras aplicar.</span>
+                        }
                     </p>
                     <div style="max-height: 280px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px;">
                         <table class="data-table" style="font-size: 0.78rem;">
                             <thead>
                                 <tr>
+                                    <th style="width: 2rem; text-align: center;" title="Tildado = se aplica. Destildado = ese código no se toca.">✓</th>
                                     <th>Código</th>
                                     <th>Descripción</th>
                                     <th style="text-align: right;">Costo</th>
@@ -446,7 +459,13 @@
                                 @foreach (var c in FilasPrevia.Take(500))
                                 {
                                     var tieneAlerta = c.Alertas is { Count: > 0 };
-                                    <tr style="@(tieneAlerta ? "background:#fef2f2;" : "")">
+                                    var afuera = excluidosPrevia.Contains(c.Codigo);
+                                    var codigoFila = c.Codigo;
+                                    <tr style="@(afuera ? "opacity:0.45; text-decoration:line-through;" : (tieneAlerta ? "background:#fef2f2;" : ""))">
+                                        <td style="text-align: center;">
+                                            <input type="checkbox" checked="@(!afuera)" @onchange="() => ToggleExcluirPrevia(codigoFila)"
+                                                   title="@(afuera ? "Dejado afuera: no se toca. Tildalo para aplicarlo." : "Destildalo para dejar este código afuera")" />
+                                        </td>
                                         <td>
                                             <strong>@c.Codigo</strong>
                                             @if (c.EsNuevo) { <span style="background:#16a34a;color:white;border-radius:4px;padding:0 4px;font-size:0.68rem;margin-left:4px;">NUEVO</span> }
@@ -496,7 +515,7 @@
                     {
                         <p style="font-size: 0.75rem; color: #6b7280; margin: 0.4rem 0 0;">Mostrando las primeras 500. Al confirmar se aplican todas.</p>
                     }
-                    @if (FilasConAlerta > 0)
+                    @if (AlertasAAplicar > 0)
                     {
                         <label style="display:flex; gap:0.5rem; align-items:center; margin-top:0.7rem; font-size:0.85rem; color:#991b1b; cursor:pointer;">
                             <input type="checkbox" @bind="alertasRevisadas" />
@@ -547,8 +566,8 @@
                 else if (importPreview is not null)
                 {
                     <button class="btn btn-secondary" @onclick="VolverAElegirArchivo" disabled="@isImporting">← Volver</button>
-                    <button class="btn" style="background: #16a34a; color: white; border: none; @(FilasConAlerta > 0 && !alertasRevisadas ? "opacity: 0.45; cursor: not-allowed;" : "")" @onclick="DoImport" disabled="@(isImporting || (FilasConAlerta > 0 && !alertasRevisadas))"
-                            title="@(FilasConAlerta > 0 && !alertasRevisadas ? "Primero tildá que revisaste las filas en rojo" : "")">
+                    <button class="btn" style="background: #16a34a; color: white; border: none; @(AlertasAAplicar > 0 && !alertasRevisadas ? "opacity: 0.45; cursor: not-allowed;" : "")" @onclick="DoImport" disabled="@(isImporting || (AlertasAAplicar > 0 && !alertasRevisadas))"
+                            title="@(AlertasAAplicar > 0 && !alertasRevisadas ? "Primero tildá que revisaste las filas en rojo" : "")">
                         @(isImporting ? "Aplicando..." : "✓ Confirmar e importar")
                     </button>
                 }
@@ -748,6 +767,7 @@
                 ("igual", "= Quedan igual", cs.Count(c => DireccionPrevia(c) == "igual")),
                 ("nuevos", "Nuevos", cs.Count(c => c.EsNuevo)),
                 ("revisar", "⚠ Para revisar", FilasConAlerta),
+                ("afuera", "Dejados afuera", CodigosExcluidosEnPrevia.Count),
             };
         }
     }
@@ -764,11 +784,22 @@
                 "igual" => cs.Where(c => DireccionPrevia(c) == "igual"),
                 "nuevos" => cs.Where(c => c.EsNuevo),
                 "revisar" => cs.Where(c => c.Alertas is { Count: > 0 }),
+                "afuera" => cs.Where(c => excluidosPrevia.Contains(c.Codigo)),
                 _ => CambiosRelevantes,
             };
             return q.OrderByDescending(c => c.Alertas is { Count: > 0 }).ToList();
         }
     }
+    // 2026-09-15: códigos destildados en la vista previa → se mandan al importar y el servidor no los toca.
+    private HashSet<string> excluidosPrevia = new();
+    private HashSet<string> CodigosExcluidosEnPrevia =>
+        importPreview?.Cambios.Select(c => c.Codigo).Where(excluidosPrevia.Contains).ToHashSet() ?? new();
+    private void ToggleExcluirPrevia(string codigo)
+    {
+        if (!excluidosPrevia.Remove(codigo)) excluidosPrevia.Add(codigo);
+    }
+    // Filas en rojo que se van a aplicar (las dejadas afuera ya no piden el tilde de "Revisé").
+    private int AlertasAAplicar => importPreview?.Cambios.Count(c => c.Alertas is { Count: > 0 } && !excluidosPrevia.Contains(c.Codigo)) ?? 0;
     private int FilasConAlerta => importPreview?.Cambios.Count(c => c.Alertas is { Count: > 0 }) ?? 0;
     private bool alertasRevisadas;
     // 2026-09-15: al volver se re-crea el selector de archivo para obligar a elegirlo de nuevo. Antes se reusaban
@@ -1063,6 +1094,7 @@
         importBytes = null;
         alertasRevisadas = false;
         filtroPrevia = "cambian";
+        excluidosPrevia.Clear();
         inputFileKey++;
     }
 
@@ -1084,6 +1116,7 @@
             importPreview = await Api.PreviewCafeOemsAsync(stream, importFile.Name, importProveedor);
             alertasRevisadas = false;
             filtroPrevia = "cambian";
+            excluidosPrevia.Clear();
         }
         catch (Exception ex) { importError = ex.Message; }
         finally { isPreviewing = false; }
@@ -1104,7 +1137,7 @@
                 importBytes = ms.ToArray();
             }
             using var stream = new MemoryStream(importBytes);
-            importResult = await Api.ImportCafeOemsAsync(stream, importFile?.Name ?? "oems.xlsx", importProveedor);
+            importResult = await Api.ImportCafeOemsAsync(stream, importFile?.Name ?? "oems.xlsx", importProveedor, CodigosExcluidosEnPrevia);
             var nProp = importResult?.VariantesPropagadas ?? 0;
             var msg = $"✓ {importResult?.Creados ?? 0} nuevos, {importResult?.Actualizados ?? 0} actualizados";
             if (nProp > 0) msg += $" · {nProp} variante{(nProp == 1 ? "" : "s")} con precios propagados";
