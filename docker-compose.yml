@@ -94,6 +94,9 @@ services:
       - preventas_fotos:/data/preventas-fotos
       # Adjuntos de WhatsApp (los que subimos y los que bajamos de los clientes)
       - wa_uploads:/data/whatsapp-uploads
+      # 2026-09-17: base de ciudades por IP (se baja sola, ver GeoIpService). Va en un volume y no
+      # adentro de la imagen: pesa ~130 MB y se renueva todos los meses.
+      - geoip_data:/data/geoip
     networks:
       - aiml-net
     depends_on:
@@ -156,3 +159,4 @@ volumes:
   backups_data:
   preventas_fotos:
   wa_uploads:
+  geoip_data:

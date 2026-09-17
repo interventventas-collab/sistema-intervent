@@ -107,6 +107,9 @@ services:
       - backups_prod_data:/data/backups
       - preventas_fotos_prod:/data/preventas-fotos
       - wa_uploads_prod:/data/whatsapp-uploads
+      # 2026-09-17: base de ciudades por IP (se baja sola, ver GeoIpService). Va en un volume y no
+      # adentro de la imagen: pesa ~130 MB y se renueva todos los meses.
+      - geoip_prod_data:/data/geoip
       - ./caddy/static/frikaf:/srv/landing-frikaf
     networks:
       - aiml-prod-net
@@ -262,6 +265,7 @@ volumes:
   backups_prod_data:
   preventas_fotos_prod:
   wa_uploads_prod:
+  geoip_prod_data:
   caddy_data:
   caddy_config:
   electri_prod_data:

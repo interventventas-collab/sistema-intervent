@@ -22,10 +22,11 @@ public class SesionesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly SesionesService _sesiones;
+    private readonly GeoIpService _geo;
 
-    public SesionesController(AppDbContext db, SesionesService sesiones)
+    public SesionesController(AppDbContext db, SesionesService sesiones, GeoIpService geo)
     {
-        _db = db; _sesiones = sesiones;
+        _db = db; _sesiones = sesiones; _geo = geo;
     }
 
     public record SesionDto(
@@ -35,6 +36,8 @@ public class SesionesController : ControllerBase
         string Dispositivo,
         string? Apodo,
         string Lugar,
+        // Ciudad aproximada sacada de la IP. null si no se pudo (o si la base todavia no bajo).
+        string? Ciudad,
         string? Ip,
         // La ULTIMA vez que entro desde este aparato: es lo que dice "Entro" en pantalla.
         DateTime EntroAr,
@@ -73,6 +76,7 @@ public class SesionesController : ControllerBase
         SesionDto Mapear(UserSession s) => new(
             s.Id, s.Nombre, s.Tipo, s.Dispositivo, s.Apodo,
             SesionesService.Lugar(s.IpUltima ?? s.IpCreacion, redes),
+            _geo.Ciudad(s.IpUltima ?? s.IpCreacion),
             s.IpUltima ?? s.IpCreacion,
             Ar(s.UltimaEntradaAt), Ar(s.CreatedAt), Ar(s.UltimaActividadAt), Ar(s.ExpiraAt),
             s.Jti == miJti, s.AparatoNuevo, s.UserId,
@@ -88,7 +92,7 @@ public class SesionesController : ControllerBase
         return Ok(new ListadoDto(abiertas, cerradas));
     }
 
-    public record EntradaDto(DateTime CuandoAr, string? Ip, string Lugar);
+    public record EntradaDto(DateTime CuandoAr, string? Ip, string Lugar, string? Ciudad);
 
     /// <summary>Las entradas de un aparato: "entro el 17/09 a las 16:40, el 16/09 a las 9:12...".
     /// El renglon de la pantalla es uno por aparato; aca esta la historia de ese renglon.</summary>
@@ -101,7 +105,7 @@ public class SesionesController : ControllerBase
         var entradas = await _sesiones.EntradasAsync(id);
 
         return Ok(entradas
-            .Select(e => new EntradaDto(Ar(e.CuandoAt), e.Ip, SesionesService.Lugar(e.Ip, redes)))
+            .Select(e => new EntradaDto(Ar(e.CuandoAt), e.Ip, SesionesService.Lugar(e.Ip, redes), _geo.Ciudad(e.Ip)))
             .ToList());
     }
 
@@ -160,6 +164,9 @@ public class SesionesController : ControllerBase
         return Ok(new
         {
             redes = await _sesiones.RedesConocidasAsync(),
+            // Para que la pantalla pueda avisar si la base de ciudades todavia no bajo.
+            ciudadDisponible = _geo.Disponible,
+            ciudadFechaBase = _geo.FechaBase,
             // Para que no tenga que adivinar que numero poner: le mostramos desde donde esta
             // entrando el AHORA. Si esta en la oficina, ese es el numero de la oficina.
             miIp = SesionesService.IpDe(HttpContext)

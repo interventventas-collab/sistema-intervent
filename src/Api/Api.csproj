@@ -26,6 +26,9 @@
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
     <PackageReference Include="ZXing.Net" Version="0.16.9" />
     <PackageReference Include="MailKit" Version="4.7.1.1" />
+    <!-- 2026-09-17: lee la base de ciudades por IP (formato MaxMind DB). La base es la gratuita
+         de DB-IP, que usa el mismo formato; el paquete es solo el lector. -->
+    <PackageReference Include="MaxMind.GeoIP2" Version="5.2.0" />
   </ItemGroup>
 
 </Project>

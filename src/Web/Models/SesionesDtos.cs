@@ -10,8 +10,10 @@ public class SesionDto
     public string Tipo { get; set; } = "WEB";
     public string Dispositivo { get; set; } = "";
     public string? Apodo { get; set; }
-    /// <summary>"Oficina", "Depósito" o "Afuera", según la IP.</summary>
+    /// <summary>"Oficina", "Depósito" o "Afuera", según la IP. Este dato es exacto.</summary>
     public string Lugar { get; set; } = "";
+    /// <summary>Ciudad aproximada sacada de la IP. Vacío si no se pudo averiguar.</summary>
+    public string? Ciudad { get; set; }
     public string? Ip { get; set; }
     /// <summary>La ÚLTIMA vez que entró desde este aparato.</summary>
     public DateTime EntroAr { get; set; }
@@ -40,6 +42,7 @@ public class EntradaSesionDto
     public DateTime CuandoAr { get; set; }
     public string? Ip { get; set; }
     public string Lugar { get; set; } = "";
+    public string? Ciudad { get; set; }
 }
 
 /// <summary>"Las conexiones que empiezan con 190.2.3 son la Oficina".</summary>
@@ -54,4 +57,8 @@ public class RedesConocidasDto
     public List<RedConocidaDto> Redes { get; set; } = new();
     /// <summary>Desde qué número estás entrando vos ahora, para no tener que adivinarlo.</summary>
     public string? MiIp { get; set; }
+    /// <summary>¿Ya está la base de ciudades en el servidor? Tarda un rato en bajar la primera vez.</summary>
+    public bool CiudadDisponible { get; set; }
+    /// <summary>De cuándo es la base de ciudades que tenemos.</summary>
+    public DateTime? CiudadFechaBase { get; set; }
 }

@@ -178,6 +178,11 @@ builder.Services.AddScoped<Api.Services.WaPushService>();
 builder.Services.AddHostedService<Api.Hubs.PresenceSweeper>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<SesionesService>();
+// 2026-09-17: ciudad aproximada a partir de la IP, con base propia en el servidor (no se le manda
+// el numero de conexion de nadie a ninguna empresa de afuera). El lector se comparte (singleton)
+// porque abrir el archivo en cada pedido seria carisimo; el robot la renueva una vez por mes.
+builder.Services.AddSingleton<GeoIpService>();
+builder.Services.AddHostedService<GeoIpDownloader>();
 builder.Services.AddScoped<TwilioWhatsAppService>();
 builder.Services.AddScoped<MetaWhatsAppService>();
 builder.Services.AddScoped<InstagramDmService>();

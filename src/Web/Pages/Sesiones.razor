@@ -44,6 +44,21 @@
                     }
                 </p>
 
+                <p class="text-muted" style="margin:0 0 .75rem 0; font-size:.85rem; line-height:1.5;">
+                    Al lado del lugar puede aparecer una <strong>ciudad aproximada</strong>, sacada del
+                    número de conexión. Sirve de orientación, no es exacta: en un celular con datos
+                    suele decir Buenos Aires aunque la persona esté en otra provincia. Lo que sí es
+                    exacto es lo que cargues acá abajo.
+                    @if (ciudadFechaBase is not null)
+                    {
+                        <br /><text>Base de ciudades del @ciudadFechaBase.Value.ToString("dd/MM/yyyy") · datos de DB-IP, se renueva sola una vez por mes.</text>
+                    }
+                    else
+                    {
+                        <br /><text>La base de ciudades todavía no terminó de bajar al servidor. Hasta que esté, no se muestra ninguna ciudad.</text>
+                    }
+                </p>
+
                 @foreach (var r in redes)
                 {
                     <div style="display:flex; gap:.5rem; margin-bottom:.5rem; flex-wrap:wrap;">
@@ -82,6 +97,10 @@
                             <strong>@s.Nombre</strong>
                             <span class="text-muted"> · </span>@DescribirAparato(s)
                             <span class="text-muted"> · </span>@s.Lugar
+                            @if (!string.IsNullOrWhiteSpace(s.Ciudad))
+                            {
+                                <span class="text-muted"> (@s.Ciudad, aprox.)</span>
+                            }
                             <span class="text-muted"> · </span>@Hace(s.UltimaActividadAr)
                             @if (s.EsLaMia)
                             {
@@ -147,6 +166,7 @@
                                 {
                                     <div class="text-muted" style="font-size:.85rem; line-height:1.6;">
                                         @Fecha(e.CuandoAr) <span> · </span>@e.Lugar
+                                        @if (!string.IsNullOrWhiteSpace(e.Ciudad)) { <text> (@e.Ciudad, aprox.)</text> }
                                         @if (!string.IsNullOrWhiteSpace(e.Ip)) { <text> · @e.Ip</text> }
                                     </div>
                                 }
@@ -232,6 +252,7 @@
     private SesionesListadoDto? datos;
     private List<RedConocidaDto> redes = new();
     private string? miIp;
+    private DateTime? ciudadFechaBase;
 
     private bool cargando;
     private bool guardandoRedes;
@@ -299,7 +320,12 @@
     private async Task CargarRedes()
     {
         var r = await Api.GetRedesConocidasAsync();
-        if (r is not null) { redes = r.Redes ?? new(); miIp = r.MiIp; }
+        if (r is not null)
+        {
+            redes = r.Redes ?? new();
+            miIp = r.MiIp;
+            ciudadFechaBase = r.CiudadDisponible ? r.CiudadFechaBase : null;
+        }
     }
 
     private async Task GuardarRedes()
