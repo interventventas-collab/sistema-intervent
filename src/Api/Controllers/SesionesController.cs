@@ -36,7 +36,10 @@ public class SesionesController : ControllerBase
         string? Apodo,
         string Lugar,
         string? Ip,
+        // La ULTIMA vez que entro desde este aparato: es lo que dice "Entro" en pantalla.
         DateTime EntroAr,
+        // La PRIMERA vez que se vio este aparato.
+        DateTime PrimeraVezAr,
         DateTime UltimaActividadAr,
         DateTime ExpiraAr,
         bool EsLaMia,
@@ -71,7 +74,7 @@ public class SesionesController : ControllerBase
             s.Id, s.Nombre, s.Tipo, s.Dispositivo, s.Apodo,
             SesionesService.Lugar(s.IpUltima ?? s.IpCreacion, redes),
             s.IpUltima ?? s.IpCreacion,
-            Ar(s.CreatedAt), Ar(s.UltimaActividadAt), Ar(s.ExpiraAt),
+            Ar(s.UltimaEntradaAt), Ar(s.CreatedAt), Ar(s.UltimaActividadAt), Ar(s.ExpiraAt),
             s.Jti == miJti, s.AparatoNuevo, s.UserId,
             s.CerradaAt is null ? null : Ar(s.CerradaAt.Value), s.CerradaPor, s.CerradaMotivo);
 
@@ -83,6 +86,23 @@ public class SesionesController : ControllerBase
                             .Select(Mapear).ToList();
 
         return Ok(new ListadoDto(abiertas, cerradas));
+    }
+
+    public record EntradaDto(DateTime CuandoAr, string? Ip, string Lugar);
+
+    /// <summary>Las entradas de un aparato: "entro el 17/09 a las 16:40, el 16/09 a las 9:12...".
+    /// El renglon de la pantalla es uno por aparato; aca esta la historia de ese renglon.</summary>
+    [HttpGet("{id:int}/entradas")]
+    public async Task<IActionResult> Entradas(int id)
+    {
+        if (!EsAdmin()) return Forbid();
+
+        var redes = await _sesiones.RedesConocidasAsync();
+        var entradas = await _sesiones.EntradasAsync(id);
+
+        return Ok(entradas
+            .Select(e => new EntradaDto(Ar(e.CuandoAt), e.Ip, SesionesService.Lugar(e.Ip, redes)))
+            .ToList());
     }
 
     [HttpPost("{id:int}/cerrar")]

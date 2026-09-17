@@ -91,6 +91,11 @@ public class ApiClient
         return await GetAsync<SesionesListadoDto>($"/api/sesiones?diasHistorial={diasHistorial}");
     }
 
+    public async Task<List<EntradaSesionDto>?> GetEntradasSesionAsync(int id)
+    {
+        return await GetAsync<List<EntradaSesionDto>>($"/api/sesiones/{id}/entradas");
+    }
+
     public async Task<bool> CerrarSesionAsync(int id)
     {
         var r = await PostAsync<object>($"/api/sesiones/{id}/cerrar", new { });

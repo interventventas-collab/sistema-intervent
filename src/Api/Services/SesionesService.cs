@@ -87,6 +87,7 @@ public class SesionesService
             viva.IpUltima = Recortar(ip, 60);
             viva.ExpiraAt = expiraAt;
             viva.UltimaActividadAt = ahora;
+            viva.UltimaEntradaAt = ahora;       // esta ES una entrada nueva, aunque el renglon se reuse
             viva.CerradaAt = null;
             viva.CerradaPor = null;
             viva.CerradaMotivo = null;
@@ -108,13 +109,51 @@ public class SesionesService
                 IpUltima = Recortar(ip, 60),
                 AparatoNuevo = aparatoNuevo,
                 CreatedAt = ahora,
+                UltimaEntradaAt = ahora,
                 ExpiraAt = expiraAt,
                 UltimaActividadAt = ahora
             });
         }
 
         await _db.SaveChangesAsync();
+
+        // La entrada se anota DESPUES de guardar porque una fila nueva recien ahi tiene Id.
+        // Va en su propia tabla: el renglon del aparato se pisa a si mismo en cada entrada, la
+        // historia no. Si esto fallara, la persona ya entro igual: no se le corta el acceso por
+        // no poder anotar el renglon de historial.
+        var sesionId = viva?.Id ?? await _db.UserSessions
+            .Where(x => x.Jti == jti).Select(x => x.Id).FirstOrDefaultAsync();
+        if (sesionId > 0)
+        {
+            try
+            {
+                _db.UserSessionEntradas.Add(new UserSessionEntrada
+                {
+                    SesionId = sesionId,
+                    Nombre = nombre,
+                    Tipo = tipo,
+                    CuandoAt = ahora,
+                    Ip = Recortar(ip, 60)
+                });
+                await _db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "No se pudo anotar la entrada de {Nombre}", nombre);
+            }
+        }
+
         return (jti, aparatoNuevo);
+    }
+
+    /// <summary>Las ultimas entradas desde un aparato, lo mas nuevo arriba.</summary>
+    public async Task<List<UserSessionEntrada>> EntradasAsync(int sesionId, int tope = 50)
+    {
+        return await _db.UserSessionEntradas.AsNoTracking()
+            .Where(e => e.SesionId == sesionId)
+            .OrderByDescending(e => e.CuandoAt)
+            .Take(Math.Clamp(tope, 1, 500))
+            .ToListAsync();
     }
 
     // ------------------------------------------------------------------

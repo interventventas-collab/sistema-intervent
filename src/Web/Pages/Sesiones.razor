@@ -95,10 +95,17 @@
                             <span class="text-muted" style="font-size:.8rem;">
                                 Entró @Fecha(s.EntroAr) · vence @Fecha(s.ExpiraAr)
                                 @if (!string.IsNullOrWhiteSpace(s.Ip)) { <text> · @s.Ip</text> }
+                                @if (s.PrimeraVezAr.Date != s.EntroAr.Date)
+                                {
+                                    <text> · este aparato se conoce desde el @Fecha(s.PrimeraVezAr)</text>
+                                }
                             </span>
                         </div>
 
                         <div style="display:flex; gap:.75rem; align-items:center; white-space:nowrap;">
+                            <button class="btn-link" @onclick="() => VerEntradas(s)">
+                                @(entradasAbiertasId == s.Id ? "Ocultar entradas" : "Ver entradas")
+                            </button>
                             <button class="btn-link" @onclick="() => AbrirApodo(s)">Ponerle nombre</button>
                             <button class="btn-link" style="color:#dc2626;" @onclick="() => pendienteCerrar = s.Id">Cerrar sesión</button>
                         </div>
@@ -116,6 +123,35 @@
                             El navegador nunca dice el nombre del aparato, así que el nombre se pone a mano.
                             Queda pegado a ese aparato aunque vuelva a entrar.
                         </p>
+                    }
+
+                    @if (entradasAbiertasId == s.Id)
+                    {
+                        <div style="margin:.5rem 0 .25rem 1.5rem;">
+                            @if (entradasCargando)
+                            {
+                                <span class="text-muted" style="font-size:.85rem;">Buscando...</span>
+                            }
+                            else if (entradas is null || !entradas.Any())
+                            {
+                                <span class="text-muted" style="font-size:.85rem;">
+                                    Todavía no hay entradas anotadas de este aparato.
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="text-muted" style="font-size:.85rem;">
+                                    Entró @entradas.Count @(entradas.Count == 1 ? "vez" : "veces") desde este aparato:
+                                </span>
+                                @foreach (var e in entradas)
+                                {
+                                    <div class="text-muted" style="font-size:.85rem; line-height:1.6;">
+                                        @Fecha(e.CuandoAr) <span> · </span>@e.Lugar
+                                        @if (!string.IsNullOrWhiteSpace(e.Ip)) { <text> · @e.Ip</text> }
+                                    </div>
+                                }
+                            }
+                        </div>
                     }
 
                     @if (pendienteCerrar == s.Id)
@@ -207,6 +243,10 @@
     private int? editandoApodoId;
     private string apodoTexto = "";
 
+    private int? entradasAbiertasId;
+    private List<EntradaSesionDto>? entradas;
+    private bool entradasCargando;
+
     private DateTime? ultimaActualizacionAr;
     private System.Threading.Timer? refrescoTimer;
     private bool refrescando;
@@ -234,7 +274,8 @@
     {
         // No pisar la pantalla mientras está confirmando algo o escribiendo un nombre.
         if (refrescando || cargando || pendienteCerrar is not null
-            || pendienteCerrarTodasUserId is not null || editandoApodoId is not null) return;
+            || pendienteCerrarTodasUserId is not null || editandoApodoId is not null
+            || entradasAbiertasId is not null) return;
         refrescando = true;
         try { await Cargar(); }
         finally { refrescando = false; }
@@ -281,6 +322,19 @@
         var prefijo = partes.Length == 4 ? string.Join(".", partes.Take(3)) + "." : miIp;
         redes.Add(new RedConocidaDto { Red = prefijo, Nombre = "Oficina" });
         StateHasChanged();
+    }
+
+    /// <summary>Despliega la historia de ese aparato: cada vez que esa persona entró desde ahí.
+    /// El renglón de arriba es uno por aparato; esto es lo que pasó adentro de ese renglón.</summary>
+    private async Task VerEntradas(SesionDto s)
+    {
+        if (entradasAbiertasId == s.Id) { entradasAbiertasId = null; entradas = null; return; }
+
+        entradasAbiertasId = s.Id;
+        entradas = null;
+        entradasCargando = true;
+        try { entradas = await Api.GetEntradasSesionAsync(s.Id); }
+        finally { entradasCargando = false; }
     }
 
     private void AbrirApodo(SesionDto s)

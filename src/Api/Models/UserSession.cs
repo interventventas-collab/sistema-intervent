@@ -61,7 +61,18 @@ public class UserSession
     /// "entró desde un aparato nuevo" del panel de Alertas.</summary>
     public bool AparatoNuevo { get; set; }
 
+    /// <summary>La PRIMERA vez que se vio este aparato. No cambia nunca.</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// La ÚLTIMA vez que esta persona entró desde este aparato. Es lo que muestra la pantalla.
+    ///
+    /// ⚠ Antes la pantalla mostraba <see cref="CreatedAt"/> y decía "Entró", lo cual era falso: como
+    /// el renglón se reusa, alguien que entraba hoy podía ver "Entró 11/09" (la primera vez que esa
+    /// compu apareció, seis días antes). Son dos fechas distintas y las dos sirven.
+    /// </summary>
+    public DateTime UltimaEntradaAt { get; set; } = DateTime.UtcNow;
+
     public DateTime ExpiraAt { get; set; }
 
     /// <summary>Última vez que este pase pidió algo. Se refresca como mucho una vez por minuto para

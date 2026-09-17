@@ -13,7 +13,10 @@ public class SesionDto
     /// <summary>"Oficina", "Depósito" o "Afuera", según la IP.</summary>
     public string Lugar { get; set; } = "";
     public string? Ip { get; set; }
+    /// <summary>La ÚLTIMA vez que entró desde este aparato.</summary>
     public DateTime EntroAr { get; set; }
+    /// <summary>La PRIMERA vez que se vio este aparato.</summary>
+    public DateTime PrimeraVezAr { get; set; }
     public DateTime UltimaActividadAr { get; set; }
     public DateTime ExpiraAr { get; set; }
     /// <summary>Es la sesión desde la que estás mirando esta pantalla. No conviene cerrarla sin querer.</summary>
@@ -29,6 +32,14 @@ public class SesionesListadoDto
 {
     public List<SesionDto> Abiertas { get; set; } = new();
     public List<SesionDto> Cerradas { get; set; } = new();
+}
+
+/// <summary>Una entrada al sistema: "el 17/09 a las 16:40 entró desde acá".</summary>
+public class EntradaSesionDto
+{
+    public DateTime CuandoAr { get; set; }
+    public string? Ip { get; set; }
+    public string Lugar { get; set; } = "";
 }
 
 /// <summary>"Las conexiones que empiezan con 190.2.3 son la Oficina".</summary>

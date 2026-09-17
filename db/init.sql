@@ -7798,3 +7798,35 @@ BEGIN
     CREATE INDEX IX_UsersSesiones_User ON Users_Sesiones(UserId, CerradaAt);
 END
 GO
+
+-- ============================================================
+-- 2026-09-17 — HISTORIAL DE ENTRADAS
+-- Users_Sesiones muestra el estado de AHORA (un renglon por aparato). Esta tabla guarda la
+-- HISTORIA: cada vez que alguien entro. Pedido del dueno: "si entro 5 veces, quiero ver mis 5".
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Users_SesionesEntradas')
+BEGIN
+    CREATE TABLE Users_SesionesEntradas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        SesionId INT NOT NULL,
+        Nombre NVARCHAR(100) NOT NULL,
+        CuandoAt DATETIME2 NOT NULL CONSTRAINT DF_UsersSesEntradas_Cuando DEFAULT SYSUTCDATETIME(),
+        Ip NVARCHAR(60) NULL,
+        Tipo NVARCHAR(10) NOT NULL CONSTRAINT DF_UsersSesEntradas_Tipo DEFAULT 'WEB'
+    );
+    CREATE INDEX IX_UsersSesEntradas_Sesion ON Users_SesionesEntradas(SesionId, CuandoAt);
+END
+GO
+-- La ULTIMA vez que entro desde ese aparato. Antes la pantalla mostraba CreatedAt y decia "Entro",
+-- pero CreatedAt es la PRIMERA vez que se vio el aparato: alguien que entraba hoy veia una fecha
+-- de hace dias. Las filas viejas arrancan con su CreatedAt, que es lo mas cercano a la verdad.
+IF COL_LENGTH('Users_Sesiones','UltimaEntradaAt') IS NULL
+BEGIN
+    ALTER TABLE Users_Sesiones ADD UltimaEntradaAt DATETIME2 NULL;
+END
+GO
+UPDATE Users_Sesiones SET UltimaEntradaAt = CreatedAt WHERE UltimaEntradaAt IS NULL;
+GO
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('Users_Sesiones') AND name='UltimaEntradaAt' AND is_nullable=1)
+    ALTER TABLE Users_Sesiones ALTER COLUMN UltimaEntradaAt DATETIME2 NOT NULL;
+GO

@@ -10,6 +10,8 @@ public class AppDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     /// <summary>2026-09-17: sesiones abiertas (ver quién está adentro y poder echarlo).</summary>
     public DbSet<UserSession> UserSessions => Set<UserSession>();
+    /// <summary>2026-09-17: cada vez que alguien entro (la historia, no el estado de ahora).</summary>
+    public DbSet<UserSessionEntrada> UserSessionEntradas => Set<UserSessionEntrada>();
     public DbSet<UserNoticeDismissal> UserNoticeDismissals => Set<UserNoticeDismissal>();
     public DbSet<CafeOperadorPin> CafeOperadoresPin => Set<CafeOperadorPin>();
     public DbSet<Role> Roles => Set<Role>();
@@ -278,6 +280,11 @@ public class AppDbContext : DbContext
                   .WithMany(r => r.Users)
                   .HasForeignKey(u => u.RoleId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<UserSessionEntrada>(entity =>
+        {
+            entity.HasIndex(e => new { e.SesionId, e.CuandoAt });
         });
 
         modelBuilder.Entity<UserSession>(entity =>
