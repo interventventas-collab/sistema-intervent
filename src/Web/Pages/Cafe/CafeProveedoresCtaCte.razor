@@ -4,6 +4,22 @@
 @inject ToastService ToastService
 @inject NavigationManager Nav
 
+<style>
+    .cc-lista { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    .cc-lista th { text-align: left; font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase;
+                   letter-spacing: 0.04em; padding: 0.55rem 1rem; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .cc-lista td { padding: 0.65rem 1rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    .cc-lista tbody tr { cursor: pointer; }
+    .cc-lista tbody tr:hover { background: #f9fafb; }
+    .cc-lista .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .cc-lista .sub { font-size: 0.75rem; color: #6b7280; margin-top: 0.1rem; }
+    .cc-lista .fecha { font-size: 0.85rem; color: #6b7280; white-space: nowrap; }
+    .cc-lista .gris { color: #6b7280; }
+    .cc-lista .total { font-weight: 700; color: #6b7280; }
+    .cc-lista .total.debe { color: #b91c1c; }
+    .cc-lista .flecha { color: #9ca3af; font-size: 1.3rem; width: 1.5rem; text-align: right; padding-left: 0; }
+</style>
+
 @* 17/09/2026 — Cuenta corriente de proveedores: a quién le debemos y cuánto.
    OFICIAL = facturas de AFIP (entran solas). NO OFICIAL = cotizaciones cargadas a mano.
    Solo los proveedores con cuenta corriente, desde el día en que se les prendió. *@
@@ -38,32 +54,36 @@
                 Le debo en total <b style="color:@(lista.Sum(x => x.Total) > 0.01m ? "#b91c1c" : "inherit");">@Plata(lista.Sum(x => x.Total))</b>
                 <span style="color:#6b7280;"> · oficial @Plata(lista.Sum(x => x.Oficial)) · no oficial @Plata(lista.Sum(x => x.NoOficial))@(lista.Sum(x => x.ACuenta) > 0.01m ? $" · a cuenta −{Plata(lista.Sum(x => x.ACuenta))}" : "")</span>
             </div>
+            @* 17/09/2026: columnas con aire (antes "No oficial" y "A cuenta" se pisaban) y una flechita
+               para que se note que el renglón se toca y entra a la cuenta del proveedor. *@
             <div class="table-responsive">
-                <table class="table table-compact">
+                <table class="cc-lista">
                     <thead>
                         <tr>
                             <th>Proveedor</th>
                             <th>Desde</th>
-                            <th style="text-align:right;">Oficial</th>
-                            <th style="text-align:right;">No oficial</th>
-                            <th style="text-align:right;">A cuenta</th>
-                            <th style="text-align:right;">Le debo</th>
+                            <th class="num">Oficial</th>
+                            <th class="num">No oficial</th>
+                            <th class="num">A cuenta</th>
+                            <th class="num">Le debo</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var c in Visibles)
                         {
                             var id = c.ProveedorId;
-                            <tr style="cursor:pointer;" @onclick='() => Nav.NavigateTo($"/cafe/proveedores/{id}/estado-cuenta")'>
+                            <tr @onclick='() => Nav.NavigateTo($"/cafe/proveedores/{id}/estado-cuenta")' title="Ver la cuenta de @c.Nombre">
                                 <td>
                                     <b>@c.Nombre</b>
-                                    <div style="font-size:0.75rem; color:#6b7280;">@(c.Cuit ?? "sin CUIT: no le llegan las facturas de AFIP")@(c.Pendientes > 0 ? $" · {c.Pendientes} pendiente{(c.Pendientes == 1 ? "" : "s")}" : "")</div>
+                                    <div class="sub">@(c.Cuit ?? "sin CUIT: no le llegan las facturas de AFIP")@(c.Pendientes > 0 ? $" · {c.Pendientes} pendiente{(c.Pendientes == 1 ? "" : "s")}" : "")</div>
                                 </td>
-                                <td style="font-size:0.85rem;">@c.Desde?.ToString("dd/MM/yyyy")</td>
-                                <td style="text-align:right;">@Plata(c.Oficial)</td>
-                                <td style="text-align:right;">@Plata(c.NoOficial)</td>
-                                <td style="text-align:right; color:#6b7280;">@(c.ACuenta > 0.01m ? "−" + Plata(c.ACuenta) : "")</td>
-                                <td style="text-align:right; font-weight:700; color:@(c.Total > 0.01m ? "#b91c1c" : "#6b7280");">@Plata(c.Total)</td>
+                                <td class="fecha">@c.Desde?.ToString("dd/MM/yyyy")</td>
+                                <td class="num">@Plata(c.Oficial)</td>
+                                <td class="num">@Plata(c.NoOficial)</td>
+                                <td class="num gris">@(c.ACuenta > 0.01m ? "−" + Plata(c.ACuenta) : "")</td>
+                                <td class="num total @(c.Total > 0.01m ? "debe" : "")">@Plata(c.Total)</td>
+                                <td class="flecha">›</td>
                             </tr>
                         }
                     </tbody>

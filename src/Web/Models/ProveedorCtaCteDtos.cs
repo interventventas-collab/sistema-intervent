@@ -46,6 +46,14 @@ public class CtaCteMovDto
     public decimal Saldo { get; set; }
     public string? Detalle { get; set; }
     public int? PagoId { get; set; }
+    /// <summary>Documento del renglón (null si es un pago).</summary>
+    public string? Clave { get; set; }
+    public bool Oficial { get; set; }
+    /// <summary>Con qué se pagó: "Efectivo", "cheque endosado", "cobro redirigido"...</summary>
+    public string? Medio { get; set; }
+    /// <summary>El pago salió de un cobro redirigido: se anula desde la cobranza.</summary>
+    public bool PagoRedirigido { get; set; }
+    public bool EsPago => PagoId.HasValue || Que == "Pagos marcados en la Contadora";
 }
 
 public class CtaCteCuentaDto
@@ -63,6 +71,8 @@ public class CtaCteCuentaDto
     public decimal SaldoInicialNoOficial { get; set; }
     public List<CtaCteDocDto> Pendientes { get; set; } = new();
     public List<CtaCteMovDto> Movimientos { get; set; } = new();
+    /// <summary>Todos los documentos (pagados o no), para editar desde un movimiento.</summary>
+    public List<CtaCteDocDto> Documentos { get; set; } = new();
 }
 
 public class CtaCteCandidatoDto

@@ -7235,6 +7235,8 @@ public class ApiClient
     public async Task<int> CrearCotizacionProveedorAsync(int proveedorId, DateTime fecha, string? numero, decimal importe, string? observaciones)
         => (await PostAsync<CtaCteIdResult>($"/api/cafe/proveedores-ctacte/{proveedorId}/cotizaciones",
             new { fecha, numero, importe, observaciones }))?.Id ?? 0;
+    public async Task EditarCotizacionProveedorAsync(int deudaId, DateTime fecha, string? numero, decimal importe, string? observaciones)
+        => await PutAsync<object>($"/api/cafe/proveedores-ctacte/deudas/{deudaId}", new { fecha, numero, importe, observaciones });
     public async Task AnularDeudaProveedorAsync(int deudaId)
         => await PostAsync<object>($"/api/cafe/proveedores-ctacte/deudas/{deudaId}/anular", new { });
     /// <summary>Foto o PDF de la cotización (multipart, campo "archivo").</summary>

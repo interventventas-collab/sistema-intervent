@@ -5,35 +5,79 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-@* 17/09/2026 — Cuenta corriente de UN proveedor: lo que se le debe (facturas de AFIP + cotizaciones),
-   lo pendiente, y los movimientos con el saldo corrido. Antes esta pantalla sumaba las compras de
-   stock (Cafe_Compras), que nadie cargaba. *@
+@* 17/09/2026 — Cuenta corriente de UN proveedor. Se ve igual que "Mi cuenta" del repartidor
+   (MisPedidos.razor): resumen arriba con el total, y abajo los movimientos por mes con la fecha grande
+   a la izquierda, lo último arriba y "quedó debiendo" en cada renglón. Pedido del dueño.
+   Desde cada renglón se corrige: cotización (editar / foto / anular), pago (anular), saldo inicial
+   (cambiar). Las facturas de AFIP no se editan: vienen tal cual de AFIP. *@
 
-<div class="card">
-    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+<style>
+    .cc-wrap { max-width: 780px; margin: 0 auto; background: #fff; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden; }
+    .cc-top { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+              padding: 0.8rem 1rem; border-bottom: 1px solid #eee; }
+    .cc-top-nombre { font-size: 1.1rem; font-weight: 700; }
+    .cc-top-cuit { font-size: 0.8rem; color: #6b7280; margin-left: 0.4rem; font-weight: 400; }
+    .cc-res { padding: 1rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+    .cc-res .ren { display: flex; justify-content: space-between; gap: 1rem; padding: 0.2rem 0; font-size: 0.92rem; color: #374151; }
+    .cc-res .ren b { font-variant-numeric: tabular-nums; }
+    .cc-res .menos { color: #166534; }
+    .cc-res .final { border-top: 1px solid #e5e7eb; margin-top: 0.35rem; padding-top: 0.5rem; font-size: 1.05rem; font-weight: 700; color: #111; }
+    .cc-res .final b { font-size: 1.5rem; }
+    .cc-res .final b.debe { color: #b91c1c; }
+    .cc-res-sub { font-size: 0.78rem; color: #6b7280; margin-top: 0.5rem; }
+    .cc-tabs { display: flex; border-bottom: 1px solid #e5e7eb; background: #fff; }
+    .cc-tab { flex: 1; text-align: center; padding: 0.75rem 0.25rem; font-size: 0.9rem; font-weight: 600; color: #6b7280;
+              border-bottom: 2.5px solid transparent; cursor: pointer; }
+    .cc-tab.on { color: #0f766e; border-bottom-color: #0f766e; }
+    .cc-mes { padding: 0.5rem 1rem 0.35rem; font-size: 0.72rem; font-weight: 800; color: #9ca3af; text-transform: uppercase;
+              letter-spacing: 0.06em; background: #fafafa; border-bottom: 1px solid #f3f4f6; }
+    .cc-fila { display: flex; gap: 0.75rem; padding: 0.8rem 1rem; border-bottom: 1px solid #f3f4f6; align-items: flex-start; }
+    .cc-fila.esPago { background: #f4fbf6; }
+    .cc-fecha { width: 52px; flex: none; text-align: center; line-height: 1.15; }
+    .cc-fecha-d { font-size: 1.35rem; font-weight: 800; color: #111; }
+    .cc-fecha-m { font-size: 0.68rem; text-transform: uppercase; color: #9ca3af; font-weight: 700; letter-spacing: 0.04em; }
+    .cc-cuerpo { flex: 1; min-width: 0; }
+    .cc-que { font-weight: 600; }
+    .cc-tipo { font-weight: 400; font-size: 0.78rem; color: #9ca3af; margin-left: 0.35rem; }
+    .cc-donde { color: #9ca3af; font-size: 0.78rem; margin-top: 0.2rem; }
+    .cc-linea { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; margin-top: 0.4rem; }
+    .cc-plata { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 1.02rem; }
+    .cc-plata.verde { color: #166534; }
+    .cc-quedo { font-size: 0.78rem; color: #6b7280; white-space: nowrap; }
+    .cc-quedo b { color: #b91c1c; font-weight: 700; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+    .cc-quedo b.cero { color: #6b7280; }
+    .cc-acc { display: flex; gap: 0.9rem; flex-wrap: wrap; margin-top: 0.4rem; font-size: 0.78rem; }
+    .cc-acc a, .cc-acc label, .cc-acc button { color: #4b5563; text-decoration: underline; cursor: pointer; background: none; border: none; padding: 0; font: inherit; }
+    .cc-acc .peligro { color: #b91c1c; }
+    .cc-acc .nota { color: #9ca3af; text-decoration: none; cursor: default; }
+    .cc-vacio { padding: 1rem; color: #9ca3af; font-size: 0.9rem; }
+</style>
+
+<div class="cc-wrap">
+    <div class="cc-top">
         <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
             <button class="btn btn-secondary" style="font-size:0.8rem;" @onclick='() => Nav.NavigateTo("/cafe/proveedores-ctacte")'>← Volver</button>
             @if (cta is not null)
             {
-                <h3 style="margin:0;">📒 @cta.Nombre</h3>
-                <span style="font-size:0.8rem; color:#6b7280;">@(cta.Cuit ?? "sin CUIT")</span>
+                <span class="cc-top-nombre">@cta.Nombre<span class="cc-top-cuit">@(cta.Cuit ?? "sin CUIT")</span></span>
             }
         </div>
         @if (cta is { CuentaCorriente: true })
         {
             <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-                <button class="btn btn-secondary" @onclick="AbrirCotizacion">+ Cargar cotización</button>
+                <button class="btn btn-secondary" @onclick="AbrirCotizacionNueva">+ Cargar cotización</button>
                 <button class="btn btn-primary" @onclick='() => Nav.NavigateTo($"/cafe/tesoreria/pagos?proveedor={ProveedorId}")'>💰 Pagar</button>
             </div>
         }
     </div>
-    <div class="card-body">
-        @if (cta is null)
-        {
-            <p class="text-muted">@(cargando ? "Cargando..." : "No encontré el proveedor.")</p>
-        }
-        else if (!cta.CuentaCorriente)
-        {
+
+    @if (cta is null)
+    {
+        <p class="cc-vacio">@(cargando ? "Cargando..." : "No encontré el proveedor.")</p>
+    }
+    else if (!cta.CuentaCorriente)
+    {
+        <div style="padding:1rem;">
             <p style="margin-top:0;">Este proveedor no lleva cuenta corriente.</p>
             @if (string.IsNullOrEmpty(cta.Cuit))
             {
@@ -43,117 +87,109 @@
                 <ArranqueCtaCte @bind-Desde="ajDesde" @bind-Oficial="ajOficial" @bind-NoOficial="ajNoOficial" />
                 <button class="btn btn-primary" style="margin-top:0.8rem;" @onclick="Activar" disabled="@guardando">@(guardando ? "Guardando..." : "Llevar cuenta corriente")</button>
             </div>
-        }
-        else
-        {
-            <div style="font-size:1.05rem;">
-                Le debo <b style="color:@(cta.Total > 0.01m ? "#b91c1c" : "inherit");">@Plata(cta.Total)</b>
-                <span style="color:#6b7280; font-size:0.9rem;"> · oficial @Plata(cta.Oficial) · no oficial @Plata(cta.NoOficial)@(cta.ACuenta > 0.01m ? $" · a cuenta −{Plata(cta.ACuenta)}" : "")</span>
+        </div>
+    }
+    else
+    {
+        <div class="cc-res">
+            <div class="ren"><span>Facturas (oficial)</span><b>@Plata(cta.Oficial)</b></div>
+            <div class="ren"><span>Cotizaciones (no oficial)</span><b>@Plata(cta.NoOficial)</b></div>
+            @if (cta.ACuenta > 0.005m)
+            {
+                <div class="ren"><span>Pagos a cuenta</span><b class="menos">− @Plata(cta.ACuenta)</b></div>
+            }
+            <div class="ren final">
+                <span>@(cta.Total > 0.005m ? "Le debo" : cta.Total < -0.005m ? "A favor nuestro" : "Está todo pagado")</span>
+                @if (Math.Abs(cta.Total) > 0.005m)
+                {
+                    <b class="@(cta.Total > 0 ? "debe" : "")">@Plata(Math.Abs(cta.Total))</b>
+                }
             </div>
-            <div style="font-size:0.8rem; color:#6b7280; margin-top:0.2rem;">
+            <div class="cc-res-sub">
                 Cuenta corriente desde el @cta.Desde?.ToString("dd/MM/yyyy") · saldo inicial oficial @Plata(cta.SaldoInicialOficial) · no oficial @Plata(cta.SaldoInicialNoOficial)
                 · <a href="" @onclick="AbrirAjustes" @onclick:preventDefault="true">cambiar</a>
             </div>
             @if (string.IsNullOrEmpty(cta.Cuit))
             {
-                <div style="font-size:0.85rem; color:#b45309; margin-top:0.4rem;">No tiene CUIT cargado: sus facturas de AFIP no se están contando. Cargáselo en su ficha (Proveedores).</div>
+                <div style="font-size:0.82rem; color:#b45309; margin-top:0.4rem;">No tiene CUIT cargado: sus facturas de AFIP no se están contando. Cargáselo en su ficha (Proveedores).</div>
             }
+        </div>
 
-            <h4 style="margin:1.2rem 0 0.4rem;">Pendiente</h4>
-            @if (cta.Pendientes.Count == 0)
-            {
-                <p class="text-muted" style="margin:0;">No hay nada pendiente.</p>
-            }
-            else
-            {
-                <div class="table-responsive">
-                    <table class="table table-compact">
-                        <thead>
-                            <tr>
-                                <th>Fecha</th><th>Comprobante</th><th></th>
-                                <th style="text-align:right;">Total</th><th style="text-align:right;">Pagado</th><th style="text-align:right;">Debo</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var d in cta.Pendientes)
-                            {
-                                var doc = d;
-                                <tr>
-                                    <td>@d.Fecha.ToString("dd/MM/yyyy")</td>
-                                    <td>
-                                        <b>@d.Etiqueta</b>
-                                        @if (!string.IsNullOrWhiteSpace(d.Observaciones)) { <div style="font-size:0.75rem; color:#6b7280;">@d.Observaciones</div> }
-                                    </td>
-                                    <td style="font-size:0.78rem; color:#6b7280;">@(d.Oficial ? "oficial" : "no oficial")</td>
-                                    <td style="text-align:right;">@Plata(d.Total)</td>
-                                    <td style="text-align:right; color:#6b7280;">@(d.Pagado > 0.005m ? Plata(d.Pagado) : "")</td>
-                                    <td style="text-align:right; font-weight:600;">@Plata(d.Saldo)</td>
-                                    <td style="white-space:nowrap;">
-                                        @if (d.TieneArchivo && d.DeudaId.HasValue)
-                                        {
-                                            <a href="api/cafe/proveedores-ctacte/deudas/@d.DeudaId/archivo" target="_blank" title="Ver la foto o el PDF">📎 Ver</a>
-                                        }
-                                        else if (d.TieneArchivo && d.AfipIdComprobante is not null)
-                                        {
-                                            <a href="@("api/contadora/factura-pdf?id=" + Uri.EscapeDataString(d.AfipIdComprobante))" target="_blank" title="Ver la factura">📎 Ver</a>
-                                        }
-                                        @if (d.DeudaId.HasValue && !d.EsSaldoInicial)
-                                        {
-                                            @if (!d.TieneArchivo)
-                                            {
-                                                <label style="cursor:pointer; margin-left:0.3rem;" title="Subir foto o PDF de la cotización">
-                                                    📷
-                                                    <InputFile OnChange="@(e => SubirArchivo(doc.DeudaId!.Value, e))" accept="image/*,application/pdf" style="display:none;" />
-                                                </label>
-                                            }
-                                            @if (d.Pagado <= 0.005m)
-                                            {
-                                                <button class="btn-icon" style="margin-left:0.3rem;" title="Anular esta cotización" @onclick="() => AnularDeuda(doc)">🗑</button>
-                                            }
-                                        }
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
+        <div class="cc-tabs">
+            <div class="cc-tab @(solapa == 0 ? "on" : "")" @onclick="() => solapa = 0">Movimientos</div>
+            <div class="cc-tab @(solapa == 1 ? "on" : "")" @onclick="() => solapa = 1">Pendiente (@cta.Pendientes.Count)</div>
+        </div>
 
-            <h4 style="margin:1.2rem 0 0.4rem;">Movimientos</h4>
+        @if (solapa == 0)
+        {
             @if (cta.Movimientos.Count == 0)
             {
-                <p class="text-muted" style="margin:0;">Sin movimientos todavía.</p>
+                <p class="cc-vacio">Todavía no hay movimientos.</p>
             }
-            else
+            var mesPrevio = "";
+            @foreach (var m in cta.Movimientos)
             {
-                <div class="table-responsive">
-                    <table class="table table-compact">
-                        <thead>
-                            <tr>
-                                <th>Fecha</th><th>Qué</th>
-                                <th style="text-align:right;">Suma</th><th style="text-align:right;">Resta</th><th style="text-align:right;">Saldo</th>
-                                <th>Detalle</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var m in cta.Movimientos)
-                            {
-                                <tr>
-                                    <td>@m.Fecha.ToString("dd/MM/yyyy")</td>
-                                    <td>@m.Que</td>
-                                    <td style="text-align:right;">@(m.Suma > 0 ? Plata(m.Suma) : "")</td>
-                                    <td style="text-align:right;">@(m.Resta > 0 ? Plata(m.Resta) : "")</td>
-                                    <td style="text-align:right; font-weight:600;">@Plata(m.Saldo)</td>
-                                    <td style="font-size:0.78rem; color:#6b7280;">@m.Detalle</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                var mov = m;
+                var doc = m.Clave is null ? null : cta.Documentos.FirstOrDefault(d => d.Clave == m.Clave);
+                var mesDeEste = m.Fecha.ToString("MMMM yyyy", Ar);
+                @if (mesDeEste != mesPrevio)
+                {
+                    mesPrevio = mesDeEste;
+                    <div class="cc-mes">@Mayuscula(mesDeEste)</div>
+                }
+                <div class="cc-fila @(m.EsPago ? "esPago" : "")">
+                    <div class="cc-fecha">
+                        <div class="cc-fecha-d">@m.Fecha.ToString("dd")</div>
+                        <div class="cc-fecha-m">@m.Fecha.ToString("ddd", Ar)</div>
+                    </div>
+                    <div class="cc-cuerpo">
+                        <div class="cc-que">
+                            @(m.EsPago && !string.IsNullOrWhiteSpace(m.Medio) ? $"{m.Que} · {m.Medio}" : m.Que)
+                            @if (!m.EsPago) { <span class="cc-tipo">@(m.Oficial ? "oficial" : "no oficial")</span> }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(m.Detalle))
+                        {
+                            <div class="cc-donde">@m.Detalle</div>
+                        }
+                        <div class="cc-linea">
+                            <span class="cc-plata @(m.Resta > 0 ? "verde" : "")">@(m.Resta > 0 ? "− " + Plata(m.Resta) : Plata(m.Suma))</span>
+                            <span class="cc-quedo">
+                                @(m.Saldo > 0.005m ? "quedó debiendo " : m.Saldo < -0.005m ? "a favor nuestro " : "quedó en ")
+                                <b class="@(m.Saldo > 0.005m ? "" : "cero")">@Plata(Math.Abs(m.Saldo))</b>
+                            </span>
+                        </div>
+                        @Acciones(doc, mov)
+                    </div>
                 </div>
             }
         }
-    </div>
+        else
+        {
+            @if (cta.Pendientes.Count == 0)
+            {
+                <p class="cc-vacio">No hay nada pendiente.</p>
+            }
+            @foreach (var d in cta.Pendientes.OrderByDescending(x => x.Fecha))
+            {
+                var doc = d;
+                <div class="cc-fila">
+                    <div class="cc-fecha">
+                        <div class="cc-fecha-d">@d.Fecha.ToString("dd")</div>
+                        <div class="cc-fecha-m">@d.Fecha.ToString("MMM", Ar)</div>
+                    </div>
+                    <div class="cc-cuerpo">
+                        <div class="cc-que">@d.Etiqueta <span class="cc-tipo">@(d.Oficial ? "oficial" : "no oficial")</span></div>
+                        @if (!string.IsNullOrWhiteSpace(d.Observaciones)) { <div class="cc-donde">@d.Observaciones</div> }
+                        <div class="cc-linea">
+                            <span class="cc-plata">@Plata(d.Saldo)</span>
+                            <span class="cc-quedo">@(d.Pagado > 0.005m ? $"de {Plata(d.Total)} · ya pagado {Plata(d.Pagado)}" : "")</span>
+                        </div>
+                        @Acciones(doc, null)
+                    </div>
+                </div>
+            }
+        }
+    }
 </div>
 
 @if (cotizando)
@@ -161,7 +197,7 @@
     <div class="modal-overlay" @onclick="CerrarCotizacion">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width:520px; width:95vw;">
             <div class="modal-header">
-                <h4 style="margin:0;">+ Cotización de @cta?.Nombre</h4>
+                <h4 style="margin:0;">@(editDeudaId is null ? "+ Cotización de " : "Editar cotización de ")@cta?.Nombre</h4>
                 <button class="btn-close" @onclick="CerrarCotizacion">&times;</button>
             </div>
             <div class="modal-body">
@@ -178,13 +214,17 @@
                 <div class="form-group">
                     <label class="form-label">Importe</label>
                     <input class="form-input" type="text" inputmode="decimal" style="text-align:right; max-width:200px;" @bind="CotImporteTexto" @bind:event="onchange" />
+                    @if (editPagado > 0.005m)
+                    {
+                        <p style="font-size:0.75rem; color:#6b7280; margin:0.25rem 0 0;">Ya tiene @Plata(editPagado) pagados: no puede quedar en menos.</p>
+                    }
                 </div>
                 <div class="form-group">
                     <label class="form-label">Nota</label>
                     <input class="form-input" @bind="cotNota" placeholder="Opcional: qué trajo, a quién se la pidieron..." />
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Foto o PDF</label>
+                    <label class="form-label">@(editTieneArchivo ? "Cambiar foto o PDF" : "Foto o PDF")</label>
                     <InputFile OnChange="OnCotArchivo" accept="image/*,application/pdf" class="form-input" />
                     <p style="font-size:0.75rem; color:#6b7280; margin:0.25rem 0 0;">Opcional. Desde el celular abre la cámara.</p>
                 </div>
@@ -223,16 +263,22 @@
 @code {
     [Parameter] public int ProveedorId { get; set; }
 
+    private static readonly CultureInfo Ar = new("es-AR");
+
     private CtaCteCuentaDto? cta;
     private bool cargando = true, guardando;
+    private int solapa;
 
     // Alta / ajustes del arranque
     private bool ajustando;
     private DateTime ajDesde = DateTimeExt.AhoraAr().Date;
     private decimal ajOficial, ajNoOficial;
 
-    // Cotización nueva
+    // Cotización nueva o editada (editDeudaId null = nueva)
     private bool cotizando;
+    private int? editDeudaId;
+    private decimal editPagado;
+    private bool editTieneArchivo;
     private DateTime cotFecha = DateTimeExt.AhoraAr().Date;
     private string? cotNumero, cotNota;
     private decimal cotImporte;
@@ -244,6 +290,50 @@
     }
 
     private const long MaxArchivo = 20_000_000;
+
+    /// <summary>Los arreglos que se pueden hacer desde un renglón, según qué es.</summary>
+    private RenderFragment Acciones(CtaCteDocDto? d, CtaCteMovDto? m) => __builder =>
+    {
+        if (d is not null && d.DeudaId.HasValue && !d.EsSaldoInicial)
+        {
+            <div class="cc-acc">
+                <button @onclick="() => AbrirCotizacionEditar(d)">✏️ editar</button>
+                @if (d.TieneArchivo)
+                {
+                    <a href="api/cafe/proveedores-ctacte/deudas/@d.DeudaId/archivo" target="_blank">📎 ver foto</a>
+                }
+                else
+                {
+                    <label>📷 subir foto<InputFile OnChange="@(e => SubirArchivo(d.DeudaId!.Value, e))" accept="image/*,application/pdf" style="display:none;" /></label>
+                }
+                @if (d.Pagado <= 0.005m)
+                {
+                    <button class="peligro" @onclick="() => AnularDeuda(d)">🗑 anular</button>
+                }
+            </div>
+        }
+        else if (d is not null && d.EsSaldoInicial)
+        {
+            <div class="cc-acc"><button @onclick="AbrirAjustes">✏️ cambiar saldo inicial</button></div>
+        }
+        else if (d is not null && d.AfipIdComprobante is not null && d.TieneArchivo)
+        {
+            <div class="cc-acc"><a href="@("api/contadora/factura-pdf?id=" + Uri.EscapeDataString(d.AfipIdComprobante))" target="_blank">📎 ver factura</a></div>
+        }
+        else if (m is not null && m.PagoId.HasValue)
+        {
+            <div class="cc-acc">
+                @if (m.PagoRedirigido)
+                {
+                    <span class="nota">vino de un cobro redirigido: se anula desde Tesorería → Cobranzas</span>
+                }
+                else
+                {
+                    <button class="peligro" @onclick="() => AnularPago(m)">anular pago</button>
+                }
+            </div>
+        }
+    };
 
     protected override async Task OnParametersSetAsync() => await Cargar();
 
@@ -314,9 +404,19 @@
         finally { guardando = false; }
     }
 
-    private void AbrirCotizacion()
+    private void AbrirCotizacionNueva()
     {
+        editDeudaId = null; editPagado = 0; editTieneArchivo = false;
         cotFecha = DateTimeExt.AhoraAr().Date; cotNumero = null; cotNota = null; cotImporte = 0; cotArchivo = null;
+        cotizando = true;
+    }
+
+    private void AbrirCotizacionEditar(CtaCteDocDto d)
+    {
+        editDeudaId = d.DeudaId; editPagado = d.Pagado; editTieneArchivo = d.TieneArchivo;
+        cotFecha = d.Fecha.Date;
+        cotNumero = d.Numero == "s/n" ? null : d.Numero;
+        cotNota = d.Observaciones; cotImporte = d.Total; cotArchivo = null;
         cotizando = true;
     }
 
@@ -336,7 +436,16 @@
         guardando = true;
         try
         {
-            var id = await Api.CrearCotizacionProveedorAsync(ProveedorId, cotFecha, cotNumero, cotImporte, cotNota);
+            int id;
+            if (editDeudaId is int eid)
+            {
+                await Api.EditarCotizacionProveedorAsync(eid, cotFecha, cotNumero, cotImporte, cotNota);
+                id = eid;
+            }
+            else
+            {
+                id = await Api.CrearCotizacionProveedorAsync(ProveedorId, cotFecha, cotNumero, cotImporte, cotNota);
+            }
             if (id > 0 && cotArchivo is not null)
             {
                 try
@@ -346,7 +455,7 @@
                 }
                 catch (Exception ex) { ToastService.Error("La cotización se guardó pero la foto no subió: " + ex.Message); }
             }
-            ToastService.Success("Cotización cargada");
+            ToastService.Success(editDeudaId is null ? "Cotización cargada" : "Cotización corregida");
             cotizando = false;
             await Cargar();
         }
@@ -361,7 +470,7 @@
         {
             await using var st = e.File.OpenReadStream(MaxArchivo);
             await Api.SubirArchivoDeudaProveedorAsync(deudaId, st, e.File.Name, e.File.ContentType);
-            ToastService.Success("Archivo subido");
+            ToastService.Success("Foto subida");
             await Cargar();
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
@@ -379,5 +488,20 @@
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
-    private static string Plata(decimal v) => "$" + v.ToString("N2", CultureInfo.GetCultureInfo("es-AR"));
+    private async Task AnularPago(CtaCteMovDto m)
+    {
+        if (m.PagoId is not int id) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Anular este pago de {Plata(m.Resta)}? La plata vuelve a la caja y lo que pagaba vuelve a quedar pendiente. Si endosó un cheque, el cheque vuelve a cartera.")) return;
+        try
+        {
+            await Api.AnularCafePagoProveedorAsync(id);
+            ToastService.Success("Pago anulado");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private static string Mayuscula(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpper(s[0]) + s[1..];
+
+    private static string Plata(decimal v) => "$" + v.ToString("N2", Ar);
 }
