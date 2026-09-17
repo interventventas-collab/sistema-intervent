@@ -280,6 +280,10 @@
     private List<MedioForm> formMedios = new();
 
     [Parameter, SupplyParameterFromQuery(Name = "proveedor")] public int? PreProveedorId { get; set; }
+    /// <summary>17/09/2026: botón "Pago" de la barra (y N+P): abre el formulario vacío. Trae una marca de
+    /// tiempo para que vuelva a abrirse aunque ya se esté en esta pantalla.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "nueva")] public long? PreNueva { get; set; }
+    private long? nuevaAtendida;
 
     private class ImputData
     {
@@ -323,6 +327,15 @@
         {
             ShowNuevo();
             await SelectProveedor(PreProveedorId.Value);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (PreNueva is > 0 && PreNueva != nuevaAtendida)
+        {
+            nuevaAtendida = PreNueva;
+            if (!showNuevo) ShowNuevo();
         }
     }
 

@@ -801,13 +801,25 @@
     private string empresaSel = CuitPalanica;
     private List<ContadoraEmpresaDto> empresasGlobal = new();
 
+    /// <summary>17/09/2026: "Compras ▾ → Facturas de compra" entra con ?tab=comp directo a esa solapa.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "tab")] public string? PreTab { get; set; }
+    private bool contadoraLista;
+
     protected override async Task OnInitializedAsync()
     {
         empresasGlobal = await Api.GetContadoraReporteEmpresasAsync() ?? new();
         // Si PALANICA no está en la lista (sin datos aún), caigo a la primera o a "Todas".
         if (!empresasGlobal.Any(e => e.Cuit == empresaSel))
             empresaSel = empresasGlobal.FirstOrDefault()?.Cuit ?? "";
-        await CargarJur();
+        if (PreTab == "comp") await SetTab("comp");
+        else await CargarJur();
+        contadoraLista = true;
+    }
+
+    // Si ya estaba en la Contadora y eligió "Facturas de compra" arriba, cambiar de solapa.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (contadoraLista && PreTab == "comp" && tab != "comp") await SetTab("comp");
     }
 
     // Al cambiar de empresa, recargo la solapa activa con el nuevo filtro.

@@ -1607,6 +1607,41 @@
                         </div>
                     }
                 </div>
+                @* 2026-09-17: Compras, espejo de Ventas. Lo de compras estaba repartido en cuatro grupos
+                   del menú de la izquierda (Clientes y proveedores, Tesorería, Stock y compras, Contadora).
+                   Pocas opciones a propósito; la carga de stock queda aparte. El menú de la izquierda
+                   NO se tocó. *@
+                <div class="topbar-empleados-wrap">
+                    <button class="topbar-nav-modern @(showComprasDropdown ? "abierto" : "")"
+                            @onclick="ToggleComprasDropdown"
+                            title="Accesos rápidos a Compras">
+                        <span class="topbar-nav-modern-ico">@SvgIcons.Store</span>
+                        <span>Compras</span>
+                        <span class="topbar-nav-modern-caret">▾</span>
+                    </button>
+                    @if (showComprasDropdown)
+                    {
+                        @* Abre hacia la izquierda: en notebook este botón queda pegado al borde derecho y el menú se cortaba. *@
+                        <div class="topbar-empleados-menu" style="left:auto; right:0;" @onclick:stopPropagation="true">
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/proveedores-ctacte"))">
+                                <span class="ico">📒</span> ¿A quién le debo?
+                            </button>
+                            @if (HasPerm("contadora"))
+                            {
+                                <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/contadora?tab=comp"))">
+                                    <span class="ico">🧾</span> Facturas de compra
+                                </button>
+                            }
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/tesoreria/pagos"))">
+                                <span class="ico">📤</span> Pagos a proveedores
+                            </button>
+                            <div class="topbar-empleados-sep"></div>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/proveedores"))">
+                                <span class="ico">🏭</span> Proveedores
+                            </button>
+                        </div>
+                    }
+                </div>
 
                 @* 2026-07-08: se sacó el badge "Cheques" de la barra — ahora hay una card de
                    "Cheques por pagar" en el dashboard con la misma info, así que era redundante. *@
@@ -1634,6 +1669,13 @@
                         <span class="ic" aria-hidden="true">💵</span>
                         <span class="lbl">Cobranza</span>
                         <span class="keys"><span class="kbd">N</span><span class="kbd">C</span></span>
+                    </button>
+                    @* 2026-09-17: espejo de Cobranza para las compras: abre un pago a proveedor. *@
+                    <button class="tb-nuevo tb-nuevo-pago" @onclick='() => NuevoRapido("pago")'
+                            title="Nuevo pago a proveedor — atajo: apretá N y después P" aria-label="Nuevo pago a proveedor">
+                        <span class="ic" aria-hidden="true">📤</span>
+                        <span class="lbl">Pago</span>
+                        <span class="keys"><span class="kbd">N</span><span class="kbd">P</span></span>
                     </button>
                 </div>
                 @* 2026-06-29: el boton 'Cobranzas' suelto se movio al dropdown Ventas (abajo de Ventas) *@
@@ -2072,6 +2114,10 @@
                         <td style="padding: 0.5rem 0;">💵 Nueva Cobranza</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #f3f4f6;">
+                        <td style="padding: 0.5rem 0;"><kbd style="@KbdStyle">N</kbd> <kbd style="@KbdStyle">P</kbd></td>
+                        <td style="padding: 0.5rem 0;">📤 Nuevo Pago a proveedor</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #f3f4f6;">
                         <td style="padding: 0.5rem 0;"><kbd style="@KbdStyle">N</kbd> <kbd style="@KbdStyle">K</kbd></td>
                         <td style="padding: 0.5rem 0;">🧮 Calculadora de precios</td>
                     </tr>
@@ -2486,6 +2532,10 @@
             case "cobranza":
                 Navigation.NavigateTo("/cafe/tesoreria/cobranzas?nueva=1");
                 break;
+            case "pago":
+                // Con marca de tiempo: si ya está en Pagos, igual vuelve a abrir el formulario.
+                Navigation.NavigateTo($"/cafe/tesoreria/pagos?nueva={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
+                break;
         }
     }
 
@@ -2519,6 +2569,7 @@
     {
         showEmpleadosDropdown = false;
         showVentasDropdown = false;
+        showComprasDropdown = false;
         showWidgetsDropdown = false;
     }
 
@@ -2540,6 +2591,14 @@
         showVentasDropdown = abrir;
     }
     private void NavigateAndCloseVentas(string url) { CerrarDropdownsTopbar(); NavigateTo(url); }
+    // 2026-09-17: dropdown Compras (espejo de Ventas). Navega con NavigateAndCloseVentas, que cierra todos.
+    private bool showComprasDropdown;
+    private void ToggleComprasDropdown()
+    {
+        var abrir = !showComprasDropdown;
+        CerrarDropdownsTopbar();
+        showComprasDropdown = abrir;
+    }
     // 2026-06-30: solo mostrar AssistantWidget en el dashboard (ruta "/")
     private bool IsOnDashboard
     {
