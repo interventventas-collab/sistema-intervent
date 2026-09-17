@@ -106,13 +106,22 @@ public class CafeRepartidorPublicController : ControllerBase
     /// Hora/CargadoPor: cuándo y quién lo cargó. Las entregas del mapa no las carga una persona:
     /// de esas van Desde/Hasta, entre qué horas se entregaron.
     /// </summary>
+    /// <summary>
+    /// 17/09/2026 — Una entrega suelta del día, para poder desplegar el renglón en el celu y verlas
+    /// todas. Pedido de él: "que diga también dirección y horario en que se entregó".
+    /// EntregadoAt va en UTC: la pantalla lo pasa a hora argentina.
+    /// </summary>
+    public record MiEntregaDto(string Cliente, string? Direccion, DateTime? EntregadoAt, decimal Tarifa);
+
     public record MiMovDto(DateTime Fecha, string Que, List<string> Donde,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
         DateTime? Hora, string? CargadoPor, DateTime? Desde, DateTime? Hasta,
         // 08/09/2026 — visto bueno del repartidor, sólo en los pagos.
         // PideConfirmacion: si se le pregunta (los pagos viejos no).
         // Confirmado: null = no contestó · true = "sí, la recibí" · false = "no me llegó".
-        int PagoId = 0, bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null);
+        int PagoId = 0, bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null,
+        // 17/09/2026 — todas las entregas de ese día, una por una, para desplegar el renglón.
+        List<MiEntregaDto>? Entregas = null);
 
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
         decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos,
@@ -190,7 +199,8 @@ public class CafeRepartidorPublicController : ControllerBase
         var filas = new List<(DateTime fecha, int orden, string que, List<string> donde, decimal suma,
             decimal pago, bool esPago, bool esExtra, DateTime? hora, string? quien,
             DateTime? desde, DateTime? hasta,
-            int pagoId, bool pide, bool? confirmado, DateTime? confirmadoAt)>();
+            int pagoId, bool pide, bool? confirmado, DateTime? confirmadoAt,
+            List<MiEntregaDto> entregas)>();
 
         foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
         {
@@ -201,30 +211,37 @@ public class CafeRepartidorPublicController : ControllerBase
                 .ToList();
             var muestra = todos.Take(3).ToList();
             if (todos.Count > muestra.Count) muestra.Add($"+{todos.Count - muestra.Count} más");
+            // 17/09/2026 — y todas, una por una, con dirección y hora: es lo que se ve al desplegar.
+            var detalle = g.OrderBy(x => x.EntregadoAt ?? DateTime.MaxValue).ThenBy(x => x.Id)
+                .Select(x => new MiEntregaDto(
+                    !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
+                        : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion! : "entrega"),
+                    x.Direccion, x.EntregadoAt, x.Tarifa))
+                .ToList();
             filas.Add((g.Key, 0, $"{g.Count()} entrega{(g.Count() == 1 ? "" : "s")}",
                 muestra,
                 g.Sum(x => x.Tarifa), 0m, false, false,
                 null, null, g.Min(x => x.EntregadoAt), g.Max(x => x.EntregadoAt),
-                0, false, null, null));
+                0, false, null, null, detalle));
         }
 
         foreach (var g in ents.Where(x => x.StopId == null).GroupBy(x => new { x.Fecha, Det = x.Detalle ?? "Ajuste" }))
             filas.Add((g.Key.Fecha, 1, g.Key.Det, new List<string>(), g.Sum(x => x.Tarifa), 0m, false, true,
                 g.Min(x => x.CreatedAt),
                 g.Select(x => x.CargadoPor).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)), null, null,
-                0, false, null, null));
+                0, false, null, null, new List<MiEntregaDto>()));
 
         foreach (var r in regs)
             filas.Add((r.Fecha, 1, $"{r.CantidadCABA + r.CantidadPCIA} viajes cargados a mano",
                 new List<string>(),
                 (decimal)r.CantidadCABA * r.TarifaCABA + (decimal)r.CantidadPCIA * r.TarifaPCIA, 0m, false, true,
                 r.UpdatedAt ?? r.CreatedAt, r.CargadoPor, null, null,
-                0, false, null, null));
+                0, false, null, null, new List<MiEntregaDto>()));
 
         foreach (var p in pagos)
             filas.Add((p.Fecha, 2, "Pago" + (string.IsNullOrWhiteSpace(p.Descripcion) ? "" : " · " + p.Descripcion),
                 new List<string>(), 0m, p.Importe, true, false, p.CreatedAt, p.CargadoPor, null, null,
-                p.Id, p.PideConfirmacion, p.Confirmado, p.ConfirmadoAt));
+                p.Id, p.PideConfirmacion, p.Confirmado, p.ConfirmadoAt, new List<MiEntregaDto>()));
 
         var movimientos = new List<MiMovDto>(filas.Count);
         decimal acum = 0m;
@@ -233,7 +250,7 @@ public class CafeRepartidorPublicController : ControllerBase
             acum += f.suma - f.pago;
             movimientos.Add(new MiMovDto(f.fecha, f.que, f.donde, f.suma, f.pago, acum,
                 f.esPago, f.esExtra, f.hora, f.quien, f.desde, f.hasta,
-                f.pagoId, f.pide, f.confirmado, f.confirmadoAt));
+                f.pagoId, f.pide, f.confirmado, f.confirmadoAt, f.entregas));
         }
         movimientos.Reverse();   // lo último arriba, como en la oficina
 

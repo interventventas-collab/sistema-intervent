@@ -226,6 +226,15 @@
     .mp-chip.extra { background:#e0e7ff; color:#3730a3; }
     .mp-chip.nuevo { background:#dbeafe; color:#1d4ed8; }
     .mp-chip.mapa { background:#eef2ff; color:#4338ca; }
+    /* 17/09/2026: desplegar el día y ver todas las entregas, con dirección y hora */
+    .mp-que.abre { cursor:pointer; display:flex; align-items:center; gap:0.35rem; }
+    .mp-flecha { color:#0f766e; font-size:0.8rem; width:0.9rem; flex:none; }
+    .mp-lista { list-style:none; margin:0.5rem 0 0; padding:0; }
+    .mp-lista li { display:flex; gap:0.5rem; padding:0.4rem 0; border-top:1px solid #f3f4f6; }
+    .mp-lista .n { color:#9ca3af; font-size:0.78rem; font-weight:700; min-width:1.4rem; }
+    .mp-lista .quien { font-size:0.85rem; font-weight:600; color:#111; }
+    .mp-lista .donde { font-size:0.78rem; color:#6b7280; }
+    .mp-lista .hora { font-size:0.78rem; color:#9ca3af; }
     /* 08/09/2026: visto bueno del pago — botones grandes, que se aprieten con el dedo */
     .mp-vb { display:flex; gap:0.4rem; margin-top:0.5rem; }
     .mp-vb button { flex:1; padding:0.55rem 0.3rem; font-size:0.85rem; font-weight:700;
@@ -531,12 +540,18 @@
                                 <div class="mp-fecha-m">@m.Fecha.ToString("ddd", new System.Globalization.CultureInfo("es-AR"))</div>
                             </div>
                             <div class="mp-cuerpo">
-                                <div class="mp-que">
-                                    @m.Que
-                                    @if (m.EsExtra) { <span class="mp-chip extra">a mano</span> }
-                                    else if (!m.EsPago) { <span class="mp-chip mapa">del mapa</span> }
+                                @* 17/09/2026: los días con entregas se abren de un toque y se ve
+                                   cada una con su dirección y la hora en que se entregó. *@
+                                @{ var tiene = m.Entregas is { Count: > 0 }; var abierto = tiene && desplegados.Contains(m.Fecha); }
+                                <div class="mp-que @(tiene ? "abre" : "")" @onclick="() => Desplegar(m)">
+                                    @if (tiene) { <span class="mp-flecha">@(abierto ? "▾" : "▸")</span> }
+                                    <span>
+                                        @m.Que
+                                        @if (m.EsExtra) { <span class="mp-chip extra">a mano</span> }
+                                        else if (!m.EsPago) { <span class="mp-chip mapa">del mapa</span> }
+                                    </span>
                                 </div>
-                                @if (m.Donde.Count > 0)
+                                @if (!abierto && m.Donde.Count > 0)
                                 {
                                     <div class="mp-donde">@string.Join(" · ", m.Donde)</div>
                                 }
@@ -554,6 +569,35 @@
                                         <b>@Plata(Math.Abs(m.Saldo))</b>
                                     </span>
                                 </div>
+                                @* 17/09/2026: el detalle del día, abajo de la plata, para que el
+                                   total y el "quedó debiendo" queden pegados al título. *@
+                                @if (abierto)
+                                {
+                                    <ol class="mp-lista">
+                                        @{ var nro = 0; }
+                                        @foreach (var e in m.Entregas!)
+                                        {
+                                            nro++;
+                                            <li>
+                                                <span class="n">@nro.</span>
+                                                <span>
+                                                    <div class="quien">@e.Cliente</div>
+                                                    @* Dirección y hora en un solo renglón: 12 entregas
+                                                       en tres renglones cada una no entran en el celu. *@
+                                                    @{
+                                                        var dir = (!string.IsNullOrWhiteSpace(e.Direccion) && e.Direccion != e.Cliente)
+                                                            ? e.Direccion! : "";
+                                                        var hs = e.EntregadoAt is { } ent ? $"entregada {ent.ToArTime():HH:mm}" : "";
+                                                    }
+                                                    @if (dir != "" || hs != "")
+                                                    {
+                                                        <div class="donde">@(dir != "" && hs != "" ? $"{dir} · {hs}" : dir + hs)</div>
+                                                    }
+                                                </span>
+                                            </li>
+                                        }
+                                    </ol>
+                                }
                                 @* 08/09/2026 — el visto bueno del pago. Sólo en los pagos, y sólo en
                                    los nuevos: a los viejos no se le pregunta. Su respuesta NO mueve
                                    ningún número, es sólo decir si esa plata le llegó de verdad
@@ -1555,7 +1599,11 @@
     public record MiMovDto(DateTime Fecha, string Que, List<string> Donde,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
         DateTime? Hora, string? CargadoPor, DateTime? Desde, DateTime? Hasta,
-        int PagoId = 0, bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null);
+        int PagoId = 0, bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null,
+        List<MiEntregaDto>? Entregas = null);
+
+    /// <summary>17/09/2026: cada entrega del día, con dirección y hora, para desplegar el renglón.</summary>
+    public record MiEntregaDto(string Cliente, string? Direccion, DateTime? EntregadoAt, decimal Tarifa);
 
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
         decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos,
@@ -1564,6 +1612,15 @@
         int EntregasMes = 0, decimal GanadoMes = 0, decimal PagadoMes = 0, decimal Arrastre = 0);
 
     private List<MiMovDto> movs => miCuenta?.Movimientos ?? new();
+
+    // 17/09/2026: qué días tiene abiertos (uno o varios). La clave es el día del reparto.
+    private readonly HashSet<DateTime> desplegados = new();
+
+    private void Desplegar(MiMovDto m)
+    {
+        if (m.Entregas is not { Count: > 0 }) return;
+        if (!desplegados.Add(m.Fecha)) desplegados.Remove(m.Fecha);
+    }
     private int confirmando;
 
     /// <summary>El visto bueno de un pago. No mueve ningún número: sólo deja dicho si le llegó.</summary>
