@@ -1937,6 +1937,21 @@
                         @(lineasOn ? "🙈 Ocultar líneas" : "👁 Ver líneas")
                     </button>
                 }
+                @* 2026-09-17: "Por dónde van" — dónde está cada repartidor y por dónde fue.
+                   Arranca SIEMPRE apagado: mientras no se toque, el mapa es igual que siempre. *@
+                <button class="btn" style="font-size:0.9rem; font-weight:800; background:@(choferesOn ? "#475569" : "#1d4ed8"); color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
+                        @onclick="ToggleChoferes" disabled="@choferesCargando"
+                        title="Ver dónde está cada repartidor ahora y por dónde fue. Solo aparecen los que tienen el seguimiento prendido en Administración → Repartidores.">
+                    @(choferesCargando ? "⏳…" : (choferesOn ? "🙈 Ocultar dónde van" : "📍 Por dónde van"))
+                </button>
+                @if (choferesOn && choferesUbic is { Count: > 0 })
+                {
+                    <button class="btn" style="font-size:0.9rem; font-weight:800; background:@(choferesRecorrido ? "#475569" : "#0e7490"); color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
+                            @onclick="ToggleRecorridoChoferes"
+                            title="El hilito punteado muestra por dónde fue de verdad. La línea llena es la ruta que armaste vos.">
+                        @(choferesRecorrido ? "〰 Sin el recorrido" : "〰 Ver el recorrido")
+                    </button>
+                }
             </div>
         }
         @* ── Panel "⚡ Optimizar recorridos": aparece al tocar el botón, con una tarjeta por herramienta ── *@
@@ -5021,6 +5036,64 @@
         StateHasChanged();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2026-09-17: "POR DÓNDE VAN" — capa aparte con los repartidores.
+    // Lo pidió Gabriel. Vive en mapeo-choferes.js con sus propios marcadores, así que
+    // el refresco de cada 7s (que borra y redibuja globitos y líneas) no la toca.
+    // Arranca apagada siempre y no se acuerda de nada entre visitas: fue un pedido
+    // expreso del usuario ("estaría bien que nunca esté, pero un botón que permita verlo").
+    // ─────────────────────────────────────────────────────────────────────────
+    private bool choferesOn;
+    private bool choferesRecorrido;
+    private bool choferesCargando;
+    private List<UbicacionChoferDto>? choferesUbic;
+
+    private async Task ToggleChoferes()
+    {
+        if (choferesOn)
+        {
+            choferesOn = false;
+            choferesUbic = null;
+            try { await JS.InvokeVoidAsync("mapeoChoferes.hide"); } catch { }
+            StateHasChanged();
+            return;
+        }
+
+        choferesCargando = true; StateHasChanged();
+        try
+        {
+            await CargarUbicacionesChoferes();
+            if (choferesUbic is null || choferesUbic.Count == 0)
+            {
+                ToastService.Info("Todavía no hay marcas de ubicación de este día. Se prende repartidor por repartidor en Administración → Repartidores.");
+                return;
+            }
+            choferesOn = true;
+            await PintarChoferes();
+            try { await JS.InvokeVoidAsync("mapeoChoferes.fit"); } catch { }
+        }
+        catch { ToastService.Error("No pude traer la ubicación de los repartidores."); }
+        finally { choferesCargando = false; StateHasChanged(); }
+    }
+
+    private async Task ToggleRecorridoChoferes()
+    {
+        choferesRecorrido = !choferesRecorrido;
+        await PintarChoferes();
+        StateHasChanged();
+    }
+
+    private async Task CargarUbicacionesChoferes()
+    {
+        choferesUbic = await Api.GetUbicacionesChoferesAsync(FechaMapa.ToString("yyyy-MM-dd")) ?? new();
+    }
+
+    private async Task PintarChoferes()
+    {
+        if (!choferesOn || choferesUbic is null) return;
+        try { await JS.InvokeVoidAsync("mapeoChoferes.show", choferesUbic, choferesRecorrido); } catch { }
+    }
+
     // Botón 〰 de una zona: prende/apaga SOLO la línea de esa zona.
     private async Task ToggleLineaZona(string key)
     {
@@ -5714,6 +5787,12 @@
         // solo 12 lo hacían, y por eso las líneas "desaparecían solas". Ahora se repintan SIEMPRE acá.
         if (rutasResumen.Count > 0) await PintarRutas();
         else lineasPintadas = 0;
+        // "Por dónde van": la capa es aparte y renderMarkers no la borra, pero la refrescamos
+        // acá para que el camioncito se vaya moviendo solo mientras el mapa está abierto.
+        if (choferesOn)
+        {
+            try { await CargarUbicacionesChoferes(); await PintarChoferes(); } catch { }
+        }
     }
 
     /// <summary>Devuelve la nota del comprador SIN el motivo de "no se pudo entregar" que el

@@ -218,4 +218,70 @@ public class MapeoDriversController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2026-09-17: "POR DONDE VAN" — lo que ve la oficina en el mapa.
+    // Boton apagado por default en Mapeo. Devuelve, por cada repartidor con
+    // SeguirUbicacion=1, donde esta ahora y por donde fue en el dia pedido.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public record PuntoRecorridoDto(decimal Lat, decimal Lng, string Hora);
+    public record UbicacionChoferDto(
+        int DriverId, int RepartidorId, string Nombre, string Color,
+        decimal Lat, decimal Lng, string Hora, int HaceMinutos, bool Viejo,
+        List<PuntoRecorridoDto> Recorrido);
+
+    /// <summary>
+    /// dia = yyyy-MM-dd en hora argentina (si no viene, hoy). "Viejo" = hace mas de 30 minutos
+    /// que no manda: el mapa lo pinta gris para que nadie confunda un punto viejo con donde esta
+    /// ahora. Pasa seguido: el navegador le corta el GPS al celu cuando la pantalla no esta a la vista.
+    /// </summary>
+    [HttpGet("ubicaciones")]
+    public async Task<IActionResult> Ubicaciones([FromQuery] string? dia)
+    {
+        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
+        var diaAr = DateTime.TryParse(dia, out var d0) ? d0.Date : hoyAr;
+        // El rastro se guarda en UTC y el dia es argentino (UTC-3).
+        var desdeUtc = diaAr.AddHours(3);
+        var hastaUtc = desdeUtc.AddDays(1);
+
+        var reps = await _db.CafeRepartidores
+            .Where(r => r.IsActive && r.SeguirUbicacion)
+            .Select(r => new { r.Id, r.Nombre })
+            .ToListAsync();
+        if (reps.Count == 0) return Ok(new List<UbicacionChoferDto>());
+
+        var repIds = reps.Select(r => r.Id).ToList();
+        var puntos = await _db.CafeRepartidorUbicaciones
+            .Where(u => repIds.Contains(u.RepartidorId) && u.CreatedAt >= desdeUtc && u.CreatedAt < hastaUtc)
+            .OrderBy(u => u.CreatedAt)
+            .Select(u => new { u.RepartidorId, u.Lat, u.Lng, u.CreatedAt })
+            .ToListAsync();
+        if (puntos.Count == 0) return Ok(new List<UbicacionChoferDto>());
+
+        // El espejo del mapa aporta el color (el mismo de los globitos y las zonas).
+        var espejos = await _db.MapeoDrivers
+            .Where(x => x.CafeRepartidorId != null && repIds.Contains(x.CafeRepartidorId!.Value))
+            .ToListAsync();
+
+        var ahora = DateTime.UtcNow;
+        var salida = new List<UbicacionChoferDto>();
+        foreach (var r in reps)
+        {
+            var suyos = puntos.Where(p => p.RepartidorId == r.Id).ToList();
+            if (suyos.Count == 0) continue;
+            var ultimo = suyos[^1];
+            var esp = espejos.FirstOrDefault(x => x.CafeRepartidorId == r.Id);
+            var haceMin = (int)Math.Max(0, (ahora - ultimo.CreatedAt).TotalMinutes);
+
+            salida.Add(new UbicacionChoferDto(
+                esp?.Id ?? 0, r.Id, r.Nombre, esp?.Color ?? "#1d4ed8",
+                ultimo.Lat, ultimo.Lng,
+                ultimo.CreatedAt.AddHours(-3).ToString("HH:mm"),
+                haceMin, haceMin > 30,
+                suyos.Select(p => new PuntoRecorridoDto(p.Lat, p.Lng, p.CreatedAt.AddHours(-3).ToString("HH:mm"))).ToList()));
+        }
+
+        return Ok(salida.OrderBy(x => x.Nombre));
+    }
 }

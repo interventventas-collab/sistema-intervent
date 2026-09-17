@@ -827,6 +827,10 @@ window.mapeoFlex = (function () {
                 fullscreenControl: true,
                 zoomControl: true
             });
+            // 2026-09-17: dejamos el mapa a mano para la capa "Por dónde van" (mapeo-choferes.js),
+            // que dibuja a los repartidores en su propio conjunto de marcadores. Es SOLO una referencia:
+            // esa capa no toca nada de acá, así que renderMarkers/clearRoutes no la borran.
+            window.__mapeoMapa = map;
             // 2026-09-03: al cruzar el nivel de zoom (lejos ⇄ cerca) redibujamos los pines para que
             // cambien de tamaño y aparezcan/desaparezcan los cartelitos. Escuchamos 'idle' y no
             // 'zoom_changed' porque el segundo dispara muchas veces durante el pellizco del celular;
@@ -1491,6 +1495,8 @@ window.mapeoFlex = (function () {
             markers = [];
             for (const m of snapMarkers) m.setMap(null);
             snapMarkers = [];
+            try { if (window.mapeoChoferes) window.mapeoChoferes.hide(); } catch (e) { }
+            window.__mapeoMapa = null;
             map = null;
             infoWindow = null;
             dotNetRef = null;

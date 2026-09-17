@@ -7502,6 +7502,11 @@ public class ApiClient
     // ===== Mapeo: Drivers =====
     public async Task<List<MapeoDriverDto>?> GetMapeoDriversAsync()
         => await GetAsync<List<MapeoDriverDto>>("/api/mapeo/drivers");
+
+    /// <summary>2026-09-17: "Por dónde van" — dónde está cada repartidor y por dónde fue ese día.
+    /// Solo devuelve a los que tienen el seguimiento prendido en Administración → Repartidores.</summary>
+    public async Task<List<UbicacionChoferDto>?> GetUbicacionesChoferesAsync(string dia)
+        => await GetAsync<List<UbicacionChoferDto>>($"/api/mapeo/ubicaciones?dia={dia}");
     public async Task<MapeoDriverDto?> CreateMapeoDriverAsync(string nombre, string? telefono, string? color, int? cafeRepartidorId = null)
         => await PostAsync<MapeoDriverDto>("/api/mapeo/drivers", new { nombre, telefono, color, cafeRepartidorId });
     public async Task<MapeoDriverDto?> UpdateMapeoDriverAsync(int id, string? nombre, string? telefono, string? color, bool? isActive, int? cafeRepartidorId = null)

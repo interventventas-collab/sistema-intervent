@@ -264,3 +264,28 @@ public class ArmarRutaGuiadaResult
     public int Total { get; set; }
     public bool PorGoogle { get; set; }
 }
+
+// 2026-09-17: "Por dónde van" — dónde está cada repartidor y por dónde fue en el día.
+// Lo devuelve GET /api/mapeo/ubicaciones?dia=yyyy-MM-dd
+public class PuntoRecorridoDto
+{
+    public decimal Lat { get; set; }
+    public decimal Lng { get; set; }
+    public string Hora { get; set; } = "";
+}
+
+public class UbicacionChoferDto
+{
+    public int DriverId { get; set; }
+    public int RepartidorId { get; set; }
+    public string Nombre { get; set; } = "";
+    public string Color { get; set; } = "#1d4ed8";
+    public decimal Lat { get; set; }
+    public decimal Lng { get; set; }
+    /// <summary>Hora argentina de la última marca, "HH:mm".</summary>
+    public string Hora { get; set; } = "";
+    public int HaceMinutos { get; set; }
+    /// <summary>Hace más de 30 minutos que no manda: se pinta gris.</summary>
+    public bool Viejo { get; set; }
+    public List<PuntoRecorridoDto> Recorrido { get; set; } = new();
+}
