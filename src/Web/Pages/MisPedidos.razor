@@ -2070,6 +2070,7 @@
                 st.Visto = false;
             }
             else st.Visto = visto;
+            if (visto) _ = PingUbicacion("entrega");   // 2026-09-17: "Por donde van"
             paradaAbiertaManual = null;   // que la lista vuelva a seguir sola
             acomodarPantalla = true;
         }
@@ -2151,6 +2152,7 @@
             paradaAbiertaManual = null;        // la lista vuelve a seguir sola
             acomodarPantalla = true;
             MostrarToast("Anotada · ya avisamos a la oficina.", false);
+            _ = PingUbicacion("entrega");   // 2026-09-17: "Por donde van"
             await Recargar();
         }
         finally { enviandoNoEntregada = false; StateHasChanged(); }
@@ -2198,6 +2200,58 @@
 
     private System.Threading.Timer? refreshTimer;
 
+    // ───────────────────────────────────────────────────────────────────────
+    // 2026-09-17: "POR DONDE VAN" — el celu manda la ubicacion mientras reparte.
+    // Lo prende y apaga la OFICINA (Administracion -> Repartidores). Aca no hay
+    // ningun boton ni cartel: el repartidor no ve nada de esto, es a proposito.
+    //
+    // OJO: el navegador le corta el GPS a las paginas que no estan a la vista. Con el
+    // celu bloqueado o en otra app, esto NO manda. Por eso ademas del timer de 15 min
+    // mandamos un punto cada vez que el repartidor toca algo (abre la lista, marca una
+    // entrega, escanea): esos son los momentos en que la pantalla SI esta adelante.
+    // ───────────────────────────────────────────────────────────────────────
+    private bool seguirUbicacion;
+    private System.Threading.Timer? ubicacionTimer;
+
+    private record SeguimientoResp(bool Seguir, int CadaSegundos);
+    private record PosicionJs(decimal? Lat, decimal? Lon, int? Accuracy);
+
+    /// <summary>Al abrir, le pregunta al servidor si este repartidor tiene el seguimiento
+    /// prendido. Si si, manda un punto y arranca el timer. Nunca rompe la pantalla.</summary>
+    private async Task IniciarSeguimientoUbicacion()
+    {
+        try
+        {
+            var cfg = await Http.GetFromJsonAsync<SeguimientoResp>(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/seguimiento");
+            seguirUbicacion = cfg?.Seguir == true;
+            if (!seguirUbicacion) return;
+
+            _ = PingUbicacion("apertura");
+
+            var cada = TimeSpan.FromSeconds(Math.Max(60, cfg!.CadaSegundos));
+            ubicacionTimer?.Dispose();
+            ubicacionTimer = new System.Threading.Timer(async _ => await PingUbicacion("auto"), null, cada, cada);
+        }
+        catch { /* sin internet o endpoint viejo: seguimos como si nada */ }
+    }
+
+    /// <summary>Manda un punto. Fire-and-forget: no muestra nada, no refresca la pantalla
+    /// (durante el escaneo un StateHasChanged rompe el video de la camara).</summary>
+    private async Task PingUbicacion(string fuente)
+    {
+        if (!seguirUbicacion) return;
+        try
+        {
+            var pos = await JS.InvokeAsync<PosicionJs?>("heGetPositionAccurate", 8000);
+            if (pos?.Lat is null || pos.Lon is null) return;
+            await Http.PostAsJsonAsync(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/ubicacion",
+                new { Lat = pos.Lat, Lng = pos.Lon, Accuracy = pos.Accuracy, Fuente = fuente });
+        }
+        catch { /* GPS apagado, permiso denegado, sin señal: no pasa nada */ }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         // 2026-06-05: registrar service worker para que Chrome muestre "Instalar app".
@@ -2212,6 +2266,7 @@
         }
         catch { /* navegador viejo o JS bloqueado, ignorar */ }
         await Recargar();
+        _ = IniciarSeguimientoUbicacion();   // 2026-09-17: "Por donde van" (si la oficina lo prendio)
         // 2026-06-05: auto-refresh cada 30s. Si el admin asigna una venta nueva,
         // el repartidor la ve aparecer sola sin tener que tocar 🔄.
         refreshTimer = new System.Threading.Timer(async _ =>
@@ -2590,6 +2645,7 @@
                 return;
             }
             MostrarToast(modal.Tipo == "entregar" ? "✅ Marcado como entregado" : "💰 Cobro precargado para confirmación", false);
+            _ = PingUbicacion("entrega");   // 2026-09-17: "Por donde van"
             CerrarModal();
             await Recargar();
         }
@@ -2701,6 +2757,7 @@
             // beep "OK" — tono agudo corto tipo lector de supermercado
             try { await JS.InvokeVoidAsync("mpBeepOk"); } catch { }
             cantEscaneadosEnSesion++;
+            _ = PingUbicacion("escaneo");   // 2026-09-17: "Por donde van"
             MostrarToast(r.Mensaje ?? "✓ Cargado", false);
             // 2026-06-08: NO refrescamos la lista mientras escanea — eso re-renderiza el DOM
             // y rompe el video de la cámara. La lista se refresca al cerrar el escáner.
@@ -2757,6 +2814,7 @@
         try { dotNetRef?.Dispose(); } catch { }
         try { sortableRef?.Dispose(); } catch { }
         try { refreshTimer?.Dispose(); } catch { }
+        try { ubicacionTimer?.Dispose(); } catch { }
     }
 
     private void MostrarToast(string msg, bool error)
@@ -3087,6 +3145,7 @@
             if (resp.IsSuccessStatusCode)
             {
                 MostrarToast("✅ Marcado entregado en MeLi", false);
+                _ = PingUbicacion("entrega");   // 2026-09-17: "Por donde van"
                 me1ConfirmEntrega = null;
                 await Recargar();
             }
