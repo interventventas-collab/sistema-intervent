@@ -168,7 +168,7 @@
                             <option value="">— Elegí una plantilla —</option>
                             @foreach (var p in plantillasWaf)
                             {
-                                <option value="@p.Name">@p.Name.Replace("_", " ") (@p.Category.ToLower())</option>
+                                <option value="@p.Name">@p.NombreVisible (@p.Category.ToLower())</option>
                             }
                         </select>
                         @if (PlantillaSelWaf() is {} psel)

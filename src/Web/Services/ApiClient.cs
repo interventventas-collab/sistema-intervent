@@ -8150,7 +8150,11 @@ public class ApiClient
     }
 
     // 2026-08-01: iniciar conversación nueva con plantilla aprobada
-    public record TwPlantillaDto(string Name, string Language, string Category, string BodyText, int VariableCount);
+    // 2026-09-17: Alias = nombre a gusto que se ve en el sistema (en Meta sigue siendo Name).
+    public record TwPlantillaDto(string Name, string Language, string Category, string BodyText, int VariableCount, string? Alias = null)
+    {
+        public string NombreVisible => string.IsNullOrWhiteSpace(Alias) ? Name.Replace("_", " ") : Alias!;
+    }
 
     // ===== 2026-08-26: ALARMAS DEL RELOJ =====
     // No se manda "de quién son": el servidor lo deduce del usuario logueado y del PIN firmado
@@ -8305,6 +8309,18 @@ public class ApiClient
 
     public async Task<List<TwPlantillaDto>> GetTwPlantillasAsync()
         => await _http.GetFromJsonAsync<List<TwPlantillaDto>>("/api/whatsapp/twilio/plantillas") ?? new();
+
+    /// <summary>2026-09-17: guarda el orden (la lista entera, como queda) y los nombres a gusto. true si se guardó.</summary>
+    public async Task<bool> GuardarTwPlantillasConfigAsync(IEnumerable<TwPlantillaDto> enOrden)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/whatsapp/twilio/plantillas-config",
+                enOrden.Select(p => new { p.Name, p.Alias }).ToList());
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
 
     public async Task<List<TwLineaDto>> GetTwLineasAsync()
         => await _http.GetFromJsonAsync<List<TwLineaDto>>("/api/whatsapp/twilio/lineas") ?? new();

@@ -605,3 +605,14 @@
 .wa-dark .wa-mv-pie { background: var(--wad-panel2); border-top-color: #16a34a; color: var(--wad-txt2); box-shadow: none; }
 .wa-dark .wa-mv-total-monto { color: var(--wad-txt); }
 .wa-dark .wa-mv-chip { background: var(--wad-panel3); border-color: var(--wad-borde2); color: var(--wad-txt2); }
+
+/* 2026-09-17: lista abierta de plantillas (Shared/PlantillaLista.razor). El componente usa
+   "color: inherit" + opacidad, pero adentro de la caja naranja oscura el heredado puede ser oscuro:
+   se fija el texto con las variables de la línea oscura. */
+.wa-dark .wpl { border-top-color: var(--wad-borde2); }
+.wa-dark .wpl-row { border-bottom-color: var(--wad-borde2); }
+.wa-dark .wpl-sel { background: rgba(0,168,132,0.22); }
+.wa-dark .wpl-nombre, .wa-dark .wpl-btn, .wa-dark .wpl-input { color: var(--wad-txt); }
+.wa-dark .wpl-texto { color: var(--wad-txt2); opacity: 1; }
+.wa-dark .wpl-btn:hover:not(:disabled) { background: var(--wad-panel3); }
+.wa-dark .wpl-input { border-color: var(--wad-borde2); }

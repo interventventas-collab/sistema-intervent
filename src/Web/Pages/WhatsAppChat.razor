@@ -588,13 +588,8 @@
                         {
                         <div class="wa-nv-field">
                             <label class="wa-nv-label">Plantilla <span style="color:#dc2626;">*</span></label>
-                            <select class="wa-nv-input" value="@nvPlantillaName" @onchange="OnPlantillaChange">
-                                <option value="">— Elegí una plantilla —</option>
-                                @foreach (var p in nvPlantillas)
-                                {
-                                    <option value="@p.Name">@NombrePlantillaLindo(p.Name) (@p.Category.ToLower())</option>
-                                }
-                            </select>
+                            @* 2026-09-17: lista abierta con el mensaje entero + ▲▼ + ✏️ (antes desplegable) *@
+                            <PlantillaLista Plantillas="nvPlantillas" Seleccionada="@nvPlantillaName" OnElegir="ElegirPlantillaNv" />
                         </div>
 
                         @if (PlantillaSel() is {} pSel)
@@ -1642,7 +1637,7 @@
                                 <option value="">— Elegí una plantilla —</option>
                                 @foreach (var pl in nvPlantillas)
                                 {
-                                    <option value="@pl.Name">@NombrePlantillaLindo(pl.Name) (@pl.Category.ToLower())</option>
+                                    <option value="@pl.Name">@pl.NombreVisible (@pl.Category.ToLower())</option>
                                 }
                             </select>
                             @if (ChatPlantillaSel() is {} progSel)
@@ -2006,13 +2001,8 @@
                     }
                     else
                     {
-                        <select class="wa-nv-input" value="@chatPlantillaName" @onchange="OnChatPlantillaChange">
-                            <option value="">— Elegí una plantilla —</option>
-                            @foreach (var p in nvPlantillas)
-                            {
-                                <option value="@p.Name">@NombrePlantillaLindo(p.Name) (@p.Category.ToLower())</option>
-                            }
-                        </select>
+                        @* 2026-09-17: lista abierta con el mensaje entero + ▲▼ + ✏️ (antes desplegable) *@
+                        <PlantillaLista Plantillas="nvPlantillas" Seleccionada="@chatPlantillaName" OnElegir="ElegirPlantillaChat" AltoMax="230" />
                         @if (ChatPlantillaSel() is {} cpSel)
                         {
                             @if (cpSel.VariableCount > 0)
@@ -8283,6 +8273,7 @@
         var count = PlantillaSel()?.VariableCount ?? 0;
         nvVariables = Enumerable.Range(0, count).Select(_ => "").ToList();
     }
+    void ElegirPlantillaNv(string name) => OnPlantillaChange(new ChangeEventArgs { Value = name });
 
     void SetVariable(int idx, string val)
     {
@@ -8307,8 +8298,6 @@
             return m.Value;
         });
     }
-
-    string NombrePlantillaLindo(string name) => name.Replace("_", " ");
 
     string PlaceholderVariable(int idx) => PlaceholderVar(PlantillaSel(), idx);
     string PlaceholderVar(ApiClient.TwPlantillaDto? p, int idx)
@@ -8351,6 +8340,7 @@
         var count = ChatPlantillaSel()?.VariableCount ?? 0;
         chatVariables = Enumerable.Range(0, count).Select(_ => "").ToList();
     }
+    void ElegirPlantillaChat(string name) => OnChatPlantillaChange(new ChangeEventArgs { Value = name });
     void SetChatVariable(int idx, string val)
     {
         while (chatVariables.Count <= idx) chatVariables.Add("");

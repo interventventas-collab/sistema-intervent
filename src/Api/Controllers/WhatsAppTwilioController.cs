@@ -314,13 +314,65 @@ public class WhatsAppTwilioController : ControllerBase
     public async Task<IActionResult> Plantillas()
     {
         var todas = await _meta.GetTemplatesAsync();
+        var config = await LeerPlantillasConfigAsync();
+        // 2026-09-17: primero las que tienen orden guardado (en ese orden), despues las nuevas
+        // que nadie ordeno todavia, como siempre (categoria + nombre).
+        var posicion = config.Select((c, i) => (c.Name, i)).ToDictionary(x => x.Name, x => x.i, StringComparer.OrdinalIgnoreCase);
+        var alias = config.Where(c => !string.IsNullOrWhiteSpace(c.Alias))
+            .ToDictionary(c => c.Name, c => c.Alias!.Trim(), StringComparer.OrdinalIgnoreCase);
         var aprobadas = todas
             .Where(t => string.Equals(t.Status, "APPROVED", StringComparison.OrdinalIgnoreCase)
                         && !string.Equals(t.Name, "hello_world", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(t => t.Category).ThenBy(t => t.Name)
-            .Select(t => new { t.Name, t.Language, t.Category, t.BodyText, t.VariableCount })
+            .OrderBy(t => posicion.TryGetValue(t.Name, out var p) ? p : int.MaxValue)
+            .ThenBy(t => t.Category).ThenBy(t => t.Name)
+            .Select(t => new { t.Name, t.Language, t.Category, t.BodyText, t.VariableCount,
+                               Alias = alias.TryGetValue(t.Name, out var a) ? a : null })
             .ToList();
         return Ok(aprobadas);
+    }
+
+    // ===== 2026-09-17: ORDEN y NOMBRE a gusto de las plantillas =====
+    // El nombre de Meta no se puede cambiar sin volver a aprobarla: el "Alias" es solo como se ve en
+    // el sistema. Vive en AppSettings["whatsapp.plantillas.config"] como JSON, igual para todos.
+    private const string KeyPlantillasConfig = "whatsapp.plantillas.config";
+
+    public record PlantillaConfigDto(string Name, string? Alias);
+
+    private async Task<List<PlantillaConfigDto>> LeerPlantillasConfigAsync()
+    {
+        var fila = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == KeyPlantillasConfig);
+        if (fila is null || string.IsNullOrWhiteSpace(fila.Value)) return new();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<PlantillaConfigDto>>(fila.Value) ?? new();
+        }
+        catch
+        {
+            _logger.LogWarning("El orden de plantillas quedo ilegible; se usa el orden de siempre.");
+            return new();
+        }
+    }
+
+    /// <summary>POST /plantillas-config — guarda la lista COMPLETA en el orden elegido, con su alias. Deposito NO puede.</summary>
+    [HttpPost("plantillas-config")]
+    [Authorize]
+    public async Task<IActionResult> SetPlantillasConfig([FromBody] List<PlantillaConfigDto> lista)
+    {
+        if (await EsDepositoAsync()) return Forbid();
+        var limpia = (lista ?? new())
+            .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+            .GroupBy(c => c.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new PlantillaConfigDto(g.Key,
+                string.IsNullOrWhiteSpace(g.First().Alias) ? null : g.First().Alias!.Trim()))
+            .ToList();
+
+        var json = System.Text.Json.JsonSerializer.Serialize(limpia);
+        var fila = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == KeyPlantillasConfig);
+        if (fila is null)
+            _db.AppSettings.Add(new AppSetting { Key = KeyPlantillasConfig, Value = json, UpdatedAt = DateTime.UtcNow });
+        else { fila.Value = json; fila.UpdatedAt = DateTime.UtcNow; }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     /// <summary>Lista las líneas de WhatsApp conectadas (phone_id + número visible) para elegir desde cuál iniciar.</summary>

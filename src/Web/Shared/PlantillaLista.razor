@@ -1,0 +1,127 @@
+@* 2026-09-17: LISTA DE PLANTILLAS abierta, en vez del desplegable. Osmar: "que se vea el mensaje entero,
+   poder renombrarlo y poder cambiarles el orden con flechitas". Cada renglón muestra el nombre y el
+   mensaje COMPLETO; tocás el renglón y queda elegida. ▲▼ cambian el orden y ✏️ el nombre.
+   El nombre es solo del sistema (en Meta sigue igual) y orden + nombre valen para TODOS: se guardan
+   en AppSettings via POST /api/whatsapp/twilio/plantillas-config. La lista que recibe es la MISMA
+   que usa la pantalla, así que se reordena en el lugar y el padre no tiene que recargar nada. *@
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="wpl" style="max-height:@(AltoMax)px;">
+    @for (int i = 0; i < Plantillas.Count; i++)
+    {
+        var idx = i;
+        var p = Plantillas[idx];
+        var elegida = p.Name == Seleccionada;
+        <div class="wpl-row @(elegida ? "wpl-sel" : "")" @key="p.Name">
+            <div class="wpl-main" role="button" title="Elegir esta plantilla" @onclick="() => Elegir(p.Name)">
+                @if (renombrando == p.Name)
+                {
+                    <input class="wpl-input" @bind="aliasEditando" @bind:event="oninput"
+                           @onclick:stopPropagation="true" @onkeydown="e => TeclaRenombrar(e, idx)"
+                           placeholder="@p.Name.Replace("_", " ")" maxlength="60" />
+                }
+                else
+                {
+                    <div class="wpl-nombre">@(elegida ? "● " : "")@p.NombreVisible <span class="wpl-cat">· @CategoriaLinda(p.Category)</span></div>
+                }
+                <div class="wpl-texto">@p.BodyText</div>
+            </div>
+            <div class="wpl-acc">
+                @if (renombrando == p.Name)
+                {
+                    <button class="wpl-btn" title="Guardar el nombre" disabled="@guardando" @onclick="() => GuardarNombre(idx)">✓</button>
+                    <button class="wpl-btn" title="Cancelar" @onclick="CancelarRenombrar">✕</button>
+                }
+                else
+                {
+                    <button class="wpl-btn" title="Subir" disabled="@(idx == 0 || guardando)" @onclick="() => Mover(idx, -1)">▲</button>
+                    <button class="wpl-btn" title="Bajar" disabled="@(idx == Plantillas.Count - 1 || guardando)" @onclick="() => Mover(idx, 1)">▼</button>
+                    <button class="wpl-btn" title="Cambiarle el nombre (solo en el sistema; en WhatsApp sigue igual)" @onclick="() => EmpezarRenombrar(p)">✏️</button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .wpl { overflow-y: auto; margin-top: 0.6rem; border-top: 1px solid rgba(0,0,0,0.08); }
+    .wpl-row { display: flex; gap: 0.4rem; align-items: flex-start; padding: 0.45rem 0.3rem; border-bottom: 1px solid rgba(0,0,0,0.08); }
+    .wpl-sel { background: rgba(16,185,129,0.12); }
+    .wpl-main { flex: 1; min-width: 0; cursor: pointer; }
+    .wpl-nombre { font-weight: 600; font-size: 0.88rem; }
+    .wpl-cat { font-weight: 400; font-size: 0.74rem; opacity: 0.6; }
+    .wpl-texto { font-size: 0.8rem; opacity: 0.72; white-space: pre-wrap; line-height: 1.3; margin-top: 0.1rem; }
+    .wpl-acc { display: flex; gap: 0.15rem; flex-shrink: 0; }
+    .wpl-btn { border: none; background: transparent; cursor: pointer; font-size: 0.8rem; padding: 0.15rem 0.3rem; border-radius: 6px; color: inherit; opacity: 0.6; }
+    .wpl-btn:hover:not(:disabled) { opacity: 1; background: rgba(0,0,0,0.06); }
+    .wpl-btn:disabled { opacity: 0.2; cursor: default; }
+    .wpl-input { width: 100%; font-size: 0.88rem; font-weight: 600; padding: 0.2rem 0.4rem; border: 1px solid rgba(0,0,0,0.2); border-radius: 6px; background: transparent; color: inherit; }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public List<ApiClient.TwPlantillaDto> Plantillas { get; set; } = new();
+    [Parameter] public string Seleccionada { get; set; } = "";
+    [Parameter] public EventCallback<string> OnElegir { get; set; }
+    /// <summary>Alto máximo en px: en el chat va más bajo para no tapar la charla.</summary>
+    [Parameter] public int AltoMax { get; set; } = 340;
+
+    string? renombrando;
+    string aliasEditando = "";
+    bool guardando;
+
+    static string CategoriaLinda(string cat) => cat?.ToUpperInvariant() switch
+    {
+        "MARKETING" => "publicidad",
+        "UTILITY" => "aviso",
+        "AUTHENTICATION" => "código",
+        _ => (cat ?? "").ToLowerInvariant()
+    };
+
+    Task Elegir(string name) => renombrando != null ? Task.CompletedTask : OnElegir.InvokeAsync(name);
+
+    async Task Mover(int idx, int delta)
+    {
+        var dest = idx + delta;
+        if (dest < 0 || dest >= Plantillas.Count) return;
+        (Plantillas[idx], Plantillas[dest]) = (Plantillas[dest], Plantillas[idx]);
+        if (!await Guardar())
+            (Plantillas[idx], Plantillas[dest]) = (Plantillas[dest], Plantillas[idx]);
+    }
+
+    void EmpezarRenombrar(ApiClient.TwPlantillaDto p)
+    {
+        renombrando = p.Name;
+        aliasEditando = p.Alias ?? "";
+    }
+
+    void CancelarRenombrar() { renombrando = null; aliasEditando = ""; }
+
+    async Task TeclaRenombrar(KeyboardEventArgs e, int idx)
+    {
+        if (e.Key == "Enter") await GuardarNombre(idx);
+        else if (e.Key == "Escape") CancelarRenombrar();
+    }
+
+    async Task GuardarNombre(int idx)
+    {
+        var anterior = Plantillas[idx];
+        var nuevo = aliasEditando.Trim();
+        // Vacío = vuelve al nombre de Meta.
+        Plantillas[idx] = anterior with { Alias = string.IsNullOrEmpty(nuevo) ? null : nuevo };
+        if (await Guardar()) CancelarRenombrar();
+        else Plantillas[idx] = anterior;
+    }
+
+    async Task<bool> Guardar()
+    {
+        guardando = true;
+        try
+        {
+            var ok = await Api.GuardarTwPlantillasConfigAsync(Plantillas);
+            if (!ok) ToastService.Error("No se pudo guardar el orden/nombre de las plantillas.");
+            return ok;
+        }
+        finally { guardando = false; }
+    }
+}
