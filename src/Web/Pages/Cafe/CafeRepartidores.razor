@@ -51,6 +51,11 @@
                 {
                     <span class="rep-pin">PIN: @r.DniUltimos3</span>
                 }
+                @if (r.SeguirUbicacion)
+                {
+                    <span class="rep-pin" style="background:#eff6ff; color:#1e40af; border-color:#bfdbfe;"
+                          title="Su celular manda la ubicación mientras reparte. Se ve en el mapa con el botón 'Por dónde van'.">📍 ubicación</span>
+                }
                 <div class="rep-actions">
                     @if (!string.IsNullOrEmpty(r.PublicToken))
                     {
@@ -85,6 +90,14 @@
                     <input type="checkbox" @bind="formIsActive" /> Activo
                 </label>
             }
+            @* 2026-09-17: "Por donde van" — lo pidio Gabriel. Lo prende y apaga la oficina. *@
+            <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; margin-bottom: 0.3rem; cursor: pointer;">
+                <input type="checkbox" @bind="formSeguirUbicacion" style="cursor: pointer;" /> 📍 Seguir su ubicación mientras reparte
+            </label>
+            <p style="font-size: 0.75rem; color: #6b7280; margin: 0 0 0.6rem;">
+                Su celular manda dónde está cada 15 minutos y cada vez que toca la pantalla. Lo ves en el mapa
+                con el botón "Por dónde van". En el celular de él no aparece nada. Se guarda 30 días.
+            </p>
             <div style="display: flex; gap: 0.4rem; justify-content: flex-end;">
                 <button class="btn btn-secondary" @onclick="@(() => mostrarModal = false)">Cancelar</button>
                 <button class="btn btn-primary" @onclick="Guardar" disabled="@(string.IsNullOrWhiteSpace(formNombre))">✓ Guardar</button>
@@ -151,6 +164,7 @@
     private string formNombre = "";
     private string formPin = "";
     private bool formIsActive = true;
+    private bool formSeguirUbicacion;
 
     // Modal "enlace personal"
     private bool mostrarEnlace;
@@ -175,6 +189,7 @@
         formNombre = "";
         formPin = "";
         formIsActive = true;
+        formSeguirUbicacion = false;
         mostrarModal = true;
     }
 
@@ -184,6 +199,7 @@
         formNombre = r.Nombre;
         formPin = r.DniUltimos3 ?? "";
         formIsActive = r.IsActive;
+        formSeguirUbicacion = r.SeguirUbicacion;
         mostrarModal = true;
     }
 
@@ -198,7 +214,7 @@
             }
             else
             {
-                await Api.EditarRepartidorAsync(editandoId.Value, new EditarRepartidorRequest { Nombre = formNombre.Trim(), DniUltimos3 = string.IsNullOrWhiteSpace(formPin) ? null : formPin.Trim(), IsActive = formIsActive });
+                await Api.EditarRepartidorAsync(editandoId.Value, new EditarRepartidorRequest { Nombre = formNombre.Trim(), DniUltimos3 = string.IsNullOrWhiteSpace(formPin) ? null : formPin.Trim(), IsActive = formIsActive, SeguirUbicacion = formSeguirUbicacion });
                 ToastService.Success("✓ Cambios guardados");
             }
             mostrarModal = false;

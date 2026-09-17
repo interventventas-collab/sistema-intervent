@@ -441,6 +441,9 @@ public class RepartidorDto
     public bool IsActive { get; set; } = true;
     /// <summary>2026-06-05: token fijo para la URL /mis-pedidos/{PublicToken}</summary>
     public string? PublicToken { get; set; }
+    /// <summary>2026-09-17: si esta prendido, su celu manda la ubicacion mientras reparte y se lo
+    /// ve en el mapa con el boton "Por donde van". En el celu del repartidor no aparece nada.</summary>
+    public bool SeguirUbicacion { get; set; }
 }
 
 public class CrearRepartidorRequest
@@ -454,6 +457,7 @@ public class EditarRepartidorRequest
     public string Nombre { get; set; } = "";
     public string? DniUltimos3 { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool SeguirUbicacion { get; set; }
 }
 
 public class CobranzaPendienteDto

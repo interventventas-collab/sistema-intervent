@@ -15,15 +15,15 @@ public class CafeRepartidoresController : ControllerBase
     private readonly AppDbContext _db;
     public CafeRepartidoresController(AppDbContext db) { _db = db; }
 
-    public record RepartidorDto(int Id, string Nombre, string? DniUltimos3, bool IsActive, string? PublicToken);
+    public record RepartidorDto(int Id, string Nombre, string? DniUltimos3, bool IsActive, string? PublicToken, bool SeguirUbicacion);
     public record CrearRequest(string Nombre, string? DniUltimos3);
-    public record EditarRequest(string Nombre, string? DniUltimos3, bool IsActive);
+    public record EditarRequest(string Nombre, string? DniUltimos3, bool IsActive, bool SeguirUbicacion = false);
 
     [HttpGet]
     public async Task<IActionResult> List()
     {
         var l = await _db.CafeRepartidores.OrderBy(r => r.Nombre)
-            .Select(r => new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken))
+            .Select(r => new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion))
             .ToListAsync();
         return Ok(l);
     }
@@ -57,7 +57,7 @@ public class CafeRepartidoresController : ControllerBase
         };
         _db.CafeRepartidores.Add(r);
         await _db.SaveChangesAsync();
-        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken));
+        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion));
     }
 
     [HttpPut("{id:int}")]
@@ -68,9 +68,11 @@ public class CafeRepartidoresController : ControllerBase
         if (!string.IsNullOrWhiteSpace(req.Nombre)) r.Nombre = req.Nombre.Trim();
         r.DniUltimos3 = LimpiarPin(req.DniUltimos3);
         r.IsActive = req.IsActive;
+        // 2026-09-17: "Por donde van" — lo prende y apaga la oficina, el celu no muestra nada.
+        r.SeguirUbicacion = req.SeguirUbicacion;
         r.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken));
+        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion));
     }
 
     [HttpDelete("{id:int}")]
