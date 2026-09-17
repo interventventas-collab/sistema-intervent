@@ -1063,10 +1063,10 @@
         @* ═════════════ 10. ADMINISTRACION (sistema) ═════════════
            Solo cosas de configuracion del sistema: usuarios, roles, integraciones, archivos
            tecnicos, auditoria, backups, configuracion general. *@
-        @if (HasPerm("contadora") || HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups") || HasPerm("vault"))
+        @if (HasPerm("contadora") || HasPerm("usuarios") || HasPerm("sesiones") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups") || HasPerm("vault"))
         {
             <NavGroup Label="Administración" Icon="@SvgIcons.Admin"
-                      HasActiveChild="@(IsActive("/contadora") || IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config") || IsActive("/vault"))">
+                      HasActiveChild="@(IsActive("/contadora") || IsActive("/usuarios") || IsActive("/sesiones") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config") || IsActive("/vault"))">
                 @* 2026-07-08: Modulo Contadora — cuadro de ventas por jurisdiccion (Ingresos Brutos)
                    2026-08-24: permiso propio "contadora". Antes el boton colgaba del grupo
                    Administracion sin condicion: la contadora externa NO lo veia (no es admin) y
@@ -1083,6 +1083,12 @@
                              IsActive="@IsActive("/usuarios")" OnClick="@(() => NavigateTo("/usuarios"))" />
                     <NavItem Href="/operadores-pin" Label="PINs operadores" Icon="@SvgIcons.User"
                              IsActive="@IsActive("/operadores-pin")" OnClick="@(() => NavigateTo("/operadores-pin"))" />
+                }
+                @* 2026-09-17: quien esta adentro del sistema y desde que aparato, con el boton de echarlo. *@
+                @if (HasPerm("sesiones"))
+                {
+                    <NavItem Href="/sesiones" Label="Sesiones abiertas" Icon="@SvgIcons.Server"
+                             IsActive="@IsActive("/sesiones")" OnClick="@(() => NavigateTo("/sesiones"))" />
                 }
                 @if (HasPerm("roles"))
                 {
@@ -2703,6 +2709,7 @@
         { "sueldos", "sueldos" },
         { "contadora", "contadora" },
         { "usuarios", "usuarios" },
+        { "sesiones", "sesiones" },
         { "roles", "roles" },
         { "integraciones", "integraciones" },
         { "procesos", "procesos" },

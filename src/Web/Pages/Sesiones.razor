@@ -1,0 +1,350 @@
+@page "/sesiones"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@implements IAsyncDisposable
+
+@*
+    2026-09-17 — "Sesiones abiertas": quién está adentro del sistema, desde qué aparato y desde
+    dónde, con el botón para echarlo.
+
+    Está escrita a propósito como una LISTA DE RENGLONES, no como tarjetas de colores: es una
+    pantalla para leer de un vistazo, no para decorar. El único color es el de las cosas que
+    ameritan un "ojo": un aparato que nunca se había visto.
+*@
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+        <h3 style="margin:0;">Sesiones abiertas @(datos is null ? "" : $"({datos.Abiertas.Count})")</h3>
+        <div style="display:flex; gap:.5rem; align-items:center;">
+            <span class="text-muted" style="font-size:.8rem;">@textoUltimaActualizacion</span>
+            <button class="btn btn-secondary" @onclick="Cargar" disabled="@cargando">Actualizar</button>
+            <button class="btn btn-secondary" @onclick="() => mostrarRedes = !mostrarRedes">
+                @(mostrarRedes ? "Ocultar" : "Redes conocidas")
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body">
+
+        @if (mostrarRedes)
+        {
+            <div style="border:1px solid var(--border, #e5e7eb); border-radius:6px; padding:1rem; margin-bottom:1.25rem;">
+                <p style="margin:0 0 .5rem 0;"><strong>Redes conocidas</strong></p>
+                <p class="text-muted" style="margin:0 0 .75rem 0; font-size:.85rem; line-height:1.5;">
+                    Acá se anota desde qué conexiones se entra normalmente, para que la lista diga
+                    <em>Oficina</em> en vez de un número. Se compara por el principio del número:
+                    si escribís <code>190.2.3.</code>, cualquier conexión que empiece así es esa red.
+                    Lo que no coincida con nada sale como <em>Afuera</em>.
+                    @if (!string.IsNullOrWhiteSpace(miIp))
+                    {
+                        <br />
+                        <text>Ahora mismo vos estás entrando desde <strong>@miIp</strong>.</text>
+                        <button class="btn-link" style="margin-left:.5rem;" @onclick="UsarMiIp">Usar este número</button>
+                    }
+                </p>
+
+                @foreach (var r in redes)
+                {
+                    <div style="display:flex; gap:.5rem; margin-bottom:.5rem; flex-wrap:wrap;">
+                        <input class="form-input" style="max-width:220px;" placeholder="Empieza con..." @bind="r.Red" />
+                        <input class="form-input" style="max-width:220px;" placeholder="Cómo se llama" @bind="r.Nombre" />
+                        <button class="btn-link" style="color:#dc2626;" @onclick="() => redes.Remove(r)">Sacar</button>
+                    </div>
+                }
+                <div style="display:flex; gap:.5rem; margin-top:.75rem;">
+                    <button class="btn btn-secondary" @onclick="() => redes.Add(new RedConocidaDto())">+ Agregar red</button>
+                    <button class="btn btn-primary" @onclick="GuardarRedes" disabled="@guardandoRedes">Guardar</button>
+                </div>
+            </div>
+        }
+
+        @if (cargando && datos is null)
+        {
+            <p class="text-muted">Cargando...</p>
+        }
+        else if (datos is null)
+        {
+            <p class="text-muted">No se pudo traer la lista.</p>
+        }
+        else
+        {
+            @if (!datos.Abiertas.Any())
+            {
+                <p class="text-muted">No hay ninguna sesión abierta.</p>
+            }
+
+            @foreach (var s in datos.Abiertas)
+            {
+                <div style="padding:.6rem 0; border-bottom:1px solid var(--border, #eee);">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:1rem; flex-wrap:wrap;">
+                        <div style="line-height:1.6;">
+                            <strong>@s.Nombre</strong>
+                            <span class="text-muted"> · </span>@DescribirAparato(s)
+                            <span class="text-muted"> · </span>@s.Lugar
+                            <span class="text-muted"> · </span>@Hace(s.UltimaActividadAr)
+                            @if (s.EsLaMia)
+                            {
+                                <span class="text-muted"> · esta pantalla</span>
+                            }
+                            @if (EsAparatoNuevoReciente(s))
+                            {
+                                <span style="color:#b45309;"> · ojo: aparato nunca visto antes</span>
+                            }
+                            <br />
+                            <span class="text-muted" style="font-size:.8rem;">
+                                Entró @Fecha(s.EntroAr) · vence @Fecha(s.ExpiraAr)
+                                @if (!string.IsNullOrWhiteSpace(s.Ip)) { <text> · @s.Ip</text> }
+                            </span>
+                        </div>
+
+                        <div style="display:flex; gap:.75rem; align-items:center; white-space:nowrap;">
+                            <button class="btn-link" @onclick="() => AbrirApodo(s)">Ponerle nombre</button>
+                            <button class="btn-link" style="color:#dc2626;" @onclick="() => pendienteCerrar = s.Id">Cerrar sesión</button>
+                        </div>
+                    </div>
+
+                    @if (editandoApodoId == s.Id)
+                    {
+                        <div style="display:flex; gap:.5rem; margin-top:.5rem; flex-wrap:wrap;">
+                            <input class="form-input" style="max-width:280px;" placeholder="Ej: la compu del depósito"
+                                   @bind="apodoTexto" @bind:event="oninput" />
+                            <button class="btn btn-primary" @onclick="() => GuardarApodo(s)">Guardar</button>
+                            <button class="btn btn-secondary" @onclick="() => editandoApodoId = null">Cancelar</button>
+                        </div>
+                        <p class="text-muted" style="margin:.4rem 0 0 0; font-size:.8rem;">
+                            El navegador nunca dice el nombre del aparato, así que el nombre se pone a mano.
+                            Queda pegado a ese aparato aunque vuelva a entrar.
+                        </p>
+                    }
+
+                    @if (pendienteCerrar == s.Id)
+                    {
+                        <div style="margin-top:.5rem;">
+                            <span>
+                                @if (s.EsLaMia)
+                                {
+                                    <strong style="color:#dc2626;">Es la sesión desde la que estás mirando esto: si la cerrás, te va a pedir usuario y clave de nuevo.</strong>
+                                }
+                                else
+                                {
+                                    <text>@s.Nombre va a quedar afuera en @DescribirAparato(s) y va a tener que volver a entrar. ¿Cerrarla?</text>
+                                }
+                            </span>
+                            <button class="btn btn-primary" style="margin-left:.75rem;" @onclick="() => Cerrar(s)">Sí, cerrar</button>
+                            <button class="btn btn-secondary" style="margin-left:.4rem;" @onclick="() => pendienteCerrar = null">No</button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* Echar a alguien de todos los aparatos de una. Solo aparece si tiene más de uno. *@
+            @foreach (var g in datos.Abiertas.Where(x => x.UserId is not null)
+                                             .GroupBy(x => new { x.UserId, x.Nombre })
+                                             .Where(g => g.Count() > 1))
+            {
+                <div style="margin-top:.75rem;">
+                    <span class="text-muted">@g.Key.Nombre tiene @g.Count() aparatos adentro.</span>
+                    @if (pendienteCerrarTodasUserId == g.Key.UserId)
+                    {
+                        <button class="btn btn-primary" style="margin-left:.5rem;"
+                                @onclick="() => CerrarTodas(g.Key.UserId!.Value, g.Key.Nombre)">Sí, sacarlo de todos</button>
+                        <button class="btn btn-secondary" style="margin-left:.4rem;"
+                                @onclick="() => pendienteCerrarTodasUserId = null">No</button>
+                    }
+                    else
+                    {
+                        <button class="btn-link" style="color:#dc2626; margin-left:.5rem;"
+                                @onclick="() => pendienteCerrarTodasUserId = g.Key.UserId">Cerrarle todas</button>
+                    }
+                </div>
+            }
+
+            <div style="margin-top:1.5rem;">
+                <button class="btn-link" @onclick="() => mostrarHistorial = !mostrarHistorial">
+                    @(mostrarHistorial ? "▾" : "▸") Sesiones que se cerraron en los últimos 7 días (@datos.Cerradas.Count)
+                </button>
+
+                @if (mostrarHistorial)
+                {
+                    @if (!datos.Cerradas.Any())
+                    {
+                        <p class="text-muted" style="margin-top:.5rem;">No se cerró ninguna.</p>
+                    }
+                    @foreach (var s in datos.Cerradas)
+                    {
+                        <div class="text-muted" style="padding:.35rem 0; line-height:1.5;">
+                            @s.Nombre <span> · </span>@DescribirAparato(s) <span> · </span>@s.Lugar
+                            <span> · </span>@(s.CerradaAr is null ? "se venció sola" : Fecha(s.CerradaAr.Value))
+                            @if (!string.IsNullOrWhiteSpace(s.CerradaMotivo))
+                            {
+                                <text> · @s.CerradaMotivo</text>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(s.CerradaPor))
+                            {
+                                <text> (@s.CerradaPor)</text>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private SesionesListadoDto? datos;
+    private List<RedConocidaDto> redes = new();
+    private string? miIp;
+
+    private bool cargando;
+    private bool guardandoRedes;
+    private bool mostrarRedes;
+    private bool mostrarHistorial;
+
+    private int? pendienteCerrar;
+    private int? pendienteCerrarTodasUserId;
+    private int? editandoApodoId;
+    private string apodoTexto = "";
+
+    private DateTime? ultimaActualizacionAr;
+    private System.Threading.Timer? refrescoTimer;
+    private bool refrescando;
+
+    /// <summary>Hora argentina. Se saca de UTC y no del reloj de la máquina a propósito: el dueño
+    /// mira esta pantalla desde España y el navegador le daría la hora de allá.</summary>
+    private static DateTime AhoraAr => DateTime.UtcNow.AddHours(-3);
+
+    private string textoUltimaActualizacion =>
+        ultimaActualizacionAr is null ? "" : $"actualizado {Hace(ultimaActualizacionAr.Value)}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        await CargarRedes();
+
+        // La pantalla se refresca sola cada 30 s: "hace 3 min" que se queda congelado miente.
+        refrescoTimer = new System.Threading.Timer(async _ =>
+        {
+            try { await InvokeAsync(RefrescoTick); } catch { }
+        }, null, 30000, 30000);
+    }
+
+    private async Task RefrescoTick()
+    {
+        // No pisar la pantalla mientras está confirmando algo o escribiendo un nombre.
+        if (refrescando || cargando || pendienteCerrar is not null
+            || pendienteCerrarTodasUserId is not null || editandoApodoId is not null) return;
+        refrescando = true;
+        try { await Cargar(); }
+        finally { refrescando = false; }
+    }
+
+    private async Task Cargar()
+    {
+        cargando = true;
+        try
+        {
+            datos = await Api.GetSesionesAsync();
+            ultimaActualizacionAr = AhoraAr;
+        }
+        finally
+        {
+            cargando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CargarRedes()
+    {
+        var r = await Api.GetRedesConocidasAsync();
+        if (r is not null) { redes = r.Redes ?? new(); miIp = r.MiIp; }
+    }
+
+    private async Task GuardarRedes()
+    {
+        guardandoRedes = true;
+        try
+        {
+            var ok = await Api.GuardarRedesConocidasAsync(redes);
+            if (ok) { ToastService.Success("Redes guardadas"); await Cargar(); }
+            else ToastService.Error("No se pudieron guardar las redes");
+        }
+        finally { guardandoRedes = false; }
+    }
+
+    private void UsarMiIp()
+    {
+        if (string.IsNullOrWhiteSpace(miIp)) return;
+        // Se propone el prefijo (los tres primeros numeros) porque la ultima parte cambia sola.
+        var partes = miIp.Split('.');
+        var prefijo = partes.Length == 4 ? string.Join(".", partes.Take(3)) + "." : miIp;
+        redes.Add(new RedConocidaDto { Red = prefijo, Nombre = "Oficina" });
+        StateHasChanged();
+    }
+
+    private void AbrirApodo(SesionDto s)
+    {
+        editandoApodoId = s.Id;
+        apodoTexto = s.Apodo ?? "";
+    }
+
+    private async Task GuardarApodo(SesionDto s)
+    {
+        var ok = await Api.PonerApodoSesionAsync(s.Id, apodoTexto);
+        if (ok)
+        {
+            editandoApodoId = null;
+            await Cargar();
+        }
+        else ToastService.Error("No se pudo guardar el nombre");
+    }
+
+    private async Task Cerrar(SesionDto s)
+    {
+        pendienteCerrar = null;
+        var ok = await Api.CerrarSesionAsync(s.Id);
+        if (ok) ToastService.Success($"Sesión de {s.Nombre} cerrada");
+        else ToastService.Error("Esa sesión ya no estaba abierta");
+        await Cargar();
+    }
+
+    private async Task CerrarTodas(int userId, string nombre)
+    {
+        pendienteCerrarTodasUserId = null;
+        var ok = await Api.CerrarTodasLasSesionesAsync(userId);
+        if (ok) ToastService.Success($"{nombre} quedó afuera de todos los aparatos");
+        else ToastService.Error("No se pudieron cerrar");
+        await Cargar();
+    }
+
+    /// <summary>"Chrome en Windows" o, si le pusieron nombre, «La compu del depósito» (Chrome en Windows).</summary>
+    private static string DescribirAparato(SesionDto s)
+    {
+        var huella = s.Tipo == "HUELLA" ? " · huella" : "";
+        return string.IsNullOrWhiteSpace(s.Apodo)
+            ? s.Dispositivo + huella
+            : $"«{s.Apodo}» ({s.Dispositivo}){huella}";
+    }
+
+    /// <summary>El cartel de "aparato nuevo" solo tiene sentido si es reciente. A los tres días ya
+    /// no es noticia y sería ruido permanente.</summary>
+    private static bool EsAparatoNuevoReciente(SesionDto s)
+        => s.AparatoNuevo && (AhoraAr - s.EntroAr).TotalDays < 3;
+
+    private static string Hace(DateTime cuandoAr)
+    {
+        var d = AhoraAr - cuandoAr;
+        if (d.TotalSeconds < 90) return "recién";
+        if (d.TotalMinutes < 60) return $"hace {(int)d.TotalMinutes} min";
+        if (d.TotalHours < 24) return $"hace {(int)d.TotalHours} h";
+        return $"hace {(int)d.TotalDays} días";
+    }
+
+    private static string Fecha(DateTime ar) => ar.ToString("dd/MM HH:mm");
+
+    public async ValueTask DisposeAsync()
+    {
+        if (refrescoTimer is not null) { await refrescoTimer.DisposeAsync(); refrescoTimer = null; }
+    }
+}

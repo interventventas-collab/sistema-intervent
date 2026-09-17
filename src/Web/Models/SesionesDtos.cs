@@ -1,0 +1,46 @@
+namespace Web.Models;
+
+/// <summary>2026-09-17: una sesión abierta, tal como la muestra la pantalla "Sesiones abiertas".
+/// Las fechas ya vienen en hora argentina desde la API.</summary>
+public class SesionDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    /// <summary>WEB = usuario y clave · HUELLA = el celu que abre WhatsApp con el dedo.</summary>
+    public string Tipo { get; set; } = "WEB";
+    public string Dispositivo { get; set; } = "";
+    public string? Apodo { get; set; }
+    /// <summary>"Oficina", "Depósito" o "Afuera", según la IP.</summary>
+    public string Lugar { get; set; } = "";
+    public string? Ip { get; set; }
+    public DateTime EntroAr { get; set; }
+    public DateTime UltimaActividadAr { get; set; }
+    public DateTime ExpiraAr { get; set; }
+    /// <summary>Es la sesión desde la que estás mirando esta pantalla. No conviene cerrarla sin querer.</summary>
+    public bool EsLaMia { get; set; }
+    public bool AparatoNuevo { get; set; }
+    public int? UserId { get; set; }
+    public DateTime? CerradaAr { get; set; }
+    public string? CerradaPor { get; set; }
+    public string? CerradaMotivo { get; set; }
+}
+
+public class SesionesListadoDto
+{
+    public List<SesionDto> Abiertas { get; set; } = new();
+    public List<SesionDto> Cerradas { get; set; } = new();
+}
+
+/// <summary>"Las conexiones que empiezan con 190.2.3 son la Oficina".</summary>
+public class RedConocidaDto
+{
+    public string Red { get; set; } = "";
+    public string Nombre { get; set; } = "";
+}
+
+public class RedesConocidasDto
+{
+    public List<RedConocidaDto> Redes { get; set; } = new();
+    /// <summary>Desde qué número estás entrando vos ahora, para no tener que adivinarlo.</summary>
+    public string? MiIp { get; set; }
+}

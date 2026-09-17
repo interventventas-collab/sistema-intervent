@@ -85,6 +85,41 @@ public class ApiClient
         return r is not null;
     }
 
+    // --- Sesiones abiertas (quien esta adentro y desde que aparato) ---
+    public async Task<SesionesListadoDto?> GetSesionesAsync(int diasHistorial = 7)
+    {
+        return await GetAsync<SesionesListadoDto>($"/api/sesiones?diasHistorial={diasHistorial}");
+    }
+
+    public async Task<bool> CerrarSesionAsync(int id)
+    {
+        var r = await PostAsync<object>($"/api/sesiones/{id}/cerrar", new { });
+        return r is not null;
+    }
+
+    public async Task<bool> CerrarTodasLasSesionesAsync(int userId)
+    {
+        var r = await PostAsync<object>($"/api/sesiones/usuario/{userId}/cerrar-todas", new { });
+        return r is not null;
+    }
+
+    public async Task<bool> PonerApodoSesionAsync(int id, string? apodo)
+    {
+        var r = await PutAsync<object>($"/api/sesiones/{id}/apodo", new { apodo });
+        return r is not null;
+    }
+
+    public async Task<RedesConocidasDto?> GetRedesConocidasAsync()
+    {
+        return await GetAsync<RedesConocidasDto>("/api/sesiones/redes");
+    }
+
+    public async Task<bool> GuardarRedesConocidasAsync(List<RedConocidaDto> redes)
+    {
+        var r = await PutAsync<object>("/api/sesiones/redes", new { redes });
+        return r is not null;
+    }
+
     // --- Roles ---
     public async Task<List<RoleDto>?> GetRolesAsync()
     {

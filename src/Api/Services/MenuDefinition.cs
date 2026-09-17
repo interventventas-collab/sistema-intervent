@@ -60,6 +60,7 @@ public static class MenuDefinition
             new MenuItem("packs-control", "Precios de packs", "/packs-control"),
             new MenuItem("contadora", "Contadora (ventas por jurisdiccion)", "/contadora"),
             new MenuItem("usuarios", "Usuarios", "/usuarios"),
+            new MenuItem("sesiones", "Sesiones abiertas", "/sesiones"),
             new MenuItem("roles", "Roles", "/roles"),
             new MenuItem("integraciones", "Integraciones", "/integraciones"),
             new MenuItem("procesos", "Procesos", "/procesos"),
