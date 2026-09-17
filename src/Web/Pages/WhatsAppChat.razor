@@ -3138,8 +3138,10 @@
     @* 2026-09-12: de 460 a 680 px. Osmar comparó este buscador con el de la carga de venta normal:
        *"como está en la carga normal me gusta más, y además más amplio"*. Con 460 px el renglón se
        partía en tres líneas y la dirección quedaba cortada. *@
-    <div class="wa-modal" style="max-width:680px;" @onclick:stopPropagation="true">
-        <div class="wa-modal-header">
+    @* 2026-09-17: se puede ARRASTRAR tomándola del título. Osmar: "me queda arriba del mensaje
+       que quiero leer en el momento y no puedo". Reusa window.waDraggable, como la ficha y el pedido. *@
+    <div id="wa-elegircli-float" class="wa-modal" style="max-width:680px;" @onclick:stopPropagation="true">
+        <div id="wa-elegircli-head" class="wa-modal-header" title="Arrastrá desde acá para mover la ventana">
             <h3 style="margin:0; flex:1; font-size:1.05rem;">@elegirCliTitulo</h3>
             <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showElegirCli = false)">×</button>
         </div>
@@ -5426,6 +5428,7 @@
         elegirCliCreando = false;
         elegirCliAlElegir = alElegir;
         showElegirCli = true;
+        _elegirCliAttachPending = true;
     }
 
     async Task BuscarClientesElegir()
@@ -6585,6 +6588,7 @@
         catch (Exception ex) { Toast.Error($"No se pudo mandar: {ex.Message}"); }
         finally { enviandoFacturaId = null; }
     }
+    bool _elegirCliAttachPending = false;   // "¿A nombre de quién va esta venta?": engancharle el arrastrar al abrirla
     bool _fichaAttachPending = false;   // para engancharle el "arrastrar" cuando se renderiza la ventana flotante
 
     /// <summary>Abre/cierra la tarjeta de ficha del cliente. Al abrir, la carga desde la API.</summary>
@@ -7286,6 +7290,13 @@
         {
             _pedidoFloatAttachPending = false;
             try { await JS.InvokeVoidAsync("waDraggable.attach", "wa-pedido-float-head", "wa-pedido-float"); }
+            catch { /* si el JS no cargó, la ventana igual funciona, solo que no se mueve */ }
+        }
+        // 2026-09-17: la ventana "¿A nombre de quién va esta venta?" también se arrastra.
+        if (_elegirCliAttachPending && showElegirCli)
+        {
+            _elegirCliAttachPending = false;
+            try { await JS.InvokeVoidAsync("waDraggable.attach", "wa-elegircli-head", "wa-elegircli-float"); }
             catch { /* si el JS no cargó, la ventana igual funciona, solo que no se mueve */ }
         }
         // 2026-08-05: la ventana flotante de la ficha del cliente también arrastrable (una vez que terminó de cargar).
