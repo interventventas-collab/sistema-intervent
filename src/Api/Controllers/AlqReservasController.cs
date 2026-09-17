@@ -77,8 +77,65 @@ public class AlqReservasController : ControllerBase
         var cfg = await _db.CafeSettings.FindAsync(1);
         var qr = await _qr.GenerarQrAlquilerAsync(r.PublicToken);
         var condiciones = (await _db.AppSettings.FindAsync("alq.condiciones"))?.Value;
+        await CompletarDireccionImpresaAsync(r);
         var bytes = _pdf.Generar(r, cfg, qr, condiciones, await AlqDiasPricing.PorcentajeAsync(_db));
         return (bytes, BuildPdfFilename(r));
+    }
+
+    /// <summary>2026-09-17: el papel de la reserva salía sin localidad. La dirección del evento se
+    /// autocompleta con la calle de la ficha pero sin la localidad. Se completa al IMPRIMIR (no se
+    /// guarda) para que salga también en reservas viejas y para no cambiar el texto que usa el mapa.
+    /// Si la dirección arranca con un domicilio del cliente se le suma SU localidad, igual que en
+    /// ventas: alternativo → su Localidad (o Ciudad); entrega de la ficha → LocalidadEntrega; fiscal →
+    /// Localidad (o Ciudad). Si el evento es en otro lado (se escribió a mano) queda como está.
+    /// Sin dirección cargada, sale el domicilio de entrega de la ficha.</summary>
+    [NonAction]
+    public async Task CompletarDireccionImpresaAsync(AlqReserva r)
+    {
+        try
+        {
+            static bool Hay(string? x) => !string.IsNullOrWhiteSpace(x);
+            var cli = r.ClienteNav;
+            var texto = r.DireccionEvento?.Trim();
+            string? calle = null;
+            string? localidad = null;
+
+            if (!Hay(texto))
+            {
+                if (cli is not null && Hay(cli.DomicilioEntrega))
+                { texto = calle = cli.DomicilioEntrega!.Trim(); localidad = cli.LocalidadEntrega; }
+                else if (cli is not null && Hay(cli.Direccion))
+                { texto = calle = cli.Direccion!.Trim(); localidad = Hay(cli.Localidad) ? cli.Localidad : cli.Ciudad; }
+            }
+            else if (cli is not null)
+            {
+                var alt = (await _db.CafeClienteDirecciones.AsNoTracking()
+                        .Where(d => d.ClienteId == cli.Id && d.IsActive)
+                        .Select(d => new { d.Direccion, d.Localidad, d.Ciudad })
+                        .ToListAsync())
+                    .Where(d => Hay(d.Direccion) && texto!.StartsWith(d.Direccion.Trim(), StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(d => d.Direccion.Length)
+                    .FirstOrDefault();
+                if (alt is not null)
+                { calle = alt.Direccion.Trim(); localidad = Hay(alt.Localidad) ? alt.Localidad : alt.Ciudad; }
+                else if (Hay(cli.DomicilioEntrega) && texto!.StartsWith(cli.DomicilioEntrega!.Trim(), StringComparison.OrdinalIgnoreCase))
+                { calle = cli.DomicilioEntrega!.Trim(); localidad = cli.LocalidadEntrega; }
+                else if (Hay(cli.Direccion) && texto!.StartsWith(cli.Direccion!.Trim(), StringComparison.OrdinalIgnoreCase))
+                { calle = cli.Direccion!.Trim(); localidad = Hay(cli.Localidad) ? cli.Localidad : cli.Ciudad; }
+            }
+
+            if (!Hay(texto)) { r.DireccionImpresa = null; return; }
+            localidad = localidad?.Trim();
+            // La localidad va pegada a la calle, antes de las entrecalles: "Calle 123, Pilar · e/ A y B".
+            if (calle is not null && Hay(localidad) && !texto!.Contains(localidad!, StringComparison.OrdinalIgnoreCase))
+                texto = texto.Substring(0, calle.Length) + ", " + localidad + texto.Substring(calle.Length);
+            r.DireccionImpresa = texto;
+        }
+        catch
+        {
+            // Nunca romper el papel de la reserva por esto: queda la dirección como estaba.
+            r.DireccionImpresa = null;
+        }
     }
 
     /// <summary>2026-08-24: el archivo baja con NOMBRE DEL CLIENTE - FECHA DEL EVENTO - DIRECCION,
@@ -1325,9 +1382,35 @@ public class AlqReservasController : ControllerBase
         if (r is null) return NotFound(new { error = "Reserva no encontrada" });
         if (r.ArcaEstado != "autorizado" || string.IsNullOrEmpty(r.ArcaCae))
             return BadRequest(new { error = "Esta reserva todavía no está facturada." });
+        var (bytes, filename) = await GenerarFacturaPdfBytesAsync(id);
+        return File(bytes!, "application/pdf", filename);
+    }
+
+    /// <summary>2026-09-17: bytes del PDF de la FACTURA de la reserva (el mismo del botón de Reservas),
+    /// para mandarla por el chat de WhatsApp con su propio botón. (null,"") si no existe o no está facturada.</summary>
+    [NonAction]
+    public async Task<(byte[]? bytes, string filename)> GenerarFacturaPdfBytesAsync(int id)
+    {
+        var r = await _db.AlqReservas
+            .Include(x => x.ClienteNav)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null || r.ArcaEstado != "autorizado" || string.IsNullOrEmpty(r.ArcaCae)) return (null, "");
         var bytes = BuildFacturaPdf(r, notaCredito: false);
         var letra = ArcaInvoicePdfService.LetraDelTipo(r.ArcaCbteTipoNum ?? 0);
-        return File(bytes, "application/pdf", $"Factura-{letra}-{r.ArcaPtoVta:D5}-{r.ArcaCbteNro:D8}.pdf");
+        return (bytes, $"Factura-{letra}-{r.ArcaPtoVta:D5}-{r.ArcaCbteNro:D8}.pdf");
+    }
+
+    /// <summary>2026-09-17: domicilio fiscal del cliente con su localidad, para la factura
+    /// ("Calle 123, Pilar"). Si la localidad ya está escrita en la dirección, no se repite.</summary>
+    private static string? DomicilioFiscalConLocalidad(CafeCliente? cli)
+    {
+        var dir = cli?.Direccion?.Trim();
+        if (string.IsNullOrWhiteSpace(dir)) return null;
+        var loc = (!string.IsNullOrWhiteSpace(cli!.Localidad) ? cli.Localidad : cli.Ciudad)?.Trim();
+        return !string.IsNullOrWhiteSpace(loc) && !dir.Contains(loc, StringComparison.OrdinalIgnoreCase)
+            ? $"{dir}, {loc}"
+            : dir;
     }
 
     /// <summary>Arma el PDF de factura AFIP (sobrio) a partir de la reserva facturada. Reutiliza
@@ -1391,7 +1474,9 @@ public class AlqReservasController : ControllerBase
             CaeVto = (notaCredito ? r.NcCaeVto : r.ArcaCaeVto)?.ToString("yyyyMMdd") ?? "",
             CondicionPago = notaCredito ? null : r.FormaPago,
             Observaciones = observaciones,
-            OcultarBloqueEntrega = notaCredito,
+            // 2026-09-17: la factura va SIN el recuadro "Domicilio de entrega" (ponía la calle fiscal sin
+            // localidad y el sello PENDIENTE siempre). La entrega va en el papel de la reserva.
+            OcultarBloqueEntrega = true,
             // FACTURA SOBRIA: sin QrRepartidorBytes ni datos de logística (esos van en el comprobante de reserva).
         };
 
@@ -1454,7 +1539,7 @@ public class AlqReservasController : ControllerBase
             DocTipo = cuitCli.Length == 11 ? 80 : 99,
             DocNro = cuitCli.Length == 11 ? cuitCli : "0",
             Nombre = r.ClienteNav?.RazonSocial ?? r.ClienteNav?.Nombre ?? "Consumidor Final",
-            Domicilio = r.ClienteNav?.Direccion,
+            Domicilio = DomicilioFiscalConLocalidad(r.ClienteNav),
             CondicionIvaId = r.CondicionIva switch { "RI" => 1, "EX" => 4, "MO" => 6, "CF" => 5, _ => 5 },
             CondicionVenta = r.FormaPago switch
             {

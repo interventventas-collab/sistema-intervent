@@ -2808,13 +2808,29 @@ public class WhatsAppTwilioController : ControllerBase
                 q = q.Where(r => r.Numero.Contains(s)
                     || (r.ClienteNav != null && r.ClienteNav.Nombre.Contains(s))
                     || (r.DireccionEvento != null && r.DireccionEvento.Contains(s)));
-            var list = await q.OrderByDescending(r => r.CreatedAt).Take(take)
-                .Select(r => new ServerFileDto(
-                    "ALQUILER", r.Id, $"Reserva {r.Numero}",
-                    r.ClienteNav != null ? r.ClienteNav.Nombre : "—",
-                    $"${r.MontoTotal:N0}",
-                    r.CreatedAt, null, "🪑"))
+            var rows = await q.OrderByDescending(r => r.CreatedAt).Take(take)
+                .Select(r => new
+                {
+                    r.Id, r.Numero, r.MontoTotal, r.CreatedAt,
+                    Cliente = r.ClienteNav != null ? r.ClienteNav.Nombre : "—",
+                    r.ArcaEstado, r.ArcaCae, r.ArcaCbteTipoNum, r.ArcaPtoVta, r.ArcaCbteNro, r.ArcaImpTotal,
+                })
                 .ToListAsync();
+            // 2026-09-17: la reserva y su FACTURA son dos papeles distintos. Si la reserva está facturada,
+            // abajo de la reserva aparece la factura con su propio botón para mandarla aparte.
+            var list = new List<ServerFileDto>();
+            foreach (var r in rows)
+            {
+                list.Add(new ServerFileDto("ALQUILER", r.Id, $"Reserva {r.Numero}", r.Cliente, $"${r.MontoTotal:N0}", r.CreatedAt, null, "🪑"));
+                if (r.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(r.ArcaCae))
+                {
+                    var letra = ArcaInvoicePdfService.LetraDelTipo(r.ArcaCbteTipoNum ?? 0);
+                    var monto = r.ArcaImpTotal is > 0 ? r.ArcaImpTotal.Value : r.MontoTotal;
+                    list.Add(new ServerFileDto("ALQUILER_FACTURA", r.Id,
+                        $"Factura {letra} {r.ArcaPtoVta:D4}-{r.ArcaCbteNro:D8} · Reserva {r.Numero}",
+                        r.Cliente, $"${monto:N0}", r.CreatedAt, null, "🧾"));
+                }
+            }
             return Ok(list);
         }
         if (tipo == "VISITA")
@@ -3022,6 +3038,34 @@ public class WhatsAppTwilioController : ControllerBase
                 // 2026-08-05: reserva de alquiler. Reusa el MISMO PDF que descarga la pantalla de Reservas.
                 var (bytes, fname) = await _alqReservasController.GenerarPdfBytesAsync(req.Id);
                 if (bytes is null) return NotFound(new { error = "Reserva no encontrada" });
+                filename = fname;
+
+                Directory.CreateDirectory(UploadsDir);
+                var token = GenerarToken();
+                var stored = token + ".pdf";
+                await System.IO.File.WriteAllBytesAsync(Path.Combine(UploadsDir, stored), bytes);
+                var up = new WhatsAppTwilioUpload
+                {
+                    Token = token,
+                    OriginalFilename = filename,
+                    StoredFilename = stored,
+                    ContentType = "application/pdf",
+                    SizeBytes = bytes.Length,
+                    NumeroDestino = numeroNorm,
+                    CreatedAt = DateTime.UtcNow,
+                    ExpiresAt = DateTime.UtcNow.AddHours(24)
+                };
+                _db.WhatsAppTwilioUploads.Add(up);
+                await _db.SaveChangesAsync();
+                mediaUrl = $"{Request.Scheme}://{Request.Host}/api/whatsapp/twilio/files/{token}{Path.GetExtension(stored)}";
+                break;
+            }
+            case "ALQUILER_FACTURA":
+            {
+                // 2026-09-17: la FACTURA de la reserva, aparte del papel de la reserva. Mismo PDF que el
+                // botón "Factura" de la pantalla de Reservas.
+                var (bytes, fname) = await _alqReservasController.GenerarFacturaPdfBytesAsync(req.Id);
+                if (bytes is null) return NotFound(new { error = "La reserva no existe o todavía no está facturada" });
                 filename = fname;
 
                 Directory.CreateDirectory(UploadsDir);

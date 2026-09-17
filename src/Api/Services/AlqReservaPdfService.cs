@@ -110,8 +110,9 @@ public class AlqReservaPdfService
                             c.Item().Text(t => { t.Span("Retiro: ").Bold(); t.Span(r.FechaRetiro.ToString("dd/MM/yyyy", Es) + " (" + DiaSemana(r.FechaRetiro) + ")"); });
                             if (!string.IsNullOrWhiteSpace(r.HoraInicio) || !string.IsNullOrWhiteSpace(r.HoraFin))
                                 c.Item().Text("Horario: " + (r.HoraInicio ?? "") + (string.IsNullOrWhiteSpace(r.HoraFin) ? "" : " a " + r.HoraFin)).FontSize(9);
-                            if (!string.IsNullOrWhiteSpace(r.DireccionEvento))
-                                c.Item().Text(t => { t.Span("Dirección: ").Bold(); t.Span(r.DireccionEvento!); });
+                            var direccion = !string.IsNullOrWhiteSpace(r.DireccionImpresa) ? r.DireccionImpresa : r.DireccionEvento;
+                            if (!string.IsNullOrWhiteSpace(direccion))
+                                c.Item().Text(t => { t.Span("Dirección: ").Bold(); t.Span(direccion!); });
                         });
                     });
 

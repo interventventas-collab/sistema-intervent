@@ -34,6 +34,11 @@ public class AlqReserva
     [MaxLength(300)]
     public string? DireccionEvento { get; set; }
 
+    /// <summary>2026-09-17: dirección que se IMPRIME en el papel de la reserva, con la localidad de la
+    /// ficha sumada. No se guarda: se arma al imprimir (AlqReservasController.CompletarDireccionImpresa).</summary>
+    [NotMapped]
+    public string? DireccionImpresa { get; set; }
+
     /// <summary>Link de Google Maps del lugar del evento (pin exacto). Opcional. 2026-07-02.</summary>
     [MaxLength(500)]
     public string? MapeoLink { get; set; }
