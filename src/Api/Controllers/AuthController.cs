@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Api.Data;
 using Api.DTOs;
+using Api.Models;
 using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,11 +19,13 @@ public class AuthController : ControllerBase
 
     private readonly AuthService _authService;
     private readonly AppDbContext _db;
+    private readonly SesionesService _sesiones;
 
-    public AuthController(AuthService authService, AppDbContext db)
+    public AuthController(AuthService authService, AppDbContext db, SesionesService sesiones)
     {
         _authService = authService;
         _db = db;
+        _sesiones = sesiones;
     }
 
     [HttpPost("login")]
@@ -71,8 +74,14 @@ public class AuthController : ControllerBase
     // Es seguro llamarlo aunque no haya sesion: solo borra la cookie.
     [HttpPost("logout")]
     [AllowAnonymous]
-    public IActionResult Logout()
+    public async Task<IActionResult> Logout()
     {
+        // 2026-09-17: ademas de borrar la cookie, se mata la sesion en la lista. Si solo se borrara
+        // la cookie, el pase seguiria siendo valido para cualquiera que lo hubiera copiado.
+        var jti = User.FindFirst(SesionesService.ClaimJti)?.Value;
+        if (!string.IsNullOrEmpty(jti))
+            await _sesiones.CerrarPorJtiAsync(jti, User.Identity?.Name ?? "?", UserSession.MotivoSalio);
+
         Response.Cookies.Delete(AccessTokenCookieName, new CookieOptions
         {
             Path = "/",
@@ -251,7 +260,14 @@ public class AuthController : ControllerBase
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
             await _db.SaveChangesAsync();
 
-            return Ok(new { message = "Password changed successfully" });
+            // 2026-09-17: cambiar la clave tira abajo las sesiones de los OTROS aparatos. Si alguien
+            // te habia quedado adentro con el pase viejo, cambiar la clave ahora si lo saca. La de
+            // esta misma pantalla se respeta, para no echarte a vos mismo mientras cambias la clave.
+            var jti = User.FindFirst(SesionesService.ClaimJti)?.Value;
+            var cerradas = await _sesiones.CerrarTodasDelUsuarioAsync(
+                user.Id, user.Username, UserSession.MotivoCambioClave, exceptoJti: jti);
+
+            return Ok(new { message = "Password changed successfully", sesionesCerradas = cerradas });
         }
         catch (Exception ex)
         {
