@@ -4603,6 +4603,20 @@
                     </div>
                 }
 
+                @* 2026-09-17: descuento por adelantado. Va al DESC % del renglón que se agrega (se puede
+                   seguir cambiando ahí). Vacío o 0 = sin descuento, igual que antes. *@
+                @if (addItemModalMode == "PRODUCTO")
+                {
+                    <div>
+                        <label for="add-item-desc" style="font-size:0.78rem; color:#374151; font-weight:600; display:block; margin-bottom:0.2rem;">
+                            Descuento % <span style="font-weight:400; color:#6b7280;">(opcional · 100 = sin cargo)</span>
+                        </label>
+                        <input type="text" inputmode="decimal" id="add-item-desc" class="form-input" placeholder="0"
+                               style="width:100%; padding:0.45rem 0.6rem; font-size:1rem; text-align:center;"
+                               @bind="addItemModalDescuento" @bind:event="oninput" />
+                    </div>
+                }
+
                 @if (addItemModalMode == "SERVICIO")
                 {
                     <div>
@@ -8710,6 +8724,7 @@
         addItemModalSku = p.Sku ?? "";
         addItemModalCategoria = p.Categoria;
         addItemModalCantidad = 1;
+        addItemModalDescuento = "";
         addItemModalFormato = !string.IsNullOrEmpty(fmt) ? fmt : FormatoInicialProducto(p);
         addItemModalMolienda = DefaultMolienda(prodId) ?? "EN GRANOS";
         addItemModalEnvase = "NEGRO";
@@ -8993,6 +9008,7 @@
         addItemModalSku = p.Sku ?? "";
         addItemModalCategoria = p.Categoria;
         addItemModalCantidad = 1;
+        addItemModalDescuento = "";
         addItemModalFormato = FormatoInicialProducto(p);
         addItemModalMolienda = DefaultMolienda(id) ?? "EN GRANOS";
         addItemModalEnvase = "NEGRO";
@@ -9062,6 +9078,9 @@
     private string addItemModalMolienda = "EN GRANOS";
     private string addItemModalEnvase = "NEGRO";
     private decimal? addItemModalPrecioOverride;
+    // 2026-09-17: descuento % cargado de antemano en "Agregar producto" (Osmar: "ya poder cargar el
+    // descuento por adelantado"). Texto y no number: con type=number una coma deja el campo vacío.
+    private string addItemModalDescuento = "";
 
     private void CerrarAddItemModal()
     {
@@ -9083,7 +9102,21 @@
             // 2026-07-03: skipDomReRead=true asi AddItem NO relee molienda/envase
             // del <select> inline (que sigue con los defaults viejos) y respeta lo
             // elegido en el modal.
+            var antes = formItems.Count;
             await AddItem(skipDomReRead: true);
+            // 2026-09-17: el descuento del modal va al renglón recién agregado (AddItem siempre agrega
+            // un renglón nuevo, no suma a uno existente). Es el mismo DESC % de la columna del renglón.
+            if (formItems.Count > antes)
+            {
+                decimal.TryParse((addItemModalDescuento ?? "").Replace(",", ".").Replace("%", "").Trim(),
+                    System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var dPct);
+                dPct = Math.Clamp(dPct, 0m, 100m);
+                if (dPct > 0m)
+                {
+                    formItems[^1].DescuentoPct = dPct;
+                    await Cotizar();
+                }
+            }
         }
         else if (addItemModalMode == "COMBO")
         {
