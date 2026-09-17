@@ -125,6 +125,16 @@
     .vj-mov tr.banda td { background:#fafafa; }
     .vj-mov tr.esPago td { background:#f6fdf7; }
     .vj-mov tr.banda.esPago td { background:#eefaf0; }
+    /* 17/09/2026: la barrita para bajarse el reporte de la cuenta */
+    .vj-rep { display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center; margin:0.8rem 0 0.2rem; }
+    .vj-rep .tit { font-size:0.78rem; color:#6b7280; margin-right:0.2rem; }
+    .vj-rep-p { padding:0.3rem 0.55rem; font-size:0.78rem; background:#fff; border:1px solid #e5e7eb;
+                border-radius:7px; color:#374151; cursor:pointer; }
+    .vj-rep-p.on { border-color:#0f766e; color:#0f766e; font-weight:700; }
+    .vj-rep-baja { padding:0.3rem 0.6rem; font-size:0.78rem; font-weight:700; background:#fff;
+                   border:1px solid #99f6e4; border-radius:7px; color:#0f766e; cursor:pointer; }
+    .vj-rep input[type=date] { padding:0.25rem 0.4rem; font-size:0.78rem; border:1px solid #e5e7eb;
+                               border-radius:7px; }
     .vj-flecha { border:none; background:none; color:#6b7280; font-size:0.9rem; cursor:pointer;
         padding:0 0.3rem 0 0; }
     .vj-lista { margin:0.4rem 0 0 1rem; padding:0; color:#6b7280; font-size:0.82rem; }
@@ -523,6 +533,32 @@
                                     </div>
                                 }
                                 <div class="ren final"><span>Le debemos</span><b>$@Plata(e.SaldoAcumulado)</b></div>
+                            </div>
+
+                            @* 17/09/2026: bajarse la cuenta en papel o en Excel, por período.
+                               El PDF es EXACTAMENTE el mismo que se baja él desde su celu. *@
+                            <div class="vj-rep">
+                                <span class="tit">Descargar reporte</span>
+                                @foreach (var (cod, txt) in PeriodosRep)
+                                {
+                                    <button class="vj-rep-p @(periodoRep == cod ? "on" : "")"
+                                            @onclick="() => periodoRep = cod">@txt</button>
+                                }
+                                <button class="vj-rep-p @(periodoRep == "rango" ? "on" : "")"
+                                        @onclick='() => periodoRep = "rango"'>Elegir fechas</button>
+                                @if (periodoRep == "rango")
+                                {
+                                    <input type="date" @bind="repDesde" />
+                                    <input type="date" @bind="repHasta" />
+                                }
+                                <button class="vj-rep-baja" disabled="@(bajandoRep != "")"
+                                        @onclick='() => BajarReporte(e.Id, "pdf")'>📄 PDF</button>
+                                <button class="vj-rep-baja" disabled="@(bajandoRep != "")"
+                                        @onclick='() => BajarReporte(e.Id, "excel")'>📊 Excel</button>
+                                @if (bajandoRep != "")
+                                {
+                                    <span class="tit">armando el reporte...</span>
+                                }
                             </div>
 
                             <table class="vj-mov">
@@ -1100,6 +1136,47 @@
     private readonly HashSet<string> desplegados = new();
 
     /// <summary>Un renglón se identifica por su día + qué pasó (no tiene id propio).</summary>
+    // ── 17/09/2026: reporte de la cuenta, en PDF o en Excel ─────────────────────────────
+    private static readonly (string cod, string txt)[] PeriodosRep =
+    {
+        ("hoy", "Hoy"), ("ayer", "Ayer"), ("semana", "Esta semana"),
+        ("semana-pasada", "Semana pasada"), ("mes", "Este mes"), ("mes-pasado", "Mes pasado")
+    };
+    private string periodoRep = "mes";
+    private string bajandoRep = "";
+    private DateTime repDesde = DateTimeExt.AhoraAr().Date.AddDays(-7);
+    private DateTime repHasta = DateTimeExt.AhoraAr().Date;
+
+    private async Task BajarReporte(int empleadoId, string formato)
+    {
+        if (bajandoRep != "") return;
+        bajandoRep = formato;
+        try
+        {
+            var url = $"api/viajes/admin/empleados/{empleadoId}/reporte?p={periodoRep}&formato={formato}";
+            if (periodoRep == "rango")
+                url += $"&desde={repDesde:yyyy-MM-dd}&hasta={repHasta:yyyy-MM-dd}";
+
+            var resp = await Http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode)
+            {
+                ToastService.Error("No se pudo armar el reporte");
+                return;
+            }
+
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var nombre = resp.Content.Headers.ContentDisposition?.FileNameStar
+                      ?? resp.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                      ?? (formato == "excel" ? "cuenta.xlsx" : "cuenta.pdf");
+            await JS.InvokeVoidAsync("downloadBytesAsFile", nombre, Convert.ToBase64String(bytes),
+                formato == "excel"
+                    ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    : "application/pdf");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { bajandoRep = ""; }
+    }
+
     private static string ClaveMov(MovimientoCtaDto m) => $"{m.Fecha:yyyyMMdd}|{m.Que}";
 
     private void Desplegar(MovimientoCtaDto m)

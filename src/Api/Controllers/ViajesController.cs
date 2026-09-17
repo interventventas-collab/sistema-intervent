@@ -30,7 +30,9 @@ public class ViajesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly ViajesAutoService _auto;
-    public ViajesController(AppDbContext db, ViajesAutoService auto) { _db = db; _auto = auto; }
+    private readonly ViajesCuentaReporteService _reporte;
+    public ViajesController(AppDbContext db, ViajesAutoService auto, ViajesCuentaReporteService reporte)
+    { _db = db; _auto = auto; _reporte = reporte; }
 
     // ============================================================
     // ENDPOINTS PUBLICOS (sin auth, por token)
@@ -953,6 +955,32 @@ public class ViajesController : ControllerBase
         var desde = FechaArgentinaHoy().AddDays(-Math.Max(1, dias));
         return Ok(new CuentaDto(ganado, pagado, ganado - pagado,
             salida.Where(x => x.Fecha >= desde).ToList()));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 17/09/2026 — Reporte de la cuenta para bajar: PDF o Excel, por período.
+    // El período viene como botón apretado ("hoy", "semana", "mes-pasado"…). "rango" es el
+    // "elegir fechas" y usa desde/hasta. El PDF es el MISMO que baja el repartidor de su celu.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    [HttpGet("admin/empleados/{id:int}/reporte")]
+    [Authorize]
+    public async Task<IActionResult> Reporte(int id, [FromQuery] string p = "mes",
+        [FromQuery] DateTime? desde = null, [FromQuery] DateTime? hasta = null,
+        [FromQuery] string formato = "pdf")
+    {
+        var (d, h, titulo) = ViajesCuentaReporteService.Periodo(p, desde, hasta);
+        var rep = await _reporte.ArmarAsync(id, d, h, titulo);
+        if (rep is null) return NotFound();
+
+        if (formato.Equals("excel", StringComparison.OrdinalIgnoreCase) ||
+            formato.Equals("xlsx", StringComparison.OrdinalIgnoreCase))
+            return File(_reporte.Excel(rep),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ViajesCuentaReporteService.NombreArchivo(rep, "xlsx"));
+
+        return File(_reporte.Pdf(rep), "application/pdf",
+            ViajesCuentaReporteService.NombreArchivo(rep, "pdf"));
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

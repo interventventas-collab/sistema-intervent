@@ -226,6 +226,18 @@
     .mp-chip.extra { background:#e0e7ff; color:#3730a3; }
     .mp-chip.nuevo { background:#dbeafe; color:#1d4ed8; }
     .mp-chip.mapa { background:#eef2ff; color:#4338ca; }
+    /* 17/09/2026: bajarse el reporte de la cuenta en PDF */
+    .mp-rep { padding:0.6rem 1rem 0.7rem; border-bottom:1px solid #f3f4f6; }
+    .mp-rep-abrir { width:100%; padding:0.7rem; font-size:0.92rem; font-weight:700; color:#0f766e;
+                    background:#fff; border:1px solid #99f6e4; border-radius:9px; }
+    .mp-rep-periodos { display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.6rem; }
+    .mp-rep-p { padding:0.5rem 0.7rem; font-size:0.85rem; font-weight:600; background:#fff;
+                border:1px solid #e5e7eb; border-radius:8px; color:#374151; }
+    .mp-rep-p.on, .mp-rep-p.yendo { border-color:#0f766e; color:#0f766e; }
+    .mp-rep-fechas { display:flex; flex-wrap:wrap; gap:0.5rem; align-items:end; margin-top:0.6rem; }
+    .mp-rep-fechas label { font-size:0.78rem; color:#6b7280; display:flex; flex-direction:column; gap:0.2rem; }
+    .mp-rep-fechas input { padding:0.45rem; border:1px solid #e5e7eb; border-radius:8px; font-size:0.9rem; }
+    .mp-rep-nota { margin-top:0.5rem; font-size:0.8rem; color:#6b7280; }
     /* 17/09/2026: desplegar el día y ver todas las entregas, con dirección y hora */
     .mp-que.abre { cursor:pointer; display:flex; align-items:center; gap:0.35rem; }
     .mp-flecha { color:#0f766e; font-size:0.8rem; width:0.9rem; flex:none; }
@@ -500,6 +512,39 @@
                             }
                         </div>
                     </div>
+                </div>
+
+                @* 17/09/2026: bajarse el papel de su cuenta. Es el MISMO PDF que baja la oficina. *@
+                <div class="mp-rep">
+                    <button class="mp-rep-abrir" @onclick="() => verReporte = !verReporte">
+                        📄 Descargar reporte @(verReporte ? "▾" : "▸")
+                    </button>
+                    @if (verReporte)
+                    {
+                        <div class="mp-rep-periodos">
+                            @foreach (var (cod, txt) in Periodos)
+                            {
+                                <button class="mp-rep-p @(bajando == cod ? "yendo" : "")"
+                                        disabled="@(bajando != "")"
+                                        @onclick="() => BajarReporte(cod)">@txt</button>
+                            }
+                            <button class="mp-rep-p @(eligeFechas ? "on" : "")"
+                                    @onclick="() => eligeFechas = !eligeFechas">Elegir fechas</button>
+                        </div>
+                        @if (eligeFechas)
+                        {
+                            <div class="mp-rep-fechas">
+                                <label>Desde <input type="date" @bind="repDesde" /></label>
+                                <label>Hasta <input type="date" @bind="repHasta" /></label>
+                                <button class="mp-rep-p" disabled="@(bajando != "")"
+                                        @onclick='() => BajarReporte("rango")'>Descargar</button>
+                            </div>
+                        }
+                        @if (bajando != "")
+                        {
+                            <div class="mp-rep-nota">Armando el reporte...</div>
+                        }
+                    }
                 </div>
 
                 @* 05/09/2026: tres solapas para que no tenga que scrollear todo para encontrar algo. *@
@@ -1612,6 +1657,42 @@
         int EntregasMes = 0, decimal GanadoMes = 0, decimal PagadoMes = 0, decimal Arrastre = 0);
 
     private List<MiMovDto> movs => miCuenta?.Movimientos ?? new();
+
+    // ── 17/09/2026: el reporte de su cuenta en PDF ──────────────────────────────────────
+    // Los períodos van como botones, no como lista desplegable: en el celu se apunta con el dedo.
+    private static readonly (string cod, string txt)[] Periodos =
+    {
+        ("hoy", "Hoy"), ("ayer", "Ayer"), ("semana", "Esta semana"),
+        ("semana-pasada", "Semana pasada"), ("mes", "Este mes"), ("mes-pasado", "Mes pasado")
+    };
+    private bool verReporte, eligeFechas;
+    private string bajando = "";
+    private DateTime repDesde = DateTimeExt.AhoraAr().Date.AddDays(-7);
+    private DateTime repHasta = DateTimeExt.AhoraAr().Date;
+
+    private async Task BajarReporte(string cod)
+    {
+        if (bajando != "") return;
+        bajando = cod;
+        try
+        {
+            var url = $"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/reporte?p={cod}";
+            if (cod == "rango")
+                url += $"&desde={repDesde:yyyy-MM-dd}&hasta={repHasta:yyyy-MM-dd}";
+
+            var resp = await Http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) { bajando = ""; return; }
+
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var nombre = resp.Content.Headers.ContentDisposition?.FileNameStar
+                      ?? resp.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                      ?? "mi-cuenta.pdf";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", nombre,
+                Convert.ToBase64String(bytes), "application/pdf");
+        }
+        catch { }
+        finally { bajando = ""; }
+    }
 
     // 17/09/2026: qué días tiene abiertos (uno o varios). La clave es el día del reparto.
     private readonly HashSet<DateTime> desplegados = new();

@@ -186,6 +186,8 @@ builder.Services.AddScoped<CafeComodatoPdfService>();
 builder.Services.AddScoped<CafeReciboVisitaCobranzaPdfService>();
 builder.Services.AddScoped<CafeListaPreciosPdfService>();
 builder.Services.AddScoped<CafeListaCustomPdfService>();
+// 17/09/2026: el reporte de la cuenta del repartidor (PDF para él, PDF y Excel para la oficina).
+builder.Services.AddScoped<ViajesCuentaReporteService>();
 builder.Services.AddScoped<ContabiliumService>();
 builder.Services.AddScoped<ContabiliumImportService>();
 builder.Services.AddScoped<CloneContabiliumService>();

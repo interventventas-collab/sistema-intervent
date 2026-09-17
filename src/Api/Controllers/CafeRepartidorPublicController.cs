@@ -24,12 +24,13 @@ public class CafeRepartidorPublicController : ControllerBase
     private readonly WhatsAppOutboundService _wa;
     private readonly MapeoEntregasService _entregas;
     private readonly ViajesAutoService _viajes;
+    private readonly ViajesCuentaReporteService _reporteCuenta;
     public CafeRepartidorPublicController(AppDbContext db, MeliShipmentService me1Service,
         TelegramService telegram, WhatsAppOutboundService wa, MapeoEntregasService entregas,
-        ViajesAutoService viajes)
+        ViajesAutoService viajes, ViajesCuentaReporteService reporteCuenta)
     {
         _db = db; _me1Service = me1Service; _telegram = telegram; _wa = wa; _entregas = entregas;
-        _viajes = viajes;
+        _viajes = viajes; _reporteCuenta = reporteCuenta;
     }
 
     /// <summary>
@@ -292,6 +293,25 @@ public class CafeRepartidorPublicController : ControllerBase
             descripcion.StartsWith("Cobranza redirigida", StringComparison.OrdinalIgnoreCase))
             return "cobranza que te quedaste vos";
         return "";
+    }
+
+    /// <summary>
+    /// 17/09/2026 — El PDF de su cuenta, para el período que eligió con los botones. Es EXACTAMENTE
+    /// el mismo papel que baja la oficina desde Viajes: él ve lo mismo que nosotros.
+    /// </summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}/viajes/reporte")]
+    public async Task<IActionResult> ReporteCuenta(string tokenRepartidor,
+        [FromQuery] string p = "mes", [FromQuery] DateTime? desde = null, [FromQuery] DateTime? hasta = null)
+    {
+        var emp = await EmpleadoDeViajesAsync(tokenRepartidor);
+        if (emp is null) return NotFound(new { error = "No encontramos tu ficha" });
+
+        var (d, h, titulo) = ViajesCuentaReporteService.Periodo(p, desde, hasta);
+        var rep = await _reporteCuenta.ArmarAsync(emp.Id, d, h, titulo);
+        if (rep is null) return NotFound(new { error = "No encontramos tu cuenta" });
+
+        return File(_reporteCuenta.Pdf(rep), "application/pdf",
+            ViajesCuentaReporteService.NombreArchivo(rep, "pdf"));
     }
 
     public record ReportarRequest(string Texto);
