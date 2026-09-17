@@ -121,6 +121,20 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     // Confiar en cualquier proxy interno (estamos siempre detras de uno en Docker).
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
+
+    // 2026-09-17 — CUANTOS INTERMEDIARIOS HAY ADELANTE. Esto no es un detalle: por default
+    // ASP.NET cuenta UNO solo, y en produccion hay DOS (Caddy -> nginx -> API). Con el default,
+    // la IP que quedaba registrada era la del nginx interno (172.19.0.x) en vez de la de la
+    // persona. Sintoma visible: en "Sesiones abiertas" todos salian desde el mismo numero raro y
+    // siempre como "Afuera". Y peor, sin ruido: el limite de 5 intentos de login por minuto
+    // quedaba compartido por TODOS, porque para la API todos venian de la misma IP.
+    //
+    // Desarrollo tiene un solo intermediario (nginx), asi que el default alcanza. El numero se
+    // configura por entorno con FORWARDED_PROXY_COUNT (ForwardedHeaders__ProxyCount).
+    //
+    // ⚠ No conviene poner un numero mas alto que la cantidad real de intermediarios: de mas,
+    // empieza a leer lo que mando el navegador, que se puede falsificar.
+    options.ForwardLimit = builder.Configuration.GetValue<int?>("ForwardedHeaders:ProxyCount") ?? 1;
 });
 
 // Rate limiting para /api/auth/login: 5 intentos por minuto por IP.

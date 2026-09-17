@@ -59,6 +59,10 @@ services:
       - ASPNETCORE_URLS=http://+:80
       - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=AIml;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;
       - Jwt__Secret=${JWT_SECRET:?JWT_SECRET no definido en .env}
+      # 2026-09-17: cuantos intermediarios hay adelante de la API. En desarrollo hay uno solo
+      # (nginx); en produccion hay dos (Caddy -> nginx, ver docker-compose.prod.yml). Se puede
+      # subir a 2 para reproducir aca el mismo escenario que produccion.
+      - ForwardedHeaders__ProxyCount=${FORWARDED_PROXY_COUNT:-1}
       - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-}
       - VAULT_DEFAULT_PASSWORD=${VAULT_DEFAULT_PASSWORD:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}

@@ -63,6 +63,10 @@ services:
       - ASPNETCORE_URLS=http://+:80
       - ConnectionStrings__DefaultConnection=Server=sqlserver-prod;Database=AIml;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;
       - Jwt__Secret=${JWT_SECRET:?JWT_SECRET no definido en .env}
+      # 2026-09-17: en prod hay DOS intermediarios adelante de la API (Caddy -> nginx). Sin esto
+      # la API cree que la IP de todos es la del nginx interno: "Sesiones abiertas" no puede decir
+      # Oficina o Afuera, y el limite de intentos de login queda compartido por todos.
+      - ForwardedHeaders__ProxyCount=2
       - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-}
       - VAULT_DEFAULT_PASSWORD=${VAULT_DEFAULT_PASSWORD:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
