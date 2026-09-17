@@ -772,7 +772,9 @@ public record CafeProveedorDto(
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
     int ComprasCount, decimal TotalComprado,
     // 09/09/2026: si está habilitado para recibir cobros redirigidos.
-    bool AceptaRedirigido = false);
+    bool AceptaRedirigido = false,
+    // 17/09/2026: cuenta corriente (facturas de AFIP + cotizaciones) y desde qué día cuenta.
+    bool CuentaCorriente = false, DateTime? CuentaCorrienteDesde = null);
 
 public class CreateCafeProveedorRequest
 {

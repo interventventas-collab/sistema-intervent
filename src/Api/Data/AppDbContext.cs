@@ -223,6 +223,7 @@ public class AppDbContext : DbContext
     public DbSet<CafePagoProveedor> CafePagosProveedor => Set<CafePagoProveedor>();
     public DbSet<CafePagoProveedorComprobante> CafePagosProveedorComprobantes => Set<CafePagoProveedorComprobante>();
     public DbSet<CafePagoProveedorMedio> CafePagosProveedorMedios => Set<CafePagoProveedorMedio>();
+    public DbSet<CafeProveedorDeuda> CafeProveedorDeudas => Set<CafeProveedorDeuda>();
     public DbSet<CafeDeposito> CafeDepositos => Set<CafeDeposito>();
     public DbSet<CafeStockPorDeposito> CafeStockPorDeposito => Set<CafeStockPorDeposito>();
     // 2026-09-02: la lista de "para pedir" (productos que cruzaron por debajo del stock ideal)

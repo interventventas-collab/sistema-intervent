@@ -56,6 +56,15 @@ public class CafeProveedor
     /// pedir un dedazo. Sólo aparecen los que se habilitan a mano.</summary>
     public bool AceptaRedirigido { get; set; } = false;
 
+    /// <summary>17/09/2026 — Lleva cuenta corriente: se le cuentan las facturas de AFIP (oficial) y
+    /// las cotizaciones cargadas a mano (no oficial) desde <see cref="CuentaCorrienteDesde"/>.
+    /// Sin el tilde, sus facturas no generan deuda (el 95% se paga en el momento).</summary>
+    public bool CuentaCorriente { get; set; } = false;
+
+    /// <summary>Día argentino (sin hora) desde el que cuenta la cuenta corriente. Lo anterior se da
+    /// por pagado; lo que se debía ese día se carga como saldo inicial.</summary>
+    public DateTime? CuentaCorrienteDesde { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

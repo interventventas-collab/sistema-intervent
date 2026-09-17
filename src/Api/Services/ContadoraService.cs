@@ -35,11 +35,13 @@ public class ContadoraService
     private readonly ArcaAccountService _cuentasArca;
     private readonly FacturaQrService _qr;
     private readonly FacturasEmailService _email;
+    private readonly ProveedorCtaCteService _ctacte;
 
     public ContadoraService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService,
-        FileStorageService storage, ILogger<ContadoraService> logger, ArcaScrapingService arca, ArcaAccountService cuentasArca, FacturaQrService qr, FacturasEmailService email)
+        FileStorageService storage, ILogger<ContadoraService> logger, ArcaScrapingService arca, ArcaAccountService cuentasArca, FacturaQrService qr, FacturasEmailService email,
+        ProveedorCtaCteService ctacte)
     {
-        _db = db; _httpFactory = httpFactory; _accountService = accountService; _storage = storage; _logger = logger; _arca = arca; _cuentasArca = cuentasArca; _qr = qr; _email = email;
+        _db = db; _httpFactory = httpFactory; _accountService = accountService; _storage = storage; _logger = logger; _arca = arca; _cuentasArca = cuentasArca; _qr = qr; _email = email; _ctacte = ctacte;
     }
 
     private const string CuitPalanica = "30717212149"; // el CUIT del Libro IVA
@@ -2057,21 +2059,20 @@ public class ContadoraService
                 .Select(c => new { c.IdComprobante, c.Origen, c.Concepto, c.EmisorCuit, c.TipoComprobante, c.PuntoVenta, c.NumeroComprobante,
                     c.FechaEmision, c.Letra, c.ReceptorNombre, c.ReceptorDoc, c.Provincia, c.NetoGravado, c.Iva21, c.Iva105, c.Total, c.PdfPath })
                 .ToListAsync();
-            var idsAll = todo.Select(c => c.IdComprobante).ToList();
-            var pagoMap = idsAll.Count == 0 ? new Dictionary<string, decimal>() :
-                (await _db.ContadoraComprobantePagos.Where(p => !p.Anulado && idsAll.Contains(p.IdComprobante))
-                    .GroupBy(p => p.IdComprobante).Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) }).ToListAsync())
-                .ToDictionary(x => x.Id, x => x.Pagado);
+            // 17/09/2026: "debo"/"pagada" solo tiene sentido para los proveedores con cuenta corriente
+            // (desde el día que arrancó). El resto se paga en el momento y no se sigue.
+            var estado = await _ctacte.EstadoFacturasAfipAsync(todo.Select(c => (c.IdComprobante, c.ReceptorDoc, c.FechaEmision)));
 
-            var todosDto = todo.Select(c =>
+            var todosDto = todo.Where(c => estado.ContainsKey(c.IdComprobante)).Select(c =>
             {
-                var pagado = pagoMap.TryGetValue(c.IdComprobante, out var pg) ? pg : 0m;
+                var (provId, pagado) = estado[c.IdComprobante];
                 return new ContadoraComprobanteDto
                 {
                     IdComprobante = c.IdComprobante, Origen = c.Origen, Concepto = ConceptoLabel(c.Concepto), EmpresaCuit = c.EmisorCuit, EsNotaCredito = false, TienePdf = c.PdfPath != null,
                     TipoComprobante = c.TipoComprobante, PuntoVenta = c.PuntoVenta, NumeroComprobante = c.NumeroComprobante,
                     FechaEmision = c.FechaEmision, Letra = c.Letra, ReceptorNombre = c.ReceptorNombre, ReceptorDoc = c.ReceptorDoc, Provincia = c.Provincia,
-                    Neto = c.NetoGravado, Iva = c.Iva21 + c.Iva105, Total = c.Total, PuedeRegistrarPago = true, Pagado = pagado
+                    Neto = c.NetoGravado, Iva = c.Iva21 + c.Iva105, Total = c.Total, PuedeRegistrarPago = true, Pagado = pagado,
+                    ProveedorId = provId
                 };
             });
             var filtrados = (estadoPago == "debo"
@@ -2098,24 +2099,18 @@ public class ContadoraService
             Total = (c.EsNotaCredito ? -1 : 1) * c.Total
         }).ToList();
 
-        // Para COMPRAS: marcá cuánto se pagó de cada factura (las NC no se "pagan", restan).
+        // Para COMPRAS: cuánto se pagó de cada factura (las NC no se "pagan", restan). 17/09/2026:
+        // solo de los proveedores con cuenta corriente; el pago se carga en Tesorería.
         if (naturaleza == "COMPRA")
         {
-            var ids = items.Where(i => !i.EsNotaCredito).Select(i => i.IdComprobante).ToList();
-            if (ids.Count > 0)
+            var estado = await _ctacte.EstadoFacturasAfipAsync(items.Where(i => !i.EsNotaCredito)
+                .Select(i => (i.IdComprobante, i.ReceptorDoc, i.FechaEmision)));
+            foreach (var it in items)
             {
-                var pagos = await _db.ContadoraComprobantePagos
-                    .Where(p => !p.Anulado && ids.Contains(p.IdComprobante))
-                    .GroupBy(p => p.IdComprobante)
-                    .Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) })
-                    .ToListAsync();
-                var mapa = pagos.ToDictionary(x => x.Id, x => x.Pagado);
-                foreach (var it in items)
-                {
-                    if (it.EsNotaCredito) continue;
-                    it.PuedeRegistrarPago = true;
-                    it.Pagado = mapa.TryGetValue(it.IdComprobante, out var pg) ? pg : 0m;
-                }
+                if (it.EsNotaCredito || !estado.TryGetValue(it.IdComprobante, out var e)) continue;
+                it.PuedeRegistrarPago = true;
+                it.Pagado = e.Pagado;
+                it.ProveedorId = e.ProveedorId;
             }
         }
         return new ContadoraComprobantesPageDto { Items = items, Total = total, Page = page, PageSize = pageSize };
@@ -2296,174 +2291,186 @@ public class ContadoraService
     private static string FacturaLabel(string? letra, int? pv, long? num)
         => $"{letra} {(pv.HasValue ? pv.Value.ToString("D4") : "")}-{(num.HasValue ? num.Value.ToString("D8") : "")}".Trim();
 
-    /// <summary>Facturas de compra de un proveedor (por CUIT) que todavía tienen saldo pendiente.</summary>
+    // 17/09/2026: el cruce banco ↔ compra ahora registra un PAGO A PROVEEDOR de verdad (Tesorería),
+    // que descuenta de la caja del banco y cancela documentos de la cuenta corriente del proveedor
+    // (facturas de AFIP o cotizaciones). Solo para proveedores con cuenta corriente. Los cruces
+    // viejos (ContadoraComprobantePagos con ExtractoMovId) se siguen mostrando y se pueden deshacer.
+
+    private async Task<CafeProveedor?> ProveedorCtaCtePorCuitAsync(string? cuit)
+    {
+        var c = ProveedorCtaCteService.NormCuit(cuit);
+        if (c.Length == 0) return null;
+        return await _db.CafeProveedores.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Cuit == c && p.CuentaCorriente && p.CuentaCorrienteDesde != null);
+    }
+
+    /// <summary>Lo que un proveedor (por CUIT) tiene pendiente en su cuenta corriente. IdComprobante = clave del documento.</summary>
     public async Task<List<FacturaCompraImpagaDto>> GetFacturasImpagasProveedorAsync(string cuit)
     {
-        if (string.IsNullOrWhiteSpace(cuit)) return new();
-        var cuitN = cuit.Trim();
-        var facs = await _db.ContadoraComprobantes
-            .Where(c => c.Naturaleza == "COMPRA" && !c.EsNotaCredito && c.ReceptorDoc == cuitN)
-            .Select(c => new { c.IdComprobante, c.TipoComprobante, c.PuntoVenta, c.NumeroComprobante, c.FechaEmision, c.Total })
-            .ToListAsync();
-        if (facs.Count == 0) return new();
-
-        var ids = facs.Select(f => f.IdComprobante).ToList();
-        var pagoMap = (await _db.ContadoraComprobantePagos
-                .Where(p => !p.Anulado && ids.Contains(p.IdComprobante))
-                .GroupBy(p => p.IdComprobante)
-                .Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) })
-                .ToListAsync())
-            .ToDictionary(x => x.Id, x => x.Pagado);
-
-        return facs.Select(f =>
+        var prov = await ProveedorCtaCtePorCuitAsync(cuit);
+        if (prov is null) return new();
+        var cta = await _ctacte.GetCuentaAsync(prov.Id);
+        if (cta is null) return new();
+        return cta.Pendientes.OrderByDescending(d => d.Fecha)
+            .Select(d => new FacturaCompraImpagaDto
             {
-                var pagado = pagoMap.TryGetValue(f.IdComprobante, out var pg) ? pg : 0m;
-                return new FacturaCompraImpagaDto
-                {
-                    IdComprobante = f.IdComprobante, TipoComprobante = f.TipoComprobante,
-                    PuntoVenta = f.PuntoVenta, NumeroComprobante = f.NumeroComprobante,
-                    FechaEmision = f.FechaEmision, Total = f.Total, Pagado = pagado, Saldo = f.Total - pagado
-                };
+                IdComprobante = d.Clave, TipoComprobante = d.Tipo, Etiqueta = d.Etiqueta,
+                FechaEmision = d.Fecha, Total = d.Total, Pagado = d.Pagado, Saldo = d.Saldo
             })
-            .Where(f => Math.Round(f.Saldo, 2) > 0)
-            .OrderByDescending(f => f.FechaEmision)
             .ToList();
     }
 
-    /// <summary>Registra el pago de una o varias facturas de compra tomando los datos de un movimiento del banco.</summary>
+    /// <summary>Registra el pago (en Tesorería, contra la caja del banco) de uno o varios documentos
+    /// del proveedor tomando los datos de un movimiento del extracto.</summary>
     public async Task<PagoBancoResultDto> RegistrarPagoDesdeBancoAsync(PagarComprasDesdeBancoRequest req, string? operador)
     {
         if (req.IdComprobantes is null || req.IdComprobantes.Count == 0)
             return new PagoBancoResultDto { Ok = false, Error = "No elegiste ninguna factura." };
         var mov = await _db.CafeExtractoMovimientos.FirstOrDefaultAsync(m => m.Id == req.ExtractoMovId);
         if (mov is null) return new PagoBancoResultDto { Ok = false, Error = "No encontré el movimiento del banco." };
+        if (await _db.CafePagosProveedor.AnyAsync(p => p.ExtractoMovId == mov.Id && p.Estado == "VIGENTE"))
+            return new PagoBancoResultDto { Ok = false, Error = "Esta transferencia ya pagó otras facturas. Deshacé ese cruce primero." };
 
-        var referencia = string.Join(" ", new[] { mov.Descripcion, mov.NumeroComprobante }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
-        if (referencia.Length > 120) referencia = referencia.Substring(0, 120);
+        var prov = await ProveedorCtaCtePorCuitAsync(mov.LeyendaAdicional2);
+        if (prov is null)
+            return new PagoBancoResultDto { Ok = false, Error = "Ese CUIT no es de un proveedor con cuenta corriente." };
+        var cta = await _ctacte.GetCuentaAsync(prov.Id);
+        var pend = (cta?.Pendientes ?? new()).ToDictionary(d => d.Clave);
 
-        int creados = 0;
-        foreach (var idc in req.IdComprobantes.Distinct())
+        var items = new List<ProveedorCtaCteService.ItemPago>();
+        foreach (var clave in req.IdComprobantes.Distinct())
         {
-            var f = await GetPagosCompraAsync(idc);
-            if (f is null) continue;
-            var saldo = Math.Round(f.Saldo, 2);
-            if (saldo <= 0) continue;   // ya estaba pagada
+            if (!pend.TryGetValue(clave, out var d)) continue;   // ya estaba pagada
+            var saldo = Math.Round(d.Saldo, 2);
             // Importe a imputar: el que mandó el usuario (pago parcial), sin pasarse del saldo.
-            // Si no vino nada, se paga el saldo completo (retrocompatible con el cruce automático).
+            // Si no vino nada, se paga el saldo completo (así llama el cruce automático).
             var importe = saldo;
-            if (req.Importes != null && req.Importes.TryGetValue(idc, out var imp) && imp > 0)
+            if (req.Importes != null && req.Importes.TryGetValue(clave, out var imp) && imp > 0)
                 importe = Math.Min(Math.Round(imp, 2), saldo);
-            if (importe <= 0) continue;
-            _db.ContadoraComprobantePagos.Add(new ContadoraComprobantePago
-            {
-                IdComprobante = idc,
-                Fecha = mov.Fecha,
-                Medio = "Transferencia",
-                Referencia = string.IsNullOrWhiteSpace(referencia) ? "Transferencia banco" : referencia,
-                Importe = importe,
-                Operador = string.IsNullOrWhiteSpace(operador) ? null : operador.Trim(),
-                Observaciones = "Cruzado con el extracto del Galicia",
-                Anulado = false,
-                ExtractoMovId = mov.Id,
-                CreatedAt = DateTime.UtcNow
-            });
-            creados++;
+            if (importe > 0) items.Add(new ProveedorCtaCteService.ItemPago(clave, null, importe));
         }
-        if (creados == 0) return new PagoBancoResultDto { Ok = false, Error = "Esas facturas ya estaban pagadas." };
-        await _db.SaveChangesAsync();
-        return new PagoBancoResultDto { Ok = true, PagosCreados = creados };
+        if (items.Count == 0) return new PagoBancoResultDto { Ok = false, Error = "Esas facturas ya estaban pagadas." };
+
+        var caja = await _db.CafeCajas.AsNoTracking()
+            .Where(c => c.IsActive && c.Tipo == "BANCO")
+            .OrderByDescending(c => c.Nombre.Contains("Galicia")).ThenBy(c => c.Id)
+            .FirstOrDefaultAsync();
+        if (caja is null) return new PagoBancoResultDto { Ok = false, Error = "No encontré la caja del banco en Tesorería." };
+
+        var referencia = string.Join(" ", new[] { mov.Descripcion, mov.NumeroComprobante }.Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
+        if (referencia.Length > 200) referencia = referencia.Substring(0, 200);
+        var total = items.Sum(i => i.Importe);
+
+        // Mediodía argentino del día del movimiento: así se lee el mismo día en todas las pantallas.
+        var (error, _, _) = await _ctacte.CrearPagoAsync(new ProveedorCtaCteService.NuevoPago(
+            prov.Id, 0m, string.IsNullOrWhiteSpace(operador) ? null : operador.Trim(),
+            "Transferencia del extracto del banco",
+            items,
+            new List<ProveedorCtaCteService.MedioPago> { new(caja.Id, total, string.IsNullOrWhiteSpace(referencia) ? "Transferencia banco" : referencia, null) },
+            mov.Fecha.Date.AddHours(15), mov.Id));
+        if (error is not null) return new PagoBancoResultDto { Ok = false, Error = error };
+        return new PagoBancoResultDto { Ok = true, PagosCreados = items.Count };
     }
 
-    /// <summary>Para el listado del extracto: qué facturas quedaron pagadas por cada movimiento del banco.</summary>
+    /// <summary>Para el listado del extracto: qué documentos quedaron pagados por cada movimiento del banco.</summary>
     public async Task<List<PagoBancoMovDto>> GetPagosBancoAsync(List<int> movIds)
     {
         if (movIds is null || movIds.Count == 0) return new();
-        var pagos = await _db.ContadoraComprobantePagos
+        var pares = new List<(int movId, string? afipId, int? deudaId)>();
+
+        var viejos = await _db.ContadoraComprobantePagos
             .Where(p => !p.Anulado && p.ExtractoMovId != null && movIds.Contains(p.ExtractoMovId.Value))
             .Select(p => new { MovId = p.ExtractoMovId!.Value, p.IdComprobante })
             .ToListAsync();
-        if (pagos.Count == 0) return new();
+        pares.AddRange(viejos.Select(v => (v.MovId, (string?)v.IdComprobante, (int?)null)));
 
-        var ids = pagos.Select(p => p.IdComprobante).Distinct().ToList();
-        var labels = (await _db.ContadoraComprobantes
+        var nuevos = await _db.CafePagosProveedorComprobantes
+            .Where(c => c.Pago!.Estado == "VIGENTE" && c.Pago.ExtractoMovId != null && movIds.Contains(c.Pago.ExtractoMovId.Value))
+            .Select(c => new { MovId = c.Pago!.ExtractoMovId!.Value, c.AfipIdComprobante, c.DeudaId })
+            .ToListAsync();
+        pares.AddRange(nuevos.Select(n => (n.MovId, n.AfipIdComprobante, n.DeudaId)));
+        if (pares.Count == 0) return new();
+
+        var ids = pares.Where(p => p.afipId != null).Select(p => p.afipId!).Distinct().ToList();
+        var labels = ids.Count == 0 ? new Dictionary<string, string>() : (await _db.ContadoraComprobantes
                 .Where(c => ids.Contains(c.IdComprobante))
                 .Select(c => new { c.IdComprobante, c.Letra, c.PuntoVenta, c.NumeroComprobante })
                 .ToListAsync())
             .ToDictionary(c => c.IdComprobante, c => FacturaLabel(c.Letra, c.PuntoVenta, c.NumeroComprobante));
+        var deudaIds = pares.Where(p => p.deudaId != null).Select(p => p.deudaId!.Value).Distinct().ToList();
+        var deudas = deudaIds.Count == 0 ? new Dictionary<int, string>() : (await _db.CafeProveedorDeudas
+                .Where(d => deudaIds.Contains(d.Id))
+                .Select(d => new { d.Id, d.Tipo, d.Numero })
+                .ToListAsync())
+            .ToDictionary(d => d.Id, d => d.Tipo == ProveedorCtaCteService.TipoSaldoInicial ? "Saldo inicial" : $"Cotización {d.Numero ?? "s/n"}");
 
-        return pagos.GroupBy(p => p.MovId)
+        return pares.GroupBy(p => p.movId)
             .Select(g => new PagoBancoMovDto
             {
                 MovId = g.Key,
-                Facturas = g.Select(x => labels.TryGetValue(x.IdComprobante, out var l) ? l : x.IdComprobante).Distinct().ToList()
+                Facturas = g.Select(x => x.afipId != null ? (labels.TryGetValue(x.afipId, out var l) ? l : x.afipId)
+                                        : x.deudaId != null ? deudas.GetValueOrDefault(x.deudaId.Value, "Cotización")
+                                        : "a cuenta").Distinct().ToList()
             })
             .ToList();
     }
 
-    /// <summary>Deshace el cruce: anula los pagos registrados desde ese movimiento del banco.</summary>
+    /// <summary>Deshace el cruce: anula el pago a proveedor hecho desde ese movimiento (y los viejos de la Contadora).</summary>
     public async Task<int> DesasociarBancoAsync(int movId)
     {
-        var pagos = await _db.ContadoraComprobantePagos.Where(p => !p.Anulado && p.ExtractoMovId == movId).ToListAsync();
-        foreach (var p in pagos) p.Anulado = true;
-        if (pagos.Count > 0) await _db.SaveChangesAsync();
-        return pagos.Count;
+        var viejos = await _db.ContadoraComprobantePagos.Where(p => !p.Anulado && p.ExtractoMovId == movId).ToListAsync();
+        foreach (var p in viejos) p.Anulado = true;
+        var nuevos = await _db.CafePagosProveedor.Where(p => p.Estado == "VIGENTE" && p.ExtractoMovId == movId).ToListAsync();
+        foreach (var p in nuevos) { p.Estado = "ANULADA"; p.UpdatedAt = DateTime.UtcNow; }
+        if (viejos.Count + nuevos.Count > 0) await _db.SaveChangesAsync();
+        return viejos.Count + nuevos.Count;
     }
 
     /// <summary>Detecta cruces automáticos: transferencias del banco (egresos con CUIT, no cruzadas todavía)
-    /// que coinciden clavadas (mismo CUIT + mismo importe) con UNA sola factura de compra impaga.
-    /// Solo propone los sin ambigüedad; los dudosos quedan para hacer a mano.</summary>
+    /// de un proveedor con cuenta corriente, que coinciden clavadas en importe con UNO SOLO de sus
+    /// documentos pendientes. Los dudosos quedan para hacer a mano.</summary>
     public async Task<List<CrucePropuestoDto>> PreviewCruceBancoAsync()
     {
         var reconSet = (await _db.ContadoraComprobantePagos
             .Where(p => !p.Anulado && p.ExtractoMovId != null)
             .Select(p => p.ExtractoMovId!.Value).Distinct().ToListAsync()).ToHashSet();
+        reconSet.UnionWith(await _db.CafePagosProveedor
+            .Where(p => p.Estado == "VIGENTE" && p.ExtractoMovId != null)
+            .Select(p => p.ExtractoMovId!.Value).Distinct().ToListAsync());
+
+        var provs = (await _db.CafeProveedores.AsNoTracking()
+                .Where(p => p.CuentaCorriente && p.CuentaCorrienteDesde != null && p.Cuit != null)
+                .Select(p => new { p.Id, p.Cuit, p.CuentaCorrienteDesde })
+                .ToListAsync())
+            .GroupBy(p => p.Cuit!).ToDictionary(g => g.Key, g => g.First());
+        if (provs.Count == 0) return new();
+        var cuits = provs.Keys.ToList();
 
         var movs = (await _db.CafeExtractoMovimientos
-            .Where(m => m.Debitos > 0 && m.LeyendaAdicional2 != null && m.LeyendaAdicional2 != "")
+            .Where(m => m.Debitos > 0 && m.LeyendaAdicional2 != null && cuits.Contains(m.LeyendaAdicional2))
             .Select(m => new { m.Id, m.Fecha, m.Debitos, m.LeyendaAdicional1, m.LeyendaAdicional2 })
             .ToListAsync())
-            .Where(m => !reconSet.Contains(m.Id))
+            .Where(m => !reconSet.Contains(m.Id) && m.Fecha.Date >= provs[m.LeyendaAdicional2!].CuentaCorrienteDesde!.Value.Date)
             .OrderBy(m => m.Fecha).ThenBy(m => m.Id)   // el egreso más viejo se queda con la factura
             .ToList();
         if (movs.Count == 0) return new();
 
-        var cuits = movs.Select(m => m.LeyendaAdicional2!).Distinct().ToList();
-        var facs = await _db.ContadoraComprobantes
-            .Where(c => c.Naturaleza == "COMPRA" && !c.EsNotaCredito && c.ReceptorDoc != null && cuits.Contains(c.ReceptorDoc))
-            .Select(c => new { c.IdComprobante, c.ReceptorDoc, c.Letra, c.PuntoVenta, c.NumeroComprobante, c.Total })
-            .ToListAsync();
-        if (facs.Count == 0) return new();
-
-        var ids = facs.Select(f => f.IdComprobante).ToList();
-        var pagoMap = (await _db.ContadoraComprobantePagos
-                .Where(p => !p.Anulado && ids.Contains(p.IdComprobante))
-                .GroupBy(p => p.IdComprobante).Select(g => new { Id = g.Key, Pagado = g.Sum(x => x.Importe) })
-                .ToListAsync())
-            .ToDictionary(x => x.Id, x => x.Pagado);
-
-        var impagasPorCuit = facs
-            .Select(f => new
-            {
-                f.IdComprobante, f.ReceptorDoc, f.Letra, f.PuntoVenta, f.NumeroComprobante,
-                Saldo = f.Total - (pagoMap.TryGetValue(f.IdComprobante, out var p) ? p : 0m)
-            })
-            .Where(f => Math.Round(f.Saldo, 2) > 0)
-            .GroupBy(f => f.ReceptorDoc!)
-            .ToDictionary(g => g.Key, g => g.ToList());
+        var cuentas = await _ctacte.CalcularAsync(movs.Select(m => provs[m.LeyendaAdicional2!].Id).Distinct().ToList());
+        var pendPorCuit = movs.Select(m => m.LeyendaAdicional2!).Distinct()
+            .ToDictionary(c => c, c => cuentas.TryGetValue(provs[c].Id, out var cta) ? cta.Pendientes : new());
 
         var props = new List<CrucePropuestoDto>();
         foreach (var m in movs)
         {
-            if (!impagasPorCuit.TryGetValue(m.LeyendaAdicional2!, out var lista)) continue;
+            var lista = pendPorCuit[m.LeyendaAdicional2!];
             var exactas = lista.Where(f => Math.Abs(f.Saldo - m.Debitos) < 0.01m).ToList();
             if (exactas.Count != 1) continue;   // 0 = no coincide; >1 = ambiguo, va a mano
             var f = exactas[0];
-            lista.Remove(f);                     // una factura no se propone para dos transferencias
+            lista.Remove(f);                     // un documento no se propone para dos transferencias
             props.Add(new CrucePropuestoDto
             {
                 MovId = m.Id, Fecha = m.Fecha, ProveedorNombre = m.LeyendaAdicional1, Cuit = m.LeyendaAdicional2,
-                Importe = m.Debitos, IdComprobante = f.IdComprobante,
-                FacturaLabel = FacturaLabel(f.Letra, f.PuntoVenta, f.NumeroComprobante)
+                Importe = m.Debitos, IdComprobante = f.Clave, FacturaLabel = f.Etiqueta
             });
         }
         return props.OrderByDescending(p => p.Fecha).ToList();

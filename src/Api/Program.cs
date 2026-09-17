@@ -297,6 +297,7 @@ builder.Services.AddScoped<MeliClientesService>();
 builder.Services.AddSingleton<FacturaQrService>();
 builder.Services.AddScoped<FacturasEmailService>();
 builder.Services.AddScoped<ContadoraService>();
+builder.Services.AddScoped<ProveedorCtaCteService>();
 builder.Services.AddSingleton<ContadoraAutoBackfillService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ContadoraAutoBackfillService>());
 builder.Services.AddScoped<ContabiliumStagingService>();

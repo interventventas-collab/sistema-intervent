@@ -21,6 +21,7 @@ public class CafeCobranzasController : ControllerBase
     private readonly AuditLogService _audit;
     private readonly CafeReciboCobranzaPdfService _pdfService;
     private readonly FileStorageService _files;
+    private readonly ProveedorCtaCteService _ctacte;
 
     // 2026-06-25: Tipos validos de adjuntos (comprobante de retencion, de transferencia, etc.)
     private static readonly string[] AdjuntoTiposValidos = { "RETENCION", "TRANSFERENCIA", "OTRO" };
@@ -30,9 +31,9 @@ public class CafeCobranzasController : ControllerBase
     private const long AdjuntoMaxBytes = 10L * 1024 * 1024;  // 10 MB
 
     public CafeCobranzasController(AppDbContext db, AuditLogService audit,
-        CafeReciboCobranzaPdfService pdfService, FileStorageService files)
+        CafeReciboCobranzaPdfService pdfService, FileStorageService files, ProveedorCtaCteService ctacte)
     {
-        _db = db; _audit = audit; _pdfService = pdfService; _files = files;
+        _db = db; _audit = audit; _pdfService = pdfService; _files = files; _ctacte = ctacte;
     }
 
     /// <summary>Genera el PDF del recibo de cobranza.</summary>
@@ -145,7 +146,10 @@ public class CafeCobranzasController : ControllerBase
         // 09/09/2026: el destinatario también puede ser un PROVEEDOR.
         // RedirigidoCompraId null = "a cuenta" (el caso normal hoy, sin compras cargadas).
         int? RedirigidoProveedorId = null,
-        int? RedirigidoCompraId = null);
+        int? RedirigidoCompraId = null,
+        // 17/09/2026: contra qué documento de su cuenta corriente ("AFIP:..." o "DEU:..."). null = a cuenta.
+        // RedirigidoCompraId quedó de antes (Cafe_Compras) y ya no se manda.
+        string? RedirigidoDocClave = null);
 
     public record CrearChequeItem(
         string Numero, string Banco, string? Emisor, decimal Importe,
@@ -590,11 +594,10 @@ public class CafeCobranzasController : ControllerBase
                 // se le puede mandar plata. Si no está habilitado, no pasa.
                 if (!prov.AceptaRedirigido)
                     return BadRequest(new { error = $"{prov.Nombre} no está habilitado para recibir cobros redirigidos. Tildalo en su ficha primero." });
-                if (med.RedirigidoCompraId is > 0)
+                if (!string.IsNullOrWhiteSpace(med.RedirigidoDocClave))
                 {
-                    var compra = await _db.CafeCompras.FindAsync(med.RedirigidoCompraId.Value);
-                    if (compra is null || compra.ProveedorId != prov.Id || compra.Estado == "ANULADA")
-                        return BadRequest(new { error = "Esa factura no es de ese proveedor o está anulada" });
+                    var errDoc = await _ctacte.ValidarClavesAsync(prov.Id, new() { (med.RedirigidoDocClave, med.Importe) });
+                    if (errDoc is not null) return BadRequest(new { error = errDoc });
                 }
             }
             if (!(med.RedirigidoEmpleadoId is > 0) && !aProveedor && !privada)
@@ -722,11 +725,10 @@ public class CafeCobranzasController : ControllerBase
             {
                 await _db.SaveChangesAsync();   // necesito el Id del medio
                 var (error, pagoId, movId) = await RedirigirAProveedorAsync(
-                    medio, caja, med.RedirigidoProveedorId.Value, med.RedirigidoCompraId,
+                    medio, caja, med.RedirigidoProveedorId.Value, med.RedirigidoDocClave,
                     cobranza.Fecha, cliente?.Nombre);
                 if (error is not null) return BadRequest(new { error });
                 medio.RedirigidoProveedorId = med.RedirigidoProveedorId;
-                medio.RedirigidoCompraId = med.RedirigidoCompraId;
                 medio.RedirigidoDestino = "proveedor";
                 medio.RedirigidoPagoId = pagoId;
                 medio.RedirigidoMovimientoId = movId;
@@ -1269,7 +1271,9 @@ public class CafeCobranzasController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────────────────────
 
     public record ProveedorRedirDto(int Id, string Nombre, decimal Saldo, int FacturasPendientes);
-    public record FacturaProvDto(int Id, string Numero, DateTime Fecha, decimal Total, decimal Saldo, string? Comprobante);
+    /// <summary>17/09/2026: Clave = documento de la cuenta corriente (factura de AFIP o cotización).
+    /// Id quedó en 0: antes era el Id de Cafe_Compras.</summary>
+    public record FacturaProvDto(int Id, string Numero, DateTime Fecha, decimal Total, decimal Saldo, string? Comprobante, string Clave = "");
 
     [HttpGet("destinatarios-proveedores")]
     public async Task<IActionResult> DestinatariosProveedores()
@@ -1281,61 +1285,27 @@ public class CafeCobranzasController : ControllerBase
             .ToListAsync();
         if (provs.Count == 0) return Ok(new List<ProveedorRedirDto>());
 
-        var ids = provs.Select(p => p.Id).ToList();
-
-        // Saldo = lo que le compramos menos lo que le pagamos. Positivo = le debemos.
-        // ProveedorId es nullable en Cafe_Compras (hay compras sin proveedor cargado).
-        var compras = await _db.CafeCompras
-            .Where(c => c.ProveedorId != null && ids.Contains(c.ProveedorId.Value) && c.Estado != "ANULADA")
-            .GroupBy(c => c.ProveedorId!.Value)
-            .Select(g => new { Prov = g.Key, Total = g.Sum(x => x.Total) })
-            .ToListAsync();
-        var pagos = await _db.CafePagosProveedor
-            .Where(p => ids.Contains(p.ProveedorId) && p.Estado == "VIGENTE")
-            .GroupBy(p => p.ProveedorId)
-            .Select(g => new { Prov = g.Key, Total = g.Sum(x => x.Total + x.Retenciones) })
-            .ToListAsync();
-
-        var pendientes = new Dictionary<int, int>();
-        foreach (var id in ids) pendientes[id] = (await FacturasPendientesAsync(id)).Count;
-
-        var salida = provs.Select(p => new ProveedorRedirDto(
-            p.Id, p.Nombre,
-            (compras.FirstOrDefault(c => c.Prov == p.Id)?.Total ?? 0m) - (pagos.FirstOrDefault(x => x.Prov == p.Id)?.Total ?? 0m),
-            pendientes.TryGetValue(p.Id, out var n) ? n : 0)).ToList();
+        // 17/09/2026: saldo y pendientes salen de la cuenta corriente (facturas de AFIP + cotizaciones).
+        // Los que no llevan cuenta corriente dan 0 y el cobro va a cuenta.
+        var cuentas = await _ctacte.CalcularAsync(provs.Select(p => p.Id).ToList());
+        var salida = provs.Select(p =>
+        {
+            var c = cuentas.GetValueOrDefault(p.Id);
+            return new ProveedorRedirDto(p.Id, p.Nombre, c?.Total ?? 0m, c?.Pendientes.Count ?? 0);
+        }).ToList();
         if (EsSesionDeHuella()) salida = salida.Select(x => x with { Saldo = 0m }).ToList();
 
         return Ok(salida);
     }
 
-    /// <summary>Las facturas de ese proveedor que todavía deben plata. Si devuelve vacío, la
-    /// cobranza va "a cuenta" — que es lo normal hoy, porque las compras no se cargan todavía.</summary>
+    /// <summary>Lo que ese proveedor tiene pendiente en su cuenta corriente. Si devuelve vacío, la
+    /// cobranza va "a cuenta".</summary>
     [HttpGet("proveedor/{proveedorId:int}/facturas-pendientes")]
     public async Task<IActionResult> FacturasPendientes(int proveedorId)
-        => Ok(await FacturasPendientesAsync(proveedorId));
-
-    private async Task<List<FacturaProvDto>> FacturasPendientesAsync(int proveedorId)
     {
-        var compras = await _db.CafeCompras
-            .Where(c => c.ProveedorId == proveedorId && c.Estado != "ANULADA")
-            .Select(c => new { c.Id, c.Numero, c.Fecha, c.Total, c.NumeroComprobante })
-            .ToListAsync();
-        if (compras.Count == 0) return new List<FacturaProvDto>();
-
-        var compraIds = compras.Select(c => c.Id).ToList();
-        var pagado = await _db.CafePagosProveedorComprobantes
-            .Where(c => c.CompraId != null && compraIds.Contains(c.CompraId!.Value) && c.Pago!.Estado == "VIGENTE")
-            .GroupBy(c => c.CompraId!.Value)
-            .Select(g => new { CompraId = g.Key, Total = g.Sum(x => x.Importe) })
-            .ToListAsync();
-        var dict = pagado.ToDictionary(p => p.CompraId, p => p.Total);
-
-        return compras
-            .Select(c => new FacturaProvDto(c.Id, c.Numero, c.Fecha, c.Total,
-                c.Total - (dict.TryGetValue(c.Id, out var p) ? p : 0m), c.NumeroComprobante))
-            .Where(x => x.Saldo > 0.01m)
-            .OrderBy(x => x.Fecha)
-            .ToList();
+        var c = await _ctacte.GetCuentaAsync(proveedorId);
+        if (c is null) return Ok(new List<FacturaProvDto>());
+        return Ok(c.Pendientes.Select(d => new FacturaProvDto(0, d.Numero, d.Fecha, d.Total, d.Saldo, d.Etiqueta, d.Clave)).ToList());
     }
 
     /// <summary>
@@ -1435,7 +1405,7 @@ public class CafeCobranzasController : ControllerBase
     /// Por eso Total se setea a mano: el estado de cuenta del proveedor usa ese campo.
     /// </summary>
     private async Task<(string? error, int? pagoId, int? movId)> RedirigirAProveedorAsync(
-        CafeCobranzaMedio medio, Models.CafeCaja caja, int proveedorId, int? compraId,
+        CafeCobranzaMedio medio, Models.CafeCaja caja, int proveedorId, string? docClave,
         DateTime fecha, string? clienteNombre)
     {
         var prov = await _db.CafeProveedores.FindAsync(proveedorId);
@@ -1443,18 +1413,9 @@ public class CafeCobranzasController : ControllerBase
 
         var deQuien = string.IsNullOrWhiteSpace(clienteNombre) ? "" : $" de {clienteNombre}";
 
-        // Numero correlativo, con el mismo formato que los pagos cargados a mano (OP-00000001).
-        var numeros = await _db.CafePagosProveedor.Select(x => x.Numero).ToListAsync();
-        int maxSec = 0;
-        foreach (var n in numeros)
-        {
-            var parts = (n ?? "").Split('-');
-            if (parts.Length >= 2 && int.TryParse(parts[^1], out var k) && k > maxSec) maxSec = k;
-        }
-
         var pago = new Models.CafePagoProveedor
         {
-            Numero = $"OP-{(maxSec + 1):D8}",
+            Numero = await _ctacte.SiguienteNumeroAsync(),
             Fecha = fecha.Date,
             ProveedorId = proveedorId,
             Total = medio.Importe,
@@ -1466,15 +1427,11 @@ public class CafeCobranzasController : ControllerBase
         _db.CafePagosProveedor.Add(pago);
         await _db.SaveChangesAsync();
 
-        // Contra qué factura va. Sin factura queda "a cuenta": el saldo del proveedor sale bien
-        // igual porque la cuenta corriente se lleva por totales, y cuando carguen las compras
-        // atrasadas se acomoda solo.
-        _db.CafePagosProveedorComprobantes.Add(new Models.CafePagoProveedorComprobante
-        {
-            PagoId = pago.Id,
-            CompraId = compraId is > 0 ? compraId : null,
-            Importe = medio.Importe
-        });
+        // Contra qué va: una factura de AFIP o una cotización de su cuenta corriente. Sin documento
+        // queda "a cuenta": el saldo del proveedor sale bien igual porque se lleva por totales.
+        var renglon = new Models.CafePagoProveedorComprobante { PagoId = pago.Id, Importe = medio.Importe };
+        ProveedorCtaCteService.AplicarClave(renglon, docClave);
+        _db.CafePagosProveedorComprobantes.Add(renglon);
         await _db.SaveChangesAsync();
 
         var mov = new Models.CafeCajaMovimiento

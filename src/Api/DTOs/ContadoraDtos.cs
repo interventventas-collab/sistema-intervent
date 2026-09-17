@@ -198,6 +198,8 @@ public class ContadoraComprobanteDto
     public bool PuedeRegistrarPago { get; set; }
     /// <summary>Suma de los pagos no anulados registrados sobre esta factura.</summary>
     public decimal Pagado { get; set; }
+    /// <summary>17/09/2026: proveedor con cuenta corriente al que corresponde (para ir a pagarle).</summary>
+    public int? ProveedorId { get; set; }
 }
 
 public class ContadoraComprobantesPageDto
@@ -328,6 +330,8 @@ public class RegistrarPagoResultDto
 public class FacturaCompraImpagaDto
 {
     public string IdComprobante { get; set; } = "";
+    /// <summary>17/09/2026: cómo se lee el documento ("Factura A 00003-00001234", "Cotización 55"). IdComprobante ahora es la clave de la cuenta corriente.</summary>
+    public string? Etiqueta { get; set; }
     public string? TipoComprobante { get; set; }
     public int? PuntoVenta { get; set; }
     public long? NumeroComprobante { get; set; }

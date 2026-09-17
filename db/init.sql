@@ -7717,3 +7717,51 @@ GO
 IF COL_LENGTH('Alq_CobranzasPendientes','CobranzaCreadaId') IS NULL
     ALTER TABLE Alq_CobranzasPendientes ADD CobranzaCreadaId INT NULL;
 GO
+
+-- ============================================================
+-- 2026-09-17: CUENTA CORRIENTE DE PROVEEDORES.
+-- La deuda OFICIAL sale de las facturas de AFIP (ContadoraComprobantes, Naturaleza='COMPRA'),
+-- que el robot baja solo. La NO OFICIAL (cotizaciones que le pasan los proveedores) se carga a
+-- mano en Cafe_ProveedorDeudas, sin productos: el stock se carga aparte y no se toca.
+-- Solo cuentan los proveedores con el tilde, y desde la fecha en que se tildaron: lo anterior se
+-- da por pagado y lo que se debia ese dia se carga como SALDO_INICIAL.
+-- Los pagos siguen siendo Cafe_PagosProveedor (descuentan de la caja); cada renglon imputado dice
+-- si fue contra una factura de AFIP, una deuda de la tabla nueva o "a cuenta".
+-- ============================================================
+IF COL_LENGTH('Cafe_Proveedores','CuentaCorriente') IS NULL
+    ALTER TABLE Cafe_Proveedores ADD CuentaCorriente BIT NOT NULL CONSTRAINT DF_CafeProveedores_CtaCte DEFAULT 0 WITH VALUES;
+GO
+IF COL_LENGTH('Cafe_Proveedores','CuentaCorrienteDesde') IS NULL
+    ALTER TABLE Cafe_Proveedores ADD CuentaCorrienteDesde DATETIME2 NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_ProveedorDeudas')
+BEGIN
+    CREATE TABLE Cafe_ProveedorDeudas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ProveedorId INT NOT NULL,
+        Tipo NVARCHAR(20) NOT NULL,              -- COTIZACION | SALDO_INICIAL
+        Oficial BIT NOT NULL CONSTRAINT DF_CafeProvDeudas_Oficial DEFAULT 0,
+        Fecha DATETIME2 NOT NULL,                -- dia argentino, sin hora
+        Numero NVARCHAR(50) NULL,
+        Importe DECIMAL(18,2) NOT NULL,
+        Observaciones NVARCHAR(500) NULL,
+        ArchivoPath NVARCHAR(500) NULL,
+        ArchivoNombre NVARCHAR(200) NULL,
+        Estado NVARCHAR(20) NOT NULL CONSTRAINT DF_CafeProvDeudas_Estado DEFAULT 'VIGENTE',
+        Operador NVARCHAR(100) NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeProvDeudas_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeProvDeudas_Proveedor FOREIGN KEY (ProveedorId) REFERENCES Cafe_Proveedores(Id)
+    );
+    CREATE INDEX IX_CafeProvDeudas_Prov ON Cafe_ProveedorDeudas(ProveedorId);
+END
+GO
+IF COL_LENGTH('Cafe_PagosProveedorComprobantes','AfipIdComprobante') IS NULL
+    ALTER TABLE Cafe_PagosProveedorComprobantes ADD AfipIdComprobante NVARCHAR(40) NULL;
+GO
+IF COL_LENGTH('Cafe_PagosProveedorComprobantes','DeudaId') IS NULL
+    ALTER TABLE Cafe_PagosProveedorComprobantes ADD DeudaId INT NULL;
+GO
+IF COL_LENGTH('Cafe_PagosProveedor','ExtractoMovId') IS NULL
+    ALTER TABLE Cafe_PagosProveedor ADD ExtractoMovId INT NULL;
+GO

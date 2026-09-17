@@ -30,6 +30,9 @@ public class CafePagoProveedor
     [Required, MaxLength(20)]
     public string Estado { get; set; } = "VIGENTE";
 
+    /// <summary>17/09/2026: si el pago salió de una transferencia del extracto del banco, ese movimiento.</summary>
+    public int? ExtractoMovId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
@@ -50,6 +53,13 @@ public class CafePagoProveedorComprobante
     public int? CompraId { get; set; }
     [ForeignKey(nameof(CompraId))]
     public CafeCompra? Compra { get; set; }
+
+    /// <summary>17/09/2026: factura de AFIP que paga este renglón (ContadoraComprobantes.IdComprobante).</summary>
+    [MaxLength(40)]
+    public string? AfipIdComprobante { get; set; }
+
+    /// <summary>17/09/2026: deuda cargada a mano (cotización o saldo inicial) que paga este renglón.</summary>
+    public int? DeudaId { get; set; }
 
     [Column(TypeName = "decimal(18,2)")]
     public decimal Importe { get; set; }
