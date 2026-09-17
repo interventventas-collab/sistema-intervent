@@ -1108,6 +1108,10 @@ public class ApiClient
     public async Task<bool> DeletePostitAsync(int id)
         => await DeleteAsync($"/api/postits/{id}");
 
+    // 2026-09-17: guarda el orden elegido con las flechitas ▲▼
+    public async Task OrdenarPostitsAsync(OrdenarPostitsRequest request)
+        => await PutAsync<object>("/api/postits/orden", request);
+
     // --- Visitas (recibos de visita / cambio, 2026-08-05) ---
     public async Task<List<VisitaDto>?> GetVisitasAsync(string? estado = null)
     {

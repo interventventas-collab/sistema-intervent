@@ -3016,6 +3016,11 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Scope' AND Object_ID = Ob
     ALTER TABLE Postits ADD Scope NVARCHAR(50) NOT NULL CONSTRAINT DF_Postits_Scope DEFAULT N'dashboard';
 GO
 
+-- 2026-09-17: Postits: orden elegido a mano con las flechitas (NULL = nunca se ordeno, va arriba)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Orden' AND Object_ID = Object_ID('Postits'))
+    ALTER TABLE Postits ADD Orden INT NULL;
+GO
+
 -- Cafe_Clientes: agregar Cuit y Email
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Cuit' AND Object_ID = Object_ID('Cafe_Clientes'))
     ALTER TABLE Cafe_Clientes ADD Cuit NVARCHAR(20) NULL;

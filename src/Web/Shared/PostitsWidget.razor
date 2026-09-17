@@ -2,6 +2,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject OperatorService Operator
+@inject IJSRuntime JS
 
 <div class="dashboard-detail-card postits-widget-card" style="@CardStyle">
     <div class="postits-widget-header">
@@ -22,14 +23,26 @@
         }
         else
         {
-            @foreach (var p in postits)
+            @for (var i = 0; i < postits.Count; i++)
             {
+                var p = postits[i];
+                var idx = i;
                 var col = ColorFor(p.Color);
                 <div class="postit-item" style="background: @col.Bg; border-left: 4px solid @col.Border;" @onclick="() => ShowEdit(p)">
                     <div class="postit-text">@p.Texto</div>
                     <div class="postit-meta">
-                        @(string.IsNullOrEmpty(p.CreadoPor) ? "Anónimo" : p.CreadoPor)
-                        · @p.CreatedAt.ToArTime().ToString("dd/MM HH:mm")
+                        <span style="flex: 1;">
+                            @(string.IsNullOrEmpty(p.CreadoPor) ? "Anónimo" : p.CreadoPor)
+                            · @p.CreatedAt.ToArTime().ToString("dd/MM HH:mm")
+                        </span>
+                        @* 2026-09-17: Osmar pidió copiar un postit de un toque y ordenarlos a mano.
+                           El orden se guarda en la base, así que lo ve igual todo el equipo. *@
+                        <button type="button" class="postit-btn" title="Copiar el texto de este postit"
+                                @onclick="() => CopiarAsync(p)" @onclick:stopPropagation="true">@(copiadoId == p.Id ? "✓ copiado" : "📋 copiar")</button>
+                        <button type="button" class="postit-btn" title="Subir" disabled="@(idx == 0)"
+                                @onclick="() => MoverAsync(idx, -1)" @onclick:stopPropagation="true">▲</button>
+                        <button type="button" class="postit-btn" title="Bajar" disabled="@(idx == postits.Count - 1)"
+                                @onclick="() => MoverAsync(idx, 1)" @onclick:stopPropagation="true">▼</button>
                     </div>
                 </div>
             }
@@ -116,7 +129,10 @@
         text-overflow: ellipsis;
         display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
     }
-    .postit-meta { font-size: 0.65rem; color: #6b7280; margin-top: 0.15rem; }
+    .postit-meta { font-size: 0.65rem; color: #6b7280; margin-top: 0.15rem; display: flex; align-items: center; gap: 0.2rem; }
+    .postit-btn { border: none; background: transparent; color: #6b7280; font-size: 0.7rem; padding: 0.05rem 0.3rem; border-radius: 3px; cursor: pointer; line-height: 1.2; }
+    .postit-btn:hover:not(:disabled) { background: rgba(0,0,0,0.08); color: #111827; }
+    .postit-btn:disabled { opacity: 0.3; cursor: default; }
 </style>
 
 @code {
@@ -162,6 +178,45 @@
         try { postits = await Api.GetPostitsAsync(Scope) ?? new(); }
         catch { postits = new(); }
         finally { loading = false; StateHasChanged(); }
+    }
+
+    private int? copiadoId;
+    // Los guardados de orden van de a uno (si tocás varias flechitas seguidas, cada guardado manda
+    // la lista como está en ese momento, así nunca queda grabado un orden viejo arriba de uno nuevo).
+    private readonly SemaphoreSlim guardandoOrden = new(1, 1);
+
+    private async Task CopiarAsync(PostitDto p)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", p.Texto);
+            copiadoId = p.Id;
+            StateHasChanged();
+            await Task.Delay(1200);
+            if (copiadoId == p.Id) { copiadoId = null; StateHasChanged(); }
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
+    // 2026-09-17: flechitas ▲▼. Se mueve en pantalla al toque y se guarda el orden de TODA la lista.
+    private async Task MoverAsync(int idx, int delta)
+    {
+        if (postits is null) return;
+        var destino = idx + delta;
+        if (destino < 0 || destino >= postits.Count) return;
+        (postits[idx], postits[destino]) = (postits[destino], postits[idx]);
+        StateHasChanged();
+        await guardandoOrden.WaitAsync();
+        try
+        {
+            await Api.OrdenarPostitsAsync(new OrdenarPostitsRequest { Scope = Scope, Ids = postits.Select(x => x.Id).ToList() });
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudo guardar el orden: " + ex.Message);
+            await LoadAsync();
+        }
+        finally { guardandoOrden.Release(); }
     }
 
     private void ShowNew()

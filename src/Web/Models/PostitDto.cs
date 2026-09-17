@@ -24,3 +24,9 @@ public class UpdatePostitRequest
     public string? Texto { get; set; }
     public string? Color { get; set; }
 }
+
+public class OrdenarPostitsRequest
+{
+    public string? Scope { get; set; }
+    public List<int> Ids { get; set; } = new();
+}

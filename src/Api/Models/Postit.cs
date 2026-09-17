@@ -23,6 +23,10 @@ public class Postit
     [MaxLength(50)]
     public string Scope { get; set; } = "dashboard";
 
+    /// <summary>2026-09-17: orden elegido a mano con las flechitas (0 = arriba). Null = nunca se
+    /// ordenó: esos van arriba de todo, el más nuevo primero, como siempre.</summary>
+    public int? Orden { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

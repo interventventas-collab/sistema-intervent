@@ -25,7 +25,11 @@ public class PostitsController : ControllerBase
         var s = string.IsNullOrWhiteSpace(scope) ? "dashboard" : scope.Trim().ToLowerInvariant();
         var list = await _db.Postits
             .Where(p => p.Scope == s)
-            .OrderByDescending(p => p.CreatedAt)
+            // 2026-09-17: primero los que nunca se ordenaron (los recién pegados), después el orden
+            // que eligieron con las flechitas.
+            .OrderBy(p => p.Orden == null ? 0 : 1)
+            .ThenBy(p => p.Orden)
+            .ThenByDescending(p => p.CreatedAt)
             .Take(50)
             .ToListAsync();
         return Ok(list.Select(Map).ToList());
@@ -65,6 +69,18 @@ public class PostitsController : ControllerBase
         p.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(Map(p));
+    }
+
+    /// <summary>2026-09-17: flechitas ▲▼ del tablero. Recibe los ids en el orden nuevo y los numera.</summary>
+    [HttpPut("orden")]
+    public async Task<IActionResult> Ordenar([FromBody] OrdenarPostitsRequest req)
+    {
+        var s = string.IsNullOrWhiteSpace(req.Scope) ? "dashboard" : req.Scope.Trim().ToLowerInvariant();
+        var ids = (req.Ids ?? new()).Distinct().ToList();
+        var lista = await _db.Postits.Where(p => p.Scope == s && ids.Contains(p.Id)).ToListAsync();
+        foreach (var p in lista) p.Orden = ids.IndexOf(p.Id);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, ordenados = lista.Count });
     }
 
     [HttpDelete("{id:int}")]
