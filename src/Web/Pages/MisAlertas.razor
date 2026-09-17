@@ -55,6 +55,7 @@
                     <option value="BANCO_BAJO">🏦 Banco Galicia</option>
                     <option value="CHEQUE_VENCE">📄 Cheques</option>
                     <option value="FECHA_MES">📅 Recordatorios de fecha</option>
+                    <option value="APARATO_NUEVO">💻 Entró desde un aparato nuevo</option>
                     <option value="ENVIO_RECHAZADO">🚫 Envíos rechazados por repartidor</option>
                     <option value="UBICACION_ERRONEA">📍 Ubicaciones mal cargadas</option>
                     <option value="DRIVE_CAIDO">☁️ Google Drive desconectado</option>
@@ -121,6 +122,7 @@ else
                 <option value="CHEQUE_VENCE">📄 un cheque emitido vence en</option>
                 <option value="FECHA_MES">📅 es el día del mes</option>
                 <option value="EMAIL_REMITENTE">📧 entra un correo de</option>
+                <option value="APARATO_NUEVO">💻 alguien entra desde un aparato nuevo</option>
             </select>
 
             @if (form.Tipo is "SHELL_BAJO" or "BANCO_BAJO")
@@ -138,6 +140,12 @@ else
                 <span class="ma-frase-txt">día</span>
                 <input type="number" min="1" max="31" step="1" @bind="form.Umbral" class="ma-num" placeholder="15" />
                 <span class="ma-frase-txt">de cada mes</span>
+            }
+            else if (form.Tipo == "APARATO_NUEVO")
+            {
+                <span class="ma-frase-txt">en las últimas</span>
+                <input type="number" min="1" max="72" step="1" @bind="form.Umbral" class="ma-num" placeholder="6" />
+                <span class="ma-frase-txt">horas</span>
             }
         </div>
         @if (form.Tipo == "EMAIL_REMITENTE")
@@ -602,8 +610,12 @@ else
         }
         else
         {
+            // El aparato nuevo no necesita que pongas nada: si lo dejás vacío, mira las últimas 6 horas.
+            if (form.Tipo == "APARATO_NUEVO" && (form.Umbral is null || form.Umbral <= 0)) form.Umbral = 6;
+
             if (form.Umbral is null || form.Umbral <= 0) { Toast.Error("Completá el valor (monto, días o día del mes)"); return; }
             if (form.Tipo == "FECHA_MES" && (form.Umbral < 1 || form.Umbral > 31)) { Toast.Error("El día del mes va de 1 a 31"); return; }
+            if (form.Tipo == "APARATO_NUEVO" && form.Umbral > 72) { Toast.Error("Como mucho, 72 horas para atrás"); return; }
         }
 
         var roles = new List<string>();
@@ -699,6 +711,7 @@ else
         "CHEQUE_VENCE" => "Cubrí el cheque",
         "FECHA_MES" => "Pagar a la contadora",
         "EMAIL_REMITENTE" => "Llegó un mail importante",
+        "APARATO_NUEVO" => "Fijate quién entró",
         _ => "Escribí el aviso"
     };
 
@@ -726,6 +739,7 @@ else
         "CHEQUE_VENCE" => "📄",
         "FECHA_MES" => "📅",
         "EMAIL_REMITENTE" => "📧",
+        "APARATO_NUEVO" => "💻",
         "VENTA_MELI" => "🛒",
         "FICHADA" => "🕐",
         "PUBLI_MELI" => "⚠️",
@@ -747,6 +761,7 @@ else
             "CHEQUE_VENCE" => $"Si un cheque emitido vence en {(int)v} día(s) o menos · por {canal}",
             "FECHA_MES" => $"El día {(int)v} de cada mes · por {canal}",
             "EMAIL_REMITENTE" => $"Si entra un correo de: {FormatRemitentes(a.TextoParam)} · por {canal}",
+            "APARATO_NUEVO" => $"Si alguien entra desde una compu o un celu nunca visto, en las últimas {(int)(v <= 0 ? 6 : v)} horas · por {canal}",
             _ => ""
         };
     }

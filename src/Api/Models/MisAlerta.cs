@@ -15,6 +15,8 @@ namespace Api.Models;
 ///   - CHEQUE_VENCE : hay un cheque EMITIDO (por pagar) que vence en {Umbral} dias o menos.
 ///   - FECHA_MES    : es el dia {Umbral} de cada mes (recordatorio: contadora, impuestos, etc).
 ///   - EMAIL_REMITENTE : entró un correo NO leído de {TextoParam} a la casilla vigilada.
+///   - APARATO_NUEVO : alguien entró al sistema desde una compu o un celu nunca visto, en las
+///     últimas {Umbral} horas (6 si no se pone nada). Lo alimenta la tabla Users_Sesiones.
 ///
 /// El campo Umbral es multiuso segun el Tipo: monto (Shell/Banco), cantidad de dias (cheque)
 /// o numero de dia del mes 1..31 (fecha).
@@ -33,7 +35,7 @@ public class MisAlerta
     /// <summary>Usuario dueño de la alerta (la creo el / la ve el).</summary>
     public int UserId { get; set; }
 
-    /// <summary>SHELL_BAJO | BANCO_BAJO | CHEQUE_VENCE | FECHA_MES</summary>
+    /// <summary>SHELL_BAJO | BANCO_BAJO | CHEQUE_VENCE | FECHA_MES | EMAIL_REMITENTE | APARATO_NUEVO</summary>
     [Required, MaxLength(30)]
     public string Tipo { get; set; } = "";
 

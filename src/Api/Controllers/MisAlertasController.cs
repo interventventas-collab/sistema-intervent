@@ -24,7 +24,7 @@ public class MisAlertasController : ControllerBase
     private readonly AppDbContext _db;
     public MisAlertasController(AppDbContext db) { _db = db; }
 
-    private static readonly string[] TiposValidos = { "SHELL_BAJO", "BANCO_BAJO", "CHEQUE_VENCE", "FECHA_MES", "EMAIL_REMITENTE" };
+    private static readonly string[] TiposValidos = { "SHELL_BAJO", "BANCO_BAJO", "CHEQUE_VENCE", "FECHA_MES", "EMAIL_REMITENTE", "APARATO_NUEVO" };
     private static readonly string[] RolesValidos = { "admin", "oficina", "deposito" };
 
     // 2026-07-11: alertas "del sistema" (eventos automáticos que antes vivían en la pantalla de Telegram).

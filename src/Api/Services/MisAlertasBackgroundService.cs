@@ -39,7 +39,7 @@ public class MisAlertasBackgroundService : BackgroundService
     /// (una venta de MeLi, un rechazo del repartidor, un PDF que no subió a Drive) y el robot NO
     /// las tiene que tocar, porque no sabe si la condición sigue o no y las apagaría sola.</summary>
     private static readonly string[] TiposQueEvaluaElRobot =
-        { "SHELL_BAJO", "BANCO_BAJO", "CHEQUE_VENCE", "FECHA_MES", "EMAIL_REMITENTE" };
+        { "SHELL_BAJO", "BANCO_BAJO", "CHEQUE_VENCE", "FECHA_MES", "EMAIL_REMITENTE", "APARATO_NUEVO" };
 
     public MisAlertasBackgroundService(IServiceScopeFactory scopeFactory, ILogger<MisAlertasBackgroundService> logger)
     {
@@ -319,6 +319,29 @@ public class MisAlertasBackgroundService : BackgroundService
                 var prox = await q.MinAsync(c => c.FechaPago);
                 var plural = cant == 1 ? "cheque" : "cheques";
                 return (true, $"{cant} {plural} por {Money(total)} (el más próximo {prox:dd/MM})");
+            }
+            case "APARATO_NUEVO":
+            {
+                // 2026-09-17: alguien entro al sistema desde una compu o un celu que NUNCA se habia
+                // visto antes. No es por si solo una mala noticia (una compu nueva tambien es nueva),
+                // pero es lo primero que se ve cuando a alguien le roban la clave.
+                // Umbral = cuantas horas para atras mirar; si no lo pusieron, 6.
+                var horas = (int)(a.Umbral ?? 0);
+                if (horas <= 0) horas = 6;
+                var desde = DateTime.UtcNow.AddHours(-horas);
+
+                var nuevos = await db.UserSessions.AsNoTracking()
+                    .Where(x => x.AparatoNuevo && x.CreatedAt >= desde)
+                    .OrderByDescending(x => x.CreatedAt)
+                    .Select(x => new { x.Nombre, x.Dispositivo, x.CreatedAt })
+                    .Take(5)
+                    .ToListAsync();
+
+                if (nuevos.Count == 0) return (false, null);
+
+                var detalle = string.Join(" · ", nuevos.Select(
+                    n => $"{n.Nombre} desde {n.Dispositivo} ({n.CreatedAt.AddHours(-3):dd/MM HH:mm})"));
+                return (true, detalle);
             }
             case "FECHA_MES":
             {
