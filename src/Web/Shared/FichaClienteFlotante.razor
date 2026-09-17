@@ -1,0 +1,244 @@
+@* 2026-09-17: FICHA DEL CLIENTE en ventana flotante arrastrable, la misma del ojito 👁️ del chat de
+   WhatsApp (WhatsAppChat.razor), para usarla en el listado de Ventas y en la carga de Nueva Venta.
+   Osmar: "que ese ojito aparezca también en el listado de ventas ... y en el cliente cuando estoy
+   cargando una venta". Diferencia con la del chat: NO tiene "🟢 Mandar" (acá no hay un chat abierto
+   por donde mandarlo; él lo pidió así). Lee lo mismo: /api/cafe/clientes/{id}/ficha-chat. *@
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<div class="fcf fcf-float @(facturaAbierta != null ? "fcf-float-ancha" : "")" id="fcf-float">
+    @if (cargando)
+    {
+        <div class="fcf-top" id="fcf-float-head" title="Arrastrá de acá para mover la ventana">
+            <div class="fcf-nombre">✥ 🛍️ <b>Cargando…</b></div>
+            <button class="fcf-x" @onclick="Cerrar" title="Cerrar">×</button>
+        </div>
+        <div class="fcf-load">⏳ Cargando ficha del cliente…</div>
+    }
+    else if (ficha is null)
+    {
+        <div class="fcf-top" id="fcf-float-head" title="Arrastrá de acá para mover la ventana">
+            <div class="fcf-nombre">✥ 🛍️ <b>Cliente</b></div>
+            <button class="fcf-x" @onclick="Cerrar" title="Cerrar">×</button>
+        </div>
+        <div class="fcf-load">No se pudo cargar la ficha del cliente.</div>
+    }
+    else
+    {
+        <div class="fcf-top" id="fcf-float-head" title="Arrastrá de acá para mover la ventana a donde quieras">
+            <div class="fcf-nombre">
+                <span class="fcf-mover" title="Arrastrá para mover">✥</span>
+                🛍️ <b>@ficha.Nombre</b>
+                @if (ficha.CodigoInterno is int codi) { <span class="fcf-cod">#@codi</span> }
+                @if (!string.IsNullOrWhiteSpace(ficha.CondicionIva)) { <span class="fcf-chip">@ficha.CondicionIva</span> }
+            </div>
+            <button class="fcf-x" @onclick="Cerrar" title="Cerrar">×</button>
+        </div>
+
+        <div class="fcf-cols">
+            <div class="fcf-datos">
+                @if (!string.IsNullOrWhiteSpace(ficha.RazonSocial)) { <div><span class="fcf-lbl">Razón social:</span> @ficha.RazonSocial</div> }
+                @if (!string.IsNullOrWhiteSpace(ficha.Cuit)) { <div><span class="fcf-lbl">CUIT:</span> @ficha.Cuit</div> }
+                @if (!string.IsNullOrWhiteSpace(ficha.Telefono)) { <div><span class="fcf-lbl">Tel:</span> @ficha.Telefono @(string.IsNullOrWhiteSpace(ficha.Telefono2) ? "" : $" / {ficha.Telefono2}")</div> }
+                @if (!string.IsNullOrWhiteSpace(ficha.Email)) { <div><span class="fcf-lbl">Mail:</span> @ficha.Email</div> }
+                @if (!string.IsNullOrWhiteSpace(ficha.Direccion) || !string.IsNullOrWhiteSpace(ficha.Localidad))
+                {
+                    <div><span class="fcf-lbl">Dirección:</span> @ficha.Direccion@(string.IsNullOrWhiteSpace(ficha.Localidad) ? "" : $", {ficha.Localidad}")</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(ficha.Notas)) { <div class="fcf-notas">📝 @ficha.Notas</div> }
+                <div class="fcf-acc">
+                    @if (!string.IsNullOrWhiteSpace(ficha.MapeoLink))
+                    {
+                        <a href="@ficha.MapeoLink" target="_blank" class="fcf-btn maps" title="Abrir la ubicación del cliente en Google Maps">📍 Ver en el mapa</a>
+                    }
+                    <a href="/cafe/clientes?edit=@ClienteId" target="_blank" class="fcf-btn" title="Abrir la ficha completa del cliente (datos, CUIT, dirección…) en otra pestaña">📂 Ficha completa</a>
+                </div>
+            </div>
+
+            <div class="fcf-plata">
+                <div class="fcf-saldo @(ficha.Saldo > 0.01m ? "debe" : "aldia")">
+                    <span class="fcf-saldo-lbl">@(ficha.Saldo > 0.01m ? "Debe" : "Cuenta al día")</span>
+                    <span class="fcf-saldo-monto">$@ficha.Saldo.ToString("N2")</span>
+                </div>
+                <div class="fcf-facs-titulo">Últimas facturas</div>
+                @if (ficha.Ventas.Count == 0)
+                {
+                    <div class="fcf-vacio">Este cliente todavía no tiene facturas.</div>
+                }
+                else
+                {
+                    <div class="fcf-facs">
+                        @foreach (var v in ficha.Ventas)
+                        {
+                            <button type="button"
+                                    class="fcf-fac @(facturaAbierta == v.Id ? "abierta" : "")"
+                                    @onclick="() => AbrirFactura(v.Id)"
+                                    title="@(facturaAbierta == v.Id ? "Tocá de nuevo para cerrarla" : "Tocá para verla grande acá al lado")">
+                                <div class="fcf-fac-l1">
+                                    <span class="fcf-fac-tipo">@(string.IsNullOrWhiteSpace(v.Tipo) ? "—" : v.Tipo)</span>
+                                    <span class="fcf-fac-num">@v.Numero</span>
+                                    <span class="fcf-fac-total">$@v.Total.ToString("N2")</span>
+                                </div>
+                                <div class="fcf-fac-l2">
+                                    <span class="fcf-fac-fecha">@v.Fecha.ToString("dd/MM/yy") · @Antiguedad(v.Fecha)</span>
+                                    @if (v.Tipo is not null && v.Tipo.StartsWith("NC"))
+                                    {
+                                        <span class="fcf-fac-estado nc">N. Crédito</span>
+                                    }
+                                    else if (v.Saldo > 0.01m)
+                                    {
+                                        <span class="fcf-fac-estado debe">Debe $@v.Saldo.ToString("N0")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="fcf-fac-estado pagada">✓ Pagada</span>
+                                    }
+                                </div>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (FacturaAbiertaDto() is ApiClient.FichaChatVentaDto fac)
+            {
+                <div class="fcf-visor">
+                    <div class="fcf-visor-top">
+                        <span class="fcf-visor-tit">@fac.Numero · @fac.Fecha.ToString("dd/MM/yy")</span>
+                        <a class="fcf-visor-btn" href="/api/cafe/ventas/@fac.Id/pdf" target="_blank"
+                           title="Abrirla a pantalla completa en otra pestaña">🔍 Grande</a>
+                        <button type="button" class="fcf-visor-btn" @onclick="() => Duplicar(fac)"
+                                title="Repetir esta venta: abre la carga de venta en otra pestaña con todo cargado">📄 Duplicar</button>
+                        <button type="button" class="fcf-visor-x" @onclick="() => facturaAbierta = null" title="Cerrar la factura">×</button>
+                    </div>
+                    <iframe class="fcf-visor-frame" src="/api/cafe/ventas/@fac.Id/pdf?inline=true#toolbar=0&navpanes=0&view=FitH"
+                            title="Factura @fac.Numero"></iframe>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .fcf { margin: 0.55rem 1rem 0; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.07); overflow: hidden; animation: fcfIn .16s ease; }
+    .fcf-float { position: fixed; left: 1.2rem; top: 92px; margin: 0; width: 560px; max-width: 94vw; max-height: 84vh; display: flex; flex-direction: column; z-index: 9700; box-shadow: 0 16px 46px rgba(0,0,0,0.34); }
+    .fcf-float .fcf-top { cursor: move; touch-action: none; flex-shrink: 0; }
+    .fcf-float .fcf-cols { overflow-y: auto; }
+    .fcf-mover { opacity: 0.65; margin-right: 0.15rem; cursor: move; }
+    @@keyframes fcfIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+    .fcf-load { padding: 1rem; text-align: center; color: #6b7280; font-size: 0.9rem; }
+    .fcf-top { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.85rem; background: #f0fdf4; border-bottom: 1px solid #dcfce7; }
+    .fcf-nombre { font-size: 0.98rem; color: #14532d; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .fcf-cod { background: #d1fae5; color: #047857; font-size: 0.72rem; padding: 0.05rem 0.4rem; border-radius: 5px; font-weight: 600; }
+    .fcf-chip { background: #e0e7ff; color: #3730a3; font-size: 0.7rem; padding: 0.05rem 0.4rem; border-radius: 5px; font-weight: 600; }
+    .fcf-x { background: none; border: none; font-size: 1.4rem; line-height: 1; color: #9ca3af; cursor: pointer; padding: 0 0.2rem; }
+    .fcf-x:hover { color: #ef4444; }
+    .fcf-cols { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 0.85rem; }
+    .fcf-datos { flex: 1 1 240px; min-width: 220px; font-size: 0.84rem; color: #374151; line-height: 1.7; }
+    .fcf-lbl { color: #9ca3af; font-size: 0.78rem; }
+    .fcf-notas { margin-top: 0.35rem; background: #fffbeb; border: 1px solid #fde68a; border-radius: 7px; padding: 0.35rem 0.5rem; font-size: 0.8rem; line-height: 1.4; }
+    .fcf-acc { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
+    .fcf-btn { display: inline-flex; align-items: center; gap: 0.25rem; background: #f3f4f6; border: 1px solid #e5e7eb; color: #374151; border-radius: 8px; padding: 0.35rem 0.6rem; font-size: 0.8rem; font-weight: 600; text-decoration: none; transition: all .12s; }
+    .fcf-btn:hover { background: #e5e7eb; }
+    .fcf-btn.maps { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+    .fcf-btn.maps:hover { background: #dbeafe; }
+    .fcf-plata { flex: 1 1 300px; min-width: 260px; }
+    .fcf-saldo { display: flex; align-items: center; justify-content: space-between; padding: 0.55rem 0.75rem; border-radius: 10px; margin-bottom: 0.6rem; }
+    .fcf-saldo.debe { background: #fef2f2; border: 1px solid #fecaca; }
+    .fcf-saldo.aldia { background: #f0fdf4; border: 1px solid #bbf7d0; }
+    .fcf-saldo-lbl { font-size: 0.82rem; font-weight: 600; color: #6b7280; }
+    .fcf-saldo-monto { font-size: 1.25rem; font-weight: 800; }
+    .fcf-saldo.debe .fcf-saldo-monto { color: #dc2626; }
+    .fcf-saldo.aldia .fcf-saldo-monto { color: #16a34a; }
+    .fcf-facs-titulo { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; color: #9ca3af; font-weight: 700; margin-bottom: 0.35rem; }
+    .fcf-vacio { font-size: 0.84rem; color: #9ca3af; padding: 0.3rem 0; }
+    .fcf-facs { display: flex; flex-direction: column; gap: 0.3rem; max-height: 300px; overflow-y: auto; }
+    .fcf-fac { display: block; width: 100%; text-align: left; font-family: inherit; padding: 0.4rem 0.55rem; background: #f9fafb; border: 1px solid #eef1f5; border-radius: 8px; color: #374151; font-size: 0.82rem; cursor: pointer; transition: all .12s; }
+    .fcf-fac:hover { background: #f1f5f9; border-color: #e2e8f0; }
+    .fcf-fac-l1 { display: flex; align-items: center; gap: 0.4rem; }
+    .fcf-fac-l2 { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; margin-top: 0.15rem; }
+    .fcf-fac-tipo { background: #e5e7eb; color: #374151; font-size: 0.68rem; font-weight: 700; padding: 0.05rem 0.35rem; border-radius: 4px; min-width: 2rem; text-align: center; }
+    .fcf-fac-num { font-weight: 600; }
+    .fcf-fac-fecha { color: #9ca3af; font-size: 0.76rem; }
+    .fcf-fac-total { margin-left: auto; font-weight: 700; }
+    .fcf-fac-estado { font-size: 0.7rem; font-weight: 700; padding: 0.08rem 0.4rem; border-radius: 5px; white-space: nowrap; }
+    .fcf-fac-estado.pagada { background: #dcfce7; color: #15803d; }
+    .fcf-fac-estado.debe { background: #fee2e2; color: #b91c1c; }
+    .fcf-fac-estado.nc { background: #ede9fe; color: #6d28d9; }
+    .fcf-fac.abierta { background: #eef2ff; border-color: #6366f1; box-shadow: 0 0 0 1px #6366f1 inset; }
+    .fcf-float-ancha { width: 1160px; }
+    .fcf-float-ancha .fcf-facs { max-height: 62vh; }
+    .fcf-visor { flex: 2 1 520px; min-width: 360px; min-height: 0; display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; background: #f9fafb; animation: fcfIn .14s ease; }
+    .fcf-visor-top { display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.45rem; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+    .fcf-visor-tit { flex: 1; font-size: 0.76rem; color: #6b7280; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fcf-visor-btn { display: inline-flex; align-items: center; gap: 0.2rem; background: #fff; border: 1px solid #e5e7eb; color: #374151; border-radius: 7px; padding: 0.2rem 0.45rem; font-size: 0.74rem; font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap; }
+    .fcf-visor-btn:hover:not(:disabled) { background: #eef2ff; border-color: #c7d2fe; }
+    .fcf-visor-btn:disabled { opacity: 0.6; cursor: wait; }
+    .fcf-visor-x { background: none; border: none; font-size: 1.2rem; line-height: 1; color: #9ca3af; cursor: pointer; padding: 0 0.15rem; }
+    .fcf-visor-x:hover { color: #ef4444; }
+    .fcf-visor-frame { width: 100%; height: 62vh; min-height: 300px; border: none; display: block; background: #fff; }
+</style>
+
+@code {
+    /// <summary>El cliente a mostrar. Si cambia con la ventana abierta, se recarga.</summary>
+    [Parameter] public int ClienteId { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    ApiClient.FichaChatDto? ficha;
+    bool cargando = true;
+    int? facturaAbierta;
+    int cargadoPara;
+    bool engancharArrastre;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ClienteId == cargadoPara) return;
+        cargadoPara = ClienteId;
+        facturaAbierta = null;
+        ficha = null;
+        cargando = true;
+        var pedido = ClienteId;
+        var f = await Api.GetFichaChatAsync(pedido);
+        // Si mientras contestaba tocaste el ojito de OTRO cliente, esta respuesta ya no sirve.
+        if (pedido != ClienteId) return;
+        ficha = f;
+        cargando = false;
+        engancharArrastre = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // El encabezado se vuelve a dibujar al terminar de cargar: ahí se engancha el arrastre
+        // (reusa window.waDraggable, igual que la ficha del chat).
+        if (!engancharArrastre) return;
+        engancharArrastre = false;
+        try { await JS.InvokeVoidAsync("waDraggable.attach", "fcf-float-head", "fcf-float"); }
+        catch { /* si el JS no cargó, la ventana igual se ve, solo que no se mueve */ }
+    }
+
+    Task Cerrar() => OnCerrar.InvokeAsync();
+
+    ApiClient.FichaChatVentaDto? FacturaAbiertaDto()
+        => facturaAbierta is int id ? ficha?.Ventas.FirstOrDefault(v => v.Id == id) : null;
+
+    // Tocar la que ya estaba abierta la cierra (y la ventana vuelve a su tamaño normal).
+    void AbrirFactura(int id) => facturaAbierta = (facturaAbierta == id) ? null : id;
+
+    async Task Duplicar(ApiClient.FichaChatVentaDto fac)
+    {
+        try { await JS.InvokeVoidAsync("open", $"/cafe/ventas?duplicarVentaId={fac.Id}", "_blank"); }
+        catch (Exception ex) { ToastService.Error("No pude abrir la venta: " + ex.Message); }
+    }
+
+    /// <summary>Hace cuánto es la factura, contra el día de ARGENTINA (igual que en el chat).</summary>
+    static string Antiguedad(DateTime fecha)
+    {
+        var dias = (int)(DateTimeExt.AhoraAr().Date - fecha.Date).TotalDays;
+        if (dias <= 0) return "hoy";
+        if (dias == 1) return "ayer";
+        if (dias < 30) return $"hace {dias} días";
+        var meses = dias / 30;
+        return meses == 1 ? "hace 1 mes" : $"hace {meses} meses";
+    }
+}

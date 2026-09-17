@@ -27,6 +27,9 @@
         max-width: 520px;
     }
     .cell-cliente-hover:hover .venta-tooltip { display: block; }
+    /* 2026-09-17: ojito 👁️ de la ficha del cliente en cada renglón */
+    .vta-ojito { background: #fff; border: 1px solid #d1d5db; border-radius: 6px; padding: 0 0.3rem; margin-right: 0.35rem; font-size: 0.85rem; line-height: 1.5; cursor: pointer; vertical-align: middle; }
+    .vta-ojito:hover { background: #f3f4f6; border-color: #9ca3af; }
 
     /* 2026-08-06: Chat flotante de WhatsApp del cliente dentro de la venta */
     .nv-wa-float {
@@ -650,6 +653,13 @@
                                 </td>
                                 <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
                                 <td style="line-height: 1.1; position: relative;" class="cell-cliente-hover">
+                                    @* 2026-09-17: el ojito 👁️ del chat de WhatsApp, acá también: abre la ficha flotante
+                                       del cliente (lo que debe + últimas facturas y cotizaciones) sin salir del listado. *@
+                                    @if (v.ClienteId is int cidOjo)
+                                    {
+                                        <button type="button" class="vta-ojito" title="Ver ficha del cliente: lo que debe y sus últimos comprobantes"
+                                                @onclick="() => AbrirFichaCliente(cidOjo)" @onclick:stopPropagation="true">👁️</button>
+                                    }
                                     <strong>@(v.ClienteNombre ?? "—")</strong>@if (v.ClienteCodigoInterno.HasValue) {<span style="color:#6b7280; font-weight:600; margin-left:0.3rem; font-size:0.85rem;">(#@v.ClienteCodigoInterno.Value)</span>}@if (!string.IsNullOrWhiteSpace(v.ClienteRazonSocial) && !string.Equals(v.ClienteRazonSocial, v.ClienteNombre, StringComparison.OrdinalIgnoreCase)) {<span style="color:#6b7280; margin-left:0.4rem; font-size:0.82rem;">· @v.ClienteRazonSocial</span>}
                                     @if (!string.IsNullOrWhiteSpace(v.ClienteCuit))
                                     {
@@ -1336,6 +1346,13 @@
     </div>
 }
 
+@* 2026-09-17: ficha flotante del cliente (el ojito 👁️ del listado y de Nueva Venta). Va afuera del
+   formulario para que se vea arriba de los dos; z-index 9700, arriba del modal de la venta (9000). *@
+@if (fichaClienteId is int fcid)
+{
+    <FichaClienteFlotante ClienteId="fcid" OnCerrar="@(() => fichaClienteId = null)" />
+}
+
 @if (showForm)
 {
     @* IMPORTANTE: el modal-overlay NO cierra el form al clickear fuera.
@@ -1748,6 +1765,10 @@
                                     </div>
                                     @* 2026-06-18 v2: editar el cliente en ventana emergente — usa el modal completo de /cafe/clientes
                                        con TODOS los campos (codigo interno, padron AFIP, notas, mapeo, etc). *@
+                                    @* 2026-09-17: ojito 👁️ — ver lo que debe y sus últimos comprobantes antes de cargarle la venta. *@
+                                    <button class="btn btn-secondary" type="button" @onclick="() => AbrirFichaCliente(formClienteId)"
+                                            title="Ver ficha del cliente: lo que debe y sus últimos comprobantes"
+                                            style="padding: 0 0.55rem; font-size: 0.95rem;">👁️</button>
                                     <button class="btn btn-secondary" type="button" @onclick="() => AbrirEditarClienteVentana(ciSel)"
                                             title="Editar este cliente (abre ventana emergente, no cierra la venta)"
                                             style="padding: 0 0.55rem; font-size: 0.85rem; color: #1d4ed8;">✏️</button>
@@ -5262,6 +5283,10 @@
 
     // Form state
     private bool showForm, saving, previewLoading;
+    // 2026-09-17: cliente cuya ficha flotante (ojito 👁️) está abierta. Tocar el mismo ojito de nuevo la cierra.
+    private int? fichaClienteId;
+    private void AbrirFichaCliente(int clienteId)
+        => fichaClienteId = (fichaClienteId == clienteId) ? null : clienteId;
     private bool showConfirmEmision; // doble-check antes de emitir contra ARCA
     private bool _focusConfirmBtn;   // enfocar el boton "Emitir (Enter)" al abrir el modal de confirmacion
     private ElementReference clienteInputRef;
