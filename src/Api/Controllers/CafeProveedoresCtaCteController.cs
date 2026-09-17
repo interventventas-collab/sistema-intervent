@@ -31,11 +31,12 @@ public class CafeProveedoresCtaCteController : ControllerBase
     public record DocDto(string Clave, string Tipo, string Numero, bool Oficial, bool EsNotaCredito, bool EsSaldoInicial,
         DateTime Fecha, decimal Total, decimal Pagado, decimal Saldo, int? DeudaId, string? AfipIdComprobante,
         bool TieneArchivo, string? Observaciones);
-    public record MovDto(DateTime Fecha, string Que, decimal Suma, decimal Resta, decimal Saldo, string? Detalle, int? PagoId);
+    public record MovDto(DateTime Fecha, string Que, decimal Suma, decimal Resta, decimal Saldo, string? Detalle, int? PagoId,
+        string? Clave, bool Oficial, string? Medio, bool PagoRedirigido);
     public record CuentaDto(int ProveedorId, string Nombre, string? Cuit, bool CuentaCorriente, DateTime? Desde,
         decimal Oficial, decimal NoOficial, decimal ACuenta, decimal Total,
         decimal SaldoInicialOficial, decimal SaldoInicialNoOficial,
-        List<DocDto> Pendientes, List<MovDto> Movimientos);
+        List<DocDto> Pendientes, List<MovDto> Movimientos, List<DocDto> Documentos);
     public record CandidatoDto(int? ProveedorId, string Nombre, string? Cuit, bool YaLleva, int FacturasAfip, DateTime? UltimaFactura);
 
     public record ActivarRequest(int? ProveedorId, string? Cuit, string? Nombre, DateTime? Desde, decimal? SaldoOficial, decimal? SaldoNoOficial);
@@ -64,7 +65,9 @@ public class CafeProveedoresCtaCteController : ControllerBase
             c.Docs.Where(d => d.EsSaldoInicial && !d.Oficial).Sum(d => d.Total),
             c.Pendientes.Select(Map).ToList(),
             ProveedorCtaCteService.Movimientos(c)
-                .Select(m => new MovDto(m.Fecha, m.Que, m.Suma, m.Resta, m.Saldo, m.Detalle, m.PagoId)).ToList()));
+                .Select(m => new MovDto(m.Fecha, m.Que, m.Suma, m.Resta, m.Saldo, m.Detalle, m.PagoId,
+                    m.Clave, m.Oficial, m.Medio, m.PagoRedirigido)).ToList(),
+            c.Docs.Select(Map).ToList()));
     }
 
     private static DocDto Map(ProveedorCtaCteService.Doc d) => new(d.Clave, d.Tipo, d.Numero, d.Oficial, d.EsNotaCredito,
@@ -181,6 +184,13 @@ public class CafeProveedoresCtaCteController : ControllerBase
     {
         var (err, id) = await _svc.CrearCotizacionAsync(proveedorId, req.Fecha, req.Numero, req.Importe, req.Observaciones, QuienCarga());
         return err is null ? Ok(new { id }) : BadRequest(new { error = err });
+    }
+
+    [HttpPut("deudas/{id:int}")]
+    public async Task<IActionResult> EditarCotizacion(int id, [FromBody] CotizacionRequest req)
+    {
+        var err = await _svc.EditarCotizacionAsync(id, req.Fecha, req.Numero, req.Importe, req.Observaciones);
+        return err is null ? Ok(new { ok = true }) : BadRequest(new { error = err });
     }
 
     [HttpPost("deudas/{id:int}/anular")]

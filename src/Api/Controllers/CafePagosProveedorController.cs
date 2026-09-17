@@ -109,6 +109,11 @@ public class CafePagosProveedorController : ControllerBase
         var p = await _db.CafePagosProveedor.Include(x => x.Medios).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound();
         if (p.Estado == "ANULADA") return BadRequest(new { error = "Ya esta anulada" });
+        // 17/09/2026: un pago que salió de un COBRO REDIRIGIDO se deshace anulando la cobranza. Anular
+        // solo el pago dejaba la cobranza viva y la caja de paso descontada: plata que no está en ningún lado.
+        if (await _db.CafeCobranzasMedios.AnyAsync(m => m.RedirigidoPagoId == id && m.RedirigidoDestino == "proveedor"
+                && m.Cobranza!.Estado == "VIGENTE"))
+            return BadRequest(new { error = "Este pago salió de un cobro redirigido: se deshace anulando esa cobranza en Tesorería → Cobranzas." });
         p.Estado = "ANULADA";
         p.UpdatedAt = DateTime.UtcNow;
         // Revertir endosos: cheques endosados vuelven a cartera

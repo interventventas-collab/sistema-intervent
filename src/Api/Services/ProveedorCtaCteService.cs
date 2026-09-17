@@ -81,6 +81,10 @@ public class ProveedorCtaCteService
         /// <summary>null = a cuenta.</summary>
         public string? Clave { get; set; }
         public int? ExtractoMovId { get; set; }
+        /// <summary>Con qué se pagó, en criollo: "Efectivo", "Galicia Empresas", "cheque endosado", "cobro redirigido".</summary>
+        public string? Medio { get; set; }
+        /// <summary>Salió de un cobro redirigido: se deshace anulando la cobranza, no el pago.</summary>
+        public bool EsRedirigido { get; set; }
     }
 
     public class Cuenta
@@ -237,6 +241,28 @@ public class ProveedorCtaCteService
             });
         }
 
+        // Con qué se pagó cada pago (para mostrarlo en criollo, como en la cuenta del repartidor).
+        var pagoIds = activas.SelectMany(c => c.Imputaciones).Select(i => i.PagoId).Distinct().ToList();
+        if (pagoIds.Count > 0)
+        {
+            var medios = await _db.CafePagosProveedorMedios.AsNoTracking()
+                .Where(m => pagoIds.Contains(m.PagoId))
+                .Select(m => new { m.PagoId, Caja = m.Caja!.Nombre, m.ChequeId })
+                .ToListAsync();
+            var redirigidos = (await _db.CafeCobranzasMedios.AsNoTracking()
+                    .Where(m => m.RedirigidoPagoId != null && pagoIds.Contains(m.RedirigidoPagoId.Value)
+                        && m.RedirigidoDestino == "proveedor")
+                    .Select(m => m.RedirigidoPagoId!.Value).ToListAsync())
+                .ToHashSet();
+            foreach (var i in activas.SelectMany(c => c.Imputaciones))
+            {
+                var ms = medios.Where(m => m.PagoId == i.PagoId)
+                    .Select(m => m.ChequeId != null ? "cheque endosado" : m.Caja).Distinct().ToList();
+                i.EsRedirigido = redirigidos.Contains(i.PagoId);
+                i.Medio = ms.Count > 0 ? string.Join(" + ", ms) : i.EsRedirigido ? "cobro redirigido" : null;
+            }
+        }
+
         foreach (var c in activas) c.PagosContadora = docsAfip.Values.Where(d => c.Docs.Contains(d)).Sum(d => d.Pagado)
             - c.Imputaciones.Where(i => i.Clave != null && i.Clave.StartsWith(PrefAfip)).Sum(i => i.Importe);
         return res;
@@ -248,41 +274,43 @@ public class ProveedorCtaCteService
     // ─────────────────────────── Estado de cuenta ───────────────────────────
 
     public record Movimiento(DateTime Fecha, string Que, decimal Suma, decimal Resta, decimal Saldo, string? Detalle,
-        string? Clave, int? PagoId, bool Oficial);
+        string? Clave, int? PagoId, bool Oficial, string? Medio, bool PagoRedirigido);
 
-    /// <summary>Renglones en orden de fecha con el saldo corrido. Un pago es un renglón, aunque haya
-    /// pagado varias cosas: el detalle dice cuáles.</summary>
+    /// <summary>Renglones con el saldo que va quedando, LO ÚLTIMO ARRIBA (como la cuenta del
+    /// repartidor). Un pago es un renglón aunque haya pagado varias cosas: el detalle dice cuáles.</summary>
     public static List<Movimiento> Movimientos(Cuenta c)
     {
-        var filas = new List<(DateTime f, int orden, string que, decimal suma, decimal resta, string? det, string? clave, int? pagoId, bool oficial)>();
+        var filas = new List<(DateTime f, int orden, string que, decimal suma, decimal resta, string? det, string? clave, int? pagoId, bool oficial, string? medio, bool redir)>();
         foreach (var d in c.Docs)
         {
             if (d.Total >= 0)
-                filas.Add((d.Fecha, 0, d.Etiqueta, d.Total, 0m, d.Observaciones, d.Clave, null, d.Oficial));
+                filas.Add((d.Fecha, 0, d.Etiqueta, d.Total, 0m, d.Observaciones, d.Clave, null, d.Oficial, null, false));
             else
-                filas.Add((d.Fecha, 0, d.Etiqueta, 0m, -d.Total, d.EsNotaCredito ? "Nota de crédito: baja la deuda" : "A nuestro favor", d.Clave, null, d.Oficial));
+                filas.Add((d.Fecha, 0, d.Etiqueta, 0m, -d.Total, d.EsNotaCredito ? "Nota de crédito: baja la deuda" : "A nuestro favor", d.Clave, null, d.Oficial, null, false));
         }
         var etiquetas = c.Docs.ToDictionary(d => d.Clave, d => d.Etiqueta);
         foreach (var g in c.Imputaciones.GroupBy(i => i.PagoId))
         {
             var partes = g.Select(i => i.Clave is null ? "a cuenta" : etiquetas.GetValueOrDefault(i.Clave, "?")).Distinct().ToList();
-            var det = "Pagó " + string.Join(" · ", partes);
+            var det = $"{g.First().PagoNumero} · pagó " + string.Join(" · ", partes);
             var obs = g.First().Observaciones;
             if (!string.IsNullOrWhiteSpace(obs)) det += " — " + obs;
-            filas.Add((g.First().Fecha, 1, $"Pago {g.First().PagoNumero}", 0m, g.Sum(i => i.Importe), det, null, g.Key, false));
+            var oficial = g.All(i => i.Clave != null && etiquetas.ContainsKey(i.Clave) && c.Docs.First(d => d.Clave == i.Clave).Oficial);
+            filas.Add((g.First().Fecha, 1, "Pago", 0m, g.Sum(i => i.Importe), det, null, g.Key, oficial, g.First().Medio, g.First().EsRedirigido));
         }
         // Pagos que se marcaron en la Contadora antes de esta pantalla: no tienen número ni caja.
         if (c.PagosContadora > 0.005m)
             filas.Add((c.Desde ?? DateTime.MinValue, 1, "Pagos marcados en la Contadora", 0m, c.PagosContadora,
-                "Marcados antes de que existiera esta pantalla (no descontaron de ninguna caja)", null, null, true));
+                "Marcados antes de que existiera esta pantalla (no descontaron de ninguna caja)", null, null, true, null, false));
 
         decimal acum = 0m;
         var res = new List<Movimiento>();
         foreach (var x in filas.OrderBy(x => x.f).ThenBy(x => x.orden))
         {
             acum += x.suma - x.resta;
-            res.Add(new Movimiento(x.f, x.que, x.suma, x.resta, acum, x.det, x.clave, x.pagoId, x.oficial));
+            res.Add(new Movimiento(x.f, x.que, x.suma, x.resta, acum, x.det, x.clave, x.pagoId, x.oficial, x.medio, x.redir));
         }
+        res.Reverse();   // lo último arriba
         return res;
     }
 
@@ -501,6 +529,28 @@ public class ProveedorCtaCteService
         await _audit.LogAsync("CafeProveedorDeuda", d.Id.ToString(), "CREATE",
             $"Cotización {d.Numero ?? "s/n"} de {p.Nombre} por {Plata(d.Importe)}");
         return (null, d.Id);
+    }
+
+    /// <summary>Corrige una cotización (fecha, número, importe, nota). No puede quedar en menos de lo ya pagado.</summary>
+    public async Task<string?> EditarCotizacionAsync(int deudaId, DateTime fecha, string? numero, decimal importe, string? observaciones)
+    {
+        var d = await _db.CafeProveedorDeudas.FindAsync(deudaId);
+        if (d is null || d.Estado != "VIGENTE") return "No encontré esa cotización.";
+        if (d.Tipo != TipoCotizacion) return "El saldo inicial se cambia con \"cambiar\", arriba en la cuenta.";
+        importe = Math.Round(importe, 2);
+        if (importe <= 0) return "El importe tiene que ser mayor a cero.";
+        var pagado = await PagadoDeudaAsync(d.Id);
+        if (importe < pagado) return $"Ya tiene {Plata(pagado)} pagados: el importe no puede quedar en menos que eso.";
+        var antes = $"{d.Fecha:dd/MM/yyyy} {d.Numero} {Plata(d.Importe)}";
+        d.Fecha = fecha.Date;
+        d.Numero = string.IsNullOrWhiteSpace(numero) ? null : numero.Trim();
+        d.Importe = importe;
+        d.Observaciones = string.IsNullOrWhiteSpace(observaciones) ? null : observaciones.Trim();
+        d.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync("CafeProveedorDeuda", d.Id.ToString(), "EDITAR",
+            $"Cotización editada: antes {antes} → ahora {d.Fecha:dd/MM/yyyy} {d.Numero} {Plata(d.Importe)}");
+        return null;
     }
 
     public async Task<string?> AnularDeudaAsync(int deudaId)
