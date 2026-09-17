@@ -148,6 +148,8 @@ public class AppDbContext : DbContext
     public DbSet<CafeExtractoMovDescartadoPorCliente> CafeExtractoMovDescartadosPorCliente => Set<CafeExtractoMovDescartadoPorCliente>();
     public DbSet<CafeRepartidor> CafeRepartidores => Set<CafeRepartidor>();
     public DbSet<CafeRepartidorSesion> CafeRepartidorSesiones => Set<CafeRepartidorSesion>();
+    // 2026-09-17: rastro de ubicacion del repartidor (boton "Por donde van" del mapa).
+    public DbSet<CafeRepartidorUbicacion> CafeRepartidorUbicaciones => Set<CafeRepartidorUbicacion>();
     public DbSet<CafeQrEscaneo> CafeQrEscaneos => Set<CafeQrEscaneo>();
     // 2026-08-12: rechazos de envíos hechos por el repartidor desde el celu (con motivo).
     public DbSet<CafeRepartidorRechazo> CafeRepartidorRechazos => Set<CafeRepartidorRechazo>();

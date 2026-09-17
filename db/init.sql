@@ -7830,3 +7830,31 @@ GO
 IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('Users_Sesiones') AND name='UltimaEntradaAt' AND is_nullable=1)
     ALTER TABLE Users_Sesiones ALTER COLUMN UltimaEntradaAt DATETIME2 NOT NULL;
 GO
+
+-- ============================================================
+-- 2026-09-17: VER POR DONDE VA CADA REPARTIDOR ("Por donde van").
+-- Lo pidio Gabriel. El celu del repartidor manda su ubicacion cada 15 minutos y
+-- cada vez que toca la pantalla (abre sus pedidos, marca una entrega, escanea un QR).
+-- En el mapa de la oficina, un boton apagado por default muestra donde esta cada uno
+-- y por donde fue hoy. Solo manda el que tiene SeguirUbicacion=1 (lo prende la oficina
+-- en Administracion -> Repartidores). Los puntos de mas de 30 dias se borran solos.
+-- ============================================================
+IF COL_LENGTH('Cafe_Repartidores','SeguirUbicacion') IS NULL
+    ALTER TABLE Cafe_Repartidores ADD SeguirUbicacion BIT NOT NULL CONSTRAINT DF_CafeRepartidores_SeguirUbic DEFAULT 0 WITH VALUES;
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_RepartidorUbicaciones')
+BEGIN
+    CREATE TABLE Cafe_RepartidorUbicaciones (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        RepartidorId INT NOT NULL,
+        Lat DECIMAL(9,6) NOT NULL,
+        Lng DECIMAL(9,6) NOT NULL,
+        Accuracy INT NULL,                       -- precision en metros que informa el celu
+        Fuente NVARCHAR(20) NULL,                -- auto | apertura | entrega | escaneo
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeRepUbic_Created DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_CafeRepUbic_Repartidor FOREIGN KEY (RepartidorId) REFERENCES Cafe_Repartidores(Id)
+    );
+    CREATE INDEX IX_CafeRepUbic_Rep_Fecha ON Cafe_RepartidorUbicaciones(RepartidorId, CreatedAt);
+END
+GO

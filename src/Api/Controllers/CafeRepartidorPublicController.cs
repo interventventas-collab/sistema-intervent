@@ -1801,4 +1801,77 @@ public class CafeRepartidorPublicController : ControllerBase
         }
         catch { /* nunca romper el reporte por un aviso */ }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2026-09-17: "POR DONDE VAN" — el celu del repartidor manda su ubicacion.
+    // Lo pidio Gabriel. Solo manda el repartidor que tiene SeguirUbicacion=1 (lo prende
+    // la oficina en Administracion -> Repartidores); en el celu no aparece nada.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>El celu pregunta al abrir si tiene que mandar la ubicacion y cada cuanto.
+    /// Devolvemos siempre 200 (aunque el token sea invalido) para no darle informacion
+    /// de mas a nadie que adivine un enlace.</summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}/seguimiento")]
+    public async Task<IActionResult> SeguimientoConfig(string tokenRepartidor)
+    {
+        var r = await _db.CafeRepartidores
+            .FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        return Ok(new { seguir = r?.SeguirUbicacion == true, cadaSegundos = 900 });
+    }
+
+    public record UbicacionPingRequest(decimal? Lat, decimal? Lng, int? Accuracy, string? Fuente);
+
+    /// <summary>Guarda un punto del recorrido. Lo llama el celu cada 15 minutos y cada vez que el
+    /// repartidor toca la pantalla (abre la lista, marca una entrega, escanea). Nunca devuelve error
+    /// "duro": si algo no cuadra contesta ok=false y el celu sigue como si nada.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/ubicacion")]
+    public async Task<IActionResult> GuardarUbicacion(string tokenRepartidor, [FromBody] UbicacionPingRequest req)
+    {
+        var r = await _db.CafeRepartidores
+            .FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null || !r.SeguirUbicacion) return Ok(new { ok = false, seguir = false });
+
+        var lat = req.Lat ?? 0m;
+        var lng = req.Lng ?? 0m;
+        if (lat == 0m && lng == 0m) return Ok(new { ok = false, motivo = "sin coordenadas" });
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180)
+            return Ok(new { ok = false, motivo = "fuera de rango" });
+
+        // Un punto por minuto como mucho: si el repartidor marca tres entregas seguidas
+        // no llenamos la tabla con el mismo lugar.
+        var hace1min = DateTime.UtcNow.AddMinutes(-1);
+        var reciente = await _db.CafeRepartidorUbicaciones
+            .AnyAsync(u => u.RepartidorId == r.Id && u.CreatedAt >= hace1min);
+        if (reciente) return Ok(new { ok = true, guardado = false });
+
+        _db.CafeRepartidorUbicaciones.Add(new CafeRepartidorUbicacion
+        {
+            RepartidorId = r.Id,
+            Lat = lat,
+            Lng = lng,
+            Accuracy = req.Accuracy,
+            Fuente = string.IsNullOrWhiteSpace(req.Fuente) ? "auto" : req.Fuente!.Trim(),
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+
+        // Limpieza de los de mas de 30 dias. De a ratos, no en cada ping.
+        try
+        {
+            if (Random.Shared.Next(20) == 0)
+            {
+                var limite = DateTime.UtcNow.AddDays(-30);
+                var viejos = await _db.CafeRepartidorUbicaciones
+                    .Where(u => u.CreatedAt < limite).Take(500).ToListAsync();
+                if (viejos.Count > 0)
+                {
+                    _db.CafeRepartidorUbicaciones.RemoveRange(viejos);
+                    await _db.SaveChangesAsync();
+                }
+            }
+        }
+        catch { /* la limpieza nunca puede romper el ping */ }
+
+        return Ok(new { ok = true, guardado = true });
+    }
 }

@@ -35,6 +35,11 @@ public class CafeRepartidor
     [ForeignKey(nameof(NomEmpleadoId))]
     public NomEmpleado? NomEmpleado { get; set; }
 
+    /// <summary>2026-09-17: si esta en true, el celu del repartidor manda su ubicacion mientras
+    /// reparte y la oficina lo ve en el mapa con el boton "Por donde van". Lo prende y apaga la
+    /// oficina desde Administracion -> Repartidores; en el celu no aparece nada. Arranca apagado.</summary>
+    public bool SeguirUbicacion { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
