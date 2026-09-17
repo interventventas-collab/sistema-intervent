@@ -1335,13 +1335,25 @@
              style="display:flex; align-items:center; gap:0.4rem; padding:0.45rem 0.6rem; cursor:move;
                     background:#fde68a; border-bottom:1px solid #f59e0b; border-radius: 8px 8px 0 0; user-select:none;">
             <span style="font-size:0.95rem;">📌</span>
-            <strong style="font-size:0.72rem; color:#92400e; text-transform:uppercase; letter-spacing:0.04em; flex:1;">Comentario para armado</strong>
+            <strong style="font-size:0.72rem; color:#92400e; text-transform:uppercase; letter-spacing:0.04em; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Comentario para armado</strong>
+            @* 2026-09-17: MARCADOR — elegís un color y seleccionás con el mouse lo que ya cargaste. Solo
+               visual y solo para quien carga: no se guarda y el que arma no lo ve (ver js/nv-marcador.js). *@
+            <span style="display:inline-flex; align-items:center; gap:0.2rem;" title="Pintar lo que ya cargaste: tocá un color y seleccioná con el mouse. Es solo para vos, no se guarda.">
+                <button type="button" data-nvm-key="nv-com" data-nvm-color="#bbf7d0" onmousedown="return nvMarcador.tocar(this, event)" title="Pintar de verde: tocalo y seleccioná con el mouse lo que ya cargaste. Tocalo de nuevo para dejar de pintar." style="width:18px; height:18px; border-radius:4px; background:#bbf7d0; border:1px solid #86efac; cursor:pointer; padding:0;"></button>
+                <button type="button" data-nvm-key="nv-com" data-nvm-color="#bfdbfe" onmousedown="return nvMarcador.tocar(this, event)" title="Pintar de celeste: tocalo y seleccioná con el mouse lo que ya cargaste. Tocalo de nuevo para dejar de pintar." style="width:18px; height:18px; border-radius:4px; background:#bfdbfe; border:1px solid #93c5fd; cursor:pointer; padding:0;"></button>
+                <button type="button" data-nvm-key="nv-com" data-nvm-color="#fbcfe8" onmousedown="return nvMarcador.tocar(this, event)" title="Pintar de rosa: tocalo y seleccioná con el mouse lo que ya cargaste. Tocalo de nuevo para dejar de pintar." style="width:18px; height:18px; border-radius:4px; background:#fbcfe8; border:1px solid #f9a8d4; cursor:pointer; padding:0;"></button>
+                <button type="button" data-nvm-key="nv-com" data-nvm-color="#fed7aa" onmousedown="return nvMarcador.tocar(this, event)" title="Pintar de naranja: tocalo y seleccioná con el mouse lo que ya cargaste. Tocalo de nuevo para dejar de pintar." style="width:18px; height:18px; border-radius:4px; background:#fed7aa; border:1px solid #fdba74; cursor:pointer; padding:0;"></button>
+                <button type="button" data-nvm-key="nv-com" data-nvm-color="borrar" onmousedown="return nvMarcador.tocar(this, event)" title="Despintar: tocá acá y seleccioná lo que querés dejar sin color" style="height:18px; border-radius:4px; background:#fff; border:1px solid #d97706; color:#92400e; font-size:0.62rem; cursor:pointer; padding:0 0.3rem; line-height:1;">borrar</button>
+            </span>
             <button type="button" @onclick="CerrarComentarioFlotante" title="Volver a su lugar en el formulario"
                     style="background:none; border:none; cursor:pointer; font-size:1rem; color:#92400e; line-height:1;">✕</button>
         </div>
-        <textarea class="form-input" @bind="formComentarioArmado" @bind:event="oninput"
-                  placeholder="Ej: SOBRES CORTESIA"
-                  style="flex:1; margin:0; border:none; background:#fefce8; resize:none; width:100%; padding:0.55rem 0.6rem; font-size:0.9rem; box-shadow:none;"></textarea>
+        <div style="flex:1; display:flex; position:relative; min-height:0;">
+            <div class="nvm-back" data-nvm-bg="#fefce8"></div>
+            <textarea class="form-input" data-nvm-key="nv-com" @bind="formComentarioArmado" @bind:event="oninput"
+                      placeholder="Ej: SOBRES CORTESIA"
+                      style="flex:1; margin:0; border:none; background:transparent; position:relative; z-index:1; resize:none; width:100%; padding:0.55rem 0.6rem; font-size:0.9rem; box-shadow:none;"></textarea>
+        </div>
         <div style="font-size:0.62rem; color:#a16207; text-align:right; padding:0 0.5rem 0.3rem; user-select:none;">↘ esquina para agrandar</div>
     </div>
 }
@@ -2797,17 +2809,29 @@
                         <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
                             <strong style="font-size: 0.78rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">📌 Comentario para armado</strong>
                             <span style="font-size: 0.7rem; color: #78350f; font-style: italic;">solo lo ve quien arma</span>
+                            @* 2026-09-17: MARCADOR — elegís un color y seleccionás con el mouse lo que ya cargaste. Solo
+                               visual y solo para quien carga: no se guarda y el que arma no lo ve (ver js/nv-marcador.js). *@
+                            <span style="display:inline-flex; align-items:center; gap:0.2rem; margin-left:auto;" title="Pintar lo que ya cargaste: tocá un color y seleccioná con el mouse. Es solo para vos, no se guarda.">
+                                <button type="button" data-nvm-key="nv-com" data-nvm-color="#bbf7d0" onmousedown="return nvMarcador.tocar(this, event)" title="Pintar de verde: tocalo y seleccioná con el mouse lo que ya cargaste. Tocalo de nuevo para dejar de pintar." style="width:18px; height:18px; border-radius:4px; background:#bbf7d0; border:1px solid #86efac; cursor:pointer; padding:0;"></button>
+                                <button type="button" data-nvm-key="nv-com" data-nvm-color="#bfdbfe" onmousedown="return nvMarcador.tocar(this, event)" title="Pintar de celeste: tocalo y seleccioná con el mouse lo que ya cargaste. Tocalo de nuevo para dejar de pintar." style="width:18px; height:18px; border-radius:4px; background:#bfdbfe; border:1px solid #93c5fd; cursor:pointer; padding:0;"></button>
+                                <button type="button" data-nvm-key="nv-com" data-nvm-color="#fbcfe8" onmousedown="return nvMarcador.tocar(this, event)" title="Pintar de rosa: tocalo y seleccioná con el mouse lo que ya cargaste. Tocalo de nuevo para dejar de pintar." style="width:18px; height:18px; border-radius:4px; background:#fbcfe8; border:1px solid #f9a8d4; cursor:pointer; padding:0;"></button>
+                                <button type="button" data-nvm-key="nv-com" data-nvm-color="#fed7aa" onmousedown="return nvMarcador.tocar(this, event)" title="Pintar de naranja: tocalo y seleccioná con el mouse lo que ya cargaste. Tocalo de nuevo para dejar de pintar." style="width:18px; height:18px; border-radius:4px; background:#fed7aa; border:1px solid #fdba74; cursor:pointer; padding:0;"></button>
+                                <button type="button" data-nvm-key="nv-com" data-nvm-color="borrar" onmousedown="return nvMarcador.tocar(this, event)" title="Despintar: tocá acá y seleccioná lo que querés dejar sin color" style="height:18px; border-radius:4px; background:#fff; border:1px solid #d97706; color:#92400e; font-size:0.62rem; cursor:pointer; padding:0 0.3rem; line-height:1;">borrar</button>
+                            </span>
                             @if (!comentarioArmadoFlotante)
                             {
                                 <button type="button" @onclick="AbrirComentarioFlotante" title="Sacar a una ventanita que podés mover y agrandar"
-                                        style="margin-left:auto; background:#fde68a; border:1px solid #f59e0b; color:#78350f; border-radius:6px; padding:0.1rem 0.4rem; font-size:0.68rem; cursor:pointer; white-space:nowrap;">↗ Ventana</button>
+                                        style="margin-left:0.3rem; background:#fde68a; border:1px solid #f59e0b; color:#78350f; border-radius:6px; padding:0.1rem 0.4rem; font-size:0.68rem; cursor:pointer; white-space:nowrap;">↗ Ventana</button>
                             }
                         </div>
                         @if (!comentarioArmadoFlotante)
                         {
-                            <textarea id="nv-comentario-armado" class="form-input" rows="3" @bind="formComentarioArmado"
-                                      placeholder="Ej: SOBRES CORTESIA"
-                                      style="background: #fefce8; border: 2px dashed #facc15; resize: vertical; min-height: 80px;"></textarea>
+                            <div style="position: relative;">
+                                <div class="nvm-back" data-nvm-bg="#fefce8"></div>
+                                <textarea id="nv-comentario-armado" class="form-input" data-nvm-key="nv-com" rows="3" @bind="formComentarioArmado"
+                                          placeholder="Ej: SOBRES CORTESIA"
+                                          style="background: transparent; position: relative; z-index: 1; border: 2px dashed #facc15; resize: vertical; min-height: 80px;"></textarea>
+                            </div>
                         }
                         else
                         {
