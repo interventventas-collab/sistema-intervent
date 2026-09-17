@@ -1,0 +1,214 @@
+@page "/cafe/proveedores-ctacte"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+@* 17/09/2026 — Cuenta corriente de proveedores: a quién le debemos y cuánto.
+   OFICIAL = facturas de AFIP (entran solas). NO OFICIAL = cotizaciones cargadas a mano.
+   Solo los proveedores con cuenta corriente, desde el día en que se les prendió. *@
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="margin:0;">📒 Cuenta corriente proveedores</h3>
+        <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+            @if (lista is { Count: > 0 })
+            {
+                <input class="form-input" style="min-width:200px; font-size:0.85rem;" @bind="filtro" @bind:event="oninput" placeholder="🔍 Buscar proveedor..." />
+            }
+            <button class="btn btn-primary" @onclick="AbrirAgregar">+ Agregar proveedor</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (lista is null)
+        {
+            <p class="text-muted" style="padding:1rem;">Cargando...</p>
+        }
+        else if (lista.Count == 0)
+        {
+            <div style="padding:1rem; font-size:0.9rem; line-height:1.5;">
+                Todavía no hay proveedores con cuenta corriente.<br />
+                Tocá <b>+ Agregar proveedor</b>: elegís desde qué día se cuenta y cuánto le debías ese día.
+                Desde ahí sus facturas de AFIP entran solas y las cotizaciones las cargás en su cuenta.
+            </div>
+        }
+        else
+        {
+            <div style="padding:0.7rem 1rem; font-size:0.95rem; border-bottom:1px solid #e5e7eb;">
+                Le debo en total <b style="color:@(lista.Sum(x => x.Total) > 0.01m ? "#b91c1c" : "inherit");">@Plata(lista.Sum(x => x.Total))</b>
+                <span style="color:#6b7280;"> · oficial @Plata(lista.Sum(x => x.Oficial)) · no oficial @Plata(lista.Sum(x => x.NoOficial))@(lista.Sum(x => x.ACuenta) > 0.01m ? $" · a cuenta −{Plata(lista.Sum(x => x.ACuenta))}" : "")</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-compact">
+                    <thead>
+                        <tr>
+                            <th>Proveedor</th>
+                            <th>Desde</th>
+                            <th style="text-align:right;">Oficial</th>
+                            <th style="text-align:right;">No oficial</th>
+                            <th style="text-align:right;">A cuenta</th>
+                            <th style="text-align:right;">Le debo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in Visibles)
+                        {
+                            var id = c.ProveedorId;
+                            <tr style="cursor:pointer;" @onclick='() => Nav.NavigateTo($"/cafe/proveedores/{id}/estado-cuenta")'>
+                                <td>
+                                    <b>@c.Nombre</b>
+                                    <div style="font-size:0.75rem; color:#6b7280;">@(c.Cuit ?? "sin CUIT: no le llegan las facturas de AFIP")@(c.Pendientes > 0 ? $" · {c.Pendientes} pendiente{(c.Pendientes == 1 ? "" : "s")}" : "")</div>
+                                </td>
+                                <td style="font-size:0.85rem;">@c.Desde?.ToString("dd/MM/yyyy")</td>
+                                <td style="text-align:right;">@Plata(c.Oficial)</td>
+                                <td style="text-align:right;">@Plata(c.NoOficial)</td>
+                                <td style="text-align:right; color:#6b7280;">@(c.ACuenta > 0.01m ? "−" + Plata(c.ACuenta) : "")</td>
+                                <td style="text-align:right; font-weight:700; color:@(c.Total > 0.01m ? "#b91c1c" : "#6b7280");">@Plata(c.Total)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (agregando)
+{
+    <div class="modal-overlay" @onclick="CerrarAgregar">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:600px; width:95vw; max-height:90vh; overflow-y:auto;">
+            <div class="modal-header">
+                <h4 style="margin:0;">+ Agregar proveedor a la cuenta corriente</h4>
+                <button class="btn-close" @onclick="CerrarAgregar">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (elegido is null)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Proveedor</label>
+                        <input class="form-input" @bind="busqueda" @bind:event="oninput" @bind:after="Buscar"
+                               placeholder="Nombre o CUIT (busca también en las facturas de AFIP)" autofocus />
+                    </div>
+                    @if (buscando)
+                    {
+                        <p class="text-muted">Buscando...</p>
+                    }
+                    else if (busqueda.Trim().Length >= 2 && candidatos.Count == 0)
+                    {
+                        <p class="text-muted">No encontré ningún proveedor ni factura de AFIP con eso.</p>
+                    }
+                    @foreach (var c in candidatos)
+                    {
+                        var cand = c;
+                        <div @onclick="() => Elegir(cand)" style="padding:0.5rem 0.6rem; border-bottom:1px solid #f3f4f6; cursor:pointer;">
+                            <b>@c.Nombre</b>
+                            <div style="font-size:0.78rem; color:#6b7280;">
+                                @(c.Cuit ?? "sin CUIT")
+                                @(c.FacturasAfip > 0 ? $" · {c.FacturasAfip} factura{(c.FacturasAfip == 1 ? "" : "s")} en AFIP, la última del {c.UltimaFactura:dd/MM/yyyy}" : " · sin facturas en AFIP")
+                                @if (c.YaLleva) { <span> · ya lleva cuenta corriente</span> }
+                                else if (c.ProveedorId is null) { <span> · no está cargado como proveedor: se crea</span> }
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div style="margin-bottom:0.8rem;">
+                        <b>@elegido.Nombre</b>
+                        <span style="font-size:0.8rem; color:#6b7280;"> · @(elegido.Cuit ?? "sin CUIT")</span>
+                        <button class="btn btn-secondary" style="font-size:0.75rem; margin-left:0.5rem;" @onclick="() => elegido = null">cambiar</button>
+                        @if (string.IsNullOrEmpty(elegido.Cuit))
+                        {
+                            <div style="font-size:0.8rem; color:#b45309; margin-top:0.3rem;">Sin CUIT no le van a llegar sus facturas de AFIP: cargáselo en su ficha.</div>
+                        }
+                    </div>
+                    <ArranqueCtaCte @bind-Desde="desde" @bind-Oficial="saldoOficial" @bind-NoOficial="saldoNoOficial" />
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarAgregar" disabled="@guardando">Cancelar</button>
+                @if (elegido is not null)
+                {
+                    <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">@(guardando ? "Guardando..." : "Llevar cuenta corriente")</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CtaCteResumenDto>? lista;
+    private string filtro = "";
+
+    private bool agregando, buscando, guardando;
+    private string busqueda = "";
+    private int busquedaNro;
+    private List<CtaCteCandidatoDto> candidatos = new();
+    private CtaCteCandidatoDto? elegido;
+    private DateTime desde = DateTimeExt.AhoraAr().Date;
+    private decimal saldoOficial, saldoNoOficial;
+
+    private IEnumerable<CtaCteResumenDto> Visibles => string.IsNullOrWhiteSpace(filtro) || lista is null
+        ? lista ?? new()
+        : lista.Where(c => c.Nombre.Contains(filtro.Trim(), StringComparison.OrdinalIgnoreCase) || (c.Cuit ?? "").Contains(filtro.Trim()));
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        try { lista = await Api.GetCtaCteProveedoresAsync(); }
+        catch (Exception ex) { lista = new(); ToastService.Error("No se pudo cargar: " + ex.Message); }
+    }
+
+    private void AbrirAgregar()
+    {
+        busqueda = ""; candidatos = new(); elegido = null;
+        desde = DateTimeExt.AhoraAr().Date; saldoOficial = 0; saldoNoOficial = 0;
+        agregando = true;
+    }
+
+    private void CerrarAgregar() { if (!guardando) agregando = false; }
+
+    private async Task Buscar()
+    {
+        var q = busqueda.Trim();
+        var nro = ++busquedaNro;
+        if (q.Length < 2) { candidatos = new(); buscando = false; return; }
+        buscando = true;
+        try
+        {
+            var r = await Api.BuscarCtaCteCandidatosAsync(q);
+            if (nro == busquedaNro) candidatos = r;   // si tipeó más mientras tanto, gana la última búsqueda
+        }
+        catch { if (nro == busquedaNro) candidatos = new(); }
+        finally { if (nro == busquedaNro) buscando = false; }
+    }
+
+    private void Elegir(CtaCteCandidatoDto c)
+    {
+        if (c.YaLleva && c.ProveedorId.HasValue)
+        {
+            Nav.NavigateTo($"/cafe/proveedores/{c.ProveedorId}/estado-cuenta");
+            return;
+        }
+        elegido = c;
+    }
+
+    private async Task Guardar()
+    {
+        if (elegido is null) return;
+        guardando = true;
+        try
+        {
+            var id = await Api.ActivarCtaCteProveedorAsync(elegido.ProveedorId, elegido.Cuit, elegido.Nombre, desde, saldoOficial, saldoNoOficial);
+            if (id <= 0) { ToastService.Error("No se pudo guardar"); return; }
+            ToastService.Success($"{elegido.Nombre} ya lleva cuenta corriente");
+            agregando = false;
+            Nav.NavigateTo($"/cafe/proveedores/{id}/estado-cuenta");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private static string Plata(decimal v) => "$" + v.ToString("N2", CultureInfo.GetCultureInfo("es-AR"));
+}

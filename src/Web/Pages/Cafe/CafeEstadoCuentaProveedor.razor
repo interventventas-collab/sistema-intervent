@@ -3,62 +3,381 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* 17/09/2026 — Cuenta corriente de UN proveedor: lo que se le debe (facturas de AFIP + cotizaciones),
+   lo pendiente, y los movimientos con el saldo corrido. Antes esta pantalla sumaba las compras de
+   stock (Cafe_Compras), que nadie cargaba. *@
 
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-        <button class="btn btn-secondary" style="font-size:0.8rem;" @onclick='() => Nav.NavigateTo("/cafe/proveedores")'>← Volver</button>
-        @if (estado is not null)
+        <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+            <button class="btn btn-secondary" style="font-size:0.8rem;" @onclick='() => Nav.NavigateTo("/cafe/proveedores-ctacte")'>← Volver</button>
+            @if (cta is not null)
+            {
+                <h3 style="margin:0;">📒 @cta.Nombre</h3>
+                <span style="font-size:0.8rem; color:#6b7280;">@(cta.Cuit ?? "sin CUIT")</span>
+            }
+        </div>
+        @if (cta is { CuentaCorriente: true })
         {
-            <h3 style="margin:0;">📒 Estado de cuenta proveedor · @estado.Nombre</h3>
-            <div style="font-weight:700; font-size:1.2rem; color:@(estado.Saldo > 0.01m ? "#dc2626" : "#059669");">
-                Saldo: $@estado.Saldo.ToString("N2")
-                <span style="font-size:0.75rem; font-weight:400; color:#6b7280; display:block;">
-                    @(estado.Saldo > 0.01m ? "(le debes)" : estado.Saldo < -0.01m ? "(a favor tuyo)" : "(al día)")
-                </span>
+            <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                <button class="btn btn-secondary" @onclick="AbrirCotizacion">+ Cargar cotización</button>
+                <button class="btn btn-primary" @onclick='() => Nav.NavigateTo($"/cafe/tesoreria/pagos?proveedor={ProveedorId}")'>💰 Pagar</button>
             </div>
         }
     </div>
-    <div class="card-body" style="padding:0;">
-        @if (loading) { <p class="text-muted" style="padding:1rem;">Cargando...</p> }
-        else if (estado is null || estado.Movimientos.Count == 0)
+    <div class="card-body">
+        @if (cta is null)
         {
-            <p class="text-muted" style="padding:1rem;">Sin movimientos.</p>
+            <p class="text-muted">@(cargando ? "Cargando..." : "No encontré el proveedor.")</p>
+        }
+        else if (!cta.CuentaCorriente)
+        {
+            <p style="margin-top:0;">Este proveedor no lleva cuenta corriente.</p>
+            @if (string.IsNullOrEmpty(cta.Cuit))
+            {
+                <p style="font-size:0.85rem; color:#b45309;">No tiene CUIT cargado: sin CUIT no le van a llegar sus facturas de AFIP. Cargáselo en su ficha (Proveedores).</p>
+            }
+            <div style="max-width:520px;">
+                <ArranqueCtaCte @bind-Desde="ajDesde" @bind-Oficial="ajOficial" @bind-NoOficial="ajNoOficial" />
+                <button class="btn btn-primary" style="margin-top:0.8rem;" @onclick="Activar" disabled="@guardando">@(guardando ? "Guardando..." : "Llevar cuenta corriente")</button>
+            </div>
         }
         else
         {
-            <table class="table table-compact">
-                <thead><tr><th>Fecha</th><th>Tipo</th><th>Número</th><th style="text-align:right;">Pagaste</th><th style="text-align:right;">Compraste</th><th style="text-align:right;">Saldo</th><th>Detalle</th></tr></thead>
-                <tbody>
-                    @foreach (var m in estado.Movimientos)
-                    {
-                        <tr>
-                            <td>@m.Fecha.ToArTime().ToString("dd/MM/yyyy")</td>
-                            <td><span class="badge @(m.Tipo == "Compra" ? "badge-danger" : "badge-success")">@m.Tipo</span></td>
-                            <td><b>@m.Numero</b></td>
-                            <td style="text-align:right; color:#059669;">@(m.Debe > 0 ? $"${m.Debe:N2}" : "")</td>
-                            <td style="text-align:right; color:#dc2626;">@(m.Haber > 0 ? $"${m.Haber:N2}" : "")</td>
-                            <td style="text-align:right; font-weight:600; color:@(m.Saldo > 0.01m ? "#dc2626" : "#059669");">$@m.Saldo.ToString("N2")</td>
-                            <td style="font-size:0.78rem; color:#6b7280;">@(m.Detalle ?? "")</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <div style="font-size:1.05rem;">
+                Le debo <b style="color:@(cta.Total > 0.01m ? "#b91c1c" : "inherit");">@Plata(cta.Total)</b>
+                <span style="color:#6b7280; font-size:0.9rem;"> · oficial @Plata(cta.Oficial) · no oficial @Plata(cta.NoOficial)@(cta.ACuenta > 0.01m ? $" · a cuenta −{Plata(cta.ACuenta)}" : "")</span>
+            </div>
+            <div style="font-size:0.8rem; color:#6b7280; margin-top:0.2rem;">
+                Cuenta corriente desde el @cta.Desde?.ToString("dd/MM/yyyy") · saldo inicial oficial @Plata(cta.SaldoInicialOficial) · no oficial @Plata(cta.SaldoInicialNoOficial)
+                · <a href="" @onclick="AbrirAjustes" @onclick:preventDefault="true">cambiar</a>
+            </div>
+            @if (string.IsNullOrEmpty(cta.Cuit))
+            {
+                <div style="font-size:0.85rem; color:#b45309; margin-top:0.4rem;">No tiene CUIT cargado: sus facturas de AFIP no se están contando. Cargáselo en su ficha (Proveedores).</div>
+            }
+
+            <h4 style="margin:1.2rem 0 0.4rem;">Pendiente</h4>
+            @if (cta.Pendientes.Count == 0)
+            {
+                <p class="text-muted" style="margin:0;">No hay nada pendiente.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-compact">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th><th>Comprobante</th><th></th>
+                                <th style="text-align:right;">Total</th><th style="text-align:right;">Pagado</th><th style="text-align:right;">Debo</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in cta.Pendientes)
+                            {
+                                var doc = d;
+                                <tr>
+                                    <td>@d.Fecha.ToString("dd/MM/yyyy")</td>
+                                    <td>
+                                        <b>@d.Etiqueta</b>
+                                        @if (!string.IsNullOrWhiteSpace(d.Observaciones)) { <div style="font-size:0.75rem; color:#6b7280;">@d.Observaciones</div> }
+                                    </td>
+                                    <td style="font-size:0.78rem; color:#6b7280;">@(d.Oficial ? "oficial" : "no oficial")</td>
+                                    <td style="text-align:right;">@Plata(d.Total)</td>
+                                    <td style="text-align:right; color:#6b7280;">@(d.Pagado > 0.005m ? Plata(d.Pagado) : "")</td>
+                                    <td style="text-align:right; font-weight:600;">@Plata(d.Saldo)</td>
+                                    <td style="white-space:nowrap;">
+                                        @if (d.TieneArchivo && d.DeudaId.HasValue)
+                                        {
+                                            <a href="api/cafe/proveedores-ctacte/deudas/@d.DeudaId/archivo" target="_blank" title="Ver la foto o el PDF">📎 Ver</a>
+                                        }
+                                        else if (d.TieneArchivo && d.AfipIdComprobante is not null)
+                                        {
+                                            <a href="@("api/contadora/factura-pdf?id=" + Uri.EscapeDataString(d.AfipIdComprobante))" target="_blank" title="Ver la factura">📎 Ver</a>
+                                        }
+                                        @if (d.DeudaId.HasValue && !d.EsSaldoInicial)
+                                        {
+                                            @if (!d.TieneArchivo)
+                                            {
+                                                <label style="cursor:pointer; margin-left:0.3rem;" title="Subir foto o PDF de la cotización">
+                                                    📷
+                                                    <InputFile OnChange="@(e => SubirArchivo(doc.DeudaId!.Value, e))" accept="image/*,application/pdf" style="display:none;" />
+                                                </label>
+                                            }
+                                            @if (d.Pagado <= 0.005m)
+                                            {
+                                                <button class="btn-icon" style="margin-left:0.3rem;" title="Anular esta cotización" @onclick="() => AnularDeuda(doc)">🗑</button>
+                                            }
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            <h4 style="margin:1.2rem 0 0.4rem;">Movimientos</h4>
+            @if (cta.Movimientos.Count == 0)
+            {
+                <p class="text-muted" style="margin:0;">Sin movimientos todavía.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-compact">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th><th>Qué</th>
+                                <th style="text-align:right;">Suma</th><th style="text-align:right;">Resta</th><th style="text-align:right;">Saldo</th>
+                                <th>Detalle</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var m in cta.Movimientos)
+                            {
+                                <tr>
+                                    <td>@m.Fecha.ToString("dd/MM/yyyy")</td>
+                                    <td>@m.Que</td>
+                                    <td style="text-align:right;">@(m.Suma > 0 ? Plata(m.Suma) : "")</td>
+                                    <td style="text-align:right;">@(m.Resta > 0 ? Plata(m.Resta) : "")</td>
+                                    <td style="text-align:right; font-weight:600;">@Plata(m.Saldo)</td>
+                                    <td style="font-size:0.78rem; color:#6b7280;">@m.Detalle</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         }
     </div>
 </div>
 
+@if (cotizando)
+{
+    <div class="modal-overlay" @onclick="CerrarCotizacion">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:520px; width:95vw;">
+            <div class="modal-header">
+                <h4 style="margin:0;">+ Cotización de @cta?.Nombre</h4>
+                <button class="btn-close" @onclick="CerrarCotizacion">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+                    <div class="form-group" style="flex:0 0 170px;">
+                        <label class="form-label">Fecha</label>
+                        <input class="form-input" type="date" value="@cotFecha.ToString("yyyy-MM-dd")" @onchange="OnCotFecha" />
+                    </div>
+                    <div class="form-group" style="flex:1; min-width:140px;">
+                        <label class="form-label">Número</label>
+                        <input class="form-input" @bind="cotNumero" placeholder="Opcional" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Importe</label>
+                    <input class="form-input" type="text" inputmode="decimal" style="text-align:right; max-width:200px;" @bind="CotImporteTexto" @bind:event="onchange" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nota</label>
+                    <input class="form-input" @bind="cotNota" placeholder="Opcional: qué trajo, a quién se la pidieron..." />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Foto o PDF</label>
+                    <InputFile OnChange="OnCotArchivo" accept="image/*,application/pdf" class="form-input" />
+                    <p style="font-size:0.75rem; color:#6b7280; margin:0.25rem 0 0;">Opcional. Desde el celular abre la cámara.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarCotizacion" disabled="@guardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarCotizacion" disabled="@guardando">@(guardando ? "Guardando..." : "Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (ajustando && cta is not null)
+{
+    <div class="modal-overlay" @onclick="() => { if (!guardando) ajustando = false; }">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:520px; width:95vw;">
+            <div class="modal-header">
+                <h4 style="margin:0;">Arranque de la cuenta de @cta.Nombre</h4>
+                <button class="btn-close" @onclick="() => { if (!guardando) ajustando = false; }">&times;</button>
+            </div>
+            <div class="modal-body">
+                <ArranqueCtaCte @bind-Desde="ajDesde" @bind-Oficial="ajOficial" @bind-NoOficial="ajNoOficial" />
+                <div style="border-top:1px solid #e5e7eb; margin-top:1rem; padding-top:0.7rem; font-size:0.85rem;">
+                    <a href="" style="color:#6b7280;" @onclick="Desactivar" @onclick:preventDefault="true">Dejar de llevarle cuenta corriente</a>
+                    <div style="font-size:0.75rem; color:#9ca3af;">Lo cargado no se borra: si se vuelve a prender, sigue igual.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => ajustando = false" disabled="@guardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarAjustes" disabled="@guardando">@(guardando ? "Guardando..." : "Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public int ProveedorId { get; set; }
-    private EstadoCuentaProvDto? estado;
-    private bool loading = true;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    private CtaCteCuentaDto? cta;
+    private bool cargando = true, guardando;
 
-    private async Task Load()
+    // Alta / ajustes del arranque
+    private bool ajustando;
+    private DateTime ajDesde = DateTimeExt.AhoraAr().Date;
+    private decimal ajOficial, ajNoOficial;
+
+    // Cotización nueva
+    private bool cotizando;
+    private DateTime cotFecha = DateTimeExt.AhoraAr().Date;
+    private string? cotNumero, cotNota;
+    private decimal cotImporte;
+    private IBrowserFile? cotArchivo;
+    private string CotImporteTexto
     {
-        loading = true;
-        try { estado = await Api.GetEstadoCuentaProveedorAsync(ProveedorId); }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-        loading = false;
+        get => MontoInput.Formato(cotImporte);
+        set { MontoInput.TryParse(value, out cotImporte); }
     }
+
+    private const long MaxArchivo = 20_000_000;
+
+    protected override async Task OnParametersSetAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true;
+        try
+        {
+            cta = await Api.GetCtaCteProveedorAsync(ProveedorId);
+            if (cta is not null)
+            {
+                ajDesde = cta.Desde ?? DateTimeExt.AhoraAr().Date;
+                ajOficial = cta.SaldoInicialOficial;
+                ajNoOficial = cta.SaldoInicialNoOficial;
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
+        cargando = false;
+    }
+
+    private async Task Activar()
+    {
+        guardando = true;
+        try
+        {
+            await Api.ActivarCtaCteProveedorAsync(ProveedorId, null, null, ajDesde, ajOficial, ajNoOficial);
+            ToastService.Success("Listo: ya lleva cuenta corriente");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private void AbrirAjustes()
+    {
+        if (cta is null) return;
+        ajDesde = cta.Desde ?? DateTimeExt.AhoraAr().Date;
+        ajOficial = cta.SaldoInicialOficial;
+        ajNoOficial = cta.SaldoInicialNoOficial;
+        ajustando = true;
+    }
+
+    private async Task GuardarAjustes()
+    {
+        guardando = true;
+        try
+        {
+            await Api.ActivarCtaCteProveedorAsync(ProveedorId, null, null, ajDesde, ajOficial, ajNoOficial);
+            ToastService.Success("Guardado");
+            ajustando = false;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task Desactivar()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Dejar de llevarle cuenta corriente? Sus facturas dejan de contar como deuda. Lo cargado no se borra.")) return;
+        guardando = true;
+        try
+        {
+            await Api.DesactivarCtaCteProveedorAsync(ProveedorId);
+            ajustando = false;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private void AbrirCotizacion()
+    {
+        cotFecha = DateTimeExt.AhoraAr().Date; cotNumero = null; cotNota = null; cotImporte = 0; cotArchivo = null;
+        cotizando = true;
+    }
+
+    private void CerrarCotizacion() { if (!guardando) cotizando = false; }
+
+    private void OnCotFecha(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) cotFecha = d.Date;
+    }
+
+    private void OnCotArchivo(InputFileChangeEventArgs e) => cotArchivo = e.File;
+
+    private async Task GuardarCotizacion()
+    {
+        if (cotImporte <= 0) { ToastService.Error("Poné el importe"); return; }
+        if (cotArchivo is not null && cotArchivo.Size > MaxArchivo) { ToastService.Error("El archivo es muy grande (máximo 20 MB)"); return; }
+        guardando = true;
+        try
+        {
+            var id = await Api.CrearCotizacionProveedorAsync(ProveedorId, cotFecha, cotNumero, cotImporte, cotNota);
+            if (id > 0 && cotArchivo is not null)
+            {
+                try
+                {
+                    await using var st = cotArchivo.OpenReadStream(MaxArchivo);
+                    await Api.SubirArchivoDeudaProveedorAsync(id, st, cotArchivo.Name, cotArchivo.ContentType);
+                }
+                catch (Exception ex) { ToastService.Error("La cotización se guardó pero la foto no subió: " + ex.Message); }
+            }
+            ToastService.Success("Cotización cargada");
+            cotizando = false;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task SubirArchivo(int deudaId, InputFileChangeEventArgs e)
+    {
+        if (e.File.Size > MaxArchivo) { ToastService.Error("El archivo es muy grande (máximo 20 MB)"); return; }
+        try
+        {
+            await using var st = e.File.OpenReadStream(MaxArchivo);
+            await Api.SubirArchivoDeudaProveedorAsync(deudaId, st, e.File.Name, e.File.ContentType);
+            ToastService.Success("Archivo subido");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task AnularDeuda(CtaCteDocDto d)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Anular {d.Etiqueta} por {Plata(d.Total)}?")) return;
+        try
+        {
+            await Api.AnularDeudaProveedorAsync(d.DeudaId!.Value);
+            ToastService.Success("Anulada");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private static string Plata(decimal v) => "$" + v.ToString("N2", CultureInfo.GetCultureInfo("es-AR"));
 }

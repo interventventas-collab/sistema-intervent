@@ -450,7 +450,7 @@
     <div class="modal-overlay" @onclick="@(() => movCompra = null)" style="z-index: 9000; position: fixed; inset: 0; background: rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center;">
         <div @onclick:stopPropagation="true" style="background:#fff; border-radius:12px; width:min(600px,95vw); max-height:90vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,.3);">
             <div style="background:#7c3aed; color:#fff; padding:.8rem 1rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px 12px 0 0;">
-                <h3 style="margin:0; font-size:1.05rem;">🧾 Pagar factura de compra</h3>
+                <h3 style="margin:0; font-size:1.05rem;">🧾 Pagar factura o cotización del proveedor</h3>
                 <button @onclick="@(() => movCompra = null)" style="background:none; border:none; color:#fff; font-size:1.5rem; cursor:pointer;">&times;</button>
             </div>
             <div style="padding:1rem;">
@@ -464,11 +464,12 @@
                 @if (loadingFacturasCompra) { <p>Buscando facturas…</p> }
                 else if (facturasCompra.Count == 0)
                 {
-                    <p style="color:#6b7280;">No encontré facturas de compra con saldo pendiente de este proveedor (CUIT @movCompra.LeyendaAdicional2). Puede que la factura todavía no haya entrado de AFIP, o que ya esté paga.</p>
+                    <p style="color:#6b7280;">No encontré nada pendiente de este proveedor (CUIT @movCompra.LeyendaAdicional2). Solo aparecen los proveedores que llevan cuenta corriente (Clientes y proveedores → Cuenta corriente proveedores). Si lleva, puede que la factura todavía no haya entrado de AFIP o que ya esté paga.</p>
                 }
                 else
                 {
-                    <div style="font-size:.85rem; font-weight:700; margin-bottom:.4rem;">Elegí la(s) factura(s) que pagó esta transferencia:</div>
+                    <div style="font-size:.85rem; font-weight:700; margin-bottom:.1rem;">Elegí lo que pagó esta transferencia:</div>
+                    <div style="font-size:.72rem; color:#6b7280; margin-bottom:.4rem;">Queda como pago al proveedor en Tesorería y descuenta de la caja del banco.</div>
                     <div style="display:flex; flex-direction:column; gap:.35rem;">
                         @foreach (var f in facturasCompra)
                         {
@@ -480,7 +481,7 @@
                                        @bind:set="v => SetFacturaElegida(f, v)" />
                                 <div style="flex:1;">
                                     <div style="font-weight:600;">
-                                        @f.TipoComprobante @(f.PuntoVenta?.ToString("D4"))-@(f.NumeroComprobante?.ToString("D8"))
+                                        @(f.Etiqueta ?? $"{f.TipoComprobante} {f.PuntoVenta?.ToString("D4")}-{f.NumeroComprobante?.ToString("D8")}")
                                         @if (coincide) { <span style="font-size:.7rem; color:#16a34a; font-weight:700; margin-left:.3rem;">✓ coincide</span> }
                                     </div>
                                     <div style="font-size:.72rem; color:#6b7280;">@f.FechaEmision?.ToString("dd/MM/yyyy") · Total $@f.Total.ToString("N2")@(f.Pagado > 0 ? $" · ya pagado ${f.Pagado.ToString("N2")}" : "")</div>

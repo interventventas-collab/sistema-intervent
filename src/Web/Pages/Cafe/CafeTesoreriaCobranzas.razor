@@ -736,20 +736,20 @@
                                             @if (facts.Count == 0)
                                             {
                                                 <p style="font-size:0.75rem; color:#6b7280; margin:0;">
-                                                    Va <strong>a cuenta</strong>: no tiene facturas cargadas con saldo.
-                                                    Cuando cargues las compras, el saldo se acomoda solo.
+                                                    Va <strong>a cuenta</strong>: no tiene nada pendiente en su cuenta corriente
+                                                    (o no lleva cuenta corriente).
                                                 </p>
                                             }
                                             else
                                             {
-                                                <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.25rem;">¿Contra qué factura?</div>
+                                                <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.25rem;">¿Contra qué factura o cotización?</div>
                                                 <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
-                                                    <button class="btn @(m.RedirigidoCompraId == 0 ? "btn-primary" : "btn-secondary")"
-                                                            style="font-size:0.8rem;" @onclick="() => ElegirFactura(idx, 0)">A cuenta</button>
+                                                    <button class="btn @(m.RedirigidoDocClave == "" ? "btn-primary" : "btn-secondary")"
+                                                            style="font-size:0.8rem;" @onclick='() => ElegirFactura(idx, "")'>A cuenta</button>
                                                     @foreach (var f in facts)
                                                     {
-                                                        <button class="btn @(m.RedirigidoCompraId == f.Id ? "btn-primary" : "btn-secondary")"
-                                                                style="font-size:0.8rem;" @onclick="() => ElegirFactura(idx, f.Id)">
+                                                        <button class="btn @(m.RedirigidoDocClave == f.Clave ? "btn-primary" : "btn-secondary")"
+                                                                style="font-size:0.8rem;" @onclick="() => ElegirFactura(idx, f.Clave)">
                                                             @(string.IsNullOrWhiteSpace(f.Comprobante) ? f.Numero : f.Comprobante) · debe @Plata(f.Saldo)
                                                         </button>
                                                     }
@@ -761,7 +761,7 @@
                                                     @(prSel.Saldo > 0
                                                         ? $"Hoy le debemos {Plata(prSel.Saldo)}."
                                                         : prSel.Saldo < 0
-                                                            ? $"Hoy tiene {Plata(-prSel.Saldo)} a favor nuestro (o faltan cargar compras)."
+                                                            ? $"Hoy tiene {Plata(-prSel.Saldo)} a favor nuestro."
                                                             : "Hoy su cuenta está en cero.")
                                                 </p>
                                             }
@@ -1679,8 +1679,9 @@
         public string? RedirigidoDestino { get; set; }
         // 09/09/2026: el destinatario también puede ser un PROVEEDOR.
         public int RedirigidoProveedorId { get; set; }
-        /// <summary>Contra qué factura suya. 0 = "a cuenta" (el caso normal hoy).</summary>
-        public int RedirigidoCompraId { get; set; }
+        /// <summary>17/09/2026: contra qué documento de su cuenta corriente (factura de AFIP o
+        /// cotización). "" = "a cuenta".</summary>
+        public string RedirigidoDocClave { get; set; } = "";
         public string ChequeBanco { get; set; } = "";
         public string ChequeNumero { get; set; } = "";
         public string? ChequeEmisor { get; set; }
@@ -2150,7 +2151,7 @@
         m.RedirigidoProveedorId = proveedorId;
         m.RedirigidoEmpleadoId = 0;
         m.RedirigidoDestino = null;
-        m.RedirigidoCompraId = 0;     // arranca "a cuenta"
+        m.RedirigidoDocClave = "";    // arranca "a cuenta"
         buscandoProvIdx = null;
         if (!facturasProv.ContainsKey(proveedorId))
         {
@@ -2159,7 +2160,7 @@
         }
     }
 
-    private void ElegirFactura(int idx, int compraId) => formMedios[idx].RedirigidoCompraId = compraId;
+    private void ElegirFactura(int idx, string clave) => formMedios[idx].RedirigidoDocClave = clave;
 
     /// <summary>"No está acá": abre el buscador entre TODOS los proveedores. Sin esto, la primera vez
     /// que falta uno hay que abandonar la cobranza, ir a Proveedores, tildarlo y volver a empezar.</summary>
@@ -2331,7 +2332,8 @@
             m.EsRedirigido && m.RedirigidoEmpleadoId > 0 ? m.RedirigidoEmpleadoId : null,
             m.EsRedirigido ? m.RedirigidoDestino : null,
             m.EsRedirigido && m.RedirigidoProveedorId > 0 ? m.RedirigidoProveedorId : null,
-            m.EsRedirigido && m.RedirigidoProveedorId > 0 && m.RedirigidoCompraId > 0 ? m.RedirigidoCompraId : null
+            null,
+            m.EsRedirigido && m.RedirigidoProveedorId > 0 && m.RedirigidoDocClave != "" ? m.RedirigidoDocClave : null
         )).ToList();
 
         guardando = true;

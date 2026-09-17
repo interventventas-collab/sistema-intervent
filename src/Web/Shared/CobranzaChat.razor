@@ -137,16 +137,16 @@
                     var facts = facturasProv.TryGetValue(proveedorId, out var ff) ? ff : new();
                     @if (facts.Count == 0)
                     {
-                        <div class="cobch-sub cobch-pad">Va a cuenta del proveedor: no tiene facturas cargadas con saldo.</div>
+                        <div class="cobch-sub cobch-pad">Va a cuenta del proveedor: no tiene nada pendiente en su cuenta corriente.</div>
                     }
                     else
                     {
-                        <div class="cobch-t">¿Contra qué factura del proveedor?</div>
+                        <div class="cobch-t">¿Contra qué factura o cotización del proveedor?</div>
                         <div class="cobch-chips">
-                            <button class="cobch-chip @(compraId == 0 ? "on" : "")" @onclick="() => compraId = 0">A cuenta</button>
+                            <button class="cobch-chip @(docClave == "" ? "on" : "")" @onclick='() => docClave = ""'>A cuenta</button>
                             @foreach (var f in facts)
                             {
-                                <button class="cobch-chip @(compraId == f.Id ? "on" : "")" @onclick="() => compraId = f.Id">
+                                <button class="cobch-chip @(docClave == f.Clave ? "on" : "")" @onclick="() => docClave = f.Clave">
                                     @(string.IsNullOrWhiteSpace(f.Comprobante) ? f.Numero : f.Comprobante) · debe @Plata(f.Saldo)
                                 </button>
                             }
@@ -342,7 +342,8 @@
 
     private int empleadoId;
     private int proveedorId;
-    private int compraId;
+    /// <summary>17/09/2026: documento de la cuenta corriente del proveedor ("" = a cuenta).</summary>
+    private string docClave = "";
     private string? destino;
 
     private List<ComprobantePendienteDto> pendientes = new();
@@ -429,14 +430,14 @@
     private void ElegirModo(string m)
     {
         modo = m;
-        if (m == ModoEfectivo) { empleadoId = 0; proveedorId = 0; compraId = 0; destino = null; }
+        if (m == ModoEfectivo) { empleadoId = 0; proveedorId = 0; docClave = ""; destino = null; }
     }
 
     private void ElegirEmpleado(CafeDestinatarioDto d)
     {
         empleadoId = d.EmpleadoId;
         proveedorId = 0;
-        compraId = 0;
+        docClave = "";
         destino = d.TieneViajes ? null : DestinoSueldo;
     }
 
@@ -445,7 +446,7 @@
         proveedorId = id;
         empleadoId = 0;
         destino = null;
-        compraId = 0;
+        docClave = "";
         if (!facturasProv.ContainsKey(id))
         {
             try { facturasProv[id] = await Api.GetCafeFacturasPendientesProveedorAsync(id); }
@@ -457,7 +458,7 @@
     {
         empleadoId = 0;
         proveedorId = 0;
-        compraId = 0;
+        docClave = "";
         destino = DestinoPrivada;
     }
 
@@ -521,7 +522,8 @@
             esRedir && empleadoId > 0 ? empleadoId : null,
             esRedir ? destino : null,
             esRedir && proveedorId > 0 ? proveedorId : null,
-            esRedir && proveedorId > 0 && compraId > 0 ? compraId : null);
+            null,
+            esRedir && proveedorId > 0 && docClave != "" ? docClave : null);
 
         guardando = true;
         try
@@ -557,7 +559,7 @@
 
             // Queda listo para otro pago del mismo cliente: con lo que debe AHORA.
             Importe = 0; excluidas.Clear(); verTodas = false; mandarRecibo = false;
-            empleadoId = 0; proveedorId = 0; compraId = 0; destino = null;
+            empleadoId = 0; proveedorId = 0; docClave = ""; destino = null;
             try { pendientes = await Api.GetComprobantesPendientesAsync(cid) ?? new(); } catch { }
             await CargarSaldoAsync(cid);
             try { destinatarios = await Api.GetCafeDestinatariosAsync() ?? destinatarios; } catch { }

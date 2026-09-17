@@ -793,7 +793,7 @@
 
                 @* ───────── 3. CLIENTES Y PROVEEDORES ───────── *@
                 <NavGroup Label="👥 Clientes y proveedores" Icon="@SvgIcons.Users" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/proveedores") || IsActive("/cafe/telefonos-clientes-meli"))">
+                          HasActiveChild="@(IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/proveedores") || IsActive("/cafe/proveedores-ctacte") || IsActive("/cafe/telefonos-clientes-meli"))">
                     <NavItem Href="/cafe/clientes" Label="Clientes" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
                     <NavItem Href="/cafe/telefonos-clientes-meli" Label="📞 Teléfonos clientes MeLi" Icon="@SvgIcons.Users"
@@ -802,6 +802,9 @@
                              IsActive="@IsActive("/cafe/clientes-mapeados")" OnClick="@(() => NavigateTo("/cafe/clientes-mapeados"))" />
                     <NavItem Href="/cafe/proveedores" Label="Proveedores" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/cafe/proveedores")" OnClick="@(() => NavigateTo("/cafe/proveedores"))" />
+                    @* 17/09/2026: a quién le debemos (facturas de AFIP + cotizaciones). *@
+                    <NavItem Href="/cafe/proveedores-ctacte" Label="📒 Cuenta corriente proveedores" Icon="@SvgIcons.Users"
+                             IsActive="@IsActive("/cafe/proveedores-ctacte")" OnClick="@(() => NavigateTo("/cafe/proveedores-ctacte"))" />
                 </NavGroup>
 
                 @* ───────── 4. TESORERÍA (Cajas / Pagos / Cheques) ───────── *@

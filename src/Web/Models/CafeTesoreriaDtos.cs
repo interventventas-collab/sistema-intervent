@@ -648,17 +648,6 @@ public class VentaSaldoDto
 }
 
 // ========== Pagos a proveedores ==========
-public class CompraPendienteDto
-{
-    public int CompraId { get; set; }
-    public string Numero { get; set; } = "";
-    public DateTime Fecha { get; set; }
-    public decimal Total { get; set; }
-    public decimal Pagado { get; set; }
-    public decimal Saldo { get; set; }
-    public string? NumeroComprobanteProveedor { get; set; }
-}
-
 public class PagoListDto
 {
     public int Id { get; set; }
@@ -669,25 +658,6 @@ public class PagoListDto
     public decimal Total { get; set; }
     public decimal Retenciones { get; set; }
     public string Estado { get; set; } = "";
-}
-
-public class EstadoCuentaProvDto
-{
-    public int ProveedorId { get; set; }
-    public string Nombre { get; set; } = "";
-    public decimal Saldo { get; set; }
-    public List<MovimientoProvDto> Movimientos { get; set; } = new();
-}
-
-public class MovimientoProvDto
-{
-    public DateTime Fecha { get; set; }
-    public string Tipo { get; set; } = "";
-    public string Numero { get; set; } = "";
-    public decimal Debe { get; set; }
-    public decimal Haber { get; set; }
-    public decimal Saldo { get; set; }
-    public string? Detalle { get; set; }
 }
 
 // ========== Estado de cuenta ==========
@@ -729,6 +699,8 @@ public class CafeProveedorRedirDto
 public class CafeFacturaProvDto
 {
     public int Id { get; set; }
+    /// <summary>17/09/2026: documento de la cuenta corriente ("AFIP:..." / "DEU:..."). Id ya no se usa.</summary>
+    public string Clave { get; set; } = "";
     public string Numero { get; set; } = "";
     public DateTime Fecha { get; set; }
     public decimal Total { get; set; }

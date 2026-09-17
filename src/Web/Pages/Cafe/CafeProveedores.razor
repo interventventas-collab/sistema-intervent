@@ -88,7 +88,7 @@
                                 <td><span class="status-badge @(p.IsActive ? "status-active" : "status-inactive")">@(p.IsActive ? "Activo" : "Inactivo")</span></td>
                                 <td class="actions-cell">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(p)" title="Editar">✎</button>
-                                    <button class="btn-icon" @onclick='() => Nav.NavigateTo($"/cafe/proveedores/{p.Id}/estado-cuenta")' title="Estado de cuenta">📒</button>
+                                    <button class="btn-icon" @onclick='() => Nav.NavigateTo($"/cafe/proveedores/{p.Id}/estado-cuenta")' title="Cuenta corriente">📒</button>
                                     <button class="btn-icon" style="color:#059669;" @onclick='() => Nav.NavigateTo($"/cafe/tesoreria/pagos?proveedor={p.Id}")' title="Pagar a este proveedor">💰</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(p)" title="Eliminar / desactivar">🗑</button>
                                 </td>
@@ -226,6 +226,18 @@
                         para cancelar lo que le debemos. Sin el tilde no aparece en la lista de la cobranza.
                     </p>
                 </div>
+                @* 17/09/2026: la cuenta corriente se prende y se ajusta en su propia pantalla (lleva fecha
+                   de arranque y saldo inicial), acá solo se ve y se llega. *@
+                @if (editing is not null)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Cuenta corriente</label>
+                        <div style="font-size:0.85rem;">
+                            @(editing.CuentaCorriente ? $"Sí, desde el {editing.CuentaCorrienteDesde:dd/MM/yyyy}" : "No lleva")
+                            · <a href="/cafe/proveedores/@editing.Id/estado-cuenta">@(editing.CuentaCorriente ? "ver su cuenta" : "llevarle cuenta corriente")</a>
+                        </div>
+                    </div>
+                }
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>

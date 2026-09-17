@@ -1066,6 +1066,9 @@ public class CafeProveedorDto
     public decimal TotalComprado { get; set; }
     /// <summary>09/09/2026 — si está habilitado para recibir cobros redirigidos.</summary>
     public bool AceptaRedirigido { get; set; }
+    /// <summary>17/09/2026 — lleva cuenta corriente, y desde qué día.</summary>
+    public bool CuentaCorriente { get; set; }
+    public DateTime? CuentaCorrienteDesde { get; set; }
 }
 
 public class CreateCafeProveedorRequest

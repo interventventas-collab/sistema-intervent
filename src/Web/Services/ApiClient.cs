@@ -6365,7 +6365,9 @@ public class ApiClient
         // Cobro redirigido (05/09/2026): a qué empleado se le pasa y contra qué se imputa.
         int? RedirigidoEmpleadoId = null, string? RedirigidoDestino = null,
         // 09/09/2026: o a qué PROVEEDOR, y contra qué factura suya (null = "a cuenta").
-        int? RedirigidoProveedorId = null, int? RedirigidoCompraId = null);
+        int? RedirigidoProveedorId = null, int? RedirigidoCompraId = null,
+        // 17/09/2026: el documento de su cuenta corriente ("AFIP:..." / "DEU:..."). null = a cuenta.
+        string? RedirigidoDocClave = null);
 
     // ─── 09/09/2026: AVISO IMPORTANTE PARA DEPÓSITO ───────────────────────────────────────
     public class AvisoDepDto
@@ -7186,8 +7188,9 @@ public class ApiClient
     }
 
     // ===== Tesoreria Cafe: Pagos a proveedores =====
-    public async Task<List<CompraPendienteDto>?> GetComprasPendientesAsync(int proveedorId)
-        => await GetAsync<List<CompraPendienteDto>>($"/api/cafe/pagos-proveedor/comprobantes-pendientes/{proveedorId}");
+    /// <summary>17/09/2026: lo que se le puede pagar (facturas de AFIP y cotizaciones de su cuenta corriente).</summary>
+    public async Task<PendientesProveedorDto?> GetPendientesProveedorAsync(int proveedorId)
+        => await GetAsync<PendientesProveedorDto>($"/api/cafe/pagos-proveedor/pendientes/{proveedorId}");
     public async Task<List<PagoListDto>?> GetCafePagosProveedorAsync(int? proveedorId = null, DateTime? desde = null, DateTime? hasta = null)
     {
         var qs = new List<string>();
@@ -7198,7 +7201,8 @@ public class ApiClient
         return await GetAsync<List<PagoListDto>>(url);
     }
     public record CrearMedioPagoRequest(int CajaId, decimal Importe, string? Referencia, int? ChequeExistenteId);
-    public record CrearCompraItemRequest(int? CompraId, decimal Importe);
+    /// <summary>Clave = documento de la cuenta corriente ("AFIP:..." / "DEU:..."). Sin clave = a cuenta.</summary>
+    public record CrearCompraItemRequest(int? CompraId, decimal Importe, string? Clave = null);
     public record CrearPagoResultDto(int Id, string Numero);
     public async Task<CrearPagoResultDto?> CrearCafePagoProveedorAsync(
         int proveedorId, decimal retenciones, string? operador, string? observaciones,
@@ -7211,8 +7215,40 @@ public class ApiClient
         return r is not null;
     }
 
-    public async Task<EstadoCuentaProvDto?> GetEstadoCuentaProveedorAsync(int id)
-        => await GetAsync<EstadoCuentaProvDto>($"/api/cafe/proveedores/{id}/estado-cuenta");
+    // ===== 17/09/2026: Cuenta corriente de proveedores =====
+    public async Task<List<CtaCteResumenDto>> GetCtaCteProveedoresAsync()
+        => await GetAsync<List<CtaCteResumenDto>>("/api/cafe/proveedores-ctacte") ?? new();
+    public async Task<CtaCteCuentaDto?> GetCtaCteProveedorAsync(int proveedorId)
+        => await GetAsync<CtaCteCuentaDto>($"/api/cafe/proveedores-ctacte/{proveedorId}");
+    public async Task<List<CtaCteCandidatoDto>> BuscarCtaCteCandidatosAsync(string q)
+        => await GetAsync<List<CtaCteCandidatoDto>>("/api/cafe/proveedores-ctacte/buscar?q=" + Uri.EscapeDataString(q)) ?? new();
+    public record CtaCteIdResult(int ProveedorId, int Id);
+    /// <summary>Prende la cuenta corriente (crea el proveedor desde AFIP si no existe) y deja el saldo inicial.</summary>
+    public async Task<int> ActivarCtaCteProveedorAsync(int? proveedorId, string? cuit, string? nombre, DateTime? desde,
+        decimal? saldoOficial, decimal? saldoNoOficial)
+        => (await PostAsync<CtaCteIdResult>("/api/cafe/proveedores-ctacte/activar",
+            new { proveedorId, cuit, nombre, desde, saldoOficial, saldoNoOficial }))?.ProveedorId ?? 0;
+    public async Task DesactivarCtaCteProveedorAsync(int proveedorId)
+        => await PostAsync<object>($"/api/cafe/proveedores-ctacte/{proveedorId}/desactivar", new { });
+    public async Task SetSaldoInicialProveedorAsync(int proveedorId, decimal oficial, decimal noOficial)
+        => await PostAsync<object>($"/api/cafe/proveedores-ctacte/{proveedorId}/saldo-inicial", new { oficial, noOficial });
+    public async Task<int> CrearCotizacionProveedorAsync(int proveedorId, DateTime fecha, string? numero, decimal importe, string? observaciones)
+        => (await PostAsync<CtaCteIdResult>($"/api/cafe/proveedores-ctacte/{proveedorId}/cotizaciones",
+            new { fecha, numero, importe, observaciones }))?.Id ?? 0;
+    public async Task AnularDeudaProveedorAsync(int deudaId)
+        => await PostAsync<object>($"/api/cafe/proveedores-ctacte/deudas/{deudaId}/anular", new { });
+    /// <summary>Foto o PDF de la cotización (multipart, campo "archivo").</summary>
+    public async Task SubirArchivoDeudaProveedorAsync(int deudaId, Stream archivo, string nombre, string contentType)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var sc = new StreamContent(archivo);
+        if (!string.IsNullOrEmpty(contentType))
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        content.Add(sc, "archivo", string.IsNullOrEmpty(nombre) ? "cotizacion" : nombre);
+        var resp = await _http.PostAsync($"/api/cafe/proveedores-ctacte/deudas/{deudaId}/archivo", content);
+        await ThrowIfErrorAsync(resp);
+    }
 
     // ===== Pagos Movil (precargar desde el celu, confirmar en la PC) =====
     public async Task<List<EmpleadoActivoDto>?> GetPagosMovilEmpleadosActivosAsync()

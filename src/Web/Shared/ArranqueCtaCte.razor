@@ -1,0 +1,52 @@
+@* 17/09/2026 — Los tres datos con los que arranca la cuenta corriente de un proveedor: desde qué
+   día cuenta y cuánto se le debía ese día (oficial y no oficial). Lo usan el alta y los ajustes. *@
+
+<div class="form-group">
+    <label class="form-label">Cuenta corriente desde</label>
+    <input class="form-input" type="date" style="max-width:180px;" value="@Desde.ToString("yyyy-MM-dd")" @onchange="OnDesde" />
+    <p style="font-size:0.75rem; color:#6b7280; margin:0.25rem 0 0;">
+        Las facturas de AFIP de ese día en adelante cuentan como deuda. Lo anterior se da por pagado.
+    </p>
+</div>
+<div style="font-weight:600; font-size:0.9rem; margin:0.6rem 0 0.3rem;">¿Cuánto le debías ese día?</div>
+<div class="form-row" style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+    <div class="form-group" style="flex:1; min-width:160px;">
+        <label class="form-label">Oficial (facturas)</label>
+        <input class="form-input" type="text" inputmode="decimal" style="text-align:right;" @bind="OficialTexto" @bind:event="onchange" />
+    </div>
+    <div class="form-group" style="flex:1; min-width:160px;">
+        <label class="form-label">No oficial (cotizaciones)</label>
+        <input class="form-input" type="text" inputmode="decimal" style="text-align:right;" @bind="NoOficialTexto" @bind:event="onchange" />
+    </div>
+</div>
+<p style="font-size:0.75rem; color:#6b7280; margin:0;">Si no le debías nada, dejalo en cero. Se puede cambiar después.</p>
+
+@code {
+    [Parameter] public DateTime Desde { get; set; }
+    [Parameter] public EventCallback<DateTime> DesdeChanged { get; set; }
+    [Parameter] public decimal Oficial { get; set; }
+    [Parameter] public EventCallback<decimal> OficialChanged { get; set; }
+    [Parameter] public decimal NoOficial { get; set; }
+    [Parameter] public EventCallback<decimal> NoOficialChanged { get; set; }
+
+    // Plata como texto con punto de miles (ver MontoInput: type=number vacía el casillero con coma).
+    private string OficialTexto
+    {
+        get => MontoInput.Formato(Oficial);
+        set { MontoInput.TryParse(value, out var v); Oficial = v; _ = OficialChanged.InvokeAsync(v); }
+    }
+    private string NoOficialTexto
+    {
+        get => MontoInput.Formato(NoOficial);
+        set { MontoInput.TryParse(value, out var v); NoOficial = v; _ = NoOficialChanged.InvokeAsync(v); }
+    }
+
+    private async Task OnDesde(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
+        {
+            Desde = d.Date;
+            await DesdeChanged.InvokeAsync(Desde);
+        }
+    }
+}

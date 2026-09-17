@@ -108,43 +108,54 @@
                     @* --- Comprobantes a pagar --- *@
                     <div style="margin: 1rem 0; padding: 0.8rem; background: #f9fafb; border-radius: 8px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                            <h5 style="margin:0;">Compras a pagar</h5>
+                            <h5 style="margin:0;">Qué se paga</h5>
                             @if (pendientes is not null && pendientes.Count > 0)
                             {
                                 <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="PagarTodo">⚡ Pagar todo lo pendiente</button>
                             }
                         </div>
-                        @if (saldoProveedor.HasValue && saldoProveedor.Value > 0)
+                        @* 17/09/2026: lo pendiente sale de la CUENTA CORRIENTE del proveedor (facturas de AFIP +
+                           cotizaciones), no de las compras de stock. *@
+                        @if (ctaProveedor is not null && ctaProveedor.CuentaCorriente)
                         {
-                            <div style="background:#fef3c7; padding:0.4rem 0.6rem; border-radius:6px; font-size:0.82rem; margin-bottom:0.5rem;">
-                                💰 Le debes al proveedor: <b>$@saldoProveedor.Value.ToString("N2")</b>
+                            <div style="font-size:0.85rem; margin-bottom:0.5rem;">
+                                Le debés <b style="color:@(ctaProveedor.Total > 0.01m ? "#b91c1c" : "inherit");">$@ctaProveedor.Total.ToString("N2")</b>
+                                <span style="color:#6b7280;"> · oficial $@ctaProveedor.Oficial.ToString("N2") · no oficial $@ctaProveedor.NoOficial.ToString("N2")@(ctaProveedor.ACuenta > 0.01m ? $" · a cuenta −${ctaProveedor.ACuenta:N2}" : "")</span>
                             </div>
                         }
                         @if (pendientes is null)
                         {
                             <p class="text-muted">Cargando...</p>
                         }
+                        else if (ctaProveedor is not null && !ctaProveedor.CuentaCorriente)
+                        {
+                            <p class="text-muted" style="margin:0 0 0.5rem;">
+                                Este proveedor no lleva cuenta corriente: el pago queda "A cuenta".
+                                <a href="/cafe/proveedores/@selProveedorId/estado-cuenta">Prenderle la cuenta corriente</a>
+                            </p>
+                        }
                         else if (pendientes.Count == 0)
                         {
-                            <p class="text-muted" style="margin:0;">Sin compras pendientes. Podés cargar como "A cuenta".</p>
+                            <p class="text-muted" style="margin:0;">No tiene nada pendiente. Podés cargar como "A cuenta".</p>
                         }
                         else
                         {
                             <table class="table table-compact" style="margin-bottom:0.5rem;">
-                                <thead><tr><th></th><th>Número</th><th>Fact prov</th><th>Fecha</th><th style="text-align:right;">Saldo</th><th style="text-align:right;">A pagar</th></tr></thead>
+                                <thead><tr><th></th><th>Comprobante</th><th></th><th>Fecha</th><th style="text-align:right;">Debe</th><th style="text-align:right;">A pagar</th></tr></thead>
                                 <tbody>
                                     @foreach (var p in pendientes)
                                     {
+                                        var clave = p.Clave;
                                         <tr>
-                                            <td><input type="checkbox" @bind="imputaciones[p.CompraId].Seleccionado" @bind:after="RecalcularTotal" /></td>
-                                            <td><b>@p.Numero</b></td>
-                                            <td style="font-size:0.78rem; color:#6b7280;">@(p.NumeroComprobanteProveedor ?? "—")</td>
-                                            <td>@p.Fecha.ToArTime().ToString("dd/MM/yyyy")</td>
+                                            <td><input type="checkbox" @bind="imputaciones[clave].Seleccionado" @bind:after="RecalcularTotal" /></td>
+                                            <td><b>@p.Etiqueta</b></td>
+                                            <td style="font-size:0.78rem; color:#6b7280;">@(p.Oficial ? "oficial" : "no oficial")</td>
+                                            <td>@p.Fecha.ToString("dd/MM/yyyy")</td>
                                             <td style="text-align:right;">$@p.Saldo.ToString("N2")</td>
                                             <td style="text-align:right;">
                                                 @* 2026-08-18: idem Cobranzas — texto con punto de miles (antes quedaba vacio) *@
                                                 <input class="form-input" type="text" inputmode="decimal" style="text-align:right; width:120px; display:inline-block;"
-                                                       @bind="imputaciones[p.CompraId].ImporteTexto" @bind:event="onchange" @bind:after="@(() => OnImputeAfter(p.CompraId))" />
+                                                       @bind="imputaciones[clave].ImporteTexto" @bind:event="onchange" @bind:after="@(() => OnImputeAfter(clave))" />
                                             </td>
                                         </tr>
                                     }
@@ -249,9 +260,9 @@
     private bool showNuevo, guardando;
     private int selProveedorId;
     private string provSearch = ""; private bool provSearchOpen;
-    private List<CompraPendienteDto>? pendientes;
-    private decimal? saldoProveedor;
-    private Dictionary<int, ImputData> imputaciones = new();
+    private List<CtaCteDocDto>? pendientes;
+    private PendientesProveedorDto? ctaProveedor;
+    private Dictionary<string, ImputData> imputaciones = new();
     private bool aCuentaActivo; private decimal aCuentaImporte;
     private decimal formRetenciones;
     /// <summary>2026-08-18: version texto de los importes que se tipean (con punto de miles).</summary>
@@ -347,14 +358,13 @@
     {
         selProveedorId = id;
         provSearch = ""; provSearchOpen = false;
-        imputaciones = new(); saldoProveedor = null;
+        imputaciones = new(); ctaProveedor = null; pendientes = null;
         try
         {
-            pendientes = await Api.GetComprasPendientesAsync(id) ?? new();
+            ctaProveedor = await Api.GetPendientesProveedorAsync(id);
+            pendientes = ctaProveedor?.Documentos ?? new();
             foreach (var p in pendientes)
-                imputaciones[p.CompraId] = new ImputData { Seleccionado = false, Importe = p.Saldo };
-            var ec = await Api.GetEstadoCuentaProveedorAsync(id);
-            if (ec is not null) saldoProveedor = ec.Saldo;
+                imputaciones[p.Clave] = new ImputData { Seleccionado = false, Importe = p.Saldo };
         }
         catch { ToastService.Error("Error al traer pendientes"); pendientes = new(); }
     }
@@ -362,13 +372,13 @@
     private void ClearProveedor()
     {
         selProveedorId = 0; provSearch = ""; provSearchOpen = false;
-        pendientes = null; imputaciones = new();
+        pendientes = null; ctaProveedor = null; imputaciones = new();
     }
 
     /// <summary>2026-08-18: corre despues de que @bind ya guardo el importe tipeado (ImporteTexto).</summary>
-    private void OnImputeAfter(int compraId)
+    private void OnImputeAfter(string clave)
     {
-        if (imputaciones.TryGetValue(compraId, out var imp))
+        if (imputaciones.TryGetValue(clave, out var imp))
         {
             if (imp.Importe > 0) imp.Seleccionado = true;
             RecalcularTotal();
@@ -409,7 +419,7 @@
         if (pendientes is null) return;
         foreach (var p in pendientes)
         {
-            if (imputaciones.TryGetValue(p.CompraId, out var imp))
+            if (imputaciones.TryGetValue(p.Clave, out var imp))
             {
                 imp.Seleccionado = true;
                 imp.Importe = p.Saldo;
@@ -428,7 +438,7 @@
         var comps = new List<ApiClient.CrearCompraItemRequest>();
         foreach (var kv in imputaciones)
             if (kv.Value.Seleccionado && kv.Value.Importe > 0)
-                comps.Add(new ApiClient.CrearCompraItemRequest(kv.Key, kv.Value.Importe));
+                comps.Add(new ApiClient.CrearCompraItemRequest(null, kv.Value.Importe, kv.Key));
         if (aCuentaActivo && aCuentaImporte > 0)
             comps.Add(new ApiClient.CrearCompraItemRequest(null, aCuentaImporte));
 

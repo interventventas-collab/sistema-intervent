@@ -420,7 +420,7 @@
                                 <thead>
                                     <tr style="border-bottom:1px solid #e5e7eb;">
                                         <th style="width:30px;"></th>
-                                        <th style="text-align:left;">Compra</th>
+                                        <th style="text-align:left;">Comprobante</th>
                                         <th style="text-align:right;">Saldo</th>
                                         <th style="width:130px; text-align:right;">A pagar</th>
                                     </tr>
@@ -435,8 +435,8 @@
                                             <td><input type="checkbox" checked="@sel.Tildado"
                                                        @onchange="@(e => OnTildarCompraEndoso(idx, (bool)e.Value!))" /></td>
                                             <td>
-                                                <strong>@(string.IsNullOrWhiteSpace(comp.NumeroComprobanteProveedor) ? comp.Numero : comp.NumeroComprobanteProveedor)</strong>
-                                                <span class="chq-sub">@comp.Fecha.ToString("dd/MM/yyyy")</span>
+                                                <strong>@comp.Etiqueta</strong>
+                                                <span class="chq-sub">@comp.Fecha.ToString("dd/MM/yyyy") · @(comp.Oficial ? "oficial" : "no oficial")</span>
                                             </td>
                                             <td style="text-align:right;">$@comp.Saldo.ToString("N2")</td>
                                             <td style="text-align:right;">
@@ -451,7 +451,7 @@
                     }
                     else
                     {
-                        <p style="font-size:0.82rem; color:#6b7280;">No le debemos facturas a este proveedor. El cheque queda a cuenta.</p>
+                        <p style="font-size:0.82rem; color:#6b7280;">No le debemos nada pendiente en su cuenta corriente (o no lleva cuenta corriente). El cheque queda a cuenta.</p>
                     }
                     <div class="form-group">
                         <label class="form-label">Observaciones (opcional)</label>
@@ -916,7 +916,7 @@
     private List<CafeCajaDto>? cajas;
     private CafeProveedorDto? endProv;
     private string endProvSearch = "";
-    private List<CompraPendienteDto>? endCompras;
+    private List<CtaCteDocDto>? endCompras;
     private List<SelState> endSeleccion = new();
     private string endObservaciones = "";
     private bool endCargando, endGuardando;
@@ -946,7 +946,7 @@
         endCargando = true;
         try
         {
-            endCompras = await Api.GetComprasPendientesAsync(p.Id) ?? new();
+            endCompras = (await Api.GetPendientesProveedorAsync(p.Id))?.Documentos ?? new();
             endSeleccion = endCompras.Select(_ => new SelState()).ToList();
             decimal restante = endChe?.Importe ?? 0m;
             for (int i = 0; i < endCompras.Count && restante > 0.01m; i++)
@@ -987,7 +987,7 @@
         var comps = endSeleccion
             .Select((sel, i) => new { sel, comp = endCompras![i] })
             .Where(x => x.sel.Tildado && x.sel.Importe > 0m)
-            .Select(x => new ApiClient.CrearCompraItemRequest(x.comp.CompraId, x.sel.Importe))
+            .Select(x => new ApiClient.CrearCompraItemRequest(null, x.sel.Importe, x.comp.Clave))
             .ToList();
 
         var sobra = Math.Round(endChe.Importe - EndTotalImputado, 2);

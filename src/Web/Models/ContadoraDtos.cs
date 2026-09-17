@@ -174,6 +174,7 @@ public class ContadoraComprobanteDto
     // Seguimiento de pago (solo facturas de COMPRA)
     public bool PuedeRegistrarPago { get; set; }
     public decimal Pagado { get; set; }
+    public int? ProveedorId { get; set; }
     public decimal Saldo => Total - Pagado;
 }
 
@@ -300,6 +301,8 @@ public class RegistrarPagoResultDto
 public class FacturaCompraImpagaDto
 {
     public string IdComprobante { get; set; } = "";
+    /// <summary>17/09/2026: cómo se lee el documento ("Factura A 00003-00001234", "Cotización 55"). IdComprobante ahora es la clave de la cuenta corriente.</summary>
+    public string? Etiqueta { get; set; }
     public string? TipoComprobante { get; set; }
     public int? PuntoVenta { get; set; }
     public long? NumeroComprobante { get; set; }
