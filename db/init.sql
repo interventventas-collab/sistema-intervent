@@ -7765,3 +7765,36 @@ GO
 IF COL_LENGTH('Cafe_PagosProveedor','ExtractoMovId') IS NULL
     ALTER TABLE Cafe_PagosProveedor ADD ExtractoMovId INT NULL;
 GO
+
+-- ============================================================
+-- 2026-09-17 — SESIONES ABIERTAS (ver quien esta adentro y poder echarlo)
+-- Cada pase (JWT) lleva un numero unico (Jti) que apunta a una fila de aca. En cada pedido se
+-- chequea que la fila siga viva, asi que "Cerrar sesion" hace efecto en segundos.
+-- Una fila por (persona, aparato): volver a entrar desde la misma compu reusa la fila.
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Users_Sesiones')
+BEGIN
+    CREATE TABLE Users_Sesiones (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Jti NVARCHAR(40) NOT NULL,
+        UserId INT NULL,                          -- NULL en las sesiones de huella del celu
+        Nombre NVARCHAR(100) NOT NULL,
+        Tipo NVARCHAR(10) NOT NULL CONSTRAINT DF_UsersSesiones_Tipo DEFAULT 'WEB',  -- WEB | HUELLA
+        UserAgent NVARCHAR(400) NULL,
+        Dispositivo NVARCHAR(80) NOT NULL CONSTRAINT DF_UsersSesiones_Disp DEFAULT '',
+        Huella NVARCHAR(80) NOT NULL CONSTRAINT DF_UsersSesiones_Huella DEFAULT '',
+        Apodo NVARCHAR(80) NULL,
+        IpCreacion NVARCHAR(60) NULL,
+        IpUltima NVARCHAR(60) NULL,
+        AparatoNuevo BIT NOT NULL CONSTRAINT DF_UsersSesiones_Nuevo DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_UsersSesiones_Created DEFAULT SYSUTCDATETIME(),
+        ExpiraAt DATETIME2 NOT NULL,
+        UltimaActividadAt DATETIME2 NOT NULL CONSTRAINT DF_UsersSesiones_UltAct DEFAULT SYSUTCDATETIME(),
+        CerradaAt DATETIME2 NULL,
+        CerradaPor NVARCHAR(100) NULL,
+        CerradaMotivo NVARCHAR(120) NULL
+    );
+    CREATE UNIQUE INDEX UX_UsersSesiones_Jti ON Users_Sesiones(Jti);
+    CREATE INDEX IX_UsersSesiones_User ON Users_Sesiones(UserId, CerradaAt);
+END
+GO

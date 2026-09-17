@@ -8,6 +8,8 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<User> Users => Set<User>();
+    /// <summary>2026-09-17: sesiones abiertas (ver quién está adentro y poder echarlo).</summary>
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<UserNoticeDismissal> UserNoticeDismissals => Set<UserNoticeDismissal>();
     public DbSet<CafeOperadorPin> CafeOperadoresPin => Set<CafeOperadorPin>();
     public DbSet<Role> Roles => Set<Role>();
@@ -276,6 +278,13 @@ public class AppDbContext : DbContext
                   .WithMany(r => r.Users)
                   .HasForeignKey(u => u.RoleId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<UserSession>(entity =>
+        {
+            // El chequeo de cada pedido busca por Jti: sin este indice seria un scan por request.
+            entity.HasIndex(s => s.Jti).IsUnique();
+            entity.HasIndex(s => new { s.UserId, s.CerradaAt });
         });
 
         modelBuilder.Entity<Role>(entity =>

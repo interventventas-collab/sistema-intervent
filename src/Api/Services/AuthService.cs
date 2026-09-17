@@ -13,11 +13,15 @@ public class AuthService
 {
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
+    private readonly SesionesService _sesiones;
+    private readonly IHttpContextAccessor _http;
 
-    public AuthService(AppDbContext db, IConfiguration config)
+    public AuthService(AppDbContext db, IConfiguration config, SesionesService sesiones, IHttpContextAccessor http)
     {
         _db = db;
         _config = config;
+        _sesiones = sesiones;
+        _http = http;
     }
 
     public async Task<AuthResponse?> Login(string username, string password)
@@ -62,8 +66,20 @@ public class AuthService
         var expirationHours = _config.GetValue<int>("Jwt:ExpirationHours", 24);
         var expiresAt = DateTime.UtcNow.AddHours(expirationHours);
 
+        // 2026-09-17: el pase lleva un numero unico (jti) que apunta a la fila de Users_Sesiones.
+        // Sin ese numero el pase no vale: es lo que permite verlo en pantalla y cortarlo a distancia.
+        var ctx = _http.HttpContext;
+        var (jti, _) = await _sesiones.AbrirAsync(
+            userId: user.Id,
+            nombre: user.Username,
+            tipo: UserSession.TipoWeb,
+            expiraAt: expiresAt,
+            userAgent: SesionesService.UserAgentDe(ctx),
+            ip: SesionesService.IpDe(ctx));
+
         var claims = new[]
         {
+            new Claim(JwtRegisteredClaimNames.Jti, jti),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Username),
             new Claim(ClaimTypes.Email, user.Email),

@@ -24,9 +24,10 @@ public class WaMovilAccesoController : ControllerBase
     private readonly IMemoryCache _cache;
     private readonly IConfiguration _config;
     private readonly Api.Services.AuthService _auth;
+    private readonly Api.Services.SesionesService _sesiones;
     public WaMovilAccesoController(AppDbContext db, IMemoryCache cache, IConfiguration config,
-        Api.Services.AuthService auth)
-    { _db = db; _cache = cache; _config = config; _auth = auth; }
+        Api.Services.AuthService auth, Api.Services.SesionesService sesiones)
+    { _db = db; _cache = cache; _config = config; _auth = auth; _sesiones = sesiones; }
 
     /// <summary>Cada cuánto se vuelve a pedir usuario y clave en el celu. Pedido de Osmar: 30 días.</summary>
     private const int DIAS_ENTRE_CONTROLES = 30;
@@ -40,12 +41,25 @@ public class WaMovilAccesoController : ControllerBase
     /// administración. Dura 24 h y se renueva cada vez que ponés el dedo, así que en la práctica
     /// mientras uses la app no se corta.
     /// </summary>
-    private void DejarSesionDeHuella(string persona)
+    private async Task DejarSesionDeHuella(string persona)
     {
         var secret = _config["Jwt:Secret"] ?? throw new InvalidOperationException("JWT Secret no configurado");
         var expira = DateTime.UtcNow.AddHours(24);
+
+        // 2026-09-17: el celu de la huella tambien queda anotado en la lista de sesiones, con su
+        // numero de pase. Asi se ve en pantalla ("Safari en iPhone · huella") y se puede cortar.
+        var (jti, _) = await _sesiones.AbrirAsync(
+            userId: null,
+            nombre: persona,
+            tipo: Api.Models.UserSession.TipoHuella,
+            expiraAt: expira,
+            userAgent: Api.Services.SesionesService.UserAgentDe(HttpContext),
+            ip: Api.Services.SesionesService.IpDe(HttpContext));
+
         var claims = new[]
         {
+            new System.Security.Claims.Claim(
+                System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti, jti),
             new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, persona),
             new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "wa-movil"),
             new System.Security.Claims.Claim(Api.Middleware.WaMovilScopeMiddleware.ClaimScope,
@@ -351,7 +365,7 @@ public class WaMovilAccesoController : ControllerBase
         _cache.Remove($"wamovil:auth:{req.SessionId}");
 
         // La huella alcanza para entrar a los chats: se deja la sesión acotada.
-        DejarSesionDeHuella(cred.Persona);
+        await DejarSesionDeHuella(cred.Persona);
 
         // ¿Toca el control de clave? Se pide cada 30 días, y también la primera vez.
         var tocaClave = cred.PasswordCheckedAt is null

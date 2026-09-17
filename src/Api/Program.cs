@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.OpenApi.Models;
 using Fido2NetLib;
 
@@ -70,6 +71,42 @@ builder.Services.AddAuthentication(options =>
                 context.Token = cookieToken;
             }
             return Task.CompletedTask;
+        },
+
+        // 2026-09-17 — El pase ya no vale solo por estar firmado: tiene que seguir vivo en la lista
+        // de sesiones. Esto es lo que permite cerrarle la sesion a alguien a distancia y lo que hace
+        // que poner un usuario en "Inactivo" lo saque en el momento (antes seguia adentro 24 h).
+        //
+        // Un pase SIN numero (jti) es de antes de este cambio: se rechaza, y esa persona vuelve a
+        // poner usuario y clave una vez. Es a proposito: un pase que no se puede cortar no sirve.
+        OnTokenValidated = async context =>
+        {
+            // Se lee del token en crudo y no de los claims, porque ASP.NET renombra varios claims al
+            // vuelo y el jti podria no llamarse "jti" del otro lado.
+            // OJO: en .NET 8 el token que llega aca es un JsonWebToken, NO un JwtSecurityToken (el
+            // handler cambio). Se prueban los dos: con uno solo, TODAS las sesiones rebotaban.
+            var jti = (context.SecurityToken as Microsoft.IdentityModel.JsonWebTokens.JsonWebToken)?.Id
+                      ?? (context.SecurityToken as System.IdentityModel.Tokens.Jwt.JwtSecurityToken)?.Id
+                      ?? context.Principal?.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+
+            if (string.IsNullOrEmpty(jti))
+            {
+                context.Fail("Sesion sin numero (pase viejo): hay que volver a entrar.");
+                return;
+            }
+
+            var sesiones = context.HttpContext.RequestServices.GetRequiredService<SesionesService>();
+            var viva = await sesiones.EstaVivaAsync(jti, SesionesService.IpDe(context.HttpContext));
+            if (!viva)
+            {
+                context.Fail("La sesion fue cerrada.");
+                return;
+            }
+
+            // Dejarlo a mano en un claim nuestro: "jti" a secas puede venir renombrado, y los
+            // controladores necesitan saber CUAL es su propia sesion (para "salir", por ejemplo).
+            (context.Principal!.Identity as System.Security.Claims.ClaimsIdentity)
+                ?.AddClaim(new System.Security.Claims.Claim(SesionesService.ClaimJti, jti));
         }
     };
 });
@@ -126,6 +163,7 @@ builder.Services.AddScoped<Api.Services.AvisoDepositoService>();
 builder.Services.AddScoped<Api.Services.WaPushService>();
 builder.Services.AddHostedService<Api.Hubs.PresenceSweeper>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<SesionesService>();
 builder.Services.AddScoped<TwilioWhatsAppService>();
 builder.Services.AddScoped<MetaWhatsAppService>();
 builder.Services.AddScoped<InstagramDmService>();
