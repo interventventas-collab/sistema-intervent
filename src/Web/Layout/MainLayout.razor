@@ -1593,6 +1593,10 @@
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/preparacion"))">
                                 <span class="ico">📦</span> Preparación
                             </button>
+                            @* 2026-09-17: pedido del dueño, Productos también a mano desde Ventas. *@
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/productos"))">
+                                <span class="ico">🏷️</span> Productos
+                            </button>
                             <div class="topbar-empleados-sep"></div>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/clientes"))">
                                 <span class="ico">👤</span> Clientes
