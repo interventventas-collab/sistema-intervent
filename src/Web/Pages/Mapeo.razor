@@ -431,6 +431,24 @@
                             @onclick="@(async () => { showConfigMenu = false; await OpenExportModal(); })">
                         <span>📤 Descargar / Compartir ruta</span>
                     </button>
+                    <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
+                    @* 2026-09-18: "Por dónde van" vive acá y no en la barra de abajo (pedido del usuario: afuera
+                       molestaba, y además la barra no aparece los días sin paradas). Prende y apaga sin cerrar el menú. *@
+                    <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                            @onclick="ToggleChoferes" disabled="@choferesCargando"
+                            title="Ver dónde está cada repartidor y por dónde fue. Solo los que tienen el seguimiento prendido en Administración → Repartidores.">
+                        <span>@(choferesCargando ? "⏳ Buscando…" : "📍 Por dónde van")</span>
+                        <span style="font-weight:700; color:@(choferesOn ? "#16a34a" : "#9ca3af");">@(choferesOn ? "SÍ" : "NO")</span>
+                    </button>
+                    @if (choferesOn)
+                    {
+                    <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                            @onclick="ToggleRecorridoChoferes"
+                            title="El hilito punteado muestra por dónde fue de verdad. La línea llena es la ruta que armaste vos.">
+                        <span>&nbsp;&nbsp;&nbsp;〰 Ver el recorrido</span>
+                        <span style="font-weight:700; color:@(choferesRecorrido ? "#16a34a" : "#9ca3af");">@(choferesRecorrido ? "SÍ" : "NO")</span>
+                    </button>
+                    }
                 </div>
             }
         </div>
@@ -1868,6 +1886,23 @@
                                 <span>✔ Ocultar entregados</span>
                                 <span style="font-weight:700; color:@(excluirEntregados ? "#16a34a" : "#9ca3af");">@(excluirEntregados ? "SÍ" : "NO")</span>
                             </button>
+                            @* 2026-09-18: "Por dónde van" vive acá y no en la barra de abajo (pedido del usuario: afuera
+                               molestaba, y además la barra no aparece los días sin paradas). Prende y apaga sin cerrar el menú. *@
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                    @onclick="ToggleChoferes" disabled="@choferesCargando"
+                                    title="Ver dónde está cada repartidor y por dónde fue. Solo los que tienen el seguimiento prendido en Administración → Repartidores.">
+                                <span>@(choferesCargando ? "⏳ Buscando…" : "📍 Por dónde van")</span>
+                                <span style="font-weight:700; color:@(choferesOn ? "#16a34a" : "#9ca3af");">@(choferesOn ? "SÍ" : "NO")</span>
+                            </button>
+                            @if (choferesOn)
+                            {
+                            <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                                    @onclick="ToggleRecorridoChoferes"
+                                    title="El hilito punteado muestra por dónde fue de verdad. La línea llena es la ruta que armaste vos.">
+                                <span>&nbsp;&nbsp;&nbsp;〰 Ver el recorrido</span>
+                                <span style="font-weight:700; color:@(choferesRecorrido ? "#16a34a" : "#9ca3af");">@(choferesRecorrido ? "SÍ" : "NO")</span>
+                            </button>
+                            }
                             @* Vaciar el día: borra las paradas del día que estás mirando. Nunca en días pasados. *@
                             @if (!SoloLectura)
                             {
@@ -1935,21 +1970,6 @@
                             @onclick="ToggleLineas"
                             title="Mostrar u ocultar las líneas de los recorridos. Tocá una línea para ver la distancia del tramo y el total de la ruta.">
                         @(lineasOn ? "🙈 Ocultar líneas" : "👁 Ver líneas")
-                    </button>
-                }
-                @* 2026-09-17: "Por dónde van" — dónde está cada repartidor y por dónde fue.
-                   Arranca SIEMPRE apagado: mientras no se toque, el mapa es igual que siempre. *@
-                <button class="btn" style="font-size:0.9rem; font-weight:800; background:@(choferesOn ? "#475569" : "#1d4ed8"); color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
-                        @onclick="ToggleChoferes" disabled="@choferesCargando"
-                        title="Ver dónde está cada repartidor ahora y por dónde fue. Solo aparecen los que tienen el seguimiento prendido en Administración → Repartidores.">
-                    @(choferesCargando ? "⏳…" : (choferesOn ? "🙈 Ocultar dónde van" : "📍 Por dónde van"))
-                </button>
-                @if (choferesOn && choferesUbic is { Count: > 0 })
-                {
-                    <button class="btn" style="font-size:0.9rem; font-weight:800; background:@(choferesRecorrido ? "#475569" : "#0e7490"); color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:999px; box-shadow:0 3px 14px rgba(0,0,0,0.35); cursor:pointer;"
-                            @onclick="ToggleRecorridoChoferes"
-                            title="El hilito punteado muestra por dónde fue de verdad. La línea llena es la ruta que armaste vos.">
-                        @(choferesRecorrido ? "〰 Sin el recorrido" : "〰 Ver el recorrido")
                     </button>
                 }
             </div>
