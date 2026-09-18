@@ -1573,6 +1573,11 @@
 @code {
     [Parameter] public string Token { get; set; } = "";
 
+    /// <summary>2026-09-18: "?vercomo=1" = la abrió la OFICINA con "👁 Ver como" (Repartidores o el mapa).
+    /// En ese caso NO mandamos ubicación: si no, la compu de la oficina mandaba SU posición como si
+    /// fuera la del repartidor y su camioncito saltaba a la oficina en "Por dónde van".</summary>
+    [SupplyParameterFromQuery(Name = "vercomo")] public string? VerComo { get; set; }
+
     public record PedidoDto(int Id, string Numero, DateTime Fecha, string? ClienteNombre,
         string? ClienteDireccion, string? ClienteLocalidad,
         decimal Total, decimal Saldo, bool YaEntregada, DateTime? EntregadoAt,
@@ -2266,7 +2271,8 @@
         }
         catch { /* navegador viejo o JS bloqueado, ignorar */ }
         await Recargar();
-        _ = IniciarSeguimientoUbicacion();   // 2026-09-17: "Por donde van" (si la oficina lo prendio)
+        if (string.IsNullOrEmpty(VerComo))
+            _ = IniciarSeguimientoUbicacion();   // 2026-09-17: "Por donde van" (si la oficina lo prendio)
         // 2026-06-05: auto-refresh cada 30s. Si el admin asigna una venta nueva,
         // el repartidor la ve aparecer sola sin tener que tocar 🔄.
         refreshTimer = new System.Threading.Timer(async _ =>
