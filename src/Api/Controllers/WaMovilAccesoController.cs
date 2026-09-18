@@ -54,7 +54,8 @@ public class WaMovilAccesoController : ControllerBase
             tipo: Api.Models.UserSession.TipoHuella,
             expiraAt: expira,
             userAgent: Api.Services.SesionesService.UserAgentDe(HttpContext),
-            ip: Api.Services.SesionesService.IpDe(HttpContext));
+            ip: Api.Services.SesionesService.IpDe(HttpContext),
+            aparatoId: Api.Services.SesionesService.AparatoIdDe(HttpContext));
 
         var claims = new[]
         {

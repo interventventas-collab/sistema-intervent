@@ -56,9 +56,11 @@ public class SesionesService
     /// <returns>El jti nuevo y si el aparato nunca se había visto antes para esa persona.</returns>
     public async Task<(string Jti, bool AparatoNuevo)> AbrirAsync(
         int? userId, string nombre, string tipo, DateTime expiraAt,
-        string? userAgent, string? ip)
+        string? userAgent, string? ip, string? aparatoId = null)
     {
-        var (dispositivo, huella) = DescribirDispositivo(userAgent);
+        var (dispositivo, tipoAparato) = DescribirDispositivo(userAgent);
+        // "Chrome en Windows|<marca del navegador>". Sin marca (no deberia pasar) queda como antes.
+        var huella = string.IsNullOrEmpty(aparatoId) ? tipoAparato : $"{tipoAparato}|{aparatoId}";
         var jti = Guid.NewGuid().ToString("N");
         var ahora = DateTime.UtcNow;
 
@@ -73,7 +75,13 @@ public class SesionesService
         // saldrian marcadas y el aviso no serviria para nada. El que importa es el segundo: el que
         // aparece cuando alguien que siempre entra de la misma compu, de golpe entra de otra.
         var yaTeniaAlgunAparato = await _db.UserSessions.AnyAsync(s => s.Nombre == nombre);
-        var aparatoNuevo = conocido is null && yaTeniaAlgunAparato;
+        // El aviso mira el TIPO de aparato ("Chrome en Windows"), igual que antes de la marca por
+        // navegador. Si mirara la marca, el dia que se publica esto TODOS saltarian como "aparato
+        // nuevo" en su proxima entrada (nadie tiene la cookie todavia) y el aviso perderia sentido.
+        var mismoTipo = conocido is not null || await _db.UserSessions.AnyAsync(s =>
+            s.Nombre == nombre && s.Tipo == tipo &&
+            (s.Huella == tipoAparato || s.Huella.StartsWith(tipoAparato + "|")));
+        var aparatoNuevo = !mismoTipo && yaTeniaAlgunAparato;
 
         // Reusar la fila viva del mismo aparato, si hay.
         var viva = conocido is not null && conocido.CerradaAt == null ? conocido : null;
@@ -354,6 +362,38 @@ public class SesionesService
 
     public static string? UserAgentDe(HttpContext? http)
         => http?.Request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : null;
+
+    /// <summary>Cookie con un número al azar propio de cada navegador. Dura un año.</summary>
+    public const string AparatoCookie = "aiml_aparato";
+
+    /// <summary>
+    /// 2026-09-18: la marca propia de ESTE navegador. La lee de la cookie y, si no está, la crea.
+    ///
+    /// Por qué existe: el aparato se reconocía solo por "Chrome en Windows", y dos compus DISTINTAS
+    /// con Chrome y Windows (Osmar desde España y la compu de la oficina, las dos como admin) caían
+    /// en el MISMO renglón: cada vez que una entraba le mataba el pase a la otra, y se echaban
+    /// mutuamente cada 3 segundos. Con esta marca cada navegador es su propio aparato, y el mismo
+    /// navegador que vuelve a entrar se sigue reconociendo (que era la idea original).
+    /// </summary>
+    public static string? AparatoIdDe(HttpContext? http)
+    {
+        if (http is null) return null;
+        if (http.Request.Cookies.TryGetValue(AparatoCookie, out var id)
+            && id.Length == 32 && id.All(char.IsAsciiHexDigitLower))
+            return id;
+
+        id = Guid.NewGuid().ToString("N");
+        http.Response.Cookies.Append(AparatoCookie, id, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = http.Request.IsHttps,
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+            Expires = DateTimeOffset.UtcNow.AddYears(1),
+            IsEssential = true
+        });
+        return id;
+    }
 
     private static string? Recortar(string? s, int max)
         => string.IsNullOrEmpty(s) ? s : (s.Length <= max ? s : s[..max]);

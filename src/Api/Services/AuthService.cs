@@ -75,7 +75,8 @@ public class AuthService
             tipo: UserSession.TipoWeb,
             expiraAt: expiresAt,
             userAgent: SesionesService.UserAgentDe(ctx),
-            ip: SesionesService.IpDe(ctx));
+            ip: SesionesService.IpDe(ctx),
+            aparatoId: SesionesService.AparatoIdDe(ctx));
 
         var claims = new[]
         {
