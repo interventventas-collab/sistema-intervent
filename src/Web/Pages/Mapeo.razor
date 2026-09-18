@@ -5069,7 +5069,15 @@
                 return;
             }
             choferesOn = true;
-            await PintarChoferes();
+            var dibujados = await PintarChoferes();
+            // Hay datos pero no se dibujó ninguno: casi seguro el navegador tiene guardada una copia
+            // vieja del mapa (los js se guardan 7 días). Mejor decirlo que mostrar un mapa vacío.
+            if (dibujados == 0)
+            {
+                ToastService.Error("Hay marcas de ubicación pero no se pudieron dibujar. Recargá la página con Ctrl + Shift + R.");
+                choferesOn = false;
+                return;
+            }
             try { await JS.InvokeVoidAsync("mapeoChoferes.fit"); } catch { }
         }
         catch { ToastService.Error("No pude traer la ubicación de los repartidores."); }
@@ -5088,10 +5096,12 @@
         choferesUbic = await Api.GetUbicacionesChoferesAsync(FechaMapa.ToString("yyyy-MM-dd")) ?? new();
     }
 
-    private async Task PintarChoferes()
+    /// <summary>Devuelve cuántos repartidores quedaron dibujados en el mapa.</summary>
+    private async Task<int> PintarChoferes()
     {
-        if (!choferesOn || choferesUbic is null) return;
-        try { await JS.InvokeVoidAsync("mapeoChoferes.show", choferesUbic, choferesRecorrido); } catch { }
+        if (!choferesOn || choferesUbic is null) return 0;
+        try { return await JS.InvokeAsync<int>("mapeoChoferes.show", choferesUbic, choferesRecorrido); }
+        catch { return 0; }
     }
 
     // Botón 〰 de una zona: prende/apaga SOLO la línea de esa zona.
