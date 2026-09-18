@@ -7689,6 +7689,9 @@ public class ApiClient
     public async Task<List<MeliQuestionDto>?> GetMeliQuestionsAsync(string status = "UNANSWERED")
         => await GetAsync<List<MeliQuestionDto>>($"/api/meli/questions?status={status}");
 
+    public async Task<List<MeliQuestionPrevDto>?> GetMeliQuestionsByBuyerAsync(long fromUserId, int excludeId)
+        => await GetAsync<List<MeliQuestionPrevDto>>($"/api/meli/questions/by-buyer/{fromUserId}?excludeId={excludeId}");
+
     public async Task<MeliQuestionDetailDto?> GetMeliQuestionDetailAsync(int id)
         => await GetAsync<MeliQuestionDetailDto>($"/api/meli/questions/{id}/detail");
 

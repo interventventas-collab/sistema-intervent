@@ -30,6 +30,23 @@ public class MeliQuestionDto
     public DateTime? BuyerLastPurchaseAt { get; set; }
     /// <summary>Link al perfil público en MeLi. Null cuando no sabemos el apodo (MeLi lo enmascara).</summary>
     public string? BuyerProfileUrl { get; set; }
+    /// <summary>2026-09-18: cuantas OTRAS preguntas hizo este mismo usuario (las que tenemos guardadas).</summary>
+    public int BuyerPrevQuestions { get; set; }
+}
+
+/// <summary>2026-09-18: una pregunta anterior del mismo usuario, para desplegar en el cartel.</summary>
+public class MeliQuestionPrevDto
+{
+    public int Id { get; set; }
+    public string? AccountNickname { get; set; }
+    public string ItemId { get; set; } = "";
+    public string? ItemTitle { get; set; }
+    public string Text { get; set; } = "";
+    public string? AnswerText { get; set; }
+    public string Status { get; set; } = "";
+    public DateTime DateCreated { get; set; }
+    public DateTime? DateAnswered { get; set; }
+    public string MeliUrl { get; set; } = "";
 }
 
 public class MeliQuestionsUnreadDto

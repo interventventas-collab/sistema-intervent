@@ -67,6 +67,14 @@ public class MeliQuestionsController : ControllerBase
             .ToListAsync();
         var cliMap = clientes.GroupBy(c => c.BuyerId).ToDictionary(g => g.Key, g => g.First());
 
+        // 2026-09-18: cuantas preguntas hizo en total cada uno (todas las cuentas y publicaciones),
+        // para que el cartel diga "Preguntó N veces antes" y las despliegue al tocar.
+        var totalPorBuyer = await _db.MeliQuestions
+            .Where(q2 => buyerIds.Contains(q2.FromUserId))
+            .GroupBy(q2 => q2.FromUserId)
+            .Select(g => new { BuyerId = g.Key, N = g.Count() })
+            .ToDictionaryAsync(g => g.BuyerId, g => g.N);
+
         return Ok(list.Select(x => new
         {
             id = x.Id,
@@ -92,7 +100,37 @@ public class MeliQuestionsController : ControllerBase
             buyerLastPurchaseAt = cliMap.TryGetValue(x.FromUserId, out var c2) ? c2.LastPurchaseAt : null,
             buyerProfileUrl = PerfilUrl(string.IsNullOrEmpty(x.FromNickname)
                 ? (cliMap.TryGetValue(x.FromUserId, out var c3) ? c3.Nickname : null)
-                : x.FromNickname)
+                : x.FromNickname),
+            buyerPrevQuestions = x.FromUserId > 0 && totalPorBuyer.TryGetValue(x.FromUserId, out var nq) ? nq - 1 : 0
+        }));
+    }
+
+    /// <summary>
+    /// 2026-09-18: las OTRAS preguntas que hizo el mismo usuario de MeLi (en cualquier publicacion
+    /// y cualquier cuenta), con lo que se le contesto. Solo las que tenemos guardadas en la base.
+    /// </summary>
+    [HttpGet("by-buyer/{fromUserId:long}")]
+    public async Task<IActionResult> GetByBuyer(long fromUserId, [FromQuery] int? excludeId = null, [FromQuery] int limit = 30)
+    {
+        if (fromUserId <= 0) return Ok(Array.Empty<object>());
+        var list = await _db.MeliQuestions
+            .Include(x => x.MeliAccount)
+            .Where(x => x.FromUserId == fromUserId && (excludeId == null || x.Id != excludeId))
+            .OrderByDescending(x => x.DateCreated)
+            .Take(Math.Clamp(limit, 1, 100))
+            .ToListAsync();
+        return Ok(list.Select(x => new
+        {
+            id = x.Id,
+            accountNickname = x.MeliAccount != null ? x.MeliAccount.Nickname : null,
+            itemId = x.ItemId,
+            itemTitle = x.ItemTitle,
+            text = x.Text,
+            answerText = x.AnswerText,
+            status = x.Status,
+            dateCreated = x.DateCreated,
+            dateAnswered = x.DateAnswered,
+            meliUrl = $"https://articulo.mercadolibre.com.ar/{x.ItemId}"
         }));
     }
 

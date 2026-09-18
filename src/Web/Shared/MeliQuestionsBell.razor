@@ -149,6 +149,65 @@
                                 <strong>Pregunta:</strong> @q.Text
                             </div>
 
+                            @* 2026-09-18: lo que ya preguntó antes este mismo usuario (cualquier publicación
+                               y cualquier cuenta), con lo que se le contestó. Se pide recién al tocar. *@
+                            @if (q.BuyerPrevQuestions > 0)
+                            {
+                                <button type="button" class="mqp-toggle" @onclick="() => TogglePrev(q)">
+                                    💬 Preguntó @q.BuyerPrevQuestions @(q.BuyerPrevQuestions == 1 ? "vez" : "veces") antes
+                                    <span class="mqr-caret">@(prevOpen.Contains(q.Id) ? "▲" : "▼")</span>
+                                </button>
+                                @if (prevOpen.Contains(q.Id))
+                                {
+                                    <div class="mqp-list">
+                                        @if (!prevCache.TryGetValue(q.Id, out var prevs))
+                                        {
+                                            <div class="mqp-vacio">Buscando…</div>
+                                        }
+                                        else if (prevs.Count == 0)
+                                        {
+                                            <div class="mqp-vacio">No se pudieron traer.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var p in prevs)
+                                            {
+                                                <div class="mqp-item">
+                                                    <div class="mqp-meta">
+                                                        @p.DateCreated.ToArTime().ToString("dd/MM/yy HH:mm")
+                                                        @if (p.ItemId != q.ItemId)
+                                                        {
+                                                            <text> · </text><a href="@p.MeliUrl" target="_blank" title="Abrir publicación en MeLi">@(string.IsNullOrEmpty(p.ItemTitle) ? p.ItemId : p.ItemTitle)</a>
+                                                        }
+                                                        else
+                                                        {
+                                                            <text> · esta misma publicación</text>
+                                                        }
+                                                        @if (!string.IsNullOrEmpty(p.AccountNickname) && p.AccountNickname != q.AccountNickname)
+                                                        {
+                                                            <text> · @p.AccountNickname</text>
+                                                        }
+                                                    </div>
+                                                    <div class="mqp-preg">❓ @p.Text</div>
+                                                    @if (!string.IsNullOrWhiteSpace(p.AnswerText))
+                                                    {
+                                                        <div class="mqp-resp">↳ @p.AnswerText</div>
+                                                    }
+                                                    else if (p.Status == "UNANSWERED")
+                                                    {
+                                                        <div class="mqp-resp mqp-sin">↳ Todavía sin responder</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="mqp-resp mqp-sin">↳ Sin respuesta guardada</div>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            }
+
                             @if (answeredIds.Contains(q.Id))
                             {
                                 <div class="meli-q-answered">
@@ -380,6 +439,25 @@
     .mqb-cliente-si { color: #15803d; background: rgba(22,163,74,.12); border: 1px solid rgba(22,163,74,.3); }
     .mqb-cliente-no { color: #6b7280; background: rgba(148,163,184,.12); border: 1px solid rgba(148,163,184,.3); }
 
+    /* === 2026-09-18: preguntas anteriores del mismo usuario === */
+    .mqp-toggle {
+        display: inline-flex; align-items: center; gap: 6px; margin: 0 0 8px;
+        font-size: .8rem; font-weight: 600; font-family: inherit; color: #374151;
+        background: none; border: none; padding: 2px 0; cursor: pointer;
+    }
+    .mqp-toggle:hover { text-decoration: underline; }
+    .mqp-list {
+        border-left: 2px solid #e5e7eb; padding: 2px 0 2px 12px; margin: 0 0 10px;
+        display: flex; flex-direction: column; gap: 9px; max-height: 260px; overflow-y: auto;
+    }
+    .mqp-meta { font-size: .72rem; color: #6b7280; }
+    .mqp-meta a { color: #1d4ed8; text-decoration: none; }
+    .mqp-meta a:hover { text-decoration: underline; }
+    .mqp-preg { font-size: .85rem; color: #1f2937; margin-top: 2px; }
+    .mqp-resp { font-size: .82rem; color: #4b5563; margin-top: 2px; white-space: pre-line; }
+    .mqp-sin { font-style: italic; color: #9ca3af; }
+    .mqp-vacio { font-size: .8rem; color: #9ca3af; }
+
     /* === 2026-08-15: respuestas rápidas dentro del cartel === */
     .mqr-toggle {
         display: inline-flex; align-items: center; gap: 6px;
@@ -456,6 +534,9 @@
     // 2026-09-04: qué preguntas tienen abierto el cotizador de alquileres, y el de arriba (que
     // anda aunque no haya ninguna pregunta esperando).
     private HashSet<int> cotizOpen = new();
+    // 2026-09-18: preguntas anteriores del mismo usuario, desplegadas y ya traídas (por Id de pregunta).
+    private HashSet<int> prevOpen = new();
+    private Dictionary<int, List<MeliQuestionPrevDto>> prevCache = new();
     private bool cotizArriba;
     // 2026-06-04: control de auto-show. Si ya intentamos abrir y el usuario lo cerro (snooze),
     // no volvemos a abrir hasta que pase la ventana O hasta que cambie el count (nueva pregunta).
@@ -583,6 +664,17 @@
     }
 
     private void ToggleCotizArriba() => cotizArriba = !cotizArriba;
+
+    private async Task TogglePrev(MeliQuestionDto q)
+    {
+        if (!prevOpen.Add(q.Id)) { prevOpen.Remove(q.Id); return; }
+        if (prevCache.ContainsKey(q.Id)) return;
+        StateHasChanged();
+        List<MeliQuestionPrevDto> r;
+        try { r = await Api.GetMeliQuestionsByBuyerAsync(q.FromUserId, q.Id) ?? new(); }
+        catch { r = new(); }
+        prevCache[q.Id] = r;
+    }
 
     /// <summary>El de arriba no le responde a nadie: copia el presupuesto para pegarlo donde sea.</summary>
     private async Task CopiarCotizacion(string texto)
