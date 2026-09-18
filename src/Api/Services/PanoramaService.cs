@@ -243,15 +243,26 @@ public class PanoramaService
         var comps = await (
             from c in _db.MeliItemComponentes.AsNoTracking()
             join p in _db.CafeProductos.AsNoTracking() on c.CafeProductoId equals p.Id
-            select new { c.MeliItemId, c.Cantidad, p.Sku, p.Costo }
+            select new { c.MeliItemId, c.Cantidad, p.Sku, p.Costo, c.CafeProductoId, c.MeliVariationId }
         ).ToListAsync(ct);
+
+        // 2026-09-18: publicación con colores → el costo de UN color, no la suma (ver MeliCostoPorColor).
+        var colores = (await _db.MeliItems.AsNoTracking()
+                .Where(r => r.VariationId != null && r.CafeProductoId != null)
+                .Select(r => new { r.MeliItemId, Pid = r.CafeProductoId!.Value })
+                .ToListAsync(ct))
+            .GroupBy(r => r.MeliItemId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyCollection<int>)g.Select(x => x.Pid).Distinct().ToList());
+        IReadOnlyCollection<int> sinColores = Array.Empty<int>();
 
         var costo = comps
             .GroupBy(c => c.MeliItemId)
             .ToDictionary(
                 g => g.Key,
                 // dedupe por SKU: el mismo criterio del motor de precios
-                g => g.GroupBy(x => x.Sku).Select(x => x.First()).Sum(x => x.Costo * x.Cantidad));
+                g => MeliCostoPorColor.ComponentesDeUnaUnidad(g.ToList(), x => x.CafeProductoId, x => x.MeliVariationId,
+                        x => x.Costo, colores.GetValueOrDefault(g.Key, sinColores))
+                    .GroupBy(x => x.Sku).Select(x => x.First()).Sum(x => x.Costo * x.Cantidad));
 
         // Fallback: publicaciones sin receta pero atadas al producto por el modelo viejo.
         var legacy = await (

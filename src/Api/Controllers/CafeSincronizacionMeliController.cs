@@ -598,10 +598,16 @@ public class CafeSincronizacionMeliController : ControllerBase
             from c in _db.MeliItemComponentes
             join p in _db.CafeProductos on c.CafeProductoId equals p.Id
             where c.MeliItemId == mi.MeliItemId
-            select new { p.Sku, p.Costo, c.Cantidad }
+            select new { p.Sku, p.Costo, c.Cantidad, c.CafeProductoId, c.MeliVariationId }
         ).ToListAsync();
         if (mecs.Count > 0)
         {
+            // 2026-09-18: publicación con colores → el costo de UN color, no la suma (ver MeliCostoPorColor).
+            var productosDeLosColores = await _db.MeliItems.AsNoTracking()
+                .Where(r => r.MeliItemId == mi.MeliItemId && r.VariationId != null && r.CafeProductoId != null)
+                .Select(r => r.CafeProductoId!.Value).Distinct().ToListAsync();
+            mecs = Api.Services.MeliCostoPorColor.ComponentesDeUnaUnidad(mecs, x => x.CafeProductoId, x => x.MeliVariationId,
+                x => x.Costo, productosDeLosColores, mi.VariationId, mi.CafeProductoId);
             // Dedup por SKU si son todas del mismo producto
             var deduped = mecs.GroupBy(x => x.Sku).Select(g => g.First()).ToList();
             return deduped.Sum(x => x.Costo * x.Cantidad);

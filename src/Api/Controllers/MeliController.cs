@@ -620,11 +620,17 @@ public class MeliController : ControllerBase
             from c in db.MeliItemComponentes
             join p in db.CafeProductos on c.CafeProductoId equals p.Id
             where c.MeliItemId == meliItemId
-            select new { p.Sku, p.Nombre, p.Costo, c.Cantidad }
+            select new { p.Sku, p.Nombre, p.Costo, c.Cantidad, c.CafeProductoId, c.MeliVariationId }
         ).ToListAsync();
 
         if (mecs.Count > 0)
         {
+            // 2026-09-18: publicación con colores → el costo de UN color, no la suma (ver MeliCostoPorColor).
+            var productosDeLosColores = await db.MeliItems.AsNoTracking()
+                .Where(r => r.MeliItemId == meliItemId && r.VariationId != null && r.CafeProductoId != null)
+                .Select(r => r.CafeProductoId!.Value).Distinct().ToListAsync();
+            mecs = MeliCostoPorColor.ComponentesDeUnaUnidad(mecs, x => x.CafeProductoId, x => x.MeliVariationId,
+                x => x.Costo, productosDeLosColores, mi.VariationId, mi.CafeProductoId);
             source = "componentes";
             foreach (var x in mecs)
                 comps.Add(new ProductCostDto.Comp(x.Sku ?? "", x.Nombre ?? "", x.Costo, x.Cantidad, x.Costo * x.Cantidad));

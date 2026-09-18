@@ -510,10 +510,14 @@ public class MeliPricePushService
             from c in _db.MeliItemComponentes
             join p in _db.CafeProductos on c.CafeProductoId equals p.Id
             where c.MeliItemId == mi.MeliItemId
-            select new { p.Sku, p.Costo, c.Cantidad }
+            select new { p.Sku, p.Costo, c.Cantidad, c.CafeProductoId, c.MeliVariationId }
         ).ToListAsync(ct);
         if (mecs.Count > 0)
         {
+            // 2026-09-18: publicación con colores → el costo de UN color, no la suma (ver MeliCostoPorColor).
+            var productosDeLosColores = await ProductosDeLosColoresAsync(mi.MeliItemId, ct);
+            mecs = MeliCostoPorColor.ComponentesDeUnaUnidad(mecs, x => x.CafeProductoId, x => x.MeliVariationId,
+                x => x.Costo, productosDeLosColores, mi.VariationId, mi.CafeProductoId);
             // Dedup por SKU (misma lógica que /product-cost)
             var uniq = mecs.GroupBy(x => x.Sku).Select(g => g.First()).ToList();
             return uniq.Sum(x => x.Costo * x.Cantidad);
@@ -544,6 +548,14 @@ public class MeliPricePushService
         }
         return null;
     }
+
+    /// <summary>Productos vinculados a las filas-color (variaciones) de una publicación.</summary>
+    public async Task<List<int>> ProductosDeLosColoresAsync(string meliItemId, CancellationToken ct)
+        => await _db.MeliItems.AsNoTracking()
+            .Where(r => r.MeliItemId == meliItemId && r.VariationId != null && r.CafeProductoId != null)
+            .Select(r => r.CafeProductoId!.Value)
+            .Distinct()
+            .ToListAsync(ct);
 
     private static decimal AplicarRedondeoUp(decimal valor, string? modo)
     {

@@ -394,11 +394,19 @@ public class MeliPromocionesService
             from c in _db.MeliItemComponentes.AsNoTracking()
             join p in _db.CafeProductos.AsNoTracking() on c.CafeProductoId equals p.Id
             where c.MeliItemId == meliItemId
-            select new { p.Costo, c.Cantidad, p.Sku }
+            select new { p.Costo, c.Cantidad, p.Sku, c.CafeProductoId, c.MeliVariationId }
         ).ToListAsync(ct);
 
         if (porReceta.Count > 0)
-            return porReceta.GroupBy(x => x.Sku).Select(g => g.First()).Sum(x => x.Costo * x.Cantidad);
+        {
+            // 2026-09-18: publicación con colores → el costo de UN color, no la suma (ver MeliCostoPorColor).
+            var colores = await _db.MeliItems.AsNoTracking()
+                .Where(r => r.MeliItemId == meliItemId && r.VariationId != null && r.CafeProductoId != null)
+                .Select(r => r.CafeProductoId!.Value).Distinct().ToListAsync(ct);
+            return MeliCostoPorColor.ComponentesDeUnaUnidad(porReceta, x => x.CafeProductoId, x => x.MeliVariationId,
+                    x => x.Costo, colores)
+                .GroupBy(x => x.Sku).Select(g => g.First()).Sum(x => x.Costo * x.Cantidad);
+        }
 
         return await (
             from i in _db.MeliItems.AsNoTracking()
