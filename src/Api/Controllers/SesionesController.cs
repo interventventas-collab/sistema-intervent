@@ -53,7 +53,12 @@ public class SesionesController : ControllerBase
         string? CerradaPor,
         string? CerradaMotivo);
 
-    public record ListadoDto(List<SesionDto> Abiertas, List<SesionDto> Cerradas);
+    /// <summary>2026-09-18: un repartidor y la última vez que abrió su link. No tienen sesión (entran
+    /// por link, sin clave), así que esto es lo único que dice si su link se está usando.</summary>
+    public record RepartidorUsoDto(int Id, string Nombre, DateTime? UltimoUsoAr, string? Aparato,
+        string? Lugar, string? Ciudad, string? Ip);
+
+    public record ListadoDto(List<SesionDto> Abiertas, List<SesionDto> Cerradas, List<RepartidorUsoDto> Repartidores);
 
     /// <summary>Hora argentina para mostrar. El sistema guarda todo en UTC.</summary>
     private static DateTime Ar(DateTime utc) => utc.AddHours(-3);
@@ -89,7 +94,21 @@ public class SesionesController : ControllerBase
                             .OrderByDescending(s => s.CerradaAt ?? s.ExpiraAt)
                             .Select(Mapear).ToList();
 
-        return Ok(new ListadoDto(abiertas, cerradas));
+        // Los repartidores activos, el que abrió más recién arriba y los que nunca abrieron al final.
+        var reps = await _db.CafeRepartidores.AsNoTracking()
+            .Where(r => r.IsActive)
+            .OrderByDescending(r => r.UltimoUsoAt.HasValue).ThenByDescending(r => r.UltimoUsoAt).ThenBy(r => r.Nombre)
+            .Select(r => new { r.Id, r.Nombre, r.UltimoUsoAt, r.UltimoUsoAparato, r.UltimoUsoIp })
+            .ToListAsync();
+        var repartidores = reps.Select(r => new RepartidorUsoDto(
+            r.Id, r.Nombre,
+            r.UltimoUsoAt is null ? null : Ar(r.UltimoUsoAt.Value),
+            r.UltimoUsoAparato,
+            r.UltimoUsoIp is null ? null : SesionesService.Lugar(r.UltimoUsoIp, redes),
+            _geo.Ciudad(r.UltimoUsoIp),
+            r.UltimoUsoIp)).ToList();
+
+        return Ok(new ListadoDto(abiertas, cerradas, repartidores));
     }
 
     public record EntradaDto(DateTime CuandoAr, string? Ip, string Lugar, string? Ciudad);

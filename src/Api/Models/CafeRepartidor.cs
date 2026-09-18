@@ -40,6 +40,21 @@ public class CafeRepartidor
     /// oficina desde Administracion -> Repartidores; en el celu no aparece nada. Arranca apagado.</summary>
     public bool SeguirUbicacion { get; set; }
 
+    /// <summary>2026-09-18: la ÚLTIMA vez que se abrió su link personal (/mis-pedidos). Pedido del
+    /// dueño: "que diga la última vez que lo abrió cada repartidor y listo". Los repartidores no
+    /// entran con usuario y clave, así que no aparecen en Sesiones abiertas: esto es lo único que
+    /// dice si su link se está usando. Lo anota <see cref="Api.Filters.RepartidorUsoFilter"/>.
+    /// NO cuenta cuando lo abre la oficina con "Ver como" (eso no es el repartidor).</summary>
+    public DateTime? UltimoUsoAt { get; set; }
+
+    /// <summary>Desde qué aparato fue ese último uso ("Chrome en Android").</summary>
+    [MaxLength(80)]
+    public string? UltimoUsoAparato { get; set; }
+
+    /// <summary>Desde qué conexión fue ese último uso.</summary>
+    [MaxLength(60)]
+    public string? UltimoUsoIp { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

@@ -18,6 +18,8 @@ namespace Api.Controllers;
 [ApiController]
 [Route("api/alquileres/repartidor-public")]
 [AllowAnonymous]
+// 2026-09-18: anota la ultima vez que el repartidor abrio su link (ver RepartidorUsoFilter).
+[Api.Filters.RepartidorUsoFilter]
 public class AlqRepartidorPublicController : ControllerBase
 {
     private readonly AppDbContext _db;

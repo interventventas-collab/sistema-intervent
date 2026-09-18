@@ -34,6 +34,21 @@ public class SesionesListadoDto
 {
     public List<SesionDto> Abiertas { get; set; } = new();
     public List<SesionDto> Cerradas { get; set; } = new();
+    /// <summary>2026-09-18: repartidores y la última vez que abrieron su link.</summary>
+    public List<RepartidorUsoDto> Repartidores { get; set; } = new();
+}
+
+/// <summary>Un repartidor y la última vez que abrió su link (no tienen sesión, entran sin clave).</summary>
+public class RepartidorUsoDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    /// <summary>Hora argentina. Null = no lo abrió desde que se empezó a anotar.</summary>
+    public DateTime? UltimoUsoAr { get; set; }
+    public string? Aparato { get; set; }
+    public string? Lugar { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Ip { get; set; }
 }
 
 /// <summary>Una entrada al sistema: "el 17/09 a las 16:40 entró desde acá".</summary>

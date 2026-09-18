@@ -16,6 +16,8 @@ namespace Api.Controllers;
 [ApiController]
 [Route("api/cafe/repartidor-public")]
 [AllowAnonymous]
+// 2026-09-18: anota la ultima vez que el repartidor abrio su link (ver RepartidorUsoFilter).
+[Api.Filters.RepartidorUsoFilter]
 public class CafeRepartidorPublicController : ControllerBase
 {
     private readonly AppDbContext _db;

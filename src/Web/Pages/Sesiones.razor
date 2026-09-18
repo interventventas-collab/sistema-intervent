@@ -216,6 +216,36 @@
                 </div>
             }
 
+            @* 2026-09-18: los repartidores entran por su link, sin clave: no tienen sesión y por eso no
+               están arriba. Lo único que se sabe es la última vez que abrieron el link, y desde qué
+               aparato. Pedido del dueño: "que diga la última vez que lo abrió cada repartidor y listo". *@
+            @if (datos.Repartidores.Any())
+            {
+                <div style="margin-top:1.5rem;">
+                    <p style="margin:0 0 .25rem 0;"><strong>Repartidores</strong></p>
+                    <p class="text-muted" style="margin:0 0 .5rem 0; font-size:.8rem;">
+                        Entran con su link, sin clave, así que no aparecen arriba. Esto es la última vez que abrieron su pantalla (se anota desde el 18/09).
+                    </p>
+                    @foreach (var r in datos.Repartidores)
+                    {
+                        <div style="padding:.35rem 0; border-bottom:1px solid var(--border, #eee); line-height:1.6;">
+                            <strong>@r.Nombre</strong>
+                            @if (r.UltimoUsoAr is null)
+                            {
+                                <span class="text-muted"> · todavía no la abrió</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted"> · </span>@HaceRepartidor(r.UltimoUsoAr.Value)
+                                @if (!string.IsNullOrWhiteSpace(r.Aparato)) { <span class="text-muted"> · </span>@r.Aparato }
+                                @if (!string.IsNullOrWhiteSpace(r.Lugar)) { <span class="text-muted"> · </span>@r.Lugar }
+                                @if (!string.IsNullOrWhiteSpace(r.Ciudad)) { <span class="text-muted"> (@r.Ciudad, aprox.)</span> }
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
             <div style="margin-top:1.5rem;">
                 <button class="btn-link" @onclick="() => mostrarHistorial = !mostrarHistorial">
                     @(mostrarHistorial ? "▾" : "▸") Sesiones que se cerraron en los últimos 7 días (@datos.Cerradas.Count)
@@ -422,6 +452,17 @@
     }
 
     private static string Fecha(DateTime ar) => ar.ToString("dd/MM HH:mm");
+
+    /// <summary>"abrió hace 12 min" / "abrió hoy 07:40" / "abrió el 15/09 18:20". Para el repartidor lo
+    /// que importa es si la está usando ahora o hace cuánto que no, no el día de la semana.</summary>
+    private static string HaceRepartidor(DateTime ar)
+    {
+        var d = AhoraAr - ar;
+        if (d.TotalMinutes < 60) return d.TotalSeconds < 90 ? "abrió recién" : $"abrió hace {(int)d.TotalMinutes} min";
+        if (ar.Date == AhoraAr.Date) return $"abrió hoy {ar:HH:mm}";
+        if (ar.Date == AhoraAr.Date.AddDays(-1)) return $"abrió ayer {ar:HH:mm}";
+        return $"abrió el {ar:dd/MM HH:mm}";
+    }
 
     public async ValueTask DisposeAsync()
     {

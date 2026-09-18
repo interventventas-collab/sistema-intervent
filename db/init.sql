@@ -7858,3 +7858,18 @@ BEGIN
     CREATE INDEX IX_CafeRepUbic_Rep_Fecha ON Cafe_RepartidorUbicaciones(RepartidorId, CreatedAt);
 END
 GO
+
+-- ============================================================
+-- 2026-09-18 — ULTIMA VEZ QUE CADA REPARTIDOR ABRIO SU LINK
+-- Los repartidores entran por link, sin clave: no aparecen en Sesiones abiertas. Esto es lo
+-- unico que dice si su link se esta usando, y desde que aparato.
+-- ============================================================
+IF COL_LENGTH('Cafe_Repartidores','UltimoUsoAt') IS NULL
+    ALTER TABLE Cafe_Repartidores ADD UltimoUsoAt DATETIME2 NULL;
+GO
+IF COL_LENGTH('Cafe_Repartidores','UltimoUsoAparato') IS NULL
+    ALTER TABLE Cafe_Repartidores ADD UltimoUsoAparato NVARCHAR(80) NULL;
+GO
+IF COL_LENGTH('Cafe_Repartidores','UltimoUsoIp') IS NULL
+    ALTER TABLE Cafe_Repartidores ADD UltimoUsoIp NVARCHAR(60) NULL;
+GO
