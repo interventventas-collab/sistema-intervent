@@ -9999,8 +9999,12 @@
             // sugerido sea el del Content-Disposition del server ('Factura A - Cliente
             // - Direccion - Fecha.pdf') y no un blob UUID random. La via privada con
             // cookie funciona tambien, pero la publica es identica y mas portable.
+            // 2026-09-19 (pedido Osmar): con el operador OSMAR no se abre el PDF solo (él no imprime).
+            // Los demás siguen igual. El PDF queda en el 🖨 del listado y los envíos salen igual.
+            var abrirPdfAlGuardar = !string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
             if (!wasEditing)
             {
+                if (abrirPdfAlGuardar)
                 try
                 {
                     var token = await Api.EnsurePublicTokenAsync(v.Id);
