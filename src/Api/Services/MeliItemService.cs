@@ -2555,8 +2555,12 @@ public class MeliItemService
     {
         if (precioSimulado <= 0) return null;
 
+        // 2026-09-19: las publicaciones que son SOLO colores no tienen fila sin variación: se usa una de ellas
+        // (la comisión, el tipo y el envío son de la publicación, iguales en todas las filas).
         var item = await _db.MeliItems.AsNoTracking().Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .Where(i => i.MeliItemId == meliItemId)
+            .OrderBy(i => i.VariationId == null ? 0 : 1).ThenBy(i => i.Id)
+            .FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null) return null;
 
         var token = await _accountService.GetValidTokenAsync(item.MeliAccount);

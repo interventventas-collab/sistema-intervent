@@ -471,7 +471,81 @@ public class MeliPricePushService
         // Ahora se usa SIEMPRE el cargo fijo que MeLi devuelve (lc.FixedFee): si no lo cobra viene
         // en 0 y la cuenta da igual que antes; si lo cobra, ahora sí se cuenta.
         var precioObjetivo = (netoConIvaNec + envio + fijoActual) / denom;
+
+        // 2026-09-19 — ESCALÓN DEL ENVÍO. La cuenta de arriba usa los costos del precio de HOY, y
+        // cuando el precio nuevo cae del otro lado de los $33.000 esos costos ya no son los que van a
+        // regir. Caso real, batea N°1 MLA686863575: estaba a $63.299 con $13.090 de envío gratis a tu
+        // cargo; el objetivo 50% dio $27.299 contando ese envío, pero abajo de $33.000 MeLi sacó el
+        // envío gratis y quedó dejando ~190%. Además el cargo fijo también cambia con el precio
+        // ($3.320 a $27.299, $2.740 a $15.899). Ahora se le pregunta a MeLi cuánto cobraría AL PRECIO
+        // NUEVO y se recalcula hasta que el número cierra. Si MeLi no contesta, queda la cuenta de
+        // antes (mejor un precio algo alto que uno que funde).
+        try
+        {
+            var ajustado = await AjustarPorEscalonAsync(item, netoConIvaNec, precioObjetivo, ct);
+            if (ajustado is > 0)
+            {
+                if (Math.Abs(ajustado.Value - precioObjetivo) > precioObjetivo * 0.01m)
+                    _logger.LogInformation("[PricePush] {Mla}: objetivo recalculado con los costos al precio nuevo ${Antes:N0} → ${Despues:N0}",
+                        item.MeliItemId, precioObjetivo, ajustado.Value);
+                precioObjetivo = ajustado.Value;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[PricePush] {Mla}: no se pudo recalcular con los costos al precio nuevo — queda la cuenta con los de hoy", item.MeliItemId);
+        }
         return Math.Round(precioObjetivo, 2);
+    }
+
+    /// <summary>Precio donde MeLi cambia de régimen: abajo cobra cargo fijo y no obliga el envío
+    /// gratis; arriba lo empuja (mismo valor que MeliPrecioManualService).</summary>
+    private const decimal ESCALON_ENVIO = 33_000m;
+
+    /// <summary>2026-09-19: resuelve el precio del objetivo con los costos que MeLi cobraría A ESE
+    /// precio (SimularCostosAsync), primero abajo del escalón y, si no alcanza, arriba.
+    /// Quién paga el envío, según lo que se vio en MeLi:
+    ///   • abajo del escalón, solo si HOY ya lo das gratis estando abajo (lo elegiste vos);
+    ///   • arriba, si hoy lo das gratis o si venís de abajo (MeLi suele obligarlo: se cuenta, por las dudas).</summary>
+    private async Task<decimal?> AjustarPorEscalonAsync(MeliItem item, decimal netoConIvaNec, decimal precioInicial,
+        CancellationToken ct)
+    {
+        bool pagaAbajo = item.FreeShipping && item.Price < ESCALON_ENVIO;
+        bool pagaArriba = item.FreeShipping || item.Price < ESCALON_ENVIO;
+
+        async Task<decimal?> Resolver(decimal desde, bool pagaEnvio)
+        {
+            var p = desde;
+            for (var i = 0; i < 4; i++)
+            {
+                var sim = await _itemService.SimularCostosAsync(item.MeliItemId, p, ct);
+                if (sim is null) return null;
+                var envio = (pagaEnvio ? sim.ShippingCost : 0m) + sim.ListingFeeAmount;
+                var denom = 1m - (sim.SaleFeeAmount - sim.FixedFee) / p;
+                if (denom <= 0.05m) return null;
+                var nuevo = (netoConIvaNec + envio + sim.FixedFee) / denom;
+                if (Math.Abs(nuevo - p) <= p * 0.002m) return nuevo;
+                p = nuevo;
+            }
+            return p;
+        }
+
+        // El precio que se publica es MAX(objetivo, precio de lista). Si la lista ya está arriba del
+        // escalón, lo de abajo no sirve: se va a publicar arriba y ahí corre el envío. Caso medido:
+        // publicación a $47.156 con lista $43.200 — sin esto daba $31.306, ganaba la lista y quedaba
+        // dejando 31% en vez de 50%.
+        var (piso, hayPiso) = await CalcularPrecioBaseAsync(item, ct);
+        var pisoAbajo = !hayPiso || piso < ESCALON_ENVIO;
+
+        if (pisoAbajo)
+        {
+            var abajo = await Resolver(Math.Min(precioInicial, ESCALON_ENVIO - 1m), pagaAbajo);
+            if (abajo is null) return null;
+            if (abajo.Value < ESCALON_ENVIO) return abajo;
+        }
+
+        var arriba = await Resolver(Math.Max(precioInicial, ESCALON_ENVIO), pagaArriba);
+        return arriba is null ? null : Math.Max(arriba.Value, ESCALON_ENVIO);
     }
 
     /// <summary>2026-07-18: margen % actual de una publicación (al precio dado, o el suyo), usando la
