@@ -841,6 +841,10 @@
                         @* 2026-08-20: lupa para buscar una palabra DENTRO de esta charla. *@
                         <button class="wa-busc-lupa-btn @(buscadorAbierto ? "activo" : "")" @onclick="ToggleBuscador"
                                 title="Buscar una palabra en esta charla">🔍</button>
+                        @* 2026-09-19: TACHO a la vista. Antes borrar estaba escondido al fondo del editor de
+                           contacto y no se encontraba. Abre un cartel de confirmación: un toque solo no borra. *@
+                        <button class="wa-busc-lupa-btn" @onclick="BorrarConversacion"
+                                title="Eliminar este chat del sistema (te pide confirmación)">🗑</button>
                         @* 2026-08-27: los ⋮. Acá adentro va lo del contacto, que se usa de vez en cuando y
                            afuera eran cuatro iconitos más peleando por atención. La lupa se queda afuera
                            porque se usa en plena charla. *@
@@ -3108,6 +3112,29 @@
                     </button>
                 </div>
             }
+        </div>
+    </div>
+}
+
+@* 2026-09-19: confirmación de ELIMINAR CHAT (antes era el confirm() del navegador) *@
+@if (showBorrarConv && selectedNumero is not null)
+{
+    <div class="wa-modal-backdrop" @onclick="@(() => showBorrarConv = false)"></div>
+    <div class="wa-modal" style="max-width:440px;">
+        <div class="wa-modal-header">
+            <h3 style="margin:0; flex:1; font-size:1.05rem;">🗑 ¿Eliminar este chat?</h3>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => showBorrarConv = false)">×</button>
+        </div>
+        <div class="wa-modal-body">
+            <p style="margin:0 0 0.4rem;">Vas a eliminar <b>toda la conversación</b> con <b>@MostrarNombre(SelectedConv())</b> · @PrettyNumero(selectedNumero)</p>
+            <p style="font-size:0.85rem; color:#6b7280; margin:0 0 0.4rem;">Se borra solo del sistema: en el celular del cliente el chat queda como está. El contacto y su ficha no se tocan.</p>
+            <p style="font-size:0.85rem; color:#b91c1c; margin:0;">No se puede deshacer.</p>
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1rem;">
+                <button class="btn btn-secondary btn-sm" @onclick="@(() => showBorrarConv = false)">Cancelar</button>
+                <button class="btn btn-danger btn-sm" @onclick="BorrarConversacionConfirmada" disabled="@borrandoConv">
+                    @(borrandoConv ? "⏳ Eliminando…" : "🗑 Sí, eliminar")
+                </button>
+            </div>
         </div>
     </div>
 }
@@ -7901,21 +7928,27 @@
     }
 
     // 2026-07-23 pedido Osmar: borrar conversación del sistema (con confirmación)
+    // 2026-09-19: el tacho (y el botón del editor de contacto) solo ABREN el cartel; borra el "Sí, eliminar".
     bool borrandoConv;
-    async Task BorrarConversacion()
+    bool showBorrarConv;
+    void BorrarConversacion()
     {
         if (selectedNumero is null) return;
-        var nombre = MostrarNombre(SelectedConv());
-        var seguro = await JS.InvokeAsync<bool>("confirm",
-            $"¿Borrar TODA la conversación con {nombre}?\n\nSe borra solo del sistema (el chat en el celular del cliente queda como está). Esto no se puede deshacer.");
-        if (!seguro) return;
+        showMasMenu = false;
+        showBorrarConv = true;
+    }
+
+    async Task BorrarConversacionConfirmada()
+    {
+        if (selectedNumero is null) return;
         borrandoConv = true;
         try
         {
             var ok = await Api.BorrarTwConversacionAsync(selectedNumero);
             if (ok)
             {
-                Toast.Success("Conversación borrada");
+                Toast.Success("Chat eliminado");
+                showBorrarConv = false;
                 showQuickContact = false;   // 2026-08-27: se borra desde el editor de contacto — cerrarlo
                 selectedNumero = null;
                 mensajes = new();
