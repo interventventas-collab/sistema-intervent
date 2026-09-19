@@ -351,8 +351,8 @@ public class CafeCotizacionPdfService
                         table.ColumnsDefinition(c =>
                         {
                             c.ConstantColumn(45);
-                            c.RelativeColumn(5);
                             c.ConstantColumn(60);
+                            c.RelativeColumn(5);
                             c.ConstantColumn(80);
                             c.ConstantColumn(50);
                             c.ConstantColumn(95);
@@ -360,8 +360,8 @@ public class CafeCotizacionPdfService
                         table.Header(h =>
                         {
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text("Cant.").SemiBold().FontSize(8);
-                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text("Producto").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text("Formato").SemiBold().FontSize(8);
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text("Producto").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("P. Unitario").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Bonif.").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Subtotal").SemiBold().FontSize(8);
@@ -374,6 +374,9 @@ public class CafeCotizacionPdfService
                         {
                             // Cant
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(pr.CantPrint.ToString()).SemiBold();
+                            // Formato — 2026-09-19: pegado a la cantidad (pedido del usuario)
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter()
+                                .Text(pr.FmtPrint).Italic().FontColor(Colors.Grey.Darken1).FontFamily("Times New Roman");
                             // Producto
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text(t =>
                             {
@@ -382,11 +385,15 @@ public class CafeCotizacionPdfService
                                 t.Span(pr.Nombre).SemiBold();
                                 if (pr.EsDoyPack) t.Span("  d.p.").Bold().FontColor(Colors.Blue.Darken3);
                                 else if (pr.EsEnvasePlateado) t.Span("  env. plat.").Bold().FontColor(Colors.Grey.Darken2);
-                                if (!string.IsNullOrEmpty(pr.Molienda)) t.Span($"  — {pr.Molienda}").FontColor(Colors.Grey.Darken1).FontSize(8);
+                                // 2026-09-19: EN GRANOS en negrita (resalta); las otras moliendas en gris clarito.
+                                if (!string.IsNullOrEmpty(pr.Molienda))
+                                {
+                                    if (pr.Molienda.Contains("GRANO", StringComparison.OrdinalIgnoreCase))
+                                        t.Span($"  — {pr.Molienda}").Bold().FontColor(Colors.Black).FontSize(8);
+                                    else
+                                        t.Span($"  — {pr.Molienda}").FontColor(Colors.Grey.Medium).FontSize(8);
+                                }
                             });
-                            // Formato
-                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter()
-                                .Text(pr.FmtPrint).Italic().FontColor(Colors.Grey.Darken1).FontFamily("Times New Roman");
                             // P. Unitario — 2026-07-14: siempre limpio (precio de lista, SIN tachar). El descuento
                             // se muestra aparte en la columna "Bonif." (formato Contabilium/AFIP, más prolijo).
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight()
