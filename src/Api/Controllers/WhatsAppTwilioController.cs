@@ -1234,6 +1234,38 @@ public class WhatsAppTwilioController : ControllerBase
         }
         else
         {
+        // 2026-09-19: si lo que escribiste es un NUMERO, primero las charlas que YA existen con ese
+        // numero, comparando por los ULTIMOS 8 DIGITOS (el abonado). Asi no importa si lo tipeaste
+        // con espacios, guiones, con o sin 54/9/0/15, o si es del exterior. Caso real: Santos
+        // Chillemi (celu de Francia +33…) ya tenia chat, no aparecio al buscar, y se le abrio una
+        // conversacion NUEVA a un numero inventado (+549 33…) que nunca le llego.
+        var qSoloNum = !q.Any(char.IsLetter);
+        var qDigs = new string(q.Where(char.IsDigit).ToArray());
+        var cola = qSoloNum && qDigs.Length >= 6 ? (qDigs.Length > 8 ? qDigs[^8..] : qDigs) : null;
+        if (cola != null)
+        {
+            var charlasNum = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+                .Where(m => !m.Numero.StartsWith("ig:") && m.Numero.Contains(cola))
+                .GroupBy(m => m.Numero)
+                .Select(g => new { Numero = g.Key, Ultimo = g.Max(x => x.CreatedAt), Perfil = g.Max(x => x.NombrePerfil),
+                                   Contesto = g.Max(x => x.Direccion == "INCOMING" ? 1 : 0) })
+                // Primero las charlas donde la persona CONTESTO: una a la que solo le mandamos (y
+                // capaz nunca le llego) no puede tapar a la buena.
+                .OrderByDescending(x => x.Contesto).ThenByDescending(x => x.Ultimo).Take(cap)
+                .ToListAsync();
+            var numsCh = charlasNum.Select(x => x.Numero).ToList();
+            var agendaCh = (await _db.WhatsAppTwilioContactos.AsNoTracking()
+                .Where(c => numsCh.Contains(c.Numero))
+                .Select(c => new { c.Numero, c.Nombre, c.ClienteId }).ToListAsync())
+                .GroupBy(a => a.Numero).ToDictionary(g => g.Key, g => g.First());
+            acc.AddRange(charlasNum.Select(x =>
+            {
+                agendaCh.TryGetValue(x.Numero, out var ag);
+                var nom = !string.IsNullOrWhiteSpace(ag?.Nombre) ? ag!.Nombre : (x.Perfil ?? "");
+                return (nom, (string?)x.Numero, "Charla", ag?.ClienteId);
+            }));
+        }
+
         // 1) Clientes del cafe
         int.TryParse(q, out var qNum);
         var patronDestEmpieza = CafePreventasController.EscaparLike(q) + "%";
@@ -1250,7 +1282,8 @@ public class WhatsAppTwilioController : ControllerBase
                 || (d.Localidad != null && EF.Functions.Like(EF.Functions.Collate(d.Localidad, COLLATE_SIN_TILDES), patronDestDir))))
             .Select(d => d.ClienteId).Distinct().Take(200).ToListAsync();
         acc.AddRange((await _db.CafeClientes.AsNoTracking()
-            .Where(c => (c.Nombre.Contains(q) || (qNum > 0 && c.CodigoInterno == qNum) || (c.Telefono != null && c.Telefono.Contains(q))
+            .Where(c => (c.Nombre.Contains(q) || (qNum > 0 && c.CodigoInterno == qNum) || (c.Telefono != null && (c.Telefono.Contains(q)
+                             || (cola != null && c.Telefono.Replace(" ", "").Replace("-", "").Replace(".", "").Contains(cola))))
                          || idsDirDest.Contains(c.Id)
                          || (qDigitos.Length >= 6 && c.Cuit != null && c.Cuit.Replace("-", "").Replace(" ", "").Contains(qDigitos))
                          || (c.Direccion != null && EF.Functions.Like(EF.Functions.Collate(c.Direccion, COLLATE_SIN_TILDES), patronDestDir))
@@ -1292,12 +1325,19 @@ public class WhatsAppTwilioController : ControllerBase
             .Select(c => (c.Nombre, (string?)c.Numero, "Agenda", c.ClienteId)));
         }
 
+        // 2026-09-19: un telefono cargado SIN "+" se toma por argentino y se le pega el 549. Si en
+        // realidad es del exterior (ficha con "33669137487" = Francia) y YA hay charla con "+33…",
+        // usamos el de la charla. Si no, el mismo cliente aparecia con un numero inventado.
+        var numChatExterior = await NumerosConChatSinPrefijoAsync(acc.Select(a => a.Tel));
+
         // Normalizar + sacar repetidos por numero
         var vistos = new HashSet<string>();
         var items = new List<(string Nombre, string Numero, string Origen, int? ClienteId)>();
         foreach (var (Nombre, Tel, Origen, CliId) in acc)
         {
             var num = NormalizarNumeroWa(Tel);
+            var crudo = SoloDigitos(Tel);
+            if (numChatExterior.Contains(crudo)) num = crudo;
             if (num.Length < 8) continue;                 // sin numero usable
             if (!vistos.Add(num)) continue;               // ya lo tenemos
             items.Add((string.IsNullOrWhiteSpace(Nombre) ? num : Nombre, num, Origen, CliId));
@@ -1344,6 +1384,24 @@ public class WhatsAppTwilioController : ControllerBase
             })
             .ToList<object>();
         return Ok(salida);
+    }
+
+    /// <summary>2026-09-19: de los telefonos cargados SIN "+" (que NormalizarNumeroWa toma por
+    /// argentinos), cuales ya tienen charla TAL CUAL, como numero del exterior ("whatsapp:+33…").
+    /// Devuelve esos digitos: para ellos manda el numero de la charla, no el 549 inventado.</summary>
+    private async Task<HashSet<string>> NumerosConChatSinPrefijoAsync(IEnumerable<string?> tels)
+    {
+        var crudos = tels
+            .Where(t => !string.IsNullOrWhiteSpace(t) && !t!.Contains('+') && !t.StartsWith("whatsapp:") && !t.TrimStart().StartsWith("00"))
+            .Select(SoloDigitos)
+            .Where(d => d.Length >= 8 && !d.StartsWith("54") && !d.StartsWith("0"))
+            .Distinct().ToList();
+        if (crudos.Count == 0) return new HashSet<string>();
+        var claves = crudos.Select(d => "whatsapp:+" + d).ToList();
+        return (await _db.WhatsAppTwilioMensajes.AsNoTracking()
+            .Where(m => claves.Contains(m.Numero))
+            .Select(m => m.Numero).Distinct().ToListAsync())
+            .Select(SoloDigitos).ToHashSet();
     }
 
     /// <summary>Solo los digitos de un numero guardado ("whatsapp:+549…" → "549…").</summary>
@@ -1440,6 +1498,31 @@ public class WhatsAppTwilioController : ControllerBase
             .OrderByDescending(m => m.CreatedAt)
             .Select(m => new { m.Numero, m.LineaPhoneId })
             .FirstOrDefaultAsync();
+        // 2026-09-19: no hay charla con ESTE numero, pero capaz ya hablas con esta persona por otro.
+        // Caso real: Santos Chillemi escribio desde Francia (+33…); su ficha tenia el telefono sin
+        // el "+", el sistema le pego el 549 y "Nueva conversacion" no aviso que ya habia chat.
+        // Buscamos (a) el mismo numero sin el 549 que se le agrego, y (b) charlas del mismo cliente.
+        // Solo cuentan charlas donde la persona CONTESTO alguna vez (esas seguro llegan).
+        if (ultimoMsj == null)
+        {
+            var otras = new List<string>();
+            if (d.StartsWith("549")) otras.Add("whatsapp:+" + d[3..]);
+            var cliBuscado = clienteId ?? contacto?.ClienteId;
+            if (cliBuscado.HasValue)
+            {
+                otras.AddRange(await _db.WhatsAppTwilioContactos.AsNoTracking()
+                    .Where(c => c.ClienteId == cliBuscado).Select(c => c.Numero).ToListAsync());
+                otras.AddRange(await _db.WhatsAppContactoClientes.AsNoTracking()
+                    .Where(v => v.ClienteId == cliBuscado).Select(v => v.Numero).ToListAsync());
+            }
+            otras = otras.Where(n => !claves.Contains(n)).Distinct().ToList();
+            if (otras.Count > 0)
+                ultimoMsj = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+                    .Where(m => otras.Contains(m.Numero) && m.Direccion == "INCOMING")
+                    .OrderByDescending(m => m.CreatedAt)
+                    .Select(m => new { m.Numero, m.LineaPhoneId })
+                    .FirstOrDefaultAsync();
+        }
         var tieneChat = ultimoMsj != null;
 
         var lin = string.IsNullOrWhiteSpace(linea) ? null : linea.Trim();

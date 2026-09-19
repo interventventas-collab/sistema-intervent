@@ -482,7 +482,17 @@
                                     }
                                 </div>
 
-                                @if (nvFicha.TieneChat)
+                                @if (nvFicha.TieneChat && NvChatEsOtroNumero())
+                                {
+                                    @* 2026-09-19: ya hablás con esta persona pero por OTRO número (ej su ficha tenía
+                                       el celu de Francia sin el "+" y el sistema le pegó el 549). *@
+                                    <div class="wa-nv-yatiene">
+                                        💬 Ya hablás con esta persona desde otro número: <b>@BonitoNumero(nvFicha.NumeroChat)</b>.
+                                        Este número (@BonitoNumero(nvNumero)) capaz está mal cargado.
+                                        <button type="button" class="wa-nv-ir" @onclick="IrAlChatDelDestinatario">Abrir esa charla</button>
+                                    </div>
+                                }
+                                else if (nvFicha.TieneChat)
                                 {
                                     <div class="wa-nv-yatiene">
                                         💬 Ya tenés una charla con esta persona.
@@ -520,7 +530,11 @@
                                 @if (directo != null || nvClienteResultados.Count > 0)
                                 {
                                     <div class="wa-nv-results">
-                                        @if (directo != null)
+                                        @if (NvHayCharlaConEseNumero())
+                                        {
+                                            <div class="wa-nv-listado-tit">💬 Ya hablaste con este número — seguí esa charla, no arranques otra</div>
+                                        }
+                                        @if (directo != null && !NvHayCharlaConEseNumero())
                                         {
                                             @* 2026-08-22: mostramos el número YA CORREGIDO (el que se va a usar de verdad),
                                                no lo tipeado en crudo: antes escribir "1165387009" mostraba "+1165387009" y
@@ -552,6 +566,18 @@
                                                 {
                                                     <span class="wa-nv-origen" title="Ya tenés una charla con este contacto">💬</span>
                                                 }
+                                            </button>
+                                        }
+                                        @if (directo != null && NvHayCharlaConEseNumero())
+                                        {
+                                            @* 2026-09-19: hay charla con ese número → el "número nuevo" va ABAJO y avisa *@
+                                            var directoFinal2 = NumeroWaFinal(nvClienteQuery);
+                                            <button type="button" class="wa-nv-item" @onclick="() => UsarNumeroDirecto(directoFinal2)">
+                                                <div class="wa-nv-avatar" style="background:#94a3b8;">📱</div>
+                                                <div style="flex:1; min-width:0;">
+                                                    <div class="wa-nv-nom">Igual mandar a un número nuevo</div>
+                                                    <div style="font-size:0.85rem; color:#64748b;">@BonitoNumero(directoFinal2) · solo si NO es ninguno de los de arriba</div>
+                                                </div>
                                             </button>
                                         }
                                     </div>
@@ -8170,6 +8196,16 @@
         var conv = conversaciones.FirstOrDefault(c => c.Numero == num);
         await SelectConv(num, conv?.Linea ?? nvFicha?.Linea);
     }
+
+    bool NvChatEsOtroNumero()
+    {
+        static string Dig(string? x) => new string((x ?? "").Where(char.IsDigit).ToArray());
+        return !string.IsNullOrEmpty(nvFicha?.NumeroChat) && Dig(nvFicha.NumeroChat) != Dig(nvNumero);
+    }
+
+    /// <summary>2026-09-19: escribiste un número y ya hay charla(s) con él: esas van ARRIBA de
+    /// "Enviar a este número nuevo", para no arrancar una conversación repetida.</summary>
+    bool NvHayCharlaConEseNumero() => NvNumeroDirecto() != null && nvClienteResultados.Any(c => c.TieneChat);
 
     // 2026-08-03: si lo que se escribió parece un número (sin letras y con 8+ dígitos), ofrecer mandarle directo
     string? NvNumeroDirecto()
