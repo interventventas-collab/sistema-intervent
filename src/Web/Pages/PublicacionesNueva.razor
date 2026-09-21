@@ -1293,13 +1293,15 @@
                 </span>
                 <button class="p2-ac" @onclick="() => AccObjetivo(false)" disabled="@accionEnCurso">Guardar objetivo</button>
 
-                <button class="p2-ac" @onclick="() => AccSincro(true, null)" disabled="@accionEnCurso"
-                        title="Deja el precio sincronizándose solo de acá en adelante. NO publica el precio ahora: para eso usá 💵 Publicar precio.">💲 Sincro de precio: prender</button>
-                <button class="p2-ac" @onclick="() => AccSincro(false, null)" disabled="@accionEnCurso"
-                        title="El precio pasa a manejarse a mano: el sistema deja de publicarlo solo.">💲 Sincro de precio: apagar</button>
-                @* 2026-09-10: aclara que esto NO manda nada — el que manda es "Mandar stock" (ámbar). *@
-                <button class="p2-ac" @onclick="() => AccSincro(null, true)" disabled="@accionEnCurso"
-                        title="Deja el stock sincronizándose solo de acá en adelante. NO le manda el stock ahora: para eso usá 📦 Mandar stock.">📦 Sincro de stock: prender</button>
+                @* 2026-09-21: UN botón por sincro que dice cómo están las tildadas y qué pasa al tocarlo.
+                   Osmar: "si está prendida que el mismo botón diga apagar o prender". Antes eran 3 botones
+                   (precio prender / precio apagar / stock prender) y el stock no se podía apagar desde acá.
+                   Prender/apagar sólo guarda la configuración; mandar el valor ya es "Publicar precio" / "Mandar stock". *@
+                @{ var (sPrecio, aPrecio) = EstadoSincroTildadas(true); var (sStock, aStock) = EstadoSincroTildadas(false); }
+                <button class="p2-ac" @onclick="() => AccSincro(aPrecio, null)" disabled="@accionEnCurso"
+                        title="@(aPrecio ? "Deja el precio sincronizándose solo de acá en adelante. NO publica el precio ahora: para eso usá 💵 Publicar precio." : "El precio pasa a manejarse a mano: el sistema deja de publicarlo solo.")">💲 Sincro de precio: @sPrecio · @AccionSincroTexto(sPrecio, aPrecio)</button>
+                <button class="p2-ac" @onclick="() => AccSincro(null, aStock)" disabled="@accionEnCurso"
+                        title="@(aStock ? "Deja el stock sincronizándose solo de acá en adelante. NO le manda el stock ahora: para eso usá 📦 Mandar stock." : "El stock pasa a manejarse a mano: el sistema deja de mandarlo solo.")">📦 Sincro de stock: @sStock · @AccionSincroTexto(sStock, aStock)</button>
 
                 <span class="sep"></span>
                 <button class="p2-ac meli" @onclick="() => AccObjetivo(true)" disabled="@accionEnCurso">🎯 Aplicar objetivo y publicar</button>
@@ -1659,6 +1661,26 @@
     }
 
     private Task AccComisiones() => Correr("actualizando comisiones…", l => Api.AccionComisionesAsync(l));
+
+    /// <summary>2026-09-21: cómo está el sincro (precio o stock) en las tildadas y qué haría el botón.
+    /// Todas prendidas → "prendido", acción apagar. Todas apagadas → "apagado", acción prender.
+    /// Mezcladas (o alguna tildada en otra página, que no sabemos cómo está) → "N de M prendidas", prender todas.</summary>
+    private (string estado, bool accionPrender) EstadoSincroTildadas(bool precio)
+    {
+        var visibles = datos?.Items.Where(i => tildadas.Contains(i.MeliItemId))
+            .GroupBy(i => i.MeliItemId).Select(g => g.First()).ToList() ?? new();
+        var prendidas = visibles.Count(i => precio ? i.SyncPrecio : i.SyncStock);
+        var total = tildadas.Count;
+        if (visibles.Count == total && prendidas == total) return ("prendido", false);
+        if (visibles.Count == total && prendidas == 0) return ("apagado", true);
+        // Si hay tildadas en otra página no sabemos cómo están: contamos sobre las que se ven.
+        return visibles.Count < total
+            ? ($"{prendidas} de {visibles.Count} a la vista prendidas", true)
+            : ($"{prendidas} de {total} prendidas", true);
+    }
+
+    private static string AccionSincroTexto(string estado, bool prender)
+        => !prender ? "apagar" : estado == "apagado" ? "prender" : "prender todas";
 
     private Task AccSincro(bool? precio, bool? stock)
         => Correr("guardando…", l => Api.AccionSincroAsync(l, precio, stock));
