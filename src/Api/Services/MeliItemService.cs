@@ -3121,45 +3121,63 @@ public class MeliItemService
         if (string.IsNullOrWhiteSpace(url) || !(url.StartsWith("http://") || url.StartsWith("https://")))
             throw new Exception("El enlace tiene que empezar con http:// o https://");
 
-        // Si es un enlace de una foto de MercadoLibre, usar la versión ORIGINAL grande (-O.jpg)
-        // en vez de la miniatura chica (D_Q_NP_2X_..._-P.webp), que MeLi rechaza por tamaño.
-        url = UpgradeMercadoLibreImageUrl(url);
-
         var http = _httpFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(25);
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36");
         http.DefaultRequestHeaders.Accept.ParseAdd("image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
         try { http.DefaultRequestHeaders.Referrer = new Uri(new Uri(url).GetLeftPart(UriPartial.Authority)); } catch { }
 
-        HttpResponseMessage resp;
-        try { resp = await http.GetAsync(url); }
-        catch (Exception ex) { throw new Exception($"No pude abrir el enlace: {ex.Message}"); }
-        if (!resp.IsSuccessStatusCode)
-            throw new Exception($"El sitio no dejó descargar la foto (HTTP {(int)resp.StatusCode}). Probá con 'Subir archivo'.");
-
-        var bytes = await resp.Content.ReadAsByteArrayAsync();
-        if (bytes.Length == 0) throw new Exception("El enlace no devolvió ninguna imagen.");
-        if (bytes.Length > 15 * 1024 * 1024) throw new Exception("La imagen pesa más de 15 MB.");
-
-        var ct = resp.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "";
-        bool looksHtml = ct.Contains("html") || (bytes.Length > 1 && bytes[0] == (byte)'<');
-        if (looksHtml)
-            throw new Exception("El enlace no es una foto directa (devolvió una página). Abrí la imagen sola, copiá su dirección, o usá 'Subir archivo'.");
+        // 2026-09-21: una foto de MercadoLibre existe en VARIAS versiones de distinto tamaño. Antes
+        // cambiábamos el enlace a la "-O.jpg" dando por hecho que era la grande, y NO siempre lo es:
+        // Osmar pegó una de 1100x1080 y el sistema bajó la de 500x491 y la rechazó por chica.
+        // Ahora probamos el enlace tal cual + las otras versiones y nos quedamos con la más grande.
+        var candidatas = CandidatasMercadoLibreImageUrl(url);
+        byte[]? bytes = null;
+        string ct = "";
+        SkiaSharp.SKBitmap? bmp = null;
+        Exception? primerError = null;
+        foreach (var cand in candidatas)
+        {
+            try
+            {
+                var (b, c) = await DescargarImagenAsync(http, cand);
+                SkiaSharp.SKBitmap? bm = null;
+                try { bm = SkiaSharp.SKBitmap.Decode(b); } catch { }
+                if (bytes is null
+                    || (bm is not null && (bmp is null || Math.Min(bm.Width, bm.Height) > Math.Min(bmp.Width, bmp.Height))))
+                {
+                    bmp?.Dispose();
+                    bytes = b; ct = c; bmp = bm;
+                }
+                else bm?.Dispose();
+            }
+            catch (Exception ex) { primerError ??= ex; }
+        }
+        if (bytes is null) throw primerError ?? new Exception("El enlace no devolvió ninguna imagen.");
 
         // MeLi solo acepta JPG/PNG. Si es JPG o PNG, pasa directo. Si es webp/gif/bmp/etc, lo convierto a JPG.
         bool isJpg = ct.Contains("jpeg") || ct.Contains("jpg") || (bytes.Length > 2 && bytes[0] == 0xFF && bytes[1] == 0xD8);
         bool isPng = ct.Contains("png") || (bytes.Length > 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47);
 
-        // Decodifico una vez para: (a) medir el tamaño y avisar si es muy chica, (b) convertir si no es JPG/PNG.
-        SkiaSharp.SKBitmap? bmp = null;
-        try { bmp = SkiaSharp.SKBitmap.Decode(bytes); } catch { }
         using (bmp)
         {
+            // 2026-09-21: si aun la más grande no llega a 500 px de lado, la AGRANDAMOS sola hasta 1200
+            // (lo ideal para MeLi) en vez de rechazarla. Debajo de 250 px no: agrandada se vería borrosa.
             if (bmp is not null)
             {
                 int minSide = Math.Min(bmp.Width, bmp.Height);
+                if (minSide < MinLadoAgrandable)
+                    throw new Exception($"La foto es muy chica ({bmp.Width}x{bmp.Height} px): agrandada se vería borrosa. MercadoLibre pide al menos 500x500. Buscá una versión más grande de la imagen.");
                 if (minSide < 500)
-                    throw new Exception($"La foto es muy chica ({bmp.Width}x{bmp.Height} px). MercadoLibre pide al menos 500x500 (ideal 1200x1200). Buscá una versión más grande de la imagen.");
+                {
+                    var factor = 1200.0 / minSide;
+                    var info = new SkiaSharp.SKImageInfo((int)Math.Round(bmp.Width * factor), (int)Math.Round(bmp.Height * factor));
+                    using var grande = bmp.Resize(info, SkiaSharp.SKFilterQuality.High)
+                        ?? throw new Exception($"La foto es muy chica ({bmp.Width}x{bmp.Height} px) y no pude agrandarla. Probá con 'Subir archivo'.");
+                    using var imgG = SkiaSharp.SKImage.FromBitmap(grande);
+                    using var dataG = imgG.Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 92);
+                    return $"data:image/jpeg;base64,{Convert.ToBase64String(dataG.ToArray())}";
+                }
             }
 
             string outCt;
@@ -3179,20 +3197,50 @@ public class MeliItemService
         }
     }
 
-    /// <summary>Si el enlace es una foto de MercadoLibre (mlstatic), devuelve la URL de la versión ORIGINAL
-    /// grande (D_{núcleo}-O.jpg) en vez de la miniatura reducida (D_Q_NP_2X_..._-P.webp) que MeLi rechaza.</summary>
-    private static string UpgradeMercadoLibreImageUrl(string url)
+    /// <summary>Lado mínimo desde el que una foto chica se agranda sola (debajo, se rechaza).</summary>
+    private const int MinLadoAgrandable = 250;
+
+    private static async Task<(byte[] bytes, string contentType)> DescargarImagenAsync(HttpClient http, string url)
     {
+        HttpResponseMessage resp;
+        try { resp = await http.GetAsync(url); }
+        catch (Exception ex) { throw new Exception($"No pude abrir el enlace: {ex.Message}"); }
+        if (!resp.IsSuccessStatusCode)
+            throw new Exception($"El sitio no dejó descargar la foto (HTTP {(int)resp.StatusCode}). Probá con 'Subir archivo'.");
+
+        var bytes = await resp.Content.ReadAsByteArrayAsync();
+        if (bytes.Length == 0) throw new Exception("El enlace no devolvió ninguna imagen.");
+        if (bytes.Length > 15 * 1024 * 1024) throw new Exception("La imagen pesa más de 15 MB.");
+
+        var ct = resp.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "";
+        bool looksHtml = ct.Contains("html") || (bytes.Length > 1 && bytes[0] == (byte)'<');
+        if (looksHtml)
+            throw new Exception("El enlace no es una foto directa (devolvió una página). Abrí la imagen sola, copiá su dirección, o usá 'Subir archivo'.");
+        return (bytes, ct);
+    }
+
+    /// <summary>El enlace tal cual y, si es una foto de MercadoLibre (mlstatic), también sus otras versiones
+    /// de tamaño: la "2X" (suele ser la más grande), la original -O y la reducida. Se bajan todas y gana la más grande.</summary>
+    private static List<string> CandidatasMercadoLibreImageUrl(string url)
+    {
+        var lista = new List<string> { url };
         try
         {
             var uri = new Uri(url);
-            if (!uri.Host.Contains("mlstatic.com", StringComparison.OrdinalIgnoreCase)) return url;
+            if (!uri.Host.Contains("mlstatic.com", StringComparison.OrdinalIgnoreCase)) return lista;
             // Núcleo del id de la foto: {prefijo}-ML{sitio}{digitos}_{fecha}
             var m = System.Text.RegularExpressions.Regex.Match(url, @"\d+-ML[A-Z]\d+_\d+");
-            if (!m.Success) return url;
-            return $"https://http2.mlstatic.com/D_{m.Value}-O.jpg";
+            if (!m.Success) return lista;
+            foreach (var v in new[]
+            {
+                $"https://http2.mlstatic.com/D_NQ_NP_2X_{m.Value}-F.webp",
+                $"https://http2.mlstatic.com/D_NQ_NP_2X_{m.Value}-O.webp",
+                $"https://http2.mlstatic.com/D_{m.Value}-O.jpg",
+            })
+                if (!lista.Contains(v, StringComparer.OrdinalIgnoreCase)) lista.Add(v);
         }
-        catch { return url; }
+        catch { }
+        return lista;
     }
 
     // Núcleo del id de una foto de MeLi (parte "ML…") para comparar fotos aunque cambie el prefijo/variante.
