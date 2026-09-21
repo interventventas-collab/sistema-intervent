@@ -53,7 +53,7 @@
        como tiene overflow:hidden por el borde redondeado, las filas de abajo se RECORTABAN
        (se veian 9 de 17 y no aparecian ni bajando). */
     .p2-tbl { background: #fff; border: 1px solid #e3e7e0; border-radius: .6rem; overflow: hidden; flex-shrink: 0; }
-    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 128px 148px 120px 212px 52px 82px;
+    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 124px 180px 112px 212px 52px 82px;
                      gap: .6rem; align-items: center; padding: .55rem .65rem; }
     .p2-th { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; font-size: .6rem; text-transform: uppercase;
              letter-spacing: .07em; color: #9ca3af; font-weight: 700; }
@@ -115,6 +115,14 @@
     .p2-dot.bad { background: #b91c1c; }
     .p2-costo { display: block; font-size: .63rem; color: #9ca3af; }
 
+    .p2-cuenta { display: block; min-width: 0; font-size: .68rem; color: #6b7280; line-height: 1.3; }
+    .p2-cuenta .ln { display: flex; justify-content: space-between; gap: .4rem; }
+    .p2-cuenta .ln b { font-weight: 500; color: #374151; font-variant-numeric: tabular-nums; }
+    .p2-cuenta .ln.tot { border-top: 1px solid #e5e7eb; margin-top: .05rem; padding-top: .05rem; color: #111827; font-weight: 700; }
+    .p2-cuenta .ln.tot b { font-weight: 700; color: #111827; }
+    .p2-cuenta .ln.tot.neg, .p2-cuenta .ln.tot.neg b { color: #b91c1c; }
+    .p2-cuenta .sin { display: block; font-size: .64rem; color: #9ca3af; }
+    .p2-cuenta .viejo { display: block; font-size: .6rem; font-weight: 700; color: #b45309; margin-top: .1rem; }
     .p2-queda { display: block; min-width: 0; }
     .p2-queda .pct { display: block; font-weight: 800; font-size: 1.05rem; line-height: 1.15; color: #15803d; }
     .p2-queda .pct.tibio { color: #b45309; }
@@ -125,18 +133,6 @@
     .p2-queda .det { display: block; font-size: .6rem; color: #9ca3af; }
     .p2-queda .falta { display: block; font-size: .62rem; color: #b91c1c; font-weight: 700; }
 
-    .p2-com { display: block; min-width: 0; }
-    .p2-com .big { display: block; font-weight: 700; font-size: .8rem; }
-    .p2-com .big.mid { color: #b45309; }
-    .p2-com .big.hi { color: #b91c1c; }
-    .p2-com .des { display: block; font-size: .6rem; color: #9ca3af; }
-    .p2-com .viejo { display: inline-block; font-size: .58rem; font-weight: 700; color: #b45309;
-                     background: #fef0d8; border-radius: .25rem; padding: .05rem .3rem; margin-top: .1rem; }
-    .p2-com .bar { display: block; height: 4px; border-radius: 2px; background: #e3e7e0; margin-top: .2rem;
-                   overflow: hidden; max-width: 118px; }
-    .p2-com .bar i { display: block; height: 100%; background: #16a34a; }
-    .p2-com .bar i.mid { background: #f59e0b; }
-    .p2-com .bar i.hi { background: #b91c1c; }
 
     .p2-ctrl { display: flex; align-items: center; gap: .25rem; flex-wrap: nowrap; }
     .p2-obj { display: inline-flex; align-items: center; gap: .15rem; border: 1px solid #e3e7e0;
@@ -387,7 +383,7 @@
                padding: .5rem .7rem; border-radius: 0 .4rem .4rem 0; }
 
     @@media (max-width: 1100px) {
-        .p2-th, .p2-tr { grid-template-columns: 30px minmax(0,1fr) 120px 140px 112px; }
+        .p2-th, .p2-tr { grid-template-columns: 30px minmax(0,1fr) 116px 172px 104px; }
         .p2-h2 { display: none; }
     }
     @@media (max-width: 760px) {
@@ -508,8 +504,8 @@
                 <span><input type="checkbox" class="p2-chk" checked="@TodasTildadas" @onchange="TildarTodas" title="Tildar todas las de esta página" /></span>
                 <span>Producto</span>
                 <span class="p2-h">Precio</span>
+                <span class="p2-h">La cuenta</span>
                 <span class="p2-h">Te queda<br /><span style="text-transform:none;font-weight:400;">sobre el costo</span></span>
-                <span class="p2-h">Se lleva MeLi<br /><span style="text-transform:none;font-weight:400;">comisión + envío</span></span>
                 <span class="p2-h2">Objetivo · Sincro</span>
                 <span class="p2-h2">Stock</span>
                 <span class="p2-h2">Estado</span>
@@ -626,6 +622,39 @@
                             }
                         </span>
 
+                        @* 2026-09-21 — LA CUENTA HECHA (opción B que eligió él). Reemplaza a "Se lleva MeLi":
+                           lo que paga el comprador, lo que se lleva MeLi, lo que MeLi te deposita
+                           ("Recibís", el mismo número de su pantalla) y lo que te queda después de
+                           IVA y costo. Todo en gris; sólo se pinta si te queda en negativo. *@
+                        <span class="p2-cuenta p2-h">
+                            @{ var cta = CuentaDe(it); }
+                            @if (cta is null)
+                            {
+                                <span class="sin">sin datos — actualizá comisiones</span>
+                            }
+                            else
+                            {
+                                <span class="ln"><span>@cta.Etiqueta</span><b>@Plata(cta.Precio)</b></span>
+                                <span class="ln" title="@(cta.Simulada ? "Lo que cobraría MercadoLibre a ese precio" : DesgloseComision(it))">
+                                    <span>− MeLi @(cta.Precio > 0 ? Math.Round(cta.Meli / cta.Precio * 100m, 0).ToString("0", ar) : "0")%</span><b>@Plata(cta.Meli)</b>
+                                </span>
+                                <span class="ln tot"><span>= Recibís</span><b>@Plata(cta.Recibis)</b></span>
+                                @if (cta.Queda is decimal q)
+                                {
+                                    <span class="ln" title="IVA @Plata(cta.Iva ?? 0) + costo @Plata(cta.Costo ?? 0)"><span>− IVA y costo</span><b>@Plata((cta.Iva ?? 0) + (cta.Costo ?? 0))</b></span>
+                                    <span class="ln tot @(q < 0 ? "neg" : "")"><span>= Te queda</span><b>@(q < 0 ? "−" + Plata(-q) : Plata(q))</b></span>
+                                }
+                                else
+                                {
+                                    <span class="sin">falta cargar el costo</span>
+                                }
+                                @if (it.ComisionVieja && !cta.Simulada)
+                                {
+                                    <span class="viejo" title="La comisión se calculó con otro precio. La cuenta de esta fila puede estar mal: traela de MercadoLibre.">⚠ dato viejo</span>
+                                }
+                            }
+                        </span>
+
                         <span class="p2-queda p2-h">
                             @if (editandoPrecio == it.MeliItemId)
                             {
@@ -657,7 +686,6 @@
                                 var llega = m >= objetivo;
                                 <span class="pct @(llega ? "" : m >= objetivo * 0.6m ? "tibio" : "malo")" style="@(it.ComisionVieja ? "opacity:.55;" : "")">@m.ToString("0.#", ar)%</span>
                                 <span class="ver @(llega ? "ok" : "no")">@(llega ? "✓ estás arriba" : "✗ abajo") del @objetivo.ToString("0", ar)%</span>
-                                <span class="det">@Plata(it.GananciaPesos ?? 0) · costo @Plata(it.Costo ?? 0)</span>
                                 @if (!llega && it.Costo is > 0)
                                 {
                                     <span class="falta">faltan @Plata(Math.Round(it.Costo.Value * objetivo / 100m - (it.GananciaPesos ?? 0m), 0))</span>
@@ -673,25 +701,6 @@
                                    nada. Un número verde de mentira es peor que decir "no sé todavía". *@
                                 <span class="det" style="color:#b45309;font-weight:700;">no se puede calcular</span>
                                 <span class="det">falta la comisión — actualizala</span>
-                            }
-                        </span>
-
-                        <span class="p2-com p2-h">
-                            @if (it.ComisionPct.HasValue)
-                            {
-                                var c = it.ComisionPct.Value;
-                                var clase = c >= 40 ? "hi" : c >= 25 ? "mid" : "";
-                                <span class="big @clase">@c.ToString("0.#", ar)%</span>
-                                <span class="des">@DesgloseComision(it)</span>
-                                @if (it.ComisionVieja)
-                                {
-                                    <span class="viejo" title="La comisión se calculó con otro precio. El margen de esta fila puede estar mal.">⚠ dato viejo</span>
-                                }
-                                <span class="bar"><i class="@clase" style="width:@(Math.Min(100, (double)c * 2).ToString("0", System.Globalization.CultureInfo.InvariantCulture))%"></i></span>
-                            }
-                            else
-                            {
-                                <span class="des">sin datos — actualizá comisiones</span>
                             }
                         </span>
 
@@ -2191,6 +2200,34 @@
             _ => tag
         };
         return $"{t} · {c}";
+    }
+
+    private record CuentaFila(bool Simulada, string Etiqueta, decimal Precio, decimal Meli, decimal Recibis,
+                              decimal? Iva, decimal? Costo, decimal? Queda);
+
+    /// <summary>2026-09-21 — La cuenta de la fila (opción B). Sale de los MISMOS números que el
+    /// margen, así no hay dos cuentas distintas en la pantalla: Recibís = precio real − lo que se
+    /// lleva MeLi (comisión + fijo + envío); el IVA es Recibís − neto sin IVA; te queda = neto − costo.
+    /// Mientras se escribe un precio, muestra la cuenta con ESE precio.</summary>
+    private CuentaFila? CuentaDe(ApiClient.PubV2Fila it)
+    {
+        // Sólo si MeLi contestó: si no, la simulación viene con comisión 0 y la cuenta diría
+        // "Recibís" el precio entero. Mejor seguir mostrando la de hoy.
+        if (editandoPrecio == it.MeliItemId && !simulando && simulacion is { MargenPct: not null } sim)
+        {
+            var meliSim = sim.Comision + sim.Envio;
+            var recSim = sim.PrecioProbado - meliSim;
+            var netoSim = Math.Round(recSim / 1.21m, 2);
+            return new CuentaFila(true, "Precio nuevo", sim.PrecioProbado, meliSim, recSim,
+                sim.Costo is > 0 ? recSim - netoSim : null, sim.Costo is > 0 ? sim.Costo : null, sim.Costo is > 0 ? sim.Ganancia : null);
+        }
+        if (it.ComisionMonto is null || it.NetoSinIva is null) return null;
+        var enPromo = it.PromoPrecio is > 0 && it.PromoPrecio < it.Precio;
+        var precio = enPromo ? it.PromoPrecio!.Value : it.Precio;
+        var recibis = precio - it.ComisionMonto.Value;
+        var conCosto = it.Costo is > 0 && it.GananciaPesos.HasValue;
+        return new CuentaFila(false, enPromo ? "Precio promo" : "Precio", precio, it.ComisionMonto.Value, recibis,
+            conCosto ? recibis - it.NetoSinIva.Value : null, conCosto ? it.Costo : null, conCosto ? it.GananciaPesos : null);
     }
 
     private string DesgloseComision(ApiClient.PubV2Fila it)
