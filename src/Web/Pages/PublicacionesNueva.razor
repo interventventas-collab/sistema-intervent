@@ -546,6 +546,10 @@
                                 @* 2026-08-31 · ficha técnica. Los atributos son de donde salen los
                                    filtros de búsqueda de MeLi: si falta el color o la medida, la
                                    publicación no aparece cuando alguien filtra por eso. *@
+                                @* 2026-09-21 · descripción: verla y cambiarla sin ir a MercadoLibre. *@
+                                <button class="p2-balanza @(descAbierta == it.MeliItemId ? "on" : "")"
+                                        title="Descripción: la que tiene hoy en MercadoLibre, para leerla y cambiarla"
+                                        @onclick="() => ToggleDescripcion(it.MeliItemId)" @onclick:stopPropagation="true">📝</button>
                                 <button class="p2-balanza @(fichaAbierta == it.MeliItemId ? "on" : "")"
                                         title="Ficha técnica: qué datos le faltan para que la encuentren en los filtros de MercadoLibre"
                                         @onclick="() => ToggleFicha(it.MeliItemId)" @onclick:stopPropagation="true">📋</button>
@@ -1225,6 +1229,46 @@
                         </div>
                     }
 
+                    @if (descAbierta == it.MeliItemId)
+                    {
+                        <div class="p2-fotos" @onclick:stopPropagation="true">
+                            <h4>📝 Descripción en MercadoLibre</h4>
+                            @if (descCargando)
+                            {
+                                <span class="cnt">Consultando a MercadoLibre…</span>
+                            }
+                            else if (descDatos is null)
+                            {
+                                <span class="aviso err">No se pudo leer la descripción.</span>
+                            }
+                            else if (!string.IsNullOrEmpty(descDatos.Aviso))
+                            {
+                                @* Si no se pudo leer, no se ofrece escribir: guardar encima de algo que no vimos pisaría la descripción. *@
+                                <div class="aviso">@descDatos.Aviso</div>
+                            }
+                            else
+                            {
+                                @if (!descDatos.TieneDescripcion)
+                                {
+                                    <div class="cnt" style="margin-bottom:.4rem;">Esta publicación no tiene descripción. Escribila acá y guardala.</div>
+                                }
+                                <textarea @bind="descTexto" @bind:event="oninput" rows="@DescFilas" spellcheck="true"
+                                          style="width:100%; max-width:900px; font-family:inherit; font-size:.82rem; line-height:1.45; padding:.55rem .7rem; border:1px solid #cbd5e1; border-radius:.4rem; background:#fff; resize:vertical;"></textarea>
+                                <div class="pie">
+                                    <button class="btn meli" disabled="@(descGuardando || !DescCambio)" @onclick="() => GuardarDescripcion(it.MeliItemId)">
+                                        @(descGuardando ? "Guardando…" : "💾 Guardar en MercadoLibre")
+                                    </button>
+                                    <button class="btn" disabled="@(descGuardando || !DescCambio)" @onclick="() => { descTexto = descOriginal; descResultado = null; }">↩ Deshacer</button>
+                                    <span class="cnt">@descTexto.Length.ToString("N0") letras · solo texto, sin negritas ni links · es la misma para todas las variantes</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(descResultado))
+                                {
+                                    <div class="aviso @(descResultadoOk ? "ok" : "err")">@descResultado</div>
+                                }
+                            }
+                        </div>
+                    }
+
                     @if (medidasAbiertas == it.MeliItemId)
                     {
                         <div class="p2-med" @onclick:stopPropagation="true">
@@ -1737,6 +1781,7 @@
     private async Task ToggleMedidas(string mla)
     {
         if (medidasAbiertas == mla) { medidasAbiertas = null; medidas = null; return; }
+        descAbierta = null;   // 2026-09-21: cierra el panel de descripción
         CerrarFotos();
         medidasAbiertas = mla;
         medidas = null;
@@ -1798,6 +1843,63 @@
         public bool EsNueva => Id is null;
     }
 
+    // ─── 2026-09-21 · descripción (📝 de la fila) ───
+    private string? descAbierta;
+    private ApiClient.PubV2Descripcion? descDatos;
+    private string descTexto = "";
+    private string descOriginal = "";
+    private bool descCargando, descGuardando, descResultadoOk;
+    private string? descResultado;
+
+    private bool DescCambio => descTexto.Trim() != descOriginal.Trim();
+    private int DescFilas => Math.Clamp(descTexto.Split('\n').Length + 1, 6, 22);
+
+    private async Task ToggleDescripcion(string mla)
+    {
+        if (descAbierta == mla) { descAbierta = null; descDatos = null; return; }
+        // Los paneles se excluyen: dos abiertos en una fila angosta es un lío.
+        CerrarFotos();
+        medidasAbiertas = null;
+        recetaAbierta = null;
+        promosAbiertas = null;
+        fichaAbierta = null;
+        descAbierta = mla;
+        descDatos = null;
+        descTexto = descOriginal = "";
+        descResultado = null;
+        descCargando = true;
+        StateHasChanged();
+        try
+        {
+            descDatos = await Api.GetDescripcionV2Async(mla);
+            descTexto = descOriginal = descDatos?.Texto ?? "";
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo leer la descripción: " + ex.Message); }
+        finally { descCargando = false; StateHasChanged(); }
+    }
+
+    private async Task GuardarDescripcion(string mla)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "Esto cambia la descripción de la publicación en MercadoLibre. ¿Guardo?");
+        if (!ok) return;
+        descGuardando = true;
+        descResultado = null;
+        StateHasChanged();
+        try
+        {
+            var (res, error) = await Api.GuardarDescripcionV2Async(mla, descTexto);
+            descResultadoOk = res?.Ok == true;
+            descResultado = res?.Mensaje ?? error ?? "No se pudo guardar.";
+            if (descResultadoOk && res?.Descripcion is not null)
+            {
+                descDatos = res.Descripcion;
+                descTexto = descOriginal = res.Descripcion.Texto;
+                ToastService.Success("Descripción guardada en MercadoLibre.");
+            }
+        }
+        finally { descGuardando = false; StateHasChanged(); }
+    }
+
     private string? fotosAbiertas;
     private ApiClient.PubV2Fotos? fotosDatos;
     private List<FotoEdit> fotosEdit = new();
@@ -1814,6 +1916,7 @@
     private async Task ToggleFotos(string mla)
     {
         if (fotosAbiertas == mla) { CerrarFotos(); return; }
+        descAbierta = null;   // 2026-09-21: cierra el panel de descripción
         medidasAbiertas = null;   // no tener los dos paneles abiertos a la vez
         fotosAbiertas = mla;
         fotosDatos = null;
@@ -2446,6 +2549,7 @@
     private async Task TogglePromosItem(string mla)
     {
         if (promosAbiertas == mla) { promosAbiertas = null; promosItem = null; return; }
+        descAbierta = null;   // 2026-09-21: cierra el panel de descripción
 
         promosAbiertas = mla;
         promosItem = null;
@@ -2486,6 +2590,7 @@
     private async Task ToggleFicha(string mla)
     {
         if (fichaAbierta == mla) { fichaAbierta = null; fichaDatos = null; return; }
+        descAbierta = null;   // 2026-09-21: cierra el panel de descripción
 
         fichaAbierta = mla;
         fichaDatos = null;
@@ -2869,6 +2974,7 @@
     private async Task ToggleReceta(string mla)
     {
         if (recetaAbierta == mla) { recetaAbierta = null; return; }
+        descAbierta = null;   // 2026-09-21: cierra el panel de descripción
 
         // Los paneles se excluyen: dos abiertos a la vez es un lío en una fila angosta.
         recetaAbierta = mla;

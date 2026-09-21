@@ -5578,6 +5578,26 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // ─── 2026-09-21 · descripción de una publicación (pantalla nueva) ───
+    public record PubV2Descripcion(string MeliItemId, string Texto, bool TieneDescripcion, string? Aviso);
+    public record PubV2DescripcionResultado(bool Ok, string Mensaje, PubV2Descripcion? Descripcion);
+
+    public async Task<PubV2Descripcion?> GetDescripcionV2Async(string mla)
+        => await GetAsync<PubV2Descripcion>($"/api/meli/v2/publicaciones/{mla}/descripcion");
+
+    public async Task<(PubV2DescripcionResultado? res, string? error)> GuardarDescripcionV2Async(string mla, string texto)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PutAsJsonAsync($"/api/meli/v2/publicaciones/{mla}/descripcion", new { Texto = texto });
+            var body = await resp.Content.ReadFromJsonAsync<PubV2DescripcionResultado>();
+            if (resp.IsSuccessStatusCode) return (body, null);
+            return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     // ─── Precio a mano (pantalla nueva) ───
     public record PubV2Simulacion(string MeliItemId, decimal PrecioActual, decimal PrecioProbado,
         decimal Comision, decimal Envio, decimal? Costo, decimal? Ganancia, decimal? MargenPct,

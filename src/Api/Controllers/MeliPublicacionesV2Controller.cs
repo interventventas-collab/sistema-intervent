@@ -136,6 +136,28 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return r.Ok ? Ok(r) : BadRequest(r);
     }
 
+    // ─── 2026-09-21 · descripción ───
+    // Osmar: "¿tengo manera de ver la descripción escrita acá?". Verla y cambiarla en la fila.
+
+    /// <summary>Descripción en vivo de MeLi.</summary>
+    [HttpGet("publicaciones/{mla}/descripcion")]
+    public async Task<IActionResult> GetDescripcion(string mla, [FromServices] MeliDescripcionService svc)
+    {
+        var r = await svc.LeerAsync(mla, HttpContext.RequestAborted);
+        if (r is null) return NotFound(new { error = "Publicación no encontrada o sin cuenta MeLi" });
+        return Ok(r);
+    }
+
+    /// <summary>TOCA MELI: reemplaza la descripción entera.</summary>
+    [HttpPut("publicaciones/{mla}/descripcion")]
+    public async Task<IActionResult> PutDescripcion(string mla,
+        [FromBody] MeliDescripcionService.GuardarRequest req,
+        [FromServices] MeliDescripcionService svc)
+    {
+        var r = await svc.GuardarAsync(mla, req.Texto, HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
     // ─── 2026-08-26 · precio a mano ───
     // Osmar: "poder meter el precio manual y que ahí aparezca el porcentaje basado en el precio".
     // Simular NO cambia nada; publicar sí, y define quién manda de ahí en más (el precio o el %).
