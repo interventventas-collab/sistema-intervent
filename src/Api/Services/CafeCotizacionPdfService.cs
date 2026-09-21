@@ -375,24 +375,20 @@ public class CafeCotizacionPdfService
                             // Cant
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(pr.CantPrint.ToString()).SemiBold();
                             // Formato — 2026-09-19: pegado a la cantidad (pedido del usuario)
+                            // 2026-09-21: en negrita y negro (antes gris italica, en la hoja impresa no se leia)
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter()
-                                .Text(pr.FmtPrint).Italic().FontColor(Colors.Grey.Darken1).FontFamily("Times New Roman");
+                                .Text(pr.FmtPrint).Bold().FontColor(Colors.Black);
                             // Producto
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text(t =>
                             {
                                 if (!string.IsNullOrEmpty(pr.Sku))
                                     t.Span($"{pr.Sku}  ").Bold().FontColor(Colors.Blue.Darken3).FontSize(8);
-                                t.Span(pr.Nombre).SemiBold();
+                                t.Span(pr.Nombre); // 2026-09-21: nombre en letra normal, resaltan formato y molienda
                                 if (pr.EsDoyPack) t.Span("  d.p.").Bold().FontColor(Colors.Blue.Darken3);
                                 else if (pr.EsEnvasePlateado) t.Span("  env. plat.").Bold().FontColor(Colors.Grey.Darken2);
-                                // 2026-09-19: EN GRANOS en negrita (resalta); las otras moliendas en gris clarito.
+                                // 2026-09-21: EN GRANOS y cualquier molienda en negrita (antes las moliendas iban en gris clarito).
                                 if (!string.IsNullOrEmpty(pr.Molienda))
-                                {
-                                    if (pr.Molienda.Contains("GRANO", StringComparison.OrdinalIgnoreCase))
-                                        t.Span($"  — {pr.Molienda}").Bold().FontColor(Colors.Black).FontSize(8);
-                                    else
-                                        t.Span($"  — {pr.Molienda}").FontColor(Colors.Grey.Medium).FontSize(8);
-                                }
+                                    t.Span($"  — {pr.Molienda}").Bold().FontColor(Colors.Black).FontSize(8);
                             });
                             // P. Unitario — 2026-07-14: siempre limpio (precio de lista, SIN tachar). El descuento
                             // se muestra aparte en la columna "Bonif." (formato Contabilium/AFIP, más prolijo).
