@@ -2,6 +2,8 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @* 2026-09-21: página aparte para el depósito (antes el escaneo vivía adentro del armado de pedidos).
    Listado de órdenes MeLi agrupadas por envío + ficha grande de cada una: foto grande, qué trae,
@@ -391,6 +393,8 @@ else
             if (r is not null && r.Ok)
             {
                 MostrarFicha(r, Filtradas.FindIndex(o => o.Numero == r.Numero));
+                // escanear con una ficha ya abierta la reemplaza: Volver sigue yendo al listado
+                IrAFicha(r.Numero, reemplazar: Orden is not null);
             }
             else
             {
@@ -407,21 +411,50 @@ else
         }
     }
 
-    private async Task AbrirDelListado(int idx)
+    // 2026-09-21: la ficha abierta va en la dirección (?orden=N). Así "← Volver" y el atrás del
+    // navegador vuelven al LISTADO en vez de saltar al armado. Anterior/Siguiente reemplazan la
+    // dirección (no apilan), para que Volver lleve siempre derecho al listado.
+    [SupplyParameterFromQuery(Name = "orden")] public long? Orden { get; set; }
+    private const string BaseUrl = "/deposito/ordenes-meli";
+    private bool fichaApilada;   // true = la abrimos desde esta página (hay un paso atrás que es el listado)
+
+    protected override async Task OnParametersSetAsync()
     {
-        var lista = Filtradas;
-        if (idx < 0 || idx >= lista.Count) return;
+        if (Orden is null)
+        {
+            if (ficha is not null) { ficha = null; fichaIndice = -1; fichaApilada = false; }
+            return;
+        }
+        if (ficha?.Numero == Orden) return;   // ya está mostrada (p. ej. recién escaneada)
+        await CargarFicha(Orden.Value);
+    }
+
+    private async Task CargarFicha(long numero)
+    {
         cargandoFicha = true;
-        fichaIndice = idx;
         StateHasChanged();
         try
         {
-            var r = await Api.GetMeliDepoFichaAsync(lista[idx].Numero);
-            if (r is not null && r.Ok) MostrarFicha(r, idx);
+            var r = await Api.GetMeliDepoFichaAsync(numero);
+            if (r is not null && r.Ok) MostrarFicha(r, Filtradas.FindIndex(o => o.Numero == r.Numero));
             else ToastService.Error(r?.Mensaje ?? "No pude abrir esa orden");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { cargandoFicha = false; }
+    }
+
+    private void IrAFicha(long numero, bool reemplazar)
+    {
+        if (!reemplazar) fichaApilada = true;
+        Nav.NavigateTo($"{BaseUrl}?orden={numero}", replace: reemplazar);
+    }
+
+    private void AbrirDelListado(int idx)
+    {
+        var lista = Filtradas;
+        if (idx < 0 || idx >= lista.Count) return;
+        fichaIndice = idx;
+        IrAFicha(lista[idx].Numero, reemplazar: false);
     }
 
     private void MostrarFicha(MeliDepoFicha f, int idx)
@@ -431,13 +464,20 @@ else
         verTodasCompras = false;
     }
 
-    private async Task Mover(int delta) => await AbrirDelListado(fichaIndice + delta);
+    private void Mover(int delta)
+    {
+        var lista = Filtradas;
+        var idx = fichaIndice + delta;
+        if (idx < 0 || idx >= lista.Count) return;
+        fichaIndice = idx;
+        IrAFicha(lista[idx].Numero, reemplazar: true);
+    }
 
     private async Task CerrarFicha()
     {
-        ficha = null;
-        fichaIndice = -1;
-        StateHasChanged();
+        // Si la abrimos desde acá, el paso anterior es el listado: volvemos como el navegador.
+        if (fichaApilada) { try { await JS.InvokeVoidAsync("history.back"); } catch { Nav.NavigateTo(BaseUrl); } }
+        else Nav.NavigateTo(BaseUrl, replace: true);
         try { await scanRef.FocusAsync(); } catch { }
     }
 
