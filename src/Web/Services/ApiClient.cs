@@ -2103,9 +2103,23 @@ public class ApiClient
     public async Task<bool> OlvidarPickingDispositivoAsync()
         => await DeleteAsync("/api/cafe/picking/dispositivo");
 
-    /// <summary>Escanea una etiqueta de venta MeLi (Flex/Correo) y trae su listado de productos.</summary>
-    public async Task<EscanearEtiquetaResult?> EscanearEtiquetaPreparacionAsync(string code)
-        => await PostAsync<EscanearEtiquetaResult>("/api/cafe/ventas/preparacion/escanear-etiqueta", new { code });
+    // ─── 2026-09-21: página "Órdenes MeLi · Depósito" (listado + ficha grande, sin plata) ───
+    public async Task<MeliDepoListado?> GetMeliDepoOrdenesAsync(int dias, int? cuenta, string? envio, string? estado, string? q)
+    {
+        var url = $"/api/meli-deposito/ordenes?dias={dias}";
+        if (cuenta.HasValue) url += $"&cuenta={cuenta}";
+        if (!string.IsNullOrEmpty(envio)) url += $"&envio={envio}";
+        if (!string.IsNullOrEmpty(estado)) url += $"&estado={estado}";
+        if (!string.IsNullOrWhiteSpace(q)) url += $"&q={Uri.EscapeDataString(q.Trim())}";
+        return await GetAsync<MeliDepoListado>(url);
+    }
+
+    public async Task<MeliDepoFicha?> GetMeliDepoFichaAsync(long numero)
+        => await GetAsync<MeliDepoFicha>($"/api/meli-deposito/ficha/{numero}");
+
+    /// <summary>Escanea una etiqueta de venta MeLi (Flex/Correo) y trae su ficha.</summary>
+    public async Task<MeliDepoFicha?> EscanearMeliDepoAsync(string code)
+        => await PostAsync<MeliDepoFicha>("/api/meli-deposito/escanear", new { code });
 
     // ─── 2026-06-03: Config del modo nuevo de fichada (piloto WiFi + GPS) ───
     public record ConfigFichadaDto(bool ActivarModoNuevo, string? Wifi1Ip, string? Wifi1Label,

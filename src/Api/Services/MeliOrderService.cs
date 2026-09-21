@@ -274,10 +274,15 @@ public class MeliOrderService
     /// packId puede ser el pack_id o, para ventas sin pack, el order_id. Best-effort: si MeLi
     /// no deja leerlos (permisos / sin conversación), devuelve lista vacía.</summary>
     public async Task<List<MeliPackMessage>> GetPackMessagesAsync(long packId, MeliAccount account)
+        => (await TryGetPackMessagesAsync(packId, account)).Mensajes;
+
+    /// <summary>2026-09-21: igual que GetPackMessagesAsync pero dice si MeLi CONTESTÓ (Ok=false:
+    /// sin token / error HTTP). Así la pantalla distingue "no dejó mensajes" de "MeLi no contestó".</summary>
+    public async Task<(bool Ok, List<MeliPackMessage> Mensajes)> TryGetPackMessagesAsync(long packId, MeliAccount account)
     {
         var result = new List<MeliPackMessage>();
         var token = await _accountService.GetValidTokenAsync(account);
-        if (token is null) return result;
+        if (token is null) return (false, result);
 
         var http = _httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -294,12 +299,12 @@ public class MeliOrderService
                 response = await http.GetAsync(url);
             }
         }
-        if (!response.IsSuccessStatusCode) return result;
+        if (!response.IsSuccessStatusCode) return (false, result);
 
         var json = await response.Content.ReadAsStringAsync();
         var root = JsonDocument.Parse(json).RootElement;
         if (!root.TryGetProperty("messages", out var msgs) || msgs.ValueKind != JsonValueKind.Array)
-            return result;
+            return (true, result);
 
         foreach (var m in msgs.EnumerateArray())
         {
@@ -314,7 +319,7 @@ public class MeliOrderService
             if (!string.IsNullOrWhiteSpace(text))
                 result.Add(new MeliPackMessage(fromId, text!, date));
         }
-        return result;
+        return (true, result);
     }
 
     // ═══════════════════ POST-VENTA CAFÉ: mensaje automático de molienda ═══════════════════

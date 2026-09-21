@@ -1,0 +1,454 @@
+@page "/deposito/ordenes-meli"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* 2026-09-21: página aparte para el depósito (antes el escaneo vivía adentro del armado de pedidos).
+   Listado de órdenes MeLi agrupadas por envío + ficha grande de cada una: foto grande, qué trae,
+   mensajes del comprador, todas sus preguntas y sus compras anteriores. SIN PLATA a propósito. *@
+
+<style>
+    .om-top { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+    .om-top h2 { margin: 0; font-size: 1.3rem; }
+    .om-scan { display: flex; gap: 0.5rem; margin-bottom: 0.35rem; }
+    .om-scan input { flex: 1; min-width: 0; font-size: 1.05rem; padding: 0.6rem 0.8rem; border: 2px solid #3b82f6; border-radius: 10px; }
+    .om-scan input:focus { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+    .om-hint { font-size: 0.78rem; color: #64748b; margin-bottom: 1rem; }
+
+    .om-filtros { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.8rem; font-size: 0.85rem; }
+    .om-filtro { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+    .om-filtro .lbl { color: #64748b; min-width: 58px; }
+    .om-chip { border: 1px solid #e2e8f0; background: white; border-radius: 999px; padding: 0.2rem 0.7rem; cursor: pointer; font-size: 0.84rem; color: #334155; }
+    .om-chip.on { background: #1e293b; border-color: #1e293b; color: white; font-weight: 600; }
+    .om-buscar { width: 100%; max-width: 360px; padding: 0.35rem 0.6rem; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.88rem; }
+
+    .om-lista { border-top: 1px solid #e2e8f0; }
+    .om-fila { display: flex; gap: 0.8rem; padding: 0.6rem 0.4rem; border-bottom: 1px solid #e2e8f0; cursor: pointer; }
+    .om-fila:hover { background: #f8fafc; }
+    .om-fila .cuando { width: 92px; flex: 0 0 auto; font-size: 0.8rem; color: #64748b; line-height: 1.3; }
+    .om-fila .cuerpo { flex: 1; min-width: 0; }
+    .om-fila .quien { font-size: 0.88rem; color: #334155; margin-bottom: 0.25rem; }
+    .om-fila .quien b { color: #0f172a; }
+    .om-fila .prod { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; padding: 0.1rem 0; }
+    .om-fila .prod img, .om-fila .prod .sinfoto { width: 44px; height: 44px; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: white; flex: 0 0 auto; }
+    .om-fila .prod .c { font-weight: 800; min-width: 30px; }
+    .om-cancel { color: #b91c1c; }
+
+    .om-nav { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
+    .om-nav .pos { font-size: 0.85rem; color: #64748b; }
+    .om-ficha-head { margin-bottom: 1rem; }
+    .om-ficha-head .comprador { font-size: 1.5rem; font-weight: 800; color: #0f172a; }
+    .om-ficha-head .datos { font-size: 0.9rem; color: #475569; margin-top: 0.15rem; }
+
+    .om-prod { display: flex; gap: 1.2rem; padding: 1rem 0; border-top: 1px solid #e2e8f0; align-items: flex-start; flex-wrap: wrap; }
+    .om-prod .foto { width: 340px; height: 340px; object-fit: contain; border: 1px solid #e2e8f0; border-radius: 12px; background: white; flex: 0 0 auto; cursor: zoom-in; }
+    .om-prod .foto.sin { display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 0.85rem; cursor: default; }
+    .om-prod .info { flex: 1; min-width: 220px; }
+    .om-prod .cant { font-size: 2.6rem; font-weight: 800; color: #0f172a; line-height: 1; }
+    .om-prod .tit { font-size: 1.2rem; font-weight: 600; margin-top: 0.4rem; line-height: 1.3; }
+    .om-prod .sku { font-family: monospace; font-size: 0.9rem; color: #475569; margin-top: 0.3rem; }
+    .om-prod .combo { margin-top: 0.7rem; font-size: 1rem; }
+    .om-prod .combo .h { font-size: 0.8rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 0.2rem; }
+    .om-prod .combo div { padding: 0.12rem 0; }
+
+    .om-sec { border-top: 1px solid #e2e8f0; padding-top: 0.8rem; margin-top: 0.8rem; }
+    .om-sec h3 { font-size: 1rem; margin: 0 0 0.5rem; }
+    .om-vacio { color: #64748b; font-size: 0.9rem; }
+    .om-alerta { color: #b91c1c; font-size: 0.9rem; }
+    .om-msg { max-width: 640px; padding: 0.45rem 0.7rem; border-radius: 10px; margin: 0.3rem 0; font-size: 1rem; line-height: 1.4; white-space: pre-wrap; }
+    .om-msg.in { background: #f1f5f9; }
+    .om-msg.out { background: #e0f2fe; margin-left: 2rem; }
+    .om-msg .meta { font-size: 0.75rem; color: #64748b; margin-bottom: 0.1rem; }
+    .om-preg { padding: 0.45rem 0; border-bottom: 1px solid #f1f5f9; }
+    .om-preg .meta { font-size: 0.78rem; color: #64748b; }
+    .om-preg .q { font-size: 1rem; }
+    .om-preg .a { font-size: 0.92rem; color: #475569; padding-left: 1rem; }
+    .om-compra { padding: 0.35rem 0; border-bottom: 1px solid #f1f5f9; font-size: 0.92rem; }
+    .om-compra .meta { color: #64748b; }
+
+    .om-zoom { position: fixed; inset: 0; background: rgba(15,23,42,0.85); display: flex; align-items: center; justify-content: center; z-index: 2000; cursor: zoom-out; padding: 16px; }
+    .om-zoom img { max-width: 100%; max-height: 100%; object-fit: contain; background: white; border-radius: 10px; }
+
+    @@media (max-width: 640px) {
+        .om-prod .foto { width: 100%; height: auto; aspect-ratio: 1; }
+        .om-fila .cuando { width: 70px; }
+    }
+</style>
+
+<div class="om-top">
+    <a class="btn btn-secondary" href="/cafe/preparacion">← Volver al armado</a>
+    <h2>🏷️ Órdenes MeLi</h2>
+</div>
+
+<div class="om-scan">
+    <input @ref="scanRef" @bind="scanInput" @bind:event="oninput" @onkeydown="OnScanKey" disabled="@escaneando"
+           placeholder="Apoyá el cursor acá y disparás el lector (Flex o Correo)…" autocomplete="off" />
+    <button class="btn btn-secondary" @onclick="Escanear" disabled="@escaneando">@(escaneando ? "Buscando…" : "🔍 Buscar")</button>
+</div>
+<div class="om-hint">Con el lector: apoyá el cursor en la casilla y disparás la etiqueta. También podés tipear el nº de envío o de venta y apretar Enter.</div>
+
+@if (ficha is not null)
+{
+    <div class="om-nav">
+        <button class="btn btn-secondary" @onclick="CerrarFicha">✕ Volver al listado</button>
+        @if (fichaIndice >= 0)
+        {
+            <button class="btn btn-secondary" disabled="@(fichaIndice <= 0 || cargandoFicha)" @onclick="() => Mover(-1)">◀ Anterior</button>
+            <button class="btn btn-secondary" disabled="@(fichaIndice >= Filtradas.Count - 1 || cargandoFicha)" @onclick="() => Mover(1)">Siguiente ▶</button>
+            <span class="pos">@(fichaIndice + 1) de @Filtradas.Count</span>
+        }
+        @if (cargandoFicha) { <span class="pos">Cargando…</span> }
+    </div>
+
+    <div class="om-ficha-head">
+        <div class="comprador">@(string.IsNullOrEmpty(ficha.Comprador) ? "Comprador" : ficha.Comprador)</div>
+        <div class="datos">
+            @ficha.Tipo · @ficha.Unidades u.
+            @if (!string.IsNullOrEmpty(ficha.Cuenta)) { <text> · @ficha.Cuenta</text> }
+            @if (ficha.Fecha.HasValue) { <text> · @ficha.Fecha.Value.ToArTime().ToString("dd/MM HH:mm")</text> }
+            · <span class="@(ficha.Estado == "Cancelada" ? "om-cancel" : "")">@ficha.Estado</span>
+            @if (ficha.NumeroVenta.HasValue) { <text> · venta @ficha.NumeroVenta</text> }
+        </div>
+    </div>
+
+    @foreach (var p in ficha.Productos)
+    {
+        <div class="om-prod">
+            @if (!string.IsNullOrEmpty(p.Foto))
+            {
+                <img class="foto" src="@p.Foto" alt="" @onclick="() => zoomFoto = p.Foto" />
+            }
+            else
+            {
+                <div class="foto sin">sin foto</div>
+            }
+            <div class="info">
+                <div class="cant">×@p.Cantidad</div>
+                <div class="tit">@p.Titulo</div>
+                @if (!string.IsNullOrEmpty(p.Sku)) { <div class="sku">@p.Sku</div> }
+                @if (p.EsCombo && p.Componentes.Count > 0)
+                {
+                    <div class="combo">
+                        <div class="h">Contiene</div>
+                        @foreach (var c in p.Componentes)
+                        {
+                            <div>
+                                <b>×@FmtCant(c.Cantidad)</b> @c.Nombre
+                                @if (!string.IsNullOrEmpty(c.Formato) && c.Formato != "UNIT") { <text> · @c.Formato</text> }
+                                @if (!string.IsNullOrEmpty(c.Sku)) { <span style="color:#64748b; font-family:monospace; font-size:0.85rem;"> (@c.Sku)</span> }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="om-sec">
+        <h3>📩 Mensajes del comprador en esta venta</h3>
+        @if (!ficha.MensajesOk)
+        {
+            <div class="om-alerta">MercadoLibre no contestó, así que no sé si dejó mensajes. Probá de nuevo en un rato.</div>
+        }
+        else if (ficha.Mensajes.Count == 0)
+        {
+            <div class="om-vacio">No dejó mensajes.</div>
+        }
+        else
+        {
+            @foreach (var m in ficha.Mensajes)
+            {
+                var esComprador = m.De == "comprador";
+                <div class="om-msg @(esComprador ? "in" : "out")">
+                    <div class="meta">@(esComprador ? "Comprador" : "Nosotros")@(m.Fecha.HasValue ? " · " + m.Fecha.Value.ToArTime().ToString("dd/MM HH:mm") : "")</div>
+                    @m.Texto
+                </div>
+            }
+        }
+    </div>
+
+    <div class="om-sec">
+        <h3>❓ Preguntas que hizo (@ficha.Preguntas.Count)</h3>
+        @if (ficha.Preguntas.Count == 0)
+        {
+            <div class="om-vacio">No hizo preguntas.</div>
+        }
+        else
+        {
+            @foreach (var q in ficha.Preguntas)
+            {
+                <div class="om-preg">
+                    <div class="meta">
+                        @q.Fecha.ToArTime().ToString("dd/MM/yy")
+                        · @(q.DeEsteProducto ? "de este producto" : "otra publicación: " + (q.Producto ?? ""))
+                    </div>
+                    <div class="q">@q.Texto</div>
+                    @if (!string.IsNullOrEmpty(q.Respuesta))
+                    {
+                        <div class="a">↳ @q.Respuesta</div>
+                    }
+                    else
+                    {
+                        <div class="a">↳ sin responder</div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <div class="om-sec">
+        <h3>🛍️ Compras anteriores</h3>
+        @if (ficha.Compras.Count == 0)
+        {
+            <div class="om-vacio">Primera compra (no hay otras guardadas desde abril 2026).</div>
+        }
+        else
+        {
+            <div style="margin-bottom:0.4rem; font-size:0.92rem;">
+                Compró @ficha.Compras.Count @(ficha.Compras.Count == 1 ? "vez" : "veces") antes · la última @HaceCuanto(ficha.Compras[0].Fecha)
+            </div>
+            @foreach (var c in (verTodasCompras ? ficha.Compras : ficha.Compras.Take(10)))
+            {
+                <div class="om-compra">
+                    <span class="meta">@c.Fecha.ToArTime().ToString("dd/MM/yy")@(string.IsNullOrEmpty(c.Cuenta) ? "" : " · " + c.Cuenta) · </span>
+                    @string.Join(" + ", c.Productos.Select(x => $"×{x.Cantidad} {x.Titulo}"))
+                    <span class="meta @(c.Estado == "Cancelada" ? "om-cancel" : "")"> · @c.Estado</span>
+                </div>
+            }
+            @if (!verTodasCompras && ficha.Compras.Count > 10)
+            {
+                <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem;" @onclick="() => verTodasCompras = true">Ver todas (@ficha.Compras.Count)</button>
+            }
+        }
+    </div>
+}
+else
+{
+    <div class="om-filtros">
+        <div class="om-filtro">
+            <span class="lbl">Fecha</span>
+            @foreach (var (d, l) in OpcionesDias)
+            {
+                <button class="om-chip @(dias == d ? "on" : "")" @onclick="() => CambiarDias(d)">@l</button>
+            }
+        </div>
+        @if (cuentas.Count > 1)
+        {
+            <div class="om-filtro">
+                <span class="lbl">Cuenta</span>
+                <button class="om-chip @(cuenta is null ? "on" : "")" @onclick="() => CambiarCuenta(null)">Todas</button>
+                @foreach (var c in cuentas)
+                {
+                    <button class="om-chip @(cuenta == c.Id ? "on" : "")" @onclick="() => CambiarCuenta(c.Id)">@c.Nombre</button>
+                }
+            </div>
+        }
+        <div class="om-filtro">
+            <span class="lbl">Envío</span>
+            @foreach (var (k, l) in OpcionesEnvio)
+            {
+                <button class="om-chip @(envio == k ? "on" : "")" @onclick="() => envio = k">@l</button>
+            }
+        </div>
+        <div class="om-filtro">
+            <span class="lbl">Estado</span>
+            @foreach (var (k, l) in OpcionesEstado)
+            {
+                <button class="om-chip @(estado == k ? "on" : "")" @onclick="() => estado = k">@l</button>
+            }
+        </div>
+        <div class="om-filtro">
+            <span class="lbl">Buscar</span>
+            <input class="om-buscar" @bind="buscar" @bind:event="oninput" placeholder="comprador, producto o nº de venta" />
+        </div>
+    </div>
+
+    @if (cargando && ordenes.Count == 0)
+    {
+        <div class="om-vacio">Cargando órdenes…</div>
+    }
+    else if (Filtradas.Count == 0)
+    {
+        <div class="om-vacio">No hay órdenes con esos filtros.</div>
+    }
+    else
+    {
+        <div class="om-vacio" style="margin-bottom:0.3rem;">@Filtradas.Count @(Filtradas.Count == 1 ? "envío" : "envíos") · tocá uno para verlo en grande</div>
+        <div class="om-lista">
+            @for (int i = 0; i < Filtradas.Count; i++)
+            {
+                var idx = i;
+                var o = Filtradas[i];
+                <div class="om-fila" @onclick="() => AbrirDelListado(idx)">
+                    <div class="cuando">
+                        @o.Fecha.ToArTime().ToString("dd/MM")<br />@o.Fecha.ToArTime().ToString("HH:mm")
+                    </div>
+                    <div class="cuerpo">
+                        <div class="quien">
+                            <b>@o.Comprador</b> · @o.Tipo
+                            @if (cuentas.Count > 1) { <text> · @o.Cuenta</text> }
+                            · <span class="@(o.EstadoClave == "cancelada" ? "om-cancel" : "")">@o.Estado</span>
+                        </div>
+                        @foreach (var p in o.Productos)
+                        {
+                            <div class="prod">
+                                @if (!string.IsNullOrEmpty(p.Foto)) { <img src="@p.Foto" alt="" loading="lazy" /> }
+                                else { <span class="sinfoto"></span> }
+                                <span class="c">×@p.Cantidad</span>
+                                <span>@p.Titulo</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@if (!string.IsNullOrEmpty(zoomFoto))
+{
+    <div class="om-zoom" @onclick="() => zoomFoto = null"><img src="@zoomFoto" alt="" /></div>
+}
+
+@code {
+    private static readonly (int, string)[] OpcionesDias = { (1, "Hoy"), (2, "Hoy y ayer"), (7, "7 días"), (30, "30 días") };
+    private static readonly (string?, string)[] OpcionesEnvio = { (null, "Todos"), ("flex", "Flex"), ("correo", "Correo"), ("full", "Full") };
+    private static readonly (string?, string)[] OpcionesEstado = { (null, "Todos"), ("despachar", "Para despachar"), ("camino", "En camino"), ("entregada", "Entregadas"), ("cancelada", "Canceladas") };
+
+    private ElementReference scanRef;
+    private string scanInput = "";
+    private bool escaneando;
+
+    private List<MeliDepoOrden> ordenes = new();
+    private List<MeliDepoCuenta> cuentas = new();
+    private bool cargando;
+    private int dias = 2;
+    private int? cuenta;
+    private string? envio;
+    private string? estado;
+    private string buscar = "";
+
+    private MeliDepoFicha? ficha;
+    private int fichaIndice = -1;   // posición en Filtradas; -1 = vino de un escaneo y no está en la lista
+    private bool cargandoFicha;
+    private bool verTodasCompras;
+    private string? zoomFoto;
+
+    /// <summary>Envío, estado y buscar se filtran acá (sin volver a pedir): la lista de "Hoy y ayer"
+    /// ya viene entera. Fecha y cuenta sí vuelven a pedir.</summary>
+    private List<MeliDepoOrden> Filtradas => ordenes
+        .Where(o => envio is null || o.TipoClave == envio)
+        .Where(o => estado is null || o.EstadoClave == estado)
+        .Where(o => string.IsNullOrWhiteSpace(buscar) || Coincide(o, buscar.Trim()))
+        .ToList();
+
+    private static bool Coincide(MeliDepoOrden o, string t)
+        => o.Comprador.Contains(t, StringComparison.OrdinalIgnoreCase)
+           || o.Numero.ToString().Contains(t) || o.NumeroVenta.ToString().Contains(t)
+           || o.Productos.Any(p => p.Titulo.Contains(t, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) { try { await scanRef.FocusAsync(); } catch { } }
+    }
+
+    private async Task Cargar()
+    {
+        cargando = true;
+        try
+        {
+            var r = await Api.GetMeliDepoOrdenesAsync(dias, cuenta, null, null, null);
+            if (r is not null)
+            {
+                ordenes = r.Ordenes;
+                cuentas = r.Cuentas;
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No pude traer las órdenes: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private async Task CambiarDias(int d) { dias = d; await Cargar(); }
+    private async Task CambiarCuenta(int? c) { cuenta = c; await Cargar(); }
+
+    private async Task OnScanKey(KeyboardEventArgs e)
+    {
+        // El lector USB "tipea" el código y termina con Enter.
+        if (e.Key == "Enter") await Escanear();
+    }
+
+    private async Task Escanear()
+    {
+        var code = scanInput?.Trim() ?? "";
+        if (string.IsNullOrEmpty(code)) return;
+        escaneando = true;
+        StateHasChanged();
+        try
+        {
+            var r = await Api.EscanearMeliDepoAsync(code);
+            if (r is not null && r.Ok)
+            {
+                MostrarFicha(r, Filtradas.FindIndex(o => o.Numero == r.Numero));
+            }
+            else
+            {
+                ToastService.Error(r?.Mensaje ?? "No pude leer esa etiqueta");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally
+        {
+            escaneando = false;
+            scanInput = "";
+            StateHasChanged();
+            try { await scanRef.FocusAsync(); } catch { }
+        }
+    }
+
+    private async Task AbrirDelListado(int idx)
+    {
+        var lista = Filtradas;
+        if (idx < 0 || idx >= lista.Count) return;
+        cargandoFicha = true;
+        fichaIndice = idx;
+        StateHasChanged();
+        try
+        {
+            var r = await Api.GetMeliDepoFichaAsync(lista[idx].Numero);
+            if (r is not null && r.Ok) MostrarFicha(r, idx);
+            else ToastService.Error(r?.Mensaje ?? "No pude abrir esa orden");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { cargandoFicha = false; }
+    }
+
+    private void MostrarFicha(MeliDepoFicha f, int idx)
+    {
+        ficha = f;
+        fichaIndice = idx;
+        verTodasCompras = false;
+    }
+
+    private async Task Mover(int delta) => await AbrirDelListado(fichaIndice + delta);
+
+    private async Task CerrarFicha()
+    {
+        ficha = null;
+        fichaIndice = -1;
+        StateHasChanged();
+        try { await scanRef.FocusAsync(); } catch { }
+    }
+
+    private static string FmtCant(decimal c) => c == Math.Floor(c) ? ((long)c).ToString() : c.ToString("0.##");
+
+    private static string HaceCuanto(DateTime utc)
+    {
+        var dias = (int)(DateTimeExt.AhoraAr().Date - utc.ToArTime().Date).TotalDays;
+        if (dias <= 0) return "hoy";
+        if (dias == 1) return "ayer";
+        if (dias < 60) return $"hace {dias} días";
+        return $"hace {dias / 30} meses";
+    }
+}

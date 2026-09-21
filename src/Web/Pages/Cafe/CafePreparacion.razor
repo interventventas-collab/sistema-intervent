@@ -606,46 +606,6 @@
     }
     .prep-celu-chip .cambiar:hover { background: rgba(0,0,0,0.05); }
 
-    /* Escanear etiqueta de MercadoLibre (2026-08-02) */
-    .prep-scan-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 0.8rem 1rem; margin-bottom: 1rem; }
-    .prep-scan-title { font-weight: 800; color: #1e40af; display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.55rem; }
-    .prep-scan-row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
-    .prep-scan-input {
-        flex: 1; min-width: 240px;
-        padding: 0.65rem 0.85rem;
-        border: 2px solid #3b82f6;
-        border-radius: 8px;
-        font-size: 1rem;
-    }
-    .prep-scan-input:focus { outline: none; border-color: #1d4ed8; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
-    .prep-scan-hint { font-size: 0.76rem; color: #64748b; margin-top: 0.4rem; }
-    .prep-scan-result { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.7rem 0.9rem; margin-top: 0.6rem; }
-    .prep-scan-result-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.85rem; color: #374151; margin-bottom: 0.4rem; }
-    .prep-scan-badge { padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 800; }
-    .prep-scan-badge.flex { background: #e9d5ff; color: #6b21a8; }
-    .prep-scan-badge.correo { background: #dbeafe; color: #1e40af; }
-    .prep-scan-badge.full { background: #fef3c7; color: #92400e; }
-    .prep-scan-prod { display: flex; gap: 0.6rem; align-items: center; padding: 0.5rem 0; border-top: 1px dashed #f3f4f6; }
-    .prep-scan-prod-cant { font-size: 1.4rem; font-weight: 800; color: #2563eb; text-align: right; line-height: 1; min-width: 44px; flex: 0 0 auto; }
-    .prep-scan-thumb { width: 46px; height: 46px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; flex: 0 0 auto; background: #f3f4f6; }
-    .prep-scan-prod-tit { font-size: 0.92rem; font-weight: 600; color: #111827; line-height: 1.25; }
-    .prep-scan-prod-sku { display: inline-block; margin-top: 0.2rem; font-family: monospace; font-size: 0.72rem; font-weight: 700; background: #dbeafe; color: #1e40af; padding: 0.08rem 0.4rem; border-radius: 5px; }
-    .prep-scan-combo { margin-top: 0.35rem; padding: 0.4rem 0.55rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; }
-    .prep-scan-combo-h { font-size: 0.72rem; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 0.2rem; }
-    .prep-scan-combo-item { font-size: 0.85rem; color: #14532d; padding: 0.1rem 0; }
-    .prep-scan-combo-item .c { font-weight: 800; color: #15803d; }
-    .prep-scan-combo-item .csku { font-family: monospace; font-size: 0.74rem; color: #16a34a; }
-    /* Mensajes de la venta + preguntas del comprador (2026-08-03) */
-    .prep-scan-sub { font-size: 0.78rem; font-weight: 800; color: #6b7280; text-transform: uppercase; letter-spacing: 0.3px; margin: 0.7rem 0 0.35rem; border-top: 1px solid #f3f4f6; padding-top: 0.5rem; }
-    .prep-scan-msg { font-size: 0.9rem; padding: 0.4rem 0.6rem; border-radius: 8px; margin: 0.3rem 0; line-height: 1.35; }
-    .prep-scan-msg.in { background: #f1f5f9; color: #111827; }
-    .prep-scan-msg.out { background: #dbeafe; color: #1e3a8a; }
-    .prep-scan-msg .who { font-weight: 800; margin-right: 0.3rem; }
-    .prep-scan-q { padding: 0.35rem 0; border-bottom: 1px dashed #f3f4f6; }
-    .prep-scan-q:last-child { border-bottom: none; }
-    .prep-scan-q .q { font-size: 0.9rem; color: #111827; font-weight: 600; }
-    .prep-scan-q .a { font-size: 0.85rem; color: #166534; margin-top: 0.15rem; padding-left: 0.9rem; }
-    .prep-scan-q .a.sin { color: #b91c1c; }
     /* 2026-09-02: aviso de faltantes arriba de todo. Ámbar, no rojo: no es una alarma, es un
        recordatorio de que hay que pedir. */
     .prep-faltantes {
@@ -738,103 +698,9 @@
         </div>
     }
 
-    @* Escanear etiqueta de MercadoLibre → trae el listado de productos de esa venta (2026-08-02) *@
-    <div class="prep-scan-box">
-        <div class="prep-scan-title">🏷️ Escanear etiqueta de MercadoLibre</div>
-        <div class="prep-scan-row">
-            <input @ref="scanInputRef" class="prep-scan-input" @bind="scanInput" @bind:event="oninput"
-                   @onkeydown="OnScanKey" disabled="@escaneando"
-                   placeholder="Apoyá el cursor acá y disparás con el lector (Flex o Correo)…" />
-            <button class="btn btn-secondary" @onclick="Escanear" disabled="@escaneando">
-                @(escaneando ? "Buscando…" : "🔍 Buscar")
-            </button>
-            @if (escaneos.Count > 0)
-            {
-                <button class="btn btn-secondary" @onclick="LimpiarEscaneos" style="color:#b91c1c; border-color:#fca5a5;">Limpiar</button>
-            }
-        </div>
-        <div class="prep-scan-hint">Con el lector USB: apoyá el cursor en la casilla y disparás la etiqueta (entra solo). También podés tipear el nº de envío o de venta y apretar Enter.</div>
-
-        @foreach (var s in escaneos)
-        {
-            <div class="prep-scan-result">
-                <div class="prep-scan-result-head">
-                    <span class="prep-scan-badge @TipoClass(s.Tipo)">@s.Tipo</span>
-                    <strong>@(string.IsNullOrEmpty(s.Comprador) ? "Comprador" : s.Comprador)</strong>
-                    @if (s.NumeroVenta.HasValue) { <span>· venta @s.NumeroVenta</span> }
-                    <span style="margin-left:auto; font-weight:700;">@s.CantidadProductos u.</span>
-                </div>
-                @foreach (var p in s.Productos)
-                {
-                    <div class="prep-scan-prod">
-                        <div class="prep-scan-prod-cant">×@p.Cantidad</div>
-                        @if (!string.IsNullOrEmpty(p.Thumbnail))
-                        {
-                            <img class="prep-scan-thumb" src="@p.Thumbnail" alt="" loading="lazy" />
-                        }
-                        <div style="flex:1; min-width:0;">
-                            <div class="prep-scan-prod-tit">@p.Titulo</div>
-                            @if (!string.IsNullOrEmpty(p.Sku))
-                            {
-                                <span class="prep-scan-prod-sku">@p.Sku</span>
-                            }
-                            @if (p.EsCombo && p.Componentes.Count > 0)
-                            {
-                                <div class="prep-scan-combo">
-                                    <div class="prep-scan-combo-h">🧩 Contiene</div>
-                                    @foreach (var c in p.Componentes)
-                                    {
-                                        <div class="prep-scan-combo-item">
-                                            <span class="c">×@FmtCant(c.Cantidad)</span> @c.Nombre
-                                            @if (!string.IsNullOrEmpty(c.Formato) && c.Formato != "UNIT")
-                                            {
-                                                <text> · @c.Formato</text>
-                                            }
-                                            @if (!string.IsNullOrEmpty(c.Sku))
-                                            {
-                                                <span class="csku"> (@c.Sku)</span>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    </div>
-                }
-
-                @* Mensajes internos de la venta (post-venta) *@
-                @if (s.Mensajes.Count > 0)
-                {
-                    <div class="prep-scan-sub">📩 Mensajes de la venta</div>
-                    @foreach (var m in s.Mensajes)
-                    {
-                        <div class="prep-scan-msg @(m.De == "comprador" ? "in" : "out")">
-                            <span class="who">@(m.De == "comprador" ? "🛒 Comprador:" : "🏪 Vos:")</span>@m.Texto
-                        </div>
-                    }
-                }
-
-                @* Preguntas del comprador sobre el producto *@
-                @if (s.Preguntas.Count > 0)
-                {
-                    <div class="prep-scan-sub">❓ Preguntas del comprador</div>
-                    @foreach (var q in s.Preguntas)
-                    {
-                        <div class="prep-scan-q">
-                            <div class="q">❓ @q.Texto</div>
-                            @if (!string.IsNullOrEmpty(q.Respuesta))
-                            {
-                                <div class="a">↳ @q.Respuesta</div>
-                            }
-                            else
-                            {
-                                <div class="a sin">↳ sin responder</div>
-                            }
-                        </div>
-                    }
-                }
-            </div>
-        }
+    @* 2026-09-21: el escaneo de etiqueta MeLi pasó a su propia página (no se mezcla con el armado) *@
+    <div style="margin-bottom:1rem;">
+        <a class="btn btn-secondary" href="/deposito/ordenes-meli">🏷️ Órdenes MeLi</a>
     </div>
 
     @if (loading && lista is null)
@@ -1151,12 +1017,6 @@
     // Seleccion multiple para imprimir varios juntos.
     private HashSet<int> seleccionadosParaImprimir = new();
 
-    // ── Escanear etiqueta MeLi (2026-08-02) ──
-    private string scanInput = "";
-    private bool escaneando = false;
-    private List<EscanearEtiquetaResult> escaneos = new();
-    private ElementReference scanInputRef;
-
     // ── Camino al picking (2026-08-02) ──
     private PickingDispositivoDto? pickingDispositivo;
     private bool generandoPicking = false;
@@ -1334,61 +1194,6 @@
         seleccionadosParaImprimir.Clear();
         StateHasChanged();
     }
-
-    // ── Escanear etiqueta MeLi (2026-08-02) ──
-    private async Task OnScanKey(KeyboardEventArgs e)
-    {
-        // El lector USB "tipea" el código y termina con Enter → disparamos la búsqueda.
-        if (e.Key == "Enter") await Escanear();
-    }
-
-    private async Task Escanear()
-    {
-        var code = scanInput?.Trim() ?? "";
-        if (string.IsNullOrEmpty(code)) return;
-        escaneando = true;
-        StateHasChanged();
-        try
-        {
-            var res = await Api.EscanearEtiquetaPreparacionAsync(code);
-            if (res is not null && res.Ok)
-            {
-                escaneos.Insert(0, res);
-                ToastService.Success($"{res.CantidadProductos} producto{(res.CantidadProductos == 1 ? "" : "s")} · {res.Comprador}");
-            }
-            else
-            {
-                ToastService.Error(res?.Mensaje ?? "No pude leer esa etiqueta");
-            }
-        }
-        catch (Exception ex)
-        {
-            ToastService.Error("Error: " + ex.Message);
-        }
-        finally
-        {
-            escaneando = false;
-            scanInput = "";
-            StateHasChanged();
-            try { await scanInputRef.FocusAsync(); } catch { }
-        }
-    }
-
-    private void LimpiarEscaneos()
-    {
-        escaneos.Clear();
-        StateHasChanged();
-    }
-
-    private static string TipoClass(string? t) => t switch
-    {
-        "Flex" => "flex",
-        "Full" => "full",
-        _ => "correo"
-    };
-
-    /// <summary>Formatea la cantidad de un componente: entera sin decimales, si no con hasta 2.</summary>
-    private static string FmtCant(decimal c) => c == Math.Floor(c) ? ((long)c).ToString() : c.ToString("0.##");
 
     // ── Camino al picking (2026-08-02) ──
     /// <summary>Congela la lista de productos sumados y abre el QR para escanear desde el celu.</summary>

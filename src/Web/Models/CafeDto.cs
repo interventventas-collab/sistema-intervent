@@ -764,58 +764,6 @@ public class PickingDispositivoDto
     public DateTime? LastSeenAt { get; set; }
 }
 
-/// <summary>Resultado de escanear una etiqueta de venta MeLi en Preparación (2026-08-02).</summary>
-public class EscanearEtiquetaResult
-{
-    public bool Ok { get; set; }
-    public string? Motivo { get; set; }
-    public string? Mensaje { get; set; }
-    public long? NumeroEnvio { get; set; }
-    public long? NumeroVenta { get; set; }
-    public string? Comprador { get; set; }
-    public string? Tipo { get; set; }
-    public string? Estado { get; set; }
-    public int CantidadProductos { get; set; }
-    public List<EtiquetaProductoDto> Productos { get; set; } = new();
-    public List<EtiquetaPreguntaDto> Preguntas { get; set; } = new();
-    public List<EtiquetaMensajeDto> Mensajes { get; set; } = new();
-}
-
-public class EtiquetaProductoDto
-{
-    public string Titulo { get; set; } = "";
-    public int Cantidad { get; set; }
-    public string? ItemId { get; set; }
-    public string? VariationId { get; set; }
-    public string? Sku { get; set; }
-    public string? Thumbnail { get; set; }
-    public bool EsCombo { get; set; }
-    public List<EtiquetaComponenteDto> Componentes { get; set; } = new();
-}
-
-public class EtiquetaComponenteDto
-{
-    public string Nombre { get; set; } = "";
-    public string? Sku { get; set; }
-    public decimal Cantidad { get; set; }
-    public string? Formato { get; set; }
-}
-
-public class EtiquetaPreguntaDto
-{
-    public string Texto { get; set; } = "";
-    public string? Respuesta { get; set; }
-    public bool Respondida { get; set; }
-    public DateTime? Fecha { get; set; }
-}
-
-public class EtiquetaMensajeDto
-{
-    public string De { get; set; } = "";   // "comprador" | "vendedor"
-    public string Texto { get; set; } = "";
-    public DateTime? Fecha { get; set; }
-}
-
 public class CafeCambiarEstadoPreparacionRequest
 {
     /// <summary>Estado nuevo. Vacio o null = sacar la venta del flujo.</summary>
