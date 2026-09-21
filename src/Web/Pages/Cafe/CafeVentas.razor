@@ -1829,26 +1829,15 @@
                      que me aparezca un cartel que diga que tiene precios especiales"*.
                      Va en texto plano, sin caja de color: no es una alarma, es un dato.
                      Muestra los primeros 3 con su precio; el resto se despliega. *@
+                @* 2026-09-21: antes listaba acá TODOS los pactos (con 22 se comía media pantalla).
+                   Ahora una sola línea; la lista entera vive en la pestaña "💲 Pactados". *@
                 @if (preciosEspecialesLista.Count > 0)
                 {
-                    var visibles = pactosDesplegados ? preciosEspecialesLista : preciosEspecialesLista.Take(3).ToList();
-                    var restantes = preciosEspecialesLista.Count - visibles.Count;
                     <div style="margin-top: 0.4rem; font-size: 0.78rem; color: #374151; line-height: 1.45;">
                         <span style="font-weight: 700;">🏷 Tiene @preciosEspecialesLista.Count precio@(preciosEspecialesLista.Count == 1 ? "" : "s") pactado@(preciosEspecialesLista.Count == 1 ? "" : "s")</span>
-                        @foreach (var pe in visibles)
-                        {
-                            <span style="color: #6b7280;"> · @(string.IsNullOrWhiteSpace(pe.Sku) ? pe.ProductoNombre : pe.Sku) @pe.FormatoLabel $@FormatMoney(pe.Precio)</span>
-                        }
-                        @if (restantes > 0)
-                        {
-                            <button type="button" @onclick="() => pactosDesplegados = true"
-                                    style="background:none; border:none; padding:0 0 0 0.35rem; color:#1d4ed8; font-size:0.78rem; cursor:pointer; text-decoration:underline;">+@restantes más</button>
-                        }
-                        else if (pactosDesplegados && preciosEspecialesLista.Count > 3)
-                        {
-                            <button type="button" @onclick="() => pactosDesplegados = false"
-                                    style="background:none; border:none; padding:0 0 0 0.35rem; color:#1d4ed8; font-size:0.78rem; cursor:pointer; text-decoration:underline;">ver menos</button>
-                        }
+                        <span style="color: #6b7280;"> · </span>
+                        <button type="button" tabindex="-1" @onclick="EntrarModoPactados"
+                                style="background:none; border:none; padding:0; color:#1d4ed8; font-size:0.78rem; cursor:pointer; text-decoration:underline;">ver en 💲 Pactados</button>
                     </div>
                 }
 
@@ -2049,6 +2038,19 @@
                                 <kbd style="font-size:0.62rem; padding:1px 5px; border-radius:3px; font-family:monospace; opacity:0.85; background:@(addMode == "TOP" ? "rgba(255,255,255,0.22)" : "#fef3c7"); color:@(addMode == "TOP" ? "white" : "#92400e"); border:1px solid @(addMode == "TOP" ? "rgba(255,255,255,0.4)" : "#fcd34d");">Ctrl+2</kbd>
                             </button>
                         }
+                        @* 2026-09-21: pestaña "💲 Pactados" — solo si el cliente tiene precios especiales.
+                           Osmar: "cuando tienen precios especiales, que me aparezca ... con todos los precios
+                           especiales". Funciona igual que Top: tocás un renglón y se abre "Agregar" con el
+                           formato pactado (ej. bulto) ya elegido. *@
+                        @if (preciosEspecialesLista.Count > 0)
+                        {
+                            <button type="button" id="nv-tab-pactados"
+                                    class="nv-tab @(addMode == "PACTADOS" ? "on" : "")"
+                                    @onclick="EntrarModoPactados"
+                                    title="Precios pactados con este cliente">
+                                💲 Pactados (@preciosEspecialesLista.Count)
+                            </button>
+                        }
                         <button type="button" id="nv-tab-combo"
                                 class="nv-tab @(addMode == "COMBO" ? "on" : "")"
                                 @onclick="@(() => addMode = "COMBO")"
@@ -2197,6 +2199,36 @@
                                     <strong style="color:#78350f;">$@FormatMoney(t.PrecioReferencia)</strong>
                                 </div>
                                 topIdx2++;
+                            }
+                        </div>
+                    }
+                    else if (addMode == "PACTADOS" && preciosEspecialesLista.Count > 0)
+                    {
+                        <div id="pactados-list-container" tabindex="0" @ref="pactadosListRef" @onkeydown="OnKeyDownPactadosList"
+                             style="border: 1px solid #d1d5db; border-radius: 8px; max-height: 380px; overflow-y: auto; background: white; outline: none;">
+                            <div style="font-size: 0.72rem; color: #6b7280; padding: 0.45rem 0.7rem; border-bottom: 1px solid #e5e7eb;">
+                                Precios pactados con @(clientes?.FirstOrDefault(c => c.Id == formClienteId)?.Nombre ?? "este cliente") · sin IVA · tocá para sumar · ↓↑ y Enter
+                            </div>
+                            @{ var pacIdx = 0; }
+                            @foreach (var pe in PactadosOrdenados)
+                            {
+                                var pePid = pe.ProductoId;
+                                var peFmt = pe.Formato;
+                                var peNombre = pe.ProductoNombre;
+                                var peEnCarrito = ContarEnCarrito(pePid, peFmt);
+                                var peHl = pacIdx == pactadosListHighlight;
+                                <div @onclick="() => AbrirCantidadTopProduct(pePid, peFmt, peNombre)"
+                                     style="@($"padding: 0.45rem 0.8rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; background: {(peHl ? "#f3f4f6" : "white")}; {(peHl ? "border-left: 3px solid #374151;" : "border-left: 3px solid transparent;")}")">
+                                    <span style="color:#6b7280; font-size:0.78rem; min-width: 110px;">@pe.Sku</span>
+                                    <span style="flex:1; min-width:0; color:#111827;">@pe.ProductoNombre</span>
+                                    <span style="color:#6b7280; font-size:0.78rem; white-space:nowrap;">@pe.FormatoLabel</span>
+                                    @if (peEnCarrito > 0)
+                                    {
+                                        <span style="color:#059669; font-size:0.74rem; font-weight:700; white-space:nowrap;">✓ @peEnCarrito en la venta</span>
+                                    }
+                                    <strong style="color:#111827; white-space:nowrap; min-width: 95px; text-align:right;">$@FormatMoney(pe.Precio)</strong>
+                                </div>
+                                pacIdx++;
                             }
                         </div>
                     }
@@ -5979,7 +6011,6 @@
     // para marcarlos en el buscador antes de que el operador los elija.
     private List<CafePrecioEspecialDto> preciosEspecialesLista = new();
     private HashSet<int> productosConPacto = new();
-    private bool pactosDesplegados;
 
     private static string ClavePrecioPactado(int productoId, string? formato)
         => $"{productoId}|{(formato ?? "UNIT").Trim().ToUpperInvariant()}";
@@ -5998,7 +6029,6 @@
         preciosEspeciales = new();
         preciosEspecialesLista = new();
         productosConPacto = new();
-        pactosDesplegados = false;
         if (formClienteId <= 0) return;
         try
         {
@@ -9018,6 +9048,50 @@
         try { await JS.InvokeVoidAsync("eval", "document.getElementById('add-item-cant')?.select()"); } catch { }
     }
 
+    // 2026-09-21: Pestaña 💲 Pactados — misma mecánica que Top (flechas + Enter, tocar suma).
+    // Ordenados por nombre: así quedan juntas las tapas y juntos los vasos.
+    private int pactadosListHighlight;
+    private ElementReference pactadosListRef;
+
+    private List<CafePrecioEspecialDto> PactadosOrdenados => preciosEspecialesLista
+        .OrderBy(x => x.ProductoNombre, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(x => x.Formato)
+        .ToList();
+
+    private async Task EntrarModoPactados()
+    {
+        addMode = "PACTADOS";
+        pactadosListHighlight = 0;
+        StateHasChanged();
+        await Task.Delay(40);
+        try { await pactadosListRef.FocusAsync(); } catch { }
+    }
+
+    private async Task OnKeyDownPactadosList(KeyboardEventArgs e)
+    {
+        var lista = PactadosOrdenados;
+        if (lista.Count == 0) return;
+        if (e.Key == "ArrowDown")
+            pactadosListHighlight = Math.Min(pactadosListHighlight + 1, lista.Count - 1);
+        else if (e.Key == "ArrowUp")
+            pactadosListHighlight = Math.Max(pactadosListHighlight - 1, 0);
+        else if (e.Key == "Enter")
+        {
+            var pe = lista[Math.Clamp(pactadosListHighlight, 0, lista.Count - 1)];
+            await AbrirCantidadTopProduct(pe.ProductoId, pe.Formato, pe.ProductoNombre);
+        }
+        else if (e.Key == "Tab" || e.Key == "Escape")
+        {
+            addMode = "PRODUCTO";
+            StateHasChanged();
+            if (e.Key == "Tab")
+            {
+                await Task.Delay(40);
+                try { await FocusFieldAsync("nv-producto"); } catch { }
+            }
+        }
+    }
+
     // 2026-06-30: Pestaña ⭐ Top — navegacion con flechas + Enter.
     private int topListHighlight;
     private ElementReference topListRef;
@@ -9139,6 +9213,10 @@
             if (addMode == "TOP")
             {
                 await topListRef.FocusAsync();
+            }
+            else if (addMode == "PACTADOS")
+            {
+                await pactadosListRef.FocusAsync();
             }
             else
             {
