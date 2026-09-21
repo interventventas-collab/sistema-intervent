@@ -82,6 +82,7 @@ public class MeliPublicacionesV2Service
         var porPagina = f.PorPagina is < 1 or > 500 ? 100 : f.PorPagina;
 
         // ── 1) Base: una fila por publicación (las variantes se resuelven aparte) ──
+        var ahoraUtc = DateTime.UtcNow;
         var q = _db.MeliItems.AsNoTracking().Where(m => m.VariationId == null);
 
         // Estado: por defecto no mostramos cerradas ni borradas.
@@ -200,7 +201,9 @@ public class MeliPublicacionesV2Service
         }
 
         // Sólo las que están en una campaña de MercadoLibre (el precio que se paga es otro).
-        if (f.EnPromo) q = q.Where(m => m.PromoPrecio != null && m.PromoPrecio > 0);
+        // 2026-09-21: una promo con la fecha vencida ya no cuenta, aunque nadie haya vuelto a traerlas.
+        if (f.EnPromo) q = q.Where(m => m.PromoPrecio != null && m.PromoPrecio > 0
+                                     && (m.PromoHasta == null || m.PromoHasta > ahoraUtc));
 
         // Datos viejos: la comisión se capturó a un precio que ya cambió más de 5%.
         if (f.ComisionVieja)
@@ -252,7 +255,13 @@ public class MeliPublicacionesV2Service
                 m.MeliItemId, m.Sku, m.Title, m.Thumbnail, m.Permalink, m.Price, m.Status,
                 m.ListingTypeId, m.InstallmentTag, m.FreeShipping, m.LogisticType, m.AvailableQuantity, m.SoldQuantity,
                 m.SaleFeeAmount, m.SaleFeePercentageFee, m.SaleFeeFixedFee, m.SaleFeeShippingCost, m.SaleFeePriceSnapshot,
-                m.PromoPrecio, m.PromoNombre, m.PromoHasta,
+                // 2026-09-21 — PROMO VENCIDA = SIN PROMO. El azúcar ABEAZU seguía calculándose a
+                // $17.999 de la CYBER FEST (terminó el 14/09) una semana después: las promos sólo se
+                // releen cuando alguien las pide, y lo guardado quedaba pegado. Mejor mostrar el
+                // precio de lista que un descuento que ya no existe.
+                PromoPrecio = m.PromoHasta != null && m.PromoHasta <= ahoraUtc ? null : m.PromoPrecio,
+                PromoNombre = m.PromoHasta != null && m.PromoHasta <= ahoraUtc ? null : m.PromoNombre,
+                PromoHasta = m.PromoHasta != null && m.PromoHasta <= ahoraUtc ? null : m.PromoHasta,
                 m.CafeProductoId, m.CafeFormato, m.MeliAccountId,
                 Cuenta = m.MeliAccount != null ? m.MeliAccount.Nickname : null
             })

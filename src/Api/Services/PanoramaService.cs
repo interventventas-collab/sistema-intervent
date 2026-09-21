@@ -1052,7 +1052,8 @@ public class PanoramaService
         // ── 2) Publicaciones activas que están dando pérdida ──
         var activas = await _db.MeliItems.AsNoTracking()
             .Where(m => m.Status == "active" && m.Price > 0 && m.SaleFeeAmount != null)
-            .Select(m => new { m.MeliItemId, m.Title, m.Price, m.PromoPrecio,
+            .Select(m => new { m.MeliItemId, m.Title, m.Price,
+                               PromoPrecio = m.PromoHasta != null && m.PromoHasta <= DateTime.UtcNow ? null : m.PromoPrecio,
                                m.SaleFeeAmount, m.SaleFeePriceSnapshot, m.SaleFeeShippingCost })
             .ToListAsync(ct);
 

@@ -56,6 +56,8 @@ public class MeliPromocionesService
         var detalle = new List<string>();
         var encontradas = new Dictionary<string, PromoDeItem>();
         int campanias = 0;
+        // 2026-09-21: cuentas que MeLi contestó ENTERAS. Sólo a esas se les limpian las promos.
+        var cuentasLeidas = new HashSet<int>();
 
         foreach (var cuenta in cuentas)
         {
@@ -87,6 +89,7 @@ public class MeliPromocionesService
                 continue;
             }
 
+            var leidaEntera = true;
             foreach (var camp in results.EnumerateArray())
             {
                 if (ct.IsCancellationRequested) break;
@@ -100,16 +103,24 @@ public class MeliPromocionesService
                 if (string.IsNullOrWhiteSpace(nombre)) nombre = tipo!;
                 var hasta = Fecha(camp, "finish_date");
 
-                var enEsta = await LeerItemsDeCampaniaAsync(http, id!, tipo!, nombre!, hasta, encontradas, ct);
+                var (enEsta, completa) = await LeerItemsDeCampaniaAsync(http, id!, tipo!, nombre!, hasta, encontradas, ct);
+                if (!completa) leidaEntera = false;
                 if (enEsta > 0) detalle.Add($"{nombre}: {enEsta} publicación(es)");
             }
+
+            if (leidaEntera && !ct.IsCancellationRequested) cuentasLeidas.Add(cuenta.Id);
+            else detalle.Add($"{cuenta.Nickname}: MercadoLibre no contestó todo, no se borró ninguna promo de esta cuenta");
         }
 
         // ── Guardar: poner la promo a las que la tienen y LIMPIAR a las que ya no ──
         // Limpiar es tan importante como poner: una promo vencida que queda pegada hace que el
         // margen siga mostrándose con un descuento que ya no existe.
+        // 2026-09-21 — PERO sólo en las cuentas que MeLi contestó enteras. Antes, si una cuenta
+        // salía "sin token" o una página fallaba, se borraban TODAS sus promos como si hubieran
+        // terminado. Ahora "Actualizar lista" relee promos cada vez, así que un hipo de MeLi
+        // borraba descuentos vivos.
         var conPromoAntes = await _db.MeliItems
-            .Where(i => i.VariationId == null && i.PromoPrecio != null)
+            .Where(i => i.VariationId == null && i.PromoPrecio != null && cuentasLeidas.Contains(i.MeliAccountId))
             .ToListAsync(ct);
 
         int limpiadas = 0;
@@ -431,7 +442,7 @@ public class MeliPromocionesService
 
     /// <summary>Trae las publicaciones que están participando de verdad (status=started) de una
     /// campaña, paginando. Las que están "candidate" NO cuentan: son las que PODRÍAN entrar.</summary>
-    private async Task<int> LeerItemsDeCampaniaAsync(HttpClient http, string promoId, string tipo,
+    private async Task<(int Encontradas, bool Completa)> LeerItemsDeCampaniaAsync(HttpClient http, string promoId, string tipo,
         string nombre, DateTime? hasta, Dictionary<string, PromoDeItem> acumulador, CancellationToken ct)
     {
         var encontradas = 0;
@@ -446,7 +457,7 @@ public class MeliPromocionesService
                     + (searchAfter is null ? "" : $"&search_after={Uri.EscapeDataString(searchAfter)}");
 
             var json = await LeerAsync(http, url, ct);
-            if (json is null) break;
+            if (json is null) return (encontradas, false);
 
             using var doc = JsonDocument.Parse(json);
             if (!doc.RootElement.TryGetProperty("results", out var results)
@@ -471,7 +482,7 @@ public class MeliPromocionesService
             if (string.IsNullOrWhiteSpace(searchAfter)) break;
         }
 
-        return encontradas;
+        return (encontradas, !ct.IsCancellationRequested);
     }
 
     private async Task<string?> LeerAsync(HttpClient http, string url, CancellationToken ct)

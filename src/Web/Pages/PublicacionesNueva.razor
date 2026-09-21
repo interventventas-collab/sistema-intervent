@@ -401,7 +401,7 @@
     <div class="p2-bar">
         <span class="ttl">🏷️ Publicaciones <small>@(datos?.Total.ToString("N0", ar) ?? "…") publicaciones</small></span>
         <span class="acts">
-            <button class="p2-btn go" @onclick="Cargar" disabled="@cargando">
+            <button class="p2-btn go" @onclick="ActualizarLista" disabled="@cargando">
                 @(cargando ? "⏳ Cargando…" : "🔄 Actualizar lista")
             </button>
             @* 2026-08-27 · Excel editable: es lo único que escala a 5.925 publicaciones.
@@ -1566,6 +1566,26 @@
             cargando = false;
             StateHasChanged();
         }
+    }
+
+    /// <summary>2026-09-21 — "Actualizar lista" también relee las promociones de MercadoLibre.
+    /// Antes sólo se releían con el botón 🏷️ Promociones, que casi nadie apretaba: del 01/09 al 21/09
+    /// el azúcar ABEAZU siguió calculándose con la CYBER FEST vencida. Primero muestra la lista (no
+    /// hay que esperar a MeLi para verla) y después, con las promos al día, la vuelve a leer.</summary>
+    private async Task ActualizarLista()
+    {
+        await Cargar();
+        if (promosCargando) return;
+        promosCargando = true;
+        StateHasChanged();
+        try
+        {
+            var (res, error) = await Api.RefrescarPromocionesAsync();
+            if (res is null) { ToastService.Error(error ?? "No se pudieron releer las promociones."); return; }
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudieron releer las promociones: " + ex.Message); }
+        finally { promosCargando = false; StateHasChanged(); }
     }
 
     private async Task CambiarPorPagina(ChangeEventArgs e)
