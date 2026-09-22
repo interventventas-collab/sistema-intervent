@@ -239,6 +239,28 @@
     .p2-cta.c2 { background: #e1f5ee; color: #04342c; border-color: #9fe1cb; }
 
     .p2-rail { float: left; margin-right: .5rem; display: flex; align-items: center; gap: .25rem; }
+    /* 2026-09-22 · (opción B de Osmar) foto más grande + 4 botones de a 2 con su nombre. */
+    .p2-pinfo.v2 { display: flex; gap: .6rem; align-items: center; }
+    .p2-pinfo.v2 .p2-thumb { width: 56px; height: 56px; }
+    .p2-pinfo.v2 .p2-thumb.vacia { display: inline-block; }
+    .p2-botones { display: grid; grid-template-columns: auto auto; gap: 4px; flex-shrink: 0; }
+    .p2-botones button { height: 26px; border: 1px solid #e3e7e0; background: #fff; border-radius: .35rem;
+                         font-size: .72rem; color: #374151; padding: 0 .45rem; text-align: left;
+                         white-space: nowrap; cursor: pointer; font-family: inherit; }
+    .p2-botones button .ic { font-size: .9rem; margin-right: .25rem; }
+    .p2-botones button:hover { border-color: #1d4f80; color: #1d4f80; background: #eef4fb; }
+    .p2-botones button.on { background: #1d4f80; border-color: #1d4f80; color: #fff; }
+    .p2-txt { min-width: 0; flex: 1; }
+    .p2-vend { margin-left: .3rem; font-weight: 400; color: #6b7280; font-size: .72rem; }
+    .p2-m2 { display: block; font-size: .7rem; color: #6b7280; white-space: nowrap; overflow: hidden;
+             text-overflow: ellipsis; margin-top: .1rem; }
+    .p2-m2 b { color: #1f2937; font-weight: 600; }
+    .p2-m2 .mla { color: #9ca3af; font-size: .65rem; }
+    .p2-m2 .sindato { color: #b45309; }
+    .p2-pinfo.v2 .p2-rec { font-size: .7rem; color: #6b7280; margin-top: .1rem; }
+    .p2-pinfo.v2 .p2-rec b { color: #1f2937; font-weight: 600; }
+    .p2-pinfo.v2 .p2-rec .frena, .p2-pinfo.v2 .p2-rec .frena b { color: #b91c1c; }
+    .p2-cuentachica { display: block; font-size: .6rem; color: #6b7280; margin-top: .25rem; text-align: center; }
     .p2-balanza { border: 1px solid #e3e7e0; background: #fff; border-radius: .3rem; cursor: pointer;
                   font-size: .72rem; line-height: 1; padding: .15rem .34rem; color: #6b7280; }
     .p2-balanza:hover { border-color: #1d4f80; color: #1d4f80; background: #eef4fb; }
@@ -610,38 +632,45 @@
                                    @onchange="() => ToggleTildada(it.MeliItemId)" />
                         </span>
 
-                        <span class="p2-pinfo">
-                            <span class="p2-rail">
-                                @if (!string.IsNullOrEmpty(it.Thumbnail))
-                                {
-                                    <img class="p2-thumb clickable" src="@it.Thumbnail" alt="" loading="lazy"
-                                         title="Ver y cambiar las fotos de esta publicación"
-                                         @onclick="() => ToggleFotos(it.MeliItemId)" />
-                                }
-                                @* 2026-08-31 · promociones de ESTA publicación: en qué campañas puede
-                                   entrar y qué margen le queda con cada precio. *@
-                                @* 2026-08-31 · ficha técnica. Los atributos son de donde salen los
-                                   filtros de búsqueda de MeLi: si falta el color o la medida, la
-                                   publicación no aparece cuando alguien filtra por eso. *@
-                                @* 2026-09-21 · descripción: verla y cambiarla sin ir a MercadoLibre. *@
-                                <button class="p2-balanza @(descAbierta == it.MeliItemId ? "on" : "")"
+                        <span class="p2-pinfo v2">
+                            @if (!string.IsNullOrEmpty(it.Thumbnail))
+                            {
+                                <img class="p2-thumb clickable" src="@it.Thumbnail" alt="" loading="lazy"
+                                     title="Ver y cambiar las fotos de esta publicación"
+                                     @onclick="() => ToggleFotos(it.MeliItemId)" />
+                            }
+                            else
+                            {
+                                <span class="p2-thumb vacia clickable" title="Ver y cambiar las fotos de esta publicación"
+                                      @onclick="() => ToggleFotos(it.MeliItemId)"></span>
+                            }
+                            @* 2026-09-22 — Osmar: los 4 botones eran muy chicos y había que adivinar cuál era
+                               cuál. Van de a 2 y cada uno dice qué abre (opción B que eligió). *@
+                            <span class="p2-botones">
+                                <button class="@(descAbierta == it.MeliItemId ? "on" : "")"
                                         title="Descripción: la que tiene hoy en MercadoLibre, para leerla y cambiarla"
-                                        @onclick="() => ToggleDescripcion(it.MeliItemId)" @onclick:stopPropagation="true">📝</button>
-                                <button class="p2-balanza @(fichaAbierta == it.MeliItemId ? "on" : "")"
+                                        @onclick="() => ToggleDescripcion(it.MeliItemId)" @onclick:stopPropagation="true"><span class="ic">📝</span>Descripción</button>
+                                <button class="@(fichaAbierta == it.MeliItemId ? "on" : "")"
                                         title="Ficha técnica: qué datos le faltan para que la encuentren en los filtros de MercadoLibre"
-                                        @onclick="() => ToggleFicha(it.MeliItemId)" @onclick:stopPropagation="true">📋</button>
-                                <button class="p2-balanza @(promosAbiertas == it.MeliItemId ? "on" : "")"
+                                        @onclick="() => ToggleFicha(it.MeliItemId)" @onclick:stopPropagation="true"><span class="ic">📋</span>Ficha</button>
+                                <button class="@(promosAbiertas == it.MeliItemId ? "on" : "")"
                                         title="Promociones: en qué campañas puede entrar y qué te queda con cada una"
-                                        @onclick="() => TogglePromosItem(it.MeliItemId)" @onclick:stopPropagation="true">🏷️</button>
-                                <button class="p2-balanza @(medidasAbiertas == it.MeliItemId ? "on" : "")"
+                                        @onclick="() => TogglePromosItem(it.MeliItemId)" @onclick:stopPropagation="true"><span class="ic">🏷️</span>Promos</button>
+                                <button class="@(medidasAbiertas == it.MeliItemId ? "on" : "")"
                                         title="Peso y medidas del paquete — de acá sale el envío"
-                                        @onclick="() => ToggleMedidas(it.MeliItemId)">⚖</button>
+                                        @onclick="() => ToggleMedidas(it.MeliItemId)"><span class="ic">⚖</span>Medidas</button>
                             </span>
-                            <span class="p2-t" title="@it.Titulo">@it.Titulo</span>
-                            <span class="p2-m">@if (!string.IsNullOrWhiteSpace(it.Cuenta))
+                            <span class="p2-txt">
+                            <span class="p2-t" title="@it.Titulo">@it.Titulo
+                                @if (it.Vendidas > 0)
                                 {
-                                    <span class="p2-cta @ClaseCuenta(it.Cuenta)" title="Publicada en la cuenta @it.Cuenta">@it.Cuenta</span>
-                                }@it.Sku · @it.MeliItemId@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · @CuotasTexto(it.Cuotas, it.Tipo)@(it.Vendidas > 0 ? $" · {it.Vendidas} vendidas" : "") <span class="p2-envio @ClaseEnvio(it.Envio)" title="@TituloEnvio(it)">@EnvioTexto(it.Envio)@(it.EnvioGratis ? " · lo pagás vos" : "")</span></span>
+                                    <span class="p2-vend">(@it.Vendidas.ToString("N0", ar) @(it.Vendidas == 1 ? "vendida" : "vendidas"))</span>
+                                }
+                            </span>
+                            @* 2026-09-22 — en palabras y con letra normal: antes era un renglón de
+                               códigos grises en letra de máquina que mareaba. La cuenta pasó a la
+                               columna del estado y las cuotas abajo del precio. *@
+                            <span class="p2-m2">SKU <b>@(it.Sku ?? "—")</b> · <span class="@(string.IsNullOrEmpty(it.Envio) || it.Envio == "not_specified" ? "sindato" : "")" title="@TituloEnvio(it)">@EnvioConPalabra(it.Envio)@(it.EnvioGratis ? ", lo pagás vos" : "")</span>@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · <span class="mla">@it.MeliItemId</span></span>
                             @* 2026-08-27 · si el SKU dice la marca de "para revisar", se avisa acá y
                                se ofrece devolverle el SKU verdadero, que el sistema guardó al marcarla. *@
                             @if (!string.IsNullOrEmpty(it.SkuAnterior))
@@ -660,6 +689,7 @@
                             <span class="p2-rec tocable @(recetaAbierta == it.MeliItemId ? "on" : "")"
                                   title="Tocá para ver y corregir de qué se compone esta publicación"
                                   @onclick="() => ToggleReceta(it.MeliItemId)" @onclick:stopPropagation="true">@RecetaFragment(it)</span>
+                            </span>
                         </span>
 
                         <span class="p2-h" @onclick:stopPropagation="true">
@@ -697,10 +727,8 @@
                                 <span class="p2-flag" title="Otra publicación del mismo producto y con las MISMAS condiciones de venta está a otro precio. Eso sí es un descuido.">⚠ hermana igual a otro precio</span>
                                 <span class="p2-rango">@Plata(it.PrecioMin.Value) – @Plata(it.PrecioMax.Value)</span>
                             }
-                            else if (it.PublisFamilia > 1)
-                            {
-                                <span class="p2-opcion" title="Este producto está publicado @it.PublisFamilia veces con distintas condiciones de venta. Cada una tiene que valer lo suyo: la que ofrece cuotas paga más comisión.">@CuotasTexto(it.Cuotas, it.Tipo)</span>
-                            }
+                            @* 2026-09-22 — siempre abajo del precio, entre paréntesis (antes iba en el renglón del SKU). *@
+                            <span class="p2-opcion" title="@(it.PublisFamilia > 1 ? $"Este producto está publicado {it.PublisFamilia} veces con distintas condiciones de venta. Cada una tiene que valer lo suyo: la que ofrece cuotas paga más comisión." : "Tipo de publicación y cuotas")">(@CuotasTexto(it.Cuotas, it.Tipo).Replace(" · ", ", "))</span>
                         </span>
 
                         @* 2026-09-21 — LA CUENTA HECHA (opción B que eligió él). Reemplaza a "Se lleva MeLi":
@@ -840,6 +868,10 @@
                             {
                                 <span class="p2-st @(it.Estado == "active" ? "a" : it.Estado == "paused" ? "p" : "o")"
                                       title="@(it.Estado is "active" or "paused" ? "Abrí el 🔒 de esta fila para poder cambiar el estado" : "")">@EstadoTexto(it.Estado)</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(it.Cuenta))
+                            {
+                                <span class="p2-cuentachica" title="Publicada en la cuenta @it.Cuenta">@it.Cuenta</span>
                             }
                         </span>
                     </div>
@@ -2401,6 +2433,13 @@
         _ => logistica
     };
 
+    /// <summary>"envío Full", "envío Colecta"… sin repetir la palabra cuando el texto ya la trae ("envío sin dato").</summary>
+    private static string EnvioConPalabra(string? logistica)
+    {
+        var t = EnvioTexto(logistica);
+        return t.StartsWith("envío", StringComparison.OrdinalIgnoreCase) ? t : "envío " + t;
+    }
+
     private static string ClaseEnvio(string? logistica) => logistica switch
     {
         "fulfillment" => "full",
@@ -2481,18 +2520,21 @@
         if (it.Receta is null || it.Receta.Count == 0)
             return new MarkupString("<span style='color:#b91c1c'>⚠ sin producto del sistema vinculado</span>");
 
+        // 2026-09-22 — en palabras: "Se arma con A (hay 0) + B (hay 39) → alcanza para 0". La pieza
+        // que frena va en rojo; el nombre de cada pieza aparece al pasar el mouse.
         var partes = it.Receta.Select(c =>
         {
             var cant = c.Cantidad == 1m ? "" : $"{c.Cantidad.ToString("0.##", ar)}× ";
-            var txt = $"{cant}<b>{System.Net.WebUtility.HtmlEncode(c.Sku ?? "?")}</b> ({c.Stock})";
-            return c.Frena && it.Receta.Count > 1 ? $"<span class='frena'>{txt}</span>" : txt;
+            var nombre = System.Net.WebUtility.HtmlEncode(c.Nombre ?? "");
+            var txt = $"<span title='{nombre}'>{cant}<b>{System.Net.WebUtility.HtmlEncode(c.Sku ?? "?")}</b> (hay {c.Stock.ToString("N0", ar)})</span>";
+            // Rojo sólo si de verdad no se puede armar ninguna: si alcanza para 68, no es alarma.
+            return c.Frena && it.Receta.Count > 1 && (it.Arma ?? 0) <= 0 ? $"<span class='frena'>{txt}</span>" : txt;
         });
 
-        var cola = it.Receta.Count > 1 || (it.Receta.Count == 1 && it.Receta[0].Cantidad != 1m)
-            ? $" → <span class='arma'>arma {it.Arma ?? 0}</span>"
-            : $" · stock <b>{it.Arma ?? 0}</b>";
+        var armado = it.Receta.Count > 1 || (it.Receta.Count == 1 && it.Receta[0].Cantidad != 1m);
+        var cola = armado ? $" → alcanza para <b>{(it.Arma ?? 0).ToString("N0", ar)}</b>" : "";
 
-        return new MarkupString("🧩 " + string.Join(" + ", partes) + cola);
+        return new MarkupString((armado ? "Se arma con " : "Sale de ") + string.Join(" + ", partes) + cola);
     }
 
     // ─────────────── 2026-08-27 · CANDADO POR FILA ───────────────
