@@ -381,7 +381,7 @@ public class TelegramService
         bool telegramListo = chatsAlertas.Count > 0;
         if (quiereTelegram && !quiereCampanita && !telegramListo) return;
 
-        var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE", "MARGEN_BAJO" };
+        var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE", "MARGEN_BAJO", "PRECIO_MANTENIDO" };
         var corteViejo = DateTime.UtcNow.AddHours(-12);
 
         // Anti-backlog: eventos sin avisar más viejos que 12h se marcan y no se mandan.
@@ -453,6 +453,7 @@ public class TelegramService
         {
             "PAUSADA_CON_STOCK" => "pausada con stock",
             "MARGEN_BAJO" => $"abajo del {ev.ValorAnterior ?? "50"}% (deja {ev.DeltaPct ?? 0:0.#}%)",
+            "PRECIO_MANTENIDO" => $"precio corregido para mantener el {ev.Delta ?? 50:0.#}%",
             _ => "reactivada"
         };
         var nombre = string.IsNullOrWhiteSpace(ev.Title) ? ev.MeliItemId : ev.Title;
@@ -487,6 +488,14 @@ public class TelegramService
             if (!string.IsNullOrWhiteSpace(ev.Notes)) lineas.Add(ev.Notes);
             lineas.Add("");
             lineas.Add("No se tocó ningún precio. Si está en promoción, ignorá este aviso.");
+        }
+        else if (ev.Tipo == "PRECIO_MANTENIDO")
+        {
+            // 2026-09-22: la publicación tiene «Mantener el N%» y se había corrido: el sistema corrigió el precio.
+            lineas.Add($"🎯 Precio corregido para mantener el {(ev.Delta ?? 50m).ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))}%");
+            lineas.Add($"📦 {ev.Title ?? ev.MeliItemId}");
+            if (!string.IsNullOrWhiteSpace(ev.Sku)) lineas.Add($"SKU {ev.Sku}");
+            if (!string.IsNullOrWhiteSpace(ev.Notes)) lineas.Add(ev.Notes);
         }
         else // STATUS_ACTIVE
         {

@@ -64,7 +64,7 @@ public class MeliMargenVigilanteService : BackgroundService
                     && ahora.Hour == hora
                     && await db.MeliAccounts.AnyAsync(stoppingToken))
                 {
-                    await RevisarAsync(db, ahora, stoppingToken);
+                    await RevisarAsync(scope.ServiceProvider, db, ahora, stoppingToken);
                 }
             }
             catch (OperationCanceledException) { return; }
@@ -78,7 +78,27 @@ public class MeliMargenVigilanteService : BackgroundService
         }
     }
 
-    private async Task RevisarAsync(AppDbContext db, DateTime ahora, CancellationToken ct)
+    // 2026-09-22 — "MANTENER EL N%" DE VERDAD. Osmar: *"si dice mantener 50% el sistema lo tiene que
+    // mantener en 50%"*. Hasta hoy el precio sólo se recalculaba cuando cambiaba el costo del producto;
+    // si lo que cambiaba era lo que cobra MeLi (comisión, envío) la publicación quedaba abajo y la
+    // pantalla seguía diciendo "mantener 50%" (caso real: cajas Megacol dejando 7%).
+    // Ahora, a las que tienen el sincro de precio prendido con objetivo, y quedaron más de
+    // TOLERANCIA_PUNTOS abajo, se les vuelve a aplicar el precio con el motor de siempre (nunca abajo
+    // del OEM, con el candado anti-precio-absurdo y el escalón del envío). Las que están en promoción
+    // NO se tocan (cambiar el precio les saca el descuento): de esas sólo se avisa, como antes.
+    // KILL SWITCH: AppSettings["meli.mantener_objetivo.enabled"] = "true" para prenderlo (default apagado).
+    private const decimal TOLERANCIA_PUNTOS = 2m;
+    private const int MAX_CORRECCIONES_POR_NOCHE = 300;
+
+    private static async Task<bool> MantenerPrendidoAsync(AppDbContext db, CancellationToken ct)
+    {
+        var s = await db.AppSettings.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Key == "meli.mantener_objetivo.enabled", ct);
+        var v = s?.Value?.Trim().ToLowerInvariant();
+        return v is "true" or "1" or "on";
+    }
+
+    private async Task RevisarAsync(IServiceProvider sp, AppDbContext db, DateTime ahora, CancellationToken ct)
     {
         // Costo de cada publicación (una consulta para todas).
         var costos = await (
@@ -92,10 +112,28 @@ public class MeliMargenVigilanteService : BackgroundService
             .Where(m => m.VariationId == null && m.Status == "active" && m.Price > 0 && m.SaleFeeAmount > 0)
             .Select(m => new
             {
-                m.MeliItemId, m.MeliAccountId, m.Sku, m.Title, m.Price,
-                m.SaleFeeAmount, m.SaleFeeShippingCost
+                m.Id, m.MeliItemId, m.MeliAccountId, m.Sku, m.Title, m.Price,
+                m.SaleFeeAmount, m.SaleFeeShippingCost, m.CafeProductoId, m.PromoPrecio
             })
             .ToListAsync(ct);
+
+        // Las vinculadas directo a un producto (sin receta) también tienen costo.
+        var idsDirectos = activas.Where(a => a.CafeProductoId.HasValue && !costos.ContainsKey(a.MeliItemId))
+            .Select(a => a.CafeProductoId!.Value).Distinct().ToList();
+        var costoDirecto = idsDirectos.Count == 0 ? new Dictionary<int, decimal>()
+            : await db.CafeProductos.AsNoTracking().Where(p => idsDirectos.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.Costo, ct);
+        foreach (var a in activas)
+            if (!costos.ContainsKey(a.MeliItemId) && a.CafeProductoId is int pid && costoDirecto.TryGetValue(pid, out var cd))
+                costos[a.MeliItemId] = cd;
+
+        var mantener = await MantenerPrendidoAsync(db, ct);
+        var conSincro = mantener
+            ? (await db.MeliItemSyncConfigs.AsNoTracking()
+                .Where(c => c.SyncPrecio && c.GananciaObjetivoPct != null && c.GananciaObjetivoPct > 0)
+                .Select(c => c.MeliItemId).ToListAsync(ct)).ToHashSet()
+            : new HashSet<string>();
+        var aCorregir = new List<(int Id, string Mla, int Cuenta, string? Sku, string? Titulo, decimal Precio, decimal Margen, decimal Objetivo, decimal Costo)>();
 
         var objetivos = await db.MeliItemSyncConfigs.AsNoTracking()
             .Where(c => c.GananciaObjetivoPct != null && c.GananciaObjetivoPct > 0)
@@ -117,6 +155,13 @@ public class MeliMargenVigilanteService : BackgroundService
             var margen = Math.Round(ganancia / costo * 100m, 1);
 
             var piso = objetivos.TryGetValue(m.MeliItemId, out var obj) ? obj : PISO_DEFAULT;
+
+            // Tiene "Mantener el N%" y se corrió para abajo: se corrige (salvo promoción).
+            if (conSincro.Contains(m.MeliItemId) && margen < piso - TOLERANCIA_PUNTOS && m.PromoPrecio is not > 0)
+            {
+                aCorregir.Add((m.Id, m.MeliItemId, m.MeliAccountId, m.Sku, m.Title, m.Price, margen, piso, costo));
+                continue;
+            }
             if (margen >= piso) continue;   // está bien, no molestamos
 
             // ¿Ya le avisamos y no lo miró? Solo insistimos si empeoró de verdad.
@@ -155,7 +200,56 @@ public class MeliMargenVigilanteService : BackgroundService
 
         await db.SaveChangesAsync(ct);
 
-        var resumen = $"{nuevos.Count} abajo del piso, {aAvisar.Count} avisadas";
+        // Correcciones de "Mantener el N%": las más lejos del objetivo primero.
+        int corregidas = 0, fallidas = 0;
+        if (aCorregir.Count > 0)
+        {
+            var push = sp.GetRequiredService<MeliPricePushService>();
+            foreach (var c in aCorregir.OrderBy(x => x.Margen - x.Objetivo).Take(MAX_CORRECCIONES_POR_NOCHE))
+            {
+                if (ct.IsCancellationRequested) break;
+                MeliPricePushService.PushResult r;
+                try { r = await push.PushPrecioForItemAsync(c.Id, markAsClaimed: false, ct); }
+                catch (Exception ex) { r = new MeliPricePushService.PushResult(false, ex.Message); }
+
+                var arS = new System.Globalization.CultureInfo("es-AR");
+                if (r.Ok && r.PushedPrice is decimal nuevo)
+                {
+                    corregidas++;
+                    db.MeliCambiosDetectados.Add(new MeliCambioDetectado
+                    {
+                        MeliItemId = c.Mla, MeliAccountId = c.Cuenta, Sku = c.Sku, Title = c.Titulo,
+                        Tipo = "PRECIO_MANTENIDO",
+                        ValorAnterior = c.Precio.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        ValorNuevo = nuevo.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        Delta = c.Objetivo, DeltaPct = c.Margen,
+                        Source = "mantener", DetectedAt = ahora,
+                        Notes = $"Dejaba {c.Margen.ToString("0.#", arS)}% y tiene «Mantener el {c.Objetivo.ToString("0.#", arS)}%»: "
+                              + $"${c.Precio.ToString("N0", arS)} → ${nuevo.ToString("N0", arS)}"
+                    });
+                }
+                else
+                {
+                    fallidas++;
+                    db.MeliCambiosDetectados.Add(new MeliCambioDetectado
+                    {
+                        MeliItemId = c.Mla, MeliAccountId = c.Cuenta, Sku = c.Sku, Title = c.Titulo,
+                        Tipo = "MARGEN_BAJO",
+                        ValorAnterior = c.Objetivo.ToString("0", System.Globalization.CultureInfo.InvariantCulture),
+                        ValorNuevo = c.Precio.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        Delta = c.Costo, DeltaPct = c.Margen, Source = "mantener", DetectedAt = ahora,
+                        Notes = $"Tiene «Mantener» pero no se pudo corregir el precio: {r.Message}"
+                    });
+                }
+                await db.SaveChangesAsync(ct);
+                try { await Task.Delay(1500, ct); } catch (OperationCanceledException) { break; }
+            }
+            _logger.LogWarning("[Mantener objetivo] {Ok} corregidas, {Err} no se pudieron (de {Total} abajo)",
+                corregidas, fallidas, aCorregir.Count);
+        }
+
+        var resumen = $"{nuevos.Count} abajo del piso, {aAvisar.Count} avisadas"
+                      + (mantener ? $", mantener: {corregidas} corregidas / {fallidas} con error" : "");
         _logger.LogWarning("[Vigilante margen] {Resumen} (de {Total} activas con costo)", resumen, activas.Count);
         await MarcarCorridaAsync(db, ahora, resumen, ct);
     }

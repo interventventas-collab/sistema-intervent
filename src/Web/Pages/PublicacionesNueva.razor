@@ -806,8 +806,32 @@
                                 <b><input class="pctin" value="@pctTxt" @onclick:stopPropagation="true"
                                           @oninput="@(e => pctEscritos[it.MeliItemId] = e.Value?.ToString() ?? "")"
                                           @onkeydown="@(async e => { if (e.Key == "Enter") await ElegirObjetivo(it); })" /> %</b>
-                                <span class="pp @(selP == "obj" ? ClasePct(it.MargenPct, objRef) : "")">@(selP == "obj" ? Plata(it.Precio) : precioParaPct is decimal ppc ? "≈ " + Plata(ppc) : "—")</span>
-                                @if (selP == "obj") { <span class="nota">lo mantiene solo@(it.MargenPct is decimal mo ? $" · hoy deja {mo.ToString("0.#", ar)}%" : "")</span> }
+                                @* 2026-09-22 — Osmar: "ese porcentaje tiene que ser mi guía". Marcada, lo grande es
+                                   el % que deja HOY de verdad, no el que se pidió. Si quedó abajo, se dice y se
+                                   ofrece volver a aplicarlo; si está arriba porque no baja del OEM, también se dice. *@
+                                @if (selP == "obj")
+                                {
+                                    var real = it.MargenPct;
+                                    var abajo = real is decimal ra && ra < objRef - 2m;
+                                    var porPiso = !abajo && real is decimal rb && rb > objRef + 2m && it.PrecioOem is decimal op && Math.Round(it.Precio, 0) <= op;
+                                    <span class="pp @ClasePct(real, objRef)" style="@(it.ComisionVieja ? "opacity:.55;" : "")">@(real is decimal rr ? rr.ToString("0.#", ar) + "%" : "—")</span>
+                                    @if (abajo)
+                                    {
+                                        <span class="nota" style="color:#b91c1c;font-weight:700;">pediste @objRef.ToString("0.#", ar)% · <u @onclick="() => ElegirObjetivo(it, true)" @onclick:stopPropagation="true" style="cursor:pointer;">volver a aplicar ahora</u></span>
+                                    }
+                                    else if (porPiso)
+                                    {
+                                        <span class="nota">@Plata(it.Precio) · no baja del OEM, por eso deja más</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="nota">@Plata(it.Precio) · lo mantiene todos los días</span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="pp">@(precioParaPct is decimal ppc ? "≈ " + Plata(ppc) : "—")</span>
+                                }
                             </span>
                             @if (it.MargenPct is null && editandoPrecio != it.MeliItemId)
                             {
@@ -2351,17 +2375,19 @@
         => m is decimal v ? (aprox ? "≈ " : "") + v.ToString("0.#", ar) + "%" : "";
 
     /// <summary>Mantener el % del casillero: guarda el objetivo y aplica el precio ahora.</summary>
-    private async Task ElegirObjetivo(ApiClient.PubV2Fila it)
+    private async Task ElegirObjetivo(ApiClient.PubV2Fila it) => await ElegirObjetivo(it, false);
+
+    private async Task ElegirObjetivo(ApiClient.PubV2Fila it, bool reaplicar)
     {
         if (precioGuardando) return;
         var obj = ParsePct(PctEscrito(it));
         if (obj is null) { ToastService.Error("Escribí un porcentaje válido (por ejemplo 58,1)."); return; }
-        if (MandaElPorcentaje(it) && it.ObjetivoPct == obj) return;   // ya mantiene ese %
+        if (!reaplicar && MandaElPorcentaje(it) && it.ObjetivoPct == obj) return;   // ya mantiene ese %
         var aprox = PrecioParaPct(it, obj.Value) ?? it.Precio;
         if (!await SeguirAunqueEsteEnPromo(it, aprox)) return;
         if (!await JS.InvokeAsync<bool>("confirm",
                 $"¿Que el sistema mantenga el {obj.Value.ToString("0.#", ar)}%?\n\nHoy está {Plata(it.Precio)}. Queda alrededor de {Plata(aprox)}: el número exacto lo calcula ahora con lo que cobra MercadoLibre, y nunca baja del precio OEM.\n\n"
-                + "Desde ahí lo recalcula solo si cambia el costo o lo que cobra MeLi. Se publica en MercadoLibre ahora."))
+                + "Desde ahí lo revisa todos los días y lo corrige si se corre del %, salvo cuando está en promoción. Se publica en MercadoLibre ahora."))
             return;
 
         precioGuardando = true;
