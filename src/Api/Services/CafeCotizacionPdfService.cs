@@ -121,6 +121,10 @@ public class CafeCotizacionPdfService
                         // — el comprobante no es válido como factura, no necesita la info fiscal.
                         // En tipos oficiales ARCA seguimos mostrando todo (logo + razón social + CUIT + IIBB + contacto).
                         var esTipoX = v.TipoComprobante == "X";
+                        // 2026-09-22: el tipo X es un PRESUPUESTO neutro que se le manda al cliente — sin logo ni
+                        // teléfonos ni mail (pedido del usuario). La columna del emisor directamente no se dibuja
+                        // y el ancho queda para el cliente y el domicilio.
+                        if (!esTipoX)
                         row.RelativeItem(0.9f).Column(colLogo =>
                         {
                             // 2026-07-14: emisor APILADO (logo arriba, datos abajo) en vez de lado a lado.
@@ -200,7 +204,7 @@ public class CafeCotizacionPdfService
 
                         // 2026-06-16 v4: layout 3 columnas — CENTRO con cuadro X + numeración + fecha.
                         // 2026-06-17 v7: peso 0.85 (le cede ancho a la columna derecha de DOMICILIO).
-                        row.RelativeItem(0.85f).PaddingLeft(8).Column(c =>
+                        row.RelativeItem(esTipoX ? 1.3f : 0.85f).PaddingLeft(esTipoX ? 0 : 8).Column(c =>
                         {
                             c.Item().Row(r =>
                             {
@@ -209,7 +213,11 @@ public class CafeCotizacionPdfService
                                 r.AutoItem().PaddingLeft(6).AlignMiddle()
                                     .Text(tipoNombre).FontSize(11).Bold().FontColor(Colors.Blue.Darken2);
                             });
-                            c.Item().PaddingTop(2).Text($"N° {v.Numero}").FontSize(10).Bold().FontFamily("Courier");
+                            // 2026-09-22: en el presupuesto (X) solo el número final: "CAFE-2026-2052" → "2052".
+                            var numeroImpreso = esTipoX && !string.IsNullOrEmpty(v.Numero) && v.Numero.Contains('-')
+                                ? v.Numero[(v.Numero.LastIndexOf('-') + 1)..]
+                                : v.Numero;
+                            c.Item().PaddingTop(2).Text($"N° {numeroImpreso}").FontSize(10).Bold().FontFamily("Courier");
                             c.Item().Text($"Fecha: {v.Fecha:dd/MM/yyyy}").FontSize(9);
                             if (v.TipoComprobante == "X")
                                 c.Item().PaddingTop(2).Text("Documento no válido como factura")
@@ -240,8 +248,10 @@ public class CafeCotizacionPdfService
                                         var name = !string.IsNullOrWhiteSpace(razonCli2) ? razonCli2! : nombreCli2;
                                         t.Span(name).FontSize(11).Bold();
                                     });
-                                    rr.AutoItem().AlignMiddle().Background(tagBg2).Padding(2)
-                                        .Text(tagText2).FontSize(7).Bold().FontColor(tagFg2);
+                                    // 2026-09-22: en el presupuesto (X) no va la etiqueta BAR/Comercial (dice la lista de precios).
+                                    if (!esTipoX)
+                                        rr.AutoItem().AlignMiddle().Background(tagBg2).Padding(2)
+                                            .Text(tagText2).FontSize(7).Bold().FontColor(tagFg2);
                                 });
                                 if (!string.IsNullOrWhiteSpace(razonCli2))
                                     cc.Item().Text(nombreCli2).FontSize(8).Italic().FontColor(Colors.Grey.Darken1);
@@ -529,6 +539,9 @@ public class CafeCotizacionPdfService
                             });
                     }
 
+                    // 2026-09-22: el presupuesto (X) no lleva pie: ni "Gracias por tu compra" ni WhatsApp ni webs.
+                    if (v.TipoComprobante == "X") return;
+
                     // Línea final con "Gracias por tu compra"
                     fc.Item().PaddingTop(8).BorderTop(1).BorderColor(Colors.Grey.Lighten2).PaddingTop(4).AlignCenter().Text(t =>
                     {
@@ -653,7 +666,7 @@ public class CafeCotizacionPdfService
         "FB" => "Factura B",
         "FC" => "Factura C",
         "PRO" => "Proforma",
-        "X" => "Comprobante interno",
+        "X" => "PRESUPUESTO",
         _ => "Comprobante"
     };
 
