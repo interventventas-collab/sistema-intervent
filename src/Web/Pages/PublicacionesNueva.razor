@@ -866,9 +866,22 @@
                             else
                             {
                                 <span class="ln"><span>@cta.Etiqueta</span><b>@Plata(cta.Precio)</b></span>
-                                <span class="ln" title="@(cta.Simulada ? "Lo que cobraría MercadoLibre a ese precio" : DesgloseComision(it))">
-                                    <span>− MeLi @(cta.Precio > 0 ? Math.Round(cta.Meli / cta.Precio * 100m, 0).ToString("0", ar) : "0")%</span><b>@Plata(cta.Meli)</b>
+                                @* 2026-09-22 — Osmar: "en ningún lado veo el costo de envío". Antes iba sumado en
+                                   "− MeLi 43%"; ahora comisión y envío en renglones separados. *@
+                                var comSola = cta.Meli - cta.Envio;
+                                <span class="ln" title="@(cta.Simulada ? "Lo que cobraría MercadoLibre de comisión a ese precio" : DesgloseComisionSinEnvio(it))">
+                                    <span>− Comisión @(cta.Precio > 0 ? Math.Round(comSola / cta.Precio * 100m, 0).ToString("0", ar) : "0")%</span><b>@Plata(comSola)</b>
                                 </span>
+                                @if (cta.Envio > 0)
+                                {
+                                    <span class="ln" title="Envío gratis: lo pagás vos (@(cta.Precio > 0 ? Math.Round(cta.Envio / cta.Precio * 100m, 0).ToString("0", ar) : "0")% del precio)">
+                                        <span>− Envío</span><b>@Plata(cta.Envio)</b>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="ln" title="El envío lo paga el comprador"><span>− Envío</span><b style="font-weight:400;color:#9ca3af;">lo paga el comprador</b></span>
+                                }
                                 <span class="ln tot"><span>= Recibís</span><b>@Plata(cta.Recibis)</b></span>
                                 @if (cta.Queda is decimal q)
                                 {
@@ -2662,7 +2675,7 @@
     }
 
     private record CuentaFila(bool Simulada, string Etiqueta, decimal Precio, decimal Meli, decimal Recibis,
-                              decimal? Iva, decimal? Costo, decimal? Queda);
+                              decimal? Iva, decimal? Costo, decimal? Queda, decimal Envio = 0m);
 
     /// <summary>2026-09-21 — La cuenta de la fila (opción B). Sale de los MISMOS números que el
     /// margen, así no hay dos cuentas distintas en la pantalla: Recibís = precio real − lo que se
@@ -2678,7 +2691,8 @@
             var recSim = sim.PrecioProbado - meliSim;
             var netoSim = Math.Round(recSim / 1.21m, 2);
             return new CuentaFila(true, "Precio nuevo", sim.PrecioProbado, meliSim, recSim,
-                sim.Costo is > 0 ? recSim - netoSim : null, sim.Costo is > 0 ? sim.Costo : null, sim.Costo is > 0 ? sim.Ganancia : null);
+                sim.Costo is > 0 ? recSim - netoSim : null, sim.Costo is > 0 ? sim.Costo : null, sim.Costo is > 0 ? sim.Ganancia : null,
+                sim.Envio);
         }
         if (it.ComisionMonto is null || it.NetoSinIva is null) return null;
         var enPromo = it.PromoPrecio is > 0 && it.PromoPrecio < it.Precio;
@@ -2686,7 +2700,16 @@
         var recibis = precio - it.ComisionMonto.Value;
         var conCosto = it.Costo is > 0 && it.GananciaPesos.HasValue;
         return new CuentaFila(false, enPromo ? "Precio promo" : "Precio", precio, it.ComisionMonto.Value, recibis,
-            conCosto ? recibis - it.NetoSinIva.Value : null, conCosto ? it.Costo : null, conCosto ? it.GananciaPesos : null);
+            conCosto ? recibis - it.NetoSinIva.Value : null, conCosto ? it.Costo : null, conCosto ? it.GananciaPesos : null,
+            it.ComisionEnvio ?? 0m);
+    }
+
+    private string DesgloseComisionSinEnvio(ApiClient.PubV2Fila it)
+    {
+        var partes = new List<string>();
+        if (it.ComisionPorcentaje is > 0) partes.Add($"{it.ComisionPorcentaje.Value.ToString("0.#", ar)}%");
+        if (it.ComisionFija is > 0) partes.Add($"+ ${it.ComisionFija.Value.ToString("N0", ar)} fijo");
+        return partes.Count > 0 ? string.Join(" ", partes) : "—";
     }
 
     private string DesgloseComision(ApiClient.PubV2Fila it)
