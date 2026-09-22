@@ -68,7 +68,7 @@
        como tiene overflow:hidden por el borde redondeado, las filas de abajo se RECORTABAN
        (se veian 9 de 17 y no aparecian ni bajando). */
     .p2-tbl { background: #fff; border: 1px solid #e3e7e0; border-radius: .6rem; overflow: hidden; flex-shrink: 0; }
-    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 124px 180px 112px 212px 52px 82px;
+    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 200px 180px 112px 84px 82px;
                      gap: .6rem; align-items: center; padding: .55rem .65rem; }
     .p2-th { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; font-size: .6rem; text-transform: uppercase;
              letter-spacing: .07em; color: #9ca3af; font-weight: 700; }
@@ -217,6 +217,29 @@
     .p2-med .guardar[disabled] { opacity: .5; cursor: default; }
     .p2-med .nota { font-size: .68rem; color: #6b7280; margin-top: .45rem; }
 
+    /* 2026-09-22 · el precio se elige tildando: OEM · Actual · Para el N% · Manual */
+    .p2-precios { display: flex; flex-direction: column; gap: 1px; }
+    .p2-po { display: grid; grid-template-columns: 14px 64px auto; align-items: center; gap: .3rem;
+             font-size: .72rem; color: #6b7280; padding: 1px 4px; border-radius: .3rem; cursor: pointer;
+             border: none; background: none; text-align: left; font-family: inherit; width: 100%; }
+    .p2-po:hover { background: #f3f4f6; }
+    .p2-po .rd { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #9ca3af; display: inline-block; }
+    .p2-po b { color: #374151; font-weight: 600; }
+    .p2-po.sel { background: #eef4fb; cursor: default; }
+    .p2-po.sel .rd { border-color: #1d4f80; background: radial-gradient(#1d4f80 45%, #fff 50%); }
+    .p2-po.sel span, .p2-po.sel b { color: #1d4f80; font-weight: 700; }
+    .p2-po .nota { grid-column: 2 / 4; font-size: .58rem; color: #6b7280; font-weight: 400; margin-top: -1px; }
+    .p2-po.sel .nota { color: #1d4f80; font-weight: 400; }
+    .p2-po.nodisp { cursor: default; opacity: .55; }
+    .p2-po.nodisp:hover { background: none; }
+    .p2-precios .p2-edit { margin: 2px 0 2px 18px; }
+    .p2-stksync { display: inline-flex; align-items: center; gap: .2rem; margin-top: .3rem; font-size: .6rem;
+                  color: #6b7280; cursor: pointer; border: none; background: none; font-family: inherit; padding: 0; }
+    .p2-stksync .cb { width: 12px; height: 12px; border: 1.5px solid #9ca3af; border-radius: 3px; display: inline-flex;
+                      align-items: center; justify-content: center; font-size: .6rem; line-height: 1; color: #fff; }
+    .p2-stksync.on .cb { background: #15803d; border-color: #15803d; }
+    .p2-stksync.on { color: #15803d; font-weight: 600; }
+    .p2-stksync[disabled] { opacity: .5; cursor: default; }
     .p2-opcion { display: block; font-size: .6rem; color: #6b7280; margin-top: .1rem; }
 
     /* Al lado de la foto, no debajo: apilados la fila crecía 9 px y con 50 filas por página
@@ -420,7 +443,7 @@
                padding: .5rem .7rem; border-radius: 0 .4rem .4rem 0; }
 
     @@media (max-width: 1100px) {
-        .p2-th, .p2-tr { grid-template-columns: 30px minmax(0,1fr) 116px 172px 104px; }
+        .p2-th, .p2-tr { grid-template-columns: 30px minmax(0,1fr) 190px 172px 104px; }
         .p2-h2 { display: none; }
     }
     @@media (max-width: 760px) {
@@ -602,10 +625,9 @@
             <div class="p2-th">
                 <span><input type="checkbox" class="p2-chk" checked="@TodasTildadas" @onchange="TildarTodas" title="Tildar todas las de esta página" /></span>
                 <span>Producto</span>
-                <span class="p2-h">Precio</span>
+                <span class="p2-h">Precio · tildá cuál</span>
                 <span class="p2-h">La cuenta</span>
                 <span class="p2-h">Te queda<br /><span style="text-transform:none;font-weight:400;">sobre el costo</span></span>
-                <span class="p2-h2">Objetivo · Sincro</span>
                 <span class="p2-h2">Stock</span>
                 <span class="p2-h2">Estado</span>
             </div>
@@ -695,9 +717,51 @@
                             </span>
                         </span>
 
-                        <span class="p2-h" @onclick:stopPropagation="true">
+                        @* 2026-09-22 — Osmar: ver el precio OEM, el que tiene hoy y el que deja el objetivo, y
+                           TILDAR cuál quiere (más uno a mano). La opción tildada dice también quién manda:
+                           "Para el N%" = el sistema lo mantiene solo; cualquier otra = queda fijo. Eso
+                           reemplaza al ✎, a los cartelitos 🎯/💲 y a la perilla del sincro de precio. *@
+                        @{ var selP = editandoPrecio == it.MeliItemId ? "manual" : MandaElPorcentaje(it) ? "obj" : "actual"; }
+                        <span class="p2-h p2-precios" @onclick:stopPropagation="true">
+                            @if (it.PrecioOem is decimal oem)
+                            {
+                                <button class="p2-po" disabled="@(precioGuardando)"
+                                        title="Precio de lista (OEM de Colombraro, o el de las piezas si no hay uno del producto completo). Tocá para publicarlo fijo."
+                                        @onclick='() => ElegirPrecioFijo(it, oem, "el precio OEM")' ><span class="rd"></span><span>OEM</span><b>@Plata(oem)</b></button>
+                            }
+                            <button class="p2-po @(selP == "actual" ? "sel" : "")" disabled="@(precioGuardando)"
+                                    title="@(selP == "actual" ? "Es el que tiene hoy y queda fijo: el sistema no lo toca." : "Tocá para dejar fijo el precio de hoy: el sistema deja de mantener el porcentaje.")"
+                                    @onclick="() => ElegirActual(it)"><span class="rd"></span><span>Actual</span><b>@Plata(it.Precio)</b>
+                                @if (selP == "actual") { <span class="nota">queda fijo, el sistema no lo toca</span> }
+                            </button>
+                            @* 2026-08-31 · si está en campaña, el comprador paga MENOS que el precio de
+                               lista. Sin este cartel, el "te queda" de al lado no se entiende. *@
+                            @if (it.PromoPrecio is > 0)
+                            {
+                                <span class="p2-promo" title="Está en una campaña de MercadoLibre: el comprador paga @Plata(it.PromoPrecio!.Value). El margen de al lado ya está calculado con ese precio.">
+                                    🏷️ @Plata(it.PromoPrecio!.Value)
+                                    <small>@(it.PromoNombre ?? "en promoción")@(it.PromoHasta.HasValue ? $" · hasta {it.PromoHasta.Value:dd/MM}" : "")</small>
+                                </span>
+                            }
+                            @{ var objP = it.ObjetivoPct ?? 50m; }
+                            @if (it.PrecioObjetivo is decimal pObj)
+                            {
+                                <button class="p2-po @(selP == "obj" ? "sel" : "")" disabled="@(precioGuardando)"
+                                        title="@(selP == "obj" ? $"El sistema mantiene el {objP:0}% solo: si cambia el costo o lo que cobra MeLi, recalcula el precio." : $"Tocá para que el sistema ponga el precio que deja el {objP:0}% y lo mantenga solo. El número es aproximado: el exacto lo calcula con lo que cobra MeLi en ese momento.")"
+                                        @onclick="() => ElegirObjetivo(it)"><span class="rd"></span><span>Para el @objP.ToString("0", ar)%</span><b>≈ @Plata(pObj)</b>
+                                    @if (selP == "obj") { <span class="nota">lo mantiene solo</span> }
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="p2-po nodisp @(selP == "obj" ? "sel" : "")" title="Para calcularlo falta el costo o la comisión de MeLi">
+                                    <span class="rd"></span><span>Para el @objP.ToString("0", ar)%</span><b>—</b>
+                                    @if (selP == "obj") { <span class="nota">lo mantiene solo</span> }
+                                </span>
+                            }
                             @if (editandoPrecio == it.MeliItemId)
                             {
+                                <span class="p2-po sel"><span class="rd"></span><span>Manual</span><b></b></span>
                                 <span class="p2-edit" @onclick:stopPropagation="true">
                                     <input type="text" value="@precioEscrito"
                                            @oninput="@(async e => { precioEscrito = e.Value?.ToString() ?? ""; await PrecioEscritoCambio(); })"
@@ -713,17 +777,8 @@
                             }
                             else
                             {
-                                <span class="p2-price editable" title="Tocá para escribir otro precio"
-                                      @onclick="() => EmpezarPrecio(it)" @onclick:stopPropagation="true">✎ @Plata(it.Precio)</span>
-                                @* 2026-08-31 · si está en campaña, el comprador paga MENOS que el precio de
-                                   lista. Sin este cartel, el "te queda" de al lado no se entiende. *@
-                                @if (it.PromoPrecio is > 0)
-                                {
-                                    <span class="p2-promo" title="Está en una campaña de MercadoLibre: el comprador paga @Plata(it.PromoPrecio!.Value). El margen de al lado ya está calculado con ese precio.">
-                                        🏷️ @Plata(it.PromoPrecio!.Value)
-                                        <small>@(it.PromoNombre ?? "en promoción")@(it.PromoHasta.HasValue ? $" · hasta {it.PromoHasta.Value:dd/MM}" : "")</small>
-                                    </span>
-                                }
+                                <button class="p2-po" disabled="@(precioGuardando)" title="Escribir otro precio a mano"
+                                        @onclick="() => EmpezarPrecio(it)"><span class="rd"></span><span>Manual</span><b style="font-weight:400;color:#9ca3af;">escribir…</b></button>
                             }
                             @if (it.VariosPrecios && it.PrecioMin.HasValue && it.PrecioMax.HasValue)
                             {
@@ -816,42 +871,15 @@
                             }
                         </span>
 
-                        <span class="p2-ctrl p2-h2">
-                            @* 2026-08-26 — el tilde verde marca QUIÉN MANDA. Si manda el porcentaje, el
-                               sistema recalcula el precio cuando cambia la comisión o el costo; si manda
-                               el precio, nadie lo toca. Antes no se distinguía y por eso parecía que el
-                               sistema "cambiaba precios solo". *@
-                            <span class="p2-obj @(MandaElPorcentaje(it) ? "manda" : "")"
-                                  title="@(MandaElPorcentaje(it) ? $"Manda el PORCENTAJE: el sistema mantiene el {it.ObjetivoPct:0}% y recalcula el precio cuando hace falta." : "El objetivo está guardado pero no gobierna: manda el precio.")">
-                                @(MandaElPorcentaje(it) ? "✓" : "") 🎯 @(it.ObjetivoPct.HasValue ? it.ObjetivoPct.Value.ToString("0", ar) : "—")<span class="pc">%</span>
-                            </span>
-                            <span class="p2-obj @(MandaElPorcentaje(it) ? "" : "manda")"
-                                  title="@(MandaElPorcentaje(it) ? "El precio lo calcula el sistema a partir del objetivo." : "Manda el PRECIO: quedó fijo, el sistema no lo toca.")">
-                                @(MandaElPorcentaje(it) ? "" : "✓") 💲
-                            </span>
-                            @* 2026-08-27 · el candado. Cerrado, los interruptores no se pueden tocar
-                               (que es como venía funcionando). Abierto, sí — y se cierra solo. *@
-                            <button class="p2-candado @(FilaAbierta(it) ? "abierto" : "")"
-                                    title="@(FilaAbierta(it) ? "Abierto: ya podés prender o apagar el sincro de esta fila. Se cierra solo en unos segundos." : "Tocá el candado para poder prender o apagar el sincro de esta fila sin tildarla")"
-                                    @onclick="() => ToggleCandado(it.MeliItemId)" @onclick:stopPropagation="true">
-                                @(FilaAbierta(it) ? "🔓" : "🔒")
-                            </button>
-                            <button class="p2-sw @(FilaAbierta(it) ? "tocable" : "")"
-                                    disabled="@(!FilaAbierta(it) || sincroEnCurso == it.MeliItemId)"
-                                    title="@(FilaAbierta(it) ? (it.SyncPrecio ? "Tocá para APAGAR el sincro de precio (queda a mano)" : "Tocá para PRENDER el sincro de precio — te pregunta si querés aplicarlo ahora") : (it.SyncPrecio ? "Precio sincronizado: el sistema lo mantiene" : "Precio a mano: el sistema no lo toca"))"
-                                    @onclick="() => CambiarSincroFila(it, !it.SyncPrecio, null)" @onclick:stopPropagation="true">
-                                💲<span class="p2-led @(it.SyncPrecio ? "on" : "")"></span>
-                            </button>
-                            <button class="p2-sw @(FilaAbierta(it) ? "tocable" : "")"
-                                    disabled="@(!FilaAbierta(it) || sincroEnCurso == it.MeliItemId)"
-                                    title="@(FilaAbierta(it) ? (it.SyncStock ? "Tocá para APAGAR el sincro de stock" : "Tocá para PRENDER el sincro de stock — y se lo mando a MercadoLibre ahora") : (it.SyncStock ? "Stock sincronizado: se pushea solo" : "Stock a mano"))"
-                                    @onclick="() => CambiarSincroFila(it, null, !it.SyncStock)" @onclick:stopPropagation="true">
-                                📦<span class="p2-led @(it.SyncStock ? "on" : "")"></span>
-                            </button>
-                        </span>
-
                         <span class="p2-stk p2-h2 @(it.StockMeli == 0 ? "zero" : "")">
                             @it.StockMeli<small>@(it.StockMeli == 0 ? "SIN STOCK" : "UNID.")</small>
+                            @* 2026-09-22 — un tilde y listo (reemplaza al 🔒 + 📦). Pregunta antes de cambiar
+                               para que un clic de más no deje una publicación con el stock a mano. *@
+                            <button class="p2-stksync @(it.SyncStock ? "on" : "")" disabled="@(sincroEnCurso == it.MeliItemId)"
+                                    title="@(it.SyncStock ? "El sistema le manda el stock a MercadoLibre solo. Tocá para dejarlo a mano." : "El stock está a mano. Tocá para que el sistema lo mande solo.")"
+                                    @onclick="() => ToggleStockFila(it)" @onclick:stopPropagation="true">
+                                <span class="cb">@(it.SyncStock ? "✓" : "")</span>sincroniza
+                            </button>
                         </span>
 
                         <span class="p2-h2">
@@ -1492,7 +1520,7 @@
         @if (datos is not null && datos.Items.Count > 0)
         {
             <div class="p2-count">
-                <span>Tocá el ✎ del precio para escribirlo a mano · La ⚖ abre el peso y las medidas · La foto abre todas las fotos · El 🔒 de la fila prende y apaga el sincro y deja tocar el cartel Activa/Pausada (se cierra solo).</span>
+                <span>En el precio tildá cuál querés (OEM, el actual, el del objetivo o uno a mano) · El tilde abajo del stock lo sincroniza · Tocando Activa/Pausada la cambiás (pregunta antes) · La foto abre todas las fotos.</span>
                 <span>
                     <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
                     <span class="p2-pg">Página @pagina de @TotalPaginas</span>
@@ -2229,6 +2257,91 @@
     private bool MandaElPorcentaje(ApiClient.PubV2Fila it)
         => it.SyncPrecio && it.ObjetivoPct is > 0;
 
+    // ─── 2026-09-22 · el precio se elige tildando ───
+
+    private async Task ToggleStockFila(ApiClient.PubV2Fila it)
+    {
+        var prender = !it.SyncStock;
+        var ok = await JS.InvokeAsync<bool>("confirm", prender
+            ? $"¿Sincronizar el stock?\n\n{it.Titulo}\n\nEl sistema le manda el stock a MercadoLibre ahora y después lo mantiene solo."
+            : $"¿Dejar de sincronizar el stock?\n\n{it.Titulo}\n\nQueda a mano: el sistema no le manda más el stock.");
+        if (!ok) return;
+        await CambiarSincroFila(it, null, prender);
+    }
+
+    /// <summary>Si la publicación está en una campaña, cambiarle el precio le saca el descuento. Se avisa.</summary>
+    private async Task<bool> SeguirAunqueEsteEnPromo(ApiClient.PubV2Fila it, decimal precio)
+    {
+        if (it.PromoPrecio is not > 0) return true;
+        return await JS.InvokeAsync<bool>("confirm",
+            $"Esta publicación está en «{it.PromoNombre}» y hoy se vende a {Plata(it.PromoPrecio.Value)}.\n\n"
+            + $"Si le ponés {Plata(precio)}, MercadoLibre le va a SACAR el descuento y se va a vender a ese precio.\n\n"
+            + "¿Seguimos igual?");
+    }
+
+    /// <summary>OEM (o cualquier precio fijo): lo publica y queda fijo.</summary>
+    private async Task ElegirPrecioFijo(ApiClient.PubV2Fila it, decimal precio, string etiqueta)
+    {
+        if (precioGuardando) return;
+        if (precio == it.Precio)
+        {
+            if (MandaElPorcentaje(it)) await ElegirActual(it);
+            else ToastService.Info($"Ya está en {Plata(precio)}.");
+            return;
+        }
+        if (!await SeguirAunqueEsteEnPromo(it, precio)) return;
+        var aviso = $"¿Publicar {Plata(precio)} ({etiqueta}) en MercadoLibre?\n\nHoy está {Plata(it.Precio)}.\n\nQueda FIJO: el sistema no lo toca.";
+        if (MandaElPorcentaje(it)) aviso += $" Deja de mantener el {it.ObjetivoPct:0}%.";
+        if (!await JS.InvokeAsync<bool>("confirm", aviso)) return;
+
+        precioGuardando = true;
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.PonerPrecioV2Async(it.MeliItemId, precio, true);
+            if (res?.Ok == true) { ToastService.Success(res.Mensaje); await RefrescarFila(it.MeliItemId); }
+            else ToastService.Error(res?.Mensaje ?? err ?? "No se pudo publicar el precio");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { precioGuardando = false; StateHasChanged(); }
+    }
+
+    /// <summary>Dejar fijo el precio de hoy: apaga el sincro de precio (no toca MeLi).</summary>
+    private async Task ElegirActual(ApiClient.PubV2Fila it)
+    {
+        if (!MandaElPorcentaje(it) || precioGuardando) return;   // ya está fijo
+        if (!await JS.InvokeAsync<bool>("confirm",
+                $"¿Dejar FIJO el precio de hoy, {Plata(it.Precio)}?\n\nEl sistema deja de mantener el {it.ObjetivoPct:0}% y no lo toca más.\n(No se cambia nada en MercadoLibre.)"))
+            return;
+        await CambiarSincroFila(it, false, null);
+    }
+
+    /// <summary>Pasar a mantener el objetivo: guarda el % (o 50) y aplica el precio ahora.</summary>
+    private async Task ElegirObjetivo(ApiClient.PubV2Fila it)
+    {
+        if (MandaElPorcentaje(it) || precioGuardando) return;   // ya lo mantiene
+        var obj = it.ObjetivoPct ?? 50m;
+        var aprox = it.PrecioObjetivo is decimal po ? po : it.Precio;
+        if (!await SeguirAunqueEsteEnPromo(it, aprox)) return;
+        if (!await JS.InvokeAsync<bool>("confirm",
+                $"¿Que el sistema mantenga el {obj:0}%?\n\nHoy está {Plata(it.Precio)}. Queda alrededor de {Plata(aprox)}: el número exacto lo calcula ahora con lo que cobra MercadoLibre, y nunca baja del precio OEM.\n\n"
+                + "Desde ahí lo recalcula solo si cambia el costo o lo que cobra MeLi. Se publica en MercadoLibre ahora."))
+            return;
+
+        precioGuardando = true;
+        StateHasChanged();
+        try
+        {
+            var r = await Api.AccionObjetivoAsync(new List<string> { it.MeliItemId }, obj, true);
+            var fila = r?.Detalle.FirstOrDefault();
+            if (r is not null && r.Ok > 0) ToastService.Success("Listo: " + (fila?.Mensaje ?? $"mantiene el {obj:0}%"));
+            else ToastService.Error("No se pudo: " + (fila?.Mensaje ?? "error"));
+            await RefrescarFila(it.MeliItemId);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { precioGuardando = false; StateHasChanged(); }
+    }
+
     private void EmpezarPrecio(ApiClient.PubV2Fila it)
     {
         // 2026-08-31 — Si está en una campaña, el número que muestra el simulador NO es lo que
@@ -2597,10 +2710,10 @@
     /// acciones: no hay una segunda forma de hacer lo mismo que después se desincronice.</summary>
     private async Task CambiarSincroFila(ApiClient.PubV2Fila it, bool? precio, bool? stock)
     {
-        if (!FilaAbierta(it) || sincroEnCurso is not null) return;
+        // 2026-09-22 — ya no hay candado: el que llama pregunta antes (ver ToggleStockFila).
+        if (sincroEnCurso is not null) return;
 
         sincroEnCurso = it.MeliItemId;
-        ArrancarRelojCandado();   // usarlo lo mantiene abierto, para poder tocar los dos seguidos
         StateHasChanged();
         try
         {
@@ -3357,12 +3470,11 @@
     /// <summary>Sólo las activas y las pausadas, y sólo con el candado abierto. Una cerrada o en
     /// revisión no se puede tocar, así que ni se muestra como botón.</summary>
     private bool PuedeCambiarEstado(ApiClient.PubV2Fila it)
-        => FilaAbierta(it) && it.Estado is "active" or "paused";
+        => it.Estado is "active" or "paused";   // 2026-09-22: sin candado; CambiarEstado pregunta antes
 
     private async Task CambiarEstado(ApiClient.PubV2Fila it)
     {
         if (!PuedeCambiarEstado(it) || estadoEnCurso is not null) return;
-        ArrancarRelojCandado();   // usarlo mantiene la fila abierta
 
         var pausar = it.Estado == "active";
         var aviso = pausar

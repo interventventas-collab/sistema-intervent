@@ -5472,7 +5472,8 @@ public class ApiClient
         int PublisFamilia, decimal? PrecioMin, decimal? PrecioMax, bool VariosPrecios,
         bool SyncPrecio, bool SyncStock, decimal? ObjetivoPct, string? Cuenta,
         string? SkuAnterior,
-        decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null);
+        decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null,
+        decimal? PrecioOem = null, decimal? PrecioObjetivo = null);
     public record PubV2Page(int Total, int Pagina, int PorPagina, List<PubV2Fila> Items, PubV2Grupo? Grupo = null);
     /// <summary>Se buscó un número: Mla = la publicación buscada (null si era familia),
     /// Modo = sola · familia · producto, y cuántas hay si se amplía.</summary>

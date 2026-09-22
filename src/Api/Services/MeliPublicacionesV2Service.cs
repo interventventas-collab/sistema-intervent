@@ -29,7 +29,13 @@ public class MeliPublicacionesV2Service
     /// $99 sobre $641.300). Avisar por eso es ruido y hace que se ignoren los avisos que importan.</summary>
     private const decimal TOLERANCIA_PRECIO = 0.01m;
 
-    public MeliPublicacionesV2Service(AppDbContext db) => _db = db;
+    private readonly MeliPricePushService _pricePush;
+
+    public MeliPublicacionesV2Service(AppDbContext db, MeliPricePushService pricePush)
+    {
+        _db = db;
+        _pricePush = pricePush;
+    }
 
     /// <summary>La palabra que Osmar escribe en el SKU para marcar "hay que arreglarla".
     /// Configurable en AppSettings (`meli.sku_marca_revisar`); si no está, es PAUSAR.</summary>
@@ -64,7 +70,11 @@ public class MeliPublicacionesV2Service
         // 2026-08-27: el SKU que tenía antes de que la marcaran para revisar (ver MeliItemSyncConfig).
         string? SkuAnterior,
         // 2026-08-31: si está en una campaña de MeLi, lo que el comprador paga DE VERDAD.
-        decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null);
+        decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null,
+        // 2026-09-22: las opciones de precio que se tildan en la fila. PrecioOem = el precio de lista
+        // (el mismo "piso" que usa el motor de precios: OEM del producto completo, o sus piezas).
+        // PrecioObjetivo = ESTIMADO con la comisión guardada; el exacto lo calcula el motor al aplicarlo.
+        decimal? PrecioOem = null, decimal? PrecioObjetivo = null);
 
     public record PageDto(int Total, int Pagina, int PorPagina, List<FilaDto> Items, GrupoDto? Grupo = null);
 
@@ -82,6 +92,21 @@ public class MeliPublicacionesV2Service
         bool EnPromo = false,
         // 2026-09-22: al buscar un número, cuánto ampliar: null (esa sola) · "familia" · "producto".
         string? Ampliar = null);
+
+    /// <summary>2026-09-22 — Precio que dejaría el objetivo, con la comisión que tenemos guardada.
+    /// Es la primera cuenta del motor (MeliPricePushService.CalcularPrecioParaGananciaAsync) sin ir a
+    /// MeLi: sirve para mostrar el número al lado de la opción. Al aplicarlo, el motor lo recalcula
+    /// con lo que MeLi cobra en ese momento (escalón de envío, cargo fijo nuevo).</summary>
+    private static decimal? EstimarPrecioObjetivo(decimal? costo, decimal objetivoPct,
+        decimal? pctComision, decimal? cargoFijo, decimal? envio, bool hayComision)
+    {
+        if (costo is null or <= 0 || !hayComision || objetivoPct <= 0) return null;
+        var pct = (pctComision ?? 0m) / 100m;
+        if (pct >= 0.95m) return null;
+        var netoConIvaNec = costo.Value * (1 + objetivoPct / 100m) * IVA;
+        var p = (netoConIvaNec + (cargoFijo ?? 0m) + (envio ?? 0m)) / (1 - pct);
+        return p > 0 ? Math.Ceiling(p) : null;
+    }
 
     public async Task<PageDto> GetAsync(Filtros f, CancellationToken ct = default)
     {
@@ -474,7 +499,33 @@ public class MeliPublicacionesV2Service
                 variosPrecios,
                 cfg?.SyncPrecio ?? false, cfg?.SyncStock ?? false, cfg?.GananciaObjetivoPct,
                 r.Cuenta, cfg?.SkuAnterior,
-                r.PromoPrecio, r.PromoNombre, r.PromoHasta));
+                r.PromoPrecio, r.PromoNombre, r.PromoHasta,
+                null, EstimarPrecioObjetivo(costo, cfg?.GananciaObjetivoPct ?? 50m,
+                    r.SaleFeePercentageFee, r.SaleFeeFixedFee, r.SaleFeeShippingCost, r.SaleFeeAmount.HasValue)));
+        }
+
+        // 2026-09-22 — Precio OEM de cada fila de la página (lo que usa el motor como piso). Se pide
+        // sólo para la página que se muestra; son unas pocas consultas chicas por fila.
+        if (items.Count > 0)
+        {
+            var mlasPag = items.Select(i => i.MeliItemId).ToList();
+            var entidades = await _db.MeliItems.AsNoTracking()
+                .Where(m => mlasPag.Contains(m.MeliItemId) && m.VariationId == null)
+                .ToListAsync(ct);
+            var oemPor = new Dictionary<string, decimal>();
+            foreach (var e in entidades)
+            {
+                try
+                {
+                    var (precioBase, ok) = await _pricePush.CalcularPrecioBaseAsync(e, ct);
+                    if (ok && precioBase > 0) oemPor[e.MeliItemId] = Math.Round(precioBase, 0);
+                }
+                catch { /* sin precio de lista: la opción no se muestra */ }
+            }
+            // El motor nunca baja del precio de lista: el del objetivo tampoco.
+            items = items.Select(i => oemPor.TryGetValue(i.MeliItemId, out var oem)
+                ? i with { PrecioOem = oem, PrecioObjetivo = i.PrecioObjetivo is decimal po ? Math.Max(po, oem) : null }
+                : i).ToList();
         }
 
         // Filtros que dependen de datos calculados (se aplican sobre la página).
