@@ -257,7 +257,7 @@
     .p2-m2 b { color: #1f2937; font-weight: 600; }
     .p2-m2 .mla { color: #9ca3af; font-size: .65rem; }
     .p2-m2 .sindato { color: #b45309; }
-    .p2-pinfo.v2 .p2-rec { font-size: .7rem; color: #6b7280; margin-top: .1rem; }
+    .p2-pinfo.v2 .p2-rec { display: inline; font-size: inherit; color: #6b7280; margin: 0; }
     .p2-pinfo.v2 .p2-rec b { color: #1f2937; font-weight: 600; }
     .p2-pinfo.v2 .p2-rec .frena, .p2-pinfo.v2 .p2-rec .frena b { color: #b91c1c; }
     .p2-cuentachica { display: block; font-size: .6rem; color: #6b7280; margin-top: .25rem; text-align: center; }
@@ -670,7 +670,13 @@
                             @* 2026-09-22 — en palabras y con letra normal: antes era un renglón de
                                códigos grises en letra de máquina que mareaba. La cuenta pasó a la
                                columna del estado y las cuotas abajo del precio. *@
-                            <span class="p2-m2">SKU <b>@(it.Sku ?? "—")</b> · <span class="@(string.IsNullOrEmpty(it.Envio) || it.Envio == "not_specified" ? "sindato" : "")" title="@TituloEnvio(it)">@EnvioConPalabra(it.Envio)@(it.EnvioGratis ? ", lo pagás vos" : "")</span>@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · <span class="mla">@it.MeliItemId</span></span>
+                            @* 2026-09-22 — (opción 2 de Osmar) el SKU y de qué se arma en el MISMO renglón:
+                               "SKU C1925BL (C2144BL + C7000BL → alcanza para 68)". El paréntesis se toca
+                               para corregir el armado; lo que hay de cada pieza sale al pasar el mouse. *@
+                            <span class="p2-m2">SKU <b>@(it.Sku ?? "—")</b> <span class="p2-rec tocable @(recetaAbierta == it.MeliItemId ? "on" : "")"
+                                  title="Tocá para ver y corregir de qué se compone esta publicación"
+                                  @onclick="() => ToggleReceta(it.MeliItemId)" @onclick:stopPropagation="true">(@RecetaFragment(it))</span></span>
+                            <span class="p2-m2"><span class="@(string.IsNullOrEmpty(it.Envio) || it.Envio == "not_specified" ? "sindato" : "")" title="@TituloEnvio(it)">@EnvioConPalabra(it.Envio)@(it.EnvioGratis ? ", lo pagás vos" : "")</span>@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · <span class="mla">@it.MeliItemId</span></span>
                             @* 2026-08-27 · si el SKU dice la marca de "para revisar", se avisa acá y
                                se ofrece devolverle el SKU verdadero, que el sistema guardó al marcarla. *@
                             @if (!string.IsNullOrEmpty(it.SkuAnterior))
@@ -686,9 +692,6 @@
                             }
                             @* 2026-08-29 · el renglón de la receta se toca y se edita ahí mismo.
                                Era lo último que obligaba a volver a la pantalla vieja. *@
-                            <span class="p2-rec tocable @(recetaAbierta == it.MeliItemId ? "on" : "")"
-                                  title="Tocá para ver y corregir de qué se compone esta publicación"
-                                  @onclick="() => ToggleReceta(it.MeliItemId)" @onclick:stopPropagation="true">@RecetaFragment(it)</span>
                             </span>
                         </span>
 
@@ -2520,21 +2523,27 @@
         if (it.Receta is null || it.Receta.Count == 0)
             return new MarkupString("<span style='color:#b91c1c'>⚠ sin producto del sistema vinculado</span>");
 
-        // 2026-09-22 — en palabras: "Se arma con A (hay 0) + B (hay 39) → alcanza para 0". La pieza
-        // que frena va en rojo; el nombre de cada pieza aparece al pasar el mouse.
+        // 2026-09-22 — va entre paréntesis al lado del SKU (opción 2 de Osmar): sólo las piezas y
+        // para cuántas alcanza. Lo que hay de cada una sale al pasar el mouse; si no alcanza para
+        // ninguna, la pieza que frena va en rojo y dice cuánto hay ("sin stock" o "hay 1").
+        var alcanza = it.Arma ?? 0;
         var partes = it.Receta.Select(c =>
         {
             var cant = c.Cantidad == 1m ? "" : $"{c.Cantidad.ToString("0.##", ar)}× ";
-            var nombre = System.Net.WebUtility.HtmlEncode(c.Nombre ?? "");
-            var txt = $"<span title='{nombre}'>{cant}<b>{System.Net.WebUtility.HtmlEncode(c.Sku ?? "?")}</b> (hay {c.Stock.ToString("N0", ar)})</span>";
-            // Rojo sólo si de verdad no se puede armar ninguna: si alcanza para 68, no es alarma.
-            return c.Frena && it.Receta.Count > 1 && (it.Arma ?? 0) <= 0 ? $"<span class='frena'>{txt}</span>" : txt;
+            var hay = c.Stock <= 0 ? "sin stock" : $"hay {c.Stock.ToString("N0", ar)}";
+            var tip = System.Net.WebUtility.HtmlEncode($"{c.Nombre} · {hay}");
+            var sku = System.Net.WebUtility.HtmlEncode(c.Sku ?? "?");
+            return c.Frena && alcanza <= 0
+                ? $"<span class='frena' title='{tip}'>{cant}<b>{sku}</b> {hay}</span>"
+                : $"<span title='{tip}'>{cant}<b>{sku}</b></span>";
         });
 
         var armado = it.Receta.Count > 1 || (it.Receta.Count == 1 && it.Receta[0].Cantidad != 1m);
-        var cola = armado ? $" → alcanza para <b>{(it.Arma ?? 0).ToString("N0", ar)}</b>" : "";
-
-        return new MarkupString((armado ? "Se arma con " : "Sale de ") + string.Join(" + ", partes) + cola);
+        return new MarkupString(armado
+            ? string.Join(" + ", partes) + $" → alcanza para <b>{alcanza.ToString("N0", ar)}</b>"
+            : alcanza <= 0
+                ? $"<span class='frena'><b>{System.Net.WebUtility.HtmlEncode(it.Receta[0].Sku ?? "?")}</b> sin stock</span>"
+                : $"<span title='{System.Net.WebUtility.HtmlEncode(it.Receta[0].Nombre ?? "")}'><b>{System.Net.WebUtility.HtmlEncode(it.Receta[0].Sku ?? "?")}</b></span>, hay <b>{alcanza.ToString("N0", ar)}</b>");
     }
 
     // ─────────────── 2026-08-27 · CANDADO POR FILA ───────────────
