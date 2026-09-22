@@ -1535,7 +1535,7 @@
         @if (datos is not null && datos.Items.Count > 0)
         {
             <div class="p2-count">
-                <span>En el precio tildá cuál querés (OEM, el actual, el del objetivo o uno a mano) · El tilde abajo del stock lo sincroniza · Tocando Activa/Pausada la cambiás (pregunta antes) · La foto abre todas las fotos.</span>
+                <span>En el precio tildá cuál querés: el OEM, uno a mano, o «Mantener el %» para que el sistema lo sostenga solo · El % grande es lo que te deja hoy de verdad · El tilde abajo del stock lo sincroniza · Tocando Activa/Pausada la cambiás (pregunta antes) · La foto abre todas las fotos.</span>
                 <span>
                     <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
                     <span class="p2-pg">Página @pagina de @TotalPaginas</span>
@@ -2314,7 +2314,7 @@
         try
         {
             var (res, err) = await Api.PonerPrecioV2Async(it.MeliItemId, precio, true);
-            if (res?.Ok == true) { ToastService.Success(res.Mensaje); await RefrescarFila(it.MeliItemId); }
+            if (res?.Ok == true) { ToastService.Success(res.Mensaje); await RefrescarFilaDespuesDePublicar(it.MeliItemId); }
             else ToastService.Error(res?.Mensaje ?? err ?? "No se pudo publicar el precio");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
@@ -2404,7 +2404,7 @@
             if (r is not null && r.Ok > 0) ToastService.Success("Listo: " + (fila?.Mensaje ?? $"mantiene el {obj:0.#}%"));
             else ToastService.Error("No se pudo: " + (fila?.Mensaje ?? "error"));
             pctEscritos.Remove(it.MeliItemId);
-            await RefrescarFila(it.MeliItemId);
+            await RefrescarFilaDespuesDePublicar(it.MeliItemId);
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { precioGuardando = false; StateHasChanged(); }
@@ -2523,7 +2523,7 @@
             {
                 ToastService.Success(res.Mensaje);
                 CancelarPrecio();
-                await Cargar();
+                await RefrescarFilaDespuesDePublicar(it.MeliItemId);   // no recarga todo: no salta el scroll
             }
             else ToastService.Error(res?.Mensaje ?? err ?? "No se pudo publicar el precio");
         }
@@ -2848,6 +2848,18 @@
         }
         catch (Exception ex) { ToastService.Error("No se pudo cambiar el sincro: " + ex.Message); }
         finally { sincroEnCurso = null; }
+    }
+
+    /// <summary>2026-09-22 — Después de publicar un precio, MeLi avisa el cambio un par de segundos
+    /// más tarde y recién ahí queda guardado el precio nuevo: si se refresca una sola vez, la fila
+    /// sigue mostrando el viejo (pasó con el pack Megacol: $120.002 en pantalla, $113.599 en MeLi).</summary>
+    private async Task RefrescarFilaDespuesDePublicar(string mla)
+    {
+        await RefrescarFila(mla);
+        StateHasChanged();
+        await Task.Delay(3000);
+        await RefrescarFila(mla);
+        StateHasChanged();
     }
 
     /// <summary>Vuelve a pedir UNA sola fila y la reemplaza en la lista. Se usa después de mandar
