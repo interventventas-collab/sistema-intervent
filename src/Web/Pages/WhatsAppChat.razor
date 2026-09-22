@@ -688,6 +688,12 @@
                         }
                     </div>
                 }
+                @* 2026-09-22: 💲 listas de precios, al lado del ojito. Sale SIEMPRE (aunque el chat no
+                   tenga cliente vinculado): es para mirar precios mientras chateás y mandar la lista. *@
+                <div class="wa-hdr-clibtns">
+                    <button class="wa-hdr-ojo @(mostrarListasPrecios ? "on" : "")" @onclick="() => mostrarListasPrecios = !mostrarListasPrecios"
+                            title="Listas de precios: verlas acá sin descargar y mandarlas a este chat">💲</button>
+                </div>
                 <div style="flex:1; min-width:0;">
                     @* 2026-08-27: RENGLÓN 1 del encabezado. El nombre tiene un ancho FIJO y se corta con
                        puntitos: así los iconitos caen SIEMPRE en el mismo lugar, no importa si el contacto
@@ -945,6 +951,15 @@
                    barra de Estado / Pasar a / Nota se fueron al PANEL DERECHO. Acá arriba queda una
                    sola fila fina: quién es. Eso solo le devolvió 125 px de alto a la conversación. *@
             </div>
+
+            @* 2026-09-22: LISTAS DE PRECIOS flotante (el 💲 del encabezado). Ver Shared/ListasPreciosFlotante.razor *@
+            @if (mostrarListasPrecios && selectedNumero is not null)
+            {
+                <ListasPreciosFlotante Numero="@selectedNumero" Linea="@selectedLinea"
+                                       NombreDestino="@MostrarNombre(SelectedConv())"
+                                       OnCerrar="@(() => mostrarListasPrecios = false)"
+                                       OnMandada="@(() => LoadMensajes(silent: true))" />
+            }
 
             @* 2026-08-05: FICHA DEL CLIENTE — ventana flotante ARRASTRABLE con datos, saldo, ubicación y últimas facturas *@
             @if (mostrarFichaCliente && SelectedConv()?.ClienteId is int fichaCid)
@@ -6485,6 +6500,7 @@
 
     // 2026-08-05: ficha del cliente desplegable dentro del chat.
     bool mostrarFichaCliente = false;
+    bool mostrarListasPrecios = false;   // 2026-09-22: ventanita 💲 de listas de precios
     bool cargandoFicha = false;
     ApiClient.FichaChatDto? fichaCliente = null;
 
@@ -8499,6 +8515,7 @@
         chatPlantillaName = ""; chatVariables = new();   // 2026-08-05: resetear el selector de plantilla al cambiar de chat
         sugerenciaCliente = null;   // limpiar la del chat anterior mientras carga este
         mostrarFichaCliente = false; fichaCliente = null; facturaAbierta = null;   // 2026-08-05: cerrar la ficha del cliente al cambiar de chat
+        mostrarListasPrecios = false;   // 2026-09-22: si quedara abierta, 🟢 Mandar le mandaría la lista al chat NUEVO sin que lo notes
         LimpiarModoMeli();          // 2026-08-21: la ficha de MercadoLibre era del comprador del chat anterior
         LimpiarModoVenta();         // 2026-08-21: el carrito y las ventas para repetir eran del cliente anterior
         // 2026-08-31: la cotización de alquiler era para el cliente ANTERIOR. Se apaga el modo y se

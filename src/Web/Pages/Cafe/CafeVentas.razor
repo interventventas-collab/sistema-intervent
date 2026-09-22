@@ -1365,6 +1365,15 @@
     <FichaClienteFlotante ClienteId="fcid" OnCerrar="@(() => fichaClienteId = null)" />
 }
 
+@* 2026-09-22: listas de precios flotante (el 💲 al lado del ojito del cliente en Nueva Venta).
+   🟢 Mandar va al chat de WhatsApp del cliente que detectó la venta (waChatConv); si no hay, no aparece. *@
+@if (mostrarListasPrecios && showForm)
+{
+    <ListasPreciosFlotante Numero="@waChatConv?.Numero" Linea="@waChatConv?.Linea"
+                           NombreDestino="@(waChatConv is null ? null : WaChatTitulo())"
+                           OnCerrar="@(() => mostrarListasPrecios = false)" />
+}
+
 @if (showForm)
 {
     @* IMPORTANTE: el modal-overlay NO cierra el form al clickear fuera.
@@ -1781,6 +1790,11 @@
                                     <button class="btn btn-secondary" type="button" @onclick="() => AbrirFichaCliente(formClienteId)"
                                             title="Ver ficha del cliente: lo que debe y sus últimos comprobantes"
                                             style="padding: 0 0.55rem; font-size: 0.95rem;">👁️</button>
+                                    @* 2026-09-22: 💲 listas de precios — mirar que los precios coincidan mientras cargás la venta.
+                                       tabindex -1: no se mete en el recorrido del Tab entre cliente y producto. *@
+                                    <button class="btn btn-secondary" type="button" tabindex="-1" @onclick="() => mostrarListasPrecios = !mostrarListasPrecios"
+                                            title="Listas de precios: verlas acá sin descargar y mandárselas al cliente"
+                                            style="padding: 0 0.55rem; font-size: 0.95rem;">💲</button>
                                     <button class="btn btn-secondary" type="button" @onclick="() => AbrirEditarClienteVentana(ciSel)"
                                             title="Editar este cliente (abre ventana emergente, no cierra la venta)"
                                             style="padding: 0 0.55rem; font-size: 0.85rem; color: #1d4ed8;">✏️</button>
@@ -5355,6 +5369,7 @@
     private bool showForm, saving, previewLoading;
     // 2026-09-17: cliente cuya ficha flotante (ojito 👁️) está abierta. Tocar el mismo ojito de nuevo la cierra.
     private int? fichaClienteId;
+    private bool mostrarListasPrecios;   // 2026-09-22: ventanita 💲 de listas de precios
     private void AbrirFichaCliente(int clienteId)
         => fichaClienteId = (fichaClienteId == clienteId) ? null : clienteId;
     private bool showConfirmEmision; // doble-check antes de emitir contra ARCA

@@ -1,0 +1,231 @@
+@* 2026-09-22: LISTAS DE PRECIOS en ventana flotante arrastrable, para el chat de WhatsApp y la carga
+   de Nueva Venta. Osmar: "a veces estoy cargando una venta o chateando y me quiero asegurar bien
+   facil que los precios coincidan ... que me aparezcan todas las listas que hayan ... con el ojito
+   para visualizar facil sin descargar y poder enviar tambien".
+   Muestra las MISMAS listas que la solapa "💲 Listas de precios" de "Adjuntar del servidor"
+   (/api/whatsapp/twilio/server-files?tipo=LISTA) y el MISMO PDF que se manda por el chat.
+   🟢 Mandar solo aparece si hay un chat de WhatsApp adonde mandarla (Numero). *@
+@implements IAsyncDisposable
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<div class="lpf @(abierta != null ? "lpf-ancha" : "")" id="lpf-float">
+    <div class="lpf-top" id="lpf-float-head" title="Arrastrá de acá para mover la ventana a donde quieras">
+        <div class="lpf-tit">
+            <span class="lpf-mover">✥</span>
+            💲 <b>Listas de precios</b>
+            @if (PuedeMandar)
+            {
+                <span class="lpf-para">· para mandar a @(string.IsNullOrWhiteSpace(NombreDestino) ? "este chat" : NombreDestino)</span>
+            }
+        </div>
+        <button class="lpf-x" @onclick="Cerrar" title="Cerrar">×</button>
+    </div>
+
+    <div class="lpf-cols">
+        <div class="lpf-izq">
+            <input class="lpf-buscar" placeholder="🔍 Buscar lista o cliente…" value="@buscar" @oninput="OnBuscar" />
+            <div class="lpf-lista">
+                @if (cargando)
+                {
+                    <div class="lpf-vacio">Cargando…</div>
+                }
+                else if (listas.Count == 0)
+                {
+                    <div class="lpf-vacio">@(string.IsNullOrWhiteSpace(buscar) ? "No hay listas de precios cargadas." : "Ninguna lista con ese nombre.")</div>
+                }
+                else
+                {
+                    @foreach (var l in listas)
+                    {
+                        <button type="button" class="lpf-item @(abierta?.Id == l.Id ? "sel" : "")" @onclick="() => Abrir(l)"
+                                title="@(abierta?.Id == l.Id ? "Tocá de nuevo para cerrarla" : "Tocá para verla acá al lado")">
+                            <div class="lpf-item-nom">@l.Label</div>
+                            <div class="lpf-item-sub">@l.SubLabel@(string.IsNullOrWhiteSpace(l.Info) ? "" : $" · {l.Info}") · @l.Fecha.ToArTime().ToString("dd/MM/yyyy")</div>
+                        </button>
+                    }
+                }
+            </div>
+        </div>
+
+        @if (abierta is not null)
+        {
+            <div class="lpf-visor">
+                <div class="lpf-visor-top">
+                    <span class="lpf-visor-tit">@abierta.Label@(string.IsNullOrWhiteSpace(abierta.Info) ? "" : $" · {abierta.Info}")</span>
+                    <button type="button" class="lpf-btn" @onclick="Grande" disabled="@(pdfUrl is null)"
+                            title="Abrirla a pantalla completa en otra pestaña">🔍 Grande</button>
+                    @if (PuedeMandar)
+                    {
+                        <button type="button" class="lpf-btn lpf-verde" @onclick="Mandar" disabled="@(mandando || pdfUrl is null)"
+                                title="Mandarle esta lista por WhatsApp a @(NombreDestino ?? "este chat")">
+                            @(mandando ? "⏳ Mandando…" : "🟢 Mandar")
+                        </button>
+                    }
+                    <button type="button" class="lpf-visor-x" @onclick="CerrarLista" title="Cerrar la lista">×</button>
+                </div>
+                @if (pdfCargando)
+                {
+                    <div class="lpf-visor-msg">⏳ Armando la lista…</div>
+                }
+                else if (pdfUrl is null)
+                {
+                    <div class="lpf-visor-msg">No se pudo abrir esta lista.</div>
+                }
+                else
+                {
+                    <iframe class="lpf-frame" src="@(pdfUrl)#toolbar=0&navpanes=0&view=FitH" title="Lista @abierta.Label"></iframe>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .lpf { position: fixed; right: 1.2rem; top: 92px; width: 380px; max-width: 94vw; max-height: 84vh; display: flex; flex-direction: column; z-index: 9700;
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 16px 46px rgba(0,0,0,0.34); overflow: hidden; animation: lpfIn .16s ease; }
+    .lpf-ancha { width: 1100px; }
+    @@keyframes lpfIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+    .lpf-top { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.85rem; border-bottom: 1px solid #e5e7eb; cursor: move; touch-action: none; flex-shrink: 0; }
+    .lpf-tit { font-size: 0.98rem; color: #111827; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+    .lpf-mover { opacity: 0.6; }
+    .lpf-para { font-size: 0.8rem; color: #6b7280; }
+    .lpf-x { background: none; border: none; font-size: 1.4rem; line-height: 1; color: #9ca3af; cursor: pointer; padding: 0 0.2rem; }
+    .lpf-x:hover { color: #ef4444; }
+    .lpf-cols { display: flex; gap: 0.6rem; padding: 0.6rem 0.75rem 0.75rem; min-height: 0; flex: 1; }
+    .lpf-izq { flex: 0 0 340px; max-width: 100%; display: flex; flex-direction: column; min-height: 0; }
+    .lpf-buscar { width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 0.86rem; margin-bottom: 0.4rem; }
+    .lpf-lista { overflow-y: auto; max-height: 66vh; display: flex; flex-direction: column; }
+    .lpf-vacio { color: #9ca3af; font-size: 0.85rem; padding: 0.5rem 0.2rem; }
+    .lpf-item { display: block; width: 100%; text-align: left; font-family: inherit; background: none; border: none; border-bottom: 1px solid #f1f5f9; padding: 0.5rem 0.55rem; cursor: pointer; color: #111827; }
+    .lpf-item:hover { background: #f9fafb; }
+    .lpf-item.sel { background: #eef2ff; box-shadow: 3px 0 0 #6366f1 inset; }
+    .lpf-item-nom { font-weight: 600; font-size: 0.88rem; }
+    .lpf-item-sub { font-size: 0.75rem; color: #6b7280; margin-top: 0.1rem; }
+    .lpf-visor { flex: 1 1 auto; min-width: 360px; display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; background: #f9fafb; }
+    .lpf-visor-top { display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.45rem; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+    .lpf-visor-tit { flex: 1; font-size: 0.76rem; color: #6b7280; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lpf-btn { display: inline-flex; align-items: center; gap: 0.2rem; background: #fff; border: 1px solid #e5e7eb; color: #374151; border-radius: 7px; padding: 0.2rem 0.45rem; font-size: 0.74rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .lpf-btn:hover:not(:disabled) { background: #eef2ff; border-color: #c7d2fe; }
+    .lpf-btn:disabled { opacity: 0.6; cursor: wait; }
+    .lpf-verde { border-color: #86efac; color: #15803d; }
+    .lpf-visor-x { background: none; border: none; font-size: 1.2rem; line-height: 1; color: #9ca3af; cursor: pointer; padding: 0 0.15rem; }
+    .lpf-visor-x:hover { color: #ef4444; }
+    .lpf-visor-msg { padding: 1.2rem; text-align: center; color: #6b7280; font-size: 0.88rem; }
+    .lpf-frame { width: 100%; height: 66vh; min-height: 300px; border: none; display: block; background: #fff; }
+</style>
+
+@code {
+    /// <summary>Chat adonde se manda la lista con 🟢 Mandar. Si es null no aparece el botón.</summary>
+    [Parameter] public string? Numero { get; set; }
+    [Parameter] public string? Linea { get; set; }
+    [Parameter] public string? NombreDestino { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+    /// <summary>Después de mandar una lista (el chat lo usa para refrescar la charla).</summary>
+    [Parameter] public EventCallback OnMandada { get; set; }
+
+    List<ApiClient.TwServerFileDto> listas = new();
+    bool cargando = true;
+    string buscar = "";
+    ApiClient.TwServerFileDto? abierta;
+    string? pdfUrl;
+    bool pdfCargando;
+    bool mandando;
+    bool engancharArrastre = true;
+    System.Threading.Timer? buscarTimer;
+
+    // Instagram no manda PDFs por acá: el botón solo sale para chats de WhatsApp.
+    bool PuedeMandar => !string.IsNullOrWhiteSpace(Numero) && !Numero.StartsWith("ig:");
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!engancharArrastre) return;
+        engancharArrastre = false;
+        try { await JS.InvokeVoidAsync("waDraggable.attach", "lpf-float-head", "lpf-float"); }
+        catch { /* si el JS no cargó, la ventana igual se ve, solo que no se mueve */ }
+    }
+
+    async Task Cargar()
+    {
+        cargando = true;
+        var q = buscar;
+        var r = await Api.GetTwServerFilesAsync("LISTA", string.IsNullOrWhiteSpace(q) ? null : q.Trim());
+        if (q != buscar) return;   // mientras contestaba siguió escribiendo: vale la búsqueda nueva
+        listas = r;
+        cargando = false;
+    }
+
+    void OnBuscar(ChangeEventArgs e)
+    {
+        buscar = e.Value?.ToString() ?? "";
+        buscarTimer?.Dispose();
+        buscarTimer = new System.Threading.Timer(async _ =>
+            await InvokeAsync(async () => { await Cargar(); StateHasChanged(); }),
+            null, 250, System.Threading.Timeout.Infinite);
+    }
+
+    async Task Abrir(ApiClient.TwServerFileDto l)
+    {
+        if (abierta?.Id == l.Id) { await CerrarLista(); return; }
+        await SoltarPdf();
+        abierta = l;
+        pdfCargando = true;
+        StateHasChanged();
+        var url = await JS.InvokeAsync<string?>("listaVisor.abrir", $"/api/cafe/listas-custom/{l.Id}/pdf");
+        // Si mientras se armaba tocaste OTRA lista, esta ya no sirve.
+        if (abierta?.Id != l.Id) { await JS.InvokeVoidAsync("listaVisor.soltar", url); return; }
+        pdfUrl = url;
+        pdfCargando = false;
+    }
+
+    async Task CerrarLista()
+    {
+        abierta = null;
+        await SoltarPdf();
+    }
+
+    async Task SoltarPdf()
+    {
+        if (pdfUrl is null) return;
+        var u = pdfUrl;
+        pdfUrl = null;
+        try { await JS.InvokeVoidAsync("listaVisor.soltar", u); } catch { }
+    }
+
+    async Task Grande()
+    {
+        try { await JS.InvokeVoidAsync("listaVisor.grande", pdfUrl); } catch { }
+    }
+
+    async Task Mandar()
+    {
+        if (abierta is null || !PuedeMandar || mandando) return;
+        var l = abierta;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Mandarle la lista \"{l.Label}\" a {NombreDestino ?? "este chat"} por WhatsApp?"))
+            return;
+        mandando = true;
+        try
+        {
+            var (ok, err) = await Api.SendTwServerFileAsync(Numero!, "LISTA", l.Id, null, Linea);
+            if (ok)
+            {
+                ToastService.Success($"🟢 Le mandé la lista {l.Label}");
+                await OnMandada.InvokeAsync();
+            }
+            else ToastService.Error($"No se pudo mandar: {err}");
+        }
+        catch (Exception ex) { ToastService.Error($"No se pudo mandar: {ex.Message}"); }
+        finally { mandando = false; }
+    }
+
+    Task Cerrar() => OnCerrar.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        buscarTimer?.Dispose();
+        await SoltarPdf();
+    }
+}
