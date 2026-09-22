@@ -105,7 +105,7 @@ public class MeliPublicacionesV2Service
         if (pct >= 0.95m) return null;
         var netoConIvaNec = costo.Value * (1 + objetivoPct / 100m) * IVA;
         var p = (netoConIvaNec + (cargoFijo ?? 0m) + (envio ?? 0m)) / (1 - pct);
-        return p > 0 ? Math.Ceiling(p) : null;
+        return p > 0 ? MeliPricePushService.RedondearA99(p) : null;
     }
 
     public async Task<PageDto> GetAsync(Filtros f, CancellationToken ct = default)
@@ -259,7 +259,8 @@ public class MeliPublicacionesV2Service
             // Ahora solo se marca lo que SÍ es un descuido: mismas condiciones, distinto precio.
             var skusMulti = _db.MeliItems.AsNoTracking()
                 .Where(x => x.VariationId == null && x.Status == "active" && x.Sku != null && x.Price > 0)
-                .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag, Tipo = x.ListingTypeId, Envio = x.FreeShipping })
+                .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag, Tipo = x.ListingTypeId, Envio = x.FreeShipping,
+                                 Log = x.LogisticType == "xd_drop_off" ? "cross_docking" : x.LogisticType })
                 .Where(g => g.Min(x => x.Price) / g.Max(x => x.Price) < 1m - TOLERANCIA_PRECIO)
                 .Select(g => g.Key.Sku);
             q = q.Where(m => m.Sku != null && skusMulti.Contains(m.Sku));
@@ -381,11 +382,12 @@ public class MeliPublicacionesV2Service
         var porCondicion = (await _db.MeliItems.AsNoTracking()
             .Where(x => x.VariationId == null && x.Status == "active" && x.Sku != null && x.Price > 0
                         && skus.Contains(x.Sku))
-            .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag, Tipo = x.ListingTypeId, Envio = x.FreeShipping })
-            .Select(g => new { g.Key.Sku, g.Key.Cuotas, g.Key.Tipo, g.Key.Envio,
+            .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag, Tipo = x.ListingTypeId, Envio = x.FreeShipping,
+                                 Log = x.LogisticType == "xd_drop_off" ? "cross_docking" : x.LogisticType })
+            .Select(g => new { g.Key.Sku, g.Key.Cuotas, g.Key.Tipo, g.Key.Envio, g.Key.Log,
                                Cant = g.Count(), Min = g.Min(x => x.Price), Max = g.Max(x => x.Price) })
             .ToListAsync(ct))
-            .ToDictionary(g => (g.Sku, g.Cuotas ?? "", g.Tipo ?? "", g.Envio), g => (g.Cant, g.Min, g.Max));
+            .ToDictionary(g => (g.Sku, g.Cuotas ?? "", g.Tipo ?? "", g.Envio, g.Log ?? ""), g => (g.Cant, g.Min, g.Max));
 
         // ── 5) Armar cada fila ──
         var items = new List<FilaDto>(pageRows.Count);
@@ -481,7 +483,11 @@ public class MeliPublicacionesV2Service
             // Ojo: la alarma mira SOLO a las hermanas que venden en las MISMAS condiciones
             // (mismas cuotas, mismo tipo y mismo envío). Además hay una tolerancia: por menos
             // de 1% de diferencia no vale la pena molestar — medido, eran 39 avisos de $99.
-            porCondicion.TryGetValue((r.Sku ?? "", r.InstallmentTag ?? "", r.ListingTypeId ?? "", r.FreeShipping), out var cond);
+            // 2026-09-22 — también el TIPO DE ENVÍO (Full / Colecta / Flex): una Full y una Colecta del
+            // mismo producto pagan distinto envío y pueden tener distinto %; que valgan distinto no es
+            // un descuido (caso real: cajas Megacol Colecta $44.199 contra la Full $39.985).
+            var logR = r.LogisticType == "xd_drop_off" ? "cross_docking" : r.LogisticType;
+            porCondicion.TryGetValue((r.Sku ?? "", r.InstallmentTag ?? "", r.ListingTypeId ?? "", r.FreeShipping, logR ?? ""), out var cond);
             var variosPrecios = cond.Cant > 1 && cond.Max > 0
                                 && (cond.Max - cond.Min) / cond.Max >= TOLERANCIA_PRECIO;
 
@@ -544,7 +550,8 @@ public class MeliPublicacionesV2Service
         // son las mismas (ver el comentario largo en GetAsync).
         var skusMulti = _db.MeliItems.AsNoTracking()
             .Where(x => x.VariationId == null && x.Status == "active" && x.Sku != null && x.Price > 0)
-            .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag, Tipo = x.ListingTypeId, Envio = x.FreeShipping })
+            .GroupBy(x => new { Sku = x.Sku!, Cuotas = x.InstallmentTag, Tipo = x.ListingTypeId, Envio = x.FreeShipping,
+                                 Log = x.LogisticType == "xd_drop_off" ? "cross_docking" : x.LogisticType })
             .Where(g => g.Min(x => x.Price) / g.Max(x => x.Price) < 1m - TOLERANCIA_PRECIO)
             .Select(g => g.Key.Sku);
 

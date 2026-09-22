@@ -237,6 +237,8 @@
     .p2-po.sel .pctin { border-color: #1d4f80; color: #1d4f80; font-weight: 700; }
     .p2-pinfo2 { font-size: .6rem; color: #6b7280; padding: 1px 4px 0 22px; display: block; }
     .p2-pinfo2.mal { color: #b45309; font-weight: 700; }
+    .p2-po .venta { grid-column: 2 / 5; font-size: .95rem; font-weight: 800; color: #111827; }
+    .p2-po .venta small { font-size: .58rem; font-weight: 400; color: #1d4f80; margin-left: .35rem; }
     .p2-po .nota { grid-column: 2 / 5; font-size: .58rem; color: #6b7280; font-weight: 400; margin-top: -1px; }
     .p2-po.sel .nota { color: #1d4f80; font-weight: 400; }
     .p2-po.nodisp { cursor: default; opacity: .55; }
@@ -817,15 +819,16 @@
                                     <span class="pp @ClasePct(real, objRef)" style="@(it.ComisionVieja ? "opacity:.55;" : "")">@(real is decimal rr ? rr.ToString("0.#", ar) + "%" : "—")</span>
                                     @if (abajo)
                                     {
+                                        <span class="venta">@Plata(it.Precio)<small>se vende a esto</small></span>
                                         <span class="nota" style="color:#b91c1c;font-weight:700;">pediste @objRef.ToString("0.#", ar)% · <u @onclick="() => ElegirObjetivo(it, true)" @onclick:stopPropagation="true" style="cursor:pointer;">volver a aplicar ahora</u></span>
                                     }
                                     else if (porPiso)
                                     {
-                                        <span class="nota">@Plata(it.Precio) · no baja del OEM, por eso deja más</span>
+                                        <span class="venta">@Plata(it.Precio)<small>se vende a esto · no baja del OEM, por eso deja más</small></span>
                                     }
                                     else
                                     {
-                                        <span class="nota">@Plata(it.Precio) · lo mantiene todos los días</span>
+                                        <span class="venta">@Plata(it.Precio)<small>se vende a esto · lo mantiene todos los días</small></span>
                                     }
                                 }
                                 else
@@ -2364,8 +2367,10 @@
         var p = (it.ComisionPorcentaje ?? 0m) / 100m;
         if (p >= 0.95m) return null;
         var precio = (it.Costo.Value * (1 + pct / 100m) * 1.21m + (it.ComisionFija ?? 0m) + (it.ComisionEnvio ?? 0m)) / (1 - p);
-        precio = Math.Ceiling(precio);
-        return it.PrecioOem is decimal oem && oem > precio ? oem : precio;
+        if (it.PrecioOem is decimal oem && oem >= precio) return oem;   // el piso OEM va tal cual
+        // Mismo redondeo que el motor: sube hasta terminar en 99 ($44.175,94 → $44.199).
+        var r99 = Math.Floor(precio / 100m) * 100m + 99m;
+        return r99 >= precio ? r99 : r99 + 100m;
     }
 
     private static string ClasePct(decimal? m, decimal objetivo)

@@ -73,10 +73,14 @@ public class MeliPricePushService
         {
             var precioObjetivo = await CalcularPrecioParaGananciaAsync(item, objetivoPct, ct);
             // El objetivo solo puede SUBIR desde el piso sugerido; nunca lo baja.
-            var elegido = (precioObjetivo.HasValue && precioObjetivo.Value > precioBase)
-                ? precioObjetivo.Value
-                : precioBase;
-            precioFinal = AplicarRedondeoUp(elegido, cfg.AjusteRedondeo);
+            var ganaObjetivo = precioObjetivo.HasValue && precioObjetivo.Value > precioBase;
+            var elegido = ganaObjetivo ? precioObjetivo!.Value : precioBase;
+            // 2026-09-22 — Osmar: el precio que calcula el sistema quedaba con centavos ($44.175,94).
+            // Si la publicación no tiene un redondeo propio, el del objetivo sube hasta terminar en 99
+            // (nunca baja: el % queda igual o un poco más). El piso OEM se publica tal cual.
+            var modoRedondeo = cfg.AjusteRedondeo;
+            if (string.IsNullOrEmpty(modoRedondeo) && ganaObjetivo) modoRedondeo = "99";
+            precioFinal = AplicarRedondeoUp(elegido, modoRedondeo);
         }
         else
         {
@@ -642,6 +646,10 @@ public class MeliPricePushService
             _ => valor
         };
     }
+
+    /// <summary>Sube hasta la próxima centena terminada en 99 ($44.175,94 → $44.199). Público para
+    /// que las pantallas muestren el mismo número que después se publica.</summary>
+    public static decimal RedondearA99(decimal valor) => valor <= 0 ? valor : RoundUpToEnding(valor, 100m, 99m);
 
     private static decimal RoundUpToEnding(decimal valor, decimal unidad, decimal ending)
     {
