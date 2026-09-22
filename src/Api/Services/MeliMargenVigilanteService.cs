@@ -89,6 +89,9 @@ public class MeliMargenVigilanteService : BackgroundService
     // KILL SWITCH: AppSettings["meli.mantener_objetivo.enabled"] = "true" para prenderlo (default apagado).
     private const decimal TOLERANCIA_PUNTOS = 2m;
     private const int MAX_CORRECCIONES_POR_NOCHE = 300;
+    // Si para volver al % habría que subir más de esto, casi siempre es un dato mal cargado (costo,
+    // envío): no se toca sola y se avisa para revisar. Medido el 22/09: 2 de 73 (una caja +73%).
+    private const decimal MAX_SUBA_AUTOMATICA = 0.30m;
 
     private static async Task<bool> MantenerPrendidoAsync(AppDbContext db, CancellationToken ct)
     {
@@ -113,7 +116,8 @@ public class MeliMargenVigilanteService : BackgroundService
             .Select(m => new
             {
                 m.Id, m.MeliItemId, m.MeliAccountId, m.Sku, m.Title, m.Price,
-                m.SaleFeeAmount, m.SaleFeeShippingCost, m.CafeProductoId, m.PromoPrecio
+                m.SaleFeeAmount, m.SaleFeeShippingCost, m.CafeProductoId, m.PromoPrecio,
+                m.SaleFeePercentageFee, m.SaleFeeFixedFee
             })
             .ToListAsync(ct);
 
@@ -159,8 +163,17 @@ public class MeliMargenVigilanteService : BackgroundService
             // Tiene "Mantener el N%" y se corrió para abajo: se corrige (salvo promoción).
             if (conSincro.Contains(m.MeliItemId) && margen < piso - TOLERANCIA_PUNTOS && m.PromoPrecio is not > 0)
             {
-                aCorregir.Add((m.Id, m.MeliItemId, m.MeliAccountId, m.Sku, m.Title, m.Price, margen, piso, costo));
-                continue;
+                // Estimación rápida con la comisión guardada, sólo para el freno de la suba.
+                var pct = (m.SaleFeePercentageFee ?? 0m) / 100m;
+                var estimado = pct < 0.95m
+                    ? (costo * (1 + piso / 100m) * IVA + (m.SaleFeeFixedFee ?? 0m) + (m.SaleFeeShippingCost ?? 0m)) / (1 - pct)
+                    : decimal.MaxValue;
+                if (estimado <= m.Price * (1 + MAX_SUBA_AUTOMATICA))
+                {
+                    aCorregir.Add((m.Id, m.MeliItemId, m.MeliAccountId, m.Sku, m.Title, m.Price, margen, piso, costo));
+                    continue;
+                }
+                // Sube demasiado: cae al aviso de siempre (abajo), con la aclaración.
             }
             if (margen >= piso) continue;   // está bien, no molestamos
 
