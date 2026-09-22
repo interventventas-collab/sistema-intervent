@@ -41,6 +41,21 @@
     .p2-chip.on { background: #4f46e5; border-color: #4f46e5; color: #fff; font-weight: 600; }
     .p2-chip.nue { background: #e5efe8; border-color: #1f6b45; color: #1f6b45; font-weight: 600; }
     .p2-chip.nue.on { background: #1f6b45; color: #fff; }
+    /* 2026-09-22 · los filtros de "problemas" van en un solo botón que despliega la lista */
+    .p2-fmenu { position: relative; }
+    .p2-fmenu-fondo { position: fixed; inset: 0; z-index: 40; }
+    .p2-fmenu-lista { position: absolute; top: calc(100% + 4px); left: 0; z-index: 41; background: #fff;
+                      border: 1px solid #d1d5db; border-radius: .5rem; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+                      padding: .35rem 0; min-width: 270px; }
+    .p2-fmenu-lista .grp { font-size: .6rem; letter-spacing: .09em; text-transform: uppercase; color: #9ca3af;
+                           font-weight: 700; padding: .5rem .85rem .2rem; }
+    .p2-fmenu-lista .opc { font-size: .8rem; padding: .32rem .85rem; cursor: pointer; display: flex; gap: .45rem; color: #1f2937; }
+    .p2-fmenu-lista .opc:hover { background: #f3f4f6; }
+    .p2-fmenu-lista .opc .tic { width: 1rem; color: #1f6b45; font-weight: 700; }
+    .p2-fmenu-lista .opc.on { font-weight: 600; }
+    .p2-ampliar { font-size: .78rem; color: #4b5563; margin: .1rem 0 .4rem; }
+    .p2-ampliar a { color: #1d4f80; cursor: pointer; text-decoration: underline; }
+    .p2-ampliar b { color: #111827; }
     .p2-lbl { font-size: .62rem; letter-spacing: .09em; text-transform: uppercase; color: #9ca3af; font-weight: 700; }
 
     .p2-count { display: flex; justify-content: space-between; align-items: center; font-size: .75rem;
@@ -445,6 +460,14 @@
                         @onclick="TraerDeMeli">
                     @(trayendoDeMeli ? (traerProgreso ?? "⏳ Trayendo…") : TextoTraer)
                 </button>
+                @if (!trayendoDeMeli && FamiliaDeLaBuscada is { } famB)
+                {
+                    <button class="p2-btn" style="background:#fff;color:#1d4f80;border-color:#1d4f80;"
+                            title="Trae de MercadoLibre todas las publicaciones de la familia @famB"
+                            @onclick="() => TraerFamilia(famB)">
+                        ⬇ Traer toda la familia
+                    </button>
+                }
             }
         </div>
 
@@ -462,23 +485,77 @@
                 }
             }
 
-            <span class="p2-chip nue @(fNoLlegan == 50 ? "on" : "")" @onclick="() => SetNoLlegan(50)" style="border-width:2px;">⚠ No llegan al 50%</span>
-            <span class="p2-chip nue @(fNoLlegan == 30 ? "on" : "")" @onclick="() => SetNoLlegan(30)">…al 30%</span>
-            <span class="p2-chip nue @(fNoLlegan == 70 ? "on" : "")" @onclick="() => SetNoLlegan(70)">…al 70%</span>
-            <span class="p2-chip nue @(fComision == 30 ? "on" : "")" @onclick="() => SetComision(30)">MeLi se lleva más de 30%</span>
-            <span class="p2-chip nue @(fComision == 40 ? "on" : "")" @onclick="() => SetComision(40)">…más de 40%</span>
-            <span class="p2-chip nue @(fVariosPrecios ? "on" : "")" @onclick="ToggleVarios">⚠ Hermanas iguales a distinto precio</span>
-            <span class="p2-chip nue @(fPrecioAMano ? "on" : "")" @onclick="TogglePrecioMano">Precio a mano</span>
-            <span class="p2-chip nue @(fSinCosto ? "on" : "")" @onclick="ToggleSinCosto">Sin costo cargado</span>
-            <span class="p2-chip nue @(fComisionVieja ? "on" : "")" @onclick="ToggleComisionVieja">⚠ Con datos viejos</span>
-            <span class="p2-chip nue @(fEnPromo ? "on" : "")" @onclick="ToggleEnPromo">🏷️ En promoción</span>
-            <span class="p2-chip nue @(fCuotas == "12x_campaign" ? "on" : "")" @onclick='() => SetCuotas("12x_campaign")'>Cuotas: 12x</span>
-            <span class="p2-chip nue @(fCuotas == "sin" ? "on" : "")" @onclick='() => SetCuotas("sin")'>Sin cuotas</span>
+            @* 2026-09-22 — Osmar: "que estén todas en un desplegable porque marean". Quedan a la
+               vista solo estado y cuenta; el resto va en un botón. Si hay alguno puesto, el botón
+               lo dice (para que no quede un filtro escondido achicando la lista sin darse cuenta). *@
+            <span class="p2-fmenu">
+                <span class="p2-chip nue @(FiltrosMenuActivos.Count > 0 ? "on" : "")" @onclick="() => menuFiltros = !menuFiltros">
+                    @(FiltrosMenuActivos.Count > 0 ? "Filtro: " + string.Join(" · ", FiltrosMenuActivos) : "Más filtros") ▾
+                </span>
+                @if (menuFiltros)
+                {
+                    <div class="p2-fmenu-fondo" @onclick="() => menuFiltros = false"></div>
+                    <div class="p2-fmenu-lista">
+                        <div class="grp">Margen</div>
+                        <div class="opc @(fNoLlegan == 50 ? "on" : "")" @onclick="() => ElegirFiltro(() => SetNoLlegan(50))"><span class="tic">@(fNoLlegan == 50 ? "✓" : "")</span>No llegan al 50%</div>
+                        <div class="opc @(fNoLlegan == 30 ? "on" : "")" @onclick="() => ElegirFiltro(() => SetNoLlegan(30))"><span class="tic">@(fNoLlegan == 30 ? "✓" : "")</span>No llegan al 30%</div>
+                        <div class="opc @(fNoLlegan == 70 ? "on" : "")" @onclick="() => ElegirFiltro(() => SetNoLlegan(70))"><span class="tic">@(fNoLlegan == 70 ? "✓" : "")</span>No llegan al 70%</div>
+
+                        <div class="grp">Comisión de MeLi</div>
+                        <div class="opc @(fComision == 30 ? "on" : "")" @onclick="() => ElegirFiltro(() => SetComision(30))"><span class="tic">@(fComision == 30 ? "✓" : "")</span>MeLi se lleva más de 30%</div>
+                        <div class="opc @(fComision == 40 ? "on" : "")" @onclick="() => ElegirFiltro(() => SetComision(40))"><span class="tic">@(fComision == 40 ? "✓" : "")</span>MeLi se lleva más de 40%</div>
+
+                        <div class="grp">Precios</div>
+                        <div class="opc @(fVariosPrecios ? "on" : "")" @onclick="() => ElegirFiltro(ToggleVarios)"><span class="tic">@(fVariosPrecios ? "✓" : "")</span>Hermanas iguales a distinto precio</div>
+                        <div class="opc @(fPrecioAMano ? "on" : "")" @onclick="() => ElegirFiltro(TogglePrecioMano)"><span class="tic">@(fPrecioAMano ? "✓" : "")</span>Precio a mano</div>
+
+                        <div class="grp">Datos</div>
+                        <div class="opc @(fSinCosto ? "on" : "")" @onclick="() => ElegirFiltro(ToggleSinCosto)"><span class="tic">@(fSinCosto ? "✓" : "")</span>Sin costo cargado</div>
+                        <div class="opc @(fComisionVieja ? "on" : "")" @onclick="() => ElegirFiltro(ToggleComisionVieja)"><span class="tic">@(fComisionVieja ? "✓" : "")</span>Con datos viejos</div>
+
+                        <div class="grp">Cuotas y promos</div>
+                        <div class="opc @(fEnPromo ? "on" : "")" @onclick="() => ElegirFiltro(ToggleEnPromo)"><span class="tic">@(fEnPromo ? "✓" : "")</span>En promoción</div>
+                        <div class="opc @(fCuotas == "12x_campaign" ? "on" : "")" @onclick='() => ElegirFiltro(() => SetCuotas("12x_campaign"))'><span class="tic">@(fCuotas == "12x_campaign" ? "✓" : "")</span>Cuotas: 12x</div>
+                        <div class="opc @(fCuotas == "sin" ? "on" : "")" @onclick='() => ElegirFiltro(() => SetCuotas("sin"))'><span class="tic">@(fCuotas == "sin" ? "✓" : "")</span>Sin cuotas</div>
+                    </div>
+                }
+            </span>
             @if (HayFiltros)
             {
                 <span class="p2-chip" style="border-color:#b91c1c;color:#b91c1c;" @onclick="LimpiarFiltros">✕ Limpiar</span>
             }
         </div>
+
+        @* 2026-09-22 — se buscó un número: se muestra lo pedido y se ofrece ampliar. *@
+        @if (datos?.Grupo is { } gr)
+        {
+            <div class="p2-ampliar">
+                @if (gr.Modo == "sola")
+                {
+                    <text>Mostrando solo la publicación <b>@gr.Mla</b></text>
+                }
+                else if (gr.Modo == "familia")
+                {
+                    <text>Mostrando <b>toda la familia</b> (@gr.Familia)</text>
+                }
+                else
+                {
+                    <text>Mostrando <b>todas las del mismo producto</b> (@gr.Producto) — incluye otras publicaciones con el mismo SKU</text>
+                }
+                @if (gr.Mla is not null && gr.Modo != "sola")
+                {
+                    <text> · </text><a @onclick='() => Ampliar(null)'>Ver solo @gr.Mla</a>
+                }
+                @if (gr.Modo != "familia" && gr.Familia > 1)
+                {
+                    <text> · </text><a @onclick='() => Ampliar("familia")'>Ver toda su familia (@gr.Familia)</a>
+                }
+                @if (gr.Modo != "producto" && gr.Producto > gr.Familia)
+                {
+                    <text> · </text><a @onclick='() => Ampliar("producto")'>Ver todas las del mismo producto (@gr.Producto)</a>
+                }
+            </div>
+        }
 
         <div class="p2-count">
             <span>
@@ -1610,7 +1687,7 @@
         try
         {
             datos = await Api.GetPublicacionesV2Async(fTexto, fSku, fEstado, fComision, fCuotas, null,
-                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId, fEnPromo);
+                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId, fEnPromo, AmpliarVigente);
         }
         catch (Exception ex)
         {
@@ -2238,6 +2315,40 @@
         finally { precioGuardando = false; StateHasChanged(); }
     }
 
+    // 2026-09-22 · filtros en un desplegable
+    private bool menuFiltros;
+    private async Task ElegirFiltro(Func<Task> accion) { menuFiltros = false; await accion(); }
+    private List<string> FiltrosMenuActivos
+    {
+        get
+        {
+            var l = new List<string>();
+            if (fNoLlegan.HasValue) l.Add($"No llegan al {fNoLlegan:0}%");
+            if (fComision.HasValue) l.Add($"MeLi más de {fComision:0}%");
+            if (fVariosPrecios) l.Add("Hermanas a distinto precio");
+            if (fPrecioAMano) l.Add("Precio a mano");
+            if (fSinCosto) l.Add("Sin costo");
+            if (fComisionVieja) l.Add("Datos viejos");
+            if (fEnPromo) l.Add("En promoción");
+            if (fCuotas == "12x_campaign") l.Add("Cuotas 12x");
+            if (fCuotas == "sin") l.Add("Sin cuotas");
+            return l;
+        }
+    }
+
+    // 2026-09-22 · buscar un número de publicación trae ESA sola; desde el renglón de arriba se
+    // amplía a la familia o al producto. Lo ampliado vale sólo para el texto con que se amplió:
+    // si se busca otra cosa, vuelve a "esa sola".
+    private string? fAmpliar;
+    private string? fAmpliarTexto;
+    private string? AmpliarVigente => fAmpliarTexto == (fTexto ?? "").Trim() ? fAmpliar : null;
+    private async Task Ampliar(string? modo)
+    {
+        fAmpliar = modo;
+        fAmpliarTexto = (fTexto ?? "").Trim();
+        await BuscarDesdeCero();
+    }
+
     private async Task SetNoLlegan(decimal v) { fNoLlegan = fNoLlegan == v ? null : v; await BuscarDesdeCero(); }
     private async Task SetComision(decimal v) { fComision = fComision == v ? null : v; await BuscarDesdeCero(); }
     private async Task SetCuotas(string v) { fCuotas = fCuotas == v ? "" : v; await BuscarDesdeCero(); }
@@ -2261,7 +2372,7 @@
     {
         fTexto = ""; fSku = ""; fEstado = ""; fComision = null; fCuotas = "";
         fVariosPrecios = false; fPrecioAMano = false; fSinCosto = false; fNoLlegan = null; fComisionVieja = false;
-        fCuentaId = null;
+        fEnPromo = false; fCuentaId = null; fAmpliar = null; fAmpliarTexto = null; menuFiltros = false;
         await BuscarDesdeCero();
     }
 
@@ -2868,8 +2979,26 @@
 
     private string TituloTraer => string.IsNullOrWhiteSpace(fTexto)
         ? "Trae de MercadoLibre las 5.900 publicaciones. Tarda varios minutos."
-        : (EsMla(fTexto) ? "Le pregunta a MercadoLibre cómo está ESTA publicación ahora"
-                         : "Trae de MercadoLibre todas las publicaciones de esta familia");
+        : (MlaDelBuscador is not null ? "Le pregunta a MercadoLibre cómo está ESTA publicación ahora"
+                                      : "Trae de MercadoLibre todas las publicaciones de esta familia");
+
+    /// <summary>2026-09-22 — La publicación que está escrita en el buscador: un MLA, o un número
+    /// suelto que el sistema ya reconoció como publicación (MeLi los muestra con "#" igual que
+    /// a las familias). Null si es un número de familia o todavía no se buscó.</summary>
+    private string? MlaDelBuscador
+    {
+        get
+        {
+            var t = (fTexto ?? "").Trim().TrimStart('#').Trim();
+            if (EsMla(t)) return t.ToUpperInvariant();
+            return EsNumeroDeFamilia(t) && datos?.Grupo?.Mla == "MLA" + t ? datos.Grupo.Mla : null;
+        }
+    }
+
+    /// <summary>La familia de la publicación buscada, para ofrecer traerla entera.</summary>
+    private string? FamiliaDeLaBuscada =>
+        MlaDelBuscador is { } m && datos?.Grupo is { } g && g.Mla == m && !string.IsNullOrEmpty(g.FamiliaId)
+            ? g.FamiliaId : null;
 
     private async Task TraerDeMeli()
     {
@@ -2888,12 +3017,22 @@
         StateHasChanged();
         try
         {
-            if (EsMla(t))
+            var mla = MlaDelBuscador;
+            // Número suelto que el sistema no conoce todavía: puede ser una publicación nueva o
+            // una familia. Primero se prueba como publicación; si MeLi no la tiene, como familia.
+            var probarComoPubli = mla is null && t.Length > 0 && EsNumeroDeFamilia(t) && datos?.Grupo is null;
+            if (mla is not null || probarComoPubli)
             {
-                var (res, error) = await Api.SyncMeliItemByIdAsync(t.ToUpperInvariant());
-                if (res is null) { ToastService.Error(error ?? "No se pudo traer de MercadoLibre."); return; }
-                if (res.TotalSynced > 0)
+                var (res, error) = await Api.SyncMeliItemByIdAsync(mla ?? "MLA" + t);
+                if (res?.TotalSynced > 0)
                     ToastService.Success($"Traída de MercadoLibre: {res.TotalSynced} publicación(es) al día.");
+                else if (probarComoPubli)
+                {
+                    var progressId = await Api.SyncMeliFamilyAsync(t);
+                    if (progressId is null) { ToastService.Error("No se pudo traer de MercadoLibre."); return; }
+                    await SeguirProgresoAsync(progressId, "Familia traída");
+                }
+                else if (res is null) { ToastService.Error(error ?? "No se pudo traer de MercadoLibre."); return; }
                 else
                     ToastService.Error("MercadoLibre no devolvió nada para ese número. Fijate que esté bien escrito.");
             }
@@ -2921,6 +3060,26 @@
             await Cargar();   // la lista tiene que mostrar lo que se acaba de traer
         }
         catch (Exception ex) { ToastService.Error("No se pudo traer de MercadoLibre: " + ex.Message); }
+        finally { trayendoDeMeli = false; traerProgreso = null; }
+    }
+
+    private async Task TraerFamilia(string familiaId)
+    {
+        if (trayendoDeMeli) return;
+        trayendoDeMeli = true;
+        traerProgreso = null;
+        StateHasChanged();
+        try
+        {
+            var progressId = await Api.SyncMeliFamilyAsync(familiaId);
+            if (progressId is null) { ToastService.Error("No se pudo empezar a traer la familia."); return; }
+            await SeguirProgresoAsync(progressId, "Familia traída");
+            // Queda a la vista lo que se trajo: la familia entera.
+            fAmpliar = "familia";
+            fAmpliarTexto = (fTexto ?? "").Trim();
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo traer la familia: " + ex.Message); }
         finally { trayendoDeMeli = false; traerProgreso = null; }
     }
 
@@ -3218,7 +3377,7 @@
             // Va con los MISMOS filtros que la pantalla: lo que ves es lo que baja, todas las
             // páginas de una. Si filtrás "no llegan al 50%", el Excel trae sólo esas.
             var (bytes, error) = await Api.BajarExcelPublicacionesV2Async(fTexto, fSku, fEstado,
-                fComision, fCuotas, null, fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja);
+                fComision, fCuotas, null, fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, AmpliarVigente);
 
             if (bytes is null || bytes.Length == 0)
             {

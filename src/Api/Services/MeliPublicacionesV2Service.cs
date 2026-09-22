@@ -66,7 +66,12 @@ public class MeliPublicacionesV2Service
         // 2026-08-31: si está en una campaña de MeLi, lo que el comprador paga DE VERDAD.
         decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null);
 
-    public record PageDto(int Total, int Pagina, int PorPagina, List<FilaDto> Items);
+    public record PageDto(int Total, int Pagina, int PorPagina, List<FilaDto> Items, GrupoDto? Grupo = null);
+
+    /// <summary>Cuando se buscó un número: qué se está mostrando y cuántas hay si se amplía.
+    /// Mla = la publicación buscada (null si el número era de familia). Modo = sola · familia · producto.
+    /// FamiliaId = su número de familia de MeLi, para poder traerla entera.</summary>
+    public record GrupoDto(string? Mla, string Modo, int Familia, int Producto, string? FamiliaId = null);
 
     public record Filtros(
         string? Texto = null, string? Sku = null, string? Estado = null, int? CuentaId = null,
@@ -74,7 +79,9 @@ public class MeliPublicacionesV2Service
         bool VariosPrecios = false, bool PrecioAMano = false, bool SinSincroPrecio = false,
         bool SinCosto = false, decimal? NoLleganAlPct = null, bool ComisionVieja = false, int Pagina = 1, int PorPagina = 100,
         // 2026-08-31: sólo las que están vendiendo con descuento por una campaña de MeLi.
-        bool EnPromo = false);
+        bool EnPromo = false,
+        // 2026-09-22: al buscar un número, cuánto ampliar: null (esa sola) · "familia" · "producto".
+        string? Ampliar = null);
 
     public async Task<PageDto> GetAsync(Filtros f, CancellationToken ct = default)
     {
@@ -84,6 +91,7 @@ public class MeliPublicacionesV2Service
         // ── 1) Base: una fila por publicación (las variantes se resuelven aparte) ──
         var ahoraUtc = DateTime.UtcNow;
         var q = _db.MeliItems.AsNoTracking().Where(m => m.VariationId == null);
+        GrupoDto? grupo = null;
 
         // Estado: por defecto no mostramos cerradas ni borradas.
         if (string.Equals(f.Estado, "activas", StringComparison.OrdinalIgnoreCase))
@@ -112,20 +120,35 @@ public class MeliPublicacionesV2Service
 
             var abrioGrupo = false;
 
-            if (esMla)
+            // 2026-09-22 — Osmar buscó "2881536286" (así, con "#", MeLi muestra TAMBIÉN el número de
+            // cada publicación, no sólo el de la familia) y le vinieron 16: la familia más todas las
+            // del mismo SKU. Ahora un número de PUBLICACIÓN (con o sin "MLA") trae ESA sola, y la
+            // pantalla ofrece ampliar: f.Ampliar = "familia" (lo mismo que agrupa MeLi) o "producto"
+            // (además las del mismo SKU, que en MeLi son publicaciones aparte). Un número de
+            // FAMILIA trae la familia; "producto" también amplía.
+            string? mlaBuscada = null;
+            if (esMla || esNumeroDeFamilia)
             {
-                // Exacto. Es lo único que puede querer alguien que pega un número de publicación.
-                var mla = t.ToUpperInvariant();
-                q = q.Where(m => m.MeliItemId == mla);
-                abrioGrupo = true;
+                var cand = esMla ? t.ToUpperInvariant() : "MLA" + t;
+                if (await _db.MeliItems.AsNoTracking().AnyAsync(m => m.VariationId == null && m.MeliItemId == cand, ct))
+                    mlaBuscada = cand;
+                else if (esMla)
+                {
+                    // MLA que no tenemos: nada que ampliar.
+                    q = q.Where(m => m.MeliItemId == cand);
+                    abrioGrupo = true;
+                }
             }
-            else if (esNumeroDeFamilia)
+
+            if (!abrioGrupo && (mlaBuscada is not null || esNumeroDeFamilia))
             {
                 var claves = await _db.MeliItems.AsNoTracking()
                     .Where(m => m.VariationId == null
-                                && (m.MeliItemId.Contains(t)
-                                    || (m.FamilyId != null && m.FamilyId.Contains(t))
-                                    || (m.UserProductId != null && m.UserProductId.Contains(t))))
+                                && (mlaBuscada != null
+                                    ? m.MeliItemId == mlaBuscada
+                                    : (m.MeliItemId.Contains(t)
+                                       || (m.FamilyId != null && m.FamilyId.Contains(t))
+                                       || (m.UserProductId != null && m.UserProductId.Contains(t)))))
                     .Select(m => new { m.FamilyId, m.UserProductId, m.Sku })
                     .Take(50).ToListAsync(ct);
 
@@ -143,9 +166,26 @@ public class MeliPublicacionesV2Service
                                                 && !string.Equals(x.Sku, marcaRevisar, StringComparison.OrdinalIgnoreCase))
                         .Select(x => x.Sku!).Distinct().ToList();
 
-                    q = q.Where(m => (m.FamilyId != null && fams.Contains(m.FamilyId))
-                                     || (m.UserProductId != null && ups.Contains(m.UserProductId))
-                                     || (m.Sku != null && sks.Contains(m.Sku)));
+                    var qFamilia = q.Where(m => (m.FamilyId != null && fams.Contains(m.FamilyId))
+                                                || (m.UserProductId != null && ups.Contains(m.UserProductId))
+                                                || (mlaBuscada != null && m.MeliItemId == mlaBuscada));
+                    var qProducto = q.Where(m => (m.FamilyId != null && fams.Contains(m.FamilyId))
+                                                 || (m.UserProductId != null && ups.Contains(m.UserProductId))
+                                                 || (m.Sku != null && sks.Contains(m.Sku))
+                                                 || (mlaBuscada != null && m.MeliItemId == mlaBuscada));
+
+                    var modo = string.Equals(f.Ampliar, "producto", StringComparison.OrdinalIgnoreCase) ? "producto"
+                             : string.Equals(f.Ampliar, "familia", StringComparison.OrdinalIgnoreCase) || mlaBuscada is null ? "familia"
+                             : "sola";
+                    grupo = new GrupoDto(mlaBuscada, modo,
+                        await qFamilia.CountAsync(ct), await qProducto.CountAsync(ct), fams.FirstOrDefault());
+
+                    q = modo switch
+                    {
+                        "producto" => qProducto,
+                        "familia" => qFamilia,
+                        _ => q.Where(m => m.MeliItemId == mlaBuscada),
+                    };
                     abrioGrupo = true;
                 }
             }
@@ -440,7 +480,7 @@ public class MeliPublicacionesV2Service
         // Filtros que dependen de datos calculados (se aplican sobre la página).
         if (f.SinCosto) items = items.Where(i => i.Costo is null or <= 0).ToList();
 
-        return new PageDto(total, pagina, porPagina, items);
+        return new PageDto(total, pagina, porPagina, items, grupo);
     }
 
     /// <summary>Números para los chips de arriba: cuántas caen en cada filtro. Una sola pasada.</summary>

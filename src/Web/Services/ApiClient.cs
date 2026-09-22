@@ -5473,13 +5473,16 @@ public class ApiClient
         bool SyncPrecio, bool SyncStock, decimal? ObjetivoPct, string? Cuenta,
         string? SkuAnterior,
         decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null);
-    public record PubV2Page(int Total, int Pagina, int PorPagina, List<PubV2Fila> Items);
+    public record PubV2Page(int Total, int Pagina, int PorPagina, List<PubV2Fila> Items, PubV2Grupo? Grupo = null);
+    /// <summary>Se buscó un número: Mla = la publicación buscada (null si era familia),
+    /// Modo = sola · familia · producto, y cuántas hay si se amplía.</summary>
+    public record PubV2Grupo(string? Mla, string Modo, int Familia, int Producto, string? FamiliaId = null);
 
     public async Task<PubV2Page?> GetPublicacionesV2Async(string? texto = null, string? sku = null,
         string? estado = null, decimal? comisionMinPct = null, string? cuotas = null, string? tipo = null,
         bool variosPrecios = false, bool precioAMano = false, bool sinCosto = false,
         decimal? noLleganAlPct = null, bool comisionVieja = false, int pagina = 1, int porPagina = 100,
-        int? cuentaId = null, bool enPromo = false)
+        int? cuentaId = null, bool enPromo = false, string? ampliar = null)
     {
         var qs = new List<string>();
         if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
@@ -5497,6 +5500,7 @@ public class ApiClient
         if (noLleganAlPct.HasValue) qs.Add($"noLleganAlPct={noLleganAlPct.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         qs.Add($"pagina={pagina}");
         qs.Add($"porPagina={porPagina}");
+        if (!string.IsNullOrWhiteSpace(ampliar)) qs.Add($"ampliar={ampliar}");
         return await GetAsync<PubV2Page>("/api/meli/v2/publicaciones?" + string.Join("&", qs));
     }
 
@@ -5686,11 +5690,12 @@ public class ApiClient
     public async Task<(byte[]? bytes, string? error)> BajarExcelPublicacionesV2Async(
         string? texto = null, string? sku = null, string? estado = null, decimal? comisionMinPct = null,
         string? cuotas = null, string? tipo = null, bool variosPrecios = false, bool precioAMano = false,
-        bool sinCosto = false, decimal? noLleganAlPct = null, bool comisionVieja = false)
+        bool sinCosto = false, decimal? noLleganAlPct = null, bool comisionVieja = false, string? ampliar = null)
     {
         try
         {
             var qs = new List<string>();
+            if (!string.IsNullOrWhiteSpace(ampliar)) qs.Add($"ampliar={ampliar}");
             if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
             if (!string.IsNullOrWhiteSpace(sku)) qs.Add($"sku={Uri.EscapeDataString(sku)}");
             if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={estado}");
