@@ -133,6 +133,10 @@ window.nvMarcador = (function () {
         // soltar la selección para que se vea el color (la selección azul lo tapa)
         ta.setSelectionRange(e, e);
         document.querySelectorAll('textarea[data-nvm-key="' + ta.dataset.nvmKey + '"]').forEach(dibujar);
+        // 2026-09-22: el lápiz se apaga solo después de cada pintada. Con el lápiz prendido todo lo que
+        // seleccionaba se pintaba y no podía COPIAR un pedazo. Para pintar otro, vuelve a tocar el color.
+        st.modo = null;
+        marcarBotones(ta.dataset.nvmKey);
         return true;
     }
 
