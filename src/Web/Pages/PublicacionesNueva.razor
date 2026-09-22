@@ -68,7 +68,7 @@
        como tiene overflow:hidden por el borde redondeado, las filas de abajo se RECORTABAN
        (se veian 9 de 17 y no aparecian ni bajando). */
     .p2-tbl { background: #fff; border: 1px solid #e3e7e0; border-radius: .6rem; overflow: hidden; flex-shrink: 0; }
-    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 200px 180px 112px 84px 82px;
+    .p2-th, .p2-tr { display: grid; grid-template-columns: 30px minmax(0,1fr) 262px 180px 84px 82px;
                      gap: .6rem; align-items: center; padding: .55rem .65rem; }
     .p2-th { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; font-size: .6rem; text-transform: uppercase;
              letter-spacing: .07em; color: #9ca3af; font-weight: 700; }
@@ -219,7 +219,7 @@
 
     /* 2026-09-22 · el precio se elige tildando: OEM · Actual · Para el N% · Manual */
     .p2-precios { display: flex; flex-direction: column; gap: 1px; }
-    .p2-po { display: grid; grid-template-columns: 14px 64px auto; align-items: center; gap: .3rem;
+    .p2-po { display: grid; grid-template-columns: 14px 74px 1fr 52px; align-items: center; gap: .3rem;
              font-size: .72rem; color: #6b7280; padding: 1px 4px; border-radius: .3rem; cursor: pointer;
              border: none; background: none; text-align: left; font-family: inherit; width: 100%; }
     .p2-po:hover { background: #f3f4f6; }
@@ -228,7 +228,16 @@
     .p2-po.sel { background: #eef4fb; cursor: default; }
     .p2-po.sel .rd { border-color: #1d4f80; background: radial-gradient(#1d4f80 45%, #fff 50%); }
     .p2-po.sel span, .p2-po.sel b { color: #1d4f80; font-weight: 700; }
-    .p2-po .nota { grid-column: 2 / 4; font-size: .58rem; color: #6b7280; font-weight: 400; margin-top: -1px; }
+    .p2-po .pp { text-align: right; font-size: .68rem; color: #6b7280; }
+    .p2-po.sel .pp { font-size: .9rem; font-weight: 800; color: #15803d; }
+    .p2-po.sel .pp.tibio { color: #b45309; }
+    .p2-po.sel .pp.malo { color: #b91c1c; }
+    .p2-po .pctin { width: 44px; font-size: .72rem; padding: 0 3px; border: 1px solid #9ca3af; border-radius: .25rem;
+                    font-family: inherit; text-align: right; }
+    .p2-po.sel .pctin { border-color: #1d4f80; color: #1d4f80; font-weight: 700; }
+    .p2-pinfo2 { font-size: .6rem; color: #6b7280; padding: 1px 4px 0 22px; display: block; }
+    .p2-pinfo2.mal { color: #b45309; font-weight: 700; }
+    .p2-po .nota { grid-column: 2 / 5; font-size: .58rem; color: #6b7280; font-weight: 400; margin-top: -1px; }
     .p2-po.sel .nota { color: #1d4f80; font-weight: 400; }
     .p2-po.nodisp { cursor: default; opacity: .55; }
     .p2-po.nodisp:hover { background: none; }
@@ -443,7 +452,7 @@
                padding: .5rem .7rem; border-radius: 0 .4rem .4rem 0; }
 
     @@media (max-width: 1100px) {
-        .p2-th, .p2-tr { grid-template-columns: 30px minmax(0,1fr) 190px 172px 104px; }
+        .p2-th, .p2-tr { grid-template-columns: 30px minmax(0,1fr) 250px 172px; }
         .p2-h2 { display: none; }
     }
     @@media (max-width: 760px) {
@@ -625,9 +634,8 @@
             <div class="p2-th">
                 <span><input type="checkbox" class="p2-chk" checked="@TodasTildadas" @onchange="TildarTodas" title="Tildar todas las de esta página" /></span>
                 <span>Producto</span>
-                <span class="p2-h">Precio · tildá cuál</span>
+                <span class="p2-h">Precio · tildá cuál · te queda</span>
                 <span class="p2-h">La cuenta</span>
-                <span class="p2-h">Te queda<br /><span style="text-transform:none;font-weight:400;">sobre el costo</span></span>
                 <span class="p2-h2">Stock</span>
                 <span class="p2-h2">Estado</span>
             </div>
@@ -721,47 +729,34 @@
                            TILDAR cuál quiere (más uno a mano). La opción tildada dice también quién manda:
                            "Para el N%" = el sistema lo mantiene solo; cualquier otra = queda fijo. Eso
                            reemplaza al ✎, a los cartelitos 🎯/💲 y a la perilla del sincro de precio. *@
-                        @{ var selP = editandoPrecio == it.MeliItemId ? "manual" : MandaElPorcentaje(it) ? "obj" : "actual"; }
+                        @* 2026-09-22 (2ª vuelta, idea de Osmar): tres opciones y cada una dice qué % deja.
+                           Queda marcada la que manda: "Mantener el N%" si el sistema mantiene el %, OEM si
+                           el precio es el de lista, y si no Manual con el número escrito. El casillero del %
+                           arranca con el que deja el precio de hoy: cargás un precio a mano y tildás
+                           "mantener" para que siga dejando ESE porcentaje. Reemplaza a la columna "Te queda". *@
+                        @{
+                            var selP = editandoPrecio == it.MeliItemId ? "manual"
+                                     : MandaElPorcentaje(it) ? "obj"
+                                     : (it.PrecioOem is decimal oemSel && oemSel == Math.Round(it.Precio, 0)) ? "oem" : "manual";
+                            var objRef = it.ObjetivoPct ?? 50m;
+                            var pctTxt = PctEscrito(it);
+                            var pctNum = ParsePct(pctTxt);
+                            var precioParaPct = pctNum is decimal pn ? PrecioParaPct(it, pn) : null;
+                        }
                         <span class="p2-h p2-precios" @onclick:stopPropagation="true">
                             @if (it.PrecioOem is decimal oem)
                             {
-                                <button class="p2-po" disabled="@(precioGuardando)"
+                                var mOem = selP == "oem" ? it.MargenPct : MargenA(it, oem);
+                                <button class="p2-po @(selP == "oem" ? "sel" : "")" disabled="@(precioGuardando)"
                                         title="Precio de lista (OEM de Colombraro, o el de las piezas si no hay uno del producto completo). Tocá para publicarlo fijo."
-                                        @onclick='() => ElegirPrecioFijo(it, oem, "el precio OEM")' ><span class="rd"></span><span>OEM</span><b>@Plata(oem)</b></button>
-                            }
-                            <button class="p2-po @(selP == "actual" ? "sel" : "")" disabled="@(precioGuardando)"
-                                    title="@(selP == "actual" ? "Es el que tiene hoy y queda fijo: el sistema no lo toca." : "Tocá para dejar fijo el precio de hoy: el sistema deja de mantener el porcentaje.")"
-                                    @onclick="() => ElegirActual(it)"><span class="rd"></span><span>Actual</span><b>@Plata(it.Precio)</b>
-                                @if (selP == "actual") { <span class="nota">queda fijo, el sistema no lo toca</span> }
-                            </button>
-                            @* 2026-08-31 · si está en campaña, el comprador paga MENOS que el precio de
-                               lista. Sin este cartel, el "te queda" de al lado no se entiende. *@
-                            @if (it.PromoPrecio is > 0)
-                            {
-                                <span class="p2-promo" title="Está en una campaña de MercadoLibre: el comprador paga @Plata(it.PromoPrecio!.Value). El margen de al lado ya está calculado con ese precio.">
-                                    🏷️ @Plata(it.PromoPrecio!.Value)
-                                    <small>@(it.PromoNombre ?? "en promoción")@(it.PromoHasta.HasValue ? $" · hasta {it.PromoHasta.Value:dd/MM}" : "")</small>
-                                </span>
-                            }
-                            @{ var objP = it.ObjetivoPct ?? 50m; }
-                            @if (it.PrecioObjetivo is decimal pObj)
-                            {
-                                <button class="p2-po @(selP == "obj" ? "sel" : "")" disabled="@(precioGuardando)"
-                                        title="@(selP == "obj" ? $"El sistema mantiene el {objP:0}% solo: si cambia el costo o lo que cobra MeLi, recalcula el precio." : $"Tocá para que el sistema ponga el precio que deja el {objP:0}% y lo mantenga solo. El número es aproximado: el exacto lo calcula con lo que cobra MeLi en ese momento.")"
-                                        @onclick="() => ElegirObjetivo(it)"><span class="rd"></span><span>Para el @objP.ToString("0", ar)%</span><b>≈ @Plata(pObj)</b>
-                                    @if (selP == "obj") { <span class="nota">lo mantiene solo</span> }
+                                        @onclick='() => ElegirPrecioFijo(it, oem, "el precio OEM")'><span class="rd"></span><span>OEM</span><b>@Plata(oem)</b><span class="pp @ClasePct(mOem, objRef)">@TextoPct(mOem, selP != "oem")</span>
+                                    @if (selP == "oem") { <span class="nota">precio de lista, queda fijo</span> }
                                 </button>
-                            }
-                            else
-                            {
-                                <span class="p2-po nodisp @(selP == "obj" ? "sel" : "")" title="Para calcularlo falta el costo o la comisión de MeLi">
-                                    <span class="rd"></span><span>Para el @objP.ToString("0", ar)%</span><b>—</b>
-                                    @if (selP == "obj") { <span class="nota">lo mantiene solo</span> }
-                                </span>
                             }
                             @if (editandoPrecio == it.MeliItemId)
                             {
-                                <span class="p2-po sel"><span class="rd"></span><span>Manual</span><b></b></span>
+                                var mSim = simulacion?.MargenPct;
+                                <span class="p2-po sel"><span class="rd"></span><span>Manual</span><b></b><span class="pp @ClasePct(mSim, objRef)">@(simulando ? "···" : TextoPct(mSim, false))</span></span>
                                 <span class="p2-edit" @onclick:stopPropagation="true">
                                     <input type="text" value="@precioEscrito"
                                            @oninput="@(async e => { precioEscrito = e.Value?.ToString() ?? ""; await PrecioEscritoCambio(); })"
@@ -774,11 +769,53 @@
                                         <button class="no" title="Cancelar (Esc)" @onclick="CancelarPrecio">✕</button>
                                     </span>
                                 </span>
+                                @if (simulacion?.CruzaEscalonEnvio == true && simulacion.MargenSiPagasElEnvioPct is decimal m3)
+                                {
+                                    <span class="p2-pinfo2 mal">si el envío pasa a ser tuyo: @m3.ToString("0.#", ar)%</span>
+                                }
+                                else if (!simulando && simulacion?.MargenPct is null && !string.IsNullOrEmpty(simulacion?.Aviso))
+                                {
+                                    <span class="p2-pinfo2 mal">@simulacion.Aviso</span>
+                                }
+                            }
+                            else if (selP == "manual")
+                            {
+                                <button class="p2-po sel" disabled="@(precioGuardando)" title="Precio fijo: el sistema no lo toca. Tocá para escribir otro."
+                                        @onclick="() => EmpezarPrecio(it)"><span class="rd"></span><span>Manual</span><b>@Plata(it.Precio)</b><span class="pp @ClasePct(it.MargenPct, objRef)" style="@(it.ComisionVieja ? "opacity:.55;" : "")">@TextoPct(it.MargenPct, false)</span>
+                                    <span class="nota">queda fijo, el sistema no lo toca</span>
+                                </button>
                             }
                             else
                             {
-                                <button class="p2-po" disabled="@(precioGuardando)" title="Escribir otro precio a mano"
-                                        @onclick="() => EmpezarPrecio(it)"><span class="rd"></span><span>Manual</span><b style="font-weight:400;color:#9ca3af;">escribir…</b></button>
+                                <button class="p2-po" disabled="@(precioGuardando)" title="Escribir un precio a mano (queda fijo)"
+                                        @onclick="() => EmpezarPrecio(it)"><span class="rd"></span><span>Manual</span><b style="font-weight:400;color:#9ca3af;">escribir…</b><span class="pp"></span></button>
+                            }
+                            @* 2026-08-31 · si está en campaña, el comprador paga MENOS que el precio de
+                               lista. Sin este cartel, el "te queda" no se entiende. *@
+                            @if (it.PromoPrecio is > 0)
+                            {
+                                <span class="p2-promo" title="Está en una campaña de MercadoLibre: el comprador paga @Plata(it.PromoPrecio!.Value). El margen ya está calculado con ese precio.">
+                                    🏷️ @Plata(it.PromoPrecio!.Value)
+                                    <small>@(it.PromoNombre ?? "en promoción")@(it.PromoHasta.HasValue ? $" · hasta {it.PromoHasta.Value:dd/MM}" : "")</small>
+                                </span>
+                            }
+                            <span class="p2-po @(selP == "obj" ? "sel" : "")" role="button"
+                                  title="@(selP == "obj" ? $"El sistema mantiene el {objRef:0.#}% solo: si cambia el costo o lo que cobra MeLi, recalcula el precio. Para otro %, escribilo y tocá la bolita." : "Tocá la bolita para que el sistema mantenga este porcentaje solo. Arranca con el que deja el precio de hoy; podés escribir otro.")"
+                                  @onclick="() => ElegirObjetivo(it)">
+                                <span class="rd"></span><span>Mantener el</span>
+                                <b><input class="pctin" value="@pctTxt" @onclick:stopPropagation="true"
+                                          @oninput="@(e => pctEscritos[it.MeliItemId] = e.Value?.ToString() ?? "")"
+                                          @onkeydown="@(async e => { if (e.Key == "Enter") await ElegirObjetivo(it); })" /> %</b>
+                                <span class="pp @(selP == "obj" ? ClasePct(it.MargenPct, objRef) : "")">@(selP == "obj" ? Plata(it.Precio) : precioParaPct is decimal ppc ? "≈ " + Plata(ppc) : "—")</span>
+                                @if (selP == "obj") { <span class="nota">lo mantiene solo@(it.MargenPct is decimal mo ? $" · hoy deja {mo.ToString("0.#", ar)}%" : "")</span> }
+                            </span>
+                            @if (it.MargenPct is null && editandoPrecio != it.MeliItemId)
+                            {
+                                <span class="p2-pinfo2 mal">@(it.Costo is null or <= 0 ? "falta cargar el costo" : "falta la comisión — actualizala")</span>
+                            }
+                            else if (it.ComisionVieja)
+                            {
+                                <span class="p2-pinfo2 mal" title="La comisión se calculó con otro precio: el % puede estar mal. Traela de MercadoLibre.">⚠ dato viejo</span>
                             }
                             @if (it.VariosPrecios && it.PrecioMin.HasValue && it.PrecioMax.HasValue)
                             {
@@ -819,55 +856,6 @@
                                 {
                                     <span class="viejo" title="La comisión se calculó con otro precio. La cuenta de esta fila puede estar mal: traela de MercadoLibre.">⚠ dato viejo</span>
                                 }
-                            }
-                        </span>
-
-                        <span class="p2-queda p2-h">
-                            @if (editandoPrecio == it.MeliItemId)
-                            {
-                                @if (simulando)
-                                {
-                                    <span class="pct sim">···</span>
-                                    <span class="det">preguntándole a MercadoLibre</span>
-                                }
-                                else if (simulacion?.MargenPct is decimal m2)
-                                {
-                                    var obj2 = it.ObjetivoPct ?? 50m;
-                                    <span class="pct sim @(m2 >= obj2 ? "" : m2 >= obj2 * 0.6m ? "tibio" : "malo")">@m2.ToString("0.#", ar)%</span>
-                                    <span class="ver @(m2 >= obj2 ? "ok" : "no")">@(m2 >= obj2 ? "✓ arriba" : "✗ abajo") del @obj2.ToString("0", ar)%</span>
-                                    <span class="det">@Plata(simulacion.Ganancia ?? 0) · hoy @(it.MargenPct.HasValue ? it.MargenPct.Value.ToString("0.#", ar) + "%" : "—")</span>
-                                    @if (simulacion.CruzaEscalonEnvio && simulacion.MargenSiPagasElEnvioPct is decimal m3)
-                                    {
-                                        <span class="falta">si el envío pasa a ser tuyo: @m3.ToString("0.#", ar)%</span>
-                                    }
-                                }
-                                else if (!string.IsNullOrEmpty(simulacion?.Aviso))
-                                {
-                                    <span class="det" style="color:#b45309;font-weight:700;">@simulacion.Aviso</span>
-                                }
-                            }
-                            else if (it.MargenPct.HasValue)
-                            {
-                                var m = it.MargenPct.Value;
-                                var objetivo = it.ObjetivoPct ?? 50m;
-                                var llega = m >= objetivo;
-                                <span class="pct @(llega ? "" : m >= objetivo * 0.6m ? "tibio" : "malo")" style="@(it.ComisionVieja ? "opacity:.55;" : "")">@m.ToString("0.#", ar)%</span>
-                                <span class="ver @(llega ? "ok" : "no")">@(llega ? "✓ estás arriba" : "✗ abajo") del @objetivo.ToString("0", ar)%</span>
-                                @if (!llega && it.Costo is > 0)
-                                {
-                                    <span class="falta">faltan @Plata(Math.Round(it.Costo.Value * objetivo / 100m - (it.GananciaPesos ?? 0m), 0))</span>
-                                }
-                            }
-                            else if (it.Costo is null or <= 0)
-                            {
-                                <span class="det" style="color:#b91c1c;font-weight:700;">falta cargar el costo</span>
-                            }
-                            else
-                            {
-                                @* 2026-08-26: antes acá salía un % calculado como si MeLi no cobrara
-                                   nada. Un número verde de mentira es peor que decir "no sé todavía". *@
-                                <span class="det" style="color:#b45309;font-weight:700;">no se puede calcular</span>
-                                <span class="det">falta la comisión — actualizala</span>
                             }
                         </span>
 
@@ -2316,15 +2304,63 @@
         await CambiarSincroFila(it, false, null);
     }
 
-    /// <summary>Pasar a mantener el objetivo: guarda el % (o 50) y aplica el precio ahora.</summary>
+    // ─── 2026-09-22 · "Mantener el N%": el casillero arranca con el % que deja el precio de hoy ───
+    private readonly Dictionary<string, string> pctEscritos = new();
+
+    private string PctEscrito(ApiClient.PubV2Fila it)
+    {
+        if (pctEscritos.TryGetValue(it.MeliItemId, out var t)) return t;
+        // Si hoy pierde plata o deja casi nada, arrancar en ese número no sirve: va el objetivo (o 50).
+        var v = MandaElPorcentaje(it) ? it.ObjetivoPct
+              : (it.MargenPct is > 0 ? it.MargenPct : (it.ObjetivoPct ?? 50m));
+        return (v ?? 50m).ToString("0.#", ar);
+    }
+
+    private decimal? ParsePct(string? t)
+    {
+        var v = (t ?? "").Replace("%", "").Trim().Replace(",", ".");
+        return decimal.TryParse(v, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var d)
+               && d > 0 && d <= 500 ? Math.Round(d, 1) : null;
+    }
+
+    /// <summary>Qué % dejaría a otro precio, con la comisión guardada (aproximado: el cargo fijo y
+    /// el envío pueden cambiar con el precio). Misma cuenta que la fila.</summary>
+    private decimal? MargenA(ApiClient.PubV2Fila it, decimal precio)
+    {
+        if (it.Costo is not > 0 || it.ComisionMonto is null || precio <= 0) return null;
+        var com = precio * ((it.ComisionPorcentaje ?? 0m) / 100m) + (it.ComisionFija ?? 0m);
+        var neto = (precio - com - (it.ComisionEnvio ?? 0m)) / 1.21m;
+        return Math.Round((neto - it.Costo.Value) / it.Costo.Value * 100m, 1);
+    }
+
+    /// <summary>Precio aproximado para dejar `pct`%, nunca abajo del OEM (como el motor).</summary>
+    private decimal? PrecioParaPct(ApiClient.PubV2Fila it, decimal pct)
+    {
+        if (it.Costo is not > 0 || it.ComisionMonto is null) return null;
+        var p = (it.ComisionPorcentaje ?? 0m) / 100m;
+        if (p >= 0.95m) return null;
+        var precio = (it.Costo.Value * (1 + pct / 100m) * 1.21m + (it.ComisionFija ?? 0m) + (it.ComisionEnvio ?? 0m)) / (1 - p);
+        precio = Math.Ceiling(precio);
+        return it.PrecioOem is decimal oem && oem > precio ? oem : precio;
+    }
+
+    private static string ClasePct(decimal? m, decimal objetivo)
+        => m is not decimal v ? "" : v >= objetivo ? "" : v >= objetivo * 0.6m ? "tibio" : "malo";
+
+    private string TextoPct(decimal? m, bool aprox)
+        => m is decimal v ? (aprox ? "≈ " : "") + v.ToString("0.#", ar) + "%" : "";
+
+    /// <summary>Mantener el % del casillero: guarda el objetivo y aplica el precio ahora.</summary>
     private async Task ElegirObjetivo(ApiClient.PubV2Fila it)
     {
-        if (MandaElPorcentaje(it) || precioGuardando) return;   // ya lo mantiene
-        var obj = it.ObjetivoPct ?? 50m;
-        var aprox = it.PrecioObjetivo is decimal po ? po : it.Precio;
+        if (precioGuardando) return;
+        var obj = ParsePct(PctEscrito(it));
+        if (obj is null) { ToastService.Error("Escribí un porcentaje válido (por ejemplo 58,1)."); return; }
+        if (MandaElPorcentaje(it) && it.ObjetivoPct == obj) return;   // ya mantiene ese %
+        var aprox = PrecioParaPct(it, obj.Value) ?? it.Precio;
         if (!await SeguirAunqueEsteEnPromo(it, aprox)) return;
         if (!await JS.InvokeAsync<bool>("confirm",
-                $"¿Que el sistema mantenga el {obj:0}%?\n\nHoy está {Plata(it.Precio)}. Queda alrededor de {Plata(aprox)}: el número exacto lo calcula ahora con lo que cobra MercadoLibre, y nunca baja del precio OEM.\n\n"
+                $"¿Que el sistema mantenga el {obj.Value.ToString("0.#", ar)}%?\n\nHoy está {Plata(it.Precio)}. Queda alrededor de {Plata(aprox)}: el número exacto lo calcula ahora con lo que cobra MercadoLibre, y nunca baja del precio OEM.\n\n"
                 + "Desde ahí lo recalcula solo si cambia el costo o lo que cobra MeLi. Se publica en MercadoLibre ahora."))
             return;
 
@@ -2332,10 +2368,11 @@
         StateHasChanged();
         try
         {
-            var r = await Api.AccionObjetivoAsync(new List<string> { it.MeliItemId }, obj, true);
+            var r = await Api.AccionObjetivoAsync(new List<string> { it.MeliItemId }, obj.Value, true);
             var fila = r?.Detalle.FirstOrDefault();
-            if (r is not null && r.Ok > 0) ToastService.Success("Listo: " + (fila?.Mensaje ?? $"mantiene el {obj:0}%"));
+            if (r is not null && r.Ok > 0) ToastService.Success("Listo: " + (fila?.Mensaje ?? $"mantiene el {obj:0.#}%"));
             else ToastService.Error("No se pudo: " + (fila?.Mensaje ?? "error"));
+            pctEscritos.Remove(it.MeliItemId);
             await RefrescarFila(it.MeliItemId);
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
