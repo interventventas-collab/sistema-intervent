@@ -53,6 +53,21 @@
     .p2-fmenu-lista .opc:hover { background: #f3f4f6; }
     .p2-fmenu-lista .opc .tic { width: 1rem; color: #1f6b45; font-weight: 700; }
     .p2-fmenu-lista .opc.on { font-weight: 600; }
+    /* 2026-09-24 · botones Precio y Envío */
+    .p2-fmenu-lista.p2-fmenu-ancho { min-width: 360px; }
+    .p2-fmenu-lista .opc .n { margin-left: auto; color: #9ca3af; font-size: .72rem; font-weight: 400; }
+    .p2-fmini { display: flex; flex-wrap: wrap; gap: .3rem; padding: .2rem .85rem .3rem; }
+    .p2-fmini .mini { font-size: .74rem; padding: .22rem .55rem; border-radius: 999px; border: 1px solid #e3e7e0; cursor: pointer; }
+    .p2-fmini .mini:hover { border-color: #9ca3af; }
+    .p2-fmini .mini small { color: #9ca3af; margin-left: .15rem; }
+    .p2-fmini .mini.on { background: #1f6b45; border-color: #1f6b45; color: #fff; font-weight: 600; }
+    .p2-fmini .mini.on small { color: #d1fae5; }
+    .p2-frango { display: flex; align-items: center; gap: .35rem; padding: .2rem .85rem; font-size: .8rem; white-space: nowrap; }
+    .p2-frango input { width: 90px; font: inherit; font-size: .8rem; padding: .22rem .4rem; border: 1px solid #9ca3af; border-radius: .3rem; }
+    .p2-frango button { font: inherit; font-size: .76rem; padding: .22rem .6rem; border: 1px solid #1f6b45; color: #1f6b45;
+                        background: #fff; border-radius: .3rem; cursor: pointer; font-weight: 600; }
+    .p2-fsep { border-top: 1px solid #f0f1ee; margin: .3rem 0; }
+    .p2-fpie { font-size: .66rem; color: #6b7280; padding: .15rem .85rem .2rem; }
     .p2-ampliar { font-size: .78rem; color: #4b5563; margin: .1rem 0 .4rem; }
     .p2-ampliar a { color: #1d4f80; cursor: pointer; text-decoration: underline; }
     .p2-ampliar b { color: #111827; }
@@ -545,13 +560,76 @@
             @* 2026-09-22 — Osmar: "que estén todas en un desplegable porque marean". Quedan a la
                vista solo estado y cuenta; el resto va en un botón. Si hay alguno puesto, el botón
                lo dice (para que no quede un filtro escondido achicando la lista sin darse cuenta). *@
+            @* 2026-09-24 — Osmar: "estos dos filtros los voy a usar mucho, prefiero un botón para lo de
+               los envíos y otro para el de los precios". Cada botón dice lo elegido (como Más filtros)
+               y cada opción muestra cuántas hay antes de tocarla. *@
             <span class="p2-fmenu">
-                <span class="p2-chip nue @(FiltrosMenuActivos.Count > 0 ? "on" : "")" @onclick="() => menuFiltros = !menuFiltros">
+                <span class="p2-chip nue @(TextoBotonPrecio is not null ? "on" : "")" @onclick="() => AbrirMenu(1)">
+                    @(TextoBotonPrecio is string tp ? "Precio: " + tp : "Precio") ▾
+                </span>
+                @if (menuAbierto == 1)
+                {
+                    var cn = datos?.Conteos;
+                    <div class="p2-fmenu-fondo" @onclick="() => menuAbierto = 0"></div>
+                    <div class="p2-fmenu-lista p2-fmenu-ancho">
+                        <div class="grp">Ordenar por precio</div>
+                        <div class="p2-fmini">
+                            <span class="mini @(fOrden == "precio_desc" ? "on" : "")" @onclick='() => SetOrden("precio_desc")'>Mayor primero</span>
+                            <span class="mini @(fOrden == "precio_asc" ? "on" : "")" @onclick='() => SetOrden("precio_asc")'>Menor primero</span>
+                            <span class="mini @(fOrden is null ? "on" : "")" @onclick="() => SetOrden(null)">Sin ordenar (A a Z)</span>
+                        </div>
+                        <div class="p2-fsep"></div>
+                        <div class="grp">Rango de precio</div>
+                        <div class="p2-frango">
+                            desde $ <input inputmode="numeric" placeholder="0" @bind="fDesdeTxt" @bind:event="oninput"
+                                           @onkeydown="@(async e => { if (e.Key == "Enter") await AplicarRango(); })" />
+                            hasta $ <input inputmode="numeric" placeholder="sin tope" @bind="fHastaTxt" @bind:event="oninput"
+                                           @onkeydown="@(async e => { if (e.Key == "Enter") await AplicarRango(); })" />
+                            <button @onclick="AplicarRango">Aplicar</button>
+                        </div>
+                        <div class="p2-fmini">
+                            @for (var i = 0; i < RangosRapidos.Length; i++)
+                            {
+                                var r = RangosRapidos[i];
+                                var n = cn?.Rangos is { Length: 4 } rs ? rs[i] : (int?)null;
+                                <span class="mini @(fDesde == r.Desde && fHasta == r.Hasta ? "on" : "")" @onclick="() => SetRangoRapido(r.Desde, r.Hasta)">
+                                    @r.Nombre @if (n.HasValue) { <small>@n.Value.ToString("N0", ar)</small> }
+                                </span>
+                            }
+                        </div>
+                        <div class="p2-fpie">Tocás un rango y se llenan solos los casilleros; o escribís los tuyos y Aplicar.</div>
+                    </div>
+                }
+            </span>
+            <span class="p2-fmenu">
+                <span class="p2-chip nue @(TextoBotonEnvio is not null ? "on" : "")" @onclick="() => AbrirMenu(2)">
+                    @(TextoBotonEnvio is string te ? "Envío: " + te : "Envío") ▾
+                </span>
+                @if (menuAbierto == 2)
+                {
+                    var cn = datos?.Conteos;
+                    <div class="p2-fmenu-fondo" @onclick="() => menuAbierto = 0"></div>
+                    <div class="p2-fmenu-lista p2-fmenu-ancho">
+                        <div class="grp">Quién paga el envío</div>
+                        <div class="opc @(fEnvioGratis == true ? "on" : "")" @onclick="() => SetEnvioGratis(true)"><span class="tic">@(fEnvioGratis == true ? "✓" : "")</span>Envío gratis (lo pagás vos)<span class="n">@cn?.EnvioGratis.ToString("N0", ar)</span></div>
+                        <div class="opc @(fEnvioGratis == false ? "on" : "")" @onclick="() => SetEnvioGratis(false)"><span class="tic">@(fEnvioGratis == false ? "✓" : "")</span>Lo paga el comprador<span class="n">@cn?.PagaComprador.ToString("N0", ar)</span></div>
+                        <div class="p2-fsep"></div>
+                        <div class="grp">Tipo de envío <span style="text-transform:none;letter-spacing:0;font-weight:400;">(podés tildar varios)</span></div>
+                        @foreach (var (clave, nombre) in TiposEnvio)
+                        {
+                            var on = fLogistica.Contains(clave);
+                            <div class="opc @(on ? "on" : "")" @onclick="() => ToggleLogistica(clave)"><span class="tic">@(on ? "✓" : "")</span>@nombre<span class="n">@(cn?.Logistica is { } lg && lg.TryGetValue(clave, out var nl) ? nl.ToString("N0", ar) : "")</span></div>
+                        }
+                    </div>
+                }
+            </span>
+            <span class="p2-fmenu">
+                <span class="p2-chip nue @(FiltrosMenuActivos.Count > 0 ? "on" : "")" @onclick="() => AbrirMenu(3)">
                     @(FiltrosMenuActivos.Count > 0 ? "Filtro: " + string.Join(" · ", FiltrosMenuActivos) : "Más filtros") ▾
                 </span>
                 @if (menuFiltros)
                 {
-                    <div class="p2-fmenu-fondo" @onclick="() => menuFiltros = false"></div>
+                    <div class="p2-fmenu-fondo" @onclick="() => menuAbierto = 0"></div>
                     <div class="p2-fmenu-lista">
                         <div class="grp">Margen</div>
                         <div class="opc @(fNoLlegan == 50 ? "on" : "")" @onclick="() => ElegirFiltro(() => SetNoLlegan(50))"><span class="tic">@(fNoLlegan == 50 ? "✓" : "")</span>No llegan al 50%</div>
@@ -1767,7 +1845,9 @@
     private bool HayFiltros => fEnPromo || fComisionVieja || fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
                                || !string.IsNullOrEmpty(fCuotas) || !string.IsNullOrEmpty(fEstado)
                                || !string.IsNullOrWhiteSpace(fTexto) || !string.IsNullOrWhiteSpace(fSku)
-                               || fCuentaId.HasValue;
+                               || fCuentaId.HasValue
+                               || fOrden is not null || fDesde is not null || fHasta is not null
+                               || fEnvioGratis.HasValue || fLogistica.Count > 0;
 
     private int TotalPaginas => datos is null || datos.Total == 0 ? 1 : (int)Math.Ceiling(datos.Total / (double)datos.PorPagina);
 
@@ -1786,7 +1866,7 @@
         try
         {
             datos = await Api.GetPublicacionesV2Async(fTexto, fSku, fEstado, fComision, fCuotas, null,
-                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId, fEnPromo, AmpliarVigente);
+                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId, fEnPromo, AmpliarVigente, PrecioEnvio);
         }
         catch (Exception ex)
         {
@@ -2567,9 +2647,90 @@
         finally { precioGuardando = false; StateHasChanged(); }
     }
 
-    // 2026-09-22 · filtros en un desplegable
-    private bool menuFiltros;
-    private async Task ElegirFiltro(Func<Task> accion) { menuFiltros = false; await accion(); }
+    // 2026-09-22 · filtros en un desplegable. 2026-09-24: son tres botones (1 Precio · 2 Envío ·
+    // 3 Más filtros) y abrir uno cierra los otros.
+    private int menuAbierto;
+    private bool menuFiltros => menuAbierto == 3;
+    private void AbrirMenu(int cual) => menuAbierto = menuAbierto == cual ? 0 : cual;
+    private async Task ElegirFiltro(Func<Task> accion) { menuAbierto = 0; await accion(); }
+
+    // 2026-09-24 · botón Precio: orden + rango. Botón Envío: quién lo paga + tipo.
+    // Al tocar una opción el menú queda abierto, para poder elegir otra cosa del mismo botón.
+    private string? fOrden;
+    private decimal? fDesde, fHasta;
+    private string fDesdeTxt = "", fHastaTxt = "";
+    private bool? fEnvioGratis;
+    private readonly List<string> fLogistica = new();
+    private static readonly (string Nombre, decimal? Desde, decimal? Hasta)[] RangosRapidos =
+    {
+        ("hasta $10.000", null, 10_000m),
+        ("$10.000 a $33.000", 10_000m, 33_000m),
+        ("$33.000 a $100.000", 33_000m, 100_000m),
+        ("más de $100.000", 100_000m, null),
+    };
+    private static readonly (string Clave, string Nombre)[] TiposEnvio =
+        { ("colecta", "Colecta"), ("full", "Full"), ("acordar", "A acordar"), ("correo", "Correo"), ("flex", "Flex") };
+    private ApiClient.PubV2PrecioEnvio PrecioEnvio => new(fOrden, fDesde, fHasta, fEnvioGratis, fLogistica);
+
+    private string? TextoBotonPrecio
+    {
+        get
+        {
+            var l = new List<string>();
+            if (fDesde is not null || fHasta is not null)
+                l.Add(fDesde is null ? $"hasta {Plata(fHasta!.Value)}"
+                    : fHasta is null ? $"más de {Plata(fDesde.Value)}"
+                    : $"{Plata(fDesde.Value)} a {Plata(fHasta.Value)}");
+            if (fOrden == "precio_desc") l.Add("mayor primero");
+            if (fOrden == "precio_asc") l.Add("menor primero");
+            return l.Count == 0 ? null : string.Join(" · ", l);
+        }
+    }
+    private string? TextoBotonEnvio
+    {
+        get
+        {
+            var l = new List<string>();
+            var tipos = TiposEnvio.Where(t => fLogistica.Contains(t.Clave)).Select(t => t.Nombre).ToList();
+            if (tipos.Count > 0) l.Add(string.Join(", ", tipos));
+            if (fEnvioGratis == true) l.Add("gratis");
+            if (fEnvioGratis == false) l.Add("lo paga el comprador");
+            return l.Count == 0 ? null : string.Join(" · ", l);
+        }
+    }
+
+    private async Task SetOrden(string? v) { fOrden = v; await BuscarDesdeCero(); }
+    private async Task SetRangoRapido(decimal? desde, decimal? hasta)
+    {
+        if (fDesde == desde && fHasta == hasta) { desde = null; hasta = null; }   // tocar el elegido lo saca
+        fDesde = desde; fHasta = hasta;
+        fDesdeTxt = desde?.ToString("N0", ar) ?? "";
+        fHastaTxt = hasta?.ToString("N0", ar) ?? "";
+        await BuscarDesdeCero();
+    }
+    private async Task AplicarRango()
+    {
+        fDesde = LeerPesos(fDesdeTxt);
+        fHasta = LeerPesos(fHastaTxt);
+        if (fDesde is not null && fHasta is not null && fDesde > fHasta) (fDesde, fHasta) = (fHasta, fDesde);
+        fDesdeTxt = fDesde?.ToString("N0", ar) ?? "";
+        fHastaTxt = fHasta?.ToString("N0", ar) ?? "";
+        await BuscarDesdeCero();
+    }
+    /// <summary>"10.000", "10000" o "$ 10.000,50" → 10000. Los precios de MeLi son enteros: lo que
+    /// va después de la coma se ignora (el punto es de miles, como escribe él).</summary>
+    private static decimal? LeerPesos(string? txt)
+    {
+        var entero = (txt ?? "").Split(',')[0];
+        var digitos = new string(entero.Where(char.IsDigit).ToArray());
+        return decimal.TryParse(digitos, out var v) && v > 0 ? v : null;
+    }
+    private async Task SetEnvioGratis(bool v) { fEnvioGratis = fEnvioGratis == v ? null : v; await BuscarDesdeCero(); }
+    private async Task ToggleLogistica(string clave)
+    {
+        if (!fLogistica.Remove(clave)) fLogistica.Add(clave);
+        await BuscarDesdeCero();
+    }
     private List<string> FiltrosMenuActivos
     {
         get
@@ -2624,7 +2785,8 @@
     {
         fTexto = ""; fSku = ""; fEstado = ""; fComision = null; fCuotas = "";
         fVariosPrecios = false; fPrecioAMano = false; fSinCosto = false; fNoLlegan = null; fComisionVieja = false;
-        fEnPromo = false; fCuentaId = null; fAmpliar = null; fAmpliarTexto = null; menuFiltros = false;
+        fEnPromo = false; fCuentaId = null; fAmpliar = null; fAmpliarTexto = null; menuAbierto = 0;
+        fOrden = null; fDesde = null; fHasta = null; fDesdeTxt = ""; fHastaTxt = ""; fEnvioGratis = null; fLogistica.Clear();
         await BuscarDesdeCero();
     }
 
@@ -3666,7 +3828,8 @@
             // Va con los MISMOS filtros que la pantalla: lo que ves es lo que baja, todas las
             // páginas de una. Si filtrás "no llegan al 50%", el Excel trae sólo esas.
             var (bytes, error) = await Api.BajarExcelPublicacionesV2Async(fTexto, fSku, fEstado,
-                fComision, fCuotas, null, fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, AmpliarVigente);
+                fComision, fCuotas, null, fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, AmpliarVigente,
+                PrecioEnvio);
 
             if (bytes is null || bytes.Length == 0)
             {

@@ -5474,7 +5474,25 @@ public class ApiClient
         string? SkuAnterior,
         decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null,
         decimal? PrecioOem = null, decimal? PrecioObjetivo = null);
-    public record PubV2Page(int Total, int Pagina, int PorPagina, List<PubV2Fila> Items, PubV2Grupo? Grupo = null);
+    public record PubV2Page(int Total, int Pagina, int PorPagina, List<PubV2Fila> Items, PubV2Grupo? Grupo = null,
+        PubV2Conteos? Conteos = null);
+    /// <summary>2026-09-24: cuántas hay de cada opción de los botones Precio y Envío.
+    /// Rangos: hasta $10.000 · $10.000 a $33.000 · $33.000 a $100.000 · más de $100.000.</summary>
+    public record PubV2Conteos(int[] Rangos, int EnvioGratis, int PagaComprador, Dictionary<string, int> Logistica);
+    /// <summary>2026-09-24: lo elegido en los botones Precio y Envío. Orden: null · precio_desc · precio_asc.
+    /// Logistica: colecta, full, acordar, correo, flex.</summary>
+    public record PubV2PrecioEnvio(string? Orden, decimal? Desde, decimal? Hasta, bool? EnvioGratis, IReadOnlyCollection<string> Logistica)
+    {
+        public void AgregarA(List<string> qs)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            if (!string.IsNullOrWhiteSpace(Orden)) qs.Add($"orden={Orden}");
+            if (Desde is > 0) qs.Add($"precioDesde={Desde.Value.ToString(inv)}");
+            if (Hasta is > 0) qs.Add($"precioHasta={Hasta.Value.ToString(inv)}");
+            if (EnvioGratis.HasValue) qs.Add($"envioGratis={EnvioGratis.Value.ToString().ToLowerInvariant()}");
+            if (Logistica.Count > 0) qs.Add($"logistica={string.Join(",", Logistica)}");
+        }
+    }
     /// <summary>Se buscó un número: Mla = la publicación buscada (null si era familia),
     /// Modo = sola · familia · producto, y cuántas hay si se amplía.</summary>
     public record PubV2Grupo(string? Mla, string Modo, int Familia, int Producto, string? FamiliaId = null);
@@ -5483,9 +5501,10 @@ public class ApiClient
         string? estado = null, decimal? comisionMinPct = null, string? cuotas = null, string? tipo = null,
         bool variosPrecios = false, bool precioAMano = false, bool sinCosto = false,
         decimal? noLleganAlPct = null, bool comisionVieja = false, int pagina = 1, int porPagina = 100,
-        int? cuentaId = null, bool enPromo = false, string? ampliar = null)
+        int? cuentaId = null, bool enPromo = false, string? ampliar = null, PubV2PrecioEnvio? pe = null)
     {
         var qs = new List<string>();
+        pe?.AgregarA(qs);
         if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
         if (!string.IsNullOrWhiteSpace(sku)) qs.Add($"sku={Uri.EscapeDataString(sku)}");
         if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={estado}");
@@ -5691,11 +5710,13 @@ public class ApiClient
     public async Task<(byte[]? bytes, string? error)> BajarExcelPublicacionesV2Async(
         string? texto = null, string? sku = null, string? estado = null, decimal? comisionMinPct = null,
         string? cuotas = null, string? tipo = null, bool variosPrecios = false, bool precioAMano = false,
-        bool sinCosto = false, decimal? noLleganAlPct = null, bool comisionVieja = false, string? ampliar = null)
+        bool sinCosto = false, decimal? noLleganAlPct = null, bool comisionVieja = false, string? ampliar = null,
+        PubV2PrecioEnvio? pe = null)
     {
         try
         {
             var qs = new List<string>();
+            pe?.AgregarA(qs);
             if (!string.IsNullOrWhiteSpace(ampliar)) qs.Add($"ampliar={ampliar}");
             if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
             if (!string.IsNullOrWhiteSpace(sku)) qs.Add($"sku={Uri.EscapeDataString(sku)}");

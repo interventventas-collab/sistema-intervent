@@ -76,7 +76,30 @@ public class MeliPublicacionesV2Service
         // PrecioObjetivo = ESTIMADO con la comisión guardada; el exacto lo calcula el motor al aplicarlo.
         decimal? PrecioOem = null, decimal? PrecioObjetivo = null);
 
-    public record PageDto(int Total, int Pagina, int PorPagina, List<FilaDto> Items, GrupoDto? Grupo = null);
+    public record PageDto(int Total, int Pagina, int PorPagina, List<FilaDto> Items, GrupoDto? Grupo = null,
+        ConteosDto? Conteos = null);
+
+    /// <summary>2026-09-24 — Cuántas hay de cada opción de los botones "Precio" y "Envío", con el
+    /// resto de los filtros puestos (estado, cuenta, búsqueda, Más filtros) pero SIN los de precio
+    /// ni envío, así el número dice qué vas a encontrar antes de tocar.
+    /// Rangos: [0] hasta $10.000 · [1] $10.000 a $33.000 · [2] $33.000 a $100.000 · [3] más de $100.000.
+    /// Logistica: colecta · full · acordar · correo · flex (las claves de <see cref="ClaveLogistica"/>).</summary>
+    public record ConteosDto(int[] Rangos, int EnvioGratis, int PagaComprador, Dictionary<string, int> Logistica);
+
+    /// <summary>Los cortes de los rangos rápidos del botón Precio. $33.000 es donde MeLi empieza a
+    /// obligar el envío gratis (ver MeliPricePushService.ESCALON_ENVIO).</summary>
+    public static readonly decimal[] CortesRangos = { 10_000m, 33_000m, 100_000m };
+
+    /// <summary>Tipo de envío tal como lo dice la pantalla. xd_drop_off es Colecta igual que cross_docking.</summary>
+    public static string? ClaveLogistica(string? logisticType) => logisticType switch
+    {
+        "cross_docking" or "xd_drop_off" => "colecta",
+        "fulfillment" => "full",
+        "default" => "acordar",
+        "drop_off" => "correo",
+        "self_service" => "flex",
+        _ => null,
+    };
 
     /// <summary>Cuando se buscó un número: qué se está mostrando y cuántas hay si se amplía.
     /// Mla = la publicación buscada (null si el número era de familia). Modo = sola · familia · producto.
@@ -91,7 +114,11 @@ public class MeliPublicacionesV2Service
         // 2026-08-31: sólo las que están vendiendo con descuento por una campaña de MeLi.
         bool EnPromo = false,
         // 2026-09-22: al buscar un número, cuánto ampliar: null (esa sola) · "familia" · "producto".
-        string? Ampliar = null);
+        string? Ampliar = null,
+        // 2026-09-24: botones "Precio" y "Envío". Orden: null (A a Z) · "precio_desc" · "precio_asc".
+        // Logistica: claves separadas por coma (colecta,full,acordar,correo,flex).
+        string? Orden = null, decimal? PrecioDesde = null, decimal? PrecioHasta = null,
+        bool? EnvioGratis = null, string? Logistica = null);
 
     /// <summary>2026-09-22 — Precio que dejaría el objetivo, con la comisión que tenemos guardada.
     /// Es la primera cuenta del motor (MeliPricePushService.CalcularPrecioParaGananciaAsync) sin ir a
@@ -311,10 +338,57 @@ public class MeliPublicacionesV2Service
             q = q.Where(m => flojas.Contains(m.MeliItemId));
         }
 
+        // ── Botones "Precio" y "Envío" (2026-09-24) ──
+        // Primero se cuenta cuántas hay de cada opción con todo lo demás puesto; recién después se
+        // aplican estos filtros. Es un GROUP BY chico (tramo de precio × envío × tipo).
+        decimal c0 = CortesRangos[0], c1 = CortesRangos[1], c2 = CortesRangos[2];
+        var grupos = await q
+            .GroupBy(m => new
+            {
+                Tramo = m.Price < c0 ? 0 : m.Price < c1 ? 1 : m.Price < c2 ? 2 : 3,
+                m.FreeShipping,
+                m.LogisticType,
+            })
+            .Select(g => new { g.Key.Tramo, g.Key.FreeShipping, g.Key.LogisticType, N = g.Count() })
+            .ToListAsync(ct);
+        var rangos = new int[4];
+        var porLogistica = new Dictionary<string, int> { ["colecta"] = 0, ["full"] = 0, ["acordar"] = 0, ["correo"] = 0, ["flex"] = 0 };
+        foreach (var g in grupos)
+        {
+            rangos[g.Tramo] += g.N;
+            var clave = ClaveLogistica(g.LogisticType);
+            if (clave is not null) porLogistica[clave] += g.N;
+        }
+        var conteos = new ConteosDto(rangos,
+            grupos.Where(g => g.FreeShipping).Sum(g => g.N),
+            grupos.Where(g => !g.FreeShipping).Sum(g => g.N),
+            porLogistica);
+
+        if (f.PrecioDesde is > 0) q = q.Where(m => m.Price >= f.PrecioDesde.Value);
+        if (f.PrecioHasta is > 0) q = q.Where(m => m.Price <= f.PrecioHasta.Value);
+        if (f.EnvioGratis.HasValue) q = q.Where(m => m.FreeShipping == f.EnvioGratis.Value);
+        if (!string.IsNullOrWhiteSpace(f.Logistica))
+        {
+            var claves = f.Logistica.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(x => x.ToLowerInvariant()).ToHashSet();
+            var tipos = new List<string>();
+            if (claves.Contains("colecta")) tipos.AddRange(new[] { "cross_docking", "xd_drop_off" });
+            if (claves.Contains("full")) tipos.Add("fulfillment");
+            if (claves.Contains("acordar")) tipos.Add("default");
+            if (claves.Contains("correo")) tipos.Add("drop_off");
+            if (claves.Contains("flex")) tipos.Add("self_service");
+            if (tipos.Count > 0) q = q.Where(m => m.LogisticType != null && tipos.Contains(m.LogisticType));
+        }
+
         var total = await q.CountAsync(ct);
 
-        var pageRows = await q
-            .OrderBy(m => m.Title).ThenBy(m => m.MeliItemId)
+        IOrderedQueryable<Models.MeliItem> ordenada = f.Orden switch
+        {
+            "precio_desc" => q.OrderByDescending(m => m.Price).ThenBy(m => m.Title),
+            "precio_asc" => q.OrderBy(m => m.Price).ThenBy(m => m.Title),
+            _ => q.OrderBy(m => m.Title),
+        };
+        var pageRows = await ordenada.ThenBy(m => m.MeliItemId)
             .Skip((pagina - 1) * porPagina).Take(porPagina)
             .Select(m => new
             {
@@ -537,7 +611,7 @@ public class MeliPublicacionesV2Service
         // Filtros que dependen de datos calculados (se aplican sobre la página).
         if (f.SinCosto) items = items.Where(i => i.Costo is null or <= 0).ToList();
 
-        return new PageDto(total, pagina, porPagina, items, grupo);
+        return new PageDto(total, pagina, porPagina, items, grupo, conteos);
     }
 
     /// <summary>Números para los chips de arriba: cuántas caen en cada filtro. Una sola pasada.</summary>

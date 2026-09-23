@@ -36,11 +36,17 @@ public class MeliPublicacionesV2Controller : ControllerBase
         [FromQuery] bool enPromo = false,
         [FromQuery] int pagina = 1,
         [FromQuery] int porPagina = 100,
-        [FromQuery] string? ampliar = null)
+        [FromQuery] string? ampliar = null,
+        [FromQuery] string? orden = null,
+        [FromQuery] decimal? precioDesde = null,
+        [FromQuery] decimal? precioHasta = null,
+        [FromQuery] bool? envioGratis = null,
+        [FromQuery] string? logistica = null)
     {
         var f = new MeliPublicacionesV2Service.Filtros(
             texto, sku, estado, cuentaId, comisionMinPct, cuotas, tipo,
-            variosPrecios, precioAMano, precioAMano, sinCosto, noLleganAlPct, comisionVieja, pagina, porPagina, enPromo, ampliar);
+            variosPrecios, precioAMano, precioAMano, sinCosto, noLleganAlPct, comisionVieja, pagina, porPagina, enPromo, ampliar,
+            orden, precioDesde, precioHasta, envioGratis, logistica);
         var res = await _svc.GetAsync(f, HttpContext.RequestAborted);
         return Ok(res);
     }
@@ -234,11 +240,17 @@ public class MeliPublicacionesV2Controller : ControllerBase
         [FromQuery] decimal? noLleganAlPct = null,
         [FromQuery] bool comisionVieja = false,
         [FromQuery] string? ampliar = null,
+        [FromQuery] string? orden = null,
+        [FromQuery] decimal? precioDesde = null,
+        [FromQuery] decimal? precioHasta = null,
+        [FromQuery] bool? envioGratis = null,
+        [FromQuery] string? logistica = null,
         [FromServices] MeliPublicacionesExcelService svc = null!)
     {
         var f = new MeliPublicacionesV2Service.Filtros(
             texto, sku, estado, cuentaId, comisionMinPct, cuotas, tipo,
-            variosPrecios, precioAMano, precioAMano, sinCosto, noLleganAlPct, comisionVieja, 1, 500, Ampliar: ampliar);
+            variosPrecios, precioAMano, precioAMano, sinCosto, noLleganAlPct, comisionVieja, 1, 500, Ampliar: ampliar,
+            Orden: orden, PrecioDesde: precioDesde, PrecioHasta: precioHasta, EnvioGratis: envioGratis, Logistica: logistica);
         var (bytes, filas) = await svc.ExportarAsync(f, HttpContext.RequestAborted);
         if (filas == 0) return BadRequest(new { error = "No hay publicaciones para bajar con esos filtros." });
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
