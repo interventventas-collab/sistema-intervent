@@ -2280,18 +2280,28 @@
             await InvokeAsync(async () =>
             {
                 // Si está eligiendo el motivo de "no la pude entregar", no le pisamos la pantalla.
-                if (modal is null && !escaneando && rechazoOrigen is null && me1ConfirmEntrega is null && noEntregadaStopId is null) await Recargar();
+                // 23/09/2026: en silencio. Antes cada 30 s la pantalla entera pasaba a "Cargando..." y
+                // volvía a la parada actual: si Nacho estaba bajando a mirar envíos viejos o cobranzas,
+                // parpadeaba y lo subía de golpe cada medio minuto.
+                if (modal is null && !escaneando && rechazoOrigen is null && me1ConfirmEntrega is null && noEntregadaStopId is null) await RecargarEnSilencio();
             });
         }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
 
-    private async Task Recargar()
+    private Task Recargar() => RecargarInterno(silencioso: false);
+
+    /// <summary>23/09/2026: el refresco automático. Trae lo nuevo sin mostrar "Cargando...", sin
+    /// moverle la pantalla y, si falla (sin señal), deja lo que ya estaba a la vista.</summary>
+    private Task RecargarEnSilencio() => RecargarInterno(silencioso: true);
+
+    private async Task RecargarInterno(bool silencioso)
     {
-        loading = true; cargaError = false; StateHasChanged();
+        if (!silencioso) { loading = true; cargaError = false; StateHasChanged(); }
         try
         {
             var r = await Http.GetFromJsonAsync<MisPedidosResp>($"api/cafe/repartidor-public/mis-pedidos/{Token}");
-            if (r is null) { cargaError = true; return; }
+            if (r is null) { if (!silencioso) cargaError = true; return; }
+            cargaError = false;
             nombre = r.Nombre;
             repartidorId = r.RepartidorId;
             pedidos = r.Pedidos ?? new();
@@ -2302,7 +2312,7 @@
                 var me1 = await Http.GetFromJsonAsync<List<Me1PedidoDto>>($"api/cafe/repartidor-public/mis-pedidos/{Token}/me1");
                 me1Pedidos = me1 ?? new();
             }
-            catch { me1Pedidos = new(); }
+            catch { if (!silencioso) me1Pedidos = new(); }
             // 2026-07-27: Ruta del mapa (Flex/paradas) en solo-lectura, en orden.
             try
             {
@@ -2310,17 +2320,20 @@
                 mapeoRuta = mp ?? new();
                 // Cada vez que se refresca la lista (al abrir, al entregar, al tocar 🔄) la pantalla
                 // se vuelve a acomodar en la parada que le toca.
-                acomodarPantalla = true;
-                paradaAbiertaManual = null;
+                if (!silencioso)
+                {
+                    acomodarPantalla = true;
+                    paradaAbiertaManual = null;
+                }
             }
-            catch { mapeoRuta = new(); }
+            catch { if (!silencioso) mapeoRuta = new(); }
             // 2026-09-04: cuánto lleva ganado hoy, si cobra por entrega. Si falla, no se muestra
             // nada — es informativo y no tiene que romperle la lista de reparto.
             try
             {
                 misViajes = await Http.GetFromJsonAsync<MisViajesDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes");
             }
-            catch { misViajes = null; }
+            catch { if (!silencioso) misViajes = null; }
             // Si el mapa embebido está abierto, redibujarlo con la ruta recién traída.
             if (verMapaRuta) mapaRutaNecesitaRender = true;
             // 2026-06-26: Alquileres asignados al repartidor (mismo token publico).
@@ -2330,13 +2343,13 @@
                 alqReservas = alq?.Reservas ?? new();
                 alqCobros = alq?.Cobros ?? new();
             }
-            catch { alqReservas = new(); alqCobros = new(); }
+            catch { if (!silencioso) { alqReservas = new(); alqCobros = new(); } }
             // 2026-06-11: reaplicar orden manual guardado en este celu (si lo hay)
             await AplicarOrdenGuardado();
             // Forzar re-init de Sortable porque cambio el contenido del DOM
             sortableInicializado = false;
         }
-        catch { cargaError = true; }
+        catch { if (!silencioso) cargaError = true; }
         finally { loading = false; StateHasChanged(); }
     }
 
