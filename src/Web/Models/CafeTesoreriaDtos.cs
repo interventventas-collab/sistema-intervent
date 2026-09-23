@@ -566,6 +566,8 @@ public class CobranzaListDto
     public string? ClienteEntrega { get; set; }
     public string? FormaPago { get; set; }
     public string? FormaPagoDetalle { get; set; }
+    /// <summary>23/09/2026: en un cobro redirigido, a quién fue la plata (ej "Walter Ignacion Carrizo · viajes").</summary>
+    public string? RedirigidoA { get; set; }
     // 2026-07-03: chips ricos + trazabilidad.
     public List<CobranzaComprobanteChip>? ComprobantesInfo { get; set; }
     public string? CargoPorNombre { get; set; }

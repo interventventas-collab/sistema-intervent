@@ -210,6 +210,10 @@
                                     <span title="@(c.FormaPagoDetalle ?? c.FormaPago)" style="display:inline-block; font-size:0.7rem; padding:.1rem .45rem; background:@bg; color:@fg; border:1px solid @br; border-radius:4px; white-space:nowrap;">@c.FormaPago</span>
                                 </div>
                             }
+                            @if (!string.IsNullOrWhiteSpace(c.RedirigidoA))
+                            {
+                                <div style="margin-top:.2rem; font-size:.72rem; color:#374151;" title="A quién se le pasó la plata">→ @c.RedirigidoA</div>
+                            }
                             @if (c.Retenciones > 0)
                             {
                                 <div style="margin-top:.2rem; font-size:.7rem; color:#6b7280;">Ret: $@c.Retenciones.ToString("N2")</div>

@@ -105,7 +105,10 @@ public class CafeCobranzasController : ControllerBase
         string? RepartidorNombre = null,
         DateTime? RepartidorCobroAt = null,
         string? AproboPorNombre = null,
-        DateTime? AproboAt = null);
+        DateTime? AproboAt = null,
+        // 23/09/2026: en los cobros REDIRIGIDOS, a quién fue la plata (ej "Walter Ignacion Carrizo · viajes").
+        // Antes el listado sólo decía "V_privado" y no se sabía a quién se había pasado.
+        string? RedirigidoA = null);
 
     public record CobranzaComprobanteChip(
         string Numero,               // ej "CAFE-2026-0888"
@@ -164,6 +167,7 @@ public class CafeCobranzasController : ControllerBase
         "CHEQUES_CARTERA" or "CHEQUES" or "CHEQUE" => "Cheque",
         "TARJETA" or "TARJETA_CREDITO" or "DEBITO" or "CREDITO" => "Tarjeta",
         "BANCO" => "Banco",
+        "V_PRIVADO" => "Redirigido",
         _ => string.IsNullOrWhiteSpace(tipo) ? "Otro" : char.ToUpper(tipo[0]) + tipo[1..].ToLower()
     };
 
@@ -387,7 +391,8 @@ public class CafeCobranzasController : ControllerBase
                 Medios = c.Medios.Select(m => new {
                     Tipo = m.Caja != null ? m.Caja.Tipo : "OTRO",
                     CajaNombre = m.Caja != null ? m.Caja.Nombre : "—",
-                    m.Importe
+                    m.Importe,
+                    m.RedirigidoDestino, m.RedirigidoEmpleadoId, m.RedirigidoProveedorId
                 }).ToList(),
                 c.Total, c.Retenciones, c.Estado
             })
@@ -432,8 +437,26 @@ public class CafeCobranzasController : ControllerBase
             .GroupBy(x => x.CobranzaId)
             .ToDictionary(g => g.Key, g => g.OrderBy(x => x.CreatedAt).First());
 
+        // 23/09/2026: nombres de a quién se redirigió la plata (empleado o proveedor).
+        var redirEmpIds = rows.SelectMany(r => r.Medios).Where(m => m.RedirigidoEmpleadoId != null)
+            .Select(m => m.RedirigidoEmpleadoId!.Value).Distinct().ToList();
+        var redirProvIds = rows.SelectMany(r => r.Medios).Where(m => m.RedirigidoProveedorId != null)
+            .Select(m => m.RedirigidoProveedorId!.Value).Distinct().ToList();
+        var redirEmp = redirEmpIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.NomEmpleados.Where(e => redirEmpIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id, e => e.Nombre);
+        var redirProv = redirProvIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.CafeProveedores.Where(p => redirProvIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Nombre);
+
         var list = rows.Select(r =>
         {
+            var redirTxt = r.Medios.Where(m => m.Tipo == "V_PRIVADO").Select(m =>
+                m.RedirigidoEmpleadoId is int eid
+                    ? $"{(redirEmp.TryGetValue(eid, out var en) ? en : "empleado #" + eid)} · {m.RedirigidoDestino}"
+                : m.RedirigidoProveedorId is int pid
+                    ? $"{(redirProv.TryGetValue(pid, out var pn) ? pn : "proveedor #" + pid)} · proveedor"
+                : m.RedirigidoDestino == "privada" ? "queda en la privada"
+                : "sin decir a quién").Distinct().ToList();
+
             // Calcular forma de pago resumida: 1 tipo → ese tipo, varios → MIXTO.
             string? formaPago = null;
             string? formaDetalle = null;
@@ -479,7 +502,8 @@ public class CafeCobranzasController : ControllerBase
                 pend?.RepartidorNombre,
                 pend?.CreatedAt,
                 pend?.RevisadaPor,
-                pend?.RevisadaAt);
+                pend?.RevisadaAt,
+                redirTxt.Count > 0 ? string.Join(" / ", redirTxt) : null);
         }).ToList();
         return Ok(list);
     }
