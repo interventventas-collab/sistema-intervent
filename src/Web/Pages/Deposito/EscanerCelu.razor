@@ -77,6 +77,14 @@
             <div class="big">📵</div>
             <div style="font-size:1.15rem; font-weight:800; color:#fff; margin-bottom:0.4rem;">Este celular no está habilitado</div>
             <div>El escáner de paquetes solo funciona en el <b>celular del depósito</b>.</div>
+            @* 2026-09-23: un administrador logueado en ESTE celu lo puede habilitar para el escáner *@
+            <button class="esc-btn esc-btn-stop" style="margin-top:1.4rem;" @onclick="HabilitarComoAdmin" disabled="@habilitando">
+                @(habilitando ? "Habilitando…" : "Soy administrador: habilitar este celu")
+            </button>
+            @if (msgHabilitar is not null)
+            {
+                <div style="margin-top:0.6rem; color:#fca5a5;">@msgHabilitar</div>
+            }
         </div>
     }
     else
@@ -237,12 +245,37 @@
         catch { deviceId = ""; }
         if (string.IsNullOrEmpty(deviceId))
         {
+            // celu que nunca abrió /picking: le damos identidad para poder habilitarlo
+            deviceId = Guid.NewGuid().ToString("N");
+            try { await JS.InvokeVoidAsync("localStorage.setItem", "picking_device_id", deviceId); } catch { }
             estado = "no_habilitado";
             return;
         }
         // Consulta vacía: solo para saber si este celu es el habilitado.
         var r = await Consultar("");
         estado = r.StatusCode == System.Net.HttpStatusCode.Forbidden ? "no_habilitado" : "ok";
+    }
+
+    private bool habilitando;
+    private string? msgHabilitar;
+
+    private async Task HabilitarComoAdmin()
+    {
+        habilitando = true;
+        msgHabilitar = null;
+        try
+        {
+            string nombre;
+            try { nombre = await JS.InvokeAsync<string>("eval", "navigator.userAgent.includes('iPhone') ? 'iPhone' : navigator.userAgent.includes('Android') ? 'Android' : 'Celu'"); }
+            catch { nombre = "Celu"; }
+            var resp = await Http.PostAsJsonAsync("api/meli-deposito/celu/habilitar-extra", new { deviceId, nombre });
+            if (resp.IsSuccessStatusCode) { estado = "ok"; return; }
+            msgHabilitar = resp.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
+                ? "Primero entrá al sistema en este celu con tu usuario de administrador (app.palanica.com.ar), y después volvé a abrir esta pantalla."
+                : "No se pudo habilitar. Probá de nuevo.";
+        }
+        catch { msgHabilitar = "No hay conexión con el sistema. Probá de nuevo."; }
+        finally { habilitando = false; }
     }
 
     private Task<HttpResponseMessage> Consultar(string code) =>

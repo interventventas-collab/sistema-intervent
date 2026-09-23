@@ -287,10 +287,13 @@ public class MeliDepositoController : ControllerBase
     {
         var deviceId = req?.DeviceId?.Trim() ?? "";
         var deposito = await _db.CafePickingDispositivos.Where(x => x.Activo).OrderBy(x => x.Id).FirstOrDefaultAsync();
-        if (deposito is null || string.IsNullOrEmpty(deviceId) || deposito.DeviceId != deviceId)
+        if (deposito is not null && !string.IsNullOrEmpty(deviceId) && deposito.DeviceId == deviceId)
+        {
+            deposito.LastSeenAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        else if (string.IsNullOrEmpty(deviceId) || !(await LeerCelusExtraAsync()).Any(c => c.DeviceId == deviceId))
             return StatusCode(403, new { error = "no_habilitado" });
-        deposito.LastSeenAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
 
         var code = req?.Code?.Trim() ?? "";
         if (code.Length == 0)
@@ -321,6 +324,39 @@ public class MeliDepositoController : ControllerBase
         if (num is null)
             return Ok(new { ok = false, mensaje = "No pude leer el número de esa etiqueta. Probá de nuevo." });
         return await ArmarFichaAsync(num.Value, traerSiFalta: true);
+    }
+
+    // Celus EXTRA para el escáner (ej. el del dueño en España), aparte del celu del depósito:
+    // viven en un AppSetting, así no se mezclan con la lista de armado ni con "Cambiar celu".
+    private const string KeyCelusExtra = "deposito.escaner_celus_extra";
+    public record CeluExtra(string DeviceId, string? Nombre, string? HabilitadoPor, DateTime Fecha);
+    public record CeluHabilitarRequest(string? DeviceId, string? Nombre);
+
+    private async Task<List<CeluExtra>> LeerCelusExtraAsync()
+    {
+        var fila = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(a => a.Key == KeyCelusExtra);
+        if (string.IsNullOrWhiteSpace(fila?.Value)) return new();
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<CeluExtra>>(fila.Value) ?? new(); }
+        catch { return new(); }
+    }
+
+    /// <summary>2026-09-23: habilita ESTE celu para el escáner, además del del depósito. Solo un
+    /// administrador logueado en ese celu (así nadie habilita un teléfono cualquiera).</summary>
+    [HttpPost("celu/habilitar-extra")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> CeluHabilitarExtra([FromBody] CeluHabilitarRequest req)
+    {
+        var deviceId = req?.DeviceId?.Trim() ?? "";
+        if (deviceId.Length < 8) return BadRequest(new { error = "Falta identificar el celular" });
+        var lista = await LeerCelusExtraAsync();
+        if (!lista.Any(c => c.DeviceId == deviceId))
+            lista.Add(new CeluExtra(deviceId, req?.Nombre, User.Identity?.Name, DateTime.UtcNow));
+        var json = System.Text.Json.JsonSerializer.Serialize(lista);
+        var fila = await _db.AppSettings.FirstOrDefaultAsync(a => a.Key == KeyCelusExtra);
+        if (fila is null) _db.AppSettings.Add(new AppSetting { Key = KeyCelusExtra, Value = json, UpdatedAt = DateTime.UtcNow });
+        else { fila.Value = json; fila.UpdatedAt = DateTime.UtcNow; }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     /// <summary>Ficha de una venta propia para el celu: qué va en el paquete, con foto. Sin plata.</summary>
