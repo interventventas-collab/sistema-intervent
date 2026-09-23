@@ -241,6 +241,7 @@
     .p2-po .venta small { font-size: .58rem; font-weight: 400; color: #1d4f80; margin-left: .35rem; }
     .p2-po .nota { grid-column: 2 / 5; font-size: .58rem; color: #6b7280; font-weight: 400; margin-top: -1px; }
     .p2-po.sel .nota { color: #1d4f80; font-weight: 400; }
+    .p2-po.sel .nota.motivo { text-align: right; color: #6b7280; margin-top: -3px; }
     .p2-po.nodisp { cursor: default; opacity: .55; }
     .p2-po.nodisp:hover { background: none; }
     .p2-precios .p2-edit { margin: 2px 0 2px 18px; }
@@ -815,7 +816,8 @@
                                 {
                                     var real = it.MargenPct;
                                     var abajo = real is decimal ra && ra < objRef - 2m;
-                                    var porPiso = !abajo && real is decimal rb && rb > objRef + 2m && it.PrecioOem is decimal op && Math.Round(it.Precio, 0) <= op;
+                                    var porPiso = !abajo && real is decimal rb && rb > objRef + 0.1m && it.PrecioOem is decimal op && Math.Round(it.Precio, 0) <= op;
+                                    var motivo = abajo || porPiso ? null : MotivoDiferencia(it, objRef);
                                     <span class="pp @ClasePct(real, objRef)" style="@(it.ComisionVieja ? "opacity:.55;" : "")">@(real is decimal rr ? rr.ToString("0.#", ar) + "%" : "—")</span>
                                     @if (abajo)
                                     {
@@ -824,7 +826,13 @@
                                     }
                                     else if (porPiso)
                                     {
-                                        <span class="venta">@Plata(it.Precio)<small>se vende a esto · no baja del OEM, por eso deja más</small></span>
+                                        <span class="nota motivo">pediste @objRef.ToString("0.#", ar)% · manda el precio OEM</span>
+                                        <span class="venta">@Plata(it.Precio)<small>se vende a esto · no baja del OEM</small></span>
+                                    }
+                                    else if (motivo is not null)
+                                    {
+                                        <span class="nota motivo">pediste @objRef.ToString("0.#", ar)% · @motivo</span>
+                                        <span class="venta">@Plata(it.Precio)<small>se vende a esto · lo mantiene todos los días</small></span>
                                     }
                                     else
                                     {
@@ -2384,6 +2392,21 @@
         // Mismo redondeo que el motor: sube hasta terminar en 99 ($44.175,94 → $44.199).
         var r99 = Math.Floor(precio / 100m) * 100m + 99m;
         return r99 >= precio ? r99 : r99 + 100m;
+    }
+
+    /// <summary>2026-09-23 — Osmar: "pediste 71,6 y dice 73,8, ¿por qué?". Con "Mantener el %"
+    /// marcado, el motivo real de la diferencia (los casos abajo por más de 2 y OEM se dicen aparte).
+    /// Redondeo: el precio sube hasta terminar en 99, o sea hasta $100; si al precio $100 más bajo
+    /// ya quedaba en lo pedido, la diferencia es del redondeo. Null = no hay diferencia que explicar.</summary>
+    private string? MotivoDiferencia(ApiClient.PubV2Fila it, decimal objRef)
+    {
+        if (it.MargenPct is not decimal real || Math.Abs(real - objRef) < 0.1m) return null;
+        if (real < objRef)
+            return $"se corrige sola si baja de {(objRef - 2m).ToString("0.#", ar)}%";
+        if (Math.Round(it.Precio, 0) % 100m == 99m && MargenA(it, it.Precio - 100m) is decimal sinRedondeo
+            && sinRedondeo <= objRef + 0.2m)
+            return $"deja más por redondear a {Plata(it.Precio)}";
+        return "deja más: bajó el costo o lo que cobra MeLi";
     }
 
     private static string ClasePct(decimal? m, decimal objetivo)
