@@ -32,9 +32,20 @@
     .om-fila .quien { font-size: 0.88rem; color: #334155; margin-bottom: 0.25rem; }
     .om-fila .quien b { color: #0f172a; }
     .om-fila .prod { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; padding: 0.1rem 0; }
-    .om-fila .prod img, .om-fila .prod .sinfoto { width: 44px; height: 44px; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: white; flex: 0 0 auto; }
+    .om-fila .prod img, .om-fila .prod .sinfoto { width: 88px; height: 88px; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: white; flex: 0 0 auto; }
     .om-fila .prod .c { font-weight: 800; min-width: 30px; }
     .om-cancel { color: #b91c1c; }
+    .om-fila.sel { background: #eff6ff; box-shadow: inset 3px 0 0 #3b82f6; }
+
+    .om-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 1.5rem; align-items: start; }
+    .om-col-ficha { position: sticky; top: 0.5rem; max-height: calc(100vh - 1rem); overflow-y: auto; padding-right: 0.3rem; }
+    .om-ficha-vacia { color: #94a3b8; font-size: 1rem; padding: 3rem 1rem; text-align: center; border: 2px dashed #e2e8f0; border-radius: 12px; }
+    @@media (max-width: 1100px) {
+        .om-split { display: block; }
+        .om-split.con-ficha .om-col-lista { display: none; }
+        .om-split:not(.con-ficha) .om-col-ficha { display: none; }
+        .om-col-ficha { position: static; max-height: none; overflow: visible; }
+    }
 
     .om-nav { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
     .om-nav .pos { font-size: 0.85rem; color: #64748b; }
@@ -89,10 +100,95 @@
 </div>
 <div class="om-hint">Con el lector: apoyá el cursor en la casilla y disparás la etiqueta. También podés tipear el nº de envío o de venta y apretar Enter.</div>
 
+@* 2026-09-23: listado a la IZQUIERDA y ficha a la DERECHA (pedido del dueño: sobraba mucho lugar).
+   En pantallas angostas queda como antes: o el listado o la ficha. *@
+<div class="om-split @(ficha is not null ? "con-ficha" : "")">
+<div class="om-col-lista">
+    <div class="om-filtros">
+        <div class="om-filtro">
+            <span class="lbl">Fecha</span>
+            @foreach (var (d, l) in OpcionesDias)
+            {
+                <button class="om-chip @(dias == d ? "on" : "")" @onclick="() => CambiarDias(d)">@l</button>
+            }
+        </div>
+        @if (cuentas.Count > 1)
+        {
+            <div class="om-filtro">
+                <span class="lbl">Cuenta</span>
+                <button class="om-chip @(cuenta is null ? "on" : "")" @onclick="() => CambiarCuenta(null)">Todas</button>
+                @foreach (var c in cuentas)
+                {
+                    <button class="om-chip @(cuenta == c.Id ? "on" : "")" @onclick="() => CambiarCuenta(c.Id)">@c.Nombre</button>
+                }
+            </div>
+        }
+        <div class="om-filtro">
+            <span class="lbl">Envío</span>
+            @foreach (var (k, l) in OpcionesEnvio)
+            {
+                <button class="om-chip @(envio == k ? "on" : "")" @onclick="() => envio = k">@l</button>
+            }
+        </div>
+        <div class="om-filtro">
+            <span class="lbl">Estado</span>
+            @foreach (var (k, l) in OpcionesEstado)
+            {
+                <button class="om-chip @(estado == k ? "on" : "")" @onclick="() => estado = k">@l</button>
+            }
+        </div>
+        <div class="om-filtro">
+            <span class="lbl">Buscar</span>
+            <input class="om-buscar" @bind="buscar" @bind:event="oninput" placeholder="comprador, producto o nº de venta" />
+        </div>
+    </div>
+
+    @if (cargando && ordenes.Count == 0)
+    {
+        <div class="om-vacio">Cargando órdenes…</div>
+    }
+    else if (Filtradas.Count == 0)
+    {
+        <div class="om-vacio">No hay órdenes con esos filtros.</div>
+    }
+    else
+    {
+        <div class="om-vacio" style="margin-bottom:0.3rem;">@Filtradas.Count @(Filtradas.Count == 1 ? "envío" : "envíos") · tocá uno para verlo en grande</div>
+        <div class="om-lista">
+            @for (int i = 0; i < Filtradas.Count; i++)
+            {
+                var idx = i;
+                var o = Filtradas[i];
+                <div class="om-fila @(ficha is not null && ficha.Numero == o.Numero ? "sel" : "")" @onclick="() => AbrirDelListado(idx)">
+                    <div class="cuando">
+                        @o.Fecha.ToArTime().ToString("dd/MM")<br />@o.Fecha.ToArTime().ToString("HH:mm")
+                    </div>
+                    <div class="cuerpo">
+                        <div class="quien">
+                            <b>@o.Comprador</b> · @o.Tipo
+                            @if (cuentas.Count > 1) { <text> · @o.Cuenta</text> }
+                            · <span class="@(o.EstadoClave == "cancelada" ? "om-cancel" : "")">@o.Estado</span>
+                        </div>
+                        @foreach (var p in o.Productos)
+                        {
+                            <div class="prod">
+                                @if (!string.IsNullOrEmpty(p.Foto)) { <img src="@p.Foto" alt="" loading="lazy" /> }
+                                else { <span class="sinfoto"></span> }
+                                <span class="c">×@p.Cantidad</span>
+                                <span>@p.Titulo</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+<div class="om-col-ficha">
 @if (ficha is not null)
 {
     <div class="om-nav">
-        <button class="btn btn-secondary" @onclick="CerrarFicha">✕ Volver al listado</button>
+        <button class="btn btn-secondary" @onclick="CerrarFicha">✕ Cerrar</button>
         @if (fichaIndice >= 0)
         {
             <button class="btn btn-secondary" disabled="@(fichaIndice <= 0 || cargandoFicha)" @onclick="() => Mover(-1)">◀ Anterior</button>
@@ -226,86 +322,10 @@
 }
 else
 {
-    <div class="om-filtros">
-        <div class="om-filtro">
-            <span class="lbl">Fecha</span>
-            @foreach (var (d, l) in OpcionesDias)
-            {
-                <button class="om-chip @(dias == d ? "on" : "")" @onclick="() => CambiarDias(d)">@l</button>
-            }
-        </div>
-        @if (cuentas.Count > 1)
-        {
-            <div class="om-filtro">
-                <span class="lbl">Cuenta</span>
-                <button class="om-chip @(cuenta is null ? "on" : "")" @onclick="() => CambiarCuenta(null)">Todas</button>
-                @foreach (var c in cuentas)
-                {
-                    <button class="om-chip @(cuenta == c.Id ? "on" : "")" @onclick="() => CambiarCuenta(c.Id)">@c.Nombre</button>
-                }
-            </div>
-        }
-        <div class="om-filtro">
-            <span class="lbl">Envío</span>
-            @foreach (var (k, l) in OpcionesEnvio)
-            {
-                <button class="om-chip @(envio == k ? "on" : "")" @onclick="() => envio = k">@l</button>
-            }
-        </div>
-        <div class="om-filtro">
-            <span class="lbl">Estado</span>
-            @foreach (var (k, l) in OpcionesEstado)
-            {
-                <button class="om-chip @(estado == k ? "on" : "")" @onclick="() => estado = k">@l</button>
-            }
-        </div>
-        <div class="om-filtro">
-            <span class="lbl">Buscar</span>
-            <input class="om-buscar" @bind="buscar" @bind:event="oninput" placeholder="comprador, producto o nº de venta" />
-        </div>
-    </div>
-
-    @if (cargando && ordenes.Count == 0)
-    {
-        <div class="om-vacio">Cargando órdenes…</div>
-    }
-    else if (Filtradas.Count == 0)
-    {
-        <div class="om-vacio">No hay órdenes con esos filtros.</div>
-    }
-    else
-    {
-        <div class="om-vacio" style="margin-bottom:0.3rem;">@Filtradas.Count @(Filtradas.Count == 1 ? "envío" : "envíos") · tocá uno para verlo en grande</div>
-        <div class="om-lista">
-            @for (int i = 0; i < Filtradas.Count; i++)
-            {
-                var idx = i;
-                var o = Filtradas[i];
-                <div class="om-fila" @onclick="() => AbrirDelListado(idx)">
-                    <div class="cuando">
-                        @o.Fecha.ToArTime().ToString("dd/MM")<br />@o.Fecha.ToArTime().ToString("HH:mm")
-                    </div>
-                    <div class="cuerpo">
-                        <div class="quien">
-                            <b>@o.Comprador</b> · @o.Tipo
-                            @if (cuentas.Count > 1) { <text> · @o.Cuenta</text> }
-                            · <span class="@(o.EstadoClave == "cancelada" ? "om-cancel" : "")">@o.Estado</span>
-                        </div>
-                        @foreach (var p in o.Productos)
-                        {
-                            <div class="prod">
-                                @if (!string.IsNullOrEmpty(p.Foto)) { <img src="@p.Foto" alt="" loading="lazy" /> }
-                                else { <span class="sinfoto"></span> }
-                                <span class="c">×@p.Cantidad</span>
-                                <span>@p.Titulo</span>
-                            </div>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
-    }
+    <div class="om-ficha-vacia">Tocá un envío de la lista para verlo acá.</div>
 }
+</div>
+</div>
 
 @if (!string.IsNullOrEmpty(zoomFoto))
 {
@@ -454,7 +474,8 @@ else
         var lista = Filtradas;
         if (idx < 0 || idx >= lista.Count) return;
         fichaIndice = idx;
-        IrAFicha(lista[idx].Numero, reemplazar: false);
+        // con la ficha al costado se va saltando de una a otra: reemplazar, así Cerrar vuelve al listado
+        IrAFicha(lista[idx].Numero, reemplazar: Orden is not null);
     }
 
     private void MostrarFicha(MeliDepoFicha f, int idx)
@@ -467,7 +488,9 @@ else
     private void Mover(int delta)
     {
         var lista = Filtradas;
-        var idx = fichaIndice + delta;
+        // si cambiaron los filtros con la ficha abierta, ubicarla de nuevo en la lista
+        var actual = ficha is null ? -1 : lista.FindIndex(o => o.Numero == ficha.Numero);
+        var idx = (actual >= 0 ? actual : fichaIndice) + delta;
         if (idx < 0 || idx >= lista.Count) return;
         fichaIndice = idx;
         IrAFicha(lista[idx].Numero, reemplazar: true);
