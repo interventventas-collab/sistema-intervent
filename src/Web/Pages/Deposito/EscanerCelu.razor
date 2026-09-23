@@ -1,0 +1,383 @@
+@page "/escaner"
+@attribute [AllowAnonymous]
+@layout Web.Layout.EmptyLayout
+@implements IAsyncDisposable
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@* 2026-09-23: escáner de paquetes para el CELU DEL DEPÓSITO. Pedido del dueño: "que se mandan
+   cruzados los paquetes" → con la cámara del celu se escanea cualquier etiqueta (MeLi o el QR
+   del repartidor que va en el comprobante de una venta propia) y se ve qué va adentro.
+   Sin login, como /picking: solo anda en el celu habilitado (mismo picking_device_id). Sin plata. *@
+
+<style>
+    body { background: #0f172a; }
+    .esc-wrap { max-width: 640px; margin: 0 auto; padding: 0.6rem 0.7rem 4rem; color: #e2e8f0; }
+    .esc-head { text-align: center; padding: 0.8rem 0.5rem 0.5rem; }
+    .esc-title { font-size: 1.35rem; font-weight: 800; color: #fff; }
+    .esc-btn {
+        display: block; width: 100%; padding: 1.05rem; border: none; border-radius: 14px;
+        font-size: 1.2rem; font-weight: 800; cursor: pointer; margin: 0.6rem 0;
+    }
+    .esc-btn-scan { background: #22c55e; color: #052e16; }
+    .esc-btn-stop { background: #334155; color: #e2e8f0; font-size: 1rem; padding: 0.75rem; }
+    .esc-reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
+    .esc-manual { display: flex; gap: 0.4rem; margin: 0.4rem 0 0.2rem; }
+    .esc-manual input {
+        flex: 1; min-width: 0; padding: 0.65rem 0.75rem; border-radius: 10px; border: 1px solid #334155;
+        background: #1e293b; color: #f1f5f9; font-size: 1rem;
+    }
+    .esc-manual button { padding: 0 1rem; border-radius: 10px; border: none; background: #334155; color: #e2e8f0; font-weight: 700; }
+    .esc-hint { font-size: 0.8rem; color: #64748b; text-align: center; }
+    .esc-msg { text-align: center; padding: 2.2rem 1rem; color: #cbd5e1; font-size: 1rem; line-height: 1.5; }
+    .esc-msg .big { font-size: 3rem; margin-bottom: 0.5rem; }
+    .esc-error { background: #7f1d1d; color: #fee2e2; border-radius: 12px; padding: 1rem; margin: 0.6rem 0; font-size: 1.05rem; font-weight: 700; text-align: center; }
+    .esc-cargando { text-align: center; color: #94a3b8; padding: 1.5rem; font-size: 1.05rem; }
+
+    .esc-ficha-head { padding: 0.4rem 0.1rem 0.6rem; border-bottom: 1px solid #1e293b; margin-bottom: 0.4rem; }
+    .esc-origen { font-size: 0.85rem; color: #94a3b8; }
+    .esc-origen b { color: #facc15; }
+    .esc-comprador { font-size: 1.5rem; font-weight: 800; color: #fff; line-height: 1.2; margin: 0.15rem 0; word-break: break-word; }
+    .esc-linea { font-size: 0.95rem; color: #cbd5e1; }
+    .esc-estado-malo { background: #b91c1c; color: #fff; border-radius: 10px; padding: 0.6rem; text-align: center; font-weight: 800; font-size: 1.1rem; margin: 0.5rem 0; }
+    .esc-total { font-size: 1rem; color: #e2e8f0; margin-top: 0.35rem; }
+    .esc-total b { color: #fb923c; font-size: 1.15rem; }
+
+    .esc-prod { background: #1e293b; border-radius: 14px; margin: 0.6rem 0; padding: 0.8rem; }
+    .esc-prod-foto { width: 100%; max-height: 300px; object-fit: contain; background: #fff; border-radius: 10px; display: block; }
+    .esc-prod-sinfoto { width: 100%; height: 90px; border-radius: 10px; background: #334155; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 0.9rem; }
+    .esc-prod-fila { display: flex; align-items: flex-start; gap: 0.7rem; margin-top: 0.6rem; }
+    .esc-cant { font-size: 2.4rem; font-weight: 900; color: #fb923c; line-height: 1; min-width: 60px; }
+    .esc-cant .x { font-size: 1.1rem; color: #94a3b8; }
+    .esc-prod-nombre { font-size: 1.1rem; font-weight: 700; color: #f1f5f9; line-height: 1.25; }
+    .esc-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+    .esc-tag { font-size: 0.8rem; font-weight: 700; padding: 0.12rem 0.5rem; border-radius: 6px; background: #334155; color: #e2e8f0; }
+    .esc-sku { font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem; }
+    .esc-comps { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed #334155; font-size: 0.95rem; color: #cbd5e1; }
+    .esc-comps div { padding: 0.12rem 0; }
+    .esc-comps b { color: #fb923c; }
+
+    .esc-seccion { margin-top: 1rem; }
+    .esc-seccion h3 { font-size: 1rem; color: #fff; margin: 0 0 0.4rem; }
+    .esc-nota { background: #fef3c7; color: #422006; border-radius: 10px; padding: 0.7rem 0.8rem; font-size: 1rem; white-space: pre-wrap; }
+    .esc-msj { background: #1e293b; border-radius: 10px; padding: 0.55rem 0.7rem; margin: 0.35rem 0; font-size: 0.95rem; }
+    .esc-msj .quien { font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.15rem; }
+    .esc-msj.comprador { border-left: 3px solid #facc15; }
+    .esc-gris { color: #94a3b8; font-size: 0.95rem; }
+</style>
+
+<div class="esc-wrap">
+    @if (estado == "cargando")
+    {
+        <div class="esc-cargando">Cargando…</div>
+    }
+    else if (estado == "no_habilitado")
+    {
+        <div class="esc-msg">
+            <div class="big">📵</div>
+            <div style="font-size:1.15rem; font-weight:800; color:#fff; margin-bottom:0.4rem;">Este celular no está habilitado</div>
+            <div>El escáner de paquetes solo funciona en el <b>celular del depósito</b>.</div>
+        </div>
+    }
+    else
+    {
+        <div class="esc-head">
+            <div class="esc-title">📷 Escanear paquete</div>
+        </div>
+
+        @if (escaneando)
+        {
+            <div id="reader" class="esc-reader"></div>
+            <div class="esc-hint" style="margin-top:0.4rem;">Apuntá a la etiqueta de MercadoLibre o al QR del comprobante</div>
+            <button class="esc-btn esc-btn-stop" @onclick="Detener">Cancelar</button>
+        }
+        else
+        {
+            <button class="esc-btn esc-btn-scan" @onclick="Escanear">📷 @(ficha is null && error is null ? "Escanear" : "Escanear otra")</button>
+            <div class="esc-manual">
+                <input @bind="manual" @bind:event="oninput" @onkeydown="ManualKey" placeholder="o escribí el nº de envío / venta" inputmode="text" />
+                <button @onclick="BuscarManual">Ver</button>
+            </div>
+        }
+
+        @if (buscando)
+        {
+            <div class="esc-cargando">Buscando…</div>
+        }
+        else if (error is not null)
+        {
+            <div class="esc-error">❌ @error</div>
+        }
+        else if (ficha is not null)
+        {
+            <div class="esc-ficha-head">
+                @if (ficha.Origen == "propia")
+                {
+                    <div class="esc-origen"><b>Venta propia</b> · @ficha.NumeroComprobante · @FechaAr(ficha.Fecha)</div>
+                }
+                else
+                {
+                    <div class="esc-origen"><b>MercadoLibre</b> · @ficha.Cuenta · @ficha.Tipo · @FechaAr(ficha.Fecha)</div>
+                }
+                <div class="esc-comprador">@(string.IsNullOrWhiteSpace(ficha.Comprador) ? "(sin nombre)" : ficha.Comprador)</div>
+                @if (ficha.Origen == "propia")
+                {
+                    @if (!string.IsNullOrWhiteSpace(ficha.Domicilio) || !string.IsNullOrWhiteSpace(ficha.Localidad))
+                    {
+                        <div class="esc-linea">📍 @ficha.Domicilio@(string.IsNullOrWhiteSpace(ficha.Domicilio) || string.IsNullOrWhiteSpace(ficha.Localidad) ? "" : " · ")@ficha.Localidad</div>
+                    }
+                    <div class="esc-linea">@ficha.Tipo · @ficha.Estado@(ficha.Fragil ? " · ⚠ FRÁGIL" : "")@(ficha.Bultos is > 1 ? $" · {ficha.Bultos} bultos" : "")</div>
+                }
+                else
+                {
+                    <div class="esc-linea">@ficha.Estado · venta @ficha.NumeroVenta</div>
+                }
+                @if (ficha.Anulada || ficha.Estado == "Cancelada")
+                {
+                    <div class="esc-estado-malo">⛔ @(ficha.Anulada ? "VENTA ANULADA" : "VENTA CANCELADA") · NO DESPACHAR</div>
+                }
+                <div class="esc-total">En total: <b>@ficha.Unidades</b> unidad@(ficha.Unidades == 1 ? "" : "es") · @ficha.Productos.Count producto@(ficha.Productos.Count == 1 ? "" : "s") distinto@(ficha.Productos.Count == 1 ? "" : "s")</div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(ficha.ComentarioArmado))
+            {
+                <div class="esc-seccion">
+                    <div class="esc-nota">📝 @ficha.ComentarioArmado</div>
+                </div>
+            }
+
+            @foreach (var p in ficha.Productos)
+            {
+                <div class="esc-prod">
+                    @if (!string.IsNullOrEmpty(p.Foto))
+                    {
+                        <img class="esc-prod-foto" src="@p.Foto" alt="" loading="lazy" />
+                    }
+                    else
+                    {
+                        <div class="esc-prod-sinfoto">sin foto</div>
+                    }
+                    <div class="esc-prod-fila">
+                        <div class="esc-cant"><span class="x">×</span>@p.Cantidad</div>
+                        <div style="flex:1; min-width:0;">
+                            <div class="esc-prod-nombre">@p.Titulo</div>
+                            @if (!string.IsNullOrEmpty(p.Formato) || !string.IsNullOrEmpty(p.Molienda) || !string.IsNullOrEmpty(p.Envase) || !string.IsNullOrEmpty(p.Combo))
+                            {
+                                <div class="esc-tags">
+                                    @if (!string.IsNullOrEmpty(p.Formato)) { <span class="esc-tag">@p.Formato</span> }
+                                    @if (!string.IsNullOrEmpty(p.Molienda)) { <span class="esc-tag">@p.Molienda</span> }
+                                    @if (!string.IsNullOrEmpty(p.Envase)) { <span class="esc-tag">@p.Envase</span> }
+                                    @if (!string.IsNullOrEmpty(p.Combo)) { <span class="esc-tag">del combo @p.Combo</span> }
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(p.Sku)) { <div class="esc-sku">@p.Sku</div> }
+                        </div>
+                    </div>
+                    @if (p.EsCombo && p.Componentes.Count > 0)
+                    {
+                        <div class="esc-comps">
+                            <div style="color:#94a3b8; font-size:0.8rem;">Cada uno lleva:</div>
+                            @foreach (var c in p.Componentes)
+                            {
+                                <div><b>×@c.Cantidad.ToString("0.##")</b> @c.Nombre@(FormatoLindo(c.Formato) is string f ? $" ({f})" : "")</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (ficha.Origen != "propia")
+            {
+                var delComprador = ficha.Mensajes.Where(m => m.De == "comprador").ToList();
+                <div class="esc-seccion">
+                    <h3>✉️ Mensajes del comprador</h3>
+                    @if (!ficha.MensajesOk)
+                    {
+                        <div class="esc-gris">MercadoLibre no contestó; no se pudieron ver los mensajes.</div>
+                    }
+                    else if (ficha.Mensajes.Count == 0)
+                    {
+                        <div class="esc-gris">No dejó mensajes.</div>
+                    }
+                    else
+                    {
+                        @foreach (var m in ficha.Mensajes)
+                        {
+                            <div class="esc-msj @(m.De == "comprador" ? "comprador" : "")">
+                                <div class="quien">@(m.De == "comprador" ? "Comprador" : "Nosotros") · @FechaAr(m.Fecha)</div>
+                                <div>@m.Texto</div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+
+            @if (!escaneando)
+            {
+                <button class="esc-btn esc-btn-scan" style="margin-top:1.2rem;" @onclick="Escanear">📷 Escanear otra</button>
+            }
+        }
+    }
+</div>
+
+@code {
+    private string estado = "cargando";   // cargando | ok | no_habilitado
+    private string deviceId = "";
+    private bool escaneando;
+    private bool buscando;
+    private string manual = "";
+    private string? error;
+    private Ficha? ficha;
+    private DotNetObjectReference<EscanerCelu>? _ref;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Misma identidad que la lista de armado (/picking): el celu del depósito ya la tiene.
+        try { deviceId = await JS.InvokeAsync<string>("localStorage.getItem", "picking_device_id") ?? ""; }
+        catch { deviceId = ""; }
+        if (string.IsNullOrEmpty(deviceId))
+        {
+            estado = "no_habilitado";
+            return;
+        }
+        // Consulta vacía: solo para saber si este celu es el habilitado.
+        var r = await Consultar("");
+        estado = r.StatusCode == System.Net.HttpStatusCode.Forbidden ? "no_habilitado" : "ok";
+    }
+
+    private Task<HttpResponseMessage> Consultar(string code) =>
+        Http.PostAsJsonAsync("api/meli-deposito/celu/escanear", new { deviceId, code });
+
+    private async Task Escanear()
+    {
+        error = null;
+        ficha = null;
+        _ref ??= DotNetObjectReference.Create(this);
+        escaneando = true;
+        StateHasChanged();
+        await Task.Yield(); // que el <div id="reader"> entre al DOM
+        await JS.InvokeVoidAsync("scannerBarcode.start", "reader", _ref);
+    }
+
+    private async Task Detener()
+    {
+        escaneando = false;
+        try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { }
+    }
+
+    [JSInvokable]
+    public async Task OnScanDetected(string text, string format)
+    {
+        if (string.IsNullOrWhiteSpace(text) || buscando || !escaneando) return;
+        await Detener();
+        await Buscar(text);
+    }
+
+    [JSInvokable]
+    public void OnScanError(string message)
+    {
+        error = message;
+        escaneando = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ManualKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarManual();
+    }
+
+    private async Task BuscarManual()
+    {
+        var t = manual.Trim();
+        if (t.Length == 0) return;
+        await Buscar(t);
+    }
+
+    private async Task Buscar(string code)
+    {
+        buscando = true;
+        error = null;
+        ficha = null;
+        await InvokeAsync(StateHasChanged);
+        bool ok = false;
+        try
+        {
+            var resp = await Consultar(code);
+            if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden) { estado = "no_habilitado"; return; }
+            var f = await resp.Content.ReadFromJsonAsync<Ficha>();
+            if (f is null || !f.Ok) error = f?.Mensaje ?? "No encontré esa etiqueta.";
+            else { ficha = f; manual = ""; ok = true; }
+        }
+        catch { error = "No hay conexión con el sistema. Probá de nuevo."; }
+        finally
+        {
+            buscando = false;
+            try { await JS.InvokeVoidAsync("scanBeep", ok); } catch { }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static string? FormatoLindo(string? f) => f switch
+    {
+        null or "" => null, "1KG" => "1 kg", "MEDIO" => "½ kg", "CUARTO" => "¼ kg", _ => f
+    };
+
+    private static string FechaAr(DateTime? utc) => utc.HasValue ? utc.Value.ToArTime().ToString("dd/MM HH:mm") : "";
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { }
+        _ref?.Dispose();
+    }
+
+    public class Ficha
+    {
+        public bool Ok { get; set; }
+        public string? Mensaje { get; set; }
+        public string? Origen { get; set; }
+        public DateTime? Fecha { get; set; }
+        public string? Comprador { get; set; }
+        public string? Estado { get; set; }
+        public string? Tipo { get; set; }
+        public int Unidades { get; set; }
+        public List<Producto> Productos { get; set; } = new();
+        // MeLi
+        public string? Cuenta { get; set; }
+        public long? NumeroVenta { get; set; }
+        public bool MensajesOk { get; set; }
+        public List<Mensaje> Mensajes { get; set; } = new();
+        // venta propia
+        public string? NumeroComprobante { get; set; }
+        public string? Localidad { get; set; }
+        public string? Domicilio { get; set; }
+        public bool Anulada { get; set; }
+        public int? Bultos { get; set; }
+        public bool Fragil { get; set; }
+        public string? ComentarioArmado { get; set; }
+    }
+    public class Producto
+    {
+        public string? Titulo { get; set; }
+        public int Cantidad { get; set; }
+        public string? Sku { get; set; }
+        public string? Foto { get; set; }
+        public string? Formato { get; set; }
+        public string? Molienda { get; set; }
+        public string? Envase { get; set; }
+        public string? Combo { get; set; }
+        public bool EsCombo { get; set; }
+        public List<Componente> Componentes { get; set; } = new();
+    }
+    public class Componente
+    {
+        public string? Nombre { get; set; }
+        public decimal Cantidad { get; set; }
+        public string? Formato { get; set; }
+    }
+    public class Mensaje
+    {
+        public string? De { get; set; }
+        public string? Texto { get; set; }
+        public DateTime? Fecha { get; set; }
+    }
+}

@@ -255,6 +255,7 @@ public class MeliDepositoController : ControllerBase
         return Ok(new
         {
             ok = true,
+            origen = "meli",
             numero = claveActual,
             numeroEnvio = shippingId,
             numeroVenta = primero.PackId ?? primero.MeliOrderId,
@@ -269,6 +270,121 @@ public class MeliDepositoController : ControllerBase
             mensajes,
             preguntas = preguntasOut,
             compras
+        });
+    }
+
+    // ─────────────────────── ESCÁNER DEL CELU DEL DEPÓSITO ───────────────────────
+
+    public record CeluEscanearRequest(string? DeviceId, string? Code);
+
+    /// <summary>2026-09-23: escáner con la cámara del CELU DEL DEPÓSITO (/escaner). Sin login, como la
+    /// lista de armado (/picking): solo le contesta al celu habilitado (Cafe_PickingDispositivos).
+    /// Reconoce la etiqueta de MeLi (QR Flex / barras de Correo) y el QR del repartidor que va en el
+    /// comprobante de las ventas propias (/repartidor/{token}). Sin plata.</summary>
+    [HttpPost("celu/escanear")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CeluEscanear([FromBody] CeluEscanearRequest req)
+    {
+        var deviceId = req?.DeviceId?.Trim() ?? "";
+        var deposito = await _db.CafePickingDispositivos.Where(x => x.Activo).OrderBy(x => x.Id).FirstOrDefaultAsync();
+        if (deposito is null || string.IsNullOrEmpty(deviceId) || deposito.DeviceId != deviceId)
+            return StatusCode(403, new { error = "no_habilitado" });
+        deposito.LastSeenAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var code = req?.Code?.Trim() ?? "";
+        if (code.Length == 0)
+            return Ok(new { ok = false, mensaje = "No leí nada. Probá de nuevo." });
+
+        // Venta propia: QR del repartidor impreso en el comprobante.
+        var idx = code.IndexOf("/repartidor/", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            var token = code.Substring(idx + "/repartidor/".Length).Split('?', '#', '/')[0];
+            var venta = string.IsNullOrEmpty(token) ? null
+                : await _db.CafeVentas.AsNoTracking().FirstOrDefaultAsync(v => v.PublicToken == token);
+            return await FichaVentaPropiaAsync(venta);
+        }
+
+        // Nº de comprobante tipeado a mano (ej. CAFE-2026-0123).
+        if (code.Any(char.IsLetter) && !code.Contains('/') && !code.Contains('{'))
+        {
+            var venta = await _db.CafeVentas.AsNoTracking().FirstOrDefaultAsync(v => v.Numero == code);
+            if (venta is not null) return await FichaVentaPropiaAsync(venta);
+        }
+
+        // Cualquier otro enlace (QR de alquiler, de visita, una web) no es etiqueta de envío.
+        if (code.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return Ok(new { ok = false, mensaje = "Ese código no es una etiqueta de envío (ni de MercadoLibre ni de una venta nuestra)." });
+
+        var num = ExtractShipmentIdFromCode(code);
+        if (num is null)
+            return Ok(new { ok = false, mensaje = "No pude leer el número de esa etiqueta. Probá de nuevo." });
+        return await ArmarFichaAsync(num.Value, traerSiFalta: true);
+    }
+
+    /// <summary>Ficha de una venta propia para el celu: qué va en el paquete, con foto. Sin plata.</summary>
+    private async Task<IActionResult> FichaVentaPropiaAsync(CafeVenta? v)
+    {
+        if (v is null)
+            return Ok(new { ok = false, mensaje = "No encontré la venta de ese QR. Puede ser un comprobante borrado." });
+
+        var items = await _db.CafeVentaItems.AsNoTracking()
+            .Where(i => i.VentaId == v.Id)
+            .OrderBy(i => i.Id)
+            .Select(i => new
+            {
+                i.ProductoId, i.ProductoNombreSnapshot, i.Cantidad, i.Formato, i.Categoria, i.Molienda,
+                i.EsDoyPack, i.EsEnvasePlateado,
+                combo = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Nombre).FirstOrDefault() : null,
+                sku = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.Sku).FirstOrDefault() : null,
+                fotoPropia = i.ProductoId != null ? _db.CafeProductoFotos.Where(f => f.CafeProductoId == i.ProductoId).Select(f => f.FotoPropiaArchivo).FirstOrDefault() : null,
+                // misma foto que el tablero de armado: la publicación MeLi activa más nueva de ese producto
+                thumb = i.ProductoId != null
+                    ? _db.MeliItems.Where(mi => mi.CafeProductoId == i.ProductoId && mi.Thumbnail != null && mi.Status == "active")
+                        .OrderByDescending(mi => mi.UpdatedAt).Select(mi => mi.Thumbnail).FirstOrDefault()
+                    : null
+            })
+            .ToListAsync();
+
+        var productos = items.Select(i => new
+        {
+            titulo = i.ProductoNombreSnapshot,
+            cantidad = i.Cantidad,
+            sku = i.sku,
+            foto = !string.IsNullOrEmpty(i.fotoPropia) ? $"/api/public/producto-foto/img/{i.fotoPropia}" : FotoGrande(i.thumb),
+            formato = i.Categoria == "CAFE"
+                ? i.Formato switch { "1KG" => "1 kg", "MEDIO" => "½ kg", "CUARTO" => "¼ kg", _ => null }
+                : null,
+            molienda = i.Molienda,
+            envase = i.EsDoyPack ? "Doypack" : i.EsEnvasePlateado ? "Envase plateado" : null,
+            combo = i.combo
+        }).ToList();
+
+        string tipo = v.Retira ? "Retira en depósito"
+            : v.PorTransporte ? ("Transporte" + (string.IsNullOrWhiteSpace(v.TransporteEmpresa) ? "" : " " + v.TransporteEmpresa))
+            : "Reparto";
+        string estado = v.Estado == "anulado" ? "ANULADA"
+            : v.EntregadoAt != null || v.EstadoPreparacion == "ENTREGADO" ? "Entregada"
+            : v.EstadoPreparacion switch { "EN_CAMINO" => "En camino", "LISTO" => "Armada", "EN_PREPARACION" => "Armándose", _ => "Para armar" };
+
+        return Ok(new
+        {
+            ok = true,
+            origen = "propia",
+            numeroComprobante = v.Numero,
+            fecha = DateTime.SpecifyKind(v.CreatedAt, DateTimeKind.Utc),
+            comprador = !string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? v.ClienteNombreSnapshot : v.ClienteRazonSocialSnapshot,
+            localidad = !string.IsNullOrWhiteSpace(v.ClienteLocalidadSnapshot) ? v.ClienteLocalidadSnapshot : v.ClienteCiudadSnapshot,
+            domicilio = !string.IsNullOrWhiteSpace(v.DomicilioEntregaImpreso) ? v.DomicilioEntregaImpreso : v.ClienteDomicilioEntregaSnapshot,
+            tipo,
+            estado,
+            anulada = v.Estado == "anulado",
+            bultos = v.CantidadBultos,
+            fragil = v.EsFragil,
+            comentarioArmado = v.ComentarioArmado,
+            unidades = productos.Sum(p => p.cantidad),
+            productos
         });
     }
 
