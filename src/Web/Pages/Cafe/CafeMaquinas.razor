@@ -525,6 +525,11 @@
     private string pagoNotas = "";
     private bool guardandoPago;
 
+    // 2026-09-23: se entra desde la ficha del cliente. ?ver=ID abre esa máquina;
+    // ?nuevaCliente=ID abre "Nueva máquina" con el cliente ya elegido.
+    [SupplyParameterFromQuery(Name = "ver")] public int? VerId { get; set; }
+    [SupplyParameterFromQuery(Name = "nuevaCliente")] public int? NuevaClienteId { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         await Cargar();
@@ -532,6 +537,16 @@
         {
             try { clientes = (await Api.GetCafeClientesAsync())?.Where(c => c.IsActive).ToList() ?? new(); }
             catch { clientes = new(); }
+        }
+        if (VerId is > 0)
+        {
+            await AbrirDetalle(new CafeComodatoDto { Id = VerId.Value });
+        }
+        else if (NuevaClienteId is > 0)
+        {
+            AbrirNueva();
+            var cli = clientes?.FirstOrDefault(c => c.Id == NuevaClienteId.Value);
+            if (cli is not null) SelectCliente(cli);
         }
     }
 

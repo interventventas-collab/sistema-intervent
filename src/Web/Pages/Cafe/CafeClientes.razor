@@ -826,6 +826,56 @@
                         }
                     </div>
                 }
+
+                @* ═══════════════ 2026-09-23 · Sección 4: Máquinas (comodato / financiadas) ═══════════════
+                     Las máquinas ya se cargan a nombre del cliente en Café → Máquinas; acá se ven
+                     del lado del cliente. Tocar una abre esa máquina; "Agregar" abre la nueva con
+                     este cliente ya elegido. *@
+                @if (isEditing && editingId is > 0)
+                {
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.1rem; margin-top: 1rem;">
+                        <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #e2e8f0;">
+                            <span style="background: #f1f5f9; color: #334155; font-size: 0.78rem; padding: 0.28rem 0.7rem; border-radius: 6px; font-weight: 700;">
+                                ☕ 4 · Máquinas
+                            </span>
+                            <span style="font-size: 0.78rem; color: #6b7280;">en comodato o financiadas</span>
+                            <button type="button" class="btn btn-secondary" style="margin-left: auto; font-size: 0.75rem; padding: 0.2rem 0.6rem;"
+                                    @onclick="MaqAgregar">+ Agregar máquina</button>
+                        </div>
+                        @if (maqCargando)
+                        {
+                            <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Cargando…</p>
+                        }
+                        else if (maquinasCliente.Count == 0)
+                        {
+                            <p style="font-size: 0.78rem; color: #6b7280; margin: 0;">Este cliente no tiene máquinas nuestras ni financiadas.</p>
+                        }
+                        else
+                        {
+                            <div style="display: flex; flex-direction: column;">
+                                @foreach (var m in maquinasCliente)
+                                {
+                                    var activa = m.Estado == "EN_CLIENTE";
+                                    <div style="display: flex; align-items: baseline; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid #f1f5f9; font-size: 0.82rem; color: @(activa ? "#1f2937" : "#9ca3af");">
+                                        <span style="flex: 1 1 auto;">
+                                            <strong>@(m.Modalidad == "FINANCIADA" ? "Financiada" : "Comodato")</strong>
+                                            · @(string.Join(" ", new[] { m.Marca, m.Modelo }.Where(x => !string.IsNullOrWhiteSpace(x))))
+                                            @if (!string.IsNullOrWhiteSpace(m.NumeroSerie)) { <span> · serie @m.NumeroSerie</span> }
+                                            @if (m.FechaEntrega.HasValue) { <span> · desde @m.FechaEntrega.Value.ToString("dd/MM/yyyy")</span> }
+                                            @if (!activa) { <span> · @MaqEstadoLabel(m.Estado)</span> }
+                                            @if (activa && m.Modalidad == "FINANCIADA")
+                                            {
+                                                <span> · le falta @(m.Moneda == "USD" ? "U$D" : "$") @((m.SaldoFinanciamiento ?? 0).ToString("#,##0", MaqNfi))@(m.CuotasTotales is > 0 ? $" ({m.PagosCount} de {m.CuotasTotales} cuotas pagas)" : "")</span>
+                                            }
+                                        </span>
+                                        <button type="button" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.15rem 0.5rem;"
+                                                @onclick="() => MaqAbrir(m.Id)">Abrir</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
@@ -1412,7 +1462,38 @@
         preciosEspeciales = new(); ResetSubformPrecioEspecial();
         await LoadDirecciones(c.Id);
         await LoadPreciosEspeciales(c.Id);
+        await LoadMaquinas(c.Id);
     }
+
+    // ===== 2026-09-23: Máquinas del cliente (comodato / financiadas) =====
+    private List<CafeComodatoDto> maquinasCliente = new();
+    private bool maqCargando;
+    private static readonly System.Globalization.NumberFormatInfo MaqNfi = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = ",", NumberGroupSizes = new[] { 3 } };
+
+    private async Task LoadMaquinas(int clienteId)
+    {
+        maqCargando = true; maquinasCliente = new();
+        try
+        {
+            // Primero las que están en el cliente, después el histórico.
+            maquinasCliente = (await Api.GetCafeComodatosAsync(clienteId: clienteId) ?? new())
+                .OrderBy(m => m.Estado == "EN_CLIENTE" ? 0 : 1).ThenByDescending(m => m.FechaEntrega).ToList();
+        }
+        catch { maquinasCliente = new(); }
+        finally { maqCargando = false; }
+    }
+
+    private void MaqAgregar() => Nav.NavigateTo($"/cafe/maquinas?nuevaCliente={editingId}");
+    private void MaqAbrir(int id) => Nav.NavigateTo($"/cafe/maquinas?ver={id}");
+
+    private static string MaqEstadoLabel(string estado) => estado switch
+    {
+        "EN_TALLER" => "en el taller",
+        "DEVUELTA" => "devuelta",
+        "BAJA" => "dada de baja",
+        "PAGADA" => "terminó de pagarla",
+        _ => estado
+    };
 
     // ===== 2026-07-29: Direcciones de entrega múltiples =====
     private List<CafeDireccionDto> direccionesCliente = new();
