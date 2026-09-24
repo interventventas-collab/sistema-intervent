@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@implements IDisposable
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -12,16 +13,16 @@
             @* Selector de formato de etiqueta (sin desplegables): 4 chips, se elige uno. *@
             <span style="font-size: 0.8rem; color: #6b7280;">Etiqueta:</span>
             <button class="btn btn-sm @(etiquetaFormato == "termica" ? "btn-primary" : "btn-secondary")"
-                    @onclick='() => etiquetaFormato = "termica"'
+                    @onclick='() => ElegirFormato("termica")'
                     title="Imprime directo en la térmica (Zebra o HPRT), como MercadoLibre. Si esta compu no tiene el programa de la impresora, baja el archivo .txt">🏷️ Térmica directa</button>
             <button class="btn btn-sm @(etiquetaFormato == "termica-pdf" ? "btn-primary" : "btn-secondary")"
-                    @onclick='() => etiquetaFormato = "termica-pdf"'
+                    @onclick='() => ElegirFormato("termica-pdf")'
                     title="PDF con una etiqueta por pagina, para impresoras termicas que no son Zebra">🏷️ Termica PDF</button>
             <button class="btn btn-sm @(etiquetaFormato == "a4-1" ? "btn-primary" : "btn-secondary")"
-                    @onclick='() => etiquetaFormato = "a4-1"'
+                    @onclick='() => ElegirFormato("a4-1")'
                     title="Una etiqueta (con troquel) por hoja A4 parada, al tamano de MercadoLibre">🖨️ A4 x1</button>
             <button class="btn btn-sm @(etiquetaFormato == "a4-3" ? "btn-primary" : "btn-secondary")"
-                    @onclick='() => etiquetaFormato = "a4-3"'
+                    @onclick='() => ElegirFormato("a4-3")'
                     title="Tres etiquetas por hoja A4 (como en MercadoLibre)">🖨️ A4 x3</button>
             @if (etiquetaSeleccionadas.Count > 0)
             {
@@ -372,6 +373,7 @@
                                         <td></td>
                                     </tr>
                                 }
+                                @Franja(group)
                             }
                             else
                             {
@@ -433,6 +435,7 @@
                                         }
                                     </td>
                                 </tr>
+                                @Franja(group)
                             }
                         }
                     </tbody>
@@ -1321,6 +1324,117 @@
     // ===== 2026-08-13: Impresion de etiquetas de envio de MercadoLibre =====
     // Formato elegido para imprimir: "termica" | "a4-1" | "a4-3". Default A4 x3 (lo comun al despachar).
     private string etiquetaFormato = "a4-3";
+    // 2026-09-24: el formato elegido queda recordado en esta compu. Misma clave que Depósito →
+    // Órdenes MeLi, así en la PC de cada térmica las dos pantallas arrancan en "Térmica directa".
+    private const string ClaveFormato = "om-etiqueta-formato";
+    private static readonly string[] FormatosValidos = { "termica", "termica-pdf", "a4-1", "a4-3" };
+
+    private async Task ElegirFormato(string f)
+    {
+        etiquetaFormato = f;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveFormato, f); } catch { }
+    }
+
+    // ── 2026-09-24: franja con el detalle de cada venta (mensajes, preguntas, compras anteriores,
+    // notas en MeLi, post-its), la misma pieza que usa Depósito (Shared/DetalleEnvioMeli). Se trae de
+    // a 4 porque mensajes y notas se le piden a MeLi en vivo; solo las primeras ventas de la lista
+    // se traen solas, el resto con "Traer detalle".
+    private readonly Dictionary<long, MeliDepoFicha> fichas = new();
+    private readonly HashSet<long> pedidas = new();
+    private readonly HashSet<long> fallidas = new();
+    private bool cargandoDetalles;
+    private bool cerrada;
+    private const int MaxDetallesAuto = 60;
+
+    /// <summary>Número del envío de un grupo: el mismo que usa Depósito (envío, si no pack, si no orden).</summary>
+    private static long ClaveEnvio(OrderGroup g)
+    {
+        var o = g.Orders.First();
+        return o.ShippingId ?? g.PackId ?? o.MeliOrderId;
+    }
+
+    private RenderFragment Franja(OrderGroup g) => __builder =>
+    {
+        var n = ClaveEnvio(g);
+        fichas.TryGetValue(n, out var f);
+        <tr class="om-franja-tr">
+            <td colspan="11">
+                <div class="om-franja">
+                    @if (f is not null)
+                    {
+                        <DetalleEnvioMeli Ficha="f" Numero="n" MostrarProducto="true" />
+                    }
+                    else if (fallidas.Contains(n))
+                    {
+                        <div><span class="om-alerta">No pude traer el detalle.</span> <button class="om-mas" @onclick="() => Reintentar(n)">Probar de nuevo</button></div>
+                    }
+                    else if (pedidas.Contains(n))
+                    {
+                        <div class="om-gris">Trayendo mensajes, preguntas y notas…</div>
+                    }
+                    else
+                    {
+                        <div><button class="om-mas" @onclick="() => Reintentar(n)">Traer detalle (mensajes, preguntas, notas, post-its)</button></div>
+                    }
+                </div>
+            </td>
+        </tr>
+    };
+
+    private async Task CargarDetalles()
+    {
+        if (cargandoDetalles) return;
+        cargandoDetalles = true;
+        try
+        {
+            while (!cerrada)
+            {
+                var faltan = GetFilteredAndSortedOrders().Take(MaxDetallesAuto).Select(ClaveEnvio)
+                    .Where(n => !pedidas.Contains(n)).Distinct().Take(4).ToList();
+                if (faltan.Count == 0) break;
+                foreach (var n in faltan) pedidas.Add(n);
+                await Task.WhenAll(faltan.Select(TraerDetalle));
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        finally { cargandoDetalles = false; }
+    }
+
+    private async Task TraerDetalle(long numero)
+    {
+        try
+        {
+            var f = await Api.GetMeliDepoFichaAsync(numero);
+            if (f is not null && f.Ok) { fichas[numero] = f; fallidas.Remove(numero); }
+            else fallidas.Add(numero);
+        }
+        catch { fallidas.Add(numero); }
+    }
+
+    private async Task Reintentar(long numero)
+    {
+        fallidas.Remove(numero);
+        pedidas.Add(numero);
+        await TraerDetalle(numero);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var f = await JS.InvokeAsync<string?>("localStorage.getItem", ClaveFormato);
+                if (f is not null && FormatosValidos.Contains(f)) { etiquetaFormato = f; StateHasChanged(); }
+            }
+            catch { }
+        }
+        if (!isLoading && !cargandoDetalles
+            && GetFilteredAndSortedOrders().Take(MaxDetallesAuto).Any(g => !pedidas.Contains(ClaveEnvio(g))))
+            _ = CargarDetalles();
+    }
+
+    public void Dispose() => cerrada = true;
     // Envios (ShippingId) tildados para imprimir en lote.
     private readonly HashSet<long> etiquetaSeleccionadas = new();
 

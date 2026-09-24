@@ -5302,3 +5302,31 @@ textarea.form-input {
 .bem-txt.pend { color: #b45309; font-weight: 600; }
 .bem-cuando { font-size: 0.7rem; color: #64748b; line-height: 1.2; white-space: nowrap; }
 
+
+
+/* 2026-09-24: detalle de envío MeLi (Shared/DetalleEnvioMeli.razor), en Depósito y en Órdenes */
+.om-gris { color: #94a3b8; }
+.om-alerta { color: #b91c1c; }
+.om-sku { font-family: monospace; color: #475569; }
+.om-h { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 0.25rem; }
+.om-msg { padding: 0.3rem 0.5rem; border-radius: 8px; margin-bottom: 0.25rem; line-height: 1.35; background: #f1f5f9; }
+.om-msg.out { background: #e0f2fe; }
+.om-msg .meta, .om-meta { font-size: 0.72rem; color: #64748b; }
+.om-preg { margin-bottom: 0.35rem; line-height: 1.35; }
+.om-preg .a { color: #475569; padding-left: 0.6rem; }
+.om-compra { margin-bottom: 0.2rem; line-height: 1.35; }
+.om-txt { white-space: pre-wrap; }   /* respeta los renglones que escribió la persona */
+.om-mas { background: none; border: none; padding: 0; color: #2563eb; cursor: pointer; font-size: 0.8rem; }
+.om-nota { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.25rem 0.45rem; margin-bottom: 0.25rem; line-height: 1.35; }
+.om-postit { border-radius: 4px; border-left: 4px solid; padding: 0.3rem 0.45rem; margin-bottom: 0.3rem; line-height: 1.35; position: relative; padding-right: 1.3rem; }
+.om-postit .x { position: absolute; top: 0.1rem; right: 0.2rem; background: none; border: none; cursor: pointer; color: #64748b; font-size: 0.85rem; }
+.om-postit-form textarea { width: 100%; min-height: 54px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.3rem; }
+.om-colores { display: flex; gap: 0.25rem; margin: 0.25rem 0; }
+.om-colores button { width: 20px; height: 20px; border-radius: 4px; border: 2px solid transparent; cursor: pointer; }
+.om-colores button.on { border-color: #0f172a; }
+/* Órdenes: franja con el detalle debajo de cada venta */
+tr.om-franja-tr > td { padding: 0 0.5rem 0.8rem !important; border-top: none !important; cursor: default; }
+.om-franja { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; background: #f8fafc; border-radius: 8px;
+             padding: 0.5rem 0.7rem; font-size: 0.8rem; text-align: left; white-space: normal; }
+@media (max-width: 1100px) { .om-franja { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .om-franja { grid-template-columns: minmax(0, 1fr); } }

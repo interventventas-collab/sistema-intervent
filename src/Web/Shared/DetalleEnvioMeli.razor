@@ -1,0 +1,211 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject OperatorService Operator
+
+@* 2026-09-24: el detalle de un envío de MeLi (lo que antes era la ficha de Depósito): mensajes,
+   preguntas, compras anteriores, notas de la venta en MeLi y nuestros post-its. Lo usan
+   Depósito → Órdenes MeLi (columnas del renglón) y Órdenes (franja debajo de cada venta).
+   Devuelve bloques sueltos (.c-prod2 .c-msj .c-preg .c-comp .c-notas) para que cada pantalla
+   los acomode con su propia grilla. Estilos en app.css (.om-*). *@
+
+@if (MostrarProducto)
+{
+    <div class="c-prod2">
+        <div class="om-h">📦 Producto</div>
+        @foreach (var p in Ficha.Productos)
+        {
+            <div class="om-compra">
+                @if (Ficha.Productos.Count > 1) { <span>×@p.Cantidad @p.Titulo · </span> }
+                @if (!string.IsNullOrEmpty(p.Sku)) { <span>SKU <span class="om-sku">@p.Sku</span></span> }
+                else { <span class="om-gris">sin SKU</span> }
+                @if (p.EsCombo && p.Componentes.Count > 0)
+                {
+                    <div class="om-h" style="margin-top:0.25rem;">Contiene</div>
+                    @foreach (var c in p.Componentes)
+                    {
+                        <div>
+                            <b>×@FmtCant(c.Cantidad)</b> @c.Nombre
+                            @if (!string.IsNullOrEmpty(c.Formato) && c.Formato != "UNIT") { <text> · @c.Formato</text> }
+                            @if (!string.IsNullOrEmpty(c.Sku)) { <span class="om-sku"> (@c.Sku)</span> }
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+}
+
+<div class="c-msj">
+    <div class="om-h">📩 Mensajes</div>
+    @if (!Ficha.MensajesOk) { <div class="om-alerta">MercadoLibre no contestó; no sé si dejó mensajes.</div> }
+    else if (Ficha.Mensajes.Count == 0) { <div class="om-gris">No dejó mensajes.</div> }
+    else
+    {
+        var lista = verMsj ? Ficha.Mensajes : Ficha.Mensajes.TakeLast(4).ToList();
+        @if (!verMsj && Ficha.Mensajes.Count > 4)
+        {
+            <button class="om-mas" @onclick="() => verMsj = true">Ver los @Ficha.Mensajes.Count mensajes</button>
+        }
+        @foreach (var m in lista)
+        {
+            var esComprador = m.De == "comprador";
+            <div class="om-msg @(esComprador ? "" : "out")">
+                <div class="om-meta">@(esComprador ? "Comprador" : "Nosotros")@(m.Fecha.HasValue ? " · " + m.Fecha.Value.ToArTime().ToString("dd/MM HH:mm") : "")</div>
+                <div class="om-txt">@m.Texto</div>
+            </div>
+        }
+    }
+</div>
+
+<div class="c-preg">
+    <div class="om-h">❓ Preguntas (@Ficha.Preguntas.Count)</div>
+    @if (Ficha.Preguntas.Count == 0) { <div class="om-gris">No hizo preguntas.</div> }
+    else
+    {
+        @foreach (var q in (verPreg ? Ficha.Preguntas : Ficha.Preguntas.Take(3)))
+        {
+            <div class="om-preg">
+                <div class="om-meta">@q.Fecha.ToArTime().ToString("dd/MM/yy") · @(q.DeEsteProducto ? "de este producto" : "otra publicación: " + (q.Producto ?? ""))</div>
+                <div>@q.Texto</div>
+                <div class="a">↳ @(string.IsNullOrEmpty(q.Respuesta) ? "sin responder" : q.Respuesta)</div>
+            </div>
+        }
+        @if (!verPreg && Ficha.Preguntas.Count > 3)
+        {
+            <button class="om-mas" @onclick="() => verPreg = true">Ver las @Ficha.Preguntas.Count preguntas</button>
+        }
+    }
+</div>
+
+<div class="c-comp">
+    <div class="om-h">🛍️ Compras anteriores</div>
+    @if (Ficha.Compras.Count == 0) { <div class="om-gris">Primera compra (no hay otras guardadas desde abril 2026).</div> }
+    else
+    {
+        <div style="margin-bottom:0.25rem;">Compró @Ficha.Compras.Count @(Ficha.Compras.Count == 1 ? "vez" : "veces") antes · la última @HaceCuanto(Ficha.Compras[0].Fecha)</div>
+        @foreach (var c in (verComp ? Ficha.Compras : Ficha.Compras.Take(2)))
+        {
+            <div class="om-compra">
+                @* la fecha de una venta MeLi ya viene en hora argentina: no convertir *@
+                <span class="om-meta">@c.Fecha.ToString("dd/MM/yy")@(string.IsNullOrEmpty(c.Cuenta) ? "" : " · " + c.Cuenta) · </span>
+                @string.Join(" + ", c.Productos.Select(x => $"×{x.Cantidad} {x.Titulo}"))
+                <span class="om-meta @(c.Estado == "Cancelada" ? "om-alerta" : "")"> · @c.Estado</span>
+            </div>
+        }
+        @if (!verComp && Ficha.Compras.Count > 2)
+        {
+            <button class="om-mas" @onclick="() => verComp = true">+ @(Ficha.Compras.Count - 2) más</button>
+        }
+    }
+</div>
+
+<div class="c-notas">
+    <div class="om-h">📝 Notas en MeLi</div>
+    @if (!Ficha.NotasOk) { <div class="om-alerta">MercadoLibre no contestó las notas.</div> }
+    else if (Ficha.Notas.Count == 0) { <div class="om-gris">Sin notas.</div> }
+    else
+    {
+        @foreach (var n in Ficha.Notas)
+        {
+            <div class="om-nota">
+                @if (n.Fecha.HasValue) { <div class="om-meta">@n.Fecha.Value.ToArTime().ToString("dd/MM HH:mm")</div> }
+                <div class="om-txt">@n.Texto</div>
+            </div>
+        }
+    }
+
+    <div class="om-h" style="margin-top:0.5rem;">🟨 Post-its nuestros</div>
+    @foreach (var pi in Ficha.Postits)
+    {
+        var col = ColorPostit(pi.Color);
+        <div class="om-postit" style="background:@col.Bg; border-left-color:@col.Borde;">
+            <button class="x" title="Sacar este post-it" @onclick="() => BorrarPostit(pi)">✕</button>
+            <div class="om-txt">@pi.Texto</div>
+            <div class="om-meta">@(string.IsNullOrEmpty(pi.CreadoPor) ? "" : pi.CreadoPor + " · ")@pi.CreatedAt.ToArTime().ToString("dd/MM HH:mm")</div>
+        </div>
+    }
+    @if (postitAbierto)
+    {
+        <div class="om-postit-form">
+            <textarea @bind="postitTexto" @bind:event="oninput" placeholder="Escribí el post-it…"></textarea>
+            <div class="om-colores">
+                @foreach (var c in ColoresPostit)
+                {
+                    var cc = ColorPostit(c);
+                    <button class="@(postitColor == c ? "on" : "")" style="background:@cc.Bg;" title="@c" @onclick="() => postitColor = c"></button>
+                }
+            </div>
+            <button class="btn btn-primary btn-sm" disabled="@guardando" @onclick="GuardarPostit">Pegar</button>
+            <button class="btn btn-secondary btn-sm" @onclick="() => postitAbierto = false">Cancelar</button>
+        </div>
+    }
+    else
+    {
+        <button class="om-mas" @onclick="AbrirPostit">+ Post-it</button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MeliDepoFicha Ficha { get; set; } = default!;
+    /// <summary>Número del envío (el mismo del listado): el "tablero" del post-it es meli-envio:N.</summary>
+    [Parameter, EditorRequired] public long Numero { get; set; }
+    /// <summary>true en Órdenes: suma un bloque con SKU y contenido del combo (Depósito ya lo muestra en su columna).</summary>
+    [Parameter] public bool MostrarProducto { get; set; }
+
+    private bool verMsj, verPreg, verComp;
+
+    private static readonly string[] ColoresPostit = { "amarillo", "rosa", "verde", "azul", "naranja" };
+    private static (string Bg, string Borde) ColorPostit(string c) => c switch
+    {
+        "rosa" => ("#fce7f3", "#ec4899"),
+        "verde" => ("#dcfce7", "#10b981"),
+        "azul" => ("#dbeafe", "#3b82f6"),
+        "naranja" => ("#ffedd5", "#f97316"),
+        _ => ("#fef9c3", "#eab308")
+    };
+    private bool postitAbierto;
+    private string postitTexto = "";
+    private string postitColor = "amarillo";
+    private bool guardando;
+
+    private void AbrirPostit() { postitAbierto = true; postitTexto = ""; postitColor = "amarillo"; }
+
+    private async Task GuardarPostit()
+    {
+        if (string.IsNullOrWhiteSpace(postitTexto)) { ToastService.Error("Escribí algo en el post-it"); return; }
+        guardando = true;
+        try
+        {
+            var p = await Api.CreatePostitAsync(new CreatePostitRequest
+            {
+                Texto = postitTexto, Color = postitColor, CreadoPor = Operator.Current, Scope = $"meli-envio:{Numero}"
+            });
+            if (p is not null) Ficha.Postits.Add(p);
+            postitAbierto = false;
+        }
+        catch (Exception ex) { ToastService.Error("No pude pegar el post-it: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task BorrarPostit(PostitDto p)
+    {
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", "¿Sacar este post-it?"); } catch { ok = false; }
+        if (!ok) return;
+        try { if (await Api.DeletePostitAsync(p.Id)) Ficha.Postits.Remove(p); }
+        catch (Exception ex) { ToastService.Error("No pude sacarlo: " + ex.Message); }
+    }
+
+    private static string FmtCant(decimal c) => c == Math.Floor(c) ? ((long)c).ToString() : c.ToString("0.##");
+
+    /// <summary>fechaAr = fecha de una venta MeLi, que ya viene en hora argentina.</summary>
+    private static string HaceCuanto(DateTime fechaAr)
+    {
+        var dias = (int)(DateTimeExt.AhoraAr().Date - fechaAr.Date).TotalDays;
+        if (dias <= 0) return "hoy";
+        if (dias == 1) return "ayer";
+        if (dias < 60) return $"hace {dias} días";
+        return $"hace {dias / 30} meses";
+    }
+}
