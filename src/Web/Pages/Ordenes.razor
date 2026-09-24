@@ -9,11 +9,14 @@
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3 style="margin: 0;">Ordenes de MercadoLibre (@totalOrders)</h3>
         <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-            @* Selector de formato de etiqueta (sin desplegables): 3 chips, se elige uno. *@
+            @* Selector de formato de etiqueta (sin desplegables): 4 chips, se elige uno. *@
             <span style="font-size: 0.8rem; color: #6b7280;">Etiqueta:</span>
             <button class="btn btn-sm @(etiquetaFormato == "termica" ? "btn-primary" : "btn-secondary")"
                     @onclick='() => etiquetaFormato = "termica"'
-                    title="Baja el archivo .txt para impresora termica Zebra, el mismo que baja MercadoLibre (troquel + etiqueta)">🏷️ Termica</button>
+                    title="Baja el archivo .txt para impresora termica Zebra, el mismo que baja MercadoLibre (troquel + etiqueta)">🏷️ Zebra .txt</button>
+            <button class="btn btn-sm @(etiquetaFormato == "termica-pdf" ? "btn-primary" : "btn-secondary")"
+                    @onclick='() => etiquetaFormato = "termica-pdf"'
+                    title="PDF con una etiqueta por pagina, para impresoras termicas que no son Zebra">🏷️ Termica PDF</button>
             <button class="btn btn-sm @(etiquetaFormato == "a4-1" ? "btn-primary" : "btn-secondary")"
                     @onclick='() => etiquetaFormato = "a4-1"'
                     title="Una etiqueta (con troquel) por hoja A4 parada, al tamano de MercadoLibre">🖨️ A4 x1</button>

@@ -24,7 +24,7 @@ public class MeliShipmentsController : ControllerBase
     /// 2026-08-13: Devuelve la etiqueta de envio oficial de MeLi lista para imprimir, INLINE (se abre
     /// en el navegador). Parametros:
     ///   - ids: numeros de envio (ShippingId) separados por coma.
-    ///   - formato: "termica" (.txt ZPL para Zebra, como MeLi), "a4-1" (una por hoja A4) o "a4-3" (tres por hoja A4).
+    ///   - formato: "termica" (.txt ZPL para Zebra, como MeLi), "termica-pdf" (una por pagina), "a4-1" (una por hoja A4) o "a4-3" (tres por hoja A4).
     /// Se abre via window.open, asi que la cookie httpOnly del JWT viaja sola (mismo origen).
     /// </summary>
     [HttpGet("label")]

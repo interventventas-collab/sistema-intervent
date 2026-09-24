@@ -16,6 +16,7 @@ namespace Api.Services;
 ///
 /// Tres formatos:
 ///   - "termica": el .txt para impresora Zebra (ZPL), el mismo archivo que baja MeLi.
+///   - "termica-pdf": PDF con una etiqueta por pagina, del tamano de la etiqueta (termicas no Zebra).
 ///   - "a4-1"   : una etiqueta por hoja A4.
 ///   - "a4-3"   : A4 acostada con 3 etiquetas lado a lado, con troquel (igual que MeLi).
 ///
@@ -91,9 +92,12 @@ public class MeliLabelService
                 ? string.Join(" ", errores)
                 : "MercadoLibre no devolvio ninguna etiqueta. Puede que el envio todavia no tenga la etiqueta lista para imprimir.");
 
-        var outBytes = string.Equals(formato, "a4-1", StringComparison.OrdinalIgnoreCase)
-            ? ComponerA4Una(piezas)
-            : ComponerA4Tres(piezas);
+        var outBytes = (formato ?? "").ToLowerInvariant() switch
+        {
+            "termica-pdf" => ComponerTermicaPdf(piezas),
+            "a4-1" => ComponerA4Una(piezas),
+            _ => ComponerA4Tres(piezas),
+        };
 
         // errores puede traer avisos parciales (algunas cuentas fallaron) aunque haya PDF.
         return new LabelResult(true, outBytes, errores.Count > 0 ? string.Join(" ", errores) : null);
@@ -273,4 +277,9 @@ public class MeliLabelService
         Armar(piezas.Select(p => (new XSize(A4Corto, A4Largo),
             (Action<XGraphics, List<MemoryStream>>)((gfx, ka) =>
                 Dibujar(gfx, p, 28, 28, Math.Min(p.W, A4Corto - 56), Math.Min(p.H, A4Largo - 56), ka)))));
+
+    /// <summary>Una etiqueta por pagina, la pagina del tamano justo de la etiqueta (termicas que no son Zebra).</summary>
+    private static byte[] ComponerTermicaPdf(List<Pieza> piezas) =>
+        Armar(piezas.Select(p => (new XSize(p.W, p.H),
+            (Action<XGraphics, List<MemoryStream>>)((gfx, ka) => Dibujar(gfx, p, 0, 0, p.W, p.H, ka)))));
 }
