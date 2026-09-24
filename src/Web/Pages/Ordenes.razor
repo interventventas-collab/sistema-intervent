@@ -13,7 +13,7 @@
             <span style="font-size: 0.8rem; color: #6b7280;">Etiqueta:</span>
             <button class="btn btn-sm @(etiquetaFormato == "termica" ? "btn-primary" : "btn-secondary")"
                     @onclick='() => etiquetaFormato = "termica"'
-                    title="Imprime directo en la Zebra, como MercadoLibre. Si esta compu no tiene el programa de Zebra, baja el archivo .txt">🏷️ Zebra</button>
+                    title="Imprime directo en la térmica (Zebra o HPRT), como MercadoLibre. Si esta compu no tiene el programa de la impresora, baja el archivo .txt">🏷️ Térmica directa</button>
             <button class="btn btn-sm @(etiquetaFormato == "termica-pdf" ? "btn-primary" : "btn-secondary")"
                     @onclick='() => etiquetaFormato = "termica-pdf"'
                     title="PDF con una etiqueta por pagina, para impresoras termicas que no son Zebra">🏷️ Termica PDF</button>
@@ -1351,8 +1351,9 @@
     }
 
     /// <summary>
-    /// 2026-09-24: con "Zebra" se manda DIRECTO a la impresora por Zebra Browser Print (como hace
-    /// MeLi en la PC del deposito, js/zebra-print.js). Si esa compu no tiene el programa, baja el .txt.
+    /// 2026-09-24: con "Térmica directa" se manda DIRECTO a la impresora: por Zebra Browser Print (como
+    /// hace MeLi en la PC de la Zebra) o por QZ Tray (PC de la HPRT). js/zebra-print.js. Si esa compu
+    /// no tiene ninguno de los dos programas, baja el .txt.
     /// El resto de los formatos abre el PDF en otra pestaña.
     /// </summary>
     private async Task AbrirEtiqueta(string url)
@@ -1361,9 +1362,9 @@
         {
             string r;
             try { r = await JS.InvokeAsync<string>("zebraImprimir", url); } catch { r = "sin-zebra"; }
-            if (r == "ok") { ToastService.Success("Etiqueta enviada a la Zebra"); return; }
+            if (r == "ok") { ToastService.Success("Etiqueta enviada a la impresora"); return; }
             if (r.StartsWith("error:")) { ToastService.Error(r[6..]); return; }
-            ToastService.Warning("No encontré el programa de Zebra en esta compu: te bajo el archivo .txt");
+            ToastService.Warning("No encontré el programa de la impresora (Zebra Browser Print o QZ Tray) en esta compu: te bajo el archivo .txt");
             await JS.InvokeVoidAsync("zebraBajar", url);
             return;
         }
