@@ -16,7 +16,7 @@ namespace Api.Services;
 ///
 /// Tres formatos:
 ///   - "termica": el .txt para impresora Zebra (ZPL), el mismo archivo que baja MeLi.
-///   - "termica-pdf": PDF con una etiqueta por pagina, del tamano de la etiqueta (termicas no Zebra).
+///   - "termica-pdf": PDF con una etiqueta por pagina de 10 x 20 cm (termicas no Zebra).
 ///   - "a4-1"   : una etiqueta por hoja A4.
 ///   - "a4-3"   : A4 acostada con 3 etiquetas lado a lado, con troquel (igual que MeLi).
 ///
@@ -293,8 +293,13 @@ public class MeliLabelService
             (Action<XGraphics, List<MemoryStream>>)((gfx, ka) =>
                 Dibujar(gfx, p, 28, 28, Math.Min(p.W, A4Corto - 56), Math.Min(p.H, A4Largo - 56), ka)))));
 
-    /// <summary>Una etiqueta por pagina, la pagina del tamano justo de la etiqueta (termicas que no son Zebra).</summary>
+    // 2026-09-24: pagina de 10 x 20 cm, la medida que usa el .txt de MeLi para termica (810 puntos de
+    // ancho a 203 dpi, troquel + etiqueta ~19,5 cm). Antes la pagina tenia la medida del recorte
+    // (9,2 x 19 cm) y la impresora la achicaba y la giraba: salia chiquita y acostada.
+    private const double TermicaAncho = 283.46, TermicaAlto = 566.93;
+
+    /// <summary>Una etiqueta por pagina de 10 x 20 cm, llenandola (termicas que no son Zebra).</summary>
     private static byte[] ComponerTermicaPdf(List<Pieza> piezas) =>
-        Armar(piezas.Select(p => (new XSize(p.W, p.H),
-            (Action<XGraphics, List<MemoryStream>>)((gfx, ka) => Dibujar(gfx, p, 0, 0, p.W, p.H, ka)))));
+        Armar(piezas.Select(p => (new XSize(TermicaAncho, TermicaAlto),
+            (Action<XGraphics, List<MemoryStream>>)((gfx, ka) => Dibujar(gfx, p, 0, 0, TermicaAncho, TermicaAlto, ka)))));
 }
