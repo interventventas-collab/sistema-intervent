@@ -203,7 +203,11 @@
                         @foreach (var p in o.Productos)
                         {
                             <div class="prod">
-                                @if (!string.IsNullOrEmpty(p.Foto)) { <img src="@p.Foto" alt="" loading="lazy" /> }
+                                @if (!string.IsNullOrEmpty(p.Foto))
+                                {
+                                    <img src="@p.Foto" alt="" loading="lazy" style="cursor: zoom-in;" title="Ver la foto en grande"
+                                         @onclick="() => zoomFoto = p.Foto" @onclick:stopPropagation="true" />
+                                }
                                 else { <span class="sinfoto"></span> }
                                 <span class="c">×@p.Cantidad</span>
                                 <span>@p.Titulo</span>
@@ -462,6 +466,21 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // 2026-09-24: con pantalla ancha la mitad derecha no queda vacía: se abre sola el primer envío
+        // (sin tocar la dirección, así Volver sigue funcionando igual). En pantalla angosta no, porque
+        // ahí la ficha tapa el listado.
+        if (!autoAbrirIntentado && !cargando && ordenes.Count > 0 && ficha is null && Orden is null)
+        {
+            autoAbrirIntentado = true;
+            try
+            {
+                var ancho = await JS.InvokeAsync<int>("eval", "window.innerWidth");
+                var lista = Filtradas;
+                if (ancho > 1100 && lista.Count > 0) { await CargarFicha(lista[0].Numero); StateHasChanged(); }
+            }
+            catch { }
+        }
+
         if (firstRender)
         {
             try
@@ -534,7 +553,8 @@ else
     // dirección (no apilan), para que Volver lleve siempre derecho al listado.
     [SupplyParameterFromQuery(Name = "orden")] public long? Orden { get; set; }
     private const string BaseUrl = "/deposito/ordenes-meli";
-    private bool fichaApilada;   // true = la abrimos desde esta página (hay un paso atrás que es el listado)
+    private bool fichaApilada;
+    private bool autoAbrirIntentado;   // true = la abrimos desde esta página (hay un paso atrás que es el listado)
 
     protected override async Task OnParametersSetAsync()
     {
@@ -596,8 +616,10 @@ else
 
     private async Task CerrarFicha()
     {
+        // Abierta sola al entrar (sin ?orden en la dirección): solo se cierra.
+        if (Orden is null) { ficha = null; fichaIndice = -1; }
         // Si la abrimos desde acá, el paso anterior es el listado: volvemos como el navegador.
-        if (fichaApilada) { try { await JS.InvokeVoidAsync("history.back"); } catch { Nav.NavigateTo(BaseUrl); } }
+        else if (fichaApilada) { try { await JS.InvokeVoidAsync("history.back"); } catch { Nav.NavigateTo(BaseUrl); } }
         else Nav.NavigateTo(BaseUrl, replace: true);
         try { await scanRef.FocusAsync(); } catch { }
     }
