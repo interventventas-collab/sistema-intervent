@@ -16,7 +16,9 @@ namespace Api.Services;
 ///     reclamo? Contactanos" — salen de Cafe_Settings, los mismos de los comprobantes;
 ///   - ME1 + fecha de despacho (la del día que se imprime);
 ///   - destinatario grande (nombre, teléfono), dirección, entre calles, CP grande, localidad y referencia;
-///   - código de barras con el número de envío (se escanea en Depósito como las de MeLi).
+///   - QR (antes código de barras) que abre Depósito → Órdenes MeLi con ESE envío marcado: fotos,
+///     productos, contenido del combo, mensajes, notas y post-its. Los lectores del depósito lo siguen
+///     reconociendo porque toman el número de envío que viene dentro del link.
 /// Sale en ZPL (Térmica directa: Zebra / HPRT) y en PDF (Térmica PDF, A4 ×1, A4 ×3).
 /// </summary>
 public class MeliEtiquetaMe1Service
@@ -34,7 +36,11 @@ public class MeliEtiquetaMe1Service
     public record Producto(int Cantidad, string Titulo, string? Sku, List<string> Contiene);
     public record Datos(long Envio, long Venta, List<Producto> Productos, string Nombre, string? Telefono,
         string Calle, string? Entre, string? CiudadBarrio, string? Cp, string? Provincia, string? Referencia, DateTime FechaAr);
-    public record Contacto(string Nombre, string? Whatsapp, string? Email, string? Web1, string? Web2);
+    public record Contacto(string Nombre, string? Whatsapp, string? Email, string? Web1, string? Web2,
+        string BaseUrl = "https://app.palanica.com.ar");
+
+    /// <summary>Lo que abre el QR: la pantalla del depósito con este envío marcado (pide estar logueado).</summary>
+    private static string UrlDelEnvio(Contacto k, long envio) => $"{k.BaseUrl.TrimEnd('/')}/deposito/ordenes-meli?orden={envio}";
 
     /// <summary>Datos de cada envío ME1. Los que no se pueden armar (sin dirección) vuelven en errores.</summary>
     public async Task<(List<Datos> Datos, List<string> Errores)> ArmarAsync(IEnumerable<long> envios)
@@ -103,7 +109,10 @@ public class MeliEtiquetaMe1Service
             cfg?.NegocioNombre ?? "INTERVENT",
             // El dueño pidió SOLO el de WhatsApp (15-2252-5458, cargado como teléfono 2).
             !string.IsNullOrWhiteSpace(cfg?.NegocioTelefono2) ? cfg!.NegocioTelefono2 : cfg?.NegocioTelefono,
-            cfg?.NegocioEmail, cfg?.NegocioWeb, cfg?.NegocioWeb2);
+            cfg?.NegocioEmail, cfg?.NegocioWeb, cfg?.NegocioWeb2,
+            // la misma dirección pública que usan los QR de los repartidores
+            (await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(a => a.Key == "mapeo.public_base_url"))?.Value
+                is { Length: > 0 } b ? b : "https://app.palanica.com.ar");
     }
 
     /// <summary>MeLi manda "Lote 523A Referencia: portón negro Entre: Brown y Belgrano" en un solo texto.</summary>
@@ -181,11 +190,12 @@ public class MeliEtiquetaMe1Service
         if (!string.IsNullOrWhiteSpace(d.Provincia)) T(z, 396, 1062, 28, d.Provincia!, w: 390);
         z.Append("^FO16,1100^GB780,3,3^FS\n");
 
-        if (!string.IsNullOrWhiteSpace(d.Referencia)) T(z, 32, 1116, 28, "Referencia: " + d.Referencia, w: 750, lineas: 9);
+        if (!string.IsNullOrWhiteSpace(d.Referencia)) T(z, 32, 1116, 28, "Referencia: " + d.Referencia, w: 750, lineas: 8);
 
-        z.Append("^FO16,1420^GB780,3,3^FS\n");
-        z.Append($"^FO110,1444^BY3^BCN,110,N,N,N,A^FD{d.Envio}^FS\n");
-        T(z, 16, 1566, 28, $"ENVÍO {d.Envio}", w: 780, align: "C");
+        z.Append("^FO16,1390^GB780,3,3^FS\n");
+        T(z, 32, 1420, 30, "Escaneá el QR para ver el pedido con fotos y detalle", w: 520, lineas: 3, bold: true);
+        T(z, 32, 1540, 30, $"ENVÍO {d.Envio}");
+        z.Append($"^FO600,1402^BQN,2,5^FDLA,{UrlDelEnvio(k, d.Envio)}^FS\n");
         z.Append("^XZ\n");
         return z.ToString();
     }
@@ -308,11 +318,10 @@ public class MeliEtiquetaMe1Service
 
     public byte[] Pdf(Datos d, Contacto k)
     {
-        var barras = new ZXing.BarcodeWriterSvg
-        {
-            Format = ZXing.BarcodeFormat.CODE_128,
-            Options = new ZXing.Common.EncodingOptions { Width = 560, Height = 110, Margin = 0, PureBarcode = true }
-        }.Write(d.Envio.ToString()).Content;
+        byte[] qr;
+        using (var gen = new QRCoder.QRCodeGenerator())
+        using (var datosQr = gen.CreateQrCode(UrlDelEnvio(k, d.Envio), QRCoder.QRCodeGenerator.ECCLevel.M))
+            qr = new QRCoder.PngByteQRCode(datosQr).GetGraphic(10);
         var iconoWa = $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path fill=\"#000\" d=\"{WhatsappSvgPath}\"/></svg>";
         var totalU = d.Productos.Sum(p => p.Cantidad);
         var webs = string.Join(" · ", new[] { k.Web1, k.Web2 }.Where(x => !string.IsNullOrWhiteSpace(x)));
@@ -404,7 +413,7 @@ public class MeliEtiquetaMe1Service
                             if (!string.IsNullOrWhiteSpace(d.Provincia)) cc.Item().Text(d.Provincia!).FontSize(9);
                         });
                     });
-                    b.Item().MinHeight(52, Unit.Millimetre).Padding(4).Text(t =>
+                    b.Item().MinHeight(40, Unit.Millimetre).Padding(4).Text(t =>
                     {
                         if (string.IsNullOrWhiteSpace(d.Referencia)) return;
                         var chica = d.Referencia!.Length > 380;
@@ -412,10 +421,14 @@ public class MeliEtiquetaMe1Service
                         t.Span("Referencia: ").Bold().FontSize(chica ? 8 : 9);
                         t.Span(d.Referencia).FontSize(chica ? 8 : 9);
                     });
-                    b.Item().BorderTop(borde).PaddingVertical(4).PaddingHorizontal(20).Column(cc =>
+                    b.Item().BorderTop(borde).Padding(4).Row(r =>
                     {
-                        cc.Item().Height(13, Unit.Millimetre).Svg(barras);
-                        cc.Item().AlignCenter().Text($"ENVÍO {d.Envio}").FontSize(9).LetterSpacing(0.05f);
+                        r.RelativeItem().AlignMiddle().Column(cc =>
+                        {
+                            cc.Item().Text("Escaneá el QR para ver el pedido con fotos y detalle").Bold().FontSize(10);
+                            cc.Item().PaddingTop(6).Text($"ENVÍO {d.Envio}").FontSize(10);
+                        });
+                        r.ConstantItem(26, Unit.Millimetre).Height(26, Unit.Millimetre).Image(qr);
                     });
                 });
             });
