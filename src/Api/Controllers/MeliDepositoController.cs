@@ -84,8 +84,7 @@ public class MeliDepositoController : ControllerBase
                     numeroVenta = p.PackId ?? p.MeliOrderId,
                     // 2026-09-24: para imprimir la etiqueta desde el deposito (Full no tiene etiqueta).
                     numeroEnvio = tipo.Clave == "full" ? null : p.ShippingId,
-                    etiquetaImpresa = p.ShippingSubstatus == "printed" || g.Any(x => x.EtiquetaImpresaAt != null)
-                                      || p.ShippingStatus is "shipped" or "delivered" or "not_delivered",
+                    etiquetaImpresa = EtiquetaImpresa(p.ShippingStatus, p.ShippingSubstatus) || g.Any(x => x.EtiquetaImpresaAt != null),
                     etiquetaImpresaAt = g.Min(x => x.EtiquetaImpresaAt),
                     fecha = p.DateCreated,
                     cuenta = nickCuenta.TryGetValue(p.MeliAccountId, out var nk) ? nk : "",
@@ -453,6 +452,15 @@ public class MeliDepositoController : ControllerBase
         return System.Text.RegularExpressions.Regex.Replace(thumb, "-[A-Z]\\.(jpg|jpeg|webp|png)$", "-O.$1",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
+
+    /// <summary>
+    /// 2026-09-24: despues de imprimir, MeLi no siempre deja "printed": en Correo pasa directo a
+    /// "ready_for_pickup" (visto en envios reales), y despues vienen dropped_off, picked_up, etc.
+    /// Por eso: listo para despachar y el subestado YA NO es de "falta imprimir" = impresa.
+    /// </summary>
+    private static bool EtiquetaImpresa(string? status, string? substatus) =>
+        status is "shipped" or "delivered" or "not_delivered"
+        || (status == "ready_to_ship" && substatus is not (null or "ready_to_print" or "invoice_pending" or "buffered"));
 
     private static (string Clave, string Etiqueta) TipoEnvio(string? logisticType, string? shippingMode)
         => (logisticType?.ToLowerInvariant()) switch

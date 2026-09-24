@@ -1333,9 +1333,12 @@
     // 2026-09-24: el estado de la etiqueta va ABAJO de la impresorita (BotonEtiquetaMeli), no arriba.
     private static bool EstadoVaAbajo(MeliOrderDto o) => o.ShippingSubstatus is "printed" or "ready_to_print";
 
+    // Despues de imprimir MeLi no siempre deja "printed" (Correo pasa directo a ready_for_pickup):
+    // listo para despachar con un subestado que ya no es "falta imprimir" = impresa.
     private static bool EtiquetaImpresa(IEnumerable<MeliOrderDto> os) => os.Any(o =>
-        o.EtiquetaImpresaAt != null || o.ShippingSubstatus == "printed"
-        || o.ShippingStatus is "shipped" or "delivered" or "not_delivered");
+        o.EtiquetaImpresaAt != null
+        || o.ShippingStatus is "shipped" or "delivered" or "not_delivered"
+        || (o.ShippingStatus == "ready_to_ship" && o.ShippingSubstatus is not (null or "ready_to_print" or "invoice_pending" or "buffered")));
 
     private static bool PorDespachar(MeliOrderDto o) =>
         o.Status != "cancelled" && o.ShippingStatus is "ready_to_ship" or "handling" or "pending";

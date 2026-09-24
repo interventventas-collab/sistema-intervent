@@ -69,11 +69,17 @@ public class MeliOrderService
     }
 
     /// <summary>
-    /// 2026-09-24: cuando se imprimio la etiqueta, segun el historial del envio de MeLi
-    /// (substatus_history: [{ "date": ..., "substatus": "printed" }]). null si no figura.
+    /// 2026-09-24: cuando se imprimio la etiqueta por primera vez (UTC), segun el envio de MeLi.
+    /// MeLi lo manda en "date_first_printed" (verificado en envios reales: Flex y Correo). Si no
+    /// viene, se busca "printed" en substatus_history. null si no se imprimio.
     /// </summary>
-    private static DateTime? FechaImpresionDeHistorial(JsonElement shipDoc)
+    public static DateTime? FechaImpresion(JsonElement shipDoc)
     {
+        if (shipDoc.TryGetProperty("date_first_printed", out var fp) && fp.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(fp.GetString(), System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var fpo))
+            return fpo.UtcDateTime;
+
         if (!shipDoc.TryGetProperty("substatus_history", out var hist) || hist.ValueKind != JsonValueKind.Array)
             return null;
         DateTime? primera = null;
@@ -955,7 +961,7 @@ public class MeliOrderService
                     // cross_docking, custom. Lo usamos para descontar del depósito correcto.
                     if (shipDoc.TryGetProperty("logistic_type", out var shipLt) && shipLt.ValueKind != JsonValueKind.Null)
                         logisticType = shipLt.GetString();
-                    impresaAt = FechaImpresionDeHistorial(shipDoc);
+                    impresaAt = FechaImpresion(shipDoc);
                 }
             }
             catch { /* ignore shipping fetch errors */ }

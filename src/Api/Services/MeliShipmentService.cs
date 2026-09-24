@@ -592,7 +592,30 @@ public class MeliShipmentService
 
         await UpsertShipmentAsync(account.Id, orderId ?? 0, orderTotal, itemsSummary, buyerNickname, doc);
         await _db.SaveChangesAsync();
+        await ActualizarOrdenesDelEnvioAsync(meliShipmentId, doc);
         return true;
+    }
+
+    /// <summary>
+    /// 2026-09-24: cuando MeLi avisa que cambio un envio (webhook "shipments", p. ej. al imprimir la
+    /// etiqueta desde MeLi), reflejarlo tambien en las ORDENES: Ordenes y Deposito leen el estado de
+    /// ahi, y sin esto esperaban al sync de cada 30 min. Solo estado/subestado/hora de impresion.
+    /// </summary>
+    private async Task ActualizarOrdenesDelEnvioAsync(long shipId, JsonElement doc)
+    {
+        try
+        {
+            string? st = doc.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null;
+            string? sub = doc.TryGetProperty("substatus", out var ss) && ss.ValueKind == JsonValueKind.String ? ss.GetString() : null;
+            if (st is null) return;
+            await _db.MeliOrders.Where(o => o.ShippingId == shipId)
+                .ExecuteUpdateAsync(x => x.SetProperty(o => o.ShippingStatus, st).SetProperty(o => o.ShippingSubstatus, sub));
+            var impresa = MeliOrderService.FechaImpresion(doc);
+            if (impresa is not null)
+                await _db.MeliOrders.Where(o => o.ShippingId == shipId && o.EtiquetaImpresaAt == null)
+                    .ExecuteUpdateAsync(x => x.SetProperty(o => o.EtiquetaImpresaAt, impresa));
+        }
+        catch { /* no critico: el sync periodico lo corrige */ }
     }
 
     /// <summary>2026-06-08: importar manualmente un envío me1 desde el número de ORDEN MeLi.
