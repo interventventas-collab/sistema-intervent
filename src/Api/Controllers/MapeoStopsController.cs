@@ -818,6 +818,141 @@ public class MapeoStopsController : ControllerBase
         => n == 0 ? $"No hay {que} para sumar a ese día."
                   : $"Sumé {n} al mapa del {dia:dd/MM}.";
 
+    // ══════════ 2026-09-24: botón "Pendientes" del mapa ══════════
+    // Lista TODO lo que falta entregar (ventas + alquileres) con su estado, y se suman al mapa
+    // tildándolos. A diferencia de "Traer masivo › Ventas" (hoy y ayer), acá entran también las
+    // ventas que siguen en el tablero de armado aunque sean de hace días: son las que se olvidan.
+    //
+    // Qué cuenta como pendiente:
+    //  · VENTA: no anulada, no presupuesto (PRO) ni nota de crédito, sin entregar (ni EntregadoAt,
+    //    ni repartidor, ni estado ENTREGADO), y que esté en el tablero de armado O sea de hoy/ayer.
+    //    ⚠ hay ventas entregadas SIN EstadoPreparacion: por eso se mira también EntregadoAt.
+    //  · ALQUILER: reservado/confirmado, sin entregar, con entrega desde hace 30 días en adelante.
+
+    private const int AlqPendDiasAtras = 30;
+
+    public record PendienteDto(string Tipo, int Id, string Numero, string Cliente, string? Localidad,
+        string? Direccion, bool SinDireccion, string? Detalle, string Estado, DateTime Fecha,
+        DateTime? FechaEntrega, int? DiasAtraso, bool ParaHoy,
+        int? StopId, DateTime? EnMapaDia, string? Repartidor, string? RepartidorColor);
+
+    private static readonly Dictionary<string, string> EstadoPrepTexto = new()
+    {
+        ["PARA_PREPARAR"] = "Para armar", ["EN_PREPARACION"] = "Armando", ["LISTO"] = "Listo p/ salir",
+        ["EN_CAMINO"] = "En camino",
+    };
+
+    [HttpGet("pendientes")]
+    public async Task<IActionResult> Pendientes([FromQuery] DateTime? fecha = null)
+    {
+        var dia = FechaDelMapa(fecha);
+        var hoy = HoyAr();
+        var desdeVentas = dia.AddDays(-VentasDiasAtras);
+
+        var ventas = await _db.CafeVentas.AsNoTracking().Include(v => v.ClienteNav).Include(v => v.Items)
+            .Where(v => v.Estado != "anulado" && v.TipoComprobante != "PRO" && !v.TipoComprobante.StartsWith("NC")
+                     && v.EntregadoAt == null && v.EntregadoPorRepartidorId == null
+                     && (v.EstadoPreparacion == null || v.EstadoPreparacion != "ENTREGADO")
+                     && (v.EstadoPreparacion != null || v.Fecha >= desdeVentas))
+            .OrderBy(v => v.Fecha).ToListAsync();
+
+        var desdeAlq = hoy.AddDays(-AlqPendDiasAtras);
+        var alqs = await _db.AlqReservas.AsNoTracking().Include(r => r.ClienteNav)
+            .Include(r => r.Items).ThenInclude(i => i.EquipoNav)
+            .Where(r => (r.Estado == "reservado" || r.Estado == "confirmado")
+                     && r.EntregadoPorRepartidorId == null && r.FechaEntrega >= desdeAlq)
+            .OrderBy(r => r.FechaEntrega).ToListAsync();
+
+        // En qué mapa está cada una: primero el del día que se mira, si no el más cercano de hoy en adelante.
+        var ventaRefs = ventas.Select(v => v.Id.ToString()).ToList();
+        var alqRefs = alqs.Select(r => r.Id.ToString()).ToList();
+        var stops = await _db.MapeoStops.AsNoTracking().Include(s => s.AssignedDriver)
+            .Where(s => s.OriginRefId != null && s.FechaReparto >= (dia < hoy ? dia : hoy)
+                     && ((s.Origin == "venta_cafe" && ventaRefs.Contains(s.OriginRefId))
+                      || (s.Origin == "alquiler" && alqRefs.Contains(s.OriginRefId))))
+            .ToListAsync();
+        MapeoStop? StopDe(string origin, int id)
+        {
+            var r = id.ToString();
+            var delOrigen = stops.Where(s => s.Origin == origin && s.OriginRefId == r).ToList();
+            return delOrigen.FirstOrDefault(s => s.FechaReparto == dia)
+                ?? delOrigen.OrderBy(s => s.FechaReparto).FirstOrDefault();
+        }
+
+        static string? Primero(params string?[] xs) => xs.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
+        static string Resumen(IEnumerable<(int cant, string nombre)> items)
+        {
+            var l = items.Where(i => !string.IsNullOrWhiteSpace(i.nombre)).ToList();
+            var txt = string.Join(", ", l.Take(2).Select(i => $"{i.cant}× {i.nombre.Trim()}"));
+            return l.Count > 2 ? $"{txt} +{l.Count - 2}" : txt;
+        }
+
+        var lista = new List<PendienteDto>();
+        foreach (var v in ventas)
+        {
+            var cli = v.ClienteNav;
+            var dir = Primero(v.ClienteDomicilioEntregaSnapshot, v.ClienteDireccionSnapshot, cli?.DomicilioEntrega, cli?.Direccion);
+            var tieneUbic = !string.IsNullOrWhiteSpace(v.MapeoLink) || cli?.MapeoLat is not null || !string.IsNullOrWhiteSpace(cli?.MapeoLink);
+            var dias = (int)(dia - v.Fecha.Date).TotalDays;
+            var st = StopDe("venta_cafe", v.Id);
+            lista.Add(new PendienteDto("venta", v.Id, v.Numero,
+                Primero(v.ClienteNombreSnapshot, cli?.Nombre) ?? "Cliente",
+                Primero(v.ClienteLocalidadSnapshot, v.ClienteCiudadSnapshot, cli?.Localidad, cli?.Ciudad),
+                dir, dir is null && !tieneUbic,
+                Resumen(v.Items.Select(i => (i.Cantidad, i.ProductoNombreSnapshot))),
+                v.EstadoPreparacion is not null && EstadoPrepTexto.TryGetValue(v.EstadoPreparacion, out var t) ? t : "Sin armar",
+                v.Fecha, null, dias > 2 ? dias : null, true,
+                st?.Id, st?.FechaReparto, st?.AssignedDriver?.Nombre, st?.AssignedDriver?.Color));
+        }
+        foreach (var r in alqs)
+        {
+            var cli = r.ClienteNav;
+            var dir = Primero(r.DireccionEvento, cli?.DomicilioEntrega, cli?.Direccion);
+            var tieneUbic = r.LatitudEvento is not null || !string.IsNullOrWhiteSpace(r.MapeoLink) || cli?.MapeoLat is not null;
+            var atraso = (int)(dia - r.FechaEntrega.Date).TotalDays;
+            var st = StopDe("alquiler", r.Id);
+            lista.Add(new PendienteDto("alquiler", r.Id, r.Numero, Primero(cli?.Nombre) ?? "Cliente",
+                Primero(cli?.Localidad, cli?.Ciudad), dir, dir is null && !tieneUbic,
+                Resumen(r.Items.Select(i => (i.Cantidad, Primero(i.EquipoNav?.Nombre, i.Descripcion) ?? ""))),
+                r.Estado == "confirmado" ? "Confirmado" : "Reservado",
+                r.CreatedAt, r.FechaEntrega, atraso > 0 ? atraso : null, r.FechaEntrega.Date == dia,
+                st?.Id, st?.FechaReparto, st?.AssignedDriver?.Nombre, st?.AssignedDriver?.Color));
+        }
+        return Ok(new { dia = dia.ToString("yyyy-MM-dd"), items = lista });
+    }
+
+    public record SumarPendientesRequest(List<int>? Ventas, List<int>? Alquileres);
+
+    /// <summary>Suma al mapa del día las ventas y alquileres tildados. Idempotente (no duplica).</summary>
+    [HttpPost("pendientes/sumar")]
+    public async Task<IActionResult> SumarPendientes([FromBody] SumarPendientesRequest req, [FromQuery] DateTime? fecha = null)
+    {
+        var dia = FechaDelMapa(fecha);
+        int n = 0, ya = 0, sinUbic = 0;
+        var fallas = new List<string>();
+        var vIds = req?.Ventas ?? new();
+        var aIds = req?.Alquileres ?? new();
+        foreach (var v in await _db.CafeVentas.Include(x => x.ClienteNav).Where(x => vIds.Contains(x.Id)).ToListAsync())
+        {
+            var r = await _ventaMapeo.SumarVentaAsync(v, fecha: dia);
+            if (!r.Ok) fallas.Add($"{v.Numero}: {r.Mensaje}");
+            else if (r.YaEstaba) ya++;
+            else { n++; if (r.SinUbicacion) sinUbic++; }
+        }
+        foreach (var a in await _db.AlqReservas.Include(x => x.ClienteNav).Where(x => aIds.Contains(x.Id)).ToListAsync())
+        {
+            var r = await _alqMapeo.SumarReservaAsync(a, fecha: dia);
+            if (!r.Ok) fallas.Add($"{a.Numero}: {r.Mensaje}");
+            else if (r.YaEstaba) ya++;
+            else n++;
+        }
+        var msg = n == 0 ? "No sumé nada nuevo." : $"Sumé {n} al mapa del {dia:dd/MM}.";
+        if (ya > 0) msg += $" · {ya} ya estaba{(ya == 1 ? "" : "n")}";
+        if (sinUbic > 0) msg += $" · {sinUbic} sin ubicación, buscalas en el mapa";
+        if (fallas.Count > 0) msg += " · No pude: " + string.Join(" / ", fallas);
+        return Ok(new { creadas = n, sinUbicacion = sinUbic, mensaje = msg });
+    }
+
     // ══════════ 2026-09-03: armar un día con los envíos que MeLi promete para ese día ══════════
 
     /// <summary>Cuántos envíos de MercadoLibre hay prometidos para ese día que todavía no están en

@@ -7683,6 +7683,12 @@ public class ApiClient
     /// <summary>Los Flex ATRASADOS: prometidos para un dia anterior y todavia sin entregar.</summary>
     public async Task<MapeoTraerResult?> TraerAtrasadosAlMapaAsync(DateTime? fecha = null)
         => await PostAsync<MapeoTraerResult>("/api/mapeo/stops/traer/atrasados" + FechaQs(fecha, "?"), new { });
+    /// <summary>2026-09-24: todo lo que falta entregar (ventas + alquileres) con su estado, para el botón "Pendientes".</summary>
+    public async Task<MapeoPendientesResp?> GetMapeoPendientesAsync(DateTime? fecha = null)
+        => await GetAsync<MapeoPendientesResp>("/api/mapeo/stops/pendientes" + FechaQs(fecha, "?"));
+    /// <summary>Suma al mapa del día las ventas y alquileres tildados en "Pendientes".</summary>
+    public async Task<MapeoTraerResult?> SumarPendientesAlMapaAsync(List<int> ventas, List<int> alquileres, DateTime? fecha = null)
+        => await PostAsync<MapeoTraerResult>("/api/mapeo/stops/pendientes/sumar" + FechaQs(fecha, "?"), new { ventas, alquileres });
 
     public async Task<object?> AssignBulkStopsAsync(List<int> stopIds, int? driverId)
         => await PostAsync<object>("/api/mapeo/stops/assign-bulk", new { stopIds, driverId });
@@ -9381,3 +9387,8 @@ public record MapeoTraerEstadoDto(int Flex, int Me1, int Ventas, int Atrasados, 
 // Qué pasó al traer: cuántas paradas entraron, cuántas quedaron sin ubicación (hay que buscarlas
 // a mano en el mapa) y el mensaje listo para mostrarle al usuario.
 public record MapeoTraerResult(int Creadas, int SinUbicacion, string? Mensaje);
+public record MapeoPendientesResp(string? Dia, List<MapeoPendienteDto> Items);
+public record MapeoPendienteDto(string Tipo, int Id, string Numero, string Cliente, string? Localidad,
+    string? Direccion, bool SinDireccion, string? Detalle, string Estado, DateTime Fecha,
+    DateTime? FechaEntrega, int? DiasAtraso, bool ParaHoy,
+    int? StopId, DateTime? EnMapaDia, string? Repartidor, string? RepartidorColor);

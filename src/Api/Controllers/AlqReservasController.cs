@@ -51,11 +51,12 @@ public class AlqReservasController : ControllerBase
 
     /// <summary>PDF descargable del comprobante de la reserva (como el de ventas). Pedido 2026-06-29.</summary>
     [HttpGet("{id:int}/pdf")]
-    public async Task<IActionResult> Pdf(int id)
+    public async Task<IActionResult> Pdf(int id, [FromQuery] bool inline = false)
     {
         var (bytes, filename) = await GenerarPdfBytesAsync(id);
         if (bytes is null) return NotFound(new { error = "Reserva no encontrada" });
-        return File(bytes, "application/pdf", filename);
+        // 2026-09-24: inline=true → sin nombre de archivo, para verlo embebido (ojito del mapa).
+        return inline ? File(bytes, "application/pdf") : File(bytes, "application/pdf", filename);
     }
 
     /// <summary>Genera los bytes del PDF del comprobante de la reserva (misma lógica que el botón Descargar).
