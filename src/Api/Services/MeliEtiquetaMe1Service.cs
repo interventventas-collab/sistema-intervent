@@ -79,7 +79,12 @@ public class MeliEtiquetaMe1Service
             var calle = !string.IsNullOrWhiteSpace(sh.StreetName)
                 ? $"{sh.StreetName} {sh.StreetNumber}".Trim()
                 : (sh.AddressLine ?? "");
-            if (!string.IsNullOrWhiteSpace(extra)) calle = $"{calle} · {extra}";
+            // Lo que viene antes de "Referencia:" (lote, piso, depto): corto va con la calle; largo, a la referencia.
+            if (!string.IsNullOrWhiteSpace(extra))
+            {
+                if (extra!.Length <= 25) calle = $"{calle} · {extra}";
+                else referencia = string.IsNullOrWhiteSpace(referencia) ? extra : $"{extra} · {referencia}";
+            }
             var ciudad = string.Join(" · ", new[] { sh.City, sh.Neighborhood != sh.City ? sh.Neighborhood : null }
                 .Where(x => !string.IsNullOrWhiteSpace(x)));
 
@@ -105,6 +110,9 @@ public class MeliEtiquetaMe1Service
     private static (string? Extra, string? Referencia, string? Entre) PartirComentario(string? c)
     {
         if (string.IsNullOrWhiteSpace(c)) return (null, null, null);
+        // MeLi a veces manda la referencia en varios renglones: sin esto no se reconocía "Referencia:"
+        // y todo iba pegado a la dirección (24/09, envío 48093236063).
+        c = Regex.Replace(c, @"\s+", " ").Trim();
         string? entre = null;
         var mE = Regex.Match(c, @"\bEntre:\s*(.+)$", RegexOptions.IgnoreCase);
         if (mE.Success) { entre = mE.Groups[1].Value.Trim(); c = c[..mE.Index].Trim(); }
@@ -196,14 +204,64 @@ public class MeliEtiquetaMe1Service
         return string.Join(" \\& ", partes);
     }
 
-    /// <summary>Un texto ZPL. El "negrita" es el mismo truco que usa MeLi: imprimirlo dos veces corrido 1 punto.</summary>
+    /// <summary>
+    /// Un texto ZPL. El "negrita" es el mismo truco que usa MeLi: imprimirlo dos veces corrido 1 punto.
+    /// Los textos de varios renglones los partimos NOSOTROS (no ^FB): si un texto no entra, la impresora
+    /// escribe lo que sobra ENCIMA del último renglón (pasó el 24/09 con una dirección larga). Acá, si no
+    /// entra, se achica la letra hasta 60% y, como último recurso, se corta con "…".
+    /// </summary>
     private static void T(StringBuilder z, int x, int y, int alto, string texto, int w = 0, int lineas = 1, string align = "L", bool bold = false)
     {
-        // ^ y ~ son comandos en ZPL: fuera. "\&" es salto de línea dentro de ^FB (lo usamos a propósito).
+        // ^ y ~ son comandos en ZPL: fuera. "\&" separa párrafos a propósito (troquel).
         var t = texto.Replace("^", " ").Replace("~", " ").Replace("\r", " ").Replace("\n", " ");
-        var fb = w > 0 ? $"^FB{w},{lineas},0,{align},0" : "";
-        z.Append($"^FO{x},{y}^A0N,{alto},{alto}{fb}^FD{t}^FS\n");
-        if (bold) z.Append($"^FO{x + 1},{y}^A0N,{alto},{alto}{fb}^FD{t}^FS\n");
+        if (w <= 0 || (lineas == 1 && align == "C"))
+        {
+            var fb = w > 0 ? $"^FB{w},1,0,{align},0" : "";
+            z.Append($"^FO{x},{y}^A0N,{alto},{alto}{fb}^FD{t}^FS\n");
+            if (bold) z.Append($"^FO{x + 1},{y}^A0N,{alto},{alto}{fb}^FD{t}^FS\n");
+            return;
+        }
+
+        var h = alto;
+        List<string> rs = Partir(t, w, h);
+        while (rs.Count > lineas && h > alto * 0.6)
+        {
+            h = (int)(h * 0.9);
+            rs = Partir(t, w, h);
+        }
+        if (rs.Count > lineas)
+        {
+            rs = rs.Take(lineas).ToList();
+            rs[^1] = rs[^1].TrimEnd() + "…";
+        }
+        // mantener el alto total del bloque: si se achicó la letra, entran más renglones en el mismo lugar
+        for (int i = 0; i < rs.Count; i++)
+        {
+            var yy = y + i * (h + 4);
+            z.Append($"^FO{x},{yy}^A0N,{h},{h}^FB{w},1,0,{align},0^FD{rs[i]}^FS\n");
+            if (bold) z.Append($"^FO{x + 1},{yy}^A0N,{h},{h}^FB{w},1,0,{align},0^FD{rs[i]}^FS\n");
+        }
+    }
+
+    /// <summary>Parte en renglones por palabras. Ancho de letra estimado de la fuente 0 de Zebra: ~0,5 del alto (en mayúsculas, a lo sumo).</summary>
+    private static List<string> Partir(string texto, int ancho, int alto)
+    {
+        int max = Math.Max(8, (int)(ancho / (alto * 0.5)));
+        var res = new List<string>();
+        foreach (var parrafo in texto.Split("\\&"))
+        {
+            var linea = new StringBuilder();
+            foreach (var pal in parrafo.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var p = pal;
+                while (p.Length > max) { if (linea.Length > 0) { res.Add(linea.ToString()); linea.Clear(); } res.Add(p[..max]); p = p[max..]; }
+                if (linea.Length > 0 && linea.Length + 1 + p.Length > max) { res.Add(linea.ToString()); linea.Clear(); }
+                if (linea.Length > 0) linea.Append(' ');
+                linea.Append(p);
+            }
+            if (linea.Length > 0) res.Add(linea.ToString());
+        }
+        return res;
     }
 
     // Logo de WhatsApp (el mismo dibujo que usa el sistema en la web), pasado a puntos para la térmica.
@@ -265,7 +323,8 @@ public class MeliEtiquetaMe1Service
             page.Size(100, 200, Unit.Millimetre);
             page.Margin(2, Unit.Millimetre);
             page.DefaultTextStyle(t => t.FontSize(9).FontFamily("Helvetica").FontColor(Colors.Black));
-            page.Content().Column(col =>
+            // ScaleToFit: si algún dato viene larguísimo, achica TODO en vez de pasarse a una 2ª hoja.
+            page.Content().ScaleToFit().Column(col =>
             {
                 // Troquel
                 col.Item().Height(33, Unit.Millimetre).Border(0.8f).BorderColor(Colors.Grey.Darken2).Padding(4).Column(tq =>
@@ -324,12 +383,12 @@ public class MeliEtiquetaMe1Service
                     b.Item().BorderBottom(borde).Padding(4).Column(r =>
                     {
                         r.Item().Text("DESTINATARIO").FontSize(7);
-                        r.Item().Text(d.Nombre.ToUpperInvariant()).FontSize(15).Bold();
+                        r.Item().Text(d.Nombre.ToUpperInvariant()).FontSize(d.Nombre.Length > 34 ? 12 : 15).Bold().ClampLines(2);
                         if (!string.IsNullOrWhiteSpace(d.Telefono)) r.Item().PaddingTop(1).Text("Tel: " + d.Telefono).FontSize(11);
                     });
                     b.Item().BorderBottom(borde).Padding(4).Column(r =>
                     {
-                        r.Item().Text(d.Calle).FontSize(12).Bold();
+                        r.Item().Text(d.Calle).FontSize(d.Calle.Length > 60 ? 10 : 12).Bold().ClampLines(3);
                         if (!string.IsNullOrWhiteSpace(d.Entre)) r.Item().Text("Entre: " + d.Entre).FontSize(9);
                     });
                     b.Item().BorderBottom(borde).Row(r =>
@@ -345,11 +404,13 @@ public class MeliEtiquetaMe1Service
                             if (!string.IsNullOrWhiteSpace(d.Provincia)) cc.Item().Text(d.Provincia!).FontSize(9);
                         });
                     });
-                    b.Item().Height(52, Unit.Millimetre).Padding(4).Text(t =>
+                    b.Item().MinHeight(52, Unit.Millimetre).Padding(4).Text(t =>
                     {
                         if (string.IsNullOrWhiteSpace(d.Referencia)) return;
-                        t.Span("Referencia: ").Bold().FontSize(9);
-                        t.Span(d.Referencia).FontSize(9);
+                        var chica = d.Referencia!.Length > 380;
+                        t.ClampLines(chica ? 16 : 12);
+                        t.Span("Referencia: ").Bold().FontSize(chica ? 8 : 9);
+                        t.Span(d.Referencia).FontSize(chica ? 8 : 9);
                     });
                     b.Item().BorderTop(borde).PaddingVertical(4).PaddingHorizontal(20).Column(cc =>
                     {
