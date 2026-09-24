@@ -6916,7 +6916,7 @@ public class ApiClient
         $"/api/cafe/rotulo/{ventaId}?formato={Uri.EscapeDataString(formato)}";
 
     // ===== 2026-08-13: Etiquetas de envio de MercadoLibre (PDF oficial de MeLi, listo para imprimir) =====
-    // formato: "termica" | "a4-1" | "a4-3". ids = numeros de envio (ShippingId).
+    // formato: "termica" (Zebra .txt) | "termica-pdf" | "a4-1" | "a4-3". ids = numeros de envio (ShippingId).
     public string BuildEtiquetaMeliUrl(IEnumerable<long> shipmentIds, string formato) =>
         $"/api/meli/shipments/label?ids={string.Join(",", shipmentIds)}&formato={Uri.EscapeDataString(formato)}";
 

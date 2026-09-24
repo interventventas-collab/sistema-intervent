@@ -36,6 +36,11 @@
     .om-fila .prod .c { font-weight: 800; min-width: 30px; }
     .om-cancel { color: #b91c1c; }
     .om-fila.sel { background: #eff6ff; box-shadow: inset 3px 0 0 #3b82f6; }
+    .om-fila .tilde { width: 22px; flex: 0 0 auto; padding-top: 0.1rem; }
+    .om-fila .tilde input { width: 18px; height: 18px; cursor: pointer; }
+    .om-fila .impr { flex: 0 0 auto; align-self: flex-start; }
+    .om-etiq { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.6rem; font-size: 0.85rem; }
+    .om-etiq .lbl { color: #64748b; min-width: 58px; }
 
     .om-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 1.5rem; align-items: start; }
     .om-col-ficha { position: sticky; top: 0.5rem; max-height: calc(100vh - 1rem); overflow-y: auto; padding-right: 0.3rem; }
@@ -143,6 +148,24 @@
         </div>
     </div>
 
+    @* 2026-09-24: imprimir etiquetas MeLi desde el deposito (mismo endpoint que Ordenes). *@
+    <div class="om-etiq">
+        <span class="lbl">Etiqueta</span>
+        @foreach (var (k, l, t) in FormatosEtiqueta)
+        {
+            <button class="om-chip @(etiquetaFormato == k ? "on" : "")" title="@t" @onclick="() => ElegirFormato(k)">@l</button>
+        }
+        @if (tildadas.Count > 0)
+        {
+            <button class="btn btn-primary btn-sm" @onclick="ImprimirTildadas">🖨️ Imprimir @tildadas.Count</button>
+            <button class="btn btn-secondary btn-sm" @onclick="() => tildadas.Clear()">Destildar</button>
+        }
+        else if (ParaImprimir.Count > 0)
+        {
+            <button class="btn btn-secondary btn-sm" @onclick="TildarSinImprimir">Tildar las @ParaImprimir.Count sin imprimir</button>
+        }
+    </div>
+
     @if (cargando && ordenes.Count == 0)
     {
         <div class="om-vacio">Cargando órdenes…</div>
@@ -160,6 +183,13 @@
                 var idx = i;
                 var o = Filtradas[i];
                 <div class="om-fila @(ficha is not null && ficha.Numero == o.Numero ? "sel" : "")" @onclick="() => AbrirDelListado(idx)">
+                    <div class="tilde" @onclick:stopPropagation="true">
+                        @if (o.NumeroEnvio.HasValue && o.EstadoClave != "cancelada")
+                        {
+                            <input type="checkbox" checked="@tildadas.Contains(o.NumeroEnvio.Value)"
+                                   @onchange="() => Tildar(o.NumeroEnvio!.Value)" title="Tildar para imprimir varias juntas" />
+                        }
+                    </div>
                     <div class="cuando">
                         @o.Fecha.ToArTime().ToString("dd/MM")<br />@o.Fecha.ToArTime().ToString("HH:mm")
                     </div>
@@ -168,6 +198,7 @@
                             <b>@o.Comprador</b> · @o.Tipo
                             @if (cuentas.Count > 1) { <text> · @o.Cuenta</text> }
                             · <span class="@(o.EstadoClave == "cancelada" ? "om-cancel" : "")">@o.Estado</span>
+                            @if (o.EtiquetaImpresa) { <text> · etiqueta impresa</text> }
                         </div>
                         @foreach (var p in o.Productos)
                         {
@@ -179,6 +210,11 @@
                             </div>
                         }
                     </div>
+                    @if (o.NumeroEnvio.HasValue && o.EstadoClave != "cancelada")
+                    {
+                        <button class="btn btn-secondary btn-sm impr" title="Imprimir la etiqueta de este envío"
+                                @onclick="() => Imprimir(o.NumeroEnvio!.Value)" @onclick:stopPropagation="true">🖨️</button>
+                    }
                 </div>
             }
         </div>
@@ -196,6 +232,10 @@
             <span class="pos">@(fichaIndice + 1) de @Filtradas.Count</span>
         }
         @if (cargandoFicha) { <span class="pos">Cargando…</span> }
+        @if (ficha.NumeroEnvio.HasValue && ficha.Tipo != "Full" && ficha.Estado != "Cancelada")
+        {
+            <button class="btn btn-primary" @onclick="() => Imprimir(ficha.NumeroEnvio!.Value)">🖨️ Imprimir etiqueta</button>
+        }
     </div>
 
     <div class="om-ficha-head">
@@ -337,6 +377,42 @@ else
     private static readonly (string?, string)[] OpcionesEnvio = { (null, "Todos"), ("flex", "Flex"), ("correo", "Correo"), ("full", "Full") };
     private static readonly (string?, string)[] OpcionesEstado = { (null, "Todos"), ("despachar", "Para despachar"), ("camino", "En camino"), ("entregada", "Entregadas"), ("cancelada", "Canceladas") };
 
+    // ── Etiquetas ── el formato elegido queda recordado en este navegador (cada depósito tiene su impresora).
+    private static readonly (string, string, string)[] FormatosEtiqueta =
+    {
+        ("termica", "Zebra .txt", "Archivo .txt para impresora Zebra, el mismo que baja MercadoLibre"),
+        ("termica-pdf", "Térmica PDF", "PDF con una etiqueta por página, para térmicas que no son Zebra"),
+        ("a4-1", "A4 ×1", "Una etiqueta por hoja A4"),
+        ("a4-3", "A4 ×3", "Tres etiquetas por hoja A4 acostada, como MercadoLibre"),
+    };
+    private const string ClaveFormato = "om-etiqueta-formato";
+    private string etiquetaFormato = "a4-3";
+    private readonly HashSet<long> tildadas = new();
+
+    private List<long> ParaImprimir => Filtradas
+        .Where(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa && o.EstadoClave == "despachar")
+        .Select(o => o.NumeroEnvio!.Value).Distinct().ToList();
+
+    private async Task ElegirFormato(string f)
+    {
+        etiquetaFormato = f;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveFormato, f); } catch { }
+    }
+
+    private void Tildar(long envio) { if (!tildadas.Add(envio)) tildadas.Remove(envio); }
+    private void TildarSinImprimir() { foreach (var e in ParaImprimir) tildadas.Add(e); }
+
+    private async Task Imprimir(long envio)
+        => await JS.InvokeVoidAsync("window.open", Api.BuildEtiquetaMeliUrl(new[] { envio }, etiquetaFormato), "_blank");
+
+    private async Task ImprimirTildadas()
+    {
+        if (tildadas.Count == 0) return;
+        ToastService.Success($"Generando {tildadas.Count} etiqueta(s)…");
+        await JS.InvokeVoidAsync("window.open", Api.BuildEtiquetaMeliUrl(tildadas.OrderBy(x => x), etiquetaFormato), "_blank");
+        tildadas.Clear();
+    }
+
     private ElementReference scanRef;
     private string scanInput = "";
     private bool escaneando;
@@ -373,7 +449,16 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender) { try { await scanRef.FocusAsync(); } catch { } }
+        if (firstRender)
+        {
+            try
+            {
+                var f = await JS.InvokeAsync<string?>("localStorage.getItem", ClaveFormato);
+                if (FormatosEtiqueta.Any(x => x.Item1 == f)) { etiquetaFormato = f!; StateHasChanged(); }
+            }
+            catch { }
+            try { await scanRef.FocusAsync(); } catch { }
+        }
     }
 
     private async Task Cargar()

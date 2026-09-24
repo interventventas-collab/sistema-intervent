@@ -60,7 +60,7 @@ public class MeliDepositoController : ControllerBase
             {
                 o.MeliOrderId, o.MeliAccountId, o.Status, o.DateCreated, o.BuyerNickname,
                 o.ItemId, o.ItemTitle, o.Quantity, o.ShippingId, o.PackId,
-                o.ShippingStatus, o.ShippingMode, o.LogisticType
+                o.ShippingStatus, o.ShippingSubstatus, o.ShippingMode, o.LogisticType
             })
             .ToListAsync();
 
@@ -82,6 +82,9 @@ public class MeliDepositoController : ControllerBase
                 {
                     numero = p.ShippingId ?? p.PackId ?? p.MeliOrderId,
                     numeroVenta = p.PackId ?? p.MeliOrderId,
+                    // 2026-09-24: para imprimir la etiqueta desde el deposito (Full no tiene etiqueta).
+                    numeroEnvio = tipo.Clave == "full" ? null : p.ShippingId,
+                    etiquetaImpresa = p.ShippingSubstatus == "printed",
                     fecha = p.DateCreated,
                     cuenta = nickCuenta.TryGetValue(p.MeliAccountId, out var nk) ? nk : "",
                     comprador = p.BuyerNickname,

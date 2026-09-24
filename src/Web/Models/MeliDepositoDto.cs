@@ -19,6 +19,9 @@ public class MeliDepoOrden
 {
     public long Numero { get; set; }
     public long NumeroVenta { get; set; }
+    /// <summary>ShippingId para pedir la etiqueta; null si es Full o no tiene envio.</summary>
+    public long? NumeroEnvio { get; set; }
+    public bool EtiquetaImpresa { get; set; }
     public DateTime Fecha { get; set; }
     public string Cuenta { get; set; } = "";
     public string Comprador { get; set; } = "";
