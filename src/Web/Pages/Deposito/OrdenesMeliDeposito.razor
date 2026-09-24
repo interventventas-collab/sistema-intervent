@@ -212,6 +212,18 @@ else
                                 <div class="cant">×@p.Cantidad</div>
                                 <div class="tit">@p.Titulo</div>
                                 @if (!string.IsNullOrEmpty(p.Sku)) { <div class="sku">@p.Sku</div> }
+                                @* 2026-09-24: dónde está en el depósito. Producto suelto: su lugar (editable);
+                                   combo: el lugar va en cada pieza de abajo. *@
+                                @if (!p.EsCombo && p.Componentes.Count == 1)
+                                {
+                                    var c1 = p.Componentes[0];
+                                    <div><LugarProducto ProductoId="c1.ProductoId" Lugar="@c1.Lugar" Dudoso="c1.LugarDudoso" Editable="true"
+                                                        OnCambio="() => TraerDetalleYRedibujar(o.Numero)" /></div>
+                                }
+                                else if (!p.EsCombo && !string.IsNullOrEmpty(p.Lugar))
+                                {
+                                    <div><LugarProducto Lugar="@p.Lugar" Dudoso="p.LugarDudoso" /></div>
+                                }
                                 @if (p.EsCombo && p.Componentes.Count > 0)
                                 {
                                     <div class="combo">
@@ -222,6 +234,8 @@ else
                                                 <b>×@FmtCant(c.Cantidad)</b> @c.Nombre
                                                 @if (!string.IsNullOrEmpty(c.Formato) && c.Formato != "UNIT") { <text> · @c.Formato</text> }
                                                 @if (!string.IsNullOrEmpty(c.Sku)) { <span class="sku"> (@c.Sku)</span> }
+                                                <text> </text><LugarProducto ProductoId="c.ProductoId" Lugar="@c.Lugar" Dudoso="c.LugarDudoso" Editable="true"
+                                                                             OnCambio="() => TraerDetalleYRedibujar(o.Numero)" />
                                             </div>
                                         }
                                     </div>
@@ -237,7 +251,10 @@ else
                         <div class="om-prod">
                             @if (!string.IsNullOrEmpty(p.Foto)) { <img src="@p.Foto" alt="" loading="lazy" title="Ver la foto en grande" @onclick="() => zoomFoto = p.Foto" /> }
                             else { <span class="sinfoto"></span> }
-                            <div><div class="cant">×@p.Cantidad</div><div class="tit">@p.Titulo</div></div>
+                            <div>
+                                <div class="cant">×@p.Cantidad</div><div class="tit">@p.Titulo</div>
+                                @if (!string.IsNullOrEmpty(p.Lugar)) { <div><LugarProducto Lugar="@p.Lugar" Dudoso="p.LugarDudoso" /></div> }
+                            </div>
                         </div>
                     }
                 }
@@ -436,6 +453,14 @@ else
         catch { fallidas.Add(numero); }
     }
 
+    /// <summary>2026-09-24: después de cargar un lugar o avisar "no está acá", vuelve a traer ese renglón.</summary>
+    private async Task TraerDetalleYRedibujar(long numero)
+    {
+        await TraerDetalle(numero);
+        if (escaneadaFuera?.Numero == numero && fichas.TryGetValue(numero, out var f)) escaneadaFuera = f;
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task Reintentar(long numero)
     {
         fallidas.Remove(numero);
@@ -529,7 +554,7 @@ else
         Estado = f.Estado ?? "",
         EstadoClave = f.Estado == "Cancelada" ? "cancelada" : f.Estado == "Para despachar" ? "despachar" : "",
         Unidades = f.Unidades,
-        Productos = f.Productos.Select(p => new MeliDepoOrdenProducto { Titulo = p.Titulo, Cantidad = p.Cantidad, Foto = p.Foto }).ToList()
+        Productos = f.Productos.Select(p => new MeliDepoOrdenProducto { Titulo = p.Titulo, Cantidad = p.Cantidad, Foto = p.Foto, Lugar = p.Lugar, LugarDudoso = p.LugarDudoso }).ToList()
     };
 
     private static string FmtCant(decimal c) => c == Math.Floor(c) ? ((long)c).ToString() : c.ToString("0.##");

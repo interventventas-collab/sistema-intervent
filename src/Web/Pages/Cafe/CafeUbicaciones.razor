@@ -1,0 +1,305 @@
+@page "/cafe/ubicaciones"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@implements IDisposable
+
+@* 2026-09-24: "Ubicaciones" — dónde está cada producto en el depósito. Se carga de a poco y a
+   mano: primero la PLANTA (PB / P1 / otro depósito), y si se sabe una ZONA corta (TOST =
+   Tostadero). Se tilda un grupo (ej. buscar "vaso") y se le pone el lugar a todos juntos.
+   Más adelante se suman pasillo y estante sin rehacer lo cargado.
+   Estilo: texto plano, color solo para "no estaba acá" (alarma). Sin desplegables. *@
+
+<style>
+    .ub-wrap { max-width: 1100px; }
+    .ub-avance { font-size: 0.95rem; color: #374151; margin: 0.2rem 0 0; }
+    .ub-avance b { color: #111827; }
+    .ub-link { background: none; border: none; padding: 0; color: #2563eb; cursor: pointer; font: inherit; }
+    .ub-link:hover { text-decoration: underline; }
+    .ub-lugares { display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; font-size: 0.9rem; margin: 0.6rem 0 0; }
+    .ub-lugar { background: none; border: none; padding: 0.15rem 0; cursor: pointer; color: #374151; font: inherit; }
+    .ub-lugar.on { color: #111827; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+    .ub-lugar small { color: #9ca3af; }
+    .ub-filtros { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin: 0.9rem 0 0.4rem; }
+    .ub-filtros input[type=text] { min-width: 260px; }
+    .ub-seg button { border: 1px solid #d1d5db; background: #fff; padding: 0.35rem 0.8rem; cursor: pointer; font-size: 0.88rem; }
+    .ub-seg button:first-child { border-radius: 6px 0 0 6px; }
+    .ub-seg button:last-child { border-radius: 0 6px 6px 0; }
+    .ub-seg button + button { border-left: none; }
+    .ub-seg button.on { background: #1f2937; color: #fff; border-color: #1f2937; }
+    .ub-tabla { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .ub-tabla th { text-align: left; font-weight: 600; color: #6b7280; font-size: 0.78rem; padding: 0.4rem 0.5rem; border-bottom: 1px solid #e5e7eb; }
+    .ub-tabla td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    .ub-tabla tr.sel td { background: #f8fafc; }
+    .ub-sku { font-family: monospace; font-size: 0.78rem; color: #6b7280; }
+    .ub-gris { color: #9ca3af; }
+    .ub-dudosa { color: #b45309; font-size: 0.8rem; }
+    .ub-barra { position: sticky; bottom: 0; background: #fff; border-top: 2px solid #1f2937; padding: 0.7rem 0.8rem; margin-top: 0.6rem;
+                display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; z-index: 5; }
+    .ub-planta { border: 1px solid #d1d5db; background: #fff; padding: 0.45rem 0.9rem; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .ub-planta.on { background: #1f2937; color: #fff; border-color: #1f2937; }
+</style>
+
+<div class="card ub-wrap">
+    <div class="card-header">
+        <h3 style="margin:0;">📍 Ubicaciones en el depósito</h3>
+        @if (resumen is not null)
+        {
+            <p class="ub-avance">
+                <b>@resumen.ConPlanta</b> de @resumen.Total productos ya tienen planta
+                · @resumen.ConZona con zona
+                · <button class="ub-link" @onclick='() => ElegirLugar("sin")'>@resumen.SinLugar sin lugar</button>
+                @if (resumen.Dudosos > 0)
+                {
+                    <span> · </span><button class="ub-link" style="color:#b45309;" @onclick='() => ElegirLugar("dudosos")'>⚠ @resumen.Dudosos no estaban donde decía</button>
+                }
+            </p>
+            <div class="ub-lugares">
+                <button class="ub-lugar @(lugar == null ? "on" : "")" @onclick="() => ElegirLugar(null)">Todos</button>
+                <button class="ub-lugar @(lugar == "sin" ? "on" : "")" @onclick='() => ElegirLugar("sin")'>Sin lugar <small>@resumen.SinLugar</small></button>
+                @foreach (var l in resumen.Lugares)
+                {
+                    var clave = $"{l.Planta}|{l.Zona}";
+                    <button class="ub-lugar @(lugar == clave ? "on" : "")" title="@l.Nombre" @onclick="() => ElegirLugar(clave)">
+                        📍 @l.Texto <small>@l.Cantidad</small>
+                    </button>
+                }
+            </div>
+            @if (LugarElegido is not null && LugarElegido.Zona is not null)
+            {
+                <div style="font-size:0.85rem; color:#6b7280; margin-top:0.4rem;">
+                    @LugarElegido.Texto = @LugarElegido.Nombre
+                    <button class="ub-link" style="margin-left:0.4rem;" @onclick="() => RenombrarZona(LugarElegido)">✏️ cambiar nombre</button>
+                </div>
+            }
+        }
+    </div>
+
+    <div class="card-body">
+        <div class="ub-filtros">
+            <input type="text" class="form-input" style="width:auto;" placeholder="Buscar: vaso, portabotella, un SKU…"
+                   @bind="busqueda" @bind:event="oninput" @onkeyup="OnBuscarKeyUp" />
+            <div class="ub-seg">
+                <button class="@(categoria == null ? "on" : "")" @onclick="() => ElegirCategoria(null)">Todo</button>
+                <button class="@(categoria == "CAFE" ? "on" : "")" @onclick='() => ElegirCategoria("CAFE")'>Café</button>
+                <button class="@(categoria == "OTROS" ? "on" : "")" @onclick='() => ElegirCategoria("OTROS")'>Otros</button>
+            </div>
+            <div class="ub-seg">
+                <button class="@(ordenPedidos ? "on" : "")" @onclick="() => ordenPedidos = true" title="Los que más salen en pedidos, primero">Más pedidos primero</button>
+                <button class="@(!ordenPedidos ? "on" : "")" @onclick="() => ordenPedidos = false">A-Z</button>
+            </div>
+        </div>
+
+        @if (cargando)
+        {
+            <p class="text-muted">Cargando…</p>
+        }
+        else if (productos is null || productos.Count == 0)
+        {
+            <p class="text-muted">No hay productos con ese filtro.</p>
+        }
+        else
+        {
+            <div style="font-size:0.82rem; color:#6b7280; margin-bottom:0.3rem;">
+                @productos.Count productos@(productos.Count >= 1000 ? " (se muestran los primeros 1000, afiná la búsqueda)" : "")
+                · <button class="ub-link" @onclick="TildarTodos">@(TodosTildados ? "destildar todos" : $"tildar los {productos.Count}")</button>
+            </div>
+            <table class="ub-tabla">
+                <thead>
+                    <tr>
+                        <th style="width:28px;"></th>
+                        <th>Producto</th>
+                        <th>Lugar</th>
+                        <th style="text-align:right;" title="En cuántos pedidos salió en los últimos 30 días (ventas propias + MeLi)">Pedidos 30 días</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in Ordenados)
+                    {
+                        var sel = tildados.Contains(p.Id);
+                        <tr class="@(sel ? "sel" : "")">
+                            <td><input type="checkbox" checked="@sel" @onchange="() => Tildar(p.Id)" /></td>
+                            <td>
+                                @p.Nombre
+                                @if (!string.IsNullOrEmpty(p.Sku)) { <span class="ub-sku"> · @p.Sku</span> }
+                                @if (!string.IsNullOrEmpty(p.Marca)) { <span class="ub-gris" style="font-size:0.8rem;"> · @p.Marca</span> }
+                            </td>
+                            <td>
+                                @if (p.Lugar is null)
+                                {
+                                    <span class="ub-gris">—</span>
+                                }
+                                else
+                                {
+                                    <span title="@(p.CargadoPor is null ? "" : $"Cargado por {p.CargadoPor}{(p.CargadoAt is null ? "" : " el " + p.CargadoAt.Value.ToArTime().ToString("dd/MM HH:mm"))}")">📍 @p.Lugar</span>
+                                }
+                                @if (p.DudosaAt is not null)
+                                {
+                                    <div class="ub-dudosa">
+                                        ⚠ no estaba acá (@p.DudosaPor, @p.DudosaAt.Value.ToArTime().ToString("dd/MM HH:mm"))
+                                        <button class="ub-link" style="font-size:0.8rem;" @onclick="() => MarcarOk(p)">está bien</button>
+                                    </div>
+                                }
+                            </td>
+                            <td style="text-align:right; color:#6b7280;">@(p.Pedidos > 0 ? p.Pedidos.ToString() : "")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (tildados.Count > 0)
+        {
+            <div class="ub-barra">
+                <b>Poner los @tildados.Count tildados en:</b>
+                @foreach (var pl in resumen?.Plantas ?? new())
+                {
+                    <button class="ub-planta @(nuevaPlanta == pl.Codigo ? "on" : "")" title="@pl.Nombre" @onclick="() => nuevaPlanta = pl.Codigo">
+                        @(pl.Codigo == "OTRO" ? "Otro depósito" : pl.Codigo)
+                    </button>
+                }
+                <input type="text" class="form-input" style="width:170px;" list="ub-zonas" maxlength="30"
+                       placeholder="@(nuevaPlanta == "OTRO" ? "cuál depósito" : "zona (opcional): TOST")"
+                       @bind="nuevaZona" @bind:event="oninput" />
+                <datalist id="ub-zonas">
+                    @foreach (var z in (resumen?.Zonas ?? new()).Where(z => nuevaPlanta == null || z.Planta == nuevaPlanta))
+                    {
+                        <option value="@z.Codigo">@z.Nombre</option>
+                    }
+                </datalist>
+                @if (ZonaEsNueva)
+                {
+                    <input type="text" class="form-input" style="width:190px;" maxlength="100"
+                           placeholder="nombre largo: Tostadero" @bind="nuevaZonaNombre" @bind:event="oninput" />
+                }
+                <button class="btn btn-primary" disabled="@(nuevaPlanta is null || guardando)" @onclick="Guardar">
+                    @(guardando ? "Guardando…" : TextoGuardar)
+                </button>
+                <button class="ub-link" style="color:#6b7280;" @onclick="SacarLugar">sacarles el lugar</button>
+                <button class="ub-link" style="color:#6b7280; margin-left:auto;" @onclick="() => tildados.Clear()">cancelar</button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? QInicial { get; set; }
+
+    private UbicacionesResumenDto? resumen;
+    private List<UbicacionProductoDto>? productos;
+    private readonly HashSet<int> tildados = new();
+    private bool cargando = true, guardando;
+    private string? busqueda, categoria, lugar;
+    private bool ordenPedidos = true;
+    private string? nuevaPlanta, nuevaZona, nuevaZonaNombre;
+    private System.Threading.Timer? debounce;
+
+    private IEnumerable<UbicacionProductoDto> Ordenados => ordenPedidos
+        ? productos!.OrderByDescending(p => p.Pedidos).ThenBy(p => p.Nombre)
+        : productos!.OrderBy(p => p.Nombre);
+
+    private bool TodosTildados => productos is not null && productos.Count > 0 && productos.All(p => tildados.Contains(p.Id));
+
+    private UbicacionLugarDto? LugarElegido =>
+        resumen?.Lugares.FirstOrDefault(l => $"{l.Planta}|{l.Zona}" == lugar);
+
+    private string? ZonaNormalizada => string.IsNullOrWhiteSpace(nuevaZona)
+        ? null : string.Join(' ', nuevaZona.Trim().ToUpperInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+    private bool ZonaEsNueva => nuevaPlanta is not null && ZonaNormalizada is not null
+        && !(resumen?.Zonas ?? new()).Any(z => z.Planta == nuevaPlanta && z.Codigo == ZonaNormalizada);
+
+    private string TextoGuardar => nuevaPlanta is null ? "Elegí la planta"
+        : "Guardar en " + nuevaPlanta + (ZonaNormalizada is null ? "" : " · " + ZonaNormalizada);
+
+    protected override async Task OnInitializedAsync()
+    {
+        busqueda = QInicial;
+        await Task.WhenAll(CargarResumen(), CargarProductos());
+    }
+
+    private async Task CargarResumen()
+    {
+        try { resumen = await Api.GetUbicacionesResumenAsync(); }
+        catch (Exception ex) { ToastService.Error("No pude cargar el resumen: " + ex.Message); }
+    }
+
+    private async Task CargarProductos()
+    {
+        cargando = true;
+        try { productos = await Api.GetUbicacionesProductosAsync(busqueda, categoria, lugar) ?? new(); }
+        catch (Exception ex) { ToastService.Error("No pude cargar los productos: " + ex.Message); productos = new(); }
+        cargando = false;
+        // los tildados que ya no se ven quedan afuera, así no se guarda algo que no estás mirando
+        tildados.IntersectWith(productos.Select(p => p.Id));
+    }
+
+    private void OnBuscarKeyUp(KeyboardEventArgs _)
+    {
+        debounce?.Dispose();
+        debounce = new System.Threading.Timer(async _ => await InvokeAsync(async () => { await CargarProductos(); StateHasChanged(); }), null, 350, System.Threading.Timeout.Infinite);
+    }
+
+    private async Task ElegirLugar(string? l) { lugar = l; await CargarProductos(); }
+    private async Task ElegirCategoria(string? c) { categoria = c; await CargarProductos(); }
+
+    private void Tildar(int id) { if (!tildados.Add(id)) tildados.Remove(id); }
+
+    private void TildarTodos()
+    {
+        if (productos is null) return;
+        if (TodosTildados) tildados.Clear();
+        else foreach (var p in productos) tildados.Add(p.Id);
+    }
+
+    private async Task Guardar()
+    {
+        if (nuevaPlanta is null) return;
+        var destino = nuevaPlanta + (ZonaNormalizada is null ? "" : " · " + ZonaNormalizada);
+        var yaTienen = productos?.Count(p => tildados.Contains(p.Id) && p.Lugar is not null && p.Lugar != destino) ?? 0;
+        var msg = $"¿Poner {tildados.Count} productos en {destino}?"
+            + (yaTienen > 0 ? $"\n\nOjo: {yaTienen} ya tenían otro lugar y se les cambia." : "");
+        if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
+        await Asignar(nuevaPlanta, ZonaNormalizada, ZonaEsNueva ? nuevaZonaNombre : null);
+    }
+
+    private async Task SacarLugar()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Sacarles el lugar a {tildados.Count} productos? Quedan como \"sin lugar\".")) return;
+        await Asignar(null, null, null);
+    }
+
+    private async Task Asignar(string? planta, string? zona, string? zonaNombre)
+    {
+        guardando = true;
+        try
+        {
+            var r = await Api.AsignarUbicacionAsync(tildados.ToList(), planta, zona, zonaNombre);
+            ToastService.Success(planta is null ? $"Listo: {r?.Cambiados} quedaron sin lugar" : $"Listo: {r?.Cambiados} productos en {r?.Lugar}");
+            tildados.Clear();
+            nuevaZona = nuevaZonaNombre = null;
+            await Task.WhenAll(CargarResumen(), CargarProductos());
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        guardando = false;
+    }
+
+    private async Task RenombrarZona(UbicacionLugarDto l)
+    {
+        var actual = resumen?.Zonas.FirstOrDefault(z => z.Planta == l.Planta && z.Codigo == l.Zona)?.Nombre ?? "";
+        var nombre = await JS.InvokeAsync<string?>("prompt", $"Nombre largo de {l.Texto} (el código corto no cambia):", actual);
+        if (nombre is null) return;
+        try { await Api.RenombrarZonaUbicacionAsync(l.Planta, l.Zona!, nombre); await CargarResumen(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task MarcarOk(UbicacionProductoDto p)
+    {
+        try { await Api.MarcarUbicacionOkAsync(p.Id); p.DudosaAt = null; await CargarResumen(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    public void Dispose() => debounce?.Dispose();
+}

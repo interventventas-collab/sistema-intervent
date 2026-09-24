@@ -22,6 +22,21 @@ public class CafeProducto
     [Required, MaxLength(20)]
     public string Categoria { get; set; } = "CAFE"; // CAFE | OTROS
 
+    // ─── 2026-09-24: dónde está en el depósito (ver UbicacionHelper) ───
+    /// <summary>PB | P1 | OTRO. Null = todavía no se sabe.</summary>
+    [MaxLength(10)]
+    public string? UbicacionPlanta { get; set; }
+    /// <summary>Zona corta dentro de la planta (ej. TOST). Opcional.</summary>
+    [MaxLength(30)]
+    public string? UbicacionZona { get; set; }
+    public DateTime? UbicacionAt { get; set; }
+    [MaxLength(100)]
+    public string? UbicacionPor { get; set; }
+    /// <summary>Alguien fue a buscarlo y no estaba: queda para revisar.</summary>
+    public DateTime? UbicacionDudosaAt { get; set; }
+    [MaxLength(100)]
+    public string? UbicacionDudosaPor { get; set; }
+
     [MaxLength(100)]
     public string? Marca { get; set; }
 

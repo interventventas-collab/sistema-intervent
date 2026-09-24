@@ -452,6 +452,16 @@
                     <div class="form-error">@formError</div>
                 }
 
+                @* 2026-09-24: dónde está en el depósito. Se carga/cambia en /cafe/ubicaciones. *@
+                @if (isEditing && editingId.HasValue)
+                {
+                    <div style="font-size:0.88rem; color:#374151; margin:0 0 0.6rem;">
+                        📍 Dónde está: @(lugarProducto ?? "sin lugar todavía")
+                        <a href="/cafe/ubicaciones?q=@Uri.EscapeDataString(string.IsNullOrWhiteSpace(formSku) ? formNombre : formSku)"
+                           style="margin-left:0.4rem; font-size:0.82rem;">@(lugarProducto is null ? "cargar" : "cambiar")</a>
+                    </div>
+                }
+
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">SKU</label>
@@ -2270,6 +2280,20 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    // 2026-09-24: lugar en el depósito del producto que se está editando (solo se muestra acá).
+    private string? lugarProducto;
+    private async Task CargarLugarProducto(CafeProductoDto p)
+    {
+        try
+        {
+            var lista = await Api.GetUbicacionesProductosAsync(string.IsNullOrWhiteSpace(p.Sku) ? p.Nombre : p.Sku, null, null);
+            if (editingId != p.Id) return;
+            lugarProducto = lista?.FirstOrDefault(x => x.Id == p.Id)?.Lugar;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* si falla, queda "sin lugar todavía": no bloquea la edición */ }
+    }
+
     private void ShowEdit(CafeProductoDto p)
     {
         // 2026-06-18: si es compuesto, redirigir a /cafe/combos?edit={id} (vive en otra tabla).
@@ -2277,6 +2301,8 @@
         isEditing = true; editingId = p.Id;
         stockDetail = null;
         _ = LoadStockDetail(p.Id); // fire-and-forget: carga el panel mientras se renderiza el modal
+        lugarProducto = null;
+        _ = CargarLugarProducto(p);
         formNombre = p.Nombre; formSku = p.Sku ?? ""; formBarcode = p.Barcode ?? "";
         formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo;

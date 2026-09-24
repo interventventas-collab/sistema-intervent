@@ -40,6 +40,9 @@ public class MeliDepoOrdenProducto
     public string Titulo { get; set; } = "";
     public int Cantidad { get; set; }
     public string? Foto { get; set; }
+    /// <summary>2026-09-24: lugar en el depósito ("PB · TOST"); combo = lugares juntos con " / ".</summary>
+    public string? Lugar { get; set; }
+    public bool LugarDudoso { get; set; }
 }
 
 public class MeliDepoFicha
@@ -72,11 +75,16 @@ public class MeliDepoFichaProducto
     public string? Sku { get; set; }
     public string? Foto { get; set; }
     public bool EsCombo { get; set; }
+    public string? Lugar { get; set; }
+    public bool LugarDudoso { get; set; }
     public List<MeliDepoComponente> Componentes { get; set; } = new();
 }
 
 public class MeliDepoComponente
 {
+    public int? ProductoId { get; set; }
+    public string? Lugar { get; set; }
+    public bool LugarDudoso { get; set; }
     public string Nombre { get; set; } = "";
     public string? Sku { get; set; }
     public decimal Cantidad { get; set; }

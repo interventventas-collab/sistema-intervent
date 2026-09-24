@@ -3184,6 +3184,50 @@ public class ApiClient
         return null;
     }
 
+    // 2026-09-24: Ubicación de los productos en el depósito (/cafe/ubicaciones)
+    public async Task<UbicacionesResumenDto?> GetUbicacionesResumenAsync()
+        => await GetAsync<UbicacionesResumenDto>("/api/cafe/ubicaciones/resumen");
+
+    public async Task<List<UbicacionProductoDto>?> GetUbicacionesProductosAsync(string? q, string? categoria, string? lugar)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(q)) qs.Add($"q={Uri.EscapeDataString(q)}");
+        if (!string.IsNullOrWhiteSpace(categoria)) qs.Add($"categoria={Uri.EscapeDataString(categoria)}");
+        if (!string.IsNullOrWhiteSpace(lugar)) qs.Add($"lugar={Uri.EscapeDataString(lugar)}");
+        return await GetAsync<List<UbicacionProductoDto>>($"/api/cafe/ubicaciones/productos?{string.Join("&", qs)}");
+    }
+
+    public async Task<UbicacionAsignarResultDto?> AsignarUbicacionAsync(List<int> ids, string? planta, string? zona, string? zonaNombre)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/cafe/ubicaciones/asignar", new { ids, planta, zona, zonaNombre });
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<UbicacionAsignarResultDto>();
+        await ThrowIfErrorAsync(resp);
+        return null;
+    }
+
+    public async Task RenombrarZonaUbicacionAsync(string planta, string codigo, string? nombre)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/cafe/ubicaciones/zona-nombre", new { planta, codigo, nombre });
+        await ThrowIfErrorAsync(resp);
+    }
+
+    public async Task MarcarUbicacionNoEstaAsync(int productoId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/cafe/ubicaciones/{productoId}/no-esta", null);
+        await ThrowIfErrorAsync(resp);
+    }
+
+    public async Task MarcarUbicacionOkAsync(int productoId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/cafe/ubicaciones/{productoId}/esta-ok", null);
+        await ThrowIfErrorAsync(resp);
+    }
+
     // 2026-09-02: Stock ideal (cuánto queremos tener siempre) — lista de faltantes + planilla + Excel
     public async Task<StockIdealListResultDto?> GetStockIdealListaAsync(
         bool soloFaltantes, string? marca = null, string? q = null, string? categoria = null)

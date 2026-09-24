@@ -60,7 +60,7 @@ public class MeliDepositoController : ControllerBase
             .Select(o => new
             {
                 o.MeliOrderId, o.MeliAccountId, o.Status, o.DateCreated, o.BuyerNickname,
-                o.ItemId, o.ItemTitle, o.Quantity, o.ShippingId, o.PackId,
+                o.ItemId, o.VariationId, o.ItemTitle, o.Quantity, o.ShippingId, o.PackId,
                 o.ShippingStatus, o.ShippingSubstatus, o.ShippingMode, o.LogisticType, o.EtiquetaImpresaAt
             })
             .ToListAsync();
@@ -71,6 +71,7 @@ public class MeliDepositoController : ControllerBase
 
         var itemIds = filas.Select(f => f.ItemId).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
         var fotos = await FotosDeItemsAsync(itemIds);
+        var lugares = await LugaresDeItemsAsync(itemIds);
 
         var grupos = filas
             .GroupBy(f => f.ShippingId ?? f.PackId ?? f.MeliOrderId)
@@ -95,11 +96,17 @@ public class MeliDepositoController : ControllerBase
                     estado = est.Etiqueta,
                     estadoClave = est.Clave,
                     unidades = g.Sum(x => x.Quantity),
-                    productos = g.OrderBy(x => x.ItemTitle).Select(x => new
+                    productos = g.OrderBy(x => x.ItemTitle).Select(x =>
                     {
-                        titulo = x.ItemTitle,
-                        cantidad = x.Quantity,
-                        foto = fotos.TryGetValue(x.ItemId ?? "", out var f) ? f.Foto : null
+                        var lg = LugarDeItem(lugares, x.ItemId, x.VariationId);
+                        return new
+                        {
+                            titulo = x.ItemTitle,
+                            cantidad = x.Quantity,
+                            foto = fotos.TryGetValue(x.ItemId ?? "", out var f) ? f.Foto : null,
+                            lugar = lg.Lugar,
+                            lugarDudoso = lg.Dudoso
+                        };
                     }).ToList()
                 };
             })
@@ -272,12 +279,17 @@ public class MeliDepositoController : ControllerBase
                         && (c.MeliVariationId == null || c.MeliVariationId == p.VariationId))
                     .Select(c => new
                     {
+                        productoId = c.CafeProductoId,
                         nombre = c.Producto != null ? c.Producto.Nombre : "(producto)",
                         sku = c.Producto != null ? c.Producto.Sku : null,
                         cantidad = c.Cantidad,
-                        formato = c.Formato
+                        formato = c.Formato,
+                        lugar = c.Producto != null ? UbicacionHelper.Texto(c.Producto.UbicacionPlanta, c.Producto.UbicacionZona) : null,
+                        lugarDudoso = c.Producto != null && c.Producto.UbicacionDudosaAt != null
                     }).ToList();
                 bool esCombo = componentes.Count > 1 || componentes.Any(x => x.cantidad > 1);
+                // lugar del producto: si son varios (combo) se juntan los lugares distintos
+                var lugaresProd = componentes.Where(x => x.lugar != null).Select(x => x.lugar!).Distinct().ToList();
                 return new
                 {
                     titulo = p.ItemTitle,
@@ -285,6 +297,8 @@ public class MeliDepositoController : ControllerBase
                     sku = mi.Sku,
                     foto = mi.Foto,
                     esCombo,
+                    lugar = lugaresProd.Count == 0 ? null : string.Join(" / ", lugaresProd),
+                    lugarDudoso = componentes.Any(x => x.lugarDudoso),
                     componentes
                 };
             }).ToList();
@@ -366,6 +380,74 @@ public class MeliDepositoController : ControllerBase
         return await ArmarFichaAsync(num.Value, traerSiFalta: true);
     }
 
+    public record CeluDondeEstaRequest(string? DeviceId, string? Q);
+
+    /// <summary>2026-09-24: "¿Dónde está?" desde el celu del depósito. Busca productos activos por
+    /// TODAS las palabras (nombre, SKU o marca) y dice en qué planta/zona están. Sin plata.
+    /// Mismo control de celu habilitado que el escáner.</summary>
+    [HttpPost("celu/donde-esta")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CeluDondeEsta([FromBody] CeluDondeEstaRequest req)
+    {
+        var deviceId = req?.DeviceId?.Trim() ?? "";
+        var deposito = await _db.CafePickingDispositivos.Where(x => x.Activo).OrderBy(x => x.Id).FirstOrDefaultAsync();
+        if (deposito is not null && !string.IsNullOrEmpty(deviceId) && deposito.DeviceId == deviceId)
+        {
+            deposito.LastSeenAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        else if (string.IsNullOrEmpty(deviceId) || !(await LeerCelusExtraAsync()).Any(c => c.DeviceId == deviceId))
+            return StatusCode(403, new { error = "no_habilitado" });
+
+        var palabras = (req?.Q ?? "").Trim()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Take(6).ToList();
+        if (palabras.Count == 0) return Ok(new List<object>());
+
+        var query = _db.CafeProductos.AsNoTracking().Where(p => p.IsActive);
+        foreach (var w in palabras)
+        {
+            var pal = w;
+            query = query.Where(p => p.Nombre.Contains(pal)
+                || (p.Sku != null && p.Sku.Contains(pal))
+                || (p.Marca != null && p.Marca.Contains(pal)));
+        }
+        var prods = await query
+            .OrderBy(p => p.UbicacionPlanta == null ? 1 : 0)
+            .ThenBy(p => p.Nombre)
+            .Take(30)
+            .Select(p => new { p.Id, p.Nombre, p.Sku, p.UbicacionPlanta, p.UbicacionZona, p.UbicacionDudosaAt })
+            .ToListAsync();
+
+        var zonas = await _db.CafeUbicacionZonas.AsNoTracking()
+            .Select(z => new { z.Planta, z.Codigo, z.Nombre }).ToListAsync();
+
+        var res = prods.Select(p =>
+        {
+            string? lugarNombre = null;
+            if (!string.IsNullOrEmpty(p.UbicacionPlanta))
+            {
+                lugarNombre = UbicacionHelper.NombrePlanta(p.UbicacionPlanta);
+                if (!string.IsNullOrEmpty(p.UbicacionZona))
+                {
+                    var z = zonas.FirstOrDefault(x => x.Planta == p.UbicacionPlanta
+                        && string.Equals(x.Codigo, p.UbicacionZona, StringComparison.OrdinalIgnoreCase));
+                    lugarNombre += " · " + (!string.IsNullOrWhiteSpace(z?.Nombre) ? z!.Nombre : p.UbicacionZona);
+                }
+            }
+            return new
+            {
+                id = p.Id,
+                nombre = p.Nombre,
+                sku = p.Sku,
+                lugar = UbicacionHelper.Texto(p.UbicacionPlanta, p.UbicacionZona),
+                lugarNombre,
+                dudoso = p.UbicacionDudosaAt != null
+            };
+        }).ToList();
+        return Ok(res);
+    }
+
     // Celus EXTRA para el escáner (ej. el del dueño en España), aparte del celu del depósito:
     // viven en un AppSetting, así no se mezclan con la lista de armado ni con "Cambiar celu".
     private const string KeyCelusExtra = "deposito.escaner_celus_extra";
@@ -414,6 +496,9 @@ public class MeliDepositoController : ControllerBase
                 i.EsDoyPack, i.EsEnvasePlateado,
                 combo = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Nombre).FirstOrDefault() : null,
                 sku = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.Sku).FirstOrDefault() : null,
+                ubicPlanta = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.UbicacionPlanta).FirstOrDefault() : null,
+                ubicZona = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.UbicacionZona).FirstOrDefault() : null,
+                ubicDudosa = i.ProductoId != null && _db.CafeProductos.Any(p => p.Id == i.ProductoId && p.UbicacionDudosaAt != null),
                 fotoPropia = i.ProductoId != null ? _db.CafeProductoFotos.Where(f => f.CafeProductoId == i.ProductoId).Select(f => f.FotoPropiaArchivo).FirstOrDefault() : null,
                 // misma foto que el tablero de armado: la publicación MeLi activa más nueva de ese producto
                 thumb = i.ProductoId != null
@@ -425,6 +510,9 @@ public class MeliDepositoController : ControllerBase
 
         var productos = items.Select(i => new
         {
+            productoId = i.ProductoId,
+            lugar = UbicacionHelper.Texto(i.ubicPlanta, i.ubicZona),
+            lugarDudoso = i.ubicDudosa,
             titulo = i.ProductoNombreSnapshot,
             cantidad = i.Cantidad,
             sku = i.sku,
@@ -479,6 +567,35 @@ public class MeliDepositoController : ControllerBase
         return items
             .GroupBy(m => m.MeliItemId)
             .ToDictionary(g => g.Key, g => (g.First().Sku, FotoGrande(g.First().Thumbnail)));
+    }
+
+    private record LugarComp(string MeliItemId, string? MeliVariationId, int CafeProductoId, string? Lugar, bool Dudoso);
+
+    /// <summary>2026-09-24: lugar en el depósito de los productos de cada publicación (via
+    /// MeliItemComponentes). Una sola consulta para todas.</summary>
+    private async Task<List<LugarComp>> LugaresDeItemsAsync(List<string> itemIds)
+    {
+        if (itemIds.Count == 0) return new();
+        var filas = await _db.MeliItemComponentes.AsNoTracking()
+            .Where(c => itemIds.Contains(c.MeliItemId) && c.Producto != null)
+            .Select(c => new
+            {
+                c.MeliItemId, c.MeliVariationId, c.CafeProductoId,
+                c.Producto!.UbicacionPlanta, c.Producto.UbicacionZona, c.Producto.UbicacionDudosaAt
+            })
+            .ToListAsync();
+        return filas.Select(c => new LugarComp(c.MeliItemId, c.MeliVariationId, c.CafeProductoId,
+            UbicacionHelper.Texto(c.UbicacionPlanta, c.UbicacionZona), c.UbicacionDudosaAt != null)).ToList();
+    }
+
+    /// <summary>Un producto → su lugar; varios (combo) → los lugares distintos juntos con " / ".</summary>
+    private static (string? Lugar, bool Dudoso) LugarDeItem(List<LugarComp> lugares, string? itemId, string? variationId)
+    {
+        if (string.IsNullOrEmpty(itemId)) return (null, false);
+        var cs = lugares.Where(c => c.MeliItemId == itemId
+            && (c.MeliVariationId == null || c.MeliVariationId == variationId)).ToList();
+        var textos = cs.Where(c => c.Lugar != null).Select(c => c.Lugar!).Distinct().ToList();
+        return (textos.Count == 0 ? null : string.Join(" / ", textos), cs.Any(c => c.Dudoso));
     }
 
     private static string? FotoGrande(string? thumb)

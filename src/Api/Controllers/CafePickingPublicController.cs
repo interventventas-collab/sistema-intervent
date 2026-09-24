@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -56,7 +57,7 @@ public class CafePickingPublicController : ControllerBase
         return Ok(new
         {
             estado,
-            lista = estado == "ok" ? Proyectar(lista) : null,
+            lista = estado == "ok" ? Proyectar(lista, await LugaresPorSkuAsync(lista)) : null,
             info = new { creadaPor = lista.CreadaPor, cantidadPedidos = lista.CantidadPedidos, ventaNumeros = lista.VentaNumeros, createdAt = lista.CreatedAt }
         });
     }
@@ -98,7 +99,7 @@ public class CafePickingPublicController : ControllerBase
             await _db.SaveChangesAsync();
         }
 
-        return Ok(new { estado = "ok", lista = Proyectar(lista) });
+        return Ok(new { estado = "ok", lista = Proyectar(lista, await LugaresPorSkuAsync(lista)) });
     }
 
     /// <summary>Marca/desmarca un producto como ya juntado. Solo desde el celu habilitado.</summary>
@@ -123,7 +124,27 @@ public class CafePickingPublicController : ControllerBase
         return Ok(new { id = item.Id, tildado = item.Tildado });
     }
 
-    private static object Proyectar(CafePickingLista l) => new
+    /// <summary>2026-09-24: dónde está cada producto en el depósito. La lista guarda solo el SKU
+    /// (foto del momento), así que se busca el producto activo con ese SKU (el primero).</summary>
+    private async Task<Dictionary<string, (string? Lugar, bool Dudoso)>> LugaresPorSkuAsync(CafePickingLista l)
+    {
+        var skus = l.Items.Select(i => i.Sku).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).Distinct().ToList();
+        if (skus.Count == 0) return new();
+        var prods = await _db.CafeProductos.AsNoTracking()
+            .Where(p => p.IsActive && p.Sku != null && skus.Contains(p.Sku))
+            .OrderBy(p => p.Id)
+            .Select(p => new { p.Sku, p.UbicacionPlanta, p.UbicacionZona, p.UbicacionDudosaAt })
+            .ToListAsync();
+        return prods
+            .GroupBy(p => p.Sku!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g =>
+            {
+                var p = g.First();
+                return (UbicacionHelper.Texto(p.UbicacionPlanta, p.UbicacionZona), p.UbicacionDudosaAt != null);
+            }, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static object Proyectar(CafePickingLista l, Dictionary<string, (string? Lugar, bool Dudoso)> lugares) => new
     {
         token = l.Token,
         creadaPor = l.CreadaPor,
@@ -137,6 +158,8 @@ public class CafePickingPublicController : ControllerBase
             formato = i.Formato,
             molienda = i.Molienda,
             sku = i.Sku,
+            lugar = !string.IsNullOrEmpty(i.Sku) && lugares.TryGetValue(i.Sku, out var lg) ? lg.Lugar : null,
+            lugarDudoso = !string.IsNullOrEmpty(i.Sku) && lugares.TryGetValue(i.Sku, out var lg2) && lg2.Dudoso,
             categoria = i.Categoria,
             cantidad = i.Cantidad,
             tildado = i.Tildado

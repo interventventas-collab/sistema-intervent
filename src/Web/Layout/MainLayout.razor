@@ -844,7 +844,7 @@
                    2026-06-09: Stock masivo + Historial stock vuelven aca tambien (ademas de Favoritos)
                    porque el usuario penso que Favoritos era solo acceso directo y no encontraba Stock. *@
                 <NavGroup Label="📦 Stock y compras" Icon="@SvgIcons.Store" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/stock/reposicion") || IsActive("/stock/ranking") || IsActive("/stock/valuacion") || IsActive("/stock/ideal"))">
+                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/stock/reposicion") || IsActive("/stock/ranking") || IsActive("/cafe/ubicaciones") || IsActive("/stock/valuacion") || IsActive("/stock/ideal"))">
                     <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
                              IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
                     <NavItem Href="/cafe/historial-stock" Label="📊 Historial stock" Icon="@SvgIcons.Tag"
@@ -861,6 +861,9 @@
                              IsActive="@IsActive("/stock/ideal")" OnClick="@(() => NavigateTo("/stock/ideal"))" />
                     <NavItem Href="/stock/ranking" Label="🏆 Ranking productos" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/stock/ranking")" OnClick="@(() => NavigateTo("/stock/ranking"))" />
+                    @* 2026-09-24: dónde está cada producto en el depósito (planta + zona) *@
+                    <NavItem Href="/cafe/ubicaciones" Label="📍 Ubicaciones" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/ubicaciones")" OnClick="@(() => NavigateTo("/cafe/ubicaciones"))" />
                     @* 2026-07-09: valor de stock a costo (con exclusión de stock falso por marca/producto) *@
                     <NavItem Href="/stock/valuacion" Label="💰 Valor de stock" Icon="@SvgIcons.Database"
                              IsActive="@IsActive("/stock/valuacion")" OnClick="@(() => NavigateTo("/stock/valuacion"))" />

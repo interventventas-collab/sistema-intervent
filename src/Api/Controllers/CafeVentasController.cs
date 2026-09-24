@@ -4289,6 +4289,10 @@ public class CafeVentasController : ControllerBase
                     // el pedido alcanza pero deja el stock por debajo de lo que queremos tener.
                     stockIdeal = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.StockIdeal).FirstOrDefault() : null,
                     stockPiso = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.StockPiso).FirstOrDefault() : null,
+                    // 2026-09-24: dónde está en el depósito (el texto "PB · TOST" se arma en la card)
+                    ubicacionPlanta = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.UbicacionPlanta).FirstOrDefault() : null,
+                    ubicacionZona = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.UbicacionZona).FirstOrDefault() : null,
+                    lugarDudoso = i.ProductoId != null && _db.CafeProductos.Any(p => p.Id == i.ProductoId && p.UbicacionDudosaAt != null),
                     formato = i.Formato,
                     cantidad = i.Cantidad,
                     molienda = i.Molienda,

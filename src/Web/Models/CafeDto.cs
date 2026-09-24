@@ -744,6 +744,14 @@ public class CafePreparacionItemDto
     /// <summary>2026-08-05 (Paso 3): nombre del archivo de la foto propia subida por el depósito (QR).
     /// Null = todavía usa la foto de MeLi. La URL para mostrarla es /api/public/producto-foto/img/{archivo}.</summary>
     public string? FotoPropiaArchivo { get; set; }
+    /// <summary>2026-09-24: dónde está en el depósito: planta (PB | P1 | OTRO) y zona corta (TOST).</summary>
+    public string? UbicacionPlanta { get; set; }
+    public string? UbicacionZona { get; set; }
+    /// <summary>Alguien avisó que "no estaba acá".</summary>
+    public bool LugarDudoso { get; set; }
+    /// <summary>Texto para mostrar: "PB · TOST", "P1" o null.</summary>
+    public string? Lugar => string.IsNullOrEmpty(UbicacionPlanta) ? null
+        : string.IsNullOrEmpty(UbicacionZona) ? UbicacionPlanta : $"{UbicacionPlanta} · {UbicacionZona}";
 }
 
 // ── Camino al picking (2026-08-02) ──
@@ -2363,3 +2371,43 @@ public class CafePrecioEspecialMapaDto
     public string Formato { get; set; } = "UNIT";
     public decimal Precio { get; set; }
 }
+
+// ─── 2026-09-24: Ubicación de los productos en el depósito (/cafe/ubicaciones) ───
+public class UbicacionesResumenDto
+{
+    public int Total { get; set; }
+    public int ConPlanta { get; set; }
+    public int ConZona { get; set; }
+    public int SinLugar { get; set; }
+    public int Dudosos { get; set; }
+    public List<UbicacionPlantaDto> Plantas { get; set; } = new();
+    public List<UbicacionLugarDto> Lugares { get; set; } = new();
+    public List<UbicacionZonaDto> Zonas { get; set; } = new();
+}
+public class UbicacionPlantaDto { public string Codigo { get; set; } = ""; public string Nombre { get; set; } = ""; }
+public class UbicacionLugarDto
+{
+    public string Planta { get; set; } = "";
+    public string? Zona { get; set; }
+    public string Texto { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public int Cantidad { get; set; }
+}
+public class UbicacionZonaDto { public string Planta { get; set; } = ""; public string Codigo { get; set; } = ""; public string? Nombre { get; set; } }
+public class UbicacionProductoDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Sku { get; set; }
+    public string? Marca { get; set; }
+    public string Categoria { get; set; } = "";
+    public string? Planta { get; set; }
+    public string? Zona { get; set; }
+    public string? Lugar { get; set; }
+    public DateTime? CargadoAt { get; set; }
+    public string? CargadoPor { get; set; }
+    public DateTime? DudosaAt { get; set; }
+    public string? DudosaPor { get; set; }
+    public int Pedidos { get; set; }
+}
+public class UbicacionAsignarResultDto { public bool Ok { get; set; } public int Cambiados { get; set; } public string? Lugar { get; set; } }

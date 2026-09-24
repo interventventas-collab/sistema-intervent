@@ -7877,3 +7877,40 @@ GO
 IF COL_LENGTH('MeliOrders','EtiquetaImpresaAt') IS NULL
     ALTER TABLE MeliOrders ADD EtiquetaImpresaAt DATETIME2 NULL;
 GO
+GO
+-- ============================================================
+-- 2026-09-24 — UBICACION DE LOS PRODUCTOS EN EL DEPOSITO
+-- Primero la PLANTA (PB / P1 / OTRO), despues una ZONA corta opcional (ej. TOST = Tostadero).
+-- Se carga de a poco, a mano. Mas adelante se agregan pasillo y estante sin rehacer lo cargado.
+-- "Dudosa" = alguien fue a buscarlo y no estaba ahi.
+-- ============================================================
+IF COL_LENGTH('Cafe_Productos','UbicacionPlanta') IS NULL
+    ALTER TABLE Cafe_Productos ADD UbicacionPlanta NVARCHAR(10) NULL;
+GO
+IF COL_LENGTH('Cafe_Productos','UbicacionZona') IS NULL
+    ALTER TABLE Cafe_Productos ADD UbicacionZona NVARCHAR(30) NULL;
+GO
+IF COL_LENGTH('Cafe_Productos','UbicacionAt') IS NULL
+    ALTER TABLE Cafe_Productos ADD UbicacionAt DATETIME2 NULL;
+GO
+IF COL_LENGTH('Cafe_Productos','UbicacionPor') IS NULL
+    ALTER TABLE Cafe_Productos ADD UbicacionPor NVARCHAR(100) NULL;
+GO
+IF COL_LENGTH('Cafe_Productos','UbicacionDudosaAt') IS NULL
+    ALTER TABLE Cafe_Productos ADD UbicacionDudosaAt DATETIME2 NULL;
+GO
+IF COL_LENGTH('Cafe_Productos','UbicacionDudosaPor') IS NULL
+    ALTER TABLE Cafe_Productos ADD UbicacionDudosaPor NVARCHAR(100) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_UbicacionZonas')
+BEGIN
+    CREATE TABLE Cafe_UbicacionZonas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Planta NVARCHAR(10) NOT NULL,
+        Codigo NVARCHAR(30) NOT NULL,          -- lo que se ve en etiquetas y en el celu: TOST
+        Nombre NVARCHAR(100) NULL,             -- el nombre largo: Tostadero
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeUbicZonas_Created DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_CafeUbicZonas_Planta_Codigo UNIQUE (Planta, Codigo)
+    );
+END
+GO

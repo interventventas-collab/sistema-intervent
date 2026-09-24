@@ -40,6 +40,10 @@
     .pk-tag-formato { background:#334155; color:#cbd5e1; }
     .pk-tag-molienda { background:#422006; color:#fdba74; }
     .pk-tag-sku { background:#1e3a5f; color:#93c5fd; font-family:monospace; }
+    /* 2026-09-24: dónde está en el depósito (sin caja, bien legible; ámbar solo si avisaron que no estaba) */
+    .pk-lugar { font-size:0.95rem; font-weight:800; color:#e2e8f0; align-self:center; }
+    .pk-lugar-dudoso { color:#fbbf24; font-weight:700; }
+    .pk-card.done .pk-lugar { color:#64748b; }
     .pk-msg { text-align:center; padding:2.5rem 1rem; color:#cbd5e1; }
     .pk-msg .big { font-size:3rem; margin-bottom:0.5rem; }
     .pk-btn {
@@ -117,6 +121,13 @@
                         @if (!string.IsNullOrEmpty(it.Sku))
                         {
                             <span class="pk-tag pk-tag-sku">@it.Sku</span>
+                        }
+                        @if (!string.IsNullOrEmpty(it.Lugar))
+                        {
+                            <span class="pk-lugar">
+                                📍 @it.Lugar
+                                @if (it.LugarDudoso) { <span class="pk-lugar-dudoso">· ⚠ no estaba acá</span> }
+                            </span>
                         }
                     </div>
                 </div>
@@ -243,6 +254,8 @@
         public string? Formato { get; set; }
         public string? Molienda { get; set; }
         public string? Sku { get; set; }
+        public string? Lugar { get; set; }
+        public bool LugarDudoso { get; set; }
         public string? Categoria { get; set; }
         public int Cantidad { get; set; }
         public bool Tildado { get; set; }
