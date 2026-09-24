@@ -40,10 +40,11 @@ public class MeliDepositoController : ControllerBase
     {
         if (dias < 1) dias = 1;
         if (dias > 90) dias = 90;
-        // "Hoy" es el día ARGENTINO: DateCreated se guarda en UTC.
-        var desdeUtc = DateTime.UtcNow.AddHours(-3).Date.AddDays(-(dias - 1)).AddHours(3);
+        // "Hoy" es el día ARGENTINO. 2026-09-24: MeliOrders.DateCreated YA está en hora argentina
+        // (el contenedor corre con TZ=America/Argentina y el sync lo convierte al leerlo de MeLi).
+        var desdeAr = DateTime.UtcNow.AddHours(-3).Date.AddDays(-(dias - 1));
 
-        var query = _db.MeliOrders.AsNoTracking().Where(o => o.DateCreated >= desdeUtc);
+        var query = _db.MeliOrders.AsNoTracking().Where(o => o.DateCreated >= desdeAr);
         if (cuenta.HasValue) query = query.Where(o => o.MeliAccountId == cuenta.Value);
 
         var texto = q?.Trim();

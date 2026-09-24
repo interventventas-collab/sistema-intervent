@@ -191,7 +191,8 @@
                         }
                     </div>
                     <div class="cuando">
-                        @o.Fecha.ToArTime().ToString("dd/MM")<br />@o.Fecha.ToArTime().ToString("HH:mm")
+                        @* la fecha de la venta YA viene en hora argentina: no convertir *@
+                        @o.Fecha.ToString("dd/MM")<br />@o.Fecha.ToString("HH:mm")
                     </div>
                     <div class="cuerpo">
                         <div class="quien">
@@ -244,7 +245,7 @@
         <div class="datos">
             @ficha.Tipo · @ficha.Unidades u.
             @if (!string.IsNullOrEmpty(ficha.Cuenta)) { <text> · @ficha.Cuenta</text> }
-            @if (ficha.Fecha.HasValue) { <text> · @ficha.Fecha.Value.ToArTime().ToString("dd/MM HH:mm")</text> }
+            @if (ficha.Fecha.HasValue) { <text> · @ficha.Fecha.Value.ToString("dd/MM HH:mm")</text> }
             · <span class="@(ficha.Estado == "Cancelada" ? "om-cancel" : "")">@ficha.Estado</span>
             @if (ficha.NumeroVenta.HasValue) { <text> · venta @ficha.NumeroVenta</text> }
         </div>
@@ -349,7 +350,7 @@
             @foreach (var c in (verTodasCompras ? ficha.Compras : ficha.Compras.Take(10)))
             {
                 <div class="om-compra">
-                    <span class="meta">@c.Fecha.ToArTime().ToString("dd/MM/yy")@(string.IsNullOrEmpty(c.Cuenta) ? "" : " · " + c.Cuenta) · </span>
+                    <span class="meta">@c.Fecha.ToString("dd/MM/yy")@(string.IsNullOrEmpty(c.Cuenta) ? "" : " · " + c.Cuenta) · </span>
                     @string.Join(" + ", c.Productos.Select(x => $"×{x.Cantidad} {x.Titulo}"))
                     <span class="meta @(c.Estado == "Cancelada" ? "om-cancel" : "")"> · @c.Estado</span>
                 </div>
@@ -603,9 +604,10 @@ else
 
     private static string FmtCant(decimal c) => c == Math.Floor(c) ? ((long)c).ToString() : c.ToString("0.##");
 
-    private static string HaceCuanto(DateTime utc)
+    /// <summary>fechaAr = fecha de una venta MeLi, que ya viene en hora argentina.</summary>
+    private static string HaceCuanto(DateTime fechaAr)
     {
-        var dias = (int)(DateTimeExt.AhoraAr().Date - utc.ToArTime().Date).TotalDays;
+        var dias = (int)(DateTimeExt.AhoraAr().Date - fechaAr.Date).TotalDays;
         if (dias <= 0) return "hoy";
         if (dias == 1) return "ayer";
         if (dias < 60) return $"hace {dias} días";
