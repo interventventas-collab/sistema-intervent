@@ -13,10 +13,10 @@
             <span style="font-size: 0.8rem; color: #6b7280;">Etiqueta:</span>
             <button class="btn btn-sm @(etiquetaFormato == "termica" ? "btn-primary" : "btn-secondary")"
                     @onclick='() => etiquetaFormato = "termica"'
-                    title="Una etiqueta por pagina, tamano 10x15 cm (impresora termica / Zebra)">🏷️ Termica</button>
+                    title="Baja el archivo .txt para impresora termica Zebra, el mismo que baja MercadoLibre (troquel + etiqueta)">🏷️ Termica</button>
             <button class="btn btn-sm @(etiquetaFormato == "a4-1" ? "btn-primary" : "btn-secondary")"
                     @onclick='() => etiquetaFormato = "a4-1"'
-                    title="Una etiqueta por hoja A4 (impresora comun)">🖨️ A4 x1</button>
+                    title="Una etiqueta (con troquel) por hoja A4 parada, al tamano de MercadoLibre">🖨️ A4 x1</button>
             <button class="btn btn-sm @(etiquetaFormato == "a4-3" ? "btn-primary" : "btn-secondary")"
                     @onclick='() => etiquetaFormato = "a4-3"'
                     title="Tres etiquetas por hoja A4 (como en MercadoLibre)">🖨️ A4 x3</button>

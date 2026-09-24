@@ -24,7 +24,7 @@ public class MeliShipmentsController : ControllerBase
     /// 2026-08-13: Devuelve la etiqueta de envio oficial de MeLi lista para imprimir, INLINE (se abre
     /// en el navegador). Parametros:
     ///   - ids: numeros de envio (ShippingId) separados por coma.
-    ///   - formato: "termica" (una por pagina 10x15), "a4-1" (una por hoja A4) o "a4-3" (tres por hoja A4).
+    ///   - formato: "termica" (.txt ZPL para Zebra, como MeLi), "a4-1" (una por hoja A4) o "a4-3" (tres por hoja A4).
     /// Se abre via window.open, asi que la cookie httpOnly del JWT viaja sola (mismo origen).
     /// </summary>
     [HttpGet("label")]
@@ -56,8 +56,14 @@ public class MeliShipmentsController : ControllerBase
             return Content(html, "text/html");
         }
 
-        var nombre = idArr.Length == 1 ? $"etiqueta-{idArr[0]}.pdf" : $"etiquetas-{idArr.Length}.pdf";
-        Response.Headers["Content-Disposition"] = $"inline; filename=\"{nombre}\"";
+        var baseNombre = idArr.Length == 1 ? $"etiqueta-{idArr[0]}" : $"etiquetas-{idArr.Length}";
+        if (r.EsZpl)
+        {
+            // Termica: se descarga el .txt para la Zebra, igual que desde MeLi.
+            Response.Headers["Content-Disposition"] = $"attachment; filename=\"{baseNombre}.txt\"";
+            return File(r.Pdf, "text/plain; charset=utf-8");
+        }
+        Response.Headers["Content-Disposition"] = $"inline; filename=\"{baseNombre}.pdf\"";
         return File(r.Pdf, "application/pdf");
     }
 

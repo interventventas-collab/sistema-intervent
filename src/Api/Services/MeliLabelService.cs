@@ -15,9 +15,9 @@ namespace Api.Services;
 /// "impresa" del lado de ellos (no genera una etiqueta distinta ni duplicada).
 ///
 /// Tres formatos:
-///   - "termica": el PDF tal cual lo entrega MeLi (una etiqueta ~10x15 por pagina, ideal Zebra).
+///   - "termica": el .txt para impresora Zebra (ZPL), el mismo archivo que baja MeLi.
 ///   - "a4-1"   : una etiqueta por hoja A4.
-///   - "a4-3"   : tres etiquetas por hoja A4 (como la opcion "3 por hoja" de MeLi).
+///   - "a4-3"   : A4 acostada con 3 etiquetas lado a lado, con troquel (igual que MeLi).
 ///
 /// La autenticacion reusa el token por-cuenta de <see cref="MeliAccountService"/> (con refresh
 /// automatico ante 401/403), igual que el resto de las llamadas a MeLi.
@@ -33,7 +33,8 @@ public class MeliLabelService
         _db = db; _httpFactory = httpFactory; _accountService = accountService;
     }
 
-    public record LabelResult(bool Ok, byte[]? Pdf, string? Error);
+    /// <summary>Pdf = el archivo (PDF, o .txt ZPL si EsZpl).</summary>
+    public record LabelResult(bool Ok, byte[]? Pdf, string? Error, bool EsZpl = false);
 
     /// <summary>Devuelve un PDF con las etiquetas de los envios indicados, en el formato pedido.</summary>
     public async Task<LabelResult> GetLabelsPdfAsync(long[] shipmentIds, string formato)
@@ -53,9 +54,12 @@ public class MeliLabelService
             return new LabelResult(false, null,
                 "No se encontraron los envios en el sistema. Proba sincronizar las ordenes primero.");
 
+        bool esTermica = string.Equals(formato, "termica", StringComparison.OrdinalIgnoreCase);
         var errores = new List<string>();
-        // Documento con las etiquetas nativas de MeLi (una etiqueta por pagina).
-        var nativas = new PdfDocument();
+        // Termica: el .txt para impresora Zebra (ZPL) tal cual lo baja MeLi, un bloque ^XA..^XZ por etiqueta.
+        var zpl = new System.Text.StringBuilder();
+        // Cada etiqueta suelta: de que PDF sale, que pagina y que rectangulo de esa pagina.
+        var piezas = new List<Pieza>();
 
         foreach (var grupo in mapa.GroupBy(x => x.MeliAccountId))
         {
@@ -63,14 +67,14 @@ public class MeliLabelService
             if (account is null) { errores.Add($"Cuenta {grupo.Key} no encontrada."); continue; }
 
             var ids = grupo.Select(x => x.ShipId).Distinct().ToArray();
-            var (bytes, err) = await FetchLabelPdfFromMeliAsync(account, ids);
+            var (bytes, err) = await FetchLabelFromMeliAsync(account, ids, esTermica ? "zpl2" : "pdf");
             if (bytes is null) { errores.Add($"{account.Nickname}: {err}"); continue; }
+
+            if (esTermica) { zpl.Append(System.Text.Encoding.UTF8.GetString(bytes)).Append('\n'); continue; }
 
             try
             {
-                using var ms = new MemoryStream(bytes);
-                var src = PdfReader.Open(ms, PdfDocumentOpenMode.Import);
-                for (int i = 0; i < src.PageCount; i++) nativas.AddPage(src.Pages[i]);
+                piezas.AddRange(Recortar(bytes, ids.Length));
             }
             catch (Exception ex)
             {
@@ -78,30 +82,29 @@ public class MeliLabelService
             }
         }
 
-        if (nativas.PageCount == 0)
+        if (esTermica && zpl.Length > 0)
+            return new LabelResult(true, System.Text.Encoding.UTF8.GetBytes(zpl.ToString()),
+                errores.Count > 0 ? string.Join(" ", errores) : null, EsZpl: true);
+
+        if (piezas.Count == 0)
             return new LabelResult(false, null, errores.Count > 0
                 ? string.Join(" ", errores)
                 : "MercadoLibre no devolvio ninguna etiqueta. Puede que el envio todavia no tenga la etiqueta lista para imprimir.");
 
-        byte[] outBytes;
-        if (string.Equals(formato, "termica", StringComparison.OrdinalIgnoreCase))
-        {
-            using var outMs = new MemoryStream();
-            nativas.Save(outMs, false);
-            outBytes = outMs.ToArray();
-        }
-        else
-        {
-            int porHoja = string.Equals(formato, "a4-3", StringComparison.OrdinalIgnoreCase) ? 3 : 1;
-            outBytes = ComposeA4(nativas, porHoja);
-        }
+        var outBytes = string.Equals(formato, "a4-1", StringComparison.OrdinalIgnoreCase)
+            ? ComponerA4Una(piezas)
+            : ComponerA4Tres(piezas);
 
         // errores puede traer avisos parciales (algunas cuentas fallaron) aunque haya PDF.
         return new LabelResult(true, outBytes, errores.Count > 0 ? string.Join(" ", errores) : null);
     }
 
-    /// <summary>Pide a MeLi el PDF de etiquetas de una cuenta (con refresh de token ante 401/403).</summary>
-    private async Task<(byte[]? bytes, string? error)> FetchLabelPdfFromMeliAsync(MeliAccount account, long[] shipmentIds)
+    /// <summary>
+    /// Pide a MeLi las etiquetas de una cuenta (con refresh de token ante 401/403).
+    /// tipo "pdf" devuelve el PDF; "zpl2" devuelve el texto ZPL para impresora Zebra (MeLi lo manda
+    /// dentro de un ZIP; se saca el .txt de adentro).
+    /// </summary>
+    private async Task<(byte[]? bytes, string? error)> FetchLabelFromMeliAsync(MeliAccount account, long[] shipmentIds, string tipo)
     {
         var token = await _accountService.GetValidTokenAsync(account);
         if (string.IsNullOrEmpty(token)) return (null, "sin token valido de MeLi.");
@@ -109,7 +112,7 @@ public class MeliLabelService
         var http = _httpFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(30);
         var csv = string.Join(",", shipmentIds);
-        var url = $"https://api.mercadolibre.com/shipment_labels?shipment_ids={csv}&response_type=pdf";
+        var url = $"https://api.mercadolibre.com/shipment_labels?shipment_ids={csv}&response_type={tipo}";
 
         async Task<HttpResponseMessage> Do(string tok)
         {
@@ -137,60 +140,115 @@ public class MeliLabelService
         }
 
         var bytes = await resp.Content.ReadAsByteArrayAsync();
+        if (tipo == "zpl2") return LeerZpl(bytes);
         // Validar que realmente sea un PDF (empieza con "%PDF"). Si MeLi devolvio otra cosa, avisar.
         if (bytes.Length < 5 || !(bytes[0] == (byte)'%' && bytes[1] == (byte)'P' && bytes[2] == (byte)'D' && bytes[3] == (byte)'F'))
             return (null, "MeLi no devolvio un PDF de etiqueta (formato inesperado).");
         return (bytes, null);
     }
 
-    /// <summary>
-    /// Compone las etiquetas nativas de MeLi (una por pagina) en hojas A4, "porHoja" etiquetas por hoja
-    /// (1 o 3), apiladas verticalmente. Preserva la proporcion de cada etiqueta (asi el codigo de barras
-    /// sigue siendo escaneable) y usa PdfSharpCore (vectorial, no rasteriza).
-    /// </summary>
-    private static byte[] ComposeA4(PdfDocument labels, int porHoja)
+    /// <summary>Saca el ZPL de la respuesta de MeLi: viene en un ZIP (.txt adentro) o, a veces, como texto directo.</summary>
+    private static (byte[]? bytes, string? error) LeerZpl(byte[] bytes)
     {
-        if (porHoja < 1) porHoja = 1;
+        if (bytes.Length > 2 && bytes[0] == (byte)'P' && bytes[1] == (byte)'K')
+        {
+            using var ms = new MemoryStream(bytes);
+            using var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Read);
+            var sb = new System.Text.StringBuilder();
+            foreach (var e in zip.Entries.Where(e => e.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)))
+            {
+                using var r = new StreamReader(e.Open());
+                sb.Append(r.ReadToEnd()).Append('\n');
+            }
+            return sb.ToString().Contains("^XA")
+                ? (System.Text.Encoding.UTF8.GetBytes(sb.ToString()), null)
+                : (null, "MeLi no devolvio la etiqueta para impresora termica (el ZIP no trae el .txt).");
+        }
+        var txt = System.Text.Encoding.UTF8.GetString(bytes);
+        return txt.Contains("^XA") ? (bytes, null) : (null, "MeLi no devolvio la etiqueta para impresora termica.");
+    }
 
-        using var srcMs = new MemoryStream();
-        labels.Save(srcMs, false);
-        var srcBytes = srcMs.ToArray();
-        int total = labels.PageCount;
+    // ── Armado de hojas ─────────────────────────────────────────────────────────────────────
+    //
+    // 2026-09-24: MeLi entrega la etiqueta de dos maneras segun la preferencia de la cuenta
+    // (vendedores.mercadolibre.com.ar -> Preferencias de venta -> Formato de etiqueta):
+    //   - "PDF A4": hoja A4 ACOSTADA (842x595 pt) con hasta 3 etiquetas una al lado de la otra,
+    //     cada una con su troquel arriba (talon con tijerita). Medido sobre un PDF real de MeLi:
+    //     columnas en x = 31 / 296 / 560, de 256 pt de ancho, y de y = 28 a 561.
+    //   - termica: una etiqueta por pagina (si la preferencia de la cuenta vuelve a termica).
+    // Por eso primero se recorta todo en etiquetas sueltas ("piezas") y despues se arma el
+    // formato pedido. El "A4 x3" copia exactamente la grilla de MeLi.
 
+    private const double A4Largo = 841.89, A4Corto = 595.28;
+    private static readonly double[] ColX = { 29, 294, 558 };
+    private const double ColY = 26, ColAncho = 260, ColAlto = 538;
+
+    private record Pieza(byte[] Pdf, int Pagina, double X, double Y, double W, double H);
+
+    /// <summary>Parte el PDF de MeLi en etiquetas sueltas. "esperadas" = cuantos envios se pidieron.</summary>
+    private static List<Pieza> Recortar(byte[] pdf, int esperadas)
+    {
+        var res = new List<Pieza>();
+        using var ms = new MemoryStream(pdf);
+        var doc = PdfReader.Open(ms, PdfDocumentOpenMode.Import);
+        int quedan = esperadas;
+        for (int i = 0; i < doc.PageCount; i++)
+        {
+            var pg = doc.Pages[i];
+            double w = pg.Width.Point, h = pg.Height.Point;
+            bool esA4Acostada = Math.Abs(w - A4Largo) < 25 && Math.Abs(h - A4Corto) < 25;
+            if (esA4Acostada)
+            {
+                // Hasta 3 por hoja; la ultima hoja puede venir con 1 o 2 (el resto en blanco).
+                int enEsta = Math.Clamp(quedan, 1, 3);
+                for (int c = 0; c < enEsta; c++)
+                    res.Add(new Pieza(pdf, i + 1, ColX[c], ColY, ColAncho, ColAlto));
+                quedan -= enEsta;
+            }
+            else
+            {
+                res.Add(new Pieza(pdf, i + 1, 0, 0, w, h));
+                quedan--;
+            }
+        }
+        return res;
+    }
+
+    /// <summary>Dibuja una pieza encajada (sin deformar) dentro del rectangulo destino, arriba y centrada.</summary>
+    private static void Dibujar(XGraphics gfx, Pieza p, double dx, double dy, double dw, double dh,
+        List<MemoryStream> keepAlive)
+    {
+        var formMs = new MemoryStream(p.Pdf);
+        keepAlive.Add(formMs);
+        var form = XPdfForm.FromStream(formMs);
+        form.PageNumber = p.Pagina;
+
+        double escala = Math.Min(dw / p.W, dh / p.H);
+        double w = p.W * escala, h = p.H * escala;
+        double x = dx + (dw - w) / 2, y = dy;
+
+        var estado = gfx.Save();
+        gfx.IntersectClip(new XRect(x, y, w, h));
+        // La pagina entera se corre para que el rectangulo de la pieza caiga justo en (x, y).
+        gfx.DrawImage(form, x - p.X * escala, y - p.Y * escala, form.PointWidth * escala, form.PointHeight * escala);
+        gfx.Restore(estado);
+    }
+
+    private static byte[] Armar(IEnumerable<(XSize tam, Action<XGraphics, List<MemoryStream>> dibujo)> hojas)
+    {
         var outDoc = new PdfDocument();
-        const double margen = 14; // ~0.5 cm en puntos
         // Los XPdfForm leen del stream de forma diferida: hay que mantenerlos vivos hasta el Save.
         var keepAlive = new List<MemoryStream>();
         try
         {
-            int idx = 0;
-            while (idx < total)
+            foreach (var (tam, dibujo) in hojas)
             {
                 var page = outDoc.AddPage();
-                page.Size = PageSize.A4;
+                page.Width = XUnit.FromPoint(tam.Width);
+                page.Height = XUnit.FromPoint(tam.Height);
                 using var gfx = XGraphics.FromPdfPage(page);
-                double pw = page.Width.Point, ph = page.Height.Point;
-                double slotH = (ph - 2 * margen) / porHoja;
-                double slotW = pw - 2 * margen;
-
-                for (int s = 0; s < porHoja && idx < total; s++, idx++)
-                {
-                    var formMs = new MemoryStream(srcBytes);
-                    keepAlive.Add(formMs);
-                    var form = XPdfForm.FromStream(formMs);
-                    form.PageNumber = idx + 1; // 1-based
-
-                    double lw = form.PointWidth, lh = form.PointHeight;
-                    if (lw <= 0 || lh <= 0) { lw = 283; lh = 425; } // fallback ~10x15 cm
-
-                    double scale = Math.Min(slotW / lw, slotH / lh);
-                    double w = lw * scale, h = lh * scale;
-                    double x = margen + (slotW - w) / 2;
-                    double y = margen + s * slotH + (slotH - h) / 2;
-                    gfx.DrawImage(form, x, y, w, h);
-                }
+                dibujo(gfx, keepAlive);
             }
-
             using var outMs = new MemoryStream();
             outDoc.Save(outMs, false);
             return outMs.ToArray();
@@ -200,4 +258,19 @@ public class MeliLabelService
             foreach (var ms in keepAlive) ms.Dispose();
         }
     }
+
+    /// <summary>A4 acostada, 3 etiquetas una al lado de la otra, igual que MeLi.</summary>
+    private static byte[] ComponerA4Tres(List<Pieza> piezas) =>
+        Armar(piezas.Chunk(3).Select(grupo => (new XSize(A4Largo, A4Corto),
+            (Action<XGraphics, List<MemoryStream>>)((gfx, ka) =>
+            {
+                for (int c = 0; c < grupo.Length; c++)
+                    Dibujar(gfx, grupo[c], ColX[c], ColY, ColAncho, ColAlto, ka);
+            }))));
+
+    /// <summary>Una etiqueta por hoja A4 parada, al tamano de MeLi (no se agranda: el QR queda igual).</summary>
+    private static byte[] ComponerA4Una(List<Pieza> piezas) =>
+        Armar(piezas.Select(p => (new XSize(A4Corto, A4Largo),
+            (Action<XGraphics, List<MemoryStream>>)((gfx, ka) =>
+                Dibujar(gfx, p, 28, 28, Math.Min(p.W, A4Corto - 56), Math.Min(p.H, A4Largo - 56), ka)))));
 }
