@@ -71,6 +71,9 @@ public class MeliLabelService
             var (bytes, err) = await FetchLabelFromMeliAsync(account, ids, esTermica ? "zpl2" : "pdf");
             if (bytes is null) { errores.Add($"{account.Nickname}: {err}"); continue; }
 
+            // 2026-09-24: MeLi ya la marco impresa; anotamos la hora de la PRIMERA impresion.
+            await AnotarImpresionAsync(ids);
+
             if (esTermica) { zpl.Append(System.Text.Encoding.UTF8.GetString(bytes)).Append('\n'); continue; }
 
             try
@@ -101,6 +104,18 @@ public class MeliLabelService
 
         // errores puede traer avisos parciales (algunas cuentas fallaron) aunque haya PDF.
         return new LabelResult(true, outBytes, errores.Count > 0 ? string.Join(" ", errores) : null);
+    }
+
+    private async Task AnotarImpresionAsync(long[] shipIds)
+    {
+        try
+        {
+            var ahora = DateTime.UtcNow;
+            await _db.MeliOrders
+                .Where(o => o.ShippingId != null && shipIds.Contains(o.ShippingId.Value) && o.EtiquetaImpresaAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(o => o.EtiquetaImpresaAt, ahora));
+        }
+        catch { /* no frenar la impresion por esto */ }
     }
 
     /// <summary>

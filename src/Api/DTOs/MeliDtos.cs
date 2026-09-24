@@ -35,7 +35,8 @@ public record MeliOrderDto(
     string? ItemThumbnailUrl,
     string? ShippingStatus,
     string? ShippingSubstatus,
-    string? ShippingMode
+    string? ShippingMode,
+    DateTime? EtiquetaImpresaAt
 );
 
 public record MeliOrdersResponse(List<MeliOrderDto> Orders, int Total);

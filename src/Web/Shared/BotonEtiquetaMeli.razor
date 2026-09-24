@@ -1,0 +1,44 @@
+@* 2026-09-24: impresorita de la etiqueta MeLi con el estado ABAJO (pedido del dueño), usada en
+   Ordenes y en Deposito -> Ordenes MeLi. Verde = ya impresa (con hora y hace cuanto), naranja =
+   pendiente de impresion. Si no corresponde ninguno (cancelada, etc.) queda gris sin texto. *@
+
+<div class="bem">
+    <button class="bem-btn @Clase" title="@Titulo" @onclick="OnImprimir" @onclick:stopPropagation="true">🖨️</button>
+    @if (Impresa)
+    {
+        <span class="bem-txt ok">Etiqueta impresa</span>
+        @if (ImpresaAt.HasValue)
+        {
+            <span class="bem-cuando" title="Primera vez que se imprimió">@Cuando(ImpresaAt.Value)</span>
+        }
+    }
+    else if (Pendiente)
+    {
+        <span class="bem-txt pend">Etiqueta pendiente de impresión</span>
+    }
+</div>
+
+@code {
+    [Parameter] public bool Impresa { get; set; }
+    /// <summary>Primera impresion (UTC), si se conoce.</summary>
+    [Parameter] public DateTime? ImpresaAt { get; set; }
+    /// <summary>true si el envio todavia tiene que despacharse (muestra "pendiente" si no esta impresa).</summary>
+    [Parameter] public bool Pendiente { get; set; }
+    [Parameter] public EventCallback OnImprimir { get; set; }
+
+    private string Clase => Impresa ? "ok" : Pendiente ? "pend" : "";
+    private string Titulo => Impresa ? "Volver a imprimir la etiqueta (sale la misma)" : "Imprimir la etiqueta de este envío";
+
+    private static string Cuando(DateTime utc)
+    {
+        var ar = utc.ToArTime();
+        var hoyAr = DateTime.UtcNow.ToArTime().Date;
+        var dia = ar.Date == hoyAr ? "hoy" : ar.Date == hoyAr.AddDays(-1) ? "ayer" : ar.ToString("dd/MM");
+        var mins = (int)(DateTime.UtcNow - utc).TotalMinutes;
+        var hace = mins < 1 ? "recién"
+            : mins < 60 ? $"hace {mins} min"
+            : mins < 60 * 24 ? $"hace {mins / 60} h"
+            : $"hace {mins / (60 * 24)} {(mins / (60 * 24) == 1 ? "día" : "días")}";
+        return $"{dia} {ar:HH:mm} · {hace}";
+    }
+}

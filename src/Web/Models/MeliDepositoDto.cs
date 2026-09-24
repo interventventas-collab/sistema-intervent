@@ -22,6 +22,8 @@ public class MeliDepoOrden
     /// <summary>ShippingId para pedir la etiqueta; null si es Full o no tiene envio.</summary>
     public long? NumeroEnvio { get; set; }
     public bool EtiquetaImpresa { get; set; }
+    /// <summary>Primera impresion (UTC), si se sabe.</summary>
+    public DateTime? EtiquetaImpresaAt { get; set; }
     public DateTime Fecha { get; set; }
     public string Cuenta { get; set; } = "";
     public string Comprador { get; set; } = "";

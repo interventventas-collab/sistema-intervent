@@ -61,10 +61,35 @@ public class MeliOrderService
                     .FirstOrDefault(),
                 o.ShippingStatus,
                 o.ShippingSubstatus,
-                o.ShippingMode))
+                o.ShippingMode,
+                o.EtiquetaImpresaAt))
             .ToListAsync();
 
         return new MeliOrdersResponse(orders, total);
+    }
+
+    /// <summary>
+    /// 2026-09-24: cuando se imprimio la etiqueta, segun el historial del envio de MeLi
+    /// (substatus_history: [{ "date": ..., "substatus": "printed" }]). null si no figura.
+    /// </summary>
+    private static DateTime? FechaImpresionDeHistorial(JsonElement shipDoc)
+    {
+        if (!shipDoc.TryGetProperty("substatus_history", out var hist) || hist.ValueKind != JsonValueKind.Array)
+            return null;
+        DateTime? primera = null;
+        foreach (var h in hist.EnumerateArray())
+        {
+            if (h.ValueKind != JsonValueKind.Object) continue;
+            if (!h.TryGetProperty("substatus", out var sub) || sub.ValueKind != JsonValueKind.String || sub.GetString() != "printed") continue;
+            if (!h.TryGetProperty("date", out var d) || d.ValueKind != JsonValueKind.String) continue;
+            if (DateTimeOffset.TryParse(d.GetString(), System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var dto))
+            {
+                var utc = dto.UtcDateTime;
+                if (primera is null || utc < primera) primera = utc;
+            }
+        }
+        return primera;
     }
 
     public async Task<MeliOrderSyncResult> SyncOrdersAsync(DateTime from, DateTime to)
@@ -909,6 +934,7 @@ public class MeliOrderService
         string? shippingSubstatus = null;
         string? shippingMode = null;
         string? logisticType = null;
+        DateTime? impresaAt = null;
         if (shippingId.HasValue)
         {
             try
@@ -929,6 +955,7 @@ public class MeliOrderService
                     // cross_docking, custom. Lo usamos para descontar del depósito correcto.
                     if (shipDoc.TryGetProperty("logistic_type", out var shipLt) && shipLt.ValueKind != JsonValueKind.Null)
                         logisticType = shipLt.GetString();
+                    impresaAt = FechaImpresionDeHistorial(shipDoc);
                 }
             }
             catch { /* ignore shipping fetch errors */ }
@@ -972,6 +999,8 @@ public class MeliOrderService
                 existing.PackId = packId;
                 existing.ShippingStatus = shippingStatus;
                 existing.ShippingSubstatus = shippingSubstatus;
+                // la PRIMERA impresion: si el sistema ya la anoto, no se pisa
+                existing.EtiquetaImpresaAt ??= impresaAt;
                 existing.ShippingMode = shippingMode;
                 // Solo overrideamos LogisticType si vino del shipment (no perder valor previo si null)
                 if (logisticType != null) existing.LogisticType = logisticType;
@@ -1003,6 +1032,7 @@ public class MeliOrderService
                     PackId = packId,
                     ShippingStatus = shippingStatus,
                     ShippingSubstatus = shippingSubstatus,
+                    EtiquetaImpresaAt = impresaAt,
                     ShippingMode = shippingMode,
                     LogisticType = logisticType
                 });

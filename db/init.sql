@@ -7873,3 +7873,7 @@ GO
 IF COL_LENGTH('Cafe_Repartidores','UltimoUsoIp') IS NULL
     ALTER TABLE Cafe_Repartidores ADD UltimoUsoIp NVARCHAR(60) NULL;
 GO
+-- 2026-09-24: hora en que se imprimio la etiqueta de envio MeLi (sistema o historial de MeLi)
+IF COL_LENGTH('MeliOrders','EtiquetaImpresaAt') IS NULL
+    ALTER TABLE MeliOrders ADD EtiquetaImpresaAt DATETIME2 NULL;
+GO

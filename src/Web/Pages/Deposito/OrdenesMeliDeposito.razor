@@ -38,7 +38,7 @@
     .om-fila.sel { background: #eff6ff; box-shadow: inset 3px 0 0 #3b82f6; }
     .om-fila .tilde { width: 22px; flex: 0 0 auto; padding-top: 0.1rem; }
     .om-fila .tilde input { width: 18px; height: 18px; cursor: pointer; }
-    .om-fila .impr { flex: 0 0 auto; align-self: flex-start; }
+    .om-fila .impr { flex: 0 0 120px; align-self: flex-start; display: flex; justify-content: center; }
     .om-etiq { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.6rem; font-size: 0.85rem; }
     .om-etiq .lbl { color: #64748b; min-width: 58px; }
 
@@ -198,7 +198,6 @@
                             <b>@o.Comprador</b> · @o.Tipo
                             @if (cuentas.Count > 1) { <text> · @o.Cuenta</text> }
                             · <span class="@(o.EstadoClave == "cancelada" ? "om-cancel" : "")">@o.Estado</span>
-                            @if (o.EtiquetaImpresa) { <text> · etiqueta impresa</text> }
                         </div>
                         @foreach (var p in o.Productos)
                         {
@@ -212,8 +211,10 @@
                     </div>
                     @if (o.NumeroEnvio.HasValue && o.EstadoClave != "cancelada")
                     {
-                        <button class="btn btn-secondary btn-sm impr" title="Imprimir la etiqueta de este envío"
-                                @onclick="() => Imprimir(o.NumeroEnvio!.Value)" @onclick:stopPropagation="true">🖨️</button>
+                        <div class="impr" @onclick:stopPropagation="true">
+                            <BotonEtiquetaMeli Impresa="@o.EtiquetaImpresa" ImpresaAt="@o.EtiquetaImpresaAt"
+                                               Pendiente="@(o.EstadoClave == "despachar")" OnImprimir="() => Imprimir(o.NumeroEnvio!.Value)" />
+                        </div>
                     }
                 </div>
             }
@@ -403,7 +404,17 @@ else
     private void TildarSinImprimir() { foreach (var e in ParaImprimir) tildadas.Add(e); }
 
     private async Task Imprimir(long envio)
-        => await JS.InvokeVoidAsync("window.open", Api.BuildEtiquetaMeliUrl(new[] { envio }, etiquetaFormato), "_blank");
+    {
+        await JS.InvokeVoidAsync("window.open", Api.BuildEtiquetaMeliUrl(new[] { envio }, etiquetaFormato), "_blank");
+        _ = RefrescarLuego();
+    }
+
+    /// <summary>A los pocos segundos vuelve a traer la lista para que la impresorita pase a verde con la hora.</summary>
+    private async Task RefrescarLuego()
+    {
+        await Task.Delay(6000);
+        try { await Cargar(); await InvokeAsync(StateHasChanged); } catch { }
+    }
 
     private async Task ImprimirTildadas()
     {
@@ -411,6 +422,7 @@ else
         ToastService.Success($"Generando {tildadas.Count} etiqueta(s)…");
         await JS.InvokeVoidAsync("window.open", Api.BuildEtiquetaMeliUrl(tildadas.OrderBy(x => x), etiquetaFormato), "_blank");
         tildadas.Clear();
+        _ = RefrescarLuego();
     }
 
     private ElementReference scanRef;

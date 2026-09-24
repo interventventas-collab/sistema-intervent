@@ -324,7 +324,7 @@
                                     </td>
                                     <td class="td-shipping-status">
                                         @{ var gFirst = group.Orders.First(); }
-                                        @if (!string.IsNullOrEmpty(gFirst.ShippingStatus))
+                                        @if (!string.IsNullOrEmpty(gFirst.ShippingStatus) && !EstadoVaAbajo(gFirst))
                                         {
                                             <span class="status-badge @GetShippingStatusClass(gFirst.ShippingStatus, gFirst.ShippingSubstatus)">
                                                 @GetShippingDisplayLabel(gFirst.ShippingStatus, gFirst.ShippingSubstatus)
@@ -339,8 +339,8 @@
                                                            checked="@etiquetaSeleccionadas.Contains(gShip.Value)"
                                                            @onchange="() => ToggleEtiquetaSel(gShip.Value)" />
                                                 </label>
-                                                <button class="btn-etiqueta" title="Imprimir etiqueta de este envio"
-                                                        @onclick="() => ImprimirEtiqueta(gShip.Value)">🖨️</button>
+                                                <BotonEtiquetaMeli Impresa="@EtiquetaImpresa(group.Orders)" ImpresaAt="@group.Orders.Min(o => o.EtiquetaImpresaAt)"
+                                                                   Pendiente="@PorDespachar(gFirst)" OnImprimir="() => ImprimirEtiqueta(gShip.Value)" />
                                             </div>
                                         }
                                     </td>
@@ -412,7 +412,7 @@
                                         </span>
                                     </td>
                                     <td class="td-shipping-status">
-                                        @if (!string.IsNullOrEmpty(order.ShippingStatus))
+                                        @if (!string.IsNullOrEmpty(order.ShippingStatus) && !EstadoVaAbajo(order))
                                         {
                                             <span class="status-badge @GetShippingStatusClass(order.ShippingStatus, order.ShippingSubstatus)">
                                                 @GetShippingDisplayLabel(order.ShippingStatus, order.ShippingSubstatus)
@@ -427,8 +427,8 @@
                                                            checked="@etiquetaSeleccionadas.Contains(oShip)"
                                                            @onchange="() => ToggleEtiquetaSel(oShip)" />
                                                 </label>
-                                                <button class="btn-etiqueta" title="Imprimir etiqueta de este envio"
-                                                        @onclick="() => ImprimirEtiqueta(oShip)">🖨️</button>
+                                                <BotonEtiquetaMeli Impresa="@EtiquetaImpresa(new[] { order })" ImpresaAt="@order.EtiquetaImpresaAt"
+                                                                   Pendiente="@PorDespachar(order)" OnImprimir="() => ImprimirEtiqueta(oShip)" />
                                             </div>
                                         }
                                     </td>
@@ -1330,11 +1330,42 @@
         if (!etiquetaSeleccionadas.Add(shipId)) etiquetaSeleccionadas.Remove(shipId);
     }
 
+    // 2026-09-24: el estado de la etiqueta va ABAJO de la impresorita (BotonEtiquetaMeli), no arriba.
+    private static bool EstadoVaAbajo(MeliOrderDto o) => o.ShippingSubstatus is "printed" or "ready_to_print";
+
+    private static bool EtiquetaImpresa(IEnumerable<MeliOrderDto> os) => os.Any(o =>
+        o.EtiquetaImpresaAt != null || o.ShippingSubstatus == "printed"
+        || o.ShippingStatus is "shipped" or "delivered" or "not_delivered");
+
+    private static bool PorDespachar(MeliOrderDto o) =>
+        o.Status != "cancelled" && o.ShippingStatus is "ready_to_ship" or "handling" or "pending";
+
     /// <summary>Abre la etiqueta de UN envio en pestana nueva, en el formato elegido.</summary>
     private async Task ImprimirEtiqueta(long shipId)
     {
         var url = Api.BuildEtiquetaMeliUrl(new[] { shipId }, etiquetaFormato);
         await JS.InvokeVoidAsync("window.open", url, "_blank");
+        _ = RefrescarEtiquetasLuego();
+    }
+
+    /// <summary>
+    /// 2026-09-24: a los pocos segundos de imprimir vuelve a traer las ordenes SIN el cartel de
+    /// "cargando", para que la impresorita pase a verde con la hora (la anota la API al imprimir).
+    /// </summary>
+    private async Task RefrescarEtiquetasLuego()
+    {
+        await Task.Delay(6000);
+        try
+        {
+            var response = await Api.GetMeliOrdersAsync(dateFrom, dateTo.AddDays(1), null);
+            if (response is not null)
+            {
+                orders = response.Orders;
+                totalOrders = response.Total;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch { }
     }
 
     /// <summary>Genera un unico PDF con todas las etiquetas seleccionadas y lo abre en pestana nueva.</summary>
@@ -1344,6 +1375,7 @@
         var url = Api.BuildEtiquetaMeliUrl(etiquetaSeleccionadas.OrderBy(x => x), etiquetaFormato);
         ToastService.Success($"Generando {etiquetaSeleccionadas.Count} etiqueta(s)...");
         await JS.InvokeVoidAsync("window.open", url, "_blank");
+        _ = RefrescarEtiquetasLuego();
     }
     private bool isLoading = true;
     private bool isSyncing;

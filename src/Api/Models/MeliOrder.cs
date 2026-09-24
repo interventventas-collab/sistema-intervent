@@ -27,6 +27,9 @@ public class MeliOrder
     public long? PackId { get; set; }
     public string? ShippingStatus { get; set; }
     public string? ShippingSubstatus { get; set; }
+    /// <summary>2026-09-24: cuando se imprimio la etiqueta por primera vez (UTC). Lo anota el sistema al
+    /// imprimir, o sale del historial de MeLi (substatus_history "printed") si se imprimio desde MeLi.</summary>
+    public DateTime? EtiquetaImpresaAt { get; set; }
     /// <summary>Modo de envio segun MeLi: me1, me2, custom, not_specified. Util para marcar ordenes ME1 en la grilla.</summary>
     public string? ShippingMode { get; set; }
 

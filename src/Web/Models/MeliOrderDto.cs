@@ -24,6 +24,8 @@ public class MeliOrderDto
     public string? ShippingStatus { get; set; }
     public string? ShippingSubstatus { get; set; }
     public string? ShippingMode { get; set; }
+    /// <summary>Primera impresion de la etiqueta (UTC); null si no se sabe.</summary>
+    public DateTime? EtiquetaImpresaAt { get; set; }
 }
 
 public class MeliOrdersResponse
