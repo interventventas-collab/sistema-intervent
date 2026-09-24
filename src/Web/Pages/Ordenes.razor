@@ -13,7 +13,7 @@
             <span style="font-size: 0.8rem; color: #6b7280;">Etiqueta:</span>
             <button class="btn btn-sm @(etiquetaFormato == "termica" ? "btn-primary" : "btn-secondary")"
                     @onclick='() => etiquetaFormato = "termica"'
-                    title="Baja el archivo .txt para impresora termica Zebra, el mismo que baja MercadoLibre (troquel + etiqueta)">🏷️ Zebra .txt</button>
+                    title="Imprime directo en la Zebra, como MercadoLibre. Si esta compu no tiene el programa de Zebra, baja el archivo .txt">🏷️ Zebra</button>
             <button class="btn btn-sm @(etiquetaFormato == "termica-pdf" ? "btn-primary" : "btn-secondary")"
                     @onclick='() => etiquetaFormato = "termica-pdf"'
                     title="PDF con una etiqueta por pagina, para impresoras termicas que no son Zebra">🏷️ Termica PDF</button>
@@ -1346,9 +1346,28 @@
     /// <summary>Abre la etiqueta de UN envio en pestana nueva, en el formato elegido.</summary>
     private async Task ImprimirEtiqueta(long shipId)
     {
-        var url = Api.BuildEtiquetaMeliUrl(new[] { shipId }, etiquetaFormato);
-        await JS.InvokeVoidAsync("window.open", url, "_blank");
+        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { shipId }, etiquetaFormato));
         _ = RefrescarEtiquetasLuego();
+    }
+
+    /// <summary>
+    /// 2026-09-24: con "Zebra" se manda DIRECTO a la impresora por Zebra Browser Print (como hace
+    /// MeLi en la PC del deposito, js/zebra-print.js). Si esa compu no tiene el programa, baja el .txt.
+    /// El resto de los formatos abre el PDF en otra pestaña.
+    /// </summary>
+    private async Task AbrirEtiqueta(string url)
+    {
+        if (etiquetaFormato == "termica")
+        {
+            string r;
+            try { r = await JS.InvokeAsync<string>("zebraImprimir", url); } catch { r = "sin-zebra"; }
+            if (r == "ok") { ToastService.Success("Etiqueta enviada a la Zebra"); return; }
+            if (r.StartsWith("error:")) { ToastService.Error(r[6..]); return; }
+            ToastService.Warning("No encontré el programa de Zebra en esta compu: te bajo el archivo .txt");
+            await JS.InvokeVoidAsync("zebraBajar", url);
+            return;
+        }
+        await JS.InvokeVoidAsync("window.open", url, "_blank");
     }
 
     /// <summary>
@@ -1377,7 +1396,7 @@
         if (etiquetaSeleccionadas.Count == 0) return;
         var url = Api.BuildEtiquetaMeliUrl(etiquetaSeleccionadas.OrderBy(x => x), etiquetaFormato);
         ToastService.Success($"Generando {etiquetaSeleccionadas.Count} etiqueta(s)...");
-        await JS.InvokeVoidAsync("window.open", url, "_blank");
+        await AbrirEtiqueta(url);
         _ = RefrescarEtiquetasLuego();
     }
     private bool isLoading = true;
