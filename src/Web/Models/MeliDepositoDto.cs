@@ -58,6 +58,9 @@ public class MeliDepoFicha
     public List<MeliDepoFichaProducto> Productos { get; set; } = new();
     public bool MensajesOk { get; set; }
     public List<MeliDepoMensaje> Mensajes { get; set; } = new();
+    public bool NotasOk { get; set; }
+    public List<MeliDepoNota> Notas { get; set; } = new();
+    public List<PostitDto> Postits { get; set; } = new();
     public List<MeliDepoPregunta> Preguntas { get; set; } = new();
     public List<MeliDepoCompra> Compras { get; set; } = new();
 }
@@ -78,6 +81,13 @@ public class MeliDepoComponente
     public string? Sku { get; set; }
     public decimal Cantidad { get; set; }
     public string? Formato { get; set; }
+}
+
+/// <summary>2026-09-24: nota de la venta en MeLi ("Agregar nota" de la web de MeLi).</summary>
+public class MeliDepoNota
+{
+    public string Texto { get; set; } = "";
+    public DateTime? Fecha { get; set; }   // UTC
 }
 
 public class MeliDepoMensaje

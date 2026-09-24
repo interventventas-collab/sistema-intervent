@@ -178,6 +178,30 @@ public class MeliDepositoController : ControllerBase
             catch { mensajesOk = false; }
         }
 
+        // ── NOTAS de la venta en MeLi ("Agregar nota" de la web de MeLi + las que pone el sistema),
+        // EN VIVO. Una por orden: un pack puede tener varias órdenes.
+        bool notasOk = cuenta is not null;
+        var notas = new List<object>();
+        if (cuenta is not null)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var orderSvc = scope.ServiceProvider.GetRequiredService<MeliOrderService>();
+                foreach (var oid in productos.Select(p => p.MeliOrderId).Distinct().Take(5))
+                {
+                    var (ok, ns) = await orderSvc.TryGetOrderNotesAsync(oid, cuenta);
+                    if (!ok) notasOk = false;
+                    notas.AddRange(ns.Select(n => (object)new
+                    {
+                        texto = n.Texto,
+                        fecha = n.Fecha.HasValue ? DateTime.SpecifyKind(n.Fecha.Value, DateTimeKind.Utc) : (DateTime?)null
+                    }));
+                }
+            }
+            catch { notasOk = false; }
+        }
+
         // ── TODAS las preguntas que hizo este comprador (cualquier publicación, cualquier cuenta).
         var preguntas = await _db.MeliQuestions.AsNoTracking()
             .Where(qq => qq.FromUserId == buyerId)
@@ -222,6 +246,14 @@ public class MeliDepositoController : ControllerBase
             })
             .OrderByDescending(c => c.fecha)
             .ToList();
+
+        // ── POST-ITS nuestros de este envío (tabla Postits, un "tablero" por envío).
+        var scopePostit = $"meli-envio:{claveActual}";
+        var postits = await _db.Postits.AsNoTracking()
+            .Where(p => p.Scope == scopePostit)
+            .OrderBy(p => p.CreatedAt)
+            .Select(p => new { id = p.Id, texto = p.Texto, color = p.Color, creadoPor = p.CreadoPor, scope = p.Scope, createdAt = p.CreatedAt })
+            .ToListAsync();
 
         // ── Productos: SKU + FOTO GRANDE + componentes si es combo.
         var fotos = await FotosDeItemsAsync(itemIds);
@@ -273,6 +305,9 @@ public class MeliDepositoController : ControllerBase
             productos = productosOut,
             mensajesOk,
             mensajes,
+            notasOk,
+            notas,
+            postits,
             preguntas = preguntasOut,
             compras
         });

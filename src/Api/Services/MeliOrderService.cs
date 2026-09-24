@@ -353,6 +353,54 @@ public class MeliOrderService
         return (true, result);
     }
 
+    /// <summary>
+    /// 2026-09-24: notas que tiene la venta en MeLi (las que se agregan con "Agregar nota" en la web de
+    /// MeLi, y las que pone el propio sistema: Maps, telefono). GET /orders/{id}/notes devuelve
+    /// [{ "order_id": .., "results": [{ "note": "..", "date_created": ".." }] }].
+    /// Ok=false si MeLi no contesto (sin token / error HTTP).
+    /// </summary>
+    public async Task<(bool Ok, List<(string Texto, DateTime? Fecha)> Notas)> TryGetOrderNotesAsync(long orderId, MeliAccount account)
+    {
+        var result = new List<(string, DateTime?)>();
+        var token = await _accountService.GetValidTokenAsync(account);
+        if (token is null) return (false, result);
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var url = $"https://api.mercadolibre.com/orders/{orderId}/notes";
+        var response = await http.GetAsync(url);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+            response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newToken = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
+            if (newToken is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                response = await http.GetAsync(url);
+            }
+        }
+        if (!response.IsSuccessStatusCode) return (false, result);
+
+        var root = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        var bloques = root.ValueKind == JsonValueKind.Array ? root.EnumerateArray().ToList() : new List<JsonElement> { root };
+        foreach (var b in bloques)
+        {
+            if (!b.TryGetProperty("results", out var res) || res.ValueKind != JsonValueKind.Array) continue;
+            foreach (var n in res.EnumerateArray())
+            {
+                var texto = n.TryGetProperty("note", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+                if (string.IsNullOrWhiteSpace(texto)) continue;
+                DateTime? fecha = null;
+                if (n.TryGetProperty("date_created", out var dc) && dc.ValueKind == JsonValueKind.String
+                    && DateTimeOffset.TryParse(dc.GetString(), System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None, out var dto))
+                    fecha = dto.UtcDateTime;
+                result.Add((texto!, fecha));
+            }
+        }
+        return (true, result);
+    }
+
     // ═══════════════════ POST-VENTA CAFÉ: mensaje automático de molienda ═══════════════════
     // Cuando entra una venta de una publicación de café ELEGIDA por el usuario, el sistema le
     // manda solo un mensaje al comprador (por la mensajería post-venta de MeLi) preguntándole

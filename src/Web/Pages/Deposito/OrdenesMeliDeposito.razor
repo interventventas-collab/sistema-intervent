@@ -1,13 +1,19 @@
 @page "/deposito/ordenes-meli"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject OperatorService Operator
 
 @* 2026-09-21: página aparte para el depósito (antes el escaneo vivía adentro del armado de pedidos).
-   Listado de órdenes MeLi agrupadas por envío + ficha grande de cada una: foto grande, qué trae,
-   mensajes del comprador, todas sus preguntas y sus compras anteriores. SIN PLATA a propósito. *@
+   SIN PLATA a propósito.
+   2026-09-24: pedido del dueño: la lista ocupa TODO el ancho y cada renglón trae TODO lo que antes
+   estaba en la ficha de la derecha (producto con SKU y contenido del combo, mensajes, preguntas,
+   compras anteriores), más las NOTAS de la venta en MeLi y nuestros POST-ITS. Ya no hay panel a la
+   derecha ni Anterior/Siguiente. El detalle de cada renglón se trae de a poco (4 a la vez) porque
+   mensajes y notas se le piden a MeLi en vivo. Tocar una foto la muestra en grande. *@
 
 <style>
     .om-top { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
@@ -23,74 +29,68 @@
     .om-chip { border: 1px solid #e2e8f0; background: white; border-radius: 999px; padding: 0.2rem 0.7rem; cursor: pointer; font-size: 0.84rem; color: #334155; }
     .om-chip.on { background: #1e293b; border-color: #1e293b; color: white; font-weight: 600; }
     .om-buscar { width: 100%; max-width: 360px; padding: 0.35rem 0.6rem; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.88rem; }
-
-    .om-lista { border-top: 1px solid #e2e8f0; }
-    .om-fila { display: flex; gap: 0.8rem; padding: 0.6rem 0.4rem; border-bottom: 1px solid #e2e8f0; cursor: pointer; }
-    .om-fila:hover { background: #f8fafc; }
-    .om-fila .cuando { width: 92px; flex: 0 0 auto; font-size: 0.8rem; color: #64748b; line-height: 1.3; }
-    .om-fila .cuerpo { flex: 1; min-width: 0; }
-    .om-fila .quien { font-size: 0.88rem; color: #334155; margin-bottom: 0.25rem; }
-    .om-fila .quien b { color: #0f172a; }
-    .om-fila .prod { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; padding: 0.1rem 0; }
-    .om-fila .prod img, .om-fila .prod .sinfoto { width: 88px; height: 88px; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: white; flex: 0 0 auto; }
-    .om-fila .prod .c { font-weight: 800; min-width: 30px; }
-    .om-cancel { color: #b91c1c; }
-    .om-fila.sel { background: #eff6ff; box-shadow: inset 3px 0 0 #3b82f6; }
-    .om-fila .tilde { width: 22px; flex: 0 0 auto; padding-top: 0.1rem; }
-    .om-fila .tilde input { width: 18px; height: 18px; cursor: pointer; }
-    .om-fila .impr { flex: 0 0 120px; align-self: flex-start; display: flex; justify-content: center; }
     .om-etiq { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.6rem; font-size: 0.85rem; }
     .om-etiq .lbl { color: #64748b; min-width: 58px; }
+    .om-vacio { color: #64748b; font-size: 0.9rem; }
+    .om-gris { color: #94a3b8; }
+    .om-alerta { color: #b91c1c; }
+    .om-cancel { color: #b91c1c; }
 
-    .om-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 1.5rem; align-items: start; }
-    .om-col-ficha { position: sticky; top: 0.5rem; max-height: calc(100vh - 1rem); overflow-y: auto; padding-right: 0.3rem; }
-    .om-ficha-vacia { color: #94a3b8; font-size: 1rem; padding: 3rem 1rem; text-align: center; border: 2px dashed #e2e8f0; border-radius: 12px; }
-    @@media (max-width: 1100px) {
-        .om-split { display: block; }
-        .om-split.con-ficha .om-col-lista { display: none; }
-        .om-split:not(.con-ficha) .om-col-ficha { display: none; }
-        .om-col-ficha { position: static; max-height: none; overflow: visible; }
+    /* Un renglón = un envío con todo su detalle, a lo ancho. */
+    .om-lista { border-top: 1px solid #e2e8f0; }
+    .om-fila { display: grid; gap: 14px; padding: 0.8rem 0.4rem; border-bottom: 1px solid #e2e8f0; align-items: start; font-size: 0.86rem;
+               grid-template-columns: 22px 52px minmax(280px, 1.4fr) repeat(4, minmax(170px, 1fr)) 124px;
+               grid-template-areas: "tilde cuando prod msj preg comp notas impr"; }
+    .om-fila.resaltada { background: #eff6ff; box-shadow: inset 3px 0 0 #3b82f6; }
+    .om-fila .tilde { grid-area: tilde; padding-top: 0.1rem; }
+    .om-fila .tilde input { width: 18px; height: 18px; cursor: pointer; }
+    .om-fila .cuando { grid-area: cuando; font-size: 0.8rem; color: #64748b; line-height: 1.3; }
+    .om-fila .c-prod { grid-area: prod; min-width: 0; }
+    .om-fila .c-msj { grid-area: msj; }
+    .om-fila .c-preg { grid-area: preg; }
+    .om-fila .c-comp { grid-area: comp; }
+    .om-fila .c-notas { grid-area: notas; }
+    .om-fila .impr { grid-area: impr; display: flex; justify-content: center; }
+    /* Pantallas más angostas: producto arriba, y abajo las 4 columnas de info. */
+    @@media (max-width: 1350px) {
+        .om-fila { grid-template-columns: 22px 52px repeat(2, minmax(0, 1fr)) 124px;
+                   grid-template-areas: "tilde cuando prod prod impr" ". . msj preg ." ". . comp notas ."; }
+    }
+    @@media (max-width: 760px) {
+        .om-fila { grid-template-columns: 22px minmax(0, 1fr) 110px;
+                   grid-template-areas: "tilde cuando impr" "prod prod prod" "msj msj msj" "preg preg preg" "comp comp comp" "notas notas notas"; }
+        .om-fila .cuando br { display: none; }
     }
 
-    .om-nav { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
-    .om-nav .pos { font-size: 0.85rem; color: #64748b; }
-    .om-ficha-head { margin-bottom: 1rem; }
-    .om-ficha-head .comprador { font-size: 1.5rem; font-weight: 800; color: #0f172a; }
-    .om-ficha-head .datos { font-size: 0.9rem; color: #475569; margin-top: 0.15rem; }
+    .om-quien { font-size: 0.84rem; color: #334155; margin-bottom: 0.3rem; }
+    .om-quien b { color: #0f172a; }
+    .om-prod { display: flex; gap: 0.7rem; align-items: flex-start; padding: 0.2rem 0; }
+    .om-prod img, .om-prod .sinfoto { width: 110px; height: 110px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0; background: white; flex: 0 0 auto; }
+    .om-prod img { cursor: zoom-in; }
+    .om-prod .cant { font-size: 1.7rem; font-weight: 800; line-height: 1; }
+    .om-prod .tit { font-size: 1rem; font-weight: 600; margin-top: 0.15rem; line-height: 1.3; }
+    .om-prod .sku { font-family: monospace; font-size: 0.82rem; color: #475569; margin-top: 0.15rem; }
+    .om-prod .combo { margin-top: 0.35rem; font-size: 0.85rem; }
 
-    .om-prod { display: flex; gap: 1.2rem; padding: 1rem 0; border-top: 1px solid #e2e8f0; align-items: flex-start; flex-wrap: wrap; }
-    .om-prod .foto { width: 340px; height: 340px; object-fit: contain; border: 1px solid #e2e8f0; border-radius: 12px; background: white; flex: 0 0 auto; cursor: zoom-in; }
-    .om-prod .foto.sin { display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 0.85rem; cursor: default; }
-    .om-prod .info { flex: 1; min-width: 220px; }
-    .om-prod .cant { font-size: 2.6rem; font-weight: 800; color: #0f172a; line-height: 1; }
-    .om-prod .tit { font-size: 1.2rem; font-weight: 600; margin-top: 0.4rem; line-height: 1.3; }
-    .om-prod .sku { font-family: monospace; font-size: 0.9rem; color: #475569; margin-top: 0.3rem; }
-    .om-prod .combo { margin-top: 0.7rem; font-size: 1rem; }
-    .om-prod .combo .h { font-size: 0.8rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 0.2rem; }
-    .om-prod .combo div { padding: 0.12rem 0; }
-
-    .om-sec { border-top: 1px solid #e2e8f0; padding-top: 0.8rem; margin-top: 0.8rem; }
-    .om-sec h3 { font-size: 1rem; margin: 0 0 0.5rem; }
-    .om-vacio { color: #64748b; font-size: 0.9rem; }
-    .om-alerta { color: #b91c1c; font-size: 0.9rem; }
-    .om-msg { max-width: 640px; padding: 0.45rem 0.7rem; border-radius: 10px; margin: 0.3rem 0; font-size: 1rem; line-height: 1.4; white-space: pre-wrap; }
-    .om-msg.in { background: #f1f5f9; }
-    .om-msg.out { background: #e0f2fe; margin-left: 2rem; }
-    .om-msg .meta { font-size: 0.75rem; color: #64748b; margin-bottom: 0.1rem; }
-    .om-preg { padding: 0.45rem 0; border-bottom: 1px solid #f1f5f9; }
-    .om-preg .meta { font-size: 0.78rem; color: #64748b; }
-    .om-preg .q { font-size: 1rem; }
-    .om-preg .a { font-size: 0.92rem; color: #475569; padding-left: 1rem; }
-    .om-compra { padding: 0.35rem 0; border-bottom: 1px solid #f1f5f9; font-size: 0.92rem; }
-    .om-compra .meta { color: #64748b; }
+    .om-h { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 0.25rem; }
+    .om-msg { padding: 0.3rem 0.5rem; border-radius: 8px; margin-bottom: 0.25rem; line-height: 1.35; background: #f1f5f9; }
+    .om-msg.out { background: #e0f2fe; }
+    .om-msg .meta, .om-meta { font-size: 0.72rem; color: #64748b; }
+    .om-preg { margin-bottom: 0.35rem; line-height: 1.35; }
+    .om-preg .a { color: #475569; padding-left: 0.6rem; }
+    .om-compra { margin-bottom: 0.2rem; line-height: 1.35; }
+    .om-txt { white-space: pre-wrap; }   /* respeta los renglones que escribió la persona */
+    .om-mas { background: none; border: none; padding: 0; color: #2563eb; cursor: pointer; font-size: 0.8rem; }
+    .om-nota { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.25rem 0.45rem; margin-bottom: 0.25rem; line-height: 1.35; }
+    .om-postit { border-radius: 4px; border-left: 4px solid; padding: 0.3rem 0.45rem; margin-bottom: 0.3rem; line-height: 1.35; position: relative; padding-right: 1.3rem; }
+    .om-postit .x { position: absolute; top: 0.1rem; right: 0.2rem; background: none; border: none; cursor: pointer; color: #64748b; font-size: 0.85rem; }
+    .om-postit-form textarea { width: 100%; min-height: 54px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.3rem; }
+    .om-colores { display: flex; gap: 0.25rem; margin: 0.25rem 0; }
+    .om-colores button { width: 20px; height: 20px; border-radius: 4px; border: 2px solid transparent; cursor: pointer; }
+    .om-colores button.on { border-color: #0f172a; }
 
     .om-zoom { position: fixed; inset: 0; background: rgba(15,23,42,0.85); display: flex; align-items: center; justify-content: center; z-index: 2000; cursor: zoom-out; padding: 16px; }
     .om-zoom img { max-width: 100%; max-height: 100%; object-fit: contain; background: white; border-radius: 10px; }
-
-    @@media (max-width: 640px) {
-        .om-prod .foto { width: 100%; height: auto; aspect-ratio: 1; }
-        .om-fila .cuando { width: 70px; }
-    }
 </style>
 
 <div class="om-top">
@@ -103,275 +103,94 @@
            placeholder="Apoyá el cursor acá y disparás el lector (Flex o Correo)…" autocomplete="off" />
     <button class="btn btn-secondary" @onclick="Escanear" disabled="@escaneando">@(escaneando ? "Buscando…" : "🔍 Buscar")</button>
 </div>
-<div class="om-hint">Con el lector: apoyá el cursor en la casilla y disparás la etiqueta. También podés tipear el nº de envío o de venta y apretar Enter.</div>
+<div class="om-hint">Con el lector: apoyá el cursor en la casilla y disparás la etiqueta. También podés tipear el nº de envío o de venta y apretar Enter. El envío escaneado queda marcado en azul.</div>
 
-@* 2026-09-23: listado a la IZQUIERDA y ficha a la DERECHA (pedido del dueño: sobraba mucho lugar).
-   En pantallas angostas queda como antes: o el listado o la ficha. *@
-<div class="om-split @(ficha is not null ? "con-ficha" : "")">
-<div class="om-col-lista">
-    <div class="om-filtros">
-        <div class="om-filtro">
-            <span class="lbl">Fecha</span>
-            @foreach (var (d, l) in OpcionesDias)
-            {
-                <button class="om-chip @(dias == d ? "on" : "")" @onclick="() => CambiarDias(d)">@l</button>
-            }
-        </div>
-        @if (cuentas.Count > 1)
+<div class="om-filtros">
+    <div class="om-filtro">
+        <span class="lbl">Fecha</span>
+        @foreach (var (d, l) in OpcionesDias)
         {
-            <div class="om-filtro">
-                <span class="lbl">Cuenta</span>
-                <button class="om-chip @(cuenta is null ? "on" : "")" @onclick="() => CambiarCuenta(null)">Todas</button>
-                @foreach (var c in cuentas)
-                {
-                    <button class="om-chip @(cuenta == c.Id ? "on" : "")" @onclick="() => CambiarCuenta(c.Id)">@c.Nombre</button>
-                }
-            </div>
-        }
-        <div class="om-filtro">
-            <span class="lbl">Envío</span>
-            @foreach (var (k, l) in OpcionesEnvio)
-            {
-                <button class="om-chip @(envio == k ? "on" : "")" @onclick="() => envio = k">@l</button>
-            }
-        </div>
-        <div class="om-filtro">
-            <span class="lbl">Estado</span>
-            @foreach (var (k, l) in OpcionesEstado)
-            {
-                <button class="om-chip @(estado == k ? "on" : "")" @onclick="() => estado = k">@l</button>
-            }
-        </div>
-        <div class="om-filtro">
-            <span class="lbl">Buscar</span>
-            <input class="om-buscar" @bind="buscar" @bind:event="oninput" placeholder="comprador, producto o nº de venta" />
-        </div>
-    </div>
-
-    @* 2026-09-24: imprimir etiquetas MeLi desde el deposito (mismo endpoint que Ordenes). *@
-    <div class="om-etiq">
-        <span class="lbl">Etiqueta</span>
-        @foreach (var (k, l, t) in FormatosEtiqueta)
-        {
-            <button class="om-chip @(etiquetaFormato == k ? "on" : "")" title="@t" @onclick="() => ElegirFormato(k)">@l</button>
-        }
-        @if (tildadas.Count > 0)
-        {
-            <button class="btn btn-primary btn-sm" @onclick="ImprimirTildadas">🖨️ Imprimir @tildadas.Count</button>
-            <button class="btn btn-secondary btn-sm" @onclick="() => tildadas.Clear()">Destildar</button>
-        }
-        else if (ParaImprimir.Count > 0)
-        {
-            <button class="btn btn-secondary btn-sm" @onclick="TildarSinImprimir">Tildar las @ParaImprimir.Count sin imprimir</button>
+            <button class="om-chip @(dias == d ? "on" : "")" @onclick="() => CambiarDias(d)">@l</button>
         }
     </div>
-
-    @if (cargando && ordenes.Count == 0)
+    @if (cuentas.Count > 1)
     {
-        <div class="om-vacio">Cargando órdenes…</div>
-    }
-    else if (Filtradas.Count == 0)
-    {
-        <div class="om-vacio">No hay órdenes con esos filtros.</div>
-    }
-    else
-    {
-        <div class="om-vacio" style="margin-bottom:0.3rem;">@Filtradas.Count @(Filtradas.Count == 1 ? "envío" : "envíos") · tocá uno para verlo en grande</div>
-        <div class="om-lista">
-            @for (int i = 0; i < Filtradas.Count; i++)
+        <div class="om-filtro">
+            <span class="lbl">Cuenta</span>
+            <button class="om-chip @(cuenta is null ? "on" : "")" @onclick="() => CambiarCuenta(null)">Todas</button>
+            @foreach (var c in cuentas)
             {
-                var idx = i;
-                var o = Filtradas[i];
-                <div class="om-fila @(ficha is not null && ficha.Numero == o.Numero ? "sel" : "")" @onclick="() => AbrirDelListado(idx)">
-                    <div class="tilde" @onclick:stopPropagation="true">
-                        @if (o.NumeroEnvio.HasValue && o.EstadoClave != "cancelada")
-                        {
-                            <input type="checkbox" checked="@tildadas.Contains(o.NumeroEnvio.Value)"
-                                   @onchange="() => Tildar(o.NumeroEnvio!.Value)" title="Tildar para imprimir varias juntas" />
-                        }
-                    </div>
-                    <div class="cuando">
-                        @* la fecha de la venta YA viene en hora argentina: no convertir *@
-                        @o.Fecha.ToString("dd/MM")<br />@o.Fecha.ToString("HH:mm")
-                    </div>
-                    <div class="cuerpo">
-                        <div class="quien">
-                            <b>@o.Comprador</b> · @o.Tipo
-                            @if (cuentas.Count > 1) { <text> · @o.Cuenta</text> }
-                            · <span class="@(o.EstadoClave == "cancelada" ? "om-cancel" : "")">@o.Estado</span>
-                        </div>
-                        @foreach (var p in o.Productos)
-                        {
-                            <div class="prod">
-                                @if (!string.IsNullOrEmpty(p.Foto))
-                                {
-                                    <img src="@p.Foto" alt="" loading="lazy" style="cursor: zoom-in;" title="Ver la foto en grande"
-                                         @onclick="() => zoomFoto = p.Foto" @onclick:stopPropagation="true" />
-                                }
-                                else { <span class="sinfoto"></span> }
-                                <span class="c">×@p.Cantidad</span>
-                                <span>@p.Titulo</span>
-                            </div>
-                        }
-                    </div>
-                    @if (o.NumeroEnvio.HasValue && o.EstadoClave != "cancelada")
-                    {
-                        <div class="impr" @onclick:stopPropagation="true">
-                            <BotonEtiquetaMeli Impresa="@o.EtiquetaImpresa" ImpresaAt="@o.EtiquetaImpresaAt"
-                                               Pendiente="@(o.EstadoClave == "despachar")" OnImprimir="() => Imprimir(o.NumeroEnvio!.Value)" />
-                        </div>
-                    }
-                </div>
+                <button class="om-chip @(cuenta == c.Id ? "on" : "")" @onclick="() => CambiarCuenta(c.Id)">@c.Nombre</button>
             }
         </div>
+    }
+    <div class="om-filtro">
+        <span class="lbl">Envío</span>
+        @foreach (var (k, l) in OpcionesEnvio)
+        {
+            <button class="om-chip @(envio == k ? "on" : "")" @onclick="() => envio = k">@l</button>
+        }
+    </div>
+    <div class="om-filtro">
+        <span class="lbl">Estado</span>
+        @foreach (var (k, l) in OpcionesEstado)
+        {
+            <button class="om-chip @(estado == k ? "on" : "")" @onclick="() => estado = k">@l</button>
+        }
+    </div>
+    <div class="om-filtro">
+        <span class="lbl">Buscar</span>
+        <input class="om-buscar" @bind="buscar" @bind:event="oninput" placeholder="comprador, producto o nº de venta" />
+    </div>
+</div>
+
+@* 2026-09-24: imprimir etiquetas MeLi desde el deposito (mismo endpoint que Ordenes). *@
+<div class="om-etiq">
+    <span class="lbl">Etiqueta</span>
+    @foreach (var (k, l, t) in FormatosEtiqueta)
+    {
+        <button class="om-chip @(etiquetaFormato == k ? "on" : "")" title="@t" @onclick="() => ElegirFormato(k)">@l</button>
+    }
+    @if (tildadas.Count > 0)
+    {
+        <button class="btn btn-primary btn-sm" @onclick="ImprimirTildadas">🖨️ Imprimir @tildadas.Count</button>
+        <button class="btn btn-secondary btn-sm" @onclick="() => tildadas.Clear()">Destildar</button>
+    }
+    else if (ParaImprimir.Count > 0)
+    {
+        <button class="btn btn-secondary btn-sm" @onclick="TildarSinImprimir">Tildar las @ParaImprimir.Count sin imprimir</button>
     }
 </div>
-<div class="om-col-ficha">
-@if (ficha is not null)
+
+@if (escaneadaFuera is not null)
 {
-    <div class="om-nav">
-        <button class="btn btn-secondary" @onclick="CerrarFicha">✕ Cerrar</button>
-        @if (fichaIndice >= 0)
-        {
-            <button class="btn btn-secondary" disabled="@(fichaIndice <= 0 || cargandoFicha)" @onclick="() => Mover(-1)">◀ Anterior</button>
-            <button class="btn btn-secondary" disabled="@(fichaIndice >= Filtradas.Count - 1 || cargandoFicha)" @onclick="() => Mover(1)">Siguiente ▶</button>
-            <span class="pos">@(fichaIndice + 1) de @Filtradas.Count</span>
-        }
-        @if (cargandoFicha) { <span class="pos">Cargando…</span> }
-        @if (ficha.NumeroEnvio.HasValue && ficha.Tipo != "Full" && ficha.Estado != "Cancelada")
-        {
-            <button class="btn btn-primary" @onclick="() => Imprimir(ficha.NumeroEnvio!.Value)">🖨️ Imprimir etiqueta</button>
-        }
+    <div class="om-vacio" style="margin-bottom:0.3rem;">Escaneado (no está en la lista con estos filtros):</div>
+    <div class="om-lista" style="margin-bottom:1rem;">
+        @Fila(OrdenDeFicha(escaneadaFuera))
     </div>
+}
 
-    <div class="om-ficha-head">
-        <div class="comprador">@(string.IsNullOrEmpty(ficha.Comprador) ? "Comprador" : ficha.Comprador)</div>
-        <div class="datos">
-            @ficha.Tipo · @ficha.Unidades u.
-            @if (!string.IsNullOrEmpty(ficha.Cuenta)) { <text> · @ficha.Cuenta</text> }
-            @if (ficha.Fecha.HasValue) { <text> · @ficha.Fecha.Value.ToString("dd/MM HH:mm")</text> }
-            · <span class="@(ficha.Estado == "Cancelada" ? "om-cancel" : "")">@ficha.Estado</span>
-            @if (ficha.NumeroVenta.HasValue) { <text> · venta @ficha.NumeroVenta</text> }
-        </div>
-    </div>
-
-    @foreach (var p in ficha.Productos)
-    {
-        <div class="om-prod">
-            @if (!string.IsNullOrEmpty(p.Foto))
-            {
-                <img class="foto" src="@p.Foto" alt="" @onclick="() => zoomFoto = p.Foto" />
-            }
-            else
-            {
-                <div class="foto sin">sin foto</div>
-            }
-            <div class="info">
-                <div class="cant">×@p.Cantidad</div>
-                <div class="tit">@p.Titulo</div>
-                @if (!string.IsNullOrEmpty(p.Sku)) { <div class="sku">@p.Sku</div> }
-                @if (p.EsCombo && p.Componentes.Count > 0)
-                {
-                    <div class="combo">
-                        <div class="h">Contiene</div>
-                        @foreach (var c in p.Componentes)
-                        {
-                            <div>
-                                <b>×@FmtCant(c.Cantidad)</b> @c.Nombre
-                                @if (!string.IsNullOrEmpty(c.Formato) && c.Formato != "UNIT") { <text> · @c.Formato</text> }
-                                @if (!string.IsNullOrEmpty(c.Sku)) { <span style="color:#64748b; font-family:monospace; font-size:0.85rem;"> (@c.Sku)</span> }
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        </div>
-    }
-
-    <div class="om-sec">
-        <h3>📩 Mensajes del comprador en esta venta</h3>
-        @if (!ficha.MensajesOk)
-        {
-            <div class="om-alerta">MercadoLibre no contestó, así que no sé si dejó mensajes. Probá de nuevo en un rato.</div>
-        }
-        else if (ficha.Mensajes.Count == 0)
-        {
-            <div class="om-vacio">No dejó mensajes.</div>
-        }
-        else
-        {
-            @foreach (var m in ficha.Mensajes)
-            {
-                var esComprador = m.De == "comprador";
-                <div class="om-msg @(esComprador ? "in" : "out")">
-                    <div class="meta">@(esComprador ? "Comprador" : "Nosotros")@(m.Fecha.HasValue ? " · " + m.Fecha.Value.ToArTime().ToString("dd/MM HH:mm") : "")</div>
-                    @m.Texto
-                </div>
-            }
-        }
-    </div>
-
-    <div class="om-sec">
-        <h3>❓ Preguntas que hizo (@ficha.Preguntas.Count)</h3>
-        @if (ficha.Preguntas.Count == 0)
-        {
-            <div class="om-vacio">No hizo preguntas.</div>
-        }
-        else
-        {
-            @foreach (var q in ficha.Preguntas)
-            {
-                <div class="om-preg">
-                    <div class="meta">
-                        @q.Fecha.ToArTime().ToString("dd/MM/yy")
-                        · @(q.DeEsteProducto ? "de este producto" : "otra publicación: " + (q.Producto ?? ""))
-                    </div>
-                    <div class="q">@q.Texto</div>
-                    @if (!string.IsNullOrEmpty(q.Respuesta))
-                    {
-                        <div class="a">↳ @q.Respuesta</div>
-                    }
-                    else
-                    {
-                        <div class="a">↳ sin responder</div>
-                    }
-                </div>
-            }
-        }
-    </div>
-
-    <div class="om-sec">
-        <h3>🛍️ Compras anteriores</h3>
-        @if (ficha.Compras.Count == 0)
-        {
-            <div class="om-vacio">Primera compra (no hay otras guardadas desde abril 2026).</div>
-        }
-        else
-        {
-            <div style="margin-bottom:0.4rem; font-size:0.92rem;">
-                Compró @ficha.Compras.Count @(ficha.Compras.Count == 1 ? "vez" : "veces") antes · la última @HaceCuanto(ficha.Compras[0].Fecha)
-            </div>
-            @foreach (var c in (verTodasCompras ? ficha.Compras : ficha.Compras.Take(10)))
-            {
-                <div class="om-compra">
-                    <span class="meta">@c.Fecha.ToString("dd/MM/yy")@(string.IsNullOrEmpty(c.Cuenta) ? "" : " · " + c.Cuenta) · </span>
-                    @string.Join(" + ", c.Productos.Select(x => $"×{x.Cantidad} {x.Titulo}"))
-                    <span class="meta @(c.Estado == "Cancelada" ? "om-cancel" : "")"> · @c.Estado</span>
-                </div>
-            }
-            @if (!verTodasCompras && ficha.Compras.Count > 10)
-            {
-                <button class="btn btn-secondary btn-sm" style="margin-top:0.5rem;" @onclick="() => verTodasCompras = true">Ver todas (@ficha.Compras.Count)</button>
-            }
-        }
-    </div>
+@if (cargando && ordenes.Count == 0)
+{
+    <div class="om-vacio">Cargando órdenes…</div>
+}
+else if (Filtradas.Count == 0)
+{
+    <div class="om-vacio">No hay órdenes con esos filtros.</div>
 }
 else
 {
-    <div class="om-ficha-vacia">Tocá un envío de la lista para verlo acá.</div>
+    <div class="om-vacio" style="margin-bottom:0.3rem;">
+        @Filtradas.Count @(Filtradas.Count == 1 ? "envío" : "envíos") · tocá una foto para verla en grande
+        @if (cargandoDetalles) { <span> · trayendo mensajes y notas de MeLi…</span> }
+    </div>
+    <div class="om-lista">
+        @foreach (var o in Filtradas)
+        {
+            @Fila(o)
+        }
+    </div>
 }
-</div>
-</div>
 
 @if (!string.IsNullOrEmpty(zoomFoto))
 {
@@ -379,6 +198,210 @@ else
 }
 
 @code {
+    /// <summary>Un renglón: datos del listado (siempre) + detalle de la ficha (cuando llega).</summary>
+    private RenderFragment Fila(MeliDepoOrden o) => __builder =>
+    {
+        fichas.TryGetValue(o.Numero, out var f);
+        var puedeImprimir = o.NumeroEnvio.HasValue && o.EstadoClave != "cancelada";
+        <div class="om-fila @(resaltada == o.Numero ? "resaltada" : "")" id="@($"fila-{o.Numero}")">
+            <div class="tilde">
+                @if (puedeImprimir)
+                {
+                    <input type="checkbox" checked="@tildadas.Contains(o.NumeroEnvio!.Value)"
+                           @onchange="() => Tildar(o.NumeroEnvio!.Value)" title="Tildar para imprimir varias juntas" />
+                }
+            </div>
+            @* la fecha de la venta YA viene en hora argentina: no convertir *@
+            <div class="cuando">@o.Fecha.ToString("dd/MM")<br />@o.Fecha.ToString("HH:mm")</div>
+
+            <div class="c-prod">
+                <div class="om-quien">
+                    <b>@o.Comprador</b> · @o.Tipo
+                    @if (!string.IsNullOrEmpty(o.Cuenta)) { <text> · @o.Cuenta</text> }
+                    · <span class="@(o.EstadoClave == "cancelada" ? "om-cancel" : "")">@o.Estado</span>
+                    @if (o.NumeroVenta > 0) { <text> · venta @o.NumeroVenta</text> }
+                </div>
+                @if (f is not null && f.Productos.Count > 0)
+                {
+                    @foreach (var p in f.Productos)
+                    {
+                        <div class="om-prod">
+                            @if (!string.IsNullOrEmpty(p.Foto)) { <img src="@p.Foto" alt="" loading="lazy" title="Ver la foto en grande" @onclick="() => zoomFoto = p.Foto" /> }
+                            else { <span class="sinfoto"></span> }
+                            <div>
+                                <div class="cant">×@p.Cantidad</div>
+                                <div class="tit">@p.Titulo</div>
+                                @if (!string.IsNullOrEmpty(p.Sku)) { <div class="sku">@p.Sku</div> }
+                                @if (p.EsCombo && p.Componentes.Count > 0)
+                                {
+                                    <div class="combo">
+                                        <div class="om-h">Contiene</div>
+                                        @foreach (var c in p.Componentes)
+                                        {
+                                            <div>
+                                                <b>×@FmtCant(c.Cantidad)</b> @c.Nombre
+                                                @if (!string.IsNullOrEmpty(c.Formato) && c.Formato != "UNIT") { <text> · @c.Formato</text> }
+                                                @if (!string.IsNullOrEmpty(c.Sku)) { <span class="sku"> (@c.Sku)</span> }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    @foreach (var p in o.Productos)
+                    {
+                        <div class="om-prod">
+                            @if (!string.IsNullOrEmpty(p.Foto)) { <img src="@p.Foto" alt="" loading="lazy" title="Ver la foto en grande" @onclick="() => zoomFoto = p.Foto" /> }
+                            else { <span class="sinfoto"></span> }
+                            <div><div class="cant">×@p.Cantidad</div><div class="tit">@p.Titulo</div></div>
+                        </div>
+                    }
+                }
+            </div>
+
+            @if (f is null)
+            {
+                <div class="c-msj om-gris">
+                    @if (fallidas.Contains(o.Numero))
+                    {
+                        <span class="om-alerta">No pude traer el detalle.</span>
+                        <button class="om-mas" @onclick="() => Reintentar(o.Numero)">Probar de nuevo</button>
+                    }
+                    else
+                    {
+                        <span>Trayendo mensajes, preguntas y notas…</span>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="c-msj">
+                    <div class="om-h">📩 Mensajes</div>
+                    @if (!f.MensajesOk) { <div class="om-alerta">MercadoLibre no contestó; no sé si dejó mensajes.</div> }
+                    else if (f.Mensajes.Count == 0) { <div class="om-gris">No dejó mensajes.</div> }
+                    else
+                    {
+                        var todos = verTodo.Contains(("msj", o.Numero));
+                        var lista = todos ? f.Mensajes : f.Mensajes.TakeLast(4).ToList();
+                        @if (!todos && f.Mensajes.Count > 4)
+                        {
+                            <button class="om-mas" @onclick='() => verTodo.Add(("msj", o.Numero))'>Ver los @f.Mensajes.Count mensajes</button>
+                        }
+                        @foreach (var m in lista)
+                        {
+                            var esComprador = m.De == "comprador";
+                            <div class="om-msg @(esComprador ? "" : "out")">
+                                <div class="meta">@(esComprador ? "Comprador" : "Nosotros")@(m.Fecha.HasValue ? " · " + m.Fecha.Value.ToArTime().ToString("dd/MM HH:mm") : "")</div>
+                                <div class="om-txt">@m.Texto</div>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <div class="c-preg">
+                    <div class="om-h">❓ Preguntas (@f.Preguntas.Count)</div>
+                    @if (f.Preguntas.Count == 0) { <div class="om-gris">No hizo preguntas.</div> }
+                    else
+                    {
+                        var todas = verTodo.Contains(("preg", o.Numero));
+                        @foreach (var q in (todas ? f.Preguntas : f.Preguntas.Take(3)))
+                        {
+                            <div class="om-preg">
+                                <div class="om-meta">@q.Fecha.ToArTime().ToString("dd/MM/yy") · @(q.DeEsteProducto ? "de este producto" : "otra publicación: " + (q.Producto ?? ""))</div>
+                                <div>@q.Texto</div>
+                                <div class="a">↳ @(string.IsNullOrEmpty(q.Respuesta) ? "sin responder" : q.Respuesta)</div>
+                            </div>
+                        }
+                        @if (!todas && f.Preguntas.Count > 3)
+                        {
+                            <button class="om-mas" @onclick='() => verTodo.Add(("preg", o.Numero))'>Ver las @f.Preguntas.Count preguntas</button>
+                        }
+                    }
+                </div>
+
+                <div class="c-comp">
+                    <div class="om-h">🛍️ Compras anteriores</div>
+                    @if (f.Compras.Count == 0) { <div class="om-gris">Primera compra (no hay otras guardadas desde abril 2026).</div> }
+                    else
+                    {
+                        var todas = verTodo.Contains(("comp", o.Numero));
+                        <div style="margin-bottom:0.25rem;">Compró @f.Compras.Count @(f.Compras.Count == 1 ? "vez" : "veces") antes · la última @HaceCuanto(f.Compras[0].Fecha)</div>
+                        @foreach (var c in (todas ? f.Compras : f.Compras.Take(2)))
+                        {
+                            <div class="om-compra">
+                                <span class="om-meta">@c.Fecha.ToString("dd/MM/yy")@(string.IsNullOrEmpty(c.Cuenta) ? "" : " · " + c.Cuenta) · </span>
+                                @string.Join(" + ", c.Productos.Select(x => $"×{x.Cantidad} {x.Titulo}"))
+                                <span class="om-meta @(c.Estado == "Cancelada" ? "om-cancel" : "")"> · @c.Estado</span>
+                            </div>
+                        }
+                        @if (!todas && f.Compras.Count > 2)
+                        {
+                            <button class="om-mas" @onclick='() => verTodo.Add(("comp", o.Numero))'>+ @(f.Compras.Count - 2) más</button>
+                        }
+                    }
+                </div>
+
+                <div class="c-notas">
+                    <div class="om-h">📝 Notas en MeLi</div>
+                    @if (!f.NotasOk) { <div class="om-alerta">MercadoLibre no contestó las notas.</div> }
+                    else if (f.Notas.Count == 0) { <div class="om-gris">Sin notas.</div> }
+                    else
+                    {
+                        @foreach (var n in f.Notas)
+                        {
+                            <div class="om-nota">
+                                @if (n.Fecha.HasValue) { <div class="om-meta">@n.Fecha.Value.ToArTime().ToString("dd/MM HH:mm")</div> }
+                                <div class="om-txt">@n.Texto</div>
+                            </div>
+                        }
+                    }
+
+                    <div class="om-h" style="margin-top:0.5rem;">🟨 Post-its nuestros</div>
+                    @foreach (var pi in f.Postits)
+                    {
+                        var col = ColorPostit(pi.Color);
+                        <div class="om-postit" style="background:@col.Bg; border-left-color:@col.Borde;">
+                            <button class="x" title="Sacar este post-it" @onclick="() => BorrarPostit(o.Numero, pi)">✕</button>
+                            <div class="om-txt">@pi.Texto</div>
+                            <div class="om-meta">@(string.IsNullOrEmpty(pi.CreadoPor) ? "" : pi.CreadoPor + " · ")@pi.CreatedAt.ToArTime().ToString("dd/MM HH:mm")</div>
+                        </div>
+                    }
+                    @if (postitAbierto == o.Numero)
+                    {
+                        <div class="om-postit-form">
+                            <textarea @bind="postitTexto" @bind:event="oninput" placeholder="Escribí el post-it…"></textarea>
+                            <div class="om-colores">
+                                @foreach (var c in ColoresPostit)
+                                {
+                                    var cc = ColorPostit(c);
+                                    <button class="@(postitColor == c ? "on" : "")" style="background:@cc.Bg;" title="@c" @onclick="() => postitColor = c"></button>
+                                }
+                            </div>
+                            <button class="btn btn-primary btn-sm" disabled="@guardandoPostit" @onclick="() => GuardarPostit(o.Numero)">Pegar</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="() => postitAbierto = null">Cancelar</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <button class="om-mas" @onclick="() => AbrirPostit(o.Numero)">+ Post-it</button>
+                    }
+                </div>
+            }
+
+            <div class="impr">
+                @if (puedeImprimir)
+                {
+                    <BotonEtiquetaMeli Impresa="@o.EtiquetaImpresa" ImpresaAt="@o.EtiquetaImpresaAt"
+                                       Pendiente="@(o.EstadoClave == "despachar")" OnImprimir="() => Imprimir(o.NumeroEnvio!.Value)" />
+                }
+            </div>
+        </div>
+    };
+
     private static readonly (int, string)[] OpcionesDias = { (1, "Hoy"), (2, "Hoy y ayer"), (7, "7 días"), (30, "30 días") };
     private static readonly (string?, string)[] OpcionesEnvio = { (null, "Todos"), ("flex", "Flex"), ("correo", "Correo"), ("full", "Full") };
     private static readonly (string?, string)[] OpcionesEstado = { (null, "Todos"), ("despachar", "Para despachar"), ("camino", "En camino"), ("entregada", "Entregadas"), ("cancelada", "Canceladas") };
@@ -442,12 +465,19 @@ else
     private string? envio;
     private string? estado;
     private string buscar = "";
-
-    private MeliDepoFicha? ficha;
-    private int fichaIndice = -1;   // posición en Filtradas; -1 = vino de un escaneo y no está en la lista
-    private bool cargandoFicha;
-    private bool verTodasCompras;
     private string? zoomFoto;
+
+    // ── Detalle por renglón (la antigua ficha), se trae de a poco y queda guardado mientras la página está abierta.
+    private readonly Dictionary<long, MeliDepoFicha> fichas = new();
+    private readonly HashSet<long> pedidas = new();
+    private readonly HashSet<long> fallidas = new();
+    private readonly HashSet<(string, long)> verTodo = new();
+    private bool cargandoDetalles;
+    private bool cerrada;
+    private const int MaxDetallesAuto = 150;   // con "30 días" pueden ser cientos: los primeros se traen solos
+
+    private long? resaltada;                    // envío escaneado (o llegado por ?orden=)
+    private MeliDepoFicha? escaneadaFuera;      // escaneado que no está en la lista con los filtros actuales
 
     /// <summary>Envío, estado y buscar se filtran acá (sin volver a pedir): la lista de "Hoy y ayer"
     /// ya viene entera. Fecha y cuenta sí vuelven a pedir.</summary>
@@ -466,21 +496,6 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // 2026-09-24: con pantalla ancha la mitad derecha no queda vacía: se abre sola el primer envío
-        // (sin tocar la dirección, así Volver sigue funcionando igual). En pantalla angosta no, porque
-        // ahí la ficha tapa el listado.
-        if (!autoAbrirIntentado && !cargando && ordenes.Count > 0 && ficha is null && Orden is null)
-        {
-            autoAbrirIntentado = true;
-            try
-            {
-                var ancho = await JS.InvokeAsync<int>("eval", "window.innerWidth");
-                var lista = Filtradas;
-                if (ancho > 1100 && lista.Count > 0) { await CargarFicha(lista[0].Numero); StateHasChanged(); }
-            }
-            catch { }
-        }
-
         if (firstRender)
         {
             try
@@ -491,6 +506,50 @@ else
             catch { }
             try { await scanRef.FocusAsync(); } catch { }
         }
+        // Cada vez que cambia lo que se ve (filtros, lista nueva), completar los detalles que falten.
+        if (!cargandoDetalles && Filtradas.Take(MaxDetallesAuto).Any(o => !pedidas.Contains(o.Numero)))
+            _ = CargarDetalles();
+    }
+
+    /// <summary>Trae el detalle de los renglones que faltan, de a 4, redibujando a medida que llegan.</summary>
+    private async Task CargarDetalles()
+    {
+        if (cargandoDetalles) return;
+        cargandoDetalles = true;
+        try
+        {
+            while (!cerrada)
+            {
+                var faltan = Filtradas.Take(MaxDetallesAuto).Select(o => o.Numero)
+                    .Where(n => !pedidas.Contains(n)).Distinct().Take(4).ToList();
+                if (faltan.Count == 0) break;
+                foreach (var n in faltan) pedidas.Add(n);
+                await Task.WhenAll(faltan.Select(TraerDetalle));
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        finally
+        {
+            cargandoDetalles = false;
+            if (!cerrada) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task TraerDetalle(long numero)
+    {
+        try
+        {
+            var f = await Api.GetMeliDepoFichaAsync(numero);
+            if (f is not null && f.Ok) { fichas[numero] = f; fallidas.Remove(numero); }
+            else fallidas.Add(numero);
+        }
+        catch { fallidas.Add(numero); }
+    }
+
+    private async Task Reintentar(long numero)
+    {
+        fallidas.Remove(numero);
+        await TraerDetalle(numero);
     }
 
     private async Task Cargar()
@@ -527,16 +586,8 @@ else
         try
         {
             var r = await Api.EscanearMeliDepoAsync(code);
-            if (r is not null && r.Ok)
-            {
-                MostrarFicha(r, Filtradas.FindIndex(o => o.Numero == r.Numero));
-                // escanear con una ficha ya abierta la reemplaza: Volver sigue yendo al listado
-                IrAFicha(r.Numero, reemplazar: Orden is not null);
-            }
-            else
-            {
-                ToastService.Error(r?.Mensaje ?? "No pude leer esa etiqueta");
-            }
+            if (r is not null && r.Ok) await Marcar(r);
+            else ToastService.Error(r?.Mensaje ?? "No pude leer esa etiqueta");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally
@@ -548,80 +599,93 @@ else
         }
     }
 
-    // 2026-09-21: la ficha abierta va en la dirección (?orden=N). Así "← Volver" y el atrás del
-    // navegador vuelven al LISTADO en vez de saltar al armado. Anterior/Siguiente reemplazan la
-    // dirección (no apilan), para que Volver lleve siempre derecho al listado.
+    /// <summary>Marca en azul el envío escaneado y lo lleva a la vista. Si no está en la lista
+    /// (otro día, otro filtro), se muestra arriba de todo.</summary>
+    private async Task Marcar(MeliDepoFicha f)
+    {
+        fichas[f.Numero] = f;
+        pedidas.Add(f.Numero);
+        resaltada = f.Numero;
+        escaneadaFuera = Filtradas.Any(o => o.Numero == f.Numero) ? null : f;
+        StateHasChanged();
+        await Task.Delay(50);
+        try { await JS.InvokeVoidAsync("eval", $"document.getElementById('fila-{f.Numero}')?.scrollIntoView({{block:'center', behavior:'smooth'}})"); } catch { }
+    }
+
+    // Links viejos con ?orden=N (antes abrían la ficha): ahora marcan ese renglón.
     [SupplyParameterFromQuery(Name = "orden")] public long? Orden { get; set; }
-    private const string BaseUrl = "/deposito/ordenes-meli";
-    private bool fichaApilada;
-    private bool autoAbrirIntentado;   // true = la abrimos desde esta página (hay un paso atrás que es el listado)
 
     protected override async Task OnParametersSetAsync()
     {
-        if (Orden is null)
-        {
-            if (ficha is not null) { ficha = null; fichaIndice = -1; fichaApilada = false; }
-            return;
-        }
-        if (ficha?.Numero == Orden) return;   // ya está mostrada (p. ej. recién escaneada)
-        await CargarFicha(Orden.Value);
-    }
-
-    private async Task CargarFicha(long numero)
-    {
-        cargandoFicha = true;
-        StateHasChanged();
+        if (Orden is null || resaltada == Orden) return;
         try
         {
-            var r = await Api.GetMeliDepoFichaAsync(numero);
-            if (r is not null && r.Ok) MostrarFicha(r, Filtradas.FindIndex(o => o.Numero == r.Numero));
-            else ToastService.Error(r?.Mensaje ?? "No pude abrir esa orden");
+            var f = await Api.GetMeliDepoFichaAsync(Orden.Value);
+            if (f is not null && f.Ok) await Marcar(f);
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { cargandoFicha = false; }
+        catch { }
     }
 
-    private void IrAFicha(long numero, bool reemplazar)
+    /// <summary>Renglón armado solo con la ficha (para el escaneado que no está en la lista).</summary>
+    private static MeliDepoOrden OrdenDeFicha(MeliDepoFicha f) => new()
     {
-        if (!reemplazar) fichaApilada = true;
-        Nav.NavigateTo($"{BaseUrl}?orden={numero}", replace: reemplazar);
+        Numero = f.Numero,
+        NumeroVenta = f.NumeroVenta ?? 0,
+        NumeroEnvio = f.Tipo == "Full" ? null : f.NumeroEnvio,
+        Fecha = f.Fecha ?? DateTime.MinValue,
+        Cuenta = f.Cuenta ?? "",
+        Comprador = f.Comprador ?? "",
+        Tipo = f.Tipo ?? "",
+        Estado = f.Estado ?? "",
+        EstadoClave = f.Estado == "Cancelada" ? "cancelada" : f.Estado == "Para despachar" ? "despachar" : "",
+        Unidades = f.Unidades,
+        Productos = f.Productos.Select(p => new MeliDepoOrdenProducto { Titulo = p.Titulo, Cantidad = p.Cantidad, Foto = p.Foto }).ToList()
+    };
+
+    // ── Post-its nuestros por envío (tabla Postits, scope "meli-envio:N").
+    private static readonly string[] ColoresPostit = { "amarillo", "rosa", "verde", "azul", "naranja" };
+    private static (string Bg, string Borde) ColorPostit(string c) => c switch
+    {
+        "rosa" => ("#fce7f3", "#ec4899"),
+        "verde" => ("#dcfce7", "#10b981"),
+        "azul" => ("#dbeafe", "#3b82f6"),
+        "naranja" => ("#ffedd5", "#f97316"),
+        _ => ("#fef9c3", "#eab308")
+    };
+    private long? postitAbierto;
+    private string postitTexto = "";
+    private string postitColor = "amarillo";
+    private bool guardandoPostit;
+
+    private void AbrirPostit(long numero) { postitAbierto = numero; postitTexto = ""; postitColor = "amarillo"; }
+
+    private async Task GuardarPostit(long numero)
+    {
+        if (string.IsNullOrWhiteSpace(postitTexto)) { ToastService.Error("Escribí algo en el post-it"); return; }
+        guardandoPostit = true;
+        try
+        {
+            var p = await Api.CreatePostitAsync(new CreatePostitRequest
+            {
+                Texto = postitTexto, Color = postitColor, CreadoPor = Operator.Current, Scope = $"meli-envio:{numero}"
+            });
+            if (p is not null && fichas.TryGetValue(numero, out var f)) f.Postits.Add(p);
+            postitAbierto = null;
+        }
+        catch (Exception ex) { ToastService.Error("No pude pegar el post-it: " + ex.Message); }
+        finally { guardandoPostit = false; }
     }
 
-    private void AbrirDelListado(int idx)
+    private async Task BorrarPostit(long numero, PostitDto p)
     {
-        var lista = Filtradas;
-        if (idx < 0 || idx >= lista.Count) return;
-        fichaIndice = idx;
-        // con la ficha al costado se va saltando de una a otra: reemplazar, así Cerrar vuelve al listado
-        IrAFicha(lista[idx].Numero, reemplazar: Orden is not null);
-    }
-
-    private void MostrarFicha(MeliDepoFicha f, int idx)
-    {
-        ficha = f;
-        fichaIndice = idx;
-        verTodasCompras = false;
-    }
-
-    private void Mover(int delta)
-    {
-        var lista = Filtradas;
-        // si cambiaron los filtros con la ficha abierta, ubicarla de nuevo en la lista
-        var actual = ficha is null ? -1 : lista.FindIndex(o => o.Numero == ficha.Numero);
-        var idx = (actual >= 0 ? actual : fichaIndice) + delta;
-        if (idx < 0 || idx >= lista.Count) return;
-        fichaIndice = idx;
-        IrAFicha(lista[idx].Numero, reemplazar: true);
-    }
-
-    private async Task CerrarFicha()
-    {
-        // Abierta sola al entrar (sin ?orden en la dirección): solo se cierra.
-        if (Orden is null) { ficha = null; fichaIndice = -1; }
-        // Si la abrimos desde acá, el paso anterior es el listado: volvemos como el navegador.
-        else if (fichaApilada) { try { await JS.InvokeVoidAsync("history.back"); } catch { Nav.NavigateTo(BaseUrl); } }
-        else Nav.NavigateTo(BaseUrl, replace: true);
-        try { await scanRef.FocusAsync(); } catch { }
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", "¿Sacar este post-it?"); } catch { ok = false; }
+        if (!ok) return;
+        try
+        {
+            if (await Api.DeletePostitAsync(p.Id) && fichas.TryGetValue(numero, out var f)) f.Postits.Remove(p);
+        }
+        catch (Exception ex) { ToastService.Error("No pude sacarlo: " + ex.Message); }
     }
 
     private static string FmtCant(decimal c) => c == Math.Floor(c) ? ((long)c).ToString() : c.ToString("0.##");
@@ -635,4 +699,6 @@ else
         if (dias < 60) return $"hace {dias} días";
         return $"hace {dias / 30} meses";
     }
+
+    public void Dispose() => cerrada = true;
 }
