@@ -21,7 +21,7 @@
             <span style="color:#b45309; font-weight:600;">· ⚠ no estaba acá</span>
         }
     </span>
-    @if (puedeEditar && !dudoso)
+    @if (puedeEditar && !dudoso && OfrecerNoEsta)
     {
         <button type="button" @onclick="NoEsta" @onclick:stopPropagation="true" disabled="@guardando"
                 title="Fuiste a buscarlo y no estaba: queda marcado para revisar"
@@ -62,6 +62,8 @@ else if (puedeEditar)
     [Parameter] public bool Editable { get; set; }
     [Parameter] public string Tamano { get; set; } = "0.78rem";
     [Parameter] public EventCallback OnCambio { get; set; }
+    /// <summary>false = no muestra "no está acá" (ej. el listado de Productos de la oficina, donde nadie fue a buscarlo).</summary>
+    [Parameter] public bool OfrecerNoEsta { get; set; } = true;
 
     private static readonly (string, string)[] Plantas = { ("PB", "PB"), ("P1", "P1"), ("OTRO", "Otro depósito") };
 

@@ -207,15 +207,15 @@
                                     {
                                         <div style="font-size: 0.7rem; color: #9ca3af; font-family: monospace;">cod: @p.Barcode</div>
                                     }
-                                    @* 2026-09-24: dónde está en el depósito (solo si tiene lugar; naranja si "no estaba acá") *@
-                                    @if (lugares.TryGetValue(p.Id, out var lug))
+                                    @* 2026-09-24: dónde está en el depósito. Si no tiene, "📍 agregar lugar" abre los
+                                       botones PB / P1 / Otro depósito ahí mismo (naranja si "no estaba acá"). *@
+                                    @* Los combos (EsCompuestoFake) viven en otra tabla: su Id no es de un producto. *@
+                                    @if (!p.EsCompuestoFake)
                                     {
-                                        <div style="font-size: 0.75rem; color: #6b7280;">
-                                            📍 @lug.Lugar
-                                            @if (lug.DudosaAt is not null)
-                                            {
-                                                <span style="color:#b45309;"> · ⚠ no estaba acá</span>
-                                            }
+                                        lugares.TryGetValue(p.Id, out var lug);
+                                        <div>
+                                            <LugarProducto ProductoId="p.Id" Lugar="@lug?.Lugar" Dudoso="@(lug?.DudosaAt is not null)"
+                                                           Editable="true" OfrecerNoEsta="false" Tamano="0.75rem" OnCambio="LoadLugares" />
                                         </div>
                                     }
                                     @if (!string.IsNullOrEmpty(p.Notas))
