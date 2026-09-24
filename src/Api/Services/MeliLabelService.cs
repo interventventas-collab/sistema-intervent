@@ -28,10 +28,12 @@ public class MeliLabelService
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpFactory;
     private readonly MeliAccountService _accountService;
+    private readonly MeliEtiquetaMe1Service _me1;
 
-    public MeliLabelService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService)
+    public MeliLabelService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService,
+        MeliEtiquetaMe1Service me1)
     {
-        _db = db; _httpFactory = httpFactory; _accountService = accountService;
+        _db = db; _httpFactory = httpFactory; _accountService = accountService; _me1 = me1;
     }
 
     /// <summary>Pdf = el archivo (PDF, o .txt ZPL si EsZpl).</summary>
@@ -47,7 +49,7 @@ public class MeliLabelService
         // Mapear cada envio (ShippingId) a su cuenta MeLi, para saber con que token pedirlo.
         var mapa = await _db.MeliOrders
             .Where(o => o.ShippingId != null && shipmentIds.Contains(o.ShippingId.Value))
-            .Select(o => new { ShipId = o.ShippingId!.Value, o.MeliAccountId })
+            .Select(o => new { ShipId = o.ShippingId!.Value, o.MeliAccountId, EsMe1 = o.ShippingMode == "me1" })
             .Distinct()
             .ToListAsync();
 
@@ -62,7 +64,23 @@ public class MeliLabelService
         // Cada etiqueta suelta: de que PDF sale, que pagina y que rectangulo de esa pagina.
         var piezas = new List<Pieza>();
 
-        foreach (var grupo in mapa.GroupBy(x => x.MeliAccountId))
+        // 2026-09-24: los ME1 los despachamos nosotros y MeLi no da etiqueta: se arma la NUESTRA
+        // (MeliEtiquetaMe1Service), en ZPL para la térmica directa o en PDF para el resto.
+        var me1 = mapa.Where(x => x.EsMe1).Select(x => x.ShipId).Distinct().ToList();
+        if (me1.Count > 0)
+        {
+            var (datos, errMe1) = await _me1.ArmarAsync(me1);
+            errores.AddRange(errMe1);
+            var contacto = await _me1.ContactoAsync();
+            foreach (var d in datos)
+            {
+                if (esTermica) zpl.Append(_me1.Zpl(d, contacto));
+                else piezas.Add(new Pieza(_me1.Pdf(d, contacto), 1, 0, 0, TermicaAncho, TermicaAlto));
+            }
+            await AnotarImpresionAsync(datos.Select(d => d.Envio).ToArray());
+        }
+
+        foreach (var grupo in mapa.Where(x => !x.EsMe1).GroupBy(x => x.MeliAccountId))
         {
             var account = await _db.MeliAccounts.FindAsync(grupo.Key);
             if (account is null) { errores.Add($"Cuenta {grupo.Key} no encontrada."); continue; }

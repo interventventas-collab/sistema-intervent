@@ -350,6 +350,7 @@ builder.Services.AddScoped<Api.Controllers.CafeClientesController>();
 builder.Services.AddScoped<VentaAvisoWhatsAppService>();
 builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliLabelService>();
+builder.Services.AddScoped<MeliEtiquetaMe1Service>();   // 2026-09-24: etiqueta propia de los envíos ME1
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();
 builder.Services.AddScoped<MeliShipmentService>();
