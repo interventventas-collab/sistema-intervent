@@ -2530,7 +2530,7 @@
                                 <thead>
                                     <tr>
                                         <th style="width: 70px; text-align: right;">Cant.</th>
-                                        <th style="width: 90px;">Formato</th>
+                                        <th style="width: 130px;">Formato</th>
                                         <th>Producto</th>
                                         <th style="width: 130px; text-align: right;">P. Unit.</th>
                                         <th style="width: 90px; text-align: right;">Desc %</th>
@@ -2681,10 +2681,10 @@
                                                 @if (fmtEditable)
                                                 {
                                                     <select class="form-input"
-                                                            style="padding:0.15rem 0.4rem; font-size:0.82rem; font-family:Georgia,serif; font-style:italic; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; color:#4b5563; max-width:135px;"
+                                                            style="padding:0.15rem 0.4rem; font-size:0.82rem; font-family:Georgia,serif; font-style:italic; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; color:#4b5563; width:100%; min-width:120px; max-width:170px;"
                                                             value="@ci.Formato"
                                                             @onchange="@(e => OnItemFormatoChanged(i, e.Value?.ToString()))"
-                                                            title="Formato de venta. Al cambiarlo se recalcula el precio del catálogo (se pierde el precio manual si lo habías pisado).">
+                                                            title="@(FormatoParaMostrar(ci.ProductoId, ci.Formato)) — Formato de venta. Al cambiarlo se recalcula el precio del catálogo (se pierde el precio manual si lo habías pisado).">
                                                         @foreach (var opt in fmtOpts)
                                                         {
                                                             <option value="@opt.Value">@opt.Label</option>
@@ -2693,7 +2693,7 @@
                                                 }
                                                 else
                                                 {
-                                                    <span style="display:inline-block; padding:0.15rem 0.5rem; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; font-family:Georgia,serif; font-style:italic; font-size:0.85rem; color:#4b5563;">@FormatoParaMostrar(ci.ProductoId, ci.Formato)</span>
+                                                    <span title="@FormatoParaMostrar(ci.ProductoId, ci.Formato)" style="display:inline-block; max-width:170px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; padding:0.15rem 0.5rem; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; font-family:Georgia,serif; font-style:italic; font-size:0.85rem; color:#4b5563;">@FormatoParaMostrar(ci.ProductoId, ci.Formato)</span>
                                                 }
                                             </td>
                                             <td>
