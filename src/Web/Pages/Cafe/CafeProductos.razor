@@ -207,6 +207,17 @@
                                     {
                                         <div style="font-size: 0.7rem; color: #9ca3af; font-family: monospace;">cod: @p.Barcode</div>
                                     }
+                                    @* 2026-09-24: dónde está en el depósito (solo si tiene lugar; naranja si "no estaba acá") *@
+                                    @if (lugares.TryGetValue(p.Id, out var lug))
+                                    {
+                                        <div style="font-size: 0.75rem; color: #6b7280;">
+                                            📍 @lug.Lugar
+                                            @if (lug.DudosaAt is not null)
+                                            {
+                                                <span style="color:#b45309;"> · ⚠ no estaba acá</span>
+                                            }
+                                        </div>
+                                    }
                                     @if (!string.IsNullOrEmpty(p.Notas))
                                     {
                                         <div style="font-size: 0.78rem; color: #6b7280;">@p.Notas</div>
@@ -2003,18 +2014,36 @@
         var loadMarcas = LoadMarcasCatalog();
         var loadReglas = LoadReglasPrecios();
         var loadThumbs = LoadThumbnails();
+        var loadLugares = LoadLugares();
         var loadSettings = LoadSettings();
         await Load();
         await loadOems;
         await loadMarcas;
         await loadReglas;
         await loadThumbs;
+        await loadLugares;
         await loadSettings;
         // 2026-09-07: la cotizacion se busca APARTE y sin esperarla. Es un scraping al sitio del
         // BNA con 10s de timeout: si lo esperaramos aca, un dia que el BNA no conteste la pantalla
         // de productos tardaria 10 segundos de mas en abrir. Solo sirve para mostrar equivalencias,
         // asi que llega cuando llega y refrescamos.
         _ = LoadDolar();
+    }
+
+    // 2026-09-24: lugar en el depósito de cada producto, para mostrarlo abajo del nombre.
+    // Se piden solo los que tienen lugar (una vuelta por planta), no los 2.000 productos.
+    private Dictionary<int, UbicacionProductoDto> lugares = new();
+    private async Task LoadLugares()
+    {
+        try
+        {
+            var tareas = new[] { "PB", "P1", "OTRO" }.Select(pl => Api.GetUbicacionesProductosAsync(null, null, pl)).ToList();
+            var dic = new Dictionary<int, UbicacionProductoDto>();
+            foreach (var lista in await Task.WhenAll(tareas))
+                foreach (var u in lista ?? new()) if (u.Lugar is not null) dic[u.Id] = u;
+            lugares = dic;
+        }
+        catch { /* si falla, la lista se ve igual que antes, sin el lugar */ }
     }
 
     private async Task LoadThumbnails()
