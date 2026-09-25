@@ -767,4 +767,22 @@ public class ChequesUnificadoResponse
     public ChequesUniConteosDto Conteos { get; set; } = new();
     public ChequesUniResumenDto Resumen { get; set; } = new();
     public List<ChequeUniDto> Filas { get; set; } = new();
+    public ChequesUniCabeceraDto Cabecera { get; set; } = new();
+    public List<ChequesUniVtoDiaDto> Proximos { get; set; } = new();
+}
+
+public class ChequesUniCabeceraDto
+{
+    public int EnManoCant { get; set; }
+    public decimal EnManoImporte { get; set; }
+    public decimal VenceSemanaImporte { get; set; }
+    public int APagarCant { get; set; }
+    public decimal APagarImporte { get; set; }
+}
+
+public class ChequesUniVtoDiaDto
+{
+    public DateTime Fecha { get; set; }
+    public decimal Entra { get; set; }
+    public decimal Pago { get; set; }
 }

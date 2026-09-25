@@ -1761,6 +1761,12 @@ public class ApiClient
     }
     public record CountResultDto(int Count);
 
+    // 2026-09-25: "Plata que entró" — repartidores + transferencias + cheques en una sola lista.
+    public async Task<PlataResumenDto?> GetPlataResumenAsync()
+        => await GetAsync<PlataResumenDto>("/api/plata-que-entro/resumen");
+    public async Task<List<PlataItemDto>> GetPlataListaAsync(string tab = "por-volcar")
+        => await GetAsync<List<PlataItemDto>>($"/api/plata-que-entro?tab={Uri.EscapeDataString(tab)}") ?? new();
+
     // 2026-06-18: dropdown hover de la topbar — próximos cheques EMITIDOS por pagar.
     public record ChequeProximoDto(int Id, string Numero, DateTime? FechaPago, decimal Importe,
         string? ContraparteNombre, string? Motivo, string Estado);

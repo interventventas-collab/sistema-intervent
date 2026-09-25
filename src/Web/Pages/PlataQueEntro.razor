@@ -1,0 +1,285 @@
+@page "/plata-que-entro"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject OperatorService Operator
+@inject ToastService ToastService
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════════
+   2026-09-25 — "Plata que entró". Pedido del dueño: que cheques y transferencias entren como
+   aviso, igual que los cobros de los repartidores en la bolsita, "y las vamos volcando y de esa
+   forma no se pasa ninguna". Es la misma lista de la bolsita 💰, en grande:
+     Por volcar     → lo que llegó y todavía no es cobranza (botón a la cobranza de siempre, ya llena)
+     Volcados       → los últimos 7 días, con quién lo cargó y en qué cobranza (nadie cobra dos veces)
+     No eran cobros → transferencias apartadas (cuentas propias, devoluciones), se pueden devolver
+   Texto plano; el rojo es solo para lo que lleva más de 3 días sin volcar.
+   ════════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    .pqe-top { display:flex; align-items:baseline; gap:0.9rem; flex-wrap:wrap; }
+    .pqe-top h2 { margin:0; font-size:1.25rem; }
+    .pqe-top .d { color:#6b7280; font-size:0.86rem; }
+    .pqe-bar { display:flex; align-items:flex-end; gap:0.2rem; flex-wrap:wrap; border-bottom:1px solid #e5e7eb; margin:0.8rem 0 0.2rem; }
+    .pqe-tab { padding:0.45rem 0.8rem; border:none; background:none; cursor:pointer; font-size:0.9rem; color:#6b7280; border-bottom:2px solid transparent; }
+    .pqe-tab.on { color:#111827; font-weight:600; border-bottom-color:#111827; }
+    .pqe-tab .n { color:#9ca3af; font-weight:400; }
+    .pqe-fil { margin-left:auto; padding-bottom:0.45rem; font-size:0.86rem; }
+    .pqe-fil button { background:none; border:none; cursor:pointer; color:#6b7280; padding:0 0.15rem; font-size:0.86rem; }
+    .pqe-fil button.on { color:#111827; font-weight:600; text-decoration:underline; text-underline-offset:3px; }
+    .pqe-fil .sep { color:#d1d5db; margin:0 0.3rem; }
+    .pqe-t { width:100%; border-collapse:collapse; font-size:0.88rem; }
+    .pqe-t th { text-align:left; font-weight:400; font-size:0.76rem; color:#9ca3af; padding:0.6rem 0.4rem; }
+    .pqe-t td { padding:0.65rem 0.4rem; border-top:1px solid #f1f2f4; vertical-align:top; }
+    .pqe-t td.r, .pqe-t th.r { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .pqe-sub { font-size:0.76rem; color:#9ca3af; }
+    .pqe-rojo { color:#b91c1c; }
+    .pqe-btn { background:#111827; color:#fff; border:none; border-radius:7px; padding:0.3rem 0.8rem; font-size:0.8rem; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .pqe-lnk { background:none; border:none; padding:0 0.15rem; cursor:pointer; color:#6b7280; font-size:0.8rem; text-decoration:underline; text-underline-offset:2px; }
+    .pqe-lnk:hover { color:#111827; }
+    .pqe-acc { display:flex; gap:0.5rem; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
+    .pqe-busca { position:relative; margin-top:0.4rem; }
+    .pqe-busca input { width:100%; max-width:320px; }
+    .pqe-opc { position:absolute; z-index:20; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.08); max-width:360px; width:100%; }
+    .pqe-opc div { padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.84rem; }
+    .pqe-opc div:hover { background:#f9fafb; }
+</style>
+
+<div class="card">
+    <div class="card-body">
+        <div class="pqe-top">
+            <h2>Plata que entró</h2>
+            <span class="d">todo lo que llegó al negocio y todavía no está cargado como cobranza · el banco se revisa varias veces por día</span>
+        </div>
+
+        <div class="pqe-bar">
+            <button class="pqe-tab @(tab == "por-volcar" ? "on" : "")" @onclick='() => CambiarTab("por-volcar")'>Por volcar <span class="n">@(tab == "por-volcar" ? items.Count.ToString() : "")</span></button>
+            <button class="pqe-tab @(tab == "volcados" ? "on" : "")" @onclick='() => CambiarTab("volcados")'>Volcados <span class="n">últimos 7 días</span></button>
+            <button class="pqe-tab @(tab == "no-eran" ? "on" : "")" @onclick='() => CambiarTab("no-eran")'>No eran cobros</button>
+            <div class="pqe-fil">
+                @foreach (var (k, label) in Filtros)
+                {
+                    var kk = k;
+                    <button class="@(filtro == kk ? "on" : "")" @onclick="() => filtro = kk">@label</button>
+                    @if (k != "CHEQUES") { <span class="sep">·</span> }
+                }
+            </div>
+        </div>
+
+        @if (loading)
+        {
+            <p class="text-muted" style="padding:0.8rem 0;">Cargando...</p>
+        }
+        else if (Visibles.Count == 0)
+        {
+            <p class="text-muted" style="padding:0.8rem 0;">
+                @(tab == "por-volcar" ? "No hay nada por volcar. Todo lo que entró ya está cargado." : "No hay nada acá.")
+            </p>
+        }
+        else if (tab == "por-volcar")
+        {
+            <div style="overflow-x:auto;">
+            <table class="pqe-t">
+                <thead><tr><th style="width:9%;">Llegó</th><th style="width:22%;">Qué es</th><th style="width:18%;">De quién (según el banco)</th><th class="r" style="width:11%;">Cuánto</th><th>Es de…</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var it in Visibles)
+                    {
+                        var i = it;
+                        var url = PlataAcciones.Url(i);
+                        <tr>
+                            <td class="@(i.Dias > 3 ? "pqe-rojo" : "")">@PlataAcciones.Cuando(i)@if (i.Dias > 3) {<div style="font-size:0.76rem;">hace @i.Dias días</div>}</td>
+                            <td>@i.QueEs</td>
+                            <td>@(i.DeQuien ?? "—")</td>
+                            <td class="r">@PlataAcciones.Plata(i.Importe)</td>
+                            <td>
+                                @if (i.ClienteNombre is not null)
+                                {
+                                    @i.ClienteNombre
+                                    <div class="pqe-sub">
+                                        @i.PorQue
+                                        @if (i.Deuda is decimal d && d > 0) { <text>@(i.PorQue is null ? "" : " · ")debe @PlataAcciones.Plata(d)</text> }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="pqe-sub">no sé de qué cliente es</span>
+                                }
+                                @if (eligiendo == i.Key)
+                                {
+                                    <div class="pqe-busca">
+                                        <input class="form-input" placeholder="Buscar cliente por nombre o CUIT" @bind="busqCliente" @bind:event="oninput" />
+                                        @if (OpcionesCliente.Count > 0)
+                                        {
+                                            <div class="pqe-opc">
+                                                @foreach (var c in OpcionesCliente)
+                                                {
+                                                    var cli = c;
+                                                    <div @onclick="() => ElegirCliente(i, cli.Id)">@cli.Nombre <span class="pqe-sub">@cli.Cuit</span></div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (apartando == i.Key)
+                                {
+                                    <div class="pqe-sub" style="margin-top:0.35rem; color:#374151;">
+                                        ¿Qué es?
+                                        @foreach (var m in PlataAcciones.MotivosNoEsCobro)
+                                        {
+                                            var mot = m;
+                                            <button class="pqe-lnk" style="color:#111827;" @onclick="() => Apartar(i, mot)">@mot</button>
+                                        }
+                                        <button class="pqe-lnk" @onclick="() => apartando = null">cancelar</button>
+                                    </div>
+                                }
+                            </td>
+                            <td>
+                                <div class="pqe-acc">
+                                    @if (url is not null)
+                                    {
+                                        <button class="pqe-btn" @onclick="() => Navigation.NavigateTo(url)">@PlataAcciones.Boton(i)</button>
+                                    }
+                                    @if (i.Tipo == "TRANSFERENCIA")
+                                    {
+                                        <button class="pqe-lnk" @onclick="() => AbrirElegir(i)">@(i.ClienteId is null ? "elegir cliente" : "otro cliente")</button>
+                                        <button class="pqe-lnk" @onclick="() => { apartando = i.Key; eligiendo = null; }">no es cobro</button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            </div>
+            <div class="pqe-sub" style="margin-top:0.6rem;">
+                @Visibles.Count @(Visibles.Count == 1 ? "renglón" : "renglones") · @PlataAcciones.Plata(Visibles.Sum(i => i.Importe))
+                · "cobrar" y "volcar" abren la cobranza de siempre ya llena: se guarda ahí.
+            </div>
+        }
+        else
+        {
+            <div style="overflow-x:auto;">
+            <table class="pqe-t">
+                <thead><tr><th style="width:12%;">@(tab == "volcados" ? "Cargado" : "Apartado")</th><th style="width:26%;">Qué era</th><th class="r" style="width:12%;">Cuánto</th><th>@(tab == "volcados" ? "Quién · en qué cobranza" : "Por qué")</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var it in Visibles)
+                    {
+                        var i = it;
+                        <tr>
+                            <td>@(i.Cuando.HasValue ? FechaAr(i.Cuando.Value) : "—")</td>
+                            <td>@i.QueEs<div class="pqe-sub">@(i.ClienteNombre ?? i.DeQuien)</div></td>
+                            <td class="r">@PlataAcciones.Plata(i.Importe)</td>
+                            <td class="pqe-sub" style="font-size:0.84rem;">
+                                @if (tab == "volcados")
+                                {
+                                    <text>cargó @(string.IsNullOrWhiteSpace(i.Quien) ? "—" : i.Quien)@(i.CobranzaNumero is null ? "" : $" → cobranza {i.CobranzaNumero}")</text>
+                                }
+                                else
+                                {
+                                    <text>@i.Motivo@(string.IsNullOrWhiteSpace(i.Quien) ? "" : $" · {i.Quien}")</text>
+                                }
+                            </td>
+                            <td style="text-align:right;">
+                                @if (i.PuedeDeshacer)
+                                {
+                                    <button class="pqe-lnk" @onclick="() => Devolver(i)" title="Vuelve a Por volcar">era un cobro</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string tab = "por-volcar";
+    private string filtro = "TODO";
+    private bool loading = true;
+    private List<PlataItemDto> items = new();
+    private string? apartando, eligiendo;
+    private string busqCliente = "";
+    private List<CafeClienteDto>? clientes;
+
+    private static readonly (string, string)[] Filtros =
+        { ("TODO", "Todo"), ("REPARTIDORES", "Repartidores"), ("TRANSFERENCIAS", "Transferencias"), ("CHEQUES", "Cheques") };
+
+    private List<PlataItemDto> Visibles => items.Where(i => filtro switch
+    {
+        "REPARTIDORES" => i.Tipo is "REPARTIDOR" or "ALQ_REPARTIDOR",
+        "TRANSFERENCIAS" => i.Tipo == "TRANSFERENCIA",
+        "CHEQUES" => i.Tipo is "ECHEQ" or "CHEQUE",
+        _ => true
+    }).ToList();
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try { items = await Api.GetPlataListaAsync(tab); }
+        catch (Exception ex) { ToastService.Error("No pude traer la lista: " + ex.Message); items = new(); }
+        finally { loading = false; }
+    }
+
+    private async Task CambiarTab(string t)
+    {
+        tab = t; apartando = null; eligiendo = null;
+        await Load();
+    }
+
+    private static string FechaAr(DateTime d)
+    {
+        var ar = d.TimeOfDay == TimeSpan.Zero ? d : d.AddHours(-3);
+        return ar.Date == DateTime.UtcNow.AddHours(-3).Date ? $"hoy {ar:HH:mm}" : ar.ToString("dd/MM HH:mm");
+    }
+
+    private async Task AbrirElegir(PlataItemDto i)
+    {
+        eligiendo = eligiendo == i.Key ? null : i.Key;
+        apartando = null; busqCliente = "";
+        if (eligiendo is not null) clientes ??= await Api.GetCafeClientesAsync() ?? new();
+    }
+
+    private List<CafeClienteDto> OpcionesCliente
+    {
+        get
+        {
+            var q = (busqCliente ?? "").Trim();
+            if (q.Length < 2 || clientes is null) return new();
+            var dig = new string(q.Where(char.IsDigit).ToArray());
+            return clientes.Where(c => c.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || (dig.Length >= 4 && new string((c.Cuit ?? "").Where(char.IsDigit).ToArray()).Contains(dig)))
+                .OrderBy(c => c.Nombre.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(c => c.Nombre)
+                .Take(8).ToList();
+        }
+    }
+
+    private void ElegirCliente(PlataItemDto i, int clienteId)
+    {
+        var url = PlataAcciones.Url(i, clienteId);
+        if (url is not null) Navigation.NavigateTo(url);
+    }
+
+    private async Task Apartar(PlataItemDto i, string motivo)
+    {
+        if (await Api.IgnorarMovimientoExtractoAsync(i.Id, motivo, Operator.Current))
+        {
+            items.Remove(i); apartando = null;
+            ToastService.Success("Apartada. Está en \"No eran cobros\" por si te equivocaste.");
+        }
+        else ToastService.Error("No pude apartarla");
+    }
+
+    private async Task Devolver(PlataItemDto i)
+    {
+        if (await Api.DesignorarMovimientoExtractoAsync(i.Id))
+        {
+            items.Remove(i);
+            ToastService.Success("Volvió a \"Por volcar\"");
+        }
+        else ToastService.Error("No pude devolverla");
+    }
+}
