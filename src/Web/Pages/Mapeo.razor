@@ -1630,10 +1630,14 @@
                 </div>
                 @* 2026-09-24: "Pendientes": lista de ventas + alquileres sin entregar con su estado.
                    Se tildan y se suman al mapa. El número = los que todavía no están en el mapa de este día. *@
+                @* 2026-09-25: pedido del dueño: que diga "Órdenes sistema pendientes", con ícono de PC y que
+                   se diferencie de los de MeLi → rayita arriba + celeste (salvo cuando está abierto). *@
+                <div style="height:1px; background:rgba(255,255,255,0.14); margin:4px 10px;"></div>
                 <button class="mapeo-dock-btn @(showPendientes ? "activo" : "")" @onclick="TogglePendientes"
-                        title="Ventas y alquileres que faltan entregar: tildalos y se suman al mapa">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
-                    <span class="mapeo-dock-label">Pendientes · @PendientesFueraDelMapaN</span>
+                        style="@(showPendientes ? null : "color:#7dd3fc;")"
+                        title="Ventas y alquileres cargados en el sistema que faltan entregar: tildalos y se suman al mapa">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                    <span class="mapeo-dock-label">Órdenes sistema pendientes · @PendientesFueraDelMapaN</span>
                 </button>
                 }
                 @* ═══════════ 2do · Armar la ruta ═══════════
