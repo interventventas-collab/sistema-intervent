@@ -148,7 +148,12 @@ public class CafeChequesUnificadoController : ControllerBase
                 // Un e-cheq del banco todavia no es un cheque "del sistema", pero la pantalla ofrece
                 // las mismas acciones: antes de ejecutarlas lo trae a cartera (traer-a-cartera).
                 // Asi el usuario no tiene que imputarselo a un cliente solo para poder endosarlo.
-                PuedeImputar: v == EN_MANO,
+                // 2026-09-25: tambien el que el banco ya muestra usado sin haber pasado por una
+                // cobranza (se cobro o endoso el mismo dia que llego). Solo los de los ultimos
+                // 60 dias: los de antes de mayo son historia y se cobraron por el sistema viejo.
+                PuedeImputar: v == EN_MANO || (b.Tipo != "EMITIDO" && !b.CobranzaId.HasValue
+                    && string.Equals(b.Estado, "Pagado", StringComparison.OrdinalIgnoreCase)
+                    && b.FechaPago >= DateTime.UtcNow.Date.AddDays(-60)),
                 PuedeDepositar: v == EN_MANO, PuedeVentanilla: v == EN_MANO, PuedeEndosar: v == EN_MANO,
                 PuedeRechazar: v == EN_MANO, PuedeAcreditar: false,
                 null, null, null, b.Motivo));

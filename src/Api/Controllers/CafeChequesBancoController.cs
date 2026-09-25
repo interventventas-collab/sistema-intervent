@@ -19,6 +19,8 @@ namespace Api.Controllers;
 [Authorize]
 public class CafeChequesBancoController : ControllerBase
 {
+    private const string CuitPalanica = "30717212149"; // el CUIT propio: si el e-cheq sigue a este nombre, no se endoso
+
     private readonly AppDbContext _db;
     private readonly ChequesBancoImportService _import;
     private readonly ILogger<CafeChequesBancoController> _logger;
@@ -173,8 +175,18 @@ public class CafeChequesBancoController : ControllerBase
         if (ec is null) return NotFound(new { error = "E-cheq no encontrado" });
         if (ec.CafeChequeId.HasValue || ec.CobranzaId.HasValue)
             return BadRequest(new { error = "Este e-cheq ya está asociado a una cobranza" });
-        if (!string.Equals(ec.Estado, "Disponible", StringComparison.OrdinalIgnoreCase))
+        // 2026-09-25: tambien se acepta uno que el banco ya muestra "Pagado". Pasa cuando el
+        // cheque se usa el mismo dia que llega (se cobra o se endosa antes de que el robot lo
+        // baje): nunca llego a verse Disponible y la cobranza del cliente quedaba sin poder
+        // cargarse (caso QX Logistica, 15/09). El espejo nace ya usado, no en cartera.
+        var yaUsado = string.Equals(ec.Estado, "Pagado", StringComparison.OrdinalIgnoreCase);
+        if (ec.Tipo == "EMITIDO")
+            return BadRequest(new { error = "Ese cheque lo firmaste vos, no es un cheque que hayas recibido" });
+        if (!yaUsado && !string.Equals(ec.Estado, "Disponible", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { error = $"El e-cheq no está Disponible (estado actual: {ec.Estado})" });
+        // Si el que lo tiene ahora es otro, lo endosamos; si seguimos siendo nosotros, lo cobramos.
+        var endosado = yaUsado && !string.IsNullOrWhiteSpace(ec.BeneficiarioActualCuit)
+            && ec.BeneficiarioActualCuit.Trim() != CuitPalanica;
 
         var cliente = await _db.CafeClientes.FindAsync(req.ClienteId);
         if (cliente is null) return BadRequest(new { error = "Cliente no encontrado" });
@@ -228,11 +240,14 @@ public class CafeChequesBancoController : ControllerBase
             FechaCobro = ec.FechaPago,
             FechaVencimiento = ec.FechaPago,
             ClienteOrigenId = req.ClienteId,
-            Estado = "EN_CARTERA",
+            Estado = !yaUsado ? "EN_CARTERA" : endosado ? "ENDOSADO" : "ACREDITADO",
             FechaCambioEstado = DateTime.UtcNow,
             CobranzaOrigenId = cobranza.Id,
             ChequeBancoId = ec.Id,
-            Observaciones = $"Importado del extracto bancario (ID banco: {ec.IdBanco})",
+            Observaciones = !yaUsado
+                ? $"Importado del extracto bancario (ID banco: {ec.IdBanco})"
+                : $"Importado del extracto bancario (ID banco: {ec.IdBanco}), el banco ya lo mostraba usado"
+                  + (endosado ? $" · endosado a {ec.BeneficiarioActualNombre}" : ""),
             CreatedAt = DateTime.UtcNow
         };
         _db.CafeCheques.Add(cheque);
