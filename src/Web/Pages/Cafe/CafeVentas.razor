@@ -9871,7 +9871,10 @@
             var notesToSave = formObservaciones ?? "";
             if (includePrevBalanceInNotes
                 && unpaidPrevSales.Count > 0
-                && !notesToSave.Contains("Saldo anterior", StringComparison.OrdinalIgnoreCase))
+                // 2026-09-25: solo cuenta como "ya puesto" el renglón automático ("Saldo anterior: $...").
+                // Antes bastaba que la nota dijera "saldo anterior" (ej. "Abona saldo anterior. Viernes.")
+                // para que no se agregara el monto (pasó en CAFE-2026-2109).
+                && !notesToSave.Split('\n').Any(l => l.TrimStart().StartsWith("Saldo anterior:", StringComparison.OrdinalIgnoreCase)))
             {
                 // 2026-08-24 (pedido del usuario): va SOLO el total. Antes listaba cada comprobante
                 // impago entre paréntesis y ocupaba media observación.
