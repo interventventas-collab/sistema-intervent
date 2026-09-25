@@ -217,7 +217,7 @@ else
                                 @if (!p.EsCombo && p.Componentes.Count == 1)
                                 {
                                     var c1 = p.Componentes[0];
-                                    <div><LugarProducto ProductoId="c1.ProductoId" Lugar="@c1.Lugar" Dudoso="c1.LugarDudoso" Editable="true"
+                                    <div><LugarProducto ProductoId="c1.ProductoId" Lugar="@c1.Lugar" Dudoso="c1.LugarDudoso" Editable="true" PermitirCambiar="true"
                                                         OnCambio="() => TraerDetalleYRedibujar(o.Numero)" /></div>
                                 }
                                 else if (!p.EsCombo && !string.IsNullOrEmpty(p.Lugar))
@@ -234,7 +234,7 @@ else
                                                 <b>×@FmtCant(c.Cantidad)</b> @c.Nombre
                                                 @if (!string.IsNullOrEmpty(c.Formato) && c.Formato != "UNIT") { <text> · @c.Formato</text> }
                                                 @if (!string.IsNullOrEmpty(c.Sku)) { <span class="sku"> (@c.Sku)</span> }
-                                                <text> </text><LugarProducto ProductoId="c.ProductoId" Lugar="@c.Lugar" Dudoso="c.LugarDudoso" Editable="true"
+                                                <text> </text><LugarProducto ProductoId="c.ProductoId" Lugar="@c.Lugar" Dudoso="c.LugarDudoso" Editable="true" PermitirCambiar="true"
                                                                              OnCambio="() => TraerDetalleYRedibujar(o.Numero)" />
                                             </div>
                                         }
