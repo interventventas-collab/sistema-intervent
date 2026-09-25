@@ -189,6 +189,28 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return r.Ok ? Ok(r) : BadRequest(r);
     }
 
+    // ─── 2026-09-25 · BOTÓN CUOTAS DE LA FILA ───
+    // Osmar cambió las cuotas desde MeLi y la pantalla siguió mostrando las viejas. Ver relee MeLi
+    // en el momento; cambiar toca MeLi (tipo + cuotas) pero NO el precio.
+
+    /// <summary>Relee de MeLi tipo y cuotas, y dice cuánto te quedaría con cada opción.</summary>
+    [HttpGet("publicaciones/{mla}/cuotas")]
+    public async Task<IActionResult> VerCuotas(string mla, [FromQuery] decimal? precio,
+        [FromServices] MeliCuotasService svc)
+    {
+        var r = await svc.VerAsync(mla, precio, HttpContext.RequestAborted);
+        return r is null ? NotFound(new { error = "Publicación no encontrada" }) : Ok(r);
+    }
+
+    /// <summary>TOCA MELI: pasa la publicación a Clásica o a Premium con 3/6/9/12 cuotas.</summary>
+    [HttpPut("publicaciones/{mla}/cuotas")]
+    public async Task<IActionResult> CambiarCuotas(string mla, [FromBody] MeliCuotasService.CambiarRequest req,
+        [FromServices] MeliCuotasService svc)
+    {
+        var r = await svc.CambiarAsync(mla, req.Opcion, req.Precio, HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
     // ─── 2026-08-27 · PAUSAR Y ACTIVAR DESDE LA FILA ───
     // El cartelito "Activa"/"Pausada" de la derecha ahora se toca. Es de a UNA a propósito: nunca
     // en lote. Y NO hay eliminar: en MeLi es irreversible y se pierde la antigüedad, el historial

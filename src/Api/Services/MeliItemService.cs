@@ -2550,8 +2550,10 @@ public class MeliItemService
     ///     aparecen $11.080 de envío. Si no preguntáramos el envío, la simulación diría que subir
     ///     el precio te conviene, cuando te funde.
     /// </summary>
+    /// 2026-09-25: `tipo`/`cuotas` permiten preguntar "¿y si fuera Clásica? ¿y con 9 cuotas?" (botón
+    /// Cuotas de la fila). Si vienen, se usan en vez de los guardados; `cuotas` null = sin etiqueta.
     public async Task<ListingCostDto?> SimularCostosAsync(string meliItemId, decimal precioSimulado,
-        CancellationToken ct = default)
+        CancellationToken ct = default, bool forzarCondicion = false, string? tipo = null, string? cuotas = null)
     {
         if (precioSimulado <= 0) return null;
 
@@ -2562,6 +2564,7 @@ public class MeliItemService
             .OrderBy(i => i.VariationId == null ? 0 : 1).ThenBy(i => i.Id)
             .FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null) return null;
+        if (forzarCondicion) { item.ListingTypeId = tipo; item.InstallmentTag = cuotas; }   // AsNoTracking: no se guarda
 
         var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
         if (string.IsNullOrWhiteSpace(token)) return null;
@@ -2649,7 +2652,7 @@ public class MeliItemService
     /// <summary>Las marcas con las que MeLi identifica la modalidad de cuotas de una publicación.
     /// 2026-08-26: se agrega "6x_campaign" — estaba en la tabla de financiación (GetFinancingRealPct)
     /// pero no en esta lista, así que una publicación de 6 cuotas se guardaba como si no tuviera.</summary>
-    private static readonly string[] MarcasDeCuotas =
+    public static readonly string[] MarcasDeCuotas =
         { "12x_campaign", "9x_campaign", "6x_campaign", "3x_campaign", "pcj-co-funded" };
 
     /// <summary>

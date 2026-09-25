@@ -5617,6 +5617,40 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // ─── 2026-09-25 · Botón Cuotas de la fila ───
+    public record PubV2CuotaOpcion(string Clave, string Nombre, string Cuotas, bool Hoy,
+        decimal? Comision, decimal? Envio, decimal? Queda, decimal? MargenPct);
+    public record PubV2Cuotas(string MeliItemId, string? ClaveHoy, string TextoHoy, decimal Precio,
+        bool TieneCosto, List<PubV2CuotaOpcion> Opciones, List<string> Cambios, string? Aviso);
+    public record PubV2CuotasResultado(bool Ok, string Mensaje, PubV2Cuotas? Estado);
+
+    /// <summary>Relee MeLi en el momento: tarda unos segundos (son 11 consultas a MeLi).</summary>
+    public async Task<(PubV2Cuotas? res, string? error)> GetCuotasAsync(string mla, decimal precio)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.GetAsync($"/api/meli/v2/publicaciones/{mla}/cuotas?precio={precio.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<PubV2Cuotas>(), null);
+            return (null, $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(PubV2CuotasResultado? res, string? error)> CambiarCuotasAsync(string mla, string opcion, decimal precio)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PutAsJsonAsync($"/api/meli/v2/publicaciones/{mla}/cuotas",
+                new { Opcion = opcion, Precio = precio });
+            var body = await resp.Content.ReadFromJsonAsync<PubV2CuotasResultado>();
+            if (resp.IsSuccessStatusCode) return (body, null);
+            return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     // ─── Fotos de la publicacion (pantalla nueva, etapa 3) ───
     public record PubV2Foto(string Id, string Url);
     public record PubV2Hermana(string MeliItemId, string? Titulo, int CantidadFotos, string? Estado,

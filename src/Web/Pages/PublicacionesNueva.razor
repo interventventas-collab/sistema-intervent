@@ -232,6 +232,28 @@
     .p2-med .guardar[disabled] { opacity: .5; cursor: default; }
     .p2-med .nota { font-size: .68rem; color: #6b7280; margin-top: .45rem; }
 
+    /* 2026-09-25 · botón Cuotas: el mismo cartelito de abajo del precio, ahora se toca (la fila no crece) */
+    .p2-cuotas-btn { display: inline-block; font-size: .62rem; color: #2d6cdf; font-weight: 600; margin-top: .15rem;
+                     border: 1px solid #2d6cdf; border-radius: .7rem; padding: 0 .45rem; background: #fff; cursor: pointer;
+                     line-height: 1.5; white-space: nowrap; align-self: flex-start; width: max-content; }
+    .p2-cuotas-btn.on { background: #eef3fd; }
+    .p2-cuo .ops { display: flex; gap: .5rem; flex-wrap: wrap; margin: .4rem 0 .6rem; }
+    .p2-cuo .op { border: 1px solid #d6dbd3; border-radius: .4rem; padding: .45rem .65rem; width: 128px; background: #fff;
+                  cursor: pointer; text-align: left; font: inherit; color: inherit; }
+    .p2-cuo .op b { display: block; font-size: .8rem; }
+    .p2-cuo .op .c { font-size: .72rem; color: #374151; }
+    .p2-cuo .op .q { font-size: .72rem; margin-top: .3rem; color: #6b7280; }
+    .p2-cuo .op .q b { display: inline; color: #111; }
+    .p2-cuo .op .q b.neg { color: #b91c1c; }
+    .p2-cuo .op .hoy { font-size: .58rem; color: #6b7280; margin-left: .25rem; font-weight: 700; }
+    .p2-cuo .op.hoy-op { border: 2px solid #444; }
+    .p2-cuo .op.sel { border: 2px solid #2d6cdf; background: #eef3fd; }
+    .p2-cuo .pie { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+    .p2-cuo .cambiar { padding: .4rem .8rem; border-radius: .4rem; border: none; background: #2d6cdf; color: #fff;
+                       font-weight: 700; font-size: .78rem; cursor: pointer; }
+    .p2-cuo .cambiar[disabled] { opacity: .5; cursor: default; }
+    .p2-cuo .releer { background: none; border: none; color: #2d6cdf; cursor: pointer; font-size: .68rem; padding: 0; }
+
     /* 2026-09-22 · el precio se elige tildando: OEM · Actual · Para el N% · Manual */
     .p2-precios { display: flex; flex-direction: column; gap: 1px; }
     .p2-po { display: grid; grid-template-columns: 14px 74px 1fr 52px; align-items: center; gap: .3rem;
@@ -936,7 +958,11 @@
                                 <span class="p2-rango">@Plata(it.PrecioMin.Value) – @Plata(it.PrecioMax.Value)</span>
                             }
                             @* 2026-09-22 — siempre abajo del precio, entre paréntesis (antes iba en el renglón del SKU). *@
-                            <span class="p2-opcion" title="@(it.PublisFamilia > 1 ? $"Este producto está publicado {it.PublisFamilia} veces con distintas condiciones de venta. Cada una tiene que valer lo suyo: la que ofrece cuotas paga más comisión." : "Tipo de publicación y cuotas")">(@CuotasTexto(it.Cuotas, it.Tipo).Replace(" · ", ", "))</span>
+                            @* 2026-09-25 — Osmar: el cartelito ahora es el botón Cuotas (mismo lugar: la fila no crece).
+                               Abre abajo las opciones, releyendo MeLi en el momento. *@
+                            <button class="p2-cuotas-btn @(cuotasAbiertas == it.MeliItemId ? "on" : "")"
+                                    title="@(it.PublisFamilia > 1 ? $"Este producto está publicado {it.PublisFamilia} veces con distintas condiciones de venta. Cada una tiene que valer lo suyo: la que ofrece cuotas paga más comisión. " : "")Tocá para ver cuánto te queda con cada opción de cuotas y cambiarla en MercadoLibre"
+                                    @onclick="() => ToggleCuotas(it)" @onclick:stopPropagation="true">💳 @CuotasTexto(it.Cuotas, it.Tipo) ▾</button>
                         </span>
 
                         @* 2026-09-21 — LA CUENTA HECHA (opción B que eligió él). Reemplaza a "Se lleva MeLi":
@@ -1523,6 +1549,73 @@
                         </div>
                     }
 
+                    @if (cuotasAbiertas == it.MeliItemId)
+                    {
+                        <div class="p2-med p2-cuo" @onclick:stopPropagation="true">
+                            <h4>💳 Tipo de publicación y cuotas</h4>
+                            @if (cuotasCargando)
+                            {
+                                <span class="nota">Preguntándole a MercadoLibre cómo está hoy y cuánto cobra con cada opción… (tarda unos segundos)</span>
+                            }
+                            else if (cuotas is null)
+                            {
+                                <span class="aviso err">@(cuotasResultado ?? "No se pudo leer de MercadoLibre.")</span>
+                            }
+                            else
+                            {
+                                <div class="nota" style="margin-top:0">
+                                    Recién leído de MercadoLibre: hoy está en <b>@cuotas.TextoHoy</b>.
+                                    Cuantas más cuotas das, más comisión te cobra MeLi. Abajo de cada una, lo que te quedaría por unidad a @Plata(cuotas.Precio).
+                                    <button class="releer" @onclick="() => CargarCuotas(it)" disabled="@cuotasGuardando">↻ releer</button>
+                                </div>
+                                <div class="ops">
+                                    @foreach (var o in cuotas.Opciones)
+                                    {
+                                        var op = o;
+                                        <button class="op @(op.Hoy ? "hoy-op" : "") @(cuotaElegida == op.Clave && !op.Hoy ? "sel" : "")"
+                                                disabled="@cuotasGuardando" @onclick="() => cuotaElegida = op.Clave">
+                                            <b>@op.Nombre@if (op.Hoy) {<span class="hoy">HOY</span>}</b>
+                                            <span class="c">@op.Cuotas</span>
+                                            <div class="q">
+                                                @if (op.Queda.HasValue)
+                                                {
+                                                    <text>te queda </text><b class="@(op.Queda < 0 ? "neg" : "")">@Plata(op.Queda.Value)</b>
+                                                }
+                                                else if (op.Comision.HasValue)
+                                                {
+                                                    <text>comisión </text><b>@Plata(op.Comision.Value)</b>
+                                                }
+                                                else
+                                                {
+                                                    <text>sin dato</text>
+                                                }
+                                            </div>
+                                        </button>
+                                    }
+                                </div>
+                                <div class="pie">
+                                    @{ var elegida = cuotas.Opciones.FirstOrDefault(o => o.Clave == cuotaElegida && !o.Hoy); }
+                                    <button class="cambiar" disabled="@(elegida is null || cuotasGuardando)" @onclick="() => CambiarCuotas(it)">
+                                        @(cuotasGuardando ? "Cambiando en MercadoLibre…" : elegida is null ? "Elegí una opción" : $"Cambiar a {elegida.Nombre} · {elegida.Cuotas} en MercadoLibre")
+                                    </button>
+                                    <span class="nota" style="margin-top:0">No cambia el precio. Después de cambiar, vuelve a leer MeLi y actualiza la cuenta de la fila.</span>
+                                </div>
+                                @if (cuotas.Cambios.Count > 0)
+                                {
+                                    <div class="nota">Al releer se actualizó: @string.Join(" · ", cuotas.Cambios)</div>
+                                }
+                                @if (!string.IsNullOrEmpty(cuotas.Aviso))
+                                {
+                                    <div class="aviso">@cuotas.Aviso</div>
+                                }
+                                @if (!string.IsNullOrEmpty(cuotasResultado))
+                                {
+                                    <div class="aviso @(cuotasResultadoOk ? "ok" : "err")">@cuotasResultado</div>
+                                }
+                            }
+                        </div>
+                    }
+
                     @if (medidasAbiertas == it.MeliItemId)
                     {
                         <div class="p2-med" @onclick:stopPropagation="true">
@@ -2034,10 +2127,75 @@
         }, true,
             $"Esto CREA {tildadas.Count} publicaciones nuevas en la otra cuenta de MercadoLibre, copiando título, precio, fotos y ficha. ¿Seguro?");
 
+    // ─── 2026-09-25 · BOTÓN CUOTAS ───
+    private string? cuotasAbiertas;
+    private bool cuotasCargando, cuotasGuardando, cuotasResultadoOk;
+    private ApiClient.PubV2Cuotas? cuotas;
+    private string? cuotaElegida, cuotasResultado;
+
+    /// <summary>El precio de la cuenta de la fila: el de promo si está en promoción.</summary>
+    private static decimal PrecioDeCuenta(ApiClient.PubV2Fila it)
+        => it.PromoPrecio is > 0 && it.PromoPrecio < it.Precio ? it.PromoPrecio.Value : it.Precio;
+
+    private async Task ToggleCuotas(ApiClient.PubV2Fila it)
+    {
+        if (cuotasAbiertas == it.MeliItemId) { cuotasAbiertas = null; cuotas = null; return; }
+        // Los paneles se excluyen: dos abiertos en una fila angosta es un lío.
+        descAbierta = null;
+        CerrarFotos();
+        medidasAbiertas = null;
+        recetaAbierta = null;
+        promosAbiertas = null;
+        fichaAbierta = null;
+        cuotasAbiertas = it.MeliItemId;
+        cuotasResultado = null;
+        await CargarCuotas(it);
+    }
+
+    private async Task CargarCuotas(ApiClient.PubV2Fila it)
+    {
+        cuotas = null;
+        cuotaElegida = null;
+        cuotasCargando = true;
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.GetCuotasAsync(it.MeliItemId, PrecioDeCuenta(it));
+            cuotas = res;
+            if (res is null) { cuotasResultado = "No se pudo leer de MercadoLibre: " + err; cuotasResultadoOk = false; }
+            // Al releer se actualiza lo guardado (tipo, cuotas, comisión): la fila también.
+            else if (res.Cambios.Count > 0) await RefrescarFila(it.MeliItemId);
+        }
+        finally { cuotasCargando = false; StateHasChanged(); }
+    }
+
+    private async Task CambiarCuotas(ApiClient.PubV2Fila it)
+    {
+        var elegida = cuotas?.Opciones.FirstOrDefault(o => o.Clave == cuotaElegida);
+        if (elegida is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm",
+                $"Esto cambia la publicación en MercadoLibre a {elegida.Nombre} · {elegida.Cuotas}. El precio no se toca. ¿Seguro?"))
+            return;
+
+        cuotasGuardando = true;
+        cuotasResultado = null;
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.CambiarCuotasAsync(it.MeliItemId, elegida.Clave, PrecioDeCuenta(it));
+            cuotasResultadoOk = res?.Ok == true;
+            cuotasResultado = res?.Mensaje ?? err;
+            if (res?.Estado is not null) { cuotas = res.Estado; cuotaElegida = null; }
+            await RefrescarFila(it.MeliItemId);
+        }
+        finally { cuotasGuardando = false; StateHasChanged(); }
+    }
+
     private async Task ToggleMedidas(string mla)
     {
         if (medidasAbiertas == mla) { medidasAbiertas = null; medidas = null; return; }
         descAbierta = null;   // 2026-09-21: cierra el panel de descripción
+        cuotasAbiertas = null;
         CerrarFotos();
         medidasAbiertas = mla;
         medidas = null;
@@ -2119,6 +2277,7 @@
         recetaAbierta = null;
         promosAbiertas = null;
         fichaAbierta = null;
+        cuotasAbiertas = null;
         descAbierta = mla;
         descDatos = null;
         descTexto = descOriginal = "";
@@ -2173,6 +2332,7 @@
     {
         if (fotosAbiertas == mla) { CerrarFotos(); return; }
         descAbierta = null;   // 2026-09-21: cierra el panel de descripción
+        cuotasAbiertas = null;
         medidasAbiertas = null;   // no tener los dos paneles abiertos a la vez
         fotosAbiertas = mla;
         fotosDatos = null;
@@ -2845,10 +3005,13 @@
 
     private string CuotasTexto(string? tag, string? tipo)
     {
-        var t = string.Equals(tipo, "gold_pro", StringComparison.OrdinalIgnoreCase) ? "Premium" : "Clásica";
+        var premium = string.Equals(tipo, "gold_pro", StringComparison.OrdinalIgnoreCase);
+        var t = premium ? "Premium" : "Clásica";
         var c = tag switch
         {
-            null or "" => "sin cuotas",
+            // 2026-09-25: en Argentina Premium SIN etiqueta ya da 6 cuotas (es su default). Decía
+            // "sin cuotas" y confundía: Osmar la había pasado a 6 y la pantalla parecía no enterarse.
+            null or "" => premium ? "6 cuotas" : "sin cuotas",
             "3x_campaign" => "3 cuotas",
             "6x_campaign" => "6 cuotas",
             "9x_campaign" => "9 cuotas",
@@ -3113,6 +3276,7 @@
     {
         if (promosAbiertas == mla) { promosAbiertas = null; promosItem = null; return; }
         descAbierta = null;   // 2026-09-21: cierra el panel de descripción
+        cuotasAbiertas = null;
 
         promosAbiertas = mla;
         promosItem = null;
@@ -3154,6 +3318,7 @@
     {
         if (fichaAbierta == mla) { fichaAbierta = null; fichaDatos = null; return; }
         descAbierta = null;   // 2026-09-21: cierra el panel de descripción
+        cuotasAbiertas = null;
 
         fichaAbierta = mla;
         fichaDatos = null;
@@ -3586,6 +3751,7 @@
     {
         if (recetaAbierta == mla) { recetaAbierta = null; return; }
         descAbierta = null;   // 2026-09-21: cierra el panel de descripción
+        cuotasAbiertas = null;
 
         // Los paneles se excluyen: dos abiertos a la vez es un lío en una fila angosta.
         recetaAbierta = mla;
