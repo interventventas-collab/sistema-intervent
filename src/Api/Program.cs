@@ -577,6 +577,16 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// 2026-09-25: al arrancar, la cartera de cheques se pone al dia con lo que ya bajo el banco
+// (despues lo hace el robot en cada pasada). Si falla, se avisa y se sigue.
+{
+    using var scope = app.Services.CreateScope();
+    var chequesImport = scope.ServiceProvider.GetRequiredService<ChequesBancoImportService>();
+    var logCheques = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    try { await chequesImport.SincronizarCarteraConBancoAsync(); }
+    catch (Exception ex) { logCheques.LogWarning(ex, "No se pudo poner la cartera de cheques al dia con el banco al arrancar"); }
+}
+
 // Sync admin permissions with MenuDefinition
 {
     using var scope = app.Services.CreateScope();

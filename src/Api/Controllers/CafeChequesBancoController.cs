@@ -19,8 +19,6 @@ namespace Api.Controllers;
 [Authorize]
 public class CafeChequesBancoController : ControllerBase
 {
-    private const string CuitPalanica = "30717212149"; // el CUIT propio: si el e-cheq sigue a este nombre, no se endoso
-
     private readonly AppDbContext _db;
     private readonly ChequesBancoImportService _import;
     private readonly ILogger<CafeChequesBancoController> _logger;
@@ -186,7 +184,7 @@ public class CafeChequesBancoController : ControllerBase
             return BadRequest(new { error = $"El e-cheq no está Disponible (estado actual: {ec.Estado})" });
         // Si el que lo tiene ahora es otro, lo endosamos; si seguimos siendo nosotros, lo cobramos.
         var endosado = yaUsado && !string.IsNullOrWhiteSpace(ec.BeneficiarioActualCuit)
-            && ec.BeneficiarioActualCuit.Trim() != CuitPalanica;
+            && ec.BeneficiarioActualCuit.Trim() != ChequesBancoImportService.CuitPalanica;
 
         var cliente = await _db.CafeClientes.FindAsync(req.ClienteId);
         if (cliente is null) return BadRequest(new { error = "Cliente no encontrado" });

@@ -246,7 +246,45 @@ public class ChequesBancoImportService
         }
 
         await _db.SaveChangesAsync();
+        try { await SincronizarCarteraConBancoAsync(); }
+        catch (Exception ex) { _logger.LogWarning(ex, "No se pudo poner la cartera al dia con el banco"); }
         return new ImportResultDto(fileName, tipoDetectado, nuevos, actualizados, sinCambios, errores);
+    }
+
+    /// <summary>El CUIT propio: si un e-cheq sigue a este nombre, no se endoso.</summary>
+    public const string CuitPalanica = "30717212149";
+
+    /// <summary>
+    /// 2026-09-25: pone la cartera al dia con lo que dice el banco. Un cheque de cartera que
+    /// el banco ya muestra "Pagado" pasa solo a ACREDITADO (si sigue a nuestro nombre) o a
+    /// ENDOSADO (si ahora es de otro). Antes nadie lo marcaba y la cartera sumaba $10,5M de
+    /// cheques que ya no existian (24 e-cheqs al 25/09). Los rechazados NO se tocan solos:
+    /// rechazar le vuelve a poner la deuda al cliente y eso lo decide una persona.
+    /// </summary>
+    public async Task<int> SincronizarCarteraConBancoAsync()
+    {
+        var pares = await (
+            from c in _db.CafeCheques
+            join b in _db.CafeChequesBanco on c.ChequeBancoId equals b.Id
+            where (c.Estado == "EN_CARTERA" || c.Estado == "DEPOSITADO")
+                  && b.Tipo != "EMITIDO" && b.Estado == "Pagado"
+            select new { c, b }).ToListAsync();
+        foreach (var x in pares)
+        {
+            var endosado = !string.IsNullOrWhiteSpace(x.b.BeneficiarioActualCuit)
+                && x.b.BeneficiarioActualCuit.Trim() != CuitPalanica;
+            x.c.Estado = endosado ? "ENDOSADO" : "ACREDITADO";
+            x.c.FechaCambioEstado = DateTime.UtcNow;
+            x.c.Observaciones = (x.c.Observaciones ?? "") + (endosado
+                ? $" · El banco lo muestra endosado a {x.b.BeneficiarioActualNombre} (al dia solo)"
+                : " · El banco lo muestra cobrado (al dia solo)");
+        }
+        if (pares.Count > 0)
+        {
+            await _db.SaveChangesAsync();
+            _logger.LogInformation("Cartera al dia con el banco: {N} cheques pasaron a usados", pares.Count);
+        }
+        return pares.Count;
     }
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

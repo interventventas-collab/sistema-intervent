@@ -34,6 +34,13 @@
     .chq-acc:hover { color:#111827; }
     .chq-acc.alarma { color:#b45309; }
     .chq-pie { border-top:1px solid #e5e7eb; margin-top:0.4rem; padding-top:0.6rem; font-size:0.85rem; color:#6b7280; }
+    .chq-linea { font-size:0.85rem; color:#6b7280; margin:-0.3rem 0 0.7rem; }
+    .chq-linea .sep { color:#d1d5db; margin:0 0.4rem; }
+    .chq-cuerpo { display:grid; grid-template-columns:minmax(0,1fr) 250px; gap:1.6rem; }
+    @@media (max-width: 900px) { .chq-cuerpo { grid-template-columns:minmax(0,1fr); } }
+    .chq-vtos h3 { font-size:0.88rem; font-weight:600; margin:0.6rem 0 0.3rem; }
+    .chq-vtos div.d { display:flex; justify-content:space-between; gap:0.6rem; padding:0.35rem 0; border-top:1px solid #f1f2f4; font-size:0.84rem; font-variant-numeric:tabular-nums; }
+    .chq-vtos .pago { color:#6b7280; }
     .chq-aviso { background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; padding:0.5rem 0.7rem; font-size:0.85rem; color:#92400e; margin-bottom:0.7rem; }
 </style>
 
@@ -60,6 +67,13 @@
             </label>
         </div>
 
+        @* 2026-09-25: la linea de arriba — lo que tengo, lo que vence y lo que debo, sin cajitas. *@
+        <div class="chq-linea">
+            en mano @Plata(cab.EnManoImporte) (@cab.EnManoCant)
+            <span class="sep">·</span> vencen esta semana @Plata(cab.VenceSemanaImporte)
+            <span class="sep">·</span> tengo que pagar @Plata(cab.APagarImporte) (@cab.APagarCant)
+        </div>
+
         <div class="chq-tabs">
             @foreach (var t in Solapas)
             {
@@ -79,6 +93,8 @@
             </div>
         }
 
+        <div class="chq-cuerpo">
+        <div>
         @if (loading)
         {
             <p class="text-muted" style="padding:0.8rem 0;">Cargando...</p>
@@ -122,7 +138,14 @@
                                     <div class="chq-sub">@fila.EstadoTexto</div>
                                 </td>
                                 <td style="text-align:right;">$@fila.Importe.ToString("N2")</td>
-                                <td>@(fila.Vence?.ToString("dd/MM/yy") ?? "—")</td>
+                                <td>
+                                    @(fila.Vence?.ToString("dd/MM/yy") ?? "—")
+                                    @* Un cheque en mano vencido es alarma: hay 30 dias para depositarlo. *@
+                                    @if (vista == "EN_MANO" && fila.Vence.HasValue && fila.Vence.Value.Date < DateTime.UtcNow.AddHours(-3).Date)
+                                    {
+                                        <div style="color:#b91c1c; font-size:0.78rem;">vencido</div>
+                                    }
+                                </td>
                                 <td>
                                     @if (fila.DuplicadoKey is not null)
                                     {
@@ -188,6 +211,28 @@
                 }
             </div>
         }
+        </div>
+        @* 2026-09-25: los proximos vencimientos, dia por dia (antes estaban solo en el calendario
+           de la portada). Lo que entra en negro, lo que tengo que pagar en gris. *@
+        <div class="chq-vtos">
+            <h3>Próximos vencimientos</h3>
+            @if (proximos.Count == 0)
+            {
+                <div class="chq-sub">No hay cheques por vencer.</div>
+            }
+            @foreach (var d in proximos)
+            {
+                <div class="d">
+                    <span>@d.Fecha.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</span>
+                    <span style="text-align:right;">
+                        @if (d.Entra > 0) { <span>entra @Plata(d.Entra)</span> }
+                        @if (d.Entra > 0 && d.Pago > 0) { <br /> }
+                        @if (d.Pago > 0) { <span class="pago">pago @Plata(d.Pago)</span> }
+                    </span>
+                </div>
+            }
+        </div>
+        </div>
     </div>
 </div>
 
@@ -558,6 +603,11 @@
     private List<ChequeUniDto> filas = new();     // lo que se ve (todas + buscador)
     private ChequesUniConteosDto conteos = new();
     private ChequesUniResumenDto resumen = new();
+    private ChequesUniCabeceraDto cab = new();
+    private List<ChequesUniVtoDiaDto> proximos = new();
+
+    private static string Plata(decimal v)
+        => "$" + v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
 
     private static readonly (string key, string label)[] Solapas = new[]
     {
@@ -635,6 +685,8 @@
             todas = r?.Filas ?? new();
             conteos = r?.Conteos ?? new();
             resumen = r?.Resumen ?? new();
+            cab = r?.Cabecera ?? new();
+            proximos = r?.Proximos ?? new();
         }
         catch (Exception ex) { ToastService.Error("Error al cargar: " + ex.Message); todas = new(); }
         FiltrarLocal();

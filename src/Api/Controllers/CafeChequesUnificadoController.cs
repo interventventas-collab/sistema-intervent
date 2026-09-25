@@ -67,7 +67,13 @@ public class CafeChequesUnificadoController : ControllerBase
 
     public record ConteosDto(int EnMano, int EnBanco, int Usados, int Rechazados, int APagar, int Duplicados);
     public record ResumenVistaDto(int Cantidad, decimal Importe, DateTime? PrimerVencimiento);
-    public record UnificadoResponse(ConteosDto Conteos, ResumenVistaDto Resumen, List<ChequeUniDto> Filas);
+    /// <summary>La linea de arriba: lo que tengo, lo que vence esta semana y lo que tengo que pagar.</summary>
+    public record CabeceraDto(int EnManoCant, decimal EnManoImporte, decimal VenceSemanaImporte,
+        int APagarCant, decimal APagarImporte);
+    /// <summary>Un dia del listado de proximos vencimientos: lo que entra y lo que tengo que pagar.</summary>
+    public record VtoDiaDto(DateTime Fecha, decimal Entra, decimal Pago);
+    public record UnificadoResponse(ConteosDto Conteos, ResumenVistaDto Resumen, List<ChequeUniDto> Filas,
+        CabeceraDto Cabecera, List<VtoDiaDto> Proximos);
 
     /// <summary>Numero comparable: sin espacios, guiones ni ceros a la izquierda. El banco y el
     /// usuario escriben el mismo numero de formas distintas ("0004471209" vs "4471209").</summary>
@@ -190,6 +196,25 @@ public class CafeChequesUnificadoController : ControllerBase
             APagar: filas.Count(f => f.Vista == A_PAGAR),
             Duplicados: pares.Count / 2);
 
+        // 2026-09-25: la linea de arriba y los proximos vencimientos (lo que antes habia que ir
+        // a buscar al calendario de la portada). "Entra" = lo que tengo en mano o en el banco.
+        var hoy = ProveedorCtaCteService.HoyAr();
+        var entran = filas.Where(f => f.Vista is EN_MANO or EN_BANCO).ToList();
+        var pagos = filas.Where(f => f.Vista == A_PAGAR).ToList();
+        var cabecera = new CabeceraDto(
+            EnManoCant: filas.Count(f => f.Vista == EN_MANO),
+            EnManoImporte: filas.Where(f => f.Vista == EN_MANO).Sum(f => f.Importe),
+            VenceSemanaImporte: entran.Where(f => f.Vence.HasValue && f.Vence.Value.Date >= hoy && f.Vence.Value.Date <= hoy.AddDays(7)).Sum(f => f.Importe),
+            APagarCant: pagos.Count,
+            APagarImporte: pagos.Sum(f => f.Importe));
+        var proximos = entran.Select(f => (f.Vence, Entra: f.Importe, Pago: 0m))
+            .Concat(pagos.Select(f => (f.Vence, Entra: 0m, Pago: f.Importe)))
+            .Where(x => x.Vence.HasValue && x.Vence.Value.Date >= hoy)
+            .GroupBy(x => x.Vence!.Value.Date)
+            .OrderBy(g => g.Key).Take(8)
+            .Select(g => new VtoDiaDto(g.Key, g.Sum(x => x.Entra), g.Sum(x => x.Pago)))
+            .ToList();
+
         var deLaVista = filas.Where(f => f.Vista == vista).ToList();
 
         // El resumen del pie es de la VISTA COMPLETA, no de lo buscado: si filtras por un cliente
@@ -215,7 +240,7 @@ public class CafeChequesUnificadoController : ControllerBase
             .ThenBy(f => f.Id)
             .ToList();
 
-        return Ok(new UnificadoResponse(conteos, resumen, deLaVista));
+        return Ok(new UnificadoResponse(conteos, resumen, deLaVista, cabecera, proximos));
     }
 
     /// <summary>

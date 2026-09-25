@@ -80,7 +80,7 @@
         <div class="cal-actions">
             <button class="cal-btn @(expandido ? "" : "activo")" @onclick="@(() => expandido = false)" title="Vista compacta (1 mes)">▫️ Compacto</button>
             <button class="cal-btn @(expandido ? "activo" : "")" @onclick="@(() => expandido = true)" title="Vista expandida (2 meses)">▭ Expandir</button>
-            <button class="cal-btn" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-banco")'>Ver cheques →</button>
+            <button class="cal-btn" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-todos")'>Ver cheques →</button>
         </div>
     </div>
 
