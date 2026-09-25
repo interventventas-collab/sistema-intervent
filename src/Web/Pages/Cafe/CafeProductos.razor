@@ -123,6 +123,22 @@
                             disabled="@(selProductos.Count == 0 || isBusyBulk)">
                         @(isBusyBulk ? "Aplicando..." : $"Aplicar marca a {selProductos.Count}")
                     </button>
+
+                    @* 2026-09-24: lugar en el depósito para todos los tildados (mismos botones que el renglón) *@
+                    <div style="flex-basis:100%; display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; padding-top:0.4rem; border-top:1px dashed #f59e0b;">
+                        <span style="font-weight:600; color:#78350f; font-size:0.85rem;">📍 Poner lugar a los tildados:</span>
+                        @foreach (var (cod, txt) in new[] { ("PB", "PB"), ("P1", "P1"), ("OTRO", "Otro depósito") })
+                        {
+                            <button type="button" @onclick="() => bulkPlanta = cod"
+                                    style="border:1px solid @(bulkPlanta == cod ? "#1e293b" : "#cbd5e1"); background:@(bulkPlanta == cod ? "#1e293b" : "white"); color:@(bulkPlanta == cod ? "white" : "#334155"); border-radius:999px; padding:0.15rem 0.7rem; cursor:pointer; font-size:0.82rem;">@txt</button>
+                        }
+                        <input class="form-input" @bind="bulkZona" @bind:event="oninput" maxlength="30"
+                               placeholder="Zona (opcional, ej. TOST)" style="max-width:190px; font-size:0.85rem;" />
+                        <button class="btn btn-primary" @onclick="AplicarLugarABulk"
+                                disabled="@(selProductos.Count == 0 || bulkPlanta is null || isBusyBulk)">
+                            @(isBusyBulk ? "Aplicando..." : bulkPlanta is null ? "Elegí la planta" : $"Poner en {TextoLugarBulk} a {selProductos.Count}")
+                        </button>
+                    </div>
                 </div>
             }
             <div class="table-responsive">
@@ -215,7 +231,7 @@
                                         lugares.TryGetValue(p.Id, out var lug);
                                         <div>
                                             <LugarProducto ProductoId="p.Id" Lugar="@lug?.Lugar" Dudoso="@(lug?.DudosaAt is not null)"
-                                                           Editable="true" OfrecerNoEsta="false" Tamano="0.75rem" OnCambio="LoadLugares" />
+                                                           Editable="true" OfrecerNoEsta="false" PermitirCambiar="true" Tamano="0.75rem" OnCambio="LoadLugares" />
                                         </div>
                                     }
                                     @if (!string.IsNullOrEmpty(p.Notas))
@@ -1423,6 +1439,38 @@
         formPrecioOtroFuturo = null;
         formPrecioBultoFuturo = null;
         formPrecioBultoOtroFuturo = null;
+    }
+
+    // 2026-09-24: lugar en el depósito para todos los tildados (Edición ON)
+    private string? bulkPlanta;
+    private string bulkZona = "";
+    private string? ZonaBulk => string.IsNullOrWhiteSpace(bulkZona) ? null : bulkZona.Trim().ToUpperInvariant();
+    private string TextoLugarBulk => bulkPlanta + (ZonaBulk is null ? "" : " · " + ZonaBulk);
+
+    private async Task AplicarLugarABulk()
+    {
+        if (selProductos.Count == 0 || bulkPlanta is null) return;
+        // Los combos (EsCompuestoFake) no son productos: su Id es de OTRA tabla y puede coincidir
+        // con el de un producto. Por eso se toman solo los PRODUCTOS visibles tildados.
+        var ids = productosVisibles.Where(p => !p.EsCompuestoFake && selProductos.Contains(p.Id))
+            .Select(p => p.Id).Distinct().ToList();
+        if (ids.Count == 0) { ToastService.Warning("Los tildados son combos: el lugar va en los productos que los forman."); return; }
+        var yaTienen = ids.Count(id => lugares.TryGetValue(id, out var u) && u.Lugar != TextoLugarBulk);
+        var msg = $"¿Poner {ids.Count} productos en {TextoLugarBulk}?"
+            + (yaTienen > 0 ? $"\n\nOjo: {yaTienen} ya tenían otro lugar y se les cambia." : "")
+            + (ids.Count < selProductos.Count ? $"\n\n({selProductos.Count - ids.Count} tildados quedan afuera: son combos o no están en la lista de ahora.)" : "");
+        if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
+        isBusyBulk = true;
+        try
+        {
+            var r = await Api.AsignarUbicacionAsync(ids, bulkPlanta, ZonaBulk, null);
+            ToastService.Success($"Listo: {r?.Cambiados} productos en {r?.Lugar}");
+            selProductos.Clear();
+            bulkPlanta = null; bulkZona = "";
+            await LoadLugares();
+        }
+        catch (Exception ex) { ToastService.Error("No pude guardar el lugar: " + ex.Message); }
+        finally { isBusyBulk = false; }
     }
 
     private async Task AplicarMarcaABulk()

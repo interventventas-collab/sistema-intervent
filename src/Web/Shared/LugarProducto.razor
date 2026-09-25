@@ -13,7 +13,23 @@
     var dudoso = overrideLugar.HasValue ? overrideLugar.Value.Dudoso : Dudoso;
     var puedeEditar = Editable && ProductoId is not null;
 }
-@if (!string.IsNullOrEmpty(lugar))
+@if (abierto && puedeEditar)
+{
+    <span style="display:inline-flex; align-items:center; gap:0.3rem; flex-wrap:wrap; font-size:0.78rem;" @onclick:stopPropagation="true">
+        @foreach (var (cod, txt) in Plantas)
+        {
+            <button type="button" @onclick="() => planta = cod"
+                    style="border:1px solid @(planta == cod ? "#1e293b" : "#cbd5e1"); background:@(planta == cod ? "#1e293b" : "white"); color:@(planta == cod ? "white" : "#334155"); border-radius:999px; padding:0.1rem 0.55rem; cursor:pointer; font-size:0.78rem;">@txt</button>
+        }
+        <input @bind="zona" @bind:event="oninput" placeholder="Zona (opcional, ej. TOST)" maxlength="30"
+               style="width:11.5rem; padding:0.12rem 0.4rem; border:1px solid #cbd5e1; border-radius:6px; font-size:0.78rem;" />
+        <button type="button" @onclick="Guardar" disabled="@(planta is null || guardando)"
+                style="border:1px solid #1e293b; background:#1e293b; color:white; border-radius:6px; padding:0.1rem 0.6rem; cursor:pointer; font-size:0.78rem; opacity:@(planta is null ? "0.4" : "1");">@(guardando ? "Guardando…" : "Guardar")</button>
+        <button type="button" @onclick="Cerrar"
+                style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:0.78rem; text-decoration:underline;">cancelar</button>
+    </span>
+}
+else if (!string.IsNullOrEmpty(lugar))
 {
     <span style="font-size:@Tamano; color:#64748b;">📍 @lugar
         @if (dudoso)
@@ -21,6 +37,12 @@
             <span style="color:#b45309; font-weight:600;">· ⚠ no estaba acá</span>
         }
     </span>
+    @if (puedeEditar && PermitirCambiar)
+    {
+        <button type="button" @onclick="() => Abrir(lugar)" @onclick:stopPropagation="true"
+                title="Cambiar en qué parte del depósito está"
+                style="background:none; border:none; padding:0 0 0 0.4rem; color:#94a3b8; font-size:0.72rem; text-decoration:underline; cursor:pointer;">cambiar</button>
+    }
     @if (puedeEditar && !dudoso && OfrecerNoEsta)
     {
         <button type="button" @onclick="NoEsta" @onclick:stopPropagation="true" disabled="@guardando"
@@ -30,28 +52,9 @@
 }
 else if (puedeEditar)
 {
-    @if (!abierto)
-    {
-        <button type="button" @onclick="() => abierto = true" @onclick:stopPropagation="true"
-                title="Anotar en qué parte del depósito está"
-                style="background:none; border:none; padding:0; color:#94a3b8; font-size:0.74rem; text-decoration:underline; cursor:pointer;">📍 agregar lugar</button>
-    }
-    else
-    {
-        <span style="display:inline-flex; align-items:center; gap:0.3rem; flex-wrap:wrap; font-size:0.78rem;" @onclick:stopPropagation="true">
-            @foreach (var (cod, txt) in Plantas)
-            {
-                <button type="button" @onclick="() => planta = cod"
-                        style="border:1px solid @(planta == cod ? "#1e293b" : "#cbd5e1"); background:@(planta == cod ? "#1e293b" : "white"); color:@(planta == cod ? "white" : "#334155"); border-radius:999px; padding:0.1rem 0.55rem; cursor:pointer; font-size:0.78rem;">@txt</button>
-            }
-            <input @bind="zona" @bind:event="oninput" placeholder="Zona (opcional, ej. TOST)" maxlength="30"
-                   style="width:11.5rem; padding:0.12rem 0.4rem; border:1px solid #cbd5e1; border-radius:6px; font-size:0.78rem;" />
-            <button type="button" @onclick="Guardar" disabled="@(planta is null || guardando)"
-                    style="border:1px solid #1e293b; background:#1e293b; color:white; border-radius:6px; padding:0.1rem 0.6rem; cursor:pointer; font-size:0.78rem; opacity:@(planta is null ? "0.4" : "1");">@(guardando ? "Guardando…" : "Guardar")</button>
-            <button type="button" @onclick="Cerrar"
-                    style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:0.78rem; text-decoration:underline;">cancelar</button>
-        </span>
-    }
+    <button type="button" @onclick="() => Abrir(null)" @onclick:stopPropagation="true"
+            title="Anotar en qué parte del depósito está"
+            style="background:none; border:none; padding:0; color:#94a3b8; font-size:0.74rem; text-decoration:underline; cursor:pointer;">📍 agregar lugar</button>
 }
 
 @code {
@@ -64,6 +67,8 @@ else if (puedeEditar)
     [Parameter] public EventCallback OnCambio { get; set; }
     /// <summary>false = no muestra "no está acá" (ej. el listado de Productos de la oficina, donde nadie fue a buscarlo).</summary>
     [Parameter] public bool OfrecerNoEsta { get; set; } = true;
+    /// <summary>true = si ya tiene lugar, ofrece "cambiar" (abre el mismo editor con lo actual cargado).</summary>
+    [Parameter] public bool PermitirCambiar { get; set; }
 
     private static readonly (string, string)[] Plantas = { ("PB", "PB"), ("P1", "P1"), ("OTRO", "Otro depósito") };
 
@@ -82,6 +87,19 @@ else if (puedeEditar)
     }
 
     private void Cerrar() { abierto = false; planta = null; zona = ""; }
+
+    /// <summary>Abre el editor; si ya tiene lugar ("PB · TOST") arranca con esa planta y zona.</summary>
+    private void Abrir(string? actual)
+    {
+        planta = null; zona = "";
+        if (!string.IsNullOrEmpty(actual))
+        {
+            var partes = actual.Split(" · ", 2);
+            planta = partes[0];
+            zona = partes.Length > 1 ? partes[1] : "";
+        }
+        abierto = true;
+    }
 
     private async Task Guardar()
     {
