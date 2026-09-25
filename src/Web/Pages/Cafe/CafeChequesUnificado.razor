@@ -674,7 +674,24 @@
             && Solapas.Any(x => x.key == VistaQuery.ToUpperInvariant()))
             vista = VistaQuery.ToUpperInvariant();
         await Load();
+        // 2026-09-25: desde "Plata que entró" (?cobrar=B-123 o C-45) se abre directo el cobrar de
+        // ese cheque. Un e-cheq que el banco ya muestra usado vive en "Ya los usé": se busca ahí.
+        if (!string.IsNullOrWhiteSpace(CobrarQuery))
+        {
+            var f = filas.FirstOrDefault(x => x.Key == CobrarQuery);
+            if (f is null && vista != "USADOS")
+            {
+                vista = "USADOS";
+                await Load();
+                f = filas.FirstOrDefault(x => x.Key == CobrarQuery);
+                if (f is null) { vista = "EN_MANO"; await Load(); }
+            }
+            if (f is not null && f.PuedeImputar) await AbrirCobranza(f);
+            else ToastService.Error("Ese cheque ya no está para cobrar (puede que alguien ya lo haya cargado)");
+        }
     }
+
+    [Parameter, SupplyParameterFromQuery(Name = "cobrar")] public string? CobrarQuery { get; set; }
 
     private async Task Load()
     {

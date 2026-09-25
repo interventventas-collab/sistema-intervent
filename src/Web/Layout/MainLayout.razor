@@ -811,11 +811,14 @@
                 @if (HasPerm("cafe-tesoreria"))
                 {
                     <NavGroup Label="💵 Tesorería" Icon="@SvgIcons.Database" FlyoutMode="true"
-                              HasActiveChild="@(IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/tesoreria/cheques-todos") || IsActive("/cafe/tesoreria/cheques-banco") || IsActive("/cafe/configuracion/bancos"))">
+                              HasActiveChild="@(IsActive("/plata-que-entro") || IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/tesoreria/cheques-todos") || IsActive("/cafe/tesoreria/cheques-banco") || IsActive("/cafe/configuracion/bancos"))">
                         <NavItem Href="/cafe/tesoreria/cajas" Label="💰 Cajas" Icon="@SvgIcons.Database"
                                  IsActive="@IsActive("/cafe/tesoreria/cajas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cajas"))" />
                         <NavItem Href="/cafe/tesoreria/pagos" Label="📤 Pagos" Icon="@SvgIcons.ShoppingBag"
                                  IsActive="@IsActive("/cafe/tesoreria/pagos")" OnClick="@(() => NavigateTo("/cafe/tesoreria/pagos"))" />
+                        @* 2026-09-25: lo mismo que la bolsita 💰, en grande: toda la plata que entró sin cargar. *@
+                        <NavItem Href="/plata-que-entro" Label="💰 Plata que entró" Icon="@SvgIcons.Tag"
+                                 IsActive="@IsActive("/plata-que-entro")" OnClick="@(() => NavigateTo("/plata-que-entro"))" />
                         @* 2026-09-10: pantalla UNICA de cheques (junta cartera + banco). *@
                         <NavItem Href="/cafe/tesoreria/cheques-todos" Label="📄 Cheques" Icon="@SvgIcons.Tag"
                                  IsActive="@IsActive("/cafe/tesoreria/cheques-todos")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques-todos"))" />
@@ -2425,6 +2428,7 @@
         // Tesorería
         { "cafe/tesoreria/cajas", ("💰", "Cajas", "/cafe/tesoreria/cajas") },
         { "cafe/tesoreria/pagos", ("📤", "Pagos", "/cafe/tesoreria/pagos") },
+        { "plata-que-entro", ("💰", "Plata que entró", "/plata-que-entro") },
         { "cafe/tesoreria/cheques-todos", ("📄", "Cheques", "/cafe/tesoreria/cheques-todos") },
         { "cafe/tesoreria/cheques", ("📄", "Cheques", "/cafe/tesoreria/cheques-todos") }, // 2026-09-25: un favorito viejo lleva a la unica
         { "cafe/tesoreria/resumen", ("📊", "Resumen Tesorería", "/cafe/tesoreria/resumen") },
@@ -2751,6 +2755,7 @@
         { "cafe/tesoreria/cobranzas", "cafe-tesoreria" },
         { "cafe/tesoreria/pagos", "cafe-tesoreria" },
         { "cafe/tesoreria/cheques-todos", "cafe-tesoreria" },
+        { "plata-que-entro", "cafe-tesoreria" },
         { "cafe/tesoreria/cheques", "cafe-tesoreria" },
         { "cafe/tesoreria/resumen", "cafe-tesoreria" },
         { "cafe/depositos", "cafe-depositos" },
