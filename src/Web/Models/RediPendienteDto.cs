@@ -26,10 +26,13 @@ public class RediPendienteDto
     public string? RevisadaPor { get; set; }
     public DateTime? RevisadaAt { get; set; }
     public List<RediAdjuntoDto> Adjuntos { get; set; } = new();
+    /// <summary>2026-09-26: lo que escribieron por WhatsApp (quién la mandó, a quién le llegó).</summary>
+    public string? Mensaje { get; set; }
 
     /// <summary>Cómo se lee "quién la recibe" en una línea.</summary>
     public string RecibeLeible => RecibeTipo switch
     {
+        null => "se elige al volcar",
         "EMPLEADO" => $"{EmpleadoNombre} · {(Destino == "viajes" ? "de los viajes" : "del sueldo")}",
         "PROVEEDOR" => $"{ProveedorNombre} (proveedor)",
         "PRIVADA" => "queda en la privada",
@@ -42,4 +45,6 @@ public class RediAdjuntoDto
     public int Id { get; set; }
     public string NombreOriginal { get; set; } = "";
     public string? MimeType { get; set; }
+    public string Url => $"/api/cafe/redirigidas-pendientes/adjuntos/{Id}/archivo";
+    public bool EsImagen => MimeType?.StartsWith("image/") == true;
 }

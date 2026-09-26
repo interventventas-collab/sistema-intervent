@@ -426,11 +426,32 @@
                         <div style="margin: 0.8rem 0; padding: 0.7rem 0.9rem; background: #f5f3ff; border: 1px solid #7c3aed; border-radius: 8px; display: flex; gap: 0.6rem; align-items: center;">
                             <span style="font-size: 1.5rem;">🔁</span>
                             <div style="flex: 1; font-size: 0.88rem;">
-                                <b>Redirigida que mandó @rediOrigen.EnviadoPor por WhatsApp</b> por <b>$@rediOrigen.Importe.ToString("N2")</b>
+                                <b>Redirigida que mandó @rediOrigen.EnviadoPor por WhatsApp</b> <text>por</text> <b>$@rediOrigen.Importe.ToString("N2")</b>
+                                @if (!string.IsNullOrEmpty(rediOrigen.Mensaje))
+                                {
+                                    <div style="font-size: 0.9rem; margin-top: 0.25rem;">💬 «@rediOrigen.Mensaje»</div>
+                                }
                                 <div style="font-size: 0.78rem; color: #4c1d95; margin-top: 0.15rem;">
-                                    La recibe: @rediOrigen.RecibeLeible. Elegí la factura y guardá.
-                                    @if (rediOrigen.Adjuntos.Count > 0) { <text> Los @rediOrigen.Adjuntos.Count comprobantes quedan adjuntos a la cobranza.</text> }
+                                    @(rediOrigen.RecibeTipo is null ? "Elegí abajo a quién le llegó la plata (en Redirigido), la factura, y guardá." : $"La recibe: {rediOrigen.RecibeLeible}. Elegí la factura y guardá.")
                                 </div>
+                                @* 2026-09-26: el comprobante a la vista (antes solo se veía en la bolsita). *@
+                                @if (rediOrigen.Adjuntos.Count > 0)
+                                {
+                                    <div style="display:flex; gap:0.5rem; margin-top:0.45rem; flex-wrap:wrap; align-items:center;">
+                                        @foreach (var adj in rediOrigen.Adjuntos)
+                                        {
+                                            @if (adj.EsImagen)
+                                            {
+                                                <a href="@adj.Url" target="_blank" title="Ver grande"><img src="@adj.Url" style="height:110px; border-radius:6px; border:1px solid #c4b5fd;" /></a>
+                                            }
+                                            else
+                                            {
+                                                <a href="@adj.Url" target="_blank" style="font-size:0.8rem; color:#4c1d95;">📎 @adj.NombreOriginal</a>
+                                            }
+                                        }
+                                        <span style="font-size:0.72rem; color:#6b7280;">quedan adjuntos a la cobranza</span>
+                                    </div>
+                                }
                             </div>
                         </div>
                     }
@@ -2007,6 +2028,7 @@
             else if (rediOrigen.RecibeTipo == "PRIVADA")
                 formMedios[idx].RedirigidoDestino = DestinoPrivada;
             formObservaciones = $"Redirigida cargada por WhatsApp por {rediOrigen.EnviadoPor}"
+                + (string.IsNullOrEmpty(rediOrigen.Mensaje) ? "" : $": {rediOrigen.Mensaje}")
                 + (rediOrigen.ClienteId is null && !string.IsNullOrEmpty(rediOrigen.ClienteTexto) ? $" · cliente según WhatsApp: {rediOrigen.ClienteTexto}" : "")
                 + (rediOrigen.RecibeTipo == "TEXTO" ? $" · la recibió: {rediOrigen.RecibeTexto}" : "");
         }

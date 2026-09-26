@@ -35,7 +35,7 @@ public class CafeRedirigidasPendientesController : ControllerBase
         string? RecibeTipo, int? EmpleadoId, string? EmpleadoNombre, int? ProveedorId, string? ProveedorNombre,
         string? RecibeTexto, string? Destino,
         int? CobranzaCreadaId, string? CobranzaNumero, string? RechazadaMotivo, string? RevisadaPor, DateTime? RevisadaAt,
-        List<AdjuntoDto> Adjuntos);
+        List<AdjuntoDto> Adjuntos, string? Mensaje);
     public record VincularRequest(int CobranzaId, string? Operador);
     public record RechazarRequest(string? Motivo, string? Operador);
 
@@ -157,6 +157,6 @@ public class CafeRedirigidasPendientesController : ControllerBase
             x.RecibeTexto, x.Destino,
             x.CobranzaCreadaId, x.CobranzaCreadaId is int k && cobs.TryGetValue(k, out var kn) ? kn : null,
             x.RechazadaMotivo, x.RevisadaPor, x.RevisadaAt,
-            x.Adjuntos.Select(a => new AdjuntoDto(a.Id, a.NombreOriginal, a.MimeType)).ToList())).ToList();
+            x.Adjuntos.Select(a => new AdjuntoDto(a.Id, a.NombreOriginal, a.MimeType)).ToList(), x.Mensaje)).ToList();
     }
 }
