@@ -25,6 +25,10 @@ public class PagosMovilWaAutorizado
 
     public bool Activo { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>2026-09-26: puede mandar "redi" (redirigida) pero NO "PAGO". Así se habilitó a Germán y
+    /// al celu de coordinación sin darles también la carga de pagos.</summary>
+    public bool SoloRedirigida { get; set; }
 }
 
 /// <summary>2026-08-13: "memoria corta" del asistente de PAGO por WhatsApp. Cargar un pago lleva

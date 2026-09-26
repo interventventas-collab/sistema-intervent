@@ -7914,3 +7914,46 @@ BEGIN
     );
 END
 GO
+
+-- 2026-09-26: REDIRIGIDAS por WhatsApp ("redi" a la línea FRIKAF) → bolsita de Cobranzas a aprobar.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='PagosMovil_WaAutorizados')
+   AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('PagosMovil_WaAutorizados') AND name='SoloRedirigida')
+    ALTER TABLE PagosMovil_WaAutorizados ADD SoloRedirigida BIT NOT NULL CONSTRAINT DF_PagosMovilWaAut_SoloRedi DEFAULT 0;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_RedirigidasPendientes')
+CREATE TABLE Cafe_RedirigidasPendientes (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Estado NVARCHAR(20) NOT NULL DEFAULT N'BORRADOR',   -- BORRADOR | PENDIENTE | APROBADA | RECHAZADA
+    Paso NVARCHAR(20) NULL,
+    ExpiraAt DATETIME2 NULL,
+    ClienteId INT NULL,
+    ClienteTexto NVARCHAR(200) NULL,
+    RecibeTipo NVARCHAR(15) NULL,                       -- EMPLEADO | PROVEEDOR | PRIVADA | TEXTO
+    EmpleadoId INT NULL,
+    ProveedorId INT NULL,
+    RecibeTexto NVARCHAR(200) NULL,
+    Destino NVARCHAR(15) NULL,                          -- viajes | sueldo
+    Importe DECIMAL(18,2) NOT NULL DEFAULT 0,
+    EnviadoPor NVARCHAR(80) NULL,
+    EnviadoNumero NVARCHAR(60) NULL,
+    CobranzaCreadaId INT NULL,
+    RechazadaMotivo NVARCHAR(200) NULL,
+    RevisadaPor NVARCHAR(120) NULL,
+    RevisadaAt DATETIME2 NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_RediPend_Cliente FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id)
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_RedirigidasPendientesAdjuntos')
+CREATE TABLE Cafe_RedirigidasPendientesAdjuntos (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    PendienteId INT NOT NULL,
+    StoredFilename NVARCHAR(200) NOT NULL,              -- archivo en /data/whatsapp-uploads
+    NombreOriginal NVARCHAR(260) NOT NULL,
+    MimeType NVARCHAR(120) NULL,
+    Tamano BIGINT NOT NULL DEFAULT 0,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_RediPendAdj_Pend FOREIGN KEY (PendienteId) REFERENCES Cafe_RedirigidasPendientes(Id)
+);
+GO

@@ -421,6 +421,19 @@
                             </div>
                         </div>
                     }
+                    @if (rediOrigen is not null)
+                    {
+                        <div style="margin: 0.8rem 0; padding: 0.7rem 0.9rem; background: #f5f3ff; border: 1px solid #7c3aed; border-radius: 8px; display: flex; gap: 0.6rem; align-items: center;">
+                            <span style="font-size: 1.5rem;">🔁</span>
+                            <div style="flex: 1; font-size: 0.88rem;">
+                                <b>Redirigida que mandó @rediOrigen.EnviadoPor por WhatsApp</b> por <b>$@rediOrigen.Importe.ToString("N2")</b>
+                                <div style="font-size: 0.78rem; color: #4c1d95; margin-top: 0.15rem;">
+                                    La recibe: @rediOrigen.RecibeLeible. Elegí la factura y guardá.
+                                    @if (rediOrigen.Adjuntos.Count > 0) { <text> Los @rediOrigen.Adjuntos.Count comprobantes quedan adjuntos a la cobranza.</text> }
+                                </div>
+                            </div>
+                        </div>
+                    }
                     @if (alqPendienteOrigen is not null)
                     {
                         <div style="margin: 0.8rem 0; padding: 0.7rem 0.9rem; background: #dcfce7; border: 1px solid #16a34a; border-radius: 8px; display: flex; gap: 0.6rem; align-items: center;">
@@ -1804,6 +1817,9 @@
     /// <summary>2026-09-14: lo mismo para un cobro de ALQUILER del repartidor: efectivo + la reserva tildada.
     /// Al guardar se vincula (y ahí la plata entra a la caja, cosa que el "Aprobar" viejo no hacía).</summary>
     [Parameter, SupplyParameterFromQuery(Name = "alqPendienteId")] public int? PreAlqPendienteId { get; set; }
+    /// <summary>2026-09-26: redirigida cargada por WhatsApp ("redi"): medio Redirigido ya armado.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "rediPendienteId")] public int? PreRediPendienteId { get; set; }
+    private RediPendienteDto? rediOrigen;
     private AlqCobranzaPendienteDto? alqPendienteOrigen;
     // 2026-06-06: abre el modal de Nueva Cobranza vacío (atajo desde topbar)
     [Parameter, SupplyParameterFromQuery(Name = "nueva")] public int? PreNueva { get; set; }
@@ -1949,12 +1965,54 @@
                 await PrecargarDesdePendienteAsync(PrePendienteId.Value);
             if (PreAlqPendienteId.HasValue && PreAlqPendienteId.Value > 0)
                 await PrecargarDesdeAlqPendienteAsync(PreAlqPendienteId.Value);
+            if (PreRediPendienteId.HasValue && PreRediPendienteId.Value > 0)
+                await PrecargarDesdeRediAsync(PreRediPendienteId.Value);
             RecalcularTotal();
         }
     }
 
     /// <summary>Precarga el form con los datos que cargo el repartidor desde el QR:
     /// medio efectivo + importe + observaciones automaticas con el repartidor que lo cobro.</summary>
+    /// <summary>2026-09-26: redirigida por WhatsApp → medio "Redirigido" con el importe y a quién le
+    /// llegó (empleado + viajes/sueldo, proveedor, o la privada). Si el que la recibe vino escrito con
+    /// palabras, queda sin elegir y el guardar no deja seguir hasta que se elija.</summary>
+    private async Task PrecargarDesdeRediAsync(int rediId)
+    {
+        try
+        {
+            rediOrigen = await Api.GetRediPendienteAsync(rediId);
+            if (rediOrigen is null) return;
+            if (rediOrigen.Estado != "PENDIENTE")
+            {
+                ToastService.Error($"Esa redirigida ya está {rediOrigen.Estado.ToLower()}.");
+                rediOrigen = null;
+                return;
+            }
+            var caja = cajas?.FirstOrDefault(c => c.IsActive && c.Tipo == "V_PRIVADO");
+            if (caja is null) { ToastService.Error("No encontré la caja de Redirigido"); return; }
+            formMedios.Add(new MedioForm
+            {
+                CajaId = caja.Id, TipoCaja = caja.Tipo, Importe = rediOrigen.Importe,
+                Referencia = $"Redirigida por WhatsApp ({rediOrigen.EnviadoPor})"
+            });
+            var idx = formMedios.Count - 1;
+            if (rediOrigen.RecibeTipo == "EMPLEADO" && rediOrigen.EmpleadoId is int empId
+                && destinatarios.FirstOrDefault(d => d.EmpleadoId == empId) is { } d)
+            {
+                ElegirDestinatario(idx, d);
+                if (!string.IsNullOrEmpty(rediOrigen.Destino)) formMedios[idx].RedirigidoDestino = rediOrigen.Destino;
+            }
+            else if (rediOrigen.RecibeTipo == "PROVEEDOR" && rediOrigen.ProveedorId is int provId)
+                await ElegirProveedor(idx, provId);
+            else if (rediOrigen.RecibeTipo == "PRIVADA")
+                formMedios[idx].RedirigidoDestino = DestinoPrivada;
+            formObservaciones = $"Redirigida cargada por WhatsApp por {rediOrigen.EnviadoPor}"
+                + (rediOrigen.ClienteId is null && !string.IsNullOrEmpty(rediOrigen.ClienteTexto) ? $" · cliente según WhatsApp: {rediOrigen.ClienteTexto}" : "")
+                + (rediOrigen.RecibeTipo == "TEXTO" ? $" · la recibió: {rediOrigen.RecibeTexto}" : "");
+        }
+        catch { /* no critico */ }
+    }
+
     private async Task PrecargarDesdePendienteAsync(int pendienteId)
     {
         try
@@ -2083,6 +2141,7 @@
         // cobranza hecha a mano lo marcaba aprobado atado a un recibo que no era suyo.
         pendienteOrigen = null;
         alqPendienteOrigen = null;
+        rediOrigen = null;
         showNueva = true;
     }
 
@@ -2122,6 +2181,7 @@
         adjTransferenciaFile = null;
         pendienteOrigen = null;
         alqPendienteOrigen = null;
+        rediOrigen = null;
     }
 
     private async Task OnClienteChange()
@@ -2549,6 +2609,13 @@
                 try { await Api.VincularAlqCobranzaPendienteAsync(alqPendienteOrigen.Id, r.Id, Operator.Current); }
                 catch { /* no critico */ }
                 alqPendienteOrigen = null;
+            }
+            if (rediOrigen is not null)
+            {
+                // Queda APROBADA y sus fotos/comprobantes pasan a los adjuntos de esta cobranza.
+                try { await Api.VincularRediPendienteAsync(rediOrigen.Id, r.Id, Operator.Current); }
+                catch { /* no critico */ }
+                rediOrigen = null;
             }
             // 2026-06-25: subir adjuntos pendientes (comprobante de retencion / transferencia)
             await SubirAdjuntoPendienteAsync(r.Id, adjRetencionFile, "RETENCION");

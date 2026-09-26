@@ -97,6 +97,8 @@ public class MetaWhatsAppWebhookController : ControllerBase
         var empBot = sp.GetRequiredService<WhatsAppEmpleadoBotService>();
         // 2026-08-13: asistente para cargar un pago escribiendo "PAGO" (empleado/proveedor → pendiente)
         var pagoBot = sp.GetRequiredService<WhatsAppPagoBotService>();
+        // 2026-09-26: asistente para cargar una REDIRIGIDA escribiendo "redi" (línea FRIKAF) → bolsita
+        var rediBot = sp.GetRequiredService<WhatsAppRedirigidaBotService>();
         // 2026-08-06: aviso de venta a internos (atiende los botones comprobante/cuenta corriente/detalle)
         var avisoSvc = sp.GetRequiredService<VentaAvisoWhatsAppService>();
         var avisoDep = sp.GetRequiredService<AvisoDepositoService>();
@@ -166,7 +168,7 @@ public class MetaWhatsAppWebhookController : ControllerBase
                 }
 
                 foreach (var m in messages.EnumerateArray())
-                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, empBot, pagoBot, avisoSvc, avisoDep, m, nombres, baseUrl, lineaId);
+                    await ProcesarMensajeAsync(db, meta, pedidoSvc, listasCtrl, empBot, pagoBot, rediBot, avisoSvc, avisoDep, m, nombres, baseUrl, lineaId);
             }
         }
     }
@@ -434,7 +436,8 @@ public class MetaWhatsAppWebhookController : ControllerBase
 
     private async Task ProcesarMensajeAsync(AppDbContext db, MetaWhatsAppService meta,
         WhatsAppPedidoService pedidoSvc, Api.Controllers.CafeListasCustomController listasCtrl,
-        WhatsAppEmpleadoBotService empBot, WhatsAppPagoBotService pagoBot, VentaAvisoWhatsAppService avisoSvc,
+        WhatsAppEmpleadoBotService empBot, WhatsAppPagoBotService pagoBot, WhatsAppRedirigidaBotService rediBot,
+        VentaAvisoWhatsAppService avisoSvc,
         AvisoDepositoService avisoDep,
         JsonElement m, Dictionary<string, string> nombres, string baseUrl, string? lineaId)
     {
@@ -596,6 +599,12 @@ public class MetaWhatsAppWebhookController : ControllerBase
             }
             return;
         }
+
+        // 2026-09-26: ASISTENTE DE REDIRIGIDA ("redi" a la línea FRIKAF). Va antes del de PAGO: también
+        // recibe las fotos/PDF que manden como comprobante mientras está en ese paso.
+        var idInteractivoRedi = tipo == "interactive" ? TryGetInteractiveId(m) : null;
+        if (await rediBot.TryHandleAsync(fromWaId!, numero, tipo, idInteractivoRedi, cuerpo, lineaId, mediaUrlPublica, mediaNombre))
+            return;
 
         // 2026-08-13: ASISTENTE DE PAGO. Si un número autorizado escribió "PAGO", tocó una opción del
         // asistente ("pago:..."), o está a mitad de la carga, lo atiende el bot de pagos y cortamos acá.
