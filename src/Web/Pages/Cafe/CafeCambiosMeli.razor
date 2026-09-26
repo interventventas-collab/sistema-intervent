@@ -42,6 +42,7 @@
                 <option value="STATUS_PAUSED">🟡 Pausada</option>
                 <option value="STATUS_ACTIVE">🟢 Activada</option>
                 <option value="PAUSADA_CON_STOCK">⚠️ Pausada con stock (revisar precio)</option>
+                <option value="ENVIO_CAMBIO">🚚 MeLi cambió el envío</option>
             </select>
             <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
                 <input type="checkbox" @bind="soloSinVer" @bind:after="Refrescar" />
@@ -246,6 +247,8 @@
         "STATUS_PAUSED" => "🟡 Pausada",
         "STATUS_ACTIVE" => "🟢 Activada",
         "PAUSADA_CON_STOCK" => "⚠️ Pausada con stock",
+        "ENVIO_CAMBIO" => "🚚 Cambió el envío",
+        "ENVIOS_CAMBIARON" => "🚚 Resumen envíos",
         _ => tipo
     };
 
@@ -256,6 +259,7 @@
         "STATUS_PAUSED" => "tipo-paused",
         "STATUS_ACTIVE" => "tipo-active",
         "PAUSADA_CON_STOCK" => "tipo-revisar",
+        "ENVIO_CAMBIO" => "tipo-revisar",
         _ => ""
     };
 

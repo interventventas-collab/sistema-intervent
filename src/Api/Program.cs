@@ -313,6 +313,8 @@ builder.Services.AddHostedService<MeliPricePushBackgroundService>();
 builder.Services.AddHostedService<MeliComisionesNocturnoService>();
 // 2026-08-25: vigilante de margen (04:00 ARG) — avisa las que caen abajo del 50%, no toca precios.
 builder.Services.AddHostedService<MeliMargenVigilanteService>();
+// 2026-09-26: relee de noche comisión + envío de todas las activas y avisa si MeLi cambió el envío.
+builder.Services.AddHostedService<MeliEnviosNocturnoService>();
 builder.Services.AddHostedService<ContabiliumNightlySnapshotService>();
 builder.Services.AddScoped<CafePreciosFuturosService>();
 builder.Services.AddHostedService<CafePreciosFuturosBackgroundService>();
