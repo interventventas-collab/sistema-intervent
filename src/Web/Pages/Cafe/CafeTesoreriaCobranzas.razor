@@ -20,6 +20,9 @@
                (los del banco y los cargados a mano) viven todos en la misma. *@
             <button class="btn btn-secondary" title="Todos los cheques: cobrarlos al cliente, depositarlos, endosarlos"
                     @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-todos")'>📄 Cheques</button>
+            @* 26/09/2026: baja a Excel exactamente lo que se ve con los filtros puestos. *@
+            <button class="btn btn-secondary" title="Baja a Excel las cobranzas que estás viendo, con los filtros puestos"
+                    @onclick="DescargarExcel">⬇ Descargar Excel</button>
             <button class="btn btn-primary" @onclick="ShowNueva">+ Nueva cobranza</button>
         </div>
     </div>
@@ -77,6 +80,34 @@
                 <button class="btn btn-secondary" @onclick="LimpiarFiltros"
                         style="padding: 0.35rem 0.7rem; font-size: 0.8rem;"
                         title="Limpiar todos los filtros">✕ Limpiar</button>
+            }
+        </div>
+        @* 26/09/2026: filtro por tipo de cobranza y, si es redirigida, a quién fue la plata. *@
+        <div style="background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 0 1rem 0.6rem; display: flex; flex-direction: column; gap: 0.4rem;">
+            <div style="display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center;">
+                <span style="font-size: 0.7rem; color: #6b7280; font-weight: 600; min-width: 70px;">Tipo</span>
+                <button class="btn @(filtroTipo == "" ? "btn-primary" : "btn-secondary")" style="padding:.2rem .6rem; font-size:.8rem;"
+                        @onclick='() => ElegirTipo("")'>Todas</button>
+                @foreach (var tp in TiposPresentes())
+                {
+                    var tpSel = tp;
+                    <button class="btn @(filtroTipo == tpSel ? "btn-primary" : "btn-secondary")" style="padding:.2rem .6rem; font-size:.8rem;"
+                            @onclick="() => ElegirTipo(tpSel)">@(tpSel == "MIXTO" ? "Mixto" : tpSel)</button>
+                }
+            </div>
+            @if (filtroTipo == TipoRedirigido)
+            {
+                <div style="display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center;">
+                    <span style="font-size: 0.7rem; color: #6b7280; font-weight: 600; min-width: 70px;">A quién fue</span>
+                    <button class="btn @(filtroRedirA == "" ? "btn-primary" : "btn-secondary")" style="padding:.2rem .6rem; font-size:.8rem;"
+                            @onclick='() => filtroRedirA = ""'>Todos</button>
+                    @foreach (var d in DestinosRedirigidos())
+                    {
+                        var dSel = d;
+                        <button class="btn @(filtroRedirA == dSel ? "btn-primary" : "btn-secondary")" style="padding:.2rem .6rem; font-size:.8rem;"
+                                @onclick="() => filtroRedirA = dSel">@dSel</button>
+                    }
+                </div>
             }
         </div>
     }
@@ -1273,13 +1304,48 @@
     private string filtroRetenciones = "TODOS";  // TODOS | CON | SIN
     private decimal? filtroMontoMin;
     private decimal? filtroMontoMax;
+    private string filtroTipo = "";     // "" = todas; si no, el FormaPago ("Banco", "Cheque", "MIXTO"...) o "Redirigido"
+    private string filtroRedirA = "";   // solo con filtroTipo == Redirigido: "" = todos, si no un destino ("Walter · viajes")
+
+    private const string TipoRedirigido = "Redirigido";
+    private static readonly string[] OrdenTipos = { "Banco", "Transfer.", "Cheque", "Efectivo", "MercadoPago", "Tarjeta", TipoRedirigido, "MIXTO" };
+
+    // Una cobranza es "redirigida" si alguno de sus medios fue a otra persona, aunque sea MIXTO.
+    private static bool EsRedirigida(CobranzaListDto c) =>
+        !string.IsNullOrWhiteSpace(c.RedirigidoA) || c.FormaPago == TipoRedirigido;
+
+    // RedirigidoA viene del server como "A · viajes / B · proveedor" cuando hay varios medios redirigidos.
+    private static IEnumerable<string> DestinosDe(CobranzaListDto c) =>
+        (c.RedirigidoA ?? "").Split(" / ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>Solo los tipos que existen en las cobranzas cargadas, en un orden fijo.</summary>
+    private List<string> TiposPresentes()
+    {
+        if (cobranzas is null) return new();
+        var hay = cobranzas.Select(c => c.FormaPago ?? "").ToHashSet();
+        if (cobranzas.Any(EsRedirigida)) hay.Add(TipoRedirigido);
+        return OrdenTipos.Where(hay.Contains)
+            .Concat(hay.Where(t => t != "" && !OrdenTipos.Contains(t)).OrderBy(t => t))
+            .ToList();
+    }
+
+    private List<string> DestinosRedirigidos() =>
+        (cobranzas ?? new()).Where(c => c.Estado != "ANULADA").SelectMany(DestinosDe)
+            .Distinct().OrderBy(d => d).ToList();
+
+    private void ElegirTipo(string tipo)
+    {
+        filtroTipo = tipo;
+        filtroRedirA = "";
+    }
 
     private bool HayFiltrosActivos =>
         filtroFechaDesde.HasValue || filtroFechaHasta.HasValue
         || !string.IsNullOrWhiteSpace(filtroBuscar)
         || filtroEstado != "VIGENTE"
         || filtroRetenciones != "TODOS"
-        || filtroMontoMin.HasValue || filtroMontoMax.HasValue;
+        || filtroMontoMin.HasValue || filtroMontoMax.HasValue
+        || filtroTipo != "";
 
     private void LimpiarFiltros()
     {
@@ -1290,6 +1356,8 @@
         filtroRetenciones = "TODOS";
         filtroMontoMin = null;
         filtroMontoMax = null;
+        filtroTipo = "";
+        filtroRedirA = "";
     }
 
     /// <summary>Aplica los filtros activos a la lista de cobranzas. Se llama desde el render.</summary>
@@ -1330,7 +1398,48 @@
         if (filtroMontoMin.HasValue) q = q.Where(c => c.Total >= filtroMontoMin.Value);
         if (filtroMontoMax.HasValue) q = q.Where(c => c.Total <= filtroMontoMax.Value);
 
+        // Tipo de cobranza y, si es redirigida, a quién fue
+        if (filtroTipo == TipoRedirigido)
+        {
+            q = q.Where(EsRedirigida);
+            if (filtroRedirA != "") q = q.Where(c => DestinosDe(c).Contains(filtroRedirA));
+        }
+        else if (filtroTipo != "") q = q.Where(c => c.FormaPago == filtroTipo);
+
         return q.ToList();
+    }
+
+    // 26/09/2026: baja a Excel (csv con ; que Excel abre directo) lo mismo que se ve en pantalla.
+    private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
+    private static string Esc(string? s) => string.IsNullOrEmpty(s) ? "" : s.Replace(";", ",").Replace("\n", " ").Replace("\r", " ");
+
+    private async Task DescargarExcel()
+    {
+        var lista = AplicarFiltros();
+        if (lista.Count == 0) { ToastService.Error("No hay cobranzas para descargar con estos filtros"); return; }
+        var sb = new System.Text.StringBuilder();
+        sb.Append('\uFEFF'); // BOM para que Excel lea bien los acentos
+        sb.AppendLine("Número;Fecha;Hora;Cliente;Código;Comprobantes;Forma de pago;Detalle;Redirigido a;Total;Retenciones;Cargó;Estado");
+        foreach (var c in lista)
+        {
+            var ar = c.Fecha.ToArTime();
+            var comps = c.ComprobantesInfo is { Count: > 0 }
+                ? string.Join(" / ", c.ComprobantesInfo.Select(ci => EsFacturaArca(ci) ? $"{ci.Numero} ({FacturaLabel(ci)})" : ci.Numero))
+                : string.Join(" / ", c.Comprobantes ?? new());
+            sb.AppendLine(string.Join(";",
+                Esc(c.Numero), ar.ToString("dd/MM/yyyy"), ar.ToString("HH:mm"), Esc(c.ClienteNombre),
+                c.ClienteCodigo?.ToString() ?? "", Esc(comps),
+                Esc(c.FormaPago == "MIXTO" ? "Mixto" : c.FormaPago), Esc(c.FormaPagoDetalle), Esc(c.RedirigidoA),
+                c.Total.ToString("0.##", Ar), c.Retenciones.ToString("0.##", Ar),
+                Esc(c.CargoPorNombre), Esc(c.Estado)));
+        }
+        var vig = lista.Where(c => c.Estado != "ANULADA").ToList();
+        sb.AppendLine();
+        sb.AppendLine($"TOTAL ({vig.Count} cobranzas, sin anuladas);;;;;;;;;{vig.Sum(c => c.Total).ToString("0.##", Ar)};{vig.Sum(c => c.Retenciones).ToString("0.##", Ar)};;");
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var fileName = $"Cobranzas-{DateTime.UtcNow.ToArTime():yyyy-MM-dd}.csv";
+        await JS.InvokeVoidAsync("downloadFile", fileName, "text/csv", Convert.ToBase64String(bytes));
+        ToastService.Success($"Archivo {fileName} descargado");
     }
 
     // Eliminacion definitiva de cobranzas anuladas — requiere clave del usuario
