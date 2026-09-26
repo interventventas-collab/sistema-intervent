@@ -381,7 +381,7 @@ public class TelegramService
         bool telegramListo = chatsAlertas.Count > 0;
         if (quiereTelegram && !quiereCampanita && !telegramListo) return;
 
-        var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE", "MARGEN_BAJO", "PRECIO_MANTENIDO" };
+        var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE", "MARGEN_BAJO", "PRECIO_MANTENIDO", "ENVIOS_CAMBIARON" };
         var corteViejo = DateTime.UtcNow.AddHours(-12);
 
         // Anti-backlog: eventos sin avisar más viejos que 12h se marcan y no se mandan.
@@ -454,8 +454,10 @@ public class TelegramService
             "PAUSADA_CON_STOCK" => "pausada con stock",
             "MARGEN_BAJO" => $"abajo del {ev.ValorAnterior ?? "50"}% (deja {ev.DeltaPct ?? 0:0.#}%)",
             "PRECIO_MANTENIDO" => $"precio corregido para mantener el {ev.Delta ?? 50:0.#}%",
+            "ENVIOS_CAMBIARON" => "MeLi cambió el costo de envío",
             _ => "reactivada"
         };
+        if (ev.Tipo == "ENVIOS_CAMBIARON") return ev.Title ?? "Publicaciones con nuevo costo de envío";
         var nombre = string.IsNullOrWhiteSpace(ev.Title) ? ev.MeliItemId : ev.Title;
         return $"Publi {quePaso}: {Recortar(nombre, 60)}";
     }
@@ -496,6 +498,15 @@ public class TelegramService
             lineas.Add($"📦 {ev.Title ?? ev.MeliItemId}");
             if (!string.IsNullOrWhiteSpace(ev.Sku)) lineas.Add($"SKU {ev.Sku}");
             if (!string.IsNullOrWhiteSpace(ev.Notes)) lineas.Add(ev.Notes);
+        }
+        else if (ev.Tipo == "ENVIOS_CAMBIARON")
+        {
+            // 2026-09-26: resumen del repaso nocturno de envíos (MeliEnviosNocturnoService). No se tocó ningún precio.
+            lineas.Add($"🚚 {ev.Title ?? "Publicaciones con nuevo costo de envío"}");
+            if (!string.IsNullOrWhiteSpace(ev.Notes)) lineas.Add(ev.Notes);
+            lineas.Add("");
+            lineas.Add("MercadoLibre cambió el envío sin que cambie el precio. No se tocó ningún precio; el % de ganancia ya se calcula con el envío nuevo.");
+            return string.Join("\n", lineas);
         }
         else // STATUS_ACTIVE
         {
