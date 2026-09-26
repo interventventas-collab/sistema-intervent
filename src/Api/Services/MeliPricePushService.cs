@@ -44,13 +44,21 @@ public class MeliPricePushService
         _itemService = itemService;
     }
 
-    public record PushResult(bool Ok, string Message, decimal? PushedPrice = null, decimal? BasePrice = null);
+    public record PushResult(bool Ok, string Message, decimal? PushedPrice = null, decimal? BasePrice = null)
+    {
+        /// <summary>No se mandó porque con soloSubir el precio no subía.</summary>
+        public bool NoSube { get; init; }
+    }
 
     /// <summary>Pushea el precio de una publicación específica. Usada por el endpoint manual
     /// (que ahora también setea SyncPrecio=true para marcarla como "claimed") y por el
     /// auto-push event-driven. Si markAsClaimed=true (caso manual), marca SyncPrecio=true
     /// además de actualizar LastSyncAt.</summary>
-    public async Task<PushResult> PushPrecioForItemAsync(int meliItemDbId, bool markAsClaimed = false, CancellationToken ct = default)
+    /// <param name="soloSubir">2026-09-26: si el precio calculado NO es mayor al actual, no se manda nada
+    /// (lo usa el vigilante de la noche: la primera noche bajó 13 precios solo, una mesa de $74.843 a
+    /// $32.999). Devuelve Ok=false con NoSube=true y el precio que habría puesto en BasePrice.</param>
+    public async Task<PushResult> PushPrecioForItemAsync(int meliItemDbId, bool markAsClaimed = false, CancellationToken ct = default,
+        bool soloSubir = false)
     {
         var item = await _db.MeliItems.Include(i => i.MeliAccount).FirstOrDefaultAsync(i => i.Id == meliItemDbId, ct);
         if (item is null) return new PushResult(false, "Item no encontrado");
@@ -102,6 +110,11 @@ public class MeliPricePushService
                 item.MeliItemId, precioFinal, TopePrecioSeguro);
             return new PushResult(false, $"⛔ Precio ${precioFinal:N0} frenado por seguridad (fuera de rango razonable). Revisá el costo / multiplicador de esta publicación antes de pushear.");
         }
+
+        if (soloSubir && precioFinal <= item.Price)
+            return new PushResult(false, precioFinal < item.Price
+                ? $"El sistema lo dejaría en ${precioFinal:N0} (más bajo que ${item.Price:N0}): de noche no se baja solo."
+                : "El precio que calcula el sistema es el mismo que ya tiene.", BasePrice: precioFinal) { NoSube = true };
 
         // 3. PUT a MeLi (detectar variantes).
         var token = await _accSvc.GetValidTokenAsync(item.MeliAccount);

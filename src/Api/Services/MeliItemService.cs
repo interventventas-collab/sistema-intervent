@@ -2467,8 +2467,10 @@ public class MeliItemService
             {
                 result.FinancingFee = realFinancing.Value;
                 result.PercentageFee = meliPctFee + realFinancing.Value;
-                // Fixed fee = $3050 estándar; excepto pcj-co-funded (interés bajo) = $0.
-                result.FixedFee = item.InstallmentTag == "pcj-co-funded" ? 0m : 3050m;
+                // 2026-09-26: el cargo fijo es el que informa MeLi (va por escalón de precio: $1.330 /
+                // $2.740 / $0 arriba de $33.000), también en pcj-co-funded. Antes estaba fijo en $3.050
+                // (y $0 en pcj): cotejado contra ventas reales de sept, lo cobrado cierra con el de MeLi.
+                // Con $3.050 un pack de $7.699 figuraba perdiendo plata y dejaba 54%.
                 result.SaleFeeAmount = Math.Round(price * result.PercentageFee / 100m + result.FixedFee, 2);
             }
         }
@@ -2613,7 +2615,6 @@ public class MeliItemService
                 {
                     res.FinancingFee = realFinancing.Value;
                     res.PercentageFee = meliPctFee + realFinancing.Value;
-                    res.FixedFee = item.InstallmentTag == "pcj-co-funded" ? 0m : res.FixedFee;
                     res.SaleFeeAmount = Math.Round(precioSimulado * res.PercentageFee / 100m + res.FixedFee, 2);
                 }
             }

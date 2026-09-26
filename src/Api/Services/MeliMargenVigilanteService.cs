@@ -149,6 +149,7 @@ public class MeliMargenVigilanteService : BackgroundService
             .ToDictionaryAsync(c => c.MeliItemId, ct);
 
         var nuevos = new List<(decimal Margen, MeliCambioDetectado Ev)>();
+        var pushSvc = sp.GetRequiredService<MeliPricePushService>();
 
         foreach (var m in activas)
         {
@@ -159,6 +160,22 @@ public class MeliMargenVigilanteService : BackgroundService
             var margen = Math.Round(ganancia / costo * 100m, 1);
 
             var piso = objetivos.TryGetValue(m.MeliItemId, out var obj) ? obj : PISO_DEFAULT;
+
+            // 2026-09-26: si da abajo, se vuelve a medir con el MISMO costo que usa el precio
+            // (CalcularCostoTotalAsync: caja+tapa al costo del OEM del juego, un solo color, café por
+            // fracción). La suma rápida de piezas daba 43% en 35 publicaciones que dejaban 50%, y todas
+            // las noches se "corregían" mandando el mismo precio.
+            if (margen < piso)
+            {
+                var ent = await db.MeliItems.AsNoTracking().FirstOrDefaultAsync(i => i.Id == m.Id, ct);
+                var costoMotor = ent is null ? null : await pushSvc.CalcularCostoTotalAsync(ent, ct);
+                if (costoMotor is decimal cm && cm > 0 && cm != costo)
+                {
+                    costo = cm;
+                    ganancia = (m.Price - seLleva) / IVA - costo;
+                    margen = Math.Round(ganancia / costo * 100m, 1);
+                }
+            }
 
             // Tiene "Mantener el N%" y se corrió para abajo: se corrige (salvo promoción).
             if (conSincro.Contains(m.MeliItemId) && margen < piso - TOLERANCIA_PUNTOS && m.PromoPrecio is not > 0)
@@ -214,15 +231,15 @@ public class MeliMargenVigilanteService : BackgroundService
         await db.SaveChangesAsync(ct);
 
         // Correcciones de "Mantener el N%": las más lejos del objetivo primero.
-        int corregidas = 0, fallidas = 0;
+        int corregidas = 0, fallidas = 0, sinSubir = 0;
         if (aCorregir.Count > 0)
         {
-            var push = sp.GetRequiredService<MeliPricePushService>();
             foreach (var c in aCorregir.OrderBy(x => x.Margen - x.Objetivo).Take(MAX_CORRECCIONES_POR_NOCHE))
             {
                 if (ct.IsCancellationRequested) break;
                 MeliPricePushService.PushResult r;
-                try { r = await push.PushPrecioForItemAsync(c.Id, markAsClaimed: false, ct); }
+                // 2026-09-26: soloSubir — de noche nunca se baja un precio (ver PushPrecioForItemAsync).
+                try { r = await pushSvc.PushPrecioForItemAsync(c.Id, markAsClaimed: false, ct, soloSubir: true); }
                 catch (Exception ex) { r = new MeliPricePushService.PushResult(false, ex.Message); }
 
                 var arS = new System.Globalization.CultureInfo("es-AR");
@@ -241,9 +258,15 @@ public class MeliMargenVigilanteService : BackgroundService
                               + $"${c.Precio.ToString("N0", arS)} → ${nuevo.ToString("N0", arS)}"
                     });
                 }
+                else if (r.NoSube && previos.ContainsKey(c.Mla))
+                {
+                    // Ya hay un aviso sin ver de esta publicación: no se repite cada noche.
+                    sinSubir++;
+                    continue;
+                }
                 else
                 {
-                    fallidas++;
+                    if (r.NoSube) sinSubir++; else fallidas++;
                     db.MeliCambiosDetectados.Add(new MeliCambioDetectado
                     {
                         MeliItemId = c.Mla, MeliAccountId = c.Cuenta, Sku = c.Sku, Title = c.Titulo,
@@ -251,18 +274,20 @@ public class MeliMargenVigilanteService : BackgroundService
                         ValorAnterior = c.Objetivo.ToString("0", System.Globalization.CultureInfo.InvariantCulture),
                         ValorNuevo = c.Precio.ToString(System.Globalization.CultureInfo.InvariantCulture),
                         Delta = c.Costo, DeltaPct = c.Margen, Source = "mantener", DetectedAt = ahora,
-                        Notes = $"Tiene «Mantener» pero no se pudo corregir el precio: {r.Message}"
+                        Notes = r.NoSube
+                            ? $"Tiene «Mantener el {c.Objetivo.ToString("0.#", arS)}%» y deja {c.Margen.ToString("0.#", arS)}%, pero no se subió: {r.Message}"
+                            : $"Tiene «Mantener» pero no se pudo corregir el precio: {r.Message}"
                     });
                 }
                 await db.SaveChangesAsync(ct);
                 try { await Task.Delay(1500, ct); } catch (OperationCanceledException) { break; }
             }
-            _logger.LogWarning("[Mantener objetivo] {Ok} corregidas, {Err} no se pudieron (de {Total} abajo)",
-                corregidas, fallidas, aCorregir.Count);
+            _logger.LogWarning("[Mantener objetivo] {Ok} corregidas, {NoSube} sin subir (no se baja de noche), {Err} no se pudieron (de {Total} abajo)",
+                corregidas, sinSubir, fallidas, aCorregir.Count);
         }
 
         var resumen = $"{nuevos.Count} abajo del piso, {aAvisar.Count} avisadas"
-                      + (mantener ? $", mantener: {corregidas} corregidas / {fallidas} con error" : "");
+                      + (mantener ? $", mantener: {corregidas} corregidas / {sinSubir} sin subir / {fallidas} con error" : "");
         _logger.LogWarning("[Vigilante margen] {Resumen} (de {Total} activas con costo)", resumen, activas.Count);
         await MarcarCorridaAsync(db, ahora, resumen, ct);
     }
