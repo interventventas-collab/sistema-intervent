@@ -2283,6 +2283,9 @@
 
     private async Task GuardarCobranza()
     {
+        // 2026-09-26: un segundo clic mientras se guarda el primero creaba OTRA cobranza igual
+        // (Aldagui, 0100-00003900 y 3901, a 4 segundos). Se corta acá, antes de cualquier espera.
+        if (guardando) return;
         if (selClienteId <= 0) { ToastService.Error("Elegí un cliente"); return; }
         // 2026-06-16: en vez de exigir TotalImputado > 0, exigimos que haya AL MENOS UN item imputado.
         // Asi se puede guardar una compensacion FA+NC con TotalImputado=0.
