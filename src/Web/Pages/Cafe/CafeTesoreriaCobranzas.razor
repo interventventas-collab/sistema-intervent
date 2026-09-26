@@ -23,9 +23,51 @@
             @* 26/09/2026: baja a Excel exactamente lo que se ve con los filtros puestos. *@
             <button class="btn btn-secondary" title="Baja a Excel las cobranzas que estás viendo, con los filtros puestos"
                     @onclick="DescargarExcel">⬇ Descargar Excel</button>
+            <button class="btn btn-secondary" title="Abre la hoja lista para imprimir o guardar como PDF, con los filtros puestos"
+                    @onclick="DescargarPdf">🖨 PDF</button>
             <button class="btn btn-primary" @onclick="ShowNueva">+ Nueva cobranza</button>
         </div>
     </div>
+    @* 26/09/2026: hoja para PDF, oculta. Solo se arma al tocar "PDF" (printElement copia su contenido). *@
+    @if (armandoPdf)
+    {
+        var lp = AplicarFiltros();
+        var lpVig = lp.Where(c => c.Estado != "ANULADA").ToList();
+        <div id="cob-print" style="display:none;">
+            <style>@@page { size: A4 landscape; margin: 1cm; } body { font-size: 9pt !important; } th { text-align:left; border-bottom:1px solid #000; } td { border-bottom:1px solid #ddd; vertical-align:top; } .n { text-align:right; white-space:nowrap; }</style>
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+                <div style="font-size:14pt; font-weight:700;">Cobranzas</div>
+                <div>Emitido @DateTime.UtcNow.ToArTime().ToString("dd/MM/yyyy HH:mm")</div>
+            </div>
+            <div style="margin-bottom:8px;">@DescripcionFiltros()</div>
+            <table>
+                <thead><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th>Comprobantes</th><th>Forma de pago</th><th>Redirigido a</th><th class="n">Total</th><th class="n">Ret.</th><th>Estado</th></tr></thead>
+                <tbody>
+                    @foreach (var c in lp)
+                    {
+                        <tr>
+                            <td>@c.Numero</td>
+                            <td>@c.Fecha.ToArTime().ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@c.ClienteNombre</td>
+                            <td>@ComprobantesTexto(c)</td>
+                            <td>@(c.FormaPago == "MIXTO" ? "Mixto: " + c.FormaPagoDetalle : c.FormaPago)</td>
+                            <td>@c.RedirigidoA</td>
+                            <td class="n">$@c.Total.ToString("N2", Ar)</td>
+                            <td class="n">@(c.Retenciones > 0 ? "$" + c.Retenciones.ToString("N2", Ar) : "")</td>
+                            <td>@c.Estado</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div style="margin-top:8px; text-align:right; font-size:11pt;">
+                @lpVig.Count cobranzas (sin anuladas) · Total <b>$@lpVig.Sum(c => c.Total).ToString("N2", Ar)</b>
+                @if (lpVig.Any(c => c.Retenciones > 0))
+                {
+                    <span> · Retenciones $@lpVig.Sum(c => c.Retenciones).ToString("N2", Ar)</span>
+                }
+            </div>
+        </div>
+    }
     @* ─── Barra de filtros ─── *@
     @if (cobranzas is not null && cobranzas.Count > 0)
     {
@@ -1413,6 +1455,39 @@
     private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
     private static string Esc(string? s) => string.IsNullOrEmpty(s) ? "" : s.Replace(";", ",").Replace("\n", " ").Replace("\r", " ");
 
+    private static string ComprobantesTexto(CobranzaListDto c) =>
+        c.ComprobantesInfo is { Count: > 0 }
+            ? string.Join(" / ", c.ComprobantesInfo.Select(ci => EsFacturaArca(ci) ? $"{ci.Numero} ({FacturaLabel(ci)})" : ci.Numero))
+            : string.Join(" / ", c.Comprobantes ?? new());
+
+    /// <summary>Texto con los filtros puestos, para el encabezado del PDF.</summary>
+    private string DescripcionFiltros()
+    {
+        var p = new List<string>();
+        if (filtroFechaDesde.HasValue || filtroFechaHasta.HasValue)
+            p.Add($"Fechas: {filtroFechaDesde?.ToString("dd/MM/yyyy") ?? "…"} al {filtroFechaHasta?.ToString("dd/MM/yyyy") ?? "…"}");
+        if (filtroTipo != "") p.Add("Tipo: " + (filtroTipo == "MIXTO" ? "Mixto" : filtroTipo));
+        if (filtroRedirA != "") p.Add("A quién fue: " + filtroRedirA);
+        if (!string.IsNullOrWhiteSpace(filtroBuscar)) p.Add($"Buscar: \"{filtroBuscar.Trim()}\"");
+        if (filtroEstado != "VIGENTE") p.Add("Estado: " + (filtroEstado == "ANULADA" ? "Anuladas" : "Todas"));
+        if (filtroRetenciones != "TODOS") p.Add(filtroRetenciones == "CON" ? "Con retenciones" : "Sin retenciones");
+        if (filtroMontoMin.HasValue) p.Add($"Monto desde ${filtroMontoMin.Value.ToString("N0", Ar)}");
+        if (filtroMontoMax.HasValue) p.Add($"Monto hasta ${filtroMontoMax.Value.ToString("N0", Ar)}");
+        return p.Count == 0 ? "Todas las cobranzas vigentes" : string.Join(" · ", p);
+    }
+
+    private bool armandoPdf;
+
+    private async Task DescargarPdf()
+    {
+        if (AplicarFiltros().Count == 0) { ToastService.Error("No hay cobranzas para el PDF con estos filtros"); return; }
+        armandoPdf = true;
+        StateHasChanged();
+        await Task.Delay(50); // que Blazor dibuje la hoja oculta antes de copiarla
+        try { await JS.InvokeVoidAsync("printElement", "cob-print", $"Cobranzas {DateTime.UtcNow.ToArTime():yyyy-MM-dd}"); }
+        finally { armandoPdf = false; }
+    }
+
     private async Task DescargarExcel()
     {
         var lista = AplicarFiltros();
@@ -1423,9 +1498,7 @@
         foreach (var c in lista)
         {
             var ar = c.Fecha.ToArTime();
-            var comps = c.ComprobantesInfo is { Count: > 0 }
-                ? string.Join(" / ", c.ComprobantesInfo.Select(ci => EsFacturaArca(ci) ? $"{ci.Numero} ({FacturaLabel(ci)})" : ci.Numero))
-                : string.Join(" / ", c.Comprobantes ?? new());
+            var comps = ComprobantesTexto(c);
             sb.AppendLine(string.Join(";",
                 Esc(c.Numero), ar.ToString("dd/MM/yyyy"), ar.ToString("HH:mm"), Esc(c.ClienteNombre),
                 c.ClienteCodigo?.ToString() ?? "", Esc(comps),
