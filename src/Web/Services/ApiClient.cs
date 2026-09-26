@@ -728,6 +728,32 @@ public class ApiClient
         => await GetAsync<AlqCobranzaPendienteDto>($"/api/alquileres/cobranzas-pendientes/{id}");
 
     /// <summary>2026-09-14: se procesó en Tesorería → queda aprobada atada a esa cobranza.</summary>
+    // 2026-09-26: redirigidas cargadas por WhatsApp ("redi") → bolsita
+    public async Task<int> GetCountRediPendientesAsync()
+        => (await GetAsync<CountResultDto>("/api/cafe/redirigidas-pendientes/count-pendientes"))?.Count ?? 0;
+    public async Task<List<RediPendienteDto>> GetRediPendientesAsync(string estado)
+        => await GetAsync<List<RediPendienteDto>>($"/api/cafe/redirigidas-pendientes?estado={Uri.EscapeDataString(estado)}") ?? new();
+    public async Task<RediPendienteDto?> GetRediPendienteAsync(int id)
+        => await GetAsync<RediPendienteDto>($"/api/cafe/redirigidas-pendientes/{id}");
+    public async Task<bool> VincularRediPendienteAsync(int id, int cobranzaId, string? operador)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/redirigidas-pendientes/{id}/vincular", new { CobranzaId = cobranzaId, Operador = operador });
+        return resp.IsSuccessStatusCode;
+    }
+    public async Task<bool> RechazarRediPendienteAsync(int id, string? motivo, string? operador)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/redirigidas-pendientes/{id}/rechazar", new { motivo, operador });
+        return resp.IsSuccessStatusCode;
+    }
+    public async Task<bool> RestaurarRediPendienteAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/redirigidas-pendientes/{id}/restaurar", new { });
+        return resp.IsSuccessStatusCode;
+    }
+
     public async Task<bool> VincularAlqCobranzaPendienteAsync(int pendienteId, int cobranzaId, string? operador = null)
     {
         await SetAuthHeaderAsync();

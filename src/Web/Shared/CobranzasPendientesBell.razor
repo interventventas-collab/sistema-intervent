@@ -11,7 +11,7 @@
 
 <div class="cpb-square @(count > 0 ? "active" : "quiet")"
      @onclick="@(() => Navigation.NavigateTo("/cafe/cobranzas-pendientes"))"
-     title="@(count > 0 ? $"{count} cobros de repartidores (ventas y alquileres) esperando aprobación" : "Cobros de repartidores (sin pendientes)")">
+     title="@(count > 0 ? $"{count} cobros para volcar (repartidores y redirigidas por WhatsApp)" : "Cobros de repartidores (sin pendientes)")">
     <span class="cpb-icon">💰</span>
     @if (count > 0)
     {
@@ -85,7 +85,8 @@
         try
         {
             // 2026-09-14: ventas + alquileres en el mismo 💰 (antes el de alquiler era la 🪑 de al lado).
-            count = await Api.GetCountCobranzasPendientesAsync() + await Api.GetCountAlqCobranzasPendientesAsync();
+            count = await Api.GetCountCobranzasPendientesAsync() + await Api.GetCountAlqCobranzasPendientesAsync()
+                + await Api.GetCountRediPendientesAsync(); // 2026-09-26: + redirigidas cargadas por WhatsApp ("redi")
             StateHasChanged();
         }
         catch { /* no critico */ }

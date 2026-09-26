@@ -228,6 +228,9 @@ public class AppDbContext : DbContext
     public DbSet<CafeCobranzaComprobante> CafeCobranzasComprobantes => Set<CafeCobranzaComprobante>();
     public DbSet<CafeCobranzaMedio> CafeCobranzasMedios => Set<CafeCobranzaMedio>();
     public DbSet<CafeCobranzaAdjunto> CafeCobranzaAdjuntos => Set<CafeCobranzaAdjunto>();
+    // 2026-09-26: redirigidas cargadas por WhatsApp ("redi") → bolsita
+    public DbSet<CafeRedirigidaPendiente> CafeRedirigidasPendientes => Set<CafeRedirigidaPendiente>();
+    public DbSet<CafeRedirigidaPendienteAdjunto> CafeRedirigidasPendientesAdjuntos => Set<CafeRedirigidaPendienteAdjunto>();
     public DbSet<CafePagoProveedor> CafePagosProveedor => Set<CafePagoProveedor>();
     public DbSet<CafePagoProveedorComprobante> CafePagosProveedorComprobantes => Set<CafePagoProveedorComprobante>();
     public DbSet<CafePagoProveedorMedio> CafePagosProveedorMedios => Set<CafePagoProveedorMedio>();

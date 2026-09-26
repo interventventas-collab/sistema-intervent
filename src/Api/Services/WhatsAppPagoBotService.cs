@@ -524,7 +524,7 @@ public class WhatsAppPagoBotService
     /// con el entrante "34643013190" porque comparten "4643013190".</summary>
     private async Task<PagosMovilWaAutorizado?> BuscarAutorizadoAsync(string numero)
     {
-        var activos = await _db.PagosMovilWaAutorizados.AsNoTracking().Where(a => a.Activo).ToListAsync();
+        var activos = await _db.PagosMovilWaAutorizados.AsNoTracking().Where(a => a.Activo && !a.SoloRedirigida).ToListAsync();
         var exacto = activos.FirstOrDefault(a => a.Numero == numero);
         if (exacto is not null) return exacto;
 

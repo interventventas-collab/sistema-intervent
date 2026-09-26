@@ -51,7 +51,7 @@
     <div class="cp-header">
         <h1 style="margin: 0;">💰 Cobranzas a aprobar</h1>
         <p style="color: #6b7280; margin: 0.3rem 0 0; font-size: 0.9rem;">
-            Lo que cobraron los repartidores con el QR de las ventas y de los alquileres. Revisalo y procesá lo correcto.
+            Lo que cobraron los repartidores con el QR de las ventas y de los alquileres, y las redirigidas que mandaron por WhatsApp. Revisalo y procesá lo correcto.
         </p>
     </div>
 
@@ -143,7 +143,67 @@
     {
         @foreach (var f in Filas)
         {
-          @if (f.Alq is { } a)
+          @if (f.Redi is { } r)
+          {
+            @* 2026-09-26: REDIRIGIDA cargada por WhatsApp ("redi" a la línea FRIKAF). El cliente le pagó
+               directo a un empleado / proveedor. Se vuelca con la cobranza de siempre, precargada. *@
+            var cardClassR = r.Estado == "APROBADA" ? "aprobada" : (r.Estado == "RECHAZADA" ? "rechazada" : "");
+            <div class="cp-card @cardClassR" style="border-left-color:#7c3aed;">
+                <div class="cp-row">
+                    <div class="cp-info">
+                        <span class="cp-kind">Redirigida</span><b>@(r.ClienteNombre ?? $"«{r.ClienteTexto}»")</b>
+                        @if (r.ClienteId is null) { <span style="font-size:0.75rem; color:#6b7280;"> · cliente escrito con palabras, elegilo al volcar</span> }
+                        <div class="meta">
+                            ➡️ la recibe: @r.RecibeLeible
+                        </div>
+                        <div class="meta">
+                            📱 la mandó @(r.EnviadoPor ?? "—") por WhatsApp · 🕒 @r.CreatedAt.ToArTime().ToString("dd/MM HH:mm")
+                            @foreach (var adj in r.Adjuntos)
+                            {
+                                <span> · <a href="/api/cafe/redirigidas-pendientes/adjuntos/@adj.Id/archivo" target="_blank" style="color:inherit; text-decoration:underline;">📎 @adj.NombreOriginal</a></span>
+                            }
+                        </div>
+                        @if (r.Estado == "RECHAZADA" && !string.IsNullOrEmpty(r.RechazadaMotivo)) { <div class="meta">❌ @r.RechazadaMotivo</div> }
+                    </div>
+                    <div class="cp-importe">$@r.Importe.ToString("N2")</div>
+                </div>
+                @if (r.Estado == "PENDIENTE")
+                {
+                    <div class="cp-actions">
+                        <button class="cp-btn aprobar" @onclick="() => IrACobrarRedi(r)" title="Te abre la Nueva cobranza con el cliente, el importe y el redirigido ya cargados — vos elegís la factura">💰 Procesar cobranza →</button>
+                        <button class="cp-btn rechazar" @onclick="() => PedirRechazarRedi(r)">✗ Rechazar</button>
+                    </div>
+                    @if (rediEligiendo == r.Id)
+                    {
+                        <div style="margin-top:0.5rem; position:relative; max-width:380px;">
+                            <input class="form-input" placeholder="¿De qué cliente es? Buscá por nombre" @bind="rediBusq" @bind:event="oninput" />
+                            @if (OpcionesClienteRedi.Count > 0)
+                            {
+                                <div style="position:absolute; z-index:20; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.08); width:100%;">
+                                    @foreach (var cli in OpcionesClienteRedi)
+                                    {
+                                        var cc = cli;
+                                        <div style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.85rem;"
+                                             @onclick="() => ElegirClienteRedi(r, cc.Id)">@cc.Nombre</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                else if (r.Estado == "APROBADA")
+                {
+                    <div class="cp-nota-recibo">Volcada en la cobranza @(r.CobranzaNumero ?? "—")@(string.IsNullOrEmpty(r.RevisadaPor) ? "" : $" por {r.RevisadaPor}").</div>
+                }
+                else if (r.Estado == "RECHAZADA")
+                {
+                    <div class="cp-actions">
+                        <button class="cp-btn" style="background:#e5e7eb; color:#374151;" @onclick="() => RestaurarRedi(r)" title="Volver a Pendiente">↩ Restaurar</button>
+                    </div>
+                }
+            </div>
+          }
+          else if (f.Alq is { } a)
           {
             @* 2026-09-14: cobro de ALQUILER — antes vivía en /alquileres/cobranzas-pendientes y se "aprobaba"
                sin recibo ni caja. Ahora se procesa igual que el de ventas. *@
@@ -307,14 +367,14 @@
     private string? anularError;
 
     /// <summary>Un renglón de la lista: o un cobro de venta o uno de alquiler.</summary>
-    private sealed record Fila(CobranzaPendienteDto? Venta, AlqCobranzaPendienteDto? Alq)
+    private sealed record Fila(CobranzaPendienteDto? Venta, AlqCobranzaPendienteDto? Alq, RediPendienteDto? Redi = null)
     {
-        public DateTime CreatedAt => Venta?.CreatedAt ?? Alq!.CreatedAt;
-        public decimal Importe => Venta?.Importe ?? Alq!.Importe;
+        public DateTime CreatedAt => Venta?.CreatedAt ?? Alq?.CreatedAt ?? Redi!.CreatedAt;
+        public decimal Importe => Venta?.Importe ?? Alq?.Importe ?? Redi!.Importe;
     }
 
     /// <summary>Lo que se rechaza en el modal (sirve para los dos tipos).</summary>
-    private sealed record RechazoTarget(bool EsAlquiler, int Id, decimal Importe, string Numero, string RepartidorNombre);
+    private sealed record RechazoTarget(bool EsAlquiler, int Id, decimal Importe, string Numero, string RepartidorNombre, bool EsRedi = false);
 
     private List<Fila> filas = new();
     private List<Fila> Filas => filas;
@@ -324,6 +384,11 @@
     private int countPendientes;
     // 2026-09-26: solapa "🏦 Transferencias y cheques"
     private int countBanco;
+    // 2026-09-26: redirigidas por WhatsApp
+    private List<RediPendienteDto> listaRedi = new();
+    private int? rediEligiendo;
+    private string rediBusq = "";
+    private List<CafeClienteDto>? clientesRedi;
     private List<PlataItemDto> banco = new();
     private bool loadingBanco;
     // Rechazar con doble confirmación (modal)
@@ -356,13 +421,20 @@
             if (filtroDesde.HasValue) alq = alq.Where(a => a.CreatedAt >= filtroDesde.Value.Date).ToList();
             if (filtroHasta.HasValue) alq = alq.Where(a => a.CreatedAt < filtroHasta.Value.Date.AddDays(1)).ToList();
             listaAlq = alq;
+            // 2026-09-26: las redirigidas por WhatsApp no tienen repartidor: si se filtra por uno, no van.
+            var redi = repId.HasValue ? new List<RediPendienteDto>() : await Api.GetRediPendientesAsync(tab);
+            if (filtroDesde.HasValue) redi = redi.Where(x => x.CreatedAt >= filtroDesde.Value.Date).ToList();
+            if (filtroHasta.HasValue) redi = redi.Where(x => x.CreatedAt < filtroHasta.Value.Date.AddDays(1)).ToList();
+            listaRedi = redi;
             filas = lista.Select(v => new Fila(v, null))
                 .Concat(listaAlq.Select(a => new Fila(null, a)))
+                .Concat(listaRedi.Select(r => new Fila(null, null, r)))
                 .OrderByDescending(x => x.CreatedAt).ToList();
-            countPendientes = await Api.GetCountCobranzasPendientesAsync() + await Api.GetCountAlqCobranzasPendientesAsync();
+            var countRep = await Api.GetCountCobranzasPendientesAsync() + await Api.GetCountAlqCobranzasPendientesAsync();
+            countPendientes = countRep + await Api.GetCountRediPendientesAsync();
             // El resumen de "Plata que entró" cuenta repartidores + banco: lo del banco es la resta.
             var res = await Api.GetPlataResumenAsync();
-            countBanco = Math.Max(0, (res?.PorVolcar ?? 0) - countPendientes);
+            countBanco = Math.Max(0, (res?.PorVolcar ?? 0) - countRep);
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { loading = false; }
@@ -469,6 +541,52 @@
         Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={a.ClienteId.Value}&alqPendienteId={a.Id}");
     }
 
+    // ─── 2026-09-26: redirigidas por WhatsApp ───
+    private async Task IrACobrarRedi(RediPendienteDto r)
+    {
+        if (r.ClienteId is int cli)
+        {
+            Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={cli}&rediPendienteId={r.Id}");
+            return;
+        }
+        // El cliente vino escrito con palabras: primero se elige el de verdad.
+        rediEligiendo = rediEligiendo == r.Id ? null : r.Id;
+        rediBusq = r.ClienteTexto ?? "";
+        clientesRedi ??= await Api.GetCafeClientesAsync() ?? new();
+    }
+
+    private void ElegirClienteRedi(RediPendienteDto r, int clienteId)
+        => Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={clienteId}&rediPendienteId={r.Id}");
+
+    private List<CafeClienteDto> OpcionesClienteRedi
+    {
+        get
+        {
+            var q = (rediBusq ?? "").Trim();
+            if (q.Length < 2 || clientesRedi is null) return new();
+            return clientesRedi.Where(c => c.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(c => c.Nombre.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(c => c.Nombre)
+                .Take(8).ToList();
+        }
+    }
+
+    private void PedirRechazarRedi(RediPendienteDto r)
+    {
+        rechazarTarget = new RechazoTarget(false, r.Id, r.Importe, r.ClienteNombre ?? $"«{r.ClienteTexto}»", $"redirigida de {r.EnviadoPor}", EsRedi: true);
+        rechazarMotivo = "";
+    }
+
+    private async Task RestaurarRedi(RediPendienteDto r)
+    {
+        procesando = true;
+        try
+        {
+            if (await Api.RestaurarRediPendienteAsync(r.Id)) { ToastService.Success("Restaurada — volvió a Pendientes"); await Recargar(); }
+            else ToastService.Error("No se pudo restaurar");
+        }
+        finally { procesando = false; }
+    }
+
     private async Task RestaurarAlq(AlqCobranzaPendienteDto a)
     {
         procesando = true;
@@ -508,7 +626,9 @@
         procesando = true;
         try
         {
-            var ok = rechazarTarget.EsAlquiler
+            var ok = rechazarTarget.EsRedi
+                ? await Api.RechazarRediPendienteAsync(rechazarTarget.Id, rechazarMotivo, Operator.Current)
+                : rechazarTarget.EsAlquiler
                 ? await Api.RechazarAlqCobranzaAsync(rechazarTarget.Id, rechazarMotivo, Operator.Current)
                 : await Api.RechazarCobranzaPendienteAsync(rechazarTarget.Id,
                     new RechazarCobranzaPendienteRequest { Motivo = rechazarMotivo, Operador = Operator.Current });
