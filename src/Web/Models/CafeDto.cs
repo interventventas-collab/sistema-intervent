@@ -2162,6 +2162,14 @@ public class ClienteSaldoPendienteDto
     public string? Email { get; set; }
     /// <summary>CUIT: sirve para detectar que varios tildados son sucursales del mismo cliente.</summary>
     public string? Cuit { get; set; }
+    // 2026-09-26: más datos en la tarjeta (pedido del dueño)
+    public string? RazonSocial { get; set; }
+    /// <summary>Domicilio de entrega (+ localidad), o el fiscal si no tiene.</summary>
+    public string? Domicilio { get; set; }
+    public string? Telefono2 { get; set; }
+    public string? Notas { get; set; }
+    public DateTime? UltimoPagoFecha { get; set; }
+    public decimal? UltimoPagoImporte { get; set; }
 }
 
 /// <summary>Resultado de mandar el resumen de deudas por Telegram (botón "probar aviso ahora").</summary>
