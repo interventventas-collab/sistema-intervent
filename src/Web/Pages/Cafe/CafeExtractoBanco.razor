@@ -251,6 +251,24 @@
                                     <button class="btn-desasociar" @onclick="() => Desasociar(m.Id)" title="Quitar asociación">×</button>
                                 }
                             }
+                            else if (!string.IsNullOrEmpty(m.CobranzaNumeroAsociada))
+                            {
+                                @* 2026-09-26: cobrada en un recibo sin pasar por "asociar a venta" (desde
+                                   Transferencias y cheques, o desde la cobranza). Antes volvía a ofrecer
+                                   "Asociar a venta" y se podía cobrar dos veces. *@
+                                <div style="display:flex; flex-direction:column; gap:.15rem; max-width:260px;">
+                                    <span style="font-size:0.68rem; color:#16a34a; font-weight:700;">✓ Cobranza @m.CobranzaNumeroAsociada</span>
+                                    @if (m.ComprobantesAsociados is { Count: > 0 })
+                                    {
+                                        <div style="display:flex; flex-wrap:wrap; gap:.2rem;">
+                                            @foreach (var nro in m.ComprobantesAsociados)
+                                            {
+                                                <span style="font-size:0.7rem; padding:.1rem .35rem; background:#dcfce7; color:#166534; border:1px solid #86efac; border-radius:4px; font-family:monospace;">@nro</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
                             else if (esIngreso)
                             {
                                 <div style="display:flex; gap:.3rem; align-items:center; flex-wrap:wrap;">
@@ -711,6 +729,9 @@
         var tipo = filtro is "ingresos" or "egresos" ? filtro : null;
         var asoc = filtro switch { "sin-asociar" => "no", "sin-completar" => "sin-completar", _ => null };
         movs = await Api.GetExtractoMovimientosAsync(tipo: tipo, asociado: asoc) ?? new();
+        // 2026-09-26: una transferencia cobrada desde "Transferencias y cheques" queda en un recibo
+        // pero sin venta asociada: ya NO está sin asociar (caso Aldagui 26/09).
+        if (filtro == "sin-asociar") movs = movs.Where(m => string.IsNullOrEmpty(m.CobranzaNumeroAsociada)).ToList();
         await CargarPagosBanco();
     }
 
