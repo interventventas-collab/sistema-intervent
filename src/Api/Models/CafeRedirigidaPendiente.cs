@@ -38,6 +38,10 @@ public class CafeRedirigidaPendiente
 
     [Column(TypeName = "decimal(18,2)")] public decimal Importe { get; set; }
 
+    /// <summary>2026-09-26 (versión simple): lo que escribieron por WhatsApp — quién la mandó, a quién le
+    /// llegó, lo que sepan. El cliente y el que la recibe se eligen en la PC al volcar, leyendo esto.</summary>
+    [MaxLength(1000)] public string? Mensaje { get; set; }
+
     [MaxLength(80)] public string? EnviadoPor { get; set; }
     [MaxLength(60)] public string? EnviadoNumero { get; set; }
 

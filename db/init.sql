@@ -7957,3 +7957,8 @@ CREATE TABLE Cafe_RedirigidasPendientesAdjuntos (
     CONSTRAINT FK_RediPendAdj_Pend FOREIGN KEY (PendienteId) REFERENCES Cafe_RedirigidasPendientes(Id)
 );
 GO
+-- 2026-09-26: redirigida SIMPLE: el mensaje que escribieron por WhatsApp (cliente y receptor se eligen en la PC)
+IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_RedirigidasPendientes')
+   AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('Cafe_RedirigidasPendientes') AND name='Mensaje')
+    ALTER TABLE Cafe_RedirigidasPendientes ADD Mensaje NVARCHAR(1000) NULL;
+GO

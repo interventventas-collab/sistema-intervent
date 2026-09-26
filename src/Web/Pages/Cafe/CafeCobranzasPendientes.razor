@@ -151,18 +151,30 @@
             <div class="cp-card @cardClassR" style="border-left-color:#7c3aed;">
                 <div class="cp-row">
                     <div class="cp-info">
-                        <span class="cp-kind">Redirigida</span><b>@(r.ClienteNombre ?? $"«{r.ClienteTexto}»")</b>
-                        @if (r.ClienteId is null) { <span style="font-size:0.75rem; color:#6b7280;"> · cliente escrito con palabras, elegilo al volcar</span> }
-                        <div class="meta">
-                            ➡️ la recibe: @r.RecibeLeible
-                        </div>
+                        <span class="cp-kind">Redirigida</span><b>@(r.ClienteNombre ?? (string.IsNullOrEmpty(r.ClienteTexto) ? $"«{r.Mensaje}»" : $"«{r.ClienteTexto}»"))</b>
+                        @if (r.ClienteNombre is not null && !string.IsNullOrEmpty(r.Mensaje)) { <div class="meta">💬 «@r.Mensaje»</div> }
+                        @if (r.ClienteId is null) { <div class="meta">el cliente y a quién le llegó se eligen al procesar</div> }
+                        else
+                        {
+                            <div class="meta">➡️ la recibe: @r.RecibeLeible</div>
+                        }
                         <div class="meta">
                             📱 la mandó @(r.EnviadoPor ?? "—") por WhatsApp · 🕒 @r.CreatedAt.ToArTime().ToString("dd/MM HH:mm")
-                            @foreach (var adj in r.Adjuntos)
+                            @foreach (var adj in r.Adjuntos.Where(x => !x.EsImagen))
                             {
-                                <span> · <a href="/api/cafe/redirigidas-pendientes/adjuntos/@adj.Id/archivo" target="_blank" style="color:inherit; text-decoration:underline;">📎 @adj.NombreOriginal</a></span>
+                                <span> · <a href="@adj.Url" target="_blank" style="color:inherit; text-decoration:underline;">📎 @adj.NombreOriginal</a></span>
                             }
                         </div>
+                        @* 2026-09-26: las fotos se ven acá mismo, en chiquito; tocándolas se abren grandes. *@
+                        @if (r.Adjuntos.Any(x => x.EsImagen))
+                        {
+                            <div style="display:flex; gap:0.4rem; margin-top:0.4rem; flex-wrap:wrap;">
+                                @foreach (var adj in r.Adjuntos.Where(x => x.EsImagen))
+                                {
+                                    <a href="@adj.Url" target="_blank" title="Ver grande"><img src="@adj.Url" style="height:72px; border-radius:6px; border:1px solid #d1d5db;" /></a>
+                                }
+                            </div>
+                        }
                         @if (r.Estado == "RECHAZADA" && !string.IsNullOrEmpty(r.RechazadaMotivo)) { <div class="meta">❌ @r.RechazadaMotivo</div> }
                     </div>
                     <div class="cp-importe">$@r.Importe.ToString("N2")</div>
@@ -551,7 +563,7 @@
         }
         // El cliente vino escrito con palabras: primero se elige el de verdad.
         rediEligiendo = rediEligiendo == r.Id ? null : r.Id;
-        rediBusq = r.ClienteTexto ?? "";
+        rediBusq = r.ClienteTexto ?? "";   // en la versión simple viene vacío: se busca leyendo el mensaje
         clientesRedi ??= await Api.GetCafeClientesAsync() ?? new();
     }
 

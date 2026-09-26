@@ -8,17 +8,13 @@ namespace Api.Services;
 /// <summary>
 /// 2026-09-26 (pedido del dueño): CARGAR UNA REDIRIGIDA ESCRIBIENDO "redi" AL WHATSAPP FRIKAF.
 ///
-/// Un número autorizado (la misma lista del "PAGO", más los habilitados solo para esto) escribe
-/// "redi" a la línea FRIKAF (11 2252-5458). El bot pregunta, en este orden:
-///   1) ¿Quién la envía?  → escribe parte del nombre del cliente y elige, o lo deja con sus palabras
-///   2) ¿Quién la recibe? → empleado o proveedor de la lista, "queda en la privada", o con sus palabras
-///      (si es un empleado que también cobra viajes: ¿viajes o sueldo?)
-///   3) ¿Cuánto?
-///   4) ¿Foto o comprobante? → los que mande (foto, PDF, lo que sea), o "Listo"
-///   5) Resumen → Confirmar
-/// Queda PENDIENTE en Cafe_RedirigidasPendientes y aparece en la bolsita 💰 (Cobranzas a aprobar).
-/// NO toca plata: la cobranza de verdad la hace la oficina al volcar, y ahí se copian los adjuntos.
-/// Sin IA: son preguntas con listas y botones, como el PAGO.
+/// Versión SIMPLE (la primera tenía listas de clientes y el dueño dijo que demoraba mucho: "que el
+/// trabajo grande de elegir remitente y destinatario sea con la PC desde la bolsita"). Por WhatsApp solo:
+///   1) un mensaje escrito con los datos (quién la mandó, a quién le llegó, lo que sepa)
+///   2) el importe
+///   3) la foto del comprobante (o "Listo") → queda PENDIENTE en la bolsita, sin más preguntas.
+/// Fotos/PDF se aceptan en cualquier momento de la charla. Cliente y quién la recibe se eligen en la PC
+/// al volcar. NO toca plata: la cobranza la hace la oficina.
 /// </summary>
 public class WhatsAppRedirigidaBotService
 {
@@ -45,9 +41,6 @@ public class WhatsAppRedirigidaBotService
         if (lineaId is not null && lineaId != LineaFrikaf) return false;
         try
         {
-            if (!string.IsNullOrEmpty(idInteractivo) && idInteractivo.StartsWith("redi:", StringComparison.Ordinal))
-                return await ManejarBotonAsync(fromWaId, numero, idInteractivo, lineaId);
-
             var texto = (cuerpo ?? "").Trim();
             if (tipo == "text" && Arranque.Contains(texto))
             {
@@ -61,29 +54,58 @@ public class WhatsAppRedirigidaBotService
                 return true;
             }
 
+            var esBoton = !string.IsNullOrEmpty(idInteractivo) && idInteractivo.StartsWith("redi:", StringComparison.Ordinal);
             var p = await BorradorAsync(numero);
-            if (p is null) return false;
-
-            if (tipo == "text" && EsCancelar(texto))
+            if (p is null)
             {
-                await DescartarAsync(p);
-                await ResponderAsync(fromWaId, numero, "👍 Listo, cancelé la redirigida. Cuando quieras, escribí *redi* para empezar de nuevo.", lineaId);
+                if (esBoton) await ResponderAsync(fromWaId, numero, "Se venció la carga anterior. Escribí *redi* para empezar de nuevo.", lineaId);
+                return esBoton;
+            }
+
+            if (esBoton)
+            {
+                if (idInteractivo == "redi:salir") return await CancelarAsync(fromWaId, numero, p, lineaId);
+                if (idInteractivo == "redi:listo") return await TerminarAsync(fromWaId, numero, p, lineaId);
                 return true;
             }
 
-            // Foto / PDF / archivo mientras pide comprobantes
+            // Foto / PDF / archivo: se acepta en cualquier momento de la charla.
             if (tipo is "image" or "document" or "video" or "audio" or "sticker")
             {
-                if (p.Paso != "adjunto")
-                {
-                    await ResponderAsync(fromWaId, numero, "📎 El comprobante te lo pido al final. Contestá primero la pregunta de arriba.", lineaId);
-                    return true;
-                }
-                return await AgregarAdjuntoAsync(fromWaId, numero, p, mediaUrl, mediaNombre, lineaId);
+                await AgregarAdjuntoAsync(fromWaId, numero, p, mediaUrl, mediaNombre, lineaId);
+                // Si vino con texto al pie y todavía no había mensaje, ese texto es el mensaje.
+                if (string.IsNullOrEmpty(p.Mensaje) && texto.Length > 0) { p.Mensaje = Recortar(texto, 1000); await Paso(p, "importe"); }
+                await SeguirAsync(fromWaId, numero, p, lineaId, recibida: true);
+                return true;
             }
             if (tipo != "text" || texto.Length == 0) return true;
+            if (EsCancelar(texto)) return await CancelarAsync(fromWaId, numero, p, lineaId);
 
-            return await ManejarTextoAsync(fromWaId, numero, p, texto, lineaId);
+            switch (p.Paso)
+            {
+                case "mensaje":
+                    p.Mensaje = Recortar(texto, 1000);
+                    await Paso(p, "importe");
+                    await SeguirAsync(fromWaId, numero, p, lineaId);
+                    return true;
+                case "importe":
+                    var monto = MontoParser.Parse(texto);
+                    if (monto is null || monto <= 0)
+                    {
+                        await ResponderAsync(fromWaId, numero, "No entendí el importe. Escribí solo el número, por ejemplo *45000*.", lineaId);
+                        return true;
+                    }
+                    p.Importe = monto.Value;
+                    await Paso(p, "foto");
+                    await SeguirAsync(fromWaId, numero, p, lineaId);
+                    return true;
+                default:
+                    // En el paso de la foto, un texto se suma al mensaje (por si se acordó de algo).
+                    p.Mensaje = Recortar(string.IsNullOrEmpty(p.Mensaje) ? texto : $"{p.Mensaje} · {texto}", 1000);
+                    await Paso(p, "foto");
+                    await SeguirAsync(fromWaId, numero, p, lineaId);
+                    return true;
+            }
         }
         catch (Exception ex)
         {
@@ -93,224 +115,70 @@ public class WhatsAppRedirigidaBotService
         }
     }
 
-    // ─────────────── Arranque ───────────────
-
     private async Task IniciarAsync(string fromWaId, string numero, string nombre, string? lineaId)
     {
         // Una sola carga por número: si había una a medias, se descarta.
         var viejos = await _db.CafeRedirigidasPendientes.Include(x => x.Adjuntos)
             .Where(x => x.EnviadoNumero == numero && x.Estado == "BORRADOR").ToListAsync();
         foreach (var v in viejos) { _db.CafeRedirigidasPendientesAdjuntos.RemoveRange(v.Adjuntos); _db.CafeRedirigidasPendientes.Remove(v); }
-
         _db.CafeRedirigidasPendientes.Add(new CafeRedirigidaPendiente
         {
-            Estado = "BORRADOR", Paso = "cliente", ExpiraAt = DateTime.UtcNow.AddMinutes(MinutosParaContestar),
+            Estado = "BORRADOR", Paso = "mensaje", ExpiraAt = DateTime.UtcNow.AddMinutes(MinutosParaContestar),
             EnviadoPor = nombre, EnviadoNumero = numero
         });
         await _db.SaveChangesAsync();
         await ResponderAsync(fromWaId, numero,
-            $"🔁 *Cargar una REDIRIGIDA*\nHola {nombre} 👋\n\n*¿Quién la envía?* Escribí el nombre del cliente (o una parte).\n_(escribí *salir* para cancelar)_", lineaId);
+            $"🔁 *Cargar una REDIRIGIDA*\nHola {nombre} 👋\n\nEscribí en un mensaje los datos: *quién la mandó y a quién le llegó*, lo que sepas.\n_(escribí *salir* para cancelar)_", lineaId);
     }
 
-    // ─────────────── Texto según la pregunta ───────────────
-
-    private async Task<bool> ManejarTextoAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string texto, string? lineaId)
+    /// <summary>Pregunta lo que falte: mensaje → importe → foto.</summary>
+    private async Task SeguirAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string? lineaId, bool recibida = false)
     {
-        switch (p.Paso)
+        var ok = recibida ? "📎 Foto recibida.\n\n" : "";
+        if (string.IsNullOrEmpty(p.Mensaje))
         {
-            case "cliente": return await BuscarClienteAsync(fromWaId, numero, p, texto, lineaId);
-            case "recibe": return await BuscarRecibeAsync(fromWaId, numero, p, texto, lineaId);
-            case "importe":
-                var monto = MontoParser.Parse(texto);
-                if (monto is null || monto <= 0)
-                {
-                    await ResponderAsync(fromWaId, numero, "No entendí el importe. Escribí solo el número, por ejemplo *45000*.", lineaId);
-                    return true;
-                }
-                p.Importe = monto.Value;
-                await Paso(p, "adjunto");
-                await PedirAdjuntoAsync(fromWaId, numero, p, lineaId);
-                return true;
-            case "adjunto":
-                await PedirAdjuntoAsync(fromWaId, numero, p, lineaId, "Mandá la foto o el archivo, o tocá *Listo*.");
-                return true;
+            await ResponderAsync(fromWaId, numero, ok + "Escribí en un mensaje *quién la mandó y a quién le llegó*.", lineaId);
+            return;
         }
-        await ResponderAsync(fromWaId, numero, "👆 Tocá una de las opciones de arriba, o escribí *salir* para cancelar.", lineaId);
-        return true;
-    }
-
-    // 1) Cliente ─────────────────────────────────────────
-
-    private async Task<bool> BuscarClienteAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string q, string? lineaId)
-    {
-        if (q.Length < 2) { await ResponderAsync(fromWaId, numero, "Escribí al menos 2 letras del nombre del cliente.", lineaId); return true; }
-        p.ClienteTexto = Recortar(q, 200);
-        await Paso(p, "cliente");
-        var qn = q.ToLower();
-        var cands = await _db.CafeClientes.AsNoTracking()
-            .Where(c => c.IsActive && (c.Nombre.Contains(q) || (c.RazonSocial != null && c.RazonSocial.Contains(q))))
-            .Select(c => new { c.Id, c.Nombre, c.RazonSocial, c.Localidad })
-            .Take(60).ToListAsync();
-        var top = cands.OrderBy(c => c.Nombre.ToLower().StartsWith(qn) ? 0 : 1).ThenBy(c => c.Nombre).Take(8).ToList();
-        var filas = top.Select(c => ($"redi:cli:{c.Id}", Recortar(c.Nombre, 24),
-            (string?)Recortar(c.RazonSocial != null && c.RazonSocial != c.Nombre ? c.RazonSocial : (c.Localidad ?? ""), 72))).ToList();
-        filas.Add(("redi:clitexto", "✍️ Dejarlo así", Recortar($"«{q}» — lo eligen en la oficina", 72)));
-        filas.Add(("redi:salir", "❌ Salir", null));
-        var cuerpo = top.Count == 0
-            ? $"No encontré clientes con «{q}». Podés escribir otro nombre, o dejarlo así y lo eligen en la oficina al volcar."
-            : $"Clientes con «{q}». Elegí uno, o dejalo así con tus palabras:" + (cands.Count > 8 ? "\n(si no está, escribí más letras)" : "");
-        var sid = await _meta.SendListAsync(fromWaId, cuerpo, "Ver clientes", filas, lineaPhoneId: lineaId);
-        await RegistrarAsync(numero, cuerpo + " [lista clientes]", sid, lineaId);
-        return true;
-    }
-
-    private async Task PreguntarRecibeAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string? lineaId)
-    {
-        await Paso(p, "recibe");
-        var quien = p.ClienteId.HasValue
-            ? (await _db.CafeClientes.AsNoTracking().Where(c => c.Id == p.ClienteId).Select(c => c.Nombre).FirstOrDefaultAsync())
-            : p.ClienteTexto;
-        var botones = new List<(string, string)> { ("redi:priv", "🔒 Queda en privada"), ("redi:salir", "❌ Salir") };
-        var cuerpo = $"✅ La envía: *{quien}*\n\n*¿Quién la recibe?* Escribí el nombre del empleado o del proveedor.\nSi no le llegó a nadie, tocá *Queda en privada*.";
-        var sid = await _meta.SendButtonsAsync(fromWaId, cuerpo, botones, lineaPhoneId: lineaId);
-        await RegistrarAsync(numero, cuerpo, sid, lineaId);
-    }
-
-    // 2) Quién la recibe ─────────────────────────────────
-
-    private async Task<bool> BuscarRecibeAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string q, string? lineaId)
-    {
-        if (q.Length < 2) { await ResponderAsync(fromWaId, numero, "Escribí al menos 2 letras del nombre.", lineaId); return true; }
-        p.RecibeTexto = Recortar(q, 200);
-        await Paso(p, "recibe");
-        var emps = await _db.NomEmpleados.AsNoTracking().Where(e => e.IsActive && e.Nombre.Contains(q))
-            .OrderBy(e => e.Nombre).Take(4).Select(e => new { e.Id, e.Nombre }).ToListAsync();
-        // Solo los proveedores habilitados para recibir redirigidos (mismo tilde que la cobranza).
-        var provs = await _db.CafeProveedores.AsNoTracking().Where(v => v.IsActive && v.AceptaRedirigido && v.Nombre.Contains(q))
-            .OrderBy(v => v.Nombre).Take(4).Select(v => new { v.Id, v.Nombre }).ToListAsync();
-        var filas = emps.Select(e => ($"redi:emp:{e.Id}", Recortar(e.Nombre, 24), (string?)"Empleado"))
-            .Concat(provs.Select(v => ($"redi:prov:{v.Id}", Recortar(v.Nombre, 24), (string?)"Proveedor"))).ToList();
-        filas.Add(("redi:rectexto", "✍️ Dejarlo así", Recortar($"«{q}» — lo eligen en la oficina", 72)));
-        filas.Add(("redi:priv", "🔒 Queda en la privada", "No le llegó a nadie"));
-        var cuerpo = emps.Count + provs.Count == 0
-            ? $"No encontré empleados ni proveedores con «{q}». Podés escribir otro nombre, o dejarlo así y lo eligen en la oficina."
-            : $"Con «{q}» encontré estos. Elegí uno, o dejalo así con tus palabras:";
-        var sid = await _meta.SendListAsync(fromWaId, cuerpo, "Ver opciones", filas, lineaPhoneId: lineaId);
-        await RegistrarAsync(numero, cuerpo + " [lista quién recibe]", sid, lineaId);
-        return true;
-    }
-
-    // ─────────────── Botones / opciones de lista ───────────────
-
-    private async Task<bool> ManejarBotonAsync(string fromWaId, string numero, string id, string? lineaId)
-    {
-        var p = await BorradorAsync(numero);
-        if (p is null)
+        if (p.Importe <= 0)
         {
-            await ResponderAsync(fromWaId, numero, "Se venció la carga anterior. Escribí *redi* para empezar de nuevo.", lineaId);
-            return true;
+            await Paso(p, "importe");
+            await ResponderAsync(fromWaId, numero, ok + "*¿Cuánto?* Escribí el importe (ej: 45000).", lineaId);
+            return;
         }
-        var partes = id.Split(':'); // redi : que [: valor]
-        var que = partes.Length >= 2 ? partes[1] : "";
-        var valor = partes.Length >= 3 ? partes[2] : "";
-
-        switch (que)
-        {
-            case "salir":
-                await DescartarAsync(p);
-                await ResponderAsync(fromWaId, numero, "👍 Listo, cancelé la redirigida. Cuando quieras, escribí *redi* para empezar de nuevo.", lineaId);
-                return true;
-
-            case "cli" when int.TryParse(valor, out var cliId):
-                if (!await _db.CafeClientes.AnyAsync(c => c.Id == cliId)) return true;
-                p.ClienteId = cliId; p.ClienteTexto = null;
-                await PreguntarRecibeAsync(fromWaId, numero, p, lineaId);
-                return true;
-
-            case "clitexto":
-                p.ClienteId = null;
-                await PreguntarRecibeAsync(fromWaId, numero, p, lineaId);
-                return true;
-
-            case "emp" when int.TryParse(valor, out var empId):
-            {
-                var emp = await _db.NomEmpleados.AsNoTracking().FirstOrDefaultAsync(e => e.Id == empId);
-                if (emp is null) return true;
-                p.RecibeTipo = "EMPLEADO"; p.EmpleadoId = empId; p.ProveedorId = null; p.RecibeTexto = null;
-                // Igual que la cobranza: solo se pregunta viajes/sueldo al que cobra por entrega.
-                var tieneViajes = await _db.ViajesEmpleados.AnyAsync(v => v.IsActive && v.NomEmpleadoId == empId);
-                if (tieneViajes)
-                {
-                    await Paso(p, "destino");
-                    var botones = new List<(string, string)> { ("redi:dest:viajes", "🚚 De los viajes"), ("redi:dest:sueldo", "💵 Del sueldo") };
-                    var cuerpo = $"✅ La recibe: *{emp.Nombre}*\n¿Se le descuenta de los *viajes* o del *sueldo*?";
-                    var sid = await _meta.SendButtonsAsync(fromWaId, cuerpo, botones, lineaPhoneId: lineaId);
-                    await RegistrarAsync(numero, cuerpo, sid, lineaId);
-                    return true;
-                }
-                p.Destino = "sueldo";
-                await PedirImporteAsync(fromWaId, numero, p, $"✅ La recibe: *{emp.Nombre}* (se le descuenta del sueldo)", lineaId);
-                return true;
-            }
-
-            case "dest":
-                p.Destino = valor == "viajes" ? "viajes" : "sueldo";
-                await PedirImporteAsync(fromWaId, numero, p, $"✅ Se descuenta de los {(p.Destino == "viajes" ? "viajes" : "sueldo")}", lineaId);
-                return true;
-
-            case "prov" when int.TryParse(valor, out var provId):
-            {
-                var prov = await _db.CafeProveedores.AsNoTracking().FirstOrDefaultAsync(v => v.Id == provId);
-                if (prov is null) return true;
-                p.RecibeTipo = "PROVEEDOR"; p.ProveedorId = provId; p.EmpleadoId = null; p.Destino = null; p.RecibeTexto = null;
-                await PedirImporteAsync(fromWaId, numero, p, $"✅ La recibe: *{prov.Nombre}* (proveedor)", lineaId);
-                return true;
-            }
-
-            case "rectexto":
-                p.RecibeTipo = "TEXTO"; p.EmpleadoId = null; p.ProveedorId = null; p.Destino = null;
-                await PedirImporteAsync(fromWaId, numero, p, $"✅ La recibe: *{p.RecibeTexto}* (lo eligen en la oficina)", lineaId);
-                return true;
-
-            case "priv":
-                p.RecibeTipo = "PRIVADA"; p.EmpleadoId = null; p.ProveedorId = null; p.Destino = null; p.RecibeTexto = null;
-                await PedirImporteAsync(fromWaId, numero, p, "✅ Queda en la privada", lineaId);
-                return true;
-
-            case "listo":
-                return await MostrarResumenAsync(fromWaId, numero, p, lineaId);
-
-            case "ok":
-                if (p.Paso != "confirmar") return true;
-                p.Estado = "PENDIENTE"; p.Paso = null; p.ExpiraAt = null; p.UpdatedAt = DateTime.UtcNow;
-                p.CreatedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
-                await ResponderAsync(fromWaId, numero, "✅ *Listo, quedó en la bolsita 💰* para volcar en la oficina.\nGracias 🙌", lineaId);
-                return true;
-        }
-        return true;
-    }
-
-    // 3) Importe / 4) Comprobantes / 5) Resumen ──────────
-
-    private async Task PedirImporteAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string encabezado, string? lineaId)
-    {
-        await Paso(p, "importe");
-        await ResponderAsync(fromWaId, numero, $"{encabezado}\n\n*¿Cuánto?* Escribí el importe (ej: 45000).", lineaId);
-    }
-
-    private async Task PedirAdjuntoAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string? lineaId, string? prefijo = null)
-    {
         var cant = await _db.CafeRedirigidasPendientesAdjuntos.CountAsync(a => a.PendienteId == p.Id);
-        var cuerpo = prefijo ?? (cant == 0
-            ? $"✅ Importe: *{Money(p.Importe)}*\n\n📎 *¿Querés mandar una foto o el comprobante?* Mandalo ahora (foto, captura, PDF, lo que sea). Si no hay, tocá *Listo*."
-            : $"📎 Recibido ({cant}). ¿Mandás otro? Si no, tocá *Listo*.");
-        var botones = new List<(string, string)> { ("redi:listo", cant == 0 ? "✅ Listo, sin foto" : "✅ Listo"), ("redi:salir", "❌ Salir") };
-        var sid = await _meta.SendButtonsAsync(fromWaId, cuerpo, botones, lineaPhoneId: lineaId);
+        var cuerpo = cant == 0
+            ? $"💲 {Money(p.Importe)}\n\n📷 *Mandá la foto del comprobante*, o tocá *Listo* si no hay."
+            : $"{ok}¿Mandás otra? Si no, tocá *Listo*.";
+        var sid = await _meta.SendButtonsAsync(fromWaId, cuerpo,
+            new List<(string, string)> { ("redi:listo", cant == 0 ? "✅ Listo, sin foto" : "✅ Listo"), ("redi:salir", "❌ Cancelar") },
+            lineaPhoneId: lineaId);
         await RegistrarAsync(numero, cuerpo, sid, lineaId);
     }
 
-    private async Task<bool> AgregarAdjuntoAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string? mediaUrl, string? mediaNombre, string? lineaId)
+    private async Task<bool> TerminarAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string? lineaId)
+    {
+        if (string.IsNullOrEmpty(p.Mensaje) || p.Importe <= 0) { await SeguirAsync(fromWaId, numero, p, lineaId); return true; }
+        p.Estado = "PENDIENTE"; p.Paso = null; p.ExpiraAt = null;
+        p.CreatedAt = DateTime.UtcNow; p.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        var cant = await _db.CafeRedirigidasPendientesAdjuntos.CountAsync(a => a.PendienteId == p.Id);
+        await ResponderAsync(fromWaId, numero,
+            $"✅ *Listo, quedó en la bolsita 💰*\n{Money(p.Importe)} · «{p.Mensaje}»{(cant > 0 ? $" · 📎 {cant}" : "")}\nEn la oficina eligen el cliente y a quién le llegó.", lineaId);
+        return true;
+    }
+
+    private async Task<bool> CancelarAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string? lineaId)
+    {
+        var adj = await _db.CafeRedirigidasPendientesAdjuntos.Where(a => a.PendienteId == p.Id).ToListAsync();
+        _db.CafeRedirigidasPendientesAdjuntos.RemoveRange(adj);
+        _db.CafeRedirigidasPendientes.Remove(p);
+        await _db.SaveChangesAsync();
+        await ResponderAsync(fromWaId, numero, "👍 Listo, cancelé la redirigida. Cuando quieras, escribí *redi* para empezar de nuevo.", lineaId);
+        return true;
+    }
+
+    private async Task AgregarAdjuntoAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string? mediaUrl, string? mediaNombre, string? lineaId)
     {
         // El webhook ya bajó el archivo de Meta y lo guardó en /data/whatsapp-uploads: la URL termina
         // en /files/{token}{ext}. Con el token se encuentra el archivo guardado.
@@ -318,8 +186,8 @@ public class WhatsAppRedirigidaBotService
         var up = token is null ? null : await _db.WhatsAppTwilioUploads.AsNoTracking().FirstOrDefaultAsync(u => u.Token == token);
         if (up is null)
         {
-            await ResponderAsync(fromWaId, numero, "⚠️ No pude guardar ese archivo. Probá mandarlo de nuevo, o tocá *Listo* para seguir sin él.", lineaId);
-            return true;
+            await ResponderAsync(fromWaId, numero, "⚠️ No pude guardar ese archivo. Probá mandarlo de nuevo.", lineaId);
+            return;
         }
         _db.CafeRedirigidasPendientesAdjuntos.Add(new CafeRedirigidaPendienteAdjunto
         {
@@ -327,32 +195,7 @@ public class WhatsAppRedirigidaBotService
             NombreOriginal = Recortar(mediaNombre ?? up.OriginalFilename, 260),
             MimeType = up.ContentType, Tamano = up.SizeBytes
         });
-        await Paso(p, "adjunto");
-        await PedirAdjuntoAsync(fromWaId, numero, p, lineaId);
-        return true;
-    }
-
-    private async Task<bool> MostrarResumenAsync(string fromWaId, string numero, CafeRedirigidaPendiente p, string? lineaId)
-    {
-        if (p.Importe <= 0) { await PedirImporteAsync(fromWaId, numero, p, "Falta el importe.", lineaId); return true; }
-        await Paso(p, "confirmar");
-        var cliente = p.ClienteId.HasValue
-            ? await _db.CafeClientes.AsNoTracking().Where(c => c.Id == p.ClienteId).Select(c => c.Nombre).FirstOrDefaultAsync()
-            : $"{p.ClienteTexto} (lo eligen en la oficina)";
-        var recibe = p.RecibeTipo switch
-        {
-            "EMPLEADO" => (await _db.NomEmpleados.AsNoTracking().Where(e => e.Id == p.EmpleadoId).Select(e => e.Nombre).FirstOrDefaultAsync())
-                          + $" · {(p.Destino == "viajes" ? "de los viajes" : "del sueldo")}",
-            "PROVEEDOR" => await _db.CafeProveedores.AsNoTracking().Where(v => v.Id == p.ProveedorId).Select(v => v.Nombre).FirstOrDefaultAsync() + " (proveedor)",
-            "PRIVADA" => "queda en la privada",
-            _ => $"{p.RecibeTexto} (lo eligen en la oficina)"
-        };
-        var cant = await _db.CafeRedirigidasPendientesAdjuntos.CountAsync(a => a.PendienteId == p.Id);
-        var cuerpo = $"🔁 *Redirigida — revisá:*\n\n👤 La envía: {cliente}\n➡️ La recibe: {recibe}\n💲 Importe: {Money(p.Importe)}\n📎 Comprobantes: {(cant == 0 ? "ninguno" : cant.ToString())}";
-        var botones = new List<(string, string)> { ("redi:ok", "✅ Confirmar"), ("redi:salir", "❌ Cancelar") };
-        var sid = await _meta.SendButtonsAsync(fromWaId, cuerpo, botones, lineaPhoneId: lineaId);
-        await RegistrarAsync(numero, cuerpo, sid, lineaId);
-        return true;
+        await Paso(p, p.Paso ?? "foto");
     }
 
     // ─────────────── Estado ───────────────
@@ -363,7 +206,14 @@ public class WhatsAppRedirigidaBotService
             .Where(x => x.EnviadoNumero == numero && x.Estado == "BORRADOR")
             .OrderByDescending(x => x.Id).FirstOrDefaultAsync();
         if (p is null) return null;
-        if (p.ExpiraAt < DateTime.UtcNow) { await DescartarAsync(p); return null; }
+        if (p.ExpiraAt < DateTime.UtcNow)
+        {
+            var adj = await _db.CafeRedirigidasPendientesAdjuntos.Where(a => a.PendienteId == p.Id).ToListAsync();
+            _db.CafeRedirigidasPendientesAdjuntos.RemoveRange(adj);
+            _db.CafeRedirigidasPendientes.Remove(p);
+            await _db.SaveChangesAsync();
+            return null;
+        }
         return p;
     }
 
@@ -372,14 +222,6 @@ public class WhatsAppRedirigidaBotService
         p.Paso = paso;
         p.ExpiraAt = DateTime.UtcNow.AddMinutes(MinutosParaContestar);
         p.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
-    }
-
-    private async Task DescartarAsync(CafeRedirigidaPendiente p)
-    {
-        var adj = await _db.CafeRedirigidasPendientesAdjuntos.Where(a => a.PendienteId == p.Id).ToListAsync();
-        _db.CafeRedirigidasPendientesAdjuntos.RemoveRange(adj);
-        _db.CafeRedirigidasPendientes.Remove(p);
         await _db.SaveChangesAsync();
     }
 
@@ -399,7 +241,7 @@ public class WhatsAppRedirigidaBotService
     private static string SoloDigitos(string s) => new((s ?? "").Where(char.IsDigit).ToArray());
 
     private static readonly HashSet<string> Cancelar = new(StringComparer.OrdinalIgnoreCase)
-    { "cancelar", "cancela", "salir", "chau", "basta", "fin", "terminar" };
+    { "cancelar", "cancela", "salir", "chau", "basta" };
     private static bool EsCancelar(string t) => Cancelar.Contains((t ?? "").Trim());
 
     // ─────────────── Envío / registro en el chat ───────────────
