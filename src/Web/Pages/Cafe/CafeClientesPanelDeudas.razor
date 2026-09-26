@@ -40,6 +40,11 @@
     .cliente-card.amarillo { border: 2px solid #fcd34d; }
     .cliente-header { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1.1rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
     .cliente-nombre { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin: 0; }
+    .cliente-domicilio { font-weight: 600; color: #374151; margin-left: 0.3rem; }
+    .cliente-razon { font-size: 1.02rem; font-weight: 600; color: #374151; margin: 0.15rem 0 0; }
+    .cliente-datos { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; font-size: 0.8rem; color: #6b7280; margin-top: 0.3rem; }
+    .cliente-datos a { color: #1d4ed8; text-decoration: underline; }
+    .cliente-nota { font-size: 0.8rem; color: #92400e; margin-top: 0.2rem; }
     .cliente-tipo { font-size: 0.7rem; color: #6b7280; }
     .cliente-badge { display: inline-block; padding: 0.25rem 0.7rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; }
     .cliente-badge.rojo { background: #fee2e2; color: #991b1b; }
@@ -243,7 +248,18 @@
                                @onchange="@(e => ToggleSeleccion(s.ClienteId, (bool)(e.Value ?? false)))"
                                title="Tildar para descargar en el Excel" />
                         <div style="flex: 1; min-width: 0;">
-                            <p class="cliente-nombre">👤 @s.Nombre</p>
+                            @* 2026-09-26 (pedido del dueño): la dirección de entrega grande al lado del nombre
+                               y la razón social grande abajo; el resto de los datos, en chico. *@
+                            <p class="cliente-nombre">👤 @s.Nombre
+                                @if (!string.IsNullOrEmpty(s.Domicilio))
+                                {
+                                    <span class="cliente-domicilio">· 📍 @s.Domicilio</span>
+                                }
+                            </p>
+                            @if (!string.IsNullOrEmpty(s.RazonSocial))
+                            {
+                                <p class="cliente-razon">🏢 @s.RazonSocial</p>
+                            }
                             <div class="cliente-tipo">
                                 @if (s.Tipo == "BAR") { <span>🍺 BAR</span> } else if (s.Tipo == "ALQUILERES") { <span>🏠 Alquileres</span> } else { <span>🏢 OTRO</span> }
                                 @if (s.CodigoInterno.HasValue) { <span> · #@s.CodigoInterno</span> }
@@ -252,6 +268,28 @@
                                     <span title="Incluye saldo migrado del sistema viejo" style="margin-left: 0.4rem; background: #fef3c7; color: #92400e; padding: 0.05rem 0.4rem; border-radius: 4px; font-weight: 700;">🔄 MIGRACIÓN</span>
                                 }
                             </div>
+                            <div class="cliente-datos">
+                                @if (!string.IsNullOrEmpty(s.MapeoLink))
+                                {
+                                    <span><a href="@s.MapeoLink" target="_blank">🗺 ver en el mapa</a></span>
+                                }
+                                @if (!string.IsNullOrEmpty(s.Cuit)) { <span>CUIT @s.Cuit</span> }
+                                @if (!string.IsNullOrEmpty(s.Email)) { <span>✉ @s.Email</span> }
+                                @{ var tels = string.Join(" · ", new[] { s.Telefono, s.Telefono2 }.Where(t => !string.IsNullOrWhiteSpace(t))); }
+                                @if (tels.Length > 0) { <span>📞 @tels</span> }
+                                @if (s.UltimoPagoFecha.HasValue)
+                                {
+                                    <span>💵 último pago @s.UltimoPagoFecha.Value.ToArTime().ToString("dd/MM") · $@FormatMoney(s.UltimoPagoImporte ?? 0)</span>
+                                }
+                                else
+                                {
+                                    <span>💵 nunca pagó por el sistema</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrEmpty(s.Notas))
+                            {
+                                <div class="cliente-nota">📝 @s.Notas</div>
+                            }
                         </div>
                     </div>
                     <span class="cliente-badge @badgeCls">@badgeTxt</span>
@@ -297,10 +335,6 @@
                     <div class="cliente-meta">
                         <span>📅 Desde @s.FechaMasAntigua.ToString("dd/MM/yyyy")</span>
                         <span>· 📄 @s.CantidadVentasPendientes comprobante@(s.CantidadVentasPendientes == 1 ? "" : "s") pendiente@(s.CantidadVentasPendientes == 1 ? "" : "s")</span>
-                        @if (!string.IsNullOrEmpty(s.Telefono))
-                        {
-                            <span>· 📞 @s.Telefono</span>
-                        }
                     </div>
 
                     <div class="cliente-actions">

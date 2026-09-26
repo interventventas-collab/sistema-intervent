@@ -220,6 +220,23 @@ public class CafeSaldosService
         var clientes = await _db.CafeClientes.Where(c => clienteIds.Contains(c.Id)).ToListAsync();
         var clientesDict = clientes.ToDictionary(c => c.Id);
 
+        // Último pago de cada uno (la cobranza vigente más nueva): dice rápido si viene pagando.
+        var ultimos = (await _db.CafeCobranzas.Where(k => k.ClienteId != null && clienteIds.Contains(k.ClienteId.Value) && k.Estado == "VIGENTE")
+                .Select(k => new { ClienteId = k.ClienteId!.Value, k.Fecha, k.Total, k.Retenciones }).ToListAsync())
+            .GroupBy(k => k.ClienteId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(k => k.Fecha).First());
+
+        static string? Domicilio(Api.Models.CafeCliente? c)
+        {
+            if (c is null) return null;
+            var (dom, loc) = !string.IsNullOrWhiteSpace(c.DomicilioEntrega)
+                ? (c.DomicilioEntrega!.Trim(), c.LocalidadEntrega)
+                : (c.Direccion?.Trim(), c.Localidad);
+            if (string.IsNullOrWhiteSpace(dom)) return null;
+            return !string.IsNullOrWhiteSpace(loc) && !dom!.Contains(loc!.Trim(), StringComparison.OrdinalIgnoreCase)
+                ? $"{dom}, {loc!.Trim()}" : dom;
+        }
+
         var hoy = DateTime.UtcNow.AddHours(-3).Date;
         return resumen
             .Select(r =>
@@ -241,7 +258,13 @@ public class CafeSaldosService
                     r.Fac,
                     cli?.Cuit,
                     r.Credito,
-                    cli?.Email
+                    cli?.Email,
+                    string.IsNullOrWhiteSpace(cli?.RazonSocial) || cli!.RazonSocial == cli.Nombre ? null : cli.RazonSocial,
+                    Domicilio(cli),
+                    cli?.Telefono2,
+                    string.IsNullOrWhiteSpace(cli?.Notas) ? null : cli!.Notas,
+                    ultimos.TryGetValue(r.ClienteId, out var up) ? up.Fecha : null,
+                    ultimos.TryGetValue(r.ClienteId, out var up2) ? up2.Total + up2.Retenciones : null
                 );
             })
             .OrderBy(c => c.FechaMasAntigua) // más antigua primero (mayor urgencia)
@@ -331,4 +354,12 @@ public record ClienteSaldoPendienteDto(
     /// notas de crédito sin usar y facturas pagadas de más. Cotización + Factura − esto = SaldoPendiente.</summary>
     decimal CreditoAFavor = 0m,
     /// <summary>2026-08-24: mail de la ficha, para el botón "Mandar saldo" del panel.</summary>
-    string? Email = null);
+    string? Email = null,
+    // 2026-09-26 (pedido del dueño): más datos en la tarjeta de "¿Quién me debe?".
+    string? RazonSocial = null,
+    /// <summary>Domicilio de ENTREGA (+ localidad); si no tiene, el fiscal.</summary>
+    string? Domicilio = null,
+    string? Telefono2 = null,
+    string? Notas = null,
+    DateTime? UltimoPagoFecha = null,
+    decimal? UltimoPagoImporte = null);

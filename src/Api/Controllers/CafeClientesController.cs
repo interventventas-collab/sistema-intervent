@@ -667,7 +667,9 @@ public class CafeClientesController : ControllerBase
     {
         var saved = await _db.AppSettings.FindAsync(ClientesPanelTokenKey);
         if (saved is null || string.IsNullOrEmpty(saved.Value) || saved.Value != token) return NotFound();
-        return await GetSaldosPendientes();
+        // 2026-09-26: el link público no lleva las notas internas de la ficha (pueden decir precios especiales).
+        var lista = await _saldos.GetSaldosPendientesAsync();
+        return Ok(lista.Select(x => x with { Notas = null }).ToList());
     }
 
     // ─── 2026-08-24: mandarle al cliente el detalle de lo que debe, desde "¿Quién me debe?" ───
