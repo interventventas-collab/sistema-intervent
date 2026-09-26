@@ -1,0 +1,162 @@
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject OperatorService Operator
+@inject ToastService ToastService
+@using Web.Models
+
+@* 2026-09-26: la tabla de "Plata que entró · por volcar" como pieza aparte. La usan la pantalla
+   /plata-que-entro y la solapa "🏦 Transferencias y cheques" de Cobranzas a aprobar (pedido del
+   dueño: la bolsita vuelve a ser la de siempre y desde ahí se llega a transferencias y cheques).
+   "cobrar"/"volcar" llevan a la cobranza de siempre ya llena; "no es cobro" aparta la transferencia. *@
+
+<style>
+    .ppv-t { width:100%; border-collapse:collapse; font-size:0.88rem; }
+    .ppv-t th { text-align:left; font-weight:400; font-size:0.76rem; color:#9ca3af; padding:0.6rem 0.4rem; }
+    .ppv-t td { padding:0.65rem 0.4rem; border-top:1px solid #f1f2f4; vertical-align:top; }
+    .ppv-t td.r, .ppv-t th.r { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .ppv-sub { font-size:0.76rem; color:#9ca3af; }
+    .ppv-rojo { color:#b91c1c; }
+    .ppv-btn { background:#111827; color:#fff; border:none; border-radius:7px; padding:0.3rem 0.8rem; font-size:0.8rem; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .ppv-lnk { background:none; border:none; padding:0 0.15rem; cursor:pointer; color:#6b7280; font-size:0.8rem; text-decoration:underline; text-underline-offset:2px; }
+    .ppv-lnk:hover { color:#111827; }
+    .ppv-acc { display:flex; gap:0.5rem; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
+    .ppv-busca { position:relative; margin-top:0.4rem; }
+    .ppv-busca input { width:100%; max-width:320px; }
+    .ppv-opc { position:absolute; z-index:20; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.08); max-width:360px; width:100%; }
+    .ppv-opc div { padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.84rem; }
+    .ppv-opc div:hover { background:#f9fafb; }
+</style>
+
+@if (Items.Count == 0)
+{
+    <p class="text-muted" style="padding:0.8rem 0;">@Vacio</p>
+}
+else
+{
+    <div style="overflow-x:auto;">
+    <table class="ppv-t">
+        <thead><tr><th style="width:9%;">Llegó</th><th style="width:22%;">Qué es</th><th style="width:18%;">De quién (según el banco)</th><th class="r" style="width:11%;">Cuánto</th><th>Es de…</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var it in Items)
+            {
+                var i = it;
+                var url = PlataAcciones.Url(i);
+                <tr>
+                    <td class="@(i.Dias > 3 ? "ppv-rojo" : "")">@PlataAcciones.Cuando(i)@if (i.Dias > 3) {<div style="font-size:0.76rem;">hace @i.Dias días</div>}</td>
+                    <td>@i.QueEs</td>
+                    <td>@(i.DeQuien ?? "—")</td>
+                    <td class="r">@PlataAcciones.Plata(i.Importe)</td>
+                    <td>
+                        @if (i.ClienteNombre is not null)
+                        {
+                            @i.ClienteNombre
+                            <div class="ppv-sub">
+                                @i.PorQue
+                                @if (i.Deuda is decimal d && d > 0) { <text>@(i.PorQue is null ? "" : " · ")debe @PlataAcciones.Plata(d)</text> }
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="ppv-sub">no sé de qué cliente es</span>
+                        }
+                        @if (eligiendo == i.Key)
+                        {
+                            <div class="ppv-busca">
+                                <input class="form-input" placeholder="Buscar cliente por nombre o CUIT" @bind="busqCliente" @bind:event="oninput" />
+                                @if (OpcionesCliente.Count > 0)
+                                {
+                                    <div class="ppv-opc">
+                                        @foreach (var c in OpcionesCliente)
+                                        {
+                                            var cli = c;
+                                            <div @onclick="() => ElegirCliente(i, cli.Id)">@cli.Nombre <span class="ppv-sub">@cli.Cuit</span></div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        @if (apartando == i.Key)
+                        {
+                            <div class="ppv-sub" style="margin-top:0.35rem; color:#374151;">
+                                ¿Qué es?
+                                @foreach (var m in PlataAcciones.MotivosNoEsCobro)
+                                {
+                                    var mot = m;
+                                    <button class="ppv-lnk" style="color:#111827;" @onclick="() => Apartar(i, mot)">@mot</button>
+                                }
+                                <button class="ppv-lnk" @onclick="() => apartando = null">cancelar</button>
+                            </div>
+                        }
+                    </td>
+                    <td>
+                        <div class="ppv-acc">
+                            @if (url is not null)
+                            {
+                                <button class="ppv-btn" @onclick="() => Navigation.NavigateTo(url)">@PlataAcciones.Boton(i)</button>
+                            }
+                            @if (i.Tipo == "TRANSFERENCIA")
+                            {
+                                <button class="ppv-lnk" @onclick="() => AbrirElegir(i)">@(i.ClienteId is null ? "elegir cliente" : "otro cliente")</button>
+                                <button class="ppv-lnk" @onclick="() => { apartando = i.Key; eligiendo = null; }">no es cobro</button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    </div>
+    <div class="ppv-sub" style="margin-top:0.6rem;">
+        @Items.Count @(Items.Count == 1 ? "renglón" : "renglones") · @PlataAcciones.Plata(Items.Sum(i => i.Importe))
+        · "cobrar" y "volcar" abren la cobranza de siempre ya llena: se guarda ahí.
+    </div>
+}
+
+@code {
+    [Parameter] public List<PlataItemDto> Items { get; set; } = new();
+    /// <summary>Se avisa cuando un renglón se apartó (para que la pantalla actualice su número).</summary>
+    [Parameter] public EventCallback<PlataItemDto> OnApartado { get; set; }
+    [Parameter] public string Vacio { get; set; } = "No hay nada por volcar. Todo lo que entró ya está cargado.";
+
+    private string? apartando, eligiendo;
+    private string busqCliente = "";
+    private List<CafeClienteDto>? clientes;
+
+    private async Task AbrirElegir(PlataItemDto i)
+    {
+        eligiendo = eligiendo == i.Key ? null : i.Key;
+        apartando = null; busqCliente = "";
+        if (eligiendo is not null) clientes ??= await Api.GetCafeClientesAsync() ?? new();
+    }
+
+    private List<CafeClienteDto> OpcionesCliente
+    {
+        get
+        {
+            var q = (busqCliente ?? "").Trim();
+            if (q.Length < 2 || clientes is null) return new();
+            var dig = new string(q.Where(char.IsDigit).ToArray());
+            return clientes.Where(c => c.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || (dig.Length >= 4 && new string((c.Cuit ?? "").Where(char.IsDigit).ToArray()).Contains(dig)))
+                .OrderBy(c => c.Nombre.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(c => c.Nombre)
+                .Take(8).ToList();
+        }
+    }
+
+    private void ElegirCliente(PlataItemDto i, int clienteId)
+    {
+        var url = PlataAcciones.Url(i, clienteId);
+        if (url is not null) Navigation.NavigateTo(url);
+    }
+
+    private async Task Apartar(PlataItemDto i, string motivo)
+    {
+        if (await Api.IgnorarMovimientoExtractoAsync(i.Id, motivo, Operator.Current))
+        {
+            Items.Remove(i); apartando = null;
+            ToastService.Success("Apartada. Está en Plata que entró → \"No eran cobros\" por si te equivocaste.");
+            await OnApartado.InvokeAsync(i);
+        }
+        else ToastService.Error("No pude apartarla");
+    }
+}

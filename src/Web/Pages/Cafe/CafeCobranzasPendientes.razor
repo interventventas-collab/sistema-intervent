@@ -27,6 +27,8 @@
     .cp-tabs { display: flex; gap: 0.3rem; margin-bottom: 0.8rem; justify-content: center; }
     .cp-tab { padding: 0.4rem 0.8rem; border: 1px solid #d1d5db; background: white; border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
     .cp-tab.activo { background: #1d4ed8; color: white; border-color: #1d4ed8; }
+    .cp-tab-banco { margin-left: 0.8rem; border-color: #111827; }
+    .cp-tab-banco.activo { background: #111827; border-color: #111827; }
     /* 2026-06-10: Filtros + botones de descarga */
     .cp-toolbar { background: white; padding: 0.8rem; border-radius: 8px; margin-bottom: 0.8rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: end; }
     .cp-toolbar-group { display: flex; flex-direction: column; gap: 0.2rem; }
@@ -57,7 +59,27 @@
         <button class="cp-tab @(tab == "PENDIENTE" ? "activo" : "")" @onclick='() => CambiarTab("PENDIENTE")'>🟡 Pendientes (@countPendientes)</button>
         <button class="cp-tab @(tab == "APROBADA" ? "activo" : "")" @onclick='() => CambiarTab("APROBADA")'>✅ Aprobadas</button>
         <button class="cp-tab @(tab == "RECHAZADA" ? "activo" : "")" @onclick='() => CambiarTab("RECHAZADA")'>❌ Rechazadas</button>
+        @* 2026-09-26: transferencias y e-cheqs que entraron y nadie cargó (lo de "Plata que entró"),
+           a un toque de la bolsita de siempre. *@
+        <button class="cp-tab cp-tab-banco @(tab == "BANCO" ? "activo" : "")" @onclick='() => CambiarTab("BANCO")'>🏦 Transferencias y cheques (@countBanco)</button>
     </div>
+
+    @if (tab == "BANCO")
+    {
+        <div style="background:white; border-radius:10px; padding:0.6rem 1rem; box-shadow:0 1px 4px rgba(0,0,0,0.07);">
+            @if (loadingBanco)
+            {
+                <p style="text-align:center;">Cargando...</p>
+            }
+            else
+            {
+                <PlataPorVolcarTabla Items="banco" OnApartado="_ => countBanco = banco.Count"
+                                     Vacio="No hay transferencias ni cheques por cargar." />
+            }
+        </div>
+    }
+    else
+    {
 
     @* 2026-06-10: Filtros (repartidor + fechas) + botones de descarga *@
     <div class="cp-toolbar">
@@ -222,6 +244,7 @@
           }
         }
     }
+    }
 </div>
 
 @* Doble confirmación antes de rechazar una cobranza *@
@@ -299,6 +322,10 @@
     private bool procesando;
     private string tab = "PENDIENTE";
     private int countPendientes;
+    // 2026-09-26: solapa "🏦 Transferencias y cheques"
+    private int countBanco;
+    private List<PlataItemDto> banco = new();
+    private bool loadingBanco;
     // Rechazar con doble confirmación (modal)
     private RechazoTarget? rechazarTarget;
     private string rechazarMotivo = "";
@@ -333,6 +360,9 @@
                 .Concat(listaAlq.Select(a => new Fila(null, a)))
                 .OrderByDescending(x => x.CreatedAt).ToList();
             countPendientes = await Api.GetCountCobranzasPendientesAsync() + await Api.GetCountAlqCobranzasPendientesAsync();
+            // El resumen de "Plata que entró" cuenta repartidores + banco: lo del banco es la resta.
+            var res = await Api.GetPlataResumenAsync();
+            countBanco = Math.Max(0, (res?.PorVolcar ?? 0) - countPendientes);
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { loading = false; }
@@ -341,7 +371,21 @@
     private async Task CambiarTab(string t)
     {
         tab = t;
+        if (t == "BANCO") { await CargarBanco(); return; }
         await Recargar();
+    }
+
+    private async Task CargarBanco()
+    {
+        loadingBanco = true;
+        try
+        {
+            banco = (await Api.GetPlataListaAsync())
+                .Where(i => i.Tipo is "TRANSFERENCIA" or "ECHEQ" or "CHEQUE").ToList();
+            countBanco = banco.Count;
+        }
+        catch (Exception ex) { ToastService.Error("No pude traer transferencias y cheques: " + ex.Message); }
+        finally { loadingBanco = false; }
     }
 
     private async Task LimpiarFiltros()

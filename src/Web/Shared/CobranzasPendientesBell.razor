@@ -1,157 +1,77 @@
 @inject ApiClient Api
 @inject NavigationManager Navigation
-@inject OperatorService Operator
 @implements IDisposable
 
-@* La bolsita 💰 de arriba.
-   2026-06-29: siempre visible — apagada (gris) sin pendientes, ámbar y titilando con pendientes.
-   2026-09-14: cuenta ventas Y alquileres de los repartidores.
-   2026-09-25: "Plata que entró" — cuenta TODA la plata que llegó y no está cargada: cobros de
-   repartidores, transferencias del Galicia y cheques. Al tocarla abre la lista con un botón por
-   renglón que lleva a la cobranza de siempre, ya llena. El número va en rojo si algo lleva más de
-   3 días sin volcar. Refresca cada 60 s. *@
+@* Badge en topbar: cobranzas precargadas por repartidores esperando aprobacion.
+   2026-06-29: siempre visible — apagada (gris) cuando no hay pendientes, encendida
+   (ambar) y titilando cuando count > 0. Click → /cafe/cobranzas-pendientes. Refresca cada 60s.
+   2026-09-26: volvió a ser la de siempre (el 25/09 se había convertido en "Plata que entró" con lista
+   desplegable). Pedido del dueño: la oficina vuelca como siempre; las transferencias y cheques
+   se ven desde el botón "🏦 Transferencias y cheques" de Cobranzas a aprobar. *@
 
-<div class="cpb-wrap">
-    <div class="cpb-square @(resumen.PorVolcar > 0 ? "active" : "quiet")" @onclick="Toggle"
-         title="@(resumen.PorVolcar > 0 ? $"Plata que entró: {resumen.PorVolcar} por volcar" : "Plata que entró (nada por volcar)")">
-        <span class="cpb-icon">💰</span>
-        @if (resumen.PorVolcar > 0)
-        {
-            <span class="cpb-num @(resumen.Alarma ? "alarma" : "")">@resumen.PorVolcar</span>
-        }
-    </div>
-
-    @if (abierto)
+<div class="cpb-square @(count > 0 ? "active" : "quiet")"
+     @onclick="@(() => Navigation.NavigateTo("/cafe/cobranzas-pendientes"))"
+     title="@(count > 0 ? $"{count} cobros de repartidores (ventas y alquileres) esperando aprobación" : "Cobros de repartidores (sin pendientes)")">
+    <span class="cpb-icon">💰</span>
+    @if (count > 0)
     {
-        <div class="cpb-fondo" @onclick="Cerrar"></div>
-        <div class="cpb-drop">
-            <div class="cpb-hd">
-                <b>Plata que entró · @resumen.PorVolcar por volcar</b>
-                <a class="cpb-lnk" @onclick="VerTodo">ver todo</a>
-            </div>
-            @if (cargando)
-            {
-                <div class="cpb-vacio">Cargando...</div>
-            }
-            else if (items.Count == 0)
-            {
-                <div class="cpb-vacio">No hay nada por volcar. Todo lo que entró ya está cargado.</div>
-            }
-            else
-            {
-                <div class="cpb-lista">
-                    @foreach (var it in items.Take(8))
-                    {
-                        var i = it;
-                        <div class="cpb-it">
-                            <div class="cpb-tx">
-                                <div>@i.QueEs · @PlataAcciones.Plata(i.Importe)</div>
-                                <div class="cpb-sub">
-                                    <span class="@(i.Dias > 3 ? "cpb-rojo" : "")">@PlataAcciones.Cuando(i)@(i.Dias > 3 ? $", hace {i.Dias} días" : "")</span>
-                                    @if (!string.IsNullOrWhiteSpace(i.DeQuien) && i.DeQuien != i.ClienteNombre) { <text> · @i.DeQuien</text> }
-                                    @if (i.ClienteNombre is not null)
-                                    {
-                                        <text> · es de <b>@i.ClienteNombre</b></text>
-                                        @if (i.PorQue is not null) { <text> (@i.PorQue)</text> }
-                                        @if (i.Deuda is decimal d && d > 0) { <text> · debe @PlataAcciones.Plata(d)</text> }
-                                    }
-                                    else if (i.Tipo == "TRANSFERENCIA")
-                                    {
-                                        <text> · no sé de qué cliente es</text>
-                                    }
-                                </div>
-                                @if (apartando == i.Key)
-                                {
-                                    <div class="cpb-sub" style="margin-top:4px;">
-                                        ¿Qué es?
-                                        @foreach (var m in PlataAcciones.MotivosNoEsCobro)
-                                        {
-                                            var mot = m;
-                                            <a class="cpb-lnk" style="margin-left:8px;" @onclick="() => Apartar(i, mot)">@mot</a>
-                                        }
-                                        <a class="cpb-lnk cpb-gris" style="margin-left:8px;" @onclick="() => apartando = null">cancelar</a>
-                                    </div>
-                                }
-                            </div>
-                            <div class="cpb-ac">
-                                @{ var url = PlataAcciones.Url(i); }
-                                @if (url is not null)
-                                {
-                                    <button class="cpb-btn" @onclick="() => Ir(url)">@PlataAcciones.Boton(i)</button>
-                                }
-                                else
-                                {
-                                    <button class="cpb-btn" @onclick="VerTodo" title="Elegí el cliente en la pantalla grande">elegir cliente</button>
-                                }
-                                @if (i.Tipo == "TRANSFERENCIA" && apartando != i.Key)
-                                {
-                                    <a class="cpb-lnk cpb-gris" @onclick="() => apartando = i.Key">no es cobro</a>
-                                }
-                            </div>
-                        </div>
-                    }
-                </div>
-                @if (items.Count > 8)
-                {
-                    <div class="cpb-ft"><a class="cpb-lnk" @onclick="VerTodo">y @(items.Count - 8) más · ver todo</a></div>
-                }
-            }
-        </div>
+        <span class="cpb-num">@count</span>
     }
 </div>
 
 <style>
-    .cpb-wrap { position: relative; display: inline-block; }
     .cpb-square {
-        width: 44px; height: 44px; border-radius: 8px; cursor: pointer;
-        display: inline-flex; align-items: center; justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease, transform 0.06s ease;
-        position: relative; margin: 0 0.15rem; box-sizing: border-box;
+        position: relative;
+        margin: 0 0.15rem;
+        box-sizing: border-box;
     }
     .cpb-square:active { transform: scale(0.95); }
-    .cpb-square.quiet { background: white; border: 1px solid #d1d5db; opacity: 0.55; }
+    .cpb-square.quiet {
+        background: white;
+        border: 1px solid #d1d5db;
+        opacity: 0.55;
+    }
     .cpb-square.quiet:hover { opacity: 1; background: #f9fafb; border-color: #9ca3af; }
     .cpb-square.quiet .cpb-icon { filter: grayscale(1); opacity: 0.7; }
-    .cpb-square.active { background: linear-gradient(135deg, #fef3c7, #fde68a); border: 1px solid #f59e0b; animation: cpb-pulse 1.6s ease-in-out infinite; }
+    .cpb-square.active {
+        background: linear-gradient(135deg, #fef3c7, #fde68a);
+        border: 1px solid #f59e0b;
+        animation: cpb-pulse 1.6s ease-in-out infinite;
+    }
     .cpb-square.active:hover { transform: scale(1.05); }
     .cpb-square .cpb-icon { font-size: 22px; line-height: 1; }
     .cpb-square .cpb-num {
-        position: absolute; top: -4px; right: -4px; background: #b45309; color: white;
-        font-size: 10px; padding: 2px 6px; border-radius: 999px; font-weight: 600; line-height: 1;
-        border: 2px solid white; min-width: 18px; text-align: center; box-sizing: border-box;
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        background: #b45309;
+        color: white;
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 999px;
+        font-weight: 600;
+        line-height: 1;
+        border: 2px solid white;
+        min-width: 18px;
+        text-align: center;
+        box-sizing: border-box;
     }
-    .cpb-square .cpb-num.alarma { background: #b91c1c; }
     @@keyframes cpb-pulse {
         0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5); }
         50% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
     }
-    .cpb-fondo { position: fixed; inset: 0; z-index: 1090; }
-    .cpb-drop {
-        position: absolute; right: 0; top: 52px; width: 540px; max-width: calc(100vw - 24px);
-        background: #fff; border: 1px solid #d1d5db; border-radius: 12px;
-        box-shadow: 0 18px 40px rgba(15,23,42,.18); z-index: 1100; text-align: left;
-        font-size: 13px; color: #1f2937; cursor: default;
-    }
-    .cpb-hd { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
-    .cpb-lista { max-height: 65vh; overflow-y: auto; }
-    .cpb-it { display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #f3f4f6; align-items: flex-start; }
-    .cpb-tx { flex: 1; min-width: 0; }
-    .cpb-sub { font-size: 12px; color: #6b7280; margin-top: 2px; }
-    .cpb-sub b { color: #111827; font-weight: 600; }
-    .cpb-rojo { color: #b91c1c; }
-    .cpb-ac { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex: none; }
-    .cpb-btn { background: #111827; color: #fff; border: none; border-radius: 7px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-    .cpb-lnk { color: #111827; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; font-size: 12px; }
-    .cpb-gris { color: #6b7280; }
-    .cpb-vacio { padding: 18px 16px; color: #6b7280; }
-    .cpb-ft { padding: 10px 16px; background: #f9fafb; border-radius: 0 0 12px 12px; }
 </style>
 
 @code {
-    private PlataResumenDto resumen = new();
-    private List<PlataItemDto> items = new();
-    private bool abierto, cargando;
-    private string? apartando;
+    private int count;
     private System.Threading.Timer? timer;
 
     protected override async Task OnInitializedAsync()
@@ -164,40 +84,11 @@
     {
         try
         {
-            resumen = await Api.GetPlataResumenAsync() ?? new();
+            // 2026-09-14: ventas + alquileres en el mismo 💰 (antes el de alquiler era la 🪑 de al lado).
+            count = await Api.GetCountCobranzasPendientesAsync() + await Api.GetCountAlqCobranzasPendientesAsync();
             StateHasChanged();
         }
         catch { /* no critico */ }
-    }
-
-    private async Task Toggle()
-    {
-        if (abierto) { Cerrar(); return; }
-        abierto = true; cargando = true; apartando = null;
-        StateHasChanged();
-        try
-        {
-            items = await Api.GetPlataListaAsync();
-            resumen = new PlataResumenDto { PorVolcar = items.Count, Alarma = items.Any(i => i.Dias > 3) };
-        }
-        catch { items = new(); }
-        finally { cargando = false; }
-    }
-
-    private void Cerrar() { abierto = false; apartando = null; }
-
-    private void Ir(string url) { abierto = false; Navigation.NavigateTo(url); }
-
-    private void VerTodo() { abierto = false; Navigation.NavigateTo("/plata-que-entro"); }
-
-    private async Task Apartar(PlataItemDto i, string motivo)
-    {
-        if (await Api.IgnorarMovimientoExtractoAsync(i.Id, motivo, Operator.Current))
-        {
-            items.Remove(i);
-            apartando = null;
-            resumen = new PlataResumenDto { PorVolcar = items.Count, Alarma = items.Any(x => x.Dias > 3) };
-        }
     }
 
     public void Dispose() => timer?.Dispose();
