@@ -90,6 +90,12 @@ public class MeliCafePricePushService
             .Where(mi => mi.CafeProductoId != null && mi.CafeFormato != null && mi.PriceRatioOverIva != null && mi.PriceRatioOverIva > 0)
             .ToListAsync(ct);
 
+        // 2026-09-26: las que tienen «Mantener el N%» las maneja el motor de precio (MeliPricePushService);
+        // esta fórmula (ratio) no lo respeta y se pisarían: de día ésta la bajaba, de noche el vigilante la subía.
+        var conMantener = await PublicacionesConMantenerAsync(items.Select(i => i.MeliItemId).Distinct().ToList(), ct);
+        var salteadas = items.Count(i => conMantener.Contains(i.MeliItemId));
+        items = items.Where(i => !conMantener.Contains(i.MeliItemId)).ToList();
+
         if (items.Count == 0)
             return new PushResult(0, 0, 0, new() { "Sin items para procesar — no hay café linkeado con ratio." });
 
@@ -141,6 +147,7 @@ public class MeliCafePricePushService
         }
 
         await _db.SaveChangesAsync(ct);
+        if (salteadas > 0) mensajes.Insert(0, $"{salteadas} no se tocaron: tienen «Mantener el %» y su precio lo maneja Publicaciones.");
         return new PushResult(items.Count, ok, err, mensajes);
     }
 
@@ -158,6 +165,9 @@ public class MeliCafePricePushService
                 && x.PriceRatioOverIva != null && x.PriceRatioOverIva > 0, ct);
         if (mi is null)
             return new PushResult(0, 0, 1, new() { $"{meliItemId}: no se encontró la publicación o no es un café linkeado con ratio." });
+
+        if ((await PublicacionesConMantenerAsync(new List<string> { meliItemId }, ct)).Count > 0)
+            return new PushResult(1, 0, 1, new() { $"{meliItemId}: tiene «Mantener el %»: su precio lo maneja Publicaciones, no esta pantalla." });
 
         var prod = await _db.CafeProductos.FindAsync(new object[] { mi.CafeProductoId!.Value }, ct);
         if (prod is null)
@@ -199,6 +209,11 @@ public class MeliCafePricePushService
         }
         return new PushResult(1, 0, 1, new() { $"❌ {mi.Sku}: {msg}" });
     }
+
+    private async Task<HashSet<string>> PublicacionesConMantenerAsync(List<string> ids, CancellationToken ct)
+        => (await _db.MeliItemSyncConfigs.AsNoTracking()
+                .Where(c => ids.Contains(c.MeliItemId) && c.SyncPrecio && c.GananciaObjetivoPct != null && c.GananciaObjetivoPct > 0)
+                .Select(c => c.MeliItemId).ToListAsync(ct)).ToHashSet();
 
     private async Task<(bool ok, string? msg)> PushItemAsync(HttpClient http, string meliItemId, decimal price, int stock)
     {
