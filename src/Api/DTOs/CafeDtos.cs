@@ -179,7 +179,9 @@ public record CafeProductoDto(
     // CostoUsdCotizacion = a cuanto estaba el dolar cuando se cargo el costo en pesos.
     decimal? CostoUsd = null,
     decimal? CostoUsdCotizacion = null,
-    DateTime? CostoUsdFecha = null);
+    DateTime? CostoUsdFecha = null,
+    // 2026-09-28: productos "shell" (tacho + tapa, caja + tapa): los códigos que lo componen, ej "(9234TR + 7045-TR)".
+    string? Composicion = null);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,

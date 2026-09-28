@@ -50,7 +50,7 @@ public class CafeStockMasivoController : ControllerBase
 
     public record StockProductoDto(
         int ProductoId, string Codigo, string Nombre, string Categoria,
-        decimal StockGramos, int StockUnidades);
+        decimal StockGramos, int StockUnidades, string? Composicion = null);
 
     /// <summary>Lista productos con su stock en el deposito indicado.
     /// 2026-05-25: Si el depósito es 'Full MeLi', filtramos solo los productos que tienen
@@ -93,9 +93,13 @@ public class CafeStockMasivoController : ControllerBase
                     select new StockProductoDto(
                         p.Id, p.Sku ?? "", p.Nombre, p.Categoria,
                         s != null ? s.StockGramos : 0m,
-                        s != null ? s.StockUnidades : 0);
+                        s != null ? s.StockUnidades : 0, null);
 
         var list = await query.ToListAsync();
+        // 2026-09-28: productos "shell" (caja + tapa) muestran de qué piezas están hechos.
+        var composicion = await ComposicionProductos.ShellsAsync(_db);
+        if (composicion.Count > 0)
+            list = list.Select(r => composicion.TryGetValue(r.ProductoId, out var c) ? r with { Composicion = c } : r).ToList();
         return Ok(list);
     }
 

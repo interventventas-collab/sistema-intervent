@@ -137,16 +137,6 @@
                                 }
                                 else
                                 {
-                                    @foreach (var c in comps)
-                                    {
-                                        var cid = c.Id;
-                                        <div @onclick="() => SeleccionarCompuestoCarga(cid)"
-                                             style="padding:0.5rem 0.7rem; cursor:pointer; border-bottom:1px solid #f3f4f6;">
-                                            <span style="font-family:monospace; color:#1d4ed8; font-weight:700; font-size:0.85rem;">@c.Sku</span>
-                                            <strong style="margin-left:0.4rem;">@c.Nombre</strong>
-                                            <span style="color:#6b7280; font-size:0.78rem; margin-left:0.4rem;">· compuesto · @c.Items.Count pieza@(c.Items.Count == 1 ? "" : "s")</span>
-                                        </div>
-                                    }
                                     @foreach (var p in matches)
                                     {
                                         var pid = p.ProductoId;
@@ -156,11 +146,34 @@
                                              style="padding:0.5rem 0.7rem; cursor:pointer; border-bottom:1px solid #f3f4f6;">
                                             <span style="font-family:monospace; color:#1d4ed8; font-weight:700; font-size:0.85rem;">@p.Codigo</span>
                                             <strong style="margin-left:0.4rem;">@p.Nombre</strong>
-                                            <span style="color:#6b7280; font-size:0.78rem; margin-left:0.4rem;">· Stock actual: @stockTxt</span>
+                                            @if (!string.IsNullOrEmpty(p.Composicion))
+                                            {
+                                                <span style="color:#374151; font-size:0.82rem; margin-left:0.3rem;">@p.Composicion</span>
+                                                <span style="color:#6b7280; font-size:0.78rem; margin-left:0.4rem;" title="No tiene stock propio: se calcula con las piezas. Cargá las piezas.">· se arma con esas piezas, cargá las piezas</span>
+                                            }
+                                            else
+                                            {
+                                                <span style="color:#6b7280; font-size:0.78rem; margin-left:0.4rem;">· Stock actual: @stockTxt</span>
+                                            }
                                             @if (rsv > 0)
                                             {
                                                 <span style="background:#fed7aa; color:#9a3412; padding:0.1rem 0.4rem; border-radius:10px; font-size:0.72rem; font-weight:700; margin-left:0.4rem;" title="Ventas MeLi pendientes de despacho">📦 +@rsv reservado</span>
                                             }
+                                        </div>
+                                    }
+                                    @if (comps.Count > 0)
+                                    {
+                                        <div style="padding:0.35rem 0.7rem; background:#f9fafb; color:#6b7280; font-size:0.75rem; font-weight:600; border-bottom:1px solid #f3f4f6;">Compuestos (tacho + tapa, caja + tapa…)</div>
+                                    }
+                                    @foreach (var c in comps)
+                                    {
+                                        var cid = c.Id;
+                                        <div @onclick="() => SeleccionarCompuestoCarga(cid)"
+                                             style="padding:0.5rem 0.7rem; cursor:pointer; border-bottom:1px solid #f3f4f6;">
+                                            <span style="font-family:monospace; color:#1d4ed8; font-weight:700; font-size:0.85rem;">@c.Sku</span>
+                                            <strong style="margin-left:0.4rem;">@c.Nombre</strong>
+                                            <span style="color:#374151; font-size:0.82rem; margin-left:0.3rem;">@Composicion.DeCompuesto(c)</span>
+                                            <span style="color:#6b7280; font-size:0.78rem; margin-left:0.4rem;">· compuesto</span>
                                         </div>
                                     }
                                     @if (todos.Count > matches.Count)
@@ -183,6 +196,7 @@
                         <div>
                             <span style="font-family:monospace; color:#1d4ed8; font-weight:700;">@cargaCompSel.Sku</span>
                             <strong style="margin-left:0.4rem;">@cargaCompSel.Nombre</strong>
+                            <span style="color:#374151; font-size:0.85rem;"> @Composicion.DeCompuesto(cargaCompSel)</span>
                             <span style="color:#6b7280; font-size:0.8rem;"> · compuesto</span>
                         </div>
                         <div style="display:flex; align-items:center; gap:0.6rem; margin:0.6rem 0; flex-wrap:wrap;">
@@ -1179,7 +1193,7 @@ else if (modoCarga == "minimo")
         }
         catch { token = ""; }
         await CargarStock();
-        try { compuestos = (await Api.GetCafeCombosAsync(true) ?? new()).Where(c => c.EsCompuesto && c.Items.Count > 0).ToList(); }
+        try { compuestos = (await Api.GetCafeCombosAsync(true) ?? new()).Where(c => c.EsCompuesto && c.Items.Count > 0 && !Composicion.EsPack(c)).ToList(); }
         catch { compuestos = new(); }
         await CargarHistorial();
     }

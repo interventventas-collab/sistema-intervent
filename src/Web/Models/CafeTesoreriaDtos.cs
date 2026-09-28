@@ -642,6 +642,8 @@ public class StockProductoDto
     public string Categoria { get; set; } = "";
     public decimal StockGramos { get; set; }
     public int StockUnidades { get; set; }
+    /// <summary>2026-09-28: productos "shell" (caja + tapa): los códigos que lo componen, ej "(9234TR + 7045-TR)".</summary>
+    public string? Composicion { get; set; }
 }
 
 // ========== Saldos por venta ==========

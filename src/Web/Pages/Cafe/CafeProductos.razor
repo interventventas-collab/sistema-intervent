@@ -219,6 +219,11 @@
                                     {
                                         <strong>@p.Nombre</strong>
                                     }
+                                    @* 2026-09-28: tacho + tapa / caja + tapa: los códigos que lo componen *@
+                                    @if (!string.IsNullOrEmpty(p.Composicion))
+                                    {
+                                        <span style="font-size:0.82rem; color:#374151; margin-left:0.25rem;" title="Se arma con estas piezas">@p.Composicion</span>
+                                    }
                                     @if (!string.IsNullOrEmpty(p.Barcode))
                                     {
                                         <div style="font-size: 0.7rem; color: #9ca3af; font-family: monospace;">cod: @p.Barcode</div>
@@ -1876,7 +1881,7 @@
             {
                 var t = filtroTexto.Trim();
                 bool h(string? s) => s.MatchesSearch(t);
-                q = q.Where(p => h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca));
+                q = q.Where(p => h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca) || h(p.Composicion));
             }
             // 2026-06-15: filtro solo con reserva (ventas MeLi pendientes de despacho)
             if (soloConReserva)
@@ -2191,6 +2196,7 @@
                     Marca = null,
                     IsActive = c.IsActive,
                     EsCompuestoFake = true,
+                    Composicion = Composicion.DeCompuesto(c),
                     PrecioReferenciaCompuesto = c.PreviewPrecioOtro,
                     OemId = c.OemId,
                     OemCodigo = c.OemCodigo,
