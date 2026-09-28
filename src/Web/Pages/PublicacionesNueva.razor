@@ -329,6 +329,17 @@
     .p2-m2 b { color: #1f2937; font-weight: 600; }
     .p2-m2 .mla { color: #9ca3af; font-size: .65rem; }
     .p2-m2 .sindato { color: #b45309; }
+    .p2-m2.editando { white-space: normal; overflow: visible; }
+    .p2-sku-tocable { cursor: pointer; border-bottom: 1px dotted #cbd5e1; margin-right: .3rem; }
+    .p2-sku-tocable:hover { color: #1d4f80 !important; border-bottom-color: #1d4f80; }
+    .p2-sku-edit { display: inline-flex; align-items: center; gap: .35rem; flex-wrap: wrap; white-space: normal; }
+    .p2-sku-edit input { font-family: monospace; font-size: .75rem; padding: .15rem .35rem; width: 9rem;
+                         border: 1px solid #94a3b8; border-radius: .3rem; }
+    .p2-sku-edit button { font-size: .68rem; font-family: inherit; cursor: pointer; padding: .15rem .5rem;
+                          border: 1px solid #cbd5e1; border-radius: .3rem; background: #fff; color: #374151; }
+    .p2-sku-edit button.ok { border-color: #1d4f80; color: #1d4f80; font-weight: 700; }
+    .p2-sku-edit button[disabled] { opacity: .5; cursor: default; }
+    .p2-sku-edit .nota { font-size: .63rem; color: #9ca3af; }
     .p2-pinfo.v2 .p2-rec { display: inline; font-size: inherit; color: #6b7280; margin: 0; }
     .p2-pinfo.v2 .p2-rec b { color: #1f2937; font-weight: 600; }
     .p2-pinfo.v2 .p2-rec .frena, .p2-pinfo.v2 .p2-rec .frena b { color: #b91c1c; }
@@ -806,7 +817,23 @@
                             @* 2026-09-22 — (opción 2 de Osmar) el SKU y de qué se arma en el MISMO renglón:
                                "SKU C1925BL (C2144BL + C7000BL → alcanza para 68)". El paréntesis se toca
                                para corregir el armado; lo que hay de cada pieza sale al pasar el mouse. *@
-                            <span class="p2-m2">SKU <b>@(it.Sku ?? "—")</b> <span class="p2-rec tocable @(recetaAbierta == it.MeliItemId ? "on" : "")"
+                            <span class="p2-m2 @(skuEditando == it.MeliItemId ? "editando" : "")">SKU @if (skuEditando == it.MeliItemId)
+                                {
+                                    @* 2026-09-28 · el SKU se cambia acá mismo: Enter guarda, Esc cancela. *@
+                                    <span class="p2-sku-edit" @onclick:stopPropagation="true">
+                                        <input @bind="skuTexto" @bind:event="oninput" @onkeydown="e => TeclaSku(e, it)"
+                                               disabled="@(skuEnCurso == it.MeliItemId)" maxlength="60" autofocus />
+                                        <button class="ok" disabled="@(skuEnCurso == it.MeliItemId)" @onclick="() => GuardarSku(it)">
+                                            @(skuEnCurso == it.MeliItemId ? "Guardando…" : "Guardar en MeLi")</button>
+                                        <button disabled="@(skuEnCurso == it.MeliItemId)" @onclick="() => skuEditando = null">Cancelar</button>
+                                        <span class="nota">Cambia solo el código en MercadoLibre, no de dónde descuenta stock.</span>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <b class="p2-sku-tocable" title="Tocá para cambiar el SKU en MercadoLibre"
+                                       @onclick="() => AbrirSku(it)" @onclick:stopPropagation="true">@(it.Sku ?? "—") ✎</b>
+                                } <span class="p2-rec tocable @(recetaAbierta == it.MeliItemId ? "on" : "")"
                                   title="Tocá para ver y corregir de qué se compone esta publicación"
                                   @onclick="() => ToggleReceta(it.MeliItemId)" @onclick:stopPropagation="true">(@RecetaFragment(it))</span></span>
                             <span class="p2-m2"><span class="@(string.IsNullOrEmpty(it.Envio) || it.Envio == "not_specified" ? "sindato" : "")" title="@TituloEnvio(it)">@EnvioConPalabra(it.Envio)@(it.EnvioGratis ? ", lo pagás vos" : "")</span>@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · <span class="mla">@it.MeliItemId</span></span>
@@ -3886,6 +3913,45 @@
 
     private string? estadoEnCurso;
     private string? skuEnCurso;
+    private string? skuEditando;
+    private string skuTexto = "";
+
+    private void AbrirSku(ApiClient.PubV2Fila it)
+    {
+        if (skuEnCurso is not null) return;
+        skuEditando = it.MeliItemId;
+        skuTexto = it.Sku ?? "";
+    }
+
+    private async Task TeclaSku(KeyboardEventArgs e, ApiClient.PubV2Fila it)
+    {
+        if (e.Key == "Enter") await GuardarSku(it);
+        else if (e.Key == "Escape" && skuEnCurso is null) skuEditando = null;
+    }
+
+    /// <summary>2026-09-28 · Cambia el SKU en MeLi desde la fila. Sólo el código: la receta (de dónde
+    /// descuenta stock) no se toca.</summary>
+    private async Task GuardarSku(ApiClient.PubV2Fila it)
+    {
+        if (skuEnCurso is not null) return;
+        var nuevo = skuTexto.Trim().ToUpperInvariant();
+        if (nuevo.Length == 0) { ToastService.Error("El SKU no puede quedar vacío."); return; }
+        if (string.Equals(nuevo, it.Sku, StringComparison.OrdinalIgnoreCase)) { skuEditando = null; return; }
+
+        skuEnCurso = it.MeliItemId;
+        StateHasChanged();
+        try
+        {
+            var (sku, error) = await Api.CambiarSkuPublicacionAsync(it.MeliItemId, nuevo);
+            if (sku is null) { ToastService.Error("No se pudo cambiar el SKU: " + (error ?? "sin respuesta")); return; }
+
+            var idx = datos?.Items.FindIndex(x => x.MeliItemId == it.MeliItemId) ?? -1;
+            if (idx >= 0 && datos is not null) datos.Items[idx] = datos.Items[idx] with { Sku = sku };
+            skuEditando = null;
+            ToastService.Success($"Listo: el SKU ahora es {sku} en MercadoLibre.");
+        }
+        finally { skuEnCurso = null; }
+    }
 
     /// <summary>Le devuelve a la publicación el SKU que tenía antes de que la marcaran.
     /// ⚠ NO la activa: eso queda para el cartel de estado, que además avisa el margen.</summary>

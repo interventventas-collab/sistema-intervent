@@ -5822,6 +5822,24 @@ public class ApiClient
     public Task<(PubV2EstadoResultado? res, string? error)> DevolverSkuAsync(string mla)
         => CambiarEstadoAsync(mla, "devolver-sku");
 
+    /// <summary>2026-09-28 · Cambia el SKU en MeLi desde la fila de la pantalla nueva. Mismo endpoint
+    /// que la ficha de la vieja, pero devuelve el motivo si MeLi lo rechaza (la otra se lo come).</summary>
+    public async Task<(string? sku, string? error)> CambiarSkuPublicacionAsync(string mla, string sku)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PostAsJsonAsync($"/api/meli/items/{mla}/set-sku", new { sku });
+            var txt = await resp.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(string.IsNullOrWhiteSpace(txt) ? "{}" : txt);
+            if (resp.IsSuccessStatusCode && doc.RootElement.TryGetProperty("sku", out var s))
+                return (s.GetString(), null);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return (null, e.GetString());
+            return (null, $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     // ─── 2026-08-27 · EXCEL EDITABLE ───
     // Tres pasos y el del medio no se saltea: bajar → vista previa → aplicar lo tildado.
 
