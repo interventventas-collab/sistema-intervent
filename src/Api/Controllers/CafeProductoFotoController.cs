@@ -95,6 +95,28 @@ public class CafeProductoFotoController : ControllerBase
         return filename;
     }
 
+    /// <summary>2026-09-28: QUITA la foto propia del producto (borra el archivo). Vuelve a verse la de
+    /// MercadoLibre. No toca nada en MeLi.</summary>
+    [HttpDelete("{productoId:int}/propia")]
+    public async Task<IActionResult> QuitarPropia(int productoId)
+    {
+        var foto = await _db.CafeProductoFotos.FirstOrDefaultAsync(f => f.CafeProductoId == productoId);
+        if (foto is null || string.IsNullOrEmpty(foto.FotoPropiaArchivo))
+            return Ok(new ProductoFotoDto(productoId, foto?.Estado, foto?.Usuario, foto?.Comentario, null, DateTime.UtcNow));
+        var archivo = foto.FotoPropiaArchivo;
+        foto.FotoPropiaArchivo = null;
+        foto.FotoPropiaAt = null;
+        // La marca APROBADA la puso la subida de la foto propia; la de MeLi vuelve a quedar "sin marcar".
+        foto.Estado = null;
+        foto.Comentario = null;
+        foto.Usuario = HttpContext.User?.Identity?.Name;
+        foto.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        try { var path = Path.Combine(FotosDir, archivo); if (System.IO.File.Exists(path)) System.IO.File.Delete(path); }
+        catch { /* best-effort */ }
+        return Ok(new ProductoFotoDto(productoId, null, foto.Usuario, null, null, foto.UpdatedAt));
+    }
+
     /// <summary>Sube la foto propia DIRECTO desde la compu (sin QR). Solo imagen, máx 10 MB.</summary>
     [HttpPost("{productoId:int}/subir")]
     [RequestSizeLimit(10 * 1024 * 1024)]

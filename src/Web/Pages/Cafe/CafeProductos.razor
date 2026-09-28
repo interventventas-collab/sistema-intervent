@@ -181,16 +181,22 @@
                                 }
                                 <td style="text-align:center;">
                                     @{
-                                        var thumb = ThumbnailFor(p.Id);
+                                        // 2026-09-28: primero la foto PROPIA del sistema; si no tiene, la de MeLi.
+                                        var propia = p.EsCompuestoFake ? null : FotoPropiaDe(p.Id);
+                                        var thumb = !string.IsNullOrEmpty(propia) ? $"/api/public/producto-foto/img/{propia}" : ThumbnailFor(p.Id);
+                                        var prodFoto = p;
                                     }
-                                    @if (!string.IsNullOrEmpty(thumb))
-                                    {
-                                        <img src="@thumb" alt="" style="width:42px; height:42px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb;" loading="lazy" />
-                                    }
-                                    else
-                                    {
-                                        <div style="width:42px; height:42px; background:#f3f4f6; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; color:#9ca3af; font-size:1.1rem;" title="Sin imagen MeLi">📦</div>
-                                    }
+                                    <div style="@(p.EsCompuestoFake ? "" : "cursor:pointer;")" title="@(p.EsCompuestoFake ? "" : "Cambiar la foto (solo en el sistema)")"
+                                         @onclick="() => AbrirFoto(prodFoto)">
+                                        @if (!string.IsNullOrEmpty(thumb))
+                                        {
+                                            <img src="@thumb" alt="" style="width:42px; height:42px; object-fit:cover; border-radius:6px; border:1px solid @(string.IsNullOrEmpty(propia) ? "#e5e7eb" : "#0ea5e9");" loading="lazy" />
+                                        }
+                                        else
+                                        {
+                                            <div style="width:42px; height:42px; background:#f3f4f6; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; color:#9ca3af; font-size:1.1rem;" title="Sin foto">📦</div>
+                                        }
+                                    </div>
                                 </td>
                                 <td style="font-family: monospace; font-weight: 700; color: #1d4ed8;">
                                     @(p.Sku ?? "—")
@@ -1405,6 +1411,15 @@
     .precio-clickeable:hover { background: #f0f9ff; }
 </style>
 
+
+@* 2026-09-28: foto del producto (solo en el sistema, no toca MeLi) *@
+@if (fotoAbierta is not null)
+{
+    <FotoProductoModal ProductoId="fotoAbierta.Id" Sku="@fotoAbierta.Sku" Nombre="@fotoAbierta.Nombre"
+                       FotoPropiaArchivo="@FotoPropiaDe(fotoAbierta.Id)" MeliThumb="@ThumbnailFor(fotoAbierta.Id)"
+                       OnCambio="OnFotoCambiada" OnCerrar="() => fotoAbierta = null" />
+}
+
 @code {
     private List<CafeProductoDto>? productos;
     private bool loading = true;
@@ -2057,6 +2072,36 @@
 
     // 2026-05-25: dict CafeProductoId → thumbnail MeLi (primer item linkeado al producto)
     private Dictionary<int, string> thumbsByProductoId = new();
+    // 2026-09-28: fotos PROPIAS del sistema (productoId -> archivo). Tienen prioridad sobre la de MeLi.
+    private Dictionary<int, string> fotosPropias = new();
+    private string? FotoPropiaDe(int productoId) => fotosPropias.TryGetValue(productoId, out var f) ? f : null;
+    private CafeProductoDto? fotoAbierta;
+
+    private void AbrirFoto(CafeProductoDto p)
+    {
+        if (p.EsCompuestoFake) return;   // los compuestos no son productos: no tienen foto propia
+        fotoAbierta = p;
+    }
+
+    private void OnFotoCambiada(string? archivo)
+    {
+        if (fotoAbierta is null) return;
+        if (string.IsNullOrEmpty(archivo)) fotosPropias.Remove(fotoAbierta.Id);
+        else fotosPropias[fotoAbierta.Id] = archivo;
+        StateHasChanged();
+    }
+
+    private async Task LoadFotosPropias()
+    {
+        try
+        {
+            fotosPropias = ((await Api.GetFotosProductosAsync()) ?? new())
+                .Where(f => !string.IsNullOrEmpty(f.FotoPropiaArchivo))
+                .GroupBy(f => f.CafeProductoId)
+                .ToDictionary(g => g.Key, g => g.First().FotoPropiaArchivo!);
+        }
+        catch { fotosPropias = new(); }
+    }
     private string? ThumbnailFor(int productoId)
         => thumbsByProductoId.TryGetValue(productoId, out var t) ? t : null;
 
@@ -2067,6 +2112,7 @@
         var loadMarcas = LoadMarcasCatalog();
         var loadReglas = LoadReglasPrecios();
         var loadThumbs = LoadThumbnails();
+        var loadFotosPropias = LoadFotosPropias();
         var loadLugares = LoadLugares();
         var loadSettings = LoadSettings();
         await Load();
@@ -2074,6 +2120,7 @@
         await loadMarcas;
         await loadReglas;
         await loadThumbs;
+        await loadFotosPropias;
         await loadLugares;
         await loadSettings;
         // 2026-09-07: la cotizacion se busca APARTE y sin esperarla. Es un scraping al sitio del

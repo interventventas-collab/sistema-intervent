@@ -1,0 +1,217 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@* 2026-09-28: foto del producto desde Catálogo → Productos. Es la FOTO PROPIA del sistema (la misma
+   que sube el depósito desde Preparación): se ve en Productos, Preparación, etc. NO toca MercadoLibre
+   (las fotos de las publicaciones se cambian desde Publicaciones). *@
+<div @onclick="Cerrar"
+     style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:9999; padding:1rem;">
+    <div @onclick:stopPropagation="true"
+         style="background:#fff; border-radius:12px; padding:1.1rem; width:min(92vw,420px); max-height:92vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.35);">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:0.6rem; margin-bottom:0.7rem;">
+            <div>
+                <div style="font-weight:700; color:#111827;">Foto del producto</div>
+                <div style="font-size:0.82rem; color:#374151;"><span style="font-family:monospace; color:#1d4ed8;">@Sku</span> @Nombre</div>
+            </div>
+            <button @onclick="Cerrar" title="Cerrar" aria-label="Cerrar"
+                    style="border:none; background:#f3f4f6; border-radius:8px; width:32px; height:32px; cursor:pointer; flex-shrink:0;">✕</button>
+        </div>
+
+        <div style="text-align:center; margin-bottom:0.4rem;">
+            @if (!string.IsNullOrEmpty(FotoActual))
+            {
+                <img src="@FotoActual" alt="@Nombre" style="width:200px; height:200px; object-fit:contain; border:1px solid #e5e7eb; border-radius:10px; background:#fff;" />
+            }
+            else
+            {
+                <div style="width:200px; height:200px; margin:0 auto; border:1px dashed #d1d5db; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#9ca3af;">Sin foto</div>
+            }
+            <div style="font-size:0.78rem; color:#6b7280; margin-top:0.35rem;">
+                @(!string.IsNullOrEmpty(archivoPropio) ? "Foto propia del sistema" : !string.IsNullOrEmpty(MeliThumb) ? "Foto tomada de MercadoLibre" : "Este producto no tiene foto")
+            </div>
+        </div>
+
+        <div style="font-size:0.75rem; color:#6b7280; background:#f9fafb; border-radius:8px; padding:0.5rem 0.6rem; margin:0.6rem 0;">
+            Cambia la foto solo en el sistema. Las publicaciones de MercadoLibre no se tocan.
+        </div>
+
+        @if (subiendo)
+        {
+            <p style="color:#2563eb; font-weight:600; text-align:center; padding:0.4rem 0;">Subiendo la foto…</p>
+        }
+        else
+        {
+            <label class="btn btn-primary" style="display:flex; justify-content:center; width:100%; cursor:pointer; margin-bottom:0.5rem;">
+                Subir una foto de la computadora
+                <InputFile OnChange="SubirDesdePc" accept="image/*" style="display:none" />
+            </label>
+            <div style="display:flex; gap:0.4rem; margin-bottom:0.5rem;">
+                <input class="form-input" @bind="linkInput" placeholder="Pegá el link de una foto…" autocomplete="off" style="flex:1;" />
+                <button class="btn btn-secondary" @onclick="SubirDesdeLink">Subir</button>
+            </div>
+
+            @if (string.IsNullOrEmpty(qrUrl))
+            {
+                <button class="btn btn-secondary" style="width:100%; margin-bottom:0.5rem;" @onclick="AbrirQr">📱 Sacarla con el celular (QR)</button>
+            }
+            else
+            {
+                <div style="text-align:center; border:1px solid #e5e7eb; border-radius:10px; padding:0.6rem; margin-bottom:0.5rem;">
+                    <img src="@QrImgUrl" alt="QR" style="width:180px; height:180px;" />
+                    <div style="font-size:0.8rem; color:#374151;">Escaneá con el celular: se abre la cámara y la foto se sube sola.</div>
+                    <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.2rem;">Esperando la foto…</div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(archivoPropio))
+            {
+                @if (confirmarQuitar)
+                {
+                    <div style="border:1px solid #fca5a5; background:#fef2f2; border-radius:8px; padding:0.6rem; font-size:0.85rem;">
+                        ¿Quitar la foto propia? Vuelve a verse la de MercadoLibre (si tiene).
+                        <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
+                            <button class="btn btn-secondary" style="flex:1;" @onclick="() => confirmarQuitar = false">No</button>
+                            <button class="btn btn-danger" style="flex:1;" @onclick="Quitar">Sí, quitar</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <button class="btn btn-secondary" style="width:100%; color:#b91c1c;" @onclick="() => confirmarQuitar = true">Quitar foto propia</button>
+                }
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int ProductoId { get; set; }
+    [Parameter] public string? Sku { get; set; }
+    [Parameter] public string? Nombre { get; set; }
+    /// <summary>Archivo de la foto propia actual (null = no tiene).</summary>
+    [Parameter] public string? FotoPropiaArchivo { get; set; }
+    /// <summary>Miniatura de MercadoLibre (se muestra si no hay foto propia).</summary>
+    [Parameter] public string? MeliThumb { get; set; }
+    /// <summary>Se llama con el archivo nuevo (o null si se quitó la foto propia).</summary>
+    [Parameter] public EventCallback<string?> OnCambio { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private string? archivoPropio;
+    private string linkInput = "";
+    private bool subiendo;
+    private bool confirmarQuitar;
+    private string? qrUrl;
+    private CancellationTokenSource? pollCts;
+
+    protected override void OnInitialized() => archivoPropio = FotoPropiaArchivo;
+
+    private string? FotoActual => !string.IsNullOrEmpty(archivoPropio)
+        ? $"/api/public/producto-foto/img/{archivoPropio}"
+        : MeliThumb;
+
+    private string QrImgUrl => string.IsNullOrEmpty(qrUrl) ? ""
+        : $"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={Uri.EscapeDataString(qrUrl)}";
+
+    private async Task Aplicar(string? archivo, string mensaje)
+    {
+        archivoPropio = archivo;
+        confirmarQuitar = false;
+        pollCts?.Cancel();
+        qrUrl = null;
+        ToastService.Success(mensaje);
+        await OnCambio.InvokeAsync(archivo);
+    }
+
+    private async Task SubirDesdePc(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null || subiendo) return;
+        const long max = 10L * 1024 * 1024;
+        if (file.Size > max) { ToastService.Error("La foto es muy grande (máx 10 MB)."); return; }
+        // Leer los bytes ANTES de re-renderizar (si no, Blazor pierde la referencia al archivo).
+        byte[] bytes;
+        try
+        {
+            using var s = file.OpenReadStream(maxAllowedSize: max);
+            using var ms0 = new MemoryStream();
+            await s.CopyToAsync(ms0);
+            bytes = ms0.ToArray();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo leer la foto: " + ex.Message); return; }
+
+        subiendo = true;
+        StateHasChanged();
+        try
+        {
+            using var ms = new MemoryStream(bytes);
+            var res = await Api.SubirFotoProductoAsync(ProductoId, ms, file.Name,
+                string.IsNullOrEmpty(file.ContentType) ? "image/jpeg" : file.ContentType);
+            if (res is null || string.IsNullOrEmpty(res.FotoPropiaArchivo)) ToastService.Error("No se pudo subir la foto. Probá de nuevo.");
+            else await Aplicar(res.FotoPropiaArchivo, "Foto cambiada");
+        }
+        finally { subiendo = false; StateHasChanged(); }
+    }
+
+    private async Task SubirDesdeLink()
+    {
+        if (subiendo) return;
+        var url = (linkInput ?? "").Trim();
+        if (string.IsNullOrEmpty(url)) { ToastService.Warning("Pegá el link de una foto."); return; }
+        subiendo = true;
+        StateHasChanged();
+        try
+        {
+            var res = await Api.SubirFotoProductoDesdeUrlAsync(ProductoId, url);
+            if (res is null || string.IsNullOrEmpty(res.FotoPropiaArchivo)) ToastService.Error("No se pudo traer esa imagen. Revisá que el link sea de una foto.");
+            else { linkInput = ""; await Aplicar(res.FotoPropiaArchivo, "Foto cambiada"); }
+        }
+        finally { subiendo = false; StateHasChanged(); }
+    }
+
+    private async Task AbrirQr()
+    {
+        var tok = await Api.CrearTokenFotoProductoAsync(ProductoId);
+        if (tok is null || string.IsNullOrEmpty(tok.Token)) { ToastService.Error("No se pudo generar el código. Probá de nuevo."); return; }
+        qrUrl = $"{Navigation.BaseUri.TrimEnd('/')}/subir-foto-producto/{tok.Token}";
+        pollCts?.Cancel();
+        pollCts = new CancellationTokenSource();
+        _ = EsperarFotoDelCeluAsync(archivoPropio, pollCts.Token);
+    }
+
+    // Sondea hasta que el celu suba una foto distinta a la que había (máx ~5 min).
+    private async Task EsperarFotoDelCeluAsync(string? archivoAntes, CancellationToken ct)
+    {
+        for (var i = 0; i < 100 && !ct.IsCancellationRequested; i++)
+        {
+            try { await Task.Delay(3000, ct); } catch { return; }
+            if (ct.IsCancellationRequested) return;
+            var est = await Api.GetEstadoFotoProductoAsync(ProductoId);
+            if (est is not null && !string.IsNullOrEmpty(est.FotoPropiaArchivo) && est.FotoPropiaArchivo != archivoAntes)
+            {
+                await InvokeAsync(async () => { await Aplicar(est.FotoPropiaArchivo, "Foto subida desde el celular"); StateHasChanged(); });
+                return;
+            }
+        }
+    }
+
+    private async Task Quitar()
+    {
+        subiendo = true;
+        try
+        {
+            if (await Api.QuitarFotoPropiaAsync(ProductoId)) await Aplicar(null, "Foto propia quitada");
+            else ToastService.Error("No se pudo quitar la foto. Probá de nuevo.");
+        }
+        finally { subiendo = false; }
+    }
+
+    private async Task Cerrar()
+    {
+        pollCts?.Cancel();
+        await OnCerrar.InvokeAsync();
+    }
+
+    public void Dispose() { pollCts?.Cancel(); pollCts?.Dispose(); }
+}

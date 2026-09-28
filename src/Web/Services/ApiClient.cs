@@ -2013,6 +2013,18 @@ public class ApiClient
     public async Task<ProductoFotoEstadoDto?> MarcarFotoProductoAsync(int productoId, string? estado, string? comentario = null)
         => await PostAsync<ProductoFotoEstadoDto>($"/api/cafe/producto-foto/{productoId}", new { estado, comentario });
 
+    /// <summary>2026-09-28: estado de foto de TODOS los productos que tienen alguna marca o foto propia.</summary>
+    public async Task<List<ProductoFotoEstadoDto>?> GetFotosProductosAsync()
+        => await GetAsync<List<ProductoFotoEstadoDto>>("/api/cafe/producto-foto");
+
+    /// <summary>2026-09-28: quita la foto propia del producto (vuelve a verse la de MeLi). No toca MeLi.</summary>
+    public async Task<bool> QuitarFotoPropiaAsync(int productoId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/cafe/producto-foto/{productoId}/propia");
+        return resp.IsSuccessStatusCode;
+    }
+
     /// <summary>Estado actual de la foto de un producto (para sondear mientras el celu sube por QR).</summary>
     public async Task<ProductoFotoEstadoDto?> GetEstadoFotoProductoAsync(int productoId)
         => await GetAsync<ProductoFotoEstadoDto>($"/api/cafe/producto-foto/{productoId}");
