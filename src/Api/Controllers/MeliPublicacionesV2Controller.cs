@@ -213,8 +213,8 @@ public class MeliPublicacionesV2Controller : ControllerBase
 
     // ─── 2026-08-27 · PAUSAR Y ACTIVAR DESDE LA FILA ───
     // El cartelito "Activa"/"Pausada" de la derecha ahora se toca. Es de a UNA a propósito: nunca
-    // en lote. Y NO hay eliminar: en MeLi es irreversible y se pierde la antigüedad, el historial
-    // de ventas, las preguntas y la posición en el buscador. Pausada tampoco vende, y se vuelve.
+    // en lote. Eliminar (2026-09-28, pedido de Osmar) sí va de a una o varias, pero con la palabra
+    // ELIMINAR+cantidad: es irreversible y se pierde la antigüedad, el historial y las preguntas.
 
     /// <summary>TOCA MELI: deja de venderse. Se puede volver atrás.</summary>
     [HttpPost("publicaciones/{mla}/pausar")]
@@ -230,6 +230,45 @@ public class MeliPublicacionesV2Controller : ControllerBase
     {
         var r = await svc.ActivarAsync(mla, HttpContext.RequestAborted);
         return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
+    /// <summary>TOCA MELI: la saca de la venta (finalizada). Se vuelve a publicar sólo desde MeLi.</summary>
+    [HttpPost("publicaciones/{mla}/finalizar")]
+    public async Task<IActionResult> Finalizar(string mla, [FromServices] MeliEstadoService svc)
+    {
+        var r = await svc.FinalizarAsync(mla, HttpContext.RequestAborted);
+        return r.Ok ? Ok(r) : BadRequest(r);
+    }
+
+    public record EliminarRequest(List<string> Mlas, string? Confirmacion);
+    public record EliminarFila(string Mla, bool Ok, string Mensaje, string? EstadoNuevo);
+
+    /// <summary>TOCA MELI y NO SE DESHACE: finaliza y borra las publicaciones pedidas (una o varias).
+    /// 2026-09-28 · Pide la palabra "ELIMINAR" + la cantidad (ELIMINAR1, ELIMINAR3...) y se chequea
+    /// ACÁ: si la pantalla se equivoca con la cantidad, no se borra nada.</summary>
+    [HttpPost("acciones/eliminar")]
+    public async Task<IActionResult> Eliminar([FromBody] EliminarRequest req, [FromServices] MeliEstadoService svc)
+    {
+        var mlas = (req.Mlas ?? new()).Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (mlas.Count == 0) return BadRequest(new { error = "No hay publicaciones para eliminar." });
+
+        var esperada = $"ELIMINAR{mlas.Count}";
+        var escrita = (req.Confirmacion ?? "").Replace(" ", "").Trim().ToUpperInvariant();
+        if (escrita != esperada)
+            return BadRequest(new { error = $"Para eliminar {mlas.Count} hay que escribir {esperada}." });
+
+        var filas = new List<EliminarFila>();
+        foreach (var mla in mlas)
+        {
+            try
+            {
+                var r = await svc.EliminarAsync(mla, HttpContext.RequestAborted);
+                filas.Add(new EliminarFila(mla, r.Ok, r.Mensaje, r.EstadoNuevo));
+            }
+            catch (Exception ex) { filas.Add(new EliminarFila(mla, false, ex.Message, null)); }
+        }
+        return Ok(new { ok = filas.Count(f => f.Ok), errores = filas.Count(f => !f.Ok), filas });
     }
 
     /// <summary>TOCA MELI pero SÓLO el SKU: le devuelve el que tenía antes de marcarla para

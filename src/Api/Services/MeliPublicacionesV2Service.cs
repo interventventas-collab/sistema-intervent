@@ -150,6 +150,8 @@ public class MeliPublicacionesV2Service
             q = q.Where(m => m.Status == "active");
         else if (string.Equals(f.Estado, "pausadas", StringComparison.OrdinalIgnoreCase))
             q = q.Where(m => m.Status == "paused");
+        else if (string.Equals(f.Estado, "finalizadas", StringComparison.OrdinalIgnoreCase))
+            q = q.Where(m => m.Status == "closed");   // 2026-09-28: para poder eliminarlas desde acá
         else
             q = q.Where(m => m.Status != "closed" && m.Status != "deleted");
 

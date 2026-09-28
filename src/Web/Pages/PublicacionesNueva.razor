@@ -210,6 +210,40 @@
     .p2-st.a { background: #dcfce7; color: #16a34a; }
     .p2-st.p { background: #fef0d8; color: #b45309; }
     .p2-st.o { background: #f1f5f9; color: #64748b; }
+    .p2-st.r { background: #fef9c3; color: #854d0e; }
+    .p2-stwrap { position: relative; display: inline-block; }
+    .p2-stmenu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 220px;
+                 background: #fff; border: 1px solid #cbd5e1; border-radius: .45rem; overflow: hidden;
+                 box-shadow: 0 8px 24px -8px rgba(0,0,0,.35); display: flex; flex-direction: column; }
+    .p2-stmenu button { text-align: left; background: #fff; border: 0; border-bottom: 1px solid #eef0f2;
+                        padding: .45rem .65rem; font-family: inherit; font-size: .76rem; font-weight: 600;
+                        color: #1f2937; cursor: pointer; }
+    .p2-stmenu button:last-child { border-bottom: 0; }
+    .p2-stmenu button:hover { background: #f1f5f9; }
+    .p2-stmenu button small { display: block; font-weight: 400; font-size: .64rem; color: #9ca3af; }
+    .p2-stmenu button[disabled] { color: #9ca3af; cursor: default; background: #fff; }
+    .p2-stmenu button.rojo { color: #b91c1c; }
+    .p2-elim-fondo { position: fixed; inset: 0; background: rgba(15,42,28,.55); z-index: 4200; }
+    .p2-elim { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4201;
+               width: min(520px, 94vw); max-height: 88vh; display: flex; flex-direction: column;
+               background: #fff; border-radius: .6rem; box-shadow: 0 20px 60px -20px rgba(0,0,0,.6); }
+    .p2-elim .cab { padding: .8rem 1rem .3rem; font-weight: 700; font-size: 1rem; color: #b91c1c; }
+    .p2-elim .sub { padding: 0 1rem .5rem; font-size: .8rem; color: #4b5563; }
+    .p2-elim .lista { overflow-y: auto; margin: 0 1rem; border-top: 1px solid #e5e7eb; }
+    .p2-elim .lista div { padding: .4rem 0; border-bottom: 1px solid #e5e7eb; font-size: .8rem; color: #1f2937; }
+    .p2-elim .lista small { color: #9ca3af; margin-left: .3rem; }
+    .p2-elim .lista .mal { color: #b91c1c; display: block; margin-left: 0; }
+    .p2-elim .lista .bien { color: #15803d; display: block; margin-left: 0; }
+    .p2-elim .ojo { margin: .6rem 1rem 0; font-size: .78rem; color: #92400e; }
+    .p2-elim .escribir { margin: .8rem 1rem 0; font-size: .8rem; color: #4b5563; }
+    .p2-elim .escribir b { font-family: monospace; color: #1f2937; font-size: .9rem; }
+    .p2-elim input { margin: .35rem 1rem 0; padding: .45rem .6rem; font-family: monospace; font-size: .9rem;
+                     border: 1px solid #94a3b8; border-radius: .35rem; }
+    .p2-elim .pie { display: flex; justify-content: flex-end; gap: .5rem; padding: .8rem 1rem; }
+    .p2-elim .pie button { font-family: inherit; font-size: .82rem; font-weight: 600; padding: .4rem .9rem;
+                           border-radius: .35rem; border: 1px solid #cbd5e1; background: #fff; color: #1f2937; cursor: pointer; }
+    .p2-elim .pie button.borrar { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+    .p2-elim .pie button[disabled] { opacity: .45; cursor: default; }
 
     /* panel de medidas (lo que define el envio) */
     .p2-med { background: #f8f9f7; border-bottom: 1px solid #e3e7e0; padding: .8rem 1rem .9rem 3rem; }
@@ -581,6 +615,7 @@
             <span class="p2-chip @(fEstado == "" ? "on" : "")" @onclick='() => SetEstado("")'>Todas</span>
             <span class="p2-chip @(fEstado == "activas" ? "on" : "")" @onclick='() => SetEstado("activas")'>Activas</span>
             <span class="p2-chip @(fEstado == "pausadas" ? "on" : "")" @onclick='() => SetEstado("pausadas")'>Pausadas</span>
+            <span class="p2-chip @(fEstado == "finalizadas" ? "on" : "")" @onclick='() => SetEstado("finalizadas")'>Finalizadas</span>
 
             @if (cuentas.Count > 1)
             {
@@ -1053,19 +1088,44 @@
                             @* 2026-08-27 · idea de Osmar: el cartelito que dice el estado ES el botón
                                para cambiarlo. No hay que aprender dónde está la acción. Sólo se puede
                                tocar con el 🔒 abierto — pausar de un toque sin querer sería feo. *@
-                            @if (PuedeCambiarEstado(it))
+                            @* 2026-09-28 · pedido de Osmar: el cartel despliega lo que se puede hacer según
+                               el estado (pausar/activar, finalizar, eliminar). Cada opción pregunta antes. *@
+                            @if (TieneMenuEstado(it))
                             {
-                                <button class="p2-st tocable @(it.Estado == "active" ? "a" : "p")"
-                                        disabled="@(estadoEnCurso == it.MeliItemId)"
-                                        title="@(it.Estado == "active" ? "Tocá para PAUSAR: deja de venderse, pero podés volver cuando quieras" : "Tocá para ACTIVAR: vuelve a venderse, con el stock y el precio al día")"
-                                        @onclick="() => CambiarEstado(it)" @onclick:stopPropagation="true">
-                                    @(estadoEnCurso == it.MeliItemId ? "···" : (it.Estado == "active" ? "Activa ⏸" : "Pausada ▶"))
-                                </button>
+                                <span class="p2-stwrap" @onclick:stopPropagation="true">
+                                    <button class="p2-st tocable @ClaseEstado(it.Estado)"
+                                            disabled="@(estadoEnCurso == it.MeliItemId)"
+                                            title="Tocá para ver qué podés hacer con esta publicación"
+                                            @onclick="() => estadoMenu = estadoMenu == it.MeliItemId ? null : it.MeliItemId">
+                                        @(estadoEnCurso == it.MeliItemId ? "···" : EstadoTexto(it.Estado) + " ▾")
+                                    </button>
+                                    @if (estadoMenu == it.MeliItemId)
+                                    {
+                                        <span class="p2-stmenu">
+                                            @if (it.Estado == "active")
+                                            {
+                                                <button @onclick="() => { estadoMenu = null; return CambiarEstado(it); }">⏸ Pausar<small>deja de venderse, vuelve cuando quieras</small></button>
+                                            }
+                                            else if (it.Estado == "paused")
+                                            {
+                                                <button @onclick="() => { estadoMenu = null; return CambiarEstado(it); }">▶ Activar<small>con el stock y el precio al día</small></button>
+                                            }
+                                            else if (it.Estado == "under_review")
+                                            {
+                                                <button disabled>Activar / pausar<small>no se puede: la está revisando MeLi</small></button>
+                                            }
+                                            @if (it.Estado != "closed")
+                                            {
+                                                <button @onclick="() => Finalizar(it)">Finalizar<small>se saca de la venta</small></button>
+                                            }
+                                            <button class="rojo" @onclick="() => AbrirEliminar(new List<string> { it.MeliItemId })">Eliminar…<small>@(it.Estado == "closed" ? "borrarla del todo" : "pide escribir ELIMINAR1")</small></button>
+                                        </span>
+                                    }
+                                </span>
                             }
                             else
                             {
-                                <span class="p2-st @(it.Estado == "active" ? "a" : it.Estado == "paused" ? "p" : "o")"
-                                      title="@(it.Estado is "active" or "paused" ? "Abrí el 🔒 de esta fila para poder cambiar el estado" : "")">@EstadoTexto(it.Estado)</span>
+                                <span class="p2-st @ClaseEstado(it.Estado)">@EstadoTexto(it.Estado)</span>
                             }
                             @if (!string.IsNullOrWhiteSpace(it.Cuenta))
                             {
@@ -1732,6 +1792,7 @@
                     <button class="p2-ac meli" @onclick="AccDuplicar" disabled="@accionEnCurso">⧉ Duplicar a la otra cuenta</button>
                 }
 
+                <button class="p2-ac" style="color:#b91c1c; border-color:#fca5a5;" @onclick="() => AbrirEliminar(tildadas.ToList())" disabled="@accionEnCurso">🗑 Eliminar…</button>
                 <button class="p2-ac" @onclick="() => { tildadas.Clear(); resultado = null; }" disabled="@accionEnCurso">✕ Limpiar</button>
 
                 @if (accionEnCurso)
@@ -1764,6 +1825,63 @@
         }
 
     </div>
+
+    @* ─── 2026-09-28 · Cuadro de ELIMINAR (de a una desde el cartel, o las tildadas) ───
+       Idea de Osmar: escribir ELIMINAR + la cantidad. Si tildó de más, el número no le cierra. *@
+    @if (elimMlas is not null)
+    {
+        var filasElim = elimFilas;
+        var activasElim = filasElim.Count(f => f?.Estado == "active");
+        var conVentas = filasElim.Count(f => f is { Vendidas: > 0 });
+        var palabra = $"ELIMINAR{elimMlas.Count}";
+        var coincide = (elimTexto ?? "").Replace(" ", "").Trim().ToUpperInvariant() == palabra;
+        <div class="p2-elim-fondo" @onclick="CerrarEliminar"></div>
+        <div class="p2-elim" @onclick:stopPropagation="true">
+            <div class="cab">@(elimRes is null ? $"Eliminar {elimMlas.Count} {(elimMlas.Count == 1 ? "publicación" : "publicaciones")} de MercadoLibre" : "Resultado")</div>
+            @if (elimRes is null)
+            {
+                <div class="sub">Se finalizan y se borran de MercadoLibre. No se puede deshacer: se pierden las ventas, las preguntas y la antigüedad.</div>
+            }
+            else
+            {
+                <div class="sub">@elimRes.Ok eliminadas@(elimRes.Errores > 0 ? $" · {elimRes.Errores} no se pudieron" : "").</div>
+            }
+            <div class="lista">
+                @for (var k = 0; k < elimMlas.Count; k++)
+                {
+                    var f = filasElim[k];
+                    var r = elimRes?.Filas.FirstOrDefault(x => x.Mla == elimMlas[k]);
+                    <div>
+                        @(f?.Titulo ?? "(no está en esta página)")
+                        <small>· @elimMlas[k]@(f is null ? "" : " · " + EstadoTexto(f.Estado).ToLowerInvariant())@(f is { Vendidas: > 0 } ? $" · {f.Vendidas} vendidas" : "")</small>
+                        @if (r is not null)
+                        {
+                            <small class="@(r.Ok ? "bien" : "mal")">@(r.Ok ? "✓ " : "✗ ")@r.Mensaje</small>
+                        }
+                    </div>
+                }
+            </div>
+            @if (elimRes is null)
+            {
+                @if (activasElim > 0 || conVentas > 0)
+                {
+                    <div class="ojo">Ojo: @(activasElim > 0 ? $"{activasElim} {(activasElim == 1 ? "está activa" : "están activas")}" : "")@(activasElim > 0 && conVentas > 0 ? " y " : "")@(conVentas > 0 ? $"{conVentas} {(conVentas == 1 ? "tiene ventas" : "tienen ventas")}" : ""). Si la querés sacar un tiempo, pausala o finalizala.</div>
+                }
+                <div class="escribir">Para confirmar escribí <b>@palabra</b></div>
+                <input @bind="elimTexto" @bind:event="oninput" placeholder="@palabra" disabled="@elimEnCurso" autocomplete="off"
+                       @onkeydown="TeclaEliminar" />
+                <div class="pie">
+                    <button @onclick="CerrarEliminar" disabled="@elimEnCurso">Cancelar</button>
+                    <button class="borrar" disabled="@(!coincide || elimEnCurso)" @onclick="ConfirmarEliminar">
+                        @(elimEnCurso ? "Eliminando…" : $"Eliminar {elimMlas.Count}")</button>
+                </div>
+            }
+            else
+            {
+                <div class="pie"><button @onclick="CerrarEliminar">Cerrar</button></div>
+            }
+        </div>
+    }
 
     @* ─── 2026-08-27 · Vista previa del Excel ───
        El paso del medio, el que nunca se saltea: acá se ve QUÉ cambiaría antes de tocar nada.
@@ -2984,6 +3102,8 @@
         "active" => "Activa",
         "paused" => "Pausada",
         "under_review" => "En revisión",
+        "closed" => "Finalizada",
+        "deleted" => "Eliminada",
         _ => s ?? "—"
     };
 
@@ -3991,6 +4111,102 @@
     /// revisión no se puede tocar, así que ni se muestra como botón.</summary>
     private bool PuedeCambiarEstado(ApiClient.PubV2Fila it)
         => it.Estado is "active" or "paused";   // 2026-09-22: sin candado; CambiarEstado pregunta antes
+
+    // ── 2026-09-28 · menú del cartel de estado + finalizar + eliminar ──
+    private string? estadoMenu;
+    private List<string>? elimMlas;
+    private string elimTexto = "";
+    private bool elimEnCurso;
+    private ApiClient.PubV2EliminarResultado? elimRes;
+    // Foto de las filas al abrir el cuadro: al borrar salen de la lista y el resultado igual tiene que decir cuál era.
+    private List<ApiClient.PubV2Fila?> elimFilas = new();
+
+    private static bool TieneMenuEstado(ApiClient.PubV2Fila it)
+        => it.Estado is "active" or "paused" or "under_review" or "closed";
+
+    private static string ClaseEstado(string? e) => e switch
+    {
+        "active" => "a",
+        "paused" => "p",
+        "under_review" => "r",
+        _ => "o"
+    };
+
+    private async Task Finalizar(ApiClient.PubV2Fila it)
+    {
+        estadoMenu = null;
+        if (estadoEnCurso is not null) return;
+        var aviso = $"Vas a FINALIZAR:\n\n{it.Titulo}\n\nSe saca de la venta. Desde el sistema no se vuelve a activar; "
+                  + "si la querés de nuevo, se republica desde MercadoLibre.\n\n¿Dale?";
+        if (!await JS.InvokeAsync<bool>("confirm", aviso)) return;
+
+        estadoEnCurso = it.MeliItemId;
+        StateHasChanged();
+        try
+        {
+            var (res, error) = await Api.FinalizarPublicacionAsync(it.MeliItemId);
+            if (res is null || !res.Ok) { ToastService.Error(error ?? res?.Mensaje ?? "No se pudo finalizar."); return; }
+            var idx = datos?.Items.FindIndex(x => x.MeliItemId == it.MeliItemId) ?? -1;
+            if (idx >= 0 && datos is not null) datos.Items[idx] = datos.Items[idx] with { Estado = res.EstadoNuevo ?? "closed" };
+            ToastService.Success(res.Mensaje);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo finalizar: " + ex.Message); }
+        finally { estadoEnCurso = null; }
+    }
+
+    private void AbrirEliminar(List<string> mlas)
+    {
+        estadoMenu = null;
+        if (mlas.Count == 0) return;
+        elimMlas = mlas;
+        elimFilas = mlas.Select(m => datos?.Items.FirstOrDefault(x => x.MeliItemId == m)).ToList();
+        elimTexto = "";
+        elimRes = null;
+    }
+
+    private async Task TeclaEliminar(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" || elimMlas is null) return;
+        if ((elimTexto ?? "").Replace(" ", "").Trim().ToUpperInvariant() == $"ELIMINAR{elimMlas.Count}")
+            await ConfirmarEliminar();
+    }
+
+    private void CerrarEliminar()
+    {
+        if (elimEnCurso) return;
+        elimMlas = null;
+        elimRes = null;
+        elimTexto = "";
+    }
+
+    private async Task ConfirmarEliminar()
+    {
+        if (elimMlas is null || elimEnCurso) return;
+        elimEnCurso = true;
+        StateHasChanged();
+        try
+        {
+            var (res, error) = await Api.EliminarPublicacionesAsync(elimMlas, elimTexto);
+            if (res is null) { ToastService.Error(error ?? "No se pudo eliminar."); return; }
+            elimRes = res;
+
+            // Las borradas salen de la lista y de las tildadas; las que quedaron finalizadas se marcan.
+            foreach (var f in res.Filas)
+            {
+                var idx = datos?.Items.FindIndex(x => x.MeliItemId == f.Mla) ?? -1;
+                if (f.Ok)
+                {
+                    tildadas.Remove(f.Mla);
+                    if (idx >= 0) datos!.Items.RemoveAt(idx);
+                }
+                else if (idx >= 0 && f.EstadoNuevo is not null)
+                    datos!.Items[idx] = datos.Items[idx] with { Estado = f.EstadoNuevo };
+            }
+            if (res.Errores == 0) ToastService.Success($"Listo: {res.Ok} {(res.Ok == 1 ? "eliminada" : "eliminadas")} de MercadoLibre.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo eliminar: " + ex.Message); }
+        finally { elimEnCurso = false; }
+    }
 
     private async Task CambiarEstado(ApiClient.PubV2Fila it)
     {
