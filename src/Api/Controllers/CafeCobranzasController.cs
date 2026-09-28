@@ -403,12 +403,16 @@ public class CafeCobranzasController : ControllerBase
         //             (b) Cafe_CobranzasPendientes para el par repartidor+admin cuando la cobranza vino del flujo mobile.
         var cobIds = rows.Select(r => r.Id).ToList();
         var cobIdStr = cobIds.Select(id => id.ToString()).ToList();
+        // 28/09/2026: se traen las filas planas y se agrupa en memoria. El GroupBy con "el primero de
+        // cada grupo" en SQL armaba una subconsulta por grupo sobre AuditLogs (565k filas) y tardaba
+        // ~30 s: la pantalla de Cobranzas quedaba en "Cargando...".
         var auditCreadas = await _db.AuditLogs
             .Where(a => a.EntityType == "CafeCobranza" && a.Action == "CREATE" && cobIdStr.Contains(a.EntityId))
-            .GroupBy(a => a.EntityId)
-            .Select(g => new { EntityId = g.Key, UserName = g.OrderBy(a => a.CreatedAt).Select(a => a.UserName).FirstOrDefault() })
+            .Select(a => new { a.EntityId, a.UserName, a.CreatedAt })
             .ToListAsync();
-        var creadaMap = auditCreadas.ToDictionary(x => x.EntityId, x => x.UserName);
+        var creadaMap = auditCreadas
+            .GroupBy(a => a.EntityId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(a => a.CreatedAt).Select(a => a.UserName).FirstOrDefault());
 
         var pendientesLink = await _db.CafeCobranzasPendientes
             .Include(p => p.Repartidor)
