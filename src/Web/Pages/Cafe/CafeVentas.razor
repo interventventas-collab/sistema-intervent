@@ -422,6 +422,7 @@
             <div style="display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 200px;">
                 <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Buscar venta</label>
                 <input class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
+                       autocomplete="off"
                        @bind="filtroCliente" @bind:event="oninput" @bind:after="OnBuscarClienteInput"
                        placeholder="🔍 Nº venta, código, nombre, CUIT, tel, email, dirección, localidad, CP..." />
             </div>
@@ -4284,10 +4285,11 @@
             </div>
             <div class="modal-body">
                 <p>Vas a <strong>borrar</strong> el comprobante <strong>@toDelete.Numero</strong> de @toDelete.Fecha.ToString("dd/MM/yyyy") por <strong>$@FormatMoney(toDelete.Total)</strong>.</p>
+                @DatosComprobante(toDelete)
                 <p style="color:#b91c1c; font-weight: 600;">⚠ Esta acción NO se puede deshacer. Si la venta estaba emitida, el stock se devuelve.</p>
                 <div class="form-group">
                     <label class="form-label">Clave secreta *</label>
-                    <input class="form-input" type="password" @bind="deletePassword" @bind:event="oninput"
+                    <input class="form-input" type="password" autocomplete="new-password" @bind="deletePassword" @bind:event="oninput"
                            @onkeydown="OnDeletePasswordKey"
                            placeholder="Ingresá la clave" autofocus />
                     @if (!string.IsNullOrEmpty(DeleteHint))
@@ -4323,10 +4325,11 @@
             </div>
             <div class="modal-body">
                 <p>Vas a <strong>recuperar</strong> el comprobante <strong>@toRecuperar.Numero</strong> de @toRecuperar.Fecha.ToString("dd/MM/yyyy") por <strong>$@FormatMoney(toRecuperar.Total)</strong>.</p>
+                @DatosComprobante(toRecuperar)
                 <p style="color:#15803d; font-weight: 600;">✓ El comprobante vuelve a quedar emitido y el stock se vuelve a descontar.</p>
                 <div class="form-group">
                     <label class="form-label">Clave secreta *</label>
-                    <input class="form-input" type="password" @bind="recuperarPassword" @bind:event="oninput"
+                    <input class="form-input" type="password" autocomplete="new-password" @bind="recuperarPassword" @bind:event="oninput"
                            @onkeydown="OnRecuperarPasswordKey"
                            placeholder="Ingresá la clave" autofocus />
                     @if (!string.IsNullOrEmpty(DeleteHint))
@@ -4368,7 +4371,7 @@
                     <ul style="margin: 0.5rem 0; padding-left: 1.2rem; font-size: 0.82rem; max-height: 180px; overflow-y: auto;">
                         @foreach (var s in sel)
                         {
-                            <li><span style="font-family: monospace;">@s.Numero</span> · @s.Fecha.ToString("dd/MM/yyyy") · $@FormatMoney(s.Total)</li>
+                            <li><span style="font-family: monospace;">@s.Numero</span> · @s.Fecha.ToString("dd/MM/yyyy") · $@FormatMoney(s.Total) · @(s.ClienteNombre ?? "Sin cliente")</li>
                         }
                     </ul>
                     <p style="font-size: 0.85rem;">Total a eliminar: <strong>$@FormatMoney(sel.Sum(x => x.Total))</strong></p>
@@ -4376,7 +4379,7 @@
                 <p style="color:#b91c1c; font-weight: 600;">⚠ Esta acción NO se puede deshacer. Si alguna estaba emitida, su stock se devuelve.</p>
                 <div class="form-group">
                     <label class="form-label">Clave secreta *</label>
-                    <input class="form-input" type="password" @bind="bulkDeletePassword" @bind:event="oninput"
+                    <input class="form-input" type="password" autocomplete="new-password" @bind="bulkDeletePassword" @bind:event="oninput"
                            @onkeydown="OnBulkDeletePasswordKey"
                            placeholder="Ingresá la clave" autofocus />
                     @if (!string.IsNullOrEmpty(DeleteHint))
@@ -6279,6 +6282,35 @@
     private HashSet<int> selectedIds = new();
     private bool AllVisibleSelected =>
         ventas is not null && ventas.Count > 0 && ventas.All(v => selectedIds.Contains(v.Id));
+
+    // 2026-09-28: en la ventanita de eliminar/recuperar, además del número: cliente, dirección y
+    // qué productos lleva, para estar seguro de que es el comprobante que uno cree.
+    private RenderFragment DatosComprobante(CafeVentaDto v) =>
+        @<div style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.5rem 0.7rem; margin-bottom: 0.8rem; font-size: 0.85rem; line-height: 1.45;">
+            <div>
+                <strong>@(v.ClienteNombre ?? "Sin cliente")</strong>
+                @if (v.ClienteCodigoInterno.HasValue) { <span style="color:#6b7280;"> (#@v.ClienteCodigoInterno.Value)</span> }
+                @if (!string.IsNullOrWhiteSpace(v.ClienteRazonSocial) && !string.Equals(v.ClienteRazonSocial, v.ClienteNombre, StringComparison.OrdinalIgnoreCase)) { <span style="color:#6b7280;"> · @v.ClienteRazonSocial</span> }
+            </div>
+            @{
+                var datos = new[] { v.ClienteCuit, v.ClienteTelefono }.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+                var dirDel = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntrega) ? v.ClienteDomicilioEntrega : v.ClienteDireccion;
+                var loc = new[] { v.ClienteLocalidad, v.ClienteCiudad }.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            }
+            @if (datos.Count > 0) { <div style="color:#6b7280;">@string.Join(" · ", datos)</div> }
+            @if (!string.IsNullOrWhiteSpace(dirDel)) { <div style="color:#6b7280;">📍 @dirDel@(loc is not null && !dirDel!.Contains(loc, StringComparison.OrdinalIgnoreCase) ? $", {loc}" : "")</div> }
+            <div style="color:#6b7280;">Comprobante @v.TipoComprobante · @v.Estado</div>
+            @if (v.Items is not null && v.Items.Count > 0)
+            {
+                <div style="margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px solid #f3f4f6;">
+                    @foreach (var it in v.Items.Take(6))
+                    {
+                        <div>@it.Cantidad × @it.ProductoNombre@(it.EsConceptoLibre || string.IsNullOrWhiteSpace(it.Formato) ? "" : $" {it.Formato}") <span style="color:#6b7280;">· $@FormatMoney(it.Subtotal)</span></div>
+                    }
+                    @if (v.Items.Count > 6) { <div style="color:#6b7280;">y @(v.Items.Count - 6) producto@(v.Items.Count - 6 == 1 ? "" : "s") más</div> }
+                </div>
+            }
+        </div>;
 
     // Eliminar (con clave)
     private CafeVentaDto? toDelete;
