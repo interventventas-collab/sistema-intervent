@@ -864,10 +864,11 @@ else if (modoCarga == "minimo")
     {
         if (rows is null) return Enumerable.Empty<StockProductoDto>();
         var t = q.Trim();
-        if (string.IsNullOrEmpty(t)) return rows.Take(10);
-        return rows.Where(r =>
+        if (string.IsNullOrEmpty(t)) return rows.Where(r => r.IsActive).Take(10);
+        // 2026-09-28: los productos inactivos (ya no se usan) no se ofrecen para cargar stock.
+        return rows.Where(r => r.IsActive && (
             (r.Codigo?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false)
-            || r.Nombre.Contains(t, StringComparison.OrdinalIgnoreCase));
+            || r.Nombre.Contains(t, StringComparison.OrdinalIgnoreCase)));
     }
 
     // ─── 2026-09-28: productos COMPUESTOS (Cafe_Combos con EsCompuesto) en el buscador ───

@@ -644,6 +644,8 @@ public class StockProductoDto
     public int StockUnidades { get; set; }
     /// <summary>2026-09-28: productos "shell" (caja + tapa): los códigos que lo componen, ej "(9234TR + 7045-TR)".</summary>
     public string? Composicion { get; set; }
+    /// <summary>2026-09-28: los inactivos no se ofrecen en el buscador de Cargar stock.</summary>
+    public bool IsActive { get; set; } = true;
 }
 
 // ========== Saldos por venta ==========
