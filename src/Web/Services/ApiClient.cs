@@ -5822,6 +5822,34 @@ public class ApiClient
     public Task<(PubV2EstadoResultado? res, string? error)> DevolverSkuAsync(string mla)
         => CambiarEstadoAsync(mla, "devolver-sku");
 
+    /// <summary>2026-09-28 · La saca de la venta (finalizada). Se vuelve a publicar sólo desde MeLi.</summary>
+    public Task<(PubV2EstadoResultado? res, string? error)> FinalizarPublicacionAsync(string mla)
+        => CambiarEstadoAsync(mla, "finalizar");
+
+    public record PubV2EliminarFila(string Mla, bool Ok, string Mensaje, string? EstadoNuevo);
+    public record PubV2EliminarResultado(int Ok, int Errores, List<PubV2EliminarFila> Filas);
+
+    /// <summary>2026-09-28 · Finaliza y BORRA de MeLi (no se deshace). La API exige la palabra
+    /// ELIMINAR + cantidad; si no coincide no borra nada.</summary>
+    public async Task<(PubV2EliminarResultado? res, string? error)> EliminarPublicacionesAsync(List<string> mlas, string confirmacion)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PostAsJsonAsync("/api/meli/v2/acciones/eliminar", new { mlas, confirmacion });
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<PubV2EliminarResultado>(), null);
+            var txt = await resp.Content.ReadAsStringAsync();
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(txt);
+                if (doc.RootElement.TryGetProperty("error", out var e)) return (null, e.GetString());
+            }
+            catch { }
+            return (null, $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     /// <summary>2026-09-28 · Cambia el SKU en MeLi desde la fila de la pantalla nueva. Mismo endpoint
     /// que la ficha de la vieja, pero devuelve el motivo si MeLi lo rechaza (la otra se lo come).</summary>
     public async Task<(string? sku, string? error)> CambiarSkuPublicacionAsync(string mla, string sku)

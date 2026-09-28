@@ -17,10 +17,9 @@ namespace Api.Services;
 /// que la sacaba de circulación por precio — y de paso dejaba precios de $4.392.300 ensuciando
 /// todos los informes. Con esto ese truco deja de hacer falta.
 ///
-/// ⚠ Acá NO se elimina nada. Eliminar en MeLi es irreversible y no se pierde sólo la publicación:
-/// se pierde la antigüedad, el historial de ventas, las preguntas y la posición en el buscador.
-/// Pausada tampoco vende, y se puede volver. Si algún día se agrega, va de a UNA y con confirmación
-/// escrita — nunca en lote.
+/// ⚠ Eliminar en MeLi es irreversible: se pierde la antigüedad, el historial de ventas, las preguntas
+/// y la posición en el buscador. 2026-09-28: Osmar pidió poder hacerlo (de a una y en lote); la
+/// protección es escribir ELIMINAR + la cantidad, validado en el controller.
 /// </summary>
 public class MeliEstadoService
 {
@@ -141,6 +140,59 @@ public class MeliEstadoService
         _logger.LogWarning("[Estado] {Mla} ACTIVADA a mano · {Detalle}", meliItemId, string.Join(" · ", detalle));
         return new Resultado(true, "Activada. Ya vuelve a venderse.", "active",
             detalle.Count > 0 ? string.Join(" · ", detalle) : null);
+    }
+
+    // ─── 2026-09-28 · FINALIZAR y ELIMINAR desde el cartel de estado ───
+    // Osmar lo pidió explícito: el cartel de la derecha despliega Pausar/Activar, Finalizar y Eliminar,
+    // y además eliminar varias tildadas. La protección es la palabra escrita "ELIMINAR" + cantidad,
+    // que se valida en el controller (no alcanza con que la pantalla la pida).
+
+    /// <summary>TOCA MELI: la saca de la venta (status closed). Queda en "finalizadas" de MeLi y desde
+    /// ahí se puede volver a publicar; desde el sistema ya no se activa.</summary>
+    public async Task<Resultado> FinalizarAsync(string meliItemId, CancellationToken ct = default)
+    {
+        var (item, error) = await BuscarAsync(meliItemId, ct);
+        if (error is not null) return error;
+
+        var (token, sinToken) = await TokenAsync(item!, ct);
+        if (sinToken is not null) return sinToken;
+
+        var (ok, err) = await MandarAsync(token!, meliItemId, new { status = "closed" }, ct);
+        if (!ok) return new Resultado(false, err!, null, null);
+
+        await MarcarEstadoAsync(meliItemId, "closed", ct);
+        _logger.LogWarning("[Estado] {Mla} FINALIZADA a mano (estaba {Antes})", meliItemId, item!.Status);
+        return new Resultado(true, "Finalizada. Ya no se vende; la ves en el filtro Finalizadas.", "closed", null);
+    }
+
+    /// <summary>TOCA MELI y NO SE DESHACE: la finaliza (si hace falta) y la borra. MeLi exige los dos
+    /// pasos: sólo deja borrar una que ya está cerrada.</summary>
+    public async Task<Resultado> EliminarAsync(string meliItemId, CancellationToken ct = default)
+    {
+        var item = await _db.MeliItems.Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+        if (item?.MeliAccount is null)
+            return new Resultado(false, "No encuentro esta publicación en el sistema.", null, null);
+        if (item.Status == "deleted")
+            return new Resultado(true, "Ya estaba eliminada.", "deleted", null);
+
+        var (token, sinToken) = await TokenAsync(item, ct);
+        if (sinToken is not null) return sinToken;
+
+        if (item.Status != "closed")
+        {
+            var (okC, errC) = await MandarAsync(token!, meliItemId, new { status = "closed" }, ct);
+            if (!okC) return new Resultado(false, errC!, null, null);
+            await MarcarEstadoAsync(meliItemId, "closed", ct);
+        }
+
+        var (ok, err) = await MandarAsync(token!, meliItemId, new { deleted = "true" }, ct);
+        if (!ok)
+            return new Resultado(false, "Quedó finalizada, pero MercadoLibre no dejó borrarla: " + err, "closed", null);
+
+        await MarcarEstadoAsync(meliItemId, "deleted", ct);
+        _logger.LogWarning("[Estado] {Mla} ELIMINADA a mano (estaba {Antes})", meliItemId, item.Status);
+        return new Resultado(true, "Eliminada de MercadoLibre.", "deleted", null);
     }
 
     // ─── 2026-08-27 · devolver el SKU que se había perdido al marcarla ───
