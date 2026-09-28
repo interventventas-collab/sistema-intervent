@@ -2299,6 +2299,10 @@
                                                             <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@c.Sku</span>
                                                         }
                                                         <strong>@c.Nombre</strong>
+                                                        @if (c.EsCompuesto)
+                                                        {
+                                                            <span style="color: #374151; font-size: 0.8rem; margin-left: 0.25rem;">@Composicion.DeCompuesto(c)</span>
+                                                        }
                                                         <span style="color: #6b7280; font-size: 0.78rem;"> · @c.ItemsCount item@(c.ItemsCount == 1 ? "" : "s")</span>
                                                         <span style="color: #1d4ed8; font-size: 0.78rem;"> · BAR $@FormatMoney(c.PreviewPrecioBar)</span>
                                                         <span style="color: #15803d; font-size: 0.78rem;"> · OTRO $@FormatMoney(c.PreviewPrecioOtro)</span>
@@ -2340,6 +2344,10 @@
                                     <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
                                         <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(pSel?.Sku ?? "—")</span>
                                         <strong>@(pSel?.Nombre ?? "?")</strong>
+                                        @if (!string.IsNullOrEmpty(pSel?.Composicion))
+                                        {
+                                            <span style="font-size: 0.8rem; color: #374151;">@pSel.Composicion</span>
+                                        }
                                         @if (pSel is not null)
                                         {
                                             <span style="font-size: 0.72rem; color: #6b7280;">· @pSel.Categoria</span>
@@ -2391,6 +2399,10 @@
                                                      style="@($"padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; background: {(isHl ? "#dbeafe" : "transparent")};")">
                                                     <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@(p.Sku ?? "—")</span>
                                                     <strong>@p.Nombre</strong>
+                                                    @if (!string.IsNullOrEmpty(p.Composicion))
+                                                    {
+                                                        <span style="color: #374151; font-size: 0.8rem; margin-left: 0.25rem;">@p.Composicion</span>
+                                                    }
                                                     @if (p.Categoria == "CAFE")
                                                     {
                                                         <span style="display:inline-block; padding:0.05rem 0.35rem; background:#fef3c7; color:#92400e; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left: 0.4rem;">☕</span>
@@ -2428,6 +2440,7 @@
                                                          style="@($"padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; background: {(isHlC ? "#bfdbfe" : "#fffbeb")};")">
                                                         <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@(c.Sku ?? "—")</span>
                                                         <strong>@c.Nombre</strong>
+                                                        <span style="color: #374151; font-size: 0.8rem; margin-left: 0.25rem;">@Composicion.DeCompuesto(c)</span>
                                                         <span style="display:inline-block; padding:0.05rem 0.35rem; background:#fde68a; color:#92400e; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left: 0.4rem;">🧩 COMP</span>
                                                         <span style="color: #6b7280; font-size: 0.78rem;"> · @c.ItemsCount pieza@(c.ItemsCount == 1 ? "" : "s") · $@FormatMoney(precioTxt)</span>
                                                         @* 2026-06-18: stock disponible del compuesto (min de stock_componente / cant) *@

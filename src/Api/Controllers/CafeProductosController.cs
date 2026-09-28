@@ -131,6 +131,7 @@ public class CafeProductosController : ControllerBase
         // via CafeProductoId). Stock armable = min(stock componente - reserva componente) / cantidad.
         // Para productos físicos normales (sin OemId o sin linkeo a MeLi) queda null y la UI muestra StockUnidades.
         var armableMap = await CalcularStockArmableBulkAsync(list.Select(p => p.Id).ToList());
+        var composicionMap = await ComposicionProductos.ShellsAsync(_db, list.Select(p => p.Id).ToHashSet());
 
         // 2026-06-02: desglose de stock por depósito para que la UI muestre '280 propio + 50 Full'
         // en lugar del total 330. Bulk query por todos los productos a la vez.
@@ -149,6 +150,8 @@ public class CafeProductosController : ControllerBase
             var dto = Map(p);
             if (armableMap.TryGetValue(p.Id, out var armable))
                 dto = dto with { StockArmable = armable };
+            if (composicionMap.TryGetValue(p.Id, out var composicion))
+                dto = dto with { Composicion = composicion };
             if (stockMap.TryGetValue(p.Id, out var s))
                 dto = dto with { StockPropio = s.Propio, StockFull = s.Full };
             return dto;

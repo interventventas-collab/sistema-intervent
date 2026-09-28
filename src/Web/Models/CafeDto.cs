@@ -207,6 +207,8 @@ public class CafeProductoDto
     public decimal? CostoUsd { get; set; }
     public decimal? CostoUsdCotizacion { get; set; }
     public DateTime? CostoUsdFecha { get; set; }
+    /// <summary>2026-09-28 — productos "shell" (tacho + tapa, caja + tapa): los códigos que lo componen, ej "(9234TR + 7045-TR)".</summary>
+    public string? Composicion { get; set; }
     // Precios FUTUROS (cambio programado de precios — pedido 2026-05-20)
     public DateTime? FechaAplicaPreciosFuturos { get; set; }
     public decimal? PrecioPorKgFuturo { get; set; }
