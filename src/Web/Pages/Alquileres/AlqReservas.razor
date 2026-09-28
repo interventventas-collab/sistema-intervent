@@ -1079,7 +1079,7 @@
                 <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer. Si la reserva fue cancelada o nunca se concretó, conviene mejor cambiar su estado a "Cancelado" para mantener el historial.</p>
                 <label class="form-label">Ingresá tu clave para confirmar</label>
                 <input class="form-input" type="password" @bind="deletePassword" @bind:event="oninput"
-                       placeholder="Tu clave de acceso" @onkeyup="OnDeleteKey" />
+                       placeholder="Clave de acceso o clave para eliminar" @onkeyup="OnDeleteKey" />
                 @if (!string.IsNullOrEmpty(deleteError))
                 {
                     <div style="color:#b91c1c; font-size:0.85rem; font-weight:600; margin-top:0.4rem;">⚠ @deleteError</div>

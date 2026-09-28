@@ -705,6 +705,18 @@ public class AlqReservasController : ControllerBase
 
     public record EliminarReservaRequest(string? Password);
 
+    private async Task<bool> EsClaveEliminarDelOperadorAsync(string password)
+    {
+        var op = HttpContext.Request.Headers["X-Operator-Name"].ToString().Trim().ToUpperInvariant();
+        if (op == "") return false;
+        var allowedOp = (await _db.AppSettings.FindAsync("sales.delete_allowed_operator"))?.Value ?? "OSMAR";
+        var key = string.Equals(op, allowedOp, StringComparison.OrdinalIgnoreCase)
+            ? "sales.delete_password"
+            : "sales.delete_password_op." + op;
+        var expected = (await _db.AppSettings.FindAsync(key))?.Value ?? "";
+        return expected != "" && password == expected;
+    }
+
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id, [FromBody] EliminarReservaRequest? req = null)
     {
@@ -724,7 +736,10 @@ public class AlqReservasController : ControllerBase
             return Unauthorized(new { error = "Sesión inválida" });
         var user = await _db.Users.FindAsync(userId);
         if (user is null) return Unauthorized(new { error = "Usuario no encontrado" });
-        if (string.IsNullOrEmpty(req?.Password) || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+        // 2026-09-28: además de la clave del login, vale la clave de eliminar comprobantes del
+        // operador activo (la de OSMAR, o la propia de GERMAN en sales.delete_password_op.GERMAN).
+        if (string.IsNullOrEmpty(req?.Password)
+            || !(BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash) || await EsClaveEliminarDelOperadorAsync(req.Password)))
             return BadRequest(new { error = "Clave incorrecta" });
 
         _db.AlqReservas.Remove(r);

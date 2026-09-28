@@ -566,7 +566,7 @@
                         else
                         {
                             <span style="font-size: 0.78rem; opacity: 0.85;">
-                                Solo @(deleteSettings?.AllowedOperator ?? "OSMAR") puede eliminar.
+                                Solo @(deleteSettings?.Permitidos ?? "OSMAR") puede eliminar.
                             </span>
                         }
                         <button class="btn" style="background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3);"
@@ -1131,13 +1131,13 @@
             else if (anuladaM)
             {
                 <button class="actions-popup-item" style="color:#15803d;" @onclick="() => { CloseActionsMenu(); OpenRecuperarModal(vMenu); }">
-                    <span class="ic" style="color:#15803d;">↺</span><span>@(CanDelete ? "Recuperar venta" : $"Recuperar (solo {(deleteSettings?.AllowedOperator ?? "OSMAR")})")</span>
+                    <span class="ic" style="color:#15803d;">↺</span><span>@(CanDelete ? "Recuperar venta" : $"Recuperar (solo {(deleteSettings?.Permitidos ?? "OSMAR")})")</span>
                 </button>
             }
             @if (!tieneCaeM)
             {
                 <button class="actions-popup-item" style="color:#b91c1c;" @onclick="() => { CloseActionsMenu(); OpenDeleteModal(vMenu); }">
-                    <span class="ic">🗑</span><span>@(CanDelete ? "Eliminar definitivamente" : $"Eliminar (solo {(deleteSettings?.AllowedOperator ?? "OSMAR")})")</span>
+                    <span class="ic">🗑</span><span>@(CanDelete ? "Eliminar definitivamente" : $"Eliminar (solo {(deleteSettings?.Permitidos ?? "OSMAR")})")</span>
                 </button>
             }
             else
@@ -4273,7 +4273,7 @@
     </div>
 }
 
-@* ====== ELIMINAR UNA VENTA (con clave, solo OSMAR) ====== *@
+@* ====== ELIMINAR UNA VENTA (con clave, OSMAR o los operadores con clave propia) ====== *@
 @if (toDelete is not null)
 {
     <div class="modal-overlay" @onclick="CloseDeleteModal">
@@ -4290,10 +4290,10 @@
                     <input class="form-input" type="password" @bind="deletePassword" @bind:event="oninput"
                            @onkeydown="OnDeletePasswordKey"
                            placeholder="Ingresá la clave" autofocus />
-                    @if (!string.IsNullOrEmpty(deleteSettings?.Hint))
+                    @if (!string.IsNullOrEmpty(DeleteHint))
                     {
                         <p style="font-size: 0.8rem; color: #6b7280; margin: 0.3rem 0 0;">
-                            💡 Pista: <strong>@deleteSettings.Hint</strong>
+                            💡 Pista: <strong>@DeleteHint</strong>
                         </p>
                     }
                 </div>
@@ -4329,10 +4329,10 @@
                     <input class="form-input" type="password" @bind="recuperarPassword" @bind:event="oninput"
                            @onkeydown="OnRecuperarPasswordKey"
                            placeholder="Ingresá la clave" autofocus />
-                    @if (!string.IsNullOrEmpty(deleteSettings?.Hint))
+                    @if (!string.IsNullOrEmpty(DeleteHint))
                     {
                         <p style="font-size: 0.8rem; color: #6b7280; margin: 0.3rem 0 0;">
-                            💡 Pista: <strong>@deleteSettings.Hint</strong>
+                            💡 Pista: <strong>@DeleteHint</strong>
                         </p>
                     }
                 </div>
@@ -4379,10 +4379,10 @@
                     <input class="form-input" type="password" @bind="bulkDeletePassword" @bind:event="oninput"
                            @onkeydown="OnBulkDeletePasswordKey"
                            placeholder="Ingresá la clave" autofocus />
-                    @if (!string.IsNullOrEmpty(deleteSettings?.Hint))
+                    @if (!string.IsNullOrEmpty(DeleteHint))
                     {
                         <p style="font-size: 0.8rem; color: #6b7280; margin: 0.3rem 0 0;">
-                            💡 Pista: <strong>@deleteSettings.Hint</strong>
+                            💡 Pista: <strong>@DeleteHint</strong>
                         </p>
                     }
                 </div>
@@ -6289,7 +6289,11 @@
     private bool CanDelete =>
         deleteSettings is not null &&
         !string.IsNullOrWhiteSpace(Operator.Current) &&
-        string.Equals(Operator.Current, deleteSettings.AllowedOperator, StringComparison.OrdinalIgnoreCase);
+        deleteSettings.Operadores.Any(o => string.Equals(Operator.Current, o, StringComparison.OrdinalIgnoreCase));
+    // La pista es de la clave de OSMAR: a los demás (GERMAN, con clave propia) no se les muestra.
+    private string? DeleteHint =>
+        string.Equals(Operator.Current, deleteSettings?.AllowedOperator, StringComparison.OrdinalIgnoreCase)
+            ? deleteSettings?.Hint : null;
 
     // Bulk delete
     private bool showBulkDeleteModal;
@@ -10371,7 +10375,7 @@
     {
         if (!CanDelete)
         {
-            ToastService.Error($"Solo {(deleteSettings?.AllowedOperator ?? "OSMAR")} puede recuperar ventas anuladas.");
+            ToastService.Error($"Solo {(deleteSettings?.Permitidos ?? "OSMAR")} puede recuperar ventas anuladas.");
             return;
         }
         toRecuperar = v;
@@ -10433,7 +10437,7 @@
     {
         if (!CanDelete)
         {
-            ToastService.Error($"Solo {(deleteSettings?.AllowedOperator ?? "OSMAR")} puede eliminar comprobantes.");
+            ToastService.Error($"Solo {(deleteSettings?.Permitidos ?? "OSMAR")} puede eliminar comprobantes.");
             return;
         }
         toDelete = v;
@@ -10479,7 +10483,7 @@
     {
         if (!CanDelete)
         {
-            ToastService.Error($"Solo {(deleteSettings?.AllowedOperator ?? "OSMAR")} puede eliminar comprobantes.");
+            ToastService.Error($"Solo {(deleteSettings?.Permitidos ?? "OSMAR")} puede eliminar comprobantes.");
             return;
         }
         if (selectedIds.Count == 0) return;
