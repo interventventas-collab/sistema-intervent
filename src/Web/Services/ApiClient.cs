@@ -4576,9 +4576,12 @@ public class ApiClient
 
     // ===== Historial de movimientos de stock (/cafe/historial-stock) =====
     public async Task<List<StockHistorialItem>?> GetStockHistorialAsync(DateTime? desde = null, DateTime? hasta = null,
-        int? operadorId = null, int? productoId = null, string? tipoMov = null, string? texto = null, int limit = 500)
+        int? operadorId = null, int? productoId = null, string? tipoMov = null, string? texto = null, int limit = 500,
+        IEnumerable<string>? tipos = null, IEnumerable<int>? productoIds = null)
     {
         var qs = new List<string>();
+        if (tipos is not null && tipos.Any()) qs.Add($"tipos={Uri.EscapeDataString(string.Join(",", tipos))}");
+        if (productoIds is not null && productoIds.Any()) qs.Add($"productoIds={string.Join(",", productoIds)}");
         if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
         if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
         if (operadorId.HasValue) qs.Add($"operadorId={operadorId.Value}");
@@ -7515,9 +7518,9 @@ public class ApiClient
     public async Task<List<StockProductoDto>?> GetStockEnDepositoAsync(int depositoId)
         => await GetAsync<List<StockProductoDto>>($"/api/cafe/stock-masivo/{depositoId}");
     public record StockMasivoItemReq(int ProductoId, decimal StockGramos, int StockUnidades);
-    public async Task<bool> ActualizarStockMasivoAsync(int depositoId, List<StockMasivoItemReq> items)
+    public async Task<bool> ActualizarStockMasivoAsync(int depositoId, List<StockMasivoItemReq> items, string? comentario = null)
     {
-        var r = await PostAsync<object>("/api/cafe/stock-masivo", new { depositoId, items });
+        var r = await PostAsync<object>("/api/cafe/stock-masivo", new { depositoId, items, comentario });
         return r is not null;
     }
 
