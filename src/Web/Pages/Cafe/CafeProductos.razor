@@ -183,7 +183,9 @@
                                     @{
                                         // 2026-09-28: primero la foto PROPIA del sistema; si no tiene, la de MeLi.
                                         var propia = p.EsCompuestoFake ? null : FotoPropiaDe(p.Id);
-                                        var thumb = !string.IsNullOrEmpty(propia) ? $"/api/public/producto-foto/img/{propia}" : ThumbnailFor(p.Id);
+                                        // Foto de MeLi marcada como errónea (❌ en Preparación o "No mostrar" acá): no se muestra.
+                                        var meliOculta = !p.EsCompuestoFake && string.IsNullOrEmpty(propia) && EstadoFotoDe(p.Id) == "REPORTADA";
+                                        var thumb = !string.IsNullOrEmpty(propia) ? $"/api/public/producto-foto/img/{propia}" : meliOculta ? null : ThumbnailFor(p.Id);
                                         var prodFoto = p;
                                     }
                                     <div style="@(p.EsCompuestoFake ? "" : "cursor:pointer;")" title="@(p.EsCompuestoFake ? "" : "Cambiar la foto (solo en el sistema)")"
@@ -1417,6 +1419,7 @@
 {
     <FotoProductoModal ProductoId="fotoAbierta.Id" Sku="@fotoAbierta.Sku" Nombre="@fotoAbierta.Nombre"
                        FotoPropiaArchivo="@FotoPropiaDe(fotoAbierta.Id)" MeliThumb="@ThumbnailFor(fotoAbierta.Id)"
+                       Estado="@EstadoFotoDe(fotoAbierta.Id)"
                        OnCambio="OnFotoCambiada" OnCerrar="() => fotoAbierta = null" />
 }
 
@@ -2075,6 +2078,8 @@
     // 2026-09-28: fotos PROPIAS del sistema (productoId -> archivo). Tienen prioridad sobre la de MeLi.
     private Dictionary<int, string> fotosPropias = new();
     private string? FotoPropiaDe(int productoId) => fotosPropias.TryGetValue(productoId, out var f) ? f : null;
+    private Dictionary<int, string> estadosFoto = new();
+    private string? EstadoFotoDe(int productoId) => estadosFoto.TryGetValue(productoId, out var e) ? e : null;
     private CafeProductoDto? fotoAbierta;
 
     private void AbrirFoto(CafeProductoDto p)
@@ -2083,11 +2088,13 @@
         fotoAbierta = p;
     }
 
-    private void OnFotoCambiada(string? archivo)
+    private void OnFotoCambiada((string? Archivo, string? Estado) c)
     {
         if (fotoAbierta is null) return;
-        if (string.IsNullOrEmpty(archivo)) fotosPropias.Remove(fotoAbierta.Id);
-        else fotosPropias[fotoAbierta.Id] = archivo;
+        if (string.IsNullOrEmpty(c.Archivo)) fotosPropias.Remove(fotoAbierta.Id);
+        else fotosPropias[fotoAbierta.Id] = c.Archivo;
+        if (string.IsNullOrEmpty(c.Estado)) estadosFoto.Remove(fotoAbierta.Id);
+        else estadosFoto[fotoAbierta.Id] = c.Estado;
         StateHasChanged();
     }
 
@@ -2095,12 +2102,15 @@
     {
         try
         {
-            fotosPropias = ((await Api.GetFotosProductosAsync()) ?? new())
-                .Where(f => !string.IsNullOrEmpty(f.FotoPropiaArchivo))
+            var lista = (await Api.GetFotosProductosAsync()) ?? new();
+            fotosPropias = lista.Where(f => !string.IsNullOrEmpty(f.FotoPropiaArchivo))
                 .GroupBy(f => f.CafeProductoId)
                 .ToDictionary(g => g.Key, g => g.First().FotoPropiaArchivo!);
+            estadosFoto = lista.Where(f => !string.IsNullOrEmpty(f.Estado))
+                .GroupBy(f => f.CafeProductoId)
+                .ToDictionary(g => g.Key, g => g.First().Estado!);
         }
-        catch { fotosPropias = new(); }
+        catch { fotosPropias = new(); estadosFoto = new(); }
     }
     private string? ThumbnailFor(int productoId)
         => thumbsByProductoId.TryGetValue(productoId, out var t) ? t : null;

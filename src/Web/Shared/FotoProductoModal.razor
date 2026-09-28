@@ -29,7 +29,9 @@
                 <div style="width:200px; height:200px; margin:0 auto; border:1px dashed #d1d5db; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#9ca3af;">Sin foto</div>
             }
             <div style="font-size:0.78rem; color:#6b7280; margin-top:0.35rem;">
-                @(!string.IsNullOrEmpty(archivoPropio) ? "Foto propia del sistema" : !string.IsNullOrEmpty(MeliThumb) ? "Foto tomada de MercadoLibre" : "Este producto no tiene foto")
+                @(!string.IsNullOrEmpty(archivoPropio) ? "Foto propia del sistema"
+                  : MeliOculta ? "La foto de MercadoLibre está marcada como errónea: no se muestra"
+                  : !string.IsNullOrEmpty(MeliThumb) ? "Foto tomada de MercadoLibre" : "Este producto no tiene foto")
             </div>
         </div>
 
@@ -65,6 +67,20 @@
                 </div>
             }
 
+            @* Foto de MeLi equivocada (ej. la caja sola muestra caja + tapa): se esconde en el sistema.
+               Es la misma marca ❌ "foto errónea" de Preparación. *@
+            @if (string.IsNullOrEmpty(archivoPropio) && !string.IsNullOrEmpty(MeliThumb))
+            {
+                @if (MeliOculta)
+                {
+                    <button class="btn btn-secondary" style="width:100%;" @onclick='() => MarcarMeli("")'>Volver a mostrar la foto de MercadoLibre</button>
+                }
+                else
+                {
+                    <button class="btn btn-secondary" style="width:100%; color:#b91c1c;" @onclick='() => MarcarMeli("REPORTADA")'>No mostrar esta foto (está mal)</button>
+                }
+            }
+
             @if (!string.IsNullOrEmpty(archivoPropio))
             {
                 @if (confirmarQuitar)
@@ -94,8 +110,10 @@
     [Parameter] public string? FotoPropiaArchivo { get; set; }
     /// <summary>Miniatura de MercadoLibre (se muestra si no hay foto propia).</summary>
     [Parameter] public string? MeliThumb { get; set; }
-    /// <summary>Se llama con el archivo nuevo (o null si se quitó la foto propia).</summary>
-    [Parameter] public EventCallback<string?> OnCambio { get; set; }
+    /// <summary>Marca de la foto: "APROBADA" | "REPORTADA" (errónea, no se muestra la de MeLi) | null.</summary>
+    [Parameter] public string? Estado { get; set; }
+    /// <summary>Se llama con (archivo propio, estado) después de cualquier cambio.</summary>
+    [Parameter] public EventCallback<(string? Archivo, string? Estado)> OnCambio { get; set; }
     [Parameter] public EventCallback OnCerrar { get; set; }
 
     private string? archivoPropio;
@@ -105,11 +123,23 @@
     private string? qrUrl;
     private CancellationTokenSource? pollCts;
 
-    protected override void OnInitialized() => archivoPropio = FotoPropiaArchivo;
+    private string? estado;
+    protected override void OnInitialized() { archivoPropio = FotoPropiaArchivo; estado = Estado; }
+
+    private bool MeliOculta => string.IsNullOrEmpty(archivoPropio) && estado == "REPORTADA";
 
     private string? FotoActual => !string.IsNullOrEmpty(archivoPropio)
         ? $"/api/public/producto-foto/img/{archivoPropio}"
-        : MeliThumb;
+        : MeliOculta ? null : MeliThumb;
+
+    private async Task MarcarMeli(string nuevo)
+    {
+        var res = await Api.MarcarFotoProductoAsync(ProductoId, nuevo);
+        if (res is null) { ToastService.Error("No se pudo guardar. Probá de nuevo."); return; }
+        estado = res.Estado;
+        ToastService.Success(nuevo == "REPORTADA" ? "Listo, esa foto ya no se muestra" : "La foto se vuelve a mostrar");
+        await OnCambio.InvokeAsync((archivoPropio, estado));
+    }
 
     private string QrImgUrl => string.IsNullOrEmpty(qrUrl) ? ""
         : $"https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={Uri.EscapeDataString(qrUrl)}";
@@ -117,11 +147,13 @@
     private async Task Aplicar(string? archivo, string mensaje)
     {
         archivoPropio = archivo;
+        // Subir una foto propia la deja APROBADA; quitarla limpia la marca (lo hace la API).
+        estado = string.IsNullOrEmpty(archivo) ? null : "APROBADA";
         confirmarQuitar = false;
         pollCts?.Cancel();
         qrUrl = null;
         ToastService.Success(mensaje);
-        await OnCambio.InvokeAsync(archivo);
+        await OnCambio.InvokeAsync((archivo, estado));
     }
 
     private async Task SubirDesdePc(InputFileChangeEventArgs e)
