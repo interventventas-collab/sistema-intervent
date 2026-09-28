@@ -82,14 +82,27 @@ public class CafeRedirigidasPendientesController : ControllerBase
         if (p.Estado != "PENDIENTE") return BadRequest(new { error = $"Ya está {p.Estado}" });
         if (!await _db.CafeCobranzas.AnyAsync(c => c.Id == req.CobranzaId)) return BadRequest(new { error = "No existe esa cobranza" });
 
+        MarcarVolcada(_db, _files, p, req.CobranzaId, req.Operador);
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync("CafeRedirigidaPendiente", id.ToString(), "VINCULAR",
+            $"Redirigida por WhatsApp de {p.EnviadoPor} volcada en la cobranza {req.CobranzaId} ({p.Adjuntos.Count} adjuntos)");
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Deja la redirigida APROBADA en esa cobranza y copia sus fotos/comprobantes a los adjuntos
+    /// de la cobranza. No guarda: lo guarda quien llama. 2026-09-28: lo usa también la creación de la
+    /// cobranza (CafeCobranzasController.Crear) para hacerlo en el MISMO paso — el 28/09 un reinicio cayó
+    /// entre "guardar cobranza" y "vincular" y la redirigida quedó pendiente con la cobranza ya hecha.</summary>
+    public static void MarcarVolcada(AppDbContext db, FileStorageService files, CafeRedirigidaPendiente p, int cobranzaId, string? operador)
+    {
         p.Estado = "APROBADA";
-        p.CobranzaCreadaId = req.CobranzaId;
-        p.RevisadaPor = req.Operador;
+        p.CobranzaCreadaId = cobranzaId;
+        p.RevisadaPor = operador;
         p.RevisadaAt = DateTime.UtcNow;
         p.UpdatedAt = DateTime.UtcNow;
 
-        var relativeDir = $"cobranzas/{req.CobranzaId}";
-        var absDir = _files.ResolveSafe(relativeDir);
+        var relativeDir = $"cobranzas/{cobranzaId}";
+        var absDir = files.ResolveSafe(relativeDir);
         Directory.CreateDirectory(absDir);
         foreach (var a in p.Adjuntos)
         {
@@ -98,17 +111,13 @@ public class CafeRedirigidasPendientesController : ControllerBase
             var ext = Path.GetExtension(a.StoredFilename);
             var fileName = $"{Guid.NewGuid():N}{ext}";
             System.IO.File.Copy(origen, Path.Combine(absDir, fileName));
-            _db.CafeCobranzaAdjuntos.Add(new CafeCobranzaAdjunto
+            db.CafeCobranzaAdjuntos.Add(new CafeCobranzaAdjunto
             {
-                CobranzaId = req.CobranzaId, Tipo = "TRANSFERENCIA",
+                CobranzaId = cobranzaId, Tipo = "TRANSFERENCIA",
                 FilePath = $"{relativeDir}/{fileName}", NombreOriginal = a.NombreOriginal,
                 MimeType = a.MimeType, Tamano = a.Tamano, CreatedAt = DateTime.UtcNow
             });
         }
-        await _db.SaveChangesAsync();
-        await _audit.LogAsync("CafeRedirigidaPendiente", id.ToString(), "VINCULAR",
-            $"Redirigida por WhatsApp de {p.EnviadoPor} volcada en la cobranza {req.CobranzaId} ({p.Adjuntos.Count} adjuntos)");
-        return Ok(new { ok = true });
     }
 
     [HttpPost("{id:int}/rechazar")]

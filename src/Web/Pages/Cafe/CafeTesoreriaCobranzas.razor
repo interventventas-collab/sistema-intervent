@@ -2610,7 +2610,8 @@
         guardando = true;
         try
         {
-            var r = await Api.CrearCafeCobranzaAsync(selClienteId, formRetenciones, null, formObservaciones, comps, medios);
+            // 2026-09-28: la redirigida por WhatsApp va en el mismo pedido (se engancha en un solo paso).
+            var r = await Api.CrearCafeCobranzaAsync(selClienteId, formRetenciones, null, formObservaciones, comps, medios, rediOrigen?.Id);
             if (r is null) { ToastService.Error("Error al crear cobranza"); return; }
             // Si se usaron movimientos del extracto bancario, marcarlos como "usados" para que
             // no se sugieran de nuevo en futuras cobranzas.
@@ -2632,13 +2633,8 @@
                 catch { /* no critico */ }
                 alqPendienteOrigen = null;
             }
-            if (rediOrigen is not null)
-            {
-                // Queda APROBADA y sus fotos/comprobantes pasan a los adjuntos de esta cobranza.
-                try { await Api.VincularRediPendienteAsync(rediOrigen.Id, r.Id, Operator.Current); }
-                catch { /* no critico */ }
-                rediOrigen = null;
-            }
+            // La redirigida ya quedó enganchada del lado del servidor al crear la cobranza.
+            rediOrigen = null;
             // 2026-06-25: subir adjuntos pendientes (comprobante de retencion / transferencia)
             await SubirAdjuntoPendienteAsync(r.Id, adjRetencionFile, "RETENCION");
             await SubirAdjuntoPendienteAsync(r.Id, adjTransferenciaFile, "TRANSFERENCIA");
