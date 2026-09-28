@@ -2995,9 +2995,13 @@ public class CafeVentasController : ControllerBase
         var keys = new[] { "sales.delete_allowed_operator", "sales.delete_password_hint" };
         var settings = await _db.AppSettings.Where(s => keys.Contains(s.Key))
             .ToDictionaryAsync(s => s.Key, s => s.Value);
+        var allowedOp = settings.GetValueOrDefault("sales.delete_allowed_operator", "OSMAR");
+        var ops = await DeleteOperatorsAsync(allowedOp);
         return Ok(new DeleteCafeVentaSettingsDto(
-            settings.GetValueOrDefault("sales.delete_allowed_operator", "OSMAR"),
-            settings.GetValueOrDefault("sales.delete_password_hint", "")
+            allowedOp,
+            settings.GetValueOrDefault("sales.delete_password_hint", ""),
+            ops,
+            string.Join(" o ", ops)
         ));
     }
 
@@ -3394,14 +3398,42 @@ public class CafeVentasController : ControllerBase
         return s.Length > 20 ? s[..20] : s;
     }
 
+    /// <summary>2026-09-28: prefijo de las claves propias por operador (pedido: que GERMAN también
+    /// pueda eliminar con SU clave). La de OSMAR sigue siendo sales.delete_password.</summary>
+    internal const string DeletePasswordOpPrefix = "sales.delete_password_op.";
+
+    private async Task<List<string>> DeleteOperatorsAsync(string allowedOp)
+    {
+        var extra = await _db.AppSettings
+            .Where(s => s.Key.StartsWith(DeletePasswordOpPrefix) && s.Value != "")
+            .Select(s => s.Key)
+            .ToListAsync();
+        var ops = new List<string> { allowedOp.ToUpperInvariant() };
+        foreach (var k in extra)
+        {
+            var op = k[DeletePasswordOpPrefix.Length..].ToUpperInvariant();
+            if (!ops.Contains(op)) ops.Add(op);
+        }
+        return ops;
+    }
+
     private async Task ValidateDeletePermissionAsync(string operatorName, string password)
     {
         var allowedOp = (await _db.AppSettings.FindAsync("sales.delete_allowed_operator"))?.Value ?? "OSMAR";
-        var expectedPassword = (await _db.AppSettings.FindAsync("sales.delete_password"))?.Value ?? "";
+        var op = (operatorName ?? "").Trim().ToUpperInvariant();
 
-        if (!string.Equals(operatorName ?? "", allowedOp, StringComparison.OrdinalIgnoreCase))
-            throw new UnauthorizedAccessException($"Solo {allowedOp} puede eliminar comprobantes.");
-        if (string.IsNullOrEmpty(expectedPassword) || password != expectedPassword)
+        string expectedPassword;
+        if (string.Equals(op, allowedOp, StringComparison.OrdinalIgnoreCase))
+            expectedPassword = (await _db.AppSettings.FindAsync("sales.delete_password"))?.Value ?? "";
+        else
+            expectedPassword = op == "" ? "" : (await _db.AppSettings.FindAsync(DeletePasswordOpPrefix + op))?.Value ?? "";
+
+        if (string.IsNullOrEmpty(expectedPassword))
+        {
+            var ops = await DeleteOperatorsAsync(allowedOp);
+            throw new UnauthorizedAccessException($"Solo {string.Join(" o ", ops)} puede eliminar comprobantes.");
+        }
+        if (password != expectedPassword)
             throw new UnauthorizedAccessException("Clave incorrecta.");
     }
 

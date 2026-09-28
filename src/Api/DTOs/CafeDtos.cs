@@ -761,7 +761,9 @@ public class BulkDeleteCafeVentasRequest
     public string Password { get; set; } = string.Empty;
 }
 
-public record DeleteCafeVentaSettingsDto(string AllowedOperator, string Hint);
+/// <summary>2026-09-28: Operadores = todos los que pueden eliminar (OSMAR + los que tengan clave propia
+/// en sales.delete_password_op.{OPERADOR}, ej. GERMAN). Permitidos = texto listo "OSMAR o GERMAN".</summary>
+public record DeleteCafeVentaSettingsDto(string AllowedOperator, string Hint, List<string> Operadores, string Permitidos);
 
 // ===== Proveedores =====
 public record CafeProveedorDto(

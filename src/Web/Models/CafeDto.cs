@@ -997,6 +997,8 @@ public class DeleteCafeVentaSettingsDto
 {
     public string AllowedOperator { get; set; } = "OSMAR";
     public string Hint { get; set; } = string.Empty;
+    public List<string> Operadores { get; set; } = new() { "OSMAR" };
+    public string Permitidos { get; set; } = "OSMAR";
 }
 
 // ===== Proveedores =====
