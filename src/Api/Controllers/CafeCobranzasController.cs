@@ -134,7 +134,10 @@ public class CafeCobranzasController : ControllerBase
         string? Operador,
         string? Observaciones,
         List<CrearComprobanteItem> Comprobantes,
-        List<CrearMedioItem> Medios);
+        List<CrearMedioItem> Medios,
+        // 2026-09-28: si viene de una redirigida por WhatsApp, se engancha en el MISMO paso que se crea la
+        // cobranza (antes era una llamada aparte y un corte en el medio la dejaba pendiente).
+        int? RediPendienteId = null);
 
     public record CrearComprobanteItem(int? VentaId, decimal Importe, int? ReservaId = null);
 
@@ -539,6 +542,23 @@ public class CafeCobranzasController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Crear([FromBody] CrearCobranzaRequest req)
     {
+        // 2026-09-28: una redirigida se vuelca UNA sola vez. Si ya está en otra cobranza, no se crea
+        // otra (también evita la cobranza repetida si alguien reintenta después de un corte).
+        CafeRedirigidaPendiente? redi = null;
+        if (req.RediPendienteId is int rediId)
+        {
+            redi = await _db.CafeRedirigidasPendientes.Include(x => x.Adjuntos).FirstOrDefaultAsync(x => x.Id == rediId);
+            if (redi is null) return BadRequest(new { error = "No encontré esa redirigida" });
+            if (redi.Estado != "PENDIENTE")
+            {
+                var nro = redi.CobranzaCreadaId is int cid
+                    ? await _db.CafeCobranzas.Where(c => c.Id == cid).Select(c => c.Numero).FirstOrDefaultAsync() : null;
+                return BadRequest(new { error = nro is null
+                    ? $"Esa redirigida ya está {redi.Estado.ToLower()}."
+                    : $"Esa redirigida ya se cargó en la cobranza {nro}. No hace falta volver a cargarla." });
+            }
+        }
+
         // Validaciones basicas
         CafeCliente? cliente = null;
         if (req.ClienteId.HasValue && req.ClienteId.Value > 0)
@@ -779,6 +799,17 @@ public class CafeCobranzasController : ControllerBase
         }
         await _audit.LogAsync("CafeCobranza", cobranza.Id.ToString(), "CREATE",
             $"Cobranza {numero} para cliente {clienteAudit}, total ${sumMedios:N2}");
+
+        if (redi is not null)
+        {
+            var operadorHdr = Request.Headers["X-Operator-Name"].ToString();
+            CafeRedirigidasPendientesController.MarcarVolcada(_db, _files, redi, cobranza.Id,
+                !string.IsNullOrWhiteSpace(req.Operador) ? req.Operador
+                : !string.IsNullOrWhiteSpace(operadorHdr) ? Uri.UnescapeDataString(operadorHdr) : User?.Identity?.Name);
+            await _db.SaveChangesAsync();
+            await _audit.LogAsync("CafeRedirigidaPendiente", redi.Id.ToString(), "VINCULAR",
+                $"Redirigida por WhatsApp de {redi.EnviadoPor} volcada en la cobranza {numero} ({redi.Adjuntos.Count} adjuntos)");
+        }
 
         // Sincronizar flag IsPaid de las ventas imputadas (TRUE si saldo <= 0)
         await SincronizarIsPaidAsync(req.Comprobantes.Where(c => c.VentaId.HasValue).Select(c => c.VentaId!.Value).ToList());
