@@ -38,7 +38,7 @@
     @* 🔎 Buscador libre: cliente, dirección, teléfono, N° de reserva, equipos y notas. 2026-08-19 *@
     <div style="display: flex; align-items: center; gap: 0.6rem; padding: 10px 1.25rem; flex-wrap: wrap; border-top: 0.5px solid #f0f0f0;">
         <div style="position: relative; flex: 1; min-width: 260px; max-width: 560px;">
-            <input class="form-input" style="width: 100%; padding-right: 2rem;"
+            <input class="form-input" style="width: 100%; padding-right: 2rem;" autocomplete="off"
                    placeholder="🔎 Buscar por cliente, dirección, teléfono, N° de reserva, equipo…"
                    @bind="busqueda" @bind:event="oninput" />
             @if (BuscandoAlgo)
@@ -1078,7 +1078,7 @@
                 <p>Estas seguro que queres eliminar la reserva <strong>@reservaToDelete.Numero</strong> de <strong>@reservaToDelete.ClienteNombre</strong>?</p>
                 <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer. Si la reserva fue cancelada o nunca se concretó, conviene mejor cambiar su estado a "Cancelado" para mantener el historial.</p>
                 <label class="form-label">Ingresá tu clave para confirmar</label>
-                <input class="form-input" type="password" @bind="deletePassword" @bind:event="oninput"
+                <input class="form-input" type="password" autocomplete="new-password" @bind="deletePassword" @bind:event="oninput"
                        placeholder="Clave de acceso o clave para eliminar" @onkeyup="OnDeleteKey" />
                 @if (!string.IsNullOrEmpty(deleteError))
                 {
