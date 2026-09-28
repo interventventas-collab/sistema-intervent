@@ -2243,13 +2243,24 @@
             // para que la pantalla use la rama "OEM × Mult" en vez de PrecioOtro (que le sumaria IVA encima
             // de un valor que ya tiene IVA). Para BARES la pantalla tambien suma IVA, asi que paso PrecioBar
             // en valor sin IVA (oem c/IVA / 1+iva). Sin OEM se usan los preview tal cual (suma de componentes).
+            // 2026-09-28: OEM de cada producto, para saber cuántas "cajas" lleva un pack (ver abajo).
+            var oemDeProducto = productos.Where(x => x.OemId.HasValue).ToDictionary(x => x.Id, x => x.OemId!.Value);
             var compuestos = todosCombos.Where(c => c.EsCompuesto).Select(c =>
             {
                 decimal? precioBarSinIva = null;
+                decimal? multEfectivo = c.MultiplicadorOem;
                 if (c.OemPvpConIva.HasValue && c.OemPvpConIva.Value > 0m)
                 {
                     var mult = c.MultiplicadorOem ?? 1m;
                     if (mult <= 0m) mult = 1m;
+                    // 2026-09-28: PACKS (ej. 12 cajas + 12 tapas). El OEM es el precio de UNA caja: hay que
+                    // multiplicarlo por la cantidad de cajas del pack. Antes se mostraba el precio de 1 caja
+                    // contra el costo de las 12 → "margen -81%". Misma regla que la venta y el push a MeLi
+                    // (MeliPricePushService.GetCompuestoOemAsync): la "caja" es el ÚNICO ítem cuyo producto
+                    // cuelga del mismo OEM que el compuesto; si no hay exactamente uno, no se multiplica.
+                    var cajas = c.Items.Where(i => c.OemId.HasValue && oemDeProducto.TryGetValue(i.ProductoId, out var o) && o == c.OemId.Value).ToList();
+                    if (cajas.Count == 1 && cajas[0].Cantidad > 0) mult *= cajas[0].Cantidad;
+                    multEfectivo = mult;
                     var oemConIva = Math.Round(c.OemPvpConIva.Value * mult, 2);
                     var iva = c.OemIvaPct ?? 21m;
                     precioBarSinIva = iva > 0 ? Math.Round(oemConIva / (1m + iva / 100m), 2) : oemConIva;
@@ -2270,7 +2281,7 @@
                     OemCodigo = c.OemCodigo,
                     OemPvpConIva = c.OemPvpConIva,
                     OemIvaPct = c.OemIvaPct,
-                    MultiplicadorOem = c.MultiplicadorOem,
+                    MultiplicadorOem = multEfectivo,
                     PrecioOtro = c.OemId.HasValue ? null : c.PreviewPrecioOtro,
                     PrecioBar = c.OemId.HasValue ? precioBarSinIva : c.PreviewPrecioBar,
                     Pvp1 = c.OemId.HasValue ? null : c.PreviewPrecioBar,
