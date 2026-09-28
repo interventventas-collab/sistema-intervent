@@ -158,6 +158,8 @@ public class CafeProductoDto
     /// (un tacho armado, set, etc.). El listado de /cafe/productos los muestra mezclados con un chip
     /// para distinguir. Al editar/duplicar, se redirige a /cafe/combos. Default false.</summary>
     public bool EsCompuestoFake { get; set; } = false;
+    /// <summary>2026-09-28: compuesto que en realidad es un PACK (X2, X6, X12…: varias cajas con tapa juntas).</summary>
+    public bool EsPackFake { get; set; } = false;
     /// <summary>2026-06-18: solo si EsCompuestoFake=true — precio de referencia del combo (PVP del armado).</summary>
     public decimal? PrecioReferenciaCompuesto { get; set; }
     public string Categoria { get; set; } = "CAFE";
