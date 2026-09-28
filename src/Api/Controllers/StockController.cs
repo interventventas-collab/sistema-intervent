@@ -983,7 +983,8 @@ public class StockController : ControllerBase
     public async Task<IActionResult> ListMovimientos([FromQuery] DateTime? desde = null,
         [FromQuery] DateTime? hasta = null, [FromQuery] int? operadorId = null,
         [FromQuery] int? productoId = null, [FromQuery] string? tipoMov = null,
-        [FromQuery] string? texto = null, [FromQuery] int limit = 200)
+        [FromQuery] string? texto = null, [FromQuery] int limit = 200,
+        [FromQuery] string? tipos = null, [FromQuery] string? productoIds = null)
     {
         limit = Math.Clamp(limit, 1, 2000);
         var q = _db.StockMovimientos.Include(m => m.Producto).AsQueryable();
@@ -992,6 +993,18 @@ public class StockController : ControllerBase
         if (operadorId.HasValue) q = q.Where(m => m.OperadorId == operadorId.Value);
         if (productoId.HasValue) q = q.Where(m => m.ProductoId == productoId.Value);
         if (!string.IsNullOrWhiteSpace(tipoMov)) q = q.Where(m => m.TipoMov == tipoMov);
+        // 2026-09-28: pantalla Cargar stock — varios tipos y varios productos (un compuesto y sus piezas) a la vez.
+        if (!string.IsNullOrWhiteSpace(tipos))
+        {
+            var lt = tipos.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            if (lt.Count > 0) q = q.Where(m => lt.Contains(m.TipoMov));
+        }
+        if (!string.IsNullOrWhiteSpace(productoIds))
+        {
+            var lp = productoIds.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => int.TryParse(x.Trim(), out var n) ? n : 0).Where(n => n > 0).ToList();
+            if (lp.Count > 0) q = q.Where(m => lp.Contains(m.ProductoId));
+        }
         if (!string.IsNullOrWhiteSpace(texto))
         {
             var t = texto.Trim().ToLower();

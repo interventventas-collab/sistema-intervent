@@ -100,7 +100,8 @@ public class CafeStockMasivoController : ControllerBase
     }
 
     public record UpdateStockItem(int ProductoId, decimal StockGramos, int StockUnidades);
-    public record UpdateStockMasivoReq(int DepositoId, List<UpdateStockItem> Items);
+    // 2026-09-28: Comentario opcional (ej: "factura Colombraro 1234") que queda en el historial de cada producto.
+    public record UpdateStockMasivoReq(int DepositoId, List<UpdateStockItem> Items, string? Comentario = null);
 
     /// <summary>
     /// Actualiza el stock de varios productos en un deposito.
@@ -195,7 +196,9 @@ public class CafeStockMasivoController : ControllerBase
                 await _stockLogger.LogAsync(prodId, tipoMov, antesU, despuesU,
                     operadorId: null,
                     operadorNombre: operadorNombre,
-                    comentario: $"Stock masivo · {dep.Nombre}",
+                    comentario: string.IsNullOrWhiteSpace(req.Comentario)
+                        ? $"Stock masivo · {dep.Nombre}"
+                        : $"Stock masivo · {dep.Nombre} · {req.Comentario.Trim()}",
                     saveChanges: false);
             }
             if (changesParaHistorial.Count > 0) await _db.SaveChangesAsync();
