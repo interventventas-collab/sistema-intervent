@@ -99,7 +99,9 @@ public class AlqReservaPdfService
                             c.Item().Text("CLIENTE").FontSize(8).Bold().FontColor("#6b7280");
                             c.Item().Text(r.ClienteNav?.Nombre ?? "—").FontSize(11).Bold();
                             if (!string.IsNullOrWhiteSpace(r.ClienteNav?.Cuit)) c.Item().Text("DNI/CUIT: " + r.ClienteNav!.Cuit).FontSize(9);
-                            if (!string.IsNullOrWhiteSpace(r.ClienteNav?.Telefono)) c.Item().Text("Tel: " + r.ClienteNav!.Telefono).FontSize(9);
+                            var telsCli = new[] { r.ClienteNav?.Telefono, r.ClienteNav?.Telefono2 }
+                                .Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t!.Trim()).Distinct().ToList();
+                            if (telsCli.Count > 0) c.Item().Text("Tel: " + string.Join(" / ", telsCli)).FontSize(9);
                             if (!string.IsNullOrWhiteSpace(r.ClienteNav?.Email)) c.Item().Text(r.ClienteNav!.Email!).FontSize(9);
                         });
                         row.ConstantItem(8);
