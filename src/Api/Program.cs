@@ -309,6 +309,9 @@ builder.Services.AddHostedService<MeliCodigoColectaBackgroundService>();
 builder.Services.AddHostedService<MeliFullStockSyncBackgroundService>();
 builder.Services.AddHostedService<MeliStockPushBackgroundService>();
 builder.Services.AddHostedService<MeliPricePushBackgroundService>();
+// 2026-09-28: cuánto deja cada venta de MeLi (lee el pago de Mercado Pago de cada orden)
+builder.Services.AddScoped<MeliOrderFinanzasService>();
+builder.Services.AddHostedService<MeliOrderFinanzasBackgroundService>();
 // 2026-08-25: refresco nocturno de comisiones (03:00 ARG) — sin datos frescos, los márgenes mienten.
 builder.Services.AddHostedService<MeliComisionesNocturnoService>();
 // 2026-08-25: vigilante de margen (04:00 ARG) — avisa las que caen abajo del 50%, no toca precios.

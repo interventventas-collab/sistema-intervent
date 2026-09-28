@@ -4283,6 +4283,17 @@ public class ApiClient
         return await GetAsync<MeliOrdersResponse>(url);
     }
 
+    // 2026-09-28: cuánto deja cada venta de MeLi (lo que informa Mercado Pago + costo del sistema).
+    // Solo responde a quien tiene permiso de Órdenes; si no, devuelve null.
+    public record OrdenFinanzaDto(long MeliOrderId, long? PackId, decimal Vendido,
+        decimal? Comision, decimal? Envio, decimal? Retenciones, decimal? Otros, decimal? Neto,
+        decimal? Costo, bool Consultado);
+    public async Task<List<OrdenFinanzaDto>?> GetOrdenesFinanzasAsync(DateTime from, DateTime to)
+    {
+        try { return await GetAsync<List<OrdenFinanzaDto>>($"/api/meli/orders/finanzas?from={from:yyyy-MM-ddTHH:mm:ss}&to={to:yyyy-MM-ddTHH:mm:ss}"); }
+        catch { return null; }
+    }
+
     public async Task<MeliOrderSyncResult?> SyncMeliOrdersAsync(DateTime from, DateTime to)
     {
         var url = $"/api/meli/orders/sync?from={from:yyyy-MM-ddTHH:mm:ss}&to={to:yyyy-MM-ddTHH:mm:ss}";

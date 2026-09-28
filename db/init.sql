@@ -7962,3 +7962,13 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_RedirigidasPendientes')
    AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('Cafe_RedirigidasPendientes') AND name='Mensaje')
     ALTER TABLE Cafe_RedirigidasPendientes ADD Mensaje NVARCHAR(1000) NULL;
 GO
+
+-- 2026-09-28: cuánto deja cada venta de MeLi, según el pago de Mercado Pago (lo completa MeliOrderFinanzasService)
+IF COL_LENGTH('MeliOrders','MpPaymentId') IS NULL ALTER TABLE MeliOrders ADD MpPaymentId BIGINT NULL;
+IF COL_LENGTH('MeliOrders','FinComision') IS NULL ALTER TABLE MeliOrders ADD FinComision DECIMAL(18,2) NULL;
+IF COL_LENGTH('MeliOrders','FinEnvio') IS NULL ALTER TABLE MeliOrders ADD FinEnvio DECIMAL(18,2) NULL;
+IF COL_LENGTH('MeliOrders','FinRetenciones') IS NULL ALTER TABLE MeliOrders ADD FinRetenciones DECIMAL(18,2) NULL;
+IF COL_LENGTH('MeliOrders','FinOtros') IS NULL ALTER TABLE MeliOrders ADD FinOtros DECIMAL(18,2) NULL;
+IF COL_LENGTH('MeliOrders','FinNeto') IS NULL ALTER TABLE MeliOrders ADD FinNeto DECIMAL(18,2) NULL;
+IF COL_LENGTH('MeliOrders','FinConsultadoAt') IS NULL ALTER TABLE MeliOrders ADD FinConsultadoAt DATETIME2 NULL;
+GO

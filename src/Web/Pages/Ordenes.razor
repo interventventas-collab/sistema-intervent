@@ -221,6 +221,10 @@
                                     </span>
                                 </div>
                             </th>
+                            <!-- 2026-09-28: cuánto deja cada venta (Mercado Pago + costo del sistema) -->
+                            <th title="Lo que te queda sin IVA después de comisión, envío y costo del producto (misma cuenta que Publicaciones). Tocá el número para ver el detalle.">
+                                <div class="th-inner"><span class="th-label">Te queda</span></div>
+                            </th>
                             <!-- Estado: label + sort + checkbox dropdown -->
                             <th class="th-dropdown @(activeFilterColumn == "estado" ? "filter-open" : "")">
                                 <div class="th-inner">
@@ -318,6 +322,7 @@
                                     <td>@group.Orders.Sum(o => o.Quantity)</td>
                                     <td></td>
                                     <td><strong>@group.Orders.First().CurrencyId @(group.Orders.Sum(o => o.UnitPrice * o.Quantity).ToString("N2"))</strong></td>
+                                    <td @onclick:stopPropagation="true">@CeldaQueda(CuentaDe(group.Orders, null), group.Orders)</td>
                                     <td>
                                         <span class="status-badge @GetStatusClass(group.Orders.First().Status)">
                                             @GetStatusLabel(group.Orders.First().Status)
@@ -369,6 +374,7 @@
                                             <span>@order.CurrencyId @order.UnitPrice.ToString("N2")</span>
                                         </td>
                                         <td>@order.CurrencyId @((order.UnitPrice * order.Quantity).ToString("N2"))</td>
+                                        <td @onclick:stopPropagation="true">@CeldaQueda(CuentaDe(group.Orders, order), group.Orders)</td>
                                         <td></td>
                                         <td></td>
                                     </tr>
@@ -408,6 +414,7 @@
                                         <span>@order.CurrencyId @order.UnitPrice.ToString("N2")</span>
                                     </td>
                                     <td><strong>@order.CurrencyId @order.TotalAmount.ToString("N2")</strong></td>
+                                    <td @onclick:stopPropagation="true">@CeldaQueda(CuentaDe(group.Orders, null), group.Orders)</td>
                                     <td>
                                         <span class="status-badge @GetStatusClass(order.Status)">
                                             @GetStatusLabel(order.Status)
@@ -448,6 +455,62 @@
 @if (activeFilterColumn is not null || showDateFilter)
 {
     <div class="filter-overlay" @onclick="CloseAllDropdowns"></div>
+}
+
+@* 2026-09-28: detalle de cuánto deja una venta (o un pack), con lo que informa Mercado Pago. *@
+@if (cuentaAbierta is not null)
+{
+    var ca = cuentaAbierta;
+    <div class="modal-overlay" @onclick="() => cuentaAbierta = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true" style="max-width: 460px;">
+            <div class="modal-header">
+                <h4 style="margin: 0;">Cuánto te deja @(ca.EsPack ? "este pack" : "esta venta")</h4>
+                <button class="btn-close" @onclick="() => cuentaAbierta = null">&times;</button>
+            </div>
+            <div class="modal-body" style="font-size: 0.9rem;">
+                <div style="font-size: 0.78rem; color: #6b7280; margin-bottom: 0.6rem;">Montos que informa Mercado Pago del pago de @(ca.EsPack ? "cada venta del pack" : "la venta").</div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr><td style="padding: 3px 0;">Vendiste</td><td style="text-align: right;">$ @ca.Vendido.ToString("N2")</td></tr>
+                    <tr><td style="padding: 3px 0; color: #4b5563;">− Comisión de MeLi</td><td style="text-align: right;">$ @ca.Comision.ToString("N2")</td></tr>
+                    <tr><td style="padding: 3px 0; color: #4b5563;">− Envío@(ca.EnvioRepartido ? " (parte de esta venta en el envío del pack)" : ca.EsPack ? " (de todo el pack)" : "")</td><td style="text-align: right;">$ @ca.Envio.ToString("N2")</td></tr>
+                    <tr><td style="padding: 3px 0; color: #4b5563;">− Retenciones (IIBB, débitos y créditos)</td><td style="text-align: right;">$ @ca.Retenciones.ToString("N2")</td></tr>
+                    @if (ca.Otros != 0)
+                    {
+                        <tr><td style="padding: 3px 0; color: #4b5563;">− Otros cargos</td><td style="text-align: right;">$ @ca.Otros.ToString("N2")</td></tr>
+                    }
+                    <tr style="border-top: 1px solid #e5e7eb;"><td style="padding: 5px 0; font-weight: 700;">Te deposita MeLi</td><td style="text-align: right; font-weight: 700;">$ @ca.Neto.ToString("N2")</td></tr>
+                </table>
+
+                <div style="margin-top: 0.9rem; padding-top: 0.6rem; border-top: 1px dashed #d1d5db;">
+                    <div style="font-size: 0.78rem; color: #6b7280; margin-bottom: 0.3rem;">Para comparar con Publicaciones (misma cuenta, sin IVA):</div>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr><td style="padding: 3px 0;">(Vendiste − comisión − envío) sin IVA</td><td style="text-align: right;">$ @ca.BaseSinIva.ToString("N2")</td></tr>
+                        <tr><td style="padding: 3px 0; color: #4b5563;">− Costo del producto (sin IVA)</td><td style="text-align: right;">@(ca.Costo is decimal c0 ? "$ " + c0.ToString("N2") : "sin costo cargado")</td></tr>
+                        @if (ca.Queda is decimal q0)
+                        {
+                            <tr style="border-top: 1px solid #e5e7eb;"><td style="padding: 5px 0; font-weight: 700;">Te queda</td>
+                                <td style="text-align: right; font-weight: 700; color: @(q0 < 0 ? "#b91c1c" : "#111827");">$ @q0.ToString("N2") · @(ca.Pct?.ToString("0") ?? "—")% sobre el costo</td></tr>
+                        }
+                    </table>
+                    <div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.4rem;">Las retenciones no se restan acá (igual que en Publicaciones): son impuestos que después se descuentan.</div>
+                </div>
+
+                @if (ca.EsPack && ca.Detalle.Count > 0)
+                {
+                    <div style="margin-top: 0.9rem; padding-top: 0.6rem; border-top: 1px dashed #d1d5db;">
+                        <div style="font-size: 0.78rem; color: #6b7280; margin-bottom: 0.3rem;">Ventas del pack (el envío se reparte según lo que vale cada una):</div>
+                        @foreach (var d in ca.Detalle)
+                        {
+                            <div style="display: flex; justify-content: space-between; gap: 0.5rem; padding: 3px 0; border-top: 1px solid #f3f4f6; font-size: 0.84rem;">
+                                <span>@Truncate(d.Titulo, 38)</span>
+                                <span style="white-space: nowrap; color: @(d.Queda < 0 ? "#b91c1c" : "#111827");">@(d.Queda is decimal qd ? "$ " + qd.ToString("N0") + " · " + (d.Pct?.ToString("0") ?? "—") + "%" : "sin costo")</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
 }
 
 @* Modal de cambio de estado ME1: se abre con click en el badge 🏎 ME1. Reusa el flujo de me1/Entregas. *@
@@ -1319,6 +1382,93 @@
 
 @code {
     private List<MeliOrderDto>? orders;
+
+    // ─── 2026-09-28: cuánto deja cada venta (lo que informa Mercado Pago + costo del sistema) ───
+    // Misma cuenta que Publicaciones: (vendido − comisión − envío − otros) / 1,21 − costo; % sobre el costo.
+    // En un PACK MeLi carga el envío entero en UNA orden: se suma el pack y, por venta, se reparte
+    // el envío según lo que vale cada una.
+    private Dictionary<long, ApiClient.OrdenFinanzaDto> finanzas = new();
+    private bool finanzasPermitidas = true;
+    private CuentaVenta? cuentaAbierta;
+
+    public record DetalleVenta(string Titulo, decimal? Queda, decimal? Pct);
+    public record CuentaVenta(bool EsPack, bool EnvioRepartido, bool Completa, decimal Vendido, decimal Comision,
+        decimal Envio, decimal Retenciones, decimal Otros, decimal Neto, decimal? Costo, List<DetalleVenta> Detalle)
+    {
+        public decimal BaseSinIva => Math.Round((Vendido - Comision - Envio - Otros) / 1.21m, 2);
+        public decimal? Queda => Costo is decimal c ? BaseSinIva - c : null;
+        public decimal? Pct => Costo is decimal c && c > 0 && Queda is decimal q ? q / c * 100m : null;
+    }
+
+    private async Task CargarFinanzasAsync()
+    {
+        var r = await Api.GetOrdenesFinanzasAsync(dateFrom, dateTo.AddDays(1));
+        if (r is null) { finanzasPermitidas = false; await InvokeAsync(StateHasChanged); return; }
+        finanzasPermitidas = true;
+        finanzas = r.GroupBy(x => x.MeliOrderId).ToDictionary(g => g.Key, g => g.First());
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Cuenta de un grupo (venta sola o pack entero) o, si viene <paramref name="sola"/>, de UNA venta del pack.</summary>
+    private CuentaVenta? CuentaDe(List<MeliOrderDto> grupo, MeliOrderDto? sola)
+    {
+        var fs = grupo.Select(o => finanzas.TryGetValue(o.MeliOrderId, out var f) ? f : null).ToList();
+        if (fs.Count == 0 || fs.Any(f => f is null || !f.Consultado)) return null;
+        var all = fs!.Cast<ApiClient.OrdenFinanzaDto>().ToList();
+        decimal vendidoPack = all.Sum(f => f.Vendido), envioPack = all.Sum(f => f.Envio ?? 0);
+        bool costoCompleto = all.All(f => f.Costo.HasValue);
+        bool esPack = grupo.Count > 1;
+
+        CuentaVenta Una(ApiClient.OrdenFinanzaDto f, bool repartir)
+        {
+            var envio = repartir && vendidoPack > 0 ? Math.Round(envioPack * f.Vendido / vendidoPack, 2) : (f.Envio ?? 0);
+            // Lo depositado también con el envío repartido (si no, la venta que carga el envío da negativo).
+            var neto = (f.Neto ?? 0) + (f.Envio ?? 0) - envio;
+            return new CuentaVenta(false, repartir, true, f.Vendido, f.Comision ?? 0, envio, f.Retenciones ?? 0,
+                f.Otros ?? 0, neto, f.Costo, new());
+        }
+
+        if (sola is not null)
+        {
+            var f = all.First(x => x.MeliOrderId == sola.MeliOrderId);
+            return Una(f, esPack);
+        }
+        var detalle = esPack
+            ? grupo.Select(o => { var u = Una(all.First(x => x.MeliOrderId == o.MeliOrderId), true); return new DetalleVenta(o.ItemTitle, u.Queda, u.Pct); }).ToList()
+            : new List<DetalleVenta>();
+        return new CuentaVenta(esPack, false, true, vendidoPack, all.Sum(f => f.Comision ?? 0), envioPack,
+            all.Sum(f => f.Retenciones ?? 0), all.Sum(f => f.Otros ?? 0), all.Sum(f => f.Neto ?? 0),
+            costoCompleto ? all.Sum(f => f.Costo!.Value) : null, detalle);
+    }
+
+    private RenderFragment CeldaQueda(CuentaVenta? c, List<MeliOrderDto> grupo) => __builder =>
+    {
+        if (!finanzasPermitidas) return;
+        if (grupo.Any(o => o.Status != "paid")) { <span style="color:#9ca3af;">—</span> return; }
+        if (c is null)
+        {
+            // El proceso automático consulta las ventas de los últimos 60 días (MeliOrderFinanzasService.DiasAtras).
+            if (grupo.All(o => o.DateCreated < DateTimeExt.AhoraAr().AddDays(-60)))
+            {
+                <span style="color:#9ca3af;" title="Solo se consultan las ventas de los últimos 60 días.">—</span>
+                return;
+            }
+            <span style="color:#9ca3af; font-size:0.78rem;" title="Se está consultando a Mercado Pago. Aparece en unos minutos.">calculando…</span>
+            return;
+        }
+        var cc = c;
+        <div style="cursor:pointer; line-height:1.25;" title="Ver el detalle" @onclick="() => cuentaAbierta = cc">
+            @if (cc.Queda is decimal q)
+            {
+                <div style="font-weight:700; color:@(q < 0 ? "#b91c1c" : "#111827");">$ @q.ToString("N0") · @(cc.Pct?.ToString("0") ?? "—")%</div>
+            }
+            else
+            {
+                <div style="font-size:0.78rem; color:#92400e;" title="Falta el costo del producto en el sistema">sin costo</div>
+            }
+            <div style="font-size:0.72rem; color:#6b7280;">deposita $ @cc.Neto.ToString("N0")</div>
+        </div>
+    };
     private List<MeliAccountDto>? accounts;
 
     // ===== 2026-08-13: Impresion de etiquetas de envio de MercadoLibre =====
@@ -1358,7 +1508,7 @@
         var n = ClaveEnvio(g);
         fichas.TryGetValue(n, out var f);
         <tr class="om-franja-tr">
-            <td colspan="11">
+            <td colspan="12">
                 <div class="om-franja">
                     @if (f is not null)
                     {
@@ -1594,6 +1744,7 @@
         }
 
         isLoading = false;
+        _ = CargarFinanzasAsync();
     }
 
     private async Task SyncOrders()
