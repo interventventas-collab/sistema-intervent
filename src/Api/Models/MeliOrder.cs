@@ -65,6 +65,22 @@ public class MeliOrder
     /// backfill en las ventas viejas (para no spamear), y no significa que se haya enviado.</summary>
     public DateTime? PostventaCafeMsgSentAt { get; set; }
 
+    // ── 2026-09-28: cuánto deja cada venta, según lo que informa MERCADO PAGO del pago de la orden ──
+    // (charges_details que paga el vendedor). Lo completa MeliOrderFinanzasService en segundo plano.
+    // Null = todavía no se consultó. Montos con IVA, tal cual los descuenta MP.
+    public long? MpPaymentId { get; set; }
+    /// <summary>Comisión de MeLi (porcentaje + cargo fijo).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")] public decimal? FinComision { get; set; }
+    /// <summary>Envío que MP le descontó al vendedor. En un PACK, MeLi lo carga entero en UNA sola orden.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")] public decimal? FinEnvio { get; set; }
+    /// <summary>Retenciones de impuestos (IIBB, débitos y créditos, SIRTAC…).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")] public decimal? FinRetenciones { get; set; }
+    /// <summary>Otros cargos que no son comisión, envío ni impuestos.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")] public decimal? FinOtros { get; set; }
+    /// <summary>Lo que deposita Mercado Pago (net_received_amount).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")] public decimal? FinNeto { get; set; }
+    public DateTime? FinConsultadoAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
