@@ -187,16 +187,48 @@
                     </div>
                     @if (rediEligiendo == r.Id)
                     {
-                        <div style="margin-top:0.5rem; position:relative; max-width:380px;">
-                            <input class="form-input" placeholder="¿De qué cliente es? Buscá por nombre" @bind="rediBusq" @bind:event="oninput" />
-                            @if (OpcionesClienteRedi.Count > 0)
+                        <div style="margin-top:0.5rem; position:relative; max-width:560px;">
+                            @* 28/09/2026: mismo buscador que el chat ("¿A nombre de quién?"): nombre, razón social,
+                               dirección de ENTREGA (todas), teléfono, CUIT, sin tildes. Antes solo miraba el nombre. *@
+                            <input class="form-input" placeholder="¿De qué cliente es? Nombre, dirección, teléfono o CUIT" @bind="rediBusq" @bind:event="oninput" @bind:after="BuscarClientesRedi" />
+                            @if (rediBuscando || rediResultados.Count > 0 || (rediBusq ?? "").Trim().Length >= 2)
                             {
-                                <div style="position:absolute; z-index:20; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.08); width:100%;">
-                                    @foreach (var cli in OpcionesClienteRedi)
+                                <div style="position:absolute; z-index:20; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.08); width:100%; max-height:320px; overflow-y:auto;">
+                                    @if (rediBuscando && rediResultados.Count == 0)
+                                    {
+                                        <div style="padding:0.4rem 0.6rem; color:#9ca3af; font-size:0.85rem;">Buscando…</div>
+                                    }
+                                    else if (rediResultados.Count == 0)
+                                    {
+                                        <div style="padding:0.4rem 0.6rem; color:#9ca3af; font-size:0.85rem;">Sin resultados. Probá con otro dato.</div>
+                                    }
+                                    @foreach (var cli in rediResultados)
                                     {
                                         var cc = cli;
-                                        <div style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.85rem;"
-                                             @onclick="() => ElegirClienteRedi(r, cc.Id)">@cc.Nombre</div>
+                                        var dirCli = DomicilioTexto.Elegir(cli.Direccion, cli.Localidad, cli.DomicilioEntrega, cli.LocalidadEntrega);
+                                        var locCli = DomicilioTexto.Puntos(dirCli.Localidad, cli.Ciudad, cli.Cp);
+                                        <div style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.85rem; color:#111827;"
+                                             @onclick="() => ElegirClienteRedi(r, cc.Id)">
+                                            <div>
+                                                <span style="color:#6b7280;">#@(!string.IsNullOrEmpty(cli.CodigoInterno) ? cli.CodigoInterno : (!string.IsNullOrEmpty(cli.Codigo) ? cli.Codigo : "—"))</span>
+                                                <strong>@cli.Nombre</strong>
+                                                @if (!string.IsNullOrEmpty(cli.Tipo)) { <span style="color:#6b7280;"> · @cli.Tipo</span> }
+                                                @if (!string.IsNullOrEmpty(cli.Cuit)) { <span style="color:#6b7280;"> · @cli.Cuit</span> }
+                                                @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#6b7280;"> · 📞 @cli.Telefono</span> }
+                                            </div>
+                                            @if (dirCli.Direccion.Length > 0 || locCli.Length > 0)
+                                            {
+                                                <div style="color:#4b5563; font-size:0.8rem;">
+                                                    @if (dirCli.Direccion.Length > 0) { <span>📍 @dirCli.Direccion</span> }
+                                                    @if (dirCli.Direccion.Length > 0 && locCli.Length > 0) { <span> · </span> }
+                                                    @if (locCli.Length > 0) { <span>@locCli</span> }
+                                                </div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(cli.DireccionEntrega) && DomicilioTexto.Limpiar(cli.DireccionEntrega) != dirCli.Direccion)
+                                            {
+                                                <div style="color:#15803d; font-size:0.8rem;">🚚 @DomicilioTexto.Limpiar(cli.DireccionEntrega)</div>
+                                            }
+                                        </div>
                                     }
                                 </div>
                             }
@@ -400,7 +432,9 @@
     private List<RediPendienteDto> listaRedi = new();
     private int? rediEligiendo;
     private string rediBusq = "";
-    private List<CafeClienteDto>? clientesRedi;
+    private List<ApiClient.TwClienteBuscarDto> rediResultados = new();
+    private bool rediBuscando;
+    private int rediBusqSeq;
     private List<PlataItemDto> banco = new();
     private bool loadingBanco;
     // Rechazar con doble confirmación (modal)
@@ -564,22 +598,29 @@
         // El cliente vino escrito con palabras: primero se elige el de verdad.
         rediEligiendo = rediEligiendo == r.Id ? null : r.Id;
         rediBusq = r.ClienteTexto ?? "";   // en la versión simple viene vacío: se busca leyendo el mensaje
-        clientesRedi ??= await Api.GetCafeClientesAsync() ?? new();
+        rediResultados = new();
+        await BuscarClientesRedi();
     }
 
     private void ElegirClienteRedi(RediPendienteDto r, int clienteId)
         => Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={clienteId}&rediPendienteId={r.Id}");
 
-    private List<CafeClienteDto> OpcionesClienteRedi
+    /// <summary>Busca en el servidor, como el chat. Si se sigue escribiendo, la respuesta vieja se descarta.</summary>
+    private async Task BuscarClientesRedi()
     {
-        get
-        {
-            var q = (rediBusq ?? "").Trim();
-            if (q.Length < 2 || clientesRedi is null) return new();
-            return clientesRedi.Where(c => c.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(c => c.Nombre.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(c => c.Nombre)
-                .Take(8).ToList();
-        }
+        var q = (rediBusq ?? "").Trim();
+        var seq = ++rediBusqSeq;
+        if (q.Length < 2) { rediResultados = new(); rediBuscando = false; return; }
+        await Task.Delay(250);
+        if (seq != rediBusqSeq) return;
+        rediBuscando = true;
+        StateHasChanged();
+        List<ApiClient.TwClienteBuscarDto> res;
+        try { res = await Api.BuscarTwClientesAsync(q, 10); }
+        catch { res = new(); }
+        if (seq != rediBusqSeq) return;
+        rediResultados = res;
+        rediBuscando = false;
     }
 
     private void PedirRechazarRedi(RediPendienteDto r)
