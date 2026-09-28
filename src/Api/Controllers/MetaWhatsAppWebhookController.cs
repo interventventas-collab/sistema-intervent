@@ -600,10 +600,11 @@ public class MetaWhatsAppWebhookController : ControllerBase
             return;
         }
 
-        // 2026-09-26: ASISTENTE DE REDIRIGIDA ("redi" a la línea FRIKAF). Va antes del de PAGO: también
-        // recibe las fotos/PDF que manden como comprobante mientras está en ese paso.
+        // 2026-09-26/28: ATAJOS "#redi" (redirigida en un mensaje) y "#lista" (PDF de una lista de precios)
+        // a la línea FRIKAF, para números autorizados. Va antes del de PAGO: también recibe las fotos/PDF
+        // que manden como comprobante de la redirigida.
         var idInteractivoRedi = tipo == "interactive" ? TryGetInteractiveId(m) : null;
-        if (await rediBot.TryHandleAsync(fromWaId!, numero, tipo, idInteractivoRedi, cuerpo, lineaId, mediaUrlPublica, mediaNombre))
+        if (await rediBot.TryHandleAsync(fromWaId!, numero, tipo, idInteractivoRedi, cuerpo, lineaId, mediaUrlPublica, mediaNombre, baseUrl))
             return;
 
         // 2026-08-13: ASISTENTE DE PAGO. Si un número autorizado escribió "PAGO", tocó una opción del
