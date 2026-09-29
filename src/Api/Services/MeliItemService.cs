@@ -471,6 +471,16 @@ public class MeliItemService
         _                           => ($"Marcada por MeLi como \"{subStatus}\".", "Revisar el detalle en la publicación de MeLi.")
     };
 
+    /// <summary>2026-09-28 · MeLi devuelve las BORRADAS como status "closed" + sub_status ["deleted"].
+    /// Sin esto, una que se eliminó desde el sistema volvía a figurar "finalizada" al re-sincronizar.</summary>
+    private static string EstadoConBorrado(JsonElement item, string status)
+    {
+        if (status == "closed" && item.TryGetProperty("sub_status", out var ss) && ss.ValueKind == JsonValueKind.Array
+            && ss.EnumerateArray().Any(x => x.ValueKind == JsonValueKind.String && x.GetString() == "deleted"))
+            return "deleted";
+        return status;
+    }
+
     private static string TraducirStatus(string status) => status switch
     {
         "active"           => "Activa",
@@ -2035,7 +2045,7 @@ public class MeliItemService
             ? aq.GetInt32() : 0;
         var soldQty = item.TryGetProperty("sold_quantity", out var sq) && sq.ValueKind != JsonValueKind.Null
             ? sq.GetInt32() : 0;
-        var status = item.GetProperty("status").GetString() ?? "unknown";
+        var status = EstadoConBorrado(item, item.GetProperty("status").GetString() ?? "unknown");
         var condition = item.TryGetProperty("condition", out var cond) && cond.ValueKind != JsonValueKind.Null
             ? cond.GetString() : null;
         var listingTypeId = item.TryGetProperty("listing_type_id", out var lt) && lt.ValueKind != JsonValueKind.Null
@@ -2717,7 +2727,8 @@ public class MeliItemService
             }
         }
 
-        if (root.TryGetProperty("status", out var st) && st.GetString() is string estado && item.Status != estado)
+        if (root.TryGetProperty("status", out var st) && st.GetString() is string estadoMeli
+            && EstadoConBorrado(root, estadoMeli) is var estado && item.Status != estado)
         {
             cambios.Add($"estado: {item.Status} → {estado}");
             item.Status = estado;
