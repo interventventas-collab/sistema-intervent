@@ -74,7 +74,10 @@ public class MeliPublicacionesV2Service
         // 2026-09-22: las opciones de precio que se tildan en la fila. PrecioOem = el precio de lista
         // (el mismo "piso" que usa el motor de precios: OEM del producto completo, o sus piezas).
         // PrecioObjetivo = ESTIMADO con la comisión guardada; el exacto lo calcula el motor al aplicarlo.
-        decimal? PrecioOem = null, decimal? PrecioObjetivo = null);
+        decimal? PrecioOem = null, decimal? PrecioObjetivo = null,
+        // 2026-09-28: fecha de la última venta (de las órdenes guardadas, hora argentina). Null = no
+        // hay ventas en el sistema (las órdenes se guardan desde el 13/04/2026).
+        DateTime? UltimaVenta = null);
 
     public record PageDto(int Total, int Pagina, int PorPagina, List<FilaDto> Items, GrupoDto? Grupo = null,
         ConteosDto? Conteos = null);
@@ -608,6 +611,18 @@ public class MeliPublicacionesV2Service
             items = items.Select(i => oemPor.TryGetValue(i.MeliItemId, out var oem)
                 ? i with { PrecioOem = oem, PrecioObjetivo = i.PrecioObjetivo is decimal po ? Math.Max(po, oem) : null }
                 : i).ToList();
+        }
+
+        // 2026-09-28 — Fecha de la última venta de cada publicación de la página (órdenes no canceladas).
+        if (items.Count > 0)
+        {
+            var mlasVta = items.Select(i => i.MeliItemId).ToList();
+            var ultimas = await _db.MeliOrders.AsNoTracking()
+                .Where(o => mlasVta.Contains(o.ItemId) && o.Status != "cancelled")
+                .GroupBy(o => o.ItemId)
+                .Select(g => new { g.Key, Ultima = g.Max(o => o.DateCreated) })
+                .ToDictionaryAsync(x => x.Key, x => x.Ultima, ct);
+            items = items.Select(i => ultimas.TryGetValue(i.MeliItemId, out var u) ? i with { UltimaVenta = u } : i).ToList();
         }
 
         // Filtros que dependen de datos calculados (se aplican sobre la página).
