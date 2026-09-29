@@ -7983,3 +7983,11 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'PrecioCuartoKg' AND Object_ID = Object_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD PrecioCuartoKg DECIMAL(18,2) NULL;
 GO
+
+-- 2026-09-29: molienda y envase fijos por café (ej. FT: MOLIDO FILTRO + NEGRO).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'MoliendaFija' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD MoliendaFija NVARCHAR(60) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'EnvaseFijo' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD EnvaseFijo NVARCHAR(20) NULL;
+GO

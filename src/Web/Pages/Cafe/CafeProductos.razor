@@ -700,6 +700,33 @@
                         <input type="checkbox" @bind="formTercerizado" style="margin: 0;" />
                         Tercerizado — no suma a los kilos de café vendidos
                     </label>
+                    @* 2026-09-29: molienda y envase FIJOS. Si se eligen, en la venta no se ofrecen las otras. *@
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Molienda fija (opcional)</label>
+                            <select class="form-input" @bind="formMoliendaFija">
+                                <option value="">— se elige en cada venta —</option>
+                                <option value="EN GRANOS">EN GRANOS</option>
+                                <option value="MOLIDO FILTRO">MOLIDO FILTRO</option>
+                                <option value="MOLIDO EXPRESS">MOLIDO EXPRESS</option>
+                                <option value="MOLIDO MOKA">MOLIDO MOKA</option>
+                                <option value="MOLIDO BODUM">MOLIDO BODUM</option>
+                                <option value="MOLIDO PRENSA FRANCESA">MOLIDO PRENSA FRANCESA</option>
+                                <option value="MOLIDO CAFETERA ITALIANA">MOLIDO CAFETERA ITALIANA</option>
+                                <option value="MOLIDO A LA TURCA">MOLIDO A LA TURCA</option>
+                                <option value="MINI EXPRESS">MINI EXPRESS</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Envase fijo (opcional)</label>
+                            <select class="form-input" @bind="formEnvaseFijo">
+                                <option value="">— se elige en cada venta —</option>
+                                <option value="NEGRO">Envase negro</option>
+                                <option value="PLATEADO">Envase plateado</option>
+                                <option value="DOY_PACK">Doy pack</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label class="form-label">Stock (kg)</label>
                         <input class="form-input" type="number" step="0.001" min="0" @bind="formStockKg" />
@@ -1791,6 +1818,8 @@
     private bool formSinPrecioBar; // 2026-06-10: tilde "sin precio diferenciado BAR"
     // 2026-09-29: solo café — tercerizado (no suma a kilos vendidos) + precio propio de ½ y ¼ kg.
     private bool formTercerizado;
+    private string formMoliendaFija = "";
+    private string formEnvaseFijo = "";
     private decimal? formPrecioMedioKg;
     private decimal? formPrecioCuartoKg;
     // Precios futuros (cambio programado)
@@ -2438,6 +2467,7 @@
         formPrecioOtro = null; formPrecioBar = null;
         formSinPrecioBar = false; // 2026-06-10
         formTercerizado = false; formPrecioMedioKg = null; formPrecioCuartoKg = null; // 2026-09-29
+        formMoliendaFija = ""; formEnvaseFijo = "";
         formPrecioBulto = null; formPrecioBultoOtro = null;
         formFormatoPorDefecto = "UNIT"; // 2026-07-07
         formPacks = new();
@@ -2507,6 +2537,7 @@
         // para que la pantalla no mienta sobre lo que se cobra.
         formPvp1 = p.PrecioBarEfectivo; formPvp2 = p.PrecioOtroEfectivo;
         formTercerizado = p.Tercerizado; formPrecioMedioKg = p.PrecioMedioKg; formPrecioCuartoKg = p.PrecioCuartoKg; // 2026-09-29
+        formMoliendaFija = p.MoliendaFija ?? ""; formEnvaseFijo = p.EnvaseFijo ?? "";
         formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
         formBarPct = p.BarPctSobreCosto;
         // Modelo NUEVO de precios. Si NO están cargados (producto migrado del modelo viejo),
@@ -2597,6 +2628,7 @@
         // 2026-09-01: copiar el precio VIGENTE (PrecioBar/PrecioOtro), no el espejo legacy.
         formPvp1 = p.PrecioBarEfectivo; formPvp2 = p.PrecioOtroEfectivo;
         formTercerizado = p.Tercerizado; formPrecioMedioKg = p.PrecioMedioKg; formPrecioCuartoKg = p.PrecioCuartoKg; // 2026-09-29
+        formMoliendaFija = p.MoliendaFija ?? ""; formEnvaseFijo = p.EnvaseFijo ?? "";
         formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
         formBarPct = p.BarPctSobreCosto;
         formPrecioOtro = p.PrecioOtro ?? p.Pvp2 ?? p.Pvp1;
@@ -2741,6 +2773,8 @@
                     SinPrecioBar = formCategoria == "OTROS" ? formSinPrecioBar : (bool?)false,
                     // 2026-09-29: solo café.
                     Tercerizado = formCategoria == "CAFE" && formTercerizado,
+                    MoliendaFija = formCategoria == "CAFE" ? formMoliendaFija : "",
+                    EnvaseFijo = formCategoria == "CAFE" ? formEnvaseFijo : "",
                     PrecioMedioKg = formCategoria == "CAFE" && formPrecioMedioKg > 0 ? formPrecioMedioKg : null,
                     PrecioCuartoKg = formCategoria == "CAFE" && formPrecioCuartoKg > 0 ? formPrecioCuartoKg : null,
                     ClearPrecioMedioKg = !(formCategoria == "CAFE" && formPrecioMedioKg > 0),
@@ -2817,6 +2851,8 @@
                     SinPrecioBar = formCategoria == "OTROS" && formSinPrecioBar,
                     // 2026-09-29: solo café.
                     Tercerizado = formCategoria == "CAFE" && formTercerizado,
+                    MoliendaFija = formCategoria == "CAFE" ? formMoliendaFija : "",
+                    EnvaseFijo = formCategoria == "CAFE" ? formEnvaseFijo : "",
                     PrecioMedioKg = formCategoria == "CAFE" && formPrecioMedioKg > 0 ? formPrecioMedioKg : null,
                     PrecioCuartoKg = formCategoria == "CAFE" && formPrecioCuartoKg > 0 ? formPrecioCuartoKg : null,
                     // Precio del bulto (descuento por volumen, SOLO OTROS):

@@ -2223,6 +2223,14 @@
                                             }
                                         </div>
 
+                                        @if (!string.IsNullOrWhiteSpace(fc.MoliendaFija) || !string.IsNullOrWhiteSpace(fc.EnvaseFijo))
+                                        {
+                                            @* 2026-09-29: café que viene siempre igual (ej. FT): no se ofrecen las otras. *@
+                                            <div class="wa-mv-ficha-lbl">Viene siempre</div>
+                                            <div class="wa-mv-ficha-sub">@string.Join(" · ", new[] { string.IsNullOrWhiteSpace(fc.MoliendaFija) ? null : MoliendaBoton(fc.MoliendaFija), string.IsNullOrWhiteSpace(fc.EnvaseFijo) ? null : EnvaseBoton(fc.EnvaseFijo) }.Where(x => x != null))</div>
+                                        }
+                                        @if (string.IsNullOrWhiteSpace(fc.MoliendaFija))
+                                        {
                                         <div class="wa-mv-ficha-lbl">Molienda</div>
                                         <div class="wa-mv-ficha-ops">
                                             @foreach (var m in MoliendasPrincipales)
@@ -2243,13 +2251,17 @@
                                                 <button class="wa-mv-op" @onclick="() => mvFichaMasMoliendas = true" title="Bodum, prensa francesa, a la turca, mini express">más…</button>
                                             }
                                         </div>
+                                        }
 
+                                        @if (string.IsNullOrWhiteSpace(fc.EnvaseFijo))
+                                        {
                                         <div class="wa-mv-ficha-lbl">Envase</div>
                                         <div class="wa-mv-ficha-ops">
                                             <button class="wa-mv-op @(mvFichaEnvase == "NEGRO" ? "on" : "")" @onclick="@(() => mvFichaEnvase = "NEGRO")">Negro</button>
                                             <button class="wa-mv-op @(mvFichaEnvase == "PLATEADO" ? "on" : "")" @onclick="@(() => mvFichaEnvase = "PLATEADO")">Plateado</button>
                                             <button class="wa-mv-op @(mvFichaEnvase == "DOY_PACK" ? "on" : "")" @onclick="@(() => mvFichaEnvase = "DOY_PACK")">Doy pack</button>
                                         </div>
+                                        }
 
                                         <button class="wa-mv-ficha-ok" @onclick="SumarFichaCafe" disabled="@mvCotizando">
                                             + Sumar @mvFichaCant × @(FormatoOpciones(fc).FirstOrDefault(o => o.Item1 == mvFichaFormato).Item2 ?? mvFichaFormato) · @MoliendaBoton(mvFichaMolienda)
@@ -2375,7 +2387,7 @@
                                                                 }
                                                             </select>
 
-                                                            @if (EsCafe(li))
+                                                            @if (EsCafe(li) && string.IsNullOrWhiteSpace(ProductoDe(li)?.MoliendaFija))
                                                             {
                                                                 <label class="wa-mv-det-lbl">Molienda</label>
                                                                 <select class="wa-mv-det-sel wa-mv-det-mol" value="@(li.Req.Molienda ?? "EN GRANOS")"
@@ -2390,7 +2402,9 @@
                                                                     <option value="MOLIDO A LA TURCA">☕ MOLIDO A LA TURCA</option>
                                                                     <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
                                                                 </select>
-
+                                                            }
+                                                            @if (EsCafe(li) && string.IsNullOrWhiteSpace(ProductoDe(li)?.EnvaseFijo))
+                                                            {
                                                                 <label class="wa-mv-det-lbl">Envase</label>
                                                                 <select class="wa-mv-det-sel" value="@EnvaseDe(li)"
                                                                         @onchange="(e) => CambiarEnvaseLinea(idx, e.Value?.ToString())">
@@ -6059,6 +6073,9 @@
         {
             if (formato is "MEDIO" or "CUARTO") { mvItems[idx].Req.EsDoyPack = true; mvItems[idx].Req.EsEnvasePlateado = false; }
             else if (formato == "1KG") { mvItems[idx].Req.EsDoyPack = false; mvItems[idx].Req.EsEnvasePlateado = false; }
+            // 2026-09-29: envase fijo del café (ej. FT siempre negro).
+            if (ProductoDe(mvItems[idx])?.EnvaseFijo is string ef && ef.Length > 0)
+            { mvItems[idx].Req.EsDoyPack = ef == "DOY_PACK"; mvItems[idx].Req.EsEnvasePlateado = ef == "PLATEADO"; }
         }
         // El formato cambia el precio del catálogo: si había uno a mano, ya no vale.
         mvItems[idx].Req.PrecioUnitarioOverride = null;
@@ -6285,6 +6302,12 @@
         var prod = mvProductos.FirstOrDefault(x => x.Id == productoId);
         var formato = formatoForzado ?? FormatoInicial(prod);
         if (cantidad < 1) cantidad = 1;
+        // 2026-09-29: café con molienda / envase FIJOS (ej. FT): mandan esos.
+        if (prod?.Categoria == "CAFE")
+        {
+            if (!string.IsNullOrWhiteSpace(prod.MoliendaFija)) molienda = prod.MoliendaFija;
+            if (!string.IsNullOrWhiteSpace(prod.EnvaseFijo)) envase = prod.EnvaseFijo;
+        }
         var doy = envase == "DOY_PACK";
         var plat = envase == "PLATEADO";
         var ya = mvItems.FirstOrDefault(l => l.Req.ProductoId == productoId && l.Req.Formato == formato
@@ -6347,6 +6370,8 @@
         };
     }
 
+    static string EnvaseBoton(string? e) => e switch { "PLATEADO" => "Plateado", "DOY_PACK" => "Doy pack", _ => "Negro" };
+
     static string FormatoCafeCorto(string? f) => f switch { "MEDIO" => "½ kg", "CUARTO" => "¼ kg", _ => "1 kg" };
 
     /// <summary>"1 kg · Filtro · Negro" para el renglón de café.</summary>
@@ -6363,8 +6388,8 @@
         mvFichaCafe = pr;
         mvFichaCant = 1;
         mvFichaFormato = "1KG";
-        mvFichaMolienda = "EN GRANOS";
-        mvFichaEnvase = "NEGRO";
+        mvFichaMolienda = string.IsNullOrWhiteSpace(pr.MoliendaFija) ? "EN GRANOS" : pr.MoliendaFija;
+        mvFichaEnvase = string.IsNullOrWhiteSpace(pr.EnvaseFijo) ? "NEGRO" : pr.EnvaseFijo;
         mvFichaMasMoliendas = false;
         LimpiarBusquedaProducto();
     }
@@ -6382,7 +6407,8 @@
     void ElegirFormatoFicha(string f)
     {
         mvFichaFormato = f;
-        mvFichaEnvase = f is "MEDIO" or "CUARTO" ? "DOY_PACK" : "NEGRO";
+        mvFichaEnvase = !string.IsNullOrWhiteSpace(mvFichaCafe?.EnvaseFijo) ? mvFichaCafe!.EnvaseFijo!
+                      : f is "MEDIO" or "CUARTO" ? "DOY_PACK" : "NEGRO";
     }
 
     async Task SumarFichaCafe()

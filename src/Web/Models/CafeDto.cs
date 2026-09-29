@@ -204,6 +204,9 @@ public class CafeProductoDto
     public bool Tercerizado { get; set; }
     public decimal? PrecioMedioKg { get; set; }
     public decimal? PrecioCuartoKg { get; set; }
+    /// <summary>2026-09-29: molienda/envase fijos del café (null/vacío = se eligen en la venta).</summary>
+    public string? MoliendaFija { get; set; }
+    public string? EnvaseFijo { get; set; }
     /// <summary>Precio del bulto completo (descuento por volumen, SOLO OTROS).</summary>
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
@@ -342,6 +345,9 @@ public class CreateCafeProductoRequest
     public bool Tercerizado { get; set; }
     public decimal? PrecioMedioKg { get; set; }
     public decimal? PrecioCuartoKg { get; set; }
+    /// <summary>2026-09-29: molienda/envase fijos del café (null/vacío = se eligen en la venta).</summary>
+    public string? MoliendaFija { get; set; }
+    public string? EnvaseFijo { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
@@ -395,6 +401,9 @@ public class UpdateCafeProductoRequest
     public bool? Tercerizado { get; set; }
     public decimal? PrecioMedioKg { get; set; }
     public decimal? PrecioCuartoKg { get; set; }
+    /// <summary>2026-09-29: molienda/envase fijos del café (null/vacío = se eligen en la venta).</summary>
+    public string? MoliendaFija { get; set; }
+    public string? EnvaseFijo { get; set; }
     public bool ClearPrecioMedioKg { get; set; }
     public bool ClearPrecioCuartoKg { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):

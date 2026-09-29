@@ -2488,6 +2488,12 @@
                         {
                             <div class="form-group" style="margin:0; width: 190px;">
                                 <label class="form-label" style="font-size: 0.75rem;">Molienda</label>
+                                @if (MoliendaFijaDe(addProductoId) is string _mfI)
+                                {
+                                    <div class="form-input" style="background:#f9fafb; font-weight:600;" title="Este café viene siempre así">@_mfI</div>
+                                }
+                                else
+                                {
                                 <select id="nv-molienda" class="form-input" @bind="addMolienda" @onkeydown="OnKeyDownMolienda" style="background:#fef3c7; border-color:#d97706; font-weight:600;">
                                     <option value="EN GRANOS">🫘 EN GRANOS</option>
                                     <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
@@ -2499,14 +2505,22 @@
                                     <option value="MOLIDO A LA TURCA">☕ MOLIDO A LA TURCA</option>
                                     <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
                                 </select>
+                                }
                             </div>
                             <div class="form-group" style="margin:0; width: 170px;">
                                 <label class="form-label" style="font-size: 0.75rem;">Envase</label>
+                                @if (EnvaseFijoDe(addProductoId) is string _efI)
+                                {
+                                    <div class="form-input" style="background:#f9fafb; font-weight:600;" title="Este café viene siempre así">@EnvaseTexto(_efI)</div>
+                                }
+                                else
+                                {
                                 <select id="nv-envase" class="form-input" @bind="addEnvase" @onkeydown="OnKeyDownEnvase" style="background:#f3f4f6; border-color:#9ca3af; font-weight:600;">
                                     <option value="NEGRO">⚫ Envase negro</option>
                                     <option value="PLATEADO">⚪ Envase plateado</option>
                                     <option value="DOY_PACK">📦 Doy pack</option>
                                 </select>
+                                }
                             </div>
                         }
                         <div class="form-group" style="margin:0; width: 150px; margin-left: auto;">
@@ -2744,6 +2758,13 @@
                                                 @if (esCafe)
                                                 {
                                                     <div style="display: flex; gap: 0.3rem; align-items: center; margin-top: 0.25rem; flex-wrap: wrap;">
+                                                        @* 2026-09-29: café con molienda/envase FIJOS: texto, sin elegir. *@
+                                                        @if (MoliendaFijaDe(formItem.ProductoId) is string _mfR)
+                                                        {
+                                                            <span style="font-size:0.72rem; font-weight:600; color:#374151;" title="Este café viene siempre así">@_mfR</span>
+                                                        }
+                                                        else
+                                                        {
                                                         <select class="form-input"
                                                                 style="font-size: 0.72rem; padding: 0.15rem 0.3rem; background: #fef3c7; border-color: #d97706; font-weight: 600; max-width: 175px;"
                                                                 value="@(formItem.Molienda ?? "")"
@@ -2764,11 +2785,18 @@
                                                             <option value="MOLIDO A LA TURCA">☕ MOLIDO A LA TURCA</option>
                                                             <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
                                                         </select>
+                                                        }
                                                         @* Envase: dropdown con 3 opciones mutuamente excluyentes. Default = NEGRO. *@
                                                         @{
                                                             var envaseSel = formItem.EsDoyPack ? "DOY_PACK"
                                                                           : (formItem.EsEnvasePlateado ? "PLATEADO" : "NEGRO");
                                                         }
+                                                        @if (EnvaseFijoDe(formItem.ProductoId) is string _efR)
+                                                        {
+                                                            <span style="font-size:0.72rem; font-weight:600; color:#374151;" title="Este café viene siempre así">· @EnvaseTexto(_efR)</span>
+                                                        }
+                                                        else
+                                                        {
                                                         <select class="form-input"
                                                                 style="font-size:0.72rem; padding:0.15rem 0.3rem; background:#f3f4f6; border-color:#9ca3af; font-weight:600; max-width:175px;"
                                                                 value="@envaseSel"
@@ -2778,6 +2806,7 @@
                                                             <option value="PLATEADO">⚪ Envase plateado</option>
                                                             <option value="DOY_PACK">📦 Doy pack</option>
                                                         </select>
+                                                        }
                                                     </div>
                                                 }
                                                 @if (rojo && !string.IsNullOrEmpty(ci.Aviso))
@@ -4649,6 +4678,13 @@
                         </div>
                         <div>
                             <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Molienda</label>
+                            @* 2026-09-29: café con molienda FIJA (ej. FT): se muestra, no se elige. *@
+                            @if (MoliendaFijaDe(addProductoId) is string _mfM)
+                            {
+                                <div class="form-input" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem; background:#f9fafb; color:#374151; font-weight:600;" title="Este café viene siempre así (se cambia en la ficha del producto)">@_mfM</div>
+                            }
+                            else
+                            {
                             <select class="form-input" @bind="addItemModalMolienda" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
                                 <option value="EN GRANOS">🫘 EN GRANOS</option>
                                 <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
@@ -4660,14 +4696,22 @@
                                 <option value="MOLIDO A LA TURCA">☕ MOLIDO A LA TURCA</option>
                                 <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
                             </select>
+                            }
                         </div>
                         <div>
                             <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Envase</label>
+                            @if (EnvaseFijoDe(addProductoId) is string _efM)
+                            {
+                                <div class="form-input" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem; background:#f9fafb; color:#374151; font-weight:600;" title="Este café viene siempre así (se cambia en la ficha del producto)">@EnvaseTexto(_efM)</div>
+                            }
+                            else
+                            {
                             <select class="form-input" @bind="addItemModalEnvase" style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
                                 <option value="NEGRO">⚫ Envase negro</option>
                                 <option value="PLATEADO">⚪ Envase plateado</option>
                                 <option value="DOY_PACK">📦 Doy pack</option>
                             </select>
+                            }
                         </div>
                     </div>
                 }
@@ -5895,6 +5939,7 @@
         if (AddProductoCategoria != "CAFE") return;
         if (addFormato == "MEDIO" || addFormato == "CUARTO") addEnvase = "DOY_PACK";
         else if (addFormato == "1KG") addEnvase = "NEGRO";
+        if (EnvaseFijoDe(addProductoId) is string ef) addEnvase = ef;   // 2026-09-29
     }
 
     /// <summary>2026-07-02: misma regla que OnAddFormatoChanged pero para el modal
@@ -5905,6 +5950,7 @@
         if (addItemModalCategoria != "CAFE") return;
         if (addItemModalFormato == "MEDIO" || addItemModalFormato == "CUARTO") addItemModalEnvase = "DOY_PACK";
         else if (addItemModalFormato == "1KG") addItemModalEnvase = "NEGRO";
+        if (EnvaseFijoDe(addProductoId) is string ef) addItemModalEnvase = ef;   // 2026-09-29
     }
     private string productoSearch = "";
     private bool productoSearchOpen;
@@ -8774,8 +8820,24 @@
     private string? DefaultMolienda(int productoId)
     {
         var p = productos?.FirstOrDefault(x => x.Id == productoId);
-        return p?.Categoria == "CAFE" ? "EN GRANOS" : null;
+        if (p?.Categoria != "CAFE") return null;
+        return MoliendaFijaDe(productoId) ?? "EN GRANOS";   // 2026-09-29: la fija manda
     }
+
+    /// <summary>2026-09-29: molienda / envase FIJOS del café (ej. FT: MOLIDO FILTRO + NEGRO).
+    /// Null = se eligen en la venta. El backend (cotizar) los impone igual.</summary>
+    private string? MoliendaFijaDe(int? productoId)
+        => productos?.FirstOrDefault(x => x.Id == productoId) is { Categoria: "CAFE" } p && !string.IsNullOrWhiteSpace(p.MoliendaFija)
+            ? p.MoliendaFija : null;
+    private string? EnvaseFijoDe(int? productoId)
+        => productos?.FirstOrDefault(x => x.Id == productoId) is { Categoria: "CAFE" } p && !string.IsNullOrWhiteSpace(p.EnvaseFijo)
+            ? p.EnvaseFijo : null;
+    private static string EnvaseTexto(string e) => e switch
+    {
+        "PLATEADO" => "⚪ Envase plateado",
+        "DOY_PACK" => "📦 Doy pack",
+        _ => "⚫ Envase negro"
+    };
 
     /// <summary>Agrega un producto sugerido (top productos del cliente) al carrito con cantidad 1.
     /// Si ya existia ese (Producto, Formato, Molienda, DoyPack), suma 1 a la cantidad.</summary>
@@ -8788,8 +8850,8 @@
         var existing = formItems.FirstOrDefault(i => i.ProductoId == productoId
             && i.Formato == formato
             && (i.Molienda ?? "") == (def ?? "")
-            && !i.EsDoyPack
-            && !i.EsEnvasePlateado);
+            && i.EsDoyPack == (EnvaseFijoDe(productoId) == "DOY_PACK")
+            && i.EsEnvasePlateado == (EnvaseFijoDe(productoId) == "PLATEADO"));
         if (existing is not null) existing.Cantidad += cantidad;
         else formItems.Add(new CafeCotizarItemRequest
         {
@@ -8797,8 +8859,8 @@
             Formato = formato,
             Cantidad = cantidad,
             Molienda = def,
-            EsDoyPack = false,
-            EsEnvasePlateado = false
+            EsDoyPack = EnvaseFijoDe(productoId) == "DOY_PACK",        // 2026-09-29: envase fijo
+            EsEnvasePlateado = EnvaseFijoDe(productoId) == "PLATEADO"
         });
         await Cotizar();
     }
@@ -9375,6 +9437,9 @@
             catch { /* no-op: si JS falla, seguimos con lo que tiene Blazor */ }
         }
 
+        // 2026-09-29: café con molienda / envase FIJOS: mandan esos.
+        if (esCafe && MoliendaFijaDe(p.Id) is string mfA) addMolienda = mfA;
+        if (esCafe && EnvaseFijoDe(p.Id) is string efA) addEnvase = efA;
         var molienda = esCafe ? (string.IsNullOrEmpty(addMolienda) ? null : addMolienda) : null;
         var esDoyPack = esCafe && addEnvase == "DOY_PACK";
         var esPlateado = esCafe && addEnvase == "PLATEADO";
