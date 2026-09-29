@@ -344,6 +344,10 @@ builder.Services.AddHostedService<EnvioComprobanteBackgroundService>();
 // el robot que cada minuto manda los que ya cumplieron la hora.
 builder.Services.AddScoped<WhatsAppProgramadosService>();
 builder.Services.AddHostedService<WhatsAppProgramadosBackgroundService>();
+// 2026-09-29: plan de bonificación por cliente + avisos por WhatsApp a los internos (Gabriel).
+builder.Services.AddScoped<CafeBonificacionService>();
+builder.Services.AddScoped<ClienteAvisosWaService>();
+builder.Services.AddHostedService<AvisosDeudaBackgroundService>();
 // 2026-07-23: CafeListasCustomController en DI para mandar listas de precios por el chat WhatsApp
 builder.Services.AddScoped<Api.Controllers.CafeListasCustomController>();
 // 2026-08-05: AlqReservasController y VisitasController en DI para adjuntar reservas de alquiler
@@ -651,6 +655,9 @@ using (var scope = app.Services.CreateScope())
         // 2026-09-09: Google le vence/revoca el permiso a Drive cada tanto y los PDF dejan de guardarse
         // sin que nadie se entere hasta que falta un comprobante. Arranca prendida con campanita.
         await EnsureSistemaAlerta("DRIVE_CAIDO", "☁️ Google Drive desconectado — los PDF no se guardan", true, canalCampanita: true);
+        // 2026-09-29: un aviso automático a Gabriel (venta de Núcleo / lo que debe un cliente) no pudo
+        // salir porque él no escribió en 24 hs: queda esperando y sale apenas escriba.
+        await EnsureSistemaAlerta("WA_ESPERANDO", "⏳ Aviso por WhatsApp esperando que la persona escriba", true, canalCampanita: true);
         await db.SaveChangesAsync();
     }
     catch (Exception ex) { logger.LogWarning(ex, "No se pudieron sembrar las alertas del sistema (Ventas/Fichadas)."); }

@@ -33,6 +33,8 @@ public sealed class VentaAvisoWhatsAppService
     private readonly CafeVentasController _ventas;      // reusa GenerarPdfBytesAsync / BuildPdfFilename
     private readonly CafeClientesController _clientes;  // reusa GetEstadoCuentaAsync
     private readonly ILogger<VentaAvisoWhatsAppService> _logger;
+    private readonly CafeBonificacionService _bonif;
+    private readonly ClienteAvisosWaService _avisos;
 
     // Mismo volumen montado donde WhatsAppTwilioController guarda sus adjuntos, servidos por
     // GET /api/whatsapp/twilio/files/{token}.pdf (público, sin auth) para que Meta los descargue.
@@ -41,8 +43,11 @@ public sealed class VentaAvisoWhatsAppService
 
     public VentaAvisoWhatsAppService(AppDbContext db, MetaWhatsAppService meta,
         CafeVentasController ventas, CafeClientesController clientes,
-        ILogger<VentaAvisoWhatsAppService> logger)
+        ILogger<VentaAvisoWhatsAppService> logger,
+        CafeBonificacionService bonif, ClienteAvisosWaService avisos)
     {
+        _bonif = bonif;
+        _avisos = avisos;
         _db = db;
         _meta = meta;
         _ventas = ventas;
@@ -82,6 +87,28 @@ public sealed class VentaAvisoWhatsAppService
         // Prendido → resumen + 3 botones.
         var textos = await BotTextos.CargarAsync(_db);
         var cuerpo = RenderCuerpo(textos.AvisoVentaCuerpo, v);
+
+        // 2026-09-29: cliente con plan de bonificación (Núcleo): la copia lleva lo que lleva en el
+        // mes y la bonificación, y cancela el aviso automático de esta venta a la misma persona
+        // (si no, le llegarían dos). WhatsApp corta el texto de un mensaje con botones en 1024.
+        var cancelarAutomatico = false;
+        if (v.ClienteId is int cidBonif)
+        {
+            try
+            {
+                var r = await _bonif.ResumenAsync(cidBonif);
+                if (r.Plan is { Activo: true })
+                {
+                    var lineas = ClienteAvisosWaService.LineasBonificacion(r);
+                    if (lineas.Length > 0 && cuerpo.Length + lineas.Length + 2 <= 1000)
+                    {
+                        cuerpo += "\n\n" + lineas;
+                        cancelarAutomatico = true;
+                    }
+                }
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Aviso venta] no pude sumar la bonificación de la venta {Id}", v.Id); }
+        }
         var botones = new (string Id, string Title)[]
         {
             ($"bot:venta:comprobante:{v.Id}", textos.AvisoVentaBotonComprobante),
@@ -90,6 +117,11 @@ public sealed class VentaAvisoWhatsAppService
         };
         var sid = await _meta.SendButtonsAsync(numeroRaw, cuerpo, botones, lineaPhoneId: lineaPhoneId);
         await RegistrarSalienteAsync(inbox, cuerpo + " [botones: comprobante / cuenta corriente / detalle]", sid, null, null, lineaPhoneId);
+        if (sid is not null && cancelarAutomatico)
+        {
+            try { await _avisos.CancelarAvisoVentaPendienteAsync(v.Id, inbox); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Aviso venta] no pude cancelar el aviso automático de la venta {Id}", v.Id); }
+        }
         return (sid is not null, sid is null ? "Meta no aceptó el mensaje (¿ventana de 24hs cerrada?)" : null);
     }
 

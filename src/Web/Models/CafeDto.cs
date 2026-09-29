@@ -2452,3 +2452,128 @@ public class UbicacionProductoDto
     public int Pedidos { get; set; }
 }
 public class UbicacionAsignarResultDto { public bool Ok { get; set; } public int Cambiados { get; set; } public string? Lugar { get; set; } }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-09-29: plan de bonificación por cliente (espejo de CafeBonificacionesController).
+// ─────────────────────────────────────────────────────────────────────────────
+public class CafeBonifPlanDto
+{
+    public bool Activo { get; set; }
+    public int ProductoKgId { get; set; }
+    public string? ProductoKgSku { get; set; }
+    public string ProductoKgNombre { get; set; } = "";
+    public decimal KgPorRegalo { get; set; }
+    public int? ProductoRegaloId { get; set; }
+    public string? ProductoRegaloSku { get; set; }
+    public string? ProductoRegaloNombre { get; set; }
+    public int CantidadRegalo { get; set; }
+    public decimal PctMensual { get; set; }
+    /// <summary>yyyy-MM</summary>
+    public string Desde { get; set; } = "";
+    public bool AvisarEnCadaVenta { get; set; }
+    public List<int> AvisarPersonaIds { get; set; } = new();
+}
+
+public class CafeBonifMesDto
+{
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public bool Cerrado { get; set; }
+    public decimal KgComprados { get; set; }
+    public decimal KgSugerido { get; set; }
+    public decimal KgOtorgado { get; set; }
+    public bool EditadoAMano { get; set; }
+    public string? Nota { get; set; }
+    public decimal KgEntregados { get; set; }
+    public int RegalosGanados { get; set; }
+    public int RegalosEntregados { get; set; }
+}
+
+public class CafeBonifVentaPendienteDto
+{
+    public int VentaId { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public int Ganados { get; set; }
+    public int Entregados { get; set; }
+}
+
+public class CafeBonifResumenDto
+{
+    public bool TienePlan { get; set; }
+    public CafeBonifPlanDto? Plan { get; set; }
+    public decimal KgMesActual { get; set; }
+    public decimal PctMesActual { get; set; }
+    public int RegalosGanadosMes { get; set; }
+    public int RegalosEntregadosMes { get; set; }
+    public int RegalosPendientes { get; set; }
+    public decimal KgOtorgadoTotal { get; set; }
+    public decimal KgEntregadoTotal { get; set; }
+    public decimal KgAFavor { get; set; }
+    public List<CafeBonifMesDto> Meses { get; set; } = new();
+    public List<CafeBonifVentaPendienteDto> VentasConRegaloPendiente { get; set; } = new();
+
+    /// <summary>Activo y con plan: lo que decide si se muestra en venta / ojito.</summary>
+    public bool Vigente => TienePlan && Plan is { Activo: true };
+}
+
+public class CafeBonifGuardarPlanRequest
+{
+    public bool Activo { get; set; } = true;
+    public string SkuKg { get; set; } = "F1";
+    public decimal KgPorRegalo { get; set; } = 5m;
+    public string? SkuRegalo { get; set; } = "D401";
+    public int CantidadRegalo { get; set; } = 1;
+    public decimal PctMensual { get; set; } = 10m;
+    public string Desde { get; set; } = "";
+    public bool AvisarEnCadaVenta { get; set; }
+    public List<int> AvisarPersonaIds { get; set; } = new();
+}
+
+// 2026-09-29: "Avisos por WhatsApp" de la ficha (espejo de CafeClienteAvisosController).
+public class CafeAvisoPersonaDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public bool TieneWhatsApp { get; set; }
+}
+
+public class CafeAvisoProgramadoDto
+{
+    public int Id { get; set; }
+    public string Frecuencia { get; set; } = "";
+    public string Descripcion { get; set; } = "";
+    public List<int> PersonaIds { get; set; } = new();
+    public List<string> Personas { get; set; } = new();
+    public bool Activo { get; set; }
+    public DateTime? ProximoEnvioAr { get; set; }
+    public DateTime? UltimoEnvioAr { get; set; }
+    public string? UltimoResultado { get; set; }
+}
+
+public class CafeAvisoEnvioDto
+{
+    public DateTime FechaAr { get; set; }
+    public string Destino { get; set; } = "";
+    /// <summary>PENDIENTE | ESPERANDO | ENVIADO | ERROR | CANCELADO</summary>
+    public string Estado { get; set; } = "";
+    public string? Detalle { get; set; }
+}
+
+public class CafeAvisosClienteDto
+{
+    public List<CafeAvisoPersonaDto> Personas { get; set; } = new();
+    public List<CafeAvisoProgramadoDto> Programados { get; set; } = new();
+    public List<CafeAvisoEnvioDto> UltimosEnvios { get; set; } = new();
+    public string? Preview { get; set; }
+}
+
+public class CafeAvisoProgramarRequest
+{
+    public string Frecuencia { get; set; } = "SEMANAL";
+    public string? Fecha { get; set; }
+    public int? DiaSemana { get; set; } = 1;
+    public int? DiaMes { get; set; } = 1;
+    public string Hora { get; set; } = "10:00";
+    public List<int> PersonaIds { get; set; } = new();
+}

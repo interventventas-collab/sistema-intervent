@@ -47,6 +47,7 @@
                     <div><span class="fcf-lbl">Dirección:</span> @ficha.Direccion@(string.IsNullOrWhiteSpace(ficha.Localidad) ? "" : $", {ficha.Localidad}")</div>
                 }
                 @if (!string.IsNullOrWhiteSpace(ficha.Notas)) { <div class="fcf-notas">📝 @ficha.Notas</div> }
+                <BonifContador ClienteId="ClienteId" />
                 <div class="fcf-acc">
                     @if (!string.IsNullOrWhiteSpace(ficha.MapeoLink))
                     {

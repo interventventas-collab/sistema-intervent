@@ -74,6 +74,13 @@ public class WhatsAppMensajeProgramado
     [MaxLength(400)] public string? Error { get; set; }
 
     public int Intentos { get; set; }
+    /// <summary>2026-09-29: avisos automáticos a los internos (Gabriel). Si la ventana de 24 hs está
+    /// cerrada NO falla: queda PENDIENTE y se reintenta cada 5 min hasta que la persona escriba
+    /// (máximo 3 días). Los programados a mano siguen fallando como siempre.</summary>
+    public bool EsperarVentana { get; set; }
+    /// <summary>2026-09-29: de dónde salió ("bonif-venta:{ventaId}", "deuda:{clienteId}"). Sirve
+    /// para no mandar dos veces lo mismo.</summary>
+    [MaxLength(60)] public string? Origen { get; set; }
 
     /// <summary>Id del mensaje que quedó en el chat una vez enviado (WhatsApp_TwilioMensajes).</summary>
     public int? MensajeId { get; set; }
