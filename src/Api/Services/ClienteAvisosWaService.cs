@@ -166,6 +166,22 @@ public class ClienteAvisosWaService
         }
     }
 
+    /// <summary>Solo el resumen de lo que va del mes (sin una venta), a los mismos destinatarios del
+    /// aviso de cada venta. Es el botón "mandar lo que va del mes" de la ficha.</summary>
+    public async Task<(List<string> Enviados, string? Error)> EncolarResumenBonifAsync(int clienteId, string? creadoPor)
+    {
+        var plan = await _db.CafePlanesBonificacion.AsNoTracking().FirstOrDefaultAsync(p => p.ClienteId == clienteId);
+        if (plan is not { Activo: true }) return (new(), "El cliente no tiene un plan de bonificación activo.");
+        var destinos = await DestinosAsync(await PersonasDeClaveAsync(CafeBonificacionService.ClaveAvisoVenta(clienteId)));
+        if (destinos.Count == 0) return (new(), "Elegí en el plan a quién avisarle (y guardalo).");
+
+        var nombre = await _db.CafeClientes.AsNoTracking().Where(c => c.Id == clienteId).Select(c => c.Nombre).FirstOrDefaultAsync();
+        var r = await _bonif.CalcularAsync(plan, null);
+        var texto = $"👤 *{nombre}* · lo que va del mes\n\n" + LineasBonificacion(r);
+        var nombres = await EncolarAsync(destinos, texto, $"bonif-mes:{clienteId}", DateTime.UtcNow, creadoPor);
+        return (nombres, null);
+    }
+
     /// <summary>La copia por WhatsApp a <paramref name="numeroInbox"/> ya lleva la bonificación:
     /// cancela el aviso automático de la misma venta que todavía no salió.</summary>
     public async Task CancelarAvisoVentaPendienteAsync(int ventaId, string numeroInbox)

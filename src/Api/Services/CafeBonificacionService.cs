@@ -157,7 +157,11 @@ public class CafeBonificacionService
         var entregadosTot = ventas.Sum(v => v.Entregados);
         // El mes en curso todavía no se otorgó: se va acumulando.
         var otorgadoTot = meses.Where(x => x.Cerrado).Sum(x => x.KgOtorgado);
-        var entregadoKgTot = ventas.Sum(v => v.KgBonif);
+        // Los kg regalados en el PRIMER mes del plan pagan el mes anterior, que quedó afuera del
+        // plan (caso real Núcleo: el 01/09 se le dieron los 9 kg del 10% de agosto). Si contaran,
+        // el "a favor" arrancaría en negativo.
+        var primerMesQuePaga = desde.AddMonths(1);
+        var entregadoKgTot = ventas.Where(v => v.Fecha >= primerMesQuePaga).Sum(v => v.KgBonif);
 
         var pendientes = ventas
             .Where(v => v.Ganados > v.Entregados)

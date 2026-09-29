@@ -1869,6 +1869,17 @@
                     <div style="margin-top: 0.4rem; font-size: 0.78rem; color: #374151; line-height: 1.6;">
                         <span style="font-weight: 700;">🎁 Plan de bonificación</span>
                         <span style="color: #6b7280;"> · este mes lleva @BonifKgTxt(bonifVenta.KgMesActual + bvKg) kg de @bvp.ProductoKgSku</span>
+                        @* 2026-09-29: pedido de Osmar "cuando cargo la venta no veo lo que va del mes acumulado":
+                           el 10% y las cajas del mes, contando ESTA venta. *@
+                        @if (bvp.PctMensual > 0)
+                        {
+                            var bvPct = (bonifVenta.KgMesActual + bvKg) * bvp.PctMensual / 100m;
+                            <span style="color: #6b7280;"> · el @BonifKgTxt(bvp.PctMensual)% va en <b style="color:#374151;">@BonifKgTxt(Math.Round(bvPct, 2)) kg</b></span>
+                        }
+                        @if (bvp.ProductoRegaloId != null)
+                        {
+                            <span style="color: #6b7280;"> · @bvp.ProductoRegaloSku del mes: @(bonifVenta.RegalosGanadosMes + BonifRegalosTocanEstaVenta) ganadas · @(bonifVenta.RegalosEntregadosMes + BonifRegalosPuestos) entregadas</span>
+                        }
                         @if (bvp.ProductoRegaloId != null)
                         {
                             <div>
