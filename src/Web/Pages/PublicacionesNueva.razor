@@ -845,7 +845,8 @@
                             <span class="p2-t" title="@it.Titulo">@it.Titulo
                                 @if (it.Vendidas > 0)
                                 {
-                                    <span class="p2-vend">(@it.Vendidas.ToString("N0", ar) @(it.Vendidas == 1 ? "vendida" : "vendidas"))</span>
+                                    @* 2026-09-28: + cuándo fue la última venta (las órdenes se guardan desde el 13/04/2026). *@
+                                    <span class="p2-vend" title="@(it.UltimaVenta is DateTime uvt ? "Última venta: " + uvt.ToString("dd/MM/yyyy HH:mm") : "El sistema guarda las ventas desde el 13/04/2026")">(@it.Vendidas.ToString("N0", ar) @(it.Vendidas == 1 ? "vendida" : "vendidas") · última @TextoUltimaVenta(it.UltimaVenta))</span>
                                 }
                             </span>
                             @* 2026-09-22 — en palabras y con letra normal: antes era un renglón de
@@ -2040,6 +2041,14 @@
 </div>
 
 @code {
+    // 2026-09-28: "hoy", "ayer", "hace 5 días" o la fecha. La hora ya viene argentina (MeliOrders.DateCreated).
+    private static string TextoUltimaVenta(DateTime? u)
+    {
+        if (u is not DateTime f) return "antes del 13/04";
+        var dias = (DateTimeExt.AhoraAr().Date - f.Date).Days;
+        return dias <= 0 ? "hoy" : dias == 1 ? "ayer" : dias < 30 ? $"hace {dias} días" : f.ToString("dd/MM/yy");
+    }
+
     private static readonly System.Globalization.CultureInfo ar = new("es-AR");
 
     private ApiClient.PubV2Page? datos;

@@ -5575,7 +5575,9 @@ public class ApiClient
         bool SyncPrecio, bool SyncStock, decimal? ObjetivoPct, string? Cuenta,
         string? SkuAnterior,
         decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null,
-        decimal? PrecioOem = null, decimal? PrecioObjetivo = null);
+        decimal? PrecioOem = null, decimal? PrecioObjetivo = null,
+        // 2026-09-28: última venta (hora argentina). Null = sin ventas desde el 13/04/2026.
+        DateTime? UltimaVenta = null);
     public record PubV2Page(int Total, int Pagina, int PorPagina, List<PubV2Fila> Items, PubV2Grupo? Grupo = null,
         PubV2Conteos? Conteos = null);
     /// <summary>2026-09-24: cuántas hay de cada opción de los botones Precio y Envío.
