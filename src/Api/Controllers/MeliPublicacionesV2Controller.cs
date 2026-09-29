@@ -271,6 +271,27 @@ public class MeliPublicacionesV2Controller : ControllerBase
         return Ok(new { ok = filas.Count(f => f.Ok), errores = filas.Count(f => !f.Ok), filas });
     }
 
+    public record ArmarPackRequest(string? DataUri, int Cantidad);
+
+    /// <summary>SEGURO (no toca MeLi): arma la foto de un pack repitiendo la de una unidad. Devuelve la
+    /// imagen; la pantalla la agrega como foto nueva y se sube con el "Guardar" de las fotos.</summary>
+    [HttpPost("fotos/armar-pack")]
+    [RequestSizeLimit(20_000_000)]
+    public IActionResult ArmarFotoPack([FromBody] ArmarPackRequest req)
+    {
+        var du = req.DataUri ?? "";
+        var coma = du.IndexOf(',');
+        if (!du.StartsWith("data:image", StringComparison.OrdinalIgnoreCase) || coma < 0)
+            return BadRequest(new { error = "No llegó la foto." });
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(du[(coma + 1)..]); }
+        catch { return BadRequest(new { error = "La foto llegó rota." }); }
+
+        var r = FotoPackService.Armar(bytes, req.Cantidad);
+        if (r.Jpeg is null) return BadRequest(new { error = r.Error ?? "No se pudo armar la foto." });
+        return Ok(new { dataUri = "data:image/jpeg;base64," + Convert.ToBase64String(r.Jpeg), aviso = r.Aviso });
+    }
+
     /// <summary>TOCA MELI pero SÓLO el SKU: le devuelve el que tenía antes de marcarla para
     /// revisar. NO la activa — eso lo decide el usuario aparte.</summary>
     [HttpPost("publicaciones/{mla}/devolver-sku")]

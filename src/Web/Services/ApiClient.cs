@@ -5828,6 +5828,23 @@ public class ApiClient
     public Task<(PubV2EstadoResultado? res, string? error)> DevolverSkuAsync(string mla)
         => CambiarEstadoAsync(mla, "devolver-sku");
 
+    /// <summary>2026-09-28 · Arma la foto de un pack repitiendo la de una unidad. No toca MeLi.</summary>
+    public async Task<(string? dataUri, string? aviso, string? error)> ArmarFotoPackAsync(string dataUri, int cantidad)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _httpLong.PostAsJsonAsync("/api/meli/v2/fotos/armar-pack", new { dataUri, cantidad });
+            var el = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            if (resp.IsSuccessStatusCode)
+                return (el.GetProperty("dataUri").GetString(),
+                        el.TryGetProperty("aviso", out var a) && a.ValueKind == System.Text.Json.JsonValueKind.String ? a.GetString() : null,
+                        null);
+            return (null, null, el.TryGetProperty("error", out var e) ? e.GetString() : $"Error {(int)resp.StatusCode}");
+        }
+        catch (Exception ex) { return (null, null, ex.Message); }
+    }
+
     /// <summary>2026-09-28 · La saca de la venta (finalizada). Se vuelve a publicar sólo desde MeLi.</summary>
     public Task<(PubV2EstadoResultado? res, string? error)> FinalizarPublicacionAsync(string mla)
         => CambiarEstadoAsync(mla, "finalizar");
