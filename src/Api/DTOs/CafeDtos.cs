@@ -863,7 +863,9 @@ public record CafeTopProductoClienteDto(
     int TotalQuantity,                       // suma de cantidades
     DateTime LastPurchase,
     decimal StockGramos, int StockUnidades,
-    decimal PrecioReferencia);              // precio aplicable al tipo del cliente actual
+    decimal PrecioReferencia,               // precio aplicable al tipo del cliente actual
+    // 2026-09-29: cómo lo llevó la ÚLTIMA vez (molienda y envase), para el Modo venta del chat.
+    string? Molienda = null, bool EsDoyPack = false, bool EsEnvasePlateado = false);
 
 // ===== Combos =====
 public record CafeComboItemDto(
