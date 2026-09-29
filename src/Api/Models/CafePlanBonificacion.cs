@@ -42,6 +42,10 @@ public class CafePlanBonificacion
     /// <summary>Primer día del mes desde el que corre el plan (las ventas anteriores no cuentan).</summary>
     public DateTime Desde { get; set; }
 
+    /// <summary>Mandar por WhatsApp a los internos elegidos (Auto_Destinatarios
+    /// "bonif-venta:{ClienteId}") lo que lleva y la bonificación, cada vez que se carga una venta.</summary>
+    public bool AvisarEnCadaVenta { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

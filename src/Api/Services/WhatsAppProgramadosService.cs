@@ -57,8 +57,12 @@ public class WhatsAppProgramadosService
             // si la ventana se cerró mientras el mensaje esperaba, NO intentamos: cortamos acá con
             // un motivo claro (si lo mandáramos igual, Meta lo rechaza y el operador no sabe por qué).
             if (fila.Tipo != WhatsAppMensajeProgramado.TipoPlantilla && !await VentanaAbiertaAsync(fila.Numero))
+            {
+                // 2026-09-29: los avisos automáticos a los internos no fallan: esperan a que escriba.
+                if (fila.EsperarVentana) return await EsperarVentanaAsync(fila);
                 return Fallar(fila, "No salió: cuando llegó la hora ya habían pasado más de 24 hs desde el último mensaje del cliente, "
                     + "y WhatsApp no deja escribir texto libre fuera de esa ventana. Programalo como plantilla si necesitás escribirle igual.");
+            }
 
             string? id; string canal; string? linea;
 
@@ -129,6 +133,56 @@ public class WhatsAppProgramadosService
             _log.LogWarning(ex, "[Programados] falló el mensaje {Id} para {Numero}", fila.Id, fila.Numero);
             return Fallar(fila, $"No salió por un error del sistema: {ex.Message}");
         }
+    }
+
+    private const string PrefijoEsperando = "Esperando que escriba";
+
+    /// <summary>2026-09-29: ventana de 24 hs cerrada en un aviso automático a un interno. Queda
+    /// PENDIENTE y se vuelve a mirar cada 5 minutos; apenas la persona escribe algo, sale. La
+    /// primera vez prende la campanita (WA_ESPERANDO). Pasados 3 días se da por perdido.</summary>
+    private async Task<(bool, string?)> EsperarVentanaAsync(WhatsAppMensajeProgramado fila)
+    {
+        if (fila.CreatedAt < DateTime.UtcNow.AddDays(-3))
+            return Fallar(fila, "No salió: la persona no escribió a la línea en 3 días y WhatsApp no deja mandarle texto libre sin eso.");
+
+        var primeraVez = fila.Error == null || !fila.Error.StartsWith(PrefijoEsperando);
+        fila.Error = PrefijoEsperando + ": pasaron más de 24 hs desde su último mensaje y WhatsApp no deja mandarle. Sale solo apenas escriba algo a la línea.";
+        fila.ProgramadoPara = DateTime.UtcNow.AddMinutes(5);
+        fila.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        if (primeraVez)
+        {
+            try
+            {
+                var alerta = await _db.MisAlertas.FirstOrDefaultAsync(x => x.Tipo == "WA_ESPERANDO");
+                if (alerta is { Activa: true, CanalCampanita: true })
+                {
+                    static string Digitos(string? n) => new string((n ?? "").Where(char.IsDigit).ToArray());
+                    var dig = Digitos(fila.Numero);
+                    var persona = (await _db.AutoPersonas.AsNoTracking().Where(p => p.WhatsAppNumero != null).ToListAsync())
+                        .FirstOrDefault(p => Digitos(p.WhatsAppNumero).Length >= 8 && dig.EndsWith(Digitos(p.WhatsAppNumero)[^8..]))?.Nombre;
+                    var quien = persona ?? fila.Numero.Replace("whatsapp:", "");
+                    var detalle = $"El aviso a {quien} no salió todavía: no escribió a la línea en las últimas 24 hs. Sale solo apenas escriba (pedile que mande un mensaje).";
+                    alerta.EstaDisparada = true;
+                    alerta.Vista = false;
+                    alerta.DisparadaAt = DateTime.UtcNow;
+                    alerta.UltimoDetalle = detalle;
+                    alerta.UpdatedAt = DateTime.UtcNow;
+                    _db.MisAlertasHistorial.Add(new MisAlertaHistorial
+                    {
+                        AlertaId = alerta.Id,
+                        Tipo = "WA_ESPERANDO",
+                        Mensaje = string.IsNullOrWhiteSpace(alerta.Mensaje) ? "Aviso por WhatsApp esperando" : alerta.Mensaje,
+                        Detalle = detalle,
+                        Alcance = string.IsNullOrWhiteSpace(alerta.Alcance) ? "admin,oficina" : alerta.Alcance,
+                    });
+                    await _db.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "[Programados] no pude prender la campanita de WA_ESPERANDO"); }
+        }
+        return (false, fila.Error);
     }
 
     /// <summary>Deja la fila en ERROR con el motivo y lo guarda. El motivo se muestra tal cual.</summary>

@@ -2223,6 +2223,16 @@ public class CafeVentasController : ControllerBase
             await EmitirArcaAsync(venta);
         }
 
+        // 2026-09-29: cliente con plan de bonificación y "avisar en cada venta" (Núcleo) → WhatsApp
+        // a Gabriel con lo que lleva y la bonificación. Scope propio: nunca frena ni rompe la venta.
+        try
+        {
+            using var scopeAviso = _scopeFactory.CreateScope();
+            await scopeAviso.ServiceProvider.GetRequiredService<ClienteAvisosWaService>()
+                .EncolarAvisoVentaAsync(venta.Id, User?.Identity?.Name);
+        }
+        catch { /* el servicio ya deja el motivo en el log */ }
+
         return Ok(Map(venta));
     }
 
