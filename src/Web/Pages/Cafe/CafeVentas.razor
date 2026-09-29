@@ -6130,8 +6130,9 @@
                 precioUnit = addFormato switch
                 {
                     "1KG" => precioKg,
-                    "MEDIO" => calcFrac(2m),
-                    "CUARTO" => calcFrac(4m),
+                    // 2026-09-29: precio PROPIO de ½ / ¼ kg (ej. FT tercerizado), igual que el backend.
+                    "MEDIO" => p.PrecioMedioKg > 0 ? p.PrecioMedioKg.Value : calcFrac(2m),
+                    "CUARTO" => p.PrecioCuartoKg > 0 ? p.PrecioCuartoKg.Value : calcFrac(4m),
                     _ => precioKg
                 };
             }

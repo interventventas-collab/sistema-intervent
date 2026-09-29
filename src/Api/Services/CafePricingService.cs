@@ -241,6 +241,11 @@ public static class CafePricingService
             bool esFraccion = formato == FORMATO_MEDIO || formato == FORMATO_CUARTO;
             if (settings.RedondeoMultiplo > 0 && esFraccion)
                 lista = Math.Ceiling(lista / settings.RedondeoMultiplo) * settings.RedondeoMultiplo;
+
+            // 2026-09-29: si el café tiene precio PROPIO de ½ o ¼ kg, manda ese (sin cuenta ni
+            // redondeo). Lo pidió para el FT tercerizado: kilo $25.000, ½ $14.000, ¼ $8.000.
+            if (formato == FORMATO_MEDIO && producto.PrecioMedioKg is decimal pm && pm > 0m) lista = pm;
+            if (formato == FORMATO_CUARTO && producto.PrecioCuartoKg is decimal pc && pc > 0m) lista = pc;
         }
         else
         {

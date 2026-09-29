@@ -210,6 +210,16 @@ public class CafeProducto
     /// de stock falso. Default false (suma). Editable desde /stock/valuacion.</summary>
     public bool ExcluirDeValuacion { get; set; } = false;
 
+    /// <summary>2026-09-29: café TERCERIZADO (lo hace otro, ej. FT "Café torrado molido filtro").
+    /// Se vende igual que un café (1 kg, ½, ¼, molienda, envase) pero NO suma a los kilos de café
+    /// vendidos (balanza del dashboard y Panorama).</summary>
+    public bool Tercerizado { get; set; } = false;
+
+    /// <summary>2026-09-29: precio PROPIO del ½ kg y del ¼ kg (sin IVA). Null = se calcula como
+    /// siempre (kilo / 2 o / 4 + fraccionamiento, redondeado). Vale para BAR y resto por igual.</summary>
+    [Column(TypeName = "decimal(18,2)")] public decimal? PrecioMedioKg { get; set; }
+    [Column(TypeName = "decimal(18,2)")] public decimal? PrecioCuartoKg { get; set; }
+
     /// <summary>Si false, el producto NO se muestra en el buscador de productos del modal Nueva Venta.
     /// Util para productos que solo existen como componentes de combos MeLi (no se venden sueltos).
     /// Se setea automaticamente por el clone de Contabilium para componentes-solo. Default true.</summary>

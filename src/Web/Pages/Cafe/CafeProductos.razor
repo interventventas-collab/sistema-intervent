@@ -321,8 +321,8 @@
                                             <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.PrecioBarEfectivoConIva!.Value)</div>
                                             @if (mostrarFracciones)
                                             {
-                                                var mBar = PrecioFraccion(p.PrecioBarEfectivo.Value, 2m);
-                                                var cBar = PrecioFraccion(p.PrecioBarEfectivo.Value, 4m);
+                                                var mBar = (p.PrecioMedioKg > 0 ? p.PrecioMedioKg.Value : PrecioFraccion(p.PrecioBarEfectivo.Value, 2m));
+                                                var cBar = (p.PrecioCuartoKg > 0 ? p.PrecioCuartoKg.Value : PrecioFraccion(p.PrecioBarEfectivo.Value, 4m));
                                                 <div style="font-size: 0.72rem; color: #374151; font-weight: 600; margin-top: 3px; white-space: nowrap;" title="Precio de 1/2 kg y 1/4 kg — ya incluye el costo de fraccionamiento y el redondeo">
                                                     ½ $@FormatMoneyCorto(mBar) · ¼ $@FormatMoneyCorto(cBar)
                                                 </div>
@@ -340,8 +340,8 @@
                                             <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.PrecioOtroEfectivoConIva!.Value)</div>
                                             @if (mostrarFracciones)
                                             {
-                                                var mOtro = PrecioFraccion(p.PrecioOtroEfectivo.Value, 2m);
-                                                var cOtro = PrecioFraccion(p.PrecioOtroEfectivo.Value, 4m);
+                                                var mOtro = (p.PrecioMedioKg > 0 ? p.PrecioMedioKg.Value : PrecioFraccion(p.PrecioOtroEfectivo.Value, 2m));
+                                                var cOtro = (p.PrecioCuartoKg > 0 ? p.PrecioCuartoKg.Value : PrecioFraccion(p.PrecioOtroEfectivo.Value, 4m));
                                                 <div style="font-size: 0.72rem; color: #374151; font-weight: 600; margin-top: 3px; white-space: nowrap;" title="Precio de 1/2 kg y 1/4 kg — ya incluye el costo de fraccionamiento y el redondeo">
                                                     ½ $@FormatMoneyCorto(mOtro) · ¼ $@FormatMoneyCorto(cOtro)
                                                 </div>
@@ -676,6 +676,30 @@
                             </p>
                         </div>
                     </div>
+                    @* 2026-09-29: precio PROPIO del ½ y ¼ kg. Vacío = se calcula como siempre
+                       (kilo / 2 o / 4 + fraccionamiento, redondeado). Vale para bar y resto. *@
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Precio ½ kg propio (sin IVA, opcional)</label>
+                            <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioMedioKg" placeholder="se calcula solo" />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                @if (formPrecioMedioKg > 0) { <span>Con IVA: <b>$@FormatMoney(Math.Round(formPrecioMedioKg.Value * (1 + formIvaPct / 100m), 2))</b> · para bar y resto</span> }
+                                else { <span>Vacío = kilo ÷ 2 + fraccionamiento, redondeado.</span> }
+                            </p>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Precio ¼ kg propio (sin IVA, opcional)</label>
+                            <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioCuartoKg" placeholder="se calcula solo" />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                @if (formPrecioCuartoKg > 0) { <span>Con IVA: <b>$@FormatMoney(Math.Round(formPrecioCuartoKg.Value * (1 + formIvaPct / 100m), 2))</b> · para bar y resto</span> }
+                                else { <span>Vacío = kilo ÷ 4 + fraccionamiento, redondeado.</span> }
+                            </p>
+                        </div>
+                    </div>
+                    <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; margin: 0.2rem 0 0.6rem; cursor: pointer;">
+                        <input type="checkbox" @bind="formTercerizado" style="margin: 0;" />
+                        Tercerizado — no suma a los kilos de café vendidos
+                    </label>
                     <div class="form-group">
                         <label class="form-label">Stock (kg)</label>
                         <input class="form-input" type="number" step="0.001" min="0" @bind="formStockKg" />
@@ -1765,6 +1789,10 @@
     private decimal? formPrecioOtro;
     private decimal? formPrecioBar;
     private bool formSinPrecioBar; // 2026-06-10: tilde "sin precio diferenciado BAR"
+    // 2026-09-29: solo café — tercerizado (no suma a kilos vendidos) + precio propio de ½ y ¼ kg.
+    private bool formTercerizado;
+    private decimal? formPrecioMedioKg;
+    private decimal? formPrecioCuartoKg;
     // Precios futuros (cambio programado)
     private bool mostrarPreciosFuturos;
     private DateTime? formFechaAplicaPreciosFuturos;
@@ -2409,6 +2437,7 @@
         formBarPct = 100m; formUxB = null;
         formPrecioOtro = null; formPrecioBar = null;
         formSinPrecioBar = false; // 2026-06-10
+        formTercerizado = false; formPrecioMedioKg = null; formPrecioCuartoKg = null; // 2026-09-29
         formPrecioBulto = null; formPrecioBultoOtro = null;
         formFormatoPorDefecto = "UNIT"; // 2026-07-07
         formPacks = new();
@@ -2477,6 +2506,7 @@
         // pero lo que valen son PrecioBar/PrecioOtro. Mostramos el VIGENTE (legacy solo de respaldo)
         // para que la pantalla no mienta sobre lo que se cobra.
         formPvp1 = p.PrecioBarEfectivo; formPvp2 = p.PrecioOtroEfectivo;
+        formTercerizado = p.Tercerizado; formPrecioMedioKg = p.PrecioMedioKg; formPrecioCuartoKg = p.PrecioCuartoKg; // 2026-09-29
         formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
         formBarPct = p.BarPctSobreCosto;
         // Modelo NUEVO de precios. Si NO están cargados (producto migrado del modelo viejo),
@@ -2566,6 +2596,7 @@
         formCostoUsdFecha = p.CostoUsdFecha;
         // 2026-09-01: copiar el precio VIGENTE (PrecioBar/PrecioOtro), no el espejo legacy.
         formPvp1 = p.PrecioBarEfectivo; formPvp2 = p.PrecioOtroEfectivo;
+        formTercerizado = p.Tercerizado; formPrecioMedioKg = p.PrecioMedioKg; formPrecioCuartoKg = p.PrecioCuartoKg; // 2026-09-29
         formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
         formBarPct = p.BarPctSobreCosto;
         formPrecioOtro = p.PrecioOtro ?? p.Pvp2 ?? p.Pvp1;
@@ -2708,6 +2739,12 @@
                     ClearPrecioBar = formCategoria == "CAFE" ? !formPvp1.HasValue : !formPrecioBar.HasValue,
                     // 2026-06-10: tilde "sin precio diferenciado BAR"
                     SinPrecioBar = formCategoria == "OTROS" ? formSinPrecioBar : (bool?)false,
+                    // 2026-09-29: solo café.
+                    Tercerizado = formCategoria == "CAFE" && formTercerizado,
+                    PrecioMedioKg = formCategoria == "CAFE" && formPrecioMedioKg > 0 ? formPrecioMedioKg : null,
+                    PrecioCuartoKg = formCategoria == "CAFE" && formPrecioCuartoKg > 0 ? formPrecioCuartoKg : null,
+                    ClearPrecioMedioKg = !(formCategoria == "CAFE" && formPrecioMedioKg > 0),
+                    ClearPrecioCuartoKg = !(formCategoria == "CAFE" && formPrecioCuartoKg > 0),
                     // Precio del bulto (descuento por volumen, SOLO OTROS):
                     PrecioBulto = formCategoria == "OTROS" ? formPrecioBulto : null,
                     PrecioBultoOtro = formCategoria == "OTROS" ? formPrecioBultoOtro : null,
@@ -2778,6 +2815,10 @@
                     PrecioBar = formCategoria == "CAFE" ? formPvp1 : formPrecioBar,
                     // 2026-06-10: tilde "sin precio diferenciado BAR"
                     SinPrecioBar = formCategoria == "OTROS" && formSinPrecioBar,
+                    // 2026-09-29: solo café.
+                    Tercerizado = formCategoria == "CAFE" && formTercerizado,
+                    PrecioMedioKg = formCategoria == "CAFE" && formPrecioMedioKg > 0 ? formPrecioMedioKg : null,
+                    PrecioCuartoKg = formCategoria == "CAFE" && formPrecioCuartoKg > 0 ? formPrecioCuartoKg : null,
                     // Precio del bulto (descuento por volumen, SOLO OTROS):
                     PrecioBulto = formCategoria == "OTROS" ? formPrecioBulto : null,
                     PrecioBultoOtro = formCategoria == "OTROS" ? formPrecioBultoOtro : null,

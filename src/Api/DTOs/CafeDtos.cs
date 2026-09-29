@@ -181,7 +181,11 @@ public record CafeProductoDto(
     decimal? CostoUsdCotizacion = null,
     DateTime? CostoUsdFecha = null,
     // 2026-09-28: productos "shell" (tacho + tapa, caja + tapa): los códigos que lo componen, ej "(9234TR + 7045-TR)".
-    string? Composicion = null);
+    string? Composicion = null,
+    // 2026-09-29: café tercerizado (no suma a kilos vendidos) + precio propio de ½ y ¼ kg.
+    bool Tercerizado = false,
+    decimal? PrecioMedioKg = null,
+    decimal? PrecioCuartoKg = null);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,
@@ -233,6 +237,10 @@ public class CreateCafeProductoRequest
     public decimal? PrecioBultoOtro { get; set; }
     /// <summary>2026-06-10: si true, todos los clientes pagan PrecioOtro (sin diferenciar BAR).</summary>
     public bool SinPrecioBar { get; set; } = false;
+    /// <summary>2026-09-29: solo CAFE. Tercerizado + precio propio de ½ y ¼ kg (null = se calcula).</summary>
+    public bool Tercerizado { get; set; }
+    public decimal? PrecioMedioKg { get; set; }
+    public decimal? PrecioCuartoKg { get; set; }
     /// <summary>2026-07-07: formato por defecto al vender (null/"UNIT" = Suelto). Solo OTROS.</summary>
     public string? FormatoPorDefecto { get; set; }
     /// <summary>Packs prearmados a crear junto con el producto. Opcional. Solo OTROS.</summary>
@@ -348,6 +356,12 @@ public class UpdateCafeProductoRequest
     public bool ClearPrecioBar { get; set; }
     /// <summary>2026-06-10: flag "todos los clientes pagan PrecioOtro" — si null, no cambia.</summary>
     public bool? SinPrecioBar { get; set; }
+    /// <summary>2026-09-29: solo CAFE. Null = no cambia. Clear* = volver al precio calculado.</summary>
+    public bool? Tercerizado { get; set; }
+    public decimal? PrecioMedioKg { get; set; }
+    public decimal? PrecioCuartoKg { get; set; }
+    public bool ClearPrecioMedioKg { get; set; }
+    public bool ClearPrecioCuartoKg { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS).
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }

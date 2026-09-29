@@ -87,7 +87,10 @@ public class CafeProductosController : ControllerBase
         FormatoPorDefecto: p.FormatoPorDefecto,
         CostoUsd: p.CostoUsd,
         CostoUsdCotizacion: p.CostoUsdCotizacion,
-        CostoUsdFecha: p.CostoUsdFecha);
+        CostoUsdFecha: p.CostoUsdFecha,
+        Tercerizado: p.Tercerizado,
+        PrecioMedioKg: p.PrecioMedioKg,
+        PrecioCuartoKg: p.PrecioCuartoKg);
 
     /// <summary>Búsqueda rápida (solo Id, Sku, Nombre, StockUnidades). Usado por la UI de
     /// edición de componentes MeLi en /cafe/skus-meli (selector de producto).</summary>
@@ -806,6 +809,10 @@ public class CafeProductosController : ControllerBase
             PrecioOtro = cat == "OTROS" ? req.PrecioOtro : null,
             PrecioBar = cat == "OTROS" ? req.PrecioBar : null,
             SinPrecioBar = cat == "OTROS" && req.SinPrecioBar,
+            // 2026-09-29: solo café.
+            Tercerizado = cat == "CAFE" && req.Tercerizado,
+            PrecioMedioKg = cat == "CAFE" && req.PrecioMedioKg > 0 ? req.PrecioMedioKg : null,
+            PrecioCuartoKg = cat == "CAFE" && req.PrecioCuartoKg > 0 ? req.PrecioCuartoKg : null,
             PrecioBulto = cat == "OTROS" ? req.PrecioBulto : null,
             PrecioBultoOtro = cat == "OTROS" ? req.PrecioBultoOtro : null,
             // 2026-07-07: formato por defecto al vender. "UNIT"/vacio = Suelto (se guarda null).
@@ -920,6 +927,12 @@ public class CafeProductosController : ControllerBase
         else if (req.ClearPrecioBar) p.PrecioBar = null;
         // 2026-06-10: flag explicito "sin precio diferenciado BAR" (todos pagan PrecioOtro)
         if (req.SinPrecioBar.HasValue) p.SinPrecioBar = req.SinPrecioBar.Value;
+        // 2026-09-29: café tercerizado + precio propio de ½ y ¼ kg.
+        if (req.Tercerizado.HasValue) p.Tercerizado = req.Tercerizado.Value;
+        if (req.PrecioMedioKg > 0) p.PrecioMedioKg = req.PrecioMedioKg;
+        else if (req.ClearPrecioMedioKg) p.PrecioMedioKg = null;
+        if (req.PrecioCuartoKg > 0) p.PrecioCuartoKg = req.PrecioCuartoKg;
+        else if (req.ClearPrecioCuartoKg) p.PrecioCuartoKg = null;
         if (req.PrecioBulto.HasValue) p.PrecioBulto = req.PrecioBulto.Value;
         else if (req.ClearPrecioBulto) p.PrecioBulto = null;
         if (req.PrecioBultoOtro.HasValue) p.PrecioBultoOtro = req.PrecioBultoOtro.Value;

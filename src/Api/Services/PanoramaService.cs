@@ -484,6 +484,8 @@ public class PanoramaService
             from i in _db.CafeVentaItems.AsNoTracking()
             join v in VentasCafeBase(d, h) on i.VentaId equals v.Id
             where i.Categoria == "CAFE"
+                  // 2026-09-29: el café tercerizado (FT) no suma a los kilos, igual que la balanza.
+                  && !(i.ProductoNav != null && i.ProductoNav.Tercerizado)
             select new { i.GramosDescontados, v.TipoComprobante }
         ).ToListAsync(ct);
 
@@ -533,6 +535,7 @@ public class PanoramaService
                   && !_db.CafeSaldosMigracion.Any(sm => sm.VentaId == v.Id)
                   && v.Fecha >= iniVentana && v.Fecha < finVentana
                   && i.Categoria == "CAFE"
+                  && !(i.ProductoNav != null && i.ProductoNav.Tercerizado)
             select new { v.Fecha, i.GramosDescontados, v.TipoComprobante }
         ).ToListAsync(ct);
 

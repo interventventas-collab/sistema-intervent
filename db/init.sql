@@ -7972,3 +7972,14 @@ IF COL_LENGTH('MeliOrders','FinOtros') IS NULL ALTER TABLE MeliOrders ADD FinOtr
 IF COL_LENGTH('MeliOrders','FinNeto') IS NULL ALTER TABLE MeliOrders ADD FinNeto DECIMAL(18,2) NULL;
 IF COL_LENGTH('MeliOrders','FinConsultadoAt') IS NULL ALTER TABLE MeliOrders ADD FinConsultadoAt DATETIME2 NULL;
 GO
+
+-- 2026-09-29: café tercerizado (no suma a kilos vendidos) + precio propio de ½ y ¼ kg.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Tercerizado' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD Tercerizado BIT NOT NULL DEFAULT 0;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'PrecioMedioKg' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD PrecioMedioKg DECIMAL(18,2) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'PrecioCuartoKg' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD PrecioCuartoKg DECIMAL(18,2) NULL;
+GO
