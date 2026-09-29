@@ -7,9 +7,13 @@ se actualiza sola, sin rebuild ni corte.
 
 Reglas de precio (pedido del usuario 28/09/2026), SIEMPRE por 1 unidad, con IVA:
   - CAFE: lista MAYORISTA (tipo OTRO) del kg: PrecioOtro (o futuro vigente) ?? PrecioBar ?? Pvp1..., + IVA.
-  - Resto: 10% menos que MercadoLibre por unidad y 10% menos que el OEM -> el menor de los dos.
-    MeLi: solo publicaciones activas de 1 unidad (sin packs).
-  - Sin referencia, o si la regla deja el precio por debajo del costo + IVA -> sin precio ("Consulta").
+  - Resto (29/09/2026): el MAS BARATO entre su precio del sistema (lista OTRO + IVA; si tiene OEM,
+    el OEM), MercadoLibre -10% por unidad y OEM -10%, sin bajar nunca del costo + IVA.
+    MeLi: solo publicaciones activas de 1 unidad (sin packs). Antes era solo MeLi/OEM -10% y 419
+    productos salian mas caros en la web que en el mostrador.
+  - Si ninguna opcion queda por arriba del costo, o no hay ninguna -> sin precio ("Consulta").
+  - Costo de $1/$2 = mal cargado: se toma como desconocido. Un precio del sistema menor al 30% de
+    MeLi/OEM tambien se descarta (mal cargado, ej. tapas Col Box a $2).
 
 Uso: python3 scripts/generar_catalogo_frikaf.py
 """
@@ -111,7 +115,9 @@ def categoria(marca, nombre, cat):
 
 
 def redondear(v):
-    return round(v / 10) * 10 if v < 2000 else round(v / 100) * 100
+    # Hacia abajo, para no pasarse del precio que gano.
+    paso = 1 if v < 100 else 10 if v < 2000 else 100
+    return int(v // paso * paso)
 
 
 def lindo(nombre):
@@ -128,6 +134,8 @@ def main():
         iva = num(iva) or 21.0
         f_iva = 1 + iva / 100
         costo_c_iva = (num(costo) or 0) * f_iva
+        if costo_c_iva <= 2 * f_iva:
+            costo_c_iva = 0  # costo de $1/$2: mal cargado
 
         if cat == "CAFE":
             # Lista MAYORISTA = tipo OTRO, formato 1 kg (misma cadena que CafePricingService).
@@ -135,13 +143,20 @@ def main():
                                       num(pvp1), num(pvp2), num(pkg)) if x), None)
             precio = base * f_iva if base else None
         else:
-            refs = [x * 0.9 for x in (num(ml_unit), num(oem)) if x]
-            precio = min(refs) if refs else None
-            if precio and costo_c_iva > 0 and precio < costo_c_iva:
-                precio = None  # la regla lo deja a perdida: mejor consultar
+            externos = [x * 0.9 for x in (num(ml_unit), num(oem)) if x]
+            if num(oem):
+                propio = num(oem)  # con OEM, el sistema cobra el OEM (CafePricingService)
+            else:
+                base = next((x for x in (num(p_otro_fut) or num(p_otro), num(p_bar_fut) or num(p_bar),
+                                          num(pvp1), num(pvp2)) if x), None)
+                propio = base * f_iva if base else None
+            if propio and externos and propio < 0.3 * min(externos):
+                propio = None  # precio del sistema mal cargado
+            opciones = [x for x in externos + ([propio] if propio else []) if x >= costo_c_iva]
+            precio = min(opciones) if opciones else None
         ml = num(ml_unit)
         if precio:
-            precio = redondear(precio)
+            precio = max(redondear(precio), int(-(-costo_c_iva // 1)))
             if not ml or ml <= precio:
                 ml = None
         else:
