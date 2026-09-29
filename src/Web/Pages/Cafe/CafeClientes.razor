@@ -923,6 +923,17 @@
                                     <span>% de los kg del mes, en kg del mismo café · se redondea para arriba y lo podés cambiar</span>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <label style="display: flex; align-items: center; gap: 0.3rem;">
+                                        <input type="checkbox" @bind="bonifForm.AvisarEnCadaVenta" /> En cada venta, avisar por WhatsApp lo que lleva y la bonificación a:
+                                    </label>
+                                    @foreach (var per in AvisoPersonasConWa)
+                                    {
+                                        var sel = bonifForm.AvisarPersonaIds.Contains(per.Id);
+                                        <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.15rem 0.55rem; @(sel ? "background:#111827; color:white; border-color:#111827;" : "")"
+                                                @onclick="() => { if (sel) bonifForm.AvisarPersonaIds.Remove(per.Id); else bonifForm.AvisarPersonaIds.Add(per.Id); }">@(sel ? "✓ " : "")@per.Nombre</button>
+                                    }
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
                                     <span>Cuenta desde el mes</span>
                                     <input class="form-control" style="width: 10rem; font-size: 0.82rem;" type="month" value="@bonifForm.Desde" @onchange="@(e => bonifForm.Desde = e.Value?.ToString() ?? "")" />
                                     <label style="display: flex; align-items: center; gap: 0.3rem; margin-left: 0.8rem;">
@@ -960,6 +971,12 @@
                                     <span>@BonifKg(bp.PctMensual)% a fin de mes en kg de @bp.ProductoKgSku · </span>
                                 }
                                 <span>desde @BonifMesLabel(bp.Desde)</span>
+                                @if (bp.AvisarEnCadaVenta && bp.AvisarPersonaIds.Count > 0)
+                                {
+                                    <span> · cada venta se la avisa por WhatsApp a @string.Join(", ", bp.AvisarPersonaIds.Select(AvisoNombrePersona))</span>
+                                    <button type="button" class="btn btn-link" style="font-size: 0.75rem; padding: 0 0 0 0.3rem;"
+                                            @onclick="BonifProbarAviso" disabled="@bonifGuardando">probar con la última venta</button>
+                                }
                             </div>
 
                             <div style="font-size: 0.85rem; color: #111827; line-height: 1.8;">
@@ -1065,6 +1082,147 @@
                         @if (!string.IsNullOrEmpty(bonifError))
                         {
                             <p style="color: #dc2626; font-size: 0.78rem; margin: 0.4rem 0 0;">@bonifError</p>
+                        }
+                    </div>
+                }
+
+                @* ═══════════════ 2026-09-29 · Sección 6: Avisos por WhatsApp ═══════════════
+                     Mandarle a Gabriel (o a quien se elija de la libretita de personas) lo que debe
+                     este cliente, con cada comprobante sin pagar: ahora, un día, o que se repita.
+                     Si la persona no escribió en 24 hs, WhatsApp no deja: queda esperando y sale
+                     apenas escriba. Lógica en ClienteAvisosWaService. *@
+                @if (isEditing && editingId is > 0)
+                {
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.1rem; margin-top: 1rem;">
+                        <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #e2e8f0;">
+                            <span style="background: #f1f5f9; color: #334155; font-size: 0.78rem; padding: 0.28rem 0.7rem; border-radius: 6px; font-weight: 700;">
+                                📲 6 · Avisos por WhatsApp
+                            </span>
+                            <span style="font-size: 0.78rem; color: #6b7280;">lo que debe este cliente, con cada comprobante sin pagar</span>
+                        </div>
+
+                        @if (avisosCargando)
+                        {
+                            <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Cargando…</p>
+                        }
+                        else if (avisos is not null)
+                        {
+                            <div style="display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.82rem; color: #111827;">
+                                <div style="display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
+                                    <span style="color: #6b7280;">A quién:</span>
+                                    @if (AvisoPersonasConWa.Count == 0)
+                                    {
+                                        <span style="color: #6b7280;">nadie de la libretita de personas tiene WhatsApp cargado (se carga en Automatizaciones).</span>
+                                    }
+                                    @foreach (var per in AvisoPersonasConWa)
+                                    {
+                                        var sel = avisoSel.Contains(per.Id);
+                                        <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.15rem 0.55rem; @(sel ? "background:#111827; color:white; border-color:#111827;" : "")"
+                                                @onclick="() => { if (sel) avisoSel.Remove(per.Id); else avisoSel.Add(per.Id); }">@(sel ? "✓ " : "")@per.Nombre</button>
+                                    }
+                                    <button type="button" class="btn btn-primary" style="font-size: 0.75rem; padding: 0.2rem 0.7rem; margin-left: 0.4rem;"
+                                            @onclick="AvisoMandarAhora" disabled="@avisoGuardando">Mandar ahora</button>
+                                    <button type="button" class="btn btn-link" style="font-size: 0.75rem; padding: 0;"
+                                            @onclick="() => avisoVerPreview = !avisoVerPreview">@(avisoVerPreview ? "ocultar mensaje" : "ver cómo le llega")</button>
+                                </div>
+                                @if (avisoVerPreview && !string.IsNullOrWhiteSpace(avisos.Preview))
+                                {
+                                    <div style="white-space: pre-wrap; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.5rem 0.7rem; font-size: 0.78rem; max-height: 260px; overflow-y: auto;">@avisos.Preview.Replace("*", "").Replace("_", "")</div>
+                                }
+
+                                <div style="display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
+                                    <span style="color: #6b7280;">Programar:</span>
+                                    @foreach (var (val, lbl) in new[] { ("UNA_VEZ", "Un día"), ("SEMANAL", "Todas las semanas"), ("MENSUAL", "Todos los meses") })
+                                    {
+                                        var sel = avisoProg.Frecuencia == val;
+                                        <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.15rem 0.55rem; @(sel ? "background:#111827; color:white; border-color:#111827;" : "")"
+                                                @onclick="() => avisoProg.Frecuencia = val">@lbl</button>
+                                    }
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
+                                    @if (avisoProg.Frecuencia == "UNA_VEZ")
+                                    {
+                                        <span>el día</span>
+                                        <input class="form-control" type="date" style="width: 10rem; font-size: 0.8rem;"
+                                               value="@avisoProg.Fecha" @onchange="@(e => avisoProg.Fecha = e.Value?.ToString())" />
+                                    }
+                                    else if (avisoProg.Frecuencia == "SEMANAL")
+                                    {
+                                        <span>los</span>
+                                        @for (var d = 1; d <= 7; d++)
+                                        {
+                                            var dd = d;
+                                            var sel = avisoProg.DiaSemana == dd;
+                                            <button type="button" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.12rem 0.45rem; @(sel ? "background:#111827; color:white; border-color:#111827;" : "")"
+                                                    @onclick="() => avisoProg.DiaSemana = dd">@AvisoDias[dd]</button>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span>el día</span>
+                                        <input class="form-control" type="number" min="1" max="28" style="width: 4.5rem; font-size: 0.8rem;" @bind="avisoProg.DiaMes" />
+                                        <span>de cada mes</span>
+                                    }
+                                    <span>a las</span>
+                                    <input class="form-control" type="time" style="width: 7rem; font-size: 0.8rem;"
+                                           value="@avisoProg.Hora" @onchange="@(e => avisoProg.Hora = e.Value?.ToString() ?? "")" />
+                                    <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.2rem 0.7rem;"
+                                            @onclick="AvisoProgramar" disabled="@avisoGuardando">Programar</button>
+                                </div>
+
+                                @if (avisos.Programados.Count > 0)
+                                {
+                                    <div style="border-top: 1px solid #f1f5f9; padding-top: 0.4rem;">
+                                        @foreach (var ap in avisos.Programados)
+                                        {
+                                            <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; padding: 0.2rem 0; @(ap.Activo ? "" : "color:#9ca3af;")">
+                                                <span>
+                                                    <strong style="font-weight: 600;">@ap.Descripcion</strong>
+                                                    · a @(ap.Personas.Count == 0 ? "nadie" : string.Join(", ", ap.Personas))
+                                                    @if (ap.Activo && ap.ProximoEnvioAr is DateTime px) { <span> · próximo @px.ToString("dd/MM HH:mm")</span> }
+                                                    @if (!ap.Activo) { <span> · @(ap.ProximoEnvioAr == null && ap.UltimoEnvioAr != null ? "ya salió" : "pausado")</span> }
+                                                    @if (!string.IsNullOrWhiteSpace(ap.UltimoResultado)) { <span style="color: #6b7280;"> · último: @ap.UltimoResultado</span> }
+                                                </span>
+                                                <span style="margin-left: auto; display: flex; gap: 0.3rem;">
+                                                    @if (ap.Frecuencia != "UNA_VEZ" || ap.Activo)
+                                                    {
+                                                        <button type="button" class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.1rem 0.45rem;"
+                                                                @onclick="() => AvisoCambiarActivo(ap)" disabled="@avisoGuardando">@(ap.Activo ? "Pausar" : "Activar")</button>
+                                                    }
+                                                    <button type="button" class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.1rem 0.45rem; color: #dc2626;"
+                                                            @onclick="() => AvisoBorrar(ap)" disabled="@avisoGuardando" title="Borrar este envío programado">🗑</button>
+                                                </span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
+                                @if (avisos.UltimosEnvios.Count > 0)
+                                {
+                                    <div style="border-top: 1px solid #f1f5f9; padding-top: 0.4rem; font-size: 0.76rem; color: #374151;">
+                                        <div style="color: #6b7280; margin-bottom: 0.15rem;">Últimos envíos</div>
+                                        @foreach (var en in avisos.UltimosEnvios)
+                                        {
+                                            <div>
+                                                @en.FechaAr.ToString("dd/MM HH:mm") · @en.Destino ·
+                                                @switch (en.Estado)
+                                                {
+                                                    case "ENVIADO": <span>✓ enviado</span> break;
+                                                    case "ESPERANDO": <strong style="color: #b45309;">⏳ esperando que escriba</strong> break;
+                                                    case "PENDIENTE": <span>por salir</span> break;
+                                                    case "CANCELADO": <span style="color: #6b7280;">no hizo falta</span> break;
+                                                    default: <strong style="color: #b91c1c;">✗ no salió</strong> break;
+                                                }
+                                                <span style="color: #6b7280;"> · @en.Detalle</span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(avisoError))
+                        {
+                            <p style="color: #dc2626; font-size: 0.78rem; margin: 0.4rem 0 0;">@avisoError</p>
                         }
                     </div>
                 }
@@ -1655,7 +1813,98 @@
         await LoadDirecciones(c.Id);
         await LoadPreciosEspeciales(c.Id);
         await LoadMaquinas(c.Id);
+        avisos = null;
+        await LoadAvisos(c.Id);
         await LoadBonificacion(c.Id);
+    }
+
+    // ═════════ 2026-09-29: Avisos por WhatsApp (lo que debe el cliente, a Gabriel u otros) ═════════
+    private CafeAvisosClienteDto? avisos;
+    private bool avisosCargando, avisoGuardando, avisoVerPreview;
+    private string? avisoError;
+    private List<int> avisoSel = new();
+    private CafeAvisoProgramarRequest avisoProg = new();
+    private static readonly string[] AvisoDias = { "", "lun", "mar", "mié", "jue", "vie", "sáb", "dom" };
+
+    private List<CafeAvisoPersonaDto> AvisoPersonasConWa => avisos?.Personas.Where(p => p.TieneWhatsApp).ToList() ?? new();
+    private string AvisoNombrePersona(int id) => avisos?.Personas.FirstOrDefault(p => p.Id == id)?.Nombre ?? "?";
+
+    private async Task LoadAvisos(int clienteId, bool resetSeleccion = true)
+    {
+        avisosCargando = avisos is null; avisoError = null;
+        try
+        {
+            avisos = await Api.GetAvisosClienteAsync(clienteId);
+            if (resetSeleccion)
+            {
+                avisoVerPreview = false;
+                avisoProg = new CafeAvisoProgramarRequest { Fecha = DateTime.UtcNow.AddHours(-3).AddDays(1).ToString("yyyy-MM-dd") };
+                // Para empezar, a Gabriel (pedido del 29/09).
+                avisoSel = AvisoPersonasConWa.Where(p => p.Nombre.StartsWith("Gab", StringComparison.OrdinalIgnoreCase)).Select(p => p.Id).ToList();
+            }
+        }
+        catch (Exception ex) { avisoError = "No se pudieron leer los avisos: " + ex.Message; }
+        finally { avisosCargando = false; }
+    }
+
+    private async Task AvisoMandarAhora()
+    {
+        if (editingId is not > 0) return;
+        if (avisoSel.Count == 0) { avisoError = "Elegí a quién mandárselo."; return; }
+        avisoGuardando = true; avisoError = null;
+        try
+        {
+            if (await Api.EnviarDeudaAhoraAsync(editingId.Value, avisoSel))
+            {
+                ToastService.Success("Listo: sale en menos de un minuto");
+                await LoadAvisos(editingId.Value, false);
+            }
+        }
+        catch (Exception ex) { avisoError = ex.Message; }
+        finally { avisoGuardando = false; }
+    }
+
+    private async Task AvisoProgramar()
+    {
+        if (editingId is not > 0) return;
+        if (avisoSel.Count == 0) { avisoError = "Elegí a quién mandárselo."; return; }
+        avisoProg.PersonaIds = avisoSel.ToList();
+        avisoGuardando = true; avisoError = null;
+        try
+        {
+            if (await Api.ProgramarDeudaAsync(editingId.Value, avisoProg))
+            {
+                ToastService.Success("Envío programado");
+                await LoadAvisos(editingId.Value, false);
+            }
+        }
+        catch (Exception ex) { avisoError = ex.Message; }
+        finally { avisoGuardando = false; }
+    }
+
+    private async Task AvisoCambiarActivo(CafeAvisoProgramadoDto ap)
+    {
+        if (editingId is not > 0) return;
+        avisoGuardando = true; avisoError = null;
+        try
+        {
+            if (await Api.CambiarActivoAvisoDeudaAsync(ap.Id, !ap.Activo)) await LoadAvisos(editingId.Value, false);
+        }
+        catch (Exception ex) { avisoError = ex.Message; }
+        finally { avisoGuardando = false; }
+    }
+
+    private async Task AvisoBorrar(CafeAvisoProgramadoDto ap)
+    {
+        if (editingId is not > 0) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Borrar el envío programado ({ap.Descripcion})?")) return;
+        avisoGuardando = true; avisoError = null;
+        try
+        {
+            if (await Api.BorrarAvisoDeudaAsync(ap.Id)) await LoadAvisos(editingId.Value, false);
+        }
+        catch (Exception ex) { avisoError = ex.Message; }
+        finally { avisoGuardando = false; }
     }
 
     // ═════════ 2026-09-29: Plan de bonificación (Núcleo: D401 cada 5 kg de F1 + 10% mensual) ═════════
@@ -1692,12 +1941,18 @@
         var p = bonif?.Plan;
         var ahora = DateTime.UtcNow.AddHours(-3);
         bonifForm = p is null
-            ? new CafeBonifGuardarPlanRequest { Desde = ahora.ToString("yyyy-MM") }
+            ? new CafeBonifGuardarPlanRequest
+            {
+                Desde = ahora.ToString("yyyy-MM"),
+                // Para empezar, a Gabriel (pedido del 29/09); se pueden sumar más de la libretita.
+                AvisarPersonaIds = AvisoPersonasConWa.Where(x => x.Nombre.StartsWith("Gab", StringComparison.OrdinalIgnoreCase)).Select(x => x.Id).ToList()
+            }
             : new CafeBonifGuardarPlanRequest
             {
                 Activo = p.Activo, SkuKg = p.ProductoKgSku ?? "", KgPorRegalo = p.KgPorRegalo,
                 SkuRegalo = p.ProductoRegaloSku, CantidadRegalo = p.CantidadRegalo,
-                PctMensual = p.PctMensual, Desde = p.Desde
+                PctMensual = p.PctMensual, Desde = p.Desde,
+                AvisarEnCadaVenta = p.AvisarEnCadaVenta, AvisarPersonaIds = p.AvisarPersonaIds.ToList()
             };
         bonifKgPorRegaloStr = BonifKg(bonifForm.KgPorRegalo);
         bonifPctStr = BonifKg(bonifForm.PctMensual);
@@ -1716,6 +1971,22 @@
         {
             var r = await Api.GuardarPlanBonificacionAsync(editingId.Value, bonifForm);
             if (r != null) { bonif = r; bonifEditando = false; bonifMesEdit.Clear(); ToastService.Success("Plan de bonificación guardado"); }
+        }
+        catch (Exception ex) { bonifError = ex.Message; }
+        finally { bonifGuardando = false; }
+    }
+
+    private async Task BonifProbarAviso()
+    {
+        if (editingId is not > 0) return;
+        bonifGuardando = true; bonifError = null;
+        try
+        {
+            if (await Api.ProbarAvisoVentaAsync(editingId.Value))
+            {
+                ToastService.Success("Listo: sale en menos de un minuto");
+                await LoadAvisos(editingId.Value, false);
+            }
         }
         catch (Exception ex) { bonifError = ex.Message; }
         finally { bonifGuardando = false; }

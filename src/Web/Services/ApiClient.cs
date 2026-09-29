@@ -1496,6 +1496,25 @@ public class ApiClient
     public async Task<CafeBonifResumenDto?> GuardarBonificacionMesAsync(int clienteId, int anio, int mes, decimal? kgOtorgado, string? nota)
         => await PutAsync<CafeBonifResumenDto>($"/api/cafe/bonificaciones/cliente/{clienteId}/mes/{anio}/{mes}", new { kgOtorgado, nota });
 
+    // 2026-09-29: avisos por WhatsApp de la ficha (lo que debe el cliente, a Gabriel u otros).
+    public async Task<CafeAvisosClienteDto?> GetAvisosClienteAsync(int clienteId)
+        => await GetAsync<CafeAvisosClienteDto>($"/api/cafe/cliente-avisos/cliente/{clienteId}");
+
+    public async Task<bool> EnviarDeudaAhoraAsync(int clienteId, List<int> personaIds)
+        => await PostAsync<object>($"/api/cafe/cliente-avisos/cliente/{clienteId}/enviar-ahora", new { personaIds }) is not null;
+
+    public async Task<bool> ProgramarDeudaAsync(int clienteId, CafeAvisoProgramarRequest req)
+        => await PostAsync<object>($"/api/cafe/cliente-avisos/cliente/{clienteId}/programar", req) is not null;
+
+    public async Task<bool> ProbarAvisoVentaAsync(int clienteId)
+        => await PostAsync<object>($"/api/cafe/cliente-avisos/cliente/{clienteId}/probar-aviso-venta", new { }) is not null;
+
+    public async Task<bool> CambiarActivoAvisoDeudaAsync(int avisoId, bool activo)
+        => await PutAsync<object>($"/api/cafe/cliente-avisos/{avisoId}/activo", new { activo }) is not null;
+
+    public async Task<bool> BorrarAvisoDeudaAsync(int avisoId)
+        => await DeleteAsync($"/api/cafe/cliente-avisos/{avisoId}");
+
     /// <summary>Asigna un código interno correlativo al cliente (max + 1).</summary>
     public async Task<CafeClienteDto?> AsignarCodigoInternoAsync(int id)
         => await PostAsync<CafeClienteDto>($"/api/cafe/clientes/{id}/asignar-codigo-interno", new { });

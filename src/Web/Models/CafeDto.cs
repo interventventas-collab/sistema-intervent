@@ -2470,6 +2470,8 @@ public class CafeBonifPlanDto
     public decimal PctMensual { get; set; }
     /// <summary>yyyy-MM</summary>
     public string Desde { get; set; } = "";
+    public bool AvisarEnCadaVenta { get; set; }
+    public List<int> AvisarPersonaIds { get; set; } = new();
 }
 
 public class CafeBonifMesDto
@@ -2524,4 +2526,54 @@ public class CafeBonifGuardarPlanRequest
     public int CantidadRegalo { get; set; } = 1;
     public decimal PctMensual { get; set; } = 10m;
     public string Desde { get; set; } = "";
+    public bool AvisarEnCadaVenta { get; set; }
+    public List<int> AvisarPersonaIds { get; set; } = new();
+}
+
+// 2026-09-29: "Avisos por WhatsApp" de la ficha (espejo de CafeClienteAvisosController).
+public class CafeAvisoPersonaDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public bool TieneWhatsApp { get; set; }
+}
+
+public class CafeAvisoProgramadoDto
+{
+    public int Id { get; set; }
+    public string Frecuencia { get; set; } = "";
+    public string Descripcion { get; set; } = "";
+    public List<int> PersonaIds { get; set; } = new();
+    public List<string> Personas { get; set; } = new();
+    public bool Activo { get; set; }
+    public DateTime? ProximoEnvioAr { get; set; }
+    public DateTime? UltimoEnvioAr { get; set; }
+    public string? UltimoResultado { get; set; }
+}
+
+public class CafeAvisoEnvioDto
+{
+    public DateTime FechaAr { get; set; }
+    public string Destino { get; set; } = "";
+    /// <summary>PENDIENTE | ESPERANDO | ENVIADO | ERROR | CANCELADO</summary>
+    public string Estado { get; set; } = "";
+    public string? Detalle { get; set; }
+}
+
+public class CafeAvisosClienteDto
+{
+    public List<CafeAvisoPersonaDto> Personas { get; set; } = new();
+    public List<CafeAvisoProgramadoDto> Programados { get; set; } = new();
+    public List<CafeAvisoEnvioDto> UltimosEnvios { get; set; } = new();
+    public string? Preview { get; set; }
+}
+
+public class CafeAvisoProgramarRequest
+{
+    public string Frecuencia { get; set; } = "SEMANAL";
+    public string? Fecha { get; set; }
+    public int? DiaSemana { get; set; } = 1;
+    public int? DiaMes { get; set; } = 1;
+    public string Hora { get; set; } = "10:00";
+    public List<int> PersonaIds { get; set; } = new();
 }
