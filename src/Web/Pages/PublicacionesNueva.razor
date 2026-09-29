@@ -432,6 +432,13 @@
     .p2-fotos .btn.meli { background: #15803d; border-color: #15803d; color: #fff; }
     .p2-fotos .btn.copiar { background: #1d4f80; border-color: #1d4f80; color: #fff; }
     .p2-fotos .btn[disabled] { opacity: .45; cursor: default; }
+    .p2-fotos .pic .btns button.on { background: #1d4f80; color: #fff; border-color: #1d4f80; }
+    .p2-fotos .pack { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .6rem;
+                      padding: .5rem .6rem; background: #fff; border: 1px solid #dbe3ee; border-radius: .45rem; }
+    .p2-fotos .pack input[type=number] { width: 4rem; padding: .3rem .4rem; border: 1px solid #cbd5e1; border-radius: .3rem; }
+    .p2-fotos .pack .res { flex-basis: 100%; display: flex; gap: .8rem; align-items: flex-start; flex-wrap: wrap; }
+    .p2-fotos .pack .res img { width: 240px; height: 240px; object-fit: contain; border: 1px solid #e3e7e0; border-radius: .4rem; background: #fff; }
+    .p2-fotos .pack .res > div { display: flex; flex-direction: column; gap: .4rem; align-items: flex-start; max-width: 360px; }
     .p2-fotos .link { flex: 1; min-width: 240px; max-width: 460px; padding: .4rem .6rem; font-size: .75rem;
                       border: 1px solid #cbd5e1; border-radius: .4rem; }
     .p2-fotos .herm { margin-top: .7rem; border-top: 1px dashed #cbd5e1; padding-top: .6rem; }
@@ -1523,6 +1530,19 @@
                                                 <button title="Mover para atrás" disabled="@(idx == fotosEdit.Count - 1 || fotosBloqueadas)"
                                                         @onclick="() => MoverFoto(idx, 1)">▶</button>
                                             </span>
+                                            @* 2026-09-28 · copiar el enlace (para pegarla en otra publicación) y armar un pack con ella *@
+                                            <span class="btns">
+                                                @if (!f.EsNueva)
+                                                {
+                                                    <button title="Copiar el enlace de esta foto, para pegarlo en otra publicación"
+                                                            @onclick="() => CopiarEnlaceFoto(f)">🔗</button>
+                                                }
+                                                @if (!fotosBloqueadas)
+                                                {
+                                                    <button title="Armar una foto de pack (2, 3, 6... unidades) repitiendo esta"
+                                                            class="@(packFuente == f ? "on" : "")" @onclick="() => ElegirFuentePack(f, it)">🧩 pack</button>
+                                                }
+                                            </span>
                                         </div>
                                     }
                                     @if (!fotosBloqueadas)
@@ -1535,10 +1555,35 @@
                                     }
                                 </div>
 
+                                @if (packFuente is not null && !fotosBloqueadas)
+                                {
+                                    <div class="pack">
+                                        <span class="cnt"><b>🧩 Armar foto de pack</b> con la foto elegida · cuántas unidades:</span>
+                                        <input type="number" min="2" max="12" @bind="packCantidad" disabled="@packArmando" />
+                                        <button class="btn copiar" disabled="@packArmando" @onclick="ArmarPack">@(packArmando ? "Armando…" : "Armar")</button>
+                                        <button class="btn" disabled="@packArmando" @onclick="() => { packFuente = null; packResultado = null; }">Cancelar</button>
+                                        @if (packResultado is not null)
+                                        {
+                                            <div class="res">
+                                                <img src="@packResultado" alt="" />
+                                                <div>
+                                                    @if (!string.IsNullOrEmpty(packAviso))
+                                                    {
+                                                        <div class="aviso err">@packAviso</div>
+                                                    }
+                                                    <button class="btn meli" @onclick="() => UsarPack(true)">★ Ponerla de portada</button>
+                                                    <button class="btn" @onclick="() => UsarPack(false)">＋ Agregarla al final</button>
+                                                    <span class="cnt">Queda como foto NUEVA: se sube cuando tocás "Guardar en MercadoLibre".</span>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
                                 @if (!fotosBloqueadas)
                                 {
                                     <div class="pie">
-                                        <input class="link" placeholder="Pegá el enlace de una foto de cualquier página (http…)"
+                                        <input class="link" placeholder="Pegá el enlace de una foto (o varios, separados por espacio)"
                                                @bind="fotoLink" @bind:event="oninput" disabled="@fotoTrayendo"
                                                @onkeydown="@(async e => { if (e.Key == "Enter") await AgregarFotoPorLink(); })" />
                                         <button class="btn" disabled="@fotoTrayendo" @onclick="AgregarFotoPorLink">
@@ -1549,6 +1594,11 @@
 
                                 <div class="pie">
                                     <span class="cnt">@fotosEdit.Count foto@(fotosEdit.Count == 1 ? "" : "s") · máx. 10 MB cada una (JPG o PNG)</span>
+                                    @if (fotosEdit.Any(x => !x.EsNueva))
+                                    {
+                                        <button class="btn" title="Copia los enlaces de todas las fotos. En otra publicación los pegás en «Agregar por enlace» y entran todas juntas."
+                                                @onclick="CopiarTodosLosEnlaces">🔗 Copiar enlaces de todas</button>
+                                    }
                                     @if (!fotosBloqueadas)
                                     {
                                         <button class="btn meli" disabled="@(fotosGuardando || !FotosCambiaron)"
@@ -2527,6 +2577,7 @@
         hermanasElegidas.Clear();
         fotosResultado = null;
         fotoLink = "";
+        packFuente = null; packResultado = null; packAviso = null;
         fotosCargando = true;
         StateHasChanged();
         try
@@ -2589,28 +2640,120 @@
 
     private async Task AgregarFotoPorLink()
     {
-        var url = (fotoLink ?? "").Trim();
-        if (string.IsNullOrEmpty(url)) return;
-        if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        // 2026-09-28: acepta varios enlaces juntos (lo que copia "🔗 Copiar enlaces de todas").
+        var urls = (fotoLink ?? "").Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(u => u.Trim()).Where(u => u.Length > 0).ToList();
+        if (urls.Count == 0) return;
+        if (urls.Any(u => !u.StartsWith("http", StringComparison.OrdinalIgnoreCase)))
         {
-            ToastService.Error("Pegá un enlace que empiece con http…");
+            ToastService.Error("Pegá enlaces que empiecen con http…");
             return;
         }
         fotoTrayendo = true;
         StateHasChanged();
+        var fallaron = 0;
         try
         {
-            var (dataUri, error) = await Api.FetchImageFromUrlAsync(url);
-            if (string.IsNullOrEmpty(dataUri))
+            foreach (var url in urls)
             {
-                ToastService.Error(error ?? "No se pudo traer la foto de ese enlace.");
-                return;
+                var (dataUri, error) = await Api.FetchImageFromUrlAsync(url);
+                if (string.IsNullOrEmpty(dataUri))
+                {
+                    fallaron++;
+                    if (urls.Count == 1) ToastService.Error(error ?? "No se pudo traer la foto de ese enlace.");
+                    continue;
+                }
+                fotosEdit.Add(new FotoEdit { DataUri = dataUri, Preview = dataUri });
+                StateHasChanged();
             }
-            fotosEdit.Add(new FotoEdit { DataUri = dataUri, Preview = dataUri });
-            fotoLink = "";
+            if (urls.Count > 1)
+            {
+                if (fallaron == 0) ToastService.Success($"Listo: {urls.Count} fotos agregadas. Falta tocar «Guardar en MercadoLibre».");
+                else ToastService.Error($"{fallaron} de {urls.Count} enlaces no se pudieron traer.");
+            }
+            if (fallaron == 0) fotoLink = "";
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { fotoTrayendo = false; StateHasChanged(); }
+    }
+
+    // ─── 2026-09-28 · copiar enlaces de fotos + armar foto de pack ───
+
+    /// <summary>MeLi guarda la foto en varios tamaños; la "-O" es la chica. La "-F" es la grande.</summary>
+    private static string FotoGrande(string url) => url.Replace("-O.", "-F.");
+
+    private async Task CopiarEnlaceFoto(FotoEdit f)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", FotoGrande(f.Preview));
+            ToastService.Success("Enlace copiado. En la otra publicación pegalo en «Agregar por enlace».");
+        }
+        catch { ToastService.Error("No se pudo copiar el enlace."); }
+    }
+
+    private async Task CopiarTodosLosEnlaces()
+    {
+        var links = fotosEdit.Where(x => !x.EsNueva).Select(x => FotoGrande(x.Preview)).ToList();
+        try
+        {
+            // Separados por espacio: un campo de una línea le borra los "enter" y pegaría los enlaces juntos.
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", string.Join(" ", links));
+            ToastService.Success($"{links.Count} enlaces copiados. En la otra publicación pegalos en «Agregar por enlace» y entran todas.");
+        }
+        catch { ToastService.Error("No se pudieron copiar los enlaces."); }
+    }
+
+    private FotoEdit? packFuente;
+    private int packCantidad = 3;
+    private bool packArmando;
+    private string? packResultado, packAviso;
+
+    private void ElegirFuentePack(FotoEdit f, ApiClient.PubV2Fila it)
+    {
+        packFuente = f;
+        packResultado = null;
+        packAviso = null;
+        // Si la publicación descuenta N de un solo producto, la cantidad ya viene puesta.
+        if (it.Receta.Count == 1 && it.Receta[0].Cantidad is >= 2 and <= 12)
+            packCantidad = (int)it.Receta[0].Cantidad;
+    }
+
+    private async Task ArmarPack()
+    {
+        if (packFuente is null || packArmando) return;
+        if (packCantidad < 2 || packCantidad > 12) { ToastService.Error("La cantidad tiene que ser entre 2 y 12."); return; }
+        packArmando = true;
+        packResultado = null;
+        packAviso = null;
+        StateHasChanged();
+        try
+        {
+            var dataUri = packFuente.DataUri;
+            if (string.IsNullOrEmpty(dataUri))
+            {
+                var (du, err) = await Api.FetchImageFromUrlAsync(FotoGrande(packFuente.Preview));
+                if (string.IsNullOrEmpty(du)) { ToastService.Error(err ?? "No se pudo leer la foto."); return; }
+                dataUri = du;
+            }
+            var (res, aviso, error) = await Api.ArmarFotoPackAsync(dataUri, packCantidad);
+            if (res is null) { ToastService.Error(error ?? "No se pudo armar la foto."); return; }
+            packResultado = res;
+            packAviso = aviso;
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo armar la foto: " + ex.Message); }
+        finally { packArmando = false; StateHasChanged(); }
+    }
+
+    private void UsarPack(bool portada)
+    {
+        if (packResultado is null) return;
+        var nueva = new FotoEdit { DataUri = packResultado, Preview = packResultado };
+        if (portada) fotosEdit.Insert(0, nueva); else fotosEdit.Add(nueva);
+        packFuente = null;
+        packResultado = null;
+        packAviso = null;
+        ToastService.Info("Agregada. Tocá «Guardar en MercadoLibre» para subirla.");
     }
 
     private async Task SubirFotos(InputFileChangeEventArgs e)

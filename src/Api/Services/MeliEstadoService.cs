@@ -175,6 +175,7 @@ public class MeliEstadoService
             return new Resultado(false, "No encuentro esta publicación en el sistema.", null, null);
         if (item.Status == "deleted")
             return new Resultado(true, "Ya estaba eliminada.", "deleted", null);
+        var antes = item.Status;   // MarcarEstadoAsync pisa la entidad trackeada
 
         var (token, sinToken) = await TokenAsync(item, ct);
         if (sinToken is not null) return sinToken;
@@ -191,7 +192,7 @@ public class MeliEstadoService
             return new Resultado(false, "Quedó finalizada, pero MercadoLibre no dejó borrarla: " + err, "closed", null);
 
         await MarcarEstadoAsync(meliItemId, "deleted", ct);
-        _logger.LogWarning("[Estado] {Mla} ELIMINADA a mano (estaba {Antes})", meliItemId, item.Status);
+        _logger.LogWarning("[Estado] {Mla} ELIMINADA a mano (estaba {Antes})", meliItemId, antes);
         return new Resultado(true, "Eliminada de MercadoLibre.", "deleted", null);
     }
 
