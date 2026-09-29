@@ -1005,6 +1005,7 @@
                                     <div><span class="wa-ficha-lbl">Dirección:</span> @fichaCliente.Direccion@(string.IsNullOrWhiteSpace(fichaCliente.Localidad) ? "" : $", {fichaCliente.Localidad}")</div>
                                 }
                                 @if (!string.IsNullOrWhiteSpace(fichaCliente.Notas)) { <div class="wa-ficha-notas">📝 @fichaCliente.Notas</div> }
+                                <BonifContador ClienteId="fichaCliente.ClienteId" />
                                 <div class="wa-ficha-acc">
                                     @if (!string.IsNullOrWhiteSpace(fichaCliente.MapeoLink))
                                     {

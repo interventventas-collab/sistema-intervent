@@ -1,0 +1,46 @@
+@* 2026-09-29: contador del plan de bonificación del cliente (Núcleo: D401 cada 5 kg de F1 +
+   10% mensual en kg). Va en el ojito de Ventas y en la ficha del chat. Si el cliente no tiene
+   plan activo no dibuja nada. Las cuentas son de CafeBonificacionesController. *@
+@inject ApiClient Api
+
+@if (resumen?.Vigente == true)
+{
+    var p = resumen.Plan!;
+    <div style="margin-top: 0.35rem; font-size: 0.8rem; line-height: 1.5; color: #374151;">
+        <div><b>🎁 Bonificación</b> · este mes lleva <b>@Kg(resumen.KgMesActual) kg</b> de @p.ProductoKgSku
+            @if (p.PctMensual > 0) { <span style="color: #6b7280;"> · el @Kg(p.PctMensual)% va en @Kg(resumen.PctMesActual) kg</span> }
+        </div>
+        @if (p.ProductoRegaloId != null)
+        {
+            <div>@p.ProductoRegaloSku este mes: @resumen.RegalosGanadosMes ganadas · @resumen.RegalosEntregadosMes entregadas
+                @if (resumen.RegalosPendientes > 0) { <b style="color: #b91c1c;"> · @resumen.RegalosPendientes sin entregar</b> }
+            </div>
+        }
+        @if (p.PctMensual > 0 && resumen.KgAFavor != 0)
+        {
+            <div>A favor sin entregar: <b>@Kg(resumen.KgAFavor) kg de @p.ProductoKgSku</b></div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int ClienteId { get; set; }
+
+    CafeBonifResumenDto? resumen;
+    int cargadoPara;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ClienteId == cargadoPara) return;
+        cargadoPara = ClienteId;
+        resumen = null;
+        if (ClienteId <= 0) return;
+        var pedido = ClienteId;
+        CafeBonifResumenDto? r = null;
+        try { r = await Api.GetBonificacionClienteAsync(pedido); }
+        catch { /* sin plan o sin conexión: no se muestra */ }
+        if (pedido == ClienteId) resumen = r;
+    }
+
+    static string Kg(decimal v) => v.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+}

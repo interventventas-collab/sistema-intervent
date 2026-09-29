@@ -1856,6 +1856,58 @@
                     </div>
                 }
 
+                @* ═══ 2026-09-29: PLAN DE BONIFICACIÓN del cliente (Núcleo) ═══
+                     Cada 5 kg de F1 pagados en ESTA venta → 1 caja D401 bonificada, y los kg de F1
+                     que ganó a fin de mes y todavía no se le dieron. Los botones agregan el renglón
+                     al 100% de descuento, que es lo que el contador reconoce como "entregado". *@
+                @if (bonifVenta?.Vigente == true)
+                {
+                    var bvp = bonifVenta.Plan!;
+                    var bvKg = BonifKgEstaVenta;
+                    var bvCajasFaltan = BonifRegalosFaltanEstaVenta;
+                    var bvKgFavor = BonifKgAFavorRestante;
+                    <div style="margin-top: 0.4rem; font-size: 0.78rem; color: #374151; line-height: 1.6;">
+                        <span style="font-weight: 700;">🎁 Plan de bonificación</span>
+                        <span style="color: #6b7280;"> · este mes lleva @BonifKgTxt(bonifVenta.KgMesActual + bvKg) kg de @bvp.ProductoKgSku</span>
+                        @if (bvp.ProductoRegaloId != null)
+                        {
+                            <div>
+                                Esta venta: @BonifKgTxt(bvKg) kg de @bvp.ProductoKgSku →
+                                le toca@(BonifRegalosTocanEstaVenta == 1 ? "" : "n") @BonifRegalosTocanEstaVenta @bvp.ProductoRegaloSku
+                                @if (bvCajasFaltan > 0)
+                                {
+                                    <button type="button" tabindex="-1" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.1rem 0.5rem; margin-left: 0.3rem;"
+                                            @onclick="() => BonifAgregarRegalo(bvCajasFaltan)">Agregar @bvCajasFaltan @bvp.ProductoRegaloSku bonificada@(bvCajasFaltan == 1 ? "" : "s")</button>
+                                }
+                                else if (BonifRegalosTocanEstaVenta > 0)
+                                {
+                                    <span style="color: #6b7280;"> · ya está@(BonifRegalosTocanEstaVenta == 1 ? "" : "n") cargada@(BonifRegalosTocanEstaVenta == 1 ? "" : "s")</span>
+                                }
+                            </div>
+                            @if (BonifRegalosPendientesRestantes > 0)
+                            {
+                                <div style="color: #b91c1c;">
+                                    @(BonifRegalosPendientesRestantes == 1 ? "Le quedó" : "Le quedaron") @BonifRegalosPendientesRestantes @bvp.ProductoRegaloSku sin dar de ventas anteriores
+                                    @if (bonifVenta.VentasConRegaloPendiente.Count > 0)
+                                    {
+                                        <span style="color: #6b7280;">(@string.Join(" · ", bonifVenta.VentasConRegaloPendiente.Take(3).Select(v => v.Numero)))</span>
+                                    }
+                                    <button type="button" tabindex="-1" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.1rem 0.5rem; margin-left: 0.3rem;"
+                                            @onclick="() => BonifAgregarRegalo(BonifRegalosPendientesRestantes)">Agregar @BonifRegalosPendientesRestantes</button>
+                                </div>
+                            }
+                        }
+                        @if (bvp.PctMensual > 0 && bvKgFavor > 0)
+                        {
+                            <div>
+                                Tiene <strong>@BonifKgTxt(bvKgFavor) kg de @bvp.ProductoKgSku</strong> a favor de meses anteriores
+                                <button type="button" tabindex="-1" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.1rem 0.5rem; margin-left: 0.3rem;"
+                                        @onclick="BonifAgregarKgAFavor">Agregar @BonifKgTxt(bvKgFavor) kg bonificados</button>
+                            </div>
+                        }
+                    </div>
+                }
+
                 @* 2026-07-02: link de Google Maps del domicilio de entrega (override por venta) *@
                                 <div style="margin-top: 0.4rem;">
                                     <label class="form-label" style="font-size: 0.72rem;">📍 Ubicación en Google Maps <span style="font-weight:400; color:#9ca3af;">· opcional</span></label>
@@ -6110,6 +6162,7 @@
     {
         if (preciosEspecialesClienteId == formClienteId) return;
         preciosEspecialesClienteId = formClienteId;
+        await LoadBonifVentaAsync();
         preciosEspeciales = new();
         preciosEspecialesLista = new();
         productosConPacto = new();
@@ -6128,6 +6181,78 @@
             // Si falla la consulta no rompemos la venta: se reintenta en la próxima cotización.
             preciosEspecialesClienteId = -1;
         }
+    }
+
+    // ═════════ 2026-09-29: plan de bonificación del cliente (ver CafeBonificacionesController) ═════════
+    private CafeBonifResumenDto? bonifVenta;
+
+    /// <summary>Se pide junto con los pactos (mismo disparador: cambió el cliente). Al editar una
+    /// venta se la excluye del resumen porque sus renglones ya se cuentan acá en pantalla.</summary>
+    private async Task LoadBonifVentaAsync()
+    {
+        bonifVenta = null;
+        if (formClienteId <= 0) return;
+        try { bonifVenta = await Api.GetBonificacionClienteAsync(formClienteId, editingVentaId); }
+        catch { /* sin plan no se muestra nada; la venta sigue */ }
+    }
+
+    private static decimal BonifKgDe(string? formato, int cantidad) => formato switch
+    {
+        "1KG" => cantidad, "MEDIO" => cantidad * 0.5m, "CUARTO" => cantidad * 0.25m, _ => 0m
+    };
+
+    private static string BonifKgTxt(decimal v) => v.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    /// <summary>Kg PAGADOS del café del plan en esta venta (lo bonificado al 100% no suma).</summary>
+    private decimal BonifKgEstaVenta => bonifVenta?.Plan is { } p
+        ? formItems.Where(i => i.ProductoId == p.ProductoKgId && i.DescuentoPct < 100).Sum(i => BonifKgDe(i.Formato, i.Cantidad))
+        : 0m;
+
+    private int BonifRegalosTocanEstaVenta => bonifVenta?.Plan is { ProductoRegaloId: not null, KgPorRegalo: > 0 } p && BonifKgEstaVenta > 0
+        ? (int)Math.Floor(BonifKgEstaVenta / p.KgPorRegalo) * p.CantidadRegalo
+        : 0;
+
+    private int BonifRegalosPuestos => bonifVenta?.Plan is { ProductoRegaloId: int rid }
+        ? formItems.Where(i => i.ProductoId == rid && i.DescuentoPct >= 100).Sum(i => i.Cantidad)
+        : 0;
+
+    private int BonifRegalosFaltanEstaVenta => Math.Max(0, BonifRegalosTocanEstaVenta - BonifRegalosPuestos);
+
+    /// <summary>Los que quedaron sin dar en ventas anteriores, menos lo que se puso de más en esta.</summary>
+    private int BonifRegalosPendientesRestantes => bonifVenta is null ? 0
+        : Math.Max(0, bonifVenta.RegalosPendientes - Math.Max(0, BonifRegalosPuestos - BonifRegalosTocanEstaVenta));
+
+    /// <summary>Kg ganados en meses cerrados que faltan dar, descontando lo que ya se puso en esta venta.</summary>
+    private decimal BonifKgAFavorRestante => bonifVenta?.Plan is { } p
+        ? bonifVenta.KgAFavor - formItems.Where(i => i.ProductoId == p.ProductoKgId && i.DescuentoPct >= 100).Sum(i => BonifKgDe(i.Formato, i.Cantidad))
+        : 0m;
+
+    private async Task BonifAgregarRegalo(int cantidad)
+    {
+        if (bonifVenta?.Plan?.ProductoRegaloId is not int rid || cantidad <= 0) return;
+        formItems.Add(new CafeCotizarItemRequest { ProductoId = rid, Formato = "UNIT", Cantidad = cantidad, DescuentoPct = 100m });
+        await Cotizar();
+    }
+
+    /// <summary>Agrega los kg a favor del café del plan al 100%: los kilos enteros en 1 kg y el
+    /// resto en ½ / ¼. Copia molienda y envase del renglón pagado de ese café, si hay.</summary>
+    private async Task BonifAgregarKgAFavor()
+    {
+        if (bonifVenta?.Plan is not { } p) return;
+        var kg = BonifKgAFavorRestante;
+        if (kg <= 0) return;
+        var modelo = formItems.LastOrDefault(i => i.ProductoId == p.ProductoKgId && i.DescuentoPct < 100);
+        void Add(string formato, int cant) => formItems.Add(new CafeCotizarItemRequest
+        {
+            ProductoId = p.ProductoKgId, Formato = formato, Cantidad = cant, DescuentoPct = 100m,
+            Molienda = modelo?.Molienda, EsDoyPack = modelo?.EsDoyPack ?? false, EsEnvasePlateado = modelo?.EsEnvasePlateado ?? false
+        });
+        var enteros = (int)Math.Floor(kg);
+        var resto = kg - enteros;
+        if (enteros > 0) Add("1KG", enteros);
+        if (resto >= 0.5m) { Add("MEDIO", 1); resto -= 0.5m; }
+        if (resto > 0) Add("CUARTO", (int)Math.Ceiling(resto / 0.25m));
+        await Cotizar();
     }
 
     /// <summary>true si lo que está por agregarse tiene precio pactado con este cliente.</summary>
@@ -7293,6 +7418,8 @@
         formMapeoLink = ""; formGuardarMapeoEnCliente = false; formSumarAlMapa = false;
         ventaDirecciones = new(); formClienteDireccionId = 0;
         formItems = new(); cotizacion = null;
+        // 2026-09-29: venta nueva = volver a pedir pactos y plan de bonificación (aunque sea el mismo cliente).
+        preciosEspecialesClienteId = -1; bonifVenta = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         addMolienda = "EN GRANOS"; addEnvase = "NEGRO";
         productoSearch = ""; productoSearchOpen = false;
