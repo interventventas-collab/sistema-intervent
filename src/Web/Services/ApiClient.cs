@@ -356,10 +356,12 @@ public class ApiClient
     // 2026-08-13: vincular una publicación a un producto del sistema (Cafe_Productos) via componente,
     // con la cantidad que descuenta cada venta. Devuelve el stock resultante en MeLi (para refrescar la UI).
     // Lanza excepción con el mensaje del backend si falla.
-    public async Task<int?> CreateComponenteAsync(string meliItemId, int cafeProductoId, decimal cantidad, string? meliVariationId = null)
+    public async Task<int?> CreateComponenteAsync(string meliItemId, int cafeProductoId, decimal cantidad, string? meliVariationId = null,
+        string? formato = null)
     {
+        // 2026-09-28: formato solo para café (1KG / MEDIO / CUARTO).
         var resp = await PostAsync<ComponenteResultDto>("/api/meli/componente",
-            new { meliItemId, cafeProductoId, cantidad, formato = (string?)null, meliVariationId });
+            new { meliItemId, cafeProductoId, cantidad, formato, meliVariationId });
         return resp?.AvailableQuantity;
     }
 
@@ -5563,7 +5565,9 @@ public class ApiClient
     }
     // ─── 2026-08-25: pantalla NUEVA de publicaciones (/publicaciones-nueva) ───
     public record PubV2Componente(string? Sku, string Nombre, decimal Cantidad, int Stock, int Alcanza, bool Frena,
-        int Id = 0, int ProductoId = 0, decimal Costo = 0m);
+        int Id = 0, int ProductoId = 0, decimal Costo = 0m,
+        // 2026-09-28: solo café: 1KG / MEDIO / CUARTO.
+        string? Formato = null);
     public record PubV2Fila(
         string MeliItemId, string? Sku, string Titulo, string? Thumbnail, string? Permalink,
         decimal Precio, string? Estado, string? Tipo, string? Cuotas, bool EnvioGratis, string? Envio,

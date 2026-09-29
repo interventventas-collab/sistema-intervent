@@ -440,7 +440,9 @@ public class MeliPricePushService
         {
             var pCIva = await PrecioCIvaAsync(c.CafeProductoId);
             if (pCIva == null) continue;
-            sum += pCIva.Value * c.Cantidad;
+            // 2026-09-28: café = precio por kilo × kilos del formato (proporcional).
+            var catComp = (await _db.CafeProductos.FindAsync(new object[] { c.CafeProductoId }, ct))?.Categoria;
+            sum += pCIva.Value * c.Cantidad * KilosPorUnidad(catComp, c.Formato);
             any = true;
         }
         if (!any) return (0m, false);
@@ -597,12 +599,15 @@ public class MeliPricePushService
             return Math.Round(comp.Value.Oem.Costo * comp.Value.Mult, 2);
 
         // 1) Modelo nuevo: MeliItemComponentes
-        var mecs = await (
+        var mecs = (await (
             from c in _db.MeliItemComponentes
             join p in _db.CafeProductos on c.CafeProductoId equals p.Id
             where c.MeliItemId == mi.MeliItemId
-            select new { p.Sku, p.Costo, c.Cantidad, c.CafeProductoId, c.MeliVariationId }
-        ).ToListAsync(ct);
+            select new { p.Sku, p.Costo, c.Cantidad, c.CafeProductoId, c.MeliVariationId, p.Categoria, c.Formato }
+        ).ToListAsync(ct))
+            // 2026-09-28: café = costo por kilo × kilos del formato (½ kg cuesta la mitad).
+            .Select(x => new { x.Sku, Costo = x.Costo * KilosPorUnidad(x.Categoria, x.Formato), x.Cantidad, x.CafeProductoId, x.MeliVariationId })
+            .ToList();
         if (mecs.Count > 0)
         {
             // 2026-09-18: publicación con colores → el costo de UN color, no la suma (ver MeliCostoPorColor).
@@ -638,6 +643,15 @@ public class MeliPricePushService
             return p.Costo * cant;
         }
         return null;
+    }
+
+    /// <summary>2026-09-28: el costo y el precio de un café se guardan POR KILO; una pieza de café en una
+    /// publicación lleva un formato (1KG / MEDIO / CUARTO). Devuelve cuántos kilos es cada unidad de la
+    /// pieza (1 · 0,5 · 0,25). Para lo que no es café devuelve 1 (se cuenta por unidad).</summary>
+    public static decimal KilosPorUnidad(string? categoria, string? formato)
+    {
+        if (!string.Equals(categoria, "CAFE", StringComparison.OrdinalIgnoreCase)) return 1m;
+        return (formato ?? "1KG").ToUpperInvariant() switch { "MEDIO" => 0.5m, "CUARTO" => 0.25m, _ => 1m };
     }
 
     /// <summary>Productos vinculados a las filas-color (variaciones) de una publicación.</summary>

@@ -55,7 +55,9 @@ public class MeliPublicacionesV2Service
     /// del producto y su costo: son los que hacen falta para poder EDITAR la receta desde la fila
     /// (cambiar la cantidad, cambiar el producto) y para marcar los costos que faltan.</summary>
     public record ComponenteDto(string? Sku, string Nombre, decimal Cantidad, int Stock, int Alcanza, bool Frena,
-        int Id = 0, int ProductoId = 0, decimal Costo = 0m);
+        int Id = 0, int ProductoId = 0, decimal Costo = 0m,
+        // 2026-09-28: solo café: 1KG / MEDIO / CUARTO (Stock y Costo ya vienen en ese formato).
+        string? Formato = null);
 
     public record FilaDto(
         string MeliItemId, string? Sku, string Titulo, string? Thumbnail, string? Permalink,
@@ -420,7 +422,7 @@ public class MeliPublicacionesV2Service
             from c in _db.MeliItemComponentes.AsNoTracking()
             join p in _db.CafeProductos.AsNoTracking() on c.CafeProductoId equals p.Id
             where ids.Contains(c.MeliItemId)
-            select new { c.Id, c.MeliItemId, c.CafeProductoId, c.Cantidad, p.Sku, p.Nombre, p.Costo }
+            select new { c.Id, c.MeliItemId, c.CafeProductoId, c.Cantidad, p.Sku, p.Nombre, p.Costo, p.Categoria, c.Formato }
         ).ToListAsync(ct);
 
         var prodIds = comps.Select(c => c.CafeProductoId).Distinct().ToList();
@@ -431,10 +433,19 @@ public class MeliPublicacionesV2Service
         var stockPorProd = await _db.CafeStockPorDeposito.AsNoTracking()
             .Where(s => s.DepositoId == DEPOSITO_9_ABRIL && todosProdIds.Contains(s.ProductoId))
             .ToDictionaryAsync(s => s.ProductoId, s => s.StockUnidades, ct);
+        // 2026-09-28: los cafés tienen el stock en GRAMOS (StockUnidades es 0): hace falta para el "alcanza".
+        var gramosPorProd = await _db.CafeStockPorDeposito.AsNoTracking()
+            .Where(s => s.DepositoId == DEPOSITO_9_ABRIL && todosProdIds.Contains(s.ProductoId))
+            .ToDictionaryAsync(s => s.ProductoId, s => s.StockGramos, ct);
+        // Stock de una pieza en SUS unidades: café = cuántos paquetes de ese formato hay; resto = unidades.
+        int StockPieza(int prodId, string? categoria, string? formato) =>
+            string.Equals(categoria, "CAFE", StringComparison.OrdinalIgnoreCase)
+                ? (int)Math.Floor(gramosPorProd.GetValueOrDefault(prodId, 0m) / (1000m * MeliPricePushService.KilosPorUnidad(categoria, formato)))
+                : stockPorProd.GetValueOrDefault(prodId, 0);
 
         var legacyProds = await _db.CafeProductos.AsNoTracking()
             .Where(p => legacyIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.Sku, p.Nombre, p.Costo })
+            .Select(p => new { p.Id, p.Sku, p.Nombre, p.Costo, p.Categoria })
             .ToDictionaryAsync(p => p.Id, ct);
 
         // ── 3) Config de sincronización ──
@@ -481,15 +492,16 @@ public class MeliPublicacionesV2Service
             if (misComps.Count > 0)
             {
                 // Costo: dedup por SKU (mismo criterio que el motor de precios).
+                // Café: el costo está por kilo → × kilos del formato.
                 costo = misComps.GroupBy(c => c.Sku).Select(g => g.First())
-                    .Sum(c => c.Costo * c.Cantidad);
+                    .Sum(c => c.Costo * MeliPricePushService.KilosPorUnidad(c.Categoria, c.Formato) * c.Cantidad);
 
                 foreach (var c in misComps)
                 {
-                    var stock = stockPorProd.GetValueOrDefault(c.CafeProductoId, 0);
+                    var stock = StockPieza(c.CafeProductoId, c.Categoria, c.Formato);
                     var alcanza = c.Cantidad > 0 ? (int)Math.Floor(stock / c.Cantidad) : 0;
                     receta.Add(new ComponenteDto(c.Sku, c.Nombre, c.Cantidad, stock, alcanza, false,
-                        c.Id, c.CafeProductoId, c.Costo));
+                        c.Id, c.CafeProductoId, c.Costo * MeliPricePushService.KilosPorUnidad(c.Categoria, c.Formato), c.Formato));
                     if (arma is null || alcanza < arma) arma = alcanza;
                 }
                 // Marcar cuál frena (el más escaso). Si empatan, se marcan todos los que empatan.
@@ -498,11 +510,11 @@ public class MeliPublicacionesV2Service
             }
             else if (r.CafeProductoId.HasValue && legacyProds.TryGetValue(r.CafeProductoId.Value, out var lp))
             {
-                var stock = stockPorProd.GetValueOrDefault(r.CafeProductoId.Value, 0);
-                costo = lp.Costo;
+                var stock = StockPieza(r.CafeProductoId.Value, lp.Categoria, r.CafeFormato);
+                costo = lp.Costo * MeliPricePushService.KilosPorUnidad(lp.Categoria, r.CafeFormato);
                 arma = stock;
                 receta.Add(new ComponenteDto(lp.Sku, lp.Nombre, 1m, stock, stock, false,
-                    0, r.CafeProductoId.Value, lp.Costo));
+                    0, r.CafeProductoId.Value, costo ?? lp.Costo, r.CafeFormato));
             }
 
             // Comisión real: comisión + cargo fijo + ENVÍO a tu cargo.
