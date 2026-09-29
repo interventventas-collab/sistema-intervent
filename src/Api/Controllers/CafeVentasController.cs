@@ -1656,6 +1656,19 @@ public class CafeVentasController : ControllerBase
         // asi el numero que ve el operador antes de agregar el item es el que va a cobrar.
         var preciosEspeciales = await CargarPreciosEspecialesAsync(clienteId);
 
+        // 2026-09-29: molienda y envase de la ÚLTIMA vez que llevó cada producto+formato, así el
+        // Modo venta del chat lo suma igual que siempre sin tener que abrir el renglón.
+        var ultimos = await _db.CafeVentaItems
+            .Where(i => i.VentaNav != null
+                        && i.VentaNav.ClienteId == clienteId
+                        && i.VentaNav.Estado != "anulado"
+                        && i.ProductoId != null
+                        && ids.Contains(i.ProductoId!.Value))
+            .OrderByDescending(i => i.VentaNav!.Fecha).ThenByDescending(i => i.Id)
+            .Select(i => new { ProductoId = i.ProductoId!.Value, i.Formato, i.Molienda, i.EsDoyPack, i.EsEnvasePlateado })
+            .Take(500)
+            .ToListAsync();
+
         var result = new List<CafeTopProductoClienteDto>();
         foreach (var g in filtered)
         {
@@ -1663,11 +1676,13 @@ public class CafeVentasController : ControllerBase
             if (p is null) continue;
             var precio = CafePricingService.CalcularPrecioUnitario(p, g.Formato, tipo, settings,
                 CafePricingService.BuscarPrecioEspecial(preciosEspeciales, p.Id, g.Formato));
+            var ult = ultimos.FirstOrDefault(u => u.ProductoId == g.ProductoId && u.Formato == g.Formato);
             result.Add(new CafeTopProductoClienteDto(
                 p.Id, p.Sku, p.Nombre, p.Categoria, p.Marca,
                 g.Formato,
                 g.TimesOrdered, g.TotalQuantity, g.LastPurchase,
-                p.StockGramos, p.StockUnidades, precio));
+                p.StockGramos, p.StockUnidades, precio,
+                ult?.Molienda, ult?.EsDoyPack ?? false, ult?.EsEnvasePlateado ?? false));
         }
         return Ok(result);
     }

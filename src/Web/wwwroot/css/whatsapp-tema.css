@@ -596,6 +596,9 @@
 .wa-dark .wa-mv-det { border-top-color: var(--wad-borde2); }
 .wa-dark .wa-mv-det-lbl { color: var(--wad-txt3); }
 .wa-dark .wa-mv-det-volver { color: var(--wad-txt3); }
+.wa-dark .wa-mv-ficha { background: var(--wad-panel2); border-color: var(--wad-borde2); }
+.wa-dark .wa-mv-ficha-nom { color: var(--wad-txt); }
+.wa-dark .wa-mv-ficha-sub, .wa-dark .wa-mv-ficha-lbl, .wa-dark .wa-mv-linea-cafe { color: var(--wad-txt2); }
 .wa-dark .wa-mv-op { background: var(--wad-panel2); border-color: var(--wad-borde2); color: var(--wad-txt2); }
 .wa-dark .wa-mv-op:hover:not(:disabled) { border-color: #1c6b50; color: #6ee7b7; }
 .wa-dark .wa-mv-op.on { background: #16a34a; border-color: #16a34a; color: #fff; }

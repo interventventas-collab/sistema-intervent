@@ -1143,6 +1143,10 @@ public class CafeTopProductoClienteDto
     public decimal StockGramos { get; set; }
     public int StockUnidades { get; set; }
     public decimal PrecioReferencia { get; set; }
+    // 2026-09-29: cómo lo llevó la última vez (lo usa el Modo venta del chat).
+    public string? Molienda { get; set; }
+    public bool EsDoyPack { get; set; }
+    public bool EsEnvasePlateado { get; set; }
 }
 
 // ===== Combos =====
