@@ -978,6 +978,15 @@
                                             @onclick="BonifProbarAviso" disabled="@bonifGuardando">probar con la última venta</button>
                                 }
                             </div>
+                            @if (bp.AvisarPersonaIds.Count > 0)
+                            {
+                                <div style="margin-bottom: 0.5rem;">
+                                    <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.2rem 0.7rem;"
+                                            @onclick="BonifMandarResumenMes" disabled="@bonifGuardando">
+                                        📲 Mandar lo que va del mes a @string.Join(", ", bp.AvisarPersonaIds.Select(AvisoNombrePersona))
+                                    </button>
+                                </div>
+                            }
 
                             <div style="font-size: 0.85rem; color: #111827; line-height: 1.8;">
                                 <div>
@@ -1971,6 +1980,22 @@
         {
             var r = await Api.GuardarPlanBonificacionAsync(editingId.Value, bonifForm);
             if (r != null) { bonif = r; bonifEditando = false; bonifMesEdit.Clear(); ToastService.Success("Plan de bonificación guardado"); }
+        }
+        catch (Exception ex) { bonifError = ex.Message; }
+        finally { bonifGuardando = false; }
+    }
+
+    private async Task BonifMandarResumenMes()
+    {
+        if (editingId is not > 0) return;
+        bonifGuardando = true; bonifError = null;
+        try
+        {
+            if (await Api.EnviarResumenBonifAsync(editingId.Value))
+            {
+                ToastService.Success("Listo: sale en menos de un minuto");
+                await LoadAvisos(editingId.Value, false);
+            }
         }
         catch (Exception ex) { bonifError = ex.Message; }
         finally { bonifGuardando = false; }

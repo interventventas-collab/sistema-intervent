@@ -1506,6 +1506,9 @@ public class ApiClient
     public async Task<bool> ProgramarDeudaAsync(int clienteId, CafeAvisoProgramarRequest req)
         => await PostAsync<object>($"/api/cafe/cliente-avisos/cliente/{clienteId}/programar", req) is not null;
 
+    public async Task<bool> EnviarResumenBonifAsync(int clienteId)
+        => await PostAsync<object>($"/api/cafe/cliente-avisos/cliente/{clienteId}/enviar-resumen-bonif", new { }) is not null;
+
     public async Task<bool> ProbarAvisoVentaAsync(int clienteId)
         => await PostAsync<object>($"/api/cafe/cliente-avisos/cliente/{clienteId}/probar-aviso-venta", new { }) is not null;
 

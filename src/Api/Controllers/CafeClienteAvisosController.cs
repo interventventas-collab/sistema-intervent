@@ -69,11 +69,12 @@ public class CafeClienteAvisosController : ControllerBase
 
         // Lo último que salió (o está esperando) para este cliente: deuda y avisos de venta.
         var origenDeuda = $"deuda:{clienteId}";
+        var origenMes = $"bonif-mes:{clienteId}";
         var ventasIds = await _db.CafeVentas.AsNoTracking().Where(v => v.ClienteId == clienteId)
             .OrderByDescending(v => v.Id).Take(40).Select(v => v.Id).ToListAsync();
         var origenesVenta = ventasIds.Select(ClienteAvisosWaService.OrigenVenta).ToList();
         var filas = await _db.WhatsAppMensajesProgramados.AsNoTracking()
-            .Where(x => x.Origen == origenDeuda || (x.Origen != null && origenesVenta.Contains(x.Origen)))
+            .Where(x => x.Origen == origenDeuda || x.Origen == origenMes || (x.Origen != null && origenesVenta.Contains(x.Origen)))
             .OrderByDescending(x => x.Id).Take(8).ToListAsync();
         var personasNum = await _db.AutoPersonas.AsNoTracking().Where(p => p.WhatsAppNumero != null).ToListAsync();
         string Quien(string numero)
@@ -86,7 +87,7 @@ public class CafeClienteAvisosController : ControllerBase
             Quien(f.Numero),
             f.Estado == WhatsAppMensajeProgramado.EstadoPendiente && f.Error != null ? "ESPERANDO" : f.Estado,
             // El "esperando" ya lo dice el estado; el motivo se muestra solo si no salió.
-            (f.Origen == origenDeuda ? "Lo que debe" : "Aviso de venta")
+            (f.Origen == origenDeuda ? "Lo que debe" : f.Origen == origenMes ? "Lo que va del mes" : "Aviso de venta")
                 + (f.Estado == WhatsAppMensajeProgramado.EstadoError && !string.IsNullOrWhiteSpace(f.Error) ? " · " + f.Error : "")))
             .ToList();
 
@@ -147,6 +148,15 @@ public class CafeClienteAvisosController : ControllerBase
 
     /// <summary>Manda YA el aviso de venta del plan de bonificación con la última venta del cliente,
     /// para ver cómo le llega a Gabriel sin tener que cargar una venta. Mismo camino que el real.</summary>
+    /// <summary>Manda YA el resumen de lo que va del mes del plan de bonificación (sin venta).</summary>
+    [HttpPost("cliente/{clienteId:int}/enviar-resumen-bonif")]
+    public async Task<IActionResult> EnviarResumenBonif(int clienteId)
+    {
+        var (enviados, error) = await _svc.EncolarResumenBonifAsync(clienteId, User?.Identity?.Name);
+        if (error != null) return BadRequest(new { error });
+        return Ok(new { enviados });
+    }
+
     [HttpPost("cliente/{clienteId:int}/probar-aviso-venta")]
     public async Task<IActionResult> ProbarAvisoVenta(int clienteId)
     {
