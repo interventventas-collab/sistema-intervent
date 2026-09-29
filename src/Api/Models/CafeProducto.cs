@@ -220,6 +220,12 @@ public class CafeProducto
     [Column(TypeName = "decimal(18,2)")] public decimal? PrecioMedioKg { get; set; }
     [Column(TypeName = "decimal(18,2)")] public decimal? PrecioCuartoKg { get; set; }
 
+    /// <summary>2026-09-29: molienda y envase FIJOS (ej. FT siempre "MOLIDO FILTRO" en envase
+    /// "NEGRO"). Null = se elige en cada venta. Envase: NEGRO | PLATEADO | DOY_PACK.
+    /// La cotización los impone aunque la pantalla mande otra cosa.</summary>
+    public string? MoliendaFija { get; set; }
+    public string? EnvaseFijo { get; set; }
+
     /// <summary>Si false, el producto NO se muestra en el buscador de productos del modal Nueva Venta.
     /// Util para productos que solo existen como componentes de combos MeLi (no se venden sueltos).
     /// Se setea automaticamente por el clone de Contabilium para componentes-solo. Default true.</summary>

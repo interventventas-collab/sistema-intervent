@@ -3922,14 +3922,24 @@ public class CafeVentasController : ControllerBase
                 if (descuentaStock) todoOk = false;
             }
 
+            // 2026-09-29: café con molienda / envase FIJOS (ej. FT): mandan esos, venga lo que venga.
+            var moliendaLinea = esCafe && !string.IsNullOrWhiteSpace(prod.MoliendaFija) ? prod.MoliendaFija : NormMolienda(it.Molienda);
+            var doyLinea = it.EsDoyPack && esCafe;
+            var plateadoLinea = it.EsEnvasePlateado && esCafe && !it.EsDoyPack;
+            if (esCafe && !string.IsNullOrWhiteSpace(prod.EnvaseFijo))
+            {
+                doyLinea = prod.EnvaseFijo == "DOY_PACK";
+                plateadoLinea = prod.EnvaseFijo == "PLATEADO";
+            }
+
             cotizadoItems.Add(new CafeCotizadoItemDto(
                 prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad,
                 precioUnit, costoUnit, subtotalLinea,
                 gramosNecesarios, prod.StockGramos, stockUnidadesDisponibleEfectivo,
                 stockOk, aviso,
-                NormMolienda(it.Molienda), it.EsDoyPack && esCafe,
+                moliendaLinea, doyLinea,
                 descPct,
-                it.EsEnvasePlateado && esCafe && !it.EsDoyPack,
+                plateadoLinea,
                 // 2026-09-08: solo se marca como "precio pactado" si el pactado es el que
                 // realmente manda. Si el operador ademas piso el precio a mano, gana la mano.
                 EsPrecioEspecial: precioPactado.HasValue && !it.PrecioUnitarioOverride.HasValue));

@@ -90,7 +90,9 @@ public class CafeProductosController : ControllerBase
         CostoUsdFecha: p.CostoUsdFecha,
         Tercerizado: p.Tercerizado,
         PrecioMedioKg: p.PrecioMedioKg,
-        PrecioCuartoKg: p.PrecioCuartoKg);
+        PrecioCuartoKg: p.PrecioCuartoKg,
+        MoliendaFija: p.MoliendaFija,
+        EnvaseFijo: p.EnvaseFijo);
 
     /// <summary>Búsqueda rápida (solo Id, Sku, Nombre, StockUnidades). Usado por la UI de
     /// edición de componentes MeLi en /cafe/skus-meli (selector de producto).</summary>
@@ -813,6 +815,8 @@ public class CafeProductosController : ControllerBase
             Tercerizado = cat == "CAFE" && req.Tercerizado,
             PrecioMedioKg = cat == "CAFE" && req.PrecioMedioKg > 0 ? req.PrecioMedioKg : null,
             PrecioCuartoKg = cat == "CAFE" && req.PrecioCuartoKg > 0 ? req.PrecioCuartoKg : null,
+            MoliendaFija = cat == "CAFE" ? LimpiarFijo(req.MoliendaFija) : null,
+            EnvaseFijo = cat == "CAFE" ? LimpiarFijo(req.EnvaseFijo) : null,
             PrecioBulto = cat == "OTROS" ? req.PrecioBulto : null,
             PrecioBultoOtro = cat == "OTROS" ? req.PrecioBultoOtro : null,
             // 2026-07-07: formato por defecto al vender. "UNIT"/vacio = Suelto (se guarda null).
@@ -933,6 +937,9 @@ public class CafeProductosController : ControllerBase
         else if (req.ClearPrecioMedioKg) p.PrecioMedioKg = null;
         if (req.PrecioCuartoKg > 0) p.PrecioCuartoKg = req.PrecioCuartoKg;
         else if (req.ClearPrecioCuartoKg) p.PrecioCuartoKg = null;
+        // 2026-09-29: molienda/envase fijos. En el update SIEMPRE vienen (vacío = se eligen en la venta).
+        if (req.MoliendaFija is not null) p.MoliendaFija = LimpiarFijo(req.MoliendaFija);
+        if (req.EnvaseFijo is not null) p.EnvaseFijo = LimpiarFijo(req.EnvaseFijo);
         if (req.PrecioBulto.HasValue) p.PrecioBulto = req.PrecioBulto.Value;
         else if (req.ClearPrecioBulto) p.PrecioBulto = null;
         if (req.PrecioBultoOtro.HasValue) p.PrecioBultoOtro = req.PrecioBultoOtro.Value;
@@ -1182,7 +1189,12 @@ public class CafeProductosController : ControllerBase
         if (v == 10.5m) return 10.5m;
         return 21m;
     }
+
+    /// <summary>2026-09-29: "" o espacios = sin fijo (null).</summary>
+    private static string? LimpiarFijo(string? v)
+        => string.IsNullOrWhiteSpace(v) ? null : v.Trim().ToUpperInvariant();
 }
+
 
 /// <summary>Ids de los productos visibles en pantalla, en el orden en que se ven. Ver ExportExcel.</summary>
 public record ExportProductosRequest(List<int> Ids);

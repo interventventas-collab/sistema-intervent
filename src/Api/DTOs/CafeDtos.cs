@@ -185,7 +185,10 @@ public record CafeProductoDto(
     // 2026-09-29: café tercerizado (no suma a kilos vendidos) + precio propio de ½ y ¼ kg.
     bool Tercerizado = false,
     decimal? PrecioMedioKg = null,
-    decimal? PrecioCuartoKg = null);
+    decimal? PrecioCuartoKg = null,
+    // 2026-09-29: molienda y envase fijos (null = se eligen en la venta).
+    string? MoliendaFija = null,
+    string? EnvaseFijo = null);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,
@@ -241,6 +244,9 @@ public class CreateCafeProductoRequest
     public bool Tercerizado { get; set; }
     public decimal? PrecioMedioKg { get; set; }
     public decimal? PrecioCuartoKg { get; set; }
+    /// <summary>2026-09-29: molienda/envase fijos. Vacío = se eligen en la venta.</summary>
+    public string? MoliendaFija { get; set; }
+    public string? EnvaseFijo { get; set; }
     /// <summary>2026-07-07: formato por defecto al vender (null/"UNIT" = Suelto). Solo OTROS.</summary>
     public string? FormatoPorDefecto { get; set; }
     /// <summary>Packs prearmados a crear junto con el producto. Opcional. Solo OTROS.</summary>
@@ -360,6 +366,9 @@ public class UpdateCafeProductoRequest
     public bool? Tercerizado { get; set; }
     public decimal? PrecioMedioKg { get; set; }
     public decimal? PrecioCuartoKg { get; set; }
+    /// <summary>2026-09-29: molienda/envase fijos. Vacío = se eligen en la venta.</summary>
+    public string? MoliendaFija { get; set; }
+    public string? EnvaseFijo { get; set; }
     public bool ClearPrecioMedioKg { get; set; }
     public bool ClearPrecioCuartoKg { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS).
