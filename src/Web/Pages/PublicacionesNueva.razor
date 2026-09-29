@@ -1396,7 +1396,12 @@
                                         {
                                             <span class="dato"><b>@c.Cantidad.ToString("0.##", ar)</b></span>
                                         }
-                                        <span class="dato">· hay <b>@c.Stock.ToString("N0", ar)</b> · alcanza para <b>@c.Alcanza</b></span>
+                                        @if (!string.IsNullOrEmpty(c.Formato))
+                                        {
+                                            @* 2026-09-28: café — la cantidad es de paquetes de este tamaño *@
+                                            <span class="dato">de <b>@NombreFormato(c.Formato)</b></span>
+                                        }
+                                        <span class="dato">· hay <b>@c.Stock.ToString("N0", ar)</b>@(string.IsNullOrEmpty(c.Formato) ? "" : " de " + NombreFormato(c.Formato)) · alcanza para <b>@c.Alcanza</b></span>
 
                                         @if (c.Costo <= 0)
                                         {
@@ -1444,10 +1449,28 @@
                                     }
                                     @foreach (var pr in encontrados)
                                     {
-                                        <div class="op" @onclick="() => AgregarComponente(it, pr)">
-                                            <b>@pr.Nombre</b>
-                                            <span class="cod">· @(pr.Sku ?? "sin código") · stock @pr.StockUnidades.ToString("N0", ar) · costo @Plata(pr.Costo)</span>
-                                        </div>
+                                        @if (pr.Categoria == "CAFE")
+                                        {
+                                            @* 2026-09-28: un café se agrega eligiendo el tamaño (el stock y el costo están por kilo). *@
+                                            <div class="op" style="cursor:default;">
+                                                <b>@pr.Nombre</b>
+                                                <span class="cod">· @(pr.Sku ?? "sin código") · stock @((pr.StockGramos / 1000m).ToString("N1", ar)) kg · costo @Plata(pr.Costo) el kilo</span>
+                                                <span style="display:inline-flex; gap:.3rem; margin-left:.4rem;">
+                                                    @foreach (var fmt in new[] { "1KG", "MEDIO", "CUARTO" })
+                                                    {
+                                                        var f = fmt;
+                                                        <button class="btn" style="padding:.05rem .45rem; font-size:.75rem;" @onclick="() => AgregarComponente(it, pr, f)">@NombreFormato(f)</button>
+                                                    }
+                                                </span>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="op" @onclick="() => AgregarComponente(it, pr)">
+                                                <b>@pr.Nombre</b>
+                                                <span class="cod">· @(pr.Sku ?? "sin código") · stock @pr.StockUnidades.ToString("N0", ar) · costo @Plata(pr.Costo)</span>
+                                            </div>
+                                        }
                                     }
                                 </div>
                             }
@@ -1455,6 +1478,7 @@
                             <div class="nota">
                                 Si la publicación vende un pack, poné cuántas unidades lleva (por ejemplo <b>100</b>).
                                 Si vende una sola unidad, poné <b>1</b>.
+                                Un café: poné cuántos paquetes lleva y tocá su tamaño (por ejemplo 3 kg = <b>3</b> y <b>1 kg</b>).
                                 Al guardar, el sistema le manda el stock a MercadoLibre.
                             </div>
                         </div>
@@ -2041,6 +2065,12 @@
 </div>
 
 @code {
+    // 2026-09-28: tamaños de café para las piezas de una publicación.
+    private static string NombreFormato(string? f) => (f ?? "").ToUpperInvariant() switch
+    { "MEDIO" => "½ kg", "CUARTO" => "¼ kg", "1KG" => "1 kg", _ => f ?? "" };
+    private static decimal MeliKilos(string? f) => (f ?? "1KG").ToUpperInvariant() switch
+    { "MEDIO" => 0.5m, "CUARTO" => 0.25m, _ => 1m };
+
     // 2026-09-28: "hoy", "ayer", "hace 5 días" o la fecha. La hora ya viene argentina (MeliOrders.DateCreated).
     private static string TextoUltimaVenta(DateTime? u)
     {
@@ -3924,7 +3954,13 @@
         if (productos is null && !productosCargando)
         {
             productosCargando = true;
-            try { productos = await Api.GetCafeProductosAsync("OTROS"); }
+            // 2026-09-28: también los cafés (se agregan eligiendo el tamaño: 1 kg, ½ kg o ¼ kg).
+            try
+            {
+                var otros = await Api.GetCafeProductosAsync("OTROS") ?? new();
+                var cafes = await Api.GetCafeProductosAsync("CAFE") ?? new();
+                productos = otros.Concat(cafes).ToList();
+            }
             catch (Exception ex) { ToastService.Error("No se pudieron traer los productos: " + ex.Message); }
             finally { productosCargando = false; }
         }
@@ -3949,26 +3985,42 @@
             .ToList();
     }
 
-    private async Task AgregarComponente(ApiClient.PubV2Fila it, CafeProductoDto prod)
+    private async Task AgregarComponente(ApiClient.PubV2Fila it, CafeProductoDto prod, string? formato = null)
     {
         if (recetaGuardando) return;
         if (recetaCantidadNueva <= 0) { ToastService.Error("La cantidad tiene que ser mayor que cero."); return; }
 
         // La cantidad es el error caro de este formulario: dejarla en 1 cuando la publicación vende
         // un pack manda MILES de unidades a MercadoLibre. Por eso se confirma mostrando la cuenta.
-        var alcanza = (int)Math.Floor(prod.StockUnidades / recetaCantidadNueva);
-        var aviso = $"Vinculo esta publicación a:\n\n{prod.Nombre} ({prod.Sku})\n\n"
+        int alcanza;
+        string aviso;
+        if (formato is not null)
+        {
+            // 2026-09-28: café — el stock está en gramos; cada venta lleva N paquetes del tamaño elegido.
+            var kgPaquete = MeliKilos(formato);
+            var kgVenta = kgPaquete * recetaCantidadNueva;
+            alcanza = kgVenta > 0 ? (int)Math.Floor(prod.StockGramos / 1000m / kgVenta) : 0;
+            aviso = $"Vinculo esta publicación a:\n\n{prod.Nombre} ({prod.Sku})\n\n"
+                  + $"Cada venta va a descontar {recetaCantidadNueva.ToString("0.##", ar)} paquete(s) de {NombreFormato(formato)} = {kgVenta.ToString("0.##", ar)} kg.\n"
+                  + $"Como hay {(prod.StockGramos / 1000m).ToString("N1", ar)} kg en el depósito, le voy a mandar "
+                  + $"{alcanza.ToString("N0", ar)} a MercadoLibre.\n\n¿Va así?";
+        }
+        else
+        {
+            alcanza = (int)Math.Floor(prod.StockUnidades / recetaCantidadNueva);
+            aviso = $"Vinculo esta publicación a:\n\n{prod.Nombre} ({prod.Sku})\n\n"
                   + $"Cada venta va a descontar {recetaCantidadNueva.ToString("0.##", ar)} unidad(es).\n"
                   + $"Como hay {prod.StockUnidades.ToString("N0", ar)} en el depósito, le voy a mandar "
                   + $"{alcanza.ToString("N0", ar)} a MercadoLibre.\n\n¿Va así?";
+        }
         if (!await JS.InvokeAsync<bool>("confirm", aviso)) return;
 
         recetaGuardando = true;
         StateHasChanged();
         try
         {
-            await Api.CreateComponenteAsync(it.MeliItemId, prod.Id, recetaCantidadNueva);
-            ToastService.Success($"Listo: {prod.Sku} × {recetaCantidadNueva.ToString("0.##", ar)}.");
+            await Api.CreateComponenteAsync(it.MeliItemId, prod.Id, recetaCantidadNueva, null, formato);
+            ToastService.Success($"Listo: {prod.Sku} × {recetaCantidadNueva.ToString("0.##", ar)}{(formato is null ? "" : " de " + NombreFormato(formato))}.");
             recetaBusqueda = "";
             await RefrescarFila(it.MeliItemId);
             await AvisarSiElStockNoLlego(it.MeliItemId, alcanza);
