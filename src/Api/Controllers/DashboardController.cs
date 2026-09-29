@@ -40,7 +40,9 @@ public class DashboardController : ControllerBase
                         && i.VentaNav.Estado != "anulado"
                         && i.VentaNav.Fecha >= monthStart
                         && i.VentaNav.Fecha < nextMonthStart
-                        && i.Categoria == "CAFE")
+                        && i.Categoria == "CAFE"
+                        // 2026-09-29: el café tercerizado (FT) no suma a la balanza.
+                        && !(i.ProductoNav != null && i.ProductoNav.Tercerizado))
             .Select(i => new { i.GramosDescontados, i.VentaId })
             .ToListAsync();
 
@@ -78,7 +80,8 @@ public class DashboardController : ControllerBase
                         && i.VentaNav.Estado != "anulado"
                         && i.VentaNav.Fecha >= desde
                         && i.VentaNav.Fecha < hasta
-                        && i.Categoria == "CAFE")
+                        && i.Categoria == "CAFE"
+                        && !(i.ProductoNav != null && i.ProductoNav.Tercerizado))
             .Select(i => new { i.GramosDescontados, i.VentaNav!.Fecha })
             .ToListAsync();
 

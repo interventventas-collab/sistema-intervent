@@ -200,6 +200,10 @@ public class CafeProductoDto
     public decimal? PrecioBar { get; set; }
     /// <summary>2026-06-10: si true, todos los clientes (BAR y OTRO) pagan PrecioOtro.</summary>
     public bool SinPrecioBar { get; set; } = false;
+    /// <summary>2026-09-29: café tercerizado (no suma a kilos vendidos) + precio propio de ½ y ¼ kg.</summary>
+    public bool Tercerizado { get; set; }
+    public decimal? PrecioMedioKg { get; set; }
+    public decimal? PrecioCuartoKg { get; set; }
     /// <summary>Precio del bulto completo (descuento por volumen, SOLO OTROS).</summary>
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
@@ -334,6 +338,10 @@ public class CreateCafeProductoRequest
     public decimal? PrecioBar { get; set; }
     /// <summary>2026-06-10: todos los clientes pagan PrecioOtro (sin BAR diferenciado).</summary>
     public bool SinPrecioBar { get; set; } = false;
+    /// <summary>2026-09-29: solo CAFE.</summary>
+    public bool Tercerizado { get; set; }
+    public decimal? PrecioMedioKg { get; set; }
+    public decimal? PrecioCuartoKg { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
@@ -383,6 +391,12 @@ public class UpdateCafeProductoRequest
     public bool ClearPrecioBar { get; set; }
     /// <summary>2026-06-10: si null no cambia, si true marca "todos pagan PrecioOtro".</summary>
     public bool? SinPrecioBar { get; set; }
+    /// <summary>2026-09-29: solo CAFE. Null = no cambia; Clear* = volver al precio calculado.</summary>
+    public bool? Tercerizado { get; set; }
+    public decimal? PrecioMedioKg { get; set; }
+    public decimal? PrecioCuartoKg { get; set; }
+    public bool ClearPrecioMedioKg { get; set; }
+    public bool ClearPrecioCuartoKg { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
