@@ -1481,6 +1481,21 @@ public class ApiClient
     private class GuardarPrecioEspecialResult { public int Id { get; set; } }
     private class OkResult { public bool Ok { get; set; } }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // 2026-09-29: plan de bonificación por cliente (Núcleo: caja D401 cada 5 kg de F1
+    // + 10% en kg a fin de mes). Tiran HttpRequestException con el motivo si falla.
+    // ─────────────────────────────────────────────────────────────────────
+    public async Task<CafeBonifResumenDto?> GetBonificacionClienteAsync(int clienteId, int? excluirVentaId = null)
+        => await GetAsync<CafeBonifResumenDto>($"/api/cafe/bonificaciones/cliente/{clienteId}"
+            + (excluirVentaId is int ev ? $"?excluirVentaId={ev}" : ""));
+
+    public async Task<CafeBonifResumenDto?> GuardarPlanBonificacionAsync(int clienteId, CafeBonifGuardarPlanRequest req)
+        => await PutAsync<CafeBonifResumenDto>($"/api/cafe/bonificaciones/cliente/{clienteId}/plan", req);
+
+    /// <summary>kgOtorgado null = volver a lo sugerido.</summary>
+    public async Task<CafeBonifResumenDto?> GuardarBonificacionMesAsync(int clienteId, int anio, int mes, decimal? kgOtorgado, string? nota)
+        => await PutAsync<CafeBonifResumenDto>($"/api/cafe/bonificaciones/cliente/{clienteId}/mes/{anio}/{mes}", new { kgOtorgado, nota });
+
     /// <summary>Asigna un código interno correlativo al cliente (max + 1).</summary>
     public async Task<CafeClienteDto?> AsignarCodigoInternoAsync(int id)
         => await PostAsync<CafeClienteDto>($"/api/cafe/clientes/{id}/asignar-codigo-interno", new { });

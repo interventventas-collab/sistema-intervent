@@ -207,12 +207,12 @@ public class CafeBonificacionesController : ControllerBase
     public async Task<ActionResult<ResumenDto>> GuardarPlan(int clienteId, [FromBody] GuardarPlanRequest req)
     {
         if (!await _db.CafeClientes.AnyAsync(c => c.Id == clienteId))
-            return NotFound(new { message = "No existe el cliente." });
+            return NotFound(new { error = "No existe el cliente." });
 
         var skuKg = (req.SkuKg ?? "").Trim();
         var pKg = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Sku == skuKg && p.Categoria == "CAFE");
         if (pKg == null)
-            return BadRequest(new { message = $"No encontré un café con código \"{skuKg}\"." });
+            return BadRequest(new { error = $"No encontré un café con código \"{skuKg}\"." });
 
         int? regaloId = null;
         var skuReg = (req.SkuRegalo ?? "").Trim();
@@ -220,20 +220,20 @@ public class CafeBonificacionesController : ControllerBase
         {
             var pReg = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Sku == skuReg);
             if (pReg == null)
-                return BadRequest(new { message = $"No encontré un producto con código \"{skuReg}\"." });
+                return BadRequest(new { error = $"No encontré un producto con código \"{skuReg}\"." });
             if (pReg.Id == pKg.Id)
-                return BadRequest(new { message = "El regalo por venta no puede ser el mismo café que se cuenta." });
+                return BadRequest(new { error = "El regalo por venta no puede ser el mismo café que se cuenta." });
             regaloId = pReg.Id;
         }
 
         if (req.KgPorRegalo <= 0 && regaloId != null)
-            return BadRequest(new { message = "Los kg para cada regalo tienen que ser más que cero." });
+            return BadRequest(new { error = "Los kg para cada regalo tienen que ser más que cero." });
         if (req.CantidadRegalo < 1 && regaloId != null)
-            return BadRequest(new { message = "La cantidad del regalo tiene que ser al menos 1." });
+            return BadRequest(new { error = "La cantidad del regalo tiene que ser al menos 1." });
         if (req.PctMensual < 0 || req.PctMensual > 100)
-            return BadRequest(new { message = "El porcentaje mensual tiene que estar entre 0 y 100." });
+            return BadRequest(new { error = "El porcentaje mensual tiene que estar entre 0 y 100." });
         if (!DateTime.TryParseExact(req.Desde, "yyyy-MM", null, System.Globalization.DateTimeStyles.None, out var desde))
-            return BadRequest(new { message = "Falta el mes desde el que corre el plan." });
+            return BadRequest(new { error = "Falta el mes desde el que corre el plan." });
 
         var plan = await _db.CafePlanesBonificacion.FirstOrDefaultAsync(p => p.ClienteId == clienteId);
         if (plan == null)
@@ -265,9 +265,9 @@ public class CafeBonificacionesController : ControllerBase
     public async Task<ActionResult<ResumenDto>> GuardarMes(int clienteId, int anio, int mes, [FromBody] GuardarMesRequest req)
     {
         var plan = await _db.CafePlanesBonificacion.AsNoTracking().FirstOrDefaultAsync(p => p.ClienteId == clienteId);
-        if (plan == null) return NotFound(new { message = "El cliente no tiene plan de bonificación." });
-        if (mes < 1 || mes > 12) return BadRequest(new { message = "Mes inválido." });
-        if (req.KgOtorgado is < 0) return BadRequest(new { message = "Los kg no pueden ser negativos." });
+        if (plan == null) return NotFound(new { error = "El cliente no tiene plan de bonificación." });
+        if (mes < 1 || mes > 12) return BadRequest(new { error = "Mes inválido." });
+        if (req.KgOtorgado is < 0) return BadRequest(new { error = "Los kg no pueden ser negativos." });
 
         var fila = await _db.CafeBonificacionesMes.FirstOrDefaultAsync(m => m.ClienteId == clienteId && m.Anio == anio && m.Mes == mes);
         if (req.KgOtorgado == null)

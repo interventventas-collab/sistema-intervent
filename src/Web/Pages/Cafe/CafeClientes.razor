@@ -876,6 +876,198 @@
                         }
                     </div>
                 }
+
+                @* ═══════════════ 2026-09-29 · Sección 5: Plan de bonificación ═══════════════
+                     Núcleo: cada 5 kg de F1 pagados en una venta → 1 caja D401 en esa venta, y a fin
+                     de mes el 10% de los kg de F1 en kg de F1 (redondeado para arriba, editable).
+                     Lo bonificado (renglón al 100%) no suma kg. Cuentas en CafeBonificacionesController. *@
+                @if (isEditing && editingId is > 0)
+                {
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.1rem; margin-top: 1rem;">
+                        <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #e2e8f0;">
+                            <span style="background: #f1f5f9; color: #334155; font-size: 0.78rem; padding: 0.28rem 0.7rem; border-radius: 6px; font-weight: 700;">
+                                🎁 5 · Plan de bonificación
+                            </span>
+                            <span style="font-size: 0.78rem; color: #6b7280;">regalos por los kg de café que compra</span>
+                            @if (bonif?.TienePlan == true && !bonifEditando)
+                            {
+                                <button type="button" class="btn btn-secondary" style="margin-left: auto; font-size: 0.75rem; padding: 0.2rem 0.6rem;"
+                                        @onclick="BonifEmpezarEditar">Cambiar reglas</button>
+                            }
+                        </div>
+
+                        @if (bonifCargando)
+                        {
+                            <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Cargando…</p>
+                        }
+                        else if (bonifEditando)
+                        {
+                            <div style="display: flex; flex-direction: column; gap: 0.55rem; font-size: 0.82rem; color: #111827;">
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <span>Café que se cuenta (código)</span>
+                                    <input class="form-control" style="width: 6rem; font-size: 0.82rem;" @bind="bonifForm.SkuKg" />
+                                    <span style="color: #6b7280;">solo los kg pagados; también es el café que se regala a fin de mes</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <span>En cada venta: cada</span>
+                                    <input class="form-control" style="width: 4.5rem; font-size: 0.82rem;" @bind="bonifKgPorRegaloStr" />
+                                    <span>kg →</span>
+                                    <input class="form-control" style="width: 4rem; font-size: 0.82rem;" type="number" min="1" step="1" @bind="bonifForm.CantidadRegalo" />
+                                    <span>de</span>
+                                    <input class="form-control" style="width: 6rem; font-size: 0.82rem;" placeholder="D401" @bind="bonifForm.SkuRegalo" />
+                                    <span style="color: #6b7280;">(vacío = sin regalo por venta)</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <span>A fin de mes:</span>
+                                    <input class="form-control" style="width: 4.5rem; font-size: 0.82rem;" @bind="bonifPctStr" />
+                                    <span>% de los kg del mes, en kg del mismo café · se redondea para arriba y lo podés cambiar</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <span>Cuenta desde el mes</span>
+                                    <input class="form-control" style="width: 10rem; font-size: 0.82rem;" type="month" value="@bonifForm.Desde" @onchange="@(e => bonifForm.Desde = e.Value?.ToString() ?? "")" />
+                                    <label style="display: flex; align-items: center; gap: 0.3rem; margin-left: 0.8rem;">
+                                        <input type="checkbox" @bind="bonifForm.Activo" /> Activo
+                                    </label>
+                                </div>
+                                <div style="display: flex; gap: 0.4rem;">
+                                    <button type="button" class="btn btn-primary" style="font-size: 0.78rem; padding: 0.25rem 0.8rem;"
+                                            @onclick="BonifGuardarPlan" disabled="@bonifGuardando">@(bonifGuardando ? "Guardando..." : "Guardar plan")</button>
+                                    <button type="button" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.25rem 0.8rem;"
+                                            @onclick="() => { bonifEditando = false; bonifError = null; }" disabled="@bonifGuardando">Cancelar</button>
+                                </div>
+                            </div>
+                        }
+                        else if (bonif is null || !bonif.TienePlan)
+                        {
+                            <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.6rem;">
+                                Este cliente no tiene plan. Si le regalás algo por los kg que compra (ej: una caja de edulcorante cada 5 kg y el 10% a fin de mes), armalo acá y el sistema lleva la cuenta.
+                            </p>
+                            <button type="button" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.25rem 0.8rem;"
+                                    @onclick="BonifEmpezarEditar">Armar plan</button>
+                        }
+                        else
+                        {
+                            var bp = bonif.Plan!;
+                            var mesAct = bonif.Meses.FirstOrDefault(m => !m.Cerrado);
+                            <div style="font-size: 0.78rem; color: #6b7280; margin-bottom: 0.6rem;">
+                                @if (!bp.Activo) { <strong style="color: #b91c1c;">Pausado · </strong> }
+                                @if (bp.ProductoRegaloId != null)
+                                {
+                                    <span>cada @BonifKg(bp.KgPorRegalo) kg de @bp.ProductoKgSku → @bp.CantidadRegalo @bp.ProductoRegaloSku en la misma venta · </span>
+                                }
+                                @if (bp.PctMensual > 0)
+                                {
+                                    <span>@BonifKg(bp.PctMensual)% a fin de mes en kg de @bp.ProductoKgSku · </span>
+                                }
+                                <span>desde @BonifMesLabel(bp.Desde)</span>
+                            </div>
+
+                            <div style="font-size: 0.85rem; color: #111827; line-height: 1.8;">
+                                <div>
+                                    <span style="color: #6b7280;">Este mes (@(mesAct != null ? BonifNombreMes(mesAct.Mes) : "")):</span>
+                                    <strong>@BonifKg(bonif.KgMesActual) kg</strong> de @bp.ProductoKgSku pagados
+                                    @if (bp.PctMensual > 0)
+                                    {
+                                        <span> · el @BonifKg(bp.PctMensual)% va en @BonifKg(bonif.PctMesActual) kg</span>
+                                        @if (mesAct != null && mesAct.KgSugerido != bonif.PctMesActual && mesAct.KgSugerido > 0)
+                                        {
+                                            <span style="color: #6b7280;"> (redondeado: @BonifKg(mesAct.KgSugerido) kg)</span>
+                                        }
+                                    }
+                                </div>
+                                @if (bp.ProductoRegaloId != null)
+                                {
+                                    <div>
+                                        <span style="color: #6b7280;">@bp.ProductoRegaloSku este mes:</span>
+                                        @bonif.RegalosGanadosMes ganadas · @bonif.RegalosEntregadosMes entregadas
+                                        @if (bonif.RegalosPendientes > 0)
+                                        {
+                                            <span> · <strong style="color: #b91c1c;">@bonif.RegalosPendientes sin entregar</strong></span>
+                                        }
+                                    </div>
+                                    @if (bonif.VentasConRegaloPendiente.Count > 0)
+                                    {
+                                        <div style="font-size: 0.74rem; color: #6b7280;">
+                                            le falta:
+                                            @string.Join(" · ", bonif.VentasConRegaloPendiente.Select(v => $"{v.Ganados - v.Entregados} en {v.Numero} del {v.Fecha:dd/MM}"))
+                                        </div>
+                                    }
+                                }
+                                @if (bp.PctMensual > 0)
+                                {
+                                    <div>
+                                        <span style="color: #6b7280;">Kg de @bp.ProductoKgSku a favor sin entregar:</span>
+                                        <strong>@BonifKg(bonif.KgAFavor) kg</strong>
+                                        <span style="color: #6b7280;"> · ganó @BonifKg(bonif.KgOtorgadoTotal) · se le dieron @BonifKg(bonif.KgEntregadoTotal)</span>
+                                    </div>
+                                }
+                            </div>
+
+                            @if (bp.PctMensual > 0 && bonif.Meses.Count > 0)
+                            {
+                                <table style="width: 100%; font-size: 0.78rem; margin-top: 0.7rem; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="color: #6b7280; text-align: left; border-bottom: 1px solid #e2e8f0;">
+                                            <th style="padding: 0.2rem 0.3rem; font-weight: 600;">Mes</th>
+                                            <th style="padding: 0.2rem 0.3rem; font-weight: 600; text-align: right;">Kg pagados</th>
+                                            <th style="padding: 0.2rem 0.3rem; font-weight: 600; text-align: right;">@BonifKg(bp.PctMensual)% redondeado</th>
+                                            <th style="padding: 0.2rem 0.3rem; font-weight: 600;">Se le da</th>
+                                            <th style="padding: 0.2rem 0.3rem; font-weight: 600; text-align: right;">Regalado ese mes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var m in bonif.Meses)
+                                        {
+                                            var clave = m.Anio * 100 + m.Mes;
+                                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                                <td style="padding: 0.25rem 0.3rem;">@BonifNombreMes(m.Mes) @m.Anio</td>
+                                                <td style="padding: 0.25rem 0.3rem; text-align: right;">@BonifKg(m.KgComprados)</td>
+                                                <td style="padding: 0.25rem 0.3rem; text-align: right;">@BonifKg(m.KgSugerido)</td>
+                                                <td style="padding: 0.25rem 0.3rem;">
+                                                    @if (!m.Cerrado)
+                                                    {
+                                                        <span style="color: #6b7280;">se calcula al terminar el mes</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style="display: inline-flex; align-items: center; gap: 0.3rem;">
+                                                            <input class="form-control" style="width: 4.5rem; font-size: 0.78rem; padding: 0.1rem 0.3rem;"
+                                                                   value="@(bonifMesEdit.TryGetValue(clave, out var tv) ? tv : BonifKg(m.KgOtorgado))"
+                                                                   @oninput="@(e => BonifMesInput(clave, e.Value?.ToString()))" />
+                                                            <span>kg</span>
+                                                            @if (bonifMesEdit.ContainsKey(clave))
+                                                            {
+                                                                <button type="button" class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.1rem 0.4rem;"
+                                                                        @onclick="() => BonifGuardarMes(m, false)" disabled="@bonifGuardando">Guardar</button>
+                                                            }
+                                                            else if (m.EditadoAMano)
+                                                            {
+                                                                <span style="color: #6b7280;">cambiado a mano ·</span>
+                                                                <button type="button" class="btn btn-link" style="font-size: 0.7rem; padding: 0;"
+                                                                        @onclick="() => BonifGuardarMes(m, true)" disabled="@bonifGuardando">volver a @BonifKg(m.KgSugerido)</button>
+                                                            }
+                                                        </span>
+                                                    }
+                                                </td>
+                                                <td style="padding: 0.25rem 0.3rem; text-align: right;">
+                                                    @(m.KgEntregados != 0 ? BonifKg(m.KgEntregados) + " kg" : "")
+                                                    @(m.RegalosEntregados != 0 ? (m.KgEntregados != 0 ? " · " : "") + m.RegalosEntregados + " " + bp.ProductoRegaloSku : "")
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                                <p style="font-size: 0.72rem; color: #6b7280; margin: 0.4rem 0 0;">
+                                    Lo que se regala (renglón con 100% de descuento) no suma kg. Para dárselo, en la venta tocá "Agregar" en el renglón de bonificación.
+                                </p>
+                            }
+                        }
+                        @if (!string.IsNullOrEmpty(bonifError))
+                        {
+                            <p style="color: #dc2626; font-size: 0.78rem; margin: 0.4rem 0 0;">@bonifError</p>
+                        }
+                    </div>
+                }
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
@@ -1463,6 +1655,93 @@
         await LoadDirecciones(c.Id);
         await LoadPreciosEspeciales(c.Id);
         await LoadMaquinas(c.Id);
+        await LoadBonificacion(c.Id);
+    }
+
+    // ═════════ 2026-09-29: Plan de bonificación (Núcleo: D401 cada 5 kg de F1 + 10% mensual) ═════════
+    private CafeBonifResumenDto? bonif;
+    private bool bonifCargando, bonifEditando, bonifGuardando;
+    private string? bonifError;
+    private CafeBonifGuardarPlanRequest bonifForm = new();
+    private string bonifKgPorRegaloStr = "5", bonifPctStr = "10";
+    /// <summary>Kg de fin de mes que se están tipeando (clave anio*100+mes).</summary>
+    private Dictionary<int, string> bonifMesEdit = new();
+
+    private static readonly System.Globalization.CultureInfo BonifAr = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+    private static string BonifKg(decimal v) => v.ToString("0.##", BonifAr);
+    private static decimal? BonifParse(string? raw)
+    {
+        var t = (raw ?? "").Trim().Replace(" ", "").Replace(',', '.');
+        return decimal.TryParse(t, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
+    private static readonly string[] BonifMeses = { "", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
+    private static string BonifNombreMes(int m) => m is >= 1 and <= 12 ? BonifMeses[m] : "";
+    private static string BonifMesLabel(string yyyyMM)
+        => yyyyMM.Length == 7 && int.TryParse(yyyyMM[5..], out var m) ? $"{BonifNombreMes(m)} {yyyyMM[..4]}" : yyyyMM;
+
+    private async Task LoadBonificacion(int clienteId)
+    {
+        bonifCargando = true; bonifEditando = false; bonifError = null; bonifMesEdit.Clear(); bonif = null;
+        try { bonif = await Api.GetBonificacionClienteAsync(clienteId); }
+        catch (Exception ex) { bonifError = "No se pudo leer el plan: " + ex.Message; }
+        finally { bonifCargando = false; }
+    }
+
+    private void BonifEmpezarEditar()
+    {
+        var p = bonif?.Plan;
+        var ahora = DateTime.UtcNow.AddHours(-3);
+        bonifForm = p is null
+            ? new CafeBonifGuardarPlanRequest { Desde = ahora.ToString("yyyy-MM") }
+            : new CafeBonifGuardarPlanRequest
+            {
+                Activo = p.Activo, SkuKg = p.ProductoKgSku ?? "", KgPorRegalo = p.KgPorRegalo,
+                SkuRegalo = p.ProductoRegaloSku, CantidadRegalo = p.CantidadRegalo,
+                PctMensual = p.PctMensual, Desde = p.Desde
+            };
+        bonifKgPorRegaloStr = BonifKg(bonifForm.KgPorRegalo);
+        bonifPctStr = BonifKg(bonifForm.PctMensual);
+        bonifError = null; bonifEditando = true;
+    }
+
+    private async Task BonifGuardarPlan()
+    {
+        if (editingId is not > 0) return;
+        var kg = BonifParse(bonifKgPorRegaloStr);
+        var pct = BonifParse(bonifPctStr);
+        if (kg is null || pct is null) { bonifError = "Revisá los kg y el porcentaje: tienen que ser números."; return; }
+        bonifForm.KgPorRegalo = kg.Value; bonifForm.PctMensual = pct.Value;
+        bonifGuardando = true; bonifError = null;
+        try
+        {
+            var r = await Api.GuardarPlanBonificacionAsync(editingId.Value, bonifForm);
+            if (r != null) { bonif = r; bonifEditando = false; bonifMesEdit.Clear(); ToastService.Success("Plan de bonificación guardado"); }
+        }
+        catch (Exception ex) { bonifError = ex.Message; }
+        finally { bonifGuardando = false; }
+    }
+
+    private void BonifMesInput(int clave, string? v) => bonifMesEdit[clave] = v ?? "";
+
+    /// <summary>volverASugerido: borra el cambio a mano y queda el 10% redondeado.</summary>
+    private async Task BonifGuardarMes(CafeBonifMesDto m, bool volverASugerido)
+    {
+        if (editingId is not > 0) return;
+        var clave = m.Anio * 100 + m.Mes;
+        decimal? kg = null;
+        if (!volverASugerido)
+        {
+            kg = BonifParse(bonifMesEdit.GetValueOrDefault(clave));
+            if (kg is null or < 0) { bonifError = $"Los kg de {BonifNombreMes(m.Mes)} tienen que ser un número."; return; }
+        }
+        bonifGuardando = true; bonifError = null;
+        try
+        {
+            var r = await Api.GuardarBonificacionMesAsync(editingId.Value, m.Anio, m.Mes, kg, null);
+            if (r != null) { bonif = r; bonifMesEdit.Remove(clave); }
+        }
+        catch (Exception ex) { bonifError = ex.Message; }
+        finally { bonifGuardando = false; }
     }
 
     // ===== 2026-09-23: Máquinas del cliente (comodato / financiadas) =====
