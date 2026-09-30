@@ -5633,7 +5633,8 @@ public class ApiClient
         PubV2Conteos? Conteos = null);
     /// <summary>2026-09-24: cuántas hay de cada opción de los botones Precio y Envío.
     /// Rangos: hasta $10.000 · $10.000 a $33.000 · $33.000 a $100.000 · más de $100.000.</summary>
-    public record PubV2Conteos(int[] Rangos, int EnvioGratis, int PagaComprador, Dictionary<string, int> Logistica);
+    public record PubV2Conteos(int[] Rangos, int EnvioGratis, int PagaComprador, Dictionary<string, int> Logistica,
+        int BajoMiPct = 0);   // 2026-09-30: cuántas dejan menos que su %
     /// <summary>2026-09-24: lo elegido en los botones Precio y Envío. Orden: null · precio_desc · precio_asc.
     /// Logistica: colecta, full, acordar, correo, flex.</summary>
     public record PubV2PrecioEnvio(string? Orden, decimal? Desde, decimal? Hasta, bool? EnvioGratis, IReadOnlyCollection<string> Logistica)
@@ -5656,10 +5657,12 @@ public class ApiClient
         string? estado = null, decimal? comisionMinPct = null, string? cuotas = null, string? tipo = null,
         bool variosPrecios = false, bool precioAMano = false, bool sinCosto = false,
         decimal? noLleganAlPct = null, bool comisionVieja = false, int pagina = 1, int porPagina = 100,
-        int? cuentaId = null, bool enPromo = false, string? ampliar = null, PubV2PrecioEnvio? pe = null)
+        int? cuentaId = null, bool enPromo = false, string? ampliar = null, PubV2PrecioEnvio? pe = null,
+        bool bajoMiPct = false)
     {
         var qs = new List<string>();
         pe?.AgregarA(qs);
+        if (bajoMiPct) qs.Add("bajoMiPct=true");
         if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
         if (!string.IsNullOrWhiteSpace(sku)) qs.Add($"sku={Uri.EscapeDataString(sku)}");
         if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={estado}");
@@ -5837,13 +5840,14 @@ public class ApiClient
         => await GetAsync<PubV2Simulacion>(
             $"/api/meli/v2/publicaciones/{mla}/simular?precio={precio.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
 
-    public async Task<(PubV2PrecioResultado? res, string? error)> PonerPrecioV2Async(string mla, decimal precio, bool quedaFijo)
+    public async Task<(PubV2PrecioResultado? res, string? error)> PonerPrecioV2Async(string mla, decimal precio, bool quedaFijo,
+        decimal? objetivoPct = null)
     {
         try
         {
             await SetAuthHeaderAsync();
             var resp = await _httpLong.PutAsJsonAsync($"/api/meli/v2/publicaciones/{mla}/precio",
-                new { Precio = precio, QuedaFijo = quedaFijo });
+                new { Precio = precio, QuedaFijo = quedaFijo, ObjetivoPct = objetivoPct });
             var body = await resp.Content.ReadFromJsonAsync<PubV2PrecioResultado>();
             if (resp.IsSuccessStatusCode) return (body, null);
             return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");
@@ -5963,12 +5967,13 @@ public class ApiClient
         string? texto = null, string? sku = null, string? estado = null, decimal? comisionMinPct = null,
         string? cuotas = null, string? tipo = null, bool variosPrecios = false, bool precioAMano = false,
         bool sinCosto = false, decimal? noLleganAlPct = null, bool comisionVieja = false, string? ampliar = null,
-        PubV2PrecioEnvio? pe = null)
+        PubV2PrecioEnvio? pe = null, bool bajoMiPct = false)
     {
         try
         {
             var qs = new List<string>();
             pe?.AgregarA(qs);
+            if (bajoMiPct) qs.Add("bajoMiPct=true");
             if (!string.IsNullOrWhiteSpace(ampliar)) qs.Add($"ampliar={ampliar}");
             if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
             if (!string.IsNullOrWhiteSpace(sku)) qs.Add($"sku={Uri.EscapeDataString(sku)}");
