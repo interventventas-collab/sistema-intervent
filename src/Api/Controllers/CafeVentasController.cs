@@ -1525,10 +1525,16 @@ public class CafeVentasController : ControllerBase
             if (it.EsDoyPack) prodName += " (d.p.)";
             else if (it.EsEnvasePlateado) prodName += " (env. plat.)";
 
-            // Formato: molienda + formato físico (ej "EN GRANOS · 1KG")
+            // Formato: molienda + formato físico (ej "EN GRANOS · 1 kg")
             var fmtParts = new List<string>();
             if (!string.IsNullOrEmpty(it.Molienda)) fmtParts.Add(it.Molienda!);
-            if (!it.EsConceptoLibre) fmtParts.Add(it.Formato);
+            // 2026-09-30: la etiqueta legible, igual que el presupuesto ("1/2 kg", no "MEDIO").
+            if (!it.EsConceptoLibre) fmtParts.Add(it.Formato switch
+            {
+                CafePricingService.FORMATO_UNIT => "Unidad",
+                CafePricingService.FORMATO_BULTO => "Bulto",
+                _ => CafePricingService.FormatoLabel(it.Formato)
+            });
             var fmtStr = string.Join(" · ", fmtParts);
 
             // Descripcion (legacy): texto unico que se usa como fallback en PDF si no hay separación
