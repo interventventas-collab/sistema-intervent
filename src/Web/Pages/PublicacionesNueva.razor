@@ -41,6 +41,8 @@
     .p2-chip.on { background: #4f46e5; border-color: #4f46e5; color: #fff; font-weight: 600; }
     .p2-chip.nue { background: #e5efe8; border-color: #1f6b45; color: #1f6b45; font-weight: 600; }
     .p2-chip.nue.on { background: #1f6b45; color: #fff; }
+    .p2-chip.p2-bajo { border-color: #fca5a5; color: #b91c1c; font-weight: 600; }
+    .p2-chip.p2-bajo.on { background: #b91c1c; border-color: #b91c1c; color: #fff; }
     /* 2026-09-22 · los filtros de "problemas" van en un solo botón que despliega la lista */
     .p2-fmenu { position: relative; }
     .p2-fmenu-fondo { position: fixed; inset: 0; z-index: 40; }
@@ -318,6 +320,28 @@
     .p2-po.nodisp { cursor: default; opacity: .55; }
     .p2-po.nodisp:hover { background: none; }
     .p2-precios .p2-edit { margin: 2px 0 2px 18px; }
+    /* 2026-09-30 · precio fijo + "te deja / tu %" + calculadora */
+    .p2-pfijo { border: none; background: none; padding: 0; font-family: inherit; text-align: left; cursor: pointer;
+                font-size: 1rem; font-weight: 800; color: #111827; }
+    .p2-pfijo small { font-size: .65rem; color: #9ca3af; font-weight: 400; }
+    .p2-pfijo:hover small { color: #1d4f80; }
+    .p2-deja { font-size: .72rem; color: #6b7280; }
+    .p2-deja b { font-size: .95rem; font-weight: 800; color: #111827; }
+    .p2-deja b.tibio, .p2-deja b.malo { color: #b91c1c; }
+    .p2-deja .tu { font-size: .68rem; }
+    .p2-deja-mal { font-size: .64rem; color: #b91c1c; font-weight: 700; }
+    .p2-calc { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; font-size: .68rem; color: #6b7280;
+               margin-top: .25rem; padding-top: .25rem; border-top: 1px dashed #d1d5db; }
+    .p2-calc .pctin { width: 40px; font-size: .72rem; padding: 0 3px; border: 1px solid #9ca3af; border-radius: .25rem;
+                      font-family: inherit; text-align: right; }
+    .p2-calc b { color: #111827; font-weight: 700; font-size: .78rem; }
+    .p2-calc .dj { font-size: .62rem; }
+    .p2-calc .pub { font-size: .66rem; padding: 1px 8px; border-radius: .3rem; border: 1px solid #1d4f80; background: #fff;
+                    color: #1d4f80; cursor: pointer; font-family: inherit; font-weight: 600; }
+    .p2-calc .pub[disabled] { opacity: .45; cursor: default; }
+    .p2-oem { border: none; background: none; padding: 0; margin-top: .15rem; font-family: inherit; text-align: left;
+              font-size: .62rem; color: #6b7280; cursor: pointer; }
+    .p2-oem:hover { color: #1d4f80; text-decoration: underline; }
     .p2-stksync { display: inline-flex; align-items: center; gap: .2rem; margin-top: .3rem; font-size: .6rem;
                   color: #6b7280; cursor: pointer; border: none; background: none; font-family: inherit; padding: 0; }
     .p2-stksync .cb { width: 12px; height: 12px; border: 1.5px solid #9ca3af; border-radius: 3px; display: inline-flex;
@@ -732,6 +756,13 @@
                     </div>
                 }
             </span>
+            @* 2026-09-30 — Osmar: los precios quedan fijos y él los va arreglando de a poco. Este botón
+               muestra las que dejan menos que "tu %", de la más vendida a la menos. El número se cuenta
+               con los demás filtros puestos. Rojo porque es una alarma. *@
+            <span class="p2-chip p2-bajo @(fBajoMiPct ? "on" : "")" @onclick="ToggleBajoMiPct"
+                  title="Las publicaciones que te dejan menos que tu % (el que elegiste para cada una, o 50% si no elegiste), de la más vendida en los últimos 90 días a la menos.">
+                @(fBajoMiPct ? "✓ " : "")Te dejan menos que tu %@(datos?.Conteos is { } cnB ? $" ({cnB.BajoMiPct.ToString("N0", ar)})" : "")
+            </span>
             @if (HayFiltros)
             {
                 <span class="p2-chip" style="border-color:#b91c1c;color:#b91c1c;" @onclick="LimpiarFiltros">✕ Limpiar</span>
@@ -792,7 +823,7 @@
             <div class="p2-th">
                 <span><input type="checkbox" class="p2-chk" checked="@TodasTildadas" @onchange="TildarTodas" title="Tildar todas las de esta página" /></span>
                 <span>Producto</span>
-                <span class="p2-h">Precio · tildá cuál · te queda</span>
+                <span class="p2-h">Precio · te deja · tu %</span>
                 <span class="p2-h">La cuenta</span>
                 <span class="p2-h2">Stock</span>
                 <span class="p2-h2">Estado</span>
@@ -909,29 +940,23 @@
                            el precio es el de lista, y si no Manual con el número escrito. El casillero del %
                            arranca con el que deja el precio de hoy: cargás un precio a mano y tildás
                            "mantener" para que siga dejando ESE porcentaje. Reemplaza a la columna "Te queda". *@
+                        @* 2026-09-30 — Osmar dejó el precio automático ("Mantener el N%"): los precios quedan
+                           FIJOS y él los va arreglando de a poco. La celda muestra el precio, lo que deja HOY
+                           de verdad y "tu %" (el que eligió; 50 si no eligió). Abajo, la calculadora: escribe
+                           el % que quiere, ve el precio y decide si lo publica. Ese % pasa a ser "tu %".
+                           El OEM queda como dato de referencia. *@
                         @{
-                            var selP = editandoPrecio == it.MeliItemId ? "manual"
-                                     : MandaElPorcentaje(it) ? "obj"
-                                     : (it.PrecioOem is decimal oemSel && oemSel == Math.Round(it.Precio, 0)) ? "oem" : "manual";
                             var objRef = it.ObjetivoPct ?? 50m;
-                            var pctTxt = PctEscrito(it);
-                            var pctNum = ParsePct(pctTxt);
-                            var precioParaPct = pctNum is decimal pn ? PrecioParaPct(it, pn) : null;
+                            var abajoDeTuPct = it.MargenPct is decimal mh && mh < objRef;
+                            var calcTxt = PctCalc(it);
+                            var calcPct = ParsePct(calcTxt);
+                            var calcPrecio = calcPct is decimal cpct ? PrecioParaPct(it, cpct, pisoOem: false) : null;
                         }
                         <span class="p2-h p2-precios" @onclick:stopPropagation="true">
-                            @if (it.PrecioOem is decimal oem)
-                            {
-                                var mOem = selP == "oem" ? it.MargenPct : MargenA(it, oem);
-                                <button class="p2-po @(selP == "oem" ? "sel" : "")" disabled="@(precioGuardando)"
-                                        title="Precio de lista (OEM de Colombraro, o el de las piezas si no hay uno del producto completo). Tocá para publicarlo fijo."
-                                        @onclick='() => ElegirPrecioFijo(it, oem, "el precio OEM")'><span class="rd"></span><span>OEM</span><b>@Plata(oem)</b><span class="pp @ClasePct(mOem, objRef)">@TextoPct(mOem, selP != "oem")</span>
-                                    @if (selP == "oem") { <span class="nota">precio de lista, queda fijo</span> }
-                                </button>
-                            }
                             @if (editandoPrecio == it.MeliItemId)
                             {
                                 var mSim = simulacion?.MargenPct;
-                                <span class="p2-po sel"><span class="rd"></span><span>Manual</span><b></b><span class="pp @ClasePct(mSim, objRef)">@(simulando ? "···" : TextoPct(mSim, false))</span></span>
+                                <span class="p2-deja">a este precio te deja <b class="@ClasePct(mSim, objRef)">@(simulando ? "···" : TextoPct(mSim, false))</b></span>
                                 <span class="p2-edit" @onclick:stopPropagation="true">
                                     <input type="text" value="@precioEscrito"
                                            @oninput="@(async e => { precioEscrito = e.Value?.ToString() ?? ""; await PrecioEscritoCambio(); })"
@@ -953,17 +978,10 @@
                                     <span class="p2-pinfo2 mal">@simulacion.Aviso</span>
                                 }
                             }
-                            else if (selP == "manual")
-                            {
-                                <button class="p2-po sel" disabled="@(precioGuardando)" title="Precio fijo: el sistema no lo toca. Tocá para escribir otro."
-                                        @onclick="() => EmpezarPrecio(it)"><span class="rd"></span><span>Manual</span><b>@Plata(it.Precio)</b><span class="pp @ClasePct(it.MargenPct, objRef)" style="@(it.ComisionVieja ? "opacity:.55;" : "")">@TextoPct(it.MargenPct, false)</span>
-                                    <span class="nota">queda fijo, el sistema no lo toca</span>
-                                </button>
-                            }
                             else
                             {
-                                <button class="p2-po" disabled="@(precioGuardando)" title="Escribir un precio a mano (queda fijo)"
-                                        @onclick="() => EmpezarPrecio(it)"><span class="rd"></span><span>Manual</span><b style="font-weight:400;color:#9ca3af;">escribir…</b><span class="pp"></span></button>
+                                <button class="p2-pfijo" disabled="@(precioGuardando)" title="Precio fijo: el sistema no lo toca. Tocá para escribir otro a mano."
+                                        @onclick="() => EmpezarPrecio(it)">@Plata(it.Precio) <small>✎</small></button>
                             }
                             @* 2026-08-31 · si está en campaña, el comprador paga MENOS que el precio de
                                lista. Sin este cartel, el "te queda" no se entiende. *@
@@ -974,48 +992,38 @@
                                     <small>@(it.PromoNombre ?? "en promoción")@(it.PromoHasta.HasValue ? $" · hasta {it.PromoHasta.Value:dd/MM}" : "")</small>
                                 </span>
                             }
-                            <span class="p2-po @(selP == "obj" ? "sel" : "")" role="button"
-                                  title="@(selP == "obj" ? $"El sistema mantiene el {objRef:0.#}% solo: si cambia el costo o lo que cobra MeLi, recalcula el precio. Para otro %, escribilo y tocá la bolita." : "Tocá la bolita para que el sistema mantenga este porcentaje solo. Arranca con el que deja el precio de hoy; podés escribir otro.")"
-                                  @onclick="() => ElegirObjetivo(it)">
-                                <span class="rd"></span><span>Mantener el</span>
-                                <b><input class="pctin" value="@pctTxt" @onclick:stopPropagation="true"
-                                          @oninput="@(e => pctEscritos[it.MeliItemId] = e.Value?.ToString() ?? "")"
-                                          @onkeydown="@(async e => { if (e.Key == "Enter") await ElegirObjetivo(it); })" /> %</b>
-                                @* 2026-09-22 — Osmar: "ese porcentaje tiene que ser mi guía". Marcada, lo grande es
-                                   el % que deja HOY de verdad, no el que se pidió. Si quedó abajo, se dice y se
-                                   ofrece volver a aplicarlo; si está arriba porque no baja del OEM, también se dice. *@
-                                @if (selP == "obj")
+                            @if (editandoPrecio != it.MeliItemId)
+                            {
+                                <span class="p2-deja" title="Lo que te queda hoy sobre el costo, después de MeLi, el envío y el IVA. «Tu %» es el que elegiste para esta publicación.">
+                                    te deja <b class="@ClasePct(it.MargenPct, objRef)" style="@(it.ComisionVieja ? "opacity:.55;" : "")">@(it.MargenPct is decimal mhoy ? mhoy.ToString("0.#", ar) + "%" : "—")</b>
+                                    <span class="tu">· tu %: @objRef.ToString("0.#", ar)</span>
+                                </span>
+                                @if (abajoDeTuPct)
                                 {
-                                    var real = it.MargenPct;
-                                    var abajo = real is decimal ra && ra < objRef - 2m;
-                                    var porPiso = !abajo && real is decimal rb && rb > objRef + 0.1m && it.PrecioOem is decimal op && Math.Round(it.Precio, 0) <= op;
-                                    var motivo = abajo || porPiso ? null : MotivoDiferencia(it, objRef);
-                                    <span class="pp @ClasePct(real, objRef)" style="@(it.ComisionVieja ? "opacity:.55;" : "")">@(real is decimal rr ? rr.ToString("0.#", ar) + "%" : "—")</span>
-                                    @if (abajo)
-                                    {
-                                        <span class="venta">@Plata(it.Precio)<small>se vende a esto</small></span>
-                                        <span class="nota" style="color:#b91c1c;font-weight:700;">pediste @objRef.ToString("0.#", ar)% · <u @onclick="() => ElegirObjetivo(it, true)" @onclick:stopPropagation="true" style="cursor:pointer;">volver a aplicar ahora</u></span>
-                                    }
-                                    else if (porPiso)
-                                    {
-                                        <span class="nota motivo">pediste @objRef.ToString("0.#", ar)% · manda el precio OEM</span>
-                                        <span class="venta">@Plata(it.Precio)<small>se vende a esto · no baja del OEM</small></span>
-                                    }
-                                    else if (motivo is not null)
-                                    {
-                                        <span class="nota motivo">pediste @objRef.ToString("0.#", ar)% · @motivo</span>
-                                        <span class="venta">@Plata(it.Precio)<small>se vende a esto · lo mantiene todos los días</small></span>
-                                    }
-                                    else
-                                    {
-                                        <span class="venta">@Plata(it.Precio)<small>se vende a esto · lo mantiene todos los días</small></span>
-                                    }
+                                    <span class="p2-deja-mal">está @((objRef - it.MargenPct!.Value).ToString("0.#", ar)) puntos abajo de tu %</span>
                                 }
-                                else
+                                <span class="p2-calc">
+                                    <span>Quiero el</span>
+                                    <input class="pctin" value="@calcTxt"
+                                           @oninput="@(e => pctEscritos[it.MeliItemId] = e.Value?.ToString() ?? "")"
+                                           @onkeydown="@(async e => { if (e.Key == "Enter") await PublicarCalculadora(it); })" /><span>%</span>
+                                    <span>→</span>
+                                    <b>@(calcPrecio is decimal cpr ? Plata(cpr) : "—")</b>
+                                    @if (calcPrecio is decimal cpr2 && MargenA(it, cpr2) is decimal mcalc)
+                                    {
+                                        <span class="dj">(deja ≈ @mcalc.ToString("0.#", ar)%)</span>
+                                    }
+                                    <button class="pub" disabled="@(precioGuardando || calcPrecio is null)"
+                                            title="Publica este precio en MercadoLibre. Queda fijo y este % pasa a ser tu % de la publicación."
+                                            @onclick="() => PublicarCalculadora(it)">Publicar este precio</button>
+                                </span>
+                                @if (it.PrecioOem is decimal oem)
                                 {
-                                    <span class="pp">@(precioParaPct is decimal ppc ? "≈ " + Plata(ppc) : "—")</span>
+                                    <button class="p2-oem" disabled="@(precioGuardando)"
+                                            title="Precio de lista (OEM de Colombraro, o el de las piezas si no hay uno del producto completo). Tocá para publicarlo fijo."
+                                            @onclick='() => ElegirPrecioFijo(it, oem, "el precio OEM")'>OEM @Plata(oem)@(MargenA(it, oem) is decimal moem ? " · deja " + moem.ToString("0.#", ar) + "%" : "")</button>
                                 }
-                            </span>
+                            }
                             @if (it.MargenPct is null && editandoPrecio != it.MeliItemId)
                             {
                                 <span class="p2-pinfo2 mal">@(it.Costo is null or <= 0 ? "falta cargar el costo" : "falta la comisión — actualizala")</span>
@@ -1852,14 +1860,14 @@
                    Osmar: "si está prendida que el mismo botón diga apagar o prender". Antes eran 3 botones
                    (precio prender / precio apagar / stock prender) y el stock no se podía apagar desde acá.
                    Prender/apagar sólo guarda la configuración; mandar el valor ya es "Publicar precio" / "Mandar stock". *@
-                @{ var (sPrecio, aPrecio) = EstadoSincroTildadas(true); var (sStock, aStock) = EstadoSincroTildadas(false); }
-                <button class="p2-ac" @onclick="() => AccSincro(aPrecio, null)" disabled="@accionEnCurso"
-                        title="@(aPrecio ? "Deja el precio sincronizándose solo de acá en adelante. NO publica el precio ahora: para eso usá 💵 Publicar precio." : "El precio pasa a manejarse a mano: el sistema deja de publicarlo solo.")">💲 Sincro de precio: @sPrecio · @AccionSincroTexto(sPrecio, aPrecio)</button>
+                @{ var (sStock, aStock) = EstadoSincroTildadas(false); }
+                @* 2026-09-30: sin botón de sincro de PRECIO — los precios quedan fijos (Osmar dejó el automático). *@
                 <button class="p2-ac" @onclick="() => AccSincro(null, aStock)" disabled="@accionEnCurso"
                         title="@(aStock ? "Deja el stock sincronizándose solo de acá en adelante. NO le manda el stock ahora: para eso usá 📦 Mandar stock." : "El stock pasa a manejarse a mano: el sistema deja de mandarlo solo.")">📦 Sincro de stock: @sStock · @AccionSincroTexto(sStock, aStock)</button>
 
                 <span class="sep"></span>
-                <button class="p2-ac meli" @onclick="() => AccObjetivo(true)" disabled="@accionEnCurso">🎯 Aplicar objetivo y publicar</button>
+                <button class="p2-ac meli" @onclick="() => AccObjetivo(true)" disabled="@accionEnCurso"
+                        title="Publica una vez el precio que deja el objetivo (nunca abajo del OEM). Queda fijo: el sistema no lo vuelve a tocar.">🎯 Aplicar objetivo y publicar</button>
                 <button class="p2-ac meli" @onclick="AccPrecio" disabled="@accionEnCurso">💵 Publicar precio</button>
                 <button class="p2-ac meli" @onclick="AccStock" disabled="@accionEnCurso">📦 Mandar stock</button>
 
@@ -1892,7 +1900,7 @@
         @if (datos is not null && datos.Items.Count > 0)
         {
             <div class="p2-count">
-                <span>En el precio tildá cuál querés: el OEM, uno a mano, o «Mantener el %» para que el sistema lo sostenga solo · El % grande es lo que te deja hoy de verdad · El tilde abajo del stock lo sincroniza · Tocando Activa/Pausada la cambiás (pregunta antes) · La foto abre todas las fotos.</span>
+                <span>Los precios quedan fijos: el sistema no los cambia solo · En cada fila ves lo que te deja hoy y tu % · Para cambiarlo, escribí el % en «Quiero el» y publicá, o tocá el precio para escribir uno a mano · «Te dejan menos que tu %» junta las que hay que arreglar · El tilde abajo del stock lo sincroniza · Tocando Activa/Pausada la cambiás (pregunta antes) · La foto abre todas las fotos.</span>
                 <span>
                     <button class="p2-pg" @onclick="() => IrAPagina(pagina - 1)" disabled="@(pagina <= 1 || cargando)">◀</button>
                     <span class="p2-pg">Página @pagina de @TotalPaginas</span>
@@ -2165,13 +2173,14 @@
     private decimal? edLargo, edAncho, edAlto;
     private bool fComisionVieja;
     private bool fEnPromo;   // 2026-08-31: sólo las que venden con descuento por una campaña
+    private bool fBajoMiPct; // 2026-09-30: sólo las que dejan menos que su %, las más vendidas primero
 
     // 2026-08-27 — Osmar no tenia forma de saber si una publicacion era de FRIKAF o de GROVAS:
     // la fila no lo mostraba aunque el dato ya venia del servidor. Etiqueta en la fila + filtro.
     private int? fCuentaId;
     private List<MeliAccountDto> cuentas = new();
 
-    private bool HayFiltros => fEnPromo || fComisionVieja || fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
+    private bool HayFiltros => fEnPromo || fBajoMiPct || fComisionVieja || fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
                                || !string.IsNullOrEmpty(fCuotas) || !string.IsNullOrEmpty(fEstado)
                                || !string.IsNullOrWhiteSpace(fTexto) || !string.IsNullOrWhiteSpace(fSku)
                                || fCuentaId.HasValue
@@ -2195,7 +2204,7 @@
         try
         {
             datos = await Api.GetPublicacionesV2Async(fTexto, fSku, fEstado, fComision, fCuotas, null,
-                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId, fEnPromo, AmpliarVigente, PrecioEnvio);
+                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId, fEnPromo, AmpliarVigente, PrecioEnvio, fBajoMiPct);
         }
         catch (Exception ex)
         {
@@ -2921,17 +2930,8 @@
         await CambiarSincroFila(it, false, null);
     }
 
-    // ─── 2026-09-22 · "Mantener el N%": el casillero arranca con el % que deja el precio de hoy ───
+    // Lo escrito en el casillero de % de cada fila (la calculadora, 2026-09-30).
     private readonly Dictionary<string, string> pctEscritos = new();
-
-    private string PctEscrito(ApiClient.PubV2Fila it)
-    {
-        if (pctEscritos.TryGetValue(it.MeliItemId, out var t)) return t;
-        // Si hoy pierde plata o deja casi nada, arrancar en ese número no sirve: va el objetivo (o 50).
-        var v = MandaElPorcentaje(it) ? it.ObjetivoPct
-              : (it.MargenPct is > 0 ? it.MargenPct : (it.ObjetivoPct ?? 50m));
-        return (v ?? 50m).ToString("0.#", ar);
-    }
 
     private decimal? ParsePct(string? t)
     {
@@ -2950,32 +2950,18 @@
         return Math.Round((neto - it.Costo.Value) / it.Costo.Value * 100m, 1);
     }
 
-    /// <summary>Precio aproximado para dejar `pct`%, nunca abajo del OEM (como el motor).</summary>
-    private decimal? PrecioParaPct(ApiClient.PubV2Fila it, decimal pct)
+    /// <summary>Precio aproximado para dejar `pct`%. Con `pisoOem` nunca baja del OEM (como el motor);
+    /// la calculadora (2026-09-30) no lo usa: el precio lo decide Osmar y el OEM se muestra aparte.</summary>
+    private decimal? PrecioParaPct(ApiClient.PubV2Fila it, decimal pct, bool pisoOem = true)
     {
         if (it.Costo is not > 0 || it.ComisionMonto is null) return null;
         var p = (it.ComisionPorcentaje ?? 0m) / 100m;
         if (p >= 0.95m) return null;
         var precio = (it.Costo.Value * (1 + pct / 100m) * 1.21m + (it.ComisionFija ?? 0m) + (it.ComisionEnvio ?? 0m)) / (1 - p);
-        if (it.PrecioOem is decimal oem && oem >= precio) return oem;   // el piso OEM va tal cual
+        if (pisoOem && it.PrecioOem is decimal oem && oem >= precio) return oem;   // el piso OEM va tal cual
         // Mismo redondeo que el motor: sube hasta terminar en 99 ($44.175,94 → $44.199).
         var r99 = Math.Floor(precio / 100m) * 100m + 99m;
         return r99 >= precio ? r99 : r99 + 100m;
-    }
-
-    /// <summary>2026-09-23 — Osmar: "pediste 71,6 y dice 73,8, ¿por qué?". Con "Mantener el %"
-    /// marcado, el motivo real de la diferencia (los casos abajo por más de 2 y OEM se dicen aparte).
-    /// Redondeo: el precio sube hasta terminar en 99, o sea hasta $100; si al precio $100 más bajo
-    /// ya quedaba en lo pedido, la diferencia es del redondeo. Null = no hay diferencia que explicar.</summary>
-    private string? MotivoDiferencia(ApiClient.PubV2Fila it, decimal objRef)
-    {
-        if (it.MargenPct is not decimal real || Math.Abs(real - objRef) < 0.1m) return null;
-        if (real < objRef)
-            return $"se corrige sola si baja de {(objRef - 2m).ToString("0.#", ar)}%";
-        if (Math.Round(it.Precio, 0) % 100m == 99m && MargenA(it, it.Precio - 100m) is decimal sinRedondeo
-            && sinRedondeo <= objRef + 0.2m)
-            return $"deja más por redondear a {Plata(it.Precio)}";
-        return "deja más: bajó el costo o lo que cobra MeLi";
     }
 
     private static string ClasePct(decimal? m, decimal objetivo)
@@ -2984,32 +2970,63 @@
     private string TextoPct(decimal? m, bool aprox)
         => m is decimal v ? (aprox ? "≈ " : "") + v.ToString("0.#", ar) + "%" : "";
 
-    /// <summary>Mantener el % del casillero: guarda el objetivo y aplica el precio ahora.</summary>
-    private async Task ElegirObjetivo(ApiClient.PubV2Fila it) => await ElegirObjetivo(it, false);
+    // ─── 2026-09-30 · Calculadora: "quiero el N%" → precio → publicar (queda fijo) ───
+    /// <summary>Lo escrito en la calculadora; si no escribió nada, arranca con su %.</summary>
+    private string PctCalc(ApiClient.PubV2Fila it)
+        => pctEscritos.TryGetValue(it.MeliItemId, out var t) ? t : (it.ObjetivoPct ?? 50m).ToString("0.#", ar);
 
-    private async Task ElegirObjetivo(ApiClient.PubV2Fila it, bool reaplicar)
+    /// <summary>Publica el precio de la calculadora. Queda FIJO y ese % pasa a ser "tu %".</summary>
+    private async Task PublicarCalculadora(ApiClient.PubV2Fila it)
     {
         if (precioGuardando) return;
-        var obj = ParsePct(PctEscrito(it));
-        if (obj is null) { ToastService.Error("Escribí un porcentaje válido (por ejemplo 58,1)."); return; }
-        if (!reaplicar && MandaElPorcentaje(it) && it.ObjetivoPct == obj) return;   // ya mantiene ese %
-        var aprox = PrecioParaPct(it, obj.Value) ?? it.Precio;
-        if (!await SeguirAunqueEsteEnPromo(it, aprox)) return;
-        if (!await JS.InvokeAsync<bool>("confirm",
-                $"¿Que el sistema mantenga el {obj.Value.ToString("0.#", ar)}%?\n\nHoy está {Plata(it.Precio)}. Queda alrededor de {Plata(aprox)}: el número exacto lo calcula ahora con lo que cobra MercadoLibre, y nunca baja del precio OEM.\n\n"
-                + "Desde ahí lo revisa todos los días y lo corrige si se corre del %, salvo cuando está en promoción. Se publica en MercadoLibre ahora."))
+        var pct = ParsePct(PctCalc(it));
+        if (pct is null) { ToastService.Error("Escribí un porcentaje válido (por ejemplo 40)."); return; }
+        var precio = PrecioParaPct(it, pct.Value, pisoOem: false);
+        if (precio is null)
+        {
+            ToastService.Error(it.Costo is null or <= 0 ? "Falta cargar el costo: no se puede calcular el precio."
+                                                         : "Falta la comisión de MeLi: actualizala y probá de nuevo.");
             return;
+        }
+
+        // Mismo precio que hoy: no hace falta tocar MeLi, sólo se guarda el % como "tu %".
+        if (precio.Value == Math.Round(it.Precio, 0))
+        {
+            precioGuardando = true;
+            StateHasChanged();
+            try
+            {
+                var r = await Api.AccionObjetivoAsync(new List<string> { it.MeliItemId }, pct.Value, false);
+                if (r is not null && r.Ok > 0) ToastService.Success($"Ya estaba en {Plata(precio.Value)}. Tu % quedó en {pct.Value.ToString("0.#", ar)}%.");
+                else ToastService.Error("No se pudo guardar tu %.");
+                pctEscritos.Remove(it.MeliItemId);
+                await RefrescarFila(it.MeliItemId);
+            }
+            catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+            finally { precioGuardando = false; StateHasChanged(); }
+            return;
+        }
+
+        if (!await SeguirAunqueEsteEnPromo(it, precio.Value)) return;
+        var aviso = $"¿Publicar {Plata(precio.Value)} en MercadoLibre?\n\nHoy está {Plata(it.Precio)}. "
+                  + $"A ese precio te deja alrededor del {pct.Value.ToString("0.#", ar)}% (el número exacto aparece cuando MeLi confirma la comisión).\n\n"
+                  + $"Queda FIJO: el sistema no lo toca. Tu % de esta publicación pasa a ser {pct.Value.ToString("0.#", ar)}%.";
+        if (it.PrecioOem is decimal oem && precio.Value < oem)
+            aviso += $"\n\nOjo: queda abajo del precio OEM ({Plata(oem)}).";
+        if (!await JS.InvokeAsync<bool>("confirm", aviso)) return;
 
         precioGuardando = true;
         StateHasChanged();
         try
         {
-            var r = await Api.AccionObjetivoAsync(new List<string> { it.MeliItemId }, obj.Value, true);
-            var fila = r?.Detalle.FirstOrDefault();
-            if (r is not null && r.Ok > 0) ToastService.Success("Listo: " + (fila?.Mensaje ?? $"mantiene el {obj:0.#}%"));
-            else ToastService.Error("No se pudo: " + (fila?.Mensaje ?? "error"));
-            pctEscritos.Remove(it.MeliItemId);
-            await RefrescarFilaDespuesDePublicar(it.MeliItemId);
+            var (res, err) = await Api.PonerPrecioV2Async(it.MeliItemId, precio.Value, true, pct.Value);
+            if (res?.Ok == true)
+            {
+                ToastService.Success(res.Mensaje);
+                pctEscritos.Remove(it.MeliItemId);
+                await RefrescarFilaDespuesDePublicar(it.MeliItemId);
+            }
+            else ToastService.Error(res?.Mensaje ?? err ?? "No se pudo publicar el precio");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { precioGuardando = false; StateHasChanged(); }
@@ -3258,6 +3275,7 @@
     private async Task TogglePrecioMano() { fPrecioAMano = !fPrecioAMano; await BuscarDesdeCero(); }
     private async Task ToggleComisionVieja() { fComisionVieja = !fComisionVieja; await BuscarDesdeCero(); }
     private async Task ToggleEnPromo() { fEnPromo = !fEnPromo; await BuscarDesdeCero(); }
+    private async Task ToggleBajoMiPct() { fBajoMiPct = !fBajoMiPct; await BuscarDesdeCero(); }
     private async Task ToggleSinCosto() { fSinCosto = !fSinCosto; await BuscarDesdeCero(); }
     private async Task SetCuenta(int id) { fCuentaId = fCuentaId == id ? null : id; await BuscarDesdeCero(); }
 
@@ -3274,7 +3292,7 @@
     {
         fTexto = ""; fSku = ""; fEstado = ""; fComision = null; fCuotas = "";
         fVariosPrecios = false; fPrecioAMano = false; fSinCosto = false; fNoLlegan = null; fComisionVieja = false;
-        fEnPromo = false; fCuentaId = null; fAmpliar = null; fAmpliarTexto = null; menuAbierto = 0;
+        fEnPromo = false; fBajoMiPct = false; fCuentaId = null; fAmpliar = null; fAmpliarTexto = null; menuAbierto = 0;
         fOrden = null; fDesde = null; fHasta = null; fDesdeTxt = ""; fHastaTxt = ""; fEnvioGratis = null; fLogistica.Clear();
         await BuscarDesdeCero();
     }
@@ -4483,7 +4501,7 @@
             // páginas de una. Si filtrás "no llegan al 50%", el Excel trae sólo esas.
             var (bytes, error) = await Api.BajarExcelPublicacionesV2Async(fTexto, fSku, fEstado,
                 fComision, fCuotas, null, fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, AmpliarVigente,
-                PrecioEnvio);
+                PrecioEnvio, fBajoMiPct);
 
             if (bytes is null || bytes.Length == 0)
             {

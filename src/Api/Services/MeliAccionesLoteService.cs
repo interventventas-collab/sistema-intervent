@@ -127,7 +127,9 @@ public class MeliAccionesLoteService
                 cfg.GananciaObjetivoPct = objetivoPct;
                 cfg.GananciaObjetivoAt = DateTime.UtcNow;
                 cfg.UpdatedAt = DateTime.UtcNow;
-                if (aplicarAhora) cfg.SyncPrecio = true;   // sin esto el objetivo queda guardado pero nadie lo mantiene
+                // 2026-09-30 — Osmar dejó el precio automático: el objetivo es "tu %", una guía. Aplicarlo
+                // publica el precio UNA vez y queda fijo; el sistema no lo vuelve a mover solo.
+                cfg.SyncPrecio = false;
                 await _db.SaveChangesAsync(ct);
 
                 if (!aplicarAhora)
@@ -145,8 +147,8 @@ public class MeliAccionesLoteService
                     .Select(m => m.Id).FirstOrDefaultAsync(ct);
                 if (dbId == 0) { err++; detalle.Add(new(mla, false, "publicación no encontrada")); continue; }
 
-                var pr = await _pricePush.PushPrecioForItemAsync(dbId, markAsClaimed: true, ct);
-                if (pr.Ok) { ok++; detalle.Add(new(mla, true, $"objetivo {objetivoPct:0.#}% → ${pr.PushedPrice:N0}")); }
+                var pr = await _pricePush.PushPrecioForItemAsync(dbId, markAsClaimed: false, ct);
+                if (pr.Ok) { ok++; detalle.Add(new(mla, true, $"objetivo {objetivoPct:0.#}% → ${pr.PushedPrice:N0}, queda fijo")); }
                 else
                 {
                     // No se movió el precio: igual hay que refrescar la comisión, si no la fila

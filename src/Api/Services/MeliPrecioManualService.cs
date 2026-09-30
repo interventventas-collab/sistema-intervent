@@ -66,7 +66,9 @@ public class MeliPrecioManualService
         bool PagasElEnvioHoy,
         string? Aviso);
 
-    public record PublicarRequest(decimal Precio, bool QuedaFijo);
+    /// <summary>ObjetivoPct (2026-09-30): si el precio salió de la calculadora ("quiero el N%"), ese N
+    /// queda guardado como "tu %" de la publicación. No prende nada automático.</summary>
+    public record PublicarRequest(decimal Precio, bool QuedaFijo, decimal? ObjetivoPct = null);
     public record PublicarResultado(bool Ok, string Mensaje, decimal? PrecioNuevo, bool ModoPrecio);
 
     /// <summary>Qué dejaría esta publicación si valiera `precio`. No cambia nada.</summary>
@@ -140,7 +142,7 @@ public class MeliPrecioManualService
     /// `quedaFijo` decide quién manda de acá en adelante — el precio (sincro apagado) o el
     /// porcentaje (sincro prendido, el sistema lo va a recalcular).</summary>
     public async Task<PublicarResultado> PublicarAsync(string meliItemId, decimal precio, bool quedaFijo,
-        CancellationToken ct = default)
+        CancellationToken ct = default, decimal? objetivoPct = null)
     {
         if (precio <= 0) return new PublicarResultado(false, "Poné un precio mayor que cero.", null, false);
         if (precio > TOPE_SEGURO)
@@ -183,6 +185,11 @@ public class MeliPrecioManualService
         // Acá se define quién manda. Sin esto, un precio puesto a mano sobre una publicación en modo
         // porcentaje amanece cambiado al día siguiente y parece que el sistema "hace cosas solo".
         if (quedaFijo) cfg.SyncPrecio = false;
+        if (objetivoPct is > 0 and <= 500)
+        {
+            cfg.GananciaObjetivoPct = objetivoPct;
+            cfg.GananciaObjetivoAt = DateTime.UtcNow;
+        }
         cfg.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
 

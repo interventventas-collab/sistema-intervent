@@ -89,7 +89,9 @@ public class MeliPublicacionesV2Service
     /// ni envío, así el número dice qué vas a encontrar antes de tocar.
     /// Rangos: [0] hasta $10.000 · [1] $10.000 a $33.000 · [2] $33.000 a $100.000 · [3] más de $100.000.
     /// Logistica: colecta · full · acordar · correo · flex (las claves de <see cref="ClaveLogistica"/>).</summary>
-    public record ConteosDto(int[] Rangos, int EnvioGratis, int PagaComprador, Dictionary<string, int> Logistica);
+    public record ConteosDto(int[] Rangos, int EnvioGratis, int PagaComprador, Dictionary<string, int> Logistica,
+        // 2026-09-30: cuántas dejan menos que su % (con TODOS los filtros puestos, menos ese).
+        int BajoMiPct = 0);
 
     /// <summary>Los cortes de los rangos rápidos del botón Precio. $33.000 es donde MeLi empieza a
     /// obligar el envío gratis (ver MeliPricePushService.ESCALON_ENVIO).</summary>
@@ -123,7 +125,9 @@ public class MeliPublicacionesV2Service
         // 2026-09-24: botones "Precio" y "Envío". Orden: null (A a Z) · "precio_desc" · "precio_asc".
         // Logistica: claves separadas por coma (colecta,full,acordar,correo,flex).
         string? Orden = null, decimal? PrecioDesde = null, decimal? PrecioHasta = null,
-        bool? EnvioGratis = null, string? Logistica = null);
+        bool? EnvioGratis = null, string? Logistica = null,
+        // 2026-09-30: sólo las que dejan menos que su % ("tu %"), de la más vendida a la menos.
+        bool BajoMiPct = false);
 
     /// <summary>2026-09-22 — Precio que dejaría el objetivo, con la comisión que tenemos guardada.
     /// Es la primera cuenta del motor (MeliPricePushService.CalcularPrecioParaGananciaAsync) sin ir a
@@ -387,6 +391,19 @@ public class MeliPublicacionesV2Service
             if (tipos.Count > 0) q = q.Where(m => m.LogisticType != null && tipos.Contains(m.LogisticType));
         }
 
+        // ── "Te dejan menos que tu %" (2026-09-30) ──
+        // Osmar dejó de usar el precio automático: los precios quedan fijos y él los va arreglando de
+        // a poco. Para eso necesita ver cuáles quedaron cortas, empezando por las que más se venden.
+        // El número del botón se cuenta con todos los demás filtros puestos.
+        var bajoMiPct = await BajoSuPctAsync(q, ahoraUtc, ct);
+        conteos = conteos with { BajoMiPct = bajoMiPct.Count };
+        List<string>? idsPagina = null;
+        if (f.BajoMiPct)
+        {
+            q = q.Where(m => bajoMiPct.Contains(m.MeliItemId));
+            idsPagina = bajoMiPct.Skip((pagina - 1) * porPagina).Take(porPagina).ToList();
+        }
+
         var total = await q.CountAsync(ct);
 
         IOrderedQueryable<Models.MeliItem> ordenada = f.Orden switch
@@ -395,8 +412,11 @@ public class MeliPublicacionesV2Service
             "precio_asc" => q.OrderBy(m => m.Price).ThenBy(m => m.Title),
             _ => q.OrderBy(m => m.Title),
         };
-        var pageRows = await ordenada.ThenBy(m => m.MeliItemId)
-            .Skip((pagina - 1) * porPagina).Take(porPagina)
+        // Con "menos que tu %" el orden (más vendidas primero) ya viene armado en memoria.
+        var paginaQ = idsPagina is not null
+            ? q.Where(m => idsPagina.Contains(m.MeliItemId))
+            : ordenada.ThenBy(m => m.MeliItemId).Skip((pagina - 1) * porPagina).Take(porPagina);
+        var pageRows = await paginaQ
             .Select(m => new
             {
                 m.MeliItemId, m.Sku, m.Title, m.Thumbnail, m.Permalink, m.Price, m.Status,
@@ -413,6 +433,8 @@ public class MeliPublicacionesV2Service
                 Cuenta = m.MeliAccount != null ? m.MeliAccount.Nickname : null
             })
             .ToListAsync(ct);
+        if (idsPagina is not null)
+            pageRows = pageRows.OrderBy(r => idsPagina.IndexOf(r.MeliItemId)).ToList();
 
         var ids = pageRows.Select(r => r.MeliItemId).ToList();
         var skus = pageRows.Where(r => r.Sku != null).Select(r => r.Sku!).Distinct().ToList();
@@ -641,6 +663,77 @@ public class MeliPublicacionesV2Service
         if (f.SinCosto) items = items.Where(i => i.Costo is null or <= 0).ToList();
 
         return new PageDto(total, pagina, porPagina, items, grupo, conteos);
+    }
+
+    /// <summary>2026-09-30 — Las publicaciones de `q` que dejan menos que su % ("tu %": el objetivo
+    /// guardado, o 50% si no tiene), de la más vendida en los últimos 90 días a la menos.
+    /// La cuenta es LA MISMA que la de cada fila (precio de la promo si está en una, comisión con el
+    /// cargo fijo que no se encoge, envío, IVA, costo de la receta sin repetir piezas). Si dieran
+    /// distinto, la fila diría 45% y la lista diría que está abajo del 50%: justo lo que hace
+    /// desconfiar de los números. Las que no tienen costo o comisión no entran: no se sabe qué dejan.</summary>
+    private async Task<List<string>> BajoSuPctAsync(IQueryable<Models.MeliItem> q, DateTime ahoraUtc, CancellationToken ct)
+    {
+        var filas = await q.Where(m => m.Price > 0 && m.SaleFeeAmount != null)
+            .Select(m => new
+            {
+                m.MeliItemId, m.Price, m.SaleFeeAmount, m.SaleFeePercentageFee, m.SaleFeeFixedFee, m.SaleFeeShippingCost,
+                PromoPrecio = m.PromoHasta != null && m.PromoHasta <= ahoraUtc ? null : m.PromoPrecio,
+                m.CafeProductoId, m.CafeFormato, m.SoldQuantity
+            })
+            .ToListAsync(ct);
+        if (filas.Count == 0) return new();
+
+        var comps = (await (
+            from c in _db.MeliItemComponentes.AsNoTracking()
+            join p in _db.CafeProductos.AsNoTracking() on c.CafeProductoId equals p.Id
+            select new { c.MeliItemId, p.Sku, p.Costo, p.Categoria, c.Formato, c.Cantidad }
+        ).ToListAsync(ct)).ToLookup(c => c.MeliItemId);
+
+        var legacyIds = filas.Where(r => r.CafeProductoId.HasValue).Select(r => r.CafeProductoId!.Value).Distinct().ToList();
+        var legacy = await _db.CafeProductos.AsNoTracking()
+            .Where(p => legacyIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Costo, p.Categoria })
+            .ToDictionaryAsync(p => p.Id, ct);
+
+        var objetivos = await _db.MeliItemSyncConfigs.AsNoTracking()
+            .Where(c => c.GananciaObjetivoPct != null && c.GananciaObjetivoPct > 0)
+            .ToDictionaryAsync(c => c.MeliItemId, c => c.GananciaObjetivoPct!.Value, ct);
+
+        var desde = ahoraUtc.AddDays(-90);
+        var ventas90 = await _db.MeliOrders.AsNoTracking()
+            .Where(o => o.DateCreated >= desde && o.Status != "cancelled")
+            .GroupBy(o => o.ItemId)
+            .Select(g => new { g.Key, N = g.Sum(o => o.Quantity) })
+            .ToDictionaryAsync(x => x.Key, x => x.N, ct);
+
+        var bajas = new List<(string Mla, int V90, int Vendidas)>();
+        foreach (var r in filas)
+        {
+            decimal? costo = null;
+            var misComps = comps[r.MeliItemId].ToList();
+            if (misComps.Count > 0)
+                costo = misComps.GroupBy(c => c.Sku).Select(g => g.First())
+                    .Sum(c => c.Costo * MeliPricePushService.KilosPorUnidad(c.Categoria, c.Formato) * c.Cantidad);
+            else if (r.CafeProductoId is int pid && legacy.TryGetValue(pid, out var lp))
+                costo = lp.Costo * MeliPricePushService.KilosPorUnidad(lp.Categoria, r.CafeFormato);
+            if (costo is not > 0) continue;
+
+            var precioReal = (r.PromoPrecio is > 0 && r.PromoPrecio < r.Price) ? r.PromoPrecio.Value : r.Price;
+            var comision = r.SaleFeeAmount!.Value;
+            if (precioReal != r.Price)
+                comision = r.SaleFeePercentageFee is > 0
+                    ? Math.Round(precioReal * (r.SaleFeePercentageFee.Value / 100m) + (r.SaleFeeFixedFee ?? 0m), 2)
+                    : Math.Round(r.SaleFeeAmount.Value / r.Price * precioReal, 2);
+            var neto = Math.Round((precioReal - comision - (r.SaleFeeShippingCost ?? 0m)) / IVA, 2);
+            var margen = Math.Round((neto - costo.Value) / costo.Value * 100m, 1);
+
+            var objetivo = objetivos.TryGetValue(r.MeliItemId, out var o) ? o : 50m;
+            if (margen < objetivo)
+                bajas.Add((r.MeliItemId, ventas90.GetValueOrDefault(r.MeliItemId), r.SoldQuantity));
+        }
+
+        return bajas.OrderByDescending(b => b.V90).ThenByDescending(b => b.Vendidas).ThenBy(b => b.Mla)
+            .Select(b => b.Mla).ToList();
     }
 
     /// <summary>Números para los chips de arriba: cuántas caen en cada filtro. Una sola pasada.</summary>
