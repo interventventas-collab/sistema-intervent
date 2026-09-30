@@ -246,6 +246,15 @@
     .mp-lista .n { color:#9ca3af; font-size:0.78rem; font-weight:700; min-width:1.4rem; }
     .mp-lista .quien { font-size:0.85rem; font-weight:600; color:#111; }
     .mp-lista .donde { font-size:0.78rem; color:#6b7280; }
+    /* 30/09/2026: "no suma" */
+    .mp-lista li.rep { background:#fffbeb; }
+    .mp-lista .ns { text-decoration:line-through; color:#9ca3af; }
+    .mp-lista .imp { color:#15803d; font-weight:600; margin-left:0.3rem; white-space:nowrap; }
+    .mp-lista .imp.cero { color:#9ca3af; }
+    .mp-ns-btn { align-self:center; font-size:0.72rem; border:1px solid #d1d5db; background:#fff; color:#374151;
+                 border-radius:6px; padding:0.2rem 0.5rem; white-space:nowrap; }
+    .mp-ns-btn:disabled { opacity:0.5; }
+    .mp-rep-nota { color:#92400e; font-size:0.76rem; margin-top:0.4rem; }
     .mp-lista .hora { font-size:0.78rem; color:#9ca3af; }
     /* 08/09/2026: visto bueno del pago — botones grandes, que se aprieten con el dedo */
     .mp-vb { display:flex; gap:0.4rem; margin-top:0.5rem; }
@@ -618,15 +627,25 @@
                                    total y el "quedó debiendo" queden pegados al título. *@
                                 @if (abierto)
                                 {
+                                    @if (m.Entregas!.Any(x => x.Repetida))
+                                    {
+                                        <div class="mp-rep-nota">En amarillo: dos en el mismo lugar. Si cobrás una sola, tocá "no suma" en la otra.</div>
+                                    }
                                     <ol class="mp-lista">
                                         @{ var nro = 0; }
                                         @foreach (var e in m.Entregas!)
                                         {
                                             nro++;
-                                            <li>
+                                            <li class="@(e.Repetida ? "rep" : "")">
                                                 <span class="n">@nro.</span>
-                                                <span>
-                                                    <div class="quien">@e.Cliente</div>
+                                                <span style="flex:1; min-width:0;">
+                                                    @* 30/09/2026: lo que suma cada una, y "no suma" para la doble en el mismo
+                                                       lugar (el arreglo: dos en el mismo lugar, cobra una). *@
+                                                    <div class="quien">
+                                                        <span class="@(e.NoSuma ? "ns" : "")">@e.Cliente</span>
+                                                        @if (e.NoSuma) { <span class="imp cero">($0)</span> }
+                                                        else { <span class="imp">(+@Plata(e.Tarifa))</span> }
+                                                    </div>
                                                     @* Dirección y hora en un solo renglón: 12 entregas
                                                        en tres renglones cada una no entran en el celu. *@
                                                     @{
@@ -638,7 +657,16 @@
                                                     {
                                                         <div class="donde">@(dir != "" && hs != "" ? $"{dir} · {hs}" : dir + hs)</div>
                                                     }
+                                                    @if (e.NoSuma)
+                                                    {
+                                                        <div class="donde">no suma@(string.IsNullOrWhiteSpace(e.NoSumaPor) ? "" : $" · la marcó {e.NoSumaPor}")</div>
+                                                    }
                                                 </span>
+                                                @if (!e.Liquidado && e.Id > 0)
+                                                {
+                                                    <button class="mp-ns-btn" disabled="@(marcandoNoSuma == e.Id)"
+                                                            @onclick="() => CambiarNoSuma(e)" @onclick:stopPropagation="true">@(e.NoSuma ? "↩" : "no suma")</button>
+                                                }
                                             </li>
                                         }
                                     </ol>
@@ -1653,7 +1681,28 @@
         List<MiEntregaDto>? Entregas = null);
 
     /// <summary>17/09/2026: cada entrega del día, con dirección y hora, para desplegar el renglón.</summary>
-    public record MiEntregaDto(string Cliente, string? Direccion, DateTime? EntregadoAt, decimal Tarifa);
+    public record MiEntregaDto(string Cliente, string? Direccion, DateTime? EntregadoAt, decimal Tarifa,
+        // 30/09/2026 — "no suma" (dos en el mismo lugar, cobra una).
+        int Id = 0, bool NoSuma = false, string? NoSumaPor = null, bool Liquidado = false, bool Repetida = false);
+    private int marcandoNoSuma;
+
+    /// <summary>30/09/2026: marca / desmarca "no suma" desde el celu y recarga la cuenta.</summary>
+    private async Task CambiarNoSuma(MiEntregaDto e)
+    {
+        if (marcandoNoSuma != 0) return;
+        marcandoNoSuma = e.Id;
+        try
+        {
+            var r = await Http.PostAsJsonAsync(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/entregas/{e.Id}/no-suma",
+                new { NoSuma = !e.NoSuma });
+            if (r.IsSuccessStatusCode)
+                miCuenta = await Http.GetFromJsonAsync<MiCuentaDto>(
+                    $"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/detalle");
+        }
+        catch { /* si falla, el botón vuelve solo */ }
+        finally { marcandoNoSuma = 0; }
+    }
 
     public record MiCuentaDto(bool Aplica, decimal Tarifa, decimal TotalGanado, decimal TotalCobrado,
         decimal Saldo, List<MiDiaDto> Dias, List<MiPagoDto> Pagos, List<MiAvisoDto> Avisos,

@@ -875,7 +875,29 @@ public class ViajesController : ControllerBase
         DateTime? Hora = null, string? CargadoPor = null,
         DateTime? Desde = null, DateTime? Hasta = null,
         // 08/09/2026 — el visto bueno del repartidor, sólo en los pagos.
-        bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null);
+        bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null,
+        // 30/09/2026 — las entregas del día una por una, con lo que suma cada una y si "no suma".
+        List<EntregaItemDto>? Entregas = null);
+
+    /// <summary>30/09/2026 — Una entrega del día. Tarifa = lo que suma (0 si "no suma");
+    /// Repetida = otra entrega del mismo día en el mismo lugar.</summary>
+    public record EntregaItemDto(int Id, string Nombre, decimal Tarifa, bool NoSuma, string? NoSumaPor,
+        bool Liquidado, bool Repetida);
+
+    public record NoSumaRequest(bool NoSuma);
+
+    /// <summary>30/09/2026 — Marca / desmarca una entrega del mapa como "no suma".</summary>
+    [HttpPost("admin/entregas/{id:int}/no-suma")]
+    [Authorize]
+    public async Task<IActionResult> NoSuma(int id, [FromBody] NoSumaRequest req)
+    {
+        var e = await _db.ViajesEntregas.FindAsync(id);
+        if (e is null) return NotFound(new { error = "No encontré esa entrega" });
+        var err = ViajesAutoService.MarcarNoSuma(e, req.NoSuma, QuienCarga());
+        if (err is not null) return BadRequest(new { error = err });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, tarifa = e.Tarifa });
+    }
 
     /// <summary>
     /// La cuenta con su total. Los totales son de TODA la historia, no de los días que se muestran:
@@ -899,6 +921,19 @@ public class ViajesController : ControllerBase
             decimal pago, bool esPago, bool esExtra, string tipo, List<int> ids, bool liq,
             List<string> items, DateTime? hora, string? quien, DateTime? desde, DateTime? hasta,
             bool pide, bool? confirmado, DateTime? confirmadoAt)>();
+
+        // 30/09/2026 — el detalle de cada día, para el "no suma" (va aparte para no engordar la tupla).
+        var detallePorDia = new Dictionary<DateTime, List<EntregaItemDto>>();
+        foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
+        {
+            var rep = ViajesAutoService.Repetidas(g);
+            detallePorDia[g.Key] = g.OrderBy(x => x.Id)
+                .Select(x => new EntregaItemDto(x.Id,
+                    !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
+                        : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion! : "entrega"),
+                    x.Tarifa, x.TarifaNoSuma != null, x.NoSumaPor, x.LiquidadoPagoId != null, rep.Contains(x.Id)))
+                .ToList();
+        }
 
         foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
         {
@@ -945,7 +980,8 @@ public class ViajesController : ControllerBase
             salida.Add(new MovimientoCtaDto(f.fecha, f.que, f.det, f.suma, f.pago, acum,
                 f.esPago, f.esExtra, f.tipo, f.ids, f.liq, f.items,
                 f.hora, f.quien, f.desde, f.hasta,
-                f.pide, f.confirmado, f.confirmadoAt));
+                f.pide, f.confirmado, f.confirmadoAt,
+                f.tipo == "entregas" && detallePorDia.TryGetValue(f.fecha, out var det) ? det : null));
         }
 
         var ganado = filas.Sum(f => f.suma);

@@ -139,6 +139,17 @@
         padding:0 0.3rem 0 0; }
     .vj-lista { margin:0.4rem 0 0 1rem; padding:0; color:#6b7280; font-size:0.82rem; }
     .vj-lista li { padding:0.1rem 0; }
+    /* 30/09/2026: "no suma" */
+    .vj-lista li.rep { background:#fffbeb; }
+    .vj-lista .ns { text-decoration:line-through; color:#9ca3af; }
+    .vj-imp { color:#15803d; font-weight:600; margin-left:0.3rem; font-variant-numeric:tabular-nums; }
+    .vj-imp.cero { color:#9ca3af; }
+    .vj-ns-quien { color:#9ca3af; font-size:0.74rem; margin-left:0.35rem; }
+    .vj-ns-btn { margin-left:0.4rem; font-size:0.7rem; border:1px solid #d1d5db; background:#fff; color:#374151;
+                 border-radius:6px; padding:0 0.4rem; cursor:pointer; }
+    .vj-ns-btn:disabled { opacity:0.5; }
+    .vj-nosuma-cuenta { color:#6b7280; font-size:0.75rem; margin-left:0.3rem; }
+    .vj-rep-nota { color:#92400e; font-size:0.74rem; margin-top:0.25rem; }
     .vj-mov tr:first-of-type + tr td.quedo { font-weight:800; }
     .vj-tag { font-size:0.66rem; font-weight:700; padding:0.05rem 0.35rem; border-radius:5px;
         background:#e0e7ff; color:#3730a3; margin-left:0.3rem; }
@@ -592,7 +603,40 @@
                                             @m.Que
                                             @if (m.EsExtra) { <span class="vj-tag">a mano</span> }
                                             else if (!m.EsPago) { <span class="vj-tag mapa">del mapa</span> }
-                                            @if (abierto)
+                                            @{ var noSuman = m.Entregas?.Count(x => x.NoSuma) ?? 0; }
+                                            @if (noSuman > 0) { <span class="vj-nosuma-cuenta">· @noSuman no @(noSuman == 1 ? "suma" : "suman")</span> }
+                                            @if (abierto && m.Entregas is { Count: > 0 })
+                                            {
+                                                @* 30/09/2026: cada entrega con lo que suma, y "no suma" para las dobles en el
+                                                   mismo lugar (el arreglo con Nacho: dos en el mismo lugar, cobra una). *@
+                                                <ol class="vj-lista">
+                                                    @foreach (var en in m.Entregas)
+                                                    {
+                                                        <li class="@(en.Repetida ? "rep" : "")">
+                                                            <span class="@(en.NoSuma ? "ns" : "")">@en.Nombre</span>
+                                                            @if (en.NoSuma)
+                                                            {
+                                                                <span class="vj-imp cero">($0)</span>
+                                                                <span class="vj-ns-quien">no suma@(string.IsNullOrWhiteSpace(en.NoSumaPor) ? "" : $" · lo marcó {en.NoSumaPor}")</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="vj-imp">(+$@Plata(en.Tarifa))</span>
+                                                            }
+                                                            @if (!en.Liquidado)
+                                                            {
+                                                                <button class="vj-ns-btn" disabled="@(marcandoNoSuma == en.Id)"
+                                                                        @onclick="() => CambiarNoSuma(en)">@(en.NoSuma ? "↩ que sume" : "no suma")</button>
+                                                            }
+                                                        </li>
+                                                    }
+                                                </ol>
+                                                @if (m.Entregas.Any(x => x.Repetida))
+                                                {
+                                                    <div class="vj-rep-nota">En amarillo: misma dirección dos veces el mismo día.</div>
+                                                }
+                                            }
+                                            else if (abierto)
                                             {
                                                 <ol class="vj-lista">
                                                     @foreach (var it in m.Items) { <li>@it</li> }
@@ -1129,7 +1173,31 @@
         // viene entre qué horas se entregaron.
         DateTime? Hora = null, string? CargadoPor = null,
         DateTime? Desde = null, DateTime? Hasta = null,
-        bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null);
+        bool PideConfirmacion = false, bool? Confirmado = null, DateTime? ConfirmadoAt = null,
+        // 30/09/2026: las entregas del día una por una (lo que suma cada una y si "no suma").
+        List<EntregaItemDto>? Entregas = null);
+    public record EntregaItemDto(int Id, string Nombre, decimal Tarifa, bool NoSuma, string? NoSumaPor,
+        bool Liquidado, bool Repetida);
+    private int? marcandoNoSuma;
+
+    /// <summary>30/09/2026: marca / desmarca "no suma" y recarga la cuenta (saldo, mes, todo).</summary>
+    private async Task CambiarNoSuma(EntregaItemDto en)
+    {
+        marcandoNoSuma = en.Id;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/viajes/admin/entregas/{en.Id}/no-suma", new { NoSuma = !en.NoSuma });
+            if (!resp.IsSuccessStatusCode)
+            {
+                var txt = await resp.Content.ReadAsStringAsync();
+                ToastService.Error(txt.Contains("pagó") ? "Esa entrega ya se pagó: no se puede cambiar." : "No se pudo cambiar");
+                return;
+            }
+            await RecargarTodo();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { marcandoNoSuma = null; }
+    }
     public record CuentaDto(decimal Ganado, decimal Pagado, decimal Saldo, List<MovimientoCtaDto> Movimientos);
     private CuentaDto? cuenta;
     private List<MovimientoCtaDto>? movimientos => cuenta?.Movimientos;

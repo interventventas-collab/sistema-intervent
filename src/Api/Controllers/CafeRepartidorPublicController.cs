@@ -114,7 +114,9 @@ public class CafeRepartidorPublicController : ControllerBase
     /// todas. Pedido de él: "que diga también dirección y horario en que se entregó".
     /// EntregadoAt va en UTC: la pantalla lo pasa a hora argentina.
     /// </summary>
-    public record MiEntregaDto(string Cliente, string? Direccion, DateTime? EntregadoAt, decimal Tarifa);
+    public record MiEntregaDto(string Cliente, string? Direccion, DateTime? EntregadoAt, decimal Tarifa,
+        // 30/09/2026 — "no suma": dos en el mismo lugar y cobra una. Id para poder marcarla desde el celu.
+        int Id = 0, bool NoSuma = false, string? NoSumaPor = null, bool Liquidado = false, bool Repetida = false);
 
     public record MiMovDto(DateTime Fecha, string Que, List<string> Donde,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
@@ -215,11 +217,13 @@ public class CafeRepartidorPublicController : ControllerBase
             var muestra = todos.Take(3).ToList();
             if (todos.Count > muestra.Count) muestra.Add($"+{todos.Count - muestra.Count} más");
             // 17/09/2026 — y todas, una por una, con dirección y hora: es lo que se ve al desplegar.
+            var rep = ViajesAutoService.Repetidas(g);
             var detalle = g.OrderBy(x => x.EntregadoAt ?? DateTime.MaxValue).ThenBy(x => x.Id)
                 .Select(x => new MiEntregaDto(
                     !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
                         : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion! : "entrega"),
-                    x.Direccion, x.EntregadoAt, x.Tarifa))
+                    x.Direccion, x.EntregadoAt, x.Tarifa,
+                    x.Id, x.TarifaNoSuma != null, x.NoSumaPor, x.LiquidadoPagoId != null, rep.Contains(x.Id)))
                 .ToList();
             filas.Add((g.Key, 0, $"{g.Count()} entrega{(g.Count() == 1 ? "" : "s")}",
                 muestra,
@@ -367,6 +371,23 @@ public class CafeRepartidorPublicController : ControllerBase
         });
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, confirmado = pago.Confirmado, confirmadoAt = pago.ConfirmadoAt });
+    }
+
+    public record NoSumaRequest(bool NoSuma);
+
+    /// <summary>30/09/2026 — El repartidor marca desde su celu una entrega como "no suma" (dos en el
+    /// mismo lugar y cobra una), o la vuelve a sumar. Sólo sus propias entregas.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/viajes/entregas/{entregaId:int}/no-suma")]
+    public async Task<IActionResult> NoSuma(string tokenRepartidor, int entregaId, [FromBody] NoSumaRequest req)
+    {
+        var emp = await EmpleadoDeViajesAsync(tokenRepartidor);
+        if (emp is null) return NotFound(new { error = "No encontramos tu ficha" });
+        var e = await _db.ViajesEntregas.FirstOrDefaultAsync(x => x.Id == entregaId && x.EmpleadoId == emp.Id);
+        if (e is null) return NotFound(new { error = "Esa entrega no es tuya" });
+        var err = ViajesAutoService.MarcarNoSuma(e, req.NoSuma, emp.Nombre);
+        if (err is not null) return BadRequest(new { error = err });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, tarifa = e.Tarifa });
     }
 
     private async Task<Models.ViajesEmpleado?> EmpleadoDeViajesAsync(string tokenRepartidor)

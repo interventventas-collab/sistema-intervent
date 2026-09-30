@@ -7463,6 +7463,15 @@ IF OBJECT_ID('Viajes_Registros') IS NOT NULL AND COL_LENGTH('Viajes_Registros','
 GO
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 30/09/2026 — Entregas que "no suman" (dos en el mismo lugar el mismo día y el
+-- repartidor cobra una). La entrega queda con Tarifa = 0 y la original en TarifaNoSuma.
+-- ⚠ En PROD estos ALTER hay que correrlos a mano (init.sql solo corre en base nueva).
+-- ─────────────────────────────────────────────────────────────────────────────
+IF OBJECT_ID('Viajes_Entregas') IS NOT NULL AND COL_LENGTH('Viajes_Entregas','TarifaNoSuma') IS NULL
+    ALTER TABLE Viajes_Entregas ADD TarifaNoSuma DECIMAL(18,2) NULL, NoSumaPor NVARCHAR(100) NULL, NoSumaAt DATETIME2 NULL;
+GO
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 08/09/2026 — El repartidor da el VISTO BUENO de cada pago.
 -- Sobre todo por las cobranzas redirigidas: esa plata nunca pasa por la empresa, se la queda el
 -- repartidor de mano del cliente, y hasta hoy nadie chequeaba que le hubiera llegado de verdad.

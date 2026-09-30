@@ -147,6 +147,52 @@ public class ViajesAutoService
         return cambios;
     }
 
+    /// <summary>
+    /// 30/09/2026 — "No suma": dos entregas en el mismo lugar el mismo día y el repartidor cobra una
+    /// sola (arreglo con Nacho). La entrega queda a la vista pero con Tarifa = 0, así el saldo, el mes,
+    /// el PDF y el celu se ajustan solos; la original queda en TarifaNoSuma para deshacerlo.
+    /// La sincronización no pisa la tarifa de lo ya contado, así que la marca aguanta.
+    /// Devuelve el motivo si no se puede (null = hecho).
+    /// </summary>
+    public static string? MarcarNoSuma(ViajesEntrega e, bool noSuma, string? quien)
+    {
+        if (e.StopId is null) return "Sólo se marcan las entregas del mapa. Lo cargado a mano se borra.";
+        if (e.LiquidadoPagoId is not null) return "Esa entrega ya se pagó: no se puede cambiar.";
+        var ahora = DateTime.UtcNow;
+        if (noSuma)
+        {
+            if (e.TarifaNoSuma is not null) return null;   // ya estaba
+            e.TarifaNoSuma = e.Tarifa;
+            e.Tarifa = 0m;
+            e.NoSumaPor = Recortar(quien, 100);
+            e.NoSumaAt = ahora;
+        }
+        else
+        {
+            if (e.TarifaNoSuma is null) return null;
+            e.Tarifa = e.TarifaNoSuma.Value;
+            e.TarifaNoSuma = null;
+            e.NoSumaPor = null;
+            e.NoSumaAt = null;
+        }
+        e.UpdatedAt = ahora;
+        return null;
+    }
+
+    /// <summary>30/09/2026 — Entregas de un mismo día que caen en el mismo lugar (misma dirección, o
+    /// mismo cliente si no hay dirección). Se pintan para que salten a la vista; la que no suma la
+    /// elige una persona.</summary>
+    public static HashSet<int> Repetidas(IEnumerable<ViajesEntrega> delDia)
+        => delDia.Where(x => x.StopId != null)
+            .GroupBy(x => Clave(x.Direccion) ?? Clave(x.Cliente) ?? $"#{x.Id}")
+            .Where(g => g.Count() > 1)
+            .SelectMany(g => g.Select(x => x.Id))
+            .ToHashSet();
+
+    private static string? Clave(string? s)
+        => string.IsNullOrWhiteSpace(s) ? null
+           : System.Text.RegularExpressions.Regex.Replace(s.Trim().ToLowerInvariant(), @"\s+", " ");
+
     private static string? Recortar(string? s, int max)
     {
         if (string.IsNullOrWhiteSpace(s)) return null;
