@@ -22,7 +22,9 @@ public class CafeCajasController : ControllerBase
 
     public record CajaDto(
         int Id, string Nombre, string Tipo, decimal SaldoInicial, int Orden,
-        bool IsActive, string? Notas, decimal SaldoActual);
+        bool IsActive, string? Notas, decimal SaldoActual,
+        // 2026-09-30: día del último arqueo vigente. La cobranza no deja fechar un cobro antes de eso.
+        DateTime? UltimoArqueo = null);
 
     public record CrearCajaRequest(string Nombre, string Tipo, decimal SaldoInicial, int? Orden, string? Notas);
     public record EditarCajaRequest(string Nombre, string Tipo, decimal SaldoInicial, int? Orden, bool IsActive, string? Notas);
@@ -36,9 +38,15 @@ public class CafeCajasController : ControllerBase
         var cajas = await query.OrderBy(c => c.Orden).ThenBy(c => c.Nombre).ToListAsync();
 
         var saldos = await SaldosPorCajaAsync();
+        var arqueos = await _db.CafeCajaMovimientos
+            .Where(m => m.Tipo == "ARQUEO" && m.AnuladoAt == null)
+            .GroupBy(m => m.CajaId)
+            .Select(g => new { CajaId = g.Key, Fecha = g.Max(m => m.Fecha) })
+            .ToDictionaryAsync(x => x.CajaId, x => x.Fecha);
         var result = cajas.Select(c => new CajaDto(
             c.Id, c.Nombre, c.Tipo, c.SaldoInicial, c.Orden, c.IsActive, c.Notas,
-            c.SaldoInicial + (saldos.TryGetValue(c.Id, out var t) ? t : 0m)
+            c.SaldoInicial + (saldos.TryGetValue(c.Id, out var t) ? t : 0m),
+            arqueos.TryGetValue(c.Id, out var fa) ? fa : null
         )).ToList();
         return Ok(result);
     }

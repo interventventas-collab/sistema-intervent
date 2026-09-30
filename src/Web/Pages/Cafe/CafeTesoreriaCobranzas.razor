@@ -411,6 +411,25 @@
 
                 @if (selClienteId > 0)
                 {
+                    @* 2026-09-30: fecha del cobro. Las cobranzas se cargan días después del pago; sale sola de la
+                       transferencia tildada / la redirigida / el cobro del repartidor, o hoy, y se puede cambiar. *@
+                    <div class="form-group" style="display:flex; gap:0.8rem; align-items:flex-end; flex-wrap:wrap;">
+                        <div>
+                            <label class="form-label">Fecha del cobro</label>
+                            <input type="date" class="form-input" style="width:170px; @(ErrorFecha is null ? "" : "border-color:#dc2626;")"
+                                   value="@formFecha.ToString("yyyy-MM-dd")" max="@HoyAr.ToString("yyyy-MM-dd")"
+                                   @onchange="OnFechaCobroChange" />
+                        </div>
+                        @if (ErrorFecha is not null)
+                        {
+                            <div style="font-size:0.8rem; color:#b91c1c; font-weight:600; padding-bottom:0.45rem;">@ErrorFecha</div>
+                        }
+                        else
+                        {
+                            <div style="font-size:0.8rem; color:#6b7280; padding-bottom:0.45rem;">@(fechaOrigen ?? "Hoy. Si lo cobraste otro día, cambiala.")</div>
+                        }
+                    </div>
+
                     @if (pendienteOrigen is not null)
                     {
                         <div style="margin: 0.8rem 0; padding: 0.7rem 0.9rem; background: #dcfce7; border: 1px solid #16a34a; border-radius: 8px; display: flex; gap: 0.6rem; align-items: center;">
@@ -1855,6 +1874,56 @@
     private List<ApiClient.MovDescartadoDto> movsBancoDescartados = new();
     private bool verDescartados = false;
     private Dictionary<int, ImputData> imputaciones = new();
+    // 2026-09-30: fecha del cobro (día argentino). fechaOrigen dice de dónde salió; si la tocó a mano,
+    // tildar otra transferencia ya no se la pisa.
+    private DateTime formFecha = DateTime.UtcNow.ToArTime().Date;
+    private string? fechaOrigen;
+    private bool fechaTocadaAMano;
+    private static DateTime HoyAr => DateTime.UtcNow.ToArTime().Date;
+
+    /// <summary>Por qué no se puede guardar con esa fecha (null = está bien).</summary>
+    private string? ErrorFecha
+    {
+        get
+        {
+            if (formFecha > HoyAr) return "No puede ser una fecha futura.";
+            if (formFecha >= HoyAr || cajas is null) return null;
+            var contada = formMedios.Select(m => cajas.FirstOrDefault(c => c.Id == m.CajaId))
+                .Where(c => c?.UltimoArqueo is not null && c.UltimoArqueo.Value.Date > formFecha)
+                .OrderByDescending(c => c!.UltimoArqueo).FirstOrDefault();
+            return contada is null ? null
+                : $"La caja {contada.Nombre} se contó el {contada.UltimoArqueo:dd/MM/yyyy}. No se puede cargar una cobranza de antes de ese día.";
+        }
+    }
+
+    private void OnFechaCobroChange(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var f))
+        {
+            formFecha = f.Date;
+            fechaTocadaAMano = true;
+            fechaOrigen = formFecha == HoyAr ? null : "La cambiaste a mano.";
+        }
+    }
+
+    /// <summary>Pone la fecha que viene del pago (transferencia, redirigida, repartidor), salvo que ya la
+    /// hayan tocado a mano.</summary>
+    private void FechaDesde(DateTime fecha, string origen)
+    {
+        if (fechaTocadaAMano) return;
+        formFecha = fecha.Date > HoyAr ? HoyAr : fecha.Date;
+        fechaOrigen = origen;
+    }
+
+    /// <summary>Con transferencias tildadas, la fecha es la de la más nueva; si se destildan todas, vuelve a hoy.</summary>
+    private void FechaDesdeBanco()
+    {
+        if (fechaTocadaAMano) return;
+        var fechas = movsBancoDisponibles.Where(m => movsBancoUsados.Contains(m.Id)).Select(m => m.Fecha.Date).ToList();
+        if (fechas.Count > 0) FechaDesde(fechas.Max(), "Es la fecha de la transferencia del banco que tildaste. Si hace falta, la podés cambiar.");
+        else if (fechaOrigen is not null && fechaOrigen.StartsWith("Es la fecha de la transferencia")) { formFecha = HoyAr; fechaOrigen = null; }
+    }
     private bool aCuentaActivo;
     private decimal aCuentaImporte;
     private decimal formRetenciones;
@@ -2013,6 +2082,7 @@
             }
             var caja = cajas?.FirstOrDefault(c => c.IsActive && c.Tipo == "V_PRIVADO");
             if (caja is null) { ToastService.Error("No encontré la caja de Redirigido"); return; }
+            FechaDesde(rediOrigen.CreatedAt.ToArTime(), "Es el día que llegó la redirigida por WhatsApp. Si hace falta, la podés cambiar.");
             formMedios.Add(new MedioForm
             {
                 CajaId = caja.Id, TipoCaja = caja.Tipo, Importe = rediOrigen.Importe,
@@ -2043,6 +2113,7 @@
         {
             pendienteOrigen = await Api.GetCobranzaPendienteAsync(pendienteId);
             if (pendienteOrigen is null) return;
+            FechaDesde(pendienteOrigen.CreatedAt.ToArTime(), $"Es el día que lo cobró {pendienteOrigen.RepartidorNombre}. Si hace falta, la podés cambiar.");
             // Buscar caja efectivo
             var cajaEf = cajas?.FirstOrDefault(c => c.IsActive && c.Tipo == "EFECTIVO");
             if (cajaEf is not null)
@@ -2117,6 +2188,7 @@
             Referencia = $"Transferencia banco {mov.Fecha:dd/MM} — {(mov.Descripcion ?? "")}"
         });
         movsBancoUsados.Add(mov.Id);
+        FechaDesdeBanco();
     }
 
     private async Task Load()
@@ -2166,6 +2238,7 @@
         pendienteOrigen = null;
         alqPendienteOrigen = null;
         rediOrigen = null;
+        formFecha = HoyAr; fechaOrigen = null; fechaTocadaAMano = false;
         showNueva = true;
     }
 
@@ -2501,6 +2574,7 @@
                 if (ix >= 0) formMedios.RemoveAt(ix);
             }
             movsBancoUsados.Remove(movId);
+            FechaDesdeBanco();
             RecalcularTotal();
         }
     }
@@ -2557,6 +2631,7 @@
         // Asi se puede guardar una compensacion FA+NC con TotalImputado=0.
         if (!HayItemsImputados) { ToastService.Error("Imputá algo a un comprobante o A cuenta"); return; }
         if (!CuadraTotal) { ToastService.Error("No cuadra: medios + retenciones ≠ imputado"); return; }
+        if (ErrorFecha is { } errFecha) { ToastService.Error("⚠️ " + errFecha); return; }
         var medioSinCaja = formMedios.Any(m => m.CajaId == 0);
         var medioSinImporte = formMedios.Any(m => m.CajaId > 0 && m.Importe <= 0);
         if (medioSinCaja && medioSinImporte) { ToastService.Error("⚠️ Te falta elegir la CAJA y poner el IMPORTE en algún medio de cobro"); return; }
@@ -2613,7 +2688,8 @@
         try
         {
             // 2026-09-28: la redirigida por WhatsApp va en el mismo pedido (se engancha en un solo paso).
-            var r = await Api.CrearCafeCobranzaAsync(selClienteId, formRetenciones, null, formObservaciones, comps, medios, rediOrigen?.Id);
+            var r = await Api.CrearCafeCobranzaAsync(selClienteId, formRetenciones, null, formObservaciones, comps, medios, rediOrigen?.Id,
+                formFecha < HoyAr ? formFecha.ToString("yyyy-MM-dd") : null);
             if (r is null) { ToastService.Error("Error al crear cobranza"); return; }
             // Si se usaron movimientos del extracto bancario, marcarlos como "usados" para que
             // no se sugieran de nuevo en futuras cobranzas.

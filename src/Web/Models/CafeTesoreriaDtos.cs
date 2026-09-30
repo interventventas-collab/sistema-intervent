@@ -11,6 +11,8 @@ public class CafeCajaDto
     public bool IsActive { get; set; } = true;
     public string? Notas { get; set; }
     public decimal SaldoActual { get; set; }
+    /// <summary>2026-09-30: día del último arqueo. Una cobranza no se puede fechar antes.</summary>
+    public DateTime? UltimoArqueo { get; set; }
 }
 
 // Movimientos de caja: todo lo que mueve plata y NO es una cobranza (05/09/2026).
