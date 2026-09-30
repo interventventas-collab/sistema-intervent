@@ -145,8 +145,9 @@
     .vj-imp { color:#15803d; font-weight:600; margin-left:0.3rem; font-variant-numeric:tabular-nums; }
     .vj-imp.cero { color:#9ca3af; }
     .vj-ns-quien { color:#9ca3af; font-size:0.74rem; margin-left:0.35rem; }
-    .vj-ns-btn { margin-left:0.4rem; font-size:0.7rem; border:1px solid #d1d5db; background:#fff; color:#374151;
-                 border-radius:6px; padding:0 0.4rem; cursor:pointer; }
+    .vj-ns-btn { margin-left:0.35rem; font-size:0.72rem; line-height:1; border:none; background:none; color:#9ca3af;
+                 padding:0.1rem 0.25rem; border-radius:4px; cursor:pointer; }
+    .vj-ns-btn:hover { color:#b42318; background:#fef2f2; }
     .vj-ns-btn:disabled { opacity:0.5; }
     .vj-nosuma-cuenta { color:#6b7280; font-size:0.75rem; margin-left:0.3rem; }
     .vj-rep-nota { color:#92400e; font-size:0.74rem; margin-top:0.25rem; }
@@ -604,7 +605,7 @@
                                             @if (m.EsExtra) { <span class="vj-tag">a mano</span> }
                                             else if (!m.EsPago) { <span class="vj-tag mapa">del mapa</span> }
                                             @{ var noSuman = m.Entregas?.Count(x => x.NoSuma) ?? 0; }
-                                            @if (noSuman > 0) { <span class="vj-nosuma-cuenta">· @noSuman no @(noSuman == 1 ? "suma" : "suman")</span> }
+                                            @if (noSuman > 0) { <span class="vj-nosuma-cuenta">· @noSuman no se @(noSuman == 1 ? "cobra" : "cobran")</span> }
                                             @if (abierto && m.Entregas is { Count: > 0 })
                                             {
                                                 @* 30/09/2026: cada entrega con lo que suma, y "no suma" para las dobles en el
@@ -617,23 +618,25 @@
                                                             @if (en.NoSuma)
                                                             {
                                                                 <span class="vj-imp cero">($0)</span>
-                                                                <span class="vj-ns-quien">no suma@(string.IsNullOrWhiteSpace(en.NoSumaPor) ? "" : $" · lo marcó {en.NoSumaPor}")</span>
+                                                                @if (!string.IsNullOrWhiteSpace(en.NoSumaPor)) { <span class="vj-ns-quien">· @en.NoSumaPor</span> }
                                                             }
                                                             else
                                                             {
                                                                 <span class="vj-imp">(+$@Plata(en.Tarifa))</span>
                                                             }
+                                                            @* 30/09/2026: una ✕ al lado; apretada pasa a ($0) y la ✕ se vuelve ↩ para deshacer. *@
                                                             @if (!en.Liquidado)
                                                             {
                                                                 <button class="vj-ns-btn" disabled="@(marcandoNoSuma == en.Id)"
-                                                                        @onclick="() => CambiarNoSuma(en)">@(en.NoSuma ? "↩ que sume" : "no suma")</button>
+                                                                        title="@(en.NoSuma ? "Que se vuelva a cobrar" : "No se cobra (pasa a $0)")"
+                                                                        @onclick="() => CambiarNoSuma(en)">@(en.NoSuma ? "↩" : "✕")</button>
                                                             }
                                                         </li>
                                                     }
                                                 </ol>
                                                 @if (m.Entregas.Any(x => x.Repetida))
                                                 {
-                                                    <div class="vj-rep-nota">En amarillo: misma dirección dos veces el mismo día.</div>
+                                                    <div class="vj-rep-nota">En amarillo: misma dirección dos veces el mismo día. Tocá la ✕ de la que no se cobra.</div>
                                                 }
                                             }
                                             else if (abierto)
