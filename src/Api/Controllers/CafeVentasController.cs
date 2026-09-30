@@ -1522,8 +1522,9 @@ public class CafeVentasController : ControllerBase
                 : it.PrecioUnitario;
             // Producto: solo el nombre (snapshot) + sufijos d.p./env. plat. si aplica
             var prodName = it.ProductoNombreSnapshot;
-            if (it.EsDoyPack) prodName += " (d.p.)";
-            else if (it.EsEnvasePlateado) prodName += " (env. plat.)";
+            // 2026-09-30: envase y molienda van aparte (PdfItem.Envase / Molienda) para dibujarlos
+            // como el presupuesto; el texto legacy "Descripcion" los sigue llevando.
+            var envase = it.EsDoyPack ? "d.p." : it.EsEnvasePlateado ? "env. plat." : null;
 
             // Formato: molienda + formato físico (ej "EN GRANOS · 1 kg")
             var fmtParts = new List<string>();
@@ -1536,16 +1537,19 @@ public class CafeVentasController : ControllerBase
                 _ => CafePricingService.FormatoLabel(it.Formato)
             });
             var fmtStr = string.Join(" · ", fmtParts);
+            var tamanio = it.EsConceptoLibre ? "" : fmtParts[^1];
 
             // Descripcion (legacy): texto unico que se usa como fallback en PDF si no hay separación
-            var desc = prodName + (string.IsNullOrEmpty(fmtStr) ? "" : $" — {fmtStr}");
+            var desc = prodName + (envase == null ? "" : $" ({envase})") + (string.IsNullOrEmpty(fmtStr) ? "" : $" — {fmtStr}");
 
             comp.Items.Add(new PdfItem
             {
                 Descripcion = desc,
-                Sku = it.ProductoNav?.Sku,           // SKU separado (columna propia)
+                Sku = it.ProductoNav?.Sku,           // SKU (va adentro de la celda Producto, en azul)
                 Producto = prodName,                  // Nombre limpio
-                Formato = fmtStr,                     // Formato limpio
+                Formato = tamanio,                    // 2026-09-30: solo el tamaño ("1/2 kg"), como el presupuesto
+                Molienda = string.IsNullOrEmpty(it.Molienda) ? null : it.Molienda,
+                Envase = envase,
                 Cantidad = it.Cantidad,
                 PrecioUnitario = puConDesc,
                 AlicPct = letra == "C" ? 0 : 21m, // Hardcoded 21% — coherente con la emisión

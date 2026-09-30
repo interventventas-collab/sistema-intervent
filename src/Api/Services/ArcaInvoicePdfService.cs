@@ -208,10 +208,10 @@ public class ArcaInvoicePdfService
                     {
                         table.ColumnsDefinition(cols =>
                         {
-                            cols.ConstantColumn(35); // Cant.
-                            cols.ConstantColumn(50); // SKU
-                            cols.RelativeColumn(4);  // Producto
-                            cols.RelativeColumn(2);  // Formato
+                            // 2026-09-30: mismo orden que el presupuesto (Cant / Formato / Producto con el SKU adentro).
+                            cols.ConstantColumn(40); // Cant.
+                            cols.ConstantColumn(60); // Formato
+                            cols.RelativeColumn(5);  // Producto (SKU + nombre + — MOLIENDA)
                             cols.ConstantColumn(60); // P. Unitario
                             cols.ConstantColumn(40); // Desc.
                             cols.ConstantColumn(38); // IVA %
@@ -219,33 +219,29 @@ public class ArcaInvoicePdfService
                         });
                         table.Header(h =>
                         {
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Cant.").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("SKU").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Producto").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Formato").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("P. Unitario").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Bonif.").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("IVA %").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Subtotal").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text("Cant.").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text("Formato").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text("Producto").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("P. Unitario").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Bonif.").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("IVA %").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Subtotal").SemiBold();
                         });
                         foreach (var it in comp.Items)
                         {
                             var sub = Math.Round(it.Cantidad * it.PrecioUnitario, 2, MidpointRounding.AwayFromZero);
                             var prod = it.Producto ?? it.Descripcion;
                             var fmt = it.Formato ?? "";
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.Cantidad.ToString("N2", new CultureInfo("es-AR")));
-                            table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Sku ?? "").FontSize(8).FontColor(Colors.Blue.Darken2).SemiBold();
-                            table.Cell().BorderBottom(0.3f).Padding(2).Text(prod);
-                            table.Cell().BorderBottom(0.3f).Padding(2).Text(fmt).FontSize(8).FontColor(Colors.Grey.Darken1);
+                            CeldasCantFormatoProducto(table, it, prod, fmt);
                             // 2026-07-14: P. Unitario limpio = precio de LISTA (sin tachar). El descuento va aparte
                             // en "Bonif." (formato Contabilium/AFIP). El Importe/Subtotal queda con el neto.
                             var puListaA = it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue ? it.PrecioOriginal.Value : it.PrecioUnitario;
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + puListaA.ToString("N2", new CultureInfo("es-AR")));
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("$ " + puListaA.ToString("N2", new CultureInfo("es-AR")));
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text(
                                 it.DescuentoPct.HasValue ? it.DescuentoPct.Value.ToString("0.##") + " %" : "—"
                             ).FontSize(8);
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.AlicPct.ToString("0.##") + "%");
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + sub.ToString("N2", new CultureInfo("es-AR")));
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text(it.AlicPct.ToString("0.##") + "%");
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("$ " + sub.ToString("N2", new CultureInfo("es-AR")));
                         }
                     }
                     else
@@ -253,23 +249,21 @@ public class ArcaInvoicePdfService
                         // B / C — sin IVA% (queda incluido en Precio U.) — 7 columnas.
                         table.ColumnsDefinition(cols =>
                         {
-                            cols.ConstantColumn(35); // Cant.
-                            cols.ConstantColumn(50); // SKU
-                            cols.RelativeColumn(4);  // Producto
-                            cols.RelativeColumn(2);  // Formato
+                            cols.ConstantColumn(40); // Cant.
+                            cols.ConstantColumn(60); // Formato
+                            cols.RelativeColumn(5);  // Producto (SKU + nombre + — MOLIENDA)
                             cols.ConstantColumn(70); // P. Unitario (con IVA)
                             cols.ConstantColumn(40); // Desc.
                             cols.ConstantColumn(80); // Subtotal (con IVA)
                         });
                         table.Header(h =>
                         {
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Cant.").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("SKU").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Producto").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Formato").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("P. Unitario").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Bonif.").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Subtotal").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text("Cant.").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text("Formato").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text("Producto").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("P. Unitario").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Bonif.").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Subtotal").SemiBold();
                         });
                         foreach (var it in comp.Items)
                         {
@@ -281,18 +275,15 @@ public class ArcaInvoicePdfService
                                 : 0m;
                             var prod = it.Producto ?? it.Descripcion;
                             var fmt = it.Formato ?? "";
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.Cantidad.ToString("N2", new CultureInfo("es-AR")));
-                            table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Sku ?? "").FontSize(8).FontColor(Colors.Blue.Darken2).SemiBold();
-                            table.Cell().BorderBottom(0.3f).Padding(2).Text(prod);
-                            table.Cell().BorderBottom(0.3f).Padding(2).Text(fmt).FontSize(8).FontColor(Colors.Grey.Darken1);
+                            CeldasCantFormatoProducto(table, it, prod, fmt);
                             // 2026-07-14: P. Unitario limpio = precio de LISTA con IVA (sin tachar). El descuento
                             // va aparte en "Bonif." (formato Contabilium/AFIP). El Subtotal queda con el neto.
                             var puListaBC = it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue ? pcuOrigConIva : pcuConIva;
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + puListaBC.ToString("N2", new CultureInfo("es-AR")));
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("$ " + puListaBC.ToString("N2", new CultureInfo("es-AR")));
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text(
                                 it.DescuentoPct.HasValue ? it.DescuentoPct.Value.ToString("0.##") + " %" : "—"
                             ).FontSize(8);
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + subConIva.ToString("N2", new CultureInfo("es-AR")));
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("$ " + subConIva.ToString("N2", new CultureInfo("es-AR")));
                         }
                     }
                 });
@@ -471,6 +462,25 @@ public class ArcaInvoicePdfService
 
     /// <summary>2026-06-16: franja gris ancho-completo con Tel. · email · Tel. Texto plano,
     /// sin emojis (las fuentes default de QuestPDF no soportan ✆ ni ✉ — quedan cuadraditos).</summary>
+    /// <summary>2026-09-30: Cant / Formato / Producto igual que el presupuesto (CafeCotizacionPdfService):
+    /// formato en negrita negra, SKU azul adentro del producto, nombre normal y "— MOLIENDA" en negrita.</summary>
+    private static void CeldasCantFormatoProducto(QuestPDF.Fluent.TableDescriptor table, PdfItem it, string prod, string fmt)
+    {
+        var cant = it.Cantidad == Math.Truncate(it.Cantidad)
+            ? it.Cantidad.ToString("0", new CultureInfo("es-AR"))
+            : it.Cantidad.ToString("0.##", new CultureInfo("es-AR"));
+        table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(cant).SemiBold();
+        table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(fmt).Bold().FontColor(Colors.Black);
+        table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text(t =>
+        {
+            if (!string.IsNullOrEmpty(it.Sku))
+                t.Span($"{it.Sku}  ").Bold().FontColor(Colors.Blue.Darken3).FontSize(8);
+            t.Span(prod);
+            if (!string.IsNullOrEmpty(it.Envase)) t.Span($"  {it.Envase}").Bold().FontColor(Colors.Blue.Darken3);
+            if (!string.IsNullOrEmpty(it.Molienda)) t.Span($"  — {it.Molienda}").Bold().FontColor(Colors.Black).FontSize(8);
+        });
+    }
+
     private static void RenderFranjaContacto(QuestPDF.Fluent.ColumnDescriptor col, string? tel1, string? tel2, string? email)
     {
         if (string.IsNullOrWhiteSpace(tel1) && string.IsNullOrWhiteSpace(tel2) && string.IsNullOrWhiteSpace(email)) return;
@@ -776,6 +786,11 @@ public class PdfItem
     public decimal? PrecioOriginal { get; set; }
     /// <summary>Porcentaje de descuento aplicado a esta linea (0-100). Null si no hay.</summary>
     public decimal? DescuentoPct { get; set; }
+    /// <summary>2026-09-30: molienda del café, aparte, para mostrarla en negrita al lado del nombre
+    /// como en el presupuesto ("— EN GRANOS"). Null si no es café o no tiene.</summary>
+    public string? Molienda { get; set; }
+    /// <summary>2026-09-30: "d.p." / "env. plat." al lado del nombre, como en el presupuesto.</summary>
+    public string? Envase { get; set; }
 }
 
 public class PdfIvaDesglose
