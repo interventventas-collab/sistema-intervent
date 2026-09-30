@@ -218,6 +218,18 @@ public class ViajesEntrega
     [MaxLength(100)]
     public string? CargadoPor { get; set; }
 
+    /// <summary>30/09/2026: "no suma" — dos entregas en el mismo lugar el mismo día y el repartidor
+    /// cobra una sola (arreglo con Nacho). La entrega queda a la vista pero con Tarifa = 0, así todos los
+    /// totales se ajustan solos; acá se guarda la tarifa original para poder deshacerlo.
+    /// NULL = suma normal.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? TarifaNoSuma { get; set; }
+
+    /// <summary>Quién la marcó "no suma" (OSMAR / GERMAN / el repartidor desde su celu) y cuándo (UTC).</summary>
+    [MaxLength(100)]
+    public string? NoSumaPor { get; set; }
+    public DateTime? NoSumaAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
