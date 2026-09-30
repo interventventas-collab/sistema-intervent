@@ -40,14 +40,24 @@ public class CafeCobranzasController : ControllerBase
     [HttpGet("{id:int}/pdf")]
     public async Task<IActionResult> DescargarPdf(int id)
     {
+        var (bytes, filename, error) = await GenerarPdfBytesAsync(id);
+        if (bytes is null) return error is null ? NotFound() : BadRequest(new { error });
+        return File(bytes, "application/pdf", filename);
+    }
+
+    /// <summary>30/09/2026: bytes del PDF del recibo (el mismo del botón Descargar), para que el robot
+    /// de respaldo en Drive lo pueda subir. (null, "", null) si no existe; error si falta el cliente.</summary>
+    [NonAction]
+    public async Task<(byte[]? bytes, string filename, string? error)> GenerarPdfBytesAsync(int id)
+    {
         var c = await _db.CafeCobranzas
             .Include(x => x.Cliente)
             .Include(x => x.Comprobantes).ThenInclude(cc => cc.Venta)
             .Include(x => x.Medios).ThenInclude(m => m.Caja)
             .Include(x => x.Medios).ThenInclude(m => m.Cheque)
             .FirstOrDefaultAsync(x => x.Id == id);
-        if (c is null) return NotFound();
-        if (c.Cliente is null) return BadRequest(new { error = "Cliente no encontrado" });
+        if (c is null) return (null, "", null);
+        if (c.Cliente is null) return (null, "", "Cliente no encontrado");
 
         var settings = await _db.CafeSettings.FindAsync(1);
         var comps = c.Comprobantes.Select(x => (
@@ -63,7 +73,7 @@ public class CafeCobranzasController : ControllerBase
         )).ToList();
 
         var bytes = _pdfService.GenerarPdfBytes(c, c.Cliente, comps, medios, settings);
-        return File(bytes, "application/pdf", $"Recibo-{c.Numero}.pdf");
+        return (bytes, $"Recibo-{c.Numero}.pdf", null);
     }
 
     public record ComprobantePendienteDto(

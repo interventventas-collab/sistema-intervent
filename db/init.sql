@@ -8079,3 +8079,23 @@ BEGIN
     CREATE INDEX IX_CafeAvisosDeuda_Cliente ON Cafe_AvisosDeuda (ClienteId);
 END
 GO
+-- 2026-09-30: respaldo automático de todos los comprobantes en Google Drive.
+-- Una fila por comprobante subido (Tipo + EntidadId único). Ver Models/DriveRespaldo.cs.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Drive_Respaldos')
+BEGIN
+    CREATE TABLE Drive_Respaldos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Tipo NVARCHAR(20) NOT NULL,
+        EntidadId INT NOT NULL,
+        DriveFileId NVARCHAR(200) NULL,
+        NombreArchivo NVARCHAR(260) NULL,
+        Carpeta NVARCHAR(200) NULL,
+        MarcaSubida DATETIME2 NULL,
+        SubidoAt DATETIME2 NULL,
+        UltimoError NVARCHAR(1000) NULL,
+        Intentos INT NOT NULL DEFAULT 0,
+        UltimoIntentoAt DATETIME2 NULL
+    );
+    CREATE UNIQUE INDEX UX_DriveRespaldos_TipoEntidad ON Drive_Respaldos (Tipo, EntidadId);
+END
+GO

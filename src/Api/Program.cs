@@ -354,6 +354,12 @@ builder.Services.AddScoped<Api.Controllers.CafeListasCustomController>();
 // y recibos de visita por el chat WhatsApp (reusan su PDF via GenerarPdfBytesAsync/GenerarReciboPdfBytesAsync).
 builder.Services.AddScoped<Api.Controllers.AlqReservasController>();
 builder.Services.AddScoped<Api.Controllers.VisitasController>();
+// 2026-09-30: respaldo automático de TODOS los comprobantes en Google Drive (Facturas, X, presupuestos,
+// recibos, alquileres, comodatos). Cobranzas y Comodatos en DI para reusar el PDF de su botón Descargar.
+builder.Services.AddScoped<Api.Controllers.CafeCobranzasController>();
+builder.Services.AddScoped<Api.Controllers.CafeComodatosController>();
+builder.Services.AddScoped<DriveRespaldoService>();
+builder.Services.AddHostedService<DriveRespaldoBackgroundService>();
 // 2026-08-06: CafeClientesController + VentaAvisoWhatsAppService para el AVISO DE VENTA a internos
 // (mensajito con botones al emitir → comprobante / cuenta corriente / detalle). El aviso lo usan el
 // endpoint de emisión (WhatsAppTwilioController) y el webhook (para atender el botón).

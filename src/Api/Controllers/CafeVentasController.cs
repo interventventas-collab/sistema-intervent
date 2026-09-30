@@ -686,7 +686,7 @@ public class CafeVentasController : ControllerBase
     /// y DriveSubidoAt en la venta para mostrar "Ver en Drive" en lugar del botón de subir.
     /// </summary>
     [HttpPost("{id:int}/drive-upload")]
-    public async Task<IActionResult> SubirADrive(int id, [FromServices] GoogleDriveService driveSvc,
+    public async Task<IActionResult> SubirADrive(int id, [FromServices] DriveRespaldoService respaldo,
         [FromServices] TelegramService telegram, [FromServices] WhatsAppOutboundService waOut)
     {
         var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav).FirstOrDefaultAsync(x => x.Id == id);
@@ -754,9 +754,11 @@ public class CafeVentasController : ControllerBase
         string? fileId = null, link = null, driveError = null;
         try
         {
-            var pdfBytes = await GenerarPdfBytesAsync(v, cfg);
-            var fileName = BuildPdfFilename(v);
-            (fileId, link) = await driveSvc.UploadFileAsync(fileName, pdfBytes, "application/pdf");
+            // 2026-09-30: va por el respaldo de comprobantes → cae en su carpeta (Facturas / Comprobantes X
+            // / año / mes) y, si la venta ya estaba subida, PISA el mismo archivo en vez de sumar una copia.
+            fileId = await respaldo.SubirVentaAhoraAsync(v.Id)
+                     ?? throw new InvalidOperationException("No se pudo armar el PDF de la venta.");
+            link = $"https://drive.google.com/file/d/{fileId}/view";
 
             v.DriveFileId = fileId;
             v.DriveSubidoAt = DateTime.UtcNow;

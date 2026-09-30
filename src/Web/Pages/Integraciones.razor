@@ -386,7 +386,7 @@
             </div>
             <div class="integration-info">
                 <h3>Google Drive</h3>
-                <p>Subi los PDFs de los comprobantes a una carpeta de Google Drive (organizada por año/mes).</p>
+                <p>Subi los PDFs de los comprobantes a una carpeta de Google Drive (ordenados por tipo, año y mes).</p>
             </div>
             <div class="integration-header-actions">
                 <span class="status-badge @(driveActive ? "status-active" : "status-inactive")">
@@ -408,6 +408,39 @@
                         <small class="text-muted">ID carpeta raíz</small>
                         <div><strong style="font-family: monospace; font-size: 0.85rem;">@(string.IsNullOrEmpty(driveFolderId) ? "—" : driveFolderId)</strong></div>
                     </div>
+                </div>
+
+                @* 2026-09-30: respaldo automático de TODOS los comprobantes (por si se cae el sistema) *@
+                <div style="margin-top: 1rem;">
+                    <label style="display: flex; gap: .5rem; align-items: center; cursor: pointer;">
+                        <input type="checkbox" checked="@(driveRespaldo?.Activo == true)" disabled="@(driveRespaldo is null || driveRespaldoGuardando)"
+                               @onchange="e => ToggleDriveRespaldo(e.Value is true)" />
+                        <strong>Subir solos todos los comprobantes</strong>
+                    </label>
+                    <small class="text-muted" style="display: block; margin-left: 1.5rem;">
+                        Facturas, notas de crédito, X, presupuestos, recibos de cobranza, alquileres y comodatos desde el 01/01/2026.
+                        Se suben a los pocos minutos de guardarlos; si editás uno, se reemplaza. Podés vaciar la carpeta cuando quieras.
+                    </small>
+                    @if (driveRespaldo is not null)
+                    {
+                        <div style="margin: .35rem 0 0 1.5rem; font-size: .9rem;">
+                            @driveRespaldo.Subidos.ToString("N0", EsAr) subidos · @driveRespaldo.Pendientes.ToString("N0", EsAr) por subir
+                            @if (driveRespaldo.UltimaSubidaAt is DateTime u)
+                            {
+                                <span> · último @u.AddHours(-3).ToString("dd/MM HH:mm")</span>
+                            }
+                            @if (driveRespaldo.Activo && driveRespaldo.Pendientes > 0)
+                            {
+                                <span class="text-muted"> · sube de a 25 cada 2 minutos</span>
+                            }
+                        </div>
+                        @if (driveRespaldo.ConError > 0)
+                        {
+                            <div style="margin: .25rem 0 0 1.5rem; font-size: .85rem; color: #b91c1c;">
+                                ⚠ @driveRespaldo.ConError no se pudieron subir, se reintentan solos. Último motivo: @driveRespaldo.UltimoError
+                            </div>
+                        }
+                    }
                 </div>
             </div>
         }
@@ -3720,8 +3753,25 @@
     private void CloseEmailModal() => showEmailModal = false;
 
     // --- Google Drive Methods (OAuth 2.0) ---
+    private ApiClient.DriveRespaldoEstadoDto? driveRespaldo;
+    private bool driveRespaldoGuardando;
+    private static readonly System.Globalization.CultureInfo EsAr = new("es-AR");
+
+    private async Task ToggleDriveRespaldo(bool activo)
+    {
+        driveRespaldoGuardando = true;
+        try
+        {
+            driveRespaldo = await Api.SetDriveRespaldoAsync(activo) ?? driveRespaldo;
+            ToastService.Success(activo ? "Listo: los comprobantes se van a subir solos a Drive." : "Respaldo automático apagado.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo cambiar: " + ex.Message); }
+        finally { driveRespaldoGuardando = false; }
+    }
+
     private async Task LoadDrive()
     {
+        try { driveRespaldo = await Api.GetDriveRespaldoAsync(); } catch { driveRespaldo = null; }
         try
         {
             var integration = await Api.GetIntegrationAsync("google-drive");
