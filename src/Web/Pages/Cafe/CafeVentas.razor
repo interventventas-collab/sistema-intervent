@@ -594,9 +594,11 @@
                             <th style="width: 280px;">Cliente</th>
                             <th style="width: 95px;">Tipo</th>
                             <th style="text-align: right; width: 130px;">Total</th>
-                            <th style="text-align: right; width: 110px;">Margen</th>
                             <th style="width: 110px;">Estado</th>
                             <th style="width: 210px;">Acciones</th>
+                            @* 2026-09-30: el margen va al final y chiquito, para que no salga en las capturas
+                               de pantalla que Osmar le manda a los clientes. *@
+                            <th style="text-align: right; width: 70px; font-size: 0.62rem; color: #9ca3af;">Margen</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -692,6 +694,7 @@
                                                     <tr style="border-bottom: 1px solid #e5e7eb;">
                                                         <th style="text-align: left; padding: 0.2rem; font-weight: 600; color: #6b7280;">Producto</th>
                                                         <th style="text-align: center; padding: 0.2rem; font-weight: 600; color: #6b7280;">Cant</th>
+                                                        <th style="text-align: right; padding: 0.2rem; font-weight: 600; color: #6b7280;">Precio c/u</th>
                                                         <th style="text-align: right; padding: 0.2rem; font-weight: 600; color: #6b7280;">Subtot</th>
                                                     </tr>
                                                 </thead>
@@ -701,6 +704,7 @@
                                                     <tr>
                                                         <td style="padding: 0.2rem; line-height: 1.2;">@it.ProductoNombre <span style="color: #9ca3af; font-size: 0.72rem;">@FormatoLabel(it.Formato)</span></td>
                                                         <td style="text-align: center; padding: 0.2rem; font-family: monospace;">@it.Cantidad</td>
+                                                        <td style="text-align: right; padding: 0.2rem; font-family: monospace; white-space: nowrap;">$@FormatMoney(it.PrecioUnitario)@if (it.DescuentoPct > 0m) {<span style="color: #9ca3af; font-size: 0.7rem;"> −@(it.DescuentoPct.ToString("0.##"))%</span>}</td>
                                                         <td style="text-align: right; padding: 0.2rem; font-family: monospace;">$@FormatMoney(it.Subtotal)</td>
                                                     </tr>
                                                 }
@@ -791,7 +795,6 @@
                                         }
                                     }
                                 </td>
-                                <td style="text-align: right; color: @(v.Margen >= 0 ? "#15803d" : "#b91c1c");">$@FormatMoney(v.Margen)</td>
                                 <td>
                                     @if (anulada)
                                     {
@@ -1015,6 +1018,7 @@
                                     <button id="@($"act-btn-{v.Id}")" class="btn-icon" style="color: #4b5563;"
                                             @onclick="() => ToggleActionsMenu(v.Id)" title="Más acciones">+</button>
                                 </td>
+                                <td style="text-align: right; font-size: 0.66rem; white-space: nowrap; color: @(v.Margen >= 0 ? "#9ca3af" : "#f87171");">$@FormatMoney(v.Margen)</td>
                             </tr>
                         }
                     </tbody>
