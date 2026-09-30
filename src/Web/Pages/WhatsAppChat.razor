@@ -2513,6 +2513,18 @@
                                 }
                             </div>
 
+                            @* 2026-09-30: igual que el chip "📁 Imprimir pedidos" de Nueva Venta: al crear la
+                               venta sube el PDF a IMPRIMIR PEDIDOS DE OSMAR (Drive) y aparece en Preparación
+                               para que la armen los chicos. Los presupuestos no se arman: no va. *@
+                            @if (mvTipoComprobante != "PRO")
+                            {
+                                <div class="wa-mv-sec-t">Para armar</div>
+                                <div class="wa-mv-ops">
+                                    <button class="wa-mv-op @(mvImprimirPedidos ? "on" : "")" @onclick="() => mvImprimirPedidos = !mvImprimirPedidos"
+                                            title="Sube el comprobante a IMPRIMIR PEDIDOS DE OSMAR y aparece en Preparación">📁 Subir a Imprimir pedidos</button>
+                                </div>
+                            }
+
                             <div class="wa-mv-sec-t">Comentario para armado</div>
                             <textarea class="wa-mv-obs" rows="3" placeholder="Ej: bolsita atada, carga martes…"
                                       @bind="mvComentarioArmado" @bind:event="oninput"></textarea>
@@ -2559,7 +2571,19 @@
                                     {
                                         <div class="wa-mv-resu-l"><span>Días</span><b>@string.Join(" ", DiasOrdenados())</b></div>
                                     }
+                                    @if (mvTipoComprobante != "PRO")
+                                    {
+                                        <div class="wa-mv-resu-l"><span>Imprimir pedidos</span><b>@(mvImprimirPedidos ? "Sí" : "No")</b></div>
+                                    }
                                     <div class="wa-mv-resu-l"><span>Renglones</span><b>@mvItems.Count</b></div>
+                                    @* 2026-09-30: desglose de IVA (pedido de Osmar). En Factura A/B el total de la
+                                       cotización es NETO: el cliente paga eso + 21%, igual que en Nueva Venta. *@
+                                    @if (MvLlevaIva)
+                                    {
+                                        <div class="wa-mv-resu-l" style="border-top: 1px solid #e5e7eb; margin-top: 0.3rem; padding-top: 0.3rem;"><span>Neto sin IVA</span><b>@Plata(mvTotal)</b></div>
+                                        <div class="wa-mv-resu-l"><span>IVA 21%</span><b>@Plata(MvIva)</b></div>
+                                        <div class="wa-mv-resu-l"><span>Total c/IVA</span><b>@Plata(MvTotalFinal)</b></div>
+                                    }
                                 </div>
                                 @if (mvTipoComprobante is "FA" or "FB" or "FC")
                                 {
@@ -2570,7 +2594,7 @@
                                     <div class="wa-mv-arca-aviso">⚠️ Hay renglones sin stock suficiente — miralos en el bloque ①.</div>
                                 }
                                 <button class="wa-mv-crear" @onclick="CrearVentaModoVenta" disabled="@(mvCreando || mvCotizando || mvTotal <= 0)">
-                                    @(mvCreando ? "⏳ Creando la venta…" : $"✅ Crear la venta · {Plata(mvTotal)}")
+                                    @(mvCreando ? "⏳ Creando la venta…" : $"✅ Crear la venta · {Plata(MvTotalFinal)}")
                                 </button>
                             }
                         </div>
@@ -2580,9 +2604,15 @@
                     @if (mvItems.Count > 0 && mvVentaCreadaId is null)
                     {
                         <div class="wa-mv-pie">
-                            <span>Total</span>
-                            <span class="wa-mv-total-monto">@(mvCotizando ? "⏳" : Plata(mvTotal))</span>
+                            <span>Total@(MvLlevaIva ? " c/IVA" : "")</span>
+                            <span class="wa-mv-total-monto">@(mvCotizando ? "⏳" : Plata(MvTotalFinal))</span>
                         </div>
+                        @if (MvLlevaIva && !mvCotizando)
+                        {
+                            <div style="font-size: 0.72rem; color: #6b7280; text-align: right; padding: 0 0.9rem 0.4rem;">
+                                neto @Plata(mvTotal) + IVA 21% @Plata(MvIva)
+                            </div>
+                        }
                     }
                 </aside>
             }
@@ -5862,7 +5892,12 @@
     bool mvCreando = false;
     List<ApiClient.FichaChatVentaDto> mvAnteriores = new();
     List<MvLinea> mvItems = new();
-    decimal mvTotal = 0m;
+    decimal mvTotal = 0m;   // lo que devuelve el cotizador: en Factura A/B y presupuesto es NETO
+    /// <summary>2026-09-30: igual que Nueva Venta — Factura A/B y el presupuesto (que sale con IVA
+    /// discriminado por default) llevan 21% arriba del neto. X y Factura C no.</summary>
+    bool MvLlevaIva => mvTipoComprobante is "FA" or "FB" or "PRO";
+    decimal MvIva => MvLlevaIva ? Math.Round(mvTotal * 0.21m, 2, MidpointRounding.AwayFromZero) : 0m;
+    decimal MvTotalFinal => mvTotal + MvIva;
     string? mvOrigenNumero = null;     // de qué comprobante salió esta copia
     string mvTipoComprobante = "X";
     string mvCondicionPago = "EFECTIVO";
@@ -5888,6 +5923,10 @@
     int? mvDireccionId;                    // null = el domicilio de siempre
     HashSet<string> mvDias = new();        // LUN, MAR… (WeekDays de la venta)
     string? mvComentarioArmado;
+    /// <summary>2026-09-30: subir el comprobante a IMPRIMIR PEDIDOS DE OSMAR al crear la venta.
+    /// Arranca prendido si el operador es Osmar, igual que en Nueva Venta.</summary>
+    bool mvImprimirPedidos;
+    bool ImprimirPedidosPorDefecto => string.Equals(Op.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
     int mvLineaAbierta = -1;               // renglón con el detalle (molienda/envase/precio) desplegado
     bool mvMostrarLibre;                   // el formulario del renglón escrito a mano
     string mvLibreDesc = "";
@@ -5953,6 +5992,7 @@
     async Task AbrirModoVenta()
     {
         modoVenta = true;
+        mvImprimirPedidos = ImprimirPedidosPorDefecto;
         modoMeli = false;
         modoAlquiler = false;
         modoCobranza = false;
@@ -5982,7 +6022,7 @@
     {
         if (mvClienteId is null) return "elegí el cliente";
         if (mvItems.Count == 0) return mvClienteNombre ?? "";
-        return $"{mvItems.Count} renglón{(mvItems.Count == 1 ? "" : "es")} · {Plata(mvTotal)}";
+        return $"{mvItems.Count} renglón{(mvItems.Count == 1 ? "" : "es")} · {Plata(MvTotalFinal)}";
     }
 
     string ResumenPaso2()
@@ -5996,7 +6036,7 @@
     {
         if (mvVentaCreadaId is not null) return $"✅ {mvVentaCreadaNumero}";
         if (mvItems.Count == 0) return "falta cargar";
-        return Plata(mvTotal);
+        return Plata(MvTotalFinal);
     }
 
     /// <summary>Cambiar a nombre de quién sale la venta, sin cambiar el cliente del CHAT.</summary>
@@ -6586,7 +6626,7 @@
             ? $"⚠️ Se va a EMITIR {TipoLabel(mvTipoComprobante)} en ARCA (con CAE). No es un borrador.\n\n"
             : "";
         if (!await JS.InvokeAsync<bool>("confirm",
-                $"{aviso}A nombre de: {nombreCli}\nTotal: {Plata(mvTotal)}\n\n¿Creo la venta?"))
+                $"{aviso}A nombre de: {nombreCli}\nTotal: {Plata(MvTotalFinal)}{(MvLlevaIva ? " (con IVA)" : "")}\n\n¿Creo la venta?"))
             return;
 
         mvCreando = true;
@@ -6607,10 +6647,29 @@
             };
             var venta = await Api.CreateCafeVentaAsync(req);
             if (venta is null) { Toast.Error("No se pudo crear la venta."); return; }
-            Toast.Success($"✅ Venta creada: {venta.Numero ?? ("#" + venta.Id)} · {Plata(mvTotal)}");
+            Toast.Success($"✅ Venta creada: {venta.Numero ?? ("#" + venta.Id)} · {Plata(MvTotalFinal)}");
             // Queda a mano para poder mandarle el comprobante sin salir del chat.
             mvVentaCreadaId = venta.Id;
             mvVentaCreadaNumero = venta.Numero ?? ("#" + venta.Id);
+            // 2026-09-30: igual que Nueva Venta, en segundo plano para no frenar el chat.
+            if (mvImprimirPedidos && mvTipoComprobante != "PRO")
+            {
+                var idDrive = venta.Id;
+                var numDrive = mvVentaCreadaNumero;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var (fileId, _, _) = await Api.SubirVentaADriveAsync(idDrive);
+                        if (!string.IsNullOrEmpty(fileId))
+                            await InvokeAsync(() => Toast.Success($"{numDrive} enviado a IMPRIMIR PEDIDOS DE OSMAR ✅"));
+                    }
+                    catch (Exception driveEx)
+                    {
+                        await InvokeAsync(() => Toast.Error("No se pudo subir a Imprimir pedidos: " + driveEx.Message));
+                    }
+                });
+            }
             mvPaso = 3;
             LimpiarCarrito();
             await CargarAnterioresModoVenta(cid);   // que la nueva aparezca para repetir
