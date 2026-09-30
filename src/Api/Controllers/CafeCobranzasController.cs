@@ -137,7 +137,10 @@ public class CafeCobranzasController : ControllerBase
         List<CrearMedioItem> Medios,
         // 2026-09-28: si viene de una redirigida por WhatsApp, se engancha en el MISMO paso que se crea la
         // cobranza (antes era una llamada aparte y un corte en el medio la dejaba pendiente).
-        int? RediPendienteId = null);
+        int? RediPendienteId = null,
+        // 2026-09-30: fecha del cobro ("yyyy-MM-dd", día argentino) cuando se carga otro día que el
+        // del pago (se acumulan). null o hoy = ahora, como siempre.
+        string? Fecha = null);
 
     public record CrearComprobanteItem(int? VentaId, decimal Importe, int? ReservaId = null);
 
@@ -656,6 +659,35 @@ public class CafeCobranzasController : ControllerBase
                 return BadRequest(new { error = "Falta decir de qué se lo descontás: viajes o sueldo." });
         }
 
+        // 2026-09-30: fecha del cobro elegida a mano (Osmar carga las cobranzas días después del pago).
+        // Se revisa acá, antes de crear nada (ver el comentario del 07/09 más arriba).
+        var fechaCobro = DateTime.UtcNow;
+        string? fechaElegida = null;   // para la auditoría: sólo si quedó otro día que hoy
+        if (!string.IsNullOrWhiteSpace(req.Fecha))
+        {
+            if (!DateTime.TryParseExact(req.Fecha.Trim(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var fechaAr))
+                return BadRequest(new { error = "La fecha del cobro no se entiende." });
+            var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
+            if (fechaAr > hoyAr)
+                return BadRequest(new { error = "La fecha del cobro no puede ser posterior a hoy." });
+            if (fechaAr < hoyAr)
+            {
+                // Una caja ya contada (arqueo) no puede recibir plata de antes del conteo: esa plata
+                // ya estaba en lo que se contó, y el saldo quedaría inflado.
+                var cajaIdsMedios = (req.Medios ?? new()).Select(m => m.CajaId).Distinct().ToList();
+                var arqueo = await _db.CafeCajaMovimientos
+                    .Where(m => cajaIdsMedios.Contains(m.CajaId) && m.Tipo == "ARQUEO" && m.AnuladoAt == null && m.Fecha > fechaAr)
+                    .OrderByDescending(m => m.Fecha)
+                    .Select(m => new { m.Fecha, Caja = m.Caja != null ? m.Caja.Nombre : null })
+                    .FirstOrDefaultAsync();
+                if (arqueo is not null)
+                    return BadRequest(new { error = $"La caja {arqueo.Caja} se contó el {arqueo.Fecha:dd/MM/yyyy}. No se puede cargar una cobranza de antes de ese día." });
+                fechaCobro = fechaAr.AddHours(15);   // mediodía argentino, guardado en UTC como el resto
+                fechaElegida = fechaAr.ToString("dd/MM/yyyy");
+            }
+        }
+
         // Generar numero correlativo
         var ultimoNum = await _db.CafeCobranzas
             .Select(c => c.Numero)
@@ -671,7 +703,7 @@ public class CafeCobranzasController : ControllerBase
         var cobranza = new CafeCobranza
         {
             Numero = numero,
-            Fecha = DateTime.UtcNow,
+            Fecha = fechaCobro,
             // 2026-06-06: ClienteId puede quedar null para cobranzas ocasionales (venta sin cliente)
             ClienteId = (req.ClienteId.HasValue && req.ClienteId.Value > 0) ? req.ClienteId.Value : null,
             Total = sumMedios,         // lo que efectivamente entro a las cajas
@@ -798,7 +830,8 @@ public class CafeCobranzasController : ControllerBase
             else clienteAudit = "(ocasional)";
         }
         await _audit.LogAsync("CafeCobranza", cobranza.Id.ToString(), "CREATE",
-            $"Cobranza {numero} para cliente {clienteAudit}, total ${sumMedios:N2}");
+            $"Cobranza {numero} para cliente {clienteAudit}, total ${sumMedios:N2}"
+            + (fechaElegida is null ? "" : $", fecha del cobro {fechaElegida}"));
 
         if (redi is not null)
         {

@@ -6759,9 +6759,10 @@ public class ApiClient
     // del catálogo). En ese caso el backend exige al menos un comprobante con VentaId.
     public async Task<CrearCobranzaResultDto?> CrearCafeCobranzaAsync(
         int? clienteId, decimal retenciones, string? operador, string? observaciones,
-        List<CrearComprobanteItemRequest> comprobantes, List<CrearMedioItemRequest> medios, int? rediPendienteId = null)
+        List<CrearComprobanteItemRequest> comprobantes, List<CrearMedioItemRequest> medios, int? rediPendienteId = null,
+        string? fecha = null)   // 2026-09-30: "yyyy-MM-dd" si el cobro fue otro día; null = hoy
         => await PostAsync<CrearCobranzaResultDto>("/api/cafe/cobranzas",
-            new { clienteId, retenciones, operador, observaciones, comprobantes, medios, rediPendienteId });
+            new { clienteId, retenciones, operador, observaciones, comprobantes, medios, rediPendienteId, fecha });
     // 2026-08-24: mandarle al cliente el recibo del pago + como le queda la cuenta.
     public record EnviarReciboResultDto(bool EmailOk, string? EmailError, bool WhatsappOk, string? WhatsappError);
 
