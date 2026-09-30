@@ -213,6 +213,21 @@ public class IntegrationsController : ControllerBase
         }
     }
 
+    // 2026-09-30: respaldo automático de todos los comprobantes en Drive (ver DriveRespaldoService).
+    [HttpGet("google-drive/respaldo")]
+    public async Task<IActionResult> GetRespaldoDrive([FromServices] DriveRespaldoService respaldo)
+        => Ok(await respaldo.GetEstadoAsync());
+
+    public record RespaldoActivoRequest(bool Activo);
+
+    [HttpPost("google-drive/respaldo")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> SetRespaldoDrive([FromBody] RespaldoActivoRequest req, [FromServices] DriveRespaldoService respaldo)
+    {
+        await respaldo.SetActivoAsync(req.Activo);
+        return Ok(await respaldo.GetEstadoAsync());
+    }
+
     // ════════════════════════════════════════════════════════════════════
     //  Google Drive — OAuth 2.0 flow
     // ════════════════════════════════════════════════════════════════════

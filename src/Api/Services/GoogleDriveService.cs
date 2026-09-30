@@ -34,6 +34,9 @@ public class GoogleDriveService
         "09-Septiembre", "10-Octubre", "11-Noviembre", "12-Diciembre"
     };
 
+    /// <summary>Nombre de la carpeta del mes ("10-Octubre"), para el respaldo de comprobantes.</summary>
+    public static string NombreCarpetaMes(int mes) => MesesEs[mes];
+
     public GoogleDriveService(IntegrationService intSvc)
     {
         _intSvc = intSvc;
@@ -215,6 +218,119 @@ public class GoogleDriveService
         }
 
         return (file.Id, file.WebViewLink ?? $"https://drive.google.com/file/d/{file.Id}/view");
+    }
+
+    /// <summary>30/09/2026: true si Drive está configurado y conectado (hay carpeta raíz y permiso).
+    /// Lo usa el robot de respaldo para no intentar nada (ni loguear errores) cuando no hay Drive —
+    /// por ejemplo en desarrollo.</summary>
+    public async Task<bool> EstaConfiguradoAsync()
+    {
+        try { await GetConfigAsync(); return true; }
+        catch (InvalidOperationException) { return false; }
+    }
+
+    // Cache de carpetas ya encontradas/creadas: "rootId/Facturas/2026/10-Octubre" → id de Drive.
+    // Si alguien borra la carpeta en Drive, la subida falla, se limpia el cache y se reintenta.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _carpetasCache = new();
+
+    /// <summary>
+    /// 30/09/2026 — respaldo de comprobantes: sube el archivo a raíz/carpetas[0]/carpetas[1]/...
+    /// (las crea si no existen). Si viene existingFileId y ese archivo sigue en Drive, lo REEMPLAZA
+    /// (mismo archivo, contenido nuevo, y lo mueve si cambió de carpeta) para que al editar un
+    /// comprobante no queden copias repetidas. Si lo borraron (vaciaron la carpeta), sube uno nuevo.
+    /// Devuelve el id del archivo en Drive.
+    /// </summary>
+    public async Task<string> SubirOReemplazarAsync(IReadOnlyList<string> carpetas, string fileName,
+        byte[] content, string? existingFileId, string mimeType = "application/pdf")
+    {
+        var (clientId, clientSecret, refreshToken, rootFolderId) = await GetConfigAsync();
+        var service = BuildClient(clientId, clientSecret, refreshToken);
+
+        try
+        {
+            return await SubirOReemplazarInternoAsync(service, rootFolderId, carpetas, fileName, content, existingFileId, mimeType);
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Probablemente borraron una carpeta que teníamos en el cache: se olvida y se reintenta una vez.
+            foreach (var k in _carpetasCache.Keys.Where(k => k.StartsWith(rootFolderId + "/")).ToList())
+                _carpetasCache.TryRemove(k, out _);
+            return await SubirOReemplazarInternoAsync(service, rootFolderId, carpetas, fileName, content, null, mimeType);
+        }
+    }
+
+    private static async Task<string> SubirOReemplazarInternoAsync(DriveService service, string rootFolderId,
+        IReadOnlyList<string> carpetas, string fileName, byte[] content, string? existingFileId, string mimeType)
+    {
+        // 1. Carpeta destino (raíz → cada nivel)
+        var folderId = rootFolderId;
+        var path = rootFolderId;
+        foreach (var nombre in carpetas)
+        {
+            path += "/" + nombre;
+            if (!_carpetasCache.TryGetValue(path, out var id))
+            {
+                id = await GetOrCreateSubfolderAsync(service, folderId, nombre);
+                _carpetasCache[path] = id;
+            }
+            folderId = id;
+        }
+
+        // 2. ¿El archivo anterior sigue estando? → se reemplaza
+        if (!string.IsNullOrEmpty(existingFileId))
+        {
+            DriveData.File? actual = null;
+            try
+            {
+                var get = service.Files.Get(existingFileId);
+                get.Fields = "id, parents, trashed";
+                actual = await get.ExecuteAsync();
+            }
+            catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                actual = null; // lo borraron: se sube uno nuevo
+            }
+
+            if (actual is not null && actual.Trashed != true)
+            {
+                using var upStream = new MemoryStream(content);
+                var upd = service.Files.Update(new DriveData.File { Name = fileName }, existingFileId, upStream, mimeType);
+                upd.Fields = "id";
+                var padres = actual.Parents ?? new List<string>();
+                if (!padres.Contains(folderId))
+                {
+                    upd.AddParents = folderId;
+                    if (padres.Count > 0) upd.RemoveParents = string.Join(",", padres);
+                }
+                var upProg = await upd.UploadAsync();
+                if (upProg.Status != Google.Apis.Upload.UploadStatus.Completed)
+                    throw upProg.Exception ?? new InvalidOperationException($"Reemplazo en Drive no completado (estado={upProg.Status})");
+                return existingFileId;
+            }
+        }
+
+        // 3. Archivo nuevo
+        var meta = new DriveData.File { Name = fileName, Parents = new[] { folderId } };
+        using var stream = new MemoryStream(content);
+        var req = service.Files.Create(meta, stream, mimeType);
+        req.Fields = "id";
+        var prog = await req.UploadAsync();
+        if (prog.Status != Google.Apis.Upload.UploadStatus.Completed)
+            throw prog.Exception ?? new InvalidOperationException($"Subida a Drive no completada (estado={prog.Status})");
+        var newId = req.ResponseBody?.Id;
+        if (string.IsNullOrEmpty(newId))
+        {
+            // Mismo caso raro que en UploadFileAsync: subió pero no devolvió metadata → buscar por nombre.
+            var list = service.Files.List();
+            list.Q = $"name = '{fileName.Replace("'", "\\'")}' and '{folderId}' in parents and trashed = false";
+            list.Fields = "files(id)";
+            list.OrderBy = "createdTime desc";
+            list.PageSize = 1;
+            newId = (await list.ExecuteAsync()).Files?.FirstOrDefault()?.Id;
+            if (string.IsNullOrEmpty(newId))
+                throw new InvalidOperationException("Drive completó la subida pero no devolvió el archivo.");
+        }
+        return newId;
     }
 
     /// <summary>

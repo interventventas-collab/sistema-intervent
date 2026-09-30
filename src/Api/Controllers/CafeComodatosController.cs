@@ -33,15 +33,24 @@ public class CafeComodatosController : ControllerBase
     [HttpGet("{id:int}/comprobante.pdf")]
     public async Task<IActionResult> ComprobantePdf(int id)
     {
+        var (bytes, fileName) = await GenerarPdfBytesAsync(id);
+        if (bytes is null) return NotFound();
+        return File(bytes, "application/pdf", fileName);
+    }
+
+    /// <summary>30/09/2026: bytes del comprobante (el mismo del botón), para el robot de respaldo en Drive.
+    /// (null, "") si no existe.</summary>
+    [NonAction]
+    public async Task<(byte[]? bytes, string fileName)> GenerarPdfBytesAsync(int id)
+    {
         var c = await _db.CafeComodatos
             .Include(x => x.Cliente)
             .Include(x => x.Pagos)
             .FirstOrDefaultAsync(x => x.Id == id);
-        if (c is null) return NotFound();
+        if (c is null) return (null, "");
         var settings = await _db.CafeSettings.FirstOrDefaultAsync();
         var bytes = _pdfService.GenerarPdfBytes(c, c.Cliente, c.Pagos, settings);
-        var fileName = CafeComodatoPdfService.GetNumeroComprobante(c) + ".pdf";
-        return File(bytes, "application/pdf", fileName);
+        return (bytes, CafeComodatoPdfService.GetNumeroComprobante(c) + ".pdf");
     }
 
     public record ComodatoDto(int Id, int ClienteId, string? ClienteNombre, string Modalidad, string Moneda,

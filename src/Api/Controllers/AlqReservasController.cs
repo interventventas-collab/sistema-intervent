@@ -1381,9 +1381,23 @@ public class AlqReservasController : ControllerBase
         if (r is null) return NotFound(new { error = "Reserva no encontrada" });
         if (r.NcEstado != "autorizado" || string.IsNullOrEmpty(r.NcCae))
             return BadRequest(new { error = "Esta reserva no tiene nota de crédito emitida." });
+        var (bytes, filename) = await GenerarNotaCreditoPdfBytesAsync(id);
+        return File(bytes!, "application/pdf", filename);
+    }
+
+    /// <summary>30/09/2026: bytes del PDF de la NOTA DE CREDITO (el mismo del botón), para el robot de
+    /// respaldo en Drive. (null,"") si no existe o no tiene NC emitida.</summary>
+    [NonAction]
+    public async Task<(byte[]? bytes, string filename)> GenerarNotaCreditoPdfBytesAsync(int id)
+    {
+        var r = await _db.AlqReservas
+            .Include(x => x.ClienteNav)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null || r.NcEstado != "autorizado" || string.IsNullOrEmpty(r.NcCae)) return (null, "");
         var bytes = BuildFacturaPdf(r, notaCredito: true);
         var letra = ArcaInvoicePdfService.LetraDelTipo(r.NcCbteTipoNum ?? 0);
-        return File(bytes, "application/pdf", $"NotaCredito-{letra}-{r.NcPtoVta:D5}-{r.NcCbteNro:D8}.pdf");
+        return (bytes, $"NotaCredito-{letra}-{r.NcPtoVta:D5}-{r.NcCbteNro:D8}.pdf");
     }
 
     /// <summary>2026-07-04 — PDF de la FACTURA AFIP de una reserva facturada (formato sobrio, con CAE + QR fiscal).

@@ -3872,6 +3872,16 @@ public class ApiClient
         return body;
     }
 
+    // 2026-09-30: respaldo automático de todos los comprobantes en Drive.
+    public record DriveRespaldoEstadoDto(bool Activo, bool DriveConectado, int Subidos, int Pendientes, int ConError,
+        DateTime? UltimaSubidaAt, string? UltimoError);
+
+    public Task<DriveRespaldoEstadoDto?> GetDriveRespaldoAsync()
+        => GetAsync<DriveRespaldoEstadoDto>("/api/integrations/google-drive/respaldo");
+
+    public Task<DriveRespaldoEstadoDto?> SetDriveRespaldoAsync(bool activo)
+        => PostAsync<DriveRespaldoEstadoDto>("/api/integrations/google-drive/respaldo", new { activo });
+
     public async Task<string?> TestGoogleDriveAsync()
     {
         await SetAuthHeaderAsync();
