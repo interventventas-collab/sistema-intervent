@@ -1,0 +1,312 @@
+@page "/cafe/fotos-chroma"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* 2026-10-01: fotos con tela VERDE o AZUL → fondo blanco 1200x1200 para MercadoLibre. Pensada para el CELU:
+   buscás el producto, sacás la foto, ves antes/después, ajustás si hace falta y la guardás como FOTO PROPIA
+   del producto. Después en Publicaciones → 🖼 Fotos aparece "📷 Foto propia" para ponerla en la publicación.
+   La foto original (con la tela) queda guardada: "Reprocesar la original" la vuelve a abrir sin sacarla de nuevo. *@
+
+<PageTitle>Fotos con fondo verde/azul</PageTitle>
+
+<style>
+    .fc { max-width: 760px; margin: 0 auto; padding: 0.6rem; }
+    .fc h2 { margin: 0 0 0.2rem; font-size: 1.15rem; }
+    .fc .sub { color: #6b7280; font-size: 0.85rem; margin-bottom: 0.8rem; }
+    .fc .buscar { position: relative; }
+    .fc .buscar input { width: 100%; font-size: 1rem; padding: 0.6rem; }
+    .fc .res { border: 1px solid #e5e7eb; border-radius: 6px; margin-top: 0.3rem; max-height: 60vh; overflow-y: auto; background: #fff; }
+    .fc .res div { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; }
+    .fc .res img, .fc .res .vacia { width: 40px; height: 40px; object-fit: contain; flex: none; background: #f9fafb; }
+    .fc .sku { font-family: monospace; font-weight: 700; color: #1d4ed8; }
+    .fc .prod { display: flex; gap: 0.6rem; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #e5e7eb; margin-bottom: 0.7rem; }
+    .fc .prod img { width: 56px; height: 56px; object-fit: contain; border: 1px solid #e5e7eb; }
+    .fc .prod .nom { flex: 1; min-width: 0; }
+    .fc .acciones { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .fc .acciones label, .fc .acciones button { flex: 1 1 140px; text-align: center; padding: 0.8rem; font-size: 1rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; cursor: pointer; }
+    .fc .acciones .prim { background: #111827; color: #fff; border-color: #111827; }
+    .fc .comp { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.8rem 0 0.4rem; }
+    .fc .comp figure { margin: 0; }
+    .fc .comp img { width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid #e5e7eb; background: #f9fafb; }
+    .fc .comp figcaption { font-size: 0.78rem; color: #6b7280; text-align: center; }
+    .fc .aviso { color: #92400e; font-size: 0.85rem; margin: 0.3rem 0; }
+    .fc .err { color: #b91c1c; font-size: 0.9rem; margin: 0.5rem 0; }
+    .fc .ajuste { margin: 0.7rem 0; }
+    .fc .ajuste .lbl { font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 0.25rem; }
+    .fc .ajuste .ayuda { font-size: 0.75rem; color: #6b7280; display: flex; justify-content: space-between; }
+    .fc .ajuste input[type=range] { width: 100%; }
+    .fc .seg { display: flex; gap: 0; }
+    .fc .seg button { flex: 1; padding: 0.55rem; border: 1px solid #d1d5db; background: #fff; font-size: 0.95rem; }
+    .fc .seg button + button { border-left: none; }
+    .fc .seg button.on { background: #111827; color: #fff; border-color: #111827; }
+    .fc .procesando { font-size: 0.85rem; color: #6b7280; }
+</style>
+
+<div class="fc">
+    <h2>📷 Fotos con fondo verde o azul</h2>
+    <div class="sub">Sacale la foto al producto sobre la tela verde o azul. El sistema le pone fondo blanco y la deja lista para MercadoLibre (cuadrada, 1200 × 1200).</div>
+
+    @if (prod is null)
+    {
+        <div class="buscar">
+            <input class="form-input" autocomplete="off" placeholder="🔍 Código o nombre del producto"
+                   @bind="busqueda" @bind:event="oninput" />
+            @if (productos is null)
+            {
+                <div class="procesando" style="margin-top:0.4rem;">Cargando productos…</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(busqueda))
+            {
+                var lista = Coincidencias().Take(30).ToList();
+                <div class="res">
+                    @if (lista.Count == 0)
+                    {
+                        <div style="cursor:default; color:#6b7280;">Sin resultados.</div>
+                    }
+                    @foreach (var p in lista)
+                    {
+                        var foto = FotoDe(p.Id);
+                        <div @onclick="() => Elegir(p)">
+                            @if (foto is not null)
+                            {
+                                <img src="/api/public/producto-foto/img/@foto.FotoPropiaArchivo" alt="" />
+                            }
+                            else
+                            {
+                                <span class="vacia"></span>
+                            }
+                            <span><span class="sku">@p.Sku</span> @p.Nombre</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        var actual = FotoDe(prod.Id);
+        <div class="prod">
+            @if (actual is not null)
+            {
+                <img src="/api/public/producto-foto/img/@actual.FotoPropiaArchivo" alt="" title="Foto propia actual" />
+            }
+            <div class="nom">
+                <div><span class="sku">@prod.Sku</span></div>
+                <div>@prod.Nombre</div>
+                @if (actual is not null)
+                {
+                    <div class="procesando">Ya tiene foto propia: si guardás una nueva, la reemplaza.</div>
+                }
+            </div>
+            <button class="btn" disabled="@ocupado" @onclick="CambiarProducto">Cambiar</button>
+        </div>
+
+        @if (res is null)
+        {
+            <div class="acciones">
+                <label class="prim">
+                    📷 Sacar foto
+                    <InputFile OnChange="OnFoto" accept="image/*" capture="environment" style="display:none" disabled="@ocupado" />
+                </label>
+                <label>
+                    🖼 Elegir de la galería
+                    <InputFile OnChange="OnFoto" accept="image/*" style="display:none" disabled="@ocupado" />
+                </label>
+                @if (actual?.TieneOriginal == true)
+                {
+                    <button disabled="@ocupado" @onclick="Reabrir" title="Vuelve a abrir la foto con la tela que se guardó, para ajustarla de nuevo">↺ Reprocesar la original</button>
+                }
+            </div>
+            @if (ocupado)
+            {
+                <div class="procesando" style="margin-top:0.6rem;">Subiendo y sacando el fondo…</div>
+            }
+        }
+        else
+        {
+            <div class="comp">
+                <figure>
+                    <img src="@res.Antes" alt="Antes" />
+                    <figcaption>Antes</figcaption>
+                </figure>
+                <figure>
+                    @if (res.Despues is not null)
+                    {
+                        <img src="@res.Despues" alt="Después" style="@(ocupado ? "opacity:0.4" : "")" />
+                    }
+                    else
+                    {
+                        <img alt="" />
+                    }
+                    <figcaption>Después@(res.ColorUsado is null ? "" : $" · tela {res.ColorUsado}")</figcaption>
+                </figure>
+            </div>
+            @if (!string.IsNullOrEmpty(res.Error))
+            {
+                <div class="err">@res.Error</div>
+            }
+            @if (!string.IsNullOrEmpty(res.Aviso))
+            {
+                <div class="aviso">Ojo: @res.Aviso</div>
+            }
+
+            <div class="ajuste">
+                <span class="lbl">Color de la tela</span>
+                <div class="seg">
+                    @foreach (var (val, txt) in new[] { ("auto", "Automático"), ("verde", "Verde"), ("azul", "Azul") })
+                    {
+                        <button class="@(color == val ? "on" : "")" disabled="@ocupado" @onclick="() => CambiarColor(val)">@txt</button>
+                    }
+                </div>
+            </div>
+            <div class="ajuste">
+                <span class="lbl">Tolerancia: @tolerancia</span>
+                <input type="range" min="0" max="100" step="5" value="@tolerancia" disabled="@ocupado"
+                       @onchange="e => CambiarNumero(e, v => tolerancia = v)" />
+                <div class="ayuda"><span>← si se come partes del producto</span><span>si quedan restos de tela →</span></div>
+            </div>
+            <div class="ajuste">
+                <span class="lbl">Suavizado del borde: @suavizado</span>
+                <input type="range" min="0" max="100" step="5" value="@suavizado" disabled="@ocupado"
+                       @onchange="e => CambiarNumero(e, v => suavizado = v)" />
+                <div class="ayuda"><span>← borde más marcado</span><span>borde más suave →</span></div>
+            </div>
+            @if (ocupado)
+            {
+                <div class="procesando">Procesando…</div>
+            }
+
+            <div class="acciones" style="margin-top:0.8rem;">
+                <button class="prim" disabled="@(ocupado || res.Despues is null)" @onclick="Guardar">✅ Guardar en el producto</button>
+                <button disabled="@ocupado" @onclick="Descartar">Descartar</button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<CafeProductoDto>? productos;
+    private Dictionary<int, ApiClient.ProductoFotoEstadoDto> fotos = new();
+    private string busqueda = "";
+    private CafeProductoDto? prod;
+    private ApiClient.ChromaResultadoDto? res;
+    private string color = "auto";
+    private int tolerancia = 50;
+    private int suavizado = 40;
+    private bool ocupado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var tProd = Api.GetCafeProductosAsync();
+        var tFotos = Api.GetFotosProductosAsync();
+        productos = (await tProd ?? new()).Where(p => !p.EsCompuestoFake).ToList();
+        fotos = (await tFotos ?? new()).Where(f => !string.IsNullOrEmpty(f.FotoPropiaArchivo))
+            .GroupBy(f => f.CafeProductoId).ToDictionary(g => g.Key, g => g.First());
+    }
+
+    private ApiClient.ProductoFotoEstadoDto? FotoDe(int id) => fotos.TryGetValue(id, out var f) ? f : null;
+
+    private IEnumerable<CafeProductoDto> Coincidencias()
+    {
+        var palabras = busqueda.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return (productos ?? new())
+            .Where(p => palabras.All(w => (p.Sku ?? "").ToLowerInvariant().Contains(w) || p.Nombre.ToLowerInvariant().Contains(w)))
+            // Primero los que el código arranca con lo escrito (el depósito busca por código).
+            .OrderByDescending(p => (p.Sku ?? "").StartsWith(busqueda.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ThenBy(p => p.Sku);
+    }
+
+    private void Elegir(CafeProductoDto p) { prod = p; res = null; busqueda = ""; }
+
+    private void CambiarProducto() { prod = null; res = null; }
+
+    private void Descartar() => res = null;
+
+    private async Task OnFoto(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null || ocupado) return;
+        const long max = 25L * 1024 * 1024;
+        if (file.Size > max) { ToastService.Error("La foto es muy grande (máx 25 MB)."); return; }
+        // Leer los bytes ANTES de re-renderizar: si el <InputFile> sale del DOM, Blazor pierde el archivo.
+        byte[] bytes;
+        try
+        {
+            using var s = file.OpenReadStream(maxAllowedSize: max);
+            using var ms = new MemoryStream();
+            await s.CopyToAsync(ms);
+            bytes = ms.ToArray();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo leer la foto: " + ex.Message); return; }
+
+        ocupado = true;
+        StateHasChanged();
+        try
+        {
+            var (r, err) = await Api.ChromaSubirAsync(bytes, file.Name, file.ContentType, color, tolerancia, suavizado);
+            if (r is null) ToastService.Error(err ?? "No se pudo subir la foto.");
+            else res = r;
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo subir la foto: " + ex.Message); }
+        finally { ocupado = false; StateHasChanged(); }
+    }
+
+    private async Task Reabrir()
+    {
+        if (prod is null || ocupado) return;
+        ocupado = true;
+        try
+        {
+            color = "auto"; tolerancia = 50; suavizado = 40;
+            var (r, err) = await Api.ChromaReabrirAsync(prod.Id);
+            if (r is null) ToastService.Error(err ?? "No se pudo abrir la foto original.");
+            else res = r;
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task CambiarColor(string c)
+    {
+        if (color == c) return;
+        color = c;
+        await Reprocesar();
+    }
+
+    private async Task CambiarNumero(ChangeEventArgs e, Action<int> set)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var v)) return;
+        set(v);
+        await Reprocesar();
+    }
+
+    private async Task Reprocesar()
+    {
+        if (res is null || ocupado) return;
+        ocupado = true;
+        StateHasChanged();
+        try
+        {
+            var antes = res.Antes;
+            var (r, err) = await Api.ChromaProcesarAsync(res.TempId, color, tolerancia, suavizado);
+            if (r is null) ToastService.Error(err ?? "No se pudo procesar.");
+            else res = r with { Antes = antes };   // el "antes" no cambia: la API no lo vuelve a mandar
+        }
+        finally { ocupado = false; StateHasChanged(); }
+    }
+
+    private async Task Guardar()
+    {
+        if (prod is null || res is null || ocupado) return;
+        ocupado = true;
+        try
+        {
+            var (r, err) = await Api.ChromaConfirmarAsync(prod.Id, res.TempId, color, tolerancia, suavizado);
+            if (r is null) { ToastService.Error(err ?? "No se pudo guardar."); return; }
+            fotos[prod.Id] = r;
+            res = null;
+            ToastService.Success("Guardada como foto del producto. En Publicaciones → Fotos aparece «📷 Foto propia» para ponerla en MercadoLibre.");
+        }
+        finally { ocupado = false; }
+    }
+}

@@ -2043,7 +2043,7 @@ public class ApiClient
 
     // ── Foto del producto: aprobar / reportar erronea + foto propia por QR (2026-08-05) ──
     public record ProductoFotoEstadoDto(int CafeProductoId, string? Estado, string? Usuario,
-        string? Comentario, string? FotoPropiaArchivo, DateTime UpdatedAt);
+        string? Comentario, string? FotoPropiaArchivo, DateTime UpdatedAt, bool TieneOriginal = false);
 
     public record ProductoFotoTokenDto(string Token);
 
@@ -2084,6 +2084,78 @@ public class ApiClient
         var resp = await _http.PostAsync($"/api/cafe/producto-foto/{productoId}/subir", content);
         if (!resp.IsSuccessStatusCode) return null;
         return await resp.Content.ReadFromJsonAsync<ProductoFotoEstadoDto>();
+    }
+
+    // ── 2026-10-01: Fotos chroma (fondo verde/azul → blanco 1200x1200 para MeLi) ──
+    public record ChromaResultadoDto(string TempId, string? Antes, string? Despues, string? ColorUsado, string? Aviso, string? Error);
+    public record FotoPropiaSkuDto(string Sku, int CafeProductoId, string Nombre, string Archivo);
+
+    private static async Task<string> MensajeDeErrorAsync(HttpResponseMessage resp)
+    {
+        try
+        {
+            var j = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            if (j.TryGetProperty("mensaje", out var m) && m.GetString() is { Length: > 0 } t) return t;
+        }
+        catch { /* sin cuerpo */ }
+        return $"No se pudo procesar la foto (error {(int)resp.StatusCode}).";
+    }
+
+    /// <summary>Sube la foto con la tela verde/azul y devuelve antes/después. No guarda nada en el producto.</summary>
+    public async Task<(ChromaResultadoDto? res, string? error)> ChromaSubirAsync(byte[] bytes, string fileName, string contentType, string color, int tolerancia, int suavizado)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var bc = new ByteArrayContent(bytes);
+        bc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(contentType) ? "image/jpeg" : contentType);
+        content.Add(bc, "file", string.IsNullOrEmpty(fileName) ? "foto.jpg" : fileName);
+        content.Add(new StringContent(color), "color");
+        content.Add(new StringContent(tolerancia.ToString()), "tolerancia");
+        content.Add(new StringContent(suavizado.ToString()), "suavizado");
+        var resp = await _http.PostAsync("/api/cafe/producto-foto/chroma/subir", content);
+        if (!resp.IsSuccessStatusCode) return (null, await MensajeDeErrorAsync(resp));
+        return (await resp.Content.ReadFromJsonAsync<ChromaResultadoDto>(), null);
+    }
+
+    /// <summary>Reprocesa la foto ya subida (por su TempId) con otro color/tolerancia/suavizado.</summary>
+    public async Task<(ChromaResultadoDto? res, string? error)> ChromaProcesarAsync(string tempId, string color, int tolerancia, int suavizado)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/cafe/producto-foto/chroma/procesar", new { tempId, color, tolerancia, suavizado });
+        if (!resp.IsSuccessStatusCode) return (null, await MensajeDeErrorAsync(resp));
+        return (await resp.Content.ReadFromJsonAsync<ChromaResultadoDto>(), null);
+    }
+
+    /// <summary>Guarda la foto procesada como foto propia del producto (y la original al lado).</summary>
+    public async Task<(ProductoFotoEstadoDto? res, string? error)> ChromaConfirmarAsync(int productoId, string tempId, string color, int tolerancia, int suavizado)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/producto-foto/{productoId}/chroma/confirmar", new { tempId, color, tolerancia, suavizado });
+        if (!resp.IsSuccessStatusCode) return (null, await MensajeDeErrorAsync(resp));
+        return (await resp.Content.ReadFromJsonAsync<ProductoFotoEstadoDto>(), null);
+    }
+
+    /// <summary>Vuelve a abrir la foto original (con la tela) guardada del producto, para reprocesarla.</summary>
+    public async Task<(ChromaResultadoDto? res, string? error)> ChromaReabrirAsync(int productoId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/cafe/producto-foto/{productoId}/chroma/reabrir", null);
+        if (!resp.IsSuccessStatusCode) return (null, await MensajeDeErrorAsync(resp));
+        return (await resp.Content.ReadFromJsonAsync<ChromaResultadoDto>(), null);
+    }
+
+    /// <summary>Fotos propias de los productos con esos SKU (para ofrecerlas en Publicaciones).</summary>
+    public async Task<List<FotoPropiaSkuDto>?> GetFotosPropiasPorSkuAsync(IEnumerable<string> skus)
+        => await GetAsync<List<FotoPropiaSkuDto>>("/api/cafe/producto-foto/por-sku?skus=" + Uri.EscapeDataString(string.Join(",", skus)));
+
+    /// <summary>Baja una foto propia y la devuelve como data URI (para agregarla como foto nueva en MeLi).</summary>
+    public async Task<string?> GetFotoPropiaDataUriAsync(string archivo)
+    {
+        var resp = await _http.GetAsync("/api/public/producto-foto/img/" + Uri.EscapeDataString(archivo));
+        if (!resp.IsSuccessStatusCode) return null;
+        var bytes = await resp.Content.ReadAsByteArrayAsync();
+        var tipo = resp.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
+        return $"data:{tipo};base64,{Convert.ToBase64String(bytes)}";
     }
 
     /// <summary>Sube la foto propia bajando la imagen de un LINK (URL).</summary>

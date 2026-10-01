@@ -871,12 +871,12 @@
                             {
                                 <img class="p2-thumb clickable" src="@it.Thumbnail" alt="" loading="lazy"
                                      title="Ver y cambiar las fotos de esta publicación"
-                                     @onclick="() => ToggleFotos(it.MeliItemId)" />
+                                     @onclick="() => ToggleFotos(it.MeliItemId, it)" />
                             }
                             else
                             {
                                 <span class="p2-thumb vacia clickable" title="Ver y cambiar las fotos de esta publicación"
-                                      @onclick="() => ToggleFotos(it.MeliItemId)"></span>
+                                      @onclick="() => ToggleFotos(it.MeliItemId, it)"></span>
                             }
                             @* 2026-09-22 — Osmar: los 4 botones eran muy chicos y había que adivinar cuál era
                                cuál. Van de a 2 y cada uno dice qué abre (opción B que eligió). *@
@@ -1589,6 +1589,19 @@
                                         </label>
                                     }
                                 </div>
+
+                                @if (fotosPropias.Count > 0 && !fotosBloqueadas)
+                                {
+                                    @foreach (var fp in fotosPropias)
+                                    {
+                                        <div class="pack">
+                                            <img src="/api/public/producto-foto/img/@fp.Archivo" alt="" style="width:56px; height:56px; object-fit:contain; border:1px solid #e5e7eb; vertical-align:middle;" />
+                                            <span class="cnt"><b>📷 Foto propia</b> de @fp.Sku · @fp.Nombre</span>
+                                            <button class="btn meli" disabled="@fotoPropiaTrayendo" @onclick="() => UsarFotoPropia(fp, true)">★ Ponerla de portada</button>
+                                            <button class="btn" disabled="@fotoPropiaTrayendo" @onclick="() => UsarFotoPropia(fp, false)">＋ Agregarla al final</button>
+                                        </div>
+                                    }
+                                }
 
                                 @if (packFuente is not null && !fotosBloqueadas)
                                 {
@@ -2602,7 +2615,7 @@
     private bool FotosCambiaron
         => !fotosEdit.Select(f => f.Id ?? "nueva:" + f.Preview.Length).SequenceEqual(fotosOriginal);
 
-    private async Task ToggleFotos(string mla)
+    private async Task ToggleFotos(string mla, ApiClient.PubV2Fila? fila = null)
     {
         if (fotosAbiertas == mla) { CerrarFotos(); return; }
         descAbierta = null;   // 2026-09-21: cierra el panel de descripción
@@ -2616,12 +2629,18 @@
         fotosResultado = null;
         fotoLink = "";
         packFuente = null; packResultado = null; packAviso = null;
+        fotosPropias = new();
         fotosCargando = true;
         StateHasChanged();
         try
         {
             fotosDatos = await Api.GetFotosV2Async(mla);
             RefrescarEdicion();
+            // 2026-10-01: fotos propias (ej. las de tela verde/azul ya en blanco) del producto de la publicación.
+            var skus = new[] { fila?.Sku }.Concat(fila?.Receta.Select(r => r.Sku) ?? Enumerable.Empty<string?>())
+                .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!).Distinct().ToList();
+            if (skus.Count > 0)
+                fotosPropias = await Api.GetFotosPropiasPorSkuAsync(skus) ?? new();
         }
         catch (Exception ex) { ToastService.Error("No se pudieron leer las fotos: " + ex.Message); }
         finally { fotosCargando = false; StateHasChanged(); }
@@ -2792,6 +2811,26 @@
         packResultado = null;
         packAviso = null;
         ToastService.Info("Agregada. Tocá «Guardar en MercadoLibre» para subirla.");
+    }
+
+    // ─── 2026-10-01 · 📷 foto propia del producto (sale de Catálogo → Fotos con fondo verde/azul) ───
+    private List<ApiClient.FotoPropiaSkuDto> fotosPropias = new();
+    private bool fotoPropiaTrayendo;
+
+    private async Task UsarFotoPropia(ApiClient.FotoPropiaSkuDto f, bool portada)
+    {
+        if (fotoPropiaTrayendo) return;
+        fotoPropiaTrayendo = true;
+        try
+        {
+            var du = await Api.GetFotoPropiaDataUriAsync(f.Archivo);
+            if (du is null) { ToastService.Error("No se pudo leer la foto propia."); return; }
+            var nueva = new FotoEdit { DataUri = du, Preview = du };
+            if (portada) fotosEdit.Insert(0, nueva); else fotosEdit.Add(nueva);
+            ToastService.Info("Agregada. Tocá «Guardar en MercadoLibre» para subirla.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo leer la foto propia: " + ex.Message); }
+        finally { fotoPropiaTrayendo = false; }
     }
 
     private async Task SubirFotos(InputFileChangeEventArgs e)

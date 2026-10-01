@@ -64,6 +64,7 @@ public class ProductoFotoPublicController : ControllerBase
         // así se muestra directo (sin ojito) en el tablero de preparación.
         var foto = await _db.CafeProductoFotos.FirstOrDefaultAsync(f => f.CafeProductoId == t.CafeProductoId);
         var archivoViejo = foto?.FotoPropiaArchivo;
+        var originalViejo = foto?.FotoOriginalArchivo;
         if (foto is null)
         {
             foto = new CafeProductoFoto { CafeProductoId = t.CafeProductoId };
@@ -71,6 +72,7 @@ public class ProductoFotoPublicController : ControllerBase
         }
         foto.FotoPropiaArchivo = filename;
         foto.FotoPropiaAt = DateTime.UtcNow;
+        foto.FotoOriginalArchivo = null;   // la original chroma era de la foto anterior
         foto.Estado = "APROBADA";
         foto.Comentario = null;
         foto.UpdatedAt = DateTime.UtcNow;
@@ -82,6 +84,11 @@ public class ProductoFotoPublicController : ControllerBase
         if (!string.IsNullOrEmpty(archivoViejo) && archivoViejo != filename)
         {
             try { var old = Path.Combine(FotosDir, archivoViejo); if (System.IO.File.Exists(old)) System.IO.File.Delete(old); }
+            catch { /* best-effort */ }
+        }
+        if (!string.IsNullOrEmpty(originalViejo))
+        {
+            try { var old = Path.Combine(FotosDir, originalViejo); if (System.IO.File.Exists(old)) System.IO.File.Delete(old); }
             catch { /* best-effort */ }
         }
 
