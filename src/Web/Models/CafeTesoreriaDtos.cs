@@ -311,6 +311,8 @@ public class ImputarComprobanteItem
 {
     public int? VentaId { get; set; }
     public decimal Importe { get; set; }
+    /// <summary>01/10/2026: si es un alquiler, va la reserva (y VentaId null).</summary>
+    public int? ReservaId { get; set; }
 }
 
 public class ChequesResumenDto
@@ -570,6 +572,8 @@ public class CobranzaListDto
     public string? FormaPagoDetalle { get; set; }
     /// <summary>23/09/2026: en un cobro redirigido, a quién fue la plata (ej "Walter Ignacion Carrizo · viajes").</summary>
     public string? RedirigidoA { get; set; }
+    /// <summary>01/10/2026: si el cheque de la cobranza se endoso, a quien y con que pago.</summary>
+    public string? EndosadoA { get; set; }
     // 2026-07-03: chips ricos + trazabilidad.
     public List<CobranzaComprobanteChip>? ComprobantesInfo { get; set; }
     public string? CargoPorNombre { get; set; }
@@ -752,6 +756,13 @@ public class ChequeUniDto
     /// <summary>2026-10-01: el banco ya lo muestra endosado a este (y aca sigue en mano, sin anotar).</summary>
     public string? BancoEndosadoA { get; set; }
     public int? BancoEndosadoProveedorId { get; set; }
+    /// <summary>01/10/2026: columnas "Vino de" / "Fue a" / "Detalle".</summary>
+    public bool EsPropio { get; set; }
+    public string? VinoDe { get; set; }
+    public string? VinoDeSub { get; set; }
+    public string? FueA { get; set; }
+    public string? FueASub { get; set; }
+    public string? Detalle { get; set; }
 }
 
 public class ChequesUniConteosDto

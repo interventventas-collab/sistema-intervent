@@ -68,7 +68,13 @@ public class CafeChequesUnificadoController : ControllerBase
         // 2026-10-01: el banco ya lo muestra endosado a alguien y aca sigue "en mano"
         // (se endoso desde el home banking y nadie lo anoto). A quien, y si es un proveedor nuestro.
         string? BancoEndosadoA = null,
-        int? BancoEndosadoProveedorId = null);
+        int? BancoEndosadoProveedorId = null,
+        // 01/10/2026: columnas "Vino de" / "Fue a" / "Detalle" (pedido del usuario: los endosados
+        // tienen que decir a quien, los propios distinguirse, y ver que facturas pago cada cheque).
+        bool EsPropio = false,
+        string? VinoDe = null, string? VinoDeSub = null,
+        string? FueA = null, string? FueASub = null,
+        string? Detalle = null);
 
     public record ConteosDto(int EnMano, int EnBanco, int Usados, int Rechazados, int APagar, int Duplicados,
         int EndososSinAnotar = 0, decimal EndososSinAnotarImporte = 0m, int Todos = 0);
@@ -225,6 +231,8 @@ public class CafeChequesUnificadoController : ControllerBase
             }
         }
 
+        await CompletarVinoDeFueAAsync(filas, cartera, banco);
+
         // ─── Duplicados: el mismo papel por los dos caminos ──────────────────────────
         // Solo tiene sentido entre lo que esta EN MANO: mismo numero (normalizado) + mismo importe.
         var enManoCartera = filas.Where(f => f.Vista == EN_MANO && f.Origen == "CARTERA").ToList();
@@ -305,6 +313,135 @@ public class CafeChequesUnificadoController : ControllerBase
             : deLaVista.OrderBy(f => f.Vence ?? DateTime.MaxValue).ThenBy(f => f.Id).ToList();
 
         return Ok(new UnificadoResponse(conteos, resumen, deLaVista, cabecera, proximos));
+    }
+
+    /// <summary>"FA 14-31098" a partir de la clave de AFIP "COMPRA-{cuit}-{tipo}-{ptoVta}-{nro}".</summary>
+    private static string EtiquetaAfip(string clave)
+    {
+        var p = clave.Split('-');
+        if (p.Length < 5) return clave;
+        var tipo = p[^3] switch { "1" => "FA", "6" => "FB", "11" => "FC", "3" or "8" or "13" => "NC", "2" or "7" or "12" => "ND", _ => "Comp." };
+        return $"{tipo} {p[^2]}-{p[^1]}";
+    }
+
+    /// <summary>01/10/2026: arma las columnas "Vino de", "Fue a" y "Detalle" de cada fila.
+    /// Detalle = de que cobranza vino y que facturas del cliente pago; si se endoso, con que pago
+    /// y que facturas del proveedor cancelo.</summary>
+    private async Task CompletarVinoDeFueAAsync(List<ChequeUniDto> filas, List<CafeCheque> cartera, List<CafeChequeBanco> banco)
+    {
+        var carteraPorId = cartera.ToDictionary(c => c.Id);
+        var bancoPorId = banco.ToDictionary(b => b.Id);
+
+        // Cobranzas de origen (cartera.CobranzaOrigenId o banco.CobranzaId) con sus facturas.
+        var cobIds = cartera.Where(c => c.CobranzaOrigenId.HasValue).Select(c => c.CobranzaOrigenId!.Value)
+            .Concat(banco.Where(b => b.CobranzaId.HasValue).Select(b => b.CobranzaId!.Value)).Distinct().ToList();
+        var cobs = cobIds.Count == 0 ? new() : await _db.CafeCobranzas.AsNoTracking()
+            .Where(c => cobIds.Contains(c.Id))
+            .Select(c => new { c.Id, c.Numero, c.Estado, Facturas = c.Comprobantes.Where(cc => cc.Venta != null || cc.Reserva != null)
+                .Select(cc => cc.Venta != null ? cc.Venta.Numero : cc.Reserva!.Numero).ToList() })
+            .ToDictionaryAsync(c => c.Id);
+        string? TextoCobranza(int? cobId)
+        {
+            if (cobId is not int id || !cobs.TryGetValue(id, out var c)) return null;
+            var nro = c.Numero.Split('-')[^1].TrimStart('0');
+            // "CAFE-2026-0010" -> "0010"; los alquileres quedan "RES 0001" para no confundirlos.
+            var fcs = c.Facturas.Distinct().Select(n => (n.StartsWith("RES-") ? "RES " : "") + n.Split('-')[^1]).ToList();
+            return $"cobro {nro}" + (c.Estado == "ANULADA" ? " (anulada)" : "")
+                + (fcs.Count > 0 ? " · FC " + string.Join(", ", fcs) : " · a cuenta");
+        }
+
+        // Pagos a proveedor de los endosados, con lo que cancelaron.
+        var pagoIds = cartera.Where(c => c.PagoOrigenId.HasValue).Select(c => c.PagoOrigenId!.Value).Distinct().ToList();
+        var pagos = pagoIds.Count == 0 ? new() : await _db.CafePagosProveedor.AsNoTracking()
+            .Where(p => pagoIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Numero, p.Operador, p.Fecha, p.Estado,
+                Comps = p.Comprobantes.Select(cc => new { cc.AfipIdComprobante, cc.DeudaId }).ToList() })
+            .ToDictionaryAsync(p => p.Id);
+        var deudaIds = pagos.Values.SelectMany(p => p.Comps).Where(x => x.DeudaId.HasValue).Select(x => x.DeudaId!.Value).Distinct().ToList();
+        var deudas = deudaIds.Count == 0 ? new() : await _db.CafeProveedorDeudas.AsNoTracking()
+            .Where(d => deudaIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => d.Tipo == "SALDO_INICIAL" ? "saldo inicial" : "cotización");
+        var provIds = cartera.Where(c => c.ProveedorEndosoId.HasValue).Select(c => c.ProveedorEndosoId!.Value).Distinct().ToList();
+        var provs = provIds.Count == 0 ? new() : await _db.CafeProveedores.AsNoTracking()
+            .Where(p => provIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Nombre);
+
+        string NombreBanco(CafeChequeBanco b, bool destino)
+        {
+            // En los recibidos ya usados, "a quien" es el que lo tiene ahora (beneficiario actual).
+            var n = destino ? (b.BeneficiarioActualNombre ?? b.ContraparteNombre) : b.ContraparteNombre;
+            return string.IsNullOrWhiteSpace(n) ? "—" : n.Trim();
+        }
+        bool EsPalanica(string? cuit) => SoloDigitos(cuit) == ChequesBancoImportService.CuitPalanica;
+
+        for (int i = 0; i < filas.Count; i++)
+        {
+            var f = filas[i];
+            string? vino = null, vinoSub = null, fue = null, fueSub = null, det = null; bool propio = false;
+
+            if (f.Origen == "CARTERA" && carteraPorId.TryGetValue(f.Id, out var c))
+            {
+                vino = f.ClienteNombre ?? c.Emisor ?? "—";
+                vinoSub = !string.IsNullOrWhiteSpace(c.Emisor) && c.Emisor != vino ? $"firma {c.Emisor}" : null;
+                var detCob = TextoCobranza(c.CobranzaOrigenId);
+                switch (c.Estado)
+                {
+                    case "EN_CARTERA":
+                        fue = "Todavía en mano";
+                        if (f.BancoEndosadoA is not null) fueSub = $"el banco dice: a {f.BancoEndosadoA}";
+                        break;
+                    case "DEPOSITADO": fue = "Mi banco"; fueSub = "depositado, sin acreditar"; break;
+                    case "ACREDITADO": fue = "Mi banco"; fueSub = "acreditado"; break;
+                    case "COBRADO_VENTANILLA": fue = "Ventanilla"; fueSub = "cobrado en efectivo"; break;
+                    case "RECHAZADO": fue = "Rebotó"; break;
+                    case "ENDOSADO":
+                        fue = c.ProveedorEndosoId is int pid && provs.TryGetValue(pid, out var pn) ? pn : "Un proveedor";
+                        if (c.PagoOrigenId is int pgid && pagos.TryGetValue(pgid, out var pg))
+                        {
+                            fueSub = $"endosado {pg.Fecha.AddHours(-3):dd/MM}" + (string.IsNullOrWhiteSpace(pg.Operador) ? "" : $" · {pg.Operador}");
+                            var cancelo = pg.Comps.Select(x => x.AfipIdComprobante is not null ? EtiquetaAfip(x.AfipIdComprobante)
+                                    : x.DeudaId is int did && deudas.TryGetValue(did, out var dt) ? dt : "a cuenta").Distinct().ToList();
+                            var detPago = $"pago OP-{pg.Numero.Split('-')[^1].TrimStart('0')}"
+                                + (pg.Estado == "ANULADA" ? " (anulado)" : "")
+                                + (cancelo.Count > 0 ? " · " + string.Join(", ", cancelo) : "");
+                            det = detCob is null ? detPago : $"{detCob}\n{detPago}";
+                        }
+                        else
+                        {
+                            // Endosados por el sistema viejo o desde el banco sin pago anotado.
+                            var endo = c.Observaciones is { } o && o.Contains("endosado a ") ? o[(o.IndexOf("endosado a ") + 11)..].Trim() : null;
+                            if (endo is not null) fue = endo;
+                            fueSub = "sin pago anotado";
+                        }
+                        break;
+                    default: fue = f.EstadoTexto; break;
+                }
+                det ??= detCob;
+            }
+            else if (f.Origen == "BANCO" && bancoPorId.TryGetValue(f.Id, out var b))
+            {
+                if (b.Tipo == "EMITIDO")
+                {
+                    propio = true;
+                    vino = "Yo (cheque propio)";
+                    fue = NombreBanco(b, false);
+                    fueSub = f.EstadoTexto.ToLowerInvariant();
+                }
+                else
+                {
+                    vino = b.LibradorNombre ?? "—";
+                    vinoSub = "sin cobranza cargada";
+                    det = TextoCobranza(b.CobranzaId);
+                    if (det is not null) vinoSub = null;
+                    var est = b.Estado ?? "";
+                    if (f.BancoEndosadoA is not null) { fue = "Todavía en mano"; fueSub = $"el banco dice: a {f.BancoEndosadoA}"; }
+                    else if (string.Equals(est, "Disponible", StringComparison.OrdinalIgnoreCase)) fue = "Todavía en mano";
+                    else if (string.Equals(est, "Rechazado", StringComparison.OrdinalIgnoreCase)) fue = "Rebotó";
+                    else if (b.Tipo == "ENDOSADO" || BancoLoEndoso(b) || !EsPalanica(b.BeneficiarioActualCuit))
+                    { fue = NombreBanco(b, b.Tipo != "ENDOSADO"); fueSub = "endosado (según el banco)"; }
+                    else { fue = "Mi banco"; fueSub = est.ToLowerInvariant(); }
+                }
+            }
+            filas[i] = f with { EsPropio = propio, VinoDe = vino, VinoDeSub = vinoSub, FueA = fue, FueASub = fueSub, Detalle = det };
+        }
     }
 
     /// <summary>

@@ -118,7 +118,10 @@ public class CafeCobranzasController : ControllerBase
         DateTime? AproboAt = null,
         // 23/09/2026: en los cobros REDIRIGIDOS, a quién fue la plata (ej "Walter Ignacion Carrizo · viajes").
         // Antes el listado sólo decía "V_privado" y no se sabía a quién se había pasado.
-        string? RedirigidoA = null);
+        string? RedirigidoA = null,
+        // 01/10/2026: si el cheque de esta cobranza se endoso a un proveedor, a quien y con que pago
+        // (ej "COLOMBRARO HERMANOS S.A. · OP-00000032").
+        string? EndosadoA = null);
 
     public record CobranzaComprobanteChip(
         string Numero,               // ej "CAFE-2026-0888"
@@ -408,9 +411,9 @@ public class CafeCobranzasController : ControllerBase
                     Tipo = m.Caja != null ? m.Caja.Tipo : "OTRO",
                     CajaNombre = m.Caja != null ? m.Caja.Nombre : "—",
                     m.Importe,
-                    m.RedirigidoDestino, m.RedirigidoEmpleadoId, m.RedirigidoProveedorId
+                    m.RedirigidoDestino, m.RedirigidoEmpleadoId, m.RedirigidoProveedorId, m.ChequeId
                 }).ToList(),
-                c.Total, c.Retenciones, c.Estado
+                c.Total, c.Retenciones, c.Estado, c.Operador
             })
             .ToListAsync();
 
@@ -467,6 +470,22 @@ public class CafeCobranzasController : ControllerBase
         var redirProv = redirProvIds.Count == 0 ? new Dictionary<int, string>()
             : await _db.CafeProveedores.Where(p => redirProvIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Nombre);
 
+        // 01/10/2026: cheques de estas cobranzas que despues se endosaron a un proveedor.
+        var chequeIds = rows.SelectMany(r => r.Medios).Where(m => m.ChequeId != null)
+            .Select(m => m.ChequeId!.Value).Distinct().ToList();
+        var endosos = chequeIds.Count == 0 ? new Dictionary<int, string>()
+            : (await (from ch in _db.CafeCheques.AsNoTracking()
+                      where chequeIds.Contains(ch.Id) && ch.Estado == "ENDOSADO"
+                      join pr in _db.CafeProveedores on ch.ProveedorEndosoId equals pr.Id into prs
+                      from pr in prs.DefaultIfEmpty()
+                      join pg in _db.CafePagosProveedor on ch.PagoOrigenId equals pg.Id into pgs
+                      from pg in pgs.DefaultIfEmpty()
+                      select new { ch.Id, ch.Observaciones, Prov = pr != null ? pr.Nombre : null, Pago = pg != null ? pg.Numero : null })
+                     .ToListAsync())
+              .ToDictionary(x => x.Id, x => x.Prov is not null
+                  ? (x.Pago is not null ? $"{x.Prov} · {x.Pago}" : x.Prov)
+                  : "un proveedor (sin anotar a quién)");
+
         var list = rows.Select(r =>
         {
             var redirTxt = r.Medios.Where(m => m.Tipo == "V_PRIVADO").Select(m =>
@@ -505,6 +524,11 @@ public class CafeCobranzasController : ControllerBase
                 .ToList();
 
             creadaMap.TryGetValue(r.Id.ToString(), out var cargoPor);
+            // 01/10/2026: las cobranzas hechas desde un cheque (Cheques -> cobrar al cliente) no
+            // dejan registro de cambios, pero si guardan el Operador: antes salian "sin trazabilidad".
+            if (string.IsNullOrWhiteSpace(cargoPor) && !string.IsNullOrWhiteSpace(r.Operador)) cargoPor = r.Operador;
+            var endTxt = r.Medios.Where(m => m.ChequeId is int cid && endosos.ContainsKey(cid))
+                .Select(m => endosos[m.ChequeId!.Value]).Distinct().ToList();
             pendMap.TryGetValue(r.Id, out var pend);
 
             return new CobranzaListDto(
@@ -523,7 +547,8 @@ public class CafeCobranzasController : ControllerBase
                 pend?.CreatedAt,
                 pend?.RevisadaPor,
                 pend?.RevisadaAt,
-                redirTxt.Count > 0 ? string.Join(" / ", redirTxt) : null);
+                redirTxt.Count > 0 ? string.Join(" / ", redirTxt) : null,
+                endTxt.Count > 0 ? string.Join(" / ", endTxt) : null);
         }).ToList();
         return Ok(list);
     }

@@ -287,6 +287,10 @@
                             {
                                 <div style="margin-top:.2rem; font-size:.72rem; color:#374151;" title="A quién se le pasó la plata">→ @c.RedirigidoA</div>
                             }
+                            @if (!string.IsNullOrWhiteSpace(c.EndosadoA))
+                            {
+                                <div style="margin-top:.2rem; font-size:.72rem; color:#374151;" title="El cheque de esta cobranza se le pasó a un proveedor">→ endosado a @c.EndosadoA</div>
+                            }
                             @if (c.Retenciones > 0)
                             {
                                 <div style="margin-top:.2rem; font-size:.7rem; color:#6b7280;">Ret: $@c.Retenciones.ToString("N2")</div>

@@ -29,6 +29,7 @@
     .chq-tabla th { text-align:left; font-weight:400; font-size:0.76rem; color:#9ca3af; padding:0.6rem 0.4rem; }
     .chq-tabla td { padding:0.6rem 0.4rem; border-top:1px solid #f1f2f4; vertical-align:top; }
     .chq-tabla tr.dup td { background:#fffbeb; }
+    .chq-tabla tr.propio td { background:#f8fafc; }
     .chq-sub { font-size:0.74rem; color:#9ca3af; }
     .chq-acc { background:none; border:none; padding:0 0.1rem; cursor:pointer; color:#374151; font-size:0.8rem; text-decoration:underline; text-underline-offset:2px; }
     .chq-acc:hover { color:#111827; }
@@ -122,43 +123,42 @@
                 <table class="chq-tabla">
                     <thead>
                         <tr>
-                            <th style="width:24%;">@(vista == "A_PAGAR" ? "A quién se lo di" : vista == "TODOS" ? "Quién lo dio / a quién" : "Quién lo dio")</th>
-                            <th style="width:22%;">Cheque</th>
-                            <th style="width:13%; text-align:right;">Importe</th>
-                            <th style="width:11%;">@(vista == "A_PAGAR" ? "Se paga" : "Vence")</th>
-                            <th>Qué hago</th>
+                            @* 01/10/2026: "Vino de" / "Fue a" separados (antes una sola columna mezclaba
+                               quién me lo dio con a quién se lo di) y "Detalle" con cobranza y pago. *@
+                            <th style="width:17%;">Vino de</th>
+                            <th style="width:17%;">Fue a</th>
+                            <th style="width:19%;">Cheque</th>
+                            <th style="width:11%; text-align:right;">Importe</th>
+                            <th style="width:8%;">@(vista == "A_PAGAR" ? "Se paga" : "Vence")</th>
+                            <th>Detalle</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var f in filas)
                         {
                             var fila = f;
-                            <tr class="@(fila.DuplicadoKey is not null ? "dup" : "")">
+                            <tr class="@(fila.DuplicadoKey is not null ? "dup" : fila.EsPropio ? "propio" : "")">
                                 <td>
-                                    @(fila.ClienteNombre ?? fila.Emisor ?? "—")
-                                    <div class="chq-sub">
-                                        @(fila.Origen == "BANCO" ? "del banco" : "cargado a mano")
-                                        @if (fila.ClienteNombre is not null && !string.IsNullOrWhiteSpace(fila.Emisor) && fila.Emisor != fila.ClienteNombre)
-                                        {
-                                            <text> · firma @fila.Emisor</text>
-                                        }
-                                    </div>
+                                    <span style="@(fila.EsPropio ? "font-weight:600;" : "")">@(fila.VinoDe ?? fila.ClienteNombre ?? fila.Emisor ?? "—")</span>
+                                    @if (!string.IsNullOrWhiteSpace(fila.VinoDeSub))
+                                    {
+                                        <div class="chq-sub">@fila.VinoDeSub</div>
+                                    }
+                                </td>
+                                <td>
+                                    @(fila.FueA ?? "—")
+                                    @if (!string.IsNullOrWhiteSpace(fila.FueASub))
+                                    {
+                                        <div class="chq-sub" style="@(fila.BancoEndosadoA is not null ? "color:#92400e;" : "")">@fila.FueASub</div>
+                                    }
                                 </td>
                                 <td>
                                     @fila.Banco · N° @fila.Numero
-                                    @if (fila.BancoEndosadoA is not null)
+                                    @* 2026-10-01: son DOS pasos — el cliente te paga (cobranza) y vos le pagas al
+                                       proveedor (endoso). Si falta el primero, la deuda del cliente no baja. *@
+                                    @if (fila.BancoEndosadoA is not null && fila.PuedeImputar)
                                     {
-                                        <div class="chq-sub" style="color:#92400e;">el banco dice: endosado a @fila.BancoEndosadoA</div>
-                                        @* 2026-10-01: son DOS pasos — el cliente te paga (cobranza) y vos le pagas al
-                                           proveedor (endoso). Si falta el primero, la deuda del cliente no baja. *@
-                                        @if (fila.PuedeImputar)
-                                        {
-                                            <div class="chq-sub" style="color:#b91c1c;">falta la cobranza: todavía no se lo descontaste a ningún cliente</div>
-                                        }
-                                    }
-                                    else
-                                    {
-                                        <div class="chq-sub">@fila.EstadoTexto</div>
+                                        <div class="chq-sub" style="color:#b91c1c;">falta la cobranza: todavía no se lo descontaste a ningún cliente</div>
                                     }
                                 </td>
                                 <td style="text-align:right;">$@fila.Importe.ToString("N2")</td>
@@ -171,6 +171,10 @@
                                     }
                                 </td>
                                 <td>
+                                    @if (!string.IsNullOrWhiteSpace(fila.Detalle))
+                                    {
+                                        <div class="chq-sub" style="white-space:pre-line; color:#6b7280; margin-bottom:0.2rem;">@fila.Detalle</div>
+                                    }
                                     @if (fila.DuplicadoKey is not null)
                                     {
                                         <span style="color:#92400e;">Está dos veces · </span>
@@ -222,7 +226,8 @@
                                             <button class="chq-acc alarma" @onclick="() => Rechazar(fila)" title="El cheque rebotó">rebotó</button>
                                         }
                                         @if (!fila.PuedeImputar && !fila.PuedeDepositar && !fila.PuedeVentanilla
-                                             && !fila.PuedeEndosar && !fila.PuedeAcreditar && !fila.PuedeRechazar)
+                                             && !fila.PuedeEndosar && !fila.PuedeAcreditar && !fila.PuedeRechazar
+                                             && string.IsNullOrWhiteSpace(fila.Detalle))
                                         {
                                             <span style="color:#9ca3af;">—</span>
                                         }
@@ -406,13 +411,21 @@
                     <div class="form-row">
                         <div class="form-group" style="flex:1;">
                             <label class="form-label">Retenciones</label>
-                            <input class="form-input" type="text" inputmode="decimal" @bind="CobRetencionesTexto" @bind:event="onchange" />
+                            <input class="form-input" type="text" inputmode="decimal" @bind="CobRetencionesTexto" @bind:event="onchange" @bind:after="RedistribuirCobranza" />
                         </div>
                         <div class="form-group" style="flex:2;">
                             <label class="form-label">Observaciones (opcional)</label>
                             <input class="form-input" @bind="cobObservaciones" placeholder="Notas internas" />
                         </div>
                     </div>
+                }
+
+                @* 01/10/2026: mismo cartel que Cobranzas y Pagos — si cuadra o cuánto falta / sobra. *@
+                @if (cobCliente is not null && !cobCargandoComp)
+                {
+                    @Cartel(Math.Round(CobTotalEsperado - CobTotalImputar, 2),
+                        "queda a cuenta del cliente",
+                        "imputaste más de lo que suman el cheque y las retenciones: bajá algún importe")
                 }
 
                 @if (!string.IsNullOrEmpty(cobError))
@@ -539,6 +552,13 @@
                         <label class="form-label">Observaciones (opcional)</label>
                         <input class="form-input" @bind="endObservaciones" placeholder="Notas internas" />
                     </div>
+                }
+
+                @if (endProv is not null && !endCargando && endChe is not null)
+                {
+                    @Cartel(Math.Round(endChe.Importe - EndTotalImputado, 2),
+                        "queda a cuenta del proveedor",
+                        "tildaste más de lo que vale el cheque: bajá algún importe")
                 }
 
                 @if (!string.IsNullOrEmpty(endError))
@@ -957,6 +977,58 @@
         if (!tildado) cobSeleccion[idx].Importe = 0m;
     }
 
+    /// <summary>01/10/2026: la retención es plata que el cliente te pagó (te la retuvo y te da el
+    /// certificado): va a la factura junto con el cheque. Antes el cheque solo se repartía en las
+    /// facturas y la retención caía "a cuenta" — la factura quedaba debiendo justo la retención
+    /// (QX, cobranza 0100-00003940). Reparte cheque + retenciones en las tildadas en orden y, si
+    /// sobra, sigue con las que siguen.</summary>
+    private void RedistribuirCobranza()
+    {
+        if (cobComprobantes is null) return;
+        decimal restante = CobTotalEsperado;
+        for (int i = 0; i < cobComprobantes.Count; i++)
+        {
+            if (!cobSeleccion[i].Tildado) continue;
+            var imp = Math.Max(0m, Math.Min(cobComprobantes[i].Saldo, restante));
+            cobSeleccion[i].Importe = Math.Round(imp, 2);
+            restante -= imp;
+        }
+        for (int i = 0; i < cobComprobantes.Count && restante > 0.01m; i++)
+        {
+            if (cobSeleccion[i].Tildado || cobComprobantes[i].Saldo <= 0m) continue;
+            var imp = Math.Min(cobComprobantes[i].Saldo, restante);
+            cobSeleccion[i].Tildado = true;
+            cobSeleccion[i].Importe = Math.Round(imp, 2);
+            restante -= imp;
+        }
+    }
+
+    /// <summary>01/10/2026: cartel "Cuadra perfecto" / "Sobra" / "Falta", igual al de Cobranzas
+    /// y Pagos a proveedor. dif = plata que entra (o sale) menos lo imputado a comprobantes.</summary>
+    private static RenderFragment Cartel(decimal dif, string queHaceSobra, string queHacerFalta) => __builder =>
+    {
+        if (Math.Abs(dif) < 0.01m)
+        {
+            <div style="margin-top:0.6rem; padding:0.55rem 0.9rem; border-radius:8px; background:#f0fdf4; border:1px solid #86efac;
+                        color:#166534; font-weight:700;">✓ Cuadra perfecto</div>
+        }
+        else
+        {
+            var sobra = dif > 0;
+            <div style="margin-top:0.6rem; padding:0.6rem 0.9rem; border-radius:8px;
+                        background:@(sobra ? "#fef3c7" : "#fee2e2"); border:2px solid @(sobra ? "#d97706" : "#dc2626");
+                        display:flex; justify-content:space-between; align-items:center; gap:0.8rem;">
+                <div style="font-weight:700; color:@(sobra ? "#92400e" : "#991b1b");">
+                    @(sobra ? "⚠ Sobra" : "⚠ Falta")
+                    <div style="font-weight:400; font-size:0.78rem;">@(sobra ? queHaceSobra : queHacerFalta)</div>
+                </div>
+                <div style="font-weight:800; font-size:1.3rem; font-family:monospace; color:@(sobra ? "#d97706" : "#dc2626");">
+                    $@Math.Abs(dif).ToString("N2", new System.Globalization.CultureInfo("es-AR"))
+                </div>
+            </div>
+        }
+    };
+
     private void PonerFaltanteComoRetencionCobranza()
     {
         if (cobComprobantes is null) return;
@@ -975,7 +1047,12 @@
         var items = cobSeleccion
             .Select((sel, i) => new { sel, comp = cobComprobantes![i] })
             .Where(x => x.sel.Tildado && x.sel.Importe > 0m)
-            .Select(x => new ImputarComprobanteItem { VentaId = x.comp.VentaId, Importe = x.sel.Importe })
+            .Select(x => new ImputarComprobanteItem
+            {
+                VentaId = x.comp.EsAlquiler ? null : x.comp.VentaId,
+                ReservaId = x.comp.EsAlquiler ? x.comp.ReservaId : null,
+                Importe = x.sel.Importe
+            })
             .ToList();
 
         var diferencia = Math.Round(CobTotalEsperado - CobTotalImputar, 2);
