@@ -749,6 +749,9 @@ public class ChequeUniDto
     public int? DuplicadoCarteraId { get; set; }
     public int? DuplicadoBancoId { get; set; }
     public string? Observaciones { get; set; }
+    /// <summary>2026-10-01: el banco ya lo muestra endosado a este (y aca sigue en mano, sin anotar).</summary>
+    public string? BancoEndosadoA { get; set; }
+    public int? BancoEndosadoProveedorId { get; set; }
 }
 
 public class ChequesUniConteosDto
@@ -759,6 +762,8 @@ public class ChequesUniConteosDto
     public int Rechazados { get; set; }
     public int APagar { get; set; }
     public int Duplicados { get; set; }
+    public int EndososSinAnotar { get; set; }
+    public decimal EndososSinAnotarImporte { get; set; }
 }
 
 public class ChequesUniResumenDto
