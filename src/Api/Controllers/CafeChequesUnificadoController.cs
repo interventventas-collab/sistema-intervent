@@ -39,6 +39,7 @@ public class CafeChequesUnificadoController : ControllerBase
     public const string USADOS = "USADOS";
     public const string RECHAZADOS = "RECHAZADOS";
     public const string A_PAGAR = "A_PAGAR";
+    public const string TODOS = "TODOS";   // 2026-10-01: todas las solapas juntas
 
     public record ChequeUniDto(
         string Key,               // "C-12" (cartera) o "B-34" (banco). Identidad en la pantalla.
@@ -70,7 +71,7 @@ public class CafeChequesUnificadoController : ControllerBase
         int? BancoEndosadoProveedorId = null);
 
     public record ConteosDto(int EnMano, int EnBanco, int Usados, int Rechazados, int APagar, int Duplicados,
-        int EndososSinAnotar = 0, decimal EndososSinAnotarImporte = 0m);
+        int EndososSinAnotar = 0, decimal EndososSinAnotarImporte = 0m, int Todos = 0);
     public record ResumenVistaDto(int Cantidad, decimal Importe, DateTime? PrimerVencimiento);
     /// <summary>La linea de arriba: lo que tengo, lo que vence esta semana y lo que tengo que pagar.</summary>
     public record CabeceraDto(int EnManoCant, decimal EnManoImporte, decimal VenceSemanaImporte,
@@ -254,7 +255,8 @@ public class CafeChequesUnificadoController : ControllerBase
             APagar: filas.Count(f => f.Vista == A_PAGAR),
             Duplicados: pares.Count / 2,
             EndososSinAnotar: filas.Count(f => f.Vista == EN_MANO && f.BancoEndosadoA is not null),
-            EndososSinAnotarImporte: filas.Where(f => f.Vista == EN_MANO && f.BancoEndosadoA is not null).Sum(f => f.Importe));
+            EndososSinAnotarImporte: filas.Where(f => f.Vista == EN_MANO && f.BancoEndosadoA is not null).Sum(f => f.Importe),
+            Todos: filas.Count);
 
         // 2026-09-25: la linea de arriba y los proximos vencimientos (lo que antes habia que ir
         // a buscar al calendario de la portada). "Entra" = lo que tengo en mano o en el banco.
@@ -275,7 +277,7 @@ public class CafeChequesUnificadoController : ControllerBase
             .Select(g => new VtoDiaDto(g.Key, g.Sum(x => x.Entra), g.Sum(x => x.Pago)))
             .ToList();
 
-        var deLaVista = filas.Where(f => f.Vista == vista).ToList();
+        var deLaVista = vista == TODOS ? filas.ToList() : filas.Where(f => f.Vista == vista).ToList();
 
         // El resumen del pie es de la VISTA COMPLETA, no de lo buscado: si filtras por un cliente
         // querés seguir viendo cuánto tenés en total.
@@ -295,10 +297,11 @@ public class CafeChequesUnificadoController : ControllerBase
                 .ToList();
         }
 
-        deLaVista = deLaVista
-            .OrderBy(f => f.Vence ?? DateTime.MaxValue)
-            .ThenBy(f => f.Id)
-            .ToList();
+        // 2026-10-01: lo que ya paso (usados, rebotados, todos) va con lo mas nuevo arriba; lo que
+        // todavia tengo que hacer (en mano, en el banco, a pagar) con lo proximo a vencer arriba.
+        deLaVista = vista is USADOS or RECHAZADOS or TODOS
+            ? deLaVista.OrderByDescending(f => f.Vence ?? DateTime.MinValue).ThenByDescending(f => f.Id).ToList()
+            : deLaVista.OrderBy(f => f.Vence ?? DateTime.MaxValue).ThenBy(f => f.Id).ToList();
 
         return Ok(new UnificadoResponse(conteos, resumen, deLaVista, cabecera, proximos));
     }

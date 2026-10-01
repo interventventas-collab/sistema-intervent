@@ -122,7 +122,7 @@
                 <table class="chq-tabla">
                     <thead>
                         <tr>
-                            <th style="width:24%;">@(vista == "A_PAGAR" ? "A quién se lo di" : "Quién lo dio")</th>
+                            <th style="width:24%;">@(vista == "A_PAGAR" ? "A quién se lo di" : vista == "TODOS" ? "Quién lo dio / a quién" : "Quién lo dio")</th>
                             <th style="width:22%;">Cheque</th>
                             <th style="width:13%; text-align:right;">Importe</th>
                             <th style="width:11%;">@(vista == "A_PAGAR" ? "Se paga" : "Vence")</th>
@@ -222,8 +222,11 @@
                 </table>
             </div>
             <div class="chq-pie">
-                @resumen.Cantidad @(resumen.Cantidad == 1 ? "cheque" : "cheques") · $@resumen.Importe.ToString("N2")
-                @if (resumen.PrimerVencimiento.HasValue)
+                @resumen.Cantidad @(resumen.Cantidad == 1 ? "cheque" : "cheques")
+                @* En "Todos" se mezclan los que recibí con los que firmé: sumarlos no dice nada. *@
+                @if (vista != "TODOS") { <text> · $@resumen.Importe.ToString("N2")</text> }
+                @* "el primero vence" solo sirve en lo que todavía tengo que hacer. *@
+                @if (resumen.PrimerVencimiento.HasValue && vista is "EN_MANO" or "EN_BANCO" or "A_PAGAR")
                 {
                     <text> · el primero @(vista == "A_PAGAR" ? "se paga" : "vence") el @resumen.PrimerVencimiento.Value.ToString("dd/MM/yy")</text>
                 }
@@ -638,6 +641,7 @@
         ("USADOS", "Ya los usé"),
         ("RECHAZADOS", "Rebotaron"),
         ("A_PAGAR", "Que tengo que pagar"),
+        ("TODOS", "Todos"),
     };
 
     private int Conteo(string k) => k switch
@@ -647,6 +651,7 @@
         "USADOS" => conteos.Usados,
         "RECHAZADOS" => conteos.Rechazados,
         "A_PAGAR" => conteos.APagar,
+        "TODOS" => conteos.Todos,
         _ => 0
     };
 

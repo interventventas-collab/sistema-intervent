@@ -764,6 +764,7 @@ public class ChequesUniConteosDto
     public int Duplicados { get; set; }
     public int EndososSinAnotar { get; set; }
     public decimal EndososSinAnotarImporte { get; set; }
+    public int Todos { get; set; }
 }
 
 public class ChequesUniResumenDto
