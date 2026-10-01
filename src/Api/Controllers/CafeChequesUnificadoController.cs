@@ -167,9 +167,9 @@ public class CafeChequesUnificadoController : ControllerBase
                 PuedeRechazar: c.Estado is "EN_CARTERA" or "DEPOSITADO",
                 PuedeAcreditar: c.Estado == "DEPOSITADO",
                 null, null, null, c.Observaciones, endA, endProvId));
-            // Ya salio del banco: lo unico que queda por hacer es anotar a quien se endoso.
+            // Ya salio del banco: queda cobrarselo al cliente (si falta) y anotar a quien se endoso.
             if (endA is not null)
-                filas[^1] = filas[^1] with { PuedeImputar = false, PuedeDepositar = false, PuedeVentanilla = false, PuedeRechazar = false };
+                filas[^1] = filas[^1] with { PuedeDepositar = false, PuedeVentanilla = false, PuedeRechazar = false };
         }
 
         foreach (var b in banco)
@@ -219,7 +219,8 @@ public class CafeChequesUnificadoController : ControllerBase
             {
                 var (a, pid) = EndosadoEnBanco(b);
                 // ClienteNombre venia de ContraparteNombre, que ahora es a quien se endoso, no quien lo dio.
-                filas[^1] = filas[^1] with { ClienteNombre = null, PuedeImputar = false, PuedeDepositar = false, PuedeVentanilla = false, PuedeRechazar = false,
+                filas[^1] = filas[^1] with { ClienteNombre = null, PuedeImputar = !b.CobranzaId.HasValue,
+                    PuedeDepositar = false, PuedeVentanilla = false, PuedeRechazar = false,
                     BancoEndosadoA = a, BancoEndosadoProveedorId = pid };
             }
         }
