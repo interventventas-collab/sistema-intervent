@@ -68,7 +68,9 @@ public class MeliPublicacionesV2Controller : ControllerBase
         foreach (var c in filas) c.SeenAt = ahora;
         await db.SaveChangesAsync();
         await audit.LogAsync("MeliItem", mla, "CAMBIOS_VISTOS",
-            $"{filas.Count} cambio(s) de MeLi marcados como vistos: " + string.Join(" · ", filas.Select(c => c.Notes ?? c.Tipo)));
+            $"{filas.Count} cambio(s) de MeLi marcados como vistos: " + string.Join(" · ", filas.Select(c => c.Notes ?? c.Tipo)),
+            // El operador elegido en pantalla; si no hay, el usuario que entró.
+            string.IsNullOrWhiteSpace(Request.Headers["X-Operator-Name"].ToString()) ? User?.Identity?.Name : null);
         return Ok(new { marcados = filas.Count });
     }
 
