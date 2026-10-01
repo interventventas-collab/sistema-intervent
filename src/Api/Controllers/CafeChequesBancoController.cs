@@ -180,7 +180,11 @@ public class CafeChequesBancoController : ControllerBase
         var yaUsado = string.Equals(ec.Estado, "Pagado", StringComparison.OrdinalIgnoreCase);
         if (ec.Tipo == "EMITIDO")
             return BadRequest(new { error = "Ese cheque lo firmaste vos, no es un cheque que hayas recibido" });
-        if (!yaUsado && !string.Equals(ec.Estado, "Disponible", StringComparison.OrdinalIgnoreCase))
+        // 2026-10-01: tambien uno que ya se endoso desde el home banking ("Endoso enviado"). El
+        // espejo nace EN CARTERA: despues se anota a que proveedor fue con "anotar endoso", que
+        // es lo que baja la deuda con el proveedor.
+        var endosoSinAnotar = (ec.Estado ?? "").StartsWith("Endos", StringComparison.OrdinalIgnoreCase);
+        if (!yaUsado && !endosoSinAnotar && !string.Equals(ec.Estado, "Disponible", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { error = $"El e-cheq no está Disponible (estado actual: {ec.Estado})" });
         // Si el que lo tiene ahora es otro, lo endosamos; si seguimos siendo nosotros, lo cobramos.
         var endosado = yaUsado && !string.IsNullOrWhiteSpace(ec.BeneficiarioActualCuit)

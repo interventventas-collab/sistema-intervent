@@ -149,6 +149,12 @@
                                     @if (fila.BancoEndosadoA is not null)
                                     {
                                         <div class="chq-sub" style="color:#92400e;">el banco dice: endosado a @fila.BancoEndosadoA</div>
+                                        @* 2026-10-01: son DOS pasos — el cliente te paga (cobranza) y vos le pagas al
+                                           proveedor (endoso). Si falta el primero, la deuda del cliente no baja. *@
+                                        @if (fila.PuedeImputar)
+                                        {
+                                            <div class="chq-sub" style="color:#b91c1c;">falta la cobranza: todavía no se lo descontaste a ningún cliente</div>
+                                        }
                                     }
                                     else
                                     {
@@ -191,7 +197,13 @@
                                             <button class="chq-acc" @onclick="() => CobrarVentanilla(fila)" title="Lo cobré en efectivo por ventanilla">ventanilla</button>
                                             <span style="color:#d1d5db;"> · </span>
                                         }
-                                        @if (fila.PuedeEndosar && fila.BancoEndosadoA is not null)
+                                        @if (fila.PuedeEndosar && fila.BancoEndosadoA is not null && fila.PuedeImputar)
+                                        {
+                                            @* Primero la cobranza: si se endosa antes, el cheque sale de "en mano" y ya no
+                                               se puede cobrar al cliente desde acá. *@
+                                            <span style="color:#6b7280;">1° cobrar al cliente · 2° anotar endoso</span>
+                                        }
+                                        else if (fila.PuedeEndosar && fila.BancoEndosadoA is not null)
                                         {
                                             <button class="chq-acc alarma" @onclick="() => AbrirEndoso(fila)" title="Ya lo endosaste en el banco: anotalo para que baje la deuda del proveedor">anotar endoso</button>
                                         }

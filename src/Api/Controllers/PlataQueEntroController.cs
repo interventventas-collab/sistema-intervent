@@ -112,7 +112,10 @@ public class PlataQueEntroController : ControllerBase
         //    (se cobraron o endosaron el mismo día que llegaron: caso QX del 25/09).
         var echeqs = await _db.CafeChequesBanco.AsNoTracking()
             .Where(b => b.Tipo != "EMITIDO" && b.CobranzaId == null && b.CafeChequeId == null
-                        && (b.Estado == "Disponible" || (b.Estado == "Pagado" && b.FechaPago >= desde)))
+                        && (b.Estado == "Disponible" || (b.Estado == "Pagado" && b.FechaPago >= desde)
+                            // 2026-10-01: endosado desde el home banking el mismo dia que llego
+                            // ("Endoso enviado"): igual falta la cobranza del cliente (Creps 90007761).
+                            || b.Estado.StartsWith("Endos")))
             .Select(b => new { b.Id, b.Numero, b.Importe, b.FechaPago, b.Estado, b.LibradorNombre, b.LibradorCuit, b.CreatedAt, b.BancoEmisor })
             .ToListAsync();
 
