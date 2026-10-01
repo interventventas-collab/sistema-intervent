@@ -1,6 +1,7 @@
 using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Api.Controllers;
 
@@ -42,14 +43,35 @@ public class MeliPublicacionesV2Controller : ControllerBase
         [FromQuery] decimal? precioHasta = null,
         [FromQuery] bool? envioGratis = null,
         [FromQuery] string? logistica = null,
-        [FromQuery] bool bajoMiPct = false)
+        [FromQuery] bool bajoMiPct = false,
+        [FromQuery] bool conCambios = false)
     {
         var f = new MeliPublicacionesV2Service.Filtros(
             texto, sku, estado, cuentaId, comisionMinPct, cuotas, tipo,
             variosPrecios, precioAMano, precioAMano, sinCosto, noLleganAlPct, comisionVieja, pagina, porPagina, enPromo, ampliar,
-            orden, precioDesde, precioHasta, envioGratis, logistica, bajoMiPct);
+            orden, precioDesde, precioHasta, envioGratis, logistica, bajoMiPct, conCambios);
         var res = await _svc.GetAsync(f, HttpContext.RequestAborted);
         return Ok(res);
+    }
+
+    /// <summary>2026-10-01 — "✓ visto": marca como vistos los cambios de MeLi (envío) de esa
+    /// publicación. Quién y cuándo queda en el registro de cambios.</summary>
+    [HttpPost("publicaciones/{mla}/cambios-vistos")]
+    public async Task<IActionResult> MarcarCambiosVistos(string mla, [FromServices] Api.Data.AppDbContext db,
+        [FromServices] Api.Services.AuditLogService audit)
+    {
+        var tipos = MeliPublicacionesV2Service.TiposCambioVisibles;
+        var filas = await db.MeliCambiosDetectados
+            .Where(c => c.MeliItemId == mla && c.SeenAt == null && tipos.Contains(c.Tipo)).ToListAsync();
+        if (filas.Count == 0) return Ok(new { marcados = 0 });
+        var ahora = DateTime.UtcNow;
+        foreach (var c in filas) c.SeenAt = ahora;
+        await db.SaveChangesAsync();
+        await audit.LogAsync("MeliItem", mla, "CAMBIOS_VISTOS",
+            $"{filas.Count} cambio(s) de MeLi marcados como vistos: " + string.Join(" · ", filas.Select(c => c.Notes ?? c.Tipo)),
+            // El operador elegido en pantalla; si no hay, el usuario que entró.
+            string.IsNullOrWhiteSpace(Request.Headers["X-Operator-Name"].ToString()) ? User?.Identity?.Name : null);
+        return Ok(new { marcados = filas.Count });
     }
 
     // ─── 2026-08-26 · ETAPA 2: acciones sobre las publicaciones TILDADAS ───

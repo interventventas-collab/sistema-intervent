@@ -116,9 +116,29 @@ public class MeliEnviosNocturnoService : BackgroundService
                 // Sólo cuenta como "lo cambió MeLi" si el precio es el mismo que la vez anterior
                 // (si cambió el precio, el envío puede cambiar de escalón por eso).
                 var mismoPrecio = antes.SaleFeePriceSnapshot is decimal snap && snap == fila.Price;
-                if (!mismoPrecio || envioAntes <= 0m || Math.Abs(envioAhora - envioAntes) < CAMBIO_MINIMO) continue;
-
                 var ar = new System.Globalization.CultureInfo("es-AR");
+
+                // 01/10/2026: cambio de FORMA de entrega (mail de MeLi "pasaron a tener Envíos en
+                // Mercado Libre" / "dejaron de tener..."). Antes no se veía: sólo se miraba el costo.
+                var logAntes = MeliPublicacionesV2Service.ClaveLogistica(antes.LogisticType);
+                var logAhora = MeliPublicacionesV2Service.ClaveLogistica(fila.LogisticType);
+                if (mismoPrecio && logAntes is not null && logAhora is not null && logAntes != logAhora)
+                {
+                    db.MeliCambiosDetectados.Add(new MeliCambioDetectado
+                    {
+                        MeliItemId = mla, MeliAccountId = fila.MeliAccountId, Sku = fila.Sku, Title = fila.Title,
+                        Tipo = "ENVIO_MODO", ValorAnterior = logAntes, ValorNuevo = logAhora,
+                        Source = "envios-noche", DetectedAt = DateTime.UtcNow, NotifiedAt = DateTime.UtcNow,
+                        Notes = $"La forma de envío pasó de {logAntes} a {logAhora}"
+                    });
+                    await db.SaveChangesAsync(ct);
+                    cambios.Add($"{Recortar(fila.Title ?? mla, 40)}: envío {logAntes} → {logAhora}");
+                }
+
+                // 01/10/2026: también de $0 a un costo (pasó a pagar envío), si ya lo habíamos leído antes.
+                var yaLeido = antes.SaleFeeCapturedAt.HasValue;
+                if (!mismoPrecio || (envioAntes <= 0m && !yaLeido) || Math.Abs(envioAhora - envioAntes) < CAMBIO_MINIMO) continue;
+
                 var texto = $"El envío pasó de ${envioAntes.ToString("N0", ar)} a ${envioAhora.ToString("N0", ar)}";
                 db.MeliCambiosDetectados.Add(new MeliCambioDetectado
                 {
@@ -127,7 +147,7 @@ public class MeliEnviosNocturnoService : BackgroundService
                     ValorAnterior = envioAntes.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     ValorNuevo = envioAhora.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     Delta = envioAhora - envioAntes,
-                    DeltaPct = Math.Round((envioAhora - envioAntes) / envioAntes * 100m, 1),
+                    DeltaPct = envioAntes > 0m ? Math.Round((envioAhora - envioAntes) / envioAntes * 100m, 1) : null,
                     Source = "envios-noche", DetectedAt = DateTime.UtcNow,
                     NotifiedAt = DateTime.UtcNow,   // se avisa en el resumen, no de a una
                     Notes = texto
