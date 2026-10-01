@@ -208,13 +208,18 @@ public class CafeChequesController : ControllerBase
     // Es el equivalente del "asociar-cobranza" de los e-cheques del banco (CafeChequesBancoController).
     // ============================================================
 
-    public record ImputarItem(int? VentaId, decimal Importe);
+    public record ImputarItem(int? VentaId, decimal Importe, int? ReservaId = null);
     public record CobranzaDesdeChequeRequest(int ClienteId, decimal Retenciones, string? Observaciones, List<ImputarItem> Comprobantes);
 
     /// <summary>Crea una cobranza usando ESTE cheque como forma de cobro y la imputa a los comprobantes elegidos.
     /// Solo para cheques EN_CARTERA que todavia no nacieron de una cobranza.</summary>
     [HttpPost("{id:int}/cobranza")]
-    public async Task<IActionResult> CrearCobranzaDesdeCheque(int id, [FromBody] CobranzaDesdeChequeRequest req)
+    public Task<IActionResult> CrearCobranzaDesdeCheque(int id, [FromBody] CobranzaDesdeChequeRequest req)
+        => _db.Database.CreateExecutionStrategy().ExecuteAsync(() => CrearCobranzaDesdeChequeCore(id, req));
+
+    // 01/10/2026: la conexion tiene reintentos automaticos (EnableRetryOnFailure) y con eso EF solo
+    // acepta una transaccion a mano dentro de su "execution strategy" (ver CafeVentasController).
+    private async Task<IActionResult> CrearCobranzaDesdeChequeCore(int id, CobranzaDesdeChequeRequest req)
     {
         var ch = await _db.CafeCheques.FindAsync(id);
         if (ch is null) return NotFound(new { error = "Cheque no encontrado" });
@@ -234,7 +239,7 @@ public class CafeChequesController : ControllerBase
             return BadRequest(new { error = $"No cuadra: imputado ${sumComprobantes:N2} ≠ cheque ${ch.Importe:N2} + retenciones ${retenciones:N2}" });
 
         // Las ventas imputadas tienen que ser del mismo cliente (o de una sucursal con el mismo CUIT)
-        var ventaIdsReq = req.Comprobantes.Where(c => c.VentaId.HasValue).Select(c => c.VentaId!.Value).Distinct().ToList();
+        var ventaIdsReq = req.Comprobantes.Where(c => c.VentaId is > 0).Select(c => c.VentaId!.Value).Distinct().ToList();
         if (ventaIdsReq.Count > 0)
         {
             List<int> clientesValidos = new() { req.ClienteId };
@@ -251,6 +256,9 @@ public class CafeChequesController : ControllerBase
 
         var caja = await _db.CafeCajas.FirstOrDefaultAsync(c => c.Tipo == "CHEQUES_CARTERA" && c.IsActive);
         if (caja is null) return BadRequest(new { error = "No hay una caja de tipo CHEQUES_CARTERA configurada" });
+
+        // 01/10/2026: todo o nada (antes un error a mitad dejaba la cobranza sin facturas).
+        await using var tx = await _db.Database.BeginTransactionAsync();
 
         // Numero correlativo de cobranza (mismo criterio que CafeCobranzasController)
         var numeros = await _db.CafeCobranzas.Select(c => c.Numero).ToListAsync();
@@ -283,9 +291,21 @@ public class CafeChequesController : ControllerBase
             _db.CafeCobranzasComprobantes.Add(new CafeCobranzaComprobante
             {
                 CobranzaId = cobranza.Id,
-                VentaId = comp.VentaId,   // null = a cuenta
+                VentaId = comp.VentaId is > 0 ? comp.VentaId : null,   // null = a cuenta
+                ReservaId = comp.ReservaId is > 0 ? comp.ReservaId : null,
                 Importe = comp.Importe
             });
+            // 01/10/2026: tambien a una reserva de alquiler (igual que la cobranza normal). Antes
+            // venia con VentaId=0, rompia la clave de Cafe_Ventas y dejaba la cobranza a medias.
+            if (comp.ReservaId is > 0)
+            {
+                var reserva = await _db.AlqReservas.FindAsync(comp.ReservaId!.Value);
+                if (reserva is null) return BadRequest(new { error = $"La reserva {comp.ReservaId} no existe" });
+                if (reserva.Estado == "cancelado")
+                    return BadRequest(new { error = $"La reserva {reserva.Numero} está cancelada — no se puede cobrar." });
+                reserva.MontoCobrado += comp.Importe;
+                reserva.UpdatedAt = DateTime.UtcNow;
+            }
         }
 
         // El medio de cobro es el cheque que YA estaba en cartera (no se crea uno nuevo)
@@ -321,6 +341,7 @@ public class CafeChequesController : ControllerBase
             await _db.SaveChangesAsync();
         }
 
+        await tx.CommitAsync();
         await _audit.LogAsync("CafeCheque", id.ToString(), "COBRANZA_DESDE_CHEQUE",
             $"Cheque {ch.Numero} imputado a {cliente.Nombre} en cobranza {numeroCobranza} por ${ch.Importe:N2}" +
             (retenciones > 0 ? $" + ${retenciones:N2} de retenciones" : ""));

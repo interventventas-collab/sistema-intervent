@@ -134,7 +134,7 @@ public class CafeChequesBancoController : ControllerBase
     }
 
     public record SugerenciaClienteDto(int Id, string Nombre, string? RazonSocial, string? Cuit, int? CodigoInterno);
-    public record ImputarComprobanteItem(int? VentaId, decimal Importe);
+    public record ImputarComprobanteItem(int? VentaId, decimal Importe, int? ReservaId = null);
     public record AsociarECheqRequest(
         int ClienteId,
         decimal Retenciones,
@@ -167,7 +167,12 @@ public class CafeChequesBancoController : ControllerBase
     /// La suma de Comprobantes debe igualar e-cheq.Importe + Retenciones.
     /// </summary>
     [HttpPost("{id:int}/asociar-cobranza")]
-    public async Task<IActionResult> AsociarCobranza(int id, [FromBody] AsociarECheqRequest req)
+    public Task<IActionResult> AsociarCobranza(int id, [FromBody] AsociarECheqRequest req)
+        => _db.Database.CreateExecutionStrategy().ExecuteAsync(() => AsociarCobranzaCore(id, req));
+
+    // 01/10/2026: la conexion tiene reintentos automaticos (EnableRetryOnFailure) y con eso EF solo
+    // acepta una transaccion a mano dentro de su "execution strategy" (ver CafeVentasController).
+    private async Task<IActionResult> AsociarCobranzaCore(int id, AsociarECheqRequest req)
     {
         var ec = await _db.CafeChequesBanco.FindAsync(id);
         if (ec is null) return NotFound(new { error = "E-cheq no encontrado" });
@@ -203,6 +208,10 @@ public class CafeChequesBancoController : ControllerBase
         // Resolver caja de cheques en cartera
         var caja = await _db.CafeCajas.FirstOrDefaultAsync(c => c.Tipo == "CHEQUES_CARTERA" && c.IsActive);
         if (caja is null) return BadRequest(new { error = "No hay una caja de tipo CHEQUES_CARTERA configurada" });
+
+        // 01/10/2026: todo o nada. Antes, si fallaba a mitad de camino, quedaba la cobranza
+        // grabada sin facturas y el cheque espejo creado pero el e-cheq sin marcar.
+        await using var tx = await _db.Database.BeginTransactionAsync();
 
         // Generar numero correlativo de cobranza
         var ultimoNum = await _db.CafeCobranzas.Select(c => c.Numero).ToListAsync();
@@ -261,9 +270,21 @@ public class CafeChequesBancoController : ControllerBase
             _db.CafeCobranzasComprobantes.Add(new CafeCobranzaComprobante
             {
                 CobranzaId = cobranza.Id,
-                VentaId = comp.VentaId,
+                VentaId = comp.VentaId is > 0 ? comp.VentaId : null,
+                ReservaId = comp.ReservaId is > 0 ? comp.ReservaId : null,
                 Importe = comp.Importe
             });
+            // 01/10/2026: tambien a una reserva de alquiler (igual que la cobranza normal). Antes
+            // venia con VentaId=0, rompia la clave de Cafe_Ventas y dejaba la cobranza a medias.
+            if (comp.ReservaId is > 0)
+            {
+                var reserva = await _db.AlqReservas.FindAsync(comp.ReservaId!.Value);
+                if (reserva is null) return BadRequest(new { error = $"La reserva {comp.ReservaId} no existe" });
+                if (reserva.Estado == "cancelado")
+                    return BadRequest(new { error = $"La reserva {reserva.Numero} está cancelada — no se puede cobrar." });
+                reserva.MontoCobrado += comp.Importe;
+                reserva.UpdatedAt = DateTime.UtcNow;
+            }
         }
 
         // 4. Medio de pago: el cheque que recién creamos
@@ -284,7 +305,7 @@ public class CafeChequesBancoController : ControllerBase
         await _db.SaveChangesAsync();
 
         // 6. Sincronizar IsPaid de las ventas imputadas
-        var ventaIds = req.Comprobantes.Where(c => c.VentaId.HasValue).Select(c => c.VentaId!.Value).Distinct().ToList();
+        var ventaIds = req.Comprobantes.Where(c => c.VentaId is > 0).Select(c => c.VentaId!.Value).Distinct().ToList();
         if (ventaIds.Count > 0)
         {
             var ventas = await _db.CafeVentas.Where(v => ventaIds.Contains(v.Id)).ToListAsync();
@@ -303,6 +324,7 @@ public class CafeChequesBancoController : ControllerBase
             await _db.SaveChangesAsync();
         }
 
+        await tx.CommitAsync();
         return Ok(new { cobranzaId = cobranza.Id, numero = numeroCobranza, chequeId = cheque.Id });
     }
 
