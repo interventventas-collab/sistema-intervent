@@ -63,9 +63,14 @@ public class CafeChequesUnificadoController : ControllerBase
         string? DuplicadoKey,
         int? DuplicadoCarteraId,
         int? DuplicadoBancoId,
-        string? Observaciones);
+        string? Observaciones,
+        // 2026-10-01: el banco ya lo muestra endosado a alguien y aca sigue "en mano"
+        // (se endoso desde el home banking y nadie lo anoto). A quien, y si es un proveedor nuestro.
+        string? BancoEndosadoA = null,
+        int? BancoEndosadoProveedorId = null);
 
-    public record ConteosDto(int EnMano, int EnBanco, int Usados, int Rechazados, int APagar, int Duplicados);
+    public record ConteosDto(int EnMano, int EnBanco, int Usados, int Rechazados, int APagar, int Duplicados,
+        int EndososSinAnotar = 0, decimal EndososSinAnotarImporte = 0m);
     public record ResumenVistaDto(int Cantidad, decimal Importe, DateTime? PrimerVencimiento);
     /// <summary>La linea de arriba: lo que tengo, lo que vence esta semana y lo que tengo que pagar.</summary>
     public record CabeceraDto(int EnManoCant, decimal EnManoImporte, decimal VenceSemanaImporte,
@@ -83,6 +88,12 @@ public class CafeChequesUnificadoController : ControllerBase
         return s.Length == 0 ? "0" : s;
     }
 
+    /// <summary>El banco ya lo mando a otro: "Endoso enviado", "Endosado", o un renglon del listado de endosados.</summary>
+    private static bool BancoLoEndoso(CafeChequeBanco b)
+        => b.Tipo == "ENDOSADO" || (b.Estado ?? "").StartsWith("Endos", StringComparison.OrdinalIgnoreCase);
+
+    private static string SoloDigitos(string? s) => new((s ?? "").Where(char.IsDigit).ToArray());
+
     private static bool Coincide(string? texto, string q)
         => !string.IsNullOrEmpty(texto) && texto.Contains(q, StringComparison.OrdinalIgnoreCase);
 
@@ -98,6 +109,33 @@ public class CafeChequesUnificadoController : ControllerBase
 
         var filas = new List<ChequeUniDto>();
 
+        // 2026-10-01: endosos hechos desde el home banking que no se anotaron aca. El banco trae a
+        // quien fue (ContraparteCuit); lo cruzamos con los proveedores por CUIT. Solo los recientes:
+        // los endosos de antes de mayo son historia del sistema viejo.
+        var desdeEndoso = DateTime.UtcNow.Date.AddDays(-60);
+        var endososBanco = banco.Where(b => b.Tipo != "EMITIDO" && BancoLoEndoso(b)
+            && (b.FechaPago ?? b.UpdatedAt ?? b.CreatedAt) >= desdeEndoso).ToList();
+        var provPorCuit = new Dictionary<string, (int Id, string Nombre)>();
+        if (endososBanco.Count > 0)
+        {
+            var provs = await _db.CafeProveedores.AsNoTracking()
+                .Where(p => p.Cuit != null && p.Cuit != "")
+                .Select(p => new { p.Id, p.Nombre, p.Cuit, p.CuentaCorriente }).ToListAsync();
+            // Si hay dos fichas con el mismo CUIT, gana la que lleva cuenta corriente.
+            foreach (var p in provs.OrderByDescending(p => p.CuentaCorriente))
+            {
+                var k = SoloDigitos(p.Cuit);
+                if (k.Length > 0 && !provPorCuit.ContainsKey(k)) provPorCuit[k] = (p.Id, p.Nombre);
+            }
+        }
+        (string? a, int? provId) EndosadoEnBanco(CafeChequeBanco b)
+        {
+            var nombre = string.IsNullOrWhiteSpace(b.ContraparteNombre) ? b.BeneficiarioActualNombre : b.ContraparteNombre;
+            var cuit = SoloDigitos(string.IsNullOrWhiteSpace(b.ContraparteCuit) ? b.BeneficiarioActualCuit : b.ContraparteCuit);
+            if (provPorCuit.TryGetValue(cuit, out var p)) return (p.Nombre, p.Id);
+            return (nombre ?? "un tercero", null);
+        }
+
         foreach (var c in cartera)
         {
             var (v, estado) = c.Estado switch
@@ -110,6 +148,13 @@ public class CafeChequesUnificadoController : ControllerBase
                 "RECHAZADO" => (RECHAZADOS, "Rebotó"),
                 _ => (USADOS, c.Estado)
             };
+            string? endA = null; int? endProvId = null;
+            if (c.Estado == "EN_CARTERA" && endososBanco.Count > 0)
+            {
+                var eb = endososBanco.FirstOrDefault(b => c.ChequeBancoId.HasValue && b.Id == c.ChequeBancoId.Value)
+                      ?? endososBanco.FirstOrDefault(b => NormNumero(b.Numero) == NormNumero(c.Numero) && Math.Abs(b.Importe - c.Importe) < 0.01m);
+                if (eb is not null) (endA, endProvId) = EndosadoEnBanco(eb);
+            }
             filas.Add(new ChequeUniDto(
                 $"C-{c.Id}", "CARTERA", c.Id, c.Numero, c.Banco, c.Emisor,
                 c.ClienteOrigenId, c.ClienteOrigen?.Nombre,
@@ -120,7 +165,10 @@ public class CafeChequesUnificadoController : ControllerBase
                 PuedeEndosar: c.Estado == "EN_CARTERA",
                 PuedeRechazar: c.Estado is "EN_CARTERA" or "DEPOSITADO",
                 PuedeAcreditar: c.Estado == "DEPOSITADO",
-                null, null, null, c.Observaciones));
+                null, null, null, c.Observaciones, endA, endProvId));
+            // Ya salio del banco: lo unico que queda por hacer es anotar a quien se endoso.
+            if (endA is not null)
+                filas[^1] = filas[^1] with { PuedeImputar = false, PuedeDepositar = false, PuedeVentanilla = false, PuedeRechazar = false };
         }
 
         foreach (var b in banco)
@@ -142,6 +190,9 @@ public class CafeChequesUnificadoController : ControllerBase
                 if (b.CafeChequeId.HasValue) continue;
                 if (string.Equals(b.Estado, "Rechazado", StringComparison.OrdinalIgnoreCase)) { v = RECHAZADOS; estado = "Rebotó"; }
                 else if (esDisponible) { v = EN_MANO; estado = "En mano"; }
+                // 2026-10-01: endosado desde el home banking y sin anotar: sigue "en mano" para el
+                // sistema hasta que se anote a quien se le pago con el.
+                else if (b.Tipo == "RECIBIDO" && BancoLoEndoso(b) && endososBanco.Contains(b)) { v = EN_MANO; estado = "En mano"; }
                 else if (string.Equals(b.Estado, "Endosado", StringComparison.OrdinalIgnoreCase)) { v = USADOS; estado = "Endosado a un proveedor"; }
                 else { v = USADOS; estado = b.Estado; }
             }
@@ -163,6 +214,13 @@ public class CafeChequesUnificadoController : ControllerBase
                 PuedeDepositar: v == EN_MANO, PuedeVentanilla: v == EN_MANO, PuedeEndosar: v == EN_MANO,
                 PuedeRechazar: v == EN_MANO, PuedeAcreditar: false,
                 null, null, null, b.Motivo));
+            if (v == EN_MANO && !esDisponible)
+            {
+                var (a, pid) = EndosadoEnBanco(b);
+                // ClienteNombre venia de ContraparteNombre, que ahora es a quien se endoso, no quien lo dio.
+                filas[^1] = filas[^1] with { ClienteNombre = null, PuedeImputar = false, PuedeDepositar = false, PuedeVentanilla = false, PuedeRechazar = false,
+                    BancoEndosadoA = a, BancoEndosadoProveedorId = pid };
+            }
         }
 
         // ─── Duplicados: el mismo papel por los dos caminos ──────────────────────────
@@ -194,7 +252,9 @@ public class CafeChequesUnificadoController : ControllerBase
             Usados: filas.Count(f => f.Vista == USADOS),
             Rechazados: filas.Count(f => f.Vista == RECHAZADOS),
             APagar: filas.Count(f => f.Vista == A_PAGAR),
-            Duplicados: pares.Count / 2);
+            Duplicados: pares.Count / 2,
+            EndososSinAnotar: filas.Count(f => f.Vista == EN_MANO && f.BancoEndosadoA is not null),
+            EndososSinAnotarImporte: filas.Where(f => f.Vista == EN_MANO && f.BancoEndosadoA is not null).Sum(f => f.Importe));
 
         // 2026-09-25: la linea de arriba y los proximos vencimientos (lo que antes habia que ir
         // a buscar al calendario de la portada). "Entra" = lo que tengo en mano o en el banco.
@@ -259,7 +319,8 @@ public class CafeChequesUnificadoController : ControllerBase
         if (b.CafeChequeId.HasValue) return Ok(new { chequeId = b.CafeChequeId.Value, yaEstaba = true });
         if (b.Tipo == "EMITIDO")
             return BadRequest(new { error = "Ese cheque lo firmaste vos, no es un cheque que hayas recibido" });
-        if (!string.Equals(b.Estado, "Disponible", StringComparison.OrdinalIgnoreCase))
+        // 2026-10-01: tambien el que ya se endoso desde el home banking, para poder anotar el endoso.
+        if (!string.Equals(b.Estado, "Disponible", StringComparison.OrdinalIgnoreCase) && !BancoLoEndoso(b))
             return BadRequest(new { error = $"El cheque no está disponible en el banco (está {b.Estado})" });
 
         var ch = new CafeCheque

@@ -93,6 +93,17 @@
             </div>
         }
 
+        @* 2026-10-01: endosos hechos desde el home banking que no se anotaron: el cheque sigue
+           "en mano" y la deuda del proveedor no bajo. *@
+        @if (conteos.EndososSinAnotar > 0 && vista == "EN_MANO")
+        {
+            <div class="chq-aviso" style="margin-top:0.7rem;">
+                @conteos.EndososSinAnotar @(conteos.EndososSinAnotar == 1 ? "cheque ya figura endosado" : "cheques ya figuran endosados") en el banco
+                y acá @(conteos.EndososSinAnotar == 1 ? "sigue" : "siguen") en mano · @Plata(conteos.EndososSinAnotarImporte).
+                Tocá <strong>anotar endoso</strong> para descontarlo de la cuenta del proveedor.
+            </div>
+        }
+
         <div class="chq-cuerpo">
         <div>
         @if (loading)
@@ -135,7 +146,14 @@
                                 </td>
                                 <td>
                                     @fila.Banco · N° @fila.Numero
-                                    <div class="chq-sub">@fila.EstadoTexto</div>
+                                    @if (fila.BancoEndosadoA is not null)
+                                    {
+                                        <div class="chq-sub" style="color:#92400e;">el banco dice: endosado a @fila.BancoEndosadoA</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="chq-sub">@fila.EstadoTexto</div>
+                                    }
                                 </td>
                                 <td style="text-align:right;">$@fila.Importe.ToString("N2")</td>
                                 <td>
@@ -173,7 +191,11 @@
                                             <button class="chq-acc" @onclick="() => CobrarVentanilla(fila)" title="Lo cobré en efectivo por ventanilla">ventanilla</button>
                                             <span style="color:#d1d5db;"> · </span>
                                         }
-                                        @if (fila.PuedeEndosar)
+                                        @if (fila.PuedeEndosar && fila.BancoEndosadoA is not null)
+                                        {
+                                            <button class="chq-acc alarma" @onclick="() => AbrirEndoso(fila)" title="Ya lo endosaste en el banco: anotalo para que baje la deuda del proveedor">anotar endoso</button>
+                                        }
+                                        else if (fila.PuedeEndosar)
                                         {
                                             <button class="chq-acc" @onclick="() => AbrirEndoso(fila)" title="Pasarle este cheque a un proveedor para pagarle">endosar</button>
                                             <span style="color:#d1d5db;"> · </span>
@@ -1004,6 +1026,9 @@
             cajas ??= await Api.GetCafeCajasAsync() ?? new();
         }
         catch (Exception ex) { endError = "Error cargando proveedores: " + ex.Message; }
+        // 2026-10-01: si el banco ya dice a quien se endoso, el proveedor viene elegido.
+        if (f.BancoEndosadoProveedorId is int pid && proveedores?.FirstOrDefault(p => p.Id == pid) is { } prov)
+            await ElegirProveedorEndoso(prov);
     }
 
     private void CerrarEndoso() { if (!endGuardando) endChe = null; }
@@ -1018,8 +1043,14 @@
             endCompras = (await Api.GetPendientesProveedorAsync(p.Id))?.Documentos ?? new();
             endSeleccion = endCompras.Select(_ => new SelState()).ToList();
             decimal restante = endChe?.Importe ?? 0m;
-            for (int i = 0; i < endCompras.Count && restante > 0.01m; i++)
+            // 2026-10-01: el cheque paga las facturas OFICIALES, la más vieja primero; lo que sobre
+            // queda a cuenta (pedido del usuario). Lo no oficial se tilda a mano si hace falta.
+            var orden = Enumerable.Range(0, endCompras.Count)
+                .Where(i => endCompras[i].Oficial && !endCompras[i].EsNotaCredito)
+                .OrderBy(i => endCompras[i].Fecha).ToList();
+            foreach (var i in orden)
             {
+                if (restante <= 0.01m) break;
                 var aPagar = Math.Min(endCompras[i].Saldo, restante);
                 if (aPagar <= 0m) continue;
                 endSeleccion[i].Tildado = true;
