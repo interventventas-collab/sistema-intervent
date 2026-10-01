@@ -5628,13 +5628,24 @@ public class ApiClient
         decimal? PromoPrecio = null, string? PromoNombre = null, DateTime? PromoHasta = null,
         decimal? PrecioOem = null, decimal? PrecioObjetivo = null,
         // 2026-09-28: última venta (hora argentina). Null = sin ventas desde el 13/04/2026.
-        DateTime? UltimaVenta = null);
+        DateTime? UltimaVenta = null,
+        // 2026-10-01: cambios de MeLi (envío) sin ver, ya en palabras.
+        List<PubV2Cambio>? Cambios = null);
+    public record PubV2Cambio(int Id, string Tipo, string Texto, string? Detalle, DateTime DetectadoAt);
+    /// <summary>2026-10-01: "✓ visto" de los cambios de MeLi de una publicación.</summary>
+    public async Task<bool> MarcarCambiosVistosAsync(string mla)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/meli/v2/publicaciones/{Uri.EscapeDataString(mla)}/cambios-vistos", new { });
+        return resp.IsSuccessStatusCode;
+    }
     public record PubV2Page(int Total, int Pagina, int PorPagina, List<PubV2Fila> Items, PubV2Grupo? Grupo = null,
         PubV2Conteos? Conteos = null);
     /// <summary>2026-09-24: cuántas hay de cada opción de los botones Precio y Envío.
     /// Rangos: hasta $10.000 · $10.000 a $33.000 · $33.000 a $100.000 · más de $100.000.</summary>
     public record PubV2Conteos(int[] Rangos, int EnvioGratis, int PagaComprador, Dictionary<string, int> Logistica,
-        int BajoMiPct = 0);   // 2026-09-30: cuántas dejan menos que su %
+        int BajoMiPct = 0,    // 2026-09-30: cuántas dejan menos que su %
+        int ConCambios = 0);  // 2026-10-01: cuántas tienen cambios de MeLi sin ver
     /// <summary>2026-09-24: lo elegido en los botones Precio y Envío. Orden: null · precio_desc · precio_asc.
     /// Logistica: colecta, full, acordar, correo, flex.</summary>
     public record PubV2PrecioEnvio(string? Orden, decimal? Desde, decimal? Hasta, bool? EnvioGratis, IReadOnlyCollection<string> Logistica)
@@ -5658,11 +5669,12 @@ public class ApiClient
         bool variosPrecios = false, bool precioAMano = false, bool sinCosto = false,
         decimal? noLleganAlPct = null, bool comisionVieja = false, int pagina = 1, int porPagina = 100,
         int? cuentaId = null, bool enPromo = false, string? ampliar = null, PubV2PrecioEnvio? pe = null,
-        bool bajoMiPct = false)
+        bool bajoMiPct = false, bool conCambios = false)
     {
         var qs = new List<string>();
         pe?.AgregarA(qs);
         if (bajoMiPct) qs.Add("bajoMiPct=true");
+        if (conCambios) qs.Add("conCambios=true");
         if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
         if (!string.IsNullOrWhiteSpace(sku)) qs.Add($"sku={Uri.EscapeDataString(sku)}");
         if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={estado}");

@@ -79,7 +79,17 @@ public class MeliPublicacionesV2Service
         decimal? PrecioOem = null, decimal? PrecioObjetivo = null,
         // 2026-09-28: fecha de la última venta (de las órdenes guardadas, hora argentina). Null = no
         // hay ventas en el sistema (las órdenes se guardan desde el 13/04/2026).
-        DateTime? UltimaVenta = null);
+        DateTime? UltimaVenta = null,
+        // 2026-10-01: cambios que hizo MeLi (envío) que todavía nadie marcó como vistos.
+        List<CambioSinVerDto>? Cambios = null);
+
+    /// <summary>Un cambio de MeLi sin ver, ya en palabras ("Envío $14.190 → $36.990 (+$22.800)").</summary>
+    public record CambioSinVerDto(int Id, string Tipo, string Texto, string? Detalle, DateTime DetectadoAt);
+
+    /// <summary>2026-10-01 — Tipos de cambio que marcan el renglón en Publicaciones hasta que se
+    /// toca "visto". Por ahora sólo envío: los de precio y pausa no se puede saber si los hizo
+    /// MeLi o el usuario desde el sistema, y llenarían la pantalla de falsas alarmas.</summary>
+    public static readonly string[] TiposCambioVisibles = { "ENVIO_CAMBIO", "ENVIO_MODO" };
 
     public record PageDto(int Total, int Pagina, int PorPagina, List<FilaDto> Items, GrupoDto? Grupo = null,
         ConteosDto? Conteos = null);
@@ -91,7 +101,9 @@ public class MeliPublicacionesV2Service
     /// Logistica: colecta · full · acordar · correo · flex (las claves de <see cref="ClaveLogistica"/>).</summary>
     public record ConteosDto(int[] Rangos, int EnvioGratis, int PagaComprador, Dictionary<string, int> Logistica,
         // 2026-09-30: cuántas dejan menos que su % (con TODOS los filtros puestos, menos ese).
-        int BajoMiPct = 0);
+        int BajoMiPct = 0,
+        // 2026-10-01: cuántas tienen cambios de MeLi sin ver (con los demás filtros puestos).
+        int ConCambios = 0);
 
     /// <summary>Los cortes de los rangos rápidos del botón Precio. $33.000 es donde MeLi empieza a
     /// obligar el envío gratis (ver MeliPricePushService.ESCALON_ENVIO).</summary>
@@ -127,7 +139,9 @@ public class MeliPublicacionesV2Service
         string? Orden = null, decimal? PrecioDesde = null, decimal? PrecioHasta = null,
         bool? EnvioGratis = null, string? Logistica = null,
         // 2026-09-30: sólo las que dejan menos que su % ("tu %"), de la más vendida a la menos.
-        bool BajoMiPct = false);
+        bool BajoMiPct = false,
+        // 2026-10-01: sólo las que tienen cambios de MeLi (envío) sin ver.
+        bool ConCambios = false);
 
     /// <summary>2026-09-22 — Precio que dejaría el objetivo, con la comisión que tenemos guardada.
     /// Es la primera cuenta del motor (MeliPricePushService.CalcularPrecioParaGananciaAsync) sin ir a
@@ -397,6 +411,14 @@ public class MeliPublicacionesV2Service
         // El número del botón se cuenta con todos los demás filtros puestos.
         var bajoMiPct = await BajoSuPctAsync(q, ahoraUtc, ct);
         conteos = conteos with { BajoMiPct = bajoMiPct.Count };
+
+        // ── "Con cambios sin ver" (2026-10-01) ──
+        var tiposCambio = TiposCambioVisibles;
+        var conCambiosIds = _db.MeliCambiosDetectados.AsNoTracking()
+            .Where(c => c.SeenAt == null && tiposCambio.Contains(c.Tipo))
+            .Select(c => c.MeliItemId);
+        conteos = conteos with { ConCambios = await q.CountAsync(m => conCambiosIds.Contains(m.MeliItemId), ct) };
+        if (f.ConCambios) q = q.Where(m => conCambiosIds.Contains(m.MeliItemId));
         List<string>? idsPagina = null;
         if (f.BajoMiPct)
         {
@@ -659,10 +681,64 @@ public class MeliPublicacionesV2Service
             items = items.Select(i => ultimas.TryGetValue(i.MeliItemId, out var u) ? i with { UltimaVenta = u } : i).ToList();
         }
 
+        // 2026-10-01 — Cambios de MeLi sin ver de cada publicación de la página, en palabras.
+        if (items.Count > 0)
+        {
+            var mlasCambio = items.Select(i => i.MeliItemId).ToList();
+            var tiposVis = TiposCambioVisibles;
+            var sinVer = await _db.MeliCambiosDetectados.AsNoTracking()
+                .Where(c => c.SeenAt == null && tiposVis.Contains(c.Tipo) && mlasCambio.Contains(c.MeliItemId))
+                .OrderByDescending(c => c.DetectedAt)
+                .ToListAsync(ct);
+            if (sinVer.Count > 0)
+            {
+                var porMla = sinVer.GroupBy(c => c.MeliItemId)
+                    .ToDictionary(g => g.Key, g => g.Select(TextoCambio).ToList());
+                items = items.Select(i => porMla.TryGetValue(i.MeliItemId, out var cs) ? i with { Cambios = cs } : i).ToList();
+            }
+        }
+
         // Filtros que dependen de datos calculados (se aplican sobre la página).
         if (f.SinCosto) items = items.Where(i => i.Costo is null or <= 0).ToList();
 
         return new PageDto(total, pagina, porPagina, items, grupo, conteos);
+    }
+
+    private static string NombreLogistica(string? clave) => clave switch
+    {
+        "colecta" => "Mercado Envíos (Colecta)",
+        "full" => "Mercado Envíos Full",
+        "correo" => "Mercado Envíos (correo)",
+        "flex" => "Mercado Envíos Flex",
+        "acordar" => "acordar con el comprador",
+        _ => clave ?? "—",
+    };
+
+    /// <summary>2026-10-01 — Un cambio de MeLi en palabras, para el renglón de Publicaciones.</summary>
+    private static CambioSinVerDto TextoCambio(Models.MeliCambioDetectado c)
+    {
+        var ar = new System.Globalization.CultureInfo("es-AR");
+        string P(decimal v) => "$" + v.ToString("N0", ar);
+        var cuando = c.DetectedAt.AddHours(-3);
+        var detalle = $"lo detectó el sistema el {cuando:dd/MM}";
+        if (c.Tipo == "ENVIO_MODO")
+        {
+            var aMe = c.ValorNuevo != "acordar" && c.ValorAnterior == "acordar";
+            var deMe = c.ValorNuevo == "acordar";
+            var texto = aMe ? $"Pasó a {NombreLogistica(c.ValorNuevo)}: ahora el envío lo pagás vos"
+                      : deMe ? "Dejó Mercado Envíos: el envío lo arregla el comprador"
+                      : $"Envío: de {NombreLogistica(c.ValorAnterior)} a {NombreLogistica(c.ValorNuevo)}";
+            return new CambioSinVerDto(c.Id, c.Tipo, texto, detalle, c.DetectedAt);
+        }
+        decimal.TryParse(c.ValorAnterior, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var antes);
+        decimal.TryParse(c.ValorNuevo, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var ahora);
+        var dif = ahora - antes;
+        string txt;
+        if (ahora <= 0m && antes > 0m) txt = $"Ya no pagás envío (antes {P(antes)})";
+        else if (antes <= 0m && ahora > 0m) txt = $"Ahora pagás envío: {P(ahora)} por venta";
+        else txt = $"Envío {P(antes)} → {P(ahora)} ({(dif > 0 ? "+" : "−")}{P(Math.Abs(dif))})";
+        if (dif < 0) detalle += " · ahora te deja más";
+        return new CambioSinVerDto(c.Id, c.Tipo, txt, detalle, c.DetectedAt);
     }
 
     /// <summary>2026-09-30 — Las publicaciones de `q` que dejan menos que su % ("tu %": el objetivo

@@ -43,6 +43,15 @@
     .p2-chip.nue.on { background: #1f6b45; color: #fff; }
     .p2-chip.p2-bajo { border-color: #fca5a5; color: #b91c1c; font-weight: 600; }
     .p2-chip.p2-bajo.on { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+    /* 2026-10-01: cambios de MeLi sin ver (envío): raya ámbar + qué cambió + ✓ visto */
+    .p2-chip.p2-cambios { border-color: #f59e0b; color: #92400e; font-weight: 600; }
+    .p2-chip.p2-cambios.on { background: #d97706; border-color: #d97706; color: #fff; }
+    .p2-tr.cambio { box-shadow: inset 4px 0 0 #f59e0b; }
+    .p2-cambio { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .2rem;
+                 font-size: .78rem; color: #92400e; }
+    .p2-cambio .det { color: #9ca3af; }
+    .p2-cambio button { font-size: .74rem; padding: .05rem .5rem; border: 1px solid #d97706; background: #fff;
+                        color: #92400e; border-radius: 4px; cursor: pointer; }
     /* 2026-09-22 · los filtros de "problemas" van en un solo botón que despliega la lista */
     .p2-fmenu { position: relative; }
     .p2-fmenu-fondo { position: fixed; inset: 0; z-index: 40; }
@@ -763,6 +772,12 @@
                   title="Las publicaciones que te dejan menos que tu % (el que elegiste para cada una, o 50% si no elegiste), de la más vendida en los últimos 90 días a la menos.">
                 @(fBajoMiPct ? "✓ " : "")Te dejan menos que tu %@(datos?.Conteos is { } cnB ? $" ({cnB.BajoMiPct.ToString("N0", ar)})" : "")
             </span>
+            @* 2026-10-01 — Osmar: los cambios que hace MeLi (envío) tienen que quedar a la vista hasta
+               que él los revise y toque "✓ visto". El número se cuenta con los demás filtros puestos. *@
+            <span class="p2-chip p2-cambios @(fConCambios ? "on" : "")" @onclick="ToggleConCambios"
+                  title="Publicaciones a las que MercadoLibre les cambió el envío y todavía no marcaste como vistas.">
+                @(fConCambios ? "✓ " : "")Con cambios sin ver@(datos?.Conteos is { } cnC ? $" ({cnC.ConCambios.ToString("N0", ar)})" : "")
+            </span>
             @if (HayFiltros)
             {
                 <span class="p2-chip" style="border-color:#b91c1c;color:#b91c1c;" @onclick="LimpiarFiltros">✕ Limpiar</span>
@@ -844,7 +859,7 @@
                     @* 2026-08-26 — Osmar: "que apenas toco la publicación me dé esas opciones es
                        demasiado incómodo, siempre no voy a usar esto". La fila ya no abre nada sola:
                        el peso y las medidas tienen su botón (la balanza) y las fotos el suyo. *@
-                    <div class="p2-tr @(tildadas.Contains(it.MeliItemId) ? "sel" : "")">
+                    <div class="p2-tr @(tildadas.Contains(it.MeliItemId) ? "sel" : "") @(it.Cambios is { Count: > 0 } ? "cambio" : "")">
                         <span>
                             <input type="checkbox" class="p2-chk"
                                    checked="@tildadas.Contains(it.MeliItemId)"
@@ -913,6 +928,18 @@
                                   title="Tocá para ver y corregir de qué se compone esta publicación"
                                   @onclick="() => ToggleReceta(it.MeliItemId)" @onclick:stopPropagation="true">(@RecetaFragment(it))</span></span>
                             <span class="p2-m2"><span class="@(string.IsNullOrEmpty(it.Envio) || it.Envio == "not_specified" ? "sindato" : "")" title="@TituloEnvio(it)">@EnvioConPalabra(it.Envio)@(it.EnvioGratis ? ", lo pagás vos" : "")</span>@(it.PublisFamilia > 1 ? $" · {it.PublisFamilia} publicaciones" : "") · <span class="mla">@it.MeliItemId</span></span>
+                            @if (it.Cambios is { Count: > 0 } cambiosFila)
+                            {
+                                <span class="p2-cambio" @onclick:stopPropagation="true">
+                                    @foreach (var cm in cambiosFila.Take(3))
+                                    {
+                                        <span>⚠ @cm.Texto <span class="det">· @cm.Detalle</span></span>
+                                    }
+                                    @if (cambiosFila.Count > 3) { <span class="det">y @(cambiosFila.Count - 3) más</span> }
+                                    <button disabled="@(vistoEnCurso == it.MeliItemId)" title="Ya lo revisé: sacar la marca"
+                                            @onclick="() => MarcarVisto(it)">@(vistoEnCurso == it.MeliItemId ? "···" : "✓ visto")</button>
+                                </span>
+                            }
                             @* 2026-08-27 · si el SKU dice la marca de "para revisar", se avisa acá y
                                se ofrece devolverle el SKU verdadero, que el sistema guardó al marcarla. *@
                             @if (!string.IsNullOrEmpty(it.SkuAnterior))
@@ -2174,13 +2201,15 @@
     private bool fComisionVieja;
     private bool fEnPromo;   // 2026-08-31: sólo las que venden con descuento por una campaña
     private bool fBajoMiPct; // 2026-09-30: sólo las que dejan menos que su %, las más vendidas primero
+    private bool fConCambios; // 2026-10-01: sólo las que tienen cambios de MeLi (envío) sin ver
+    private string? vistoEnCurso;
 
     // 2026-08-27 — Osmar no tenia forma de saber si una publicacion era de FRIKAF o de GROVAS:
     // la fila no lo mostraba aunque el dato ya venia del servidor. Etiqueta en la fila + filtro.
     private int? fCuentaId;
     private List<MeliAccountDto> cuentas = new();
 
-    private bool HayFiltros => fEnPromo || fBajoMiPct || fComisionVieja || fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
+    private bool HayFiltros => fEnPromo || fBajoMiPct || fConCambios || fComisionVieja || fNoLlegan.HasValue || fComision.HasValue || fVariosPrecios || fPrecioAMano || fSinCosto
                                || !string.IsNullOrEmpty(fCuotas) || !string.IsNullOrEmpty(fEstado)
                                || !string.IsNullOrWhiteSpace(fTexto) || !string.IsNullOrWhiteSpace(fSku)
                                || fCuentaId.HasValue
@@ -2204,7 +2233,7 @@
         try
         {
             datos = await Api.GetPublicacionesV2Async(fTexto, fSku, fEstado, fComision, fCuotas, null,
-                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId, fEnPromo, AmpliarVigente, PrecioEnvio, fBajoMiPct);
+                fVariosPrecios, fPrecioAMano, fSinCosto, fNoLlegan, fComisionVieja, pagina, porPagina, fCuentaId, fEnPromo, AmpliarVigente, PrecioEnvio, fBajoMiPct, fConCambios);
         }
         catch (Exception ex)
         {
@@ -3276,6 +3305,22 @@
     private async Task ToggleComisionVieja() { fComisionVieja = !fComisionVieja; await BuscarDesdeCero(); }
     private async Task ToggleEnPromo() { fEnPromo = !fEnPromo; await BuscarDesdeCero(); }
     private async Task ToggleBajoMiPct() { fBajoMiPct = !fBajoMiPct; await BuscarDesdeCero(); }
+    private async Task ToggleConCambios() { fConCambios = !fConCambios; await BuscarDesdeCero(); }
+
+    /// <summary>2026-10-01 — "✓ visto": saca la marca de la fila (y del filtro) sin recargar todo.</summary>
+    private async Task MarcarVisto(ApiClient.PubV2Fila it)
+    {
+        if (vistoEnCurso is not null || datos is null) return;
+        vistoEnCurso = it.MeliItemId;
+        try
+        {
+            if (!await Api.MarcarCambiosVistosAsync(it.MeliItemId)) { ToastService.Error("No se pudo marcar como visto"); return; }
+            var idx = datos.Items.FindIndex(x => x.MeliItemId == it.MeliItemId);
+            if (idx >= 0) datos.Items[idx] = datos.Items[idx] with { Cambios = null };
+            if (datos.Conteos is { } cn && cn.ConCambios > 0) datos = datos with { Conteos = cn with { ConCambios = cn.ConCambios - 1 } };
+        }
+        finally { vistoEnCurso = null; }
+    }
     private async Task ToggleSinCosto() { fSinCosto = !fSinCosto; await BuscarDesdeCero(); }
     private async Task SetCuenta(int id) { fCuentaId = fCuentaId == id ? null : id; await BuscarDesdeCero(); }
 
@@ -3292,7 +3337,7 @@
     {
         fTexto = ""; fSku = ""; fEstado = ""; fComision = null; fCuotas = "";
         fVariosPrecios = false; fPrecioAMano = false; fSinCosto = false; fNoLlegan = null; fComisionVieja = false;
-        fEnPromo = false; fBajoMiPct = false; fCuentaId = null; fAmpliar = null; fAmpliarTexto = null; menuAbierto = 0;
+        fEnPromo = false; fBajoMiPct = false; fConCambios = false; fCuentaId = null; fAmpliar = null; fAmpliarTexto = null; menuAbierto = 0;
         fOrden = null; fDesde = null; fHasta = null; fDesdeTxt = ""; fHastaTxt = ""; fEnvioGratis = null; fLogistica.Clear();
         await BuscarDesdeCero();
     }
