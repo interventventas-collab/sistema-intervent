@@ -2749,6 +2749,12 @@ IF COL_LENGTH('Cafe_ProductoFoto', 'FotoPropiaAt') IS NULL
     ALTER TABLE Cafe_ProductoFoto ADD FotoPropiaAt DATETIME2 NULL;
 GO
 
+-- 2026-10-01: foto ORIGINAL (con la tela verde/azul) de la que salio la foto propia procesada
+-- (Fotos chroma). Se guarda para poder reprocesarla con otra tolerancia sin volver a sacarla.
+IF COL_LENGTH('Cafe_ProductoFoto', 'FotoOriginalArchivo') IS NULL
+    ALTER TABLE Cafe_ProductoFoto ADD FotoOriginalArchivo NVARCHAR(200) NULL;
+GO
+
 -- 2026-08-05 (Paso 3): token de un solo uso para subir la foto por QR desde el celu (sin login).
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ProductoFotoToken' AND xtype='U')
 BEGIN

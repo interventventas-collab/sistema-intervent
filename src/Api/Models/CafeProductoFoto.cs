@@ -40,6 +40,11 @@ public class CafeProductoFoto
     /// <summary>Cuándo se subió la foto propia.</summary>
     public DateTime? FotoPropiaAt { get; set; }
 
+    /// <summary>2026-10-01: foto ORIGINAL con la tela verde/azul de la que salió la foto propia (Fotos
+    /// chroma). Mismo directorio. Null si la foto propia se subió tal cual (sin sacarle el fondo).</summary>
+    [MaxLength(200)]
+    public string? FotoOriginalArchivo { get; set; }
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
