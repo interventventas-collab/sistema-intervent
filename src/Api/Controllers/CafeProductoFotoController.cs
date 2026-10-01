@@ -27,7 +27,7 @@ public class CafeProductoFotoController : ControllerBase
     public record DesdeUrlRequest(string? Url);
 
     public record ProductoFotoDto(int CafeProductoId, string? Estado, string? Usuario,
-        string? Comentario, string? FotoPropiaArchivo, DateTime UpdatedAt);
+        string? Comentario, string? FotoPropiaArchivo, DateTime UpdatedAt, bool TieneOriginal = false);
 
     public record TokenResp(string Token);
 
@@ -36,7 +36,7 @@ public class CafeProductoFotoController : ControllerBase
     public async Task<IActionResult> Listar()
     {
         var lista = await _db.CafeProductoFotos
-            .Select(f => new ProductoFotoDto(f.CafeProductoId, f.Estado, f.Usuario, f.Comentario, f.FotoPropiaArchivo, f.UpdatedAt))
+            .Select(f => new ProductoFotoDto(f.CafeProductoId, f.Estado, f.Usuario, f.Comentario, f.FotoPropiaArchivo, f.UpdatedAt, f.FotoOriginalArchivo != null))
             .ToListAsync();
         return Ok(lista);
     }
@@ -47,7 +47,25 @@ public class CafeProductoFotoController : ControllerBase
     {
         var f = await _db.CafeProductoFotos.FirstOrDefaultAsync(x => x.CafeProductoId == productoId);
         if (f is null) return Ok(new ProductoFotoDto(productoId, null, null, null, null, DateTime.UtcNow));
-        return Ok(new ProductoFotoDto(f.CafeProductoId, f.Estado, f.Usuario, f.Comentario, f.FotoPropiaArchivo, f.UpdatedAt));
+        return Ok(new ProductoFotoDto(f.CafeProductoId, f.Estado, f.Usuario, f.Comentario, f.FotoPropiaArchivo, f.UpdatedAt, f.FotoOriginalArchivo != null));
+    }
+
+    public record FotoPropiaSkuDto(string Sku, int CafeProductoId, string Nombre, string Archivo);
+
+    /// <summary>2026-10-01: fotos propias de los productos con esos SKU (separados por coma). La usa
+    /// Publicaciones para ofrecer "usar la foto propia" en la publicación de ese producto.</summary>
+    [HttpGet("por-sku")]
+    public async Task<IActionResult> PorSku([FromQuery] string? skus)
+    {
+        var lista = (skus ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(50).ToList();
+        if (lista.Count == 0) return Ok(new List<FotoPropiaSkuDto>());
+        var res = await (from p in _db.CafeProductos
+                         join f in _db.CafeProductoFotos on p.Id equals f.CafeProductoId
+                         where p.Sku != null && lista.Contains(p.Sku) && f.FotoPropiaArchivo != null
+                         select new FotoPropiaSkuDto(p.Sku!, p.Id, p.Nombre, f.FotoPropiaArchivo!))
+                        .ToListAsync();
+        return Ok(res);
     }
 
     /// <summary>Genera un token de un solo uso para subir la foto de este producto por QR (30 min).</summary>
@@ -273,7 +291,7 @@ public class CafeProductoFotoController : ControllerBase
 
         var usuario = HttpContext.User?.Identity?.Name;
         var archivo = await GuardarFotoPropiaAsync(productoId, r.Jpeg, ".jpg", usuario, original);
-        return Ok(new ProductoFotoDto(productoId, "APROBADA", usuario, null, archivo, DateTime.UtcNow));
+        return Ok(new ProductoFotoDto(productoId, "APROBADA", usuario, null, archivo, DateTime.UtcNow, true));
     }
 
     /// <summary>Vuelve a abrir la foto ORIGINAL guardada de un producto para reprocesarla (la copia a tmp/).</summary>

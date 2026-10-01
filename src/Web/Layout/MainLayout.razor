@@ -766,11 +766,13 @@
 
                 @* ───────── 2. CATÁLOGO ───────── *@
                 <NavGroup Label="🏬 Catálogo" Icon="@SvgIcons.Package" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/cafe/catalogo") || IsActive("/cafe/productos") || IsActive("/cafe/skus-meli") || IsActive("/cafe/combos") || IsActive("/cafe/kits") || IsActive("/cafe/servicios") || IsActive("/cafe/oems") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios"))">
+                          HasActiveChild="@(IsActive("/cafe/catalogo") || IsActive("/cafe/productos") || IsActive("/cafe/fotos-chroma") || IsActive("/cafe/skus-meli") || IsActive("/cafe/combos") || IsActive("/cafe/kits") || IsActive("/cafe/servicios") || IsActive("/cafe/oems") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios"))">
                     <NavItem Href="/cafe/catalogo" Label="📦 Todos los códigos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/cafe/catalogo")" OnClick="@(() => NavigateTo("/cafe/catalogo"))" />
                     <NavItem Href="/cafe/productos" Label="Productos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
+                    <NavItem Href="/cafe/fotos-chroma" Label="📷 Fotos fondo verde/azul" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/cafe/fotos-chroma")" OnClick="@(() => NavigateTo("/cafe/fotos-chroma"))" />
                     <NavItem Href="/cafe/skus-meli" Label="🛒 SKUs MeLi" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/skus-meli")" OnClick="@(() => NavigateTo("/cafe/skus-meli"))" />
                     <NavItem Href="/cafe/combos" Label="Combos MeLi" Icon="@SvgIcons.Package"
