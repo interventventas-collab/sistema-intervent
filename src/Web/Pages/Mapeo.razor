@@ -3467,6 +3467,27 @@
     </div>
 }
 
+@if (cartelFechas.Count > 0)
+{
+    @* 2026-10-02: cartel grande cuando se escanea o se trae por número un envío MeLi que NO es para
+       el día del mapa (o que MeLi todavía no le puso día). Queda hasta que tocan "Entendido". *@
+    <div style="position:fixed; inset:0; z-index:9600; background:rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; padding:16px;">
+        <div style="background:#fff; border:3px solid #d97706; border-radius:14px; max-width:460px; width:100%; padding:1.2rem 1.3rem; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+            <div style="font-size:1.05rem; font-weight:800; color:#b45309;">⚠ OJO: NO ES PARA EL @(FechaMapa.ToString("dd/MM"))</div>
+            @foreach (var c in cartelFechas)
+            {
+                <div style="margin-top:0.9rem;">
+                    <div style="font-size:1.5rem; font-weight:800; color:#111827; line-height:1.2;">@c.Aviso</div>
+                    <div style="font-size:0.95rem; color:#4b5563; margin-top:0.2rem;">@c.Nombre</div>
+                </div>
+            }
+            <div style="font-size:0.85rem; color:#6b7280; margin-top:0.9rem;">Quedó cargado en este mapa. Si no sale hoy, sacalo de la lista.</div>
+            <button class="btn" style="width:100%; justify-content:center; margin-top:1rem; padding:0.7rem; font-size:1.05rem; font-weight:700; background:#111827; color:#fff; border:none; border-radius:8px;"
+                    @onclick="() => cartelFechas.Clear()">Entendido</button>
+        </div>
+    </div>
+}
+
 @if (showScanModal)
 {
     <div class="modal-overlay" @onclick="() => showScanModal = false">
@@ -3523,6 +3544,11 @@
                                     <strong style="color:#111827;">@r.Numero</strong>
                                     @if (!string.IsNullOrEmpty(r.Tipo)) { <span style="color:#6b7280;"> · @r.Tipo</span> }
                                     <div style="color:#4b5563;">@r.Mensaje @(string.IsNullOrEmpty(r.Nombre) ? "" : $"— {r.Nombre}")</div>
+                                    @if (!string.IsNullOrEmpty(r.Aviso))
+                                    {
+                                        var alarma = r.AvisoTipo is "futuro" or "sin_fecha";
+                                        <div style="margin-top:0.15rem; @(alarma ? "color:#b45309; font-weight:800;" : "color:#374151;")">📅 @r.Aviso</div>
+                                    }
                                 </div>
                             </div>
                         }
@@ -7493,8 +7519,15 @@
         public string? Tipo { get; set; }
         public string? Nombre { get; set; }
         public string? Mensaje { get; set; }
+        public string? Aviso { get; set; }
+        public string? AvisoTipo { get; set; }
     }
     private List<PorNumeroLineaVm> porNumeroResultados = new();
+
+    // 2026-10-02: envíos que se escanearon / trajeron por número y NO son para el día del mapa.
+    private record CartelFecha(string Nombre, string Aviso);
+    private readonly List<CartelFecha> cartelFechas = new();
+    private static bool EsOtroDia(string? avisoTipo) => avisoTipo is "futuro" or "sin_fecha";
 
     // ===== Modo pistola: escáner FÍSICO (USB) que "tipea" el código y manda Enter =====
     private bool wedgeOn;         // true = está escuchando el escáner
@@ -7541,12 +7574,16 @@
                 wedgeCount++;
                 await LoadStops();
                 await RenderMap(keepView: true);
-                ToastService.Success($"✓ {(string.IsNullOrWhiteSpace(res?.Nombre) ? "Parada" : res!.Nombre)} agregada.");
+                var conFecha = string.IsNullOrEmpty(res?.Aviso) ? "" : $" · {res!.Aviso}";
+                if (res?.AvisoTipo == "atrasado") ToastService.Warning($"✓ {(string.IsNullOrWhiteSpace(res?.Nombre) ? "Parada" : res!.Nombre)} agregada{conFecha}");
+                else ToastService.Success($"✓ {(string.IsNullOrWhiteSpace(res?.Nombre) ? "Parada" : res!.Nombre)} agregada{conFecha}");
             }
             else if (ok && yaEstaba)
             {
-                ToastService.Info($"↻ {(string.IsNullOrWhiteSpace(res?.Nombre) ? "Esa parada" : res!.Nombre)} ya estaba en el mapa.");
+                ToastService.Info($"↻ {(string.IsNullOrWhiteSpace(res?.Nombre) ? "Esa parada" : res!.Nombre)} ya estaba en el mapa.{(string.IsNullOrEmpty(res?.Aviso) ? "" : " " + res!.Aviso)}");
             }
+            if (ok && EsOtroDia(res?.AvisoTipo))
+                cartelFechas.Add(new CartelFecha(string.IsNullOrWhiteSpace(res?.Nombre) ? "Envío MeLi" : res!.Nombre!, res!.Aviso!));
             else
             {
                 ToastService.Error(string.IsNullOrWhiteSpace(res?.Mensaje) ? "No pude leer ese código." : res!.Mensaje!);
@@ -7670,8 +7707,12 @@
                         YaEstaba = r?.YaEstaba ?? false,
                         Tipo = r?.Tipo,
                         Nombre = r?.Nombre,
-                        Mensaje = r?.Mensaje ?? "No hubo respuesta."
+                        Mensaje = r?.Mensaje ?? "No hubo respuesta.",
+                        Aviso = r?.Aviso,
+                        AvisoTipo = r?.AvisoTipo
                     });
+                    if ((r?.Ok ?? false) && EsOtroDia(r?.AvisoTipo))
+                        cartelFechas.Add(new CartelFecha(string.IsNullOrWhiteSpace(r?.Nombre) ? n : r!.Nombre!, r!.Aviso!));
                     if ((r?.Ok ?? false) && !(r?.YaEstaba ?? false)) agregados++;
                 }
                 catch (Exception ex)

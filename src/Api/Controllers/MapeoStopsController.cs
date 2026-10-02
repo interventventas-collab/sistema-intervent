@@ -1722,9 +1722,10 @@ public class MapeoStopsController : ControllerBase
         var refId = sh.MeliShipmentId.ToString();
         var existente = await _db.MapeoStops.FirstOrDefaultAsync(s =>
             (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId == refId && s.FechaReparto == dia);
+        var (paraFecha, avisoTipo, aviso) = AvisoFechaEnvio(sh, dia);
         if (existente is not null)
             return new { ok = true, yaEstaba = true, id = sh.MeliShipmentId, nombre = sh.ReceiverName, localidad = sh.City, stopId = existente.Id,
-                         mensaje = "Ya estaba en el mapa de ese día." };
+                         mensaje = "Ya estaba en el mapa de ese día.", paraFecha, avisoTipo, aviso };
 
         var stop = new MapeoStop
         {
@@ -1744,7 +1745,37 @@ public class MapeoStopsController : ControllerBase
         };
         _db.MapeoStops.Add(stop);
         await _db.SaveChangesAsync();
-        return new { ok = true, yaEstaba = false, id = sh.MeliShipmentId, nombre = sh.ReceiverName, localidad = sh.City, stopId = stop.Id, mensaje = "Agregado al mapa." };
+        return new { ok = true, yaEstaba = false, id = sh.MeliShipmentId, nombre = sh.ReceiverName, localidad = sh.City, stopId = stop.Id, mensaje = "Agregado al mapa.",
+                     paraFecha, avisoTipo, aviso };
+    }
+
+    private static readonly string[] DiasSemana = { "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado" };
+
+    /// <summary>
+    /// 2026-10-02: para qué día es el envío según MercadoLibre, comparado con el día del mapa donde lo
+    /// estás poniendo. Pedido del usuario: al escanear o traer por número, que un cartel diga para qué
+    /// fecha es — así no se cuelan en el reparto de hoy los Flex de mañana.
+    /// avisoTipo: "dia" (es para ese día) · "futuro" (es para más adelante) · "atrasado" (era para antes)
+    /// · "sin_fecha" (Flex "en espera": MeLi todavía no le puso día) · null (ME1 sin fecha: no se avisa).
+    /// </summary>
+    private static (string? paraFecha, string? avisoTipo, string? aviso) AvisoFechaEnvio(MeliShipment sh, DateTime dia)
+    {
+        if (sh.EstimatedDeliveryLimit is null)
+        {
+            if (sh.LogisticType != "self_service") return (null, null, null);
+            return (null, "sin_fecha", "MercadoLibre todavía no le puso día (seguramente es para mañana)");
+        }
+        var f = sh.EstimatedDeliveryLimit.Value.AddHours(-3).Date;   // MeLi lo guarda en UTC: 03:00 = 00:00 de Argentina
+        var hoy = HoyAr();
+        string Nombre(DateTime d) =>
+            d == hoy ? $"HOY {d:dd/MM}"
+          : d == hoy.AddDays(1) ? $"MAÑANA {DiasSemana[(int)d.DayOfWeek]} {d:dd/MM}"
+          : d == hoy.AddDays(-1) ? $"AYER {d:dd/MM}"
+          : $"el {DiasSemana[(int)d.DayOfWeek]} {d:dd/MM}";
+        var iso = f.ToString("yyyy-MM-dd");
+        if (f == dia) return (iso, "dia", $"Es para {Nombre(f)}");
+        if (f > dia) return (iso, "futuro", $"Es para {Nombre(f)}");
+        return (iso, "atrasado", $"Atrasado: era para {Nombre(f)}");
     }
 
     public record ByNumberRequest(string Number, DateTime? Fecha = null);

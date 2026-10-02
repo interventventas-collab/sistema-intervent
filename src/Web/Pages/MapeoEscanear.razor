@@ -36,6 +36,10 @@
                     @if (!string.IsNullOrEmpty(_last.Nombre)) { <span>@_last.Mensaje</span> }
                     @if (!string.IsNullOrEmpty(_last.Localidad)) { <span> · @_last.Localidad</span> }
                 </div>
+                @if (!string.IsNullOrEmpty(_last.Aviso))
+                {
+                    <div class="esc-flash-fecha @(OtroDia(_last) ? "alarma" : "")">📅 @_last.Aviso</div>
+                }
             </div>
         </div>
     }
@@ -74,7 +78,7 @@
                 <div class="esc-card @FlashClass(h)">
                     <span class="esc-card-ico">@FlashIco(h)</span>
                     <span class="esc-card-txt">@(string.IsNullOrEmpty(h.Nombre) ? h.Mensaje : h.Nombre)</span>
-                    <span class="esc-card-loc">@h.Localidad</span>
+                    <span class="esc-card-loc">@(OtroDia(h) ? "📅 " + h.Aviso : h.Localidad)</span>
                 </div>
             }
         </div>
@@ -107,6 +111,8 @@
     .esc-flash.err .esc-flash-ico { color: #f87171; }
     .esc-flash-msg { font-weight: 800; color: #fff; font-size: 17px; }
     .esc-flash-sub { color: #94a3b8; font-size: 13px; margin-top: 2px; }
+    .esc-flash-fecha { color: #e2e8f0; font-size: 14px; margin-top: 6px; }
+    .esc-flash-fecha.alarma { color: #fbbf24; font-size: 19px; font-weight: 900; text-transform: uppercase; }
 
     .esc-error { background: #3b0d0d; color: #fca5a5; border: 1px solid #dc2626; padding: 10px 12px; border-radius: 10px; font-size: 14px; margin: 10px 0; }
 
@@ -140,8 +146,10 @@
     private string? _lastCode;
     private bool _processing;
 
-    private static string FlashClass(ScanFlexResult r) => !r.Ok ? "err" : (r.YaEstaba ? "warn" : "ok");
-    private static string FlashIco(ScanFlexResult r) => !r.Ok ? "✕" : (r.YaEstaba ? "↻" : "✓");
+    // 2026-10-02: si el envío NO es para hoy (o MeLi todavía no le puso día) se marca en amarillo con ⚠.
+    private static bool OtroDia(ScanFlexResult r) => r.Ok && r.AvisoTipo is "futuro" or "sin_fecha";
+    private static string FlashClass(ScanFlexResult r) => !r.Ok ? "err" : (r.YaEstaba || OtroDia(r) ? "warn" : "ok");
+    private static string FlashIco(ScanFlexResult r) => !r.Ok ? "✕" : OtroDia(r) ? "⚠" : (r.YaEstaba ? "↻" : "✓");
 
     private async Task StartAsync()
     {
