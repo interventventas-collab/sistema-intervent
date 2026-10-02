@@ -686,16 +686,26 @@ public class MapeoStopsController : ControllerBase
         return Ok(new { flex, me1, ventas, atrasados, dia = dia.ToString("yyyy-MM-dd") });
     }
 
+    // 2026-10-02: SOLO los que MercadoLibre prometió para ese día. Antes, si MeLi todavía no le
+    // había puesto día a un envío ("en espera": se compró después del corte), se usaba la fecha de
+    // compra y entraba como de HOY — y después MeLi lo pasaba para mañana. Así se colaban los Flex de
+    // mañana en el mapa de hoy (19/09, 28/09, 30/09). Los únicos sin fecha son justamente esos.
     private async Task<List<MeliShipment>> FlexDelDiaAsync(DateTime dia)
     {
         var d1 = dia.AddHours(3); var d2 = dia.AddDays(1).AddHours(3);
         return await _db.MeliShipments
             .Where(s => s.LogisticType == "self_service" && s.Latitude != null && s.Longitude != null
                      && s.Status != "delivered" && s.Status != "cancelled" && s.Status != "not_delivered"
-                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) >= d1
-                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < d2)
+                     && s.EstimatedDeliveryLimit != null
+                     && s.EstimatedDeliveryLimit >= d1 && s.EstimatedDeliveryLimit < d2)
             .ToListAsync();
     }
+
+    /// <summary>Flex "en espera": MercadoLibre todavía no les dijo para qué día son. No se traen.</summary>
+    private async Task<int> FlexEnEsperaAsync()
+        => await _db.MeliShipments
+            .CountAsync(s => s.LogisticType == "self_service" && s.EstimatedDeliveryLimit == null
+                          && s.Status != "delivered" && s.Status != "cancelled" && s.Status != "not_delivered");
 
     /// <summary>
     /// Flex ATRASADOS: MercadoLibre los prometió para un día anterior y siguen sin entregar. Sin esto
@@ -750,6 +760,8 @@ public class MapeoStopsController : ControllerBase
         var n = await SumarEnviosAsync(await FlexDelDiaAsync(dia), dia);
         var msg = Mensaje(n, "Flex nuevos", dia);
         if (n == 0 && buscados == 0) msg = "Le pregunté a MercadoLibre y todavía no hay Flex para ese día.";
+        var enEspera = await FlexEnEsperaAsync();
+        if (enEspera > 0) msg += $" · {enEspera} quedaron afuera: MercadoLibre todavía no dice para qué día son (seguramente mañana)";
         return Ok(new { creadas = n, mensaje = msg });
     }
 
@@ -1464,8 +1476,7 @@ public class MapeoStopsController : ControllerBase
         {
             var d1 = fecha.Value.Date.AddHours(3);
             var d2 = fecha.Value.Date.AddDays(1).AddHours(3);
-            return q.Where(s => (s.EstimatedDeliveryLimit ?? s.DateCreated) >= d1
-                             && (s.EstimatedDeliveryLimit ?? s.DateCreated) < d2);
+            return q.Where(s => s.EstimatedDeliveryLimit >= d1 && s.EstimatedDeliveryLimit < d2);
         }
         switch ((mode ?? "today").ToLowerInvariant())
         {
@@ -1473,15 +1484,13 @@ public class MapeoStopsController : ControllerBase
                 {
                     var t1 = todayLocal.AddHours(3);
                     var t2 = todayLocal.AddDays(1).AddHours(3);
-                    return q.Where(s => (s.EstimatedDeliveryLimit ?? s.DateCreated) >= t1
-                                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < t2);
+                    return q.Where(s => s.EstimatedDeliveryLimit >= t1 && s.EstimatedDeliveryLimit < t2);
                 }
             case "tomorrow":
                 {
                     var t1 = todayLocal.AddDays(1).AddHours(3);
                     var t2 = todayLocal.AddDays(2).AddHours(3);
-                    return q.Where(s => (s.EstimatedDeliveryLimit ?? s.DateCreated) >= t1
-                                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < t2);
+                    return q.Where(s => s.EstimatedDeliveryLimit >= t1 && s.EstimatedDeliveryLimit < t2);
                 }
             case "overdue":
                 {
