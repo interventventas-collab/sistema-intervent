@@ -756,7 +756,7 @@
                         else if (SelectedConv()?.ClienteNombre is string _cln && !string.IsNullOrWhiteSpace(_cln))
                         {
                             <span class="wa-hdr-sep">·</span>
-                            <span class="wa-hdr-sub" title="Razón social a la que le facturás">@_cln</span>
+                            <span class="wa-hdr-sub" title="Razón social a la que le facturás: @_cln">@_cln</span>
                         }
                         @if (RolLabel(SelectedConv()?.Rol) is string _rl && !string.IsNullOrWhiteSpace(_rl))
                         {
@@ -4689,6 +4689,10 @@
        ancho fijo del nombre y el separador elástico del medio. */
     .wa-hdr-l1 { display: flex; align-items: center; gap: 0.45rem; font-weight: 600; min-width: 0; }
     .wa-hdr-l1 > * { flex: 0 0 auto; }
+    /* 2026-10-02: con nombre y razón social largos (ej. "MIGUEL RECEPTORIA MALVINAS 309 MONTE GRANDE")
+       el renglón no entraba y Archivar, 🔍, 🗑 y el ⋮ quedaban fuera de la pantalla. Que se achiquen
+       ESOS DOS (ya cortan con "…" y el nombre completo sale al pasar el mouse); los botones no. */
+    .wa-hdr-l1 > .wa-hdr-nombre, .wa-hdr-l1 > .wa-hdr-sub { flex: 0 1 auto; min-width: 4rem; }
     /* 2026-08-27: el nombre ya no necesita ancho fijo. Los iconitos se fueron al ⋮, que está pegado
        al borde derecho, así que caen siempre en el mismo lugar por su cuenta. */
     .wa-hdr-nombre { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1rem; }
