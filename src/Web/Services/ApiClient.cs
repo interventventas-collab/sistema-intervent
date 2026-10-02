@@ -2152,6 +2152,22 @@ public class ApiClient
     public record PublicacionBuscadaDto(string MeliItemId, string Titulo, string? Sku, string Estado,
         string? Thumbnail, string? Cuenta, bool DeCatalogo);
 
+    public record FotosLinkDto(string Token);
+
+    /// <summary>Link público del celu para sacar fotos (sin usuario ni clave). Se crea si no existe.</summary>
+    public async Task<FotosLinkDto?> GetFotosLinkAsync()
+        => await GetAsync<FotosLinkDto>("/api/cafe/producto-foto/galeria/link");
+
+    /// <summary>Cambia el link del celu: el anterior deja de funcionar. Sólo admin.</summary>
+    public async Task<(FotosLinkDto? res, string? error)> CambiarFotosLinkAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync("/api/cafe/producto-foto/galeria/link/cambiar", null);
+        if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden) return (null, "Sólo un administrador puede cambiar el link.");
+        if (!resp.IsSuccessStatusCode) return (null, await MensajeDeErrorAsync(resp));
+        return (await resp.Content.ReadFromJsonAsync<FotosLinkDto>(), null);
+    }
+
     public async Task<List<GaleriaFotoDto>?> GetGaleriaFotosAsync()
         => await GetAsync<List<GaleriaFotoDto>>("/api/cafe/producto-foto/galeria");
 

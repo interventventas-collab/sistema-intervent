@@ -1,0 +1,216 @@
+@page "/fotos/{Token}"
+@layout Web.Layout.EmptyLayout
+@attribute [AllowAnonymous]
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@* 2026-10-02: link PÚBLICO del celu para sacar fotos de productos con tela verde/azul. Como el link de los
+   repartidores: sin usuario ni clave y sin el menú del sistema. El celu SÓLO saca fotos ("a full y fue");
+   el servidor les saca el fondo al subirlas y todo lo demás (retocar, producto, publicación, descargar)
+   se hace en el sistema (Catálogo → 📷 Fotos fondo verde/azul).
+   Muestra cómo quedó cada una para que el que la saca sepa si salió bien o tiene que repetirla. *@
+
+<PageTitle>Fotos</PageTitle>
+
+<style>
+    body { background: #f3f4f6; }
+    .fl { max-width: 560px; margin: 0 auto; padding: 1rem 0.9rem 3rem; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #111827; }
+    .fl h1 { font-size: 1.25rem; margin: 0 0 0.2rem; }
+    .fl .sub { color: #6b7280; font-size: 0.88rem; margin-bottom: 1rem; }
+    .fl .quien { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 1rem; }
+    .fl .quien button { padding: 0.65rem 0.9rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 1rem; color: #111827; }
+    .fl .quien button.on { background: #111827; color: #fff; border-color: #111827; }
+    .fl .yo { display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; margin-bottom: 0.8rem; }
+    .fl .yo a { color: #6b7280; }
+    .fl .grandes { display: flex; flex-direction: column; gap: 0.6rem; }
+    .fl .grandes label { display: block; text-align: center; padding: 1.3rem; font-size: 1.2rem; border-radius: 12px; border: 1px solid #d1d5db; background: #fff; color: #111827; cursor: pointer; }
+    .fl .grandes label.prim { background: #111827; color: #fff; border-color: #111827; font-size: 1.35rem; }
+    .fl .grandes label.off { opacity: 0.5; }
+    .fl .tips { font-size: 0.82rem; color: #6b7280; margin: 0.7rem 0 1.2rem; line-height: 1.5; }
+    .fl h2 { font-size: 1rem; margin: 1.2rem 0 0.5rem; }
+    .fl .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .fl .ft { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
+    .fl .ft img, .fl .ft .ph { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; background: #fff; }
+    .fl .ft .ph { display: flex; align-items: center; justify-content: center; text-align: center; font-size: 0.72rem; color: #6b7280; background: #f3f4f6; padding: 0.3rem; box-sizing: border-box; }
+    .fl .ft .ph.mal { color: #b91c1c; background: #fef2f2; }
+    .fl .ft .l { font-size: 0.68rem; color: #6b7280; padding: 2px 5px; border-top: 1px solid #f3f4f6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fl .err { color: #b91c1c; font-size: 0.9rem; margin: 0.6rem 0; }
+    .fl .ok { color: #166534; font-size: 0.9rem; margin: 0.6rem 0; }
+</style>
+
+<div class="fl">
+    <h1>📷 Fotos de productos</h1>
+    <div class="sub">Sacale la foto al producto sobre la tela verde o azul. El sistema le pone fondo blanco solo.</div>
+
+    @if (linkMalo)
+    {
+        <div class="err">Este link ya no funciona. Pedí el nuevo en el sistema (botón 📷 Fotos).</div>
+    }
+    else if (quien is null)
+    {
+        <b>¿Quién sos?</b>
+        <div class="quien">
+            @foreach (var n in Nombres)
+            {
+                <button @onclick="() => ElegirQuien(n)">@n</button>
+            }
+        </div>
+        <div style="display:flex; gap:0.4rem;">
+            <input placeholder="Otro nombre" @bind="otroNombre" style="flex:1; padding:0.6rem; font-size:1rem; border:1px solid #d1d5db; border-radius:8px;" />
+            <button style="padding:0.6rem 1rem; border-radius:8px; border:1px solid #111827; background:#111827; color:#fff;" @onclick="() => ElegirQuien(otroNombre)">Listo</button>
+        </div>
+    }
+    else
+    {
+        <div class="yo"><span>Sacando fotos: <b>@quien</b></span><a href="javascript:void(0)" @onclick="CambiarQuien">no soy yo</a></div>
+
+        @* Los <InputFile> quedan SIEMPRE en pantalla mientras se suben (Blazor pierde el archivo si salen). *@
+        <div class="grandes">
+            <label class="prim @(subiendo > 0 ? "off" : "")">
+                📷 Sacar foto
+                <InputFile OnChange="OnFotos" accept="image/*" capture="environment" style="display:none" disabled="@(subiendo > 0)" />
+            </label>
+            <label class="@(subiendo > 0 ? "off" : "")">
+                🖼 Subir varias de la galería del celu
+                <InputFile OnChange="OnFotos" accept="image/*" multiple style="display:none" disabled="@(subiendo > 0)" />
+            </label>
+        </div>
+        <div class="tips">
+            · Que la tela llene <b>toda la foto</b>, con las 4 esquinas.<br />
+            · Que el producto no toque los bordes de la foto.<br />
+            · Buena luz y sin flash.
+        </div>
+
+        @if (!string.IsNullOrEmpty(mensaje))
+        {
+            <div class="@(mensajeMalo ? "err" : "ok")">@mensaje</div>
+        }
+
+        <h2>Sacadas hoy@(fotos is null ? "" : $" ({fotos.Count})")</h2>
+        <div class="grid">
+            @for (var i = 0; i < subiendo; i++)
+            {
+                <div class="ft"><div class="ph">subiendo…</div><div class="l">&nbsp;</div></div>
+            }
+            @foreach (var f in fotos ?? new())
+            {
+                <div class="ft">
+                    @if (f.Archivo is not null)
+                    {
+                        <img src="/api/public/producto-foto/img/@f.Archivo" alt="" loading="lazy" />
+                    }
+                    else
+                    {
+                        <div class="ph mal">⚠ No se reconoció la tela. Sacala de nuevo con la tela cubriendo las 4 esquinas.</div>
+                    }
+                    <div class="l">@f.Quien · @f.CreatedAt.AddHours(-3).ToString("HH:mm")</div>
+                </div>
+            }
+        </div>
+        @if (fotos is not null && fotos.Count == 0 && subiendo == 0)
+        {
+            <div class="tips">Todavía no se sacó ninguna hoy.</div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    // Los del depósito + Osmar (mismos nombres que el PIN de operador). "Otro nombre" para cualquiera.
+    private static readonly string[] Nombres = Web.Services.OperatorService.OperatorsDeposito.Append("OSMAR").ToArray();
+    private const string ClaveQuien = "fotos_link_quien";
+
+    private record FotoLinkDto(int Id, string? Archivo, string? Error, string? Quien, DateTime CreatedAt);
+
+    private string? quien;
+    private string otroNombre = "";
+    private List<FotoLinkDto>? fotos;
+    private int subiendo;
+    private bool linkMalo;
+    private string? mensaje;
+    private bool mensajeMalo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { quien = await JS.InvokeAsync<string?>("localStorage.getItem", ClaveQuien); }
+        catch { /* sin localStorage: lo pide cada vez */ }
+        if (!string.IsNullOrWhiteSpace(quien)) StateHasChanged(); else quien = null;
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            var resp = await Http.GetAsync($"/api/public/fotos/{Uri.EscapeDataString(Token)}");
+            if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) { linkMalo = true; return; }
+            fotos = await resp.Content.ReadFromJsonAsync<List<FotoLinkDto>>() ?? new();
+        }
+        catch { fotos ??= new(); }
+    }
+
+    private async Task ElegirQuien(string n)
+    {
+        n = (n ?? "").Trim().ToUpperInvariant();
+        if (n.Length == 0) return;
+        quien = n;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveQuien, n); } catch { }
+    }
+
+    private async Task CambiarQuien()
+    {
+        quien = null;
+        try { await JS.InvokeVoidAsync("localStorage.removeItem", ClaveQuien); } catch { }
+    }
+
+    private async Task OnFotos(InputFileChangeEventArgs e)
+    {
+        if (subiendo > 0 || quien is null) return;
+        const long max = 25L * 1024 * 1024;
+        // GetMultipleFiles(N) tira error si vienen más de N: se piden todas y se toman 40.
+        var archivos = e.GetMultipleFiles(Math.Max(1, e.FileCount)).Take(40).ToList();
+        subiendo = archivos.Count;
+        mensaje = null;
+        StateHasChanged();
+        int ok = 0, mal = 0, sinTela = 0;
+        foreach (var file in archivos)
+        {
+            try
+            {
+                if (file.Size > max) { mal++; continue; }
+                byte[] bytes;
+                await using (var s = file.OpenReadStream(maxAllowedSize: max))
+                using (var ms = new MemoryStream())
+                {
+                    await s.CopyToAsync(ms);
+                    bytes = ms.ToArray();
+                }
+                using var content = new MultipartFormDataContent();
+                var bc = new ByteArrayContent(bytes);
+                bc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(file.ContentType) ? "image/jpeg" : file.ContentType);
+                content.Add(bc, "file", string.IsNullOrEmpty(file.Name) ? "foto.jpg" : file.Name);
+                content.Add(new StringContent(quien), "quien");
+                var resp = await Http.PostAsync($"/api/public/fotos/{Uri.EscapeDataString(Token)}/subir", content);
+                if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) { linkMalo = true; return; }
+                if (!resp.IsSuccessStatusCode) { mal++; continue; }
+                var f = await resp.Content.ReadFromJsonAsync<FotoLinkDto>();
+                if (f is null) { mal++; continue; }
+                ok++;
+                if (f.Archivo is null) sinTela++;
+                (fotos ??= new()).Insert(0, f);
+            }
+            catch { mal++; }
+            finally { subiendo = Math.Max(0, subiendo - 1); StateHasChanged(); }
+        }
+        subiendo = 0;
+        if (mal > 0) { mensaje = $"{mal} no se pudo subir. Probá de nuevo."; mensajeMalo = true; }
+        else if (sinTela > 0) { mensaje = sinTela == 1 ? "Una no salió: sacala de nuevo (mirá la que dice ⚠)." : $"{sinTela} no salieron: sacalas de nuevo (las que dicen ⚠)."; mensajeMalo = true; }
+        else if (ok > 0) { mensaje = ok == 1 ? "✓ Listo, subida." : $"✓ Listo, {ok} subidas."; mensajeMalo = false; }
+    }
+}
