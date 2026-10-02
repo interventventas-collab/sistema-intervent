@@ -343,31 +343,7 @@ public class CafeProductoFotoController : ControllerBase
             x.g.ProductoId, x.Sku, x.Nombre, ListaPublis(x.g.Publicaciones))).ToList();
     }
 
-    private static string? Corto(string? s, int max) => s is null ? null : s.Length <= max ? s : s[..max];
-
-    /// <summary>Procesa la original de la fila con sus opciones y reemplaza la foto procesada.</summary>
-    private async Task ProcesarGaleriaAsync(CafeFotoGaleria g)
-    {
-        var bytes = await System.IO.File.ReadAllBytesAsync(Path.Combine(FotosDir, g.OriginalArchivo));
-        var r = FotoChromaService.Procesar(bytes, Opciones(g.Color, g.Tolerancia, g.Suavizado));
-        var viejo = g.Archivo;
-        if (r.Jpeg is not null)
-        {
-            var nuevo = $"gal-{Guid.NewGuid():N}.jpg";
-            await System.IO.File.WriteAllBytesAsync(Path.Combine(FotosDir, nuevo), r.Jpeg);
-            g.Archivo = nuevo;
-        }
-        else g.Archivo = null;
-        g.ColorUsado = r.ColorUsado;
-        g.Aviso = Corto(r.Aviso, 600);
-        g.Error = Corto(r.Error, 300);
-        g.UpdatedAt = DateTime.UtcNow;
-        if (!string.IsNullOrEmpty(viejo) && viejo != g.Archivo)
-        {
-            try { var f = Path.Combine(FotosDir, viejo); if (System.IO.File.Exists(f)) System.IO.File.Delete(f); }
-            catch { /* best-effort */ }
-        }
-    }
+    private static Task ProcesarGaleriaAsync(CafeFotoGaleria g) => FotoGaleriaService.ProcesarAsync(g);
 
     /// <summary>Todas las fotos de la galería, las más nuevas primero.</summary>
     [HttpGet("galeria")]
@@ -378,30 +354,22 @@ public class CafeProductoFotoController : ControllerBase
     [RequestSizeLimit(25 * 1024 * 1024)]
     public async Task<IActionResult> GaleriaSubir(IFormFile file, [FromForm] string? color, [FromForm] int? tolerancia, [FromForm] int? suavizado)
     {
-        if (file is null || file.Length == 0) return BadRequest(new { mensaje = "No se recibió ninguna foto." });
-        if (file.Length > 25 * 1024 * 1024) return BadRequest(new { mensaje = "La foto es muy grande (máx 25 MB)." });
-        if (!file.ContentType.StartsWith("image/")) return BadRequest(new { mensaje = "El archivo tiene que ser una imagen." });
-
-        Directory.CreateDirectory(FotosDir);
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (string.IsNullOrEmpty(ext) || ext.Length > 6 || ext.Any(c => !char.IsLetterOrDigit(c) && c != '.')) ext = ".jpg";
-        var original = $"gal-orig-{Guid.NewGuid():N}{ext}";
-        await using (var fs = System.IO.File.Create(Path.Combine(FotosDir, original)))
-            await file.CopyToAsync(fs);
-
-        var op = Opciones(color, tolerancia, suavizado);
-        var g = new CafeFotoGaleria
-        {
-            OriginalArchivo = original,
-            Color = op.Color ?? "auto", Tolerancia = op.Tolerancia, Suavizado = op.Suavizado,
-            Usuario = HttpContext.User?.Identity?.Name,
-            CreatedAt = DateTime.UtcNow,
-        };
-        await ProcesarGaleriaAsync(g);
-        _db.CafeFotoGaleria.Add(g);
-        await _db.SaveChangesAsync();
+        var (g, error) = await FotoGaleriaService.SubirAsync(_db, file, Opciones(color, tolerancia, suavizado), HttpContext.User?.Identity?.Name);
+        if (g is null) return BadRequest(new { mensaje = error });
         return Ok((await GaleriaDtosAsync(_db.CafeFotoGaleria.Where(x => x.Id == g.Id))).First());
     }
+
+    public record FotosLinkResp(string Token);
+
+    /// <summary>2026-10-02: link PÚBLICO del celu para sacar fotos (sin usuario ni clave). Lo muestra el
+    /// botón 📷 Fotos como QR. Si todavía no existe, se crea.</summary>
+    [HttpGet("galeria/link")]
+    public async Task<IActionResult> GaleriaLink() => Ok(new FotosLinkResp((await FotoGaleriaService.LinkTokenAsync(_db, crear: true))!));
+
+    /// <summary>Cambia el link del celu (el viejo deja de andar). Sólo admin: es la "llave" del link.</summary>
+    [HttpPost("galeria/link/cambiar")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> GaleriaLinkCambiar() => Ok(new FotosLinkResp(await FotoGaleriaService.CambiarLinkAsync(_db)));
 
     /// <summary>Retoque: cómo quedaría con otras opciones. NO guarda.</summary>
     [HttpPost("galeria/{id:int}/vista-previa")]

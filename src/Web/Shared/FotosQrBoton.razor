@@ -1,23 +1,44 @@
 @inject NavigationManager Navigation
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject ToastService ToastService
 
-@* 2026-10-02: botón "📷 Fotos" del Dashboard y de Preparación (ahí arrancan los de depósito). En la compu
-   abre el QR para seguir en el celu la pantalla de fotos con fondo verde/azul (/cafe/fotos-chroma);
-   en el celu el QR no sirve y queda sólo "Abrir acá". *@
+@* 2026-10-02: botón "📷 Fotos" del Dashboard, de Preparación (ahí arrancan los de depósito) y de la pantalla
+   de fotos. Muestra el QR del LINK PÚBLICO del celu (/fotos/{token}): se abre sin usuario ni clave y sólo
+   sirve para SACAR fotos. Antes era el QR de la pantalla del sistema, que pedía entrar y en el celu se
+   salía solo ("es una cagada el qr, me pide loguear todo el tiempo"). En el celu el QR no sirve: queda el
+   botón para abrir el link directo. *@
 
 <span class="fqr-wrap">
-    <button class="@Clase" @onclick="() => abierto = !abierto">📷 Fotos</button>
+    <button class="@Clase" @onclick="Alternar">@Texto</button>
     @if (abierto)
     {
         <div class="fqr-back" @onclick="() => abierto = false"></div>
         <div class="fqr-box" style="@(AbrirHaciaDerecha ? "left:0; right:auto;" : "")">
-            <div class="fqr-tit">📷 Fotos de productos con fondo verde o azul</div>
-            <img class="fqr-qr" src="@($"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(Url)}")" alt="QR" />
-            <div class="fqr-txt fqr-qr">Escanealo con la cámara del celu. La primera vez te pide entrar con tu usuario.</div>
-            <div class="fqr-txt fqr-qr">O escribí en el celu: <b>@Url.Replace("https://", "")</b></div>
-            <div class="fqr-acc">
-                <button class="fqr-ir" @onclick="Abrir">Abrir acá</button>
-                <button class="fqr-cerrar" @onclick="() => abierto = false">Cerrar</button>
-            </div>
+            <div class="fqr-tit">📷 Sacar fotos con el celu</div>
+            @if (link is null)
+            {
+                <div class="fqr-txt">@(error ?? "Cargando…")</div>
+            }
+            else
+            {
+                <img class="fqr-qr" src="@($"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(link)}")" alt="QR" />
+                <div class="fqr-txt fqr-qr">Escanealo con la cámara del celu. Se abre directo, <b>sin usuario ni clave</b>. Guardalo como acceso directo y queda como una app.</div>
+                <div class="fqr-acc">
+                    <button class="fqr-ir" @onclick="AbrirLink">Abrir para sacar fotos</button>
+                    <button @onclick="Copiar">Copiar link</button>
+                </div>
+                @if (MostrarIrGaleria)
+                {
+                    <div class="fqr-acc">
+                        <button @onclick="IrGaleria">Ver la galería (sistema)</button>
+                    </div>
+                }
+                <div class="fqr-txt" style="margin-top:0.6rem;">
+                    <a href="javascript:void(0)" @onclick="CambiarLink" title="Si el link lo tiene alguien que no debería: el viejo deja de andar">Cambiar link</a>
+                    · <a href="javascript:void(0)" @onclick="() => abierto = false">Cerrar</a>
+                </div>
+            }
         </div>
     }
 </span>
@@ -27,25 +48,60 @@
     .fqr-btn { background: #111827; color: #fff; border: none; border-radius: 8px; padding: 0.5rem 1rem;
         font-size: 0.95rem; font-weight: 600; cursor: pointer; }
     .fqr-back { position: fixed; inset: 0; z-index: 900; }
-    .fqr-box { position: absolute; right: 0; top: calc(100% + 6px); z-index: 901; width: 280px; background: #fff;
+    .fqr-box { position: absolute; right: 0; top: calc(100% + 6px); z-index: 901; width: 290px; background: #fff;
         border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,0.15); padding: 0.9rem; text-align: center; }
-    .fqr-tit { font-weight: 700; font-size: 0.92rem; margin-bottom: 0.5rem; color: #111827; }
+    .fqr-tit { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.5rem; color: #111827; }
     .fqr-box img { width: 200px; height: 200px; display: block; margin: 0 auto 0.5rem; }
     .fqr-txt { font-size: 0.8rem; color: #6b7280; margin-top: 0.25rem; }
-    .fqr-acc { display: flex; gap: 0.5rem; margin-top: 0.7rem; }
-    .fqr-acc button { flex: 1; padding: 0.5rem; border-radius: 8px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; font-size: 0.9rem; }
+    .fqr-txt a { color: #6b7280; }
+    .fqr-acc { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+    .fqr-acc button { flex: 1; padding: 0.5rem; border-radius: 8px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; font-size: 0.88rem; color: #111827; }
     .fqr-acc .fqr-ir { background: #111827; color: #fff; border-color: #111827; }
-    /* En el celu el QR no sirve (ya estás en el celu): queda sólo "Abrir acá". */
-    @@media (max-width: 700px) { .fqr-box .fqr-qr { display: none; } .fqr-box { left: auto; right: 0; width: 220px; } }
+    /* En el celu el QR no sirve (ya estás en el celu): queda "Abrir para sacar fotos". */
+    @@media (max-width: 700px) { .fqr-box .fqr-qr { display: none; } .fqr-box { left: auto; right: 0; width: 240px; } }
 </style>
 
 @code {
     /// <summary>Clase del botón: por defecto oscuro; en Preparación va como los botones de al lado.</summary>
     [Parameter] public string Clase { get; set; } = "fqr-btn";
+    [Parameter] public string Texto { get; set; } = "📷 Fotos";
     /// <summary>Para qué lado se abre el cartel del QR ("derecha" = alineado a la izquierda del botón).</summary>
     [Parameter] public bool AbrirHaciaDerecha { get; set; }
+    /// <summary>En la propia pantalla de la galería no hace falta el botón para ir a la galería.</summary>
+    [Parameter] public bool MostrarIrGaleria { get; set; } = true;
 
     private bool abierto;
-    private string Url => Navigation.BaseUri.TrimEnd('/') + "/cafe/fotos-chroma";
-    private void Abrir() { abierto = false; Navigation.NavigateTo("/cafe/fotos-chroma"); }
+    private string? link, error;
+
+    private string Armar(string token) => Navigation.BaseUri.TrimEnd('/') + "/fotos/" + token;
+
+    private async Task Alternar()
+    {
+        abierto = !abierto;
+        if (!abierto || link is not null) return;
+        error = null;
+        var r = await Api.GetFotosLinkAsync();
+        if (r is null || string.IsNullOrEmpty(r.Token)) error = "No se pudo traer el link. Probá de nuevo.";
+        else link = Armar(r.Token);
+    }
+
+    private void AbrirLink() { abierto = false; Navigation.NavigateTo(link!); }
+
+    private void IrGaleria() { abierto = false; Navigation.NavigateTo("/cafe/fotos-chroma"); }
+
+    private async Task Copiar()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", link); ToastService.Success("Link copiado. Mandátelo por WhatsApp y abrilo en el celu."); }
+        catch { ToastService.Error("No se pudo copiar el link."); }
+    }
+
+    private async Task CambiarLink()
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "¿Cambiar el link del celu? El link viejo deja de funcionar y hay que volver a escanear el QR en cada celu.");
+        if (!ok) return;
+        var (r, err) = await Api.CambiarFotosLinkAsync();
+        if (r is null) { ToastService.Error(err ?? "No se pudo cambiar el link."); return; }
+        link = Armar(r.Token);
+        ToastService.Success("Link cambiado. El viejo ya no funciona.");
+    }
 }
