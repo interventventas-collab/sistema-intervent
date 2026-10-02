@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 @* 2026-10-01: fotos con tela VERDE o AZUL → fondo blanco 1200x1200 para MercadoLibre. Pensada para el CELU.
    Dos formas de trabajar:
@@ -61,6 +62,11 @@
     .fc .barra .a button { padding: 0.65rem 0.4rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 0.9rem; text-align: left; color: #111827; }
     .fc .barra .a button:disabled { opacity: 0.4; }
     .fc .barra .a .borrar { color: #b91c1c; }
+    .fc .fc-qr-btn { flex: none; white-space: nowrap; }
+    .fc .fc-qr { display: flex; gap: 1rem; align-items: center; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.8rem; margin-bottom: 0.8rem; background: #fff; }
+    .fc .fc-qr img { width: 180px; height: 180px; flex: none; }
+    /* En el celu el QR no sirve (ya estás en el celu). */
+    @@media (max-width: 700px) { .fc .fc-qr-btn, .fc .fc-qr { display: none; } }
     /* En pantallas angostas el botón flotante del menú (☰) queda abajo a la izquierda: que no tape la barra. */
     @@media (max-width: 900px) { .fc .barra { padding-bottom: 5.4rem; } }
     .fc .panel { border-top: 1px solid #e5e7eb; margin-top: 0.8rem; padding-top: 0.7rem; }
@@ -73,7 +79,23 @@
 </style>
 
 <div class="fc">
-    <h2>📷 Fotos con fondo verde o azul</h2>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">
+        <h2>📷 Fotos con fondo verde o azul</h2>
+        @* 2026-10-02: QR para abrir ESTA pantalla en el celu (el de la barra de arriba lleva a WhatsApp). *@
+        <button class="btn fc-qr-btn" @onclick="() => verQr = !verQr">📱 Abrir en el celu</button>
+    </div>
+    @if (verQr)
+    {
+        <div class="fc-qr">
+            <img src="@($"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(UrlCelu)}")" alt="QR" />
+            <div>
+                <b>Escanealo con la cámara del celu</b>
+                <div class="gris" style="margin-top:0.3rem;">Abre esta misma pantalla. La primera vez te pide entrar con tu usuario.</div>
+                <div class="gris" style="margin-top:0.3rem;">O escribí en el celu: <b>@UrlCelu.Replace("https://", "")</b></div>
+                <button class="btn" style="margin-top:0.6rem;" @onclick="() => verQr = false">Cerrar</button>
+            </div>
+        </div>
+    }
     <div class="sub">Sacale la foto al producto sobre la tela verde o azul. El sistema le pone fondo blanco y la deja lista para MercadoLibre (cuadrada, 1200 × 1200).</div>
 
     <div class="seg">
@@ -389,6 +411,8 @@
 
 @code {
     private string tab = "galeria";
+    private bool verQr;
+    private string UrlCelu => Navigation.BaseUri.TrimEnd('/') + "/cafe/fotos-chroma";
 
     // ── compartido ──
     private List<CafeProductoDto>? productos;
