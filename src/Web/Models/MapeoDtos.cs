@@ -25,6 +25,10 @@ public class ScanFlexResult
     public string? Nombre { get; set; }
     public string? Localidad { get; set; }
     public int StopId { get; set; }
+    // 2026-10-02: para qué día es el envío MeLi según MercadoLibre (ver AvisoFechaEnvio en la API).
+    public string? ParaFecha { get; set; }
+    public string? AvisoTipo { get; set; }   // dia | futuro | atrasado | sin_fecha | null
+    public string? Aviso { get; set; }
 }
 
 // Resultado de "traer por número" (venta / alquiler / envío MeLi). StopId puede venir vacío
@@ -39,6 +43,10 @@ public class TraerPorNumeroResult
     public string? Localidad { get; set; }
     public int? StopId { get; set; }
     public string? Tipo { get; set; }   // "venta" | "alquiler" | (null = envío MeLi)
+    // 2026-10-02: para qué día es el envío MeLi según MercadoLibre (ver AvisoFechaEnvio en la API).
+    public string? ParaFecha { get; set; }
+    public string? AvisoTipo { get; set; }   // dia | futuro | atrasado | sin_fecha | null
+    public string? Aviso { get; set; }
 }
 
 public class MapeoDriverDto
