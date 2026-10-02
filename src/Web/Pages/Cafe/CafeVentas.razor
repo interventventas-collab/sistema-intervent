@@ -3387,8 +3387,13 @@
                                 ⚠️ Este comprobante ya se le mandó al cliente por @editingVentaYaEnviada. Si lo corregís, acordate de reenviárselo con el botón 📤 del listado.
                             </div>
                         }
-                        @* EDIT: solo el chip Drive — 2026-07-14: oculto para presupuestos (no van a preparación). *@
-                        @if (formTipoComprobante != "PRO")
+                        @* EDIT: solo el chip Drive — 2026-07-14: oculto para presupuestos (no van a preparación).
+                           2026-10-02: si ya está en la carpeta de armado no hay casilla: al guardar se pregunta. *@
+                        @if (formTipoComprobante != "PRO" && editingVentaTieneDrive)
+                        {
+                            <div style="font-size:0.75rem; color:#6b7280;">📁 Ya está en la carpeta de armado: al guardar te pregunto si lo volvés a subir.</div>
+                        }
+                        else if (formTipoComprobante != "PRO")
                         {
                             <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
                                 <span style="font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">Al guardar:</span>
@@ -3400,6 +3405,24 @@
                                 </label>
                             </div>
                         }
+                    }
+
+                    @if (preguntarResubir)
+                    {
+                        <div style="position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:3000; display:flex; align-items:center; justify-content:center; padding:1rem;">
+                            <div style="background:#fff; border-radius:12px; max-width:440px; width:100%; padding:1.2rem 1.3rem; box-shadow:0 20px 50px rgba(0,0,0,0.25);">
+                                <div style="font-size:1.05rem; font-weight:700; color:#111827; margin-bottom:0.4rem;">¿Lo volvés a subir a la carpeta de armado?</div>
+                                <div style="font-size:0.88rem; color:#4b5563; margin-bottom:1rem;">
+                                    Este pedido ya está en <b>IMPRIMIR PEDIDOS</b>. Si lo volvés a subir, a los chicos de depósito les aparece de nuevo con <b>⚠ PEDIDO MODIFICADO</b>.
+                                    Subilo solo si cambia lo que tienen que armar.
+                                </div>
+                                <div style="display:flex; flex-direction:column; gap:0.5rem;">
+                                    <button class="btn" style="background:#111827; color:#fff; border-color:#111827; padding:0.6rem;" disabled="@saving" @onclick="() => ResponderResubir(false)">No, solo guardar los cambios</button>
+                                    <button class="btn btn-secondary" style="padding:0.6rem;" disabled="@saving" @onclick="() => ResponderResubir(true)">Sí, volver a subir (⚠ PEDIDO MODIFICADO)</button>
+                                    <button class="btn" style="background:none; border:none; color:#6b7280; font-size:0.85rem;" disabled="@saving" @onclick="() => preguntarResubir = false">Cancelar, sigo editando</button>
+                                </div>
+                            </div>
+                        </div>
                     }
 
                     @if (!editingVentaId.HasValue && lastBorradorSavedAt.HasValue)
@@ -5943,6 +5966,17 @@
     // 2026-06-03: checkbox para re-subir desde modo EDIT. Default depende de si ya estaba subida.
     private bool envioDriveEdit;
     private bool editingVentaTieneDrive;  // true si la venta editada ya tenia DriveSubidoAt
+    // 2026-10-02: pregunta "¿Lo volvés a subir?" al guardar un pedido que ya está en la carpeta de armado.
+    private bool preguntarResubir;
+    private bool? resubirDecision;   // null = todavía no contestó (se vuelve a null al terminar de guardar)
+
+    private async Task ResponderResubir(bool si)
+    {
+        preguntarResubir = false;
+        resubirDecision = si;
+        try { await Save(); }
+        finally { resubirDecision = null; }
+    }
     // 2026-06-18: para detectar "modo emitir CAE en edicion" — cuando una X se cambio a FA/FB/FC,
     // o cuando una FA/FB/FC quedo sin CAE (estado inconsistente). En esos casos, el boton verde
     // "Guardar cambios" se transforma en violeta "Emitir Factura X con CAE" y dispara conversion ARCA.
@@ -10131,6 +10165,15 @@
         formError = null;
         if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
         if (cotizacion?.TodoOk != true) { formError = "Hay items con stock insuficiente o inválidos"; return; }
+        // 2026-10-02: el pedido YA está en la carpeta de armado → se pregunta SIEMPRE si se vuelve a subir.
+        // Antes la casilla "Re-subir" venía tildada de entrada y cualquier corrección (un teléfono, una
+        // dirección) se lo volvía a mandar a los chicos de depósito con "⚠ PEDIDO MODIFICADO".
+        if (editingVentaId.HasValue && editingVentaTieneDrive && formTipoComprobante != "PRO" && resubirDecision is null)
+        {
+            preguntarResubir = true;
+            return;
+        }
+        if (resubirDecision is bool decision) envioDriveEdit = decision;
         saving = true;
         try
         {
@@ -10899,6 +10942,8 @@
         // 2026-06-03: el checkbox de re-subir desde EDIT arranca tildado si ya estaba en Drive,
         // o si el operador es OSMAR. Si la venta nunca se subio + el operador no es OSMAR, queda OFF.
         editingVentaTieneDrive = v.DriveSubidoAt.HasValue;
+        preguntarResubir = false;
+        resubirDecision = null;
         envioDriveEdit = editingVentaTieneDrive || string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
         // 2026-06-18: capturar tipo+CAE originales para detectar el modo "Emitir CAE desde edicion".
         editingVentaTipoOriginal = string.IsNullOrWhiteSpace(v.TipoComprobante) ? "X" : v.TipoComprobante;
