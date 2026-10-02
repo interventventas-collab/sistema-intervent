@@ -2755,6 +2755,29 @@ IF COL_LENGTH('Cafe_ProductoFoto', 'FotoOriginalArchivo') IS NULL
     ALTER TABLE Cafe_ProductoFoto ADD FotoOriginalArchivo NVARCHAR(200) NULL;
 GO
 
+-- 2026-10-01: GALERIA de fotos con tela verde/azul. Se sacan muchas seguidas desde el celu sin elegir
+-- producto y despues se asignan a un producto, a una publicacion de MeLi, se descargan o se borran.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_FotoGaleria' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_FotoGaleria (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Archivo NVARCHAR(200) NULL,
+        OriginalArchivo NVARCHAR(200) NOT NULL,
+        Color NVARCHAR(10) NOT NULL DEFAULT 'auto',
+        Tolerancia INT NOT NULL DEFAULT 50,
+        Suavizado INT NOT NULL DEFAULT 40,
+        ColorUsado NVARCHAR(10) NULL,
+        Aviso NVARCHAR(600) NULL,
+        Error NVARCHAR(300) NULL,
+        Usuario NVARCHAR(100) NULL,
+        ProductoId INT NULL,
+        Publicaciones NVARCHAR(400) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UpdatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+    );
+END
+GO
+
 -- 2026-08-05 (Paso 3): token de un solo uso para subir la foto por QR desde el celu (sin login).
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ProductoFotoToken' AND xtype='U')
 BEGIN

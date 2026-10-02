@@ -312,6 +312,256 @@ public class CafeProductoFotoController : ControllerBase
         return Ok(Procesar(tempId, bytes, Opciones(null, null, null), conAntes: true));
     }
 
+    // ───────────── 2026-10-01: GALERÍA de fotos chroma ─────────────
+    // Se sacan muchas seguidas sin elegir producto; cada una queda procesada. Después: a un producto,
+    // a una publicación de MeLi (eso lo hace la pantalla con el mismo PUT de fotos de Publicaciones y
+    // acá sólo se anota), descargar o borrar. Archivos "gal-..." en FotosDir (los sirve el /img público).
+
+    public record GaleriaDto(int Id, string? Archivo, string? ColorUsado, string? Aviso, string? Error,
+        string Color, int Tolerancia, int Suavizado, string? Usuario, DateTime CreatedAt,
+        int? ProductoId, string? ProductoSku, string? ProductoNombre, List<string> Publicaciones);
+    public record GaleriaOpcionesReq(string? Color, int? Tolerancia, int? Suavizado);
+    public record GaleriaVistaPreviaResp(string? Antes, string? Despues, string? ColorUsado, string? Aviso, string? Error);
+    public record GaleriaAProductoReq(int ProductoId);
+    public record GaleriaMarcarPublicacionReq(List<int> Ids, string Mla);
+    public record PublicacionBuscadaDto(string MeliItemId, string Titulo, string? Sku, string Estado,
+        string? Thumbnail, string? Cuenta, bool DeCatalogo);
+
+    private static List<string> ListaPublis(string? s) =>
+        (s ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    private async Task<List<GaleriaDto>> GaleriaDtosAsync(IQueryable<CafeFotoGaleria> q)
+    {
+        var filas = await (from g in q
+                           join p in _db.CafeProductos on g.ProductoId equals p.Id into pj
+                           from p in pj.DefaultIfEmpty()
+                           orderby g.CreatedAt descending
+                           select new { g, Sku = p == null ? null : p.Sku, Nombre = p == null ? null : p.Nombre })
+                          .Take(400).ToListAsync();
+        return filas.Select(x => new GaleriaDto(x.g.Id, x.g.Archivo, x.g.ColorUsado, x.g.Aviso, x.g.Error,
+            x.g.Color, x.g.Tolerancia, x.g.Suavizado, x.g.Usuario, x.g.CreatedAt,
+            x.g.ProductoId, x.Sku, x.Nombre, ListaPublis(x.g.Publicaciones))).ToList();
+    }
+
+    private static string? Corto(string? s, int max) => s is null ? null : s.Length <= max ? s : s[..max];
+
+    /// <summary>Procesa la original de la fila con sus opciones y reemplaza la foto procesada.</summary>
+    private async Task ProcesarGaleriaAsync(CafeFotoGaleria g)
+    {
+        var bytes = await System.IO.File.ReadAllBytesAsync(Path.Combine(FotosDir, g.OriginalArchivo));
+        var r = FotoChromaService.Procesar(bytes, Opciones(g.Color, g.Tolerancia, g.Suavizado));
+        var viejo = g.Archivo;
+        if (r.Jpeg is not null)
+        {
+            var nuevo = $"gal-{Guid.NewGuid():N}.jpg";
+            await System.IO.File.WriteAllBytesAsync(Path.Combine(FotosDir, nuevo), r.Jpeg);
+            g.Archivo = nuevo;
+        }
+        else g.Archivo = null;
+        g.ColorUsado = r.ColorUsado;
+        g.Aviso = Corto(r.Aviso, 600);
+        g.Error = Corto(r.Error, 300);
+        g.UpdatedAt = DateTime.UtcNow;
+        if (!string.IsNullOrEmpty(viejo) && viejo != g.Archivo)
+        {
+            try { var f = Path.Combine(FotosDir, viejo); if (System.IO.File.Exists(f)) System.IO.File.Delete(f); }
+            catch { /* best-effort */ }
+        }
+    }
+
+    /// <summary>Todas las fotos de la galería, las más nuevas primero.</summary>
+    [HttpGet("galeria")]
+    public async Task<IActionResult> GaleriaListar() => Ok(await GaleriaDtosAsync(_db.CafeFotoGaleria));
+
+    /// <summary>Sube UNA foto a la galería y la procesa. El celu manda varias de a una.</summary>
+    [HttpPost("galeria/subir")]
+    [RequestSizeLimit(25 * 1024 * 1024)]
+    public async Task<IActionResult> GaleriaSubir(IFormFile file, [FromForm] string? color, [FromForm] int? tolerancia, [FromForm] int? suavizado)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { mensaje = "No se recibió ninguna foto." });
+        if (file.Length > 25 * 1024 * 1024) return BadRequest(new { mensaje = "La foto es muy grande (máx 25 MB)." });
+        if (!file.ContentType.StartsWith("image/")) return BadRequest(new { mensaje = "El archivo tiene que ser una imagen." });
+
+        Directory.CreateDirectory(FotosDir);
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (string.IsNullOrEmpty(ext) || ext.Length > 6 || ext.Any(c => !char.IsLetterOrDigit(c) && c != '.')) ext = ".jpg";
+        var original = $"gal-orig-{Guid.NewGuid():N}{ext}";
+        await using (var fs = System.IO.File.Create(Path.Combine(FotosDir, original)))
+            await file.CopyToAsync(fs);
+
+        var op = Opciones(color, tolerancia, suavizado);
+        var g = new CafeFotoGaleria
+        {
+            OriginalArchivo = original,
+            Color = op.Color ?? "auto", Tolerancia = op.Tolerancia, Suavizado = op.Suavizado,
+            Usuario = HttpContext.User?.Identity?.Name,
+            CreatedAt = DateTime.UtcNow,
+        };
+        await ProcesarGaleriaAsync(g);
+        _db.CafeFotoGaleria.Add(g);
+        await _db.SaveChangesAsync();
+        return Ok((await GaleriaDtosAsync(_db.CafeFotoGaleria.Where(x => x.Id == g.Id))).First());
+    }
+
+    /// <summary>Retoque: cómo quedaría con otras opciones. NO guarda.</summary>
+    [HttpPost("galeria/{id:int}/vista-previa")]
+    public async Task<IActionResult> GaleriaVistaPrevia(int id, [FromBody] GaleriaOpcionesReq req, [FromQuery] bool conAntes = false)
+    {
+        var g = await _db.CafeFotoGaleria.FindAsync(id);
+        if (g is null) return NotFound(new { mensaje = "Esa foto ya no está en la galería." });
+        var bytes = await System.IO.File.ReadAllBytesAsync(Path.Combine(FotosDir, g.OriginalArchivo));
+        var r = Procesar("", bytes, Opciones(req?.Color, req?.Tolerancia, req?.Suavizado), conAntes);
+        return Ok(new GaleriaVistaPreviaResp(r.Antes, r.Despues, r.ColorUsado, r.Aviso, r.Error));
+    }
+
+    /// <summary>Retoque: guarda la foto procesada con las opciones nuevas.</summary>
+    [HttpPost("galeria/{id:int}/retocar")]
+    public async Task<IActionResult> GaleriaRetocar(int id, [FromBody] GaleriaOpcionesReq req)
+    {
+        var g = await _db.CafeFotoGaleria.FindAsync(id);
+        if (g is null) return NotFound(new { mensaje = "Esa foto ya no está en la galería." });
+        var op = Opciones(req?.Color, req?.Tolerancia, req?.Suavizado);
+        g.Color = op.Color ?? "auto"; g.Tolerancia = op.Tolerancia; g.Suavizado = op.Suavizado;
+        await ProcesarGaleriaAsync(g);
+        await _db.SaveChangesAsync();
+        if (g.Archivo is null) return BadRequest(new { mensaje = g.Error ?? "No se pudo procesar la foto." });
+        return Ok((await GaleriaDtosAsync(_db.CafeFotoGaleria.Where(x => x.Id == g.Id))).First());
+    }
+
+    /// <summary>La pone como FOTO PROPIA del producto (reemplaza la que tuviera). La galería la conserva.</summary>
+    [HttpPost("galeria/{id:int}/a-producto")]
+    public async Task<IActionResult> GaleriaAProducto(int id, [FromBody] GaleriaAProductoReq req)
+    {
+        var g = await _db.CafeFotoGaleria.FindAsync(id);
+        if (g is null) return NotFound(new { mensaje = "Esa foto ya no está en la galería." });
+        if (string.IsNullOrEmpty(g.Archivo)) return BadRequest(new { mensaje = "Esta foto no se pudo procesar: retocala primero." });
+        if (!await _db.CafeProductos.AnyAsync(p => p.Id == req.ProductoId)) return NotFound(new { mensaje = "Producto no encontrado." });
+
+        // Copias propias: si después se borra de la galería, el producto no pierde la foto.
+        var bytes = await System.IO.File.ReadAllBytesAsync(Path.Combine(FotosDir, g.Archivo));
+        var original = $"prod-{req.ProductoId}-orig-{Guid.NewGuid():N}{Path.GetExtension(g.OriginalArchivo)}";
+        System.IO.File.Copy(Path.Combine(FotosDir, g.OriginalArchivo), Path.Combine(FotosDir, original));
+        var usuario = HttpContext.User?.Identity?.Name;
+        var archivo = await GuardarFotoPropiaAsync(req.ProductoId, bytes, ".jpg", usuario, original);
+
+        g.ProductoId = req.ProductoId;
+        g.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new ProductoFotoDto(req.ProductoId, "APROBADA", usuario, null, archivo, DateTime.UtcNow, true));
+    }
+
+    /// <summary>Anota que esas fotos se subieron a esa publicación (la subida la hace la pantalla).</summary>
+    [HttpPost("galeria/marcar-publicacion")]
+    public async Task<IActionResult> GaleriaMarcarPublicacion([FromBody] GaleriaMarcarPublicacionReq req)
+    {
+        var mla = (req?.Mla ?? "").Trim().ToUpperInvariant();
+        if (mla.Length is < 5 or > 30) return BadRequest(new { mensaje = "Publicación inválida." });
+        var ids = req!.Ids ?? new();
+        var filas = await _db.CafeFotoGaleria.Where(g => ids.Contains(g.Id)).ToListAsync();
+        foreach (var g in filas)
+        {
+            var l = ListaPublis(g.Publicaciones);
+            if (!l.Contains(mla)) l.Add(mla);
+            // Si no entra, se quedan las últimas.
+            while (l.Count > 1 && string.Join(",", l).Length > 400) l.RemoveAt(0);
+            g.Publicaciones = string.Join(",", l);
+            g.UpdatedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Descarga: una sola → el JPG; varias → un ZIP. ids separados por coma.</summary>
+    [HttpGet("galeria/descargar")]
+    public async Task<IActionResult> GaleriaDescargar([FromQuery] string? ids)
+    {
+        var lista = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => int.TryParse(x, out var n) ? n : 0).Where(n => n > 0).Distinct().Take(200).ToList();
+        var filas = await (from g in _db.CafeFotoGaleria
+                           where lista.Contains(g.Id) && g.Archivo != null
+                           join p in _db.CafeProductos on g.ProductoId equals p.Id into pj
+                           from p in pj.DefaultIfEmpty()
+                           select new { g.Id, g.Archivo, Sku = p == null ? null : p.Sku })
+                          .ToListAsync();
+        if (filas.Count == 0) return NotFound(new { mensaje = "No hay fotos para descargar." });
+
+        string Nombre(int id, string? sku)
+        {
+            var baseNom = string.IsNullOrWhiteSpace(sku) ? $"foto-{id}" : $"{sku}-{id}";
+            return new string(baseNom.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_').ToArray()) + ".jpg";
+        }
+
+        if (filas.Count == 1)
+        {
+            var f = filas[0];
+            return PhysicalFile(Path.Combine(FotosDir, f.Archivo!), "image/jpeg", Nombre(f.Id, f.Sku));
+        }
+
+        var ms = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            foreach (var f in filas)
+            {
+                var path = Path.Combine(FotosDir, f.Archivo!);
+                if (!System.IO.File.Exists(path)) continue;
+                // Los JPG ya vienen comprimidos: guardarlos sin volver a comprimir es más rápido.
+                var e = zip.CreateEntry(Nombre(f.Id, f.Sku), System.IO.Compression.CompressionLevel.NoCompression);
+                await using var es = e.Open();
+                await using var fs = System.IO.File.OpenRead(path);
+                await fs.CopyToAsync(es);
+            }
+        }
+        ms.Position = 0;
+        return File(ms, "application/zip", $"fotos-{DateTime.UtcNow.AddHours(-3):yyyy-MM-dd-HHmm}.zip");
+    }
+
+    /// <summary>Borra la foto de la galería (no toca productos ni publicaciones donde ya se usó).</summary>
+    [HttpDelete("galeria/{id:int}")]
+    public async Task<IActionResult> GaleriaBorrar(int id)
+    {
+        var g = await _db.CafeFotoGaleria.FindAsync(id);
+        if (g is null) return Ok(new { ok = true });
+        _db.CafeFotoGaleria.Remove(g);
+        await _db.SaveChangesAsync();
+        foreach (var a in new[] { g.Archivo, g.OriginalArchivo })
+        {
+            if (string.IsNullOrEmpty(a)) continue;
+            try { var f = Path.Combine(FotosDir, a); if (System.IO.File.Exists(f)) System.IO.File.Delete(f); }
+            catch { /* best-effort */ }
+        }
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Busca publicaciones de MeLi por n° (MLA), SKU o palabras del título. Para "Agregar a una publicación".</summary>
+    [HttpGet("galeria/publicaciones")]
+    public async Task<IActionResult> GaleriaBuscarPublicaciones([FromQuery] string? q)
+    {
+        var texto = (q ?? "").Trim();
+        if (texto.Length < 2) return Ok(new List<PublicacionBuscadaDto>());
+        var soloNumero = new string(texto.Where(char.IsDigit).ToArray());
+        var palabras = texto.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(5).ToList();
+
+        var query = _db.MeliItems.AsQueryable();
+        if (soloNumero.Length >= 6 && (texto.StartsWith("MLA", StringComparison.OrdinalIgnoreCase) || soloNumero.Length == texto.Length))
+            query = query.Where(i => i.MeliItemId.Contains(soloNumero));
+        else
+            foreach (var w in palabras)
+                query = query.Where(i => i.Title.Contains(w) || (i.Sku != null && i.Sku.Contains(w)));
+
+        var filas = await (from i in query
+                           join a in _db.MeliAccounts on i.MeliAccountId equals a.Id into aj
+                           from a in aj.DefaultIfEmpty()
+                           orderby (i.Status == "active" ? 0 : 1), i.SoldQuantity descending
+                           select new { i.MeliItemId, i.Title, i.Sku, i.Status, i.Thumbnail, Cuenta = a == null ? null : a.Nickname, i.CatalogListing })
+                          .Take(80).ToListAsync();
+        // Una fila por publicación (las variantes repiten el MLA).
+        var res = filas.GroupBy(f => f.MeliItemId).Select(gr => gr.First())
+            .Take(30)
+            .Select(f => new PublicacionBuscadaDto(f.MeliItemId, f.Title, f.Sku, f.Status, f.Thumbnail, f.Cuenta, f.CatalogListing))
+            .ToList();
+        return Ok(res);
+    }
+
     /// <summary>
     /// Marca la foto de un producto. Estado válido: "APROBADA" | "REPORTADA".
     /// Si Estado viene vacío/null, se LIMPIA la marca (vuelve a "sin marcar").

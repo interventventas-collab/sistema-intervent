@@ -135,6 +135,7 @@ public class AppDbContext : DbContext
     public DbSet<CafeProductoFoto> CafeProductoFotos => Set<CafeProductoFoto>();
     // 2026-08-05 (Paso 3): tokens de un solo uso para subir la foto propia por QR desde el celu
     public DbSet<CafeProductoFotoToken> CafeProductoFotoTokens => Set<CafeProductoFotoToken>();
+    public DbSet<CafeFotoGaleria> CafeFotoGaleria => Set<CafeFotoGaleria>();
     public DbSet<CafeSetting> CafeSettings => Set<CafeSetting>();
     public DbSet<CafeVenta> CafeVentas => Set<CafeVenta>();
     /// <summary>2026-08-20: estado del envío del comprobante al cliente (cola + historial).</summary>

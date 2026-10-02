@@ -2144,6 +2144,72 @@ public class ApiClient
         return (await resp.Content.ReadFromJsonAsync<ChromaResultadoDto>(), null);
     }
 
+    // ── 2026-10-01: GALERÍA de fotos chroma ──
+    public record GaleriaFotoDto(int Id, string? Archivo, string? ColorUsado, string? Aviso, string? Error,
+        string Color, int Tolerancia, int Suavizado, string? Usuario, DateTime CreatedAt,
+        int? ProductoId, string? ProductoSku, string? ProductoNombre, List<string> Publicaciones);
+    public record GaleriaVistaPreviaDto(string? Antes, string? Despues, string? ColorUsado, string? Aviso, string? Error);
+    public record PublicacionBuscadaDto(string MeliItemId, string Titulo, string? Sku, string Estado,
+        string? Thumbnail, string? Cuenta, bool DeCatalogo);
+
+    public async Task<List<GaleriaFotoDto>?> GetGaleriaFotosAsync()
+        => await GetAsync<List<GaleriaFotoDto>>("/api/cafe/producto-foto/galeria");
+
+    /// <summary>Sube UNA foto a la galería (queda procesada).</summary>
+    public async Task<(GaleriaFotoDto? res, string? error)> GaleriaSubirAsync(byte[] bytes, string fileName, string contentType)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var bc = new ByteArrayContent(bytes);
+        bc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(contentType) ? "image/jpeg" : contentType);
+        content.Add(bc, "file", string.IsNullOrEmpty(fileName) ? "foto.jpg" : fileName);
+        var resp = await _http.PostAsync("/api/cafe/producto-foto/galeria/subir", content);
+        if (!resp.IsSuccessStatusCode) return (null, await MensajeDeErrorAsync(resp));
+        return (await resp.Content.ReadFromJsonAsync<GaleriaFotoDto>(), null);
+    }
+
+    public async Task<(GaleriaVistaPreviaDto? res, string? error)> GaleriaVistaPreviaAsync(int id, string color, int tolerancia, int suavizado, bool conAntes)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/producto-foto/galeria/{id}/vista-previa?conAntes={conAntes.ToString().ToLowerInvariant()}",
+            new { color, tolerancia, suavizado });
+        if (!resp.IsSuccessStatusCode) return (null, await MensajeDeErrorAsync(resp));
+        return (await resp.Content.ReadFromJsonAsync<GaleriaVistaPreviaDto>(), null);
+    }
+
+    public async Task<(GaleriaFotoDto? res, string? error)> GaleriaRetocarAsync(int id, string color, int tolerancia, int suavizado)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/producto-foto/galeria/{id}/retocar", new { color, tolerancia, suavizado });
+        if (!resp.IsSuccessStatusCode) return (null, await MensajeDeErrorAsync(resp));
+        return (await resp.Content.ReadFromJsonAsync<GaleriaFotoDto>(), null);
+    }
+
+    public async Task<(ProductoFotoEstadoDto? res, string? error)> GaleriaAProductoAsync(int id, int productoId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/producto-foto/galeria/{id}/a-producto", new { productoId });
+        if (!resp.IsSuccessStatusCode) return (null, await MensajeDeErrorAsync(resp));
+        return (await resp.Content.ReadFromJsonAsync<ProductoFotoEstadoDto>(), null);
+    }
+
+    public async Task<bool> GaleriaMarcarPublicacionAsync(List<int> ids, string mla)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/cafe/producto-foto/galeria/marcar-publicacion", new { ids, mla });
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> GaleriaBorrarAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/cafe/producto-foto/galeria/{id}");
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<List<PublicacionBuscadaDto>?> GaleriaBuscarPublicacionesAsync(string q)
+        => await GetAsync<List<PublicacionBuscadaDto>>("/api/cafe/producto-foto/galeria/publicaciones?q=" + Uri.EscapeDataString(q));
+
     /// <summary>Fotos propias de los productos con esos SKU (para ofrecerlas en Publicaciones).</summary>
     public async Task<List<FotoPropiaSkuDto>?> GetFotosPropiasPorSkuAsync(IEnumerable<string> skus)
         => await GetAsync<List<FotoPropiaSkuDto>>("/api/cafe/producto-foto/por-sku?skus=" + Uri.EscapeDataString(string.Join(",", skus)));
