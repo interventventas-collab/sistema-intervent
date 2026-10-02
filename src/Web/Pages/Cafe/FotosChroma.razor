@@ -2,30 +2,37 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
-@* 2026-10-01: fotos con tela VERDE o AZUL → fondo blanco 1200x1200 para MercadoLibre. Pensada para el CELU:
-   buscás el producto, sacás la foto, ves antes/después, ajustás si hace falta y la guardás como FOTO PROPIA
-   del producto. Después en Publicaciones → 🖼 Fotos aparece "📷 Foto propia" para ponerla en la publicación.
-   La foto original (con la tela) queda guardada: "Reprocesar la original" la vuelve a abrir sin sacarla de nuevo. *@
+@* 2026-10-01: fotos con tela VERDE o AZUL → fondo blanco 1200x1200 para MercadoLibre. Pensada para el CELU.
+   Dos formas de trabajar:
+   · GALERÍA: se sacan muchas seguidas sin elegir producto; cada una se procesa sola. Después se eligen y
+     se ponen en un producto (foto propia), se agregan a una publicación de MeLi (mismo PUT de fotos que usa
+     Publicaciones), se descargan (JPG o ZIP), se retocan o se borran.
+   · POR PRODUCTO: buscás el producto, sacás la foto, ves antes/después y la guardás como FOTO PROPIA.
+   La foto original (con la tela) queda guardada en los dos casos para poder retocarla sin volver a sacarla. *@
 
 <PageTitle>Fotos con fondo verde/azul</PageTitle>
 
 <style>
-    .fc { max-width: 760px; margin: 0 auto; padding: 0.6rem; }
+    .fc { max-width: 760px; margin: 0 auto; padding: 0.6rem 0.6rem 6rem; }
     .fc h2 { margin: 0 0 0.2rem; font-size: 1.15rem; }
     .fc .sub { color: #6b7280; font-size: 0.85rem; margin-bottom: 0.8rem; }
     .fc .buscar { position: relative; }
-    .fc .buscar input { width: 100%; font-size: 1rem; padding: 0.6rem; }
-    .fc .res { border: 1px solid #e5e7eb; border-radius: 6px; margin-top: 0.3rem; max-height: 60vh; overflow-y: auto; background: #fff; }
-    .fc .res div { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; }
+    .fc .buscar input, .fc input.grande { width: 100%; font-size: 1rem; padding: 0.6rem; }
+    .fc .res { border: 1px solid #e5e7eb; border-radius: 6px; margin-top: 0.3rem; max-height: 50vh; overflow-y: auto; background: #fff; }
+    .fc .res > div { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; }
+    .fc .res > div.no { cursor: default; color: #9ca3af; }
     .fc .res img, .fc .res .vacia { width: 40px; height: 40px; object-fit: contain; flex: none; background: #f9fafb; }
     .fc .sku { font-family: monospace; font-weight: 700; color: #1d4ed8; }
+    .fc .gris { color: #6b7280; font-size: 0.8rem; }
     .fc .prod { display: flex; gap: 0.6rem; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #e5e7eb; margin-bottom: 0.7rem; }
     .fc .prod img { width: 56px; height: 56px; object-fit: contain; border: 1px solid #e5e7eb; }
     .fc .prod .nom { flex: 1; min-width: 0; }
     .fc .acciones { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-    .fc .acciones label, .fc .acciones button { flex: 1 1 140px; text-align: center; padding: 0.8rem; font-size: 1rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; cursor: pointer; }
+    .fc .acciones label, .fc .acciones button { flex: 1 1 140px; text-align: center; padding: 0.8rem; font-size: 1rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; cursor: pointer; color: #111827; }
     .fc .acciones .prim { background: #111827; color: #fff; border-color: #111827; }
+    .fc .acciones button:disabled, .fc .acciones label.off { opacity: 0.45; cursor: default; }
     .fc .comp { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.8rem 0 0.4rem; }
     .fc .comp figure { margin: 0; }
     .fc .comp img { width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid #e5e7eb; background: #f9fafb; }
@@ -36,19 +43,264 @@
     .fc .ajuste .lbl { font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 0.25rem; }
     .fc .ajuste .ayuda { font-size: 0.75rem; color: #6b7280; display: flex; justify-content: space-between; }
     .fc .ajuste input[type=range] { width: 100%; }
-    .fc .seg { display: flex; gap: 0; }
-    .fc .seg button { flex: 1; padding: 0.55rem; border: 1px solid #d1d5db; background: #fff; font-size: 0.95rem; }
+    .fc .seg { display: flex; gap: 0; margin-bottom: 0.7rem; }
+    .fc .seg button { flex: 1; padding: 0.55rem; border: 1px solid #d1d5db; background: #fff; font-size: 0.95rem; color: #111827; }
     .fc .seg button + button { border-left: none; }
     .fc .seg button.on { background: #111827; color: #fff; border-color: #111827; }
     .fc .procesando { font-size: 0.85rem; color: #6b7280; }
+    .fc .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 6px; margin-top: 0.7rem; }
+    .fc .ft { position: relative; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; background: #fff; cursor: pointer; }
+    .fc .ft img, .fc .ft .ph { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; background: #fff; }
+    .fc .ft .ph { display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: #6b7280; background: #f3f4f6; text-align: center; padding: 0.3rem; box-sizing: border-box; }
+    .fc .ft .l { font-size: 0.68rem; padding: 3px 5px; color: #374151; border-top: 1px solid #f3f4f6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fc .ft.sel { outline: 3px solid #2563eb; outline-offset: -3px; }
+    .fc .ft .chk { position: absolute; top: 5px; left: 5px; width: 20px; height: 20px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 13px; text-align: center; line-height: 20px; }
+    .fc .barra { position: sticky; bottom: 0; background: #f9fafb; border-top: 1px solid #e5e7eb; margin: 0.8rem -0.6rem 0; padding: 0.7rem 0.6rem; }
+    .fc .barra .q { font-size: 0.85rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; gap: 0.5rem; }
+    .fc .barra .a { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+    .fc .barra .a button { padding: 0.65rem 0.4rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 0.9rem; text-align: left; color: #111827; }
+    .fc .barra .a button:disabled { opacity: 0.4; }
+    .fc .barra .a .borrar { color: #b91c1c; }
+    /* En pantallas angostas el botón flotante del menú (☰) queda abajo a la izquierda: que no tape la barra. */
+    @@media (max-width: 900px) { .fc .barra { padding-bottom: 5.4rem; } }
+    .fc .panel { border-top: 1px solid #e5e7eb; margin-top: 0.8rem; padding-top: 0.7rem; }
+    .fc .panel h3 { font-size: 1rem; margin: 0 0 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+    .fc .panel h3 button { font-size: 0.85rem; border: none; background: none; color: #6b7280; cursor: pointer; }
+    .fc .tira { display: flex; gap: 6px; overflow-x: auto; padding: 0.3rem 0; }
+    .fc .tira figure { margin: 0; flex: none; width: 78px; text-align: center; font-size: 0.66rem; color: #6b7280; }
+    .fc .tira img { width: 78px; height: 78px; object-fit: contain; border: 1px solid #e5e7eb; background: #fff; display: block; }
+    .fc .tira figure.nueva img { border: 2px solid #2563eb; }
 </style>
 
 <div class="fc">
     <h2>📷 Fotos con fondo verde o azul</h2>
     <div class="sub">Sacale la foto al producto sobre la tela verde o azul. El sistema le pone fondo blanco y la deja lista para MercadoLibre (cuadrada, 1200 × 1200).</div>
 
-    @if (prod is null)
+    <div class="seg">
+        <button class="@(tab == "galeria" ? "on" : "")" disabled="@(subiendoGaleria > 0)" @onclick="@(() => CambiarTab("galeria"))">Galería@(galeria is null ? "" : $" ({galeria.Count})")</button>
+        <button class="@(tab == "producto" ? "on" : "")" disabled="@(subiendoGaleria > 0)" @onclick="@(() => CambiarTab("producto"))">Por producto</button>
+    </div>
+
+    @if (tab == "galeria")
     {
+        @* ═════════ GALERÍA ═════════
+           Los <InputFile> quedan SIEMPRE en el DOM mientras se suben (Blazor pierde el archivo si salen). *@
+        <div class="acciones">
+            <label class="prim @(subiendoGaleria > 0 ? "off" : "")">
+                📷 Sacar foto
+                <InputFile OnChange="OnFotosGaleria" accept="image/*" capture="environment" style="display:none" disabled="@(subiendoGaleria > 0)" />
+            </label>
+            <label class="@(subiendoGaleria > 0 ? "off" : "")">
+                🖼 Subir varias
+                <InputFile OnChange="OnFotosGaleria" accept="image/*" multiple style="display:none" disabled="@(subiendoGaleria > 0)" />
+            </label>
+        </div>
+        <div class="gris" style="margin-top:0.4rem;">Sacá todas las que quieras, una atrás de otra: se procesan solas y quedan acá. Tocá las fotos para elegirlas.</div>
+
+        @if (galeria is null)
+        {
+            <div class="procesando" style="margin-top:0.8rem;">Cargando la galería…</div>
+        }
+        else
+        {
+            var sinAsignar = galeria.Count(SinAsignar);
+            <div class="seg" style="margin-top:0.8rem; margin-bottom:0;">
+                <button class="@(soloSinAsignar ? "on" : "")" @onclick="() => soloSinAsignar = true">Sin asignar (@sinAsignar)</button>
+                <button class="@(!soloSinAsignar ? "on" : "")" @onclick="() => soloSinAsignar = false">Todas (@galeria.Count)</button>
+            </div>
+
+            <div class="grid">
+                @for (var i = 0; i < subiendoGaleria; i++)
+                {
+                    <div class="ft" style="cursor:default;"><div class="ph">sacando fondo…</div><div class="l">&nbsp;</div></div>
+                }
+                @foreach (var f in galeria.Where(g => !soloSinAsignar || SinAsignar(g)))
+                {
+                    var elegida = sel.Contains(f.Id);
+                    <div class="ft @(elegida ? "sel" : "")" @onclick="() => Alternar(f.Id)">
+                        @if (f.Archivo is not null)
+                        {
+                            <img src="/api/public/producto-foto/img/@f.Archivo" alt="" loading="lazy" />
+                        }
+                        else
+                        {
+                            <div class="ph">⚠ no se pudo sacar el fondo: retocala</div>
+                        }
+                        @if (elegida)
+                        {
+                            <span class="chk">✓</span>
+                        }
+                        <div class="l" title="@Etiqueta(f)">@Etiqueta(f)</div>
+                    </div>
+                }
+            </div>
+            @if (galeria.Count == 0 && subiendoGaleria == 0)
+            {
+                <div class="procesando" style="margin-top:0.8rem;">Todavía no hay fotos. Tocá «Sacar foto».</div>
+            }
+            else if (soloSinAsignar && sinAsignar == 0 && subiendoGaleria == 0)
+            {
+                <div class="procesando" style="margin-top:0.8rem;">No quedan fotos sin asignar. Tocá «Todas» para verlas.</div>
+            }
+
+            @if (panel == "producto")
+            {
+                <div class="panel">
+                    <h3>🏷 Ponerla como foto de un producto <button @onclick="CerrarPanel">✕ Cerrar</button></h3>
+                    <div class="buscar">
+                        <input class="form-input" autocomplete="off" placeholder="🔍 Código o nombre del producto"
+                               @bind="busqProd" @bind:event="oninput" />
+                        @if (!string.IsNullOrWhiteSpace(busqProd))
+                        {
+                            var lista = Coincidencias(busqProd).Take(30).ToList();
+                            <div class="res">
+                                @if (lista.Count == 0)
+                                {
+                                    <div class="no">Sin resultados.</div>
+                                }
+                                @foreach (var p in lista)
+                                {
+                                    var actual = FotoDe(p.Id);
+                                    <div @onclick="() => AsignarAProducto(p)">
+                                        @if (actual is not null)
+                                        {
+                                            <img src="/api/public/producto-foto/img/@actual.FotoPropiaArchivo" alt="" />
+                                        }
+                                        else
+                                        {
+                                            <span class="vacia"></span>
+                                        }
+                                        <span><span class="sku">@p.Sku</span> @p.Nombre
+                                            @if (actual is not null)
+                                            {
+                                                <span class="gris"> · ya tiene foto, se reemplaza</span>
+                                            }
+                                        </span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else if (panel == "publi")
+            {
+                <div class="panel">
+                    <h3>🛒 Agregar a una publicación <button disabled="@publiSubiendo" @onclick="CerrarPanel">✕ Cerrar</button></h3>
+                    @if (publiSel is null)
+                    {
+                        <div style="display:flex; gap:0.4rem;">
+                            <input class="form-input grande" autocomplete="off" placeholder="🔍 N° de publicación (MLA), código o título"
+                                   @bind="busqPubli" @bind:event="oninput"
+                                   @onkeydown="@(async e => { if (e.Key == "Enter") await BuscarPublis(); })" />
+                            <button class="btn" @onclick="BuscarPublis">Buscar</button>
+                        </div>
+                        @if (publiBuscando)
+                        {
+                            <div class="procesando" style="margin-top:0.4rem;">Buscando…</div>
+                        }
+                        else if (publis is not null)
+                        {
+                            <div class="res">
+                                @if (publis.Count == 0)
+                                {
+                                    <div class="no">No encontré publicaciones con eso.</div>
+                                }
+                                @foreach (var pb in publis)
+                                {
+                                    @if (pb.DeCatalogo)
+                                    {
+                                        <div class="no" title="MercadoLibre no deja cambiar las fotos de las publicaciones de catálogo">
+                                            @if (!string.IsNullOrEmpty(pb.Thumbnail)) { <img src="@pb.Thumbnail" alt="" /> } else { <span class="vacia"></span> }
+                                            <span><span class="sku">@pb.MeliItemId</span> @pb.Titulo <span class="gris">· de catálogo: MeLi no deja cambiarle las fotos</span></span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div @onclick="() => ElegirPubli(pb)">
+                                            @if (!string.IsNullOrEmpty(pb.Thumbnail)) { <img src="@pb.Thumbnail" alt="" /> } else { <span class="vacia"></span> }
+                                            <span><span class="sku">@pb.MeliItemId</span> @pb.Titulo
+                                                <span class="gris"> · @(pb.Estado == "active" ? "activa" : pb.Estado == "paused" ? "pausada" : pb.Estado)@(string.IsNullOrEmpty(pb.Cuenta) ? "" : " · " + pb.Cuenta)</span>
+                                            </span>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div style="font-size:0.9rem; margin-bottom:0.5rem;">
+                            <span class="sku">@publiSel.MeliItemId</span> @publiSel.Titulo
+                            @if (!publiSubiendo)
+                            {
+                                <button class="btn" style="margin-left:0.4rem;" @onclick="() => { publiSel = null; publiFotos = null; }">Cambiar</button>
+                            }
+                        </div>
+                        @if (publiFotos is null)
+                        {
+                            <div class="procesando">Leyendo las fotos que tiene en MercadoLibre…</div>
+                        }
+                        else
+                        {
+                            <span class="lbl" style="font-size:0.85rem; font-weight:600;">Dónde van las fotos nuevas</span>
+                            <div class="seg" style="margin-top:0.25rem;">
+                                <button class="@(publiPortada ? "on" : "")" disabled="@publiSubiendo" @onclick="() => publiPortada = true">★ De portada</button>
+                                <button class="@(!publiPortada ? "on" : "")" disabled="@publiSubiendo" @onclick="() => publiPortada = false">Al final</button>
+                            </div>
+                            <div class="gris">Así va a quedar la publicación (la primera es la portada · en azul las nuevas):</div>
+                            <div class="tira">
+                                @{ var n = 1; }
+                                @foreach (var (url, nueva) in OrdenFinal())
+                                {
+                                    <figure class="@(nueva ? "nueva" : "")"><img src="@url" alt="" /><span>@(n++)@(nueva ? " · nueva" : "")</span></figure>
+                                }
+                            </div>
+                            @if (OrdenFinal().Count > 12)
+                            {
+                                <div class="aviso">Ojo: van a quedar @OrdenFinal().Count fotos y MercadoLibre suele aceptar hasta 12; puede rechazarlo.</div>
+                            }
+                            <div class="acciones" style="margin-top:0.6rem;">
+                                <button class="prim" disabled="@publiSubiendo" @onclick="SubirAPubli">@(publiSubiendo ? "Subiendo a MercadoLibre…" : "✅ Subir a MercadoLibre")</button>
+                            </div>
+                            <div class="gris" style="margin-top:0.3rem;">Esto cambia la publicación de verdad en MercadoLibre. Las fotos que ya tenía quedan como están.</div>
+                        }
+                    }
+                </div>
+            }
+            else if (panel == "retocar" && retFoto is not null)
+            {
+                <div class="panel">
+                    <h3>✏️ Retocar <button disabled="@ocupado" @onclick="CerrarPanel">✕ Cerrar</button></h3>
+                    <div class="gris">Sacada@(string.IsNullOrEmpty(retFoto.Usuario) ? "" : " por " + retFoto.Usuario) el @retFoto.CreatedAt.AddHours(-3).ToString("dd/MM HH:mm")</div>
+                    @RenderAntesDespues(retAntes, retDespues, retColorUsado, retError, retAviso)
+                    @RenderAjustes()
+                    <div class="acciones" style="margin-top:0.8rem;">
+                        <button class="prim" disabled="@(ocupado || retDespues is null)" @onclick="GuardarRetoque">✅ Guardar el retoque</button>
+                    </div>
+                </div>
+            }
+
+            @if (sel.Count > 0 && panel is null)
+            {
+                <div class="barra">
+                    <div class="q"><span><b>@sel.Count foto@(sel.Count == 1 ? "" : "s") elegida@(sel.Count == 1 ? "" : "s")</b> · ¿qué hacés?</span>
+                        <a href="javascript:void(0)" class="gris" @onclick="() => sel.Clear()">Quitar selección</a></div>
+                    <div class="a">
+                        <button disabled="@(sel.Count != 1 || !ElegidasProcesadas)" title="De a una: cada producto tiene una sola foto propia"
+                                @onclick="@(() => AbrirPanel("producto"))">🏷 Ponerla en un producto@(sel.Count != 1 ? " (de a una)" : "")</button>
+                        <button disabled="@(!ElegidasProcesadas)" @onclick="@(() => AbrirPanel("publi"))">🛒 Agregar a una publicación</button>
+                        <button disabled="@(!ElegidasProcesadas || descargando)" @onclick="Descargar">⬇ Descargar@(sel.Count > 1 ? " (ZIP)" : "")</button>
+                        <button disabled="@(sel.Count != 1)" @onclick="AbrirRetoque">✏️ Retocar@(sel.Count != 1 ? " (de a una)" : "")</button>
+                        <button class="borrar" @onclick="Borrar">🗑 Borrar</button>
+                    </div>
+                </div>
+            }
+        }
+    }
+    else if (prod is null)
+    {
+        @* ═════════ POR PRODUCTO ═════════ *@
         <div class="buscar">
             <input class="form-input" autocomplete="off" placeholder="🔍 Código o nombre del producto"
                    @bind="busqueda" @bind:event="oninput" />
@@ -58,11 +310,11 @@
             }
             else if (!string.IsNullOrWhiteSpace(busqueda))
             {
-                var lista = Coincidencias().Take(30).ToList();
+                var lista = Coincidencias(busqueda).Take(30).ToList();
                 <div class="res">
                     @if (lista.Count == 0)
                     {
-                        <div style="cursor:default; color:#6b7280;">Sin resultados.</div>
+                        <div class="no">Sin resultados.</div>
                     }
                     @foreach (var p in lista)
                     {
@@ -125,58 +377,8 @@
         }
         else
         {
-            <div class="comp">
-                <figure>
-                    <img src="@res.Antes" alt="Antes" />
-                    <figcaption>Antes</figcaption>
-                </figure>
-                <figure>
-                    @if (res.Despues is not null)
-                    {
-                        <img src="@res.Despues" alt="Después" style="@(ocupado ? "opacity:0.4" : "")" />
-                    }
-                    else
-                    {
-                        <img alt="" />
-                    }
-                    <figcaption>Después@(res.ColorUsado is null ? "" : $" · tela {res.ColorUsado}")</figcaption>
-                </figure>
-            </div>
-            @if (!string.IsNullOrEmpty(res.Error))
-            {
-                <div class="err">@res.Error</div>
-            }
-            @if (!string.IsNullOrEmpty(res.Aviso))
-            {
-                <div class="aviso">Ojo: @res.Aviso</div>
-            }
-
-            <div class="ajuste">
-                <span class="lbl">Color de la tela</span>
-                <div class="seg">
-                    @foreach (var (val, txt) in new[] { ("auto", "Automático"), ("verde", "Verde"), ("azul", "Azul") })
-                    {
-                        <button class="@(color == val ? "on" : "")" disabled="@ocupado" @onclick="() => CambiarColor(val)">@txt</button>
-                    }
-                </div>
-            </div>
-            <div class="ajuste">
-                <span class="lbl">Tolerancia: @tolerancia</span>
-                <input type="range" min="0" max="100" step="5" value="@tolerancia" disabled="@ocupado"
-                       @onchange="e => CambiarNumero(e, v => tolerancia = v)" />
-                <div class="ayuda"><span>← si se come partes del producto</span><span>si quedan restos de tela →</span></div>
-            </div>
-            <div class="ajuste">
-                <span class="lbl">Suavizado del borde: @suavizado</span>
-                <input type="range" min="0" max="100" step="5" value="@suavizado" disabled="@ocupado"
-                       @onchange="e => CambiarNumero(e, v => suavizado = v)" />
-                <div class="ayuda"><span>← borde más marcado</span><span>borde más suave →</span></div>
-            </div>
-            @if (ocupado)
-            {
-                <div class="procesando">Procesando…</div>
-            }
-
+            @RenderAntesDespues(res.Antes, res.Despues, res.ColorUsado, res.Error, res.Aviso)
+            @RenderAjustes()
             <div class="acciones" style="margin-top:0.8rem;">
                 <button class="prim" disabled="@(ocupado || res.Despues is null)" @onclick="Guardar">✅ Guardar en el producto</button>
                 <button disabled="@ocupado" @onclick="Descartar">Descartar</button>
@@ -186,36 +388,409 @@
 </div>
 
 @code {
+    private string tab = "galeria";
+
+    // ── compartido ──
     private List<CafeProductoDto>? productos;
     private Dictionary<int, ApiClient.ProductoFotoEstadoDto> fotos = new();
-    private string busqueda = "";
-    private CafeProductoDto? prod;
-    private ApiClient.ChromaResultadoDto? res;
     private string color = "auto";
     private int tolerancia = 50;
     private int suavizado = 40;
     private bool ocupado;
 
+    // ── por producto ──
+    private string busqueda = "";
+    private CafeProductoDto? prod;
+    private ApiClient.ChromaResultadoDto? res;
+
+    // ── galería ──
+    private List<ApiClient.GaleriaFotoDto>? galeria;
+    private readonly List<int> sel = new();        // en el orden en que se tocaron (así entran a la publicación)
+    private bool soloSinAsignar = true;
+    private int subiendoGaleria;
+    private string? panel;                          // null | "producto" | "publi" | "retocar"
+    private string busqProd = "";
+    private bool descargando;
+    // agregar a publicación
+    private string busqPubli = "";
+    private bool publiBuscando, publiSubiendo, publiPortada = true;
+    private List<ApiClient.PublicacionBuscadaDto>? publis;
+    private ApiClient.PublicacionBuscadaDto? publiSel;
+    private ApiClient.PubV2Fotos? publiFotos;
+    // retoque
+    private ApiClient.GaleriaFotoDto? retFoto;
+    private string? retAntes, retDespues, retColorUsado, retAviso, retError;
+
     protected override async Task OnInitializedAsync()
     {
         var tProd = Api.GetCafeProductosAsync();
         var tFotos = Api.GetFotosProductosAsync();
+        var tGal = Api.GetGaleriaFotosAsync();
+        galeria = await tGal ?? new();
         productos = (await tProd ?? new()).Where(p => !p.EsCompuestoFake).ToList();
         fotos = (await tFotos ?? new()).Where(f => !string.IsNullOrEmpty(f.FotoPropiaArchivo))
             .GroupBy(f => f.CafeProductoId).ToDictionary(g => g.Key, g => g.First());
     }
 
+    private void CambiarTab(string t) { tab = t; panel = null; res = null; }
+
     private ApiClient.ProductoFotoEstadoDto? FotoDe(int id) => fotos.TryGetValue(id, out var f) ? f : null;
 
-    private IEnumerable<CafeProductoDto> Coincidencias()
+    private IEnumerable<CafeProductoDto> Coincidencias(string texto)
     {
-        var palabras = busqueda.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var t = texto.Trim();
+        var palabras = t.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return (productos ?? new())
             .Where(p => palabras.All(w => (p.Sku ?? "").ToLowerInvariant().Contains(w) || p.Nombre.ToLowerInvariant().Contains(w)))
             // Primero los que el código arranca con lo escrito (el depósito busca por código).
-            .OrderByDescending(p => (p.Sku ?? "").StartsWith(busqueda.Trim(), StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(p => (p.Sku ?? "").StartsWith(t, StringComparison.OrdinalIgnoreCase))
             .ThenBy(p => p.Sku);
     }
+
+    // ── piezas de pantalla compartidas (por producto y retoque) ──
+
+    private RenderFragment RenderAntesDespues(string? antes, string? despues, string? colorUsado, string? error, string? aviso) => __builder =>
+    {
+        <div class="comp">
+            <figure>
+                <img src="@antes" alt="Antes" />
+                <figcaption>Antes</figcaption>
+            </figure>
+            <figure>
+                @if (despues is not null)
+                {
+                    <img src="@despues" alt="Después" style="@(ocupado ? "opacity:0.4" : "")" />
+                }
+                else
+                {
+                    <img alt="" />
+                }
+                <figcaption>Después@(colorUsado is null ? "" : $" · tela {colorUsado}")</figcaption>
+            </figure>
+        </div>
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="err">@error</div>
+        }
+        @if (!string.IsNullOrEmpty(aviso))
+        {
+            <div class="aviso">Ojo: @aviso</div>
+        }
+    };
+
+    private RenderFragment RenderAjustes() => __builder =>
+    {
+        <div class="ajuste">
+            <span class="lbl">Color de la tela</span>
+            <div class="seg">
+                @foreach (var (val, txt) in new[] { ("auto", "Automático"), ("verde", "Verde"), ("azul", "Azul") })
+                {
+                    <button class="@(color == val ? "on" : "")" disabled="@ocupado" @onclick="() => CambiarColor(val)">@txt</button>
+                }
+            </div>
+        </div>
+        <div class="ajuste">
+            <span class="lbl">Tolerancia: @tolerancia</span>
+            <input type="range" min="0" max="100" step="5" value="@tolerancia" disabled="@ocupado"
+                   @onchange="e => CambiarNumero(e, v => tolerancia = v)" />
+            <div class="ayuda"><span>← si se come partes del producto</span><span>si quedan restos de tela →</span></div>
+        </div>
+        <div class="ajuste">
+            <span class="lbl">Suavizado del borde: @suavizado</span>
+            <input type="range" min="0" max="100" step="5" value="@suavizado" disabled="@ocupado"
+                   @onchange="e => CambiarNumero(e, v => suavizado = v)" />
+            <div class="ayuda"><span>← borde más marcado</span><span>borde más suave →</span></div>
+        </div>
+        @if (ocupado)
+        {
+            <div class="procesando">Procesando…</div>
+        }
+    };
+
+    private async Task CambiarColor(string c)
+    {
+        if (color == c) return;
+        color = c;
+        await Reprocesar();
+    }
+
+    private async Task CambiarNumero(ChangeEventArgs e, Action<int> set)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var v)) return;
+        set(v);
+        await Reprocesar();
+    }
+
+    private async Task Reprocesar()
+    {
+        if (ocupado) return;
+        if (tab == "galeria" && panel == "retocar" && retFoto is not null)
+        {
+            ocupado = true;
+            StateHasChanged();
+            try
+            {
+                var (r, err) = await Api.GaleriaVistaPreviaAsync(retFoto.Id, color, tolerancia, suavizado, conAntes: false);
+                if (r is null) ToastService.Error(err ?? "No se pudo procesar.");
+                else { retDespues = r.Despues; retColorUsado = r.ColorUsado; retAviso = r.Aviso; retError = r.Error; }
+            }
+            finally { ocupado = false; StateHasChanged(); }
+            return;
+        }
+        if (res is null) return;
+        ocupado = true;
+        StateHasChanged();
+        try
+        {
+            var antes = res.Antes;
+            var (r, err) = await Api.ChromaProcesarAsync(res.TempId, color, tolerancia, suavizado);
+            if (r is null) ToastService.Error(err ?? "No se pudo procesar.");
+            else res = r with { Antes = antes };   // el "antes" no cambia: la API no lo vuelve a mandar
+        }
+        finally { ocupado = false; StateHasChanged(); }
+    }
+
+    // ═════════ GALERÍA ═════════
+
+    private static bool SinAsignar(ApiClient.GaleriaFotoDto f) => f.ProductoId is null && f.Publicaciones.Count == 0;
+
+    private static string Etiqueta(ApiClient.GaleriaFotoDto f)
+    {
+        if (f.Archivo is null) return "⚠ sin procesar";
+        var partes = new List<string>();
+        if (f.ProductoSku is not null) partes.Add("🏷 " + f.ProductoSku);
+        if (f.Publicaciones.Count > 0) partes.Add("🛒 " + (f.Publicaciones.Count == 1 ? f.Publicaciones[0] : $"{f.Publicaciones.Count} publis"));
+        if (partes.Count == 0) partes.Add("sin asignar");
+        return string.Join(" · ", partes) + (f.Aviso is null ? "" : " · ojo");
+    }
+
+    private bool ElegidasProcesadas => sel.Count > 0 && sel.All(id => galeria?.FirstOrDefault(g => g.Id == id)?.Archivo is not null);
+
+    private void Alternar(int id)
+    {
+        if (panel is not null) return;   // con un panel abierto, la selección queda fija
+        if (!sel.Remove(id)) sel.Add(id);
+    }
+
+    private void AbrirPanel(string p)
+    {
+        panel = p;
+        busqProd = "";
+        busqPubli = "";
+        publis = null; publiSel = null; publiFotos = null; publiPortada = true;
+    }
+
+    private void CerrarPanel()
+    {
+        panel = null;
+        retFoto = null;
+        publiSel = null; publiFotos = null;
+    }
+
+    private async Task OnFotosGaleria(InputFileChangeEventArgs e)
+    {
+        if (subiendoGaleria > 0) return;
+        const long max = 25L * 1024 * 1024;
+        // GetMultipleFiles(N) tira error si vienen más de N: se piden todas y se toman 40.
+        var archivos = e.GetMultipleFiles(Math.Max(1, e.FileCount)).Take(40).ToList();
+        if (e.FileCount > 40) ToastService.Warning("Se suben de a 40 como mucho: subí el resto después.");
+        subiendoGaleria = archivos.Count;
+        StateHasChanged();
+        int ok = 0, mal = 0;
+        // De a una: 40 fotos del celu juntas en memoria no entran. El <InputFile> sigue en pantalla,
+        // así que se pueden leer de a una sin perder la referencia.
+        foreach (var file in archivos)
+        {
+            try
+            {
+                if (file.Size > max) { mal++; ToastService.Error($"{file.Name}: pesa más de 25 MB."); continue; }
+                byte[] bytes;
+                await using (var s = file.OpenReadStream(maxAllowedSize: max))
+                using (var ms = new MemoryStream())
+                {
+                    await s.CopyToAsync(ms);
+                    bytes = ms.ToArray();
+                }
+                var (r, err) = await Api.GaleriaSubirAsync(bytes, file.Name, file.ContentType);
+                if (r is null) { mal++; ToastService.Error(err ?? $"No se pudo subir {file.Name}."); }
+                else
+                {
+                    ok++;
+                    galeria!.Insert(0, r);
+                }
+            }
+            catch (Exception ex) { mal++; ToastService.Error($"No se pudo subir {file.Name}: {ex.Message}"); }
+            finally { subiendoGaleria--; StateHasChanged(); }
+        }
+        subiendoGaleria = 0;
+        if (ok > 1) ToastService.Success($"{ok} fotos agregadas a la galería.");
+        var conProblema = galeria!.Take(ok).Count(g => g.Archivo is null);
+        if (conProblema > 0)
+            ToastService.Warning($"{conProblema} no se pudieron procesar (¿la tela no cubre las esquinas?). Elegilas y tocá «Retocar».");
+    }
+
+    private async Task AsignarAProducto(CafeProductoDto p)
+    {
+        if (ocupado || sel.Count != 1) return;
+        ocupado = true;
+        try
+        {
+            var (r, err) = await Api.GaleriaAProductoAsync(sel[0], p.Id);
+            if (r is null) { ToastService.Error(err ?? "No se pudo poner la foto."); return; }
+            fotos[p.Id] = r;
+            var i = galeria!.FindIndex(g => g.Id == sel[0]);
+            if (i >= 0) galeria[i] = galeria[i] with { ProductoId = p.Id, ProductoSku = p.Sku, ProductoNombre = p.Nombre };
+            ToastService.Success($"Listo: es la foto de {p.Sku}.");
+            sel.Clear();
+            CerrarPanel();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task BuscarPublis()
+    {
+        var q = busqPubli.Trim();
+        if (q.Length < 2) { ToastService.Warning("Escribí al menos 2 letras o el número de publicación."); return; }
+        publiBuscando = true;
+        StateHasChanged();
+        try { publis = await Api.GaleriaBuscarPublicacionesAsync(q) ?? new(); }
+        finally { publiBuscando = false; }
+    }
+
+    private async Task ElegirPubli(ApiClient.PublicacionBuscadaDto pb)
+    {
+        publiSel = pb;
+        publiFotos = null;
+        StateHasChanged();
+        var f = await Api.GetFotosV2Async(pb.MeliItemId);
+        if (f is null) { ToastService.Error("No pude leer las fotos de esa publicación en MercadoLibre."); publiSel = null; return; }
+        if (f.DeCatalogo) { ToastService.Error("Es de catálogo: MercadoLibre no deja cambiarle las fotos."); publiSel = null; return; }
+        // Una publicación siempre tiene al menos una foto: si vino vacía es que no se pudo leer (sin token,
+        // MeLi caído…). Subir así le BORRARÍA las fotos que tiene, porque se manda la lista completa.
+        if (f.Fotos.Count == 0)
+        {
+            ToastService.Error("No pude leer las fotos que ya tiene esa publicación" + (string.IsNullOrEmpty(f.Aviso) ? "" : $" ({f.Aviso})")
+                + ". Para no borrárselas, no subo nada. Probá de nuevo en un rato.");
+            publiSel = null;
+            return;
+        }
+        publiFotos = f;
+    }
+
+    /// <summary>Cómo queda la publicación: (url, esNueva) en orden; la primera es la portada.</summary>
+    private List<(string Url, bool Nueva)> OrdenFinal()
+    {
+        var viejas = (publiFotos?.Fotos ?? new()).Select(f => (f.Url, false));
+        var nuevas = sel.Select(id => galeria?.FirstOrDefault(g => g.Id == id)?.Archivo)
+            .Where(a => a is not null).Select(a => ($"/api/public/producto-foto/img/{a}", true));
+        return (publiPortada ? nuevas.Concat(viejas) : viejas.Concat(nuevas)).ToList();
+    }
+
+    private async Task SubirAPubli()
+    {
+        if (publiSel is null || publiFotos is null || publiFotos.Fotos.Count == 0 || publiSubiendo) return;
+        publiSubiendo = true;
+        StateHasChanged();
+        try
+        {
+            var nuevas = new List<object>();
+            foreach (var id in sel)
+            {
+                var archivo = galeria?.FirstOrDefault(g => g.Id == id)?.Archivo;
+                if (archivo is null) continue;
+                var du = await Api.GetFotoPropiaDataUriAsync(archivo);
+                if (du is null) { ToastService.Error("No pude leer una de las fotos de la galería."); return; }
+                nuevas.Add(new { Id = (string?)null, DataUri = du });
+            }
+            var viejas = publiFotos.Fotos.Select(f => (object)new { Id = f.Id, DataUri = (string?)null });
+            var lista = (publiPortada ? nuevas.Concat(viejas) : viejas.Concat(nuevas)).ToList();
+
+            var (r, err) = await Api.GuardarFotosV2Async(publiSel.MeliItemId, lista);
+            if (r?.Ok != true) { ToastService.Error(r?.Mensaje ?? err ?? "MercadoLibre no aceptó las fotos."); return; }
+
+            var mla = publiSel.MeliItemId;
+            await Api.GaleriaMarcarPublicacionAsync(sel.ToList(), mla);
+            for (var i = 0; i < galeria!.Count; i++)
+                if (sel.Contains(galeria[i].Id) && !galeria[i].Publicaciones.Contains(mla))
+                    galeria[i] = galeria[i] with { Publicaciones = galeria[i].Publicaciones.Append(mla).ToList() };
+            ToastService.Success($"Listo: {nuevas.Count} foto{(nuevas.Count == 1 ? "" : "s")} subida{(nuevas.Count == 1 ? "" : "s")} a {mla}.");
+            sel.Clear();
+            CerrarPanel();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo subir: " + ex.Message); }
+        finally { publiSubiendo = false; StateHasChanged(); }
+    }
+
+    private async Task Descargar()
+    {
+        if (sel.Count == 0 || descargando) return;
+        descargando = true;
+        try
+        {
+            var url = "/api/cafe/producto-foto/galeria/descargar?ids=" + string.Join(",", sel);
+            string nombre;
+            if (sel.Count == 1)
+            {
+                var f = galeria!.First(g => g.Id == sel[0]);
+                nombre = (f.ProductoSku is null ? $"foto-{f.Id}" : $"{f.ProductoSku}-{f.Id}") + ".jpg";
+            }
+            else nombre = $"fotos-{DateTime.UtcNow.AddHours(-3):yyyy-MM-dd-HHmm}.zip";
+            await JS.InvokeVoidAsync("filesDownload.start", url, nombre);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo descargar: " + ex.Message); }
+        finally { descargando = false; }
+    }
+
+    private async Task AbrirRetoque()
+    {
+        if (sel.Count != 1) return;
+        retFoto = galeria!.First(g => g.Id == sel[0]);
+        panel = "retocar";
+        color = retFoto.Color; tolerancia = retFoto.Tolerancia; suavizado = retFoto.Suavizado;
+        retAntes = null; retDespues = null; retColorUsado = null; retAviso = null; retError = null;
+        ocupado = true;
+        StateHasChanged();
+        try
+        {
+            var (r, err) = await Api.GaleriaVistaPreviaAsync(retFoto.Id, color, tolerancia, suavizado, conAntes: true);
+            if (r is null) { ToastService.Error(err ?? "No se pudo abrir la foto."); CerrarPanel(); return; }
+            retAntes = r.Antes; retDespues = r.Despues; retColorUsado = r.ColorUsado; retAviso = r.Aviso; retError = r.Error;
+        }
+        finally { ocupado = false; StateHasChanged(); }
+    }
+
+    private async Task GuardarRetoque()
+    {
+        if (retFoto is null || ocupado) return;
+        ocupado = true;
+        try
+        {
+            var (r, err) = await Api.GaleriaRetocarAsync(retFoto.Id, color, tolerancia, suavizado);
+            if (r is null) { ToastService.Error(err ?? "No se pudo guardar el retoque."); return; }
+            var i = galeria!.FindIndex(g => g.Id == r.Id);
+            if (i >= 0) galeria[i] = r;
+            ToastService.Success(r.ProductoId is null && r.Publicaciones.Count == 0
+                ? "Retoque guardado."
+                : "Retoque guardado en la galería. Ojo: el producto o la publicación donde ya la pusiste NO cambian solos; volvé a ponerla si querés la nueva.");
+            CerrarPanel();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Borrar()
+    {
+        if (sel.Count == 0) return;
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"¿Borrar {sel.Count} foto{(sel.Count == 1 ? "" : "s")} de la galería? Los productos y publicaciones donde ya la pusiste NO se tocan.");
+        if (!ok) return;
+        var borradas = 0;
+        foreach (var id in sel.ToList())
+            if (await Api.GaleriaBorrarAsync(id)) { galeria!.RemoveAll(g => g.Id == id); sel.Remove(id); borradas++; }
+        if (sel.Count > 0) ToastService.Error("Algunas no se pudieron borrar. Probá de nuevo.");
+        else ToastService.Success($"{borradas} borrada{(borradas == 1 ? "" : "s")}.");
+    }
+
+    // ═════════ POR PRODUCTO ═════════
 
     private void Elegir(CafeProductoDto p) { prod = p; res = null; busqueda = ""; }
 
@@ -264,35 +839,6 @@
             else res = r;
         }
         finally { ocupado = false; }
-    }
-
-    private async Task CambiarColor(string c)
-    {
-        if (color == c) return;
-        color = c;
-        await Reprocesar();
-    }
-
-    private async Task CambiarNumero(ChangeEventArgs e, Action<int> set)
-    {
-        if (!int.TryParse(e.Value?.ToString(), out var v)) return;
-        set(v);
-        await Reprocesar();
-    }
-
-    private async Task Reprocesar()
-    {
-        if (res is null || ocupado) return;
-        ocupado = true;
-        StateHasChanged();
-        try
-        {
-            var antes = res.Antes;
-            var (r, err) = await Api.ChromaProcesarAsync(res.TempId, color, tolerancia, suavizado);
-            if (r is null) ToastService.Error(err ?? "No se pudo procesar.");
-            else res = r with { Antes = antes };   // el "antes" no cambia: la API no lo vuelve a mandar
-        }
-        finally { ocupado = false; StateHasChanged(); }
     }
 
     private async Task Guardar()

@@ -69,3 +69,54 @@ public class CafeProductoFotoToken
     public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddMinutes(30);
     public DateTime? UsedAt { get; set; }
 }
+
+/// <summary>
+/// 2026-10-01: GALERÍA de fotos con tela verde/azul (Fotos chroma). Se sacan muchas seguidas desde el
+/// celu SIN elegir producto; cada una queda procesada (fondo blanco 1200x1200) y después se asigna a un
+/// producto (foto propia), se agrega a una publicación de MeLi, se descarga o se borra.
+/// Archivos en /data/files/producto-fotos con prefijo "gal-" (así los sirve el mismo /img público).
+/// </summary>
+[Table("Cafe_FotoGaleria")]
+public class CafeFotoGaleria
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    /// <summary>Foto ya procesada (JPG 1200x1200 sobre blanco). Null si no se pudo procesar (ver Error).</summary>
+    [MaxLength(200)]
+    public string? Archivo { get; set; }
+
+    /// <summary>Foto original, con la tela.</summary>
+    [Required, MaxLength(200)]
+    public string OriginalArchivo { get; set; } = string.Empty;
+
+    /// <summary>Opciones con las que se procesó: "auto" | "verde" | "azul", tolerancia y suavizado 0-100.</summary>
+    [MaxLength(10)]
+    public string Color { get; set; } = "auto";
+    public int Tolerancia { get; set; } = 50;
+    public int Suavizado { get; set; } = 40;
+
+    /// <summary>Color de tela que se terminó usando ("verde" | "azul").</summary>
+    [MaxLength(10)]
+    public string? ColorUsado { get; set; }
+
+    [MaxLength(600)]
+    public string? Aviso { get; set; }
+
+    [MaxLength(300)]
+    public string? Error { get; set; }
+
+    [MaxLength(100)]
+    public string? Usuario { get; set; }
+
+    /// <summary>Producto al que se le puso como foto propia (la última vez).</summary>
+    public int? ProductoId { get; set; }
+
+    /// <summary>Publicaciones de MeLi a las que se agregó, separadas por coma.</summary>
+    [MaxLength(400)]
+    public string? Publicaciones { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
