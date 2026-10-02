@@ -639,6 +639,13 @@
            style="text-decoration:none;">
             📁 Abrir carpeta en Drive
         </a>
+        @* 2026-10-02: Órdenes MeLi, Escáner y Fotos subieron acá (antes ocupaban una fila entera más abajo).
+           Órdenes MeLi: el escaneo de etiqueta MeLi en su propia página (2026-09-21).
+           Escáner: paquetes con la cámara del celu del depósito, /escaner (2026-09-23).
+           Fotos: fotos de productos con fondo verde/azul, QR para abrirla en el celu. *@
+        <a class="btn btn-secondary" href="/deposito/ordenes-meli" style="text-decoration:none;">🏷️ Órdenes MeLi</a>
+        <button class="btn btn-secondary" @onclick="() => mostrarQrEscaner = true">📷 Escáner en el celu</button>
+        <FotosQrBoton Clase="btn btn-secondary" AbrirHaciaDerecha="true" />
         @* 2026-08-06: se sacó el botón verde "WhatsApp Gabriel" (abría la pantalla grande vieja).
            Ahora WhatsApp se usa desde el globito flotante que está en todas las pantallas. *@
         @if (ParaArmar.Count > 0)
@@ -698,14 +705,6 @@
         </div>
     }
 
-    @* 2026-09-21: el escaneo de etiqueta MeLi pasó a su propia página (no se mezcla con el armado) *@
-    <div style="margin-bottom:1rem;">
-        <a class="btn btn-secondary" href="/deposito/ordenes-meli">🏷️ Órdenes MeLi</a>
-        @* 2026-09-23: escáner de paquetes con la cámara del celu del depósito (/escaner) *@
-        <button class="btn btn-secondary" @onclick="() => mostrarQrEscaner = true">📷 Escáner en el celu</button>
-        @* 2026-10-02: fotos de productos con fondo verde/azul → QR para abrirla en el celu *@
-        <FotosQrBoton Clase="btn btn-secondary" AbrirHaciaDerecha="true" />
-    </div>
 
     @if (mostrarQrEscaner)
     {
