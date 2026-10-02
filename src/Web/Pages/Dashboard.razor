@@ -10,9 +10,13 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
-<div class="view-header">
-    <h2>Bienvenido, @username</h2>
-    <p class="view-subtitle">Panel de control</p>
+<div class="view-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.8rem;">
+    <div>
+        <h2>Bienvenido, @username</h2>
+        <p class="view-subtitle">Panel de control</p>
+    </div>
+    @* 2026-10-02: fotos con fondo verde/azul — QR para abrirla en el celu (lo usan también los de depósito). *@
+    <FotosQrBoton />
 </div>
 
 @* ═══ Fila hero: Mapa de Reparto (mitad izquierda) + WhatsApp (mitad derecha) ═══

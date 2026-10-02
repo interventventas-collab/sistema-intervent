@@ -703,6 +703,8 @@
         <a class="btn btn-secondary" href="/deposito/ordenes-meli">🏷️ Órdenes MeLi</a>
         @* 2026-09-23: escáner de paquetes con la cámara del celu del depósito (/escaner) *@
         <button class="btn btn-secondary" @onclick="() => mostrarQrEscaner = true">📷 Escáner en el celu</button>
+        @* 2026-10-02: fotos de productos con fondo verde/azul → QR para abrirla en el celu *@
+        <FotosQrBoton Clase="btn btn-secondary" AbrirHaciaDerecha="true" />
     </div>
 
     @if (mostrarQrEscaner)
