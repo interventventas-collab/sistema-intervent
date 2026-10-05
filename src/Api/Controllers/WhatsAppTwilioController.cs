@@ -1073,7 +1073,9 @@ public class WhatsAppTwilioController : ControllerBase
     public async Task<IActionResult> BuscarClientes([FromQuery] string q = "", [FromQuery] int top = 15)
     {
         q = (q ?? "").Trim();
-        var query = _db.CafeClientes.AsNoTracking();
+        // 2026-10-05: los Inactivos (eliminados o UNIFICADOS en otro cliente) no se ofrecen: si no, al
+        // unificar JAVIER TORNERO el chat seguía mostrando los dos y la venta podía ir al que no se usa.
+        var query = _db.CafeClientes.AsNoTracking().Where(c => c.IsActive);
         // Direcciones de entrega que coinciden con lo tipeado: clienteId -> texto de la dirección.
         var dirPorCliente = new Dictionary<int, string>();
         var idsDir = new List<int>();
