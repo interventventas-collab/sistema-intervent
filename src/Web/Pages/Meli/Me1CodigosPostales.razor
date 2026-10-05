@@ -262,9 +262,19 @@
             {
                 <div class="m1-cp-mapa-aviso">⏳ Ubicando las localidades en el mapa (solo la primera vez)…</div>
             }
-            else if (sinUbicar > 0)
+            else if (sinUbicar > 0 || sinUso > 0)
             {
-                <div class="m1-cp-mapa-aviso">@sinUbicar @(sinUbicar == 1 ? "código no aparece" : "códigos no aparecen") en el mapa (no se encontró la localidad); están en la lista.</div>
+                <div class="m1-cp-mapa-aviso">
+                    @if (sinUso > 0)
+                    {
+                        <text>@sinUso códigos de la tabla no existen para el Correo (no hay a quién vendérselos). </text>
+                    }
+                    @if (sinUbicar > 0)
+                    {
+                        <text>@sinUbicar @(sinUbicar == 1 ? "no aparece" : "no aparecen") en el mapa (no se encontró la localidad). </text>
+                    }
+                    Todos están en la lista.
+                </div>
             }
             <div class="m1-cp-ley">
                 <span class="m1-cp-dot" style="background:#16a34a"></span>Tu zona<br />
@@ -296,6 +306,7 @@
     private HashSet<int> tildados = new();
     private MeliEstado? meli;
     private int sinUbicar;
+    private int sinUso;
     private DotNetObjectReference<Me1CodigosPostales>? _ref;
     private System.Threading.Timer? _timerMeli;
 
@@ -386,7 +397,8 @@
     private async Task PintarMapaAsync()
     {
         if (!mapaListo || items == null) return;
-        sinUbicar = items.Count(i => i.lat == null);
+        sinUso = items.Count(i => i.provincia == null);
+        sinUbicar = items.Count(i => i.provincia != null && i.lat == null);
         var puntos = filtradas
             .Where(i => i.lat != null && i.lng != null)
             .GroupBy(i => $"{i.provincia}|{i.localidad}")

@@ -115,9 +115,10 @@ public class Me1CodigosPostalesController : ControllerBase
         {
             var provTexto = prov == "CABA" ? "Ciudad Autónoma de Buenos Aires" : $"Provincia de {prov}";
             var r = await _geo.TryGeocodeAddressAsync($"{loc}, {provTexto}, Argentina");
-            // Solo vale si cae en la zona de las tarifas (AMBA + La Plata + norte de BA). Si Google
-            // no la conoce suele devolver el centro de la provincia, que queda afuera de este recuadro.
-            var ok = r is { } p && p.lat is > -35.7m and < -33.5m && p.lng is > -60.3m and < -57.3m;
+            // Solo vale si cae en la zona de las tarifas (AMBA + La Plata + norte de BA + sur de
+            // Entre Ríos). Si Google no la conoce suele devolver el centro de la provincia, que queda
+            // afuera de este recuadro.
+            var ok = r is { } p && p.lat is > -35.7m and < -32.4m && p.lng is > -60.3m and < -57.3m;
             _db.Me1LocalidadUbicaciones.Add(new Me1LocalidadUbicacion
             {
                 Clave = clave,
