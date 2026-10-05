@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Api.Controllers;
 
 /// <summary>
-/// 2026-10-05: /meli/me1/codigos-postales — sacar / volver a ofrecer CPs de me1, ubicarlos en el
-/// mapa y mandarle el tarifario a MeLi por API (POST /shipping/me1/v1/tariff/update) para no
+/// 2026-10-05: /meli/me1/codigos-postales — sacar / volver a ofrecer CPs de me1, decir qué CP es un
+/// punto del mapa y mandarle el tarifario a MeLi por API (POST /shipping/me1/v1/tariff/update) para no
 /// tener que subir el Excel a mano. La lista con los CPs sale de MeliMe1Controller
 /// (GET api/meli/me1/codigos-postales-activos) y usa los mismos rangos (TARIFAS).
 /// </summary>
@@ -29,27 +29,15 @@ public class Me1CodigosPostalesController : ControllerBase
     private readonly AuditLogService _audit;
     private readonly IHttpClientFactory _httpFactory;
     private readonly MeliAccountService _accountService;
-    private readonly GoogleMapsLinkResolverService _geo;
+    private readonly IConfiguration _config;
     private readonly ILogger<Me1CodigosPostalesController> _logger;
 
     public Me1CodigosPostalesController(AppDbContext db, AuditLogService audit, IHttpClientFactory httpFactory,
-        MeliAccountService accountService, GoogleMapsLinkResolverService geo, ILogger<Me1CodigosPostalesController> logger)
+        MeliAccountService accountService, IConfiguration config, ILogger<Me1CodigosPostalesController> logger)
     {
         _db = db; _audit = audit; _httpFactory = httpFactory;
-        _accountService = accountService; _geo = geo; _logger = logger;
+        _accountService = accountService; _config = config; _logger = logger;
     }
-
-    // Localidades que Google no ubica bien (devuelve una calle homónima o el partido entero).
-    // Coordenadas aproximadas del pueblo, puestas a mano el 2026-10-05.
-    private static readonly Dictionary<string, (decimal Lat, decimal Lng)> UBICACIONES_A_MANO = new()
-    {
-        ["Buenos Aires|Otamendi"] = (-34.2306m, -58.8714m),
-        ["Buenos Aires|El Pino"] = (-34.9700m, -58.0700m),
-        ["Buenos Aires|Punta Indio"] = (-35.2733m, -57.2479m),
-        ["Buenos Aires|Alto Verde"] = (-34.0800m, -59.0600m),
-        ["Buenos Aires|El Durazno"] = (-34.6986m, -58.9034m),
-        ["Buenos Aires|Villa Numancia"] = (-34.9667m, -58.4333m),
-    };
 
     private static bool EsCpDeLaTabla(int cp) => MeliMe1Controller.TARIFAS.Any(t => cp >= t.CpFrom && cp <= t.CpTo);
 
@@ -101,56 +89,46 @@ public class Me1CodigosPostalesController : ControllerBase
     }
 
     // ============================================================
-    // Ubicar localidades en el mapa (Google Geocoding, una sola vez)
+    // Tocar el mapa → qué código postal es ese punto (Google reverse geocoding)
     // ============================================================
 
     /// <summary>
-    /// Busca la ubicación de las localidades que todavía no se buscaron. Las guarda (también las
-    /// que no se encontraron, para no reintentar). Devuelve cuántas buscó y cuántas encontró.
+    /// Devuelve el código postal (4 dígitos) del punto tocado en el mapa. Google lo da como CPA
+    /// ("B1641BQQ" o "B1641"); se toman los 4 dígitos. cp=null si Google no da código ahí.
     /// </summary>
-    [HttpPost("ubicar")]
-    public async Task<IActionResult> Ubicar()
+    [HttpGet("punto")]
+    public async Task<IActionResult> Punto([FromQuery] double lat, [FromQuery] double lng)
     {
-        var yaBuscadas = (await _db.Me1LocalidadUbicaciones.Select(u => u.Clave).ToListAsync()).ToHashSet();
-        var pendientes = new List<(string Clave, string Provincia, string Localidad)>();
-        foreach (var (cpFrom, cpTo, _, _) in MeliMe1Controller.TARIFAS)
-            for (int cp = cpFrom; cp <= cpTo; cp++)
-            {
-                var (prov, loc) = MeliMe1Controller.LookupCp(cp);
-                if (string.IsNullOrWhiteSpace(prov) || string.IsNullOrWhiteSpace(loc)) continue;
-                var clave = MeliMe1Controller.ClaveLocalidad(prov, loc);
-                if (yaBuscadas.Add(clave)) pendientes.Add((clave, prov, loc));
-            }
+        var key = _config["GOOGLE_MAPS_API_KEY"] ?? Environment.GetEnvironmentVariable("GOOGLE_MAPS_API_KEY") ?? "";
+        if (string.IsNullOrWhiteSpace(key)) return Ok(new { cp = (int?)null, error = "Falta la clave de Google Maps" });
 
-        int encontradas = 0;
-        foreach (var (clave, prov, loc) in pendientes)
+        var latlng = FormattableString.Invariant($"{lat},{lng}");
+        var url = $"https://maps.googleapis.com/maps/api/geocode/json?latlng={Uri.EscapeDataString(latlng)}&language=es&key={key}";
+        try
         {
-            if (UBICACIONES_A_MANO.TryGetValue(clave, out var aMano))
+            var http = _httpFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(10);
+            using var doc = JsonDocument.Parse(await http.GetStringAsync(url));
+            int? cp = null;
+            string? direccion = null;
+            foreach (var r in doc.RootElement.GetProperty("results").EnumerateArray())
             {
-                _db.Me1LocalidadUbicaciones.Add(new Me1LocalidadUbicacion
-                    { Clave = clave, Lat = aMano.Lat, Lng = aMano.Lng, Encontrado = true, BuscadoAt = DateTime.UtcNow });
-                encontradas++;
-                continue;
+                direccion ??= r.TryGetProperty("formatted_address", out var fa) ? fa.GetString() : null;
+                foreach (var c in r.GetProperty("address_components").EnumerateArray())
+                {
+                    if (!c.GetProperty("types").EnumerateArray().Any(t => t.GetString() == "postal_code")) continue;
+                    var digitos = new string((c.GetProperty("long_name").GetString() ?? "").Where(char.IsDigit).ToArray());
+                    if (digitos.Length == 4 && int.TryParse(digitos, out var n)) { cp = n; break; }
+                }
+                if (cp != null) break;
             }
-            var provTexto = prov == "CABA" ? "Ciudad Autónoma de Buenos Aires" : $"Provincia de {prov}";
-            var r = await _geo.TryGeocodeAddressAsync($"{loc}, {provTexto}, Argentina");
-            // Solo vale si cae en la zona de las tarifas (AMBA + La Plata + norte de BA + sur de
-            // Entre Ríos). Si Google no la conoce suele devolver el centro de la provincia, que queda
-            // afuera de este recuadro.
-            var ok = r is { } p && p.lat is > -35.7m and < -32.4m && p.lng is > -60.3m and < -57.0m;
-            _db.Me1LocalidadUbicaciones.Add(new Me1LocalidadUbicacion
-            {
-                Clave = clave,
-                Lat = ok ? r!.Value.lat : null,
-                Lng = ok ? r!.Value.lng : null,
-                Encontrado = ok,
-                BuscadoAt = DateTime.UtcNow
-            });
-            if (ok) encontradas++;
+            return Ok(new { cp, direccion });
         }
-        await _db.SaveChangesAsync();
-
-        return Ok(new { buscadas = pendientes.Count, encontradas });
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Me1 CPs: fallo el reverse geocoding de {LatLng}", latlng);
+            return Ok(new { cp = (int?)null, error = "Google no respondió" });
+        }
     }
 
     // ============================================================
