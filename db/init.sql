@@ -8167,3 +8167,36 @@ BEGIN
     CREATE INDEX IX_Me1TarifaEnvios_Resource ON Me1_TarifaEnvios (ResourceId);
 END
 GO
+-- 2026-10-05: me1 — precio especial por CP, precio por zona editable y km por calle desde el depósito.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Me1_CpPrecios')
+BEGIN
+    CREATE TABLE Me1_CpPrecios (
+        Cp INT NOT NULL PRIMARY KEY,
+        Precio DECIMAL(18,2) NOT NULL,
+        CambiadoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CambiadoPor NVARCHAR(100) NULL
+    );
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Me1_ZonaPrecios')
+BEGIN
+    CREATE TABLE Me1_ZonaPrecios (
+        ZonaId NVARCHAR(30) NOT NULL PRIMARY KEY,
+        Precio DECIMAL(18,2) NOT NULL,
+        CambiadoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CambiadoPor NVARCHAR(100) NULL
+    );
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Me1_CpDistancias')
+BEGIN
+    CREATE TABLE Me1_CpDistancias (
+        Cp INT NOT NULL PRIMARY KEY,
+        Metros INT NULL,
+        Segundos INT NULL,
+        DepositoLat DECIMAL(9,6) NOT NULL,
+        DepositoLng DECIMAL(9,6) NOT NULL,
+        CalculadoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO

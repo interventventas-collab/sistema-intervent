@@ -671,11 +671,13 @@ public class MeliMe1Controller : ControllerBase
 
         // Datos: una fila por CP. Total ~2000 filas para cubrir 1001-2999 (con rangos contiguos).
         int row = 4;
-        foreach (var (from, to, precio, _) in TARIFAS)
+        var precios = await CargarPreciosAsync(_db);
+        foreach (var (from, to, precioDefecto, zonaId) in TARIFAS)
         {
             for (int cp = from; cp <= to; cp++)
             {
                 if (excluidos.Contains(cp)) continue;
+                var precio = precios.Precio(cp, zonaId, precioDefecto);
                 ws.Cell(row, 1).Value = cp;
                 ws.Cell(row, 2).Value = cp;
                 ws.Cell(row, 3).Value = 0;
@@ -731,6 +733,34 @@ public class MeliMe1Controller : ControllerBase
         (2800, 2899, 18000m, "norte_ba"),    // Norte BA cercano (Zarate, Campana, San Antonio de Areco)
     };
 
+    /// <summary>
+    /// 2026-10-05: precios vigentes = precio especial del CP (Me1_CpPrecios) → precio de la zona
+    /// cambiado desde la pantalla (Me1_ZonaPrecios) → precio fijo de TARIFAS.
+    /// </summary>
+    /// <summary>Depósito = punto de partida configurado en Mapeo (AppSettings mapeo.start.lat/lng).</summary>
+    internal static async Task<(decimal? Lat, decimal? Lng)> DepositoAsync(AppDbContext db)
+    {
+        static decimal? Leer(string? v) => decimal.TryParse(v, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var d) ? Math.Round(d, 6) : null;
+        var lat = Leer((await db.AppSettings.FindAsync("mapeo.start.lat"))?.Value);
+        var lng = Leer((await db.AppSettings.FindAsync("mapeo.start.lng"))?.Value);
+        return (lat, lng);
+    }
+
+    internal sealed class PreciosMe1
+    {
+        public Dictionary<int, decimal> PorCp { get; init; } = new();
+        public Dictionary<string, decimal> PorZona { get; init; } = new();
+        public decimal PrecioZona(string zonaId, decimal defecto) => PorZona.TryGetValue(zonaId, out var z) ? z : defecto;
+        public decimal Precio(int cp, string zonaId, decimal defecto) => PorCp.TryGetValue(cp, out var c) ? c : PrecioZona(zonaId, defecto);
+    }
+
+    internal static async Task<PreciosMe1> CargarPreciosAsync(AppDbContext db) => new()
+    {
+        PorCp = await db.Me1CpPrecios.ToDictionaryAsync(p => p.Cp, p => p.Precio),
+        PorZona = await db.Me1ZonaPrecios.ToDictionaryAsync(p => p.ZonaId, p => p.Precio)
+    };
+
     // Metadata de cada zona (color para badge visual)
     private static readonly Dictionary<string, (string Nombre, string Color)> ZONAS_META = new()
     {
@@ -765,13 +795,23 @@ public class MeliMe1Controller : ControllerBase
                 compras[c] = compras.GetValueOrDefault(c) + z.N;
         }
 
+        var precios = await CargarPreciosAsync(_db);
+
+        // Km por calle desde el depósito (si ya se calcularon para el depósito actual)
+        var (depLat, depLng) = await DepositoAsync(_db);
+        var distancias = depLat == null ? new Dictionary<int, Api.Models.Me1CpDistancia>()
+            : await _db.Me1CpDistancias.Where(d => d.DepositoLat == depLat && d.DepositoLng == depLng).ToDictionaryAsync(d => d.Cp);
+
         var resultado = new List<object>();
-        foreach (var (cpFrom, cpTo, precio, zonaId) in TARIFAS)
+        foreach (var (cpFrom, cpTo, precioDefecto, zonaId) in TARIFAS)
         {
             var meta = ZONAS_META[zonaId];
+            var precioZona = precios.PrecioZona(zonaId, precioDefecto);
             for (int cp = cpFrom; cp <= cpTo; cp++)
             {
                 var info = Me1CpDatos.Info(cp);
+                var precio = precios.Precio(cp, zonaId, precioDefecto);
+                distancias.TryGetValue(cp, out var dist);
                 resultado.Add(new
                 {
                     cp,
@@ -784,6 +824,10 @@ public class MeliMe1Controller : ControllerBase
                     zonaNombre = meta.Nombre,
                     zonaColor = meta.Color,
                     precio,
+                    precioZona,
+                    especial = precios.PorCp.ContainsKey(cp),
+                    km = dist?.Metros == null ? (double?)null : Math.Round(dist.Metros.Value / 1000.0, 1),
+                    minutos = dist?.Segundos == null ? (int?)null : (int)Math.Round(dist.Segundos.Value / 60.0),
                     ofrecido = !excluidos.Contains(cp),
                     lat = info?.Lat,
                     lng = info?.Lng,

@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Api.Data;
@@ -71,13 +72,7 @@ public class Me1CodigosPostalesController : ControllerBase
             cambiados = nuevos.Count;
         }
 
-        if (cambiados > 0)
-        {
-            var st = await _db.AppSettings.FindAsync(SettingUltimoCambio);
-            var ahora = DateTime.UtcNow.ToString("O");
-            if (st is null) _db.AppSettings.Add(new AppSetting { Key = SettingUltimoCambio, Value = ahora, UpdatedAt = DateTime.UtcNow });
-            else { st.Value = ahora; st.UpdatedAt = DateTime.UtcNow; }
-        }
+        if (cambiados > 0) await MarcarCambioAsync();
         await _db.SaveChangesAsync();
 
         if (cambiados > 0)
@@ -86,6 +81,152 @@ public class Me1CodigosPostalesController : ControllerBase
                 $"{cambiados} CPs: {string.Join(", ", cps.OrderBy(c => c).Take(300))}", User.Identity?.Name);
 
         return Ok(new { ok = true, cambiados });
+    }
+
+    /// <summary>Anota que la tabla cambió (para el cartel "Hay cambios que MeLi todavía no tiene").</summary>
+    private async Task MarcarCambioAsync()
+    {
+        var st = await _db.AppSettings.FindAsync(SettingUltimoCambio);
+        var ahora = DateTime.UtcNow.ToString("O");
+        if (st is null) _db.AppSettings.Add(new AppSetting { Key = SettingUltimoCambio, Value = ahora, UpdatedAt = DateTime.UtcNow });
+        else { st.Value = ahora; st.UpdatedAt = DateTime.UtcNow; }
+    }
+
+    // ============================================================
+    // Precios: especial por CP y por zona
+    // ============================================================
+
+    public record CambiarPrecioRequest(List<int> Cps, decimal? Precio);
+
+    /// <summary>Pone precio especial a una lista de CPs, o los vuelve al precio de su zona (Precio=null).</summary>
+    [HttpPost("precio")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> CambiarPrecio([FromBody] CambiarPrecioRequest req)
+    {
+        var cps = (req.Cps ?? new()).Distinct().Where(EsCpDeLaTabla).ToList();
+        if (cps.Count == 0) return BadRequest(new { error = "No hay códigos postales válidos." });
+        if (req.Precio is { } pr && (pr <= 0 || pr >= 10_000_000)) return BadRequest(new { error = "El precio tiene que ser mayor a $0." });
+
+        var existentes = await _db.Me1CpPrecios.Where(p => cps.Contains(p.Cp)).ToListAsync();
+        if (req.Precio is null)
+            _db.Me1CpPrecios.RemoveRange(existentes);
+        else
+        {
+            var usuario = User.Identity?.Name;
+            foreach (var cp in cps)
+            {
+                var e = existentes.FirstOrDefault(x => x.Cp == cp);
+                if (e is null) _db.Me1CpPrecios.Add(new Me1CpPrecio { Cp = cp, Precio = req.Precio.Value, CambiadoAt = DateTime.UtcNow, CambiadoPor = usuario });
+                else { e.Precio = req.Precio.Value; e.CambiadoAt = DateTime.UtcNow; e.CambiadoPor = usuario; }
+            }
+        }
+        await MarcarCambioAsync();
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync("Me1.CodigosPostales", "precio", req.Precio is null ? "precio_de_la_zona" : "precio_especial",
+            $"{cps.Count} CPs a {(req.Precio is null ? "precio de su zona" : "$" + req.Precio.Value.ToString("N0"))}: {string.Join(", ", cps.OrderBy(c => c).Take(300))}",
+            User.Identity?.Name);
+        return Ok(new { ok = true, cambiados = cps.Count });
+    }
+
+    public record CambiarPrecioZonaRequest(string ZonaId, decimal Precio);
+
+    /// <summary>Cambia el precio de toda una zona (los CPs con precio especial no cambian).</summary>
+    [HttpPost("zona-precio")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> CambiarPrecioZona([FromBody] CambiarPrecioZonaRequest req)
+    {
+        if (!MeliMe1Controller.TARIFAS.Any(t => t.ZonaId == req.ZonaId)) return BadRequest(new { error = "Zona desconocida." });
+        if (req.Precio <= 0 || req.Precio >= 10_000_000) return BadRequest(new { error = "El precio tiene que ser mayor a $0." });
+
+        var z = await _db.Me1ZonaPrecios.FindAsync(req.ZonaId);
+        var antes = z?.Precio ?? MeliMe1Controller.TARIFAS.First(t => t.ZonaId == req.ZonaId).Precio;
+        if (z is null) _db.Me1ZonaPrecios.Add(new Me1ZonaPrecio { ZonaId = req.ZonaId, Precio = req.Precio, CambiadoAt = DateTime.UtcNow, CambiadoPor = User.Identity?.Name });
+        else { z.Precio = req.Precio; z.CambiadoAt = DateTime.UtcNow; z.CambiadoPor = User.Identity?.Name; }
+        await MarcarCambioAsync();
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync("Me1.CodigosPostales", req.ZonaId, "precio_zona",
+            $"zona {req.ZonaId}: de ${antes:N0} a ${req.Precio:N0}", User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
+    // ============================================================
+    // Km por calle desde el depósito (Google Routes, una vez por depósito)
+    // ============================================================
+
+    /// <summary>Depósito (punto de partida de Mapeo) y cuántos CPs tienen km calculados para él.</summary>
+    [HttpGet("deposito")]
+    public async Task<IActionResult> Deposito()
+    {
+        var (lat, lng) = await MeliMe1Controller.DepositoAsync(_db);
+        var calculados = lat == null ? 0 : await _db.Me1CpDistancias.CountAsync(d => d.DepositoLat == lat && d.DepositoLng == lng);
+        return Ok(new { lat, lng, calculados });
+    }
+
+    /// <summary>
+    /// Calcula los km por calle desde el depósito hasta el centro de cada CP que todavía no los tenga
+    /// para el depósito actual. Google Routes computeRouteMatrix, de a 100 destinos por pedido
+    /// (617 CPs = 617 "elementos", dentro de los 10.000 gratis por mes de Google).
+    /// </summary>
+    [HttpPost("calcular-km")]
+    public async Task<IActionResult> CalcularKm()
+    {
+        var (depLat, depLng) = await MeliMe1Controller.DepositoAsync(_db);
+        if (depLat == null || depLng == null) return BadRequest(new { error = "No está configurado el depósito (punto de partida en Mapeo)." });
+        var key = _config["GOOGLE_MAPS_API_KEY"] ?? Environment.GetEnvironmentVariable("GOOGLE_MAPS_API_KEY") ?? "";
+        if (string.IsNullOrWhiteSpace(key)) return BadRequest(new { error = "Falta la clave de Google Maps." });
+
+        var hechos = (await _db.Me1CpDistancias.Where(d => d.DepositoLat == depLat && d.DepositoLng == depLng)
+            .Select(d => d.Cp).ToListAsync()).ToHashSet();
+        var pendientes = new List<(int Cp, double Lat, double Lng)>();
+        foreach (var (cpFrom, cpTo, _, _) in MeliMe1Controller.TARIFAS)
+            for (int cp = cpFrom; cp <= cpTo; cp++)
+                if (!hechos.Contains(cp) && Me1CpDatos.Info(cp) is { Lat: { } la, Lng: { } ln }) pendientes.Add((cp, la, ln));
+        if (pendientes.Count == 0) return Ok(new { calculados = 0 });
+
+        // Las de un depósito viejo ya no sirven
+        await _db.Me1CpDistancias.Where(d => d.DepositoLat != depLat || d.DepositoLng != depLng).ExecuteDeleteAsync();
+
+        var http = _httpFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(60);
+        int calculados = 0;
+        foreach (var tanda in pendientes.Chunk(100))
+        {
+            var body = new
+            {
+                origins = new[] { new { waypoint = new { location = new { latLng = new { latitude = (double)depLat, longitude = (double)depLng } } } } },
+                destinations = tanda.Select(t => new { waypoint = new { location = new { latLng = new { latitude = t.Lat, longitude = t.Lng } } } }).ToArray(),
+                travelMode = "DRIVE"
+            };
+            using var rq = new HttpRequestMessage(HttpMethod.Post, "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix")
+            { Content = JsonContent.Create(body) };
+            rq.Headers.Add("X-Goog-Api-Key", key);
+            rq.Headers.Add("X-Goog-FieldMask", "destinationIndex,distanceMeters,duration,condition");
+            using var resp = await http.SendAsync(rq);
+            var txt = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Me1 km: Google Routes respondió {Code}: {Body}", (int)resp.StatusCode, Recortar(txt));
+                return StatusCode(502, new { error = $"Google no calculó las distancias ({(int)resp.StatusCode}).", calculados });
+            }
+            using var doc = JsonDocument.Parse(txt);
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (!el.TryGetProperty("destinationIndex", out var di)) continue;
+                var t = tanda[di.GetInt32()];
+                int? metros = el.TryGetProperty("distanceMeters", out var dm) ? dm.GetInt32() : null;
+                int? segundos = el.TryGetProperty("duration", out var du) && int.TryParse(du.GetString()?.TrimEnd('s'), out var sec) ? sec : null;
+                _db.Me1CpDistancias.Add(new Me1CpDistancia
+                {
+                    Cp = t.Cp, Metros = metros, Segundos = segundos,
+                    DepositoLat = depLat.Value, DepositoLng = depLng.Value, CalculadoAt = DateTime.UtcNow
+                });
+                calculados++;
+            }
+            await _db.SaveChangesAsync();
+        }
+        return Ok(new { calculados });
     }
 
     // ============================================================
@@ -145,7 +286,7 @@ public class Me1CodigosPostalesController : ControllerBase
     public async Task<IActionResult> EnviarAMeli()
     {
         var excluidos = (await _db.Me1CpExcluidos.Select(e => e.Cp).ToListAsync()).ToHashSet();
-        var filas = ArmarFilas(excluidos);
+        var filas = ArmarFilas(excluidos, await MeliMe1Controller.CargarPreciosAsync(_db));
         var cantidadCps = filas.Sum(f => f.CpFin - f.CpInicio + 1);
         if (cantidadCps == 0) return BadRequest(new { error = "No queda ningún código postal para ofrecer." });
 
@@ -303,13 +444,14 @@ public class Me1CodigosPostalesController : ControllerBase
     private record FilaTarifa(int CpInicio, int CpFin, decimal Precio);
 
     /// <summary>Junta CPs consecutivos con el mismo precio en un solo renglón (CP inicio - CP fin).</summary>
-    private static List<FilaTarifa> ArmarFilas(HashSet<int> excluidos)
+    private static List<FilaTarifa> ArmarFilas(HashSet<int> excluidos, MeliMe1Controller.PreciosMe1 precios)
     {
         var filas = new List<FilaTarifa>();
-        foreach (var (cpFrom, cpTo, precio, _) in MeliMe1Controller.TARIFAS)
+        foreach (var (cpFrom, cpTo, precioDefecto, zonaId) in MeliMe1Controller.TARIFAS)
             for (int cp = cpFrom; cp <= cpTo; cp++)
             {
                 if (excluidos.Contains(cp)) continue;
+                var precio = precios.Precio(cp, zonaId, precioDefecto);
                 var ult = filas.Count > 0 ? filas[^1] : null;
                 if (ult != null && ult.CpFin == cp - 1 && ult.Precio == precio)
                     filas[^1] = ult with { CpFin = cp };

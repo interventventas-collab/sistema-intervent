@@ -76,6 +76,21 @@
     .m1-cp-ley { position: absolute; bottom: 10px; left: 10px; z-index: 500; background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); padding: 0.4rem 0.6rem; font-size: 0.7rem; line-height: 1.7; }
     .m1-cp-mapa-aviso { position: absolute; top: 10px; left: 55px; z-index: 500; background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); padding: 0.35rem 0.6rem; font-size: 0.75rem; color: #6b7280; }
 
+    table.m1-cp-table tbody tr { cursor: pointer; }
+    .m1-cp-especial { font-weight: 800; color: #111827; }
+    .m1-cp-antes { color: #9ca3af; text-decoration: line-through; font-size: 0.72rem; margin-right: 0.25rem; }
+    .m1-cp-esp-tag { font-size: 0.62rem; color: #6b7280; border: 1px solid #d1d5db; border-radius: 4px; padding: 0 0.25rem; margin-left: 0.25rem; }
+    .m1-filtro-zona .lapiz { margin-left: 0.4rem; padding: 0 0.15rem; border-radius: 4px; }
+    .m1-filtro-zona .lapiz:hover { background: rgba(255,255,255,0.3); }
+    .m1-modal-fondo { position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+    .m1-modal { background: white; border-radius: 12px; padding: 1.1rem 1.3rem; width: 440px; max-width: calc(100vw - 32px); box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
+    .m1-modal h4 { margin: 0 0 0.4rem; font-size: 1rem; }
+    .m1-modal p { margin: 0 0 0.6rem; color: #4b5563; font-size: 0.85rem; line-height: 1.5; }
+    .m1-modal .fila { display: flex; align-items: center; gap: 0.5rem; margin: 0.6rem 0; font-size: 1.1rem; }
+    .m1-modal input { font-size: 1.1rem; padding: 0.45rem 0.6rem; border: 2px solid #1f2937; border-radius: 8px; width: 170px; }
+    .m1-modal .botones { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; margin-top: 0.8rem; }
+    .m1-modal .nota { font-size: 0.75rem; color: #6b7280; margin-top: 0.6rem; }
+    .m1-cp-btn.oscuro { background: #1f2937; color: white; }
     .m1-loading { text-align: center; padding: 2rem; color: #6b7280; }
     .m1-empty { text-align: center; padding: 2rem; color: #9ca3af; font-style: italic; }
 </style>
@@ -106,10 +121,18 @@
             {
                 <button class="m1-filtro-zona @(filtroZona == z.zonaId ? "activo" : "")" style="background: @z.color;" @onclick="() => SetFiltroZona(z.zonaId)">
                     @z.nombre <span class="precio">$@z.precio.ToString("N0")</span> <span class="count">(@z.count)</span>
+                    @if (esAdmin)
+                    {
+                        <span class="lapiz" title="Cambiar el precio de toda la zona" @onclick="() => AbrirPrecioZona(z)" @onclick:stopPropagation="true">✎</span>
+                    }
                 </button>
             }
             <button class="m1-filtro-zona m1-filtro-sacados @(filtroZona == FiltroSacados ? "activo" : "")" @onclick="() => SetFiltroZona(FiltroSacados)">
                 No se ofrecen <span class="count">(@items.Count(i => !i.ofrecido))</span>
+            </button>
+            <button class="m1-filtro-zona m1-filtro-sacados @(filtroZona == FiltroEspecial ? "activo" : "")" @onclick="() => SetFiltroZona(FiltroEspecial)"
+                    title="Códigos con un precio distinto al de su zona">
+                Precio especial <span class="count">(@items.Count(i => i.especial))</span>
             </button>
             <button class="m1-filtro-zona m1-filtro-sacados @(filtroZona == FiltroNoExisten ? "activo" : "")" @onclick="() => SetFiltroZona(FiltroNoExisten)"
                     title="Códigos que están en la tabla pero MeLi dice que no existen (nadie puede comprar desde ahí)">
@@ -133,6 +156,7 @@
             {
                 <button class="m1-cp-btn verde" @onclick="() => CambiarEstado(true)" disabled="@trabajando">Volver a ofrecer (@aOfrecer)</button>
             }
+            <button class="m1-cp-btn oscuro" @onclick="AbrirPrecioCps" disabled="@trabajando">$ Cambiar precio (@tildados.Count)</button>
             @if (aSacar > 0)
             {
                 <button class="m1-cp-btn rojo" @onclick="() => CambiarEstado(false)" disabled="@trabajando">Dejar de ofrecer (@aSacar)</button>
@@ -229,10 +253,10 @@
                             {
                                 var r = row;
                                 var sel = tildados.Contains(r.cp);
-                                <tr class="@(sel ? "sel" : "") @(!r.ofrecido ? "sac" : "")">
+                                <tr class="@(sel ? "sel" : "") @(!r.ofrecido ? "sac" : "")" @onclick="() => IrA(r)" title="Ver en el mapa">
                                     @if (esAdmin)
                                     {
-                                        <td><input type="checkbox" class="m1-cp-check" checked="@sel" @onchange="() => Toggle(r.cp)" /></td>
+                                        <td @onclick:stopPropagation="true"><input type="checkbox" class="m1-cp-check" checked="@sel" @onchange="() => Toggle(r.cp)" /></td>
                                     }
                                     <td class="m1-cp-num">@r.cp</td>
                                     <td class="m1-cp-loc">
@@ -241,9 +265,18 @@
                                         {
                                             <span class="m1-cp-tag"> · no se ofrece</span>
                                         }
-                                        <small>@(r.partido ?? r.provincia)@(r.compras > 0 ? $" · {r.compras} {(r.compras == 1 ? "compra" : "compras")}" : "")</small>
+                                        <small>@(r.partido ?? r.provincia)@(r.km != null ? $" · {r.km.Value.ToString("0.#", new System.Globalization.CultureInfo("es-AR"))} km" : "")@(r.compras > 0 ? $" · {r.compras} {(r.compras == 1 ? "compra" : "compras")}" : "")</small>
                                     </td>
-                                    <td class="m1-cp-precio">$@r.precio.ToString("N0")</td>
+                                    <td class="m1-cp-precio">
+                                        @if (r.especial)
+                                        {
+                                            <span class="m1-cp-antes">$@r.precioZona.ToString("N0")</span><span class="m1-cp-especial">$@r.precio.ToString("N0")</span><span class="m1-cp-esp-tag">especial</span>
+                                        }
+                                        else
+                                        {
+                                            <text>$@r.precio.ToString("N0")</text>
+                                        }
+                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -271,9 +304,43 @@
     </div>
 </div>
 
+@if (modalPrecio != null)
+{
+    var m = modalPrecio;
+    <div class="m1-modal-fondo" @onclick="CerrarModal">
+        <div class="m1-modal" @onclick:stopPropagation="true">
+            @if (m.ZonaId != null)
+            {
+                <h4>✎ Precio de toda la zona «@m.Titulo»</h4>
+                <p>@m.Detalle Los códigos con precio especial no cambian.</p>
+            }
+            else
+            {
+                <h4>Cambiar precio de envío</h4>
+                <p>@m.Detalle</p>
+            }
+            <div class="fila">$ <input type="text" inputmode="numeric" @bind="m.Texto" @bind:event="oninput" placeholder="16.000" /></div>
+            @if (!string.IsNullOrEmpty(m.Error))
+            {
+                <p style="color:#dc2626">@m.Error</p>
+            }
+            <div class="botones">
+                <button class="m1-cp-btn gris" @onclick="CerrarModal" disabled="@trabajando">Cancelar</button>
+                @if (m.ZonaId == null && m.HayEspeciales)
+                {
+                    <button class="m1-cp-btn gris" @onclick="() => GuardarPrecio(true)" disabled="@trabajando">Volver al precio de la zona</button>
+                }
+                <button class="m1-cp-btn oscuro" @onclick="() => GuardarPrecio(false)" disabled="@trabajando">Guardar y mandar a MeLi</button>
+            </div>
+            <div class="nota">Es lo que paga el comprador por el envío me1. Se le manda la tabla nueva a MeLi igual que cuando sacás códigos (tarda unos minutos).</div>
+        </div>
+    </div>
+}
+
 @code {
     private const string FiltroSacados = "__sacados";
     private const string FiltroNoExisten = "__noexisten";
+    private const string FiltroEspecial = "__especial";
 
     private bool cargando = true;
     private bool trabajando;
@@ -290,7 +357,20 @@
     private DotNetObjectReference<Me1CodigosPostales>? _ref;
     private System.Threading.Timer? _timerMeli;
 
-    private record CpRow(int cp, bool existe, string? provincia, string? partido, string? localidad, string[]? incluye, string zonaId, string zonaNombre, string zonaColor, decimal precio, bool ofrecido, double? lat, double? lng, int compras);
+    private record CpRow(int cp, bool existe, string? provincia, string? partido, string? localidad, string[]? incluye, string zonaId, string zonaNombre, string zonaColor, decimal precio, decimal precioZona, bool especial, double? km, int? minutos, bool ofrecido, double? lat, double? lng, int compras);
+    private record DepositoResp(decimal? lat, decimal? lng, int calculados);
+    private class ModalPrecio
+    {
+        public string? ZonaId { get; set; }          // null = precio especial de los CPs tildados
+        public List<int> Cps { get; set; } = new();
+        public string Titulo { get; set; } = "";
+        public string Detalle { get; set; } = "";
+        public bool HayEspeciales { get; set; }
+        public string Texto { get; set; } = "";
+        public string? Error { get; set; }
+    }
+    private ModalPrecio? modalPrecio;
+    private DepositoResp? deposito;
     private record PuntoResp(int? cp, string? direccion, string? error);
     private record ZonaResumen(string zonaId, string nombre, string color, decimal precio, int count);
     private record MeliEnvio(int id, string? cuenta, string estado, string? detalle, int cantidadCps, DateTime enviadoAt, string? enviadoPor, DateTime? actualizadoAt);
@@ -304,6 +384,7 @@
         {
             FiltroSacados => !r.ofrecido,
             FiltroNoExisten => !r.existe,
+            FiltroEspecial => r.especial,
             null => r.existe,
             _ => r.existe && r.zonaId == filtroZona
         })
@@ -329,7 +410,11 @@
         {
             _ref ??= DotNetObjectReference.Create(this);
             mapaListo = await JS.InvokeAsync<bool>("me1CpMapa.init", "me1-cp-mapa", _ref, esAdmin);
-            if (mapaListo) await PintarMapaAsync();
+            if (mapaListo)
+            {
+                await PintarMapaAsync();
+                _ = CargarDepositoAsync();
+            }
         }
     }
 
@@ -341,7 +426,7 @@
             zonasResumen = items
                 .Where(i => i.existe)
                 .GroupBy(i => i.zonaId)
-                .Select(g => new ZonaResumen(g.Key, g.First().zonaNombre, g.First().zonaColor, g.First().precio, g.Count()))
+                .Select(g => new ZonaResumen(g.Key, g.First().zonaNombre, g.First().zonaColor, g.First().precioZona, g.Count()))
                 .OrderBy(z => z.precio)
                 .ToList();
         }
@@ -368,6 +453,10 @@
                 color = i.zonaColor,
                 i.ofrecido,
                 i.precio,
+                i.precioZona,
+                i.especial,
+                i.km,
+                i.minutos,
                 zona = i.zonaNombre,
                 i.compras,
                 incluye = i.incluye ?? Array.Empty<string>(),
@@ -427,6 +516,123 @@
         await PintarMapaAsync();
     }
 
+    /// <summary>Casita del depósito en el mapa + km por calle (se calculan solos la primera vez).</summary>
+    private async Task CargarDepositoAsync()
+    {
+        try
+        {
+            deposito = await Http.GetFromJsonAsync<DepositoResp>("api/meli/me1/codigos-postales/deposito");
+            if (deposito?.lat == null || deposito.lng == null) return;
+            await JS.InvokeVoidAsync("me1CpMapa.setDeposito", deposito.lat, deposito.lng);
+            var conUbicacion = items?.Count(i => i.lat != null) ?? 0;
+            if (deposito.calculados < conUbicacion)
+            {
+                var resp = await Http.PostAsync("api/meli/me1/codigos-postales/calcular-km", null);
+                if (resp.IsSuccessStatusCode)
+                {
+                    await CargarAsync();
+                    await PintarMapaAsync();
+                    StateHasChanged();
+                }
+            }
+        }
+        catch { /* los km son informativos */ }
+    }
+
+    /// <summary>Tocaron un renglón de la lista: el mapa va hasta ese código y el pin salta.</summary>
+    private async Task IrA(CpRow r)
+    {
+        if (!mapaListo || r.lat == null) return;
+        await JS.InvokeVoidAsync("me1CpMapa.irA", r.cp);
+    }
+
+    private void AbrirPrecioCps()
+    {
+        if (items == null || tildados.Count == 0) return;
+        var tild = items.Where(i => tildados.Contains(i.cp)).OrderBy(i => i.cp).ToList();
+        var precios = tild.Select(i => i.precio).Distinct().ToList();
+        var lista = string.Join(", ", tild.Take(6).Select(i => $"{i.cp} {i.localidad}")) + (tild.Count > 6 ? $" y {tild.Count - 6} más" : "");
+        modalPrecio = new ModalPrecio
+        {
+            Cps = tild.Select(i => i.cp).ToList(),
+            Detalle = $"{tild.Count} {(tild.Count == 1 ? "código" : "códigos")}: {lista}. " +
+                      (precios.Count == 1 ? $"Hoy pagan ${precios[0]:N0}." : "Hoy tienen precios distintos."),
+            HayEspeciales = tild.Any(i => i.especial),
+            Texto = precios.Count == 1 ? precios[0].ToString("N0", EsAr) : ""
+        };
+    }
+
+    private void AbrirPrecioZona(ZonaResumen z)
+    {
+        var cant = items?.Count(i => i.zonaId == z.zonaId && i.existe && !i.especial) ?? 0;
+        modalPrecio = new ModalPrecio
+        {
+            ZonaId = z.zonaId,
+            Titulo = z.nombre,
+            Detalle = $"{cant} códigos que hoy pagan ${z.precio:N0}.",
+            Texto = z.precio.ToString("N0", EsAr)
+        };
+    }
+
+    private void CerrarModal() { if (!trabajando) modalPrecio = null; }
+
+    private static readonly System.Globalization.CultureInfo EsAr = new("es-AR");
+
+    /// <summary>"16.000", "16,000", "16000" o "$ 16.000" → 16000. Sin centavos ("16.000,50" → 16000).</summary>
+    private static decimal? LeerPrecio(string? texto)
+    {
+        var t = System.Text.RegularExpressions.Regex.Replace((texto ?? "").Trim(), @"[.,]\d{1,2}$", "");
+        var digitos = new string(t.Where(char.IsDigit).ToArray());
+        return decimal.TryParse(digitos, out var v) && v > 0 ? v : null;
+    }
+
+    private async Task GuardarPrecio(bool volverAZona)
+    {
+        var m = modalPrecio;
+        if (m == null) return;
+        decimal? precio = null;
+        if (!volverAZona)
+        {
+            precio = LeerPrecio(m.Texto);
+            if (precio == null) { m.Error = "Escribí el precio (por ejemplo 16.000)."; return; }
+        }
+
+        var cantidad = m.ZonaId != null ? (items?.Count(i => i.zonaId == m.ZonaId && i.existe && !i.especial) ?? 0) : m.Cps.Count;
+        if (cantidad > 20)
+        {
+            var que = volverAZona ? "volver al precio de su zona" : $"pasar a ${precio:N0}";
+            if (!await JS.InvokeAsync<bool>("confirm", $"¿Seguro? Vas a {que} {cantidad} códigos postales en me1.\n\nSe le manda la tabla nueva a MeLi enseguida.")) return;
+        }
+
+        trabajando = true;
+        try
+        {
+            var resp = m.ZonaId != null
+                ? await Http.PostAsJsonAsync("api/meli/me1/codigos-postales/zona-precio", new { zonaId = m.ZonaId, precio })
+                : await Http.PostAsJsonAsync("api/meli/me1/codigos-postales/precio", new { cps = m.Cps, precio });
+            if (!resp.IsSuccessStatusCode)
+            {
+                m.Error = $"No se pudo guardar: {await resp.Content.ReadAsStringAsync()}";
+                return;
+            }
+            ToastService.Success(volverAZona ? "Volvieron al precio de su zona" : $"Precio cambiado a ${precio:N0}");
+            modalPrecio = null;
+            if (m.ZonaId == null) tildados.Clear();
+            await CargarAsync();
+            await PintarMapaAsync();
+        }
+        catch (Exception ex)
+        {
+            m.Error = $"Error: {ex.Message}";
+            return;
+        }
+        finally
+        {
+            trabajando = false;
+        }
+        await EnviarAMeli();
+    }
+
     /// <summary>Tocaron un lugar del mapa: qué código postal es y cómo está en la tabla.</summary>
     [JSInvokable]
     public async Task<object> InfoPunto(double lat, double lng)
@@ -441,7 +647,8 @@
             return new
             {
                 cp = row.cp, enTabla = true, r.direccion,
-                localidad = row.localidad ?? "", row.partido, zona = row.zonaNombre, row.precio, row.ofrecido,
+                localidad = row.localidad ?? "", row.partido, zona = row.zonaNombre, row.precio, row.precioZona, row.especial,
+                row.km, row.minutos, row.ofrecido,
                 row.compras, incluye = row.incluye ?? Array.Empty<string>(), tildado = tildados.Contains(row.cp)
             };
         }
