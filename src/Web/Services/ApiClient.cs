@@ -560,6 +560,9 @@ public class ApiClient
     public async Task<AlqReservaDto?> GetAlqReservaAsync(int id)
         => await GetAsync<AlqReservaDto>($"/api/alquileres/reservas/{id}");
 
+    public async Task<AlqReservaPagosDto?> GetAlqReservaPagosAsync(int id)
+        => await GetAsync<AlqReservaPagosDto>($"/api/alquileres/reservas/{id}/pagos");
+
     public async Task<AlqReservaDto?> CreateAlqReservaAsync(CreateAlqReservaRequest request)
         => await PostAsync<AlqReservaDto>("/api/alquileres/reservas", request);
 

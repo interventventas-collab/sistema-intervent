@@ -667,11 +667,60 @@
                                 </div>
                             }
                             <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
-                            <div class="venta-totals-row">
-                                <span>Seña pagada:</span>
-                                <input class="form-input" type="number" step="0.01" min="0" @bind="formSena"
-                                       style="text-align: right; max-width: 130px; font-weight: 700; color: #059669;" />
-                            </div>
+                            @* 2026-10-05: la seña ya no se escribe a mano: se carga como cobranza (recibo + caja).
+                               Escribirla acá Y cargar la redirigida contaba la misma plata dos veces (caso Rubén). *@
+                            <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.2rem;">Pagos</div>
+                            @if (formSenaOriginal > 0)
+                            {
+                                <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                    @if (formSena > 0)
+                                    {
+                                        <span>Seña anterior (sin recibo)
+                                            <button type="button" class="btn-icon" style="font-size: 0.75rem; color: #6b7280; padding: 0 0.3rem;"
+                                                    title="Quitarla si esa plata ya está cargada como cobranza" @onclick="QuitarSenaAnterior">quitar</button>
+                                        </span>
+                                        <span>$@FormatMoney(formSena)</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #9ca3af; text-decoration: line-through;">Seña anterior (sin recibo)</span>
+                                        <span style="color: #9ca3af;">se quita al guardar · <button type="button" class="btn-icon" style="font-size: 0.75rem; padding: 0;" @onclick="() => formSena = formSenaOriginal">deshacer</button></span>
+                                    }
+                                </div>
+                            }
+                            @if (pagosReserva is not null)
+                            {
+                                @if (pagosReserva.CobradoSinRecibo > 0.5m)
+                                {
+                                    <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                        <span>Cobrado por el repartidor (sin recibo)</span>
+                                        <span>$@FormatMoney(pagosReserva.CobradoSinRecibo)</span>
+                                    </div>
+                                }
+                                @foreach (var pg in pagosReserva.Pagos)
+                                {
+                                    <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                        <span>@pg.Fecha.ToArTime().ToString("dd/MM") · @(string.IsNullOrEmpty(pg.Medios) ? "Cobranza" : pg.Medios) · recibo @pg.Numero</span>
+                                        <span>$@FormatMoney(pg.Importe)</span>
+                                    </div>
+                                }
+                            }
+                            @if (PagadoForm <= 0.5m && formSenaOriginal <= 0)
+                            {
+                                <div style="font-size: 0.85rem; color: #9ca3af;">Todavía no pagó nada.</div>
+                            }
+                            <button type="button" class="btn btn-secondary" style="font-size: 0.82rem; padding: 0.2rem 0.6rem; margin: 0.35rem 0;"
+                                    disabled="@(isSaving || formItems.Count == 0)" @onclick="GuardarYCargarPago"
+                                    title="Guarda la reserva y abre la cobranza con este alquiler ya elegido (efectivo, transferencia o redirigida)">
+                                + Cargar seña o pago
+                            </button>
+                            @if (PagadoForm > 0.5m)
+                            {
+                                <div class="venta-totals-row" style="font-size: 0.9rem;">
+                                    <span>Pagado:</span>
+                                    <span>$@FormatMoney(PagadoForm)</span>
+                                </div>
+                            }
                             <div class="venta-totals-row" style="font-size: 1rem; font-weight: 700; color: @(Saldo > 0 ? "#dc2626" : "#059669");">
                                 <span>Saldo pendiente:</span>
                                 <span>$@FormatMoney(Saldo)</span>
@@ -1002,14 +1051,17 @@
                             <span>$@FormatMoney(printReserva.MontoTotal)</span>
                         </div>
                         <hr style="margin: 0.4rem 0; border: none; border-top: 1px dashed #d1d5db;" />
-                        <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
-                            <span>Seña pagada:</span>
-                            <strong style="color: #059669;">$@FormatMoney(printReserva.Sena)</strong>
-                        </div>
+                        @if (printReserva.Sena > 0)
+                        {
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+                                <span>Seña pagada:</span>
+                                <strong style="color: #059669;">$@FormatMoney(printReserva.Sena)</strong>
+                            </div>
+                        }
                         @if (printReserva.MontoCobrado > 0)
                         {
                             <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
-                                <span>Cobrado en mano:</span>
+                                <span>Pagos recibidos:</span>
                                 <strong style="color: #059669;">$@FormatMoney(printReserva.MontoCobrado)</strong>
                             </div>
                         }
@@ -1822,7 +1874,29 @@
     private decimal Total => formUsarPrecios
         ? Math.Max(0m, Subtotal - Math.Max(0m, formDescuento))
         : Math.Max(0m, formTotalManual);
-    private decimal Saldo => Math.Max(0m, Total - Math.Max(0m, formSena));
+    // 2026-10-05: el saldo descuenta TODO lo pagado (seña vieja + cobranzas), no solo la seña.
+    // Antes ignoraba lo cobrado y el formulario decía un saldo distinto al de la lista.
+    private decimal PagadoForm => Math.Max(0m, formSena) + (pagosReserva is null ? 0m : pagosReserva.CobradoSinRecibo + pagosReserva.Pagos.Sum(p => p.Importe));
+    private decimal Saldo => Math.Max(0m, Total - PagadoForm);
+    private decimal formSenaOriginal;
+    private AlqReservaPagosDto? pagosReserva;
+    private bool irACargarPago;
+
+    private async Task QuitarSenaAnterior()
+    {
+        var msg = $"¿Esta seña de ${FormatMoney(formSenaOriginal)} ya está cargada como cobranza (redirigida, transferencia, efectivo)?\n\n" +
+                  $"Si la quitás, deja de descontarse y el saldo sube ${FormatMoney(formSenaOriginal)}. Se aplica al tocar Guardar.";
+        if (await JS.InvokeAsync<bool>("confirm", msg)) formSena = 0m;
+    }
+
+    /// <summary>Guarda la reserva (si es nueva, la crea) y lleva a Tesorería con el cliente y el alquiler
+    /// ya elegidos. Al guardar la cobranza vuelve a Reservas.</summary>
+    private async Task GuardarYCargarPago()
+    {
+        irACargarPago = true;
+        try { await Save(); }
+        finally { irACargarPago = false; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -2126,6 +2200,8 @@
         formGuardarMapeoEnCliente = false;
         formDescuento = r.Descuento;
         formSena = r.Sena;
+        formSenaOriginal = r.Sena;
+        try { pagosReserva = await Api.GetAlqReservaPagosAsync(r.Id); } catch { pagosReserva = null; }
         formEstado = r.Estado;
         formNotas = r.Notas ?? "";
         formNotasInternas = r.NotasInternas ?? "";
@@ -2182,7 +2258,7 @@
         formHoraInicio = ""; formHoraFin = "";
         formDireccionEvento = "";
         formMapeoLink = ""; formGuardarMapeoEnCliente = false; formSumarAlMapaReserva = false;
-        formDescuento = 0m; formSena = 0m;
+        formDescuento = 0m; formSena = 0m; formSenaOriginal = 0m; pagosReserva = null;
         formCotizacionId = null;
         formDias = 1;
         formUsarPrecios = false; formTotalManual = 0m;
@@ -2392,6 +2468,7 @@
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success($"Reserva {updated.Numero} actualizada");
+                if (irACargarPago) { showForm = false; Nav.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={updated.ClienteId}&reserva={updated.Id}"); return; }
             }
             else
             {
@@ -2428,7 +2505,8 @@
                 // 2026-07-25: si se tildó "sumar al mapa", mandamos la reserva al mapa de reparto.
                 if (formSumarAlMapaReserva) { try { await SumarReservaAlMapa(created); } catch { /* el mapa nunca frena el guardado de la reserva */ } }
                 // Descarga automática del comprobante al crear (pedido 2026-06-29)
-                await DescargarPdfReserva(created.Id, created.Numero);
+                if (!irACargarPago) await DescargarPdfReserva(created.Id, created.Numero);
+                else { showForm = false; Nav.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={created.ClienteId}&reserva={created.Id}"); return; }
             }
             showForm = false;
             await Load();
