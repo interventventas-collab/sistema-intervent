@@ -496,6 +496,18 @@
         if (items == null) return;
         var cps = items.Where(i => tildados.Contains(i.cp) && i.ofrecido != ofrecer).Select(i => i.cp).ToList();
         if (cps.Count == 0) return;
+
+        // 2026-10-05: el usuario sacó 459 de una sin querer (casilla "tildar todos"). Si son muchos, confirmar.
+        if (!ofrecer && cps.Count > 20)
+        {
+            var porZona = items.Where(i => cps.Contains(i.cp))
+                .GroupBy(i => i.zonaNombre)
+                .OrderByDescending(g => g.Count())
+                .Select(g => $"  · {g.Count()} de {g.Key}");
+            var msg = $"¿Seguro? Vas a dejar de ofrecer {cps.Count} códigos postales en me1:\n\n{string.Join("\n", porZona)}\n\nSe le manda la tabla nueva a MeLi enseguida.";
+            if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
+        }
+
         trabajando = true;
         try
         {
