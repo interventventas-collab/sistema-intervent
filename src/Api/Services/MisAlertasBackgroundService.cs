@@ -66,6 +66,9 @@ public class MisAlertasBackgroundService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
+        try { await ResumenFichadasWhatsAppAsync(db); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Alertas] no pude armar el resumen de fichadas"); }
+
         // El robot evalúa SOLO los tipos que sabe mirar (saldo, cheques, fecha, correo).
         // 2026-09-09: antes esto era una lista NEGRA de dos tipos ("todo menos VENTA_MELI y FICHADA")
         // y eso rompía en silencio a todas las alertas por EVENTO que se fueron sumando después
@@ -584,6 +587,75 @@ public class MisAlertasBackgroundService : BackgroundService
         var inbox = client.Inbox;
         await inbox.OpenAsync(FolderAccess.ReadOnly);
         return (client, inbox);
+    }
+
+    /// <summary>Hora argentina a la que sale el resumen diario de fichadas por WhatsApp.</summary>
+    private const int HoraResumenFichadas = 19;
+
+    /// <summary>2026-10-05: resumen de fichadas del día por WhatsApp, UNO solo a las 19 hs, en vez de
+    /// un mensaje por cada fichada (Meta cobra cada mensaje desde el 01/10). Va a las personas tildadas
+    /// en la alerta FICHADA con el canal WhatsApp, por la línea elegida. Se encola como programado con
+    /// EsperarVentana: si la ventana de 24 hs de esa persona está cerrada, espera a que escriba.
+    /// El Origen "fichadas:{fecha}:{persona}" evita mandarlo dos veces el mismo día.</summary>
+    private static async Task ResumenFichadasWhatsAppAsync(AppDbContext db)
+    {
+        var ahoraAr = DateTime.UtcNow.AddHours(ARG_OFFSET_HOURS);
+        if (ahoraAr.Hour < HoraResumenFichadas) return;
+
+        var alerta = await db.MisAlertas.AsNoTracking().FirstOrDefaultAsync(x => x.Tipo == "FICHADA");
+        if (alerta is null || !alerta.Activa || !alerta.CanalWhatsApp) return;
+
+        var hoy = ahoraAr.Date;
+        var origenDia = $"fichadas:{hoy:yyyy-MM-dd}:";
+        if (await db.WhatsAppMensajesProgramados.AnyAsync(p => p.Origen != null && p.Origen.StartsWith(origenDia))) return;
+
+        var registros = await db.HorasExtrasRegistros.AsNoTracking()
+            .Where(r => r.Fecha == hoy && (r.HoraEntrada != null || r.HoraSalida != null))
+            .Select(r => new { r.EmpleadoId, Nombre = r.Empleado!.Nombre, r.HoraEntrada, r.HoraSalida, NomId = r.Empleado.NomEmpleadoId })
+            .ToListAsync();
+        if (registros.Count == 0) return;
+
+        static string Hhmm(TimeSpan? t) => t is { } v ? $"{v.Hours:D2}:{v.Minutes:D2}" : "—";
+        var es = CultureInfo.GetCultureInfo("es-AR");
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"🕐 *Fichadas de hoy* ({hoy.ToString("ddd dd/MM", es)})\n");
+        foreach (var r in registros.OrderBy(r => r.HoraEntrada ?? r.HoraSalida))
+        {
+            sb.Append($"\n{r.Nombre}: entrada {Hhmm(r.HoraEntrada)} · salida {Hhmm(r.HoraSalida)}");
+            if (r.HoraSalida is null || r.NomId is null) continue;
+            // Lo mismo que antes iba en el aviso de SALIDA: cuánto tiene que rendir el repartidor.
+            var rep = await db.CafeRepartidores.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.IsActive && x.NomEmpleadoId == r.NomId);
+            if (rep is null) continue;
+            var porRendir = await db.CafeCobranzasPendientes
+                .Where(p => p.Estado == "PENDIENTE" && p.RepartidorId == rep.Id)
+                .SumAsync(p => (decimal?)p.Importe) ?? 0m;
+            if (porRendir > 0) sb.Append($"\n   💵 Tiene que rendir: ${porRendir.ToString("N0", es)}");
+        }
+        var texto = sb.ToString();
+
+        var idsDest = await db.AutoDestinatarios.AsNoTracking().Where(d => d.AutoKey == $"alerta:{alerta.Id}")
+            .Select(d => d.PersonaId).ToListAsync();
+        var personas = await db.AutoPersonas.AsNoTracking()
+            .Where(p => p.Activo && idsDest.Contains(p.Id) && p.WhatsAppNumero != null).ToListAsync();
+        foreach (var per in personas)
+        {
+            var num = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
+            db.WhatsAppMensajesProgramados.Add(new WhatsAppMensajeProgramado
+            {
+                Numero = num,
+                LineaPhoneId = alerta.LineaPhoneId,
+                Tipo = WhatsAppMensajeProgramado.TipoTexto,
+                Texto = texto,
+                CuerpoPreview = texto,
+                ProgramadoPara = DateTime.UtcNow,
+                Estado = WhatsAppMensajeProgramado.EstadoPendiente,
+                EsperarVentana = true,
+                Origen = origenDia + per.Id,
+                CreadoPorNombre = "Sistema",
+            });
+        }
+        await db.SaveChangesAsync();
     }
 
     /// <summary>Convierte el saldo de Shell (texto scrapeado, formato argentino "$ 1.234,56")
