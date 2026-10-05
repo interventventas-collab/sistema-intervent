@@ -83,30 +83,9 @@ public class HorasExtrasController : ControllerBase
                 }
             }
 
-            // 2026-08-03: WhatsApp (si está tildado). Va a las personas tildadas para esta alerta
-            // (Auto_Destinatarios "alerta:{id}"), por la línea elegida en Automatizaciones.
-            if (alerta.CanalWhatsApp)
-            {
-                var idsDest = await _db.AutoDestinatarios.Where(d => d.AutoKey == $"alerta:{alerta.Id}")
-                    .Select(d => d.PersonaId).ToListAsync();
-                var personas = await _db.AutoPersonas
-                    .Where(p => p.Activo && idsDest.Contains(p.Id) && p.WhatsAppNumero != null).ToListAsync();
-                foreach (var per in personas)
-                {
-                    try
-                    {
-                        var num = per.WhatsAppNumero!.StartsWith("whatsapp:") ? per.WhatsAppNumero : "whatsapp:" + per.WhatsAppNumero;
-                        var (sid, canal, lin) = await _wa.SendTextAsync(num, texto, lineaOverride: alerta.LineaPhoneId);
-                        if (sid != null)
-                            _db.WhatsAppTwilioMensajes.Add(new WhatsAppTwilioMensaje
-                            {
-                                Direccion = "OUTGOING", Numero = num, Cuerpo = texto,
-                                TwilioMessageSid = sid, Canal = canal, LineaPhoneId = lin, Procesado = true, CreatedAt = DateTime.UtcNow
-                            });
-                    }
-                    catch { /* seguir con el resto */ }
-                }
-            }
+            // 2026-10-05: WhatsApp ya NO sale en cada fichada. Desde el 01/10 Meta cobra cada mensaje
+            // (pasados 1.000/mes por línea) y las fichadas eran ~400/mes. Ahora va UN resumen por día
+            // a las mismas personas tildadas: lo arma MisAlertasBackgroundService.ResumenFichadasWhatsAppAsync.
 
             // Campanita (si está tildada): queda encendida hasta que la mirás.
             if (alerta.CanalCampanita)
