@@ -1237,6 +1237,11 @@
                 }
             </div>
             <div class="modal-footer">
+                @if (isEditing && editingId is > 0)
+                {
+                    <button class="btn btn-secondary" style="margin-right: auto;" @onclick="AbrirUnificar" disabled="@saving"
+                            title="Si este cliente está cargado dos veces, pasale todo lo del otro y el otro queda inactivo">🔗 Unificar con otro cliente</button>
+                }
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
                 <button class="btn btn-primary" @onclick="Save" disabled="@saving">@(saving ? "Guardando..." : (isEditing ? "Guardar" : "Crear"))</button>
             </div>
@@ -1280,6 +1285,98 @@
                     <input readonly value="@LinkCompleto" style="flex:1; min-width:240px; padding:0.55rem 0.7rem; border:1.5px solid #d1d5db; border-radius:8px; font-size:0.85rem; background:#f9fafb; color:#111827;" />
                     <button class="btn btn-primary" @onclick="CopiarLinkAlta">📋 Copiar</button>
                 </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ─── 2026-10-05: Unificar dos clientes duplicados ─── *@
+@if (showUnificar && editingId is > 0)
+{
+    var quedaCli = clientes?.FirstOrDefault(c => c.Id == editingId);
+    <div class="modal-overlay" style="z-index: 9500;" @onclick="CerrarUnificar">
+        <div class="modal-card" style="max-width: 600px; width: min(600px, 96vw);" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>🔗 Unificar con otro cliente</h3>
+                <button class="btn-close" @onclick="CerrarUnificar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-top: 0; font-size: 0.9rem; color: #374151;">
+                    Queda: <strong>@quedaCli?.Codigo · @quedaCli?.Nombre</strong>
+                </p>
+                @if (unifPreview is null)
+                {
+                    <label class="form-label">¿Cuál es el duplicado? (se le pasa todo a este y el otro queda inactivo)</label>
+                    <input class="form-input" @bind="unifBuscar" @bind:event="oninput" placeholder="🔍 Código, nombre, teléfono, dirección…" />
+                    @if (unifBuscar.Trim().Length >= 2)
+                    {
+                        var res = UnifResultados;
+                        @if (res.Count == 0)
+                        {
+                            <p style="font-size: 0.8rem; color: #6b7280;">No encontré ningún cliente con eso.</p>
+                        }
+                        <div style="margin-top: 0.5rem;">
+                            @foreach (var c in res)
+                            {
+                                <div @onclick="() => ElegirUnificar(c)"
+                                     style="padding: 0.5rem 0.4rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; font-size: 0.85rem;">
+                                    <strong>@c.Codigo · @c.Nombre</strong>
+                                    <span style="color: #6b7280;"> · @(c.Telefono ?? "sin tel") · @(c.DomicilioEntrega ?? c.Direccion ?? "sin dirección")@(c.IsActive ? "" : " · inactivo")</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    @if (unifCargando)
+                    {
+                        <p style="font-size: 0.8rem; color: #6b7280;">Mirando qué tiene cargado…</p>
+                    }
+                }
+                else
+                {
+                    var pv = unifPreview;
+                    <p style="font-size: 0.9rem; margin: 0 0 0.4rem;">Duplicado: <strong>@pv.OtroCodigo · @pv.OtroNombre</strong></p>
+                    <p style="font-size: 0.85rem; color: #374151; margin: 0.8rem 0 0.3rem;">Se le pasa a <strong>@pv.QuedaCodigo</strong>:</p>
+                    @if (pv.Items.Count == 0)
+                    {
+                        <p style="font-size: 0.85rem; color: #6b7280; margin: 0;">No tiene nada cargado (ni ventas ni cobranzas).</p>
+                    }
+                    else
+                    {
+                        <p style="font-size: 0.85rem; margin: 0;">@string.Join(" · ", pv.Items.Select(i => $"{i.Cantidad} {i.Que}"))</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(pv.OtroDomicilio) || !string.IsNullOrWhiteSpace(pv.OtroTelefono))
+                    {
+                        <p style="font-size: 0.85rem; margin: 0.3rem 0 0;">
+                            @if (!string.IsNullOrWhiteSpace(pv.OtroDomicilio)) { <span>domicilio @pv.OtroDomicilio (como domicilio alternativo)</span> }
+                            @if (!string.IsNullOrWhiteSpace(pv.OtroDomicilio) && !string.IsNullOrWhiteSpace(pv.OtroTelefono)) { <span> · </span> }
+                            @if (!string.IsNullOrWhiteSpace(pv.OtroTelefono)) { <span>tel @pv.OtroTelefono</span> }
+                        </p>
+                    }
+                    <p style="font-size: 0.85rem; margin: 0.8rem 0 0;">
+                        Deuda hoy: @pv.QuedaCodigo @PeMoneda(pv.QuedaSaldo) · @pv.OtroCodigo @PeMoneda(pv.OtroSaldo)
+                        → después: <strong>@PeMoneda(pv.QuedaSaldo + pv.OtroSaldo)</strong>
+                    </p>
+                    <p style="font-size: 0.75rem; color: #6b7280; margin: 0.8rem 0 0;">
+                        @pv.OtroCodigo queda inactivo con la nota "unificado en @pv.QuedaCodigo". No se borra nada.
+                    </p>
+                }
+                @if (!string.IsNullOrEmpty(unifError))
+                {
+                    <p style="color: #dc2626; font-size: 0.8rem; margin: 0.5rem 0 0;">@unifError</p>
+                }
+            </div>
+            <div class="modal-footer">
+                @if (unifPreview is not null)
+                {
+                    <button class="btn btn-secondary" style="margin-right: auto;" @onclick="() => { unifPreview = null; unifError = null; }" disabled="@unifGuardando">← Elegir otro</button>
+                }
+                <button class="btn btn-secondary" @onclick="CerrarUnificar" disabled="@unifGuardando">Cancelar</button>
+                @if (unifPreview is not null)
+                {
+                    <button class="btn btn-primary" @onclick="ConfirmarUnificar" disabled="@unifGuardando">
+                        @(unifGuardando ? "Unificando…" : $"Unificar en {unifPreview.QuedaCodigo}")
+                    </button>
+                }
             </div>
         </div>
     </div>
@@ -2576,6 +2673,70 @@
     }
 
     private void ConfirmDelete(CafeClienteDto c) { toDelete = c; showDeleteConfirm = true; }
+
+    // ─── 2026-10-05: Unificar clientes duplicados ───
+    private bool showUnificar, unifCargando, unifGuardando;
+    private string unifBuscar = "";
+    private string? unifError;
+    private UnificarClientePreviewDto? unifPreview;
+
+    private List<CafeClienteDto> UnifResultados
+    {
+        get
+        {
+            var q = unifBuscar.Trim();
+            if (clientes is null || q.Length < 2) return new();
+            bool h(string? s) => s.MatchesSearch(q);
+            return clientes
+                .Where(c => c.Id != editingId)
+                .Where(c => h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit) || h(c.Telefono)
+                            || h(c.Direccion) || h(c.DomicilioEntrega))
+                .OrderBy(c => c.IsActive ? 0 : 1).ThenBy(c => c.Nombre)
+                .Take(8).ToList();
+        }
+    }
+
+    private void AbrirUnificar()
+    {
+        unifBuscar = ""; unifPreview = null; unifError = null;
+        showUnificar = true;
+    }
+
+    private void CerrarUnificar()
+    {
+        if (unifGuardando) return;
+        showUnificar = false;
+    }
+
+    private async Task ElegirUnificar(CafeClienteDto otro)
+    {
+        if (editingId is not > 0) return;
+        unifCargando = true; unifError = null;
+        try { unifPreview = await Api.GetUnificarClientePreviewAsync(editingId.Value, otro.Id); }
+        catch (Exception ex) { unifError = ex.Message; }
+        finally { unifCargando = false; }
+    }
+
+    private async Task ConfirmarUnificar()
+    {
+        if (unifPreview is null) return;
+        unifGuardando = true; unifError = null;
+        try
+        {
+            var r = await Api.UnificarClienteAsync(unifPreview.QuedaId, unifPreview.OtroId);
+            if (r is null) { unifError = "No se pudo unificar."; return; }
+            ToastService.Success(r.Mensaje ?? "Clientes unificados");
+            unifGuardando = false;
+            showUnificar = false;
+            await Load();
+            // Reabro la ficha del que quedó para que vea el domicilio y las notas nuevas.
+            var queda = clientes?.FirstOrDefault(c => c.Id == unifPreview.QuedaId);
+            CloseForm();
+            if (queda is not null) await ShowEdit(queda);
+        }
+        catch (Exception ex) { unifError = ex.Message; }
+        finally { unifGuardando = false; }
+    }
 
     private async Task Delete()
     {
