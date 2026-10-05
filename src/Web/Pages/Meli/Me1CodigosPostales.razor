@@ -54,6 +54,9 @@
     .m1-cp-buscar { padding: 0.6rem; display: flex; gap: 0.5rem; align-items: center; }
     .m1-cp-buscar input[type=text] { flex: 1; padding: 0.45rem 0.7rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.9rem; }
     .m1-cp-buscar .resumen { font-size: 0.72rem; color: #9ca3af; white-space: nowrap; }
+    .m1-cp-km { padding: 0 0.6rem 0.6rem; display: flex; gap: 0.4rem; align-items: center; font-size: 0.8rem; color: #4b5563; flex-wrap: wrap; }
+    .m1-cp-km input { width: 64px; padding: 0.3rem 0.45rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; text-align: right; }
+    .m1-cp-km input.activo { border-color: #1f2937; border-width: 2px; }
     .m1-cp-tabla { overflow: auto; min-height: 0; flex: 1; }
     table.m1-cp-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
     table.m1-cp-table th { font-size: 0.68rem; text-align: left; color: #6b7280; padding: 0.4rem 0.6rem; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0; background: white; z-index: 1; text-transform: uppercase; }
@@ -220,6 +223,17 @@
                     <span class="resumen">@filtradas.Count de @items.Count(i => i.existe)</span>
                 }
             </div>
+            <div class="m1-cp-km" title="Distancia por calle desde el depósito">
+                🏠 Km al depósito: más de
+                <input type="text" inputmode="decimal" class="@(KmMin != null ? "activo" : "")" @bind="kmMinTexto" @bind:event="oninput" @bind:after="OnBusquedaCambioAjustar" placeholder="—" />
+                y menos de
+                <input type="text" inputmode="decimal" class="@(KmMax != null ? "activo" : "")" @bind="kmMaxTexto" @bind:event="oninput" @bind:after="OnBusquedaCambioAjustar" placeholder="—" />
+                km
+                @if (KmMin != null || KmMax != null)
+                {
+                    <button class="m1-cp-link" @onclick="LimpiarKm">quitar</button>
+                }
+            </div>
             <div class="m1-cp-tabla">
                 @if (cargando)
                 {
@@ -349,6 +363,12 @@
     private bool mapaListo;
     private bool ajustarMapa = true;
     private string busqueda = "";
+    private string kmMinTexto = "";
+    private string kmMaxTexto = "";
+    private static double? LeerKm(string? t) =>
+        double.TryParse((t ?? "").Trim().Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0 ? v : null;
+    private double? KmMin => LeerKm(kmMinTexto);
+    private double? KmMax => LeerKm(kmMaxTexto);
     private string? filtroZona = null;
     private List<CpRow>? items;
     private HashSet<int> tildados = new();
@@ -388,6 +408,8 @@
             null => r.existe,
             _ => r.existe && r.zonaId == filtroZona
         })
+        .Where(r => (KmMin == null && KmMax == null) ||
+                    (r.km != null && (KmMin == null || r.km > KmMin) && (KmMax == null || r.km < KmMax)))
         .Where(r => string.IsNullOrWhiteSpace(busqueda) ||
                     r.cp.ToString().Contains(busqueda) ||
                     (r.localidad?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
@@ -493,6 +515,19 @@
     }
 
     private async Task OnBusquedaCambio() => await PintarMapaAsync();
+
+    // Al cambiar los km el mapa se encuadra a lo que quedó
+    private async Task OnBusquedaCambioAjustar()
+    {
+        ajustarMapa = true;
+        await PintarMapaAsync();
+    }
+
+    private async Task LimpiarKm()
+    {
+        kmMinTexto = ""; kmMaxTexto = "";
+        await OnBusquedaCambioAjustar();
+    }
 
     private async Task VerTodos() => await JS.InvokeVoidAsync("me1CpMapa.verTodos");
 
