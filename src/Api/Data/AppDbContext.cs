@@ -282,6 +282,9 @@ public class AppDbContext : DbContext
     public DbSet<Me1CpExcluido> Me1CpExcluidos => Set<Me1CpExcluido>();
     public DbSet<Me1LocalidadUbicacion> Me1LocalidadUbicaciones => Set<Me1LocalidadUbicacion>();
     public DbSet<Me1TarifaEnvio> Me1TarifaEnvios => Set<Me1TarifaEnvio>();
+    public DbSet<Me1CpPrecio> Me1CpPrecios => Set<Me1CpPrecio>();
+    public DbSet<Me1ZonaPrecio> Me1ZonaPrecios => Set<Me1ZonaPrecio>();
+    public DbSet<Me1CpDistancia> Me1CpDistancias => Set<Me1CpDistancia>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

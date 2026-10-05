@@ -4,7 +4,7 @@
 // (InfoPunto → Google reverse geocoding) qué código postal es ese punto.
 // Tildar/destildar vuelve a Blazor con dotnet.invokeMethodAsync('TildarDesdeMapa' | 'DestildarDesdeMapa', cps).
 window.me1CpMapa = (function () {
-    let map = null, capa = null, dotnet = null, esAdmin = false;
+    let map = null, capa = null, dotnet = null, esAdmin = false, depositoMarker = null, saltoMarker = null;
     let puntos = [];          // [{ cp, localidad, partido, lat, lng, color, ofrecido, precio, zona, compras, incluye, tildado }]
 
     function init(elId, dotnetRef, admin) {
@@ -18,6 +18,14 @@ window.me1CpMapa = (function () {
             maxZoom: 18, attribution: '© OpenStreetMap'
         }).addTo(map);
         capa = L.layerGroup().addTo(map);
+        if (!document.getElementById('me1-cp-estilos')) {
+            const st = document.createElement('style');
+            st.id = 'me1-cp-estilos';
+            // Salto del pin al ir a un código desde la lista (como el BOUNCE de Mapeo)
+            st.textContent = '@keyframes me1cpSalto{0%,100%{transform:translateY(0)}50%{transform:translateY(-16px)}}'
+                + '.me1-cp-salto{animation:me1cpSalto .45s ease-in-out 6;font-size:30px;line-height:1;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}';
+            document.head.appendChild(st);
+        }
 
         // Tocar un lugar vacío del mapa: qué código postal es
         map.on('click', async e => {
@@ -52,11 +60,15 @@ window.me1CpMapa = (function () {
         const inc = c.incluye || [];
         const incluye = inc.length ? `<br><span style="color:#6b7280">Incluye: ${esc(inc.slice(0, 4).join(', '))}${inc.length > 4 ? ` y ${inc.length - 4} más` : ''}</span>` : '';
         const compras = c.compras ? `<br>${c.compras} ${c.compras === 1 ? 'compra' : 'compras'} tuyas en este código` : '';
+        const km = c.km != null ? `<br>🏠 ${String(c.km).replace('.', ',')} km del depósito${c.minutos ? ` (${c.minutos} min)` : ''}` : '';
+        const precio = c.especial
+            ? `<b>${fmt(c.precio)}</b> <span style="color:#6b7280">precio especial (la zona: ${fmt(c.precioZona)})</span>`
+            : fmt(c.precio);
         return `<div style="font-size:12px;line-height:1.55;min-width:190px">
             ${titulo ? `<span style="color:#6b7280">${titulo}</span><br>` : ''}
             <b style="font-size:13.5px">CP ${c.cp} · ${esc(c.localidad)}</b>
             ${c.partido ? `<br><span style="color:#6b7280">${esc(c.partido)}</span>` : ''}
-            <br>${esc(c.zona)} · ${fmt(c.precio)}<br>${estado}${compras}${incluye}${botonTildar(c.cp, c.tildado)}</div>`;
+            <br>${esc(c.zona)} · ${precio}<br>${estado}${km}${compras}${incluye}${botonTildar(c.cp, c.tildado)}</div>`;
     }
 
     function htmlPunto(info) {
@@ -97,6 +109,34 @@ window.me1CpMapa = (function () {
         map.fitBounds(L.latLngBounds(puntos.map(p => [p.lat, p.lng])), { padding: [20, 20] });
     }
 
+    // Casita del depósito (punto de partida de Mapeo)
+    function setDeposito(lat, lng) {
+        if (!map || lat == null || lng == null) return;
+        if (depositoMarker) map.removeLayer(depositoMarker);
+        depositoMarker = L.marker([lat, lng], {
+            icon: L.divIcon({ className: '', html: '<div style="font-size:24px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))">🏠</div>', iconSize: [26, 26], iconAnchor: [13, 13] }),
+            zIndexOffset: 1000, interactive: true
+        }).bindTooltip('Depósito', { direction: 'top' }).addTo(map);
+    }
+
+    // Tocaron un código en la lista: el mapa va hasta ahí, el pin salta y se abre el cartelito.
+    function irA(cp) {
+        if (!map) return;
+        const p = puntos.find(x => x.cp === cp);
+        if (!p) return;
+        if (saltoMarker) { map.removeLayer(saltoMarker); saltoMarker = null; }
+        map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 14), { duration: 0.8 });
+        map.once('moveend', () => {
+            saltoMarker = L.marker([p.lat, p.lng], {
+                icon: L.divIcon({ className: '', html: '<div class="me1-cp-salto">📍</div>', iconSize: [30, 30], iconAnchor: [15, 30] }),
+                zIndexOffset: 2000, interactive: false
+            }).addTo(map);
+            L.popup({ closeButton: false, offset: [0, -28] }).setLatLng([p.lat, p.lng]).setContent(htmlCp(p)).openOn(map);
+            const m = saltoMarker;
+            setTimeout(() => { if (saltoMarker === m) { map.removeLayer(m); saltoMarker = null; } }, 6000);
+        });
+    }
+
     function _tildar(cp, destildar) {
         if (!dotnet) return;
         map.closePopup();
@@ -108,5 +148,5 @@ window.me1CpMapa = (function () {
         dotnet = null;
     }
 
-    return { init, setPuntos, verTodos, destroy, _tildar };
+    return { init, setPuntos, verTodos, setDeposito, irA, destroy, _tildar };
 })();

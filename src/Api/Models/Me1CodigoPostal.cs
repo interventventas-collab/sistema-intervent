@@ -61,3 +61,52 @@ public class Me1TarifaEnvio
     public string? EnviadoPor { get; set; }
     public DateTime? ActualizadoAt { get; set; }
 }
+
+/// <summary>
+/// 2026-10-05: precio especial de envío me1 para un CP (pisa el precio de su zona).
+/// Volver al precio de la zona = borrar la fila.
+/// </summary>
+[Table("Me1_CpPrecios")]
+public class Me1CpPrecio
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public int Cp { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Precio { get; set; }
+    public DateTime CambiadoAt { get; set; } = DateTime.UtcNow;
+    [MaxLength(100)]
+    public string? CambiadoPor { get; set; }
+}
+
+/// <summary>
+/// 2026-10-05: precio de una zona me1 cambiado desde la pantalla (pisa el de MeliMe1Controller.TARIFAS).
+/// </summary>
+[Table("Me1_ZonaPrecios")]
+public class Me1ZonaPrecio
+{
+    [Key, MaxLength(30)]
+    public string ZonaId { get; set; } = "";
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Precio { get; set; }
+    public DateTime CambiadoAt { get; set; } = DateTime.UtcNow;
+    [MaxLength(100)]
+    public string? CambiadoPor { get; set; }
+}
+
+/// <summary>
+/// 2026-10-05: distancia por calle desde el depósito (punto de partida de Mapeo) hasta el centro de
+/// cada CP, calculada con Google Routes (computeRouteMatrix). Se recalcula si cambia el depósito.
+/// </summary>
+[Table("Me1_CpDistancias")]
+public class Me1CpDistancia
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public int Cp { get; set; }
+    public int? Metros { get; set; }
+    public int? Segundos { get; set; }
+    [Column(TypeName = "decimal(9,6)")]
+    public decimal DepositoLat { get; set; }
+    [Column(TypeName = "decimal(9,6)")]
+    public decimal DepositoLng { get; set; }
+    public DateTime CalculadoAt { get; set; } = DateTime.UtcNow;
+}
