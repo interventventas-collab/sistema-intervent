@@ -285,6 +285,35 @@ public class AlqReservasController : ControllerBase
         return Ok(Map(r, aa.EId, aa.EN, aa.RId, aa.RN));
     }
 
+    public record ReservaPagoDto(int CobranzaId, string Numero, DateTime Fecha, decimal Importe, string Medios);
+    public record ReservaPagosDto(decimal SenaAnterior, decimal CobradoSinRecibo, List<ReservaPagoDto> Pagos);
+
+    /// <summary>2026-10-05: lo que pagó el cliente por esta reserva, pago por pago (las cobranzas vigentes
+    /// imputadas a la reserva). Además la seña escrita a mano de antes (sin recibo) y lo que cobró el
+    /// repartidor por QR antes del 14/09 (sumaba a MontoCobrado sin recibo), para que la lista cierre con
+    /// lo que se descuenta del saldo: Sena + MontoCobrado.</summary>
+    [HttpGet("{id:int}/pagos")]
+    public async Task<IActionResult> GetPagos(int id)
+    {
+        var r = await _db.AlqReservas.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+        var filas = await _db.CafeCobranzasComprobantes.AsNoTracking()
+            .Where(c => c.ReservaId == id && c.Cobranza!.Estado == "VIGENTE")
+            .Select(c => new
+            {
+                c.CobranzaId, c.Cobranza!.Numero, c.Cobranza.Fecha, c.Importe,
+                Cajas = c.Cobranza.Medios.Select(m => m.Caja != null ? m.Caja.Nombre : "").ToList()
+            })
+            .ToListAsync();
+        var pagos = filas
+            .OrderBy(f => f.Fecha)
+            .Select(f => new ReservaPagoDto(f.CobranzaId, f.Numero, f.Fecha, f.Importe,
+                string.Join(" · ", f.Cajas.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct())))
+            .ToList();
+        var sinRecibo = Math.Max(0m, r.MontoCobrado - pagos.Sum(p => p.Importe));
+        return Ok(new ReservaPagosDto(r.Sena, sinRecibo, pagos));
+    }
+
     public record AsignarRepartoRequest(int? NuevoRepartidorId);
 
     /// <summary>Asignar la reserva a un repartidor desde el panel admin (sin que escanee el QR).
@@ -486,7 +515,10 @@ public class AlqReservasController : ControllerBase
             DireccionEvento = string.IsNullOrWhiteSpace(req.DireccionEvento) ? null : req.DireccionEvento.Trim(),
             MapeoLink = string.IsNullOrWhiteSpace(req.MapeoLink) ? null : req.MapeoLink.Trim(),
             Descuento = Math.Max(0m, req.Descuento),
-            Sena = Math.Max(0m, req.Sena),
+            // 2026-10-05: la seña ya NO se escribe a mano: se carga como cobranza (recibo + caja) desde
+            // "+ Cargar seña o pago". Escribirla acá y además cargar la cobranza contaba la plata dos veces
+            // (alquiler de Rubén: seña $200.000 + redirigida $200.000 por la misma plata).
+            Sena = 0m,
             MontoTotal = total,
             Estado = estado,
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
@@ -591,7 +623,9 @@ public class AlqReservasController : ControllerBase
             if (cli is not null) { cli.MapeoLink = req.MapeoLink.Trim(); cli.MapeoLat = null; cli.MapeoLng = null; }
         }
         if (req.Descuento.HasValue) reserva.Descuento = Math.Max(0m, req.Descuento.Value);
-        if (req.Sena.HasValue) reserva.Sena = Math.Max(0m, req.Sena.Value);
+        // 2026-10-05: la seña escrita a mano (reservas viejas) solo se puede BAJAR o quitar, nunca subir:
+        // la plata nueva entra como cobranza. Quitarla sirve cuando esa seña ya está cargada como cobranza.
+        if (req.Sena.HasValue && req.Sena.Value < reserva.Sena) reserva.Sena = Math.Max(0m, req.Sena.Value);
         if (req.Notas is not null) reserva.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
         if (req.NotasInternas is not null) reserva.NotasInternas = string.IsNullOrWhiteSpace(req.NotasInternas) ? null : req.NotasInternas.Trim();
         if (req.FormaPago is not null) reserva.FormaPago = string.IsNullOrWhiteSpace(req.FormaPago) ? null : req.FormaPago.Trim();

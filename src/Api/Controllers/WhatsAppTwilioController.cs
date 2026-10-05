@@ -2988,11 +2988,7 @@ public class WhatsAppTwilioController : ControllerBase
                 if (c.Cliente == null) return BadRequest(new { error = "Cobranza sin cliente, no se puede generar PDF" });
 
                 var settings = await _db.CafeSettings.FindAsync(1);
-                var comps = c.Comprobantes.Select(x => (
-                    numero: x.Venta?.Numero ?? "",
-                    importe: x.Importe,
-                    aCuenta: x.VentaId is null
-                )).ToList();
+                var comps = await CafeReciboCobranzaPdfService.LineasAsync(_db, c);
                 var medios = c.Medios.Select(m => (
                     cajaNombre: m.Caja?.Nombre ?? "—",
                     importe: m.Importe,

@@ -51,7 +51,7 @@ public class EnvioReciboCobranzaService
         if (c.Estado != "VIGENTE") return new Resultado(false, "La cobranza está anulada.", false, "La cobranza está anulada.");
 
         var cfg = await _db.CafeSettings.FindAsync(1);
-        var pdfBytes = GenerarPdf(c, cfg);
+        var pdfBytes = await GenerarPdf(c, cfg);
         var filename = $"Recibo-{c.Numero}.pdf";
         var resumen = await ArmarResumenAsync(c);
 
@@ -453,13 +453,9 @@ public class EnvioReciboCobranzaService
         return sb.ToString();
     }
 
-    private byte[] GenerarPdf(CafeCobranza c, CafeSetting? cfg)
+    private async Task<byte[]> GenerarPdf(CafeCobranza c, CafeSetting? cfg)
     {
-        var comps = c.Comprobantes.Select(x => (
-            numero: x.Venta?.Numero ?? "",
-            importe: x.Importe,
-            aCuenta: x.VentaId is null
-        )).ToList();
+        var comps = await CafeReciboCobranzaPdfService.LineasAsync(_db, c);
         var medios = c.Medios.Select(m => (
             cajaNombre: m.Caja?.Nombre ?? "—",
             importe: m.Importe,

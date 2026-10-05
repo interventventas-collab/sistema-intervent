@@ -382,3 +382,21 @@ public class AlqPresupuestoTextoDto
     public string Encabezado { get; set; } = "";
     public string Pie { get; set; } = "";
 }
+
+/// <summary>2026-10-05: pagos de una reserva (cobranzas con recibo + seña vieja escrita a mano + cobros
+/// del repartidor de antes del 14/09 que no tienen recibo).</summary>
+public class AlqReservaPagoDto
+{
+    public int CobranzaId { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public decimal Importe { get; set; }
+    public string Medios { get; set; } = "";
+}
+
+public class AlqReservaPagosDto
+{
+    public decimal SenaAnterior { get; set; }
+    public decimal CobradoSinRecibo { get; set; }
+    public List<AlqReservaPagoDto> Pagos { get; set; } = new();
+}

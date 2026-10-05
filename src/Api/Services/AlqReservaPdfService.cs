@@ -167,9 +167,12 @@ public class AlqReservaPdfService
                             c.Item().Row(rw => { rw.RelativeItem().Text(AlqDiasPricing.Leyenda(r.Dias)).Italic().FontColor("#4b5563"); });
                         c.Item().PaddingVertical(3).LineHorizontal(0.5f).LineColor("#d1d5db");
                         c.Item().Row(rw => { rw.RelativeItem().Text("TOTAL:").Bold(); rw.ConstantItem(100).AlignRight().Text(Money(r.MontoTotal)).Bold().FontColor("#059669"); });
-                        c.Item().Row(rw => { rw.RelativeItem().Text("Seña pagada:"); rw.ConstantItem(100).AlignRight().Text(Money(r.Sena)).FontColor("#059669"); });
+                        // 2026-10-05: la seña ahora entra como cobranza (suma a MontoCobrado); la "Seña pagada" escrita
+                        // a mano queda solo en las reservas viejas que la tienen.
+                        if (r.Sena > 0)
+                            c.Item().Row(rw => { rw.RelativeItem().Text("Seña pagada:"); rw.ConstantItem(100).AlignRight().Text(Money(r.Sena)).FontColor("#059669"); });
                         if (r.MontoCobrado > 0)
-                            c.Item().Row(rw => { rw.RelativeItem().Text("Cobrado en mano:"); rw.ConstantItem(100).AlignRight().Text(Money(r.MontoCobrado)).FontColor("#059669"); });
+                            c.Item().Row(rw => { rw.RelativeItem().Text("Pagos recibidos:"); rw.ConstantItem(100).AlignRight().Text(Money(r.MontoCobrado)).FontColor("#059669"); });
                         c.Item().Row(rw => { rw.RelativeItem().Text("Saldo pendiente:").Bold(); rw.ConstantItem(100).AlignRight().Text(Money(saldo)).Bold().FontColor(saldo > 0 ? "#dc2626" : "#059669"); });
                     });
 
