@@ -10,8 +10,8 @@
 
 @* ════════════════════════════════════════════════════════════════════════════
    Pantalla "Códigos postales me1" — pedido del usuario 2026-06-24, rehecha 2026-10-05.
-   Lista + mapa de los 1099 CPs de la tabla Axado. El admin tilda CPs (en la lista o
-   encerrándolos en el mapa) y los saca / vuelve a ofrecer; al hacerlo el sistema le manda
+   Lista + mapa de los 1099 CPs de la tabla Axado. El admin tilda CPs de a uno (en la lista o
+   desde el globito de un puntito; 05/10 se sacaron Encerrar/Círculo a pedido del usuario) y los saca / vuelve a ofrecer; al hacerlo el sistema le manda
    el tarifario nuevo a MeLi por API (si MeLi lo rechaza, queda el Excel para subir a mano).
    Mapa: js/me1-cp-mapa.js (Leaflet).
    ════════════════════════════════════════════════════════════════════════════ *@
@@ -87,7 +87,7 @@
             Los códigos postales donde MeLi ofrece me1, con su localidad y el precio que paga el comprador.
             @if (esAdmin)
             {
-                <text>Tildá en la lista o encerrá en el mapa los que no querés ofrecer y apretá «Dejar de ofrecer»: el sistema le manda la tabla nueva a MeLi solo. Los grises ya no se ofrecen.</text>
+                <text>Tildá en la lista (o tocando un puntito del mapa) los que no querés ofrecer y apretá «Dejar de ofrecer»: el sistema le manda la tabla nueva a MeLi solo. Los grises ya no se ofrecen.</text>
             }
             else
             {
@@ -252,12 +252,6 @@
             <div id="me1-cp-mapa" class="m1-cp-mapa-el"></div>
             <div class="m1-cp-herr">
                 <button @onclick="VerTodos" title="Encuadrar el mapa para ver todos los puntitos">⤢ Ver todos</button>
-                @if (esAdmin)
-                {
-                    <button class="@(modoMapa == "mover" ? "on" : "")" @onclick='() => SetModo("mover")'>✋ Mover</button>
-                    <button class="@(modoMapa == "encerrar" ? "on" : "")" @onclick='() => SetModo("encerrar")' title="Arrastrá un recuadro: se tildan los códigos que quedan adentro">▭ Encerrar</button>
-                    <button class="@(modoMapa == "circulo" ? "on" : "")" @onclick='() => SetModo("circulo")' title="Arrastrá desde el centro: se tildan los códigos que quedan adentro">◯ Círculo</button>
-                }
             </div>
             @if (ubicando)
             {
@@ -302,7 +296,6 @@
     private bool ajustarMapa = true;
     private string busqueda = "";
     private string? filtroZona = null;
-    private string modoMapa = "mover";
     private List<CpRow>? items;
     private HashSet<int> tildados = new();
     private MeliEstado? meli;
@@ -447,12 +440,6 @@
     private async Task OnBusquedaCambio() => await PintarMapaAsync();
 
     private async Task VerTodos() => await JS.InvokeVoidAsync("me1CpMapa.verTodos");
-
-    private async Task SetModo(string m)
-    {
-        modoMapa = m;
-        await JS.InvokeVoidAsync("me1CpMapa.setModo", m);
-    }
 
     private async Task Toggle(int cp)
     {
