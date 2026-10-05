@@ -1441,6 +1441,13 @@ public class ApiClient
     }
 
     // 2026-07-29: direcciones de entrega múltiples por cliente
+    // 2026-10-05: unificar dos clientes duplicados (todo lo del "otro" pasa al que queda).
+    public async Task<UnificarClientePreviewDto?> GetUnificarClientePreviewAsync(int quedaId, int otroId)
+        => await GetAsync<UnificarClientePreviewDto>($"/api/cafe/clientes/{quedaId}/unificar/preview?otroId={otroId}");
+
+    public async Task<UnificarClienteResult?> UnificarClienteAsync(int quedaId, int otroId)
+        => await PostAsync<UnificarClienteResult>($"/api/cafe/clientes/{quedaId}/unificar", new { otroId });
+
     public async Task<List<CafeDireccionDto>> GetCafeDireccionesAsync(int clienteId)
         => await GetAsync<List<CafeDireccionDto>>($"/api/cafe/clientes/{clienteId}/direcciones") ?? new();
 
@@ -9807,6 +9814,13 @@ public class ApiClient
 // 2026-08-03: resultado del borrado de cliente.
 // Deleted = se borro de verdad. SoftDeleted = no se pudo borrar (tiene movimientos) y quedo Inactivo.
 public record DeleteClienteResult(bool Deleted, bool SoftDeleted, string? Message);
+public record UnificarClienteItemDto(string Que, int Cantidad);
+public record UnificarClientePreviewDto(
+    int QuedaId, string QuedaCodigo, string QuedaNombre, decimal QuedaSaldo,
+    int OtroId, string OtroCodigo, string OtroNombre, decimal OtroSaldo,
+    string? OtroTelefono, string? OtroDomicilio,
+    List<UnificarClienteItemDto> Items);
+public record UnificarClienteResult(bool Ok, int Movidos, string? Mensaje);
 
 // 2026-09-03: los tres botones de "Traer" del mapa.
 // Cuántos hay para traer de cada cosa en ese día (sin traer nada todavía).
