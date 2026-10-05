@@ -39,6 +39,18 @@ public class Me1CodigosPostalesController : ControllerBase
         _accountService = accountService; _geo = geo; _logger = logger;
     }
 
+    // Localidades que Google no ubica bien (devuelve una calle homónima o el partido entero).
+    // Coordenadas aproximadas del pueblo, puestas a mano el 2026-10-05.
+    private static readonly Dictionary<string, (decimal Lat, decimal Lng)> UBICACIONES_A_MANO = new()
+    {
+        ["Buenos Aires|Otamendi"] = (-34.2306m, -58.8714m),
+        ["Buenos Aires|El Pino"] = (-34.9700m, -58.0700m),
+        ["Buenos Aires|Punta Indio"] = (-35.2733m, -57.2479m),
+        ["Buenos Aires|Alto Verde"] = (-34.0800m, -59.0600m),
+        ["Buenos Aires|El Durazno"] = (-34.6986m, -58.9034m),
+        ["Buenos Aires|Villa Numancia"] = (-34.9667m, -58.4333m),
+    };
+
     private static bool EsCpDeLaTabla(int cp) => MeliMe1Controller.TARIFAS.Any(t => cp >= t.CpFrom && cp <= t.CpTo);
 
     // ============================================================
@@ -113,12 +125,19 @@ public class Me1CodigosPostalesController : ControllerBase
         int encontradas = 0;
         foreach (var (clave, prov, loc) in pendientes)
         {
+            if (UBICACIONES_A_MANO.TryGetValue(clave, out var aMano))
+            {
+                _db.Me1LocalidadUbicaciones.Add(new Me1LocalidadUbicacion
+                    { Clave = clave, Lat = aMano.Lat, Lng = aMano.Lng, Encontrado = true, BuscadoAt = DateTime.UtcNow });
+                encontradas++;
+                continue;
+            }
             var provTexto = prov == "CABA" ? "Ciudad Autónoma de Buenos Aires" : $"Provincia de {prov}";
             var r = await _geo.TryGeocodeAddressAsync($"{loc}, {provTexto}, Argentina");
             // Solo vale si cae en la zona de las tarifas (AMBA + La Plata + norte de BA + sur de
             // Entre Ríos). Si Google no la conoce suele devolver el centro de la provincia, que queda
             // afuera de este recuadro.
-            var ok = r is { } p && p.lat is > -35.7m and < -32.4m && p.lng is > -60.3m and < -57.3m;
+            var ok = r is { } p && p.lat is > -35.7m and < -32.4m && p.lng is > -60.3m and < -57.0m;
             _db.Me1LocalidadUbicaciones.Add(new Me1LocalidadUbicacion
             {
                 Clave = clave,
