@@ -94,6 +94,12 @@ window.me1CpMapa = (function () {
         }
     }
 
+    // Encuadra el mapa para que entren todos los puntitos que se están mostrando.
+    function verTodos() {
+        if (!map || !puntos.length) return;
+        map.fitBounds(L.latLngBounds(puntos.map(p => [p.lat, p.lng])), { padding: [20, 20] });
+    }
+
     function _tildar(clave, destildar) {
         const p = puntos.find(x => x.clave === clave);
         if (!p || !dotnet) return;
@@ -106,5 +112,5 @@ window.me1CpMapa = (function () {
         dotnet = null;
     }
 
-    return { init, setModo, setPuntos, destroy, _tildar };
+    return { init, setModo, setPuntos, verTodos, destroy, _tildar };
 })();

@@ -250,14 +250,15 @@
 
         <div class="m1-cp-card m1-cp-mapa">
             <div id="me1-cp-mapa" class="m1-cp-mapa-el"></div>
-            @if (esAdmin)
-            {
-                <div class="m1-cp-herr">
+            <div class="m1-cp-herr">
+                <button @onclick="VerTodos" title="Encuadrar el mapa para ver todos los puntitos">⤢ Ver todos</button>
+                @if (esAdmin)
+                {
                     <button class="@(modoMapa == "mover" ? "on" : "")" @onclick='() => SetModo("mover")'>✋ Mover</button>
                     <button class="@(modoMapa == "encerrar" ? "on" : "")" @onclick='() => SetModo("encerrar")' title="Arrastrá un recuadro: se tildan los códigos que quedan adentro">▭ Encerrar</button>
                     <button class="@(modoMapa == "circulo" ? "on" : "")" @onclick='() => SetModo("circulo")' title="Arrastrá desde el centro: se tildan los códigos que quedan adentro">◯ Círculo</button>
-                </div>
-            }
+                }
+            </div>
             @if (ubicando)
             {
                 <div class="m1-cp-mapa-aviso">⏳ Ubicando las localidades en el mapa (solo la primera vez)…</div>
@@ -444,6 +445,8 @@
     }
 
     private async Task OnBusquedaCambio() => await PintarMapaAsync();
+
+    private async Task VerTodos() => await JS.InvokeVoidAsync("me1CpMapa.verTodos");
 
     private async Task SetModo(string m)
     {
