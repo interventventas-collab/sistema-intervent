@@ -642,20 +642,10 @@ public class MeliMe1Controller : ControllerBase
     /// Plazo 1 dia habil.
     /// </summary>
     [HttpGet("tabla-axado.xlsx")]
-    public IActionResult DescargarTablaAxado()
+    public async Task<IActionResult> DescargarTablaAxado()
     {
-        // Definicion de zonas (rango_inicio, rango_fin, precio)
-        var rangos = new (int from, int to, decimal precio)[]
-        {
-            (1001, 1499, 10000m),  // CABA
-            (1500, 1599, 12000m),  // GBA cercano
-            (1600, 1699, 14000m),  // GBA medio (Tigre, San Isidro, V. Lopez, Pilar, Escobar...)
-            (1700, 1838, 12000m),  // GBA cercano (Moron, Ituzaingo, Merlo, Moreno, La Matanza...)
-            (1839, 1839,  8000m),  // TU ZONA: Esteban Echeverria
-            (1840, 1899, 12000m),  // GBA cercano (Lomas, Quilmes, Banfield, Burzaco...)
-            (1900, 1999, 18000m),  // La Plata zona (Berisso, Ensenada, Brandsen, Chascomus, Magdalena, Punta Indio)
-            (2800, 2899, 18000m),  // Norte BA cercano (Zarate, Campana, San Antonio de Areco)
-        };
+        // 2026-10-05: los CPs sacados desde /meli/me1/codigos-postales no van en la tabla.
+        var excluidos = (await _db.Me1CpExcluidos.Select(e => e.Cp).ToListAsync()).ToHashSet();
 
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("MercadoLibre");
@@ -681,10 +671,11 @@ public class MeliMe1Controller : ControllerBase
 
         // Datos: una fila por CP. Total ~2000 filas para cubrir 1001-2999 (con rangos contiguos).
         int row = 4;
-        foreach (var (from, to, precio) in rangos)
+        foreach (var (from, to, precio, _) in TARIFAS)
         {
             for (int cp = from; cp <= to; cp++)
             {
+                if (excluidos.Contains(cp)) continue;
                 ws.Cell(row, 1).Value = cp;
                 ws.Cell(row, 2).Value = cp;
                 ws.Cell(row, 3).Value = 0;
@@ -726,47 +717,52 @@ public class MeliMe1Controller : ControllerBase
         return Ok(zonas);
     }
 
+    // Definicion de zonas acordadas el 2026-06-24 (rango_inicio, rango_fin, precio, zona).
+    // La usan el Excel manual, la lista de /meli/me1/codigos-postales y el envio por API a MeLi.
+    internal static readonly (int CpFrom, int CpTo, decimal Precio, string ZonaId)[] TARIFAS =
+    {
+        (1001, 1499, 10000m, "caba"),        // CABA
+        (1500, 1599, 12000m, "gba_cercano"), // GBA cercano
+        (1600, 1699, 14000m, "gba_medio"),   // GBA medio (Tigre, San Isidro, V. Lopez, Pilar, Escobar...)
+        (1700, 1838, 12000m, "gba_cercano"), // GBA cercano (Moron, Ituzaingo, Merlo, Moreno, La Matanza...)
+        (1839, 1839,  8000m, "tu_zona"),     // TU ZONA: Esteban Echeverria
+        (1840, 1899, 12000m, "gba_cercano"), // GBA cercano (Lomas, Quilmes, Banfield, Burzaco...)
+        (1900, 1999, 18000m, "la_plata"),    // La Plata zona (Berisso, Ensenada, Brandsen, Chascomus, Magdalena, Punta Indio)
+        (2800, 2899, 18000m, "norte_ba"),    // Norte BA cercano (Zarate, Campana, San Antonio de Areco)
+    };
+
+    // Metadata de cada zona (color para badge visual)
+    private static readonly Dictionary<string, (string Nombre, string Color)> ZONAS_META = new()
+    {
+        ["tu_zona"]    = ("TU ZONA",       "#16a34a"),
+        ["caba"]       = ("CABA",          "#1d4ed8"),
+        ["gba_cercano"]= ("GBA cercano",   "#7c3aed"),
+        ["gba_medio"]  = ("GBA medio",     "#ea580c"),
+        ["gba_lejano"] = ("GBA lejano",    "#dc2626"),
+        ["la_plata"]   = ("La Plata zona", "#a16207"),
+        ["norte_ba"]   = ("Norte BA",      "#a16207"),
+    };
+
     /// <summary>
-    /// Lista TODOS los CPs activos (los que están en la tabla Axado) con su localidad,
-    /// provincia, zona (id+nombre+color) y precio. Usado por la pantalla
-    /// /meli/me1/codigos-postales para que el usuario vea en formato tabla qué precio
-    /// le toca a cada CP.
+    /// Lista TODOS los CPs de la tabla Axado con su localidad, provincia, zona (id+nombre+color),
+    /// precio, si se ofrece o no (2026-10-05: se pueden sacar desde la pantalla) y la ubicación
+    /// de su localidad para el mapa (null si todavía no se buscó). Usado por /meli/me1/codigos-postales.
     /// </summary>
     [HttpGet("codigos-postales-activos")]
-    public IActionResult ListCodigosPostalesActivos()
+    public async Task<IActionResult> ListCodigosPostalesActivos()
     {
-        // Rangos de tarifas (mismos que DescargarTablaAxado, pero con zonaId)
-        var tarifas = new (int cpFrom, int cpTo, decimal precio, string zonaId)[]
-        {
-            (1001, 1499, 10000m, "caba"),
-            (1500, 1599, 12000m, "gba_cercano"),
-            (1600, 1699, 14000m, "gba_medio"),
-            (1700, 1838, 12000m, "gba_cercano"),
-            (1839, 1839,  8000m, "tu_zona"),
-            (1840, 1899, 12000m, "gba_cercano"),
-            (1900, 1999, 18000m, "la_plata"),
-            (2800, 2899, 18000m, "norte_ba"),
-        };
-
-        // Metadata de cada zona (color para badge visual)
-        var zonasMeta = new Dictionary<string, (string Nombre, string Color)>
-        {
-            ["tu_zona"]    = ("TU ZONA",       "#16a34a"),
-            ["caba"]       = ("CABA",          "#1d4ed8"),
-            ["gba_cercano"]= ("GBA cercano",   "#7c3aed"),
-            ["gba_medio"]  = ("GBA medio",     "#ea580c"),
-            ["gba_lejano"] = ("GBA lejano",    "#dc2626"),
-            ["la_plata"]   = ("La Plata zona", "#a16207"),
-            ["norte_ba"]   = ("Norte BA",      "#a16207"),
-        };
+        var excluidos = (await _db.Me1CpExcluidos.Select(e => e.Cp).ToListAsync()).ToHashSet();
+        var ubicaciones = await _db.Me1LocalidadUbicaciones.Where(u => u.Encontrado)
+            .ToDictionaryAsync(u => u.Clave, u => (u.Lat, u.Lng));
 
         var resultado = new List<object>();
-        foreach (var (cpFrom, cpTo, precio, zonaId) in tarifas)
+        foreach (var (cpFrom, cpTo, precio, zonaId) in TARIFAS)
         {
-            var meta = zonasMeta[zonaId];
+            var meta = ZONAS_META[zonaId];
             for (int cp = cpFrom; cp <= cpTo; cp++)
             {
                 var (provincia, localidad) = LookupCp(cp);
+                ubicaciones.TryGetValue(ClaveLocalidad(provincia, localidad), out var ub);
                 resultado.Add(new
                 {
                     cp,
@@ -775,13 +771,18 @@ public class MeliMe1Controller : ControllerBase
                     zonaId,
                     zonaNombre = meta.Nombre,
                     zonaColor = meta.Color,
-                    precio
+                    precio,
+                    ofrecido = !excluidos.Contains(cp),
+                    lat = ub.Lat,
+                    lng = ub.Lng
                 });
             }
         }
 
         return Ok(resultado);
     }
+
+    internal static string ClaveLocalidad(string? provincia, string? localidad) => $"{provincia}|{localidad}";
 
     // ============================================================================
     // Lookup hardcodeado de CPs argentinos → Localidad/Barrio.
@@ -1057,7 +1058,7 @@ public class MeliMe1Controller : ControllerBase
         (2897, 2899, "Buenos Aires", "San Antonio de Areco"),
     };
 
-    private static (string? Provincia, string? Localidad) LookupCp(int cp)
+    internal static (string? Provincia, string? Localidad) LookupCp(int cp)
     {
         string? prov = null;
         string? loc = null;

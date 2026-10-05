@@ -279,6 +279,9 @@ public class AppDbContext : DbContext
     public DbSet<WhatsAppAvisoVentanaRegla> WhatsAppAvisoVentanaReglas => Set<WhatsAppAvisoVentanaRegla>();
     public DbSet<WhatsAppAvisoVentanaEnviado> WhatsAppAvisoVentanaEnviados => Set<WhatsAppAvisoVentanaEnviado>();
     public DbSet<MeliCodigoColecta> MeliCodigosColecta => Set<MeliCodigoColecta>();
+    public DbSet<Me1CpExcluido> Me1CpExcluidos => Set<Me1CpExcluido>();
+    public DbSet<Me1LocalidadUbicacion> Me1LocalidadUbicaciones => Set<Me1LocalidadUbicacion>();
+    public DbSet<Me1TarifaEnvio> Me1TarifaEnvios => Set<Me1TarifaEnvio>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
