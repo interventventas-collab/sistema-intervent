@@ -2,148 +2,325 @@
 @attribute [Authorize]
 @inject HttpClient Http
 @inject ToastService ToastService
+@inject IJSRuntime JS
+@inject AuthService AuthService
+@implements IAsyncDisposable
 @using System.Text.Json
 @using System.Text.Json.Serialization
 
 @* ════════════════════════════════════════════════════════════════════════════
-   Pantalla "Códigos Postales Activos ME1" — pedido del usuario 2026-06-24.
-   Visualiza los 1099 CPs activos del sistema de tarifa Axado con su localidad,
-   zona (con color) y precio. Sin paginación, búsqueda + filtros por zona.
+   Pantalla "Códigos postales me1" — pedido del usuario 2026-06-24, rehecha 2026-10-05.
+   Lista + mapa de los 1099 CPs de la tabla Axado. El admin tilda CPs (en la lista o
+   encerrándolos en el mapa) y los saca / vuelve a ofrecer; al hacerlo el sistema le manda
+   el tarifario nuevo a MeLi por API (si MeLi lo rechaza, queda el Excel para subir a mano).
+   Mapa: js/me1-cp-mapa.js (Leaflet).
    ════════════════════════════════════════════════════════════════════════════ *@
 
 <style>
-    .cp-wrap { max-width: 1300px; margin: 0 auto; padding: 0.5rem; }
+    .m1-cp-wrap { padding: 0.5rem; }
+    .m1-cp-card { background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
 
-    .cp-header { background: white; border-radius: 10px; padding: 1rem 1.2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 0.8rem; }
-    .cp-header h3 { margin: 0 0 0.4rem; font-size: 1.1rem; color: #1f2937; }
-    .cp-header p { margin: 0; color: #6b7280; font-size: 0.85rem; }
+    .m1-cp-header { padding: 0.9rem 1.2rem; margin-bottom: 0.7rem; }
+    .m1-cp-header h3 { margin: 0 0 0.3rem; font-size: 1.1rem; color: #1f2937; }
+    .m1-cp-header p { margin: 0; color: #6b7280; font-size: 0.83rem; }
 
-    .cp-tools { background: white; border-radius: 10px; padding: 0.8rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 0.8rem; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
-    .cp-tools input { flex: 1; min-width: 220px; padding: 0.5rem 0.8rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.95rem; }
-    .cp-tools .resumen { font-size: 0.82rem; color: #6b7280; font-weight: 600; }
+    .m1-filtros-zonas { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.7rem; padding: 0.5rem; }
+    .m1-filtro-zona { padding: 0.4rem 0.8rem; border-radius: 999px; font-size: 0.76rem; font-weight: 700; cursor: pointer; border: 2px solid transparent; color: white; user-select: none; opacity: 0.7; }
+    .m1-filtro-zona:hover { opacity: 1; }
+    .m1-filtro-zona.activo { opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+    .m1-filtro-todos { background: #4b5563; }
+    .m1-filtro-sacados { background: white; color: #6b7280; border-color: #d1d5db; }
+    .m1-filtro-sacados.activo { background: #6b7280; color: white; border-color: #6b7280; }
+    .m1-filtro-zona .precio { font-weight: 800; margin-left: 0.35rem; }
+    .m1-filtro-zona .count { font-size: 0.7rem; opacity: 0.85; margin-left: 0.25rem; }
 
-    .filtros-zonas { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.8rem; padding: 0.5rem; background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-    .filtro-zona { padding: 0.45rem 0.85rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; cursor: pointer; border: 2px solid transparent; color: white; transition: all 0.15s; user-select: none; opacity: 0.7; }
-    .filtro-zona:hover { opacity: 1; transform: translateY(-1px); }
-    .filtro-zona.activo { opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.18); transform: translateY(-1px); }
-    .filtro-todos { background: #4b5563; }
-    .filtro-zona .precio { font-weight: 800; margin-left: 0.4rem; opacity: 0.95; }
-    .filtro-zona .count { font-size: 0.7rem; opacity: 0.85; margin-left: 0.25rem; }
+    .m1-cp-barra { display: flex; align-items: center; gap: 0.8rem; padding: 0.6rem 1rem; margin-bottom: 0.7rem; flex-wrap: wrap; font-size: 0.85rem; }
+    .m1-cp-barra .sp { flex: 1; color: #6b7280; min-width: 180px; }
+    .m1-cp-barra b { color: #1f2937; }
+    .m1-cp-barra.m1-meli-ok { color: #6b7280; }
+    .m1-cp-barra.m1-meli-error { border: 1px solid #fecaca; }
+    .m1-cp-barra .det { font-size: 0.75rem; color: #6b7280; word-break: break-word; }
+    .m1-cp-btn { border: none; border-radius: 7px; padding: 0.45rem 0.9rem; font-weight: 700; font-size: 0.8rem; cursor: pointer; white-space: nowrap; }
+    .m1-cp-btn:disabled { opacity: 0.5; cursor: default; }
+    .m1-cp-btn.rojo { background: #dc2626; color: white; }
+    .m1-cp-btn.verde { background: #16a34a; color: white; }
+    .m1-cp-btn.gris { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    .m1-cp-link { color: #2563eb; cursor: pointer; text-decoration: underline; font-size: 0.8rem; background: none; border: none; padding: 0; }
 
-    .cp-tabla-wrap { background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow: hidden; }
-    table.cp-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; table-layout: fixed; }
-    table.cp-table thead { background: #f3f4f6; }
-    table.cp-table th { padding: 0.6rem 0.8rem; text-align: left; font-weight: 700; color: #4b5563; font-size: 0.75rem; text-transform: uppercase; border-bottom: 2px solid #e5e7eb; }
-    table.cp-table td { padding: 0.55rem 0.8rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
-    table.cp-table tr:hover { background: #fffbeb; }
-    .cp-num { font-family: monospace; font-size: 0.95rem; font-weight: 700; color: #111827; }
-    .badge-zona { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 999px; color: white; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
-    .precio-cell { font-weight: 800; color: #16a34a; font-family: monospace; font-size: 0.95rem; text-align: right; }
-    .provincia-cell { font-size: 0.78rem; color: #6b7280; }
-    .localidad-cell { color: #1f2937; font-weight: 500; }
+    .m1-cp-grid { display: grid; grid-template-columns: minmax(360px, 430px) 1fr; gap: 0.7rem; height: calc(100vh - 440px); min-height: 460px; }
+    @@media (max-width: 900px) { .m1-cp-grid { grid-template-columns: 1fr; height: auto; } .m1-cp-mapa { height: 420px; } .m1-cp-lista { max-height: 520px; } }
 
-    .loading { text-align: center; padding: 2rem; color: #6b7280; }
-    .empty { text-align: center; padding: 2rem; color: #9ca3af; font-style: italic; }
+    .m1-cp-lista { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .m1-cp-buscar { padding: 0.6rem; display: flex; gap: 0.5rem; align-items: center; }
+    .m1-cp-buscar input[type=text] { flex: 1; padding: 0.45rem 0.7rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.9rem; }
+    .m1-cp-buscar .resumen { font-size: 0.72rem; color: #9ca3af; white-space: nowrap; }
+    .m1-cp-tabla { overflow: auto; min-height: 0; flex: 1; }
+    table.m1-cp-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+    table.m1-cp-table th { font-size: 0.68rem; text-align: left; color: #6b7280; padding: 0.4rem 0.6rem; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0; background: white; z-index: 1; text-transform: uppercase; }
+    table.m1-cp-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    table.m1-cp-table tr.sel { background: #fef2f2; }
+    table.m1-cp-table tr.sac td { color: #9ca3af; }
+    table.m1-cp-table tr.sac .m1-cp-num { text-decoration: line-through; color: #9ca3af; }
+    .m1-cp-num { font-family: monospace; font-weight: 700; color: #111827; width: 52px; }
+    .m1-cp-loc small { display: block; color: #9ca3af; font-size: 0.72rem; }
+    .m1-cp-precio { text-align: right; font-family: monospace; color: #374151; white-space: nowrap; }
+    .m1-cp-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 0.35rem; }
+    .m1-cp-tag { font-size: 0.7rem; color: #9ca3af; }
+    .m1-cp-check { width: 15px; height: 15px; accent-color: #dc2626; cursor: pointer; }
+
+    .m1-cp-mapa { position: relative; overflow: hidden; min-height: 0; }
+    .m1-cp-mapa-el { position: absolute; inset: 0; border-radius: 10px; }
+    .m1-cp-herr { position: absolute; top: 10px; right: 10px; z-index: 500; background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); padding: 5px; display: flex; flex-direction: column; gap: 3px; }
+    .m1-cp-herr button { font-size: 0.72rem; padding: 0.35rem 0.6rem; border-radius: 6px; cursor: pointer; color: #374151; border: none; background: none; text-align: left; }
+    .m1-cp-herr button.on { background: #1f2937; color: white; }
+    .m1-cp-ley { position: absolute; bottom: 10px; left: 10px; z-index: 500; background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); padding: 0.4rem 0.6rem; font-size: 0.7rem; line-height: 1.7; }
+    .m1-cp-mapa-aviso { position: absolute; top: 10px; left: 55px; z-index: 500; background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); padding: 0.35rem 0.6rem; font-size: 0.75rem; color: #6b7280; }
+
+    .m1-loading { text-align: center; padding: 2rem; color: #6b7280; }
+    .m1-empty { text-align: center; padding: 2rem; color: #9ca3af; font-style: italic; }
 </style>
 
-<div class="cp-wrap">
-    <div class="cp-header">
-        <h3>🗺 Códigos Postales Activos — Tarifa Axado</h3>
-        <p>Todos los códigos postales que están incluidos en la tabla Axado de MercadoLibre, con su localidad/barrio y el precio que paga el comprador. Buscá por CP o localidad, o filtrá por zona usando los botones de colores.</p>
+<div class="m1-cp-wrap">
+    <div class="m1-cp-card m1-cp-header">
+        <h3>🗺 Códigos postales me1</h3>
+        <p>
+            Los códigos postales donde MeLi ofrece me1, con su localidad y el precio que paga el comprador.
+            @if (esAdmin)
+            {
+                <text>Tildá en la lista o encerrá en el mapa los que no querés ofrecer y apretá «Dejar de ofrecer»: el sistema le manda la tabla nueva a MeLi solo. Los grises ya no se ofrecen.</text>
+            }
+            else
+            {
+                <text>Los grises ya no se ofrecen.</text>
+            }
+        </p>
     </div>
 
-    <!-- Filtros por zona (botones colorados) -->
-    @if (zonasResumen != null && zonasResumen.Any())
+    @if (items != null && items.Any())
     {
-        <div class="filtros-zonas">
-            <button class="filtro-zona filtro-todos @(filtroZona == null ? "activo" : "")"
-                    @onclick="() => SetFiltroZona(null)"
-                    title="Mostrar todos">
-                TODOS <span class="count">(@(items?.Count ?? 0))</span>
+        <div class="m1-cp-card m1-filtros-zonas">
+            <button class="m1-filtro-zona m1-filtro-todos @(filtroZona == null ? "activo" : "")" @onclick="() => SetFiltroZona(null)">
+                TODOS <span class="count">(@items.Count)</span>
             </button>
             @foreach (var z in zonasResumen)
             {
-                <button class="filtro-zona @(filtroZona == z.zonaId ? "activo" : "")"
-                        style="background: @z.color;"
-                        @onclick="() => SetFiltroZona(z.zonaId)"
-                        title="Filtrar zona @z.nombre">
+                <button class="m1-filtro-zona @(filtroZona == z.zonaId ? "activo" : "")" style="background: @z.color;" @onclick="() => SetFiltroZona(z.zonaId)">
                     @z.nombre <span class="precio">$@z.precio.ToString("N0")</span> <span class="count">(@z.count)</span>
                 </button>
+            }
+            <button class="m1-filtro-zona m1-filtro-sacados @(filtroZona == FiltroSacados ? "activo" : "")" @onclick="() => SetFiltroZona(FiltroSacados)">
+                No se ofrecen <span class="count">(@items.Count(i => !i.ofrecido))</span>
+            </button>
+        </div>
+    }
+
+    @* ── Renglón de lo tildado ── *@
+    @if (esAdmin && tildados.Count > 0)
+    {
+        var tild = items!.Where(i => tildados.Contains(i.cp)).ToList();
+        var aSacar = tild.Count(i => i.ofrecido);
+        var aOfrecer = tild.Count(i => !i.ofrecido);
+        var locs = tild.Select(i => i.localidad).Where(l => !string.IsNullOrEmpty(l)).Distinct().ToList();
+        <div class="m1-cp-card m1-cp-barra">
+            <b>@tildados.Count @(tildados.Count == 1 ? "código tildado" : "códigos tildados")</b>
+            <span class="sp">@string.Join(", ", locs.Take(6))@(locs.Count > 6 ? $" y {locs.Count - 6} más" : "")</span>
+            <button class="m1-cp-btn gris" @onclick="Destildar" disabled="@trabajando">Destildar</button>
+            @if (aOfrecer > 0)
+            {
+                <button class="m1-cp-btn verde" @onclick="() => CambiarEstado(true)" disabled="@trabajando">Volver a ofrecer (@aOfrecer)</button>
+            }
+            @if (aSacar > 0)
+            {
+                <button class="m1-cp-btn rojo" @onclick="() => CambiarEstado(false)" disabled="@trabajando">Dejar de ofrecer (@aSacar)</button>
             }
         </div>
     }
 
-    <!-- Buscador -->
-    <div class="cp-tools">
-        <input type="text" placeholder="🔍 Buscar por CP (ej: 1839) o localidad (ej: La Plata)..."
-               @bind="busqueda" @bind:event="oninput" />
-        <span class="resumen">
-            @if (items != null)
-            {
-                <text>Mostrando @filtradas.Count de @items.Count CPs</text>
-            }
-        </span>
-    </div>
+    @* ── Estado del envío a MeLi ── *@
+    @if (meli != null)
+    {
+        var ult = meli.envios.FirstOrDefault();
+        if (enviando || meli.hayEnCurso)
+        {
+            <div class="m1-cp-card m1-cp-barra">
+                <b>⏳ Mandando la tabla a MeLi…</b>
+                <span class="sp">MeLi la procesa aparte y tarda unos minutos. Esto se actualiza solo.</span>
+            </div>
+        }
+        else if (ult != null && (ult.estado == "rechazado" || ult.estado == "error") && (meli.cambiosSinEnviar || meli.ultimoOkAt == null || ult.enviadoAt > meli.ultimoOkAt))
+        {
+            <div class="m1-cp-card m1-cp-barra m1-meli-error">
+                <b style="color:#dc2626">MeLi no tomó la tabla nueva.</b>
+                <span class="sp">
+                    Hasta que la tome, MeLi sigue ofreciendo los códigos de antes.
+                    Podés probar de nuevo o bajar el Excel y subirlo a mano en MeLi (Preferencias de venta → Transportadoras).
+                    <span class="det"><br />@ult.cuenta · @ult.detalle</span>
+                </span>
+                @if (esAdmin)
+                {
+                    <button class="m1-cp-btn gris" @onclick="BajarExcel">Bajar Excel</button>
+                    <button class="m1-cp-btn rojo" @onclick="EnviarAMeli">Probar de nuevo</button>
+                }
+            </div>
+        }
+        else if (meli.cambiosSinEnviar)
+        {
+            <div class="m1-cp-card m1-cp-barra">
+                <b>Hay cambios que MeLi todavía no tiene.</b>
+                <span class="sp">Hasta que se los mandes, MeLi sigue ofreciendo los códigos de antes.</span>
+                @if (esAdmin)
+                {
+                    <button class="m1-cp-btn gris" @onclick="BajarExcel">Bajar Excel</button>
+                    <button class="m1-cp-btn rojo" @onclick="EnviarAMeli">Mandar a MeLi</button>
+                }
+            </div>
+        }
+        else if (meli.ultimoOkAt != null)
+        {
+            <div class="m1-cp-card m1-cp-barra m1-meli-ok">
+                <span class="sp">✓ MeLi tiene la tabla al día (la tomó el @meli.ultimoOkAt.Value.ToArTime().ToString("dd/MM HH:mm")).</span>
+            </div>
+        }
+    }
 
-    <!-- Tabla principal -->
-    <div class="cp-tabla-wrap">
-        @if (cargando)
-        {
-            <div class="loading">⏳ Cargando códigos postales...</div>
-        }
-        else if (items == null || items.Count == 0)
-        {
-            <div class="empty">No se encontraron códigos postales.</div>
-        }
-        else if (!filtradas.Any())
-        {
-            <div class="empty">No hay resultados para "@busqueda" en esta zona.</div>
-        }
-        else
-        {
-            <table class="cp-table">
-                <thead>
-                    <tr>
-                        <th style="width: 90px;">CP</th>
-                        <th>Localidad / Barrio</th>
-                        <th style="width: 180px;">Zona</th>
-                        <th style="width: 110px; text-align: right;">Precio</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var row in filtradas)
+    <div class="m1-cp-grid">
+        <div class="m1-cp-card m1-cp-lista">
+            <div class="m1-cp-buscar">
+                <input type="text" placeholder="🔍 Buscar código o localidad..." @bind="busqueda" @bind:event="oninput" @bind:after="OnBusquedaCambio" />
+                @if (items != null)
+                {
+                    <span class="resumen">@filtradas.Count de @items.Count</span>
+                }
+            </div>
+            <div class="m1-cp-tabla">
+                @if (cargando)
+                {
+                    <div class="m1-loading">⏳ Cargando códigos postales...</div>
+                }
+                else if (items == null || items.Count == 0)
+                {
+                    <div class="m1-empty">No se encontraron códigos postales.</div>
+                }
+                else if (!filtradas.Any())
+                {
+                    <div class="m1-empty">No hay resultados.</div>
+                }
+                else
+                {
+                    <table class="m1-cp-table">
+                        <thead>
+                            <tr>
+                                @if (esAdmin)
+                                {
+                                    <th style="width:28px;"><input type="checkbox" class="m1-cp-check" title="Tildar todos los que se ven"
+                                               checked="@(filtradas.All(r => tildados.Contains(r.cp)))" @onchange="TildarVisibles" /></th>
+                                }
+                                <th>CP</th>
+                                <th>Localidad</th>
+                                <th style="text-align:right;">Precio</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in filtradas)
+                            {
+                                var r = row;
+                                var sel = tildados.Contains(r.cp);
+                                <tr class="@(sel ? "sel" : "") @(!r.ofrecido ? "sac" : "")">
+                                    @if (esAdmin)
+                                    {
+                                        <td><input type="checkbox" class="m1-cp-check" checked="@sel" @onchange="() => Toggle(r.cp)" /></td>
+                                    }
+                                    <td class="m1-cp-num">@r.cp</td>
+                                    <td class="m1-cp-loc">
+                                        <span class="m1-cp-dot" style="background:@(r.ofrecido ? r.zonaColor : "#9ca3af")"></span>@r.localidad
+                                        @if (!r.ofrecido)
+                                        {
+                                            <span class="m1-cp-tag"> · no se ofrece</span>
+                                        }
+                                        <small>@r.provincia</small>
+                                    </td>
+                                    <td class="m1-cp-precio">$@r.precio.ToString("N0")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+
+        <div class="m1-cp-card m1-cp-mapa">
+            <div id="me1-cp-mapa" class="m1-cp-mapa-el"></div>
+            @if (esAdmin)
+            {
+                <div class="m1-cp-herr">
+                    <button class="@(modoMapa == "mover" ? "on" : "")" @onclick='() => SetModo("mover")'>✋ Mover</button>
+                    <button class="@(modoMapa == "encerrar" ? "on" : "")" @onclick='() => SetModo("encerrar")' title="Arrastrá un recuadro: se tildan los códigos que quedan adentro">▭ Encerrar</button>
+                    <button class="@(modoMapa == "circulo" ? "on" : "")" @onclick='() => SetModo("circulo")' title="Arrastrá desde el centro: se tildan los códigos que quedan adentro">◯ Círculo</button>
+                </div>
+            }
+            @if (ubicando)
+            {
+                <div class="m1-cp-mapa-aviso">⏳ Ubicando las localidades en el mapa (solo la primera vez)…</div>
+            }
+            else if (sinUbicar > 0 || sinUso > 0)
+            {
+                <div class="m1-cp-mapa-aviso">
+                    @if (sinUso > 0)
                     {
-                        <tr>
-                            <td class="cp-num">@row.cp</td>
-                            <td>
-                                <div class="localidad-cell">@row.localidad</div>
-                                <div class="provincia-cell">@row.provincia</div>
-                            </td>
-                            <td>
-                                <span class="badge-zona" style="background: @row.zonaColor;">@row.zonaNombre</span>
-                            </td>
-                            <td class="precio-cell">$@row.precio.ToString("N0")</td>
-                        </tr>
+                        <text>@sinUso códigos de la tabla no existen para el Correo (no hay a quién vendérselos). </text>
                     }
-                </tbody>
-            </table>
-        }
+                    @if (sinUbicar > 0)
+                    {
+                        <text>@sinUbicar @(sinUbicar == 1 ? "no aparece" : "no aparecen") en el mapa (no se encontró la localidad). </text>
+                    }
+                    Todos están en la lista.
+                </div>
+            }
+            <div class="m1-cp-ley">
+                <span class="m1-cp-dot" style="background:#16a34a"></span>Tu zona<br />
+                <span class="m1-cp-dot" style="background:#1d4ed8"></span>CABA<br />
+                <span class="m1-cp-dot" style="background:#7c3aed"></span>GBA cercano<br />
+                <span class="m1-cp-dot" style="background:#ea580c"></span>GBA medio<br />
+                <span class="m1-cp-dot" style="background:#a16207"></span>La Plata / Norte BA<br />
+                <span class="m1-cp-dot" style="background:#9ca3af"></span>No se ofrece<br />
+                <span class="m1-cp-dot" style="background:white;border:2px solid #dc2626"></span>Tildado
+            </div>
+        </div>
     </div>
 </div>
 
 @code {
+    private const string FiltroSacados = "__sacados";
+
     private bool cargando = true;
+    private bool ubicando;
+    private bool trabajando;
+    private bool enviando;
+    private bool esAdmin;
+    private bool mapaListo;
+    private bool ajustarMapa = true;
     private string busqueda = "";
     private string? filtroZona = null;
+    private string modoMapa = "mover";
     private List<CpRow>? items;
+    private HashSet<int> tildados = new();
+    private MeliEstado? meli;
+    private int sinUbicar;
+    private int sinUso;
+    private DotNetObjectReference<Me1CodigosPostales>? _ref;
+    private System.Threading.Timer? _timerMeli;
 
-    private record CpRow(int cp, string provincia, string localidad, string zonaId, string zonaNombre, string zonaColor, decimal precio);
+    private record CpRow(int cp, string? provincia, string? localidad, string zonaId, string zonaNombre, string zonaColor, decimal precio, bool ofrecido, decimal? lat, decimal? lng);
     private record ZonaResumen(string zonaId, string nombre, string color, decimal precio, int count);
+    private record MeliEnvio(int id, string? cuenta, string estado, string? detalle, int cantidadCps, DateTime enviadoAt, string? enviadoPor, DateTime? actualizadoAt);
+    private record MeliEstado(bool cambiosSinEnviar, bool hayEnCurso, DateTime? ultimoCambioAt, DateTime? ultimoOkAt, List<MeliEnvio> envios);
+    private record UbicarResp(int buscadas, int encontradas);
+    private record EnviarResp(bool ok, int cantidadCps);
 
     private List<ZonaResumen> zonasResumen = new();
 
     private List<CpRow> filtradas => (items ?? new())
-        .Where(r => filtroZona == null || r.zonaId == filtroZona)
+        .Where(r => filtroZona == null || (filtroZona == FiltroSacados ? !r.ofrecido : r.zonaId == filtroZona))
         .Where(r => string.IsNullOrWhiteSpace(busqueda) ||
                     r.cp.ToString().Contains(busqueda) ||
                     (r.localidad?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
@@ -152,34 +329,237 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var user = await AuthService.GetUserAsync();
+        esAdmin = string.Equals(user?.Role, "admin", StringComparison.OrdinalIgnoreCase);
+        await CargarAsync();
+        cargando = false;
+        _ = CargarMeliAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!mapaListo && items != null)
+        {
+            _ref ??= DotNetObjectReference.Create(this);
+            mapaListo = await JS.InvokeAsync<bool>("me1CpMapa.init", "me1-cp-mapa", _ref);
+            if (mapaListo)
+            {
+                await PintarMapaAsync();
+                if (items.Any(i => i.lat == null) && !ubicando) _ = UbicarAsync();
+            }
+        }
+    }
+
+    private async Task CargarAsync()
+    {
         try
         {
-            var data = await Http.GetFromJsonAsync<List<CpRow>>("api/meli/me1/codigos-postales-activos");
-            items = data ?? new List<CpRow>();
+            items = await Http.GetFromJsonAsync<List<CpRow>>("api/meli/me1/codigos-postales-activos") ?? new();
             zonasResumen = items
                 .GroupBy(i => i.zonaId)
-                .Select(g => new ZonaResumen(
-                    g.Key,
-                    g.First().zonaNombre,
-                    g.First().zonaColor,
-                    g.First().precio,
-                    g.Count()))
+                .Select(g => new ZonaResumen(g.Key, g.First().zonaNombre, g.First().zonaColor, g.First().precio, g.Count()))
                 .OrderBy(z => z.precio)
                 .ToList();
         }
         catch (Exception ex)
         {
             ToastService.Error($"Error cargando CPs: {ex.Message}");
-            items = new List<CpRow>();
-        }
-        finally
-        {
-            cargando = false;
+            items ??= new();
         }
     }
 
-    private void SetFiltroZona(string? zonaId)
+    private async Task UbicarAsync()
+    {
+        ubicando = true;
+        StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsync("api/meli/me1/codigos-postales/ubicar", null);
+            var r = await resp.Content.ReadFromJsonAsync<UbicarResp>();
+            if (r != null && r.buscadas > 0)
+            {
+                await CargarAsync();
+                ajustarMapa = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"No se pudieron ubicar las localidades: {ex.Message}");
+        }
+        finally
+        {
+            ubicando = false;
+            await PintarMapaAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task PintarMapaAsync()
+    {
+        if (!mapaListo || items == null) return;
+        sinUso = items.Count(i => i.provincia == null);
+        sinUbicar = items.Count(i => i.provincia != null && i.lat == null);
+        var puntos = filtradas
+            .Where(i => i.lat != null && i.lng != null)
+            .GroupBy(i => $"{i.provincia}|{i.localidad}")
+            .Select(g => new
+            {
+                clave = g.Key,
+                localidad = g.First().localidad ?? "",
+                provincia = g.First().provincia ?? "",
+                lat = g.First().lat,
+                lng = g.First().lng,
+                color = g.First().zonaColor,
+                tildados = g.Count(i => tildados.Contains(i.cp)),
+                cps = g.Select(i => new { i.cp, i.ofrecido, i.precio, zona = i.zonaNombre }).ToList()
+            })
+            .ToList();
+        await JS.InvokeVoidAsync("me1CpMapa.setPuntos", puntos, ajustarMapa);
+        ajustarMapa = false;
+    }
+
+    private async Task CargarMeliAsync()
+    {
+        try
+        {
+            meli = await Http.GetFromJsonAsync<MeliEstado>("api/meli/me1/codigos-postales/meli-estado");
+            // Mientras MeLi procesa, preguntar cada 20 s
+            if (meli?.hayEnCurso == true)
+                _timerMeli ??= new System.Threading.Timer(async _ => await InvokeAsync(async () => { await CargarMeliAsync(); StateHasChanged(); }), null, 20000, 20000);
+            else if (_timerMeli != null)
+            {
+                await _timerMeli.DisposeAsync();
+                _timerMeli = null;
+            }
+        }
+        catch { /* el estado de MeLi es informativo */ }
+        StateHasChanged();
+    }
+
+    private async Task SetFiltroZona(string? zonaId)
     {
         filtroZona = zonaId;
+        ajustarMapa = true;
+        await PintarMapaAsync();
+    }
+
+    private async Task OnBusquedaCambio() => await PintarMapaAsync();
+
+    private async Task SetModo(string m)
+    {
+        modoMapa = m;
+        await JS.InvokeVoidAsync("me1CpMapa.setModo", m);
+    }
+
+    private async Task Toggle(int cp)
+    {
+        if (!tildados.Remove(cp)) tildados.Add(cp);
+        await PintarMapaAsync();
+    }
+
+    private async Task TildarVisibles(ChangeEventArgs e)
+    {
+        var visibles = filtradas.Select(r => r.cp).ToList();
+        if (e.Value is bool b && b) tildados.UnionWith(visibles);
+        else tildados.ExceptWith(visibles);
+        await PintarMapaAsync();
+    }
+
+    private async Task Destildar()
+    {
+        tildados.Clear();
+        await PintarMapaAsync();
+    }
+
+    [JSInvokable]
+    public async Task TildarDesdeMapa(int[] cps)
+    {
+        if (!esAdmin) return;
+        tildados.UnionWith(cps);
+        await PintarMapaAsync();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task DestildarDesdeMapa(int[] cps)
+    {
+        tildados.ExceptWith(cps);
+        await PintarMapaAsync();
+        StateHasChanged();
+    }
+
+    private async Task CambiarEstado(bool ofrecer)
+    {
+        if (items == null) return;
+        var cps = items.Where(i => tildados.Contains(i.cp) && i.ofrecido != ofrecer).Select(i => i.cp).ToList();
+        if (cps.Count == 0) return;
+        trabajando = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/meli/me1/codigos-postales/estado", new { cps, ofrecer });
+            if (!resp.IsSuccessStatusCode)
+            {
+                ToastService.Error($"No se pudo guardar: {await resp.Content.ReadAsStringAsync()}");
+                return;
+            }
+            ToastService.Success(ofrecer ? $"{cps.Count} códigos vuelven a ofrecerse" : $"{cps.Count} códigos ya no se ofrecen");
+            tildados.Clear();
+            await CargarAsync();
+            await PintarMapaAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error: {ex.Message}");
+            return;
+        }
+        finally
+        {
+            trabajando = false;
+        }
+        await EnviarAMeli();
+    }
+
+    private async Task EnviarAMeli()
+    {
+        enviando = true;
+        StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsync("api/meli/me1/codigos-postales/enviar-a-meli", null);
+            if (!resp.IsSuccessStatusCode)
+                ToastService.Error($"No se pudo mandar a MeLi: {await resp.Content.ReadAsStringAsync()}");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"No se pudo mandar a MeLi: {ex.Message}");
+        }
+        finally
+        {
+            enviando = false;
+        }
+        await CargarMeliAsync();
+    }
+
+    private async Task BajarExcel()
+    {
+        try
+        {
+            var bytes = await Http.GetByteArrayAsync("api/meli/me1/tabla-axado.xlsx");
+            var b64 = Convert.ToBase64String(bytes);
+            var fileName = $"tabla-axado-me1-{DateTime.UtcNow.ToArTime():yyyyMMdd-HHmm}.xlsx";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", fileName, b64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"No se pudo bajar el Excel: {ex.Message}");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_timerMeli != null) await _timerMeli.DisposeAsync();
+        try { await JS.InvokeVoidAsync("me1CpMapa.destroy"); } catch { }
+        _ref?.Dispose();
     }
 }

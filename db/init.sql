@@ -8128,3 +8128,42 @@ BEGIN
     CREATE UNIQUE INDEX UX_DriveRespaldos_TipoEntidad ON Drive_Respaldos (Tipo, EntidadId);
 END
 GO
+-- 2026-10-05: me1 — códigos postales que se dejan de ofrecer + ubicación de localidades para el mapa
+-- + registro de cada tarifario enviado a MeLi por API. Ver Models/Me1CodigoPostal.cs.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Me1_CpExcluidos')
+BEGIN
+    CREATE TABLE Me1_CpExcluidos (
+        Cp INT NOT NULL PRIMARY KEY,
+        ExcluidoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        ExcluidoPor NVARCHAR(100) NULL
+    );
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Me1_LocalidadUbicaciones')
+BEGIN
+    CREATE TABLE Me1_LocalidadUbicaciones (
+        Clave NVARCHAR(150) NOT NULL PRIMARY KEY,
+        Lat DECIMAL(9,6) NULL,
+        Lng DECIMAL(9,6) NULL,
+        Encontrado BIT NOT NULL DEFAULT 0,
+        BuscadoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Me1_TarifaEnvios')
+BEGIN
+    CREATE TABLE Me1_TarifaEnvios (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        MeliUserId BIGINT NOT NULL,
+        Cuenta NVARCHAR(100) NULL,
+        ResourceId NVARCHAR(100) NULL,
+        Estado NVARCHAR(30) NOT NULL DEFAULT 'enviado',
+        Detalle NVARCHAR(2000) NULL,
+        CantidadCps INT NOT NULL DEFAULT 0,
+        EnviadoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        EnviadoPor NVARCHAR(100) NULL,
+        ActualizadoAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_Me1TarifaEnvios_Resource ON Me1_TarifaEnvios (ResourceId);
+END
+GO
