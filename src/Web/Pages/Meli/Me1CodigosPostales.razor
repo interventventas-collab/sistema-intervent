@@ -100,7 +100,7 @@
     {
         <div class="m1-cp-card m1-filtros-zonas">
             <button class="m1-filtro-zona m1-filtro-todos @(filtroZona == null ? "activo" : "")" @onclick="() => SetFiltroZona(null)">
-                TODOS <span class="count">(@items.Count)</span>
+                TODOS <span class="count">(@items.Count(i => i.existe))</span>
             </button>
             @foreach (var z in zonasResumen)
             {
@@ -110,6 +110,10 @@
             }
             <button class="m1-filtro-zona m1-filtro-sacados @(filtroZona == FiltroSacados ? "activo" : "")" @onclick="() => SetFiltroZona(FiltroSacados)">
                 No se ofrecen <span class="count">(@items.Count(i => !i.ofrecido))</span>
+            </button>
+            <button class="m1-filtro-zona m1-filtro-sacados @(filtroZona == FiltroNoExisten ? "activo" : "")" @onclick="() => SetFiltroZona(FiltroNoExisten)"
+                    title="Códigos que están en la tabla pero MeLi dice que no existen (nadie puede comprar desde ahí)">
+                No existen en MeLi <span class="count">(@items.Count(i => !i.existe))</span>
             </button>
         </div>
     }
@@ -189,7 +193,7 @@
                 <input type="text" placeholder="🔍 Buscar código o localidad..." @bind="busqueda" @bind:event="oninput" @bind:after="OnBusquedaCambio" />
                 @if (items != null)
                 {
-                    <span class="resumen">@filtradas.Count de @items.Count</span>
+                    <span class="resumen">@filtradas.Count de @items.Count(i => i.existe)</span>
                 }
             </div>
             <div class="m1-cp-tabla">
@@ -237,7 +241,7 @@
                                         {
                                             <span class="m1-cp-tag"> · no se ofrece</span>
                                         }
-                                        <small>@r.provincia</small>
+                                        <small>@(r.partido ?? r.provincia)@(r.compras > 0 ? $" · {r.compras} {(r.compras == 1 ? "compra" : "compras")}" : "")</small>
                                     </td>
                                     <td class="m1-cp-precio">$@r.precio.ToString("N0")</td>
                                 </tr>
@@ -253,24 +257,7 @@
             <div class="m1-cp-herr">
                 <button @onclick="VerTodos" title="Encuadrar el mapa para ver todos los puntitos">⤢ Ver todos</button>
             </div>
-            @if (ubicando)
-            {
-                <div class="m1-cp-mapa-aviso">⏳ Ubicando las localidades en el mapa (solo la primera vez)…</div>
-            }
-            else if (sinUbicar > 0 || sinUso > 0)
-            {
-                <div class="m1-cp-mapa-aviso">
-                    @if (sinUso > 0)
-                    {
-                        <text>@sinUso códigos de la tabla no existen para el Correo (no hay a quién vendérselos). </text>
-                    }
-                    @if (sinUbicar > 0)
-                    {
-                        <text>@sinUbicar @(sinUbicar == 1 ? "no aparece" : "no aparecen") en el mapa (no se encontró la localidad). </text>
-                    }
-                    Todos están en la lista.
-                </div>
-            }
+            <div class="m1-cp-mapa-aviso">Tocá cualquier lugar del mapa para ver qué código postal es.@(sinUbicar > 0 ? $" {sinUbicar} códigos sin ubicación (están en la lista)." : "")</div>
             <div class="m1-cp-ley">
                 <span class="m1-cp-dot" style="background:#16a34a"></span>Tu zona<br />
                 <span class="m1-cp-dot" style="background:#1d4ed8"></span>CABA<br />
@@ -286,9 +273,9 @@
 
 @code {
     private const string FiltroSacados = "__sacados";
+    private const string FiltroNoExisten = "__noexisten";
 
     private bool cargando = true;
-    private bool ubicando;
     private bool trabajando;
     private bool enviando;
     private bool esAdmin;
@@ -300,25 +287,31 @@
     private HashSet<int> tildados = new();
     private MeliEstado? meli;
     private int sinUbicar;
-    private int sinUso;
     private DotNetObjectReference<Me1CodigosPostales>? _ref;
     private System.Threading.Timer? _timerMeli;
 
-    private record CpRow(int cp, string? provincia, string? localidad, string zonaId, string zonaNombre, string zonaColor, decimal precio, bool ofrecido, decimal? lat, decimal? lng);
+    private record CpRow(int cp, bool existe, string? provincia, string? partido, string? localidad, string[]? incluye, string zonaId, string zonaNombre, string zonaColor, decimal precio, bool ofrecido, double? lat, double? lng, int compras);
+    private record PuntoResp(int? cp, string? direccion, string? error);
     private record ZonaResumen(string zonaId, string nombre, string color, decimal precio, int count);
     private record MeliEnvio(int id, string? cuenta, string estado, string? detalle, int cantidadCps, DateTime enviadoAt, string? enviadoPor, DateTime? actualizadoAt);
     private record MeliEstado(bool cambiosSinEnviar, bool hayEnCurso, DateTime? ultimoCambioAt, DateTime? ultimoOkAt, List<MeliEnvio> envios);
-    private record UbicarResp(int buscadas, int encontradas);
     private record EnviarResp(bool ok, int cantidadCps);
 
     private List<ZonaResumen> zonasResumen = new();
 
     private List<CpRow> filtradas => (items ?? new())
-        .Where(r => filtroZona == null || (filtroZona == FiltroSacados ? !r.ofrecido : r.zonaId == filtroZona))
+        .Where(r => filtroZona switch
+        {
+            FiltroSacados => !r.ofrecido,
+            FiltroNoExisten => !r.existe,
+            null => r.existe,
+            _ => r.existe && r.zonaId == filtroZona
+        })
         .Where(r => string.IsNullOrWhiteSpace(busqueda) ||
                     r.cp.ToString().Contains(busqueda) ||
                     (r.localidad?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    (r.provincia?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false))
+                    (r.provincia?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (r.partido?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false))
         .ToList();
 
     protected override async Task OnInitializedAsync()
@@ -335,12 +328,8 @@
         if (!mapaListo && items != null)
         {
             _ref ??= DotNetObjectReference.Create(this);
-            mapaListo = await JS.InvokeAsync<bool>("me1CpMapa.init", "me1-cp-mapa", _ref);
-            if (mapaListo)
-            {
-                await PintarMapaAsync();
-                if (items.Any(i => i.lat == null) && !ubicando) _ = UbicarAsync();
-            }
+            mapaListo = await JS.InvokeAsync<bool>("me1CpMapa.init", "me1-cp-mapa", _ref, esAdmin);
+            if (mapaListo) await PintarMapaAsync();
         }
     }
 
@@ -350,6 +339,7 @@
         {
             items = await Http.GetFromJsonAsync<List<CpRow>>("api/meli/me1/codigos-postales-activos") ?? new();
             zonasResumen = items
+                .Where(i => i.existe)
                 .GroupBy(i => i.zonaId)
                 .Select(g => new ZonaResumen(g.Key, g.First().zonaNombre, g.First().zonaColor, g.First().precio, g.Count()))
                 .OrderBy(z => z.precio)
@@ -362,50 +352,26 @@
         }
     }
 
-    private async Task UbicarAsync()
-    {
-        ubicando = true;
-        StateHasChanged();
-        try
-        {
-            var resp = await Http.PostAsync("api/meli/me1/codigos-postales/ubicar", null);
-            var r = await resp.Content.ReadFromJsonAsync<UbicarResp>();
-            if (r != null && r.buscadas > 0)
-            {
-                await CargarAsync();
-                ajustarMapa = true;
-            }
-        }
-        catch (Exception ex)
-        {
-            ToastService.Error($"No se pudieron ubicar las localidades: {ex.Message}");
-        }
-        finally
-        {
-            ubicando = false;
-            await PintarMapaAsync();
-            StateHasChanged();
-        }
-    }
-
     private async Task PintarMapaAsync()
     {
         if (!mapaListo || items == null) return;
-        sinUso = items.Count(i => i.provincia == null);
-        sinUbicar = items.Count(i => i.provincia != null && i.lat == null);
+        sinUbicar = items.Count(i => i.existe && i.lat == null);
         var puntos = filtradas
             .Where(i => i.lat != null && i.lng != null)
-            .GroupBy(i => $"{i.provincia}|{i.localidad}")
-            .Select(g => new
+            .Select(i => new
             {
-                clave = g.Key,
-                localidad = g.First().localidad ?? "",
-                provincia = g.First().provincia ?? "",
-                lat = g.First().lat,
-                lng = g.First().lng,
-                color = g.First().zonaColor,
-                tildados = g.Count(i => tildados.Contains(i.cp)),
-                cps = g.Select(i => new { i.cp, i.ofrecido, i.precio, zona = i.zonaNombre }).ToList()
+                i.cp,
+                localidad = i.localidad ?? "",
+                i.partido,
+                i.lat,
+                i.lng,
+                color = i.zonaColor,
+                i.ofrecido,
+                i.precio,
+                zona = i.zonaNombre,
+                i.compras,
+                incluye = i.incluye ?? Array.Empty<string>(),
+                tildado = tildados.Contains(i.cp)
             })
             .ToList();
         await JS.InvokeVoidAsync("me1CpMapa.setPuntos", puntos, ajustarMapa);
@@ -459,6 +425,30 @@
     {
         tildados.Clear();
         await PintarMapaAsync();
+    }
+
+    /// <summary>Tocaron un lugar del mapa: qué código postal es y cómo está en la tabla.</summary>
+    [JSInvokable]
+    public async Task<object> InfoPunto(double lat, double lng)
+    {
+        try
+        {
+            var url = FormattableString.Invariant($"api/meli/me1/codigos-postales/punto?lat={lat}&lng={lng}");
+            var r = await Http.GetFromJsonAsync<PuntoResp>(url);
+            if (r?.cp == null) return new { cp = (int?)null, error = r?.error };
+            var row = items?.FirstOrDefault(i => i.cp == r.cp);
+            if (row == null) return new { cp = r.cp, enTabla = false, r.direccion };
+            return new
+            {
+                cp = row.cp, enTabla = true, r.direccion,
+                localidad = row.localidad ?? "", row.partido, zona = row.zonaNombre, row.precio, row.ofrecido,
+                row.compras, incluye = row.incluye ?? Array.Empty<string>(), tildado = tildados.Contains(row.cp)
+            };
+        }
+        catch (Exception ex)
+        {
+            return new { cp = (int?)null, error = $"No se pudo averiguar: {ex.Message}" };
+        }
     }
 
     [JSInvokable]
