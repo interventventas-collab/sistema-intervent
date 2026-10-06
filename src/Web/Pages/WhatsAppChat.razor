@@ -900,7 +900,10 @@
                         {
                             <span class="wa-hdr-perfil" title="@_hsub">@_hsub</span>
                         }
-                        <button class="wa-num-edit" @onclick="AbrirCorregirNumero" title="Corregir el número de este chat (si quedó mal cargado)">✏️</button>
+                        @* 2026-10-06: el lápiz ahora cambia el NOMBRE (antes corregía el número, igual que el ⋮,
+                           y al quedar al lado del nombre confundía). Corregir el número sigue en el ⋮. *@
+                        <button class="wa-num-edit" @onclick="AbrirEditarContacto"
+                                title="Cambiar el nombre de este contacto">✏️</button>
                         @* 2026-08-27: el nombre de la línea, en gris. Antes era un cartelito lila arriba. *@
                         @if (SelectedConv()?.Linea is string _lh2)
                         {
