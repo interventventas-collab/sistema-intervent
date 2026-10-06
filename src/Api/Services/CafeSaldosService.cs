@@ -167,7 +167,8 @@ public class CafeSaldosService
             // 2026-10-05: lo imputado a un ALQUILER (ReservaId) tampoco tiene VentaId, pero NO es "a cuenta":
             // ya está sumado en MontoCobrado de la reserva. Contarlo acá lo descontaba dos veces
             // (alquiler de Rubén: $645.000 con seña $200.000 + redirigida $200.000 figuraba debiendo $45.000).
-            .Where(c => c.VentaId == null && c.ReservaId == null && c.Cobranza!.Estado == "VIGENTE" && c.Cobranza.ClienteId != null)
+            // 2026-10-06: lo mismo con la cuota de una MÁQUINA FINANCIADA (ComodatoId): no es a cuenta del café.
+            .Where(c => c.VentaId == null && c.ReservaId == null && c.ComodatoId == null && c.Cobranza!.Estado == "VIGENTE" && c.Cobranza.ClienteId != null)
             .GroupBy(c => c.Cobranza!.ClienteId!.Value)
             .Select(g => new { ClienteId = g.Key, Importe = g.Sum(x => x.Importe) })
             .ToListAsync();
@@ -295,12 +296,13 @@ public class CafeSaldosService
 
         // Imputaciones que tocan a este cliente: las aplicadas a SUS ventas (venga la cobranza
         // de donde venga) + las que quedaron "a cuenta" en SU cuenta.
+        // 2026-10-06: la cuota de una máquina financiada (ComodatoId) no es "a cuenta" ni va en la cuenta del café.
         var imputaciones = await _db.CafeCobranzasComprobantes
             .Where(cc => cc.Cobranza!.Estado == "VIGENTE"
                 && ((cc.VentaId != null && cc.Venta!.ClienteId == clienteId
                      && cc.Venta.Estado != "anulado" && cc.Venta.TipoComprobante != "PRO"
                      && cc.Venta.FacturadaComoVentaId == null)
-                    || (cc.VentaId == null && cc.ReservaId == null && cc.Cobranza.ClienteId == clienteId)))
+                    || (cc.VentaId == null && cc.ReservaId == null && cc.ComodatoId == null && cc.Cobranza.ClienteId == clienteId)))
             .Select(cc => new
             {
                 cc.CobranzaId,

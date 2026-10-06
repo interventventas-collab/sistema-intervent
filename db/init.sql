@@ -8205,3 +8205,30 @@ GO
 IF COL_LENGTH('Cafe_Ventas','LeyendaMaquinas') IS NULL
     ALTER TABLE Cafe_Ventas ADD LeyendaMaquinas NVARCHAR(1000) NULL;
 GO
+
+-- ============================================================================
+-- 2026-10-06: el pago de la cuota de una MAQUINA FINANCIADA entra como cobranza comun (caja +
+-- recibo), igual que las señas de alquiler. La imputacion puede apuntar a una maquina (ComodatoId).
+-- Maquina en dolares: Importe va SIEMPRE en pesos (asi todos los totales siguen en pesos) y
+-- ImporteUsd guarda los dolares aplicados. Caja nueva "Dólares (efectivo)": el medio guarda
+-- Importe en pesos + ImporteUsd + CotizacionUsd (el dolar del dia).
+-- ============================================================================
+IF COL_LENGTH('Cafe_CobranzasComprobantes','ComodatoId') IS NULL
+    ALTER TABLE Cafe_CobranzasComprobantes ADD ComodatoId INT NULL;
+GO
+IF COL_LENGTH('Cafe_CobranzasComprobantes','ImporteUsd') IS NULL
+    ALTER TABLE Cafe_CobranzasComprobantes ADD ImporteUsd DECIMAL(18,2) NULL;
+GO
+IF COL_LENGTH('Cafe_CobranzasComprobantes','ComodatoId') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CafeCobranzasComprobantes_Comodato')
+    CREATE INDEX IX_CafeCobranzasComprobantes_Comodato ON Cafe_CobranzasComprobantes (ComodatoId);
+GO
+IF COL_LENGTH('Cafe_CobranzasMedios','ImporteUsd') IS NULL
+    ALTER TABLE Cafe_CobranzasMedios ADD ImporteUsd DECIMAL(18,2) NULL;
+GO
+IF COL_LENGTH('Cafe_CobranzasMedios','CotizacionUsd') IS NULL
+    ALTER TABLE Cafe_CobranzasMedios ADD CotizacionUsd DECIMAL(18,2) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM Cafe_Cajas WHERE Tipo='EFECTIVO_USD' OR Nombre=N'Dólares (efectivo)')
+    INSERT INTO Cafe_Cajas (Nombre, Tipo, Orden) VALUES (N'Dólares (efectivo)', 'EFECTIVO_USD', 6);
+GO

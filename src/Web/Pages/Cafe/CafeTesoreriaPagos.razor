@@ -184,7 +184,7 @@
                                     <option value="0">— Caja —</option>
                                     @if (cajas is not null)
                                     {
-                                        @foreach (var c in cajas.Where(x => x.IsActive))
+                                        @foreach (var c in cajas.Where(x => x.IsActive && !x.EnDolares))
                                         {
                                             <option value="@c.Id">@c.Nombre</option>
                                         }

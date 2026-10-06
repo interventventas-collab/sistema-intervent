@@ -11,7 +11,13 @@
         <h3 style="margin:0;">💰 Cajas</h3>
         @if (cajas is not null && cajas.Any(c => c.IsActive))
         {
-            <span class="cajas-total">Total: <b>@Plata(cajas.Where(c => c.IsActive).Sum(c => c.SaldoActual))</b></span>
+            @* 2026-10-06: la caja de dólares va aparte: no se suma con los pesos. *@
+            <span class="cajas-total">Total: <b>@Plata(cajas.Where(c => c.IsActive && !c.EnDolares).Sum(c => c.SaldoActual))</b>
+                @if (cajas.Any(c => c.IsActive && c.EnDolares))
+                {
+                    <span style="color:#6b7280;"> · y @Usd(cajas.Where(c => c.IsActive && c.EnDolares).Sum(c => c.SaldoActual)) en dólares</span>
+                }
+            </span>
         }
         <button class="btn btn-secondary" @onclick="ShowCreate">+ Nueva caja</button>
     </div>
@@ -31,7 +37,7 @@
                 {
                     <div class="caja-item">
                         <div class="caja-nombre">@c.Nombre <span class="caja-tipo">· @FormatTipo(c.Tipo)</span></div>
-                        <div class="caja-saldo @(c.SaldoActual < 0 ? "en-rojo" : "")">@Plata(c.SaldoActual)</div>
+                        <div class="caja-saldo @(c.SaldoActual < 0 ? "en-rojo" : "")">@PlataCaja(c, c.SaldoActual)</div>
                         <div class="caja-acciones">
                             <button class="btn btn-secondary" @onclick="() => AbrirSalida(c)">− Salida</button>
                             <button class="btn btn-secondary" @onclick="() => AbrirTransfer(c)">⇄ Transferir</button>
@@ -45,7 +51,7 @@
             @if (cajas.Any(x => !x.IsActive))
             {
                 <p class="text-muted" style="margin-top:0.8rem; font-size:0.85rem;">
-                    Inactivas: @string.Join(" · ", cajas.Where(x => !x.IsActive).Select(x => $"{x.Nombre} ({Plata(x.SaldoActual)})"))
+                    Inactivas: @string.Join(" · ", cajas.Where(x => !x.IsActive).Select(x => $"{x.Nombre} ({PlataCaja(x, x.SaldoActual)})"))
                 </p>
             }
         }
@@ -85,7 +91,7 @@
                                 <span class="mov-quien">@QuienYCuando(m)</span>
                             }
                         </div>
-                        <div class="mov-importe @(m.Importe < 0 && !m.Anulado ? "en-rojo" : "")">@Plata(m.Importe)</div>
+                        <div class="mov-importe @(m.Importe < 0 && !m.Anulado ? "en-rojo" : "")">@PlataCaja(m.CajaId, m.Importe)</div>
                         @if (m.Anulado)
                         {
                             <span class="mov-anulado">anulado</span>
@@ -112,7 +118,7 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">¿Cuánto?</label>
+                    <label class="form-label">¿Cuánto?@(cajaElegida.EnDolares ? " (en dólares)" : "")</label>
                     <input class="form-input" inputmode="numeric" @bind="fImporte" placeholder="0" />
                 </div>
                 <div class="form-group">
@@ -145,7 +151,8 @@
                 <div class="form-group">
                     <label class="form-label">¿A qué caja va?</label>
                     <div class="destinos">
-                        @foreach (var d in (cajas ?? new()).Where(x => x.IsActive && x.Id != cajaElegida.Id))
+                        @* 2026-10-06: dólares sólo con dólares (no se mezclan monedas). *@
+                        @foreach (var d in (cajas ?? new()).Where(x => x.IsActive && x.Id != cajaElegida.Id && x.EnDolares == cajaElegida.EnDolares))
                         {
                             <button class="btn @(fDestino == d.Id ? "btn-primary" : "btn-secondary")"
                                     @onclick="() => fDestino = d.Id">@d.Nombre</button>
@@ -180,7 +187,7 @@
             </div>
             <div class="modal-body">
                 <p class="text-muted" style="margin-top:0;">
-                    El sistema dice que hay <b>@Plata(cajaElegida.SaldoActual)</b>.
+                    El sistema dice que hay <b>@PlataCaja(cajaElegida, cajaElegida.SaldoActual)</b>.
                     Poné lo que contaste de verdad y la diferencia queda anotada.
                 </p>
                 <div class="form-group">
@@ -226,6 +233,7 @@
                         <option value="BILLETERA_VIRTUAL">📱 Billetera virtual</option>
                         <option value="CHEQUES_CARTERA">📄 Cheques en cartera</option>
                         <option value="V_PRIVADO">🔀 V / Privada</option>
+                        <option value="EFECTIVO_USD">💵 Dólares (efectivo)</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -362,7 +370,7 @@
         try
         {
             await Api.CafeCajaSalidaAsync(cajaElegida!.Id, fFecha, imp.Value, fMotivo);
-            ToastService.Success($"Anotado: salieron {Plata(imp.Value)} de {cajaElegida.Nombre}");
+            ToastService.Success($"Anotado: salieron {PlataCaja(cajaElegida, imp.Value)} de {cajaElegida.Nombre}");
             modo = null; cajaElegida = null;
             await Load();
         }
@@ -398,8 +406,8 @@
             if (r is not null && r.SinCambios) ToastService.Success("Justo: el saldo ya era ese");
             else if (r is not null)
                 ToastService.Success(r.Diferencia < 0
-                    ? $"Faltaban {Plata(Math.Abs(r.Diferencia))}, quedó anotado"
-                    : $"Sobraban {Plata(r.Diferencia)}, quedó anotado");
+                    ? $"Faltaban {PlataCaja(cajaElegida, Math.Abs(r.Diferencia))}, quedó anotado"
+                    : $"Sobraban {PlataCaja(cajaElegida, r.Diferencia)}, quedó anotado");
             modo = null; cajaElegida = null;
             await Load();
         }
@@ -464,8 +472,20 @@
         return (v < 0 ? "-$" : "$") + Math.Abs(v).ToString("N0", ar);
     }
 
+    /// <summary>2026-10-06: dólares como los escribimos: USD 1.500.</summary>
+    private static string Usd(decimal v)
+    {
+        var ar = new System.Globalization.CultureInfo("es-AR");
+        return (v < 0 ? "-USD " : "USD ") + Math.Abs(v).ToString("N0", ar);
+    }
+
+    /// <summary>2026-10-06: la caja de dólares cuenta en USD (saldo, salidas, arqueos); el resto en pesos.</summary>
+    private static string PlataCaja(CafeCajaDto? c, decimal v) => c?.EnDolares == true ? Usd(v) : Plata(v);
+    private string PlataCaja(int cajaId, decimal v) => PlataCaja(cajas?.FirstOrDefault(x => x.Id == cajaId), v);
+
     private static string FormatTipo(string t) => t switch
     {
+        "EFECTIVO_USD" => "dólares",
         "EFECTIVO" => "efectivo",
         "BANCO" => "banco",
         "BILLETERA_VIRTUAL" => "billetera",

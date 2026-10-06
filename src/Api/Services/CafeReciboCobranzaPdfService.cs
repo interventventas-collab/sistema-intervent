@@ -30,7 +30,21 @@ public class CafeReciboCobranzaPdfService
 
     /// <summary>Un renglón de "Aplicado a:". Saldo = lo que queda debiendo HOY de ese comprobante
     /// (null si no corresponde: a cuenta, nota de crédito, venta anulada).</summary>
-    public record ReciboLinea(string Numero, decimal Importe, bool ACuenta, decimal? Saldo);
+    public record ReciboLinea(string Numero, decimal Importe, bool ACuenta, decimal? Saldo,
+        // 2026-10-06: cuota de MÁQUINA FINANCIADA. Detalle = renglón chico abajo ("USD 500 (dólar $1.450 =
+        // $725.000)" y "Le falta pagar de la máquina ..."). SaldoTexto = lo que va en la columna de saldo
+        // (puede ser en dólares, por eso la máquina NO suma en el "SALDO PENDIENTE" en pesos: Saldo = null).
+        string? Detalle = null, string? SaldoTexto = null);
+
+    /// <summary>2026-10-06: el detalle de la forma de cobro. En la caja de dólares agrega cuántos USD
+    /// entraron y a qué dólar (el importe del renglón queda en pesos, como todo el recibo).</summary>
+    public static string? ReferenciaMedio(CafeCobranzaMedio m)
+    {
+        if (m.ImporteUsd is not > 0m) return m.Referencia;
+        var usd = $"USD {m.ImporteUsd.Value.ToString("N0", Es)}"
+                + (m.CotizacionUsd is > 0m ? $" (dólar $ {m.CotizacionUsd.Value.ToString("N0", Es)})" : "");
+        return string.IsNullOrWhiteSpace(m.Referencia) ? usd : $"{usd} · {m.Referencia}";
+    }
 
     /// <summary>2026-10-05: arma los renglones del recibo. Antes lo cobrado a un ALQUILER salía como
     /// "A CUENTA (sin imputar a comprobante)" porque solo se miraba VentaId; ahora sale "Alquiler RES-…".
@@ -39,6 +53,7 @@ public class CafeReciboCobranzaPdfService
     {
         var ventaIds = c.Comprobantes.Where(x => x.VentaId != null).Select(x => x.VentaId!.Value).Distinct().ToList();
         var reservaIds = c.Comprobantes.Where(x => x.ReservaId != null).Select(x => x.ReservaId!.Value).Distinct().ToList();
+        var comodatoIds = c.Comprobantes.Where(x => x.ComodatoId != null).Select(x => x.ComodatoId!.Value).Distinct().ToList();
 
         var ventas = await db.CafeVentas.AsNoTracking().Where(v => ventaIds.Contains(v.Id))
             .Select(v => new { v.Id, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante, v.Estado, v.NotaCreditoVentaId })
@@ -51,11 +66,29 @@ public class CafeReciboCobranzaPdfService
         var reservas = await db.AlqReservas.AsNoTracking().Where(r => reservaIds.Contains(r.Id))
             .Select(r => new { r.Id, r.Numero, r.MontoTotal, r.ArcaImpTotal, r.Sena, r.MontoCobrado, r.Estado })
             .ToDictionaryAsync(r => r.Id);
+        // 2026-10-06: máquinas financiadas. Lo que falta sale de SaldoFinanciamiento (lo mantiene al día
+        // CafeComodatoSaldoService al crear/anular cobranzas), en la moneda de la máquina.
+        var maquinas = await db.CafeComodatos.AsNoTracking().Where(m => comodatoIds.Contains(m.Id))
+            .Select(m => new { m.Id, m.Marca, m.Modelo, m.Moneda, m.SaldoFinanciamiento })
+            .ToDictionaryAsync(m => m.Id);
 
         var lineas = new List<ReciboLinea>();
         foreach (var x in c.Comprobantes)
         {
-            if (x.ReservaId is int rid)
+            if (x.ComodatoId is int mid)
+            {
+                if (!maquinas.TryGetValue(mid, out var mq)) { lineas.Add(new ReciboLinea($"Máquina #{mid} (cuota)", x.Importe, false, null)); continue; }
+                var usd = mq.Moneda == "USD";
+                var falta = Math.Max(0m, mq.SaldoFinanciamiento ?? 0m);
+                var faltaTxt = usd ? $"USD {falta.ToString("N2", Es)}" : $"$ {Fmt(falta)}";
+                var detalle = new List<string>();
+                if (usd && x.ImporteUsd is > 0m)
+                    detalle.Add($"USD {x.ImporteUsd.Value.ToString("N2", Es)} (dólar $ {Fmt(Math.Round(x.Importe / x.ImporteUsd.Value, 2))} = $ {Fmt(x.Importe)})");
+                detalle.Add($"Le falta pagar de la máquina {faltaTxt}");
+                lineas.Add(new ReciboLinea($"{CafeComodatoSaldoService.Nombre(mq.Marca, mq.Modelo)} (cuota)", x.Importe, false, null,
+                    string.Join(" · ", detalle), faltaTxt));
+            }
+            else if (x.ReservaId is int rid)
             {
                 if (!reservas.TryGetValue(rid, out var r)) { lineas.Add(new ReciboLinea($"Alquiler #{rid}", x.Importe, false, null)); continue; }
                 var monto = r.ArcaImpTotal is > 0m ? r.ArcaImpTotal.Value : r.MontoTotal;
@@ -157,9 +190,15 @@ public class CafeReciboCobranzaPdfService
                         });
                         foreach (var c in comprobantes)
                         {
-                            t.Cell().Padding(3).Text(c.ACuenta ? "A CUENTA (sin imputar a comprobante)" : c.Numero).FontSize(9);
+                            // 2026-10-06: la cuota de máquina lleva abajo el detalle (USD / lo que le falta).
+                            t.Cell().Padding(3).Column(cc =>
+                            {
+                                cc.Item().Text(c.ACuenta ? "A CUENTA (sin imputar a comprobante)" : c.Numero).FontSize(9);
+                                if (!string.IsNullOrWhiteSpace(c.Detalle))
+                                    cc.Item().Text(c.Detalle).FontSize(7.5f).FontColor("#6b7280");
+                            });
                             t.Cell().Padding(3).AlignRight().Text($"$ {Fmt(c.Importe)}").FontSize(9);
-                            t.Cell().Padding(3).AlignRight().Text(c.Saldo is decimal sd ? $"$ {Fmt(sd)}" : "—").FontSize(9);
+                            t.Cell().Padding(3).AlignRight().Text(c.Saldo is decimal sd ? $"$ {Fmt(sd)}" : (c.SaldoTexto ?? "—")).FontSize(9);
                         }
                     });
 

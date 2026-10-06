@@ -331,7 +331,11 @@ public class EnvioReciboCobranzaService
                 && ((cc.VentaId != null && cc.Venta!.ClienteId != null && ids.Contains(cc.Venta.ClienteId.Value)
                      && cc.Venta.Estado != "anulado" && cc.Venta.TipoComprobante != "PRO"
                      && cc.Venta.FacturadaComoVentaId == null)
-                    || (cc.VentaId == null && cc.Cobranza.ClienteId != null && ids.Contains(cc.Cobranza.ClienteId.Value))))
+                    // 2026-10-06: "a cuenta" de verdad = sin venta, sin alquiler y sin máquina. Lo cobrado a un
+                    // alquiler o a la cuota de una máquina financiada no es plata del café: contarlo acá le
+                    // restaba al cliente lo que no debía en el estado de cuenta (mismo bug del 05/10 con alquileres).
+                    || (cc.VentaId == null && cc.ReservaId == null && cc.ComodatoId == null
+                        && cc.Cobranza.ClienteId != null && ids.Contains(cc.Cobranza.ClienteId.Value))))
             .Select(cc => new { Recibo = cc.Cobranza!.Numero, cc.Cobranza.Fecha, cc.Importe,
                                 Tipo = cc.Venta != null ? cc.Venta.TipoComprobante : null })
             .ToListAsync();
@@ -461,7 +465,7 @@ public class EnvioReciboCobranzaService
         var medios = c.Medios.Select(m => (
             cajaNombre: m.Caja?.Nombre ?? "—",
             importe: m.Importe,
-            referencia: m.Referencia,
+            referencia: CafeReciboCobranzaPdfService.ReferenciaMedio(m),   // 2026-10-06: + los dólares si fue en USD
             chequeInfo: m.Cheque is null ? null : $"Cheque {m.Cheque.Banco} N° {m.Cheque.Numero}"
         )).ToList();
         return _pdf.GenerarPdfBytes(c, c.Cliente!, comps, medios, cfg);

@@ -24,7 +24,13 @@ public class CafeCajasController : ControllerBase
         int Id, string Nombre, string Tipo, decimal SaldoInicial, int Orden,
         bool IsActive, string? Notas, decimal SaldoActual,
         // 2026-09-30: día del último arqueo vigente. La cobranza no deja fechar un cobro antes de eso.
-        DateTime? UltimoArqueo = null);
+        DateTime? UltimoArqueo = null,
+        // 2026-10-06: true en la caja "Dólares (efectivo)": su SaldoInicial, SaldoActual y movimientos van
+        // en DÓLARES y no se suman con las cajas en pesos.
+        bool EnDolares = false);
+
+    /// <summary>2026-10-06: la caja de dólares (pagos de máquinas en USD, muy raros, siempre efectivo).</summary>
+    public const string TipoCajaUsd = "EFECTIVO_USD";
 
     public record CrearCajaRequest(string Nombre, string Tipo, decimal SaldoInicial, int? Orden, string? Notas);
     public record EditarCajaRequest(string Nombre, string Tipo, decimal SaldoInicial, int? Orden, bool IsActive, string? Notas);
@@ -46,7 +52,8 @@ public class CafeCajasController : ControllerBase
         var result = cajas.Select(c => new CajaDto(
             c.Id, c.Nombre, c.Tipo, c.SaldoInicial, c.Orden, c.IsActive, c.Notas,
             c.SaldoInicial + (saldos.TryGetValue(c.Id, out var t) ? t : 0m),
-            arqueos.TryGetValue(c.Id, out var fa) ? fa : null
+            arqueos.TryGetValue(c.Id, out var fa) ? fa : null,
+            c.Tipo == TipoCajaUsd
         )).ToList();
         return Ok(result);
     }
@@ -171,12 +178,19 @@ public class CafeCajasController : ControllerBase
         // Cafe_CobranzasMedios (no se borran), asi que sin este filtro la caja seguia contando
         // plata que ya se habia dado de baja: el dueño anuló dos cobranzas de $37.000 y el saldo
         // no bajó.
+        // 2026-10-06: la caja de DÓLARES cuenta en dólares (ImporteUsd); Importe de ese medio son los pesos
+        // equivalentes, que sirven para que cuadre el recibo pero no son plata que haya en esa caja.
         var cobranzas = await _db.CafeCobranzasMedios
             .Where(m => m.Cobranza!.Estado == "VIGENTE")
-            .GroupBy(m => m.CajaId)
-            .Select(g => new { CajaId = g.Key, Total = g.Sum(x => x.Importe) })
+            .GroupBy(m => new { m.CajaId, EnDolares = m.Caja!.Tipo == TipoCajaUsd })
+            .Select(g => new
+            {
+                g.Key.CajaId, g.Key.EnDolares,
+                Total = g.Sum(x => x.Importe),
+                TotalUsd = g.Sum(x => x.ImporteUsd ?? 0m)
+            })
             .ToListAsync();
-        foreach (var x in cobranzas) Sumar(x.CajaId, x.Total);
+        foreach (var x in cobranzas) Sumar(x.CajaId, x.EnDolares ? x.TotalUsd : x.Total);
 
         // Los pagos a proveedor todavia no se usan (0 al 05/09/2026), pero si algun dia se cargan
         // tienen que restar solos, sin que haya que acordarse de tocar esto.
@@ -242,6 +256,10 @@ public class CafeCajasController : ControllerBase
         var desde = await _db.CafeCajas.FindAsync(req.DesdeCajaId);
         var hacia = await _db.CafeCajas.FindAsync(req.HaciaCajaId);
         if (desde is null || hacia is null) return NotFound(new { error = "No existe alguna de las cajas" });
+        // 2026-10-06: la caja de dólares cuenta en USD; pasar de ahí a una de pesos (o al revés) mezclaría
+        // monedas con el mismo número. Se hace con una salida en una y una entrada en la otra.
+        if ((desde.Tipo == TipoCajaUsd) != (hacia.Tipo == TipoCajaUsd))
+            return BadRequest(new { error = "La caja de dólares va en USD: no se puede transferir a una caja en pesos. Cargá una salida de dólares y la entrada en pesos aparte." });
 
         var fecha = LeerFecha(req.FechaStr, req.Fecha);
         var quien = QuienSoy();
@@ -289,14 +307,17 @@ public class CafeCajasController : ControllerBase
 
         var falta = diferencia < 0;
         var nota = string.IsNullOrWhiteSpace(req.Notas) ? "" : $" · {req.Notas.Trim()}";
+        // 2026-10-06: en la caja de dólares todo va en USD.
+        var usd = caja.Tipo == TipoCajaUsd;
+        string PlataCaja(decimal v) => usd ? (v < 0 ? "-USD " : "USD ") + Math.Abs(v).ToString("N0", new System.Globalization.CultureInfo("es-AR")) : CafeCajasController.Plata(v);
         var mov = new Models.CafeCajaMovimiento
         {
             CajaId = id,
             Fecha = LeerFecha(req.FechaStr, req.Fecha),
             Tipo = "ARQUEO",
             Importe = diferencia,
-            Motivo = $"Arqueo: contaste {Plata(req.ContadoReal)} y el sistema decía {Plata(saldoSistema)}"
-                   + $" ({(falta ? "faltaban" : "sobraban")} {Plata(Math.Abs(diferencia))}){nota}",
+            Motivo = $"Arqueo: contaste {PlataCaja(req.ContadoReal)} y el sistema decía {PlataCaja(saldoSistema)}"
+                   + $" ({(falta ? "faltaban" : "sobraban")} {PlataCaja(Math.Abs(diferencia))}){nota}",
             CargadoPor = QuienSoy()
         };
         _db.CafeCajaMovimientos.Add(mov);

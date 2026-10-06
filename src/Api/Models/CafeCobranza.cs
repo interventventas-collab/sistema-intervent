@@ -69,8 +69,21 @@ public class CafeCobranzaComprobante
 
     public AlqReserva? Reserva { get; set; }
 
+    /// <summary>2026-10-06: si la cobranza paga la cuota de una MAQUINA FINANCIADA (Cafe_Comodatos).
+    /// Excluyente con VentaId y ReservaId. 🚨 NO es "a cuenta" aunque VentaId y ReservaId vengan null:
+    /// todo lo que arma "a cuenta" tiene que mirar tambien ComodatoId (el mismo bug ya paso con alquileres).</summary>
+    public int? ComodatoId { get; set; }
+
+    public CafeComodato? Comodato { get; set; }
+
+    /// <summary>Siempre en PESOS (asi todos los totales y reportes siguen en pesos).
+    /// Si la maquina es en dolares: Importe = ImporteUsd × dolar del dia.</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal Importe { get; set; }
+
+    /// <summary>2026-10-06: solo para maquinas en dolares — los USD que se le descuentan a la maquina.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? ImporteUsd { get; set; }
 }
 
 [Table("Cafe_CobranzasMedios")]
@@ -87,8 +100,18 @@ public class CafeCobranzaMedio
     [ForeignKey(nameof(CajaId))]
     public CafeCaja? Caja { get; set; }
 
+    /// <summary>Siempre en PESOS. En la caja "Dólares (efectivo)" es ImporteUsd × CotizacionUsd.</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal Importe { get; set; }
+
+    /// <summary>2026-10-06: solo caja EFECTIVO_USD — los dolares que entraron de verdad. El saldo de esa
+    /// caja se cuenta en dolares con esto, no con Importe.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? ImporteUsd { get; set; }
+
+    /// <summary>2026-10-06: el dolar del dia con el que se paso a pesos (solo caja EFECTIVO_USD).</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? CotizacionUsd { get; set; }
 
     /// <summary>Nro de transferencia, nro de operacion MP, destinatario V, etc.</summary>
     [MaxLength(200)]

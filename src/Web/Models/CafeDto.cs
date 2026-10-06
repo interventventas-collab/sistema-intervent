@@ -2048,10 +2048,19 @@ public class CafeComodatoPagoDto
     public int Id { get; set; }
     public int ComodatoId { get; set; }
     public DateTime Fecha { get; set; }
+    /// <summary>En la moneda de la máquina.</summary>
     public decimal Importe { get; set; }
     public string? MedioPago { get; set; }
     public string? Notas { get; set; }
     public DateTime CreatedAt { get; set; }
+    // 2026-10-06: EsAnterior = pago viejo anotado a mano (sin caja ni recibo, se puede borrar).
+    // Los demás son cobranzas: N° de recibo, cómo entró la plata (MedioPago) y, en máquinas en
+    // dólares, los pesos y el dólar del día. Esos se anulan desde Tesorería → Cobranzas.
+    public bool EsAnterior { get; set; } = true;
+    public int? CobranzaId { get; set; }
+    public string? ReciboNumero { get; set; }
+    public decimal? ImportePesos { get; set; }
+    public decimal? DolarDelDia { get; set; }
 }
 
 public class CafeComodatoDetalleDto

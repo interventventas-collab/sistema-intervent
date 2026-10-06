@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
@@ -129,7 +130,8 @@
                                     <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => DescargarComprobante(c)" title="Descargar PDF del comprobante (para firmar)">📄 Comprobante</button>
                                     @if (c.Modalidad == "FINANCIADA" && c.Estado == "EN_CLIENTE")
                                     {
-                                        <button class="btn btn-primary" style="font-size:0.75rem;" @onclick="() => AbrirPago(c)">💰 Registrar pago</button>
+                                        <button class="btn btn-primary" style="font-size:0.75rem;" @onclick="() => CargarPago(c)"
+                                                title="Abre Nueva cobranza con este cliente y la máquina ya elegidos">+ Cargar pago</button>
                                     }
                                 </td>
                             </tr>
@@ -375,21 +377,47 @@
                     }
                     else
                     {
+                        @* 2026-10-06: pagos = los viejos anotados a mano (sin caja ni recibo; se pueden borrar) + los
+                           cargados como cobranza (recibo + caja; se anulan desde Tesorería → Cobranzas). *@
                         <table class="table table-compact" style="font-size:0.82rem;">
-                            <thead><tr><th>Fecha</th><th>Importe</th><th>Medio</th><th>Notas</th><th></th></tr></thead>
+                            <thead><tr><th>Fecha</th><th>Importe</th><th>Cómo entró</th><th>Recibo / notas</th><th></th></tr></thead>
                             <tbody>
                                 @foreach (var p in detallePagos)
                                 {
                                     <tr>
-                                        <td>@p.Fecha.ToString("dd/MM/yyyy")</td>
-                                        <td style="font-weight:700; color:#16a34a;">@Sym(c.Moneda) @p.Importe.ToString("N0")</td>
-                                        <td>@(p.MedioPago ?? "—")</td>
-                                        <td style="font-size:0.78rem; color:#6b7280;">@(p.Notas ?? "")</td>
-                                        <td><button class="btn-icon" @onclick="() => AnularPago(p.Id)" title="Eliminar pago" style="color:#b91c1c;">🗑</button></td>
+                                        <td>@((p.EsAnterior ? p.Fecha : p.Fecha.ToArTime()).ToString("dd/MM/yyyy"))</td>
+                                        <td>
+                                            <b>@Sym(c.Moneda) @p.Importe.ToString("N0")</b>
+                                            @if (p.ImportePesos is decimal pesos && p.DolarDelDia is decimal dolar)
+                                            {
+                                                <div style="font-size:0.72rem; color:#6b7280;">dólar $@dolar.ToString("N0") = $@pesos.ToString("N0")</div>
+                                            }
+                                        </td>
+                                        <td>@(p.EsAnterior ? (p.MedioPago ?? "—") : p.MedioPago)</td>
+                                        <td style="font-size:0.78rem; color:#6b7280;">
+                                            @if (p.EsAnterior)
+                                            {
+                                                <span>@("pago anterior, anotado a mano" + (string.IsNullOrEmpty(p.Notas) ? "" : $" · {p.Notas}"))</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@($"Recibo {p.ReciboNumero}" + (string.IsNullOrEmpty(p.Notas) ? "" : $" · {p.Notas}"))</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (p.EsAnterior)
+                                            {
+                                                <button class="btn-icon" @onclick="() => AnularPago(p.Id)" title="Eliminar este pago anotado a mano" style="color:#b91c1c;">🗑</button>
+                                            }
+                                        </td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
+                        @if (detallePagos.Any(p => !p.EsAnterior))
+                        {
+                            <p style="font-size:0.72rem; color:#9ca3af; margin:0;">Los pagos con recibo se anulan desde Tesorería → Cobranzas; la máquina recupera el saldo sola.</p>
+                        }
                     }
                 }
 
@@ -405,63 +433,8 @@
                 <button class="btn btn-secondary" @onclick="() => detalleAbierto = null">Cerrar</button>
                 @if (c.Modalidad == "FINANCIADA" && c.Estado == "EN_CLIENTE")
                 {
-                    <button class="btn btn-primary" @onclick="() => AbrirPago(c)">💰 Registrar pago</button>
+                    <button class="btn btn-primary" @onclick="() => CargarPago(c)">+ Cargar pago</button>
                 }
-            </div>
-        </div>
-    </div>
-}
-
-@* ===== Modal: Registrar pago ===== *@
-@if (pagoAbierto is not null)
-{
-    var c = pagoAbierto;
-    <div class="modal-overlay" @onclick="() => pagoAbierto = null">
-        <div class="modal-card modal-small" @onclick:stopPropagation="true">
-            <div class="modal-header" style="background:#dcfce7;">
-                <h3 style="margin:0;">💰 Registrar pago</h3>
-                <button class="btn-close" @onclick="() => pagoAbierto = null">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div style="padding:0.4rem 0.6rem; background:#f9fafb; border-radius:4px; margin-bottom:0.5rem; font-size:0.85rem;">
-                    <strong>@c.Marca @c.Modelo</strong> · @c.ClienteNombre<br/>
-                    Saldo actual: <strong>@Sym(c.Moneda) @(c.SaldoFinanciamiento?.ToString("N0") ?? "0")</strong>
-                </div>
-                <div style="display:flex; gap:0.5rem;">
-                    <div class="form-group" style="flex:1;">
-                        <label class="form-label">Fecha</label>
-                        <input type="date" class="form-input" value="@(pagoFecha.ToString("yyyy-MM-dd"))"
-                               @onchange="@(e => pagoFecha = DateTime.Parse(e.Value!.ToString()!))" />
-                    </div>
-                    <div class="form-group" style="flex:1;">
-                        <label class="form-label">Importe</label>
-                        <input type="text" inputmode="decimal" class="form-input" @bind:get="Miles(pagoImporte)" @bind:set="v => pagoImporte = MilesParse(v) ?? 0m" />
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Medio de pago</label>
-                    <select class="form-input" @bind="pagoMedio">
-                        <option value="EFECTIVO">Efectivo</option>
-                        <option value="TRANSFERENCIA">Transferencia</option>
-                        <option value="MERCADOPAGO">Mercado Pago</option>
-                        <option value="CHEQUE">Cheque</option>
-                        <option value="OTRO">Otro</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Notas</label>
-                    <input class="form-input" @bind="pagoNotas" placeholder="opcional" />
-                </div>
-                @if (c.ValorCuota.HasValue && c.ValorCuota > 0)
-                {
-                    <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => pagoImporte = c.ValorCuota.Value">Usar valor cuota (@Sym(c.Moneda) @c.ValorCuota?.ToString("N0"))</button>
-                }
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="() => pagoAbierto = null">Cancelar</button>
-                <button class="btn btn-primary" disabled="@(pagoImporte <= 0 || guardandoPago)" @onclick="GuardarPago">
-                    @(guardandoPago ? "Guardando..." : "✓ Registrar pago")
-                </button>
             </div>
         </div>
     </div>
@@ -517,13 +490,6 @@
     private List<CafeComodatoPagoDto>? detallePagos;
     private string detalleEstado = "EN_CLIENTE";
 
-    // Pago
-    private CafeComodatoDto? pagoAbierto;
-    private DateTime pagoFecha = DateTime.Today;
-    private decimal pagoImporte;
-    private string pagoMedio = "EFECTIVO";
-    private string pagoNotas = "";
-    private bool guardandoPago;
 
     // 2026-09-23: se entra desde la ficha del cliente. ?ver=ID abre esa máquina;
     // ?nuevaCliente=ID abre "Nueva máquina" con el cliente ya elegido.
@@ -818,42 +784,12 @@
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
-    private void AbrirPago(CafeComodatoDto c)
-    {
-        pagoAbierto = c;
-        pagoFecha = DateTime.Today;
-        pagoImporte = c.ValorCuota ?? 0;
-        pagoMedio = "EFECTIVO";
-        pagoNotas = "";
-    }
-
-    private async Task GuardarPago()
-    {
-        if (pagoAbierto is null || pagoImporte <= 0) return;
-        guardandoPago = true;
-        try
-        {
-            await Api.RegistrarPagoComodatoAsync(pagoAbierto.Id, new CafeComodatoPagoRequest
-            {
-                Fecha = pagoFecha,
-                Importe = pagoImporte,
-                MedioPago = pagoMedio,
-                Notas = string.IsNullOrWhiteSpace(pagoNotas) ? null : pagoNotas
-            });
-            ToastService.Success($"Pago de {Sym(pagoAbierto.Moneda)} {pagoImporte:N0} registrado");
-            pagoAbierto = null;
-            // Si el detalle está abierto, recargarlo
-            if (detalleAbierto is not null)
-            {
-                var d = await Api.GetCafeComodatoDetalleAsync(detalleAbierto.Id);
-                detalleAbierto = d?.Comodato;
-                detallePagos = d?.Pagos;
-            }
-            await Cargar();
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-        finally { guardandoPago = false; }
-    }
+    /// <summary>2026-10-06: el pago de la cuota se carga como una COBRANZA común (entra a una caja, sale
+    /// recibo, puede ser efectivo / banco / cheque / redirigido / dólares). Abre Nueva cobranza con el
+    /// cliente y la máquina ya tildados; al guardar vuelve a esta máquina (?ver=ID).
+    /// Antes se anotaba aparte en Cafe_ComodatoPagos sin pasar por ninguna caja.</summary>
+    private void CargarPago(CafeComodatoDto c)
+        => Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={c.ClienteId}&maquina={c.Id}");
 
     private async Task AnularPago(int pagoId)
     {

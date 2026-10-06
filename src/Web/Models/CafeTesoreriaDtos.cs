@@ -13,6 +13,8 @@ public class CafeCajaDto
     public decimal SaldoActual { get; set; }
     /// <summary>2026-09-30: día del último arqueo. Una cobranza no se puede fechar antes.</summary>
     public DateTime? UltimoArqueo { get; set; }
+    /// <summary>2026-10-06: caja "Dólares (efectivo)". Saldo y movimientos en USD: no se suma con los pesos.</summary>
+    public bool EnDolares { get; set; }
 }
 
 // Movimientos de caja: todo lo que mueve plata y NO es una cobranza (05/09/2026).
@@ -613,6 +615,10 @@ public class CobranzaComprobanteDto
     public int? VentaId { get; set; }
     public string? VentaNumero { get; set; }
     public decimal Importe { get; set; }
+    /// <summary>2026-10-06: alquiler o cuota de máquina. Ninguna de las dos es "a cuenta".</summary>
+    public int? ReservaId { get; set; }
+    public int? ComodatoId { get; set; }
+    public decimal? ImporteUsd { get; set; }
 }
 
 public class CobranzaMedioDto
@@ -623,6 +629,23 @@ public class CobranzaMedioDto
     public decimal Importe { get; set; }
     public string? Referencia { get; set; }
     public int? ChequeId { get; set; }
+    /// <summary>2026-10-06: caja de dólares — USD que entraron y dólar del día (Importe va en pesos).</summary>
+    public decimal? ImporteUsd { get; set; }
+    public decimal? CotizacionUsd { get; set; }
+}
+
+/// <summary>2026-10-06: máquina financiada del cliente que todavía debe (para cobrar la cuota en Nueva cobranza).
+/// Precio/Pagado/Saldo en la moneda de la máquina (Moneda = ARS | USD).</summary>
+public class MaquinaPendienteDto
+{
+    public int ComodatoId { get; set; }
+    public string Nombre { get; set; } = "";
+    public string Moneda { get; set; } = "ARS";
+    public decimal Precio { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Saldo { get; set; }
+    public decimal? ValorCuota { get; set; }
+    public bool EnDolares => Moneda == "USD";
 }
 
 // ========== Depositos + Stock por deposito ==========

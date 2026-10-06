@@ -621,7 +621,7 @@
                         {
                             <p class="text-muted">Cargando...</p>
                         }
-                        else if (ComprobantesACobrar.Count == 0)
+                        else if (ComprobantesACobrar.Count == 0 && maquinasPend.Count == 0)
                         {
                             <p class="text-muted" style="margin:0;">Sin facturas pendientes de cobro. Podés cargar igual como "A cuenta".</p>
                         }
@@ -666,8 +666,53 @@
                                             </td>
                                         </tr>
                                     }
+                                    @* 2026-10-06: cuotas de MÁQUINA FINANCIADA del cliente. Se cobran en el mismo recibo que
+                                       las facturas; la plata entra a la caja que se elija abajo. Si la máquina es en dólares
+                                       se escribe en USD y se pasa a pesos con el "Dólar del día". *@
+                                    @foreach (var mq in maquinasPend)
+                                    {
+                                        var mid = mq.ComodatoId;
+                                        var mi = maqImput[mid];
+                                        <tr>
+                                            <td><input type="checkbox" checked="@mi.Seleccionado" @onchange="@(e => TildarMaquina(mq, (bool)e.Value!))" /></td>
+                                            <td>
+                                                <b>@mq.Nombre</b>
+                                                <span style="font-size:0.68rem; color:#6b7280; font-weight:600; margin-left:0.3rem;">@(mq.EnDolares ? "· cuota de máquina en dólares" : "· cuota de máquina")</span>
+                                            </td>
+                                            <td style="color:#9ca3af;">—</td>
+                                            <td style="text-align:right; color:#6b7280;">falta @(mq.EnDolares ? $"USD {mq.Saldo:N2}" : $"${mq.Saldo:N2}")</td>
+                                            <td style="text-align:right;">
+                                                @if (mq.EnDolares)
+                                                {
+                                                    <span style="font-size:0.75rem; color:#6b7280;">USD</span>
+                                                    <input class="form-input" type="text" inputmode="decimal" style="text-align:right; width:100px; display:inline-block;"
+                                                           @bind="mi.UsdTexto" @bind:event="onchange" @bind:after="@(() => OnMaquinaAfter(mid))" />
+                                                    @if (mi.Seleccionado)
+                                                    {
+                                                        <div style="font-size:0.72rem; color:#6b7280;">
+                                                            @(dolarDelDia > 0 ? $"= ${MaqPesos(mq, mi):N2}" : "falta el dólar del día")
+                                                        </div>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <input class="form-input" type="text" inputmode="decimal" style="text-align:right; width:120px; display:inline-block;"
+                                                           @bind="mi.ImporteTexto" @bind:event="onchange" @bind:after="@(() => OnMaquinaAfter(mid))" />
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
                                 </tbody>
                             </table>
+                            @if (HayMaquinaUsdTildada)
+                            {
+                                <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin:0 0 0.5rem; font-size:0.85rem; color:#374151;">
+                                    <span>Dólar del día: $</span>
+                                    <input class="form-input" type="text" inputmode="decimal" placeholder="1.450" style="width:110px; text-align:right;"
+                                           @bind="DolarDelDiaTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
+                                    <span style="font-size:0.75rem; color:#6b7280;">con esto se pasan los dólares a pesos (el recibo y las cajas van en pesos)</span>
+                                </div>
+                            }
                         }
                         <div style="display:flex; align-items:center; gap:0.5rem;">
                             <label class="form-check"><input type="checkbox" @bind="aCuentaActivo" @bind:after="RecalcularTotal" /> A cuenta:</label>
@@ -802,11 +847,36 @@
                                    descarta ese valor y el casillero se VACIA solo apenas salis del campo (el total quedaba
                                    bien, pero no se veia lo tipeado). Mismo arreglo que el resto de los importes el 18/08,
                                    que a este se le habia pasado por alto. *@
-                                <input class="form-input" type="text" inputmode="decimal" placeholder="Importe"
-                                       @bind="m.ImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
+                                @if (m.EsDolares)
+                                {
+                                    @* 2026-10-06: caja de dólares: se escriben los USD; los pesos salen del dólar del día. *@
+                                    <input class="form-input" type="text" inputmode="decimal" placeholder="USD"
+                                           @bind="m.UsdTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
+                                }
+                                else
+                                {
+                                    <input class="form-input" type="text" inputmode="decimal" placeholder="Importe"
+                                           @bind="m.ImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
+                                }
                                 <input class="form-input" placeholder="Referencia (opcional)" @bind="m.Referencia" />
-                                <button class="btn-icon" @onclick="() => formMedios.RemoveAt(idx)" title="Quitar">🗑</button>
+                                <button class="btn-icon" @onclick="() => { formMedios.RemoveAt(idx); RecalcularTotal(); }" title="Quitar">🗑</button>
                             </div>
+                            @if (m.EsDolares)
+                            {
+                                <div style="margin:0 0 0.5rem 0.2rem; font-size:0.8rem; color:#6b7280; display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                                    @if (!HayMaquinaUsdTildada)
+                                    {
+                                        <span>Dólar del día: $</span>
+                                        <input class="form-input" type="text" inputmode="decimal" placeholder="1.450" style="width:110px; text-align:right;"
+                                               @bind="DolarDelDiaTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
+                                    }
+                                    <span>
+                                        @(m.ImporteUsd > 0 && dolarDelDia > 0
+                                            ? $"USD {m.ImporteUsd:N2} a ${dolarDelDia:N2} = ${m.Importe:N2} (en el recibo va en pesos; la caja cuenta los dólares)"
+                                            : "Poné los dólares que entraron y el dólar del día.")
+                                    </span>
+                                </div>
+                            }
                             @* 05/09/2026: cobro REDIRIGIDO — el cliente paga y la plata se la queda un
                                empleado, que le cuenta como pago. Se carga todo de una. *@
                             @if (m.EsRedirigido)
@@ -1114,6 +1184,14 @@
                     <strong>retenciones</strong> (por ejemplo si el pago entró por cheque y el faltante de la factura era una retención).
                     <strong>NO se toca</strong> la forma de cobro, el cheque (si hay) ni el cliente: las retenciones no mueven plata de caja.
                 </div>
+                @if (editFijas.Count > 0)
+                {
+                    @* 2026-10-06: cuotas de máquina y alquileres de esta cobranza: quedan como están. *@
+                    <div style="font-size:0.8rem; color:#6b7280; margin-bottom:0.6rem;">
+                        Quedan como están (no se re-imputan acá):
+                        @string.Join(" · ", editFijas.Select(f => $"{(string.IsNullOrEmpty(f.VentaNumero) ? (f.ComodatoId is > 0 ? "Máquina" : "Alquiler") : f.VentaNumero)} ${f.Importe:N2}"))
+                    </div>
+                }
                 <div style="display:flex; gap:1rem; margin-bottom:0.8rem; font-size:0.88rem;">
                     <div><span style="color:#6b7280;">Cliente:</span> <strong>@c.ClienteNombre</strong></div>
                     <div><span style="color:#6b7280;">Total cobrado:</span> <strong style="color:#16a34a;">$@c.Total.ToString("N2")</strong></div>
@@ -1650,7 +1728,9 @@
     private bool editCargando, editGuardando;
     private string? editError;
 
-    private decimal EditTotalObjetivo => editandoCobranza is null ? 0m : editandoCobranza.Total + editRetenciones;
+    /// <summary>2026-10-06: imputaciones a alquiler o máquina de la cobranza que se edita: no se re-imputan acá.</summary>
+    private List<CobranzaComprobanteDto> editFijas = new();
+    private decimal EditTotalObjetivo => editandoCobranza is null ? 0m : editandoCobranza.Total + editRetenciones - editFijas.Sum(x => x.Importe);
     private decimal EditSumaActual
     {
         get
@@ -1669,6 +1749,7 @@
         editandoCobranza = null;
         editComprobantes = null;
         editImputaciones = new();
+        editFijas = new();
         editACuentaActivo = false;
         editACuentaImporte = 0m;
         editRetenciones = c.Retenciones;
@@ -1696,7 +1777,10 @@
 
             // Imputaciones actuales: dividimos en (con venta) y (a cuenta)
             var impConVenta = det.Comprobantes.Where(cc => cc.VentaId.HasValue).ToList();
-            var impACuenta = det.Comprobantes.Where(cc => !cc.VentaId.HasValue).ToList();
+            // 2026-10-06: lo de un alquiler o la cuota de una máquina NO es "a cuenta": esas quedan
+            // como están (el servidor no las toca) y se descuentan de lo que hay que repartir acá.
+            editFijas = det.Comprobantes.Where(cc => !cc.VentaId.HasValue && (cc.ReservaId is > 0 || cc.ComodatoId is > 0)).ToList();
+            var impACuenta = det.Comprobantes.Where(cc => !cc.VentaId.HasValue && !(cc.ReservaId is > 0) && !(cc.ComodatoId is > 0)).ToList();
 
             // Pre-cargar el "a cuenta" si la cobranza ya tenia uno
             if (impACuenta.Count > 0)
@@ -1869,6 +1953,76 @@
     /// (clave = -ReservaId) y al guardar se vuelve a Reservas.</summary>
     [Parameter, SupplyParameterFromQuery(Name = "reserva")] public int? PreReservaId { get; set; }
     private bool volverAReservas;
+    /// <summary>2026-10-06: viene de "+ Cargar pago" de una MÁQUINA FINANCIADA (/cafe/maquinas): la máquina
+    /// va tildada y al guardar se vuelve a esa máquina (/cafe/maquinas?ver=M).</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "maquina")] public int? PreMaquinaId { get; set; }
+    private int? volverAMaquina;
+
+    // ─── 2026-10-06: cuotas de máquinas financiadas en la misma cobranza ───
+    private List<MaquinaPendienteDto> maquinasPend = new();
+    private Dictionary<int, MaquinaImput> maqImput = new();
+    /// <summary>Dólar del día: pasa a pesos la cuota de una máquina en dólares y lo que entra a la caja de dólares.</summary>
+    private decimal dolarDelDia;
+    private string DolarDelDiaTexto
+    {
+        get => MontoInput.Formato(dolarDelDia);
+        set { MontoInput.TryParse(value, out dolarDelDia); }
+    }
+    private class MaquinaImput
+    {
+        public bool Seleccionado { get; set; }
+        /// <summary>Pesos (máquina en pesos).</summary>
+        public decimal Importe { get; set; }
+        public string ImporteTexto
+        {
+            get => MontoInput.Formato(Importe);
+            set { MontoInput.TryParse(value, out var v); Importe = v; }
+        }
+        /// <summary>Dólares (máquina en dólares).</summary>
+        public decimal Usd { get; set; }
+        public string UsdTexto
+        {
+            get => MontoInput.Formato(Usd);
+            set { MontoInput.TryParse(value, out var v); Usd = v; }
+        }
+    }
+    private bool HayMaquinaUsdTildada => maquinasPend.Any(m => m.EnDolares && maqImput.TryGetValue(m.ComodatoId, out var i) && i.Seleccionado);
+    /// <summary>Lo que se le aplica a la máquina, en pesos (en dólares: USD × dólar del día).</summary>
+    private decimal MaqPesos(MaquinaPendienteDto m, MaquinaImput i) =>
+        m.EnDolares ? Math.Round(i.Usd * dolarDelDia, 2) : i.Importe;
+    private decimal TotalMaquinas => maquinasPend
+        .Where(m => maqImput.TryGetValue(m.ComodatoId, out var i) && i.Seleccionado)
+        .Sum(m => MaqPesos(m, maqImput[m.ComodatoId]));
+
+    /// <summary>Al tildar, propone la cuota (o lo que falta, si es menos).</summary>
+    private void TildarMaquina(MaquinaPendienteDto m, bool tildado)
+    {
+        var i = maqImput[m.ComodatoId];
+        i.Seleccionado = tildado;
+        if (tildado)
+        {
+            var propuesto = m.ValorCuota is > 0m && m.ValorCuota.Value < m.Saldo ? m.ValorCuota.Value : m.Saldo;
+            if (m.EnDolares && i.Usd <= 0m) i.Usd = propuesto;
+            if (!m.EnDolares && i.Importe <= 0m) i.Importe = propuesto;
+        }
+        RecalcularTotal();
+    }
+
+    private void OnMaquinaAfter(int comodatoId)
+    {
+        if (maqImput.TryGetValue(comodatoId, out var i) && (i.Importe > 0m || i.Usd > 0m)) i.Seleccionado = true;
+        RecalcularTotal();
+    }
+
+    private async Task CargarMaquinasAsync()
+    {
+        maquinasPend = new();
+        maqImput = new();
+        if (selClienteId <= 0) return;
+        try { maquinasPend = await Api.GetMaquinasPendientesAsync(selClienteId) ?? new(); }
+        catch { maquinasPend = new(); }
+        foreach (var m in maquinasPend) maqImput[m.ComodatoId] = new MaquinaImput();
+    }
     private RediPendienteDto? rediOrigen;
     private AlqCobranzaPendienteDto? alqPendienteOrigen;
     // 2026-06-06: abre el modal de Nueva Cobranza vacío (atajo desde topbar)
@@ -1974,6 +2128,14 @@
             set { MontoInput.TryParse(value, out var v); Importe = v; }
         }
         public string? Referencia { get; set; }
+        /// <summary>2026-10-06: caja "Dólares (efectivo)". Se escriben los USD; Importe (pesos) = USD × dólar del día.</summary>
+        public bool EsDolares => TipoCaja == "EFECTIVO_USD";
+        public decimal ImporteUsd { get; set; }
+        public string UsdTexto
+        {
+            get => MontoInput.Formato(ImporteUsd);
+            set { MontoInput.TryParse(value, out var v); ImporteUsd = v; }
+        }
         public bool EsCheque => TipoCaja == "CHEQUES_CARTERA";
         /// <summary>La caja de paso del cobro redirigido (05/09/2026).</summary>
         public bool EsRedirigido => TipoCaja == "V_PRIVADO";
@@ -2028,13 +2190,16 @@
         RecalcularTotal();
     }
 
-    private decimal TotalImputado => imputaciones.Where(kv => kv.Value.Seleccionado).Sum(kv => kv.Value.Importe) + (aCuentaActivo ? aCuentaImporte : 0);
+    private decimal TotalImputado => imputaciones.Where(kv => kv.Value.Seleccionado).Sum(kv => kv.Value.Importe) + (aCuentaActivo ? aCuentaImporte : 0)
+                                     + TotalMaquinas;   // 2026-10-06: cuotas de máquina (en pesos)
     private decimal TotalMedios => formMedios.Sum(m => m.Importe);
     private bool CuadraTotal => Math.Abs(TotalImputado - (TotalMedios + formRetenciones)) < 0.01m;
     // 2026-06-16: hay algo seleccionado para imputar (FA, NC, o A cuenta) — habilita Guardar
     // incluso cuando el sum da 0 (compensacion FA+NC).
     private bool HayItemsImputados => imputaciones.Any(kv => kv.Value.Seleccionado && Math.Abs(kv.Value.Importe) > 0.01m)
-                                       || (aCuentaActivo && Math.Abs(aCuentaImporte) > 0.01m);
+                                       || (aCuentaActivo && Math.Abs(aCuentaImporte) > 0.01m)
+                                       || maquinasPend.Any(m => maqImput.TryGetValue(m.ComodatoId, out var i) && i.Seleccionado
+                                                               && (m.EnDolares ? i.Usd : i.Importe) > 0.01m);
 
     protected override async Task OnInitializedAsync()
     {
@@ -2060,6 +2225,14 @@
             {
                 if (imputaciones.TryGetValue(-PreReservaId.Value, out var impR)) { impR.Seleccionado = true; volverAReservas = true; }
                 else ToastService.Error("Ese alquiler no tiene saldo pendiente para cobrar.");
+            }
+            // 2026-10-06: desde "+ Cargar pago" de una máquina: queda tildada con la cuota y al guardar se vuelve.
+            if (PreMaquinaId is > 0)
+            {
+                volverAMaquina = PreMaquinaId.Value;
+                var mq = maquinasPend.FirstOrDefault(m => m.ComodatoId == PreMaquinaId.Value);
+                if (mq is not null) TildarMaquina(mq, true);
+                else ToastService.Error("Esa máquina no tiene saldo pendiente para cobrar.");
             }
             // Si viene desde el extracto bancario con un movimiento puntual, agregarlo
             // automaticamente como medio de cobro tipo Transferencia.
@@ -2252,6 +2425,7 @@
         alqPendienteOrigen = null;
         rediOrigen = null;
         formFecha = HoyAr; fechaOrigen = null; fechaTocadaAMano = false;
+        maquinasPend = new(); maqImput = new(); dolarDelDia = 0m;   // 2026-10-06
         showNueva = true;
     }
 
@@ -2281,6 +2455,7 @@
         clienteSearchOpen = false;
         pendientes = null;
         imputaciones = new();
+        maquinasPend = new(); maqImput = new();   // 2026-10-06
     }
 
     private void CloseNueva()
@@ -2288,6 +2463,7 @@
         if (guardando) return;
         showNueva = false;
         volverAReservas = false;
+        volverAMaquina = null;
         adjRetencionFile = null;
         adjTransferenciaFile = null;
         pendienteOrigen = null;
@@ -2305,6 +2481,7 @@
         movsBancoUsados = new();
         movsBancoDescartados = new();
         verDescartados = false;
+        maquinasPend = new(); maqImput = new();
         if (selClienteId <= 0) { pendientes = new(); return; }
         try
         {
@@ -2323,6 +2500,7 @@
             catch { movsBancoDescartados = new(); }
 
             await RecargarPendientesAsync();
+            await CargarMaquinasAsync();   // 2026-10-06: cuotas de máquinas financiadas
 
             // Traer saldo total del cliente
             try
@@ -2469,6 +2647,7 @@
             formMedios[idx].CajaId = cajaId;
             formMedios[idx].TipoCaja = cajas?.FirstOrDefault(c => c.Id == cajaId)?.Tipo ?? "";
         }
+        RecalcularTotal();   // 2026-10-06: la caja de dólares calcula sus pesos
     }
 
     private static string Plata(decimal v)
@@ -2633,7 +2812,14 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
-    private void RecalcularTotal() => StateHasChanged();
+    private void RecalcularTotal()
+    {
+        // 2026-10-06: lo que entra a la caja de dólares, en pesos = USD × dólar del día (lo vuelve a
+        // calcular el servidor igual, con redondeo a centavos).
+        foreach (var m in formMedios.Where(x => x.EsDolares))
+            m.Importe = Math.Round(m.ImporteUsd * dolarDelDia, 2);
+        StateHasChanged();
+    }
 
     private async Task GuardarCobranza()
     {
@@ -2674,7 +2860,27 @@
             return;
         }
 
+        // 2026-10-06: dólares (máquina en USD o caja de dólares) sin el dólar del día no se pueden pasar a pesos.
+        var usaDolares = HayMaquinaUsdTildada || formMedios.Any(m => m.EsDolares);
+        if (usaDolares && dolarDelDia <= 0m) { ToastService.Error("⚠️ Poné el DÓLAR DEL DÍA para pasar los dólares a pesos."); return; }
+        if (formMedios.Any(m => m.EsDolares && m.ImporteUsd <= 0m)) { ToastService.Error("⚠️ En la caja de dólares poné cuántos DÓLARES entraron."); return; }
+        var maqPasada = maquinasPend.FirstOrDefault(m => maqImput.TryGetValue(m.ComodatoId, out var i) && i.Seleccionado
+                                                         && (m.EnDolares ? i.Usd : i.Importe) > m.Saldo + 0.01m);
+        if (maqPasada is not null)
+        {
+            ToastService.Error($"⚠️ A {maqPasada.Nombre} le faltan {(maqPasada.EnDolares ? $"USD {maqPasada.Saldo:N2}" : $"${maqPasada.Saldo:N2}")}: no le podés cobrar más que eso.");
+            return;
+        }
+
         var comps = new List<ApiClient.CrearComprobanteItemRequest>();
+        // 2026-10-06: cuotas de máquina. Importe siempre en pesos; si es en dólares va también ImporteUsd.
+        foreach (var mq in maquinasPend)
+        {
+            if (!maqImput.TryGetValue(mq.ComodatoId, out var mi) || !mi.Seleccionado) continue;
+            var pesos = MaqPesos(mq, mi);
+            if (pesos <= 0.01m) continue;
+            comps.Add(new ApiClient.CrearComprobanteItemRequest(null, pesos, null, mq.ComodatoId, mq.EnDolares ? mi.Usd : null));
+        }
         foreach (var kv in imputaciones)
             // 2026-06-16: Math.Abs en vez de > 0 porque las Notas de Credito van con importe NEGATIVO.
             // Antes filtraba los negativos y el server recibia solo la FA, perdiendo la NC y rompiendo la compensacion.
@@ -2695,7 +2901,9 @@
             m.EsRedirigido ? m.RedirigidoDestino : null,
             m.EsRedirigido && m.RedirigidoProveedorId > 0 ? m.RedirigidoProveedorId : null,
             null,
-            m.EsRedirigido && m.RedirigidoProveedorId > 0 && m.RedirigidoDocClave != "" ? m.RedirigidoDocClave : null
+            m.EsRedirigido && m.RedirigidoProveedorId > 0 && m.RedirigidoDocClave != "" ? m.RedirigidoDocClave : null,
+            m.EsDolares ? m.ImporteUsd : null,
+            m.EsDolares ? dolarDelDia : null
         )).ToList();
 
         guardando = true;
@@ -2755,6 +2963,8 @@
             enviarPorWhatsapp = false;
             showNueva = false;
             if (volverAReservas) { volverAReservas = false; Navigation.NavigateTo("/alquileres/reservas"); return; }
+            // 2026-10-06: vino desde la máquina: se vuelve a su detalle, que ya muestra el pago nuevo.
+            if (volverAMaquina is int volverId) { volverAMaquina = null; Navigation.NavigateTo($"/cafe/maquinas?ver={volverId}"); return; }
             await Load();
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }

@@ -49,7 +49,18 @@ public class CafeComodatosController : ControllerBase
             .FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return (null, "");
         var settings = await _db.CafeSettings.FirstOrDefaultAsync();
-        var bytes = _pdfService.GenerarPdfBytes(c, c.Cliente, c.Pagos, settings);
+        // 2026-10-06: los pagos cargados como cobranza (recibo + caja) también van en el comprobante.
+        // Se arman renglones sueltos (no se guardan) con el mismo formato que los pagos viejos.
+        var pagosPdf = c.Pagos.Select(p => new CafeComodatoPago { Fecha = p.Fecha, Importe = p.Importe, MedioPago = p.MedioPago, Notas = p.Notas }).ToList();
+        foreach (var pc in await PagosPorCobranzaAsync(c))
+            pagosPdf.Add(new CafeComodatoPago
+            {
+                Fecha = pc.Fecha.AddHours(-3).Date,   // la cobranza guarda UTC; el comprobante va en día argentino
+                Importe = pc.Importe,
+                MedioPago = $"Recibo {pc.ReciboNumero}",
+                Notas = pc.MedioPago
+            });
+        var bytes = _pdfService.GenerarPdfBytes(c, c.Cliente, pagosPdf, settings);
         return (bytes, CafeComodatoPdfService.GetNumeroComprobante(c) + ".pdf");
     }
 
@@ -60,12 +71,15 @@ public class CafeComodatosController : ControllerBase
         decimal? SaldoFinanciamiento, decimal PagosAcumulados, int PagosCount,
         DateTime CreatedAt);
 
-    private static ComodatoDto Map(CafeComodato c)
+    private static ComodatoDto Map(CafeComodato c, Dictionary<int, CafeComodatoSaldoService.Cobrado>? cobrado = null)
     {
         // Calculamos saldo en RUNTIME (Precio - Pagos), no usamos c.SaldoFinanciamiento
         // guardado en DB porque a veces queda viejo si el precio cambio despues de hacer pagos
         // o por bugs viejos de migracion. La unica fuente de verdad son Precio + lista de Pagos.
-        var pagosAcumulados = c.Pagos?.Sum(p => p.Importe) ?? 0m;
+        // 2026-10-06: pagos = los viejos anotados a mano + las cobranzas vigentes imputadas a la máquina
+        // (en la moneda de la máquina). Misma cuenta que CafeComodatoSaldoService.
+        var cob = cobrado is not null && cobrado.TryGetValue(c.Id, out var cb) ? cb : null;
+        var pagosAcumulados = (c.Pagos?.Sum(p => p.Importe) ?? 0m) + (cob?.Monto ?? 0m);
         decimal? saldoCalculado = c.Modalidad == "FINANCIADA"
             ? Math.Max(0m, (c.PrecioVenta ?? 0m) - pagosAcumulados)
             : null;
@@ -76,11 +90,71 @@ public class CafeComodatosController : ControllerBase
             c.PrecioVenta, c.CuotasTotales, c.ValorCuota, c.DiaPagoMensual,
             saldoCalculado,
             pagosAcumulados,
-            c.Pagos?.Count ?? 0,
+            (c.Pagos?.Count ?? 0) + (cob?.Cantidad ?? 0),
             c.CreatedAt);
     }
 
-    public record PagoDto(int Id, int ComodatoId, DateTime Fecha, decimal Importe, string? MedioPago, string? Notas, DateTime CreatedAt);
+    /// <summary>Un pago de la máquina. Importe va en la moneda de la máquina.
+    /// 2026-10-06: además de los pagos viejos (EsAnterior = true, anotados a mano, sin caja ni recibo)
+    /// vienen las cobranzas: CobranzaId + ReciboNumero, cómo entró la plata (MedioPago) y, si la
+    /// máquina es en dólares, cuántos pesos fueron (ImportePesos) y con qué dólar (DolarDelDia).
+    /// Id = id del pago viejo (0 en las cobranzas: esas se anulan desde Tesorería).</summary>
+    public record PagoDto(int Id, int ComodatoId, DateTime Fecha, decimal Importe, string? MedioPago, string? Notas, DateTime CreatedAt,
+        bool EsAnterior = true, int? CobranzaId = null, string? ReciboNumero = null,
+        decimal? ImportePesos = null, decimal? DolarDelDia = null);
+
+    /// <summary>2026-10-06: las cobranzas vigentes imputadas a esta máquina, con cómo entró la plata
+    /// (caja, cheque, redirigido → a quién).</summary>
+    private async Task<List<PagoDto>> PagosPorCobranzaAsync(CafeComodato c)
+    {
+        var filas = await _db.CafeCobranzasComprobantes.AsNoTracking()
+            .Where(x => x.ComodatoId == c.Id && x.Cobranza!.Estado == "VIGENTE")
+            .Select(x => new
+            {
+                x.Id, x.CobranzaId, x.Cobranza!.Numero, x.Cobranza.Fecha, x.Cobranza.Observaciones, x.Cobranza.CreatedAt,
+                x.Importe, x.ImporteUsd,
+                Medios = x.Cobranza.Medios.Select(m => new
+                {
+                    Caja = m.Caja != null ? m.Caja.Nombre : "",
+                    Tipo = m.Caja != null ? m.Caja.Tipo : "",
+                    m.RedirigidoEmpleadoId, m.RedirigidoProveedorId, m.RedirigidoDestino,
+                    ChequeBanco = m.Cheque != null ? m.Cheque.Banco : null,
+                    ChequeNumero = m.Cheque != null ? m.Cheque.Numero : null
+                }).ToList()
+            })
+            .ToListAsync();
+        if (filas.Count == 0) return new();
+
+        var empIds = filas.SelectMany(f => f.Medios).Where(m => m.RedirigidoEmpleadoId != null)
+            .Select(m => m.RedirigidoEmpleadoId!.Value).Distinct().ToList();
+        var provIds = filas.SelectMany(f => f.Medios).Where(m => m.RedirigidoProveedorId != null)
+            .Select(m => m.RedirigidoProveedorId!.Value).Distinct().ToList();
+        var emps = empIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.NomEmpleados.Where(e => empIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id, e => e.Nombre);
+        var provs = provIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.CafeProveedores.Where(p => provIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Nombre);
+
+        string Redirigido(int? empId, int? provId, string? destino) =>
+            empId is int eid ? (emps.TryGetValue(eid, out var en) ? en : $"empleado #{eid}") + (string.IsNullOrEmpty(destino) ? "" : $" · {destino}")
+            : provId is int pid ? (provs.TryGetValue(pid, out var pn) ? pn : $"proveedor #{pid}")
+            : destino == "privada" ? "queda en la privada"
+            : "sin decir a quién";
+
+        var usd = c.Moneda == "USD";
+        return filas.Select(f =>
+        {
+            var como = string.Join(" · ", f.Medios.Select(m =>
+                    m.Tipo == "V_PRIVADO" ? "Redirigido → " + Redirigido(m.RedirigidoEmpleadoId, m.RedirigidoProveedorId, m.RedirigidoDestino)
+                    : m.ChequeNumero is not null ? $"Cheque {m.ChequeBanco} N° {m.ChequeNumero}"
+                    : m.Caja)
+                .Where(t => !string.IsNullOrWhiteSpace(t)).Distinct());
+            if (string.IsNullOrWhiteSpace(como)) como = "Retenciones";
+            var importe = usd ? (f.ImporteUsd ?? 0m) : f.Importe;
+            decimal? dolar = usd && (f.ImporteUsd ?? 0m) > 0m ? Math.Round(f.Importe / f.ImporteUsd!.Value, 2) : null;
+            return new PagoDto(0, c.Id, f.Fecha, importe, como, f.Observaciones, f.CreatedAt,
+                false, f.CobranzaId, f.Numero, usd ? f.Importe : null, dolar);
+        }).ToList();
+    }
 
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? modalidad = null, [FromQuery] string? estado = null,
@@ -100,7 +174,8 @@ public class CafeComodatosController : ControllerBase
                 (c.Cliente != null && c.Cliente.Nombre.Contains(t)));
         }
         var list = await qry.OrderByDescending(c => c.CreatedAt).ToListAsync();
-        return Ok(list.Select(Map));
+        var cobrado = await CafeComodatoSaldoService.CobradoPorCobranzasAsync(_db, list.Select(c => c.Id));
+        return Ok(list.Select(c => Map(c, cobrado)));
     }
 
     [HttpGet("{id:int}")]
@@ -108,11 +183,16 @@ public class CafeComodatosController : ControllerBase
     {
         var c = await _db.CafeComodatos.Include(x => x.Cliente).Include(x => x.Pagos).FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return NotFound();
+        var cobrado = await CafeComodatoSaldoService.CobradoPorCobranzasAsync(_db, new[] { c.Id });
+        // 2026-10-06: viejos (anotados a mano) + cobranzas, el más nuevo primero.
+        var pagos = c.Pagos.Select(p => new PagoDto(p.Id, p.ComodatoId, p.Fecha, p.Importe, p.MedioPago, p.Notas, p.CreatedAt))
+            .Concat(await PagosPorCobranzaAsync(c))
+            .OrderByDescending(p => p.Fecha).ThenByDescending(p => p.CreatedAt)
+            .ToList();
         return Ok(new
         {
-            comodato = Map(c),
-            pagos = c.Pagos.OrderByDescending(p => p.Fecha).ThenByDescending(p => p.Id)
-                .Select(p => new PagoDto(p.Id, p.ComodatoId, p.Fecha, p.Importe, p.MedioPago, p.Notas, p.CreatedAt))
+            comodato = Map(c, cobrado),
+            pagos
         });
     }
 
@@ -120,11 +200,14 @@ public class CafeComodatosController : ControllerBase
     public async Task<IActionResult> Stats()
     {
         var todos = await _db.CafeComodatos.Include(c => c.Pagos).ToListAsync();
+        // 2026-10-06: lo cobrado por cobranzas también descuenta (en la moneda de cada máquina).
+        var cobrado = await CafeComodatoSaldoService.CobradoPorCobranzasAsync(_db, todos.Select(c => c.Id));
         var comodatos = todos.Where(c => c.Modalidad == "COMODATO").ToList();
         var financiadas = todos.Where(c => c.Modalidad == "FINANCIADA").ToList();
         // Calcular saldo en runtime (Precio - Pagos) por moneda — NO sumamos USD con ARS.
         decimal SaldoCalculado(CafeComodato c) =>
-            Math.Max(0m, (c.PrecioVenta ?? 0m) - (c.Pagos?.Sum(p => p.Importe) ?? 0m));
+            Math.Max(0m, (c.PrecioVenta ?? 0m) - (c.Pagos?.Sum(p => p.Importe) ?? 0m)
+                         - (cobrado.TryGetValue(c.Id, out var cb) ? cb.Monto : 0m));
         var activasArs = financiadas.Where(c => c.Estado == "EN_CLIENTE" && c.Moneda == "ARS").ToList();
         var activasUsd = financiadas.Where(c => c.Estado == "EN_CLIENTE" && c.Moneda == "USD").ToList();
         return Ok(new
@@ -229,8 +312,9 @@ public class CafeComodatosController : ControllerBase
             {
                 if (nuevaMod == "COMODATO")
                 {
-                    if (c.Pagos.Any())
-                        return BadRequest(new { error = "Esta máquina financiada tiene pagos registrados. Anulá los pagos antes de pasarla a comodato." });
+                    // 2026-10-06: también cuentan los pagos cargados como cobranza.
+                    if (c.Pagos.Any() || await _db.CafeCobranzasComprobantes.AnyAsync(x => x.ComodatoId == c.Id && x.Cobranza!.Estado == "VIGENTE"))
+                        return BadRequest(new { error = "Esta máquina financiada tiene pagos registrados. Anulá los pagos (o las cobranzas en Tesorería) antes de pasarla a comodato." });
                     c.Modalidad = "COMODATO";
                     c.PrecioVenta = null; c.CuotasTotales = null; c.ValorCuota = null;
                     c.DiaPagoMensual = null; c.SaldoFinanciamiento = null;
@@ -251,13 +335,14 @@ public class CafeComodatosController : ControllerBase
             c.CuotasTotales = req.CuotasTotales;
             c.ValorCuota = req.ValorCuota;
             c.DiaPagoMensual = req.DiaPagoMensual;
-            // Recalcular saldo en base a precio y pagos acumulados
-            var pagado = c.Pagos.Sum(p => p.Importe);
-            c.SaldoFinanciamiento = (req.PrecioVenta ?? 0m) - pagado;
         }
         c.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(Map(c));
+        // 2026-10-06: saldo = precio − (pagos viejos + cobranzas). Antes miraba sólo los pagos viejos.
+        // El estado no se toca: acá lo elige el operador (igual que antes).
+        if (c.Modalidad == "FINANCIADA") await CafeComodatoSaldoService.RecalcularAsync(_db, c.Id, tocarEstado: false);
+        var cobrado = await CafeComodatoSaldoService.CobradoPorCobranzasAsync(_db, new[] { c.Id });
+        return Ok(Map(c, cobrado));
     }
 
     [HttpDelete("{id:int}")]
@@ -265,6 +350,13 @@ public class CafeComodatosController : ControllerBase
     {
         var c = await _db.CafeComodatos.Include(x => x.Pagos).FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return NotFound();
+        // 2026-10-06: si tiene pagos cargados como cobranza, borrarla dejaría recibos apuntando a nada
+        // (y la plata en la caja sin saber de qué fue). Primero se anulan esas cobranzas.
+        var recibos = await _db.CafeCobranzasComprobantes
+            .Where(x => x.ComodatoId == id && x.Cobranza!.Estado == "VIGENTE")
+            .Select(x => x.Cobranza!.Numero).Distinct().ToListAsync();
+        if (recibos.Count > 0)
+            return BadRequest(new { error = $"Esta máquina tiene pagos cargados como cobranza ({string.Join(", ", recibos)}). Anulalas en Tesorería → Cobranzas antes de eliminarla." });
         _db.CafeComodatos.Remove(c);
         await _db.SaveChangesAsync();
         await _audit.LogAsync("CafeComodato", id.ToString(), "DELETE", $"Comodato {id} eliminado");
@@ -293,19 +385,9 @@ public class CafeComodatosController : ControllerBase
         _db.CafeComodatoPagos.Add(p);
         await _db.SaveChangesAsync();
 
-        // Recalcular saldo. OJO: tras SaveChanges, EF ya metió 'p' dentro de c.Pagos
-        // (la relación se completa sola), así que NO hay que volver a sumar p.Importe:
-        // hacerlo contaba el pago dos veces y un pago parcial dejaba el saldo en 0 → PAGADA.
-        var pagadoTotal = c.Pagos.Sum(x => x.Importe);
-        c.SaldoFinanciamiento = (c.PrecioVenta ?? 0m) - pagadoTotal;
-        // Solo se marca PAGADA si tiene precio cargado y el saldo llegó a 0
-        // (evita que una máquina sin precio se dé por pagada con el primer pago).
-        if (c.SaldoFinanciamiento <= 0.01m && c.Estado == "EN_CLIENTE" && (c.PrecioVenta ?? 0m) > 0m)
-        {
-            c.Estado = "PAGADA";
-        }
-        c.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        // 2026-10-06: saldo y estado los recalcula el servicio (pagos viejos + cobranzas). Desde hoy la
+        // pantalla carga los pagos como cobranza (Tesorería); esta entrada queda por compatibilidad.
+        await CafeComodatoSaldoService.RecalcularAsync(_db, c.Id);
         await _audit.LogAsync("CafeComodato", id.ToString(), "PAGO", $"Pago ${req.Importe:N2} registrado. Saldo: ${c.SaldoFinanciamiento:N2}");
 
         return Ok(new
@@ -325,12 +407,8 @@ public class CafeComodatosController : ControllerBase
         if (p is null) return NotFound();
         _db.CafeComodatoPagos.Remove(p);
         await _db.SaveChangesAsync();
-        // Recalcular saldo y volver a EN_CLIENTE si estaba PAGADA
-        var pagadoTotal = c.Pagos.Where(x => x.Id != pagoId).Sum(x => x.Importe);
-        c.SaldoFinanciamiento = (c.PrecioVenta ?? 0m) - pagadoTotal;
-        if (c.Estado == "PAGADA" && c.SaldoFinanciamiento > 0.01m) c.Estado = "EN_CLIENTE";
-        c.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        // Recalcular saldo y volver a EN_CLIENTE si estaba PAGADA (2026-10-06: con las cobranzas incluidas).
+        await CafeComodatoSaldoService.RecalcularAsync(_db, c.Id);
         await _audit.LogAsync("CafeComodato", id.ToString(), "ANULAR_PAGO", $"Pago {pagoId} eliminado. Saldo: ${c.SaldoFinanciamiento:N2}");
         return Ok(new { ok = true, saldo = c.SaldoFinanciamiento, estado = c.Estado });
     }
