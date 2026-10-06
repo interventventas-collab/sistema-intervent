@@ -700,7 +700,9 @@
                        se llama "Ana" o "Distribuidora San Martín de los Andes S.R.L.". Nada baila al
                        cambiar de chat. El nombre completo sale en el globito de ayuda. *@
                     <div class="wa-hdr-l1">
-                        <span class="wa-hdr-nombre" title="@(MostrarNombre(SelectedConv()))">@(MostrarNombre(SelectedConv()))</span>
+                        @* 2026-10-06: en WhatsApp arriba en negrita va el TELÉFONO y el nombre de perfil pasa
+                           chiquito al renglón de abajo (pedido del dueño). Instagram queda igual: no hay teléfono. *@
+                        <span class="wa-hdr-nombre @(SelectedConv()?.Canal == "INSTAGRAM" ? "" : "es-tel")" title="@(HdrTitulo(SelectedConv()))">@(HdrTitulo(SelectedConv()))</span>
                         @* 2026-08-27: la razón social y la categoría van como TEXTO gris al lado del nombre.
                            Antes eran dos cartelitos de colores más (verde el cliente, y la categoría abajo del
                            avatar). Osmar: "tanto color marea". Se leen igual y no gritan.
@@ -894,7 +896,10 @@
                         </span>
                     </div>
                     <div class="wa-hdr-l2">
-                        <span>@PrettyNumero(selectedNumero)</span>
+                        @if (HdrSub(SelectedConv()) is string _hsub && _hsub.Length > 0)
+                        {
+                            <span class="wa-hdr-perfil" title="@_hsub">@_hsub</span>
+                        }
                         <button class="wa-num-edit" @onclick="AbrirCorregirNumero" title="Corregir el número de este chat (si quedó mal cargado)">✏️</button>
                         @* 2026-08-27: el nombre de la línea, en gris. Antes era un cartelito lila arriba. *@
                         @if (SelectedConv()?.Linea is string _lh2)
@@ -4724,6 +4729,8 @@
     .wa-hdr-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
     .wa-hdr-l2 { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: #6b7280; min-width: 0; overflow: hidden; }
     .wa-hdr-l2 > * { flex: 0 0 auto; white-space: nowrap; }
+    .wa-hdr-l1 > .wa-hdr-nombre.es-tel { flex: 0 0 auto; min-width: 0; }
+    .wa-hdr-l2 > .wa-hdr-perfil { flex: 0 1 auto; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
     .wa-hdr-l1 > .wa-hdr-espacio, .wa-hdr-l2 > .wa-hdr-espacio { flex: 1 1 auto; min-width: 0.5rem; }
     /* Los iconitos de editar contacto y vincular: mismo tamaño que la lupa y el ojito. */
     .wa-hdr-ico { background: transparent; border: 1px solid transparent; border-radius: 7px; cursor: pointer;
@@ -9636,6 +9643,12 @@
     }
 
     // Nombre a mostrar para cualquier conversación (WhatsApp o Instagram), reutilizable en la cabecera.
+    // 2026-10-06: encabezado del chat. WhatsApp: teléfono grande y nombre de perfil abajo chiquito.
+    string HdrTitulo(ApiClient.TwConvDto? c)
+        => c?.Canal == "INSTAGRAM" ? MostrarNombre(c) : PrettyNumero(selectedNumero);
+    string HdrSub(ApiClient.TwConvDto? c)
+        => c?.Canal == "INSTAGRAM" ? PrettyNumero(selectedNumero) : (c?.NombrePerfil ?? "");
+
     string MostrarNombre(ApiClient.TwConvDto? c)
     {
         if (c is null) return "";
