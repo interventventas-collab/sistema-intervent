@@ -298,7 +298,8 @@ public class EnvioReciboCobranzaService
     {
         var ventas = await _db.CafeVentas
             .Where(v => v.ClienteId != null && ids.Contains(v.ClienteId.Value)
-                     && v.Estado != "anulado" && v.TipoComprobante != "PRO")
+                     && v.Estado != "anulado" && v.TipoComprobante != "PRO"
+                     && v.FacturadaComoVentaId == null)
             .Select(v => new { v.Numero, v.Fecha, v.TipoComprobante, v.Total, v.ArcaImpTotal,
                                v.ArcaPtoVta, v.ArcaCbteNro, ClienteId = v.ClienteId!.Value })
             .ToListAsync();
@@ -328,7 +329,8 @@ public class EnvioReciboCobranzaService
         var imps = await _db.CafeCobranzasComprobantes
             .Where(cc => cc.Cobranza!.Estado == "VIGENTE"
                 && ((cc.VentaId != null && cc.Venta!.ClienteId != null && ids.Contains(cc.Venta.ClienteId.Value)
-                     && cc.Venta.Estado != "anulado" && cc.Venta.TipoComprobante != "PRO")
+                     && cc.Venta.Estado != "anulado" && cc.Venta.TipoComprobante != "PRO"
+                     && cc.Venta.FacturadaComoVentaId == null)
                     || (cc.VentaId == null && cc.Cobranza.ClienteId != null && ids.Contains(cc.Cobranza.ClienteId.Value))))
             .Select(cc => new { Recibo = cc.Cobranza!.Numero, cc.Cobranza.Fecha, cc.Importe,
                                 Tipo = cc.Venta != null ? cc.Venta.TipoComprobante : null })

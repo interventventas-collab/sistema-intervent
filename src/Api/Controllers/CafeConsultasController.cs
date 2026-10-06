@@ -237,7 +237,8 @@ public class CafeConsultasController : ControllerBase
         var cli = clientes[0];
         var impagas = await _db.CafeVentas
             // 2026-07-14: los PRESUPUESTOS (PRO) no son deuda — no cuentan como impagos.
-            .Where(v => v.ClienteId == cli.Id && v.Estado == "emitido" && !v.IsPaid && v.TipoComprobante != "PRO")
+            .Where(v => v.ClienteId == cli.Id && v.Estado == "emitido" && !v.IsPaid && v.TipoComprobante != "PRO"
+                     && v.FacturadaComoVentaId == null)
             .OrderBy(v => v.Fecha)
             .ToListAsync();
 
@@ -418,7 +419,8 @@ public class CafeConsultasController : ControllerBase
     {
         var data = await _db.CafeVentas
             // 2026-07-14: los PRESUPUESTOS (PRO) no son deuda — se excluyen de "clientes con deuda".
-            .Where(v => v.Estado == "emitido" && !v.IsPaid && v.ClienteId != null && v.TipoComprobante != "PRO")
+            .Where(v => v.Estado == "emitido" && !v.IsPaid && v.ClienteId != null && v.TipoComprobante != "PRO"
+                     && v.FacturadaComoVentaId == null)
             .GroupBy(v => v.ClienteId!.Value)
             .Select(g => new { ClienteId = g.Key, N = g.Count(), Total = g.Sum(x => x.Total) })
             .OrderByDescending(x => x.Total)

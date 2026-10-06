@@ -40,6 +40,10 @@ public class DashboardController : ControllerBase
                         && i.VentaNav.Estado != "anulado"
                         && i.VentaNav.Fecha >= monthStart
                         && i.VentaNav.Fecha < nextMonthStart
+                        // 2026-10-06: cotización + su factura = la misma venta. Cuenta la cotización
+                        // (fecha en que se vendió); antes sumaba las dos.
+                        && !(i.VentaNav.OrigenVentaId != null && _db.CafeVentas.Any(o => o.Id == i.VentaNav.OrigenVentaId
+                               && o.FacturadaComoVentaId == i.VentaNav.Id && o.Estado != "anulado"))
                         && i.Categoria == "CAFE"
                         // 2026-09-29: el café tercerizado (FT) no suma a la balanza.
                         && !(i.ProductoNav != null && i.ProductoNav.Tercerizado))
@@ -80,6 +84,10 @@ public class DashboardController : ControllerBase
                         && i.VentaNav.Estado != "anulado"
                         && i.VentaNav.Fecha >= desde
                         && i.VentaNav.Fecha < hasta
+                        // 2026-10-06: cotización + su factura = la misma venta. Cuenta la cotización
+                        // (fecha en que se vendió); antes sumaba las dos.
+                        && !(i.VentaNav.OrigenVentaId != null && _db.CafeVentas.Any(o => o.Id == i.VentaNav.OrigenVentaId
+                               && o.FacturadaComoVentaId == i.VentaNav.Id && o.Estado != "anulado"))
                         && i.Categoria == "CAFE"
                         && !(i.ProductoNav != null && i.ProductoNav.Tercerizado))
             .Select(i => new { i.GramosDescontados, i.VentaNav!.Fecha })

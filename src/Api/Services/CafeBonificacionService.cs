@@ -98,14 +98,14 @@ public class CafeBonificacionService
         var hoy = PanoramaService.AhoraAr();
         var mesActual = new DateTime(hoy.Year, hoy.Month, 1);
 
-        // Mismas reglas que Panorama: sin anuladas, sin proformas ya facturadas (se cuentan
-        // en la factura) y sin presupuestos (PRO, no son venta). Las NC restan.
+        // Mismas reglas que Panorama: sin anuladas, sin las facturas que salieron de una
+        // cotización (la venta se cuenta en la cotización) y sin presupuestos (PRO, no son venta). Las NC restan.
         var rows = await (
             from i in _db.CafeVentaItems.AsNoTracking()
             join v in _db.CafeVentas.AsNoTracking() on i.VentaId equals v.Id
             where v.ClienteId == plan.ClienteId
                   && v.Estado != "anulado"
-                  && v.FacturadaComoVentaId == null
+                  && !(v.OrigenVentaId != null && _db.CafeVentas.Any(o => o.Id == v.OrigenVentaId && o.FacturadaComoVentaId == v.Id && o.Estado != "anulado"))
                   && v.TipoComprobante != "PRO"
                   && v.Fecha >= desde
                   && (excluirVentaId == null || v.Id != excluirVentaId)

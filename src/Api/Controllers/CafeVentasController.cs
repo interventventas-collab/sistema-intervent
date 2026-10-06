@@ -586,6 +586,8 @@ public class CafeVentasController : ControllerBase
                      // ni las facturas que ya fueron anuladas con una NC.
                      && !v.TipoComprobante.StartsWith("NC")
                      && v.NotaCreditoVentaId == null
+                     // 2026-10-06: ni las cotizaciones ya facturadas (la deuda es la factura).
+                     && v.FacturadaComoVentaId == null
                      && (excludeVentaId == null || v.Id != excludeVentaId.Value))
             .ToListAsync();
         if (ventas.Count == 0) return Ok(new List<CafeVentaDto>());
@@ -2599,10 +2601,25 @@ public class CafeVentasController : ControllerBase
         {
             creadaEntity.OrigenVentaId = original.Id;
             creadaEntity.UpdatedAt = DateTime.UtcNow;
+
+            // 2026-10-06 — Lo que el cliente ya pagó de la cotización pasa a la factura. Antes las
+            // imputaciones quedaban en la cotización y la factura arrancaba impaga: el cliente
+            // figuraba debiendo la compra entera otra vez (la cotización ya no cuenta como deuda).
+            var imputaciones = await _db.CafeCobranzasComprobantes.Include(cc => cc.Cobranza)
+                .Where(cc => cc.VentaId == original.Id).ToListAsync();
+            foreach (var cc in imputaciones) cc.VentaId = creadaEntity.Id;
+            var pagado = imputaciones.Where(cc => cc.Cobranza?.Estado == "VIGENTE").Sum(cc => cc.Importe);
+            // Lo que un repartidor precargó desde el QR de la cotización y todavía no se aprobó.
+            var precargadas = await _db.CafeCobranzasPendientes
+                .Where(p => p.VentaId == original.Id && p.Estado == "PENDIENTE").ToListAsync();
+            foreach (var p in precargadas) p.VentaId = creadaEntity.Id;
+            var cobrable = creadaEntity.ArcaImpTotal is > 0m ? creadaEntity.ArcaImpTotal.Value : creadaEntity.Total;
+            creadaEntity.IsPaid = pagado > 0m && pagado >= cobrable - 0.01m;
+            original.IsPaid = true;   // la cotización ya no es deuda: la deuda vive en la factura
         }
         await _db.SaveChangesAsync();
 
-        return Ok(creada);
+        return Ok(creada with { IsPaid = creadaEntity?.IsPaid ?? creada.IsPaid });
     }
 
     /// <summary>2026-06-18 — Helper para ConvertirAFactura: si Create falla despues de haber
@@ -2943,10 +2960,15 @@ public class CafeVentasController : ControllerBase
 
         // 2026-06-08: Si era PRESUPUESTO (PRO), no había stock descontado → no devolver.
         var eraPresupuesto = string.Equals(v.TipoComprobante, "PRO", StringComparison.OrdinalIgnoreCase);
+        // 2026-10-06: una cotización ya facturada devolvió su stock al convertirse (lo descontó la
+        // factura). Devolverlo otra vez acá inflaba el stock sin dejar rastro.
+        var yaFacturada = v.FacturadaComoVentaId.HasValue;
+        // Y al revés: si es la factura de una cotización, el stock vuelve a la cotización.
+        if (!yaFacturada && await DevolverACotizacionOrigenAsync(v)) yaFacturada = true;
 
         // Restaurar stock (concepto libre se saltea, no descontó stock)
         var productosAnular = new List<int>();
-        if (!eraPresupuesto)
+        if (!eraPresupuesto && !yaFacturada)
         {
             foreach (var it in v.Items)
             {
@@ -2998,7 +3020,7 @@ public class CafeVentasController : ControllerBase
 
         // Volver a descontar stock (inverso del Anular). Concepto libre se saltea.
         var productosRecuperar = new List<int>();
-        if (!esPresupuestoRecup)
+        if (!esPresupuestoRecup && !v.FacturadaComoVentaId.HasValue)
         {
             foreach (var it in v.Items)
             {
@@ -3493,8 +3515,11 @@ public class CafeVentasController : ControllerBase
     private async Task<List<int>> DeleteVentaInternalAsync(CafeVenta v)
     {
         // Si estaba emitida, restaurar stock antes de borrar. Concepto libre se saltea.
+        // 2026-10-06: salvo que sea una cotización ya facturada — ese stock lo tiene la factura
+        // (se devolvió al convertir). Borrarla devolvía todo otra vez: stock inflado sin rastro.
         var productosDelete = new List<int>();
-        if (v.Estado == "emitido")
+        var vuelveACotizacion = v.Estado == "emitido" && await DevolverACotizacionOrigenAsync(v);
+        if (v.Estado == "emitido" && !v.FacturadaComoVentaId.HasValue && !vuelveACotizacion)
         {
             foreach (var it in v.Items)
             {
@@ -3518,9 +3543,33 @@ public class CafeVentasController : ControllerBase
             .Where(c => c.VentaId == v.Id)
             .ToListAsync();
         foreach (var cc in cobranzasItems)
-            cc.VentaId = null;
+            if (!vuelveACotizacion) cc.VentaId = null;   // si volvió a la cotización, ya quedaron ahí
         _db.CafeVentas.Remove(v);
         return productosDelete;
+    }
+
+    /// <summary>2026-10-06 — Si <paramref name="factura"/> salió de convertir una cotización y se la
+    /// borra o anula (típico: ARCA la rechazó), la cotización vuelve a estar viva: se le devuelven
+    /// los pagos y retoma el stock (por eso quien llama NO devuelve stock). Devuelve true si había
+    /// cotización de origen.</summary>
+    private async Task<bool> DevolverACotizacionOrigenAsync(CafeVenta factura)
+    {
+        if (!factura.OrigenVentaId.HasValue) return false;
+        var origen = await _db.CafeVentas.FirstOrDefaultAsync(o => o.Id == factura.OrigenVentaId.Value
+                                                                 && o.FacturadaComoVentaId == factura.Id
+                                                                 && o.Estado != "anulado");
+        if (origen is null) return false;
+        var imputaciones = await _db.CafeCobranzasComprobantes.Include(cc => cc.Cobranza)
+            .Where(cc => cc.VentaId == factura.Id).ToListAsync();
+        foreach (var cc in imputaciones) cc.VentaId = origen.Id;
+        var precargadas = await _db.CafeCobranzasPendientes
+            .Where(p => p.VentaId == factura.Id && p.Estado == "PENDIENTE").ToListAsync();
+        foreach (var p in precargadas) p.VentaId = origen.Id;
+        var pagado = imputaciones.Where(cc => cc.Cobranza?.Estado == "VIGENTE").Sum(cc => cc.Importe);
+        origen.IsPaid = pagado > 0m && pagado >= origen.Total - 0.01m;
+        origen.FacturadaComoVentaId = null;
+        origen.UpdatedAt = DateTime.UtcNow;
+        return true;
     }
 
     // ============================================================
@@ -4700,6 +4749,7 @@ public class CafeVentasController : ControllerBase
         // Los presupuestos (PRO) no son venta. El monto cobrable es el de ARCA cuando hay CAE.
         var delMes = await _db.CafeVentas
             .Where(v => v.Estado != "anulado" && v.TipoComprobante != "PRO"
+                     && v.FacturadaComoVentaId == null   // si no, cotización + factura = dos veces
                      && v.Fecha >= desde && v.Fecha < hasta)
             .Select(v => new
             {
