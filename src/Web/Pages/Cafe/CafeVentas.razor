@@ -2561,7 +2561,8 @@
                         </div>
                         <div class="form-group" style="margin:0; width: 130px;">
                             <label class="form-label" style="font-size: 0.75rem;">Formato</label>
-                            <select id="nv-formato" class="form-input" value="@addFormato" @onchange="OnAddFormatoChanged" @onkeydown="OnKeyDownFormato">
+                            <select id="nv-formato" class="form-input" value="@addFormato" @onchange="OnAddFormatoChanged" @onkeydown="OnKeyDownFormato"
+                                    style="@(FormatoEnAlerta(addProductoId, addFormato) ? FmtAlertaCss : "")">
                                 @if (AddProductoCategoria == "CAFE")
                                 {
                                     <option value="1KG">1 kg</option>
@@ -2795,7 +2796,8 @@
                                         }
 
                                         // ── Fila item normal (no combo) ──
-                                        <tr style="@(rojo ? "background: #fef2f2;" : "")">
+                                        var fmtAlerta = FormatoEnAlerta(ci.ProductoId, ci.Formato);
+                                        <tr style="@(rojo || fmtAlerta ? "background: #fef2f2;" : "")">
                                             <td style="text-align: right;">
                                                 <input class="form-input" type="number" step="1" min="1"
                                                        style="width: 70px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.9rem; font-weight: 700;"
@@ -2815,7 +2817,7 @@
                                                 @if (fmtEditable)
                                                 {
                                                     <select class="form-input"
-                                                            style="padding:0.15rem 0.4rem; font-size:0.82rem; font-family:Georgia,serif; font-style:italic; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; color:#4b5563; width:100%; min-width:120px; max-width:170px;"
+                                                            style="@(fmtAlerta ? "padding:0.2rem 0.4rem; font-size:0.9rem; text-transform:uppercase; border-radius:6px; width:100%; min-width:120px; max-width:170px; " + FmtAlertaCss : "padding:0.15rem 0.4rem; font-size:0.82rem; font-family:Georgia,serif; font-style:italic; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; color:#4b5563; width:100%; min-width:120px; max-width:170px;")"
                                                             value="@ci.Formato"
                                                             @onchange="@(e => OnItemFormatoChanged(i, e.Value?.ToString()))"
                                                             title="@(FormatoParaMostrar(ci.ProductoId, ci.Formato)) — Formato de venta. Al cambiarlo se recalcula el precio del catálogo (se pierde el precio manual si lo habías pisado).">
@@ -2854,6 +2856,29 @@
                                                                 title="Volver al nombre original del catálogo">✕</button>
                                                     }
                                                 </div>
+                                                @* 2026-10-06: Osmar se confundía cargando ¼ kg cuando pedían 1 kg (porque alguna vez
+                                                   compró ¼) y vasos sueltos cuando van por pack/caja. Aviso + botón para corregir. *@
+                                                @if (fmtAlerta)
+                                                {
+                                                    <div style="font-size:0.75rem; color:#b91c1c; margin-top:0.2rem; display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;">
+                                                        @if (esCafe)
+                                                        {
+                                                            <span>⚠ Es de @(ci.Formato == "CUARTO" ? "¼" : "½") kg@(ClienteSueleLlevar1Kg(ci.ProductoId, ci.Formato) ? " — este cliente casi siempre lleva 1 kg" : "")</span>
+                                                            <button type="button" tabindex="-1" style="border:1px solid #b91c1c; color:#b91c1c; background:#fff; border-radius:5px; font-size:0.72rem; padding:0 0.45rem; cursor:pointer;"
+                                                                    @onclick='() => OnItemFormatoChanged(i, "1KG")'>Pasar a 1 kg</button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span>⚠ Va por unidad (@formItem.Cantidad suelto@(formItem.Cantidad == 1 ? "" : "s"))</span>
+                                                            @foreach (var op in FormatoOpcionesLinea(ci.ProductoId).Where(o => o.Value != "UNIT"))
+                                                            {
+                                                                var opv = op.Value;
+                                                                <button type="button" tabindex="-1" style="border:1px solid #b91c1c; color:#b91c1c; background:#fff; border-radius:5px; font-size:0.72rem; padding:0 0.45rem; cursor:pointer;"
+                                                                        @onclick="() => PasarDeSuelto(i, opv)">Pasar a @op.Label.ToLowerInvariant()</button>
+                                                            }
+                                                        }
+                                                    </div>
+                                                }
                                                 @if (esCafe)
                                                 {
                                                     <div style="display: flex; gap: 0.3rem; align-items: center; margin-top: 0.25rem; flex-wrap: wrap;">
@@ -4772,7 +4797,7 @@
                         && (pModal.PrecioBulto.HasValue || pModal.PrecioBultoOtro.HasValue);
                     <div>
                         <label style="font-size:0.78rem; color:#374151; font-weight:600; display:block; margin-bottom:0.2rem;">Formato</label>
-                        <select class="form-input" @bind="addItemModalFormato" style="width:100%; padding:0.45rem 0.6rem; font-size:1rem; font-weight:600;">
+                        <select class="form-input" @bind="addItemModalFormato" style="width:100%; padding:0.45rem 0.6rem; font-size:1rem; font-weight:600; @(FormatoEnAlerta(addProductoId, addItemModalFormato) ? FmtAlertaCss : "")">
                             <option value="UNIT">📦 Suelto</option>
                             @foreach (var pack in packsModal)
                             {
@@ -4792,7 +4817,7 @@
                         <div>
                             <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Formato</label>
                             <select class="form-input" @bind="addItemModalFormato" @bind:after="AplicarDefaultEnvaseModal"
-                                    style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem;">
+                                    style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem; @(FormatoEnAlerta(addProductoId, addItemModalFormato) ? FmtAlertaCss : "")">
                                 <option value="1KG">1 kg</option>
                                 <option value="MEDIO">1/2 kg</option>
                                 <option value="CUARTO">1/4 kg</option>
@@ -9870,6 +9895,41 @@
     /// catálogo, así que descartamos cualquier precio pisado a mano en esa línea (no tendría sentido
     /// mantener el precio de 1 kg si ahora es 1/4). Además, para café replicamos la regla del form de
     /// arriba: 1/4 y 1/2 kg van en doy pack; 1 kg vuelve a envase negro.</summary>
+    // ═══ 2026-10-06: formatos que se marcan en ROJO (pedido de Osmar) ═══
+    // Café de ½ o ¼ kg, y vasos/tapas sueltos teniendo pack o caja: son los errores de carga típicos.
+    private const string FmtAlertaCss = "background:#fef2f2; border:2px solid #dc2626; color:#b91c1c; font-weight:800; font-style:normal; font-family:inherit;";
+
+    private bool FormatoEnAlerta(int productoId, string? formato)
+    {
+        if (productoId <= 0 || string.IsNullOrEmpty(formato)) return false;
+        var p = productos?.FirstOrDefault(x => x.Id == productoId);
+        if (p is null) return false;
+        if (p.Categoria == "CAFE") return formato is "MEDIO" or "CUARTO";
+        if (formato != "UNIT") return false;
+        var n = (p.Nombre ?? "").TrimStart().ToUpperInvariant();
+        if (!n.StartsWith("VASO") && !n.StartsWith("TAPA")) return false;
+        return FormatoOpcionesLinea(productoId).Any(o => o.Value != "UNIT");
+    }
+
+    /// <summary>true si en su historial (lo que más compra) este café va más veces en 1 kg que en este formato.</summary>
+    private bool ClienteSueleLlevar1Kg(int productoId, string? formato)
+    {
+        var veces1 = topProductsForClient.Where(t => t.ProductoId == productoId && t.Formato == "1KG").Sum(t => t.TimesOrdered);
+        var vecesF = topProductsForClient.Where(t => t.ProductoId == productoId && t.Formato == formato).Sum(t => t.TimesOrdered);
+        return veces1 > vecesF;
+    }
+
+    /// <summary>Pasa un renglón suelto a pack/caja: N sueltos → N ÷ tamaño (mínimo 1).
+    /// 1 suelto → 1 caja, que es lo que casi siempre se quiso decir.</summary>
+    private async Task PasarDeSuelto(int idx, string formato)
+    {
+        if (idx < 0 || idx >= formItems.Count) return;
+        var tam = ParsePackUnidades(formato)
+            ?? (formato == "BULTO" ? productos?.FirstOrDefault(p => p.Id == formItems[idx].ProductoId)?.UxB : null) ?? 1;
+        formItems[idx].Cantidad = Math.Max(1, formItems[idx].Cantidad / Math.Max(1, tam));
+        await OnItemFormatoChanged(idx, formato);
+    }
+
     private async Task OnItemFormatoChanged(int idx, string? nuevoFormato)
     {
         if (idx < 0 || idx >= formItems.Count) return;
