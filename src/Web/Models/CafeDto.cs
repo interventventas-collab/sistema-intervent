@@ -658,6 +658,8 @@ public class CafeVentaDto
     /// <summary>2026-06-02: Comentario INTERNO para armado (post-it amarillo en /cafe/preparacion).
     /// Independiente de Observaciones. NO sale en el PDF al cliente.</summary>
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-10-06: renglones de máquinas (comodato / financiada) que salen en el comprobante, separados por \n.</summary>
+    public string? LeyendaMaquinas { get; set; }
     /// <summary>2026-06-05: nombre del repartidor que escaneó el QR de esta venta y la tiene
     /// cargada en su lista "Mis Pedidos". Null si nadie la escaneó todavía. Se muestra como chip
     /// "🚚 Lo tiene X" en el listado de ventas.</summary>
@@ -931,6 +933,8 @@ public class CreateCafeVentaRequest
     public bool MostrarIvaProforma { get; set; } = true;
     public string? EntregaPor { get; set; }
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-10-06: renglones de máquinas (comodato / financiada) que salen en el comprobante, separados por \n.</summary>
+    public string? LeyendaMaquinas { get; set; }
     /// <summary>2026-06-23: Concepto AFIP. 1=Productos (default), 2=Servicios, 3=Productos y Servicios.</summary>
     public int Concepto { get; set; } = 1;
     public DateTime? ConceptoServDesde { get; set; }
@@ -995,6 +999,8 @@ public class UpdateCafeVentaRequest
     public decimal? Descuento { get; set; }
     public string? EntregaPor { get; set; }
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-10-06: renglones de máquinas (comodato / financiada) que salen en el comprobante, separados por \n.</summary>
+    public string? LeyendaMaquinas { get; set; }
     /// <summary>2026-06-23: Concepto AFIP. 1=Productos, 2=Servicios, 3=Productos y Servicios.</summary>
     public int? Concepto { get; set; }
     public DateTime? ConceptoServDesde { get; set; }
@@ -2042,10 +2048,19 @@ public class CafeComodatoPagoDto
     public int Id { get; set; }
     public int ComodatoId { get; set; }
     public DateTime Fecha { get; set; }
+    /// <summary>En la moneda de la máquina.</summary>
     public decimal Importe { get; set; }
     public string? MedioPago { get; set; }
     public string? Notas { get; set; }
     public DateTime CreatedAt { get; set; }
+    // 2026-10-06: EsAnterior = pago viejo anotado a mano (sin caja ni recibo, se puede borrar).
+    // Los demás son cobranzas: N° de recibo, cómo entró la plata (MedioPago) y, en máquinas en
+    // dólares, los pesos y el dólar del día. Esos se anulan desde Tesorería → Cobranzas.
+    public bool EsAnterior { get; set; } = true;
+    public int? CobranzaId { get; set; }
+    public string? ReciboNumero { get; set; }
+    public decimal? ImportePesos { get; set; }
+    public decimal? DolarDelDia { get; set; }
 }
 
 public class CafeComodatoDetalleDto
@@ -2203,6 +2218,43 @@ public class ClienteSaldoPendienteDto
     public string? Notas { get; set; }
     public DateTime? UltimoPagoFecha { get; set; }
     public decimal? UltimoPagoImporte { get; set; }
+}
+
+/// <summary>2026-10-06: máquina de café que está en un cliente (GET api/cafe/maquinas-resumen).
+/// Solo comodatos EN_CLIENTE y financiadas EN_CLIENTE con falta &gt; 0. Los textos se arman acá
+/// para que ¿Quién me debe?, Clientes y Nueva Venta digan exactamente lo mismo.</summary>
+public class MaquinaResumenDto
+{
+    public int Id { get; set; }
+    public int ClienteId { get; set; }
+    public string? ClienteNombre { get; set; }
+    public string Modalidad { get; set; } = "COMODATO";   // COMODATO | FINANCIADA
+    public string Descripcion { get; set; } = "";
+    public string Moneda { get; set; } = "ARS";           // ARS | USD
+    public decimal? SaldoFinanciamiento { get; set; }
+
+    public bool EsFinanciada => Modalidad == "FINANCIADA";
+    public bool EsUsd => string.Equals(Moneda, "USD", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>"$ 1.234.567" o "USD 1.500" (formato es-AR). Los dólares NUNCA se suman a pesos.</summary>
+    public static string Plata(decimal v, bool usd)
+    {
+        var ar = new System.Globalization.CultureInfo("es-AR");
+        var n = v % 1 == 0 ? v.ToString("N0", ar) : v.ToString("N2", ar);
+        return usd ? $"USD {n}" : $"${n}";
+    }
+
+    public string FaltaTexto => Plata(SaldoFinanciamiento ?? 0m, EsUsd);
+
+    /// <summary>Renglón corto para listados (gris): "Máquina financiada: X · falta $Y" / "En comodato: X".</summary>
+    public string TextoCorto => EsFinanciada
+        ? $"Máquina financiada: {Descripcion} · falta {FaltaTexto}"
+        : $"En comodato: {Descripcion}";
+
+    /// <summary>Renglón para el comprobante (sin fechas: el dueño no las sabe).</summary>
+    public string TextoComprobante => EsFinanciada
+        ? $"Máquina financiada: {Descripcion} · le falta pagar {FaltaTexto}"
+        : $"Máquina en comodato: {Descripcion}. Es propiedad de Frikaf y está en préstamo.";
 }
 
 /// <summary>Resultado de mandar el resumen de deudas por Telegram (botón "probar aviso ahora").</summary>

@@ -141,6 +141,13 @@ public class CafeVenta
     /// Ej: "no llevar 3 capsulas, ese cliente las rechaza", "sumar 1 sobre cortesia".</summary>
     public string? ComentarioArmado { get; set; }
 
+    /// <summary>2026-10-06: renglones de las máquinas de café del cliente (comodato / financiada) que el
+    /// operador tildó "que salga en el comprobante" en Nueva Venta. Es una FOTO del momento (el texto
+    /// ya armado, renglones separados por \n): si después el cliente paga cuotas, el comprobante viejo
+    /// sigue diciendo lo que decía. Sale en el PDF abajo de los productos. Null = no se muestra nada.</summary>
+    [MaxLength(1000)]
+    public string? LeyendaMaquinas { get; set; }
+
     /// <summary>Si esta marcado como pagado (estampa el sello en el PDF).</summary>
     public bool IsPaid { get; set; }
 

@@ -624,6 +624,11 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(c => c.VentaId)
                   .OnDelete(DeleteBehavior.Restrict);
+            // 2026-10-06: cuota de maquina financiada. En la base no hay FK (la columna se agrego a mano).
+            entity.HasOne(c => c.Comodato)
+                  .WithMany()
+                  .HasForeignKey(c => c.ComodatoId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<CafeCobranzaMedio>(entity =>

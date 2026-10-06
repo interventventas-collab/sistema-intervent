@@ -1092,7 +1092,8 @@
     {
         await LoadEmpleados();
         await Load();
-        try { cajasPago = await Api.GetCafeCajasAsync() ?? new(); } catch { cajasPago = new(); }
+        // 2026-10-06: sin la caja de dólares (acá se paga en pesos).
+        try { cajasPago = (await Api.GetCafeCajasAsync() ?? new()).Where(c => !c.EnDolares).ToList(); } catch { cajasPago = new(); }
         pagoCajaId = CajaSegunMetodo(pagoMetodo);
     }
 

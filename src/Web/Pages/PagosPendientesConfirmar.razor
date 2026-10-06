@@ -168,7 +168,8 @@
                 <label class="pp-mlabel">Caja desde donde sale el dinero</label>
                 <select class="pp-mselect" value="@modalCajaId" @onchange="@(e => int.TryParse(e.Value?.ToString(), out modalCajaId))">
                     <option value="0">— Elegí caja —</option>
-                    @foreach (var c in cajas.Where(x => x.IsActive))
+                    @* 2026-10-06: la caja de dólares no paga en pesos. *@
+                    @foreach (var c in cajas.Where(x => x.IsActive && !x.EnDolares))
                     {
                         <option value="@c.Id">@c.Nombre (@c.Tipo · saldo: $ @c.SaldoActual.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR")))</option>
                     }

@@ -552,7 +552,9 @@ public record CafeVentaDto(
     string? RechazoMotivo = null,
     // 2026-08-20: estado del envío del comprobante al cliente, por canal. Lo pintan los
     // cartelitos 📧/📱 del listado. Vacío = nunca se mandó (o es una venta anterior a esto).
-    List<CafeVentaEnvioDto>? Envios = null);
+    List<CafeVentaEnvioDto>? Envios = null,
+    // 2026-10-06: renglones de máquinas (comodato / financiada) que salen en el comprobante.
+    string? LeyendaMaquinas = null);
 
 /// <summary>2026-08-20: cómo le fue al envío del comprobante por un canal.
 /// Estado: PENDIENTE (está en la cola, sale a la hora de ProgramadoPara) | ENVIADO | ERROR | CANCELADO.</summary>
@@ -684,6 +686,9 @@ public class CreateCafeVentaRequest
     public string? EntregaPor { get; set; }
     /// <summary>2026-06-02: Nota interna para armado (post-it en /cafe/preparacion). NO sale en PDF.</summary>
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-10-06: renglones de máquinas que salen en el comprobante (texto ya armado, \n entre renglones).
+    /// En el Update: null = no tocar, "" = sacarlo.</summary>
+    public string? LeyendaMaquinas { get; set; }
     /// <summary>2026-06-22: override del flag del cliente. Si es null se hereda del cliente; si viene true/false el operador
     /// decidio manualmente para esta venta puntual.</summary>
     public bool? SolicitarFirmaEntrega { get; set; }
@@ -760,6 +765,9 @@ public class UpdateCafeVentaRequest
     public string? EntregaPor { get; set; }
     /// <summary>2026-06-02: Nota interna para armado (post-it en /cafe/preparacion). NO sale en PDF.</summary>
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-10-06: renglones de máquinas que salen en el comprobante (texto ya armado, \n entre renglones).
+    /// En el Update: null = no tocar, "" = sacarlo.</summary>
+    public string? LeyendaMaquinas { get; set; }
     /// <summary>2026-06-23: Concepto AFIP. 1=Productos, 2=Servicios, 3=Productos y Servicios.</summary>
     public int? Concepto { get; set; }
     public DateTime? ConceptoServDesde { get; set; }

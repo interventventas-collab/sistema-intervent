@@ -2994,7 +2994,7 @@ public class WhatsAppTwilioController : ControllerBase
                 var medios = c.Medios.Select(m => (
                     cajaNombre: m.Caja?.Nombre ?? "—",
                     importe: m.Importe,
-                    referencia: m.Referencia,
+                    referencia: CafeReciboCobranzaPdfService.ReferenciaMedio(m),   // 2026-10-06: + los dólares si fue en USD
                     chequeInfo: m.Cheque is null ? null : $"Cheque {m.Cheque.Banco} N° {m.Cheque.Numero}"
                 )).ToList();
                 var bytes = _cobranzaPdfService.GenerarPdfBytes(c, c.Cliente, comps, medios, settings);

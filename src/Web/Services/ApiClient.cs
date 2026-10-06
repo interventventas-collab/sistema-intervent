@@ -1364,6 +1364,9 @@ public class ApiClient
         var url = "/api/cafe/comodatos" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
         return await GetAsync<List<CafeComodatoDto>>(url);
     }
+    /// <summary>2026-10-06: resumen liviano de máquinas en clientes (todas, o de un cliente).</summary>
+    public async Task<List<MaquinaResumenDto>?> GetMaquinasResumenAsync(int? clienteId = null)
+        => await GetAsync<List<MaquinaResumenDto>>("/api/cafe/maquinas-resumen" + (clienteId.HasValue ? $"?clienteId={clienteId}" : ""));
     public async Task<CafeComodatoDetalleDto?> GetCafeComodatoDetalleAsync(int id)
         => await GetAsync<CafeComodatoDetalleDto>($"/api/cafe/comodatos/{id}");
     public async Task<CafeComodatosStatsDto?> GetCafeComodatosStatsAsync()
@@ -6875,6 +6878,10 @@ public class ApiClient
     public async Task<List<ComprobantePendienteDto>?> GetComprobantesPendientesAsync(int clienteId, bool incluirMismoCuit = false)
         => await GetAsync<List<ComprobantePendienteDto>>($"/api/cafe/cobranzas/comprobantes-pendientes/{clienteId}?incluirMismoCuit={incluirMismoCuit.ToString().ToLowerInvariant()}");
 
+    /// <summary>2026-10-06: máquinas financiadas del cliente con saldo (para cobrar la cuota en Nueva cobranza).</summary>
+    public async Task<List<MaquinaPendienteDto>?> GetMaquinasPendientesAsync(int clienteId)
+        => await GetAsync<List<MaquinaPendienteDto>>($"/api/cafe/cobranzas/maquinas-pendientes/{clienteId}");
+
     /// <summary>Lista de otras sucursales que comparten el mismo CUIT con el cliente dado.</summary>
     public async Task<List<SucursalMismoCuitDto>?> GetSucursalesMismoCuitAsync(int clienteId)
         => await GetAsync<List<SucursalMismoCuitDto>>($"/api/cafe/cobranzas/sucursales-mismo-cuit/{clienteId}");
@@ -6893,7 +6900,9 @@ public class ApiClient
     public async Task<CobranzaDetalleDto?> GetCafeCobranzaAsync(int id)
         => await GetAsync<CobranzaDetalleDto>($"/api/cafe/cobranzas/{id}");
 
-    public record CrearComprobanteItemRequest(int? VentaId, decimal Importe, int? ReservaId = null);
+    // 2026-10-06: ComodatoId = cuota de máquina financiada; ImporteUsd si la máquina es en dólares (Importe va en pesos).
+    public record CrearComprobanteItemRequest(int? VentaId, decimal Importe, int? ReservaId = null,
+        int? ComodatoId = null, decimal? ImporteUsd = null);
     public record CrearChequeItemRequest(string Numero, string Banco, string? Emisor, decimal Importe, DateTime? FechaCobro, DateTime? FechaVencimiento, string? Observaciones);
     public record CrearMedioItemRequest(int CajaId, decimal Importe, string? Referencia, CrearChequeItemRequest? Cheque,
         // Cobro redirigido (05/09/2026): a qué empleado se le pasa y contra qué se imputa.
@@ -6901,7 +6910,9 @@ public class ApiClient
         // 09/09/2026: o a qué PROVEEDOR, y contra qué factura suya (null = "a cuenta").
         int? RedirigidoProveedorId = null, int? RedirigidoCompraId = null,
         // 17/09/2026: el documento de su cuenta corriente ("AFIP:..." / "DEU:..."). null = a cuenta.
-        string? RedirigidoDocClave = null);
+        string? RedirigidoDocClave = null,
+        // 2026-10-06: caja "Dólares (efectivo)": USD que entraron y el dólar del día.
+        decimal? ImporteUsd = null, decimal? CotizacionUsd = null);
 
     // ─── 09/09/2026: AVISO IMPORTANTE PARA DEPÓSITO ───────────────────────────────────────
     public class AvisoDepDto

@@ -140,6 +140,11 @@
                                     {
                                         <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.15rem;">📍 @dirMostrar</div>
                                     }
+                                    @* 2026-10-06: que las máquinas se vean siempre (resumen traído UNA vez para todo el listado) *@
+                                    @if (MaquinasTexto(c.Id) is { Length: > 0 } maqTxt)
+                                    {
+                                        <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.15rem;">☕ @maqTxt</div>
+                                    }
                                 </td>
                                 <td>
                                     @if (c.Tipo == "BAR")
@@ -1780,6 +1785,7 @@
         provincias = await CpService.GetProvinciasAsync();
         await Load();
         await LoadPendientes();
+        await LoadMaquinasResumen();
 
         // 2026-06-18: si vinimos como popup desde Nueva Venta con ?edit={id} o ?new={nombre},
         // auto-abrir el modal correspondiente. Al guardar, el postMessage avisa a la venta.
@@ -1816,6 +1822,30 @@
         try { clientes = await Api.GetCafeClientesAsync() ?? new(); }
         catch { ToastService.Error("Error al cargar clientes"); clientes = new(); }
         loading = false;
+    }
+
+    // 2026-10-06: cuántas máquinas tiene cada cliente (comodato / financiada con falta), para el
+    // renglón gris del listado. Una sola llamada para todos; si falla, el listado sigue igual.
+    private Dictionary<int, (int Comodato, int Financiada)> maquinasPorCliente = new();
+
+    private async Task LoadMaquinasResumen()
+    {
+        try
+        {
+            var lista = await Api.GetMaquinasResumenAsync() ?? new();
+            maquinasPorCliente = lista.GroupBy(m => m.ClienteId)
+                .ToDictionary(g => g.Key, g => (g.Count(m => !m.EsFinanciada), g.Count(m => m.EsFinanciada)));
+        }
+        catch { maquinasPorCliente = new(); }
+    }
+
+    private string MaquinasTexto(int clienteId)
+    {
+        if (!maquinasPorCliente.TryGetValue(clienteId, out var n)) return "";
+        var partes = new List<string>();
+        if (n.Comodato > 0) partes.Add($"{n.Comodato} en comodato");
+        if (n.Financiada > 0) partes.Add($"{n.Financiada} financiada{(n.Financiada == 1 ? "" : "s")}");
+        return string.Join(" · ", partes);
     }
 
     private async Task LoadPendientes()

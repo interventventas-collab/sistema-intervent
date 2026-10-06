@@ -529,6 +529,17 @@ public class CafeCotizacionPdfService
                         });
                     }
 
+                    // 2026-10-06: máquinas del cliente (comodato / financiada) que el operador tildó
+                    // "que salga en el comprobante". Texto plano gris, un renglón por máquina.
+                    if (!string.IsNullOrWhiteSpace(v.LeyendaMaquinas))
+                    {
+                        fc.Item().PaddingTop(5).Column(lm =>
+                        {
+                            foreach (var linea in v.LeyendaMaquinas!.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                                lm.Item().Text(linea.Trim()).FontColor(Colors.Grey.Darken2);
+                        });
+                    }
+
                     if (proformaConIva)
                     {
                         fc.Item().PaddingTop(4).Background(Colors.Yellow.Lighten4).Border(1).BorderColor(Colors.Yellow.Darken1)

@@ -341,7 +341,8 @@
     protected override async Task OnInitializedAsync()
     {
         await Cargar();
-        try { cajas = await Api.GetCafeCajasAsync() ?? new(); } catch { cajas = new(); }
+        // 2026-10-06: sin la caja de dólares (acá se paga en pesos).
+        try { cajas = (await Api.GetCafeCajasAsync() ?? new()).Where(c => !c.EnDolares).ToList(); } catch { cajas = new(); }
     }
 
     private async Task Cargar()

@@ -64,7 +64,7 @@ public class CafeCobranzasController : ControllerBase
         var medios = c.Medios.Select(m => (
             cajaNombre: m.Caja?.Nombre ?? "—",
             importe: m.Importe,
-            referencia: m.Referencia,
+            referencia: CafeReciboCobranzaPdfService.ReferenciaMedio(m),   // 2026-10-06: + los dólares si fue en USD
             chequeInfo: m.Cheque is null ? null : $"Cheque {m.Cheque.Banco} N° {m.Cheque.Numero}"
         )).ToList();
 
@@ -131,8 +131,12 @@ public class CafeCobranzasController : ControllerBase
         decimal Total, decimal Retenciones, string Estado, string? Operador, string? Observaciones,
         List<CobranzaComprobanteDto> Comprobantes, List<CobranzaMedioDto> Medios);
 
-    public record CobranzaComprobanteDto(int Id, int? VentaId, string? VentaNumero, decimal Importe, int? ReservaId = null);
-    public record CobranzaMedioDto(int Id, int CajaId, string CajaNombre, decimal Importe, string? Referencia, int? ChequeId);
+    public record CobranzaComprobanteDto(int Id, int? VentaId, string? VentaNumero, decimal Importe, int? ReservaId = null,
+        // 2026-10-06: cuota de máquina financiada (VentaNumero trae "Máquina Marca Modelo").
+        int? ComodatoId = null, decimal? ImporteUsd = null);
+    public record CobranzaMedioDto(int Id, int CajaId, string CajaNombre, decimal Importe, string? Referencia, int? ChequeId,
+        // 2026-10-06: caja "Dólares (efectivo)": los USD que entraron y el dólar del día (Importe va en pesos).
+        decimal? ImporteUsd = null, decimal? CotizacionUsd = null);
 
     public record CrearCobranzaRequest(
         // 2026-06-06: ClienteId nullable para permitir cobrar "ventas ocasionales" (sin
@@ -151,7 +155,10 @@ public class CafeCobranzasController : ControllerBase
         // del pago (se acumulan). null o hoy = ahora, como siempre.
         string? Fecha = null);
 
-    public record CrearComprobanteItem(int? VentaId, decimal Importe, int? ReservaId = null);
+    // 2026-10-06: ComodatoId = cuota de una MÁQUINA FINANCIADA. Importe siempre en pesos; si la máquina es en
+    // dólares viene además ImporteUsd (los USD que se le descuentan) y Importe = ImporteUsd × dólar del día.
+    public record CrearComprobanteItem(int? VentaId, decimal Importe, int? ReservaId = null,
+        int? ComodatoId = null, decimal? ImporteUsd = null);
 
     public record CrearMedioItem(
         int CajaId, decimal Importe, string? Referencia,
@@ -167,7 +174,10 @@ public class CafeCobranzasController : ControllerBase
         int? RedirigidoCompraId = null,
         // 17/09/2026: contra qué documento de su cuenta corriente ("AFIP:..." o "DEU:..."). null = a cuenta.
         // RedirigidoCompraId quedó de antes (Cafe_Compras) y ya no se manda.
-        string? RedirigidoDocClave = null);
+        string? RedirigidoDocClave = null,
+        // 2026-10-06: caja "Dólares (efectivo)" (tipo EFECTIVO_USD): los USD que entraron y el dólar del día.
+        // Importe (pesos) lo recalcula el servidor = ImporteUsd × CotizacionUsd.
+        decimal? ImporteUsd = null, decimal? CotizacionUsd = null);
 
     public record CrearChequeItem(
         string Numero, string Banco, string? Emisor, decimal Importe,
@@ -183,6 +193,7 @@ public class CafeCobranzasController : ControllerBase
         "TARJETA" or "TARJETA_CREDITO" or "DEBITO" or "CREDITO" => "Tarjeta",
         "BANCO" => "Banco",
         "V_PRIVADO" => "Redirigido",
+        "EFECTIVO_USD" => "Dólares",
         _ => string.IsNullOrWhiteSpace(tipo) ? "Otro" : char.ToUpper(tipo[0]) + tipo[1..].ToLower()
     };
 
@@ -308,6 +319,35 @@ public class CafeCobranzasController : ControllerBase
         result = result.OrderBy(x => x.Fecha).ToList();
 
         return Ok(result);
+    }
+
+    public record MaquinaPendienteDto(int ComodatoId, string Nombre, string Moneda, decimal Precio, decimal Pagado,
+        decimal Saldo, decimal? ValorCuota);
+
+    /// <summary>2026-10-06: MÁQUINAS FINANCIADAS del cliente que todavía deben (en el cliente, saldo > 0),
+    /// para cobrar la cuota en la misma Nueva cobranza que las facturas de café. Va aparte de
+    /// comprobantes-pendientes (que usan otras pantallas) porque la máquina puede ser en dólares.
+    /// Saldo en la moneda de la máquina, con la misma cuenta que CafeComodatoSaldoService.</summary>
+    [HttpGet("maquinas-pendientes/{clienteId:int}")]
+    public async Task<IActionResult> MaquinasPendientes(int clienteId)
+    {
+        var maquinas = await _db.CafeComodatos.AsNoTracking()
+            .Where(c => c.ClienteId == clienteId && c.Modalidad == "FINANCIADA" && c.Estado == "EN_CLIENTE")
+            .OrderBy(c => c.FechaEntrega).ThenBy(c => c.Id)
+            .Select(c => new { c.Id, c.Marca, c.Modelo, c.Moneda, c.PrecioVenta, c.ValorCuota })
+            .ToListAsync();
+        if (maquinas.Count == 0) return Ok(new List<MaquinaPendienteDto>());
+        var pagado = await CafeComodatoSaldoService.PagadoAsync(_db, maquinas.Select(m => m.Id));
+        var res = maquinas.Select(m =>
+            {
+                var pg = pagado.TryGetValue(m.Id, out var p) ? p : 0m;
+                var precio = m.PrecioVenta ?? 0m;
+                return new MaquinaPendienteDto(m.Id, CafeComodatoSaldoService.Nombre(m.Marca, m.Modelo),
+                    m.Moneda == "USD" ? "USD" : "ARS", precio, pg, precio - pg, m.ValorCuota);
+            })
+            .Where(m => m.Saldo > 0.01m)
+            .ToList();
+        return Ok(res);
     }
 
     /// <summary>Devuelve las OTRAS sucursales/clientes que comparten el mismo CUIT que el
@@ -558,6 +598,7 @@ public class CafeCobranzasController : ControllerBase
             .Include(x => x.Cliente)
             .Include(x => x.Comprobantes).ThenInclude(cc => cc.Venta)
             .Include(x => x.Comprobantes).ThenInclude(cc => cc.Reserva) // 2026-08-27: alquileres cobrados
+            .Include(x => x.Comprobantes).ThenInclude(cc => cc.Comodato) // 2026-10-06: cuotas de máquina
             .Include(x => x.Medios).ThenInclude(m => m.Caja)
             .FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return NotFound();
@@ -567,9 +608,12 @@ public class CafeCobranzasController : ControllerBase
             c.Cliente?.Nombre ?? "—",
             c.Total, c.Retenciones, c.Estado, c.Operador, c.Observaciones,
             c.Comprobantes.Select(x => new CobranzaComprobanteDto(
-                x.Id, x.VentaId, x.Venta?.Numero ?? x.Reserva?.Numero, x.Importe, x.ReservaId)).ToList(),
+                x.Id, x.VentaId,
+                x.Venta?.Numero ?? x.Reserva?.Numero
+                    ?? (x.Comodato is not null ? CafeComodatoSaldoService.Nombre(x.Comodato.Marca, x.Comodato.Modelo) : null),
+                x.Importe, x.ReservaId, x.ComodatoId, x.ImporteUsd)).ToList(),
             c.Medios.Select(x => new CobranzaMedioDto(
-                x.Id, x.CajaId, x.Caja?.Nombre ?? "—", x.Importe, x.Referencia, x.ChequeId)).ToList());
+                x.Id, x.CajaId, x.Caja?.Nombre ?? "—", x.Importe, x.Referencia, x.ChequeId, x.ImporteUsd, x.CotizacionUsd)).ToList());
         return Ok(dto);
     }
 
@@ -633,6 +677,17 @@ public class CafeCobranzasController : ControllerBase
             if (tiposReq.Count != cajaIdsReq.Count || tiposReq.Any(t => t != "EFECTIVO" && t != "V_PRIVADO"))
                 return BadRequest(new { error = "Desde el celular sólo se cargan pagos en efectivo o redirigidos." });
         }
+
+        // 2026-10-06: DÓLARES. Se revisa y se pasa a pesos ACÁ, antes de sumar y de crear nada (ver el
+        // comentario del 07/09 más abajo). Los pesos los calcula el servidor (USD × dólar) para que la
+        // pantalla y el recibo no difieran por redondeo.
+        var errUsd = await NormalizarDolaresYMaquinasAsync(req, cliente);
+        if (errUsd is not null) return BadRequest(new { error = errUsd });
+        req = req with
+        {
+            Comprobantes = _normComps ?? req.Comprobantes,
+            Medios = (_normMedios ?? req.Medios)!   // puede venir null (cobranza de solo retención)
+        };
 
         var sumComprobantes = req.Comprobantes.Sum(c => c.Importe);
         var sumMedios = (req.Medios ?? new()).Sum(m => m.Importe);
@@ -753,8 +808,10 @@ public class CafeCobranzasController : ControllerBase
             _db.CafeCobranzasComprobantes.Add(new CafeCobranzaComprobante
             {
                 CobranzaId = cobranza.Id,
-                VentaId = comp.VentaId,  // null = a cuenta
+                VentaId = comp.VentaId,  // null = a cuenta (si tampoco hay reserva ni máquina)
                 ReservaId = comp.ReservaId, // 2026-08-27: o una reserva de alquiler facturada
+                ComodatoId = comp.ComodatoId is > 0 ? comp.ComodatoId : null, // 2026-10-06: o la cuota de una máquina
+                ImporteUsd = comp.ComodatoId is > 0 ? comp.ImporteUsd : null,
                 Importe = comp.Importe
             });
 
@@ -808,7 +865,10 @@ public class CafeCobranzasController : ControllerBase
                 CajaId = med.CajaId,
                 Importe = med.Importe,
                 Referencia = med.Referencia,
-                ChequeId = chequeId
+                ChequeId = chequeId,
+                // 2026-10-06: sólo la caja de dólares (ya validado y pasado a pesos arriba).
+                ImporteUsd = caja.Tipo == TipoCajaUsd ? med.ImporteUsd : null,
+                CotizacionUsd = caja.Tipo == TipoCajaUsd ? med.CotizacionUsd : null
             };
             _db.CafeCobranzasMedios.Add(medio);
 
@@ -879,8 +939,96 @@ public class CafeCobranzasController : ControllerBase
 
         // Sincronizar flag IsPaid de las ventas imputadas (TRUE si saldo <= 0)
         await SincronizarIsPaidAsync(req.Comprobantes.Where(c => c.VentaId.HasValue).Select(c => c.VentaId!.Value).ToList());
+        // 2026-10-06: la máquina baja su saldo (y queda PAGADA si llegó a cero).
+        await CafeComodatoSaldoService.RecalcularAsync(_db,
+            req.Comprobantes.Where(c => c.ComodatoId is > 0).Select(c => c.ComodatoId!.Value));
 
         return Ok(new { id = cobranza.Id, numero });
+    }
+
+    /// <summary>2026-10-06: tipo de la caja "Dólares (efectivo)".</summary>
+    private const string TipoCajaUsd = "EFECTIVO_USD";
+    /// <summary>Plata a la argentina (1.234,50): el contenedor corre en formato invariante.</summary>
+    private static string Ar(decimal v) => v.ToString("N2", new System.Globalization.CultureInfo("es-AR"));
+
+    // Resultado de NormalizarDolaresYMaquinasAsync (listas con los pesos ya calculados). Se usan una
+    // sola vez por request (el controller se crea por pedido).
+    private List<CrearComprobanteItem>? _normComps;
+    private List<CrearMedioItem>? _normMedios;
+
+    /// <summary>
+    /// 2026-10-06: revisa las cuotas de MÁQUINA y la caja de DÓLARES de una cobranza nueva, antes de
+    /// crear nada. Devuelve el error para el operador, o null si está todo bien.
+    ///  - Máquina: tiene que existir, ser FINANCIADA, estar en el cliente, ser de este cliente (o de una
+    ///    sucursal con su mismo CUIT) y no se le puede cobrar más de lo que le falta.
+    ///  - Máquina en dólares: hace falta ImporteUsd; Importe (pesos) se respeta tal cual lo mandó la
+    ///    pantalla, que lo calcula con el "Dólar del día" (es lo que el operador vio en su cuenta).
+    ///  - Caja de dólares: hacen falta USD y dólar del día; Importe = USD × dólar (redondeado a centavos).
+    /// Una máquina por renglón y una vez por cobranza.
+    /// </summary>
+    private async Task<string?> NormalizarDolaresYMaquinasAsync(CrearCobranzaRequest req, CafeCliente? cliente)
+    {
+        _normComps = null; _normMedios = null;
+        var comps = req.Comprobantes ?? new();
+        var maqItems = comps.Where(c => c.ComodatoId is > 0).ToList();
+        if (maqItems.Count > 0)
+        {
+            if (cliente is null) return "Para cobrar la cuota de una máquina hay que elegir el cliente.";
+            if (maqItems.Any(c => c.VentaId.HasValue || c.ReservaId is > 0))
+                return "Un renglón es de una máquina o de un comprobante, no de los dos.";
+            if (maqItems.GroupBy(c => c.ComodatoId).Any(g => g.Count() > 1))
+                return "La misma máquina vino dos veces en la cobranza.";
+            var ids = maqItems.Select(c => c.ComodatoId!.Value).ToList();
+            var maquinas = await _db.CafeComodatos.AsNoTracking().Where(m => ids.Contains(m.Id)).ToDictionaryAsync(m => m.Id);
+            var clientesValidos = new List<int> { cliente.Id };
+            if (!string.IsNullOrWhiteSpace(cliente.Cuit) && cliente.Cuit.Length >= 8)
+                clientesValidos = await _db.CafeClientes.Where(cl => cl.Cuit == cliente.Cuit).Select(cl => cl.Id).ToListAsync();
+            var pagado = await CafeComodatoSaldoService.PagadoAsync(_db, ids);
+            foreach (var it in maqItems)
+            {
+                if (!maquinas.TryGetValue(it.ComodatoId!.Value, out var m)) return $"La máquina {it.ComodatoId} no existe.";
+                var nombre = CafeComodatoSaldoService.Nombre(m.Marca, m.Modelo);
+                if (m.Modalidad != "FINANCIADA") return $"{nombre} no es financiada: no tiene cuotas para cobrar.";
+                if (m.Estado != "EN_CLIENTE") return $"{nombre} no está en el cliente (está {m.Estado.ToLower()}): no se le puede cobrar.";
+                if (!clientesValidos.Contains(m.ClienteId)) return $"{nombre} es de otro cliente.";
+                if (it.Importe <= 0m) return $"Poné cuánto se paga de {nombre}.";
+                var falta = (m.PrecioVenta ?? 0m) - (pagado.TryGetValue(m.Id, out var pg) ? pg : 0m);
+                if (m.Moneda == "USD")
+                {
+                    if (it.ImporteUsd is not > 0m) return $"{nombre} es en dólares: poné cuántos dólares se pagan y el dólar del día.";
+                    if (it.ImporteUsd.Value > falta + 0.01m) return $"A {nombre} le faltan USD {Ar(falta)}: no se le puede cobrar USD {Ar(it.ImporteUsd.Value)}.";
+                }
+                else
+                {
+                    if (it.ImporteUsd is > 0m) return $"{nombre} es en pesos: no lleva dólares.";
+                    if (it.Importe > falta + 0.01m) return $"A {nombre} le faltan ${Ar(falta)}: no se le puede cobrar ${Ar(it.Importe)}.";
+                }
+            }
+            _normComps = comps.Select(c => c.ComodatoId is > 0 ? c with { Importe = Math.Round(c.Importe, 2) } : c).ToList();
+        }
+
+        var medios = req.Medios ?? new();
+        if (medios.Count > 0)
+        {
+            var cajaIds = medios.Select(m => m.CajaId).Distinct().ToList();
+            var tipos = await _db.CafeCajas.AsNoTracking().Where(c => cajaIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Tipo);
+            if (medios.Any(m => tipos.TryGetValue(m.CajaId, out var t) && t == TipoCajaUsd))
+            {
+                var nuevos = new List<CrearMedioItem>();
+                foreach (var m in medios)
+                {
+                    if (!tipos.TryGetValue(m.CajaId, out var t) || t != TipoCajaUsd) { nuevos.Add(m with { ImporteUsd = null, CotizacionUsd = null }); continue; }
+                    if (m.ImporteUsd is not > 0m) return "En la caja de dólares poné cuántos dólares entraron.";
+                    if (m.CotizacionUsd is not > 0m) return "En la caja de dólares poné el dólar del día.";
+                    if (m.Cheque is not null) return "La caja de dólares es sólo efectivo.";
+                    nuevos.Add(m with { Importe = Math.Round(m.ImporteUsd.Value * m.CotizacionUsd.Value, 2) });
+                }
+                _normMedios = nuevos;
+            }
+            else if (medios.Any(m => m.ImporteUsd.HasValue || m.CotizacionUsd.HasValue))
+                _normMedios = medios.Select(m => m with { ImporteUsd = null, CotizacionUsd = null }).ToList();
+        }
+        return null;
     }
 
     /// <summary>
@@ -1030,6 +1178,9 @@ public class CafeCobranzasController : ControllerBase
         await _db.SaveChangesAsync();
         // Re-sincronizar IsPaid de las ventas afectadas (que ahora vuelven a "no pagadas")
         await SincronizarIsPaidAsync(c.Comprobantes.Where(cc => cc.VentaId.HasValue).Select(cc => cc.VentaId!.Value).ToList());
+        // 2026-10-06: la máquina recupera el saldo (si estaba PAGADA vuelve a "en cliente").
+        await CafeComodatoSaldoService.RecalcularAsync(_db,
+            c.Comprobantes.Where(cc => cc.ComodatoId is > 0).Select(cc => cc.ComodatoId!.Value));
         await _audit.LogAsync("CafeCobranza", id.ToString(), "ANULAR", $"Cobranza {c.Numero} anulada");
         return Ok(new { ok = true });
     }
@@ -1071,7 +1222,8 @@ public class CafeCobranzasController : ControllerBase
         // 2026-08-27: las imputaciones a RESERVAS DE ALQUILER no se editan desde esta pantalla
         // (se maneja el saldo con MontoCobrado). Se conservan tal cual y su importe cuenta para
         // que el total siga cuadrando; si se borraran, la reserva quedaria cobrada de mas.
-        var impAlquiler = c.Comprobantes.Where(cc => cc.ReservaId is > 0).ToList();
+        // 2026-10-06: lo mismo con las cuotas de MÁQUINA (ComodatoId): quedan como están.
+        var impAlquiler = c.Comprobantes.Where(cc => cc.ReservaId is > 0 || cc.ComodatoId is > 0).ToList();
         var montoAlquiler = impAlquiler.Sum(cc => cc.Importe);
 
         var sumNuevo = req.Comprobantes.Sum(x => x.Importe) + montoAlquiler;
@@ -1106,9 +1258,12 @@ public class CafeCobranzasController : ControllerBase
         var todasLasVentas = ventaIdsViejas.Concat(ventaIdsNuevas).Distinct().ToList();
 
         // Se borran solo las de ventas: las de alquiler quedan intactas (ver arriba).
-        _db.CafeCobranzasComprobantes.RemoveRange(c.Comprobantes.Where(cc => cc.ReservaId is null or 0));
+        _db.CafeCobranzasComprobantes.RemoveRange(c.Comprobantes.Where(cc => (cc.ReservaId is null or 0) && (cc.ComodatoId is null or 0)));
         foreach (var comp in req.Comprobantes)
         {
+            // 2026-10-06: acá sólo se re-imputan ventas y "a cuenta". Una máquina o un alquiler que viniera
+            // en la lista se ignora: los de esta cobranza ya quedaron intactos (ver arriba).
+            if (comp.ReservaId is > 0 || comp.ComodatoId is > 0) continue;
             _db.CafeCobranzasComprobantes.Add(new CafeCobranzaComprobante
             {
                 CobranzaId = c.Id,

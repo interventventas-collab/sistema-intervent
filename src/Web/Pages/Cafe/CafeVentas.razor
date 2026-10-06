@@ -2148,6 +2148,27 @@
                 </div>
                 } @* fin @if (!editingVentaId.HasValue || editHeaderExpanded) para bloque Cliente *@
 
+                @* 2026-10-06: ☕ máquinas del cliente (comodato / financiada). Pedido del dueño: "que me deje
+                   mostrarlo o no, como el saldo anterior". Cada renglón con su tilde "que salga en el
+                   comprobante"; se guarda el TEXTO tal cual (foto del momento) en LeyendaMaquinas.
+                   Va afuera de la cabecera plegable para que al editar también se vea. *@
+                @if (formClienteId > 0 && maquinasRenglones.Count > 0)
+                {
+                    <div style="margin-top: 0.4rem; font-size: 0.78rem; color: #4b5563;">
+                        <div style="color: #6b7280;">☕ Máquinas de este cliente <span style="color: #9ca3af;">· tildá las que salen en el comprobante</span></div>
+                        @foreach (var mr in maquinasRenglones)
+                        {
+                            var mrRef = mr;
+                            <label style="display: flex; align-items: flex-start; gap: 0.35rem; margin-top: 0.15rem; cursor: pointer; @(mr.Tildado ? "" : "color:#9ca3af;")"
+                                   title="Que salga en el comprobante">
+                                <input type="checkbox" tabindex="-1" checked="@mr.Tildado" style="margin: 0.1rem 0 0;"
+                                       @onchange="@(e => mrRef.Tildado = (bool)(e.Value ?? false))" />
+                                <span>@mr.Texto</span>
+                            </label>
+                        }
+                    </div>
+                }
+
                 </div> @* fin wrapper header (Fila 1 + Cliente) *@
 
                 @* ── Items ── *@
@@ -6739,6 +6760,52 @@
             foreach (var v in unpaidPrevSales.Where(v => SaldoEsFactura(v.TipoComprobante) != f)) saldoExcluidos.Add(v.Id);
     }
 
+    // ─── 2026-10-06: ☕ Máquinas de este cliente (comodato / financiada) ───
+    // Mismo criterio que el "Saldo anterior": venta nueva arranca tildado, al editar arranca
+    // destildado (no meter nada retroactivo) salvo lo que la venta ya tenía guardado.
+    private class MaquinaRenglon { public string Texto = ""; public bool Tildado; }
+    private List<MaquinaRenglon> maquinasRenglones = new();
+    // true = se pudo leer el resumen de máquinas. Si falló, al editar NO se toca lo guardado.
+    private bool maquinasCargadas;
+    // LeyendaMaquinas de la venta que se está editando (null en venta nueva o si se cambió el cliente).
+    private string? editLeyendaMaquinasGuardada;
+    private int editLeyendaMaquinasClienteId;   // de qué cliente era: si se cambia el cliente, no se arrastra
+
+    private async Task CargarMaquinasClienteAsync()
+    {
+        maquinasRenglones = new();
+        maquinasCargadas = false;
+        // Lo que ya quedó guardado en la venta va primero y tildado, con el texto de ese momento.
+        var guardadas = (editingVentaId.HasValue && formClienteId == editLeyendaMaquinasClienteId ? editLeyendaMaquinasGuardada ?? "" : "")
+            .Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+        foreach (var l in guardadas) maquinasRenglones.Add(new MaquinaRenglon { Texto = l, Tildado = true });
+        if (formClienteId <= 0 || modoVentaRapida) { maquinasCargadas = true; return; }
+        try
+        {
+            var lista = await Api.GetMaquinasResumenAsync(formClienteId) ?? new();
+            var porDefecto = !editingVentaId.HasValue;
+            foreach (var m in lista)
+            {
+                // Si ya está en lo guardado (mismo tipo + misma máquina), no la repetimos.
+                var prefijo = m.EsFinanciada ? $"Máquina financiada: {m.Descripcion}" : $"Máquina en comodato: {m.Descripcion}";
+                if (guardadas.Any(l => l.StartsWith(prefijo, StringComparison.OrdinalIgnoreCase))) continue;
+                maquinasRenglones.Add(new MaquinaRenglon { Texto = m.TextoComprobante, Tildado = porDefecto });
+            }
+            maquinasCargadas = true;
+        }
+        catch { /* sin resumen de máquinas: el form sigue igual */ }
+    }
+
+    /// <summary>Texto a guardar en LeyendaMaquinas (renglones tildados separados por \n).
+    /// Update: null = no tocar (no se pudo leer), "" = sacarla. Create/preview: null si no hay nada.</summary>
+    private string? LeyendaMaquinasParaGuardar(bool esUpdate)
+    {
+        if (esUpdate && !maquinasCargadas) return null;
+        var txt = string.Join("\n", maquinasRenglones.Where(r => r.Tildado).Select(r => r.Texto));
+        if (txt.Length == 0) return esUpdate ? "" : null;
+        return txt;
+    }
+
     // Top productos comprados por el cliente actual del form
     private List<CafeTopProductoClienteDto> topProductsForClient = new();
     // 2026-06-08: Opción C — mostrar top 3 + "Ver más" (legacy, ya no se usa con el panel sticky)
@@ -7608,6 +7675,7 @@
         editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null;
         convirtiendoPreventaId = null;  // reset si veníamos de una conversión cancelada
         unpaidPrevSales = new(); topProductsForClient = new(); includePrevBalanceInNotes = true;
+        maquinasRenglones = new(); editLeyendaMaquinasGuardada = null;  // 2026-10-06
         CerrarChatWaFlotanteReset(); // 2026-08-06: arrancar sin chat flotante colgado de una venta anterior
         formClienteId = 0; formClienteTipo = "OTRO";
         clienteSearch = ""; clienteSearchOpen = false;
@@ -8643,6 +8711,7 @@
                     MostrarIvaProforma = formMostrarIvaProforma,
                     EntregaPor = formEntregaPor,
                     ComentarioArmado = formComentarioArmado,
+                    LeyendaMaquinas = LeyendaMaquinasParaGuardar(true),   // 2026-10-06
                     YaEntregado = formYaEntregado,
                     EntregadoPorRepartidorId = formYaEntregado ? formEntregadoRepartidorId : null,
                     EntregadoRetiroCliente = formYaEntregado && formEntregadoRetiroCliente
@@ -8706,6 +8775,7 @@
             editingVentaId = null; editingVentaNumero = "";
             duplicadoDeNumero = payload.OrigenNumero;
             unpaidPrevSales = new(); topProductsForClient = new(); includePrevBalanceInNotes = true;
+            maquinasRenglones = new(); editLeyendaMaquinasGuardada = null;  // 2026-10-06: el duplicado arma las suyas
             formClienteId = payload.ClienteId ?? 0;
             formClienteTipo = payload.ClienteTipo;
             clienteSearch = ""; clienteSearchOpen = false;
@@ -9080,6 +9150,7 @@
         formCondicionIva = "CF";
         formMostrarIvaProforma = true;
         unpaidPrevSales = new();
+        maquinasRenglones = new();  // 2026-10-06
         topProductsForClient = new();
         await Cotizar();
     }
@@ -9098,6 +9169,8 @@
     /// Excluye anulados, totalmente pagados y la venta que se esta editando.</summary>
     private async Task RecomputeUnpaidPrevSalesAsync()
     {
+        // 2026-10-06: las máquinas del cliente se refrescan junto con el saldo anterior.
+        await CargarMaquinasClienteAsync();
         if (formClienteId <= 0)
         {
             unpaidPrevSales = new();
@@ -10320,6 +10393,7 @@
                 CondicionPago = formCondicionPago,
                 MostrarIvaProforma = formMostrarIvaProforma,
                 ComentarioArmado = formComentarioArmado,
+                LeyendaMaquinas = LeyendaMaquinasParaGuardar(false),   // 2026-10-06
                 Concepto = formConcepto,
                 ConceptoServDesde = formConcepto != 1 ? formConceptoServDesde : null,
                 ConceptoServHasta = formConcepto != 1 ? formConceptoServHasta : null,
@@ -10446,6 +10520,7 @@
                     MostrarIvaProforma = formMostrarIvaProforma,
                     EntregaPor = formEntregaPor,
                     ComentarioArmado = formComentarioArmado,
+                    LeyendaMaquinas = LeyendaMaquinasParaGuardar(true),   // 2026-10-06
                     MapeoLink = string.IsNullOrWhiteSpace(formMapeoLink) ? null : formMapeoLink.Trim(),
                     GuardarMapeoEnCliente = formGuardarMapeoEnCliente,
                     YaEntregado = formYaEntregado,
@@ -10541,6 +10616,7 @@
                     MostrarIvaProforma = formMostrarIvaProforma,
                     EntregaPor = formEntregaPor,
                     ComentarioArmado = formComentarioArmado,
+                    LeyendaMaquinas = LeyendaMaquinasParaGuardar(false),   // 2026-10-06
                     // 2026-06-23: Concepto AFIP. Solo se aplica a facturas (FA/FB/FC).
                     // Para X/PRO el backend lo ignora — siempre va a ser Productos en cotizaciones.
                     Concepto = formConcepto,
@@ -11117,6 +11193,9 @@
         formIsPaid = v.IsPaid;
         formEntregaPor = v.EntregaPor ?? "";
         formComentarioArmado = v.ComentarioArmado ?? "";
+        // 2026-10-06: las máquinas que ya salían en el comprobante arrancan tildadas (se arma en Recompute).
+        editLeyendaMaquinasGuardada = v.LeyendaMaquinas;
+        editLeyendaMaquinasClienteId = v.ClienteId ?? 0;
         // 2026-09-15: el tilde "Ya entregado" arranca como está la venta.
         formYaEntregado = v.EntregadoAt is not null;
         formEntregadoRepartidorId = v.EntregadoPorRepartidorId;

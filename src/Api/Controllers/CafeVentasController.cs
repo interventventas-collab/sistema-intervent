@@ -358,7 +358,19 @@ public class CafeVentasController : ControllerBase
         v.MostrarIvaProforma,
         rechazadoPorRepartidorNombre,
         rechazoMotivo,
-        envios);
+        envios,
+        v.LeyendaMaquinas);
+
+    /// <summary>2026-10-06: limpia la leyenda de máquinas que manda Nueva Venta: renglones sin espacios
+    /// de más, sin renglones vacíos y como mucho 1000 caracteres (lo que entra en la columna).</summary>
+    private static string? NormLeyendaMaquinas(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var lineas = s.Replace("\r", "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0);
+        var txt = string.Join("\n", lineas);
+        if (txt.Length == 0) return null;
+        return txt.Length > 1000 ? txt[..1000] : txt;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -1474,6 +1486,7 @@ public class CafeVentasController : ControllerBase
             Retira = v.Retira,
             ComentariosCliente = v.ClienteComentariosComprobante,
             Observaciones = v.Observaciones,
+            LeyendaMaquinas = v.LeyendaMaquinas,   // 2026-10-06
             CondicionPago = v.CondicionPago,
             DomicilioEntrega = v.DomicilioEntregaImpreso ?? v.ClienteDomicilioEntregaSnapshot,
             EntregaPor = v.EntregaPor,
@@ -1847,6 +1860,7 @@ public class CafeVentasController : ControllerBase
             MostrarIvaProforma = req.MostrarIvaProforma,
             CreatedAt = DateTime.UtcNow,
             ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim(),
+            LeyendaMaquinas = NormLeyendaMaquinas(req.LeyendaMaquinas),   // 2026-10-06
         };
         // Pre-cargo los productos referenciados (con su UxB) para que el PDF tenga el ProductoNav.
         // Sin esto, los items BULTO en el preview pierden la informacion del UxB y no muestran
@@ -2027,6 +2041,8 @@ public class CafeVentasController : ControllerBase
             PublicToken = GeneratePublicToken(),
             EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim(),
             ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim(),
+            // 2026-10-06: máquinas del cliente tildadas "que salga en el comprobante" (foto del momento).
+            LeyendaMaquinas = NormLeyendaMaquinas(req.LeyendaMaquinas),
             // 2026-06-23: Concepto AFIP. Default 1 (Productos). Si 2 o 3, se mandan fechas a ARCA al emitir.
             Concepto = req.Concepto is 1 or 2 or 3 ? req.Concepto : 1,
             ConceptoServDesde = req.ConceptoServDesde,
@@ -2547,6 +2563,8 @@ public class CafeVentasController : ControllerBase
             CondicionPago = original.CondicionPago,
             // Sociedad/CUIT elegido para facturar (si no viene, hereda el de la proforma o el default).
             ArcaWebserviceAccountId = req.ArcaWebserviceAccountId ?? original.ArcaWebserviceAccountId,
+            // 2026-10-06: la factura sale con las mismas máquinas que mostraba la cotización.
+            LeyendaMaquinas = original.LeyendaMaquinas,
         };
 
         // 2026-06-18 — La X / PRO ya tenia su stock descontado al crearse. Si vamos a crear una FA
@@ -3157,6 +3175,8 @@ public class CafeVentasController : ControllerBase
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
         if (req.EntregaPor is not null) v.EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim();
         if (req.ComentarioArmado is not null) v.ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim();
+        // 2026-10-06: leyenda de máquinas (null = no tocar, "" = sacarla).
+        if (req.LeyendaMaquinas is not null) v.LeyendaMaquinas = NormLeyendaMaquinas(req.LeyendaMaquinas);
         // 2026-09-15: tilde "Ya entregado" también al editar.
         if (req.YaEntregado.HasValue)
         {
