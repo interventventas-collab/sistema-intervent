@@ -94,6 +94,11 @@
     .cliente-total .label { font-weight: 700; color: #713f12; font-size: 0.88rem; }
     .cliente-total .monto { font-weight: 800; font-size: 1.2rem; color: #713f12; }
 
+    /* 2026-10-06: máquinas de café del cliente (tilde "Mostrar máquinas..."), texto plano gris */
+    .cliente-maquina { font-size: 0.8rem; color: #6b7280; margin-top: 0.15rem; }
+    .cliente-total-maquina { text-align: right; font-size: 0.78rem; color: #6b7280; margin-top: 0.15rem; }
+    .tilde-maquinas { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; color: #374151; }
+
     .cliente-meta { display: flex; gap: 0.8rem; margin-top: 0.4rem; font-size: 0.78rem; color: #6b7280; }
 
     .cliente-actions { display: flex; gap: 0.4rem; margin-top: 0.7rem; flex-wrap: wrap; }
@@ -154,6 +159,7 @@
             <strong>Nadie te debe nada</strong>
             <p>Todos los clientes están al día.</p>
         </div>
+        <div style="margin-top: 0.8rem;">@TildeMaquinas</div>
     }
     else
     {
@@ -231,6 +237,7 @@
                 <option value="cotizacion">Solo con cotización</option>
                 <option value="factura">Solo con factura</option>
             </select>
+            @TildeMaquinas
         </div>
 
         @foreach (var s in Filtrados())
@@ -260,6 +267,7 @@
                             {
                                 <p class="cliente-razon">🏢 @s.RazonSocial</p>
                             }
+                            @RenglonesMaquinas(s.ClienteId)
                             <div class="cliente-tipo">
                                 @if (s.Tipo == "BAR") { <span>🍺 BAR</span> } else if (s.Tipo == "ALQUILERES") { <span>🏠 Alquileres</span> } else { <span>🏢 OTRO</span> }
                                 @if (s.CodigoInterno.HasValue) { <span> · #@s.CodigoInterno</span> }
@@ -331,6 +339,12 @@
                         <span class="label">TOTAL DEBE</span>
                         <span class="monto">$@FormatMoney(s.SaldoPendiente)</span>
                     </div>
+                    @* 2026-10-06: lo que falta de la máquina financiada se informa APARTE: no suma al
+                       TOTAL DEBE (es otra cuenta) y los dólares nunca se mezclan con pesos. *@
+                    @if (MaquinaFaltaTexto(s.ClienteId) is { Length: > 0 } faltaMaq)
+                    {
+                        <div class="cliente-total-maquina">+ máquina @faltaMaq</div>
+                    }
 
                     <div class="cliente-meta">
                         <span>📅 Desde @s.FechaMasAntigua.ToString("dd/MM/yyyy")</span>
@@ -350,6 +364,32 @@
                         }
                     </div>
                 </div>
+            </div>
+        }
+    }
+
+    @* ════════ 2026-10-06: clientes que NO deben café pero tienen máquina (solo con el tilde) ════════ *@
+    @if (saldos is not null && mostrarMaquinas && filtroTipo == "todos")
+    {
+        var soloMaq = SoloMaquinas().ToList();
+        if (soloMaq.Count > 0)
+        {
+            <div style="margin-top: 1.2rem;">
+                <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 0.5rem;">Clientes que no deben café pero tienen máquina · @soloMaq.Count</p>
+                @foreach (var g in soloMaq)
+                {
+                    <div class="cliente-card">
+                        <div class="cliente-header">
+                            <div style="flex: 1; min-width: 0;">
+                                <p class="cliente-nombre">👤 @(g.First().ClienteNombre ?? $"Cliente #{g.Key}")</p>
+                                @RenglonesMaquinas(g.Key)
+                            </div>
+                            <div class="cliente-actions" style="margin-top: 0;">
+                                <a href="/cafe/clientes/@g.Key/estado-cuenta">📒 Estado cuenta</a>
+                            </div>
+                        </div>
+                    </div>
+                }
             </div>
         }
     }
@@ -635,6 +675,88 @@
     }
 
     protected override async Task OnInitializedAsync() => await Cargar();
+
+    // ─── 2026-10-06: "Mostrar máquinas financiadas y comodatos" ───
+    // Apagado por default; se recuerda por navegador (localStorage, puede fallar en modo privado).
+    private const string KeyMostrarMaquinas = "panelDeudas.mostrarMaquinas";
+    private bool mostrarMaquinas;
+    private List<MaquinaResumenDto>? maquinas;
+    private Dictionary<int, List<MaquinaResumenDto>> maquinasPorCliente = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var v = await JS.InvokeAsync<string?>("localStorage.getItem", KeyMostrarMaquinas);
+            if (v == "1") { mostrarMaquinas = true; await CargarMaquinas(); StateHasChanged(); }
+        }
+        catch { /* sin localStorage: queda apagado */ }
+    }
+
+    private async Task ToggleMostrarMaquinas(bool on)
+    {
+        mostrarMaquinas = on;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", KeyMostrarMaquinas, on ? "1" : "0"); } catch { }
+        if (on) await CargarMaquinas();
+    }
+
+    private async Task CargarMaquinas()
+    {
+        if (maquinas is not null) return;
+        try
+        {
+            maquinas = await Api.GetMaquinasResumenAsync() ?? new();
+            maquinasPorCliente = maquinas.GroupBy(m => m.ClienteId).ToDictionary(g => g.Key, g => g.ToList());
+        }
+        catch (Exception ex) { ToastService.Error("No se pudieron traer las máquinas: " + ex.Message); }
+    }
+
+    private RenderFragment TildeMaquinas => __builder =>
+    {
+        <label class="tilde-maquinas">
+            <input type="checkbox" checked="@mostrarMaquinas" @onchange="@(e => ToggleMostrarMaquinas((bool)(e.Value ?? false)))" />
+            <span>Mostrar máquinas financiadas y comodatos</span>
+        </label>
+    };
+
+    private RenderFragment RenglonesMaquinas(int clienteId) => __builder =>
+    {
+        if (mostrarMaquinas && maquinasPorCliente.TryGetValue(clienteId, out var lista))
+        {
+            foreach (var m in lista)
+            {
+                <div class="cliente-maquina">☕ @m.TextoCorto</div>
+            }
+        }
+    };
+
+    /// <summary>"$X" y/o "USD Y" de lo que falta de las financiadas del cliente (pesos y dólares por separado).</summary>
+    private string MaquinaFaltaTexto(int clienteId)
+    {
+        if (!mostrarMaquinas || !maquinasPorCliente.TryGetValue(clienteId, out var lista)) return "";
+        var fin = lista.Where(m => m.EsFinanciada && (m.SaldoFinanciamiento ?? 0) > 0).ToList();
+        var partes = new List<string>();
+        var ars = fin.Where(m => !m.EsUsd).Sum(m => m.SaldoFinanciamiento ?? 0);
+        var usd = fin.Where(m => m.EsUsd).Sum(m => m.SaldoFinanciamiento ?? 0);
+        if (ars > 0) partes.Add(MaquinaResumenDto.Plata(ars, false));
+        if (usd > 0) partes.Add(MaquinaResumenDto.Plata(usd, true));
+        return string.Join(" · ", partes);
+    }
+
+    /// <summary>Clientes con máquina que no están en la lista de deudores (respetando el buscador).</summary>
+    private IEnumerable<IGrouping<int, MaquinaResumenDto>> SoloMaquinas()
+    {
+        if (maquinas is null || saldos is null) return Enumerable.Empty<IGrouping<int, MaquinaResumenDto>>();
+        var deudores = saldos.Select(s => s.ClienteId).ToHashSet();
+        var q = maquinas.Where(m => !deudores.Contains(m.ClienteId));
+        if (!string.IsNullOrWhiteSpace(busqueda))
+        {
+            var t = busqueda.Trim();
+            q = q.Where(m => m.ClienteNombre.MatchesSearch(t));
+        }
+        return q.GroupBy(m => m.ClienteId).OrderBy(g => g.First().ClienteNombre);
+    }
 
     private async Task Cargar()
     {

@@ -200,7 +200,11 @@ public class ArcaInvoicePdfService
                 });
 
                 // ───── CONTENIDO (items) ─────
-                page.Content().PaddingTop(10).Table(table =>
+                // 2026-10-06: el contenido pasa a ser una columna para poder poner, abajo de los
+                // productos, los renglones de máquinas (comodato / financiada) que eligió el operador.
+                page.Content().PaddingTop(10).Column(contentCol =>
+                {
+                contentCol.Item().Table(table =>
                 {
                     // Tabla con orden: Cant / SKU / Producto / Formato / P.Unitario / Desc. / [IVA%] / Subtotal
                     // Letra A: muestra columna IVA% (8 columnas). Letras B/C: sin IVA% (7 columnas).
@@ -286,6 +290,16 @@ public class ArcaInvoicePdfService
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("$ " + subConIva.ToString("N2", new CultureInfo("es-AR")));
                         }
                     }
+                });
+
+                if (!string.IsNullOrWhiteSpace(comp.LeyendaMaquinas))
+                {
+                    contentCol.Item().PaddingTop(6).Column(lm =>
+                    {
+                        foreach (var linea in comp.LeyendaMaquinas!.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                            lm.Item().Text(linea.Trim()).FontSize(8).FontColor(Colors.Grey.Darken2);
+                    });
+                }
                 });
 
                 // ───── FOOTER ─────
@@ -755,6 +769,9 @@ public class PdfComprobante
     public string? ComentariosCliente { get; set; }
     /// <summary>Observaciones internas de la venta. Si null no se muestra.</summary>
     public string? Observaciones { get; set; }
+    /// <summary>2026-10-06: renglones de máquinas del cliente (comodato / financiada) separados por \n.
+    /// Se imprimen abajo de los productos. Si null no se muestra.</summary>
+    public string? LeyendaMaquinas { get; set; }
     /// <summary>Condición de pago: EFECTIVO / TRANSFERENCIA / MERCADOPAGO / CHEQUE / CTA_CORRIENTE / V*.
     /// Se imprime con un label legible bajo el total.</summary>
     public string? CondicionPago { get; set; }

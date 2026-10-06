@@ -1364,6 +1364,9 @@ public class ApiClient
         var url = "/api/cafe/comodatos" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
         return await GetAsync<List<CafeComodatoDto>>(url);
     }
+    /// <summary>2026-10-06: resumen liviano de máquinas en clientes (todas, o de un cliente).</summary>
+    public async Task<List<MaquinaResumenDto>?> GetMaquinasResumenAsync(int? clienteId = null)
+        => await GetAsync<List<MaquinaResumenDto>>("/api/cafe/maquinas-resumen" + (clienteId.HasValue ? $"?clienteId={clienteId}" : ""));
     public async Task<CafeComodatoDetalleDto?> GetCafeComodatoDetalleAsync(int id)
         => await GetAsync<CafeComodatoDetalleDto>($"/api/cafe/comodatos/{id}");
     public async Task<CafeComodatosStatsDto?> GetCafeComodatosStatsAsync()

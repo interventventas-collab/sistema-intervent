@@ -8200,3 +8200,8 @@ BEGIN
     );
 END
 GO
+-- 2026-10-06: Cafe_Ventas.LeyendaMaquinas — renglones de las máquinas del cliente (comodato / financiada)
+-- que el operador tildó "que salga en el comprobante" en Nueva Venta. Foto del texto del momento; sale en el PDF.
+IF COL_LENGTH('Cafe_Ventas','LeyendaMaquinas') IS NULL
+    ALTER TABLE Cafe_Ventas ADD LeyendaMaquinas NVARCHAR(1000) NULL;
+GO
