@@ -2080,15 +2080,40 @@
                             @if (saldoAnteriorExpandido)
                             {
                                 <div style="margin-top: 0.35rem; padding: 0.4rem 0.6rem; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; color: #78350f; font-size: 0.78rem;">
+                                    @* 2026-10-06: Osmar — destildar comprobantes de la suma del "Saldo anterior" y ver
+                                       cuál es factura y cuál cotización, para elegir qué le reclama en este comprobante. *@
+                                    @if (unpaidPrevSales.Count > 1)
+                                    {
+                                        <div style="margin-bottom: 0.3rem; display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap;">
+                                            <span style="opacity: 0.8;">Sumar:</span>
+                                            <button type="button" tabindex="-1" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.05rem 0.45rem;" @onclick="() => SaldoElegir(null)">Todos</button>
+                                            @if (unpaidPrevSales.Any(v => SaldoEsFactura(v.TipoComprobante)))
+                                            {
+                                                <button type="button" tabindex="-1" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.05rem 0.45rem;" @onclick="() => SaldoElegir(true)">Solo facturas</button>
+                                            }
+                                            @if (unpaidPrevSales.Any(v => !SaldoEsFactura(v.TipoComprobante)))
+                                            {
+                                                <button type="button" tabindex="-1" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.05rem 0.45rem;" @onclick="() => SaldoElegir(false)">Solo cotizaciones</button>
+                                            }
+                                        </div>
+                                    }
                                     @foreach (var s in unpaidPrevSales)
                                     {
                                         var sld = saldosPorVenta.TryGetValue(s.Id, out var sl) ? sl : s.Total;
                                         var pag = s.Total - sld;
                                         var tooltipText = s.Fecha.ToString("dd/MM/yyyy") + " · Total $" + FormatMoney(s.Total) + (pag > 0.01m ? " · Pagado $" + FormatMoney(pag) : "");
-                                        <span style="display: inline-block; margin-right: 0.4rem; margin-bottom: 0.2rem; padding: 0.1rem 0.4rem; background: white; border: 1px solid #d97706; border-radius: 4px; font-family: monospace;"
-                                              title="@tooltipText">
-                                            @s.Numero (debe $@FormatMoney(sld))
-                                        </span>
+                                        var incluido = !saldoExcluidos.Contains(s.Id);
+                                        var sid = s.Id;
+                                        <label style="display: inline-flex; align-items: center; gap: 0.3rem; margin-right: 0.4rem; margin-bottom: 0.2rem; padding: 0.1rem 0.4rem; background: white; border: 1px solid @(incluido ? "#d97706" : "#e5e7eb"); border-radius: 4px; cursor: pointer; @(incluido ? "" : "color:#9ca3af; text-decoration: line-through;")"
+                                               title="@tooltipText">
+                                            <input type="checkbox" checked="@incluido" @onchange="() => SaldoToggle(sid)" style="margin: 0;" />
+                                            <span style="font-weight: 600;">@SaldoTipoTxt(s.TipoComprobante)</span>
+                                            <span style="font-family: monospace;">@s.Numero (debe $@FormatMoney(sld))</span>
+                                        </label>
+                                    }
+                                    @if (saldoExcluidos.Count > 0)
+                                    {
+                                        <div style="margin-top: 0.2rem;">Suma de los tildados: <b>$@FormatMoney(UnpaidPrevTotalElegido)</b> <span style="opacity: 0.75;">(de $@FormatMoney(UnpaidPrevTotal) en total)</span></div>
                                     }
                                     <label style="display: flex; align-items: center; gap: 0.35rem; margin-top: 0.35rem; cursor: pointer;">
                                         <input type="checkbox" @bind="includePrevBalanceInNotes" style="margin: 0;" />
@@ -6629,6 +6654,26 @@
     // Total adeudado = suma de SALDOS pendientes (no totales completos) usando saldosPorVenta
     private decimal UnpaidPrevTotal => unpaidPrevSales.Sum(s => saldosPorVenta.TryGetValue(s.Id, out var sld) ? sld : s.Total);
     private bool includePrevBalanceInNotes = true;
+    // 2026-10-06: comprobantes que el operador destildó del "Saldo anterior" (se vacía al cambiar de cliente).
+    private readonly HashSet<int> saldoExcluidos = new();
+    private decimal UnpaidPrevTotalElegido => unpaidPrevSales.Where(s => !saldoExcluidos.Contains(s.Id))
+        .Sum(s => saldosPorVenta.TryGetValue(s.Id, out var sld) ? sld : s.Total);
+    private static bool SaldoEsFactura(string? tipo) => tipo is "FA" or "FB" or "FC";
+    private static string SaldoTipoTxt(string? tipo) => tipo switch
+    {
+        "FA" => "Factura A", "FB" => "Factura B", "FC" => "Factura C",
+        "X" => "Cotización", "PRO" => "Presupuesto",
+        _ when tipo?.StartsWith("NC") == true => "Nota de crédito",
+        _ => tipo ?? ""
+    };
+    private void SaldoToggle(int id) { if (!saldoExcluidos.Remove(id)) saldoExcluidos.Add(id); }
+    /// <summary>null = todos · true = solo facturas · false = solo lo que no es factura.</summary>
+    private void SaldoElegir(bool? facturas)
+    {
+        saldoExcluidos.Clear();
+        if (facturas is bool f)
+            foreach (var v in unpaidPrevSales.Where(v => SaldoEsFactura(v.TipoComprobante) != f)) saldoExcluidos.Add(v.Id);
+    }
 
     // Top productos comprados por el cliente actual del form
     private List<CafeTopProductoClienteDto> topProductsForClient = new();
@@ -8987,6 +9032,7 @@
         }
         try
         {
+            saldoExcluidos.Clear();
             unpaidPrevSales = await Api.GetCafeVentasImpagasClienteAsync(formClienteId, editingVentaId) ?? new();
         }
         catch { unpaidPrevSales = new(); }
@@ -10250,6 +10296,7 @@
             var notesToSave = formObservaciones ?? "";
             if (includePrevBalanceInNotes
                 && unpaidPrevSales.Count > 0
+                && UnpaidPrevTotalElegido > 0
                 // 2026-09-25: solo cuenta como "ya puesto" el renglón automático ("Saldo anterior: $...").
                 // Antes bastaba que la nota dijera "saldo anterior" (ej. "Abona saldo anterior. Viernes.")
                 // para que no se agregara el monto (pasó en CAFE-2026-2109).
@@ -10257,7 +10304,7 @@
             {
                 // 2026-08-24 (pedido del usuario): va SOLO el total. Antes listaba cada comprobante
                 // impago entre paréntesis y ocupaba media observación.
-                var prevLine = $"Saldo anterior: ${FormatMoney(UnpaidPrevTotal)}";
+                var prevLine = $"Saldo anterior: ${FormatMoney(UnpaidPrevTotalElegido)}";
                 notesToSave = string.IsNullOrWhiteSpace(notesToSave)
                     ? prevLine
                     : prevLine + "\n" + notesToSave;
