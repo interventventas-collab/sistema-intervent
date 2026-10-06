@@ -54,20 +54,25 @@ public static class FotoChromaService
         // ── 2. Transparencia (alpha) de cada pixel ──
         double tol = Math.Clamp(op.Tolerancia, 0, 100) / 100.0;
         double suav = Math.Clamp(op.Suavizado, 0, 100) / 100.0;
-        double hi = 0.85 - 0.50 * tol;          // a partir de acá es tela (alpha 0)
-        double lo = hi - (0.08 + 0.32 * suav);  // por debajo es producto (alpha 1)
+        double hi = 0.75 - 0.35 * tol;          // a partir de acá es tela (alpha 0)
+        double lo = hi - (0.15 + 0.25 * suav);  // por debajo es producto (alpha 1)
 
-        var t = new float[w * h];
+        // 2026-10-06 (fotos reales con la tela del depósito): se mide CUÁNTO le gana el verde a los otros
+        // canales en números absolutos, comparado con la tela. Antes se medía relativo al brillo y los
+        // productos NEGROS con reflejo verde (vasos y bolsas de café FRIKAF) se confundían con la tela y
+        // desaparecían. Además el pixel tiene que ser "tan verde de color" como la tela (rel): así un gris
+        // verdoso no cuenta como tela aunque tenga bastante verde.
+        var t = new float[w * h];       // tela con el criterio normal
+        var tEnc = new float[w * h];    // tela con el criterio estricto (zonas encerradas por el producto)
         for (int i = 0; i < px.Length; i++)
         {
             var c = px[i];
             double d = Dominancia(c, esVerde);
-            if (d <= 0) { t[i] = 0; continue; }
-            // Relativo al brillo: una sombra sobre la tela sigue siendo "tela". Pero si la diferencia es
-            // chiquita en números absolutos (negro, gris oscuro) no cuenta: si no se comería lo oscuro.
-            double sat = d / Math.Max(1, (int)Canal(c, esVerde));
-            double peso = Math.Min(1.0, d / (0.25 * keyDom));
-            t[i] = (float)(sat / keySat * peso);
+            if (d <= 0) continue;
+            double abs = d / keyDom;
+            double rel = d / Math.Max(1, (int)Canal(c, esVerde)) / keySat;
+            if (rel > 0.55) t[i] = (float)abs;
+            if (rel > 0.70) tEnc[i] = (float)abs;
         }
 
         float AlphaDe(float v, double h0, double l0) =>
@@ -78,9 +83,9 @@ public static class FotoChromaService
 
         // ── 3. Zonas de "tela" encerradas por el producto: sólo se sacan si son casi la tela exacta ──
         var conectado = RellenoDesdeBorde(alpha, w, h);
-        double hiEnc = Math.Min(1.05, hi + 0.25), loEnc = hiEnc - (hi - lo);
+        double hiEnc = hi + 0.25, loEnc = lo + 0.25;
         for (int i = 0; i < alpha.Length; i++)
-            if (!conectado[i] && alpha[i] < 1f) alpha[i] = AlphaDe(t[i], hiEnc, loEnc);
+            if (!conectado[i] && alpha[i] < 1f) alpha[i] = AlphaDe(tEnc[i], hiEnc, loEnc);
 
         // ── 4. Borrar manchitas sueltas (arrugas o pelusas de la tela que quedaron) ──
         LimpiarManchitas(alpha, w, h, minArea: Math.Max(50, w * h / 1000));
@@ -88,6 +93,9 @@ public static class FotoChromaService
         // ── 5. Suavizar el contorno (anti-alias) ──
         int radio = Math.Max(1, (int)Math.Round(Math.Min(w, h) / 900.0 * (0.5 + suav)));
         alpha = BlurCaja(alpha, w, h, radio);
+        // "Apretar" el borde: lo casi transparente del contorno es pelusa de la tela (el tejido y la sombra
+        // pegada al producto), no producto. Sin esto quedaba un halo oscuro y deshilachado alrededor.
+        for (int i = 0; i < alpha.Length; i++) alpha[i] = Math.Clamp((alpha[i] - 0.2f) / 0.8f, 0f, 1f);
 
         // ── 6. Recorte al contenido ──
         int minX = w, minY = h, maxX = -1, maxY = -1;
@@ -100,14 +108,26 @@ public static class FotoChromaService
                 }
         if (maxX < 0) return new Resultado(null, colorUsado, null, "No encontré el producto: toda la foto parece fondo. Probá bajando la tolerancia.");
 
-        // ── 7. Sacar el reflejo verde/azul del contorno (spill) ──
+        // ── 7. Sacar el reflejo verde/azul (spill) ──
+        // En el contorno, todo. Adentro del producto, sólo en los colores CASI NEUTROS (blancos, grises,
+        // negros con un tinte verde de rebote de la tela: diferencia chica); un verde de verdad (etiqueta
+        // de matcha, pistacho) queda como está. ⚠ Un verde muy clarito (ej. syrup de pistacho transparente)
+        // puede salir algo blanqueado: es el precio de que los negros salgan negros y no verdosos.
         int banda = Math.Max(3, Math.Min(w, h) / 150);
         var dist = DistanciaAlFondo(alpha, w, h, banda);
         for (int i = 0; i < px.Length; i++)
         {
             if (alpha[i] <= 0f) continue;
             // 1 en el borde (y en lo semitransparente), 0 de la banda para adentro.
-            float k = Math.Max(1f - alpha[i], 1f - dist[i] / (float)banda);
+            float kBorde = Math.Max(1f - alpha[i], 1f - dist[i] / (float)banda);
+            double dPx = Dominancia(px[i], esVerde);
+            float kNeutro = dPx <= 0 ? 0f : (float)Math.Clamp(1 - (dPx - 20) / 35.0, 0, 1);
+            // El reflejo es un gris/negro/blanco con verde encima: los otros dos canales quedan PAREJOS.
+            // Un verde lima de etiqueta (Matcha) tiene rojo y azul muy distintos → no es reflejo, no se toca.
+            var cc = px[i];
+            int dispar = esVerde ? Math.Abs(cc.Red - cc.Blue) : Math.Abs(cc.Red - cc.Green);
+            kNeutro *= (float)Math.Clamp(1 - (dispar - 15) / 25.0, 0, 1);
+            float k = Math.Max(kBorde, kNeutro);
             if (k <= 0f) continue;
             px[i] = SacarReflejo(px[i], esVerde, Math.Min(1f, k));
         }
@@ -172,7 +192,7 @@ public static class FotoChromaService
         int r = c.Red, g = c.Green, b = c.Blue;
         if (verde)
         {
-            int tope = Math.Max(r, b);
+            int tope = (Math.Max(r, b) + (r + b) / 2) / 2;
             if (g <= tope) return c;
             int sacar = (int)((g - tope) * k);
             g -= sacar; int devolver = sacar / 3;
@@ -180,7 +200,7 @@ public static class FotoChromaService
         }
         else
         {
-            int tope = Math.Max(r, g);
+            int tope = (Math.Max(r, g) + (r + g) / 2) / 2;
             if (b <= tope) return c;
             int sacar = (int)((b - tope) * k);
             b -= sacar; int devolver = sacar / 3;
@@ -208,7 +228,7 @@ public static class FotoChromaService
             bool v = pedido == "verde";
             var l = v ? verdes : azules;
             if (l.Count > 0)
-                return (v, Prom(l), l.Count < 3 ? $"Sólo {l.Count} de las 4 esquinas son {pedido}s: revisá que la tela cubra toda la foto." : null);
+                return (v, Prom(l), l.Count < 3 ? $"Sólo {l.Count} de las 4 esquinas son {(v ? "verdes" : "azules")}: revisá que la tela cubra toda la foto." : null);
             // Ninguna esquina sirve: se usa un tono típico de tela chroma y se avisa.
             return (v, v ? new SKColor(40, 170, 70) : new SKColor(30, 70, 190),
                 $"Ninguna esquina de la foto es {pedido}: usé un {pedido} típico de tela chroma, el resultado puede no ser bueno.");
@@ -219,7 +239,7 @@ public static class FotoChromaService
         bool esVerde = verdes.Count >= azules.Count;
         var lista = esVerde ? verdes : azules;
         var color = esVerde ? "verde" : "azul";
-        return (esVerde, Prom(lista), lista.Count < 3 ? $"Sólo {lista.Count} de las 4 esquinas son {color}s: revisá que la tela cubra toda la foto." : null);
+        return (esVerde, Prom(lista), lista.Count < 3 ? $"Sólo {lista.Count} de las 4 esquinas son {(esVerde ? "verdes" : "azules")}: revisá que la tela cubra toda la foto." : null);
     }
 
     private static SKColor Mediana(SKColor[] px, int w, int x0, int y0, int lado)
