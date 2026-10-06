@@ -10,8 +10,10 @@ namespace Api.Services;
 /// en un solo resumen, con la serie de 12 meses, los rankings y los avisos.
 ///
 /// Reglas que se respetan para que los números coincidan con el resto del sistema:
-///  · Café: se excluyen las anuladas y las proformas YA convertidas en factura
-///    (FacturadaComoVentaId != null), si no la misma venta se contaría dos veces.
+///  · Café: se excluyen las anuladas. Una cotización convertida en factura se cuenta UNA
+///    vez, en la fecha de la COTIZACIÓN (cuando se vendió): la factura que salió de ella no
+///    cuenta mientras la cotización siga viva. 2026-10-06: antes contaba la factura, y una
+///    cotización de julio facturada en octubre pasaba sus kg a octubre.
 ///    Las notas de crédito (NCA/NCB/NCC) restan.
 ///  · MercadoLibre: cuentan las órdenes paid/shipped/delivered. El costo sale de la
 ///    MISMA receta que usa la pantalla de Publicaciones (MeliItemComponentes, dedupe
@@ -215,7 +217,7 @@ public class PanoramaService
             .MinAsync(o => (DateTime?)o.DateCreated, ct);
 
         var cafe = await _db.CafeVentas.AsNoTracking()
-            .Where(v => v.Estado != "anulado" && v.FacturadaComoVentaId == null
+            .Where(v => v.Estado != "anulado" && !(v.OrigenVentaId != null && _db.CafeVentas.Any(o => o.Id == v.OrigenVentaId && o.FacturadaComoVentaId == v.Id && o.Estado != "anulado"))
                         && !_db.CafeSaldosMigracion.Any(sm => sm.VentaId == v.Id))
             .MinAsync(v => (DateTime?)v.Fecha, ct);
 
@@ -413,12 +415,13 @@ public class PanoramaService
 
     // ── Frikaf (café, venta directa) ───────────────────────────────────────
     /// <summary>Ventas de café que cuentan como facturación real: sin anuladas y sin las
-    /// proformas que ya se convirtieron en factura (esas se cuentan una sola vez, en la factura).</summary>
+    /// facturas que salieron de convertir una cotización (esa venta se cuenta una sola vez, en la
+    /// cotización).</summary>
     private IQueryable<CafeVenta> VentasCafeBase(DateTime d, DateTime h) =>
         _db.CafeVentas.AsNoTracking()
             .Where(v => v.Estado != "anulado"
                         && v.Fecha >= d && v.Fecha < h
-                        && v.FacturadaComoVentaId == null
+                        && !(v.OrigenVentaId != null && _db.CafeVentas.Any(o => o.Id == v.OrigenVentaId && o.FacturadaComoVentaId == v.Id && o.Estado != "anulado"))
                         // Los saldos que se migraron del sistema viejo se guardaron como ventas,
                         // pero NO son ventas: es deuda que ya venía de antes. Contarlas inflaba
                         // enero 2026 en $19 M con "margen" del 100% y 0 kg de café.
@@ -521,7 +524,7 @@ public class PanoramaService
 
         // ── Café (cabecera) ──
         var cafe = await _db.CafeVentas.AsNoTracking()
-            .Where(v => v.Estado != "anulado" && v.FacturadaComoVentaId == null
+            .Where(v => v.Estado != "anulado" && !(v.OrigenVentaId != null && _db.CafeVentas.Any(o => o.Id == v.OrigenVentaId && o.FacturadaComoVentaId == v.Id && o.Estado != "anulado"))
                         && !_db.CafeSaldosMigracion.Any(sm => sm.VentaId == v.Id)
                         && v.Fecha >= iniVentana && v.Fecha < finVentana)
             .Select(v => new { v.Id, v.Fecha, v.Total, v.Margen, v.TipoComprobante, v.EntregaPor })
@@ -531,7 +534,7 @@ public class PanoramaService
         var kilos = await (
             from i in _db.CafeVentaItems.AsNoTracking()
             join v in _db.CafeVentas.AsNoTracking() on i.VentaId equals v.Id
-            where v.Estado != "anulado" && v.FacturadaComoVentaId == null
+            where v.Estado != "anulado" && !(v.OrigenVentaId != null && _db.CafeVentas.Any(o => o.Id == v.OrigenVentaId && o.FacturadaComoVentaId == v.Id && o.Estado != "anulado"))
                   && !_db.CafeSaldosMigracion.Any(sm => sm.VentaId == v.Id)
                   && v.Fecha >= iniVentana && v.Fecha < finVentana
                   && i.Categoria == "CAFE"

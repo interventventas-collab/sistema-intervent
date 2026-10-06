@@ -627,6 +627,22 @@
                                         📌
                                     </span>
                                     @v.Numero
+                                    @* 2026-10-06: cotización ↔ factura. La cotización facturada ya no es deuda (la deuda y los pagos
+                                       pasaron a la factura); se marca acá para que no la borren creyendo que está repetida. *@
+                                    @if (v.FacturadaComoVentaId.HasValue)
+                                    {
+                                        <div style="font-family:inherit; font-size:0.7rem; color:#6b7280; font-weight:600; margin-top:0.15rem;"
+                                             title="Esta cotización ya se pasó a factura. La deuda y los pagos están en la factura; esta queda de referencia y no hace falta borrarla.">
+                                            ya facturada → @NumeroDeVenta(v.FacturadaComoVentaId.Value)
+                                        </div>
+                                    }
+                                    else if (v.OrigenVentaId.HasValue)
+                                    {
+                                        <div style="font-family:inherit; font-size:0.7rem; color:#6b7280; font-weight:600; margin-top:0.15rem;"
+                                             title="Esta factura salió de convertir una cotización. Los kg y la venta se cuentan en la fecha de la cotización.">
+                                            de cotización @NumeroDeVenta(v.OrigenVentaId.Value)
+                                        </div>
+                                    }
                                     @* 2026-06-16: si la venta tiene CAE de ARCA, mostrar abajo el numero oficial (PtoVta-CbteNro). *@
                                     @if (v.ArcaCbteNro.HasValue)
                                     {
@@ -5263,6 +5279,12 @@
     }
 
     private List<CafeVentaDto>? ventas;
+    /// <summary>Número corto ("0958") de otra venta del listado, para los carteles cotización ↔ factura.</summary>
+    private string NumeroDeVenta(int id)
+    {
+        var n = ventas?.FirstOrDefault(x => x.Id == id)?.Numero;
+        return string.IsNullOrEmpty(n) ? $"#{id}" : n[(n.LastIndexOf('-') + 1)..];
+    }
     private Dictionary<int, decimal> saldosPorVenta = new();
 
     // Pin / nota tipo post-it
@@ -6031,6 +6053,10 @@
     // o cuando una FA/FB/FC quedo sin CAE (estado inconsistente). En esos casos, el boton verde
     // "Guardar cambios" se transforma en violeta "Emitir Factura X con CAE" y dispara conversion ARCA.
     private string? editingVentaTipoOriginal;
+    // 2026-10-06: fecha con la que se abrió la venta. Al "Emitir CAE" desde la edición, la cotización
+    // conserva SU fecha: la de hoy va sólo a la factura nueva (antes la cotización pasaba a hoy y
+    // quedaba al lado de su factura, parecía un duplicado y la borraban).
+    private DateTime? editingVentaFechaOriginal;
     private bool editingVentaTieneCae;
     private string? editingVentaArcaEstado;  // 2026-06-18: si la venta ya intento emitir y quedo "pendiente", no usar mi flujo (existe Reintentar emision)
     private string? editingVentaArcaError;   // 2026-08-31: motivo del rechazo de ARCA, para mostrarlo dentro de la edicion
@@ -8568,7 +8594,7 @@
                 // de ConvertirAFactura ya sabe revertir a X internamente si la venta llega como FA sin CAE.
                 var upd = await Api.UpdateCafeVentaAsync(editingVentaId.Value, new UpdateCafeVentaRequest
                 {
-                    Fecha = DateTime.SpecifyKind(formFecha, DateTimeKind.Unspecified),
+                    Fecha = DateTime.SpecifyKind(editingVentaFechaOriginal ?? formFecha, DateTimeKind.Unspecified),
                     ClienteId = formClienteId > 0 ? formClienteId : 0,
                     ClienteTipoOverride = formClienteId > 0 ? null : formClienteTipo,
                     Items = formItems,
@@ -11026,6 +11052,7 @@
         formClienteTipo = string.IsNullOrWhiteSpace(v.ClienteTipo) ? "OTRO" : v.ClienteTipo!;
         clienteSearch = ""; clienteSearchOpen = false;
         formFecha = v.Fecha;
+        editingVentaFechaOriginal = v.Fecha;
         formDescuento = v.Descuento;
         formObservaciones = v.Observaciones ?? "";
         formTipoComprobante = string.IsNullOrWhiteSpace(v.TipoComprobante) ? "X" : v.TipoComprobante;

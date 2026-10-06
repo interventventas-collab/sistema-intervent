@@ -67,7 +67,8 @@ public class CafeSaldosService
     /// con lo cobrado de cada una. clienteId null = todas.</summary>
     public async Task<List<VentaCuenta>> GetVentasCuentaAsync(int? clienteId = null, bool soloSinCliente = false)
     {
-        var q = _db.CafeVentas.Where(v => v.Estado != "anulado" && v.TipoComprobante != "PRO");
+        var q = _db.CafeVentas.Where(v => v.Estado != "anulado" && v.TipoComprobante != "PRO"
+                                           && v.FacturadaComoVentaId == null);  // la deuda vive en la factura
         if (soloSinCliente) q = q.Where(v => v.ClienteId == null);
         else if (clienteId.HasValue) q = q.Where(v => v.ClienteId == clienteId.Value);
         else q = q.Where(v => v.ClienteId != null);
@@ -86,7 +87,8 @@ public class CafeSaldosService
         // de la venta (no por una lista de ids) para no armar un IN gigante.
         var pagados = await _db.CafeCobranzasComprobantes
             .Where(c => c.VentaId != null && c.Cobranza!.Estado == "VIGENTE"
-                     && c.Venta!.Estado != "anulado" && c.Venta.TipoComprobante != "PRO")
+                     && c.Venta!.Estado != "anulado" && c.Venta.TipoComprobante != "PRO"
+                     && c.Venta.FacturadaComoVentaId == null)
             .GroupBy(c => c.VentaId!.Value)
             .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
             .ToListAsync();
@@ -286,7 +288,8 @@ public class CafeSaldosService
     public async Task<List<MovimientoCuenta>> GetMovimientosClienteAsync(int clienteId)
     {
         var ventas = await _db.CafeVentas
-            .Where(v => v.ClienteId == clienteId && v.Estado != "anulado" && v.TipoComprobante != "PRO")
+            .Where(v => v.ClienteId == clienteId && v.Estado != "anulado" && v.TipoComprobante != "PRO"
+                     && v.FacturadaComoVentaId == null)
             .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante })
             .ToListAsync();
 
@@ -295,7 +298,8 @@ public class CafeSaldosService
         var imputaciones = await _db.CafeCobranzasComprobantes
             .Where(cc => cc.Cobranza!.Estado == "VIGENTE"
                 && ((cc.VentaId != null && cc.Venta!.ClienteId == clienteId
-                     && cc.Venta.Estado != "anulado" && cc.Venta.TipoComprobante != "PRO")
+                     && cc.Venta.Estado != "anulado" && cc.Venta.TipoComprobante != "PRO"
+                     && cc.Venta.FacturadaComoVentaId == null)
                     || (cc.VentaId == null && cc.ReservaId == null && cc.Cobranza.ClienteId == clienteId)))
             .Select(cc => new
             {

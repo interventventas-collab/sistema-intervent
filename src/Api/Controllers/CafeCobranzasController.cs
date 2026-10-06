@@ -262,7 +262,9 @@ public class CafeCobranzasController : ControllerBase
         var ventas = await _db.CafeVentas
             // 2026-07-14: los PRESUPUESTOS (PRO) no se pueden cobrar — son solo un precio, no una venta real.
             .Where(v => v.ClienteId != null && clienteIds.Contains(v.ClienteId!.Value) && v.Estado != "anulado"
-                     && v.TipoComprobante != "PRO")
+                     && v.TipoComprobante != "PRO"
+                     // 2026-10-06: la cotización ya facturada no se cobra: se cobra su factura.
+                     && v.FacturadaComoVentaId == null)
             .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro })
             .ToListAsync();
 
