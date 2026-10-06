@@ -137,6 +137,16 @@
                             @onclick="() => ElegirTipo(tpSel)">@(tpSel == "MIXTO" ? "Mixto" : tpSel)</button>
                 }
             </div>
+            @* 2026-10-06: qué se cobró — para ver aparte lo que entró por máquinas o alquileres. *@
+            <div style="display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center;">
+                <span style="font-size: 0.7rem; color: #6b7280; font-weight: 600; min-width: 70px;">¿Qué se cobró?</span>
+                @foreach (var (val, txt) in OpcionesQueSeCobro)
+                {
+                    var vSel = val;
+                    <button class="btn @(filtroQue == vSel ? "btn-primary" : "btn-secondary")" style="padding:.2rem .6rem; font-size:.8rem;"
+                            @onclick="() => filtroQue = vSel">@txt</button>
+                }
+            </div>
             @if (filtroTipo == TipoRedirigido)
             {
                 <div style="display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center;">
@@ -228,6 +238,15 @@
                                         <span style="font-size:0.7rem; padding:.05rem .35rem; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:4px; font-family:monospace;">@nro</span>
                                     }
                                 </div>
+                            }
+                            @* 2026-10-06: lo cobrado que no es mercadería (cuota de máquina, alquiler). Antes no se veía nada
+                               y el cobro parecía "a cuenta". *@
+                            @if (c.Aplicaciones is { Count: > 0 })
+                            {
+                                @foreach (var ap in c.Aplicaciones)
+                                {
+                                    <div style="font-size:0.75rem; color:#4b5563; margin-top:.25rem;">@ap</div>
+                                }
                             }
                         </div>
 
@@ -632,6 +651,15 @@
                                     <tr><th></th><th>Número</th><th>Fecha</th><th style="text-align:right;">Saldo</th><th style="text-align:right;">A cobrar</th></tr>
                                 </thead>
                                 <tbody>
+                                    @* 2026-10-06: si el cliente también tiene máquina financiada, la tabla se parte en dos
+                                       grupos con título (sin colores nuevos) para no mezclar la cuota con la mercadería. *@
+                                    @if (maquinasPend.Count > 0 && ComprobantesACobrar.Count > 0)
+                                    {
+                                        <tr><td colspan="5" style="font-size:0.78rem; font-weight:700; color:#374151; padding-top:0.5rem; border-bottom:1px solid #e5e7eb;">
+                                            📦 @(ComprobantesACobrar.Any(x => x.EsAlquiler) ? "Mercadería y alquileres" : "Mercadería")
+                                            <span style="font-weight:400; color:#6b7280;">· debe $@ComprobantesACobrar.Sum(x => x.Saldo).ToString("N2")</span>
+                                        </td></tr>
+                                    }
                                     @foreach (var p in ComprobantesACobrar)
                                     {
                                         <tr>
@@ -669,6 +697,12 @@
                                     @* 2026-10-06: cuotas de MÁQUINA FINANCIADA del cliente. Se cobran en el mismo recibo que
                                        las facturas; la plata entra a la caja que se elija abajo. Si la máquina es en dólares
                                        se escribe en USD y se pasa a pesos con el "Dólar del día". *@
+                                    @if (maquinasPend.Count > 0)
+                                    {
+                                        <tr><td colspan="5" style="font-size:0.78rem; font-weight:700; color:#374151; padding-top:0.7rem; border-bottom:1px solid #e5e7eb;">
+                                            ☕ Máquina financiada <span style="font-weight:400; color:#6b7280;">· aparte de la mercadería</span>
+                                        </td></tr>
+                                    }
                                     @foreach (var mq in maquinasPend)
                                     {
                                         var mid = mq.ComodatoId;
@@ -704,6 +738,13 @@
                                     }
                                 </tbody>
                             </table>
+                            @if (maquinasPend.Count > 0 && TotalMaquinas > 0.01m)
+                            {
+                                var merc = imputaciones.Where(kv => kv.Value.Seleccionado).Sum(kv => kv.Value.Importe);
+                                <div style="font-size:0.8rem; color:#374151; margin:0 0 0.5rem;">
+                                    Mercadería: <b>$@merc.ToString("N2")</b> · Máquina: <b>$@TotalMaquinas.ToString("N2")</b> · Total: <b>$@((merc + TotalMaquinas).ToString("N2"))</b>
+                                </div>
+                            }
                             @if (HayMaquinaUsdTildada)
                             {
                                 <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin:0 0 0.5rem; font-size:0.85rem; color:#374151;">
@@ -1484,7 +1525,13 @@
     private decimal? filtroMontoMin;
     private decimal? filtroMontoMax;
     private string filtroTipo = "";     // "" = todas; si no, el FormaPago ("Banco", "Cheque", "MIXTO"...) o "Redirigido"
-    private string filtroRedirA = "";   // solo con filtroTipo == Redirigido: "" = todos, si no un destino ("Walter · viajes")
+    private string filtroRedirA = "";
+    // 2026-10-06: "" = todo; si no MERCADERIA | ALQUILER | MAQUINA (CobranzaListDto.QueSeCobro).
+    private string filtroQue = "";
+    private static readonly (string, string)[] OpcionesQueSeCobro =
+        { ("", "Todo"), ("MERCADERIA", "Mercadería"), ("ALQUILER", "Alquileres"), ("MAQUINA", "Máquinas") };
+    private static bool CobroDe(CobranzaListDto c, string que) =>
+        (c.QueSeCobro ?? "").Split(',').Contains(que);   // solo con filtroTipo == Redirigido: "" = todos, si no un destino ("Walter · viajes")
 
     private const string TipoRedirigido = "Redirigido";
     private static readonly string[] OrdenTipos = { "Banco", "Transfer.", "Cheque", "Efectivo", "MercadoPago", "Tarjeta", TipoRedirigido, "MIXTO" };
@@ -1524,7 +1571,7 @@
         || filtroEstado != "VIGENTE"
         || filtroRetenciones != "TODOS"
         || filtroMontoMin.HasValue || filtroMontoMax.HasValue
-        || filtroTipo != "";
+        || filtroTipo != "" || filtroQue != "";
 
     private void LimpiarFiltros()
     {
@@ -1537,6 +1584,7 @@
         filtroMontoMax = null;
         filtroTipo = "";
         filtroRedirA = "";
+        filtroQue = "";
     }
 
     /// <summary>Aplica los filtros activos a la lista de cobranzas. Se llama desde el render.</summary>
@@ -1566,7 +1614,8 @@
                 || (c.ClienteFantasia ?? "").ToUpperInvariant().Contains(t)
                 || (c.ClienteEntrega ?? "").ToUpperInvariant().Contains(t)
                 || (c.ClienteCodigo.HasValue && c.ClienteCodigo.Value.ToString().Contains(t))
-                || (c.Comprobantes != null && c.Comprobantes.Any(nro => (nro ?? "").ToUpperInvariant().Contains(t))));
+                || (c.Comprobantes != null && c.Comprobantes.Any(nro => (nro ?? "").ToUpperInvariant().Contains(t)))
+                || (c.Aplicaciones != null && c.Aplicaciones.Any(a => a.ToUpperInvariant().Contains(t))));
         }
 
         // Retenciones
@@ -1585,6 +1634,8 @@
         }
         else if (filtroTipo != "") q = q.Where(c => c.FormaPago == filtroTipo);
 
+        if (filtroQue != "") q = q.Where(c => CobroDe(c, filtroQue));
+
         return q.ToList();
     }
 
@@ -1592,10 +1643,15 @@
     private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
     private static string Esc(string? s) => string.IsNullOrEmpty(s) ? "" : s.Replace(";", ",").Replace("\n", " ").Replace("\r", " ");
 
-    private static string ComprobantesTexto(CobranzaListDto c) =>
-        c.ComprobantesInfo is { Count: > 0 }
-            ? string.Join(" / ", c.ComprobantesInfo.Select(ci => EsFacturaArca(ci) ? $"{ci.Numero} ({FacturaLabel(ci)})" : ci.Numero))
-            : string.Join(" / ", c.Comprobantes ?? new());
+    private static string ComprobantesTexto(CobranzaListDto c)
+    {
+        var ventas = c.ComprobantesInfo is { Count: > 0 }
+            ? c.ComprobantesInfo.Select(ci => EsFacturaArca(ci) ? $"{ci.Numero} ({FacturaLabel(ci)})" : ci.Numero)
+            : (c.Comprobantes ?? new()).AsEnumerable();
+        // 2026-10-06: + cuotas de máquina y alquileres (sin el emoji, que el PDF no lo dibuja).
+        var otros = (c.Aplicaciones ?? new()).Select(a => a.Replace("☕ ", "").Replace("🎪 ", ""));
+        return string.Join(" / ", ventas.Concat(otros));
+    }
 
     /// <summary>Texto con los filtros puestos, para el encabezado del PDF.</summary>
     private string DescripcionFiltros()
@@ -1605,6 +1661,7 @@
             p.Add($"Fechas: {filtroFechaDesde?.ToString("dd/MM/yyyy") ?? "…"} al {filtroFechaHasta?.ToString("dd/MM/yyyy") ?? "…"}");
         if (filtroTipo != "") p.Add("Tipo: " + (filtroTipo == "MIXTO" ? "Mixto" : filtroTipo));
         if (filtroRedirA != "") p.Add("A quién fue: " + filtroRedirA);
+        if (filtroQue != "") p.Add("Qué se cobró: " + OpcionesQueSeCobro.First(o => o.Item1 == filtroQue).Item2);
         if (!string.IsNullOrWhiteSpace(filtroBuscar)) p.Add($"Buscar: \"{filtroBuscar.Trim()}\"");
         if (filtroEstado != "VIGENTE") p.Add("Estado: " + (filtroEstado == "ANULADA" ? "Anuladas" : "Todas"));
         if (filtroRetenciones != "TODOS") p.Add(filtroRetenciones == "CON" ? "Con retenciones" : "Sin retenciones");
