@@ -4321,7 +4321,7 @@
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Cond. IVA del receptor</label>
-                        <select class="form-input" @bind="convertirCondIva">
+                        <select class="form-input" @bind="convertirCondIva" @bind:after="AcomodarLetraConvertir">
                             <option value="RI">Responsable Inscripto</option>
                             <option value="MO">Monotributo</option>
                             <option value="EX">Exento</option>
@@ -4333,7 +4333,7 @@
                 {
                     <div class="form-group" style="margin-top: 0.6rem;">
                         <label class="form-label">🏢 ¿Con qué empresa facturás?</label>
-                        <select class="form-input" @bind="convertirArcaAccountId">
+                        <select class="form-input" @bind="convertirArcaAccountId" @bind:after="AcomodarLetraConvertir">
                             @foreach (var acc in arcaAccounts)
                             {
                                 <option value="@acc.Id">@ArcaAccountLabel(acc)</option>
@@ -8527,13 +8527,22 @@
     {
         convirtiendo = v;
         convirtiendoDesdeEdicion = false;
-        // Sugerimos FB por default (lo más común). El usuario puede elegir FA si el receptor es RI.
-        convertirTipoFactura = "FB";
         // La condición IVA del receptor: si la venta original tiene una válida la usamos, sino RI default
         convertirCondIva = !string.IsNullOrWhiteSpace(v.CondicionIva) && v.CondicionIva != "CF" ? v.CondicionIva : "RI";
         // Multi-sociedad: heredar la empresa de la proforma si tenía; sino el default (CUIT del negocio).
         convertirArcaAccountId = v.ArcaWebserviceAccountId ?? DefaultArcaAccountId();
+        // 2026-10-06: la letra sale de la misma regla que Nueva Venta (antes arrancaba SIEMPRE en B,
+        // aunque el cliente fuera inscripto: casi se le hace una B a Apolo, que es RI).
+        AcomodarLetraConvertir();
         convertirError = null;
+    }
+
+    /// <summary>Emisor monotributo → C; emisor inscripto + cliente inscripto → A; si no → B.
+    /// Misma regla que Nueva Venta (botón FACTURA del chat y OnArcaAccountChanged).</summary>
+    private void AcomodarLetraConvertir()
+    {
+        if (!EmisorEsResponsableInscripto(convertirArcaAccountId)) convertirTipoFactura = "FC";
+        else convertirTipoFactura = convertirCondIva == "RI" ? "FA" : "FB";
     }
 
     private void CloseConvertirAFacturaModal()
