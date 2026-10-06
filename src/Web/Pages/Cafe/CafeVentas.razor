@@ -6286,8 +6286,45 @@
     private async Task BonifAgregarRegalo(int cantidad)
     {
         if (bonifVenta?.Plan?.ProductoRegaloId is not int rid || cantidad <= 0) return;
-        formItems.Add(new CafeCotizarItemRequest { ProductoId = rid, Formato = "UNIT", Cantidad = cantidad, DescuentoPct = 100m });
+        formItems.Add(new CafeCotizarItemRequest { ProductoId = rid, Formato = "UNIT", Cantidad = cantidad, DescuentoPct = 100m,
+            DescripcionOverride = BonifNombre(rid, BonifLeyendaRegalo()) });
         await Cotizar();
+    }
+
+    // 2026-10-06: Osmar — que el renglón bonificado diga solo por qué está a $0, como él lo escribía
+    // a mano ("Cafe Blend Premium (bonificacion x consumo mes anterior)"). Va en el comprobante.
+    private static readonly string[] BonifMeses =
+        { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
+
+    private string? BonifNombre(int productoId, string leyenda)
+    {
+        var nombre = productos?.FirstOrDefault(x => x.Id == productoId)?.Nombre;
+        return string.IsNullOrWhiteSpace(nombre) ? null : $"{nombre.Trim()} ({leyenda})";
+    }
+
+    /// <summary>Edulcorante: "bonificación 1 cada 5 kg de café".</summary>
+    private string BonifLeyendaRegalo()
+    {
+        var p = bonifVenta!.Plan!;
+        return $"bonificación {p.CantidadRegalo} cada {BonifKgTxt(p.KgPorRegalo)} kg de café";
+    }
+
+    /// <summary>Café: "bonificación por consumo septiembre 2026" — los meses cerrados que tienen
+    /// kg sin dar; si no se puede saber, el mes anterior.</summary>
+    private string BonifLeyendaKg()
+    {
+        var meses = (bonifVenta?.Meses ?? new())
+            .Where(m => m.Cerrado && m.KgOtorgado - m.KgEntregados > 0)
+            .OrderBy(m => m.Anio).ThenBy(m => m.Mes).ToList();
+        if (meses.Count == 0)
+        {
+            var ant = DateTimeExt.AhoraAr().AddMonths(-1);
+            return $"bonificación por consumo {BonifMeses[ant.Month - 1]} {ant.Year}";
+        }
+        var partes = meses.Select((m, i) =>
+            i == meses.Count - 1 || meses[i + 1].Anio != m.Anio ? $"{BonifMeses[m.Mes - 1]} {m.Anio}" : BonifMeses[m.Mes - 1]).ToList();
+        var txt = partes.Count == 1 ? partes[0] : string.Join(", ", partes.Take(partes.Count - 1)) + " y " + partes[^1];
+        return $"bonificación por consumo {txt}";
     }
 
     /// <summary>Agrega los kg a favor del café del plan al 100%: los kilos enteros en 1 kg y el
@@ -6298,10 +6335,12 @@
         var kg = BonifKgAFavorRestante;
         if (kg <= 0) return;
         var modelo = formItems.LastOrDefault(i => i.ProductoId == p.ProductoKgId && i.DescuentoPct < 100);
+        var leyenda = BonifNombre(p.ProductoKgId, BonifLeyendaKg());
         void Add(string formato, int cant) => formItems.Add(new CafeCotizarItemRequest
         {
             ProductoId = p.ProductoKgId, Formato = formato, Cantidad = cant, DescuentoPct = 100m,
-            Molienda = modelo?.Molienda, EsDoyPack = modelo?.EsDoyPack ?? false, EsEnvasePlateado = modelo?.EsEnvasePlateado ?? false
+            Molienda = modelo?.Molienda, EsDoyPack = modelo?.EsDoyPack ?? false, EsEnvasePlateado = modelo?.EsEnvasePlateado ?? false,
+            DescripcionOverride = leyenda
         });
         var enteros = (int)Math.Floor(kg);
         var resto = kg - enteros;
@@ -9806,6 +9845,7 @@
     {
         if (idx < 0 || idx >= formItems.Count) return;
         var v = (value ?? "").Trim();
+        pactadoNombreTocado.Add(formItems[idx]);
         var nombreOriginal = cotizacion?.Items[idx].ProductoNombre?.Trim() ?? "";
         if (string.IsNullOrEmpty(v) || string.Equals(v, nombreOriginal, StringComparison.Ordinal))
             formItems[idx].DescripcionOverride = null;
@@ -9818,6 +9858,7 @@
     private void ClearItemDescripcion(int idx)
     {
         if (idx < 0 || idx >= formItems.Count) return;
+        pactadoNombreTocado.Add(formItems[idx]);
         formItems[idx].DescripcionOverride = null;
         StateHasChanged();
     }
@@ -10054,9 +10095,33 @@
             });
         }
         catch (Exception ex) { ToastService.Error("Error al cotizar: " + ex.Message); }
+        AplicarLeyendaPactado();
         // Auto-save del borrador después de cada cotización — ahí tenemos el total fresco
         // para mostrar en el banner si después se restaura. Fire-and-forget.
         _ = SaveBorradorAsync();
+    }
+
+    // 2026-10-06: Osmar — el renglón con precio pactado dice "(precio especial pactado)", igual que
+    // los bonificados dicen su bonificación. Lo decide el backend (EsPrecioEspecial: hay pacto y nadie
+    // pisó el precio a mano). Si después le cambian el precio, la leyenda se va sola. Solo ventas
+    // nuevas: al editar una vieja no se le agrega. Si el operador la borra o cambia el nombre, se respeta.
+    private const string LeyendaPactado = " (precio especial pactado)";
+    private readonly HashSet<CafeCotizarItemRequest> pactadoNombreTocado = new(ReferenceEqualityComparer.Instance);
+
+    private void AplicarLeyendaPactado()
+    {
+        if (cotizacion is null || editingVentaId != null || cotizacion.Items.Count != formItems.Count) return;
+        for (var i = 0; i < formItems.Count; i++)
+        {
+            var fi = formItems[i];
+            var ci = cotizacion.Items[i];
+            if (pactadoNombreTocado.Contains(fi) || string.IsNullOrWhiteSpace(ci.ProductoNombre)) continue;
+            var conLeyenda = ci.ProductoNombre.Trim() + LeyendaPactado;
+            if (ci.EsPrecioEspecial && string.IsNullOrWhiteSpace(fi.DescripcionOverride))
+                fi.DescripcionOverride = conLeyenda;
+            else if (!ci.EsPrecioEspecial && fi.DescripcionOverride == conLeyenda)
+                fi.DescripcionOverride = null;
+        }
     }
 
     /// <summary>Genera un PDF de PREVIEW con los datos del modal sin guardar la venta.
