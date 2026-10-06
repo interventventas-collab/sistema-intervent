@@ -447,6 +447,7 @@
                     <option value="TODOS">Todos</option>
                     <option value="emitido">Emitida</option>
                     <option value="anulado">Anulada</option>
+                    <option value="facturada">Cotizaciones ya facturadas</option>
                 </select>
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
@@ -794,6 +795,11 @@
                                         {
                                             <div style="font-size:0.65rem; color:#b45309; font-weight:700; margin-top:0.1rem;">Saldo a favor: $@FormatMoney(creditoRestante)</div>
                                         }
+                                    }
+                                    else if (v.FacturadaComoVentaId.HasValue)
+                                    {
+                                        @* La plata y la deuda pasaron a la factura: acá no hay saldo. *@
+                                        <div style="font-size:0.7rem; color:#6b7280; font-weight:700; margin-top:0.15rem;">Facturada</div>
                                     }
                                     else if (!anulada)
                                     {
@@ -5429,7 +5435,7 @@
     private string filtroTipo = "TODOS";       // TODOS | X | PRO | FA | FB | FC
     // True cuando la URL es /cafe/presupuestos → fuerza vista filtrada a PRO y cambia textos
     private bool ModoPresupuestos => Navigation.Uri.Contains("/cafe/presupuestos", StringComparison.OrdinalIgnoreCase);
-    private string filtroEstado = "TODOS";     // TODOS | emitido | anulado
+    private string filtroEstado = "TODOS";     // TODOS | emitido | anulado | facturada (cotizaciones ya facturadas)
     private string filtroCae = "TODOS";        // TODOS | CON_CAE | SIN_CAE | PENDIENTE
     private string filtroSaldo = "TODOS";      // TODOS | CON_SALDO | SIN_SALDO
     // 2026-06-08: filtro por repartidor (matchea EscaneadoPorRepartidorNombre o EntregadoPorRepartidorNombre).
@@ -5493,7 +5499,14 @@
             // 2026-07-14: en la solapa VENTAS no mostramos los PRESUPUESTOS (PRO) — viven en su
             // propia solapa "Presupuestos". Un presupuesto no es una venta real hasta que se aprueba.
             if (!ModoPresupuestos) q = q.Where(v => v.TipoComprobante != "PRO");
-            if (filtroEstado != "TODOS") q = q.Where(v => v.Estado == filtroEstado);
+            // 2026-10-06: la cotización ya facturada la reemplaza su factura → no se lista (queda
+            // guardada como respaldo: si la factura se anula, vuelve). Se ven con Estado = "facturada".
+            if (filtroEstado == "facturada") q = q.Where(v => v.FacturadaComoVentaId.HasValue);
+            else
+            {
+                q = q.Where(v => !v.FacturadaComoVentaId.HasValue);
+                if (filtroEstado != "TODOS") q = q.Where(v => v.Estado == filtroEstado);
+            }
             if (filtroCae == "CON_CAE") q = q.Where(v => v.ArcaEstado == "autorizado");
             else if (filtroCae == "SIN_CAE") q = q.Where(v => v.ArcaEstado == "no_aplica");
             else if (filtroCae == "PENDIENTE") q = q.Where(v => v.ArcaEstado == "pendiente");
