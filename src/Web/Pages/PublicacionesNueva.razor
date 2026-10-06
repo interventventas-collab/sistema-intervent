@@ -1909,6 +1909,14 @@
                 <button class="p2-ac meli" @onclick="() => AccObjetivo(true)" disabled="@accionEnCurso"
                         title="Publica una vez el precio que deja el objetivo (nunca abajo del OEM). Queda fijo: el sistema no lo vuelve a tocar.">🎯 Aplicar objetivo y publicar</button>
                 <button class="p2-ac meli" @onclick="AccPrecio" disabled="@accionEnCurso">💵 Publicar precio</button>
+
+                @* 2026-10-06: Osmar — "tildar varias y ponerles el mismo precio a todas" (ej. los 4 colores
+                   de un embudo). Hace lo mismo que el lápiz ✎ de cada fila, una por una: queda FIJO. *@
+                <span class="p2-ac-obj" title="Precio igual para todas las tildadas">
+                    $ <input type="text" inputmode="decimal" style="width:70px" placeholder="3.999" @bind="precioLote" />
+                </span>
+                <button class="p2-ac meli" @onclick="AccPrecioIgual" disabled="@accionEnCurso"
+                        title="Publica este mismo precio en todas las tildadas, igual que el lápiz ✎ de cada fila. Queda fijo: el sistema no lo cambia solo.">✎ Poner este precio a las tildadas</button>
                 <button class="p2-ac meli" @onclick="AccStock" disabled="@accionEnCurso">📦 Mandar stock</button>
 
                 @* 2026-09-04: duplicar las tildadas a la otra cuenta de MeLi (solo si hay dos conectadas). *@
@@ -2374,6 +2382,38 @@
     private Task AccPrecio()
         => Correr("publicando precios…", l => Api.AccionPrecioAsync(l), true,
             $"Esto va a publicar en MercadoLibre el precio que calcula el sistema para {tildadas.Count} publicaciones. ¿Seguro?");
+
+    // 2026-10-06 · mismo precio a todas las tildadas. Va de a una por el mismo camino que el lápiz ✎
+    // de la fila (queda fijo, guarda historial), así no hace falta tocar la API.
+    private string precioLote = "";
+
+    private async Task AccPrecioIgual()
+    {
+        if (!TryPrecio(precioLote, out var precio) || precio <= 0)
+        {
+            ToastService.Error("Escribí el precio en el casillero $ de abajo.");
+            return;
+        }
+        // Las que están en una promo pierden el descuento al cambiarles el precio: se avisa cuántas.
+        var enPromo = datos?.Items.Where(i => tildadas.Contains(i.MeliItemId) && i.PromoPrecio is > 0)
+            .Select(i => i.MeliItemId).Distinct().Count() ?? 0;
+        var avisoPromo = enPromo == 0 ? ""
+            : $"\n\nOJO: {enPromo} de ellas está(n) en una promoción. Al cambiarles el precio MercadoLibre les SACA el descuento.";
+
+        await Correr($"publicando ${precio:N0} en cada una…", async l =>
+        {
+            var detalle = new List<ApiClient.PubV2AccionFila>();
+            int ok = 0, errores = 0;
+            foreach (var mla in l)
+            {
+                var (res, err) = await Api.PonerPrecioV2Async(mla, precio, quedaFijo: true);
+                if (res?.Ok == true) { ok++; detalle.Add(new ApiClient.PubV2AccionFila(mla, true, res.Mensaje)); }
+                else { errores++; detalle.Add(new ApiClient.PubV2AccionFila(mla, false, res?.Mensaje ?? err ?? "no se pudo publicar")); }
+            }
+            return new ApiClient.PubV2AccionResultado(l.Count, ok, errores, detalle);
+        }, true,
+            $"Esto va a poner ${precio:N0} en MercadoLibre a las {tildadas.Count} publicaciones tildadas. El precio queda fijo.{avisoPromo}\n\n¿Seguro?");
+    }
 
     private Task AccStock()
         => Correr("mandando stock…", l => Api.AccionStockAsync(l), true,
