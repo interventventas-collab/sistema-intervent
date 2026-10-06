@@ -117,7 +117,12 @@ public class CafeCobranzasController : ControllerBase
         string? RedirigidoA = null,
         // 01/10/2026: si el cheque de esta cobranza se endoso a un proveedor, a quien y con que pago
         // (ej "COLOMBRARO HERMANOS S.A. · OP-00000032").
-        string? EndosadoA = null);
+        string? EndosadoA = null,
+        // 2026-10-06: a qué se aplicó lo que NO es venta (antes el listado sólo mostraba ventas y un
+        // cobro de máquina o de alquiler parecía "a cuenta"). Ej "☕ Cuota de máquina: … · le falta $656.000".
+        List<string>? Aplicaciones = null,
+        // Qué se cobró, para el filtro: "MERCADERIA", "ALQUILER", "MAQUINA" separados por coma.
+        string? QueSeCobro = null);
 
     public record CobranzaComprobanteChip(
         string Numero,               // ej "CAFE-2026-0888"
@@ -434,6 +439,17 @@ public class CafeCobranzasController : ControllerBase
                     .Where(cc => cc.Venta != null)
                     .Select(cc => cc.Venta!.Numero)
                     .ToList(),
+                // 2026-10-06: alquileres y cuotas de máquina cobrados (no son ventas).
+                AlquileresAplicados = c.Comprobantes
+                    .Where(cc => cc.Reserva != null)
+                    .Select(cc => cc.Reserva!.Numero)
+                    .ToList(),
+                MaquinasAplicadas = c.Comprobantes
+                    .Where(cc => cc.Comodato != null)
+                    .Select(cc => new { cc.Comodato!.Marca, cc.Comodato.Modelo, cc.Comodato.Moneda,
+                                        cc.Importe, cc.ImporteUsd, cc.Comodato.SaldoFinanciamiento })
+                    .ToList(),
+                TieneVenta = c.Comprobantes.Any(cc => cc.VentaId != null),
                 // 2026-07-03: info rica de cada comprobante (numero interno + factura ARCA cuando aplica).
                 ComprobantesRich = c.Comprobantes
                     .Where(cc => cc.Venta != null)
@@ -569,6 +585,27 @@ public class CafeCobranzasController : ControllerBase
                 .Select(m => endosos[m.ChequeId!.Value]).Distinct().ToList();
             pendMap.TryGetValue(r.Id, out var pend);
 
+            // 2026-10-06: renglones de lo cobrado que no es mercadería. El "le falta" es el saldo de HOY de la máquina.
+            var ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+            var aplicaciones = r.AlquileresAplicados.Distinct().Select(n => $"🎪 Alquiler {n}")
+                .Concat(r.MaquinasAplicadas.Select(m =>
+                {
+                    var usd = string.Equals(m.Moneda, "USD", StringComparison.OrdinalIgnoreCase);
+                    var importe = usd && m.ImporteUsd is decimal u ? $"USD {u.ToString("N0", ar)}" : $"${m.Importe.ToString("N0", ar)}";
+                    var falta = (m.SaldoFinanciamiento ?? 0m) <= 0.01m ? "ya la terminó de pagar"
+                        : usd ? $"hoy le falta USD {(m.SaldoFinanciamiento ?? 0m).ToString("N0", ar)}"
+                              : $"hoy le falta ${(m.SaldoFinanciamiento ?? 0m).ToString("N0", ar)}";
+                    var nombre = CafeComodatoSaldoService.Nombre(m.Marca, m.Modelo);
+                    if (nombre.StartsWith("Máquina ")) nombre = nombre["Máquina ".Length..];
+                    return $"☕ Cuota de máquina: {nombre} · {importe} · {falta}";
+                })).ToList();
+            var queSeCobro = string.Join(",", new[]
+            {
+                r.TieneVenta ? "MERCADERIA" : null,
+                r.AlquileresAplicados.Count > 0 ? "ALQUILER" : null,
+                r.MaquinasAplicadas.Count > 0 ? "MAQUINA" : null,
+            }.Where(x => x is not null));
+
             return new CobranzaListDto(
                 r.Id, r.Numero, r.Fecha, r.ClienteId,
                 r.ClienteNombreReal ?? (!string.IsNullOrWhiteSpace(r.VentaSnapshot) ? r.VentaSnapshot + " (ocasional)" : "—"),
@@ -586,7 +623,9 @@ public class CafeCobranzasController : ControllerBase
                 pend?.RevisadaPor,
                 pend?.RevisadaAt,
                 redirTxt.Count > 0 ? string.Join(" / ", redirTxt) : null,
-                endTxt.Count > 0 ? string.Join(" / ", endTxt) : null);
+                endTxt.Count > 0 ? string.Join(" / ", endTxt) : null,
+                aplicaciones.Count > 0 ? aplicaciones : null,
+                queSeCobro.Length > 0 ? queSeCobro : null);
         }).ToList();
         return Ok(list);
     }

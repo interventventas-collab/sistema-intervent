@@ -576,6 +576,10 @@ public class CobranzaListDto
     public string? RedirigidoA { get; set; }
     /// <summary>01/10/2026: si el cheque de la cobranza se endoso, a quien y con que pago.</summary>
     public string? EndosadoA { get; set; }
+    /// <summary>2026-10-06: lo cobrado que no es mercadería ("☕ Cuota de máquina: … · hoy le falta $X", "🎪 Alquiler RES-…").</summary>
+    public List<string>? Aplicaciones { get; set; }
+    /// <summary>2026-10-06: "MERCADERIA,ALQUILER,MAQUINA" (lo que haya), para el filtro "¿Qué se cobró?".</summary>
+    public string? QueSeCobro { get; set; }
     // 2026-07-03: chips ricos + trazabilidad.
     public List<CobranzaComprobanteChip>? ComprobantesInfo { get; set; }
     public string? CargoPorNombre { get; set; }
