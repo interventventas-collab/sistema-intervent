@@ -25,14 +25,21 @@ public static class MeliComisionHelper
         if (string.IsNullOrWhiteSpace(installmentTag)) return 0m;
         var lower = installmentTag.ToLowerInvariant();
 
+        // 2026-10-07: MeLi SUBIÓ el recargo por cuotas y la tabla vieja (19,2 / 12,3 / 8,4) daba un
+        // "Recibís" más alto que el real. Valores cotejados contra lo que cobró Mercado Pago en ventas
+        // reales (MeliOrders.FinComision, ventas > $34.000 sin cargo fijo) y contra el panel de MeLi:
+        //   12 cuotas 21,6 (venta 17/09 de $308.241; panel del armario C9305GR: 35,6% = 14 + 21,6)
+        //   6 cuotas  13,4 (= lo que devuelve listing_prices para Premium sin etiqueta)
+        //   3 cuotas  8,9  (ventas desde 05/09; hasta el 31/08 era 8,4)
+        //   9 cuotas  15,7 SIN VERIFICAR: no hubo ventas de 9 cuotas para cotejar.
         // 12 cuotas
-        if (lower.Contains("12x_campaign")) return 19.2m;
+        if (lower.Contains("12x_campaign")) return 21.6m;
         // 9 cuotas
         if (lower.Contains("9x_campaign")) return 15.7m;
         // 6 cuotas
-        if (lower.Contains("6x_campaign")) return 12.3m;
+        if (lower.Contains("6x_campaign")) return 13.4m;
         // 3 cuotas
-        if (lower.Contains("3x_campaign")) return 8.4m;
+        if (lower.Contains("3x_campaign")) return 8.9m;
         // Programa cuotas con interés bajo (3 a 12)
         if (lower.Contains("pcj-co-funded") || lower.Contains("co-funded")) return 5m;
 
