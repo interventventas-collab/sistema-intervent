@@ -359,7 +359,9 @@ public class CafeVentasController : ControllerBase
         rechazadoPorRepartidorNombre,
         rechazoMotivo,
         envios,
-        v.LeyendaMaquinas);
+        v.LeyendaMaquinas,
+        v.ComentarioEntrega,
+        v.NombreReceptor);
 
     /// <summary>2026-10-06: limpia la leyenda de máquinas que manda Nueva Venta: renglones sin espacios
     /// de más, sin renglones vacíos y como mucho 1000 caracteres (lo que entra en la columna).</summary>

@@ -554,7 +554,11 @@ public record CafeVentaDto(
     // cartelitos 📧/📱 del listado. Vacío = nunca se mandó (o es una venta anterior a esto).
     List<CafeVentaEnvioDto>? Envios = null,
     // 2026-10-06: renglones de máquinas (comodato / financiada) que salen en el comprobante.
-    string? LeyendaMaquinas = null);
+    string? LeyendaMaquinas = null,
+    // 2026-10-07: lo que escribió el repartidor al marcarla entregada (ej. quién la recibió) y el
+    // nombre del receptor si lo cargó. Se ven en el chip "Entregó X" y en su ventanita de detalle.
+    string? ComentarioEntrega = null,
+    string? NombreReceptor = null);
 
 /// <summary>2026-08-20: cómo le fue al envío del comprobante por un canal.
 /// Estado: PENDIENTE (está en la cola, sale a la hora de ProgramadoPara) | ENVIADO | ERROR | CANCELADO.</summary>
