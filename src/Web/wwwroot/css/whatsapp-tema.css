@@ -619,3 +619,9 @@
 .wa-dark .wpl-texto { color: var(--wad-txt2); opacity: 1; }
 .wa-dark .wpl-btn:hover:not(:disabled) { background: var(--wad-panel3); }
 .wa-dark .wpl-input { border-color: var(--wad-borde2); }
+
+/* 2026-10-07: encabezado en 3 bloques (quién es | en el sistema | acciones) */
+.wa-dark .wa-hdr-quien .wa-hdr-nombre { color: var(--wad-txt); }
+.wa-dark .wa-hdr-sist { border-left-color: var(--wad-borde); border-top-color: var(--wad-borde); }
+.wa-dark .wa-hdr-sist-l1 > .wa-hdr-cli { color: var(--wad-txt); }
+.wa-dark .wa-hdr-nom-inp { background: #2b3942; color: var(--wad-txt); }
