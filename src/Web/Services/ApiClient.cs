@@ -8436,7 +8436,10 @@ public class ApiClient
         // 2026-08-20: TODAS las razones sociales colgadas de este teléfono. Hay clientas que manejan
         // 3 empresas y facturan a las tres desde el mismo WhatsApp: en el chat se ven las tres y
         // cada operador tilda con cuál está trabajando (ClienteId = la tildada por vos).
-        List<TwClienteVinculadoDto>? Clientes = null);
+        List<TwClienteVinculadoDto>? Clientes = null,
+        // 2026-10-07: el nombre que el cliente tiene puesto en SU WhatsApp. NombrePerfil trae el de la
+        // agenda si lo agendamos; éste trae siempre el de WhatsApp, para mostrar los dos en el encabezado.
+        string? NombreWhatsApp = null);
     /// <summary>2026-08-20: una razón social colgada de un teléfono de WhatsApp.</summary>
     public record TwClienteVinculadoDto(int Id, string Nombre, string? Codigo);
     // ── 2026-08-28: chats que ve Depósito (la lista se configura desde el menú ⋮ del chat) ──

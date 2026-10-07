@@ -694,15 +694,46 @@
                     <button class="wa-hdr-ojo @(mostrarListasPrecios ? "on" : "")" @onclick="() => mostrarListasPrecios = !mostrarListasPrecios"
                             title="Listas de precios: verlas acá sin descargar y mandarlas a este chat">💲</button>
                 </div>
-                <div style="flex:1; min-width:0;">
-                    @* 2026-08-27: RENGLÓN 1 del encabezado. El nombre tiene un ancho FIJO y se corta con
-                       puntitos: así los iconitos caen SIEMPRE en el mismo lugar, no importa si el contacto
-                       se llama "Ana" o "Distribuidora San Martín de los Andes S.R.L.". Nada baila al
-                       cambiar de chat. El nombre completo sale en el globito de ayuda. *@
-                    <div class="wa-hdr-l1">
-                        @* 2026-10-06: en WhatsApp arriba en negrita va el TELÉFONO y el nombre de perfil pasa
-                           chiquito al renglón de abajo (pedido del dueño). Instagram queda igual: no hay teléfono. *@
-                        <span class="wa-hdr-nombre @(SelectedConv()?.Canal == "INSTAGRAM" ? "" : "es-tel")" title="@(HdrTitulo(SelectedConv()))">@(HdrTitulo(SelectedConv()))</span>
+                @* 2026-10-07: encabezado en TRES bloques (pedido del dueño, con dibujo aprobado):
+                   1) QUIÉN ES: grande el nombre con el que lo agendamos; chiquito abajo su nombre de
+                      perfil de WhatsApp y el teléfono. Tocar el nombre lo cambia AHÍ MISMO.
+                   2) EN EL SISTEMA: el cliente vinculado (+ código), dirección y saldo.
+                   3) A la derecha, lo que se toca: estado, responsable, archivar, ⋮; abajo línea y nota.
+                   Antes todo iba en dos renglones corridos y no se distinguía qué era cada cosa. *@
+                <div class="wa-hdr-cuerpo">
+                    <div class="wa-hdr-quien">
+                        @if (editandoNombreHdr)
+                        {
+                            <div class="wa-hdr-nom-edit">
+                                <input class="wa-hdr-nom-inp" @bind="nombreHdrEdit" @bind:event="oninput" maxlength="120"
+                                       @onkeydown="TeclaNombreHdr" placeholder="¿Cómo lo agendás?" autofocus />
+                                <button class="wa-hdr-nom-ok" @onclick="GuardarNombreHdr" disabled="@guardandoNombreHdr">@(guardandoNombreHdr ? "…" : "Guardar")</button>
+                                <button class="wa-hdr-nom-x" @onclick="@(() => editandoNombreHdr = false)" title="Cancelar">✕</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button class="wa-hdr-nombre-btn" @onclick="EmpezarEditarNombreHdr" title="@($"{HdrNombreGrande()} — tocá para cambiarle el nombre")">
+                                <span class="wa-hdr-nombre">@HdrNombreGrande()</span>
+                                <span class="wa-hdr-lapiz">✏️</span>
+                            </button>
+                        }
+                        @if (HdrPerfilChico() is string _perf && _perf.Length > 0)
+                        {
+                            <div class="wa-hdr-chico" title="@_perf">@_perf</div>
+                        }
+                        @if (SelectedConv()?.Canal != "INSTAGRAM" && HdrNombreGrande() != PrettyNumero(selectedNumero))
+                        {
+                            <button class="wa-hdr-tel" @onclick="CopiarTelHdr" title="Tocá para copiar el número">@PrettyNumero(selectedNumero)</button>
+                        }
+                    </div>
+                    <div class="wa-hdr-sist">
+                        <div class="wa-hdr-sist-t">En el sistema</div>
+                        <div class="wa-hdr-sist-l1">
+                            @if (!VariasRazones && SelectedConv()?.ClienteId is null)
+                            {
+                                <button class="wa-hdr-rol" @onclick="AbrirVincularCliente" title="Este chat no tiene un cliente del sistema — tocá para vincularlo">sin vincular · vincular</button>
+                            }
                         @* 2026-08-27: la razón social y la categoría van como TEXTO gris al lado del nombre.
                            Antes eran dos cartelitos de colores más (verde el cliente, y la categoría abajo del
                            avatar). Osmar: "tanto color marea". Se leen igual y no gritan.
@@ -713,7 +744,6 @@
                            (que es el dato que importa) y las otras viven en una listita que baja al tocarla. *@
                         @if (VariasRazones)
                         {
-                            <span class="wa-hdr-sep">·</span>
                             <span class="wa-hdr-menu-wrap wa-razones-wrap">
                                 <span class="wa-razones-t">Facturo a:</span>
                                 <button class="wa-razon on"
@@ -757,8 +787,8 @@
                         }
                         else if (SelectedConv()?.ClienteNombre is string _cln && !string.IsNullOrWhiteSpace(_cln))
                         {
-                            <span class="wa-hdr-sep">·</span>
-                            <span class="wa-hdr-sub" title="Razón social a la que le facturás: @_cln">@_cln</span>
+                            <span class="wa-hdr-sub wa-hdr-cli" title="Razón social a la que le facturás: @_cln">@_cln</span>
+                            @if (CodigoClienteHdr() is string _cod) { <span class="wa-hdr-cod">#@_cod</span> }
                         }
                         @if (RolLabel(SelectedConv()?.Rol) is string _rl && !string.IsNullOrWhiteSpace(_rl))
                         {
@@ -766,9 +796,37 @@
                             <button class="wa-hdr-rol" @onclick="() => rolMenuConv = SelectedConv()" title="Categoría del contacto — tocá para cambiarla">@_rl</button>
                         }
 
-                        @* El hueco de la derecha estaba desaprovechado: ahí van ESTADO y RESPONSABLE, que
-                           es lo que Osmar toca todo el día. Cartelitos de color: el color ya te dice cómo
-                           viene la charla sin leer. Se tocan y se abre la listita. *@
+                        </div>
+                        <div class="wa-hdr-sist-l2">
+                        @* 2026-08-24: DIRECCIÓN y DEUDA siempre a la vista. Antes había que abrir la ficha 👁️
+                           para verlas, y son las dos cosas que más se preguntan en plena charla: a dónde se le
+                           lleva y si debe plata. Salen de la misma ficha del cliente (mismo cálculo de saldo que
+                           "¿Quién me debe?"), que ahora se carga sola al abrir el chat. Mientras carga no se
+                           muestra nada, para que la barra no salte. Solo en la compu: el celular queda igual. *@
+                        @if (FichaDelChat() is ApiClient.FichaChatDto fh)
+                        {
+                            @if (DireccionCorta(fh) is string dirh)
+                            {
+                                @if (!string.IsNullOrWhiteSpace(fh.MapeoLink))
+                                {
+                                    <a href="@fh.MapeoLink" target="_blank" class="wa-hdr-dir" title="@TituloDireccion(fh, dirh)"><span class="wa-hdr-txt">@dirh</span></a>
+                                }
+                                else
+                                {
+                                    <span class="wa-hdr-sub" title="@TituloDireccion(fh, dirh)"><span class="wa-hdr-txt">@dirh</span></span>
+                                }
+                            }
+                            <span class="wa-hdr-sep">·</span>
+                            @* 2026-08-27: el saldo dejó de ser un cartelito. Rojo SOLO si debe: al día y a
+                               favor van en gris, porque no son una alarma y el verde sumaba ruido. *@
+                            <button class="wa-hdr-saldo @(fh.Saldo > 0.01m ? "debe" : "")" @onclick="ToggleFichaCliente" title="@SaldoTitulo(fh)">
+                                @SaldoTextoPlano(fh.Saldo)
+                            </button>
+                        }
+                        </div>
+                    </div>
+                    <div class="wa-hdr-acc">
+                    <div class="wa-hdr-l1">
                         <span class="wa-hdr-espacio"></span>
                         @{ var _estHdr = SelectedConv()?.Archivado == true ? "archivado" : (SelectedConv()?.Estado ?? "nueva"); }
                         @* 2026-08-27: el estado dejó de ser un cartelito de color. Ahora es texto con un
@@ -896,47 +954,13 @@
                         </span>
                     </div>
                     <div class="wa-hdr-l2">
-                        @if (HdrSub(SelectedConv()) is string _hsub && _hsub.Length > 0)
-                        {
-                            <span class="wa-hdr-perfil" title="@_hsub">@_hsub</span>
-                        }
-                        @* 2026-10-06: el lápiz ahora cambia el NOMBRE (antes corregía el número, igual que el ⋮,
-                           y al quedar al lado del nombre confundía). Corregir el número sigue en el ⋮. *@
-                        <button class="wa-num-edit" @onclick="AbrirEditarContacto"
-                                title="Cambiar el nombre de este contacto">✏️</button>
+                        <span class="wa-hdr-espacio"></span>
                         @* 2026-08-27: el nombre de la línea, en gris. Antes era un cartelito lila arriba. *@
                         @if (SelectedConv()?.Linea is string _lh2)
                         {
-                            <span class="wa-hdr-sep">·</span>
                             <span class="wa-hdr-sub" title="Esta conversación es de tu línea @LineaNombre(_lh2, SelectedConv()?.LineaNumero)">@LineaNombre(_lh2, SelectedConv()?.LineaNumero)</span>
                         }
 
-                        @* 2026-08-24: DIRECCIÓN y DEUDA siempre a la vista. Antes había que abrir la ficha 👁️
-                           para verlas, y son las dos cosas que más se preguntan en plena charla: a dónde se le
-                           lleva y si debe plata. Salen de la misma ficha del cliente (mismo cálculo de saldo que
-                           "¿Quién me debe?"), que ahora se carga sola al abrir el chat. Mientras carga no se
-                           muestra nada, para que la barra no salte. Solo en la compu: el celular queda igual. *@
-                        @if (FichaDelChat() is ApiClient.FichaChatDto fh)
-                        {
-                            @if (DireccionCorta(fh) is string dirh)
-                            {
-                                <span class="wa-hdr-sep">·</span>
-                                @if (!string.IsNullOrWhiteSpace(fh.MapeoLink))
-                                {
-                                    <a href="@fh.MapeoLink" target="_blank" class="wa-hdr-dir" title="@TituloDireccion(fh, dirh)"><span class="wa-hdr-txt">@dirh</span></a>
-                                }
-                                else
-                                {
-                                    <span class="wa-hdr-sub" title="@TituloDireccion(fh, dirh)"><span class="wa-hdr-txt">@dirh</span></span>
-                                }
-                            }
-                            <span class="wa-hdr-sep">·</span>
-                            @* 2026-08-27: el saldo dejó de ser un cartelito. Rojo SOLO si debe: al día y a
-                               favor van en gris, porque no son una alarma y el verde sumaba ruido. *@
-                            <button class="wa-hdr-saldo @(fh.Saldo > 0.01m ? "debe" : "")" @onclick="ToggleFichaCliente" title="@SaldoTitulo(fh)">
-                                @SaldoTextoPlano(fh.Saldo)
-                            </button>
-                        }
                         @* 2026-08-27: LA NOTA, siempre a la vista (pedido de Osmar). Antes había que abrir
                            el panel de la derecha, escribirla y apretar Guardar. Ahora se escribe acá y se
                            guarda sola al salir del campo — solo pega al servidor si de verdad cambió. *@
@@ -952,7 +976,7 @@
                             @if (guardandoNota) { <span class="wa-hdr-nota-est">⏳</span> }
                             else if (NotaSinGuardar) { <span class="wa-hdr-nota-est pend" title="Todavía sin guardar — salí del campo y se guarda">•</span> }
                         </span>
-                        <span class="wa-hdr-espacio"></span>
+                    </div>
                     </div>
                 </div>
                 @* 2026-08-17: los botones (Vincular cliente, Editar contacto, Crear venta, ⚙, 🗑) y la
@@ -4786,6 +4810,38 @@
     .wa-hdr-nota-est { font-size: 0.8rem; flex: 0 0 auto; }
     .wa-hdr-nota-est.pend { color: #f59e0b; font-size: 1.1rem; line-height: 1; }
 
+    /* ═══ 2026-10-07: encabezado en 3 bloques: QUIÉN ES | EN EL SISTEMA | acciones ═══ */
+    /* flex-basis 0: si no, al editar el nombre (o en el celu) el bloque entero se iba al renglón de abajo */
+    .wa-thread-header > .wa-hdr-cuerpo { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.9rem; }
+    .wa-hdr-quien { flex: 0 1 auto; min-width: 7rem; max-width: 330px; display: flex; flex-direction: column; gap: 1px; }
+    .wa-hdr-nombre-btn { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer;
+        display: flex; align-items: center; gap: 0.35rem; min-width: 0; text-align: left; }
+    .wa-hdr-quien .wa-hdr-nombre { font-size: 1.08rem; font-weight: 700; color: #0f172a; max-width: 300px; }
+    .wa-hdr-lapiz { font-size: 0.72rem; opacity: 0.35; flex: 0 0 auto; }
+    .wa-hdr-nombre-btn:hover .wa-hdr-lapiz { opacity: 1; }
+    .wa-hdr-nombre-btn:hover .wa-hdr-nombre { text-decoration: underline; text-decoration-color: #cbd5e1; text-underline-offset: 3px; }
+    .wa-hdr-chico { font-size: 0.75rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wa-hdr-tel { background: none; border: none; padding: 0; font: inherit; font-size: 0.75rem; color: #64748b;
+        cursor: copy; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; align-self: flex-start; }
+    .wa-hdr-tel:hover { color: #1d4ed8; }
+    .wa-hdr-nom-edit { display: flex; align-items: center; gap: 0.3rem; }
+    .wa-hdr-nom-inp { font-size: 1rem; font-weight: 600; padding: 0.2rem 0.45rem; border: 1px solid #25d366;
+        border-radius: 7px; width: 200px; min-width: 0; outline: none; font-family: inherit; }
+    .wa-hdr-nom-ok { background: #25d366; color: #fff; border: none; border-radius: 7px; padding: 0.25rem 0.6rem;
+        font-size: 0.78rem; font-weight: 700; cursor: pointer; }
+    .wa-hdr-nom-x { background: none; border: none; color: #64748b; cursor: pointer; font-size: 0.9rem; }
+    .wa-hdr-sist { flex: 1 1 0; min-width: 0; border-left: 1px solid #e5e7eb; padding-left: 0.9rem;
+        display: flex; flex-direction: column; gap: 1px; }
+    .wa-hdr-sist-t { font-size: 0.64rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+    .wa-hdr-sist-l1 { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+    .wa-hdr-sist-l1 > * { flex: 0 0 auto; }
+    .wa-hdr-sist-l1 > .wa-hdr-cli { font-size: 0.86rem; color: #334155; font-weight: 600; max-width: none; flex: 0 1 auto; min-width: 0; }
+    .wa-hdr-cod { font-size: 0.78rem; color: #94a3b8; font-weight: 500; }
+    .wa-hdr-sist-l2 { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: #6b7280;
+        min-width: 0; overflow: hidden; white-space: nowrap; }
+    .wa-hdr-acc { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .wa-hdr-acc .wa-hdr-l2 > .wa-hdr-nota { max-width: 300px; }
+
     .wa-hdr-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.1rem 0.4rem; border-radius: 4px;
         font-size: 0.7rem; line-height: 1.5; text-decoration: none; border: 1px solid transparent; cursor: pointer;
         font-family: inherit; max-width: 320px; overflow: hidden; white-space: nowrap; }
@@ -5063,6 +5119,21 @@
 
         /* Encabezado del chat compacto: botones de acción chiquitos para que no tapen todo */
         .wa-thread-header { padding: 0.5rem 0.6rem; gap: 0.3rem; }
+        /* 2026-10-07: celular: nombre grande arriba, acciones abajo, y "en el sistema" en un renglón finito */
+        /* display:contents: los 3 bloques pasan a ser renglones del encabezado (al lado del circulito
+           va solo el nombre; abajo, a todo el ancho, los botones y después "en el sistema"). */
+        .wa-thread-header > .wa-hdr-cuerpo { display: contents; }
+        .wa-hdr-quien { flex: 1 1 0; max-width: none; min-width: 0; }
+        .wa-hdr-quien .wa-hdr-nombre { font-size: 1rem; max-width: none; }
+        .wa-hdr-acc { order: 2; flex: 1 1 100%; min-width: 0; }
+        .wa-hdr-acc .wa-hdr-l1 { flex-wrap: wrap; }
+        .wa-hdr-acc .wa-hdr-l2 { display: none; }
+        .wa-hdr-sist { order: 3; flex: 1 1 100%; flex-direction: row; align-items: center; gap: 0.4rem; border-left: none;
+            padding-left: 0; border-top: 1px solid #eef1f5; padding-top: 0.25rem; overflow: hidden; }
+        .wa-hdr-sist-t { display: none; }
+        .wa-hdr-sist-l2 { flex: 1 1 0; }
+        .wa-hdr-nom-inp { width: 100%; }
+        .wa-hdr-nom-edit { flex: 1 1 auto; }
         .wa-thread-header .btn { font-size: 0.66rem !important; padding: 0.2rem 0.4rem !important; }
 
         /* Caja para escribir cómoda (no gigante) y botones grandes para el pulgar.
@@ -8783,6 +8854,7 @@
         // 2026-08-26: lo que venías escribiendo (y los archivos cargados) quedan guardados en SU
         // chat, y acá abajo se levanta el borrador del chat al que entrás. Ver GuardarBorradorDelChat.
         GuardarBorradorDelChat();
+        editandoNombreHdr = false;
         selectedNumero = numero;
         selectedLinea = linea;
         topMensajes = MensajesPorTanda;   // 2026-09-09: cada chat arranca por la primera tanda
@@ -9651,6 +9723,85 @@
         => c?.Canal == "INSTAGRAM" ? MostrarNombre(c) : PrettyNumero(selectedNumero);
     string HdrSub(ApiClient.TwConvDto? c)
         => c?.Canal == "INSTAGRAM" ? PrettyNumero(selectedNumero) : (c?.NombrePerfil ?? "");
+
+    // ===== 2026-10-07: encabezado "quién es" =====
+    // Grande: cómo lo agendamos. Chiquito: su nombre de WhatsApp. Si no está agendado, va grande el de
+    // WhatsApp y abajo avisa que no está agendado. Tocar el nombre lo cambia ahí mismo.
+    string? AgendaNombreHdr() => selectedNumero is null ? null
+        : (GetContactoByNumero(selectedNumero)?.Nombre is string n && !string.IsNullOrWhiteSpace(n) ? n.Trim() : null);
+    string? PerfilWaHdr()
+    {
+        var c = SelectedConv();
+        var p = c?.NombreWhatsApp ?? (AgendaNombreHdr() is null ? c?.NombrePerfil : null);
+        return string.IsNullOrWhiteSpace(p) ? null : p.Trim();
+    }
+    string HdrNombreGrande()
+    {
+        var c = SelectedConv();
+        if (c?.Canal == "INSTAGRAM") return MostrarNombre(c);
+        return AgendaNombreHdr() ?? PerfilWaHdr() ?? PrettyNumero(selectedNumero);
+    }
+    string? HdrPerfilChico()
+    {
+        var c = SelectedConv();
+        if (c?.Canal == "INSTAGRAM") return null;
+        var agenda = AgendaNombreHdr();
+        var perfil = PerfilWaHdr();
+        if (agenda is null) return perfil is null ? "sin agendar · tocá el número para ponerle nombre" : "sin agendar · tocá el nombre para agendarlo";
+        if (perfil is null || string.Equals(perfil, agenda, StringComparison.OrdinalIgnoreCase)) return null;
+        return $"~ {perfil}";
+    }
+    string? CodigoClienteHdr()
+    {
+        var c = SelectedConv();
+        if (c?.ClienteId is not int id) return null;
+        return c.Clientes?.FirstOrDefault(x => x.Id == id)?.Codigo;
+    }
+    bool editandoNombreHdr = false;
+    bool guardandoNombreHdr = false;
+    string nombreHdrEdit = "";
+    void EmpezarEditarNombreHdr()
+    {
+        if (selectedNumero is null) return;
+        nombreHdrEdit = AgendaNombreHdr() ?? PerfilWaHdr() ?? "";
+        editandoNombreHdr = true;
+    }
+    async Task TeclaNombreHdr(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await GuardarNombreHdr();
+        else if (e.Key == "Escape") editandoNombreHdr = false;
+    }
+    async Task GuardarNombreHdr()
+    {
+        var nuevo = (nombreHdrEdit ?? "").Trim();
+        if (selectedNumero is null || guardandoNombreHdr) return;
+        if (nuevo.Length == 0) { Toast.Error("Escribí un nombre"); return; }
+        if (nuevo == AgendaNombreHdr()) { editandoNombreHdr = false; return; }
+        guardandoNombreHdr = true;
+        try
+        {
+            var cont = GetContactoByNumero(selectedNumero);
+            bool ok; string? err = null;
+            if (cont is not null)
+                ok = await Api.UpdateTwContactoAsync(cont.Id, new ApiClient.TwContactoUpsert(
+                    cont.Numero, nuevo, cont.Rol, cont.Notas, true, cont.ClienteId));
+            else
+                (ok, err) = await Api.CreateTwContactoAsync(new ApiClient.TwContactoUpsert(
+                    selectedNumero, nuevo, SelectedConv()?.Rol ?? "", null, true, SelectedConv()?.ClienteId));
+            if (!ok) { Toast.Error(err ?? "No se pudo guardar el nombre"); return; }
+            editandoNombreHdr = false;
+            Toast.Success("Nombre guardado");
+            await LoadContactos();
+            await LoadConversaciones(silent: true);
+        }
+        finally { guardandoNombreHdr = false; }
+    }
+    async Task CopiarTelHdr()
+    {
+        var t = "+" + new string((selectedNumero ?? "").Where(char.IsDigit).ToArray());
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", t); Toast.Success("Número copiado"); }
+        catch { Toast.Error("No se pudo copiar"); }
+    }
 
     string MostrarNombre(ApiClient.TwConvDto? c)
     {

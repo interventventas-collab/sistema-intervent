@@ -680,6 +680,8 @@ public class WhatsAppTwilioController : ControllerBase
             {
                 x.Numero,
                 NombrePerfil = c?.Nombre ?? x.NombrePerfil,
+                // 2026-10-07: el de SU WhatsApp, aunque esté agendado (el encabezado muestra los dos).
+                NombreWhatsApp = x.NombrePerfil,
                 Rol = c?.Rol,
                 // 2026-08-20: ClienteId ahora es el EFECTIVO (el que tildo este operador). Si no
                 // tildo nada, es el principal de siempre — asi las pantallas viejas no cambian.
