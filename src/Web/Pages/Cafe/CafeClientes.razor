@@ -172,6 +172,16 @@
                                     {
                                         @(c.Telefono ?? "—")
                                     }
+                                    @if (!string.IsNullOrWhiteSpace(c.Telefono))
+                                    {
+                                        @* 2026-10-07: el "mandarle siempre" de la ficha, tildable desde el listado *@
+                                        <label style="display:flex; align-items:center; gap:0.25rem; font-size:0.7rem; color:@(c.EnviarSiempreWhatsapp ? "#166534" : "#9ca3af"); cursor:pointer; margin-top:0.1rem; white-space:nowrap;"
+                                               title="Tildado: al emitir un comprobante, el tilde de WhatsApp ya viene prendido">
+                                            <input type="checkbox" checked="@c.EnviarSiempreWhatsapp" style="width:13px; height:13px; margin:0;"
+                                                   @onchange="@(() => ToggleEnviarSiempreAsync(c, false))" />
+                                            le mando comprobante
+                                        </label>
+                                    }
                                 </td>
                                 <td style="font-size: 0.85rem;">
                                     @if (editMailHabilitado)
@@ -183,6 +193,15 @@
                                     else
                                     {
                                         @(c.Email ?? "—")
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(c.Email))
+                                    {
+                                        <label style="display:flex; align-items:center; gap:0.25rem; font-size:0.7rem; color:@(c.EnviarSiempreEmail ? "#166534" : "#9ca3af"); cursor:pointer; margin-top:0.1rem; white-space:nowrap;"
+                                               title="Tildado: al emitir un comprobante, el tilde de mail ya viene prendido">
+                                            <input type="checkbox" checked="@c.EnviarSiempreEmail" style="width:13px; height:13px; margin:0;"
+                                                   @onchange="@(() => ToggleEnviarSiempreAsync(c, true))" />
+                                            le mando comprobante
+                                        </label>
                                     }
                                 </td>
                                 <td style="font-size: 0.85rem; color: #6b7280;" title="Domicilio de entrega (no el fiscal)">@(c.DomicilioEntrega ?? "—")</td>
@@ -1474,6 +1493,20 @@
     {
         await JS.InvokeVoidAsync("navigator.clipboard.writeText", link);
         ToastService.Success("Link de Maps copiado");
+    }
+
+    /// <summary>2026-10-07: prende/apaga desde el listado el "mandarle siempre el comprobante"
+    /// (mismo dato que los tildes de la ficha: EnviarSiempreEmail / EnviarSiempreWhatsapp).</summary>
+    private async Task ToggleEnviarSiempreAsync(CafeClienteDto c, bool esMail)
+    {
+        var nuevo = esMail ? !c.EnviarSiempreEmail : !c.EnviarSiempreWhatsapp;
+        var req = new UpdateCafeClienteRequest();
+        if (esMail) req.EnviarSiempreEmail = nuevo; else req.EnviarSiempreWhatsapp = nuevo;
+        var updated = await Api.UpdateCafeClienteAsync(c.Id, req);
+        if (updated is null) { ToastService.Error("No se pudo guardar"); StateHasChanged(); return; }
+        if (esMail) c.EnviarSiempreEmail = nuevo; else c.EnviarSiempreWhatsapp = nuevo;
+        var canal = esMail ? "mail" : "WhatsApp";
+        ToastService.Success(nuevo ? $"{c.Nombre}: le sale el comprobante por {canal}" : $"{c.Nombre}: ya no le sale por {canal}");
     }
 
     private async Task GuardarInlineAsync(CafeClienteDto c, string campo, string? valor)
