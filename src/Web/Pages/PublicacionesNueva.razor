@@ -614,6 +614,13 @@
                     title="Le pregunta a MercadoLibre qué publicaciones están vendiendo con descuento. No aplica ni saca nada.">
                 @(promosCargando ? "⏳ Mirando promociones…" : "🏷️ Promociones")
             </button>
+            @* 2026-10-07 · re-pregunta a MeLi comisión y envío de TODAS las activas, por detrás.
+               Hacía falta después de corregir el recargo por cuotas: el "Recibís" de las que nadie
+               tocó seguía con el número viejo. Solo consulta, no cambia nada en MercadoLibre. *@
+            <button class="p2-btn" @onclick="ActualizarComisionesTodas" disabled="@comisionesTodasLanzado"
+                    title="Le vuelve a preguntar a MercadoLibre la comisión y el envío de todas las publicaciones activas. Corre por detrás (~1 hora). No cambia nada en MercadoLibre.">
+                @(comisionesTodasLanzado ? "⏳ Actualizando comisiones de todas…" : "💰 Actualizar comisiones de TODAS")
+            </button>
             <button class="p2-btn" @onclick='() => Nav.NavigateTo("/publicaciones")'>⛶ Volver a la pantalla de siempre</button>
         </span>
     </div>
@@ -3739,6 +3746,24 @@
     // todo el catálogo), no una por publicación.
 
     private bool promosCargando;
+    private bool comisionesTodasLanzado;
+
+    private async Task ActualizarComisionesTodas()
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            "Le voy a preguntar a MercadoLibre la comisión y el envío de TODAS las publicaciones activas.\n\n" +
+            "Corre por detrás y tarda alrededor de 1 hora: podés seguir usando el sistema o cerrar esta pantalla.\n" +
+            "No cambia nada en MercadoLibre.\n\n¿Arranco?");
+        if (!ok) return;
+        comisionesTodasLanzado = true;
+        if (await Api.RefreshMeliItemsSaleFeeBulkAsync())
+            ToastService.Success("Arrancó. En alrededor de 1 hora van a estar todas al día; tocá \"Actualizar lista\" para ver lo nuevo.");
+        else
+        {
+            comisionesTodasLanzado = false;
+            ToastService.Error("No pude arrancarlo. Probá de nuevo en un rato.");
+        }
+    }
 
     // Panel de promociones de UNA publicación (el botón 🏷️ de la fila).
     private string? promosAbiertas;
