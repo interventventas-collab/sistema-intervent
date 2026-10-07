@@ -33,6 +33,7 @@ public class MeliPrecioManualService
     private readonly MeliAccountService _accountService;
     private readonly MeliItemService _itemService;
     private readonly MeliPricePushService _pricePush;
+    private readonly MeliComisionRefrescoService _comisionRefresco;
     private readonly ILogger<MeliPrecioManualService> _logger;
 
     private const decimal IVA = 1.21m;
@@ -45,13 +46,15 @@ public class MeliPrecioManualService
 
     public MeliPrecioManualService(AppDbContext db, IHttpClientFactory httpFactory,
         MeliAccountService accountService, MeliItemService itemService,
-        MeliPricePushService pricePush, ILogger<MeliPrecioManualService> logger)
+        MeliPricePushService pricePush, MeliComisionRefrescoService comisionRefresco,
+        ILogger<MeliPrecioManualService> logger)
     {
         _db = db;
         _httpFactory = httpFactory;
         _accountService = accountService;
         _itemService = itemService;
         _pricePush = pricePush;
+        _comisionRefresco = comisionRefresco;
         _logger = logger;
     }
 
@@ -196,6 +199,8 @@ public class MeliPrecioManualService
         // La comisión escala con el precio: si no se recaptura, el margen que se ve queda mintiendo.
         try { await _itemService.RefreshSaleFeeAsync(meliItemId); }
         catch (Exception ex) { _logger.LogWarning(ex, "[PrecioManual] {Mla}: precio OK pero no se recapturó la comisión", meliItemId); }
+        // 2026-10-07: MeLi a veces tarda en reflejar el precio nuevo: se repite al minuto y a los 5 minutos.
+        _comisionRefresco.Programar(meliItemId, incluirInmediata: false);
 
         _logger.LogWarning("[PrecioManual] {Mla} → ${Precio} (queda fijo: {Fijo})", meliItemId, precio, quedaFijo);
         return new PublicarResultado(true,

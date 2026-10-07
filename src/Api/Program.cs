@@ -314,6 +314,9 @@ builder.Services.AddScoped<MeliOrderFinanzasService>();
 builder.Services.AddHostedService<MeliOrderFinanzasBackgroundService>();
 // 2026-08-25: refresco nocturno de comisiones (03:00 ARG) — sin datos frescos, los márgenes mienten.
 builder.Services.AddHostedService<MeliComisionesNocturnoService>();
+// 2026-10-07: re-consulta comisión/envío al cambiar precio, tipo o cuotas (al toque, 1 min y 5 min).
+builder.Services.AddSingleton<MeliComisionRefrescoService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MeliComisionRefrescoService>());
 // 2026-08-25: vigilante de margen (04:00 ARG) — avisa las que caen abajo del 50%, no toca precios.
 builder.Services.AddHostedService<MeliMargenVigilanteService>();
 // 2026-09-26: relee de noche comisión + envío de todas las activas y avisa si MeLi cambió el envío.

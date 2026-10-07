@@ -17,10 +17,11 @@ public class MeliItemService
     private readonly AiService _aiService;
     private readonly SyncProgressService _syncProgress;
     private readonly MeliCambioDetectadoService _detector;
+    private readonly MeliComisionRefrescoService _comisionRefresco;
 
     private readonly ILogger<MeliItemService> _logger;
 
-    public MeliItemService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService, AuditLogService auditLog, AiService aiService, SyncProgressService syncProgress, MeliCambioDetectadoService detector, ILogger<MeliItemService> logger)
+    public MeliItemService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService, AuditLogService auditLog, AiService aiService, SyncProgressService syncProgress, MeliCambioDetectadoService detector, MeliComisionRefrescoService comisionRefresco, ILogger<MeliItemService> logger)
     {
         _db = db;
         _httpFactory = httpFactory;
@@ -29,6 +30,7 @@ public class MeliItemService
         _aiService = aiService;
         _syncProgress = syncProgress;
         _detector = detector;
+        _comisionRefresco = comisionRefresco;
         _logger = logger;
     }
 
@@ -2315,6 +2317,14 @@ public class MeliItemService
             var oldStatus = existing.Status;
             await _detector.LogPriceChangeAsync(meliItemId, accountId, sku, title, oldPrice, price, "sync");
             await _detector.LogStatusChangeAsync(meliItemId, accountId, sku, title, oldStatus, status, "sync");
+
+            // 2026-10-07: si cambió algo que mueve lo que cobra MeLi (precio, tipo, cuotas, envío gratis),
+            // la comisión guardada quedó vieja → se vuelve a preguntar al toque, al minuto y a los 5 min.
+            // Cubre también los cambios hechos desde el panel de MeLi (llegan por el aviso de MeLi).
+            if (status is "active" or "paused"
+                && (oldPrice != price || existing.ListingTypeId != listingTypeId
+                    || existing.InstallmentTag != installmentTag || existing.FreeShipping != freeShipping))
+                _comisionRefresco.Programar(meliItemId);
 
             existing.Title = title;
             existing.CategoryId = categoryId;
@@ -5025,17 +5035,10 @@ public class MeliItemService
     // Verificado con Integraly y con múltiples publis. Los % son constantes por modalidad,
     // no varían por categoría/precio/vendedor. Aplican tanto a Premium (gold_pro) como
     // a Clásica (gold_special) cuando usan tags específicos.
+    // 2026-10-07: había DOS tablas (esta y MeliComisionHelper) y quedaron desparejas; ahora hay una sola.
     private static decimal? GetFinancingRealPct(string? listingTypeId, string? installmentTag)
     {
-        if (string.IsNullOrEmpty(installmentTag)) return null;
-        return installmentTag switch
-        {
-            "3x_campaign"    => 8.4m,
-            "6x_campaign"    => 12.3m,
-            "9x_campaign"    => 15.7m,
-            "12x_campaign"   => 19.2m,
-            "pcj-co-funded"  => 5.0m,
-            _                => null,
-        };
+        if (string.IsNullOrEmpty(installmentTag) || !MarcasDeCuotas.Contains(installmentTag)) return null;
+        return MeliComisionHelper.GetFinanciacionPct(installmentTag);
     }
 }
