@@ -18,6 +18,7 @@ public class ApiClient
     private readonly AuthService _authService;
     private readonly NavigationManager _navigation;
     private readonly OperatorService _operator;
+    private readonly Microsoft.JSInterop.IJSRuntime _js;
 
     // 2026-06-24: ultimo touch al timestamp de inactividad del operador. Throttle
     // para no escribir a localStorage en cada request — basta con refrescar 1 vez
@@ -25,8 +26,9 @@ public class ApiClient
     private DateTime _lastOperatorTouchUtc = DateTime.MinValue;
     private const int OperatorTouchThrottleSeconds = 60;
 
-    public ApiClient(HttpClient http, AuthService authService, NavigationManager navigation, OperatorService op)
+    public ApiClient(HttpClient http, AuthService authService, NavigationManager navigation, OperatorService op, Microsoft.JSInterop.IJSRuntime js)
     {
+        _js = js;
         _http = http;
         _httpLong = new HttpClient { BaseAddress = http.BaseAddress, Timeout = TimeSpan.FromMinutes(4) };
         _httpGalicia = new HttpClient { BaseAddress = http.BaseAddress, Timeout = TimeSpan.FromMinutes(10) };
@@ -1401,11 +1403,19 @@ public class ApiClient
     public async Task<List<CafeClienteDto>?> GetCafeClientesAsync()
         => await GetAsync<List<CafeClienteDto>>("/api/cafe/clientes");
 
+    // 2026-10-08: alta / edición / unificar / borrar cliente avisan a las OTRAS pestañas abiertas
+    // (Nueva Venta, Reservas, Cobranzas...) para que refresquen su lista. Ver Shared/ClientesSync.razor.
+    private async Task<T> AvisarClientesSi<T>(T r) where T : class?
+    {
+        if (r is not null) await Web.Shared.ClientesSync.AvisarAsync(_js);
+        return r;
+    }
+
     public async Task<CafeClienteDto?> CreateCafeClienteAsync(CreateCafeClienteRequest request)
-        => await PostAsync<CafeClienteDto>("/api/cafe/clientes", request);
+        => await AvisarClientesSi(await PostAsync<CafeClienteDto>("/api/cafe/clientes", request));
 
     public async Task<CafeClienteDto?> UpdateCafeClienteAsync(int id, UpdateCafeClienteRequest request)
-        => await PutAsync<CafeClienteDto>($"/api/cafe/clientes/{id}", request);
+        => await AvisarClientesSi(await PutAsync<CafeClienteDto>($"/api/cafe/clientes/{id}", request));
 
     // 2026-08-14: devuelve el cliente del sistema que ya está vinculado a este comprador de ML
     // (por su BuyerId), o null si ninguno lo tiene. Sirve para avisar antes de duplicar.
@@ -1449,7 +1459,7 @@ public class ApiClient
         => await GetAsync<UnificarClientePreviewDto>($"/api/cafe/clientes/{quedaId}/unificar/preview?otroId={otroId}");
 
     public async Task<UnificarClienteResult?> UnificarClienteAsync(int quedaId, int otroId)
-        => await PostAsync<UnificarClienteResult>($"/api/cafe/clientes/{quedaId}/unificar", new { otroId });
+        => await AvisarClientesSi(await PostAsync<UnificarClienteResult>($"/api/cafe/clientes/{quedaId}/unificar", new { otroId }));
 
     public async Task<List<CafeDireccionDto>> GetCafeDireccionesAsync(int clienteId)
         => await GetAsync<List<CafeDireccionDto>>($"/api/cafe/clientes/{clienteId}/direcciones") ?? new();

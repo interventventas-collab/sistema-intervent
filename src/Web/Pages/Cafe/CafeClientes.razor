@@ -1468,7 +1468,16 @@
     </div>
 }
 
+@* 2026-10-08: si en otra pestaña se carga o corrige un cliente, esta lista se refresca sola (antes había que apretar F5). *@
+<ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
+
 @code {
+    private async Task RecargarClientesPorOtraPestana()
+    {
+        try { clientes = await Api.GetCafeClientesAsync() ?? clientes; } catch { }
+        StateHasChanged();
+    }
+
     private List<CafeClienteDto>? clientes;
     private bool loading = true;
     // 2026-08-03: por defecto NO mostramos los clientes Inactivos (eliminados suaves).
@@ -2807,6 +2816,7 @@
         try
         {
             var r = await Api.DeleteCafeClienteAsync(toDelete.Id);
+            if (r.Deleted || r.SoftDeleted) await ClientesSync.AvisarAsync(JS);
             if (r.Deleted)
             {
                 ToastService.Success("Cliente eliminado");
