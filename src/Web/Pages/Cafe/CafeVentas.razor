@@ -254,6 +254,9 @@
     .nv-atajos-pop { position: absolute; right: 0; top: 100%; z-index: 120; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
         box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 0.6rem 0.8rem; font-size: 0.78rem; color: #374151; width: 330px; line-height: 1.8; }
     .nv-atajos-pop kbd { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 4px; padding: 1px 5px; font-family: monospace; font-size: 0.72rem; }
+    .nv-cli-btn { width: 78px; padding: 0.2rem 0.15rem !important; height: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.05rem; font-size: 0.68rem; font-weight: 600; line-height: 1.1; text-align: center; white-space: normal; color: #374151; }
+    .nv-cli-btn .nv-cli-ico { font-size: 0.95rem; line-height: 1; }
+    .nv-cli-btn .nv-cli-sub { font-size: 0.62rem; font-weight: 500; color: #6b7280; }
     .nv-precio-box { border: 1px solid #d1d5db; border-radius: 6px; height: 38px; padding: 0.2rem 0.6rem; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; background: #fff; }
     .nv-precio-box .nv-precio { font-weight: 700; font-size: 0.95rem; color: #111827; line-height: 1.1; }
     .nv-precio-box .nv-precio-lbl { font-size: 0.66rem; color: #9ca3af; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
@@ -1803,8 +1806,8 @@
                                 var dirSel = ciSel is null ? null : (!string.IsNullOrWhiteSpace(ciSel.DomicilioEntrega) ? ciSel.DomicilioEntrega : ciSel.Direccion);
                                 var locSel = ciSel is null ? null : string.Join(" · ", new[] { ciSel.Localidad, ciSel.Ciudad, ciSel.Cp }.Where(x => !string.IsNullOrWhiteSpace(x)));
                                 @* 2026-06-17: cliente seleccionado compactado en 1-2 lineas con padding y fonts mas chicos. *@
-                                <div style="display: flex; gap: 0.3rem; align-items: stretch;">
-                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; flex-direction: column; gap: 0.1rem; padding: 0.3rem 0.55rem; height: auto;">
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: stretch;">
+                                    <div class="form-input" style="flex: 1 1 300px; min-width: 0; background: #ecfdf5; border-color: #10b981; display: flex; flex-direction: column; gap: 0.1rem; padding: 0.3rem 0.55rem; height: auto;">
                                         <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; line-height: 1.15;">
                                             @* 2026-06-30: mostrar CodigoInterno (numero asignado por el usuario) en vez de Codigo (auto sistema) *@
                                             <span style="font-family: monospace; font-weight: 700; color: #1d4ed8; font-size: 0.82rem;">#@(ciSel?.CodigoInterno?.ToString() ?? ciSel?.Codigo ?? "—")</span>
@@ -1828,18 +1831,29 @@
                                     @* 2026-06-18 v2: editar el cliente en ventana emergente — usa el modal completo de /cafe/clientes
                                        con TODOS los campos (codigo interno, padron AFIP, notas, mapeo, etc). *@
                                     @* 2026-09-17: ojito 👁️ — ver lo que debe y sus últimos comprobantes antes de cargarle la venta. *@
-                                    <button class="btn btn-secondary" type="button" @onclick="() => AbrirFichaCliente(formClienteId)"
-                                            title="Ver ficha del cliente: lo que debe y sus últimos comprobantes"
-                                            style="padding: 0 0.55rem; font-size: 0.95rem;">👁️</button>
+                                    @* 2026-10-08: botones con nombre abajo. El ojo dice cuándo fue el último comprobante y el $
+                                       la categoría del cliente (antes era una cajita aparte abajo del cliente). *@
+                                    <div style="display: flex; gap: 0.3rem; align-items: stretch;">
+                                    <button class="btn btn-secondary nv-cli-btn" type="button" @onclick="() => AbrirFichaCliente(formClienteId)"
+                                            title="Ver ficha del cliente: lo que debe y sus últimos comprobantes">
+                                        <span class="nv-cli-ico">👁️</span><span>Ver comprobantes</span>
+                                        @if (!string.IsNullOrEmpty(UltimoComprobanteTxt)) { <span class="nv-cli-sub">@UltimoComprobanteTxt</span> }
+                                    </button>
                                     @* 2026-09-22: 💲 listas de precios — mirar que los precios coincidan mientras cargás la venta.
                                        tabindex -1: no se mete en el recorrido del Tab entre cliente y producto. *@
-                                    <button class="btn btn-secondary" type="button" tabindex="-1" @onclick="() => mostrarListasPrecios = !mostrarListasPrecios"
-                                            title="Listas de precios: verlas acá sin descargar y mandárselas al cliente"
-                                            style="padding: 0 0.55rem; font-size: 0.95rem;">💲</button>
-                                    <button class="btn btn-secondary" type="button" @onclick="() => AbrirEditarClienteVentana(ciSel)"
-                                            title="Editar este cliente (abre ventana emergente, no cierra la venta)"
-                                            style="padding: 0 0.55rem; font-size: 0.85rem; color: #1d4ed8;">✏️</button>
-                                    <button class="btn btn-secondary" type="button" @onclick="ClearCliente" title="Quitar cliente" style="padding: 0 0.5rem; font-size: 0.85rem;">×</button>
+                                    <button class="btn btn-secondary nv-cli-btn" type="button" tabindex="-1" @onclick="() => mostrarListasPrecios = !mostrarListasPrecios"
+                                            title="Listas de precios: verlas acá sin descargar y mandárselas al cliente">
+                                        <span class="nv-cli-ico">💲</span><span>Listas de precios</span>
+                                        <span class="nv-cli-sub" style="font-weight: 700; color: @(formClienteTipo == "BAR" ? "#1e40af" : "#047857");">@CategoriaClienteTxt</span>
+                                    </button>
+                                    <button class="btn btn-secondary nv-cli-btn" type="button" @onclick="() => AbrirEditarClienteVentana(ciSel)"
+                                            title="Editar este cliente (abre ventana emergente, no cierra la venta)">
+                                        <span class="nv-cli-ico">✏️</span><span>Editar cliente</span>
+                                    </button>
+                                    <button class="btn btn-secondary nv-cli-btn" type="button" @onclick="ClearCliente" title="Quitar este cliente para elegir otro (no borra nada)" style="width: 64px;">
+                                        <span class="nv-cli-ico">×</span><span>Cambiar cliente</span>
+                                    </button>
+                                    </div>
                                 </div>
                                 @* 2026-07-29: selector de dirección de entrega (si el cliente tiene varias cargadas) *@
                                 @if (ventaDirecciones.Count > 0)
@@ -2085,16 +2099,6 @@
                     @if (formClienteId > 0)
                     {
                         <div style="margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;">
-                            @* 2026-06-17 v3: chip mas sutil — fondo blanco con borde de color, no compite con "Debe" *@
-                            <span style="display: inline-flex; align-items: center; padding: 0.2rem 0.55rem;
-                                         background: white;
-                                         border: 1px solid @(formClienteTipo == "BAR" ? "#93c5fd" : "#a7f3d0");
-                                         border-radius: 999px;
-                                         color: @(formClienteTipo == "BAR" ? "#1e40af" : "#047857");
-                                         font-size: 0.72rem; font-weight: 600;"
-                                  title="Tipo del cliente">
-                                @(formClienteTipo == "BAR" ? "🍺 BAR" : "🏢 Comercial")
-                            </span>
                             @if (unpaidPrevSales.Count > 0)
                             {
                             <div @onclick="@(() => saldoAnteriorExpandido = !saldoAnteriorExpandido)"
@@ -6394,6 +6398,7 @@
         if (preciosEspecialesClienteId == formClienteId) return;
         preciosEspecialesClienteId = formClienteId;
         await LoadBonifVentaAsync();
+        await LoadUltimoComprobanteAsync();
         preciosEspeciales = new();
         preciosEspecialesLista = new();
         productosConPacto = new();
@@ -6426,6 +6431,28 @@
         try { bonifVenta = await Api.GetBonificacionClienteAsync(formClienteId, editingVentaId); }
         catch { /* sin plan no se muestra nada; la venta sigue */ }
     }
+
+    // 2026-10-08: "Último: 06/10 14:32" abajo del botón Ver comprobantes. Mismo disparador que los pactos.
+    private ApiClient.UltimoComprobanteDto? ultimoComprobante;
+    private bool ultimoComprobanteCargado;
+
+    private async Task LoadUltimoComprobanteAsync()
+    {
+        ultimoComprobante = null;
+        ultimoComprobanteCargado = false;
+        if (formClienteId <= 0) return;
+        ultimoComprobante = await Api.GetUltimoComprobanteClienteAsync(formClienteId);
+        ultimoComprobanteCargado = ultimoComprobante is not null;
+    }
+
+    private string UltimoComprobanteTxt => !ultimoComprobanteCargado ? ""
+        : ultimoComprobante!.VentaId <= 0 ? "Sin comprobantes"
+        : "Último: " + ultimoComprobante.EmitidoAr.ToString(ultimoComprobante.EmitidoAr.Year == DateTime.UtcNow.AddHours(-3).Year ? "dd/MM HH:mm" : "dd/MM/yy HH:mm");
+
+    private string CategoriaClienteTxt => formClienteTipo switch
+    {
+        "BAR" => "BAR", "ALQUILERES" => "Alquiler", _ => "Comercial"
+    };
 
     private static decimal BonifKgDe(string? formato, int cantidad) => formato switch
     {
