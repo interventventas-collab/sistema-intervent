@@ -184,6 +184,23 @@ public class CafeClientesController : ControllerBase
         return Ok(c);
     }
 
+    // 2026-10-08: último comprobante emitido al cliente, para el botón "Ver comprobantes" de
+    // Nueva Venta ("Último: 06/10 14:32"). La hora sale de CreatedAt (UTC → Argentina) porque
+    // Fecha es solo el día. Sin presupuestos (PRO) ni anulados.
+    public record UltimoComprobanteDto(int VentaId, DateTime EmitidoAr, string? Numero, string? Tipo);
+
+    [HttpGet("{id:int}/ultimo-comprobante")]
+    public async Task<IActionResult> UltimoComprobante(int id)
+    {
+        var v = await _db.CafeVentas.AsNoTracking()
+            .Where(x => x.ClienteId == id && x.Estado != "anulado" && x.TipoComprobante != "PRO")
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+            .Select(x => new { x.Id, x.CreatedAt, x.Numero, x.TipoComprobante })
+            .FirstOrDefaultAsync();
+        if (v is null) return Ok(new { ventaId = 0 });
+        return Ok(new UltimoComprobanteDto(v.Id, v.CreatedAt.AddHours(-3), v.Numero, v.TipoComprobante));
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCafeClienteRequest req)
     {

@@ -9175,6 +9175,14 @@ public class ApiClient
         catch { return null; }
     }
 
+    // 2026-10-08: último comprobante emitido (VentaId 0 = nunca se le emitió nada). EmitidoAr ya viene en hora argentina.
+    public record UltimoComprobanteDto(int VentaId, DateTime EmitidoAr, string? Numero, string? Tipo);
+    public async Task<UltimoComprobanteDto?> GetUltimoComprobanteClienteAsync(int clienteId)
+    {
+        try { return await _http.GetFromJsonAsync<UltimoComprobanteDto>($"/api/cafe/clientes/{clienteId}/ultimo-comprobante"); }
+        catch { return null; }
+    }
+
     public async Task<FichaChatDto?> GetFichaChatAsync(int clienteId)
     {
         try { return await _http.GetFromJsonAsync<FichaChatDto>($"/api/cafe/clientes/{clienteId}/ficha-chat"); }
