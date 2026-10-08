@@ -254,9 +254,9 @@
     .nv-atajos-pop { position: absolute; right: 0; top: 100%; z-index: 120; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
         box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 0.6rem 0.8rem; font-size: 0.78rem; color: #374151; width: 330px; line-height: 1.8; }
     .nv-atajos-pop kbd { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 4px; padding: 1px 5px; font-family: monospace; font-size: 0.72rem; }
-    .nv-cli-btn { width: 78px; padding: 0.2rem 0.15rem !important; height: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.05rem; font-size: 0.68rem; font-weight: 600; line-height: 1.1; text-align: center; white-space: normal; color: #374151; }
-    .nv-cli-btn .nv-cli-ico { font-size: 0.95rem; line-height: 1; }
-    .nv-cli-btn .nv-cli-sub { font-size: 0.62rem; font-weight: 500; color: #6b7280; }
+    .nv-cli-btn { width: 100px; padding: 0.3rem 0.2rem !important; height: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1rem; font-size: 0.76rem; font-weight: 600; line-height: 1.1; text-align: center; white-space: normal; color: #374151; }
+    .nv-cli-btn .nv-cli-ico { font-size: 1.2rem; line-height: 1; }
+    .nv-cli-btn .nv-cli-sub { font-size: 0.7rem; font-weight: 500; color: #6b7280; }
     .nv-precio-box { border: 1px solid #d1d5db; border-radius: 6px; height: 38px; padding: 0.2rem 0.6rem; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; background: #fff; }
     .nv-precio-box .nv-precio { font-weight: 700; font-size: 0.95rem; color: #111827; line-height: 1.1; }
     .nv-precio-box .nv-precio-lbl { font-size: 0.66rem; color: #9ca3af; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
@@ -1797,7 +1797,8 @@
                     }
                     else
                     {
-                    <div class="form-row">
+                    @* 2026-10-08: .form-row parte en 2 mitades iguales; con cliente elegido la 2ª queda vacía y la caja + botones se apretaban en la mitad. *@
+                    <div class="form-row" style="grid-template-columns: @(formClienteId == 0 ? "minmax(0, 1fr) 150px" : "minmax(0, 1fr)");">
                         <div class="form-group" style="flex: 2; position: relative;">
                             <label class="form-label">Cliente</label>
                             @if (formClienteId > 0)
@@ -1850,7 +1851,7 @@
                                             title="Editar este cliente (abre ventana emergente, no cierra la venta)">
                                         <span class="nv-cli-ico">✏️</span><span>Editar cliente</span>
                                     </button>
-                                    <button class="btn btn-secondary nv-cli-btn" type="button" @onclick="ClearCliente" title="Quitar este cliente para elegir otro (no borra nada)" style="width: 64px;">
+                                    <button class="btn btn-secondary nv-cli-btn" type="button" @onclick="ClearCliente" title="Quitar este cliente para elegir otro (no borra nada)" style="width: 80px;">
                                         <span class="nv-cli-ico">×</span><span>Cambiar cliente</span>
                                     </button>
                                     </div>
