@@ -269,7 +269,16 @@
     .vis-cerrar { display: block; width: 100%; margin-top: 0.8rem; text-align: center; }
 </style>
 
+@* 2026-10-08: si en otra pestaña se carga o corrige un cliente, esta lista se refresca sola (antes había que apretar F5). *@
+<ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
+
 @code {
+    private async Task RecargarClientesPorOtraPestana()
+    {
+        try { clientes = await Api.GetCafeClientesAsync() ?? clientes; } catch { }
+        StateHasChanged();
+    }
+
     private List<CafeClienteDto> clientes = new();
     private List<VisitaDto>? visitas;
     private CafeClienteDto? clienteSel;

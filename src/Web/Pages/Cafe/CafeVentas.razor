@@ -2008,7 +2008,7 @@
                             else
                             {
                                 <div style="display:flex; gap:0.3rem; align-items:stretch;">
-                                    <input id="nv-cliente" class="form-input" style="flex:1; min-width:0;" @bind="clienteSearch" @bind:event="oninput" @bind:after="() => clienteHighlight = 0"
+                                    <input id="nv-cliente" class="form-input" style="flex:1; min-width:0;" @bind="clienteSearch" @bind:event="oninput" @bind:after="async () => { clienteHighlight = 0; await RecargarSiNoHayClientes(); }"
                                            @ref="clienteInputRef"
                                            @onfocus="() => clienteSearchOpen = true"
                                            @onkeydown="OnKeyDownCliente"
@@ -5204,7 +5204,29 @@
     </div>
 }
 
+@* 2026-10-08: si en otra pestaña se carga o corrige un cliente, esta lista se refresca sola (antes había que apretar F5). *@
+<ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
+
 @code {
+    // 2026-10-08: si el buscador no encuentra a nadie puede ser un cliente recién cargado en OTRA compu
+    // (el aviso entre pestañas sólo llega dentro del mismo navegador): se vuelve a pedir la lista,
+    // como mucho cada 20 s para no traer los 9.000 clientes en cada tecla.
+    private DateTime _ultimaRecargaPorVacioUtc = DateTime.MinValue;
+    private async Task RecargarSiNoHayClientes()
+    {
+        if ((clienteSearch ?? "").Trim().Length < 3) return;
+        if (DateTime.UtcNow - _ultimaRecargaPorVacioUtc < TimeSpan.FromSeconds(20)) return;
+        if (ClientesMatching(clienteSearch).Count > 0) return;
+        _ultimaRecargaPorVacioUtc = DateTime.UtcNow;
+        await RecargarClientesPorOtraPestana();
+    }
+
+    private async Task RecargarClientesPorOtraPestana()
+    {
+        try { clientes = (await Api.GetCafeClientesAsync())?.Where(c => c.IsActive).ToList() ?? clientes; } catch { }
+        StateHasChanged();
+    }
+
     // 2026-06-06: estado del modal de cobro ocasional (venta sin cliente del catálogo)
     private CafeVentaDto? cobroOcasionalVenta;
     private decimal cobroOcasionalSaldo;

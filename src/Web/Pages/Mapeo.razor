@@ -3791,7 +3791,17 @@
     </div>
 }
 
+@* 2026-10-08: si en otra pestaña se carga o corrige un cliente, esta lista se refresca sola (antes había que apretar F5). *@
+<ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
+
 @code {
+    private async Task RecargarClientesPorOtraPestana()
+    {
+        try { clientesTodos = null; // el buscador de la ficha la vuelve a pedir al abrirse
+        await LoadClientesMapeados(); } catch { }
+        StateHasChanged();
+    }
+
     private List<MeliShipmentDto>? shipments;
     private bool mostrarFlexAuto = false; // por defecto el mapa arranca limpio; se tilda para traer Flex de MeLi
     private bool isLoading, isSyncing, isSavingDetail;

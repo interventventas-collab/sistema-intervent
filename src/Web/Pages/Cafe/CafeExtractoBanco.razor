@@ -620,7 +620,17 @@
     </div>
 }
 
+@* 2026-10-08: si en otra pestaña se carga o corrige un cliente, esta lista se refresca sola (antes había que apretar F5). *@
+<ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
+
 @code {
+    private async Task RecargarClientesPorOtraPestana()
+    {
+        try { clientesCache = null; // se vuelve a pedir la próxima vez que se abre el buscador
+        await Task.CompletedTask; } catch { }
+        StateHasChanged();
+    }
+
     private SaldoBancoDto? saldo;
     private List<ExtractoMovimientoDto> movs = new();
     private bool loading = true;

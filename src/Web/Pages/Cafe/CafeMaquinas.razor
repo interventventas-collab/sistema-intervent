@@ -440,7 +440,16 @@
     </div>
 }
 
+@* 2026-10-08: si en otra pestaña se carga o corrige un cliente, esta lista se refresca sola (antes había que apretar F5). *@
+<ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
+
 @code {
+    private async Task RecargarClientesPorOtraPestana()
+    {
+        try { clientes = (await Api.GetCafeClientesAsync())?.Where(c => c.IsActive).ToList() ?? clientes; } catch { }
+        StateHasChanged();
+    }
+
     private string tabActivo = "comodatos";
     private string filtroQ = "";
     private bool loading = true;

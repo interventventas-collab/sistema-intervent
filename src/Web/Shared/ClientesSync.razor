@@ -1,0 +1,38 @@
+@* 2026-10-08: se pone en cada pantalla que tiene la lista de clientes en memoria. Cuando en OTRA
+   pestaña se guarda un cliente, llama a OnCambio para que la pantalla vuelva a pedir la lista
+   (antes había que apretar F5 y parecía que el cliente "no se había cargado").
+   Quien guarda un cliente llama a ClientesSync.AvisarAsync(JS). Ver wwwroot/js/clientes-sync.js. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@code {
+    [Parameter] public EventCallback OnCambio { get; set; }
+
+    private DotNetObjectReference<ClientesSync>? _ref;
+    private int _id;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _ref = DotNetObjectReference.Create(this);
+        try { _id = await JS.InvokeAsync<int>("clientesSync.suscribir", _ref); } catch { }
+    }
+
+    [JSInvokable]
+    public async Task OnClientesCambiaron()
+    {
+        try { await OnCambio.InvokeAsync(); } catch { }
+    }
+
+    /// <summary>Avisa a las otras pestañas que cambió un cliente (alta, edición, unificar, borrar).</summary>
+    public static async Task AvisarAsync(IJSRuntime js)
+    {
+        try { await js.InvokeVoidAsync("clientesSync.avisar"); } catch { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { if (_id > 0) await JS.InvokeVoidAsync("clientesSync.desuscribir", _id); } catch { }
+        _ref?.Dispose();
+    }
+}
