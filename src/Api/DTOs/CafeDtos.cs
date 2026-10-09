@@ -930,8 +930,9 @@ public record CafeComboDto(
     // 2026-06-18: costo s/IVA = suma de (componente.Costo × cantidad), y stock disponible = min(componente.Stock / cantidad)
     decimal CostoSumaComponentes = 0m,
     int StockDisponible = 0,
-    // 2026-10-09: foto propia del armado (solo sistema). Null = se usa la del primer componente.
-    string? FotoPropiaArchivo = null);
+    // 2026-10-09: foto propia del armado (solo sistema). Null = portada de su publicación de MeLi (salvo FotoMeliOculta).
+    string? FotoPropiaArchivo = null,
+    bool FotoMeliOculta = false);
 
 public class CafeComboItemRequest
 {

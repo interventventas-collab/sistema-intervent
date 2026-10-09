@@ -2091,6 +2091,22 @@ public class ApiClient
     public async Task<ProductoFotoEstadoDto?> GetEstadoFotoProductoAsync(int productoId, bool combo = false)
         => await GetAsync<ProductoFotoEstadoDto>(FotoBase(productoId, combo));
 
+    // ── 2026-10-09: tirita de fotos de MeLi para elegir + portada de los armados + X para esconderla ──
+    public record ComboPortadaDto(int ComboId, string Thumbnail);
+    public record OpcionFotoPublicacionDto(string Mla, string? Titulo, List<string> Fotos);
+
+    /// <summary>Portada de MeLi de cada armado (publicación con ese mismo tacho + tapa).</summary>
+    public async Task<List<ComboPortadaDto>?> GetPortadasArmadosAsync()
+        => await GetAsync<List<ComboPortadaDto>>("/api/cafe/producto-foto/combos-portadas");
+
+    /// <summary>Fotos en vivo de las publicaciones de MeLi de este producto (o armado) para elegir una.</summary>
+    public async Task<List<OpcionFotoPublicacionDto>?> GetOpcionesFotoAsync(int id, bool combo = false)
+        => await GetAsync<List<OpcionFotoPublicacionDto>>($"{FotoBase(id, combo)}/opciones");
+
+    /// <summary>Esconde (oculta=true) o vuelve a mostrar la portada de MeLi de un armado. No toca MeLi.</summary>
+    public async Task<ProductoFotoEstadoDto?> OcultarFotoMeliComboAsync(int comboId, bool oculta)
+        => await PostAsync<ProductoFotoEstadoDto>($"/api/cafe/producto-foto/combo/{comboId}/ocultar-meli", new { oculta });
+
     /// <summary>2026-10-09: ruta de la foto de un producto o (combo=true) de un ARMADO de Cafe_Combos.</summary>
     private static string FotoBase(int id, bool combo)
         => combo ? $"/api/cafe/producto-foto/combo/{id}" : $"/api/cafe/producto-foto/{id}";

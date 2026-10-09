@@ -2804,6 +2804,10 @@ GO
 IF COL_LENGTH('Cafe_ProductoFotoToken', 'CafeComboId') IS NULL
     ALTER TABLE Cafe_ProductoFotoToken ADD CafeComboId INT NULL;
 GO
+-- 2026-10-09: X en Productos sobre la portada de MeLi de un armado = no mostrarla (no toca MeLi).
+IF COL_LENGTH('Cafe_Combos', 'FotoMeliOculta') IS NULL
+    ALTER TABLE Cafe_Combos ADD FotoMeliOculta BIT NOT NULL CONSTRAINT DF_CafeCombos_FotoMeliOculta DEFAULT 0;
+GO
 
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Settings' AND xtype='U')
 BEGIN
