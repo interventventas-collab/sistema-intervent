@@ -61,6 +61,12 @@ public class CafeCombo
     [Column(TypeName = "decimal(10,4)")]
     public decimal? MultiplicadorOem { get; set; }
 
+    /// <summary>2026-10-09: foto PROPIA del armado (tacho + tapa, etc.), solo en el sistema. Vive en
+    /// /data/files/producto-fotos como las de los productos. Null = se muestra la del primer componente.</summary>
+    [MaxLength(200)]
+    public string? FotoPropiaArchivo { get; set; }
+    public DateTime? FotoPropiaAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

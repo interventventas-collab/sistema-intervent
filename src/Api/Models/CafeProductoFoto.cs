@@ -65,6 +65,10 @@ public class CafeProductoFotoToken
 
     public int CafeProductoId { get; set; }
 
+    /// <summary>2026-10-09: si no es null, el QR es para la foto de un ARMADO (Cafe_Combos.Id) y
+    /// CafeProductoId queda en 0.</summary>
+    public int? CafeComboId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddMinutes(30);
     public DateTime? UsedAt { get; set; }

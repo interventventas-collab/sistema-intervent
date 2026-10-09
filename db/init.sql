@@ -2793,6 +2793,18 @@ BEGIN
 END
 GO
 
+-- 2026-10-09: foto propia de los ARMADOS (tacho + tapa, etc.), solo en el sistema. Antes la pantalla de
+-- Productos les mostraba la foto del producto que tenia el mismo numero (otra tabla) = foto de otra cosa.
+IF COL_LENGTH('Cafe_Combos', 'FotoPropiaArchivo') IS NULL
+    ALTER TABLE Cafe_Combos ADD FotoPropiaArchivo NVARCHAR(200) NULL;
+GO
+IF COL_LENGTH('Cafe_Combos', 'FotoPropiaAt') IS NULL
+    ALTER TABLE Cafe_Combos ADD FotoPropiaAt DATETIME2 NULL;
+GO
+IF COL_LENGTH('Cafe_ProductoFotoToken', 'CafeComboId') IS NULL
+    ALTER TABLE Cafe_ProductoFotoToken ADD CafeComboId INT NULL;
+GO
+
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Settings' AND xtype='U')
 BEGIN
     CREATE TABLE Cafe_Settings (

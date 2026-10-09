@@ -183,17 +183,25 @@
                                 <td style="text-align:center;">
                                     @{
                                         // 2026-09-28: primero la foto PROPIA del sistema; si no tiene, la de MeLi.
-                                        var propia = p.EsCompuestoFake ? null : FotoPropiaDe(p.Id);
+                                        // 2026-10-09: los ARMADOS (Id de Cafe_Combos, otra numeración) usan su foto propia
+                                        // o, si no tienen, la PRESTADA del primer componente (borde punteado). Antes se buscaba
+                                        // la foto con el Id del armado y salía la de OTRO producto con el mismo número.
+                                        var propia = p.EsCompuestoFake ? FotoPropiaComboDe(p.Id) : FotoPropiaDe(p.Id);
                                         // Foto de MeLi marcada como errónea (❌ en Preparación o "No mostrar" acá): no se muestra.
                                         var meliOculta = !p.EsCompuestoFake && string.IsNullOrEmpty(propia) && EstadoFotoDe(p.Id) == "REPORTADA";
-                                        var thumb = !string.IsNullOrEmpty(propia) ? $"/api/public/producto-foto/img/{propia}" : meliOculta ? null : ThumbnailFor(p.Id);
+                                        var prestada = p.EsCompuestoFake && string.IsNullOrEmpty(propia) ? FotoComponenteDe(p.Id) : null;
+                                        var thumb = !string.IsNullOrEmpty(propia) ? $"/api/public/producto-foto/img/{propia}"
+                                                  : p.EsCompuestoFake ? prestada?.Url
+                                                  : meliOculta ? null : ThumbnailFor(p.Id);
+                                        var bordeFoto = !string.IsNullOrEmpty(propia) ? "1px solid #0ea5e9"
+                                                      : prestada is not null ? "1px dashed #9ca3af" : "1px solid #e5e7eb";
                                         var prodFoto = p;
                                     }
-                                    <div style="@(p.EsCompuestoFake ? "" : "cursor:pointer;")" title="@(p.EsCompuestoFake ? "" : "Cambiar la foto (solo en el sistema)")"
+                                    <div style="cursor:pointer;" title="@(prestada is not null ? $"Foto de {prestada.Value.Sku} (el armado no tiene foto propia). Tocá para cambiarla." : "Cambiar la foto (solo en el sistema)")"
                                          @onclick="() => AbrirFoto(prodFoto)">
                                         @if (!string.IsNullOrEmpty(thumb))
                                         {
-                                            <img src="@thumb" alt="" style="width:42px; height:42px; object-fit:cover; border-radius:6px; border:1px solid @(string.IsNullOrEmpty(propia) ? "#e5e7eb" : "#0ea5e9");" loading="lazy" />
+                                            <img src="@thumb" alt="" style="width:42px; height:42px; object-fit:cover; border-radius:6px; border:@bordeFoto;" loading="lazy" />
                                         }
                                         else
                                         {
@@ -1476,10 +1484,21 @@
 @* 2026-09-28: foto del producto (solo en el sistema, no toca MeLi) *@
 @if (fotoAbierta is not null)
 {
+    @if (fotoAbierta.EsCompuestoFake)
+    {
+        var prestadaModal = FotoComponenteDe(fotoAbierta.Id);
+        <FotoProductoModal ProductoId="fotoAbierta.Id" Sku="@fotoAbierta.Sku" Nombre="@fotoAbierta.Nombre" EsCombo="true"
+                           FotoPropiaArchivo="@FotoPropiaComboDe(fotoAbierta.Id)" MeliThumb="@prestadaModal?.Url"
+                           TextoFotoPrestada="@(prestadaModal is null ? null : $"Foto de {prestadaModal.Value.Sku}, el producto que lo compone")"
+                           OnCambio="OnFotoCambiada" OnCerrar="() => fotoAbierta = null" />
+    }
+    else
+    {
     <FotoProductoModal ProductoId="fotoAbierta.Id" Sku="@fotoAbierta.Sku" Nombre="@fotoAbierta.Nombre"
                        FotoPropiaArchivo="@FotoPropiaDe(fotoAbierta.Id)" MeliThumb="@ThumbnailFor(fotoAbierta.Id)"
                        Estado="@EstadoFotoDe(fotoAbierta.Id)"
                        OnCambio="OnFotoCambiada" OnCerrar="() => fotoAbierta = null" />
+    }
 }
 
 @code {
@@ -2149,15 +2168,33 @@
     private string? EstadoFotoDe(int productoId) => estadosFoto.TryGetValue(productoId, out var e) ? e : null;
     private CafeProductoDto? fotoAbierta;
 
-    private void AbrirFoto(CafeProductoDto p)
+    private void AbrirFoto(CafeProductoDto p) => fotoAbierta = p;
+
+    // 2026-10-09: fotos de los ARMADOS (Cafe_Combos). Su Id es de otra tabla: NO usar los diccionarios de
+    // productos con él. Foto propia del armado, y si no tiene, la del primer componente (prestada).
+    private Dictionary<int, string> fotosCombos = new();
+    private Dictionary<int, (int ProductoId, string Sku)> primerComponente = new();
+    private string? FotoPropiaComboDe(int comboId) => fotosCombos.TryGetValue(comboId, out var f) ? f : null;
+    private (string Url, string Sku)? FotoComponenteDe(int comboId)
     {
-        if (p.EsCompuestoFake) return;   // los compuestos no son productos: no tienen foto propia
-        fotoAbierta = p;
+        if (!primerComponente.TryGetValue(comboId, out var comp)) return null;
+        var propia = FotoPropiaDe(comp.ProductoId);
+        if (!string.IsNullOrEmpty(propia)) return ($"/api/public/producto-foto/img/{propia}", comp.Sku);
+        if (EstadoFotoDe(comp.ProductoId) == "REPORTADA") return null;
+        var meli = ThumbnailFor(comp.ProductoId);
+        return string.IsNullOrEmpty(meli) ? null : (meli, comp.Sku);
     }
 
     private void OnFotoCambiada((string? Archivo, string? Estado) c)
     {
         if (fotoAbierta is null) return;
+        if (fotoAbierta.EsCompuestoFake)
+        {
+            if (string.IsNullOrEmpty(c.Archivo)) fotosCombos.Remove(fotoAbierta.Id);
+            else fotosCombos[fotoAbierta.Id] = c.Archivo;
+            StateHasChanged();
+            return;
+        }
         if (string.IsNullOrEmpty(c.Archivo)) fotosPropias.Remove(fotoAbierta.Id);
         else fotosPropias[fotoAbierta.Id] = c.Archivo;
         if (string.IsNullOrEmpty(c.Estado)) estadosFoto.Remove(fotoAbierta.Id);
@@ -2302,6 +2339,11 @@
             // en valor sin IVA (oem c/IVA / 1+iva). Sin OEM se usan los preview tal cual (suma de componentes).
             // 2026-09-28: OEM de cada producto, para saber cuántas "cajas" lleva un pack (ver abajo).
             var oemDeProducto = productos.Where(x => x.OemId.HasValue).ToDictionary(x => x.Id, x => x.OemId!.Value);
+            // 2026-10-09: foto propia de cada armado y su primer componente (para la foto prestada).
+            fotosCombos = todosCombos.Where(c => c.EsCompuesto && !string.IsNullOrEmpty(c.FotoPropiaArchivo))
+                .ToDictionary(c => c.Id, c => c.FotoPropiaArchivo!);
+            primerComponente = todosCombos.Where(c => c.EsCompuesto && c.Items.Count > 0)
+                .ToDictionary(c => c.Id, c => { var i = c.Items.OrderBy(x => x.SortOrder).First(); return (i.ProductoId, i.ProductoSku ?? i.ProductoNombre); });
             var compuestos = todosCombos.Where(c => c.EsCompuesto).Select(c =>
             {
                 decimal? precioBarSinIva = null;

@@ -173,26 +173,127 @@ public class CafeProductoFotoController : ControllerBase
     public async Task<IActionResult> DesdeUrl(int productoId, [FromBody] DesdeUrlRequest req)
     {
         if (!await _db.CafeProductos.AnyAsync(p => p.Id == productoId)) return NotFound(new { mensaje = "Producto no encontrado." });
-        var url = (req?.Url ?? "").Trim();
+        var (bytes, ext, error) = await BajarImagenAsync(req?.Url);
+        if (error is not null) return BadRequest(new { mensaje = error });
+        var usuario = HttpContext.User?.Identity?.Name;
+        var archivo = await GuardarFotoPropiaAsync(productoId, bytes!, ext, usuario);
+        return Ok(new ProductoFotoDto(productoId, "APROBADA", usuario, null, archivo, DateTime.UtcNow));
+    }
+
+    /// <summary>Baja la imagen de un link. Devuelve (bytes, extensión, null) o (null, null, mensaje de error).</summary>
+    private static async Task<(byte[]? Bytes, string? Ext, string? Error)> BajarImagenAsync(string? urlIn)
+    {
+        var url = (urlIn ?? "").Trim();
         if (string.IsNullOrEmpty(url) || !(url.StartsWith("http://") || url.StartsWith("https://")))
-            return BadRequest(new { mensaje = "Pegá un link válido (que empiece con http)." });
+            return (null, null, "Pegá un link válido (que empiece con http).");
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
             http.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0");
             using var resp = await http.GetAsync(url);
-            if (!resp.IsSuccessStatusCode) return BadRequest(new { mensaje = "No pude descargar esa imagen (el link no responde)." });
+            if (!resp.IsSuccessStatusCode) return (null, null, "No pude descargar esa imagen (el link no responde).");
             var ct = resp.Content.Headers.ContentType?.MediaType ?? "";
-            if (!ct.StartsWith("image/")) return BadRequest(new { mensaje = "Ese link no es una imagen." });
+            if (!ct.StartsWith("image/")) return (null, null, "Ese link no es una imagen.");
             var bytes = await resp.Content.ReadAsByteArrayAsync();
-            if (bytes.Length == 0) return BadRequest(new { mensaje = "La imagen vino vacía." });
-            if (bytes.Length > 10 * 1024 * 1024) return BadRequest(new { mensaje = "La imagen es muy grande (máx 10 MB)." });
+            if (bytes.Length == 0) return (null, null, "La imagen vino vacía.");
+            if (bytes.Length > 10 * 1024 * 1024) return (null, null, "La imagen es muy grande (máx 10 MB).");
             var ext = ct switch { "image/png" => ".png", "image/gif" => ".gif", "image/webp" => ".webp", _ => ".jpg" };
-            var usuario = HttpContext.User?.Identity?.Name;
-            var archivo = await GuardarFotoPropiaAsync(productoId, bytes, ext, usuario);
-            return Ok(new ProductoFotoDto(productoId, "APROBADA", usuario, null, archivo, DateTime.UtcNow));
+            return (bytes, ext, null);
         }
-        catch (Exception ex) { return BadRequest(new { mensaje = "No pude traer esa imagen: " + ex.Message }); }
+        catch (Exception ex) { return (null, null, "No pude traer esa imagen: " + ex.Message); }
+    }
+
+    // ───────────── 2026-10-09: foto propia de los ARMADOS (tacho + tapa, etc.) ─────────────
+    // Los armados viven en Cafe_Combos (otra numeración que los productos), así que la foto se guarda en
+    // Cafe_Combos.FotoPropiaArchivo. Mismas formas que la del producto: compu, link o celular (QR).
+    // Las respuestas usan ProductoFotoDto con el Id del armado, así la pantalla las trata igual.
+
+    private async Task<string> GuardarFotoComboAsync(CafeCombo combo, byte[] bytes, string? ext)
+    {
+        Directory.CreateDirectory(FotosDir);
+        if (string.IsNullOrEmpty(ext) || ext.Length > 6) ext = ".jpg";
+        var filename = $"combo-{combo.Id}-{Guid.NewGuid():N}{ext}";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(FotosDir, filename), bytes);
+        var viejo = combo.FotoPropiaArchivo;
+        combo.FotoPropiaArchivo = filename;
+        combo.FotoPropiaAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        BorrarArchivo(viejo);
+        return filename;
+    }
+
+    private static void BorrarArchivo(string? archivo)
+    {
+        if (string.IsNullOrEmpty(archivo)) return;
+        try { var path = Path.Combine(FotosDir, archivo); if (System.IO.File.Exists(path)) System.IO.File.Delete(path); }
+        catch { /* best-effort */ }
+    }
+
+    private ProductoFotoDto ComboDto(CafeCombo c) =>
+        new(c.Id, null, HttpContext.User?.Identity?.Name, null, c.FotoPropiaArchivo, c.FotoPropiaAt ?? DateTime.UtcNow);
+
+    [HttpGet("combo/{comboId:int}")]
+    public async Task<IActionResult> GetCombo(int comboId)
+    {
+        var c = await _db.CafeCombos.FindAsync(comboId);
+        return c is null ? NotFound() : Ok(ComboDto(c));
+    }
+
+    [HttpPost("combo/{comboId:int}/subir")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> SubirCombo(int comboId, IFormFile file)
+    {
+        var c = await _db.CafeCombos.FindAsync(comboId);
+        if (c is null) return NotFound(new { mensaje = "Armado no encontrado." });
+        if (file is null || file.Length == 0) return BadRequest(new { mensaje = "No se recibió ninguna foto." });
+        if (file.Length > 10 * 1024 * 1024) return BadRequest(new { mensaje = "La foto es muy grande (máx 10 MB)." });
+        if (!file.ContentType.StartsWith("image/")) return BadRequest(new { mensaje = "El archivo tiene que ser una imagen." });
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        await GuardarFotoComboAsync(c, ms.ToArray(), Path.GetExtension(file.FileName));
+        return Ok(ComboDto(c));
+    }
+
+    [HttpPost("combo/{comboId:int}/desde-url")]
+    public async Task<IActionResult> DesdeUrlCombo(int comboId, [FromBody] DesdeUrlRequest req)
+    {
+        var c = await _db.CafeCombos.FindAsync(comboId);
+        if (c is null) return NotFound(new { mensaje = "Armado no encontrado." });
+        var (bytes, ext, error) = await BajarImagenAsync(req?.Url);
+        if (error is not null) return BadRequest(new { mensaje = error });
+        await GuardarFotoComboAsync(c, bytes!, ext);
+        return Ok(ComboDto(c));
+    }
+
+    [HttpDelete("combo/{comboId:int}/propia")]
+    public async Task<IActionResult> QuitarPropiaCombo(int comboId)
+    {
+        var c = await _db.CafeCombos.FindAsync(comboId);
+        if (c is null) return NotFound(new { mensaje = "Armado no encontrado." });
+        var viejo = c.FotoPropiaArchivo;
+        c.FotoPropiaArchivo = null;
+        c.FotoPropiaAt = null;
+        await _db.SaveChangesAsync();
+        BorrarArchivo(viejo);
+        return Ok(ComboDto(c));
+    }
+
+    /// <summary>Token de un solo uso (30 min) para subir la foto del armado por QR desde el celu.</summary>
+    [HttpPost("combo/{comboId:int}/token")]
+    public async Task<IActionResult> CrearTokenCombo(int comboId)
+    {
+        if (!await _db.CafeCombos.AnyAsync(c => c.Id == comboId)) return NotFound(new { mensaje = "Armado no encontrado." });
+        var token = Guid.NewGuid().ToString("N");
+        _db.CafeProductoFotoTokens.Add(new CafeProductoFotoToken
+        {
+            Token = token,
+            CafeProductoId = 0,
+            CafeComboId = comboId,
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(30)
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new TokenResp(token));
     }
 
     // ───────────── 2026-10-01: Fotos chroma (fondo verde/azul → blanco para MeLi) ─────────────
