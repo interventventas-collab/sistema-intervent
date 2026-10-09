@@ -688,6 +688,8 @@ public class VentaSaldoDto
     public decimal Total { get; set; }
     public decimal Pagado { get; set; }
     public decimal Saldo { get; set; }
+    /// <summary>09/10/2026: "Anulada con NC CAFE-…" / "Anula FC CAFE-…". Null si no hay vinculo.</summary>
+    public string? VinculoNc { get; set; }
 }
 
 // ========== Pagos a proveedores ==========

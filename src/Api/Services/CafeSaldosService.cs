@@ -291,8 +291,10 @@ public class CafeSaldosService
         var ventas = await _db.CafeVentas
             .Where(v => v.ClienteId == clienteId && v.Estado != "anulado" && v.TipoComprobante != "PRO"
                      && v.FacturadaComoVentaId == null)
-            .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante })
+            .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante, v.VentaOrigenNcId, v.NotaCreditoVentaId })
             .ToListAsync();
+        // 09/10/2026: para aclarar en Detalle qué factura anula cada NC (y al revés).
+        var numeroPorId = ventas.ToDictionary(v => v.Id, v => v.Numero ?? $"#{v.Id}");
 
         // Imputaciones que tocan a este cliente: las aplicadas a SUS ventas (venga la cobranza
         // de donde venga) + las que quedaron "a cuenta" en SU cuenta.
@@ -321,9 +323,15 @@ public class CafeSaldosService
             var monto = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
             // Las Notas de Credito (NCA/NCB/NCC) son DEVOLUCION al cliente — van al HABER, no al DEBE.
             if (EsNc(v.TipoComprobante))
-                movs.Add(new MovimientoCuenta(v.Fecha, "Nota Crédito", v.Numero ?? $"#{v.Id}", 0m, monto, null));
+            {
+                var det = v.VentaOrigenNcId.HasValue && numeroPorId.TryGetValue(v.VentaOrigenNcId.Value, out var fa) ? $"anula {fa}" : null;
+                movs.Add(new MovimientoCuenta(v.Fecha, "Nota Crédito", v.Numero ?? $"#{v.Id}", 0m, monto, det));
+            }
             else
-                movs.Add(new MovimientoCuenta(v.Fecha, "Venta", v.Numero ?? $"#{v.Id}", monto, 0m, null));
+            {
+                var det = v.NotaCreditoVentaId.HasValue && numeroPorId.TryGetValue(v.NotaCreditoVentaId.Value, out var nc) ? $"anulada con NC {nc}" : null;
+                movs.Add(new MovimientoCuenta(v.Fecha, "Venta", v.Numero ?? $"#{v.Id}", monto, 0m, det));
+            }
         }
         foreach (var g in imputaciones.GroupBy(x => x.CobranzaId))
         {

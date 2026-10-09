@@ -281,7 +281,7 @@ public class CafeCobranzasController : ControllerBase
                      && v.TipoComprobante != "PRO"
                      // 2026-10-06: la cotización ya facturada no se cobra: se cobra su factura.
                      && v.FacturadaComoVentaId == null)
-            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro })
+            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro, v.VentaOrigenNcId })
             .ToListAsync();
 
         // 2026-08-27: aunque no tenga ventas, el cliente puede tener alquileres facturados.
@@ -316,9 +316,27 @@ public class CafeCobranzasController : ControllerBase
                     v.Id, v.Numero ?? $"#{v.Id}", v.Fecha, totalCobrar, pagado, totalCobrar - pagado,
                     v.ClienteId, clienteNom, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro);
             })
-            // 2026-06-16: |Saldo| > 0.01 — antes filtraba solo positivos y se perdian las NC con saldo negativo (a compensar).
-            .Where(x => Math.Abs(x.Saldo) > 0.01m)
             .ToList();
+
+        // 09/10/2026: una NC que ANULA una factura (VentaOrigenNcId) y esa factura se cancelan
+        // entre si: no hay nada que cobrar ni plata a favor. Antes la factura salia en la lista
+        // y la NC en el cuadro verde "a favor" (caso Dulce Lugar FC 2040 / NC 2085). Se ocultan
+        // las dos solo si juntas dan cero; si la factura tenia algo pagado antes de anularla,
+        // esa diferencia sigue a la vista.
+        var saldoPorId = result.ToDictionary(x => x.VentaId, x => x.Saldo);
+        var ocultar = new HashSet<int>();
+        foreach (var nc in ventas.Where(v => v.VentaOrigenNcId.HasValue))
+        {
+            var faId = nc.VentaOrigenNcId!.Value;
+            if (saldoPorId.TryGetValue(nc.Id, out var sNc) && saldoPorId.TryGetValue(faId, out var sFa)
+                && Math.Abs(sNc + sFa) <= 0.01m)
+            {
+                ocultar.Add(nc.Id);
+                ocultar.Add(faId);
+            }
+        }
+        // 2026-06-16: |Saldo| > 0.01 — antes filtraba solo positivos y se perdian las NC con saldo negativo (a compensar).
+        result = result.Where(x => Math.Abs(x.Saldo) > 0.01m && !ocultar.Contains(x.VentaId)).ToList();
 
         result.AddRange(LineasDeAlquiler(await ReservasCobrablesAsync(clienteIds), incluirMismoCuit, clienteNombres));
         result = result.OrderBy(x => x.Fecha).ToList();
