@@ -7,6 +7,20 @@
 @inject IJSRuntime JS
 @inject BrandSettingsService BrandSettings
 
+<style>
+    /* 09/10/2026: igual que en Ventas — al pasar el mouse por el cliente se ve lo alquilado,
+       y el ojito 👁️ abre la ficha del cliente. */
+    .cell-cliente-hover .venta-tooltip {
+        display: none; position: absolute; top: calc(100% + 2px); left: 0; z-index: 100;
+        background: white; border: 1px solid #d1d5db; border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15); padding: 0.7rem 0.85rem;
+        min-width: 380px; max-width: 520px;
+    }
+    .cell-cliente-hover:hover .venta-tooltip { display: block; }
+    .vta-ojito { background: #fff; border: 1px solid #d1d5db; border-radius: 6px; padding: 0 0.3rem; margin-right: 0.35rem; font-size: 0.85rem; line-height: 1.5; cursor: pointer; vertical-align: middle; }
+    .vta-ojito:hover { background: #f3f4f6; border-color: #9ca3af; }
+</style>
+
 <div class="card">
     <div class="card-header" style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
         <h3 style="margin: 0; white-space: nowrap;">
@@ -158,8 +172,10 @@
                             @* 09/10/2026: antes tocar CUALQUIER parte del renglon abria la edicion (molesto al querer
                                copiar un telefono o una direccion). Ahora se edita solo con el lapiz. *@
                             <tr style="@(retiroVencido ? "background:#fef2f2;" : "")">
-                                <td style="font-family: monospace; font-weight: 600;">
-                                    @r.Numero
+                                <td style="font-family: monospace; font-weight: 600; white-space: nowrap;">
+                                    @* 09/10/2026: ojito = ver el comprobante en pantalla sin descargarlo (lo mismo que la 🖨). *@
+                                    <button type="button" class="vta-ojito" title="Ver el comprobante de la reserva (sin descargar)"
+                                            @onclick="() => ShowPrint(r)">👁️</button>@r.Numero
                                     @if (enCalle)
                                     {
                                         <div style="font-size:0.66rem; color:@(retiroVencido ? "#b91c1c" : "#9a3412"); font-weight:700; margin-top:0.15rem;">
@@ -167,7 +183,12 @@
                                         </div>
                                     }
                                 </td>
-                                <td>
+                                <td style="position: relative;" class="cell-cliente-hover">
+                                    @if (r.ClienteId > 0)
+                                    {
+                                        <button type="button" class="vta-ojito" title="Ver ficha del cliente: lo que debe y sus últimos comprobantes"
+                                                @onclick="() => fichaClienteId = r.ClienteId">👁️</button>
+                                    }
                                     <strong>@r.ClienteNombre</strong>
                                     @if (!string.IsNullOrEmpty(r.ClienteTelefono))
                                     {
@@ -207,6 +228,54 @@
                                             }
                                         </div>
                                     }
+                                    @* Detalle de lo alquilado al pasar el mouse (como el listado de Ventas). Mismas
+                                       cuentas que el comprobante: subtotal = cantidad x precio. *@
+                                    <div class="venta-tooltip">
+                                        <div style="font-weight: 700; color: #1f2937; margin-bottom: 0.4rem; padding-bottom: 0.3rem; border-bottom: 1px solid #e5e7eb;">
+                                            @r.Numero — @r.ClienteNombre@if (r.Dias > 1) {<span style="color:#6b7280; font-weight:500;"> · @r.Dias días</span>}
+                                        </div>
+                                        @if (r.Items.Count > 0)
+                                        {
+                                            <div style="font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem;">Alquilado</div>
+                                            <table style="width: 100%; font-size: 0.82rem; border-collapse: collapse;">
+                                                <thead>
+                                                    <tr style="border-bottom: 1px solid #e5e7eb;">
+                                                        <th style="text-align: left; padding: 0.2rem; font-weight: 600; color: #6b7280;">Equipo</th>
+                                                        <th style="text-align: center; padding: 0.2rem; font-weight: 600; color: #6b7280;">Cant</th>
+                                                        <th style="text-align: right; padding: 0.2rem; font-weight: 600; color: #6b7280;">Precio c/u</th>
+                                                        <th style="text-align: right; padding: 0.2rem; font-weight: 600; color: #6b7280;">Subtot</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                @foreach (var it in r.Items)
+                                                {
+                                                    <tr>
+                                                        <td style="padding: 0.2rem; line-height: 1.2;">@it.EquipoNombre</td>
+                                                        <td style="text-align: center; padding: 0.2rem; font-family: monospace;">@it.Cantidad</td>
+                                                        <td style="text-align: right; padding: 0.2rem; font-family: monospace; white-space: nowrap;">$@FormatMoney(it.PrecioUnitario)</td>
+                                                        <td style="text-align: right; padding: 0.2rem; font-family: monospace; white-space: nowrap;">$@FormatMoney(it.Cantidad * it.PrecioUnitario)</td>
+                                                    </tr>
+                                                }
+                                                </tbody>
+                                            </table>
+                                            @if (r.Descuento > 0)
+                                            {
+                                                <div style="text-align: right; font-size: 0.8rem; color: #6b7280; margin-top: 0.2rem;">Descuento − $@FormatMoney(r.Descuento)</div>
+                                            }
+                                            <div style="text-align: right; font-size: 0.85rem; font-weight: 700; margin-top: 0.2rem;">Total $@FormatMoney(r.MontoTotal)</div>
+                                        }
+                                        else
+                                        {
+                                            <div style="color: #9ca3af; font-style: italic; font-size: 0.8rem;">Sin items</div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(r.Notas))
+                                        {
+                                            <div style="margin-top: 0.5rem; padding-top: 0.3rem; border-top: 1px solid #e5e7eb;">
+                                                <div style="font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">Notas</div>
+                                                <div style="font-size: 0.78rem; color: #4b5563; white-space: pre-wrap;">@r.Notas</div>
+                                            </div>
+                                        }
+                                    </div>
                                 </td>
                                 <td style="font-size: 0.85rem;">@r.FechaEntrega.ToString("dd/MM/yyyy")</td>
                                 <td style="font-size: 0.85rem;">@r.FechaRetiro.ToString("dd/MM/yyyy")</td>
@@ -1259,7 +1328,16 @@
 @* 2026-10-08: si en otra pestaña se carga o corrige un cliente, esta lista se refresca sola (antes había que apretar F5). *@
 <ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
 
+@* 09/10/2026: ficha flotante del cliente (el ojito 👁️ del renglón), la misma de Ventas. *@
+@if (fichaClienteId is int fcid)
+{
+    <FichaClienteFlotante ClienteId="fcid" OnCerrar="@(() => fichaClienteId = null)" />
+}
+
 @code {
+    // 09/10/2026: cliente cuya ficha flotante (ojito 👁️) está abierta.
+    private int? fichaClienteId;
+
     // 2026-10-08: si el buscador no encuentra a nadie puede ser un cliente recién cargado en OTRA compu
     // (el aviso entre pestañas sólo llega dentro del mismo navegador): se vuelve a pedir la lista,
     // como mucho cada 20 s para no traer los 9.000 clientes en cada tecla.
