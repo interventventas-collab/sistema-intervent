@@ -543,7 +543,10 @@ public class CafeVentasController : ControllerBase
         return Ok(ventas.Select(v => Map(v)).ToList());
     }
 
-    public record VentaSaldoDto(int VentaId, decimal Total, decimal Pagado, decimal Saldo);
+    public record VentaSaldoDto(int VentaId, decimal Total, decimal Pagado, decimal Saldo,
+        // 09/10/2026: factura anulada con NC → "Anulada con NC CAFE-…"; NC que anula una factura →
+        // "Anula FC CAFE-…". Null si no hay vinculo. Antes la factura decia "Pagada" (nadie la pago).
+        string? VinculoNc = null);
 
     /// <summary>
     /// Devuelve el saldo (Total - Pagado) por cada venta visible en el listado.
@@ -558,7 +561,14 @@ public class CafeVentasController : ControllerBase
         if (to.HasValue) q = q.Where(v => v.Fecha <= to.Value.Date);
         // Necesitamos ArcaImpTotal ademas de Total: en facturas A/B/C con IVA, ese es el monto real cobrable.
         var ventas = await q.Where(v => v.Estado != "anulado")
-            .Select(v => new { v.Id, v.Total, v.ArcaImpTotal, v.TipoComprobante, v.NotaCreditoVentaId }).ToListAsync();
+            .Select(v => new
+            {
+                v.Id, v.Total, v.ArcaImpTotal, v.TipoComprobante, v.NotaCreditoVentaId,
+                NcNumero = v.NotaCreditoVentaId == null ? null
+                    : _db.CafeVentas.Where(x => x.Id == v.NotaCreditoVentaId).Select(x => x.Numero).FirstOrDefault(),
+                FaNumero = v.VentaOrigenNcId == null ? null
+                    : _db.CafeVentas.Where(x => x.Id == v.VentaOrigenNcId).Select(x => x.Numero).FirstOrDefault()
+            }).ToListAsync();
         var ventaIds = ventas.Select(v => v.Id).ToList();
         var pagados = await _db.CafeCobranzasComprobantes
             .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
@@ -575,8 +585,10 @@ public class CafeVentasController : ControllerBase
             // factura anulada por NC tampoco: las dos van con saldo 0 para que el listado no las
             // muestre como deuda.
             var esNc = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
+            var vinculo = v.NcNumero is not null ? $"Anulada con NC {v.NcNumero}"
+                        : v.FaNumero is not null ? $"Anula FC {v.FaNumero}" : null;
             if (esNc || v.NotaCreditoVentaId.HasValue)
-                return new VentaSaldoDto(v.Id, totalCobrar, pagado, 0m);
+                return new VentaSaldoDto(v.Id, totalCobrar, pagado, 0m, vinculo);
             return new VentaSaldoDto(v.Id, totalCobrar, pagado, totalCobrar - pagado);
         }).ToList();
         return Ok(result);

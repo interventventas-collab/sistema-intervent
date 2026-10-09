@@ -782,11 +782,18 @@
                                     }
                                     @if (!anulada && esNC)
                                     {
-                                        @* NC: el "pagado" suele ser negativo cuando la NC compensa una FA via cobranza.
-                                           creditoRestante = totalCobrable + pagado (pagado <= 0). 0 = aplicada, totalCobrable = libre. *@
-                                        var creditoRestante = totalCobrable + pagado;
+                                        @* NC: lo imputado en cobranzas es negativo cuando la NC compensa una FA.
+                                           creditoRestante = totalCobrable + imputado. 0 = aplicada, totalCobrable = libre.
+                                           09/10/2026: antes se usaba "pagado" = total - saldo, y como el saldo de una NC
+                                           viene en 0 daba el DOBLE (NC 2085 de $457.985 mostraba $915.970 a favor). *@
+                                        var imputadoNc = pagadoPorVenta.TryGetValue(v.Id, out var impNc) ? impNc : 0m;
+                                        var creditoRestante = totalCobrable + imputadoNc;
                                         <div style="font-size:0.7rem; color:#b91c1c; font-weight:700; margin-top:0.15rem;">💸 Nota de Crédito</div>
-                                        @if (creditoRestante <= 0.01m)
+                                        @if (vinculoNcPorVenta.TryGetValue(v.Id, out var anulaFc))
+                                        {
+                                            <div style="font-size:0.65rem; color:#6b7280; font-weight:700; margin-top:0.1rem;" title="Esta NC anula esa factura: se cancelan entre sí">@anulaFc</div>
+                                        }
+                                        else if (creditoRestante <= 0.01m)
                                         {
                                             <div style="font-size:0.65rem; color:#15803d; font-weight:700; margin-top:0.1rem;" title="Esta NC se usó para cancelar otra factura">✓ Aplicada</div>
                                         }
@@ -806,7 +813,12 @@
                                     }
                                     else if (!anulada)
                                     {
-                                        @if (saldo <= 0.01m)
+                                        @if (vinculoNcPorVenta.TryGetValue(v.Id, out var anuladaConNc))
+                                        {
+                                            @* 09/10/2026: no la pagó nadie: la anuló una NC. Antes decía "Pagada". *@
+                                            <div style="font-size:0.7rem; color:#6b7280; font-weight:700; margin-top:0.15rem;" title="Esta factura quedó sin efecto con esa nota de crédito">@anuladaConNc</div>
+                                        }
+                                        else if (saldo <= 0.01m)
                                         {
                                             <div style="font-size:0.7rem; color:#16a34a; font-weight:700; margin-top:0.15rem;">✅ Pagada</div>
                                         }
@@ -5405,6 +5417,10 @@
         return string.IsNullOrEmpty(n) ? $"#{id}" : n[(n.LastIndexOf('-') + 1)..];
     }
     private Dictionary<int, decimal> saldosPorVenta = new();
+    // 09/10/2026: lo imputado en cobranzas (para el credito que le queda a una NC) y el vinculo
+    // factura anulada <-> NC ("Anulada con NC …" / "Anula FC …").
+    private Dictionary<int, decimal> pagadoPorVenta = new();
+    private Dictionary<int, string> vinculoNcPorVenta = new();
 
     // Pin / nota tipo post-it
     private CafeVentaDto? pinningVenta;
@@ -7663,8 +7679,10 @@
             {
                 var saldos = await Api.GetVentasSaldosAsync();
                 saldosPorVenta = (saldos ?? new()).ToDictionary(s => s.VentaId, s => s.Saldo);
+                pagadoPorVenta = (saldos ?? new()).ToDictionary(s => s.VentaId, s => s.Pagado);
+                vinculoNcPorVenta = (saldos ?? new()).Where(s => s.VinculoNc != null).ToDictionary(s => s.VentaId, s => s.VinculoNc!);
             }
-            catch { saldosPorVenta = new(); }
+            catch { saldosPorVenta = new(); pagadoPorVenta = new(); vinculoNcPorVenta = new(); }
         }
         catch
         {
@@ -7727,8 +7745,10 @@
             {
                 var saldos = await Api.GetVentasSaldosAsync();
                 saldosPorVenta = (saldos ?? new()).ToDictionary(s => s.VentaId, s => s.Saldo);
+                pagadoPorVenta = (saldos ?? new()).ToDictionary(s => s.VentaId, s => s.Pagado);
+                vinculoNcPorVenta = (saldos ?? new()).Where(s => s.VinculoNc != null).ToDictionary(s => s.VentaId, s => s.VinculoNc!);
             }
-            catch { saldosPorVenta = new(); }
+            catch { saldosPorVenta = new(); pagadoPorVenta = new(); vinculoNcPorVenta = new(); }
         }
         catch { ToastService.Error("Error al buscar ventas"); }
         loading = false;
