@@ -1224,6 +1224,8 @@ public class CafeComboDto
     // 2026-06-18: costo y stock calculados del compuesto
     public decimal CostoSumaComponentes { get; set; }
     public int StockDisponible { get; set; }
+    /// <summary>2026-10-09: foto propia del armado (solo sistema). Null = se usa la del primer componente.</summary>
+    public string? FotoPropiaArchivo { get; set; }
 }
 
 public class CafeComboItemRequest

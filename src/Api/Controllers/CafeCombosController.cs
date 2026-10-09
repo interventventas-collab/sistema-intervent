@@ -537,7 +537,8 @@ public class CafeCombosController : ControllerBase
             OemIvaPct: c.OemNav?.IvaPct,
             MultiplicadorOem: c.MultiplicadorOem,
             CostoSumaComponentes: Math.Round(costoTotal, 2),
-            StockDisponible: stockMinDisponible ?? 0
+            StockDisponible: stockMinDisponible ?? 0,
+            FotoPropiaArchivo: c.FotoPropiaArchivo
         );
     }
 }

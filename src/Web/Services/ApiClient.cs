@@ -2080,23 +2080,27 @@ public class ApiClient
         => await GetAsync<List<ProductoFotoEstadoDto>>("/api/cafe/producto-foto");
 
     /// <summary>2026-09-28: quita la foto propia del producto (vuelve a verse la de MeLi). No toca MeLi.</summary>
-    public async Task<bool> QuitarFotoPropiaAsync(int productoId)
+    public async Task<bool> QuitarFotoPropiaAsync(int productoId, bool combo = false)
     {
         await SetAuthHeaderAsync();
-        var resp = await _http.DeleteAsync($"/api/cafe/producto-foto/{productoId}/propia");
+        var resp = await _http.DeleteAsync($"{FotoBase(productoId, combo)}/propia");
         return resp.IsSuccessStatusCode;
     }
 
     /// <summary>Estado actual de la foto de un producto (para sondear mientras el celu sube por QR).</summary>
-    public async Task<ProductoFotoEstadoDto?> GetEstadoFotoProductoAsync(int productoId)
-        => await GetAsync<ProductoFotoEstadoDto>($"/api/cafe/producto-foto/{productoId}");
+    public async Task<ProductoFotoEstadoDto?> GetEstadoFotoProductoAsync(int productoId, bool combo = false)
+        => await GetAsync<ProductoFotoEstadoDto>(FotoBase(productoId, combo));
+
+    /// <summary>2026-10-09: ruta de la foto de un producto o (combo=true) de un ARMADO de Cafe_Combos.</summary>
+    private static string FotoBase(int id, bool combo)
+        => combo ? $"/api/cafe/producto-foto/combo/{id}" : $"/api/cafe/producto-foto/{id}";
 
     /// <summary>Genera un token de un solo uso (30 min) para subir la foto de este producto por QR.</summary>
-    public async Task<ProductoFotoTokenDto?> CrearTokenFotoProductoAsync(int productoId)
-        => await PostAsync<ProductoFotoTokenDto>($"/api/cafe/producto-foto/{productoId}/token", new { });
+    public async Task<ProductoFotoTokenDto?> CrearTokenFotoProductoAsync(int productoId, bool combo = false)
+        => await PostAsync<ProductoFotoTokenDto>($"{FotoBase(productoId, combo)}/token", new { });
 
     /// <summary>Sube la foto propia DIRECTO desde la compu (sin QR).</summary>
-    public async Task<ProductoFotoEstadoDto?> SubirFotoProductoAsync(int productoId, Stream fileStream, string fileName, string contentType)
+    public async Task<ProductoFotoEstadoDto?> SubirFotoProductoAsync(int productoId, Stream fileStream, string fileName, string contentType, bool combo = false)
     {
         await SetAuthHeaderAsync();
         using var content = new MultipartFormDataContent();
@@ -2104,7 +2108,7 @@ public class ApiClient
         if (!string.IsNullOrEmpty(contentType))
             sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
         content.Add(sc, "file", string.IsNullOrEmpty(fileName) ? "foto.jpg" : fileName);
-        var resp = await _http.PostAsync($"/api/cafe/producto-foto/{productoId}/subir", content);
+        var resp = await _http.PostAsync($"{FotoBase(productoId, combo)}/subir", content);
         if (!resp.IsSuccessStatusCode) return null;
         return await resp.Content.ReadFromJsonAsync<ProductoFotoEstadoDto>();
     }
@@ -2264,10 +2268,10 @@ public class ApiClient
     }
 
     /// <summary>Sube la foto propia bajando la imagen de un LINK (URL).</summary>
-    public async Task<ProductoFotoEstadoDto?> SubirFotoProductoDesdeUrlAsync(int productoId, string url)
+    public async Task<ProductoFotoEstadoDto?> SubirFotoProductoDesdeUrlAsync(int productoId, string url, bool combo = false)
     {
         await SetAuthHeaderAsync();
-        var resp = await _http.PostAsJsonAsync($"/api/cafe/producto-foto/{productoId}/desde-url", new { url });
+        var resp = await _http.PostAsJsonAsync($"{FotoBase(productoId, combo)}/desde-url", new { url });
         if (!resp.IsSuccessStatusCode) return null;
         return await resp.Content.ReadFromJsonAsync<ProductoFotoEstadoDto>();
     }

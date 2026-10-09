@@ -12,7 +12,7 @@
          style="background:#fff; border-radius:12px; padding:1.1rem; width:min(92vw,420px); max-height:92vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.35);">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:0.6rem; margin-bottom:0.7rem;">
             <div>
-                <div style="font-weight:700; color:#111827;">Foto del producto</div>
+                <div style="font-weight:700; color:#111827;">@(EsCombo ? "Foto del armado" : "Foto del producto")</div>
                 <div style="font-size:0.82rem; color:#374151;"><span style="font-family:monospace; color:#1d4ed8;">@Sku</span> @Nombre</div>
             </div>
             <button @onclick="Cerrar" title="Cerrar" aria-label="Cerrar"
@@ -30,6 +30,7 @@
             }
             <div style="font-size:0.78rem; color:#6b7280; margin-top:0.35rem;">
                 @(!string.IsNullOrEmpty(archivoPropio) ? "Foto propia del sistema"
+                  : EsCombo ? (!string.IsNullOrEmpty(MeliThumb) ? TextoFotoPrestada : "Este armado no tiene foto")
                   : MeliOculta ? "La foto de MercadoLibre está marcada como errónea: no se muestra"
                   : !string.IsNullOrEmpty(MeliThumb) ? "Foto tomada de MercadoLibre" : "Este producto no tiene foto")
             </div>
@@ -69,7 +70,7 @@
 
             @* Foto de MeLi equivocada (ej. la caja sola muestra caja + tapa): se esconde en el sistema.
                Es la misma marca ❌ "foto errónea" de Preparación. *@
-            @if (string.IsNullOrEmpty(archivoPropio) && !string.IsNullOrEmpty(MeliThumb))
+            @if (!EsCombo && string.IsNullOrEmpty(archivoPropio) && !string.IsNullOrEmpty(MeliThumb))
             {
                 @if (MeliOculta)
                 {
@@ -86,7 +87,8 @@
                 @if (confirmarQuitar)
                 {
                     <div style="border:1px solid #fca5a5; background:#fef2f2; border-radius:8px; padding:0.6rem; font-size:0.85rem;">
-                        ¿Quitar la foto propia? Vuelve a verse la de MercadoLibre (si tiene).
+                        @(EsCombo ? "¿Quitar la foto propia? Vuelve a verse la del producto que lo compone (si tiene)."
+                                  : "¿Quitar la foto propia? Vuelve a verse la de MercadoLibre (si tiene).")
                         <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
                             <button class="btn btn-secondary" style="flex:1;" @onclick="() => confirmarQuitar = false">No</button>
                             <button class="btn btn-danger" style="flex:1;" @onclick="Quitar">Sí, quitar</button>
@@ -115,6 +117,10 @@
     /// <summary>Se llama con (archivo propio, estado) después de cualquier cambio.</summary>
     [Parameter] public EventCallback<(string? Archivo, string? Estado)> OnCambio { get; set; }
     [Parameter] public EventCallback OnCerrar { get; set; }
+    /// <summary>2026-10-09: true = ProductoId es un ARMADO (Cafe_Combos). MeliThumb trae entonces la foto
+    /// prestada del primer componente y TextoFotoPrestada explica de dónde sale.</summary>
+    [Parameter] public bool EsCombo { get; set; }
+    [Parameter] public string? TextoFotoPrestada { get; set; }
 
     private string? archivoPropio;
     private string linkInput = "";
@@ -179,7 +185,7 @@
         {
             using var ms = new MemoryStream(bytes);
             var res = await Api.SubirFotoProductoAsync(ProductoId, ms, file.Name,
-                string.IsNullOrEmpty(file.ContentType) ? "image/jpeg" : file.ContentType);
+                string.IsNullOrEmpty(file.ContentType) ? "image/jpeg" : file.ContentType, EsCombo);
             if (res is null || string.IsNullOrEmpty(res.FotoPropiaArchivo)) ToastService.Error("No se pudo subir la foto. Probá de nuevo.");
             else await Aplicar(res.FotoPropiaArchivo, "Foto cambiada");
         }
@@ -195,7 +201,7 @@
         StateHasChanged();
         try
         {
-            var res = await Api.SubirFotoProductoDesdeUrlAsync(ProductoId, url);
+            var res = await Api.SubirFotoProductoDesdeUrlAsync(ProductoId, url, EsCombo);
             if (res is null || string.IsNullOrEmpty(res.FotoPropiaArchivo)) ToastService.Error("No se pudo traer esa imagen. Revisá que el link sea de una foto.");
             else { linkInput = ""; await Aplicar(res.FotoPropiaArchivo, "Foto cambiada"); }
         }
@@ -204,7 +210,7 @@
 
     private async Task AbrirQr()
     {
-        var tok = await Api.CrearTokenFotoProductoAsync(ProductoId);
+        var tok = await Api.CrearTokenFotoProductoAsync(ProductoId, EsCombo);
         if (tok is null || string.IsNullOrEmpty(tok.Token)) { ToastService.Error("No se pudo generar el código. Probá de nuevo."); return; }
         qrUrl = $"{Navigation.BaseUri.TrimEnd('/')}/subir-foto-producto/{tok.Token}";
         pollCts?.Cancel();
@@ -219,7 +225,7 @@
         {
             try { await Task.Delay(3000, ct); } catch { return; }
             if (ct.IsCancellationRequested) return;
-            var est = await Api.GetEstadoFotoProductoAsync(ProductoId);
+            var est = await Api.GetEstadoFotoProductoAsync(ProductoId, EsCombo);
             if (est is not null && !string.IsNullOrEmpty(est.FotoPropiaArchivo) && est.FotoPropiaArchivo != archivoAntes)
             {
                 await InvokeAsync(async () => { await Aplicar(est.FotoPropiaArchivo, "Foto subida desde el celular"); StateHasChanged(); });
@@ -233,7 +239,7 @@
         subiendo = true;
         try
         {
-            if (await Api.QuitarFotoPropiaAsync(ProductoId)) await Aplicar(null, "Foto propia quitada");
+            if (await Api.QuitarFotoPropiaAsync(ProductoId, EsCombo)) await Aplicar(null, "Foto propia quitada");
             else ToastService.Error("No se pudo quitar la foto. Probá de nuevo.");
         }
         finally { subiendo = false; }

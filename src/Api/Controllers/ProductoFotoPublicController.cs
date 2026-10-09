@@ -32,6 +32,15 @@ public class ProductoFotoPublicController : ControllerBase
         if (t is null) return Ok(new InfoResp(false, null, null, false, null, "no_existe"));
         if (t.ExpiresAt < DateTime.UtcNow) return Ok(new InfoResp(false, null, null, false, null, "vencido"));
 
+        // 2026-10-09: QR de un ARMADO (tacho + tapa, etc.)
+        if (t.CafeComboId.HasValue)
+        {
+            var combo = await _db.CafeCombos.FirstOrDefaultAsync(c => c.Id == t.CafeComboId.Value);
+            if (combo is null) return Ok(new InfoResp(false, null, null, false, null, "sin_producto"));
+            var urlCombo = string.IsNullOrEmpty(combo.FotoPropiaArchivo) ? null : $"/api/public/producto-foto/img/{combo.FotoPropiaArchivo}";
+            return Ok(new InfoResp(true, combo.Nombre, combo.Sku, urlCombo is not null, urlCombo, null));
+        }
+
         var prod = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == t.CafeProductoId);
         if (prod is null) return Ok(new InfoResp(false, null, null, false, null, "sin_producto"));
 
@@ -55,6 +64,28 @@ public class ProductoFotoPublicController : ControllerBase
         Directory.CreateDirectory(FotosDir);
         var ext = Path.GetExtension(file.FileName);
         if (string.IsNullOrEmpty(ext) || ext.Length > 6) ext = ".jpg";
+
+        // 2026-10-09: QR de un ARMADO → la foto va a Cafe_Combos.FotoPropiaArchivo.
+        if (t.CafeComboId.HasValue)
+        {
+            var combo = await _db.CafeCombos.FirstOrDefaultAsync(c => c.Id == t.CafeComboId.Value);
+            if (combo is null) return NotFound(new { error = "El armado ya no existe." });
+            var fnCombo = $"combo-{combo.Id}-{Guid.NewGuid():N}{ext}";
+            using (var fs = new FileStream(Path.Combine(FotosDir, fnCombo), FileMode.Create))
+                await file.CopyToAsync(fs);
+            var viejoCombo = combo.FotoPropiaArchivo;
+            combo.FotoPropiaArchivo = fnCombo;
+            combo.FotoPropiaAt = DateTime.UtcNow;
+            t.UsedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            if (!string.IsNullOrEmpty(viejoCombo))
+            {
+                try { var old = Path.Combine(FotosDir, viejoCombo); if (System.IO.File.Exists(old)) System.IO.File.Delete(old); }
+                catch { /* best-effort */ }
+            }
+            return Ok(new { ok = true });
+        }
+
         var filename = $"prod-{t.CafeProductoId}-{Guid.NewGuid():N}{ext}";
         var fullPath = Path.Combine(FotosDir, filename);
         using (var fs = new FileStream(fullPath, FileMode.Create))
