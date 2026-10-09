@@ -155,7 +155,9 @@
                             var saldo = r.MontoTotal - r.Sena - r.MontoCobrado;
                             var enCalle = r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
                             var retiroVencido = enCalle && r.FechaRetiro.Date < DateTime.Today;
-                            <tr style="cursor: pointer; @(retiroVencido ? "background:#fef2f2;" : "")" @onclick="() => ShowEdit(r)">
+                            @* 09/10/2026: antes tocar CUALQUIER parte del renglon abria la edicion (molesto al querer
+                               copiar un telefono o una direccion). Ahora se edita solo con el lapiz. *@
+                            <tr style="@(retiroVencido ? "background:#fef2f2;" : "")">
                                 <td style="font-family: monospace; font-weight: 600;">
                                     @r.Numero
                                     @if (enCalle)
