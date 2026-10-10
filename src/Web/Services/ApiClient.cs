@@ -1970,6 +1970,19 @@ public class ApiClient
     public async Task<ConfigCorreoAlertasDto?> GetConfigCorreoAlertasAsync()
         => await GetAsync<ConfigCorreoAlertasDto>("/api/mis-alertas/config-correo");
 
+    /// <summary>10/10/2026: producto suelto → compuesto con el mismo SKU (ver CafeProductosController).</summary>
+    public async Task<(bool ok, string? error)> ConvertirProductoEnCompuestoAsync(int productoId, List<(int productoId, int cantidad)> partes)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsJsonAsync($"/api/cafe/productos/{productoId}/convertir-compuesto",
+                new { Items = partes.Select(x => new { ProductoId = x.productoId, Cantidad = x.cantidad }).ToList() });
+            return resp.IsSuccessStatusCode ? (true, null) : (false, await ExtraerError(resp));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error)> SaveConfigCorreoAlertasAsync(ConfigCorreoAlertasRequest req)
     {
         try
