@@ -158,6 +158,14 @@ public class MeliPublicacionesV2Service
         return p > 0 ? MeliPricePushService.RedondearA99(p) : null;
     }
 
+    /// <summary>10/10/2026 — Una fila por publicación. Las publicaciones con COLORES (variantes) no
+    /// tienen fila "principal" (VariationId null): tienen una por color. Antes quedaban afuera de
+    /// esta pantalla (20 vivas, ej. gavetero MLA915155790); ahora las representa la fila del primer color.</summary>
+    private IQueryable<Models.MeliItem> Publicaciones()
+        => _db.MeliItems.AsNoTracking().Where(m => m.VariationId == null
+            || (!_db.MeliItems.Any(x => x.MeliItemId == m.MeliItemId && x.VariationId == null)
+                && m.Id == _db.MeliItems.Where(x => x.MeliItemId == m.MeliItemId).Min(x => x.Id)));
+
     public async Task<PageDto> GetAsync(Filtros f, CancellationToken ct = default)
     {
         var pagina = f.Pagina < 1 ? 1 : f.Pagina;
@@ -165,7 +173,7 @@ public class MeliPublicacionesV2Service
 
         // ── 1) Base: una fila por publicación (las variantes se resuelven aparte) ──
         var ahoraUtc = DateTime.UtcNow;
-        var q = _db.MeliItems.AsNoTracking().Where(m => m.VariationId == null);
+        var q = Publicaciones();
         GrupoDto? grupo = null;
 
         // Estado: por defecto no mostramos cerradas ni borradas.
@@ -207,7 +215,7 @@ public class MeliPublicacionesV2Service
             if (esMla || esNumeroDeFamilia)
             {
                 var cand = esMla ? t.ToUpperInvariant() : "MLA" + t;
-                if (await _db.MeliItems.AsNoTracking().AnyAsync(m => m.VariationId == null && m.MeliItemId == cand, ct))
+                if (await Publicaciones().AnyAsync(m => m.MeliItemId == cand, ct))
                     mlaBuscada = cand;
                 else if (esMla)
                 {
@@ -219,9 +227,8 @@ public class MeliPublicacionesV2Service
 
             if (!abrioGrupo && (mlaBuscada is not null || esNumeroDeFamilia))
             {
-                var claves = await _db.MeliItems.AsNoTracking()
-                    .Where(m => m.VariationId == null
-                                && (mlaBuscada != null
+                var claves = await Publicaciones()
+                    .Where(m => (mlaBuscada != null
                                     ? m.MeliItemId == mlaBuscada
                                     : (m.MeliItemId.Contains(t)
                                        || (m.FamilyId != null && m.FamilyId.Contains(t))
@@ -451,7 +458,7 @@ public class MeliPublicacionesV2Service
                 PromoPrecio = m.PromoHasta != null && m.PromoHasta <= ahoraUtc ? null : m.PromoPrecio,
                 PromoNombre = m.PromoHasta != null && m.PromoHasta <= ahoraUtc ? null : m.PromoNombre,
                 PromoHasta = m.PromoHasta != null && m.PromoHasta <= ahoraUtc ? null : m.PromoHasta,
-                m.CafeProductoId, m.CafeFormato, m.MeliAccountId,
+                m.CafeProductoId, m.CafeFormato, m.MeliAccountId, m.VariationId,
                 Cuenta = m.MeliAccount != null ? m.MeliAccount.Nickname : null
             })
             .ToListAsync(ct);
@@ -459,6 +466,14 @@ public class MeliPublicacionesV2Service
             pageRows = pageRows.OrderBy(r => idsPagina.IndexOf(r.MeliItemId)).ToList();
 
         var ids = pageRows.Select(r => r.MeliItemId).ToList();
+        // 10/10/2026: publicaciones con colores → el stock en MeLi es la suma de todos los colores.
+        var mlasConColores = pageRows.Where(r => r.VariationId != null).Select(r => r.MeliItemId).ToList();
+        var stockColores = mlasConColores.Count == 0 ? new Dictionary<string, int>()
+            : await _db.MeliItems.AsNoTracking()
+                .Where(m => mlasConColores.Contains(m.MeliItemId) && m.VariationId != null)
+                .GroupBy(m => m.MeliItemId)
+                .Select(g => new { g.Key, Stock = g.Sum(x => x.AvailableQuantity) })
+                .ToDictionaryAsync(x => x.Key, x => x.Stock, ct);
         var skus = pageRows.Where(r => r.Sku != null).Select(r => r.Sku!).Distinct().ToList();
 
         // ── 2) Receta: componentes + stock del depósito 9 de Abril ──
@@ -466,7 +481,7 @@ public class MeliPublicacionesV2Service
             from c in _db.MeliItemComponentes.AsNoTracking()
             join p in _db.CafeProductos.AsNoTracking() on c.CafeProductoId equals p.Id
             where ids.Contains(c.MeliItemId)
-            select new { c.Id, c.MeliItemId, c.CafeProductoId, c.Cantidad, p.Sku, p.Nombre, p.Costo, p.Categoria, c.Formato }
+            select new { c.Id, c.MeliItemId, c.MeliVariationId, c.CafeProductoId, c.Cantidad, p.Sku, p.Nombre, p.Costo, p.Categoria, c.Formato }
         ).ToListAsync(ct);
 
         var prodIds = comps.Select(c => c.CafeProductoId).Distinct().ToList();
@@ -528,6 +543,15 @@ public class MeliPublicacionesV2Service
         foreach (var r in pageRows)
         {
             var misComps = comps.Where(c => c.MeliItemId == r.MeliItemId).ToList();
+            // 10/10/2026: publicación con colores → la receta es la del color que la representa
+            // (sumar todos los colores multiplicaba el costo).
+            if (r.VariationId != null && misComps.Any(c => c.MeliVariationId == r.VariationId))
+                misComps = misComps.Where(c => c.MeliVariationId == r.VariationId).ToList();
+            else if (r.VariationId != null && r.CafeProductoId.HasValue
+                     && misComps.Select(c => c.CafeProductoId).Distinct().Count() > 1
+                     && misComps.Any(c => c.CafeProductoId == r.CafeProductoId))
+                // Colores anotados sin decir cuál va con cuál: se toma el producto de este color.
+                misComps = misComps.Where(c => c.CafeProductoId == r.CafeProductoId).ToList();
 
             var receta = new List<ComponenteDto>();
             int? arma = null;
@@ -630,7 +654,8 @@ public class MeliPublicacionesV2Service
 
             items.Add(new FilaDto(
                 r.MeliItemId, r.Sku, r.Title, r.Thumbnail, r.Permalink,
-                r.Price, r.Status, r.ListingTypeId, r.InstallmentTag, r.FreeShipping, r.LogisticType, r.AvailableQuantity, r.SoldQuantity,
+                r.Price, r.Status, r.ListingTypeId, r.InstallmentTag, r.FreeShipping, r.LogisticType,
+                stockColores.TryGetValue(r.MeliItemId, out var stColores) ? stColores : r.AvailableQuantity, r.SoldQuantity,
                 costo, margen, ganancia, neto,
                 (r.SaleFeeAmount.HasValue ? seLlevaMeli : (decimal?)null), comPct, r.SaleFeePercentageFee, r.SaleFeeFixedFee, r.SaleFeeShippingCost,
                 comisionVieja, receta, arma,
@@ -651,10 +676,11 @@ public class MeliPublicacionesV2Service
         {
             var mlasPag = items.Select(i => i.MeliItemId).ToList();
             var entidades = await _db.MeliItems.AsNoTracking()
-                .Where(m => mlasPag.Contains(m.MeliItemId) && m.VariationId == null)
+                .Where(m => mlasPag.Contains(m.MeliItemId))
+                .OrderBy(m => m.VariationId == null ? 0 : 1).ThenBy(m => m.Id)
                 .ToListAsync(ct);
             var oemPor = new Dictionary<string, decimal>();
-            foreach (var e in entidades)
+            foreach (var e in entidades.GroupBy(x => x.MeliItemId).Select(g => g.First()))
             {
                 try
                 {
@@ -815,8 +841,8 @@ public class MeliPublicacionesV2Service
     /// <summary>Números para los chips de arriba: cuántas caen en cada filtro. Una sola pasada.</summary>
     public async Task<Dictionary<string, int>> GetResumenAsync(CancellationToken ct = default)
     {
-        var baseQ = _db.MeliItems.AsNoTracking()
-            .Where(m => m.VariationId == null && m.Status != "closed" && m.Status != "deleted");
+        var baseQ = Publicaciones()
+            .Where(m => m.Status != "closed" && m.Status != "deleted");
 
         // Mismo criterio que la lista: solo cuenta como problema si las condiciones de venta
         // son las mismas (ver el comentario largo en GetAsync).
