@@ -263,8 +263,12 @@ public class MeliEstadoService
     private async Task<(Models.MeliItem? Item, Resultado? Error)> BuscarAsync(
         string meliItemId, CancellationToken ct)
     {
+        // 10/10/2026: una publicación con colores (variantes) no tiene fila sin VariationId, tiene
+        // una por color. Antes daba "No encuentro esta publicación" y no se podía activar ni pausar.
         var item = await _db.MeliItems.Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .Where(i => i.MeliItemId == meliItemId)
+            .OrderBy(i => i.VariationId == null ? 0 : 1).ThenBy(i => i.Id)
+            .FirstOrDefaultAsync(ct);
 
         if (item?.MeliAccount is null)
             return (null, new Resultado(false, "No encuentro esta publicación en el sistema.", null, null));
