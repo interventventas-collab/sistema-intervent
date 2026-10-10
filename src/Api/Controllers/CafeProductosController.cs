@@ -1164,6 +1164,96 @@ public class CafeProductosController : ControllerBase
         return (nuevo.Id, nuevo.Nombre);
     }
 
+    /// <summary>10/10/2026 — Convierte un producto suelto en COMPUESTO (ej. el tacho 1925 beige que estaba
+    /// cargado entero → cesto C2144BEI + tapa C7000BEI). Productos y compuestos viven en tablas distintas,
+    /// así que no se "transforma" el registro: se crea el compuesto con el MISMO SKU, nombre, categoría,
+    /// marca, OEM y foto propia; sus publicaciones de MeLi pasan a descontar los componentes; y el
+    /// suelto queda inactivo con el SKU "-SUELTO-VIEJO" (para que no choque). Las ventas viejas quedan
+    /// con el suelto. Si tiene stock o es parte de otro armado, no deja: hay que resolverlo primero.</summary>
+    public record ConvertirCompuestoItem(int ProductoId, int Cantidad);
+    public record ConvertirCompuestoRequest(List<ConvertirCompuestoItem> Items);
+
+    [HttpPost("{id:int}/convertir-compuesto")]
+    public async Task<IActionResult> ConvertirEnCompuesto(int id, [FromBody] ConvertirCompuestoRequest req,
+        [FromServices] AuditLogService audit)
+    {
+        var p = await _db.CafeProductos.FindAsync(id);
+        if (p is null) return NotFound(new { error = "Producto no encontrado" });
+        if (!p.IsActive) return BadRequest(new { error = "El producto está inactivo." });
+        var sku = p.Sku?.Trim();
+        if (string.IsNullOrWhiteSpace(sku)) return BadRequest(new { error = "El producto no tiene SKU: cargale uno antes de convertirlo." });
+
+        var items = (req.Items ?? new()).Where(i => i.ProductoId > 0 && i.Cantidad > 0)
+            .GroupBy(i => i.ProductoId).Select(g => new ConvertirCompuestoItem(g.Key, g.Sum(x => x.Cantidad))).ToList();
+        if (items.Count == 0) return BadRequest(new { error = "Elegí al menos una parte." });
+        if (items.Any(i => i.ProductoId == id)) return BadRequest(new { error = "El producto no puede ser parte de sí mismo." });
+        var compIds = items.Select(i => i.ProductoId).ToList();
+        var comps = await _db.CafeProductos.Where(x => compIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        if (comps.Count != compIds.Count) return BadRequest(new { error = "Alguna de las partes no existe." });
+        var inactiva = comps.Values.FirstOrDefault(x => !x.IsActive);
+        if (inactiva is not null) return BadRequest(new { error = $"{inactiva.Sku ?? inactiva.Nombre} está inactivo." });
+
+        if (await _db.CafeCombos.AnyAsync(c => c.Sku == sku))
+            return BadRequest(new { error = $"Ya hay un combo o compuesto con el SKU {sku}." });
+        var stockDep = await _db.CafeStockPorDeposito.Where(s => s.ProductoId == id).SumAsync(s => (int?)s.StockUnidades) ?? 0;
+        if (p.StockUnidades != 0 || stockDep != 0 || p.StockGramos != 0)
+            return BadRequest(new { error = $"Tiene stock ({Math.Max(p.StockUnidades, stockDep)} u.). Pasalo a sus partes o dejalo en 0 antes de convertirlo." });
+        var enArmados = await _db.CafeComboItems.Where(ci => ci.ProductoId == id)
+            .Select(ci => ci.ComboNav!.Sku ?? ci.ComboNav!.Nombre).Distinct().ToListAsync();
+        if (enArmados.Count > 0)
+            return BadRequest(new { error = $"Es parte de otros armados ({string.Join(", ", enArmados.Take(5))}). Sacalo de ahí primero." });
+
+        // Todo se graba en UN solo SaveChanges al final: o pasa todo junto o no pasa nada.
+        var foto = await _db.CafeProductoFotos.FirstOrDefaultAsync(f => f.CafeProductoId == id);
+        var combo = new CafeCombo
+        {
+            Nombre = p.Nombre, Sku = sku, Marca = p.Marca, Categoria = p.Categoria,
+            IsActive = true, CreatedAt = DateTime.UtcNow, EsCompuesto = true,
+            OemId = p.OemId, MultiplicadorOem = p.OemId != null ? 1m : null,
+            FotoPropiaArchivo = foto?.FotoPropiaArchivo, FotoPropiaAt = foto?.FotoPropiaArchivo != null ? DateTime.UtcNow : null,
+            ImportSource = $"CONVERTIDO_DESDE_PRODUCTO_{id}",
+            Notas = $"Convertido el {DateTime.UtcNow.AddHours(-3):dd/MM/yyyy} desde el producto suelto #{id}"
+        };
+        var orden = 0;
+        foreach (var it in items)
+            combo.Items.Add(new CafeComboItem { ProductoId = it.ProductoId, Formato = "UNIT", Cantidad = it.Cantidad, SortOrder = orden++ });
+        _db.CafeCombos.Add(combo);
+
+        // Publicaciones de MeLi: las que descontaban ESTE producto pasan a descontar sus partes.
+        var source = $"CONVERTIDO_COMPUESTO_{id}";
+        var directas = await _db.MeliItems.Where(m => m.CafeProductoId == id).ToListAsync();
+        foreach (var m in directas)
+        {
+            m.CafeProductoId = null;
+            var yaTiene = await _db.MeliItemComponentes.AnyAsync(c => c.MeliItemId == m.MeliItemId);
+            if (!yaTiene)
+                foreach (var it in items)
+                    _db.MeliItemComponentes.Add(new MeliItemComponente { MeliItemId = m.MeliItemId, CafeProductoId = it.ProductoId, Cantidad = it.Cantidad, Formato = "UNIT", Source = source });
+        }
+        var viaComp = await _db.MeliItemComponentes.Where(c => c.CafeProductoId == id).ToListAsync();
+        foreach (var c in viaComp)
+        {
+            foreach (var it in items)
+                _db.MeliItemComponentes.Add(new MeliItemComponente { MeliItemId = c.MeliItemId, MeliVariationId = c.MeliVariationId, CafeProductoId = it.ProductoId, Cantidad = c.Cantidad * it.Cantidad, Formato = "UNIT", Source = source });
+            _db.MeliItemComponentes.Remove(c);
+        }
+
+        var skuViejo = sku + "-SUELTO-VIEJO";
+        var n = 2;
+        while (await _db.CafeProductos.AnyAsync(x => x.Sku == skuViejo)) skuViejo = $"{sku}-SUELTO-VIEJO{n++}";
+        p.IsActive = false;
+        p.Sku = skuViejo;
+        await _db.SaveChangesAsync();
+
+        var publis = directas.Select(m => m.MeliItemId).Concat(viaComp.Select(c => c.MeliItemId)).Distinct().ToList();
+        await audit.LogAsync("CafeProducto", id.ToString(), "CONVERTIR_COMPUESTO",
+            $"{sku} pasó a compuesto #{combo.Id} = " + string.Join(" + ", items.Select(i => $"{(i.Cantidad > 1 ? i.Cantidad + "x " : "")}{comps[i.ProductoId].Sku}"))
+            + $"; publicaciones: {(publis.Count == 0 ? "ninguna" : string.Join(", ", publis))}; el suelto quedó inactivo como {skuViejo}",
+            User?.Identity?.Name);
+
+        return Ok(new { comboId = combo.Id, sku, skuViejo, publicaciones = publis });
+    }
+
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
