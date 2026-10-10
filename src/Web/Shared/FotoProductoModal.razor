@@ -30,9 +30,8 @@
             }
             <div style="font-size:0.78rem; color:#6b7280; margin-top:0.35rem;">
                 @(!string.IsNullOrEmpty(archivoPropio) ? "Foto propia del sistema"
-                  : EsCombo ? (!string.IsNullOrEmpty(MeliThumb) ? TextoFotoPrestada : "Este armado no tiene foto")
                   : MeliOculta ? "La foto de MercadoLibre está marcada como errónea: no se muestra"
-                  : !string.IsNullOrEmpty(MeliThumb) ? "Foto tomada de MercadoLibre" : "Este producto no tiene foto")
+                  : !string.IsNullOrEmpty(MeliThumb) ? "Foto tomada de MercadoLibre" : EsCombo ? "Este armado no tiene foto" : "Este producto no tiene foto")
             </div>
         </div>
 
@@ -46,6 +45,34 @@
         }
         else
         {
+            @* 2026-10-09: fotos de sus publicaciones de MeLi (para un armado, las de ese mismo tacho + tapa). *@
+            <div style="margin-bottom:0.6rem;">
+                <div style="font-size:0.78rem; font-weight:600; color:#374151; margin-bottom:0.3rem;">Elegir una foto de MercadoLibre</div>
+                @if (opciones is null)
+                {
+                    <div style="font-size:0.78rem; color:#6b7280;">Buscando fotos…</div>
+                }
+                else if (opciones.Count == 0)
+                {
+                    <div style="font-size:0.78rem; color:#6b7280;">@(EsCombo ? "No hay publicaciones de este armado en MercadoLibre." : "No hay publicaciones de este producto solo en MercadoLibre.")</div>
+                }
+                else
+                {
+                    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; max-height:190px; overflow-y:auto;">
+                        @foreach (var o in opciones)
+                        {
+                            foreach (var f in o.Fotos)
+                            {
+                                var url = f;
+                                <img src="@url" alt="" title="@($"{o.Mla} · {o.Titulo}")" @onclick="() => ElegirFoto(url)"
+                                     style="width:58px; height:58px; object-fit:contain; background:#fff; border:1px solid #e5e7eb; border-radius:6px; cursor:pointer;" loading="lazy" />
+                            }
+                        }
+                    </div>
+                    <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.2rem;">Tocá la que quieras y queda como foto del sistema.</div>
+                }
+            </div>
+
             <label class="btn btn-primary" style="display:flex; justify-content:center; width:100%; cursor:pointer; margin-bottom:0.5rem;">
                 Subir una foto de la computadora
                 <InputFile OnChange="SubirDesdePc" accept="image/*" style="display:none" />
@@ -70,7 +97,7 @@
 
             @* Foto de MeLi equivocada (ej. la caja sola muestra caja + tapa): se esconde en el sistema.
                Es la misma marca ❌ "foto errónea" de Preparación. *@
-            @if (!EsCombo && string.IsNullOrEmpty(archivoPropio) && !string.IsNullOrEmpty(MeliThumb))
+            @if (string.IsNullOrEmpty(archivoPropio) && !string.IsNullOrEmpty(MeliThumb))
             {
                 @if (MeliOculta)
                 {
@@ -87,8 +114,7 @@
                 @if (confirmarQuitar)
                 {
                     <div style="border:1px solid #fca5a5; background:#fef2f2; border-radius:8px; padding:0.6rem; font-size:0.85rem;">
-                        @(EsCombo ? "¿Quitar la foto propia? Vuelve a verse la del producto que lo compone (si tiene)."
-                                  : "¿Quitar la foto propia? Vuelve a verse la de MercadoLibre (si tiene).")
+                        ¿Quitar la foto propia? Vuelve a verse la de MercadoLibre (si tiene).
                         <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
                             <button class="btn btn-secondary" style="flex:1;" @onclick="() => confirmarQuitar = false">No</button>
                             <button class="btn btn-danger" style="flex:1;" @onclick="Quitar">Sí, quitar</button>
@@ -117,10 +143,9 @@
     /// <summary>Se llama con (archivo propio, estado) después de cualquier cambio.</summary>
     [Parameter] public EventCallback<(string? Archivo, string? Estado)> OnCambio { get; set; }
     [Parameter] public EventCallback OnCerrar { get; set; }
-    /// <summary>2026-10-09: true = ProductoId es un ARMADO (Cafe_Combos). MeliThumb trae entonces la foto
-    /// prestada del primer componente y TextoFotoPrestada explica de dónde sale.</summary>
+    /// <summary>2026-10-09: true = ProductoId es un ARMADO (Cafe_Combos, otra numeración que los productos).
+    /// MeliThumb es la portada de su publicación de MeLi de tacho + tapa.</summary>
     [Parameter] public bool EsCombo { get; set; }
-    [Parameter] public string? TextoFotoPrestada { get; set; }
 
     private string? archivoPropio;
     private string linkInput = "";
@@ -130,7 +155,29 @@
     private CancellationTokenSource? pollCts;
 
     private string? estado;
-    protected override void OnInitialized() { archivoPropio = FotoPropiaArchivo; estado = Estado; }
+    // 2026-10-09: tirita con las fotos de sus publicaciones de MeLi para elegir una con un toque.
+    private List<ApiClient.OpcionFotoPublicacionDto>? opciones;
+
+    protected override async Task OnInitializedAsync()
+    {
+        archivoPropio = FotoPropiaArchivo; estado = Estado;
+        try { opciones = await Api.GetOpcionesFotoAsync(ProductoId, EsCombo) ?? new(); }
+        catch { opciones = new(); }
+    }
+
+    private async Task ElegirFoto(string url)
+    {
+        if (subiendo) return;
+        subiendo = true;
+        StateHasChanged();
+        try
+        {
+            var res = await Api.SubirFotoProductoDesdeUrlAsync(ProductoId, url, EsCombo);
+            if (res is null || string.IsNullOrEmpty(res.FotoPropiaArchivo)) ToastService.Error("No se pudo traer esa foto. Probá de nuevo.");
+            else await Aplicar(res.FotoPropiaArchivo, "Foto elegida");
+        }
+        finally { subiendo = false; StateHasChanged(); }
+    }
 
     private bool MeliOculta => string.IsNullOrEmpty(archivoPropio) && estado == "REPORTADA";
 
@@ -140,7 +187,8 @@
 
     private async Task MarcarMeli(string nuevo)
     {
-        var res = await Api.MarcarFotoProductoAsync(ProductoId, nuevo);
+        var res = EsCombo ? await Api.OcultarFotoMeliComboAsync(ProductoId, nuevo == "REPORTADA")
+                          : await Api.MarcarFotoProductoAsync(ProductoId, nuevo);
         if (res is null) { ToastService.Error("No se pudo guardar. Probá de nuevo."); return; }
         estado = res.Estado;
         ToastService.Success(nuevo == "REPORTADA" ? "Listo, esa foto ya no se muestra" : "La foto se vuelve a mostrar");

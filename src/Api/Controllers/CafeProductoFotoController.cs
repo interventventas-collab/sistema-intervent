@@ -4,6 +4,7 @@ using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Api.Controllers;
 
@@ -230,7 +231,7 @@ public class CafeProductoFotoController : ControllerBase
     }
 
     private ProductoFotoDto ComboDto(CafeCombo c) =>
-        new(c.Id, null, HttpContext.User?.Identity?.Name, null, c.FotoPropiaArchivo, c.FotoPropiaAt ?? DateTime.UtcNow);
+        new(c.Id, c.FotoMeliOculta && c.FotoPropiaArchivo is null ? "REPORTADA" : null, HttpContext.User?.Identity?.Name, null, c.FotoPropiaArchivo, c.FotoPropiaAt ?? DateTime.UtcNow);
 
     [HttpGet("combo/{comboId:int}")]
     public async Task<IActionResult> GetCombo(int comboId)
@@ -273,6 +274,7 @@ public class CafeProductoFotoController : ControllerBase
         var viejo = c.FotoPropiaArchivo;
         c.FotoPropiaArchivo = null;
         c.FotoPropiaAt = null;
+        c.FotoMeliOculta = false;   // como en los productos: al quitar la propia vuelve a verse la de MeLi
         await _db.SaveChangesAsync();
         BorrarArchivo(viejo);
         return Ok(ComboDto(c));
@@ -675,5 +677,167 @@ public class CafeProductoFotoController : ControllerBase
         await _db.SaveChangesAsync();
 
         return Ok(new ProductoFotoDto(reg.CafeProductoId, reg.Estado, reg.Usuario, reg.Comentario, reg.FotoPropiaArchivo, reg.UpdatedAt));
+    }
+
+    // ───────────── 2026-10-09: fotos de MercadoLibre para ELEGIR (tirita) y portada de los armados ─────────────
+    // Un armado (tacho + tapa) se vende en MeLi en publicaciones cargadas con EXACTAMENTE esos componentes:
+    // la foto de esas publicaciones lo muestra completo. Un producto común: publicaciones donde va solo (1 u.).
+
+    /// <summary>"productoId:cantidad|..." ordenado: dos armados/publicaciones con la misma firma son lo mismo.</summary>
+    private static string Firma(IEnumerable<(int ProductoId, decimal Cantidad)> comps) =>
+        string.Join("|", comps.GroupBy(c => c.ProductoId).OrderBy(g => g.Key)
+            .Select(g => $"{g.Key}:{g.Sum(x => x.Cantidad):0.##}"));
+
+    private record PubMatch(string Mla, string? VariationId, string? Titulo, string? Thumbnail, int Vendidas, int MeliAccountId);
+
+    /// <summary>Publicaciones ACTIVAS de MeLi agrupadas por firma de componentes (las de variante, por variante).</summary>
+    private async Task<Dictionary<string, List<PubMatch>>> PublicacionesPorFirmaAsync()
+    {
+        var comps = await (
+            from c in _db.MeliItemComponentes.AsNoTracking()
+            join mi in _db.MeliItems.AsNoTracking() on c.MeliItemId equals mi.MeliItemId
+            where mi.Status == "active"
+               && ((c.MeliVariationId == null && mi.VariationId == null) || c.MeliVariationId == mi.VariationId)
+            select new { c.MeliItemId, c.MeliVariationId, c.CafeProductoId, c.Cantidad, mi.Title, mi.Thumbnail, mi.SoldQuantity, mi.MeliAccountId }
+        ).ToListAsync();
+        return comps.GroupBy(c => (c.MeliItemId, c.MeliVariationId))
+            .Select(g => (Firma: Firma(g.Select(x => (x.CafeProductoId, x.Cantidad))),
+                          Pub: new PubMatch(g.Key.MeliItemId, g.Key.MeliVariationId, g.First().Title, g.First().Thumbnail, g.First().SoldQuantity, g.First().MeliAccountId)))
+            .GroupBy(x => x.Firma)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Pub)
+                .OrderBy(x => x.VariationId != null).ThenByDescending(x => x.Vendidas).ToList());
+    }
+
+    private async Task<Dictionary<int, string>> FirmasDeArmadosAsync(int? soloComboId = null)
+    {
+        var items = await _db.CafeComboItems.AsNoTracking()
+            .Where(i => i.ComboNav!.EsCompuesto && (soloComboId == null || i.ComboId == soloComboId))
+            .Select(i => new { i.ComboId, i.ProductoId, i.Cantidad }).ToListAsync();
+        return items.GroupBy(i => i.ComboId)
+            .ToDictionary(g => g.Key, g => Firma(g.Select(x => (x.ProductoId, (decimal)x.Cantidad))));
+    }
+
+    public record ComboPortadaDto(int ComboId, string Thumbnail);
+
+    /// <summary>Portada de MeLi de cada armado (la publicación de ese mismo tacho + tapa más vendida).</summary>
+    [HttpGet("combos-portadas")]
+    public async Task<IActionResult> PortadasDeArmados()
+    {
+        var porFirma = await PublicacionesPorFirmaAsync();
+        var firmas = await FirmasDeArmadosAsync();
+        var res = new List<ComboPortadaDto>();
+        foreach (var (comboId, firma) in firmas)
+        {
+            if (!porFirma.TryGetValue(firma, out var pubs)) continue;
+            var thumb = pubs.Select(p => p.Thumbnail).FirstOrDefault(t => !string.IsNullOrEmpty(t));
+            if (thumb is not null) res.Add(new ComboPortadaDto(comboId, thumb));
+        }
+        return Ok(res);
+    }
+
+    public record OcultarMeliRequest(bool Oculta);
+
+    /// <summary>Esconde (o vuelve a mostrar) la portada de MeLi del armado. No toca MeLi.</summary>
+    [HttpPost("combo/{comboId:int}/ocultar-meli")]
+    public async Task<IActionResult> OcultarMeliCombo(int comboId, [FromBody] OcultarMeliRequest req)
+    {
+        var c = await _db.CafeCombos.FindAsync(comboId);
+        if (c is null) return NotFound(new { mensaje = "Armado no encontrado." });
+        c.FotoMeliOculta = req.Oculta;
+        await _db.SaveChangesAsync();
+        return Ok(new ProductoFotoDto(c.Id, c.FotoMeliOculta ? "REPORTADA" : null, HttpContext.User?.Identity?.Name, null, c.FotoPropiaArchivo, DateTime.UtcNow));
+    }
+
+    public record OpcionPublicacionDto(string Mla, string? Titulo, List<string> Fotos);
+
+    /// <summary>Fotos EN VIVO de las publicaciones que venden este armado (combo=true) o este producto solo.</summary>
+    [HttpGet("combo/{comboId:int}/opciones")]
+    public Task<IActionResult> OpcionesCombo(int comboId, [FromServices] MeliAccountService accounts, [FromServices] IHttpClientFactory httpFactory)
+        => OpcionesAsync(comboId, true, accounts, httpFactory);
+
+    [HttpGet("{productoId:int}/opciones")]
+    public Task<IActionResult> OpcionesProducto(int productoId, [FromServices] MeliAccountService accounts, [FromServices] IHttpClientFactory httpFactory)
+        => OpcionesAsync(productoId, false, accounts, httpFactory);
+
+    private async Task<IActionResult> OpcionesAsync(int id, bool combo, MeliAccountService accounts, IHttpClientFactory httpFactory)
+    {
+        string firma;
+        if (combo)
+        {
+            var firmas = await FirmasDeArmadosAsync(id);
+            if (!firmas.TryGetValue(id, out firma!)) return Ok(new List<OpcionPublicacionDto>());
+        }
+        else firma = Firma(new[] { (id, 1m) });
+
+        var porFirma = await PublicacionesPorFirmaAsync();
+        var pubs = porFirma.TryGetValue(firma, out var l) ? l.ToList() : new List<PubMatch>();
+        if (!combo)
+        {
+            // Publicaciones viejas vinculadas directo al producto (sin componentes cargados).
+            var directas = await _db.MeliItems.AsNoTracking()
+                .Where(mi => mi.CafeProductoId == id && mi.Status == "active" && mi.VariationId == null
+                          && !_db.MeliItemComponentes.Any(c => c.MeliItemId == mi.MeliItemId))
+                .Select(mi => new PubMatch(mi.MeliItemId, null, mi.Title, mi.Thumbnail, mi.SoldQuantity, mi.MeliAccountId))
+                .ToListAsync();
+            pubs.AddRange(directas);
+        }
+        pubs = pubs.Take(12).ToList();
+        if (pubs.Count == 0) return Ok(new List<OpcionPublicacionDto>());
+
+        var res = new List<OpcionPublicacionDto>();
+        foreach (var grupo in pubs.GroupBy(p => p.MeliAccountId))
+        {
+            var acc = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == grupo.Key);
+            var token = acc is null ? null : await accounts.GetValidTokenAsync(acc);
+            Dictionary<string, JsonElement>? vivos = null;
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                try
+                {
+                    var http = httpFactory.CreateClient();
+                    http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                    http.Timeout = TimeSpan.FromSeconds(20);
+                    var ids = string.Join(",", grupo.Select(p => p.Mla).Distinct());
+                    var resp = await http.GetAsync($"https://api.mercadolibre.com/items?ids={ids}&attributes=id,pictures,variations");
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                        vivos = new();
+                        foreach (var e in doc.RootElement.EnumerateArray())
+                            if (e.TryGetProperty("code", out var code) && code.GetInt32() == 200 && e.TryGetProperty("body", out var body)
+                                && body.TryGetProperty("id", out var bid))
+                                vivos[bid.GetString()!] = body.Clone();
+                    }
+                }
+                catch { /* sin conexión con MeLi: se usa la portada guardada */ }
+            }
+
+            foreach (var p in grupo)
+            {
+                var fotos = new List<string>();
+                if (vivos is not null && vivos.TryGetValue(p.Mla, out var body) && body.TryGetProperty("pictures", out var pics))
+                {
+                    // En una publicación con colores, solo las fotos de ESA variante.
+                    HashSet<string>? deLaVariante = null;
+                    if (p.VariationId is not null && body.TryGetProperty("variations", out var vars) && vars.ValueKind == JsonValueKind.Array)
+                        foreach (var v in vars.EnumerateArray())
+                            if (v.TryGetProperty("id", out var vid) && vid.ToString() == p.VariationId && v.TryGetProperty("picture_ids", out var pids))
+                                deLaVariante = pids.EnumerateArray().Select(x => x.GetString() ?? "").ToHashSet();
+                    foreach (var pic in pics.EnumerateArray())
+                    {
+                        var pid = pic.TryGetProperty("id", out var x) ? x.GetString() : null;
+                        if (deLaVariante is not null && (pid is null || !deLaVariante.Contains(pid))) continue;
+                        var url = pic.TryGetProperty("secure_url", out var su) ? su.GetString() : pic.TryGetProperty("url", out var u) ? u.GetString() : null;
+                        if (!string.IsNullOrEmpty(url)) fotos.Add(url);
+                    }
+                }
+                if (fotos.Count == 0 && !string.IsNullOrEmpty(p.Thumbnail)) fotos.Add(p.Thumbnail);
+                if (fotos.Count > 0) res.Add(new OpcionPublicacionDto(p.Mla, p.Titulo, fotos));
+            }
+        }
+        // La misma foto puede estar en varias publicaciones: se muestra una sola vez.
+        var vistas = new HashSet<string>();
+        foreach (var o in res) o.Fotos.RemoveAll(f => !vistas.Add(f));
+        return Ok(res.Where(o => o.Fotos.Count > 0).ToList());
     }
 }

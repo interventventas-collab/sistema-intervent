@@ -62,10 +62,12 @@ public class CafeCombo
     public decimal? MultiplicadorOem { get; set; }
 
     /// <summary>2026-10-09: foto PROPIA del armado (tacho + tapa, etc.), solo en el sistema. Vive en
-    /// /data/files/producto-fotos como las de los productos. Null = se muestra la del primer componente.</summary>
+    /// /data/files/producto-fotos como las de los productos. Null = se muestra la portada de su publicación de MeLi.</summary>
     [MaxLength(200)]
     public string? FotoPropiaArchivo { get; set; }
     public DateTime? FotoPropiaAt { get; set; }
+    /// <summary>2026-10-09: true = la portada de MeLi del armado está mal y no se muestra (X en Productos).</summary>
+    public bool FotoMeliOculta { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
