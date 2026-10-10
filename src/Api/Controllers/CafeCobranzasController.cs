@@ -483,7 +483,7 @@ public class CafeCobranzasController : ControllerBase
                     Tipo = m.Caja != null ? m.Caja.Tipo : "OTRO",
                     CajaNombre = m.Caja != null ? m.Caja.Nombre : "—",
                     m.Importe,
-                    m.RedirigidoDestino, m.RedirigidoEmpleadoId, m.RedirigidoProveedorId, m.ChequeId
+                    m.RedirigidoDestino, m.RedirigidoEmpleadoId, m.RedirigidoProveedorId, m.RedirigidoPagoId, m.ChequeId
                 }).ToList(),
                 c.Total, c.Retenciones, c.Estado, c.Operador
             })
@@ -542,6 +542,35 @@ public class CafeCobranzasController : ControllerBase
         var redirProv = redirProvIds.Count == 0 ? new Dictionary<int, string>()
             : await _db.CafeProveedores.Where(p => redirProvIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Nombre);
 
+        // 10/10/2026: a qué comprobante del proveedor fue cada redirigida y si es la parte oficial
+        // (factura de AFIP / saldo inicial oficial) o la no oficial (cotización), o "a cuenta".
+        var redirPagoIds = rows.SelectMany(r => r.Medios)
+            .Where(m => m.RedirigidoProveedorId != null && m.RedirigidoPagoId != null)
+            .Select(m => m.RedirigidoPagoId!.Value).Distinct().ToList();
+        var redirImput = new Dictionary<int, string>();
+        if (redirPagoIds.Count > 0)
+        {
+            var renglones = await _db.CafePagosProveedorComprobantes.AsNoTracking()
+                .Where(x => redirPagoIds.Contains(x.PagoId))
+                .Select(x => new { x.PagoId, x.AfipIdComprobante, x.DeudaId })
+                .ToListAsync();
+            var ctas = await _ctacte.CalcularAsync(redirProvIds);
+            var docs = ctas.Values.SelectMany(c => c.Docs)
+                .GroupBy(d => d.Clave).ToDictionary(g => g.Key, g => g.First());
+            foreach (var g in renglones.GroupBy(x => x.PagoId))
+            {
+                redirImput[g.Key] = string.Join(" + ", g.Select(x =>
+                {
+                    var clave = x.AfipIdComprobante != null ? ProveedorCtaCteService.ClaveAfip(x.AfipIdComprobante)
+                              : x.DeudaId is int did ? ProveedorCtaCteService.ClaveDeuda(did) : null;
+                    if (clave is null) return "a cuenta, sin comprobante";
+                    if (docs.TryGetValue(clave, out var d))
+                        return $"{(d.Oficial ? "oficial" : "no oficial")} · {d.Etiqueta}";
+                    return x.AfipIdComprobante != null ? "oficial · factura AFIP" : "no oficial · cotización";
+                }).Distinct());
+            }
+        }
+
         // 01/10/2026: cheques de estas cobranzas que despues se endosaron a un proveedor.
         var chequeIds = rows.SelectMany(r => r.Medios).Where(m => m.ChequeId != null)
             .Select(m => m.ChequeId!.Value).Distinct().ToList();
@@ -565,6 +594,7 @@ public class CafeCobranzasController : ControllerBase
                     ? $"{(redirEmp.TryGetValue(eid, out var en) ? en : "empleado #" + eid)} · {m.RedirigidoDestino}"
                 : m.RedirigidoProveedorId is int pid
                     ? $"{(redirProv.TryGetValue(pid, out var pn) ? pn : "proveedor #" + pid)} · proveedor"
+                      + (m.RedirigidoPagoId is int ppid && redirImput.TryGetValue(ppid, out var imp) ? $" ({imp})" : "")
                 : m.RedirigidoDestino == "privada" ? "queda en la privada"
                 : "sin decir a quién").Distinct().ToList();
 

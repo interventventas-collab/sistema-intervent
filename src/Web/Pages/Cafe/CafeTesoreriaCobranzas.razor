@@ -1563,8 +1563,11 @@
         !string.IsNullOrWhiteSpace(c.RedirigidoA) || c.FormaPago == TipoRedirigido;
 
     // RedirigidoA viene del server como "A · viajes / B · proveedor" cuando hay varios medios redirigidos.
+    // 10/10/2026: a un proveedor le sigue "(oficial · FA 0003-00003391)", "(no oficial · Cotización 12)" o
+    // "(a cuenta …)": eso se ve en el renglón pero para el botón "A quién fue" cuenta solo el nombre.
     private static IEnumerable<string> DestinosDe(CobranzaListDto c) =>
-        (c.RedirigidoA ?? "").Split(" / ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        (c.RedirigidoA ?? "").Split(" / ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(d => System.Text.RegularExpressions.Regex.Replace(d, @" \((oficial|no oficial|a cuenta)[^)]*\)$", ""));
 
     /// <summary>Solo los tipos que existen en las cobranzas cargadas, en un orden fijo.</summary>
     private List<string> TiposPresentes()
