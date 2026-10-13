@@ -44,9 +44,15 @@ public class MeliFotosService
     public record HermanaDto(string MeliItemId, string? Titulo, int CantidadFotos, string? Estado,
         string? Thumbnail, bool DeCatalogo, int Vendidas);
     public record FotosDto(string MeliItemId, string? Titulo, string? Sku, bool DeCatalogo,
-        string? Permalink, List<FotoDto> Fotos, List<HermanaDto> Hermanas, string? Aviso);
+        string? Permalink, List<FotoDto> Fotos, List<HermanaDto> Hermanas, string? Aviso,
+        // 10/2026: publicación con colores → las fotos de cada color (ids de `Fotos`, en orden). Null = sin colores.
+        List<ColorFotosDto>? Colores = null);
 
-    public record GuardarRequest(List<PictureSpec> Fotos);
+    /// <summary>10/2026 — Las fotos de un color, leídas en vivo de MeLi (variations[].picture_ids).</summary>
+    public record ColorFotosDto(string VariationId, string Nombre, string? Thumbnail, List<string> PictureIds);
+
+    /// <summary>VariationId (10/2026): null = fotos generales; con un id = las fotos de ese color.</summary>
+    public record GuardarRequest(List<PictureSpec> Fotos, string? VariationId = null);
     public record CopiarRequest(List<string> Destinos);
     public record ResultadoDto(bool Ok, string Mensaje, FotosDto? Fotos);
 
@@ -54,7 +60,7 @@ public class MeliFotosService
     public async Task<FotosDto?> LeerAsync(string meliItemId, CancellationToken ct = default)
     {
         var item = await _db.MeliItems.AsNoTracking().Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null) return null;
 
         var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
@@ -67,6 +73,7 @@ public class MeliFotosService
         http.Timeout = TimeSpan.FromSeconds(30);
 
         var fotos = new List<FotoDto>();
+        List<ColorFotosDto>? colores = null;
         bool deCatalogo = item.CatalogListing;
         string? aviso = null;
 
@@ -94,6 +101,36 @@ public class MeliFotosService
                     fotos.Add(new FotoDto(id, url));
                 }
             }
+
+            // 10/2026: colores. El nombre sale de lo que tenemos guardado; si no, de MeLi ("Rojo").
+            if (root.TryGetProperty("variations", out var vars) && vars.ValueKind == JsonValueKind.Array
+                && vars.GetArrayLength() > 0)
+            {
+                var nombres = await _db.MeliItems.AsNoTracking()
+                    .Where(m => m.MeliItemId == meliItemId && m.VariationId != null)
+                    .Select(m => new { m.VariationId, m.VariationAttributes })
+                    .ToListAsync(ct);
+                var urlDe = fotos.GroupBy(f => f.Id).ToDictionary(g => g.Key, g => g.First().Url);
+                colores = new();
+                foreach (var v in vars.EnumerateArray())
+                {
+                    var vid = v.TryGetProperty("id", out var vidEl) ? vidEl.GetRawText().Trim('"') : null;
+                    if (vid is null) continue;
+                    var ids = new List<string>();
+                    if (v.TryGetProperty("picture_ids", out var pi) && pi.ValueKind == JsonValueKind.Array)
+                        foreach (var x in pi.EnumerateArray())
+                            if (x.GetString() is string sx) ids.Add(sx);
+                    var nombre = nombres.FirstOrDefault(n => n.VariationId == vid)?.VariationAttributes;
+                    if (string.IsNullOrWhiteSpace(nombre)
+                        && v.TryGetProperty("attribute_combinations", out var ac) && ac.ValueKind == JsonValueKind.Array)
+                        nombre = string.Join(" ", ac.EnumerateArray()
+                            .Select(a => a.TryGetProperty("value_name", out var vn) ? vn.GetString() : null)
+                            .Where(x => !string.IsNullOrWhiteSpace(x)));
+                    colores.Add(new ColorFotosDto(vid, string.IsNullOrWhiteSpace(nombre) ? "Color " + vid : nombre!,
+                        ids.Select(i => urlDe.GetValueOrDefault(i)).FirstOrDefault(u => u is not null), ids));
+                }
+                colores = colores.OrderBy(c => c.Nombre, StringComparer.OrdinalIgnoreCase).ToList();
+            }
         }
         catch (Exception ex)
         {
@@ -108,7 +145,7 @@ public class MeliFotosService
             aviso = "Esta publicación no tiene fotos.";
 
         var hermanas = await LeerHermanasAsync(http, item.Sku, meliItemId, ct);
-        return new FotosDto(meliItemId, item.Title, item.Sku, deCatalogo, item.Permalink, fotos, hermanas, aviso);
+        return new FotosDto(meliItemId, item.Title, item.Sku, deCatalogo, item.Permalink, fotos, hermanas, aviso, colores);
     }
 
     /// <summary>Las otras publicaciones del mismo SKU, con cuántas fotos tiene cada una.
@@ -173,13 +210,13 @@ public class MeliFotosService
     /// lista quedan borradas: reordenar, cambiar portada y borrar son la misma operación en MeLi.
     /// Las fotos nuevas llegan como DataUri (base64) y las sube MeliItemService.</summary>
     public async Task<ResultadoDto> GuardarAsync(string meliItemId, List<PictureSpec> fotos,
-        CancellationToken ct = default)
+        CancellationToken ct = default, string? variationId = null)
     {
         if (fotos is null || fotos.Count == 0)
             return new ResultadoDto(false, "Una publicación no puede quedarse sin fotos.", null);
 
         var deCatalogo = await _db.MeliItems.AsNoTracking()
-            .Where(m => m.MeliItemId == meliItemId && m.VariationId == null)
+            .FilaPrincipal(meliItemId)
             .Select(m => (bool?)m.CatalogListing).FirstOrDefaultAsync(ct);
         if (deCatalogo == true)
             return new ResultadoDto(false,
@@ -187,11 +224,14 @@ public class MeliFotosService
 
         try
         {
+            // 10/2026: con colores, MeliItemService arma el cambio para que no se pierdan las de otros colores.
             await _itemService.UpdateItemPicturesAsync(meliItemId,
-                new UpdateItemPicturesRequest { Pictures = fotos });
-            _logger.LogWarning("[Fotos] {Mla}: {N} fotos guardadas", meliItemId, fotos.Count);
+                new UpdateItemPicturesRequest { Pictures = fotos }, variationId);
+            _logger.LogWarning("[Fotos] {Mla}: {N} fotos guardadas (color {Color})", meliItemId, fotos.Count, variationId ?? "-");
             var actualizadas = await LeerAsync(meliItemId, ct);
-            return new ResultadoDto(true, $"Listo: quedaron {fotos.Count} fotos.", actualizadas);
+            var deQuien = variationId is null ? "" :
+                " de " + (actualizadas?.Colores?.FirstOrDefault(c => c.VariationId == variationId)?.Nombre ?? "este color");
+            return new ResultadoDto(true, $"Listo: quedaron {fotos.Count} fotos{deQuien}.", actualizadas);
         }
         catch (Exception ex)
         {

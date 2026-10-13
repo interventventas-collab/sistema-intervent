@@ -164,7 +164,7 @@ public class MeliMedidasService
         {
             await _itemService.RefreshSaleFeeAsync(meliItemId);
             envioDespues = await _db.MeliItems.AsNoTracking()
-                .Where(m => m.MeliItemId == meliItemId && m.VariationId == null)
+                .FilaPrincipal(meliItemId)
                 .Select(m => m.SaleFeeShippingCost)
                 .FirstOrDefaultAsync(ct);
         }
@@ -193,7 +193,7 @@ public class MeliMedidasService
     private async Task<(Models.MeliItem? item, HttpClient? http)> PrepararAsync(string meliItemId, CancellationToken ct)
     {
         var item = await _db.MeliItems.AsNoTracking().Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null) return (null, null);
         var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
         if (string.IsNullOrWhiteSpace(token)) return (item, null);

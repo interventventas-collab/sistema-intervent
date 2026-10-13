@@ -70,15 +70,17 @@ public class MeliPrecioManualService
         string? Aviso);
 
     /// <summary>ObjetivoPct (2026-09-30): si el precio salió de la calculadora ("quiero el N%"), ese N
-    /// queda guardado como "tu %" de la publicación. No prende nada automático.</summary>
-    public record PublicarRequest(decimal Precio, bool QuedaFijo, decimal? ObjetivoPct = null);
+    /// queda guardado como "tu %" de la publicación. No prende nada automático.
+    /// VariationId (10/2026): sólo para publicaciones con colores. Null = el precio va a TODOS los
+    /// colores; con un id, sólo ese color cambia y los otros quedan con el precio que tienen en MeLi.</summary>
+    public record PublicarRequest(decimal Precio, bool QuedaFijo, decimal? ObjetivoPct = null, string? VariationId = null);
     public record PublicarResultado(bool Ok, string Mensaje, decimal? PrecioNuevo, bool ModoPrecio);
 
     /// <summary>Qué dejaría esta publicación si valiera `precio`. No cambia nada.</summary>
     public async Task<SimulacionDto?> SimularAsync(string meliItemId, decimal precio, CancellationToken ct = default)
     {
         var item = await _db.MeliItems.AsNoTracking()
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item is null) return null;
 
         if (precio <= 0)
@@ -105,8 +107,8 @@ public class MeliPrecioManualService
         var cruza = !item.FreeShipping && item.Price < ESCALON_ENVIO && precio >= ESCALON_ENVIO
                     && costos.ShippingCost > 0;
 
-        var costo = await _pricePush.CalcularCostoTotalAsync(
-            await _db.MeliItems.AsNoTracking().FirstAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct), ct);
+        // 10/2026: con colores, `item` es la fila del primer color: el costo es el de ese color.
+        var costo = await _pricePush.CalcularCostoTotalAsync(item, ct);
 
         decimal? ganancia = null, margen = null, gananciaSiPaga = null, margenSiPaga = null;
         var neto = (precio - costos.SaleFeeAmount - envioQuePagas) / IVA;
@@ -145,14 +147,14 @@ public class MeliPrecioManualService
     /// `quedaFijo` decide quién manda de acá en adelante — el precio (sincro apagado) o el
     /// porcentaje (sincro prendido, el sistema lo va a recalcular).</summary>
     public async Task<PublicarResultado> PublicarAsync(string meliItemId, decimal precio, bool quedaFijo,
-        CancellationToken ct = default, decimal? objetivoPct = null)
+        CancellationToken ct = default, decimal? objetivoPct = null, string? variationId = null)
     {
         if (precio <= 0) return new PublicarResultado(false, "Poné un precio mayor que cero.", null, false);
         if (precio > TOPE_SEGURO)
             return new PublicarResultado(false, $"${precio:N0} está fuera de rango — frenado por seguridad.", null, false);
 
         var item = await _db.MeliItems.Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null) return new PublicarResultado(false, "Publicación no encontrada.", null, false);
         if (item.Status is "closed" or "deleted")
             return new PublicarResultado(false, $"La publicación está {item.Status}, no se puede cambiar.", null, false);
@@ -164,7 +166,30 @@ public class MeliPrecioManualService
         var http = _httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var body = new StringContent(JsonSerializer.Serialize(new { price = precio }), Encoding.UTF8, "application/json");
+        // 10/2026 — PUBLICACIÓN CON COLORES. MeLi no acepta `price` suelto: hay que mandar la lista
+        // de variantes con su precio. Se mandan TODAS las que tiene hoy en MeLi (si falta alguna en
+        // el PUT, MeLi la borra), con los ids leídos en vivo (mismo criterio que MeliPricePushService).
+        // Ojo: en algunas categorías MeLi exige el mismo precio en todos los colores; si rechaza el
+        // precio de un solo color, el error de MeLi se muestra tal cual.
+        var filas = await _db.MeliItems.Where(i => i.MeliItemId == meliItemId).ToListAsync(ct);
+        var conColores = filas.Any(f => f.VariationId != null);
+        if (!conColores) variationId = null;
+        object payload = new { price = precio };
+        if (conColores)
+        {
+            var vivas = await LeerVariantesAsync(http, meliItemId, ct);
+            if (vivas is null)
+                return new PublicarResultado(false, "MercadoLibre no contestó qué colores tiene. Probá de nuevo.", null, false);
+            if (vivas.Count > 0)
+            {
+                if (variationId is not null && !vivas.Any(v => v.Id.ToString() == variationId))
+                    return new PublicarResultado(false, "Ese color ya no está en MercadoLibre. Actualizá la pantalla.", null, false);
+                payload = ArmarCuerpoPrecio(vivas, precio, variationId);
+            }
+            else variationId = null;
+        }
+
+        var body = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         var resp = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", body, ct);
         if (!resp.IsSuccessStatusCode)
         {
@@ -176,8 +201,12 @@ public class MeliPrecioManualService
             return new PublicarResultado(false, amable, null, false);
         }
 
-        item.Price = precio;
-        item.UpdatedAt = DateTime.UtcNow;
+        // Con colores: el precio va a todas las filas, o sólo a la del color elegido.
+        foreach (var f in filas.Where(f => variationId is null || f.VariationId == variationId))
+        {
+            f.Price = precio;
+            f.UpdatedAt = DateTime.UtcNow;
+        }
 
         var cfg = await _db.MeliItemSyncConfigs.FirstOrDefaultAsync(c => c.MeliItemId == meliItemId, ct);
         if (cfg is null)
@@ -209,4 +238,39 @@ public class MeliPrecioManualService
                 : $"Precio ${precio:N0} publicado. Ojo: manda el porcentaje, así que el sistema lo va a recalcular.",
             precio, quedaFijo);
     }
+
+    /// <summary>10/2026 — Los colores (variantes) que tiene HOY la publicación en MeLi, con su precio.
+    /// Lista vacía = no tiene colores. Null = MeLi no contestó.</summary>
+    private async Task<List<(long Id, decimal Precio)>?> LeerVariantesAsync(HttpClient http, string meliItemId, CancellationToken ct)
+    {
+        try
+        {
+            var r = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}?attributes=variations", ct);
+            if (!r.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await r.Content.ReadAsStringAsync(ct));
+            var lista = new List<(long, decimal)>();
+            if (doc.RootElement.TryGetProperty("variations", out var vs) && vs.ValueKind == JsonValueKind.Array)
+                foreach (var v in vs.EnumerateArray())
+                    lista.Add((v.GetProperty("id").GetInt64(),
+                        v.TryGetProperty("price", out var p) && p.ValueKind == JsonValueKind.Number ? p.GetDecimal() : 0m));
+            return lista;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[PrecioManual] {Mla}: no se pudieron leer los colores", meliItemId);
+            return null;
+        }
+    }
+
+    /// <summary>10/2026 — Cuerpo del PUT para una publicación con colores: TODAS las variantes, con el
+    /// precio nuevo en todas (variationId null) o sólo en la elegida (las otras, con el que ya tienen).</summary>
+    public static object ArmarCuerpoPrecio(List<(long Id, decimal Precio)> vivas, decimal precio, string? variationId)
+        => new
+        {
+            variations = vivas.Select(v => new
+            {
+                id = v.Id,
+                price = variationId is null || v.Id.ToString() == variationId ? precio : v.Precio
+            }).ToList()
+        };
 }

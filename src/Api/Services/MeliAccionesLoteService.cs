@@ -143,7 +143,7 @@ public class MeliAccionesLoteService
                 }
 
                 var dbId = await _db.MeliItems.AsNoTracking()
-                    .Where(m => m.MeliItemId == mla && m.VariationId == null)
+                    .FilaPrincipal(mla)
                     .Select(m => m.Id).FirstOrDefaultAsync(ct);
                 if (dbId == 0) { err++; detalle.Add(new(mla, false, "publicación no encontrada")); continue; }
 
@@ -176,7 +176,7 @@ public class MeliAccionesLoteService
             try
             {
                 var dbId = await _db.MeliItems.AsNoTracking()
-                    .Where(m => m.MeliItemId == mla && m.VariationId == null)
+                    .FilaPrincipal(mla)
                     .Select(m => m.Id).FirstOrDefaultAsync(ct);
                 if (dbId == 0) { err++; detalle.Add(new(mla, false, "publicación no encontrada")); continue; }
 

@@ -5840,7 +5840,12 @@ public class ApiClient
         // 2026-09-28: última venta (hora argentina). Null = sin ventas desde el 13/04/2026.
         DateTime? UltimaVenta = null,
         // 2026-10-01: cambios de MeLi (envío) sin ver, ya en palabras.
-        List<PubV2Cambio>? Cambios = null);
+        List<PubV2Cambio>? Cambios = null,
+        // 10/2026: publicación con colores (null = común) y el rango de precios de los colores.
+        List<PubV2Color>? Colores = null, decimal? PrecioColoresMin = null, decimal? PrecioColoresMax = null);
+    /// <summary>10/2026: un color de una publicación con variantes.</summary>
+    public record PubV2Color(string VariationId, string Nombre, string? Sku, int StockMeli, int? StockSistema,
+        decimal Precio, string? Thumbnail, decimal? MargenPct);
     public record PubV2Cambio(int Id, string Tipo, string Texto, string? Detalle, DateTime DetectadoAt);
     /// <summary>2026-10-01: "✓ visto" de los cambios de MeLi de una publicación.</summary>
     public async Task<bool> MarcarCambiosVistosAsync(string mla)
@@ -5992,7 +5997,10 @@ public class ApiClient
     public record PubV2Hermana(string MeliItemId, string? Titulo, int CantidadFotos, string? Estado,
         string? Thumbnail, bool DeCatalogo, int Vendidas);
     public record PubV2Fotos(string MeliItemId, string? Titulo, string? Sku, bool DeCatalogo,
-        string? Permalink, List<PubV2Foto> Fotos, List<PubV2Hermana> Hermanas, string? Aviso);
+        string? Permalink, List<PubV2Foto> Fotos, List<PubV2Hermana> Hermanas, string? Aviso,
+        List<PubV2ColorFotos>? Colores = null);
+    /// <summary>10/2026: las fotos de un color (ids de Fotos, en orden).</summary>
+    public record PubV2ColorFotos(string VariationId, string Nombre, string? Thumbnail, List<string> PictureIds);
     public record PubV2FotosResultado(bool Ok, string Mensaje, PubV2Fotos? Fotos);
 
     public async Task<PubV2Fotos?> GetFotosV2Async(string mla)
@@ -6001,13 +6009,14 @@ public class ApiClient
     /// <summary>Manda la lista final ORDENADA. Cada foto va con Id (una que ya estaba) o
     /// DataUri (una nueva en base64). La primera queda de portada; las que no van, se borran.</summary>
     public async Task<(PubV2FotosResultado? res, string? error)> GuardarFotosV2Async(string mla,
-        List<object> fotos)
+        List<object> fotos, string? variationId = null)
     {
         try
         {
             await SetAuthHeaderAsync();
+            // 10/2026: VariationId = fotos de ese color (null = generales).
             var resp = await _httpLong.PutAsJsonAsync($"/api/meli/v2/publicaciones/{mla}/fotos",
-                new { Fotos = fotos });
+                new { Fotos = fotos, VariationId = variationId });
             var body = await resp.Content.ReadFromJsonAsync<PubV2FotosResultado>();
             if (resp.IsSuccessStatusCode) return (body, null);
             return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");
@@ -6063,13 +6072,14 @@ public class ApiClient
             $"/api/meli/v2/publicaciones/{mla}/simular?precio={precio.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
 
     public async Task<(PubV2PrecioResultado? res, string? error)> PonerPrecioV2Async(string mla, decimal precio, bool quedaFijo,
-        decimal? objetivoPct = null)
+        decimal? objetivoPct = null, string? variationId = null)
     {
         try
         {
             await SetAuthHeaderAsync();
+            // 10/2026: VariationId = sólo ese color (null = todos los colores).
             var resp = await _httpLong.PutAsJsonAsync($"/api/meli/v2/publicaciones/{mla}/precio",
-                new { Precio = precio, QuedaFijo = quedaFijo, ObjetivoPct = objetivoPct });
+                new { Precio = precio, QuedaFijo = quedaFijo, ObjetivoPct = objetivoPct, VariationId = variationId });
             var body = await resp.Content.ReadFromJsonAsync<PubV2PrecioResultado>();
             if (resp.IsSuccessStatusCode) return (body, null);
             return (body, body?.Mensaje ?? $"Error {(int)resp.StatusCode}");

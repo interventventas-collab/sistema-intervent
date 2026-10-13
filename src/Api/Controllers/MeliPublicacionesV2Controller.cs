@@ -152,7 +152,7 @@ public class MeliPublicacionesV2Controller : ControllerBase
         [FromBody] MeliFotosService.GuardarRequest req,
         [FromServices] MeliFotosService svc)
     {
-        var r = await svc.GuardarAsync(mla, req.Fotos ?? new(), HttpContext.RequestAborted);
+        var r = await svc.GuardarAsync(mla, req.Fotos ?? new(), HttpContext.RequestAborted, req.VariationId);
         return r.Ok ? Ok(r) : BadRequest(r);
     }
 
@@ -208,7 +208,7 @@ public class MeliPublicacionesV2Controller : ControllerBase
         [FromBody] MeliPrecioManualService.PublicarRequest req,
         [FromServices] MeliPrecioManualService svc)
     {
-        var r = await svc.PublicarAsync(mla, req.Precio, req.QuedaFijo, HttpContext.RequestAborted, req.ObjetivoPct);
+        var r = await svc.PublicarAsync(mla, req.Precio, req.QuedaFijo, HttpContext.RequestAborted, req.ObjetivoPct, req.VariationId);
         return r.Ok ? Ok(r) : BadRequest(r);
     }
 
