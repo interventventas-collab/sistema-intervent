@@ -52,8 +52,9 @@ public class MpPagosService
         const int maxPaginas = 200; // tope de seguridad (10.000 pagos)
         bool completo = false;      // true si terminamos porque no había más (no por el tope)
 
-        // IDs ya existentes para no consultar 1x1.
-        var existentes = await _db.MpPagos.ToDictionaryAsync(p => p.MpPaymentId, p => p);
+        // 2026-10-13: los ya guardados se buscan por página (antes se cargaba la tabla entera en
+        // cada pasada; ahora corre cada 30 min y la tabla junta todos los cobros de MeLi).
+        var existentes = new Dictionary<long, MpPago>();
 
         try
         {
@@ -72,6 +73,10 @@ public class MpPagosService
                 var root = doc.RootElement;
                 if (!root.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array)
                     break;
+
+                var idsPagina = results.EnumerateArray().Select(x => ReadLong(x, "id")).Where(x => x.HasValue).Select(x => x!.Value).ToList();
+                foreach (var ya0 in await _db.MpPagos.Where(p => idsPagina.Contains(p.MpPaymentId)).ToListAsync())
+                    existentes[ya0.MpPaymentId] = ya0;
 
                 int enPagina = 0;
                 foreach (var r in results.EnumerateArray())
@@ -93,6 +98,9 @@ public class MpPagosService
                     var extRef = ReadString(r, "external_reference");
                     var releaseStatus = ReadString(r, "money_release_status");
                     var releaseDate = ReadDate(r, "money_release_date");
+                    var tipoMedio = ReadString(r, "payment_type_id");
+                    var cuotas = (int?)ReadLong(r, "installments");
+                    var origen = OrigenDe(r, extRef);
 
                     if (existentes.TryGetValue(mpId.Value, out var ya))
                     {
@@ -103,6 +111,9 @@ public class MpPagosService
                         ya.Fecha = fecha;
                         ya.EstadoLiberacion = Trunc(releaseStatus, 20);
                         ya.FechaLiberacion = releaseDate;
+                        ya.TipoMedio = Trunc(tipoMedio, 30);
+                        ya.Cuotas = cuotas;
+                        ya.Origen = origen;
                         actualizados++;
                     }
                     else
@@ -123,6 +134,9 @@ public class MpPagosService
                             ReferenciaExterna = Trunc(extRef, 200),
                             EstadoLiberacion = Trunc(releaseStatus, 20),
                             FechaLiberacion = releaseDate,
+                            TipoMedio = Trunc(tipoMedio, 30),
+                            Cuotas = cuotas,
+                            Origen = origen,
                             ImportadoAt = DateTime.UtcNow,
                             CreatedAt = DateTime.UtcNow
                         };
@@ -142,6 +156,7 @@ public class MpPagosService
 
             // Si salimos por el tope (no porque se acabaron), avisamos que quedó truncado.
             var truncado = !completo;
+            UltimaSincroAt = DateTime.UtcNow;
             return new SyncPagosResult(true, nuevos, actualizados, total, null, truncado);
         }
         catch (Exception ex)
@@ -150,6 +165,20 @@ public class MpPagosService
             return new SyncPagosResult(false, nuevos, actualizados, total, "No se pudo traer los cobros: " + ex.Message);
         }
     }
+
+    /// <summary>De dónde vino el cobro: "link" (link de pago creado desde el sistema),
+    /// "meli" (venta de MercadoLibre) u "otro" (transferencias, QR, etc). 2026-10-13.</summary>
+    private static string OrigenDe(JsonElement r, string? extRef)
+    {
+        if (extRef?.StartsWith("AIML-LINK-", StringComparison.Ordinal) == true) return "link";
+        if (string.Equals(ReadString(r, "marketplace"), "MELI", StringComparison.OrdinalIgnoreCase)) return "meli";
+        if (r.TryGetProperty("order", out var o) && o.ValueKind == JsonValueKind.Object
+            && string.Equals(ReadString(o, "type"), "mercadolibre", StringComparison.OrdinalIgnoreCase)) return "meli";
+        return "otro";
+    }
+
+    /// <summary>Última vez que se trajeron cobros bien (automático o a mano). Solo en memoria: se pierde al reiniciar.</summary>
+    public static DateTime? UltimaSincroAt { get; set; }
 
     // ─── Helpers de parseo defensivo ───
     private static string? Trunc(string? s, int max) => string.IsNullOrEmpty(s) ? s : (s.Length > max ? s.Substring(0, max) : s);

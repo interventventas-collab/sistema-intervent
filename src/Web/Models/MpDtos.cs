@@ -161,3 +161,43 @@ public class MpLinkComisionDto
     public decimal? PctReal { get; set; }
     public int LinksPagados { get; set; }
 }
+
+// --- Cobranzas Mercado Pago (pantalla del menú MercadoLibre), 2026-10-13 ---
+public class MpCobroDto
+{
+    public int Id { get; set; }
+    public long MpPaymentId { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? Estado { get; set; }
+    public string Origen { get; set; } = "otro";
+    public string? Quien { get; set; }
+    public string? Detalle { get; set; }
+    public string? MedioPago { get; set; }
+    public string? TipoMedio { get; set; }
+    public int? Cuotas { get; set; }
+    public decimal Monto { get; set; }
+    public decimal? MontoNeto { get; set; }
+    public string? EstadoLiberacion { get; set; }
+    public DateTime? FechaLiberacion { get; set; }
+}
+
+public class MpCobrosTotalOrigenDto
+{
+    public string Origen { get; set; } = "";
+    public int Cantidad { get; set; }
+    public decimal Bruto { get; set; }
+    public decimal Neto { get; set; }
+}
+
+public class MpCobrosDto
+{
+    public int Cantidad { get; set; }
+    public decimal Bruto { get; set; }
+    public decimal Neto { get; set; }
+    public decimal PorLiberar { get; set; }
+    public List<MpCobrosTotalOrigenDto> PorOrigen { get; set; } = new();
+    public List<MpCobroDto> Cobros { get; set; } = new();
+    public bool Truncado { get; set; }
+    public DateTime? UltimaSincroAt { get; set; }
+    public bool HayCuenta { get; set; }
+}

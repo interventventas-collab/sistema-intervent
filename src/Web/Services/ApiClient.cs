@@ -6661,6 +6661,22 @@ public class ApiClient
         await ThrowIfErrorAsync(resp);
     }
 
+    // --- Mercado Pago: Cobranzas (pantalla del menú MercadoLibre, 2026-10-13) ---
+    private static string MpCobrosQs(DateTime desde, DateTime hasta, string origen, string? q)
+        => $"?desde={desde:yyyy-MM-dd}&hasta={hasta:yyyy-MM-dd}&origen={Uri.EscapeDataString(origen)}"
+           + (string.IsNullOrWhiteSpace(q) ? "" : "&q=" + Uri.EscapeDataString(q.Trim()));
+
+    public async Task<Web.Models.MpCobrosDto?> GetMpCobrosAsync(DateTime desde, DateTime hasta, string origen, string? q)
+        => await GetAsync<Web.Models.MpCobrosDto>("/api/mercadopago/cobros" + MpCobrosQs(desde, hasta, origen, q));
+
+    public async Task<byte[]?> GetMpCobrosExcelAsync(DateTime desde, DateTime hasta, string origen, string? q)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/mercadopago/cobros/excel" + MpCobrosQs(desde, hasta, origen, q));
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
     // --- Cámaras EZVIZ (API oficial) ---
     public async Task<Web.Models.EzvizAccountDto?> GetEzvizAccountAsync()
         => await GetAsync<Web.Models.EzvizAccountDto>("/api/ezviz/account");

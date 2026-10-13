@@ -284,6 +284,7 @@ builder.Services.AddHostedService<MeliClientesBackgroundService>();
 builder.Services.AddHostedService<GaliciaAutoSyncBackgroundService>();
 builder.Services.AddHostedService<ShellAutoSyncBackgroundService>();
 builder.Services.AddHostedService<MpAutoSyncBackgroundService>();
+builder.Services.AddHostedService<MpCobrosAutoService>();
 // 2026-07-10: motor de alertas configurables ("Mis Alertas"). Revisa las reglas cada 5 min.
 builder.Services.AddHostedService<MisAlertasBackgroundService>();
 // 2026-09-02: arma sola la lista de "para pedir" (productos por debajo del stock ideal). Cada 10 min.

@@ -1,0 +1,212 @@
+@page "/mercadopago/cobranzas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+@* 2026-10-13: todo lo que entró a la cuenta de Mercado Pago, separado por origen (links del sistema,
+   ventas de MercadoLibre, transferencias / QR / otros), con comisión, neto y liberación. Los cobros
+   los trae el servidor solo cada 30 min (MpCobrosAutoService); "actualizar ahora" trae 7 días. *@
+
+<div class="view-header" style="display:flex; align-items:center; justify-content:flex-start; gap:.6rem;">
+    <span style="width:44px; height:30px; display:inline-block;">@SvgIcons.MercadoPago</span>
+    <h2 style="margin:0;">Cobranzas Mercado Pago</h2>
+</div>
+
+<div class="mpb">
+    <div class="mpb-filtros">
+        <label>Desde <input type="date" class="mpb-in" @bind="desde" @bind:after="Cargar" /></label>
+        <label>hasta <input type="date" class="mpb-in" @bind="hasta" @bind:after="Cargar" /></label>
+        <input class="mpb-in mpb-buscar" placeholder="Buscar nombre, mail o monto" @bind="buscar" @bind:event="oninput"
+               @onkeydown="@(async e => { if (e.Key == "Enter") await Cargar(); })" />
+        <button class="btn btn-sm btn-secondary" @onclick="Cargar">Buscar</button>
+        <button class="btn btn-sm btn-secondary" disabled="@bajando" @onclick="BajarExcel">@(bajando ? "Armando…" : "Descargar Excel")</button>
+    </div>
+
+    <div class="mpb-origenes">
+        @foreach (var (k, t) in Origenes)
+        {
+            var n = k == "todo" ? data?.PorOrigen.Sum(o => o.Cantidad) : data?.PorOrigen.FirstOrDefault(o => o.Origen == k)?.Cantidad;
+            <button class="mpb-chip @(origen == k ? "on" : "")" @onclick="@(() => CambiarOrigen(k))">@t @(n is int c ? $"· {c}" : "")</button>
+        }
+    </div>
+
+    @if (cargando && data is null)
+    {
+        <p>Cargando…</p>
+    }
+    else if (data is not null)
+    {
+        @if (!data.HayCuenta)
+        {
+            <p class="mpb-gris">No hay una cuenta de Mercado Pago conectada. Conectala en
+                <a href="/integraciones/mercadopago">Integraciones → Mercado Pago</a>.</p>
+        }
+
+        <div class="mpb-totales">
+            Entró <b>$@Fmt(data.Bruto)</b> · comisión MP $@Fmt(data.Bruto - data.Neto) · te quedó <b>$@Fmt(data.Neto)</b>
+            · falta liberar $@Fmt(data.PorLiberar) <span class="mpb-gris">(@data.Cantidad cobro@(data.Cantidad == 1 ? "" : "s"))</span>
+        </div>
+        <div class="mpb-gris mpb-sincro">
+            Se actualiza solo cada 30 min@(data.UltimaSincroAt is DateTime u ? $" · última vez {u.ToArTime():dd/MM HH:mm}" : "")
+            · <button class="mpb-link" disabled="@actualizando" @onclick="ActualizarAhora">@(actualizando ? "trayendo de Mercado Pago…" : "actualizar ahora")</button>
+        </div>
+
+        @if (data.Cobros.Count == 0)
+        {
+            <p class="mpb-gris">No hay cobros en estas fechas@(string.IsNullOrWhiteSpace(buscar) ? "" : " con esa búsqueda").</p>
+        }
+        else
+        {
+            <table class="table mpb-tabla">
+                <tbody>
+                @foreach (var c in data.Cobros)
+                {
+                    var neto = c.MontoNeto ?? c.Monto;
+                    <tr class="@(c.Estado != "approved" ? "mpb-anulado" : "")">
+                        <td class="mpb-gris mpb-nowrap">@c.Fecha.ToArTime().ToString("dd/MM HH:mm")</td>
+                        <td>
+                            <div>@(string.IsNullOrWhiteSpace(c.Quien) ? "—" : c.Quien)</div>
+                            <div class="mpb-gris">@(c.Detalle ?? OrigenTexto(c.Origen))@(Medio(c) is { Length: > 0 } m ? " · " + m : "")</div>
+                        </td>
+                        <td class="mpb-num">$@Fmt(c.Monto)</td>
+                        <td class="mpb-num">
+                            <div>$@Fmt(neto)</div>
+                            @if (c.MontoNeto is decimal n && c.Monto - n != 0)
+                            {
+                                <div class="mpb-gris">comisión $@Fmt(c.Monto - n)</div>
+                            }
+                        </td>
+                        <td class="mpb-num mpb-gris">
+                            @if (c.Estado == "refunded") { <span class="mpb-alarma">devuelto</span> }
+                            else if (c.Estado == "charged_back") { <span class="mpb-alarma">contracargo</span> }
+                            else if (c.EstadoLiberacion == "released" || (c.FechaLiberacion is DateTime fl && fl <= DateTime.UtcNow)) { <span>liberado</span> }
+                            else if (c.FechaLiberacion is DateTime fl2) { <span>se libera @fl2.ToArTime().ToString("dd/MM")</span> }
+                            else { <span>pendiente</span> }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+            @if (data.Truncado)
+            {
+                <p class="mpb-gris">Se muestran los primeros 1.000. Los totales de arriba son de todos; el Excel también los trae todos.</p>
+            }
+        }
+    }
+</div>
+
+<style>
+    .mpb { max-width: 980px; }
+    .mpb-filtros { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.6rem; font-size:.9rem; }
+    .mpb-filtros label { display:flex; align-items:center; gap:.3rem; }
+    .mpb-in { border:1px solid #d1d5db; border-radius:6px; padding:.3rem .5rem; font-size:.9rem; }
+    .mpb-buscar { flex:1; min-width:180px; }
+    .mpb-origenes { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.9rem; }
+    .mpb-chip { background:#fff; border:1px solid #d1d5db; border-radius:6px; padding:.25rem .7rem; font-size:.85rem; cursor:pointer; }
+    .mpb-chip.on { border-color:#374151; font-weight:600; }
+    .mpb-totales { font-size:1rem; margin-bottom:.2rem; }
+    .mpb-sincro { margin-bottom:.8rem; }
+    .mpb-gris { color:#6b7280; font-size:.82rem; }
+    .mpb-link { background:none; border:none; padding:0; color:#2563eb; cursor:pointer; font-size:.82rem; text-decoration:underline; }
+    .mpb-tabla td { vertical-align:top; padding:.45rem .5rem; }
+    .mpb-num { text-align:right; white-space:nowrap; }
+    .mpb-nowrap { white-space:nowrap; }
+    .mpb-alarma { color:#b91c1c; }
+    .mpb-anulado td:not(:last-child) { text-decoration: line-through; color:#9ca3af; }
+</style>
+
+@code {
+    private static readonly (string, string)[] Origenes =
+    {
+        ("todo", "Todos"), ("link", "Links del sistema"), ("meli", "Ventas MercadoLibre"), ("otro", "Transferencias, QR y otros")
+    };
+
+    private DateTime desde = DateTimeExt.AhoraAr().Date.AddDays(-(DateTimeExt.AhoraAr().Day - 1));
+    private DateTime hasta = DateTimeExt.AhoraAr().Date;
+    private string origen = "todo";
+    private string buscar = "";
+    private MpCobrosDto? data;
+    private bool cargando;
+    private bool actualizando;
+    private bool bajando;
+
+    private static readonly CultureInfo Ar = new("es-AR");
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        if (hasta < desde) hasta = desde;
+        cargando = true;
+        try { data = await Api.GetMpCobrosAsync(desde, hasta, origen, buscar); }
+        catch (Exception ex) { ToastService.Show(ex.Message, ToastType.Error); }
+        finally { cargando = false; }
+    }
+
+    private async Task CambiarOrigen(string k)
+    {
+        origen = k;
+        await Cargar();
+    }
+
+    private async Task ActualizarAhora()
+    {
+        actualizando = true;
+        try
+        {
+            var r = await Api.SincronizarMpPagosAsync(7);
+            if (r is not null && !r.Ok) ToastService.Show(r.Error ?? "Mercado Pago no respondió.", ToastType.Error);
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Show(ex.Message, ToastType.Error); }
+        finally { actualizando = false; }
+    }
+
+    private async Task BajarExcel()
+    {
+        bajando = true;
+        try
+        {
+            var bytes = await Api.GetMpCobrosExcelAsync(desde, hasta, origen, buscar);
+            if (bytes is null) { ToastService.Show("No se pudo armar el Excel.", ToastType.Error); return; }
+            await JS.InvokeVoidAsync("downloadFile", $"Cobranzas_MercadoPago_{desde:dd-MM}_al_{hasta:dd-MM-yyyy}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { ToastService.Show(ex.Message, ToastType.Error); }
+        finally { bajando = false; }
+    }
+
+    private static string OrigenTexto(string o) => o switch
+    {
+        "link" => "Link del sistema",
+        "meli" => "Venta MercadoLibre",
+        _ => "Transferencia / QR / otro"
+    };
+
+    private static string Medio(MpCobroDto c)
+    {
+        var t = c.TipoMedio switch
+        {
+            "account_money" => "dinero en cuenta",
+            "debit_card" => "débito",
+            "credit_card" => "crédito",
+            "prepaid_card" => "prepaga",
+            "ticket" => "efectivo",
+            "bank_transfer" => "transferencia",
+            "atm" => "cajero",
+            _ => c.MedioPago switch
+            {
+                "account_money" => "dinero en cuenta",
+                null or "" => "",
+                var m when m.StartsWith("deb") => "débito",
+                _ => c.MedioPago
+            }
+        };
+        if (c.Cuotas is int n && n > 1) t += $" {n} cuotas";
+        return t;
+    }
+
+    private static string Fmt(decimal v)
+        => v == Math.Round(v, 0) ? v.ToString("#,0", Ar) : v.ToString("#,0.00", Ar);
+}
