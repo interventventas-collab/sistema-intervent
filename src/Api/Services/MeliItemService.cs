@@ -2695,7 +2695,7 @@ public class MeliItemService
         var cambios = new List<string>();
 
         var item = await _db.MeliItems.Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null) return cambios;
 
         var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
@@ -2727,7 +2727,10 @@ public class MeliItemService
             item.InstallmentTag = cuotasReales;
         }
 
-        if (root.TryGetProperty("price", out var pr) && pr.ValueKind == JsonValueKind.Number)
+        // 10/2026: con colores la fila es la de UN color: el precio y el stock de la publicación
+        // (el stock es la suma de todos los colores) no son los de esa fila; esos los trae la sincro.
+        var esColor = item.VariationId != null;
+        if (!esColor && root.TryGetProperty("price", out var pr) && pr.ValueKind == JsonValueKind.Number)
         {
             var precio = pr.GetDecimal();
             if (precio > 0 && item.Price != precio)
@@ -2776,7 +2779,7 @@ public class MeliItemService
             }
         }
 
-        if (root.TryGetProperty("available_quantity", out var aq) && aq.ValueKind == JsonValueKind.Number)
+        if (!esColor && root.TryGetProperty("available_quantity", out var aq) && aq.ValueKind == JsonValueKind.Number)
         {
             var stock = aq.GetInt32();
             if (item.AvailableQuantity != stock)
@@ -2789,6 +2792,19 @@ public class MeliItemService
         if (cambios.Count > 0)
         {
             item.UpdatedAt = DateTime.UtcNow;
+            if (esColor)
+            {
+                // Lo que es de la publicación (cuotas, estado, tipo, envío) vale para todos los colores.
+                var otros = await _db.MeliItems
+                    .Where(i => i.MeliItemId == meliItemId && i.Id != item.Id).ToListAsync(ct);
+                foreach (var o in otros)
+                {
+                    o.InstallmentTag = item.InstallmentTag; o.Status = item.Status;
+                    o.ListingTypeId = item.ListingTypeId; o.CatalogListing = item.CatalogListing;
+                    o.LogisticType = item.LogisticType; o.FreeShipping = item.FreeShipping;
+                    o.UpdatedAt = item.UpdatedAt;
+                }
+            }
             await _db.SaveChangesAsync(ct);
             _logger.LogWarning("[Condiciones] {Mla} cambió: {Cambios}", meliItemId, string.Join(" · ", cambios));
         }
@@ -2941,7 +2957,10 @@ public class MeliItemService
     /// Recibe la lista final ORDENADA: cada foto es una existente (Id), una URL externa (Source)
     /// o un archivo subido (DataUri base64, que primero se sube a MeLi). Hace PUT /items/{id} con
     /// el array pictures. La primera foto queda como portada. Actualiza el Thumbnail local.</summary>
-    public async Task<MeliItemPicturesDto> UpdateItemPicturesAsync(string meliItemId, UpdateItemPicturesRequest request)
+    /// <param name="variationId">10/2026: sólo publicaciones con colores. Null = fotos generales;
+    /// con un id = las fotos de ESE color (ver ActualizarFotosConColoresAsync).</param>
+    public async Task<MeliItemPicturesDto> UpdateItemPicturesAsync(string meliItemId, UpdateItemPicturesRequest request,
+        string? variationId = null)
     {
         var item = await _db.MeliItems
             .Include(i => i.MeliAccount)
@@ -2954,6 +2973,19 @@ public class MeliItemService
 
         var http = _httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // 10/2026 — Publicación con COLORES: cada color tiene sus fotos (variations[].picture_ids) y
+        // todas tienen que estar en la lista general. Mandar sólo `pictures` podía borrar fotos que usa
+        // un color. Se lee en vivo qué colores tiene y, si tiene, va por el camino de colores.
+        var vivo = await LeerFotosYColoresAsync(http, meliItemId);
+        if (vivo is not null && vivo.Value.Colores.Count > 0)
+            return await ActualizarFotosConColoresAsync(http, item, vivo.Value.Fotos, vivo.Value.Colores,
+                request.Pictures, variationId);
+        if (vivo is null && (variationId is not null
+                || await _db.MeliItems.AnyAsync(i => i.MeliItemId == meliItemId && i.VariationId != null)))
+            throw new Exception("MercadoLibre no contestó qué fotos tiene cada color. Probá de nuevo en un rato.");
+        if (variationId is not null)
+            throw new Exception("Esta publicación ya no tiene colores en MercadoLibre. Actualizá la pantalla.");
 
         // Construir el array de pictures en el orden recibido.
         var pics = new List<object>();
@@ -3010,6 +3042,162 @@ public class MeliItemService
             item.LastUpdated = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
+        return result;
+    }
+
+    /// <summary>10/2026 — Fotos generales (ids en orden) y fotos de cada color (variante → ids en
+    /// orden), leídas en vivo de MeLi. Null si MeLi no contestó.</summary>
+    public async Task<(List<string> Fotos, List<(long Id, List<string> PictureIds)> Colores)?> LeerFotosYColoresAsync(
+        HttpClient http, string meliItemId)
+    {
+        try
+        {
+            var r = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}?attributes=pictures,variations");
+            if (!r.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await r.Content.ReadAsStringAsync());
+            var fotos = new List<string>();
+            if (doc.RootElement.TryGetProperty("pictures", out var ps) && ps.ValueKind == JsonValueKind.Array)
+                foreach (var p in ps.EnumerateArray())
+                    if (p.TryGetProperty("id", out var pid) && pid.GetString() is string id) fotos.Add(id);
+            var colores = new List<(long, List<string>)>();
+            if (doc.RootElement.TryGetProperty("variations", out var vs) && vs.ValueKind == JsonValueKind.Array)
+                foreach (var v in vs.EnumerateArray())
+                {
+                    var ids = new List<string>();
+                    if (v.TryGetProperty("picture_ids", out var pi) && pi.ValueKind == JsonValueKind.Array)
+                        foreach (var x in pi.EnumerateArray())
+                            if (x.GetString() is string sx) ids.Add(sx);
+                    colores.Add((v.GetProperty("id").GetInt64(), ids));
+                }
+            return (fotos, colores);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>10/2026 — Cuerpo del PUT de fotos para una publicación con colores. Función pura (no
+    /// llama a MeLi) para poder revisarla sin tocar nada.
+    ///  • variationId null ("Generales"): `enviadas` es la lista general nueva. Las fotos que sigue
+    ///    usando algún color NO se pueden sacar de la general (MeLi exige que estén): se agregan al final.
+    ///    Las fotos de cada color se mandan tal cual están.
+    ///  • variationId con valor: `enviadas` pasa a ser la lista de fotos de ESE color. Los otros colores
+    ///    quedan igual. La general = la de hoy, menos las que el usuario sacó de ese color y ya no usa
+    ///    nadie más, más las nuevas al final.
+    /// MeLi borra los colores que no vengan en `variations`, por eso se mandan SIEMPRE todos.
+    /// Cada elemento de `enviadas` es un id de foto de MeLi, o una URL (foto nueva por `source`).
+    /// Devuelve el cuerpo y cuántas fotos quedaron en la general sólo porque las usa un color.</summary>
+    public static (Dictionary<string, object> Cuerpo, int Mantenidas) ArmarCuerpoFotosConColores(
+        List<string> generalesHoy, List<(long Id, List<string> PictureIds)> colores,
+        List<string> enviadas, string? variationId)
+    {
+        static bool EsUrl(string x) => x.StartsWith("http", StringComparison.OrdinalIgnoreCase);
+        static object Foto(string x) => EsUrl(x) ? new { source = x } : new { id = x };
+
+        var nuevasDeColores = colores.Select(c => (c.Id,
+            PictureIds: variationId is not null && c.Id.ToString() == variationId ? enviadas.Distinct().ToList() : c.PictureIds)).ToList();
+        var usadasPorColores = nuevasDeColores.SelectMany(c => c.PictureIds).ToHashSet();
+
+        List<string> general;
+        int mantenidas = 0;
+        if (variationId is null)
+        {
+            general = enviadas.Distinct().ToList();
+            foreach (var u in usadasPorColores.Where(u => !general.Contains(u)))
+            {
+                // Si la usa un color se queda (orden: el que tenía en la general).
+                general.Add(u);
+                mantenidas++;
+            }
+        }
+        else
+        {
+            var antes = colores.First(c => c.Id.ToString() == variationId).PictureIds;
+            var sacadas = antes.Where(a => !enviadas.Contains(a) && !usadasPorColores.Contains(a)).ToHashSet();
+            general = generalesHoy.Where(g => !sacadas.Contains(g)).ToList();
+            foreach (var e in enviadas.Where(e => !general.Contains(e))) general.Add(e);
+        }
+
+        var cuerpo = new Dictionary<string, object>
+        {
+            ["pictures"] = general.Select(Foto).ToList(),
+            ["variations"] = nuevasDeColores.Select(c => new { id = c.Id, picture_ids = c.PictureIds }).ToList(),
+        };
+        return (cuerpo, mantenidas);
+    }
+
+    /// <summary>10/2026 — Guarda las fotos de una publicación con colores (generales o de un color).
+    /// Las fotos nuevas (archivo) se suben ANTES a MeLi (/pictures/items/upload), que devuelve su id:
+    /// así el color las referencia por id, que es lo seguro. Una URL externa (Source) no tiene id: se
+    /// manda como `source` en `pictures` y la misma URL en `picture_ids` del color — es la forma que
+    /// muestra la documentación de MeLi para fotos de variantes al crear/editar; se asume que en el
+    /// PUT vale igual (la pantalla nueva no manda URLs, sólo ids y archivos).</summary>
+    private async Task<MeliItemPicturesDto> ActualizarFotosConColoresAsync(HttpClient http, MeliItem item,
+        List<string> generalesHoy, List<(long Id, List<string> PictureIds)> colores,
+        List<PictureSpec> specs, string? variationId)
+    {
+        if (variationId is not null && !colores.Any(c => c.Id.ToString() == variationId))
+            throw new Exception("Ese color ya no está en MercadoLibre. Actualizá la pantalla.");
+
+        var enviadas = new List<string>();
+        foreach (var spec in specs)
+        {
+            if (!string.IsNullOrEmpty(spec.Id)) enviadas.Add(spec.Id);
+            else if (!string.IsNullOrEmpty(spec.DataUri))
+            {
+                var (id, _) = await SubirFotoAMeliAsync(http, spec.DataUri);
+                if (id is null) throw new Exception("No se pudo subir una de las fotos a MercadoLibre. Revisá formato (JPG/PNG) y tamaño (máx 10 MB).");
+                enviadas.Add(id);
+            }
+            else if (!string.IsNullOrEmpty(spec.Source)) enviadas.Add(spec.Source);
+        }
+        if (enviadas.Count == 0)
+            throw new Exception(variationId is null
+                ? "La publicación tiene que quedar con al menos una foto."
+                : "El color tiene que quedar con al menos una foto.");
+
+        var (cuerpo, _) = ArmarCuerpoFotosConColores(generalesHoy, colores, enviadas, variationId);
+        var json = JsonSerializer.Serialize(cuerpo);
+        var response = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}",
+            new StringContent(json, Encoding.UTF8, "application/json"));
+        if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+        {
+            var newToken = await _accountService.GetValidTokenAsync(item.MeliAccount!, forceRefresh: true);
+            if (newToken is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                response = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}",
+                    new StringContent(json, Encoding.UTF8, "application/json"));
+            }
+        }
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Error de MercadoLibre ({response.StatusCode}): {errorBody}");
+        }
+
+        // La miniatura de cada color = su primera foto.
+        var respJson = await response.Content.ReadAsStringAsync();
+        var result = ParsePicturesFromItemJson(respJson);
+        try
+        {
+            var urlDe = result.Pictures.Where(p => p.Id != "").GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.First().Url);
+            using var doc = JsonDocument.Parse(respJson);
+            var filas = await _db.MeliItems.Where(i => i.MeliItemId == item.MeliItemId && i.VariationId != null).ToListAsync();
+            if (doc.RootElement.TryGetProperty("variations", out var vs) && vs.ValueKind == JsonValueKind.Array)
+                foreach (var v in vs.EnumerateArray())
+                {
+                    var vid = v.GetProperty("id").GetInt64().ToString();
+                    var primera = v.TryGetProperty("picture_ids", out var pi) && pi.ValueKind == JsonValueKind.Array
+                        ? pi.EnumerateArray().Select(x => x.GetString()).FirstOrDefault() : null;
+                    var fila = filas.FirstOrDefault(f => f.VariationId == vid);
+                    if (fila is not null && primera is not null && urlDe.TryGetValue(primera, out var u))
+                    {
+                        fila.Thumbnail = u;
+                        fila.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Fotos] {Mla}: fotos OK, no se actualizaron las miniaturas", item.MeliItemId); }
         return result;
     }
 
@@ -3991,11 +4179,16 @@ public class MeliItemService
     }
 
     private async Task<string?> UploadPictureToMeliAsync(HttpClient http, string dataUri)
+        => (await SubirFotoAMeliAsync(http, dataUri)).Url;
+
+    /// <summary>Sube un archivo (DataUri base64) a MeLi y devuelve su id y su URL.
+    /// 10/2026: el id hace falta para asignar la foto a un color (variations[].picture_ids).</summary>
+    private async Task<(string? Id, string? Url)> SubirFotoAMeliAsync(HttpClient http, string dataUri)
     {
         try
         {
             var commaIdx = dataUri.IndexOf(',');
-            if (commaIdx < 0) return null;
+            if (commaIdx < 0) return (null, null);
             var meta = dataUri[..commaIdx];
             var base64Data = dataUri[(commaIdx + 1)..];
             var bytes = Convert.FromBase64String(base64Data);
@@ -4007,14 +4200,16 @@ public class MeliItemService
             imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
             formContent.Add(imageContent, "file", "image.jpg");
             var response = await http.PostAsync("https://api.mercadolibre.com/pictures/items/upload", formContent);
-            if (!response.IsSuccessStatusCode) return null;
+            if (!response.IsSuccessStatusCode) return (null, null);
             var json = await response.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(json);
-            return doc.RootElement.TryGetProperty("variations", out var vars) && vars.ValueKind == JsonValueKind.Array
+            var id = doc.RootElement.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+            var url = doc.RootElement.TryGetProperty("variations", out var vars) && vars.ValueKind == JsonValueKind.Array
                 ? vars.EnumerateArray().FirstOrDefault().TryGetProperty("secure_url", out var su) ? su.GetString() : null
                 : doc.RootElement.TryGetProperty("secure_url", out var su2) ? su2.GetString() : null;
+            return (id, url);
         }
-        catch { return null; }
+        catch { return (null, null); }
     }
 
     /// <summary>

@@ -170,7 +170,7 @@ public class MeliEstadoService
     public async Task<Resultado> EliminarAsync(string meliItemId, CancellationToken ct = default)
     {
         var item = await _db.MeliItems.Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null)
             return new Resultado(false, "No encuentro esta publicación en el sistema.", null, null);
         if (item.Status == "deleted")

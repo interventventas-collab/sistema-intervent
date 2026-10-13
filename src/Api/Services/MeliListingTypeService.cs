@@ -64,7 +64,7 @@ public class MeliListingTypeService
 
         var item = await _db.MeliItems
             .Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item is null)
             return new CambioResult(meliItemId, false, null, null, null, null, "Publicación no encontrada en el sistema");
         if (item.MeliAccount is null)

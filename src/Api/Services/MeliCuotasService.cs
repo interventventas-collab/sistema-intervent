@@ -100,7 +100,7 @@ public class MeliCuotasService
         var (_, cambios) = await _itemService.RefreshSaleFeeConDetalleAsync(meliItemId);
 
         var item = await _db.MeliItems.AsNoTracking()
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item is null) return null;
 
         var p = precio is > 0 ? precio.Value : item.Price;
@@ -140,7 +140,7 @@ public class MeliCuotasService
         if (op is null) return new CambiarResultado(false, "Opción no válida.", null);
 
         var item = await _db.MeliItems.Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null) return new CambiarResultado(false, "Publicación no encontrada.", null);
 
         var token = await _accountService.GetValidTokenAsync(item.MeliAccount);

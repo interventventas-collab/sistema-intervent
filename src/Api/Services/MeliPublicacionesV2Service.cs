@@ -81,7 +81,16 @@ public class MeliPublicacionesV2Service
         // hay ventas en el sistema (las órdenes se guardan desde el 13/04/2026).
         DateTime? UltimaVenta = null,
         // 2026-10-01: cambios que hizo MeLi (envío) que todavía nadie marcó como vistos.
-        List<CambioSinVerDto>? Cambios = null);
+        List<CambioSinVerDto>? Cambios = null,
+        // 10/2026: publicación con colores (variantes): uno por color, ordenados por nombre.
+        // Null = publicación común. Min/Max = rango de precios de los colores (null si no tiene).
+        List<ColorDto>? Colores = null, decimal? PrecioColoresMin = null, decimal? PrecioColoresMax = null);
+
+    /// <summary>10/2026 — Un color de una publicación con variantes. StockSistema = lo que hay en el
+    /// depósito de ese color (mismo criterio que la receta); MargenPct = lo que deja ESE color con su
+    /// precio y su costo (misma cuenta que la fila; null si falta la comisión o el costo).</summary>
+    public record ColorDto(string VariationId, string Nombre, string? Sku, int StockMeli, int? StockSistema,
+        decimal Precio, string? Thumbnail, decimal? MargenPct);
 
     /// <summary>Un cambio de MeLi sin ver, ya en palabras ("Envío $14.190 → $36.990 (+$22.800)").</summary>
     public record CambioSinVerDto(int Id, string Tipo, string Texto, string? Detalle, DateTime DetectadoAt);
@@ -474,6 +483,12 @@ public class MeliPublicacionesV2Service
                 .GroupBy(m => m.MeliItemId)
                 .Select(g => new { g.Key, Stock = g.Sum(x => x.AvailableQuantity) })
                 .ToDictionaryAsync(x => x.Key, x => x.Stock, ct);
+        // 10/2026: cada color de las publicaciones con colores de la página (para desplegarlos en la fila).
+        var filasColores = await _db.MeliItems.AsNoTracking()
+                .Where(m => mlasConColores.Contains(m.MeliItemId) && m.VariationId != null)
+                .Select(m => new { m.MeliItemId, VariationId = m.VariationId!, m.VariationAttributes, m.Sku,
+                                   m.AvailableQuantity, m.Price, m.Thumbnail, m.CafeProductoId, m.CafeFormato })
+                .ToListAsync(ct);
         var skus = pageRows.Where(r => r.Sku != null).Select(r => r.Sku!).Distinct().ToList();
 
         // ── 2) Receta: componentes + stock del depósito 9 de Abril ──
@@ -486,7 +501,9 @@ public class MeliPublicacionesV2Service
 
         var prodIds = comps.Select(c => c.CafeProductoId).Distinct().ToList();
         // Productos linkeados por el modelo viejo (MeliItem.CafeProductoId), para los que no tienen componentes.
-        var legacyIds = pageRows.Where(r => r.CafeProductoId.HasValue).Select(r => r.CafeProductoId!.Value).Distinct().ToList();
+        var legacyIds = pageRows.Where(r => r.CafeProductoId.HasValue).Select(r => r.CafeProductoId!.Value)
+            .Concat(filasColores.Where(c => c.CafeProductoId.HasValue).Select(c => c.CafeProductoId!.Value))
+            .Distinct().ToList();
         var todosProdIds = prodIds.Concat(legacyIds).Distinct().ToList();
 
         var stockPorProd = await _db.CafeStockPorDeposito.AsNoTracking()
@@ -652,6 +669,52 @@ public class MeliPublicacionesV2Service
 
             cfgs.TryGetValue(r.MeliItemId, out var cfg);
 
+            // ── 10/2026: los colores de la publicación ──
+            List<ColorDto>? colores = null;
+            if (r.VariationId != null)
+            {
+                var todosComps = comps.Where(c => c.MeliItemId == r.MeliItemId).ToList();
+                colores = new();
+                foreach (var col in filasColores.Where(c => c.MeliItemId == r.MeliItemId))
+                {
+                    // Costo y stock del color: su receta (si está anotada por color) o su producto.
+                    decimal? costoCol = null;
+                    int? stockCol = null;
+                    var compsCol = todosComps.Where(c => c.MeliVariationId == col.VariationId).ToList();
+                    if (compsCol.Count == 0 && col.CafeProductoId.HasValue)
+                        compsCol = todosComps.Where(c => c.MeliVariationId == null && c.CafeProductoId == col.CafeProductoId).ToList();
+                    if (compsCol.Count > 0)
+                    {
+                        costoCol = compsCol.GroupBy(c => c.Sku).Select(g => g.First())
+                            .Sum(c => c.Costo * MeliPricePushService.KilosPorUnidad(c.Categoria, c.Formato) * c.Cantidad);
+                        stockCol = compsCol.Min(c => c.Cantidad > 0
+                            ? (int)Math.Floor(StockPieza(c.CafeProductoId, c.Categoria, c.Formato) / c.Cantidad) : 0);
+                    }
+                    else if (col.CafeProductoId.HasValue && legacyProds.TryGetValue(col.CafeProductoId.Value, out var lpc))
+                    {
+                        costoCol = lpc.Costo * MeliPricePushService.KilosPorUnidad(lpc.Categoria, col.CafeFormato);
+                        stockCol = StockPieza(col.CafeProductoId.Value, lpc.Categoria, col.CafeFormato);
+                    }
+
+                    // Misma cuenta que la fila, con el precio de este color (la comisión es la de la publicación).
+                    decimal? margenCol = null;
+                    if (col.Price > 0 && r.SaleFeeAmount.HasValue && costoCol is > 0)
+                    {
+                        var pReal = (r.PromoPrecio is > 0 && r.PromoPrecio < col.Price) ? r.PromoPrecio.Value : col.Price;
+                        var com = r.SaleFeePercentageFee is > 0
+                            ? Math.Round(pReal * (r.SaleFeePercentageFee.Value / 100m) + (r.SaleFeeFixedFee ?? 0m), 2)
+                            : (r.Price > 0 ? Math.Round(r.SaleFeeAmount.Value / r.Price * pReal, 2) : r.SaleFeeAmount.Value);
+                        var netoCol = (pReal - com - (r.SaleFeeShippingCost ?? 0m)) / IVA;
+                        margenCol = Math.Round((netoCol - costoCol.Value) / costoCol.Value * 100m, 1);
+                    }
+                    colores.Add(new ColorDto(col.VariationId,
+                        string.IsNullOrWhiteSpace(col.VariationAttributes) ? "Color " + col.VariationId : col.VariationAttributes!,
+                        col.Sku, col.AvailableQuantity, stockCol, col.Price, col.Thumbnail, margenCol));
+                }
+                colores = colores.OrderBy(c => c.Nombre, StringComparer.OrdinalIgnoreCase).ToList();
+                if (colores.Count == 0) colores = null;
+            }
+
             items.Add(new FilaDto(
                 r.MeliItemId, r.Sku, r.Title, r.Thumbnail, r.Permalink,
                 r.Price, r.Status, r.ListingTypeId, r.InstallmentTag, r.FreeShipping, r.LogisticType,
@@ -667,7 +730,10 @@ public class MeliPublicacionesV2Service
                 r.Cuenta, cfg?.SkuAnterior,
                 r.PromoPrecio, r.PromoNombre, r.PromoHasta,
                 null, EstimarPrecioObjetivo(costo, cfg?.GananciaObjetivoPct ?? 50m,
-                    r.SaleFeePercentageFee, r.SaleFeeFixedFee, r.SaleFeeShippingCost, r.SaleFeeAmount.HasValue)));
+                    r.SaleFeePercentageFee, r.SaleFeeFixedFee, r.SaleFeeShippingCost, r.SaleFeeAmount.HasValue),
+                Colores: colores,
+                PrecioColoresMin: colores?.Min(c => c.Precio),
+                PrecioColoresMax: colores?.Max(c => c.Precio)));
         }
 
         // 2026-09-22 — Precio OEM de cada fila de la página (lo que usa el motor como piso). Se pide

@@ -574,6 +574,37 @@
     .p2-res .fila:last-child { border-bottom: none; }
     .p2-res .no { color: #b91c1c; }
 
+    /* 10/2026 · publicaciones con colores (variantes) */
+    .p2-colbtn { display: inline-block; margin: .1rem 0 .05rem; padding: 0 .45rem; border: 1px solid #7c3aed; color: #6d28d9;
+                 background: #fff; border-radius: 999px; font-size: .66rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .p2-colbtn.on, .p2-colbtn:hover { background: #f5f3ff; }
+    .p2-colores { grid-column: 1 / -1; padding: .35rem 1rem .5rem 3rem; border-bottom: 1px solid #eef0f3; background: #fcfcfd; }
+    .p2-colores .col { display: flex; align-items: center; gap: .55rem; padding: .22rem 0; font-size: .74rem; color: #374151; }
+    .p2-colores .col + .col { border-top: 1px dashed #eef0f3; }
+    .p2-colores .col img, .p2-colores .col .sinfoto { width: 38px; height: 38px; object-fit: contain; border: 1px solid #e5e7eb;
+                 border-radius: .3rem; background: #fff; flex: none; }
+    .p2-colores .col b { color: #111827; }
+    .p2-colores .col .sku { font-family: ui-monospace, monospace; font-size: .68rem; color: #6b7280; }
+    .p2-colores .col .sinstk { color: #b91c1c; font-weight: 700; }
+    .p2-colores .col .mal { color: #b91c1c; font-weight: 700; }
+    .p2-colores .col .dim { color: #9ca3af; }
+    .p2-colores .col .lnk { border: none; background: none; padding: 0; color: #1d4f80; cursor: pointer; font-size: .7rem;
+                            font-family: inherit; text-decoration: underline dotted; }
+    .p2-stk small.colstk { font-size: .55rem; color: #6b7280; text-transform: none; }
+    .p2-colpreg { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; margin: .25rem 0; padding: .35rem .45rem;
+                  border: 1px solid #f59e0b; background: #fffbeb; border-radius: .4rem; font-size: .7rem; color: #374151; }
+    .p2-colpreg .q { width: 100%; font-weight: 700; }
+    .p2-colpreg button { border: 1px solid #d1d5db; background: #fff; border-radius: 999px; padding: 0 .5rem; font-size: .68rem;
+                         cursor: pointer; font-family: inherit; }
+    .p2-colpreg button.todos { border-color: #b45309; color: #92400e; font-weight: 700; }
+    .p2-color-tabs { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 .3rem; }
+    .p2-color-tabs .tab { display: inline-flex; align-items: center; gap: .3rem; border: 1px solid #d1d5db; background: #fff;
+                          border-radius: 999px; padding: .1rem .55rem; font-size: .72rem; cursor: pointer; font-family: inherit; color: #374151; }
+    .p2-color-tabs .tab img { width: 20px; height: 20px; object-fit: contain; border-radius: 50%; }
+    .p2-color-tabs .tab .n { color: #9ca3af; }
+    .p2-color-tabs .tab.sel { border: 2px solid #111827; font-weight: 700; color: #111827; }
+    .p2-fotos > .cnt { display: block; margin-bottom: .45rem; }
+
     .p2-empty { padding: 2rem; text-align: center; color: #9ca3af; font-size: .85rem; }
     .p2-note { font-size: .7rem; color: #6b7280; background: #eef2ff; border-left: 3px solid #4f46e5;
                padding: .5rem .7rem; border-radius: 0 .4rem .4rem 0; }
@@ -909,6 +940,13 @@
                                     <span class="p2-vend" title="@(it.UltimaVenta is DateTime uvt ? "Última venta: " + uvt.ToString("dd/MM/yyyy HH:mm") : "El sistema guarda las ventas desde el 13/04/2026")">(@it.Vendidas.ToString("N0", ar) @(it.Vendidas == 1 ? "vendida" : "vendidas") · última @TextoUltimaVenta(it.UltimaVenta))</span>
                                 }
                             </span>
+                            @if (it.Colores is { Count: > 0 } colsFila)
+                            {
+                                @* 10/2026: publicación con colores → se despliegan abajo, uno por renglón. *@
+                                <span><button class="p2-colbtn @(coloresAbiertos.Contains(it.MeliItemId) ? "on" : "")"
+                                        title="Esta publicación tiene colores. Tocá para ver cada uno con su stock."
+                                        @onclick="() => ToggleColores(it.MeliItemId)" @onclick:stopPropagation="true">@colsFila.Count colores @(coloresAbiertos.Contains(it.MeliItemId) ? "▴" : "▾")</button></span>
+                            }
                             @* 2026-09-22 — en palabras y con letra normal: antes era un renglón de
                                códigos grises en letra de máquina que mareaba. La cuenta pasó a la
                                columna del estado y las cuotas abajo del precio. *@
@@ -987,6 +1025,19 @@
                             var calcPrecio = calcPct is decimal cpct ? PrecioParaPct(it, cpct, pisoOem: false) : null;
                         }
                         <span class="p2-h p2-precios" @onclick:stopPropagation="true">
+                            @if (preguntaColor?.Mla == it.MeliItemId && it.Colores is { Count: > 0 } colsPreg)
+                            {
+                                @* 10/2026: los colores tienen precios distintos → se pregunta a cuáles va. *@
+                                <span class="p2-colpreg">
+                                    <span class="q">¿A todos los colores o solo a este? (@Plata(preguntaColor.Precio))</span>
+                                    <button class="todos" @onclick="() => ResponderColor(true, null)">Todos los colores</button>
+                                    @foreach (var cp in colsPreg)
+                                    {
+                                        <button title="Hoy está @Plata(cp.Precio)" @onclick="() => ResponderColor(true, cp.VariationId)">Solo @cp.Nombre</button>
+                                    }
+                                    <button @onclick="() => ResponderColor(false, null)">Cancelar</button>
+                                </span>
+                            }
                             @if (editandoPrecio == it.MeliItemId)
                             {
                                 var mSim = simulacion?.MargenPct;
@@ -1015,7 +1066,7 @@
                             else
                             {
                                 <button class="p2-pfijo" disabled="@(precioGuardando)" title="Precio fijo: el sistema no lo toca. Tocá para escribir otro a mano."
-                                        @onclick="() => EmpezarPrecio(it)">@Plata(it.Precio) <small>✎</small></button>
+                                        @onclick="() => EmpezarPrecio(it)">@(ColoresConVariosPrecios(it) ? $"de {Plata(it.PrecioColoresMin!.Value)} a {Plata(it.PrecioColoresMax!.Value)}" : Plata(it.Precio)) <small>✎</small></button>
                             }
                             @* 2026-08-31 · si está en campaña, el comprador paga MENOS que el precio de
                                lista. Sin este cartel, el "te queda" no se entiende. *@
@@ -1127,6 +1178,10 @@
 
                         <span class="p2-stk p2-h2 @(it.StockMeli == 0 ? "zero" : "")">
                             @it.StockMeli<small>@(it.StockMeli == 0 ? "SIN STOCK" : "UNID.")</small>
+                            @if (it.Colores is { Count: > 0 } colsStk)
+                            {
+                                <small class="colstk">@colsStk.Count(c => c.StockMeli > 0) de @colsStk.Count colores con stock</small>
+                            }
                             @* 2026-09-22 — un tilde y listo (reemplaza al 🔒 + 📦). Pregunta antes de cambiar
                                para que un clic de más no deje una publicación con el stock a mano. *@
                             <button class="p2-stksync @(it.SyncStock ? "on" : "")" disabled="@(sincroEnCurso == it.MeliItemId)"
@@ -1185,6 +1240,50 @@
                             }
                         </span>
                     </div>
+
+                    @* 10/2026 · los colores de la publicación, uno por renglón. *@
+                    @if (coloresAbiertos.Contains(it.MeliItemId) && it.Colores is { Count: > 0 } colsAb)
+                    {
+                        var preciosDistintos = ColoresConVariosPrecios(it);
+                        var tuPct = it.ObjetivoPct ?? 50m;
+                        <div class="p2-colores" @onclick:stopPropagation="true">
+                            @foreach (var c in colsAb)
+                            {
+                                <div class="col">
+                                    @if (!string.IsNullOrEmpty(c.Thumbnail))
+                                    {
+                                        <img src="@c.Thumbnail" alt="" loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <span class="sinfoto"></span>
+                                    }
+                                    <b>@c.Nombre</b>
+                                    <span class="sku">@(c.Sku ?? "sin SKU")</span>
+                                    <span class="dim">·</span>
+                                    @if (c.StockMeli > 0)
+                                    {
+                                        <span title="@(c.StockSistema is int ss ? $"En el depósito hay {ss}" : "")">@c.StockMeli u.</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="sinstk" title="@(c.StockSistema is int ss2 ? $"En el depósito hay {ss2}" : "")">sin stock</span>
+                                    }
+                                    @if (preciosDistintos)
+                                    {
+                                        <span class="dim">·</span>
+                                        <span>@Plata(c.Precio)</span>
+                                        @if (c.MargenPct is decimal mc)
+                                        {
+                                            <span class="@(mc < tuPct ? "mal" : "")">te deja @mc.ToString("0.#", ar)%</span>
+                                        }
+                                    }
+                                    <span class="dim">·</span>
+                                    <button class="lnk" @onclick="() => ToggleFotos(it.MeliItemId, it, c.VariationId)">📷 fotos de este color</button>
+                                </div>
+                            }
+                        </div>
+                    }
 
                     @* 2026-08-31 · FICHA TÉCNICA. Se muestra primero QUÉ FALTA, no un formulario
                        de 40 campos: lo que uno necesita saber en dos segundos es si está completa. *@
@@ -1547,6 +1646,26 @@
                             }
                             else
                             {
+                                @if (fotosDatos.Colores is { Count: > 0 } coloresFotos)
+                                {
+                                    @* 10/2026: publicación con colores → una pestaña por color *@
+                                    <div class="p2-color-tabs">
+                                        <button class="tab @(fotosColor is null ? "sel" : "")" disabled="@fotosGuardando"
+                                                @onclick="() => ElegirColorFotos(null)">Generales (todas)</button>
+                                        @foreach (var cf in coloresFotos)
+                                        {
+                                            <button class="tab @(fotosColor == cf.VariationId ? "sel" : "")" disabled="@fotosGuardando"
+                                                    @onclick="() => ElegirColorFotos(cf.VariationId)">
+                                                @if (!string.IsNullOrEmpty(cf.Thumbnail))
+                                                {
+                                                    <img src="@cf.Thumbnail" alt="" loading="lazy" />
+                                                }
+                                                @cf.Nombre <span class="n">· @cf.PictureIds.Count</span>
+                                            </button>
+                                        }
+                                    </div>
+                                    <span class="cnt">Elegí de qué color querés ver y cambiar las fotos. Las de los otros colores no se tocan.</span>
+                                }
                                 <div class="tira">
                                     @for (int i = 0; i < fotosEdit.Count; i++)
                                     {
@@ -1658,7 +1777,7 @@
                                     {
                                         <button class="btn meli" disabled="@(fotosGuardando || !FotosCambiaron)"
                                                 @onclick="() => GuardarFotos(it.MeliItemId)">
-                                            @(fotosGuardando ? "Guardando…" : "💾 Guardar en MercadoLibre")
+                                            @(fotosGuardando ? "Guardando…" : "💾 " + TextoGuardarFotos)
                                         </button>
                                         @if (FotosCambiaron)
                                         {
@@ -2659,12 +2778,33 @@
 
     private bool fotosBloqueadas => fotosDatos?.DeCatalogo == true;
 
+    // 10/2026: publicación con colores → qué color se está viendo (null = las generales).
+    private string? fotosColor;
+    private string? NombreColorFotos => fotosDatos?.Colores?.FirstOrDefault(c => c.VariationId == fotosColor)?.Nombre;
+    private string TextoGuardarFotos
+        => fotosDatos?.Colores is not { Count: > 0 } ? "Guardar en MercadoLibre"
+         : fotosColor is null ? "Guardar fotos generales en MercadoLibre"
+         : $"Guardar fotos del {NombreColorFotos} en MercadoLibre";
+
+    private void ElegirColorFotos(string? variationId)
+    {
+        if (fotosColor == variationId) return;
+        if (FotosCambiaron && !fotosGuardando)
+            ToastService.Info("Los cambios sin guardar de la otra pestaña se descartaron.");
+        fotosColor = variationId;
+        fotosResultado = null;
+        RefrescarEdicion();
+    }
+
     private bool FotosCambiaron
         => !fotosEdit.Select(f => f.Id ?? "nueva:" + f.Preview.Length).SequenceEqual(fotosOriginal);
 
-    private async Task ToggleFotos(string mla, ApiClient.PubV2Fila? fila = null)
+    private async Task ToggleFotos(string mla, ApiClient.PubV2Fila? fila = null, string? color = null)
     {
+        // 10/2026: "📷 fotos de este color" abre el panel con ese color elegido (o lo cambia si ya estaba abierto).
+        if (fotosAbiertas == mla && color is not null && fotosDatos is not null) { ElegirColorFotos(color); return; }
         if (fotosAbiertas == mla) { CerrarFotos(); return; }
+        fotosColor = color;
         descAbierta = null;   // 2026-09-21: cierra el panel de descripción
         cuotasAbiertas = null;
         medidasAbiertas = null;   // no tener los dos paneles abiertos a la vez
@@ -2696,6 +2836,7 @@
     private void CerrarFotos()
     {
         fotosAbiertas = null;
+        fotosColor = null;
         fotosDatos = null;
         fotosEdit = new();
         fotosOriginal = new();
@@ -2705,7 +2846,14 @@
 
     private void RefrescarEdicion()
     {
-        fotosEdit = fotosDatos?.Fotos.Select(f => new FotoEdit { Id = f.Id, Preview = f.Url }).ToList() ?? new();
+        var delColor = fotosColor is null ? null : fotosDatos?.Colores?.FirstOrDefault(c => c.VariationId == fotosColor);
+        if (fotosColor is not null && delColor is null) fotosColor = null;   // ese color ya no está
+        fotosEdit = delColor is not null
+            ? delColor.PictureIds
+                .Select(id => fotosDatos!.Fotos.FirstOrDefault(f => f.Id == id))
+                .Where(f => f is not null)
+                .Select(f => new FotoEdit { Id = f!.Id, Preview = f.Url }).ToList()
+            : fotosDatos?.Fotos.Select(f => new FotoEdit { Id = f.Id, Preview = f.Url }).ToList() ?? new();
         fotosOriginal = fotosEdit.Select(f => f.Id ?? "").ToList();
     }
 
@@ -2913,7 +3061,7 @@
         try
         {
             var lista = fotosEdit.Select(f => (object)new { Id = f.Id, DataUri = f.DataUri }).ToList();
-            var (res, err) = await Api.GuardarFotosV2Async(mla, lista);
+            var (res, err) = await Api.GuardarFotosV2Async(mla, lista, fotosColor);
             fotosResultadoOk = res?.Ok == true;
             fotosResultado = res?.Mensaje ?? err ?? "No se pudo guardar";
             if (fotosResultadoOk)
@@ -3008,6 +3156,36 @@
             + "¿Seguimos igual?");
     }
 
+    // ─── 10/2026 · publicaciones con colores ───
+    private readonly HashSet<string> coloresAbiertos = new();
+    private void ToggleColores(string mla) { if (!coloresAbiertos.Remove(mla)) coloresAbiertos.Add(mla); }
+
+    private static bool ColoresConVariosPrecios(ApiClient.PubV2Fila it)
+        => it.Colores is { Count: > 1 } && it.PrecioColoresMin is decimal mn && it.PrecioColoresMax is decimal mx && mn != mx;
+
+    private record PreguntaColorPrecio(string Mla, decimal Precio, TaskCompletionSource<(bool Ok, string? VariationId)> Tcs);
+    private PreguntaColorPrecio? preguntaColor;
+
+    /// <summary>Si los colores tienen precios distintos, pregunta en la fila a cuáles va el precio nuevo
+    /// (todos o uno). Si valen lo mismo, va a todos sin preguntar. Ok=false: canceló.</summary>
+    private async Task<(bool Ok, string? VariationId)> ElegirColorDelPrecio(ApiClient.PubV2Fila it, decimal precio)
+    {
+        if (!ColoresConVariosPrecios(it)) return (true, null);
+        preguntaColor?.Tcs.TrySetResult((false, null));
+        var p = new PreguntaColorPrecio(it.MeliItemId, precio, new());
+        preguntaColor = p;
+        StateHasChanged();
+        var r = await p.Tcs.Task;
+        if (preguntaColor == p) preguntaColor = null;
+        StateHasChanged();
+        return r;
+    }
+
+    private void ResponderColor(bool ok, string? variationId) => preguntaColor?.Tcs.TrySetResult((ok, variationId));
+
+    private string NombreColor(ApiClient.PubV2Fila it, string? variationId)
+        => variationId is null ? "" : " (solo " + (it.Colores?.FirstOrDefault(c => c.VariationId == variationId)?.Nombre ?? "ese color") + ")";
+
     /// <summary>OEM (o cualquier precio fijo): lo publica y queda fijo.</summary>
     private async Task ElegirPrecioFijo(ApiClient.PubV2Fila it, decimal precio, string etiqueta)
     {
@@ -3019,7 +3197,9 @@
             return;
         }
         if (!await SeguirAunqueEsteEnPromo(it, precio)) return;
-        var aviso = $"¿Publicar {Plata(precio)} ({etiqueta}) en MercadoLibre?\n\nHoy está {Plata(it.Precio)}.\n\nQueda FIJO: el sistema no lo toca.";
+        var (okColor, colorPrecio) = await ElegirColorDelPrecio(it, precio);
+        if (!okColor) return;
+        var aviso = $"¿Publicar {Plata(precio)} ({etiqueta}){NombreColor(it, colorPrecio)} en MercadoLibre?\n\nHoy está {Plata(it.Precio)}.\n\nQueda FIJO: el sistema no lo toca.";
         if (MandaElPorcentaje(it)) aviso += $" Deja de mantener el {it.ObjetivoPct:0}%.";
         if (!await JS.InvokeAsync<bool>("confirm", aviso)) return;
 
@@ -3027,7 +3207,7 @@
         StateHasChanged();
         try
         {
-            var (res, err) = await Api.PonerPrecioV2Async(it.MeliItemId, precio, true);
+            var (res, err) = await Api.PonerPrecioV2Async(it.MeliItemId, precio, true, null, colorPrecio);
             if (res?.Ok == true) { ToastService.Success(res.Mensaje); await RefrescarFilaDespuesDePublicar(it.MeliItemId); }
             else ToastService.Error(res?.Mensaje ?? err ?? "No se pudo publicar el precio");
         }
@@ -3123,7 +3303,9 @@
         }
 
         if (!await SeguirAunqueEsteEnPromo(it, precio.Value)) return;
-        var aviso = $"¿Publicar {Plata(precio.Value)} en MercadoLibre?\n\nHoy está {Plata(it.Precio)}. "
+        var (okColorC, colorCalc) = await ElegirColorDelPrecio(it, precio.Value);
+        if (!okColorC) return;
+        var aviso = $"¿Publicar {Plata(precio.Value)}{NombreColor(it, colorCalc)} en MercadoLibre?\n\nHoy está {Plata(it.Precio)}. "
                   + $"A ese precio te deja alrededor del {pct.Value.ToString("0.#", ar)}% (el número exacto aparece cuando MeLi confirma la comisión).\n\n"
                   + $"Queda FIJO: el sistema no lo toca. Tu % de esta publicación pasa a ser {pct.Value.ToString("0.#", ar)}%.";
         if (it.PrecioOem is decimal oem && precio.Value < oem)
@@ -3134,7 +3316,7 @@
         StateHasChanged();
         try
         {
-            var (res, err) = await Api.PonerPrecioV2Async(it.MeliItemId, precio.Value, true, pct.Value);
+            var (res, err) = await Api.PonerPrecioV2Async(it.MeliItemId, precio.Value, true, pct.Value, colorCalc);
             if (res?.Ok == true)
             {
                 ToastService.Success(res.Mensaje);
@@ -3220,7 +3402,7 @@
             ToastService.Error("Escribí un precio válido.");
             return;
         }
-        if (precio == it.Precio) { CancelarPrecio(); return; }
+        if (precio == it.Precio && !ColoresConVariosPrecios(it)) { CancelarPrecio(); return; }
 
         // 2026-08-31 — La publicación está en campaña: cambiarle el precio le saca el descuento.
         // Es una consecuencia que no se ve por ningún lado, así que se pregunta antes.
@@ -3233,6 +3415,9 @@
                 + "cambiar el precio, y volver a entrar (el botón 🏷️ de la fila).\n\n¿Seguimos igual?");
             if (!seguir) return;
         }
+
+        var (okColorM, colorManual) = await ElegirColorDelPrecio(it, precio);
+        if (!okColorM) return;
 
         // La pregunta que evita que el precio "se cambie solo" a la noche: si esta publicación
         // está en modo porcentaje, el sistema lo va a recalcular salvo que se apague el sincro.
@@ -3247,7 +3432,7 @@
         else
         {
             var ok = await JS.InvokeAsync<bool>("confirm",
-                $"Publicar ${precio:N0} en MercadoLibre (hoy está ${it.Precio:N0}). ¿Seguro?");
+                $"Publicar ${precio:N0}{NombreColor(it, colorManual)} en MercadoLibre (hoy está ${it.Precio:N0}). ¿Seguro?");
             if (!ok) return;
         }
 
@@ -3255,7 +3440,7 @@
         StateHasChanged();
         try
         {
-            var (res, err) = await Api.PonerPrecioV2Async(it.MeliItemId, precio, quedaFijo);
+            var (res, err) = await Api.PonerPrecioV2Async(it.MeliItemId, precio, quedaFijo, null, colorManual);
             if (res?.Ok == true)
             {
                 ToastService.Success(res.Mensaje);

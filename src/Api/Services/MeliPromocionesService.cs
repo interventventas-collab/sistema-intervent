@@ -178,7 +178,7 @@ public class MeliPromocionesService
             return new AccionResultado(false, "El precio de la promoción tiene que ser mayor que cero.", null, null);
 
         var item = await _db.MeliItems.Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null)
             return new AccionResultado(false, "No encuentro esta publicación en el sistema.", null, null);
         if (precio >= item.Price)
@@ -227,7 +227,7 @@ public class MeliPromocionesService
         CancellationToken ct = default)
     {
         var item = await _db.MeliItems.Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null)
             return new AccionResultado(false, "No encuentro esta publicación en el sistema.", null, null);
 
@@ -305,7 +305,7 @@ public class MeliPromocionesService
     public async Task<DeItemDto?> LeerDeItemAsync(string meliItemId, CancellationToken ct = default)
     {
         var item = await _db.MeliItems.Include(i => i.MeliAccount)
-            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == null, ct);
+            .FilaPrincipal(meliItemId).FirstOrDefaultAsync(ct);
         if (item?.MeliAccount is null) return null;
 
         var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
@@ -422,7 +422,8 @@ public class MeliPromocionesService
         return await (
             from i in _db.MeliItems.AsNoTracking()
             join p in _db.CafeProductos.AsNoTracking() on i.CafeProductoId equals p.Id
-            where i.MeliItemId == meliItemId && i.VariationId == null
+            where i.MeliItemId == meliItemId
+            orderby (i.VariationId == null ? 0 : 1), i.Id   // 10/2026: con colores no hay fila sin variante
             select (decimal?)p.Costo
         ).FirstOrDefaultAsync(ct);
     }
