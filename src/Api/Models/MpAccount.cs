@@ -62,6 +62,11 @@ public class MpAccount
     public string? AutoSyncTimes { get; set; }
     public DateTime? LastAutoSyncAt { get; set; }
 
+    /// <summary>% de comisión que el usuario carga a mano para estimar los links de pago
+    /// (2026-10-13). Si ya hay links pagados, se muestra además el % real.</summary>
+    [Column(TypeName = "decimal(6,2)")]
+    public decimal? LinkComisionPct { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

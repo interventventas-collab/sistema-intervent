@@ -6640,6 +6640,27 @@ public class ApiClient
         return await GetAsync<Web.Models.MpMovResumenDto>(url);
     }
 
+    // --- Mercado Pago: links de pago (2026-10-13) ---
+    public async Task<List<Web.Models.MpLinkDto>?> GetMpLinksAsync(int dias = 60)
+        => await GetAsync<List<Web.Models.MpLinkDto>>($"/api/mercadopago/links?dias={dias}");
+
+    public async Task<Web.Models.MpLinkComisionDto?> GetMpLinkComisionAsync()
+        => await GetAsync<Web.Models.MpLinkComisionDto>("/api/mercadopago/links/comision");
+
+    public async Task<Web.Models.MpLinkComisionDto?> SaveMpLinkComisionAsync(decimal? pct)
+        => await PutAsync<Web.Models.MpLinkComisionDto>("/api/mercadopago/links/comision", new { pct });
+
+    public async Task<Web.Models.MpLinkDto?> CrearMpLinkAsync(decimal monto, string? concepto, string? cliente, string opcion)
+        => await PostAsync<Web.Models.MpLinkDto>("/api/mercadopago/links", new { monto, concepto, cliente, opcion });
+
+    /// <summary>Pregunta a MP si pagaron los links pendientes. Puede tardar (una consulta por link).</summary>
+    public async Task RevisarMpLinksAsync()
+    {
+        var resp = await _httpLong.PostAsync("/api/mercadopago/links/revisar", null);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return; }
+        await ThrowIfErrorAsync(resp);
+    }
+
     // --- Cámaras EZVIZ (API oficial) ---
     public async Task<Web.Models.EzvizAccountDto?> GetEzvizAccountAsync()
         => await GetAsync<Web.Models.EzvizAccountDto>("/api/ezviz/account");

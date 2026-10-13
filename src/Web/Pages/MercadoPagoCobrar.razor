@@ -1,0 +1,363 @@
+@page "/mercadopago/cobrar"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+@* 2026-10-13: links de pago de Mercado Pago. Se arma el link con el monto y las formas de pago
+   permitidas, se manda al cliente, y el sistema pregunta a MP si pagaron y cuánto quedó neto.
+   Los accesos directos desde Ventas / chat / "¿Quién me debe?" van más adelante. *@
+
+<div class="view-header" style="display:flex; align-items:center; justify-content:flex-start; gap:.6rem;">
+    <span style="width:44px; height:30px; display:inline-block;">@SvgIcons.MercadoPago</span>
+    <h2 style="margin:0;">Cobrar con Mercado Pago</h2>
+</div>
+
+<div class="mpc">
+    @if (cargando)
+    {
+        <p>Cargando…</p>
+    }
+    else if (info is null || !info.HayCuenta)
+    {
+        <p>No hay una cuenta de Mercado Pago conectada. Conectala en
+            <a href="/integraciones/mercadopago">Integraciones → Mercado Pago</a> y volvé acá.</p>
+    }
+    else
+    {
+        <section class="mpc-form">
+            <div class="mpc-fila">
+                <label for="mpc-monto">Monto $</label>
+                <input id="mpc-monto" class="form-control mpc-monto" inputmode="decimal" placeholder="250.000"
+                       @bind="montoTxt" @bind:event="oninput" />
+            </div>
+            <div class="mpc-fila">
+                <label for="mpc-concepto">Lo que ve el cliente</label>
+                <input id="mpc-concepto" class="form-control" maxlength="200" placeholder="Factura A 0003-15439"
+                       @bind="concepto" />
+            </div>
+            <div class="mpc-fila">
+                <label for="mpc-cliente">Para quién <span class="mpc-gris">(solo lo ves vos)</span></label>
+                <input id="mpc-cliente" class="form-control" maxlength="200" placeholder="Nombre del cliente"
+                       @bind="cliente" />
+            </div>
+
+            <div class="mpc-titulo">Cómo puede pagar</div>
+            <label class="mpc-op"><input type="radio" name="mpc-op" checked="@(opcion == "1")" @onchange="@(() => opcion = "1")" />
+                Lo más barato para mí · 1 pago, sin efectivo</label>
+            <label class="mpc-op"><input type="radio" name="mpc-op" checked="@(opcion == "3")" @onchange="@(() => opcion = "3")" />
+                Hasta 3 cuotas · sin efectivo</label>
+            <label class="mpc-op"><input type="radio" name="mpc-op" checked="@(opcion == "todo")" @onchange="@(() => opcion = "todo")" />
+                Todo permitido · cuotas y Rapipago / Pago Fácil</label>
+
+            <div class="mpc-estimacion">
+                @if (Monto is decimal m && m > 0 && PctEstimacion is decimal pct)
+                {
+                    var com = Math.Round(m * pct / 100m, 0);
+                    <div>Comisión aprox. <b>$@Fmt(com)</b> · te quedarían aprox. <b>$@Fmt(m - com)</b></div>
+                }
+                <div class="mpc-gris">
+                    @if (editandoPct)
+                    {
+                        <span>Tu comisión %</span>
+                        <input class="form-control mpc-pct" inputmode="decimal" @bind="pctTxt" />
+                        <button class="btn btn-sm btn-primary" @onclick="GuardarPct">Guardar</button>
+                        <button class="btn btn-sm btn-secondary" @onclick="() => editandoPct = false">Cancelar</button>
+                    }
+                    else
+                    {
+                        @if (info.PctReal is decimal real)
+                        {
+                            <span>@(info.LinksPagados == 1 ? "Real de tu último link pagado" : $"Real de tus últimos {info.LinksPagados} links pagados"): @FmtPct(real)</span>
+                            @if (info.PctManual is decimal man) { <span> · cargado a mano: @FmtPct(man)</span> }
+                        }
+                        else if (info.PctManual is decimal man2)
+                        {
+                            <span>Con tu comisión de @FmtPct(man2), cargada a mano.</span>
+                        }
+                        else
+                        {
+                            <span>Cargá tu % de comisión para ver la estimación. El número exacto lo vas a ver cuando paguen el primer link.</span>
+                        }
+                        <button class="mpc-link" @onclick="EditarPct">✎ cambiar %</button>
+                    }
+                </div>
+                @if (opcion == "3")
+                {
+                    <div class="mpc-gris">Si elige cuotas, el interés lo paga el cliente con su tarjeta (salvo que tengas cuotas sin interés activadas en Mercado Pago).</div>
+                }
+                else if (opcion == "todo")
+                {
+                    <div class="mpc-gris">Si paga en efectivo, la plata tarda más en llegar.</div>
+                }
+            </div>
+
+            <button class="btn btn-primary" disabled="@creando" @onclick="Crear">@(creando ? "Creando…" : "Crear link de pago")</button>
+        </section>
+
+        @if (recien is not null)
+        {
+            <section class="mpc-recien">
+                <div class="mpc-titulo">Link listo · $@Fmt(recien.Monto) · @recien.Concepto</div>
+                <input class="form-control" readonly value="@recien.Link" @onclick="@(() => Copiar(recien))" />
+                <div class="mpc-botones">
+                    <button class="btn btn-primary" @onclick="@(() => Copiar(recien))">Copiar link</button>
+                    <a class="btn btn-secondary" href="@WhatsAppUrl(recien)" target="_blank" rel="noopener">Mandar por WhatsApp</a>
+                    <a class="btn btn-secondary" href="@recien.Link" target="_blank" rel="noopener">Abrir</a>
+                </div>
+            </section>
+        }
+
+        <section>
+            <div class="mpc-lista-head">
+                <span class="mpc-titulo">Links creados <span class="mpc-gris">(últimos 60 días)</span></span>
+                <button class="btn btn-sm btn-secondary" disabled="@revisando" @onclick="Revisar">@(revisando ? "Preguntando a Mercado Pago…" : "↻ Ver si pagaron")</button>
+            </div>
+            @if (links.Count == 0)
+            {
+                <p class="mpc-gris">Todavía no creaste ningún link.</p>
+            }
+            else
+            {
+                <table class="table mpc-tabla">
+                    <tbody>
+                    @foreach (var l in links)
+                    {
+                        <tr>
+                            <td class="mpc-gris mpc-nowrap">@l.CreatedAt.ToArTime().ToString("dd/MM HH:mm")</td>
+                            <td>
+                                <div>@(string.IsNullOrEmpty(l.Cliente) ? l.Concepto : l.Cliente)</div>
+                                <div class="mpc-gris">
+                                    @if (!string.IsNullOrEmpty(l.Cliente)) { <span>@l.Concepto · </span> }
+                                    @OpcionTexto(l.Opcion)@(string.IsNullOrEmpty(l.CreadoPor) ? "" : " · " + l.CreadoPor)
+                                </div>
+                                @if (l.Estado == "Pagado" || l.Estado == "Devuelto")
+                                {
+                                    <div class="mpc-gris">
+                                        @(l.Estado == "Pagado" ? "Pagó" : "Devuelto") @(l.PagadoAt?.ToArTime().ToString("dd/MM HH:mm"))@(string.IsNullOrEmpty(l.PagadorNombre) ? "" : " · " + l.PagadorNombre) · @MedioTexto(l)
+                                        @if (l.Comision is decimal c && l.MontoNeto is decimal n)
+                                        {
+                                            <span> · comisión MP $@Fmt(c) (@FmtPct(l.Monto > 0 ? 100m * c / l.Monto : 0)) · te quedaron $@Fmt(n)</span>
+                                        }
+                                    </div>
+                                }
+                                else if (!string.IsNullOrEmpty(l.UltimoIntento))
+                                {
+                                    <div class="mpc-gris">@l.UltimoIntento</div>
+                                }
+                            </td>
+                            <td class="mpc-nowrap" style="text-align:right;">$@Fmt(l.Monto)</td>
+                            <td class="mpc-nowrap @(l.Estado == "Devuelto" ? "mpc-alarma" : "")">@l.Estado</td>
+                            <td class="mpc-nowrap" style="text-align:right;">
+                                @if (l.Estado != "Pagado" && !string.IsNullOrEmpty(l.Link))
+                                {
+                                    <button class="mpc-link" @onclick="@(() => Copiar(l))">copiar</button>
+                                    <a class="mpc-link" href="@WhatsAppUrl(l)" target="_blank" rel="noopener">WhatsApp</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </section>
+    }
+</div>
+
+<style>
+    .mpc { max-width: 820px; }
+    .mpc section { margin-bottom: 1.6rem; }
+    .mpc-form { max-width: 520px; }
+    .mpc-fila { margin-bottom: .7rem; }
+    .mpc-fila label { display:block; font-size:.85rem; margin-bottom:.2rem; }
+    .mpc input.form-control { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:6px; padding:.4rem .6rem; font-size:.95rem; }
+    .mpc-monto { max-width: 200px; font-size: 1.1rem; }
+    .mpc-titulo { font-weight: 600; margin: .4rem 0; }
+    .mpc-op { display:block; margin-bottom:.3rem; cursor:pointer; }
+    .mpc-estimacion { border-top: 1px solid #e5e7eb; margin: .8rem 0; padding-top: .6rem; line-height: 1.6; }
+    .mpc-gris { color: #6b7280; font-size: .85rem; }
+    .mpc input.mpc-pct { display:inline-block; width: 80px; margin: 0 .3rem; padding: .15rem .4rem; }
+    .mpc-link { background:none; border:none; padding:0 .3rem; color:#2563eb; cursor:pointer; font-size:.85rem; text-decoration:none; }
+    .mpc-link:hover { text-decoration: underline; }
+    .mpc-recien { max-width: 620px; border: 1px solid #d1d5db; border-radius: 8px; padding: .8rem 1rem; }
+    .mpc-botones { display:flex; gap:.5rem; margin-top:.6rem; flex-wrap:wrap; }
+    .mpc-lista-head { display:flex; justify-content:space-between; align-items:center; gap:.5rem; }
+    .mpc-tabla td { vertical-align: top; padding: .45rem .5rem; }
+    .mpc-nowrap { white-space: nowrap; }
+    .mpc-alarma { color: #b91c1c; }
+</style>
+
+@code {
+    private bool cargando = true;
+    private bool creando;
+    private bool revisando;
+    private MpLinkComisionDto? info;
+    private List<MpLinkDto> links = new();
+    private MpLinkDto? recien;
+
+    private string montoTxt = "";
+    private string concepto = "";
+    private string cliente = "";
+    private string opcion = "1";
+
+    private bool editandoPct;
+    private string pctTxt = "";
+
+    private static readonly CultureInfo Ar = new("es-AR");
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            info = await Api.GetMpLinkComisionAsync();
+            links = await Api.GetMpLinksAsync() ?? new();
+        }
+        catch (Exception ex) { ToastService.Show(ex.Message, ToastType.Error); }
+        cargando = false;
+        // Al entrar pregunto a MP por los pendientes, sin trabar la pantalla.
+        if (info?.HayCuenta == true && links.Any(l => l.Estado is "Pendiente" or "En proceso"))
+            _ = RevisarEnSilencio();
+    }
+
+    private async Task RevisarEnSilencio()
+    {
+        try
+        {
+            revisando = true; StateHasChanged();
+            await Api.RevisarMpLinksAsync();
+            await Recargar();
+        }
+        catch { /* si falla, queda el botón para reintentar */ }
+        finally { revisando = false; StateHasChanged(); }
+    }
+
+    private async Task Recargar()
+    {
+        links = await Api.GetMpLinksAsync() ?? new();
+        info = await Api.GetMpLinkComisionAsync() ?? info;
+    }
+
+    private async Task Revisar()
+    {
+        revisando = true;
+        try
+        {
+            await Api.RevisarMpLinksAsync();
+            await Recargar();
+            ToastService.Show("Listo, ya pregunté a Mercado Pago.", ToastType.Success);
+        }
+        catch (Exception ex) { ToastService.Show(ex.Message, ToastType.Error); }
+        finally { revisando = false; }
+    }
+
+    private decimal? Monto => ParseArs(montoTxt);
+
+    private decimal? PctEstimacion => info?.PctReal ?? info?.PctManual;
+
+    private async Task Crear()
+    {
+        if (Monto is not decimal m || m <= 0)
+        {
+            ToastService.Show("Poné el monto a cobrar.", ToastType.Error);
+            return;
+        }
+        creando = true;
+        try
+        {
+            var l = await Api.CrearMpLinkAsync(m, concepto, cliente, opcion);
+            if (l is not null)
+            {
+                recien = l;
+                links.Insert(0, l);
+                montoTxt = ""; concepto = ""; cliente = ""; opcion = "1";
+                await Copiar(l);
+            }
+        }
+        catch (Exception ex) { ToastService.Show(ex.Message, ToastType.Error); }
+        finally { creando = false; }
+    }
+
+    private async Task Copiar(MpLinkDto l)
+    {
+        if (string.IsNullOrEmpty(l.Link)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", l.Link);
+            ToastService.Show("Link copiado.", ToastType.Success);
+        }
+        catch { ToastService.Show("No se pudo copiar; copialo a mano.", ToastType.Error); }
+    }
+
+    private void EditarPct()
+    {
+        pctTxt = info?.PctManual?.ToString("0.##", Ar) ?? "";
+        editandoPct = true;
+    }
+
+    private async Task GuardarPct()
+    {
+        decimal? pct = null;
+        if (!string.IsNullOrWhiteSpace(pctTxt))
+        {
+            if (!decimal.TryParse(pctTxt.Replace("%", "").Trim().Replace('.', ','), NumberStyles.Number, Ar, out var p))
+            {
+                ToastService.Show("No entiendo ese porcentaje. Ejemplo: 6,29", ToastType.Error);
+                return;
+            }
+            pct = p;
+        }
+        try
+        {
+            info = await Api.SaveMpLinkComisionAsync(pct) ?? info;
+            editandoPct = false;
+        }
+        catch (Exception ex) { ToastService.Show(ex.Message, ToastType.Error); }
+    }
+
+    private static string WhatsAppUrl(MpLinkDto l)
+    {
+        var texto = $"Te paso el link para pagar ${Fmt(l.Monto)} ({l.Concepto}) con Mercado Pago: {l.Link}";
+        return "https://wa.me/?text=" + Uri.EscapeDataString(texto);
+    }
+
+    private static string OpcionTexto(string op) => op switch
+    {
+        "3" => "hasta 3 cuotas",
+        "todo" => "todo permitido",
+        _ => "1 pago"
+    };
+
+    private static string MedioTexto(MpLinkDto l)
+    {
+        var tipo = l.TipoMedio switch
+        {
+            "account_money" => "dinero en cuenta",
+            "debit_card" => "débito",
+            "credit_card" => "crédito",
+            "prepaid_card" => "prepaga",
+            "ticket" => "efectivo",
+            "bank_transfer" => "transferencia",
+            null or "" => l.MedioPago ?? "",
+            _ => l.TipoMedio
+        };
+        if (l.Cuotas is int c && c > 1) tipo += $" en {c} cuotas";
+        return tipo;
+    }
+
+    /// <summary>"250.000" = 250 mil (el punto es miles); "250000,50" = con centavos.</summary>
+    private static decimal? ParseArs(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var t = s.Replace("$", "").Replace(" ", "").Trim();
+        if (t.Contains(','))
+            t = t.Replace(".", "").Replace(',', '.');
+        else if (System.Text.RegularExpressions.Regex.IsMatch(t, @"^\d{1,3}(\.\d{3})+$"))
+            t = t.Replace(".", "");
+        return decimal.TryParse(t, NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
+
+    private static string Fmt(decimal v)
+        => v == Math.Round(v, 0) ? v.ToString("#,0", Ar) : v.ToString("#,0.00", Ar);
+
+    private static string FmtPct(decimal v) => v.ToString("0.##", Ar) + "%";
+}

@@ -130,3 +130,34 @@ public class MpDashboardDto
     public DateTime? SaldoInicialFecha { get; set; }
     public decimal PorAcreditarse { get; set; }
 }
+
+// --- Links de pago (Checkout Pro), 2026-10-13 ---
+public class MpLinkDto
+{
+    public int Id { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public decimal Monto { get; set; }
+    public string Concepto { get; set; } = "";
+    public string? Cliente { get; set; }
+    public string Opcion { get; set; } = "1";
+    public string? Link { get; set; }
+    public string Estado { get; set; } = "";
+    public DateTime? PagadoAt { get; set; }
+    public decimal? MontoNeto { get; set; }
+    public decimal? Comision { get; set; }
+    public string? MedioPago { get; set; }
+    public string? TipoMedio { get; set; }
+    public int? Cuotas { get; set; }
+    public string? PagadorNombre { get; set; }
+    public string? UltimoIntento { get; set; }
+    public string? CreadoPor { get; set; }
+}
+
+public class MpLinkComisionDto
+{
+    public bool HayCuenta { get; set; }
+    public string? Cuenta { get; set; }
+    public decimal? PctManual { get; set; }
+    public decimal? PctReal { get; set; }
+    public int LinksPagados { get; set; }
+}
