@@ -166,15 +166,28 @@ public class MpPagosService
         }
     }
 
-    /// <summary>De dónde vino el cobro: "link" (link de pago creado desde el sistema),
-    /// "meli" (venta de MercadoLibre) u "otro" (transferencias, QR, etc). 2026-10-13.</summary>
+    /// <summary>De dónde vino el cobro: "link" (link de pago: creado desde el sistema o desde la app
+    /// de MP), "meli" (venta de MercadoLibre o bonificación de envío Flex) u "otro" (transferencias,
+    /// QR, etc). 2026-10-13.</summary>
     private static string OrigenDe(JsonElement r, string? extRef)
     {
-        if (extRef?.StartsWith("AIML-LINK-", StringComparison.Ordinal) == true) return "link";
+        var porDatos = OrigenPorDatos(extRef, ReadString(r, "description"), ReadPayer(r).email);
+        if (porDatos is not null) return porDatos;
         if (string.Equals(ReadString(r, "marketplace"), "MELI", StringComparison.OrdinalIgnoreCase)) return "meli";
         if (r.TryGetProperty("order", out var o) && o.ValueKind == JsonValueKind.Object
             && string.Equals(ReadString(o, "type"), "mercadolibre", StringComparison.OrdinalIgnoreCase)) return "meli";
         return "otro";
+    }
+
+    /// <summary>Reglas por los datos guardados (sirven también para los cobros viejos). Null = no se sabe.
+    /// Las bonificaciones Flex las paga "ceco_xxxx@mercadolibre.com".</summary>
+    public static string? OrigenPorDatos(string? extRef, string? descripcion, string? payerEmail)
+    {
+        if (extRef?.StartsWith("AIML-LINK-", StringComparison.Ordinal) == true) return "link";
+        if (descripcion?.Trim().StartsWith("Link de pago", StringComparison.OrdinalIgnoreCase) == true) return "link";
+        if (payerEmail?.Trim().EndsWith("@mercadolibre.com", StringComparison.OrdinalIgnoreCase) == true) return "meli";
+        if (descripcion?.StartsWith("bonificaciones", StringComparison.OrdinalIgnoreCase) == true) return "meli";
+        return null;
     }
 
     /// <summary>Última vez que se trajeron cobros bien (automático o a mano). Solo en memoria: se pierde al reiniciar.</summary>

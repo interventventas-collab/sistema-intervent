@@ -68,6 +68,10 @@
                         <td>
                             <div>@(string.IsNullOrWhiteSpace(c.Quien) ? "—" : c.Quien)</div>
                             <div class="mpb-gris">@(c.Detalle ?? OrigenTexto(c.Origen))@(Medio(c) is { Length: > 0 } m ? " · " + m : "")</div>
+                            @if (c.CobranzaId.HasValue)
+                            {
+                                <div class="mpb-asoc">✓ Cobranza @c.CobranzaNumero@(string.IsNullOrEmpty(c.CobranzaCliente) ? "" : " · " + c.CobranzaCliente)@(string.IsNullOrEmpty(c.CobranzaComprobantes) ? "" : " · " + c.CobranzaComprobantes)</div>
+                            }
                         </td>
                         <td class="mpb-num">$@Fmt(c.Monto)</td>
                         <td class="mpb-num">
@@ -83,6 +87,10 @@
                             else if (c.EstadoLiberacion == "released" || (c.FechaLiberacion is DateTime fl && fl <= DateTime.UtcNow)) { <span>liberado</span> }
                             else if (c.FechaLiberacion is DateTime fl2) { <span>se libera @fl2.ToArTime().ToString("dd/MM")</span> }
                             else { <span>pendiente</span> }
+                            @if (c.Estado == "approved" && !c.CobranzaId.HasValue && c.Origen != "meli")
+                            {
+                                <div><button class="mpb-btn-asoc" @onclick="@(() => AbrirAsociar(c))">Asociar a venta</button></div>
+                            }
                         </td>
                     </tr>
                 }
@@ -96,8 +104,95 @@
     }
 </div>
 
+@if (asoc is not null)
+{
+    <div class="modal-overlay" @onclick="CerrarAsociar">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:560px; width:92vw; max-height:90vh; overflow-y:auto;">
+            <div class="modal-header">
+                <h4 style="margin:0;">Asociar cobro de Mercado Pago</h4>
+                <button class="btn-close" @onclick="CerrarAsociar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="mpb-gris" style="margin-bottom:.8rem;">$@Fmt(asoc.Monto) · @asoc.Fecha.ToArTime().ToString("dd/MM HH:mm") · @(asoc.Quien ?? "")</div>
+
+                <label class="mpb-lbl">Cliente</label>
+                @if (asocCliente is null)
+                {
+                    <input class="mpb-in" style="width:100%; box-sizing:border-box;" placeholder="Buscar cliente (nombre, razón social, CUIT)"
+                           @bind="asocBuscar" @bind:event="oninput" />
+                    @if (!string.IsNullOrWhiteSpace(asocBuscar))
+                    {
+                        <div class="mpb-cli-lista">
+                            @foreach (var cl in ClienteSearch.Buscar(clientes, asocBuscar).Take(8))
+                            {
+                                <button class="mpb-cli" @onclick="@(() => ElegirCliente(cl))">@cl.Nombre@(string.IsNullOrWhiteSpace(cl.RazonSocial) || cl.RazonSocial == cl.Nombre ? "" : " · " + cl.RazonSocial)</button>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <b>@asocCliente.Nombre</b>
+                        <button class="mpb-link" @onclick="() => { asocCliente = null; asocPend = null; }">cambiar</button>
+                    </div>
+
+                    <div class="mpb-lbl" style="margin-top:.8rem;">¿Qué paga?</div>
+                    @if (asocPend is null)
+                    {
+                        <p class="mpb-gris">Cargando comprobantes…</p>
+                    }
+                    else if (asocPend.Count == 0)
+                    {
+                        <p class="mpb-gris">No tiene comprobantes pendientes: queda todo a cuenta.</p>
+                    }
+                    else
+                    {
+                        @foreach (var pc in asocPend)
+                        {
+                            var key = Clave(pc);
+                            <label class="mpb-op">
+                                <input type="checkbox" checked="@asocTildes.Contains(key)" @onchange="@(e => Tildar(key, (bool)(e.Value ?? false)))" />
+                                @pc.Numero · @pc.Fecha.ToString("dd/MM") · debe $@Fmt(pc.Saldo)
+                                @if (!string.IsNullOrEmpty(pc.ClienteNombre) && pc.ClienteNombre != asocCliente.Nombre) { <span class="mpb-gris"> (@pc.ClienteNombre)</span> }
+                            </label>
+                        }
+                    }
+
+                    <div class="mpb-resumen">
+                        @{ var (imps, aCuenta) = Imputar(); }
+                        Se carga una cobranza de <b>$@Fmt(asoc.Monto)</b> en la caja <b>@(cajaMp?.Nombre ?? "Mercado Pago")</b>, fecha @FechaCobranzaTexto().
+                        @if (imps.Count > 0) { <br /><span>Paga: @string.Join(", ", imps.Select(i => $"{i.numero} ${Fmt(i.importe)}"))</span> }
+                        @if (aCuenta > 0.009m) { <br /><span>Quedan $@Fmt(aCuenta) a cuenta.</span> }
+                        @if (asoc.MontoNeto is decimal n && asoc.Monto - n > 0)
+                        {
+                            <br /><span class="mpb-gris">La comisión de MP ($@Fmt(asoc.Monto - n)) no le baja la deuda al cliente: él pagó los $@Fmt(asoc.Monto) completos.</span>
+                        }
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(asocError))
+                {
+                    <div class="mpb-alarma" style="margin-top:.6rem;">@asocError</div>
+                }
+            </div>
+            <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:.5rem;">
+                <button class="btn btn-secondary" @onclick="CerrarAsociar">Cancelar</button>
+                <button class="btn btn-primary" disabled="@(asocCliente is null || asocPend is null || guardandoAsoc)" @onclick="GuardarAsociar">@(guardandoAsoc ? "Guardando…" : "Guardar cobranza")</button>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
     .mpb { max-width: 980px; }
+    .mpb-asoc { font-size:.8rem; color:#065f46; margin-top:.15rem; }
+    .mpb-btn-asoc { margin-top:.3rem; background:#fff; border:1px solid #d1d5db; border-radius:6px; padding:.15rem .5rem; font-size:.78rem; cursor:pointer; color:#374151; }
+    .mpb-lbl { display:block; font-size:.85rem; margin-bottom:.25rem; }
+    .mpb-cli-lista { border:1px solid #e5e7eb; border-radius:6px; margin-top:.25rem; max-height:240px; overflow-y:auto; }
+    .mpb-cli { display:block; width:100%; text-align:left; background:#fff; border:none; border-bottom:1px solid #f3f4f6; padding:.4rem .6rem; cursor:pointer; font-size:.88rem; }
+    .mpb-cli:hover { background:#f3f4f6; }
+    .mpb-op { display:block; margin-bottom:.3rem; cursor:pointer; font-size:.9rem; }
+    .mpb-resumen { border-top:1px solid #e5e7eb; margin-top:.8rem; padding-top:.6rem; font-size:.88rem; line-height:1.6; }
     .mpb-filtros { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.6rem; font-size:.9rem; }
     .mpb-filtros label { display:flex; align-items:center; gap:.3rem; }
     .mpb-in { border:1px solid #d1d5db; border-radius:6px; padding:.3rem .5rem; font-size:.9rem; }
@@ -119,7 +214,7 @@
 @code {
     private static readonly (string, string)[] Origenes =
     {
-        ("todo", "Todos"), ("link", "Links del sistema"), ("meli", "Ventas MercadoLibre"), ("otro", "Transferencias, QR y otros")
+        ("todo", "Todos"), ("link", "Links de pago"), ("meli", "Ventas MercadoLibre"), ("otro", "Transferencias, QR y otros")
     };
 
     private DateTime desde = DateTimeExt.AhoraAr().Date.AddDays(-(DateTimeExt.AhoraAr().Day - 1));
@@ -177,9 +272,124 @@
         finally { bajando = false; }
     }
 
+    // ─── Asociar un cobro a una venta (crea una cobranza común en la caja Mercado Pago) ───
+    private MpCobroDto? asoc;
+    private List<CafeClienteDto>? clientes;
+    private List<CafeCajaDto>? cajas;
+    private CafeCajaDto? cajaMp;
+    private string asocBuscar = "";
+    private CafeClienteDto? asocCliente;
+    private List<ComprobantePendienteDto>? asocPend;
+    private HashSet<string> asocTildes = new();
+    private string? asocError;
+    private bool guardandoAsoc;
+
+    private static string Clave(ComprobantePendienteDto p) => p.ReservaId is > 0 ? $"R{p.ReservaId}" : $"V{p.VentaId}";
+
+    private async Task AbrirAsociar(MpCobroDto c)
+    {
+        asoc = c; asocCliente = null; asocPend = null; asocTildes = new(); asocError = null;
+        asocBuscar = c.ClienteSugerido ?? "";
+        try
+        {
+            clientes ??= await Api.GetCafeClientesAsync() ?? new();
+            cajas ??= await Api.GetCafeCajasAsync() ?? new();
+            // La caja de MP es de tipo BILLETERA_VIRTUAL y se llama "Mercado Pago" (la "V (Billetera
+            // Virtual)" es otra cosa: V_PRIVADO). Primero por nombre, después por tipo.
+            cajaMp = cajas.FirstOrDefault(k => k.IsActive && k.Tipo != "V_PRIVADO"
+                        && k.Nombre.Replace(" ", "").Contains("mercadopago", StringComparison.OrdinalIgnoreCase))
+                     ?? cajas.FirstOrDefault(k => k.IsActive && k.Tipo.ToUpperInvariant() is "MERCADO_PAGO" or "MERCADOPAGO" or "MP");
+            if (cajaMp is null) asocError = "No hay una caja de tipo Mercado Pago activa. Creala en Tesorería → Cajas.";
+            // Link del sistema hecho para un cliente: si el nombre coincide justo con uno, lo elijo solo.
+            if (!string.IsNullOrWhiteSpace(c.ClienteSugerido))
+            {
+                var exactos = clientes.Where(x => x.IsActive && (string.Equals(x.Nombre, c.ClienteSugerido.Trim(), StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(x.RazonSocial, c.ClienteSugerido.Trim(), StringComparison.OrdinalIgnoreCase))).ToList();
+                if (exactos.Count == 1) await ElegirCliente(exactos[0]);
+            }
+        }
+        catch (Exception ex) { asocError = ex.Message; }
+    }
+
+    private void CerrarAsociar() { if (!guardandoAsoc) asoc = null; }
+
+    private async Task ElegirCliente(CafeClienteDto cl)
+    {
+        asocCliente = cl; asocPend = null; asocTildes = new();
+        StateHasChanged();
+        try
+        {
+            asocPend = (await Api.GetComprobantesPendientesAsync(cl.Id, true) ?? new())
+                .Where(p => p.Saldo > 0.009m).OrderBy(p => p.Fecha).ToList();
+            // Si uno debe justo lo que pagó, lo dejo tildado.
+            var justo = asocPend.Where(p => Math.Abs(p.Saldo - asoc!.Monto) < 0.01m).ToList();
+            if (justo.Count == 1) asocTildes.Add(Clave(justo[0]));
+        }
+        catch (Exception ex) { asocError = ex.Message; asocPend = new(); }
+    }
+
+    private void Tildar(string key, bool on) { if (on) asocTildes.Add(key); else asocTildes.Remove(key); }
+
+    /// <summary>Reparte lo que pagó entre los tildados (del más viejo al más nuevo); lo que sobra va a cuenta.</summary>
+    private (List<(ComprobantePendienteDto p, string numero, decimal importe)> imps, decimal aCuenta) Imputar()
+    {
+        var resto = asoc?.Monto ?? 0m;
+        var imps = new List<(ComprobantePendienteDto, string, decimal)>();
+        foreach (var p in (asocPend ?? new()).Where(p => asocTildes.Contains(Clave(p))))
+        {
+            if (resto <= 0.009m) break;
+            var imp = Math.Min(p.Saldo, resto);
+            imps.Add((p, p.Numero, imp));
+            resto -= imp;
+        }
+        return (imps, Math.Round(resto, 2));
+    }
+
+    /// <summary>Fecha del cobro de MP; si la caja ya tiene un arqueo posterior, va con la fecha de hoy.</summary>
+    private DateTime? FechaCobranza()
+    {
+        if (asoc is null) return null;
+        var dia = asoc.Fecha.ToArTime().Date;
+        if (dia >= DateTimeExt.AhoraAr().Date) return null;
+        if (cajaMp?.UltimoArqueo is DateTime arq && dia <= arq.Date) return null;
+        return dia;
+    }
+
+    private string FechaCobranzaTexto() => (FechaCobranza() ?? DateTimeExt.AhoraAr().Date).ToString("dd/MM");
+
+    private async Task GuardarAsociar()
+    {
+        if (asoc is null || asocCliente is null || asocPend is null) return;
+        if (cajaMp is null) { asocError = "No hay una caja de tipo Mercado Pago activa. Creala en Tesorería → Cajas."; return; }
+        guardandoAsoc = true; asocError = null;
+        try
+        {
+            var (imps, aCuenta) = Imputar();
+            var comps = imps.Select(i => i.p.ReservaId is > 0
+                ? new ApiClient.CrearComprobanteItemRequest(null, i.importe, i.p.ReservaId)
+                : new ApiClient.CrearComprobanteItemRequest(i.p.VentaId, i.importe)).ToList();
+            if (aCuenta > 0.009m) comps.Add(new ApiClient.CrearComprobanteItemRequest(null, aCuenta));
+            var medios = new List<ApiClient.CrearMedioItemRequest>
+            {
+                new(cajaMp.Id, asoc.Monto, $"MP #{asoc.MpPaymentId}", null)
+            };
+            var obs = $"Cobro Mercado Pago #{asoc.MpPaymentId}" + (string.IsNullOrWhiteSpace(asoc.Quien) ? "" : $" ({asoc.Quien})");
+            var r = await Api.CrearCafeCobranzaAsync(asocCliente.Id, 0m, null, obs, comps, medios, null,
+                FechaCobranza()?.ToString("yyyy-MM-dd"));
+            if (r is null) { asocError = "No se pudo crear la cobranza."; return; }
+            await Api.AsociarMpCobroAsync(asoc.Id, r.Id);
+            ToastService.Show($"Listo: cobranza {r.Numero} de {asocCliente.Nombre}.", ToastType.Success);
+            guardandoAsoc = false;
+            asoc = null;
+            await Cargar();
+        }
+        catch (Exception ex) { asocError = ex.Message; }
+        finally { guardandoAsoc = false; }
+    }
+
     private static string OrigenTexto(string o) => o switch
     {
-        "link" => "Link del sistema",
+        "link" => "Link de pago",
         "meli" => "Venta MercadoLibre",
         _ => "Transferencia / QR / otro"
     };

@@ -25,7 +25,11 @@ public class MpCobrosController : ControllerBase
 
     public record CobroDto(int Id, long MpPaymentId, DateTime Fecha, string? Estado, string Origen,
         string? Quien, string? Detalle, string? MedioPago, string? TipoMedio, int? Cuotas,
-        decimal Monto, decimal? MontoNeto, string? EstadoLiberacion, DateTime? FechaLiberacion);
+        decimal Monto, decimal? MontoNeto, string? EstadoLiberacion, DateTime? FechaLiberacion,
+        // 2026-10-13: cobranza del sistema a la que se asoció (solo si sigue vigente) y, en los
+        // links del sistema, para quién era (para proponer el cliente al asociar).
+        int? CobranzaId = null, string? CobranzaNumero = null, string? CobranzaCliente = null,
+        string? CobranzaComprobantes = null, string? ClienteSugerido = null);
 
     public record TotalOrigenDto(string Origen, int Cantidad, decimal Bruto, decimal Neto);
 
@@ -79,7 +83,7 @@ public class MpCobrosController : ControllerBase
             ws.Cell(row, 1).Value = ar.Date;
             ws.Cell(row, 1).Style.DateFormat.Format = "dd/MM/yyyy";
             ws.Cell(row, 2).Value = ar.ToString("HH:mm");
-            ws.Cell(row, 3).Value = c.Origen switch { "link" => "Link del sistema", "meli" => "MercadoLibre", _ => "Transferencia / QR / otro" };
+            ws.Cell(row, 3).Value = c.Origen switch { "link" => "Link de pago", "meli" => "MercadoLibre", _ => "Transferencia / QR / otro" };
             ws.Cell(row, 4).Value = c.Quien ?? "";
             ws.Cell(row, 5).Value = c.Detalle ?? "";
             ws.Cell(row, 6).Value = MedioTexto(c);
@@ -96,6 +100,33 @@ public class MpCobrosController : ControllerBase
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
         return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Cobranzas_MercadoPago.xlsx");
+    }
+
+    private record CobranzaAsociada(int Id, string Numero, string? Cliente, string Comprobantes);
+
+    public record AsociarRequest(int CobranzaId);
+
+    /// <summary>Marca el cobro de MP como usado en una cobranza recién creada desde la pantalla
+    /// (la cobranza se crea con el endpoint normal de Cobranzas, igual que con el extracto del banco).
+    /// Si esa cobranza se anula o se borra, el cobro vuelve a quedar libre.</summary>
+    [HttpPost("{id:int}/asociar")]
+    public async Task<IActionResult> Asociar(int id, [FromBody] AsociarRequest req)
+    {
+        var pago = await _db.MpPagos.FindAsync(id);
+        if (pago is null) return NotFound(new { error = "No encontré ese cobro." });
+        if (pago.Estado != "approved") return BadRequest(new { error = "Ese cobro no está aprobado (fue devuelto o anulado)." });
+        if (pago.CobranzaUsadaId.HasValue && pago.CobranzaUsadaId != req.CobranzaId
+            && await _db.CafeCobranzas.AnyAsync(c => c.Id == pago.CobranzaUsadaId && c.Estado == "VIGENTE"))
+            return BadRequest(new { error = "Ese cobro ya está asociado a otra cobranza." });
+        var cob = await _db.CafeCobranzas.AsNoTracking().FirstOrDefaultAsync(c => c.Id == req.CobranzaId);
+        if (cob is null || cob.Estado != "VIGENTE") return BadRequest(new { error = "La cobranza no existe o está anulada." });
+        pago.CobranzaUsadaId = cob.Id;
+        pago.VentaIdAsociada = await _db.CafeCobranzasComprobantes.Where(c => c.CobranzaId == cob.Id && c.VentaId != null)
+            .Select(c => c.VentaId).FirstOrDefaultAsync();
+        pago.AsociadoPor = User.Identity?.Name;
+        pago.AsociadoAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     private static bool Liberado(CobroDto c, DateTime ahora)
@@ -171,14 +202,38 @@ public class MpCobrosController : ControllerBase
             : await _db.MpLinksPago.AsNoTracking().Where(l => refsLink.Contains(l.ReferenciaExterna))
                 .ToDictionaryAsync(l => l.ReferenciaExterna);
 
+        // Cobranzas asociadas (solo las vigentes: si la anularon, el cobro vuelve a quedar libre).
+        var cobIds = pagos.Where(p => p.CobranzaUsadaId.HasValue).Select(p => p.CobranzaUsadaId!.Value).Distinct().ToList();
+        var cobs = new Dictionary<int, CobranzaAsociada>();
+        if (cobIds.Count > 0)
+        {
+            var cabs = await _db.CafeCobranzas.AsNoTracking()
+                .Where(c => cobIds.Contains(c.Id) && c.Estado == "VIGENTE")
+                .Select(c => new { c.Id, c.Numero, c.ClienteId }).ToListAsync();
+            var cliIds = cabs.Where(c => c.ClienteId.HasValue).Select(c => c.ClienteId!.Value).Distinct().ToList();
+            var nombres = await _db.CafeClientes.AsNoTracking().Where(c => cliIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Nombre);
+            var comps = await _db.CafeCobranzasComprobantes.AsNoTracking()
+                .Where(c => cobIds.Contains(c.CobranzaId))
+                .Select(c => new { c.CobranzaId, Numero = c.Venta != null ? c.Venta.Numero : null, c.VentaId, c.ReservaId })
+                .ToListAsync();
+            foreach (var c in cabs)
+            {
+                var txt = string.Join(", ", comps.Where(x => x.CobranzaId == c.Id)
+                    .Select(x => x.VentaId.HasValue ? x.Numero : x.ReservaId.HasValue ? "alquiler" : "a cuenta")
+                    .Where(x => !string.IsNullOrEmpty(x)).Distinct());
+                cobs[c.Id] = new CobranzaAsociada(c.Id, c.Numero,
+                    c.ClienteId.HasValue ? nombres.GetValueOrDefault(c.ClienteId.Value) : null, txt);
+            }
+        }
+
         var res = new List<CobroDto>(pagos.Count);
         foreach (var p in pagos)
         {
-            var origen = p.Origen;
-            if (string.IsNullOrEmpty(origen))
-                origen = p.ReferenciaExterna?.StartsWith("AIML-LINK-") == true ? "link"
-                    : ordenes.ContainsKey(p.MpPaymentId) ? "meli" : "otro";
-            if (origen == "otro" && ordenes.ContainsKey(p.MpPaymentId)) origen = "meli";
+            // El origen se recalcula siempre (lo guardado es solo una pista): así las reglas nuevas
+            // valen también para los cobros que ya estaban guardados.
+            var origen = MpPagosService.OrigenPorDatos(p.ReferenciaExterna, p.Descripcion, p.PayerEmail)
+                ?? (p.Origen == "meli" || ordenes.ContainsKey(p.MpPaymentId) ? "meli" : "otro");
 
             var quien = !string.IsNullOrWhiteSpace(p.PayerNombre) ? p.PayerNombre : p.PayerEmail;
             string? detalle;
@@ -189,10 +244,15 @@ public class MpCobrosController : ControllerBase
                 detalle = $"Link · {l.Concepto}";
                 if (!string.IsNullOrWhiteSpace(l.Cliente)) quien = l.Cliente + (string.IsNullOrWhiteSpace(quien) ? "" : $" ({quien})");
             }
+            else if (origen == "meli" && p.Descripcion?.StartsWith("bonificaciones", StringComparison.OrdinalIgnoreCase) == true)
+                detalle = "Bonificación de envío Flex (MercadoLibre)";
             else detalle = string.IsNullOrWhiteSpace(p.Descripcion) ? (origen == "meli" ? "Venta MercadoLibre" : null) : p.Descripcion;
 
+            string? sugerido = p.ReferenciaExterna != null && links.TryGetValue(p.ReferenciaExterna, out var ls) ? ls.Cliente : null;
+            cobs.TryGetValue(p.CobranzaUsadaId ?? 0, out var cob);
             res.Add(new CobroDto(p.Id, p.MpPaymentId, p.Fecha, p.Estado, origen, quien, detalle,
-                p.MedioPago, p.TipoMedio, p.Cuotas, p.Monto, p.MontoNeto, p.EstadoLiberacion, p.FechaLiberacion));
+                p.MedioPago, p.TipoMedio, p.Cuotas, p.Monto, p.MontoNeto, p.EstadoLiberacion, p.FechaLiberacion,
+                cob?.Id, cob?.Numero, cob?.Cliente, cob?.Comprobantes, sugerido));
         }
         return res;
     }

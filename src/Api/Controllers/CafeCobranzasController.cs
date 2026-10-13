@@ -1180,6 +1180,9 @@ public class CafeCobranzasController : ControllerBase
         // (quedarian colgados de un id que ya no existe).
         var movsBancoDel = await _db.CafeExtractoMovimientos.Where(m => m.CobranzaUsadaId == id).ToListAsync();
         foreach (var mb in movsBancoDel) mb.CobranzaUsadaId = null;
+        // 2026-10-13: los cobros de Mercado Pago asociados a esta cobranza vuelven a quedar libres.
+        foreach (var mp in await _db.MpPagos.Where(p => p.CobranzaUsadaId == id).ToListAsync())
+        { mp.CobranzaUsadaId = null; mp.VentaIdAsociada = null; }
         if (c.Comprobantes.Count > 0) _db.CafeCobranzasComprobantes.RemoveRange(c.Comprobantes);
         if (c.Medios.Count > 0) _db.CafeCobranzasMedios.RemoveRange(c.Medios);
         _db.CafeCobranzas.Remove(c);
@@ -1246,6 +1249,8 @@ public class CafeCobranzasController : ControllerBase
         // de Dulce Lugar del 21/08, mas otros 5 movimientos trabados desde mayo.
         var movsBanco = await _db.CafeExtractoMovimientos.Where(m => m.CobranzaUsadaId == id).ToListAsync();
         foreach (var mb in movsBanco) mb.CobranzaUsadaId = null;
+        foreach (var mp in await _db.MpPagos.Where(p => p.CobranzaUsadaId == id).ToListAsync())
+        { mp.CobranzaUsadaId = null; mp.VentaIdAsociada = null; }
         // Cobro redirigido: se borra el pago que se le habia hecho al empleado (le vuelve a quedar
         // la deuda) y se anula el renglon que cerraba la caja de paso.
         foreach (var m in c.Medios.Where(m => m.RedirigidoPagoId.HasValue || m.RedirigidoMovimientoId.HasValue))
