@@ -1628,10 +1628,16 @@
                                     <option value="FC">Factura C — emite por ARCA (con CAE) · Monotributo</option>
                                 }
                             </select>
+                            @if (formTipoComprobante is "FA" or "FB" && formTipoComprobante != (LlevaFacturaA(formCondicionIva) ? "FA" : "FB"))
+                            {
+                                <div style="font-size:0.72rem; color:#b91c1c; margin-top:0.2rem;">
+                                    @(LlevaFacturaA(formCondicionIva) ? "A un cliente Inscripto o Monotributo le corresponde Factura A" : "A Consumidor final o Exento le corresponde Factura B"): ARCA la va a rechazar.
+                                </div>
+                            }
                         </div>
                         <div class="form-group" style="margin: 0;">
                             <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Condición IVA</label>
-                            <select class="form-input" @bind="formCondicionIva">
+                            <select class="form-input" @bind="formCondicionIva" @bind:after="AjustarLetraPorCondicion">
                                 <option value="CF">Consumidor final</option>
                                 <option value="RI">Responsable Inscripto</option>
                                 <option value="MO">Monotributo</option>
@@ -4365,8 +4371,8 @@
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Tipo de factura</label>
                         <select class="form-input" @bind="convertirTipoFactura">
-                            <option value="FB">Factura B (para CF / Monotributo)</option>
-                            <option value="FA">Factura A (para Responsable Inscripto)</option>
+                            <option value="FB">Factura B (para Consumidor final / Exento)</option>
+                            <option value="FA">Factura A (para Inscripto / Monotributo)</option>
                             <option value="FC">Factura C (si el emisor es Monotributo)</option>
                         </select>
                     </div>
@@ -7388,7 +7394,7 @@
                 if (!EmisorEsResponsableInscripto(formArcaAccountId))
                     formTipoComprobante = "FC";           // emisor monotributo/exento solo emite C
                 else
-                    formTipoComprobante = formCondicionIva == "RI" ? "FA" : "FB";
+                    formTipoComprobante = LlevaFacturaA(formCondicionIva) ? "FA" : "FB";
                 break;
             default:
                 return; // PEDIDO común: no tocar nada
@@ -8290,7 +8296,7 @@
         var esRI = EmisorEsResponsableInscripto(formArcaAccountId);
         if (esRI && formTipoComprobante == "FC")
         {
-            formTipoComprobante = "FB";
+            formTipoComprobante = LlevaFacturaA(formCondicionIva) ? "FA" : "FB";
             OnTipoComprobanteChanged();
         }
         else if (!esRI && formTipoComprobante is "FA" or "FB")
@@ -8753,12 +8759,30 @@
         convertirError = null;
     }
 
-    /// <summary>Emisor monotributo → C; emisor inscripto + cliente inscripto → A; si no → B.
+    /// <summary>2026-10-13: a Inscriptos y Monotributistas se les hace Factura A; a Consumidor
+    /// final y Exentos, B. ARCA rechaza la B a un monotributista (error 10243, caso MIEL TOSTADORES).</summary>
+    private static bool LlevaFacturaA(string? condIva) => condIva is "RI" or "MO";
+
+    /// <summary>Si es factura A/B y la letra no va con la condición IVA del cliente, la corrige
+    /// sola y avisa. Se llama al elegir cliente o al cambiar la condición IVA.</summary>
+    private void AjustarLetraPorCondicion()
+    {
+        if (formTipoComprobante is not ("FA" or "FB")) return;
+        var correcta = LlevaFacturaA(formCondicionIva) ? "FA" : "FB";
+        if (formTipoComprobante == correcta) return;
+        formTipoComprobante = correcta;
+        OnTipoComprobanteChanged();
+        ToastService.Show(correcta == "FA"
+            ? $"Cliente {(formCondicionIva == "MO" ? "Monotributo" : "Responsable Inscripto")}: pasé el comprobante a Factura A."
+            : "Cliente Consumidor final / Exento: pasé el comprobante a Factura B.", ToastType.Info);
+    }
+
+    /// <summary>Emisor monotributo → C; emisor inscripto + cliente inscripto o monotributo → A; si no → B.
     /// Misma regla que Nueva Venta (botón FACTURA del chat y OnArcaAccountChanged).</summary>
     private void AcomodarLetraConvertir()
     {
         if (!EmisorEsResponsableInscripto(convertirArcaAccountId)) convertirTipoFactura = "FC";
-        else convertirTipoFactura = convertirCondIva == "RI" ? "FA" : "FB";
+        else convertirTipoFactura = LlevaFacturaA(convertirCondIva) ? "FA" : "FB";
     }
 
     private void CloseConvertirAFacturaModal()
@@ -8962,7 +8986,10 @@
                 // Si el cliente tiene cargada su Condición IVA Default en la ficha, la usamos
                 // como sugerencia en este comprobante. El usuario siempre puede cambiarla a mano.
                 if (!string.IsNullOrWhiteSpace(c.CondicionIvaDefault))
+                {
                     formCondicionIva = c.CondicionIvaDefault!;
+                    AjustarLetraPorCondicion();
+                }
                 // Auto-poblar destinatarios del panel "Enviar al cliente" con los datos del cliente.
                 envioEmailTo = c.Email ?? "";
                 envioWhatsappPhone = c.Telefono ?? "";
