@@ -245,6 +245,18 @@ IF COL_LENGTH('MpAccounts','SaldoInicialFecha') IS NULL
     ALTER TABLE MpAccounts ADD SaldoInicialFecha DATETIME2 NULL;
 GO
 
+-- Migración 2026-10-13: Mp_Pagos con tipo de medio, cuotas y origen (link / meli / otro)
+-- para la pantalla "Cobranzas Mercado Pago".
+IF COL_LENGTH('Mp_Pagos','TipoMedio') IS NULL
+    ALTER TABLE Mp_Pagos ADD TipoMedio NVARCHAR(30) NULL;
+GO
+IF COL_LENGTH('Mp_Pagos','Cuotas') IS NULL
+    ALTER TABLE Mp_Pagos ADD Cuotas INT NULL;
+GO
+IF COL_LENGTH('Mp_Pagos','Origen') IS NULL
+    ALTER TABLE Mp_Pagos ADD Origen NVARCHAR(20) NULL;
+GO
+
 -- Mp_LinksPago — links de pago de Mercado Pago creados desde el sistema (Checkout Pro).
 -- El pago se encuentra por ReferenciaExterna ("AIML-LINK-{Id}"). Pedido 2026-10-13.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Mp_LinksPago')

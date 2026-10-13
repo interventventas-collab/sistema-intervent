@@ -73,6 +73,15 @@ public class MpPago
     [MaxLength(200)]
     public string? ReferenciaExterna { get; set; }
 
+    // --- 2026-10-13: para la pantalla "Cobranzas Mercado Pago" ---
+    /// <summary>payment_type_id: account_money, debit_card, credit_card, ticket, bank_transfer...</summary>
+    [MaxLength(30)]
+    public string? TipoMedio { get; set; }
+    public int? Cuotas { get; set; }
+    /// <summary>"link" | "meli" | "otro". Null en los traídos antes del 13/10 (se deduce al mostrar).</summary>
+    [MaxLength(20)]
+    public string? Origen { get; set; }
+
     // --- Conciliacion (mismo criterio que Cafe_ExtractoMovimiento) ---
     public int? VentaIdAsociada { get; set; }
     public int? CobranzaUsadaId { get; set; }
