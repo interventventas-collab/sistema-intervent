@@ -179,6 +179,11 @@ public class MpCobroDto
     public decimal? MontoNeto { get; set; }
     public string? EstadoLiberacion { get; set; }
     public DateTime? FechaLiberacion { get; set; }
+    public int? CobranzaId { get; set; }
+    public string? CobranzaNumero { get; set; }
+    public string? CobranzaCliente { get; set; }
+    public string? CobranzaComprobantes { get; set; }
+    public string? ClienteSugerido { get; set; }
 }
 
 public class MpCobrosTotalOrigenDto

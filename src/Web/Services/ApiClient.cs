@@ -6669,6 +6669,10 @@ public class ApiClient
     public async Task<Web.Models.MpCobrosDto?> GetMpCobrosAsync(DateTime desde, DateTime hasta, string origen, string? q)
         => await GetAsync<Web.Models.MpCobrosDto>("/api/mercadopago/cobros" + MpCobrosQs(desde, hasta, origen, q));
 
+    /// <summary>Marca el cobro de MP como usado en la cobranza recién creada.</summary>
+    public async Task AsociarMpCobroAsync(int mpPagoId, int cobranzaId)
+        => await PostAsync<object>($"/api/mercadopago/cobros/{mpPagoId}/asociar", new { cobranzaId });
+
     public async Task<byte[]?> GetMpCobrosExcelAsync(DateTime desde, DateTime hasta, string origen, string? q)
     {
         await SetAuthHeaderAsync();
