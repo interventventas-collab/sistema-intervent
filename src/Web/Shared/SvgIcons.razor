@@ -1,6 +1,10 @@
 @* Static SVG icon markup helpers *@
 
 @code {
+    // 2026-10-13: logo de Mercado Pago (óvalo celeste con el apretón de manos), para el botón
+    // "Cobrar con Mercado Pago" del menú. Lleva sus colores propios, no el currentColor del menú.
+    public static MarkupString MercadoPago => (MarkupString)@"<svg viewBox=""0 0 48 32""><ellipse cx=""24"" cy=""16"" rx=""23"" ry=""15"" fill=""#00b1ea""/><ellipse cx=""24"" cy=""16"" rx=""20"" ry=""12.3"" fill=""#ffffff""/><path d=""M8.5 15.2c2.6-1.6 5-2.4 7.3-2.2 1.6.1 3 .9 4.6 1.9l3.1-2.1c1.3-.9 2.8-1.1 4.3-.6l5.1 1.7c2.2-.9 4.4-1 6.6-.4"" fill=""none"" stroke=""#0a0080"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""/><path d=""M20.4 14.9l5.6 4.6c.8.6 1.9.5 2.5-.3.6-.8.5-1.9-.3-2.5M23.2 19.2l2.4 2c.8.6 1.9.5 2.5-.3M28.2 17.1l2.6 2.1c.8.6 1.9.5 2.5-.3.6-.8.5-1.9-.3-2.5l-4.6-3.7M15.8 18.4l2.6 2.2c.7.6 1.8.5 2.4-.2"" fill=""none"" stroke=""#0a0080"" stroke-width=""1.7"" stroke-linecap=""round"" stroke-linejoin=""round""/></svg>";
+
     public static MarkupString Brand => (MarkupString)@"<svg viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M12 2L2 7l10 5 10-5-10-5z""/><path d=""M2 17l10 5 10-5""/><path d=""M2 12l10 5 10-5""/></svg>";
 
     public static MarkupString Folder => (MarkupString)@"<svg viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z""/></svg>";

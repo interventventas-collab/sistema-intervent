@@ -245,6 +245,39 @@ IF COL_LENGTH('MpAccounts','SaldoInicialFecha') IS NULL
     ALTER TABLE MpAccounts ADD SaldoInicialFecha DATETIME2 NULL;
 GO
 
+-- Mp_LinksPago — links de pago de Mercado Pago creados desde el sistema (Checkout Pro).
+-- El pago se encuentra por ReferenciaExterna ("AIML-LINK-{Id}"). Pedido 2026-10-13.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Mp_LinksPago')
+BEGIN
+    CREATE TABLE Mp_LinksPago (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Monto DECIMAL(18,2) NOT NULL,
+        Concepto NVARCHAR(200) NOT NULL,
+        Cliente NVARCHAR(200) NULL,
+        Opcion NVARCHAR(10) NOT NULL DEFAULT '1',
+        MpPreferenceId NVARCHAR(100) NULL,
+        Link NVARCHAR(500) NULL,
+        ReferenciaExterna NVARCHAR(60) NOT NULL DEFAULT '',
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'Pendiente',
+        MpPaymentId BIGINT NULL,
+        PagadoAt DATETIME2 NULL,
+        MontoNeto DECIMAL(18,2) NULL,
+        MedioPago NVARCHAR(50) NULL,
+        TipoMedio NVARCHAR(30) NULL,
+        Cuotas INT NULL,
+        PagadorNombre NVARCHAR(200) NULL,
+        UltimoIntento NVARCHAR(200) NULL,
+        CreadoPor NVARCHAR(120) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        RevisadoAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_Mp_LinksPago_CreatedAt ON Mp_LinksPago(CreatedAt DESC);
+END
+GO
+IF COL_LENGTH('MpAccounts','LinkComisionPct') IS NULL
+    ALTER TABLE MpAccounts ADD LinkComisionPct DECIMAL(6,2) NULL;
+GO
+
 -- EzvizAccounts table — cuenta de EZVIZ (cámaras) por API oficial. Guarda appKey/appSecret
 -- + el accessToken cacheado (se renueva solo). Con eso lista las cámaras y arma el video en
 -- vivo. Pedido de Osmar 2026-07-10 ("ver las cámaras del depósito en el dashboard").

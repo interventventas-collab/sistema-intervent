@@ -229,6 +229,7 @@ builder.Services.AddScoped<TelegramAccountService>();
 builder.Services.AddScoped<TelegramService>();
 builder.Services.AddHostedService<TelegramPollerService>();
 builder.Services.AddScoped<MpPagosService>();
+builder.Services.AddScoped<MpLinksService>();
 builder.Services.AddScoped<MpReportesService>();
 builder.Services.AddScoped<ArcaWebserviceAccountService>();
 builder.Services.AddSingleton<ArcaWsTokenCache>();
