@@ -2395,6 +2395,18 @@ public class CafeVentasController : ControllerBase
                 _ => 5,
             };
 
+            // 2026-10-13: ARCA rechaza (error 10243) la B a Inscriptos y Monotributistas, y la A a
+            // Consumidor Final / Exento. Aviso claro en vez de mandar algo que va a volver rechazado.
+            if (cbteTipo == 6 && condIvaReceptor is 1 or 6 || cbteTipo == 1 && condIvaReceptor is 4 or 5)
+            {
+                var condTxt = condIvaReceptor switch { 1 => "Responsable Inscripto", 6 => "Monotributo", 4 => "Exento", _ => "Consumidor Final" };
+                var letraOk = condIvaReceptor is 1 or 6 ? "Factura A" : "Factura B";
+                venta.ArcaEstado = "pendiente";
+                venta.ArcaError = $"El cliente es {condTxt}: le corresponde {letraOk}. Cambiá el comprobante en 'Editar cabecera' y guardá (ARCA rechaza esta combinación).";
+                await _db.SaveChangesAsync();
+                return;
+            }
+
             // 5. Mapear items. Precios del Café se asumen SIN IVA. Alícuota = 21% por default.
             //    El descuento por item ya está en it.Subtotal (it.Subtotal/it.Cantidad = precio con desc línea).
             //    PARA EL DESCUENTO GLOBAL DE LA VENTA (venta.Descuento), prorrateamos entre todos los items
