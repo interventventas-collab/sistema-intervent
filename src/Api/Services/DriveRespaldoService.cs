@@ -176,15 +176,28 @@ public class DriveRespaldoService
             var carpetas = new[] { CarpetaDeTipo(c), c.Fecha.Year.ToString(), GoogleDriveService.NombreCarpetaMes(c.Fecha.Month) };
             var fileId = await _drive.SubirOReemplazarAsync(carpetas, nombre, bytes, fila.DriveFileId);
 
-            fila.DriveFileId = fileId;
-            fila.NombreArchivo = Recortar(nombre, 260);
-            fila.Carpeta = string.Join("/", carpetas);
-            fila.MarcaSubida = c.Marca;
-            fila.SubidoAt = DateTime.UtcNow;
-            fila.UltimoError = null;
-            fila.Intentos = 0;
-            fila.UltimoIntentoAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
+            void Anotar(DriveRespaldo f)
+            {
+                f.DriveFileId = fileId;
+                f.NombreArchivo = Recortar(nombre, 260);
+                f.Carpeta = string.Join("/", carpetas);
+                f.MarcaSubida = c.Marca;
+                f.SubidoAt = DateTime.UtcNow;
+                f.UltimoError = null;
+                f.Intentos = 0;
+                f.UltimoIntentoAt = DateTime.UtcNow;
+            }
+            Anotar(fila);
+            try { await _db.SaveChangesAsync(); }
+            catch (DbUpdateException) when (_db.Entry(fila).State == EntityState.Added)
+            {
+                // 14/10/2026: la nubecita y el respaldo automático subieron la misma venta a la vez y el
+                // otro anotó primero. El archivo es el mismo: se suelta el renglón nuevo y se pisa el que ya está.
+                _db.Entry(fila).State = EntityState.Detached;
+                var existente = await _db.DriveRespaldos.FirstAsync(x => x.Tipo == c.Tipo && x.EntidadId == c.Id);
+                Anotar(existente);
+                await _db.SaveChangesAsync();
+            }
             return fileId;
         }
         catch (Exception ex)

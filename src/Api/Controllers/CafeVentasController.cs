@@ -779,6 +779,12 @@ public class CafeVentasController : ControllerBase
         // Si la venta estaba "oculta" del tablero, al re-subir a Drive la volvemos a mostrar.
         v.PreparacionOcultoAt = null;
 
+        // 14/10/2026: la venta entra al tablero de armado ANTES de tocar Drive y se graba ya.
+        // Antes se grababa todo junto al final: el 13/10 y el 14/10 el respaldo automático anotó el
+        // mismo PDF en el mismo instante, el guardado chocó ("duplicate key" en Drive_Respaldos) y la
+        // venta nunca llegó al tablero (CAFE-2026-2372, 2377 y 2404) aunque el PDF estaba en Drive.
+        await _db.SaveChangesAsync();
+
         string? fileId = null, link = null, driveError = null;
         try
         {
@@ -795,13 +801,21 @@ public class CafeVentasController : ControllerBase
         catch (Exception ex)
         {
             driveError = ex.Message;
+            // Lo que quedó a medio anotar del respaldo no tiene que trabar el resto del guardado.
+            SoltarRespaldosPendientes();
         }
 
         // 2026-09-09: subio bien -> si el aviso "Drive caido" estaba encendido, se apaga solo.
         // Asi la campanita no queda prendida para siempre despues de reconectar.
         if (driveError is null) await ApagarAvisoDriveCaidoAsync();
 
-        await _db.SaveChangesAsync();
+        try { await _db.SaveChangesAsync(); }
+        catch (DbUpdateException)
+        {
+            // 14/10/2026: si el respaldo choca con el automático, se suelta y se graba igual lo de la venta.
+            SoltarRespaldosPendientes();
+            await _db.SaveChangesAsync();
+        }
 
         if (driveError is not null)
         {
@@ -829,6 +843,14 @@ public class CafeVentasController : ControllerBase
         }
 
         return Ok(new { ok = true, fileId, link, subidoAt = v.DriveSubidoAt, subidasCount = v.DriveSubidasCount });
+    }
+
+    /// <summary>14/10/2026: suelta del guardado los renglones de Drive_Respaldos que quedaron a medio
+    /// anotar (los anota igual el respaldo automático), para que nunca frenen lo de la venta.</summary>
+    private void SoltarRespaldosPendientes()
+    {
+        foreach (var e in _db.ChangeTracker.Entries<DriveRespaldo>().Where(e => e.State != EntityState.Unchanged).ToList())
+            e.State = EntityState.Detached;
     }
 
     /// <summary>2026-09-09: apaga el aviso "Drive caido" cuando una subida vuelve a funcionar.
