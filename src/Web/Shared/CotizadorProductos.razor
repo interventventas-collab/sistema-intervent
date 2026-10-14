@@ -1,0 +1,433 @@
+@* ══════════════════════════════════════════════════════════════════════════════════
+   COTIZADOR DE PRODUCTOS — 2026-10-14. Hermano del CotizadorAlquiler, para productos.
+
+   Pedido del dueño: "agregar varios tipo cotización escrita detallada", precio POR RENGLÓN
+   (a diferencia del de alquileres, que solo muestra el total), redondear CADA precio, y poder
+   editar el mensaje antes de pasarlo.
+
+   Qué hace: buscás producto por código o nombre (el mismo buscador de CalcuPrecios), se agrega
+   con el precio de la lista elegida (Bar / Comercial; si el producto tiene OEM, el sugerido),
+   con o sin IVA, redondeado para ARRIBA al escalón elegido. El precio c/u se puede pisar a mano.
+   2026-10-14 (2ª vuelta): "Mi %" = costo sin IVA + el % que se quiere ganar (como CalcuPrecios), y
+   los cafés se eligen en 1 kg / ½ / ¼ con los precios del MISMO motor que la venta (la API los manda
+   en Formatos: la fracción no es el kilo dividido, suma fraccionamiento y redondea).
+   Abajo se ve el mensaje armado en un cuadro editable.
+
+   Qué NO hace: mandar ni crear ventas. Pasa el texto por OnListo y el que lo usa decide
+   (el chat lo deja escrito abajo; el envío SIEMPRE lo decide una persona).
+   ══════════════════════════════════════════════════════════════════════════════════ *@
+
+@using System.Globalization
+@using Web.Models.Mobile
+@inject ApiClient Api
+@inject ToastService Toast
+@inject Web.Services.Mobile.CatalogIndex Catalog
+
+<div class="cotprod">
+    <input class="cotprod-inp" placeholder="Código o nombre del producto…" value="@busq"
+           @oninput="OnBusq" @onkeydown="OnBusqKey" autocomplete="off" />
+    @if (agregando)
+    {
+        <div class="cotprod-info">⏳ Trayendo el precio…</div>
+    }
+    @if (sugerencias.Count > 0)
+    {
+        <div class="cotprod-sug">
+            @foreach (var s in sugerencias)
+            {
+                <button class="cotprod-sug-i" @onclick="() => Agregar(s.Sku)">
+                    <span class="cotprod-sug-sku">@s.Sku</span> @s.Nombre
+                </button>
+            }
+        </div>
+    }
+
+    <div class="cotprod-opc">
+        <span class="cotprod-opc-l">Lista</span>
+        <button class="cotprod-chip @(lista == "bar" ? "on" : "")" @onclick='() => CambiarLista("bar")'>Bar</button>
+        <button class="cotprod-chip @(lista == "com" ? "on" : "")" @onclick='() => CambiarLista("com")'>Comercial</button>
+        @* 2026-10-14: como en CalcuPrecios — costo sin IVA + el % que se quiere ganar. *@
+        <button class="cotprod-chip @(lista == "pct" ? "on" : "")" @onclick='() => CambiarLista("pct")'>Mi %</button>
+    </div>
+    @if (lista == "pct")
+    {
+        <div class="cotprod-opc">
+            <span class="cotprod-opc-l">Ganar</span>
+            <input class="cotprod-pct" inputmode="decimal" placeholder="ej: 30" value="@pctTxt"
+                   onfocus="this.select()" @oninput="OnPct" />
+            <span class="cotprod-opc-l">% sobre el costo</span>
+        </div>
+    }
+    <div class="cotprod-opc">
+        <span class="cotprod-opc-l">Precio</span>
+        <button class="cotprod-chip @(!conIva ? "on" : "")" @onclick="() => CambiarIva(false)">Sin IVA</button>
+        <button class="cotprod-chip @(conIva ? "on" : "")" @onclick="() => CambiarIva(true)">Con IVA</button>
+    </div>
+    <div class="cotprod-opc">
+        <span class="cotprod-opc-l">Redondear</span>
+        @foreach (var r in Escalones)
+        {
+            var v = r;
+            <button class="cotprod-chip @(redondeo == v ? "on" : "")" @onclick="() => CambiarRedondeo(v)">
+                @(v == 0 ? "No" : Plata(v))
+            </button>
+        }
+    </div>
+
+    @if (items.Count == 0)
+    {
+        <div class="cotprod-info">Buscá un producto arriba y tocalo para agregarlo. Podés agregar todos los que quieras.</div>
+    }
+    else
+    {
+        <div class="cotprod-lista">
+            @foreach (var it in items)
+            {
+                var fila = it;
+                <div class="cotprod-fila">
+                    <div class="cotprod-fila-1">
+                        <span class="cotprod-nom" title="@fila.Sku">@fila.Nombre</span>
+                        <button class="cotprod-x" @onclick="() => Sacar(fila)" title="Sacar">×</button>
+                    </div>
+                    <div class="cotprod-fila-2">
+                        <button class="cotprod-mas" @onclick="() => Cant(fila, -1)">−</button>
+                        <input class="cotprod-cant" inputmode="decimal" value="@Num(fila.Cantidad)"
+                               onfocus="this.select()" @onchange="e => SetCant(fila, e)" />
+                        <button class="cotprod-mas" @onclick="() => Cant(fila, 1)">+</button>
+                        <span class="cotprod-por">×</span>
+                        <input class="cotprod-precio @(fila.PrecioManual.HasValue ? "manual" : "")" inputmode="decimal"
+                               value="@Miles(PrecioDe(fila))" onfocus="this.select()" @onchange="e => SetPrecio(fila, e)"
+                               title="@(fila.PrecioManual.HasValue ? "Precio puesto a mano" : "Precio c/u — tocalo para cambiarlo a mano")" />
+                    </div>
+                    @if (fila.Formatos.Count > 0)
+                    {
+                        @* 2026-10-14: cafés en 1 kg / ½ / ¼ — precio del motor de ventas (fraccionamiento incluido). *@
+                        <div class="cotprod-fmt">
+                            @foreach (var f in fila.Formatos)
+                            {
+                                var ff = f;
+                                <button class="cotprod-chip @(fila.Formato == ff.Formato ? "on" : "")"
+                                        @onclick="() => CambiarFormato(fila, ff.Formato)">@ff.Etiqueta</button>
+                            }
+                        </div>
+                    }
+                    @if (fila.PrecioManual is null && AvisoDe(fila) is string aviso)
+                    {
+                        <div class="cotprod-nota cotprod-alerta">@aviso</div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="cotprod-total">
+            <span>Total @(conIva ? "con IVA" : "sin IVA")</span>
+            <b>@Plata(Total)</b>
+        </div>
+
+        <label class="cotprod-lbl">
+            Mensaje @(textoEditado ? "(editado a mano)" : "— lo podés cambiar")
+        </label>
+        <textarea class="cotprod-texto" rows="8" value="@Texto" @oninput="OnEditarTexto"></textarea>
+        @if (textoEditado)
+        {
+            <button class="cotprod-rehacer" @onclick="RehacerTexto"
+                    title="Tira lo que escribiste a mano y vuelve a armar el mensaje con la lista de arriba">
+                ↻ Rehacer el mensaje con la lista
+            </button>
+        }
+
+        <button class="cotprod-btn-main" @onclick="Listo">@TextoBoton</button>
+        <button class="cotprod-btn-limpiar" @onclick="Limpiar">Vaciar y empezar de nuevo</button>
+    }
+</div>
+
+<style>
+    .cotprod { font-size: 0.8rem; }
+    .cotprod-info { font-size: 0.78rem; color: #94a3b8; padding: 0.35rem 0; line-height: 1.45; }
+    .cotprod-inp { display: block; width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.82rem;
+        border: 1px solid #e2e8f0; border-radius: 7px; padding: 0.35rem 0.45rem; margin-bottom: 0.35rem;
+        background: #fff; color: #1f2937; }
+    .cotprod-inp:focus, .cotprod-texto:focus, .cotprod-cant:focus, .cotprod-precio:focus { outline: none; border-color: #3b82f6; }
+    .cotprod-sug { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; margin-bottom: 0.4rem; overflow: hidden; }
+    .cotprod-sug-i { display: block; width: 100%; text-align: left; font-family: inherit; font-size: 0.76rem; color: #334155;
+        background: none; border: none; border-bottom: 1px solid #f1f5f9; padding: 0.3rem 0.45rem; cursor: pointer; line-height: 1.3; }
+    .cotprod-sug-i:last-child { border-bottom: none; }
+    .cotprod-sug-i:hover { background: #f0fdf4; }
+    .cotprod-sug-sku { color: #64748b; font-weight: 700; }
+
+    .cotprod-opc { display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem; margin: 0.25rem 0; }
+    .cotprod-opc-l { font-size: 0.72rem; color: #64748b; min-width: 62px; }
+    .cotprod-chip { font-family: inherit; font-size: 0.74rem; color: #334155; background: #fff; border: 1px solid #e2e8f0;
+        border-radius: 999px; padding: 0.12rem 0.5rem; cursor: pointer; }
+    .cotprod-chip:hover { border-color: #16a34a; }
+    .cotprod-chip.on { background: #dcfce7; border-color: #16a34a; color: #065f46; font-weight: 700; }
+
+    .cotprod-lista { border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; margin-top: 0.5rem; overflow: hidden; }
+    .cotprod-fila { padding: 0.35rem 0.45rem; border-bottom: 1px solid #f1f5f9; }
+    .cotprod-fila:last-child { border-bottom: none; }
+    .cotprod-fila-1 { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.3rem; }
+    .cotprod-nom { font-size: 0.78rem; color: #334155; line-height: 1.25; }
+    .cotprod-x { background: none; border: none; color: #94a3b8; font-size: 1.05rem; line-height: 1; cursor: pointer; padding: 0 0.1rem; }
+    .cotprod-x:hover { color: #ef4444; }
+    .cotprod-fila-2 { display: flex; align-items: center; gap: 0.15rem; margin-top: 0.2rem; }
+    .cotprod-mas { width: 22px; height: 22px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+        color: #334155; cursor: pointer; font-size: 0.85rem; line-height: 1; font-family: inherit; padding: 0; }
+    .cotprod-mas:hover { background: #ecfdf5; border-color: #16a34a; }
+    .cotprod-cant { width: 38px; text-align: center; font-family: inherit; font-size: 0.8rem; font-weight: 700;
+        border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.15rem 0.1rem; color: #1f2937; }
+    .cotprod-por { color: #94a3b8; margin: 0 0.15rem; }
+    .cotprod-precio { flex: 1; min-width: 0; text-align: right; font-family: inherit; font-size: 0.8rem; font-weight: 600;
+        border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.15rem 0.3rem; color: #1f2937; }
+    .cotprod-precio.manual { border-color: #f59e0b; }
+    .cotprod-pct { width: 52px; text-align: center; font-family: inherit; font-size: 0.8rem; font-weight: 700;
+        border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.12rem 0.2rem; color: #1f2937; }
+    .cotprod-pct:focus { outline: none; border-color: #3b82f6; }
+    .cotprod-fmt { display: flex; gap: 0.25rem; margin-top: 0.25rem; }
+    .cotprod-nota { font-size: 0.68rem; color: #94a3b8; margin-top: 0.1rem; }
+    .cotprod-alerta { color: #b45309; }
+
+    .cotprod-total { display: flex; align-items: baseline; justify-content: space-between;
+        margin-top: 0.6rem; padding-top: 0.45rem; border-top: 1px solid #e2e8f0; font-size: 0.8rem; color: #64748b; }
+    .cotprod-total b { font-size: 1.15rem; color: #047857; }
+    .cotprod-lbl { display: block; font-size: 0.72rem; color: #64748b; margin: 0.6rem 0 0.15rem; }
+    .cotprod-texto { display: block; width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.78rem;
+        line-height: 1.4; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.4rem; resize: vertical; color: #1f2937; }
+    .cotprod-rehacer { background: none; border: none; color: #2563eb; font-size: 0.74rem; cursor: pointer;
+        padding: 0.2rem 0; font-family: inherit; }
+    .cotprod-btn-main { display: block; width: 100%; margin-top: 0.5rem; font-family: inherit; font-size: 0.85rem;
+        font-weight: 700; background: #16a34a; color: #fff; border: none; border-radius: 9px; padding: 0.5rem; cursor: pointer; }
+    .cotprod-btn-main:hover { background: #15803d; }
+    .cotprod-btn-limpiar { display: block; width: 100%; background: none; border: none; color: #94a3b8;
+        font-size: 0.75rem; cursor: pointer; padding: 0.25rem; margin-top: 0.3rem; font-family: inherit; }
+</style>
+
+@code {
+    /// <summary>Qué hacer con el mensaje armado (el chat lo deja escrito abajo).</summary>
+    [Parameter] public EventCallback<string> OnListo { get; set; }
+    [Parameter] public string TextoBoton { get; set; } = "Pasar al chat";
+
+    private static readonly CultureInfo ARS = CultureInfo.GetCultureInfo("es-AR");
+    private static readonly decimal[] Escalones = { 0m, 100m, 500m, 1000m };
+
+    private class Renglon
+    {
+        public string Sku = "";
+        public string Nombre = "";
+        public decimal? Bar;          // sin IVA
+        public decimal? Comercial;    // sin IVA
+        public decimal Costo;         // sin IVA (para "Mi %")
+        public decimal IvaPct = 21m;
+        public List<CafePrecioFormatoDto> Formatos = new();  // solo cafés: 1 kg / ½ / ¼
+        public string? Formato;       // el elegido de Formatos
+        public decimal Cantidad = 1m;
+        public decimal? PrecioManual; // pisado a mano: se respeta tal cual
+        public CafePrecioFormatoDto? Fmt => Formatos.FirstOrDefault(f => f.Formato == Formato);
+    }
+
+    private readonly List<Renglon> items = new();
+    private List<CatalogItem> sugerencias = new();
+    private string busq = "";
+    private bool catalogoCargado;
+    private bool agregando;
+
+    private string lista = "bar";     // "bar" | "com" | "pct"
+    private string pctTxt = "";
+    private bool conIva = true;
+    private decimal redondeo = 500m;
+
+    private string texto = "";
+    private bool textoEditado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Catalog.EnsureLoadedAsync(); catalogoCargado = Catalog.Count > 0; }
+        catch { catalogoCargado = false; }
+    }
+
+    // ── Buscar y agregar ──
+    private void OnBusq(ChangeEventArgs e)
+    {
+        busq = e.Value?.ToString() ?? "";
+        var q = busq.Trim();
+        sugerencias = (q.Length < 2 || !catalogoCargado)
+            ? new()
+            : Catalog.Search(q, 8, it => it.Tipo == "producto").Select(h => h.Item).ToList();
+    }
+
+    private async Task OnBusqKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        if (sugerencias.Count > 0) await Agregar(sugerencias[0].Sku);
+        else if (!string.IsNullOrWhiteSpace(busq)) await Agregar(busq.Trim());
+    }
+
+    private async Task Agregar(string codigo)
+    {
+        if (agregando) return;
+        sugerencias = new();
+        agregando = true;
+        try
+        {
+            var r = await Api.BuscarPrecioCafeAsync(codigo);
+            if (r is null || !r.Encontrado) { Toast.Error(r?.Mensaje ?? "No encontré ese producto."); return; }
+
+            // Si ya está, le sumo uno en vez de repetir el renglón. Los cafés no: el mismo café
+            // puede ir en dos tamaños (1 kg y ¼), así que cada vez es un renglón nuevo.
+            var ya = (r.Formatos?.Count ?? 0) == 0 ? items.FirstOrDefault(x => x.Sku == r.Sku) : null;
+            if (ya is not null) { ya.Cantidad += 1m; }
+            else
+            {
+                var fila = new Renglon
+                {
+                    Sku = r.Sku,
+                    Nombre = r.Nombre,
+                    IvaPct = r.IvaPct > 0m ? r.IvaPct : 21m,
+                    Costo = r.CostoSinIva,
+                    Formatos = r.Formatos ?? new(),
+                };
+                fila.Formato = fila.Formatos.FirstOrDefault()?.Formato;
+                // Con OEM viene un solo "Sugerido": vale para las dos listas.
+                var sug = r.Precios.FirstOrDefault(p => p.Etiqueta.StartsWith("Sugerido"));
+                fila.Bar = sug?.SinIva ?? r.Precios.FirstOrDefault(p => p.Etiqueta.StartsWith("Precio Bar"))?.SinIva;
+                fila.Comercial = sug?.SinIva ?? r.Precios.FirstOrDefault(p => p.Etiqueta.StartsWith("Precio Comercial"))?.SinIva;
+                items.Add(fila);
+            }
+            busq = "";
+            Cambio();
+        }
+        catch (Exception ex) { Toast.Error("No pude traer el precio: " + ex.Message); }
+        finally { agregando = false; }
+    }
+
+    // ── Opciones ──
+    private void CambiarLista(string l) { lista = l; Cambio(); }
+    private void OnPct(ChangeEventArgs e) { pctTxt = e.Value?.ToString() ?? ""; Cambio(); }
+    private decimal? Pct => ParseNum(pctTxt);
+    private void CambiarFormato(Renglon r, string f) { r.Formato = f; r.PrecioManual = null; Cambio(); }
+    private void CambiarIva(bool v) { conIva = v; Cambio(); }
+    private void CambiarRedondeo(decimal v) { redondeo = v; Cambio(); }
+
+    private void Sacar(Renglon r) { items.Remove(r); Cambio(); }
+    private void Cant(Renglon r, int d) { r.Cantidad = Math.Max(1m, r.Cantidad + d); Cambio(); }
+    private void SetCant(Renglon r, ChangeEventArgs e)
+    {
+        if (ParseNum(e.Value?.ToString()) is decimal n && n > 0m) r.Cantidad = n;
+        Cambio();
+    }
+    private void SetPrecio(Renglon r, ChangeEventArgs e)
+    {
+        var n = ParseNum(e.Value?.ToString());
+        r.PrecioManual = n is decimal v && v > 0m ? v : null;   // vacío = vuelve al de lista
+        Cambio();
+    }
+
+    // ── Cuentas ──
+    /// <summary>Precio c/u que se muestra y se manda: el manual tal cual, si no el de lista
+    /// (con IVA si corresponde) redondeado para ARRIBA al escalón elegido.</summary>
+    private decimal PrecioDe(Renglon r)
+    {
+        if (r.PrecioManual is decimal m) return m;
+        var baseSin = BaseSinIva(r) ?? 0m;
+        var p = conIva ? baseSin * (1m + r.IvaPct / 100m) : baseSin;
+        if (redondeo > 0m) return Math.Ceiling(p / redondeo) * redondeo;
+        return Math.Round(p, 2);
+    }
+
+    /// <summary>Precio sin IVA antes de redondear, según la lista elegida y el formato del café.</summary>
+    private decimal? BaseSinIva(Renglon r)
+    {
+        var fmt = r.Fmt;
+        if (lista == "pct")
+        {
+            var costo = fmt?.Costo ?? r.Costo;
+            if (Pct is not decimal pct || costo <= 0m) return null;
+            return costo * (1m + pct / 100m);
+        }
+        if (fmt is not null)
+        {
+            var v = lista == "bar" ? fmt.Bar : fmt.Comercial;
+            return v > 0m ? v : null;
+        }
+        return lista == "bar" ? r.Bar ?? r.Comercial : r.Comercial ?? r.Bar;
+    }
+
+    private string? AvisoDe(Renglon r)
+    {
+        if (BaseSinIva(r) is decimal b && b > 0m) return null;
+        if (lista == "pct")
+            return Pct is null ? "Poné el % que querés ganar." : "No tiene costo cargado: poné el precio a mano.";
+        return "No tiene precio de lista: ponelo a mano.";
+    }
+
+    private decimal Total => items.Sum(r => PrecioDe(r) * r.Cantidad);
+
+    // ── Mensaje ──
+    private string Texto => texto;
+
+    private string ArmarTexto()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("*Presupuesto*");
+        foreach (var r in items)
+        {
+            var p = PrecioDe(r);
+            var nombre = r.Fmt is { } f ? $"{r.Nombre} {f.Etiqueta}" : r.Nombre;
+            if (r.Cantidad == 1m)
+                sb.AppendLine($"{Num(r.Cantidad)} × {nombre} — {Plata(p)}");
+            else
+                sb.AppendLine($"{Num(r.Cantidad)} × {nombre} — {Plata(p)} c/u = {Plata(p * r.Cantidad)}");
+        }
+        sb.AppendLine();
+        sb.AppendLine($"*Total: {Plata(Total)}*");
+        sb.Append(conIva ? "Precios con IVA incluido." : "Precios sin IVA.");
+        return sb.ToString();
+    }
+
+    /// <summary>Cada cambio en la lista rehace el mensaje, salvo que ya lo hayan escrito a mano:
+    /// ahí no se le pisa lo que escribió (para eso está "Rehacer").</summary>
+    private void Cambio()
+    {
+        if (!textoEditado) texto = items.Count == 0 ? "" : ArmarTexto();
+    }
+
+    private void OnEditarTexto(ChangeEventArgs e)
+    {
+        texto = e.Value?.ToString() ?? "";
+        textoEditado = true;
+    }
+
+    private void RehacerTexto() { textoEditado = false; Cambio(); }
+
+    private async Task Listo()
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+        await OnListo.InvokeAsync(texto.TrimEnd());
+    }
+
+    public void Limpiar()
+    {
+        items.Clear();
+        busq = "";
+        sugerencias = new();
+        texto = "";
+        textoEditado = false;
+        StateHasChanged();
+    }
+
+    // ── Formatos ──
+    private static string Plata(decimal v)
+        => "$" + v.ToString(v == Math.Round(v) ? "N0" : "N2", ARS);
+
+    private static string Num(decimal v) => v.ToString("0.##", ARS);
+    private static string Miles(decimal v) => v.ToString("#,0.##", ARS);
+
+    /// <summary>Acepta coma o punto. "28.500" (miles) = 28500; "28,5" = 28,5.</summary>
+    private static decimal? ParseNum(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Trim().Replace(" ", "").Replace("$", "");
+        if (s.Contains(',')) s = s.Replace(".", "").Replace(",", ".");
+        else if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^\d{1,3}(\.\d{3})+$")) s = s.Replace(".", "");
+        return decimal.TryParse(s, NumberStyles.Number, CultureInfo.InvariantCulture, out var n) ? n : null;
+    }
+}

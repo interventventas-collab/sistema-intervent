@@ -1422,6 +1422,15 @@ public class CafePrecioLineaDto
     public string? Nota { get; set; }
 }
 
+public class CafePrecioFormatoDto
+{
+    public string Formato { get; set; } = "";
+    public string Etiqueta { get; set; } = "";
+    public decimal Costo { get; set; }
+    public decimal Bar { get; set; }
+    public decimal Comercial { get; set; }
+}
+
 public class CafePrecioConsultaDto
 {
     public bool Encontrado { get; set; }
@@ -1437,6 +1446,7 @@ public class CafePrecioConsultaDto
     public string? OemCodigo { get; set; }
     public bool Activo { get; set; } = true;
     public List<CafePrecioLineaDto> Precios { get; set; } = new();
+    public List<CafePrecioFormatoDto> Formatos { get; set; } = new();
 }
 
 // ===== Alta de clientes por enlace público =====
