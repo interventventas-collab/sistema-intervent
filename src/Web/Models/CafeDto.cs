@@ -2647,3 +2647,7 @@ public class CafeAvisoProgramarRequest
     public string Hora { get; set; } = "10:00";
     public List<int> PersonaIds { get; set; } = new();
 }
+
+/// <summary>14/10/2026: venta chica para "Sacados del tablero" y el buscador para traer al tablero.</summary>
+public record PrepVentaChicaDto(int Id, string? Numero, string Cliente, decimal Total, DateTime Fecha,
+    string? EstadoPreparacion, bool EnTablero, bool Entregada, DateTime? SacadoAt, string? SacadoPor);

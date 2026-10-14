@@ -392,6 +392,29 @@
     }
     .prep-btn-volver-armar:hover { background: #fde68a; }
 
+    /* 14/10/2026: traer al tablero, sacados y ventanita de la ✕ */
+    .prep-traer { background:white; border:1px solid #e5e7eb; border-radius:8px; padding:0.5rem 0.8rem; margin:-0.6rem 0 1rem; }
+    .prep-traer-t { font-size:0.8rem; color:#6b7280; margin-bottom:0.3rem; }
+    .prep-traer-row { display:flex; align-items:center; gap:0.6rem; padding:0.4rem 0; border-top:1px dashed #eee; font-size:0.85rem; flex-wrap:wrap; }
+    .prep-traer-row .num, .prep-modal .num { font-family:monospace; font-weight:700; }
+    .prep-traer-row .sub, .prep-modal .sub, .prep-sacados-body .sub { color:#6b7280; font-size:0.78rem; }
+    .prep-traer-btn { margin-left:auto; background:#15803d; color:white; border:none; border-radius:6px; padding:0.3rem 0.7rem; font-size:0.8rem; font-weight:600; cursor:pointer; }
+    .prep-quien { margin:0.4rem 0 0.5rem; padding:0.6rem; border:1px solid #fbbf24; background:#fffbeb; border-radius:8px; width:100%; }
+    .prep-quien b { display:block; margin-bottom:0.35rem; font-size:0.85rem; }
+    .prep-chips { display:flex; flex-wrap:wrap; gap:0.35rem; }
+    .prep-chip { border:1px solid #d1d5db; background:white; border-radius:999px; padding:0.25rem 0.75rem; font-size:0.82rem; cursor:pointer; }
+    .prep-chip.on { border:2px solid #111; font-weight:700; }
+    .prep-quien-acc { display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.6rem; }
+    .prep-quien-acc button { border-radius:6px; padding:0.35rem 0.8rem; font-size:0.82rem; font-weight:600; cursor:pointer; border:1px solid #d1d5db; background:white; }
+    .prep-quien-acc .si { background:#15803d; color:white; border-color:#15803d; }
+    .prep-quien-acc .si.rojo { background:#b91c1c; border-color:#b91c1c; }
+    .prep-quien-acc .si:disabled { opacity:0.45; cursor:not-allowed; }
+    .prep-sacados-header { display:flex; align-items:center; gap:0.5rem; margin-top:0.75rem; padding:0.6rem 0.9rem; background:#fef2f2; color:#7f1d1d; border-radius:8px; font-weight:700; cursor:pointer; }
+    .prep-sacados-body { background:white; border:1px solid #fde2e2; border-top:none; border-radius:0 0 8px 8px; padding:0.2rem 0.9rem 0.6rem; }
+    .prep-modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center; z-index:9100; }
+    .prep-modal { background:white; border-radius:10px; width:min(480px, 92vw); padding:1rem 1.1rem; box-shadow:0 10px 30px rgba(0,0,0,0.2); font-size:0.9rem; }
+    .prep-modal h3 { margin:0 0 0.3rem; font-size:1rem; }
+
     /* Seccion "Ya armados" — header colapsable + grid mini */
     .prep-armados-header {
         display: flex;
@@ -678,15 +701,39 @@
        Se aplica a "Para armar" y "Ya armados" simultaneamente. *@
     <div style="display:flex; gap:0.5rem; align-items:center; margin:0.5rem 0 1rem; padding:0.4rem 0.7rem; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
         <span style="font-size:1rem;">🔍</span>
-        <input type="text" @bind="filtroBusqueda" @bind:event="oninput"
+        <input type="text" @bind="filtroBusqueda" @bind:event="oninput" @bind:after="AlBuscar"
                placeholder="Buscar por cliente, número de comprobante (CAFE-2026-XXXX), dirección, localidad..."
                style="flex:1; padding:0.5rem 0.7rem; border:1px solid #d1d5db; border-radius:6px; font-size:0.9rem;" />
         @if (!string.IsNullOrEmpty(filtroBusqueda))
         {
             <button class="btn btn-secondary" style="padding:0.35rem 0.7rem; font-size:0.8rem;"
-                    @onclick="@(() => filtroBusqueda = "")" title="Limpiar búsqueda">✕</button>
+                    @onclick="LimpiarBusqueda" title="Limpiar búsqueda">✕</button>
         }
     </div>
+
+    @* 14/10/2026: con el buscador el depósito puede traer al tablero una venta que no está
+       (sacada sin querer, vieja o nunca mandada), por cliente o por número, eligiendo quién. *@
+    @{ var paraTraer = resultadosTraer.Where(r => !r.EnTablero).ToList(); }
+    @if (filtroBusqueda.Trim().Length >= 3 && paraTraer.Count > 0)
+    {
+        <div class="prep-traer">
+            <div class="prep-traer-t">Ventas de los últimos 30 días que <b>no están en el tablero</b>:</div>
+            @foreach (var r in paraTraer)
+            {
+                var rSel = r;
+                <div class="prep-traer-row">
+                    <span class="num">@r.Numero</span>
+                    <span>@r.Cliente · @Plata(r.Total)</span>
+                    <span class="sub">@r.Fecha.AddHours(-3).ToString("dd/MM") · @EstadoChico(r)</span>
+                    <button class="prep-traer-btn" @onclick="() => AbrirTraer(rSel)">Traer al tablero</button>
+                </div>
+                @if (traerPendiente?.Id == r.Id)
+                {
+                    @PanelQuien($"¿Quién trae {r.Numero}?", "Traerlo", ConfirmarTraer, () => traerPendiente = null)
+                }
+            }
+        </div>
+    }
 
     @* Cartelito SIEMPRE visible: cuál es el celu del depósito habilitado (2026-08-02) *@
     @if (pickingDispositivo is not null && pickingDispositivo.Registrado)
@@ -991,8 +1038,51 @@
                 </div>
             }
         }
+
+        @* ── 14/10/2026 · SACADOS DEL TABLERO (con la ✕), para volver a traerlos ── *@
+        <div class="prep-sacados-header" @onclick="() => sacadosExpanded = !sacadosExpanded">
+            <span>@(sacadosExpanded ? "▼" : "▶")</span>
+            <span>✕ Sacados del tablero (últimos 7 días)</span>
+            <span style="margin-left:auto; font-weight:600;">@sacados.Count</span>
+        </div>
+        @if (sacadosExpanded)
+        {
+            <div class="prep-sacados-body">
+                @if (sacados.Count == 0)
+                {
+                    <div class="sub" style="padding:0.4rem 0;">No se sacó ningún pedido del tablero en los últimos 7 días.</div>
+                }
+                @foreach (var r in sacados)
+                {
+                    var rSel = r;
+                    <div class="prep-traer-row">
+                        <span class="num">@r.Numero</span>
+                        <span>@r.Cliente · @Plata(r.Total)</span>
+                        <span class="sub">sacado por @(r.SacadoPor ?? "—") @(r.SacadoAt is DateTime sa ? HaceCuanto(sa) : "")</span>
+                        <button class="prep-traer-btn" @onclick="() => AbrirTraer(rSel)">Volver a traer</button>
+                    </div>
+                    @if (traerPendiente?.Id == r.Id)
+                    {
+                        @PanelQuien($"¿Quién trae {r.Numero}?", "Traerlo", ConfirmarTraer, () => traerPendiente = null)
+                    }
+                }
+            </div>
+        }
     }
 </div>
+
+@* 14/10/2026: la ✕ de la tarjeta pregunta antes de sacar el pedido y quién lo saca. *@
+@if (sacarPendiente is not null)
+{
+    <div class="prep-modal-bg" @onclick="() => sacarPendiente = null">
+        <div class="prep-modal" @onclick:stopPropagation="true">
+            <h3>¿Sacar este pedido del tablero?</h3>
+            <div><span class="num">@sacarPendiente.Numero</span> · @sacarPendiente.ClienteNombre</div>
+            <div class="sub" style="margin-top:0.25rem;">La venta no se borra. Va a quedar abajo, en "Sacados del tablero", y se puede volver a traer.</div>
+            @PanelQuien("¿Quién lo saca?", "Sí, sacarlo", ConfirmarSacar, () => sacarPendiente = null, true)
+        </div>
+    </div>
+}
 
 @code {
     [Inject] private IJSRuntime JS { get; set; } = default!;
@@ -1121,6 +1211,9 @@
     {
         await Operator.LoadAsync();
         await Cargar();
+        // 14/10/2026: personas para "¿quién?" y los sacados del tablero.
+        try { operadoresPrep = await Api.GetOperadoresPreparacionAsync(); } catch { }
+        await CargarSacados();
         // Camino al picking: estado del celu del deposito (no bloquea si falla)
         try { pickingDispositivo = await Api.GetPickingDispositivoAsync(); } catch { }
         // 2026-09-02: cuántos productos hay para pedir, para el aviso de arriba.
@@ -1342,20 +1435,131 @@
     }
 
     /// <summary>Saca UNA venta del tablero (la oculta). La venta y el PDF en Drive quedan intactos.</summary>
-    private async Task QuitarDelFlujo(CafePreparacionVentaDto v)
+    private Task QuitarDelFlujo(CafePreparacionVentaDto v)
     {
-        var ok = await Api.OcultarPreparacionAsync(v.Id);
+        // 14/10/2026: antes sacaba al toque, sin preguntar. Ahora abre la ventanita.
+        sacarPendiente = v;
+        quienElegido = PreElegirQuien();
+        return Task.CompletedTask;
+    }
+
+    private async Task ConfirmarSacar()
+    {
+        var v = sacarPendiente;
+        if (v is null || string.IsNullOrEmpty(quienElegido)) return;
+        var ok = await Api.OcultarPreparacionAsync(v.Id, quienElegido);
+        sacarPendiente = null;
         if (ok)
         {
             lista?.RemoveAll(x => x.Id == v.Id);
-            ToastService.Info($"{v.Numero} sacado del tablero");
-            StateHasChanged();
+            ToastService.Info($"{v.Numero} sacado del tablero (lo sacó {quienElegido}). Queda abajo, en \"Sacados del tablero\".");
+            await CargarSacados();
         }
-        else
-        {
-            ToastService.Error("No se pudo quitar del tablero");
-        }
+        else ToastService.Error("No se pudo quitar del tablero");
+        StateHasChanged();
     }
+
+    // ── 14/10/2026: sacados del tablero, traer con el buscador y "¿quién?" ──
+    private List<string> operadoresPrep = new();
+    private List<PrepVentaChicaDto> sacados = new();
+    private List<PrepVentaChicaDto> resultadosTraer = new();
+    private bool sacadosExpanded;
+    private CafePreparacionVentaDto? sacarPendiente;
+    private PrepVentaChicaDto? traerPendiente;
+    private string? quienElegido;
+    private bool traerEnCurso;
+    private CancellationTokenSource? busquedaCts;
+
+    private async Task CargarSacados()
+    {
+        try { sacados = await Api.GetSacadosDelTableroAsync(7); } catch { }
+    }
+
+    /// <summary>Si la persona que entró con su PIN está en la lista, viene elegida; igual se puede cambiar.</summary>
+    private string? PreElegirQuien()
+    {
+        var actual = Operator.Current;
+        return operadoresPrep.FirstOrDefault(o => string.Equals(o, actual, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void AbrirTraer(PrepVentaChicaDto r)
+    {
+        traerPendiente = r;
+        quienElegido = PreElegirQuien();
+    }
+
+    private async Task ConfirmarTraer()
+    {
+        var r = traerPendiente;
+        if (r is null || string.IsNullOrEmpty(quienElegido) || traerEnCurso) return;
+        traerEnCurso = true;
+        var (ok, error) = await Api.TraerAlTableroAsync(r.Id, quienElegido);
+        traerEnCurso = false;
+        if (ok)
+        {
+            ToastService.Success($"{r.Numero} está otra vez en el tablero (lo trajo {quienElegido}).");
+            traerPendiente = null;
+            resultadosTraer.RemoveAll(x => x.Id == r.Id);
+            await Cargar();
+            await CargarSacados();
+        }
+        else ToastService.Error(error ?? "No se pudo traer al tablero");
+    }
+
+    private async Task AlBuscar()
+    {
+        busquedaCts?.Cancel();
+        var cts = busquedaCts = new CancellationTokenSource();
+        var q = filtroBusqueda.Trim();
+        if (q.Length < 3) { resultadosTraer = new(); traerPendiente = null; return; }
+        try { await Task.Delay(450, cts.Token); } catch (TaskCanceledException) { return; }
+        try
+        {
+            var r = await Api.BuscarParaTableroAsync(q);
+            if (!cts.IsCancellationRequested) { resultadosTraer = r; StateHasChanged(); }
+        }
+        catch { }
+    }
+
+    private void LimpiarBusqueda()
+    {
+        filtroBusqueda = "";
+        resultadosTraer = new();
+        traerPendiente = null;
+    }
+
+    private static string EstadoChico(PrepVentaChicaDto r)
+        => r.SacadoAt is not null ? $"sacado por {r.SacadoPor ?? "—"}"
+         : r.Entregada ? "ya entregado"
+         : r.EstadoPreparacion switch
+           {
+               "LISTO" => "ya armado",
+               "EN_CAMINO" => "en camino",
+               null => "nunca se mandó a armar",
+               _ => "fuera del tablero"
+           };
+
+    private static string Plata(decimal v) => "$" + v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+
+    /// <summary>Recuadro "¿Quién …?" con una persona por botón (sin desplegables) y Confirmar/Cancelar.</summary>
+    private RenderFragment PanelQuien(string titulo, string textoSi, Func<Task> confirmar, Action cancelar, bool rojo = false) => __builder =>
+    {
+        <div class="prep-quien">
+            <b>@titulo</b>
+            <div class="prep-chips">
+                @foreach (var o in operadoresPrep)
+                {
+                    var oSel = o;
+                    <span class="prep-chip @(quienElegido == o ? "on" : "")" @onclick="() => quienElegido = oSel">@o</span>
+                }
+            </div>
+            <div class="prep-quien-acc">
+                <button @onclick="cancelar">Cancelar</button>
+                <button class="si @(rojo ? "rojo" : "")" disabled="@(string.IsNullOrEmpty(quienElegido) || traerEnCurso)"
+                        @onclick="confirmar">@textoSi@(string.IsNullOrEmpty(quienElegido) ? "" : $" ({quienElegido})")</button>
+            </div>
+        </div>
+    };
 
     /// <summary>Saca TODAS las ventas que estan ahora en el tablero. Las nuevas que se suban
     /// a Drive a partir de aca, aparecen de nuevo.</summary>

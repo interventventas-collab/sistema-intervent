@@ -2360,11 +2360,30 @@ public class ApiClient
     }
 
     /// <summary>Oculta UNA venta del tablero de Preparacion (la venta y el PDF en Drive siguen intactos).</summary>
-    public async Task<bool> OcultarPreparacionAsync(int id)
+    public async Task<bool> OcultarPreparacionAsync(int id, string? operador = null)
     {
         await SetAuthHeaderAsync();
-        var resp = await _http.PostAsync($"/api/cafe/ventas/preparacion/ocultar/{id}", null);
+        var q = string.IsNullOrWhiteSpace(operador) ? "" : "?operador=" + Uri.EscapeDataString(operador);
+        var resp = await _http.PostAsync($"/api/cafe/ventas/preparacion/ocultar/{id}{q}", null);
         return resp.IsSuccessStatusCode;
+    }
+
+    // 14/10/2026: sacados del tablero, buscar para traer y traer con quién.
+    public async Task<List<string>> GetOperadoresPreparacionAsync()
+        => await GetAsync<List<string>>("/api/cafe/ventas/preparacion/operadores") ?? new();
+    public async Task<List<PrepVentaChicaDto>> GetSacadosDelTableroAsync(int dias = 7)
+        => await GetAsync<List<PrepVentaChicaDto>>($"/api/cafe/ventas/preparacion/sacados?dias={dias}") ?? new();
+    public async Task<List<PrepVentaChicaDto>> BuscarParaTableroAsync(string q)
+        => await GetAsync<List<PrepVentaChicaDto>>($"/api/cafe/ventas/preparacion/buscar?q={Uri.EscapeDataString(q)}") ?? new();
+    public async Task<(bool ok, string? error)> TraerAlTableroAsync(int id, string operador)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsync($"/api/cafe/ventas/preparacion/traer/{id}?operador={Uri.EscapeDataString(operador)}", null);
+            return resp.IsSuccessStatusCode ? (true, null) : (false, await ExtraerError(resp));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
     }
 
     /// <summary>Oculta TODAS las ventas que estan en el tablero ahora. Devuelve cuantas oculto.</summary>

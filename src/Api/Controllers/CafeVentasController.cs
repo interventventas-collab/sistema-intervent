@@ -4434,7 +4434,8 @@ public class CafeVentasController : ControllerBase
                     || v.EstadoPreparacion == "EN_PREPARACION"
                     || (v.EstadoPreparacion == null && v.DriveSubidoAt != null))
                 && v.Estado != "anulado"
-                && v.CreatedAt >= desde)
+                // 14/10/2026: también las que alguien trajo al tablero estos días aunque la venta sea vieja.
+                && (v.CreatedAt >= desde || (v.PreparacionUpdatedAt != null && v.PreparacionUpdatedAt >= desde)))
             // Orden: las que tienen Drive primero por DriveSubidoAt desc, las sin Drive al final por CreatedAt desc
             .OrderByDescending(v => v.DriveSubidoAt ?? v.CreatedAt)
             .Select(v => new
@@ -4539,14 +4540,128 @@ public class CafeVentasController : ControllerBase
     /// siguen intactos — solo deja de mostrarse en /cafe/preparacion. Usado por el boton X
     /// de cada card y por "Limpiar tablero" (que llama a este endpoint en bucle).</summary>
     [HttpPost("preparacion/ocultar/{id:int}")]
-    public async Task<IActionResult> OcultarDeTablero(int id)
+    public async Task<IActionResult> OcultarDeTablero(int id, [FromQuery] string? operador = null)
     {
         var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound();
         if (v.PreparacionOcultoAt is not null) return Ok(new { id, oculto = true, mensaje = "Ya estaba oculto" });
         v.PreparacionOcultoAt = DateTime.UtcNow;
+        // 14/10/2026: queda anotado quién lo sacó; así aparece abajo en "Sacados del tablero".
+        _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+        {
+            VentaId = v.Id, EstadoAnterior = v.EstadoPreparacion, EstadoNuevo = v.EstadoPreparacion ?? "",
+            OperadorNombre = string.IsNullOrWhiteSpace(operador) ? NormOperatorName(Request.Headers["X-Operator-Name"].FirstOrDefault()) : operador.Trim(),
+            Notas = NotaSacadoDelTablero, CreatedAt = DateTime.UtcNow
+        });
         await _db.SaveChangesAsync();
         return Ok(new { id, oculto = true });
+    }
+
+    // ─── 14/10/2026 · Sacados del tablero, traer un pedido y quién lo hizo ───
+    // Pedido del usuario: la ✕ sacaba el pedido sin preguntar y no había forma de recuperarlo desde
+    // el tablero. Ahora pregunta quién lo saca, abajo se listan los sacados para volver a traerlos,
+    // y con el buscador el depósito puede traer cualquier venta (por cliente o número) eligiendo quién.
+    private const string NotaSacadoDelTablero = "Sacado del tablero";
+    private const string NotaTraidaAlTablero = "Traído al tablero";
+
+    public record PrepVentaChicaDto(int Id, string? Numero, string Cliente, decimal Total, DateTime Fecha,
+        string? EstadoPreparacion, bool EnTablero, bool Entregada, DateTime? SacadoAt, string? SacadoPor);
+
+    /// <summary>Personas del depósito para elegir "¿quién?" (las mismas del stock).</summary>
+    [HttpGet("preparacion/operadores")]
+    public async Task<IActionResult> OperadoresPreparacion()
+        => Ok(await _db.StockOperadores.AsNoTracking().Where(o => o.IsActive)
+            .OrderBy(o => o.Orden == 0 ? 999 : o.Orden).ThenBy(o => o.Nombre)
+            .Select(o => o.Nombre).ToListAsync());
+
+    /// <summary>Los que se sacaron del tablero con la ✕ estos días (no los de "Limpiar tablero").</summary>
+    [HttpGet("preparacion/sacados")]
+    public async Task<IActionResult> SacadosDelTablero([FromQuery] int dias = 7)
+    {
+        var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
+        var logs = await _db.CafeVentaPreparacionLogs.AsNoTracking()
+            .Where(l => l.Notas == NotaSacadoDelTablero && l.CreatedAt >= desde)
+            .GroupBy(l => l.VentaId)
+            .Select(g => g.OrderByDescending(l => l.CreatedAt).First())
+            .ToListAsync();
+        var ids = logs.Select(l => l.VentaId).ToList();
+        var ventas = await _db.CafeVentas.AsNoTracking()
+            .Where(v => ids.Contains(v.Id) && v.PreparacionOcultoAt != null && v.Estado != "anulado")
+            .ToListAsync();
+        var res = ventas.Select(v =>
+        {
+            var l = logs.First(x => x.VentaId == v.Id);
+            return AChica(v, l.CreatedAt, l.OperadorNombre);
+        }).OrderByDescending(x => x.SacadoAt).ToList();
+        return Ok(res);
+    }
+
+    /// <summary>Buscar ventas de los últimos 30 días por número o cliente para traerlas al tablero.</summary>
+    [HttpGet("preparacion/buscar")]
+    public async Task<IActionResult> BuscarParaTablero([FromQuery] string q, [FromQuery] int dias = 30)
+    {
+        q = (q ?? "").Trim();
+        if (q.Length < 3) return Ok(new List<PrepVentaChicaDto>());
+        var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
+        var soloNumero = new string(q.Where(char.IsDigit).ToArray());
+        var ventas = await _db.CafeVentas.AsNoTracking()
+            .Where(v => v.CreatedAt >= desde && v.Estado != "anulado" && v.TipoComprobante != "PRO"
+                && ((v.Numero != null && v.Numero.Contains(q))
+                    || (soloNumero.Length >= 3 && v.Numero != null && v.Numero.EndsWith(soloNumero))
+                    || (v.ClienteNombreSnapshot != null && v.ClienteNombreSnapshot.Contains(q))
+                    || (v.ClienteRazonSocialSnapshot != null && v.ClienteRazonSocialSnapshot.Contains(q))
+                    || (v.ClienteDomicilioEntregaSnapshot != null && v.ClienteDomicilioEntregaSnapshot.Contains(q))))
+            .OrderByDescending(v => v.CreatedAt)
+            .Take(15)
+            .ToListAsync();
+        var ids = ventas.Select(v => v.Id).ToList();
+        var sacados = await _db.CafeVentaPreparacionLogs.AsNoTracking()
+            .Where(l => ids.Contains(l.VentaId) && l.Notas == NotaSacadoDelTablero)
+            .GroupBy(l => l.VentaId)
+            .Select(g => g.OrderByDescending(l => l.CreatedAt).First())
+            .ToListAsync();
+        return Ok(ventas.Select(v =>
+        {
+            var l = v.PreparacionOcultoAt != null ? sacados.FirstOrDefault(x => x.VentaId == v.Id) : null;
+            return AChica(v, l?.CreatedAt, l?.OperadorNombre);
+        }).ToList());
+    }
+
+    /// <summary>Trae una venta al tablero de armado (sacada, vieja o nunca mandada). Queda anotado quién.</summary>
+    [HttpPost("preparacion/traer/{id:int}")]
+    public async Task<IActionResult> TraerAlTablero(int id, [FromQuery] string operador)
+    {
+        if (string.IsNullOrWhiteSpace(operador)) return BadRequest(new { error = "Elegí quién trae el pedido." });
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        if (v.Estado == "anulado") return BadRequest(new { error = "La venta está anulada." });
+        if (string.Equals(v.TipoComprobante, "PRO", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "Los presupuestos no van al tablero de armado." });
+
+        var antes = v.EstadoPreparacion;
+        // Ya armada o entregada: vuelve a "para armar" marcada como modificada, igual que la nubecita.
+        var yaArmada = antes is "LISTO" or "EN_CAMINO" or "ENTREGADO";
+        if (antes is null || yaArmada) v.EstadoPreparacion = "PARA_PREPARAR";
+        if (yaArmada) v.ModificadoDespuesDeArmar = true;
+        v.PreparacionOcultoAt = null;
+        v.PreparacionUpdatedAt = DateTime.UtcNow;
+        _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+        {
+            VentaId = v.Id, EstadoAnterior = antes, EstadoNuevo = v.EstadoPreparacion ?? "",
+            OperadorNombre = operador.Trim(), Notas = NotaTraidaAlTablero, CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { id, numero = v.Numero, estado = v.EstadoPreparacion, yaEstabaArmada = yaArmada });
+    }
+
+    private static PrepVentaChicaDto AChica(CafeVenta v, DateTime? sacadoAt, string? sacadoPor)
+    {
+        var enTablero = v.PreparacionOcultoAt == null
+            && (v.EstadoPreparacion == "PARA_PREPARAR" || v.EstadoPreparacion == "EN_PREPARACION");
+        return new PrepVentaChicaDto(v.Id, v.Numero, v.ClienteNombreSnapshot ?? "Consumidor final",
+            (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total,
+            v.CreatedAt, v.EstadoPreparacion, enTablero,
+            v.EntregadoAt != null || v.EstadoPreparacion == "ENTREGADO", sacadoAt, sacadoPor);
     }
 
     /// <summary>Oculta TODAS las ventas que estan actualmente en el tablero (mismo filtro que
