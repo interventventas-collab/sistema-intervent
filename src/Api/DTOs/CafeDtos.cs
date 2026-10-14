@@ -1083,7 +1083,7 @@ public class CafePrecioLineaDto
 // 2026-10-14: precios por formato de los cafes (1 kg / ½ / ¼) para el cotizador del chat.
 public class CafePrecioFormatoDto
 {
-    /// <summary>"1KG" | "MEDIO" | "CUARTO".</summary>
+    /// <summary>"1KG" | "MEDIO" | "CUARTO" | "UNIT".</summary>
     public string Formato { get; set; } = "";
     /// <summary>"1 kg" | "½ kg" | "¼ kg".</summary>
     public string Etiqueta { get; set; } = "";
@@ -1111,7 +1111,8 @@ public class CafePrecioConsultaDto
     public string? OemCodigo { get; set; }
     public bool Activo { get; set; } = true;
     public List<CafePrecioLineaDto> Precios { get; set; } = new();
-    /// <summary>Solo cafes: 1 kg / ½ / ¼ con el motor de ventas. Vacio en el resto.</summary>
+    /// <summary>Precios Bar/Comercial del motor de ventas: cafes en 1 kg / ½ / ¼, el resto un solo
+    /// renglon "UNIT" (etiqueta vacia).</summary>
     public List<CafePrecioFormatoDto> Formatos { get; set; } = new();
 }
 

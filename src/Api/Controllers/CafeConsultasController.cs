@@ -133,14 +133,18 @@ public class CafeConsultasController : ControllerBase
                 });
         }
 
-        // 2026-10-14: cafes → 1 kg / ½ / ¼ con el motor de ventas, para que el cotizador del chat
-        // cobre lo mismo que la venta (la fraccion NO es el kilo dividido: suma fraccionamiento y redondea).
-        if (p.Categoria == "CAFE")
+        // 2026-10-14: Bar / Comercial con el MOTOR DE VENTAS (CafePricingService), para que el
+        // cotizador del chat dé lo mismo que la carga de la venta: precios futuros ya vigentes,
+        // "sin precio Bar", OEM, y en los cafes 1 kg / ½ / ¼ (la fraccion NO es el kilo dividido:
+        // suma fraccionamiento y redondea). Los "Precios" de arriba quedan como estaban (CalcuPrecios).
         {
             var negocio = await _db.CafeSettings.FirstOrDefaultAsync() ?? new CafeSetting();
-            foreach (var (f, et) in new[] { (Services.CafePricingService.FORMATO_1KG, "1 kg"),
-                                            (Services.CafePricingService.FORMATO_MEDIO, "½ kg"),
-                                            (Services.CafePricingService.FORMATO_CUARTO, "¼ kg") })
+            var formatos = p.Categoria == "CAFE"
+                ? new[] { (Services.CafePricingService.FORMATO_1KG, "1 kg"),
+                          (Services.CafePricingService.FORMATO_MEDIO, "½ kg"),
+                          (Services.CafePricingService.FORMATO_CUARTO, "¼ kg") }
+                : new[] { (Services.CafePricingService.FORMATO_UNIT, "") };
+            foreach (var (f, et) in formatos)
             {
                 dto.Formatos.Add(new CafePrecioFormatoDto
                 {

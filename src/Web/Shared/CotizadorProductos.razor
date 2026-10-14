@@ -11,6 +11,8 @@
    2026-10-14 (2ª vuelta): "Mi %" = costo sin IVA + el % que se quiere ganar (como CalcuPrecios), y
    los cafés se eligen en 1 kg / ½ / ¼ con los precios del MISMO motor que la venta (la API los manda
    en Formatos: la fracción no es el kilo dividido, suma fraccionamiento y redondea).
+   2026-10-14 (3ª): Bar/Comercial salen del motor de ventas para TODOS los productos (no sólo cafés):
+   "que aparezcan como cuando cargo la venta". El % sólo cuenta con "Mi %".
    Abajo se ve el mensaje armado en un cuadro editable.
 
    Qué NO hace: mandar ni crear ventas. Pasa el texto por OnListo y el que lo usa decide
@@ -99,7 +101,7 @@
                                value="@Miles(PrecioDe(fila))" onfocus="this.select()" @onchange="e => SetPrecio(fila, e)"
                                title="@(fila.PrecioManual.HasValue ? "Precio puesto a mano" : "Precio c/u — tocalo para cambiarlo a mano")" />
                     </div>
-                    @if (fila.Formatos.Count > 0)
+                    @if (fila.EsCafe)
                     {
                         @* 2026-10-14: cafés en 1 kg / ½ / ¼ — precio del motor de ventas (fraccionamiento incluido). *@
                         <div class="cotprod-fmt">
@@ -110,6 +112,11 @@
                                         @onclick="() => CambiarFormato(fila, ff.Formato)">@ff.Etiqueta</button>
                             }
                         </div>
+                    }
+                    @if (lista != "pct" && BaseSinIva(fila) is decimal enVenta && enVenta > 0m)
+                    {
+                        @* 2026-10-14: el precio tal cual lo muestra la carga de la venta (sin IVA, sin redondeo). *@
+                        <div class="cotprod-nota">en la venta: @(lista == "bar" ? "BAR" : "Comercial") @Plata(enVenta) + IVA</div>
                     }
                     @if (fila.PrecioManual is null && AvisoDe(fila) is string aviso)
                     {
@@ -222,6 +229,7 @@
         public decimal Cantidad = 1m;
         public decimal? PrecioManual; // pisado a mano: se respeta tal cual
         public CafePrecioFormatoDto? Fmt => Formatos.FirstOrDefault(f => f.Formato == Formato);
+        public bool EsCafe => Formatos.Count > 1;   // los demás traen un solo renglón "UNIT"
     }
 
     private readonly List<Renglon> items = new();
@@ -233,7 +241,7 @@
     private string lista = "bar";     // "bar" | "com" | "pct"
     private string pctTxt = "";
     private bool conIva = true;
-    private decimal redondeo = 500m;
+    private decimal redondeo = 0m;   // arranca SIN redondear: igual al precio de la venta
 
     private string texto = "";
     private bool textoEditado;
@@ -273,7 +281,7 @@
 
             // Si ya está, le sumo uno en vez de repetir el renglón. Los cafés no: el mismo café
             // puede ir en dos tamaños (1 kg y ¼), así que cada vez es un renglón nuevo.
-            var ya = (r.Formatos?.Count ?? 0) == 0 ? items.FirstOrDefault(x => x.Sku == r.Sku) : null;
+            var ya = r.Categoria != "CAFE" ? items.FirstOrDefault(x => x.Sku == r.Sku) : null;
             if (ya is not null) { ya.Cantidad += 1m; }
             else
             {
@@ -371,7 +379,7 @@
         foreach (var r in items)
         {
             var p = PrecioDe(r);
-            var nombre = r.Fmt is { } f ? $"{r.Nombre} {f.Etiqueta}" : r.Nombre;
+            var nombre = r.EsCafe && r.Fmt is { } f ? $"{r.Nombre} {f.Etiqueta}" : r.Nombre;
             if (r.Cantidad == 1m)
                 sb.AppendLine($"{Num(r.Cantidad)} × {nombre} — {Plata(p)}");
             else
