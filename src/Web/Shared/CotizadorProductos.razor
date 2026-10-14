@@ -8,6 +8,9 @@
    Qué hace: buscás producto por código o nombre (el mismo buscador de CalcuPrecios), se agrega
    con el precio de la lista elegida (Bar / Comercial; si el producto tiene OEM, el sugerido),
    con o sin IVA, redondeado para ARRIBA al escalón elegido. El precio c/u se puede pisar a mano.
+   2026-10-14 (2ª vuelta): "Mi %" = costo sin IVA + el % que se quiere ganar (como CalcuPrecios), y
+   los cafés se eligen en 1 kg / ½ / ¼ con los precios del MISMO motor que la venta (la API los manda
+   en Formatos: la fracción no es el kilo dividido, suma fraccionamiento y redondea).
    Abajo se ve el mensaje armado en un cuadro editable.
 
    Qué NO hace: mandar ni crear ventas. Pasa el texto por OnListo y el que lo usa decide
@@ -43,7 +46,18 @@
         <span class="cotprod-opc-l">Lista</span>
         <button class="cotprod-chip @(lista == "bar" ? "on" : "")" @onclick='() => CambiarLista("bar")'>Bar</button>
         <button class="cotprod-chip @(lista == "com" ? "on" : "")" @onclick='() => CambiarLista("com")'>Comercial</button>
+        @* 2026-10-14: como en CalcuPrecios — costo sin IVA + el % que se quiere ganar. *@
+        <button class="cotprod-chip @(lista == "pct" ? "on" : "")" @onclick='() => CambiarLista("pct")'>Mi %</button>
     </div>
+    @if (lista == "pct")
+    {
+        <div class="cotprod-opc">
+            <span class="cotprod-opc-l">Ganar</span>
+            <input class="cotprod-pct" inputmode="decimal" placeholder="ej: 30" value="@pctTxt"
+                   onfocus="this.select()" @oninput="OnPct" />
+            <span class="cotprod-opc-l">% sobre el costo</span>
+        </div>
+    }
     <div class="cotprod-opc">
         <span class="cotprod-opc-l">Precio</span>
         <button class="cotprod-chip @(!conIva ? "on" : "")" @onclick="() => CambiarIva(false)">Sin IVA</button>
@@ -85,13 +99,21 @@
                                value="@Miles(PrecioDe(fila))" onfocus="this.select()" @onchange="e => SetPrecio(fila, e)"
                                title="@(fila.PrecioManual.HasValue ? "Precio puesto a mano" : "Precio c/u — tocalo para cambiarlo a mano")" />
                     </div>
-                    @if (fila.Unidad is not null)
+                    @if (fila.Formatos.Count > 0)
                     {
-                        <div class="cotprod-nota">precio @fila.Unidad</div>
+                        @* 2026-10-14: cafés en 1 kg / ½ / ¼ — precio del motor de ventas (fraccionamiento incluido). *@
+                        <div class="cotprod-fmt">
+                            @foreach (var f in fila.Formatos)
+                            {
+                                var ff = f;
+                                <button class="cotprod-chip @(fila.Formato == ff.Formato ? "on" : "")"
+                                        @onclick="() => CambiarFormato(fila, ff.Formato)">@ff.Etiqueta</button>
+                            }
+                        </div>
                     }
-                    @if (fila.SinLista)
+                    @if (fila.PrecioManual is null && AvisoDe(fila) is string aviso)
                     {
-                        <div class="cotprod-nota cotprod-alerta">No tiene precio de lista: ponelo a mano.</div>
+                        <div class="cotprod-nota cotprod-alerta">@aviso</div>
                     }
                 </div>
             }
@@ -157,6 +179,10 @@
     .cotprod-precio { flex: 1; min-width: 0; text-align: right; font-family: inherit; font-size: 0.8rem; font-weight: 600;
         border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.15rem 0.3rem; color: #1f2937; }
     .cotprod-precio.manual { border-color: #f59e0b; }
+    .cotprod-pct { width: 52px; text-align: center; font-family: inherit; font-size: 0.8rem; font-weight: 700;
+        border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.12rem 0.2rem; color: #1f2937; }
+    .cotprod-pct:focus { outline: none; border-color: #3b82f6; }
+    .cotprod-fmt { display: flex; gap: 0.25rem; margin-top: 0.25rem; }
     .cotprod-nota { font-size: 0.68rem; color: #94a3b8; margin-top: 0.1rem; }
     .cotprod-alerta { color: #b45309; }
 
@@ -189,11 +215,13 @@
         public string Nombre = "";
         public decimal? Bar;          // sin IVA
         public decimal? Comercial;    // sin IVA
+        public decimal Costo;         // sin IVA (para "Mi %")
         public decimal IvaPct = 21m;
-        public string? Unidad;        // "por kg" en los cafés
+        public List<CafePrecioFormatoDto> Formatos = new();  // solo cafés: 1 kg / ½ / ¼
+        public string? Formato;       // el elegido de Formatos
         public decimal Cantidad = 1m;
         public decimal? PrecioManual; // pisado a mano: se respeta tal cual
-        public bool SinLista => Bar is null && Comercial is null && PrecioManual is null;
+        public CafePrecioFormatoDto? Fmt => Formatos.FirstOrDefault(f => f.Formato == Formato);
     }
 
     private readonly List<Renglon> items = new();
@@ -202,7 +230,8 @@
     private bool catalogoCargado;
     private bool agregando;
 
-    private string lista = "bar";     // "bar" | "com"
+    private string lista = "bar";     // "bar" | "com" | "pct"
+    private string pctTxt = "";
     private bool conIva = true;
     private decimal redondeo = 500m;
 
@@ -242,8 +271,9 @@
             var r = await Api.BuscarPrecioCafeAsync(codigo);
             if (r is null || !r.Encontrado) { Toast.Error(r?.Mensaje ?? "No encontré ese producto."); return; }
 
-            // Si ya está, le sumo uno en vez de repetir el renglón.
-            var ya = items.FirstOrDefault(x => x.Sku == r.Sku);
+            // Si ya está, le sumo uno en vez de repetir el renglón. Los cafés no: el mismo café
+            // puede ir en dos tamaños (1 kg y ¼), así que cada vez es un renglón nuevo.
+            var ya = (r.Formatos?.Count ?? 0) == 0 ? items.FirstOrDefault(x => x.Sku == r.Sku) : null;
             if (ya is not null) { ya.Cantidad += 1m; }
             else
             {
@@ -252,8 +282,10 @@
                     Sku = r.Sku,
                     Nombre = r.Nombre,
                     IvaPct = r.IvaPct > 0m ? r.IvaPct : 21m,
-                    Unidad = r.Categoria == "CAFE" ? "por kg" : null,
+                    Costo = r.CostoSinIva,
+                    Formatos = r.Formatos ?? new(),
                 };
+                fila.Formato = fila.Formatos.FirstOrDefault()?.Formato;
                 // Con OEM viene un solo "Sugerido": vale para las dos listas.
                 var sug = r.Precios.FirstOrDefault(p => p.Etiqueta.StartsWith("Sugerido"));
                 fila.Bar = sug?.SinIva ?? r.Precios.FirstOrDefault(p => p.Etiqueta.StartsWith("Precio Bar"))?.SinIva;
@@ -269,6 +301,9 @@
 
     // ── Opciones ──
     private void CambiarLista(string l) { lista = l; Cambio(); }
+    private void OnPct(ChangeEventArgs e) { pctTxt = e.Value?.ToString() ?? ""; Cambio(); }
+    private decimal? Pct => ParseNum(pctTxt);
+    private void CambiarFormato(Renglon r, string f) { r.Formato = f; r.PrecioManual = null; Cambio(); }
     private void CambiarIva(bool v) { conIva = v; Cambio(); }
     private void CambiarRedondeo(decimal v) { redondeo = v; Cambio(); }
 
@@ -292,10 +327,36 @@
     private decimal PrecioDe(Renglon r)
     {
         if (r.PrecioManual is decimal m) return m;
-        var baseSin = (lista == "bar" ? r.Bar ?? r.Comercial : r.Comercial ?? r.Bar) ?? 0m;
+        var baseSin = BaseSinIva(r) ?? 0m;
         var p = conIva ? baseSin * (1m + r.IvaPct / 100m) : baseSin;
         if (redondeo > 0m) return Math.Ceiling(p / redondeo) * redondeo;
         return Math.Round(p, 2);
+    }
+
+    /// <summary>Precio sin IVA antes de redondear, según la lista elegida y el formato del café.</summary>
+    private decimal? BaseSinIva(Renglon r)
+    {
+        var fmt = r.Fmt;
+        if (lista == "pct")
+        {
+            var costo = fmt?.Costo ?? r.Costo;
+            if (Pct is not decimal pct || costo <= 0m) return null;
+            return costo * (1m + pct / 100m);
+        }
+        if (fmt is not null)
+        {
+            var v = lista == "bar" ? fmt.Bar : fmt.Comercial;
+            return v > 0m ? v : null;
+        }
+        return lista == "bar" ? r.Bar ?? r.Comercial : r.Comercial ?? r.Bar;
+    }
+
+    private string? AvisoDe(Renglon r)
+    {
+        if (BaseSinIva(r) is decimal b && b > 0m) return null;
+        if (lista == "pct")
+            return Pct is null ? "Poné el % que querés ganar." : "No tiene costo cargado: poné el precio a mano.";
+        return "No tiene precio de lista: ponelo a mano.";
     }
 
     private decimal Total => items.Sum(r => PrecioDe(r) * r.Cantidad);
@@ -310,11 +371,11 @@
         foreach (var r in items)
         {
             var p = PrecioDe(r);
-            var unidad = r.Unidad is null ? "c/u" : r.Unidad;
+            var nombre = r.Fmt is { } f ? $"{r.Nombre} {f.Etiqueta}" : r.Nombre;
             if (r.Cantidad == 1m)
-                sb.AppendLine($"{Num(r.Cantidad)} × {r.Nombre} — {Plata(p)}{(r.Unidad is null ? "" : " " + r.Unidad)}");
+                sb.AppendLine($"{Num(r.Cantidad)} × {nombre} — {Plata(p)}");
             else
-                sb.AppendLine($"{Num(r.Cantidad)} × {r.Nombre} — {Plata(p)} {unidad} = {Plata(p * r.Cantidad)}");
+                sb.AppendLine($"{Num(r.Cantidad)} × {nombre} — {Plata(p)} c/u = {Plata(p * r.Cantidad)}");
         }
         sb.AppendLine();
         sb.AppendLine($"*Total: {Plata(Total)}*");

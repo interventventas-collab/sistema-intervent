@@ -133,6 +133,26 @@ public class CafeConsultasController : ControllerBase
                 });
         }
 
+        // 2026-10-14: cafes → 1 kg / ½ / ¼ con el motor de ventas, para que el cotizador del chat
+        // cobre lo mismo que la venta (la fraccion NO es el kilo dividido: suma fraccionamiento y redondea).
+        if (p.Categoria == "CAFE")
+        {
+            var negocio = await _db.CafeSettings.FirstOrDefaultAsync() ?? new CafeSetting();
+            foreach (var (f, et) in new[] { (Services.CafePricingService.FORMATO_1KG, "1 kg"),
+                                            (Services.CafePricingService.FORMATO_MEDIO, "½ kg"),
+                                            (Services.CafePricingService.FORMATO_CUARTO, "¼ kg") })
+            {
+                dto.Formatos.Add(new CafePrecioFormatoDto
+                {
+                    Formato = f,
+                    Etiqueta = et,
+                    Costo = Services.CafePricingService.CalcularCostoUnitario(p, f),
+                    Bar = Services.CafePricingService.CalcularPrecioUnitario(p, f, Services.CafePricingService.TIPO_BAR, negocio),
+                    Comercial = Services.CafePricingService.CalcularPrecioUnitario(p, f, Services.CafePricingService.TIPO_OTRO, negocio),
+                });
+            }
+        }
+
         return Ok(dto);
     }
 
