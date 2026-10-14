@@ -2650,4 +2650,5 @@ public class CafeAvisoProgramarRequest
 
 /// <summary>14/10/2026: venta chica para "Sacados del tablero" y el buscador para traer al tablero.</summary>
 public record PrepVentaChicaDto(int Id, string? Numero, string Cliente, decimal Total, DateTime Fecha,
-    string? EstadoPreparacion, bool EnTablero, bool Entregada, DateTime? SacadoAt, string? SacadoPor);
+    string? EstadoPreparacion, bool EnTablero, bool Entregada, DateTime? SacadoAt, string? SacadoPor,
+    string EstadoTexto = "", bool PuedeTraer = true, string? AvisoAlTraer = null);

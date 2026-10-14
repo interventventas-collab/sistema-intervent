@@ -4565,7 +4565,8 @@ public class CafeVentasController : ControllerBase
     private const string NotaTraidaAlTablero = "Traído al tablero";
 
     public record PrepVentaChicaDto(int Id, string? Numero, string Cliente, decimal Total, DateTime Fecha,
-        string? EstadoPreparacion, bool EnTablero, bool Entregada, DateTime? SacadoAt, string? SacadoPor);
+        string? EstadoPreparacion, bool EnTablero, bool Entregada, DateTime? SacadoAt, string? SacadoPor,
+        string EstadoTexto, bool PuedeTraer, string? AvisoAlTraer);
 
     /// <summary>Personas del depósito para elegir "¿quién?" (las mismas del stock).</summary>
     [HttpGet("preparacion/operadores")]
@@ -4588,10 +4589,11 @@ public class CafeVentasController : ControllerBase
         var ventas = await _db.CafeVentas.AsNoTracking()
             .Where(v => ids.Contains(v.Id) && v.PreparacionOcultoAt != null && v.Estado != "anulado")
             .ToListAsync();
+        var info = await InfoEstadoAsync(ventas);
         var res = ventas.Select(v =>
         {
             var l = logs.First(x => x.VentaId == v.Id);
-            return AChica(v, l.CreatedAt, l.OperadorNombre);
+            return AChica(v, l.CreatedAt, l.OperadorNombre, info);
         }).OrderByDescending(x => x.SacadoAt).ToList();
         return Ok(res);
     }
@@ -4620,10 +4622,11 @@ public class CafeVentasController : ControllerBase
             .GroupBy(l => l.VentaId)
             .Select(g => g.OrderByDescending(l => l.CreatedAt).First())
             .ToListAsync();
+        var info = await InfoEstadoAsync(ventas);
         return Ok(ventas.Select(v =>
         {
             var l = v.PreparacionOcultoAt != null ? sacados.FirstOrDefault(x => x.VentaId == v.Id) : null;
-            return AChica(v, l?.CreatedAt, l?.OperadorNombre);
+            return AChica(v, l?.CreatedAt, l?.OperadorNombre, info);
         }).ToList());
     }
 
@@ -4638,9 +4641,15 @@ public class CafeVentasController : ControllerBase
         if (string.Equals(v.TipoComprobante, "PRO", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { error = "Los presupuestos no van al tablero de armado." });
 
+        // 14/10/2026: lo entregado o en camino no se vuelve a armar desde el tablero.
+        if (v.EntregadoAt != null || v.EstadoPreparacion == "ENTREGADO")
+            return BadRequest(new { error = $"{v.Numero} ya fue entregada: no se puede volver a traer al tablero." });
+        if (v.EstadoPreparacion == "EN_CAMINO")
+            return BadRequest(new { error = $"{v.Numero} está en camino: no se puede volver a traer al tablero." });
+
         var antes = v.EstadoPreparacion;
-        // Ya armada o entregada: vuelve a "para armar" marcada como modificada, igual que la nubecita.
-        var yaArmada = antes is "LISTO" or "EN_CAMINO" or "ENTREGADO";
+        // Ya armada (sin salir): vuelve a "para armar" marcada como modificada, igual que la nubecita.
+        var yaArmada = antes is "LISTO";
         if (antes is null || yaArmada) v.EstadoPreparacion = "PARA_PREPARAR";
         if (yaArmada) v.ModificadoDespuesDeArmar = true;
         v.PreparacionOcultoAt = null;
@@ -4654,14 +4663,62 @@ public class CafeVentasController : ControllerBase
         return Ok(new { id, numero = v.Numero, estado = v.EstadoPreparacion, yaEstabaArmada = yaArmada });
     }
 
-    private static PrepVentaChicaDto AChica(CafeVenta v, DateTime? sacadoAt, string? sacadoPor)
+    /// <summary>Quién entregó (repartidor) y quién armó (último paso a LISTO) de cada venta.</summary>
+    private async Task<(Dictionary<int, string> Repartidores, Dictionary<int, string?> Armo)> InfoEstadoAsync(List<CafeVenta> ventas)
+    {
+        var repIds = ventas.Where(v => v.EntregadoPorRepartidorId != null).Select(v => v.EntregadoPorRepartidorId!.Value).Distinct().ToList();
+        var reps = repIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.CafeRepartidores.AsNoTracking().Where(r => repIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Nombre);
+        var listos = ventas.Where(v => v.EstadoPreparacion == "LISTO").Select(v => v.Id).ToList();
+        var armo = listos.Count == 0 ? new Dictionary<int, string?>()
+            : (await _db.CafeVentaPreparacionLogs.AsNoTracking()
+                .Where(l => listos.Contains(l.VentaId) && l.EstadoNuevo == "LISTO")
+                .GroupBy(l => l.VentaId)
+                .Select(g => g.OrderByDescending(l => l.CreatedAt).First())
+                .ToListAsync()).ToDictionary(l => l.VentaId, l => l.OperadorNombre);
+        return (reps, armo);
+    }
+
+    private static PrepVentaChicaDto AChica(CafeVenta v, DateTime? sacadoAt, string? sacadoPor,
+        (Dictionary<int, string> Repartidores, Dictionary<int, string?> Armo) info)
     {
         var enTablero = v.PreparacionOcultoAt == null
             && (v.EstadoPreparacion == "PARA_PREPARAR" || v.EstadoPreparacion == "EN_PREPARACION");
+        var entregada = v.EntregadoAt != null || v.EstadoPreparacion == "ENTREGADO";
+        static string Cuando(DateTime? utc) => utc is DateTime d ? d.AddHours(-3).ToString("dd/MM HH:mm") : "";
+
+        // 14/10/2026: en qué está cada venta y quién la tocó, en palabras.
+        string texto; bool puede = true; string? aviso = null;
+        if (entregada)
+        {
+            var quien = v.EntregadoPorRepartidorId is int rid && info.Repartidores.TryGetValue(rid, out var rn) ? rn : v.EntregaPor;
+            texto = $"Entregada{(string.IsNullOrWhiteSpace(quien) ? "" : " por " + quien)}{(v.EntregadoAt is null ? "" : " el " + Cuando(v.EntregadoAt))}";
+            puede = false;
+        }
+        else if (v.EstadoPreparacion == "EN_CAMINO")
+        {
+            texto = $"En camino{(string.IsNullOrWhiteSpace(v.EntregaPor) ? "" : " con " + v.EntregaPor)}{(v.PreparacionUpdatedAt is null ? "" : " desde " + Cuando(v.PreparacionUpdatedAt))}";
+            puede = false;
+        }
+        else if (v.EstadoPreparacion == "LISTO")
+        {
+            info.Armo.TryGetValue(v.Id, out var armo);
+            texto = $"Ya armada{(string.IsNullOrWhiteSpace(armo) ? "" : " por " + armo)}{(v.PreparacionUpdatedAt is null ? "" : " el " + Cuando(v.PreparacionUpdatedAt))}";
+            aviso = "Ya estaba armada: vuelve al tablero marcada como MODIFICADO.";
+        }
+        else if (sacadoAt is not null)
+            texto = $"Sacada del tablero por {sacadoPor ?? "—"} el {Cuando(sacadoAt)}";
+        else if (enTablero)
+            texto = "Ya está en el tablero";
+        else if (v.EstadoPreparacion is null)
+            texto = "Nunca se mandó a armar";
+        else
+            texto = "Fuera del tablero";
+
         return new PrepVentaChicaDto(v.Id, v.Numero, v.ClienteNombreSnapshot ?? "Consumidor final",
             (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total,
-            v.CreatedAt, v.EstadoPreparacion, enTablero,
-            v.EntregadoAt != null || v.EstadoPreparacion == "ENTREGADO", sacadoAt, sacadoPor);
+            v.CreatedAt, v.EstadoPreparacion, enTablero, entregada, sacadoAt, sacadoPor,
+            texto, puede && !enTablero, aviso);
     }
 
     /// <summary>Oculta TODAS las ventas que estan actualmente en el tablero (mismo filtro que
