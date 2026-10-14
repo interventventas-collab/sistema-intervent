@@ -2140,7 +2140,7 @@
     {
         @* 2026-08-27: este espacio ya no es un panel que se abre y se cierra a mano. Aparece SOLO
            cuando entrás al Modo venta 🛒 o al Modo MercadoLibre 🤝, y se va cuando los cerrás con su ×. *@
-        @if (modoVenta || modoMeli || modoAlquiler || modoCobranza)
+        @if (modoVenta || modoMeli || modoAlquiler || modoCobranza || modoCotizar)
         {
             @* 2026-08-20: MODO VENTA — el panel de la derecha se transforma en el armado de la
                venta, SIN salir del chat ni abrir otra pestaña. Pedido del dueño: "que el chat se
@@ -2923,6 +2923,20 @@
                Pedido del dueño: "cargo lo que me pide en un pedo, visualizo el total y mando".
                Al cliente le llega el detalle, el flete, el total y la fecha. NO crea reserva:
                eso se sigue haciendo en Alquileres como siempre. ══════════ *@
+            else if (modoCotizar)
+            {
+                @* 2026-10-14: cotizar productos. La pieza es Shared/CotizadorProductos.razor; acá el
+                   mensaje se deja escrito abajo, igual que el de alquiler. *@
+                <aside class="wa-ctx wa-alq">
+                    <div class="wa-mv-top">
+                        <span class="wa-mv-tit">🧮 Cotizar productos</span>
+                        <button class="wa-ficha-x" @onclick="CerrarModoCotizar" title="Salir">×</button>
+                    </div>
+                    <div class="wa-alq-body">
+                        <CotizadorProductos @ref="cotizadorProdRef" OnListo="EscribirCotizacionAlq" />
+                    </div>
+                </aside>
+            }
             else if (modoAlquiler)
             {
                 @* 2026-08-31: el cotizador vive en Shared/CotizadorAlquiler.razor — la MISMA pieza
@@ -3049,6 +3063,9 @@
                sale como mensaje sin copiar ni pegar. *@
             <button class="wa-ctx-rail-btn @(modoAlquiler ? "on" : "")" @onclick="AbrirModoAlquiler"
                     title="Cotizar alquiler: cargá sillas, mesas y flete, y mandale el presupuesto">🪑</button>
+            @* 2026-10-14: COTIZAR PRODUCTOS — como el de alquiler pero con precio por renglón y redondeo. *@
+            <button class="wa-ctx-rail-btn @(modoCotizar ? "on" : "")" @onclick="AbrirModoCotizar"
+                    title="Cotizar productos: agregá varios, redondeá los precios y mandale el presupuesto detallado">🧮</button>
             @* 2026-09-14: cargar un pago en efectivo o redirigido acá al lado. *@
             <button class="wa-ctx-rail-btn @(modoCobranza ? "on" : "")" @onclick="() => AbrirModoCobranza(null)"
                     title="Cargar cobranza: un pago en efectivo o redirigido, sin salir del chat">💵</button>
@@ -6081,6 +6098,7 @@
         modoMeli = false;
         modoAlquiler = false;
         modoCobranza = false;
+        modoCotizar = false;
         mvPaso = 1;
         var conv = SelectedConv();
         mvClienteId = conv?.ClienteId;
@@ -7012,6 +7030,7 @@
         modoVenta = false;
         modoMeli = false;
         modoCobranza = false;
+        modoCotizar = false;
         await CargarCotizacionesAlq();
     }
 
@@ -7090,7 +7109,26 @@
         modoAlquiler = false;
         alqCotizaciones = new();   // eran las del teléfono anterior
         cotizadorRef?.Limpiar();
+        modoCotizar = false;       // 2026-10-14: la de productos también era para el chat anterior
+        cotizadorProdRef?.Limpiar();
     }
+
+    // ===== 2026-10-14: MODO COTIZAR PRODUCTOS =====
+    // La pieza es Shared/CotizadorProductos.razor. El mensaje NO se envía: se escribe abajo
+    // (EscribirCotizacionAlq sirve igual) y lo manda el operador.
+    bool modoCotizar = false;
+    CotizadorProductos? cotizadorProdRef;
+
+    void AbrirModoCotizar()
+    {
+        modoCotizar = true;
+        modoVenta = false;
+        modoMeli = false;
+        modoAlquiler = false;
+        modoCobranza = false;
+    }
+
+    void CerrarModoCotizar() => modoCotizar = false;
 
     // ===== 2026-09-14: MODO COBRANZA — pago en efectivo o redirigido desde el chat =====
     // La pantalla la arma Shared/CobranzaChat.razor. Acá solo: prender/apagar, a qué cliente va y
@@ -7113,6 +7151,7 @@
         modoVenta = false;
         modoMeli = false;
         modoAlquiler = false;
+        modoCotizar = false;
         if (mediaUrl is not null) mcMediaUrl = mediaUrl;
     }
 
@@ -7164,6 +7203,7 @@
         modoMeli = true;
         modoVenta = false;
         modoCobranza = false;
+        modoCotizar = false;
         if (mmFicha is not null || mmResultados.Count > 0 || string.IsNullOrWhiteSpace(selectedNumero)) return;
 
         // 1) ¿Ya guardamos qué usuario de MeLi escribe desde este teléfono? Entonces la ficha
@@ -7270,7 +7310,7 @@
     async Task AbrirFichaDelAviso()
     {
         if (mmAviso is null) return;
-        modoMeli = true; modoVenta = false; modoAlquiler = false;
+        modoMeli = true; modoVenta = false; modoAlquiler = false; modoCotizar = false;
         await AbrirFichaMeli(mmAviso.BuyerId);
     }
 
@@ -7305,7 +7345,7 @@
     /// si es un número de venta, busca de quién es.</summary>
     async Task AbrirCodigoMeli(string codigo)
     {
-        modoMeli = true; modoVenta = false; modoAlquiler = false;
+        modoMeli = true; modoVenta = false; modoAlquiler = false; modoCotizar = false;
         if (codigo.StartsWith("MLA", StringComparison.OrdinalIgnoreCase))
         {
             await VerPublicacionMeli(codigo);
