@@ -2508,6 +2508,7 @@
         rediOrigen = null;
         formFecha = HoyAr; fechaOrigen = null; fechaTocadaAMano = false;
         maquinasPend = new(); maqImput = new(); dolarDelDia = 0m;   // 2026-10-06
+        LimpiarRepartir();
         showNueva = true;
     }
 
@@ -2538,6 +2539,7 @@
         pendientes = null;
         imputaciones = new();
         maquinasPend = new(); maqImput = new();   // 2026-10-06
+        LimpiarRepartir();
     }
 
     private void CloseNueva()
@@ -2564,6 +2566,7 @@
         movsBancoDescartados = new();
         verDescartados = false;
         maquinasPend = new(); maqImput = new();
+        LimpiarRepartir();
         if (selClienteId <= 0) { pendientes = new(); return; }
         try
         {
@@ -2627,6 +2630,16 @@
     private bool mostrarRepartir;
     private string repartirTexto = "";
     private string? repartirResumen;
+
+    // 2026-10-14: "Entró un pago de $" y su cartel eran de la cobranza ANTERIOR: la ventanita no se
+    // arma de cero, y al abrir otra (o cambiar de cliente) seguían los $53.000 de Serena Barista
+    // con su CAFE-2026-2236 "debiendo $9.000" arriba de La Posta Brenda.
+    private void LimpiarRepartir()
+    {
+        mostrarRepartir = false;
+        repartirTexto = "";
+        repartirResumen = null;
+    }
 
     private void OnRepartirKeyDown(KeyboardEventArgs e)
     {
