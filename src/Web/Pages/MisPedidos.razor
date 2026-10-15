@@ -98,6 +98,15 @@
     .mp-card-btn-entregar { background: #10b981; color: white; }
     .mp-card-btn-cobrar { background: #1d4ed8; color: white; }
     .mp-card-btn:active { transform: scale(0.97); }
+    /* 2026-10-15: Waze grande y "PAGADO" en la tarjeta de la venta */
+    .mp-card-waze {
+        display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+        margin: 0.55rem 0 0.35rem; padding: 0.85rem; background: #0ea5e9; color: #fff;
+        border-radius: 10px; font-size: 1.15rem; font-weight: 800; text-decoration: none;
+    }
+    .mp-card-waze:active { transform: scale(0.98); background: #0284c7; }
+    .mp-card-pagado { font-weight: 800; font-size: 1.1rem; color: #047857; margin-top: 0.3rem; }
+    .mp-card-pagado small { font-weight: 500; font-size: 0.78rem; color: #6b7280; }
 
     /* 2026-06-08: link de "Ver comprobante" - estilo discreto, debajo de los botones */
     .mp-card-btn-link {
@@ -880,14 +889,31 @@
                     <div class="mp-card-numero">@p.Numero · @p.Fecha.ToArTime().ToString("dd/MM HH:mm")</div>
                     <div class="mp-card-cliente">@(p.ClienteNombre ?? "Cliente sin nombre")</div>
                     @if (!string.IsNullOrEmpty(p.ClienteDireccion)) { <div class="mp-card-dir">📍 @p.ClienteDireccion @(string.IsNullOrEmpty(p.ClienteLocalidad) ? "" : "- " + p.ClienteLocalidad)</div> }
+                    @* 2026-10-15: Waze GRANDE arriba (pedido del dueño: "es el que más me interesa").
+                       Llamar / WhatsApp / Maps quedan como botoncitos abajo. *@
+                    @if ((p.ClienteLat.HasValue && p.ClienteLng.HasValue) || !string.IsNullOrWhiteSpace(p.ClienteDireccion))
+                    {
+                        <a class="mp-card-waze" href="@WazeUrl(p)" target="_blank" rel="noopener">🧭 Ir con Waze</a>
+                    }
                     @RenderContactoChips(p)
-                    <div class="mp-card-total">$ @p.Total.ToString("N2")</div>
-                    @if (p.Saldo <= 0.01m) { <div style="margin:0.4rem 0 0.2rem; padding:0.35rem 0.55rem; background:#ecfdf5; border-left:3px solid #10b981; border-radius:4px; font-size:0.8rem; color:#065f46; font-weight:600;">✅ Comprobante pagado</div> }
-                    else if (p.Saldo > 0 && p.Saldo < p.Total) { <div class="mp-card-saldo-aviso">Saldo pendiente: $ @p.Saldo.ToString("N2")</div> }
-                    <div class="mp-card-row-acciones">
-                        <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Solo Entregué</button>
-                        <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">✅+💰 Entregar y/o Cobrar</button>
-                    </div>
+                    @* 2026-10-15: ya pagado = dice PAGADO en vez del importe y no ofrece cobrar (un solo
+                       botón "Entregué"). Pagado a medias sigue como antes: importe + saldo + los dos botones. *@
+                    @if (p.Saldo <= 0.01m)
+                    {
+                        <div class="mp-card-pagado">✅ PAGADO <small>· no hay que cobrar nada</small></div>
+                        <div class="mp-card-row-acciones">
+                            <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Entregué</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mp-card-total">$ @p.Total.ToString("N2")</div>
+                        @if (p.Saldo < p.Total) { <div class="mp-card-saldo-aviso">Saldo pendiente: $ @p.Saldo.ToString("N2")</div> }
+                        <div class="mp-card-row-acciones">
+                            <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Solo Entregué</button>
+                            <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">✅+💰 Entregar y/o Cobrar</button>
+                        </div>
+                    }
                     @if (p.TienePdf) { <button type="button" class="mp-card-btn-link" @onclick="() => VerComprobante(p)">📄 Ver comprobante</button> }
                     <button type="button" class="mp-card-btn-rechazar" @onclick="@(() => AbrirRechazo("venta_cafe", p.Id, $"Venta {p.Numero} · {p.ClienteNombre}"))">🚫 Rechazar este pedido</button>
                 </div>;
@@ -3080,7 +3106,7 @@
 
     // 15/10/2026: Maps + Waze sueltos, para la tarjeta del pedido y para la ventanita del detalle
     // (antes el detalle mostraba el domicilio sin botones y al tocarlo el celu abría Google Maps).
-    private RenderFragment RenderMapaBotones(PedidoDto p) => __builder =>
+    private RenderFragment RenderMapaBotones(PedidoDto p, bool conWaze = true) => __builder =>
     {
         var tieneCoords = p.ClienteLat.HasValue && p.ClienteLng.HasValue;
         var tieneUbic = TieneUbicacionCargada(p);
@@ -3092,7 +3118,8 @@
            @onclick:stopPropagation="true">
             🗺 Maps
         </a>
-        @if (tieneCoords)
+        @if (!conWaze) { }
+        else if (tieneCoords)
         {
             @* Waze solo con coords (no sabe leer link de Maps de terceros) *@
             <a href="@WazeUrl(p)" target="_blank" rel="noopener"
@@ -3134,7 +3161,8 @@
             }
             @if (tieneUbic || !string.IsNullOrWhiteSpace(p.ClienteDireccion))
             {
-                @RenderMapaBotones(p)
+                @* 2026-10-15: sin Waze acá: en la tarjeta va el botón grande "Ir con Waze". *@
+                @RenderMapaBotones(p, conWaze: false)
                 @if (tieneUbic && p.ClienteId.HasValue && !ubicReportadaIds.Contains(p.ClienteId.Value))
                 {
                     @* Botón discreto para AVISAR que la ubicación está mal (la corrige la oficina) *@
