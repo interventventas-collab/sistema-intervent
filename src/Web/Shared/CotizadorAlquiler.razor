@@ -87,7 +87,7 @@
             <div class="cotalq-info">No hay fletes cargados (Alquileres → Fletes). Podés poner el monto a mano.</div>
         }
 
-        <label class="cotalq-lbl">Monto del flete</label>
+        <label class="cotalq-lbl cotalq-lbl-manual">Cargar flete manual</label>
         <input class="cotalq-inp cotalq-plata" inputmode="decimal" placeholder="0"
                value="@fleteTxt" onfocus="this.select()" @oninput="OnMontoFlete" />
 
@@ -141,6 +141,7 @@
     .cotalq-lbl { display: block; font-size: 0.68rem; font-weight: 700; color: #94a3b8;
         text-transform: uppercase; letter-spacing: 0.03em; margin: 0.35rem 0 0.1rem;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cotalq-lbl-manual { color: #2563eb; font-size: 0.72rem; }
 
     .cotalq-lista { border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; overflow: hidden; }
     .cotalq-fila { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem;
@@ -211,6 +212,7 @@
     .cotalq-dark .cotalq-mas { background: #111827; border-color: #374151; color: #e5e7eb; }
     .cotalq-dark .cotalq-mas:hover { background: #1e293b; }
     .cotalq-dark .cotalq-sec { color: #93c5fd; }
+    .cotalq-dark .cotalq-lbl-manual { color: #93c5fd; }
     .cotalq-dark .cotalq-total { border-top-color: #374151; color: #9ca3af; }
     .cotalq-dark .cotalq-total b { color: #34d399; }
     .cotalq-dark .cotalq-btn-main { background: #2563eb; }
@@ -498,7 +500,9 @@
         }
 
         if (FleteMonto != 0m)
-            sb.AppendLine(string.IsNullOrWhiteSpace(fleteZona) ? "Flete" : $"Flete {fleteZona}");
+            sb.AppendLine(string.IsNullOrWhiteSpace(fleteZona)
+                ? "Flete Entrega y retiro en puerta (NO INCLUYE SUBIDA DE ESCALERAS NI ACOMODAMIENTO)"
+                : $"Flete {fleteZona}");
 
         sb.AppendLine();
         if (dias > 1) sb.AppendLine($"_Alquiler por {dias} días_");
