@@ -1458,6 +1458,12 @@
                         📍 @resumenAbierto.ClienteDireccion @(string.IsNullOrEmpty(resumenAbierto.ClienteLocalidad) ? "" : "- " + resumenAbierto.ClienteLocalidad)
                     </div>
                 }
+                @if (resumenPedido is not null && resumenPedido.Id == resumenAbierto.VentaId)
+                {
+                    <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin:-0.4rem 0 0.7rem;">
+                        @RenderMapaBotones(resumenPedido)
+                    </div>
+                }
 
                 @if (resumenAbierto.Items.Count > 0)
                 {
@@ -2597,6 +2603,7 @@
         resumenAbierto = null;
         resumenLoading = true;
         resumenVentaNumero = p.Numero;
+        resumenPedido = p;
         StateHasChanged();
         try
         {
@@ -2626,6 +2633,7 @@
     private ResumenDto? resumenAbierto;
     private bool resumenLoading;
     private string resumenVentaNumero = "";
+    private PedidoDto? resumenPedido;
 
     private string FormatoLabel(string? f)
     {
@@ -3070,6 +3078,40 @@
         return $"https://www.waze.com/ul?q={Uri.EscapeDataString(q)}&navigate=yes";
     }
 
+    // 15/10/2026: Maps + Waze sueltos, para la tarjeta del pedido y para la ventanita del detalle
+    // (antes el detalle mostraba el domicilio sin botones y al tocarlo el celu abría Google Maps).
+    private RenderFragment RenderMapaBotones(PedidoDto p) => __builder =>
+    {
+        var tieneCoords = p.ClienteLat.HasValue && p.ClienteLng.HasValue;
+        var tieneUbic = TieneUbicacionCargada(p);
+        if (!tieneUbic && string.IsNullOrWhiteSpace(p.ClienteDireccion)) return;
+
+        <a href="@GmapsUrl(p)" target="_blank" rel="noopener"
+           style="text-decoration:none; display:inline-flex; align-items:center; gap:0.25rem; padding:0.3rem 0.55rem; background:@(tieneUbic ? "#ede9fe" : "#fef3c7"); color:@(tieneUbic ? "#5b21b6" : "#92400e"); border-radius:6px; font-size:0.78rem; font-weight:700;"
+           title="@(tieneCoords ? "Ubicación exacta guardada" : (!string.IsNullOrWhiteSpace(p.ClienteMapeoLink) ? "Link de Maps cargado en la ficha" : "Búsqueda por dirección (puede ser aproximada)"))"
+           @onclick:stopPropagation="true">
+            🗺 Maps
+        </a>
+        @if (tieneCoords)
+        {
+            @* Waze solo con coords (no sabe leer link de Maps de terceros) *@
+            <a href="@WazeUrl(p)" target="_blank" rel="noopener"
+               style="text-decoration:none; display:inline-flex; align-items:center; gap:0.25rem; padding:0.3rem 0.55rem; background:#cffafe; color:#0e7490; border-radius:6px; font-size:0.78rem; font-weight:700;"
+               @onclick:stopPropagation="true">
+                🧭 Waze
+            </a>
+        }
+        else if (!string.IsNullOrWhiteSpace(p.ClienteDireccion))
+        {
+            <a href="@WazeUrl(p)" target="_blank" rel="noopener"
+               style="text-decoration:none; display:inline-flex; align-items:center; gap:0.25rem; padding:0.3rem 0.55rem; background:#fef3c7; color:#92400e; border-radius:6px; font-size:0.78rem; font-weight:700;"
+               title="Búsqueda por dirección (puede ser aproximada)"
+               @onclick:stopPropagation="true">
+                🧭 Waze
+            </a>
+        }
+    };
+
     private RenderFragment RenderContactoChips(PedidoDto p) => __builder =>
     {
         var phone = PhoneDigits(p.ClienteTelefono);
@@ -3092,30 +3134,7 @@
             }
             @if (tieneUbic || !string.IsNullOrWhiteSpace(p.ClienteDireccion))
             {
-                <a href="@GmapsUrl(p)" target="_blank" rel="noopener"
-                   style="text-decoration:none; display:inline-flex; align-items:center; gap:0.25rem; padding:0.3rem 0.55rem; background:@(tieneUbic ? "#ede9fe" : "#fef3c7"); color:@(tieneUbic ? "#5b21b6" : "#92400e"); border-radius:6px; font-size:0.78rem; font-weight:700;"
-                   title="@(tieneCoords ? "Ubicación exacta guardada" : (!string.IsNullOrWhiteSpace(p.ClienteMapeoLink) ? "Link de Maps cargado en la ficha" : "Búsqueda por dirección (puede ser aproximada)"))"
-                   @onclick:stopPropagation="true">
-                    🗺 Maps
-                </a>
-                @if (tieneCoords)
-                {
-                    @* Waze solo con coords (no sabe leer link de Maps de terceros) *@
-                    <a href="@WazeUrl(p)" target="_blank" rel="noopener"
-                       style="text-decoration:none; display:inline-flex; align-items:center; gap:0.25rem; padding:0.3rem 0.55rem; background:#cffafe; color:#0e7490; border-radius:6px; font-size:0.78rem; font-weight:700;"
-                       @onclick:stopPropagation="true">
-                        🧭 Waze
-                    </a>
-                }
-                else if (!string.IsNullOrWhiteSpace(p.ClienteDireccion))
-                {
-                    <a href="@WazeUrl(p)" target="_blank" rel="noopener"
-                       style="text-decoration:none; display:inline-flex; align-items:center; gap:0.25rem; padding:0.3rem 0.55rem; background:#fef3c7; color:#92400e; border-radius:6px; font-size:0.78rem; font-weight:700;"
-                       title="Búsqueda por dirección (puede ser aproximada)"
-                       @onclick:stopPropagation="true">
-                        🧭 Waze
-                    </a>
-                }
+                @RenderMapaBotones(p)
                 @if (tieneUbic && p.ClienteId.HasValue && !ubicReportadaIds.Contains(p.ClienteId.Value))
                 {
                     @* Botón discreto para AVISAR que la ubicación está mal (la corrige la oficina) *@

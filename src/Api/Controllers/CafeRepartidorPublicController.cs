@@ -27,12 +27,52 @@ public class CafeRepartidorPublicController : ControllerBase
     private readonly MapeoEntregasService _entregas;
     private readonly ViajesAutoService _viajes;
     private readonly ViajesCuentaReporteService _reporteCuenta;
+    private readonly GoogleMapsLinkResolverService _mapsResolver;
     public CafeRepartidorPublicController(AppDbContext db, MeliShipmentService me1Service,
         TelegramService telegram, WhatsAppOutboundService wa, MapeoEntregasService entregas,
-        ViajesAutoService viajes, ViajesCuentaReporteService reporteCuenta)
+        ViajesAutoService viajes, ViajesCuentaReporteService reporteCuenta,
+        GoogleMapsLinkResolverService mapsResolver)
     {
         _db = db; _me1Service = me1Service; _telegram = telegram; _wa = wa; _entregas = entregas;
-        _viajes = viajes; _reporteCuenta = reporteCuenta;
+        _viajes = viajes; _reporteCuenta = reporteCuenta; _mapsResolver = mapsResolver;
+    }
+
+    /// <summary>15/10/2026: punto exacto de los links de Maps propios de una venta, ya resueltos.
+    /// Vive mientras la API está levantada: cada link se le pregunta a Google UNA vez y no en cada
+    /// refresco de la lista del repartidor. Los que no se pudieron resolver se reintentan a la hora.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ((decimal lat, decimal lng)? coords, DateTime at)> _coordsDeLink = new();
+
+    /// <summary>15/10/2026: el link de Maps propio de la venta (otro domicilio de entrega) no traía
+    /// punto exacto, así que Waze buscaba por la dirección escrita (aproximada) o ni aparecía.
+    /// Primero lo busca en los domicilios de entrega del cliente (ya resueltos al guardarlos);
+    /// si no, abre el link (también los cortos maps.app.goo.gl) y saca el punto.</summary>
+    private async Task<Dictionary<string, (decimal lat, decimal lng)>> CoordsDeLinksAsync(List<string> links)
+    {
+        var res = new Dictionary<string, (decimal lat, decimal lng)>();
+        if (links.Count == 0) return res;
+
+        var deDomicilios = await _db.CafeClienteDirecciones
+            .Where(d => d.MapeoLink != null && links.Contains(d.MapeoLink) && d.MapeoLat != null && d.MapeoLng != null)
+            .Select(d => new { d.MapeoLink, d.MapeoLat, d.MapeoLng })
+            .ToListAsync();
+        foreach (var d in deDomicilios)
+            if (d.MapeoLat != 0m || d.MapeoLng != 0m) res[d.MapeoLink!] = (d.MapeoLat!.Value, d.MapeoLng!.Value);
+
+        var faltan = new List<string>();
+        foreach (var l in links.Where(l => !res.ContainsKey(l)))
+        {
+            if (_coordsDeLink.TryGetValue(l, out var c) && (c.coords.HasValue || DateTime.UtcNow - c.at < TimeSpan.FromHours(1)))
+            { if (c.coords.HasValue) res[l] = c.coords.Value; }
+            else faltan.Add(l);
+        }
+        // Los links que nunca se vieron se resuelven todos juntos (cada uno corta solo a los 8 s).
+        var resueltos = await Task.WhenAll(faltan.Select(async l => (l, coords: await _mapsResolver.TryResolverCoordenadasAsync(l))));
+        foreach (var (l, coords) in resueltos)
+        {
+            _coordsDeLink[l] = (coords, DateTime.UtcNow);
+            if (coords.HasValue) res[l] = coords.Value;
+        }
+        return res;
     }
 
     /// <summary>
@@ -849,6 +889,15 @@ public class CafeRepartidorPublicController : ControllerBase
                 .Select(g => new { g.Key, S = g.Sum(x => x.Importe) })
                 .ToDictionaryAsync(x => x.Key, x => x.S);
 
+        // 15/10/2026: si la venta trae su propio link de Maps, mandar también el punto exacto (para Waze).
+        var linksSinPunto = rows.Where(x => x.ClienteLat == null && !string.IsNullOrWhiteSpace(x.ClienteMapeoLink) && !x.YaEntregada)
+            .Select(x => x.ClienteMapeoLink!.Trim()).Distinct().ToList();
+        var coordsLink = await CoordsDeLinksAsync(linksSinPunto);
+        (decimal? lat, decimal? lng) Punto(decimal? lat, decimal? lng, string? link)
+            => lat.HasValue ? (lat, lng)
+             : (!string.IsNullOrWhiteSpace(link) && coordsLink.TryGetValue(link.Trim(), out var c)) ? (c.lat, c.lng)
+             : (null, null);
+
         var pedidos = rows.Select(x => new MisPedidosVentaDto(
             x.Id, x.Numero, x.Fecha,
             x.ClienteNombre, x.ClienteDireccion, x.ClienteLocalidad,
@@ -857,7 +906,10 @@ public class CafeRepartidorPublicController : ControllerBase
             x.CargadoAt,
             x.ComentarioEntrega,
             x.TienePdf,
-            x.ClienteId, x.ClienteTelefono, x.ClienteLat, x.ClienteLng, x.ClienteMapeoLink,
+            x.ClienteId, x.ClienteTelefono,
+            Punto(x.ClienteLat, x.ClienteLng, x.ClienteMapeoLink).lat,
+            Punto(x.ClienteLat, x.ClienteLng, x.ClienteMapeoLink).lng,
+            x.ClienteMapeoLink,
             x.SolicitarFirmaEntrega
         )).ToList();
 
