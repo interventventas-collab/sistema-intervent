@@ -154,9 +154,9 @@
                 {
                     <div class="form-group">
                         <label class="form-label">Estado</label>
-                        <select class="form-input" @bind="formIsActive">
-                            <option value="true">Activo</option>
-                            <option value="false">Inactivo</option>
+                        <select class="form-input" @bind="formEstado">
+                            <option value="activo">Activo</option>
+                            <option value="inactivo">Inactivo</option>
                         </select>
                     </div>
                 }
@@ -235,6 +235,8 @@
     private decimal formPrecioDiario;
     private decimal? formPrecioReposicion;
     private bool formIsActive = true;
+    // El select trabaja con texto: atado directo a un bool, Blazor no marca ninguna opcion y el cuadro queda vacio.
+    private string formEstado { get => formIsActive ? "activo" : "inactivo"; set => formIsActive = value == "activo"; }
     private bool showDeleteConfirm;
     private AlqEquipoDto? equipoToDelete;
 
