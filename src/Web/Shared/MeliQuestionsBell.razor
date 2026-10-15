@@ -77,7 +77,7 @@
                 @if (cotizArriba)
                 {
                     <div class="mqc-box mqc-box-arriba">
-                        <CotizadorAlquiler TextoBoton="📋 Copiar el presupuesto"
+                        <CotizadorAlquiler ParaMeli="true" TextoBoton="📋 Copiar el presupuesto"
                                            OnListo="CopiarCotizacion" />
                     </div>
                 }
@@ -257,7 +257,7 @@
                                         <div class="mqc-aviso">
                                             ⚠️ Ojo: la respuesta de MercadoLibre es <b>pública</b> — el presupuesto lo ve cualquiera que entre a la publicación.
                                         </div>
-                                        <CotizadorAlquiler TextoBoton="📝 Poner en la respuesta"
+                                        <CotizadorAlquiler ParaMeli="true" TextoBoton="📝 Poner en la respuesta"
                                                            OnListo="@(t => PonerEnRespuesta(q.Id, t))" />
                                     </div>
                                 }

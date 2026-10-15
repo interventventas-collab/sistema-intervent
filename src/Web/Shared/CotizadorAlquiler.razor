@@ -250,6 +250,10 @@
     /// <summary>Si el chat ya está vinculado a un cliente, queda anotado en la cotización.</summary>
     [Parameter] public int? ClienteId { get; set; }
 
+    /// <summary>15/10/2026: respuestas de MercadoLibre. Termina en el TOTAL, sin el texto de abajo
+    /// (el del 50% por transferencia / 50% en efectivo) y sin los asteriscos de WhatsApp en el total.</summary>
+    [Parameter] public bool ParaMeli { get; set; }
+
     /// <summary>Quién la hizo (operador del PIN).</summary>
     [Parameter] public string? Operador { get; set; }
 
@@ -505,6 +509,12 @@
                 : $"Flete {fleteZona}");
 
         sb.AppendLine();
+        if (ParaMeli)
+        {
+            if (dias > 1) sb.AppendLine($"Alquiler por {dias} días");
+            sb.Append($"TOTAL: {Plata(Total)}");
+            return sb.ToString();
+        }
         if (dias > 1) sb.AppendLine($"_Alquiler por {dias} días_");
         sb.Append($"*TOTAL: {Plata(Total)}*");
 
