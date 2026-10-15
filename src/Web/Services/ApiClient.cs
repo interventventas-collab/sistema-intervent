@@ -8750,6 +8750,14 @@ public class ApiClient
         }
         catch { return false; }
     }
+    // 2026-10-15: chats que ME pasaron y todavía no abrí (globito "Te pasaron un chat").
+    public record ChatPasadoDto(string Numero, string? Linea, string Nombre, string? De, string? Nota,
+        DateTime? AsignadoAt, string? UltimoMensaje);
+    public async Task<List<ChatPasadoDto>> GetChatsPasadosPendientesAsync()
+    {
+        EnsureOperatorHeader();
+        return await _http.GetFromJsonAsync<List<ChatPasadoDto>>("/api/whatsapp/twilio/conversaciones/pasadas-pendientes") ?? new();
+    }
     public async Task MarcarConvVistoAsync(string numero, string? linea)
     {
         try { await _http.PostAsJsonAsync("/api/whatsapp/twilio/conversaciones/visto", new { Numero = numero, LineaPhoneId = linea }); }

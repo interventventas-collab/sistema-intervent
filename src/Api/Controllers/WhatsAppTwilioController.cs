@@ -777,6 +777,9 @@ public class WhatsAppTwilioController : ControllerBase
         row.AsignadoVisto = target == null || target == quien;
         row.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        // 2026-10-15: el globito "Te pasaron un chat" aparece al instante en la pantalla del que la
+        // recibe, esté donde esté. Se avisa siempre (también al quitarla) para que se refresque.
+        await _waLive.AvisarChatPasadoAsync(target);
         return Ok(new { ok = true });
     }
 
@@ -827,8 +830,64 @@ public class WhatsAppTwilioController : ControllerBase
             row.AsignadoVisto = true;
             row.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
+            // 2026-10-15: si la tiene abierta en otra pestaña/compu, el globito se va también ahí.
+            await _waLive.AvisarChatPasadoAsync(row.AsignadoOperador);
         }
         return Ok(new { ok = true });
+    }
+
+    /// <summary>GET conversaciones/pasadas-pendientes — 2026-10-15: los chats que le pasaron al
+    /// operador actual (header X-Operator-Name) y todavía no abrió. Alimenta el globito
+    /// "Te pasaron un chat" que aparece en cualquier pantalla.</summary>
+    [HttpGet("conversaciones/pasadas-pendientes")]
+    [Authorize]
+    public async Task<IActionResult> PasadasPendientes()
+    {
+        var yo = NormOp(Request.Headers["X-Operator-Name"].FirstOrDefault());
+        if (yo == null) return Ok(Array.Empty<object>());
+        var filas = await _db.WhatsAppConversaciones.AsNoTracking()
+            .Where(c => c.AsignadoOperador == yo && !c.AsignadoVisto)
+            .OrderByDescending(c => c.AsignadoAt)
+            .Take(10)
+            .ToListAsync();
+        if (filas.Count == 0) return Ok(Array.Empty<object>());
+
+        var numeros = filas.Select(f => f.Numero).Distinct().ToList();
+        var contactos = await _db.WhatsAppTwilioContactos.AsNoTracking()
+            .Where(c => c.Activo && numeros.Contains(c.Numero))
+            .ToDictionaryAsync(c => c.Numero, c => c);
+        var cliIds = contactos.Values.Where(c => c.ClienteId.HasValue).Select(c => c.ClienteId!.Value).Distinct().ToList();
+        var clientes = await _db.CafeClientes.AsNoTracking()
+            .Where(x => cliIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Nombre);
+
+        var result = new List<object>();
+        foreach (var f in filas)
+        {
+            var lin = f.LineaPhoneId;
+            // Último mensaje del cliente en esa línea + su nombre de perfil (si no está agendado).
+            var ult = await _db.WhatsAppTwilioMensajes.AsNoTracking()
+                .Where(m => m.Numero == f.Numero && m.LineaPhoneId == lin && m.Direccion == "INCOMING")
+                .OrderByDescending(m => m.CreatedAt)
+                .Select(m => new { m.Cuerpo, m.MediaUrl, m.NombrePerfil })
+                .FirstOrDefaultAsync();
+            contactos.TryGetValue(f.Numero, out var c);
+            string? cliente = c?.ClienteId != null && clientes.TryGetValue(c.ClienteId.Value, out var cn) ? cn : null;
+            var nombre = c?.Nombre ?? cliente ?? ult?.NombrePerfil ?? f.Numero.Replace("whatsapp:", "");
+            var ultimo = !string.IsNullOrWhiteSpace(ult?.Cuerpo) ? ult!.Cuerpo
+                       : !string.IsNullOrEmpty(ult?.MediaUrl) ? "📎 Archivo" : null;
+            result.Add(new
+            {
+                f.Numero,
+                Linea = lin,
+                Nombre = nombre,
+                De = f.AsignadoPor,
+                Nota = f.AsignadoNota,
+                f.AsignadoAt,
+                UltimoMensaje = ultimo
+            });
+        }
+        return Ok(result);
     }
 
     // 2026-08-09: archivar/desarchivar una charla. Archivar = sacarla del listado general hasta que el

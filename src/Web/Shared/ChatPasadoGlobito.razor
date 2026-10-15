@@ -1,0 +1,184 @@
+@inject ApiClient Api
+@inject PresenceService Presence
+@inject Web.Services.OperatorService Op
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@implements IDisposable
+
+@*
+   2026-10-15 — Globito "Te pasaron un chat".
+
+   Pedido de él: "cuando yo le paso un chat a Germán, o a Gaby o viceversa en cualquier sentido,
+   que nos aparezca una notificación tipo globito así seguimos el chat".
+
+   Antes el aviso ("🔔 Te la pasó X") solo se veía estando en la pantalla de WhatsApp. Ahora
+   aparece abajo a la derecha en CUALQUIER pantalla, al que tiene puesto su PIN. No se va solo:
+   "Abrir chat" lleva directo a la charla (y ahí se apaga, como siempre); "Después" / ✕ lo cierra
+   en esta compu, pero el chat sigue con el 🔔 en la lista de WhatsApp hasta abrirlo.
+*@
+
+@if (visibles.Count > 0)
+{
+    <div class="chpas-pila">
+        @foreach (var c in visibles)
+        {
+            <div class="chpas-card" @key="Clave(c)">
+                <div class="chpas-head">
+                    <span>🔔 Te pasaron un chat · @Hace(c.AsignadoAt)</span>
+                    <button class="chpas-x" title="Cerrar" @onclick="() => Despues(c)">✕</button>
+                </div>
+                <div class="chpas-nombre">@c.Nombre</div>
+                @if (!string.IsNullOrWhiteSpace(c.De))
+                {
+                    <div class="chpas-sub">te lo pasó <b>@Lindo(c.De)</b></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(c.Nota))
+                {
+                    <div class="chpas-nota">📝 "@c.Nota"</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(c.UltimoMensaje))
+                {
+                    <div class="chpas-sub chpas-ult">Último mensaje del cliente: "@Corto(c.UltimoMensaje)"</div>
+                }
+                <div class="chpas-botones">
+                    <button class="chpas-btn chpas-btn-ok" @onclick="() => Abrir(c)">Abrir chat</button>
+                    <button class="chpas-btn" @onclick="() => Despues(c)">Después</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    /* right 90px: a la izquierda de los botones redondos (WhatsApp / chat) que viven abajo a la derecha. */
+    .chpas-pila { position: fixed; right: 90px; bottom: 22px; z-index: 9700; display: flex;
+        flex-direction: column; gap: 12px; width: min(340px, calc(100vw - 24px)); }
+    .chpas-card { background: #fff; border: 1px solid #d1d5db; border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 14px 16px; color: #1f2937;
+        font-family: inherit; text-align: left; }
+    .chpas-head { display: flex; justify-content: space-between; align-items: center;
+        font-size: 13px; color: #6b7280; }
+    .chpas-x { background: none; border: 0; color: #9ca3af; cursor: pointer; font-size: 14px;
+        padding: 0 2px; line-height: 1; }
+    .chpas-x:hover { color: #374151; }
+    .chpas-nombre { font-size: 17px; font-weight: 600; margin: 6px 0 2px; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap; }
+    .chpas-sub { font-size: 13px; color: #6b7280; }
+    .chpas-ult { margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chpas-nota { font-size: 13px; margin-top: 8px; padding: 7px 9px; background: #f9fafb;
+        border: 1px solid #e5e7eb; border-radius: 6px; white-space: pre-wrap; word-break: break-word; }
+    .chpas-botones { display: flex; gap: 8px; margin-top: 12px; }
+    .chpas-btn { background: #fff; color: #374151; border: 1px solid #d1d5db; border-radius: 6px;
+        padding: 7px 12px; font-size: 14px; cursor: pointer; }
+    .chpas-btn-ok { background: #16a34a; color: #fff; border-color: #16a34a; font-weight: 600; }
+    .chpas-btn-ok:hover { background: #15803d; }
+    /* Celu: de borde a borde (anclado a la izquierda, porque si la pantalla es más ancha que el celu
+       el lado derecho queda afuera) y arriba de los botones redondos. */
+    @@media (max-width: 600px) { .chpas-pila { left: 12px; right: auto; bottom: 150px; width: calc(100vw - 24px); } }
+</style>
+
+@code {
+    private const string KeyDespues = "wa_chat_pasado_despues";
+    private const int MaxVisibles = 3;
+
+    private List<ApiClient.ChatPasadoDto> pendientes = new();
+    private HashSet<string> cerrados = new();
+    private System.Threading.Timer? timerRespaldo;
+
+    private List<ApiClient.ChatPasadoDto> visibles =>
+        pendientes.Where(c => !cerrados.Contains(Clave(c))).Take(MaxVisibles).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var guardado = await JS.InvokeAsync<string?>("localStorage.getItem", KeyDespues);
+            if (!string.IsNullOrWhiteSpace(guardado))
+                cerrados = guardado.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        }
+        catch { }
+
+        Presence.OnChatPasado += ChatPasadoLlego;
+        Op.OnChange += OperadorCambio;
+        // Igual que el cartel de Depósito: la conexión en vivo la abre el globito mismo, así el aviso
+        // llega estando en cualquier pantalla (no solo con el chat abierto).
+        try { await Presence.EnsureStartedAsync(); } catch { }
+        await CargarAsync();
+        // Respaldo cada 30 s: por si la conexión en vivo se cortó. Además refresca el "hace N min".
+        timerRespaldo = new System.Threading.Timer(async _ =>
+        {
+            try { await Presence.EnsureStartedAsync(); } catch { }
+            await InvokeAsync(CargarAsync);
+        }, null, 30000, 30000);
+    }
+
+    private void ChatPasadoLlego(string para)
+    {
+        if (string.Equals(para?.Trim(), Op.Current?.Trim(), StringComparison.OrdinalIgnoreCase))
+            _ = InvokeAsync(CargarAsync);
+    }
+
+    private void OperadorCambio() => _ = InvokeAsync(CargarAsync);
+
+    private async Task CargarAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Op.Current))
+        {
+            pendientes = new();
+            StateHasChanged();
+            return;
+        }
+        try { pendientes = await Api.GetChatsPasadosPendientesAsync(); }
+        catch { return; }   // si falla, se queda con lo que mostraba
+        StateHasChanged();
+    }
+
+    private static string Clave(ApiClient.ChatPasadoDto c) =>
+        $"{c.Numero}|{c.Linea}|{c.AsignadoAt?.Ticks}";
+
+    private void Abrir(ApiClient.ChatPasadoDto c)
+    {
+        pendientes.Remove(c);
+        var url = $"/whatsapp?numero={Uri.EscapeDataString(c.Numero)}";
+        if (!string.IsNullOrEmpty(c.Linea)) url += $"&linea={Uri.EscapeDataString(c.Linea)}";
+        Nav.NavigateTo(url);
+    }
+
+    private async Task Despues(ApiClient.ChatPasadoDto c)
+    {
+        cerrados.Add(Clave(c));
+        // Solo se recuerdan los que siguen pendientes, así la lista guardada no crece para siempre.
+        var vigentes = pendientes.Select(Clave).ToHashSet();
+        cerrados.IntersectWith(vigentes);
+        try { await JS.InvokeVoidAsync("localStorage.setItem", KeyDespues, string.Join("\n", cerrados)); }
+        catch { }
+    }
+
+    private static string Lindo(string? op) => (op ?? "").Trim().ToUpperInvariant() switch
+    {
+        "GERMAN" => "Germán",
+        "GABRIEL" => "Gaby",
+        "OSMAR" => "Osmar",
+        var x when x.Length > 0 => x[..1] + x[1..].ToLowerInvariant(),
+        _ => ""
+    };
+
+    private static string Hace(DateTime? utc)
+    {
+        if (utc is null) return "recién";
+        var min = (int)(DateTime.UtcNow - DateTime.SpecifyKind(utc.Value, DateTimeKind.Utc)).TotalMinutes;
+        if (min < 1) return "recién";
+        if (min < 60) return $"hace {min} min";
+        if (min < 24 * 60) return $"hace {min / 60} h";
+        return $"hace {min / (24 * 60)} días";
+    }
+
+    private static string Corto(string s) => s.Length > 90 ? s[..90] + "…" : s;
+
+    public void Dispose()
+    {
+        Presence.OnChatPasado -= ChatPasadoLlego;
+        Op.OnChange -= OperadorCambio;
+        timerRespaldo?.Dispose();
+    }
+}

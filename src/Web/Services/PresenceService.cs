@@ -61,6 +61,9 @@ public class PresenceService : IAsyncDisposable
     /// <summary>2026-09-09: llegó un AVISO IMPORTANTE para Depósito (@ojo / 🔴 o el botón de la
     /// oficina). Trae el id; la pantalla se trae el aviso y lo muestra.</summary>
     public event Action<int>? OnAvisoDeposito;
+    /// <summary>2026-10-15: le pasaron un chat a este operador (o ya lo abrió). Trae el nombre del
+    /// operador; el globito "Te pasaron un chat" se recarga si es el suyo.</summary>
+    public event Action<string>? OnChatPasado;
     /// <summary>2026-08-20: se recuperó la conexión después de un corte. Mientras estuvo cortada NO
     /// llegó ningún aviso, así que la pantalla tiene que ir a buscar lo que se perdió.</summary>
     public event Action? OnReconectado;
@@ -86,6 +89,7 @@ public class PresenceService : IAsyncDisposable
             _hub.On<string, string, DateTime>("WaNuevoMensaje",
                 (convId, direccion, at) => OnNuevoMensaje?.Invoke(convId, direccion, at));
             _hub.On<int>("AvisoDeposito", id => OnAvisoDeposito?.Invoke(id));
+            _hub.On<string>("ChatPasado", para => OnChatPasado?.Invoke(para));
 
             // Volvió solo después de un corte: hay que traer lo que entró mientras no había canal.
             _hub.Reconnected += _ => { OnReconectado?.Invoke(); return Task.CompletedTask; };

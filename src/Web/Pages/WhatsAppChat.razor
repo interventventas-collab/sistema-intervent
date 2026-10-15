@@ -7644,6 +7644,23 @@
     /// de esa entrada del selector; esta pantalla no usa el robot para nada más.</summary>
     private bool waQrHayCuenta;
 
+    // 2026-10-15: el globito "Te pasaron un chat" navega a /whatsapp?numero=... y si ya estabas en
+    // esta pantalla Blazor NO la vuelve a armar (OnInitialized no corre de nuevo): el chat no se
+    // abría. Acá se abre el chat nuevo cuando cambia el número de la dirección.
+    string? _numeroInicialAplicado;
+    bool _inicioListo;
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_inicioListo || string.IsNullOrWhiteSpace(NumeroInicial)) return;
+        if (NumeroInicial == _numeroInicialAplicado) return;
+        _numeroInicialAplicado = NumeroInicial;
+        await LoadConversaciones(silent: true);
+        var conv = conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial
+                        && (string.IsNullOrEmpty(LineaInicial) || c.Linea == LineaInicial))
+                    ?? conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial);
+        await SelectConv(NumeroInicial, conv?.Linea);
+    }
+
     protected override async Task OnInitializedAsync()
     {
         // ¿El que entró es un usuario SOLO de Depósito? (mismo criterio que el Dashboard)
@@ -7697,6 +7714,8 @@
                         ?? conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial);
             await SelectConv(NumeroInicial, conv?.Linea);
         }
+        _numeroInicialAplicado = NumeroInicial;
+        _inicioListo = true;
         await LoadRespuestas();
         await LoadContactos();
         await LoadDatosBancarios();

@@ -49,6 +49,16 @@ public class WaLiveNotifier
         }
     }
 
+    /// <summary>2026-10-15: alguien pasó un chat (o el que lo recibió ya lo abrió). Cada pantalla
+    /// mira si <paramref name="para"/> es su operador y, si lo es, recarga el globito
+    /// "Te pasaron un chat". Si no llega, el globito igual se pone al día en su chequeo de respaldo.</summary>
+    public async Task AvisarChatPasadoAsync(string? para)
+    {
+        if (string.IsNullOrWhiteSpace(para)) return;
+        try { await _hub.Clients.Group("presence-all").SendAsync("ChatPasado", para); }
+        catch (Exception ex) { _logger.LogDebug(ex, "[WaLive] no se pudo avisar chat pasado a {Para}", para); }
+    }
+
     /// <summary>Avisa a todas las pantallas abiertas. <paramref name="direccion"/> = INCOMING | OUTGOING.</summary>
     public async Task AvisarAsync(string? numero, string? lineaPhoneId, string direccion)
     {
