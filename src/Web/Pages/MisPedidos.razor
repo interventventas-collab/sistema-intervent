@@ -324,6 +324,33 @@
     .mp-cuenta-aviso-mio { font-size:0.9rem; color:#374151; }
     .mp-cuenta-aviso-resp { margin-top:0.4rem; padding:0.5rem 0.6rem; background:#eff6ff;
         border-radius:8px; font-size:0.9rem; color:#1e3a8a; }
+    /* ── 16/10/2026: Comprobantes (ver y compartir los últimos 50) ── */
+    .mpc-open { display:block; width:100%; margin:-0.3rem 0 0.85rem; padding:0.75rem; background:white; color:#0e7490;
+        border:1.5px solid #0e7490; border-radius:12px; font-weight:800; font-size:0.95rem; cursor:pointer; }
+    .mpc-overlay { position:fixed; inset:0; background:#f3f4f6; z-index:1500; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+    .mpc-wrap { max-width:560px; margin:0 auto; padding:0.9rem 0.8rem 2rem; }
+    .mpc-top { display:flex; align-items:center; gap:0.6rem; margin-bottom:0.7rem; }
+    .mpc-back { background:white; border:1px solid #d1d5db; border-radius:10px; padding:0.45rem 0.75rem; font-size:1rem; font-weight:700; cursor:pointer; }
+    .mpc-title { font-size:1.1rem; font-weight:800; color:#111827; }
+    .mpc-search { width:100%; box-sizing:border-box; padding:0.7rem 0.8rem; border:1.5px solid #0e7490; border-radius:10px; font-size:1rem; margin-bottom:0.5rem; }
+    .mpc-chips { display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; margin-bottom:0.6rem; }
+    .mpc-chip { padding:0.38rem 0.75rem; border-radius:999px; background:white; border:1.5px solid #d1d5db; font-size:0.82rem; font-weight:700; color:#374151; cursor:pointer; }
+    .mpc-chip.on { background:#0e7490; border-color:#0e7490; color:white; }
+    .mpc-dia-input { padding:0.32rem 0.5rem; border:1.5px solid #0e7490; border-radius:999px; font-size:0.82rem; }
+    .mpc-dia { font-size:0.72rem; font-weight:800; color:#6b7280; margin:0.75rem 0.15rem 0.35rem; text-transform:uppercase; letter-spacing:0.03em; }
+    .mpc-row { background:white; border-radius:10px; padding:0.6rem 0.7rem; margin-bottom:0.4rem; }
+    .mpc-r1 { display:flex; justify-content:space-between; gap:0.5rem; font-size:0.9rem; font-weight:700; color:#111827; }
+    .mpc-r1 .mpc-cli { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .mpc-r1 .mpc-tot { white-space:nowrap; }
+    .mpc-r2 { display:flex; justify-content:space-between; align-items:center; gap:0.5rem; margin-top:0.4rem; }
+    .mpc-num { font-family:monospace; font-size:0.76rem; color:#6b7280; }
+    .mpc-acts { display:flex; gap:0.35rem; flex-shrink:0; }
+    .mpc-wa { background:#16a34a; color:white; border:none; border-radius:8px; padding:0.45rem 0.7rem; font-size:0.82rem; font-weight:800; cursor:pointer; }
+    .mpc-wa.again { background:#0e7490; }
+    .mpc-wa:disabled { opacity:0.6; }
+    .mpc-dl { background:white; border:1px solid #d1d5db; color:#374151; border-radius:8px; padding:0.45rem 0.6rem; font-size:0.82rem; font-weight:700; text-decoration:none; }
+    .mpc-nota { text-align:center; color:#6b7280; font-size:0.85rem; padding:1rem 0.5rem; }
+    .mpc-mas { display:block; width:100%; margin-top:0.5rem; padding:0.6rem; background:white; border:1px solid #d1d5db; border-radius:10px; font-weight:700; color:#374151; cursor:pointer; }
 </style>
 
 <div class="mp-wrap">
@@ -352,6 +379,12 @@
                 <div style="font-size: 3rem;">🚚</div>
             </div>
         </div>
+
+        @* 16/10/2026: solo si la oficina le prendió el tilde (Gabriel, Germán, Osmar). *@
+        @if (comprobantesAplica)
+        {
+            <button type="button" class="mpc-open" @onclick="AbrirComprobantes">📄 Comprobantes</button>
+        }
 
         @* ─── 2026-09-02: ¿terminó su recorrido? — es lo primero que mira el repartidor ───
            "Terminó" = ninguna parada del mapa le quedó pendiente. Pendiente = ni entregada ni
@@ -1555,6 +1588,83 @@
     </div>
 }
 
+@* 16/10/2026: "Comprobantes" — los últimos 50, buscador por cliente o número, y por día.
+   Cada uno con WhatsApp (el PDF adjunto, con el menú de compartir del celu) y ⬇ para bajarlo. *@
+@if (verComprobantes)
+{
+    <div class="mpc-overlay">
+        <div class="mpc-wrap">
+            <div class="mpc-top">
+                <button type="button" class="mpc-back" @onclick="() => verComprobantes = false">←</button>
+                <div class="mpc-title">Comprobantes</div>
+            </div>
+            <input class="mpc-search" type="search" placeholder="🔍 Cliente, razón social o N°…"
+                   value="@compBuscar" @oninput="OnCompBuscar" />
+            <div class="mpc-chips">
+                <span class="mpc-chip @(compDia is null ? "on" : "")" @onclick="() => CompElegirDia(null)">Últimos 50</span>
+                <span class="mpc-chip @(compDia == HoyAr ? "on" : "")" @onclick="() => CompElegirDia(HoyAr)">Hoy</span>
+                <span class="mpc-chip @(compDia == HoyAr.AddDays(-1) ? "on" : "")" @onclick="() => CompElegirDia(HoyAr.AddDays(-1))">Ayer</span>
+                @if (compEligeDia || (compDia is { } dd && dd != HoyAr && dd != HoyAr.AddDays(-1)))
+                {
+                    <input class="mpc-dia-input" type="date" value="@(compDia?.ToString("yyyy-MM-dd"))" @onchange="OnCompDiaInput" />
+                }
+                else
+                {
+                    <span class="mpc-chip" @onclick="() => compEligeDia = true">📅 Elegir día</span>
+                }
+            </div>
+
+            @if (compCargando && compItems.Count == 0)
+            {
+                <div class="mpc-nota">Buscando…</div>
+            }
+            else if (compError)
+            {
+                <div class="mpc-nota">No se pudieron traer los comprobantes. <button type="button" class="mpc-mas" @onclick="() => CargarComprobantes(false)">🔄 Reintentar</button></div>
+            }
+            else if (compItems.Count == 0)
+            {
+                <div class="mpc-nota">@(string.IsNullOrWhiteSpace(compBuscar) && compDia is null ? "Todavía no hay comprobantes." : "No hay comprobantes con eso. Probá con otro nombre o fecha.")</div>
+            }
+            else
+            {
+                DateTime? diaAnterior = null;
+                foreach (var c in compItems)
+                {
+                    if (diaAnterior != c.Fecha.Date)
+                    {
+                        diaAnterior = c.Fecha.Date;
+                        <div class="mpc-dia">@DiaTexto(c.Fecha.Date)</div>
+                    }
+                    var url = $"api/cafe/repartidor-public/mis-pedidos/{Token}/comprobantes/{c.Id}/pdf";
+                    <div class="mpc-row">
+                        <div class="mpc-r1">
+                            <span class="mpc-cli">@c.Cliente</span>
+                            <span class="mpc-tot">@(c.Total < 0 ? "−" : "")$@Math.Abs(c.Total).ToString("N0", ArCult)</span>
+                        </div>
+                        <div class="mpc-r2">
+                            <span class="mpc-num">@c.TipoTexto @c.NumeroTexto@(c.ArcaPendiente ? " · ARCA pendiente" : "")</span>
+                            <span class="mpc-acts">
+                                <button type="button" class="mpc-wa @(compTocarDeNuevo == c.Id ? "again" : "")" disabled="@(compCompartiendo == c.Id)"
+                                        @onclick="() => CompartirComprobante(c, url)">
+                                    @(compCompartiendo == c.Id ? "Armando…" : compTocarDeNuevo == c.Id ? "Listo, tocá" : "WhatsApp")
+                                </button>
+                                <a class="mpc-dl" href="@url" download title="Bajar el PDF al teléfono">Bajar</a>
+                            </span>
+                        </div>
+                    </div>
+                }
+                @if (compHayMas)
+                {
+                    <button type="button" class="mpc-mas" disabled="@compCargando" @onclick="() => CargarComprobantes(true)">
+                        @(compCargando ? "Buscando…" : "Ver más viejos")
+                    </button>
+                }
+            }
+        </div>
+    </div>
+}
+
 @if (toastVisible)
 {
     <div class="mp-toast @(toastError ? "error" : "")">@toastMsg</div>
@@ -2354,6 +2464,7 @@
         }
         catch { /* navegador viejo o JS bloqueado, ignorar */ }
         await Recargar();
+        await ChequearComprobantes();   // 16/10/2026: botón "Comprobantes" (si la oficina lo prendió)
         if (string.IsNullOrEmpty(VerComo))
             _ = IniciarSeguimientoUbicacion();   // 2026-09-17: "Por donde van" (si la oficina lo prendio)
         // 2026-06-05: auto-refresh cada 30s. Si el admin asigna una venta nueva,
@@ -2919,6 +3030,114 @@
         try { sortableRef?.Dispose(); } catch { }
         try { refreshTimer?.Dispose(); } catch { }
         try { ubicacionTimer?.Dispose(); } catch { }
+    }
+
+    // ─── 16/10/2026: Comprobantes (ver y compartir) ───
+    public record ComprobanteLinkDto(int Id, DateTime Fecha, string Tipo, string TipoTexto, string NumeroTexto,
+        string Cliente, decimal Total, bool ArcaPendiente);
+    public record ComprobantesLinkDto(bool Aplica, List<ComprobanteLinkDto> Items, bool HayMas);
+
+    private static readonly System.Globalization.CultureInfo ArCult = new("es-AR");
+    private bool comprobantesAplica;
+    private bool verComprobantes;
+    private List<ComprobanteLinkDto> compItems = new();
+    private bool compHayMas, compCargando, compError, compEligeDia;
+    private string compBuscar = "";
+    private DateTime? compDia;
+    private int? compCompartiendo, compTocarDeNuevo;
+    private System.Threading.CancellationTokenSource? _compDebounce;
+    private DateTime HoyAr => DateTime.UtcNow.AddHours(-3).Date;
+
+    private string DiaTexto(DateTime d)
+    {
+        var nombre = d.ToString("dddd dd/MM", ArCult);
+        if (d == HoyAr) return "Hoy · " + nombre;
+        if (d == HoyAr.AddDays(-1)) return "Ayer · " + nombre;
+        return nombre;
+    }
+
+    /// <summary>Al abrir el link: ¿le aparece el botón? Trae de paso la primera tanda.</summary>
+    private async Task ChequearComprobantes()
+    {
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ComprobantesLinkDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/comprobantes");
+            comprobantesAplica = r?.Aplica == true;
+            if (comprobantesAplica) { compItems = r!.Items; compHayMas = r.HayMas; }
+        }
+        catch { comprobantesAplica = false; }
+    }
+
+    private async Task AbrirComprobantes()
+    {
+        verComprobantes = true;
+        compTocarDeNuevo = null;
+        await CargarComprobantes(false);   // siempre lo más nuevo al abrir
+    }
+
+    private async Task CargarComprobantes(bool masViejos)
+    {
+        compCargando = true; compError = false;
+        StateHasChanged();
+        try
+        {
+            var qs = new List<string>();
+            if (!string.IsNullOrWhiteSpace(compBuscar)) qs.Add("q=" + Uri.EscapeDataString(compBuscar.Trim()));
+            if (compDia is { } d) qs.Add("dia=" + d.ToString("yyyy-MM-dd"));
+            if (masViejos) qs.Add("saltar=" + compItems.Count);
+            var buscado = (compBuscar, compDia);
+            var r = await Http.GetFromJsonAsync<ComprobantesLinkDto>(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/comprobantes" + (qs.Count > 0 ? "?" + string.Join("&", qs) : ""));
+            if (buscado != (compBuscar, compDia)) return;   // ya cambió lo que busca: vale la búsqueda nueva
+            if (r is null || !r.Aplica) { comprobantesAplica = false; verComprobantes = false; return; }
+            compItems = masViejos ? compItems.Concat(r.Items).ToList() : r.Items;
+            compHayMas = r.HayMas;
+        }
+        catch { compError = true; }
+        finally { compCargando = false; StateHasChanged(); }
+    }
+
+    private async Task OnCompBuscar(ChangeEventArgs e)
+    {
+        compBuscar = e.Value?.ToString() ?? "";
+        _compDebounce?.Cancel();
+        _compDebounce = new System.Threading.CancellationTokenSource();
+        var tk = _compDebounce.Token;
+        try { await Task.Delay(400, tk); } catch (TaskCanceledException) { return; }
+        await CargarComprobantes(false);
+    }
+
+    private async Task CompElegirDia(DateTime? d)
+    {
+        compDia = d;
+        compEligeDia = false;
+        await CargarComprobantes(false);
+    }
+
+    private async Task OnCompDiaInput(ChangeEventArgs e)
+    {
+        compDia = DateTime.TryParse(e.Value?.ToString(), out var d) ? d.Date : null;
+        await CargarComprobantes(false);
+    }
+
+    private async Task CompartirComprobante(ComprobanteLinkDto c, string url)
+    {
+        compCompartiendo = c.Id;
+        StateHasChanged();
+        string res;
+        try
+        {
+            var porDefecto = $"{c.TipoTexto} {c.NumeroTexto} {c.Cliente}.pdf";
+            res = await JS.InvokeAsync<string>("mpCompartir.compartir", url, porDefecto, "");
+        }
+        catch { res = "error"; }
+        compCompartiendo = null;
+        // El celu solo abre el menú de compartir justo después de un toque: si el PDF tardó, ya
+        // quedó guardado y con tocar otra vez sale al instante.
+        compTocarDeNuevo = res == "tocar-de-nuevo" ? c.Id : null;
+        if (res == "bajado") MostrarToast("Este teléfono no deja compartir: el PDF quedó bajado", false);
+        else if (res == "error") MostrarToast("No se pudo armar el PDF", true);
+        StateHasChanged();
     }
 
     private void MostrarToast(string msg, bool error)

@@ -450,6 +450,8 @@ public class RepartidorDto
     /// <summary>2026-09-17: si esta prendido, su celu manda la ubicacion mientras reparte y se lo
     /// ve en el mapa con el boton "Por donde van". En el celu del repartidor no aparece nada.</summary>
     public bool SeguirUbicacion { get; set; }
+    /// <summary>16/10/2026: en su link aparece "Comprobantes" (ver y compartir los ultimos 50).</summary>
+    public bool VerComprobantes { get; set; }
 }
 
 public class CrearRepartidorRequest
@@ -464,6 +466,7 @@ public class EditarRepartidorRequest
     public string? DniUltimos3 { get; set; }
     public bool IsActive { get; set; } = true;
     public bool SeguirUbicacion { get; set; }
+    public bool VerComprobantes { get; set; }
 }
 
 public class CobranzaPendienteDto

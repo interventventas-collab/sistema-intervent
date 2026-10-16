@@ -988,7 +988,8 @@ public class CafeVentasController : ControllerBase
 
     /// <summary>Genera un token aleatorio ~22 chars base64-url-safe para el link publico.
     /// Usa Guid.NewGuid() codificado en base64 sin padding ni chars conflictivos en URLs.</summary>
-    private static string GeneratePublicToken()
+    // 16/10/2026: internal para que lo use tambien "Comprobantes" del link del repartidor.
+    internal static string GeneratePublicToken()
     {
         var g = Guid.NewGuid();
         var bytes = g.ToByteArray();

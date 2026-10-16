@@ -15,15 +15,15 @@ public class CafeRepartidoresController : ControllerBase
     private readonly AppDbContext _db;
     public CafeRepartidoresController(AppDbContext db) { _db = db; }
 
-    public record RepartidorDto(int Id, string Nombre, string? DniUltimos3, bool IsActive, string? PublicToken, bool SeguirUbicacion);
+    public record RepartidorDto(int Id, string Nombre, string? DniUltimos3, bool IsActive, string? PublicToken, bool SeguirUbicacion, bool VerComprobantes);
     public record CrearRequest(string Nombre, string? DniUltimos3);
-    public record EditarRequest(string Nombre, string? DniUltimos3, bool IsActive, bool SeguirUbicacion = false);
+    public record EditarRequest(string Nombre, string? DniUltimos3, bool IsActive, bool SeguirUbicacion = false, bool VerComprobantes = false);
 
     [HttpGet]
     public async Task<IActionResult> List()
     {
         var l = await _db.CafeRepartidores.OrderBy(r => r.Nombre)
-            .Select(r => new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion))
+            .Select(r => new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion, r.VerComprobantes))
             .ToListAsync();
         return Ok(l);
     }
@@ -57,7 +57,7 @@ public class CafeRepartidoresController : ControllerBase
         };
         _db.CafeRepartidores.Add(r);
         await _db.SaveChangesAsync();
-        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion));
+        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion, r.VerComprobantes));
     }
 
     [HttpPut("{id:int}")]
@@ -70,9 +70,11 @@ public class CafeRepartidoresController : ControllerBase
         r.IsActive = req.IsActive;
         // 2026-09-17: "Por donde van" — lo prende y apaga la oficina, el celu no muestra nada.
         r.SeguirUbicacion = req.SeguirUbicacion;
+        // 16/10/2026: "Comprobantes" en su link (ver y compartir los ultimos 50).
+        r.VerComprobantes = req.VerComprobantes;
         r.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion));
+        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion, r.VerComprobantes));
     }
 
     [HttpDelete("{id:int}")]

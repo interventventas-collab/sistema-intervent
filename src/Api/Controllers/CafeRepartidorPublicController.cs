@@ -1129,6 +1129,116 @@ public class CafeRepartidorPublicController : ControllerBase
         return Ok(new { url, numero = v.Numero });
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    //  16/10/2026: "Comprobantes" en el link del repartidor
+    // ═══════════════════════════════════════════════════════════════════════
+    // Pedido del dueño: él y sus hermanos (Gabriel, German, Osmar) necesitan bajar un comprobante
+    // desde el celu y mandarlo por WhatsApp sin entrar al sistema. Solo para el repartidor que
+    // tiene el tilde VerComprobantes (lo prende la oficina). Ven TODOS los comprobantes de venta,
+    // no solo los suyos, pero solo para ver/bajar: no cambian nada.
+
+    public record ComprobanteLinkDto(int Id, DateTime Fecha, string Tipo, string TipoTexto, string NumeroTexto,
+        string Cliente, decimal Total, bool ArcaPendiente);
+    public record ComprobantesLinkDto(bool Aplica, List<ComprobanteLinkDto> Items, bool HayMas);
+
+    private static readonly string[] TiposComprobanteLink = { "FA", "FB", "FC", "NCA", "NCB", "NCC", "X", "PRO" };
+
+    private static string TipoTextoLink(string t) => t switch
+    {
+        "FA" => "Factura A", "FB" => "Factura B", "FC" => "Factura C",
+        "NCA" => "Nota de crédito A", "NCB" => "Nota de crédito B", "NCC" => "Nota de crédito C",
+        "X" => "Presupuesto", "PRO" => "Proforma",
+        _ => "Comprobante"
+    };
+
+    /// <summary>Lista para la pantalla "Comprobantes": sin filtro, los ultimos 50 (del mas nuevo al
+    /// mas viejo). Con texto busca por cliente, razon social o numero; con dia, solo ese dia.
+    /// "saltar" es para el boton "Ver mas viejos".</summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}/comprobantes")]
+    public async Task<IActionResult> MisComprobantes(string tokenRepartidor, [FromQuery] string? q = null,
+        [FromQuery] DateTime? dia = null, [FromQuery] int saltar = 0)
+    {
+        var r = await _db.CafeRepartidores.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null || !r.VerComprobantes) return Ok(new ComprobantesLinkDto(false, new(), false));
+
+        const int porPagina = 50;
+        var query = _db.CafeVentas.AsNoTracking()
+            .Where(v => TiposComprobanteLink.Contains(v.TipoComprobante) && v.Estado != "anulado");
+        if (dia.HasValue)
+        {
+            var d = dia.Value.Date;
+            var d1 = d.AddDays(1);
+            query = query.Where(v => v.Fecha >= d && v.Fecha < d1);
+        }
+        var texto = (q ?? "").Trim();
+        if (texto.Length > 0)
+        {
+            // Numero de factura: "12345" o "0003-00012345" → busca por el numero de ARCA.
+            var soloDigitos = new string(texto.Where(char.IsDigit).ToArray());
+            int? nro = null;
+            if (soloDigitos.Length > 0 && soloDigitos.Length == texto.Replace("-", "").Replace(" ", "").Length)
+            {
+                var ultimos = texto.Contains('-') ? texto[(texto.LastIndexOf('-') + 1)..] : soloDigitos;
+                if (int.TryParse(ultimos.TrimStart('0').Length == 0 ? "0" : ultimos.TrimStart('0'), out var n)) nro = n;
+            }
+            query = query.Where(v =>
+                (v.ClienteNombreSnapshot != null && v.ClienteNombreSnapshot.Contains(texto))
+                || (v.ClienteRazonSocialSnapshot != null && v.ClienteRazonSocialSnapshot.Contains(texto))
+                || v.Numero.Contains(texto)
+                || (nro != null && v.ArcaCbteNro == nro));
+        }
+
+        var filas = await query
+            .OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id)
+            .Skip(Math.Max(0, saltar)).Take(porPagina + 1)
+            .Select(v => new
+            {
+                v.Id, v.Fecha, v.TipoComprobante, v.Numero, v.ClienteNombreSnapshot, v.ClienteRazonSocialSnapshot,
+                v.Total, v.ArcaImpTotal, v.ArcaEstado, v.ArcaCae, v.ArcaPtoVta, v.ArcaCbteNro
+            })
+            .ToListAsync();
+
+        var items = filas.Take(porPagina).Select(v =>
+        {
+            var esArca = v.TipoComprobante is "FA" or "FB" or "FC" or "NCA" or "NCB" or "NCC";
+            var autorizada = esArca && v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
+                             && v.ArcaPtoVta.HasValue && v.ArcaCbteNro.HasValue;
+            string numero;
+            if (autorizada) numero = $"{v.ArcaPtoVta!.Value:D4}-{v.ArcaCbteNro!.Value:D8}";
+            // Igual que el PDF del presupuesto: "CAFE-2026-2052" → "N° 2052".
+            else if (v.TipoComprobante == "X" && v.Numero.Contains('-')) numero = "N° " + v.Numero[(v.Numero.LastIndexOf('-') + 1)..];
+            else numero = v.Numero;
+            var cliente = !string.IsNullOrWhiteSpace(v.ClienteRazonSocialSnapshot)
+                ? v.ClienteRazonSocialSnapshot! : (v.ClienteNombreSnapshot ?? "Consumidor final");
+            // Facturas: el total con IVA que registro ARCA (Total puede ser el neto).
+            var total = autorizada && v.ArcaImpTotal.HasValue ? v.ArcaImpTotal.Value : v.Total;
+            if (v.TipoComprobante.StartsWith("NC") && total > 0) total = -total;
+            return new ComprobanteLinkDto(v.Id, v.Fecha, v.TipoComprobante, TipoTextoLink(v.TipoComprobante),
+                numero, cliente, total, esArca && !autorizada);
+        }).ToList();
+
+        return Ok(new ComprobantesLinkDto(true, items, filas.Count > porPagina));
+    }
+
+    /// <summary>El PDF de un comprobante para bajarlo o compartirlo. Es el mismo PDF que recibe el
+    /// cliente (el del link publico de la venta); si la venta vieja no tenia token, se le crea.</summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}/comprobantes/{ventaId:int}/pdf")]
+    public async Task<IActionResult> MiComprobantePdf(string tokenRepartidor, int ventaId)
+    {
+        var r = await _db.CafeRepartidores.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null || !r.VerComprobantes) return NotFound(new { error = "No tenés habilitado ver comprobantes" });
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == ventaId);
+        if (v is null || !TiposComprobanteLink.Contains(v.TipoComprobante)) return NotFound(new { error = "Comprobante no encontrado" });
+        if (string.IsNullOrEmpty(v.PublicToken))
+        {
+            v.PublicToken = CafeVentasController.GeneratePublicToken();
+            await _db.SaveChangesAsync();
+        }
+        return Redirect($"/api/cafe/ventas/publica/{v.PublicToken}/pdf");
+    }
+
     // 2026-06-10: SoloCobrar=true → carga la cobranza pero NO marca esta venta como entregada
     // (sirve para "cobranza suelta" que el admin imputa a otra venta del cliente)
     // 2026-06-22: extender con datos de firma + receptor (opcional). Solo se persisten si NO es SoloCobrar.

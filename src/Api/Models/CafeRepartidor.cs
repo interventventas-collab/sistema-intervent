@@ -40,6 +40,12 @@ public class CafeRepartidor
     /// oficina desde Administracion -> Repartidores; en el celu no aparece nada. Arranca apagado.</summary>
     public bool SeguirUbicacion { get; set; }
 
+    /// <summary>16/10/2026: si esta en true, en su link aparece "Comprobantes": los ultimos 50
+    /// comprobantes de venta (todos, no solo los suyos) para bajarlos o compartirlos por WhatsApp.
+    /// Lo pidio el dueño para el y sus hermanos (Gabriel, German, Osmar). Lo prende la oficina
+    /// desde Administracion -> Repartidores. Arranca apagado.</summary>
+    public bool VerComprobantes { get; set; }
+
     /// <summary>2026-09-18: la ÚLTIMA vez que se abrió su link personal (/mis-pedidos). Pedido del
     /// dueño: "que diga la última vez que lo abrió cada repartidor y listo". Los repartidores no
     /// entran con usuario y clave, así que no aparecen en Sesiones abiertas: esto es lo único que

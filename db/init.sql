@@ -8293,3 +8293,12 @@ GO
 IF NOT EXISTS (SELECT 1 FROM Cafe_Cajas WHERE Tipo='EFECTIVO_USD' OR Nombre=N'Dólares (efectivo)')
     INSERT INTO Cafe_Cajas (Nombre, Tipo, Orden) VALUES (N'Dólares (efectivo)', 'EFECTIVO_USD', 6);
 GO
+
+-- ============================================================
+-- 16/10/2026: "Comprobantes" en el link del repartidor. Con el tilde prendido ve los
+-- ultimos 50 comprobantes de venta para bajarlos o mandarlos por WhatsApp. Lo prende la
+-- oficina en Administracion -> Repartidores (Gabriel, German y Osmar).
+-- ============================================================
+IF COL_LENGTH('Cafe_Repartidores','VerComprobantes') IS NULL
+    ALTER TABLE Cafe_Repartidores ADD VerComprobantes BIT NOT NULL CONSTRAINT DF_CafeRepartidores_VerComprob DEFAULT 0 WITH VALUES;
+GO

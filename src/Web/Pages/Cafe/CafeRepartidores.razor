@@ -56,6 +56,11 @@
                     <span class="rep-pin" style="background:#eff6ff; color:#1e40af; border-color:#bfdbfe;"
                           title="Su celular manda la ubicación mientras reparte. Se ve en el mapa con el botón 'Por dónde van'.">📍 ubicación</span>
                 }
+                @if (r.VerComprobantes)
+                {
+                    <span class="rep-pin" style="background:#f9fafb; color:#374151; border-color:#e5e7eb;"
+                          title="En su link ve los últimos comprobantes para bajarlos o mandarlos por WhatsApp.">📄 comprobantes</span>
+                }
                 <div class="rep-actions">
                     @if (!string.IsNullOrEmpty(r.PublicToken))
                     {
@@ -97,6 +102,15 @@
             <p style="font-size: 0.75rem; color: #6b7280; margin: 0 0 0.6rem;">
                 Su celular manda dónde está cada 15 minutos y cada vez que toca la pantalla. Lo ves en el mapa
                 con el botón "Por dónde van". En el celular de él no aparece nada. Se guarda 30 días.
+            </p>
+            @* 16/10/2026: "Comprobantes" en su link — lo pidió el dueño para él y sus hermanos. *@
+            <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; margin-bottom: 0.3rem; cursor: pointer;">
+                <input type="checkbox" @bind="formVerComprobantes" style="cursor: pointer;" /> 📄 Puede ver y compartir comprobantes
+            </label>
+            <p style="font-size: 0.75rem; color: #6b7280; margin: 0 0 0.6rem;">
+                En su link aparece el botón "Comprobantes" con los últimos 50 de todos (facturas, presupuestos
+                y notas de crédito), con buscador por cliente y por fecha, para bajarlos o mandarlos por WhatsApp.
+                Solo puede verlos: no puede cambiar ni anular nada.
             </p>
             <div style="display: flex; gap: 0.4rem; justify-content: flex-end;">
                 <button class="btn btn-secondary" @onclick="@(() => mostrarModal = false)">Cancelar</button>
@@ -165,6 +179,7 @@
     private string formPin = "";
     private bool formIsActive = true;
     private bool formSeguirUbicacion;
+    private bool formVerComprobantes;
 
     // Modal "enlace personal"
     private bool mostrarEnlace;
@@ -190,6 +205,7 @@
         formPin = "";
         formIsActive = true;
         formSeguirUbicacion = false;
+        formVerComprobantes = false;
         mostrarModal = true;
     }
 
@@ -200,6 +216,7 @@
         formPin = r.DniUltimos3 ?? "";
         formIsActive = r.IsActive;
         formSeguirUbicacion = r.SeguirUbicacion;
+        formVerComprobantes = r.VerComprobantes;
         mostrarModal = true;
     }
 
@@ -214,7 +231,7 @@
             }
             else
             {
-                await Api.EditarRepartidorAsync(editandoId.Value, new EditarRepartidorRequest { Nombre = formNombre.Trim(), DniUltimos3 = string.IsNullOrWhiteSpace(formPin) ? null : formPin.Trim(), IsActive = formIsActive, SeguirUbicacion = formSeguirUbicacion });
+                await Api.EditarRepartidorAsync(editandoId.Value, new EditarRepartidorRequest { Nombre = formNombre.Trim(), DniUltimos3 = string.IsNullOrWhiteSpace(formPin) ? null : formPin.Trim(), IsActive = formIsActive, SeguirUbicacion = formSeguirUbicacion, VerComprobantes = formVerComprobantes });
                 ToastService.Success("✓ Cambios guardados");
             }
             mostrarModal = false;
