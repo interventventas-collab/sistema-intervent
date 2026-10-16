@@ -896,6 +896,11 @@
                         <div style="font-weight:600; color:#111827;">@(string.IsNullOrWhiteSpace(m.AddressLine) ? "—" : m.AddressLine)</div>
                         <div style="font-size:0.78rem; color:#6b7280;">@(string.Join(" · ", new[] { m.Neighborhood, m.City, m.State, m.ZipCode }.Where(x => !string.IsNullOrWhiteSpace(x))))</div>
                     </div>
+                    @* 2026-10-16: el Waze grande también en los envíos me1 (antes esta tarjeta no tenía ninguno). *@
+                    @if ((m.Latitude.HasValue && m.Longitude.HasValue) || !string.IsNullOrWhiteSpace(m.AddressLine))
+                    {
+                        <a class="mp-card-waze" href="@Me1WazeUrl(m)" target="_blank" rel="noopener">🧭 Ir con Waze</a>
+                    }
                     @if (!string.IsNullOrWhiteSpace(m.ItemsSummary)) { <div style="margin-top:0.45rem; font-size:0.82rem; color:#374151;"><span style="font-weight:600;">Productos:</span> @m.ItemsSummary</div> }
                     @if (m.OrderTotal.HasValue) { <div style="margin-top:0.35rem; text-align:right; color:#111827; font-weight:700;">$@m.OrderTotal.Value.ToString("N0")</div> }
                     <button type="button" class="mp-card-btn mp-card-btn-entregar" style="margin-top:0.7rem; width:100%; padding:0.7rem; font-size:0.95rem;" @onclick="() => AbrirEntregarMe1(m)">✅ Entregué este pedido</button>
@@ -1789,7 +1794,9 @@
         decimal? OrderTotal, string? ItemsSummary, string? TrackingNumber,
         string? Status, string? Substatus,
         DateTime? DateShipped, DateTime? DateDelivered,
-        bool YaEntregada, DateTime? EntregadoAt
+        bool YaEntregada, DateTime? EntregadoAt,
+        // 2026-10-16: punto exacto que manda MeLi (para "Ir con Waze")
+        decimal? Latitude = null, decimal? Longitude = null
     );
 
     private bool loading = true, cargaError = false;
@@ -3311,6 +3318,18 @@
     // decidir si mostrar el botón "capturar mi ubicación" (sólo si no hay nada).
     private bool TieneUbicacionCargada(PedidoDto p)
         => (p.ClienteLat.HasValue && p.ClienteLng.HasValue) || !string.IsNullOrWhiteSpace(p.ClienteMapeoLink);
+
+    // 2026-10-16: Waze para envíos me1: coords de MeLi si vienen, si no la dirección escrita.
+    private string Me1WazeUrl(Me1PedidoDto m)
+    {
+        if (m.Latitude.HasValue && m.Longitude.HasValue)
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            return $"https://www.waze.com/ul?ll={m.Latitude.Value.ToString(ci)}%2C{m.Longitude.Value.ToString(ci)}&navigate=yes";
+        }
+        var q = string.Join(", ", new[] { m.AddressLine, m.City, m.State }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        return $"https://www.waze.com/ul?q={Uri.EscapeDataString(q)}&navigate=yes";
+    }
 
     private string WazeUrl(PedidoDto p)
     {

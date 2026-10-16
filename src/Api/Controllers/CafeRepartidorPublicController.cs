@@ -1419,7 +1419,9 @@ public class CafeRepartidorPublicController : ControllerBase
         decimal? OrderTotal, string? ItemsSummary, string? TrackingNumber,
         string? Status, string? Substatus,
         DateTime? DateShipped, DateTime? DateDelivered,
-        bool YaEntregada, DateTime? EntregadoAt
+        bool YaEntregada, DateTime? EntregadoAt,
+        // 2026-10-16: punto exacto que manda MeLi, para el botón grande "Ir con Waze"
+        decimal? Latitude = null, decimal? Longitude = null
     );
 
     // ── 2026-07-27: Ruta del Mapeo (Flex/paradas) en SOLO-LECTURA para el teléfono del repartidor ──
@@ -1685,7 +1687,8 @@ public class CafeRepartidorPublicController : ControllerBase
             s.OrderTotal, s.ItemsSummary, s.TrackingNumber,
             s.Status, s.Substatus,
             s.DateShipped, s.DateDelivered,
-            s.EntregadoPorRepartidorId.HasValue, s.EntregadoPorRepartidorAt
+            s.EntregadoPorRepartidorId.HasValue, s.EntregadoPorRepartidorAt,
+            s.Latitude, s.Longitude
         )));
     }
 
