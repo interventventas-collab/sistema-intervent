@@ -69,7 +69,9 @@
         </div>
     }
     @* ─── Barra de filtros ─── *@
-    @if (cobranzas is not null && cobranzas.Count > 0)
+    @* 16/10/2026: antes se escondía cuando la búsqueda traía 0 (o el server tardaba y fallaba):
+       desaparecía el buscador y quedaba "Sin cobranzas aún" sin forma de corregir, había que salir. *@
+    @if (cobranzas is not null && (cobranzas.Count > 0 || HayFiltrosActivos))
     {
         <div style="background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 0.6rem 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end;">
             <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
@@ -173,7 +175,7 @@
         }
         else if (cobranzasFiltradas.Count == 0)
         {
-            <p class="text-muted" style="padding:1rem;">@(cobranzas?.Count > 0 ? "No hay cobranzas que coincidan con los filtros. Tocá ✕ Limpiar para verlas todas." : "Sin cobranzas aún. Hace clic en \"+ Nueva cobranza\" para empezar.")</p>
+            <p class="text-muted" style="padding:1rem;">@(!string.IsNullOrWhiteSpace(filtroBuscar) ? $"No hay cobranzas con \"{filtroBuscar.Trim()}\". Corregí lo que buscás o tocá ✕ Limpiar para verlas todas." : cobranzas?.Count > 0 || HayFiltrosActivos ? "No hay cobranzas que coincidan con los filtros. Tocá ✕ Limpiar para verlas todas." : "Sin cobranzas aún. Hace clic en \"+ Nueva cobranza\" para empezar.")</p>
         }
         else
         {
@@ -1598,8 +1600,11 @@
         || filtroMontoMin.HasValue || filtroMontoMax.HasValue
         || filtroTipo != "" || filtroQue != "";
 
-    private void LimpiarFiltros()
+    private async Task LimpiarFiltros()
     {
+        // 16/10/2026: si había texto, la lista vino filtrada del server: hay que volver a traer todas.
+        var habiaBusqueda = !string.IsNullOrWhiteSpace(filtroBuscar);
+        _debounceCts?.Cancel();
         filtroFechaDesde = null;
         filtroFechaHasta = null;
         filtroBuscar = "";
@@ -1610,6 +1615,7 @@
         filtroTipo = "";
         filtroRedirA = "";
         filtroQue = "";
+        if (habiaBusqueda) await Load();
     }
 
     /// <summary>Aplica los filtros activos a la lista de cobranzas. Se llama desde el render.</summary>
