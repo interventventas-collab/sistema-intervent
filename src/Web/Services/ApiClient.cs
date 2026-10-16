@@ -1417,6 +1417,10 @@ public class ApiClient
     public async Task<CafeClienteDto?> UpdateCafeClienteAsync(int id, UpdateCafeClienteRequest request)
         => await AvisarClientesSi(await PutAsync<CafeClienteDto>($"/api/cafe/clientes/{id}", request));
 
+    /// <summary>2026-10-16: un cliente por id (lo usa la venta del chat para el comprobante de siempre).</summary>
+    public async Task<CafeClienteDto?> GetCafeClienteAsync(int id)
+        => await GetAsync<CafeClienteDto>($"/api/cafe/clientes/{id}");
+
     // 2026-08-14: devuelve el cliente del sistema que ya está vinculado a este comprador de ML
     // (por su BuyerId), o null si ninguno lo tiene. Sirve para avisar antes de duplicar.
     public async Task<CafeClienteDto?> GetCafeClientePorMeliBuyerAsync(long buyerId)

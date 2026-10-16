@@ -130,6 +130,12 @@ public class CafeCliente
     /// 24 hs de Meta — si el cliente no escribió, el tilde aparece apagado y avisa por qué.</summary>
     public bool EnviarSiempreWhatsapp { get; set; } = false;
 
+    /// <summary>2026-10-16: comprobante que se le hace SIEMPRE a este cliente. null = se elige cada
+    /// vez · "FACTURA" (la letra A/B/C la pone el sistema según IVA) · "X" cotización · "PRO" presupuesto.
+    /// Se prende desde la ficha o con el tilde "Siempre así con este cliente" de la venta.</summary>
+    [MaxLength(10)]
+    public string? ComprobantePreferido { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

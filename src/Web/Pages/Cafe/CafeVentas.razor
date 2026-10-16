@@ -1634,6 +1634,30 @@
                                     @(LlevaFacturaA(formCondicionIva) ? "A un cliente Inscripto o Monotributo le corresponde Factura A" : "A Consumidor final o Exento le corresponde Factura B"): ARCA la va a rechazar.
                                 </div>
                             }
+                            @* 2026-10-16: "Siempre así con este cliente" = guarda en la ficha el comprobante de
+                               siempre (mismo dato que la ficha). Si el cliente ya tiene uno y se elige otro,
+                               avisa abajo (caso Dulce Lugar Canning: le salió X en vez de factura). *@
+                            @if (formClienteId > 0 && !modoVentaRapida)
+                            {
+                                var prefCli = PreferidoDelCliente();
+                                var catActual = CategoriaComprobante(formTipoComprobante);
+                                <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.72rem; color:#4b5563; margin-top:0.25rem; cursor:pointer; user-select:none;">
+                                    <input type="checkbox" checked="@(prefCli == catActual)" style="width:13px; height:13px; margin:0;"
+                                           @onchange="ToggleComprobantePreferido" />
+                                    Siempre así con este cliente
+                                </label>
+                                @if (prefCli is not null && prefCli != catActual && !editingVentaId.HasValue && !avisoPreferidoDescartado)
+                                {
+                                    <div style="font-size:0.74rem; color:#b91c1c; border:1px solid #fca5a5; border-radius:6px; padding:0.35rem 0.5rem; margin-top:0.3rem;">
+                                        Este cliente va siempre con @NombrePreferido(prefCli). ¿Esta vez @NombrePreferido(catActual)?
+                                        <div style="display:flex; gap:0.3rem; flex-wrap:wrap; margin-top:0.3rem;">
+                                            <button type="button" class="btn btn-sm btn-primary" @onclick="VolverAPreferido">Volver a @NombrePreferido(prefCli)</button>
+                                            <button type="button" class="btn btn-sm btn-secondary" @onclick="@(() => avisoPreferidoDescartado = true)">Solo esta vez</button>
+                                            <button type="button" class="btn btn-sm btn-secondary" @onclick="@(() => GuardarComprobantePreferidoAsync(catActual))">De ahora en más @NombrePreferido(catActual)</button>
+                                        </div>
+                                    </div>
+                                }
+                            }
                         </div>
                         <div class="form-group" style="margin: 0;">
                             <label class="form-label" style="font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Condición IVA</label>
@@ -7377,6 +7401,68 @@
         StateHasChanged();
     }
 
+    // ═══ 2026-10-16: comprobante de siempre por cliente (ficha + tilde "Siempre así con este cliente") ═══
+    // Pedido del dueño después de hacerle X a Dulce Lugar Canning en vez de factura y no poder
+    // facturarla con la fecha vieja. Se guarda la CATEGORÍA (FACTURA / X / PRO): la letra A/B/C
+    // la sigue poniendo el sistema según la condición IVA del cliente y la empresa que factura.
+    private bool avisoPreferidoDescartado = false;
+
+    private static string CategoriaComprobante(string? tipo) => tipo switch
+    {
+        "FA" or "FB" or "FC" => "FACTURA",
+        "PRO" => "PRO",
+        _ => "X"
+    };
+
+    private static string NombrePreferido(string? cat) => cat switch
+    {
+        "FACTURA" => "factura",
+        "PRO" => "presupuesto",
+        _ => "cotización X"
+    };
+
+    private string? PreferidoDelCliente() =>
+        formClienteId > 0 ? clientes?.FirstOrDefault(x => x.Id == formClienteId)?.ComprobantePreferido : null;
+
+    /// <summary>Pone el comprobante de siempre del cliente (factura → letra según IVA y emisor).</summary>
+    private void AplicarComprobantePreferido(string pref)
+    {
+        if (pref == "FACTURA")
+        {
+            EnsureDefaultArcaAccount();
+            formTipoComprobante = !EmisorEsResponsableInscripto(formArcaAccountId) ? "FC"
+                : (LlevaFacturaA(formCondicionIva) ? "FA" : "FB");
+        }
+        else formTipoComprobante = pref == "PRO" ? "PRO" : "X";
+        OnTipoComprobanteChanged();
+    }
+
+    private void VolverAPreferido()
+    {
+        var pref = PreferidoDelCliente();
+        if (pref is not null) AplicarComprobantePreferido(pref);
+    }
+
+    private async Task ToggleComprobantePreferido(ChangeEventArgs e)
+    {
+        var tildado = e.Value is bool b && b;
+        await GuardarComprobantePreferidoAsync(tildado ? CategoriaComprobante(formTipoComprobante) : "");
+    }
+
+    /// <summary>Guarda en la ficha el comprobante de siempre ("" = se elige cada vez).</summary>
+    private async Task GuardarComprobantePreferidoAsync(string cat)
+    {
+        var c = clientes?.FirstOrDefault(x => x.Id == formClienteId);
+        if (c is null) return;
+        var actualizado = await Api.UpdateCafeClienteAsync(formClienteId, new UpdateCafeClienteRequest { ComprobantePreferido = cat });
+        if (actualizado is null) { ToastService.Error("No se pudo guardar en la ficha del cliente"); return; }
+        c.ComprobantePreferido = cat == "" ? null : cat;
+        avisoPreferidoDescartado = false;
+        ToastService.Success(cat == ""
+            ? $"{c.Nombre}: el comprobante se elige cada vez"
+            : $"A {c.Nombre} le va a salir siempre {NombrePreferido(cat)}");
+    }
+
     /// <summary>Elige el tipo de comprobante según lo que pidió el mensaje de WhatsApp:
     /// COTIZACION → X · PRESUPUESTO → PRO · FACTURA → A/B/C según cond. IVA del cliente y emisor.</summary>
     private void PreseleccionarComprobantePorTipo(string? tipoSolicitado)
@@ -9011,6 +9097,11 @@
                 // editar una ya emitida no se vuelve a mandar sola.
                 if (!editingVentaId.HasValue)
                 {
+                    // 2026-10-16: comprobante de siempre de la ficha (factura / X / presupuesto).
+                    avisoPreferidoDescartado = false;
+                    if (!string.IsNullOrWhiteSpace(c.ComprobantePreferido) && !modoVentaRapida
+                        && CategoriaComprobante(formTipoComprobante) != c.ComprobantePreferido)
+                        AplicarComprobantePreferido(c.ComprobantePreferido!);
                     envioEmailAuto = c.EnviarSiempreEmail && !string.IsNullOrWhiteSpace(envioEmailTo);
                     if (envioEmailAuto) envioEmail = true;
                     envioWaAuto = c.EnviarSiempreWhatsapp && !string.IsNullOrWhiteSpace(envioWhatsappPhone);

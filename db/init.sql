@@ -8302,3 +8302,12 @@ GO
 IF COL_LENGTH('Cafe_Repartidores','VerComprobantes') IS NULL
     ALTER TABLE Cafe_Repartidores ADD VerComprobantes BIT NOT NULL CONSTRAINT DF_CafeRepartidores_VerComprob DEFAULT 0 WITH VALUES;
 GO
+
+-- ============================================================
+-- 16/10/2026: comprobante que se le hace SIEMPRE a un cliente (null = se elige cada vez,
+-- FACTURA = la letra la pone el sistema segun IVA, X = cotizacion, PRO = presupuesto).
+-- Se prende desde la ficha o con el tilde "Siempre asi con este cliente" de la venta.
+-- ============================================================
+IF COL_LENGTH('Cafe_Clientes','ComprobantePreferido') IS NULL
+    ALTER TABLE Cafe_Clientes ADD ComprobantePreferido NVARCHAR(10) NULL;
+GO

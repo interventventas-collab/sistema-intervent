@@ -43,7 +43,8 @@ public class CafeClientesController : ControllerBase
         c.Telefono2, c.EntreCalles,
         c.MeliBuyerId, c.MeliNickname,
         c.EnviarSiempreEmail, c.EnviarSiempreWhatsapp,
-        c.LocalidadEntrega);
+        c.LocalidadEntrega,
+        c.ComprobantePreferido);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -232,6 +233,8 @@ public class CafeClientesController : ControllerBase
             MeliNickname = Norm(req.MeliNickname),
             EnviarSiempreEmail = req.EnviarSiempreEmail,
             EnviarSiempreWhatsapp = req.EnviarSiempreWhatsapp,
+            ComprobantePreferido = req.ComprobantePreferido?.Trim().ToUpperInvariant() is "FACTURA" or "X" or "PRO"
+                ? req.ComprobantePreferido.Trim().ToUpperInvariant() : null,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -325,6 +328,14 @@ public class CafeClientesController : ControllerBase
         // 2026-08-20: tildes "mandarle siempre el comprobante" (mail / WhatsApp).
         if (req.EnviarSiempreEmail.HasValue) c.EnviarSiempreEmail = req.EnviarSiempreEmail.Value;
         if (req.EnviarSiempreWhatsapp.HasValue) c.EnviarSiempreWhatsapp = req.EnviarSiempreWhatsapp.Value;
+        // 2026-10-16: comprobante de siempre ("" = se elige cada vez).
+        if (req.ComprobantePreferido is not null)
+        {
+            var cp = req.ComprobantePreferido.Trim().ToUpperInvariant();
+            if (cp is not ("" or "FACTURA" or "X" or "PRO"))
+                return BadRequest(new { error = "Comprobante preferido inválido" });
+            c.ComprobantePreferido = cp == "" ? null : cp;
+        }
         // 2026-08-14: vínculo con comprador de MercadoLibre. ClearMeliVinculo lo borra; si no,
         // un MeliBuyerId con valor lo setea/actualiza (junto con el nickname que venga).
         if (req.ClearMeliVinculo) { c.MeliBuyerId = null; c.MeliNickname = null; }

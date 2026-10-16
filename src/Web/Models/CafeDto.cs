@@ -39,6 +39,8 @@ public class CafeClienteDto
     public bool EnviarSiempreEmail { get; set; }
     /// <summary>2026-08-20: lo mismo por WhatsApp (sujeto a la ventana de 24 hs de Meta).</summary>
     public bool EnviarSiempreWhatsapp { get; set; }
+    /// <summary>2026-10-16: comprobante que se le hace siempre: null (se elige cada vez) / FACTURA / X / PRO.</summary>
+    public string? ComprobantePreferido { get; set; }
     /// <summary>2026-08-14: BuyerId del comprador de MercadoLibre vinculado (null si no tiene vínculo).</summary>
     public long? MeliBuyerId { get; set; }
     /// <summary>Nickname del usuario de MercadoLibre vinculado.</summary>
@@ -76,6 +78,8 @@ public class CreateCafeClienteRequest
     /// <summary>2026-08-20: tildes "mandarle siempre el comprobante" (uno por canal).</summary>
     public bool EnviarSiempreEmail { get; set; }
     public bool EnviarSiempreWhatsapp { get; set; }
+    /// <summary>2026-10-16: comprobante de siempre (null / FACTURA / X / PRO).</summary>
+    public string? ComprobantePreferido { get; set; }
 }
 
 public class UpdateCafeClienteRequest
@@ -107,6 +111,8 @@ public class UpdateCafeClienteRequest
     /// <summary>2026-08-20: tildes "mandarle siempre el comprobante" (uno por canal).</summary>
     public bool? EnviarSiempreEmail { get; set; }
     public bool? EnviarSiempreWhatsapp { get; set; }
+    /// <summary>2026-10-16: comprobante de siempre. null = no tocar · "" = se elige cada vez · FACTURA / X / PRO.</summary>
+    public string? ComprobantePreferido { get; set; }
     /// <summary>2026-08-14: vincular (MeliBuyerId con valor) o desvincular (ClearMeliVinculo=true)
     /// el cliente de un comprador de MercadoLibre.</summary>
     public long? MeliBuyerId { get; set; }

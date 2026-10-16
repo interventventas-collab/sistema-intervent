@@ -2506,6 +2506,27 @@
                             {
                                 <div class="wa-mv-arca-aviso">⚠️ Al crearla se emite en ARCA con CAE de verdad.</div>
                             }
+                            @* 2026-10-16: comprobante de siempre del cliente (mismo dato que la ficha y Nueva Venta). *@
+                            @if (mvCliente is not null)
+                            {
+                                var catMv = CategoriaComprobante(mvTipoComprobante);
+                                <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.78rem; margin-top:0.35rem; cursor:pointer; user-select:none;">
+                                    <input type="checkbox" checked="@(mvCliente.ComprobantePreferido == catMv)" style="margin:0;"
+                                           @onchange="ToggleComprobantePreferidoMv" />
+                                    Siempre así con este cliente
+                                </label>
+                                @if (mvCliente.ComprobantePreferido is string prefMv && prefMv != catMv && !mvAvisoPreferidoDescartado)
+                                {
+                                    <div class="wa-mv-arca-aviso" style="color:#b91c1c; border-color:#fca5a5; background:transparent;">
+                                        Este cliente va siempre con @NombrePreferido(prefMv). ¿Esta vez @NombrePreferido(catMv)?
+                                        <div class="wa-mv-ops" style="margin-top:0.3rem;">
+                                            <button class="wa-mv-op on" @onclick="() => CambiarTipoComprobante(TipoDePreferido(prefMv))">Volver a @NombrePreferido(prefMv)</button>
+                                            <button class="wa-mv-op" @onclick="() => mvAvisoPreferidoDescartado = true">Solo esta vez</button>
+                                            <button class="wa-mv-op" @onclick="() => GuardarComprobantePreferidoMv(catMv)">De ahora en más @NombrePreferido(catMv)</button>
+                                        </div>
+                                    </div>
+                                }
+                            }
 
                             <div class="wa-mv-sec-t">Cómo paga</div>
                             <div class="wa-mv-ops">
@@ -6110,12 +6131,62 @@
     /// compra y sus direcciones de entrega.</summary>
     async Task CargarClienteModoVenta(int clienteId)
     {
+        // 2026-10-16: comprobante de siempre de la ficha (factura / X / presupuesto).
+        mvAvisoPreferidoDescartado = false;
+        try { mvCliente = await Api.GetCafeClienteAsync(clienteId); } catch { mvCliente = null; }
+        if (mvCliente?.ComprobantePreferido is string pref)
+            mvTipoComprobante = TipoDePreferido(pref);
         await CargarAnterioresModoVenta(clienteId);
         await CargarProductosModoVenta(clienteId);
         try { mvDirecciones = await Api.GetCafeDireccionesAsync(clienteId); }
         catch { mvDirecciones = new(); }
         mvDireccionId = null;
         StateHasChanged();
+    }
+
+    // ═══ 2026-10-16: comprobante de siempre por cliente ═══
+    // Se guarda la categoría (FACTURA / X / PRO); la letra de la factura sale de la condición IVA
+    // de la ficha: Inscripto o Monotributo → A, si no → B.
+    CafeClienteDto? mvCliente;
+    bool mvAvisoPreferidoDescartado = false;
+
+    static string CategoriaComprobante(string? tipo) => tipo switch
+    {
+        "FA" or "FB" or "FC" => "FACTURA",
+        "PRO" => "PRO",
+        _ => "X"
+    };
+
+    static string NombrePreferido(string? cat) => cat switch
+    {
+        "FACTURA" => "factura",
+        "PRO" => "presupuesto",
+        _ => "cotización X"
+    };
+
+    string TipoDePreferido(string pref) => pref switch
+    {
+        "FACTURA" => (mvCondicionIva ?? mvCliente?.CondicionIvaDefault) is "RI" or "MO" ? "FA" : "FB",
+        "PRO" => "PRO",
+        _ => "X"
+    };
+
+    async Task ToggleComprobantePreferidoMv(ChangeEventArgs e)
+    {
+        var tildado = e.Value is bool b && b;
+        await GuardarComprobantePreferidoMv(tildado ? CategoriaComprobante(mvTipoComprobante) : "");
+    }
+
+    async Task GuardarComprobantePreferidoMv(string cat)
+    {
+        if (mvCliente is null) return;
+        var r = await Api.UpdateCafeClienteAsync(mvCliente.Id, new UpdateCafeClienteRequest { ComprobantePreferido = cat });
+        if (r is null) { Toast.Error("No se pudo guardar en la ficha del cliente"); return; }
+        mvCliente.ComprobantePreferido = cat == "" ? null : cat;
+        mvAvisoPreferidoDescartado = false;
+        Toast.Success(cat == ""
+            ? $"{mvCliente.Nombre}: el comprobante se elige cada vez"
+            : $"A {mvCliente.Nombre} le va a salir siempre {NombrePreferido(cat)}");
     }
 
     /// <summary>El título de un bloque: lo abre (y cierra el que estaba).</summary>
@@ -6580,7 +6651,7 @@
         mvVerTodasAnteriores = false;
         // 2026-08-24: lo nuevo también es POR CLIENTE — si no se limpia, la venta del próximo chat
         // sale con la dirección, los días y el comentario del anterior.
-        mvClienteId = null;
+        mvClienteId = null; mvCliente = null;
         mvClienteNombre = null;
         mvDirecciones = new();
         mvDireccionId = null;
@@ -6637,6 +6708,9 @@
             mvTipoComprobante = pay.TipoComprobante;
             mvCondicionPago = pay.CondicionPago;
             mvCondicionIva = pay.CondicionIva;
+            // 2026-10-16: si el cliente tiene comprobante de siempre, manda sobre el de la copia.
+            if (mvCliente?.ComprobantePreferido is string prefRep)
+                mvTipoComprobante = TipoDePreferido(prefRep);
             mvRetira = pay.Retira;
             mvObservaciones = pay.Observaciones;
             mvOrigenNumero = pay.OrigenNumero;

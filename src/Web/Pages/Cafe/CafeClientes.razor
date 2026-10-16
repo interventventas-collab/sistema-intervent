@@ -578,6 +578,23 @@
                             últimas 24 hs (regla de Meta); si no, la pantalla de la venta te lo avisa y podés mandarlo por mail.
                         </div>
                     </div>
+
+                    @* 2026-10-16: comprobante que se le hace SIEMPRE. Lo mismo que el tilde "Siempre así
+                       con este cliente" de Nueva Venta y del chat. FACTURA = la letra la pone el sistema. *@
+                    <div class="form-group" style="grid-column: 1 / -1; margin-top: 0.8rem; margin-bottom: 0;">
+                        <label class="form-label">Comprobante que se le hace siempre</label>
+                        <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                            @foreach (var (val, txt) in OpcionesComprobantePreferido)
+                            {
+                                var sel = (formComprobantePreferido ?? "") == val;
+                                <button type="button" class="btn btn-sm @(sel ? "btn-primary" : "btn-secondary")"
+                                        @onclick="@(() => formComprobantePreferido = val == "" ? null : val)">@txt</button>
+                            }
+                        </div>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            Al elegir este cliente en una venta ya viene elegido. Con "Factura" la letra la pone el sistema: A si es Responsable Inscripto, B si no.
+                        </p>
+                    </div>
                 </div>
 
                 @* ═══════════════ Sección 2: Datos fiscales (auto desde ARCA) ═══════════════ *@
@@ -1818,6 +1835,9 @@
     // 2026-08-20: mandarle SIEMPRE el comprobante, uno por canal.
     private bool formEnviarSiempreEmail = false;
     private bool formEnviarSiempreWhatsapp = false;
+    private string? formComprobantePreferido = null;
+    private static readonly (string val, string txt)[] OpcionesComprobantePreferido =
+        { ("", "Lo elijo cada vez"), ("FACTURA", "Factura"), ("X", "Cotización X"), ("PRO", "Presupuesto") };
     private bool showDeleteConfirm;
     private CafeClienteDto? toDelete;
 
@@ -1956,7 +1976,7 @@
         formMeliBuyerId = null; formMeliNickname = null; meliSearch = ""; meliResults = null; meliBuscando = false;
         localidadesSugeridas = new();
         formIsActive = true; formTieneMiniImpresora = false; formSolicitarFirmaEntrega = false;
-        formEnviarSiempreEmail = false; formEnviarSiempreWhatsapp = false;
+        formEnviarSiempreEmail = false; formEnviarSiempreWhatsapp = false; formComprobantePreferido = null;
         formError = null; showForm = true;
         direccionesCliente = new(); ResetSubformDireccion();
         preciosEspeciales = new(); ResetSubformPrecioEspecial();
@@ -1985,6 +2005,7 @@
         localidadesSugeridas = await CpService.GetLocalidadesAsync(formCiudad);
         formIsActive = c.IsActive; formTieneMiniImpresora = c.TieneMiniImpresora; formSolicitarFirmaEntrega = c.SolicitarFirmaEntrega;
         formEnviarSiempreEmail = c.EnviarSiempreEmail; formEnviarSiempreWhatsapp = c.EnviarSiempreWhatsapp;
+        formComprobantePreferido = c.ComprobantePreferido;
         formError = null; showForm = true;
         ResetSubformDireccion();
         preciosEspeciales = new(); ResetSubformPrecioEspecial();
@@ -2664,6 +2685,7 @@
                     SolicitarFirmaEntrega = formSolicitarFirmaEntrega,
                     EnviarSiempreEmail = formEnviarSiempreEmail,
                     EnviarSiempreWhatsapp = formEnviarSiempreWhatsapp,
+                    ComprobantePreferido = formComprobantePreferido ?? "",
                     MapeoLink = string.IsNullOrEmpty(mapeoLinkClean) ? null : mapeoLinkClean,
                     ClearMapeoLink = string.IsNullOrEmpty(mapeoLinkClean),
                     MeliBuyerId = formMeliBuyerId,
@@ -2692,7 +2714,8 @@
                     MeliBuyerId = formMeliBuyerId,
                     MeliNickname = formMeliNickname,
                     EnviarSiempreEmail = formEnviarSiempreEmail,
-                    EnviarSiempreWhatsapp = formEnviarSiempreWhatsapp
+                    EnviarSiempreWhatsapp = formEnviarSiempreWhatsapp,
+                    ComprobantePreferido = formComprobantePreferido
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }
                 idGuardado = c.Id;
