@@ -258,12 +258,12 @@
 
 @if (showForm)
 {
-    <div class="modal-overlay" @onclick="CloseForm">
+    <div class="modal-overlay" @onclick="PedirCerrarForm">
         <div class="modal-card" @onclick:stopPropagation="true"
              style="max-width: min(1280px, 96vw); width: 96vw; max-height: 94vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: whitesmoke;">
                 <h3>@(isEditing ? "Editar cliente" : "Nuevo cliente")</h3>
-                <button class="btn-close" @onclick="CloseForm">&times;</button>
+                <button class="btn-close" @onclick="PedirCerrarForm">&times;</button>
             </div>
             <div class="modal-body" style="overflow-y: auto; flex: 1 1 auto;">
                 @if (!string.IsNullOrEmpty(formError))
@@ -1283,8 +1283,41 @@
                     <button class="btn btn-secondary" style="margin-right: auto;" @onclick="AbrirUnificar" disabled="@saving"
                             title="Si este cliente está cargado dos veces, pasale todo lo del otro y el otro queda inactivo">🔗 Unificar con otro cliente</button>
                 }
-                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                <button class="btn btn-secondary" @onclick="PedirCerrarForm" disabled="@saving">Cancelar</button>
                 <button class="btn btn-primary" @onclick="Save" disabled="@saving">@(saving ? "Guardando..." : (isEditing ? "Guardar" : "Crear"))</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* 2026-10-17: al cerrar la ventana (tocar afuera, la X o Cancelar) con datos sin guardar, antes se
+   perdía todo sin avisar (Germán perdió así a "Eduardo Zorce"). Ahora pregunta y muestra lo cargado. *@
+@if (showConfirmCerrar)
+{
+    <div class="modal-overlay" style="z-index: 9800 !important; background: rgba(0,0,0,0.35);">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 520px; width: 94vw;">
+            <div style="padding: 1.1rem 1.4rem 0.4rem;">
+                <h3 style="margin: 0 0 0.3rem; font-size: 1.25rem;">@(isEditing ? "¿Guardás los cambios?" : "¿Guardás este cliente?")</h3>
+                <div style="color: #555; font-size: 0.9rem;">@(isEditing ? "Cambiaste estos datos y todavía no los guardaste:" : "Cargaste estos datos y todavía no los guardaste:")</div>
+            </div>
+            <div style="margin: 0.6rem 1.4rem 0; border: 1px solid #ddd; border-radius: 6px; padding: 0.6rem 0.9rem; font-size: 0.9rem; line-height: 1.7; max-height: 50vh; overflow-y: auto;">
+                @foreach (var (label, valor) in confirmCerrarCampos)
+                {
+                    <div style="display: flex; gap: 0.6rem;">
+                        <span style="flex: 0 0 150px; color: #666;">@label</span>
+                        <span style="word-break: break-word;">@valor</span>
+                    </div>
+                }
+            </div>
+            @if (confirmCerrarSinCargar.Count > 0)
+            {
+                <div style="margin: 0.5rem 1.4rem 0; color: #999; font-size: 0.8rem;">Sin cargar: @string.Join(", ", confirmCerrarSinCargar)</div>
+            }
+            <div style="display: flex; gap: 0.5rem; padding: 1.1rem 1.4rem; align-items: center; flex-wrap: wrap;">
+                <button type="button" style="margin-right: auto; border: none; background: none; color: #b91c1c; text-decoration: underline; cursor: pointer; font-size: 0.9rem;"
+                        @onclick="DescartarYCerrar">No guardar y cerrar</button>
+                <button type="button" class="btn btn-secondary" @onclick="() => showConfirmCerrar = false">Seguir cargando</button>
+                <button type="button" class="btn btn-primary" @onclick="GuardarDesdeConfirm">@(isEditing ? "Guardar cambios" : "Guardar cliente")</button>
             </div>
         </div>
     </div>
@@ -1978,6 +2011,7 @@
         formIsActive = true; formTieneMiniImpresora = false; formSolicitarFirmaEntrega = false;
         formEnviarSiempreEmail = false; formEnviarSiempreWhatsapp = false; formComprobantePreferido = null;
         formError = null; showForm = true;
+        camposAlAbrir = CamposForm();
         direccionesCliente = new(); ResetSubformDireccion();
         preciosEspeciales = new(); ResetSubformPrecioEspecial();
         await Task.CompletedTask;
@@ -2007,6 +2041,7 @@
         formEnviarSiempreEmail = c.EnviarSiempreEmail; formEnviarSiempreWhatsapp = c.EnviarSiempreWhatsapp;
         formComprobantePreferido = c.ComprobantePreferido;
         formError = null; showForm = true;
+        camposAlAbrir = CamposForm();
         ResetSubformDireccion();
         preciosEspeciales = new(); ResetSubformPrecioEspecial();
         await LoadDirecciones(c.Id);
@@ -2658,7 +2693,79 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
-    private void CloseForm() { showForm = false; formError = null; finalizandoAltaId = null; }
+    private void CloseForm() { showForm = false; showConfirmCerrar = false; formError = null; finalizandoAltaId = null; }
+
+    // ─── 2026-10-17: preguntar antes de cerrar si hay datos sin guardar ───
+    private bool showConfirmCerrar;
+    private List<(string Label, string Valor)> camposAlAbrir = new();
+    private List<(string Label, string Valor)> confirmCerrarCampos = new();
+    private List<string> confirmCerrarSinCargar = new();
+
+    /// <summary>Los datos del formulario como texto, en el orden en que se muestran en el resumen.</summary>
+    private List<(string Label, string Valor)> CamposForm()
+    {
+        static string T(string? v) => (v ?? "").Trim();
+        string iva = formCondicionIvaDefault switch
+        {
+            "RI" => "Responsable Inscripto", "MO" => "Monotributo", "EX" => "Exento", "CF" => "Consumidor Final",
+            _ => T(formCondicionIvaDefault)
+        };
+        string comp = formComprobantePreferido switch
+        {
+            "FACTURA" => "Factura", "X" => "Cotización X", "PRO" => "Presupuesto", _ => ""
+        };
+        string tipo = T(formTipo);
+        if (tipo.Length > 0) tipo = tipo[..1].ToUpper() + tipo[1..].ToLower();
+        var envio = string.Join(" y ", new[] { formEnviarSiempreEmail ? "mail" : "", formEnviarSiempreWhatsapp ? "WhatsApp" : "" }.Where(x => x != ""));
+        return new()
+        {
+            ("Nombre", T(formNombre)),
+            ("Razón social", T(formRazonSocial)),
+            ("Tipo", tipo),
+            ("Código interno", formCodigoInterno?.ToString() ?? ""),
+            ("Teléfono", T(formTelefono)),
+            ("Teléfono 2", T(formTelefono2)),
+            ("Mail", T(formEmail)),
+            ("CUIT", T(formCuit)),
+            ("Condición IVA", iva),
+            ("Domicilio fiscal", string.Join(" · ", new[] { T(formDireccion), T(formLocalidad), T(formCiudad), T(formCp) }.Where(x => x != ""))),
+            ("Dirección de entrega", string.Join(" · ", new[] { T(formDomicilioEntrega), T(formLocalidadEntrega) }.Where(x => x != ""))),
+            ("Entre calles", T(formEntreCalles)),
+            ("Link de mapa", T(formMapeoLink)),
+            ("Comprador MeLi", T(formMeliNickname)),
+            ("Comprobante siempre", comp),
+            ("Le mando comprobante", envio),
+            ("Mini impresora", formTieneMiniImpresora ? "Sí" : ""),
+            ("Pide firma al entregar", formSolicitarFirmaEntrega ? "Sí" : ""),
+            ("Activo", isEditing ? (formIsActive ? "Sí" : "No") : ""),
+            ("Comentario comprobante", T(formComentariosComprobante)),
+            ("Notas", T(formNotas)),
+        };
+    }
+
+    /// <summary>X, Cancelar o tocar afuera: si no se cargó/cambió nada cierra directo; si no, pregunta.</summary>
+    private void PedirCerrarForm()
+    {
+        if (saving) return;
+        var ahora = CamposForm();
+        var cambiados = ahora.Where(a => camposAlAbrir.FirstOrDefault(b => b.Label == a.Label).Valor != a.Valor).ToList();
+        if (cambiados.Count == 0) { CloseForm(); return; }
+        // Cliente nuevo: se muestra todo lo cargado. Editando: solo lo que cambió (como queda ahora).
+        confirmCerrarCampos = isEditing ? cambiados.Select(c => (c.Label, c.Valor == "" ? "(borrado)" : c.Valor)).ToList()
+                                        : ahora.Where(a => a.Valor != "").ToList();
+        confirmCerrarSinCargar = isEditing ? new()
+            : ahora.Where(a => a.Valor == "" && a.Label is "Teléfono" or "Mail" or "CUIT" or "Dirección de entrega" or "Entre calles" or "Link de mapa" or "Notas")
+                   .Select(a => a.Label == "CUIT" ? a.Label : a.Label.ToLower()).ToList();
+        showConfirmCerrar = true;
+    }
+
+    private void DescartarYCerrar() => CloseForm();
+
+    private async Task GuardarDesdeConfirm()
+    {
+        showConfirmCerrar = false;
+        await Save();   // si falta algo (ej. el nombre) Save deja el error arriba del formulario, que sigue abierto
+    }
 
     private async Task Save()
     {
