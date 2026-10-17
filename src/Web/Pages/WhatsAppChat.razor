@@ -2954,7 +2954,40 @@
                         <button class="wa-ficha-x" @onclick="CerrarModoCotizar" title="Salir">×</button>
                     </div>
                     <div class="wa-alq-body">
-                        <CotizadorProductos @ref="cotizadorProdRef" OnListo="EscribirCotizacionAlq" />
+                        @* 2026-10-17: lo que ya se le presupuestó a ESTE teléfono (se guarda solo al
+                           tocar "Pasar al chat") y el botón para armar la venta con eso. *@
+                        @if (prodCotizaciones.Count > 0)
+                        {
+                            <div class="wa-alq-hist">
+                                <div class="wa-alq-hist-t">Presupuestos que le pasaste</div>
+                                @foreach (var c in prodCotizaciones)
+                                {
+                                    <div class="wa-alq-hist-i">
+                                        <div class="wa-alq-hist-l1">
+                                            <span class="wa-alq-hist-f">@c.CreatedAt.ToArTime().ToString("dd/MM/yy HH:mm")@(string.IsNullOrWhiteSpace(c.Operador) ? "" : " · " + c.Operador)</span>
+                                            <b class="wa-alq-hist-tot">@Plata(c.Total) <small>@(c.ConIva ? "c/IVA" : "s/IVA")</small></b>
+                                        </div>
+                                        <div class="wa-alq-hist-l2">@ResumenCotizacionProd(c)</div>
+                                        <div class="wa-alq-hist-acc">
+                                            <button class="wa-alq-hist-b" @onclick="() => EscribirCotizacionAlq(c.Texto ?? string.Empty)"
+                                                    title="Escribir abajo el mismo presupuesto que le pasaste">📄 Volver a pasarlo</button>
+                                            @* Igual que "Reservado" en alquileres: ya convertido, no se ofrece de nuevo
+                                               para no cargar la misma venta dos veces. *@
+                                            @if (!string.IsNullOrWhiteSpace(c.VentaNumero))
+                                            {
+                                                <span class="wa-alq-hist-b wa-alq-hist-ok" title="Este presupuesto ya se pasó a venta">✅ Venta @c.VentaNumero</span>
+                                            }
+                                            else
+                                            {
+                                                <button class="wa-alq-hist-b wa-alq-hist-res" @onclick="() => PasarCotizacionAVenta(c)"
+                                                        title="Abrir el carrito 🛒 con estos productos, cantidades y precios ya cargados">🛒 Pasar a venta</button>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        <CotizadorProductos @ref="cotizadorProdRef" OnListo="EscribirCotizacionProd" />
                     </div>
                 </aside>
             }
@@ -6675,6 +6708,7 @@
         mvMostrarLibre = false;
         mvLibreDesc = "";
         mvLibrePrecio = "";
+        mvDesdeCotizacionId = null;   // 2026-10-17: el carrito nuevo ya no sale de ese presupuesto
     }
 
     /// <summary>Los últimos comprobantes del cliente, para poder repetirlos. Reusa la misma
@@ -6828,6 +6862,13 @@
             // Queda a mano para poder mandarle el comprobante sin salir del chat.
             mvVentaCreadaId = venta.Id;
             mvVentaCreadaNumero = venta.Numero ?? ("#" + venta.Id);
+            // 2026-10-17: si el carrito salió de un presupuesto del chat, queda anotado (✅ Venta N).
+            if (mvDesdeCotizacionId is int cotId)
+            {
+                try { await Api.MarcarCotizacionChatVentaAsync(cotId, venta.Id); } catch { }
+                mvDesdeCotizacionId = null;
+                _ = CargarCotizacionesProd();
+            }
             // 2026-09-30: igual que Nueva Venta, en segundo plano para no frenar el chat.
             if (mvImprimirPedidos && mvTipoComprobante != "PRO")
             {
@@ -7184,6 +7225,7 @@
         alqCotizaciones = new();   // eran las del teléfono anterior
         cotizadorRef?.Limpiar();
         modoCotizar = false;       // 2026-10-14: la de productos también era para el chat anterior
+        prodCotizaciones = new();  // 2026-10-17: eran las del teléfono anterior
         cotizadorProdRef?.Limpiar();
     }
 
@@ -7193,13 +7235,86 @@
     bool modoCotizar = false;
     CotizadorProductos? cotizadorProdRef;
 
-    void AbrirModoCotizar()
+    async Task AbrirModoCotizar()
     {
         modoCotizar = true;
         modoVenta = false;
         modoMeli = false;
         modoAlquiler = false;
         modoCobranza = false;
+        await CargarCotizacionesProd();
+    }
+
+    // ── 2026-10-17: presupuestos de productos guardados de ESTE teléfono ──
+    // Se guardan solos al tocar "Pasar al chat" y se pasan al modo venta con precio y todo.
+    List<CafeCotizacionChatDto> prodCotizaciones = new();
+    /// <summary>De qué presupuesto salió el carrito del modo venta: al crear la venta se anota ahí.</summary>
+    int? mvDesdeCotizacionId;
+
+    async Task CargarCotizacionesProd()
+    {
+        if (string.IsNullOrWhiteSpace(selectedNumero)) { prodCotizaciones = new(); return; }
+        try { prodCotizaciones = await Api.GetCotizacionesChatAsync(selectedNumero, 10) ?? new(); }
+        catch { prodCotizaciones = new(); }
+        StateHasChanged();
+    }
+
+    static string ResumenCotizacionProd(CafeCotizacionChatDto c)
+    {
+        var partes = c.Items.Take(2).Select(i => $"{i.Cantidad.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))} {i.Nombre}");
+        var txt = string.Join(" + ", partes);
+        if (c.Items.Count > 2) txt += $" +{c.Items.Count - 2} más";
+        return txt;
+    }
+
+    /// <summary>Escribe el presupuesto abajo (como siempre) y lo guarda pegado a este teléfono.</summary>
+    async Task EscribirCotizacionProd(string texto)
+    {
+        EscribirCotizacionAlq(texto);
+        if (cotizadorProdRef is null || string.IsNullOrWhiteSpace(selectedNumero)) return;
+        var armado = cotizadorProdRef.Armado();
+        armado.Texto = texto;
+        armado.Telefono = selectedNumero!;
+        armado.ClienteId = SelectedConv()?.ClienteId;
+        armado.Operador = Web.Services.OperatorService.FirmaCorta(Op.Current);
+        try
+        {
+            await Api.CrearCotizacionChatAsync(armado);
+            await CargarCotizacionesProd();
+        }
+        catch (Exception ex) { Toast.Warning("El mensaje quedó escrito pero no pude guardar el presupuesto: " + ex.Message); }
+    }
+
+    /// <summary>Abre el modo venta 🛒 con los productos, cantidades y precios del presupuesto.
+    /// El precio va SIN IVA (como se carga en la venta); si la venta es factura, el IVA se suma solo.</summary>
+    async Task PasarCotizacionAVenta(CafeCotizacionChatDto c)
+    {
+        var validos = c.Items.Where(i => i.ProductoId > 0).ToList();
+        if (validos.Count == 0) { Toast.Warning("Ese presupuesto no tiene productos para pasar."); return; }
+        await AbrirModoVenta();
+        LimpiarCarrito();
+        var ars = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+        mvItems = validos.Select(i =>
+        {
+            var cant = Math.Max(1, (int)Math.Ceiling(i.Cantidad));
+            return new MvLinea
+            {
+                Req = new CafeCotizarItemRequest
+                {
+                    ProductoId = i.ProductoId,
+                    Formato = string.IsNullOrWhiteSpace(i.Formato) ? "UNIT" : i.Formato,
+                    Cantidad = cant,
+                    PrecioUnitarioOverride = i.PrecioSinIva > 0m ? i.PrecioSinIva : null,
+                },
+                Nombre = i.Nombre,
+                CantidadTxt = cant.ToString(),
+                PrecioTxt = i.PrecioSinIva > 0m ? i.PrecioSinIva.ToString("0.##", ars) : "",
+            };
+        }).ToList();
+        mvOrigenNumero = $"presupuesto del {c.CreatedAt.ToArTime():dd/MM}";
+        mvDesdeCotizacionId = c.Id;
+        if (validos.Count < c.Items.Count) Toast.Warning("Algún renglón no se pudo pasar: revisá el carrito.");
+        await CotizarModoVenta();
     }
 
     void CerrarModoCotizar() => modoCotizar = false;

@@ -1440,6 +1440,7 @@ public class CafePrecioFormatoDto
 public class CafePrecioConsultaDto
 {
     public bool Encontrado { get; set; }
+    public int ProductoId { get; set; }
     public string? Mensaje { get; set; }
     public string Sku { get; set; } = "";
     public string Nombre { get; set; } = "";
@@ -2658,3 +2659,33 @@ public class CafeAvisoProgramarRequest
 public record PrepVentaChicaDto(int Id, string? Numero, string Cliente, decimal Total, DateTime Fecha,
     string? EstadoPreparacion, bool EnTablero, bool Entregada, DateTime? SacadoAt, string? SacadoPor,
     string EstadoTexto = "", bool PuedeTraer = true, string? AvisoAlTraer = null);
+
+// ===== 2026-10-17: presupuestos de productos pasados por el chat (🧮 Cotizar productos) =====
+public class CafeCotizacionChatItemDto
+{
+    public int ProductoId { get; set; }
+    public string Sku { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    /// <summary>UNIT | 1KG | MEDIO | CUARTO.</summary>
+    public string Formato { get; set; } = "UNIT";
+    public decimal Cantidad { get; set; }
+    /// <summary>Precio c/u tal cual figura en el mensaje.</summary>
+    public decimal PrecioCu { get; set; }
+    /// <summary>El mismo precio SIN IVA: es el que va a la venta.</summary>
+    public decimal PrecioSinIva { get; set; }
+}
+
+public class CafeCotizacionChatDto
+{
+    public int Id { get; set; }
+    public string Telefono { get; set; } = "";
+    public int? ClienteId { get; set; }
+    public decimal Total { get; set; }
+    public bool ConIva { get; set; }
+    public string? Texto { get; set; }
+    public string? Operador { get; set; }
+    public int? VentaId { get; set; }
+    public string? VentaNumero { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public List<CafeCotizacionChatItemDto> Items { get; set; } = new();
+}

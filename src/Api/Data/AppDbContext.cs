@@ -101,6 +101,7 @@ public class AppDbContext : DbContext
     // 2026-08-31: presupuestos de alquiler pasados por WhatsApp, pegados al telefono.
     public DbSet<AlqCotizacion> AlqCotizaciones => Set<AlqCotizacion>();
     public DbSet<AlqCotizacionItem> AlqCotizacionItems => Set<AlqCotizacionItem>();
+    public DbSet<CafeCotizacionChat> CafeCotizacionesChat => Set<CafeCotizacionChat>();
     // Modulo Nominas (independiente)
     public DbSet<NomEmpleado> NomEmpleados => Set<NomEmpleado>();
     public DbSet<NomLiquidacion> NomLiquidaciones => Set<NomLiquidacion>();
