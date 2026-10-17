@@ -350,6 +350,19 @@
     .mpc-wa:disabled { opacity:0.6; }
     .mpc-dl { background:white; border:1px solid #d1d5db; color:#374151; border-radius:8px; padding:0.45rem 0.6rem; font-size:0.82rem; font-weight:700; text-decoration:none; }
     .mpc-nota { text-align:center; color:#6b7280; font-size:0.85rem; padding:1rem 0.5rem; }
+    .mpc-cli-btn { cursor:pointer; text-decoration:underline; text-decoration-color:#d1d5db; text-underline-offset:3px; }
+    .mpc-est { font-size:0.76rem; color:#374151; margin-top:0.2rem; line-height:1.35; }
+    .mpc-ok { color:#15803d; font-weight:800; } .mpc-parcial { color:#b45309; font-weight:800; } .mpc-pend { color:#dc2626; font-weight:800; }
+    .mpc-eye { background:white; border:1px solid #d1d5db; border-radius:8px; padding:0.35rem 0.6rem; font-size:1rem; cursor:pointer; }
+    .mpc-ver { position:fixed; inset:0; background:#f3f4f6; z-index:1600; display:flex; flex-direction:column; }
+    .mpc-ver-scroll { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+    .mpc-ver-hd { background:white; border-radius:12px; padding:0.75rem 0.85rem; margin-bottom:0.6rem; }
+    .mpc-ver-cli { font-size:1rem; font-weight:800; color:#111827; }
+    .mpc-ver-tot { font-size:1.3rem; font-weight:800; color:#111827; margin-top:0.1rem; }
+    .mpc-ver-line { font-size:0.82rem; color:#374151; margin-top:0.3rem; line-height:1.35; }
+    .mpc-ver-bar { background:white; padding:0.65rem 0.8rem calc(0.8rem + env(safe-area-inset-bottom)); display:flex; gap:0.5rem; box-shadow:0 -4px 14px rgba(0,0,0,0.1); }
+    .mpc-ver-bar .mpc-wa { flex:2; padding:0.8rem; font-size:1rem; }
+    .mpc-ver-bar .mpc-dl { flex:1; padding:0.8rem; font-size:1rem; text-align:center; cursor:pointer; }
     .mpc-mas { display:block; width:100%; margin-top:0.5rem; padding:0.6rem; background:white; border:1px solid #d1d5db; border-radius:10px; font-weight:700; color:#374151; cursor:pointer; }
 </style>
 
@@ -1644,17 +1657,20 @@
                     var url = $"api/cafe/repartidor-public/mis-pedidos/{Token}/comprobantes/{c.Id}/pdf";
                     <div class="mpc-row">
                         <div class="mpc-r1">
-                            <span class="mpc-cli">@c.Cliente</span>
+                            <span class="mpc-cli mpc-cli-btn" @onclick="() => VerComprobante(c)">@c.Cliente</span>
                             <span class="mpc-tot">@(c.Total < 0 ? "−" : "")$@Math.Abs(c.Total).ToString("N0", ArCult)</span>
                         </div>
                         <div class="mpc-r2">
-                            <span class="mpc-num">@c.TipoTexto @c.NumeroTexto@(c.ArcaPendiente ? " · ARCA pendiente" : "")</span>
+                            <div style="min-width:0;">
+                                <div class="mpc-num">@c.TipoTexto @c.NumeroTexto@(c.ArcaPendiente ? " · ARCA pendiente" : "")</div>
+                                <div class="mpc-est">@EstadoLinea(c)</div>
+                            </div>
                             <span class="mpc-acts">
                                 <button type="button" class="mpc-wa @(compTocarDeNuevo == c.Id ? "again" : "")" disabled="@(compCompartiendo == c.Id)"
                                         @onclick="() => CompartirComprobante(c, url)">
                                     @(compCompartiendo == c.Id ? "Armando…" : compTocarDeNuevo == c.Id ? "Listo, tocá" : "WhatsApp")
                                 </button>
-                                <a class="mpc-dl" href="@url" download title="Bajar el PDF al teléfono">Bajar</a>
+                                <button type="button" class="mpc-eye" title="Ver el comprobante" @onclick="() => VerComprobante(c)">👁</button>
                             </span>
                         </div>
                     </div>
@@ -1666,6 +1682,62 @@
                     </button>
                 }
             }
+        </div>
+    </div>
+}
+
+@* 17/10/2026: ver el comprobante adentro: arriba el estado completo, abajo el PDF tal cual le
+   llega al cliente, y fijos abajo WhatsApp y Bajar. *@
+@if (compViendo is { } cv)
+{
+    var urlV = $"api/cafe/repartidor-public/mis-pedidos/{Token}/comprobantes/{cv.Id}/pdf";
+    <div class="mpc-ver">
+        <div class="mpc-ver-scroll">
+            <div class="mpc-wrap" style="padding-bottom:1rem;">
+                <div class="mpc-top">
+                    <button type="button" class="mpc-back" @onclick="CerrarVer">←</button>
+                    <div class="mpc-title" style="font-size:1rem;">@cv.TipoTexto @cv.NumeroTexto</div>
+                </div>
+                <div class="mpc-ver-hd">
+                    <div class="mpc-ver-cli">@cv.Cliente</div>
+                    <div class="mpc-ver-tot">@(cv.Total < 0 ? "−" : "")$@Math.Abs(cv.Total).ToString("N0", ArCult)</div>
+                    <div class="mpc-ver-line">
+                        @if (!string.IsNullOrEmpty(cv.PagoTexto)) { <span class="@PagoClase(cv)">@cv.PagoTexto</span><text> · </text> }
+                        emitido @DiaTexto(cv.Fecha.Date).ToLower()@(cv.ArcaPendiente ? " · ARCA pendiente" : "")
+                    </div>
+                    <div class="mpc-ver-line">@EntregaDetalle(cv)</div>
+                    @if (cv.Cobrado is > 0)
+                    {
+                        <div class="mpc-ver-line">💰 Cobró en la entrega $@cv.Cobrado.Value.ToString("N0", ArCult)</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(cv.ComentarioEntrega))
+                    {
+                        <div class="mpc-ver-line" style="color:#6b7280;">💬 "@cv.ComentarioEntrega"</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(cv.Rechazo) && !string.IsNullOrWhiteSpace(cv.RechazoMotivo))
+                    {
+                        <div class="mpc-ver-line" style="color:#6b7280;">Motivo: @cv.RechazoMotivo</div>
+                    }
+                </div>
+                @* El PDF lo dibuja mp-compartir.js adentro de esta caja: Blazor no le pone nada adentro. *@
+                @if (compVerEstado == "cargando") { <div class="mpc-nota">Abriendo el comprobante…</div> }
+                <div id="mpc-pdf" @key="compViendo.Id"></div>
+                @if (compVerEstado == "error")
+                {
+                    <div class="mpc-nota">No se pudo mostrar el comprobante acá. Igual lo podés mandar o bajar con los botones de abajo.</div>
+                }
+                else if (compVerEstado == "ok")
+                {
+                    <div class="mpc-nota" style="padding-top:0.2rem; font-size:0.75rem;">Se puede agrandar con dos dedos.</div>
+                }
+            </div>
+        </div>
+        <div class="mpc-ver-bar">
+            <button type="button" class="mpc-wa @(compTocarDeNuevo == cv.Id ? "again" : "")" disabled="@(compCompartiendo == cv.Id)"
+                    @onclick="() => CompartirComprobante(cv, urlV)">
+                @(compCompartiendo == cv.Id ? "Armando…" : compTocarDeNuevo == cv.Id ? "Listo, tocá" : "WhatsApp")
+            </button>
+            <button type="button" class="mpc-dl" @onclick="() => BajarComprobante(cv, urlV)">⬇ Bajar</button>
         </div>
     </div>
 }
@@ -3041,7 +3113,12 @@
 
     // ─── 16/10/2026: Comprobantes (ver y compartir) ───
     public record ComprobanteLinkDto(int Id, DateTime Fecha, string Tipo, string TipoTexto, string NumeroTexto,
-        string Cliente, decimal Total, bool ArcaPendiente);
+        string Cliente, decimal Total, bool ArcaPendiente,
+        string? PagoTexto = null, string PagoNivel = "",
+        string? EstadoPreparacion = null,
+        string? EntregadoPor = null, DateTime? EntregadoAt = null, bool Retira = false,
+        string? LoTiene = null, string? Rechazo = null, string? RechazoMotivo = null,
+        decimal? Cobrado = null, string? ComentarioEntrega = null);
     public record ComprobantesLinkDto(bool Aplica, List<ComprobanteLinkDto> Items, bool HayMas);
 
     private static readonly System.Globalization.CultureInfo ArCult = new("es-AR");
@@ -3054,6 +3131,93 @@
     private int? compCompartiendo, compTocarDeNuevo;
     private System.Threading.CancellationTokenSource? _compDebounce;
     private DateTime HoyAr => DateTime.UtcNow.AddHours(-3).Date;
+
+    // ─── 17/10/2026: estado (como en Ventas) y ver el comprobante adentro ───
+    private ComprobanteLinkDto? compViendo;
+    private string compVerEstado = "";
+
+    private string PagoClase(ComprobanteLinkDto c) => c.PagoNivel switch
+    {
+        "ok" => "mpc-ok", "parcial" => "mpc-parcial", "pend" => "mpc-pend", _ => ""
+    };
+
+    private static string PrepTexto(string? e) => e switch
+    {
+        "PARA_PREPARAR" => "Para armar", "EN_PREPARACION" => "Armando", "LISTO" => "Listo para salir",
+        "EN_CAMINO" => "En camino", _ => ""
+    };
+
+    /// <summary>Cómo va la entrega, en corto. Mismo orden que el listado de Ventas.</summary>
+    private string EntregaTexto(ComprobanteLinkDto c)
+    {
+        if (c.EntregadoAt is { } at)
+        {
+            var cuando = at.ToArTime().ToString("dd/MM HH:mm");
+            if (!string.IsNullOrEmpty(c.EntregadoPor)) return $"✅ Entregó {c.EntregadoPor} {cuando}";
+            return c.Retira ? $"✅ Retiró el cliente {cuando}" : $"✅ Entregado {cuando}";
+        }
+        var prep = PrepTexto(c.EstadoPreparacion);
+        string quien;
+        if (!string.IsNullOrEmpty(c.LoTiene)) quien = $"🚚 Lo tiene {c.LoTiene}";
+        else if (!string.IsNullOrEmpty(c.Rechazo)) quien = $"🚫 Rechazó {c.Rechazo}";
+        else if (c.Retira) quien = "🛍 Retira el cliente";
+        else if (c.Tipo.StartsWith("NC")) quien = "";
+        else quien = "sin asignar";
+        return string.Join(" · ", new[] { prep, quien }.Where(x => x != ""));
+    }
+
+    private RenderFragment EstadoLinea(ComprobanteLinkDto c) => __b =>
+    {
+        var entrega = EntregaTexto(c);
+        if (!string.IsNullOrEmpty(c.PagoTexto))
+        {
+            __b.OpenElement(0, "span"); __b.AddAttribute(1, "class", PagoClase(c)); __b.AddContent(2, c.PagoTexto); __b.CloseElement();
+            if (entrega != "") __b.AddContent(3, " · ");
+        }
+        __b.AddContent(4, entrega);
+    };
+
+    private string EntregaDetalle(ComprobanteLinkDto c)
+    {
+        if (c.EntregadoAt is { } at)
+        {
+            var f = at.ToArTime();
+            var cuando = $"el {f:dd/MM} a las {f:HH:mm}";
+            if (!string.IsNullOrEmpty(c.EntregadoPor)) return $"✅ Entregó {c.EntregadoPor} {cuando}";
+            return c.Retira ? $"✅ Retiró el cliente {cuando}" : $"✅ Entregado {cuando}";
+        }
+        var t = EntregaTexto(c);
+        return t == "sin asignar" ? "Todavía no se asignó a ningún repartidor" : t;
+    }
+
+    private async Task VerComprobante(ComprobanteLinkDto c)
+    {
+        compViendo = c;
+        compVerEstado = "cargando";
+        compTocarDeNuevo = null;
+        StateHasChanged();
+        await Task.Yield();   // que se dibuje el contenedor antes de pintar el PDF adentro
+        string res;
+        try
+        {
+            var url = $"api/cafe/repartidor-public/mis-pedidos/{Token}/comprobantes/{c.Id}/pdf";
+            res = await JS.InvokeAsync<string>("mpCompartir.ver", url, $"{c.TipoTexto} {c.NumeroTexto} {c.Cliente}.pdf", "mpc-pdf");
+        }
+        catch { res = "error"; }
+        if (compViendo?.Id != c.Id) return;   // ya cerró o abrió otro
+        compVerEstado = res == "ok" ? "ok" : "error";
+        StateHasChanged();
+    }
+
+    private void CerrarVer() { compViendo = null; compVerEstado = ""; }
+
+    private async Task BajarComprobante(ComprobanteLinkDto c, string url)
+    {
+        string res;
+        try { res = await JS.InvokeAsync<string>("mpCompartir.bajarUrl", url, $"{c.TipoTexto} {c.NumeroTexto} {c.Cliente}.pdf"); }
+        catch { res = "error"; }
+        MostrarToast(res == "ok" ? "PDF bajado al teléfono" : "No se pudo bajar el PDF", res != "ok");
+    }
 
     private string DiaTexto(DateTime d)
     {

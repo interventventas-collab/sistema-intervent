@@ -1138,7 +1138,14 @@ public class CafeRepartidorPublicController : ControllerBase
     // no solo los suyos, pero solo para ver/bajar: no cambian nada.
 
     public record ComprobanteLinkDto(int Id, DateTime Fecha, string Tipo, string TipoTexto, string NumeroTexto,
-        string Cliente, decimal Total, bool ArcaPendiente);
+        string Cliente, decimal Total, bool ArcaPendiente,
+        // 17/10/2026: el estado, como en el listado de Ventas. Pago: "Pagada" / "Debe $X" / "Pendiente"
+        // (nivel ok/parcial/pend; vacio = no es deuda: NC, presupuesto, anulada con NC, ya facturada).
+        string? PagoTexto = null, string PagoNivel = "",
+        string? EstadoPreparacion = null,
+        string? EntregadoPor = null, DateTime? EntregadoAt = null, bool Retira = false,
+        string? LoTiene = null, string? Rechazo = null, string? RechazoMotivo = null,
+        decimal? Cobrado = null, string? ComentarioEntrega = null);
     public record ComprobantesLinkDto(bool Aplica, List<ComprobanteLinkDto> Items, bool HayMas);
 
     private static readonly string[] TiposComprobanteLink = { "FA", "FB", "FC", "NCA", "NCB", "NCC", "X", "PRO" };
@@ -1195,9 +1202,38 @@ public class CafeRepartidorPublicController : ControllerBase
             .Select(v => new
             {
                 v.Id, v.Fecha, v.TipoComprobante, v.Numero, v.ClienteNombreSnapshot, v.ClienteRazonSocialSnapshot,
-                v.Total, v.ArcaImpTotal, v.ArcaEstado, v.ArcaCae, v.ArcaPtoVta, v.ArcaCbteNro
+                v.Total, v.ArcaImpTotal, v.ArcaEstado, v.ArcaCae, v.ArcaPtoVta, v.ArcaCbteNro,
+                v.EstadoPreparacion, v.EntregadoPorRepartidorId, v.EntregadoAt, v.Retira, v.ComentarioEntrega,
+                v.NotaCreditoVentaId, v.FacturadaComoVentaId
             })
             .ToListAsync();
+
+        // 17/10/2026: pago y entrega, con las MISMAS cuentas que el listado de Ventas
+        // (CafeVentasController.GetSaldos y la carga de escaneos/rechazos/cobrado del listado).
+        var ids = filas.Select(f => f.Id).ToList();
+        var pagados = await _db.CafeCobranzasComprobantes.AsNoTracking()
+            .Where(c => c.VentaId != null && ids.Contains(c.VentaId!.Value) && c.Cobranza!.Estado == "VIGENTE")
+            .GroupBy(c => c.VentaId!.Value)
+            .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
+            .ToDictionaryAsync(x => x.VentaId, x => x.Pagado);
+        var escaneos = (await _db.CafeQrEscaneos.AsNoTracking()
+                .Where(e => ids.Contains(e.VentaId) && e.Accion == "cargado")
+                .Join(_db.CafeRepartidores, e => e.RepartidorId, rr => rr.Id, (e, rr) => new { e.VentaId, e.CreatedAt, rr.Nombre })
+                .ToListAsync())
+            .GroupBy(x => x.VentaId).ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First());
+        var rechazos = (await _db.CafeRepartidorRechazos.AsNoTracking()
+                .Where(x => x.Origen == "venta_cafe" && ids.Contains(x.ReferenciaId))
+                .Join(_db.CafeRepartidores, x => x.RepartidorId, rr => rr.Id, (x, rr) => new { VentaId = x.ReferenciaId, x.CreatedAt, rr.Nombre, x.Motivo })
+                .ToListAsync())
+            .GroupBy(x => x.VentaId).ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First());
+        var cobrado = await _db.CafeCobranzasPendientes.AsNoTracking()
+            .Where(x => ids.Contains(x.VentaId) && x.Estado != "RECHAZADA")
+            .GroupBy(x => x.VentaId)
+            .Select(g => new { VentaId = g.Key, Total = g.Sum(x => x.Importe) })
+            .ToDictionaryAsync(x => x.VentaId, x => x.Total);
+        var repIds = filas.Where(f => f.EntregadoPorRepartidorId.HasValue).Select(f => f.EntregadoPorRepartidorId!.Value).Distinct().ToList();
+        var repNombres = await _db.CafeRepartidores.AsNoTracking().Where(x => repIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Nombre);
 
         var items = filas.Take(porPagina).Select(v =>
         {
@@ -1213,9 +1249,34 @@ public class CafeRepartidorPublicController : ControllerBase
                 ? v.ClienteRazonSocialSnapshot! : (v.ClienteNombreSnapshot ?? "Consumidor final");
             // Facturas: el total con IVA que registro ARCA (Total puede ser el neto).
             var total = autorizada && v.ArcaImpTotal.HasValue ? v.ArcaImpTotal.Value : v.Total;
-            if (v.TipoComprobante.StartsWith("NC") && total > 0) total = -total;
+            var esNc = v.TipoComprobante.StartsWith("NC");
+
+            // Pago: lo cobrable de una factura es el total con IVA (ArcaImpTotal).
+            string? pagoTexto = null; var pagoNivel = "";
+            var totalCobrar = v.ArcaImpTotal is > 0m ? v.ArcaImpTotal.Value : v.Total;
+            var pagado = pagados.TryGetValue(v.Id, out var pg) ? pg : 0m;
+            if (esNc) pagoTexto = null;
+            else if (v.NotaCreditoVentaId.HasValue) pagoTexto = "Anulada con NC";
+            else if (v.FacturadaComoVentaId.HasValue) pagoTexto = "Facturada";
+            else if (v.TipoComprobante == "PRO") pagoTexto = null;   // presupuesto: no es deuda
+            else if (totalCobrar - pagado <= 0.01m) { pagoTexto = "Pagada"; pagoNivel = "ok"; }
+            else if (pagado > 0.01m) { pagoTexto = $"Debe ${(totalCobrar - pagado).ToString("N0", new System.Globalization.CultureInfo("es-AR"))}"; pagoNivel = "parcial"; }
+            else { pagoTexto = "Pendiente"; pagoNivel = "pend"; }
+
+            // Entrega: rechazo "vigente" = no entregada y sin reasignar despues (igual que Ventas).
+            escaneos.TryGetValue(v.Id, out var esc);
+            string? rechNombre = null, rechMotivo = null;
+            if (!v.EntregadoPorRepartidorId.HasValue && rechazos.TryGetValue(v.Id, out var rech)
+                && (esc == null || rech.CreatedAt >= esc.CreatedAt))
+            { rechNombre = rech.Nombre; rechMotivo = rech.Motivo; }
+            var entregadoPor = v.EntregadoPorRepartidorId.HasValue && repNombres.TryGetValue(v.EntregadoPorRepartidorId.Value, out var nm) ? nm : null;
+
+            if (esNc && total > 0) total = -total;
             return new ComprobanteLinkDto(v.Id, v.Fecha, v.TipoComprobante, TipoTextoLink(v.TipoComprobante),
-                numero, cliente, total, esArca && !autorizada);
+                numero, cliente, total, esArca && !autorizada,
+                pagoTexto, pagoNivel, v.EstadoPreparacion, entregadoPor, v.EntregadoAt, v.Retira,
+                esc?.Nombre, rechNombre, rechMotivo,
+                cobrado.TryGetValue(v.Id, out var cb) ? cb : null, v.ComentarioEntrega);
         }).ToList();
 
         return Ok(new ComprobantesLinkDto(true, items, filas.Count > porPagina));
