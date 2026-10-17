@@ -1105,6 +1105,8 @@ public class CafePrecioFormatoDto
 public class CafePrecioConsultaDto
 {
     public bool Encontrado { get; set; }
+    /// <summary>2026-10-17: para poder pasar un presupuesto del chat a venta.</summary>
+    public int ProductoId { get; set; }
     /// <summary>Mensaje cuando no se encontro (para mostrar al usuario).</summary>
     public string? Mensaje { get; set; }
     public string Sku { get; set; } = "";

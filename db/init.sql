@@ -8330,3 +8330,27 @@ IF OBJECT_ID('Viajes_Reportes') IS NOT NULL AND COL_LENGTH('Viajes_Reportes','Ti
     ALTER TABLE Viajes_Reportes ADD Tipo NVARCHAR(10) NULL, SumaFecha DATE NULL,
         SumaCliente NVARCHAR(150) NULL, SumaAprobada BIT NULL, SumaEntregaId INT NULL;
 GO
+
+-- ============================================================
+-- 17/10/2026: presupuestos de PRODUCTOS pasados por el chat (boton Cotizar productos).
+-- Pegados al TELEFONO como los de alquiler. Se guardan solos al tocar "Pasar al chat" y
+-- desde ahi se pasan al modo venta del chat. VentaId = en que venta se convirtio.
+-- Los renglones van en ItemsJson (producto, formato, cantidad, precio congelado del dia).
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_CotizacionesChat' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_CotizacionesChat (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Telefono NVARCHAR(30) NOT NULL,
+        ClienteId INT NULL,
+        Total DECIMAL(18,2) NOT NULL DEFAULT 0,
+        ConIva BIT NOT NULL DEFAULT 0,
+        Texto NVARCHAR(4000) NULL,
+        ItemsJson NVARCHAR(MAX) NOT NULL,
+        Operador NVARCHAR(60) NULL,
+        VentaId INT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+    );
+    CREATE INDEX IX_CafeCotizacionesChat_Telefono ON Cafe_CotizacionesChat (Telefono);
+END
+GO

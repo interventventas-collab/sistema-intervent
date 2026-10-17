@@ -81,6 +81,7 @@ public class CafeConsultasController : ControllerBase
         var dto = new CafePrecioConsultaDto
         {
             Encontrado = true,
+            ProductoId = p.Id,
             Sku = p.Sku ?? "—",
             Nombre = p.Nombre,
             Categoria = p.Categoria,

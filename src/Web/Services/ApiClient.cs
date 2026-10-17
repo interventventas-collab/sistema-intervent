@@ -486,6 +486,16 @@ public class ApiClient
     public async Task<bool> DeleteAlqEquipoAsync(int id)
         => await DeleteAsync($"/api/alquileres/equipos/{id}");
 
+    // --- 2026-10-17: presupuestos de productos pasados por el chat ---
+    public async Task<List<CafeCotizacionChatDto>?> GetCotizacionesChatAsync(string telefono, int limit = 10)
+        => await GetAsync<List<CafeCotizacionChatDto>>($"/api/cafe/cotizaciones-chat?telefono={Uri.EscapeDataString(telefono)}&limit={limit}");
+
+    public async Task<CafeCotizacionChatDto?> CrearCotizacionChatAsync(CafeCotizacionChatDto req)
+        => await PostAsync<CafeCotizacionChatDto>("/api/cafe/cotizaciones-chat", req);
+
+    public async Task MarcarCotizacionChatVentaAsync(int id, int ventaId)
+        => await PostAsync<object>($"/api/cafe/cotizaciones-chat/{id}/venta", new { VentaId = ventaId });
+
     // --- Alquileres: Cotizaciones pegadas al telefono (2026-08-31) ---
     public async Task<List<AlqCotizacionDto>?> GetAlqCotizacionesAsync(string telefono, int limit = 20)
         => await GetAsync<List<AlqCotizacionDto>>($"/api/alquileres/cotizaciones?telefono={Uri.EscapeDataString(telefono)}&limit={limit}");

@@ -17,6 +17,8 @@
 
    Qué NO hace: mandar ni crear ventas. Pasa el texto por OnListo y el que lo usa decide
    (el chat lo deja escrito abajo; el envío SIEMPRE lo decide una persona).
+   2026-10-17: el mensaje lleva el código de cada producto, y el chat guarda lo pasado (Armado())
+   para poder pasarlo después al modo venta.
    ══════════════════════════════════════════════════════════════════════════════════ *@
 
 @using System.Globalization
@@ -218,6 +220,7 @@
 
     private class Renglon
     {
+        public int ProductoId;
         public string Sku = "";
         public string Nombre = "";
         public decimal? Bar;          // sin IVA
@@ -287,6 +290,7 @@
             {
                 var fila = new Renglon
                 {
+                    ProductoId = r.ProductoId,
                     Sku = r.Sku,
                     Nombre = r.Nombre,
                     IvaPct = r.IvaPct > 0m ? r.IvaPct : 21m,
@@ -413,6 +417,29 @@
         if (string.IsNullOrWhiteSpace(texto)) return;
         await OnListo.InvokeAsync(texto.TrimEnd());
     }
+
+    /// <summary>2026-10-17: lo que está armado ahora, para que el chat lo guarde al pasarlo
+    /// (y después se pueda pasar a venta). Precio sin IVA = el que va a la venta.</summary>
+    public CafeCotizacionChatDto Armado() => new()
+    {
+        Total = Total,
+        ConIva = conIva,
+        Texto = texto.TrimEnd(),
+        Items = items.Select(r =>
+        {
+            var p = PrecioDe(r);
+            return new CafeCotizacionChatItemDto
+            {
+                ProductoId = r.ProductoId,
+                Sku = r.Sku,
+                Nombre = r.EsCafe && r.Fmt is { } f ? $"{r.Nombre} {f.Etiqueta}" : r.Nombre,
+                Formato = r.Formato ?? "UNIT",
+                Cantidad = r.Cantidad,
+                PrecioCu = p,
+                PrecioSinIva = conIva ? Math.Round(p / (1m + r.IvaPct / 100m), 2) : p,
+            };
+        }).ToList()
+    };
 
     public void Limpiar()
     {
