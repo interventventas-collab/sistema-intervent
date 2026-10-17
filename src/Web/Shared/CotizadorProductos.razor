@@ -380,6 +380,8 @@
         {
             var p = PrecioDe(r);
             var nombre = r.EsCafe && r.Fmt is { } f ? $"{r.Nombre} {f.Etiqueta}" : r.Nombre;
+            // 2026-10-17: pedido del dueño, que el mensaje aclare el código del producto.
+            if (!string.IsNullOrWhiteSpace(r.Sku)) nombre += $" (cód. {r.Sku})";
             if (r.Cantidad == 1m)
                 sb.AppendLine($"{Num(r.Cantidad)} × {nombre} — {Plata(p)}");
             else
