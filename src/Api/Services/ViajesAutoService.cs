@@ -154,7 +154,7 @@ public class ViajesAutoService
     /// La sincronización no pisa la tarifa de lo ya contado, así que la marca aguanta.
     /// Devuelve el motivo si no se puede (null = hecho).
     /// </summary>
-    public static string? MarcarNoSuma(ViajesEntrega e, bool noSuma, string? quien)
+    public static string? MarcarNoSuma(ViajesEntrega e, bool noSuma, string? quien, string? motivo = null)
     {
         if (e.StopId is null) return "Sólo se marcan las entregas del mapa. Lo cargado a mano se borra.";
         if (e.LiquidadoPagoId is not null) return "Esa entrega ya se pagó: no se puede cambiar.";
@@ -166,6 +166,7 @@ public class ViajesAutoService
             e.Tarifa = 0m;
             e.NoSumaPor = Recortar(quien, 100);
             e.NoSumaAt = ahora;
+            e.NoSumaMotivo = Recortar(motivo, 200);
         }
         else
         {
@@ -174,16 +175,52 @@ public class ViajesAutoService
             e.TarifaNoSuma = null;
             e.NoSumaPor = null;
             e.NoSumaAt = null;
+            e.NoSumaMotivo = null;
         }
         e.UpdatedAt = ahora;
         return null;
     }
 
-    /// <summary>30/09/2026 — Entregas de un mismo día que caen en el mismo lugar (misma dirección, o
-    /// mismo cliente si no hay dirección). Se pintan para que salten a la vista; la que no suma la
-    /// elige una persona.</summary>
-    public static HashSet<int> Repetidas(IEnumerable<ViajesEntrega> delDia)
-        => delDia.Where(x => x.StopId != null)
+    // ── 19/10/2026: "15 entregas · 18 paquetes" ─────────────────────────────────────────────
+    // Pedido del dueño: decía "18 entregas · 3 no se cobran" y el repartidor veía 18 y se
+    // confundía. Entrega = un lugar al que fue y se le paga; paquete = cada parada del mapa.
+    // Las que "no se cobran" son paquetes de más en un lugar donde ya se cobró.
+
+    /// <summary>Una parada del mapa que se cobra (las "no se cobra" son paquetes de más).</summary>
+    public static bool Cuenta(ViajesEntrega x) => x.StopId != null && x.TarifaNoSuma == null;
+
+    /// <summary>"15 entregas · 18 paquetes", o "15 entregas" si no hubo paquetes de más.</summary>
+    public static string TextoEntregas(IEnumerable<ViajesEntrega> delDia)
+    {
+        var paradas = delDia.Where(x => x.StopId != null).ToList();
+        var entregas = paradas.Count(Cuenta);
+        var txt = $"{entregas} entrega{(entregas == 1 ? "" : "s")}";
+        return paradas.Count == entregas ? txt : $"{txt} · {paradas.Count} paquetes";
+    }
+
+    /// <summary>
+    /// Cada paquete que no se cobra se junta con la entrega que sí se cobra en ese mismo lugar ese
+    /// día, para mostrarlos en UN renglón ("Juan Ignacio Figueroa · 3 paquetes"). Devuelve
+    /// Id del paquete → Id de la entrega con la que va. Los que no tienen con quién juntarse
+    /// (nadie se cobra en ese lugar) quedan sueltos.
+    /// </summary>
+    public static Dictionary<int, int> JuntoCon(IEnumerable<ViajesEntrega> delDia)
+    {
+        var r = new Dictionary<int, int>();
+        foreach (var g in delDia.Where(x => x.StopId != null)
+                     .GroupBy(x => Clave(x.Direccion) ?? Clave(x.Cliente) ?? $"#{x.Id}"))
+        {
+            var cabeza = g.Where(Cuenta).OrderBy(x => x.Id).FirstOrDefault();
+            if (cabeza is null) continue;
+            foreach (var x in g.Where(x => !Cuenta(x))) r[x.Id] = cabeza.Id;
+        }
+        return r;
+    }
+
+    /// <summary>Lugares donde todavía se cobra más de una: esos se pintan en amarillo para que
+    /// alguien decida. Una vez sacadas las de más, dejan de estar amarillas.</summary>
+    public static HashSet<int> RepetidasSinResolver(IEnumerable<ViajesEntrega> delDia)
+        => delDia.Where(Cuenta)
             .GroupBy(x => Clave(x.Direccion) ?? Clave(x.Cliente) ?? $"#{x.Id}")
             .Where(g => g.Count() > 1)
             .SelectMany(g => g.Select(x => x.Id))

@@ -72,6 +72,11 @@ public class ViajesReporteDto
     public string Estado { get; set; } = "NUEVO";
     public string? Respuesta { get; set; }
     public DateTime? RespuestaAt { get; set; }
+    // 19/10/2026: pedido de sumar una entrega (Tipo = "SUMA"). SumaAprobada null = esperando.
+    public string? Tipo { get; set; }
+    public DateTime? SumaFecha { get; set; }
+    public string? SumaCliente { get; set; }
+    public bool? SumaAprobada { get; set; }
 }
 
 // ========== Cheques ==========
