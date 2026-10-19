@@ -36,6 +36,28 @@ public class MetaWhatsAppService
     /// empresa a la otra. Hoy es FRIKAF by INTERVENT (11-2252-5458), la que más se usa con clientes.
     /// </summary>
     public string LineaPorDefecto => PhoneId;
+
+    /// <summary>
+    /// 2026-10-19: líneas que SALIERON de la API (pasaron a WhatsApp Business en el celular).
+    /// Meta rechaza todo lo que se mande por ellas, así que cualquier envío que las pida (chat viejo,
+    /// aviso con la línea elegida, último entrante del contacto) se desvía a la línea por defecto.
+    /// Hoy: FRIKAF 11-2252-5458. Se puede ampliar con META_WA_LINEAS_BAJA (ids separados por coma).
+    /// </summary>
+    private HashSet<string> LineasDeBaja
+    {
+        get
+        {
+            var extra = _config["META_WA_LINEAS_BAJA"] ?? Environment.GetEnvironmentVariable("META_WA_LINEAS_BAJA") ?? "";
+            var set = new HashSet<string>(extra.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) { "1242473442281483" };
+            set.Remove(PhoneId); // la por defecto nunca puede estar de baja
+            return set;
+        }
+    }
+
+    public bool EsLineaDeBaja(string? lineaPhoneId) => !string.IsNullOrEmpty(lineaPhoneId) && LineasDeBaja.Contains(lineaPhoneId);
+
+    /// <summary>La línea pedida, o la por defecto si la pedida está de baja (o no vino ninguna).</summary>
+    public string LineaUsable(string? lineaPhoneId) => string.IsNullOrEmpty(lineaPhoneId) || EsLineaDeBaja(lineaPhoneId) ? PhoneId : lineaPhoneId;
     private string ApiVersion => _config["META_WA_API_VERSION"] ?? Environment.GetEnvironmentVariable("META_WA_API_VERSION") ?? "v21.0";
     // 2026-08-01: WhatsApp Business Account (WABA) ID — necesario para listar las plantillas de mensajes.
     private string WabaId => _config["META_WA_WABA_ID"] ?? Environment.GetEnvironmentVariable("META_WA_WABA_ID") ?? "";
@@ -566,7 +588,7 @@ public class MetaWhatsAppService
             using var http = NewClient();
             var json = JsonSerializer.Serialize(payload);
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var resp = await http.PostAsync($"{lineaPhoneId ?? PhoneId}/messages", content, ct);
+            var resp = await http.PostAsync($"{LineaUsable(lineaPhoneId)}/messages", content, ct);
             var respBody = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {
