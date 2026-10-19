@@ -50,19 +50,15 @@
 }
 else
 {
-<div class="dash-wa4-grid">
+<div class="dash-wa4-grid dash-wa1">
 
     @* 2026-08-07: 4 cards de WhatsApp — las 2 líneas API (todas sus conversaciones), la de
        Depósito (Gaby fijo) y una libre para elegir cualquier chat de cliente. *@
+    @* 2026-10-19: la 5458 (FRIKAF by INTERVENT) salió de la API y pasó a WhatsApp Business en el
+       celu. Pedido del dueño: en el Dashboard queda SOLO la línea que sigue en la API (FIJO
+       TRANSRADIO 2081-2933). Se sacaron FRIKAF, el chat fijo de Gabriel y "Elegí un chat".
+       Los chats viejos de la 5458 NO se borran: siguen en la pantalla de WhatsApp (botón verde). *@
     <div class="dash-wa4-cell"><WaChatCard Titulo="FIJO TRANSRADIO" LineaNombre="FIJO TRANSRADIO" /></div>
-    <div class="dash-wa4-cell"><WaChatCard Titulo="FRIKAF by INTERVENT" LineaNombre="FRIKAF by INTERVENT" /></div>
-    <div class="dash-wa4-cell">
-        <PinnedWaChat Numero="@PinnedWaNumero" LineaPhoneId="@PinnedWaLinea"
-                      TituloContacto="@PinnedWaTitulo" NombreLinea="@PinnedWaNombreLinea"
-                      PuedeAbrirEnGrande="true" />
-    </div>
-
-    <div class="dash-wa4-cell"><WaChatCard Titulo="Elegí un chat" /></div>
 
 </div>
 } @* fin @if (isDepositoOnly)…else — fila hero (chat fijado + WhatsApp) *@
@@ -79,6 +75,9 @@ else
     .dash-wa4-cell { height: 520px; min-width: 0; min-height: 0; }
     @@media (max-width: 1400px) { .dash-wa4-grid { grid-template-columns: repeat(2, 1fr); } }
     @@media (max-width: 760px) { .dash-wa4-grid { grid-template-columns: 1fr; } .dash-wa4-cell { height: 460px; } }
+    /* 2026-10-19: una sola tarjeta (la 2933) → media fila en compu, todo el ancho en celu */
+    .dash-wa4-grid.dash-wa1 { grid-template-columns: 1fr 1fr; }
+    @@media (max-width: 760px) { .dash-wa4-grid.dash-wa1 { grid-template-columns: 1fr; } }
     /* la card de WhatsApp dentro de la fila hero ocupa toda la altura del chat fijado */
     .dash-hero-wa { margin-top: 0 !important; height: 100%; }
 
