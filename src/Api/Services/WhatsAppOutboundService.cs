@@ -113,6 +113,8 @@ public class WhatsAppOutboundService
 
         // 2026-08-01: si el llamador indica una línea concreta (la del chat abierto), respondemos por
         // ESA línea de Cloud API — así el mismo contacto escribiendo a 2 líneas nuestras no se cruza.
+        // 2026-10-19: una línea que salió de la API (ej. la 5458 pasada al celular) no sirve para mandar.
+        if (_meta.EsLineaDeBaja(lineaOverride)) lineaOverride = null;
         if (!string.IsNullOrEmpty(lineaOverride) && _meta.IsConfigured) return ("CLOUD", lineaOverride);
 
         // 2026-08-20: SIN LÍNEA ELEGIDA, MANDA LA LÍNEA POR DEFECTO.
@@ -139,7 +141,7 @@ public class WhatsAppOutboundService
                 if (abiertaEnLaPorDefecto) return ("CLOUD", porDefecto);
 
                 if (ultimo?.Canal == "CLOUD" && !string.IsNullOrEmpty(ultimo.LineaPhoneId)
-                    && ultimo.LineaPhoneId != porDefecto)
+                    && ultimo.LineaPhoneId != porDefecto && !_meta.EsLineaDeBaja(ultimo.LineaPhoneId))
                 {
                     _logger.LogWarning(
                         "WhatsApp: a {Numero} se le manda por la línea {Usada} y NO por la de por defecto ({PorDefecto}) "
@@ -152,7 +154,7 @@ public class WhatsAppOutboundService
             }
         }
 
-        if (ultimo?.Canal == "CLOUD" && _meta.IsConfigured) return ("CLOUD", ultimo.LineaPhoneId);
+        if (ultimo?.Canal == "CLOUD" && _meta.IsConfigured) return ("CLOUD", _meta.LineaUsable(ultimo.LineaPhoneId));
         if (ultimo?.Canal == "TWILIO" && _twilio.IsConfigured) return ("TWILIO", null);
         return (_meta.IsConfigured ? "CLOUD" : "TWILIO", null);
     }
