@@ -50,17 +50,11 @@
 }
 else
 {
-<div class="dash-wa4-grid dash-wa1">
-
-    @* 2026-08-07: 4 cards de WhatsApp — las 2 líneas API (todas sus conversaciones), la de
-       Depósito (Gaby fijo) y una libre para elegir cualquier chat de cliente. *@
-    @* 2026-10-19: la 5458 (FRIKAF by INTERVENT) salió de la API y pasó a WhatsApp Business en el
-       celu. Pedido del dueño: en el Dashboard queda SOLO la línea que sigue en la API (FIJO
-       TRANSRADIO 2081-2933). Se sacaron FRIKAF, el chat fijo de Gabriel y "Elegí un chat".
-       Los chats viejos de la 5458 NO se borran: siguen en la pantalla de WhatsApp (botón verde). *@
-    <div class="dash-wa4-cell"><WaChatCard Titulo="FIJO TRANSRADIO" LineaNombre="FIJO TRANSRADIO" /></div>
-
-</div>
+@* 2026-10-19: acá iban las tarjetas de WhatsApp. La 5458 (FRIKAF) salió de la API y pasó a
+   WhatsApp Business en el celu; la única línea que queda (FIJO TRANSRADIO 2081-2933) se mudó
+   al lado de "Correos importantes", mitad y mitad (pedido del dueño). Se sacaron FRIKAF, el
+   chat fijo de Gabriel y "Elegí un chat". Los chats viejos de la 5458 NO se borran: siguen en
+   la pantalla de WhatsApp (botón verde). *@
 } @* fin @if (isDepositoOnly)…else — fila hero (chat fijado + WhatsApp) *@
 
 <style>
@@ -75,9 +69,6 @@ else
     .dash-wa4-cell { height: 520px; min-width: 0; min-height: 0; }
     @@media (max-width: 1400px) { .dash-wa4-grid { grid-template-columns: repeat(2, 1fr); } }
     @@media (max-width: 760px) { .dash-wa4-grid { grid-template-columns: 1fr; } .dash-wa4-cell { height: 460px; } }
-    /* 2026-10-19: una sola tarjeta (la 2933) → media fila en compu, todo el ancho en celu */
-    .dash-wa4-grid.dash-wa1 { grid-template-columns: 1fr 1fr; }
-    @@media (max-width: 760px) { .dash-wa4-grid.dash-wa1 { grid-template-columns: 1fr; } }
     /* la card de WhatsApp dentro de la fila hero ocupa toda la altura del chat fijado */
     .dash-hero-wa { margin-top: 0 !important; height: 100%; }
 
@@ -1012,7 +1003,9 @@ else
 @* Correos importantes — mails que dispararon alertas EMAIL_REMITENTE (2026-07-10).
    2026-08-26: salió de la grilla de KPIs (era una card altísima con 4 renglones de
    código del mail por cada correo). Ahora es una tira a lo ancho: UN renglón por mail
-   con quién lo mandó, el asunto, el arranque del texto y la fecha. Se toca y abre Gmail. *@
+   con quién lo mandó, el asunto, el arranque del texto y la fecha. Se toca y abre Gmail.
+   2026-10-19: la tira se parte al medio — correos a la izquierda, WhatsApp 2933 a la derecha. *@
+<div class="ci-wa-row">
 <div class="ci-card">
     <div class="ci-head">
         <div class="mac-card-iconbox" style="background:#EEEDFE; color:#534AB7;">
@@ -1061,6 +1054,8 @@ else
             }
         }
     }
+</div>
+<div class="ci-wa-cell"><WaChatCard Titulo="FIJO TRANSRADIO" LineaNombre="FIJO TRANSRADIO" /></div>
 </div>
 
 @* ═══ Card: resumen del día (cheques + saldo Galicia + preguntas MeLi) ═══ *@
@@ -1782,6 +1777,11 @@ else
     @@media (max-width: 760px) {
         .ci-from { max-width:110px; }
     }
+    /* 2026-10-19: correos (izq) + WhatsApp 2933 (der), mitad y mitad, misma altura. En celu, uno abajo del otro. */
+    .ci-wa-row { display:grid; grid-template-columns:1fr 1fr; gap:0.9rem; margin:0.9rem 0; align-items:stretch; }
+    .ci-wa-row .ci-card { margin-top:0; overflow:hidden; }
+    .ci-wa-cell { height:360px; min-width:0; min-height:0; } /* la tarjeta de WhatsApp pide 360 px como mínimo */
+    @@media (max-width: 900px) { .ci-wa-row { grid-template-columns:1fr; } }
 </style>
 
 @* === Cheques por pagar — calendario visual === *@
