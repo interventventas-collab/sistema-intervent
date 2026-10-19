@@ -95,7 +95,7 @@ public class ViajesController : ControllerBase
         var regsMes = registros.Where(r => r.Fecha >= inicioMes).ToList();
         var entMes = entregas.Where(x => x.Fecha >= inicioMes).ToList();
         var pagosMes = pagos.Where(p => p.Fecha >= inicioMes).ToList();
-        var totalViajesMes = regsMes.Sum(r => r.CantidadCABA + r.CantidadPCIA) + entMes.Count;
+        var totalViajesMes = regsMes.Sum(r => r.CantidadCABA + r.CantidadPCIA) + entMes.Count(x => x.TarifaNoSuma == null);
         // Cada viaje se valua con SU tarifa congelada (no la actual del empleado).
         var totalACobrarMes = regsMes.Sum(r => r.CantidadCABA * r.TarifaCABA + r.CantidadPCIA * r.TarifaPCIA)
                             + entMes.Sum(x => x.Tarifa);
@@ -110,8 +110,8 @@ public class ViajesController : ControllerBase
         var totalPagadoAll = await _db.ViajesPagos.Where(p => p.EmpleadoId == emp.Id).SumAsync(p => p.Importe);
         var saldoAcum = totalACobrarAll - totalPagadoAll;
 
-        var entHoy = entregas.Where(x => x.Fecha == hoy && x.StopId != null).ToList();
-        var entPend = entregas.Where(x => x.LiquidadoPagoId is null).ToList();
+        var entHoy = entregas.Where(x => x.Fecha == hoy && ViajesAutoService.Cuenta(x)).ToList();
+        var entPend = entregas.Where(x => x.LiquidadoPagoId is null && x.TarifaNoSuma == null).ToList();
 
         var regSel = registros.FirstOrDefault(r => r.Fecha == fechaSel);
         var ultimos7 = registros.Where(r => r.Fecha >= hace7 && r.Fecha <= hoy)
@@ -242,7 +242,7 @@ public class ViajesController : ControllerBase
                 + ents.Where(x => desde == null || x.Fecha >= desde).Sum(x => x.Tarifa);
             int Viajes(DateTime? desde) =>
                   regs.Where(r => desde == null || r.Fecha >= desde).Sum(r => r.CantidadCABA + r.CantidadPCIA)
-                + ents.Count(x => desde == null || x.Fecha >= desde);
+                + ents.Count(x => (desde == null || x.Fecha >= desde) && x.TarifaNoSuma == null);
 
             var totalACobrarMes = ACobrar(inicioMes);
             var totalPagadoMes = pagos.Where(p => p.Fecha >= inicioMes).Sum(p => p.Importe);
@@ -252,7 +252,8 @@ public class ViajesController : ControllerBase
             var pend = ents.Where(x => x.LiquidadoPagoId is null).ToList();
             // Sólo las entregas de verdad: lo cargado a mano (un día en el depósito, un premio) no
             // es una entrega y hacía decir "hoy 1 entrega" un día que no salió a repartir.
-            var hoyEnts = ents.Where(x => x.Fecha == hoy && x.StopId != null).ToList();
+            // 19/10/2026: y los paquetes de más (no se cobran) tampoco son una entrega.
+            var hoyEnts = ents.Where(x => x.Fecha == hoy && ViajesAutoService.Cuenta(x)).ToList();
 
             var ultima = ultimasCargas.TryGetValue(e.Id, out var u1) ? u1 : null;
             var ultimaEnt = ultimasEntregas.TryGetValue(e.Id, out var u2) ? u2 : null;
@@ -267,7 +268,7 @@ public class ViajesController : ControllerBase
                 e.ModoAutomatico, e.MapeoDriverId,
                 e.MapeoDriverId.HasValue && drivers.TryGetValue(e.MapeoDriverId.Value, out var dn) ? dn : null,
                 e.TarifaViaje,
-                pend.Count, pend.Sum(x => x.Tarifa),
+                pend.Count(x => x.TarifaNoSuma == null), pend.Sum(x => x.Tarifa),
                 pend.Count == 0 ? null : pend.Min(x => x.Fecha),
                 hoyEnts.Count, hoyEnts.Sum(x => x.Tarifa));
         }).ToList();
@@ -554,7 +555,7 @@ public class ViajesController : ControllerBase
             .OrderByDescending(g => g.Key)
             .Select(g => new AdminDiaDto(
                 g.Key,
-                g.Count(),
+                g.Count(x => x.TarifaNoSuma == null),
                 g.Sum(x => x.Tarifa),
                 g.Where(x => x.LiquidadoPagoId == null).Sum(x => x.Tarifa),
                 g.All(x => x.LiquidadoPagoId != null),
@@ -565,7 +566,7 @@ public class ViajesController : ControllerBase
             .ToList();
 
         return Ok(new AdminEntregasResumenDto(emp.Id, emp.Nombre, emp.TarifaViaje,
-            pend.Count, pend.Sum(x => x.Tarifa),
+            pend.Count(x => x.TarifaNoSuma == null), pend.Sum(x => x.Tarifa),
             pend.Count == 0 ? null : pend.Min(x => x.Fecha),
             dias_));
     }
@@ -678,8 +679,8 @@ public class ViajesController : ControllerBase
         var desde = pend.Min(x => x.Fecha);
         var desc = string.IsNullOrWhiteSpace(req.Descripcion)
             ? (total == totalViajes
-                ? $"Liquidación {pend.Count} viajes ({desde:dd/MM} al {hasta:dd/MM})"
-                : $"Liquidación {pend.Count} viajes ({desde:dd/MM} al {hasta:dd/MM}) — ${Plata(totalViajes)} menos ${Plata(totalViajes - total)} ya pagados")
+                ? $"Liquidación {pend.Count(x => x.TarifaNoSuma == null)} viajes ({desde:dd/MM} al {hasta:dd/MM})"
+                : $"Liquidación {pend.Count(x => x.TarifaNoSuma == null)} viajes ({desde:dd/MM} al {hasta:dd/MM}) — ${Plata(totalViajes)} menos ${Plata(totalViajes - total)} ya pagados")
             : req.Descripcion!.Trim();
 
         var pago = new ViajesPago
@@ -761,7 +762,9 @@ public class ViajesController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────────────
 
     public record ReporteDto(int Id, int EmpleadoId, string EmpleadoNombre, string Texto,
-        DateTime CreatedAt, string Estado, string? Respuesta, DateTime? RespuestaAt);
+        DateTime CreatedAt, string Estado, string? Respuesta, DateTime? RespuestaAt,
+        // 19/10/2026: pedido de sumar una entrega (Tipo = "SUMA").
+        string? Tipo = null, DateTime? SumaFecha = null, string? SumaCliente = null, bool? SumaAprobada = null);
 
     public record ResponderReporteRequest(string Texto);
 
@@ -774,7 +777,74 @@ public class ViajesController : ControllerBase
         if (!incluirVistos) q = q.Where(r => r.Estado == "NUEVO");
         var l = await q.OrderByDescending(r => r.Id).Take(50).ToListAsync();
         return Ok(l.Select(r => new ReporteDto(r.Id, r.EmpleadoId,
-            r.Empleado?.Nombre ?? "", r.Texto, r.CreatedAt, r.Estado, r.Respuesta, r.RespuestaAt)));
+            r.Empleado?.Nombre ?? "", r.Texto, r.CreatedAt, r.Estado, r.Respuesta, r.RespuestaAt,
+            r.Tipo, r.SumaFecha, r.SumaCliente, r.SumaAprobada)));
+    }
+
+    /// <summary>
+    /// 19/10/2026 — Aprobar el pedido del repartidor de sumarle una entrega que el mapa no contó.
+    /// Recién acá suma plata: se crea la entrega a mano a su tarifa, con el motivo de él, y le llega
+    /// la respuesta al celu.
+    /// </summary>
+    [HttpPost("admin/reportes/{id:int}/aprobar-suma")]
+    [Authorize]
+    public async Task<IActionResult> AprobarSuma(int id)
+    {
+        var r = await _db.ViajesReportes.FindAsync(id);
+        if (r is null || r.Tipo != "SUMA") return NotFound(new { error = "No encontré ese pedido" });
+        if (r.SumaAprobada is not null) return BadRequest(new { error = "Ese pedido ya se contestó" });
+        var emp = await _db.ViajesEmpleados.FindAsync(r.EmpleadoId);
+        if (emp is null) return NotFound(new { error = "No encontré al repartidor" });
+
+        var fecha = r.SumaFecha ?? r.CreatedAt.AddHours(-3).Date;
+        var detalle = $"Entrega que pidió sumar · {r.SumaCliente}".Trim(' ', '·');
+        var ent = new ViajesEntrega
+        {
+            EmpleadoId = emp.Id, Fecha = fecha, Tarifa = emp.TarifaViaje, Origen = "manual",
+            Cliente = r.SumaCliente,
+            Detalle = detalle.Length > 300 ? detalle[..300] : detalle,
+            CargadoPor = QuienCarga(), CreatedAt = DateTime.UtcNow
+        };
+        _db.ViajesEntregas.Add(ent);
+        await _db.SaveChangesAsync();
+
+        var ahora = DateTime.UtcNow;
+        r.SumaAprobada = true;
+        r.SumaEntregaId = ent.Id;
+        r.Respuesta = $"✅ Aprobada: se te sumó ${Plata(emp.TarifaViaje)} el {fecha:dd/MM}.";
+        r.RespuestaAt = ahora;
+        r.RespuestaPor = User?.Identity?.Name;
+        r.RespuestaVistaAt = null;
+        r.Estado = "VISTO";
+        r.VistoAt = ahora;
+        r.VistoPor = User?.Identity?.Name;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, importe = emp.TarifaViaje });
+    }
+
+    /// <summary>19/10/2026 — Rechazar el pedido de sumar una entrega. No mueve plata; el motivo le
+    /// llega al celu.</summary>
+    [HttpPost("admin/reportes/{id:int}/rechazar-suma")]
+    [Authorize]
+    public async Task<IActionResult> RechazarSuma(int id, [FromBody] ResponderReporteRequest req)
+    {
+        var r = await _db.ViajesReportes.FindAsync(id);
+        if (r is null || r.Tipo != "SUMA") return NotFound(new { error = "No encontré ese pedido" });
+        if (r.SumaAprobada is not null) return BadRequest(new { error = "Ese pedido ya se contestó" });
+
+        var motivo = req?.Texto?.Trim();
+        var texto = "❌ No se sumó" + (string.IsNullOrWhiteSpace(motivo) ? "." : $": {motivo}");
+        var ahora = DateTime.UtcNow;
+        r.SumaAprobada = false;
+        r.Respuesta = texto.Length > 500 ? texto[..500] : texto;
+        r.RespuestaAt = ahora;
+        r.RespuestaPor = User?.Identity?.Name;
+        r.RespuestaVistaAt = null;
+        r.Estado = "VISTO";
+        r.VistoAt = ahora;
+        r.VistoPor = User?.Identity?.Name;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     /// <summary>
@@ -882,9 +952,13 @@ public class ViajesController : ControllerBase
     /// <summary>30/09/2026 — Una entrega del día. Tarifa = lo que suma (0 si "no suma");
     /// Repetida = otra entrega del mismo día en el mismo lugar.</summary>
     public record EntregaItemDto(int Id, string Nombre, decimal Tarifa, bool NoSuma, string? NoSumaPor,
-        bool Liquidado, bool Repetida);
+        bool Liquidado, bool Repetida,
+        // 19/10/2026: por qué no se cobra, y con qué entrega va junta (mismo lugar, mismo día) para
+        // mostrar "Juan Ignacio Figueroa · 3 paquetes" en un solo renglón. Repetida ahora es sólo
+        // "en ese lugar todavía se cobra más de una": las ya resueltas dejan de ser amarillas.
+        string? NoSumaMotivo = null, int? JuntoCon = null);
 
-    public record NoSumaRequest(bool NoSuma);
+    public record NoSumaRequest(bool NoSuma, string? Motivo = null);
 
     /// <summary>30/09/2026 — Marca / desmarca una entrega del mapa como "no suma".</summary>
     [HttpPost("admin/entregas/{id:int}/no-suma")]
@@ -893,7 +967,7 @@ public class ViajesController : ControllerBase
     {
         var e = await _db.ViajesEntregas.FindAsync(id);
         if (e is null) return NotFound(new { error = "No encontré esa entrega" });
-        var err = ViajesAutoService.MarcarNoSuma(e, req.NoSuma, QuienCarga());
+        var err = ViajesAutoService.MarcarNoSuma(e, req.NoSuma, QuienCarga(), req.Motivo);
         if (err is not null) return BadRequest(new { error = err });
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, tarifa = e.Tarifa });
@@ -926,12 +1000,14 @@ public class ViajesController : ControllerBase
         var detallePorDia = new Dictionary<DateTime, List<EntregaItemDto>>();
         foreach (var g in ents.Where(x => x.StopId != null).GroupBy(x => x.Fecha))
         {
-            var rep = ViajesAutoService.Repetidas(g);
+            var rep = ViajesAutoService.RepetidasSinResolver(g);
+            var junto = ViajesAutoService.JuntoCon(g);
             detallePorDia[g.Key] = g.OrderBy(x => x.Id)
                 .Select(x => new EntregaItemDto(x.Id,
                     !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
                         : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion! : "entrega"),
-                    x.Tarifa, x.TarifaNoSuma != null, x.NoSumaPor, x.LiquidadoPagoId != null, rep.Contains(x.Id)))
+                    x.Tarifa, x.TarifaNoSuma != null, x.NoSumaPor, x.LiquidadoPagoId != null, rep.Contains(x.Id),
+                    x.NoSumaMotivo, junto.TryGetValue(x.Id, out var j) ? j : null))
                 .ToList();
         }
 
@@ -943,7 +1019,7 @@ public class ViajesController : ControllerBase
                 .ToList();
             var quienes = todos.Take(3).ToList();
             var resto = todos.Count - quienes.Count;
-            filas.Add((g.Key, 0, $"{g.Count()} entrega{(g.Count() == 1 ? "" : "s")}",
+            filas.Add((g.Key, 0, ViajesAutoService.TextoEntregas(g),
                 string.Join(" · ", quienes) + (resto > 0 ? $" · +{resto} más" : ""),
                 g.Sum(x => x.Tarifa), 0m, false, false, "entregas",
                 g.Select(x => x.Id).ToList(), g.All(x => x.LiquidadoPagoId != null), todos,
@@ -1054,7 +1130,7 @@ public class ViajesController : ControllerBase
                 ? string.Join(" · ", delDia.Where(x => !string.IsNullOrWhiteSpace(x.Detalle))
                         .Select(x => x.Detalle!).Distinct())
                 : null;
-            lista.Add(new DiaResumenDto(d, reales.Count, delDia.Sum(x => x.Tarifa),
+            lista.Add(new DiaResumenDto(d, reales.Count(ViajesAutoService.Cuenta), delDia.Sum(x => x.Tarifa),
                 reales.Count == 0 ? null : reales.Min(x => x.EntregadoAt),
                 reales.Count == 0 ? null : reales.Max(x => x.EntregadoAt),
                 string.IsNullOrWhiteSpace(nota) ? null : nota));

@@ -230,6 +230,11 @@ public class ViajesEntrega
     public string? NoSumaPor { get; set; }
     public DateTime? NoSumaAt { get; set; }
 
+    /// <summary>19/10/2026: por qué no se cobra. Desde el celu el repartidor lo tiene que escribir
+    /// (pedido del dueño: "que ponga comentario"); desde la oficina es opcional.</summary>
+    [MaxLength(200)]
+    public string? NoSumaMotivo { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

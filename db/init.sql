@@ -8335,3 +8335,16 @@ BEGIN
     CREATE INDEX IX_CafeCotizacionesChat_Telefono ON Cafe_CotizacionesChat (Telefono);
 END
 GO
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 19/10/2026 — Viajes: por qué no se cobra una entrega (el repartidor lo tiene que
+-- escribir desde el celu) y "pedir que me sumen una entrega" (aviso tipo SUMA que la
+-- oficina aprueba o rechaza). ⚠ En PROD correr a mano.
+-- ─────────────────────────────────────────────────────────────────────────────
+IF OBJECT_ID('Viajes_Entregas') IS NOT NULL AND COL_LENGTH('Viajes_Entregas','NoSumaMotivo') IS NULL
+    ALTER TABLE Viajes_Entregas ADD NoSumaMotivo NVARCHAR(200) NULL;
+GO
+IF OBJECT_ID('Viajes_Reportes') IS NOT NULL AND COL_LENGTH('Viajes_Reportes','Tipo') IS NULL
+    ALTER TABLE Viajes_Reportes ADD Tipo NVARCHAR(10) NULL, SumaFecha DATE NULL,
+        SumaCliente NVARCHAR(150) NULL, SumaAprobada BIT NULL, SumaEntregaId INT NULL;
+GO

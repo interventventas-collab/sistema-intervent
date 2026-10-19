@@ -44,7 +44,14 @@ public class ViajesCuentaReporteService
     // ─────────────────────────────────────────────────────────────────────────────
 
     public record ReporteEntrega(string Cliente, string? Direccion, DateTime? EntregadoAt,
-        decimal Tarifa, string Origen, bool Liquidado);
+        decimal Tarifa, string Origen, bool Liquidado,
+        // 19/10/2026: paquete de más en un lugar donde ya se cobró: no es una entrega, va sin número.
+        bool NoSuma = false, string? NoSumaMotivo = null)
+    {
+        /// <summary>Lo que se escribe en la columna Cliente: los paquetes de más aclaran por qué no se cobran.</summary>
+        public string ClienteTexto => !NoSuma ? Cliente
+            : $"{Cliente} (paquete de más, no se cobra{(string.IsNullOrWhiteSpace(NoSumaMotivo) ? "" : $": {NoSumaMotivo}")})";
+    }
 
     /// <summary>Tipo: entregas · extra · registro · pago.</summary>
     public record ReporteMov(DateTime Fecha, string Tipo, string Que, decimal Suma, decimal Pago,
@@ -83,11 +90,11 @@ public class ViajesCuentaReporteService
                     !string.IsNullOrWhiteSpace(x.Cliente) ? x.Cliente!
                         : (!string.IsNullOrWhiteSpace(x.Direccion) ? x.Direccion! : "entrega"),
                     x.Direccion, x.EntregadoAt, x.Tarifa, OrigenEnCriollo(x.Origen),
-                    x.LiquidadoPagoId != null))
+                    x.LiquidadoPagoId != null, x.TarifaNoSuma != null, x.NoSumaMotivo))
                 .ToList();
 
             filas.Add(new ReporteMov(g.Key, "entregas",
-                $"{g.Count()} entrega{(g.Count() == 1 ? "" : "s")}",
+                ViajesAutoService.TextoEntregas(g),
                 g.Sum(x => x.Tarifa), 0m, 0m, null, null, null, false, null, null,
                 g.All(x => x.LiquidadoPagoId != null),
                 g.Min(x => x.EntregadoAt), g.Max(x => x.EntregadoAt), detalle));
@@ -135,7 +142,7 @@ public class ViajesCuentaReporteService
 
         var ganado = delPeriodo.Sum(x => x.Suma);
         var pagado = delPeriodo.Sum(x => x.Pago);
-        var entregas = delPeriodo.Where(x => x.Tipo == "entregas").Sum(x => x.Entregas.Count);
+        var entregas = delPeriodo.Where(x => x.Tipo == "entregas").Sum(x => x.Entregas.Count(e => !e.NoSuma));
         var dias = delPeriodo.Where(x => x.Tipo == "entregas").Select(x => x.Fecha).Distinct().Count();
         var pendiente = delPeriodo.SelectMany(x => x.Entregas).Where(e => !e.Liquidado).Sum(e => e.Tarifa);
 
@@ -286,9 +293,10 @@ public class ViajesCuentaReporteService
                             var n = 0;
                             foreach (var e in m.Entregas)
                             {
-                                n++;
-                                tab.Cell().PaddingVertical(1.5f).Text($"{n}.").FontSize(8).FontColor("#9ca3af");
-                                tab.Cell().PaddingVertical(1.5f).PaddingRight(4).Text(e.Cliente).FontSize(8.5f);
+                                if (!e.NoSuma) n++;
+                                tab.Cell().PaddingVertical(1.5f).Text(e.NoSuma ? "" : $"{n}.").FontSize(8).FontColor("#9ca3af");
+                                tab.Cell().PaddingVertical(1.5f).PaddingRight(4).Text(e.ClienteTexto).FontSize(8.5f)
+                                    .FontColor(e.NoSuma ? "#9ca3af" : "#111827");
                                 tab.Cell().PaddingVertical(1.5f).PaddingRight(4)
                                     .Text(e.Direccion ?? "").FontSize(8).FontColor("#4b5563");
                                 tab.Cell().PaddingVertical(1.5f)
@@ -413,11 +421,11 @@ public class ViajesCuentaReporteService
             var n = 0;
             foreach (var e in m.Entregas)
             {
-                n++;
+                if (!e.NoSuma) n++;
                 he.Cell(f, 1).Value = m.Fecha;
                 he.Cell(f, 1).Style.DateFormat.Format = "dd/MM/yyyy";
-                he.Cell(f, 2).Value = n;
-                he.Cell(f, 3).Value = e.Cliente;
+                if (!e.NoSuma) he.Cell(f, 2).Value = n;
+                he.Cell(f, 3).Value = e.ClienteTexto;
                 he.Cell(f, 4).Value = e.Direccion ?? "";
                 if (e.EntregadoAt is { } ea) { he.Cell(f, 5).Value = ArTime(ea); he.Cell(f, 5).Style.DateFormat.Format = "HH:mm"; }
                 he.Cell(f, 6).Value = e.Origen;

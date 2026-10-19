@@ -149,7 +149,11 @@
                  padding:0.1rem 0.25rem; border-radius:4px; cursor:pointer; }
     .vj-ns-btn:hover { color:#b42318; background:#fef2f2; }
     .vj-ns-btn:disabled { opacity:0.5; }
-    .vj-nosuma-cuenta { color:#6b7280; font-size:0.75rem; margin-left:0.3rem; }
+    /* 19/10/2026: los paquetes de más van colgados de la entrega que se cobra, en el mismo renglón. */
+    .vj-lista.nro { list-style:none; margin-left:0.2rem; min-width:26rem; }
+    .vj-nro { display:inline-block; min-width:1.6rem; color:#9ca3af; font-variant-numeric:tabular-nums; }
+    .vj-paq { color:#374151; font-size:0.78rem; margin-left:0.3rem; white-space:nowrap; }
+    .vj-paq-mas { margin-left:1.6rem; color:#9ca3af; font-size:0.74rem; }
     .vj-rep-nota { color:#92400e; font-size:0.74rem; margin-top:0.25rem; }
     .vj-mov tr:first-of-type + tr td.quedo { font-weight:800; }
     .vj-tag { font-size:0.66rem; font-weight:700; padding:0.05rem 0.35rem; border-radius:5px;
@@ -171,6 +175,31 @@
         <div class="vj-reportes">
             @foreach (var rp in reportes)
             {
+                @* 19/10/2026: pide que le sumen una entrega que el mapa no contó. No suma nada
+                   hasta que alguien la aprueba de acá. *@
+                @if (rp.Tipo == "SUMA")
+                {
+                    <div class="vj-reporte">
+                        <div style="flex:1;">
+                            <b>@rp.EmpleadoNombre</b> pide que le sumes una entrega
+                            <span class="vj-reporte-cuando">· @rp.CreatedAt.AddHours(-3).ToString("dd/MM HH:mm")</span>
+                            <div class="vj-reporte-texto">
+                                @(rp.SumaFecha?.ToString("dddd dd/MM", ar)) · <b>@rp.SumaCliente</b>
+                            </div>
+                            <div class="vj-reporte-texto">@ComentarioDeSuma(rp)</div>
+                            <div class="vj-reporte-resp">
+                                <input class="form-input" placeholder="Si no la sumás, por qué (opcional)"
+                                       value="@(respuestas.TryGetValue(rp.Id, out var tr) ? tr : "")"
+                                       @onchange="@(e => respuestas[rp.Id] = e.Value?.ToString() ?? "")" />
+                                <button class="btn btn-primary" disabled="@(contestandoSuma == rp.Id)"
+                                        @onclick="() => ContestarSuma(rp, true)">✅ Sumarla</button>
+                                <button class="btn btn-secondary" disabled="@(contestandoSuma == rp.Id)"
+                                        @onclick="() => ContestarSuma(rp, false)">No sumarla</button>
+                            </div>
+                        </div>
+                    </div>
+                    continue;
+                }
                 <div class="vj-reporte">
                     <div style="flex:1;">
                         <b>@rp.EmpleadoNombre</b> avisó
@@ -604,21 +633,28 @@
                                             @m.Que
                                             @if (m.EsExtra) { <span class="vj-tag">a mano</span> }
                                             else if (!m.EsPago) { <span class="vj-tag mapa">del mapa</span> }
-                                            @{ var noSuman = m.Entregas?.Count(x => x.NoSuma) ?? 0; }
-                                            @if (noSuman > 0) { <span class="vj-nosuma-cuenta">· @noSuman no se @(noSuman == 1 ? "cobra" : "cobran")</span> }
                                             @if (abierto && m.Entregas is { Count: > 0 })
                                             {
                                                 @* 30/09/2026: cada entrega con lo que suma, y "no suma" para las dobles en el
                                                    mismo lugar (el arreglo con Nacho: dos en el mismo lugar, cobra una). *@
-                                                <ol class="vj-lista">
-                                                    @foreach (var en in m.Entregas)
+                                                @* 19/10/2026: "15 entregas · 18 paquetes". Los paquetes de más (no se cobran)
+                                                   van colgados de la entrega que se cobra en ese lugar, así la lista
+                                                   numerada termina en el mismo número que dice arriba. *@
+                                                var paquetesDe = m.Entregas.Where(x => x.JuntoCon != null).ToLookup(x => x.JuntoCon!.Value);
+                                                var nroEnt = 0;
+                                                <ol class="vj-lista nro">
+                                                    @foreach (var en in m.Entregas.Where(x => x.JuntoCon == null))
                                                     {
+                                                        var mas = paquetesDe[en.Id].ToList();
+                                                        if (!en.NoSuma) nroEnt++;
                                                         <li class="@(en.Repetida ? "rep" : "")">
+                                                            <span class="vj-nro">@(en.NoSuma ? "–" : $"{nroEnt}.")</span>
                                                             <span class="@(en.NoSuma ? "ns" : "")">@en.Nombre</span>
+                                                            @if (mas.Count > 0) { <span class="vj-paq">· @(mas.Count + 1) paquetes</span> }
                                                             @if (en.NoSuma)
                                                             {
                                                                 <span class="vj-imp cero">($0)</span>
-                                                                @if (!string.IsNullOrWhiteSpace(en.NoSumaPor)) { <span class="vj-ns-quien">· @en.NoSumaPor</span> }
+                                                                <span class="vj-ns-quien">@QuienYPorQue(en)</span>
                                                             }
                                                             else
                                                             {
@@ -631,12 +667,24 @@
                                                                         title="@(en.NoSuma ? "Que se vuelva a cobrar" : "No se cobra (pasa a $0)")"
                                                                         @onclick="() => CambiarNoSuma(en)">@(en.NoSuma ? "↩" : "✕")</button>
                                                             }
+                                                            @foreach (var pq in mas)
+                                                            {
+                                                                <div class="vj-paq-mas">
+                                                                    + 1 paquete, no se cobra @QuienYPorQue(pq)
+                                                                    @if (!pq.Liquidado)
+                                                                    {
+                                                                        <button class="vj-ns-btn" disabled="@(marcandoNoSuma == pq.Id)"
+                                                                                title="Que se vuelva a cobrar"
+                                                                                @onclick="() => CambiarNoSuma(pq)">↩</button>
+                                                                    }
+                                                                </div>
+                                                            }
                                                         </li>
                                                     }
                                                 </ol>
                                                 @if (m.Entregas.Any(x => x.Repetida))
                                                 {
-                                                    <div class="vj-rep-nota">En amarillo: misma dirección dos veces el mismo día. Tocá la ✕ de la que no se cobra.</div>
+                                                    <div class="vj-rep-nota">En amarillo: mismo lugar dos veces el mismo día. Tocá la ✕ del paquete que no se cobra.</div>
                                                 }
                                             }
                                             else if (abierto)
@@ -1014,6 +1062,35 @@
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
+    private int contestandoSuma;
+
+    /// <summary>19/10/2026: lo que escribió él, sin repetir el día y el cliente que ya se muestran.</summary>
+    private static string ComentarioDeSuma(ViajesReporteDto rp)
+    {
+        var i = rp.Texto.IndexOf('"');
+        return i >= 0 ? rp.Texto[i..] : rp.Texto;
+    }
+
+    /// <summary>19/10/2026: aprobar (se le suma una entrega a su tarifa) o rechazar el pedido.
+    /// La respuesta le llega al celu.</summary>
+    private async Task ContestarSuma(ViajesReporteDto rp, bool aprobar)
+    {
+        contestandoSuma = rp.Id;
+        try
+        {
+            var resp = aprobar
+                ? await Http.PostAsJsonAsync($"api/viajes/admin/reportes/{rp.Id}/aprobar-suma", new { })
+                : await Http.PostAsJsonAsync($"api/viajes/admin/reportes/{rp.Id}/rechazar-suma",
+                    new { Texto = respuestas.TryGetValue(rp.Id, out var t) ? t : "" });
+            if (!resp.IsSuccessStatusCode) { ToastService.Error("No se pudo contestar"); return; }
+            ToastService.Success(aprobar ? $"Listo, se le sumó a {rp.EmpleadoNombre}" : $"Le avisamos a {rp.EmpleadoNombre} que no se suma");
+            respuestas.Remove(rp.Id);
+            await RecargarTodo();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { contestandoSuma = 0; }
+    }
+
     /// <summary>Marca el aviso como atendido: desaparece el cartel.</summary>
     private async Task MarcarVisto(ViajesReporteDto rp)
     {
@@ -1180,7 +1257,18 @@
         // 30/09/2026: las entregas del día una por una (lo que suma cada una y si "no suma").
         List<EntregaItemDto>? Entregas = null);
     public record EntregaItemDto(int Id, string Nombre, decimal Tarifa, bool NoSuma, string? NoSumaPor,
-        bool Liquidado, bool Repetida);
+        bool Liquidado, bool Repetida,
+        // 19/10/2026: por qué no se cobra y con qué entrega va junta (mismo lugar, mismo día).
+        string? NoSumaMotivo = null, int? JuntoCon = null);
+
+    /// <summary>19/10/2026: "· Walter Ignacio (Nacho): mismo edificio".</summary>
+    private static string QuienYPorQue(EntregaItemDto e)
+    {
+        var quien = string.IsNullOrWhiteSpace(e.NoSumaPor) ? "" : e.NoSumaPor!.Trim();
+        var motivo = string.IsNullOrWhiteSpace(e.NoSumaMotivo) ? "" : $"“{e.NoSumaMotivo!.Trim()}”";
+        if (quien == "" && motivo == "") return "";
+        return "· " + (quien != "" && motivo != "" ? $"{quien}: {motivo}" : quien + motivo);
+    }
     private int? marcandoNoSuma;
 
     /// <summary>30/09/2026: marca / desmarca "no suma" y recarga la cuenta (saldo, mes, todo).</summary>

@@ -266,6 +266,16 @@
     .mp-ns-btn:disabled { opacity:0.5; }
     .mp-rep-nota { color:#92400e; font-size:0.76rem; margin-top:0.4rem; }
     .mp-lista .hora { font-size:0.78rem; color:#9ca3af; }
+    /* 19/10/2026: paquetes de más colgados de la entrega que se cobra + pedir que le sumen una */
+    .mp-lista .paq { font-size:0.78rem; color:#374151; font-weight:600; margin-left:0.3rem; }
+    .mp-lista .paq-mas { display:flex; align-items:center; gap:0.3rem; font-size:0.76rem; color:#9ca3af; }
+    .mp-pedir-suma { display:block; width:calc(100% - 2rem); margin:0.6rem 1rem 0; padding:0.6rem; border-radius:10px;
+        border:1px dashed #0f766e; background:#fff; color:#0f766e; font-weight:700; font-size:0.9rem; }
+    .mp-av-estado { font-size:0.8rem; font-weight:700; margin-top:0.3rem; }
+    .mp-av-estado.esp { color:#92400e; }
+    .mp-av-estado.si { color:#15803d; }
+    .mp-av-estado.no { color:#b42318; }
+    .mp-campo { font-size:0.85rem; color:#374151; font-weight:600; margin:0.6rem 0 0.25rem; display:block; }
     /* 08/09/2026: visto bueno del pago — botones grandes, que se aprieten con el dedo */
     .mp-vb { display:flex; gap:0.4rem; margin-top:0.5rem; }
     .mp-vb button { flex:1; padding:0.55rem 0.3rem; font-size:0.85rem; font-weight:700;
@@ -612,6 +622,10 @@
                     }
                 </div>
 
+                @* 19/10/2026: pedir que le sumen una entrega que el mapa no contó. No suma nada
+                   hasta que la oficina la aprueba. *@
+                <button class="mp-pedir-suma" @onclick="AbrirPedirSuma">➕ Pedir que me sumen una entrega</button>
+
                 @* 05/09/2026: tres solapas para que no tenga que scrollear todo para encontrar algo. *@
                 <div class="mp-tabs">
                     @* Ya no son sólo los viajes: adentro van también los pagos, mezclados en orden. *@
@@ -685,20 +699,26 @@
                                 {
                                     @if (m.Entregas!.Any(x => x.Repetida))
                                     {
-                                        <div class="mp-rep-nota">En amarillo: dos en el mismo lugar. Si cobrás una sola, tocá la ✕ de la otra.</div>
+                                        <div class="mp-rep-nota">En amarillo: dos en el mismo lugar. Si cobrás una sola, tocá la ✕ del paquete de más.</div>
                                     }
+                                    @* 19/10/2026: "15 entregas · 18 paquetes". Los paquetes de más (no se cobran)
+                                       van colgados de la entrega que se cobra en ese lugar, así la lista termina
+                                       en el mismo número que dice arriba. *@
+                                    var paquetesDe = m.Entregas!.Where(x => x.JuntoCon != null).ToLookup(x => x.JuntoCon!.Value);
                                     <ol class="mp-lista">
                                         @{ var nro = 0; }
-                                        @foreach (var e in m.Entregas!)
+                                        @foreach (var e in m.Entregas!.Where(x => x.JuntoCon == null))
                                         {
-                                            nro++;
+                                            var mas = paquetesDe[e.Id].ToList();
+                                            if (!e.NoSuma) nro++;
                                             <li class="@(e.Repetida ? "rep" : "")">
-                                                <span class="n">@nro.</span>
+                                                <span class="n">@(e.NoSuma ? "–" : $"{nro}.")</span>
                                                 <span style="flex:1; min-width:0;">
                                                     @* 30/09/2026: lo que suma cada una, y "no suma" para la doble en el mismo
                                                        lugar (el arreglo: dos en el mismo lugar, cobra una). *@
                                                     <div class="quien">
                                                         <span class="@(e.NoSuma ? "ns" : "")">@e.Cliente</span>
+                                                        @if (mas.Count > 0) { <span class="paq">· @(mas.Count + 1) paquetes</span> }
                                                         @if (e.NoSuma) { <span class="imp cero">($0)</span> }
                                                         else { <span class="imp">(+@Plata(e.Tarifa))</span> }
                                                     </div>
@@ -713,9 +733,20 @@
                                                     {
                                                         <div class="donde">@(dir != "" && hs != "" ? $"{dir} · {hs}" : dir + hs)</div>
                                                     }
-                                                    @if (e.NoSuma && !string.IsNullOrWhiteSpace(e.NoSumaPor))
+                                                    @if (e.NoSuma)
                                                     {
-                                                        <div class="donde">no se cobra · @e.NoSumaPor</div>
+                                                        <div class="donde">no se cobra @QuienYPorQue(e)</div>
+                                                    }
+                                                    @foreach (var pq in mas)
+                                                    {
+                                                        <div class="paq-mas">
+                                                            <span style="flex:1;">+ 1 paquete, no se cobra @QuienYPorQue(pq)</span>
+                                                            @if (!pq.Liquidado)
+                                                            {
+                                                                <button class="mp-ns-btn" disabled="@(marcandoNoSuma == pq.Id)"
+                                                                        @onclick="() => CambiarNoSuma(pq)" @onclick:stopPropagation="true">↩</button>
+                                                            }
+                                                        </div>
                                                     }
                                                 </span>
                                                 @if (!e.Liquidado && e.Id > 0)
@@ -791,7 +822,15 @@
                         <div class="mp-av">
                             <div class="mp-av-cuando">@av.Fecha.AddHours(-3).ToString("dddd dd/MM · HH:mm", new System.Globalization.CultureInfo("es-AR"))</div>
                             <div class="mp-av-mio">@av.Texto</div>
-                            @if (!string.IsNullOrWhiteSpace(av.Respuesta))
+                            @if (av.Tipo == "SUMA" && av.SumaAprobada is null)
+                            {
+                                <div class="mp-av-estado esp">⏳ Esperando que la aprueben</div>
+                            }
+                            else if (av.Tipo == "SUMA")
+                            {
+                                <div class="mp-av-estado @(av.SumaAprobada == true ? "si" : "no")">@av.Respuesta</div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(av.Respuesta))
                             {
                                 <div class="mp-av-resp"><b>Osmar:</b> @av.Respuesta</div>
                             }
@@ -1819,6 +1858,61 @@
     </div>
 }
 
+@* 19/10/2026: al tocar la ✕ tiene que decir por qué no se cobra (pedido del dueño). *@
+@if (noSumaPendiente is not null)
+{
+    <div class="mp-modal-overlay" style="z-index:9500;" @onclick="() => noSumaPendiente = null">
+        <div class="mp-modal" @onclick:stopPropagation="true">
+            <div class="mp-modal-titulo">¿Por qué no se cobra?</div>
+            <div class="mp-modal-sub">@noSumaPendiente.Cliente</div>
+            <textarea class="mp-input" @bind="noSumaMotivo" @bind:event="oninput" rows="3"
+                      placeholder="Ej: mismo edificio, lo llevé junto con el otro"
+                      style="width:100%; resize:vertical; font-size:1rem; font-family:inherit;"></textarea>
+            @if (!string.IsNullOrEmpty(noSumaError))
+            {
+                <div class="mp-modal-err">⚠ @noSumaError</div>
+            }
+            <div class="mp-modal-btns">
+                <button class="mp-modal-btn mp-modal-btn-cancel" @onclick="() => noSumaPendiente = null">Cancelar</button>
+                <button class="mp-modal-btn mp-modal-btn-ok" style="background:#b42318;"
+                        disabled="@(marcandoNoSuma != 0 || string.IsNullOrWhiteSpace(noSumaMotivo))"
+                        @onclick="ConfirmarNoSuma">No se cobra</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* 19/10/2026: pedir que le sumen una entrega que el mapa no contó. *@
+@if (verPedirSuma)
+{
+    <div class="mp-modal-overlay" style="z-index:9500;" @onclick="() => verPedirSuma = false">
+        <div class="mp-modal" @onclick:stopPropagation="true">
+            <div class="mp-modal-titulo">➕ Pedir que me sumen una entrega</div>
+            <div class="mp-modal-sub">Le llega a la oficina. Se suma cuando la aprueban.</div>
+            <label class="mp-campo">¿Qué día?</label>
+            <input class="mp-input" type="date" style="font-size:1rem;" @bind="sumaFecha"
+                   max="@DateTime.UtcNow.AddHours(-3).ToString("yyyy-MM-dd")" />
+            <label class="mp-campo">¿A quién o dónde?</label>
+            <input class="mp-input" style="font-size:1rem;" @bind="sumaCliente" @bind:event="oninput"
+                   placeholder="Ej: Juan Pérez, Av. Rivadavia 1234" />
+            <label class="mp-campo">¿Por qué hay que sumarla?</label>
+            <textarea class="mp-input" @bind="sumaComentario" @bind:event="oninput" rows="3"
+                      placeholder="Ej: la entregué pero no me figura en la lista"
+                      style="width:100%; resize:vertical; font-size:1rem; font-family:inherit;"></textarea>
+            @if (!string.IsNullOrEmpty(sumaError))
+            {
+                <div class="mp-modal-err">⚠ @sumaError</div>
+            }
+            <div class="mp-modal-btns">
+                <button class="mp-modal-btn mp-modal-btn-cancel" @onclick="() => verPedirSuma = false">Cancelar</button>
+                <button class="mp-modal-btn mp-modal-btn-ok"
+                        disabled="@(enviandoSuma || string.IsNullOrWhiteSpace(sumaCliente) || string.IsNullOrWhiteSpace(sumaComentario))"
+                        @onclick="EnviarPedirSuma">@(enviandoSuma ? "Enviando..." : "Pedir")</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public string Token { get; set; } = "";
 
@@ -1895,7 +1989,9 @@
     public record MiDiaDto(DateTime Fecha, int Viajes, decimal Importe, bool Cobrado,
         List<string> Donde, string Que, bool EsExtra);
     public record MiPagoDto(DateTime Fecha, decimal Importe, string Detalle, string Medio, bool EsNuevo);
-    public record MiAvisoDto(DateTime Fecha, string Texto, string? Respuesta, DateTime? RespuestaAt);
+    public record MiAvisoDto(DateTime Fecha, string Texto, string? Respuesta, DateTime? RespuestaAt,
+        // 19/10/2026: pedido de sumar una entrega. SumaAprobada null = esperando.
+        string? Tipo = null, DateTime? SumaFecha = null, string? SumaCliente = null, bool? SumaAprobada = null);
     /// <summary>08/09/2026: un renglón de la cuenta, con viajes y pagos mezclados y el saldo corriendo.</summary>
     public record MiMovDto(DateTime Fecha, string Que, List<string> Donde,
         decimal Suma, decimal Pago, decimal Saldo, bool EsPago, bool EsExtra,
@@ -1906,13 +2002,97 @@
     /// <summary>17/09/2026: cada entrega del día, con dirección y hora, para desplegar el renglón.</summary>
     public record MiEntregaDto(string Cliente, string? Direccion, DateTime? EntregadoAt, decimal Tarifa,
         // 30/09/2026 — "no suma" (dos en el mismo lugar, cobra una).
-        int Id = 0, bool NoSuma = false, string? NoSumaPor = null, bool Liquidado = false, bool Repetida = false);
+        int Id = 0, bool NoSuma = false, string? NoSumaPor = null, bool Liquidado = false, bool Repetida = false,
+        // 19/10/2026: por qué no se cobra y con qué entrega va junta (mismo lugar, mismo día).
+        string? NoSumaMotivo = null, int? JuntoCon = null);
     private int marcandoNoSuma;
+
+    /// <summary>19/10/2026: "· Walter Ignacio (Nacho): mismo edificio".</summary>
+    private static string QuienYPorQue(MiEntregaDto e)
+    {
+        var quien = string.IsNullOrWhiteSpace(e.NoSumaPor) ? "" : e.NoSumaPor!.Trim();
+        var motivo = string.IsNullOrWhiteSpace(e.NoSumaMotivo) ? "" : $"“{e.NoSumaMotivo!.Trim()}”";
+        if (quien == "" && motivo == "") return "";
+        return "· " + (quien != "" && motivo != "" ? $"{quien}: {motivo}" : quien + motivo);
+    }
+
+    // 19/10/2026: la ✕ pide el motivo antes de sacarla.
+    private MiEntregaDto? noSumaPendiente;
+    private string noSumaMotivo = "";
+    private string? noSumaError;
+
+    private async Task ConfirmarNoSuma()
+    {
+        if (noSumaPendiente is null || string.IsNullOrWhiteSpace(noSumaMotivo)) return;
+        var e = noSumaPendiente;
+        noSumaError = null;
+        marcandoNoSuma = e.Id;
+        try
+        {
+            var r = await Http.PostAsJsonAsync(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/entregas/{e.Id}/no-suma",
+                new { NoSuma = true, Motivo = noSumaMotivo.Trim() });
+            if (!r.IsSuccessStatusCode) { noSumaError = "No se pudo. Probá de nuevo."; return; }
+            noSumaPendiente = null;
+            miCuenta = await Http.GetFromJsonAsync<MiCuentaDto>(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/detalle");
+        }
+        catch { noSumaError = "No se pudo. Probá de nuevo."; }
+        finally { marcandoNoSuma = 0; }
+    }
+
+    // 19/10/2026: pedir que le sumen una entrega.
+    private bool verPedirSuma, enviandoSuma;
+    private DateTime sumaFecha = DateTime.UtcNow.AddHours(-3).Date;
+    private string sumaCliente = "", sumaComentario = "";
+    private string? sumaError;
+
+    private void AbrirPedirSuma()
+    {
+        sumaFecha = DateTime.UtcNow.AddHours(-3).Date;
+        sumaCliente = "";
+        sumaComentario = "";
+        sumaError = null;
+        verPedirSuma = true;
+    }
+
+    private async Task EnviarPedirSuma()
+    {
+        if (enviandoSuma) return;
+        enviandoSuma = true;
+        sumaError = null;
+        try
+        {
+            var r = await Http.PostAsJsonAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/pedir-suma",
+                new { Fecha = sumaFecha.ToString("yyyy-MM-dd"), Cliente = sumaCliente, Comentario = sumaComentario });
+            if (!r.IsSuccessStatusCode)
+            {
+                var txt = await r.Content.ReadAsStringAsync();
+                var i = txt.IndexOf("\"error\":\"");
+                sumaError = i >= 0 ? txt[(i + 9)..].Split('"')[0] : "No se pudo mandar. Probá de nuevo.";
+                return;
+            }
+            verPedirSuma = false;
+            solapa = 2;   // que vea su pedido en Avisos, esperando
+            miCuenta = await Http.GetFromJsonAsync<MiCuentaDto>(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/viajes/detalle");
+        }
+        catch { sumaError = "No se pudo mandar. Probá de nuevo."; }
+        finally { enviandoSuma = false; }
+    }
 
     /// <summary>30/09/2026: marca / desmarca "no suma" desde el celu y recarga la cuenta.</summary>
     private async Task CambiarNoSuma(MiEntregaDto e)
     {
         if (marcandoNoSuma != 0) return;
+        if (!e.NoSuma)
+        {
+            // 19/10/2026: sacarla pide el motivo primero (obligatorio).
+            noSumaPendiente = e;
+            noSumaMotivo = "";
+            noSumaError = null;
+            return;
+        }
         marcandoNoSuma = e.Id;
         try
         {
