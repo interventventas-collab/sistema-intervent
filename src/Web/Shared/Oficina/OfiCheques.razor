@@ -26,7 +26,8 @@
         }
         else
         {
-            var semana = filas.Where(f => f.Vence is DateTime v && v.Date <= Hoy.AddDays(7)).ToList();
+            var vencidos = filas.Where(f => f.Vence is DateTime v && v.Date < Hoy).ToList();
+            var semana = filas.Where(f => f.Vence is DateTime v && v.Date >= Hoy && v.Date <= Hoy.AddDays(7)).ToList();
             <div class="mpc-ver-hd">
                 <div class="mpc-ver-line">Tenés que cubrir</div>
                 <div class="mpc-ver-tot">@Plata(filas.Sum(f => f.Importe))</div>
@@ -35,6 +36,10 @@
                     @if (semana.Count > 0)
                     {
                         <span class="mpc-pend"> · esta semana @Plata(semana.Sum(f => f.Importe)) (@semana.Count)</span>
+                    }
+                    @if (vencidos.Count > 0)
+                    {
+                        <span class="mpc-pend"> · ya vencidos @Plata(vencidos.Sum(f => f.Importe)) (@vencidos.Count)</span>
                     }
                 </div>
             </div>
