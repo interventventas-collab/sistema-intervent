@@ -41,7 +41,38 @@ public class AlqCotizacionesController : ControllerBase
                 // 2026-09-10: si ya se paso a reserva, el numero para mostrarlo en el historial.
                 // Si la reserva se borro despues, esto vuelve null y el presupuesto se puede pasar de nuevo.
                 c.Dias,
-                _db.AlqReservas.Where(r => r.Id == c.ReservaId).Select(r => r.Numero).FirstOrDefault()))
+                _db.AlqReservas.Where(r => r.Id == c.ReservaId).Select(r => r.Numero).FirstOrDefault(),
+                c.Nombre))
+            .ToListAsync();
+
+        return Ok(list);
+    }
+
+    /// <summary>
+    /// 2026-10-20: historial de la calculadora (CALCU ALQUILER). Busca por nombre o por teléfono;
+    /// sin texto trae los últimos. Sin WhatsApp no siempre hay teléfono, por eso el nombre.
+    /// </summary>
+    [HttpGet("buscar")]
+    public async Task<IActionResult> Buscar([FromQuery] string? q, [FromQuery] int limit = 30)
+    {
+        var texto = (q ?? "").Trim();
+        var digitos = SoloDigitos(texto);
+        var query = _db.AlqCotizaciones.AsNoTracking().AsQueryable();
+        if (texto.Length > 0)
+            query = query.Where(c => (c.Nombre != null && c.Nombre.Contains(texto))
+                || (digitos.Length >= 3 && c.Telefono.Contains(digitos)));
+
+        var list = await query
+            .OrderByDescending(c => c.CreatedAt)
+            .Take(Math.Clamp(limit, 1, 100))
+            .Select(c => new AlqCotizacionDto(
+                c.Id, c.Telefono, c.ClienteId, c.FechaEvento,
+                c.FleteZona, c.FleteMonto, c.Descuento, c.Total,
+                c.Texto, c.Operador, c.ReservaId, c.CreatedAt,
+                c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList(),
+                c.Dias,
+                _db.AlqReservas.Where(r => r.Id == c.ReservaId).Select(r => r.Numero).FirstOrDefault(),
+                c.Nombre))
             .ToListAsync();
 
         return Ok(list);
@@ -64,14 +95,17 @@ public class AlqCotizacionesController : ControllerBase
             c.FleteZona, c.FleteMonto, c.Descuento, c.Total,
             c.Texto, c.Operador, c.ReservaId, c.CreatedAt,
             c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList(),
-            c.Dias, numero));
+            c.Dias, numero, c.Nombre));
     }
 
     [HttpPost]
     public async Task<IActionResult> Crear([FromBody] CrearAlqCotizacionRequest req)
     {
         var tel = SoloDigitos(req.Telefono);
-        if (tel.Length == 0) return BadRequest(new { error = "Falta el teléfono" });
+        var nombre = string.IsNullOrWhiteSpace(req.Nombre) ? null : req.Nombre.Trim();
+        if (nombre is { Length: > 150 }) nombre = nombre[..150];
+        // 2026-10-20: desde la calculadora alcanza con el nombre (no siempre hay teléfono).
+        if (tel.Length == 0 && nombre is null) return BadRequest(new { error = "Poné el nombre o el teléfono de la persona" });
 
         var items = (req.Items ?? new())
             .Where(i => i.Cantidad > 0 && !string.IsNullOrWhiteSpace(i.Nombre))
@@ -88,6 +122,7 @@ public class AlqCotizacionesController : ControllerBase
         var c = new AlqCotizacion
         {
             Telefono = tel,
+            Nombre = nombre,
             ClienteId = req.ClienteId,
             FechaEvento = req.FechaEvento,
             FleteZona = string.IsNullOrWhiteSpace(req.FleteZona) ? null : req.FleteZona.Trim(),
@@ -115,7 +150,7 @@ public class AlqCotizacionesController : ControllerBase
             c.FleteZona, c.FleteMonto, c.Descuento, c.Total,
             c.Texto, c.Operador, c.ReservaId, c.CreatedAt,
             c.Items.Select(i => new AlqCotizacionItemDto(i.Id, i.EquipoId, i.Nombre, i.Cantidad, i.PrecioUnitario)).ToList(),
-            c.Dias, null));
+            c.Dias, null, c.Nombre));
     }
 
     [HttpDelete("{id:int}")]

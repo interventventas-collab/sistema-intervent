@@ -42,11 +42,14 @@ public record AlqCotizacionDto(
     int Dias,
     // 2026-09-10: el numero de la reserva en la que se convirtio ("A-0123"), para mostrarlo
     // en el historial del chat sin tener que ir a buscar la reserva.
-    string? ReservaNumero = null);
+    string? ReservaNumero = null,
+    // 2026-10-20: a quién (calculadora). Nombre o teléfono, uno alcanza.
+    string? Nombre = null);
 
 public class CrearAlqCotizacionRequest
 {
     public string Telefono { get; set; } = string.Empty;
+    public string? Nombre { get; set; }
     public int? ClienteId { get; set; }
     public DateTime? FechaEvento { get; set; }
     public string? FleteZona { get; set; }

@@ -8354,3 +8354,30 @@ BEGIN
     CREATE INDEX IX_CafeCotizacionesChat_Telefono ON Cafe_CotizacionesChat (Telefono);
 END
 GO
+GO
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 19/10/2026 — Viajes: por qué no se cobra una entrega (el repartidor lo tiene que
+-- escribir desde el celu) y "pedir que me sumen una entrega" (aviso tipo SUMA que la
+-- oficina aprueba o rechaza). ⚠ En PROD correr a mano.
+-- ─────────────────────────────────────────────────────────────────────────────
+IF OBJECT_ID('Viajes_Entregas') IS NOT NULL AND COL_LENGTH('Viajes_Entregas','NoSumaMotivo') IS NULL
+    ALTER TABLE Viajes_Entregas ADD NoSumaMotivo NVARCHAR(200) NULL;
+GO
+IF OBJECT_ID('Viajes_Reportes') IS NOT NULL AND COL_LENGTH('Viajes_Reportes','Tipo') IS NULL
+    ALTER TABLE Viajes_Reportes ADD Tipo NVARCHAR(10) NULL, SumaFecha DATE NULL,
+        SumaCliente NVARCHAR(150) NULL, SumaAprobada BIT NULL, SumaEntregaId INT NULL;
+GO
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 20/10/2026 — Presupuestos de la calculadora (alquiler y productos) con NOMBRE.
+-- Sin WhatsApp no siempre hay teléfono: se guarda con nombre O teléfono y se busca
+-- por cualquiera de los dos en el historial. ⚠ En PROD correr a mano.
+-- ─────────────────────────────────────────────────────────────────────────────
+IF OBJECT_ID('Alq_Cotizaciones') IS NOT NULL AND COL_LENGTH('Alq_Cotizaciones','Nombre') IS NULL
+    ALTER TABLE Alq_Cotizaciones ADD Nombre NVARCHAR(150) NULL;
+GO
+IF OBJECT_ID('Cafe_CotizacionesChat') IS NOT NULL AND COL_LENGTH('Cafe_CotizacionesChat','Nombre') IS NULL
+    ALTER TABLE Cafe_CotizacionesChat ADD Nombre NVARCHAR(150) NULL;
+GO

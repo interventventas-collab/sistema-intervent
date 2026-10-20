@@ -2679,6 +2679,8 @@ public class CafeCotizacionChatDto
 {
     public int Id { get; set; }
     public string Telefono { get; set; } = "";
+    /// <summary>2026-10-20: a quién (calculadora). Nombre o teléfono, uno alcanza.</summary>
+    public string? Nombre { get; set; }
     public int? ClienteId { get; set; }
     public decimal Total { get; set; }
     public bool ConIva { get; set; }

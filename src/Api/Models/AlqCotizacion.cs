@@ -20,9 +20,14 @@ public class AlqCotizacion
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
 
-    /// <summary>Teléfono del chat donde se cotizó (solo dígitos, como los guarda WhatsApp).</summary>
-    [Required, MaxLength(30)]
+    /// <summary>Teléfono del chat donde se cotizó (solo dígitos, como los guarda WhatsApp).
+    /// 2026-10-20: desde la calculadora puede quedar vacío si se puso solo el nombre.</summary>
+    [MaxLength(30)]
     public string Telefono { get; set; } = string.Empty;
+
+    /// <summary>2026-10-20: a quién se le presupuestó (calculadora). Nombre o teléfono, uno alcanza.</summary>
+    [MaxLength(150)]
+    public string? Nombre { get; set; }
 
     /// <summary>Si el chat ya estaba vinculado a un cliente, queda anotado. Puede ser null.</summary>
     public int? ClienteId { get; set; }

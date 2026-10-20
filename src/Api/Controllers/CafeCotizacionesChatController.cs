@@ -39,6 +39,7 @@ public class CafeCotizacionesChatController : ControllerBase
     {
         public int Id { get; set; }
         public string Telefono { get; set; } = "";
+        public string? Nombre { get; set; }
         public int? ClienteId { get; set; }
         public decimal Total { get; set; }
         public bool ConIva { get; set; }
@@ -53,6 +54,8 @@ public class CafeCotizacionesChatController : ControllerBase
     public class CrearRequest
     {
         public string Telefono { get; set; } = "";
+        /// <summary>2026-10-20: a quién (calculadora). Nombre o teléfono, uno alcanza.</summary>
+        public string? Nombre { get; set; }
         public int? ClienteId { get; set; }
         public decimal Total { get; set; }
         public bool ConIva { get; set; }
@@ -85,18 +88,54 @@ public class CafeCotizacionesChatController : ControllerBase
         return Ok(filas.Select(f => ADto(f.c, f.Numero)).ToList());
     }
 
+    /// <summary>
+    /// 2026-10-20: historial de la calculadora (Cotizar productos). Busca por nombre o teléfono;
+    /// sin texto trae los últimos.
+    /// </summary>
+    [HttpGet("buscar")]
+    public async Task<IActionResult> Buscar([FromQuery] string? q, [FromQuery] int limit = 30)
+    {
+        var texto = (q ?? "").Trim();
+        var digitos = SoloDigitos(texto);
+        var query = _db.CafeCotizacionesChat.AsNoTracking().AsQueryable();
+        if (texto.Length > 0)
+            query = query.Where(c => (c.Nombre != null && c.Nombre.Contains(texto))
+                || (digitos.Length >= 3 && c.Telefono.Contains(digitos)));
+
+        var filas = await query
+            .OrderByDescending(c => c.CreatedAt)
+            .Take(Math.Clamp(limit, 1, 100))
+            .Select(c => new { c, Numero = _db.CafeVentas.Where(v => v.Id == c.VentaId).Select(v => v.Numero).FirstOrDefault() })
+            .ToListAsync();
+        return Ok(filas.Select(f => ADto(f.c, f.Numero)).ToList());
+    }
+
+    /// <summary>2026-10-20: uno solo, para abrir Nueva Venta precargada (?desdePresupuesto=ID).</summary>
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        var c = await _db.CafeCotizacionesChat.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        if (c is null) return NotFound(new { error = "Presupuesto no encontrado" });
+        var numero = c.VentaId is int vid ? await _db.CafeVentas.Where(v => v.Id == vid).Select(v => v.Numero).FirstOrDefaultAsync() : null;
+        return Ok(ADto(c, numero));
+    }
+
     /// <summary>Se llama solo al tocar "Pasar al chat" en el cotizador.</summary>
     [HttpPost]
     public async Task<IActionResult> Crear([FromBody] CrearRequest req)
     {
         var tel = SoloDigitos(req.Telefono);
-        if (tel.Length == 0) return BadRequest(new { error = "Falta el teléfono" });
+        var nombre = string.IsNullOrWhiteSpace(req.Nombre) ? null : req.Nombre.Trim();
+        if (nombre is { Length: > 150 }) nombre = nombre[..150];
+        // 2026-10-20: desde la calculadora alcanza con el nombre (no siempre hay teléfono).
+        if (tel.Length == 0 && nombre is null) return BadRequest(new { error = "Poné el nombre o el teléfono de la persona" });
         var items = (req.Items ?? new()).Where(i => i.Cantidad > 0 && !string.IsNullOrWhiteSpace(i.Nombre)).ToList();
         if (items.Count == 0) return BadRequest(new { error = "El presupuesto está vacío" });
 
         var c = new CafeCotizacionChat
         {
             Telefono = tel,
+            Nombre = nombre,
             ClienteId = req.ClienteId,
             Total = req.Total,
             ConIva = req.ConIva,
@@ -128,7 +167,7 @@ public class CafeCotizacionesChatController : ControllerBase
         catch { items = new(); }
         return new CotizacionDto
         {
-            Id = c.Id, Telefono = c.Telefono, ClienteId = c.ClienteId, Total = c.Total, ConIva = c.ConIva,
+            Id = c.Id, Telefono = c.Telefono, Nombre = c.Nombre, ClienteId = c.ClienteId, Total = c.Total, ConIva = c.ConIva,
             Texto = c.Texto, Operador = c.Operador, VentaId = c.VentaId, VentaNumero = ventaNumero,
             CreatedAt = c.CreatedAt, Items = items,
         };
