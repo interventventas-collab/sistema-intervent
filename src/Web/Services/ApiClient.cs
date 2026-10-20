@@ -7873,7 +7873,12 @@ public class ApiClient
         var url = "/api/cafe/pagos-proveedor" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
         return await GetAsync<List<PagoListDto>>(url);
     }
-    public record CrearMedioPagoRequest(int CajaId, decimal Importe, string? Referencia, int? ChequeExistenteId);
+    /// <summary>ChequeBancoId (20/10/2026): se paga con un e-cheq PROPIO.</summary>
+    public record CrearMedioPagoRequest(int CajaId, decimal Importe, string? Referencia, int? ChequeExistenteId, int? ChequeBancoId = null);
+    /// <summary>20/10/2026: e-cheq que le firmamos al proveedor y todavía no se usaron en un pago.</summary>
+    public record EcheqPropioDto(int Id, string Numero, DateTime? FechaPago, decimal Importe, string Estado, string? Beneficiario);
+    public async Task<List<EcheqPropioDto>> GetEcheqsPropiosAsync(int proveedorId)
+        => await GetAsync<List<EcheqPropioDto>>($"/api/cafe/pagos-proveedor/echeqs-propios/{proveedorId}") ?? new();
     /// <summary>Clave = documento de la cuenta corriente ("AFIP:..." / "DEU:..."). Sin clave = a cuenta.</summary>
     public record CrearCompraItemRequest(int? CompraId, decimal Importe, string? Clave = null);
     public record CrearPagoResultDto(int Id, string Numero);

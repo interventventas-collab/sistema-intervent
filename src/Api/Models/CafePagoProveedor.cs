@@ -89,4 +89,10 @@ public class CafePagoProveedorMedio
     public int? ChequeId { get; set; }
     [ForeignKey(nameof(ChequeId))]
     public CafeCheque? Cheque { get; set; }
+
+    /// <summary>20/10/2026: si se pagó con un e-cheq PROPIO (Cafe_ChequesBanco Tipo=EMITIDO), apunta a ese
+    /// e-cheq. La caja (el banco) recién lo descuenta cuando el banco lo debita (Estado=Pagado).</summary>
+    public int? ChequeBancoId { get; set; }
+    [ForeignKey(nameof(ChequeBancoId))]
+    public CafeChequeBanco? ChequeBanco { get; set; }
 }
