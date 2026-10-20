@@ -457,6 +457,9 @@ public class RepartidorDto
     public bool SeguirUbicacion { get; set; }
     /// <summary>16/10/2026: en su link aparece "Comprobantes" (ver y compartir los ultimos 50).</summary>
     public bool VerComprobantes { get; set; }
+    /// <summary>20/10/2026: qué más ve en la sección "Oficina" de su link, separado por coma
+    /// (cobranzas, cheques, listas, stock, alquileres, banco). Null = nada.</summary>
+    public string? Oficina { get; set; }
 }
 
 public class CrearRepartidorRequest
@@ -472,6 +475,8 @@ public class EditarRepartidorRequest
     public bool IsActive { get; set; } = true;
     public bool SeguirUbicacion { get; set; }
     public bool VerComprobantes { get; set; }
+    /// <summary>20/10/2026: tildes de la sección Oficina. Null = no tocar lo guardado.</summary>
+    public List<string>? Oficina { get; set; }
 }
 
 public class CobranzaPendienteDto

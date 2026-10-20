@@ -1,0 +1,98 @@
+@* 20/10/2026: Oficina → 💲 Listas de precios. Las mismas listas de Productos → Listas (las que se
+   adjuntan desde la compu): 👁 para verla adentro de la app y WhatsApp para mandar el PDF. *@
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@if (viendo is not null)
+{
+    <OfiPdfVisor Url="@UrlDe(viendo)" Nombre="@NombreDe(viendo)" Titulo="@viendo.Nombre"
+                 OnCerrar="() => viendo = null" />
+}
+
+<div class="mpc-overlay">
+    <div class="mpc-wrap">
+        <div class="mpc-top">
+            <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
+            <div class="mpc-title">💲 Listas de precios</div>
+        </div>
+        @if (listas.Count > 6)
+        {
+            <input class="mpc-search" type="search" placeholder="🔍 Buscar lista…" @bind="buscar" @bind:event="oninput" />
+        }
+
+        @if (cargando)
+        {
+            <div class="mpc-nota">Buscando…</div>
+        }
+        else if (error)
+        {
+            <div class="mpc-nota">No se pudieron traer las listas. <button type="button" class="mpc-mas" @onclick="Cargar">🔄 Reintentar</button></div>
+        }
+        else if (listas.Count == 0)
+        {
+            <div class="mpc-nota">Todavía no hay listas.</div>
+        }
+        else
+        {
+            foreach (var l in listas.Where(x => string.IsNullOrWhiteSpace(buscar)
+                || x.Nombre.Contains(buscar.Trim(), StringComparison.OrdinalIgnoreCase)
+                || (x.ClienteNombre ?? "").Contains(buscar.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                <div class="mpc-row">
+                    <div class="mpc-r2" style="margin-top:0;">
+                        <div style="min-width:0;">
+                            <div class="mpc-cli mpc-cli-btn" style="font-weight:700;" @onclick="() => viendo = l">@l.Nombre</div>
+                            @if (!string.IsNullOrWhiteSpace(l.ClienteNombre) || !string.IsNullOrWhiteSpace(l.TipoCliente))
+                            {
+                                <div class="mpc-num">@(l.ClienteNombre ?? l.TipoCliente)</div>
+                            }
+                        </div>
+                        <div class="mpc-acts">
+                            <button type="button" class="mpc-eye" @onclick="() => viendo = l">👁</button>
+                            <button type="button" class="mpc-wa @(tocarDeNuevo == l.Id ? "again" : "")" disabled="@(compartiendo == l.Id)"
+                                    @onclick="() => Compartir(l)">
+                                @(compartiendo == l.Id ? "…" : tocarDeNuevo == l.Id ? "Tocá" : "WhatsApp")
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private List<ListaCustomDto> listas = new();
+    private bool cargando = true, error;
+    private string buscar = "";
+    private ListaCustomDto? viendo;
+    private int? compartiendo, tocarDeNuevo;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true; error = false;
+        StateHasChanged();
+        try { listas = (await Http.GetFromJsonAsync<List<ListaCustomDto>>($"api/cafe/listas-custom/repartidor/{Token}") ?? new()).OrderBy(l => l.Nombre).ToList(); }
+        catch { error = true; }
+        finally { cargando = false; StateHasChanged(); }
+    }
+
+    private string UrlDe(ListaCustomDto l) => $"api/cafe/listas-custom/repartidor/{Token}/{l.Id}/pdf";
+    private static string NombreDe(ListaCustomDto l) => $"{l.Nombre}.pdf";
+
+    private async Task Compartir(ListaCustomDto l)
+    {
+        compartiendo = l.Id;
+        string res;
+        try { res = await JS.InvokeAsync<string>("mpCompartir.compartir", UrlDe(l), NombreDe(l), ""); }
+        catch { res = "error"; }
+        compartiendo = null;
+        tocarDeNuevo = res == "tocar-de-nuevo" ? l.Id : null;
+    }
+}

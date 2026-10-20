@@ -1,0 +1,72 @@
+@* 20/10/2026: visor de PDF de la sección Oficina del link del repartidor (recibos de cobranza,
+   listas de precios). Es el MISMO mecanismo que "Comprobantes" (js/mp-compartir.js): Chrome de
+   Android no muestra un PDF adentro de una página, así que se dibuja con pdf.js; abajo quedan
+   fijos WhatsApp (manda el ARCHIVO, no un link) y Bajar. *@
+@inject IJSRuntime JS
+
+<div class="mpc-ver">
+    <div class="mpc-ver-scroll">
+        <div class="mpc-wrap">
+            <div class="mpc-top">
+                <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
+                <div class="mpc-title">@Titulo</div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Linea))
+            {
+                <div class="mpc-ver-hd"><div class="mpc-ver-line">@Linea</div></div>
+            }
+            @if (estado == "cargando")
+            {
+                <div class="mpc-nota">Abriendo…</div>
+            }
+            else if (estado == "error")
+            {
+                <div class="mpc-nota">No se pudo mostrar. Probá con ⬇ Bajar.</div>
+            }
+            <div id="ofi-pdf"></div>
+        </div>
+    </div>
+    <div class="mpc-ver-bar">
+        <button type="button" class="mpc-wa @(tocarDeNuevo ? "again" : "")" disabled="@compartiendo" @onclick="Compartir">
+            @(compartiendo ? "Preparando…" : tocarDeNuevo ? "Listo, tocá para mandar" : "WhatsApp")
+        </button>
+        <span class="mpc-dl" @onclick="Bajar">⬇ Bajar</span>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Url { get; set; } = "";
+    [Parameter] public string Nombre { get; set; } = "archivo.pdf";
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public string? Linea { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private string estado = "cargando";
+    private bool compartiendo, tocarDeNuevo;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        string res;
+        try { res = await JS.InvokeAsync<string>("mpCompartir.ver", Url, Nombre, "ofi-pdf"); }
+        catch { res = "error"; }
+        estado = res == "ok" ? "ok" : "error";
+        StateHasChanged();
+    }
+
+    private async Task Compartir()
+    {
+        compartiendo = true;
+        string res;
+        try { res = await JS.InvokeAsync<string>("mpCompartir.compartir", Url, Nombre, ""); }
+        catch { res = "error"; }
+        compartiendo = false;
+        tocarDeNuevo = res == "tocar-de-nuevo";
+        if (res == "error") estado = "error";
+    }
+
+    private async Task Bajar()
+    {
+        try { await JS.InvokeAsync<string>("mpCompartir.bajarUrl", Url, Nombre); } catch { }
+    }
+}

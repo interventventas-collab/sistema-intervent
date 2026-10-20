@@ -1,0 +1,210 @@
+@* 20/10/2026: Oficina → 💵 Cobranzas en el link del repartidor. Pedido del dueño: "que se vea todo
+   lo de cobranzas y poder filtrar, o sea lo mismo que en la PC pero con vista móvil". El listado
+   sale del MISMO endpoint que la compu (CafeCobranzasController.List, vía repartidor/{token}) y los
+   botones de Tipo y "¿Qué se cobró?" filtran igual que en Tesorería → Cobranzas. Tocar una
+   cobranza abre su recibo (ver y mandar por WhatsApp). *@
+@using System.Globalization
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+@if (viendo is not null)
+{
+    <OfiPdfVisor Url="@($"api/cafe/cobranzas/repartidor/{Token}/{viendo.Id}/pdf")"
+                 Nombre="@($"Recibo {viendo.Numero} {viendo.ClienteNombre}.pdf")"
+                 Titulo="@($"Recibo {viendo.Numero}")"
+                 Linea="@($"{viendo.ClienteNombre} · {Plata(viendo.Total)} · {viendo.Fecha:dd/MM/yyyy}")"
+                 OnCerrar="() => viendo = null" />
+}
+
+<div class="mpc-overlay">
+    <div class="mpc-wrap">
+        <div class="mpc-top">
+            <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
+            <div class="mpc-title">💵 Cobranzas</div>
+        </div>
+
+        <input class="mpc-search" type="search" placeholder="🔍 N° recibo, cliente, razón social, CUIT, tel…"
+               value="@buscar" @oninput="OnBuscar" />
+        <div class="ofi-fechas">
+            <label>Desde <input type="date" value="@(desde?.ToString("yyyy-MM-dd"))" @onchange="e => CambiarFecha(e, true)" /></label>
+            <label>Hasta <input type="date" value="@(hasta?.ToString("yyyy-MM-dd"))" @onchange="e => CambiarFecha(e, false)" /></label>
+            @if (desde is not null || hasta is not null)
+            {
+                <span class="mpc-chip" @onclick="SinFechas">✕</span>
+            }
+        </div>
+
+        <div class="ofi-lab">Tipo</div>
+        <div class="mpc-chips">
+            <span class="mpc-chip @(tipo == "" ? "on" : "")" @onclick='() => tipo = ""'>Todas</span>
+            @foreach (var t in TiposPresentes())
+            {
+                var tSel = t;
+                <span class="mpc-chip @(tipo == tSel ? "on" : "")" @onclick="() => tipo = tSel">@(tSel == "MIXTO" ? "Mixto" : tSel)</span>
+            }
+        </div>
+        <div class="ofi-lab">¿Qué se cobró?</div>
+        <div class="mpc-chips">
+            @foreach (var (val, txt) in OpcionesQue)
+            {
+                var vSel = val;
+                <span class="mpc-chip @(que == vSel ? "on" : "")" @onclick="() => que = vSel">@txt</span>
+            }
+        </div>
+
+        @if (cargando && todas.Count == 0)
+        {
+            <div class="mpc-nota">Buscando…</div>
+        }
+        else if (error)
+        {
+            <div class="mpc-nota">No se pudieron traer las cobranzas. <button type="button" class="mpc-mas" @onclick="Cargar">🔄 Reintentar</button></div>
+        }
+        else
+        {
+            var lista = Filtradas();
+            <div class="ofi-total">@lista.Count @(lista.Count == 1 ? "cobranza" : "cobranzas") · <b>@Plata(lista.Sum(c => c.Total))</b></div>
+            @if (lista.Count == 0)
+            {
+                <div class="mpc-nota">No hay cobranzas con eso.</div>
+            }
+            DateTime? diaAnterior = null;
+            foreach (var c in lista)
+            {
+                if (diaAnterior != c.Fecha.Date)
+                {
+                    diaAnterior = c.Fecha.Date;
+                    <div class="mpc-dia">@DiaTexto(c.Fecha.Date)</div>
+                }
+                <div class="mpc-row" @onclick="() => viendo = c" style="cursor:pointer;">
+                    <div class="mpc-r1">
+                        <span class="mpc-cli">@c.ClienteNombre</span>
+                        <span class="mpc-tot">@Plata(c.Total)</span>
+                    </div>
+                    <div class="mpc-est">
+                        <span class="mpc-num">@c.Numero</span> · @FormaTexto(c)
+                        @if (c.Retenciones > 0) { <text> · ret. @Plata(c.Retenciones)</text> }
+                    </div>
+                    @if (ImputadoTexto(c) is { Length: > 0 } imp)
+                    {
+                        <div class="mpc-est" style="color:#6b7280;">@imp</div>
+                    }
+                </div>
+            }
+            @if (hayMas)
+            {
+                <button type="button" class="mpc-mas" disabled="@cargando" @onclick="TraerMas">
+                    @(cargando ? "Buscando…" : "Ver más viejas")
+                </button>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
+    private const int Tanda = 200;   // lo mismo que trae la compu de una
+    private const string TipoRedirigido = "Redirigido";
+    private static readonly string[] OrdenTipos = { "Banco", "Transfer.", "Cheque", "Efectivo", "MercadoPago", "Tarjeta", TipoRedirigido, "MIXTO" };
+    private static readonly (string, string)[] OpcionesQue =
+        { ("", "Todo"), ("MERCADERIA", "Mercadería"), ("ALQUILER", "Alquileres"), ("MAQUINA", "Máquinas") };
+
+    private List<CobranzaListDto> todas = new();
+    private string buscar = "", tipo = "", que = "";
+    private DateTime? desde, hasta;
+    private int take = Tanda;
+    private bool cargando, error, hayMas;
+    private CobranzaListDto? viendo;
+    private CancellationTokenSource? buscarCts;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true; error = false;
+        StateHasChanged();
+        try
+        {
+            var url = $"api/cafe/cobranzas/repartidor/{Token}?take={take}"
+                + (desde is DateTime d ? $"&desde={d:yyyy-MM-dd}" : "")
+                + (hasta is DateTime h ? $"&hasta={h:yyyy-MM-dd}T23:59:59" : "")
+                + (string.IsNullOrWhiteSpace(buscar) ? "" : $"&search={Uri.EscapeDataString(buscar.Trim())}");
+            todas = await Http.GetFromJsonAsync<List<CobranzaListDto>>(url) ?? new();
+            // Con texto el servidor abre el corte a 2000; sin texto, si vino la tanda completa puede haber más.
+            hayMas = string.IsNullOrWhiteSpace(buscar) && todas.Count >= take;
+        }
+        catch { error = true; }
+        finally { cargando = false; StateHasChanged(); }
+    }
+
+    private async Task TraerMas() { take += Tanda; await Cargar(); }
+
+    private async Task OnBuscar(ChangeEventArgs e)
+    {
+        buscar = e.Value?.ToString() ?? "";
+        buscarCts?.Cancel();
+        buscarCts = new CancellationTokenSource();
+        try { await Task.Delay(400, buscarCts.Token); } catch (TaskCanceledException) { return; }
+        take = Tanda;
+        await Cargar();
+    }
+
+    private async Task CambiarFecha(ChangeEventArgs e, bool esDesde)
+    {
+        DateTime? v = DateTime.TryParse(e.Value?.ToString(), out var d) ? d.Date : null;
+        if (esDesde) desde = v; else hasta = v;
+        take = Tanda;
+        await Cargar();
+    }
+
+    private async Task SinFechas() { desde = null; hasta = null; take = Tanda; await Cargar(); }
+
+    // ── Mismos criterios que Tesorería → Cobranzas (CafeTesoreriaCobranzas.razor) ──
+    private static bool EsRedirigida(CobranzaListDto c) =>
+        !string.IsNullOrWhiteSpace(c.RedirigidoA) || c.FormaPago == TipoRedirigido;
+
+    private static bool CobroDe(CobranzaListDto c, string q) => (c.QueSeCobro ?? "").Split(',').Contains(q);
+
+    private List<string> TiposPresentes()
+    {
+        var hay = todas.Select(c => c.FormaPago ?? "").ToHashSet();
+        if (todas.Any(EsRedirigida)) hay.Add(TipoRedirigido);
+        return OrdenTipos.Where(hay.Contains)
+            .Concat(hay.Where(t => t != "" && !OrdenTipos.Contains(t)).OrderBy(t => t)).ToList();
+    }
+
+    private List<CobranzaListDto> Filtradas()
+    {
+        IEnumerable<CobranzaListDto> q = todas.Where(c => c.Estado != "ANULADA");
+        if (tipo == TipoRedirigido) q = q.Where(EsRedirigida);
+        else if (tipo != "") q = q.Where(c => c.FormaPago == tipo);
+        if (que != "") q = q.Where(c => CobroDe(c, que));
+        return q.ToList();
+    }
+
+    private static string FormaTexto(CobranzaListDto c)
+    {
+        var f = c.FormaPago == "MIXTO" ? "Mixto" : (c.FormaPago ?? "");
+        if (!string.IsNullOrWhiteSpace(c.RedirigidoA)) return $"Redirigido → {c.RedirigidoA}";
+        return string.IsNullOrWhiteSpace(c.FormaPagoDetalle) ? f : $"{f} · {c.FormaPagoDetalle}";
+    }
+
+    private static string ImputadoTexto(CobranzaListDto c)
+    {
+        var ventas = c.ComprobantesInfo is { Count: > 0 } ? c.ComprobantesInfo.Select(ci => ci.Numero) : (c.Comprobantes ?? new()).AsEnumerable();
+        return string.Join(" · ", ventas.Concat(c.Aplicaciones ?? new()).Where(x => !string.IsNullOrWhiteSpace(x)));
+    }
+
+    private static string Plata(decimal v) => "$" + v.ToString("N0", Ar);
+
+    private static string DiaTexto(DateTime d)
+    {
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        if (d == hoy) return "Hoy";
+        if (d == hoy.AddDays(-1)) return "Ayer";
+        return d.ToString("dddd dd/MM/yyyy", Ar);
+    }
+}

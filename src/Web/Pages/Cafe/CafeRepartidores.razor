@@ -61,6 +61,11 @@
                     <span class="rep-pin" style="background:#f9fafb; color:#374151; border-color:#e5e7eb;"
                           title="En su link ve los últimos comprobantes para bajarlos o mandarlos por WhatsApp.">📄 comprobantes</span>
                 }
+                @foreach (var o in OpcionesOficina.Where(o => TieneOficina(r, o.Clave)))
+                {
+                    <span class="rep-pin" style="background:#f9fafb; color:#374151; border-color:#e5e7eb;"
+                          title="En su link, sección Oficina: @o.Texto">@o.Icono @o.Corto</span>
+                }
                 <div class="rep-actions">
                     @if (!string.IsNullOrEmpty(r.PublicToken))
                     {
@@ -111,6 +116,21 @@
                 En su link aparece el botón "Comprobantes" con los últimos 50 de todos (facturas, presupuestos
                 y notas de crédito), con buscador por cliente y por fecha, para bajarlos o mandarlos por WhatsApp.
                 Solo puede verlos: no puede cambiar ni anular nada.
+            </p>
+            @* 20/10/2026: sección "Oficina" de su link — un tilde por cosa. Lo pidió el dueño para él y
+               sus hermanos. Todo sin clave salvo el Banco, que pide la clave de Osmar, Germán o Gabriel. *@
+            <div style="font-size: 0.85rem; font-weight: 700; margin: 0.2rem 0 0.3rem;">🗂 Qué más ve en su link (sección Oficina)</div>
+            @foreach (var o in OpcionesOficina)
+            {
+                var oSel = o;
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; margin-bottom: 0.2rem; cursor: pointer;">
+                    <input type="checkbox" checked="@formOficina.Contains(oSel.Clave)" style="cursor: pointer;"
+                           @onchange="e => TildarOficina(oSel.Clave, e.Value is true)" /> @oSel.Icono @oSel.Texto
+                </label>
+            }
+            <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0.6rem;">
+                Solo para mirar y mandar por WhatsApp: desde el link no se puede cambiar nada. El saldo de
+                Shell Flota lo ven todos los repartidores; el del banco pide la clave de Osmar, Germán o Gabriel.
             </p>
             <div style="display: flex; gap: 0.4rem; justify-content: flex-end;">
                 <button class="btn btn-secondary" @onclick="@(() => mostrarModal = false)">Cancelar</button>
@@ -180,6 +200,21 @@
     private bool formIsActive = true;
     private bool formSeguirUbicacion;
     private bool formVerComprobantes;
+    // 20/10/2026: tildes de la sección Oficina (las claves son las de Api/Services/RepartidorOficina.cs).
+    private HashSet<string> formOficina = new();
+    private record OpcionOficina(string Clave, string Icono, string Corto, string Texto);
+    private static readonly OpcionOficina[] OpcionesOficina =
+    {
+        new("cobranzas", "💵", "cobranzas", "Cobranzas (todas, con los mismos filtros que la compu)"),
+        new("cheques", "🧾", "cheques", "Cheques a pagar"),
+        new("listas", "💲", "listas", "Listas de precios (ver y mandar)"),
+        new("stock", "📦", "stock", "Stock (sin costos)"),
+        new("alquileres", "🪑", "alquileres", "Alquileres (reservas)"),
+        new("banco", "🏦", "banco", "Saldo del banco (con clave)"),
+    };
+    private static bool TieneOficina(RepartidorDto r, string clave) =>
+        (r.Oficina ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(clave);
+    private void TildarOficina(string clave, bool si) { if (si) formOficina.Add(clave); else formOficina.Remove(clave); }
 
     // Modal "enlace personal"
     private bool mostrarEnlace;
@@ -206,6 +241,7 @@
         formIsActive = true;
         formSeguirUbicacion = false;
         formVerComprobantes = false;
+        formOficina = new();
         mostrarModal = true;
     }
 
@@ -217,6 +253,7 @@
         formIsActive = r.IsActive;
         formSeguirUbicacion = r.SeguirUbicacion;
         formVerComprobantes = r.VerComprobantes;
+        formOficina = OpcionesOficina.Select(o => o.Clave).Where(c => TieneOficina(r, c)).ToHashSet();
         mostrarModal = true;
     }
 
@@ -231,7 +268,7 @@
             }
             else
             {
-                await Api.EditarRepartidorAsync(editandoId.Value, new EditarRepartidorRequest { Nombre = formNombre.Trim(), DniUltimos3 = string.IsNullOrWhiteSpace(formPin) ? null : formPin.Trim(), IsActive = formIsActive, SeguirUbicacion = formSeguirUbicacion, VerComprobantes = formVerComprobantes });
+                await Api.EditarRepartidorAsync(editandoId.Value, new EditarRepartidorRequest { Nombre = formNombre.Trim(), DniUltimos3 = string.IsNullOrWhiteSpace(formPin) ? null : formPin.Trim(), IsActive = formIsActive, SeguirUbicacion = formSeguirUbicacion, VerComprobantes = formVerComprobantes, Oficina = formOficina.ToList() });
                 ToastService.Success("✓ Cambios guardados");
             }
             mostrarModal = false;
