@@ -45,7 +45,8 @@ public class CafePagosProveedorController : ControllerBase
     /// <summary>Clave = "AFIP:..." o "DEU:..." (ver ProveedorCtaCteService). Sin clave ni compra = a cuenta.</summary>
     public record CrearComprobanteItem(int? CompraId, decimal Importe, string? Clave = null);
     /// <summary>Si el medio se hace con un cheque de cartera (endoso), pasar ChequeExistenteId. Si no, lo dejas null y va por caja normal.</summary>
-    public record CrearMedioItem(int CajaId, decimal Importe, string? Referencia, int? ChequeExistenteId);
+    /// <summary>ChequeBancoId (20/10/2026): se paga con un e-cheq PROPIO (ver echeqs-propios).</summary>
+    public record CrearMedioItem(int CajaId, decimal Importe, string? Referencia, int? ChequeExistenteId, int? ChequeBancoId = null);
 
     [HttpGet("pendientes/{proveedorId:int}")]
     public async Task<IActionResult> Pendientes(int proveedorId)
@@ -55,6 +56,11 @@ public class CafePagosProveedorController : ControllerBase
         return Ok(new PendientesProveedorDto(c.CuentaCorriente, c.Desde, c.Oficial, c.NoOficial, c.ACuenta, c.Total,
             c.Pendientes.Select(d => new DocPendienteDto(d.Clave, d.Tipo, d.Numero, d.Oficial, d.Fecha, d.Total, d.Pagado, d.Saldo, d.TieneArchivo)).ToList()));
     }
+
+    /// <summary>20/10/2026: e-cheq que le firmamos a este proveedor y todavía no se usaron en un pago.</summary>
+    [HttpGet("echeqs-propios/{proveedorId:int}")]
+    public async Task<IActionResult> EcheqsPropios(int proveedorId)
+        => Ok(await _ctacte.EcheqsPropiosAsync(proveedorId));
 
     [HttpGet]
     public async Task<IActionResult> List(
@@ -98,7 +104,7 @@ public class CafePagosProveedorController : ControllerBase
         var (error, id, numero) = await _ctacte.CrearPagoAsync(new ProveedorCtaCteService.NuevoPago(
             req.ProveedorId, req.Retenciones, req.Operador, req.Observaciones,
             (req.Comprobantes ?? new()).Select(c => new ProveedorCtaCteService.ItemPago(c.Clave, c.CompraId, c.Importe)).ToList(),
-            (req.Medios ?? new()).Select(m => new ProveedorCtaCteService.MedioPago(m.CajaId, m.Importe, m.Referencia, m.ChequeExistenteId)).ToList()));
+            (req.Medios ?? new()).Select(m => new ProveedorCtaCteService.MedioPago(m.CajaId, m.Importe, m.Referencia, m.ChequeExistenteId, m.ChequeBancoId)).ToList()));
         if (error is not null) return BadRequest(new { error });
         return Ok(new { id, numero });
     }

@@ -7864,6 +7864,12 @@ GO
 IF COL_LENGTH('Cafe_PagosProveedor','ExtractoMovId') IS NULL
     ALTER TABLE Cafe_PagosProveedor ADD ExtractoMovId INT NULL;
 GO
+-- 2026-10-20: pagar a un proveedor con un e-cheq PROPIO (Cafe_ChequesBanco Tipo=EMITIDO). La
+-- factura queda paga el dia que se le da el cheque; la caja del banco baja recien cuando el banco
+-- lo debita (Estado=Pagado).
+IF COL_LENGTH('Cafe_PagosProveedorMedios','ChequeBancoId') IS NULL
+    ALTER TABLE Cafe_PagosProveedorMedios ADD ChequeBancoId INT NULL;
+GO
 
 -- ============================================================
 -- 2026-09-17 — SESIONES ABIERTAS (ver quien esta adentro y poder echarlo)

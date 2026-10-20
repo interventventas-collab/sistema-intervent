@@ -176,11 +176,40 @@
                     @* --- Formas de pago --- *@
                     <div style="margin: 1rem 0; padding: 0.8rem; background: #fef3c7; border-radius: 8px;">
                         <h5 style="margin:0 0 0.5rem;">Forma de pago</h5>
+                        @* 20/10/2026: e-cheq que le firmamos a este proveedor (los baja el banco) y que todavía
+                           no se usaron en ningún pago. Con "Usar" pasan a ser una forma de pago. *@
+                        @if (echeqsPropios.Count > 0)
+                        {
+                            <div style="background:white; border-radius:6px; padding:0.6rem; margin-bottom:0.6rem; font-size:0.85rem;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
+                                    <span style="color:#6b7280;">E-cheq que le firmaste y todavía no aplicaste:</span>
+                                    @if (echeqsPropios.Count(e => !EcheqUsado(e.Id)) > 1)
+                                    {
+                                        <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="UsarTodosEcheqs">Usar todos</button>
+                                    }
+                                </div>
+                                @foreach (var e in echeqsPropios)
+                                {
+                                    var ev = e;
+                                    <div style="display:flex; justify-content:space-between; align-items:center; padding:0.2rem 0;">
+                                        <span>N° @ev.Numero · vence @(ev.FechaPago?.ToString("dd/MM/yyyy") ?? "—") · <b>$@ev.Importe.ToString("N2")</b></span>
+                                        @if (EcheqUsado(ev.Id))
+                                        {
+                                            <span style="color:#6b7280;">✓ en este pago</span>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => UsarEcheq(ev)">Usar</button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
                         @for (int i = 0; i < formMedios.Count; i++)
                         {
                             var idx = i; var m = formMedios[idx];
                             <div style="display:grid; grid-template-columns: 2fr 1fr 2fr 30px; gap:0.4rem; margin-bottom:0.4rem; align-items:start;">
-                                <select class="form-input" value="@m.CajaId" @onchange="@(e => OnCajaChange(idx, e.Value?.ToString()))">
+                                <select class="form-input" value="@m.CajaId" @onchange="@(e => OnCajaChange(idx, e.Value?.ToString()))" disabled="@(m.ChequeBancoId.HasValue)">
                                     <option value="0">— Caja —</option>
                                     @if (cajas is not null)
                                     {
@@ -192,10 +221,16 @@
                                 </select>
                                 @* 2026-08-28: idem Cobranzas — type=number vaciaba el casillero. *@
                                 <input class="form-input" type="text" inputmode="decimal" placeholder="Importe"
-                                       @bind="m.ImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" disabled="@(m.ChequeExistenteId.HasValue)" />
+                                       @bind="m.ImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" disabled="@(m.ChequeExistenteId.HasValue || m.ChequeBancoId.HasValue)" />
                                 <input class="form-input" placeholder="Referencia" @bind="m.Referencia" />
                                 <button class="btn-icon" @onclick="() => formMedios.RemoveAt(idx)">🗑</button>
                             </div>
+                            @if (m.ChequeBancoId.HasValue)
+                            {
+                                <div style="margin:-0.2rem 0 0.5rem 0.2rem; font-size:0.78rem; color:#6b7280;">
+                                    La factura queda paga hoy. Del banco sale cuando lo debiten.
+                                </div>
+                            }
                             @if (m.TipoCaja == "CHEQUES_CARTERA")
                             {
                                 <div style="margin-left:1rem; padding:0.6rem; background:white; border-radius:6px; margin-bottom:0.5rem;">
@@ -286,6 +321,7 @@
     private List<CafeProveedorDto>? proveedores;
     private List<CafeCajaDto>? cajas;
     private List<CafeChequeDto>? chequesEnCartera;
+    private List<ApiClient.EcheqPropioDto> echeqsPropios = new();
 
     private bool showNuevo, guardando;
     private int selProveedorId;
@@ -341,6 +377,7 @@
         }
         public string? Referencia { get; set; }
         public int? ChequeExistenteId { get; set; }
+        public int? ChequeBancoId { get; set; }
     }
 
     private decimal TotalImputado => imputaciones.Where(kv => kv.Value.Seleccionado).Sum(kv => kv.Value.Importe) + (aCuentaActivo ? aCuentaImporte : 0);
@@ -380,7 +417,7 @@
     private void ShowNuevo()
     {
         selProveedorId = 0; provSearch = ""; provSearchOpen = false;
-        pendientes = null; imputaciones = new();
+        pendientes = null; imputaciones = new(); echeqsPropios = new();
         aCuentaActivo = false; aCuentaImporte = 0;
         formMedios = new(); formRetenciones = 0; formObservaciones = null;
         showNuevo = true;
@@ -401,7 +438,9 @@
     {
         selProveedorId = id;
         provSearch = ""; provSearchOpen = false;
-        imputaciones = new(); ctaProveedor = null; pendientes = null;
+        imputaciones = new(); ctaProveedor = null; pendientes = null; echeqsPropios = new();
+        formMedios.RemoveAll(m => m.ChequeBancoId.HasValue);
+        try { echeqsPropios = await Api.GetEcheqsPropiosAsync(id); } catch { }
         try
         {
             ctaProveedor = await Api.GetPendientesProveedorAsync(id);
@@ -415,7 +454,8 @@
     private void ClearProveedor()
     {
         selProveedorId = 0; provSearch = ""; provSearchOpen = false;
-        pendientes = null; ctaProveedor = null; imputaciones = new();
+        pendientes = null; ctaProveedor = null; imputaciones = new(); echeqsPropios = new();
+        formMedios.RemoveAll(m => m.ChequeBancoId.HasValue);
     }
 
     /// <summary>2026-08-18: corre despues de que @bind ya guardo el importe tipeado (ImporteTexto).</summary>
@@ -457,6 +497,30 @@
 
     private void AgregarMedio() => formMedios.Add(new MedioForm());
 
+    private bool EcheqUsado(int id) => formMedios.Any(m => m.ChequeBancoId == id);
+
+    /// <summary>20/10/2026: el e-cheq propio sale del banco (la caja BANCO, Galicia primero).</summary>
+    private void UsarEcheq(ApiClient.EcheqPropioDto e)
+    {
+        if (EcheqUsado(e.Id)) return;
+        var banco = cajas?.Where(c => c.IsActive && c.Tipo == "BANCO")
+            .OrderByDescending(c => c.Nombre.Contains("Galicia")).ThenBy(c => c.Id).FirstOrDefault();
+        if (banco is null) { ToastService.Error("No encontré la caja del banco en Tesorería"); return; }
+        // Si había un renglón vacío (el que se agrega a mano), lo reemplaza.
+        formMedios.RemoveAll(m => m.CajaId == 0 && m.Importe == 0 && !m.ChequeExistenteId.HasValue);
+        formMedios.Add(new MedioForm
+        {
+            CajaId = banco.Id, TipoCaja = banco.Tipo, Importe = e.Importe, ChequeBancoId = e.Id,
+            Referencia = $"E-cheq propio N° {e.Numero}" + (e.FechaPago.HasValue ? $" · vence {e.FechaPago.Value:dd/MM/yyyy}" : "")
+        });
+        RecalcularTotal();
+    }
+
+    private void UsarTodosEcheqs()
+    {
+        foreach (var e in echeqsPropios) UsarEcheq(e);
+    }
+
     private void PagarTodo()
     {
         if (pendientes is null) return;
@@ -486,7 +550,7 @@
             comps.Add(new ApiClient.CrearCompraItemRequest(null, aCuentaImporte));
 
         var medios = formMedios.Select(m => new ApiClient.CrearMedioPagoRequest(
-            m.CajaId, m.Importe, m.Referencia, m.ChequeExistenteId)).ToList();
+            m.CajaId, m.Importe, m.Referencia, m.ChequeExistenteId, m.ChequeBancoId)).ToList();
 
         guardando = true;
         try

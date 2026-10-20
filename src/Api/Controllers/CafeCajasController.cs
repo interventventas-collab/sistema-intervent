@@ -194,8 +194,10 @@ public class CafeCajasController : ControllerBase
 
         // Los pagos a proveedor todavia no se usan (0 al 05/09/2026), pero si algun dia se cargan
         // tienen que restar solos, sin que haya que acordarse de tocar esto.
+        // 20/10/2026: un pago con e-cheq PROPIO recién sale del banco cuando el banco lo debita.
         var pagos = await _db.CafePagosProveedorMedios
-            .Where(m => m.Pago!.Estado == "VIGENTE")
+            .Where(m => m.Pago!.Estado == "VIGENTE"
+                && (m.ChequeBancoId == null || m.ChequeBanco!.Estado == "Pagado"))
             .GroupBy(m => m.CajaId)
             .Select(g => new { CajaId = g.Key, Total = g.Sum(x => x.Importe) })
             .ToListAsync();

@@ -350,6 +350,13 @@ public class CafeChequesUnificadoController : ControllerBase
                 + (fcs.Count > 0 ? " · FC " + string.Join(", ", fcs) : " · a cuenta");
         }
 
+        // 20/10/2026: e-cheq propios usados en un pago a proveedor → "aplicado en OP-...".
+        var emitIds = banco.Where(b => b.Tipo == "EMITIDO").Select(b => b.Id).ToList();
+        var aplicados = emitIds.Count == 0 ? new() : (await _db.CafePagosProveedorMedios.AsNoTracking()
+                .Where(m => m.ChequeBancoId != null && emitIds.Contains(m.ChequeBancoId.Value) && m.Pago!.Estado == "VIGENTE")
+                .Select(m => new { Id = m.ChequeBancoId!.Value, m.Pago!.Numero }).ToListAsync())
+            .GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().Numero);
+
         // Pagos a proveedor de los endosados, con lo que cancelaron.
         var pagoIds = cartera.Where(c => c.PagoOrigenId.HasValue).Select(c => c.PagoOrigenId!.Value).Distinct().ToList();
         var pagos = pagoIds.Count == 0 ? new() : await _db.CafePagosProveedor.AsNoTracking()
@@ -423,7 +430,9 @@ public class CafeChequesUnificadoController : ControllerBase
                     propio = true;
                     vino = "Yo (cheque propio)";
                     fue = NombreBanco(b, false);
-                    fueSub = f.EstadoTexto.ToLowerInvariant();
+                    fueSub = f.EstadoTexto.ToLowerInvariant()
+                        + (aplicados.TryGetValue(b.Id, out var op) ? $" · aplicado en {op}"
+                            : f.Vista == A_PAGAR ? " · sin aplicar a una factura" : "");
                 }
                 else
                 {

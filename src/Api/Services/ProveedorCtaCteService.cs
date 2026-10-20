@@ -247,7 +247,7 @@ public class ProveedorCtaCteService
         {
             var medios = await _db.CafePagosProveedorMedios.AsNoTracking()
                 .Where(m => pagoIds.Contains(m.PagoId))
-                .Select(m => new { m.PagoId, Caja = m.Caja!.Nombre, m.ChequeId })
+                .Select(m => new { m.PagoId, Caja = m.Caja!.Nombre, m.ChequeId, Echeq = m.ChequeBanco != null ? m.ChequeBanco.Numero : null })
                 .ToListAsync();
             var redirigidos = (await _db.CafeCobranzasMedios.AsNoTracking()
                     .Where(m => m.RedirigidoPagoId != null && pagoIds.Contains(m.RedirigidoPagoId.Value)
@@ -257,7 +257,8 @@ public class ProveedorCtaCteService
             foreach (var i in activas.SelectMany(c => c.Imputaciones))
             {
                 var ms = medios.Where(m => m.PagoId == i.PagoId)
-                    .Select(m => m.ChequeId != null ? "cheque endosado" : m.Caja).Distinct().ToList();
+                    .Select(m => m.ChequeId != null ? "cheque endosado"
+                        : m.Echeq != null ? $"e-cheq propio N° {m.Echeq.TrimStart('0')}" : m.Caja).Distinct().ToList();
                 i.EsRedirigido = redirigidos.Contains(i.PagoId);
                 i.Medio = ms.Count > 0 ? string.Join(" + ", ms) : i.EsRedirigido ? "cobro redirigido" : null;
             }
@@ -317,7 +318,34 @@ public class ProveedorCtaCteService
     // ─────────────────────────────── Pagos ───────────────────────────────
 
     public record ItemPago(string? Clave, int? CompraId, decimal Importe);
-    public record MedioPago(int CajaId, decimal Importe, string? Referencia, int? ChequeExistenteId);
+    /// <summary>ChequeBancoId (20/10/2026): e-cheq PROPIO con el que se le paga (ver EcheqsPropiosAsync).</summary>
+    public record MedioPago(int CajaId, decimal Importe, string? Referencia, int? ChequeExistenteId, int? ChequeBancoId = null);
+
+    public record EcheqPropio(int Id, string Numero, DateTime? FechaPago, decimal Importe, string Estado, string? Beneficiario);
+
+    /// <summary>20/10/2026: los e-cheq que FIRMAMOS (los baja el banco como EMITIDO) a nombre de este
+    /// proveedor (por CUIT) y que todavía no se usaron en ningún pago. Sin los rebotados. Solo los de
+    /// los últimos 90 días o por vencer: los viejos se pagaron antes de que existiera la cuenta corriente.</summary>
+    public async Task<List<EcheqPropio>> EcheqsPropiosAsync(int proveedorId)
+    {
+        var prov = await _db.CafeProveedores.AsNoTracking().FirstOrDefaultAsync(p => p.Id == proveedorId);
+        var cuit = NormCuit(prov?.Cuit);
+        if (cuit.Length == 0) return new();
+        var usados = await UsadosEnPagosAsync();
+        var desde = DateTime.UtcNow.Date.AddDays(-90);
+        var lista = await _db.CafeChequesBanco.AsNoTracking()
+            .Where(b => b.Tipo == "EMITIDO" && b.Estado != "Rechazado" && b.FechaPago >= desde)
+            .ToListAsync();
+        return lista.Where(b => NormCuit(b.ContraparteCuit) == cuit && !usados.Contains(b.Id))
+            .OrderBy(b => b.FechaPago)
+            .Select(b => new EcheqPropio(b.Id, b.Numero.TrimStart('0'), b.FechaPago, b.Importe, b.Estado, b.ContraparteNombre))
+            .ToList();
+    }
+
+    private async Task<HashSet<int>> UsadosEnPagosAsync()
+        => (await _db.CafePagosProveedorMedios.AsNoTracking()
+            .Where(m => m.ChequeBancoId != null && m.Pago!.Estado == "VIGENTE")
+            .Select(m => m.ChequeBancoId!.Value).ToListAsync()).ToHashSet();
     public record NuevoPago(int ProveedorId, decimal Retenciones, string? Operador, string? Observaciones,
         List<ItemPago> Items, List<MedioPago> Medios, DateTime? Fecha = null, int? ExtractoMovId = null);
 
@@ -346,6 +374,25 @@ public class ProveedorCtaCteService
             if (ch is null) return ($"Cheque {med.ChequeExistenteId} no encontrado", 0, "");
             if (ch.Estado != "EN_CARTERA") return ($"Cheque {ch.Numero} no esta en cartera (estado: {ch.Estado})", 0, "");
             if (Math.Abs(ch.Importe - med.Importe) > 0.01m) return ($"El importe del medio ({Plata(med.Importe)}) no coincide con el del cheque {ch.Numero} ({Plata(ch.Importe)})", 0, "");
+        }
+
+        var echeqIds = req.Medios.Where(m => m.ChequeBancoId.HasValue).Select(m => m.ChequeBancoId!.Value).ToList();
+        if (echeqIds.Count != echeqIds.Distinct().Count()) return ("El mismo e-cheq está dos veces", 0, "");
+        if (echeqIds.Count > 0)
+        {
+            var usados = await UsadosEnPagosAsync();
+            var cuitProv = NormCuit(proveedor.Cuit);
+            foreach (var med in req.Medios.Where(m => m.ChequeBancoId.HasValue))
+            {
+                var b = await _db.CafeChequesBanco.FindAsync(med.ChequeBancoId!.Value);
+                if (b is null || b.Tipo != "EMITIDO") return ("No encontré ese e-cheq propio", 0, "");
+                var nro = b.Numero.TrimStart('0');
+                if (usados.Contains(b.Id)) return ($"El e-cheq N° {nro} ya está usado en otro pago", 0, "");
+                if (string.Equals(b.Estado, "Rechazado", StringComparison.OrdinalIgnoreCase)) return ($"El e-cheq N° {nro} está rechazado", 0, "");
+                if (cuitProv.Length > 0 && NormCuit(b.ContraparteCuit) != cuitProv)
+                    return ($"El e-cheq N° {nro} está a nombre de {b.ContraparteNombre}, no de {proveedor.Nombre}", 0, "");
+                if (Math.Abs(b.Importe - med.Importe) > 0.01m) return ($"El importe del e-cheq N° {nro} es {Plata(b.Importe)}", 0, "");
+            }
         }
 
         var numero = await SiguienteNumeroAsync();
@@ -385,7 +432,8 @@ public class ProveedorCtaCteService
             }
             _db.CafePagosProveedorMedios.Add(new CafePagoProveedorMedio
             {
-                PagoId = pago.Id, CajaId = m.CajaId, Importe = m.Importe, Referencia = m.Referencia, ChequeId = m.ChequeExistenteId
+                PagoId = pago.Id, CajaId = m.CajaId, Importe = m.Importe, Referencia = m.Referencia, ChequeId = m.ChequeExistenteId,
+                ChequeBancoId = m.ChequeBancoId
             });
         }
         await _db.SaveChangesAsync();
