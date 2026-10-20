@@ -46,6 +46,12 @@ public class CafeRepartidor
     /// desde Administracion -> Repartidores. Arranca apagado.</summary>
     public bool VerComprobantes { get; set; }
 
+    /// <summary>20/10/2026: qué más ve en la sección "Oficina" de su link, separado por coma
+    /// (cobranzas, cheques, listas, stock, alquileres, banco). Ver <see cref="Api.Services.RepartidorOficina"/>.
+    /// Null = nada (lo de siempre: sus entregas). Lo tilda la oficina en Administración → Repartidores.</summary>
+    [MaxLength(300)]
+    public string? Oficina { get; set; }
+
     /// <summary>2026-09-18: la ÚLTIMA vez que se abrió su link personal (/mis-pedidos). Pedido del
     /// dueño: "que diga la última vez que lo abrió cada repartidor y listo". Los repartidores no
     /// entran con usuario y clave, así que no aparecen en Sesiones abiertas: esto es lo único que

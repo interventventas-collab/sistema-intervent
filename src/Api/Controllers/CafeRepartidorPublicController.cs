@@ -1175,6 +1175,63 @@ public class CafeRepartidorPublicController : ControllerBase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    //  20/10/2026: sección "Oficina" del link (ver Services/RepartidorOficina.cs)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    public record OficinaLinkDto(List<string> Permisos, string? ShellSaldo, DateTime? ShellAt);
+    public record BancoAbrirRequest(string Operador, string Pin);
+    public record BancoSaldoDto(decimal Saldo, DateTime Fecha, string Operador);
+
+    /// <summary>Qué cuadraditos ve este link y el saldo de Shell (ese lo ven todos, sin tilde).</summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}/oficina")]
+    public async Task<IActionResult> MiOficina(string tokenRepartidor)
+    {
+        var r = await _db.CafeRepartidores.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Link inválido" });
+
+        var permisos = new List<string>();
+        if (r.VerComprobantes) permisos.Add("comprobantes");
+        permisos.AddRange(RepartidorOficina.Todas.Where(RepartidorOficina.Parse(r.Oficina).Contains));
+
+        var shell = await _db.Set<ShellAccount>().AsNoTracking().OrderByDescending(s => s.Id).FirstOrDefaultAsync();
+        return Ok(new OficinaLinkDto(permisos, shell?.LastSaldo, shell?.LastSaldoAt));
+    }
+
+    // 4 números son 10.000 combinaciones y el link no tiene login: después de 5 claves mal, 15 minutos
+    // sin poder probar (por link). Vive en memoria: alcanza para frenar a alguien probando a mano.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int Fallas, DateTime Hasta)> _bancoIntentos = new();
+
+    /// <summary>Saldo del banco: pide la clave (PIN de operador) de Osmar, Germán o Gabriel.
+    /// Es el último saldo que bajó el robot del Galicia (el mismo de la alerta "banco bajo").</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/oficina/banco")]
+    public async Task<IActionResult> MiOficinaBanco(string tokenRepartidor, [FromBody] BancoAbrirRequest req)
+    {
+        var r = await RepartidorOficina.ConPermisoAsync(_db, tokenRepartidor, RepartidorOficina.Banco);
+        if (r is null) return NotFound(new { error = "No tenés habilitado ver el banco" });
+
+        if (_bancoIntentos.TryGetValue(tokenRepartidor, out var it) && it.Fallas >= 5 && it.Hasta > DateTime.UtcNow)
+            return StatusCode(429, new { error = $"Demasiadas claves mal. Probá de nuevo en {Math.Max(1, (int)Math.Ceiling((it.Hasta - DateTime.UtcNow).TotalMinutes))} minutos." });
+
+        var op = (req.Operador ?? "").Trim().ToUpperInvariant();
+        var pin = (req.Pin ?? "").Trim();
+        var row = RepartidorOficina.ClaveBanco.Contains(op) ? await _db.CafeOperadoresPin.FindAsync(op) : null;
+        if (row is null || pin.Length < 4 || !BCrypt.Net.BCrypt.Verify(pin, row.PinHash))
+        {
+            var fallas = (it.Hasta > DateTime.UtcNow ? it.Fallas : 0) + 1;
+            _bancoIntentos[tokenRepartidor] = (fallas, DateTime.UtcNow.AddMinutes(15));
+            return Unauthorized(new { error = "Clave incorrecta" });
+        }
+        _bancoIntentos.TryRemove(tokenRepartidor, out _);
+
+        var mov = await _db.CafeExtractoMovimientos.AsNoTracking()
+            .OrderByDescending(m => m.Fecha).ThenByDescending(m => m.Id)
+            .FirstOrDefaultAsync();
+        if (mov is null) return NotFound(new { error = "Todavía no hay movimientos del banco" });
+        return Ok(new BancoSaldoDto(mov.Saldo, mov.Fecha, op));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     //  16/10/2026: "Comprobantes" en el link del repartidor
     // ═══════════════════════════════════════════════════════════════════════
     // Pedido del dueño: él y sus hermanos (Gabriel, German, Osmar) necesitan bajar un comprobante

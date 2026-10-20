@@ -72,6 +72,23 @@ public class CafeListasCustomController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────
     // GET listar todas las listas activas
     // ─────────────────────────────────────────────────────────────────────
+    // 20/10/2026: link del repartidor → Oficina → 💲 Listas de precios (verlas y mandarlas por WhatsApp).
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}")]
+    public async Task<IActionResult> ListParaRepartidor(string token)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Listas) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await ListAll();
+    }
+
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}/{listaId:int}/pdf")]
+    public async Task<IActionResult> PdfParaRepartidor(string token, int listaId)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Listas) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await DescargarPdf(listaId);
+    }
+
     [HttpGet]
     public async Task<IActionResult> ListAll()
     {

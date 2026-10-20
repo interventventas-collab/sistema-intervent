@@ -8366,3 +8366,12 @@ GO
 IF OBJECT_ID('Cafe_CotizacionesChat') IS NOT NULL AND COL_LENGTH('Cafe_CotizacionesChat','Nombre') IS NULL
     ALTER TABLE Cafe_CotizacionesChat ADD Nombre NVARCHAR(150) NULL;
 GO
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 20/10/2026 — Link del repartidor: sección "Oficina" (cobranzas, cheques a pagar,
+-- listas, stock, alquileres, banco). Un tilde por cosa, guardados juntos separados
+-- por coma. ⚠ En PROD correr a mano.
+-- ─────────────────────────────────────────────────────────────────────────────
+IF COL_LENGTH('Cafe_Repartidores','Oficina') IS NULL
+    ALTER TABLE Cafe_Repartidores ADD Oficina NVARCHAR(300) NULL;
+GO

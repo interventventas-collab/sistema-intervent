@@ -15,15 +15,15 @@ public class CafeRepartidoresController : ControllerBase
     private readonly AppDbContext _db;
     public CafeRepartidoresController(AppDbContext db) { _db = db; }
 
-    public record RepartidorDto(int Id, string Nombre, string? DniUltimos3, bool IsActive, string? PublicToken, bool SeguirUbicacion, bool VerComprobantes);
+    public record RepartidorDto(int Id, string Nombre, string? DniUltimos3, bool IsActive, string? PublicToken, bool SeguirUbicacion, bool VerComprobantes, string? Oficina = null);
     public record CrearRequest(string Nombre, string? DniUltimos3);
-    public record EditarRequest(string Nombre, string? DniUltimos3, bool IsActive, bool SeguirUbicacion = false, bool VerComprobantes = false);
+    public record EditarRequest(string Nombre, string? DniUltimos3, bool IsActive, bool SeguirUbicacion = false, bool VerComprobantes = false, List<string>? Oficina = null);
 
     [HttpGet]
     public async Task<IActionResult> List()
     {
         var l = await _db.CafeRepartidores.OrderBy(r => r.Nombre)
-            .Select(r => new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion, r.VerComprobantes))
+            .Select(r => new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion, r.VerComprobantes, r.Oficina))
             .ToListAsync();
         return Ok(l);
     }
@@ -57,7 +57,7 @@ public class CafeRepartidoresController : ControllerBase
         };
         _db.CafeRepartidores.Add(r);
         await _db.SaveChangesAsync();
-        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion, r.VerComprobantes));
+        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion, r.VerComprobantes, r.Oficina));
     }
 
     [HttpPut("{id:int}")]
@@ -72,9 +72,11 @@ public class CafeRepartidoresController : ControllerBase
         r.SeguirUbicacion = req.SeguirUbicacion;
         // 16/10/2026: "Comprobantes" en su link (ver y compartir los ultimos 50).
         r.VerComprobantes = req.VerComprobantes;
+        // 20/10/2026: tildes de la sección Oficina. Null = el que guarda no los manda: no tocar.
+        if (req.Oficina is not null) r.Oficina = Api.Services.RepartidorOficina.Normalizar(req.Oficina);
         r.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion, r.VerComprobantes));
+        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken, r.SeguirUbicacion, r.VerComprobantes, r.Oficina));
     }
 
     [HttpDelete("{id:int}")]
