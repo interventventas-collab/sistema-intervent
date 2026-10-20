@@ -9,10 +9,11 @@
     .rep-header { text-align: center; margin-bottom: 1rem; }
     .rep-card { background: white; border-radius: 10px; padding: 0.7rem 1rem; margin-bottom: 0.5rem; display: flex; gap: 0.6rem; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     .rep-card.inactive { opacity: 0.5; }
-    .rep-card-nom { flex: 1; font-weight: 700; font-size: 1rem; }
+    .rep-card-nom { flex: 1; min-width: 0; font-weight: 700; font-size: 1rem; }
+    .rep-ve { font-weight: 400; font-size: 0.76rem; color: #6b7280; margin-top: 0.15rem; }
     .rep-pin { font-family: monospace; font-size: 0.85rem; padding: 0.2rem 0.5rem; background: #fef3c7; color: #92400e; border-radius: 4px; }
     .rep-pin.empty { background: #fee2e2; color: #991b1b; font-style: italic; }
-    .rep-actions { display: flex; gap: 0.3rem; }
+    .rep-actions { display: flex; gap: 0.3rem; flex-shrink: 0; white-space: nowrap; }
     .rep-btn { padding: 0.3rem 0.6rem; border-radius: 4px; border: 1px solid #d1d5db; background: white; cursor: pointer; font-size: 0.78rem; }
     .rep-btn.borrar { color: #b91c1c; border-color: #fca5a5; }
     .rep-btn.borrar:hover { background: #fee2e2; }
@@ -42,7 +43,15 @@
         @foreach (var r in lista)
         {
             <div class="rep-card @(r.IsActive ? "" : "inactive")">
-                <div class="rep-card-nom">@r.Nombre @(r.IsActive ? "" : "(inactivo)")</div>
+                @* 20/10/2026: lo que ve en su link va en UNA línea de texto gris debajo del nombre (antes
+                   era una cajita por cosa y con 9 cajitas la fila se desarmaba: "super feo"). *@
+                <div class="rep-card-nom">
+                    <div>@r.Nombre @(r.IsActive ? "" : "(inactivo)")</div>
+                    @if (LoQueVe(r) is { Length: > 0 } ve)
+                    {
+                        <div class="rep-ve">Ve en su link: @ve</div>
+                    }
+                </div>
                 @if (string.IsNullOrEmpty(r.DniUltimos3))
                 {
                     <span class="rep-pin empty">⚠ sin PIN</span>
@@ -50,21 +59,6 @@
                 else
                 {
                     <span class="rep-pin">PIN: @r.DniUltimos3</span>
-                }
-                @if (r.SeguirUbicacion)
-                {
-                    <span class="rep-pin" style="background:#eff6ff; color:#1e40af; border-color:#bfdbfe;"
-                          title="Su celular manda la ubicación mientras reparte. Se ve en el mapa con el botón 'Por dónde van'.">📍 ubicación</span>
-                }
-                @if (r.VerComprobantes)
-                {
-                    <span class="rep-pin" style="background:#f9fafb; color:#374151; border-color:#e5e7eb;"
-                          title="En su link ve los últimos comprobantes para bajarlos o mandarlos por WhatsApp.">📄 comprobantes</span>
-                }
-                @foreach (var o in OpcionesOficina.Where(o => TieneOficina(r, o.Clave)))
-                {
-                    <span class="rep-pin" style="background:#f9fafb; color:#374151; border-color:#e5e7eb;"
-                          title="En su link, sección Oficina: @o.Texto">@o.Icono @o.Corto</span>
                 }
                 <div class="rep-actions">
                     @if (!string.IsNullOrEmpty(r.PublicToken))
@@ -212,6 +206,15 @@
         new("alquileres", "🪑", "alquileres", "Alquileres (reservas)"),
         new("banco", "🏦", "banco", "Saldo del banco (con clave)"),
     };
+    /// <summary>"ubicación · comprobantes · cobranzas · banco" — texto plano, sin cajitas.</summary>
+    private static string LoQueVe(RepartidorDto r)
+    {
+        var partes = new List<string>();
+        if (r.SeguirUbicacion) partes.Add("📍 ubicación");
+        if (r.VerComprobantes) partes.Add("comprobantes");
+        partes.AddRange(OpcionesOficina.Where(o => TieneOficina(r, o.Clave)).Select(o => o.Corto));
+        return string.Join(" · ", partes);
+    }
     private static bool TieneOficina(RepartidorDto r, string clave) =>
         (r.Oficina ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(clave);
     private void TildarOficina(string clave, bool si) { if (si) formOficina.Add(clave); else formOficina.Remove(clave); }
