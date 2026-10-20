@@ -5330,3 +5330,20 @@ tr.om-franja-tr > td { padding: 0 0.5rem 0.8rem !important; border-top: none !im
              padding: 0.5rem 0.7rem; font-size: 0.8rem; text-align: left; white-space: normal; }
 @media (max-width: 1100px) { .om-franja { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .om-franja { grid-template-columns: minmax(0, 1fr); } }
+
+/* 2026-10-20: cobro redirigido a proveedor sin elegir factura o "a cuenta": titila hasta que elija */
+.redir-elegir-titila {
+  margin: 0.15rem 0 0.4rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  font-size: 0.8rem;
+  font-weight: 600;
+  animation: redir-titila 1s ease-in-out infinite;
+}
+@keyframes redir-titila {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}

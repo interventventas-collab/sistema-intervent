@@ -992,6 +992,10 @@
                                             else
                                             {
                                                 <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.25rem;">¿Contra qué factura o cotización?</div>
+                                                @if (m.RedirigidoDocClave is null)
+                                                {
+                                                    <div class="redir-elegir-titila">👇 Elegí contra qué va este pago: la factura o "A cuenta"</div>
+                                                }
                                                 <div style="display:flex; gap:0.35rem; flex-wrap:wrap;">
                                                     <button class="btn @(m.RedirigidoDocClave == "" ? "btn-primary" : "btn-secondary")"
                                                             style="font-size:0.8rem;" @onclick='() => ElegirFactura(idx, "")'>A cuenta</button>
@@ -2232,8 +2236,9 @@
         // 09/09/2026: el destinatario también puede ser un PROVEEDOR.
         public int RedirigidoProveedorId { get; set; }
         /// <summary>17/09/2026: contra qué documento de su cuenta corriente (factura de AFIP o
-        /// cotización). "" = "a cuenta".</summary>
-        public string RedirigidoDocClave { get; set; } = "";
+        /// cotización). "" = "a cuenta". 20/10/2026: null = todavía no eligió (antes arrancaba
+        /// en "a cuenta" y se guardaba así sin que nadie lo decidiera).</summary>
+        public string? RedirigidoDocClave { get; set; }
         public string ChequeBanco { get; set; } = "";
         public string ChequeNumero { get; set; } = "";
         public string? ChequeEmisor { get; set; }
@@ -2788,7 +2793,7 @@
         m.RedirigidoProveedorId = proveedorId;
         m.RedirigidoEmpleadoId = 0;
         m.RedirigidoDestino = null;
-        m.RedirigidoDocClave = "";    // arranca "a cuenta"
+        m.RedirigidoDocClave = null;    // arranca sin elegir: tiene que decir factura o "a cuenta"
         buscandoProvIdx = null;
         if (!facturasProv.ContainsKey(proveedorId))
         {
@@ -2960,6 +2965,16 @@
             ToastService.Error($"⚠️ Falta decir de qué se le descuenta a {quien}: VIAJES o SUELDO.");
             return;
         }
+        // 20/10/2026: con facturas pendientes del proveedor ya no arranca en "a cuenta": hay que elegir.
+        var sinFactura = formMedios.FirstOrDefault(m => m.EsRedirigido && m.RedirigidoProveedorId > 0
+            && m.RedirigidoDocClave is null
+            && facturasProv.TryGetValue(m.RedirigidoProveedorId, out var fs) && fs.Count > 0);
+        if (sinFactura is not null)
+        {
+            var prov = provRedir.FirstOrDefault(x => x.Id == sinFactura.RedirigidoProveedorId)?.Nombre ?? "el proveedor";
+            ToastService.Error($"⚠️ Falta elegir contra qué va el pago a {prov}: la factura o \"A cuenta\".");
+            return;
+        }
 
         // 2026-10-06: dólares (máquina en USD o caja de dólares) sin el dólar del día no se pueden pasar a pesos.
         var usaDolares = HayMaquinaUsdTildada || formMedios.Any(m => m.EsDolares);
@@ -3002,7 +3017,7 @@
             m.EsRedirigido ? m.RedirigidoDestino : null,
             m.EsRedirigido && m.RedirigidoProveedorId > 0 ? m.RedirigidoProveedorId : null,
             null,
-            m.EsRedirigido && m.RedirigidoProveedorId > 0 && m.RedirigidoDocClave != "" ? m.RedirigidoDocClave : null,
+            m.EsRedirigido && m.RedirigidoProveedorId > 0 && !string.IsNullOrEmpty(m.RedirigidoDocClave) ? m.RedirigidoDocClave : null,
             m.EsDolares ? m.ImporteUsd : null,
             m.EsDolares ? dolarDelDia : null
         )).ToList();
