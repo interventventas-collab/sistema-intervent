@@ -1,0 +1,113 @@
+@* 20/10/2026: Oficina → 🧾 Cheques a pagar. Es la solapa "A pagar" de Tesorería → Cheques (los
+   e-cheqs y cheques PROPIOS que el banco todavía no debitó), con lo que hay que cubrir arriba en
+   grande y lo de esta semana en rojo, como pidió el dueño. *@
+@using System.Globalization
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<div class="mpc-overlay">
+    <div class="mpc-wrap">
+        <div class="mpc-top">
+            <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
+            <div class="mpc-title">🧾 Cheques a pagar</div>
+        </div>
+
+        @if (cargando)
+        {
+            <div class="mpc-nota">Buscando…</div>
+        }
+        else if (error)
+        {
+            <div class="mpc-nota">No se pudieron traer los cheques. <button type="button" class="mpc-mas" @onclick="Cargar">🔄 Reintentar</button></div>
+        }
+        else if (filas.Count == 0)
+        {
+            <div class="mpc-nota">No hay cheques para pagar. 🎉</div>
+        }
+        else
+        {
+            var semana = filas.Where(f => f.Vence is DateTime v && v.Date <= Hoy.AddDays(7)).ToList();
+            <div class="mpc-ver-hd">
+                <div class="mpc-ver-line">Tenés que cubrir</div>
+                <div class="mpc-ver-tot">@Plata(filas.Sum(f => f.Importe))</div>
+                <div class="mpc-ver-line">
+                    @filas.Count @(filas.Count == 1 ? "cheque" : "cheques")
+                    @if (semana.Count > 0)
+                    {
+                        <span class="mpc-pend"> · esta semana @Plata(semana.Sum(f => f.Importe)) (@semana.Count)</span>
+                    }
+                </div>
+            </div>
+
+            string? grupoAnterior = null;
+            foreach (var f in filas)
+            {
+                var grupo = Grupo(f.Vence);
+                if (grupo != grupoAnterior)
+                {
+                    grupoAnterior = grupo;
+                    <div class="mpc-dia">@grupo</div>
+                }
+                var urgente = f.Vence is DateTime vv && vv.Date <= Hoy.AddDays(1);
+                <div class="mpc-row">
+                    <div class="mpc-r1">
+                        <span class="mpc-cli">@VenceTexto(f.Vence)</span>
+                        <span class="mpc-tot @(urgente ? "mpc-pend" : "")">@Plata(f.Importe)</span>
+                    </div>
+                    <div class="mpc-est">
+                        <span class="mpc-num">@(f.Origen == "BANCO" ? "Echeq" : "Cheque") @f.Numero</span>
+                        @if (!string.IsNullOrWhiteSpace(f.Emisor)) { <text> · a @f.Emisor</text> }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(f.Detalle))
+                    {
+                        <div class="mpc-est" style="color:#6b7280;">@f.Detalle</div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
+    private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;
+    private List<ChequeUniDto> filas = new();
+    private bool cargando = true, error;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true; error = false;
+        StateHasChanged();
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ChequesUnificadoResponse>($"api/cafe/cheques-unificado/repartidor/{Token}");
+            filas = (r?.Filas ?? new()).Where(f => f.Vista == "A_PAGAR")
+                .OrderBy(f => f.Vence ?? DateTime.MaxValue).ToList();
+        }
+        catch { error = true; }
+        finally { cargando = false; StateHasChanged(); }
+    }
+
+    private static string Grupo(DateTime? v)
+    {
+        if (v is not DateTime d) return "Sin fecha";
+        if (d.Date < Hoy) return "Ya vencidos";
+        if (d.Date <= Hoy.AddDays(7)) return "Esta semana";
+        return "Más adelante";
+    }
+
+    private static string VenceTexto(DateTime? v)
+    {
+        if (v is not DateTime d) return "Sin fecha";
+        if (d.Date == Hoy) return "Vence hoy";
+        if (d.Date == Hoy.AddDays(1)) return $"Vence mañana {d:dd/MM}";
+        return d.ToString("ddd dd/MM", Ar);
+    }
+
+    private static string Plata(decimal v) => "$" + v.ToString("N0", Ar);
+}

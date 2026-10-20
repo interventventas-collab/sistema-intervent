@@ -1,0 +1,86 @@
+@* 20/10/2026: Oficina → 🏦 Banco. Lo único de la Oficina que pide clave (decisión del dueño): la
+   de 4 números de Osmar, Germán o Gabriel (la misma del PIN de operador de la compu). Muestra el
+   último saldo que bajó el robot del Galicia. No queda guardado: al salir hay que ponerla de nuevo. *@
+@using System.Globalization
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<div class="mpc-overlay">
+    <div class="mpc-wrap">
+        <div class="mpc-top">
+            <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
+            <div class="mpc-title">🏦 Banco</div>
+        </div>
+
+        @if (saldo is not null)
+        {
+            <div class="mpc-ver-hd">
+                <div class="mpc-ver-line">Saldo en el Galicia</div>
+                <div class="mpc-ver-tot">@("$" + saldo.Saldo.ToString("N2", Ar))</div>
+                <div class="mpc-ver-line">Último movimiento del @saldo.Fecha.ToString("dd/MM/yyyy", Ar) · abierto por @saldo.Operador</div>
+            </div>
+        }
+        else
+        {
+            <div class="mpc-ver-hd">
+                <div class="mpc-ver-line">¿Quién sos?</div>
+                <div class="mpc-chips" style="margin-top:0.4rem;">
+                    @foreach (var o in Operadores)
+                    {
+                        var oSel = o;
+                        <span class="mpc-chip @(operador == oSel ? "on" : "")" @onclick="() => operador = oSel">@oSel</span>
+                    }
+                </div>
+                <div class="mpc-ver-line">Tu clave de 4 números</div>
+                <input class="mpc-search" type="password" inputmode="numeric" maxlength="4" autocomplete="off"
+                       style="letter-spacing:0.5em; text-align:center; font-size:1.3rem;"
+                       @bind="pin" @bind:event="oninput" @onkeyup="OnTecla" />
+                @if (!string.IsNullOrEmpty(mensaje))
+                {
+                    <div class="mpc-pend" style="font-size:0.85rem; margin-bottom:0.4rem;">@mensaje</div>
+                }
+                <button type="button" class="mpc-mas" style="background:#0e7490; color:white; border-color:#0e7490;"
+                        disabled="@(abriendo || operador == "" || pin.Length < 4)" @onclick="Abrir">
+                    @(abriendo ? "Abriendo…" : "Ver saldo")
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private record BancoSaldo(decimal Saldo, DateTime Fecha, string Operador);
+    private record ErrorDto(string? Error);
+    private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
+    private static readonly string[] Operadores = { "OSMAR", "GERMAN", "GABRIEL" };
+
+    private string operador = "", pin = "", mensaje = "";
+    private bool abriendo;
+    private BancoSaldo? saldo;
+
+    private async Task OnTecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && operador != "" && pin.Length >= 4) await Abrir();
+    }
+
+    private async Task Abrir()
+    {
+        abriendo = true; mensaje = "";
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/oficina/banco", new { Operador = operador, Pin = pin });
+            if (resp.IsSuccessStatusCode) saldo = await resp.Content.ReadFromJsonAsync<BancoSaldo>();
+            else
+            {
+                ErrorDto? err = null;
+                try { err = await resp.Content.ReadFromJsonAsync<ErrorDto>(); } catch { }
+                mensaje = err?.Error ?? "No se pudo abrir";
+            }
+        }
+        catch { mensaje = "No hay conexión. Probá de nuevo."; }
+        finally { abriendo = false; pin = ""; }
+    }
+}

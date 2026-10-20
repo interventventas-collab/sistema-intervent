@@ -5,6 +5,7 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@using Web.Shared.Oficina
 
 @*
    2026-06-05: Pantalla mobile-first del repartidor. URL fija con PublicToken.
@@ -373,6 +374,20 @@
     .mpc-ver-bar { background:white; padding:0.65rem 0.8rem calc(0.8rem + env(safe-area-inset-bottom)); display:flex; gap:0.5rem; box-shadow:0 -4px 14px rgba(0,0,0,0.1); }
     .mpc-ver-bar .mpc-wa { flex:2; padding:0.8rem; font-size:1rem; }
     .mpc-ver-bar .mpc-dl { flex:1; padding:0.8rem; font-size:1rem; text-align:center; cursor:pointer; }
+    /* ── 20/10/2026: sección Oficina (Shell para todos + un cuadradito por tilde) ── */
+    .ofi-shell { background:white; border-radius:12px; padding:0.6rem 0.8rem; margin:-0.3rem 0 0.7rem; font-size:0.9rem; color:#111827; }
+    .ofi-shell span { color:#6b7280; font-size:0.78rem; }
+    .ofi-sec { font-size:0.72rem; font-weight:800; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; margin:0 0.15rem 0.35rem; }
+    .ofi-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.45rem; margin-bottom:0.9rem; }
+    .ofi-tile { display:flex; flex-direction:column; align-items:flex-start; gap:0.15rem; text-align:left; background:white;
+        border:1.5px solid #e5e7eb; border-radius:12px; padding:0.7rem 0.75rem; cursor:pointer; font-family:inherit; }
+    .ofi-tile:active { border-color:#0e7490; }
+    .ofi-tile-t { font-size:0.92rem; font-weight:800; color:#111827; }
+    .ofi-tile-s { font-size:0.74rem; color:#6b7280; }
+    .ofi-fechas { display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap; margin-bottom:0.5rem; font-size:0.78rem; color:#374151; font-weight:700; }
+    .ofi-fechas input { padding:0.3rem 0.4rem; border:1.5px solid #d1d5db; border-radius:8px; font-size:0.82rem; margin-left:0.2rem; }
+    .ofi-lab { font-size:0.7rem; font-weight:800; color:#6b7280; margin:0.1rem 0.15rem 0.3rem; }
+    .ofi-total { font-size:0.85rem; color:#374151; margin:0.2rem 0.15rem 0.3rem; }
     .mpc-mas { display:block; width:100%; margin-top:0.5rem; padding:0.6rem; background:white; border:1px solid #d1d5db; border-radius:10px; font-weight:700; color:#374151; cursor:pointer; }
 </style>
 
@@ -403,10 +418,31 @@
             </div>
         </div>
 
-        @* 16/10/2026: solo si la oficina le prendió el tilde (Gabriel, Germán, Osmar). *@
-        @if (comprobantesAplica)
+        @* 20/10/2026: el saldo de Shell Flota lo ven TODOS los repartidores. Abajo, la sección
+           "Oficina": un cuadradito por cada cosa que la oficina le tildó en su ficha (Gabriel,
+           Germán, Osmar). "Comprobantes" (16/10) pasó a ser uno de los cuadraditos. *@
+        @if (!string.IsNullOrWhiteSpace(oficina?.ShellSaldo))
         {
-            <button type="button" class="mpc-open" @onclick="AbrirComprobantes">📄 Comprobantes</button>
+            <div class="ofi-shell">⛽ Shell Flota · <b>$@oficina!.ShellSaldo</b>
+                @if (oficina.ShellAt is DateTime sa)
+                {
+                    <span> · @sa.AddHours(-3).ToString("dd/MM HH:mm")</span>
+                }
+            </div>
+        }
+        @if (OficinaTiles.Count > 0)
+        {
+            <div class="ofi-sec">Oficina</div>
+            <div class="ofi-grid">
+                @foreach (var t in OficinaTiles)
+                {
+                    var tSel = t;
+                    <button type="button" class="ofi-tile" @onclick="() => AbrirOficina(tSel.Clave)">
+                        <span class="ofi-tile-t">@tSel.Icono @tSel.Titulo</span>
+                        <span class="ofi-tile-s">@tSel.Sub</span>
+                    </button>
+                }
+            </div>
         }
 
         @* ─── 2026-09-02: ¿terminó su recorrido? — es lo primero que mira el repartidor ───
@@ -1645,6 +1681,17 @@
     </div>
 }
 
+@* 20/10/2026: pantallas de la sección Oficina (cada una en Shared/Oficina/). *@
+@switch (ofiAbierta)
+{
+    case "cobranzas": <OfiCobranzas Token="@Token" OnCerrar="CerrarOficina" /> break;
+    case "cheques": <OfiCheques Token="@Token" OnCerrar="CerrarOficina" /> break;
+    case "listas": <OfiListas Token="@Token" OnCerrar="CerrarOficina" /> break;
+    case "stock": <OfiStock Token="@Token" OnCerrar="CerrarOficina" /> break;
+    case "alquileres": <OfiAlquileres Token="@Token" OnCerrar="CerrarOficina" /> break;
+    case "banco": <OfiBanco Token="@Token" OnCerrar="CerrarOficina" /> break;
+}
+
 @* 16/10/2026: "Comprobantes" — los últimos 50, buscador por cliente o número, y por día.
    Cada uno con WhatsApp (el PDF adjunto, con el menú de compartir del celu) y ⬇ para bajarlo. *@
 @if (verComprobantes)
@@ -2724,6 +2771,7 @@
         catch { /* navegador viejo o JS bloqueado, ignorar */ }
         await Recargar();
         await ChequearComprobantes();   // 16/10/2026: botón "Comprobantes" (si la oficina lo prendió)
+        await CargarOficina();          // 20/10/2026: saldo de Shell + cuadraditos de la Oficina
         if (string.IsNullOrEmpty(VerComo))
             _ = IniciarSeguimientoUbicacion();   // 2026-09-17: "Por donde van" (si la oficina lo prendio)
         // 2026-06-05: auto-refresh cada 30s. Si el admin asigna una venta nueva,
@@ -3406,6 +3454,43 @@
         if (d == HoyAr.AddDays(-1)) return "Ayer · " + nombre;
         return nombre;
     }
+
+    // ─── 20/10/2026: sección Oficina (ver Api/Services/RepartidorOficina.cs) ───
+    private record OficinaDto(List<string> Permisos, string? ShellSaldo, DateTime? ShellAt);
+    private record OficinaTile(string Clave, string Icono, string Titulo, string Sub);
+    private OficinaDto? oficina;
+    private string? ofiAbierta;
+
+    // El orden de los cuadraditos. Una cosa nueva = un renglón acá + su pantalla en Shared/Oficina/.
+    private static readonly OficinaTile[] TodosLosTiles =
+    {
+        new("comprobantes", "📄", "Comprobantes", "facturas, ver y mandar"),
+        new("cobranzas", "💵", "Cobranzas", "quién pagó y cómo"),
+        new("cheques", "🧾", "Cheques a pagar", "qué hay que cubrir"),
+        new("listas", "💲", "Listas de precios", "👁 ver · mandar por WA"),
+        new("stock", "📦", "Stock", "cuánto hay de cada uno"),
+        new("alquileres", "🪑", "Alquileres", "qué llevar y retirar"),
+        new("banco", "🏦", "Banco", "saldo · con tu clave"),
+    };
+
+    private List<OficinaTile> OficinaTiles =>
+        TodosLosTiles.Where(t => t.Clave == "comprobantes"
+            ? comprobantesAplica
+            : oficina?.Permisos.Contains(t.Clave) == true).ToList();
+
+    private async Task CargarOficina()
+    {
+        try { oficina = await Http.GetFromJsonAsync<OficinaDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/oficina"); }
+        catch { oficina = null; }
+    }
+
+    private async Task AbrirOficina(string clave)
+    {
+        if (clave == "comprobantes") { await AbrirComprobantes(); return; }
+        ofiAbierta = clave;
+    }
+
+    private void CerrarOficina() => ofiAbierta = null;
 
     /// <summary>Al abrir el link: ¿le aparece el botón? Trae de paso la primera tanda.</summary>
     private async Task ChequearComprobantes()

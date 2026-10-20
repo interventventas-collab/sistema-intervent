@@ -1,0 +1,107 @@
+@* 20/10/2026: Oficina → 📦 Stock. El mismo listado de la pantalla Stock de la compu (por depósito),
+   pero solo nombre y cuánto hay: sin costos. Arranca en el depósito principal. *@
+@using System.Globalization
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<div class="mpc-overlay">
+    <div class="mpc-wrap">
+        <div class="mpc-top">
+            <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
+            <div class="mpc-title">📦 Stock</div>
+        </div>
+        @if (depositos.Count > 1)
+        {
+            <div class="mpc-chips">
+                @foreach (var d in depositos)
+                {
+                    var dSel = d;
+                    <span class="mpc-chip @(depositoId == dSel.Id ? "on" : "")" @onclick="() => ElegirDeposito(dSel.Id)">@dSel.Nombre</span>
+                }
+            </div>
+        }
+        <input class="mpc-search" type="search" placeholder="🔍 Producto o código…" @bind="buscar" @bind:event="oninput" />
+        <div class="mpc-chips">
+            <span class="mpc-chip @(!soloSinStock ? "on" : "")" @onclick="() => soloSinStock = false">Todos</span>
+            <span class="mpc-chip @(soloSinStock ? "on" : "")" @onclick="() => soloSinStock = true">Sin stock</span>
+        </div>
+
+        @if (cargando)
+        {
+            <div class="mpc-nota">Buscando…</div>
+        }
+        else if (error)
+        {
+            <div class="mpc-nota">No se pudo traer el stock. <button type="button" class="mpc-mas" @onclick="CargarStock">🔄 Reintentar</button></div>
+        }
+        else
+        {
+            var lista = Filtrados();
+            <div class="ofi-total">@lista.Count productos</div>
+            @foreach (var p in lista.Take(mostrar))
+            {
+                var cero = Cantidad(p) <= 0;
+                <div class="mpc-row">
+                    <div class="mpc-r1">
+                        <span class="mpc-cli">@p.Nombre</span>
+                        <span class="mpc-tot @(cero ? "mpc-pend" : "mpc-ok")">@CantidadTexto(p)</span>
+                    </div>
+                    <div class="mpc-num">@p.Codigo</div>
+                </div>
+            }
+            @if (lista.Count > mostrar)
+            {
+                <button type="button" class="mpc-mas" @onclick="() => mostrar += 100">Ver más (@(lista.Count - mostrar))</button>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private record Deposito(int Id, string Nombre, bool IsDefault);
+    private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
+
+    private List<Deposito> depositos = new();
+    private List<StockProductoDto> productos = new();
+    private int depositoId;
+    private string buscar = "";
+    private bool soloSinStock, cargando = true, error;
+    private int mostrar = 100;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { depositos = await Http.GetFromJsonAsync<List<Deposito>>($"api/cafe/stock-masivo/repartidor/{Token}") ?? new(); }
+        catch { error = true; cargando = false; return; }
+        depositoId = depositos.FirstOrDefault()?.Id ?? 0;   // el principal viene primero
+        await CargarStock();
+    }
+
+    private async Task ElegirDeposito(int id) { depositoId = id; mostrar = 100; await CargarStock(); }
+
+    private async Task CargarStock()
+    {
+        if (depositoId == 0) { cargando = false; return; }
+        cargando = true; error = false;
+        StateHasChanged();
+        try { productos = await Http.GetFromJsonAsync<List<StockProductoDto>>($"api/cafe/stock-masivo/repartidor/{Token}/{depositoId}") ?? new(); }
+        catch { error = true; }
+        finally { cargando = false; StateHasChanged(); }
+    }
+
+    private List<StockProductoDto> Filtrados()
+    {
+        var t = buscar.Trim();
+        return productos.Where(p => p.IsActive)
+            .Where(p => t.Length == 0 || p.Nombre.Contains(t, StringComparison.OrdinalIgnoreCase) || p.Codigo.Contains(t, StringComparison.OrdinalIgnoreCase))
+            .Where(p => !soloSinStock || Cantidad(p) <= 0)
+            .OrderBy(p => p.Nombre).ToList();
+    }
+
+    // Igual que la pantalla Stock: el café va en kilos, lo demás en unidades.
+    private static decimal Cantidad(StockProductoDto p) => p.Categoria == "CAFE" ? p.StockGramos : p.StockUnidades;
+    private static string CantidadTexto(StockProductoDto p) =>
+        p.Categoria == "CAFE" ? $"{(p.StockGramos / 1000m).ToString("N2", Ar)} kg" : $"{p.StockUnidades} u.";
+}

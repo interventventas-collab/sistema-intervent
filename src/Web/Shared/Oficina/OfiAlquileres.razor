@@ -1,0 +1,160 @@
+@* 20/10/2026: Oficina → 🪑 Alquileres. El mismo listado de Alquileres → Reservas de la compu, para
+   ver desde el celu qué hay que llevar y retirar, quién lo lleva y si está pagado. *@
+@using System.Globalization
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<div class="mpc-overlay">
+    <div class="mpc-wrap">
+        <div class="mpc-top">
+            <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
+            <div class="mpc-title">🪑 Alquileres</div>
+        </div>
+        <div class="mpc-chips">
+            @foreach (var (val, txt) in Vistas)
+            {
+                var vSel = val;
+                <span class="mpc-chip @(vista == vSel ? "on" : "")" @onclick="() => vista = vSel">@txt</span>
+            }
+        </div>
+        <input class="mpc-search" type="search" placeholder="🔍 Cliente, N° de reserva o dirección…" @bind="buscar" @bind:event="oninput" />
+
+        @if (cargando)
+        {
+            <div class="mpc-nota">Buscando…</div>
+        }
+        else if (error)
+        {
+            <div class="mpc-nota">No se pudieron traer las reservas. <button type="button" class="mpc-mas" @onclick="Cargar">🔄 Reintentar</button></div>
+        }
+        else
+        {
+            var lista = Filtradas();
+            @if (lista.Count == 0)
+            {
+                <div class="mpc-nota">No hay reservas con eso.</div>
+            }
+            DateTime? diaAnterior = null;
+            foreach (var r in lista)
+            {
+                var dia = DiaDe(r);
+                if (diaAnterior != dia)
+                {
+                    diaAnterior = dia;
+                    <div class="mpc-dia">@DiaTexto(dia)</div>
+                }
+                var saldo = r.MontoTotal - r.Sena - r.MontoCobrado;
+                <div class="mpc-row">
+                    <div class="mpc-r1">
+                        <span class="mpc-cli">@r.Numero · @r.ClienteNombre</span>
+                        @if (r.Estado == "cancelado")
+                        {
+                            <span class="mpc-tot" style="color:#6b7280;">cancelada</span>
+                        }
+                        else if (saldo > 0.009m)
+                        {
+                            <span class="mpc-tot mpc-pend">debe @Plata(saldo)</span>
+                        }
+                        else
+                        {
+                            <span class="mpc-tot mpc-ok">pagada</span>
+                        }
+                    </div>
+                    <div class="mpc-est">@Equipos(r)</div>
+                    <div class="mpc-est">
+                        Entrega @r.FechaEntrega.ToString("ddd dd/MM", Ar)@Quien(r.EntregadoPorRepartidorNombre ?? r.AsignadoARepartidorNombre, r.EntregadoAt is not null)
+                        · Retiro @r.FechaRetiro.ToString("ddd dd/MM", Ar)@Quien(r.RetiradoPorRepartidorNombre ?? r.AsignadoRetiroARepartidorNombre, r.RetiradoAt is not null)
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(r.DireccionEvento))
+                    {
+                        <div class="mpc-r2">
+                            <span class="mpc-num" style="white-space:normal;">📍 @r.DireccionEvento</span>
+                            <a class="mpc-dl" target="_blank" href="@($"https://waze.com/ul?q={Uri.EscapeDataString(r.DireccionEvento)}&navigate=yes")">Waze</a>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(r.ClienteTelefono))
+                    {
+                        <div class="mpc-r2">
+                            <span class="mpc-num">📞 @r.ClienteTelefono</span>
+                            <a class="mpc-dl" target="_blank" href="@($"https://wa.me/{WaNumero(r.ClienteTelefono)}")">WhatsApp</a>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
+    private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;
+    private static readonly (string, string)[] Vistas =
+        { ("proximos", "Próximos"), ("hoy", "Hoy"), ("retirar", "Para retirar"), ("todos", "Todos") };
+
+    private List<AlqReservaDto> reservas = new();
+    private string vista = "proximos", buscar = "";
+    private bool cargando = true, error;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true; error = false;
+        StateHasChanged();
+        try
+        {
+            // Dos meses para atrás (lo que quedó sin retirar o sin cobrar) y todo lo que viene.
+            reservas = await Http.GetFromJsonAsync<List<AlqReservaDto>>(
+                $"api/alquileres/reservas/repartidor/{Token}?from={Hoy.AddDays(-60):yyyy-MM-dd}") ?? new();
+        }
+        catch { error = true; }
+        finally { cargando = false; StateHasChanged(); }
+    }
+
+    private static bool Terminada(AlqReservaDto r) => r.Estado is "finalizado" or "cancelado";
+
+    private List<AlqReservaDto> Filtradas()
+    {
+        IEnumerable<AlqReservaDto> q = vista switch
+        {
+            "hoy" => reservas.Where(r => !Terminada(r) && (r.FechaEntrega.Date == Hoy || r.FechaRetiro.Date == Hoy)),
+            "retirar" => reservas.Where(r => r.Estado == "entregado"),
+            "todos" => reservas,
+            _ => reservas.Where(r => !Terminada(r) && r.FechaRetiro.Date >= Hoy),
+        };
+        var t = buscar.Trim();
+        if (t.Length > 0)
+            q = q.Where(r => r.ClienteNombre.Contains(t, StringComparison.OrdinalIgnoreCase)
+                || r.Numero.Contains(t, StringComparison.OrdinalIgnoreCase)
+                || (r.DireccionEvento ?? "").Contains(t, StringComparison.OrdinalIgnoreCase));
+        return vista == "todos" ? q.OrderByDescending(DiaDe).ToList() : q.OrderBy(DiaDe).ToList();
+    }
+
+    // "Para retirar" se agrupa por el día del retiro; lo demás por el día de la entrega.
+    private DateTime DiaDe(AlqReservaDto r) => (vista == "retirar" ? r.FechaRetiro : r.FechaEntrega).Date;
+
+    private static string Equipos(AlqReservaDto r) =>
+        r.Items.Count == 0 ? "sin equipos" : string.Join(" · ", r.Items.Select(i => $"{i.Cantidad} {i.EquipoNombre}"));
+
+    private static string Quien(string? nombre, bool hecho) =>
+        string.IsNullOrWhiteSpace(nombre) ? "" : $" · {nombre}{(hecho ? " ✓" : "")}";
+
+    private static string WaNumero(string tel)
+    {
+        var d = new string(tel.Where(char.IsDigit).ToArray());
+        return d.StartsWith("54") ? d : "549" + d.TrimStart('0');
+    }
+
+    private static string DiaTexto(DateTime d)
+    {
+        if (d == Hoy) return "Hoy";
+        if (d == Hoy.AddDays(1)) return "Mañana";
+        if (d == Hoy.AddDays(-1)) return "Ayer";
+        return d.ToString("dddd dd/MM", Ar);
+    }
+
+    private static string Plata(decimal v) => "$" + v.ToString("N0", Ar);
+}
