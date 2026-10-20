@@ -7217,6 +7217,8 @@
         await TryHandleNuevaVentaTwilioAsync();
         // 2026-08-31: ?duplicarVentaId=X — duplicar un comprobante desde la ficha del chat
         await TryHandleDuplicarVentaAsync();
+        // 2026-10-20: ?desdePresupuesto=ID — "🛒 Pasar a venta" de un presupuesto de la calculadora
+        await TryHandleDesdePresupuestoAsync();
         // Cargar count de pedidos pendientes para mostrar en el botón
         await RefrescarPedidoWACount();
     }
@@ -7331,6 +7333,50 @@
         if (lastDuplicarQuery == ventaId) return;   // no repetirlo en cada render
         lastDuplicarQuery = ventaId;
         await DuplicarComprobantePorIdAsync(ventaId);
+    }
+
+    /// <summary>
+    /// 2026-10-20: ?desdePresupuesto=ID abre Nueva Venta con los productos, cantidades y precios de un
+    /// presupuesto guardado (calculadora → 🧮 Cotizar → historial → 🛒 Pasar a venta). Hace lo mismo que
+    /// el "Pasar a venta" del chat: precio SIN IVA pisado a mano (lo que se le dijo al cliente); si la
+    /// venta es factura el IVA lo suma el sistema. Al emitir, el presupuesto queda marcado con la venta.
+    /// </summary>
+    private int? lastDesdePresupuestoQuery = null;
+    private int? desdePresupuestoId = null;
+    private async Task TryHandleDesdePresupuestoAsync()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        if (!int.TryParse(query["desdePresupuesto"], out var id)) return;
+        if (lastDesdePresupuestoQuery == id) return;   // no repetirlo en cada render
+        lastDesdePresupuestoQuery = id;
+
+        CafeCotizacionChatDto? cot;
+        try { cot = await Api.GetCotizacionChatAsync(id); }
+        catch (Exception ex) { ToastService.Error("No pude traer el presupuesto: " + ex.Message); return; }
+        if (cot is null) { ToastService.Warning("Ese presupuesto ya no existe."); return; }
+        if (!string.IsNullOrWhiteSpace(cot.VentaNumero))
+        {
+            ToastService.Warning($"Ese presupuesto ya se pasó a la venta {cot.VentaNumero}.");
+            return;
+        }
+        var validos = cot.Items.Where(i => i.ProductoId > 0).ToList();
+        if (validos.Count == 0) { ToastService.Warning("Ese presupuesto no tiene productos para pasar."); return; }
+
+        ShowCreate();
+        formItems = validos.Select(i => new CafeCotizarItemRequest
+        {
+            ProductoId = i.ProductoId,
+            Formato = string.IsNullOrWhiteSpace(i.Formato) ? "UNIT" : i.Formato,
+            Cantidad = Math.Max(1, (int)Math.Ceiling(i.Cantidad)),
+            PrecioUnitarioOverride = i.PrecioSinIva > 0m ? i.PrecioSinIva : null,
+        }).ToList();
+        desdePresupuestoId = cot.Id;
+        await Cotizar();
+        var quien = !string.IsNullOrWhiteSpace(cot.Nombre) ? cot.Nombre : cot.Telefono;
+        ToastService.Info($"Venta cargada con el presupuesto del {cot.CreatedAt.ToArTime():dd/MM}{(string.IsNullOrWhiteSpace(quien) ? "" : " de " + quien)}: elegí el cliente y revisá.");
+        if (validos.Count < cot.Items.Count) ToastService.Warning("Algún renglón no se pudo pasar: revisá los productos.");
+        StateHasChanged();
     }
 
     /// <summary>Si la URL trae ?pedidoId=X, abre el modal de Nueva Venta y muestra el pedido en la sub-ventana flotante.</summary>
@@ -7901,6 +7947,7 @@
     {
         editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null;
         convirtiendoPreventaId = null;  // reset si veníamos de una conversión cancelada
+        desdePresupuestoId = null;      // 2026-10-20: idem si veníamos de un presupuesto
         unpaidPrevSales = new(); topProductsForClient = new(); includePrevBalanceInNotes = true;
         maquinasRenglones = new(); editLeyendaMaquinasGuardada = null;  // 2026-10-06
         CerrarChatWaFlotanteReset(); // 2026-08-06: arrancar sin chat flotante colgado de una venta anterior
@@ -10893,6 +10940,14 @@
                 if (formSumarAlMapa) { try { await SumarVentaAlMapa(v); } catch { /* el mapa nunca frena la emisión de la venta */ } }
                 // Emisión exitosa → borramos el auto-borrador
                 await DiscardBorradorAsync();
+
+                // 2026-10-20: si salió de un presupuesto guardado, queda anotado ("✅ Venta N" en el historial)
+                if (desdePresupuestoId is int presId)
+                {
+                    try { await Api.MarcarCotizacionChatVentaAsync(presId, v.Id); }
+                    catch { /* la venta ya se creó, no romper si falla el marcar */ }
+                    desdePresupuestoId = null;
+                }
 
                 // Si veníamos de convertir una preventa, vincularla a la venta nueva
                 if (convirtiendoPreventaId.HasValue)

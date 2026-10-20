@@ -11,6 +11,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject Web.Services.Mobile.CatalogIndex Catalog
+@inject Web.Services.OperatorService Op
 @implements IAsyncDisposable
 
 @if (visible)
@@ -30,7 +31,8 @@
         <div class="calc-tabs">
             <button class="calc-tab @(tab == "precios" ? "active" : "")" @onclick='() => tab = "precios"'>🏷️ Precios</button>
             <button class="calc-tab @(tab == "numeros" ? "active" : "")" @onclick='() => tab = "numeros"'>🔢 Números</button>
-            <button class="calc-tab @(tab == "alquiler" ? "active" : "")" @onclick="AbrirAlquiler">🪑 Alquiler</button>
+            <button class="calc-tab @(tab == "alquiler" ? "active" : "")" @onclick='() => CambiarTab("alquiler")'>🪑 Alquiler</button>
+            <button class="calc-tab @(tab == "productos" ? "active" : "")" @onclick='() => CambiarTab("productos")'>🧮 Cotizar</button>
         </div>
 
         <div class="calc-body">
@@ -64,14 +66,119 @@
                 <button class="calc-btn calc-eq" @onclick="Equals">=</button>
             </div>
         }
-        else if (tab == "alquiler")
+        else if (tab == "alquiler" || tab == "productos")
         {
             @* 2026-08-31: la cotización la arma Shared/CotizadorAlquiler.razor — la MISMA pieza que
-               usa el chat de WhatsApp. Acá el texto se copia al portapapeles para pegarlo donde sea. *@
+               usa el chat de WhatsApp. Acá el texto se copia al portapapeles para pegarlo donde sea.
+               2026-10-20: el WhatsApp de la API ya no se usa y ahí vivían el historial y "pasar a
+               reserva / venta". Ahora viven acá: todo presupuesto pide nombre O teléfono y queda
+               guardado; la solapa 🧮 Cotizar trae el cotizador de PRODUCTOS (antes solo en el chat). *@
             <div class="ca-panel">
-                <CotizadorAlquiler Oscuro="true" MostrarDescuento="true"
-                                   TextoBoton="📋 Copiar el presupuesto"
-                                   OnListo="CopiarCotizacion" />
+                <div class="cq-quien">
+                    <div class="cq-quien-t">¿A quién se lo pasás? <span>nombre o teléfono, con uno alcanza</span></div>
+                    <div class="cq-quien-f">
+                        <input class="cq-inp" placeholder="Nombre" autocomplete="off"
+                               @bind="quienNombre" @bind:event="oninput" />
+                        <input class="cq-inp" placeholder="Teléfono" inputmode="tel" autocomplete="off"
+                               @bind="quienTel" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                <div class="cq-hist">
+                    <button class="cq-hist-tog" @onclick="ToggleHistorial">
+                        📚 Presupuestos guardados @(verHistorial ? "▴" : "▾")
+                    </button>
+                    @if (verHistorial)
+                    {
+                        <input class="cq-inp" placeholder="Buscar por nombre o teléfono…" autocomplete="off"
+                               value="@histQ" @oninput="OnBuscarHistorial" />
+                        @if (buscandoHist)
+                        {
+                            <div class="cq-hist-vacio">Buscando…</div>
+                        }
+                        else if (tab == "alquiler")
+                        {
+                            @if (histAlq.Count == 0)
+                            {
+                                <div class="cq-hist-vacio">@(string.IsNullOrWhiteSpace(histQ) ? "Todavía no hay presupuestos guardados." : "No encontré presupuestos con eso.")</div>
+                            }
+                            @foreach (var c in histAlq)
+                            {
+                                <div class="cq-hist-i">
+                                    <div class="cq-hist-l1">
+                                        <span class="cq-hist-q">@QuienDe(c.Nombre, c.Telefono)</span>
+                                        <b>@Plata(c.Total)</b>
+                                    </div>
+                                    <div class="cq-hist-l2">
+                                        @c.CreatedAt.ToArTime().ToString("dd/MM/yy")@(string.IsNullOrWhiteSpace(c.Operador) ? "" : " · " + c.Operador)
+                                        · @ResumenAlq(c)@(c.FechaEvento is DateTime fe ? $" · evento {fe:dd/MM}" : "")
+                                    </div>
+                                    <div class="cq-hist-acc">
+                                        <button class="cq-hist-b" @onclick="() => RepetirAlq(c)" title="Cargarlo abajo para recotizar con los precios de hoy">↻ Repetir</button>
+                                        <button class="cq-hist-b" @onclick="() => CopiarDeNuevo(c.Texto)" title="Copiar el mismo texto que se le pasó">📋 Copiar</button>
+                                        @if (!string.IsNullOrWhiteSpace(c.ReservaNumero))
+                                        {
+                                            <button class="cq-hist-b cq-hist-ok" @onclick='() => AbrirEnPestana("/alquileres/reservas?openId=" + c.ReservaId)'>✅ Reservado @c.ReservaNumero</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="cq-hist-b cq-hist-go" @onclick='() => AbrirEnPestana("/alquileres/reservas?cotizacion=" + c.Id)'
+                                                    title="Abrir Nueva Reserva ya cargada con esto, en otra pestaña">📅 Pasar a reserva</button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            @if (histProd.Count == 0)
+                            {
+                                <div class="cq-hist-vacio">@(string.IsNullOrWhiteSpace(histQ) ? "Todavía no hay presupuestos guardados." : "No encontré presupuestos con eso.")</div>
+                            }
+                            @foreach (var c in histProd)
+                            {
+                                <div class="cq-hist-i">
+                                    <div class="cq-hist-l1">
+                                        <span class="cq-hist-q">@QuienDe(c.Nombre, c.Telefono)</span>
+                                        <b>@Plata(c.Total) <small>@(c.ConIva ? "c/IVA" : "s/IVA")</small></b>
+                                    </div>
+                                    <div class="cq-hist-l2">
+                                        @c.CreatedAt.ToArTime().ToString("dd/MM/yy")@(string.IsNullOrWhiteSpace(c.Operador) ? "" : " · " + c.Operador)
+                                        · @ResumenProd(c)
+                                    </div>
+                                    <div class="cq-hist-acc">
+                                        <button class="cq-hist-b" @onclick="() => CopiarDeNuevo(c.Texto)" title="Copiar el mismo texto que se le pasó">📋 Copiar</button>
+                                        @if (!string.IsNullOrWhiteSpace(c.VentaNumero))
+                                        {
+                                            <span class="cq-hist-b cq-hist-ok" title="Este presupuesto ya se pasó a venta">✅ Venta @c.VentaNumero</span>
+                                        }
+                                        else
+                                        {
+                                            <button class="cq-hist-b cq-hist-go" @onclick='() => AbrirEnPestana("/cafe/ventas?desdePresupuesto=" + c.Id)'
+                                                    title="Abrir Nueva Venta con estos productos, cantidades y precios, en otra pestaña">🛒 Pasar a venta</button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+
+                @if (tab == "alquiler")
+                {
+                    <CotizadorAlquiler @ref="cotAlqRef" Oscuro="true" MostrarDescuento="true"
+                                       TextoBoton="📋 Copiar y guardar el presupuesto"
+                                       PedirAQuien="true" Nombre="@quienNombre" Telefono="@quienTel"
+                                       Operador="@(Web.Services.OperatorService.FirmaCorta(Op.Current))"
+                                       OnListo="CopiarCotizacion" OnGuardada="AlGuardar" />
+                }
+                else
+                {
+                    <div class="cq-claro">
+                        <CotizadorProductos @ref="cotProdRef" TextoBoton="📋 Copiar y guardar el presupuesto"
+                                            OnListo="CopiarYGuardarProductos" />
+                    </div>
+                }
             </div>
         }
         else
@@ -347,12 +454,40 @@
     /* La solapa Alquiler ya no trae estilos propios: los pone el componente CotizadorAlquiler. */
     .ca-panel { padding: 10px; user-select: text; -webkit-user-select: text; }
 
+    /* 2026-10-20: a quién + historial de presupuestos (alquiler y productos) */
+    .cq-quien { margin-bottom: 8px; }
+    .cq-quien-t { font-size: 0.76rem; font-weight: 700; color: #e5e7eb; margin-bottom: 4px; }
+    .cq-quien-t span { font-weight: 400; color: #9ca3af; }
+    .cq-quien-f { display: flex; gap: 6px; }
+    .cq-inp { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; background: #111827; color: #f9fafb;
+        border: 1px solid #4b5563; border-radius: 6px; padding: 0.35rem 0.45rem; font-size: 0.8rem; font-family: inherit; }
+    .cq-inp:focus { outline: none; border-color: #60a5fa; }
+    .cq-hist { margin-bottom: 8px; }
+    .cq-hist > .cq-inp { margin: 6px 0; }
+    .cq-hist-tog { width: 100%; text-align: left; background: #374151; color: #e5e7eb; border: none; border-radius: 6px;
+        padding: 0.35rem 0.5rem; font-size: 0.78rem; font-weight: 700; cursor: pointer; font-family: inherit; }
+    .cq-hist-tog:hover { background: #4b5563; }
+    .cq-hist-vacio { font-size: 0.76rem; color: #9ca3af; padding: 4px 2px; }
+    .cq-hist-i { border-bottom: 1px solid #374151; padding: 6px 2px; }
+    .cq-hist-l1 { display: flex; justify-content: space-between; gap: 6px; font-size: 0.8rem; }
+    .cq-hist-q { font-weight: 700; color: #f9fafb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cq-hist-l1 small { font-weight: 400; color: #9ca3af; }
+    .cq-hist-l2 { font-size: 0.72rem; color: #9ca3af; margin: 2px 0 4px; }
+    .cq-hist-acc { display: flex; flex-wrap: wrap; gap: 4px; }
+    .cq-hist-b { background: #374151; color: #e5e7eb; border: none; border-radius: 5px; padding: 0.2rem 0.45rem;
+        font-size: 0.72rem; cursor: pointer; font-family: inherit; }
+    .cq-hist-b:hover { background: #4b5563; }
+    .cq-hist-go { background: #065f46; color: #d1fae5; }
+    .cq-hist-ok { background: transparent; color: #6ee7b7; cursor: default; }
+    /* El cotizador de productos es claro (viene del chat): va en su tarjeta blanca. */
+    .cq-claro { background: #fff; color: #1f2937; border-radius: 8px; padding: 8px; }
+
 </style>
 
 @code {
     // Estado expuesto al MainLayout para poder abrir/cerrar desde el botón de la topbar.
     private bool visible = false;
-    private string tab = "precios"; // "precios" | "numeros" | "alquiler"
+    private string tab = "precios"; // "precios" | "numeros" | "alquiler" | "productos"
     private double posX = 100, posY = 100;
     private string display = "0";
     private string history = "";
@@ -375,7 +510,8 @@
     private bool mostrarNovedad = false;
     private string SizeStyle => (sizeW.HasValue && sizeH.HasValue)
         ? $" width:{sizeW.Value.ToString(CultureInfo.InvariantCulture)}px; height:{sizeH.Value.ToString(CultureInfo.InvariantCulture)}px;"
-        : "";
+        // 2026-10-20: los cotizadores no entran en los 268 px de la calculadora: arrancan más anchos.
+        : (tab is "alquiler" or "productos" ? " width:390px;" : "");
 
     private static readonly CultureInfo ARS = CultureInfo.GetCultureInfo("es-AR");
     private static string Money(decimal v) => "$" + v.ToString("N2", ARS);
@@ -598,10 +734,20 @@
     // ─── Panel Alquiler (cotizar rápido y pegar donde haga falta). 2026-08-31 ───
     // La cotización la arma el componente Shared/CotizadorAlquiler.razor: la MISMA pieza que usa el
     // chat de WhatsApp. Acá solo copiamos el texto al portapapeles.
-    private async Task AbrirAlquiler()
+    private async Task CambiarTab(string t)
     {
-        tab = "alquiler";
-        await Task.CompletedTask;
+        tab = t;
+        if (verHistorial && t is "alquiler" or "productos") await CargarHistorialAsync();
+    }
+
+    /// <summary>2026-10-20: el botón "CALCU ALQUILER" de la barra abre directo en una solapa.
+    /// Si ya estaba abierta en esa misma solapa, la cierra (como el botón de CALCUPRECIOS).</summary>
+    public async Task AbrirEnAsync(string t)
+    {
+        if (visible && tab == t) { Close(); return; }
+        if (!visible) await OpenAsync();
+        await CambiarTab(t);
+        StateHasChanged();
     }
 
     private async Task CopiarCotizacion(string texto)
@@ -610,9 +756,126 @@
         try
         {
             await JS.InvokeVoidAsync("copyToClipboard", texto);
+            ToastService.Success("Presupuesto copiado y guardado — pegalo donde quieras");
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
+    // ─── 2026-10-20: a quién + historial de presupuestos guardados ───
+    private string quienNombre = "";
+    private string quienTel = "";
+    private bool verHistorial = false;
+    private bool buscandoHist = false;
+    private string histQ = "";
+    private List<AlqCotizacionDto> histAlq = new();
+    private List<CafeCotizacionChatDto> histProd = new();
+    private CotizadorAlquiler? cotAlqRef;
+    private CotizadorProductos? cotProdRef;
+    private CancellationTokenSource? histCts;
+
+    private bool HayQuien => !string.IsNullOrWhiteSpace(quienNombre) || quienTel.Any(char.IsDigit);
+    private static string Plata(decimal v) => "$" + v.ToString(v == Math.Round(v) ? "N0" : "N2", ARS);
+    private static string QuienDe(string? nombre, string? tel)
+        => !string.IsNullOrWhiteSpace(nombre) && !string.IsNullOrWhiteSpace(tel) ? $"{nombre} · {tel}"
+         : !string.IsNullOrWhiteSpace(nombre) ? nombre!
+         : !string.IsNullOrWhiteSpace(tel) ? tel! : "(sin nombre)";
+
+    private static string ResumenAlq(AlqCotizacionDto c)
+    {
+        if (c.Items.Count == 0) return "solo flete";
+        var txt = string.Join(" + ", c.Items.Take(2).Select(i => $"{i.Cantidad} {i.Nombre}"));
+        return c.Items.Count > 2 ? txt + $" +{c.Items.Count - 2} más" : txt;
+    }
+
+    private static string ResumenProd(CafeCotizacionChatDto c)
+    {
+        var txt = string.Join(" + ", c.Items.Take(2).Select(i => $"{i.Cantidad.ToString("0.##", ARS)} {i.Nombre}"));
+        return c.Items.Count > 2 ? txt + $" +{c.Items.Count - 2} más" : txt;
+    }
+
+    private async Task ToggleHistorial()
+    {
+        verHistorial = !verHistorial;
+        if (verHistorial) await CargarHistorialAsync();
+    }
+
+    private async Task OnBuscarHistorial(ChangeEventArgs e)
+    {
+        histQ = e.Value?.ToString() ?? "";
+        histCts?.Cancel();
+        histCts = new CancellationTokenSource();
+        var token = histCts.Token;
+        try { await Task.Delay(300, token); } catch (TaskCanceledException) { return; }
+        await CargarHistorialAsync();
+    }
+
+    private async Task CargarHistorialAsync()
+    {
+        buscandoHist = true;
+        StateHasChanged();
+        try
+        {
+            if (tab == "alquiler") histAlq = await Api.BuscarAlqCotizacionesAsync(histQ) ?? new();
+            else if (tab == "productos") histProd = await Api.BuscarCotizacionesChatAsync(histQ) ?? new();
+        }
+        catch { ToastService.Error("No pude traer los presupuestos guardados"); }
+        finally { buscandoHist = false; StateHasChanged(); }
+    }
+
+    private async Task AlGuardar()
+    {
+        if (verHistorial) await CargarHistorialAsync();
+    }
+
+    /// <summary>Lo carga abajo para recotizar con los precios de hoy, y deja puesto a quién era.</summary>
+    private void RepetirAlq(AlqCotizacionDto c)
+    {
+        cotAlqRef?.CargarDesde(c);
+        quienNombre = c.Nombre ?? "";
+        quienTel = c.Telefono ?? "";
+    }
+
+    private async Task CopiarDeNuevo(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) { ToastService.Warning("Ese presupuesto no guardó el texto."); return; }
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", texto);
             ToastService.Success("Presupuesto copiado — pegalo donde quieras");
         }
         catch { ToastService.Error("No se pudo copiar"); }
+    }
+
+    private async Task AbrirEnPestana(string url)
+    {
+        try { await JS.InvokeVoidAsync("open", url, "_blank"); }
+        catch (Exception ex) { ToastService.Error("No pude abrir la otra pestaña: " + ex.Message); }
+    }
+
+    /// <summary>Productos: copia el texto y lo deja guardado con nombre o teléfono (sin eso no copia).</summary>
+    private async Task CopiarYGuardarProductos(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto) || cotProdRef is null) return;
+        if (!HayQuien)
+        {
+            ToastService.Warning("Poné el nombre o el teléfono de la persona: así el presupuesto queda guardado.");
+            return;
+        }
+        try { await JS.InvokeVoidAsync("copyToClipboard", texto); }
+        catch { ToastService.Error("No se pudo copiar"); return; }
+
+        var armado = cotProdRef.Armado();
+        armado.Texto = texto;
+        armado.Nombre = string.IsNullOrWhiteSpace(quienNombre) ? null : quienNombre.Trim();
+        armado.Telefono = new string(quienTel.Where(char.IsDigit).ToArray());
+        armado.Operador = Web.Services.OperatorService.FirmaCorta(Op.Current);
+        try
+        {
+            await Api.CrearCotizacionChatAsync(armado);
+            ToastService.Success("Presupuesto copiado y guardado — pegalo donde quieras");
+            if (verHistorial) await CargarHistorialAsync();
+        }
+        catch (Exception ex) { ToastService.Warning("Quedó copiado pero no pude guardarlo: " + ex.Message); }
     }
 
     // ─── Lógica de la calculadora ───

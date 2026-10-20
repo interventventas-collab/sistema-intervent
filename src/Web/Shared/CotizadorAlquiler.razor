@@ -247,6 +247,12 @@
     /// </summary>
     [Parameter] public string? Telefono { get; set; }
 
+    /// <summary>2026-10-20: a quién (calculadora CALCU ALQUILER). Con nombre O teléfono se guarda.</summary>
+    [Parameter] public string? Nombre { get; set; }
+
+    /// <summary>2026-10-20: calculadora. Sin nombre ni teléfono no deja copiar: todo presupuesto queda guardado.</summary>
+    [Parameter] public bool PedirAQuien { get; set; }
+
     /// <summary>Si el chat ya está vinculado a un cliente, queda anotado en la cotización.</summary>
     [Parameter] public int? ClienteId { get; set; }
 
@@ -410,6 +416,11 @@
     private async Task Listo()
     {
         var texto = ArmarTexto();
+        if (PedirAQuien && string.IsNullOrWhiteSpace(Nombre) && !(Telefono ?? "").Any(char.IsDigit))
+        {
+            Toast.Warning("Poné el nombre o el teléfono de la persona: así el presupuesto queda guardado.");
+            return;
+        }
         await OnListo.InvokeAsync(texto);
         await GuardarSiHayTelefono(texto);
     }
@@ -419,13 +430,15 @@
     private async Task GuardarSiHayTelefono(string texto)
     {
         var tel = new string((Telefono ?? "").Where(char.IsDigit).ToArray());
-        if (tel.Length == 0) return;
+        var nombre = string.IsNullOrWhiteSpace(Nombre) ? null : Nombre.Trim();
+        if (tel.Length == 0 && nombre is null) return;   // 2026-10-20: con el nombre también se guarda
 
         try
         {
             var req = new CrearAlqCotizacionRequest
             {
                 Telefono = tel,
+                Nombre = nombre,
                 ClienteId = ClienteId,
                 FechaEvento = fecha,
                 FleteZona = fleteZona,
