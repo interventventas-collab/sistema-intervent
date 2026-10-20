@@ -19,9 +19,13 @@ public class CafeCotizacionChat
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
 
-    /// <summary>Teléfono del chat (solo dígitos).</summary>
-    [Required, MaxLength(30)]
+    /// <summary>Teléfono del chat (solo dígitos). 2026-10-20: vacío si desde la calculadora se puso solo el nombre.</summary>
+    [MaxLength(30)]
     public string Telefono { get; set; } = string.Empty;
+
+    /// <summary>2026-10-20: a quién se le presupuestó (calculadora). Nombre o teléfono, uno alcanza.</summary>
+    [MaxLength(150)]
+    public string? Nombre { get; set; }
 
     public int? ClienteId { get; set; }
 

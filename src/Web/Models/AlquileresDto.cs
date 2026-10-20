@@ -333,6 +333,8 @@ public class AlqCotizacionDto
 {
     public int Id { get; set; }
     public string Telefono { get; set; } = string.Empty;
+    /// <summary>2026-10-20: a quién (calculadora). Nombre o teléfono, uno alcanza.</summary>
+    public string? Nombre { get; set; }
     public int? ClienteId { get; set; }
     public DateTime? FechaEvento { get; set; }
     public string? FleteZona { get; set; }
@@ -356,6 +358,7 @@ public class CrearAlqCotizacionRequest
     /// <summary>2026-09-10: dias cobrados. 1 = un solo dia.</summary>
     public int Dias { get; set; } = 1;
     public string Telefono { get; set; } = string.Empty;
+    public string? Nombre { get; set; }
     public int? ClienteId { get; set; }
     public DateTime? FechaEvento { get; set; }
     public string? FleteZona { get; set; }
