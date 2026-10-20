@@ -162,6 +162,13 @@
     .calcuprecios-btn .topbar-nav-modern-ico svg { color: #fff !important; }
     .calcuprecios-btn .calc-nuevo-badge { background: #fff; color: #be185d; }
     @@keyframes calcnuevo { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+    /* 2026-10-20: CALCUPRECIOS + CALCU ALQUILER apilados, en el alto de un botón de la barra */
+    .calc-pila { display: inline-flex; flex-direction: column; gap: 2px; }
+    .calc-pila .topbar-nav-modern { height: 19px; padding: 0 0.6rem; font-size: 0.72rem; border-radius: 5px; justify-content: flex-start; }
+    .calc-pila .topbar-nav-modern-ico { font-size: 0.8rem; }
+    .calc-pila .topbar-nav-modern-ico svg { width: 13px; height: 13px; }
+    .calcualq-btn { background: #7c3aed !important; color: #fff !important; font-weight: 700; }
+    .calcualq-btn:hover { background: #6d28d9 !important; }
     .topbar-nav-modern-ico {
         font-size: 1.1rem;
         opacity: 0.85;
@@ -1518,16 +1525,26 @@
                     <span class="topbar-nav-modern-ico">@SvgIcons.Shield</span>
                     <span>BOVEDA CONT</span>
                 </button>
-                <button class="topbar-nav-modern calcuprecios-btn"
-                        @onclick="OpenCalcFromNav"
-                        title="CalcuPrecios — buscar costo y precio sugerido">
-                    <span class="topbar-nav-modern-ico">@SvgIcons.Calculator</span>
-                    <span>CALCUPRECIOS</span>
-                    @if (calcNuevoBadge)
-                    {
-                        <span class="calc-nuevo-badge">nuevo</span>
-                    }
-                </button>
+                @* 2026-10-20: CALCU ALQUILER va pegado abajo de CALCUPRECIOS (mismo lugar, mitad de alto
+                   cada uno). Abre la misma calculadora, pero directo en la solapa Alquiler: desde que no
+                   se usa el WhatsApp de la API, el cotizador de alquileres vive acá. *@
+                <div class="calc-pila">
+                    <button class="topbar-nav-modern calcuprecios-btn"
+                            @onclick="OpenCalcFromNav"
+                            title="CalcuPrecios — buscar costo y precio sugerido">
+                        <span class="topbar-nav-modern-ico">@SvgIcons.Calculator</span>
+                        <span>CALCUPRECIOS</span>
+                        @if (calcNuevoBadge)
+                        {
+                            <span class="calc-nuevo-badge">nuevo</span>
+                        }
+                    </button>
+                    <button class="topbar-nav-modern calcualq-btn"
+                            @onclick="OpenCalcAlquilerFromNav"
+                            title="Cotizar un alquiler (queda guardado con nombre o teléfono)">
+                        <span>🪑 CALCU ALQUILER</span>
+                    </button>
+                </div>
                 <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/stock-masivo"))"
                         title="Stock masivo (todos los productos)">
@@ -2672,6 +2689,7 @@
     private CalculadoraFlotante? calcRef;
     private PostitsFlotantes? postitsRef;
     private async Task ToggleCalc() { if (calcRef is not null) await calcRef.ToggleAsync(); }
+    private async Task OpenCalcAlquilerFromNav() { if (calcRef is not null) await calcRef.AbrirEnAsync("alquiler"); }
     private async Task TogglePostits() { if (postitsRef is not null) await postitsRef.ToggleAsync(); }
 
     // 2026-07-23: panel flotante de WhatsApp (API oficial de Meta).

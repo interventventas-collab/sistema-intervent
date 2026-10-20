@@ -490,6 +490,16 @@ public class ApiClient
     public async Task<List<CafeCotizacionChatDto>?> GetCotizacionesChatAsync(string telefono, int limit = 10)
         => await GetAsync<List<CafeCotizacionChatDto>>($"/api/cafe/cotizaciones-chat?telefono={Uri.EscapeDataString(telefono)}&limit={limit}");
 
+    // 2026-10-20: historial de la calculadora (por nombre o teléfono; sin texto = los últimos).
+    public async Task<List<CafeCotizacionChatDto>?> BuscarCotizacionesChatAsync(string? q, int limit = 30)
+        => await GetAsync<List<CafeCotizacionChatDto>>($"/api/cafe/cotizaciones-chat/buscar?q={Uri.EscapeDataString(q ?? "")}&limit={limit}");
+
+    public async Task<CafeCotizacionChatDto?> GetCotizacionChatAsync(int id)
+        => await GetAsync<CafeCotizacionChatDto>($"/api/cafe/cotizaciones-chat/{id}");
+
+    public async Task<List<AlqCotizacionDto>?> BuscarAlqCotizacionesAsync(string? q, int limit = 30)
+        => await GetAsync<List<AlqCotizacionDto>>($"/api/alquileres/cotizaciones/buscar?q={Uri.EscapeDataString(q ?? "")}&limit={limit}");
+
     public async Task<CafeCotizacionChatDto?> CrearCotizacionChatAsync(CafeCotizacionChatDto req)
         => await PostAsync<CafeCotizacionChatDto>("/api/cafe/cotizaciones-chat", req);
 
