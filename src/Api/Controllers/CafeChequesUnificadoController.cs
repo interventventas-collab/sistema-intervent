@@ -104,6 +104,15 @@ public class CafeChequesUnificadoController : ControllerBase
     private static bool Coincide(string? texto, string q)
         => !string.IsNullOrEmpty(texto) && texto.Contains(q, StringComparison.OrdinalIgnoreCase);
 
+    // 20/10/2026: link del repartidor → Oficina → 🧾 Cheques a pagar (la solapa "A pagar" de la compu).
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}")]
+    public async Task<IActionResult> APagarParaRepartidor(string token)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Cheques) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await Listar(A_PAGAR, null);
+    }
+
     [HttpGet]
     public async Task<IActionResult> Listar([FromQuery] string vista = EN_MANO, [FromQuery] string? q = null)
     {

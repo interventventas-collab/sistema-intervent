@@ -397,6 +397,26 @@ public class CafeCobranzasController : ControllerBase
     /// 2026-06-06: agregado parámetro `search` que filtra por nombre de cliente, snapshot
     /// de la venta o número de recibo. Cuando viene search, el take se eleva para evitar
     /// que cobranzas viejas queden fuera del corte de 200.</summary>
+    // 20/10/2026: link del repartidor → Oficina → 💵 Cobranzas. Lo MISMO que la compu (mismo listado,
+    // mismo buscador y fechas; los botones de Tipo y "Qué se cobró" filtran en el celu como en la compu).
+    // Solo si su ficha tiene el tilde "cobranzas" (Services/RepartidorOficina.cs).
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}")]
+    public async Task<IActionResult> ListParaRepartidor(string token, [FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
+        [FromQuery] string? search = null, [FromQuery] int take = 200)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Cobranzas) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await List(null, desde, hasta, search, Math.Clamp(take, 1, 2000));
+    }
+
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}/{id:int}/pdf")]
+    public async Task<IActionResult> PdfParaRepartidor(string token, int id)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Cobranzas) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await DescargarPdf(id);
+    }
+
     [HttpGet]
     public async Task<IActionResult> List(
         [FromQuery] int? clienteId,

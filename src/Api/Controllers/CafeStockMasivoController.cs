@@ -57,6 +57,27 @@ public class CafeStockMasivoController : ControllerBase
     /// al menos 1 publicación MeLi con logistic_type=fulfillment linkeada (sea via
     /// MeliItemComponente o legacy MeliItem.CafeProductoId). Para los demás depósitos
     /// se devuelven TODOS los productos (comportamiento original).</summary>
+    // 20/10/2026: link del repartidor → Oficina → 📦 Stock. Primero los depósitos, después el stock de uno
+    // (el mismo listado de la pantalla Stock de la compu; el celu muestra solo nombre y cantidades).
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}")]
+    public async Task<IActionResult> DepositosParaRepartidor(string token)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Stock) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        var deps = await _db.CafeDepositos.AsNoTracking().Where(d => d.IsActive)
+            .OrderByDescending(d => d.IsDefault).ThenBy(d => d.Orden).ThenBy(d => d.Nombre)
+            .Select(d => new { d.Id, d.Nombre, d.IsDefault }).ToListAsync();
+        return Ok(deps);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}/{depositoId:int}")]
+    public async Task<IActionResult> StockParaRepartidor(string token, int depositoId)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Stock) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await ListarStockEnDeposito(depositoId);
+    }
+
     [HttpGet("{depositoId:int}")]
     public async Task<IActionResult> ListarStockEnDeposito(int depositoId)
     {

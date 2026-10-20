@@ -233,6 +233,16 @@ public class AlqReservasController : ControllerBase
         return File(png, "image/png");
     }
 
+    // 20/10/2026: link del repartidor → Oficina → 🪑 Alquileres (el mismo listado de Reservas de la compu).
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}")]
+    public async Task<IActionResult> ListParaRepartidor(string token, [FromQuery] string? estado = null,
+        [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Alquileres) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await GetAll(estado, from, to);
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? estado = null,
