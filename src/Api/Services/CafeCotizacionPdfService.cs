@@ -236,6 +236,10 @@ public class CafeCotizacionPdfService
                             {
                                 var razonCli2 = v.ClienteRazonSocialSnapshot;
                                 var nombreCli2 = v.ClienteNombreSnapshot ?? "Consumidor final";
+                                // 21/10/2026: venta a CONSUMIDOR FINAL con quién compró → en grande la persona, abajo "Consumidor final".
+                                if (Controllers.CafeVentasController.EsClienteConsumidorFinal(razonCli2)
+                                    && !Controllers.CafeVentasController.EsClienteConsumidorFinal(nombreCli2))
+                                    (razonCli2, nombreCli2) = (nombreCli2, "Consumidor final");
                                 var esBar2 = string.Equals(v.ClienteTipoSnapshot, "BAR", StringComparison.OrdinalIgnoreCase);
                                 var tagBg2 = esBar2 ? Colors.Blue.Lighten4 : Colors.Green.Lighten4;
                                 var tagFg2 = esBar2 ? Colors.Blue.Darken3 : Colors.Green.Darken3;

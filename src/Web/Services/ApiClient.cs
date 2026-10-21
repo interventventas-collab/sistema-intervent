@@ -1693,6 +1693,10 @@ public class ApiClient
     public async Task<CafeVentaDto?> GetCafeVentaAsync(int id)
         => await GetAsync<CafeVentaDto>($"/api/cafe/ventas/{id}");
 
+    /// <summary>21/10/2026: cartel de Consumidor final — ¿el teléfono es de un cliente o ya compró antes?</summary>
+    public async Task<ConsumidorFinalBusquedaDto?> BuscarConsumidorFinalAsync(string? telefono)
+        => await GetAsync<ConsumidorFinalBusquedaDto>($"/api/cafe/ventas/consumidor-final?telefono={Uri.EscapeDataString(telefono ?? "")}");
+
     /// <summary>Setea / borra la nota pin de una venta. Pasar null o vacío para borrar.</summary>
     public async Task<bool> UpdateCafeVentaPinNotaAsync(int id, string? nota)
     {

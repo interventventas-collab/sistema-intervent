@@ -622,6 +622,10 @@
                                             <span>
                                                 <b>@p.Numero</b>
                                                 <span style="color:#15803d;">· @(EsNotaCredito(p) ? "nota de crédito" : "pagada de más")</span>
+                                                @if (!string.IsNullOrEmpty(p.Quien))
+                                                {
+                                                    <div style="font-size:0.75rem; color:#374151;">@p.Quien</div>
+                                                }
                                                 @if (incluirSucursales && !string.IsNullOrEmpty(p.ClienteNombre))
                                                 {
                                                     <span style="color:#4d7c0f;">· @p.ClienteNombre</span>
@@ -648,6 +652,12 @@
                         }
                         else
                         {
+                            @* 21/10/2026: CONSUMIDOR FINAL junta las ventas de mucha gente: buscador por quién compró. *@
+                            @if (ComprobantesACobrar.Any(x => !string.IsNullOrEmpty(x.Quien)))
+                            {
+                                <input class="form-input" type="text" style="margin-bottom:0.5rem;" placeholder="🔎 Buscar entre las ventas pendientes por teléfono o nombre"
+                                       @bind="buscarQuien" @bind:event="oninput" />
+                            }
                             <table class="table table-compact" style="margin-bottom:0.5rem;">
                                 <thead>
                                     <tr><th></th><th>Número</th><th>Fecha</th><th style="text-align:right;">Saldo</th><th style="text-align:right;">A cobrar</th></tr>
@@ -662,7 +672,7 @@
                                             <span style="font-weight:400; color:#6b7280;">· debe $@ComprobantesACobrar.Sum(x => x.Saldo).ToString("N2")</span>
                                         </td></tr>
                                     }
-                                    @foreach (var p in ComprobantesACobrar)
+                                    @foreach (var p in ComprobantesACobrar.Where(x => CoincideQuien(x) || imputaciones[x.Clave].Seleccionado))
                                     {
                                         <tr>
                                             <td><input type="checkbox" @bind="imputaciones[p.Clave].Seleccionado" @bind:after="RecalcularTotal" /></td>
@@ -679,6 +689,10 @@
                                                     <div style="font-family:monospace; font-size:0.7rem; color:#1e40af; font-weight:600;" title="Número oficial ARCA">
                                                         📜 @($"{(p.ArcaPtoVta ?? 0):00000}-{p.ArcaCbteNro.Value:00000000}")
                                                     </div>
+                                                }
+                                                @if (!string.IsNullOrEmpty(p.Quien))
+                                                {
+                                                    <div style="font-size:0.75rem; color:#374151;">@p.Quien</div>
                                                 }
                                                 @if (incluirSucursales && !string.IsNullOrEmpty(p.ClienteNombre))
                                                 {
@@ -2256,6 +2270,18 @@
         pendientes?.Where(p => p.Saldo < -0.01m).ToList() ?? new();
 
     /// <summary>Facturas que realmente deben plata (saldo positivo) — las unicas que van al listado.</summary>
+    // 21/10/2026: buscador de ventas a CONSUMIDOR FINAL por quién compró (los tildados se ven siempre).
+    private string buscarQuien = "";
+    private bool CoincideQuien(ComprobantePendienteDto p)
+    {
+        if (string.IsNullOrWhiteSpace(buscarQuien)) return true;
+        var q = buscarQuien.Trim();
+        var digQ = new string(q.Where(char.IsDigit).ToArray());
+        var quien = p.Quien ?? "";
+        if (digQ.Length >= 4 && new string(quien.Where(char.IsDigit).ToArray()).Contains(digQ)) return true;
+        return quien.Contains(q, StringComparison.OrdinalIgnoreCase) || p.Numero.Contains(q, StringComparison.OrdinalIgnoreCase);
+    }
+
     private List<ComprobantePendienteDto> ComprobantesACobrar =>
         pendientes?.Where(p => p.Saldo > 0.01m).ToList() ?? new();
 
@@ -2507,6 +2533,7 @@
         selClienteId = 0;
         clienteSearch = ""; clienteSearchOpen = false;
         pendientes = null;
+        buscarQuien = "";
         imputaciones = new();
         aCuentaActivo = false; aCuentaImporte = 0;
         formMedios = new();

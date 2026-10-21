@@ -920,6 +920,10 @@ public class CreateCafeVentaRequest
     public string? ClienteCiudadOverride { get; set; }
     public string? ClienteCpOverride { get; set; }
     public string? ClienteTelefonoOverride { get; set; }
+    /// <summary>21/10/2026: quién compró cuando el cliente es CONSUMIDOR FINAL (cartel obligatorio).</summary>
+    public string? CfNombre { get; set; }
+    public string? CfTelefono { get; set; }
+    public string? CfDireccion { get; set; }
     public string? ClienteDomicilioEntregaOverride { get; set; }
     public List<CafeCotizarItemRequest> Items { get; set; } = new();
     public decimal Descuento { get; set; }
@@ -986,6 +990,10 @@ public class UpdateCafeVentaRequest
     public string? ClienteCiudadOverride { get; set; }
     public string? ClienteCpOverride { get; set; }
     public string? ClienteTelefonoOverride { get; set; }
+    /// <summary>21/10/2026: quién compró cuando el cliente es CONSUMIDOR FINAL (cartel obligatorio).</summary>
+    public string? CfNombre { get; set; }
+    public string? CfTelefono { get; set; }
+    public string? CfDireccion { get; set; }
     public string? ClienteDomicilioEntregaOverride { get; set; }
     public string? Observaciones { get; set; }
     public string? TipoComprobante { get; set; }
@@ -2690,4 +2698,16 @@ public class CafeCotizacionChatDto
     public string? VentaNumero { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<CafeCotizacionChatItemDto> Items { get; set; } = new();
+}
+
+/// <summary>21/10/2026: respuesta de GET api/cafe/ventas/consumidor-final (cartel de Consumidor final).</summary>
+public class ConsumidorFinalBusquedaDto
+{
+    public int? ClienteCfId { get; set; }
+    public int? ClienteId { get; set; }
+    public string? ClienteNombre { get; set; }
+    public int Compras { get; set; }
+    public DateTime? UltimaFecha { get; set; }
+    public string? UltimoNombre { get; set; }
+    public string? UltimaDireccion { get; set; }
 }

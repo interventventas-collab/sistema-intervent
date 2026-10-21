@@ -56,7 +56,8 @@ public class CafeReciboCobranzaPdfService
         var comodatoIds = c.Comprobantes.Where(x => x.ComodatoId != null).Select(x => x.ComodatoId!.Value).Distinct().ToList();
 
         var ventas = await db.CafeVentas.AsNoTracking().Where(v => ventaIds.Contains(v.Id))
-            .Select(v => new { v.Id, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante, v.Estado, v.NotaCreditoVentaId })
+            .Select(v => new { v.Id, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante, v.Estado, v.NotaCreditoVentaId,
+                v.ClienteNombreSnapshot, v.ClienteRazonSocialSnapshot, v.ClienteTelefonoSnapshot })
             .ToDictionaryAsync(v => v.Id);
         var pagadoVentas = await db.CafeCobranzasComprobantes.AsNoTracking()
             .Where(x => x.VentaId != null && ventaIds.Contains(x.VentaId.Value) && x.Cobranza!.Estado == "VIGENTE")
@@ -102,7 +103,12 @@ public class CafeReciboCobranzaPdfService
                 decimal? saldo = esNc || v.Estado == "anulado" || v.NotaCreditoVentaId.HasValue
                     ? null
                     : Math.Max(0m, cobrable - (pagadoVentas.TryGetValue(vid, out var p) ? p : 0m));
-                lineas.Add(new ReciboLinea(v.Numero ?? $"#{vid}", x.Importe, false, saldo));
+                // 21/10/2026: venta a CONSUMIDOR FINAL → abajo del número va quién compró.
+                var quien = Controllers.CafeVentasController.EsClienteConsumidorFinal(v.ClienteRazonSocialSnapshot)
+                         && !Controllers.CafeVentasController.EsClienteConsumidorFinal(v.ClienteNombreSnapshot)
+                    ? string.Join(" · ", new[] { v.ClienteNombreSnapshot, v.ClienteTelefonoSnapshot }.Where(s => !string.IsNullOrWhiteSpace(s)))
+                    : null;
+                lineas.Add(new ReciboLinea(v.Numero ?? $"#{vid}", x.Importe, false, saldo, Detalle: quien));
             }
             else
                 lineas.Add(new ReciboLinea("", x.Importe, true, null));

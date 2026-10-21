@@ -674,6 +674,12 @@ public class CreateCafeVentaRequest
     public string? ClienteTelefonoOverride { get; set; }
     public string? ClienteDomicilioEntregaOverride { get; set; }
 
+    /// <summary>21/10/2026: venta al cliente CONSUMIDOR FINAL. Quién compró de verdad (lo pide el cartel
+    /// obligatorio de Nueva Venta). Van a la venta, no se crea ningún cliente.</summary>
+    public string? CfNombre { get; set; }
+    public string? CfTelefono { get; set; }
+    public string? CfDireccion { get; set; }
+
     public List<CafeCotizarItemRequest> Items { get; set; } = new();
     public decimal Descuento { get; set; }
     public string? Observaciones { get; set; }
@@ -753,6 +759,12 @@ public class UpdateCafeVentaRequest
     public string? ClienteCpOverride { get; set; }
     public string? ClienteTelefonoOverride { get; set; }
     public string? ClienteDomicilioEntregaOverride { get; set; }
+
+    /// <summary>21/10/2026: venta al cliente CONSUMIDOR FINAL. Quién compró de verdad (lo pide el cartel
+    /// obligatorio de Nueva Venta). Van a la venta, no se crea ningún cliente.</summary>
+    public string? CfNombre { get; set; }
+    public string? CfTelefono { get; set; }
+    public string? CfDireccion { get; set; }
 
     public string? Observaciones { get; set; }
     public string? TipoComprobante { get; set; }
