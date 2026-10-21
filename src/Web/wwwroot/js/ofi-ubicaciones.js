@@ -15,7 +15,7 @@ window.ofiUbicaciones = (function () {
         return h + ' h';
     }
 
-    // choferes: [{ nombre, color, lat, lng, haceMinutos, viejo, recorrido: [{lat,lng}] }]
+    // choferes: [{ nombre, color, lat, lng, haceMinutos, viejo, recorrido: [{lat,lng}], ultima: "14:32 CLIENTE" }]
     function pintar(elId, choferes, conRecorrido) {
         const el = document.getElementById(elId);
         if (!el || typeof L === 'undefined') return 'error';
@@ -38,10 +38,12 @@ window.ofiUbicaciones = (function () {
             const pos = [Number(c.lat), Number(c.lng)];
             puntos.push(pos);
             const tres = esc((c.nombre || '').substring(0, 3).toUpperCase());
-            const html = '<div style="background:#fff;border-radius:999px;padding:3px 8px;font:700 12px sans-serif;white-space:nowrap;'
+            const html = '<div style="background:#fff;border-radius:12px;padding:3px 9px;font:700 12px sans-serif;line-height:1.3;white-space:nowrap;'
                 + 'box-shadow:0 2px 6px rgba(0,0,0,.3);border:2px solid ' + (c.viejo ? '#d1d5db' : esc(c.color || '#0e7490')) + ';'
                 + 'color:' + (c.viejo ? '#9ca3af' : '#111') + ';transform:translate(-50%,-50%);display:inline-block">'
-                + '🚚 ' + tres + ' · ' + hace(c.haceMinutos) + '</div>';
+                + '🚚 ' + tres + ' · ' + hace(c.haceMinutos)
+                + (c.ultima ? '<div style="font-weight:400;font-size:11px;color:#4b5563;max-width:170px;overflow:hidden;text-overflow:ellipsis">📦 ' + esc(c.ultima) + '</div>' : '')
+                + '</div>';
             L.marker(pos, { icon: L.divIcon({ className: '', html: html, iconSize: [0, 0] }) }).addTo(capa);
         });
         if (puntos.length === 1) map.setView(puntos[0], 15);
