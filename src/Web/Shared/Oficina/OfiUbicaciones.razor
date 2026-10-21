@@ -47,6 +47,16 @@
                 {
                     <div style="padding:0.6rem 0.75rem; border-bottom:1px solid #f3f4f6;">
                         <div class="mpc-r1"><span class="mpc-cli" style="@(f.Viejo ? "color:#6b7280;" : "")">@f.Nombre</span></div>
+                        <div class="mpc-est">
+                            @if (f.UltimaEntrega is not null)
+                            {
+                                <text>📦 Última entrega @f.UltimaEntregaHora · <b>@f.UltimaEntrega</b>@(string.IsNullOrWhiteSpace(f.UltimaEntregaDireccion) ? "" : $" · {f.UltimaEntregaDireccion}")</text>
+                            }
+                            else
+                            {
+                                <span style="color:#6b7280;">📦 @(dia == Hoy ? "Todavía no entregó nada hoy" : "No entregó nada ese día")</span>
+                            }
+                        </div>
                         <div class="mpc-est" style="color:#6b7280;">
                             @(dia == Hoy ? $"hace {Hace(f.HaceMinutos)}" : $"última {f.Hora}")@(f.Viejo && dia == Hoy ? " (puede que haya bloqueado el celu)" : "") ·
                             <a href="@($"https://www.google.com/maps/search/?api=1&query={f.Lat.ToString(CultureInfo.InvariantCulture)},{f.Lng.ToString(CultureInfo.InvariantCulture)}")"
@@ -66,7 +76,8 @@
 
     public record PuntoDto(decimal Lat, decimal Lng, string Hora);
     public record UbicacionDto(int DriverId, int RepartidorId, string Nombre, string Color,
-        decimal Lat, decimal Lng, string Hora, int HaceMinutos, bool Viejo, List<PuntoDto> Recorrido);
+        decimal Lat, decimal Lng, string Hora, int HaceMinutos, bool Viejo, List<PuntoDto> Recorrido,
+        string? UltimaEntrega = null, string? UltimaEntregaHora = null, string? UltimaEntregaDireccion = null);
 
     private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;
     private DateTime dia = Hoy;
@@ -102,7 +113,8 @@
                 {
                     nombre = f.Nombre, color = f.Color, lat = f.Lat, lng = f.Lng,
                     haceMinutos = f.HaceMinutos, viejo = f.Viejo && dia == Hoy,
-                    recorrido = f.Recorrido.Select(p => new { lat = p.Lat, lng = p.Lng })
+                    recorrido = f.Recorrido.Select(p => new { lat = p.Lat, lng = p.Lng }),
+                    ultima = f.UltimaEntrega is null ? null : $"{f.UltimaEntregaHora} {f.UltimaEntrega}"
                 }), conRecorrido);
         }
         catch { }

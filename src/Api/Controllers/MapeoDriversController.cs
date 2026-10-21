@@ -230,7 +230,9 @@ public class MapeoDriversController : ControllerBase
     public record UbicacionChoferDto(
         int DriverId, int RepartidorId, string Nombre, string Color,
         decimal Lat, decimal Lng, string Hora, int HaceMinutos, bool Viejo,
-        List<PuntoRecorridoDto> Recorrido);
+        List<PuntoRecorridoDto> Recorrido,
+        // 21/10/2026: lo último que entregó ese día (venta o alquiler), para el globito del camión.
+        string? UltimaEntrega = null, string? UltimaEntregaHora = null, string? UltimaEntregaDireccion = null);
 
     /// <summary>
     /// dia = yyyy-MM-dd en hora argentina (si no viene, hoy). "Viejo" = hace mas de 30 minutos
@@ -274,6 +276,30 @@ public class MapeoDriversController : ControllerBase
             .Where(x => x.CafeRepartidorId != null && repIds.Contains(x.CafeRepartidorId!.Value))
             .ToListAsync();
 
+        // 21/10/2026: la última entrega del día de cada uno: ventas entregadas y alquileres
+        // entregados o retirados por él (lo mismo que cuenta la tarjeta de equipo del Dashboard).
+        var entregasVentas = await _db.CafeVentas
+            .Where(v => v.EntregadoPorRepartidorId != null && repIds.Contains(v.EntregadoPorRepartidorId!.Value)
+                     && v.EntregadoAt >= desdeUtc && v.EntregadoAt < hastaUtc)
+            .Select(v => new { RepId = v.EntregadoPorRepartidorId!.Value, At = v.EntregadoAt!.Value,
+                Cliente = v.ClienteRazonSocialSnapshot ?? v.ClienteNombreSnapshot,
+                Dir = v.ClienteDomicilioEntregaSnapshot ?? v.ClienteDireccionSnapshot })
+            .ToListAsync();
+        var entregasAlq = await _db.AlqReservas
+            .Where(r => r.EntregadoPorRepartidorId != null && repIds.Contains(r.EntregadoPorRepartidorId!.Value)
+                     && r.EntregadoAt >= desdeUtc && r.EntregadoAt < hastaUtc)
+            .Select(r => new { RepId = r.EntregadoPorRepartidorId!.Value, At = r.EntregadoAt!.Value,
+                Cliente = r.ClienteNav != null ? r.ClienteNav.Nombre : null, Dir = r.DireccionEvento })
+            .ToListAsync();
+        var retirosAlq = await _db.AlqReservas
+            .Where(r => r.RetiradoPorRepartidorId != null && repIds.Contains(r.RetiradoPorRepartidorId!.Value)
+                     && r.RetiradoAt >= desdeUtc && r.RetiradoAt < hastaUtc)
+            .Select(r => new { RepId = r.RetiradoPorRepartidorId!.Value, At = r.RetiradoAt!.Value,
+                Cliente = r.ClienteNav != null ? "Retiro " + r.ClienteNav.Nombre : "Retiro", Dir = r.DireccionEvento })
+            .ToListAsync();
+        var ultimaPorRep = entregasVentas.Concat(entregasAlq).Concat(retirosAlq)
+            .GroupBy(x => x.RepId).ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.At).First());
+
         var ahora = DateTime.UtcNow;
         var salida = new List<UbicacionChoferDto>();
         foreach (var r in reps)
@@ -289,7 +315,9 @@ public class MapeoDriversController : ControllerBase
                 ultimo.Lat, ultimo.Lng,
                 ultimo.CreatedAt.AddHours(-3).ToString("HH:mm"),
                 haceMin, haceMin > 30,
-                suyos.Select(p => new PuntoRecorridoDto(p.Lat, p.Lng, p.CreatedAt.AddHours(-3).ToString("HH:mm"))).ToList()));
+                suyos.Select(p => new PuntoRecorridoDto(p.Lat, p.Lng, p.CreatedAt.AddHours(-3).ToString("HH:mm"))).ToList(),
+                ultimaPorRep.TryGetValue(r.Id, out var ue) ? (string.IsNullOrWhiteSpace(ue.Cliente) ? "Consumidor final" : ue.Cliente) : null,
+                ue?.At.AddHours(-3).ToString("HH:mm"), ue?.Dir));
         }
 
         return Ok(salida.OrderBy(x => x.Nombre));
