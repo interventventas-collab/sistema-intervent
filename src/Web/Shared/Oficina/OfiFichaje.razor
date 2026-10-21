@@ -51,7 +51,7 @@
                 @foreach (var f in filas)
                 {
                     <div style="padding:0.6rem 0.75rem; border-bottom:1px solid #f3f4f6;">
-                        <div class="mpc-r1"><span class="mpc-cli" style="@(f.Estado == "no-trabaja" ? "color:#9ca3af;" : "")">@f.Nombre</span></div>
+                        <div class="mpc-r1"><span class="mpc-cli" style="@(f.Estado is "no-trabaja" or "no-ficha" ? "color:#9ca3af;" : "")">@f.Nombre</span></div>
                         <div class="mpc-est" style="color:#6b7280;">
                             @switch (f.Estado)
                             {
@@ -59,6 +59,7 @@
                                 case "salio": <text>entró @f.Entrada · salió @f.Salida@(f.Trabajado is null ? "" : $" · {f.Trabajado}")</text> break;
                                 case "sin-salida": <text>entró @f.Entrada · </text><span class="mpc-pend">no fichó la salida</span> break;
                                 case "sin-fichar": <span class="mpc-pend">sin fichar</span> break;
+                                case "no-ficha": <text>no ficha</text> break;
                                 default: <text>no trabaja este día</text> break;
                             }
                         </div>

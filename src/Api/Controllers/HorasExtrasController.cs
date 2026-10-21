@@ -1060,7 +1060,7 @@ public class HorasExtrasController : ControllerBase
     // 21/10/2026: link del repartidor → Oficina → 🕐 Fichaje. Lo de la tarjeta "Equipo trabajando
     // ahora" del Dashboard, para cualquier día: quién entró, quién salió y quién no fichó. Solo mirar.
     // Entran los empleados activos que aparecen en el fichador; "sin fichar" solo si ese día le toca
-    // trabajar (horas del día > 0), si no "no trabaja".
+    // trabajar (horas del día > 0), si no "no trabaja". Con toda la semana en 0: "no ficha".
     public record FichajeLinkItem(string Nombre, string Estado, string? Entrada, string? Salida, string? Trabajado);
 
     [AllowAnonymous]
@@ -1091,10 +1091,13 @@ public class HorasExtrasController : ControllerBase
                     return new FichajeLinkItem(e.Nombre, "trabajando", FormatHora(ent), null, ahora > ent ? Dur(ahora - ent) : null);
                 return new FichajeLinkItem(e.Nombre, "sin-salida", FormatHora(ent), null, null);
             }
-            return new FichajeLinkItem(e.Nombre, e.HorasParaDia(d.DayOfWeek) > 0 ? "sin-fichar" : "no-trabaja", null, null, null);
+            // Toda la semana en 0 = trabaja pero no ficha (ej. Germán): no es "sin fichar" ni franco.
+            var noFicha = Enum.GetValues<DayOfWeek>().All(dw => e.HorasParaDia(dw) <= 0);
+            return new FichajeLinkItem(e.Nombre,
+                noFicha ? "no-ficha" : e.HorasParaDia(d.DayOfWeek) > 0 ? "sin-fichar" : "no-trabaja", null, null, null);
         })
-        // Primero los que entraron (por hora de entrada), después los sin fichar y al final los que no trabajan.
-        .OrderBy(x => x.Estado switch { "no-trabaja" => 2, "sin-fichar" => 1, _ => 0 })
+        // Primero los que entraron (por hora de entrada), después los sin fichar y al final los que no fichan o no trabajan.
+        .OrderBy(x => x.Estado switch { "no-ficha" => 3, "no-trabaja" => 2, "sin-fichar" => 1, _ => 0 })
         .ThenBy(x => x.Entrada ?? "")
         .ThenBy(x => x.Nombre)
         .ToList();
