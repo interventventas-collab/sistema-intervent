@@ -364,6 +364,17 @@
     .mpc-cli-btn { cursor:pointer; text-decoration:underline; text-decoration-color:#d1d5db; text-underline-offset:3px; }
     .mpc-est { font-size:0.76rem; color:#374151; margin-top:0.2rem; line-height:1.35; }
     .mpc-ok { color:#15803d; font-weight:800; } .mpc-parcial { color:#b45309; font-weight:800; } .mpc-pend { color:#dc2626; font-weight:800; }
+    .mpc-asig { color:#0e7490; font-weight:700; border-bottom:1.5px dashed #0e7490; cursor:pointer; }
+    .mpc-asig-fondo { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:1700; display:flex; align-items:flex-end; justify-content:center; }
+    .mpc-asig-hoja { background:white; width:100%; max-width:560px; border-radius:16px 16px 0 0; padding:0.95rem 0.95rem calc(1rem + env(safe-area-inset-bottom)); max-height:85vh; overflow-y:auto; }
+    .mpc-asig-t { font-size:1rem; font-weight:800; color:#111827; }
+    .mpc-asig-s { font-size:0.8rem; color:#6b7280; margin:0.15rem 0 0.8rem; }
+    .mpc-asig-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.45rem; margin-bottom:0.45rem; }
+    .mpc-asig-btn { display:block; width:100%; text-align:left; background:white; border:1px solid #d1d5db; border-radius:10px; padding:0.8rem; font-size:1rem; font-weight:700; color:#111827; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .mpc-asig-btn.on { border:2px solid #0e7490; background:#ecfeff; }
+    .mpc-asig-btn:disabled { opacity:0.55; }
+    .mpc-asig-btn.lite { text-align:center; color:#6b7280; font-size:0.88rem; border-style:dashed; margin-top:0.45rem; }
+    .mpc-asig-cancel { display:block; width:100%; background:none; border:none; color:#4b5563; font-size:0.9rem; padding:0.7rem 0 0.1rem; cursor:pointer; }
     .mpc-eye { background:white; border:1px solid #d1d5db; border-radius:8px; padding:0.35rem 0.6rem; font-size:1rem; cursor:pointer; }
     .mpc-ver { position:fixed; inset:0; background:#f3f4f6; z-index:1600; display:flex; flex-direction:column; }
     .mpc-ver-scroll { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }
@@ -1824,6 +1835,40 @@
                 @(compCompartiendo == cv.Id ? "Armando…" : compTocarDeNuevo == cv.Id ? "Listo, tocá" : "WhatsApp")
             </button>
             <button type="button" class="mpc-dl" @onclick="() => BajarComprobante(cv, urlV)">⬇ Bajar</button>
+        </div>
+    </div>
+}
+
+@* 21/10/2026: asignar quién lo lleva desde Comprobantes (Gabriel, Germán, Osmar). Se abre tocando
+   "sin asignar" / "Lo tiene X" en la fila. Un botón grande por repartidor, sin desplegables. *@
+@if (compAsignando is { } asg)
+{
+    <div class="mpc-asig-fondo" @onclick="CerrarAsignar">
+        <div class="mpc-asig-hoja" @onclick:stopPropagation="true">
+            <div class="mpc-asig-t">¿Quién lleva este pedido?</div>
+            <div class="mpc-asig-s">@asg.Cliente · @asg.TipoTexto @asg.NumeroTexto · $@Math.Abs(asg.Total).ToString("N0", ArCult)</div>
+            @if (compRepartidores is null)
+            {
+                <div class="mpc-nota">@(compRepError ? "No se pudo traer la lista de repartidores." : "Buscando repartidores…")</div>
+            }
+            else
+            {
+                <div class="mpc-asig-grid">
+                    @foreach (var rp in compRepartidores)
+                    {
+                        <button type="button" class="mpc-asig-btn @(asg.LoTiene == rp.Nombre ? "on" : "")" disabled="@compAsignGuardando"
+                                @onclick="() => Asignar(asg, rp.Id, false)">🚚 @rp.Nombre</button>
+                    }
+                </div>
+                <button type="button" class="mpc-asig-btn @(asg.Retira && string.IsNullOrEmpty(asg.LoTiene) ? "on" : "")" disabled="@compAsignGuardando"
+                        @onclick="() => Asignar(asg, null, true)">🛍 Retira el cliente</button>
+                @if (!string.IsNullOrEmpty(asg.LoTiene) || asg.Retira)
+                {
+                    <button type="button" class="mpc-asig-btn lite" disabled="@compAsignGuardando"
+                            @onclick="() => Asignar(asg, null, false)">Dejar sin asignar</button>
+                }
+            }
+            <button type="button" class="mpc-asig-cancel" @onclick="CerrarAsignar">@(compAsignGuardando ? "Guardando…" : "Cancelar")</button>
         </div>
     </div>
 }
@@ -3385,25 +3430,96 @@
             return c.Retira ? $"✅ Retiró el cliente {cuando}" : $"✅ Entregado {cuando}";
         }
         var prep = PrepTexto(c.EstadoPreparacion);
-        string quien;
-        if (!string.IsNullOrEmpty(c.LoTiene)) quien = $"🚚 Lo tiene {c.LoTiene}";
-        else if (!string.IsNullOrEmpty(c.Rechazo)) quien = $"🚫 Rechazó {c.Rechazo}";
-        else if (c.Retira) quien = "🛍 Retira el cliente";
-        else if (c.Tipo.StartsWith("NC")) quien = "";
-        else quien = "sin asignar";
-        return string.Join(" · ", new[] { prep, quien }.Where(x => x != ""));
+        return string.Join(" · ", new[] { prep, QuienTexto(c) }.Where(x => x != ""));
     }
+
+    private static string QuienTexto(ComprobanteLinkDto c)
+    {
+        if (!string.IsNullOrEmpty(c.LoTiene)) return $"🚚 Lo tiene {c.LoTiene}";
+        if (!string.IsNullOrEmpty(c.Rechazo)) return $"🚫 Rechazó {c.Rechazo}";
+        if (c.Retira) return "🛍 Retira el cliente";
+        if (c.Tipo.StartsWith("NC")) return "";
+        return "sin asignar";
+    }
+
+    /// <summary>21/10/2026: lo que todavía no se entregó se puede asignar tocando quién lo lleva.</summary>
+    private static bool SePuedeAsignar(ComprobanteLinkDto c) => c.EntregadoAt is null && !c.Tipo.StartsWith("NC");
 
     private RenderFragment EstadoLinea(ComprobanteLinkDto c) => __b =>
     {
-        var entrega = EntregaTexto(c);
+        var asignable = SePuedeAsignar(c);
+        var entrega = asignable ? PrepTexto(c.EstadoPreparacion) : EntregaTexto(c);
         if (!string.IsNullOrEmpty(c.PagoTexto))
         {
             __b.OpenElement(0, "span"); __b.AddAttribute(1, "class", PagoClase(c)); __b.AddContent(2, c.PagoTexto); __b.CloseElement();
-            if (entrega != "") __b.AddContent(3, " · ");
+            if (entrega != "" || asignable) __b.AddContent(3, " · ");
         }
         __b.AddContent(4, entrega);
+        if (asignable)
+        {
+            if (entrega != "") __b.AddContent(5, " · ");
+            __b.OpenElement(6, "span");
+            __b.AddAttribute(7, "class", "mpc-asig");
+            __b.AddAttribute(8, "onclick", EventCallback.Factory.Create(this, () => AbrirAsignar(c)));
+            __b.AddContent(9, QuienTexto(c));
+            __b.CloseElement();
+        }
     };
+
+    // ─── 21/10/2026: asignar repartidor desde Comprobantes ───
+    private record RepartidorOpcionDto(int Id, string Nombre);
+    private ComprobanteLinkDto? compAsignando;
+    private List<RepartidorOpcionDto>? compRepartidores;
+    private bool compRepError, compAsignGuardando;
+
+    private async Task AbrirAsignar(ComprobanteLinkDto c)
+    {
+        compAsignando = c;
+        if (compRepartidores is not null) return;
+        compRepError = false;
+        StateHasChanged();
+        try
+        {
+            compRepartidores = await Http.GetFromJsonAsync<List<RepartidorOpcionDto>>(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/comprobantes/repartidores");
+        }
+        catch { compRepError = true; }
+    }
+
+    private void CerrarAsignar()
+    {
+        if (compAsignGuardando) return;
+        compAsignando = null;
+    }
+
+    private async Task Asignar(ComprobanteLinkDto c, int? repartidorId, bool retira)
+    {
+        compAsignGuardando = true;
+        StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsJsonAsync(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/comprobantes/{c.Id}/asignar",
+                new { repartidorId, retira });
+            if (!resp.IsSuccessStatusCode)
+            {
+                string? detalle = null;
+                try { detalle = (await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("error").GetString(); } catch { }
+                MostrarToast(detalle ?? "No se pudo guardar. Probá de nuevo.", true);
+                return;
+            }
+            var loTiene = repartidorId is { } id ? compRepartidores?.FirstOrDefault(x => x.Id == id)?.Nombre : null;
+            // Asignar a alguien deja sin efecto el rechazo anterior (igual que en Ventas).
+            var nuevo = c with { LoTiene = loTiene, Retira = retira, Rechazo = loTiene is null && !retira ? c.Rechazo : null, RechazoMotivo = loTiene is null && !retira ? c.RechazoMotivo : null };
+            var i = compItems.FindIndex(x => x.Id == c.Id);
+            if (i >= 0) compItems[i] = nuevo;
+            if (compViendo?.Id == c.Id) compViendo = nuevo;
+            compAsignando = null;
+            MostrarToast(loTiene is not null ? $"✓ Lo lleva {loTiene}" : retira ? "✓ Retira el cliente" : "✓ Quedó sin asignar", false);
+        }
+        catch { MostrarToast("No se pudo guardar. Probá de nuevo.", true); }
+        finally { compAsignGuardando = false; StateHasChanged(); }
+    }
 
     private string EntregaDetalle(ComprobanteLinkDto c)
     {

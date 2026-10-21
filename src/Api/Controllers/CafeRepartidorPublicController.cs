@@ -1402,6 +1402,68 @@ public class CafeRepartidorPublicController : ControllerBase
         return Redirect($"/api/cafe/ventas/publica/{v.PublicToken}/pdf");
     }
 
+    // 21/10/2026: pedido del dueño: Gabriel, German y Osmar asignan el repartidor desde
+    // "Comprobantes" en el celu. Mismo efecto que "Asignar repartidor" de Ventas en la compu
+    // (CafeRepartidoresController.ReasignarEscaneo, sin marcar entregada): el escaneo "cargado"
+    // es lo que despues dice "Lo tiene X". Solo con el tilde VerComprobantes.
+
+    public record RepartidorOpcionDto(int Id, string Nombre);
+    public record AsignarDesdeLinkRequest(int? RepartidorId, bool Retira = false);
+
+    [HttpGet("mis-pedidos/{tokenRepartidor}/comprobantes/repartidores")]
+    public async Task<IActionResult> RepartidoresParaAsignar(string tokenRepartidor)
+    {
+        var r = await _db.CafeRepartidores.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null || !r.VerComprobantes) return NotFound(new { error = "No tenés habilitado ver comprobantes" });
+        var lista = await _db.CafeRepartidores.AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Nombre)
+            .Select(x => new RepartidorOpcionDto(x.Id, x.Nombre))
+            .ToListAsync();
+        return Ok(lista);
+    }
+
+    [HttpPost("mis-pedidos/{tokenRepartidor}/comprobantes/{ventaId:int}/asignar")]
+    public async Task<IActionResult> AsignarDesdeLink(string tokenRepartidor, int ventaId, [FromBody] AsignarDesdeLinkRequest req)
+    {
+        var r = await _db.CafeRepartidores.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null || !r.VerComprobantes) return NotFound(new { error = "No tenés habilitado ver comprobantes" });
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == ventaId);
+        if (v is null || !TiposComprobanteLink.Contains(v.TipoComprobante) || v.Estado == "anulado")
+            return NotFound(new { error = "Comprobante no encontrado" });
+        if (v.TipoComprobante.StartsWith("NC")) return BadRequest(new { error = "Una nota de crédito no se reparte" });
+        if (v.EntregadoAt.HasValue) return BadRequest(new { error = "Ya está entregado: eso se cambia desde la compu" });
+
+        CafeRepartidor? nuevo = null;
+        if (!req.Retira && req.RepartidorId.HasValue)
+        {
+            nuevo = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.Id == req.RepartidorId.Value && x.IsActive);
+            if (nuevo is null) return NotFound(new { error = "Ese repartidor ya no está activo" });
+        }
+
+        var existentes = await _db.CafeQrEscaneos
+            .Where(e => e.VentaId == v.Id && e.Accion == "cargado")
+            .ToListAsync();
+        _db.CafeQrEscaneos.RemoveRange(existentes);
+        v.Retira = req.Retira;
+        if (nuevo is not null)
+        {
+            var origen = $"link-{r.Nombre}";
+            _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+            {
+                VentaId = v.Id,
+                RepartidorId = nuevo.Id,
+                Accion = "cargado",
+                CreatedAt = DateTime.UtcNow,
+                Ip = origen.Length > 64 ? origen[..64] : origen
+            });
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, loTiene = nuevo?.Nombre, retira = v.Retira });
+    }
+
     // 2026-06-10: SoloCobrar=true → carga la cobranza pero NO marca esta venta como entregada
     // (sirve para "cobranza suelta" que el admin imputa a otra venta del cliente)
     // 2026-06-22: extender con datos de firma + receptor (opcional). Solo se persisten si NO es SoloCobrar.
