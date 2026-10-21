@@ -196,7 +196,14 @@
                                     }
                                     @if (!string.IsNullOrEmpty(r.DireccionEvento))
                                     {
-                                        <div style="font-size: 0.95rem; font-weight: 700; color: #1f2937; margin-top: 0.2rem;">📍 @r.DireccionEvento</div>
+                                        @* 21/10/2026: botón para copiar SOLO la dirección (para pegarla en Google Maps). El alfiler no se
+                                           selecciona, así tampoco viaja si la copian a mano. *@
+                                        var dirCopiar = r.DireccionEvento;
+                                        <div style="font-size: 0.95rem; font-weight: 700; color: #1f2937; margin-top: 0.2rem;"><span style="user-select:none;">📍 </span>@r.DireccionEvento
+                                            <button type="button" title="Copiar la dirección (para pegarla en Google Maps)"
+                                                    style="margin-left:0.35rem; padding:0.05rem 0.4rem; font-size:0.72rem; font-weight:600; color:#374151; background:#fff; border:1px solid #d1d5db; border-radius:4px; cursor:pointer; vertical-align:middle;"
+                                                    @onclick="() => CopiarDireccion(dirCopiar)" @onclick:stopPropagation="true">📋 Copiar</button>
+                                        </div>
                                     }
                                     @{
                                         var enCalleRow = r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
@@ -1335,6 +1342,17 @@
 }
 
 @code {
+    private async Task CopiarDireccion(string? direccion)
+    {
+        if (string.IsNullOrWhiteSpace(direccion)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", direccion.Trim());
+            ToastService.Success("Dirección copiada");
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
     // 09/10/2026: cliente cuya ficha flotante (ojito 👁️) está abierta.
     private int? fichaClienteId;
 
