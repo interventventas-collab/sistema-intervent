@@ -699,7 +699,13 @@
                                     }
                                     @if (!string.IsNullOrWhiteSpace(dir))
                                     {
-                                        <div style="font-size: 0.82rem; color: #9ca3af; margin-top: 0.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="@dir">📍 @dir</div>
+                                        var dirCopiar = dir;
+                                        <div style="display:flex; align-items:center; max-width: 430px; margin-top: 0.05rem;">
+                                            <div style="font-size: 0.82rem; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;" title="@dir"><span style="user-select:none;">📍 </span>@dir</div>
+                                            <button type="button" title="Copiar la dirección (para pegarla en Google Maps)"
+                                                    style="flex:0 0 auto; margin-left:0.35rem; padding:0.05rem 0.4rem; font-size:0.72rem; font-weight:600; color:#374151; background:#fff; border:1px solid #d1d5db; border-radius:4px; cursor:pointer;"
+                                                    @onclick="() => CopiarDireccion(dirCopiar)" @onclick:stopPropagation="true">📋 Copiar</button>
+                                        </div>
                                     }
                                     @* Tooltip con detalle del comprobante. Aparece al hacer hover. *@
                                     <div class="venta-tooltip">
@@ -5289,6 +5295,18 @@
 <ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
 
 @code {
+    // 21/10/2026: botón "📋 Copiar" al lado de la dirección: copia SOLO el texto (sin el 📍) para pegarlo en Google Maps.
+    private async Task CopiarDireccion(string? direccion)
+    {
+        if (string.IsNullOrWhiteSpace(direccion)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", direccion.Trim());
+            ToastService.Success("Dirección copiada");
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
     // 2026-10-08: si el buscador no encuentra a nadie puede ser un cliente recién cargado en OTRA compu
     // (el aviso entre pestañas sólo llega dentro del mismo navegador): se vuelve a pedir la lista,
     // como mucho cada 20 s para no traer los 9.000 clientes en cada tecla.
