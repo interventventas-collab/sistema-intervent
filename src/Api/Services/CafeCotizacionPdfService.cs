@@ -681,7 +681,7 @@ public class CafeCotizacionPdfService
         "FB" => "Factura B",
         "FC" => "Factura C",
         "PRO" => "Proforma",
-        "X" => "PRESUPUESTO",
+        "X" => "COTIZACIÓN",   // 21/10/2026: vuelve a COTIZACIÓN; "presupuesto" se mezclaba con los presupuestos (PRO y Calculadora)
         _ => "Comprobante"
     };
 
