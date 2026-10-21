@@ -83,7 +83,9 @@ public class CafeCobranzasController : ControllerBase
         int? ArcaPtoVta = null, int? ArcaCbteNro = null,
         // 2026-08-27: si viene seteado, la linea NO es una venta sino una RESERVA DE ALQUILER
         // facturada (VentaId va en 0). El front la muestra con su etiqueta y la manda igual al cobrar.
-        int? ReservaId = null);
+        int? ReservaId = null,
+        // 21/10/2026: ventas al cliente CONSUMIDOR FINAL: quién compró ("Juan Pérez · 11 5555-1234 · dirección").
+        string? Quien = null);
 
     public record SucursalMismoCuitDto(int Id, string Nombre, string? Cuit);
 
@@ -281,7 +283,8 @@ public class CafeCobranzasController : ControllerBase
                      && v.TipoComprobante != "PRO"
                      // 2026-10-06: la cotización ya facturada no se cobra: se cobra su factura.
                      && v.FacturadaComoVentaId == null)
-            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro, v.VentaOrigenNcId })
+            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro, v.VentaOrigenNcId,
+                v.ClienteNombreSnapshot, v.ClienteRazonSocialSnapshot, v.ClienteTelefonoSnapshot, v.ClienteDireccionSnapshot })
             .ToListAsync();
 
         // 2026-08-27: aunque no tenga ventas, el cliente puede tener alquileres facturados.
@@ -314,7 +317,12 @@ public class CafeCobranzasController : ControllerBase
                 var clienteNom = incluirMismoCuit && v.ClienteId.HasValue && clienteNombres.TryGetValue(v.ClienteId.Value, out var nm) ? nm : null;
                 return new ComprobantePendienteDto(
                     v.Id, v.Numero ?? $"#{v.Id}", v.Fecha, totalCobrar, pagado, totalCobrar - pagado,
-                    v.ClienteId, clienteNom, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro);
+                    v.ClienteId, clienteNom, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro,
+                    Quien: CafeVentasController.EsClienteConsumidorFinal(v.ClienteRazonSocialSnapshot)
+                           && !CafeVentasController.EsClienteConsumidorFinal(v.ClienteNombreSnapshot)
+                        ? string.Join(" · ", new[] { v.ClienteNombreSnapshot, v.ClienteTelefonoSnapshot, v.ClienteDireccionSnapshot }
+                            .Where(x => !string.IsNullOrWhiteSpace(x)))
+                        : null);
             })
             .ToList();
 

@@ -689,7 +689,7 @@
                                         <button type="button" class="vta-ojito" title="Ver ficha del cliente: lo que debe y sus últimos comprobantes"
                                                 @onclick="() => AbrirFichaCliente(cidOjo)" @onclick:stopPropagation="true">👁️</button>
                                     }
-                                    <strong>@(v.ClienteNombre ?? "—")</strong>@if (v.ClienteCodigoInterno.HasValue) {<span style="color:#6b7280; font-weight:600; margin-left:0.3rem; font-size:0.85rem;">(#@v.ClienteCodigoInterno.Value)</span>}@if (!string.IsNullOrWhiteSpace(v.ClienteRazonSocial) && !string.Equals(v.ClienteRazonSocial, v.ClienteNombre, StringComparison.OrdinalIgnoreCase)) {<span style="color:#6b7280; margin-left:0.4rem; font-size:0.82rem;">· @v.ClienteRazonSocial</span>}
+                                    <strong>@(v.ClienteNombre ?? "—")</strong>@if (v.ClienteCodigoInterno.HasValue) {<span style="color:#6b7280; font-weight:600; margin-left:0.3rem; font-size:0.85rem;">(#@v.ClienteCodigoInterno.Value)</span>}@if (!string.IsNullOrWhiteSpace(v.ClienteRazonSocial) && !string.Equals(v.ClienteRazonSocial, v.ClienteNombre, StringComparison.OrdinalIgnoreCase)) {<span style="color:#6b7280; margin-left:0.4rem; font-size:0.82rem;">· @v.ClienteRazonSocial</span>}@if (EsNombreCf(v.ClienteRazonSocial) && !string.IsNullOrWhiteSpace(v.ClienteTelefono)) {<span style="color:#6b7280; margin-left:0.3rem; font-size:0.82rem;">· @v.ClienteTelefono</span>}
                                     @if (!string.IsNullOrWhiteSpace(v.ClienteCuit))
                                     {
                                         <div style="font-size: 0.82rem; color: #6b7280; margin-top: 0.05rem;">🪪 <span style="font-family: monospace;">@v.ClienteCuit</span></div>
@@ -3781,6 +3781,45 @@
             <button class="nv-min-close" @onclick="CloseForm" title="Cerrar la venta (se pierde lo cargado)">✕</button>
         </div>
     }
+}
+
+@* ════════ 21/10/2026: cartel "¿Quién compra?" del cliente CONSUMIDOR FINAL ════════
+   Sale al elegir CONSUMIDOR FINAL (o al emitir sin cliente). Teléfono, nombre y dirección son
+   obligatorios: van a la venta (comprobante, lista de Ventas, Cobranzas), no se crea cliente. *@
+@if (showCfModal)
+{
+    <div class="modal-overlay" style="z-index: 9200;">
+        <div id="cf-modal" class="modal-card" @onclick:stopPropagation="true" @onkeydown="OnKeyDownCfModal" style="max-width: 460px;">
+            <div class="modal-header">
+                <h3 style="margin: 0;">¿Quién compra?</h3>
+            </div>
+            <div class="modal-body" style="padding: 1.1rem 1.2rem;">
+                <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.8rem;">Consumidor final: no se crea cliente, los datos quedan guardados en esta venta.</div>
+                <label class="form-label">Teléfono *</label>
+                <input id="cf-telefono" class="form-input" type="tel" @bind="cfTelefono" @bind:event="oninput" @bind:after="CfTelefonoCambio" placeholder="11 5555-1234" />
+                @if (cfBusqueda is { ClienteId: > 0 })
+                {
+                    <div style="font-size: 0.8rem; margin-top: 0.3rem;">Este teléfono es de <strong>@cfBusqueda.ClienteNombre</strong> (cliente) · <a href="javascript:void(0)" style="color:#2563eb; text-decoration:underline;" @onclick="CfUsarCliente">usar ese cliente</a></div>
+                }
+                else if (cfBusqueda is { Compras: > 0 })
+                {
+                    <div style="font-size: 0.8rem; margin-top: 0.3rem;">Ya compró @(cfBusqueda.Compras == 1 ? "1 vez" : $"{cfBusqueda.Compras} veces") como consumidor final@(cfBusqueda.UltimaFecha is DateTime uf ? $" · última {uf:dd/MM}" : "")@if (!string.IsNullOrWhiteSpace(cfBusqueda.UltimoNombre)) {<span> · <strong>@cfBusqueda.UltimoNombre</strong></span>} · <a href="javascript:void(0)" style="color:#2563eb; text-decoration:underline;" @onclick="CfUsarDatosAnteriores">usar estos datos</a></div>
+                }
+                <label class="form-label" style="margin-top: 0.7rem;">Nombre *</label>
+                <input class="form-input" type="text" @bind="cfNombre" @bind:event="oninput" placeholder="Juan Pérez" />
+                <label class="form-label" style="margin-top: 0.7rem;">Dirección *</label>
+                <input class="form-input" type="text" @bind="cfDireccion" @bind:event="oninput" placeholder="Calle 1234, Localidad" />
+                @if (!string.IsNullOrEmpty(cfError))
+                {
+                    <div style="color: #b91c1c; font-size: 0.82rem; margin-top: 0.6rem;">@cfError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CfCancelar">Cancelar (vuelve a elegir cliente)</button>
+                <button class="btn btn-primary" @onclick="CfConfirmar">Seguir con la venta</button>
+            </div>
+        </div>
+    </div>
 }
 
 @* ════════ Modal de confirmacion de emision (resumen + doble-check) ════════
@@ -7134,6 +7173,12 @@
             try { await clienteInputRef.FocusAsync(); } catch { }
         }
 
+        if (showCfModal && _focusCfTelefono)
+        {
+            _focusCfTelefono = false;
+            await FocusFieldAsync("cf-telefono");
+        }
+
         if (showConfirmEmision)
         {
             if (_focusConfirmBtn)
@@ -7955,6 +8000,7 @@
         clienteSearch = ""; clienteSearchOpen = false;
         modoVentaRapida = false;
         vrNombre = vrRazonSocial = vrCuit = vrDireccion = vrLocalidad = vrCiudad = vrCp = vrTelefono = vrDomicilioEntrega = "";
+        cfNombre = cfTelefono = cfDireccion = ""; cfBusqueda = null; showCfModal = false;
         formFecha = DateTimeExt.AhoraAr().Date; formDescuento = 0; formObservaciones = "";
         formTipoComprobante = "X"; formCondicionIva = "CF"; formCondicionPago = "EFECTIVO";
         formMostrarIvaProforma = true;
@@ -8979,6 +9025,7 @@
                     Fecha = DateTime.SpecifyKind(editingVentaFechaOriginal ?? formFecha, DateTimeKind.Unspecified),
                     ClienteId = formClienteId > 0 ? formClienteId : 0,
                     ClienteTipoOverride = formClienteId > 0 ? null : formClienteTipo,
+                    CfNombre = CfParaGuardar(cfNombre), CfTelefono = CfParaGuardar(cfTelefono), CfDireccion = CfParaGuardar(cfDireccion),
                     Items = formItems,
                     Descuento = formDescuento,
                     Observaciones = notesToSave,
@@ -9636,6 +9683,106 @@
     }
 
     /// <summary>Selecciona un cliente del dropdown filtrable.</summary>
+    // ─── 21/10/2026: cartel "¿Quién compra?" para CONSUMIDOR FINAL ───
+    private bool showCfModal;
+    private bool cfEmitirAlConfirmar;
+    private bool _focusCfTelefono;   // el cartel salió al tocar Emitir → al confirmar, sigue emitiendo
+    private string cfNombre = "", cfTelefono = "", cfDireccion = "";
+    private string? cfError;
+    private ConsumidorFinalBusquedaDto? cfBusqueda;
+    private int cfBusquedaVersion;
+
+    private static bool EsNombreCf(string? n) => (n ?? "").Trim().StartsWith("CONSUMIDOR FINAL", StringComparison.OrdinalIgnoreCase);
+    private bool EsClienteCf(int id) => id > 0 && EsNombreCf(clientes?.FirstOrDefault(c => c.Id == id)?.Nombre);
+    private static string? CfParaGuardar(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>Venta a consumidor final (cliente CONSUMIDOR FINAL o sin cliente) sin los 3 datos.
+    /// La Venta Rápida tiene sus propios casilleros y no pasa por acá.</summary>
+    private bool FaltanDatosCf => !modoVentaRapida
+        && (formClienteId <= 0 || EsClienteCf(formClienteId))
+        && (string.IsNullOrWhiteSpace(cfNombre) || string.IsNullOrWhiteSpace(cfTelefono) || string.IsNullOrWhiteSpace(cfDireccion));
+
+    private void AbrirCfModal(bool emitirAlConfirmar)
+    {
+        cfEmitirAlConfirmar = emitirAlConfirmar;
+        cfError = null;
+        showCfModal = true;
+        _focusCfTelefono = true;   // lo enfoca OnAfterRenderAsync cuando el cartel ya está dibujado
+        if (cfBusqueda is null) _ = CfTelefonoCambio();
+    }
+
+    private async Task OnKeyDownCfModal(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CfConfirmar();
+        else if (e.Key == "Escape") await CfCancelar();
+    }
+
+    private async Task CfTelefonoCambio()
+    {
+        var version = ++cfBusquedaVersion;
+        var tel = cfTelefono;
+        await Task.Delay(400); // espera a que termine de tipear
+        if (version != cfBusquedaVersion) return;
+        try
+        {
+            var r = await Api.BuscarConsumidorFinalAsync(tel);
+            if (version != cfBusquedaVersion) return;
+            cfBusqueda = r;
+            StateHasChanged();
+        }
+        catch { /* sin aviso: el cartel funciona igual */ }
+    }
+
+    private void CfUsarDatosAnteriores()
+    {
+        if (cfBusqueda is null) return;
+        if (!string.IsNullOrWhiteSpace(cfBusqueda.UltimoNombre)) cfNombre = cfBusqueda.UltimoNombre!;
+        if (!string.IsNullOrWhiteSpace(cfBusqueda.UltimaDireccion)) cfDireccion = cfBusqueda.UltimaDireccion!;
+        cfError = null;
+    }
+
+    private async Task CfUsarCliente()
+    {
+        if (cfBusqueda?.ClienteId is not int id || id <= 0) return;
+        showCfModal = false;
+        cfEmitirAlConfirmar = false;
+        cfNombre = cfTelefono = cfDireccion = ""; cfBusqueda = null;
+        await SelectCliente(id);
+        ToastService.Info("Listo, quedó elegido el cliente con ficha.");
+    }
+
+    private async Task CfCancelar()
+    {
+        showCfModal = false;
+        cfEmitirAlConfirmar = false;
+        if (EsClienteCf(formClienteId)) await ClearCliente();
+        _focusClienteAtNextRender = true;
+    }
+
+    private async Task CfConfirmar()
+    {
+        if (string.IsNullOrWhiteSpace(cfTelefono) || string.IsNullOrWhiteSpace(cfNombre) || string.IsNullOrWhiteSpace(cfDireccion))
+        {
+            cfError = "Completá teléfono, nombre y dirección.";
+            return;
+        }
+        // Sin cliente elegido → la venta va al cliente CONSUMIDOR FINAL, así se puede cobrar en Cobranzas.
+        if (formClienteId <= 0)
+        {
+            var cfId = cfBusqueda?.ClienteCfId ?? (await Api.BuscarConsumidorFinalAsync(null))?.ClienteCfId;
+            if (cfId is int idCf && idCf > 0)
+            {
+                formClienteId = idCf;
+                clienteSearch = ""; clienteSearchOpen = false;
+                await OnClienteChanged();
+            }
+        }
+        showCfModal = false;
+        cfError = null;
+        if (cfEmitirAlConfirmar) { cfEmitirAlConfirmar = false; ConfirmarEmision(); }
+        else await FocusFieldAsync("nv-producto");
+    }
+
     private async Task SelectCliente(int id)
     {
         formClienteId = id;
@@ -9643,6 +9790,7 @@
         clienteSearchOpen = false;
         mostrarNotasCliente = false; // al cambiar de cliente, post-it de notas internas arranca cerrado
         await OnClienteChanged();
+        if (EsClienteCf(id)) AbrirCfModal(false);
     }
 
     // ─── Navegacion solo-teclado del modal de Nueva Venta (Opcion A — Enter avanza) ───
@@ -9680,7 +9828,8 @@
             if (sel is not null) await SelectCliente(sel.Id);
         }
         // Si el buscador esta vacio = consumidor final, saltamos igual.
-        await FocusFieldAsync("nv-producto");
+        // (21/10/2026: salvo que haya salido el cartel de Consumidor final, que tiene el foco.)
+        if (!showCfModal) await FocusFieldAsync("nv-producto");
     }
 
     private async Task OnKeyDownProducto(KeyboardEventArgs e)
@@ -10674,6 +10823,7 @@
                 ClienteCiudadOverride = modoVentaRapida ? vrCiudad : null,
                 ClienteCpOverride = modoVentaRapida ? vrCp : null,
                 ClienteTelefonoOverride = modoVentaRapida ? vrTelefono : null,
+                CfNombre = CfParaGuardar(cfNombre), CfTelefono = CfParaGuardar(cfTelefono), CfDireccion = CfParaGuardar(cfDireccion),
                 ClienteDomicilioEntregaOverride = modoVentaRapida ? vrDomicilioEntrega : null,
                 Items = formItems,
                 Descuento = formDescuento,
@@ -10722,6 +10872,7 @@
     {
         if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
         if (cotizacion?.TodoOk != true) { formError = "Hay items con stock insuficiente o inválidos"; return; }
+        if (FaltanDatosCf) { AbrirCfModal(true); return; }
         // Editando una venta existente → guardar directo (no es una emisión nueva).
         if (editingVentaId.HasValue)
         {
@@ -10758,6 +10909,7 @@
         formError = null;
         if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
         if (cotizacion?.TodoOk != true) { formError = "Hay items con stock insuficiente o inválidos"; return; }
+        if (FaltanDatosCf) { AbrirCfModal(true); return; }
         // 2026-10-02: el pedido YA está en la carpeta de armado → se pregunta SIEMPRE si se vuelve a subir.
         // Antes la casilla "Re-subir" venía tildada de entrada y cualquier corrección (un teléfono, una
         // dirección) se lo volvía a mandar a los chicos de depósito con "⚠ PEDIDO MODIFICADO".
@@ -10800,6 +10952,7 @@
                     Fecha = DateTime.SpecifyKind(formFecha, DateTimeKind.Unspecified), // Kind=Unspecified asi System.Text.Json no agrega TZ — el server toma Y/M/D tal cual.
                     ClienteId = formClienteId > 0 ? formClienteId : 0,
                     ClienteTipoOverride = formClienteId > 0 ? null : formClienteTipo,
+                    CfNombre = CfParaGuardar(cfNombre), CfTelefono = CfParaGuardar(cfTelefono), CfDireccion = CfParaGuardar(cfDireccion),
                     ClienteDireccionId = formClienteDireccionId > 0 ? formClienteDireccionId : null,
                     Items = formItems,
                     Descuento = formDescuento,
@@ -10896,6 +11049,7 @@
                     ClienteCiudadOverride = modoVentaRapida ? vrCiudad : null,
                     ClienteCpOverride = modoVentaRapida ? vrCp : null,
                     ClienteTelefonoOverride = modoVentaRapida ? vrTelefono : null,
+                    CfNombre = CfParaGuardar(cfNombre), CfTelefono = CfParaGuardar(cfTelefono), CfDireccion = CfParaGuardar(cfDireccion),
                     ClienteDomicilioEntregaOverride = modoVentaRapida ? vrDomicilioEntrega : null,
                     Items = formItems,
                     Descuento = formDescuento,
@@ -11457,6 +11611,12 @@
         formClienteId = v.ClienteId ?? 0;
         formClienteTipo = string.IsNullOrWhiteSpace(v.ClienteTipo) ? "OTRO" : v.ClienteTipo!;
         clienteSearch = ""; clienteSearchOpen = false;
+        // 21/10/2026: venta a CONSUMIDOR FINAL → quién compró viene en la venta (se manda de nuevo al guardar).
+        var esCfEdit = EsNombreCf(v.ClienteRazonSocial) && !EsNombreCf(v.ClienteNombre);
+        cfNombre = esCfEdit ? v.ClienteNombre ?? "" : "";
+        cfTelefono = esCfEdit ? v.ClienteTelefono ?? "" : "";
+        cfDireccion = esCfEdit ? v.ClienteDireccion ?? "" : "";
+        cfBusqueda = null; showCfModal = false;
         formFecha = v.Fecha;
         editingVentaFechaOriginal = v.Fecha;
         formDescuento = v.Descuento;

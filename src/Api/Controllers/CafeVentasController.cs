@@ -1837,6 +1837,71 @@ public class CafeVentasController : ControllerBase
     /// memoria y le pasa el cotizacion al PDFService de cotizaciones. Útil para que el
     /// operador vea exactamente cómo va a quedar antes de emitir.
     /// </summary>
+    /// <summary>21/10/2026: el cliente "CONSUMIDOR FINAL" se usa para todas las ventas de mostrador. Para poder
+    /// rastrearlas, Nueva Venta pide teléfono, nombre y dirección de quién compró y van a la venta: el nombre
+    /// es la persona y la razón social queda "CONSUMIDOR FINAL" (así sale en el comprobante y en ARCA).</summary>
+    internal static bool EsClienteConsumidorFinal(string? nombre)
+        => (nombre ?? "").Trim().StartsWith("CONSUMIDOR FINAL", StringComparison.OrdinalIgnoreCase);
+
+    private static void AplicarDatosConsumidorFinal(CafeVenta v, CafeCliente? cli, string? nombre, string? telefono, string? direccion)
+    {
+        if (cli is null || !EsClienteConsumidorFinal(cli.Nombre)) return;
+        if (string.IsNullOrWhiteSpace(nombre) && string.IsNullOrWhiteSpace(telefono) && string.IsNullOrWhiteSpace(direccion)) return;
+        v.ClienteRazonSocialSnapshot = string.IsNullOrWhiteSpace(cli.RazonSocial) ? cli.Nombre.Trim() : cli.RazonSocial;
+        v.ClienteNombreSnapshot = string.IsNullOrWhiteSpace(nombre) ? cli.Nombre : nombre.Trim();
+        v.ClienteTelefonoSnapshot = string.IsNullOrWhiteSpace(telefono) ? null : telefono.Trim();
+        v.ClienteDireccionSnapshot = string.IsNullOrWhiteSpace(direccion) ? null : direccion.Trim();
+        v.ClienteDomicilioEntregaSnapshot = v.ClienteDireccionSnapshot;
+    }
+
+    private static string SoloDigitosTel(string? s) => new string((s ?? "").Where(char.IsDigit).ToArray());
+
+    /// <summary>21/10/2026: cartel de Consumidor final. Con el teléfono que escribieron dice si es de un
+    /// cliente con ficha o si ya compró antes como consumidor final (y con qué nombre y dirección).
+    /// Compara los últimos 8 números para que "011 15 5555-1234" y "1155551234" den lo mismo.</summary>
+    [HttpGet("consumidor-final")]
+    public async Task<IActionResult> ConsumidorFinalBuscar([FromQuery] string? telefono)
+    {
+        var cfs = (await _db.CafeClientes.Where(c => c.IsActive && c.Nombre.StartsWith("CONSUMIDOR FINAL"))
+                .Select(c => new { c.Id, c.Nombre }).ToListAsync())
+            .Where(c => EsClienteConsumidorFinal(c.Nombre)).ToList();
+        // El "CONSUMIDOR FINAL" pelado primero (puede haber otros que empiezan igual).
+        var cfId = cfs.OrderBy(c => c.Nombre.Trim().Length).ThenBy(c => c.Id).Select(c => (int?)c.Id).FirstOrDefault();
+        var cfIds = cfs.Select(c => c.Id).ToList();
+
+        var dig = SoloDigitosTel(telefono);
+        if (dig.Length < 6) return Ok(new { clienteCfId = cfId });
+        var cola = dig.Length > 8 ? dig[^8..] : dig;
+        bool Coincide(string? t) { var d = SoloDigitosTel(t); return d.Length >= 6 && (d.EndsWith(cola) || cola.EndsWith(d)); }
+
+        var ultimos = cola[^Math.Min(4, cola.Length)..];
+        var cliente = (await _db.CafeClientes
+                .Where(c => c.IsActive && c.Telefono != null && c.Telefono.Contains(ultimos) && !cfIds.Contains(c.Id))
+                .Select(c => new { c.Id, c.Nombre, c.Telefono }).ToListAsync())
+            .FirstOrDefault(c => Coincide(c.Telefono));
+
+        var compras = (await _db.CafeVentas
+                .Where(v => v.ClienteId != null && cfIds.Contains(v.ClienteId!.Value) && v.Estado != "anulado"
+                         && v.ClienteTelefonoSnapshot != null && v.ClienteTelefonoSnapshot.Contains(ultimos))
+                .Select(v => new { v.Fecha, v.ClienteNombreSnapshot, v.ClienteDireccionSnapshot, v.ClienteTelefonoSnapshot })
+                .ToListAsync())
+            // Las viejas (antes del cartel) tienen el teléfono genérico de la ficha CONSUMIDOR FINAL: no cuentan.
+            .Where(v => Coincide(v.ClienteTelefonoSnapshot) && !EsClienteConsumidorFinal(v.ClienteNombreSnapshot))
+            .OrderByDescending(v => v.Fecha).ToList();
+        var ult = compras.FirstOrDefault();
+
+        return Ok(new
+        {
+            clienteCfId = cfId,
+            clienteId = cliente?.Id,
+            clienteNombre = cliente?.Nombre,
+            compras = compras.Count,
+            ultimaFecha = ult?.Fecha,
+            ultimoNombre = ult?.ClienteNombreSnapshot,
+            ultimaDireccion = ult?.ClienteDireccionSnapshot
+        });
+    }
+
     [HttpPost("preview-pdf")]
     public async Task<IActionResult> PreviewPdf([FromBody] CreateCafeVentaRequest req)
     {
@@ -1940,6 +2005,7 @@ public class CafeVentasController : ControllerBase
         var combosMapPrev = comboIdsPrev.Count > 0
             ? await BuildCombosMapAsync(comboIdsPrev) : null;
         await HydrateCfgFromEmisorAsync(cfg);
+        AplicarDatosConsumidorFinal(ventaPreview, cli, req.CfNombre, req.CfTelefono, req.CfDireccion);
         CompletarDomicilioEntregaImpreso(ventaPreview);
         var bytes = _pdfService.GenerarPdfBytes(ventaPreview, cfg, null, combosMapPrev);
         return File(bytes, "application/pdf", "preview.pdf");
@@ -2269,6 +2335,8 @@ public class CafeVentasController : ControllerBase
             .Concat(shellCompsCrear.Values.SelectMany(l => l.Select(c => c.compProductoId)))
             .Distinct().ToList();
 
+        if (req.ClienteId is > 0)
+            AplicarDatosConsumidorFinal(venta, await _db.CafeClientes.FindAsync(req.ClienteId.Value), req.CfNombre, req.CfTelefono, req.CfDireccion);
         _db.CafeVentas.Add(venta);
         await _db.SaveChangesAsync();
 
@@ -3270,6 +3338,7 @@ public class CafeVentasController : ControllerBase
                 v.ClienteLocalidadSnapshot = cli.Localidad;
                 v.ClienteCiudadSnapshot = cli.Ciudad;
                 v.ClienteCpSnapshot = cli.Cp;
+                AplicarDatosConsumidorFinal(v, cli, req.CfNombre, req.CfTelefono, req.CfDireccion);
             }
             else
             {

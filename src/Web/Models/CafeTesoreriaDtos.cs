@@ -253,6 +253,9 @@ public class ComprobantePendienteDto
 
     public bool EsAlquiler => ReservaId is > 0;
 
+    /// <summary>21/10/2026: ventas a CONSUMIDOR FINAL — quién compró (nombre · teléfono · dirección).</summary>
+    public string? Quien { get; set; }
+
     /// <summary>Clave unica para el diccionario de imputaciones de la pantalla: la venta va con su
     /// Id y el alquiler con el Id de la reserva EN NEGATIVO, asi nunca se pisan entre si.</summary>
     public int Clave => EsAlquiler ? -ReservaId!.Value : VentaId;
