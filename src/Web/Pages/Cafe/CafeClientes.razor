@@ -138,7 +138,12 @@
                                     }
                                     @if (!string.IsNullOrEmpty(dirMostrar))
                                     {
-                                        <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.15rem;">📍 @dirMostrar</div>
+                                        var dirCopiar = dirMostrar;
+                                        <div style="display:flex; align-items:center; color: #6b7280; font-size: 0.75rem; margin-top: 0.15rem;"><span><span style="user-select:none;">📍 </span>@dirMostrar</span>
+                                            <button type="button" title="Copiar la dirección (para pegarla en Google Maps)"
+                                                    style="flex:0 0 auto; margin-left:0.35rem; padding:0.05rem 0.4rem; font-size:0.72rem; font-weight:600; color:#374151; background:#fff; border:1px solid #d1d5db; border-radius:4px; cursor:pointer;"
+                                                    @onclick="() => CopiarDireccion(dirCopiar)" @onclick:stopPropagation="true">📋 Copiar</button>
+                                        </div>
                                     }
                                     @* 2026-10-06: que las máquinas se vean siempre (resumen traído UNA vez para todo el listado) *@
                                     @if (MaquinasTexto(c.Id) is { Length: > 0 } maqTxt)
@@ -1522,6 +1527,18 @@
 <ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
 
 @code {
+    // 21/10/2026: botón "📋 Copiar" al lado de la dirección: copia SOLO el texto (sin el 📍) para pegarlo en Google Maps.
+    private async Task CopiarDireccion(string? direccion)
+    {
+        if (string.IsNullOrWhiteSpace(direccion)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", direccion.Trim());
+            ToastService.Success("Dirección copiada");
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
     private async Task RecargarClientesPorOtraPestana()
     {
         try { clientes = await Api.GetCafeClientesAsync() ?? clientes; } catch { }
