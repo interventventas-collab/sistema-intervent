@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -236,6 +237,15 @@ public class MapeoDriversController : ControllerBase
     /// que no manda: el mapa lo pinta gris para que nadie confunda un punto viejo con donde esta
     /// ahora. Pasa seguido: el navegador le corta el GPS al celu cuando la pantalla no esta a la vista.
     /// </summary>
+    // 21/10/2026: link del repartidor → Oficina → 📍 Por dónde van (lo mismo que el mapa).
+    [AllowAnonymous]
+    [HttpGet("ubicaciones/repartidor/{token}")]
+    public async Task<IActionResult> UbicacionesParaRepartidor(string token, [FromQuery] string? dia)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Ubicaciones) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await Ubicaciones(dia);
+    }
+
     [HttpGet("ubicaciones")]
     public async Task<IActionResult> Ubicaciones([FromQuery] string? dia)
     {

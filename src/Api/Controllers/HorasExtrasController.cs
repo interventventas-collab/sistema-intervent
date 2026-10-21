@@ -1057,6 +1057,50 @@ public class HorasExtrasController : ControllerBase
     /// Por default devuelve los últimos 30 días. Si se filtra por empleado SIN pasar desde/hasta,
     /// usa el CICLO DE LIQUIDACION del empleado (2026-06-03), asi los totales del panel coinciden
     /// con lo que el empleado ve en su celular.</summary>
+    // 21/10/2026: link del repartidor → Oficina → 🕐 Fichaje. Lo de la tarjeta "Equipo trabajando
+    // ahora" del Dashboard, para cualquier día: quién entró, quién salió y quién no fichó. Solo mirar.
+    // Entran los empleados activos que aparecen en el fichador; "sin fichar" solo si ese día le toca
+    // trabajar (horas del día > 0), si no "no trabaja".
+    public record FichajeLinkItem(string Nombre, string Estado, string? Entrada, string? Salida, string? Trabajado);
+
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}/fichaje")]
+    public async Task<IActionResult> FichajeParaRepartidor(string token, [FromQuery] DateTime? dia = null)
+    {
+        if (await Services.RepartidorOficina.ConPermisoAsync(_db, token, Services.RepartidorOficina.Fichaje) is null)
+            return NotFound(new { error = "No tenés habilitado ver esto" });
+        var hoy = FechaArgentinaHoy();
+        var d = (dia ?? hoy).Date;
+        var ahora = DateTime.UtcNow.AddHours(-3).TimeOfDay;
+        var emps = await _db.HorasExtrasEmpleados.AsNoTracking()
+            .Where(e => e.IsActive && e.MostrarEnFichador).ToListAsync();
+        var empIds = emps.Select(e => e.Id).ToList();
+        var regs = (await _db.HorasExtrasRegistros.AsNoTracking()
+                .Where(r => r.Fecha == d && empIds.Contains(r.EmpleadoId)).ToListAsync())
+            .GroupBy(r => r.EmpleadoId).ToDictionary(g => g.Key, g => g.First());
+
+        static string Dur(TimeSpan t) => t.TotalMinutes < 60 ? $"{t.Minutes} min" : $"{(int)t.TotalHours} h {t.Minutes} min";
+        var items = emps.Select(e =>
+        {
+            regs.TryGetValue(e.Id, out var r);
+            if (r?.HoraEntrada is TimeSpan ent)
+            {
+                if (r.HoraSalida is TimeSpan sal)
+                    return new FichajeLinkItem(e.Nombre, "salio", FormatHora(ent), FormatHora(sal), sal > ent ? Dur(sal - ent) : null);
+                if (d == hoy)
+                    return new FichajeLinkItem(e.Nombre, "trabajando", FormatHora(ent), null, ahora > ent ? Dur(ahora - ent) : null);
+                return new FichajeLinkItem(e.Nombre, "sin-salida", FormatHora(ent), null, null);
+            }
+            return new FichajeLinkItem(e.Nombre, e.HorasParaDia(d.DayOfWeek) > 0 ? "sin-fichar" : "no-trabaja", null, null, null);
+        })
+        // Primero los que entraron (por hora de entrada), después los sin fichar y al final los que no trabajan.
+        .OrderBy(x => x.Estado switch { "no-trabaja" => 2, "sin-fichar" => 1, _ => 0 })
+        .ThenBy(x => x.Entrada ?? "")
+        .ThenBy(x => x.Nombre)
+        .ToList();
+        return Ok(items);
+    }
+
     [HttpGet("admin/registros")]
     [Authorize]
     public async Task<IActionResult> ListRegistros([FromQuery] DateTime? desde = null,

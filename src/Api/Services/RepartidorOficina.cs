@@ -28,9 +28,12 @@ public static class RepartidorOficina
     public const string Stock = "stock";
     public const string Alquileres = "alquileres";
     public const string Banco = "banco";
+    // 21/10/2026: "Por dónde van" (los camioncitos del mapa) y el fichaje del día.
+    public const string Ubicaciones = "ubicaciones";
+    public const string Fichaje = "fichaje";
 
     /// <summary>En el orden en que aparecen los cuadraditos y los tildes.</summary>
-    public static readonly string[] Todas = { Cobranzas, Cheques, Listas, Stock, Alquileres, Banco };
+    public static readonly string[] Todas = { Cobranzas, Cheques, Listas, Stock, Alquileres, Ubicaciones, Fichaje, Banco };
 
     /// <summary>Los que pueden abrir el saldo del banco con SU clave (PIN de operador).</summary>
     public static readonly string[] ClaveBanco = { "OSMAR", "GERMAN", "GABRIEL" };

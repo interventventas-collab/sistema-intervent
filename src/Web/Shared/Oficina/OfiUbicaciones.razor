@@ -1,0 +1,131 @@
+@* 21/10/2026: Oficina → 📍 Por dónde van. Lo mismo que el botón "Por dónde van" del mapa de la compu
+   (⚙ → Por dónde van): un camioncito por repartidor con "hace cuánto" mandó su ubicación, en gris si
+   hace más de 30 min, y la línea punteada del recorrido del día. Solo aparecen los que tienen
+   prendido "seguir ubicación" en su ficha. El mapa lo dibuja js/ofi-ubicaciones.js. *@
+@using System.Globalization
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="mpc-overlay">
+    <div class="mpc-wrap">
+        <div class="mpc-top">
+            <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
+            <div class="mpc-title">📍 Por dónde van</div>
+        </div>
+        <div class="mpc-chips">
+            <span class="mpc-chip @(dia == Hoy ? "on" : "")" @onclick="() => ElegirDia(Hoy)">Hoy</span>
+            <span class="mpc-chip @(dia == Hoy.AddDays(-1) ? "on" : "")" @onclick="() => ElegirDia(Hoy.AddDays(-1))">Ayer</span>
+            @if (filas.Count > 0)
+            {
+                <span class="mpc-chip @(conRecorrido ? "on" : "")" @onclick="CambiarRecorrido">〰 Ver el recorrido</span>
+            }
+            <span class="mpc-chip" @onclick="Cargar">🔄</span>
+        </div>
+
+        @if (cargando && filas.Count == 0)
+        {
+            <div class="mpc-nota">Buscando…</div>
+        }
+        else if (error)
+        {
+            <div class="mpc-nota">No se pudo traer dónde están. <button type="button" class="mpc-mas" @onclick="Cargar">🔄 Reintentar</button></div>
+        }
+        else if (filas.Count == 0)
+        {
+            <div class="mpc-nota">@(dia == Hoy ? "Hoy" : "Ese día") todavía no mandó su ubicación ningún repartidor.<br />Solo mandan los que tienen prendido "seguir ubicación" en su ficha, y mientras tienen el link abierto.</div>
+        }
+
+        @* El mapa lo dibuja el js adentro de esta caja: Blazor no le pone nada adentro. *@
+        <div id="ofi-ubi-mapa" style="height:300px; border-radius:12px; overflow:hidden; background:#e5e7eb; @(filas.Count == 0 ? "display:none;" : "")"></div>
+
+        @if (filas.Count > 0)
+        {
+            <div class="mpc-row" style="margin-top:0.6rem; padding:0;">
+                @foreach (var f in filas)
+                {
+                    <div style="padding:0.6rem 0.75rem; border-bottom:1px solid #f3f4f6;">
+                        <div class="mpc-r1"><span class="mpc-cli" style="@(f.Viejo ? "color:#6b7280;" : "")">@f.Nombre</span></div>
+                        <div class="mpc-est" style="color:#6b7280;">
+                            @(dia == Hoy ? $"hace {Hace(f.HaceMinutos)}" : $"última {f.Hora}")@(f.Viejo && dia == Hoy ? " (puede que haya bloqueado el celu)" : "") ·
+                            <a href="@($"https://www.google.com/maps/search/?api=1&query={f.Lat.ToString(CultureInfo.InvariantCulture)},{f.Lng.ToString(CultureInfo.InvariantCulture)}")"
+                               target="_blank" rel="noopener" style="color:#0e7490; font-weight:700; text-decoration:none;">Abrir en Maps ›</a>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="mpc-nota" style="font-size:0.75rem; text-align:left;">Si el repartidor bloquea el celu o se mete en otra app, deja de mandar: por eso dice hace cuánto.</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    public record PuntoDto(decimal Lat, decimal Lng, string Hora);
+    public record UbicacionDto(int DriverId, int RepartidorId, string Nombre, string Color,
+        decimal Lat, decimal Lng, string Hora, int HaceMinutos, bool Viejo, List<PuntoDto> Recorrido);
+
+    private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;
+    private DateTime dia = Hoy;
+    private List<UbicacionDto> filas = new();
+    private bool cargando = true, error, conRecorrido, pintar;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true; error = false;
+        StateHasChanged();
+        try
+        {
+            var buscado = dia;
+            var r = await Http.GetFromJsonAsync<List<UbicacionDto>>($"api/mapeo/ubicaciones/repartidor/{Token}?dia={dia:yyyy-MM-dd}");
+            if (buscado != dia) return;
+            filas = r ?? new();
+            pintar = true;
+        }
+        catch { error = true; filas = new(); }
+        finally { cargando = false; StateHasChanged(); }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!pintar || filas.Count == 0) return;
+        pintar = false;
+        try
+        {
+            await JS.InvokeAsync<string>("ofiUbicaciones.pintar", "ofi-ubi-mapa",
+                filas.Select(f => new
+                {
+                    nombre = f.Nombre, color = f.Color, lat = f.Lat, lng = f.Lng,
+                    haceMinutos = f.HaceMinutos, viejo = f.Viejo && dia == Hoy,
+                    recorrido = f.Recorrido.Select(p => new { lat = p.Lat, lng = p.Lng })
+                }), conRecorrido);
+        }
+        catch { }
+    }
+
+    private async Task ElegirDia(DateTime d)
+    {
+        dia = d;
+        // Otro día: el recorrido es lo que interesa.
+        if (d != Hoy) conRecorrido = true;
+        await Cargar();
+    }
+
+    private void CambiarRecorrido()
+    {
+        conRecorrido = !conRecorrido;
+        pintar = true;
+    }
+
+    private static string Hace(int min) => min < 1 ? "un momento" : min < 60 ? $"{min} min" : $"{min / 60} h {min % 60} min";
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ofiUbicaciones.cerrar"); } catch { }
+    }
+}
