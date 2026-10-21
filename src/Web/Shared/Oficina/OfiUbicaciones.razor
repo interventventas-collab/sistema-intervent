@@ -1,7 +1,9 @@
-@* 21/10/2026: Oficina → 📍 Por dónde van. Lo mismo que el botón "Por dónde van" del mapa de la compu
-   (⚙ → Por dónde van): un camioncito por repartidor con "hace cuánto" mandó su ubicación, en gris si
-   hace más de 30 min, y la línea punteada del recorrido del día. Solo aparecen los que tienen
-   prendido "seguir ubicación" en su ficha. El mapa lo dibuja js/ofi-ubicaciones.js. *@
+@* 21/10/2026: Oficina → 📍 Por dónde van. TODOS los repartidores activos, con un botón por cada uno
+   ("Todos" o uno solo y el mapa va a él):
+   🚚 = en vivo: los que tienen prendido "seguir ubicación" (lo mismo que el mapa de la compu, ⚙ → Por
+        dónde van), con "hace cuánto" mandó, en gris si hace más de 30 min, y el recorrido del día.
+   📦 = el resto: el punto de su última entrega del día en el mapa de reparto (no es en vivo).
+   El mapa lo dibuja js/ofi-ubicaciones.js. *@
 @using System.Globalization
 @using System.Net.Http.Json
 @inject HttpClient Http
@@ -14,15 +16,19 @@
             <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
             <div class="mpc-title">📍 Por dónde van</div>
         </div>
-        <div class="mpc-chips">
-            <span class="mpc-chip @(dia == Hoy ? "on" : "")" @onclick="() => ElegirDia(Hoy)">Hoy</span>
-            <span class="mpc-chip @(dia == Hoy.AddDays(-1) ? "on" : "")" @onclick="() => ElegirDia(Hoy.AddDays(-1))">Ayer</span>
-            @if (filas.Count > 0)
-            {
-                <span class="mpc-chip @(conRecorrido ? "on" : "")" @onclick="CambiarRecorrido">〰 Ver el recorrido</span>
-            }
-            <span class="mpc-chip" @onclick="Cargar">🔄</span>
-        </div>
+
+        @if (filas.Count > 0)
+        {
+            <div class="mpc-chips">
+                <span class="mpc-chip @(elegido is null ? "on" : "")" @onclick="() => Elegir(null)">Todos</span>
+                @foreach (var f in filas)
+                {
+                    var fSel = f;
+                    <span class="mpc-chip @(elegido == fSel.RepartidorId ? "on" : "")" style="@(TienePunto(fSel) ? "" : "color:#9ca3af;")"
+                          @onclick="() => Elegir(fSel.RepartidorId)">@Corto(fSel.Nombre)</span>
+                }
+            </div>
+        }
 
         @if (cargando && filas.Count == 0)
         {
@@ -32,40 +38,87 @@
         {
             <div class="mpc-nota">No se pudo traer dónde están. <button type="button" class="mpc-mas" @onclick="Cargar">🔄 Reintentar</button></div>
         }
-        else if (filas.Count == 0)
+        else if (Visibles.All(f => !TienePunto(f)))
         {
-            <div class="mpc-nota">@(dia == Hoy ? "Hoy" : "Ese día") todavía no mandó su ubicación ningún repartidor.<br />Solo mandan los que tienen prendido "seguir ubicación" en su ficha, y mientras tienen el link abierto.</div>
+            <div class="mpc-nota">
+                @if (elegido is null)
+                {
+                    @(dia == Hoy ? "Hoy" : "Ese día") <text> todavía no hay nadie en el mapa: ninguno mandó su ubicación ni entregó algo que esté en el mapa de reparto.</text>
+                }
+                else
+                {
+                    <text>@(Visibles.FirstOrDefault()?.Nombre) no tiene ubicación @(dia == Hoy ? "hoy" : "ese día"): no manda GPS y no entregó nada que esté en el mapa de reparto.</text>
+                }
+            </div>
         }
 
         @* El mapa lo dibuja el js adentro de esta caja: Blazor no le pone nada adentro. *@
-        <div id="ofi-ubi-mapa" style="height:300px; border-radius:12px; overflow:hidden; background:#e5e7eb; @(filas.Count == 0 ? "display:none;" : "")"></div>
+        <div id="ofi-ubi-mapa" style="height:300px; border-radius:12px; overflow:hidden; background:#e5e7eb; @(Visibles.Any(TienePunto) ? "" : "display:none;")"></div>
 
-        @if (filas.Count > 0)
+        <div class="mpc-chips" style="margin-top:0.5rem;">
+            <span class="mpc-chip @(dia == Hoy ? "on" : "")" @onclick="() => ElegirDia(Hoy)">Hoy</span>
+            <span class="mpc-chip @(dia == Hoy.AddDays(-1) ? "on" : "")" @onclick="() => ElegirDia(Hoy.AddDays(-1))">Ayer</span>
+            @if (Visibles.Any(f => f.Recorrido.Count > 1))
+            {
+                <span class="mpc-chip @(conRecorrido ? "on" : "")" @onclick="CambiarRecorrido">〰 Ver el recorrido</span>
+            }
+            <span class="mpc-chip" @onclick="Cargar">🔄</span>
+        </div>
+
+        @if (Visibles.Count > 0)
         {
-            <div class="mpc-row" style="margin-top:0.6rem; padding:0;">
-                @foreach (var f in filas)
+            var conAlgo = Visibles.Where(f => f.EnVivo || f.UltimaEntrega is not null).ToList();
+            var sinNada = Visibles.Where(f => !f.EnVivo && f.UltimaEntrega is null).ToList();
+            <div class="mpc-row" style="margin-top:0.2rem; padding:0;">
+                @foreach (var f in conAlgo)
                 {
-                    <div style="padding:0.6rem 0.75rem; border-bottom:1px solid #f3f4f6;">
-                        <div class="mpc-r1"><span class="mpc-cli" style="@(f.Viejo ? "color:#6b7280;" : "")">@f.Nombre</span></div>
+                    var fSel = f;
+                    <div style="padding:0.6rem 0.75rem; border-bottom:1px solid #f3f4f6; cursor:pointer;" @onclick="() => Elegir(fSel.RepartidorId)">
+                        <div class="mpc-r1">
+                            <span class="mpc-cli">
+                                @f.Nombre
+                                @if (f.EnVivo && !Gris(f))
+                                {
+                                    <span style="color:#15803d; font-size:0.75rem;"> · en vivo</span>
+                                }
+                            </span>
+                        </div>
+                        @if (f.EnVivo)
+                        {
+                            <div class="mpc-est" style="color:#6b7280;">
+                                🚚 @(dia == Hoy ? $"hace {Hace(f.HaceMinutos ?? 0)}" : $"última {f.Hora}")@(Gris(f) ? " (puede que haya bloqueado el celu)" : "")
+                                · <a href="@MapsUrl(f.Lat, f.Lng)" target="_blank" rel="noopener" style="color:#0e7490; font-weight:700; text-decoration:none;" @onclick:stopPropagation="true">Abrir en Maps ›</a>
+                            </div>
+                        }
                         <div class="mpc-est">
                             @if (f.UltimaEntrega is not null)
                             {
                                 <text>📦 Última entrega @f.UltimaEntregaHora · <b>@f.UltimaEntrega</b>@(string.IsNullOrWhiteSpace(f.UltimaEntregaDireccion) ? "" : $" · {f.UltimaEntregaDireccion}")</text>
+                                @if (!f.EnVivo)
+                                {
+                                    <span style="color:#9ca3af;"> (sin GPS)</span>
+                                    @if (f.UltimaLat is not null)
+                                    {
+                                        <text> · </text><a href="@MapsUrl(f.UltimaLat, f.UltimaLng)" target="_blank" rel="noopener" style="color:#0e7490; font-weight:700; text-decoration:none;" @onclick:stopPropagation="true">Abrir en Maps ›</a>
+                                    }
+                                }
                             }
                             else
                             {
                                 <span style="color:#6b7280;">📦 @(dia == Hoy ? "Todavía no entregó nada hoy" : "No entregó nada ese día")</span>
                             }
                         </div>
-                        <div class="mpc-est" style="color:#6b7280;">
-                            @(dia == Hoy ? $"hace {Hace(f.HaceMinutos)}" : $"última {f.Hora}")@(f.Viejo && dia == Hoy ? " (puede que haya bloqueado el celu)" : "") ·
-                            <a href="@($"https://www.google.com/maps/search/?api=1&query={f.Lat.ToString(CultureInfo.InvariantCulture)},{f.Lng.ToString(CultureInfo.InvariantCulture)}")"
-                               target="_blank" rel="noopener" style="color:#0e7490; font-weight:700; text-decoration:none;">Abrir en Maps ›</a>
-                        </div>
+                    </div>
+                }
+                @if (sinNada.Count > 0)
+                {
+                    <div style="padding:0.6rem 0.75rem;">
+                        <div class="mpc-r1"><span class="mpc-cli" style="color:#9ca3af; white-space:normal;">@string.Join(" · ", sinNada.Select(f => f.Nombre))</span></div>
+                        <div class="mpc-est" style="color:#9ca3af;">@(dia == Hoy ? "no entregaron nada hoy y no mandan GPS" : "no entregaron nada ese día")</div>
                     </div>
                 }
             </div>
-            <div class="mpc-nota" style="font-size:0.75rem; text-align:left;">Si el repartidor bloquea el celu o se mete en otra app, deja de mandar: por eso dice hace cuánto.</div>
+            <div class="mpc-nota" style="font-size:0.75rem; text-align:left;">🚚 = en vivo (los que tienen prendido "seguir ubicación"; si bloquean el celu deja de mandar, por eso dice hace cuánto). 📦 = donde hizo su última entrega.</div>
         }
     </div>
 </div>
@@ -75,14 +128,22 @@
     [Parameter] public EventCallback OnCerrar { get; set; }
 
     public record PuntoDto(decimal Lat, decimal Lng, string Hora);
-    public record UbicacionDto(int DriverId, int RepartidorId, string Nombre, string Color,
-        decimal Lat, decimal Lng, string Hora, int HaceMinutos, bool Viejo, List<PuntoDto> Recorrido,
-        string? UltimaEntrega = null, string? UltimaEntregaHora = null, string? UltimaEntregaDireccion = null);
+    public record RepartidorMapaDto(int RepartidorId, string Nombre, string Color, bool EnVivo,
+        decimal? Lat, decimal? Lng, string? Hora, int? HaceMinutos, bool Viejo, List<PuntoDto> Recorrido,
+        string? UltimaEntrega, string? UltimaEntregaHora, string? UltimaEntregaDireccion,
+        decimal? UltimaLat, decimal? UltimaLng);
 
     private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;
     private DateTime dia = Hoy;
-    private List<UbicacionDto> filas = new();
+    private List<RepartidorMapaDto> filas = new();
+    private int? elegido;
     private bool cargando = true, error, conRecorrido, pintar;
+
+    private List<RepartidorMapaDto> Visibles =>
+        elegido is null ? filas : filas.Where(f => f.RepartidorId == elegido).ToList();
+
+    private static bool TienePunto(RepartidorMapaDto f) => f.EnVivo || f.UltimaLat is not null;
+    private bool Gris(RepartidorMapaDto f) => f.EnVivo && f.Viejo && dia == Hoy;
 
     protected override Task OnInitializedAsync() => Cargar();
 
@@ -93,9 +154,10 @@
         try
         {
             var buscado = dia;
-            var r = await Http.GetFromJsonAsync<List<UbicacionDto>>($"api/mapeo/ubicaciones/repartidor/{Token}?dia={dia:yyyy-MM-dd}");
+            var r = await Http.GetFromJsonAsync<List<RepartidorMapaDto>>($"api/mapeo/ubicaciones/repartidor/{Token}?dia={dia:yyyy-MM-dd}");
             if (buscado != dia) return;
             filas = r ?? new();
+            if (elegido is not null && filas.All(f => f.RepartidorId != elegido)) elegido = null;
             pintar = true;
         }
         catch { error = true; filas = new(); }
@@ -104,20 +166,30 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!pintar || filas.Count == 0) return;
+        if (!pintar) return;
         pintar = false;
-        try
-        {
-            await JS.InvokeAsync<string>("ofiUbicaciones.pintar", "ofi-ubi-mapa",
-                filas.Select(f => new
-                {
-                    nombre = f.Nombre, color = f.Color, lat = f.Lat, lng = f.Lng,
-                    haceMinutos = f.HaceMinutos, viejo = f.Viejo && dia == Hoy,
-                    recorrido = f.Recorrido.Select(p => new { lat = p.Lat, lng = p.Lng }),
-                    ultima = f.UltimaEntrega is null ? null : $"{f.UltimaEntregaHora} {f.UltimaEntrega}"
-                }), conRecorrido);
-        }
+        var marcas = Visibles.Where(TienePunto).Select(f => f.EnVivo
+            ? (object)new
+            {
+                nombre = f.Nombre, color = f.Color, lat = f.Lat, lng = f.Lng, vivo = true,
+                haceMinutos = f.HaceMinutos ?? 0, viejo = Gris(f),
+                recorrido = f.Recorrido.Select(p => new { lat = p.Lat, lng = p.Lng }),
+                ultima = f.UltimaEntrega is null ? null : $"{f.UltimaEntregaHora} {f.UltimaEntrega}"
+            }
+            : new
+            {
+                nombre = f.Nombre, color = f.Color, lat = f.UltimaLat, lng = f.UltimaLng, vivo = false,
+                hora = f.UltimaEntregaHora, ultima = f.UltimaEntrega
+            }).ToList();
+        if (marcas.Count == 0) return;
+        try { await JS.InvokeAsync<string>("ofiUbicaciones.pintar", "ofi-ubi-mapa", marcas, conRecorrido); }
         catch { }
+    }
+
+    private void Elegir(int? repId)
+    {
+        elegido = repId;
+        pintar = true;
     }
 
     private async Task ElegirDia(DateTime d)
@@ -133,6 +205,17 @@
         conRecorrido = !conRecorrido;
         pintar = true;
     }
+
+    /// <summary>"GABRIEL" → "Gabriel", "1FLETE STORE LOGISTICA…" → "1flete store…" (los botones de arriba).</summary>
+    private static string Corto(string nombre)
+    {
+        var t = (nombre ?? "").Trim();
+        if (t.Length > 14) t = t[..13].TrimEnd() + "…";
+        return t.Length == 0 ? t : char.ToUpper(t[0]) + t[1..].ToLower();
+    }
+
+    private static string MapsUrl(decimal? lat, decimal? lng) =>
+        $"https://www.google.com/maps/search/?api=1&query={lat?.ToString(CultureInfo.InvariantCulture)},{lng?.ToString(CultureInfo.InvariantCulture)}";
 
     private static string Hace(int min) => min < 1 ? "un momento" : min < 60 ? $"{min} min" : $"{min / 60} h {min % 60} min";
 

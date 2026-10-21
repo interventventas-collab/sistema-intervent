@@ -386,8 +386,16 @@
     .mpc-ver-bar .mpc-wa { flex:2; padding:0.8rem; font-size:1rem; }
     .mpc-ver-bar .mpc-dl { flex:1; padding:0.8rem; font-size:1rem; text-align:center; cursor:pointer; }
     /* ── 20/10/2026: sección Oficina (Shell para todos + un cuadradito por tilde) ── */
-    .ofi-shell { background:white; border-radius:12px; padding:0.6rem 0.8rem; margin:-0.3rem 0 0.7rem; font-size:0.9rem; color:#111827; }
-    .ofi-shell span { color:#6b7280; font-size:0.78rem; }
+    .mp-hd-fecha { font-size: 0.85rem; opacity: 0.9; margin-top: 0.2rem; }
+    .mp-shell { text-align:right; background:rgba(255,255,255,0.16); border-radius:10px; padding:0.45rem 0.65rem; flex-shrink:0; }
+    .mp-shell-t { font-size:0.72rem; opacity:0.9; }
+    .mp-shell-v { font-size:1.15rem; font-weight:800; white-space:nowrap; }
+    .mp-shell-a { font-size:0.68rem; opacity:0.8; }
+    .ofi-btn { display:flex; width:100%; justify-content:space-between; align-items:center; gap:0.6rem; text-align:left; background:white;
+        border:1.5px solid #0e7490; border-radius:12px; padding:0.7rem 0.9rem; margin:-0.2rem 0 0.8rem; cursor:pointer; font-family:inherit; }
+    .ofi-btn-t { display:block; font-size:1rem; font-weight:800; color:#0e7490; }
+    .ofi-btn-s { display:block; font-size:0.74rem; color:#6b7280; margin-top:0.1rem; }
+    .ofi-btn-f { font-size:1.6rem; color:#0e7490; line-height:1; }
     .ofi-sec { font-size:0.72rem; font-weight:800; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; margin:0 0.15rem 0.35rem; }
     .ofi-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.45rem; margin-bottom:0.9rem; }
     .ofi-tile { display:flex; flex-direction:column; align-items:flex-start; gap:0.15rem; text-align:left; background:white;
@@ -423,37 +431,40 @@
                 <div>
                     <div class="mp-saludo">👋 Hola</div>
                     <div class="mp-name">@nombre</div>
-                    <div class="mp-fecha">@FechaLabel</div>
+                    <div class="mp-hd-fecha">@FechaLabel</div>
                 </div>
-                <div style="font-size: 3rem;">🚚</div>
+                @* 21/10/2026: el saldo de Shell Flota (lo ven TODOS los repartidores) va acá, siempre a
+                   la vista, en el lugar del camioncito. *@
+                @if (!string.IsNullOrWhiteSpace(oficina?.ShellSaldo))
+                {
+                    <div class="mp-shell">
+                        <div class="mp-shell-t">⛽ Shell Flota</div>
+                        <div class="mp-shell-v">@ShellTexto(oficina!.ShellSaldo)</div>
+                        @if (oficina.ShellAt is DateTime sa)
+                        {
+                            <div class="mp-shell-a">act. @(sa.AddHours(-3).Date == HoyAr ? sa.AddHours(-3).ToString("HH:mm") : sa.AddHours(-3).ToString("dd/MM HH:mm"))</div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="font-size: 3rem;">🚚</div>
+                }
             </div>
         </div>
 
-        @* 20/10/2026: el saldo de Shell Flota lo ven TODOS los repartidores. Abajo, la sección
-           "Oficina": un cuadradito por cada cosa que la oficina le tildó en su ficha (Gabriel,
-           Germán, Osmar). "Comprobantes" (16/10) pasó a ser uno de los cuadraditos. *@
-        @if (!string.IsNullOrWhiteSpace(oficina?.ShellSaldo))
-        {
-            <div class="ofi-shell">⛽ Shell Flota · <b>$@oficina!.ShellSaldo</b>
-                @if (oficina.ShellAt is DateTime sa)
-                {
-                    <span> · @sa.AddHours(-3).ToString("dd/MM HH:mm")</span>
-                }
-            </div>
-        }
+        @* 21/10/2026: la sección "Oficina" (un cuadradito por cada tilde de su ficha: Gabriel, Germán,
+           Osmar) queda detrás de UN botón, así los pedidos quedan arriba. Los cuadraditos se abren en
+           su propia pantalla (ofiMenu). *@
         @if (OficinaTiles.Count > 0)
         {
-            <div class="ofi-sec">Oficina</div>
-            <div class="ofi-grid">
-                @foreach (var t in OficinaTiles)
-                {
-                    var tSel = t;
-                    <button type="button" class="ofi-tile" @onclick="() => AbrirOficina(tSel.Clave)">
-                        <span class="ofi-tile-t">@tSel.Icono @tSel.Titulo</span>
-                        <span class="ofi-tile-s">@tSel.Sub</span>
-                    </button>
-                }
-            </div>
+            <button type="button" class="ofi-btn" @onclick="() => ofiMenu = true">
+                <span>
+                    <span class="ofi-btn-t">🗂 Oficina</span>
+                    <span class="ofi-btn-s">@OficinaResumen</span>
+                </span>
+                <span class="ofi-btn-f">›</span>
+            </button>
         }
 
         @* ─── 2026-09-02: ¿terminó su recorrido? — es lo primero que mira el repartidor ───
@@ -1688,6 +1699,30 @@
                     Cerrar
                 </button>
             }
+        </div>
+    </div>
+}
+
+@* 21/10/2026: la pantalla "Oficina" con los cuadraditos. Va ANTES de las pantallas de cada uno
+   (misma capa): al abrir uno queda encima, y al cerrarlo se vuelve acá. *@
+@if (ofiMenu)
+{
+    <div class="mpc-overlay">
+        <div class="mpc-wrap">
+            <div class="mpc-top">
+                <button type="button" class="mpc-back" @onclick="() => ofiMenu = false">←</button>
+                <div class="mpc-title">🗂 Oficina</div>
+            </div>
+            <div class="ofi-grid">
+                @foreach (var t in OficinaTiles)
+                {
+                    var tSel = t;
+                    <button type="button" class="ofi-tile" @onclick="() => AbrirOficina(tSel.Clave)">
+                        <span class="ofi-tile-t">@tSel.Icono @tSel.Titulo</span>
+                        <span class="ofi-tile-s">@tSel.Sub</span>
+                    </button>
+                }
+            </div>
         </div>
     </div>
 }
@@ -3611,6 +3646,22 @@
     }
 
     private void CerrarOficina() => ofiAbierta = null;
+
+    private bool ofiMenu;
+
+    private string OficinaResumen
+    {
+        get
+        {
+            var n = OficinaTiles.Select(t => t.Titulo.ToLower()).ToList();
+            return n.Count <= 3 ? string.Join(", ", n) : string.Join(", ", n.Take(3)) + " y más";
+        }
+    }
+
+    /// <summary>El saldo de Shell viene con formato yanqui ("1,236,341.11"): en pesos sin centavos.</summary>
+    private static string ShellTexto(string? saldo) =>
+        decimal.TryParse(saldo, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var v)
+            ? "$" + v.ToString("N0", ArCult) : "$" + saldo;
 
     /// <summary>Al abrir el link: ¿le aparece el botón? Trae de paso la primera tanda.</summary>
     private async Task ChequearComprobantes()
