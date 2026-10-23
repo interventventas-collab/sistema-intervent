@@ -1059,8 +1059,10 @@ public class HorasExtrasController : ControllerBase
     /// con lo que el empleado ve en su celular.</summary>
     // 21/10/2026: link del repartidor → Oficina → 🕐 Fichaje. Lo de la tarjeta "Equipo trabajando
     // ahora" del Dashboard, para cualquier día: quién entró, quién salió y quién no fichó. Solo mirar.
-    // Entran los empleados activos que aparecen en el fichador; "sin fichar" solo si ese día le toca
-    // trabajar (horas del día > 0), si no "no trabaja". Con toda la semana en 0: "no ficha".
+    // Entran TODOS los empleados activos (23/10: antes solo los del kiosco y quedaba afuera Alexis, que
+    // ficha desde su celu); "sin fichar" solo si ese día le toca trabajar (horas del día > 0), si no
+    // "no trabaja". "No ficha" (gris, al final): toda la semana en 0 o ninguna fichada en los 60 días
+    // anteriores (Germán, Osmar, Nacho, Gabriel: trabajan pero no fichan).
     public record FichajeLinkItem(string Nombre, string Estado, string? Entrada, string? Salida, string? Trabajado);
 
     [AllowAnonymous]
@@ -1073,11 +1075,16 @@ public class HorasExtrasController : ControllerBase
         var d = (dia ?? hoy).Date;
         var ahora = DateTime.UtcNow.AddHours(-3).TimeOfDay;
         var emps = await _db.HorasExtrasEmpleados.AsNoTracking()
-            .Where(e => e.IsActive && e.MostrarEnFichador).ToListAsync();
+            .Where(e => e.IsActive).ToListAsync();
         var empIds = emps.Select(e => e.Id).ToList();
         var regs = (await _db.HorasExtrasRegistros.AsNoTracking()
                 .Where(r => r.Fecha == d && empIds.Contains(r.EmpleadoId)).ToListAsync())
             .GroupBy(r => r.EmpleadoId).ToDictionary(g => g.Key, g => g.First());
+        var desde60 = d.AddDays(-60);
+        var fichanSeguido = (await _db.HorasExtrasRegistros.AsNoTracking()
+                .Where(r => empIds.Contains(r.EmpleadoId) && r.Fecha >= desde60 && r.Fecha < d && r.HoraEntrada != null)
+                .Select(r => r.EmpleadoId).Distinct().ToListAsync())
+            .ToHashSet();
 
         static string Dur(TimeSpan t) => t.TotalMinutes < 60 ? $"{t.Minutes} min" : $"{(int)t.TotalHours} h {t.Minutes} min";
         var items = emps.Select(e =>
@@ -1091,8 +1098,8 @@ public class HorasExtrasController : ControllerBase
                     return new FichajeLinkItem(e.Nombre, "trabajando", FormatHora(ent), null, ahora > ent ? Dur(ahora - ent) : null);
                 return new FichajeLinkItem(e.Nombre, "sin-salida", FormatHora(ent), null, null);
             }
-            // Toda la semana en 0 = trabaja pero no ficha (ej. Germán): no es "sin fichar" ni franco.
-            var noFicha = Enum.GetValues<DayOfWeek>().All(dw => e.HorasParaDia(dw) <= 0);
+            // Trabaja pero no ficha: no es "sin fichar" ni franco.
+            var noFicha = Enum.GetValues<DayOfWeek>().All(dw => e.HorasParaDia(dw) <= 0) || !fichanSeguido.Contains(e.Id);
             return new FichajeLinkItem(e.Nombre,
                 noFicha ? "no-ficha" : e.HorasParaDia(d.DayOfWeek) > 0 ? "sin-fichar" : "no-trabaja", null, null, null);
         })
