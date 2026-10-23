@@ -16,7 +16,7 @@ window.ofiUbicaciones = (function () {
         return h + ' h';
     }
 
-    // marcas: [{ nombre, color, lat, lng, vivo, haceMinutos, viejo, recorrido: [{lat,lng}], hora, ultima }]
+    // marcas: [{ nombre, color, lat, lng, vivo, haceMinutos, viejo, recorrido: [{lat,lng}], hora, hoy, ultima }]
     function pintar(elId, marcas, conRecorrido) {
         const el = document.getElementById(elId);
         if (!el || typeof L === 'undefined') return 'error';
@@ -43,7 +43,7 @@ window.ofiUbicaciones = (function () {
             const gris = !c.vivo || c.viejo;
             const borde = c.vivo && !c.viejo ? esc(c.color || '#0e7490') : '#d1d5db';
             const arriba = c.vivo
-                ? '🚚 ' + tres + ' · ' + hace(c.haceMinutos)
+                ? '🚚 ' + tres + ' · ' + (c.hoy === false ? 'últ. ' + esc(c.hora) : hace(c.haceMinutos))
                 : '📦 ' + tres + (c.hora ? ' · ' + esc(c.hora) : '');
             const abajo = c.vivo
                 ? (c.ultima ? '📦 ' + esc(c.ultima) : '')
