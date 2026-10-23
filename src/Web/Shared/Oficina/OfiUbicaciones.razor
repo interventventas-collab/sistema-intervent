@@ -77,7 +77,7 @@
                         <div class="mpc-r1">
                             <span class="mpc-cli">
                                 @f.Nombre
-                                @if (f.EnVivo && !Gris(f))
+                                @if (f.EnVivo && !Gris(f) && dia == Hoy)
                                 {
                                     <span style="color:#15803d; font-size:0.75rem;"> · en vivo</span>
                                 }
@@ -90,22 +90,38 @@
                                 · <a href="@MapsUrl(f.Lat, f.Lng)" target="_blank" rel="noopener" style="color:#0e7490; font-weight:700; text-decoration:none;" @onclick:stopPropagation="true">Abrir en Maps ›</a>
                             </div>
                         }
-                        <div class="mpc-est">
-                            @if (f.UltimaEntrega is not null)
+                        @{
+                            var todas = f.Entregas ?? new();
+                            var abierto = abiertos.Contains(f.RepartidorId);
+                            var mostrar = abierto ? todas : todas.Take(2).ToList();
+                        }
+                        @if (todas.Count == 0)
+                        {
+                            <div class="mpc-est" style="color:#6b7280;">📦 @(dia == Hoy ? "Todavía no entregó nada hoy" : "No entregó nada ese día")</div>
+                        }
+                        @foreach (var e in mostrar)
+                        {
+                            <div class="mpc-est">📦 <b>@e.Hora</b> · @e.Cliente@(string.IsNullOrWhiteSpace(e.Direccion) ? "" : $" · {e.Direccion}")</div>
+                        }
+                        @if (f.Proxima is not null)
+                        {
+                            <div class="mpc-est" style="color:#0e7490;">
+                                ➡ @(dia == Hoy ? "Sigue" : "Quedó sin entregar"): <b>@f.Proxima</b>@(string.IsNullOrWhiteSpace(f.ProximaDireccion) || f.ProximaDireccion == f.Proxima ? "" : $" · {f.ProximaDireccion}")
+                                @if (f.Faltan > 1) { <span style="color:#6b7280;"> (@(dia == Hoy ? "le faltan" : "quedaron") @f.Faltan)</span> }
+                            </div>
+                        }
+                        <div class="mpc-est" style="color:#6b7280;">
+                            @if (!f.EnVivo) { <span style="color:#9ca3af;">sin GPS</span> }
+                            @if (!f.EnVivo && f.UltimaLat is not null)
                             {
-                                <text>📦 Última entrega @f.UltimaEntregaHora · <b>@f.UltimaEntrega</b>@(string.IsNullOrWhiteSpace(f.UltimaEntregaDireccion) ? "" : $" · {f.UltimaEntregaDireccion}")</text>
-                                @if (!f.EnVivo)
-                                {
-                                    <span style="color:#9ca3af;"> (sin GPS)</span>
-                                    @if (f.UltimaLat is not null)
-                                    {
-                                        <text> · </text><a href="@MapsUrl(f.UltimaLat, f.UltimaLng)" target="_blank" rel="noopener" style="color:#0e7490; font-weight:700; text-decoration:none;" @onclick:stopPropagation="true">Abrir en Maps ›</a>
-                                    }
-                                }
+                                <text> · </text><a href="@MapsUrl(f.UltimaLat, f.UltimaLng)" target="_blank" rel="noopener" style="color:#0e7490; font-weight:700; text-decoration:none;" @onclick:stopPropagation="true">Abrir en Maps ›</a>
                             }
-                            else
+                            @if (todas.Count > 2)
                             {
-                                <span style="color:#6b7280;">📦 @(dia == Hoy ? "Todavía no entregó nada hoy" : "No entregó nada ese día")</span>
+                                <text>@(f.EnVivo ? "" : " · ")</text><button type="button" @onclick="() => Desplegar(f.RepartidorId)" @onclick:stopPropagation="true"
+                                        style="background:none; border:none; padding:0; color:#0e7490; font-weight:700; font-size:inherit; cursor:pointer; font-family:inherit;">
+                                    @(abierto ? "▴ Ver menos" : $"▾ Ver las {todas.Count} entregas")
+                                </button>
                             }
                         </div>
                     </div>
@@ -131,12 +147,17 @@
     public record RepartidorMapaDto(int RepartidorId, string Nombre, string Color, bool EnVivo,
         decimal? Lat, decimal? Lng, string? Hora, int? HaceMinutos, bool Viejo, List<PuntoDto> Recorrido,
         string? UltimaEntrega, string? UltimaEntregaHora, string? UltimaEntregaDireccion,
-        decimal? UltimaLat, decimal? UltimaLng);
+        decimal? UltimaLat, decimal? UltimaLng,
+        List<EntregaDiaDto>? Entregas = null, string? Proxima = null, string? ProximaDireccion = null, int Faltan = 0);
+    public record EntregaDiaDto(string Hora, string Cliente, string? Direccion);
 
     private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;
     private DateTime dia = Hoy;
     private List<RepartidorMapaDto> filas = new();
     private int? elegido;
+    private readonly HashSet<int> abiertos = new();
+
+    private void Desplegar(int repId) { if (!abiertos.Remove(repId)) abiertos.Add(repId); }
     private bool cargando = true, error, conRecorrido, pintar;
 
     private List<RepartidorMapaDto> Visibles =>
@@ -172,7 +193,7 @@
             ? (object)new
             {
                 nombre = f.Nombre, color = f.Color, lat = f.Lat, lng = f.Lng, vivo = true,
-                haceMinutos = f.HaceMinutos ?? 0, viejo = Gris(f),
+                haceMinutos = f.HaceMinutos ?? 0, viejo = Gris(f), hora = f.Hora, hoy = dia == Hoy,
                 recorrido = f.Recorrido.Select(p => new { lat = p.Lat, lng = p.Lng }),
                 ultima = f.UltimaEntrega is null ? null : $"{f.UltimaEntregaHora} {f.UltimaEntrega}"
             }

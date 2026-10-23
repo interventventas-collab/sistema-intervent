@@ -241,9 +241,13 @@ public class MapeoDriversController : ControllerBase
         int RepartidorId, string Nombre, string Color, bool EnVivo,
         decimal? Lat, decimal? Lng, string? Hora, int? HaceMinutos, bool Viejo, List<PuntoRecorridoDto> Recorrido,
         string? UltimaEntrega, string? UltimaEntregaHora, string? UltimaEntregaDireccion,
-        decimal? UltimaLat, decimal? UltimaLng);
+        decimal? UltimaLat, decimal? UltimaLng,
+        // 23/10/2026: todas las entregas del día (la más nueva primero) y la siguiente de su ruta.
+        List<EntregaDiaDto>? Entregas = null, string? Proxima = null, string? ProximaDireccion = null, int Faltan = 0);
+    public record EntregaDiaDto(string Hora, string Cliente, string? Direccion);
 
     private record UltimaEntregaInfo(DateTime At, string Cliente, string? Dir, decimal? Lat, decimal? Lng);
+    private record EntregasDia(List<UltimaEntregaInfo> Entregas, MapeoStop? Proxima, int Faltan);
 
     [AllowAnonymous]
     [HttpGet("ubicaciones/repartidor/{token}")]
@@ -255,7 +259,7 @@ public class MapeoDriversController : ControllerBase
             .Select(r => new { r.Id, r.Nombre }).ToListAsync();
         var repIds = reps.Select(r => r.Id).ToList();
         var vivos = (await ArmarUbicaciones(diaAr)).ToDictionary(x => x.RepartidorId);
-        var ultimas = await UltimasEntregasAsync(repIds, diaAr);
+        var delDia = await EntregasDelDiaAsync(repIds, diaAr);
         var colores = (await _db.MapeoDrivers
                 .Where(x => x.CafeRepartidorId != null && repIds.Contains(x.CafeRepartidorId!.Value))
                 .Select(x => new { RepId = x.CafeRepartidorId!.Value, x.Color }).ToListAsync())
@@ -264,11 +268,14 @@ public class MapeoDriversController : ControllerBase
         var salida = reps.Select(r =>
         {
             vivos.TryGetValue(r.Id, out var v);
-            ultimas.TryGetValue(r.Id, out var u);
+            delDia.TryGetValue(r.Id, out var dd);
+            var u = dd?.Entregas.FirstOrDefault();
             var color = colores.TryGetValue(r.Id, out var c) ? c : "#1d4ed8";
             return new RepartidorMapaDto(r.Id, r.Nombre, color, v is not null,
                 v?.Lat, v?.Lng, v?.Hora, v?.HaceMinutos, v?.Viejo ?? false, v?.Recorrido ?? new(),
-                u?.Cliente, u?.At.AddHours(-3).ToString("HH:mm"), u?.Dir, u?.Lat, u?.Lng);
+                u?.Cliente, u?.At.AddHours(-3).ToString("HH:mm"), u?.Dir, u?.Lat, u?.Lng,
+                dd?.Entregas.Select(e => new EntregaDiaDto(e.At.AddHours(-3).ToString("HH:mm"), e.Cliente, e.Dir)).ToList() ?? new(),
+                dd?.Proxima is { } px ? NombreParada(px) : null, dd?.Proxima?.Direccion, dd?.Faltan ?? 0);
         })
         // Primero los en vivo, después los que entregaron algo, al final el resto.
         .OrderBy(x => x.EnVivo ? 0 : x.UltimaEntrega != null ? 1 : 2)
@@ -316,7 +323,7 @@ public class MapeoDriversController : ControllerBase
         var espejos = await _db.MapeoDrivers
             .Where(x => x.CafeRepartidorId != null && repIds.Contains(x.CafeRepartidorId!.Value))
             .ToListAsync();
-        var ultimaPorRep = await UltimasEntregasAsync(repIds, diaAr);
+        var delDiaPorRep = await EntregasDelDiaAsync(repIds, diaAr);
 
         var ahora = DateTime.UtcNow;
         var salida = new List<UbicacionChoferDto>();
@@ -327,7 +334,7 @@ public class MapeoDriversController : ControllerBase
             var ultimo = suyos[^1];
             var esp = espejos.FirstOrDefault(x => x.CafeRepartidorId == r.Id);
             var haceMin = (int)Math.Max(0, (ahora - ultimo.CreatedAt).TotalMinutes);
-            ultimaPorRep.TryGetValue(r.Id, out var ue);
+            var ue = delDiaPorRep.TryGetValue(r.Id, out var dd) ? dd.Entregas.FirstOrDefault() : null;
 
             salida.Add(new UbicacionChoferDto(
                 esp?.Id ?? 0, r.Id, r.Nombre, esp?.Color ?? "#1d4ed8",
@@ -341,17 +348,25 @@ public class MapeoDriversController : ControllerBase
         return salida.OrderBy(x => x.Nombre).ToList();
     }
 
-    /// <summary>21/10/2026: la última entrega del día de cada repartidor, con el punto del mapa si se
-    /// sabe. Junta las paradas del mapa de reparto entregadas (ventas, alquileres, MeLi, visitas: las
-    /// cuenta MapeoEntregasService, igual que el Dashboard) con las ventas y alquileres entregados o
-    /// retirados por él que no estaban en la ruta. El punto sale de la parada; si no hay, del cliente.</summary>
-    private async Task<Dictionary<int, UltimaEntregaInfo>> UltimasEntregasAsync(List<int> repIds, DateTime diaAr)
+    private static string NombreParada(MapeoStop s) =>
+        !string.IsNullOrWhiteSpace(s.Alias) ? s.Alias! : !string.IsNullOrWhiteSpace(s.ContactName) ? s.ContactName! : s.Direccion;
+
+    /// <summary>21/10/2026 (23/10: todas, no solo la última): las entregas del día de cada repartidor,
+    /// la más nueva primero, con el punto del mapa si se sabe; más la SIGUIENTE de su ruta y cuántas
+    /// le faltan. Junta las paradas del mapa de reparto entregadas (ventas, alquileres, MeLi, visitas:
+    /// las cuenta MapeoEntregasService, igual que el Dashboard) con las ventas y alquileres entregados o
+    /// retirados por él que no estaban en la ruta. El punto sale de la parada; si no hay, del cliente.
+    /// "Siguiente" = la primera parada de su ruta de ese día (orden de la ruta) ni entregada ni cerrada.</summary>
+    private async Task<Dictionary<int, EntregasDia>> EntregasDelDiaAsync(List<int> repIds, DateTime diaAr)
     {
-        var res = new Dictionary<int, UltimaEntregaInfo>();
+        var res = new Dictionary<int, EntregasDia>();
         if (repIds.Count == 0) return res;
         var desdeUtc = diaAr.AddHours(3);
         var hastaUtc = desdeUtc.AddDays(1);
         var cand = new List<(int RepId, UltimaEntregaInfo Info)>();
+        var proximas = new Dictionary<int, (MapeoStop Stop, int Faltan)>();
+        // Entregas que ya vienen de una parada: "venta_cafe:123" → hora. Para no contarlas dos veces.
+        var desdeParada = new List<(string Clave, DateTime At)>();
 
         // 1) Paradas del mapa de ese día, del chofer espejo de cada repartidor.
         var drivers = await _db.MapeoDrivers
@@ -366,14 +381,25 @@ public class MapeoDriversController : ControllerBase
                 .ToListAsync();
             var svc = HttpContext.RequestServices.GetRequiredService<Services.MapeoEntregasService>();
             var entregas = await svc.EntregasAsync(paradas);
+            var cerradas = await svc.NoEntregadasAsync(paradas);
             foreach (var s in paradas)
             {
                 if (!entregas.TryGetValue(s.Id, out var at) || at is null) continue;
-                var nombre = !string.IsNullOrWhiteSpace(s.Alias) ? s.Alias! : !string.IsNullOrWhiteSpace(s.ContactName) ? s.ContactName! : s.Direccion;
-                cand.Add((repPorDriver[s.AssignedDriverId!.Value], new UltimaEntregaInfo(at.Value, nombre, s.Direccion,
+                cand.Add((repPorDriver[s.AssignedDriverId!.Value], new UltimaEntregaInfo(at.Value, NombreParada(s), s.Direccion,
                     s.Latitude != 0 ? s.Latitude : null, s.Longitude != 0 ? s.Longitude : null)));
+                if (s.OriginRefId != null) desdeParada.Add((s.Origin + ":" + s.OriginRefId, at.Value));
+            }
+            foreach (var g in paradas
+                .Where(s => !(entregas.TryGetValue(s.Id, out var at) && at.HasValue) && !cerradas.Contains(s.Id))
+                .GroupBy(s => repPorDriver[s.AssignedDriverId!.Value]))
+            {
+                var orden = g.OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id).ToList();
+                proximas[g.Key] = (orden[0], orden.Count);
             }
         }
+
+        bool YaContada(string clave, DateTime at) =>
+            desdeParada.Any(x => x.Clave == clave && Math.Abs((x.At - at).TotalMinutes) < 5);
 
         // 2) Ventas y alquileres entregados o retirados por él (aunque no estuvieran en la ruta).
         var ventas = await _db.CafeVentas
@@ -412,6 +438,7 @@ public class MapeoDriversController : ControllerBase
 
         foreach (var v in ventas)
         {
+            if (YaContada("venta_cafe:" + v.Id, v.At)) continue;
             decimal? lat = null, lng = null;
             if (puntosParada.TryGetValue("venta_cafe:" + v.Id, out var pp)) { lat = pp.Latitude; lng = pp.Longitude; }
             else if (v.ClienteId is int cid && puntosCliente.TryGetValue(cid, out var pc)) { lat = pc.MapeoLat; lng = pc.MapeoLng; }
@@ -419,21 +446,16 @@ public class MapeoDriversController : ControllerBase
         }
         foreach (var a in entregasAlq.Concat(retirosAlq))
         {
+            if (YaContada("alquiler:" + a.Id, a.At)) continue;
             puntosParada.TryGetValue("alquiler:" + a.Id, out var pp);
             cand.Add((a.RepId, new UltimaEntregaInfo(a.At, string.IsNullOrWhiteSpace(a.Cliente) ? "Alquiler" : a.Cliente!, a.Dir, pp?.Latitude, pp?.Longitude)));
         }
 
-        foreach (var g in cand.GroupBy(x => x.RepId))
+        foreach (var repId in cand.Select(x => x.RepId).Concat(proximas.Keys).Distinct())
         {
-            // La más nueva; si la venta y su parada son la misma entrega, preferir la que tiene punto.
-            var ord = g.Select(x => x.Info).OrderByDescending(x => x.At).ToList();
-            var ultima = ord[0];
-            if (ultima.Lat is null)
-            {
-                var gemela = ord.FirstOrDefault(x => x.Lat is not null && Math.Abs((x.At - ultima.At).TotalMinutes) < 2);
-                if (gemela is not null) ultima = ultima with { Lat = gemela.Lat, Lng = gemela.Lng };
-            }
-            res[g.Key] = ultima;
+            var lista = cand.Where(x => x.RepId == repId).Select(x => x.Info).OrderByDescending(x => x.At).ToList();
+            var px = proximas.TryGetValue(repId, out var p) ? p : default;
+            res[repId] = new EntregasDia(lista, px.Stop, px.Stop is null ? 0 : px.Faltan);
         }
         return res;
     }
