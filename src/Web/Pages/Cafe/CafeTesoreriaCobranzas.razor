@@ -3108,6 +3108,10 @@
             if (volverAReservas) { volverAReservas = false; Navigation.NavigateTo("/alquileres/reservas"); return; }
             // 2026-10-06: vino desde la máquina: se vuelve a su detalle, que ya muestra el pago nuevo.
             if (volverAMaquina is int volverId) { volverAMaquina = null; Navigation.NavigateTo($"/cafe/maquinas?ver={volverId}"); return; }
+            // 2026-10-23: el saldo del proveedor y sus facturas pendientes quedaban de antes: cargando varias
+            // redirigidas seguidas al mismo proveedor seguía mostrando lo que se le debía antes de la primera.
+            facturasProv.Clear();
+            try { provRedir = await Api.GetCafeProveedoresRedirigidoAsync(); } catch { }
             await Load();
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
