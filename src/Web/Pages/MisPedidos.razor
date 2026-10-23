@@ -2802,6 +2802,25 @@
     private record SeguimientoResp(bool Seguir, int CadaSegundos);
     private record PosicionJs(decimal? Lat, decimal? Lon, int? Accuracy);
 
+    /// <summary>23/10/2026: ¿este navegador es de la oficina? Si alguna vez abrió un link con "👁 Ver como"
+    /// (?vercomo=1) queda anotado y desde ahí NUNCA manda ubicación, aunque después entre sin la marca.
+    /// Pasaba: el dueño, desde España, miraba la pantalla de Gabriel con "Ver como", en algún paso se
+    /// perdía el ?vercomo y su ubicación quedaba guardada como la de Gabriel (el camión aparecía en Galicia).
+    /// Los celus de los repartidores nunca abren "Ver como", así que a ellos no les cambia nada.</summary>
+    private async Task<bool> EsNavegadorDeOficina()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(VerComo))
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", "mp_vercomo", "1");
+                return true;
+            }
+            return await JS.InvokeAsync<string?>("localStorage.getItem", "mp_vercomo") == "1";
+        }
+        catch { return !string.IsNullOrEmpty(VerComo); }
+    }
+
     /// <summary>Al abrir, le pregunta al servidor si este repartidor tiene el seguimiento
     /// prendido. Si si, manda un punto y arranca el timer. Nunca rompe la pantalla.</summary>
     private async Task IniciarSeguimientoUbicacion()
@@ -2854,7 +2873,7 @@
         await Recargar();
         await ChequearComprobantes();   // 16/10/2026: botón "Comprobantes" (si la oficina lo prendió)
         await CargarOficina();          // 20/10/2026: saldo de Shell + cuadraditos de la Oficina
-        if (string.IsNullOrEmpty(VerComo))
+        if (!await EsNavegadorDeOficina())
             _ = IniciarSeguimientoUbicacion();   // 2026-09-17: "Por donde van" (si la oficina lo prendio)
         // 2026-06-05: auto-refresh cada 30s. Si el admin asigna una venta nueva,
         // el repartidor la ve aparecer sola sin tener que tocar 🔄.
