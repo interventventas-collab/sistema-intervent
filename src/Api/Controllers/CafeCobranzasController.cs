@@ -735,7 +735,23 @@ public class CafeCobranzasController : ControllerBase
     /// <summary>Crea una cobranza nueva. Valida coherencia: suma de medios + retenciones = suma de comprobantes.
     /// 2026-06-06: ClienteId puede ser null si la cobranza es de una venta ocasional (sin cliente del catalogo).</summary>
     [HttpPost]
-    public async Task<IActionResult> Crear([FromBody] CrearCobranzaRequest req)
+    public Task<IActionResult> Crear([FromBody] CrearCobranzaRequest req)
+        => _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            // 24/10/2026: todo o nada. La 0100-00004402 (23/10, redirigida a proveedor) falló en el
+            // último paso y quedó grabada a medias: cobranza y medio "Redirigido" sin decir a quién,
+            // y sin el registro de quién la cargó. Si algo devuelve error, no queda nada grabado.
+            _db.ChangeTracker.Clear();   // por si la estrategia reintenta después de un corte
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            var r = await CrearCore(req);
+            if (r is OkObjectResult) await tx.CommitAsync();
+            else _db.ChangeTracker.Clear();
+            return r;
+        });
+
+    // La conexión tiene reintentos automáticos (EnableRetryOnFailure): EF sólo acepta una
+    // transacción a mano dentro de su "execution strategy" (ver CafeChequesBancoController).
+    private async Task<IActionResult> CrearCore(CrearCobranzaRequest req)
     {
         // 2026-09-28: una redirigida se vuelca UNA sola vez. Si ya está en otra cobranza, no se crea
         // otra (también evita la cobranza repetida si alguien reintenta después de un corte).
@@ -911,7 +927,9 @@ public class CafeCobranzasController : ControllerBase
             ClienteId = (req.ClienteId.HasValue && req.ClienteId.Value > 0) ? req.ClienteId.Value : null,
             Total = sumMedios,         // lo que efectivamente entro a las cajas
             Retenciones = retenciones,
-            Operador = req.Operador,
+            // 24/10/2026: la pantalla de Cobranzas no mandaba el operador y quedaban "sin trazabilidad".
+            // Si no viene, el operador elegido arriba (o, sin operador, el usuario con el que se entró).
+            Operador = !string.IsNullOrWhiteSpace(req.Operador) ? req.Operador : QuienCarga(),
             Observaciones = req.Observaciones,
             Estado = "VIGENTE"
         };
