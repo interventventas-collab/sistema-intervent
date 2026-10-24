@@ -308,6 +308,10 @@
                             {
                                 <div style="margin-top:.2rem; font-size:.72rem; color:#374151;" title="A quién se le pasó la plata">→ @c.RedirigidoA</div>
                             }
+                            @if (!string.IsNullOrWhiteSpace(c.RedirigidoComentario))
+                            {
+                                <div style="margin-top:.1rem; font-size:.72rem; color:#6b7280; font-style:italic;" title="Comentario de la redirigida">“@c.RedirigidoComentario”</div>
+                            }
                             @if (!string.IsNullOrWhiteSpace(c.EndosadoA))
                             {
                                 <div style="margin-top:.2rem; font-size:.72rem; color:#374151;" title="El cheque de esta cobranza se le pasó a un proveedor">→ endosado a @c.EndosadoA</div>
@@ -915,7 +919,11 @@
                                     <input class="form-input" type="text" inputmode="decimal" placeholder="Importe"
                                            @bind="m.ImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
                                 }
-                                <input class="form-input" placeholder="Referencia (opcional)" @bind="m.Referencia" />
+                                @* 24/10/2026: en la redirigida este casillero pasa adentro del recuadro como "Comentario". *@
+                                @if (!m.EsRedirigido)
+                                {
+                                    <input class="form-input" placeholder="Referencia (opcional)" @bind="m.Referencia" />
+                                }
                                 <button class="btn-icon" @onclick="() => { formMedios.RemoveAt(idx); RecalcularTotal(); }" title="Quitar">🗑</button>
                             </div>
                             @if (m.EsDolares)
@@ -1058,6 +1066,13 @@
                                             </p>
                                         }
                                     }
+                                    @* 24/10/2026: comentario de la redirigida. Se guarda en la Referencia del medio (donde
+                                       ya anotaban "GF", "miguel"…) y ahora se ve en el listado de cobranzas. *@
+                                    <div style="font-size:0.78rem; color:#6b7280; margin:0.6rem 0 0.25rem;">
+                                        Comentario @(m.RedirigidoDestino == DestinoPrivada ? "(¿para qué es esta plata?)" : "(opcional)")
+                                    </div>
+                                    <input class="form-input" style="font-size:0.82rem;" @bind="m.Referencia"
+                                           placeholder="@(m.RedirigidoDestino == DestinoPrivada ? "Ej: pago de luz, retiro del dueño…" : "Ej: le pasé en mano el viernes")" />
                                     <p style="font-size:0.72rem; color:#9ca3af; margin:0.45rem 0 0;">
                                         @(m.RedirigidoDestino == DestinoPrivada
                                             ? "Esta plata no entra a ninguna caja del negocio y no se le descuenta a nadie: queda en la privada."

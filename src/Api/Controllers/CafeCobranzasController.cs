@@ -124,7 +124,10 @@ public class CafeCobranzasController : ControllerBase
         // cobro de máquina o de alquiler parecía "a cuenta"). Ej "☕ Cuota de máquina: … · le falta $656.000".
         List<string>? Aplicaciones = null,
         // Qué se cobró, para el filtro: "MERCADERIA", "ALQUILER", "MAQUINA" separados por coma.
-        string? QueSeCobro = null);
+        string? QueSeCobro = null,
+        // 24/10/2026: lo que escribieron en el comentario de la redirigida (ej "GF", "a Nacho"). Sobre
+        // todo cuando va "a nadie · queda en la privada", es lo único que dice para qué fue esa plata.
+        string? RedirigidoComentario = null);
 
     public record CobranzaComprobanteChip(
         string Numero,               // ej "CAFE-2026-0888"
@@ -510,7 +513,7 @@ public class CafeCobranzasController : ControllerBase
                 Medios = c.Medios.Select(m => new {
                     Tipo = m.Caja != null ? m.Caja.Tipo : "OTRO",
                     CajaNombre = m.Caja != null ? m.Caja.Nombre : "—",
-                    m.Importe,
+                    m.Importe, m.Referencia,
                     m.RedirigidoDestino, m.RedirigidoEmpleadoId, m.RedirigidoProveedorId, m.RedirigidoPagoId, m.ChequeId
                 }).ToList(),
                 c.Total, c.Retenciones, c.Estado, c.Operador
@@ -625,6 +628,8 @@ public class CafeCobranzasController : ControllerBase
                       + (m.RedirigidoPagoId is int ppid && redirImput.TryGetValue(ppid, out var imp) ? $" ({imp})" : "")
                 : m.RedirigidoDestino == "privada" ? "queda en la privada"
                 : "sin decir a quién").Distinct().ToList();
+            var redirComent = r.Medios.Where(m => m.Tipo == "V_PRIVADO" && !string.IsNullOrWhiteSpace(m.Referencia))
+                .Select(m => m.Referencia!.Trim()).Distinct().ToList();
 
             // Calcular forma de pago resumida: 1 tipo → ese tipo, varios → MIXTO.
             string? formaPago = null;
@@ -701,7 +706,8 @@ public class CafeCobranzasController : ControllerBase
                 redirTxt.Count > 0 ? string.Join(" / ", redirTxt) : null,
                 endTxt.Count > 0 ? string.Join(" / ", endTxt) : null,
                 aplicaciones.Count > 0 ? aplicaciones : null,
-                queSeCobro.Length > 0 ? queSeCobro : null);
+                queSeCobro.Length > 0 ? queSeCobro : null,
+                redirComent.Count > 0 ? string.Join(" / ", redirComent) : null);
         }).ToList();
         return Ok(list);
     }
