@@ -590,6 +590,8 @@ public class CobranzaListDto
     public string? FormaPagoDetalle { get; set; }
     /// <summary>23/09/2026: en un cobro redirigido, a quién fue la plata (ej "Walter Ignacion Carrizo · viajes").</summary>
     public string? RedirigidoA { get; set; }
+    /// <summary>24/10/2026: el comentario que le escribieron a la redirigida (ej "GF", "a Nacho").</summary>
+    public string? RedirigidoComentario { get; set; }
     /// <summary>01/10/2026: si el cheque de la cobranza se endoso, a quien y con que pago.</summary>
     public string? EndosadoA { get; set; }
     /// <summary>2026-10-06: lo cobrado que no es mercadería ("☕ Cuota de máquina: … · hoy le falta $X", "🎪 Alquiler RES-…").</summary>
