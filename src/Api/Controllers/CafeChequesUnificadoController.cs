@@ -403,6 +403,8 @@ public class CafeChequesUnificadoController : ControllerBase
                     case "EN_CARTERA":
                         fue = "Todavía en mano";
                         if (f.BancoEndosadoA is not null) fueSub = $"el banco dice: a {f.BancoEndosadoA}";
+                        // 26/10/2026: la cobranza ya bajo la deuda del cliente; el cheque sigue en mano.
+                        else if (c.CobranzaOrigenId.HasValue) fueSub = "ya cobrado al cliente · falta endosar o depositar";
                         break;
                     case "DEPOSITADO": fue = "Mi banco"; fueSub = "depositado, sin acreditar"; break;
                     case "ACREDITADO": fue = "Mi banco"; fueSub = "acreditado"; break;
