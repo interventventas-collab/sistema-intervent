@@ -2469,6 +2469,9 @@ public class CafePrecioEspecialDto
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public string? CreatedBy { get; set; }
+    /// <summary>2026-10-26: si el pacto viene de una lista de Precios especiales, cuál.</summary>
+    public int? ListaId { get; set; }
+    public string? ListaNombre { get; set; }
 }
 
 public class CafePrecioEspecialFormatoDto
@@ -2710,4 +2713,59 @@ public class ConsumidorFinalBusquedaDto
     public DateTime? UltimaFecha { get; set; }
     public string? UltimoNombre { get; set; }
     public string? UltimaDireccion { get; set; }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 2026-10-26: Ventas → Precios especiales (listas con clientes y productos).
+// ─────────────────────────────────────────────────────────────────────
+public class CafeListaEspecialDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Notas { get; set; }
+    public DateTime? Actualizada { get; set; }
+    public List<CafeListaEspecialClienteDto> Clientes { get; set; } = new();
+    public List<CafeListaEspecialItemDto> Items { get; set; } = new();
+    /// <summary>BAR / OTRO: contra qué lista general se compara cada precio.</summary>
+    public string TipoReferencia { get; set; } = "BAR";
+}
+
+public class CafeListaEspecialClienteDto
+{
+    public int Id { get; set; }
+    public string? Codigo { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Telefono { get; set; }
+    public string Tipo { get; set; } = "";
+}
+
+public class CafeListaEspecialItemDto
+{
+    public int Id { get; set; }
+    public int ProductoId { get; set; }
+    public string? Sku { get; set; }
+    public string ProductoNombre { get; set; } = "";
+    public string? Marca { get; set; }
+    public string Formato { get; set; } = "";
+    public string FormatoLabel { get; set; } = "";
+    /// <summary>Pactado, SIN IVA.</summary>
+    public decimal Precio { get; set; }
+    /// <summary>Lo que saldría por la lista general (tipo de la mayoría de sus clientes).</summary>
+    public decimal PrecioLista { get; set; }
+    public bool ListaMasBarata { get; set; }
+}
+
+public class CafePactoDto
+{
+    public int Id { get; set; }
+    public int ClienteId { get; set; }
+    public string? ClienteCodigo { get; set; }
+    public string ClienteNombre { get; set; } = "";
+    public int ProductoId { get; set; }
+    public string? Sku { get; set; }
+    public string ProductoNombre { get; set; } = "";
+    public string FormatoLabel { get; set; } = "";
+    public decimal Precio { get; set; }
+    public int? ListaId { get; set; }
+    public string? ListaNombre { get; set; }
 }

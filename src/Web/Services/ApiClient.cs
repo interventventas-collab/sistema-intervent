@@ -1525,6 +1525,51 @@ public class ApiClient
     public async Task<bool> BorrarPrecioEspecialAsync(int id)
         => await DeleteAsync($"/api/cafe/precios-especiales/{id}");
 
+    // 2026-10-26: Ventas → Precios especiales (listas que valen para varios clientes).
+    public async Task<List<CafeListaEspecialDto>> GetListasEspecialesAsync()
+        => await GetAsync<List<CafeListaEspecialDto>>("/api/cafe/listas-especiales") ?? new();
+
+    public async Task<List<CafePactoDto>> GetPactosTodosAsync()
+        => await GetAsync<List<CafePactoDto>>("/api/cafe/listas-especiales/pactos") ?? new();
+
+    public async Task<CafePrecioEspecialOpcionesDto?> GetListaEspecialOpcionesAsync(int listaId, int productoId)
+        => await GetAsync<CafePrecioEspecialOpcionesDto>($"/api/cafe/listas-especiales/{listaId}/opciones?productoId={productoId}");
+
+    public async Task<int?> CrearListaEspecialAsync(string nombre, string? notas)
+        => (await PostAsync<GuardarPrecioEspecialResult>("/api/cafe/listas-especiales", new { nombre, notas }))?.Id;
+
+    public async Task<bool> RenombrarListaEspecialAsync(int id, string nombre, string? notas)
+        => await PutAsync<OkResult>($"/api/cafe/listas-especiales/{id}", new { nombre, notas }) is not null;
+
+    public async Task<bool> BorrarListaEspecialAsync(int id)
+        => await DeleteAsync($"/api/cafe/listas-especiales/{id}");
+
+    /// <summary>Devuelve cuántos precios que el cliente ya tenía pactados se reemplazaron.</summary>
+    public async Task<int?> AgregarClienteListaEspecialAsync(int listaId, int clienteId)
+        => (await PostAsync<ListaEspecialResult>($"/api/cafe/listas-especiales/{listaId}/clientes", new { clienteId }))?.Reemplazados;
+
+    public async Task<bool> QuitarClienteListaEspecialAsync(int listaId, int clienteId)
+        => await DeleteAsync($"/api/cafe/listas-especiales/{listaId}/clientes/{clienteId}");
+
+    public async Task<int?> GuardarItemListaEspecialAsync(int listaId, int productoId, string formato, decimal precio)
+        => (await PostAsync<ListaEspecialResult>($"/api/cafe/listas-especiales/{listaId}/items", new { productoId, formato, precio }))?.Reemplazados;
+
+    public async Task<bool> CambiarPrecioItemListaEspecialAsync(int itemId, decimal precio)
+        => await PutAsync<OkResult>($"/api/cafe/listas-especiales/items/{itemId}", new { precio }) is not null;
+
+    public async Task<bool> QuitarItemListaEspecialAsync(int itemId)
+        => await DeleteAsync($"/api/cafe/listas-especiales/items/{itemId}");
+
+    public async Task<byte[]?> PdfListaEspecialAsync(int listaId, List<int> itemIds, int? clienteId)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync($"/api/cafe/listas-especiales/{listaId}/pdf", new { itemIds, clienteId });
+        if (response.IsSuccessStatusCode) return await response.Content.ReadAsByteArrayAsync();
+        await ThrowIfErrorAsync(response);
+        return null;
+    }
+
+    private class ListaEspecialResult { public int Id { get; set; } public int Reemplazados { get; set; } }
     private class GuardarPrecioEspecialResult { public int Id { get; set; } }
     private class OkResult { public bool Ok { get; set; } }
 
