@@ -53,7 +53,7 @@ public class CafeConsultasController : ControllerBase
     /// GET api/cafe/consultas/precio?codigo=C3622AZ
     /// </summary>
     [HttpGet("precio")]
-    public async Task<IActionResult> BuscarPrecio([FromQuery] string codigo)
+    public async Task<IActionResult> BuscarPrecio([FromQuery] string codigo, [FromQuery] bool compuestos = false)
     {
         codigo = (codigo ?? "").Trim();
         if (string.IsNullOrEmpty(codigo))
@@ -64,6 +64,15 @@ public class CafeConsultasController : ControllerBase
             .Include(x => x.MarcaNav)
             .Include(x => x.OemNav)
             .FirstOrDefaultAsync(x => x.Sku == codigo || x.Sku == up);
+        // 2026-10-26: la CalcuPrecios también busca combos/compuestos (C1925VP, C926NEG...). Solo si lo
+        // pide (compuestos=true): el cotizador del chat necesita un ProductoId para pasarlo a venta.
+        if (p is null && compuestos)
+        {
+            var cExacto = await _db.CafeCombos.Include(x => x.OemNav)
+                .Include(x => x.Items).ThenInclude(i => i.ProductoNav)
+                .FirstOrDefaultAsync(x => x.IsActive && (x.Sku == codigo || x.Sku == up));
+            if (cExacto is not null) return Ok(await PrecioComboAsync(cExacto));
+        }
         if (p is null)
         {
             // Fallback: contiene (por SKU o por nombre)
@@ -73,6 +82,15 @@ public class CafeConsultasController : ControllerBase
                 .Where(x => (x.Sku != null && x.Sku.Contains(codigo)) || x.Nombre.Contains(codigo))
                 .OrderBy(x => x.Nombre)
                 .FirstOrDefaultAsync();
+        }
+        if (p is null && compuestos)
+        {
+            var cParecido = await _db.CafeCombos.Include(x => x.OemNav)
+                .Include(x => x.Items).ThenInclude(i => i.ProductoNav)
+                .Where(x => x.IsActive && ((x.Sku != null && x.Sku.Contains(codigo)) || x.Nombre.Contains(codigo)))
+                .OrderBy(x => x.Nombre)
+                .FirstOrDefaultAsync();
+            if (cParecido is not null) return Ok(await PrecioComboAsync(cParecido));
         }
         if (p is null)
             return Ok(new CafePrecioConsultaDto { Encontrado = false, Mensaje = $"No encontré ningún producto con '{codigo}'." });
@@ -159,6 +177,70 @@ public class CafeConsultasController : ControllerBase
         }
 
         return Ok(dto);
+    }
+
+    /// <summary>Tarjeta de precio de un combo/compuesto: costo = suma de las piezas; si es compuesto con
+    /// OEM el sugerido sale del OEM (mismo criterio que Combos/ventas), si no Bar/Comercial = suma de
+    /// las piezas con el motor de ventas. Stock = cuántos se pueden armar.</summary>
+    private async Task<CafePrecioConsultaDto> PrecioComboAsync(CafeCombo c)
+    {
+        var negocio = await _db.CafeSettings.FirstOrDefaultAsync() ?? new CafeSetting();
+        decimal costo = 0m, bar = 0m, com = 0m;
+        int? armables = null;
+        foreach (var it in c.Items)
+        {
+            var prod = it.ProductoNav;
+            if (prod is null) continue;
+            costo += Services.CafePricingService.CalcularCostoUnitario(prod, it.Formato) * it.Cantidad;
+            bar += Services.CafePricingService.CalcularPrecioUnitario(prod, it.Formato, Services.CafePricingService.TIPO_BAR, negocio) * it.Cantidad;
+            com += Services.CafePricingService.CalcularPrecioUnitario(prod, it.Formato, Services.CafePricingService.TIPO_OTRO, negocio) * it.Cantidad;
+            if (it.Cantidad > 0)
+            {
+                var d = prod.StockUnidades / it.Cantidad;
+                armables = armables.HasValue ? Math.Min(armables.Value, d) : d;
+            }
+        }
+        var iva = c.Items.Select(i => i.ProductoNav?.IvaPct ?? 0m).FirstOrDefault(x => x > 0m);
+        if (iva <= 0m) iva = 21m;
+
+        var dto = new CafePrecioConsultaDto
+        {
+            Encontrado = true,
+            Sku = c.Sku ?? "—",
+            Nombre = c.Nombre,
+            Categoria = c.EsCompuesto ? "COMPUESTO" : "COMBO",
+            Marca = c.Marca,
+            Stock = $"{armables ?? 0} para armar",
+            CostoSinIva = Math.Round(costo, 2),
+            IvaPct = iva,
+            Activo = c.IsActive,
+        };
+
+        if (c.EsCompuesto && c.OemNav?.PvpConIva is decimal pvpOem && pvpOem > 0m)
+        {
+            var mult = c.MultiplicadorOem is decimal m && m > 0m ? m : 1m;
+            var cantCaja = c.Items.FirstOrDefault(i => i.ProductoNav?.OemId == c.OemId)?.Cantidad ?? 1;
+            if (cantCaja <= 0) cantCaja = 1;
+            var ivaOem = c.OemNav.IvaPct is decimal io && io > 0m ? io : 21m;
+            var conIva = Math.Round(pvpOem * mult * cantCaja, 2);
+            dto.TieneOem = true;
+            dto.OemCodigo = c.OemNav.Codigo;
+            dto.Precios.Add(new CafePrecioLineaDto
+            {
+                Etiqueta = "Sugerido",
+                SinIva = Math.Round(conIva / (1m + ivaOem / 100m), 2),
+                ConIva = conIva,
+                Nota = $"según OEM {c.OemNav.Codigo}"
+            });
+        }
+        else
+        {
+            if (bar > 0m)
+                dto.Precios.Add(new CafePrecioLineaDto { Etiqueta = "Precio Bar", SinIva = Math.Round(bar, 2), ConIva = Math.Round(bar * (1m + iva / 100m), 2) });
+            if (com > 0m)
+                dto.Precios.Add(new CafePrecioLineaDto { Etiqueta = "Precio Comercial", SinIva = Math.Round(com, 2), ConIva = Math.Round(com * (1m + iva / 100m), 2) });
+        }
+        return dto;
     }
 
     // ============================================================
