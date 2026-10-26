@@ -171,7 +171,8 @@
                         {
                             var esCafe = p.Categoria == "CAFE";
                             var capturado = p;
-                            <tr>
+                            @* 26/10/2026: barrita al costado según el tipo (gris producto, violeta compuesto/pack). *@
+                            <tr class="@(p.EsCompuestoFake ? "tipo-compuesto" : "tipo-producto")">
                                 @if (modoEdicion)
                                 {
                                     <td>
@@ -208,7 +209,7 @@
                                         }
                                     </div>
                                 </td>
-                                <td style="font-family: monospace; font-weight: 700; color: #1d4ed8;">
+                                <td class="sku-tipo" style="font-family: monospace; font-weight: 700; color: #1d4ed8;">
                                     @(p.Sku ?? "—")
                                     @if (!string.IsNullOrEmpty(p.OemCodigo))
                                     {
@@ -1304,7 +1305,7 @@
                         @foreach (var c in encontrados)
                         {
                             var cSel = c;
-                            <div style="padding:0.4rem 0.6rem; cursor:pointer; font-size:0.85rem; border-top:1px solid #f3f4f6;"
+                            <div class="tipo-producto-fila" style="padding:0.4rem 0.6rem; cursor:pointer; font-size:0.85rem; border-top:1px solid #f3f4f6;"
                                  @onclick="() => AgregarParte(cSel)">
                                 <span style="font-family:monospace; font-weight:700;">@c.Sku</span> · @c.Nombre
                                 <span style="color:#6b7280;"> · stock @c.StockUnidades</span>
@@ -1603,6 +1604,14 @@
 }
 
 <style>
+    /* 26/10/2026: tipo de cada renglón con una raya finita a la izquierda (opción A elegida por el dueño).
+       Producto = gris, compuesto/pack = violeta (y su código violeta), combo = naranja. */
+    tr.tipo-producto > td:first-child { box-shadow: inset 3px 0 0 #d1d5db; }
+    tr.tipo-compuesto > td:first-child { box-shadow: inset 3px 0 0 #8b80e0; }
+    tr.tipo-compuesto > td.sku-tipo { color: #4f46b5 !important; }
+    tr.tipo-combo > td:first-child { box-shadow: inset 3px 0 0 #e0a24a; }
+    tr.tipo-combo > td.sku-tipo { color: #a15c07 !important; }
+    .tipo-producto-fila { border-left: 3px solid #d1d5db; }
     .precio-clickeable { cursor: pointer; }
     .precio-clickeable:hover { background: #f0f9ff; }
 </style>
