@@ -36,7 +36,8 @@ public class CafePreciosEspecialesController : ControllerBase
         decimal Precio, decimal PrecioConIva,
         decimal PrecioLista, decimal PrecioListaConIva,
         decimal DiferenciaPct, bool ListaMasBarata,
-        string? Notas, DateTime CreatedAt, DateTime? UpdatedAt, string? CreatedBy);
+        string? Notas, DateTime CreatedAt, DateTime? UpdatedAt, string? CreatedBy,
+        int? ListaId = null, string? ListaNombre = null);
 
     public record FormatoOpcionDto(string Formato, string Label, decimal PrecioLista, decimal PrecioListaConIva);
 
@@ -58,7 +59,7 @@ public class CafePreciosEspecialesController : ControllerBase
     /// <summary>Formatos que tienen sentido para un producto, con el precio de catálogo que
     /// hoy le saldría a ESE cliente. Sirve para que la ficha muestre "hoy paga $X" al lado
     /// del precio que se está pactando.</summary>
-    private static List<FormatoOpcionDto> FormatosDe(CafeProducto p, string tipo, CafeSetting settings)
+    internal static List<FormatoOpcionDto> FormatosDe(CafeProducto p, string tipo, CafeSetting settings)
     {
         var res = new List<FormatoOpcionDto>();
 
@@ -99,14 +100,14 @@ public class CafePreciosEspecialesController : ControllerBase
     /// "bulto · lista $86.000" no dice si son 100 vasos o 1.250, que es justo lo que hace falta
     /// para saber si el precio pactado está bien. El pack ya trae la cantidad en su nombre.
     /// No se toca CafePricingService.FormatoLabel porque esa la usan los PDFs y comprobantes.</summary>
-    private static string LabelFormato(CafeProducto p, string formato)
+    internal static string LabelFormato(CafeProducto p, string formato)
     {
         if (formato == CafePricingService.FORMATO_BULTO && p.UxB is int uxb && uxb > 0)
             return $"bulto x {uxb}";
         return CafePricingService.FormatoLabel(formato);
     }
 
-    private static string NormFormato(string? f)
+    internal static string NormFormato(string? f)
         => string.IsNullOrWhiteSpace(f) ? CafePricingService.FORMATO_UNIT : f.Trim().ToUpperInvariant();
 
     // ─────────────────────────────────────────────────────────────────────
@@ -134,6 +135,12 @@ public class CafePreciosEspecialesController : ControllerBase
             .Where(p => prodIds.Contains(p.Id))
             .ToListAsync();
 
+        // 2026-10-26: de qué lista de Precios especiales viene cada pacto (si viene de una).
+        var listaIds = filas.Where(f => f.ListaId.HasValue).Select(f => f.ListaId!.Value).Distinct().ToList();
+        var listas = await _db.CafeListasEspeciales.AsNoTracking()
+            .Where(l => listaIds.Contains(l.Id))
+            .ToDictionaryAsync(l => l.Id, l => l.Nombre);
+
         var res = new List<PrecioEspecialDto>();
         foreach (var f in filas)
         {
@@ -151,7 +158,8 @@ public class CafePreciosEspecialesController : ControllerBase
                 f.Precio, Math.Round(f.Precio * iva, 2, MidpointRounding.AwayFromZero),
                 lista, Math.Round(lista * iva, 2, MidpointRounding.AwayFromZero),
                 difPct, lista > 0m && lista < f.Precio,
-                f.Notas, f.CreatedAt, f.UpdatedAt, f.CreatedBy));
+                f.Notas, f.CreatedAt, f.UpdatedAt, f.CreatedBy,
+                f.ListaId, f.ListaId is int lid && listas.TryGetValue(lid, out var ln) ? ln : null));
         }
 
         return Ok(res.OrderBy(r => r.ProductoNombre).ThenBy(r => r.Formato).ToList());
@@ -251,6 +259,9 @@ public class CafePreciosEspecialesController : ControllerBase
             fila.Precio = Math.Round(req.Precio, 2, MidpointRounding.AwayFromZero);
             fila.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
             fila.UpdatedAt = DateTime.UtcNow;
+            // Cambiado a mano desde la ficha: deja de seguir a su lista (si no, el próximo
+            // cambio de la lista le pisaría el precio que se le pactó aparte).
+            fila.ListaId = null;
         }
 
         await _db.SaveChangesAsync();
@@ -272,6 +283,7 @@ public class CafePreciosEspecialesController : ControllerBase
         fila.Precio = Math.Round(req.Precio, 2, MidpointRounding.AwayFromZero);
         fila.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
         fila.UpdatedAt = DateTime.UtcNow;
+        fila.ListaId = null; // ver Guardar: el precio cambiado a mano ya no sigue a la lista
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
     }

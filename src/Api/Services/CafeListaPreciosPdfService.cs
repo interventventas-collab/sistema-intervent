@@ -34,7 +34,9 @@ public class CafeListaPreciosPdfService
         _files = files;
     }
 
-    public byte[] GenerarPdf(CafeListaPreciosPreviewDto p)
+    /// <param name="subtitulo">2026-10-26: renglón arriba de la tabla (ej: "Propuesta de precios
+    /// especiales para GNC NUCLEO"). Lo usa Ventas → Precios especiales; las listas comunes no.</param>
+    public byte[] GenerarPdf(CafeListaPreciosPreviewDto p, string? subtitulo = null)
     {
         // Color del cuadradito "LISTA" + linea separadora. NEGRO para BAR, verde para OTRO.
         var tituloColor = p.TipoCliente == "BAR" ? "#000000" : "#15803d";
@@ -170,6 +172,9 @@ public class CafeListaPreciosPdfService
                 // ── CONTENT: por marca ──
                 page.Content().PaddingTop(8).Column(col =>
                 {
+                    if (!string.IsNullOrWhiteSpace(subtitulo))
+                        col.Item().PaddingBottom(4).Text(subtitulo).FontSize(11).Bold();
+
                     if (p.Grupos.Count == 0)
                     {
                         col.Item().PaddingTop(40).AlignCenter().Text("No hay productos para los filtros seleccionados.")

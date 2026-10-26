@@ -41,6 +41,10 @@ public class CafePrecioEspecialCliente
     [MaxLength(300)]
     public string? Notas { get; set; }
 
+    /// <summary>2026-10-26 — Si vino de una lista de Precios especiales, cuál. NULL = pacto
+    /// suelto de este cliente (cargado desde la ficha). Al cambiar la lista se re-copia.</summary>
+    public int? ListaId { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -730,7 +730,12 @@
                                             {
                                                 <span>· @(pe.DiferenciaPct > 0 ? "+" : "")@pe.DiferenciaPct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%</span>
                                             }
-                                            @if (!string.IsNullOrWhiteSpace(pe.Notas))
+                                            @if (!string.IsNullOrWhiteSpace(pe.ListaNombre))
+                                            {
+                                                @* 2026-10-26: viene de Ventas → Precios especiales. Cambiarlo acá lo deja aparte de la lista. *@
+                                                <span title="Si lo cambiás acá, queda como precio propio de este cliente y deja de seguir a la lista">· de la lista <a href="/cafe/precios-especiales">@pe.ListaNombre</a></span>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(pe.Notas))
                                             {
                                                 <span>· @pe.Notas</span>
                                             }

@@ -53,6 +53,8 @@ public class CafeClientesUnificarController : ControllerBase
         new("Cafe_PreciosEspecialesCliente", "ClienteId", "precios pactados",
             "NOT EXISTS (SELECT 1 FROM Cafe_PreciosEspecialesCliente q WHERE q.ClienteId = @queda AND q.ProductoId = t.ProductoId AND q.Formato = t.Formato)"),
         new("Cafe_ListasPreciosCustom", "ClienteId", "listas de precios"),
+        new("Cafe_ListasEspecialesClientes", "ClienteId", "listas de precios especiales",
+            "NOT EXISTS (SELECT 1 FROM Cafe_ListasEspecialesClientes q WHERE q.ClienteId = @queda AND q.ListaId = t.ListaId)"),
         new("Visitas", "ClienteId", "visitas"),
         new("Cafe_PlanesBonificacion", "ClienteId", "plan de bonificación",
             "NOT EXISTS (SELECT 1 FROM Cafe_PlanesBonificacion q WHERE q.ClienteId = @queda)"),

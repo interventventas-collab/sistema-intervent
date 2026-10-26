@@ -1636,6 +1636,10 @@
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/productos"))">
                                 <span class="ico">🏷️</span> Productos
                             </button>
+                            @* 2026-10-26: listas de precios pactados (Núcleo y otros), con propuesta en PDF. *@
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/precios-especiales"))">
+                                <span class="ico">💲</span> Precios especiales
+                            </button>
                             <div class="topbar-empleados-sep"></div>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/clientes"))">
                                 <span class="ico">👤</span> Clientes
@@ -2443,6 +2447,7 @@
         { "mapeo", ("🗺", "Mapa de clientes", "/mapeo") },
         // Catálogo
         { "cafe/productos", ("🏷", "Productos", "/cafe/productos") },
+        { "cafe/precios-especiales", ("💲", "Precios especiales", "/cafe/precios-especiales") },
         { "cafe/skus-meli", ("🛒", "SKUs MeLi", "/cafe/skus-meli") },
         { "cafe/combos", ("🛒", "Combos MeLi", "/cafe/combos") },
         { "cafe/kits", ("📦", "Kits", "/cafe/kits") },
@@ -2780,6 +2785,7 @@
         { "cafe/clientes", "cafe" },
         { "cafe/telefonos-clientes-meli", "cafe" },
         { "cafe/clientes-mapeados", "cafe" },
+        { "cafe/precios-especiales", "cafe" },
         { "cafe/configuracion", "cafe" },
         { "cafe/saldos", "cafe" },
         { "cafe/maquinas", "cafe" },
