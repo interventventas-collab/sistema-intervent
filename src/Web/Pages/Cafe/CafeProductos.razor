@@ -46,6 +46,29 @@
                     <span style="background:@(soloConReserva ? "#d97706" : "#9ca3af"); color:white; padding:0.05rem 0.4rem; border-radius:10px; font-size:0.72rem;">@totalReservados</span>
                 }
             </label>
+            @* 26/10/2026: viejos (-SUELTO-VIEJO de las conversiones) e inactivos, escondidos salvo que se tilden. *@
+            @{
+                var cantViejos = (productos ?? new()).Count(EsViejo);
+                var cantInactivos = (productos ?? new()).Count(x => !x.IsActive && !EsViejo(x));
+            }
+            @if (cantViejos > 0)
+            {
+                <label class="filtro-ver-viejos" style="display:flex; align-items:center; gap:0.3rem; padding:0.35rem 0.7rem; border-radius:6px; border:1px solid #d1d5db; background:@(verViejos ? "#f3f4f6" : "white"); cursor:pointer; font-size:0.85rem; font-weight:600; color:#374151;"
+                       title="Los productos sueltos que quedaron guardados al convertirlos en compuesto o combo (código ...-SUELTO-VIEJO)">
+                    <input type="checkbox" @bind="verViejos" />
+                    🗄 Ver viejos
+                    <span style="background:#9ca3af; color:white; padding:0.05rem 0.4rem; border-radius:10px; font-size:0.72rem;">@cantViejos</span>
+                </label>
+            }
+            @if (cantInactivos > 0)
+            {
+                <label class="filtro-ver-inactivos" style="display:flex; align-items:center; gap:0.3rem; padding:0.35rem 0.7rem; border-radius:6px; border:1px solid #d1d5db; background:@(verInactivos ? "#f3f4f6" : "white"); cursor:pointer; font-size:0.85rem; font-weight:600; color:#374151;"
+                       title="Mostrar también los productos inactivos">
+                    <input type="checkbox" @bind="verInactivos" />
+                    Ver inactivos
+                    <span style="background:#9ca3af; color:white; padding:0.05rem 0.4rem; border-radius:10px; font-size:0.72rem;">@cantInactivos</span>
+                </label>
+            }
             @* 2026-09-07: filtro para revisar de una sentada los costos en dolares que quedaron
                viejos. El boton solo aparece si hay algun producto cargado en dolares, para no
                ensuciar la barra de quien compra todo en pesos. *@
@@ -1781,6 +1804,10 @@
     private bool soloDolarDesactualizado;
     // 2026-06-15: filtro "solo con reserva" (ventas MeLi pendientes de despacho)
     private bool soloConReserva = false;
+    // 26/10/2026: ocultos por defecto (pedido del dueño).
+    private bool verViejos = false;
+    private bool verInactivos = false;
+    private static bool EsViejo(CafeProductoDto p) => (p.Sku ?? "").Contains("-SUELTO-VIEJO", StringComparison.OrdinalIgnoreCase);
 
     // 2026-09-02: precios de 1/2 y 1/4 kg debajo del precio por kilo (solo CAFE). Pedido de Osmar:
     // "los cafes se venden x 1 kg, 1/2 kg y 1/4 kg, estaria bueno que me aparezca tambien el precio".
@@ -2120,6 +2147,12 @@
                 bool h(string? s) => s.MatchesSearch(t);
                 q = q.Where(p => h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca) || h(p.Composicion));
             }
+            // 26/10/2026: los "-SUELTO-VIEJO" (lo que quedó al convertir en compuesto/combo) y los inactivos
+            // no se ven salvo que se tilde "Ver viejos" / "Ver inactivos".
+            if (!verViejos)
+                q = q.Where(p => !EsViejo(p));
+            if (!verInactivos)
+                q = q.Where(p => p.IsActive || EsViejo(p));
             // 2026-06-15: filtro solo con reserva (ventas MeLi pendientes de despacho)
             if (soloConReserva)
                 q = q.Where(p => reservasPorProducto.TryGetValue(p.Id, out var r) && r > 0);
