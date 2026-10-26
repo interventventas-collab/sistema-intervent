@@ -1171,8 +1171,12 @@ public class CafeProductosController : ControllerBase
     /// suelto queda inactivo con el SKU "-SUELTO-VIEJO" (para que no choque). Las ventas viejas quedan
     /// con el suelto. Si tiene stock o es parte de otro armado, no deja: hay que resolverlo primero.</summary>
     public record ConvertirCompuestoItem(int ProductoId, int Cantidad);
-    /// <summary>26/10/2026: EsCompuesto=false lo convierte en COMBO (pasa a la pantalla Combos) en vez de compuesto.</summary>
-    public record ConvertirCompuestoRequest(List<ConvertirCompuestoItem> Items, bool EsCompuesto = true);
+    /// <summary>26/10/2026: EsCompuesto=false lo convierte en COMBO (pasa a la pantalla Combos) en vez de compuesto.
+    /// 26/10/2026: StockPartes = stock FINAL de cada parte que el usuario repasó en la ventana. Con eso el armado
+    /// se puede convertir aunque tenga stock: queda en 0 y las partes con lo que se cargó, todo en el mismo
+    /// guardado (antes había que dejarlo en 0 a mano y MeLi pausaba la publicación en ese momento).</summary>
+    public record ConvertirStockParte(int ProductoId, int Stock);
+    public record ConvertirCompuestoRequest(List<ConvertirCompuestoItem> Items, bool EsCompuesto = true, List<ConvertirStockParte>? StockPartes = null);
 
     [HttpPost("{id:int}/convertir-compuesto")]
     public async Task<IActionResult> ConvertirEnCompuesto(int id, [FromBody] ConvertirCompuestoRequest req,
@@ -1196,9 +1200,19 @@ public class CafeProductosController : ControllerBase
 
         if (await _db.CafeCombos.AnyAsync(c => c.Sku == sku))
             return BadRequest(new { error = $"Ya hay un combo o compuesto con el SKU {sku}." });
-        var stockDep = await _db.CafeStockPorDeposito.Where(s => s.ProductoId == id).SumAsync(s => (int?)s.StockUnidades) ?? 0;
-        if (p.StockUnidades != 0 || stockDep != 0 || p.StockGramos != 0)
-            return BadRequest(new { error = $"Tiene stock ({Math.Max(p.StockUnidades, stockDep)} u.). Pasalo a sus partes o dejalo en 0 antes de convertirlo." });
+        // El stock PROPIO del armado se resuelve acá mismo (queda en 0 y las partes con lo que cargó el usuario).
+        // El de Full está en el depósito de MeLi y no se puede mover desde acá: ese sí bloquea.
+        var filasDep = await _db.CafeStockPorDeposito.Where(s => s.ProductoId == id)
+            .Join(_db.CafeDepositos, s => s.DepositoId, d => d.Id, (s, d) => new { Fila = s, DepNombre = d.Nombre }).ToListAsync();
+        var enFull = filasDep.Where(x => x.DepNombre == "Full MeLi").Sum(x => x.Fila.StockUnidades);
+        if (enFull != 0)
+            return BadRequest(new { error = $"Tiene {enFull} u. en Full de MercadoLibre: eso no se puede pasar a las partes desde acá." });
+        if (p.StockGramos != 0)
+            return BadRequest(new { error = "Tiene stock en kilos: dejalo en 0 antes de convertirlo." });
+        var stockArmado = Math.Max(p.StockUnidades, filasDep.Sum(x => x.Fila.StockUnidades));
+        var stockPartes = (req.StockPartes ?? new()).Where(s => compIds.Contains(s.ProductoId))
+            .GroupBy(s => s.ProductoId).ToDictionary(g => g.Key, g => g.Last().Stock);
+        if (stockPartes.Values.Any(v => v < 0)) return BadRequest(new { error = "El stock de una parte no puede ser negativo." });
         var enArmados = await _db.CafeComboItems.Where(ci => ci.ProductoId == id)
             .Select(ci => ci.ComboNav!.Sku ?? ci.ComboNav!.Nombre).Distinct().ToListAsync();
         if (enArmados.Count > 0)
@@ -1239,6 +1253,40 @@ public class CafeProductosController : ControllerBase
             _db.MeliItemComponentes.Remove(c);
         }
 
+        // Stock: las partes quedan con lo que cargó el usuario y el armado en 0, en el MISMO guardado.
+        var quien = User?.Identity?.Name;
+        var tipoTxt = req.EsCompuesto ? "compuesto" : "combo";
+        var partesTocadas = new List<int>();
+        foreach (var (pid, nuevo) in stockPartes)
+        {
+            var comp = comps[pid];
+            var antes = comp.StockUnidades;
+            if (antes == nuevo) continue;
+            comp.StockUnidades = nuevo;
+            comp.UpdatedAt = DateTime.UtcNow;
+            comp.StockChangedAt = DateTime.UtcNow;
+            await CafeStockHelper.SyncStockPorDepositoAsync(_db, comp);
+            _db.StockMovimientos.Add(new StockMovimiento
+            {
+                ProductoId = pid, OperadorNombreSnap = quien, DepositoNombreSnap = "9 de Abril", TipoMov = "SET",
+                Cantidad = Math.Abs(nuevo - antes), StockAntes = antes, StockDespues = nuevo,
+                Comentario = $"Repasado al convertir {sku} en {tipoTxt}", CreatedAt = DateTime.UtcNow
+            });
+            partesTocadas.Add(pid);
+        }
+        if (stockArmado != 0)
+        {
+            _db.StockMovimientos.Add(new StockMovimiento
+            {
+                ProductoId = id, OperadorNombreSnap = quien, DepositoNombreSnap = "9 de Abril", TipoMov = "SET",
+                Cantidad = Math.Abs(stockArmado), StockAntes = stockArmado, StockDespues = 0,
+                Comentario = $"Convertido en {tipoTxt}: su stock pasa a las partes", CreatedAt = DateTime.UtcNow
+            });
+            p.StockUnidades = 0;
+            foreach (var f in filasDep) { f.Fila.StockUnidades = 0; f.Fila.UpdatedAt = DateTime.UtcNow; }
+            // Sin StockChangedAt: el suelto viejo ya no tiene publicaciones y no hay que mandarle 0 a nadie.
+        }
+
         var skuViejo = sku + "-SUELTO-VIEJO";
         var n = 2;
         while (await _db.CafeProductos.AnyAsync(x => x.Sku == skuViejo)) skuViejo = $"{sku}-SUELTO-VIEJO{n++}";
@@ -1249,8 +1297,26 @@ public class CafeProductosController : ControllerBase
         var publis = directas.Select(m => m.MeliItemId).Concat(viaComp.Select(c => c.MeliItemId)).Distinct().ToList();
         await audit.LogAsync("CafeProducto", id.ToString(), "CONVERTIR_COMPUESTO",
             $"{sku} pasó a {(req.EsCompuesto ? "compuesto" : "combo")} #{combo.Id} = " + string.Join(" + ", items.Select(i => $"{(i.Cantidad > 1 ? i.Cantidad + "x " : "")}{comps[i.ProductoId].Sku}"))
-            + $"; publicaciones: {(publis.Count == 0 ? "ninguna" : string.Join(", ", publis))}; el suelto quedó inactivo como {skuViejo}",
+            + $"; publicaciones: {(publis.Count == 0 ? "ninguna" : string.Join(", ", publis))}; el suelto quedó inactivo como {skuViejo}"
+            + (stockArmado != 0 || partesTocadas.Count > 0
+                ? $"; stock: armado {stockArmado}→0" + string.Concat(partesTocadas.Select(pid => $", {comps[pid].Sku} → {comps[pid].StockUnidades}"))
+                : ""),
             User?.Identity?.Name);
+
+        // MeLi: las publicaciones ahora descuentan las partes → mandarles el stock nuevo ya (sin pasar por 0).
+        if (publis.Count > 0)
+        {
+            var scopeFactory = _scopeFactory;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<MeliStockPushService>().PushStockForMeliItemsAsync(publis);
+                }
+                catch { /* el background de stock lo reintenta por StockChangedAt de las partes */ }
+            });
+        }
 
         return Ok(new { comboId = combo.Id, sku, skuViejo, publicaciones = publis });
     }
