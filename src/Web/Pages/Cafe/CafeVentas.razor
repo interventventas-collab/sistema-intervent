@@ -5051,12 +5051,19 @@
 
                 @if (addItemModalMode == "PRODUCTO" && addItemModalCategoria == "CAFE")
                 {
-                    <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.78rem; color:#374151; cursor:pointer; margin-top:-0.2rem;"
-                           title="Los próximos cafés que agregues en esta venta ya vienen con este formato, molienda y envase">
-                        <input type="checkbox" @bind="fijoVenta" @bind:after="OnFijoVentaChanged" />
-                        Dejar fijo en esta venta
-                        <span style="color:#6b7280;">· los próximos cafés vienen así</span>
-                    </label>
+                    <div style="display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; font-size:0.78rem; color:#374151; margin-top:-0.2rem;"
+                         title="Lo que tildes queda igual en los próximos cafés que agregues en esta venta">
+                        <span>Dejar fijo en esta venta:</span>
+                        <label style="display:flex; align-items:center; gap:0.25rem; cursor:pointer;">
+                            <input type="checkbox" @bind="fijoPesoOn" @bind:after="OnFijoVentaChanged" /> peso
+                        </label>
+                        <label style="display:flex; align-items:center; gap:0.25rem; cursor:pointer;">
+                            <input type="checkbox" @bind="fijoMoliendaOn" @bind:after="OnFijoVentaChanged" /> molienda
+                        </label>
+                        <label style="display:flex; align-items:center; gap:0.25rem; cursor:pointer;">
+                            <input type="checkbox" @bind="fijoEnvaseOn" @bind:after="OnFijoVentaChanged" /> envase
+                        </label>
+                    </div>
                 }
 
                 @* 2026-09-17: descuento por adelantado. Va al DESC % del renglón que se agrega (se puede
@@ -8042,7 +8049,7 @@
         preciosEspecialesClienteId = -1; bonifVenta = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         addMolienda = "EN GRANOS"; addEnvase = "NEGRO";
-        fijoVenta = false; fijoFormato = fijoMolienda = fijoEnvase = null;   // 26/10/2026
+        fijoPesoOn = fijoMoliendaOn = fijoEnvaseOn = false; fijoFormato = fijoMolienda = fijoEnvase = null;   // 26/10/2026
         productoSearch = ""; productoSearchOpen = false;
         addMode = "PRODUCTO";
         addComboId = 0; addComboCantidad = 1;
@@ -10187,22 +10194,23 @@
     // 26/10/2026: "en esta venta van todos de 1/4 molido filtro". Tilde en el cartel de agregar café:
     // mientras está puesto, cada café nuevo abre con el formato, molienda y envase del último que se
     // agregó. Dura lo que dura la venta (al arrancar otra o abrir una para editar se destilda).
-    private bool fijoVenta;
+    // Un tilde por cosa: peso, molienda y envase se fijan por separado.
+    private bool fijoPesoOn, fijoMoliendaOn, fijoEnvaseOn;
     private string? fijoFormato, fijoMolienda, fijoEnvase;
+    private bool HayFijo => fijoPesoOn || fijoMoliendaOn || fijoEnvaseOn;
 
     private void AplicarFijoVentaModal()
     {
-        if (!fijoVenta || fijoFormato is null || addItemModalCategoria != "CAFE") return;
-        addItemModalFormato = fijoFormato;
-        AplicarDefaultEnvaseModal();
+        if (!HayFijo || fijoFormato is null || addItemModalCategoria != "CAFE") return;
+        if (fijoPesoOn) { addItemModalFormato = fijoFormato; AplicarDefaultEnvaseModal(); }
         // La molienda o el envase propios del café (ej. FT) siguen mandando.
-        if (MoliendaFijaDe(addProductoId) is null && fijoMolienda is not null) addItemModalMolienda = fijoMolienda;
-        if (EnvaseFijoDe(addProductoId) is null && fijoEnvase is not null) addItemModalEnvase = fijoEnvase;
+        if (fijoMoliendaOn && MoliendaFijaDe(addProductoId) is null && fijoMolienda is not null) addItemModalMolienda = fijoMolienda;
+        if (fijoEnvaseOn && EnvaseFijoDe(addProductoId) is null && fijoEnvase is not null) addItemModalEnvase = fijoEnvase;
     }
 
     private void OnFijoVentaChanged()
     {
-        if (fijoVenta) (fijoFormato, fijoMolienda, fijoEnvase) = (addItemModalFormato, addItemModalMolienda, addItemModalEnvase);
+        if (HayFijo) (fijoFormato, fijoMolienda, fijoEnvase) = (addItemModalFormato, addItemModalMolienda, addItemModalEnvase);
     }
 
     private void CerrarAddItemModal()
@@ -10223,7 +10231,7 @@
             addMolienda = addItemModalMolienda;
             addEnvase = addItemModalEnvase;
             // 26/10/2026: con el tilde puesto, lo que se acaba de agregar pasa a ser lo fijo.
-            if (fijoVenta && addItemModalCategoria == "CAFE")
+            if (HayFijo && addItemModalCategoria == "CAFE")
                 (fijoFormato, fijoMolienda, fijoEnvase) = (addItemModalFormato, addItemModalMolienda, addItemModalEnvase);
             // 2026-07-03: skipDomReRead=true asi AddItem NO relee molienda/envase
             // del <select> inline (que sigue con los defaults viejos) y respeta lo
@@ -11754,7 +11762,7 @@
         }).ToList();
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         addMolienda = "EN GRANOS"; addEnvase = "NEGRO";
-        fijoVenta = false; fijoFormato = fijoMolienda = fijoEnvase = null;   // 26/10/2026
+        fijoPesoOn = fijoMoliendaOn = fijoEnvaseOn = false; fijoFormato = fijoMolienda = fijoEnvase = null;   // 26/10/2026
         productoSearch = ""; productoSearchOpen = false;
         addMode = "PRODUCTO";
         addComboId = 0; addComboCantidad = 1;
