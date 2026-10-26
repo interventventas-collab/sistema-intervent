@@ -3124,8 +3124,8 @@ public class ApiClient
     public async Task<CafeConsultaResultDto?> ConsultarCafeAsync(string query)
         => await PostAsync<CafeConsultaResultDto>("/api/cafe/consultas", new CafeConsultaRequest { Query = query });
 
-    public async Task<CafePrecioConsultaDto?> BuscarPrecioCafeAsync(string codigo)
-        => await GetAsync<CafePrecioConsultaDto>($"/api/cafe/consultas/precio?codigo={Uri.EscapeDataString(codigo)}");
+    public async Task<CafePrecioConsultaDto?> BuscarPrecioCafeAsync(string codigo, bool compuestos = false)
+        => await GetAsync<CafePrecioConsultaDto>($"/api/cafe/consultas/precio?codigo={Uri.EscapeDataString(codigo)}{(compuestos ? "&compuestos=true" : "")}");
 
     // --- Cotejo MeLi <-> Contabilium ---
     public async Task<CotejoImportResultDto?> ImportContabiliumStagingAsync()

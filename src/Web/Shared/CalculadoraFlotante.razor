@@ -676,7 +676,7 @@
             await BuscarProducto();
     }
 
-    // Busca mientras se escribe: filtra el catálogo en memoria (solo productos, no combos)
+    // Busca mientras se escribe: filtra el catálogo en memoria (productos y, desde 26/10, combos/compuestos)
     // y muestra hasta 8 coincidencias. Mismo comportamiento que el buscador de Nueva Venta.
     private void OnCodigoInput(ChangeEventArgs e)
     {
@@ -688,7 +688,7 @@
     {
         var q = codigoBusq.Trim();
         if (q.Length < 2 || !catalogoCargado) { sugerencias = new(); return; }
-        sugerencias = Catalog.Search(q, 8, it => it.Tipo == "producto")
+        sugerencias = Catalog.Search(q, 8, it => it.Tipo == "producto" || it.Tipo == "combo")
             .Select(h => h.Item).ToList();
     }
 
@@ -706,7 +706,7 @@
         sugerencias = new();
         try
         {
-            prodResult = await Api.BuscarPrecioCafeAsync(codigoBusq.Trim());
+            prodResult = await Api.BuscarPrecioCafeAsync(codigoBusq.Trim(), compuestos: true);
             if (prodResult is not null && prodResult.Encontrado)
             {
                 // Precarga el costo y el IVA del producto para el cálculo por %.
