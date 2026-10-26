@@ -1999,13 +1999,13 @@ public class ApiClient
         => await GetAsync<ConfigCorreoAlertasDto>("/api/mis-alertas/config-correo");
 
     /// <summary>10/10/2026: producto suelto → compuesto con el mismo SKU (ver CafeProductosController).</summary>
-    public async Task<(bool ok, string? error)> ConvertirProductoEnCompuestoAsync(int productoId, List<(int productoId, int cantidad)> partes)
+    public async Task<(bool ok, string? error)> ConvertirProductoEnCompuestoAsync(int productoId, List<(int productoId, int cantidad)> partes, bool esCompuesto = true)
     {
         try
         {
             await SetAuthHeaderAsync();
             var resp = await _http.PostAsJsonAsync($"/api/cafe/productos/{productoId}/convertir-compuesto",
-                new { Items = partes.Select(x => new { ProductoId = x.productoId, Cantidad = x.cantidad }).ToList() });
+                new { Items = partes.Select(x => new { ProductoId = x.productoId, Cantidad = x.cantidad }).ToList(), EsCompuesto = esCompuesto });
             return resp.IsSuccessStatusCode ? (true, null) : (false, await ExtraerError(resp));
         }
         catch (Exception ex) { return (false, ex.Message); }

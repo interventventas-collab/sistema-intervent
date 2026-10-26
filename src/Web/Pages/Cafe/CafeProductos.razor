@@ -232,6 +232,15 @@
                                             }
                                         </div>
                                     }
+                                    else
+                                    {
+                                        @* 26/10/2026: los sueltos también dicen qué son; tocándolo se convierte en compuesto o combo. *@
+                                        <div style="margin-bottom:0.2rem;">
+                                            <span class="chip-producto-suelto" @onclick="() => AbrirConvertirDesde(p)" @onclick:stopPropagation="true"
+                                                  style="display:inline-block; padding:0.1rem 0.45rem; background:#f0fdf4; color:#166534; border:1px solid #86efac; border-radius:999px; font-size:0.65rem; font-weight:800; letter-spacing:0.02em; cursor:pointer;"
+                                                  title="Producto suelto — tocalo para convertirlo en compuesto o combo">🟢 PRODUCTO ▾</span>
+                                        </div>
+                                    }
                                     @if (modoEdicion && !p.EsCompuestoFake)
                                     {
                                         <input class="form-input" style="font-size:0.85rem;"
@@ -1240,7 +1249,7 @@
                 @if (isEditing && editingId.HasValue)
                 {
                     <button class="btn btn-secondary" style="margin-right:auto;" @onclick="AbrirConvertir" disabled="@saving"
-                            title="Pasa a ser un armado de varias partes, con el mismo código">Convertir en compuesto</button>
+                            title="Pasa a ser un compuesto o un combo de varias partes, con el mismo código">Convertir en compuesto o combo</button>
                 }
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
                 <button class="btn btn-primary" @onclick="Save" disabled="@saving">
@@ -1256,7 +1265,7 @@
     <div class="modal-overlay" style="z-index:9100;" @onclick="() => { if (!convirtiendo) convertirDe = null; }">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 620px;">
             <div class="modal-header" style="background: whitesmoke;">
-                <h3 style="margin:0;">Convertir en compuesto</h3>
+                <h3 style="margin:0;">Convertir producto</h3>
                 <button class="btn-close" @onclick="() => convertirDe = null" disabled="@convirtiendo">&times;</button>
             </div>
             <div class="modal-body">
@@ -1267,6 +1276,20 @@
                 {
                     <div class="form-error">@convertirError</div>
                 }
+
+                <label class="form-label">¿En qué lo convertís?</label>
+                <div style="display:flex; gap:0.5rem; margin-bottom:0.9rem;">
+                    <div class="conv-tipo @(convertirACompuesto ? "sel" : "")" @onclick="() => convertirACompuesto = true"
+                         style="flex:1; border:1.5px solid @(convertirACompuesto ? "#7F77DD" : "#d1d5db"); background:@(convertirACompuesto ? "#f7f7ff" : "#fff"); border-radius:8px; padding:0.5rem 0.65rem; cursor:pointer;">
+                        <b style="display:block; font-size:0.85rem;">🟣 Compuesto</b>
+                        <span style="font-size:0.74rem; color:#4b5563;">Un producto armado con piezas (cajón + tapa + 4 ruedas). Se sigue viendo en Productos y en la venta como un producto más.</span>
+                    </div>
+                    <div class="conv-tipo @(!convertirACompuesto ? "sel" : "")" @onclick="() => convertirACompuesto = false"
+                         style="flex:1; border:1.5px solid @(!convertirACompuesto ? "#7F77DD" : "#d1d5db"); background:@(!convertirACompuesto ? "#f7f7ff" : "#fff"); border-radius:8px; padding:0.5rem 0.65rem; cursor:pointer;">
+                        <b style="display:block; font-size:0.85rem;">🎁 Combo</b>
+                        <span style="font-size:0.74rem; color:#4b5563;">Varios productos que se venden juntos (cesto + 100 bolsas). Pasa a la pantalla Combos.</span>
+                    </div>
+                </div>
 
                 <label class="form-label">¿De qué partes está hecho?</label>
                 <input class="form-input" @bind="convertirBuscar" @bind:event="oninput" placeholder="Buscá por código o nombre, ej: C2144BEI" autofocus />
@@ -1312,9 +1335,10 @@
 
                 <div style="margin-top:0.9rem; font-size:0.82rem; color:#374151; line-height:1.5;">
                     Al convertirlo:<br />
-                    · se crea el compuesto <b>@convertirDe.Sku</b> con estas partes, mismo nombre y misma foto<br />
+                    · se crea el @(convertirACompuesto ? "compuesto" : "combo") <b>@convertirDe.Sku</b> con estas partes, mismo nombre y misma foto@(convertirACompuesto ? "" : " (lo vas a encontrar en la pantalla Combos)")<br />
                     · sus publicaciones de MercadoLibre pasan a descontar las partes del stock<br />
-                    · este producto suelto queda inactivo como <span style="font-family:monospace;">@(convertirDe.Sku)-SUELTO-VIEJO</span>; sus ventas viejas no se tocan
+                    · este producto suelto queda inactivo como <span style="font-family:monospace;">@(convertirDe.Sku)-SUELTO-VIEJO</span>; sus ventas viejas no se tocan<br />
+                    · si tiene stock no deja: primero hay que pasar ese stock a las partes@((convertirDe.StockPropio ?? convertirDe.StockUnidades) is var stConv && stConv != 0 ? $" (tiene {stConv} u.)" : "")
                 </div>
             </div>
             <div class="modal-footer">
@@ -2677,6 +2701,7 @@
     // ── 10/10/2026: convertir un producto suelto en compuesto ──
     private class ParteConvertir { public CafeProductoDto Producto { get; set; } = null!; public int Cantidad { get; set; } = 1; }
     private CafeProductoDto? convertirDe;
+    private bool convertirACompuesto = true;
     private List<ParteConvertir> convertirPartes = new();
     private string convertirBuscar = "";
     private string? convertirError;
@@ -2686,7 +2711,15 @@
     {
         var p = productos?.FirstOrDefault(x => x.Id == editingId && !x.EsCompuestoFake);
         if (p is null) return;
-        convertirDe = p; convertirPartes = new(); convertirBuscar = ""; convertirError = null;
+        convertirDe = p; convertirPartes = new(); convertirBuscar = ""; convertirError = null; convertirACompuesto = true;
+    }
+
+    // 26/10/2026: desde el cartelito 🟢 PRODUCTO de la lista, sin abrir la ficha.
+    private void AbrirConvertirDesde(CafeProductoDto p)
+    {
+        if (p.EsCompuestoFake) return;
+        if (!p.IsActive) { ToastService.Error("Está inactivo: activalo antes de convertirlo."); return; }
+        convertirDe = p; convertirPartes = new(); convertirBuscar = ""; convertirError = null; convertirACompuesto = true;
     }
 
     private IEnumerable<CafeProductoDto> CandidatosParte()
@@ -2710,10 +2743,10 @@
         if (convertirDe is null || convertirPartes.Count == 0) return;
         convirtiendo = true; convertirError = null;
         var (ok, error) = await Api.ConvertirProductoEnCompuestoAsync(convertirDe.Id,
-            convertirPartes.Select(x => (x.Producto.Id, x.Cantidad)).ToList());
+            convertirPartes.Select(x => (x.Producto.Id, x.Cantidad)).ToList(), convertirACompuesto);
         convirtiendo = false;
         if (!ok) { convertirError = error ?? "No se pudo convertir."; return; }
-        ToastService.Success($"{convertirDe.Sku} ahora es compuesto: " + string.Join(" + ", convertirPartes.Select(x => (x.Cantidad > 1 ? x.Cantidad + "x " : "") + x.Producto.Sku)));
+        ToastService.Success($"{convertirDe.Sku} ahora es {(convertirACompuesto ? "compuesto" : "combo")}: " + string.Join(" + ", convertirPartes.Select(x => (x.Cantidad > 1 ? x.Cantidad + "x " : "") + x.Producto.Sku)));
         convertirDe = null;
         CloseForm();
         await Load();

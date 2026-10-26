@@ -1171,7 +1171,8 @@ public class CafeProductosController : ControllerBase
     /// suelto queda inactivo con el SKU "-SUELTO-VIEJO" (para que no choque). Las ventas viejas quedan
     /// con el suelto. Si tiene stock o es parte de otro armado, no deja: hay que resolverlo primero.</summary>
     public record ConvertirCompuestoItem(int ProductoId, int Cantidad);
-    public record ConvertirCompuestoRequest(List<ConvertirCompuestoItem> Items);
+    /// <summary>26/10/2026: EsCompuesto=false lo convierte en COMBO (pasa a la pantalla Combos) en vez de compuesto.</summary>
+    public record ConvertirCompuestoRequest(List<ConvertirCompuestoItem> Items, bool EsCompuesto = true);
 
     [HttpPost("{id:int}/convertir-compuesto")]
     public async Task<IActionResult> ConvertirEnCompuesto(int id, [FromBody] ConvertirCompuestoRequest req,
@@ -1208,8 +1209,8 @@ public class CafeProductosController : ControllerBase
         var combo = new CafeCombo
         {
             Nombre = p.Nombre, Sku = sku, Marca = p.Marca, Categoria = p.Categoria,
-            IsActive = true, CreatedAt = DateTime.UtcNow, EsCompuesto = true,
-            OemId = p.OemId, MultiplicadorOem = p.OemId != null ? 1m : null,
+            IsActive = true, CreatedAt = DateTime.UtcNow, EsCompuesto = req.EsCompuesto,
+            OemId = req.EsCompuesto ? p.OemId : null, MultiplicadorOem = req.EsCompuesto && p.OemId != null ? 1m : null,
             FotoPropiaArchivo = foto?.FotoPropiaArchivo, FotoPropiaAt = foto?.FotoPropiaArchivo != null ? DateTime.UtcNow : null,
             ImportSource = $"CONVERTIDO_DESDE_PRODUCTO_{id}",
             Notas = $"Convertido el {DateTime.UtcNow.AddHours(-3):dd/MM/yyyy} desde el producto suelto #{id}"
@@ -1247,7 +1248,7 @@ public class CafeProductosController : ControllerBase
 
         var publis = directas.Select(m => m.MeliItemId).Concat(viaComp.Select(c => c.MeliItemId)).Distinct().ToList();
         await audit.LogAsync("CafeProducto", id.ToString(), "CONVERTIR_COMPUESTO",
-            $"{sku} pasó a compuesto #{combo.Id} = " + string.Join(" + ", items.Select(i => $"{(i.Cantidad > 1 ? i.Cantidad + "x " : "")}{comps[i.ProductoId].Sku}"))
+            $"{sku} pasó a {(req.EsCompuesto ? "compuesto" : "combo")} #{combo.Id} = " + string.Join(" + ", items.Select(i => $"{(i.Cantidad > 1 ? i.Cantidad + "x " : "")}{comps[i.ProductoId].Sku}"))
             + $"; publicaciones: {(publis.Count == 0 ? "ninguna" : string.Join(", ", publis))}; el suelto quedó inactivo como {skuViejo}",
             User?.Identity?.Name);
 
