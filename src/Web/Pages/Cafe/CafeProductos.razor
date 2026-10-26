@@ -1316,6 +1316,12 @@
                 @if (convertirPartes.Count > 0)
                 {
                     <table style="width:100%; margin-top:0.75rem; font-size:0.88rem; border-collapse:collapse;">
+                        <tr style="font-size:0.72rem; color:#6b7280;">
+                            <td></td>
+                            <td style="text-align:right; padding-bottom:0.2rem;">cuántas</td>
+                            <td style="text-align:right; padding-bottom:0.2rem;" title="Stock de esta parte en el depósito. Corregilo si hace falta: se graba al convertir.">stock</td>
+                            <td></td>
+                        </tr>
                         @foreach (var parte in convertirPartes)
                         {
                             var pSel = parte;
@@ -1324,6 +1330,15 @@
                                 <td style="width:80px; text-align:right;">
                                     <input type="number" min="1" class="form-input" style="width:64px; padding:0.2rem 0.35rem; text-align:right;"
                                            value="@parte.Cantidad" @onchange="e => pSel.Cantidad = int.TryParse(e.Value?.ToString(), out var q) && q > 0 ? q : 1" />
+                                </td>
+                                <td style="width:96px; text-align:right;">
+                                    <input type="number" min="0" class="form-input conv-stock" style="width:80px; padding:0.2rem 0.35rem; text-align:right; @(pSel.Stock != pSel.StockOriginal ? "border-color:#2563eb; font-weight:700;" : "")"
+                                           title="Stock actual: @pSel.StockOriginal u."
+                                           value="@parte.Stock" @onchange="e => pSel.Stock = int.TryParse(e.Value?.ToString(), out var st) && st >= 0 ? st : pSel.StockOriginal" />
+                                    @if (pSel.Stock != pSel.StockOriginal)
+                                    {
+                                        <div style="font-size:0.68rem; color:#6b7280;">antes @pSel.StockOriginal</div>
+                                    }
                                 </td>
                                 <td style="width:32px; text-align:right;">
                                     <button class="btn-icon" title="Sacar" @onclick="() => convertirPartes.Remove(pSel)">✕</button>
@@ -1338,7 +1353,14 @@
                     · se crea el @(convertirACompuesto ? "compuesto" : "combo") <b>@convertirDe.Sku</b> con estas partes, mismo nombre y misma foto@(convertirACompuesto ? "" : " (lo vas a encontrar en la pantalla Combos)")<br />
                     · sus publicaciones de MercadoLibre pasan a descontar las partes del stock<br />
                     · este producto suelto queda inactivo como <span style="font-family:monospace;">@(convertirDe.Sku)-SUELTO-VIEJO</span>; sus ventas viejas no se tocan<br />
-                    · si tiene stock no deja: primero hay que pasar ese stock a las partes@((convertirDe.StockPropio ?? convertirDe.StockUnidades) is var stConv && stConv != 0 ? $" (tiene {stConv} u.)" : "")
+                    @if ((convertirDe.StockPropio ?? convertirDe.StockUnidades) is var stConv && stConv != 0)
+                    {
+                        <span>· sus <b>@stConv u.</b> quedan en 0 y las partes quedan con el stock que pusiste arriba, todo junto: la publicación no pasa por 0 y no se pausa</span>
+                    }
+                    else
+                    {
+                        <span>· las partes quedan con el stock que pusiste arriba</span>
+                    }
                 </div>
             </div>
             <div class="modal-footer">
@@ -2699,7 +2721,14 @@
     }
 
     // ── 10/10/2026: convertir un producto suelto en compuesto ──
-    private class ParteConvertir { public CafeProductoDto Producto { get; set; } = null!; public int Cantidad { get; set; } = 1; }
+    private class ParteConvertir
+    {
+        public CafeProductoDto Producto { get; set; } = null!;
+        public int Cantidad { get; set; } = 1;
+        // 26/10/2026: stock de la parte, para repasarlo en la misma ventana (se graba al convertir).
+        public int StockOriginal { get; set; }
+        public int Stock { get; set; }
+    }
     private CafeProductoDto? convertirDe;
     private bool convertirACompuesto = true;
     private List<ParteConvertir> convertirPartes = new();
@@ -2734,7 +2763,7 @@
 
     private void AgregarParte(CafeProductoDto p)
     {
-        convertirPartes.Add(new ParteConvertir { Producto = p });
+        convertirPartes.Add(new ParteConvertir { Producto = p, StockOriginal = p.StockUnidades, Stock = p.StockUnidades });
         convertirBuscar = "";
     }
 
@@ -2743,7 +2772,8 @@
         if (convertirDe is null || convertirPartes.Count == 0) return;
         convirtiendo = true; convertirError = null;
         var (ok, error) = await Api.ConvertirProductoEnCompuestoAsync(convertirDe.Id,
-            convertirPartes.Select(x => (x.Producto.Id, x.Cantidad)).ToList(), convertirACompuesto);
+            convertirPartes.Select(x => (x.Producto.Id, x.Cantidad)).ToList(), convertirACompuesto,
+            convertirPartes.Select(x => (x.Producto.Id, x.Stock)).ToList());
         convirtiendo = false;
         if (!ok) { convertirError = error ?? "No se pudo convertir."; return; }
         ToastService.Success($"{convertirDe.Sku} ahora es {(convertirACompuesto ? "compuesto" : "combo")}: " + string.Join(" + ", convertirPartes.Select(x => (x.Cantidad > 1 ? x.Cantidad + "x " : "") + x.Producto.Sku)));
