@@ -2688,26 +2688,9 @@ public class CafeVentasController : ControllerBase
         // que va a descontar stock OTRA VEZ, terminamos con doble descuento (y peor: el cotizador
         // interno del Create dice "no hay stock" si el inventario disponible quedo justo). Solucion:
         // DEVOLVER el stock de la X antes de llamar a Create. Si Create falla, restauramos.
-        var stockSnapshots = new List<(int prodId, decimal gramos, int unidades)>();
-        foreach (var it in original.Items)
-        {
-            if (it.EsConceptoLibre || it.ServicioId.HasValue || it.ProductoId is null) continue;
-            var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
-            if (prod is null) continue;
-            if (prod.Categoria == "CAFE")
-            {
-                prod.StockGramos += it.GramosDescontados;
-                stockSnapshots.Add((prod.Id, it.GramosDescontados, 0));
-            }
-            else
-            {
-                var unidadesADevolver = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
-                prod.StockUnidades += unidadesADevolver;
-                stockSnapshots.Add((prod.Id, 0m, unidadesADevolver));
-            }
-            prod.StockChangedAt = DateTime.UtcNow;
-            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-        }
+        // 2026-10-27: los compuestos vuelven a sus partes (la factura las descuenta de ahí; antes las
+        // partes quedaban descontadas dos veces). Sin renglón: la factura deja el suyo al descontar.
+        var stockSnapshots = await DevolverStockAsync(original.Items, null, "");
         await _db.SaveChangesAsync();
 
         // Reusamos la lógica de Create (más simple que duplicar el código)
@@ -2759,6 +2742,118 @@ public class CafeVentasController : ControllerBase
 
     /// <summary>2026-06-18 — Helper para ConvertirAFactura: si Create falla despues de haber
     /// devuelto el stock de la X, restauramos el descuento para que el inventario no quede inflado.</summary>
+    /// <summary>2026-10-27 — UNA sola forma de DEVOLVER al stock lo de una venta (NC, anular, borrar,
+    /// editar, pasar cotización a factura). Café en gramos, el resto en unidades reales (BULTO/PACK) y
+    /// los COMPUESTOS (shell) a sus PARTES según la receta, igual que Create los descuenta. Antes cada
+    /// botón devolvía al compuesto mismo (que no tiene stock propio) y las partes quedaban cortas.
+    /// tipoMov null = no deja renglón en el Historial. Devuelve lo sumado por producto (para revertir
+    /// y para el push a MeLi).</summary>
+    private async Task<List<(int prodId, decimal gramos, int unidades)>> DevolverStockAsync(
+        IEnumerable<CafeVentaItem> items, string? tipoMov, string comentario)
+    {
+        var lista = items.Where(i => !i.EsConceptoLibre && !i.ServicioId.HasValue && i.ProductoId is not null).ToList();
+        var shells = await LoadShellComponentsAsync(lista.Select(i => i.ProductoId!.Value));
+        var sumado = new List<(int prodId, decimal gramos, int unidades)>();
+        foreach (var it in lista)
+        {
+            var prod = await _db.CafeProductos.FindAsync(it.ProductoId!.Value);
+            if (prod is null) continue;
+            if (prod.Categoria == "CAFE")
+            {
+                var antesG = (int)Math.Round(prod.StockGramos);
+                prod.StockGramos += it.GramosDescontados;
+                if (tipoMov is not null)
+                    await _stockLogger.LogAsync(prod.Id, tipoMov, antesG, (int)Math.Round(prod.StockGramos),
+                        comentario: $"{comentario} · {it.Cantidad}x{it.Formato} · +{(int)Math.Round(it.GramosDescontados)}g", saveChanges: false);
+                sumado.Add((prod.Id, it.GramosDescontados, 0));
+            }
+            else if (shells.TryGetValue(prod.Id, out var comps))
+            {
+                var unidadesShell = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
+                foreach (var (compId, cantPorUnidad) in comps)
+                {
+                    var compProd = await _db.CafeProductos.FindAsync(compId);
+                    if (compProd is null) continue;
+                    var cant = (int)Math.Ceiling(cantPorUnidad * unidadesShell);
+                    if (cant <= 0) continue;
+                    var antesC = compProd.StockUnidades;
+                    compProd.StockUnidades += cant;
+                    compProd.UpdatedAt = DateTime.UtcNow;
+                    compProd.StockChangedAt = DateTime.UtcNow;
+                    if (tipoMov is not null)
+                        await _stockLogger.LogAsync(compId, tipoMov, antesC, compProd.StockUnidades,
+                            comentario: $"{comentario} · compuesto {prod.Sku} {it.Cantidad}x{it.Formato} → parte +{cant}u", saveChanges: false);
+                    await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, compProd);
+                    sumado.Add((compId, 0m, cant));
+                }
+                prod.UpdatedAt = DateTime.UtcNow;
+                continue;
+            }
+            else
+            {
+                var unidades = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
+                var antes = prod.StockUnidades;
+                prod.StockUnidades += unidades;
+                if (tipoMov is not null)
+                    await _stockLogger.LogAsync(prod.Id, tipoMov, antes, prod.StockUnidades,
+                        comentario: $"{comentario} · {it.Cantidad}x{it.Formato} · +{unidades}u", saveChanges: false);
+                sumado.Add((prod.Id, 0m, unidades));
+            }
+            prod.UpdatedAt = DateTime.UtcNow;
+            prod.StockChangedAt = DateTime.UtcNow;
+            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+        }
+        return sumado;
+    }
+
+    /// <summary>2026-10-27 — DESCONTAR un renglón (editar venta, recuperar anulada) igual que Create:
+    /// los compuestos descuentan de sus partes. Devuelve los productos tocados (push a MeLi).</summary>
+    private async Task<List<int>> DescontarStockAsync(CafeProducto prod, string formato, int cantidad, decimal gramos,
+        Dictionary<int, List<(int compProductoId, decimal cantidad)>> shells, string comentario)
+    {
+        var tocados = new List<int>();
+        if (prod.Categoria == "CAFE")
+        {
+            var antesG = (int)Math.Round(prod.StockGramos);
+            prod.StockGramos = Math.Max(0m, prod.StockGramos - gramos);
+            await _stockLogger.LogAsync(prod.Id, "VENTA_NUESTRA", antesG, (int)Math.Round(prod.StockGramos),
+                comentario: $"{comentario} · {cantidad}x{formato} · -{(int)Math.Round(gramos)}g", saveChanges: false);
+        }
+        else if (shells.TryGetValue(prod.Id, out var comps))
+        {
+            var unidadesShell = UnidadesRealesStock(prod, formato, cantidad);
+            foreach (var (compId, cantPorUnidad) in comps)
+            {
+                var compProd = await _db.CafeProductos.FindAsync(compId);
+                if (compProd is null) continue;
+                var cant = (int)Math.Ceiling(cantPorUnidad * unidadesShell);
+                var antesC = compProd.StockUnidades;
+                compProd.StockUnidades = Math.Max(0, compProd.StockUnidades - cant);
+                compProd.UpdatedAt = DateTime.UtcNow;
+                compProd.StockChangedAt = DateTime.UtcNow;
+                await _stockLogger.LogAsync(compId, "VENTA_NUESTRA_COMP", antesC, compProd.StockUnidades,
+                    comentario: $"{comentario} · shell {prod.Sku} {cantidad}x{formato} → comp -{cant}u", saveChanges: false);
+                await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, compProd);
+                tocados.Add(compId);
+            }
+            prod.UpdatedAt = DateTime.UtcNow;
+            return tocados;
+        }
+        else
+        {
+            var unidades = UnidadesRealesStock(prod, formato, cantidad);
+            var antes = prod.StockUnidades;
+            prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidades);
+            await _stockLogger.LogAsync(prod.Id, "VENTA_NUESTRA", antes, prod.StockUnidades,
+                comentario: $"{comentario} · {cantidad}x{formato} · -{unidades}u", saveChanges: false);
+        }
+        prod.UpdatedAt = DateTime.UtcNow;
+        prod.StockChangedAt = DateTime.UtcNow;
+        await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+        tocados.Add(prod.Id);
+        return tocados;
+    }
+
     private async Task RevertirStockDevueltoAsync(List<(int prodId, decimal gramos, int unidades)> snapshots)
     {
         foreach (var snap in snapshots)
@@ -2974,71 +3069,8 @@ public class CafeVentasController : ControllerBase
         original.UpdatedAt = DateTime.UtcNow;
 
         // ----- Devolver stock al inventario (Fase 1: devolucion COMPLETA) -----
-        // 2026-10-27: cada devolución deja su renglón en el Historial de stock (NC_DEVOLUCION). Y los
-        // COMPUESTOS (shell) devuelven a las PARTES de donde se descontó al vender (antes sumaba al
-        // compuesto mismo, que no tiene stock propio, y las partes quedaban cortas).
-        var comentNc = $"NC #{nc.Numero} · anula FC #{original.Numero}";
-        // Lo que la venta descontó de las partes: lo dice el historial ("Venta #N · shell SKU …").
-        var prefijoVenta = $"Venta #{original.Numero} · shell ";
-        var compsVendidos = await _db.StockMovimientos.AsNoTracking()
-            .Where(m => m.TipoMov == "VENTA_NUESTRA_COMP" && m.Comentario != null && m.Comentario.StartsWith(prefijoVenta))
-            .Select(m => new { m.ProductoId, m.Comentario, Descontado = m.StockAntes - m.StockDespues })
-            .ToListAsync();
-        var shellCompsNc = await LoadShellComponentsAsync(original.Items
-            .Where(i => i.ProductoId is not null).Select(i => i.ProductoId!.Value));
-        var shellYaDevuelto = new HashSet<int>();
-        foreach (var it in original.Items)
-        {
-            if (it.EsConceptoLibre || it.ServicioId.HasValue || it.ProductoId is null) continue;
-            var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
-            if (prod is null) continue;
-            if (prod.Categoria == "CAFE")
-            {
-                var antesG = (int)Math.Round(prod.StockGramos);
-                prod.StockGramos += it.GramosDescontados;
-                await _stockLogger.LogAsync(prod.Id, "NC_DEVOLUCION", antesG, (int)Math.Round(prod.StockGramos),
-                    comentario: $"{comentNc} · {it.Cantidad}x{it.Formato} · +{(int)Math.Round(it.GramosDescontados)}g", saveChanges: false);
-            }
-            else
-            {
-                var unidadesADevolver = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
-                var delShell = compsVendidos.Where(m => m.Comentario!.StartsWith(prefijoVenta + prod.Sku + " ")).ToList();
-                if (delShell.Count > 0 || shellCompsNc.ContainsKey(prod.Id))
-                {
-                    // Compuesto: a cada parte, lo mismo que se le descontó en la venta. Si la venta es
-                    // vieja y no dejó renglón, según la receta de hoy. Si el mismo compuesto está en
-                    // dos renglones de la factura, el historial ya trae los dos: se devuelve una vez.
-                    if (!shellYaDevuelto.Add(prod.Id)) continue;
-                    var aDevolver = delShell.Count > 0
-                        ? delShell.GroupBy(m => m.ProductoId).Select(g => (compId: g.Key, cant: g.Sum(x => x.Descontado))).ToList()
-                        : original.Items.Where(x => x.ProductoId == prod.Id && !x.EsConceptoLibre)
-                            .SelectMany(x => shellCompsNc[prod.Id].Select(c => (compId: c.compProductoId,
-                                cant: (int)Math.Ceiling(c.cantidad * UnidadesRealesStock(prod, x.Formato, x.Cantidad)))))
-                            .GroupBy(c => c.compId).Select(g => (compId: g.Key, cant: g.Sum(c => c.cant))).ToList();
-                    foreach (var (compId, cant) in aDevolver)
-                    {
-                        if (cant <= 0) continue;
-                        var compProd = await _db.CafeProductos.FindAsync(compId);
-                        if (compProd is null) continue;
-                        var antesC = compProd.StockUnidades;
-                        compProd.StockUnidades += cant;
-                        compProd.UpdatedAt = DateTime.UtcNow;
-                        compProd.StockChangedAt = DateTime.UtcNow;
-                        await _stockLogger.LogAsync(compId, "NC_DEVOLUCION", antesC, compProd.StockUnidades,
-                            comentario: $"{comentNc} · compuesto {prod.Sku} → parte +{cant}u", saveChanges: false);
-                        await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, compProd);
-                    }
-                    prod.UpdatedAt = DateTime.UtcNow;
-                    continue;
-                }
-                var antes = prod.StockUnidades;
-                prod.StockUnidades += unidadesADevolver;
-                await _stockLogger.LogAsync(prod.Id, "NC_DEVOLUCION", antes, prod.StockUnidades,
-                    comentario: $"{comentNc} · {it.Cantidad}x{it.Formato} · +{unidadesADevolver}u", saveChanges: false);
-            }
-            prod.StockChangedAt = DateTime.UtcNow;
-            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-        }
+        // 2026-10-27: deja su renglón en el Historial (NC_DEVOLUCION) y los compuestos vuelven a sus partes.
+        await DevolverStockAsync(original.Items, "NC_DEVOLUCION", $"NC #{nc.Numero} · anula FC #{original.Numero}");
 
         await _db.SaveChangesAsync();
 
@@ -3152,26 +3184,8 @@ public class CafeVentasController : ControllerBase
         // Restaurar stock (concepto libre se saltea, no descontó stock)
         var productosAnular = new List<int>();
         if (!eraPresupuesto && !yaFacturada)
-        {
-            foreach (var it in v.Items)
-            {
-                if (it.EsConceptoLibre || it.ProductoId is null) continue;
-                var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
-                if (prod is null) continue;
-                if (prod.Categoria == "CAFE")
-                    prod.StockGramos += it.GramosDescontados;
-                else
-                {
-                    // BULTO / PACK_N → expandir a unidades reales (UxB o N).
-                    var unidadesADevolver = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
-                    prod.StockUnidades += unidadesADevolver;
-                }
-                prod.UpdatedAt = DateTime.UtcNow;
-                prod.StockChangedAt = DateTime.UtcNow;
-                await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-                productosAnular.Add(prod.Id);
-            }
-        }
+            productosAnular = (await DevolverStockAsync(v.Items, "DEVUELTO_VENTA", $"Anulada venta #{v.Numero}"))
+                .Select(x => x.prodId).Distinct().ToList();
         v.Estado = "anulado";
         v.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -3205,22 +3219,15 @@ public class CafeVentasController : ControllerBase
         var productosRecuperar = new List<int>();
         if (!esPresupuestoRecup && !v.FacturadaComoVentaId.HasValue)
         {
+            // 2026-10-27: igual que al vender (compuestos descuentan de sus partes) y deja renglón.
+            var shellsRec = await LoadShellComponentsAsync(v.Items.Where(i => i.ProductoId is not null).Select(i => i.ProductoId!.Value));
             foreach (var it in v.Items)
             {
-                if (it.EsConceptoLibre || it.ProductoId is null) continue;
+                if (it.EsConceptoLibre || it.ServicioId.HasValue || it.ProductoId is null) continue;
                 var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
                 if (prod is null) continue;
-                if (prod.Categoria == "CAFE")
-                    prod.StockGramos -= it.GramosDescontados;
-                else
-                {
-                    var unidadesADescontar = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
-                    prod.StockUnidades -= unidadesADescontar;
-                }
-                prod.UpdatedAt = DateTime.UtcNow;
-                prod.StockChangedAt = DateTime.UtcNow;
-                await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-                productosRecuperar.Add(prod.Id);
+                productosRecuperar.AddRange(await DescontarStockAsync(prod, it.Formato, it.Cantidad, it.GramosDescontados,
+                    shellsRec, $"Recuperada venta #{v.Numero}"));
             }
         }
         v.Estado = "emitido";
@@ -3461,23 +3468,9 @@ public class CafeVentasController : ControllerBase
             try
             {
                 // 1. Devolver stock de los items actuales. Concepto libre se saltea (no descontó).
-                var productosUpdate = new HashSet<int>();
-                foreach (var item in v.Items)
-                {
-                    if (item.EsConceptoLibre || item.ProductoId is null) continue;
-                    var prod = await _db.CafeProductos.FindAsync(item.ProductoId.Value);
-                    if (prod is null) continue;
-                    if (prod.Categoria == "CAFE") prod.StockGramos += item.GramosDescontados;
-                    else
-                    {
-                        var unidadesADevolver = UnidadesRealesStock(prod, item.Formato, item.Cantidad);
-                        prod.StockUnidades += unidadesADevolver;
-                    }
-                    prod.UpdatedAt = DateTime.UtcNow;
-                    prod.StockChangedAt = DateTime.UtcNow;
-                    await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-                    productosUpdate.Add(prod.Id);
-                }
+                var productosUpdate = new HashSet<int>(
+                    (await DevolverStockAsync(v.Items, "DEVUELTO_VENTA", $"Edit venta #{v.Numero} · vuelve lo anterior"))
+                    .Select(x => x.prodId));
                 _db.CafeVentaItems.RemoveRange(v.Items);
                 v.Items.Clear();
                 await _db.SaveChangesAsync();
@@ -3495,6 +3488,7 @@ public class CafeVentasController : ControllerBase
                 }
 
                 // 3. Persistir items nuevos + descontar stock.
+                var shellsEdit = await LoadShellComponentsAsync(cot.Items.Where(x => x.ProductoId > 0).Select(x => x.ProductoId));
                 for (int idx = 0; idx < cot.Items.Count; idx++)
                 {
                     var ci = cot.Items[idx];
@@ -3570,27 +3564,10 @@ public class CafeVentasController : ControllerBase
                         DescuentoPct = ci.DescuentoPct,
                         ComboOrigenId = reqItem?.ComboOrigenId   // 2026-06-08
                     });
-                    if (prod.Categoria == "CAFE")
-                    {
-                        var antesG = (int)Math.Round(prod.StockGramos);
-                        prod.StockGramos = Math.Max(0m, prod.StockGramos - ci.GramosNecesarios);
-                        await _stockLogger.LogAsync(prod.Id, "VENTA_NUESTRA", antesG, (int)Math.Round(prod.StockGramos),
-                            comentario: $"Edit venta #{v.Numero} · {ci.Cantidad}x{ci.Formato} · -{(int)Math.Round(ci.GramosNecesarios)}g",
-                            saveChanges: false);
-                    }
-                    else
-                    {
-                        var unidadesADescontar = UnidadesRealesStock(prod, ci.Formato, ci.Cantidad);
-                        var antes = prod.StockUnidades;
-                        prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidadesADescontar);
-                        await _stockLogger.LogAsync(prod.Id, "VENTA_NUESTRA", antes, prod.StockUnidades,
-                            comentario: $"Edit venta #{v.Numero} · {ci.Cantidad}x{ci.Formato} · -{unidadesADescontar}u",
-                            saveChanges: false);
-                    }
-                    prod.UpdatedAt = DateTime.UtcNow;
-                    prod.StockChangedAt = DateTime.UtcNow;
-                    await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-                    productosUpdate.Add(prod.Id);
+                    // 2026-10-27: compuestos descuentan de sus partes (antes del compuesto mismo).
+                    foreach (var pid in await DescontarStockAsync(prod, ci.Formato, ci.Cantidad, ci.GramosNecesarios,
+                                 shellsEdit, $"Edit venta #{v.Numero}"))
+                        productosUpdate.Add(pid);
                 }
 
                 v.Subtotal = cot.Subtotal;
@@ -3706,23 +3683,8 @@ public class CafeVentasController : ControllerBase
         var productosDelete = new List<int>();
         var vuelveACotizacion = v.Estado == "emitido" && await DevolverACotizacionOrigenAsync(v);
         if (v.Estado == "emitido" && !v.FacturadaComoVentaId.HasValue && !vuelveACotizacion)
-        {
-            foreach (var it in v.Items)
-            {
-                if (it.EsConceptoLibre || it.ProductoId is null) continue;
-                var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
-                if (prod is null) continue;
-                if (prod.Categoria == "CAFE") prod.StockGramos += it.GramosDescontados;
-                else
-                {
-                    var unidadesADevolver = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
-                    prod.StockUnidades += unidadesADevolver;
-                }
-                prod.StockChangedAt = DateTime.UtcNow;
-                await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-                productosDelete.Add(prod.Id);
-            }
-        }
+            productosDelete = (await DevolverStockAsync(v.Items, "DEVUELTO_VENTA", $"Borrada venta #{v.Numero}"))
+                .Select(x => x.prodId).Distinct().ToList();
         // Desvincular las cobranzas que referenciaban esta venta (les ponemos VentaId=null = quedan
         // como "a cuenta"). NO borramos las cobranzas porque ya entraron plata real a una caja.
         var cobranzasItems = await _db.CafeCobranzasComprobantes

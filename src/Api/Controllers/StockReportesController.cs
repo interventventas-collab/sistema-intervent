@@ -85,6 +85,7 @@ public class StockReportesController : ControllerBase
                         salidas += m.Cantidad; break;
                     case "SUMA":
                     case "NC_DEVOLUCION":   // 2026-10-27: lo que vuelve por nota de crédito
+                    case "DEVUELTO_VENTA":  // 2026-10-27: venta anulada, borrada o editada
                         entradas += m.Cantidad; break;
                     case "RESTA":
                         salidas += m.Cantidad; break;
