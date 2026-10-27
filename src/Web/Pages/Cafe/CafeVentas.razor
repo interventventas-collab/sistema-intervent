@@ -7248,7 +7248,7 @@
         if (comentarioArmadoFlotante && !comentarioFlotanteHooked)
         {
             comentarioFlotanteHooked = true;
-            try { await JS.InvokeVoidAsync("waDraggable.attach", "nv-comentario-flotante-head", "nv-comentario-flotante"); }
+            try { await JS.InvokeVoidAsync("waDraggable.attach", "nv-comentario-flotante-head", "nv-comentario-flotante", "nv-comentario"); }
             catch { }
         }
         // Posicionar el dropdown "+" anclado al boton que lo abrio.
