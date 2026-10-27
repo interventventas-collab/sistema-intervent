@@ -1,0 +1,148 @@
+@* 27/10/2026: Oficina → 📁 Documentación. Las mismas carpetas de Documentación importante de la compu
+   (constancias, certificados, listas…), solo para ver y mandar: desde el celu no se sube ni se borra.
+   PDF e imágenes se ven adentro de la app; el resto (Excel, Word…) se manda o se baja. *@
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@if (viendo is not null)
+{
+    <OfiPdfVisor Url="@UrlDe(viendo)" Nombre="@viendo.Name" Titulo="@viendo.Name" EsImagen="@EsImagen(viendo)"
+                 OnCerrar="() => viendo = null" />
+}
+
+<div class="mpc-overlay">
+    <div class="mpc-wrap">
+        <div class="mpc-top">
+            <button type="button" class="mpc-back" @onclick="Atras">←</button>
+            <div class="mpc-title">📁 @(carpetas.Count == 0 ? "Documentación" : carpetas[^1])</div>
+        </div>
+        @if (carpetas.Count > 0)
+        {
+            <div class="mpc-num" style="margin:-0.2rem 0 0.5rem;">Documentación › @string.Join(" › ", carpetas)</div>
+        }
+        @if (items.Count > 8)
+        {
+            <input class="mpc-search" type="search" placeholder="🔍 Buscar…" @bind="buscar" @bind:event="oninput" />
+        }
+
+        @if (cargando)
+        {
+            <div class="mpc-nota">Buscando…</div>
+        }
+        else if (error)
+        {
+            <div class="mpc-nota">No se pudo abrir. <button type="button" class="mpc-mas" @onclick="Cargar">🔄 Reintentar</button></div>
+        }
+        else if (items.Count == 0)
+        {
+            <div class="mpc-nota">Esta carpeta está vacía.</div>
+        }
+        else
+        {
+            foreach (var f in items.Where(x => string.IsNullOrWhiteSpace(buscar) || x.Name.Contains(buscar.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                if (f.IsFolder)
+                {
+                    <div class="mpc-row" style="cursor:pointer;" @onclick="() => Entrar(f)">
+                        <div class="mpc-cli" style="font-weight:700;">@(string.IsNullOrWhiteSpace(f.IconEmoji) ? "📁" : f.IconEmoji) @f.Name</div>
+                    </div>
+                }
+                else
+                {
+                    var sePuedeVer = EsPdf(f) || EsImagen(f);
+                    <div class="mpc-row">
+                        <div class="mpc-r2" style="margin-top:0;">
+                            <div style="min-width:0;">
+                                <div class="mpc-cli @(sePuedeVer ? "mpc-cli-btn" : "")" style="font-weight:700; word-break:break-word;"
+                                     @onclick="() => { if (sePuedeVer) viendo = f; }">@f.Name</div>
+                                <div class="mpc-num">@Tamano(f.Size) · @f.ModifiedAt.ToString("dd/MM/yyyy")</div>
+                            </div>
+                            <div class="mpc-acts">
+                                @if (sePuedeVer)
+                                {
+                                    <button type="button" class="mpc-eye" @onclick="() => viendo = f">👁</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="mpc-eye" title="Bajar" @onclick="() => Bajar(f)">⬇</button>
+                                }
+                                <button type="button" class="mpc-wa @(tocarDeNuevo == f.Path ? "again" : "")" disabled="@(compartiendo == f.Path)"
+                                        @onclick="() => Compartir(f)">
+                                    @(compartiendo == f.Path ? "…" : tocarDeNuevo == f.Path ? "Tocá" : "WhatsApp")
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private record Entrada(string Name, string Path, bool IsFolder, long Size, DateTime ModifiedAt, string? Color, string? IconEmoji);
+    private record Listado(string Path, string Provider, List<Entrada> Entries);
+
+    private List<Entrada> items = new();
+    private readonly List<string> carpetas = new();   // nombres, para el título y el "Documentación › …"
+    private readonly List<string> rutas = new();      // la ruta de cada carpeta abierta (para volver)
+    private bool cargando = true, error;
+    private string buscar = "";
+    private Entrada? viendo;
+    private string? compartiendo, tocarDeNuevo;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true; error = false;
+        StateHasChanged();
+        try
+        {
+            var ruta = rutas.Count == 0 ? "" : rutas[^1];
+            var r = await Http.GetFromJsonAsync<Listado>($"api/files/repartidor/{Token}/list?path={Uri.EscapeDataString(ruta)}");
+            items = (r?.Entries ?? new()).OrderByDescending(e => e.IsFolder).ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+        catch { error = true; }
+        finally { cargando = false; StateHasChanged(); }
+    }
+
+    private async Task Entrar(Entrada f)
+    {
+        carpetas.Add(f.Name); rutas.Add(f.Path); buscar = "";
+        await Cargar();
+    }
+
+    private async Task Atras()
+    {
+        if (rutas.Count == 0) { await OnCerrar.InvokeAsync(); return; }
+        carpetas.RemoveAt(carpetas.Count - 1); rutas.RemoveAt(rutas.Count - 1); buscar = "";
+        await Cargar();
+    }
+
+    private string UrlDe(Entrada f) => $"api/files/repartidor/{Token}/download?path={Uri.EscapeDataString(f.Path)}";
+    private static string Ext(Entrada f) => System.IO.Path.GetExtension(f.Name).ToLowerInvariant();
+    private static bool EsPdf(Entrada f) => Ext(f) == ".pdf";
+    private static bool EsImagen(Entrada f) => Ext(f) is ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp";
+
+    private static string Tamano(long b) => b >= 1024 * 1024 ? $"{b / 1024d / 1024d:0.#} MB" : $"{Math.Max(1, b / 1024)} KB";
+
+    private async Task Compartir(Entrada f)
+    {
+        compartiendo = f.Path;
+        string res;
+        try { res = await JS.InvokeAsync<string>("mpCompartir.compartir", UrlDe(f), f.Name, ""); }
+        catch { res = "error"; }
+        compartiendo = null;
+        tocarDeNuevo = res == "tocar-de-nuevo" ? f.Path : null;
+    }
+
+    private async Task Bajar(Entrada f)
+    {
+        try { await JS.InvokeAsync<string>("mpCompartir.bajarUrl", UrlDe(f), f.Name); } catch { }
+    }
+}
