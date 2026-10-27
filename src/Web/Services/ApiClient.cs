@@ -1859,6 +1859,14 @@ public class ApiClient
         return await GetAsync<List<QrEscaneoDto>>($"/api/cafe/repartidores/qr-escaneos?{string.Join("&", qs)}");
     }
 
+    /// <summary>27/10/2026: historial completo de la venta (para "Ver historial").</summary>
+    public async Task<VentaHistorialDto?> GetVentaHistorialAsync(int ventaId)
+        => await GetAsync<VentaHistorialDto>($"/api/cafe/ventas/{ventaId}/historial");
+
+    /// <summary>27/10/2026: ¿hay que avisar antes de asignar esta venta? (vieja o ya entregada)</summary>
+    public async Task<AvisoAsignarDto?> GetAvisoAsignarAsync(int ventaId)
+        => await GetAsync<AvisoAsignarDto>($"/api/cafe/ventas/{ventaId}/aviso-asignar");
+
     public async Task<bool> ReasignarEscaneoAsync(int ventaId, int? nuevoRepartidorId,
         bool esRetira = false, bool marcarEntregada = false,
         DateTime? fechaEntrega = null, string? comentarioEntrega = null)

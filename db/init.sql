@@ -8465,3 +8465,20 @@ BEGIN
     WHERE p.IsActive = 1 AND p.Notas LIKE 'Lista clientes especiales%';
 END
 GO
+
+-- 27/10/2026: historial de cada venta (cambios, a quién se asignó o se pasó, entregas, anular/recuperar).
+-- Lo escribe la API sola al guardar. Sin FK a propósito: si se borra la venta, el historial queda.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_VentaHistorial')
+BEGIN
+    CREATE TABLE Cafe_VentaHistorial (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        VentaId INT NOT NULL,
+        Tipo NVARCHAR(20) NOT NULL,
+        Quien NVARCHAR(100) NULL,
+        Desde NVARCHAR(20) NULL,
+        Detalle NVARCHAR(2000) NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_CafeVentaHistorial_Venta ON Cafe_VentaHistorial(VentaId, CreatedAt);
+END
+GO

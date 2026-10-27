@@ -3345,6 +3345,7 @@ public class CafeVentasController : ControllerBase
         if (req.CantidadBultos.HasValue) v.CantidadBultos = req.CantidadBultos.Value;
         if (req.EsFragil.HasValue) v.EsFragil = req.EsFragil.Value;
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
+        var entregaPorAntes = v.EntregaPor;
         if (req.EntregaPor is not null) v.EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim();
         if (req.ComentarioArmado is not null) v.ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim();
         // 2026-10-06: leyenda de máquinas (null = no tocar, "" = sacarla).
@@ -3606,7 +3607,10 @@ public class CafeVentasController : ControllerBase
         }
 
         // 2026-06-05: si cambio EntregaPor, sincronizar Mis Pedidos
-        try { await SincronizarRepartidorDeEntregaAsync(v); } catch { }
+        // 27/10/2026: SOLO si cambió. Antes corría siempre: editar cualquier cosa de una venta asignada por
+        // QR, Mapeo o "Pasarla a" (EntregaPor vacío) se la sacaba al repartidor sin avisar (lo mostró el historial).
+        if (!string.Equals((entregaPorAntes ?? "").Trim(), (v.EntregaPor ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+            try { await SincronizarRepartidorDeEntregaAsync(v); } catch { }
 
         return Ok(Map(v));
     }

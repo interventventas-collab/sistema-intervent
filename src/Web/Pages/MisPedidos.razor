@@ -3551,6 +3551,16 @@
 
     private async Task Asignar(ComprobanteLinkDto c, int? repartidorId, bool retira)
     {
+        // 27/10/2026: mismo aviso que en la compu (caso 2110: se asignó una del 25/09 en vez de la de hoy).
+        // Las ya entregadas no se pueden asignar desde acá; las viejas piden confirmación.
+        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
+        var dias = (hoyAr - c.Fecha.Date).Days;
+        if (repartidorId.HasValue && dias >= 3)
+        {
+            var seguir = await JS.InvokeAsync<bool>("confirm",
+                $"Ojo: {c.NumeroTexto} de {c.Cliente} es del {c.Fecha:dd/MM} (hace {dias} días).\n\n¿Seguro que querés asignar esta?");
+            if (!seguir) return;
+        }
         compAsignGuardando = true;
         StateHasChanged();
         try

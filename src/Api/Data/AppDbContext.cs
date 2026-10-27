@@ -1,11 +1,34 @@
 using Api.Models;
+using Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Api.Data;
 
 public class AppDbContext : DbContext
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+    // 27/10/2026: para saber quién hace cada cambio de una venta (historial). Null fuera de un pedido web.
+    private readonly IHttpContextAccessor? _http;
+
+    /// <summary>27/10/2026: cambios de renglones de venta juntados entre guardados de una misma transacción.</summary>
+    internal object? HistorialPendiente { get; set; }
+
+    public AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAccessor? http = null) : base(options)
+    {
+        _http = http;
+    }
+
+    /// <summary>27/10/2026: antes de guardar, anota en el historial de la venta lo que cambió.</summary>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        VentaHistorialRecorder.Capturar(this, _http);
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        VentaHistorialRecorder.Capturar(this, _http);
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
 
     public DbSet<User> Users => Set<User>();
     /// <summary>2026-09-17: sesiones abiertas (ver quién está adentro y poder echarlo).</summary>
@@ -147,6 +170,7 @@ public class AppDbContext : DbContext
     // 2026-07-14: borradores de venta compartidos (servidor, hasta 10)
     public DbSet<CafeVentaBorradorServer> CafeVentaBorradores => Set<CafeVentaBorradorServer>();
     public DbSet<CafeVentaPreparacionLog> CafeVentaPreparacionLogs => Set<CafeVentaPreparacionLog>();
+    public DbSet<CafeVentaHistorial> CafeVentaHistorial => Set<CafeVentaHistorial>();
     public DbSet<CafeChequeBanco> CafeChequesBanco => Set<CafeChequeBanco>();
     public DbSet<CafeCalendarioNota> CafeCalendarioNotas => Set<CafeCalendarioNota>();
     public DbSet<CafeExtractoMovimiento> CafeExtractoMovimientos => Set<CafeExtractoMovimiento>();
