@@ -2,10 +2,38 @@
 // Se usa en la pantalla de WhatsApp para el "preview" del pedido antes de crear la venta.
 // Funciona con mouse y con dedo (celular/tablet).
 window.waDraggable = {
-    attach: function (handleId, panelId) {
+    // 2026-10-27: recordarKey (opcional) = se acuerda de DÓNDE quedó y de qué TAMAÑO (esquina) en esta
+    // computadora (localStorage) y la próxima vez abre igual. Si la pantalla es más chica, la mete adentro.
+    attach: function (handleId, panelId, recordarKey) {
         const handle = document.getElementById(handleId);
         const panel = document.getElementById(panelId);
         if (!handle || !panel) return;
+
+        const lsKey = recordarKey ? 'wad-pos-' + recordarKey : null;
+        function guardar() {
+            if (!lsKey || !panel.isConnected) return;
+            const r = panel.getBoundingClientRect();
+            if (r.width < 50 || r.height < 50) return;
+            try { localStorage.setItem(lsKey, JSON.stringify({ l: Math.round(r.left), t: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) })); } catch (_) { }
+        }
+        if (lsKey) {
+            let g = null;
+            try { g = JSON.parse(localStorage.getItem(lsKey) || 'null'); } catch (_) { }
+            if (g && g.w > 0 && g.h > 0) {
+                const w = Math.min(g.w, window.innerWidth), h = Math.min(g.h, window.innerHeight);
+                panel.style.transform = 'none';
+                panel.style.boxSizing = 'border-box';   // lo guardado incluye el borde: si no, crece 4px cada vez
+                panel.style.width = w + 'px';
+                panel.style.height = h + 'px';
+                panel.style.left = Math.max(0, Math.min(g.l, window.innerWidth - w)) + 'px';
+                panel.style.top = Math.max(0, Math.min(g.t, window.innerHeight - h)) + 'px';
+            }
+            // agrandar/achicar desde la esquina: se guarda un ratito después de soltar
+            if (window.ResizeObserver) {
+                let tmr = null;
+                new ResizeObserver(() => { clearTimeout(tmr); tmr = setTimeout(guardar, 300); }).observe(panel);
+            }
+        }
 
         let startX = 0, startY = 0, startLeft = 0, startTop = 0, dragging = false;
 
@@ -42,6 +70,7 @@ window.waDraggable = {
         }
 
         function onUp() {
+            if (dragging) guardar();
             dragging = false;
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
