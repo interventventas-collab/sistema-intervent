@@ -285,6 +285,7 @@
     .nv-quien.on { background: #1f2937; border-color: #1f2937; color: #fff; }
     .nv-res-cancelar { background: none !important; border-color: transparent !important; color: #6b7280 !important; }
     /* Lo que más compra (columna derecha) */
+    .nv-top-sep { font-size: 0.72rem; color: #6b7280; margin: 0.7rem 0 0.2rem; padding-top: 0.45rem; border-top: 1px solid #e5e7eb; }
     .nv-top { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
     .nv-top-it { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.5rem 0.3rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; border-radius: 6px; }
     .nv-top-it:hover { background: #f9fafb; }
@@ -3739,8 +3740,15 @@
                         <div style="font-size: 0.78rem; color: #9ca3af; text-align: center; padding: 0.6rem;">Sin resultados.</div>
                     }
 
+                    @{ var posTop = 0; }
                     @foreach (var t in listaFiltrada)
                     {
+                        @* 2026-10-27: sin buscar, después de los 10 que más compra sigue el resto de su historial. *@
+                        @if (posTop == 10 && string.IsNullOrEmpty(filtroTop))
+                        {
+                            <div class="nv-top-sep">Resto de lo que compró · de más a menos</div>
+                        }
+                        posTop++;
                         var stockTxt = t.Categoria == "CAFE" ? FormatGramos(t.StockGramos) : $"{t.StockUnidades} u.";
                         var sinStock = (t.Categoria == "CAFE" ? t.StockGramos : t.StockUnidades) <= 0;
                         var prodId = t.ProductoId;
@@ -9582,7 +9590,8 @@
     private async Task LoadTopProductsForClient()
     {
         if (formClienteId <= 0) { topProductsForClient = new(); topProductosDescartadosCount = 0; topProductsExpanded = false; return; }
-        try { topProductsForClient = await Api.GetCafeTopProductosByClienteAsync(formClienteId, 10) ?? new(); }
+        // 2026-10-27: trae TODO lo que compró (de más a menos); el panel separa los 10 primeros del resto.
+        try { topProductsForClient = await Api.GetCafeTopProductosByClienteAsync(formClienteId, 500) ?? new(); }
         catch { topProductsForClient = new(); }
         // 2026-06-08: traer contador de descartados para mostrar botón "🔄 Restaurar N"
         try { topProductosDescartadosCount = (await Api.GetCafeTopProductosDescartadosAsync(formClienteId))?.Count ?? 0; }
