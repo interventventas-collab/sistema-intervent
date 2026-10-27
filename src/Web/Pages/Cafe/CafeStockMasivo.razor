@@ -1217,7 +1217,7 @@ else if (modoCarga == "minimo")
     private static readonly HistGrupo[] HistGrupos =
     {
         new("manual", "Cargas a mano", new[] { "SUMA", "RESTA", "SET", "AJUSTE_ADMIN" }, "Lo que se sumó, sacó o reemplazó a mano (esta pantalla, el celular o la ficha del producto)"),
-        new("ventas", "Ventas del sistema", new[] { "VENTA_NUESTRA", "VENTA_NUESTRA_COMP" }, "Ventas cargadas en el sistema que descontaron stock"),
+        new("ventas", "Ventas del sistema", new[] { "VENTA_NUESTRA", "VENTA_NUESTRA_COMP", "NC_DEVOLUCION" }, "Ventas cargadas en el sistema que descontaron stock, y lo que volvió por nota de crédito"),
         new("meli", "Ventas MeLi", new[] { "VENTA_MELI", "VENTA_MELI_FULL" }, "Ventas de MercadoLibre que descontaron stock"),
         new("todo", "Todo", Array.Empty<string>(), "Todos los movimientos, de cualquier tipo"),
     };
@@ -1312,6 +1312,7 @@ else if (modoCarga == "minimo")
         {
             "VENTA_MELI" or "VENTA_MELI_FULL" => "venta MeLi",
             "VENTA_NUESTRA" or "VENTA_NUESTRA_COMP" => "venta",
+            "NC_DEVOLUCION" => "nota de crédito",
             _ => m.Operador,
         };
         var com = (m.Comentario ?? "").Trim();

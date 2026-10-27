@@ -84,6 +84,7 @@ public class StockReportesController : ControllerBase
                     case "VENTA_MELI_FULL":
                         salidas += m.Cantidad; break;
                     case "SUMA":
+                    case "NC_DEVOLUCION":   // 2026-10-27: lo que vuelve por nota de crédito
                         entradas += m.Cantidad; break;
                     case "RESTA":
                         salidas += m.Cantidad; break;
