@@ -681,7 +681,11 @@
                                         <div style="margin-top:0.15rem;"><span title="Esta venta fue creada como saldo de migración del sistema anterior" style="display:inline-block; padding:0.05rem 0.35rem; background:#fef3c7; color:#92400e; border-radius:4px; font-size:0.62rem; font-weight:800; letter-spacing:0.5px; font-family:inherit;">🔄 MIGRACIÓN</span></div>
                                     }
                                 </td>
-                                <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td>
+                                    @v.Fecha.ToString("dd/MM/yyyy")
+                                    @* 27/10/2026: historial de la venta (carga, armado, reparto, cobros, cambios) *@
+                                    <div><VentaHistorialHover VentaId="v.Id" /></div>
+                                </td>
                                 <td style="line-height: 1.1; position: relative;" class="cell-cliente-hover">
                                     @* 2026-09-17: el ojito 👁️ del chat de WhatsApp, acá también: abre la ficha flotante
                                        del cliente (lo que debe + últimas facturas y cotizaciones) sin salir del listado. *@
@@ -4839,6 +4843,45 @@
     </div>
 }
 
+@* 27/10/2026: cartel antes de asignar una venta vieja o ya entregada (caso 2110: se asignó una del
+   25/09 en vez de la de hoy y se perdió quién la había entregado). *@
+@if (avisoAsignar is not null && ventaReasignar is not null)
+{
+    var av = avisoAsignar;
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center; z-index:9400; padding:1rem;">
+        <div style="background:white; border-radius:12px; padding:1.1rem 1.25rem; width:100%; max-width:460px;">
+            <div style="font-weight:800; font-size:1rem; margin-bottom:0.4rem;">Ojo con esta venta</div>
+            <div style="font-size:0.9rem; margin-bottom:0.3rem;">@av.Numero · @ventaReasignar.ClienteNombre</div>
+            @if (av.EntregadoAt.HasValue)
+            {
+                var fe = av.EntregadoAt.Value.ToArTime();
+                <div style="font-size:0.9rem; color:#b91c1c; margin-bottom:0.3rem;">
+                    Ya figura entregada el @DiasSemanaEs[(int)fe.DayOfWeek] @fe.ToString("dd/MM") a las @fe.ToString("HH:mm")@(string.IsNullOrEmpty(av.EntregadoPor) ? "" : $" · {av.EntregadoPor}")
+                </div>
+            }
+            @if (av.Dias >= 3)
+            {
+                <div style="font-size:0.9rem; color:#374151; margin-bottom:0.3rem;">Es del @av.Fecha.ToString("dd/MM") (hace @av.Dias días)</div>
+            }
+            @if (av.OtraVentaId.HasValue)
+            {
+                <div style="font-size:0.9rem; color:#374151; margin-bottom:0.3rem;">
+                    Este cliente tiene otra venta más nueva que nadie tiene: <strong>@av.OtraVentaNumero</strong> del @av.OtraVentaFecha?.ToString("dd/MM")
+                </div>
+            }
+            <div style="font-size:0.85rem; color:#6b7280; margin:0.4rem 0 0.9rem;">¿Seguro que querés asignar esta?</div>
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end; flex-wrap:wrap;">
+                @if (av.OtraVentaId.HasValue)
+                {
+                    <button class="btn btn-primary" @onclick="UsarOtraVentaDelAviso" disabled="@guardandoReasignar">Usar la @NumeroCorto(av.OtraVentaNumero)</button>
+                }
+                <button class="btn btn-secondary" @onclick="() => avisoAsignar = null" disabled="@guardandoReasignar">Cancelar</button>
+                <button class="btn btn-secondary" style="color:#b91c1c;" @onclick="AsignarIgualDelAviso" disabled="@guardandoReasignar">Asignar igual</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (mostrarReasignar && ventaReasignar is not null)
 {
     <div class="modal-overlay" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center; z-index:9200; padding:1rem;" @onclick="@(() => mostrarReasignar = false)">
@@ -5499,7 +5542,29 @@
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
-    private async Task ConfirmarReasignar()
+    // 27/10/2026: aviso antes de asignar una venta vieja o ya entregada.
+    private AvisoAsignarDto? avisoAsignar;
+
+    private async Task AsignarIgualDelAviso()
+    {
+        avisoAsignar = null;
+        await ConfirmarReasignar(sinAviso: true);
+    }
+
+    private async Task UsarOtraVentaDelAviso()
+    {
+        var otraId = avisoAsignar?.OtraVentaId;
+        avisoAsignar = null;
+        if (otraId is null || ventaReasignar is null) return;
+        await ConfirmarReasignar(sinAviso: true, ventaIdOverride: otraId.Value);
+    }
+
+    private static string NumeroCorto(string? numero)
+        => string.IsNullOrEmpty(numero) ? "otra" : numero.Split('-').Last().TrimStart('0') is { Length: > 0 } n ? n : numero;
+
+    private async Task ConfirmarReasignar() => await ConfirmarReasignar(sinAviso: false);
+
+    private async Task ConfirmarReasignar(bool sinAviso, int? ventaIdOverride = null)
     {
         if (ventaReasignar is null) return;
         // 2026-06-25: -1 = Retira el cliente; 0 = sin asignar; >0 = repartidor
@@ -5510,13 +5575,24 @@
             ToastService.Error("Para marcar entregada, elegí un repartidor o Retira el cliente");
             return;
         }
+        // Si es para que la lleve un repartidor (no "ya entregada", que es cargar algo que ya pasó),
+        // avisar si la venta es vieja o ya figura entregada, y ofrecer la más nueva del cliente.
+        if (!sinAviso && destinoId.HasValue && !marcarEntregadaToggle)
+        {
+            try
+            {
+                var av = await Api.GetAvisoAsignarAsync(ventaReasignar.Id);
+                if (av is not null && av.Avisar) { avisoAsignar = av; return; }
+            }
+            catch { /* si no se puede consultar, se asigna como siempre */ }
+        }
         guardandoReasignar = true;
         try
         {
             DateTime? fechaEntrega = marcarEntregadaToggle ? fechaEntregaInput.ToUniversalTime() : (DateTime?)null;
             string? coment = marcarEntregadaToggle && !string.IsNullOrWhiteSpace(comentarioEntregaInput)
                 ? comentarioEntregaInput.Trim() : null;
-            var ok = await Api.ReasignarEscaneoAsync(ventaReasignar.Id, destinoId,
+            var ok = await Api.ReasignarEscaneoAsync(ventaIdOverride ?? ventaReasignar.Id, destinoId,
                 esRetira, marcarEntregadaToggle, fechaEntrega, coment);
             if (ok)
             {

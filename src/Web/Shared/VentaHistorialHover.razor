@@ -1,0 +1,147 @@
+@* 27/10/2026: "Ver historial" abajo de la fecha de la venta. Al pasar el cursor se abre la ventanita
+   (como el detalle de productos) con lo último; tocándolo (o en celu/tablet) se abre la lista completa.
+   El historial se pide recién al pasar el cursor: cargarlo para todo el listado lo pondría lento. *@
+@inject ApiClient Api
+
+<style>
+    .vh-wrap { position: relative; display: inline-block; }
+    .vh-link { font-size: 0.72rem; color: #6b7280; cursor: pointer; text-decoration: underline dotted; }
+    .vh-link:hover { color: #111827; }
+    .vh-tip { display: none; position: absolute; top: calc(100% + 2px); left: 0; z-index: 120; background: white;
+              border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+              padding: 0.6rem 0.8rem; min-width: 440px; max-width: 560px; white-space: normal; text-align: left; }
+    .vh-wrap:hover .vh-tip { display: block; }
+    .vh-tip.vh-arriba { top: auto; bottom: calc(100% + 2px); }
+    .vh-row { font-size: 0.8rem; line-height: 1.45; padding: 0.15rem 0; color: #111827; }
+    .vh-cuando { color: #6b7280; font-variant-numeric: tabular-nums; }
+    .vh-quien { font-weight: 600; }
+    .vh-det { color: #6b7280; font-size: 0.75rem; padding-left: 0.9rem; }
+    .vh-tachado { text-decoration: line-through; color: #9ca3af; }
+    .vh-alerta { color: #b91c1c; }
+    .vh-dia { font-size: 0.7rem; color: #9ca3af; margin-top: 0.35rem; border-top: 1px solid #f3f4f6; padding-top: 0.2rem; }
+</style>
+
+<span class="vh-wrap" @onmouseenter="AlEntrar">
+    <span class="vh-link" @onclick="AbrirCompleto" @onclick:stopPropagation="true">Ver historial</span>
+    <div class="vh-tip @(arriba ? "vh-arriba" : "")" @onclick:stopPropagation="true">
+        @if (hist is null)
+        {
+            <div class="vh-row" style="color:#6b7280;">@(error ?? "cargando…")</div>
+        }
+        else
+        {
+            var ultimos = hist.Items.Count > MaxHover ? hist.Items.Skip(hist.Items.Count - MaxHover).ToList() : hist.Items;
+            <div style="font-size:0.78rem; font-weight:700; margin-bottom:0.2rem;">Historial de @hist.Numero</div>
+            @if (hist.Items.Count > MaxHover)
+            {
+                <div class="vh-row" style="color:#6b7280;">… @(hist.Items.Count - MaxHover) renglones más arriba</div>
+            }
+            @RenderLista(ultimos)
+            <div style="margin-top:0.4rem; text-align:right;">
+                <span class="vh-link" @onclick="AbrirCompleto">ver todo</span>
+            </div>
+        }
+    </div>
+</span>
+
+@if (completo)
+{
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:9300; padding:1rem;"
+         @onclick="() => completo = false" @onclick:stopPropagation="true">
+        <div style="background:white; border-radius:12px; width:100%; max-width:640px; max-height:85vh; overflow:auto; padding:1rem 1.2rem; text-align:left; white-space:normal;"
+             @onclick:stopPropagation="true">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">
+                <div>
+                    <div style="font-weight:800; font-size:1rem;">Historial de @(hist?.Numero ?? "la venta")</div>
+                    @if (hist is not null)
+                    {
+                        <div style="font-size:0.85rem; color:#6b7280;">@hist.Cliente · $@hist.Total.ToString("N0", new CultureInfo("es-AR"))</div>
+                    }
+                </div>
+                <button type="button" style="background:none; border:none; font-size:1.2rem; cursor:pointer; color:#6b7280;" @onclick="() => completo = false">✕</button>
+            </div>
+            <div style="margin-top:0.6rem;">
+                @if (hist is null)
+                {
+                    <div class="vh-row" style="color:#6b7280;">@(error ?? "cargando…")</div>
+                }
+                else
+                {
+                    @RenderLista(hist.Items)
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int VentaId { get; set; }
+
+    private const int MaxHover = 12;
+    private VentaHistorialDto? hist;
+    private string? error;
+    private bool completo;
+    private bool cargando;
+
+    // Compartido entre todas las filas: volver a pasar el cursor no vuelve a preguntar enseguida.
+    private static readonly Dictionary<int, (VentaHistorialDto dto, DateTime at)> Cache = new();
+    private static readonly string[] Dias = { "dom", "lun", "mar", "mié", "jue", "vie", "sáb" };
+
+    // Las últimas filas de la pantalla abren la ventanita para arriba (si no, queda cortada abajo).
+    private bool arriba;
+
+    private async Task AlEntrar(MouseEventArgs e)
+    {
+        arriba = e.ClientY > 480;
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        if (cargando) return;
+        if (Cache.TryGetValue(VentaId, out var c) && DateTime.UtcNow - c.at < TimeSpan.FromSeconds(30))
+        {
+            hist = c.dto;
+            return;
+        }
+        cargando = true;
+        error = null;
+        try
+        {
+            var d = await Api.GetVentaHistorialAsync(VentaId);
+            if (d is null) error = "No se pudo traer el historial";
+            else { hist = d; Cache[VentaId] = (d, DateTime.UtcNow); }
+        }
+        catch { error = "No se pudo traer el historial"; }
+        finally { cargando = false; }
+    }
+
+    private async Task AbrirCompleto()
+    {
+        completo = true;
+        await Cargar();
+    }
+
+    private RenderFragment RenderLista(List<VentaHistorialItemDto> items) => __builder =>
+    {
+        DateTime? diaAnterior = null;
+        foreach (var it in items)
+        {
+            var ar = it.Cuando.ToArTime();
+            if (diaAnterior != ar.Date)
+            {
+                <div class="vh-dia">@Dias[(int)ar.DayOfWeek] @ar.ToString("dd/MM/yyyy")</div>
+                diaAnterior = ar.Date;
+            }
+            var cls = it.Tachado ? "vh-tachado" : (it.Alerta ? "vh-alerta" : "");
+            var desde = it.Desde switch { "celu" => " · desde el celu", "mapeo" => " · desde el Mapeo", _ => "" };
+            <div class="vh-row @cls">
+                <span class="vh-cuando">@ar.ToString("HH:mm")</span>@(" · ")@if (!string.IsNullOrWhiteSpace(it.Quien)){<span class="vh-quien">@it.Quien</span>@(" ")}<span>@it.Texto</span><span style="color:#9ca3af; font-size:0.72rem;">@desde</span>
+                @foreach (var d in it.Detalle)
+                {
+                    <div class="vh-det">@d</div>
+                }
+            </div>
+        }
+    };
+}
