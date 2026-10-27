@@ -162,8 +162,23 @@ window.nvMarcador = (function () {
             if (ta.value !== st.text) { st.text = ta.value; st.rangos = []; dibujar(ta); }
         }, 400);
 
+        aplicarTamano(ta);
         medir(ta);
         marcarBotones(ta.dataset.nvmKey);
+    }
+
+    // 2026-10-27: TAMAÑO DE LETRA (botones A− / A+). Se guarda en esta computadora (localStorage) y
+    // vale para todas las cajas con la misma key (la del formulario y la ventanita flotante).
+    function leerTamano(key) {
+        try { const n = parseInt(localStorage.getItem('nvm-tam-' + key), 10); return n > 0 ? n : null; } catch (e) { return null; }
+    }
+    function mostrarTamano(key, px) {
+        document.querySelectorAll('[data-nvm-tam="' + key + '"]').forEach(el => { el.textContent = px; });
+    }
+    function aplicarTamano(ta) {
+        const key = ta.dataset.nvmKey, px = leerTamano(key);
+        if (px) ta.style.fontSize = px + 'px';
+        mostrarTamano(key, px || Math.round(parseFloat(getComputedStyle(ta).fontSize)));
     }
 
     function buscar() {
@@ -200,6 +215,15 @@ window.nvMarcador = (function () {
             marcarBotones(key);
             if (haySeleccion) aplicarSeleccion(ta);
             if (ta && st.modo) ta.focus();
+            return false;
+        },
+        tamano: function (key, delta) {
+            const ta = document.querySelector('textarea[data-nvm-key="' + key + '"]');
+            const actual = leerTamano(key) || (ta ? Math.round(parseFloat(getComputedStyle(ta).fontSize)) : 14);
+            const px = Math.max(11, Math.min(40, actual + delta));
+            try { localStorage.setItem('nvm-tam-' + key, String(px)); } catch (e) { }
+            document.querySelectorAll('textarea[data-nvm-key="' + key + '"]').forEach(t => { t.style.fontSize = px + 'px'; medir(t); });
+            mostrarTamano(key, px);
             return false;
         },
         limpiar: function (key) {
