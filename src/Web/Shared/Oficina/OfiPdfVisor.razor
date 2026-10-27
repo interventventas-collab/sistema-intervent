@@ -23,7 +23,14 @@
             {
                 <div class="mpc-nota">No se pudo mostrar. Probá con ⬇ Bajar.</div>
             }
-            <div id="ofi-pdf"></div>
+            @if (EsImagen)
+            {
+                <img src="@Url" alt="@Nombre" style="width:100%; display:block; background:#fff;" />
+            }
+            else
+            {
+                <div id="ofi-pdf"></div>
+            }
         </div>
     </div>
     <div class="mpc-ver-bar">
@@ -39,6 +46,8 @@
     [Parameter] public string Nombre { get; set; } = "archivo.pdf";
     [Parameter] public string Titulo { get; set; } = "";
     [Parameter] public string? Linea { get; set; }
+    // 27/10/2026: Documentación también tiene fotos (constancias escaneadas): se muestran tal cual.
+    [Parameter] public bool EsImagen { get; set; }
     [Parameter] public EventCallback OnCerrar { get; set; }
 
     private string estado = "cargando";
@@ -47,6 +56,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        if (EsImagen) { estado = "ok"; StateHasChanged(); return; }
         string res;
         try { res = await JS.InvokeAsync<string>("mpCompartir.ver", Url, Nombre, "ofi-pdf"); }
         catch { res = "error"; }

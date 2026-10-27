@@ -1,5 +1,5 @@
 // 16/10/2026: "Comprobantes" en el link del repartidor. Comparte el PDF ADJUNTO (no un link)
-// con el menú de compartir del celu, así eligen WhatsApp y el contacto y listo.
+// con el menú de compartir del celu (27/10/2026: también fotos/Excel de Documentación, con su tipo real), así eligen WhatsApp y el contacto y listo.
 // El celu solo deja abrir ese menú justo después de un toque: si el PDF tardó en armarse,
 // el permiso se vence. En ese caso el PDF ya queda guardado y se pide tocar de nuevo.
 window.mpCompartir = (function () {
@@ -18,7 +18,7 @@ window.mpCompartir = (function () {
     const resp = await fetch(url, { credentials: 'same-origin' });
     if (!resp.ok) throw new Error('http ' + resp.status);
     const blob = await resp.blob();
-    const f = new File([blob], nombreDe(resp, porDefecto), { type: 'application/pdf' });
+    const f = new File([blob], nombreDe(resp, porDefecto), { type: blob.type || 'application/pdf' });
     cache[url] = f;
     return f;
   }

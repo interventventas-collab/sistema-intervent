@@ -31,9 +31,11 @@ public static class RepartidorOficina
     // 21/10/2026: "Por dónde van" (los camioncitos del mapa) y el fichaje del día.
     public const string Ubicaciones = "ubicaciones";
     public const string Fichaje = "fichaje";
+    // 27/10/2026: la carpeta de Documentación importante (constancias, certificados, etc.), solo ver y mandar.
+    public const string Documentacion = "documentacion";
 
     /// <summary>En el orden en que aparecen los cuadraditos y los tildes.</summary>
-    public static readonly string[] Todas = { Cobranzas, Cheques, Listas, Stock, Alquileres, Ubicaciones, Fichaje, Banco };
+    public static readonly string[] Todas = { Cobranzas, Cheques, Listas, Stock, Alquileres, Ubicaciones, Fichaje, Documentacion, Banco };
 
     /// <summary>Los que pueden abrir el saldo del banco con SU clave (PIN de operador).</summary>
     public static readonly string[] ClaveBanco = { "OSMAR", "GERMAN", "GABRIEL" };

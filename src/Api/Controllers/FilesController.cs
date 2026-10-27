@@ -390,6 +390,42 @@ public class FilesController : ControllerBase
         return Ok(results);
     }
 
+    // ─── 27/10/2026: link del repartidor → Oficina → 📁 Documentación ───
+    // Solo ver y bajar, y solo adentro de la carpeta de Documentación importante (la de la compu).
+    private const string CarpetaDocumentacion = "Documentacion-Importante";
+
+    /// <summary>Ruta absoluta si queda adentro de Documentación; null si no (o si es inválida).</summary>
+    private string? ResolverEnDocumentacion(string? path)
+    {
+        var rel = (path ?? "").Replace('\\', '/').Trim('/');
+        if (rel.Length == 0) rel = CarpetaDocumentacion;
+        string full, raiz;
+        try { full = _storage.ResolveSafe(rel); raiz = _storage.ResolveSafe(CarpetaDocumentacion); }
+        catch (UnauthorizedAccessException) { return null; }
+        return full == raiz || full.StartsWith(raiz + Path.DirectorySeparatorChar, StringComparison.Ordinal) ? full : null;
+    }
+
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}/list")]
+    public async Task<IActionResult> ListParaRepartidor(string token, [FromQuery] string? path)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Documentacion) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        var full = ResolverEnDocumentacion(path);
+        if (full is null) return BadRequest(new { error = "Path invalido" });
+        if (!Directory.Exists(full)) Directory.CreateDirectory(full);
+        return await List(_storage.ToRelative(full));
+    }
+
+    [AllowAnonymous]
+    [HttpGet("repartidor/{token}/download")]
+    public async Task<IActionResult> DownloadParaRepartidor(string token, [FromQuery] string path)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.Documentacion) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        var full = ResolverEnDocumentacion(path);
+        if (full is null || full == _storage.ResolveSafe(CarpetaDocumentacion)) return BadRequest(new { error = "Path invalido" });
+        return Download(_storage.ToRelative(full));
+    }
+
     [HttpGet("download")]
     public IActionResult Download([FromQuery] string path)
     {
