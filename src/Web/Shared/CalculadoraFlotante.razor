@@ -223,6 +223,12 @@
                                 <span class="cp-price-vals">
                                     <b class="cp-verde">@Money(l.SinIva)</b>
                                     <span class="cp-civa">c/IVA @Money(l.ConIva)</span>
+                                    @* 2026-10-27: cuánto se gana con este precio (sin IVA − costo sin IVA) y qué % es sobre el costo. *@
+                                    @if (prodResult.CostoSinIva > 0m)
+                                    {
+                                        var gan = l.SinIva - prodResult.CostoSinIva;
+                                        <span class="cp-gana @(gan < 0m ? "cp-pierde" : "")">ganás @MoneyGan(gan) · @FmtPctEntero(gan / prodResult.CostoSinIva * 100m)% s/costo</span>
+                                    }
                                 </span>
                             </div>
                         }
@@ -238,24 +244,36 @@
                     <div class="cp-field">
                         <label>Costo (sin IVA)</label>
                         <input class="cp-input" inputmode="decimal" placeholder="0"
-                               @bind="costoStr" @bind:event="oninput" />
+                               @bind="costoStr" @bind:event="oninput" @bind:after="Recalcular" />
                     </div>
+                    @* 2026-10-27: se puede escribir el %, el precio sin IVA o el precio con IVA: los otros dos se
+                       acomodan solos (ultimoCampo se acuerda de cuál escribió, para recalcular si cambia el costo). *@
                     <div class="cp-field">
                         <label>Quiero ganar %</label>
                         <input class="cp-input" inputmode="decimal" placeholder="ej: 20"
-                               @bind="pctStr" @bind:event="oninput" />
+                               value="@pctStr" @oninput='e => EscribioCampo("pct", e.Value?.ToString())' />
+                    </div>
+                    <div class="cp-field">
+                        <label>Precio venta (sin IVA)</label>
+                        <input class="cp-input" inputmode="decimal" placeholder="o poné el precio"
+                               value="@sinStr" @oninput='e => EscribioCampo("sin", e.Value?.ToString())' />
+                    </div>
+                    <div class="cp-field">
+                        <label>Precio venta (con IVA @FmtPct(ivaCalc)%)</label>
+                        <input class="cp-input" inputmode="decimal" placeholder="o el precio con IVA"
+                               value="@conStr" @oninput='e => EscribioCampo("con", e.Value?.ToString())' />
                     </div>
 
-                    @if (PrecioSinIva is decimal pSin)
+                    @if (PrecioSinIva is decimal pSin && Costo is decimal cGan)
                     {
+                        var gan = pSin - cGan;
                         <div class="cp-result">
-                            <div class="cp-row"><span>Precio venta (sin IVA)</span><b class="cp-verde">@Money(pSin)</b></div>
-                            <div class="cp-row"><span>Precio venta (con IVA @FmtPct(ivaCalc)%)</span><b>@Money(PrecioConIva!.Value)</b></div>
+                            <div class="cp-row @(gan < 0m ? "cp-pierde" : "cp-gana-row")"><span>Ganás</span><b>@MoneyGan(gan) · @FmtPctEntero(gan / cGan * 100m)% s/costo</b></div>
                         </div>
                     }
                     else
                     {
-                        <div class="cp-hint">Poné un costo y el % para ver el precio.</div>
+                        <div class="cp-hint">Poné un costo y el % (o un precio) para ver cuánto ganás.</div>
                     }
                 </div>
             </div>
@@ -435,6 +453,9 @@
     .cp-price-vals { display: flex; flex-direction: column; align-items: flex-end; }
     .cp-civa { font-size: 0.7rem; color: #9ca3af; font-weight: 400; }
     .cp-verde { color: #34d399 !important; }
+    .cp-gana { font-size: 0.72rem; color: #fde68a; font-weight: 400; margin-top: 1px; }
+    .cp-gana-row span, .cp-gana-row b { color: #fde68a !important; }
+    .cp-pierde, .cp-pierde span, .cp-pierde b { color: #f87171 !important; }
     .cp-stock { color: #60a5fa !important; }
     .cp-msg {
         background: #7f1d1d; color: #fecaca; border-radius: 6px;
@@ -517,12 +538,49 @@
     private static string Money(decimal v) => "$" + v.ToString("N2", ARS);
     private static string FmtPct(decimal v) => v.ToString("0.##", ARS);
 
-    private decimal? Costo => ParseNum(costoStr);
-    private decimal? Pct => ParseNum(pctStr);
-    private decimal? PrecioSinIva => (Costo is decimal c && c > 0m && Pct is decimal p)
-        ? Math.Round(c * (1m + p / 100m), 2) : (decimal?)null;
-    private decimal? PrecioConIva => PrecioSinIva is decimal ps
-        ? Math.Round(ps * (1m + ivaCalc / 100m), 2) : (decimal?)null;
+    private decimal? Costo => ParseNum(costoStr) is decimal c && c > 0m ? c : (decimal?)null;
+    private decimal? PrecioSinIva => Costo is not null ? ParseNum(sinStr) : null;
+    private static string MoneyGan(decimal v) => v < 0m ? "-" + Money(-v) : Money(v);
+    private static string FmtPctEntero(decimal v) => Math.Round(v, 0, MidpointRounding.AwayFromZero).ToString("0", ARS);
+
+    // 2026-10-27: los tres campos (%, precio sin IVA, precio con IVA) van atados. El que escribió manda
+    // y los otros dos se recalculan; si después cambia el costo, se recalcula desde el último que escribió.
+    private string sinStr = "";
+    private string conStr = "";
+    private string ultimoCampo = "pct";
+
+    private void EscribioCampo(string campo, string? valor)
+    {
+        ultimoCampo = campo;
+        if (campo == "pct") pctStr = valor ?? "";
+        else if (campo == "sin") sinStr = valor ?? "";
+        else conStr = valor ?? "";
+        Recalcular();
+    }
+
+    private void Recalcular()
+    {
+        var c = Costo;
+        var ivaF = 1m + ivaCalc / 100m;
+        static string F(decimal v) => v.ToString("0.##", ARS);
+        if (ultimoCampo == "pct")
+        {
+            if (c is decimal cc && ParseNum(pctStr) is decimal p)
+            {
+                var ps = Math.Round(cc * (1m + p / 100m), 2);
+                sinStr = F(ps); conStr = F(Math.Round(ps * ivaF, 2));
+            }
+            else { sinStr = ""; conStr = ""; }
+        }
+        else
+        {
+            decimal? ps = ultimoCampo == "sin" ? ParseNum(sinStr)
+                        : (ParseNum(conStr) is decimal pc ? Math.Round(pc / ivaF, 2) : (decimal?)null);
+            if (ultimoCampo == "sin") conStr = ps is decimal a ? F(Math.Round(a * ivaF, 2)) : "";
+            else sinStr = ps is decimal b ? F(b) : "";
+            pctStr = (c is decimal cc && ps is decimal x) ? F(Math.Round((x / cc - 1m) * 100m, 2)) : "";
+        }
+    }
 
     public async Task ToggleAsync()
     {
@@ -712,6 +770,7 @@
                 // Precarga el costo y el IVA del producto para el cálculo por %.
                 costoStr = prodResult.CostoSinIva.ToString("0.##", ARS);
                 ivaCalc = prodResult.IvaPct > 0m ? prodResult.IvaPct : 21m;
+                Recalcular();
             }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
