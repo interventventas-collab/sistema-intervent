@@ -166,7 +166,9 @@ public class GoogleMapsLinkResolverService
         if (m.Success) return ParseTuple(m.Groups[1].Value, m.Groups[2].Value);
 
         // Patrón 3: ?q=LAT,LNG (formato directions API o share simple)
-        m = Regex.Match(url, @"[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)");
+        // 27/10/2026: también ?api=1&query=LAT,LNG (el link que arma el propio sistema al guardar
+        // la ubicación de la venta). Antes no se leía y Waze buscaba por la dirección escrita.
+        m = Regex.Match(url, @"[?&](?:q|query)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)", RegexOptions.IgnoreCase);
         if (m.Success) return ParseTuple(m.Groups[1].Value, m.Groups[2].Value);
 
         // Patrón 4: ll=LAT,LNG (formato Google Maps embed)
