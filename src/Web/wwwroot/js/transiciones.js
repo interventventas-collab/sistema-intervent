@@ -16,6 +16,8 @@
  * NO HACE MAS LENTO NADA: la animacion la hace la placa de video (solo se mueve y se transparenta) y
  * los datos se siguen cargando al mismo tiempo. Dura ~0,3 s.
  *
+ * Tambien al CAMBIAR DE PANTALLA desde el menu: lo nuevo entra en cascada (ver "Parte 3" abajo).
+ *
  * Para apagarla en una ventana puntual: data-sin-anim en el overlay. En equipos con "reducir
  * movimiento" activado no se anima nada.
  */
@@ -197,12 +199,69 @@
         return r;
     }
 
+    // ═══ Parte 3: cambiar de pantalla desde el menú (de Ventas a Clientes, etc.) ═══
+    // No hay "botón de origen" que agrandar: lo nuevo de la pantalla entra en cascada. Vale durante
+    // 1,5 s después de cambiar de dirección, así también entran en cascada los renglones que llegan
+    // un toque después (la tabla aparece cuando terminan de llegar los datos).
+    // Ojo: el WhatsApp del celu (wa-atras.js) deja marcas con la MISMA dirección: no cuentan.
+    var rutaActual = location.pathname, navAt = 0, navCuenta = 0;
+    var yaAnimados = new WeakSet();
+    var VENTANA_NAV = 1500, MAX_NAV = 30;
+
+    function quizasNavego() {
+        if (location.pathname === rutaActual) return;
+        rutaActual = location.pathname;
+        navAt = Date.now();
+        navCuenta = 0;
+    }
+    ['pushState', 'replaceState'].forEach(function (f) {
+        var orig = history[f];
+        history[f] = function () { var r = orig.apply(this, arguments); quizasNavego(); return r; };
+    });
+    window.addEventListener('popstate', quizasNavego);
+
+    function enPagina(n) {
+        var c = n.parentElement && n.parentElement.closest ? n.parentElement.closest('main .content') : null;
+        return !!c && !n.closest(SEL) && !n.closest('[data-tx-copia]');
+    }
+
+    function cascadaPagina(nodos) {
+        if (!nodos.length || Date.now() - navAt > VENTANA_NAV) return;
+        var lista = [];
+        nodos.forEach(function (n) {
+            if (lista.length >= MAX_NAV) return;
+            var r = n.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0 || r.top > window.innerHeight) return;
+            // Un bloque grande (la página entera, una tabla): entran sus partes, no el bloque de una.
+            if (n.children.length >= 2 && r.height > window.innerHeight * 0.35) {
+                renglones(n).forEach(function (x) { if (lista.length < MAX_NAV) lista.push(x); });
+            } else lista.push(n);
+        });
+        lista.forEach(function (el) {
+            if (yaAnimados.has(el) || navCuenta >= MAX_NAV) return;
+            yaAnimados.add(el);
+            var k = navCuenta++;
+            try {
+                el.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }],
+                    { duration: 320, delay: Math.min(k * PASO_CASCADA, 420), easing: CURVA_REBOTE, fill: 'backwards' });
+            } catch (e) { }
+        });
+    }
+
     new MutationObserver(function (lista) {
+        var nuevosPagina = [];
+        var navegando = Date.now() - navAt < VENTANA_NAV;
         lista.forEach(function (m) {
             var estilosIdos = [];
             m.removedNodes.forEach(function (n) { if (n.nodeType === 1 && n.tagName === 'STYLE') estilosIdos.push(n); });
             m.removedNodes.forEach(function (n) { overlaysEn(n).forEach(function (ov) { cerrar(ov, estilosIdos); }); });
-            m.addedNodes.forEach(function (n) { overlaysEn(n).forEach(abrir); });
+            m.addedNodes.forEach(function (n) {
+                var ovs = overlaysEn(n);
+                ovs.forEach(abrir);
+                if (navegando && !ovs.length && n.nodeType === 1 && n.tagName !== 'STYLE' && n.tagName !== 'SCRIPT' && enPagina(n))
+                    nuevosPagina.push(n);
+            });
         });
+        if (nuevosPagina.length) cascadaPagina(nuevosPagina);
     }).observe(document.body, { childList: true, subtree: true });
 })();
