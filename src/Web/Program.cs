@@ -30,6 +30,7 @@ builder.Services.AddScoped<NuevaVentaSignal>();
 builder.Services.AddScoped<CurrentCompanyService>();
 builder.Services.AddSingleton<UploadProgressService>();
 builder.Services.AddScoped<CpService>();
+builder.Services.AddScoped<LocalidadesService>();
 
 // ── Componentes móviles (rediseño 2026-05-26): índice de catálogo en memoria + prefs ──
 builder.Services.AddSingleton<Web.Services.Mobile.KeyboardPrefs>();

@@ -8480,3 +8480,14 @@ BEGIN
     CREATE INDEX IX_CafeVentaHistorial_Venta ON Cafe_VentaHistorial(VentaId, CreatedAt);
 END
 GO
+
+-- ============================================================
+-- 28/10/2026: CP y provincia del domicilio de ENTREGA (los fiscales son Cp/Ciudad).
+-- Se completan solos al elegir la localidad de la lista oficial (data/localidades-ar.json).
+-- ============================================================
+IF COL_LENGTH('Cafe_Clientes','CpEntrega') IS NULL
+    ALTER TABLE Cafe_Clientes ADD CpEntrega NVARCHAR(10) NULL;
+GO
+IF COL_LENGTH('Cafe_Clientes','ProvinciaEntrega') IS NULL
+    ALTER TABLE Cafe_Clientes ADD ProvinciaEntrega NVARCHAR(100) NULL;
+GO

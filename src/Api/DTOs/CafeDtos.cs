@@ -24,7 +24,9 @@ public record CafeClienteDto(
     // 2026-08-31: localidad del domicilio de ENTREGA (la fiscal es `Localidad`).
     string? LocalidadEntrega = null,
     // 2026-10-16: comprobante de siempre (null / FACTURA / X / PRO).
-    string? ComprobantePreferido = null);
+    string? ComprobantePreferido = null,
+    // 2026-10-28: CP y provincia de ENTREGA.
+    string? CpEntrega = null, string? ProvinciaEntrega = null);
 
 // 2026-07-29: Direcciones de entrega múltiples por cliente.
 public record CafeDireccionDto(
@@ -64,6 +66,8 @@ public class CreateCafeClienteRequest
     public string? CondicionIvaDefault { get; set; }
     public string? DomicilioEntrega { get; set; }
     public string? LocalidadEntrega { get; set; }
+    public string? CpEntrega { get; set; }
+    public string? ProvinciaEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     /// <summary>Enlace de Google Maps cargado al crear el cliente. Si viene, intentamos
@@ -100,6 +104,8 @@ public class UpdateCafeClienteRequest
     public string? CondicionIvaDefault { get; set; }
     public string? DomicilioEntrega { get; set; }
     public string? LocalidadEntrega { get; set; }
+    public string? CpEntrega { get; set; }
+    public string? ProvinciaEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public bool? IsActive { get; set; }

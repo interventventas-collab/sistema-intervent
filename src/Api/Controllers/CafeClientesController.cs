@@ -44,7 +44,8 @@ public class CafeClientesController : ControllerBase
         c.MeliBuyerId, c.MeliNickname,
         c.EnviarSiempreEmail, c.EnviarSiempreWhatsapp,
         c.LocalidadEntrega,
-        c.ComprobantePreferido);
+        c.ComprobantePreferido,
+        c.CpEntrega, c.ProvinciaEntrega);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -226,6 +227,8 @@ public class CafeClientesController : ControllerBase
             CondicionIvaDefault = Norm(req.CondicionIvaDefault),
             DomicilioEntrega = Norm(req.DomicilioEntrega),
             LocalidadEntrega = Norm(req.LocalidadEntrega),
+            CpEntrega = Norm(req.CpEntrega),
+            ProvinciaEntrega = Norm(req.ProvinciaEntrega),
             Notas = Norm(req.Notas),
             ComentariosComprobante = Norm(req.ComentariosComprobante),
             MapeoLink = Norm(req.MapeoLink),
@@ -263,6 +266,36 @@ public class CafeClientesController : ControllerBase
         _db.CafeClientes.Add(c);
         await _db.SaveChangesAsync();
         return Ok(Map(c));
+    }
+
+    /// <summary>2026-10-28 — Localidades que ya usan los clientes (entrega y fiscal), con cuántos
+    /// clientes cada una y el CP/provincia más usados. El buscador de localidad las pone primero y
+    /// así "aprende" las zonas y los CP que no trae la lista oficial (Nordelta, barrios de CABA...).</summary>
+    [HttpGet("localidades-usadas")]
+    public async Task<IActionResult> GetLocalidadesUsadas()
+    {
+        var entrega = await _db.CafeClientes
+            .Where(c => c.LocalidadEntrega != null && c.LocalidadEntrega != "")
+            .Select(c => new { L = c.LocalidadEntrega!, P = c.ProvinciaEntrega, Cp = c.CpEntrega })
+            .ToListAsync();
+        var fiscal = await _db.CafeClientes
+            .Where(c => c.Localidad != null && c.Localidad != "")
+            .Select(c => new { L = c.Localidad!, P = c.Ciudad, Cp = c.Cp })
+            .ToListAsync();
+        var lista = entrega.Concat(fiscal)
+            .GroupBy(x => x.L.Trim().ToUpperInvariant())
+            .Select(g => new
+            {
+                localidad = g.GroupBy(x => x.L.Trim()).OrderByDescending(h => h.Count()).First().Key,
+                provincia = g.Where(x => !string.IsNullOrWhiteSpace(x.P)).GroupBy(x => x.P!.Trim())
+                             .OrderByDescending(h => h.Count()).Select(h => h.Key).FirstOrDefault(),
+                cp = g.Where(x => !string.IsNullOrWhiteSpace(x.Cp)).GroupBy(x => x.Cp!.Trim())
+                      .OrderByDescending(h => h.Count()).Select(h => h.Key).FirstOrDefault(),
+                clientes = g.Count()
+            })
+            .OrderByDescending(x => x.clientes)
+            .ToList();
+        return Ok(lista);
     }
 
     /// <summary>Devuelve el próximo código interno disponible (MAX + 1) SIN asignarlo a ningún cliente.
@@ -320,6 +353,8 @@ public class CafeClientesController : ControllerBase
         if (req.CondicionIvaDefault is not null) c.CondicionIvaDefault = Norm(req.CondicionIvaDefault);
         if (req.DomicilioEntrega is not null) c.DomicilioEntrega = Norm(req.DomicilioEntrega);
         if (req.LocalidadEntrega is not null) c.LocalidadEntrega = Norm(req.LocalidadEntrega);
+        if (req.CpEntrega is not null) c.CpEntrega = Norm(req.CpEntrega);
+        if (req.ProvinciaEntrega is not null) c.ProvinciaEntrega = Norm(req.ProvinciaEntrega);
         if (req.Notas is not null) c.Notas = Norm(req.Notas);
         if (req.ComentariosComprobante is not null) c.ComentariosComprobante = Norm(req.ComentariosComprobante);
         if (req.IsActive.HasValue) c.IsActive = req.IsActive.Value;

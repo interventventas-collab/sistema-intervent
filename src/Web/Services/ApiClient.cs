@@ -1630,6 +1630,9 @@ public class ApiClient
     }
     private class NextCodigoInternoResponse { public int CodigoInterno { get; set; } }
 
+    /// <summary>2026-10-28: localidades que ya usan los clientes (las pone primero el buscador).</summary>
+    public Task<T?> GetLocalidadesUsadasAsync<T>() => GetAsync<T>("/api/cafe/clientes/localidades-usadas");
+
     /// <summary>Re-extrae las coordenadas a partir del MapeoLink (si falló la primera vez).</summary>
     public async Task<CafeClienteDto?> ReExtraerCoordsAsync(int id)
         => await PostAsync<CafeClienteDto>($"/api/cafe/clientes/{id}/reextraer-coords", new { });
