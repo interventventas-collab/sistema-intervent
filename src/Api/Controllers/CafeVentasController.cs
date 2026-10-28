@@ -1729,7 +1729,8 @@ public class CafeVentasController : ControllerBase
                         && i.ProductoId != null
                         && ids.Contains(i.ProductoId!.Value))
             .OrderByDescending(i => i.VentaNav!.Fecha).ThenByDescending(i => i.Id)
-            .Select(i => new { ProductoId = i.ProductoId!.Value, i.Formato, i.Molienda, i.EsDoyPack, i.EsEnvasePlateado })
+            .Select(i => new { ProductoId = i.ProductoId!.Value, i.Formato, i.Molienda, i.EsDoyPack, i.EsEnvasePlateado,
+                               i.PrecioUnitario, i.DescuentoPct, Fecha = i.VentaNav!.Fecha })
             .Take(500)
             .ToListAsync();
 
@@ -1746,7 +1747,9 @@ public class CafeVentasController : ControllerBase
                 g.Formato,
                 g.TimesOrdered, g.TotalQuantity, g.LastPurchase,
                 p.StockGramos, p.StockUnidades, precio,
-                ult?.Molienda, ult?.EsDoyPack ?? false, ult?.EsEnvasePlateado ?? false));
+                ult?.Molienda, ult?.EsDoyPack ?? false, ult?.EsEnvasePlateado ?? false,
+                ult is null ? null : Math.Round(ult.PrecioUnitario * (1m - ult.DescuentoPct / 100m), 2, MidpointRounding.AwayFromZero),
+                ult?.Fecha));
         }
         return Ok(result);
     }

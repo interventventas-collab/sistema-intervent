@@ -919,7 +919,10 @@ public record CafeTopProductoClienteDto(
     decimal StockGramos, int StockUnidades,
     decimal PrecioReferencia,               // precio aplicable al tipo del cliente actual
     // 2026-09-29: cómo lo llevó la ÚLTIMA vez (molienda y envase), para el Modo venta del chat.
-    string? Molienda = null, bool EsDoyPack = false, bool EsEnvasePlateado = false);
+    string? Molienda = null, bool EsDoyPack = false, bool EsEnvasePlateado = false,
+    // 2026-10-28: cuánto PAGÓ la última vez (precio unitario con el descuento del renglón) y cuándo,
+    // para que en "Lo que más compra" se vea al lado del precio de hoy.
+    decimal? UltimoPrecio = null, DateTime? UltimoPrecioFecha = null);
 
 // ===== Combos =====
 public record CafeComboItemDto(
