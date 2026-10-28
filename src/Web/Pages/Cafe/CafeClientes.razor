@@ -497,7 +497,7 @@
                         <div class="cm-col">
                             <UbicacionClienteMapa @ref="mapaCliente" @key="mapaKey" Consulta="@ConsultaEntrega"
                                                   Lat="formMapeoLat" Lng="formMapeoLng" FotoId="cm-foto-cliente"
-                                                  OnUbicacion="CambioUbicacion" />
+                                                  OnUbicacion="CambioUbicacion" OnCp="CpDeGoogle" />
                         </div>
                     </div>
                     @* ─── 2026-07-30: Domicilios de entrega alternativos (se cargan por modal) ─── *@
@@ -1684,6 +1684,14 @@
         formMapeoLat = u.lat; formMapeoLng = u.lng; formMapeoLink = u.link;
     }
 
+    /// <summary>CP que trae Google al ubicar la dirección: lo pone si está vacío o si lo había
+    /// puesto el sistema (lista o una búsqueda anterior); nunca pisa uno escrito a mano o ya guardado.</summary>
+    private void CpDeGoogle(string cp)
+    {
+        if (string.IsNullOrWhiteSpace(formCpEntrega) || !cpEntregaAMano) formCpEntrega = cp;
+    }
+    private bool cpEntregaAMano;
+
     private async Task UsarLinkPegado(string? url)
     {
         linkPegado = (url ?? "").Trim();
@@ -1793,7 +1801,10 @@
         formLocalidadEntrega = o.Nombre;
         if (!string.IsNullOrEmpty(o.Provincia)) formProvinciaEntrega = o.Provincia;
         if (o.Cps.Count > 0 ? !o.Cps.Contains(formCpEntrega.Trim()) : Localidades.CpEsDeOtra(formCpEntrega, o))
+        {
             formCpEntrega = o.CpUnico ?? "";
+            cpEntregaAMano = false;   // lo puso el sistema: la búsqueda en Google lo puede afinar
+        }
         cpEntregaOpciones = new();
     }
 
@@ -1810,6 +1821,7 @@
     private async Task OnCpEntregaInput(string? value)
     {
         formCpEntrega = (value ?? "").Trim();
+        cpEntregaAMano = formCpEntrega != "";
         cpEntregaOpciones = new();
         if (formCpEntrega.Length != 4 || !formCpEntrega.All(char.IsDigit)) return;
         await Localidades.EnsureAsync();
@@ -2103,7 +2115,7 @@
         isEditing = false; editingId = null; finalizandoAltaId = null;
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
         formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = ""; formLocalidadEntrega = "";
-        formCpEntrega = ""; formProvinciaEntrega = ""; cpEntregaOpciones = new(); linkPegado = ""; mapaKey++;
+        formCpEntrega = ""; formProvinciaEntrega = ""; cpEntregaOpciones = new(); linkPegado = ""; mapaKey++; cpEntregaAMano = false;
         formTelefono2 = ""; formEntreCalles = "";
         formLocalidad = ""; formCiudad = ""; formCp = ""; formCondicionIvaDefault = "";
         formCodigoInterno = null; formMapeoLink = "";
@@ -2128,7 +2140,7 @@
         formRazonSocial = c.RazonSocial ?? "";
         formDomicilioEntrega = c.DomicilioEntrega ?? "";
         formLocalidadEntrega = c.LocalidadEntrega ?? "";
-        formCpEntrega = c.CpEntrega ?? ""; formProvinciaEntrega = c.ProvinciaEntrega ?? ""; cpEntregaOpciones = new(); linkPegado = ""; mapaKey++;
+        formCpEntrega = c.CpEntrega ?? ""; formProvinciaEntrega = c.ProvinciaEntrega ?? ""; cpEntregaOpciones = new(); linkPegado = ""; mapaKey++; cpEntregaAMano = formCpEntrega != "";
         formTelefono2 = c.Telefono2 ?? ""; formEntreCalles = c.EntreCalles ?? "";
         formComentariosComprobante = c.ComentariosComprobante ?? "";
         formLocalidad = c.Localidad ?? ""; formCiudad = c.Ciudad ?? "";
