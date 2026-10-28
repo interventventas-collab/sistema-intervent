@@ -1,0 +1,86 @@
+@* 28/10/2026: CALCU ALQUILER en el celu del repartidor (botón del encabezado azul, solo con el tilde
+   "calcualquiler" en su ficha). Es la MISMA pieza que la solapa 🪑 Alquiler de la calculadora de la
+   compu (Shared/CotizadorAlquiler.razor), en modo celu: equipos con − +, flete, días, fecha y total.
+   Igual que en la compu, pide nombre o teléfono y el presupuesto queda guardado (quién lo hizo = el
+   repartidor de este link). Después se copia o se manda directo por WhatsApp. *@
+@inject IJSRuntime JS
+
+<div class="mpc-overlay">
+    <div class="mpc-wrap">
+        <div class="mpc-top">
+            <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
+            <div class="mpc-title">🪑 CalcuAlquiler</div>
+        </div>
+
+        <div class="mpc-row">
+            <div class="ofi-lab" style="margin:0 0 0.3rem;">¿A QUIÉN SE LO PASÁS? · nombre o teléfono, con uno alcanza</div>
+            <input class="cam-inp" placeholder="Nombre" autocomplete="off" @bind="nombre" @bind:event="oninput" />
+            <input class="cam-inp" placeholder="Teléfono" inputmode="tel" autocomplete="off" @bind="telefono" @bind:event="oninput" />
+        </div>
+
+        <div class="mpc-row">
+            <CotizadorAlquiler Movil="true" MostrarDescuento="true" PedirAQuien="true"
+                               Nombre="@nombre" Telefono="@telefono" RepartidorToken="@Token"
+                               TextoBoton="💾 Armar y guardar el presupuesto" OnListo="AlListo" />
+        </div>
+    </div>
+</div>
+
+@* Ya armado y guardado: una hoja fija abajo (el botón del cotizador queda abajo de todo y un cartel
+   arriba no se vería). *@
+@if (texto is not null)
+{
+    <div class="cam-fondo" @onclick="() => texto = null">
+        <div class="cam-hoja" @onclick:stopPropagation="true">
+            <div style="font-weight:800; color:#111827; margin-bottom:0.4rem;">✅ Presupuesto guardado y copiado</div>
+            <div class="cam-texto">@texto</div>
+            <div style="display:flex; gap:0.4rem; margin-top:0.6rem;">
+                <a class="mpc-wa cam-btn" target="_blank" rel="noopener" href="@WaLink">💬 Mandar por WhatsApp</a>
+                <button type="button" class="cam-btn cam-copiar" @onclick="Copiar">📋 Copiar</button>
+            </div>
+            <button type="button" class="cam-btn cam-copiar" style="width:100%; margin-top:0.4rem;" @onclick="() => texto = null">Cerrar</button>
+        </div>
+    </div>
+}
+
+<style>
+    .cam-inp { width:100%; box-sizing:border-box; padding:0.6rem 0.7rem; border:1.5px solid #d1d5db; border-radius:8px; font-size:1rem; margin-bottom:0.35rem; }
+    .cam-btn { flex:1; text-align:center; text-decoration:none; padding:0.7rem 0.5rem; font-size:0.92rem; border-radius:10px; }
+    .cam-copiar { background:white; border:1.5px solid #d1d5db; font-weight:800; color:#374151; cursor:pointer; font-family:inherit; }
+    .cam-fondo { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1600; display:flex; align-items:flex-end; justify-content:center; }
+    .cam-hoja { background:white; width:100%; max-width:560px; border-radius:14px 14px 0 0; padding:0.9rem 0.9rem calc(0.9rem + env(safe-area-inset-bottom)); box-sizing:border-box; }
+    .cam-texto { white-space:pre-wrap; font-size:0.8rem; color:#374151; background:#f9fafb; border-radius:8px; padding:0.5rem 0.6rem; margin-top:0.5rem; max-height:220px; overflow-y:auto; }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private string nombre = "";
+    private string telefono = "";
+    private string? texto;
+
+    private async Task AlListo(string t)
+    {
+        texto = t;
+        // Lo dejamos copiado de una (como la compu); la hoja de abajo sirve para mandarlo.
+        try { await JS.InvokeVoidAsync("copyToClipboard", t); } catch { }
+    }
+
+    private async Task Copiar()
+    {
+        if (texto is null) return;
+        try { await JS.InvokeVoidAsync("copyToClipboard", texto); } catch { }
+    }
+
+    /// <summary>Con teléfono abre el chat de esa persona; sin teléfono, WhatsApp pregunta a quién.</summary>
+    private string WaLink
+    {
+        get
+        {
+            var d = new string(telefono.Where(char.IsDigit).ToArray());
+            var num = d.Length == 0 ? "" : (d.StartsWith("54") ? d : "549" + d.TrimStart('0'));
+            return $"https://wa.me/{num}?text={Uri.EscapeDataString(texto ?? "")}";
+        }
+    }
+}

@@ -32,6 +32,15 @@ public class AlqFletesController : ControllerBase
         return Ok(list);
     }
 
+    /// <summary>28/10/2026: CALCU ALQUILER del celu del repartidor (con el tilde "calcualquiler").</summary>
+    [HttpGet("repartidor/{token}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetAllRepartidor(string token, [FromQuery] bool soloActivos = false)
+    {
+        if (await Api.Services.RepartidorOficina.ConPermisoAsync(_db, token, Api.Services.RepartidorOficina.CalcuAlquiler) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await GetAll(soloActivos);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateAlqFleteRequest req)
     {

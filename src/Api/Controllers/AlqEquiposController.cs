@@ -33,6 +33,16 @@ public class AlqEquiposController : ControllerBase
         return Ok(list);
     }
 
+    /// <summary>28/10/2026: CALCU ALQUILER del celu del repartidor (link sin login). Solo con el tilde
+    /// "calcualquiler" en su ficha (Services/RepartidorOficina.cs). Misma lista que la compu.</summary>
+    [HttpGet("repartidor/{token}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetAllRepartidor(string token)
+    {
+        if (await Api.Services.RepartidorOficina.ConPermisoAsync(_db, token, Api.Services.RepartidorOficina.CalcuAlquiler) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await GetAll();
+    }
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {

@@ -263,6 +263,10 @@
     /// <summary>Quién la hizo (operador del PIN).</summary>
     [Parameter] public string? Operador { get; set; }
 
+    /// <summary>28/10/2026: CALCU ALQUILER del celu del repartidor (link sin login): los datos salen
+    /// de los pedidos "repartidor/{token}", que solo responden si su ficha tiene el tilde.</summary>
+    [Parameter] public string? RepartidorToken { get; set; }
+
     /// <summary>Se dispara cuando la cotización quedó guardada (para refrescar el historial).</summary>
     [Parameter] public EventCallback OnGuardada { get; set; }
 
@@ -292,14 +296,14 @@
         try
         {
             // Vienen en el orden que él armó en Alquileres → Equipos (flechitas ↑↓): NO reordenar acá.
-            var eqs = await Api.GetAlqEquiposAsync();
+            var eqs = await Api.GetAlqEquiposAsync(RepartidorToken);
             equipos = (eqs ?? new()).Where(e => e.IsActive).ToList();
-            fletes = await Api.GetAlqFletesAsync(soloActivos: true) ?? new();
+            fletes = await Api.GetAlqFletesAsync(soloActivos: true, tokenRepartidor: RepartidorToken) ?? new();
 
             // Si no se puede traer, el presupuesto sale igual: sin encabezado ni pie.
             try
             {
-                var txt = await Api.GetAlqPresupuestoTextoAsync();
+                var txt = await Api.GetAlqPresupuestoTextoAsync(RepartidorToken);
                 txtEncabezado = (txt?.Encabezado ?? "").Trim();
                 txtPie = (txt?.Pie ?? "").Trim();
             }
@@ -373,7 +377,7 @@
     {
         try
         {
-            var v = await Api.GetAlqDiasPorcentajeAsync();
+            var v = await Api.GetAlqDiasPorcentajeAsync(RepartidorToken);
             if (v is not null) diasPorcentaje = v.Porcentaje;
         }
         catch { /* 50% */ }
@@ -457,7 +461,7 @@
                         PrecioUnitario = e.PrecioDiario   // congelado: el precio de HOY
                     }).ToList()
             };
-            var guardada = await Api.CrearAlqCotizacionAsync(req);
+            var guardada = await Api.CrearAlqCotizacionAsync(req, RepartidorToken);
             if (guardada is not null) await OnGuardada.InvokeAsync();
         }
         catch { /* que no se pierda el presupuesto por no poder guardarlo */ }

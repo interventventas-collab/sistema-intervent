@@ -467,8 +467,10 @@ public class ApiClient
         => await DeleteAsync($"/api/suppliers/{id}");
 
     // --- Alquileres: Equipos ---
-    public async Task<List<AlqEquipoDto>?> GetAlqEquiposAsync()
-        => await GetAsync<List<AlqEquipoDto>>("/api/alquileres/equipos");
+    // 28/10/2026: tokenRepartidor = la CALCU ALQUILER del celu del repartidor (link sin login, con su tilde).
+    public async Task<List<AlqEquipoDto>?> GetAlqEquiposAsync(string? tokenRepartidor = null)
+        => await GetAsync<List<AlqEquipoDto>>(tokenRepartidor is null ? "/api/alquileres/equipos"
+            : $"/api/alquileres/equipos/repartidor/{Uri.EscapeDataString(tokenRepartidor)}");
 
     public async Task<AlqEquipoDto?> CreateAlqEquipoAsync(CreateAlqEquipoRequest request)
         => await PostAsync<AlqEquipoDto>("/api/alquileres/equipos", request);
@@ -513,14 +515,16 @@ public class ApiClient
     public async Task<AlqCotizacionDto?> GetAlqCotizacionAsync(int id)
         => await GetAsync<AlqCotizacionDto>($"/api/alquileres/cotizaciones/{id}");
 
-    public async Task<AlqCotizacionDto?> CrearAlqCotizacionAsync(CrearAlqCotizacionRequest req)
-        => await PostAsync<AlqCotizacionDto>("/api/alquileres/cotizaciones", req);
+    public async Task<AlqCotizacionDto?> CrearAlqCotizacionAsync(CrearAlqCotizacionRequest req, string? tokenRepartidor = null)
+        => await PostAsync<AlqCotizacionDto>(tokenRepartidor is null ? "/api/alquileres/cotizaciones"
+            : $"/api/alquileres/cotizaciones/repartidor/{Uri.EscapeDataString(tokenRepartidor)}", req);
 
     // 2026-09-10: porcentaje del dia extra en los alquileres de varios dias.
     public record AlqDiasPorcentajeDto(decimal Porcentaje);
 
-    public async Task<AlqDiasPorcentajeDto?> GetAlqDiasPorcentajeAsync()
-        => await GetAsync<AlqDiasPorcentajeDto>("/api/alquileres/cotizaciones/dias-porcentaje");
+    public async Task<AlqDiasPorcentajeDto?> GetAlqDiasPorcentajeAsync(string? tokenRepartidor = null)
+        => await GetAsync<AlqDiasPorcentajeDto>(tokenRepartidor is null ? "/api/alquileres/cotizaciones/dias-porcentaje"
+            : $"/api/alquileres/cotizaciones/repartidor/{Uri.EscapeDataString(tokenRepartidor)}/dias-porcentaje");
 
     public async Task<bool> SetAlqDiasPorcentajeAsync(decimal pct)
     {
@@ -533,8 +537,9 @@ public class ApiClient
         => await DeleteAsync($"/api/alquileres/cotizaciones/{id}");
 
     // --- Alquileres: texto fijo del presupuesto, encabezado y pie (2026-09-01) ---
-    public async Task<AlqPresupuestoTextoDto?> GetAlqPresupuestoTextoAsync()
-        => await GetAsync<AlqPresupuestoTextoDto>("/api/alquileres/cotizaciones/texto");
+    public async Task<AlqPresupuestoTextoDto?> GetAlqPresupuestoTextoAsync(string? tokenRepartidor = null)
+        => await GetAsync<AlqPresupuestoTextoDto>(tokenRepartidor is null ? "/api/alquileres/cotizaciones/texto"
+            : $"/api/alquileres/cotizaciones/repartidor/{Uri.EscapeDataString(tokenRepartidor)}/texto");
 
     public async Task<bool> SaveAlqPresupuestoTextoAsync(AlqPresupuestoTextoDto txt)
     {
@@ -543,8 +548,10 @@ public class ApiClient
     }
 
     // --- Alquileres: Fletes por zona (2026-08-31) ---
-    public async Task<List<AlqFleteDto>?> GetAlqFletesAsync(bool soloActivos = false)
-        => await GetAsync<List<AlqFleteDto>>($"/api/alquileres/fletes?soloActivos={soloActivos.ToString().ToLowerInvariant()}");
+    public async Task<List<AlqFleteDto>?> GetAlqFletesAsync(bool soloActivos = false, string? tokenRepartidor = null)
+        => await GetAsync<List<AlqFleteDto>>(tokenRepartidor is null
+            ? $"/api/alquileres/fletes?soloActivos={soloActivos.ToString().ToLowerInvariant()}"
+            : $"/api/alquileres/fletes/repartidor/{Uri.EscapeDataString(tokenRepartidor)}?soloActivos={soloActivos.ToString().ToLowerInvariant()}");
 
     public async Task<AlqFleteDto?> CreateAlqFleteAsync(CreateAlqFleteRequest request)
         => await PostAsync<AlqFleteDto>("/api/alquileres/fletes", request);
