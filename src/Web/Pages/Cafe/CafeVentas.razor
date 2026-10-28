@@ -292,6 +292,7 @@
     .nv-top-it.en { background: #f0fdf4; }
     .nv-top-n { font-size: 0.82rem; font-weight: 600; color: #111827; line-height: 1.2; word-break: break-word; }
     .nv-top-sub { font-size: 0.7rem; color: #6b7280; margin-top: 0.1rem; }
+    .nv-top-cod { font-family: ui-monospace, Consolas, monospace; color: #374151; }
     .nv-top-x { background: none; border: none; color: #c0c4cc; cursor: pointer; font-size: 0.85rem; padding: 0 0.15rem; line-height: 1; }
     .nv-top-x:hover { color: #dc2626; }
     /* Pantallas angostas: una sola columna, el resumen abajo. */
@@ -3099,12 +3100,29 @@
                                                     var colorMargen = margenPctLinea >= 50m ? "#16a34a" : (margenPctLinea >= 20m ? "#d97706" : "#dc2626");
                                                 }
                                                 @* Solo mostrar margen cuando hay costo razonable. Items sin costo (concepto libre, saldos) no muestran margen. *@
+                                                @* 2026-10-28: tocando "Margen" se escribe el % que se le quiere ganar y el precio
+                                                   unitario se calcula solo (costo + %), quedando como precio "✏️ manual". *@
                                                 @if (costoLinea > 0 && ci.CostoUnitario > 0)
                                                 {
-                                                    <div style="font-size: 0.7rem; font-weight: 500; color: @colorMargen; margin-top: 0.15rem;"
-                                                         title="Margen sobre costo: ganancia $@FormatMoney(margenLinea)">
-                                                        Margen: @margenPctLinea%
-                                                    </div>
+                                                    @if (margenEditIdx == i)
+                                                    {
+                                                        <div style="display:flex; gap:0.2rem; justify-content:flex-end; align-items:center; margin-top:0.15rem;">
+                                                            <span style="font-size:0.7rem; color:#374151; font-weight:600;">Ganar</span>
+                                                            <input class="form-input nv-margen-inp" inputmode="decimal" placeholder="%" autocomplete="off"
+                                                                   style="width:52px; text-align:right; padding:0.1rem 0.3rem; font-size:0.78rem;"
+                                                                   value="@margenEditTxt" @oninput="OnMargenInput"
+                                                                   @onkeydown="e => OnMargenKey(e, i)" @onblur="() => AplicarMargen(i)" />
+                                                            <span style="font-size:0.7rem; color:#374151;">%</span>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div style="font-size: 0.7rem; font-weight: 500; color: @colorMargen; margin-top: 0.15rem; cursor: pointer; text-decoration: underline dotted;"
+                                                             @onclick="() => EditarMargen(i, margenPctLinea)"
+                                                             title="Margen sobre costo: ganancia $@FormatMoney(margenLinea). Tocá para poner el % que le querés ganar.">
+                                                            Margen: @margenPctLinea%
+                                                        </div>
+                                                    }
                                                 }
                                             </td>
                                             <td>
@@ -3773,14 +3791,26 @@
                         <div tabindex="-1" class="nv-top-it @(enCarrito > 0 ? "en" : "")"
                              @onclick="() => AbrirCantidadTopProduct(prodId, fmt, t.Nombre)"
                              title="Tocá para elegir cantidad — Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
+                            @* 2026-10-28: código + formato, y un renglón con palabras (stock · compró N veces) para que
+                               no se confundan los números. A la derecha el precio de HOY (lista del cliente o pactado)
+                               y abajo lo que PAGÓ la última vez: en naranja si fue distinto. *@
                             <div style="flex: 1; min-width: 0;">
                                 <div class="nv-top-n">@t.Nombre</div>
+                                <div class="nv-top-sub"><span class="nv-top-cod">@t.Sku</span> · @FormatoLabel(t.Formato)</div>
                                 <div class="nv-top-sub">
-                                    @FormatoLabel(t.Formato) · <span style="@(sinStock ? "color:#dc2626;" : "")">@stockTxt</span> · @t.TimesOrdered×
+                                    Stock <span style="@(sinStock ? "color:#dc2626; font-weight:700;" : "")">@stockTxt</span> · Compró @t.TimesOrdered @(t.TimesOrdered == 1 ? "vez" : "veces")
                                 </div>
                             </div>
                             <div style="text-align: right; white-space: nowrap;">
-                                <div class="nv-top-n">$@FormatMoney(t.PrecioReferencia)</div>
+                                <div class="nv-top-n" title="Precio de hoy: lista del cliente (o su precio pactado)">$@FormatMoney(t.PrecioReferencia)</div>
+                                @if (t.UltimoPrecio is decimal up)
+                                {
+                                    var igual = Math.Abs(up - t.PrecioReferencia) < 0.5m;
+                                    <div class="nv-top-sub" style="@(igual ? "" : "color:#c2410c; font-weight:600;")"
+                                         title="Lo que pagó la última vez que lo llevó (con el descuento del renglón)">
+                                        @(igual ? "pagó igual" : $"pagó ${FormatMoney(up)}")@(t.UltimoPrecioFecha is DateTime uf ? $" · {uf:dd/MM}" : "")
+                                    </div>
+                                }
                                 @if (enCarrito > 0)
                                 {
                                     <div style="font-size: 0.72rem; color: #059669; font-weight: 700;" title="En el carrito">✓ @enCarrito en la venta</div>
@@ -10754,6 +10784,50 @@
             formItems[idx].PrecioUnitarioOverride = null;
         }
         await Cotizar();
+    }
+
+    // ─── 2026-10-28: poner el % a ganar en el renglón (tocando "Margen") ───
+    // Misma cuenta que CalcuPrecios: % sobre el COSTO. El precio que sale se guarda como precio manual.
+    private int? margenEditIdx;
+    private string margenEditTxt = "";
+    private bool aplicandoMargen;
+
+    private async Task EditarMargen(int idx, decimal margenActual)
+    {
+        margenEditIdx = idx;
+        margenEditTxt = margenActual.ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+        await Task.Yield();
+        try { await JS.InvokeVoidAsync("eval", "setTimeout(function(){var e=document.querySelector('.nv-margen-inp');if(e){e.focus();e.select();}},30)"); } catch { }
+    }
+
+    private void OnMargenInput(ChangeEventArgs e) => margenEditTxt = e.Value?.ToString() ?? "";
+
+    private async Task OnMargenKey(KeyboardEventArgs e, int idx)
+    {
+        if (e.Key == "Enter") await AplicarMargen(idx);
+        else if (e.Key == "Escape") margenEditIdx = null;
+    }
+
+    private async Task AplicarMargen(int idx)
+    {
+        if (margenEditIdx != idx || aplicandoMargen) return;
+        aplicandoMargen = true;
+        try
+        {
+            margenEditIdx = null;
+            if (cotizacion is null || idx < 0 || idx >= formItems.Count || idx >= cotizacion.Items.Count) return;
+            var t = (margenEditTxt ?? "").Trim().Replace("%", "").Replace(",", ".");
+            if (!decimal.TryParse(t, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var pct)) return;
+            var ci = cotizacion.Items[idx];
+            if (ci.CostoUnitario <= 0m) return;
+            // El margen de la pantalla se mide sobre el SUBTOTAL (con el descuento del renglón ya aplicado):
+            // para que dé justo el % pedido, el precio se agranda por lo que el descuento le saca.
+            var factor = ci.PrecioUnitario > 0m && ci.Cantidad > 0m ? ci.Subtotal / (ci.PrecioUnitario * ci.Cantidad) : 1m - formItems[idx].DescuentoPct / 100m;
+            if (factor <= 0m) factor = 1m;
+            var precio = Math.Round(ci.CostoUnitario * (1m + pct / 100m) / factor, 2, MidpointRounding.AwayFromZero);
+            await OnItemPrecioOverrideChanged(idx, precio.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        finally { aplicandoMargen = false; }
     }
 
     /// <summary>Vuelve al precio del catálogo (sin override).</summary>

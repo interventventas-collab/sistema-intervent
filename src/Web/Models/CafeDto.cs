@@ -1194,6 +1194,9 @@ public class CafeTopProductoClienteDto
     public string? Molienda { get; set; }
     public bool EsDoyPack { get; set; }
     public bool EsEnvasePlateado { get; set; }
+    // 2026-10-28: cuánto pagó la última vez (con el descuento del renglón) y cuándo.
+    public decimal? UltimoPrecio { get; set; }
+    public DateTime? UltimoPrecioFecha { get; set; }
 }
 
 // ===== Combos =====
