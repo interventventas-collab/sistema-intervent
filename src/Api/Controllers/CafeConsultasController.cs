@@ -52,6 +52,16 @@ public class CafeConsultasController : ControllerBase
     /// sugerido(s), listo para mostrar en una tarjeta. Sin lenguaje natural.
     /// GET api/cafe/consultas/precio?codigo=C3622AZ
     /// </summary>
+    /// <summary>28/10/2026: CALCUPRECIOS del celu del repartidor (link sin login). Solo con el tilde
+    /// "calcuprecios" en su ficha (Services/RepartidorOficina.cs): muestra el COSTO.</summary>
+    [HttpGet("precio/repartidor/{token}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> BuscarPrecioRepartidor(string token, [FromQuery] string codigo, [FromQuery] bool compuestos = false)
+    {
+        if (await Api.Services.RepartidorOficina.ConPermisoAsync(_db, token, Api.Services.RepartidorOficina.CalcuPrecios) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await BuscarPrecio(codigo, compuestos);
+    }
+
     [HttpGet("precio")]
     public async Task<IActionResult> BuscarPrecio([FromQuery] string codigo, [FromQuery] bool compuestos = false)
     {

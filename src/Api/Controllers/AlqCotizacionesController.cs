@@ -153,6 +153,36 @@ public class AlqCotizacionesController : ControllerBase
             c.Dias, null, c.Nombre));
     }
 
+    // ===== 28/10/2026: CALCU ALQUILER desde el celu del repartidor (link sin login) =====
+    // Solo con el tilde "calcualquiler" en su ficha (Services/RepartidorOficina.cs). Guarda igual que
+    // la compu, y el "quién la hizo" es el repartidor de ese link (no lo que mande el celu).
+
+    [HttpPost("repartidor/{token}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CrearRepartidor(string token, [FromBody] CrearAlqCotizacionRequest req)
+    {
+        var r = await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.CalcuAlquiler);
+        if (r is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        req.Operador = r.Nombre;
+        return await Crear(req);
+    }
+
+    [HttpGet("repartidor/{token}/texto")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetTextoRepartidor(string token)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.CalcuAlquiler) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await GetTexto();
+    }
+
+    [HttpGet("repartidor/{token}/dias-porcentaje")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetDiasPorcentajeRepartidor(string token)
+    {
+        if (await RepartidorOficina.ConPermisoAsync(_db, token, RepartidorOficina.CalcuAlquiler) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await GetDiasPorcentaje();
+    }
+
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Borrar(int id)
     {

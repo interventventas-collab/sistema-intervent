@@ -387,6 +387,18 @@
     .mpc-ver-bar .mpc-dl { flex:1; padding:0.8rem; font-size:1rem; text-align:center; cursor:pointer; }
     /* ── 20/10/2026: sección Oficina (Shell para todos + un cuadradito por tilde) ── */
     .mp-hd-fecha { font-size: 0.85rem; opacity: 0.9; margin-top: 0.2rem; }
+    /* los botones van siempre enteros: el que se achica es el saludo (la fecha baja de renglón) */
+    .mp-header-row > div:first-child { flex:1 1 auto; min-width:0; }
+    .mp-calcus { display:flex; flex-direction:column; gap:0.35rem; flex:0 0 auto; margin:0 0.45rem; align-self:center; }
+    .mp-calcu { background:rgba(255,255,255,0.95); color:#0e7490; border:none; border-radius:9px; padding:0.45rem 0.4rem; font-size:0.78rem;
+        font-weight:800; cursor:pointer; font-family:inherit; white-space:nowrap; }
+    /* celus angostos: "Precios" y "Alquiler" solos y letra más chica, así el recuadro de Shell entra entero */
+    @@media (max-width: 380px) {
+        .mp-calcus { margin:0 0.3rem; }
+        .mp-calcu { font-size:0.74rem; padding:0.45rem 0.25rem; }
+        .mp-calcu-i { display:none; }
+        .mp-header-row .mp-name { font-size:1.35rem; }
+    }
     .mp-shell { text-align:right; background:rgba(255,255,255,0.16); border-radius:10px; padding:0.45rem 0.65rem; flex-shrink:0; }
     .mp-shell-t { font-size:0.72rem; opacity:0.9; }
     .mp-shell-v { font-size:1.15rem; font-weight:800; white-space:nowrap; }
@@ -433,6 +445,21 @@
                     <div class="mp-name">@nombre</div>
                     <div class="mp-hd-fecha">@FechaLabel</div>
                 </div>
+                @* 28/10/2026: CALCUPRECIOS y CALCU ALQUILER, uno arriba del otro como en la barra de la
+                   compu. Solo con su tilde en la ficha (muestran costos). *@
+                @if (VeCalcuPrecios || VeCalcuAlquiler)
+                {
+                    <div class="mp-calcus">
+                        @if (VeCalcuPrecios)
+                        {
+                            <button type="button" class="mp-calcu" @onclick='() => ofiAbierta = "calcuprecios"'><span class="mp-calcu-i">🧮 Calcu</span>Precios</button>
+                        }
+                        @if (VeCalcuAlquiler)
+                        {
+                            <button type="button" class="mp-calcu" @onclick='() => ofiAbierta = "calcualquiler"'><span class="mp-calcu-i">🪑 Calcu</span>Alquiler</button>
+                        }
+                    </div>
+                }
                 @* 21/10/2026: el saldo de Shell Flota (lo ven TODOS los repartidores) va acá, siempre a
                    la vista, en el lugar del camioncito. *@
                 @if (!string.IsNullOrWhiteSpace(oficina?.ShellSaldo))
@@ -1739,6 +1766,8 @@
     case "ubicaciones": <OfiUbicaciones Token="@Token" OnCerrar="CerrarOficina" /> break;
     case "fichaje": <OfiFichaje Token="@Token" OnCerrar="CerrarOficina" /> break;
     case "documentacion": <OfiDocumentacion Token="@Token" OnCerrar="CerrarOficina" /> break;
+    case "calcuprecios": <OfiCalcuPrecios Token="@Token" OnCerrar="CerrarOficina" /> break;
+    case "calcualquiler": <OfiCalcuAlquiler Token="@Token" OnCerrar="CerrarOficina" /> break;
 }
 
 @* 16/10/2026: "Comprobantes" — los últimos 50, buscador por cliente o número, y por día.
@@ -3069,6 +3098,16 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // 28/10/2026: el boton "atras" del celu (y deslizar desde el borde) cierra de a una las
+        // pantallas abiertas en vez de salir del link. Mismo arreglo que el WhatsApp del celu
+        // (js/wa-atras.js): despues de cada dibujado le decimos cuantas capas hay abiertas.
+        if (firstRender)
+        {
+            atrasRef ??= DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("waAtras.iniciar", atrasRef); } catch { }
+        }
+        try { await JS.InvokeVoidAsync("waAtras.sincronizar", CapasAbiertas()); } catch { }
+
         // 2026-09-02: acomodar la pantalla en la parada que le toca. Solo al abrir y después de
         // marcar algo — nunca en cada dibujo, así no se le mueve la pantalla mientras mira.
         if (acomodarPantalla && !loading)
@@ -3435,10 +3474,59 @@
 
     public void Dispose()
     {
+        try { _ = JS.InvokeVoidAsync("waAtras.soltar"); } catch { }
+        try { atrasRef?.Dispose(); } catch { }
         try { dotNetRef?.Dispose(); } catch { }
         try { sortableRef?.Dispose(); } catch { }
         try { refreshTimer?.Dispose(); } catch { }
         try { ubicacionTimer?.Dispose(); } catch { }
+    }
+
+    // ═══ 28/10/2026: BOTON "ATRAS" DEL CELULAR ═══
+    // Para el telefono el link es UNA sola pantalla: el atras te sacaba del link aunque estuvieras
+    // adentro de Oficina o de una calculadora. Ahora cierra primero lo ultimo que se abrio.
+    private DotNetObjectReference<MisPedidos>? atrasRef;
+
+    /// <summary>Cuantas cosas hay abiertas encima de la lista de pedidos, ahora mismo.</summary>
+    private int CapasAbiertas()
+    {
+        var n = 0;
+        if (verMiCuenta) n++;
+        if (ofiMenu) n++;
+        if (ofiAbierta is not null) n++;
+        if (verComprobantes) n++;
+        if (compViendo is not null) n++;
+        if (compAsignando is not null) n++;
+        if (modal is not null) n++;
+        if (alqModal is not null) n++;
+        if (alqDetalle is not null) n++;
+        if (resumenAbierto is not null || resumenLoading) n++;
+        if (me1ConfirmEntrega is not null) n++;
+        if (rechazoOrigen is not null) n++;
+        if (noSumaPendiente is not null) n++;
+        if (verPedirSuma) n++;
+        return n;
+    }
+
+    /// <summary>Tocaron el "atras" del celu: se cierra SOLO lo de mas arriba.</summary>
+    [JSInvokable]
+    public async Task AtrasDelCelular()
+    {
+        if (verPedirSuma) verPedirSuma = false;
+        else if (noSumaPendiente is not null) noSumaPendiente = null;
+        else if (rechazoOrigen is not null) CerrarRechazo();
+        else if (me1ConfirmEntrega is not null) CerrarMe1Modal();
+        else if (compAsignando is not null) CerrarAsignar();
+        else if (modal is not null) CerrarModal();
+        else if (alqModal is not null) CerrarAlqModal();
+        else if (alqDetalle is not null) alqDetalle = null;
+        else if (resumenAbierto is not null || resumenLoading) CerrarResumen();
+        else if (compViendo is not null) CerrarVer();
+        else if (verComprobantes) verComprobantes = false;
+        else if (ofiAbierta is not null) CerrarOficina();
+        else if (ofiMenu) ofiMenu = false;
+        else if (verMiCuenta) await CerrarMiCuenta();
+        StateHasChanged();   // si algo no se pudo cerrar (estaba guardando), igual se reacomodan las marcas
     }
 
     // ─── 16/10/2026: Comprobantes (ver y compartir) ───
@@ -3677,6 +3765,10 @@
     }
 
     private void CerrarOficina() => ofiAbierta = null;
+
+    // 28/10/2026: los dos botones del encabezado (no son cuadraditos de Oficina).
+    private bool VeCalcuPrecios => oficina?.Permisos.Contains("calcuprecios") == true;
+    private bool VeCalcuAlquiler => oficina?.Permisos.Contains("calcualquiler") == true;
 
     private bool ofiMenu;
 

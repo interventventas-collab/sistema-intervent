@@ -33,9 +33,13 @@ public static class RepartidorOficina
     public const string Fichaje = "fichaje";
     // 27/10/2026: la carpeta de Documentación importante (constancias, certificados, etc.), solo ver y mandar.
     public const string Documentacion = "documentacion";
+    // 28/10/2026: CALCUPRECIOS y CALCU ALQUILER en el celu. No son cuadraditos de Oficina: van como
+    // dos botones en el encabezado azul (entre el "Hola" y el Shell). Muestran COSTOS, por eso van con tilde.
+    public const string CalcuPrecios = "calcuprecios";
+    public const string CalcuAlquiler = "calcualquiler";
 
     /// <summary>En el orden en que aparecen los cuadraditos y los tildes.</summary>
-    public static readonly string[] Todas = { Cobranzas, Cheques, Listas, Stock, Alquileres, Ubicaciones, Fichaje, Documentacion, Banco };
+    public static readonly string[] Todas = { Cobranzas, Cheques, Listas, Stock, Alquileres, Ubicaciones, Fichaje, Documentacion, Banco, CalcuPrecios, CalcuAlquiler };
 
     /// <summary>Los que pueden abrir el saldo del banco con SU clave (PIN de operador).</summary>
     public static readonly string[] ClaveBanco = { "OSMAR", "GERMAN", "GABRIEL" };

@@ -40,6 +40,16 @@ public class CatalogoBuscadorController : ControllerBase
     ///           usado por la pantalla de carga de stock móvil (no se cargan combos manuales)
     /// 2026-05-28 (Prompt 2 cargador stock móvil).
     /// </summary>
+    /// <summary>28/10/2026: el mismo catálogo para buscar mientras se escribe en la CALCUPRECIOS del celu
+    /// del repartidor. Solo con el tilde "calcuprecios" en su ficha (Services/RepartidorOficina.cs).</summary>
+    [HttpGet("repartidor/{token}/all")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetAllRepartidor(string token)
+    {
+        if (await Api.Services.RepartidorOficina.ConPermisoAsync(_db, token, Api.Services.RepartidorOficina.CalcuPrecios) is null) return NotFound(new { error = "No tenés habilitado ver esto" });
+        return await GetAll(false);
+    }
+
     [HttpGet("all")]
     public async Task<IActionResult> GetAll([FromQuery] bool onlyProductos = false)
     {

@@ -1,0 +1,228 @@
+@* 28/10/2026: CALCUPRECIOS en el celu del repartidor (botón del encabezado azul, solo con el tilde
+   "calcuprecios" en su ficha). Lo mismo que la solapa 🏷️ Precios de la calculadora de la compu
+   (Shared/CalculadoraFlotante.razor): buscar el producto (también combos/compuestos), ver costo sin
+   IVA, precios sugeridos y cuánto se gana, y calcular la ganancia con %, precio sin IVA o con IVA. *@
+@using System.Globalization
+@using System.Net.Http.Json
+@using Web.Models.Mobile
+@inject HttpClient Http
+@inject Web.Services.Mobile.CatalogIndex Catalog
+
+<div class="mpc-overlay">
+    <div class="mpc-wrap">
+        <div class="mpc-top">
+            <button type="button" class="mpc-back" @onclick="OnCerrar">←</button>
+            <div class="mpc-title">🧮 CalcuPrecios</div>
+        </div>
+
+        <div style="display:flex; gap:0.4rem;">
+            <input class="mpc-search" style="flex:1;" type="search" placeholder="🔍 Código o nombre…" autocomplete="off"
+                   value="@codigoBusq" @oninput="OnCodigoInput" @onkeydown="OnCodigoKey" />
+            <button type="button" class="cpm-buscar" @onclick="BuscarProducto"
+                    disabled="@(buscando || string.IsNullOrWhiteSpace(codigoBusq))">@(buscando ? "…" : "Buscar")</button>
+        </div>
+
+        @if (sugerencias.Count > 0)
+        {
+            <div class="cpm-sug">
+                @foreach (var s in sugerencias)
+                {
+                    var sSel = s;
+                    <button type="button" class="cpm-sug-i" @onclick="() => ElegirSugerencia(sSel)">
+                        <span class="cpm-sug-sku">@sSel.Sku</span> <span>@sSel.Nombre</span>
+                    </button>
+                }
+            </div>
+        }
+
+        @if (prod is not null && prod.Encontrado)
+        {
+            <div class="mpc-row">
+                <div class="cpm-nom">@prod.Nombre</div>
+                <div class="mpc-num">@prod.Sku · @prod.Categoria</div>
+                @if (!string.IsNullOrWhiteSpace(prod.Stock))
+                {
+                    <div class="cpm-l"><span>Stock</span><b>@prod.Stock</b></div>
+                }
+                <div class="cpm-l"><span>Costo sin IVA</span><b>@Money(prod.CostoSinIva)</b></div>
+                @foreach (var l in prod.Precios)
+                {
+                    <div class="cpm-l cpm-precio">
+                        <span>@l.Etiqueta</span>
+                        <span style="text-align:right;">
+                            <b>@Money(l.SinIva)</b> <span class="cpm-gris">c/IVA @Money(l.ConIva)</span>
+                            @if (prod.CostoSinIva > 0m)
+                            {
+                                var gan = l.SinIva - prod.CostoSinIva;
+                                <span class="cpm-gana @(gan < 0m ? "cpm-pierde" : "")">ganás @MoneyGan(gan) · @FmtPctEntero(gan / prod.CostoSinIva * 100m)% s/costo</span>
+                            }
+                        </span>
+                    </div>
+                }
+            </div>
+        }
+        else if (prod is not null)
+        {
+            <div class="mpc-nota">@prod.Mensaje</div>
+        }
+        else if (error is not null)
+        {
+            <div class="mpc-nota">@error</div>
+        }
+
+        <div class="ofi-lab" style="margin-top:0.8rem;">CALCULAR GANANCIA</div>
+        <div class="mpc-row">
+            <label class="cpm-lbl">Costo (sin IVA)</label>
+            <input class="cpm-inp" inputmode="decimal" placeholder="0" @bind="costoStr" @bind:event="oninput" @bind:after="Recalcular" />
+            <label class="cpm-lbl">Quiero ganar %</label>
+            <input class="cpm-inp" inputmode="decimal" placeholder="ej: 20" value="@pctStr" @oninput='e => EscribioCampo("pct", e.Value?.ToString())' />
+            <label class="cpm-lbl">Precio venta (sin IVA)</label>
+            <input class="cpm-inp" inputmode="decimal" placeholder="o poné el precio" value="@sinStr" @oninput='e => EscribioCampo("sin", e.Value?.ToString())' />
+            <label class="cpm-lbl">Precio venta (con IVA @FmtPct(ivaCalc)%)</label>
+            <input class="cpm-inp" inputmode="decimal" placeholder="o el precio con IVA" value="@conStr" @oninput='e => EscribioCampo("con", e.Value?.ToString())' />
+            @if (PrecioSinIva is decimal pSin && Costo is decimal c)
+            {
+                var gan = pSin - c;
+                <div class="cpm-l" style="margin-top:0.4rem;"><span>Ganás</span><b class="@(gan < 0m ? "cpm-pierde" : "")">@MoneyGan(gan) · @FmtPctEntero(gan / c * 100m)% s/costo</b></div>
+            }
+            else
+            {
+                <div class="cpm-gris" style="margin-top:0.3rem;">Poné un costo y el % (o un precio) para ver cuánto ganás.</div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .cpm-buscar { background:#0e7490; color:white; border:none; border-radius:10px; padding:0 1rem; font-weight:800; font-size:0.95rem; margin-bottom:0.5rem; cursor:pointer; }
+    .cpm-buscar:disabled { opacity:0.5; }
+    .cpm-sug { background:white; border-radius:10px; margin-bottom:0.5rem; overflow:hidden; }
+    .cpm-sug-i { display:block; width:100%; text-align:left; background:none; border:none; border-bottom:1px solid #f3f4f6; padding:0.6rem 0.7rem; font-size:0.88rem; font-family:inherit; cursor:pointer; }
+    .cpm-sug-sku { font-weight:800; color:#0e7490; }
+    .cpm-nom { font-size:1rem; font-weight:800; color:#111827; }
+    .cpm-l { display:flex; justify-content:space-between; gap:0.6rem; font-size:0.9rem; padding:0.3rem 0; border-top:1px solid #f3f4f6; margin-top:0.3rem; }
+    .cpm-precio b { font-size:1rem; }
+    .cpm-gris { color:#6b7280; font-size:0.78rem; }
+    .cpm-gana { display:block; font-size:0.78rem; color:#374151; }
+    .cpm-pierde { color:#b91c1c; }
+    .cpm-lbl { display:block; font-size:0.78rem; font-weight:700; color:#374151; margin:0.35rem 0 0.15rem; }
+    .cpm-inp { width:100%; box-sizing:border-box; padding:0.6rem 0.7rem; border:1.5px solid #d1d5db; border-radius:8px; font-size:1rem; }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public string Token { get; set; } = "";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private static readonly CultureInfo ARS = CultureInfo.GetCultureInfo("es-AR");
+
+    private string codigoBusq = "";
+    private bool buscando, catalogoCargado;
+    private string? error;
+    private CafePrecioConsultaDto? prod;
+    private List<CatalogItem> sugerencias = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // El mismo catálogo que la compu, para sugerir mientras escribe. Si falla, el botón Buscar anda igual.
+        try
+        {
+            await Catalog.EnsureLoadedAsync(customUrl: $"api/catalogo-buscador/repartidor/{Uri.EscapeDataString(Token)}/all");
+            catalogoCargado = Catalog.Count > 0;
+        }
+        catch { }
+    }
+
+    private void OnCodigoInput(ChangeEventArgs e)
+    {
+        codigoBusq = e.Value?.ToString() ?? "";
+        var q = codigoBusq.Trim();
+        sugerencias = q.Length < 2 || !catalogoCargado ? new()
+            : Catalog.Search(q, 8, it => it.Tipo == "producto" || it.Tipo == "combo").Select(h => h.Item).ToList();
+    }
+
+    private async Task OnCodigoKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !buscando && !string.IsNullOrWhiteSpace(codigoBusq)) await BuscarProducto();
+    }
+
+    private async Task ElegirSugerencia(CatalogItem it)
+    {
+        codigoBusq = it.Sku;
+        await BuscarProducto();
+    }
+
+    private async Task BuscarProducto()
+    {
+        if (string.IsNullOrWhiteSpace(codigoBusq)) return;
+        buscando = true; error = null; sugerencias = new();
+        try
+        {
+            prod = await Http.GetFromJsonAsync<CafePrecioConsultaDto>(
+                $"api/cafe/consultas/precio/repartidor/{Uri.EscapeDataString(Token)}?codigo={Uri.EscapeDataString(codigoBusq.Trim())}&compuestos=true");
+            if (prod is not null && prod.Encontrado)
+            {
+                // Igual que la compu: precarga el costo y el IVA del producto para la cuenta de ganancia.
+                costoStr = prod.CostoSinIva.ToString("0.##", ARS);
+                ivaCalc = prod.IvaPct > 0m ? prod.IvaPct : 21m;
+                Recalcular();
+            }
+        }
+        catch { prod = null; error = "No se pudo buscar. Probá de nuevo."; }
+        finally { buscando = false; }
+    }
+
+    // ─── Calcular ganancia: la misma cuenta que la calculadora de la compu ───
+    private string costoStr = "", pctStr = "", sinStr = "", conStr = "";
+    private string ultimoCampo = "pct";
+    private decimal ivaCalc = 21m;
+
+    private decimal? Costo => ParseNum(costoStr) is decimal c && c > 0m ? c : null;
+    private decimal? PrecioSinIva => Costo is not null ? ParseNum(sinStr) : null;
+
+    private void EscribioCampo(string campo, string? valor)
+    {
+        ultimoCampo = campo;
+        if (campo == "pct") pctStr = valor ?? "";
+        else if (campo == "sin") sinStr = valor ?? "";
+        else conStr = valor ?? "";
+        Recalcular();
+    }
+
+    private void Recalcular()
+    {
+        var c = Costo;
+        var ivaF = 1m + ivaCalc / 100m;
+        static string F(decimal v) => v.ToString("0.##", ARS);
+        if (ultimoCampo == "pct")
+        {
+            if (c is decimal cc && ParseNum(pctStr) is decimal p)
+            {
+                var ps = Math.Round(cc * (1m + p / 100m), 2);
+                sinStr = F(ps); conStr = F(Math.Round(ps * ivaF, 2));
+            }
+            else { sinStr = ""; conStr = ""; }
+        }
+        else
+        {
+            decimal? ps = ultimoCampo == "sin" ? ParseNum(sinStr)
+                        : (ParseNum(conStr) is decimal pc ? Math.Round(pc / ivaF, 2) : null);
+            if (ultimoCampo == "sin") conStr = ps is decimal a ? F(Math.Round(a * ivaF, 2)) : "";
+            else sinStr = ps is decimal b ? F(b) : "";
+            pctStr = (c is decimal cc && ps is decimal x) ? F(Math.Round((x / cc - 1m) * 100m, 2)) : "";
+        }
+    }
+
+    private static decimal? ParseNum(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Trim().Replace(" ", "");
+        if (s.Contains(',') && s.Contains('.')) s = s.Replace(".", "").Replace(",", ".");
+        else s = s.Replace(",", ".");
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var n) ? n : null;
+    }
+
+    private static string Money(decimal v) => "$" + v.ToString("N2", ARS);
+    private static string MoneyGan(decimal v) => v < 0m ? "-" + Money(-v) : Money(v);
+    private static string FmtPct(decimal v) => v.ToString("0.##", ARS);
+    private static string FmtPctEntero(decimal v) => Math.Round(v, 0, MidpointRounding.AwayFromZero).ToString("0", ARS);
+}
