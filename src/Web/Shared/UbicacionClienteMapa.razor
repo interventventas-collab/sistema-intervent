@@ -44,6 +44,9 @@
     [Parameter] public string FotoId { get; set; } = "";
     /// <summary>Nueva ubicación (null, null = sin ubicación) y el link a guardar.</summary>
     [Parameter] public EventCallback<(decimal? lat, decimal? lng, string link)> OnUbicacion { get; set; }
+    /// <summary>El CP de 4 números que trae Google en la dirección ("B1776", "C1425ABC" → 1776 / 1425).
+    /// El padre lo pone sólo si el CP está vacío.</summary>
+    [Parameter] public EventCallback<string> OnCp { get; set; }
 
     private readonly string mapaId = "cm-" + Guid.NewGuid().ToString("N")[..8];
     private DotNetObjectReference<UbicacionClienteMapa>? yo;
@@ -102,7 +105,7 @@
             if (ct.IsCancellationRequested) return;
             if (r is { Ok: true })
             {
-                textoGoogle = SinPais(r.Direccion);
+                textoGoogle = SinPais(r.Direccion); await AvisarCp(r.Direccion);
                 pinAutomatico = true;
                 await Avisar(r.Lat, r.Lng);
                 if (listo) await JS.InvokeVoidAsync("clienteMapa.setPin", r.Lat, r.Lng);
@@ -128,7 +131,7 @@
         noEncontrada = false; pendiente = null; textoGoogle = null; pinAutomatico = false;
         await Avisar(la, lo);
         StateHasChanged();
-        try { textoGoogle = SinPais(await Api.DireccionDePuntoAsync(la, lo)); } catch { }
+        try { var d = await Api.DireccionDePuntoAsync(la, lo); textoGoogle = SinPais(d); await AvisarCp(d); } catch { }
         StateHasChanged();
     }
 
@@ -140,7 +143,7 @@
         pendiente = null; noEncontrada = false; textoGoogle = null; pinAutomatico = false;
         await OnUbicacion.InvokeAsync((r.Lat, r.Lng, url.Trim()));
         if (listo) await JS.InvokeVoidAsync("clienteMapa.setPin", r.Lat, r.Lng);
-        try { textoGoogle = SinPais(await Api.DireccionDePuntoAsync(r.Lat, r.Lng)); } catch { }
+        try { var d = await Api.DireccionDePuntoAsync(r.Lat, r.Lng); textoGoogle = SinPais(d); await AvisarCp(d); } catch { }
         StateHasChanged();
         return true;
     }
@@ -154,6 +157,12 @@
 
     private Task Avisar(decimal lat, decimal lng) => OnUbicacion.InvokeAsync((lat, lng,
         FormattableString.Invariant($"https://www.google.com/maps?q={lat},{lng}")));
+
+    private Task AvisarCp(string? direccion)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(direccion ?? "", @"\b[A-Z](\d{4})[A-Z]{0,3}\b");
+        return m.Success ? OnCp.InvokeAsync(m.Groups[1].Value) : Task.CompletedTask;
+    }
 
     private static string? SinPais(string? d) => d is null ? null
         : d.Replace(", Argentina", "").Replace("Provincia de Buenos Aires", "Buenos Aires");
