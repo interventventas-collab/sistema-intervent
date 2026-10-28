@@ -3192,20 +3192,32 @@
                             <div class="nv-card-t" style="flex-basis: 100%; margin-bottom: 0.1rem;">🚚 Entrega</div>
 
                     @* Dias de visita *@
-                    <div style="display: inline-flex; align-items: center; gap: 0.25rem; flex-wrap: wrap;">
+                    @* 28/10/2026: el día de HOY siempre marcado (borde naranja + "↑ HOY (28/10/26)" abajo), esté
+                       tildado o no, para no confundirse de día al elegir la entrega. El cartelito va
+                       flotando abajo del botón así los botones no se corren. *@
+                    @{ var hoyNv = DateTimeExt.AhoraAr(); var hoyCodNv = AllWeekDays[((int)hoyNv.DayOfWeek + 6) % 7]; }
+                    <div style="display: inline-flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; padding-bottom: 0.85rem;">
                         <span style="font-size: 0.68rem; color: #92400e; margin-right: 0.2rem;">Días:</span>
                         @foreach (var d in AllWeekDays)
                         {
                             var onF = formWeekDays.Contains(d);
+                            var esHoy = d == hoyCodNv;
                             var bgF = onF ? "#dbeafe" : "white";
                             var fgF = onF ? "#1e3a8a" : "#374151";
-                            var bdF = onF ? "#1e40af" : "#d1d5db";
+                            var bdF = esHoy ? "2px solid #ea580c" : (onF ? "1px solid #1e40af" : "1px solid #d1d5db");
                             var dCaptured = d;
-                            <button type="button" id="@($"nv-dia-{d}")"
-                                    tabindex="@(d == "LUN" ? 0 : -1)"
-                                    @onclick="() => ToggleFormDay(dCaptured)"
-                                    @onkeydown="@((KeyboardEventArgs e) => OnKeyDownDia(e, dCaptured))"
-                                    style="padding: 0.25rem 0.45rem; border: 1px solid @bdF; background: @bgF; color: @fgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer; min-width: 34px;">@(onF ? "✓" : "")@d</button>
+                            <span style="position: relative; display: inline-flex;">
+                                <button type="button" id="@($"nv-dia-{d}")"
+                                        tabindex="@(d == "LUN" ? 0 : -1)"
+                                        @onclick="() => ToggleFormDay(dCaptured)"
+                                        @onkeydown="@((KeyboardEventArgs e) => OnKeyDownDia(e, dCaptured))"
+                                        title="@(esHoy ? $"Hoy ({hoyNv:dd/MM/yy})" : null)"
+                                        style="padding: @(esHoy ? "0.2rem 0.4rem" : "0.25rem 0.45rem"); border: @bdF; background: @bgF; color: @fgF; border-radius: 5px; font-weight: 700; font-size: 0.7rem; cursor: pointer; min-width: 34px;">@(onF ? "✓" : "")@d</button>
+                                @if (esHoy)
+                                {
+                                    <span style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 1px; white-space: nowrap; font-size: 0.6rem; font-weight: 800; color: #ea580c; pointer-events: none;">↑ HOY (@hoyNv.ToString("dd/MM/yy"))</span>
+                                }
+                            </span>
                         }
                     </div>
 
