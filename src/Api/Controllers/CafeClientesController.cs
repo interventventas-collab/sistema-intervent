@@ -268,6 +268,38 @@ public class CafeClientesController : ControllerBase
         return Ok(Map(c));
     }
 
+    /// <summary>2026-10-28 — Mapa de la ficha: busca la dirección escrita y devuelve el punto
+    /// y cómo la entendió Google (para que el pin salte solo al escribir el domicilio).</summary>
+    [HttpGet("ubicar")]
+    public async Task<IActionResult> Ubicar([FromQuery] string q)
+    {
+        if (string.IsNullOrWhiteSpace(q)) return Ok(new { ok = false });
+        var r = await _mapsResolver.TryGeocodeAddressAsync(q.Trim());
+        if (!r.HasValue) return Ok(new { ok = false });
+        var dir = await _mapsResolver.TryReverseGeocodeAsync(r.Value.lat, r.Value.lng);
+        return Ok(new { ok = true, lat = r.Value.lat, lng = r.Value.lng, direccion = dir });
+    }
+
+    /// <summary>2026-10-28 — Mapa de la ficha: saca el punto de un link de Google Maps pegado
+    /// (también los cortos maps.app.goo.gl), sin tener que guardar el cliente primero.</summary>
+    [HttpGet("resolver-link")]
+    public async Task<IActionResult> ResolverLink([FromQuery] string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return Ok(new { ok = false });
+        // Sólo links de Google Maps: el servidor sigue el redirect y no tiene que ir a cualquier lado.
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps
+            || !(u.Host.Equals("goo.gl", StringComparison.OrdinalIgnoreCase)
+                 || u.Host.EndsWith(".goo.gl", StringComparison.OrdinalIgnoreCase)
+                 || u.Host.Equals("google.com", StringComparison.OrdinalIgnoreCase)
+                 || u.Host.EndsWith(".google.com", StringComparison.OrdinalIgnoreCase)
+                 || u.Host.StartsWith("google.", StringComparison.OrdinalIgnoreCase)
+                 || u.Host.StartsWith("www.google.", StringComparison.OrdinalIgnoreCase)))
+            return Ok(new { ok = false });
+        var r = await _mapsResolver.TryResolverCoordenadasAsync(url.Trim());
+        if (!r.HasValue) return Ok(new { ok = false });
+        return Ok(new { ok = true, lat = r.Value.lat, lng = r.Value.lng });
+    }
+
     /// <summary>2026-10-28 — Localidades que ya usan los clientes (entrega y fiscal), con cuántos
     /// clientes cada una y el CP/provincia más usados. El buscador de localidad las pone primero y
     /// así "aprende" las zonas y los CP que no trae la lista oficial (Nordelta, barrios de CABA...).</summary>

@@ -426,76 +426,66 @@
                         💡 Para que el link de WhatsApp del comprobante funcione, cargá el número en <strong>formato internacional sin el +</strong>
                         (ej: <code>5491141234567</code> = 54 + 9 + 11 + número). El icono 📱 que aparece en el PDF abre WhatsApp directo a este número.
                     </p>
-                    <div class="form-group">
-                        <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem;">
-                            <label class="form-label" style="margin:0;">📍 Domicilio de entrega principal</label>
-                            @if (!string.IsNullOrWhiteSpace(formMapeoLink))
+                    @* 2026-10-28 · ENTREGA en dos columnas: a la izquierda los datos (domicilio, localidad
+                       con CP y provincia, entre calles, foto de la puerta y pegar link) y a la derecha el
+                       mapa siempre a la vista, con el pin que salta solo a la dirección y se arrastra.
+                       En pantallas angostas el mapa baja abajo de los datos (auto-fit). *@
+                    <div class="cm-entrega">
+                        <div class="cm-col">
+                            <div class="form-group">
+                                <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem;">
+                                    <label class="form-label" style="margin:0;">📍 Domicilio de entrega principal</label>
+                                    @if (!string.IsNullOrWhiteSpace(formMapeoLink))
+                                    {
+                                        <a href="@formMapeoLink" target="_blank" rel="noopener"
+                                           style="font-size:0.72rem; font-weight:700; color:#1e40af; text-decoration:none; white-space:nowrap;"
+                                           title="Abrir el pin de este domicilio en Google Maps">🗺 Ver en Maps</a>
+                                    }
+                                </div>
+                                <input class="form-input" @bind="formDomicilioEntrega" placeholder="Calle y número (si difiere del fiscal)" />
+                                <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal. Si entrega en más de un lugar, sumá domicilios alternativos abajo.</p>
+                            </div>
+                            <div style="display: flex; gap: 0.6rem;">
+                                <div class="form-group" style="flex: 1 1 auto; min-width: 0;">
+                                    <label class="form-label">Localidad (en Capital, el barrio)</label>
+                                    <LocalidadBuscador @bind-Value="formLocalidadEntrega" OnElegida="ElegirLocalidadEntrega"
+                                                       Placeholder="Ej: Tigre, Palermo, Lanús Oeste" />
+                                </div>
+                                <div class="form-group" style="flex: 0 0 90px;">
+                                    <label class="form-label">CP</label>
+                                    <input class="form-input" value="@formCpEntrega" maxlength="8" placeholder="1648"
+                                           @oninput="@(e => OnCpEntregaInput(e.Value?.ToString()))" />
+                                </div>
+                            </div>
+                            @if (cpEntregaOpciones.Count > 0)
                             {
-                                <a href="@formMapeoLink" target="_blank" rel="noopener"
-                                   style="display:inline-flex; align-items:center; gap:0.25rem; font-size:0.72rem; font-weight:700; color:#1e40af; background:#dbeafe; padding:0.15rem 0.5rem; border-radius:999px; text-decoration:none; white-space:nowrap;"
-                                   title="Abrir el pin de este domicilio en Google Maps">🗺 Ver en Maps</a>
-                            }
-                        </div>
-                        <input class="form-input" @bind="formDomicilioEntrega" placeholder="Donde se entregan los pedidos (si difiere del fiscal)" />
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal. Es el domicilio de siempre (su entre calles y enlace de Maps van acá abajo). Si el cliente entrega en más de un lugar, sumá domicilios alternativos.</p>
-                    </div>
-                    @* 2026-08-31 · Localidad de la ENTREGA. Antes sólo existía la fiscal (la que
-                       completa ARCA con el CUIT) y quedaba abajo, en otra sección. El reparto y el
-                       mapa necesitan ésta: buscar "Calle 123" sin localidad es una lotería. *@
-                    @* 2026-10-28 · Localidad + CP + provincia de entrega conectados: elegís la localidad
-                       de la lista (oficial + las que ya usan tus clientes) y se completan CP y provincia;
-                       ponés el CP y te ofrece sus localidades. Nada se cambia sin elegirlo. *@
-                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                        <div class="form-group" style="flex: 2 1 220px;">
-                            <label class="form-label">Localidad de entrega</label>
-                            <LocalidadBuscador @bind-Value="formLocalidadEntrega" OnElegida="ElegirLocalidadEntrega"
-                                               Placeholder="Ej: Tigre, Palermo, Lanús Oeste" />
-                        </div>
-                        <div class="form-group" style="flex: 0 1 110px;">
-                            <label class="form-label">CP</label>
-                            <input class="form-input" value="@formCpEntrega" maxlength="8" placeholder="1648"
-                                   @oninput="@(e => OnCpEntregaInput(e.Value?.ToString()))" />
-                        </div>
-                        <div class="form-group" style="flex: 2 1 200px;">
-                            <label class="form-label">Provincia</label>
-                            <input class="form-input" list="datalist-provincias" @bind="formProvinciaEntrega" placeholder="Ej: Buenos Aires" />
-                        </div>
-                    </div>
-                    @if (cpEntregaOpciones.Count > 0)
-                    {
-                        <p style="font-size: 0.75rem; color: #374151; margin: -0.4rem 0 0.4rem; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;">
-                            El CP @formCpEntrega es de:
-                            @foreach (var o in cpEntregaOpciones)
-                            {
-                                <button type="button" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.15rem 0.5rem;"
-                                        @onclick="() => ElegirLocalidadEntrega(o)">@o.Nombre · @o.Detalle</button>
-                            }
-                        </p>
-                    }
-                    <p style="font-size: 0.7rem; color: #6b7280; margin: -0.3rem 0 0.6rem;">
-                        Escribí la localidad (en Capital, el barrio) y elegila de la lista: se completan CP y provincia.
-                        O poné el CP y elegí la localidad. Si la dejás vacía se usa la del domicilio fiscal.
-                    </p>
-                    <div class="form-group">
-                        <label class="form-label">Entre calles</label>
-                        <input class="form-input" @bind="formEntreCalles" placeholder="Ej: entre Larroque y Beruti (referencia para la entrega)" />
-                    </div>
-                    @* ─── Enlace Google Maps del domicilio principal ─── *@
-                    <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🗺 Enlace Google Maps (corto)</label>
-                            <input class="form-input" @bind="formMapeoLink"
-                                   placeholder="https://maps.app.goo.gl/..." />
-                            @if (formMapeoLat.HasValue && formMapeoLng.HasValue)
-                            {
-                                <p style="font-size: 0.7rem; color: #15803d; margin: 0.2rem 0 0;">
-                                    ✓ Coordenadas extraídas: <strong>@formMapeoLat?.ToString("0.######"), @formMapeoLng?.ToString("0.######")</strong>
+                                <p style="font-size: 0.75rem; color: #374151; margin: -0.4rem 0 0.4rem; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;">
+                                    El CP @formCpEntrega es de:
+                                    @foreach (var o in cpEntregaOpciones)
+                                    {
+                                        <button type="button" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.15rem 0.5rem;"
+                                                @onclick="() => ElegirLocalidadEntrega(o)">@o.Nombre · @o.Detalle</button>
+                                    }
                                 </p>
                             }
-                            else if (!string.IsNullOrEmpty(formMapeoLink) && isEditing)
+                            <div class="form-group">
+                                <label class="form-label">Provincia</label>
+                                <input class="form-input" list="datalist-provincias" @bind="formProvinciaEntrega" placeholder="Ej: Buenos Aires" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Entre calles</label>
+                                <input class="form-input" @bind="formEntreCalles" placeholder="Ej: entre Larroque y Beruti" />
+                            </div>
+                            <div class="cm-foto" id="cm-foto-cliente"></div>
+                            <div class="cm-link">
+                                <span>🔗 ¿Te mandaron la ubicación?</span>
+                                <input class="form-input" value="@linkPegado" placeholder="Pegá acá el link de Google Maps"
+                                       @onchange="@(e => UsarLinkPegado(e.Value?.ToString()))" disabled="@leyendoLink" />
+                            </div>
+                            @if (!formMapeoLat.HasValue && !string.IsNullOrEmpty(formMapeoLink) && isEditing)
                             {
-                                <p style="font-size: 0.7rem; color: #d97706; margin: 0.2rem 0 0; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-                                    ⚠ No se pudieron extraer coordenadas todavía.
+                                <p style="font-size: 0.7rem; color: #d97706; margin: 0.3rem 0 0; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                                    ⚠ Tiene un link de Maps pero no se pudo sacar el punto.
                                     <button type="button" class="btn btn-secondary"
                                             @onclick="ReExtraerCoords" disabled="@reExtrayendo"
                                             style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">
@@ -503,10 +493,11 @@
                                     </button>
                                 </p>
                             }
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                                Pegá el enlace corto que sale al compartir la ubicación desde Google Maps en el celular.
-                                Al guardar, el sistema extrae automáticamente las coordenadas para usarlas en el mapa.
-                            </p>
+                        </div>
+                        <div class="cm-col">
+                            <UbicacionClienteMapa @ref="mapaCliente" @key="mapaKey" Consulta="@ConsultaEntrega"
+                                                  Lat="formMapeoLat" Lng="formMapeoLng" FotoId="cm-foto-cliente"
+                                                  OnUbicacion="CambioUbicacion" />
                         </div>
                     </div>
                     @* ─── 2026-07-30: Domicilios de entrega alternativos (se cargan por modal) ─── *@
@@ -1678,6 +1669,34 @@
     private int? editingId;
     private string formNombre = "", formTipo = "OTRO", formCuit = "", formTelefono = "", formEmail = "", formDireccion = "", formNotas = "";
     private string formRazonSocial = "", formDomicilioEntrega = "", formComentariosComprobante = "";
+    // 2026-10-28: mapa de la ficha (UbicacionClienteMapa). mapaKey cambia al abrir otra ficha para
+    // que el mapa arranque de cero con el pin de ese cliente.
+    private UbicacionClienteMapa? mapaCliente;
+    private int mapaKey;
+    private string linkPegado = "";
+    private bool leyendoLink;
+    private string ConsultaEntrega => string.Join(", ", new[] { formDomicilioEntrega, formLocalidadEntrega,
+        formProvinciaEntrega == LocalidadesService.Caba ? "CABA" : formProvinciaEntrega }
+        .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
+
+    private void CambioUbicacion((decimal? lat, decimal? lng, string link) u)
+    {
+        formMapeoLat = u.lat; formMapeoLng = u.lng; formMapeoLink = u.link;
+    }
+
+    private async Task UsarLinkPegado(string? url)
+    {
+        linkPegado = (url ?? "").Trim();
+        if (linkPegado == "" || mapaCliente is null) return;
+        leyendoLink = true;
+        try
+        {
+            if (await mapaCliente.UsarLink(linkPegado)) linkPegado = "";
+            else ToastService.Warning("No pude sacar la ubicación de ese link. Probá tocando el mapa donde entregás.");
+        }
+        finally { leyendoLink = false; }
+    }
+
     private string formCpEntrega = "";          // 2026-10-28: CP y provincia de ENTREGA
     private string formProvinciaEntrega = "";
     private List<LocalidadesService.Opcion> cpEntregaOpciones = new();
@@ -2084,7 +2103,7 @@
         isEditing = false; editingId = null; finalizandoAltaId = null;
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
         formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = ""; formLocalidadEntrega = "";
-        formCpEntrega = ""; formProvinciaEntrega = ""; cpEntregaOpciones = new();
+        formCpEntrega = ""; formProvinciaEntrega = ""; cpEntregaOpciones = new(); linkPegado = ""; mapaKey++;
         formTelefono2 = ""; formEntreCalles = "";
         formLocalidad = ""; formCiudad = ""; formCp = ""; formCondicionIvaDefault = "";
         formCodigoInterno = null; formMapeoLink = "";
@@ -2109,7 +2128,7 @@
         formRazonSocial = c.RazonSocial ?? "";
         formDomicilioEntrega = c.DomicilioEntrega ?? "";
         formLocalidadEntrega = c.LocalidadEntrega ?? "";
-        formCpEntrega = c.CpEntrega ?? ""; formProvinciaEntrega = c.ProvinciaEntrega ?? ""; cpEntregaOpciones = new();
+        formCpEntrega = c.CpEntrega ?? ""; formProvinciaEntrega = c.ProvinciaEntrega ?? ""; cpEntregaOpciones = new(); linkPegado = ""; mapaKey++;
         formTelefono2 = c.Telefono2 ?? ""; formEntreCalles = c.EntreCalles ?? "";
         formComentariosComprobante = c.ComentariosComprobante ?? "";
         formLocalidad = c.Localidad ?? ""; formCiudad = c.Ciudad ?? "";

@@ -5351,3 +5351,20 @@ tr.om-franja-tr > td { padding: 0 0.5rem 0.8rem !important; border-top: none !im
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.35; }
 }
+
+/* 2026-10-28: ficha del cliente, Entrega en dos columnas con el mapa siempre a la vista */
+.cm-entrega { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; align-items: stretch; margin-bottom: 0.5rem; }
+.cm-col { display: flex; flex-direction: column; min-width: 0; }
+.cm-mapa { flex: 1 1 auto; min-height: 380px; border: 1px solid #d1d5db; border-radius: 8px; background: #f3f4f6; }
+.cm-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: #6b7280; margin-top: 0.35rem; }
+.cm-pie .cm-ok { color: #15803d; font-weight: 600; }
+.cm-pie .cm-mal { color: #b45309; }
+.cm-pie a { color: #6b7280; }
+.cm-mover { font-size: 0.72rem !important; padding: 0.15rem 0.5rem !important; }
+.cm-foto { height: 130px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.cm-foto a, .cm-foto img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cm-foto-txt { font-size: 0.72rem; color: #9ca3af; }
+.cm-link { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.5rem; margin-top: 0.6rem; font-size: 0.72rem; color: #6b7280; }
+.cm-link .form-input { flex: 1 1 200px; min-width: 0; }
+.cm-link span { white-space: nowrap; }
+.cm-link .form-input { font-size: 0.75rem; padding: 0.3rem 0.5rem; }
