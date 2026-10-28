@@ -2682,6 +2682,10 @@ button {
   overflow-y: auto;
 }
 
+/* 2026-10-28: con js/transiciones.js activo (clase tx-on en <html>) la ventana se anima desde el
+   botón que se tocó; la animación vieja (sube 8 px) se pisaba con esa. */
+.tx-on .modal-overlay { animation: none; }
+
 .modal-card {
   /* Asegurar que el card del modal queda por encima del overlay y de Leaflet. */
   position: relative;
