@@ -71,6 +71,13 @@ public class CafeCliente
     /// Si queda vacía, se usa la fiscal.</summary>
     public string? LocalidadEntrega { get; set; }
 
+    /// <summary>2026-10-28 — CP y provincia del domicilio de ENTREGA (los de `Cp`/`Ciudad` son
+    /// los fiscales). Se completan solos al elegir la localidad de la lista oficial.</summary>
+    [MaxLength(10)]
+    public string? CpEntrega { get; set; }
+    [MaxLength(100)]
+    public string? ProvinciaEntrega { get; set; }
+
     [MaxLength(500)]
     public string? Notas { get; set; }
 

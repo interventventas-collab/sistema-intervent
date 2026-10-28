@@ -4,6 +4,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject CpService CpService
+@inject LocalidadesService Localidades
 @inject OperatorService Operator
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -441,15 +442,40 @@
                     @* 2026-08-31 · Localidad de la ENTREGA. Antes sólo existía la fiscal (la que
                        completa ARCA con el CUIT) y quedaba abajo, en otra sección. El reparto y el
                        mapa necesitan ésta: buscar "Calle 123" sin localidad es una lotería. *@
-                    <div class="form-group">
-                        <label class="form-label">Localidad de entrega</label>
-                        <input class="form-input" list="datalist-localidades" @bind="formLocalidadEntrega"
-                               placeholder="Ej: La Plata" />
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                            La localidad a donde se entrega. Si la dejás vacía se usa la del domicilio fiscal.
-                            Las sugerencias salen de la provincia que esté cargada abajo, pero podés escribir libre.
-                        </p>
+                    @* 2026-10-28 · Localidad + CP + provincia de entrega conectados: elegís la localidad
+                       de la lista (oficial + las que ya usan tus clientes) y se completan CP y provincia;
+                       ponés el CP y te ofrece sus localidades. Nada se cambia sin elegirlo. *@
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <div class="form-group" style="flex: 2 1 220px;">
+                            <label class="form-label">Localidad de entrega</label>
+                            <LocalidadBuscador @bind-Value="formLocalidadEntrega" OnElegida="ElegirLocalidadEntrega"
+                                               Placeholder="Ej: Tigre, Palermo, Lanús Oeste" />
+                        </div>
+                        <div class="form-group" style="flex: 0 1 110px;">
+                            <label class="form-label">CP</label>
+                            <input class="form-input" value="@formCpEntrega" maxlength="8" placeholder="1648"
+                                   @oninput="@(e => OnCpEntregaInput(e.Value?.ToString()))" />
+                        </div>
+                        <div class="form-group" style="flex: 2 1 200px;">
+                            <label class="form-label">Provincia</label>
+                            <input class="form-input" list="datalist-provincias" @bind="formProvinciaEntrega" placeholder="Ej: Buenos Aires" />
+                        </div>
                     </div>
+                    @if (cpEntregaOpciones.Count > 0)
+                    {
+                        <p style="font-size: 0.75rem; color: #374151; margin: -0.4rem 0 0.4rem; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;">
+                            El CP @formCpEntrega es de:
+                            @foreach (var o in cpEntregaOpciones)
+                            {
+                                <button type="button" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.15rem 0.5rem;"
+                                        @onclick="() => ElegirLocalidadEntrega(o)">@o.Nombre · @o.Detalle</button>
+                            }
+                        </p>
+                    }
+                    <p style="font-size: 0.7rem; color: #6b7280; margin: -0.3rem 0 0.6rem;">
+                        Escribí la localidad (en Capital, el barrio) y elegila de la lista: se completan CP y provincia.
+                        O poné el CP y elegí la localidad. Si la dejás vacía se usa la del domicilio fiscal.
+                    </p>
                     <div class="form-group">
                         <label class="form-label">Entre calles</label>
                         <input class="form-input" @bind="formEntreCalles" placeholder="Ej: entre Larroque y Beruti (referencia para la entrega)" />
@@ -646,14 +672,8 @@
                         </div>
                         <div class="form-group" style="flex: 2;">
                             <label class="form-label">Localidad</label>
-                            <input class="form-input" list="datalist-localidades" @bind="formLocalidad" @bind:event="oninput" placeholder="Ej: La Plata" />
-                            <datalist id="datalist-localidades">
-                                @foreach (var loc in localidadesSugeridas)
-                                {
-                                    <option value="@loc"></option>
-                                }
-                            </datalist>
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Sugerencias segun la provincia. Podes tipear libre si no esta.</p>
+                            <LocalidadBuscador @bind-Value="formLocalidad" OnElegida="ElegirLocalidadFiscal" Placeholder="Ej: La Plata" />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Elegila de la lista y se completan CP y provincia. Podés tipear libre si no está.</p>
                         </div>
                         <div class="form-group" style="flex: 2;">
                             <label class="form-label">Provincia</label>
@@ -1658,6 +1678,9 @@
     private int? editingId;
     private string formNombre = "", formTipo = "OTRO", formCuit = "", formTelefono = "", formEmail = "", formDireccion = "", formNotas = "";
     private string formRazonSocial = "", formDomicilioEntrega = "", formComentariosComprobante = "";
+    private string formCpEntrega = "";          // 2026-10-28: CP y provincia de ENTREGA
+    private string formProvinciaEntrega = "";
+    private List<LocalidadesService.Opcion> cpEntregaOpciones = new();
     private string formLocalidadEntrega = "";   // 2026-08-31: la localidad del domicilio de ENTREGA
     private string formTelefono2 = "", formEntreCalles = "";
     private int? formCodigoInterno;
@@ -1743,6 +1766,43 @@
     // Listas para los datalists (provincia/localidad). Se cargan en OnInitialized.
     private List<string> provincias = new();
     private List<string> localidadesSugeridas = new();
+
+    /// <summary>Eligió una localidad de la lista: completa la provincia, y el CP si lo sabemos
+    /// (si el que estaba no es de esa localidad, lo cambia; si tiene varios, deja elegir).</summary>
+    private void ElegirLocalidadEntrega(LocalidadesService.Opcion o)
+    {
+        formLocalidadEntrega = o.Nombre;
+        if (!string.IsNullOrEmpty(o.Provincia)) formProvinciaEntrega = o.Provincia;
+        if (o.Cps.Count > 0 ? !o.Cps.Contains(formCpEntrega.Trim()) : Localidades.CpEsDeOtra(formCpEntrega, o))
+            formCpEntrega = o.CpUnico ?? "";
+        cpEntregaOpciones = new();
+    }
+
+    private void ElegirLocalidadFiscal(LocalidadesService.Opcion o)
+    {
+        formLocalidad = o.Nombre;
+        if (!string.IsNullOrEmpty(o.Provincia)) formCiudad = o.Provincia;
+        if (o.Cps.Count > 0 ? !o.Cps.Contains(formCp.Trim()) : Localidades.CpEsDeOtra(formCp, o))
+            formCp = o.CpUnico ?? "";
+    }
+
+    /// <summary>CP de entrega: con 4 números busca sus localidades. Una sola → la completa si
+    /// la localidad está vacía o es otra; varias → botoncitos para elegir.</summary>
+    private async Task OnCpEntregaInput(string? value)
+    {
+        formCpEntrega = (value ?? "").Trim();
+        cpEntregaOpciones = new();
+        if (formCpEntrega.Length != 4 || !formCpEntrega.All(char.IsDigit)) return;
+        await Localidades.EnsureAsync();
+        var ops = Localidades.PorCp(formCpEntrega);
+        if (ops.Any(o => LocalidadesService.Norm(o.Nombre) == LocalidadesService.Norm(formLocalidadEntrega))) return;
+        if (ops.Count == 1)
+        {
+            formLocalidadEntrega = ops[0].Nombre;
+            if (!string.IsNullOrEmpty(ops[0].Provincia)) formProvinciaEntrega = ops[0].Provincia;
+        }
+        else cpEntregaOpciones = ops;
+    }
 
     private async Task OnFormCpInput(string? value)
     {
@@ -2024,6 +2084,7 @@
         isEditing = false; editingId = null; finalizandoAltaId = null;
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
         formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = ""; formLocalidadEntrega = "";
+        formCpEntrega = ""; formProvinciaEntrega = ""; cpEntregaOpciones = new();
         formTelefono2 = ""; formEntreCalles = "";
         formLocalidad = ""; formCiudad = ""; formCp = ""; formCondicionIvaDefault = "";
         formCodigoInterno = null; formMapeoLink = "";
@@ -2048,6 +2109,7 @@
         formRazonSocial = c.RazonSocial ?? "";
         formDomicilioEntrega = c.DomicilioEntrega ?? "";
         formLocalidadEntrega = c.LocalidadEntrega ?? "";
+        formCpEntrega = c.CpEntrega ?? ""; formProvinciaEntrega = c.ProvinciaEntrega ?? ""; cpEntregaOpciones = new();
         formTelefono2 = c.Telefono2 ?? ""; formEntreCalles = c.EntreCalles ?? "";
         formComentariosComprobante = c.ComentariosComprobante ?? "";
         formLocalidad = c.Localidad ?? ""; formCiudad = c.Ciudad ?? "";
@@ -2805,7 +2867,7 @@
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
                     Cuit = formCuit, Telefono = formTelefono, Telefono2 = formTelefono2, Email = formEmail,
                     Direccion = formDireccion, EntreCalles = formEntreCalles, DomicilioEntrega = formDomicilioEntrega,
-                    LocalidadEntrega = formLocalidadEntrega,
+                    LocalidadEntrega = formLocalidadEntrega, CpEntrega = formCpEntrega, ProvinciaEntrega = formProvinciaEntrega,
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
@@ -2834,7 +2896,7 @@
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
                     Cuit = formCuit, Telefono = formTelefono, Telefono2 = formTelefono2, Email = formEmail,
                     Direccion = formDireccion, EntreCalles = formEntreCalles, DomicilioEntrega = formDomicilioEntrega,
-                    LocalidadEntrega = formLocalidadEntrega,
+                    LocalidadEntrega = formLocalidadEntrega, CpEntrega = formCpEntrega, ProvinciaEntrega = formProvinciaEntrega,
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,

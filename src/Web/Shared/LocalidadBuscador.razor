@@ -1,0 +1,94 @@
+@* 2026-10-28 · Campo de localidad con lista mientras escribís (lista oficial + las que ya usan
+   tus clientes, ver LocalidadesService). Sólo sugiere: si no elegís nada queda lo que escribiste.
+   Al elegir avisa por OnElegida para que la ficha complete CP y provincia. *@
+@inject LocalidadesService Localidades
+
+<div class="locb">
+    <input class="form-input" value="@Value" placeholder="@Placeholder" autocomplete="off"
+           @oninput="OnInput" @onkeydown="OnKey" @onfocus="OnFocus" @onblur="Cerrar" />
+    @if (abierta && (opciones.Count > 0 || !string.IsNullOrWhiteSpace(Value)))
+    {
+        <div class="locb-lista" @onmousedown:preventDefault="true">
+            @for (var i = 0; i < opciones.Count; i++)
+            {
+                var o = opciones[i];
+                var idx = i;
+                <div class="locb-op @(idx == marcada ? "on" : "")" @onmousedown="() => Elegir(o)" @onmouseover="() => marcada = idx">
+                    <span><strong>@o.Nombre</strong> <span class="locb-det">· @o.Detalle</span></span>
+                    <span class="locb-der">
+                        @if (o.Cps.Count > 0) { <span>CP @string.Join(" / ", o.Cps.Take(3))</span> }
+                        @if (o.Clientes > 0) { <span>@o.Clientes @(o.Clientes == 1 ? "cliente" : "clientes")</span> }
+                    </span>
+                </div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Value))
+            {
+                <div class="locb-op locb-libre @(marcada == opciones.Count ? "on" : "")" @onmousedown="UsarTalCual" @onmouseover="() => marcada = opciones.Count">
+                    Usar "@Value.Trim()" tal cual lo escribí
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .locb { position: relative; }
+    .locb-lista { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 2px); background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.12); max-height: 280px; overflow-y: auto; font-size: .8rem; }
+    .locb-op { display: flex; justify-content: space-between; gap: .5rem; padding: .4rem .65rem; cursor: pointer; }
+    .locb-op.on { background: #eff6ff; }
+    .locb-det { color: #6b7280; }
+    .locb-der { display: flex; gap: .6rem; color: #6b7280; font-size: .72rem; white-space: nowrap; }
+    .locb-libre { color: #6b7280; border-top: 1px solid #e5e7eb; }
+</style>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public EventCallback<LocalidadesService.Opcion> OnElegida { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Escribí y elegí de la lista";
+
+    private List<LocalidadesService.Opcion> opciones = new();
+    private bool abierta;
+    private int marcada;
+
+    private async Task OnFocus()
+    {
+        await Localidades.EnsureAsync();
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString() ?? "";
+        await ValueChanged.InvokeAsync(Value);
+        await Localidades.EnsureAsync();
+        opciones = Localidades.Buscar(Value);
+        marcada = 0;
+        abierta = true;
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (!abierta) return;
+        var total = opciones.Count + (string.IsNullOrWhiteSpace(Value) ? 0 : 1);
+        if (e.Key == "ArrowDown" && total > 0) marcada = (marcada + 1) % total;
+        else if (e.Key == "ArrowUp" && total > 0) marcada = (marcada - 1 + total) % total;
+        else if (e.Key == "Escape") abierta = false;
+        else if (e.Key == "Enter")
+        {
+            if (marcada < opciones.Count) await Elegir(opciones[marcada]);
+            else abierta = false;
+        }
+    }
+
+    private async Task Elegir(LocalidadesService.Opcion o)
+    {
+        abierta = false;
+        Value = o.Nombre;
+        await ValueChanged.InvokeAsync(o.Nombre);
+        await OnElegida.InvokeAsync(o);
+    }
+
+    private void UsarTalCual() => abierta = false;
+
+    private void Cerrar() => abierta = false;
+}
