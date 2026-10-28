@@ -1,0 +1,174 @@
+@* 2026-10-28 · Mapa de la ficha del cliente (columna derecha de Entrega). Siempre a la vista:
+   el pin salta solo a la dirección escrita (si todavía no hay pin), se arrastra o se toca el mapa
+   para corregirlo, y debajo va lo que entendió Google. La foto de la puerta la dibuja el JS en
+   FotoId (columna izquierda). La ubicación viaja al padre como link "maps?q=lat,lng", que el
+   backend ya sabe leer al guardar: el reparto, Waze y Mapeo la usan sin cambios. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject ApiClient Api
+
+<div class="cm-mapa" id="@mapaId"></div>
+<div class="cm-pie">
+    @if (buscando)
+    {
+        <span>Buscando la dirección en Google…</span>
+    }
+    else if (Lat.HasValue && Lng.HasValue)
+    {
+        <span>
+            @if (!string.IsNullOrEmpty(textoGoogle)) { <text>Google: @textoGoogle · </text> }
+            <span class="cm-ok">✓ Ubicación cargada</span>
+            · <a href="" @onclick="Quitar" @onclick:preventDefault="true">Quitar</a>
+        </span>
+    }
+    else if (noEncontrada)
+    {
+        <span class="cm-mal">No encontré esa dirección: tocá el mapa donde entregás.</span>
+    }
+    else
+    {
+        <span>Escribí el domicilio o tocá el mapa donde entregás.</span>
+    }
+    @if (pendiente is not null && Lat.HasValue)
+    {
+        <button type="button" class="btn btn-secondary cm-mover" @onclick="MoverALaNueva">Mover el pin a «@pendiente»</button>
+    }
+</div>
+
+@code {
+    /// <summary>Lo que se busca en Google ("calle 123, localidad, provincia"). Cambia mientras se escribe.</summary>
+    [Parameter] public string? Consulta { get; set; }
+    [Parameter] public decimal? Lat { get; set; }
+    [Parameter] public decimal? Lng { get; set; }
+    /// <summary>Donde el JS dibuja la foto de la puerta.</summary>
+    [Parameter] public string FotoId { get; set; } = "";
+    /// <summary>Nueva ubicación (null, null = sin ubicación) y el link a guardar.</summary>
+    [Parameter] public EventCallback<(decimal? lat, decimal? lng, string link)> OnUbicacion { get; set; }
+
+    private readonly string mapaId = "cm-" + Guid.NewGuid().ToString("N")[..8];
+    private DotNetObjectReference<UbicacionClienteMapa>? yo;
+    private string? ultimaConsulta;
+    private string? pendiente;
+    private string? textoGoogle;
+    private bool buscando, noEncontrada, listo;
+    private bool pinAutomatico;   // el pin lo puso la búsqueda (no lo tocó nadie): sigue a la dirección
+    private CancellationTokenSource? espera;
+
+    protected override void OnInitialized() => ultimaConsulta = Limpia(Consulta);
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        yo = DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("clienteMapa.init", mapaId, FotoId, yo, Lat, Lng);
+            listo = true;
+        }
+        catch { }
+    }
+
+    protected override void OnParametersSet()
+    {
+        var c = Limpia(Consulta);
+        if (c == ultimaConsulta) return;
+        ultimaConsulta = c;
+        // Espera a que termine de escribir (no busca letra por letra: cada búsqueda es una consulta a Google).
+        espera?.Cancel();
+        if (c is null) { pendiente = null; return; }
+        var cts = espera = new CancellationTokenSource();
+        _ = Task.Delay(1200, cts.Token).ContinueWith(async t =>
+        {
+            if (t.IsCanceled) return;
+            await InvokeAsync(async () => { await Buscar(c, cts.Token); StateHasChanged(); });
+        }, TaskScheduler.Default);
+    }
+
+    /// <summary>Sin pin, o con el pin que puso la búsqueda → lo pone/mueve solo. Con un pin puesto
+    /// a mano (arrastrado, link, el que ya tenía) no lo mueve: ofrece moverlo.</summary>
+    private async Task Buscar(string c, CancellationToken ct)
+    {
+        if (Lat.HasValue && Lng.HasValue && !pinAutomatico) { pendiente = c; return; }
+        await Ubicar(c, ct);
+    }
+
+    private async Task Ubicar(string c, CancellationToken ct = default)
+    {
+        buscando = true; noEncontrada = false; pendiente = null;
+        StateHasChanged();
+        try
+        {
+            var r = await Api.UbicarDireccionAsync(c);
+            if (ct.IsCancellationRequested) return;
+            if (r is { Ok: true })
+            {
+                textoGoogle = SinPais(r.Direccion);
+                pinAutomatico = true;
+                await Avisar(r.Lat, r.Lng);
+                if (listo) await JS.InvokeVoidAsync("clienteMapa.setPin", r.Lat, r.Lng);
+            }
+            else noEncontrada = true;
+        }
+        catch { noEncontrada = true; }
+        finally { buscando = false; }
+    }
+
+    private async Task MoverALaNueva()
+    {
+        var c = pendiente;
+        if (c is null) return;
+        await Ubicar(c);
+    }
+
+    /// <summary>Lo llama el JS cuando arrastran el pin o tocan el mapa.</summary>
+    [JSInvokable]
+    public async Task PinMovido(double lat, double lng)
+    {
+        var la = Math.Round((decimal)lat, 7); var lo = Math.Round((decimal)lng, 7);
+        noEncontrada = false; pendiente = null; textoGoogle = null; pinAutomatico = false;
+        await Avisar(la, lo);
+        StateHasChanged();
+        try { textoGoogle = SinPais(await Api.DireccionDePuntoAsync(la, lo)); } catch { }
+        StateHasChanged();
+    }
+
+    /// <summary>Pegaron un link de Google Maps: pone el pin ahí (y se guarda ese link tal cual).</summary>
+    public async Task<bool> UsarLink(string url)
+    {
+        var r = await Api.ResolverLinkMapsAsync(url);
+        if (r is not { Ok: true }) return false;
+        pendiente = null; noEncontrada = false; textoGoogle = null; pinAutomatico = false;
+        await OnUbicacion.InvokeAsync((r.Lat, r.Lng, url.Trim()));
+        if (listo) await JS.InvokeVoidAsync("clienteMapa.setPin", r.Lat, r.Lng);
+        try { textoGoogle = SinPais(await Api.DireccionDePuntoAsync(r.Lat, r.Lng)); } catch { }
+        StateHasChanged();
+        return true;
+    }
+
+    private async Task Quitar()
+    {
+        pendiente = null; textoGoogle = null; pinAutomatico = false;
+        await OnUbicacion.InvokeAsync((null, null, ""));
+        if (listo) await JS.InvokeVoidAsync("clienteMapa.clearPin");
+    }
+
+    private Task Avisar(decimal lat, decimal lng) => OnUbicacion.InvokeAsync((lat, lng,
+        FormattableString.Invariant($"https://www.google.com/maps?q={lat},{lng}")));
+
+    private static string? SinPais(string? d) => d is null ? null
+        : d.Replace(", Argentina", "").Replace("Provincia de Buenos Aires", "Buenos Aires");
+
+    private static string? Limpia(string? c)
+    {
+        c = string.Join(' ', (c ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries)).Trim(' ', ',');
+        // Sin al menos un número de calle no vale la pena preguntarle a Google.
+        return c.Length >= 5 && c.Any(char.IsDigit) ? c : null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        espera?.Cancel();
+        try { await JS.InvokeVoidAsync("clienteMapa.destroy"); } catch { }
+        yo?.Dispose();
+    }
+}

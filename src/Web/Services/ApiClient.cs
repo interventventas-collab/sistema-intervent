@@ -1630,6 +1630,24 @@ public class ApiClient
     }
     private class NextCodigoInternoResponse { public int CodigoInterno { get; set; } }
 
+    /// <summary>2026-10-28: mapa de la ficha. Busca la dirección escrita (punto + cómo la entendió Google).</summary>
+    public Task<UbicacionDto?> UbicarDireccionAsync(string q)
+        => GetAsync<UbicacionDto>($"/api/cafe/clientes/ubicar?q={Uri.EscapeDataString(q)}");
+    /// <summary>2026-10-28: punto de un link de Google Maps pegado (también los cortos).</summary>
+    public Task<UbicacionDto?> ResolverLinkMapsAsync(string url)
+        => GetAsync<UbicacionDto>($"/api/cafe/clientes/resolver-link?url={Uri.EscapeDataString(url)}");
+    /// <summary>2026-10-28: calle y número de un punto del mapa.</summary>
+    public async Task<string?> DireccionDePuntoAsync(decimal lat, decimal lng)
+        => (await GetAsync<UbicacionDto>(FormattableString.Invariant($"/api/mapeo/stops/reverse-geocode?lat={lat}&lng={lng}")))?.Address;
+    public class UbicacionDto
+    {
+        public bool Ok { get; set; }
+        public decimal Lat { get; set; }
+        public decimal Lng { get; set; }
+        public string? Direccion { get; set; }
+        public string? Address { get; set; }
+    }
+
     /// <summary>2026-10-28: localidades que ya usan los clientes (las pone primero el buscador).</summary>
     public Task<T?> GetLocalidadesUsadasAsync<T>() => GetAsync<T>("/api/cafe/clientes/localidades-usadas");
 
