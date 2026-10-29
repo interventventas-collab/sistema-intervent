@@ -219,6 +219,11 @@ builder.Services.AddScoped<GaliciaSyncService>();
 builder.Services.AddScoped<ShellAccountService>();
 builder.Services.AddSingleton<ShellScrapingService>();
 builder.Services.AddScoped<ShellSyncService>();
+// 2026-10-29: ventanita de bienvenida. Para sumar un bloque nuevo: otra clase en BienvenidaService.cs + una línea acá.
+builder.Services.AddScoped<BienvenidaService>();
+builder.Services.AddScoped<IBienvenidaBloque, BienvenidaBloqueTraerBancos>();
+builder.Services.AddScoped<IBienvenidaBloque, BienvenidaBloqueHoy>();
+builder.Services.AddScoped<IBienvenidaBloque, BienvenidaBloqueRecordatorios>();
 builder.Services.AddScoped<MpAccountService>();
 builder.Services.AddScoped<MpSyncService>();
 // 2026-07-10: cámaras EZVIZ (API oficial). Config en /integraciones/camaras.

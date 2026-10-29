@@ -6667,6 +6667,25 @@ public class ApiClient
 
     private class GaliciaOkResp { public bool Ok { get; set; } }
 
+    // --- Ventanita de bienvenida (2026-10-29) ---
+    public async Task<Web.Models.BienvenidaDto?> GetBienvenidaAsync(string persona)
+        => await GetAsync<Web.Models.BienvenidaDto>($"/api/bienvenida?persona={Uri.EscapeDataString(persona)}");
+
+    public async Task MarcarBienvenidaVistaAsync(string persona)
+        => await PostAsync<object>($"/api/bienvenida/vista?persona={Uri.EscapeDataString(persona)}", new { });
+
+    public async Task<List<Web.Models.BienvenidaRecordatorioDto>> GetBienvenidaRecordatoriosAsync(string persona)
+        => await GetAsync<List<Web.Models.BienvenidaRecordatorioDto>>($"/api/bienvenida/recordatorios?persona={Uri.EscapeDataString(persona)}") ?? new();
+
+    public async Task<Web.Models.BienvenidaRecordatorioDto?> AgregarBienvenidaRecordatorioAsync(string texto, DateTime? fecha, string? para, string de)
+        => await PostAsync<Web.Models.BienvenidaRecordatorioDto>("/api/bienvenida/recordatorios", new { texto, fecha, para, de });
+
+    public async Task MarcarBienvenidaRecordatorioAsync(int id, bool hecho, string persona)
+        => await PostAsync<object>($"/api/bienvenida/recordatorios/{id}/hecho?hecho={hecho.ToString().ToLowerInvariant()}&persona={Uri.EscapeDataString(persona)}", new { });
+
+    public async Task<bool> BorrarBienvenidaRecordatorioAsync(int id)
+        => await DeleteAsync($"/api/bienvenida/recordatorios/{id}");
+
     // --- Shell Flota (saldo disponible) ---
     public async Task<Web.Models.ShellAccountDto?> GetShellAccountAsync()
         => await GetAsync<Web.Models.ShellAccountDto>("/api/shell/account");

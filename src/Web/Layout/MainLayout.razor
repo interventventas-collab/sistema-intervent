@@ -2033,6 +2033,10 @@
 <CalculadoraFlotante @ref="calcRef" />
 <PostitsFlotantes @ref="postitsRef" Username="@username" />
 
+@* 2026-10-29: ventanita de bienvenida con el resumen del día + globito ☀ para volver a abrirla.
+   No se abre mientras la pantalla del PIN tapa todo. *@
+<BienvenidaVentana Bloqueado="@mostrarPinLock" />
+
 @* 2026-07-23: panel flotante de WhatsApp (API oficial de Meta). Se abre con el boton verde
    de la topbar y permite responder sin salir de la pantalla donde estas trabajando.
    Tiene un boton ↗ para abrirlo en una pestaña aparte. *@
