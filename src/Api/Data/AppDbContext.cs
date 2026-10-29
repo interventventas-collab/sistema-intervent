@@ -304,6 +304,9 @@ public class AppDbContext : DbContext
     public DbSet<MisAlerta> MisAlertas => Set<MisAlerta>();
     public DbSet<MisAlertaCorreo> MisAlertasCorreos => Set<MisAlertaCorreo>();
     public DbSet<MisAlertaHistorial> MisAlertasHistorial => Set<MisAlertaHistorial>();
+    // 2026-10-29: ventanita de bienvenida (recordatorios entre el equipo + "ya la vio hoy").
+    public DbSet<BienvenidaRecordatorio> BienvenidaRecordatorios => Set<BienvenidaRecordatorio>();
+    public DbSet<BienvenidaVista> BienvenidaVistas => Set<BienvenidaVista>();
     // 2026-08-13: avisos de cierre de ventana de WhatsApp (24hs).
     public DbSet<WhatsAppAvisoVentanaRegla> WhatsAppAvisoVentanaReglas => Set<WhatsAppAvisoVentanaRegla>();
     public DbSet<WhatsAppAvisoVentanaEnviado> WhatsAppAvisoVentanaEnviados => Set<WhatsAppAvisoVentanaEnviado>();

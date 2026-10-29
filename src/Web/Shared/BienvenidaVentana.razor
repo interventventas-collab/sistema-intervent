@@ -1,0 +1,384 @@
+@* 2026-10-29: ventanita de bienvenida. Se abre sola la primera vez en el día que cada persona
+   (operador del PIN) entra; después queda el globito ☀ abajo a la derecha para volver a abrirla.
+   Los bloques los arma la API (BienvenidaService). Los de tipo "renglones" se dibujan solos; para
+   sumar algo nuevo alcanza con un bloque nuevo en la API. Los tipos especiales están acá abajo. *@
+@implements IDisposable
+@inject ApiClient Api
+@inject OperatorService Operator
+@inject Web.Services.TraerBancosService Traer
+@inject NavigationManager Navigation
+
+@if (persona is not null && !Bloqueado)
+{
+    @if (!abierta)
+    {
+        <button class="bnv-globito @(Traer.Corriendo ? "bnv-girando" : "")" @onclick="AbrirAsync"
+                title="@(Traer.Corriendo ? "Trayendo movimientos…" : "Resumen del día")">
+            ☀
+            @if (PendientesCount > 0) { <span class="bnv-badge">@PendientesCount</span> }
+        </button>
+    }
+    else
+    {
+        <div class="bnv-fondo" @onclick="Cerrar"></div>
+        <div class="bnv-ventana" role="dialog">
+            <div class="bnv-cab">
+                <div>
+                    <h2>@Saludo, @Lindo(persona) ☀</h2>
+                    <div class="bnv-sub">@FechaLarga</div>
+                </div>
+                <button class="bnv-x" @onclick="Cerrar" aria-label="Cerrar">✕</button>
+            </div>
+
+            @if (cargando && datos is null)
+            {
+                <div class="bnv-sec bnv-gris">Armando tu resumen…</div>
+            }
+            else if (datos is not null)
+            {
+                @foreach (var b in datos.Bloques)
+                {
+                    <div class="bnv-sec">
+                        <div class="bnv-tit">@b.Titulo.ToUpperInvariant()</div>
+                        @switch (b.Tipo)
+                        {
+                            case "traer-bancos":
+                                @Renglones(b)
+                                @TraerBancos
+                                break;
+                            case "recordatorios":
+                                @Recordatorios
+                                break;
+                            default:
+                                @Renglones(b)
+                                break;
+                        }
+                    </div>
+                }
+            }
+
+            <div class="bnv-pie">
+                <span class="bnv-gris bnv-chico">Se vuelve a abrir con el ☀ de abajo a la derecha</span>
+                <button class="bnv-btn" @onclick="Cerrar">Arrancar el día</button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    /// <summary>True mientras la pantalla del PIN tapa todo: no abrir nada por debajo.</summary>
+    [Parameter] public bool Bloqueado { get; set; }
+
+    private string? persona;
+    private bool abierta;
+    private bool cargando;
+    private BienvenidaDto? datos;
+    private List<BienvenidaRecordatorioDto> recordatorios = new();
+    private bool chequeadoHoy;
+
+    // Nuevo recordatorio
+    private string nuevoTexto = "";
+    private string nuevoCuando = "hoy";   // hoy | manana | fecha
+    private DateTime? nuevaFecha;
+    private string nuevoPara = "";       // "" = para mí · "TODOS" · nombre de operador
+    private bool guardando;
+
+    private static readonly string[] Equipo = { "OSMAR", "GERMAN", "GABRIEL" };
+
+    private int PendientesCount => recordatorios.Count(r => !r.Hecho && (r.Fecha is null || r.Fecha.Value.Date <= HoyAr));
+    private static DateTime HoyAr => DateTime.UtcNow.AddHours(-3).Date;
+    private static string Saludo
+    {
+        get
+        {
+            var h = DateTime.UtcNow.AddHours(-3).Hour;
+            if (h >= 20) return "Buenas noches";
+            if (h >= 13) return "Buenas tardes";
+            return "Buen día";
+        }
+    }
+    private static string FechaLarga
+    {
+        get
+        {
+            var ar = DateTime.UtcNow.AddHours(-3);
+            var s = ar.ToString("dddd d 'de' MMMM", new System.Globalization.CultureInfo("es-AR"));
+            return char.ToUpper(s[0]) + s[1..] + " · " + ar.ToString("HH:mm");
+        }
+    }
+    private static string Lindo(string p) => p switch
+    {
+        "GERMAN" => "Germán",
+        "BENJAMIN" => "Benjamín",
+        "" => p,
+        _ => p[0] + p[1..].ToLowerInvariant(),
+    };
+
+    protected override void OnInitialized()
+    {
+        Operator.OnChange += OnOperatorCambio;
+        Traer.OnChange += OnTraerCambio;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var actual = Operator.Current;
+        if (actual != persona) { persona = actual; chequeadoHoy = false; datos = null; abierta = false; recordatorios = new(); }
+        if (persona is not null && !Bloqueado && !chequeadoHoy)
+        {
+            chequeadoHoy = true;
+            await CargarAsync(abrirSiTocaHoy: true);
+        }
+    }
+
+    private void OnOperatorCambio() => InvokeAsync(async () => { await OnParametersSetAsync(); StateHasChanged(); });
+
+    private void OnTraerCambio()
+    {
+        InvokeAsync(async () =>
+        {
+            // Al terminar, refrescar los saldos del bloque "Bancos".
+            if (!Traer.Corriendo && abierta) await CargarAsync(false);
+            StateHasChanged();
+        });
+    }
+
+    private async Task CargarAsync(bool abrirSiTocaHoy)
+    {
+        var p = persona;
+        if (p is null) return;
+        cargando = true;
+        try
+        {
+            var d = await Api.GetBienvenidaAsync(p);
+            if (p != persona) return;
+            datos = d;
+            recordatorios = await Api.GetBienvenidaRecordatoriosAsync(p);
+            if (abrirSiTocaHoy && d?.AbrirSola == true)
+            {
+                abierta = true;
+                try { await Api.MarcarBienvenidaVistaAsync(p); } catch { }
+            }
+        }
+        catch { /* la bienvenida nunca tiene que trabar la pantalla */ }
+        finally { cargando = false; }
+        StateHasChanged();
+    }
+
+    private async Task AbrirAsync()
+    {
+        abierta = true;
+        await CargarAsync(false);
+    }
+
+    private void Cerrar() => abierta = false;
+
+    private void Ir(string link)
+    {
+        abierta = false;
+        Navigation.NavigateTo(link);
+    }
+
+    // ── Recordatorios ──
+    private async Task Tildar(BienvenidaRecordatorioDto r)
+    {
+        r.Hecho = !r.Hecho;
+        try { await Api.MarcarBienvenidaRecordatorioAsync(r.Id, r.Hecho, persona!); }
+        catch { r.Hecho = !r.Hecho; }
+    }
+
+    private async Task Borrar(BienvenidaRecordatorioDto r)
+    {
+        if (await Api.BorrarBienvenidaRecordatorioAsync(r.Id)) recordatorios.Remove(r);
+    }
+
+    private async Task AgregarAsync()
+    {
+        var texto = nuevoTexto.Trim();
+        if (texto.Length == 0 || persona is null || guardando) return;
+        DateTime? fecha = nuevoCuando switch
+        {
+            "manana" => HoyAr.AddDays(1),
+            "fecha" => nuevaFecha,
+            _ => null,
+        };
+        string? para = nuevoPara switch { "" => persona, "TODOS" => null, var x => x };
+        guardando = true;
+        try
+        {
+            await Api.AgregarBienvenidaRecordatorioAsync(texto, fecha, para, persona);
+            nuevoTexto = "";
+            nuevoCuando = "hoy";
+            nuevaFecha = null;
+            nuevoPara = "";
+            recordatorios = await Api.GetBienvenidaRecordatoriosAsync(persona);
+        }
+        catch { }
+        finally { guardando = false; }
+    }
+
+    private async Task EnterAgregar(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AgregarAsync();
+    }
+
+    private string DetalleRecordatorio(BienvenidaRecordatorioDto r)
+    {
+        var partes = new List<string>();
+        if (r.Fecha is DateTime f)
+        {
+            var d = f.Date;
+            if (d == HoyAr) partes.Add("hoy");
+            else if (d == HoyAr.AddDays(1)) partes.Add("mañana");
+            else if (d > HoyAr) partes.Add(d.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR")));
+            else partes.Add("desde el " + d.ToString("dd/MM"));
+        }
+        if (!string.Equals(r.De, persona, StringComparison.OrdinalIgnoreCase) && r.De.Length > 0)
+            partes.Add("te lo dejó " + Lindo(r.De));
+        if (r.Para is null) partes.Add("para todos");
+        return string.Join(" · ", partes);
+    }
+
+    private string ClaseChip(bool activo) => activo ? "bnv-chip bnv-chip-on" : "bnv-chip";
+
+    public void Dispose()
+    {
+        Operator.OnChange -= OnOperatorCambio;
+        Traer.OnChange -= OnTraerCambio;
+    }
+
+    // ── Dibujos de cada tipo de bloque ──
+
+    private RenderFragment Renglones(BienvenidaBloqueDto b) => __builder =>
+    {
+        @foreach (var r in b.Renglones)
+        {
+            <div class="bnv-fila">
+                <span>
+                    <span class="@(r.Alarma ? "bnv-rojo" : "")">@r.Texto</span>
+                    @if (!string.IsNullOrEmpty(r.Detalle)) { <span class="bnv-gris"> · @r.Detalle</span> }
+                </span>
+                @if (!string.IsNullOrEmpty(r.Link))
+                {
+                    <a class="bnv-ir" @onclick="() => Ir(r.Link!)">ver →</a>
+                }
+            </div>
+        }
+    };
+
+    private RenderFragment TraerBancos => __builder =>
+    {
+        <div class="bnv-traer">
+            <button class="bnv-btn-sec" disabled="@Traer.Corriendo" @onclick="Traer.TraerTodoAsync">
+                @(Traer.Corriendo ? "Trayendo… (podés cerrar, sigue solo)" : "⬇ Traer movimientos de Shell y Galicia")
+            </button>
+            @if (Traer.Shell is not null)
+            {
+                <div class="bnv-estado">
+                    <div>Shell Flota · <span class="@ClaseEstado(Traer.Shell)">@Traer.Shell</span></div>
+                    <div>Galicia transferencias · <span class="@ClaseEstado(Traer.GaliciaMovimientos)">@Traer.GaliciaMovimientos</span></div>
+                    <div>Galicia cheques · <span class="@ClaseEstado(Traer.GaliciaCheques)">@Traer.GaliciaCheques</span></div>
+                </div>
+            }
+            else
+            {
+                <div class="bnv-gris bnv-chico">Tarda unos minutos. El sistema ya no entra solo: solo cuando lo apretás.</div>
+            }
+        </div>
+    };
+
+    private static string ClaseEstado(string? s) => s is not null && s.StartsWith("no se pudo") ? "bnv-rojo" : "bnv-gris";
+
+    private RenderFragment Recordatorios => __builder =>
+    {
+        @if (recordatorios.Count == 0)
+        {
+            <div class="bnv-gris bnv-chico" style="padding:2px 0 6px;">Nada anotado. Escribí abajo lo que no te querés olvidar, o dejale una nota a otro.</div>
+        }
+        @foreach (var r in recordatorios)
+        {
+            <div class="bnv-chk @(r.Hecho ? "bnv-hecho" : "")">
+                <button class="bnv-box" @onclick="() => Tildar(r)" aria-label="Tildar">@(r.Hecho ? "✓" : "")</button>
+                <div class="bnv-chk-tx">
+                    <span class="bnv-tx">@r.Texto</span>
+                    @{ var det = DetalleRecordatorio(r); }
+                    @if (det.Length > 0) { <span class="bnv-gris bnv-chico"> · @det</span> }
+                </div>
+                @if (string.Equals(r.De, persona, StringComparison.OrdinalIgnoreCase))
+                {
+                    <button class="bnv-borrar" title="Borrar" @onclick="() => Borrar(r)">✕</button>
+                }
+            </div>
+        }
+        <div class="bnv-add">
+            <input placeholder="Anotar algo para acordarme o para otro…" @bind="nuevoTexto" @bind:event="oninput" @onkeydown="EnterAgregar" maxlength="500" />
+            <button class="bnv-btn" disabled="@(guardando || string.IsNullOrWhiteSpace(nuevoTexto))" @onclick="AgregarAsync">Anotar</button>
+        </div>
+        <div class="bnv-opc">
+            <span class="bnv-gris bnv-chico">cuándo</span>
+            <button class="@ClaseChip(nuevoCuando == "hoy")" @onclick='() => nuevoCuando = "hoy"'>hoy</button>
+            <button class="@ClaseChip(nuevoCuando == "manana")" @onclick='() => nuevoCuando = "manana"'>mañana</button>
+            <button class="@ClaseChip(nuevoCuando == "fecha")" @onclick='() => nuevoCuando = "fecha"'>otro día</button>
+            @if (nuevoCuando == "fecha")
+            {
+                <input type="date" class="bnv-fecha" @bind="nuevaFecha" />
+            }
+            <span class="bnv-gris bnv-chico" style="margin-left:8px;">para</span>
+            <button class="@ClaseChip(nuevoPara == "")" @onclick='() => nuevoPara = ""'>mí</button>
+            @foreach (var o in Equipo.Where(o => o != persona))
+            {
+                var nom = o;
+                <button class="@ClaseChip(nuevoPara == nom)" @onclick="() => nuevoPara = nom">@Lindo(nom)</button>
+            }
+            <button class="@ClaseChip(nuevoPara == "TODOS")" @onclick='() => nuevoPara = "TODOS"'>todos</button>
+        </div>
+    };
+}
+
+<style>
+    .bnv-globito { position: fixed; right: 22px; bottom: 150px; z-index: 8400; width: 44px; height: 44px;
+        border-radius: 50%; border: 1px solid #e5e7eb; background: #fff; color: #111827; font-size: 21px;
+        box-shadow: 0 4px 14px rgba(0,0,0,.15); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .bnv-globito:hover { background: #f9fafb; }
+    .bnv-girando { animation: bnv-gira 2.4s linear infinite; }
+    @@keyframes bnv-gira { to { transform: rotate(360deg); } }
+    .bnv-badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; border-radius: 9px;
+        background: #111827; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+    .bnv-fondo { position: fixed; inset: 0; background: rgba(17,24,39,.35); z-index: 9900; }
+    .bnv-ventana { position: fixed; z-index: 9901; top: 6vh; left: 50%; transform: translateX(-50%); width: 640px;
+        max-width: calc(100vw - 32px); max-height: 88vh; overflow-y: auto; background: #fff; border-radius: 14px;
+        box-shadow: 0 20px 50px rgba(0,0,0,.25); color: #111827; font-size: 14.5px; }
+    .bnv-cab { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 26px 10px; }
+    .bnv-cab h2 { margin: 0; font-size: 22px; }
+    .bnv-sub { color: #6b7280; margin-top: 3px; }
+    .bnv-x { border: none; background: none; color: #9ca3af; font-size: 18px; cursor: pointer; }
+    .bnv-sec { padding: 10px 26px 12px; border-top: 1px solid #eef0f2; }
+    .bnv-tit { font-size: 12px; letter-spacing: .06em; color: #6b7280; font-weight: 600; margin-bottom: 6px; }
+    .bnv-fila { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; }
+    .bnv-ir { color: #2563eb; white-space: nowrap; cursor: pointer; }
+    .bnv-gris { color: #6b7280; }
+    .bnv-chico { font-size: 12.5px; }
+    .bnv-rojo { color: #b91c1c; font-weight: 600; }
+    .bnv-traer { margin-top: 8px; }
+    .bnv-estado { margin-top: 8px; font-size: 13.5px; line-height: 1.7; }
+    .bnv-chk { display: flex; gap: 9px; padding: 4px 0; align-items: flex-start; }
+    .bnv-chk-tx { flex: 1; }
+    .bnv-box { width: 17px; height: 17px; border: 1.5px solid #9ca3af; border-radius: 3px; margin-top: 2px; flex: none;
+        background: #fff; color: #fff; font-size: 11px; line-height: 1; padding: 0; cursor: pointer; }
+    .bnv-hecho .bnv-box { background: #111827; border-color: #111827; }
+    .bnv-hecho .bnv-tx { text-decoration: line-through; color: #9ca3af; }
+    .bnv-borrar { border: none; background: none; color: #d1d5db; cursor: pointer; font-size: 13px; }
+    .bnv-borrar:hover { color: #6b7280; }
+    .bnv-add { display: flex; gap: 6px; margin-top: 8px; }
+    .bnv-add input { flex: 1; border: 1px solid #d1d5db; border-radius: 7px; padding: 7px 9px; font-size: 14px; }
+    .bnv-opc { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 7px; }
+    .bnv-chip { border: 1px solid #d1d5db; background: #fff; border-radius: 7px; padding: 4px 9px; font-size: 13px; color: #374151; cursor: pointer; }
+    .bnv-chip-on { background: #111827; color: #fff; border-color: #111827; }
+    .bnv-fecha { border: 1px solid #d1d5db; border-radius: 7px; padding: 3px 6px; font-size: 13px; }
+    .bnv-pie { display: flex; justify-content: space-between; align-items: center; padding: 12px 26px 18px; border-top: 1px solid #eef0f2; gap: 10px; }
+    .bnv-btn { background: #111827; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 600; cursor: pointer; }
+    .bnv-btn:disabled { opacity: .45; cursor: default; }
+    .bnv-btn-sec { background: #fff; color: #111827; border: 1px solid #111827; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+    .bnv-btn-sec:disabled { opacity: .6; cursor: default; }
+    @@media (max-width: 640px) { .bnv-ventana { top: 2vh; } .bnv-cab, .bnv-sec, .bnv-pie { padding-left: 16px; padding-right: 16px; } }
+</style>

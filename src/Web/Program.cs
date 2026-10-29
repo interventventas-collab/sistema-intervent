@@ -26,6 +26,8 @@ builder.Services.AddScoped<Web.Services.WaAparienciaService>();
 builder.Services.AddScoped<SyncProgressTracker>();
 builder.Services.AddScoped<BrandSettingsService>();
 builder.Services.AddScoped<OperatorService>();
+// 2026-10-29: botón "Traer movimientos" de Shell + Galicia en la bienvenida (sigue aunque se cierre la ventanita)
+builder.Services.AddScoped<Web.Services.TraerBancosService>();
 builder.Services.AddScoped<NuevaVentaSignal>();
 builder.Services.AddScoped<CurrentCompanyService>();
 builder.Services.AddSingleton<UploadProgressService>();

@@ -8493,3 +8493,24 @@ GO
 IF COL_LENGTH('Cafe_Clientes','ProvinciaEntrega') IS NULL
     ALTER TABLE Cafe_Clientes ADD ProvinciaEntrega NVARCHAR(100) NULL;
 GO
+
+-- 2026-10-29: ventanita de bienvenida — recordatorios entre el equipo + último día que se abrió sola
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Bienvenida_Recordatorios')
+    CREATE TABLE Bienvenida_Recordatorios (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Texto NVARCHAR(500) NOT NULL,
+        Fecha DATE NULL,
+        Para NVARCHAR(30) NULL,
+        De NVARCHAR(30) NOT NULL,
+        Hecho BIT NOT NULL CONSTRAINT DF_BienvRec_Hecho DEFAULT 0,
+        HechoAt DATETIME2 NULL,
+        HechoPor NVARCHAR(30) NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_BienvRec_Created DEFAULT SYSUTCDATETIME()
+    );
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Bienvenida_Vistas')
+    CREATE TABLE Bienvenida_Vistas (
+        Persona NVARCHAR(30) NOT NULL PRIMARY KEY,
+        UltimaFecha DATE NOT NULL
+    );
+GO
