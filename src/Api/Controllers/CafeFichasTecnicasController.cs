@@ -226,12 +226,56 @@ public class CafeFichasTecnicasController : ControllerBase
         if (file.Length > 15 * 1024 * 1024) return BadRequest(new { error = "La imagen es muy grande (máx 15 MB)." });
         if (!file.ContentType.StartsWith("image/")) return BadRequest(new { error = "El archivo tiene que ser una imagen." });
 
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        return Ok(await GuardarFotoAsync(f, tipo, ms.ToArray(), Path.GetExtension(file.FileName)));
+    }
+
+    public record DesdeUrlRequest(string? Url);
+
+    /// <summary>Pone la foto bajándola de un ENLACE pegado. Acepta también el link de Google Imágenes
+    /// (imgres?imgurl=…) y la imagen copiada como "data:image/…;base64,…".</summary>
+    [HttpPost("{id:int}/foto/{tipo}/desde-url")]
+    public async Task<IActionResult> FotoDesdeUrl(int id, string tipo, [FromBody] DesdeUrlRequest req)
+    {
+        if (tipo is not ("cafe" or "etiqueta")) return BadRequest(new { error = "Tipo de foto inválido." });
+        var f = await _db.CafeFichasTecnicas.FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
+        if (f is null) return NotFound(new { error = "La ficha no existe." });
+
+        var url = (req?.Url ?? "").Trim();
+        byte[]? bytes; string? ext; string? error = null;
+        if (url.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            // "Copiar dirección de imagen" en Google a veces da la imagen misma, en texto.
+            var coma = url.IndexOf(',');
+            ext = url.StartsWith("data:image/png", StringComparison.OrdinalIgnoreCase) ? ".png"
+                : url.StartsWith("data:image/webp", StringComparison.OrdinalIgnoreCase) ? ".webp" : ".jpg";
+            try { bytes = coma > 0 ? Convert.FromBase64String(url[(coma + 1)..]) : null; }
+            catch { bytes = null; }
+            if (bytes is null || bytes.Length == 0) error = "No pude leer esa imagen.";
+            else if (bytes.Length < 8 * 1024) error = "Esa imagen es la miniatura chiquita de Google: abrí la foto grande y copiá esa dirección.";
+        }
+        else
+        {
+            // Link de Google Imágenes: la foto real viene en el parámetro imgurl.
+            if (Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Query.Contains("imgurl=", StringComparison.OrdinalIgnoreCase))
+            {
+                var q = System.Web.HttpUtility.ParseQueryString(u.Query);
+                if (!string.IsNullOrWhiteSpace(q["imgurl"])) url = q["imgurl"]!;
+            }
+            (bytes, ext, error) = await CafeProductoFotoController.BajarImagenAsync(url);
+        }
+        if (error is not null) return BadRequest(new { error });
+        return Ok(await GuardarFotoAsync(f, tipo, bytes!, ext));
+    }
+
+    private async Task<FichaTecnicaDto> GuardarFotoAsync(CafeFichaTecnica f, string tipo, byte[] bytes, string? ext)
+    {
         Directory.CreateDirectory(FotosDir);
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        ext = (ext ?? "").ToLowerInvariant();
         if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp" or ".gif")) ext = ".jpg";
-        var nombre = $"ficha-{id}-{tipo}-{Guid.NewGuid():N}{ext}";
-        await using (var fs = new FileStream(Path.Combine(FotosDir, nombre), FileMode.Create))
-            await file.CopyToAsync(fs);
+        var nombre = $"ficha-{f.Id}-{tipo}-{Guid.NewGuid():N}{ext}";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(FotosDir, nombre), bytes);
 
         var viejo = tipo == "cafe" ? f.FotoCafeArchivo : f.FotoEtiquetaArchivo;
         if (tipo == "cafe") f.FotoCafeArchivo = nombre; else f.FotoEtiquetaArchivo = nombre;
@@ -239,7 +283,7 @@ public class CafeFichasTecnicasController : ControllerBase
         f.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         BorrarArchivo(viejo);
-        return Ok(await DtoAsync(f));
+        return await DtoAsync(f);
     }
 
     [HttpDelete("{id:int}/foto/{tipo}")]

@@ -540,10 +540,19 @@
                     <InputFile accept="image/*" OnChange="@(e => SubirFoto(f, tipo, e))" />
                 }
             </div>
-            <div style="display:flex; justify-content:space-between; font-size:.72rem; margin-top:.15rem;">
+            <div style="display:flex; justify-content:space-between; gap:.4rem; font-size:.72rem; margin-top:.15rem;">
                 @if (url is not null && !na) { <span class="na-link" style="color:#9ca3af; cursor:pointer; text-decoration:underline;" @onclick="() => QuitarFoto(f, tipo)">quitar</span> } else { <span></span> }
+                @if (!na) { <span style="color:#374151; cursor:pointer; text-decoration:underline;" @onclick="() => AbrirEnlace(f, tipo)">🔗 por enlace</span> }
                 <span style="color:#9ca3af; cursor:pointer; text-decoration:underline;" @onclick="() => ToggleNoAplica(f, naKey)">@(na ? "sí lleva" : "no aplica")</span>
             </div>
+            @if (enlaceAbierto == $"{f.Id}-{tipo}")
+            {
+                <div style="display:flex; gap:.3rem; margin-top:.3rem;">
+                    <input class="ft-in" style="font-size:.78rem;" placeholder="Pegá el enlace de la imagen" @bind="enlaceTexto" @bind:event="oninput"
+                           @onkeydown="@(e => e.Key == "Enter" ? FotoPorEnlace(f, tipo) : Task.CompletedTask)" />
+                    <button class="ft-btn pri" style="font-size:.75rem; padding:.3rem .6rem;" disabled="@(string.IsNullOrWhiteSpace(enlaceTexto) || bajandoEnlace)" @onclick="() => FotoPorEnlace(f, tipo)">@(bajandoEnlace ? "…" : "Usar")</button>
+                </div>
+            }
         </div>
     };
 
@@ -682,6 +691,39 @@
             estado[f.Id] = "⚠ no se subió la foto";
             ToastService.Error($"{f.Nombre}: no se subió la foto. {ex.Message}");
         }
+    }
+
+    // ── Foto por enlace (se abre una cajita debajo de la foto para pegar el link) ──
+    private string? enlaceAbierto;
+    private string enlaceTexto = "";
+    private bool bajandoEnlace;
+
+    private void AbrirEnlace(FichaTecnicaDto f, string tipo)
+    {
+        var key = $"{f.Id}-{tipo}";
+        enlaceAbierto = enlaceAbierto == key ? null : key;
+        enlaceTexto = "";
+    }
+
+    private async Task FotoPorEnlace(FichaTecnicaDto f, string tipo)
+    {
+        if (string.IsNullOrWhiteSpace(enlaceTexto) || bajandoEnlace) return;
+        bajandoEnlace = true;
+        estado[f.Id] = "bajando foto…";
+        try
+        {
+            var r = await Api.FotoFichaTecnicaDesdeUrlAsync(f.Id, tipo, enlaceTexto.Trim());
+            if (r is not null) { f.FotoCafeUrl = r.FotoCafeUrl; f.FotoEtiquetaUrl = r.FotoEtiquetaUrl; f.UpdatedAt = r.UpdatedAt; }
+            estado[f.Id] = "✓ foto guardada";
+            enlaceAbierto = null;
+            enlaceTexto = "";
+        }
+        catch (Exception ex)
+        {
+            estado[f.Id] = "⚠ no se bajó la foto";
+            ToastService.Error(ex.Message);
+        }
+        finally { bajandoEnlace = false; }
     }
 
     private async Task QuitarFoto(FichaTecnicaDto f, string tipo)
