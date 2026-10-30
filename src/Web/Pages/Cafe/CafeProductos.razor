@@ -698,7 +698,7 @@
                         var faltanFicha = FichaTecnicaCatalogo.Faltantes(fichaProd);
                         <div style="display:flex; align-items:center; gap:0.9rem; border:2px solid #111827; border-radius:10px; padding:0.7rem 0.9rem;">
                             <div style="width:92px; height:125px; overflow:hidden; border:1px solid #e5e7eb; border-radius:4px; flex:none; cursor:pointer;" @onclick="IrAFichaProducto" title="Abrir la ficha">
-                                <div style="transform:scale(0.17); transform-origin:top left; pointer-events:none;"><FichaTecnicaVista F="fichaProd" /></div>
+                                <div style="transform:scale(0.17); transform-origin:top left; pointer-events:none;"><FichaTecnicaVista F="fichaProd" LogoUrl="@fichaLogoUrl" /></div>
                             </div>
                             <div style="flex:1; font-size:0.85rem;">
                                 <b style="font-size:0.95rem;">Ficha de este café</b><br />
@@ -3022,11 +3022,13 @@
     // 2026-10-30: ficha técnica del café que se está editando (recuadro arriba de los precios).
     private FichaTecnicaDto? fichaProd;
     private bool fichaProdCargada;
+    private string? fichaLogoUrl;
 
     private async Task CargarFichaProducto(int productoId)
     {
         try { fichaProd = await Api.GetFichaTecnicaPorProductoAsync(productoId); }
         catch { fichaProd = null; }
+        try { fichaLogoUrl ??= (await Api.GetFichaLogoAsync())?.Url; } catch { }
         if (editingId != productoId) return;
         fichaProdCargada = true;
         StateHasChanged();

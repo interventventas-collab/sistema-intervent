@@ -63,6 +63,12 @@ public class CafeFichaTecnica
     /// <summary>Archivos en /data/files/producto-fotos (los sirve /api/public/producto-foto/img/).</summary>
     [MaxLength(200)] public string? FotoCafeArchivo { get; set; }
     [MaxLength(200)] public string? FotoEtiquetaArchivo { get; set; }
+    /// <summary>2026-10-30: foto del empaque (va al medio, entre los granos y la etiqueta).</summary>
+    [MaxLength(200)] public string? FotoEmpaqueArchivo { get; set; }
+
+    /// <summary>2026-10-30: cartel grande "NO CONTIENE AZÚCAR" (false) / "CONTIENE AZÚCAR" (true).
+    /// Se esconde marcando "azucar" en NoAplica.</summary>
+    public bool ContieneAzucar { get; set; }
 
     public bool IsActive { get; set; } = true;
 

@@ -9,7 +9,10 @@
     .ftv-top b { color:#facc15; letter-spacing:.14em; font-size:14px; }
     .ftv-hero { display:flex; height:190px; }
     .ftv-hero > div { flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-    .ftv-hero .a { background:#2b1d14; } .ftv-hero .b { background:#f5efe6; padding:10px; }
+    .ftv-hero .a { background:#2b1d14; } .ftv-hero .m { background:#fff; padding:8px; } .ftv-hero .b { background:#f5efe6; padding:10px; }
+    .ftv-top img { height:26px; max-width:220px; object-fit:contain; display:block; }
+    .ftv-azucar { text-align:center; font-weight:800; font-size:20px; letter-spacing:.08em; padding:9px 10px; background:#facc15; color:#111; }
+    .ftv-azucar.con { background:#111; color:#facc15; }
     .ftv-hero img { max-width:100%; max-height:100%; object-fit:contain; }
     .ftv-hero .a img { width:100%; height:100%; object-fit:cover; }
     .ftv-body { padding:18px 22px 10px; }
@@ -37,14 +40,24 @@
 </style>
 
 <div class="ftv">
-    <div class="ftv-top"><b>FRIKAF</b><span>FICHA TÉCNICA · CAFÉ DE ESPECIALIDAD</span></div>
+    <div class="ftv-top">
+        @if (!string.IsNullOrEmpty(LogoUrl)) { <img src="@LogoUrl" alt="logo" /> } else { <b>FRIKAF</b> }
+        <span>FICHA TÉCNICA · CAFÉ DE ESPECIALIDAD</span>
+    </div>
 
-    @if (FotoCafe is not null || FotoEtiqueta is not null)
+    @* Fotos: granos (izquierda) · empaque (medio) · etiqueta (derecha) *@
+    @if (FotoCafe is not null || FotoEmpaque is not null || FotoEtiqueta is not null)
     {
         <div class="ftv-hero">
             @if (FotoCafe is not null) { <div class="a"><img src="@FotoCafe" alt="" /></div> }
+            @if (FotoEmpaque is not null) { <div class="m"><img src="@FotoEmpaque" alt="" /></div> }
             @if (FotoEtiqueta is not null) { <div class="b"><img src="@FotoEtiqueta" alt="" /></div> }
         </div>
+    }
+
+    @if (!F.NoAplica.Contains("azucar"))
+    {
+        <div class="ftv-azucar @(F.ContieneAzucar ? "con" : "")">@(F.ContieneAzucar ? "CONTIENE AZÚCAR" : "NO CONTIENE AZÚCAR")</div>
     }
 
     <div class="ftv-body">
@@ -58,11 +71,11 @@
 
         @if (V("descripcion", F.Descripcion) is string desc) { <p>@desc</p> }
 
-        @if (F.EsBlend && F.Componentes.Count > 0)
+        @if (F.EsBlend && Partes.Count > 0)
         {
             <div class="ftv-sec"><small>Composición</small>
                 <div class="ftv-comp">
-                    @foreach (var c in F.Componentes)
+                    @foreach (var c in Partes)
                     {
                         <div>
                             <b>@(c.Pais ?? "—")@(c.Pct is decimal pct ? $" · {pct:0.#}%" : "")</b>
@@ -126,6 +139,15 @@
 
 @code {
     [Parameter, EditorRequired] public FichaTecnicaDto F { get; set; } = default!;
+    /// <summary>Logo de arriba (uno para todas las fichas). Null = dice FRIKAF.</summary>
+    [Parameter] public string? LogoUrl { get; set; }
+
+    private string? FotoEmpaque => F.NoAplica.Contains("fotoEmpaque") ? null : F.FotoEmpaqueUrl;
+
+    // Las partes del blend que quedaron vacías no salen.
+    private List<FichaComponenteDto> Partes => F.Componentes
+        .Where(c => c.Pct.HasValue || new[] { c.Pais, c.Region, c.Variedad, c.Proceso, c.Finca, c.Altura }.Any(x => !string.IsNullOrWhiteSpace(x)))
+        .ToList();
 
     private string? V(string key, string? val) => F.NoAplica.Contains(key) || string.IsNullOrWhiteSpace(val) ? null : val.Trim();
     private string? FotoCafe => F.NoAplica.Contains("fotoCafe") ? null : F.FotoCafeUrl;

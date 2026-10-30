@@ -3293,6 +3293,28 @@ public class ApiClient
         return await resp.Content.ReadFromJsonAsync<FichaTecnicaDto>();
     }
 
+    /// <summary>Logo de arriba de las fichas (uno para todas).</summary>
+    public async Task<FichaLogoDto?> GetFichaLogoAsync()
+        => await GetAsync<FichaLogoDto>("/api/cafe/fichas-tecnicas/logo");
+
+    public async Task<FichaLogoDto?> SubirFichaLogoAsync(Stream stream, string fileName, string contentType)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var sc = new StreamContent(stream);
+        sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(contentType) ? "image/png" : contentType);
+        content.Add(sc, "file", fileName);
+        var resp = await _http.PostAsync("/api/cafe/fichas-tecnicas/logo", content);
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<FichaLogoDto>();
+    }
+
+    public async Task<FichaLogoDto?> FichaLogoDesdeUrlAsync(string url)
+        => await PostAsync<FichaLogoDto>("/api/cafe/fichas-tecnicas/logo/desde-url", new { url });
+
+    public async Task<bool> QuitarFichaLogoAsync()
+        => await DeleteAsync("/api/cafe/fichas-tecnicas/logo");
+
     public string GetFichaTecnicaPdfUrl(int id, bool descargar = false)
         => $"/api/cafe/fichas-tecnicas/{id}/pdf{(descargar ? "?descargar=1" : "")}";
 
