@@ -3281,6 +3281,10 @@ public class ApiClient
         return await resp.Content.ReadFromJsonAsync<FichaTecnicaDto>();
     }
 
+    /// <summary>Pone la foto bajándola de un enlace pegado (también link de Google Imágenes).</summary>
+    public async Task<FichaTecnicaDto?> FotoFichaTecnicaDesdeUrlAsync(int id, string tipo, string url)
+        => await PostAsync<FichaTecnicaDto>($"/api/cafe/fichas-tecnicas/{id}/foto/{tipo}/desde-url", new { url });
+
     public async Task<FichaTecnicaDto?> QuitarFotoFichaTecnicaAsync(int id, string tipo)
     {
         await SetAuthHeaderAsync();

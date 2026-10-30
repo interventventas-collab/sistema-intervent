@@ -182,7 +182,7 @@ public class CafeProductoFotoController : ControllerBase
     }
 
     /// <summary>Baja la imagen de un link. Devuelve (bytes, extensión, null) o (null, null, mensaje de error).</summary>
-    private static async Task<(byte[]? Bytes, string? Ext, string? Error)> BajarImagenAsync(string? urlIn)
+    internal static async Task<(byte[]? Bytes, string? Ext, string? Error)> BajarImagenAsync(string? urlIn)
     {
         var url = (urlIn ?? "").Trim();
         if (string.IsNullOrEmpty(url) || !(url.StartsWith("http://") || url.StartsWith("https://")))
