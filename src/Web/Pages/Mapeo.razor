@@ -8737,7 +8737,13 @@
     private async Task DeleteStop(MapeoStopDto s)
     {
         if (DiaPasadoNoSeToca()) return;   // día pasado = historial: se mira, no se toca
-        if (!await ConfirmAsync($"Quitar '{s.Alias ?? s.Direccion}' del mapa?")) return;
+        // 30/10/2026: quitar un punto que ya tiene repartidor le saca el viaje de su cuenta (le pasó a
+        // Nacho con Cuenca 2299: la entregó y no le sumó). Que quien lo quita lo sepa en el momento.
+        var rep = s.AssignedDriverId.HasValue ? drivers?.FirstOrDefault(d => d.Id == s.AssignedDriverId.Value)?.Nombre : null;
+        var pregunta = rep is null
+            ? $"Quitar '{s.Alias ?? s.Direccion}' del mapa?"
+            : $"'{s.Alias ?? s.Direccion}' es de {rep}. Si lo quitás del mapa, puede que no le sume el viaje en su cuenta. ¿Quitarlo igual?";
+        if (!await ConfirmAsync(pregunta)) return;
         try
         {
             if (await Api.DeleteMapeoStopAsync(s.Id))
