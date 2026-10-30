@@ -1658,6 +1658,10 @@
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/clientes-mapeados"))">
                                 <span class="ico">📍</span> Clientes mapeados
                             </button>
+                            @* 2026-10-30: pedido del dueño, Máquinas estaba escondido en Config / Temporal. *@
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/maquinas"))">
+                                <span class="ico">☕</span> Máquinas
+                            </button>
                             <div class="topbar-empleados-sep"></div>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseVentas("/cafe/clientes/panel-deudas"))">
                                 <span class="ico">💼</span> ¿Quién me debe?
