@@ -3245,6 +3245,53 @@ public class ApiClient
     public async Task<List<CafeCatalogoItemDto>?> GetCafeCatalogoAsync()
         => await GetAsync<List<CafeCatalogoItemDto>>("/api/cafe/catalogo");
 
+    // --- 2026-10-30: Fichas técnicas de café ---
+    public async Task<List<FichaTecnicaDto>?> GetFichasTecnicasAsync()
+        => await GetAsync<List<FichaTecnicaDto>>("/api/cafe/fichas-tecnicas");
+
+    public async Task<FichaTecnicaDto?> GetFichaTecnicaAsync(int id)
+        => await GetAsync<FichaTecnicaDto>($"/api/cafe/fichas-tecnicas/{id}");
+
+    /// <summary>null si el producto todavía no tiene ficha.</summary>
+    public async Task<FichaTecnicaDto?> GetFichaTecnicaPorProductoAsync(int productoId)
+        => await GetAsync<FichaTecnicaDto>($"/api/cafe/fichas-tecnicas/por-producto/{productoId}");
+
+    public async Task<List<FichaProductoCafeDto>?> GetFichaProductosCafeAsync()
+        => await GetAsync<List<FichaProductoCafeDto>>("/api/cafe/fichas-tecnicas/productos");
+
+    public async Task<FichaTecnicaDto?> CrearFichaTecnicaAsync(int? cafeProductoId, string? nombre, int? duplicarDeId)
+        => await PostAsync<FichaTecnicaDto>("/api/cafe/fichas-tecnicas", new { cafeProductoId, nombre, duplicarDeId });
+
+    public async Task<FichaTecnicaDto?> GuardarFichaTecnicaAsync(FichaTecnicaDto f)
+        => await PutAsync<FichaTecnicaDto>($"/api/cafe/fichas-tecnicas/{f.Id}", f);
+
+    public async Task<bool> BorrarFichaTecnicaAsync(int id)
+        => await DeleteAsync($"/api/cafe/fichas-tecnicas/{id}");
+
+    /// <summary>tipo = "cafe" | "etiqueta".</summary>
+    public async Task<FichaTecnicaDto?> SubirFotoFichaTecnicaAsync(int id, string tipo, Stream stream, string fileName, string contentType)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var sc = new StreamContent(stream);
+        sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(contentType) ? "image/jpeg" : contentType);
+        content.Add(sc, "file", fileName);
+        var resp = await _http.PostAsync($"/api/cafe/fichas-tecnicas/{id}/foto/{tipo}", content);
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<FichaTecnicaDto>();
+    }
+
+    public async Task<FichaTecnicaDto?> QuitarFotoFichaTecnicaAsync(int id, string tipo)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/cafe/fichas-tecnicas/{id}/foto/{tipo}");
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<FichaTecnicaDto>();
+    }
+
+    public string GetFichaTecnicaPdfUrl(int id, bool descargar = false)
+        => $"/api/cafe/fichas-tecnicas/{id}/pdf{(descargar ? "?descargar=1" : "")}";
+
     // --- Kits (productos compuestos / BOM) ---
     public async Task<List<CafeKitDto>?> GetCafeKitsAsync(bool? activos = null, string? categoria = null)
     {

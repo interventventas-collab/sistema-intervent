@@ -678,6 +678,44 @@
                     </div>
                 </div>
 
+                @* 2026-10-30: ficha técnica del café (la misma que en Catálogo → Fichas técnicas). *@
+                @if (formCategoria == "CAFE" && isEditing && editingId.HasValue)
+                {
+                    <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📄 Ficha técnica</h4>
+                    @if (!fichaProdCargada)
+                    {
+                        <div style="font-size:0.85rem; color:#6b7280;">Cargando ficha…</div>
+                    }
+                    else if (fichaProd is null)
+                    {
+                        <div style="display:flex; align-items:center; gap:0.75rem; border:1px dashed #d1d5db; border-radius:10px; padding:0.7rem 0.9rem;">
+                            <span style="font-size:0.85rem; color:#6b7280; flex:1;">Este café todavía no tiene ficha técnica (fotos, altura, proceso, sabores…).</span>
+                            <button type="button" class="btn btn-primary" style="font-size:0.85rem;" @onclick="CrearFichaProducto">+ Crear ficha</button>
+                        </div>
+                    }
+                    else
+                    {
+                        var faltanFicha = FichaTecnicaCatalogo.Faltantes(fichaProd);
+                        <div style="display:flex; align-items:center; gap:0.9rem; border:2px solid #111827; border-radius:10px; padding:0.7rem 0.9rem;">
+                            <div style="width:92px; height:125px; overflow:hidden; border:1px solid #e5e7eb; border-radius:4px; flex:none; cursor:pointer;" @onclick="IrAFichaProducto" title="Abrir la ficha">
+                                <div style="transform:scale(0.17); transform-origin:top left; pointer-events:none;"><FichaTecnicaVista F="fichaProd" /></div>
+                            </div>
+                            <div style="flex:1; font-size:0.85rem;">
+                                <b style="font-size:0.95rem;">Ficha de este café</b><br />
+                                Actualizada @fichaProd.UpdatedAt.AddHours(-3).ToString("dd/MM/yyyy")
+                                <div style="color:#6b7280; margin-top:0.25rem;">
+                                    @if (faltanFicha.Count == 0) { <span>Completa ✓</span> }
+                                    else { <span>Falta: <b style="color:#111827;">@string.Join(", ", faltanFicha)</b></span> }
+                                </div>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                                <button type="button" class="btn btn-primary" style="font-size:0.85rem;" @onclick="IrAFichaProducto">✎ Editar ficha</button>
+                                <a class="btn btn-secondary" style="font-size:0.85rem; text-align:center;" href="@Api.GetFichaTecnicaPdfUrl(fichaProd.Id)" target="_blank">📄 PDF</a>
+                            </div>
+                        </div>
+                    }
+                }
+
                 @if (formCategoria == "CAFE")
                 {
                     <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">☕ Precios por kg</h4>
@@ -2833,6 +2871,8 @@
         _ = LoadStockDetail(p.Id); // fire-and-forget: carga el panel mientras se renderiza el modal
         lugarProducto = null;
         _ = CargarLugarProducto(p);
+        fichaProd = null; fichaProdCargada = false;
+        _ = CargarFichaProducto(p.Id);
         formNombre = p.Nombre; formSku = p.Sku ?? ""; formBarcode = p.Barcode ?? "";
         formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo;
@@ -2978,6 +3018,35 @@
     }
 
     private void CloseForm() { showForm = false; formError = null; }
+
+    // 2026-10-30: ficha técnica del café que se está editando (recuadro arriba de los precios).
+    private FichaTecnicaDto? fichaProd;
+    private bool fichaProdCargada;
+
+    private async Task CargarFichaProducto(int productoId)
+    {
+        try { fichaProd = await Api.GetFichaTecnicaPorProductoAsync(productoId); }
+        catch { fichaProd = null; }
+        if (editingId != productoId) return;
+        fichaProdCargada = true;
+        StateHasChanged();
+    }
+
+    private async Task CrearFichaProducto()
+    {
+        if (editingId is not int pid) return;
+        try
+        {
+            var f = await Api.CrearFichaTecnicaAsync(pid, null, null);
+            if (f is not null) Navigation.NavigateTo($"/cafe/fichas-tecnicas?id={f.Id}");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo crear la ficha: " + ex.Message); }
+    }
+
+    private void IrAFichaProducto()
+    {
+        if (fichaProd is not null) Navigation.NavigateTo($"/cafe/fichas-tecnicas?id={fichaProd.Id}");
+    }
 
     private void AgregarPack()
     {

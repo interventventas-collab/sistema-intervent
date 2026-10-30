@@ -103,6 +103,16 @@
             return true;
         };
 
+        // 2026-10-30: Fichas técnicas "Todas juntas": Enter salta al casillero de la misma columna
+        // del café de abajo (al salir del casillero se guarda solo).
+        window.fichaEnterAbajo = function (ev, el) {
+            if (ev.key !== 'Enter' || el.tagName === 'TEXTAREA' && !ev.ctrlKey) return;
+            ev.preventDefault();
+            const todos = Array.from(document.querySelectorAll('[data-ftcol="' + el.dataset.ftcol + '"]'));
+            const sig = todos[todos.indexOf(el) + 1];
+            if (sig) { sig.focus(); if (sig.select) sig.select(); } else el.blur();
+        };
+
         // 2026-07-10: "ding" para la campanita de Mis Alertas. Genera el sonido con Web Audio
         // (sin archivo). Dos notas cortas tipo timbre. Si el navegador bloquea el audio (por no
         // haber interactuado aún), simplemente no suena y no rompe nada.

@@ -1,0 +1,202 @@
+@* 2026-10-30: cómo sale la ficha técnica de un café (mismo diseño que el PDF). Se usa en la pantalla
+   Fichas técnicas (vista previa en vivo) y en miniatura en la ficha del producto.
+   Lo vacío o marcado "no aplica" no se muestra; en un blend los datos de origen van por cada parte. *@
+@using Web.Models
+
+<style>
+    .ftv { background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.12); color:#111; font-family:Arial, sans-serif; font-size:13px; width:540px; }
+    .ftv-top { background:#111; color:#fff; padding:13px 22px; display:flex; justify-content:space-between; align-items:center; font-size:11px; }
+    .ftv-top b { color:#facc15; letter-spacing:.14em; font-size:14px; }
+    .ftv-hero { display:flex; height:190px; }
+    .ftv-hero > div { flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .ftv-hero .a { background:#2b1d14; } .ftv-hero .b { background:#f5efe6; padding:10px; }
+    .ftv-hero img { max-width:100%; max-height:100%; object-fit:contain; }
+    .ftv-hero .a img { width:100%; height:100%; object-fit:cover; }
+    .ftv-body { padding:18px 22px 10px; }
+    .ftv-t { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .ftv h2 { margin:0; font-family:Georgia, serif; font-size:23px; line-height:1.15; }
+    .ftv-o { color:#6b7280; margin-top:3px; }
+    .ftv-perfil { background:#facc15; font-weight:800; padding:5px 10px; border-radius:3px; letter-spacing:.08em; white-space:nowrap; }
+    .ftv p { font-family:Georgia, serif; line-height:1.5; margin:10px 0 0; white-space:pre-line; }
+    .ftv-sec { border-top:2px solid #111; margin-top:12px; padding-top:8px; }
+    .ftv-sec > small, .ftv-lbl { display:block; color:#6b7280; font-size:10px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+    .ftv-d { display:grid; grid-template-columns:repeat(3,1fr); gap:8px 10px; }
+    .ftv-d small, .ftv-r span { display:block; color:#6b7280; font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; }
+    .ftv-comp { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:12px; }
+    .ftv-comp > div { border-left:3px solid #6b4429; padding-left:9px; }
+    .ftv-comp b { font-size:13.5px; } .ftv-comp span { color:#6b7280; margin-right:4px; font-size:11px; }
+    .ftv-wheel { display:flex; gap:16px; align-items:center; }
+    .ftv-wheel b { font-size:13px; }
+    .ftv-r > div { display:grid; grid-template-columns:125px 1fr; border-bottom:1px solid #e5e7eb; padding:5px 0; }
+    .ftv-r > div:last-child { border:0; }
+    .ftv-bal { display:flex; gap:12px; align-items:flex-end; height:92px; }
+    .ftv-bal > div { text-align:center; font-size:10.5px; color:#6b7280; }
+    .ftv-bal i { display:block; width:48px; background:#111; margin:0 auto 4px; }
+    .ftv-bal > div:nth-child(2) i { background:#facc15; }
+    .ftv-foot { border-top:1px solid #e5e7eb; padding:7px 22px; font-size:10px; color:#6b7280; display:flex; justify-content:space-between; margin-top:8px; }
+</style>
+
+<div class="ftv">
+    <div class="ftv-top"><b>FRIKAF</b><span>FICHA TÉCNICA · CAFÉ DE ESPECIALIDAD</span></div>
+
+    @if (FotoCafe is not null || FotoEtiqueta is not null)
+    {
+        <div class="ftv-hero">
+            @if (FotoCafe is not null) { <div class="a"><img src="@FotoCafe" alt="" /></div> }
+            @if (FotoEtiqueta is not null) { <div class="b"><img src="@FotoEtiqueta" alt="" /></div> }
+        </div>
+    }
+
+    <div class="ftv-body">
+        <div class="ftv-t">
+            <div>
+                <h2>@(string.IsNullOrWhiteSpace(F.Nombre) ? "Sin nombre" : F.Nombre)</h2>
+                @if (Sub.Count > 0) { <div class="ftv-o">@string.Join(" · ", Sub)</div> }
+            </div>
+            @if (V("perfil", F.Perfil) is string perfil) { <span class="ftv-perfil">@perfil.ToUpperInvariant()</span> }
+        </div>
+
+        @if (V("descripcion", F.Descripcion) is string desc) { <p>@desc</p> }
+
+        @if (F.EsBlend && F.Componentes.Count > 0)
+        {
+            <div class="ftv-sec"><small>Composición</small>
+                <div class="ftv-comp">
+                    @foreach (var c in F.Componentes)
+                    {
+                        <div>
+                            <b>@(c.Pais ?? "—")@(c.Pct is decimal pct ? $" · {pct:0.#}%" : "")</b>
+                            @foreach (var (lbl, val) in new[] { ("Región", c.Region), ("Variedad", c.Variedad), ("Proceso", c.Proceso), ("Finca", c.Finca), ("Altura", c.Altura) })
+                            {
+                                if (!string.IsNullOrWhiteSpace(val)) { <div><span>@lbl</span>@val</div> }
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (Datos.Count > 0)
+        {
+            <div class="ftv-sec">
+                <div class="ftv-d">
+                    @foreach (var (lbl, val) in Datos) { <div><small>@lbl</small><b>@val</b></div> }
+                </div>
+            </div>
+        }
+
+        @if (Renglones.Count > 0)
+        {
+            <div class="ftv-sec ftv-r">
+                @foreach (var (lbl, val) in Renglones) { <div><span>@lbl</span><b>@val</b></div> }
+            </div>
+        }
+
+        @{ var hayRueda = !F.NoAplica.Contains("rueda") && F.Rueda.Count > 0; }
+        @if (hayRueda || Balance.Count > 0)
+        {
+            <div class="ftv-sec" style="display:flex; gap:16px; align-items:flex-start;">
+                @if (hayRueda)
+                {
+                    <div style="flex:1;"><small class="ftv-lbl">Rueda de sabores</small>
+                        <div class="ftv-wheel">
+                            @((MarkupString)RuedaSvg(F.Rueda, 105))
+                            <div>
+                                @foreach (var r in FichaTecnicaCatalogo.Rueda.Where(r => F.Rueda.Contains(r.Key)))
+                                {
+                                    <div><i style="display:inline-block; width:8px; height:8px; background:@r.Color; margin-right:5px;"></i><b>@r.Label</b></div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+                @if (Balance.Count > 0)
+                {
+                    <div><small class="ftv-lbl">Balance (1 a 5)</small>
+                        <div class="ftv-bal">
+                            @foreach (var (lbl, v) in Balance) { <div><i style="height:@((int)(v / 5 * 68))px"></i>@lbl @v.ToString("0.#")</div> }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+    <div class="ftv-foot"><span>frikaf.com.ar</span><span>Actualizada @F.UpdatedAt.AddHours(-3).ToString("dd/MM/yyyy")</span></div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FichaTecnicaDto F { get; set; } = default!;
+
+    private string? V(string key, string? val) => F.NoAplica.Contains(key) || string.IsNullOrWhiteSpace(val) ? null : val.Trim();
+    private string? FotoCafe => F.NoAplica.Contains("fotoCafe") ? null : F.FotoCafeUrl;
+    private string? FotoEtiqueta => F.NoAplica.Contains("fotoEtiqueta") ? null : F.FotoEtiquetaUrl;
+
+    private List<string> Sub
+    {
+        get
+        {
+            var s = new List<string>();
+            if (F.EsBlend) s.Add("Blend");
+            else
+            {
+                if (V("region", F.Region) is string r) s.Add(r);
+                if (V("pais", F.Pais) is string p) s.Add(p);
+            }
+            if (V("especie", F.Especie) is string e) s.Add(e);
+            return s;
+        }
+    }
+
+    private List<(string, string)> Datos
+    {
+        get
+        {
+            var d = new List<(string, string)>();
+            if (!F.EsBlend)
+            {
+                if (V("variedad", F.Variedad) is string va) d.Add(("Variedad", va));
+                if (V("proceso", F.Proceso) is string pr) d.Add(("Proceso", pr));
+                if (V("altura", F.Altura) is string al) d.Add(("Altura", al));
+                if (V("finca", F.Finca) is string fi) d.Add(("Finca / productor", fi));
+            }
+            if (V("tueste", F.Tueste) is string tu) d.Add(("Tueste", tu));
+            if (V("idealPara", F.IdealPara) is string id) d.Add(("Ideal para", id));
+            if (V("puntaje", F.Puntaje) is string pu) d.Add(("Puntaje SCA", pu));
+            return d;
+        }
+    }
+
+    private List<(string, string)> Renglones
+    {
+        get
+        {
+            var r = new List<(string, string)>();
+            if (V("fraganciaAroma", F.FraganciaAroma) is string fa) r.Add(("Fragancia y aroma", fa));
+            if (V("sabor", F.Sabor) is string sa) r.Add(("Sabor", sa));
+            if (V("retrogusto", F.Retrogusto) is string re) r.Add(("Retrogusto", re));
+            return r;
+        }
+    }
+
+    private List<(string, decimal)> Balance => F.NoAplica.Contains("balance") ? new()
+        : new[] { ("Cuerpo", F.Cuerpo), ("Acidez", F.Acidez), ("Dulzor", F.Dulzor) }
+            .Where(b => b.Item2.HasValue).Select(b => (b.Item1, b.Item2!.Value)).ToList();
+
+    /// <summary>Rueda de sabores en SVG: las familias marcadas salen grandes y a color.</summary>
+    public static string RuedaSvg(ICollection<string> marcadas, int size)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var sb = new System.Text.StringBuilder($"<svg width=\"{size}\" height=\"{size}\" viewBox=\"-75 -75 150 150\" style=\"flex:none\">");
+        var rueda = FichaTecnicaCatalogo.Rueda;
+        var n = rueda.Length;
+        for (var i = 0; i < n; i++)
+        {
+            var on = marcadas.Contains(rueda[i].Key);
+            double a0 = i * 2 * Math.PI / n - Math.PI / 2, a1 = (i + 1) * 2 * Math.PI / n - Math.PI / 2;
+            double R = on ? 72 : 60, r = 28;
+            string P(double a, double rr) => $"{(Math.Cos(a) * rr).ToString("0.##", ci)},{(Math.Sin(a) * rr).ToString("0.##", ci)}";
+            sb.Append($"<path d=\"M{P(a0, R)} A{R},{R} 0 0 1 {P(a1, R)} L{P(a1, r)} A{r},{r} 0 0 0 {P(a0, r)} Z\" fill=\"{rueda[i].Color}\" fill-opacity=\"{(on ? "1" : "0.22")}\" stroke=\"#fff\" stroke-width=\"1.5\"><title>{rueda[i].Label}</title></path>");
+        }
+        return sb.Append("</svg>").ToString();
+    }
+}
