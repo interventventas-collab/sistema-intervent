@@ -8171,6 +8171,47 @@ public class ApiClient
     public async Task<List<StockProductoDto>?> GetStockEnDepositoAsync(int depositoId)
         => await GetAsync<List<StockProductoDto>>($"/api/cafe/stock-masivo/{depositoId}");
     public record StockMasivoItemReq(int ProductoId, decimal StockGramos, int StockUnidades);
+
+    // 30/10/2026: planilla Excel que SUMA al stock (bajar → completar código y cantidad → subir).
+    public record PlanillaLineaDto(string Codigo, string Nombre, string Categoria, decimal Antes, decimal Suma, decimal Despues, string Origen);
+    public record PlanillaYaSubidaDto(DateTime Fecha, string? Usuario);
+    public record PlanillaPreviewDto(int FilasLeidas, List<PlanillaLineaDto> Lineas, List<string> Errores, PlanillaYaSubidaDto? YaSubida);
+
+    public async Task<byte[]?> BajarPlanillaStockAsync(int depositoId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/cafe/stock-masivo/planilla/{depositoId}");
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
+    private static MultipartFormDataContent PlanillaContent(byte[] bytes, string fileName)
+    {
+        var content = new MultipartFormDataContent();
+        var bc = new ByteArrayContent(bytes);
+        bc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(bc, "file", fileName);
+        return content;
+    }
+
+    public async Task<PlanillaPreviewDto?> PreviewPlanillaStockAsync(int depositoId, byte[] bytes, string fileName)
+    {
+        await SetAuthHeaderAsync();
+        using var content = PlanillaContent(bytes, fileName);
+        var resp = await _http.PostAsync($"/api/cafe/stock-masivo/planilla/{depositoId}/preview", content);
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<PlanillaPreviewDto>();
+    }
+
+    public async Task AplicarPlanillaStockAsync(int depositoId, byte[] bytes, string fileName, string? comentario, bool confirmarRepetida)
+    {
+        await SetAuthHeaderAsync();
+        using var content = PlanillaContent(bytes, fileName);
+        if (!string.IsNullOrWhiteSpace(comentario)) content.Add(new StringContent(comentario.Trim()), "comentario");
+        content.Add(new StringContent(confirmarRepetida ? "true" : "false"), "confirmarRepetida");
+        var resp = await _http.PostAsync($"/api/cafe/stock-masivo/planilla/{depositoId}/aplicar", content);
+        await ThrowIfErrorAsync(resp);
+    }
     public async Task<bool> ActualizarStockMasivoAsync(int depositoId, List<StockMasivoItemReq> items, string? comentario = null)
     {
         var r = await PostAsync<object>("/api/cafe/stock-masivo", new { depositoId, items, comentario });
