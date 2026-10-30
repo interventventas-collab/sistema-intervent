@@ -246,6 +246,7 @@ public class CafeStockMasivoController : ControllerBase
     // Si el mismo contenido ya se subio antes, avisa y pide confirmar (para no sumar dos veces).
 
     private const int FilasCarga = 300;
+    private const string Separador = " · ";
 
     public record PlanillaLineaDto(string Codigo, string Nombre, string Categoria,
         decimal Antes, decimal Suma, decimal Despues, string Origen);
@@ -272,7 +273,7 @@ public class CafeStockMasivoController : ControllerBase
             return (Codigo: p.Sku!.Trim(), p.Nombre, Stock: (decimal?)st, Tipo: p.Categoria == "CAFE" ? "café (kg)" : "unidades");
         }).ToList();
         foreach (var c in await CompuestosAsync())
-            lista.Add((c.Sku, c.Nombre, null, "compuesto: " + c.Detalle));
+            lista.Add((c.Sku, c.Nombre, null, "compuesto: " + c.Detalle));   // sin stock propio: suma a sus piezas
         lista = lista.OrderBy(x => x.Nombre).ToList();
 
         using var wb = new ClosedXML.Excel.XLWorkbook();
@@ -280,24 +281,26 @@ public class CafeStockMasivoController : ControllerBase
         var wp = wb.Worksheets.Add("Productos");
 
         // Hoja Productos: la "base de datos" contra la que busca la hoja Carga.
-        string[] hp = { "Código", "Producto", $"Stock hoy ({dep.Nombre})", "Se carga en" };
+        string[] hp = { "Código", "Producto", $"Tenés ahora ({dep.Nombre})", "Se carga en", "Para buscar" };
         for (int i = 0; i < hp.Length; i++) { wp.Cell(1, i + 1).Value = hp[i]; wp.Cell(1, i + 1).Style.Font.Bold = true; }
         int r = 2;
         foreach (var p in lista)
         {
             wp.Cell(r, 1).SetValue(p.Codigo);   // como texto: "0101" no pierde el cero
             wp.Cell(r, 2).Value = p.Nombre;
-            if (p.Stock.HasValue) wp.Cell(r, 3).Value = p.Stock.Value;
+            if (p.Stock.HasValue) wp.Cell(r, 3).Value = p.Stock.Value; else wp.Cell(r, 3).Value = "(suma a sus piezas)";
             wp.Cell(r, 4).Value = p.Tipo;
+            wp.Cell(r, 5).SetValue(p.Codigo + Separador + p.Nombre);   // lo que sugiere Excel al escribir en la hoja Carga
             r++;
         }
         int ultima = Math.Max(2, r - 1);
         wp.SheetView.FreezeRows(1);
-        wp.Range(1, 1, ultima, 4).SetAutoFilter();
-        wp.Column(1).Width = 16; wp.Column(2).Width = 55; wp.Column(3).Width = 20; wp.Column(4).Width = 40;
+        wp.Range(1, 1, ultima, 5).SetAutoFilter();
+        wp.Column(1).Width = 16; wp.Column(2).Width = 55; wp.Column(3).Width = 22; wp.Column(4).Width = 40; wp.Column(5).Width = 60;
 
-        // Hoja Carga: el usuario escribe A (código) y D (cantidad); B y C se completan solos.
-        string[] hc = { "Código (escribilo vos)", "Producto (sale solo)", "Stock hoy (sale solo)", "Cantidad que llega (vos)" };
+        // Hoja Carga: el usuario escribe A (código o nombre: Excel le va sugiriendo de la lista) y D (cuántos llegaron).
+        // B, C y E se completan solos. A puede quedar como "CODIGO · NOMBRE" (si eligió de la sugerencia) o solo el código.
+        string[] hc = { "Escribí el código o el nombre", "Producto", $"Tenés ahora en {dep.Nombre}", "Llegaron (escribí cuántos)", "Vas a tener" };
         var amarillo = ClosedXML.Excel.XLColor.FromHtml("#fef08a");
         var gris = ClosedXML.Excel.XLColor.FromHtml("#e5e7eb");
         for (int i = 0; i < hc.Length; i++)
@@ -307,19 +310,31 @@ public class CafeStockMasivoController : ControllerBase
             cell.Style.Font.Bold = true;
             cell.Style.Fill.BackgroundColor = (i == 0 || i == 3) ? amarillo : gris;
         }
-        ws.Cell(1, 4).CreateComment().AddText("Unidades. Si es café, en kg (ej: 2,5). Se SUMA a lo que haya en el sistema al subir la planilla.");
+        ws.Cell(1, 1).CreateComment().AddText("Empezá a escribir el código o el nombre y elegí de la lista que aparece. También podés escribir el código entero a mano.");
+        ws.Cell(1, 3).CreateComment().AddText("Lo que hay hoy en el sistema en este depósito. Es solo para que lo veas, no se toca.");
+        ws.Cell(1, 4).CreateComment().AddText("Cuántos te llegaron. Se SUMAN a lo que tengas en el sistema al subir la planilla. Si es café, en kg (ej: 2,5).");
+        ws.Cell(1, 5).CreateComment().AddText("Tenés ahora + llegaron. Lo que vas a ver en el sistema después de subirla.");
         string rango = $"Productos!$A$2:$C${ultima}";
         for (int f = 2; f <= FilasCarga + 1; f++)
         {
-            ws.Cell(f, 2).FormulaA1 = $"IF(TRIM(A{f}&\"\")=\"\",\"\",IFERROR(VLOOKUP(TRIM(A{f}&\"\"),{rango},2,FALSE),\"❌ CÓDIGO NO EXISTE\"))";
-            ws.Cell(f, 3).FormulaA1 = $"IF(TRIM(A{f}&\"\")=\"\",\"\",IFERROR(VLOOKUP(TRIM(A{f}&\"\"),{rango},3,FALSE)&\"\",\"\"))";
+            var clave = $"IFERROR(LEFT(A{f},SEARCH(\"{Separador}\",A{f})-1),TRIM(A{f}&\"\"))";
+            ws.Cell(f, 2).FormulaA1 = $"IF(TRIM(A{f}&\"\")=\"\",\"\",IFERROR(VLOOKUP({clave},{rango},2,FALSE),\"❌ CÓDIGO NO EXISTE\"))";
+            ws.Cell(f, 3).FormulaA1 = $"IF(TRIM(A{f}&\"\")=\"\",\"\",IFERROR(VLOOKUP({clave},{rango},3,FALSE),\"\"))";
+            ws.Cell(f, 5).FormulaA1 = $"IF(OR(B{f}=\"\",LEFT(B{f},1)=\"❌\"),\"\",IFERROR(C{f}+N(D{f}),\"\"))";
         }
+        // Sugerencias al escribir: lista de validación contra "CODIGO · NOMBRE" (sin cartel de error, así
+        // también se puede escribir el código pelado a mano).
+        var dv = ws.Range(2, 1, FilasCarga + 1, 1).CreateDataValidation();
+        dv.List($"Productos!$E$2:$E${ultima}");
+        dv.ShowErrorMessage = false;
+        dv.IgnoreBlanks = true;
         ws.Range(2, 1, FilasCarga + 1, 1).Style.NumberFormat.Format = "@";   // así "0101" queda como texto
         ws.Range(2, 2, FilasCarga + 1, 3).Style.Font.FontColor = ClosedXML.Excel.XLColor.FromHtml("#374151");
         ws.Range(2, 2, FilasCarga + 1, 2).AddConditionalFormat().WhenStartsWith("❌")
             .Fill.SetBackgroundColor(ClosedXML.Excel.XLColor.FromHtml("#fecaca"));
         ws.Range(2, 3, FilasCarga + 1, 3).Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Right;
-        ws.Column(1).Width = 22; ws.Column(2).Width = 55; ws.Column(3).Width = 20; ws.Column(4).Width = 24;
+        ws.Range(2, 5, FilasCarga + 1, 5).Style.Font.Bold = true;
+        ws.Column(1).Width = 45; ws.Column(2).Width = 50; ws.Column(3).Width = 22; ws.Column(4).Width = 24; ws.Column(5).Width = 14;
         ws.SheetView.FreezeRows(1);
         ws.Cell(2, 1).SetActive();
 
@@ -376,6 +391,8 @@ public class CafeStockMasivoController : ControllerBase
         for (int f = 2; f <= last; f++)
         {
             var codigo = ws.Cell(f, 1).GetFormattedString().Trim();
+            var sep = codigo.IndexOf(Separador, StringComparison.Ordinal);
+            if (sep > 0) codigo = codigo[..sep].Trim();   // eligió de la sugerencia: "CODIGO · NOMBRE"
             var cCant = ws.Cell(f, 4);
             if (codigo == "" && cCant.IsEmpty()) continue;
             if (codigo == "") { errores.Add($"Fila {f}: tiene cantidad pero no código."); continue; }
