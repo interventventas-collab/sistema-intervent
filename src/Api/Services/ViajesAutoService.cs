@@ -134,18 +134,89 @@ public class ViajesAutoService
         }
 
         // Paradas borradas del mapa: quedaron contadas pero ya no existen. Se quitan si no se pagaron.
+        // (Las de StopId negativo no son paradas: son ventas sin punto, se manejan abajo.)
         var vivos = stops.Select(s => s.Id).ToHashSet();
         foreach (var reg in yaContadas)
         {
+            if (reg.StopId!.Value < 0) continue;
             if (vivos.Contains(reg.StopId!.Value)) continue;
             if (reg.LiquidadoPagoId is not null) continue;
             _db.ViajesEntregas.Remove(reg);
             cambios--;
         }
 
+        cambios += await VentasSinParadaAsync(emp, desde, porStop);
+
         if (_db.ChangeTracker.HasChanges()) await _db.SaveChangesAsync();
         return cambios;
     }
+
+    /// <summary>
+    /// 30/10/2026: ventas de café que el repartidor marcó entregadas desde su celu pero que NO tienen
+    /// punto en el mapa (alguien lo quitó: le pasó a Nacho con Cuenca 2299, Casanova y Premium Bakery
+    /// en octubre). La venta le seguía asignada, la entregaba y no le sumaba.
+    ///
+    /// Se guardan con StopId = −VentaId: así todo lo que ya trata "StopId != null" como entrega de
+    /// verdad (el mes, el saldo, la ✕ de "no se cobra", el celu, el PDF) las cuenta igual, sin tocar
+    /// la base, y el índice único sigue impidiendo que una venta sume dos veces.
+    /// Si la venta tiene punto en el mapa (de cualquier repartidor) manda el punto, no esto.
+    /// </summary>
+    private async Task<int> VentasSinParadaAsync(ViajesEmpleado emp, DateTime desde, Dictionary<int, ViajesEntrega> porStop)
+    {
+        var repId = await _db.MapeoDrivers.Where(d => d.Id == emp.MapeoDriverId)
+            .Select(d => d.CafeRepartidorId).FirstOrDefaultAsync();
+        if (repId is null) return 0;
+
+        // Lo de antes del 30/10 lo arregló el dueño a mano: no se vuelve a contar.
+        var corte = desde < DesdeVentasSinParada ? DesdeVentasSinParada : desde;
+        var desdeUtc = corte.AddHours(3);
+
+        var ventas = await _db.CafeVentas
+            .Where(v => v.EntregadoPorRepartidorId == repId && v.EstadoPreparacion == "ENTREGADO"
+                     && v.Estado != "anulado" && v.EntregadoAt != null && v.EntregadoAt >= desdeUtc)
+            .Select(v => new { v.Id, v.EntregadoAt, v.ClienteNombreSnapshot, v.ClienteDomicilioEntregaSnapshot })
+            .ToListAsync();
+        var ids = ventas.Select(v => v.Id.ToString()).ToList();
+        var conParada = (await _db.MapeoStops
+                .Where(s => s.Origin == "venta_cafe" && s.OriginRefId != null && ids.Contains(s.OriginRefId))
+                .Select(s => s.OriginRefId!).ToListAsync())
+            .ToHashSet();
+
+        var ahora = DateTime.UtcNow;
+        var cambios = 0;
+        var valen = new HashSet<int>();
+        foreach (var v in ventas)
+        {
+            if (conParada.Contains(v.Id.ToString())) continue;
+            var key = -v.Id;
+            valen.Add(key);
+            if (porStop.ContainsKey(key)) continue;
+            _db.ViajesEntregas.Add(new ViajesEntrega
+            {
+                EmpleadoId = emp.Id,
+                StopId = key,
+                Fecha = v.EntregadoAt!.Value.AddHours(-3).Date,
+                Tarifa = emp.TarifaViaje,
+                Origen = "venta_cafe",
+                Direccion = Recortar(v.ClienteDomicilioEntregaSnapshot, 300),
+                Cliente = Recortar(v.ClienteNombreSnapshot, 150),
+                EntregadoAt = v.EntregadoAt,
+                CreatedAt = ahora
+            });
+            cambios++;
+        }
+
+        // Dejó de valer (la desmarcaron, se anuló, o le volvieron a poner punto en el mapa).
+        foreach (var (key, reg) in porStop)
+        {
+            if (key >= 0 || valen.Contains(key) || reg.LiquidadoPagoId is not null) continue;
+            _db.ViajesEntregas.Remove(reg);
+            cambios--;
+        }
+        return cambios;
+    }
+
+    private static readonly DateTime DesdeVentasSinParada = new(2026, 10, 30);
 
     /// <summary>
     /// 30/09/2026 — "No suma": dos entregas en el mismo lugar el mismo día y el repartidor cobra una
