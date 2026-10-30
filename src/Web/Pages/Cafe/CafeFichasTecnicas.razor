@@ -548,7 +548,7 @@
             else if (c.Tipo == "azucar")
             {
                 <div class="ft-chips">
-                    <button class="ft-chip @(!f.ContieneAzucar ? "on" : "")" @onclick="() => { f.ContieneAzucar = false; return Guardar(f); }">No contiene azúcar</button>
+                    <button class="ft-chip @(!f.ContieneAzucar ? "on" : "")" @onclick="() => { f.ContieneAzucar = false; return Guardar(f); }">Sin azúcar</button>
                     <button class="ft-chip @(f.ContieneAzucar ? "on" : "")" @onclick="() => { f.ContieneAzucar = true; return Guardar(f); }">Contiene azúcar</button>
                 </div>
             }

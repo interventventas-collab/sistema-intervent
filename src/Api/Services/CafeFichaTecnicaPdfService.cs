@@ -132,9 +132,9 @@ public class CafeFichaTecnicaPdfService
                         var conAzucar = f.ContieneAzucar;
                         col.Item().Background("#111111").PaddingVertical(8).Column(c =>
                         {
-                            c.Item().AlignCenter().Text(conAzucar ? "CONTIENE AZÚCAR" : "NO CONTIENE AZÚCAR")
+                            c.Item().AlignCenter().Text(conAzucar ? "CONTIENE AZÚCAR" : "SIN AZÚCAR")
                                 .FontSize(20).Bold().LetterSpacing(0.08f).FontColor("#FFFFFF");
-                            c.Item().AlignCenter().Text(conAzucar ? "CONTAINS SUGAR" : "CONTAINS NO SUGAR")
+                            c.Item().AlignCenter().Text(conAzucar ? "CONTAINS SUGAR" : "SUGAR FREE")
                                 .FontSize(11).Bold().LetterSpacing(0.18f).FontColor("#D1D5DB");
                         });
                     }

@@ -33,7 +33,7 @@ public class FichaTecnicaDto
     public string? FotoCafeUrl { get; set; }
     public string? FotoEtiquetaUrl { get; set; }
     public string? FotoEmpaqueUrl { get; set; }
-    /// <summary>Cartel grande: false = "NO CONTIENE AZÚCAR", true = "CONTIENE AZÚCAR".</summary>
+    /// <summary>Cartel grande: false = "SIN AZÚCAR / SUGAR FREE", true = "CONTIENE AZÚCAR".</summary>
     public bool ContieneAzucar { get; set; }
     /// <summary>Intensidad de 1 a 10 (fila de granos en la ficha).</summary>
     public int? Intensidad { get; set; }
