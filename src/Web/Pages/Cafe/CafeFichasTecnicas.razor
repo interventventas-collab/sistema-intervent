@@ -197,6 +197,7 @@
                     </div>
 
                     @Campo(f, "azucar")
+                    @Campo(f, "intensidad")
 
                     <h4>Datos</h4>
                     <div class="ft-f">
@@ -549,6 +550,16 @@
                 <div class="ft-chips">
                     <button class="ft-chip @(!f.ContieneAzucar ? "on" : "")" @onclick="() => { f.ContieneAzucar = false; return Guardar(f); }">No contiene azúcar</button>
                     <button class="ft-chip @(f.ContieneAzucar ? "on" : "")" @onclick="() => { f.ContieneAzucar = true; return Guardar(f); }">Contiene azúcar</button>
+                </div>
+            }
+            else if (c.Tipo == "intensidad")
+            {
+                <div class="ft-chips">
+                    @for (var x = 1; x <= 10; x++)
+                    {
+                        var v = x;
+                        <button class="ft-chip @(f.Intensidad == v ? "on" : "")" style="min-width:32px;" @onclick="() => { f.Intensidad = f.Intensidad == v ? null : v; return Guardar(f); }">@v</button>
+                    }
                 </div>
             }
             else if (c.Tipo == "fotos")

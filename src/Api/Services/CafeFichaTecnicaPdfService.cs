@@ -71,7 +71,10 @@ public class CafeFichaTecnicaPdfService
             if (V("altura", f.Altura) is string al) datos.Add(("Altura", al));
             if (V("finca", f.Finca) is string fi) datos.Add(("Finca / productor", fi));
         }
-        if (V("tueste", f.Tueste) is string tu) datos.Add(("Tueste", tu));
+        // Termómetro de tostado: si el tueste es uno de la escala va en la barra; si es otro texto, como dato.
+        var nivelTueste = noAplica.Contains("tueste") ? -1 : Array.FindIndex(Tuestes, t => string.Equals(t, f.Tueste?.Trim(), StringComparison.OrdinalIgnoreCase));
+        var intensidad = noAplica.Contains("intensidad") ? null : f.Intensidad;
+        if (V("tueste", f.Tueste) is string tu && nivelTueste < 0) datos.Add(("Tueste", tu));
         if (V("idealPara", f.IdealPara) is string id) datos.Add(("Ideal para", id));
         if (V("puntaje", f.Puntaje) is string pu) datos.Add(("Puntaje SCA", pu));
 
@@ -129,6 +132,34 @@ public class CafeFichaTecnicaPdfService
                         col.Item().Background(conAzucar ? "#111111" : Amarillo).PaddingVertical(9).AlignCenter()
                             .Text(conAzucar ? "CONTIENE AZÚCAR" : "NO CONTIENE AZÚCAR")
                             .FontSize(20).Bold().LetterSpacing(0.08f).FontColor(conAzucar ? Amarillo : "#111111");
+                    }
+
+                    // Intensidad (fila de granos) + tostado (barra de claro a oscuro)
+                    if (intensidad is not null || nivelTueste >= 0)
+                    {
+                        col.Item().PaddingHorizontal(32).PaddingTop(14).Row(r =>
+                        {
+                            if (intensidad is int inten)
+                                r.ConstantItem(230).Column(c =>
+                                {
+                                    c.Item().Text("INTENSIDAD").FontSize(8).FontColor(Gris).LetterSpacing(0.06f);
+                                    c.Item().PaddingTop(3).Row(rr =>
+                                    {
+                                        rr.ConstantItem(168).Height(21).Svg(GranosSvg(inten));
+                                        rr.RelativeItem().PaddingLeft(8).AlignMiddle().Text(t =>
+                                        {
+                                            t.Span(inten.ToString()).Bold().FontSize(18);
+                                            t.Span("/10").FontSize(10).FontColor(Gris);
+                                        });
+                                    });
+                                });
+                            if (nivelTueste >= 0)
+                                r.RelativeItem().PaddingLeft(intensidad is null ? 0 : 16).Column(c =>
+                                {
+                                    c.Item().Text("TOSTADO").FontSize(8).FontColor(Gris).LetterSpacing(0.06f);
+                                    c.Item().PaddingTop(3).Height(36).Svg(TostadoSvg(nivelTueste));
+                                });
+                        });
                     }
 
                     col.Item().PaddingHorizontal(32).PaddingTop(20).Column(body =>
@@ -257,6 +288,38 @@ public class CafeFichaTecnicaPdfService
             return File.Exists(p) ? File.ReadAllBytes(p) : null;
         }
         catch { return null; }
+    }
+
+    /// <summary>Escala del termómetro de tostado (igual que las opciones de la pantalla).</summary>
+    private static readonly string[] Tuestes = { "Claro", "Medio", "Medio-oscuro", "Oscuro" };
+
+    private static string GranosSvg(int n)
+    {
+        var sb = new StringBuilder("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 240 30\">");
+        for (var i = 0; i < 10; i++)
+        {
+            var on = i < n;
+            sb.Append($"<g transform=\"translate({12 + i * 24},15) rotate(-20)\"><ellipse rx=\"8\" ry=\"11\" fill=\"{(on ? "#3B2314" : "#E5E7EB")}\"/><path d=\"M0,-10 C-3,-3 3,3 0,10\" stroke=\"{(on ? Amarillo : "#FFFFFF")}\" stroke-width=\"1.6\" fill=\"none\"/></g>");
+        }
+        return sb.Append("</svg>").ToString();
+    }
+
+    /// <summary>Barra de claro a oscuro con una flechita en el nivel y los 4 nombres abajo.</summary>
+    private static string TostadoSvg(int nivel)
+    {
+        var ci = CultureInfo.InvariantCulture;
+        var sb = new StringBuilder("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 52\">");
+        sb.Append("<defs><linearGradient id=\"g\" x1=\"0\" x2=\"1\" y1=\"0\" y2=\"0\"><stop offset=\"0\" stop-color=\"#E8C9A0\"/><stop offset=\"0.35\" stop-color=\"#B07A45\"/><stop offset=\"0.7\" stop-color=\"#6B4226\"/><stop offset=\"1\" stop-color=\"#2A170C\"/></linearGradient></defs>");
+        sb.Append("<rect x=\"0\" y=\"12\" width=\"400\" height=\"14\" rx=\"7\" fill=\"url(#g)\"/>");
+        var x = 50 + 100 * nivel;
+        sb.Append($"<path d=\"M{(x - 6).ToString(ci)},0 L{(x + 6).ToString(ci)},0 L{x.ToString(ci)},9 Z\" fill=\"#111111\"/>");
+        for (var i = 0; i < Tuestes.Length; i++)
+        {
+            var anchor = i == 0 ? "start" : i == Tuestes.Length - 1 ? "end" : "middle";
+            var tx = i == 0 ? 0 : i == Tuestes.Length - 1 ? 400 : 50 + 100 * i;
+            sb.Append($"<text x=\"{tx}\" y=\"44\" font-size=\"12\" font-family=\"Arial, sans-serif\" text-anchor=\"{anchor}\" fill=\"{(i == nivel ? "#111111" : Gris)}\" font-weight=\"{(i == nivel ? "bold" : "normal")}\">{Tuestes[i]}</text>");
+        }
+        return sb.Append("</svg>").ToString();
     }
 
     /// <summary>Rueda: las familias marcadas salen más grandes y a color; las otras, apagadas.</summary>

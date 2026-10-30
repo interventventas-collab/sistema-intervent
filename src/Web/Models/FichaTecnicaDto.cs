@@ -35,6 +35,8 @@ public class FichaTecnicaDto
     public string? FotoEmpaqueUrl { get; set; }
     /// <summary>Cartel grande: false = "NO CONTIENE AZÚCAR", true = "CONTIENE AZÚCAR".</summary>
     public bool ContieneAzucar { get; set; }
+    /// <summary>Intensidad de 1 a 10 (fila de granos en la ficha).</summary>
+    public int? Intensidad { get; set; }
     public string? UpdatedBy { get; set; }
     public DateTime UpdatedAt { get; set; }
 
@@ -74,6 +76,7 @@ public static class FichaTecnicaCatalogo
     {
         new("fotos", "Fotos", "fotos"),
         new("azucar", "Azúcar", "azucar"),
+        new("intensidad", "Intensidad", "intensidad"),
         new("perfil", "Perfil (sello)", "texto", Ayuda: "Ej: FUNKY, CLÁSICO, INTENSO"),
         new("especie", "Especie", "opciones", Opciones: new[] { "Arábica", "Robusta", "Arábica + Robusta" }),
         new("pais", "País", "texto", Origen: true),
@@ -92,6 +95,14 @@ public static class FichaTecnicaCatalogo
         new("rueda", "Rueda de sabores", "rueda"),
         new("balance", "Balance", "balance"),
     };
+
+    /// <summary>Escala del termómetro de tostado (mismo orden que la barra, de claro a oscuro).
+    /// -1 si el tueste no es uno de estos (texto libre): entonces va como dato suelto.</summary>
+    public static int NivelTueste(string? tueste)
+    {
+        var ops = Campos.First(c => c.Key == "tueste").Opciones!;
+        return Array.FindIndex(ops, o => string.Equals(o, tueste?.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>Familias de la rueda de sabores (mismas keys y colores que el PDF).</summary>
     public static readonly (string Key, string Label, string Color)[] Rueda =
@@ -154,6 +165,7 @@ public static class FichaTecnicaCatalogo
                                 || string.IsNullOrEmpty(f.FotoEmpaqueUrl) && !f.NoAplica.Contains("fotoEmpaque")
                                 || string.IsNullOrEmpty(f.FotoEtiquetaUrl) && !f.NoAplica.Contains("fotoEtiqueta");
         if (key == "azucar") return false; // siempre tiene valor (por defecto "no contiene")
+        if (key == "intensidad") return !f.NoAplica.Contains(key) && f.Intensidad is null;
         if (f.NoAplica.Contains(key)) return false;
         var campo = Campos.FirstOrDefault(c => c.Key == key);
         if (campo is null) return false;

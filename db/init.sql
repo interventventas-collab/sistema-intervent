@@ -8561,3 +8561,8 @@ GO
 IF COL_LENGTH('Cafe_FichasTecnicas','ContieneAzucar') IS NULL
     ALTER TABLE Cafe_FichasTecnicas ADD ContieneAzucar BIT NOT NULL CONSTRAINT DF_FichaTec_Azucar DEFAULT 0;
 GO
+
+-- 2026-10-30: fichas técnicas — intensidad de 1 a 10 (fila de granos; el tostado sale de Tueste)
+IF COL_LENGTH('Cafe_FichasTecnicas','Intensidad') IS NULL
+    ALTER TABLE Cafe_FichasTecnicas ADD Intensidad INT NULL;
+GO
