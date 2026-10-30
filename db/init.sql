@@ -8553,3 +8553,11 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_FichaTec_Producto')
     CREATE INDEX IX_FichaTec_Producto ON Cafe_FichasTecnicas(CafeProductoId);
 GO
+
+-- 2026-10-30: fichas técnicas — foto del empaque (al medio) y cartel "contiene / no contiene azúcar"
+IF COL_LENGTH('Cafe_FichasTecnicas','FotoEmpaqueArchivo') IS NULL
+    ALTER TABLE Cafe_FichasTecnicas ADD FotoEmpaqueArchivo NVARCHAR(200) NULL;
+GO
+IF COL_LENGTH('Cafe_FichasTecnicas','ContieneAzucar') IS NULL
+    ALTER TABLE Cafe_FichasTecnicas ADD ContieneAzucar BIT NOT NULL CONSTRAINT DF_FichaTec_Azucar DEFAULT 0;
+GO

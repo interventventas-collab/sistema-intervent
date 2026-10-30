@@ -40,14 +40,17 @@ public class CafeFichaTecnicaPdfService
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
-    public byte[] Generar(CafeFichaTecnica f)
+    /// <param name="logoArchivo">Logo de arriba (uno para todas las fichas). Null = dice FRIKAF.</param>
+    public byte[] Generar(CafeFichaTecnica f, string? logoArchivo = null)
     {
         var noAplica = new HashSet<string>((f.NoAplica ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         string? V(string key, string? val) => noAplica.Contains(key) || string.IsNullOrWhiteSpace(val) ? null : val.Trim();
         var blend = f.Tipo == "BLEND";
 
         var fotoCafe = noAplica.Contains("fotoCafe") ? null : Leer(f.FotoCafeArchivo);
+        var fotoEmpaque = noAplica.Contains("fotoEmpaque") ? null : Leer(f.FotoEmpaqueArchivo);
         var fotoEtiqueta = noAplica.Contains("fotoEtiqueta") ? null : Leer(f.FotoEtiquetaArchivo);
+        var logo = Leer(logoArchivo);
 
         // Renglón debajo del nombre
         var sub = new List<string>();
@@ -72,7 +75,10 @@ public class CafeFichaTecnicaPdfService
         if (V("idealPara", f.IdealPara) is string id) datos.Add(("Ideal para", id));
         if (V("puntaje", f.Puntaje) is string pu) datos.Add(("Puntaje SCA", pu));
 
-        var componentes = blend ? CafeFichasTecnicasController.LeerComponentes(f.ComponentesJson) : new();
+        // Las partes del blend que quedaron vacías no salen.
+        var componentes = blend ? CafeFichasTecnicasController.LeerComponentes(f.ComponentesJson)
+            .Where(c => c.Pct.HasValue || new[] { c.Pais, c.Region, c.Variedad, c.Proceso, c.Finca, c.Altura }.Any(x => !string.IsNullOrWhiteSpace(x)))
+            .ToList() : new();
         var rueda = noAplica.Contains("rueda") ? new List<string>()
             : (f.Rueda ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
         var renglones = new List<(string, string)>();
@@ -95,21 +101,34 @@ public class CafeFichaTecnicaPdfService
 
                 page.Header().Background("#111111").PaddingVertical(14).PaddingHorizontal(32).Row(r =>
                 {
-                    r.RelativeItem().Text("FRIKAF").FontColor(Amarillo).Bold().FontSize(15).LetterSpacing(0.15f);
+                    if (logo is not null) r.RelativeItem().AlignLeft().AlignMiddle().Height(30).Image(logo).FitHeight();
+                    else r.RelativeItem().Text("FRIKAF").FontColor(Amarillo).Bold().FontSize(15).LetterSpacing(0.15f);
                     r.RelativeItem().AlignRight().AlignMiddle().Text("FICHA TÉCNICA · CAFÉ DE ESPECIALIDAD").FontColor("#FFFFFF").FontSize(9);
                 });
 
                 page.Content().ScaleToFit().Column(col =>
                 {
-                    if (fotoCafe is not null || fotoEtiqueta is not null)
+                    // Fotos: granos (izquierda) · empaque (medio) · etiqueta (derecha)
+                    if (fotoCafe is not null || fotoEmpaque is not null || fotoEtiqueta is not null)
                     {
-                        col.Item().Height(210).Row(r =>
+                        col.Item().Height(200).Row(r =>
                         {
                             if (fotoCafe is not null)
                                 r.RelativeItem().Background("#2B1D14").AlignCenter().AlignMiddle().Image(fotoCafe).FitArea();
+                            if (fotoEmpaque is not null)
+                                r.RelativeItem().Background("#FFFFFF").Padding(10).AlignCenter().AlignMiddle().Image(fotoEmpaque).FitArea();
                             if (fotoEtiqueta is not null)
-                                r.RelativeItem().Background("#F5EFE6").Padding(14).AlignCenter().AlignMiddle().Image(fotoEtiqueta).FitArea();
+                                r.RelativeItem().Background("#F5EFE6").Padding(12).AlignCenter().AlignMiddle().Image(fotoEtiqueta).FitArea();
                         });
+                    }
+
+                    // Cartel grande de azúcar (importante para los clientes)
+                    if (!noAplica.Contains("azucar"))
+                    {
+                        var conAzucar = f.ContieneAzucar;
+                        col.Item().Background(conAzucar ? "#111111" : Amarillo).PaddingVertical(9).AlignCenter()
+                            .Text(conAzucar ? "CONTIENE AZÚCAR" : "NO CONTIENE AZÚCAR")
+                            .FontSize(20).Bold().LetterSpacing(0.08f).FontColor(conAzucar ? Amarillo : "#111111");
                     }
 
                     col.Item().PaddingHorizontal(32).PaddingTop(20).Column(body =>

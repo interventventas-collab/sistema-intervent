@@ -37,7 +37,8 @@ public class CafeFichasTecnicasController : ControllerBase
         string? Descripcion, string? FraganciaAroma, string? Sabor, string? Retrogusto,
         List<string> Rueda, decimal? Cuerpo, decimal? Acidez, decimal? Dulzor,
         List<ComponenteDto> Componentes, List<string> NoAplica,
-        string? FotoCafeUrl, string? FotoEtiquetaUrl, string? UpdatedBy, DateTime UpdatedAt);
+        string? FotoCafeUrl, string? FotoEtiquetaUrl, string? UpdatedBy, DateTime UpdatedAt,
+        string? FotoEmpaqueUrl, bool ContieneAzucar);
 
     public record GuardarFichaRequest(
         int? CafeProductoId, string? Nombre, string? Tipo, string? Especie, string? Perfil,
@@ -45,7 +46,7 @@ public class CafeFichasTecnicasController : ControllerBase
         string? Tueste, string? IdealPara, string? Puntaje,
         string? Descripcion, string? FraganciaAroma, string? Sabor, string? Retrogusto,
         List<string>? Rueda, decimal? Cuerpo, decimal? Acidez, decimal? Dulzor,
-        List<ComponenteDto>? Componentes, List<string>? NoAplica);
+        List<ComponenteDto>? Componentes, List<string>? NoAplica, bool ContieneAzucar = false);
 
     public record CrearFichaRequest(int? CafeProductoId, string? Nombre, int? DuplicarDeId);
 
@@ -72,7 +73,8 @@ public class CafeFichasTecnicasController : ControllerBase
         f.Descripcion, f.FraganciaAroma, f.Sabor, f.Retrogusto,
         Lista(f.Rueda), f.Cuerpo, f.Acidez, f.Dulzor,
         LeerComponentes(f.ComponentesJson), Lista(f.NoAplica),
-        Img(f.FotoCafeArchivo), Img(f.FotoEtiquetaArchivo), f.UpdatedBy, f.UpdatedAt);
+        Img(f.FotoCafeArchivo), Img(f.FotoEtiquetaArchivo), f.UpdatedBy, f.UpdatedAt,
+        Img(f.FotoEmpaqueArchivo), f.ContieneAzucar);
 
     private async Task<FichaTecnicaDto> DtoAsync(CafeFichaTecnica f)
     {
@@ -141,7 +143,7 @@ public class CafeFichasTecnicasController : ControllerBase
                 Altura = b.Altura, Variedad = b.Variedad, Proceso = b.Proceso, Tueste = b.Tueste, IdealPara = b.IdealPara,
                 Puntaje = b.Puntaje, Descripcion = b.Descripcion, FraganciaAroma = b.FraganciaAroma, Sabor = b.Sabor,
                 Retrogusto = b.Retrogusto, Rueda = b.Rueda, Cuerpo = b.Cuerpo, Acidez = b.Acidez, Dulzor = b.Dulzor,
-                ComponentesJson = b.ComponentesJson, NoAplica = b.NoAplica,
+                ComponentesJson = b.ComponentesJson, NoAplica = b.NoAplica, ContieneAzucar = b.ContieneAzucar,
                 // Las fotos no se copian: cada café tiene las suyas.
             };
             f.Nombre = $"{b.Nombre} (copia)";
@@ -195,6 +197,7 @@ public class CafeFichasTecnicasController : ControllerBase
         f.Cuerpo = Bal(r.Cuerpo); f.Acidez = Bal(r.Acidez); f.Dulzor = Bal(r.Dulzor);
         f.ComponentesJson = r.Componentes is { Count: > 0 } ? JsonSerializer.Serialize(r.Componentes, Json) : null;
         f.NoAplica = r.NoAplica is { Count: > 0 } ? T(string.Join(",", r.NoAplica.Distinct()), 400) : null;
+        f.ContieneAzucar = r.ContieneAzucar;
         f.UpdatedBy = User?.Identity?.Name;
         f.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -214,12 +217,12 @@ public class CafeFichasTecnicasController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    /// <summary>Sube (o cambia) la foto del café o de la etiqueta. tipo = "cafe" | "etiqueta".</summary>
+    /// <summary>Sube (o cambia) una foto. tipo = "cafe" (granos, izquierda) | "empaque" (medio) | "etiqueta" (derecha).</summary>
     [HttpPost("{id:int}/foto/{tipo}")]
     [RequestSizeLimit(15 * 1024 * 1024)]
     public async Task<IActionResult> SubirFoto(int id, string tipo, IFormFile file)
     {
-        if (tipo is not ("cafe" or "etiqueta")) return BadRequest(new { error = "Tipo de foto inválido." });
+        if (tipo is not ("cafe" or "empaque" or "etiqueta")) return BadRequest(new { error = "Tipo de foto inválido." });
         var f = await _db.CafeFichasTecnicas.FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
         if (f is null) return NotFound(new { error = "La ficha no existe." });
         if (file is null || file.Length == 0) return BadRequest(new { error = "No se recibió ninguna imagen." });
@@ -238,7 +241,7 @@ public class CafeFichasTecnicasController : ControllerBase
     [HttpPost("{id:int}/foto/{tipo}/desde-url")]
     public async Task<IActionResult> FotoDesdeUrl(int id, string tipo, [FromBody] DesdeUrlRequest req)
     {
-        if (tipo is not ("cafe" or "etiqueta")) return BadRequest(new { error = "Tipo de foto inválido." });
+        if (tipo is not ("cafe" or "empaque" or "etiqueta")) return BadRequest(new { error = "Tipo de foto inválido." });
         var f = await _db.CafeFichasTecnicas.FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
         if (f is null) return NotFound(new { error = "La ficha no existe." });
 
@@ -277,8 +280,8 @@ public class CafeFichasTecnicasController : ControllerBase
         var nombre = $"ficha-{f.Id}-{tipo}-{Guid.NewGuid():N}{ext}";
         await System.IO.File.WriteAllBytesAsync(Path.Combine(FotosDir, nombre), bytes);
 
-        var viejo = tipo == "cafe" ? f.FotoCafeArchivo : f.FotoEtiquetaArchivo;
-        if (tipo == "cafe") f.FotoCafeArchivo = nombre; else f.FotoEtiquetaArchivo = nombre;
+        var viejo = GetFoto(f, tipo);
+        SetFoto(f, tipo, nombre);
         f.UpdatedBy = User?.Identity?.Name;
         f.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -289,16 +292,81 @@ public class CafeFichasTecnicasController : ControllerBase
     [HttpDelete("{id:int}/foto/{tipo}")]
     public async Task<IActionResult> QuitarFoto(int id, string tipo)
     {
-        if (tipo is not ("cafe" or "etiqueta")) return BadRequest(new { error = "Tipo de foto inválido." });
+        if (tipo is not ("cafe" or "empaque" or "etiqueta")) return BadRequest(new { error = "Tipo de foto inválido." });
         var f = await _db.CafeFichasTecnicas.FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
         if (f is null) return NotFound(new { error = "La ficha no existe." });
-        var viejo = tipo == "cafe" ? f.FotoCafeArchivo : f.FotoEtiquetaArchivo;
-        if (tipo == "cafe") f.FotoCafeArchivo = null; else f.FotoEtiquetaArchivo = null;
+        var viejo = GetFoto(f, tipo);
+        SetFoto(f, tipo, null);
         f.UpdatedBy = User?.Identity?.Name;
         f.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         BorrarArchivo(viejo);
         return Ok(await DtoAsync(f));
+    }
+
+    private static string? GetFoto(CafeFichaTecnica f, string tipo) =>
+        tipo == "cafe" ? f.FotoCafeArchivo : tipo == "empaque" ? f.FotoEmpaqueArchivo : f.FotoEtiquetaArchivo;
+
+    private static void SetFoto(CafeFichaTecnica f, string tipo, string? archivo)
+    {
+        if (tipo == "cafe") f.FotoCafeArchivo = archivo;
+        else if (tipo == "empaque") f.FotoEmpaqueArchivo = archivo;
+        else f.FotoEtiquetaArchivo = archivo;
+    }
+
+    // ───────────── Logo de arriba de las fichas (uno para todas) ─────────────
+    public const string LogoKey = "fichas.logo";
+    public record LogoDto(string? Url);
+
+    [HttpGet("logo")]
+    public async Task<IActionResult> GetLogo()
+    {
+        var s = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == LogoKey);
+        return Ok(new LogoDto(Img(s?.Value)));
+    }
+
+    [HttpPost("logo")]
+    [RequestSizeLimit(15 * 1024 * 1024)]
+    public async Task<IActionResult> SubirLogo(IFormFile file)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { error = "No se recibió ninguna imagen." });
+        if (!file.ContentType.StartsWith("image/")) return BadRequest(new { error = "El archivo tiene que ser una imagen." });
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        return Ok(await GuardarLogoAsync(ms.ToArray(), Path.GetExtension(file.FileName)));
+    }
+
+    [HttpPost("logo/desde-url")]
+    public async Task<IActionResult> LogoDesdeUrl([FromBody] DesdeUrlRequest req)
+    {
+        var (bytes, ext, error) = await CafeProductoFotoController.BajarImagenAsync(req?.Url);
+        if (error is not null) return BadRequest(new { error });
+        return Ok(await GuardarLogoAsync(bytes!, ext));
+    }
+
+    [HttpDelete("logo")]
+    public async Task<IActionResult> QuitarLogo()
+    {
+        var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == LogoKey);
+        if (s is not null) { BorrarArchivo(s.Value); _db.AppSettings.Remove(s); await _db.SaveChangesAsync(); }
+        return Ok(new LogoDto(null));
+    }
+
+    private async Task<LogoDto> GuardarLogoAsync(byte[] bytes, string? ext)
+    {
+        Directory.CreateDirectory(FotosDir);
+        ext = (ext ?? "").ToLowerInvariant();
+        if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp" or ".gif")) ext = ".png";
+        var nombre = $"ficha-logo-{Guid.NewGuid():N}{ext}";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(FotosDir, nombre), bytes);
+        var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == LogoKey);
+        if (s is null) _db.AppSettings.Add(s = new AppSetting { Key = LogoKey });
+        var viejo = s.Value;
+        s.Value = nombre;
+        s.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        BorrarArchivo(viejo);
+        return new LogoDto(Img(nombre));
     }
 
     private static void BorrarArchivo(string? archivo)
@@ -314,7 +382,8 @@ public class CafeFichasTecnicasController : ControllerBase
     {
         var f = await _db.CafeFichasTecnicas.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
         if (f is null) return NotFound(new { error = "La ficha no existe." });
-        var bytes = _pdf.Generar(f);
+        var logo = (await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == LogoKey))?.Value;
+        var bytes = _pdf.Generar(f, logo);
         var nombre = $"Ficha tecnica - {string.Concat(f.Nombre.Split(Path.GetInvalidFileNameChars()))}.pdf";
         return descargar == 1 ? File(bytes, "application/pdf", nombre) : File(bytes, "application/pdf");
     }

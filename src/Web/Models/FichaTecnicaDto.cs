@@ -32,6 +32,9 @@ public class FichaTecnicaDto
     public List<string> NoAplica { get; set; } = new();
     public string? FotoCafeUrl { get; set; }
     public string? FotoEtiquetaUrl { get; set; }
+    public string? FotoEmpaqueUrl { get; set; }
+    /// <summary>Cartel grande: false = "NO CONTIENE AZÚCAR", true = "CONTIENE AZÚCAR".</summary>
+    public bool ContieneAzucar { get; set; }
     public string? UpdatedBy { get; set; }
     public DateTime UpdatedAt { get; set; }
 
@@ -70,6 +73,7 @@ public static class FichaTecnicaCatalogo
     public static readonly Campo[] Campos =
     {
         new("fotos", "Fotos", "fotos"),
+        new("azucar", "Azúcar", "azucar"),
         new("perfil", "Perfil (sello)", "texto", Ayuda: "Ej: FUNKY, CLÁSICO, INTENSO"),
         new("especie", "Especie", "opciones", Opciones: new[] { "Arábica", "Robusta", "Arábica + Robusta" }),
         new("pais", "País", "texto", Origen: true),
@@ -147,7 +151,9 @@ public static class FichaTecnicaCatalogo
     public static bool Falta(FichaTecnicaDto f, string key)
     {
         if (key == "fotos") return string.IsNullOrEmpty(f.FotoCafeUrl) && !f.NoAplica.Contains("fotoCafe")
+                                || string.IsNullOrEmpty(f.FotoEmpaqueUrl) && !f.NoAplica.Contains("fotoEmpaque")
                                 || string.IsNullOrEmpty(f.FotoEtiquetaUrl) && !f.NoAplica.Contains("fotoEtiqueta");
+        if (key == "azucar") return false; // siempre tiene valor (por defecto "no contiene")
         if (f.NoAplica.Contains(key)) return false;
         var campo = Campos.FirstOrDefault(c => c.Key == key);
         if (campo is null) return false;
@@ -163,4 +169,9 @@ public static class FichaTecnicaCatalogo
 
     public static List<string> Faltantes(FichaTecnicaDto f) =>
         Campos.Where(c => Falta(f, c.Key)).Select(c => c.Label).ToList();
+}
+
+public class FichaLogoDto
+{
+    public string? Url { get; set; }
 }

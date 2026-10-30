@@ -44,7 +44,7 @@
     .ft-chips { display:flex; flex-wrap:wrap; gap:.3rem; }
     .ft-chip { border:1px solid #d1d5db; background:#fff; border-radius:999px; padding:.25rem .65rem; font-size:.8rem; cursor:pointer; }
     .ft-chip.on { background:#111827; color:#fff; border-color:#111827; }
-    .ft-fotos { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
+    .ft-fotos { display:grid; grid-template-columns:1fr 1fr 1fr; gap:.5rem; }
     .ft-foto { position:relative; border:1px dashed #cbd5e1; border-radius:8px; height:110px; display:flex; align-items:center; justify-content:center; text-align:center; color:#6b7280; font-size:.78rem; overflow:hidden; background:#fafafa; }
     .ft-foto img { max-width:100%; max-height:100%; object-fit:contain; }
     .ft-foto input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
@@ -61,7 +61,7 @@
     .ft-tab th { text-align:left; font-size:.75rem; color:#6b7280; font-weight:600; padding:.45rem .7rem; border-bottom:1px solid #e5e7eb; background:#f9fafb; position:sticky; top:0; z-index:1; white-space:nowrap; }
     .ft-tab td { padding:.35rem .7rem; border-bottom:1px solid #f3f4f6; vertical-align:top; }
     .ft-tab .ft-in { min-width:150px; }
-    .ft-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:.8rem; padding:.8rem; }
+    .ft-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px,1fr)); gap:.8rem; padding:.8rem; }
     .ft-pick { border:1px solid #e5e7eb; border-radius:8px; max-height:230px; overflow:auto; margin-top:.35rem; }
     .ft-pick div { padding:.35rem .55rem; border-bottom:1px solid #f3f4f6; cursor:pointer; font-size:.83rem; }
     .ft-pick div:hover { background:#f9fafb; }
@@ -77,8 +77,35 @@
         </div>
         @if (fichas is not null) { <span class="ft-mut">@fichas.Count cafés</span> }
         <span style="flex:1"></span>
+        <button class="ft-btn" @onclick="() => logoAbierto = !logoAbierto" title="El logo de arriba de todas las fichas">🖼 Logo de las fichas</button>
         <button class="ft-btn pri" @onclick="AbrirNueva">+ Nueva ficha</button>
     </div>
+
+    @if (logoAbierto)
+    {
+        <div class="ft-card" style="padding:.8rem 1rem; margin-bottom:.8rem; max-width:560px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <b>Logo de arriba de las fichas <span class="ft-mut">(uno para todas)</span></b>
+                <span style="cursor:pointer;" @onclick="() => logoAbierto = false">✕</span>
+            </div>
+            <div style="display:flex; gap:.8rem; align-items:center; margin-top:.5rem;">
+                <div class="ft-foto" style="width:220px; height:70px; background:#111; color:#facc15; flex:none;">
+                    @if (logoUrl is not null) { <img src="@logoUrl" alt="" style="max-height:52px;" /> }
+                    else { <span>Sin logo: dice FRIKAF<br /><span style="color:#9ca3af;">tocá o arrastrá acá</span></span> }
+                    <InputFile accept="image/*" OnChange="SubirLogo" />
+                </div>
+                <div style="flex:1;">
+                    <div class="ft-mut" style="margin-bottom:.3rem;">Así se ve sobre la franja negra. Conviene un PNG claro o con fondo transparente.</div>
+                    <div style="display:flex; gap:.3rem;">
+                        <input class="ft-in" style="font-size:.78rem;" placeholder="…o pegá el enlace del logo" @bind="logoEnlace" @bind:event="oninput"
+                               @onkeydown="@(e => e.Key == "Enter" ? LogoPorEnlace() : Task.CompletedTask)" />
+                        <button class="ft-btn pri" style="font-size:.75rem; padding:.3rem .6rem;" disabled="@string.IsNullOrWhiteSpace(logoEnlace)" @onclick="LogoPorEnlace">Usar</button>
+                    </div>
+                    @if (logoUrl is not null) { <span class="na-link" style="color:#9ca3af; cursor:pointer; text-decoration:underline; font-size:.75rem;" @onclick="QuitarLogo">quitar logo (vuelve a decir FRIKAF)</span> }
+                </div>
+            </div>
+        </div>
+    }
 
     @if (nuevaAbierta)
     {
@@ -162,11 +189,14 @@
                         </div>
                     }
 
-                    <h4>Fotos (se cambian cuando quieras: tocá o arrastrá una imagen)</h4>
+                    <h4>Fotos: granos · empaque · etiqueta (tocá, arrastrá o pegá un enlace)</h4>
                     <div class="ft-fotos">
-                        @FotoBox(f, "cafe", 110)
-                        @FotoBox(f, "etiqueta", 110)
+                        @FotoBox(f, "cafe", 100)
+                        @FotoBox(f, "empaque", 100)
+                        @FotoBox(f, "etiqueta", 100)
                     </div>
+
+                    @Campo(f, "azucar")
 
                     <h4>Datos</h4>
                     <div class="ft-f">
@@ -246,7 +276,7 @@
                             <a class="ft-btn" href="@Api.GetFichaTecnicaPdfUrl(sel.Id, true)" target="_blank">⬇ Bajar PDF</a>
                         </span>
                     </div>
-                    <div class="ft-prevbody"><FichaTecnicaVista F="sel" /></div>
+                    <div class="ft-prevbody"><FichaTecnicaVista F="sel" LogoUrl="@logoUrl" /></div>
                 }
             </div>
         </div>
@@ -286,7 +316,7 @@
                     {
                         <div class="ft-card" style="padding:.55rem;">
                             <b style="font-size:.85rem;">@f.Nombre</b> <span class="ft-mut">@f.ProductoSku</span>
-                            <div class="ft-fotos" style="margin-top:.4rem;">@FotoBox(f, "cafe", 100) @FotoBox(f, "etiqueta", 100)</div>
+                            <div class="ft-fotos" style="margin-top:.4rem;">@FotoBox(f, "cafe", 100) @FotoBox(f, "empaque", 100) @FotoBox(f, "etiqueta", 100)</div>
                         </div>
                     }
                 </div>
@@ -384,6 +414,7 @@
         {
             fichas = await Api.GetFichasTecnicasAsync() ?? new();
             productos = await Api.GetFichaProductosCafeAsync() ?? new();
+            try { logoUrl = (await Api.GetFichaLogoAsync())?.Url; } catch { /* sin logo: dice FRIKAF */ }
             if (QueryId is int qid) sel = fichas.FirstOrDefault(f => f.Id == qid);
             sel ??= fichas.FirstOrDefault();
         }
@@ -513,9 +544,16 @@
                     </div>
                 }
             }
+            else if (c.Tipo == "azucar")
+            {
+                <div class="ft-chips">
+                    <button class="ft-chip @(!f.ContieneAzucar ? "on" : "")" @onclick="() => { f.ContieneAzucar = false; return Guardar(f); }">No contiene azúcar</button>
+                    <button class="ft-chip @(f.ContieneAzucar ? "on" : "")" @onclick="() => { f.ContieneAzucar = true; return Guardar(f); }">Contiene azúcar</button>
+                </div>
+            }
             else if (c.Tipo == "fotos")
             {
-                <div class="ft-fotos">@FotoBox(f, "cafe", 90) @FotoBox(f, "etiqueta", 90)</div>
+                <div class="ft-fotos">@FotoBox(f, "cafe", 90) @FotoBox(f, "empaque", 90) @FotoBox(f, "etiqueta", 90)</div>
             }
         </div>
     };
@@ -523,9 +561,9 @@
     // ── Caja de foto: se toca o se arrastra una imagen encima ──
     private RenderFragment FotoBox(FichaTecnicaDto f, string tipo, int alto) => __builder =>
     {
-        var url = tipo == "cafe" ? f.FotoCafeUrl : f.FotoEtiquetaUrl;
-        var naKey = tipo == "cafe" ? "fotoCafe" : "fotoEtiqueta";
-        var nombre = tipo == "cafe" ? "Foto del café" : "Etiqueta";
+        var url = tipo == "cafe" ? f.FotoCafeUrl : tipo == "empaque" ? f.FotoEmpaqueUrl : f.FotoEtiquetaUrl;
+        var naKey = tipo == "cafe" ? "fotoCafe" : tipo == "empaque" ? "fotoEmpaque" : "fotoEtiqueta";
+        var nombre = tipo == "cafe" ? "Granos" : tipo == "empaque" ? "Empaque" : "Etiqueta";
         var na = f.NoAplica.Contains(naKey);
         <div>
             <div class="ft-foto" style="height:@(alto)px;">
@@ -540,9 +578,9 @@
                     <InputFile accept="image/*" OnChange="@(e => SubirFoto(f, tipo, e))" />
                 }
             </div>
-            <div style="display:flex; justify-content:space-between; gap:.4rem; font-size:.72rem; margin-top:.15rem;">
+            <div style="display:flex; justify-content:space-between; gap:.3rem; font-size:.68rem; margin-top:.15rem; white-space:nowrap;">
                 @if (url is not null && !na) { <span class="na-link" style="color:#9ca3af; cursor:pointer; text-decoration:underline;" @onclick="() => QuitarFoto(f, tipo)">quitar</span> } else { <span></span> }
-                @if (!na) { <span style="color:#374151; cursor:pointer; text-decoration:underline;" @onclick="() => AbrirEnlace(f, tipo)">🔗 por enlace</span> }
+                @if (!na) { <span style="color:#374151; cursor:pointer; text-decoration:underline;" @onclick="() => AbrirEnlace(f, tipo)">🔗 enlace</span> }
                 <span style="color:#9ca3af; cursor:pointer; text-decoration:underline;" @onclick="() => ToggleNoAplica(f, naKey)">@(na ? "sí lleva" : "no aplica")</span>
             </div>
             @if (enlaceAbierto == $"{f.Id}-{tipo}")
@@ -683,7 +721,7 @@
         {
             await using var s = file.OpenReadStream(15 * 1024 * 1024);
             var r = await Api.SubirFotoFichaTecnicaAsync(f.Id, tipo, s, file.Name, file.ContentType);
-            if (r is not null) { f.FotoCafeUrl = r.FotoCafeUrl; f.FotoEtiquetaUrl = r.FotoEtiquetaUrl; f.UpdatedAt = r.UpdatedAt; }
+            if (r is not null) { f.FotoCafeUrl = r.FotoCafeUrl; f.FotoEmpaqueUrl = r.FotoEmpaqueUrl; f.FotoEtiquetaUrl = r.FotoEtiquetaUrl; f.UpdatedAt = r.UpdatedAt; }
             estado[f.Id] = "✓ foto guardada";
         }
         catch (Exception ex)
@@ -691,6 +729,40 @@
             estado[f.Id] = "⚠ no se subió la foto";
             ToastService.Error($"{f.Nombre}: no se subió la foto. {ex.Message}");
         }
+    }
+
+    // ── Logo de arriba (uno para todas las fichas) ──
+    private string? logoUrl;
+    private bool logoAbierto;
+    private string logoEnlace = "";
+
+    private async Task SubirLogo(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            await using var st = e.File.OpenReadStream(15 * 1024 * 1024);
+            logoUrl = (await Api.SubirFichaLogoAsync(st, e.File.Name, e.File.ContentType))?.Url;
+            ToastService.Success("Logo guardado: ya sale en todas las fichas.");
+        }
+        catch (Exception ex) { ToastService.Error("No se subió el logo: " + ex.Message); }
+    }
+
+    private async Task LogoPorEnlace()
+    {
+        if (string.IsNullOrWhiteSpace(logoEnlace)) return;
+        try
+        {
+            logoUrl = (await Api.FichaLogoDesdeUrlAsync(logoEnlace.Trim()))?.Url;
+            logoEnlace = "";
+            ToastService.Success("Logo guardado: ya sale en todas las fichas.");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task QuitarLogo()
+    {
+        try { if (await Api.QuitarFichaLogoAsync()) logoUrl = null; }
+        catch (Exception ex) { ToastService.Error("No se pudo quitar: " + ex.Message); }
     }
 
     // ── Foto por enlace (se abre una cajita debajo de la foto para pegar el link) ──
@@ -713,7 +785,7 @@
         try
         {
             var r = await Api.FotoFichaTecnicaDesdeUrlAsync(f.Id, tipo, enlaceTexto.Trim());
-            if (r is not null) { f.FotoCafeUrl = r.FotoCafeUrl; f.FotoEtiquetaUrl = r.FotoEtiquetaUrl; f.UpdatedAt = r.UpdatedAt; }
+            if (r is not null) { f.FotoCafeUrl = r.FotoCafeUrl; f.FotoEmpaqueUrl = r.FotoEmpaqueUrl; f.FotoEtiquetaUrl = r.FotoEtiquetaUrl; f.UpdatedAt = r.UpdatedAt; }
             estado[f.Id] = "✓ foto guardada";
             enlaceAbierto = null;
             enlaceTexto = "";
@@ -731,7 +803,7 @@
         try
         {
             var r = await Api.QuitarFotoFichaTecnicaAsync(f.Id, tipo);
-            if (r is not null) { f.FotoCafeUrl = r.FotoCafeUrl; f.FotoEtiquetaUrl = r.FotoEtiquetaUrl; }
+            if (r is not null) { f.FotoCafeUrl = r.FotoCafeUrl; f.FotoEmpaqueUrl = r.FotoEmpaqueUrl; f.FotoEtiquetaUrl = r.FotoEtiquetaUrl; }
         }
         catch (Exception ex) { ToastService.Error("No se pudo quitar la foto: " + ex.Message); }
     }
