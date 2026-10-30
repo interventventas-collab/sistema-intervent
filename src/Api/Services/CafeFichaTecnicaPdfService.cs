@@ -128,10 +128,15 @@ public class CafeFichaTecnicaPdfService
                     // Cartel grande de azúcar (importante para los clientes)
                     if (!noAplica.Contains("azucar"))
                     {
+                        // Negro con letras blancas en los dos casos, en español e inglés.
                         var conAzucar = f.ContieneAzucar;
-                        col.Item().Background(conAzucar ? "#111111" : Amarillo).PaddingVertical(9).AlignCenter()
-                            .Text(conAzucar ? "CONTIENE AZÚCAR" : "NO CONTIENE AZÚCAR")
-                            .FontSize(20).Bold().LetterSpacing(0.08f).FontColor(conAzucar ? Amarillo : "#111111");
+                        col.Item().Background("#111111").PaddingVertical(8).Column(c =>
+                        {
+                            c.Item().AlignCenter().Text(conAzucar ? "CONTIENE AZÚCAR" : "NO CONTIENE AZÚCAR")
+                                .FontSize(20).Bold().LetterSpacing(0.08f).FontColor("#FFFFFF");
+                            c.Item().AlignCenter().Text(conAzucar ? "CONTAINS SUGAR" : "CONTAINS NO SUGAR")
+                                .FontSize(11).Bold().LetterSpacing(0.18f).FontColor("#D1D5DB");
+                        });
                     }
 
                     // Intensidad (fila de granos) + tostado (barra de claro a oscuro)

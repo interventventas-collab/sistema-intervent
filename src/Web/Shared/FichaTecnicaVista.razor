@@ -11,8 +11,9 @@
     .ftv-hero > div { flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; }
     .ftv-hero .a { background:#2b1d14; } .ftv-hero .m { background:#fff; padding:8px; } .ftv-hero .b { background:#f5efe6; padding:10px; }
     .ftv-top img { height:26px; max-width:220px; object-fit:contain; display:block; }
-    .ftv-azucar { text-align:center; font-weight:800; font-size:20px; letter-spacing:.08em; padding:9px 10px; background:#facc15; color:#111; }
-    .ftv-azucar.con { background:#111; color:#facc15; }
+    /* Cartel de azúcar: negro con letras blancas en los dos casos, en español e inglés */
+    .ftv-azucar { text-align:center; font-weight:800; font-size:20px; letter-spacing:.08em; padding:8px 10px 7px; background:#111; color:#fff; line-height:1.15; }
+    .ftv-azucar span { display:block; font-size:12px; letter-spacing:.18em; font-weight:700; opacity:.85; margin-top:2px; }
     .ftv-termo { display:flex; gap:26px; padding:14px 22px 4px; align-items:flex-end; }
     .ftv-termo small { display:block; color:#6b7280; font-size:9.5px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
     .ftv-tbar { position:relative; margin-top:14px; }
@@ -64,7 +65,7 @@
 
     @if (!F.NoAplica.Contains("azucar"))
     {
-        <div class="ftv-azucar @(F.ContieneAzucar ? "con" : "")">@(F.ContieneAzucar ? "CONTIENE AZÚCAR" : "NO CONTIENE AZÚCAR")</div>
+        <div class="ftv-azucar">@(F.ContieneAzucar ? "CONTIENE AZÚCAR" : "NO CONTIENE AZÚCAR")<span>@(F.ContieneAzucar ? "CONTAINS SUGAR" : "CONTAINS NO SUGAR")</span></div>
     }
 
     @* Intensidad (fila de granos) + tostado (termómetro de claro a oscuro) *@
