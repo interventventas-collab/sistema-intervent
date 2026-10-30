@@ -66,7 +66,7 @@ public class CafeFichaTecnica
     /// <summary>2026-10-30: foto del empaque (va al medio, entre los granos y la etiqueta).</summary>
     [MaxLength(200)] public string? FotoEmpaqueArchivo { get; set; }
 
-    /// <summary>2026-10-30: cartel grande "NO CONTIENE AZÚCAR" (false) / "CONTIENE AZÚCAR" (true).
+    /// <summary>2026-10-30: cartel grande "SIN AZÚCAR / SUGAR FREE" (false) / "CONTIENE AZÚCAR" (true).
     /// Se esconde marcando "azucar" en NoAplica.</summary>
     public bool ContieneAzucar { get; set; }
 
