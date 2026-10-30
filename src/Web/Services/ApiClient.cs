@@ -1410,6 +1410,13 @@ public class ApiClient
         => await PostAsync<object>($"/api/cafe/comodatos/{id}/pagos", req);
     public async Task<bool> AnularPagoComodatoAsync(int id, int pagoId)
         => await DeleteAsync($"/api/cafe/comodatos/{id}/pagos/{pagoId}");
+    // 30/10/2026: "Cargar varias" — borrador de renglones + guardar los completos.
+    public async Task<List<CafeComodatoCargaFila>?> GetCafeComodatosCargaVariasAsync()
+        => await GetAsync<List<CafeComodatoCargaFila>>("/api/cafe/comodatos/carga-varias");
+    public async Task GuardarBorradorCafeComodatosCargaVariasAsync(List<CafeComodatoCargaFila> filas)
+        => await PutAsync<object>("/api/cafe/comodatos/carga-varias", filas);
+    public async Task<CafeComodatoCargaResultado?> GuardarCafeComodatosCargaVariasAsync(List<CafeComodatoCargaFila> filas)
+        => await PostAsync<CafeComodatoCargaResultado>("/api/cafe/comodatos/carga-varias/guardar", filas);
 
     /// <summary>Descarga el PDF del comprobante de Comodato / Financiación para que firme el cliente.</summary>
     public async Task<(byte[]? bytes, string? error)> GetCafeComodatoComprobantePdfAsync(int id)

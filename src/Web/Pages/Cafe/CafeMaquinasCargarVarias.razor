@@ -1,0 +1,438 @@
+@page "/cafe/maquinas/cargar-varias"
+@attribute [Authorize]
+@implements IDisposable
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@using System.Globalization
+
+@* 30/10/2026: carga de muchas máquinas de una, tipo planilla. El cliente se busca en la base
+   mientras escribís (mismo buscador que el resto del sistema). Lo que queda a medio hacer se
+   guarda solo (borrador en el servidor) para seguir otro día; "Guardar" crea solo los renglones
+   completos. *@
+
+<style>
+    .cv-tabla { width:100%; border-collapse:collapse; font-size:0.85rem; }
+    .cv-tabla th { text-align:left; font-weight:600; color:#6b7280; font-size:0.75rem; padding:0.35rem 0.3rem; border-bottom:1px solid #e5e7eb; }
+    .cv-tabla td { padding:0.3rem; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+    .cv-tabla input { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:5px; padding:0.3rem 0.4rem; font-size:0.82rem; }
+    .cv-anot { color:#6b7280; font-style:italic; padding-top:0.45rem !important; }
+    .cv-duda { color:#92400e; font-style:normal; font-size:0.72rem; margin-top:0.15rem; }
+    .cv-gris { color:#6b7280; font-size:0.74rem; }
+    .cv-link { color:#2563eb; font-size:0.72rem; cursor:pointer; margin-left:0.3rem; }
+    .cv-rel { position:relative; }
+    .cv-lista { position:absolute; z-index:20; left:0.3rem; top:100%; background:#fff; border:1px solid #d1d5db; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.12); max-height:260px; overflow-y:auto; }
+    .cv-lista > div { padding:0.35rem 0.6rem; border-bottom:1px solid #f3f4f6; cursor:pointer; }
+    .cv-lista > div:hover { background:#eff6ff; }
+    .cv-tog { display:flex; }
+    .cv-tog span { border:1px solid #d1d5db; padding:0.25rem 0.45rem; font-size:0.74rem; cursor:pointer; background:#fff; user-select:none; }
+    .cv-tog span:first-child { border-radius:5px 0 0 5px; }
+    .cv-tog span:last-child { border-radius:0 5px 5px 0; border-left:none; }
+    .cv-tog .on { background:#1f2937; color:#fff; border-color:#1f2937; }
+    .cv-falta { border-color:#dc2626 !important; }
+</style>
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+        <div>
+            <h3 style="margin:0;">☕ Máquinas · Cargar varias</h3>
+            <div class="cv-gris" style="margin-top:0.15rem;">Escribí nombre, calle o número del cliente y elegilo de la lista. Se guardan solo los renglones completos; el resto queda acá para seguir otro día.</div>
+        </div>
+        <button class="btn btn-secondary" @onclick="Volver">← Volver a Máquinas</button>
+    </div>
+    <div class="card-body" style="padding:0.5rem 0.8rem;">
+        @if (filas is null || clientes is null)
+        {
+            <p class="text-muted" style="padding:1rem;">Cargando...</p>
+        }
+        else
+        {
+            <table class="cv-tabla">
+                <thead><tr>
+                    <th style="width:16%">Lo anotaste así</th>
+                    <th style="width:24%">Cliente</th>
+                    <th style="width:10%">Tipo</th>
+                    <th style="width:12%">Marca</th>
+                    <th style="width:11%">Modelo</th>
+                    <th style="width:9%">N° serie</th>
+                    <th style="width:16%">Si es financiada: precio · ya pagó</th>
+                    <th style="width:2%"></th>
+                </tr></thead>
+                <tbody>
+                    @foreach (var f in filas)
+                    {
+                        var fila = f;
+                        var cli = ClientePorId(f.ClienteId);
+                        <tr>
+                            <td class="cv-anot">
+                                @(string.IsNullOrWhiteSpace(f.Anotado) ? "(renglón nuevo)" : f.Anotado)
+                                @if (!string.IsNullOrWhiteSpace(f.Duda) && cli is null) { <div class="cv-duda">@f.Duda</div> }
+                            </td>
+                            <td class="cv-rel">
+                                @if (cli is not null && abiertoCliente != f.Uid)
+                                {
+                                    <div style="padding-top:0.2rem;">
+                                        <span>@NumeroCliente(cli) · @cli.Nombre</span>
+                                        <span class="cv-link" @onclick="() => CambiarCliente(fila)">cambiar</span>
+                                    </div>
+                                    <div class="cv-gris">@Domicilio(cli)</div>
+                                    @foreach (var aviso in AvisosCliente(fila))
+                                    {
+                                        <div class="cv-gris" style="color:#92400e;">@aviso</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <input placeholder="Escribí nombre, calle o N°…" value="@TextoBusqueda(f.Uid)"
+                                           class="@(FaltaCliente(f) ? "cv-falta" : "")"
+                                           @oninput="e => BuscarCliente(fila, e.Value?.ToString())"
+                                           @onfocus="() => abiertoCliente = fila.Uid"
+                                           @onblur="() => CerrarListaCliente(fila)" />
+                                    @if (FaltaCliente(f)) { <div style="color:#dc2626; font-size:0.72rem; margin-top:0.15rem;">Falta elegir el cliente</div> }
+                                    @if (abiertoCliente == f.Uid && !string.IsNullOrWhiteSpace(TextoBusqueda(f.Uid)))
+                                    {
+                                        var todos = Buscar(TextoBusqueda(f.Uid));
+                                        var ver = ClienteSearch.Recortar(todos);
+                                        <div class="cv-lista" style="width:380px;">
+                                            @if (ver.Count == 0) { <div class="cv-gris" style="cursor:default;">Sin resultados.</div> }
+                                            @foreach (var c in ver)
+                                            {
+                                                var cc = c;
+                                                var tiene = MaquinasDe(c.Id).Count;
+                                                <div @onmousedown="() => ElegirCliente(fila, cc)" @onmousedown:preventDefault>
+                                                    <div>@NumeroCliente(c) · @c.Nombre</div>
+                                                    <div class="cv-gris">@Domicilio(c)</div>
+                                                    @if (tiene > 0) { <div style="color:#92400e; font-size:0.72rem;">ya tiene @tiene máquina@(tiene == 1 ? "" : "s") cargada@(tiene == 1 ? "" : "s")</div> }
+                                                </div>
+                                            }
+                                            @if (todos.Count > ver.Count) { <div class="cv-gris" style="cursor:default;">@ClienteSearch.LeyendaTope(todos.Count, ver.Count)</div> }
+                                        </div>
+                                    }
+                                }
+                            </td>
+                            <td>
+                                <div class="cv-tog">
+                                    <span class="@(f.Modalidad != "FINANCIADA" ? "on" : "")" @onclick='() => CambiarModalidad(fila, "COMODATO")'>Comodato</span>
+                                    <span class="@(f.Modalidad == "FINANCIADA" ? "on" : "")" @onclick='() => CambiarModalidad(fila, "FINANCIADA")'>Financiada</span>
+                                </div>
+                            </td>
+                            <td class="cv-rel">
+                                <input value="@f.Marca" @oninput='e => EscribirTexto(fila, "marca", e.Value?.ToString())'
+                                       @onfocus='() => abiertoTexto = fila.Uid + "|marca"' @onblur='() => CerrarTexto(fila.Uid + "|marca")' />
+                                @if (abiertoTexto == f.Uid + "|marca") { @ListaSugerencias(fila, "marca", f.Marca) }
+                            </td>
+                            <td class="cv-rel">
+                                <input value="@f.Modelo" @oninput='e => EscribirTexto(fila, "modelo", e.Value?.ToString())'
+                                       @onfocus='() => abiertoTexto = fila.Uid + "|modelo"' @onblur='() => CerrarTexto(fila.Uid + "|modelo")' />
+                                @if (abiertoTexto == f.Uid + "|modelo") { @ListaSugerencias(fila, "modelo", f.Modelo) }
+                            </td>
+                            <td>
+                                <input value="@f.NumeroSerie" placeholder="opcional" @oninput="e => { fila.NumeroSerie = e.Value?.ToString(); MarcarCambio(); }" />
+                            </td>
+                            <td>
+                                @if (f.Modalidad == "FINANCIADA")
+                                {
+                                    <div style="display:flex; gap:0.25rem; align-items:center;">
+                                        <div class="cv-tog">
+                                            <span class="@(f.Moneda != "USD" ? "on" : "")" @onclick='() => { fila.Moneda = "ARS"; MarcarCambio(); }'>$</span>
+                                            <span class="@(f.Moneda == "USD" ? "on" : "")" @onclick='() => { fila.Moneda = "USD"; MarcarCambio(); }'>U$D</span>
+                                        </div>
+                                        <input inputmode="numeric" placeholder="precio" value="@Miles(f.PrecioVenta)"
+                                               class="@(PrecioMal(f) ? "cv-falta" : "")"
+                                               @onchange="e => { fila.PrecioVenta = MilesParse(e.Value?.ToString()); MarcarCambio(); }" />
+                                        <input inputmode="numeric" placeholder="ya pagó" value="@Miles(f.YaPago)"
+                                               @onchange="e => { fila.YaPago = MilesParse(e.Value?.ToString()); MarcarCambio(); }" />
+                                    </div>
+                                    @if ((f.PrecioVenta ?? 0m) > 0m)
+                                    {
+                                        var falta = f.PrecioVenta!.Value - (f.YaPago ?? 0m);
+                                        <div class="cv-gris" style="@(falta < 0 ? "color:#dc2626;" : "")">
+                                            @(falta < 0 ? "ya pagó más que el precio" : $"le falta pagar {Sym(f.Moneda)} {Miles(falta)}")
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="color:#dc2626; font-size:0.72rem;">Falta el precio</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="cv-gris" style="color:#d1d5db;">—</span>
+                                }
+                            </td>
+                            <td>
+                                <span title="Sacar este renglón" style="cursor:pointer; color:#9ca3af; font-size:1rem; padding:0.2rem;" @onclick="() => SacarFila(fila)">×</span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div style="display:flex; align-items:center; gap:0.6rem; margin-top:0.7rem; flex-wrap:wrap;">
+                <button class="btn btn-secondary" @onclick="AgregarFila">+ Agregar renglón</button>
+                <span class="cv-gris" style="margin-left:auto; font-size:0.82rem;">
+                    @filas.Count renglones · <span style="color:#16a34a;">@filas.Count(Lista) listos</span> · @(filas.Count - filas.Count(Lista)) sin terminar
+                    @if (guardandoBorrador) { <span> · guardando…</span> }
+                </span>
+                <button class="btn btn-primary" disabled="@(guardando || filas.Count(Lista) == 0)" @onclick="Guardar">
+                    @(guardando ? "Guardando..." : $"Guardar los {filas.Count(Lista)} listos")
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<CafeComodatoCargaFila>? filas;
+    private List<CafeClienteDto>? clientes;
+    private Dictionary<int, CafeClienteDto> clientesPorId = new();
+    private List<CafeComodatoDto> cargadas = new();
+    private readonly Dictionary<string, string> busqueda = new();
+    private string? abiertoCliente;
+    private string? abiertoTexto;
+    private bool guardando, guardandoBorrador, hayCambios;
+    private CancellationTokenSource? ctsBorrador;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var tCli = Api.GetCafeClientesAsync();
+            var tMaq = Api.GetCafeComodatosAsync();
+            var tFil = Api.GetCafeComodatosCargaVariasAsync();
+            await Task.WhenAll(tCli, tMaq, tFil);
+            clientes = (tCli.Result ?? new()).Where(c => c.IsActive).ToList();
+            clientesPorId = clientes.ToDictionary(c => c.Id);
+            cargadas = tMaq.Result ?? new();
+            filas = tFil.Result ?? new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudo cargar: " + ex.Message);
+            clientes ??= new(); filas ??= new();
+        }
+    }
+
+    // ── Cliente ──
+    private CafeClienteDto? ClientePorId(int? id) => id is int i && clientesPorId.TryGetValue(i, out var c) ? c : null;
+    private static string NumeroCliente(CafeClienteDto c) => string.IsNullOrWhiteSpace(c.Codigo) ? $"#{c.Id}" : c.Codigo!;
+    private static string Domicilio(CafeClienteDto c)
+    {
+        var dir = !string.IsNullOrWhiteSpace(c.DomicilioEntrega) ? c.DomicilioEntrega : c.Direccion;
+        var loc = !string.IsNullOrWhiteSpace(c.LocalidadEntrega) ? c.LocalidadEntrega : c.Localidad;
+        return string.Join(" · ", new[] { dir, loc }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    }
+    private string TextoBusqueda(string uid) => busqueda.TryGetValue(uid, out var t) ? t : "";
+    private bool FaltaCliente(CafeComodatoCargaFila f) => ClientePorId(f.ClienteId) is null && !Vacia(f);
+
+    /// <summary>Mismo buscador del resto del sistema; si lo tipeado es justo un N° de cliente, ese va primero.</summary>
+    private List<CafeClienteDto> Buscar(string texto)
+    {
+        var lista = ClienteSearch.Buscar(clientes, texto, soloActivos: false);
+        if (int.TryParse(texto.Trim(), out var n))
+        {
+            var exacto = lista.FirstOrDefault(c => int.TryParse(c.Codigo, out var cod) && cod == n);
+            if (exacto is not null) { lista.Remove(exacto); lista.Insert(0, exacto); }
+        }
+        return lista;
+    }
+
+    private void BuscarCliente(CafeComodatoCargaFila f, string? texto)
+    {
+        busqueda[f.Uid] = texto ?? "";
+        abiertoCliente = f.Uid;
+    }
+
+    private void ElegirCliente(CafeComodatoCargaFila f, CafeClienteDto c)
+    {
+        f.ClienteId = c.Id;
+        busqueda.Remove(f.Uid);
+        abiertoCliente = null;
+        MarcarCambio();
+    }
+
+    private void CambiarCliente(CafeComodatoCargaFila f)
+    {
+        busqueda[f.Uid] = "";
+        abiertoCliente = f.Uid;
+    }
+
+    private void CerrarListaCliente(CafeComodatoCargaFila f)
+    {
+        if (abiertoCliente == f.Uid) abiertoCliente = null;
+    }
+
+    private List<CafeComodatoDto> MaquinasDe(int clienteId)
+        => cargadas.Where(m => m.ClienteId == clienteId && m.Estado == "EN_CLIENTE").ToList();
+
+    /// <summary>Para no cargar dos veces la misma: lo que el cliente ya tiene en el sistema y si
+    /// aparece en otro renglón de esta misma lista.</summary>
+    private IEnumerable<string> AvisosCliente(CafeComodatoCargaFila f)
+    {
+        if (f.ClienteId is not int cid) yield break;
+        var ya = MaquinasDe(cid);
+        if (ya.Count > 0)
+            yield return $"ya tiene {ya.Count} cargada{(ya.Count == 1 ? "" : "s")}: "
+                + string.Join(" · ", ya.Select(m => $"{m.Marca} {m.Modelo}".Trim() + (m.Modalidad == "FINANCIADA" ? " (financiada)" : "")));
+        var otras = filas!.Count(x => x != f && x.ClienteId == cid);
+        if (otras > 0) yield return $"está en {otras} renglón{(otras == 1 ? "" : "es")} más de esta lista";
+    }
+
+    // ── Marca / modelo: sugiere lo ya escrito, así quedan todas iguales ──
+    private void EscribirTexto(CafeComodatoCargaFila f, string campo, string? valor)
+    {
+        if (campo == "marca") f.Marca = valor; else f.Modelo = valor;
+        abiertoTexto = f.Uid + "|" + campo;
+        MarcarCambio();
+    }
+
+    private void CerrarTexto(string key)
+    {
+        if (abiertoTexto == key) abiertoTexto = null;
+    }
+
+    private List<string> Sugerencias(CafeComodatoCargaFila f, string campo, string? texto)
+    {
+        var t = (texto ?? "").Trim();
+        if (t.Length == 0) return new();
+        IEnumerable<string?> fuente = campo == "marca"
+            ? cargadas.Select(m => m.Marca).Concat(filas!.Where(x => x != f).Select(x => x.Marca))
+            : cargadas.Where(m => string.IsNullOrWhiteSpace(f.Marca) || string.Equals(m.Marca?.Trim(), f.Marca.Trim(), StringComparison.OrdinalIgnoreCase)).Select(m => m.Modelo)
+                .Concat(filas!.Where(x => x != f).Select(x => x.Modelo));
+        return fuente.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!.Trim())
+            .GroupBy(s => s, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+            .Where(s => s.Contains(t, StringComparison.OrdinalIgnoreCase) && !s.Equals(t, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(s => s.StartsWith(t, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(s => s)
+            .Take(8).ToList();
+    }
+
+    private RenderFragment ListaSugerencias(CafeComodatoCargaFila f, string campo, string? texto) => __builder =>
+    {
+        var sug = Sugerencias(f, campo, texto);
+        if (sug.Count > 0)
+        {
+            <div class="cv-lista" style="min-width:170px;">
+                @foreach (var s in sug)
+                {
+                    var ss = s;
+                    <div @onmousedown="() => ElegirTexto(f, campo, ss)" @onmousedown:preventDefault>@s</div>
+                }
+            </div>
+        }
+    };
+
+    private void ElegirTexto(CafeComodatoCargaFila f, string campo, string valor)
+    {
+        if (campo == "marca") f.Marca = valor; else f.Modelo = valor;
+        abiertoTexto = null;
+        MarcarCambio();
+    }
+
+    // ── Renglones ──
+    private void CambiarModalidad(CafeComodatoCargaFila f, string modalidad)
+    {
+        f.Modalidad = modalidad;
+        MarcarCambio();
+    }
+
+    private void AgregarFila()
+    {
+        filas!.Add(new CafeComodatoCargaFila());
+        MarcarCambio();
+    }
+
+    private async Task SacarFila(CafeComodatoCargaFila f)
+    {
+        if (!Vacia(f) && !await JS.InvokeAsync<bool>("confirm", $"¿Sacar el renglón \"{(string.IsNullOrWhiteSpace(f.Anotado) ? f.Marca : f.Anotado)}\" de la lista?"))
+            return;
+        filas!.Remove(f);
+        MarcarCambio();
+    }
+
+    private static bool Vacia(CafeComodatoCargaFila f)
+        => string.IsNullOrWhiteSpace(f.Anotado) && f.ClienteId is null && string.IsNullOrWhiteSpace(f.Marca)
+           && string.IsNullOrWhiteSpace(f.Modelo) && string.IsNullOrWhiteSpace(f.NumeroSerie) && f.PrecioVenta is null;
+
+    private static bool PrecioMal(CafeComodatoCargaFila f)
+        => f.Modalidad == "FINANCIADA" && ((f.PrecioVenta ?? 0m) <= 0m || (f.YaPago ?? 0m) > f.PrecioVenta);
+
+    /// <summary>Lo mismo que pide el servidor: cliente + marca, y si es financiada, precio (y que no haya pagado de más).</summary>
+    private bool Lista(CafeComodatoCargaFila f)
+        => ClientePorId(f.ClienteId) is not null && !string.IsNullOrWhiteSpace(f.Marca) && !PrecioMal(f);
+
+    // ── Borrador: se guarda solo un ratito después de cada cambio ──
+    private void MarcarCambio()
+    {
+        hayCambios = true;
+        ctsBorrador?.Cancel();
+        ctsBorrador = new CancellationTokenSource();
+        var token = ctsBorrador.Token;
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(1200, token); } catch (TaskCanceledException) { return; }
+            await InvokeAsync(GuardarBorrador);
+        });
+    }
+
+    private async Task GuardarBorrador()
+    {
+        if (!hayCambios || filas is null) return;
+        hayCambios = false;
+        guardandoBorrador = true;
+        StateHasChanged();
+        try { await Api.GuardarBorradorCafeComodatosCargaVariasAsync(filas); }
+        catch (Exception ex) { hayCambios = true; ToastService.Error("No se pudo guardar el borrador: " + ex.Message); }
+        guardandoBorrador = false;
+        StateHasChanged();
+    }
+
+    private async Task Guardar()
+    {
+        var n = filas!.Count(Lista);
+        if (!await JS.InvokeAsync<bool>("confirm", $"Se van a cargar {n} máquina{(n == 1 ? "" : "s")} en el sistema. Los renglones sin terminar quedan acá. ¿Seguimos?"))
+            return;
+        guardando = true;
+        ctsBorrador?.Cancel();
+        try
+        {
+            var r = await Api.GuardarCafeComodatosCargaVariasAsync(filas);
+            if (r is not null)
+            {
+                hayCambios = false;
+                filas = r.Quedan;
+                cargadas = await Api.GetCafeComodatosAsync() ?? cargadas;
+                ToastService.Success($"Listo: {r.Creadas} máquina{(r.Creadas == 1 ? "" : "s")} cargada{(r.Creadas == 1 ? "" : "s")}.");
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        guardando = false;
+    }
+
+    private async Task Volver()
+    {
+        ctsBorrador?.Cancel();
+        await GuardarBorrador();
+        Navigation.NavigateTo("/cafe/maquinas");
+    }
+
+    public void Dispose()
+    {
+        // Si se va por el menú con algo sin guardar, lo manda igual.
+        ctsBorrador?.Cancel();
+        if (hayCambios && filas is not null) _ = Api.GuardarBorradorCafeComodatosCargaVariasAsync(filas);
+    }
+
+    // ── Plata ──
+    private static readonly NumberFormatInfo MilesNfi = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = ",", NumberGroupSizes = new[] { 3 } };
+    private static string Sym(string? moneda) => moneda == "USD" ? "U$D" : "$";
+    private static string Miles(decimal? v) => v.HasValue ? v.Value.ToString("#,##0.##", MilesNfi) : "";
+    private static decimal? MilesParse(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var limpio = s.Replace(".", "").Replace(" ", "").Replace("$", "")
+                      .Replace("U$D", "").Replace("u$d", "").Trim().Replace(",", ".");
+        return decimal.TryParse(limpio, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : (decimal?)null;
+    }
+}

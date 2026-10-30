@@ -8,7 +8,10 @@
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
         <h3 style="margin:0;">☕ Máquinas (comodato + financiadas)</h3>
-        <button class="btn btn-primary" @onclick="AbrirNueva">+ Nueva máquina</button>
+        <div style="display:flex; gap:0.4rem;">
+            <button class="btn btn-secondary" @onclick='() => Navigation.NavigateTo("/cafe/maquinas/cargar-varias")'>Cargar varias</button>
+            <button class="btn btn-primary" @onclick="AbrirNueva">+ Nueva máquina</button>
+        </div>
     </div>
     <div class="card-body" style="padding:0.5rem;">
         @if (stats is not null)
@@ -85,56 +88,44 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var c in lista)
+                        @* 30/10/2026: un cliente con varias cosas aparece UNA vez; se toca y se despliega. *@
+                        @foreach (var g in lista.GroupBy(x => x.ClienteId))
                         {
-                            <tr>
-                                <td><strong>@c.ClienteNombre</strong></td>
+                            var items = g.ToList();
+                            if (items.Count == 1)
+                            {
+                                @FilaMaquina(items[0], false, 0)
+                                continue;
+                            }
+                            var cid = g.Key;
+                            var abierto = clientesAbiertos.Contains(cid);
+                            <tr style="cursor:pointer;" @onclick="() => ToggleCliente(cid)">
                                 <td>
-                                    <div style="font-weight:600;">@(string.IsNullOrEmpty(c.Marca) ? "—" : c.Marca)</div>
-                                    @if (!string.IsNullOrEmpty(c.Modelo))
-                                    { <div style="font-size:0.75rem; color:#6b7280;">@c.Modelo</div> }
+                                    <span style="display:inline-block; width:0.9rem; color:#6b7280;">@(abierto ? "▾" : "▸")</span><strong>@items[0].ClienteNombre</strong>
+                                    <span style="color:#6b7280;"> · @items.Count @(tabActivo == "comodatos" ? "cosas" : "máquinas")</span>
                                 </td>
-                                <td style="font-family:monospace; font-size:0.78rem;">@(c.NumeroSerie ?? "—")</td>
-                                <td style="font-size:0.78rem;">@(c.FechaEntrega?.ToString("dd/MM/yyyy") ?? "—")</td>
-                                <td>
-                                    <span class="badge @(EstadoBadgeClass(c.Estado))" style="font-size:0.7rem;">@EstadoLabel(c.Estado)</span>
-                                </td>
-                                @if (tabActivo == "financiadas")
-                                {
-                                    <td style="text-align:right; font-weight:600;">@Sym(c.Moneda) @(c.PrecioVenta?.ToString("N0") ?? "—")</td>
-                                    <td style="text-align:right; color:#16a34a;">@Sym(c.Moneda) @c.PagosAcumulados.ToString("N0")</td>
-                                    <td style="text-align:right; font-weight:700; color:@(c.SaldoFinanciamiento <= 0 ? "#16a34a" : "#b45309");">
-                                        @Sym(c.Moneda) @(c.SaldoFinanciamiento?.ToString("N0") ?? "0")
-                                    </td>
-                                    <td style="text-align:center; font-size:0.78rem;">
-                                        @if (c.PrecioVenta.HasValue && c.PrecioVenta > 0)
-                                        {
-                                            var pct = (int)Math.Round((c.PagosAcumulados / c.PrecioVenta.Value) * 100m);
-                                            <div style="font-weight:700;">@pct% saldado</div>
-                                            @if (c.CuotasTotales.HasValue && c.ValorCuota.HasValue && c.ValorCuota > 0 && c.SaldoFinanciamiento > 0)
-                                            {
-                                                var mesesAprox = (int)Math.Ceiling((c.SaldoFinanciamiento ?? 0m) / c.ValorCuota.Value);
-                                                <div style="font-size:0.7rem; color:#9ca3af;">plan: @c.CuotasTotales x @Sym(c.Moneda) @c.ValorCuota?.ToString("N0") · ~@mesesAprox meses</div>
-                                            }
-                                        }
-                                        else { <span>—</span> }
-                                    </td>
-                                }
-                                else
-                                {
-                                    <td style="text-align:right;">@(c.ValorEstimado.HasValue ? $"{Sym(c.Moneda)} {c.ValorEstimado.Value:N0}" : "—")</td>
-                                }
-                                <td>
-                                    <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => AbrirDetalle(c)">📂 Detalle</button>
-                                    <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => AbrirEditar(c)" title="Modificar datos de esta operación">✏️ Editar</button>
-                                    <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => DescargarComprobante(c)" title="Descargar PDF del comprobante (para firmar)">📄 Comprobante</button>
-                                    @if (c.Modalidad == "FINANCIADA" && c.Estado == "EN_CLIENTE")
+                                <td colspan="@(tabActivo == "financiadas" ? 9 : 6)" style="font-size:0.8rem; color:#6b7280;">
+                                    @if (!abierto)
                                     {
-                                        <button class="btn btn-primary" style="font-size:0.75rem;" @onclick="() => CargarPago(c)"
-                                                title="Abre Nueva cobranza con este cliente y la máquina ya elegidos">+ Cargar pago</button>
+                                        @string.Join(" · ", items.Select(x => $"{x.Marca} {x.Modelo}".Trim()).Where(t => t.Length > 0))
+                                    }
+                                    @if (tabActivo == "financiadas")
+                                    {
+                                        var faltas = items.GroupBy(x => x.Moneda).Select(m => (mon: m.Key, saldo: m.Sum(x => x.SaldoFinanciamiento ?? 0m))).Where(m => m.saldo > 0).ToList();
+                                        @if (faltas.Count > 0)
+                                        {
+                                            <span style="margin-left:0.6rem; font-weight:700; color:#b45309;">le falta pagar @string.Join(" + ", faltas.Select(m => $"{Sym(m.mon)} {m.saldo:N0}"))</span>
+                                        }
                                     }
                                 </td>
                             </tr>
+                            @if (abierto)
+                            {
+                                for (var i = 0; i < items.Count; i++)
+                                {
+                                    @FilaMaquina(items[i], true, i + 1)
+                                }
+                            }
                         }
                     </tbody>
                 </table>
@@ -451,6 +442,66 @@
     }
 
     private string tabActivo = "comodatos";
+
+    // 30/10/2026: renglón de una máquina. sub = va adentro de un cliente desplegado (en vez del nombre, el número).
+    private RenderFragment FilaMaquina(CafeComodatoDto c, bool sub, int n) => __builder =>
+    {
+                            <tr style="@(sub ? "background:#fafafa;" : "")">
+                                @if (sub) { <td style="padding-left:1.6rem; color:#9ca3af;">@n</td> }
+                                else { <td><span style="display:inline-block; width:0.9rem;"></span><strong>@c.ClienteNombre</strong></td> }
+                                <td>
+                                    <div style="font-weight:600;">@(string.IsNullOrEmpty(c.Marca) ? "—" : c.Marca)</div>
+                                    @if (!string.IsNullOrEmpty(c.Modelo))
+                                    { <div style="font-size:0.75rem; color:#6b7280;">@c.Modelo</div> }
+                                </td>
+                                <td style="font-family:monospace; font-size:0.78rem;">@(c.NumeroSerie ?? "—")</td>
+                                <td style="font-size:0.78rem;">@(c.FechaEntrega?.ToString("dd/MM/yyyy") ?? "—")</td>
+                                <td>
+                                    <span class="badge @(EstadoBadgeClass(c.Estado))" style="font-size:0.7rem;">@EstadoLabel(c.Estado)</span>
+                                </td>
+                                @if (tabActivo == "financiadas")
+                                {
+                                    <td style="text-align:right; font-weight:600;">@Sym(c.Moneda) @(c.PrecioVenta?.ToString("N0") ?? "—")</td>
+                                    <td style="text-align:right; color:#16a34a;">@Sym(c.Moneda) @c.PagosAcumulados.ToString("N0")</td>
+                                    <td style="text-align:right; font-weight:700; color:@(c.SaldoFinanciamiento <= 0 ? "#16a34a" : "#b45309");">
+                                        @Sym(c.Moneda) @(c.SaldoFinanciamiento?.ToString("N0") ?? "0")
+                                    </td>
+                                    <td style="text-align:center; font-size:0.78rem;">
+                                        @if (c.PrecioVenta.HasValue && c.PrecioVenta > 0)
+                                        {
+                                            var pct = (int)Math.Round((c.PagosAcumulados / c.PrecioVenta.Value) * 100m);
+                                            <div style="font-weight:700;">@pct% saldado</div>
+                                            @if (c.CuotasTotales.HasValue && c.ValorCuota.HasValue && c.ValorCuota > 0 && c.SaldoFinanciamiento > 0)
+                                            {
+                                                var mesesAprox = (int)Math.Ceiling((c.SaldoFinanciamiento ?? 0m) / c.ValorCuota.Value);
+                                                <div style="font-size:0.7rem; color:#9ca3af;">plan: @c.CuotasTotales x @Sym(c.Moneda) @c.ValorCuota?.ToString("N0") · ~@mesesAprox meses</div>
+                                            }
+                                        }
+                                        else { <span>—</span> }
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td style="text-align:right;">@(c.ValorEstimado.HasValue ? $"{Sym(c.Moneda)} {c.ValorEstimado.Value:N0}" : "—")</td>
+                                }
+                                <td>
+                                    <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => AbrirDetalle(c)">📂 Detalle</button>
+                                    <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => AbrirEditar(c)" title="Modificar datos de esta operación">✏️ Editar</button>
+                                    <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => DescargarComprobante(c)" title="Descargar PDF del comprobante (para firmar)">📄 Comprobante</button>
+                                    @if (c.Modalidad == "FINANCIADA" && c.Estado == "EN_CLIENTE")
+                                    {
+                                        <button class="btn btn-primary" style="font-size:0.75rem;" @onclick="() => CargarPago(c)"
+                                                title="Abre Nueva cobranza con este cliente y la máquina ya elegidos">+ Cargar pago</button>
+                                    }
+                                </td>
+                            </tr>
+    };
+
+    private readonly HashSet<int> clientesAbiertos = new();
+    private void ToggleCliente(int clienteId)
+    {
+        if (!clientesAbiertos.Remove(clienteId)) clientesAbiertos.Add(clienteId);
+    }
     private string filtroQ = "";
     private bool loading = true;
     private List<CafeComodatoDto>? lista;

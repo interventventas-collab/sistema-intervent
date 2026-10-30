@@ -2059,6 +2059,29 @@ public class CafeSaldoMigracionSugerenciaDto
 }
 
 // --- Comodatos / Máquinas financiadas ---
+/// <summary>30/10/2026: un renglón de "Máquinas → Cargar varias". Anotado = cómo lo escribió él;
+/// Duda = lo que quedó sin resolver al armar la lista.</summary>
+public class CafeComodatoCargaFila
+{
+    public string Uid { get; set; } = Guid.NewGuid().ToString("N");
+    public string? Anotado { get; set; }
+    public string? Duda { get; set; }
+    public int? ClienteId { get; set; }
+    public string Modalidad { get; set; } = "COMODATO";
+    public string Moneda { get; set; } = "ARS";
+    public string? Marca { get; set; }
+    public string? Modelo { get; set; }
+    public string? NumeroSerie { get; set; }
+    public decimal? PrecioVenta { get; set; }
+    public decimal? YaPago { get; set; }
+}
+
+public class CafeComodatoCargaResultado
+{
+    public int Creadas { get; set; }
+    public List<CafeComodatoCargaFila> Quedan { get; set; } = new();
+}
+
 public class CafeComodatoDto
 {
     public int Id { get; set; }
