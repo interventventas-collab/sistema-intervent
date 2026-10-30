@@ -36,6 +36,8 @@
                 @onclick='() => modoCarga = "lista"'>📋 Lista completa</button>
         <button class="@(modoCarga == "minimo" ? "btn btn-primary" : "btn btn-secondary")" style="font-size:0.85rem;"
                 @onclick='() => modoCarga = "minimo"'>🎯 Stock mínimo</button>
+        <button class="@(modoCarga == "planilla" ? "btn btn-primary" : "btn btn-secondary")" style="font-size:0.85rem;"
+                @onclick='() => modoCarga = "planilla"'>📥 Planilla Excel (suma)</button>
         <span style="flex:1;"></span>
         <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="() => showQr = !showQr">
             @(showQr ? "▲ Ocultar QR" : "📱 QR celular")
@@ -725,6 +727,134 @@ else if (modoCarga == "minimo")
     </div>
 }
 
+else if (modoCarga == "planilla")
+{
+    @* 30/10/2026: planilla Excel para la mercadería que llega. Se escribe código + cantidad (nombre y stock
+       salen solos) y al subirla SUMA al stock de ese momento. Nunca reemplaza. *@
+    <div class="card" style="margin-bottom:0.8rem;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+            <h3 style="margin:0;">📥 Planilla Excel que suma al stock</h3>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <label style="font-size:0.85rem;">Depósito:</label>
+                <select class="form-input" style="width:auto;" @bind="depositoIdSeleccionado" @bind:after="CancelarPlanilla">
+                    @if (depositos is not null)
+                    {
+                        @foreach (var d in depositos.Where(x => x.IsActive && x.Nombre != "Full MeLi").OrderBy(x => x.Orden))
+                        {
+                            <option value="@d.Id">@d.Nombre</option>
+                        }
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="card-body" style="padding:1rem;">
+            <div style="font-size:0.88rem; color:#374151; line-height:1.7; margin-bottom:1rem;">
+                1 · Bajá la planilla. Trae adentro la lista de todos los productos.<br />
+                2 · En la hoja <b>Carga</b> escribí el <b>código</b> y la <b>cantidad que llegó</b>. El nombre y el stock salen solos; si el código no existe se pone en rojo.<br />
+                3 · Subila acá. Antes de grabar ves cuánto tenía cada producto y cuánto va a quedar. <b>Siempre suma</b> a lo que haya en ese momento, nunca reemplaza.
+            </div>
+
+            @if (resultadoPla is null)
+            {
+                <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem;">
+                    <button class="btn btn-secondary" @onclick="BajarPlanilla" disabled="@bajandoPla">
+                        @(bajandoPla ? "Generando..." : "📥 Bajar planilla")
+                    </button>
+                    <label class="btn btn-primary" style="margin:0; cursor:pointer;">
+                        @(procesandoPla && previewPla is null ? "Leyendo..." : "📤 Subir planilla completa")
+                        <InputFile OnChange="OnArchivoPlanillaChange" accept=".xlsx" style="display:none;" />
+                    </label>
+                    @if (archivoPlaNombre is not null)
+                    {
+                        <span style="font-size:0.85rem; color:#6b7280;">📄 @archivoPlaNombre</span>
+                    }
+                </div>
+            }
+
+            @if (errorPla is not null)
+            {
+                <div style="color:#b91c1c; font-size:0.88rem; margin-bottom:0.8rem;">⚠ @errorPla</div>
+            }
+
+            @if (previewPla is not null && resultadoPla is null)
+            {
+                <h4 style="margin:0 0 0.5rem;">Vista previa · todavía no se grabó nada</h4>
+
+                @if (previewPla.YaSubida is not null)
+                {
+                    <div style="color:#b91c1c; font-weight:600; font-size:0.9rem; margin-bottom:0.6rem;">
+                        ⚠ Esta planilla ya la subiste el @previewPla.YaSubida.Fecha.AddHours(-3).ToString("dd/MM 'a las' HH:mm")@(string.IsNullOrEmpty(previewPla.YaSubida.Usuario) ? "" : $" ({previewPla.YaSubida.Usuario})").
+                        Si la subís de nuevo se suma dos veces.
+                    </div>
+                    <label style="display:flex; gap:0.4rem; align-items:center; font-size:0.88rem; margin-bottom:0.8rem; cursor:pointer;">
+                        <input type="checkbox" @bind="confirmaRepetidaPla" /> Sí, quiero sumarla otra vez
+                    </label>
+                }
+
+                @if (previewPla.Errores.Any())
+                {
+                    <div style="color:#b45309; font-size:0.84rem; margin-bottom:0.8rem;">
+                        @foreach (var e in previewPla.Errores) { <div>• @e</div> }
+                    </div>
+                }
+
+                @if (previewPla.Lineas.Any())
+                {
+                    <div style="max-height:55vh; overflow:auto; border:1px solid #e5e7eb; border-radius:6px;">
+                        <table class="table table-compact" style="width:100%; margin:0; font-size:0.85rem;">
+                            <thead style="position:sticky; top:0; background:#f3f4f6;">
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Producto</th>
+                                    <th style="text-align:right;">Tiene ahora</th>
+                                    <th style="text-align:right;">Suma</th>
+                                    <th style="text-align:right;">Queda</th>
+                                    <th style="color:#9ca3af; font-weight:400;">De</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var l in previewPla.Lineas)
+                                {
+                                    <tr>
+                                        <td style="font-family:monospace;">@l.Codigo</td>
+                                        <td>@l.Nombre</td>
+                                        <td style="text-align:right; color:#6b7280;">@Cant(l, l.Antes)</td>
+                                        <td style="text-align:right;">+@Cant(l, l.Suma)</td>
+                                        <td style="text-align:right; font-weight:700;">@Cant(l, l.Despues)</td>
+                                        <td style="color:#9ca3af; font-size:0.78rem;">@l.Origen</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap; margin-top:0.8rem;">
+                        <input class="form-input" style="width:320px;" placeholder="Comentario (ej: remito Colombraro 8957968)" @bind="comentarioPla" />
+                        <button class="btn btn-secondary" @onclick="CancelarPlanilla" disabled="@procesandoPla">Cancelar</button>
+                        <button class="btn btn-primary" @onclick="AplicarPlanilla"
+                                disabled="@(procesandoPla || (previewPla.YaSubida is not null && !confirmaRepetidaPla))">
+                            @(procesandoPla ? "Sumando..." : $"✅ Sumar a {previewPla.Lineas.Count} producto{(previewPla.Lineas.Count == 1 ? "" : "s")}")
+                        </button>
+                    </div>
+                    <div style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">
+                        "Tiene ahora" es el stock de este momento. Si se vende algo antes de que confirmes, igual se suma solo lo de la planilla.
+                    </div>
+                }
+                else
+                {
+                    <div style="font-size:0.88rem; color:#6b7280;">La planilla no tiene ningún producto para sumar.</div>
+                    <button class="btn btn-secondary" style="margin-top:0.6rem;" @onclick="CancelarPlanilla">Volver</button>
+                }
+            }
+
+            @if (resultadoPla is not null)
+            {
+                <div style="font-size:0.95rem; margin-bottom:0.8rem;">✅ @resultadoPla</div>
+                <button class="btn btn-secondary" @onclick="CancelarPlanilla">Subir otra planilla</button>
+            }
+        </div>
+    </div>
+}
+
 @code {
     private List<CafeDepositoDto>? depositos;
     private List<StockProductoDto>? rows;
@@ -739,7 +869,7 @@ else if (modoCarga == "minimo")
     private Dictionary<int, int> nuevoStockUnidades = new();
 
     // ─── 2026-06-02: Modo "Cargar pedido" estilo Contabilium ───
-    private string modoCarga = "pedido"; // "pedido" | "lista" | "minimo"
+    private string modoCarga = "pedido"; // "pedido" | "lista" | "minimo" | "planilla"
 
     // ─── 2026-07-15: Modo "Stock mínimo" (bajar/subir Excel del campo StockMinimoMeLi) ───
     private bool bajandoMin;
@@ -808,6 +938,76 @@ else if (modoCarga == "minimo")
         }
         catch (Exception ex) { errorMin = ex.Message; }
         finally { procesandoMin = false; }
+    }
+
+    // ─── 30/10/2026: Planilla Excel que SUMA (bajar → completar → subir con vista previa) ───
+    private bool bajandoPla;
+    private bool procesandoPla;
+    private string? errorPla;
+    private string? archivoPlaNombre;
+    private byte[]? archivoPlaBytes;
+    private ApiClient.PlanillaPreviewDto? previewPla;
+    private string? resultadoPla;
+    private string comentarioPla = "";
+    private bool confirmaRepetidaPla;
+
+    private static string Cant(ApiClient.PlanillaLineaDto l, decimal v)
+        => l.Categoria == "CAFE" ? $"{v:0.###} kg" : $"{v:0}";
+
+    private async Task BajarPlanilla()
+    {
+        bajandoPla = true; errorPla = null;
+        try
+        {
+            var bytes = await Api.BajarPlanillaStockAsync(depositoIdSeleccionado);
+            if (bytes is null) { ToastService.Error("No se pudo generar la planilla"); return; }
+            var dep = depositos?.FirstOrDefault(d => d.Id == depositoIdSeleccionado)?.Nombre ?? "";
+            await JS.InvokeVoidAsync("downloadFile", $"planilla-carga-stock-{dep}-{DateTime.UtcNow.AddHours(-3):dd-MM-yyyy}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { bajandoPla = false; }
+    }
+
+    private async Task OnArchivoPlanillaChange(InputFileChangeEventArgs e)
+    {
+        CancelarPlanilla();
+        archivoPlaNombre = e.File.Name;
+        procesandoPla = true;
+        try
+        {
+            using var src = e.File.OpenReadStream(maxAllowedSize: 20_000_000);
+            using var ms = new MemoryStream();
+            await src.CopyToAsync(ms);
+            archivoPlaBytes = ms.ToArray();
+            previewPla = await Api.PreviewPlanillaStockAsync(depositoIdSeleccionado, archivoPlaBytes, archivoPlaNombre);
+        }
+        catch (Exception ex) { errorPla = ex.Message; }
+        finally { procesandoPla = false; }
+    }
+
+    private async Task AplicarPlanilla()
+    {
+        if (archivoPlaBytes is null || previewPla is null) return;
+        procesandoPla = true; errorPla = null;
+        try
+        {
+            await Api.AplicarPlanillaStockAsync(depositoIdSeleccionado, archivoPlaBytes, archivoPlaNombre ?? "planilla.xlsx",
+                comentarioPla, confirmaRepetidaPla);
+            var n = previewPla.Lineas.Count;
+            resultadoPla = $"Listo: se sumó el stock a {n} producto{(n == 1 ? "" : "s")}. Queda en el historial de cada uno.";
+            ToastService.Success(resultadoPla);
+            previewPla = null;
+        }
+        catch (Exception ex) { errorPla = ex.Message; }
+        finally { procesandoPla = false; }
+    }
+
+    private void CancelarPlanilla()
+    {
+        archivoPlaNombre = null; archivoPlaBytes = null; previewPla = null; resultadoPla = null;
+        errorPla = null; comentarioPla = ""; confirmaRepetidaPla = false;
     }
 
     private void CancelarMinimo()
