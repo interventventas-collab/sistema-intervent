@@ -1553,12 +1553,21 @@
                     <span class="topbar-nav-modern-ico">@SvgIcons.Package</span>
                     <span>Stock</span>
                 </button>
-                <button class="topbar-nav-modern"
-                        @onclick="@(() => NavigateTo("/cafe/listas-precios"))"
-                        title="Listas de precios">
-                    <span class="topbar-nav-modern-ico">@SvgIcons.DollarSign</span>
-                    <span>Listas</span>
-                </button>
+                @* 2026-10-30: Fichas técnicas pegado abajo de Listas (mismo lugar, mitad de alto cada uno). *@
+                <div class="calc-pila">
+                    <button class="topbar-nav-modern"
+                            @onclick="@(() => NavigateTo("/cafe/listas-precios"))"
+                            title="Listas de precios">
+                        <span class="topbar-nav-modern-ico">@SvgIcons.DollarSign</span>
+                        <span>Listas</span>
+                    </button>
+                    <button class="topbar-nav-modern"
+                            @onclick="@(() => NavigateTo("/cafe/fichas-tecnicas"))"
+                            title="Fichas técnicas de café">
+                        <span class="topbar-nav-modern-ico">📄</span>
+                        <span>Fichas técnicas</span>
+                    </button>
+                </div>
                 <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/preparacion"))"
                         title="Imprimir pedidos / preparación de pedidos">
