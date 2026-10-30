@@ -13,6 +13,13 @@
     .ftv-top img { height:26px; max-width:220px; object-fit:contain; display:block; }
     .ftv-azucar { text-align:center; font-weight:800; font-size:20px; letter-spacing:.08em; padding:9px 10px; background:#facc15; color:#111; }
     .ftv-azucar.con { background:#111; color:#facc15; }
+    .ftv-termo { display:flex; gap:26px; padding:14px 22px 4px; align-items:flex-end; }
+    .ftv-termo small { display:block; color:#6b7280; font-size:9.5px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+    .ftv-tbar { position:relative; margin-top:14px; }
+    .ftv-tbar .g { height:14px; border-radius:999px; background:linear-gradient(90deg,#e8c9a0,#b07a45,#6b4226,#2a170c); }
+    .ftv-tbar .m { position:absolute; top:-15px; font-size:13px; transform:translateX(-50%); }
+    .ftv-tbar .l { display:flex; justify-content:space-between; font-size:10px; color:#6b7280; margin-top:4px; }
+    .ftv-tbar .l b { color:#111; }
     .ftv-hero img { max-width:100%; max-height:100%; object-fit:contain; }
     .ftv-hero .a img { width:100%; height:100%; object-fit:cover; }
     .ftv-body { padding:18px 22px 10px; }
@@ -58,6 +65,35 @@
     @if (!F.NoAplica.Contains("azucar"))
     {
         <div class="ftv-azucar @(F.ContieneAzucar ? "con" : "")">@(F.ContieneAzucar ? "CONTIENE AZÚCAR" : "NO CONTIENE AZÚCAR")</div>
+    }
+
+    @* Intensidad (fila de granos) + tostado (termómetro de claro a oscuro) *@
+    @if (Intensidad is not null || NivelTueste >= 0)
+    {
+        <div class="ftv-termo">
+            @if (Intensidad is int inten)
+            {
+                <div style="flex:none;">
+                    <small>Intensidad</small>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        @((MarkupString)GranosSvg(inten, 20))
+                        <b style="font-size:20px;">@inten<span style="font-size:12px; color:#6b7280;">/10</span></b>
+                    </div>
+                </div>
+            }
+            @if (NivelTueste >= 0)
+            {
+                var ops = FichaTecnicaCatalogo.Campos.First(c => c.Key == "tueste").Opciones!;
+                <div style="flex:1; min-width:0;">
+                    <small>Tostado</small>
+                    <div class="ftv-tbar">
+                        <div class="g"></div>
+                        <span class="m" style="left:@((12.5 + 25 * NivelTueste).ToString(System.Globalization.CultureInfo.InvariantCulture))%;">▼</span>
+                        <div class="l">@foreach (var (o, i) in ops.Select((o, i) => (o, i))) { if (i == NivelTueste) { <b>@o</b> } else { <span>@o</span> } }</div>
+                    </div>
+                </div>
+            }
+        </div>
     }
 
     <div class="ftv-body">
@@ -142,6 +178,21 @@
     /// <summary>Logo de arriba (uno para todas las fichas). Null = dice FRIKAF.</summary>
     [Parameter] public string? LogoUrl { get; set; }
 
+    private int? Intensidad => F.NoAplica.Contains("intensidad") ? null : F.Intensidad;
+    private int NivelTueste => F.NoAplica.Contains("tueste") ? -1 : FichaTecnicaCatalogo.NivelTueste(F.Tueste);
+
+    /// <summary>Fila de 10 granos: los primeros "n" oscuros, el resto gris claro.</summary>
+    public static string GranosSvg(int n, int alto)
+    {
+        var sb = new System.Text.StringBuilder($"<svg height=\"{alto}\" viewBox=\"0 0 240 30\" style=\"flex:none\">");
+        for (var i = 0; i < 10; i++)
+        {
+            var on = i < n;
+            sb.Append($"<g transform=\"translate({12 + i * 24},15) rotate(-20)\"><ellipse rx=\"8\" ry=\"11\" fill=\"{(on ? "#3b2314" : "#e5e7eb")}\"/><path d=\"M0,-10 C-3,-3 3,3 0,10\" stroke=\"{(on ? "#facc15" : "#fff")}\" stroke-width=\"1.6\" fill=\"none\"/></g>");
+        }
+        return sb.Append("</svg>").ToString();
+    }
+
     private string? FotoEmpaque => F.NoAplica.Contains("fotoEmpaque") ? null : F.FotoEmpaqueUrl;
 
     // Las partes del blend que quedaron vacías no salen.
@@ -181,7 +232,8 @@
                 if (V("altura", F.Altura) is string al) d.Add(("Altura", al));
                 if (V("finca", F.Finca) is string fi) d.Add(("Finca / productor", fi));
             }
-            if (V("tueste", F.Tueste) is string tu) d.Add(("Tueste", tu));
+            // El tueste de la escala ya sale en el termómetro; solo un texto distinto va como dato.
+            if (V("tueste", F.Tueste) is string tu && NivelTueste < 0) d.Add(("Tueste", tu));
             if (V("idealPara", F.IdealPara) is string id) d.Add(("Ideal para", id));
             if (V("puntaje", F.Puntaje) is string pu) d.Add(("Puntaje SCA", pu));
             return d;

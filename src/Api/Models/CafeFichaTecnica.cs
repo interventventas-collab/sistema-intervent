@@ -70,6 +70,9 @@ public class CafeFichaTecnica
     /// Se esconde marcando "azucar" en NoAplica.</summary>
     public bool ContieneAzucar { get; set; }
 
+    /// <summary>2026-10-30: intensidad de 1 a 10 (fila de granos en la ficha). El tostado sale de Tueste.</summary>
+    public int? Intensidad { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     [MaxLength(100)] public string? UpdatedBy { get; set; }
