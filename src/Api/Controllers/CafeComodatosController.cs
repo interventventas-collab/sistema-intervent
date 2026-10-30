@@ -413,6 +413,166 @@ public class CafeComodatosController : ControllerBase
         return Ok(new { ok = true, saldo = c.SaldoFinanciamiento, estado = c.Estado });
     }
 
+    // ── 30/10/2026: "Cargar varias" ─────────────────────────────────────────────
+    // Pantalla tipo planilla para cargar muchas máquinas de una. Los renglones a medio hacer
+    // quedan guardados en AppSettings (un JSON) para seguir otro día; "Guardar" crea las
+    // máquinas de los renglones completos y deja el resto en el borrador.
+
+    private const string KeyBorrador = "maquinas.cargaVarias.borrador";
+
+    /// <summary>Un renglón de la carga. Anotado = cómo lo había escrito él; Duda = lo que no se pudo
+    /// resolver al armar la lista; Codigo = el N° que había en la planilla (solo para el arranque).</summary>
+    public record CargaFila(string Uid, string? Anotado, string? Duda, int? ClienteId, string? Modalidad, string? Moneda,
+        string? Marca, string? Modelo, string? NumeroSerie, decimal? PrecioVenta, decimal? YaPago);
+
+    [HttpGet("carga-varias")]
+    public async Task<IActionResult> CargaVariasGet()
+    {
+        var fila = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == KeyBorrador);
+        if (fila is not null)
+            return Ok(System.Text.Json.JsonSerializer.Deserialize<List<CargaFila>>(fila.Value) ?? new());
+        return Ok(await FilasInicialesAsync());
+    }
+
+    [HttpPut("carga-varias")]
+    public async Task<IActionResult> CargaVariasPut([FromBody] List<CargaFila> filas)
+    {
+        await GuardarBorradorAsync(filas);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Crea las máquinas de los renglones completos (cliente + marca; si es financiada, precio)
+    /// y deja los otros en el borrador. Lo "ya pagó" de una financiada entra como pago anterior
+    /// anotado a mano (no toca ninguna caja), igual que los pagos viejos.</summary>
+    [HttpPost("carga-varias/guardar")]
+    public async Task<IActionResult> CargaVariasGuardar([FromBody] List<CargaFila> filas)
+    {
+        var ids = filas.Where(f => f.ClienteId > 0).Select(f => f.ClienteId!.Value).Distinct().ToList();
+        var clientes = await _db.CafeClientes.Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Nombre);
+
+        bool Lista(CargaFila f) =>
+            f.ClienteId is int cid && clientes.ContainsKey(cid)
+            && !string.IsNullOrWhiteSpace(f.Marca)
+            && (f.Modalidad != "FINANCIADA" || ((f.PrecioVenta ?? 0m) > 0m && (f.YaPago ?? 0m) <= f.PrecioVenta));
+
+        var listas = filas.Where(Lista).ToList();
+        var quedan = filas.Where(f => !Lista(f)).ToList();
+        if (listas.Count == 0) return BadRequest(new { error = "No hay renglones completos para guardar." });
+
+        var hoy = PanoramaService.AhoraAr().Date;
+        var nuevas = new List<CafeComodato>();
+        foreach (var f in listas)
+        {
+            var fin = f.Modalidad == "FINANCIADA";
+            var c = new CafeComodato
+            {
+                ClienteId = f.ClienteId!.Value,
+                Modalidad = fin ? "FINANCIADA" : "COMODATO",
+                Moneda = f.Moneda == "USD" ? "USD" : "ARS",
+                Marca = f.Marca?.Trim(),
+                Modelo = string.IsNullOrWhiteSpace(f.Modelo) ? null : f.Modelo.Trim(),
+                NumeroSerie = string.IsNullOrWhiteSpace(f.NumeroSerie) ? null : f.NumeroSerie.Trim(),
+                Estado = "EN_CLIENTE",
+                CreatedAt = DateTime.UtcNow
+            };
+            if (fin)
+            {
+                c.PrecioVenta = f.PrecioVenta;
+                c.SaldoFinanciamiento = f.PrecioVenta;
+                if ((f.YaPago ?? 0m) > 0m)
+                    c.Pagos.Add(new CafeComodatoPago
+                    {
+                        Fecha = hoy,
+                        Importe = f.YaPago!.Value,
+                        Notas = "Lo que ya había pagado al cargar la máquina",
+                        CreatedAt = DateTime.UtcNow
+                    });
+            }
+            _db.CafeComodatos.Add(c);
+            nuevas.Add(c);
+        }
+        // Un solo SaveChanges: máquinas, pagos y borrador se graban todos o ninguno.
+        await GuardarBorradorAsync(quedan);
+        await _db.SaveChangesAsync();
+        foreach (var c in nuevas.Where(c => c.Modalidad == "FINANCIADA"))
+            await CafeComodatoSaldoService.RecalcularAsync(_db, c.Id);
+
+        foreach (var c in nuevas)
+            await _audit.LogAsync("CafeComodato", c.Id.ToString(), "CREATE",
+                $"{c.Modalidad} #{c.Id} para cliente {clientes[c.ClienteId]} (cargar varias)");
+        return Ok(new { creadas = nuevas.Count, quedan });
+    }
+
+    private async Task GuardarBorradorAsync(List<CargaFila> filas)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(filas);
+        var fila = await _db.AppSettings.FindAsync(KeyBorrador);
+        if (fila is null)
+            _db.AppSettings.Add(new AppSetting { Key = KeyBorrador, Value = json, UpdatedAt = DateTime.UtcNow });
+        else { fila.Value = json; fila.UpdatedAt = DateTime.UtcNow; }
+    }
+
+    /// <summary>Arranque: los 35 renglones que pasó el 23/09 (planilla del 06/10), con el N° de cliente
+    /// (Codigo de la pantalla de Clientes) donde se pudo identificar y la duda donde no.</summary>
+    private async Task<List<CargaFila>> FilasInicialesAsync()
+    {
+        var porCodigo = (await _db.CafeClientes.AsNoTracking()
+                .Where(c => c.IsActive && c.Codigo != null)
+                .Select(c => new { c.Id, c.Codigo })
+                .ToListAsync())
+            .Select(c => new { c.Id, Num = int.TryParse(c.Codigo, out var n) ? n : (int?)null })
+            .Where(c => c.Num != null)
+            .GroupBy(c => c.Num!.Value)
+            .ToDictionary(g => g.Key, g => g.First().Id);
+
+        return ListaInicial.Select((x, i) =>
+        {
+            int? cid = x.Codigo is int cod && porCodigo.TryGetValue(cod, out var id) ? id : null;
+            var duda = x.Duda ?? (x.Codigo is int c2 && cid is null ? $"El N° {c2} de la planilla no está en el sistema." : null);
+            return new CargaFila($"i{i}", x.Anotado, duda, cid, "COMODATO", "ARS", null, null, null, null, null);
+        }).ToList();
+    }
+
+    private static readonly (int? Codigo, string Anotado, string? Duda)[] ListaInicial =
+    {
+        (null, "Fondo de la lengua 545 Martinez s24n", "Hay 3 fichas: 0113 Alejandro D'Aurizio · 1284 Lucas Lissarrague · 4642 Fondo de la Legua 545 Leva."),
+        (4097, "Domínguez 3021 lsm", null),
+        (null, "Olavarría s24v", "Hay más de 10 clientes en calle Olavarría."),
+        (null, "Marino reventa Brunet", "Candidatos: 6757 Bar Marino · 6758 Marino Góndola. ¿Qué significa 'reventa'?"),
+        (3219, "Bouchard 660 s24n", null),
+        (8660, "Talcahuano 1131 lsm", null),
+        (2291, "Carabobo 489 s24n", null),
+        (3217, "Bouchard 1731 s24n", null),
+        (8854, "Vernet 2580 s24n", null),
+        (3221, "Lucio s24n", null),
+        (9159, "Boulevard 1719 monaco", null),
+        (8299, "Churrería Santa s24n", null),
+        (9259, "Despacho Mónaco ?", "Anotaste '?': confirmá la máquina."),
+        (7967, "Rebizo Rilo*", "¿Qué significa el asterisco?"),
+        (null, "Facultad Burzaco Rilo", "¿Es 3195 Universidad Brown (Blas Parera 132, Burzaco)?"),
+        (9092, "Saenz 902 lsm", null),
+        (249, "Madrid 355 s24v", null),
+        (null, "Lavadero Liniers s24v", "2 fichas: 5944 Lavadero Liniers Temperley / Caio · 6889 Matías Lavadero Liniers."),
+        (9129, "Esteban Echeverría 290 molino lagorio", null),
+        (9160, "Alvear 355 simonelli", null),
+        (4828, "Santamarina 401 Brasilia", null),
+        (9131, "RPM s24v", null),
+        (null, "Geci boulevard mlnx", "2 fichas de Geci: 4825 Gerardo de Geci · 7119 Adrián AMG Geci (Bvard Vidal 739)."),
+        (null, "Geci santamarina s24n", "2 fichas de Geci: 4825 o 7119."),
+        (null, "Geci Canning mlnx", "2 fichas de Geci: 4825 o 7119."),
+        (null, "Charo Dreyer s24n", "¿Es 9226 Carolina Cazenave (Dreyer 4191, Canning)? ¿O la Charo de Rebizo (7967)?"),
+        (9250, "Lavadero Lujan canning Mónaco", null),
+        (9246, "Pte Perón 120 Mónaco", null),
+        (5881, "Lasalle 108 s24n", null),
+        (null, "Gadini 264 s24n", "No está en el sistema: si no existe, hay que darlo de alta en Clientes."),
+        (1122, "Ramos mejia 257 reventa criollo", "¿Qué significa 'reventa'? ¿Es financiada?"),
+        (77, "Rucci 47 Guernica s24v", null),
+        (null, "Autos locos Adrogué lsm", "2 fichas: 3066 Autos Locos Av. Espora · 5152 Autos Locos H. Yrigoyen 12590."),
+        (9248, "Perón 3747 polvorines s24v", null),
+        (9164, "Solano Juan Simonelli*", "¿Qué significa el asterisco?"),
+    };
+
     /// <summary>Cuantos comodatos tiene un cliente — para mostrar el iconito ☕ en el listado.</summary>
     [HttpGet("cliente/{clienteId:int}/count")]
     public async Task<IActionResult> CountByCliente(int clienteId)
