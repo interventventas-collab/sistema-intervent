@@ -7,95 +7,149 @@
 <meta name="description" content="Frikaf Coffee. Café de especialidad, insumos para tu negocio y productos para tu casa, más barato que en MercadoLibre. Pedidos por WhatsApp.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- 2026-09-28: tienda por marcas. Los productos salen de catalogo.json, que genera
-     scripts/generar_catalogo_frikaf.py desde la base (precio siempre por 1 unidad). -->
+     scripts/generar_catalogo_frikaf.py desde la base (precio siempre por 1 unidad).
+     2026-10-29: rediseño negro + amarillo (colores de las bolsas Frikaf), estilo de las
+     referencias que eligio el dueño. Fotos de ambiente en img/ (Unsplash, uso libre). -->
 <style>
-:root{--bg:#faf8f5;--ink:#2a1f18;--mute:#7a6e66;--line:#ebe5de;--acc:#b8864b;--ok:#1f7a4d;--wa:#25d366}
+:root{--ink:#111;--y:#ffc629;--gray:#f2f1ee;--mute:#6b6b6b;--line:#e6e4df;--ok:#0f8a4b;--wa:#25d366}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Inter,sans-serif;background:var(--bg);color:var(--ink);font-size:15px}
-button{font-family:inherit}
-header{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--line)}
-.bar{max-width:1200px;margin:auto;display:flex;align-items:center;gap:14px;padding:12px 20px}
+body{font-family:Inter,sans-serif;color:var(--ink);background:#fff;font-size:15px}
+button{font-family:inherit;cursor:pointer}
+.D{font-family:'Big Shoulders Display',sans-serif;text-transform:uppercase;letter-spacing:.5px}
+.marq{background:var(--ink);color:#fff;font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;overflow:hidden;white-space:nowrap;padding:9px 0}
+.marq div{display:inline-block;animation:mq 40s linear infinite}
+.marq span{display:inline-block;padding-right:60px}
+.marq b{color:var(--y)}
+@keyframes mq{to{transform:translateX(-50%)}}
+header{position:sticky;top:0;z-index:5;background:#fff}
+.bar{max-width:1280px;margin:auto;display:flex;align-items:center;gap:24px;padding:14px 24px}
 .logo{cursor:pointer;display:flex;align-items:center;min-width:90px}
-.logo img{height:46px;max-width:140px;object-fit:contain}
-.logo .txt{font-family:'Playfair Display',serif;font-size:24px;font-weight:700;letter-spacing:1px;line-height:1}
-.logo .txt small{display:block;font-family:Inter;font-size:9px;letter-spacing:4px;color:var(--mute)}
-.dd{position:relative}
-.ddb{border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:999px;padding:10px 16px;font-weight:600;cursor:pointer;font-size:14px;white-space:nowrap}
-.panel{display:none;position:absolute;top:48px;left:0;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.12);padding:16px;width:640px;max-width:calc(100vw - 32px)}
+.logo img{height:50px;max-width:150px;object-fit:contain}
+.logo .txt{font-family:'Big Shoulders Display';font-weight:900;font-size:34px;line-height:.8;letter-spacing:1px}
+.logo .txt small{display:block;font-size:13px;letter-spacing:6px;font-weight:800}
+.search{flex:1;display:flex;align-items:center;gap:10px;background:var(--gray);padding:0 16px;max-width:620px;margin:0 auto}
+.search input{border:0;outline:0;flex:1;padding:13px 0;font-size:14px;background:transparent;font-family:inherit;min-width:0}
+.cart{border:0;background:var(--y);font-weight:700;font-size:14px;padding:12px 18px;white-space:nowrap}
+.cart b{background:var(--ink);color:var(--y);border-radius:999px;padding:1px 7px;font-size:12px;margin-left:6px}
+nav{background:var(--ink);position:relative}
+nav .in{max-width:1280px;margin:auto;display:flex;gap:30px;padding:0 24px;overflow-x:auto;scrollbar-width:none}
+nav .it{color:#fff;font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;padding:14px 0;white-space:nowrap;border-bottom:3px solid transparent;cursor:pointer;background:none;border-top:0;border-left:0;border-right:0}
+nav .it.on{border-bottom-color:var(--y);color:var(--y)}
+nav .it.mar{color:var(--y)}
+.panel{display:none;position:absolute;top:100%;left:max(16px,calc((100vw - 1280px)/2 + 24px));background:#fff;border:1px solid var(--line);box-shadow:0 18px 50px rgba(0,0,0,.18);padding:18px;width:680px;max-width:calc(100vw - 32px);z-index:6}
 .panel.open{display:block}
-.panel input{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:12px;font-family:inherit}
+.panel input{width:100%;border:0;background:var(--gray);padding:12px 14px;font-size:14px;margin-bottom:12px;font-family:inherit;outline:0}
 .cols{columns:3;column-gap:18px;max-height:60vh;overflow:auto}
-.bi{display:flex;justify-content:space-between;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:14px;break-inside:avoid}
-.bi:hover{background:var(--bg)}
+.bi{display:flex;justify-content:space-between;padding:7px 8px;cursor:pointer;font-size:14px;break-inside:avoid}
+.bi:hover{background:var(--y)}
 .bi span{color:var(--mute);font-size:12px}
-.letra{font-size:11px;color:var(--acc);font-weight:700;margin:8px 8px 2px;break-after:avoid}
-.search{flex:1;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:0 16px;background:#fff}
-.search input{border:0;outline:0;flex:1;padding:10px 0;font-size:14px;background:transparent;font-family:inherit;min-width:0}
-.cart{border:1px solid var(--line);border-radius:999px;padding:9px 16px;font-weight:600;cursor:pointer;white-space:nowrap;background:#fff}
-.cart b{background:var(--ink);color:#fff;border-radius:999px;padding:1px 7px;font-size:12px;margin-left:6px}
-.cats{max-width:1200px;margin:auto;display:flex;gap:8px;padding:0 20px 12px;overflow-x:auto;scrollbar-width:none}
-.chip{white-space:nowrap;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;font-size:14px;cursor:pointer}
-.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-main{max-width:1200px;margin:auto;padding:0 20px 60px}
-.hero{padding:30px 0 6px}
-.hero .eb{font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--acc);font-weight:600}
-.hero h1{font-family:'Playfair Display',serif;font-size:40px;line-height:1.08;margin-top:8px}
-.hero h1 i{color:var(--acc)}
-.hero p{color:var(--mute);margin-top:10px;font-size:16px}
-h2{font-size:22px;margin:30px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-h2 .x{font-size:13px;font-weight:500;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:3px 10px;cursor:pointer;background:#fff}
-.sub{color:var(--mute);font-size:14px;margin-bottom:16px}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-.p{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;min-width:0}
-.p .img{height:150px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
-.p .img img{max-height:150px;max-width:100%;object-fit:contain}
+.letra{font-family:'Big Shoulders Display';font-size:18px;font-weight:900;margin:8px 8px 2px;break-after:avoid}
+/* portada */
+.hero{position:relative;height:560px;background:#1b1410 url('img/portada-tostadora.jpg') center/cover;color:#fff;overflow:hidden}
+.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.85) 0%,rgba(0,0,0,.55) 45%,rgba(0,0,0,.1) 100%)}
+.hero .in{position:relative;z-index:1;max-width:1280px;margin:auto;height:100%;display:flex;align-items:center;justify-content:space-between;gap:30px;padding:0 24px}
+.hero .eb{display:inline-block;background:var(--y);color:var(--ink);font-weight:700;font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:6px 12px}
+.hero h1{font-size:104px;line-height:.86;margin-top:18px;font-weight:900}
+.hero h1 em{font-style:normal;color:var(--y)}
+.hero p{font-size:18px;margin-top:20px;max-width:470px;color:#e9e4df;line-height:1.5}
+.hero .bt{display:flex;gap:12px;margin-top:30px}
+.by{background:var(--y);color:var(--ink);font-weight:800;padding:16px 26px;text-decoration:none;font-size:14px;letter-spacing:1px;text-transform:uppercase;border:0}
+.bo{border:2px solid #fff;color:#fff;font-weight:800;padding:14px 24px;text-decoration:none;font-size:14px;letter-spacing:1px;text-transform:uppercase}
+.hero .bag{flex:none;width:330px;height:420px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5);position:relative;cursor:pointer}
+.hero .bag img{width:100%;height:100%;object-fit:contain;transform:scale(1.6)}
+.hero .bag .tag{position:absolute;right:0;bottom:24px;background:var(--y);color:var(--ink);padding:10px 16px;font-family:'Big Shoulders Display';font-weight:900;font-size:30px;line-height:1}
+.hero .bag .tag small{display:block;font-family:Inter;font-size:11px;font-weight:600}
+.ben{max-width:1280px;margin:auto;display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--line)}
+.ben>div{padding:26px 24px;display:flex;gap:14px;align-items:center;border-right:1px solid var(--line)}
+.ben>div:last-child{border:0}
+.ben i{font-style:normal;font-size:26px;width:52px;height:52px;background:var(--y);display:flex;align-items:center;justify-content:center;flex:none}
+.ben b{display:block;font-size:15px}
+.ben span{font-size:13px;color:var(--mute)}
+.fila{max-width:1280px;margin:auto;display:grid;grid-template-columns:260px 1fr;gap:28px;padding:56px 24px}
+.wrapg{background:var(--gray)}
+.fila h2{font-size:58px;line-height:.9;font-weight:900}
+.fila h2 em{font-style:normal;background:var(--y);padding:0 6px}
+.lead{color:var(--mute);margin-top:14px;font-size:14px;line-height:1.5}
+.ver{display:inline-block;margin-top:18px;font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--ink);border:0;border-bottom:2px solid var(--y);background:none;padding:0 0 2px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:28px 18px}
+.p{display:flex;flex-direction:column;min-width:0}
+.p .img{position:relative;background:var(--gray);aspect-ratio:4/5;display:flex;align-items:center;justify-content:center;padding:22px;overflow:hidden;margin-bottom:12px}
+.wrapg .p .img{background:#fff}
+.p .img img{max-width:100%;max-height:100%;object-fit:contain;mix-blend-mode:multiply}
+.p .img.z img{transform:scale(1.9)}
 .p .img .ph{font-size:12px;color:var(--mute)}
-.p .mk{font-size:12px;color:var(--mute);display:flex;justify-content:space-between;gap:6px}
-.p .mk a{cursor:pointer;text-decoration:underline}
-.p .mk em{font-style:normal;color:var(--acc);font-weight:600;white-space:nowrap}
-.p h3{font-size:14px;font-weight:500;margin:4px 0 10px;min-height:38px;line-height:1.35;overflow-wrap:anywhere}
-.ml{font-size:12px;color:var(--mute);min-height:15px}
-.precio{font-size:22px;font-weight:700;margin-top:2px}
-.precio small{font-size:13px;font-weight:500;color:var(--mute);margin-left:4px}
-.consulta{font-size:16px;font-weight:600;margin-top:2px;color:var(--mute)}
-.ahorro{font-size:12px;color:var(--ok);font-weight:600;margin:2px 0 12px;min-height:15px}
-.add{margin-top:auto;border:0;background:var(--ink);color:#fff;border-radius:10px;padding:10px;font-weight:600;cursor:pointer}
-.add.wa{background:#fff;color:var(--ink);border:1px solid var(--ink)}
-.mas{display:block;margin:24px auto 0;border:1px solid var(--ink);background:#fff;border-radius:10px;padding:12px 24px;font-weight:600;cursor:pointer}
+.p .bdg{position:absolute;top:10px;left:10px;right:10px;display:flex;flex-wrap:wrap;gap:6px;z-index:1}
+.p .bdg span{font-size:11px;font-weight:700;padding:5px 8px}
+.p .off{background:var(--ink);color:#fff}
+.p .star{background:var(--y);color:var(--ink)}
+.p .mk{font-size:11px;color:var(--mute);font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer}
+.p .mk:hover{text-decoration:underline}
+.p h3{font-size:14px;font-weight:600;margin:4px 0 8px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:38px;overflow-wrap:anywhere}
+.precio{font-size:19px;font-weight:700}
+.precio s{font-size:13px;color:var(--mute);font-weight:400;margin-left:6px}
+.consulta{font-size:16px;font-weight:700;color:var(--mute)}
+.uni{font-size:12px;color:var(--mute);margin-top:1px;min-height:15px}
+.aho{font-size:12px;color:var(--ok);font-weight:600;margin-top:2px;min-height:15px}
+.add{margin-top:12px;align-self:flex-start;border:0;background:var(--y);font-weight:700;font-size:13px;padding:10px 22px;letter-spacing:.5px}
+.add.cons{background:var(--ink);color:#fff}
+.split{display:grid;grid-template-columns:1fr 1fr;min-height:420px}
+.split .tx{background:var(--y);padding:60px 64px;display:flex;flex-direction:column;justify-content:center}
+.split .k{font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase}
+.split h2{font-size:84px;line-height:.86;font-weight:900;margin-top:10px}
+.split p{margin-top:16px;font-size:16px;line-height:1.5;max-width:440px}
+.split .tx button{align-self:flex-start;margin-top:26px;background:var(--ink);color:#fff;font-weight:800;padding:16px 26px;border:0;font-size:14px;letter-spacing:1px;text-transform:uppercase}
+.split .ph{background:url('img/cafeteria-tazas.jpg') center/cover}
+.marcas{max-width:1280px;margin:auto;padding:50px 24px;text-align:center}
+.marcas h3{font-size:30px;font-weight:900}
+.marcas .l{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;margin-top:22px}
+.marcas .l button{width:96px;height:96px;border-radius:50%;background:var(--ink);color:#fff;border:0;display:flex;align-items:center;justify-content:center;font-family:'Big Shoulders Display';font-weight:800;font-size:16px;text-transform:uppercase;line-height:1;padding:6px}
+.marcas .l button:hover{background:var(--y);color:var(--ink)}
+/* resultados (categoria, marca o busqueda) */
+.res{max-width:1280px;margin:auto;padding:40px 24px 60px}
+.res h2{font-size:56px;line-height:.9;font-weight:900;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.res h2 .x{font-family:Inter;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;background:var(--gray);border:0;padding:7px 12px}
+.res .sub{color:var(--mute);font-size:14px;margin:10px 0 26px}
+.mas{display:block;margin:34px auto 0;border:2px solid var(--ink);background:#fff;padding:14px 30px;font-weight:800;letter-spacing:1px;text-transform:uppercase;font-size:13px}
 .vacio{grid-column:1/-1;text-align:center;color:var(--mute);padding:40px 0}
-footer{border-top:1px solid var(--line);background:#fff;padding:28px 20px;text-align:center;color:var(--mute);font-size:14px;line-height:1.8}
-footer a{color:var(--ink);font-weight:600;text-decoration:none;margin:0 8px}
-.drawer{position:fixed;top:0;right:-400px;width:380px;max-width:100vw;height:100%;background:#fff;border-left:1px solid var(--line);z-index:10;transition:right .25s;padding:20px;display:flex;flex-direction:column;gap:12px}
-.drawer.open{right:0}
-.drawer h3{font-size:20px}
+.wasec{position:relative;background:#111 url('img/granos.jpg') center/cover;color:#fff;text-align:center;padding:80px 24px}
+.wasec:before{content:"";position:absolute;inset:0;background:rgba(0,0,0,.72)}
+.wasec *{position:relative}
+.wasec h2{font-size:72px;font-weight:900;line-height:.9}
+.wasec h2 em{font-style:normal;color:var(--y)}
+.wasec p{margin-top:14px;font-size:17px;color:#ddd}
+.wasec a{display:inline-block;margin-top:26px;background:var(--wa);color:#fff;font-weight:800;padding:17px 30px;text-decoration:none;letter-spacing:1px;text-transform:uppercase;font-size:14px}
+footer{background:var(--ink);color:#aaa;padding:30px 24px;text-align:center;font-size:13px;line-height:1.8}
+footer #fnom{color:#fff;font-weight:700}
+footer a{color:#fff;font-weight:600;text-decoration:none;margin:0 8px}
+.drawer{position:fixed;top:0;right:-420px;width:400px;max-width:100vw;height:100%;background:#fff;z-index:10;transition:right .25s;padding:22px;display:flex;flex-direction:column;gap:12px}
+.drawer.open{right:0;box-shadow:-20px 0 60px rgba(0,0,0,.2)}
+.drawer h3{font-size:40px;font-weight:900;line-height:1}
 #lineas{overflow:auto;flex:1}
-.linea{display:flex;align-items:center;gap:10px;font-size:14px;border-bottom:1px solid var(--line);padding:10px 0}
+.linea{display:flex;align-items:center;gap:10px;font-size:14px;border-bottom:1px solid var(--line);padding:12px 0}
 .linea .nm{flex:1;min-width:0}
 .linea .nm small{display:block;color:var(--mute)}
-.qty{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px}
-.qty button{border:0;background:none;width:28px;height:28px;cursor:pointer;font-size:16px}
-.qty span{min-width:22px;text-align:center;font-weight:600}
-.tot{font-size:20px;font-weight:700;display:flex;justify-content:space-between}
-.btn{border-radius:10px;padding:14px;font-weight:600;text-align:center;cursor:pointer;border:0;font-size:15px}
+.qty{display:flex;align-items:center;background:var(--gray)}
+.qty button{border:0;background:none;width:30px;height:30px;font-size:16px}
+.qty span{min-width:22px;text-align:center;font-weight:700}
+.tot{font-size:22px;font-weight:800;display:flex;justify-content:space-between}
+.btn{padding:16px;font-weight:800;text-align:center;border:0;font-size:14px;letter-spacing:1px;text-transform:uppercase}
 .btn.wa{background:var(--wa);color:#fff}
 .btn:disabled{opacity:.4;cursor:default}
-.cx{align-self:flex-end;cursor:pointer;color:var(--mute);background:none;border:0;font-size:14px}
+.cx{align-self:flex-end;color:var(--mute);background:none;border:0;font-size:14px}
 .nota{font-size:12px;color:var(--mute);text-align:center}
-.fab{position:fixed;right:20px;bottom:20px;width:58px;height:58px;border-radius:50%;background:var(--wa);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.2);z-index:4}
-@media(max-width:900px){.grid{grid-template-columns:repeat(3,1fr)}}
+.fab{position:fixed;right:20px;bottom:20px;width:58px;height:58px;border-radius:50%;background:var(--wa);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:4}
+@media(max-width:900px){.fila{grid-template-columns:1fr}.grid{grid-template-columns:repeat(3,1fr)}.split{grid-template-columns:1fr}.split .ph{min-height:260px}.hero .bag{display:none}.ben{grid-template-columns:1fr}.ben>div{border-right:0;border-bottom:1px solid var(--line)}}
 @media(max-width:700px){
-  .bar{flex-wrap:wrap;padding:10px 16px;gap:10px}
-  .search{order:5;flex-basis:100%}
-  .cart{margin-left:auto}
-  .cats{padding:0 16px 10px}
-  main{padding:0 16px 60px}
-  .grid{grid-template-columns:repeat(2,1fr);gap:10px}
-  .p{padding:10px}.p .img{height:110px}.p .img img{max-height:110px}
-  .precio{font-size:18px}
-  .hero h1{font-size:28px}
-  .cols{columns:2}
+  .bar{flex-wrap:wrap;gap:10px;padding:10px 16px}.search{order:5;flex-basis:100%}.cart{margin-left:auto}
+  nav .in{padding:0 16px;gap:22px}.cols{columns:2}
+  .hero{height:auto;padding:50px 0}.hero .in{padding:0 18px}.hero h1{font-size:64px}.hero p{font-size:16px}.hero .bt{flex-direction:column;align-items:flex-start}
+  .fila{padding:40px 16px;gap:18px}.fila h2{font-size:46px}.grid{grid-template-columns:repeat(2,1fr);gap:22px 12px}
+  .p .img{padding:14px}.precio{font-size:17px}.add{padding:10px 16px}
+  .split .tx{padding:40px 22px}.split h2{font-size:58px}
+  .res{padding:28px 16px 40px}.res h2{font-size:42px}
+  .wasec h2{font-size:48px}.marcas .l button{width:76px;height:76px;font-size:14px}
 }
 </style>
 <!-- Meta Pixel Code -->
@@ -117,32 +171,72 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 <!-- End Meta Pixel Code -->
 </head>
 <body>
+<div class="marq"><div id="marq"></div></div>
 <header>
   <div class="bar">
     <div class="logo" id="logo" onclick="reset()"><div class="txt">FRIKAF<small>COFFEE</small></div></div>
-    <div class="dd">
-      <button class="ddb" onclick="tg(event)">Marcas ▾</button>
-      <div class="panel" id="panel" onclick="event.stopPropagation()">
-        <input id="bq" placeholder="Buscar marca…" oninput="drawBrands()">
-        <div class="cols" id="blist"></div>
-      </div>
-    </div>
-    <div class="search">🔍<input id="q" placeholder="Buscá café, vasos, sillas, discos…" oninput="sel.q=this.value;lim=24;draw()"></div>
-    <button class="cart" onclick="dr(true)">Mi pedido <b id="n">0</b></button>
+    <div class="search">🔍<input id="q" placeholder="Buscá café, vasos, sillas, discos…" oninput="sel={c:null,m:null,q:this.value};lim=24;draw()"></div>
+    <button class="cart" onclick="dr(true)">CARRITO <b id="n">0</b></button>
   </div>
-  <div class="cats" id="cats"></div>
+  <nav>
+    <div class="in" id="cats"></div>
+    <div class="panel" id="panel" onclick="event.stopPropagation()">
+      <input id="bq" placeholder="Buscar marca…" oninput="drawBrands()">
+      <div class="cols" id="blist"></div>
+    </div>
+  </nav>
 </header>
-<main>
-  <section class="hero" id="hero">
-    <div class="eb" id="eyebrow">Café de especialidad — Argentina</div>
-    <h1>Todo para tu café, tu negocio y tu casa,<br><i>más barato que en MercadoLibre.</i></h1>
-    <p>Comprando acá directo te ahorrás la comisión. Precios siempre por unidad.</p>
+
+<div id="home">
+  <section class="hero">
+    <div class="in">
+      <div>
+        <span class="eb" id="eyebrow">Café de especialidad · Argentina</span>
+        <h1 class="D">Tostado<br>por <em>nosotros.</em></h1>
+        <p>Café en grano y molido, y todo lo que necesita tu cafetería, tu negocio o tu casa. Directo de nosotros, sin la comisión de MercadoLibre.</p>
+        <div class="bt"><button class="by" onclick="pickCat('Café')">Ver nuestros cafés</button><a class="bo" id="hwa" target="_blank" rel="noopener">Pedir por WhatsApp</a></div>
+      </div>
+      <div class="bag" id="bag"></div>
+    </div>
   </section>
-  <h2 id="tit">Cargando productos…</h2>
+  <div class="ben">
+    <div><i>💲</i><p><b>Más barato que en MercadoLibre</b><span>Comprando directo te ahorrás la comisión.</span></p></div>
+    <div><i>☕</i><p><b id="bcafe">Nuestros cafés</b><span>Blends y cafés de origen tostados por Frikaf.</span></p></div>
+    <div><i>💬</i><p><b>Pedido por WhatsApp</b><span>Armás el pedido y coordinamos pago y entrega.</span></p></div>
+  </div>
+  <section class="fila">
+    <div><h2 class="D">Nuestro<br><em>café</em></h2><p class="lead">Blends y cafés de origen, tostados por Frikaf. Precio por kilo.</p><button class="ver" id="vcafe" onclick="pickCat('Café')">Ver todos los cafés →</button></div>
+    <div class="grid" id="gcafe"></div>
+  </section>
+  <div class="split">
+    <div class="tx"><span class="k">Para tu negocio</span><h2 class="D">Todo para<br>tu cafetería</h2>
+      <p>Vasos, tapas, azúcar y edulcorante, galletitas e insumos para la máquina. Precio siempre por unidad.</p>
+      <button onclick="pickCat('Vasos y descartables')">Ver insumos</button></div>
+    <div class="ph"></div>
+  </div>
+  <div class="wrapg"><section class="fila">
+    <div><h2 class="D">Insumos<br><em>cafetería</em></h2><p class="lead">Lo que más nos piden bares y cafeterías.</p><button class="ver" onclick="pickCat('Vasos y descartables')">Ver vasos y descartables →</button></div>
+    <div class="grid" id="gbar"></div>
+  </section></div>
+  <section class="fila">
+    <div><h2 class="D">Lo más<br><em>pedido</em></h2><p class="lead">Hogar, muebles, herramientas y más.</p><button class="ver" onclick="tgBtn(event)">Ver todas las marcas →</button></div>
+    <div class="grid" id="gtop"></div>
+  </section>
+  <div class="marcas"><h3 class="D" id="tmar">Nuestras marcas</h3><div class="l" id="marcas"></div></div>
+</div>
+
+<section class="res" id="res" style="display:none">
+  <h2 class="D" id="tit"></h2>
   <div class="sub" id="subt"></div>
   <div class="grid" id="grid"></div>
   <button class="mas" id="mas" style="display:none" onclick="lim+=24;draw()">Ver más</button>
-</main>
+</section>
+
+<section class="wasec">
+  <h2 class="D">¿No lo <em>encontrás?</em></h2>
+  <p id="watxt">Escribinos y te lo conseguimos.</p>
+  <a id="wabtn" target="_blank" rel="noopener">Escribir por WhatsApp</a>
+</section>
 <footer>
   <div id="fnom">Frikaf Coffee</div>
   <div id="flinks"></div>
@@ -155,7 +249,7 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 </a>
 <div class="drawer" id="drawer">
   <button class="cx" onclick="dr(false)">cerrar ✕</button>
-  <h3>Mi pedido</h3>
+  <h3 class="D">Mi pedido</h3>
   <div id="lineas"></div>
   <div class="tot"><span>Total</span><span id="tot">$0</span></div>
   <button class="btn wa" id="enviar" onclick="enviar()">Mandar pedido por WhatsApp</button>
@@ -165,10 +259,14 @@ src="https://www.facebook.com/tr?id=1751531035177961&ev=PageView&noscript=1"
 let P=[],WA='5491122525458',sel={c:null,m:null,q:''},lim=24,cart=[];
 let vendM={},cntM={},topM={},cats=[];
 const f=n=>'$'+Math.round(n).toLocaleString('es-AR');
+const nf=n=>n.toLocaleString('es-AR');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const waLink=t=>'https://wa.me/'+WA+'?text='+encodeURIComponent(t);
+const $=id=>document.getElementById(id);
 try{cart=JSON.parse(localStorage.getItem('fk_pedido')||'[]')}catch(e){cart=[]}
 function guardar(){try{localStorage.setItem('fk_pedido',JSON.stringify(cart))}catch(e){}}
+const mq='<span>☕ <b>Más barato que en MercadoLibre</b> · Precio siempre por unidad · Pedí por WhatsApp</span>';
+$('marq').innerHTML=mq.repeat(6);
 
 function preparar(){
   vendM={};cntM={};topM={};
@@ -179,53 +277,80 @@ function preparar(){
   const vc={};P.forEach(x=>vc[x.c]=(vc[x.c]||0)+x.v);
   cats=['Todo',...Object.keys(vc).filter(c=>c!='Otros').sort((a,b)=>vc[b]-vc[a]),...(vc['Otros']!=null?['Otros']:[])];
 }
-function tg(e){e.stopPropagation();document.getElementById('panel').classList.toggle('open');drawBrands();document.getElementById('bq').focus()}
-document.addEventListener('click',()=>document.getElementById('panel').classList.remove('open'));
+function tg(e){e.stopPropagation();$('panel').classList.toggle('open');drawBrands();$('bq').focus()}
+function tgBtn(e){scrollTo(0,0);tg(e)}
+document.addEventListener('click',()=>$('panel').classList.remove('open'));
 function drawBrands(){
-  const q=document.getElementById('bq').value.toLowerCase();
+  const q=$('bq').value.toLowerCase();
   const ms=Object.keys(cntM).filter(m=>m.toLowerCase().includes(q)).sort((a,b)=>a.localeCompare(b,'es'));
   let h='',L='';
   ms.forEach(m=>{const l=m[0].toUpperCase();if(l!=L){h+=`<div class="letra">${esc(l)}</div>`;L=l}
     h+=`<div class="bi" data-m="${esc(m)}">${esc(m)}<span>${cntM[m]}</span></div>`});
-  const bl=document.getElementById('blist');
+  const bl=$('blist');
   bl.innerHTML=h||'<div class="sub">No hay marcas con ese nombre.</div>';
   bl.querySelectorAll('.bi').forEach(el=>el.onclick=()=>pick(el.dataset.m));
 }
-function pick(m){sel={c:null,m,q:''};document.getElementById('q').value='';lim=24;document.getElementById('panel').classList.remove('open');draw();scrollTo(0,0)}
-function pickCat(c){sel={c:c=='Todo'?null:c,m:null,q:''};document.getElementById('q').value='';lim=24;draw()}
-function reset(){pickCat('Todo');scrollTo(0,0)}
+function pick(m){sel={c:null,m,q:''};$('q').value='';lim=24;$('panel').classList.remove('open');draw();scrollTo(0,0)}
+function pickCat(c){sel={c:c=='Todo'?null:c,m:null,q:''};$('q').value='';lim=24;draw();scrollTo(0,0)}
+function reset(){pickCat('Todo')}
 function card(x,star){
-  const aho=x.p&&x.ml?x.ml-x.p:0;
+  const aho=x.p&&x.ml&&x.ml>x.p?x.ml-x.p:0,pct=aho?Math.round(aho/x.ml*100):0;
   const precio=x.p
-    ?`<div class="ml">${x.ml?`En MercadoLibre <s>${f(x.ml)}</s> c/u`:''}</div><div class="precio">${f(x.p)}<small>c/u${x.k?' · '+x.k:''}</small></div><div class="ahorro">${aho>0?'Ahorrás '+f(aho)+' por unidad':''}</div><button class="add" data-add="${x.id}">Agregar</button>`
-    :`<div class="ml"></div><div class="consulta">Consultá precio</div><div class="ahorro"></div><button class="add wa" data-cons="${x.id}">Consultar por WhatsApp</button>`;
+    ?`<div class="precio">${f(x.p)}${aho?`<s>${f(x.ml)}</s>`:''}</div><div class="uni">por unidad${x.k?' · '+esc(x.k):''}</div><div class="aho">${aho?'Ahorrás '+f(aho):''}</div><button class="add" data-add="${x.id}">Agregar</button>`
+    :`<div class="consulta">Consultá precio</div><div class="uni"></div><div class="aho"></div><button class="add cons" data-cons="${x.id}">Consultar por WhatsApp</button>`;
   return `<div class="p">
- <div class="img">${x.img?`<img loading="lazy" src="${esc(x.img)}" alt="${esc(x.n)}">`:'<span class="ph">sin foto</span>'}</div>
- <div class="mk"><a data-m="${esc(x.m)}">${esc(x.m)}</a>${star?'<em>★ el más vendido</em>':''}</div>
+ <div class="img${x.c=='Café'&&x.m=='Frikaf'?' z':''}">${pct>=5||star?`<div class="bdg">${pct>=5?`<span class="off">−${pct}% vs MeLi</span>`:''}${star?'<span class="star">★ Más vendido</span>':''}</div>`:''}${x.img?`<img loading="lazy" src="${esc(x.img)}" alt="${esc(x.n)}">`:'<span class="ph">sin foto</span>'}</div>
+ <div class="mk" data-m="${esc(x.m)}">${esc(x.m)}</div>
  <h3>${esc(x.n)}</h3>${precio}</div>`}
-function draw(){
-  document.getElementById('cats').innerHTML=cats.map(c=>`<span class="chip ${(sel.c||'Todo')==c&&!sel.m&&!sel.q?'on':''}" data-c="${esc(c)}">${esc(c)}</span>`).join('');
-  document.querySelectorAll('#cats .chip').forEach(el=>el.onclick=()=>pickCat(el.dataset.c));
-  const q=sel.q.toLowerCase().trim();
-  let L,tit,sub,stars=true;
-  const ord=(a,b)=>(!!b.p-!!a.p)||(b.v-a.v);
-  if(sel.m){L=P.filter(x=>x.m==sel.m).sort(ord);tit=`${esc(sel.m)} <span class="x" onclick="reset()">✕ quitar marca</span>`;sub=`${cntM[sel.m]} productos · ordenados por lo que más se vende`;stars=false}
-  else if(q){const ws=q.split(/\s+/);L=P.filter(x=>{const t=(x.n+' '+x.m+' '+x.sku).toLowerCase();return ws.every(w=>t.includes(w))}).sort(ord);tit=`Resultados para “${esc(sel.q)}”`;sub=`${L.length} productos`;stars=false}
-  else if(sel.c){const tc={};P.filter(x=>x.c==sel.c).forEach(x=>{const a=tc[x.m];if(!a||(!!x.p>!!a.p)||(!!x.p==!!a.p&&x.v>a.v))tc[x.m]=x});
-    L=Object.values(tc).sort((a,b)=>b.v-a.v);
-    const tot=P.filter(x=>x.c==sel.c).sort(ord);L=[...L,...tot.filter(x=>!L.includes(x))];
-    tit=`${esc(sel.c)}`;sub=`Primero el más vendido de cada marca, después el resto`;stars=false;
-    const tops=new Set(Object.values(tc));L._tops=tops}
-  else{L=Object.values(topM).sort((a,b)=>vendM[b.m]-vendM[a.m]);tit='Lo más vendido de cada marca';sub=`${L.length} marcas · tocá "Marcas ▾" para ver todo`}
-  document.getElementById('hero').style.display=(sel.m||q||sel.c)?'none':'';
-  document.getElementById('tit').innerHTML=tit;document.getElementById('subt').textContent=sub;
-  const first=sel.m?L[0]:null;
-  const g=document.getElementById('grid');
-  g.innerHTML=L.length?L.slice(0,lim).map(x=>card(x,stars||x===first||(L._tops&&L._tops.has(x)))).join(''):'<div class="vacio">No encontramos productos. Escribinos por WhatsApp y te ayudamos.</div>';
+function enganchar(g){
   g.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>add(+b.dataset.add));
   g.querySelectorAll('[data-cons]').forEach(b=>b.onclick=()=>{const x=P.find(p=>p.id==b.dataset.cons);window.open(waLink(`Hola! Quería consultar el precio de: ${x.n} (${x.m})`),'_blank')});
-  g.querySelectorAll('.mk a').forEach(a=>a.onclick=()=>pick(a.dataset.m));
-  document.getElementById('mas').style.display=L.length>lim?'':'none';
+  g.querySelectorAll('.mk').forEach(a=>a.onclick=()=>pick(a.dataset.m));
+}
+// Portada: elige solos los productos de cada fila (con precio y foto; los de centavos no van en la vidriera).
+function vidriera(filtro,n,unoPor){
+  const L=P.filter(x=>x.p>=90&&x.img&&filtro(x)).sort((a,b)=>b.v-a.v),out=[],vistos=new Set();
+  for(const x of L){const k=unoPor?unoPor(x):x.id;if(vistos.has(k))continue;vistos.add(k);out.push(x);if(out.length==n)break}
+  return out;
+}
+function drawHome(){
+  const cafes=P.filter(x=>x.c=='Café');
+  const nc=vidriera(x=>x.c=='Café'&&x.m=='Frikaf',4);
+  const top=nc[0];
+  if(top)$('bag').innerHTML=`<img src="${esc(top.img.replace('-I.','-O.'))}" alt="${esc(top.n)}"><div class="tag"><small>${esc(top.n)}${top.k?' · '+esc(top.k):''}</small>${f(top.p)}</div>`,$('bag').onclick=()=>pickCat('Café');
+  $('bcafe').textContent=`Más de ${Math.floor(cafes.length/10)*10} cafés`;
+  $('vcafe').textContent=`Ver los ${cafes.length} cafés →`;
+  $('gcafe').innerHTML=nc.map(x=>card(x)).join('');
+  $('gbar').innerHTML=vidriera(x=>['Vasos y descartables','Azúcar y edulcorante','Alimentos y snacks','Té e infusiones'].includes(x.c),4,x=>x.m).map(x=>card(x)).join('');
+  $('gtop').innerHTML=vidriera(x=>['Hogar y bazar','Muebles','Herramientas','Cafeteras y accesorios'].includes(x.c),4,x=>x.c).map(x=>card(x)).join('');
+  const ms=Object.keys(cntM).filter(m=>!/gen[eé]ric/i.test(m)).sort((a,b)=>vendM[b]-vendM[a]);
+  $('tmar').textContent=`Trabajamos con ${ms.length} marcas`;
+  $('marcas').innerHTML=ms.slice(0,10).map(m=>`<button data-m="${esc(m)}">${esc(m)}</button>`).join('');
+  $('marcas').querySelectorAll('button').forEach(b=>b.onclick=()=>pick(b.dataset.m));
+  $('watxt').textContent=`Tenemos más de ${nf(Math.floor(P.length/100)*100)} productos. Escribinos y te lo conseguimos.`;
+  ['gcafe','gbar','gtop'].forEach(id=>enganchar($(id)));
+}
+function draw(){
+  $('cats').innerHTML=cats.map((c,i)=>(i==1?'<button class="it mar" id="bmar">Marcas ▾</button>':'')+`<button class="it ${(sel.c||'Todo')==c&&!sel.m&&!sel.q?'on':''}" data-c="${esc(c)}">${esc(c)}</button>`).join('');
+  document.querySelectorAll('#cats [data-c]').forEach(el=>el.onclick=()=>pickCat(el.dataset.c));
+  $('bmar').onclick=tg;
+  const q=sel.q.toLowerCase().trim();
+  const enHome=!sel.m&&!q&&!sel.c;
+  $('home').style.display=enHome?'':'none';$('res').style.display=enHome?'none':'';
+  if(enHome)return;
+  let L,tit,sub,first=null,tops=null;
+  const ord=(a,b)=>(!!b.p-!!a.p)||(b.v-a.v);
+  if(sel.m){L=P.filter(x=>x.m==sel.m).sort(ord);tit=`${esc(sel.m)} <button class="x" onclick="reset()">✕ quitar marca</button>`;sub=`${cntM[sel.m]} productos · ordenados por lo que más se vende`;first=L[0]}
+  else if(q){const ws=q.split(/\s+/);L=P.filter(x=>{const t=(x.n+' '+x.m+' '+x.sku).toLowerCase();return ws.every(w=>t.includes(w))}).sort(ord);tit=`“${esc(sel.q)}”`;sub=`${L.length} productos encontrados`}
+  else{const tc={};P.filter(x=>x.c==sel.c).forEach(x=>{const a=tc[x.m];if(!a||(!!x.p>!!a.p)||(!!x.p==!!a.p&&x.v>a.v))tc[x.m]=x});
+    L=Object.values(tc).sort((a,b)=>b.v-a.v);
+    const tot=P.filter(x=>x.c==sel.c).sort(ord);L=[...L,...tot.filter(x=>!L.includes(x))];
+    tit=esc(sel.c);sub=`${tot.length} productos · primero el más vendido de cada marca`;tops=new Set(Object.values(tc))}
+  $('tit').innerHTML=tit;$('subt').textContent=sub;
+  const g=$('grid');
+  g.innerHTML=L.length?L.slice(0,lim).map(x=>card(x,x===first||(tops&&tops.has(x)))).join(''):'<div class="vacio">No encontramos productos. Escribinos por WhatsApp y te ayudamos.</div>';
+  enganchar(g);
+  $('mas').style.display=L.length>lim?'':'none';
 }
 function add(id){
   const x=P.find(p=>p.id==id);if(!x||!x.p)return;
@@ -235,14 +360,14 @@ function add(id){
 }
 function cant(id,d){const l=cart.find(c=>c.id==id);if(!l)return;l.q+=d;if(l.q<=0)cart=cart.filter(c=>c!==l);guardar();drawCart()}
 function drawCart(){
-  document.getElementById('n').textContent=cart.reduce((a,x)=>a+x.q,0);
-  const li=document.getElementById('lineas');
-  li.innerHTML=cart.length?cart.map(x=>`<div class="linea"><div class="nm">${esc(x.n)}<small>${esc(x.m)} · ${f(x.p)} c/u${x.k?' · '+x.k:''}</small></div>
+  $('n').textContent=cart.reduce((a,x)=>a+x.q,0);
+  const li=$('lineas');
+  li.innerHTML=cart.length?cart.map(x=>`<div class="linea"><div class="nm">${esc(x.n)}<small>${esc(x.m)} · ${f(x.p)} c/u${x.k?' · '+esc(x.k):''}</small></div>
     <div class="qty"><button data-d="-1" data-id="${x.id}">−</button><span>${x.q}</span><button data-d="1" data-id="${x.id}">+</button></div>
     <b>${f(x.p*x.q)}</b></div>`).join(''):'<div class="sub">Todavía no agregaste nada.</div>';
   li.querySelectorAll('.qty button').forEach(b=>b.onclick=()=>cant(+b.dataset.id,+b.dataset.d));
-  document.getElementById('tot').textContent=f(cart.reduce((a,x)=>a+x.p*x.q,0));
-  document.getElementById('enviar').disabled=!cart.length;
+  $('tot').textContent=f(cart.reduce((a,x)=>a+x.p*x.q,0));
+  $('enviar').disabled=!cart.length;
 }
 function enviar(){
   if(!cart.length)return;
@@ -251,27 +376,28 @@ function enviar(){
   try{fbq('track','InitiateCheckout',{value:tot,currency:'ARS'})}catch(e){}
   window.open(waLink(t),'_blank');
 }
-function dr(o){document.getElementById('drawer').classList.toggle('open',o)}
+function dr(o){$('drawer').classList.toggle('open',o)}
+function linksWa(){const h=waLink('Hola!');['fab','hwa','wabtn'].forEach(id=>$(id).href=h);$('fab').style.display=''}
 
 // Datos del sitio (logo, WhatsApp, redes) desde el sistema: Administracion -> Sitios.
 fetch('/api/sitios/by-host/'+location.hostname).then(r=>r.ok?r.json():null).then(s=>{
   if(!s)return;
   if(s.whatsApp)WA=s.whatsApp.replace(/\D/g,'');
-  if(s.logoUrl)document.getElementById('logo').innerHTML=`<img src="${esc(s.logoUrl)}" alt="${esc(s.nombre||'')}">`;
-  if(s.eyebrow)document.getElementById('eyebrow').textContent=s.eyebrow;
-  if(s.nombre)document.getElementById('fnom').textContent=s.nombre;
+  if(s.logoUrl)$('logo').innerHTML=`<img src="${esc(s.logoUrl)}" alt="${esc(s.nombre||'')}">`;
+  if(s.eyebrow)$('eyebrow').textContent=s.eyebrow;
+  if(s.nombre)$('fnom').textContent=s.nombre;
   let lk=`<a href="${waLink('Hola!')}" target="_blank" rel="noopener">WhatsApp</a>`;
   if(s.instagram)lk+=`<a href="${esc(s.instagram)}" target="_blank" rel="noopener">Instagram</a>`;
   if(s.facebook)lk+=`<a href="${esc(s.facebook)}" target="_blank" rel="noopener">Facebook</a>`;
-  document.getElementById('flinks').innerHTML=lk;
-}).catch(()=>{}).finally(()=>{const fb=document.getElementById('fab');fb.href=waLink('Hola!');fb.style.display=''});
+  $('flinks').innerHTML=lk;
+}).catch(()=>{}).finally(linksWa);
 
 fetch('catalogo.json',{cache:'no-cache'}).then(r=>r.json()).then(d=>{
   P=d.productos||[];
   // el carrito guardado se actualiza con los precios de hoy
   cart=cart.map(c=>{const x=P.find(p=>p.id==c.id);return x&&x.p?{...c,p:x.p,n:x.n,m:x.m,k:x.k}:null}).filter(Boolean);guardar();
-  preparar();draw();drawCart();
-}).catch(()=>{document.getElementById('tit').textContent='No pudimos cargar los productos. Escribinos por WhatsApp.'});
+  preparar();drawHome();draw();drawCart();
+}).catch(()=>{$('home').style.display='none';$('res').style.display='';$('tit').textContent='No pudimos cargar los productos';$('subt').textContent='Escribinos por WhatsApp y te ayudamos.'});
 drawCart();
 </script>
 </body>

@@ -773,11 +773,13 @@
 
                 @* ───────── 2. CATÁLOGO ───────── *@
                 <NavGroup Label="🏬 Catálogo" Icon="@SvgIcons.Package" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/cafe/catalogo") || IsActive("/cafe/productos") || IsActive("/cafe/fotos-chroma") || IsActive("/cafe/skus-meli") || IsActive("/cafe/combos") || IsActive("/cafe/kits") || IsActive("/cafe/servicios") || IsActive("/cafe/oems") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios"))">
+                          HasActiveChild="@(IsActive("/cafe/catalogo") || IsActive("/cafe/fichas-tecnicas") || IsActive("/cafe/productos") || IsActive("/cafe/fotos-chroma") || IsActive("/cafe/skus-meli") || IsActive("/cafe/combos") || IsActive("/cafe/kits") || IsActive("/cafe/servicios") || IsActive("/cafe/oems") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios"))">
                     <NavItem Href="/cafe/catalogo" Label="📦 Todos los códigos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/cafe/catalogo")" OnClick="@(() => NavigateTo("/cafe/catalogo"))" />
                     <NavItem Href="/cafe/productos" Label="Productos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
+                    <NavItem Href="/cafe/fichas-tecnicas" Label="📄 Fichas técnicas" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/cafe/fichas-tecnicas")" OnClick="@(() => NavigateTo("/cafe/fichas-tecnicas"))" />
                     <NavItem Href="/cafe/fotos-chroma" Label="📷 Fotos fondo verde/azul" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/cafe/fotos-chroma")" OnClick="@(() => NavigateTo("/cafe/fotos-chroma"))" />
                     <NavItem Href="/cafe/skus-meli" Label="🛒 SKUs MeLi" Icon="@SvgIcons.Tag"
@@ -2451,6 +2453,7 @@
         { "mapeo", ("🗺", "Mapa de clientes", "/mapeo") },
         // Catálogo
         { "cafe/productos", ("🏷", "Productos", "/cafe/productos") },
+        { "cafe/fichas-tecnicas", ("📄", "Fichas técnicas", "/cafe/fichas-tecnicas") },
         { "cafe/precios-especiales", ("💲", "Precios especiales", "/cafe/precios-especiales") },
         { "cafe/skus-meli", ("🛒", "SKUs MeLi", "/cafe/skus-meli") },
         { "cafe/combos", ("🛒", "Combos MeLi", "/cafe/combos") },
@@ -2783,6 +2786,7 @@
         { "cafe/descuentos", "cafe" },
         { "cafe/reglas-precios", "cafe" },
         { "cafe/productos", "cafe" },
+        { "cafe/fichas-tecnicas", "cafe" },
         { "cafe/combos", "cafe" },
         { "cafe/kits", "cafe" },
         { "cafe/oems", "cafe" },

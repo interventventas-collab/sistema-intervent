@@ -1,0 +1,696 @@
+@page "/cafe/fichas-tecnicas"
+@attribute [Authorize]
+@using Web.Models
+@using Microsoft.AspNetCore.Components.Forms
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject ToastService ToastService
+
+@* 2026-10-30: FICHAS TÉCNICAS de café. Una base fija: se completan los datos y la ficha sale siempre
+   con el mismo diseño (FichaTecnicaVista + PDF). Dos formas de trabajar:
+   - "Una por una": lista, editor y vista previa en vivo.
+   - "Todas juntas": se elige UN dato ("Trabajar en: Altura") y se completa en todos los cafés de corrido.
+   Todo se guarda solo al salir de cada casillero. La misma ficha se abre desde la ficha del producto. *@
+
+<style>
+    .ft-page { padding:1rem 1.25rem; }
+    .ft-head { display:flex; align-items:center; gap:.8rem; flex-wrap:wrap; margin-bottom:.8rem; }
+    .ft-head h2 { margin:0; font-size:1.25rem; }
+    .ft-seg { display:inline-flex; border:1px solid #d1d5db; border-radius:8px; overflow:hidden; }
+    .ft-seg button { border:0; background:#fff; padding:.4rem .85rem; cursor:pointer; font-size:.85rem; }
+    .ft-seg button.on { background:#111827; color:#fff; }
+    .ft-btn { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:.4rem .8rem; cursor:pointer; font-size:.85rem; color:#111827; text-decoration:none; display:inline-block; }
+    .ft-btn.pri { background:#111827; color:#fff; border-color:#111827; }
+    .ft-btn:disabled { opacity:.5; cursor:default; }
+    .ft-mut { color:#6b7280; font-size:.8rem; }
+    .ft-falta { color:#b91c1c; font-weight:600; font-size:.8rem; }
+    .ft-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; }
+    .ft-una { display:grid; grid-template-columns:240px 460px minmax(560px,1fr); gap:14px; align-items:start; }
+    .ft-list { max-height:calc(100vh - 160px); overflow:auto; }
+    .ft-list .it { padding:.55rem .75rem; border-bottom:1px solid #f3f4f6; cursor:pointer; }
+    .ft-list .it:hover { background:#f9fafb; }
+    .ft-list .it.on { background:#f3f4f6; border-left:3px solid #111827; }
+    .ft-list .it b { display:block; font-size:.88rem; }
+    .ft-ed { padding:.9rem 1rem; max-height:calc(100vh - 160px); overflow:auto; }
+    .ft-ed h4 { margin:1rem 0 .45rem; font-size:.72rem; color:#6b7280; text-transform:uppercase; letter-spacing:.05em; }
+    .ft-ed h4:first-child { margin-top:0; }
+    .ft-row { display:grid; grid-template-columns:1fr 1fr; gap:.5rem .6rem; }
+    .ft-f { margin-bottom:.5rem; }
+    .ft-f label { display:flex; justify-content:space-between; font-size:.78rem; color:#374151; margin-bottom:.15rem; }
+    .ft-f .na-link { color:#9ca3af; font-size:.72rem; cursor:pointer; text-decoration:underline; }
+    .ft-f .na { color:#9ca3af; font-style:italic; padding:.35rem 0; font-size:.85rem; }
+    .ft-in { width:100%; border:1px solid #d1d5db; border-radius:6px; padding:.38rem .5rem; font-size:.85rem; font-family:inherit; }
+    textarea.ft-in { min-height:70px; resize:vertical; }
+    .ft-chips { display:flex; flex-wrap:wrap; gap:.3rem; }
+    .ft-chip { border:1px solid #d1d5db; background:#fff; border-radius:999px; padding:.25rem .65rem; font-size:.8rem; cursor:pointer; }
+    .ft-chip.on { background:#111827; color:#fff; border-color:#111827; }
+    .ft-fotos { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
+    .ft-foto { position:relative; border:1px dashed #cbd5e1; border-radius:8px; height:110px; display:flex; align-items:center; justify-content:center; text-align:center; color:#6b7280; font-size:.78rem; overflow:hidden; background:#fafafa; }
+    .ft-foto img { max-width:100%; max-height:100%; object-fit:contain; }
+    .ft-foto input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+    .ft-foto .cap { position:absolute; left:0; right:0; bottom:0; background:rgba(17,24,39,.72); color:#fff; font-size:.72rem; padding:.2rem; pointer-events:none; }
+    .ft-comp { border:1px solid #e5e7eb; border-left:3px solid #6b4429; border-radius:6px; padding:.5rem .6rem; margin-bottom:.5rem; }
+    .ft-bal { display:flex; align-items:center; gap:.25rem; margin-bottom:.3rem; }
+    .ft-bal span { width:60px; font-size:.8rem; }
+    .ft-bal button { width:30px; height:26px; border:1px solid #d1d5db; background:#fff; border-radius:5px; font-size:.75rem; cursor:pointer; padding:0; }
+    .ft-bal button.on { background:#111827; color:#fff; border-color:#111827; }
+    .ft-prev { padding:.6rem .8rem; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center; gap:.5rem; flex-wrap:wrap; }
+    .ft-prevbody { padding:16px; display:flex; justify-content:center; max-height:calc(100vh - 210px); overflow:auto; background:#f3f4f6; }
+    .ft-bar { display:flex; gap:.35rem; flex-wrap:wrap; align-items:center; padding:.6rem .8rem; border-bottom:1px solid #e5e7eb; }
+    .ft-tab { width:100%; border-collapse:collapse; font-size:.85rem; }
+    .ft-tab th { text-align:left; font-size:.75rem; color:#6b7280; font-weight:600; padding:.45rem .7rem; border-bottom:1px solid #e5e7eb; background:#f9fafb; position:sticky; top:0; z-index:1; white-space:nowrap; }
+    .ft-tab td { padding:.35rem .7rem; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+    .ft-tab .ft-in { min-width:150px; }
+    .ft-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:.8rem; padding:.8rem; }
+    .ft-pick { border:1px solid #e5e7eb; border-radius:8px; max-height:230px; overflow:auto; margin-top:.35rem; }
+    .ft-pick div { padding:.35rem .55rem; border-bottom:1px solid #f3f4f6; cursor:pointer; font-size:.83rem; }
+    .ft-pick div:hover { background:#f9fafb; }
+    .ft-pick div.dis { color:#9ca3af; cursor:default; }
+</style>
+
+<div class="ft-page">
+    <div class="ft-head">
+        <h2>☕ Fichas técnicas</h2>
+        <div class="ft-seg">
+            <button class="@(modo == "una" ? "on" : "")" @onclick='() => modo = "una"'>Una por una</button>
+            <button class="@(modo == "todas" ? "on" : "")" @onclick='() => modo = "todas"'>Todas juntas</button>
+        </div>
+        @if (fichas is not null) { <span class="ft-mut">@fichas.Count cafés</span> }
+        <span style="flex:1"></span>
+        <button class="ft-btn pri" @onclick="AbrirNueva">+ Nueva ficha</button>
+    </div>
+
+    @if (nuevaAbierta)
+    {
+        <div class="ft-card" style="padding:.8rem 1rem; margin-bottom:.8rem; max-width:560px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <b>Nueva ficha · ¿de qué café?</b>
+                <span style="cursor:pointer;" @onclick="() => nuevaAbierta = false">✕</span>
+            </div>
+            <input class="ft-in" style="margin-top:.5rem;" placeholder="🔍 Buscar el café en Productos…" @bind="buscaProd" @bind:event="oninput" />
+            <div class="ft-pick">
+                @foreach (var p in ProductosFiltrados)
+                {
+                    if (p.FichaId is null)
+                    {
+                        <div @onclick="() => CrearPara(p.Id, null)">@p.Nombre <span class="ft-mut">@p.Sku</span></div>
+                    }
+                    else
+                    {
+                        <div class="dis">@p.Nombre <span class="ft-mut">@p.Sku · ya tiene ficha</span></div>
+                    }
+                }
+            </div>
+            <div style="margin-top:.6rem; display:flex; gap:.4rem; align-items:center;">
+                <input class="ft-in" placeholder="…o una ficha suelta (sin producto): nombre" @bind="nombreSuelta" />
+                <button class="ft-btn" disabled="@string.IsNullOrWhiteSpace(nombreSuelta)" @onclick="() => CrearPara(null, nombreSuelta)">Crear</button>
+            </div>
+        </div>
+    }
+
+    @if (fichas is null)
+    {
+        <p class="ft-mut">Cargando fichas…</p>
+    }
+    else if (modo == "una")
+    {
+        <div class="ft-una">
+            @* ── 1. Lista ── *@
+            <div class="ft-card ft-list">
+                <div style="padding:.5rem;"><input class="ft-in" placeholder="🔍 Buscar…" @bind="busca" @bind:event="oninput" /></div>
+                @if (fichas.Count == 0)
+                {
+                    <div class="ft-mut" style="padding:.8rem;">Todavía no hay fichas. Tocá <b>+ Nueva ficha</b>.</div>
+                }
+                @foreach (var f in Lista)
+                {
+                    var faltan = FichaTecnicaCatalogo.Faltantes(f).Count;
+                    <div class="it @(sel?.Id == f.Id ? "on" : "")" @onclick="() => Seleccionar(f)">
+                        <b>@f.Nombre</b>
+                        <span class="ft-mut">@(f.ProductoSku ?? "sin producto") · @f.UpdatedAt.AddHours(-3).ToString("dd/MM")</span>
+                        @if (faltan > 0) { <span class="ft-falta"> · faltan @faltan</span> }
+                    </div>
+                }
+            </div>
+
+            @* ── 2. Editor ── *@
+            <div class="ft-card ft-ed">
+                @if (sel is null)
+                {
+                    <p class="ft-mut">Elegí un café de la lista o creá una ficha nueva.</p>
+                }
+                else
+                {
+                    var f = sel;
+                    <h4>Producto del sistema</h4>
+                    <div style="display:flex; align-items:center; gap:.5rem;">
+                        <span>@(f.ProductoNombre is null ? "Ficha suelta (sin producto)" : $"{f.ProductoSku} · {f.ProductoNombre}")</span>
+                        <span class="ft-f"><span class="na-link" @onclick="() => pickerProd = !pickerProd">@(pickerProd ? "cerrar" : "cambiar")</span></span>
+                    </div>
+                    @if (pickerProd)
+                    {
+                        <input class="ft-in" style="margin-top:.35rem;" placeholder="🔍 Buscar el café…" @bind="buscaProd" @bind:event="oninput" />
+                        <div class="ft-pick">
+                            @if (f.CafeProductoId is not null) { <div @onclick="() => Enlazar(f, null)"><i>Dejarla suelta (sin producto)</i></div> }
+                            @foreach (var p in ProductosFiltrados)
+                            {
+                                if (p.FichaId is null || p.FichaId == f.Id)
+                                {
+                                    <div @onclick="() => Enlazar(f, p.Id)">@p.Nombre <span class="ft-mut">@p.Sku</span></div>
+                                }
+                            }
+                        </div>
+                    }
+
+                    <h4>Fotos (se cambian cuando quieras: tocá o arrastrá una imagen)</h4>
+                    <div class="ft-fotos">
+                        @FotoBox(f, "cafe", 110)
+                        @FotoBox(f, "etiqueta", 110)
+                    </div>
+
+                    <h4>Datos</h4>
+                    <div class="ft-f">
+                        <label>Nombre</label>
+                        <input class="ft-in" value="@f.Nombre" @onchange="e => { f.Nombre = e.Value?.ToString() ?? f.Nombre; return Guardar(f); }" />
+                    </div>
+                    <div class="ft-f">
+                        <label>Tipo</label>
+                        <div class="ft-chips">
+                            <button class="ft-chip @(!f.EsBlend ? "on" : "")" @onclick='() => CambiarTipo(f, "ORIGEN")'>Origen único</button>
+                            <button class="ft-chip @(f.EsBlend ? "on" : "")" @onclick='() => CambiarTipo(f, "BLEND")'>Blend</button>
+                        </div>
+                    </div>
+                    @Campo(f, "especie")
+                    @Campo(f, "perfil")
+
+                    @if (!f.EsBlend)
+                    {
+                        <div class="ft-row">
+                            @Campo(f, "pais") @Campo(f, "region")
+                            @Campo(f, "finca") @Campo(f, "altura")
+                            @Campo(f, "variedad") @Campo(f, "proceso")
+                        </div>
+                    }
+                    else
+                    {
+                        <h4>Composición (cada parte con sus datos)</h4>
+                        @for (var i = 0; i < f.Componentes.Count; i++)
+                        {
+                            var c = f.Componentes[i];
+                            <div class="ft-comp">
+                                <div class="ft-row">
+                                    <div class="ft-f"><label>País</label><input class="ft-in" value="@c.Pais" @onchange="e => { c.Pais = e.Value?.ToString(); return Guardar(f); }" /></div>
+                                    <div class="ft-f"><label>% del blend <span class="na-link" @onclick="() => QuitarParte(f, c)">quitar parte</span></label><input class="ft-in" value="@c.Pct?.ToString("0.#")" @onchange="e => { c.Pct = Num(e.Value); return Guardar(f); }" /></div>
+                                    @foreach (var key in new[] { "region", "variedad", "proceso", "finca", "altura" })
+                                    {
+                                        var k = key;
+                                        <div class="ft-f"><label>@Label(k)</label><input class="ft-in" value="@FichaTecnicaCatalogo.GetComp(c, k)" @onchange="e => { FichaTecnicaCatalogo.SetComp(c, k, e.Value?.ToString()); return Guardar(f); }" /></div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <button class="ft-btn" @onclick="() => AgregarParte(f)">+ Agregar parte</button>
+                            @{ var suma = f.Componentes.Sum(x => x.Pct ?? 0); }
+                            @if (f.Componentes.Count > 0 && suma != 100) { <span class="ft-falta">Los % suman @suma.ToString("0.#") (tendrían que dar 100)</span> }
+                        </div>
+                    }
+
+                    <div class="ft-row" style="margin-top:.5rem;">
+                        @Campo(f, "idealPara") @Campo(f, "puntaje")
+                    </div>
+                    @Campo(f, "tueste")
+                    @Campo(f, "descripcion")
+                    @Campo(f, "fraganciaAroma")
+                    @Campo(f, "sabor")
+                    @Campo(f, "retrogusto")
+                    @Campo(f, "rueda")
+                    @Campo(f, "balance")
+
+                    <div style="display:flex; gap:.5rem; margin-top:1rem; flex-wrap:wrap; align-items:center;">
+                        <button class="ft-btn" @onclick="() => Duplicar(f)" title="Crea una ficha nueva con estos mismos datos, para cambiar solo lo distinto">Duplicar como base</button>
+                        <button class="ft-btn" style="color:#b91c1c;" @onclick="() => Borrar(f)">Borrar ficha</button>
+                        <span class="ft-mut">@Estado(f.Id)</span>
+                    </div>
+                }
+            </div>
+
+            @* ── 3. Vista previa ── *@
+            <div class="ft-card">
+                @if (sel is not null)
+                {
+                    <div class="ft-prev">
+                        <span class="ft-mut">Así sale la ficha (se actualiza mientras escribís)</span>
+                        <span style="display:flex; gap:.4rem;">
+                            <a class="ft-btn" href="@Api.GetFichaTecnicaPdfUrl(sel.Id)" target="_blank">📄 Ver PDF</a>
+                            <a class="ft-btn" href="@Api.GetFichaTecnicaPdfUrl(sel.Id, true)" target="_blank">⬇ Bajar PDF</a>
+                        </span>
+                    </div>
+                    <div class="ft-prevbody"><FichaTecnicaVista F="sel" /></div>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        @* ── TODAS JUNTAS ── *@
+        <div class="ft-card">
+            <div class="ft-bar">
+                <span class="ft-mut" style="margin-right:.2rem;">Trabajar en:</span>
+                <button class="ft-chip @(trabajarEn == "todo" ? "on" : "")" @onclick='() => trabajarEn = "todo"'>Todo</button>
+                @foreach (var c in FichaTecnicaCatalogo.Campos)
+                {
+                    var k = c.Key;
+                    <button class="ft-chip @(trabajarEn == k ? "on" : "")" @onclick="() => trabajarEn = k">@c.Label</button>
+                }
+            </div>
+            <div class="ft-bar" style="justify-content:space-between;">
+                <input class="ft-in" style="max-width:280px;" placeholder="🔍 Buscar café…" @bind="busca" @bind:event="oninput" />
+                <span style="display:flex; gap:.6rem; align-items:center;">
+                    @if (trabajarEn != "todo")
+                    {
+                        <span class="ft-mut">Faltan en @fichas.Count(f => FichaTecnicaCatalogo.Falta(f, trabajarEn)) de @fichas.Count</span>
+                        <button class="ft-chip @(soloFaltan ? "on" : "")" @onclick="() => soloFaltan = !soloFaltan">Solo los que faltan</button>
+                    }
+                    else
+                    {
+                        <span class="ft-mut">Enter = casillero de abajo · se guarda solo al salir de cada casillero</span>
+                    }
+                </span>
+            </div>
+
+            @if (trabajarEn == "fotos")
+            {
+                <div class="ft-cards">
+                    @foreach (var f in ListaTodas)
+                    {
+                        <div class="ft-card" style="padding:.55rem;">
+                            <b style="font-size:.85rem;">@f.Nombre</b> <span class="ft-mut">@f.ProductoSku</span>
+                            <div class="ft-fotos" style="margin-top:.4rem;">@FotoBox(f, "cafe", 100) @FotoBox(f, "etiqueta", 100)</div>
+                        </div>
+                    }
+                </div>
+            }
+            else if (trabajarEn == "todo")
+            {
+                <div style="overflow:auto; max-height:calc(100vh - 250px);">
+                    <table class="ft-tab">
+                        <tr>
+                            <th>Café</th><th>Tipo</th>
+                            @foreach (var c in ColumnasTodo) { <th>@c.Label</th> }
+                        </tr>
+                        @foreach (var f in ListaTodas)
+                        {
+                            <tr>
+                                <td style="white-space:nowrap;"><a href="" @onclick="() => AbrirUna(f)" @onclick:preventDefault>@f.Nombre</a><br /><span class="ft-mut">@f.ProductoSku</span></td>
+                                <td style="white-space:nowrap;">@(f.EsBlend ? "Blend" : "Origen único")</td>
+                                @foreach (var c in ColumnasTodo)
+                                {
+                                    var k = c.Key;
+                                    <td>
+                                        @if (f.NoAplica.Contains(k))
+                                        {
+                                            <span class="ft-mut"><i>no aplica</i></span>
+                                        }
+                                        else if (c.Origen && f.EsBlend)
+                                        {
+                                            @foreach (var comp in f.Componentes)
+                                            {
+                                                var cc = comp;
+                                                <input class="ft-in" style="margin-bottom:.2rem;" data-ftcol="@k" onkeydown="fichaEnterAbajo(event,this)" placeholder="@(k == "pais" ? "parte del blend" : cc.Pais)"
+                                                       value="@FichaTecnicaCatalogo.GetComp(cc, k)" @onchange="e => { FichaTecnicaCatalogo.SetComp(cc, k, e.Value?.ToString()); return Guardar(f); }" />
+                                            }
+                                            @if (f.Componentes.Count == 0) { <span class="ft-mut">blend sin partes</span> }
+                                        }
+                                        else
+                                        {
+                                            <input class="ft-in" data-ftcol="@k" onkeydown="fichaEnterAbajo(event,this)"
+                                                   value="@FichaTecnicaCatalogo.Get(f, k)" @onchange="e => { FichaTecnicaCatalogo.Set(f, k, e.Value?.ToString()); return Guardar(f); }" />
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </table>
+                </div>
+            }
+            else
+            {
+                var campo = FichaTecnicaCatalogo.Campos.First(c => c.Key == trabajarEn);
+                <div style="overflow:auto; max-height:calc(100vh - 250px);">
+                    <table class="ft-tab">
+                        <tr><th>Café</th><th>Código</th><th style="width:60%;">@campo.Label</th><th></th></tr>
+                        @foreach (var f in ListaTodas)
+                        {
+                            <tr>
+                                <td><a href="" @onclick="() => AbrirUna(f)" @onclick:preventDefault>@f.Nombre</a>@if (f.EsBlend) { <span class="ft-mut"> · blend</span> }</td>
+                                <td class="ft-mut">@f.ProductoSku</td>
+                                <td>@Campo(f, trabajarEn, sinLabel: true)</td>
+                                <td style="white-space:nowrap;">
+                                    @if (estado.TryGetValue(f.Id, out var est)) { <span class="ft-mut">@est</span> }
+                                    else if (FichaTecnicaCatalogo.Falta(f, trabajarEn)) { <span class="ft-falta">falta</span> }
+                                </td>
+                            </tr>
+                        }
+                    </table>
+                    @if (!ListaTodas.Any()) { <p class="ft-mut" style="padding:1rem;">@(soloFaltan ? "¡No falta en ninguno! 🎉" : "No hay cafés con esa búsqueda.")</p> }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "id")] public int? QueryId { get; set; }
+
+    private List<FichaTecnicaDto>? fichas;
+    private List<FichaProductoCafeDto> productos = new();
+    private FichaTecnicaDto? sel;
+    private string modo = "una";
+    private string trabajarEn = "altura";
+    private bool soloFaltan;
+    private string busca = "";
+    private string buscaProd = "";
+    private bool nuevaAbierta, pickerProd;
+    private string? nombreSuelta;
+    private readonly Dictionary<int, string> estado = new();
+    private readonly SemaphoreSlim colaGuardar = new(1, 1);
+
+    private static readonly string[] OrigenKeys = { "pais", "region", "finca", "altura", "variedad", "proceso" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            fichas = await Api.GetFichasTecnicasAsync() ?? new();
+            productos = await Api.GetFichaProductosCafeAsync() ?? new();
+            if (QueryId is int qid) sel = fichas.FirstOrDefault(f => f.Id == qid);
+            sel ??= fichas.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            fichas = new();
+            ToastService.Error("No se pudieron cargar las fichas: " + ex.Message);
+        }
+    }
+
+    private IEnumerable<FichaTecnicaDto> Filtrar(IEnumerable<FichaTecnicaDto> src)
+    {
+        if (string.IsNullOrWhiteSpace(busca)) return src;
+        var q = busca.Trim();
+        return src.Where(f => f.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
+                              || (f.ProductoSku ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private IEnumerable<FichaTecnicaDto> Lista => Filtrar(fichas ?? new());
+
+    private IEnumerable<FichaTecnicaDto> ListaTodas =>
+        Filtrar(fichas ?? new()).Where(f => trabajarEn == "todo" || !soloFaltan || FichaTecnicaCatalogo.Falta(f, trabajarEn));
+
+    private IEnumerable<FichaTecnicaCatalogo.Campo> ColumnasTodo =>
+        FichaTecnicaCatalogo.Campos.Where(c => c.Tipo is "texto" or "opciones" or "largo");
+
+    private IEnumerable<FichaProductoCafeDto> ProductosFiltrados
+    {
+        get
+        {
+            var q = buscaProd.Trim();
+            var src = productos.AsEnumerable();
+            if (q.Length > 0) src = src.Where(p => p.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase) || (p.Sku ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+            return src.Take(60);
+        }
+    }
+
+    private static string Label(string key) => FichaTecnicaCatalogo.Campos.FirstOrDefault(c => c.Key == key)?.Label ?? key;
+
+    private string Estado(int id) => estado.TryGetValue(id, out var e) ? e : "Se guarda solo";
+
+    private static decimal? Num(object? v)
+    {
+        var s = v?.ToString()?.Trim().Replace(",", ".");
+        return decimal.TryParse(s, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
+
+    // ── Un dato de la ficha (se usa en el editor y en "Todas juntas") ──
+    private RenderFragment Campo(FichaTecnicaDto f, string key, bool sinLabel = false) => __builder =>
+    {
+        var c = FichaTecnicaCatalogo.Campos.First(x => x.Key == key);
+        var na = f.NoAplica.Contains(key);
+        <div class="ft-f">
+            <label>
+                <span>@(sinLabel ? "" : c.Label)</span>
+                @if (c.Tipo != "fotos")
+                {
+                    <span class="na-link" @onclick="() => ToggleNoAplica(f, key)">@(na ? "sí lleva" : "no aplica")</span>
+                }
+            </label>
+            @if (na)
+            {
+                <div class="na">— no aplica (no sale en la ficha)</div>
+            }
+            else if (c.Origen && f.EsBlend)
+            {
+                @for (var i = 0; i < f.Componentes.Count; i++)
+                {
+                    var cc = f.Componentes[i];
+                    var parte = string.IsNullOrWhiteSpace(cc.Pais) ? $"Parte {i + 1}" : cc.Pais;
+                    <div style="display:flex; align-items:center; gap:.4rem; margin-bottom:.25rem;">
+                        <span class="ft-mut" style="width:95px; flex:none;">@parte@(cc.Pct is decimal pc ? $" {pc:0.#}%" : "")</span>
+                        <input class="ft-in" data-ftcol="@key" onkeydown="fichaEnterAbajo(event,this)"
+                               value="@FichaTecnicaCatalogo.GetComp(cc, key)" @onchange="e => { FichaTecnicaCatalogo.SetComp(cc, key, e.Value?.ToString()); return Guardar(f); }" />
+                    </div>
+                }
+                @if (f.Componentes.Count == 0) { <span class="ft-mut">Blend sin partes: cargalas en la ficha (Una por una).</span> }
+            }
+            else if (c.Tipo == "texto")
+            {
+                <input class="ft-in" placeholder="@c.Ayuda" data-ftcol="@key" onkeydown="fichaEnterAbajo(event,this)"
+                       value="@FichaTecnicaCatalogo.Get(f, key)" @onchange="e => { FichaTecnicaCatalogo.Set(f, key, e.Value?.ToString()); return Guardar(f); }" />
+            }
+            else if (c.Tipo == "largo")
+            {
+                <textarea class="ft-in" data-ftcol="@key" @onchange="e => { FichaTecnicaCatalogo.Set(f, key, e.Value?.ToString()); return Guardar(f); }">@FichaTecnicaCatalogo.Get(f, key)</textarea>
+            }
+            else if (c.Tipo == "opciones")
+            {
+                var actual = FichaTecnicaCatalogo.Get(f, key);
+                <div class="ft-chips">
+                    @foreach (var op in c.Opciones!)
+                    {
+                        var o = op;
+                        <button class="ft-chip @(actual == o ? "on" : "")" @onclick="() => { FichaTecnicaCatalogo.Set(f, key, actual == o ? null : o); return Guardar(f); }">@o</button>
+                    }
+                </div>
+            }
+            else if (c.Tipo == "rueda")
+            {
+                <div style="display:flex; gap:.6rem; align-items:center;">
+                    @((MarkupString)FichaTecnicaVista.RuedaSvg(f.Rueda, 70))
+                    <div class="ft-chips">
+                        @foreach (var r in FichaTecnicaCatalogo.Rueda)
+                        {
+                            var rk = r.Key;
+                            var on = f.Rueda.Contains(rk);
+                            <button class="ft-chip" style="@(on ? $"background:{r.Color};border-color:{r.Color};color:#fff;" : "")"
+                                    @onclick="() => { if (on) f.Rueda.Remove(rk); else f.Rueda.Add(rk); return Guardar(f); }">@r.Label</button>
+                        }
+                    </div>
+                </div>
+            }
+            else if (c.Tipo == "balance")
+            {
+                @foreach (var b in new[] { "Cuerpo", "Acidez", "Dulzor" })
+                {
+                    var bn = b;
+                    var val = bn == "Cuerpo" ? f.Cuerpo : bn == "Acidez" ? f.Acidez : f.Dulzor;
+                    <div class="ft-bal">
+                        <span>@bn</span>
+                        @for (var x = 1m; x <= 5m; x += 0.5m)
+                        {
+                            var v = x;
+                            <button class="@(val == v ? "on" : "")" @onclick="() => SetBalance(f, bn, val == v ? null : v)">@(v % 1 == 0 ? v.ToString("0") : "½")</button>
+                        }
+                    </div>
+                }
+            }
+            else if (c.Tipo == "fotos")
+            {
+                <div class="ft-fotos">@FotoBox(f, "cafe", 90) @FotoBox(f, "etiqueta", 90)</div>
+            }
+        </div>
+    };
+
+    // ── Caja de foto: se toca o se arrastra una imagen encima ──
+    private RenderFragment FotoBox(FichaTecnicaDto f, string tipo, int alto) => __builder =>
+    {
+        var url = tipo == "cafe" ? f.FotoCafeUrl : f.FotoEtiquetaUrl;
+        var naKey = tipo == "cafe" ? "fotoCafe" : "fotoEtiqueta";
+        var nombre = tipo == "cafe" ? "Foto del café" : "Etiqueta";
+        var na = f.NoAplica.Contains(naKey);
+        <div>
+            <div class="ft-foto" style="height:@(alto)px;">
+                @if (na)
+                {
+                    <span>@nombre<br /><i>no aplica</i></span>
+                }
+                else
+                {
+                    @if (url is not null) { <img src="@url" alt="" /> <div class="cap">@nombre · tocá o arrastrá para cambiar</div> }
+                    else { <span>+ @nombre<br />tocá o arrastrá acá</span> }
+                    <InputFile accept="image/*" OnChange="@(e => SubirFoto(f, tipo, e))" />
+                }
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:.72rem; margin-top:.15rem;">
+                @if (url is not null && !na) { <span class="na-link" style="color:#9ca3af; cursor:pointer; text-decoration:underline;" @onclick="() => QuitarFoto(f, tipo)">quitar</span> } else { <span></span> }
+                <span style="color:#9ca3af; cursor:pointer; text-decoration:underline;" @onclick="() => ToggleNoAplica(f, naKey)">@(na ? "sí lleva" : "no aplica")</span>
+            </div>
+        </div>
+    };
+
+    // ── Acciones ──
+    private void Seleccionar(FichaTecnicaDto f) { sel = f; pickerProd = false; }
+
+    private void AbrirUna(FichaTecnicaDto f) { sel = f; modo = "una"; }
+
+    private void AbrirNueva() { nuevaAbierta = !nuevaAbierta; buscaProd = ""; nombreSuelta = null; }
+
+    private async Task Guardar(FichaTecnicaDto f)
+    {
+        estado[f.Id] = "guardando…";
+        StateHasChanged();
+        await colaGuardar.WaitAsync();
+        try
+        {
+            var r = await Api.GuardarFichaTecnicaAsync(f);
+            if (r is not null)
+            {
+                f.UpdatedAt = r.UpdatedAt; f.UpdatedBy = r.UpdatedBy;
+                f.ProductoNombre = r.ProductoNombre; f.ProductoSku = r.ProductoSku; f.Perfil = r.Perfil;
+            }
+            estado[f.Id] = "✓ guardado";
+        }
+        catch (Exception ex)
+        {
+            estado[f.Id] = "⚠ no se guardó";
+            ToastService.Error($"{f.Nombre}: no se guardó. {ex.Message}");
+        }
+        finally { colaGuardar.Release(); }
+    }
+
+    private Task ToggleNoAplica(FichaTecnicaDto f, string key)
+    {
+        if (!f.NoAplica.Remove(key)) f.NoAplica.Add(key);
+        return Guardar(f);
+    }
+
+    private Task CambiarTipo(FichaTecnicaDto f, string tipo)
+    {
+        if (f.Tipo == tipo) return Task.CompletedTask;
+        f.Tipo = tipo;
+        if (f.EsBlend && f.Componentes.Count == 0)
+        {
+            // Arranca con dos partes vacías; si la ficha ya tenía país/región, pasan a la primera.
+            f.Componentes.Add(new FichaComponenteDto { Pais = f.Pais, Region = f.Region, Variedad = f.Variedad, Proceso = f.Proceso, Finca = f.Finca, Altura = f.Altura });
+            f.Componentes.Add(new FichaComponenteDto());
+        }
+        return Guardar(f);
+    }
+
+    private Task AgregarParte(FichaTecnicaDto f) { f.Componentes.Add(new FichaComponenteDto()); return Guardar(f); }
+
+    private Task QuitarParte(FichaTecnicaDto f, FichaComponenteDto c) { f.Componentes.Remove(c); return Guardar(f); }
+
+    private Task SetBalance(FichaTecnicaDto f, string cual, decimal? v)
+    {
+        if (cual == "Cuerpo") f.Cuerpo = v; else if (cual == "Acidez") f.Acidez = v; else f.Dulzor = v;
+        return Guardar(f);
+    }
+
+    private async Task Enlazar(FichaTecnicaDto f, int? productoId)
+    {
+        var antes = f.CafeProductoId;
+        f.CafeProductoId = productoId;
+        await Guardar(f);
+        if (estado.GetValueOrDefault(f.Id) != "✓ guardado") { f.CafeProductoId = antes; return; }
+        if (productoId is null) { f.ProductoNombre = null; f.ProductoSku = null; }
+        pickerProd = false;
+        productos = await Api.GetFichaProductosCafeAsync() ?? productos;
+    }
+
+    private async Task CrearPara(int? productoId, string? nombre)
+    {
+        try
+        {
+            var nueva = await Api.CrearFichaTecnicaAsync(productoId, nombre, null);
+            if (nueva is null) return;
+            await AgregarYAbrir(nueva);
+            nuevaAbierta = false;
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo crear: " + ex.Message); }
+    }
+
+    private async Task Duplicar(FichaTecnicaDto f)
+    {
+        try
+        {
+            var nueva = await Api.CrearFichaTecnicaAsync(null, null, f.Id);
+            if (nueva is null) return;
+            await AgregarYAbrir(nueva);
+            ToastService.Success("Copia creada: cambiale el nombre, el producto y lo que sea distinto.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo duplicar: " + ex.Message); }
+    }
+
+    private async Task AgregarYAbrir(FichaTecnicaDto nueva)
+    {
+        fichas ??= new();
+        var ya = fichas.FirstOrDefault(x => x.Id == nueva.Id);
+        if (ya is null) { fichas.Add(nueva); fichas = fichas.OrderBy(x => x.Nombre).ToList(); ya = nueva; }
+        sel = ya;
+        modo = "una";
+        busca = "";
+        productos = await Api.GetFichaProductosCafeAsync() ?? productos;
+    }
+
+    private async Task Borrar(FichaTecnicaDto f)
+    {
+        try
+        {
+            if (!await Api.BorrarFichaTecnicaAsync(f.Id)) { ToastService.Error("No se pudo borrar."); return; }
+            fichas!.Remove(f);
+            sel = fichas.FirstOrDefault();
+            productos = await Api.GetFichaProductosCafeAsync() ?? productos;
+            ToastService.Success($"Ficha \"{f.Nombre}\" borrada.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo borrar: " + ex.Message); }
+    }
+
+    private async Task SubirFoto(FichaTecnicaDto f, string tipo, InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        estado[f.Id] = "subiendo foto…";
+        StateHasChanged();
+        try
+        {
+            await using var s = file.OpenReadStream(15 * 1024 * 1024);
+            var r = await Api.SubirFotoFichaTecnicaAsync(f.Id, tipo, s, file.Name, file.ContentType);
+            if (r is not null) { f.FotoCafeUrl = r.FotoCafeUrl; f.FotoEtiquetaUrl = r.FotoEtiquetaUrl; f.UpdatedAt = r.UpdatedAt; }
+            estado[f.Id] = "✓ foto guardada";
+        }
+        catch (Exception ex)
+        {
+            estado[f.Id] = "⚠ no se subió la foto";
+            ToastService.Error($"{f.Nombre}: no se subió la foto. {ex.Message}");
+        }
+    }
+
+    private async Task QuitarFoto(FichaTecnicaDto f, string tipo)
+    {
+        try
+        {
+            var r = await Api.QuitarFotoFichaTecnicaAsync(f.Id, tipo);
+            if (r is not null) { f.FotoCafeUrl = r.FotoCafeUrl; f.FotoEtiquetaUrl = r.FotoEtiquetaUrl; }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo quitar la foto: " + ex.Message); }
+    }
+}

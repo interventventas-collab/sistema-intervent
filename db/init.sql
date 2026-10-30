@@ -8514,3 +8514,44 @@ IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Bienvenida_Vistas')
         UltimaFecha DATE NOT NULL
     );
 GO
+
+-- 2026-10-30: fichas técnicas de café (una por café; puede haber fichas sin producto)
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Cafe_FichasTecnicas')
+    CREATE TABLE Cafe_FichasTecnicas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        CafeProductoId INT NULL,
+        Nombre NVARCHAR(150) NOT NULL,
+        Tipo NVARCHAR(10) NOT NULL CONSTRAINT DF_FichaTec_Tipo DEFAULT 'ORIGEN',
+        Especie NVARCHAR(30) NULL,
+        Perfil NVARCHAR(30) NULL,
+        Pais NVARCHAR(80) NULL,
+        Region NVARCHAR(150) NULL,
+        Finca NVARCHAR(150) NULL,
+        Altura NVARCHAR(80) NULL,
+        Variedad NVARCHAR(150) NULL,
+        Proceso NVARCHAR(150) NULL,
+        Tueste NVARCHAR(60) NULL,
+        IdealPara NVARCHAR(150) NULL,
+        Puntaje NVARCHAR(20) NULL,
+        Descripcion NVARCHAR(2000) NULL,
+        FraganciaAroma NVARCHAR(300) NULL,
+        Sabor NVARCHAR(300) NULL,
+        Retrogusto NVARCHAR(300) NULL,
+        Rueda NVARCHAR(300) NULL,
+        Cuerpo DECIMAL(3,1) NULL,
+        Acidez DECIMAL(3,1) NULL,
+        Dulzor DECIMAL(3,1) NULL,
+        ComponentesJson NVARCHAR(MAX) NULL,
+        NoAplica NVARCHAR(400) NULL,
+        FotoCafeArchivo NVARCHAR(200) NULL,
+        FotoEtiquetaArchivo NVARCHAR(200) NULL,
+        IsActive BIT NOT NULL CONSTRAINT DF_FichaTec_Active DEFAULT 1,
+        UpdatedBy NVARCHAR(100) NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_FichaTec_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NOT NULL CONSTRAINT DF_FichaTec_Updated DEFAULT SYSUTCDATETIME()
+    );
+GO
+-- (una ficha activa por producto: lo controla la API; un índice filtrado acá falla con el sqlcmd del init)
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_FichaTec_Producto')
+    CREATE INDEX IX_FichaTec_Producto ON Cafe_FichasTecnicas(CafeProductoId);
+GO
