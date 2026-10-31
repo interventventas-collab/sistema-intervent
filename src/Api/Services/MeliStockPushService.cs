@@ -250,9 +250,13 @@ public class MeliStockPushService
         // 2026-09-10: de quien es hermana cada publicacion salteada, para poder marcarle la fecha
         // de push a ella tambien (comparten el stock, el PUT del hermano ya la cubrio).
         var hermanaDe = new Dictionary<string, string>();
+        // 2026-10-31 (HE450): la que queda como "duenia" del PUT tiene que ser una que MeLi deje
+        // modificar. Si se elige una en revision (under_review), MeLi rechaza el stock y las
+        // hermanas activas siguen vendiendo sin stock. Por eso las en revision van al final.
         foreach (var rep in meliItems
             .GroupBy(m => m.MeliItemId)
-            .Select(g => g.First()))
+            .Select(g => g.First())
+            .OrderBy(m => string.Equals(m.Status, "under_review", StringComparison.OrdinalIgnoreCase) ? 1 : 0))
         {
             if (string.IsNullOrEmpty(rep.UserProductId)) continue;
             var key = $"{rep.MeliAccountId}|{rep.UserProductId}";
@@ -576,7 +580,7 @@ public class MeliStockPushService
                     return (PushOutcome.Skipped, "ConservativeMode: subiria o igualaria, no permitido");
                 // Solo cuando baja real
                 var payloadC = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
-                return await DoPut(http, meliItemId, payloadC, ct);
+                return await DoPutOrSharedStock(http, meliItemId, doc, payloadC, stockMeliSingle, ct);
             }
 
             if (safeBulkMode)
@@ -589,7 +593,7 @@ public class MeliStockPushService
                     return (PushOutcome.Skipped, "SafeBulk: daria 0, no pausar");
                 // Permite tanto subir como bajar — pero NUNCA agrega status: active
                 var payloadSb = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
-                return await DoPut(http, meliItemId, payloadSb, ct);
+                return await DoPutOrSharedStock(http, meliItemId, doc, payloadSb, stockMeliSingle, ct);
             }
 
             // POLÍTICA 2026-08-25: se despierta, pero con el precio fresco primero (ver comentario
@@ -609,7 +613,7 @@ public class MeliStockPushService
             }
 
             var payload = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
-            var resSingle = await DoPut(http, meliItemId, payload, ct);
+            var resSingle = await DoPutOrSharedStock(http, meliItemId, doc, payload, stockMeliSingle, ct);
             // 2026-08-13: si el push fue OK, refrescar el stock local para que la pantalla no muestre el viejo.
             if (resSingle.Item1 == PushOutcome.Ok)
                 foreach (var r in rows) r.AvailableQuantity = stockMeliSingle;
@@ -673,6 +677,29 @@ public class MeliStockPushService
             return (PushOutcome.Error, $"FULL PUT {(int)resp.StatusCode}: {Trim(err)}");
         }
         return (PushOutcome.Error, "FULL: agotados los reintentos por version mismatch");
+    }
+
+    /// <summary>2026-10-31 (HE450): PUT normal a /items y, si MeLi contesta "available_quantity is
+    /// not modifiable" (publicacion en revision que comparte stock con hermanas), manda el mismo
+    /// numero al stock compartido (/user-products/{id}/stock), que es el que ven todas las hermanas.</summary>
+    private async Task<(PushOutcome, string?)> DoPutOrSharedStock(HttpClient http, string meliItemId,
+        JsonElement doc, Dictionary<string, object> payload, int quantity, CancellationToken ct)
+    {
+        var res = await DoPut(http, meliItemId, payload, ct);
+        if (res.Item1 != PushOutcome.Error || res.Item2 is null
+            || !(res.Item2.Contains("field_not_updatable", StringComparison.OrdinalIgnoreCase)
+                 || res.Item2.Contains("not modifiable", StringComparison.OrdinalIgnoreCase)))
+            return res;
+        if (!doc.TryGetProperty("user_product_id", out var upProp) || upProp.ValueKind != JsonValueKind.String
+            || string.IsNullOrEmpty(upProp.GetString()))
+            return res;
+
+        var (outcome, msg) = await PushSellingAddressForFullAsync(http, upProp.GetString()!, quantity, ct);
+        _logger.LogInformation("[StockPush] {Mla}: PUT /items rechazado, stock compartido {Upg} -> {Outcome} {Msg}",
+            meliItemId, upProp.GetString(), outcome, msg);
+        return outcome == PushOutcome.Ok
+            ? (PushOutcome.Ok, $"stock compartido pusheado (qty={quantity})")
+            : (outcome, "stock compartido: " + msg);
     }
 
     private async Task<(PushOutcome, string?)> DoPut(HttpClient http, string meliItemId,
