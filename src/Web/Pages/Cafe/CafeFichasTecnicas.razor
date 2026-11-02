@@ -245,7 +245,7 @@
                                     @foreach (var key in new[] { "region", "variedad", "proceso", "finca", "altura" })
                                     {
                                         var k = key;
-                                        <div class="ft-f"><label>@Label(k)</label><input class="ft-in" value="@FichaTecnicaCatalogo.GetComp(c, k)" @onchange="e => { FichaTecnicaCatalogo.SetComp(c, k, e.Value?.ToString()); return Guardar(f); }" /></div>
+                                        <div class="ft-f"><label>@Label(k)</label>@Entrada(f, k, () => FichaTecnicaCatalogo.GetComp(c, k), v => FichaTecnicaCatalogo.SetComp(c, k, v))</div>
                                     }
                                 </div>
                             </div>
@@ -358,15 +358,13 @@
                                             @foreach (var comp in f.Componentes)
                                             {
                                                 var cc = comp;
-                                                <input class="ft-in" style="margin-bottom:.2rem;" data-ftcol="@k" onkeydown="fichaEnterAbajo(event,this)" placeholder="@(k == "pais" ? "parte del blend" : cc.Pais)"
-                                                       value="@FichaTecnicaCatalogo.GetComp(cc, k)" @onchange="e => { FichaTecnicaCatalogo.SetComp(cc, k, e.Value?.ToString()); return Guardar(f); }" />
+                                                <div style="margin-bottom:.2rem;">@Entrada(f, k, () => FichaTecnicaCatalogo.GetComp(cc, k), v => FichaTecnicaCatalogo.SetComp(cc, k, v), k == "pais" ? "parte del blend" : cc.Pais)</div>
                                             }
                                             @if (f.Componentes.Count == 0) { <span class="ft-mut">blend sin partes</span> }
                                         }
                                         else
                                         {
-                                            <input class="ft-in" data-ftcol="@k" onkeydown="fichaEnterAbajo(event,this)"
-                                                   value="@FichaTecnicaCatalogo.Get(f, k)" @onchange="e => { FichaTecnicaCatalogo.Set(f, k, e.Value?.ToString()); return Guardar(f); }" />
+                                            @Entrada(f, k, () => FichaTecnicaCatalogo.Get(f, k), v => FichaTecnicaCatalogo.Set(f, k, v))
                                         }
                                     </td>
                                 }
@@ -436,12 +434,19 @@
         }
     }
 
+    /// <summary>Busca y ordena por código del producto: F0, F1, F2 … F9, F10 (los sin código al final).</summary>
     private IEnumerable<FichaTecnicaDto> Filtrar(IEnumerable<FichaTecnicaDto> src)
     {
-        if (string.IsNullOrWhiteSpace(busca)) return src;
-        var q = busca.Trim();
-        return src.Where(f => f.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
-                              || (f.ProductoSku ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(busca))
+        {
+            var q = busca.Trim();
+            src = src.Where(f => f.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
+                                 || (f.ProductoSku ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+        return src.OrderBy(f => string.IsNullOrWhiteSpace(f.ProductoSku))
+            .ThenBy(f => new string((f.ProductoSku ?? "").TakeWhile(c => !char.IsDigit(c)).ToArray()).ToUpperInvariant())
+            .ThenBy(f => int.TryParse(new string((f.ProductoSku ?? "").SkipWhile(c => !char.IsDigit(c)).TakeWhile(char.IsDigit).ToArray()), out var n) ? n : int.MaxValue)
+            .ThenBy(f => f.ProductoSku).ThenBy(f => f.Nombre);
     }
 
     private IEnumerable<FichaTecnicaDto> Lista => Filtrar(fichas ?? new());
@@ -450,7 +455,7 @@
         Filtrar(fichas ?? new()).Where(f => trabajarEn == "todo" || !soloFaltan || FichaTecnicaCatalogo.Falta(f, trabajarEn));
 
     private IEnumerable<FichaTecnicaCatalogo.Campo> ColumnasTodo =>
-        FichaTecnicaCatalogo.Campos.Where(c => c.Tipo is "texto" or "opciones" or "largo");
+        FichaTecnicaCatalogo.Campos.Where(c => c.Tipo is "texto" or "opciones" or "largo" or "altura");
 
     private IEnumerable<FichaProductoCafeDto> ProductosFiltrados
     {
@@ -474,6 +479,42 @@
     }
 
     // ── Un dato de la ficha (se usa en el editor y en "Todas juntas") ──
+    /// <summary>Cómo se carga un dato de texto: altura con "desde" y "hasta" (el guion y "mts" van solos),
+    /// los de opciones con botones, el resto con un renglón. Sirve para la ficha y para cada parte de un blend.</summary>
+    private RenderFragment Entrada(FichaTecnicaDto f, string key, Func<string?> get, Action<string?> set, string? placeholder = null) => __builder =>
+    {
+        var c = FichaTecnicaCatalogo.Campos.First(x => x.Key == key);
+        if (c.Tipo == "altura")
+        {
+            var (desde, hasta) = FichaTecnicaCatalogo.PartirAltura(get());
+            <div style="display:flex; align-items:center; gap:.3rem;">
+                <input class="ft-in" style="width:5.5rem;" inputmode="numeric" placeholder="desde" data-ftcol="@(key)-desde" onkeydown="fichaEnterAbajo(event,this)" value="@desde"
+                       @onchange="e => { set(FichaTecnicaCatalogo.ArmarAltura(e.Value?.ToString(), FichaTecnicaCatalogo.PartirAltura(get()).Hasta)); return Guardar(f); }" />
+                <span>–</span>
+                <input class="ft-in" style="width:5.5rem;" inputmode="numeric" placeholder="hasta" data-ftcol="@(key)-hasta" onkeydown="fichaEnterAbajo(event,this)" value="@hasta"
+                       @onchange="e => { set(FichaTecnicaCatalogo.ArmarAltura(FichaTecnicaCatalogo.PartirAltura(get()).Desde, e.Value?.ToString())); return Guardar(f); }" />
+                <span class="ft-mut">mts</span>
+            </div>
+        }
+        else if (c.Tipo == "opciones")
+        {
+            var actual = get();
+            <div class="ft-chips">
+                @foreach (var op in c.Opciones!)
+                {
+                    var o = op;
+                    <button class="ft-chip @(string.Equals(actual?.Trim(), o, StringComparison.OrdinalIgnoreCase) ? "on" : "")"
+                            @onclick="() => { set(string.Equals(actual?.Trim(), o, StringComparison.OrdinalIgnoreCase) ? null : o); return Guardar(f); }">@o</button>
+                }
+            </div>
+        }
+        else
+        {
+            <input class="ft-in" placeholder="@(placeholder ?? c.Ayuda)" data-ftcol="@key" onkeydown="fichaEnterAbajo(event,this)"
+                   value="@get()" @onchange="e => { set(e.Value?.ToString()); return Guardar(f); }" />
+        }
+    };
+
     private RenderFragment Campo(FichaTecnicaDto f, string key, bool sinLabel = false) => __builder =>
     {
         var c = FichaTecnicaCatalogo.Campos.First(x => x.Key == key);
@@ -498,8 +539,7 @@
                     var parte = string.IsNullOrWhiteSpace(cc.Pais) ? $"Parte {i + 1}" : cc.Pais;
                     <div style="display:flex; align-items:center; gap:.4rem; margin-bottom:.25rem;">
                         <span class="ft-mut" style="width:95px; flex:none;">@parte@(cc.Pct is decimal pc ? $" {pc:0.#}%" : "")</span>
-                        <input class="ft-in" data-ftcol="@key" onkeydown="fichaEnterAbajo(event,this)"
-                               value="@FichaTecnicaCatalogo.GetComp(cc, key)" @onchange="e => { FichaTecnicaCatalogo.SetComp(cc, key, e.Value?.ToString()); return Guardar(f); }" />
+                        <div style="flex:1; min-width:0;">@Entrada(f, key, () => FichaTecnicaCatalogo.GetComp(cc, key), v => FichaTecnicaCatalogo.SetComp(cc, key, v))</div>
                     </div>
                 }
                 @if (f.Componentes.Count == 0) { <span class="ft-mut">Blend sin partes: cargalas en la ficha (Una por una).</span> }
@@ -508,6 +548,10 @@
             {
                 <input class="ft-in" placeholder="@c.Ayuda" data-ftcol="@key" onkeydown="fichaEnterAbajo(event,this)"
                        value="@FichaTecnicaCatalogo.Get(f, key)" @onchange="e => { FichaTecnicaCatalogo.Set(f, key, e.Value?.ToString()); return Guardar(f); }" />
+            }
+            else if (c.Tipo == "altura")
+            {
+                @Entrada(f, key, () => FichaTecnicaCatalogo.Get(f, key), v => FichaTecnicaCatalogo.Set(f, key, v))
             }
             else if (c.Tipo == "largo")
             {

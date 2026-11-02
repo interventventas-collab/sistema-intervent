@@ -82,9 +82,9 @@ public static class FichaTecnicaCatalogo
         new("pais", "País", "texto", Origen: true),
         new("region", "Región", "texto", Origen: true),
         new("finca", "Finca / productor", "texto", Origen: true),
-        new("altura", "Altura", "texto", Origen: true, Ayuda: "Ej: 1.600 – 1.900 msnm"),
+        new("altura", "Altura", "altura", Origen: true),
         new("variedad", "Variedad", "texto", Origen: true),
-        new("proceso", "Proceso", "texto", Origen: true, Ayuda: "Ej: Lavado, Natural fermentado 40 h"),
+        new("proceso", "Proceso", "opciones", Origen: true, Opciones: new[] { "Lavado", "Natural", "Honey" }),
         new("tueste", "Tueste", "opciones", Opciones: new[] { "Claro", "Medio", "Medio-oscuro", "Oscuro" }),
         new("idealPara", "Ideal para", "texto", Ayuda: "Ej: Espresso · Filtro"),
         new("puntaje", "Puntaje SCA", "texto"),
@@ -95,6 +95,27 @@ public static class FichaTecnicaCatalogo
         new("rueda", "Rueda de sabores", "rueda"),
         new("balance", "Balance", "balance"),
     };
+
+    /// <summary>Altura: se cargan "desde" y "hasta" y queda guardada como "1.600 – 1.900 mts".
+    /// Lee también lo cargado antes a mano ("800 a 1.000 mts").</summary>
+    public static (string Desde, string Hasta) PartirAltura(string? v)
+    {
+        var nums = System.Text.RegularExpressions.Regex.Matches(v ?? "", @"\d[\d.]*")
+            .Select(m => m.Value.Replace(".", "")).ToList();
+        return (nums.ElementAtOrDefault(0) ?? "", nums.ElementAtOrDefault(1) ?? "");
+    }
+
+    public static string? ArmarAltura(string? desde, string? hasta)
+    {
+        static string? N(string? x)
+        {
+            var d = new string((x ?? "").Where(char.IsDigit).ToArray());
+            return int.TryParse(d, out var n) && n > 0 ? n.ToString("N0", new System.Globalization.CultureInfo("es-AR")) : null;
+        }
+        var (a, b) = (N(desde), N(hasta));
+        if (a is null && b is null) return null;
+        return a is not null && b is not null && a != b ? $"{a} – {b} mts" : $"{a ?? b} mts";
+    }
 
     /// <summary>Escala del termómetro de tostado (mismo orden que la barra, de claro a oscuro).
     /// -1 si el tueste no es uno de estos (texto libre): entonces va como dato suelto.</summary>
