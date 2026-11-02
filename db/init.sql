@@ -8573,6 +8573,11 @@ IF COL_LENGTH('Cafe_FichasTecnicas','Sabores') IS NULL
     ALTER TABLE Cafe_FichasTecnicas ADD Sabores NVARCHAR(2000) NULL;
 GO
 
+-- 2026-11-02: fichas técnicas — malla (tamaño del grano, ej "17/18"). ⚠ En PROD correr a mano.
+IF COL_LENGTH('Cafe_FichasTecnicas','Malla') IS NULL
+    ALTER TABLE Cafe_FichasTecnicas ADD Malla NVARCHAR(30) NULL;
+GO
+
 -- 2026-11-02: vacaciones de los empleados (almanaque en Empleados -> Vacaciones).
 -- Periodo = de qué año son esas vacaciones (las de enero 2027 corresponden a 2026).
 -- Estado: 'aprobada' o 'pedida' (pedida = falta que el dueño la apruebe).

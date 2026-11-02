@@ -234,6 +234,7 @@
                             @Campo(f, "pais") @Campo(f, "region")
                             @Campo(f, "finca") @Campo(f, "altura")
                             @Campo(f, "variedad") @Campo(f, "proceso")
+                            @Campo(f, "malla")
                         </div>
                     }
                     else
@@ -246,7 +247,7 @@
                                 <div class="ft-row">
                                     <div class="ft-f"><label>País</label><input class="ft-in" value="@c.Pais" @onchange="e => { c.Pais = e.Value?.ToString(); return Guardar(f); }" /></div>
                                     <div class="ft-f"><label>% del blend <span class="na-link" @onclick="() => QuitarParte(f, c)">quitar parte</span></label><input class="ft-in" value="@c.Pct?.ToString("0.#")" @onchange="e => { c.Pct = Num(e.Value); return Guardar(f); }" /></div>
-                                    @foreach (var key in new[] { "region", "variedad", "proceso", "finca", "altura" })
+                                    @foreach (var key in new[] { "region", "variedad", "proceso", "finca", "altura", "malla" })
                                     {
                                         var k = key;
                                         <div class="ft-f"><label>@Label(k)</label>@Entrada(f, k, () => FichaTecnicaCatalogo.GetComp(c, k), v => FichaTecnicaCatalogo.SetComp(c, k, v))</div>
@@ -419,7 +420,7 @@
     private readonly Dictionary<int, string> estado = new();
     private readonly SemaphoreSlim colaGuardar = new(1, 1);
 
-    private static readonly string[] OrigenKeys = { "pais", "region", "finca", "altura", "variedad", "proceso" };
+    private static readonly string[] OrigenKeys = { "pais", "region", "finca", "altura", "variedad", "proceso", "malla" };
 
     protected override async Task OnInitializedAsync()
     {
@@ -736,7 +737,7 @@
         if (f.EsBlend && f.Componentes.Count == 0)
         {
             // Arranca con dos partes vacías; si la ficha ya tenía país/región, pasan a la primera.
-            f.Componentes.Add(new FichaComponenteDto { Pais = f.Pais, Region = f.Region, Variedad = f.Variedad, Proceso = f.Proceso, Finca = f.Finca, Altura = f.Altura });
+            f.Componentes.Add(new FichaComponenteDto { Pais = f.Pais, Region = f.Region, Variedad = f.Variedad, Proceso = f.Proceso, Finca = f.Finca, Altura = f.Altura, Malla = f.Malla });
             f.Componentes.Add(new FichaComponenteDto());
         }
         return Guardar(f);

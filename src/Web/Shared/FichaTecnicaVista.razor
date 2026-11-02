@@ -124,7 +124,7 @@
                     {
                         <div>
                             <b>@(c.Pais ?? "—")@(c.Pct is decimal pct ? $" · {pct:0.#}%" : "")</b>
-                            @foreach (var (lbl, val) in new[] { ("Región", c.Region), ("Variedad", c.Variedad), ("Proceso", c.Proceso), ("Finca", c.Finca), ("Altura", FichaTecnicaCatalogo.AlturaTexto(c.Altura)) })
+                            @foreach (var (lbl, val) in new[] { ("Región", c.Region), ("Variedad", c.Variedad), ("Proceso", c.Proceso), ("Finca", c.Finca), ("Altura", FichaTecnicaCatalogo.AlturaTexto(c.Altura)), ("Malla", c.Malla) })
                             {
                                 if (!string.IsNullOrWhiteSpace(val)) { <div><span>@lbl</span>@val</div> }
                             }
@@ -222,7 +222,7 @@
 
     // Las partes del blend que quedaron vacías no salen.
     private List<FichaComponenteDto> Partes => F.Componentes
-        .Where(c => c.Pct.HasValue || new[] { c.Pais, c.Region, c.Variedad, c.Proceso, c.Finca, c.Altura }.Any(x => !string.IsNullOrWhiteSpace(x)))
+        .Where(c => c.Pct.HasValue || new[] { c.Pais, c.Region, c.Variedad, c.Proceso, c.Finca, c.Altura, c.Malla }.Any(x => !string.IsNullOrWhiteSpace(x)))
         .ToList();
 
     private string? V(string key, string? val) => F.NoAplica.Contains(key) || string.IsNullOrWhiteSpace(val) ? null : val.Trim();
@@ -263,6 +263,7 @@
                 if (V("variedad", F.Variedad) is string va) d.Add(("Variedad", va));
                 if (V("proceso", F.Proceso) is string pr) d.Add(("Proceso", pr));
                 if (V("altura", F.Altura) is string al) d.Add(("Altura", FichaTecnicaCatalogo.AlturaTexto(al)!));
+                if (V("malla", F.Malla) is string ma) d.Add(("Malla", ma));
                 if (V("finca", F.Finca) is string fi) d.Add(("Finca / productor", fi));
             }
             // El tueste de la escala ya sale en el termómetro; solo un texto distinto va como dato.

@@ -35,6 +35,8 @@ public class CafeFichaTecnica
     [MaxLength(150)] public string? Region { get; set; }
     [MaxLength(150)] public string? Finca { get; set; }
     [MaxLength(80)] public string? Altura { get; set; }
+    /// <summary>2026-11-02: malla = tamaño del grano verde (ej "17/18", "+15").</summary>
+    [MaxLength(30)] public string? Malla { get; set; }
     [MaxLength(150)] public string? Variedad { get; set; }
     [MaxLength(150)] public string? Proceso { get; set; }
     [MaxLength(60)] public string? Tueste { get; set; }
