@@ -104,6 +104,22 @@ public static class FichaTecnicaCatalogo
         return Array.FindIndex(ops, o => string.Equals(o, tueste?.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>Balance con palabras: se guarda el número de la opción (1 = la primera).
+    /// Mismo orden y textos que el PDF (CafeFichaTecnicaPdfService.Balance).</summary>
+    public static readonly (string Label, string[] Niveles)[] Balance =
+    {
+        ("Cuerpo", new[] { "Ligero", "Medio", "Completo", "Pesado" }),
+        ("Acidez", new[] { "Baja", "Media", "Alta" }),
+        ("Dulzor", new[] { "Bajo", "Medio", "Alto" }),
+    };
+
+    /// <summary>Opción elegida (0 = la primera) o -1 si no hay o es un valor viejo del 1 al 5 con medios.</summary>
+    public static int NivelBalance(decimal? v, int cantidad) =>
+        v is decimal d && d % 1 == 0 && d >= 1 && d <= cantidad ? (int)d - 1 : -1;
+
+    public static decimal? GetBalance(FichaTecnicaDto f, string label) =>
+        label == "Cuerpo" ? f.Cuerpo : label == "Acidez" ? f.Acidez : f.Dulzor;
+
     /// <summary>Familias de la rueda de sabores (mismas keys y colores que el PDF).</summary>
     public static readonly (string Key, string Label, string Color)[] Rueda =
     {
@@ -174,7 +190,7 @@ public static class FichaTecnicaCatalogo
         return key switch
         {
             "rueda" => f.Rueda.Count == 0,
-            "balance" => f.Cuerpo is null || f.Acidez is null || f.Dulzor is null,
+            "balance" => Balance.Any(b => NivelBalance(GetBalance(f, b.Label), b.Niveles.Length) < 0),
             _ => string.IsNullOrWhiteSpace(Get(f, key))
         };
     }

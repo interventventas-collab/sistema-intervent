@@ -541,16 +541,15 @@
             }
             else if (c.Tipo == "balance")
             {
-                @foreach (var b in new[] { "Cuerpo", "Acidez", "Dulzor" })
+                @foreach (var (bn, niveles) in FichaTecnicaCatalogo.Balance)
                 {
-                    var bn = b;
-                    var val = bn == "Cuerpo" ? f.Cuerpo : bn == "Acidez" ? f.Acidez : f.Dulzor;
-                    <div class="ft-bal">
-                        <span>@bn</span>
-                        @for (var x = 1m; x <= 5m; x += 0.5m)
+                    var elegido = FichaTecnicaCatalogo.NivelBalance(FichaTecnicaCatalogo.GetBalance(f, bn), niveles.Length);
+                    <div class="ft-chips" style="display:flex; align-items:center; gap:.3rem; margin-bottom:.3rem;">
+                        <span style="width:4rem;">@bn</span>
+                        @for (var i = 0; i < niveles.Length; i++)
                         {
-                            var v = x;
-                            <button class="@(val == v ? "on" : "")" @onclick="() => SetBalance(f, bn, val == v ? null : v)">@(v % 1 == 0 ? v.ToString("0") : "½")</button>
+                            var n = i;
+                            <button class="ft-chip @(elegido == n ? "on" : "")" @onclick="() => SetBalance(f, bn, elegido == n ? null : n + 1)">@niveles[n]</button>
                         }
                     </div>
                 }
