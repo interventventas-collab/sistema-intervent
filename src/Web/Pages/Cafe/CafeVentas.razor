@@ -8553,7 +8553,17 @@
         // Si el cliente seleccionado tiene Cond IVA cargada en su ficha, esa manda
         // (la setteo OnClienteChanged y no quiero pisarla solo porque cambiaste el tipo).
         var cli = formClienteId > 0 ? clientes?.FirstOrDefault(c => c.Id == formClienteId) : null;
-        if (cli is null || string.IsNullOrWhiteSpace(cli.CondicionIvaDefault))
+        if (cli is not null && !string.IsNullOrWhiteSpace(cli.CondicionIvaDefault))
+        {
+            // 02/11/2026: al pasar a factura manda la ficha. Antes quedaba la condición guardada en la
+            // cotización (AGUA VALL'S: ficha RI, cotización vieja con MO → la Factura A salía a Monotributo).
+            if (formTipoComprobante is "FA" or "FB" or "FC")
+            {
+                formCondicionIva = cli.CondicionIvaDefault!;
+                _ = RefrescarCondIvaDesdeFicha(cli.Id);
+            }
+        }
+        else
         {
             formCondicionIva = formTipoComprobante switch
             {
@@ -8568,6 +8578,25 @@
         // 2026-07-14: recotizar al cambiar de comprobante. El PRESUPUESTO (PRO) no valida stock,
         // así que el botón Emitir debe prenderse/apagarse según el nuevo tipo elegido.
         _ = Cotizar();
+    }
+
+    /// <summary>02/11/2026: la lista de clientes de la pantalla se carga al abrirla; si la ficha se cambió
+    /// después (en otra pestaña), trae la ficha fresca y, si la condición IVA cambió, la aplica.</summary>
+    private async Task RefrescarCondIvaDesdeFicha(int clienteId)
+    {
+        try
+        {
+            var fresco = await Api.GetCafeClienteAsync(clienteId);
+            if (fresco is null || string.IsNullOrWhiteSpace(fresco.CondicionIvaDefault)) return;
+            var idx = clientes?.FindIndex(c => c.Id == clienteId) ?? -1;
+            if (idx >= 0) clientes![idx] = fresco;
+            if (formClienteId != clienteId || formCondicionIva == fresco.CondicionIvaDefault) return;
+            if (formTipoComprobante is not ("FA" or "FB" or "FC")) return;
+            formCondicionIva = fresco.CondicionIvaDefault!;
+            AjustarLetraPorCondicion();
+            StateHasChanged();
+        }
+        catch { }
     }
 
     /// <summary>2026-06-23: cuando el usuario cambia Concepto AFIP de Productos a Servicios o Mixto,
@@ -9104,6 +9133,10 @@
         convirtiendoDesdeEdicion = false;
         // La condición IVA del receptor: si la venta original tiene una válida la usamos, sino RI default
         convertirCondIva = !string.IsNullOrWhiteSpace(v.CondicionIva) && v.CondicionIva != "CF" ? v.CondicionIva : "RI";
+        // 02/11/2026: si la ficha del cliente tiene condición IVA, esa manda (la de la venta puede ser vieja).
+        var cliFicha = clientes?.FirstOrDefault(c => c.Id == v.ClienteId);
+        if (!string.IsNullOrWhiteSpace(cliFicha?.CondicionIvaDefault))
+            convertirCondIva = cliFicha!.CondicionIvaDefault!;
         // Multi-sociedad: heredar la empresa de la proforma si tenía; sino el default (CUIT del negocio).
         convertirArcaAccountId = v.ArcaWebserviceAccountId ?? DefaultArcaAccountId();
         // 2026-10-06: la letra sale de la misma regla que Nueva Venta (antes arrancaba SIEMPRE en B,
