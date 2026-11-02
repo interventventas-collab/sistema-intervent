@@ -436,12 +436,19 @@
         }
     }
 
+    /// <summary>Busca y ordena por código del producto: F0, F1, F2 … F9, F10 (los sin código al final).</summary>
     private IEnumerable<FichaTecnicaDto> Filtrar(IEnumerable<FichaTecnicaDto> src)
     {
-        if (string.IsNullOrWhiteSpace(busca)) return src;
-        var q = busca.Trim();
-        return src.Where(f => f.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
-                              || (f.ProductoSku ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(busca))
+        {
+            var q = busca.Trim();
+            src = src.Where(f => f.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
+                                 || (f.ProductoSku ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+        return src.OrderBy(f => string.IsNullOrWhiteSpace(f.ProductoSku))
+            .ThenBy(f => new string((f.ProductoSku ?? "").TakeWhile(c => !char.IsDigit(c)).ToArray()).ToUpperInvariant())
+            .ThenBy(f => int.TryParse(new string((f.ProductoSku ?? "").SkipWhile(c => !char.IsDigit(c)).TakeWhile(char.IsDigit).ToArray()), out var n) ? n : int.MaxValue)
+            .ThenBy(f => f.ProductoSku).ThenBy(f => f.Nombre);
     }
 
     private IEnumerable<FichaTecnicaDto> Lista => Filtrar(fichas ?? new());
