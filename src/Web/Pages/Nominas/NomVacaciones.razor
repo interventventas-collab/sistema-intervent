@@ -1,0 +1,628 @@
+@page "/nominas/vacaciones"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* 2026-11-02: almanaque de vacaciones. Un renglón por empleado y una columna por día del mes.
+   Los días que le tocan salen de la fecha de ingreso (ley de contrato de trabajo):
+   menos de 6 meses = 1 día cada 20 trabajados, menos de 5 años = 14, menos de 10 = 21,
+   menos de 20 = 28, 20 o más = 35. Las de enero a abril corresponden al año anterior. *@
+
+<style>
+    .vac-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .vac-mes { font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+    .vac-mes button { background: none; border: 0; color: #6b7280; font-size: 1.2rem; padding: 0 10px; cursor: pointer; }
+    .vac-wrap { overflow-x: auto; }
+    .vac-tabla { border-collapse: collapse; width: 100%; user-select: none; }
+    .vac-tabla th { font-weight: 500; color: #6b7280; font-size: 11px; }
+    .vac-tabla td { height: 42px; padding: 0; border-bottom: 1px solid #eef0f2; }
+    .vac-tabla th.d, .vac-tabla td.d { border-left: 1px solid #f0f1f3; min-width: 26px; text-align: center; }
+    .vac-tabla th.d { padding: 4px 0; line-height: 1.25; }
+    .vac-tabla th.d.hoy { color: #2563eb; font-weight: 700; }
+    .vac-tabla td.d { cursor: cell; }
+    .vac-nom { min-width: 170px; padding: 4px 8px !important; text-align: left; }
+    .vac-num { width: 52px; text-align: center; }
+    .vac-tabla th.n { text-align: center; line-height: 1.2; }
+    .vac-muted { color: #9ca3af; font-size: 12px; font-weight: 400; }
+    .vac-tabla .we { background: #fafafa; }
+    .vac-tabla .fer { background: repeating-linear-gradient(45deg, #efefef 0 4px, #fafafa 4px 8px); }
+    .vac-tabla td.sel { background: #dbeafe; }
+    .vac-bar { height: 20px; background: #475569; margin-left: -1px; cursor: pointer; }
+    .vac-bar.ini { border-radius: 5px 0 0 5px; margin-left: 2px; }
+    .vac-bar.fin { border-radius: 0 5px 5px 0; margin-right: 2px; }
+    .vac-bar.ini.fin { border-radius: 5px; }
+    .vac-bar.pedida { background: #fff; border-top: 2px dashed #475569; border-bottom: 2px dashed #475569; height: 16px; }
+    .vac-bar.pedida.ini { border-left: 2px dashed #475569; }
+    .vac-bar.pedida.fin { border-right: 2px dashed #475569; }
+    .vac-bar.editando { outline: 2px solid #2563eb; }
+    .vac-pend { font-size: 12px; color: #2563eb; }
+    .vac-pend button { background: none; border: 0; color: #2563eb; text-decoration: underline; padding: 0; cursor: pointer; font-size: 12px; }
+    .vac-alerta { color: #b91c1c; font-weight: 600; margin-top: 10px; }
+    .vac-ley { color: #6b7280; font-size: 12px; margin-top: 10px; }
+    .vac-ley i { display: inline-block; width: 22px; height: 10px; vertical-align: middle; margin: 0 4px 0 12px; }
+    .vac-ley i:first-child { margin-left: 0; }
+    .vac-anio-celda { text-align: center; cursor: pointer; color: #374151; }
+    .vac-anio-celda:hover { background: #f3f4f6; }
+    .vac-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; align-items: end; }
+    .vac-form label { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; }
+    .vac-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .vac-chip { border: 1px solid #d1d5db; background: #fff; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+    .vac-chip.on { background: #1f2937; color: #fff; border-color: #1f2937; }
+</style>
+
+<div class="card">
+    <div class="card-header vac-top">
+        <h3>🏖 Vacaciones</h3>
+        @if (vista == "mes")
+        {
+            <div class="vac-mes">
+                <button @onclick="() => MoverMes(-1)" title="Mes anterior">‹</button>
+                <span>@NombreMes(mes) @anio</span>
+                <button @onclick="() => MoverMes(1)" title="Mes siguiente">›</button>
+            </div>
+        }
+        else
+        {
+            <div class="vac-mes">
+                <button @onclick="() => MoverAnio(-1)" title="Año anterior">‹</button>
+                <span>Vacaciones @periodoVista</span>
+                <button @onclick="() => MoverAnio(1)" title="Año siguiente">›</button>
+            </div>
+        }
+        <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" @onclick="CambiarVista">@(vista == "mes" ? "Ver todo el año" : "Ver por mes")</button>
+            <button class="btn btn-primary" @onclick="NuevaVacacion">+ Cargar vacaciones</button>
+        </div>
+    </div>
+    <div class="card-body">
+        @if (datos is null)
+        {
+            <p class="text-muted">Cargando...</p>
+        }
+        else if (datos.Empleados.Count == 0)
+        {
+            <p class="text-muted">No hay empleados activos. Cargalos en Ficha empleados.</p>
+        }
+        else if (vista == "mes")
+        {
+            var dias = DateTime.DaysInMonth(anio, mes);
+            var periodo = PeriodoDe(new DateTime(anio, mes, 1));
+            <div class="vac-wrap">
+                <table class="vac-tabla" @onmouseup="TerminarArrastre" @onmouseleave="CancelarArrastre">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left; padding-left: 8px;">Empleado</th>
+                            <th class="n" title="Días que le tocan por las vacaciones @periodo">Le<br />tocan</th>
+                            <th class="n" title="Días aprobados de las vacaciones @periodo">Ya<br />tomó</th>
+                            <th class="n">Le<br />quedan</th>
+                            @for (var d = 1; d <= dias; d++)
+                            {
+                                var f = new DateTime(anio, mes, d);
+                                <th class="d @ClaseDia(f) @(f == datos.Hoy ? "hoy" : "")" title="@TituloDia(f)">@LetraDia(f)<br />@d</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var e in datos.Empleados)
+                        {
+                            var emp = e;
+                            var tocan = LeTocan(emp, periodo);
+                            var tomo = DiasDe(emp.Id, periodo, "aprobada");
+                            var pendientes = PendientesDelMes(emp.Id);
+                            <tr>
+                                <td class="vac-nom">
+                                    <b>@PrimerNombre(emp.Nombre)</b>
+                                    <div class="vac-muted">@Capitalizar(emp.Puesto) · desde @DesdeTexto(emp.FechaIngreso)</div>
+                                    @foreach (var p in pendientes)
+                                    {
+                                        var pv = p;
+                                        <div class="vac-pend">pidió @pv.Desde.ToString("dd/MM") → @pv.Hasta.ToString("dd/MM") · <button @onclick="() => Aprobar(pv)">aprobar</button></div>
+                                    }
+                                </td>
+                                <td class="vac-num">@tocan</td>
+                                <td class="vac-num">@tomo</td>
+                                <td class="vac-num" style="@(tocan - tomo < 0 ? "color:#b91c1c;" : "")"><b>@(tocan - tomo)</b></td>
+                                @for (var d = 1; d <= dias; d++)
+                                {
+                                    var f = new DateTime(anio, mes, d);
+                                    var v = VacacionDelDia(emp.Id, f);
+                                    if (v is not null)
+                                    {
+                                        var vv = v;
+                                        var ini = vv.Desde.Date == f || d == 1;
+                                        var fin = vv.Hasta.Date == f || d == dias;
+                                        <td class="d @ClaseDia(f)" title="@TituloVacacion(emp, vv)">
+                                            <div class="vac-bar @vv.Estado @(ini ? "ini" : "") @(fin ? "fin" : "") @(editandoId == vv.Id ? "editando" : "")"
+                                                 @onclick="() => Editar(vv)"></div>
+                                        </td>
+                                    }
+                                    else
+                                    {
+                                        <td class="d @ClaseDia(f) @(EnSeleccion(emp.Id, d) ? "sel" : "")" title="@TituloDia(f)"
+                                            @onmousedown="() => EmpezarArrastre(emp.Id, f)" @onmousedown:preventDefault="true"
+                                            @onmouseenter="() => SeguirArrastre(emp.Id, f)"></td>
+                                    }
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @foreach (var a in Alertas())
+            {
+                <div class="vac-alerta">⚠ @a</div>
+            }
+            <div class="vac-ley">
+                <i style="background: #475569; border-radius: 3px;"></i>aprobadas
+                <i style="border: 2px dashed #475569; height: 6px;"></i>pedidas, falta que las apruebes
+                <i class="fer" style="background: repeating-linear-gradient(45deg, #efefef 0 4px, #fafafa 4px 8px); border: 1px solid #e5e7eb;"></i>feriado
+                · Para cargar: tocá el primer día en el renglón del empleado y arrastrá hasta el último. Tocá una barra para cambiarla.
+            </div>
+        }
+        else
+        {
+            <div class="vac-wrap">
+                <table class="vac-tabla">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left; padding-left: 8px;">Empleado</th>
+                            <th class="n">Le<br />tocan</th>
+                            <th class="n">Ya<br />tomó</th>
+                            <th class="n">Le<br />quedan</th>
+                            @foreach (var (a, m) in MesesTemporada())
+                            {
+                                <th class="d">@NombreMes(m)[..3]<br />@(a % 100)</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var emp in datos.Empleados)
+                        {
+                            var tocan = LeTocan(emp, periodoVista);
+                            var tomo = DiasDe(emp.Id, periodoVista, "aprobada");
+                            <tr>
+                                <td class="vac-nom">
+                                    <b>@PrimerNombre(emp.Nombre)</b>
+                                    <div class="vac-muted">@Capitalizar(emp.Puesto) · desde @DesdeTexto(emp.FechaIngreso)</div>
+                                </td>
+                                <td class="vac-num">@tocan</td>
+                                <td class="vac-num">@tomo</td>
+                                <td class="vac-num" style="@(tocan - tomo < 0 ? "color:#b91c1c;" : "")"><b>@(tocan - tomo)</b></td>
+                                @foreach (var (a, m) in MesesTemporada())
+                                {
+                                    var aa = a; var mm = m;
+                                    var (ap, pe) = DiasEnMes(emp.Id, aa, mm);
+                                    <td class="d vac-anio-celda" @onclick="() => IrAMes(aa, mm)" title="Ver @NombreMes(mm) @aa">
+                                        @if (ap > 0) { <b>@ap</b> }
+                                        @if (pe > 0) { <span class="vac-muted"> @(ap > 0 ? "+" : "")@pe días pedidos</span> }
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="vac-ley">Vacaciones @periodoVista: van de mayo @periodoVista a abril @(periodoVista + 1). En cada mes, los días que se toma cada uno. Tocá un mes para verlo en el almanaque.</div>
+        }
+    </div>
+</div>
+
+@if (form is not null && datos is not null)
+{
+    var diasForm = form.Desde.HasValue && form.Hasta.HasValue && form.Hasta >= form.Desde
+        ? (form.Hasta.Value - form.Desde.Value).Days + 1 : 0;
+    var empForm = datos.Empleados.FirstOrDefault(x => x.Id == form.EmpleadoId);
+    <div class="card" style="margin-top: 16px;">
+        <div class="card-header"><h3>@(editandoId is null ? "Cargar vacaciones" : "Cambiar vacaciones")</h3></div>
+        <div class="card-body">
+            <div style="margin-bottom: 14px;">
+                <label class="vac-muted" style="display: block; margin-bottom: 4px;">Empleado</label>
+                <div class="vac-chips">
+                    @foreach (var emp in datos.Empleados)
+                    {
+                        var id = emp.Id;
+                        <button class="vac-chip @(form.EmpleadoId == id ? "on" : "")" @onclick="() => form.EmpleadoId = id">@PrimerNombre(emp.Nombre)</button>
+                    }
+                </div>
+            </div>
+            <div class="vac-form">
+                <div>
+                    <label>Desde</label>
+                    <input type="date" class="form-input" value="@form.Desde?.ToString("yyyy-MM-dd")" @onchange="CambioDesde" />
+                </div>
+                <div>
+                    <label>Hasta</label>
+                    <input type="date" class="form-input" @bind="form.Hasta" />
+                </div>
+                <div>
+                    <label>Días</label>
+                    <div style="padding: 8px 0;">
+                        @if (diasForm > 0)
+                        {
+                            <span>@diasForm días corridos</span>
+                            @if (empForm is not null)
+                            {
+                                var quedan = LeTocan(empForm, form.Periodo) - DiasDe(empForm.Id, form.Periodo, "aprobada", editandoId)
+                                             - (form.Estado == "aprobada" ? diasForm : 0);
+                                <span style="@(quedan < 0 ? "color:#b91c1c;font-weight:600;" : "color:#6b7280;")"> · le quedan @quedan</span>
+                            }
+                        }
+                        else { <span class="vac-muted">elegí las fechas</span> }
+                    </div>
+                </div>
+                <div>
+                    <label>Son las vacaciones del año</label>
+                    <div class="vac-mes" style="font-size: 0.95rem;">
+                        <button @onclick="() => form.Periodo--">‹</button>
+                        <span>@form.Periodo</span>
+                        <button @onclick="() => form.Periodo++">›</button>
+                    </div>
+                </div>
+            </div>
+            <div class="vac-form" style="margin-top: 14px;">
+                <div>
+                    <label>Estado</label>
+                    <div class="vac-chips">
+                        <button class="vac-chip @(form.Estado == "aprobada" ? "on" : "")" @onclick='() => form.Estado = "aprobada"'>Aprobada</button>
+                        <button class="vac-chip @(form.Estado == "pedida" ? "on" : "")" @onclick='() => form.Estado = "pedida"'>Pedida (falta aprobar)</button>
+                    </div>
+                </div>
+                <div style="grid-column: span 2;">
+                    <label>Nota (opcional)</label>
+                    <input class="form-input" @bind="form.Nota" maxlength="300" placeholder="Ej: se va a Córdoba" />
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;">
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">@(guardando ? "Guardando..." : "Guardar")</button>
+                <button class="btn btn-secondary" @onclick="CerrarForm">Cancelar</button>
+                @if (editandoId is not null)
+                {
+                    <button class="btn btn-danger" style="margin-left: auto;" @onclick="Borrar" disabled="@guardando">Borrar estas vacaciones</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ApiClient.VacacionesDatosDto? datos;
+    private int anioCargado;
+    private int anio;
+    private int mes;
+    private string vista = "mes";
+    private int periodoVista; // en "todo el año": de qué año son las vacaciones (mayo a abril)
+
+    private FormVac? form;
+    private int? editandoId;
+    private bool guardando;
+
+    // Arrastre para elegir los días en el almanaque.
+    private int? arrEmpId;
+    private DateTime? arrDesde;
+    private DateTime? arrHasta;
+
+    private class FormVac
+    {
+        public int EmpleadoId { get; set; }
+        public DateTime? Desde { get; set; }
+        public DateTime? Hasta { get; set; }
+        public int Periodo { get; set; }
+        public string Estado { get; set; } = "aprobada";
+        public string? Nota { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // El "hoy" lo da la API en hora argentina (el navegador puede estar en otro país).
+        await Cargar(DateTime.Today.Year);
+        if (datos is not null) { anio = datos.Hoy.Year; mes = datos.Hoy.Month; if (anio != anioCargado) await Cargar(anio); }
+    }
+
+    private async Task Cargar(int anioPedido)
+    {
+        try
+        {
+            datos = await Api.GetVacacionesAsync(anioPedido);
+            anioCargado = anioPedido;
+            if (anio == 0) anio = anioPedido;
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudieron cargar las vacaciones: " + ex.Message);
+        }
+    }
+
+    // Trae los datos del año que se está mirando (la API manda también el anterior y el siguiente).
+    private async Task AsegurarAnio()
+    {
+        if (Math.Abs(anio - anioCargado) >= 1) await Cargar(anio);
+    }
+
+    private async Task MoverMes(int delta)
+    {
+        var f = new DateTime(anio, mes, 1).AddMonths(delta);
+        anio = f.Year; mes = f.Month;
+        await AsegurarAnio();
+    }
+
+    private async Task MoverAnio(int delta)
+    {
+        periodoVista += delta;
+        if (periodoVista != anioCargado) await Cargar(periodoVista);
+    }
+
+    private async Task CambiarVista()
+    {
+        if (vista == "mes")
+        {
+            vista = "anio";
+            periodoVista = PeriodoDe(new DateTime(anio, mes, 1));
+            if (periodoVista != anioCargado) await Cargar(periodoVista);
+        }
+        else vista = "mes";
+    }
+
+    private async Task IrAMes(int a, int m)
+    {
+        anio = a; mes = m; vista = "mes";
+        await AsegurarAnio();
+    }
+
+    // Los 12 meses de unas vacaciones: mayo del año a abril del siguiente.
+    private IEnumerable<(int anio, int mes)> MesesTemporada()
+    {
+        for (var i = 0; i < 12; i++)
+        {
+            var f = new DateTime(periodoVista, 5, 1).AddMonths(i);
+            yield return (f.Year, f.Month);
+        }
+    }
+
+    // ───── Cuentas ─────
+
+    // Enero a abril = vacaciones del año anterior (la temporada va de octubre a abril).
+    private static int PeriodoDe(DateTime f) => f.Month <= 4 ? f.Year - 1 : f.Year;
+
+    private static int LeTocan(ApiClient.EmpleadoVacDto e, int periodo)
+    {
+        var corte = new DateTime(periodo, 12, 31);
+        var ingreso = e.FechaIngreso.Date;
+        if (ingreso > corte) return 0;
+        var anios = corte.Year - ingreso.Year;
+        if (ingreso.AddYears(anios) > corte) anios--;
+        if (ingreso.AddMonths(6) > corte)
+        {
+            // Menos de 6 meses: 1 día cada 20 días hábiles trabajados (aprox. 5 de cada 7 corridos).
+            var corridos = (corte - ingreso).Days + 1;
+            return (int)Math.Floor(corridos * 5.0 / 7.0 / 20.0);
+        }
+        if (anios < 5) return 14;
+        if (anios < 10) return 21;
+        if (anios < 20) return 28;
+        return 35;
+    }
+
+    private static int Dias(ApiClient.VacacionDto v) => (v.Hasta.Date - v.Desde.Date).Days + 1;
+
+    private int DiasDe(int empId, int periodo, string estado, int? excepto = null)
+        => datos!.Vacaciones.Where(v => v.EmpleadoId == empId && v.Periodo == periodo && v.Estado == estado && v.Id != excepto)
+                            .Sum(Dias);
+
+    private ApiClient.VacacionDto? VacacionDelDia(int empId, DateTime f)
+        => datos!.Vacaciones.FirstOrDefault(v => v.EmpleadoId == empId && v.Desde.Date <= f && v.Hasta.Date >= f);
+
+    private List<ApiClient.VacacionDto> PendientesDelMes(int empId)
+    {
+        var ini = new DateTime(anio, mes, 1);
+        var fin = ini.AddMonths(1).AddDays(-1);
+        return datos!.Vacaciones.Where(v => v.EmpleadoId == empId && v.Estado == "pedida" && v.Desde.Date <= fin && v.Hasta.Date >= ini).ToList();
+    }
+
+    private (int aprobadas, int pedidas) DiasEnMes(int empId, int a, int m)
+    {
+        var ini = new DateTime(a, m, 1);
+        var fin = ini.AddMonths(1).AddDays(-1);
+        int ap = 0, pe = 0;
+        foreach (var v in datos!.Vacaciones.Where(v => v.EmpleadoId == empId && v.Desde.Date <= fin && v.Hasta.Date >= ini))
+        {
+            var d = ((v.Hasta.Date < fin ? v.Hasta.Date : fin) - (v.Desde.Date > ini ? v.Desde.Date : ini)).Days + 1;
+            if (v.Estado == "pedida") pe += d; else ap += d;
+        }
+        return (ap, pe);
+    }
+
+    // Aviso en rojo cuando 2 o más del mismo puesto están afuera el mismo día (aprobadas o pedidas).
+    private List<string> Alertas()
+    {
+        var res = new List<string>();
+        var porPuesto = datos!.Empleados
+            .Where(e => !string.IsNullOrWhiteSpace(e.Puesto))
+            .GroupBy(e => e.Puesto!.Trim().ToLowerInvariant())
+            .Where(g => g.Count() >= 2);
+        var dias = DateTime.DaysInMonth(anio, mes);
+        foreach (var g in porPuesto)
+        {
+            string? claveAnterior = null;
+            DateTime tramoDesde = default, tramoHasta = default;
+            List<string> nombres = new();
+            void Cerrar()
+            {
+                if (claveAnterior is null) return;
+                var cuando = tramoDesde == tramoHasta ? $"El {tramoDesde:dd/MM}" : $"Del {tramoDesde:dd} al {tramoHasta:dd/MM}";
+                res.Add($"{cuando} faltan {nombres.Count} de {g.Count()} {Plural(g.Key)} ({UnirNombres(nombres)})");
+            }
+            for (var d = 1; d <= dias; d++)
+            {
+                var f = new DateTime(anio, mes, d);
+                var afuera = g.Where(e => VacacionDelDia(e.Id, f) is not null).Select(e => PrimerNombre(e.Nombre)).ToList();
+                var clave = afuera.Count >= 2 ? string.Join("|", afuera) : null;
+                if (clave != claveAnterior)
+                {
+                    Cerrar();
+                    claveAnterior = clave;
+                    tramoDesde = f;
+                    nombres = afuera;
+                }
+                tramoHasta = f;
+            }
+            Cerrar();
+        }
+        return res;
+    }
+
+    // ───── Arrastre en el almanaque ─────
+
+    private void EmpezarArrastre(int empId, DateTime f)
+    {
+        arrEmpId = empId; arrDesde = f; arrHasta = f;
+    }
+
+    private void SeguirArrastre(int empId, DateTime f)
+    {
+        if (arrEmpId == empId && arrDesde is not null) arrHasta = f;
+    }
+
+    private bool EnSeleccion(int empId, int d)
+    {
+        if (arrEmpId != empId || arrDesde is null || arrHasta is null) return false;
+        var f = new DateTime(anio, mes, d);
+        var a = arrDesde < arrHasta ? arrDesde : arrHasta;
+        var b = arrDesde < arrHasta ? arrHasta : arrDesde;
+        return f >= a && f <= b;
+    }
+
+    private void TerminarArrastre()
+    {
+        if (arrEmpId is null || arrDesde is null || arrHasta is null) return;
+        var a = arrDesde < arrHasta ? arrDesde.Value : arrHasta.Value;
+        var b = arrDesde < arrHasta ? arrHasta.Value : arrDesde.Value;
+        editandoId = null;
+        form = new FormVac { EmpleadoId = arrEmpId.Value, Desde = a, Hasta = b, Periodo = PeriodoDe(a) };
+        CancelarArrastre();
+    }
+
+    private void CancelarArrastre() { arrEmpId = null; arrDesde = null; arrHasta = null; }
+
+    // ───── Formulario ─────
+
+    private void NuevaVacacion()
+    {
+        editandoId = null;
+        var f = new DateTime(anio, mes, 1);
+        form = new FormVac { EmpleadoId = 0, Periodo = PeriodoDe(f) };
+    }
+
+    private void Editar(ApiClient.VacacionDto v)
+    {
+        editandoId = v.Id;
+        form = new FormVac { EmpleadoId = v.EmpleadoId, Desde = v.Desde.Date, Hasta = v.Hasta.Date, Periodo = v.Periodo, Estado = v.Estado, Nota = v.Nota };
+    }
+
+    private void CambioDesde(ChangeEventArgs e)
+    {
+        if (form is null) return;
+        if (DateTime.TryParse(e.Value?.ToString(), out var f))
+        {
+            form.Desde = f;
+            if (editandoId is null) form.Periodo = PeriodoDe(f);
+            if (form.Hasta is null || form.Hasta < f) form.Hasta = f;
+        }
+        else form.Desde = null;
+    }
+
+    private void CerrarForm() { form = null; editandoId = null; }
+
+    private async Task Guardar()
+    {
+        if (form is null) return;
+        if (form.EmpleadoId == 0) { ToastService.Error("Elegí el empleado."); return; }
+        if (form.Desde is null || form.Hasta is null) { ToastService.Error("Poné desde y hasta qué día."); return; }
+        guardando = true;
+        try
+        {
+            var req = new ApiClient.GuardarVacacionRequest(form.EmpleadoId, form.Desde.Value, form.Hasta.Value, form.Periodo, form.Estado, form.Nota);
+            if (editandoId is null) await Api.CrearVacacionAsync(req);
+            else await Api.ActualizarVacacionAsync(editandoId.Value, req);
+            ToastService.Success("Vacaciones guardadas.");
+            CerrarForm();
+            await Cargar(anioCargado);
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task Aprobar(ApiClient.VacacionDto v)
+    {
+        try
+        {
+            await Api.ActualizarVacacionAsync(v.Id, new ApiClient.GuardarVacacionRequest(v.EmpleadoId, v.Desde, v.Hasta, v.Periodo, "aprobada", v.Nota));
+            ToastService.Success("Vacaciones aprobadas.");
+            await Cargar(anioCargado);
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task Borrar()
+    {
+        if (editandoId is null) return;
+        guardando = true;
+        try
+        {
+            if (await Api.BorrarVacacionAsync(editandoId.Value))
+            {
+                ToastService.Success("Vacaciones borradas.");
+                CerrarForm();
+                await Cargar(anioCargado);
+            }
+            else ToastService.Error("No se pudieron borrar.");
+        }
+        finally { guardando = false; }
+    }
+
+    // ───── Textos ─────
+
+    private static readonly string[] Meses = { "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre" };
+    private static string NombreMes(int m) => Meses[m];
+    private static string LetraDia(DateTime f) => "DLMMJVS"[(int)f.DayOfWeek].ToString();
+
+    private string ClaseDia(DateTime f)
+    {
+        if (datos!.Feriados.Any(x => x.Fecha.Date == f)) return "fer";
+        return f.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? "we" : "";
+    }
+
+    private string TituloDia(DateTime f)
+    {
+        var fer = datos!.Feriados.FirstOrDefault(x => x.Fecha.Date == f);
+        return fer is null ? f.ToString("dd/MM/yyyy") : $"{f:dd/MM/yyyy} · Feriado: {fer.Descripcion}";
+    }
+
+    private static string TituloVacacion(ApiClient.EmpleadoVacDto e, ApiClient.VacacionDto v)
+        => $"{PrimerNombre(e.Nombre)}: {v.Desde:dd/MM} al {v.Hasta:dd/MM} · {Dias(v)} días · {(v.Estado == "pedida" ? "pedidas, falta aprobar" : "aprobadas")} · vacaciones {v.Periodo}"
+           + (string.IsNullOrEmpty(v.Nota) ? "" : $" · {v.Nota}");
+
+    private static string PrimerNombre(string n)
+    {
+        var p = (n ?? "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+        return Capitalizar(p);
+    }
+
+    private static string Capitalizar(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "Sin puesto";
+        s = s.Trim().ToLowerInvariant();
+        return char.ToUpper(s[0]) + s[1..];
+    }
+
+    private static string Plural(string puesto)
+    {
+        puesto = puesto.ToLowerInvariant();
+        return "aeiou".Contains(puesto[^1]) ? puesto + "s" : puesto + "es";
+    }
+
+    private static string UnirNombres(List<string> n)
+        => n.Count <= 1 ? string.Join("", n) : string.Join(", ", n.Take(n.Count - 1)) + " y " + n[^1];
+
+    private static string DesdeTexto(DateTime ingreso)
+        => ingreso.Year >= DateTime.Today.Year - 1 ? $"{Meses[ingreso.Month][..3].ToLower()} {ingreso.Year}" : ingreso.Year.ToString();
+}

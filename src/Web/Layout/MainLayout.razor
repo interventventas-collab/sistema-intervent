@@ -891,7 +891,7 @@
                 @* ───────── 6. EMPLEADOS (unificado Personal + Nóminas 2026-06-03) ─────────
                    2026-06-06: Repartidores movido aca desde el grupo Tesoreria *@
                 <NavGroup Label="👥 Empleados" Icon="@SvgIcons.Users" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/cafe/repartidores") || IsActive("/nominas") || IsActive("/nominas/empleados") || IsActive("/nominas/liquidaciones") || IsActive("/nominas/panel"))">
+                          HasActiveChild="@(IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/cafe/repartidores") || IsActive("/nominas") || IsActive("/nominas/empleados") || IsActive("/nominas/vacaciones") || IsActive("/nominas/liquidaciones") || IsActive("/nominas/panel"))">
                     <NavItem Href="/horas-extras" Label="🕐 Horario" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/horas-extras")" OnClick="@(() => NavigateTo("/horas-extras"))" />
                     <NavItem Href="/viajes" Label="🚚 Viajes" Icon="@SvgIcons.Tag"
@@ -905,6 +905,9 @@
                     {
                         <NavItem Href="/nominas/empleados" Label="👤 Ficha empleados" Icon="@SvgIcons.Users"
                                  IsActive="@IsActive("/nominas/empleados")" OnClick="@(() => NavigateTo("/nominas/empleados"))" />
+                        @* 2026-11-02: almanaque de vacaciones *@
+                        <NavItem Href="/nominas/vacaciones" Label="🏖 Vacaciones" Icon="@SvgIcons.Tag"
+                                 IsActive="@IsActive("/nominas/vacaciones")" OnClick="@(() => NavigateTo("/nominas/vacaciones"))" />
                         <NavItem Href="/nominas/panel" Label="💰 ¿Cuánto debo pagar?" Icon="@SvgIcons.Dashboard"
                                  IsActive="@IsActive("/nominas/panel")" OnClick="@(() => NavigateTo("/nominas/panel"))" />
                         <NavItem Href="/nominas/liquidaciones" Label="📑 Liquidaciones" Icon="@SvgIcons.Tag"
@@ -1600,6 +1603,9 @@
                             </button>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/empleados"))">
                                 <span class="ico">👤</span> Ficha empleados
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/vacaciones"))">
+                                <span class="ico">🏖</span> Vacaciones
                             </button>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/panel"))">
                                 <span class="ico">💰</span> ¿Cuánto debo pagar?
@@ -2502,6 +2508,7 @@
         { "viajes", ("🚚", "Viajes", "/viajes") },
         // 2026-06-03: agregados Nóminas para que aparezcan en el panel D/O y los pueda activar para Oficina
         { "nominas/empleados", ("👤", "Ficha empleados", "/nominas/empleados") },
+        { "nominas/vacaciones", ("🏖", "Vacaciones", "/nominas/vacaciones") },
         { "nominas/panel", ("💰", "¿Cuánto debo pagar?", "/nominas/panel") },
         { "nominas/liquidaciones", ("📑", "Liquidaciones", "/nominas/liquidaciones") },
         { "nominas", ("📊", "Inicio nóminas", "/nominas") },
@@ -2786,6 +2793,7 @@
         { "alquileres/calendario", "alquileres" },
         { "nominas", "nominas" },
         { "nominas/empleados", "nominas" },
+        { "nominas/vacaciones", "nominas" },
         { "nominas/liquidaciones", "nominas" },
         { "vault", "vault" },
         { "cafe", "cafe" },
