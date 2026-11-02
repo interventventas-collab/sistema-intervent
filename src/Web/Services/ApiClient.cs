@@ -3338,6 +3338,13 @@ public class ApiClient
     public async Task<FichaLogoDto?> FichaLogoDesdeUrlAsync(string url)
         => await PostAsync<FichaLogoDto>("/api/cafe/fichas-tecnicas/logo/desde-url", new { url });
 
+    /// <summary>Lista de sabores de la rueda por familia (una para todas las fichas).</summary>
+    public async Task<Dictionary<string, List<string>>?> GetFichaSaboresAsync()
+        => await GetAsync<Dictionary<string, List<string>>>("/api/cafe/fichas-tecnicas/sabores");
+
+    public async Task<Dictionary<string, List<string>>?> GuardarFichaSaboresAsync(Dictionary<string, List<string>> lista)
+        => await PutAsync<Dictionary<string, List<string>>>("/api/cafe/fichas-tecnicas/sabores", lista);
+
     public async Task<FichaLogoDto?> GuardarFichaLogoTamanoAsync(int tamano)
         => await PutAsync<FichaLogoDto>("/api/cafe/fichas-tecnicas/logo/tamano", new { tamano });
 

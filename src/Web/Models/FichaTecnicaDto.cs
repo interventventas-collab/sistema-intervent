@@ -37,6 +37,8 @@ public class FichaTecnicaDto
     public bool ContieneAzucar { get; set; }
     /// <summary>Intensidad de 1 a 10 (fila de granos en la ficha).</summary>
     public int? Intensidad { get; set; }
+    /// <summary>Sabores puntuales marcados: "cacao:Avellana" (familia:sabor). Su familia se enciende sola en la rueda.</summary>
+    public List<string> Sabores { get; set; } = new();
     public string? UpdatedBy { get; set; }
     public DateTime UpdatedAt { get; set; }
 
@@ -155,6 +157,14 @@ public static class FichaTecnicaCatalogo
         ("dulce", "Dulce", "#ea580c"),
     };
 
+    /// <summary>Familias encendidas en la rueda: las marcadas a mano + las de los sabores elegidos.</summary>
+    public static List<string> FamiliasEncendidas(FichaTecnicaDto f) =>
+        f.Rueda.Concat(f.Sabores.Select(s => s.Split(':', 2)[0])).Distinct().ToList();
+
+    /// <summary>Sabores elegidos de una familia (sin la "familia:" de adelante).</summary>
+    public static List<string> SaboresDe(FichaTecnicaDto f, string familia) =>
+        f.Sabores.Where(s => s.StartsWith(familia + ":")).Select(s => s[(familia.Length + 1)..]).ToList();
+
     public static string? Get(FichaTecnicaDto f, string key) => key switch
     {
         "perfil" => f.Perfil, "especie" => f.Especie, "pais" => f.Pais, "region" => f.Region,
@@ -210,7 +220,7 @@ public static class FichaTecnicaCatalogo
             return f.Componentes.Count == 0 || f.Componentes.Any(c => string.IsNullOrWhiteSpace(GetComp(c, key)));
         return key switch
         {
-            "rueda" => f.Rueda.Count == 0,
+            "rueda" => FamiliasEncendidas(f).Count == 0,
             "balance" => Balance.Any(b => NivelBalance(GetBalance(f, b.Label), b.Niveles.Length) < 0),
             _ => string.IsNullOrWhiteSpace(Get(f, key))
         };

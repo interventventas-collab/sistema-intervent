@@ -8569,6 +8569,12 @@ IF COL_LENGTH('Cafe_FichasTecnicas','Intensidad') IS NULL
     ALTER TABLE Cafe_FichasTecnicas ADD Intensidad INT NULL;
 GO
 
+-- 2026-11-02: fichas técnicas — sabores puntuales marcados (JSON ["cacao:Avellana","dulce:Miel"]).
+-- La lista de sabores para elegir vive en AppSettings 'fichas.sabores'. ⚠ En PROD correr a mano.
+IF COL_LENGTH('Cafe_FichasTecnicas','Sabores') IS NULL
+    ALTER TABLE Cafe_FichasTecnicas ADD Sabores NVARCHAR(2000) NULL;
+GO
+
 -- 2026-11-02: vacaciones de los empleados (almanaque en Empleados -> Vacaciones).
 -- Periodo = de qué año son esas vacaciones (las de enero 2027 corresponden a 2026).
 -- Estado: 'aprobada' o 'pedida' (pedida = falta que el dueño la apruebe).

@@ -44,6 +44,10 @@
     .ft-chips { display:flex; flex-wrap:wrap; gap:.3rem; }
     .ft-chip { border:1px solid #d1d5db; background:#fff; border-radius:999px; padding:.25rem .65rem; font-size:.8rem; cursor:pointer; }
     .ft-chip.on { background:#111827; color:#fff; border-color:#111827; }
+    .ft-sab { display:flex; gap:.4rem; align-items:flex-start; padding:.25rem 0; border-top:1px solid #f3f4f6; }
+    .ft-sab > .ft-chip { flex:none; width:9.5rem; text-align:left; }
+    .ft-chip .x { margin-left:.35rem; opacity:.55; font-size:.75rem; }
+    .ft-chip .x:hover { opacity:1; }
     .ft-fotos { display:grid; grid-template-columns:1fr 1fr 1fr; gap:.5rem; }
     .ft-foto { position:relative; border:1px dashed #cbd5e1; border-radius:8px; height:110px; display:flex; align-items:center; justify-content:center; text-align:center; color:#6b7280; font-size:.78rem; overflow:hidden; background:#fafafa; }
     .ft-foto img { max-width:100%; max-height:100%; object-fit:contain; }
@@ -424,6 +428,7 @@
             fichas = await Api.GetFichasTecnicasAsync() ?? new();
             productos = await Api.GetFichaProductosCafeAsync() ?? new();
             try { var l = await Api.GetFichaLogoAsync(); logoUrl = l?.Url; logoTamano = l?.Tamano ?? 100; } catch { /* sin logo: dice FRIKAF */ }
+            try { saboresLista = await Api.GetFichaSaboresAsync() ?? new(); } catch { /* sin lista: solo familias */ }
             if (QueryId is int qid) sel = fichas.FirstOrDefault(f => f.Id == qid);
             sel ??= fichas.FirstOrDefault();
         }
@@ -570,15 +575,45 @@
             }
             else if (c.Tipo == "rueda")
             {
-                <div style="display:flex; gap:.6rem; align-items:center;">
-                    @((MarkupString)FichaTecnicaVista.RuedaSvg(f.Rueda, 70))
-                    <div class="ft-chips">
+                @* Cada familia con su lista de sabores: tocás los del café y la familia se enciende sola.
+                   "+ agregar" suma un sabor a la lista (para todos los cafés) y la × lo saca de la lista. *@
+                var encendidas = FichaTecnicaCatalogo.FamiliasEncendidas(f);
+                <div style="display:flex; gap:.8rem; align-items:flex-start;">
+                    <div style="flex:none;">@((MarkupString)FichaTecnicaVista.RuedaSvg(encendidas, 70))</div>
+                    <div style="flex:1; min-width:0;">
                         @foreach (var r in FichaTecnicaCatalogo.Rueda)
                         {
                             var rk = r.Key;
-                            var on = f.Rueda.Contains(rk);
-                            <button class="ft-chip" style="@(on ? $"background:{r.Color};border-color:{r.Color};color:#fff;" : "")"
-                                    @onclick="() => { if (on) f.Rueda.Remove(rk); else f.Rueda.Add(rk); return Guardar(f); }">@r.Label</button>
+                            var famSola = f.Rueda.Contains(rk);
+                            var elegidos = FichaTecnicaCatalogo.SaboresDe(f, rk);
+                            var lista = (saboresLista.TryGetValue(rk, out var l) ? l : new()).ToList();
+                            lista.AddRange(elegidos.Where(e => !lista.Contains(e, StringComparer.OrdinalIgnoreCase))); // marcados que ya no están en la lista
+                            <div class="ft-sab">
+                                <button class="ft-chip" title="Marcar la familia sin un sabor puntual"
+                                        style="font-weight:700; @(famSola ? $"background:{r.Color};border-color:{r.Color};color:#fff;" : $"color:{r.Color};border-color:transparent;")"
+                                        @onclick="() => { if (famSola) f.Rueda.Remove(rk); else f.Rueda.Add(rk); return Guardar(f); }">@r.Label</button>
+                                <div class="ft-chips" style="flex:1;">
+                                    @foreach (var sab in lista)
+                                    {
+                                        var s = sab;
+                                        var on = elegidos.Contains(s, StringComparer.OrdinalIgnoreCase);
+                                        <span class="ft-chip" style="@(on ? $"background:{r.Color};border-color:{r.Color};color:#fff;" : "")"
+                                              @onclick="() => ToggleSabor(f, rk, s)">@s<span class="x" title="Sacar de la lista" @onclick="() => SacarSabor(rk, s)" @onclick:stopPropagation>×</span></span>
+                                    }
+                                    @if (agregandoEn == $"{f.Id}-{rk}")
+                                    {
+                                        <span style="display:inline-flex; gap:.25rem;">
+                                            <input class="ft-in" style="width:9rem; padding:.2rem .4rem;" placeholder="Sabor nuevo" @bind="nuevoSabor" @bind:event="oninput"
+                                                   @onkeydown="@(e => e.Key == "Enter" ? AgregarSabor(f, rk) : e.Key == "Escape" ? CerrarAgregar() : Task.CompletedTask)" />
+                                            <button class="ft-btn pri" style="font-size:.75rem; padding:.2rem .55rem;" disabled="@string.IsNullOrWhiteSpace(nuevoSabor)" @onclick="() => AgregarSabor(f, rk)">Agregar</button>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="ft-chip" style="border-style:dashed; color:#6b7280;" @onclick="() => AbrirAgregar(f, rk)">+ agregar</span>
+                                    }
+                                </div>
+                            </div>
                         }
                     </div>
                 </div>
@@ -793,6 +828,48 @@
             estado[f.Id] = "⚠ no se subió la foto";
             ToastService.Error($"{f.Nombre}: no se subió la foto. {ex.Message}");
         }
+    }
+
+    // ── Sabores de la rueda: lista propia por familia (una para todas las fichas) ──
+    private Dictionary<string, List<string>> saboresLista = new();
+    private string? agregandoEn;
+    private string nuevoSabor = "";
+
+    private Task ToggleSabor(FichaTecnicaDto f, string familia, string sabor)
+    {
+        var marcado = f.Sabores.FirstOrDefault(x => string.Equals(x, $"{familia}:{sabor}", StringComparison.OrdinalIgnoreCase));
+        if (marcado is not null) f.Sabores.Remove(marcado); else f.Sabores.Add($"{familia}:{sabor}");
+        return Guardar(f);
+    }
+
+    private void AbrirAgregar(FichaTecnicaDto f, string familia) { agregandoEn = $"{f.Id}-{familia}"; nuevoSabor = ""; }
+    private Task CerrarAgregar() { agregandoEn = null; nuevoSabor = ""; return Task.CompletedTask; }
+
+    /// <summary>Suma el sabor a la lista de la familia y lo marca en este café.</summary>
+    private async Task AgregarSabor(FichaTecnicaDto f, string familia)
+    {
+        var s = nuevoSabor.Replace(":", " ").Replace(",", " ").Trim();
+        if (s.Length == 0) return;
+        if (s.Length > 1) s = char.ToUpper(s[0]) + s[1..];
+        if (!saboresLista.TryGetValue(familia, out var l)) saboresLista[familia] = l = new();
+        var existente = l.FirstOrDefault(x => string.Equals(x, s, StringComparison.OrdinalIgnoreCase));
+        if (existente is null) { l.Add(s); await GuardarSabores(); } else s = existente;
+        if (!FichaTecnicaCatalogo.SaboresDe(f, familia).Contains(s, StringComparer.OrdinalIgnoreCase)) await ToggleSabor(f, familia, s);
+        await CerrarAgregar();
+    }
+
+    /// <summary>Saca el sabor de la lista (los cafés que ya lo tienen marcado lo conservan).</summary>
+    private async Task SacarSabor(string familia, string sabor)
+    {
+        if (!saboresLista.TryGetValue(familia, out var l)) return;
+        l.RemoveAll(x => string.Equals(x, sabor, StringComparison.OrdinalIgnoreCase));
+        await GuardarSabores();
+    }
+
+    private async Task GuardarSabores()
+    {
+        try { saboresLista = await Api.GuardarFichaSaboresAsync(saboresLista) ?? saboresLista; }
+        catch (Exception ex) { ToastService.Error("No se guardó la lista de sabores: " + ex.Message); }
     }
 
     // ── Logo de arriba (uno para todas las fichas) ──
