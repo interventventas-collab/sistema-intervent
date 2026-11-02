@@ -8566,3 +8566,25 @@ GO
 IF COL_LENGTH('Cafe_FichasTecnicas','Intensidad') IS NULL
     ALTER TABLE Cafe_FichasTecnicas ADD Intensidad INT NULL;
 GO
+
+-- 2026-11-02: vacaciones de los empleados (almanaque en Empleados -> Vacaciones).
+-- Periodo = de qué año son esas vacaciones (las de enero 2027 corresponden a 2026).
+-- Estado: 'aprobada' o 'pedida' (pedida = falta que el dueño la apruebe).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Vacaciones' AND xtype='U')
+BEGIN
+    CREATE TABLE Nom_Vacaciones (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        EmpleadoId INT NOT NULL,
+        Desde DATE NOT NULL,
+        Hasta DATE NOT NULL,
+        Periodo INT NOT NULL,
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'aprobada',
+        Nota NVARCHAR(300) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedBy NVARCHAR(120) NULL,
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_NomVac_Emp FOREIGN KEY (EmpleadoId) REFERENCES Nom_Empleados(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_NomVac_Emp ON Nom_Vacaciones (EmpleadoId, Desde);
+END
+GO

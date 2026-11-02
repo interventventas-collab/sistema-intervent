@@ -858,6 +858,25 @@ public class ApiClient
         => await DeleteAsync($"/api/nominas/empleados/{id}");
 
     // --- 2026-07-31: Nominas: documentación personal adjunta por empleado ---
+    // 2026-11-02: almanaque de vacaciones (Empleados -> Vacaciones).
+    public record VacacionDto(int Id, int EmpleadoId, DateTime Desde, DateTime Hasta, int Periodo, string Estado, string? Nota);
+    public record EmpleadoVacDto(int Id, string Nombre, string? Puesto, DateTime FechaIngreso);
+    public record FeriadoVacDto(DateTime Fecha, string Descripcion);
+    public record VacacionesDatosDto(DateTime Hoy, List<EmpleadoVacDto> Empleados, List<VacacionDto> Vacaciones, List<FeriadoVacDto> Feriados);
+    public record GuardarVacacionRequest(int EmpleadoId, DateTime Desde, DateTime Hasta, int Periodo, string? Estado, string? Nota);
+
+    public async Task<VacacionesDatosDto?> GetVacacionesAsync(int anio)
+        => await GetAsync<VacacionesDatosDto>($"/api/nominas/vacaciones?anio={anio}");
+
+    public async Task<VacacionDto?> CrearVacacionAsync(GuardarVacacionRequest req)
+        => await PostAsync<VacacionDto>("/api/nominas/vacaciones", req);
+
+    public async Task<VacacionDto?> ActualizarVacacionAsync(int id, GuardarVacacionRequest req)
+        => await PutAsync<VacacionDto>($"/api/nominas/vacaciones/{id}", req);
+
+    public async Task<bool> BorrarVacacionAsync(int id)
+        => await DeleteAsync($"/api/nominas/vacaciones/{id}");
+
     public async Task<List<NomEmpleadoArchivoDto>?> GetEmpleadoArchivosAsync(int empId)
         => await GetAsync<List<NomEmpleadoArchivoDto>>($"/api/nominas/empleados/{empId}/archivos");
 
