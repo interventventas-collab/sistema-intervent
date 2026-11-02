@@ -89,9 +89,9 @@ public class CafeFichaTecnicaPdfService
         if (V("fraganciaAroma", f.FraganciaAroma) is string fa) renglones.Add(("Fragancia y aroma", fa));
         if (V("sabor", f.Sabor) is string sa) renglones.Add(("Sabor", sa));
         if (V("retrogusto", f.Retrogusto) is string re) renglones.Add(("Retrogusto", re));
-        var balance = noAplica.Contains("balance") ? new List<(string, decimal)>()
-            : new[] { ("Cuerpo", f.Cuerpo), ("Acidez", f.Acidez), ("Dulzor", f.Dulzor) }
-                .Where(b => b.Item2.HasValue).Select(b => (b.Item1, b.Item2!.Value)).ToList();
+        var balance = noAplica.Contains("balance") ? new List<(string Label, string[] Niveles, int Elegido)>()
+            : Balance.Select(b => (b.Label, b.Niveles, Elegido: NivelBalance(b.Label == "Cuerpo" ? f.Cuerpo : b.Label == "Acidez" ? f.Acidez : f.Dulzor, b.Niveles.Length)))
+                .Where(b => b.Elegido >= 0).ToList();
 
         var actualizada = f.UpdatedAt.AddHours(-3).ToString("dd/MM/yyyy", Es);
 
@@ -261,11 +261,26 @@ public class CafeFichaTecnicaPdfService
                                             });
                                         });
                                     });
+                                // Balance: todas las opciones en casilleros, la que corresponde en negro
                                 if (balance.Count > 0)
-                                    r.ConstantItem(70 * balance.Count + 10).Column(c =>
+                                    r.RelativeItem(1.15f).PaddingLeft(rueda.Count > 0 ? 14 : 0).Column(c =>
                                     {
-                                        c.Item().PaddingBottom(6).Text("BALANCE (1 A 5)").FontSize(8).FontColor(Gris).LetterSpacing(0.06f);
-                                        c.Item().Width(70 * balance.Count).Height(100).Svg(BalanceSvg(balance));
+                                        c.Item().PaddingBottom(6).Text("BALANCE").FontSize(8).FontColor(Gris).LetterSpacing(0.06f);
+                                        foreach (var (lbl, niveles, elegido) in balance)
+                                            c.Item().PaddingBottom(7).Row(br =>
+                                            {
+                                                br.ConstantItem(50).AlignMiddle().Text(lbl).Bold().FontSize(10);
+                                                br.RelativeItem().Border(1.2f).BorderColor("#111111").Row(seg =>
+                                                {
+                                                    for (var i = 0; i < niveles.Length; i++)
+                                                    {
+                                                        var celda = seg.RelativeItem().BorderLeft(i == 0 ? 0 : 0.6f).BorderColor("#E5E7EB")
+                                                            .Background(i == elegido ? "#111111" : "#FFFFFF").PaddingVertical(4).AlignCenter();
+                                                        if (i == elegido) celda.Text(niveles[i]).FontSize(8.5f).Bold().FontColor("#FFFFFF");
+                                                        else celda.Text(niveles[i]).FontSize(8.5f).FontColor("#9CA3AF");
+                                                    }
+                                                });
+                                            });
                                     });
                             });
                         }
@@ -360,18 +375,15 @@ public class CafeFichaTecnicaPdfService
         return sb.Append("</svg>").ToString();
     }
 
-    private static string BalanceSvg(List<(string Label, decimal Valor)> barras)
+    /// <summary>Balance con palabras; se guarda el número de la opción (1 = la primera).
+    /// La pantalla (FichaTecnicaCatalogo.Balance en Web) usa los mismos textos.</summary>
+    private static readonly (string Label, string[] Niveles)[] Balance =
     {
-        var w = 70 * barras.Count;
-        var sb = new StringBuilder($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {w} 100\">");
-        for (var i = 0; i < barras.Count; i++)
-        {
-            var (lbl, v) = barras[i];
-            var h = (double)v / 5 * 72;
-            var x = i * 70 + 10;
-            sb.Append($"<rect x=\"{x}\" y=\"{(78 - h).ToString("0.#", CultureInfo.InvariantCulture)}\" width=\"50\" height=\"{h.ToString("0.#", CultureInfo.InvariantCulture)}\" fill=\"{(i == 1 ? Amarillo : "#111111")}\"/>");
-            sb.Append($"<text x=\"{x + 25}\" y=\"94\" font-size=\"10\" font-family=\"Arial, sans-serif\" text-anchor=\"middle\" fill=\"{Gris}\">{lbl} {v.ToString("0.#", Es)}</text>");
-        }
-        return sb.Append("</svg>").ToString();
-    }
+        ("Cuerpo", new[] { "Ligero", "Medio", "Completo", "Pesado" }),
+        ("Acidez", new[] { "Baja", "Media", "Alta" }),
+        ("Dulzor", new[] { "Bajo", "Medio", "Alto" }),
+    };
+
+    private static int NivelBalance(decimal? v, int cantidad) =>
+        v is decimal d && d % 1 == 0 && d >= 1 && d <= cantidad ? (int)d - 1 : -1;
 }

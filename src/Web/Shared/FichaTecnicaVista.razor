@@ -44,10 +44,13 @@
     .ftv-wheel b { font-size:13px; }
     .ftv-r > div { display:grid; grid-template-columns:125px 1fr; border-bottom:1px solid #e5e7eb; padding:5px 0; }
     .ftv-r > div:last-child { border:0; }
-    .ftv-bal { display:flex; gap:12px; align-items:flex-end; height:92px; }
-    .ftv-bal > div { text-align:center; font-size:10.5px; color:#6b7280; }
-    .ftv-bal i { display:block; width:48px; background:#111; margin:0 auto 4px; }
-    .ftv-bal > div:nth-child(2) i { background:#facc15; }
+    /* Balance: todas las opciones en casilleros, la que corresponde en negro */
+    .ftv-bal > div { display:grid; grid-template-columns:52px 1fr; align-items:center; margin-bottom:7px; }
+    .ftv-bal b { font-size:11.5px; }
+    .ftv-bal .seg { display:flex; border:1.5px solid #111; border-radius:3px; overflow:hidden; }
+    .ftv-bal .seg span { flex:1; text-align:center; font-size:10px; padding:4px 0; color:#9ca3af; border-left:1px solid #e5e7eb; }
+    .ftv-bal .seg span:first-child { border-left:0; }
+    .ftv-bal .seg span.on { background:#111; color:#fff; font-weight:700; }
     .ftv-foot { border-top:1px solid #e5e7eb; padding:7px 22px; font-size:10px; color:#6b7280; display:flex; justify-content:space-between; margin-top:8px; }
 </style>
 
@@ -166,9 +169,12 @@
                 }
                 @if (Balance.Count > 0)
                 {
-                    <div><small class="ftv-lbl">Balance (1 a 5)</small>
+                    <div style="flex:1.15;"><small class="ftv-lbl">Balance</small>
                         <div class="ftv-bal">
-                            @foreach (var (lbl, v) in Balance) { <div><i style="height:@((int)(v / 5 * 68))px"></i>@lbl @v.ToString("0.#")</div> }
+                            @foreach (var (lbl, niveles, elegido) in Balance)
+                            {
+                                <div><b>@lbl</b><div class="seg">@for (var i = 0; i < niveles.Length; i++) { <span class="@(i == elegido ? "on" : "")">@niveles[i]</span> }</div></div>
+                            }
                         </div>
                     </div>
                 }
@@ -261,9 +267,11 @@
         }
     }
 
-    private List<(string, decimal)> Balance => F.NoAplica.Contains("balance") ? new()
-        : new[] { ("Cuerpo", F.Cuerpo), ("Acidez", F.Acidez), ("Dulzor", F.Dulzor) }
-            .Where(b => b.Item2.HasValue).Select(b => (b.Item1, b.Item2!.Value)).ToList();
+    /// <summary>Solo los datos del balance que tienen una opción elegida.</summary>
+    private List<(string Label, string[] Niveles, int Elegido)> Balance => F.NoAplica.Contains("balance") ? new()
+        : FichaTecnicaCatalogo.Balance
+            .Select(b => (b.Label, b.Niveles, FichaTecnicaCatalogo.NivelBalance(FichaTecnicaCatalogo.GetBalance(F, b.Label), b.Niveles.Length)))
+            .Where(b => b.Item3 >= 0).ToList();
 
     /// <summary>Rueda de sabores en SVG: las familias marcadas salen grandes y a color.</summary>
     public static string RuedaSvg(ICollection<string> marcadas, int size)

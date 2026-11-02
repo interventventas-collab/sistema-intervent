@@ -164,7 +164,8 @@ public class CafeFichasTecnicasController : ControllerBase
         return s.Length > max ? s[..max] : s;
     }
 
-    private static decimal? Bal(decimal? v) => v is null ? null : Math.Clamp(Math.Round(v.Value * 2) / 2, 0, 5);
+    /// <summary>Balance: número de la opción elegida (1 = la primera); cualquier otro valor se borra.</summary>
+    private static decimal? Bal(decimal? v, int cantidad) => v is decimal d && d % 1 == 0 && d >= 1 && d <= cantidad ? d : null;
 
     /// <summary>Guarda la ficha completa (la pantalla la manda entera en cada cambio: se guarda sola).</summary>
     [HttpPut("{id:int}")]
@@ -194,7 +195,7 @@ public class CafeFichasTecnicasController : ControllerBase
         f.Descripcion = T(r.Descripcion, 2000); f.FraganciaAroma = T(r.FraganciaAroma, 300);
         f.Sabor = T(r.Sabor, 300); f.Retrogusto = T(r.Retrogusto, 300);
         f.Rueda = r.Rueda is { Count: > 0 } ? T(string.Join(",", r.Rueda.Distinct()), 300) : null;
-        f.Cuerpo = Bal(r.Cuerpo); f.Acidez = Bal(r.Acidez); f.Dulzor = Bal(r.Dulzor);
+        f.Cuerpo = Bal(r.Cuerpo, 4); f.Acidez = Bal(r.Acidez, 3); f.Dulzor = Bal(r.Dulzor, 3);
         f.ComponentesJson = r.Componentes is { Count: > 0 } ? JsonSerializer.Serialize(r.Componentes, Json) : null;
         f.NoAplica = r.NoAplica is { Count: > 0 } ? T(string.Join(",", r.NoAplica.Distinct()), 400) : null;
         f.ContieneAzucar = r.ContieneAzucar;
