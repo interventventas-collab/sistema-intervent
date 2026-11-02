@@ -498,7 +498,7 @@
                 <span>–</span>
                 <input class="ft-in" style="width:5.5rem;" inputmode="numeric" placeholder="hasta" data-ftcol="@(key)-hasta" onkeydown="fichaEnterAbajo(event,this)" value="@hasta"
                        @onchange="e => { set(FichaTecnicaCatalogo.ArmarAltura(FichaTecnicaCatalogo.PartirAltura(get()).Desde, e.Value?.ToString())); return Guardar(f); }" />
-                <span class="ft-mut">mts</span>
+                <span class="ft-mut">M.S.N.M.</span>
             </div>
         }
         else if (c.Tipo == "opciones")

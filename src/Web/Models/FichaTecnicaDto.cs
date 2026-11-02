@@ -98,7 +98,7 @@ public static class FichaTecnicaCatalogo
         new("balance", "Balance", "balance"),
     };
 
-    /// <summary>Altura: se cargan "desde" y "hasta" y queda guardada como "1.600 – 1.900 mts".
+    /// <summary>Altura: se cargan "desde" y "hasta" y queda guardada como "1.600 – 1.900 M.S.N.M.".
     /// Lee también lo cargado antes a mano ("800 a 1.000 mts").</summary>
     public static (string Desde, string Hasta) PartirAltura(string? v)
     {
@@ -116,8 +116,24 @@ public static class FichaTecnicaCatalogo
         }
         var (a, b) = (N(desde), N(hasta));
         if (a is null && b is null) return null;
-        return a is not null && b is not null && a != b ? $"{a} – {b} mts" : $"{a ?? b} mts";
+        return a is not null && b is not null && a != b ? $"{a} – {b} M.S.N.M." : $"{a ?? b} M.S.N.M.";
     }
+
+    /// <summary>Cómo sale la altura en la ficha: siempre "1.600 – 1.900 M.S.N.M." aunque se haya cargado distinto.
+    /// Mismo formato que el PDF (CafeFichaTecnicaPdfService.AlturaTexto).</summary>
+    public static string? AlturaTexto(string? v)
+    {
+        var (d, h) = PartirAltura(v);
+        return ArmarAltura(d, h) ?? (string.IsNullOrWhiteSpace(v) ? null : v.Trim());
+    }
+
+    /// <summary>Qué es cada proceso: sale explicado en la ficha. Mismos textos que el PDF.</summary>
+    public static readonly Dictionary<string, string> ProcesoExplicado = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Lavado"] = "Se le saca la pulpa a la cereza y el grano fermenta bajo agua antes de secarse. Da sabores limpios y bien definidos, y cafés parejos que se lucen en cualquier preparación.",
+        ["Natural"] = "También llamado método seco, es la técnica más antigua: la cereza se seca entera al sol, con su pulpa, mucílago y cáscara, apenas se cosecha.",
+        ["Honey"] = "Se saca la cáscara pero se deja parte de la pulpa dulce pegada al grano mientras fermenta y se seca. Da cafés más dulces y equilibrados.",
+    };
 
     /// <summary>Escala del termómetro de tostado (mismo orden que la barra, de claro a oscuro).
     /// -1 si el tueste no es uno de estos (texto libre): entonces va como dato suelto.</summary>
