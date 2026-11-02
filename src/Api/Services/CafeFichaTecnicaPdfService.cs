@@ -70,6 +70,7 @@ public class CafeFichaTecnicaPdfService
             if (V("variedad", f.Variedad) is string va) datos.Add(("Variedad", va));
             if (V("proceso", f.Proceso) is string pr) datos.Add(("Proceso", pr));
             if (V("altura", f.Altura) is string al) datos.Add(("Altura", AlturaTexto(al)));
+            if (V("malla", f.Malla) is string ma) datos.Add(("Malla", ma));
             if (V("finca", f.Finca) is string fi) datos.Add(("Finca / productor", fi));
         }
         // Termómetro de tostado: si el tueste es uno de la escala va en la barra; si es otro texto, como dato.
@@ -81,7 +82,7 @@ public class CafeFichaTecnicaPdfService
 
         // Las partes del blend que quedaron vacías no salen.
         var componentes = blend ? CafeFichasTecnicasController.LeerComponentes(f.ComponentesJson)
-            .Where(c => c.Pct.HasValue || new[] { c.Pais, c.Region, c.Variedad, c.Proceso, c.Finca, c.Altura }.Any(x => !string.IsNullOrWhiteSpace(x)))
+            .Where(c => c.Pct.HasValue || new[] { c.Pais, c.Region, c.Variedad, c.Proceso, c.Finca, c.Altura, c.Malla }.Any(x => !string.IsNullOrWhiteSpace(x)))
             .ToList() : new();
         // Rueda: familias marcadas a mano + las de los sabores puntuales ("cacao:Avellana").
         var sabores = noAplica.Contains("rueda") ? new List<(string Fam, string Sabor)>()
@@ -211,7 +212,7 @@ public class CafeFichaTecnicaPdfService
                                         cc.Item().Text(tit).Bold().FontSize(12);
                                         void L(string lbl, string? v) { if (!string.IsNullOrWhiteSpace(v)) cc.Item().Text(tx => { tx.Span(lbl + "  ").FontColor(Gris).FontSize(9); tx.Span(v); }); }
                                         L("Región", c.Region); L("Variedad", c.Variedad); L("Proceso", c.Proceso); L("Finca", c.Finca);
-                                        L("Altura", string.IsNullOrWhiteSpace(c.Altura) ? null : AlturaTexto(c.Altura));
+                                        L("Altura", string.IsNullOrWhiteSpace(c.Altura) ? null : AlturaTexto(c.Altura)); L("Malla", c.Malla);
                                     });
                                 }
                             });
@@ -415,6 +416,7 @@ public class CafeFichaTecnicaPdfService
     {
         ["Lavado"] = "Se le saca la pulpa a la cereza y el grano fermenta bajo agua antes de secarse. Da sabores limpios y bien definidos, y cafés parejos que se lucen en cualquier preparación.",
         ["Natural"] = "También llamado método seco, es la técnica más antigua: la cereza se seca entera al sol, con su pulpa, mucílago y cáscara, apenas se cosecha.",
+        ["Despulpado"] = "Se le saca la cáscara y la pulpa a la cereza apenas se cosecha y el grano se seca con parte de su miel, sin fermentar bajo agua. Da cafés limpios, con buen dulzor y cuerpo.",
         ["Honey"] = "Se saca la cáscara pero se deja parte de la pulpa dulce pegada al grano mientras fermenta y se seca. Da cafés más dulces y equilibrados.",
     };
 

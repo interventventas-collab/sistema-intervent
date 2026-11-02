@@ -15,6 +15,8 @@ public class FichaTecnicaDto
     public string? Region { get; set; }
     public string? Finca { get; set; }
     public string? Altura { get; set; }
+    /// <summary>Tamaño del grano verde (ej "17/18").</summary>
+    public string? Malla { get; set; }
     public string? Variedad { get; set; }
     public string? Proceso { get; set; }
     public string? Tueste { get; set; }
@@ -55,6 +57,7 @@ public class FichaComponenteDto
     public string? Proceso { get; set; }
     public string? Finca { get; set; }
     public string? Altura { get; set; }
+    public string? Malla { get; set; }
 }
 
 public class FichaProductoCafeDto
@@ -85,8 +88,9 @@ public static class FichaTecnicaCatalogo
         new("region", "Región", "texto", Origen: true),
         new("finca", "Finca / productor", "texto", Origen: true),
         new("altura", "Altura", "altura", Origen: true),
+        new("malla", "Malla", "texto", Origen: true, Ayuda: "Ej: 17/18"),
         new("variedad", "Variedad", "texto", Origen: true),
-        new("proceso", "Proceso", "opciones", Origen: true, Opciones: new[] { "Lavado", "Natural", "Honey" }),
+        new("proceso", "Proceso", "opciones", Origen: true, Opciones: new[] { "Lavado", "Natural", "Honey", "Despulpado" }),
         new("tueste", "Tueste", "opciones", Opciones: new[] { "Claro", "Medio", "Medio-oscuro", "Oscuro" }),
         new("idealPara", "Ideal para", "texto", Ayuda: "Ej: Espresso · Filtro"),
         new("puntaje", "Puntaje SCA", "texto"),
@@ -132,6 +136,7 @@ public static class FichaTecnicaCatalogo
     {
         ["Lavado"] = "Se le saca la pulpa a la cereza y el grano fermenta bajo agua antes de secarse. Da sabores limpios y bien definidos, y cafés parejos que se lucen en cualquier preparación.",
         ["Natural"] = "También llamado método seco, es la técnica más antigua: la cereza se seca entera al sol, con su pulpa, mucílago y cáscara, apenas se cosecha.",
+        ["Despulpado"] = "Se le saca la cáscara y la pulpa a la cereza apenas se cosecha y el grano se seca con parte de su miel, sin fermentar bajo agua. Da cafés limpios, con buen dulzor y cuerpo.",
         ["Honey"] = "Se saca la cáscara pero se deja parte de la pulpa dulce pegada al grano mientras fermenta y se seca. Da cafés más dulces y equilibrados.",
     };
 
@@ -184,7 +189,7 @@ public static class FichaTecnicaCatalogo
     public static string? Get(FichaTecnicaDto f, string key) => key switch
     {
         "perfil" => f.Perfil, "especie" => f.Especie, "pais" => f.Pais, "region" => f.Region,
-        "finca" => f.Finca, "altura" => f.Altura, "variedad" => f.Variedad, "proceso" => f.Proceso,
+        "finca" => f.Finca, "altura" => f.Altura, "malla" => f.Malla, "variedad" => f.Variedad, "proceso" => f.Proceso,
         "tueste" => f.Tueste, "idealPara" => f.IdealPara, "puntaje" => f.Puntaje,
         "descripcion" => f.Descripcion, "fraganciaAroma" => f.FraganciaAroma, "sabor" => f.Sabor,
         "retrogusto" => f.Retrogusto, _ => null
@@ -196,7 +201,7 @@ public static class FichaTecnicaCatalogo
         {
             case "perfil": f.Perfil = v; break; case "especie": f.Especie = v; break;
             case "pais": f.Pais = v; break; case "region": f.Region = v; break;
-            case "finca": f.Finca = v; break; case "altura": f.Altura = v; break;
+            case "finca": f.Finca = v; break; case "altura": f.Altura = v; break; case "malla": f.Malla = v; break;
             case "variedad": f.Variedad = v; break; case "proceso": f.Proceso = v; break;
             case "tueste": f.Tueste = v; break; case "idealPara": f.IdealPara = v; break;
             case "puntaje": f.Puntaje = v; break; case "descripcion": f.Descripcion = v; break;
@@ -208,7 +213,7 @@ public static class FichaTecnicaCatalogo
     public static string? GetComp(FichaComponenteDto c, string key) => key switch
     {
         "pais" => c.Pais, "region" => c.Region, "finca" => c.Finca,
-        "altura" => c.Altura, "variedad" => c.Variedad, "proceso" => c.Proceso, _ => null
+        "altura" => c.Altura, "malla" => c.Malla, "variedad" => c.Variedad, "proceso" => c.Proceso, _ => null
     };
 
     public static void SetComp(FichaComponenteDto c, string key, string? v)
@@ -216,7 +221,7 @@ public static class FichaTecnicaCatalogo
         switch (key)
         {
             case "pais": c.Pais = v; break; case "region": c.Region = v; break;
-            case "finca": c.Finca = v; break; case "altura": c.Altura = v; break;
+            case "finca": c.Finca = v; break; case "altura": c.Altura = v; break; case "malla": c.Malla = v; break;
             case "variedad": c.Variedad = v; break; case "proceso": c.Proceso = v; break;
         }
     }

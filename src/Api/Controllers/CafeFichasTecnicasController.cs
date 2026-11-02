@@ -27,7 +27,7 @@ public class CafeFichasTecnicasController : ControllerBase
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public record ComponenteDto(string? Pais, decimal? Pct, string? Region, string? Variedad,
-        string? Proceso, string? Finca, string? Altura);
+        string? Proceso, string? Finca, string? Altura, string? Malla = null);
 
     public record FichaTecnicaDto(
         int Id, int? CafeProductoId, string? ProductoNombre, string? ProductoSku,
@@ -38,7 +38,7 @@ public class CafeFichasTecnicasController : ControllerBase
         List<string> Rueda, decimal? Cuerpo, decimal? Acidez, decimal? Dulzor,
         List<ComponenteDto> Componentes, List<string> NoAplica,
         string? FotoCafeUrl, string? FotoEtiquetaUrl, string? UpdatedBy, DateTime UpdatedAt,
-        string? FotoEmpaqueUrl, bool ContieneAzucar, int? Intensidad, List<string> Sabores);
+        string? FotoEmpaqueUrl, bool ContieneAzucar, int? Intensidad, List<string> Sabores, string? Malla);
 
     public record GuardarFichaRequest(
         int? CafeProductoId, string? Nombre, string? Tipo, string? Especie, string? Perfil,
@@ -47,7 +47,7 @@ public class CafeFichasTecnicasController : ControllerBase
         string? Descripcion, string? FraganciaAroma, string? Sabor, string? Retrogusto,
         List<string>? Rueda, decimal? Cuerpo, decimal? Acidez, decimal? Dulzor,
         List<ComponenteDto>? Componentes, List<string>? NoAplica, bool ContieneAzucar = false, int? Intensidad = null,
-        List<string>? Sabores = null);
+        List<string>? Sabores = null, string? Malla = null);
 
     public record CrearFichaRequest(int? CafeProductoId, string? Nombre, int? DuplicarDeId);
 
@@ -83,7 +83,7 @@ public class CafeFichasTecnicasController : ControllerBase
         Lista(f.Rueda), f.Cuerpo, f.Acidez, f.Dulzor,
         LeerComponentes(f.ComponentesJson), Lista(f.NoAplica),
         Img(f.FotoCafeArchivo), Img(f.FotoEtiquetaArchivo), f.UpdatedBy, f.UpdatedAt,
-        Img(f.FotoEmpaqueArchivo), f.ContieneAzucar, f.Intensidad, LeerSabores(f.Sabores));
+        Img(f.FotoEmpaqueArchivo), f.ContieneAzucar, f.Intensidad, LeerSabores(f.Sabores), f.Malla);
 
     private async Task<FichaTecnicaDto> DtoAsync(CafeFichaTecnica f)
     {
@@ -153,7 +153,7 @@ public class CafeFichasTecnicasController : ControllerBase
                 Puntaje = b.Puntaje, Descripcion = b.Descripcion, FraganciaAroma = b.FraganciaAroma, Sabor = b.Sabor,
                 Retrogusto = b.Retrogusto, Rueda = b.Rueda, Cuerpo = b.Cuerpo, Acidez = b.Acidez, Dulzor = b.Dulzor,
                 ComponentesJson = b.ComponentesJson, NoAplica = b.NoAplica, ContieneAzucar = b.ContieneAzucar, Intensidad = b.Intensidad,
-                Sabores = b.Sabores,
+                Sabores = b.Sabores, Malla = b.Malla,
                 // Las fotos no se copian: cada café tiene las suyas.
             };
             f.Nombre = $"{b.Nombre} (copia)";
@@ -200,7 +200,7 @@ public class CafeFichasTecnicasController : ControllerBase
         f.Especie = T(r.Especie, 30);
         f.Perfil = T(r.Perfil, 30)?.ToUpperInvariant();
         f.Pais = T(r.Pais, 80); f.Region = T(r.Region, 150); f.Finca = T(r.Finca, 150);
-        f.Altura = T(r.Altura, 80); f.Variedad = T(r.Variedad, 150); f.Proceso = T(r.Proceso, 150);
+        f.Altura = T(r.Altura, 80); f.Malla = T(r.Malla, 30); f.Variedad = T(r.Variedad, 150); f.Proceso = T(r.Proceso, 150);
         f.Tueste = T(r.Tueste, 60); f.IdealPara = T(r.IdealPara, 150); f.Puntaje = T(r.Puntaje, 20);
         f.Descripcion = T(r.Descripcion, 2000); f.FraganciaAroma = T(r.FraganciaAroma, 300);
         f.Sabor = T(r.Sabor, 300); f.Retrogusto = T(r.Retrogusto, 300);
