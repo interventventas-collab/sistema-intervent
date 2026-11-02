@@ -83,8 +83,13 @@ public class CafeFichaTecnicaPdfService
         var componentes = blend ? CafeFichasTecnicasController.LeerComponentes(f.ComponentesJson)
             .Where(c => c.Pct.HasValue || new[] { c.Pais, c.Region, c.Variedad, c.Proceso, c.Finca, c.Altura }.Any(x => !string.IsNullOrWhiteSpace(x)))
             .ToList() : new();
+        // Rueda: familias marcadas a mano + las de los sabores puntuales ("cacao:Avellana").
+        var sabores = noAplica.Contains("rueda") ? new List<(string Fam, string Sabor)>()
+            : CafeFichasTecnicasController.LeerSabores(f.Sabores).Select(x => x.Split(':', 2)).Where(x => x.Length == 2)
+                .Select(x => (Fam: x[0], Sabor: x[1])).ToList();
         var rueda = noAplica.Contains("rueda") ? new List<string>()
-            : (f.Rueda ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            : (f.Rueda ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Concat(sabores.Select(x => x.Fam)).Distinct().ToList();
         var renglones = new List<(string, string)>();
         if (V("fraganciaAroma", f.FraganciaAroma) is string fa) renglones.Add(("Fragancia y aroma", fa));
         if (V("sabor", f.Sabor) is string sa) renglones.Add(("Sabor", sa));
@@ -256,7 +261,12 @@ public class CafeFichaTecnicaPdfService
                                                     lc.Item().PaddingVertical(1).Row(lr =>
                                                     {
                                                         lr.ConstantItem(10).AlignMiddle().Height(8).Width(8).Background(x.Color);
-                                                        lr.RelativeItem().Text(x.Label).Bold().FontSize(11);
+                                                        var deEsta = sabores.Where(s => s.Fam == x.Key).Select(s => s.Sabor).ToList();
+                                                        lr.RelativeItem().Text(t =>
+                                                        {
+                                                            t.Span(x.Label).Bold().FontSize(11);
+                                                            if (deEsta.Count > 0) t.Span(": " + string.Join(" · ", deEsta)).FontSize(11);
+                                                        });
                                                     });
                                             });
                                         });

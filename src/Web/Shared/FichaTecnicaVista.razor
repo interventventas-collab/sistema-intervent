@@ -149,7 +149,7 @@
             </div>
         }
 
-        @{ var hayRueda = !F.NoAplica.Contains("rueda") && F.Rueda.Count > 0; }
+        @{ var familias = FichaTecnicaCatalogo.FamiliasEncendidas(F); var hayRueda = !F.NoAplica.Contains("rueda") && familias.Count > 0; }
         @if (hayRueda || Balance.Count > 0)
         {
             <div class="ftv-sec" style="display:flex; gap:16px; align-items:flex-start;">
@@ -157,11 +157,12 @@
                 {
                     <div style="flex:1;"><small class="ftv-lbl">Rueda de sabores</small>
                         <div class="ftv-wheel">
-                            @((MarkupString)RuedaSvg(F.Rueda, 105))
+                            @((MarkupString)RuedaSvg(familias, 105))
                             <div>
-                                @foreach (var r in FichaTecnicaCatalogo.Rueda.Where(r => F.Rueda.Contains(r.Key)))
+                                @foreach (var r in FichaTecnicaCatalogo.Rueda.Where(r => familias.Contains(r.Key)))
                                 {
-                                    <div><i style="display:inline-block; width:8px; height:8px; background:@r.Color; margin-right:5px;"></i><b>@r.Label</b></div>
+                                    var deEsta = FichaTecnicaCatalogo.SaboresDe(F, r.Key);
+                                    <div><i style="display:inline-block; width:8px; height:8px; background:@r.Color; margin-right:5px;"></i><b>@r.Label</b>@(deEsta.Count > 0 ? ": " + string.Join(" · ", deEsta) : "")</div>
                                 }
                             </div>
                         </div>

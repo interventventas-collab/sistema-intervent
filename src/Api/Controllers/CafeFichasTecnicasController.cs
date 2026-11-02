@@ -38,7 +38,7 @@ public class CafeFichasTecnicasController : ControllerBase
         List<string> Rueda, decimal? Cuerpo, decimal? Acidez, decimal? Dulzor,
         List<ComponenteDto> Componentes, List<string> NoAplica,
         string? FotoCafeUrl, string? FotoEtiquetaUrl, string? UpdatedBy, DateTime UpdatedAt,
-        string? FotoEmpaqueUrl, bool ContieneAzucar, int? Intensidad);
+        string? FotoEmpaqueUrl, bool ContieneAzucar, int? Intensidad, List<string> Sabores);
 
     public record GuardarFichaRequest(
         int? CafeProductoId, string? Nombre, string? Tipo, string? Especie, string? Perfil,
@@ -46,7 +46,8 @@ public class CafeFichasTecnicasController : ControllerBase
         string? Tueste, string? IdealPara, string? Puntaje,
         string? Descripcion, string? FraganciaAroma, string? Sabor, string? Retrogusto,
         List<string>? Rueda, decimal? Cuerpo, decimal? Acidez, decimal? Dulzor,
-        List<ComponenteDto>? Componentes, List<string>? NoAplica, bool ContieneAzucar = false, int? Intensidad = null);
+        List<ComponenteDto>? Componentes, List<string>? NoAplica, bool ContieneAzucar = false, int? Intensidad = null,
+        List<string>? Sabores = null);
 
     public record CrearFichaRequest(int? CafeProductoId, string? Nombre, int? DuplicarDeId);
 
@@ -57,6 +58,14 @@ public class CafeFichasTecnicasController : ControllerBase
 
     private static List<string> Lista(string? csv) =>
         string.IsNullOrWhiteSpace(csv) ? new() : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    /// <summary>Sabores marcados de una ficha: ["cacao:Avellana", ...] (familia:sabor).</summary>
+    public static List<string> LeerSabores(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try { return JsonSerializer.Deserialize<List<string>>(json, Json) ?? new(); }
+        catch { return new(); }
+    }
 
     public static List<ComponenteDto> LeerComponentes(string? json)
     {
@@ -74,7 +83,7 @@ public class CafeFichasTecnicasController : ControllerBase
         Lista(f.Rueda), f.Cuerpo, f.Acidez, f.Dulzor,
         LeerComponentes(f.ComponentesJson), Lista(f.NoAplica),
         Img(f.FotoCafeArchivo), Img(f.FotoEtiquetaArchivo), f.UpdatedBy, f.UpdatedAt,
-        Img(f.FotoEmpaqueArchivo), f.ContieneAzucar, f.Intensidad);
+        Img(f.FotoEmpaqueArchivo), f.ContieneAzucar, f.Intensidad, LeerSabores(f.Sabores));
 
     private async Task<FichaTecnicaDto> DtoAsync(CafeFichaTecnica f)
     {
@@ -144,6 +153,7 @@ public class CafeFichasTecnicasController : ControllerBase
                 Puntaje = b.Puntaje, Descripcion = b.Descripcion, FraganciaAroma = b.FraganciaAroma, Sabor = b.Sabor,
                 Retrogusto = b.Retrogusto, Rueda = b.Rueda, Cuerpo = b.Cuerpo, Acidez = b.Acidez, Dulzor = b.Dulzor,
                 ComponentesJson = b.ComponentesJson, NoAplica = b.NoAplica, ContieneAzucar = b.ContieneAzucar, Intensidad = b.Intensidad,
+                Sabores = b.Sabores,
                 // Las fotos no se copian: cada café tiene las suyas.
             };
             f.Nombre = $"{b.Nombre} (copia)";
@@ -200,6 +210,9 @@ public class CafeFichasTecnicasController : ControllerBase
         f.NoAplica = r.NoAplica is { Count: > 0 } ? T(string.Join(",", r.NoAplica.Distinct()), 400) : null;
         f.ContieneAzucar = r.ContieneAzucar;
         f.Intensidad = r.Intensidad is int i ? Math.Clamp(i, 1, 10) : null;
+        var sabores = (r.Sabores ?? new()).Select(x => T(x, 80)).Where(x => x is not null && x.Contains(':'))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        f.Sabores = sabores.Count > 0 ? T(JsonSerializer.Serialize(sabores, Json), 2000) : null;
         f.UpdatedBy = User?.Identity?.Name;
         f.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -314,6 +327,48 @@ public class CafeFichasTecnicasController : ControllerBase
         if (tipo == "cafe") f.FotoCafeArchivo = archivo;
         else if (tipo == "empaque") f.FotoEmpaqueArchivo = archivo;
         else f.FotoEtiquetaArchivo = archivo;
+    }
+
+    // ───────────── Lista de sabores para elegir (una para todas las fichas) ─────────────
+    public const string SaboresKey = "fichas.sabores";
+
+    /// <summary>Con lo que arranca la lista: los sabores de las notas de cata de la lista de precios.</summary>
+    private static readonly Dictionary<string, List<string>> SaboresIniciales = new()
+    {
+        ["floral"] = new() { "Floral", "Té negro" },
+        ["afrutado"] = new() { "Frutal", "Frutos rojos", "Frutas tropicales", "Ananá" },
+        ["acido"] = new() { "Cítrico", "Limón" },
+        ["verde"] = new() { "Herbal" },
+        ["otros"] = new() { "Terroso", "Madera" },
+        ["tostado"] = new() { "Tostado", "Humo" },
+        ["especiado"] = new() { "Canela", "Especias" },
+        ["cacao"] = new() { "Avellana", "Nuez", "Almendras", "Frutos secos", "Chocolate", "Chocolate negro", "Cacao" },
+        ["dulce"] = new() { "Miel", "Caramelo", "Dulce" },
+    };
+
+    [HttpGet("sabores")]
+    public async Task<IActionResult> GetSabores()
+    {
+        var s = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == SaboresKey);
+        if (s is null) return Ok(SaboresIniciales);
+        try { return Ok(JsonSerializer.Deserialize<Dictionary<string, List<string>>>(s.Value, Json) ?? SaboresIniciales); }
+        catch { return Ok(SaboresIniciales); }
+    }
+
+    /// <summary>Guarda la lista entera (se manda al agregar o sacar un sabor).</summary>
+    [HttpPut("sabores")]
+    public async Task<IActionResult> GuardarSabores([FromBody] Dictionary<string, List<string>> lista)
+    {
+        var limpia = (lista ?? new()).ToDictionary(
+            kv => kv.Key,
+            kv => (kv.Value ?? new()).Select(x => T(x?.Replace(":", " ").Replace(",", " "), 40)).Where(x => x is not null)
+                .Select(x => x!).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+        var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == SaboresKey);
+        if (s is null) _db.AppSettings.Add(s = new AppSetting { Key = SaboresKey });
+        s.Value = JsonSerializer.Serialize(limpia, Json);
+        s.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(limpia);
     }
 
     // ───────────── Logo de arriba de las fichas (uno para todas) ─────────────

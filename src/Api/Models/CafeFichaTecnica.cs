@@ -73,6 +73,10 @@ public class CafeFichaTecnica
     /// <summary>2026-10-30: intensidad de 1 a 10 (fila de granos en la ficha). El tostado sale de Tueste.</summary>
     public int? Intensidad { get; set; }
 
+    /// <summary>2026-11-02: sabores puntuales marcados, JSON ["cacao:Avellana","dulce:Miel"] (familia:sabor).
+    /// Su familia se enciende sola en la rueda. La lista para elegir está en AppSettings "fichas.sabores".</summary>
+    [MaxLength(2000)] public string? Sabores { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     [MaxLength(100)] public string? UpdatedBy { get; set; }
