@@ -5,12 +5,16 @@
 
 <style>
     .ftv { background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.12); color:#111; font-family:Arial, sans-serif; font-size:13px; width:540px; }
-    .ftv-top { background:#111; color:#fff; padding:13px 22px; display:flex; justify-content:space-between; align-items:center; font-size:11px; }
+    .ftv-top { background:#111; color:#fff; padding:13px 22px; display:flex; gap:14px; align-items:center; font-size:11px; }
+    .ftv-top .n { flex:1; min-width:0; text-align:center; }
+    .ftv-top .n h2 { font-family:Arial, sans-serif; font-size:20px; color:#fff; }
+    .ftv-top .n div { color:#bbb; font-size:8.5px; letter-spacing:.06em; text-transform:uppercase; margin-top:3px; }
+    .ftv-top .mol { flex:none; width:66px; text-align:center; color:#4a4a4a; font-weight:800; font-size:7.5px; letter-spacing:.14em; }
     .ftv-top b { color:#facc15; letter-spacing:.14em; font-size:14px; }
     .ftv-hero { display:flex; height:190px; }
     .ftv-hero > div { flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; }
     .ftv-hero .a { background:#2b1d14; } .ftv-hero .m { background:#fff; padding:8px; } .ftv-hero .b { background:#f5efe6; padding:10px; }
-    .ftv-top img { height:26px; max-width:220px; object-fit:contain; display:block; }
+    .ftv-top img { max-width:200px; object-fit:contain; display:block; flex:none; }
     /* Cartel de azúcar: negro con letras blancas en los dos casos, en español e inglés */
     .ftv-azucar { text-align:center; font-weight:800; font-size:20px; letter-spacing:.08em; padding:8px 10px 7px; background:#111; color:#fff; line-height:1.15; }
     .ftv-azucar span { display:block; font-size:12px; letter-spacing:.18em; font-weight:700; opacity:.85; margin-top:2px; }
@@ -49,8 +53,13 @@
 
 <div class="ftv">
     <div class="ftv-top">
-        @if (!string.IsNullOrEmpty(LogoUrl)) { <img src="@LogoUrl" alt="logo" /> } else { <b>FRIKAF</b> }
-        <span>FICHA TÉCNICA · CAFÉ DE ESPECIALIDAD</span>
+        @* Logo (con su tamaño) · nombre del café · molécula de cafeína en gris *@
+        @if (!string.IsNullOrEmpty(LogoUrl)) { <img src="@LogoUrl" alt="logo" style="height:@(Math.Round(51 * Math.Clamp(LogoTamano, 40, 200) / 100.0))px;" /> } else { <b>FRIKAF</b> }
+        <div class="n">
+            <h2>@(string.IsNullOrWhiteSpace(F.Nombre) ? "Sin nombre" : F.Nombre)</h2>
+            <div>@string.Join(" · ", Sub.Prepend("Ficha técnica"))</div>
+        </div>
+        <div class="mol">@((MarkupString)MoleculaSvg)CAFFEINE</div>
     </div>
 
     @* Fotos: granos (izquierda) · empaque (medio) · etiqueta (derecha) *@
@@ -98,13 +107,8 @@
     }
 
     <div class="ftv-body">
-        <div class="ftv-t">
-            <div>
-                <h2>@(string.IsNullOrWhiteSpace(F.Nombre) ? "Sin nombre" : F.Nombre)</h2>
-                @if (Sub.Count > 0) { <div class="ftv-o">@string.Join(" · ", Sub)</div> }
-            </div>
-            @if (V("perfil", F.Perfil) is string perfil) { <span class="ftv-perfil">@perfil.ToUpperInvariant()</span> }
-        </div>
+        @* El nombre va arriba en el negro; acá solo queda el sello del perfil. *@
+        @if (V("perfil", F.Perfil) is string perfil) { <span class="ftv-perfil">@perfil.ToUpperInvariant()</span> }
 
         @if (V("descripcion", F.Descripcion) is string desc) { <p>@desc</p> }
 
@@ -178,6 +182,10 @@
     [Parameter, EditorRequired] public FichaTecnicaDto F { get; set; } = default!;
     /// <summary>Logo de arriba (uno para todas las fichas). Null = dice FRIKAF.</summary>
     [Parameter] public string? LogoUrl { get; set; }
+    /// <summary>Tamaño del logo en % (100 = normal), el mismo que usa el PDF.</summary>
+    [Parameter] public int LogoTamano { get; set; } = 100;
+
+    private const string MoleculaSvg = """<svg viewBox="80 90 340 280" width="66" height="54" style="display:block"><g fill="none" stroke="#4a4a4a" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M240,175 L195,201 M185,225 L185,256 M195,280 L227,298 M253,298 L290,276 L290,200 L240,175 M290,200 L330,186 M359,198 L385,234 L360,268 M332,280 L290,276 M298,218 L298,258 M375,236 L353,266 M234,175 L234,130 M246,175 L246,130 M190,262 L150,286 M184,252 L144,276 M174,203 L150,190 M240,312 L240,333 M346,168 L356,140"/></g><g fill="#4a4a4a" font-family="Arial, sans-serif" font-weight="700" font-size="34" text-anchor="middle"><text x="240" y="122">O</text><text x="185" y="216">N</text><text x="136" y="302">O</text><text x="240" y="308">N</text><text x="345" y="195">N</text><text x="346" y="290">N</text><text x="112" y="192">H₃C</text><text x="248" y="362">CH₃</text><text x="384" y="138">CH₃</text></g></svg>""";
 
     private int? Intensidad => F.NoAplica.Contains("intensidad") ? null : F.Intensidad;
     private int NivelTueste => F.NoAplica.Contains("tueste") ? -1 : FichaTecnicaCatalogo.NivelTueste(F.Tueste);

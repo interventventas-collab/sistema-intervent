@@ -186,4 +186,6 @@ public static class FichaTecnicaCatalogo
 public class FichaLogoDto
 {
     public string? Url { get; set; }
+    /// <summary>Tamaño del logo en % (100 = normal).</summary>
+    public int Tamano { get; set; } = 100;
 }

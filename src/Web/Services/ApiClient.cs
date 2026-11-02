@@ -3338,6 +3338,9 @@ public class ApiClient
     public async Task<FichaLogoDto?> FichaLogoDesdeUrlAsync(string url)
         => await PostAsync<FichaLogoDto>("/api/cafe/fichas-tecnicas/logo/desde-url", new { url });
 
+    public async Task<FichaLogoDto?> GuardarFichaLogoTamanoAsync(int tamano)
+        => await PutAsync<FichaLogoDto>("/api/cafe/fichas-tecnicas/logo/tamano", new { tamano });
+
     public async Task<bool> QuitarFichaLogoAsync()
         => await DeleteAsync("/api/cafe/fichas-tecnicas/logo");
 
