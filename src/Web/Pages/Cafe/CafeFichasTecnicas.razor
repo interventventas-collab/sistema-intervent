@@ -101,7 +101,17 @@
                                @onkeydown="@(e => e.Key == "Enter" ? LogoPorEnlace() : Task.CompletedTask)" />
                         <button class="ft-btn pri" style="font-size:.75rem; padding:.3rem .6rem;" disabled="@string.IsNullOrWhiteSpace(logoEnlace)" @onclick="LogoPorEnlace">Usar</button>
                     </div>
-                    @if (logoUrl is not null) { <span class="na-link" style="color:#9ca3af; cursor:pointer; text-decoration:underline; font-size:.75rem;" @onclick="QuitarLogo">quitar logo (vuelve a decir FRIKAF)</span> }
+                    @if (logoUrl is not null)
+                    {
+                        <div style="display:flex; align-items:center; gap:.4rem; margin-top:.45rem;">
+                            <span>Tamaño:</span>
+                            <button class="ft-btn" style="padding:.15rem .6rem;" disabled="@(logoTamano <= LogoTamanoMin)" @onclick="() => CambiarLogoTamano(-10)" title="Achicar el logo">−</button>
+                            <b style="min-width:3.2rem; text-align:center;">@logoTamano%</b>
+                            <button class="ft-btn" style="padding:.15rem .6rem;" disabled="@(logoTamano >= LogoTamanoMax)" @onclick="() => CambiarLogoTamano(10)" title="Agrandar el logo">+</button>
+                            <span class="ft-mut">vale para todas las fichas y el PDF</span>
+                        </div>
+                        <span class="na-link" style="color:#9ca3af; cursor:pointer; text-decoration:underline; font-size:.75rem;" @onclick="QuitarLogo">quitar logo (vuelve a decir FRIKAF)</span>
+                    }
                 </div>
             </div>
         </div>
@@ -277,7 +287,7 @@
                             <a class="ft-btn" href="@Api.GetFichaTecnicaPdfUrl(sel.Id, true)" target="_blank">⬇ Bajar PDF</a>
                         </span>
                     </div>
-                    <div class="ft-prevbody"><FichaTecnicaVista F="sel" LogoUrl="@logoUrl" /></div>
+                    <div class="ft-prevbody"><FichaTecnicaVista F="sel" LogoUrl="@logoUrl" LogoTamano="logoTamano" /></div>
                 }
             </div>
         </div>
@@ -415,7 +425,7 @@
         {
             fichas = await Api.GetFichasTecnicasAsync() ?? new();
             productos = await Api.GetFichaProductosCafeAsync() ?? new();
-            try { logoUrl = (await Api.GetFichaLogoAsync())?.Url; } catch { /* sin logo: dice FRIKAF */ }
+            try { var l = await Api.GetFichaLogoAsync(); logoUrl = l?.Url; logoTamano = l?.Tamano ?? 100; } catch { /* sin logo: dice FRIKAF */ }
             if (QueryId is int qid) sel = fichas.FirstOrDefault(f => f.Id == qid);
             sel ??= fichas.FirstOrDefault();
         }
@@ -746,6 +756,17 @@
     private string? logoUrl;
     private bool logoAbierto;
     private string logoEnlace = "";
+    private int logoTamano = 100;
+    private const int LogoTamanoMin = 40, LogoTamanoMax = 200;
+
+    /// <summary>Botones − / +: cambia de a 10% y lo guarda al toque (se ve en la vista previa).</summary>
+    private async Task CambiarLogoTamano(int delta)
+    {
+        var anterior = logoTamano;
+        logoTamano = Math.Clamp(logoTamano + delta, LogoTamanoMin, LogoTamanoMax);
+        try { logoTamano = (await Api.GuardarFichaLogoTamanoAsync(logoTamano))?.Tamano ?? logoTamano; }
+        catch (Exception ex) { logoTamano = anterior; ToastService.Error("No se guardó el tamaño: " + ex.Message); }
+    }
 
     private async Task SubirLogo(InputFileChangeEventArgs e)
     {

@@ -317,13 +317,36 @@ public class CafeFichasTecnicasController : ControllerBase
 
     // ───────────── Logo de arriba de las fichas (uno para todas) ─────────────
     public const string LogoKey = "fichas.logo";
-    public record LogoDto(string? Url);
+    /// <summary>Tamaño del logo en % (100 = normal), lo cambian con los botones − / +.</summary>
+    public const string LogoTamanoKey = "fichas.logo.tamano";
+    public const int LogoTamanoMin = 40, LogoTamanoMax = 200;
+    public record LogoDto(string? Url, int Tamano = 100);
+    public record LogoTamanoRequest(int Tamano);
 
     [HttpGet("logo")]
     public async Task<IActionResult> GetLogo()
     {
         var s = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == LogoKey);
-        return Ok(new LogoDto(Img(s?.Value)));
+        return Ok(new LogoDto(Img(s?.Value), await LeerLogoTamanoAsync()));
+    }
+
+    [HttpPut("logo/tamano")]
+    public async Task<IActionResult> GuardarLogoTamano([FromBody] LogoTamanoRequest req)
+    {
+        var tam = Math.Clamp(req?.Tamano ?? 100, LogoTamanoMin, LogoTamanoMax);
+        var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == LogoTamanoKey);
+        if (s is null) _db.AppSettings.Add(s = new AppSetting { Key = LogoTamanoKey });
+        s.Value = tam.ToString();
+        s.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        var logo = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == LogoKey);
+        return Ok(new LogoDto(Img(logo?.Value), tam));
+    }
+
+    private async Task<int> LeerLogoTamanoAsync()
+    {
+        var v = (await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == LogoTamanoKey))?.Value;
+        return int.TryParse(v, out var t) ? Math.Clamp(t, LogoTamanoMin, LogoTamanoMax) : 100;
     }
 
     [HttpPost("logo")]
@@ -350,7 +373,7 @@ public class CafeFichasTecnicasController : ControllerBase
     {
         var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == LogoKey);
         if (s is not null) { BorrarArchivo(s.Value); _db.AppSettings.Remove(s); await _db.SaveChangesAsync(); }
-        return Ok(new LogoDto(null));
+        return Ok(new LogoDto(null, await LeerLogoTamanoAsync()));
     }
 
     private async Task<LogoDto> GuardarLogoAsync(byte[] bytes, string? ext)
@@ -367,7 +390,7 @@ public class CafeFichasTecnicasController : ControllerBase
         s.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         BorrarArchivo(viejo);
-        return new LogoDto(Img(nombre));
+        return new LogoDto(Img(nombre), await LeerLogoTamanoAsync());
     }
 
     private static void BorrarArchivo(string? archivo)
@@ -384,7 +407,7 @@ public class CafeFichasTecnicasController : ControllerBase
         var f = await _db.CafeFichasTecnicas.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
         if (f is null) return NotFound(new { error = "La ficha no existe." });
         var logo = (await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == LogoKey))?.Value;
-        var bytes = _pdf.Generar(f, logo);
+        var bytes = _pdf.Generar(f, logo, await LeerLogoTamanoAsync());
         var nombre = $"Ficha tecnica - {string.Concat(f.Nombre.Split(Path.GetInvalidFileNameChars()))}.pdf";
         return descargar == 1 ? File(bytes, "application/pdf", nombre) : File(bytes, "application/pdf");
     }

@@ -41,7 +41,8 @@ public class CafeFichaTecnicaPdfService
     }
 
     /// <param name="logoArchivo">Logo de arriba (uno para todas las fichas). Null = dice FRIKAF.</param>
-    public byte[] Generar(CafeFichaTecnica f, string? logoArchivo = null)
+    /// <param name="logoTamano">Tamaño del logo en % (100 = normal).</param>
+    public byte[] Generar(CafeFichaTecnica f, string? logoArchivo = null, int logoTamano = 100)
     {
         var noAplica = new HashSet<string>((f.NoAplica ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         string? V(string key, string? val) => noAplica.Contains(key) || string.IsNullOrWhiteSpace(val) ? null : val.Trim();
@@ -102,11 +103,23 @@ public class CafeFichaTecnicaPdfService
                 page.Margin(0);
                 page.DefaultTextStyle(t => t.FontSize(10).FontColor("#111111"));
 
+                // Arriba: logo · nombre del café · molécula de cafeína en gris
+                var logoAlto = 56f * Math.Clamp(logoTamano, 40, 200) / 100f;
                 page.Header().Background("#111111").PaddingVertical(14).PaddingHorizontal(32).Row(r =>
                 {
-                    if (logo is not null) r.RelativeItem().AlignLeft().AlignMiddle().Height(30).Image(logo).FitHeight();
-                    else r.RelativeItem().Text("FRIKAF").FontColor(Amarillo).Bold().FontSize(15).LetterSpacing(0.15f);
-                    r.RelativeItem().AlignRight().AlignMiddle().Text("FICHA TÉCNICA · CAFÉ DE ESPECIALIDAD").FontColor("#FFFFFF").FontSize(9);
+                    if (logo is not null) r.AutoItem().AlignMiddle().Height(logoAlto).Image(logo).FitHeight();
+                    else r.AutoItem().AlignMiddle().Text("FRIKAF").FontColor(Amarillo).Bold().FontSize(15).LetterSpacing(0.15f);
+                    r.RelativeItem().PaddingHorizontal(16).AlignMiddle().Column(c =>
+                    {
+                        c.Item().AlignCenter().Text(f.Nombre).FontColor("#FFFFFF").FontSize(22).Bold();
+                        c.Item().PaddingTop(3).AlignCenter().Text(string.Join(" · ", sub.Prepend("Ficha técnica")).ToUpperInvariant())
+                            .FontColor("#BBBBBB").FontSize(8).LetterSpacing(0.06f);
+                    });
+                    r.ConstantItem(72).AlignMiddle().Column(c =>
+                    {
+                        c.Item().Height(58).Svg(MoleculaSvg);
+                        c.Item().AlignCenter().Text("CAFFEINE").FontColor(GrisMolecula).Bold().FontSize(8).LetterSpacing(0.14f);
+                    });
                 });
 
                 page.Content().ScaleToFit().Column(col =>
@@ -170,17 +183,10 @@ public class CafeFichaTecnicaPdfService
                     col.Item().PaddingHorizontal(32).PaddingTop(20).Column(body =>
                     {
                         body.Spacing(4);
-                        body.Item().Row(r =>
-                        {
-                            r.RelativeItem().Column(c =>
-                            {
-                                c.Item().Text(f.Nombre).FontSize(24).Bold();
-                                if (sub.Count > 0) c.Item().Text(string.Join(" · ", sub)).FontColor(Gris).FontSize(11);
-                            });
-                            if (V("perfil", f.Perfil) is string perfil)
-                                r.AutoItem().AlignTop().Background(Amarillo).PaddingVertical(5).PaddingHorizontal(10)
-                                    .Text(perfil.ToUpperInvariant()).Bold().FontSize(12).LetterSpacing(0.08f);
-                        });
+                        // El nombre va arriba en el negro; acá solo queda el sello del perfil.
+                        if (V("perfil", f.Perfil) is string perfil)
+                            body.Item().Row(r => r.AutoItem().Background(Amarillo).PaddingVertical(5).PaddingHorizontal(10)
+                                .Text(perfil.ToUpperInvariant()).Bold().FontSize(12).LetterSpacing(0.08f));
 
                         if (V("descripcion", f.Descripcion) is string desc)
                             body.Item().PaddingTop(8).Text(desc).FontSize(11).LineHeight(1.4f);
@@ -297,6 +303,16 @@ public class CafeFichaTecnicaPdfService
 
     /// <summary>Escala del termómetro de tostado (igual que las opciones de la pantalla).</summary>
     private static readonly string[] Tuestes = { "Claro", "Medio", "Medio-oscuro", "Oscuro" };
+
+    private const string GrisMolecula = "#4A4A4A";
+
+    /// <summary>Molécula de cafeína dibujada en gris (va a la derecha del encabezado negro).</summary>
+    private const string MoleculaSvg = """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="80 90 340 280">
+        <g fill="none" stroke="#4A4A4A" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M240,175 L195,201 M185,225 L185,256 M195,280 L227,298 M253,298 L290,276 L290,200 L240,175 M290,200 L330,186 M359,198 L385,234 L360,268 M332,280 L290,276 M298,218 L298,258 M375,236 L353,266 M234,175 L234,130 M246,175 L246,130 M190,262 L150,286 M184,252 L144,276 M174,203 L150,190 M240,312 L240,333 M346,168 L356,140"/></g>
+        <g fill="#4A4A4A" font-family="DejaVu Sans" font-weight="bold" font-size="34" text-anchor="middle"><text x="240" y="122">O</text><text x="185" y="216">N</text><text x="136" y="302">O</text><text x="240" y="308">N</text><text x="345" y="195">N</text><text x="346" y="290">N</text><text x="112" y="192">H₃C</text><text x="248" y="362">CH₃</text><text x="384" y="138">CH₃</text></g>
+        </svg>
+        """;
 
     private static string GranosSvg(int n)
     {
