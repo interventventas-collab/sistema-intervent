@@ -69,7 +69,7 @@ public class CafeFichaTecnicaPdfService
         {
             if (V("variedad", f.Variedad) is string va) datos.Add(("Variedad", va));
             if (V("proceso", f.Proceso) is string pr) datos.Add(("Proceso", pr));
-            if (V("altura", f.Altura) is string al) datos.Add(("Altura", al));
+            if (V("altura", f.Altura) is string al) datos.Add(("Altura", AlturaTexto(al)));
             if (V("finca", f.Finca) is string fi) datos.Add(("Finca / productor", fi));
         }
         // Termómetro de tostado: si el tueste es uno de la escala va en la barra; si es otro texto, como dato.
@@ -210,7 +210,8 @@ public class CafeFichaTecnicaPdfService
                                         if (c.Pct is decimal pct) tit += $" · {pct.ToString("0.#", Es)}%";
                                         cc.Item().Text(tit).Bold().FontSize(12);
                                         void L(string lbl, string? v) { if (!string.IsNullOrWhiteSpace(v)) cc.Item().Text(tx => { tx.Span(lbl + "  ").FontColor(Gris).FontSize(9); tx.Span(v); }); }
-                                        L("Región", c.Region); L("Variedad", c.Variedad); L("Proceso", c.Proceso); L("Finca", c.Finca); L("Altura", c.Altura);
+                                        L("Región", c.Region); L("Variedad", c.Variedad); L("Proceso", c.Proceso); L("Finca", c.Finca);
+                                        L("Altura", string.IsNullOrWhiteSpace(c.Altura) ? null : AlturaTexto(c.Altura));
                                     });
                                 }
                             });
@@ -229,6 +230,21 @@ public class CafeFichaTecnicaPdfService
                                         c.Item().Text(val).Bold().FontSize(11);
                                     });
                             });
+                        }
+
+                        // Qué es cada proceso (Lavado / Natural / Honey)
+                        var procesos = (blend ? componentes.Select(c => c.Proceso) : new[] { V("proceso", f.Proceso) })
+                            .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase).Where(x => ProcesoExplicado.ContainsKey(x)).ToList();
+                        if (procesos.Count > 0)
+                        {
+                            Seccion(body, null);
+                            foreach (var pr in procesos)
+                                body.Item().PaddingBottom(4).Text(t =>
+                                {
+                                    t.Span($"Proceso {pr.ToLowerInvariant()}: ").Bold().FontSize(9.5f);
+                                    t.Span(ProcesoExplicado[pr]).FontSize(9.5f).FontColor("#374151");
+                                });
                         }
 
                         if (renglones.Count > 0)
@@ -393,6 +409,25 @@ public class CafeFichaTecnicaPdfService
         ("Acidez", new[] { "Baja", "Media", "Alta" }),
         ("Dulzor", new[] { "Bajo", "Medio", "Alto" }),
     };
+
+    /// <summary>Qué es cada proceso. La pantalla (FichaTecnicaCatalogo.ProcesoExplicado en Web) usa los mismos textos.</summary>
+    private static readonly Dictionary<string, string> ProcesoExplicado = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Lavado"] = "Se le saca la pulpa a la cereza y el grano fermenta bajo agua antes de secarse. Da sabores limpios y bien definidos, y cafés parejos que se lucen en cualquier preparación.",
+        ["Natural"] = "También llamado método seco, es la técnica más antigua: la cereza se seca entera al sol, con su pulpa, mucílago y cáscara, apenas se cosecha.",
+        ["Honey"] = "Se saca la cáscara pero se deja parte de la pulpa dulce pegada al grano mientras fermenta y se seca. Da cafés más dulces y equilibrados.",
+    };
+
+    /// <summary>Altura siempre como "1.600 – 1.900 M.S.N.M." (también lo cargado antes a mano: "800 a 1.000 mts").
+    /// Si no tiene números sale tal cual. Igual que FichaTecnicaCatalogo.AlturaTexto en Web.</summary>
+    private static string AlturaTexto(string v)
+    {
+        var nums = System.Text.RegularExpressions.Regex.Matches(v, @"\d[\d.]*")
+            .Select(m => int.TryParse(m.Value.Replace(".", ""), out var n) ? n : 0).Where(n => n > 0).Take(2).ToList();
+        if (nums.Count == 0) return v.Trim();
+        var t = nums.Select(n => n.ToString("N0", Es)).Distinct().ToList();
+        return string.Join(" – ", t) + " M.S.N.M.";
+    }
 
     private static int NivelBalance(decimal? v, int cantidad) =>
         v is decimal d && d % 1 == 0 && d >= 1 && d <= cantidad ? (int)d - 1 : -1;

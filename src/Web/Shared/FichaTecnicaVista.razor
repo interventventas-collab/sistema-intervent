@@ -39,6 +39,7 @@
     .ftv-d small, .ftv-r span { display:block; color:#6b7280; font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; }
     .ftv-comp { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:12px; }
     .ftv-comp > div { border-left:3px solid #6b4429; padding-left:9px; }
+    .ftv-proc div { font-size:11.5px; line-height:1.45; color:#374151; margin-bottom:4px; }
     .ftv-comp b { font-size:13.5px; } .ftv-comp span { color:#6b7280; margin-right:4px; font-size:11px; }
     .ftv-wheel { display:flex; gap:16px; align-items:center; }
     .ftv-wheel b { font-size:13px; }
@@ -123,7 +124,7 @@
                     {
                         <div>
                             <b>@(c.Pais ?? "—")@(c.Pct is decimal pct ? $" · {pct:0.#}%" : "")</b>
-                            @foreach (var (lbl, val) in new[] { ("Región", c.Region), ("Variedad", c.Variedad), ("Proceso", c.Proceso), ("Finca", c.Finca), ("Altura", c.Altura) })
+                            @foreach (var (lbl, val) in new[] { ("Región", c.Region), ("Variedad", c.Variedad), ("Proceso", c.Proceso), ("Finca", c.Finca), ("Altura", FichaTecnicaCatalogo.AlturaTexto(c.Altura)) })
                             {
                                 if (!string.IsNullOrWhiteSpace(val)) { <div><span>@lbl</span>@val</div> }
                             }
@@ -139,6 +140,14 @@
                 <div class="ftv-d">
                     @foreach (var (lbl, val) in Datos) { <div><small>@lbl</small><b>@val</b></div> }
                 </div>
+            </div>
+        }
+
+        @* Qué es cada proceso (Lavado / Natural / Honey) *@
+        @if (Procesos.Count > 0)
+        {
+            <div class="ftv-sec ftv-proc">
+                @foreach (var (nombre, texto) in Procesos) { <div><b>Proceso @nombre.ToLowerInvariant():</b> @texto</div> }
             </div>
         }
 
@@ -236,6 +245,14 @@
         }
     }
 
+    /// <summary>Los procesos del café (o de las partes del blend) que tienen explicación.</summary>
+    private List<(string Nombre, string Texto)> Procesos =>
+        (F.EsBlend ? Partes.Select(c => c.Proceso) : new[] { V("proceso", F.Proceso) })
+            .Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(p => FichaTecnicaCatalogo.ProcesoExplicado.ContainsKey(p))
+            .Select(p => (p, FichaTecnicaCatalogo.ProcesoExplicado[p])).ToList();
+
     private List<(string, string)> Datos
     {
         get
@@ -245,7 +262,7 @@
             {
                 if (V("variedad", F.Variedad) is string va) d.Add(("Variedad", va));
                 if (V("proceso", F.Proceso) is string pr) d.Add(("Proceso", pr));
-                if (V("altura", F.Altura) is string al) d.Add(("Altura", al));
+                if (V("altura", F.Altura) is string al) d.Add(("Altura", FichaTecnicaCatalogo.AlturaTexto(al)!));
                 if (V("finca", F.Finca) is string fi) d.Add(("Finca / productor", fi));
             }
             // El tueste de la escala ya sale en el termómetro; solo un texto distinto va como dato.
