@@ -226,7 +226,8 @@
                         }
                         else if (pdfBlob is not null)
                         {
-                            <iframe src="@pdfBlob" title="@pdfViendo.Name"></iframe>
+                            @* Sin la columna de miniaturas de Chrome y ajustado al ancho: si no, el visor queda mitad y mitad. *@
+                            <iframe src="@(pdfBlob + "#navpanes=0&view=FitH")" title="@pdfViendo.Name"></iframe>
                         }
                         else
                         {
