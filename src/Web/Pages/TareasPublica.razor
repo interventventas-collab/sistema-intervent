@@ -22,11 +22,13 @@
         <div class="tp-name">@(nombre ?? "…")</div>
         <div class="tp-fecha">@Fecha</div>
     </div>
-    <TareasCelu Token="@Token" OnNombre="n => nombre = n" />
+    <TareasCelu Token="@Token" AbrirAl="@Tarea" OnNombre="n => nombre = n" />
 </div>
 
 @code {
     [Parameter] public string Token { get; set; } = "";
+    /// <summary>?tarea=N: viene del QR "Seguir en el celu" de la PC del depósito, abre esa tarea directo.</summary>
+    [SupplyParameterFromQuery] public int? Tarea { get; set; }
     private string? nombre;
 
     private static readonly string[] Dias = { "Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado" };

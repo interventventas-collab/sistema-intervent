@@ -3732,6 +3732,9 @@ public class ApiClient
     }
 
     // 2026-11-03: Tareas del depósito (/deposito/tareas)
+    public async Task<DepTareasResumenDto?> GetDepTareasResumenAsync()
+        => await GetAsync<DepTareasResumenDto>("/api/deposito-tareas/resumen");
+
     public async Task<List<DepTareaEmpleadoDto>?> GetDepTareasEmpleadosAsync()
         => await GetAsync<List<DepTareaEmpleadoDto>>("/api/deposito-tareas/empleados");
 

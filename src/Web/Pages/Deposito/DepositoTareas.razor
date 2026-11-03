@@ -151,7 +151,7 @@
         <textarea class="dt-input" rows="2" @bind="comentario" placeholder="Ej: empezá por el pasillo A"></textarea>
 
         <div class="dt-acciones">
-            <span class="dt-gris">@(tipo == "CONTAR" ? "Cuentan a ciegas: en el celu no ven cuánto dice el sistema." : "")</span>
+            <span class="dt-gris">@(tipo == "CONTAR" ? "Cuentan a ciegas y lo que cargan arregla el stock en el momento." : "")</span>
             <button type="button" class="dt-btn dark" disabled="@(!PuedeAsignar || guardando)" @onclick="Asignar">@(guardando ? "Asignando…" : "Asignar")</button>
         </div>
     </div>
@@ -282,6 +282,7 @@
                                                             <button type="button" class="dt-btn" @onclick="() => Descartar(iSel)">Dejar como está</button>
                                                         }
                                                         else if (i.Revision == "ACEPTADO") { <span class="dt-gris">✓ stock corregido (@i.RevisionPor)</span> }
+                                                        else if (i.Revision == "AUTO" && dif) { <span class="dt-gris">✓ arreglado en el momento</span> }
                                                         else if (i.Revision == "DESCARTADO") { <span class="dt-gris">se dejó como estaba</span> }
                                                     </td>
                                                 }
@@ -296,7 +297,7 @@
                                 </table>
                                 @if (detalle.Tipo == "CONTAR")
                                 {
-                                    <div class="dt-nota">"Aceptar conteo" corrige el stock (y MercadoLibre) por la diferencia que vieron al contar: si después se vendió algo, esa venta no se pierde.</div>
+                                    <div class="dt-nota">Los conteos arreglan el stock (y MercadoLibre) en el momento en que los cargan. "Sistema" es lo que decía antes de contar.</div>
                                 }
                             </td>
                         </tr>

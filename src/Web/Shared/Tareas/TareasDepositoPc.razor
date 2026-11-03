@@ -1,0 +1,328 @@
+@* 2026-11-03: botón 📋 Tareas de la pantalla del depósito (Imprimir pedidos). Pedido del dueño: "que
+   aparezca algo tipo notificación que diga TAREAS, que ahí puedan verlo e irlo arreglando con la PC
+   y que vaya quedando arreglado; si se puede llevar con un QR al celu, mejor".
+   En esa PC entran todos con el usuario DEPOSITO, así que primero eligen QUIÉN está cargando y se usa
+   el link del celu de esa persona (el de repartidor o el propio de tareas): lo que cargan acá y en el
+   celu es lo mismo, y el QR abre esa misma tarea en el celu. El conteo arregla el stock en el momento. *@
+@using System.Net.Http.Json
+@inject ApiClient Api
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<style>
+    .tp-ov { position:fixed; inset:0; background:rgba(17,24,39,0.45); z-index:1200; overflow-y:auto; padding:2rem 1rem; }
+    .tp-box { background:#fff; border-radius:12px; max-width:1150px; margin:0 auto; padding:1.2rem 1.4rem 1.4rem; box-shadow:0 10px 40px rgba(0,0,0,0.25); }
+    .tp-top { display:flex; justify-content:space-between; gap:1.2rem; align-items:flex-start; }
+    .tp-h { margin:0; font-size:1.25rem; }
+    .tp-sub { font-size:0.85rem; color:#6b7280; margin-top:0.2rem; }
+    .tp-lbl { font-size:0.72rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; margin:1rem 0 0.4rem; }
+    .tp-chips { display:flex; flex-wrap:wrap; gap:0.35rem; }
+    .tp-chip { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.4rem 0.8rem; font-size:0.9rem; font-weight:600; cursor:pointer; color:#111827; }
+    .tp-chip.on { background:#111827; color:#fff; border-color:#111827; }
+    .tp-tab { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.5rem 0.85rem; font-size:0.9rem; cursor:pointer; color:#111827; text-align:left; }
+    .tp-tab.on { border:2px solid #111827; font-weight:700; }
+    .tp-tab small { color:#6b7280; font-weight:400; }
+    .tp-x { background:none; border:1px solid #d1d5db; border-radius:8px; padding:0.3rem 0.7rem; font-size:1rem; cursor:pointer; }
+    .tp-qr { text-align:center; border:1px solid #e5e7eb; border-radius:10px; padding:0.6rem 0.7rem; width:190px; flex-shrink:0; }
+    .tp-qr img { width:140px; height:140px; display:block; margin:0 auto 0.3rem; }
+    .tp-qr b { font-size:0.85rem; }
+    .tp-qr div { font-size:0.75rem; color:#6b7280; margin-top:0.2rem; }
+    .tp-mini { width:130px; display:inline-block; vertical-align:middle; height:6px; background:#e5e7eb; border-radius:3px; overflow:hidden; margin-right:0.5rem; }
+    .tp-mini i { display:block; height:100%; background:#111827; }
+    .tp-tabla { width:100%; border-collapse:collapse; font-size:0.9rem; margin-top:0.6rem; }
+    .tp-tabla th { text-align:left; font-size:0.72rem; color:#6b7280; text-transform:uppercase; padding:0.4rem 0.45rem; border-bottom:1px solid #e5e7eb; }
+    .tp-tabla td { padding:0.4rem 0.45rem; border-bottom:1px solid #f3f4f6; vertical-align:middle; }
+    .tp-sku { font-family:monospace; color:#6b7280; font-size:0.78rem; }
+    .tp-in { width:90px; border:1.5px solid #d1d5db; border-radius:6px; padding:0.35rem 0.45rem; font-size:1rem; font-weight:700; text-align:center; }
+    .tp-in.bc { width:170px; text-align:left; font-weight:600; }
+    .tp-in:focus { outline:none; border-color:#111827; box-shadow:0 0 0 3px #e5e7eb; }
+    .tp-ok { color:#15803d; font-weight:700; }
+    .tp-rojo { color:#b91c1c; font-weight:700; }
+    .tp-gris { color:#9ca3af; font-size:0.82rem; }
+    .tp-link { background:none; border:none; padding:0; color:#6b7280; text-decoration:underline; cursor:pointer; font:inherit; font-size:0.82rem; }
+    .tp-pb { border:1px solid #d1d5db; background:#fff; border-radius:6px; padding:0.25rem 0.55rem; font-size:0.82rem; font-weight:600; cursor:pointer; margin-right:0.2rem; }
+    .tp-pb.on { background:#111827; color:#fff; border-color:#111827; }
+    .tp-listo { background:#111827; color:#fff; border:none; border-radius:8px; padding:0.7rem 1.4rem; font-size:1rem; font-weight:700; cursor:pointer; margin-top:0.8rem; }
+    .tp-nota { font-size:0.8rem; color:#6b7280; margin-top:0.7rem; }
+</style>
+
+<div class="tp-ov" @onclick="OnCerrar">
+    <div class="tp-box" @onclick:stopPropagation="true">
+        <div class="tp-top">
+            <div style="flex:1; min-width:0;">
+                <div style="display:flex; justify-content:space-between; gap:0.6rem;">
+                    <h3 class="tp-h">📋 Tareas del depósito</h3>
+                </div>
+                <div class="tp-sub">Lo que cargues acá arregla el stock en el momento (y MercadoLibre). Queda anotado quién lo hizo.</div>
+
+                <div class="tp-lbl">¿Quién está cargando?</div>
+                <div class="tp-chips">
+                    @foreach (var e in empleados)
+                    {
+                        var eSel = e;
+                        <button type="button" class="tp-chip @(quien?.Id == eSel.Id ? "on" : "")" @onclick="() => ElegirQuien(eSel)">@eSel.Nombre</button>
+                    }
+                </div>
+
+                @if (quien is not null && inicio is not null)
+                {
+                    var pend = inicio.Tareas.Where(t => t.TerminadaAt is null).ToList();
+                    <div class="tp-lbl">Sus tareas</div>
+                    @if (pend.Count == 0)
+                    {
+                        <div class="tp-gris">@quien.Nombre no tiene tareas pendientes. 👌</div>
+                    }
+                    <div class="tp-chips">
+                        @foreach (var t in pend)
+                        {
+                            var tSel = t;
+                            <button type="button" class="tp-tab @(tarea?.Id == tSel.Id ? "on" : "")" @onclick="() => AbrirTarea(tSel.Id)">
+                                @t.Titulo <small>· @ParaTxt(t.Para)@(t.Tipo == "LIBRE" ? "" : $" · {t.Hechos} de {t.Total}")</small>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+            <div style="display:flex; gap:0.6rem; align-items:flex-start;">
+                @if (tarea is not null && token is not null)
+                {
+                    <div class="tp-qr">
+                        <img src="@QrSrc" alt="QR" />
+                        <b>📱 Seguir en el celu</b>
+                        <div>Escaneá con la cámara: se abre esta misma tarea, con lo que ya cargaron acá.</div>
+                    </div>
+                }
+                <button type="button" class="tp-x" @onclick="OnCerrar" title="Cerrar">✕</button>
+            </div>
+        </div>
+
+        @if (cargando)
+        {
+            <div class="tp-nota">Cargando…</div>
+        }
+        else if (tarea is not null)
+        {
+            <div style="margin-top:0.9rem; font-size:0.9rem;">
+                @if (tarea.Tipo != "LIBRE")
+                {
+                    var hechos = tarea.Items.Count(i => i.Hecho);
+                    <span class="tp-mini"><i style="width:@(tarea.Items.Count == 0 ? 0 : hechos * 100 / tarea.Items.Count)%"></i></span>
+                    <span>@hechos de @tarea.Items.Count</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(tarea.Comentario)) { <span> · 💬 @tarea.Comentario</span> }
+            </div>
+
+            @if (tarea.Tipo == "LIBRE")
+            {
+                @if (tarea.Terminada) { <div class="tp-ok" style="margin-top:0.8rem;">✓ Ya está hecha</div> }
+                else { <button type="button" class="tp-listo" @onclick="Listo">✓ Listo, ya lo hicimos</button> }
+            }
+            else
+            {
+                <table class="tp-tabla">
+                    <thead>
+                        <tr>
+                            <th>Producto</th><th>Lugar</th>
+                            <th>@(tarea.Tipo switch { "CONTAR" => "¿Cuántos hay?", "BARCODE" => "Código de barras", _ => "¿Dónde está?" })</th>
+                            <th>Resultado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var it in tarea.Items)
+                        {
+                            var iSel = it;
+                            <tr>
+                                <td>@it.Nombre <span class="tp-sku">@it.Sku</span></td>
+                                <td class="tp-gris">@(it.Lugar ?? "—")</td>
+                                <td style="white-space:nowrap;">
+                                    @switch (tarea.Tipo)
+                                    {
+                                        case "CONTAR":
+                                            <input id="tp-in-@it.Id" class="tp-in" inputmode="numeric" maxlength="6" disabled="@(guardando == it.Id)"
+                                                   value="@Valor(it)" @oninput="e => SetValor(iSel.Id, e)"
+                                                   @onkeydown="e => Tecla(e, iSel)" />
+                                            break;
+                                        case "BARCODE":
+                                            <input id="tp-in-@it.Id" class="tp-in bc" maxlength="40" disabled="@(guardando == it.Id)"
+                                                   value="@Valor(it)" @oninput="e => SetValor(iSel.Id, e)"
+                                                   @onkeydown="e => Tecla(e, iSel)" />
+                                            break;
+                                        default:
+                                            @foreach (var p in tarea.Plantas)
+                                            {
+                                                var pSel = p;
+                                                <button type="button" class="tp-pb @(it.Hecho && (it.Valor ?? "").StartsWith(pSel.Codigo) ? "on" : "")"
+                                                        @onclick="() => GuardarUbicacion(iSel, pSel.Codigo)">@pSel.Codigo</button>
+                                            }
+                                            <input class="tp-in bc" style="width:110px;" placeholder="zona (opcional)" maxlength="30"
+                                                   value="@(zonas.GetValueOrDefault(it.Id) ?? "")" @oninput="e => zonas[iSel.Id] = e.Value?.ToString()" />
+                                            break;
+                                    }
+                                </td>
+                                <td>
+                                    @if (errores.TryGetValue(it.Id, out var err)) { <span class="tp-rojo">@err</span> }
+                                    else if (!it.Hecho)
+                                    {
+                                        <span class="tp-gris">@(tarea.Tipo == "UBICACION" ? "tocá la planta" : "escribí y Enter")</span>
+                                        <text> · </text><button type="button" class="tp-link" @onclick="() => NoLoEncuentro(iSel)">no lo encuentro</button>
+                                    }
+                                    else if (it.NoEncontrado) { <span class="tp-rojo">no lo encontró · @it.HechoPor @Hora(it)</span> }
+                                    else if (tarea.Tipo == "CONTAR" && it.StockAntes is int antes && antes != it.Contado)
+                                    {
+                                        <span class="tp-ok">✓ arreglado · decía @antes, ahora @it.Contado</span> <span class="tp-gris">· @it.HechoPor @Hora(it)</span>
+                                    }
+                                    else if (tarea.Tipo == "CONTAR") { <span class="tp-ok">✓ estaba bien (@it.Contado)</span> <span class="tp-gris">· @it.HechoPor @Hora(it)</span> }
+                                    else { <span class="tp-ok">✓ @it.Valor</span> <span class="tp-gris">· @it.HechoPor @Hora(it)</span> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="tp-nota">
+                    @if (tarea.Tipo == "CONTAR")
+                    {
+                        <text>Mientras cuentan no ven cuánto decía el sistema: aparece recién después de guardar. Si se equivocan, corrigen el número y Enter de nuevo.</text>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private record TareaRes(int Id, string Tipo, string Titulo, string? Comentario, string Para, bool ParaTodos, int Total, int Hechos, DateTime? TerminadaAt, string? TerminadaPor);
+    private record InicioRes(string Nombre, List<TareaRes> Tareas);
+    private record ItemRes(int Id, string? Sku, string Nombre, string? Barcode, bool Hecho, int? Contado, int? StockAntes, bool NoEncontrado,
+        string? Valor, string? HechoPor, DateTime? HechoAt, string? Lugar);
+    private record PlantaRes(string Codigo, string Nombre);
+    private record DetalleRes(int Id, string Tipo, string Titulo, string? Comentario, bool Terminada, List<ItemRes> Items, List<PlantaRes> Plantas);
+
+    private List<DepTareaEmpleadoDto> empleados = new();
+    private DepTareaEmpleadoDto? quien;
+    private string? token;
+    private InicioRes? inicio;
+    private DetalleRes? tarea;
+    private bool cargando;
+    private int? guardando;
+    private readonly Dictionary<int, string> valores = new();
+    private readonly Dictionary<int, string?> zonas = new();
+    private readonly Dictionary<int, string> errores = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { empleados = await Api.GetDepTareasEmpleadosAsync() ?? new(); } catch { }
+        // si en esta PC ya eligieron quién es, arranca con esa persona
+        try
+        {
+            var id = await JS.InvokeAsync<string?>("localStorage.getItem", "tareas_quien");
+            if (int.TryParse(id, out var n) && empleados.FirstOrDefault(e => e.Id == n) is { } e) await ElegirQuien(e);
+        }
+        catch { }
+    }
+
+    private async Task ElegirQuien(DepTareaEmpleadoDto e)
+    {
+        quien = e;
+        tarea = null;
+        inicio = null;
+        cargando = true;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "tareas_quien", e.Id.ToString()); } catch { }
+        try
+        {
+            token = e.LinkRepartidor ?? e.LinkTareas ?? (await Api.CrearDepTareasLinkAsync(e.Id))?.Token;
+            if (token is null) return;
+            inicio = await Http.GetFromJsonAsync<InicioRes>($"api/deposito-tareas/celu/{token}");
+            // abre sola la primera pendiente
+            if (inicio?.Tareas.FirstOrDefault(t => t.TerminadaAt is null) is { } t) await AbrirTarea(t.Id);
+        }
+        catch { inicio = null; }
+        finally { cargando = false; }
+    }
+
+    private async Task AbrirTarea(int id)
+    {
+        valores.Clear(); zonas.Clear(); errores.Clear();
+        tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{token}/tarea/{id}");
+        await EnfocarSiguiente(null);
+    }
+
+    private string QrSrc => "/api/qr?url=" + Uri.EscapeDataString($"{Nav.BaseUri.TrimEnd('/')}/tareas/{token}?tarea={tarea!.Id}");
+
+    private string Valor(ItemRes it) => valores.TryGetValue(it.Id, out var v) ? v
+        : it.Hecho && !it.NoEncontrado ? (tarea!.Tipo == "CONTAR" ? it.Contado?.ToString() ?? "" : it.Valor ?? "") : "";
+
+    private async Task Tecla(KeyboardEventArgs e, ItemRes it)
+    {
+        if (e.Key != "Enter") return;
+        var v = (valores.TryGetValue(it.Id, out var x) ? x : Valor(it)).Trim();
+        if (tarea!.Tipo == "CONTAR")
+        {
+            if (!int.TryParse(v, out var n) || n < 0) { errores[it.Id] = "Poné un número"; return; }
+            await Mandar(it, new { contado = n, noEncontrado = false });
+        }
+        else await Mandar(it, new { noEncontrado = false, barcode = v });
+    }
+
+    private Task GuardarUbicacion(ItemRes it, string planta) =>
+        Mandar(it, new { noEncontrado = false, planta, zona = zonas.GetValueOrDefault(it.Id) });
+
+    private Task NoLoEncuentro(ItemRes it) => Mandar(it, new { noEncontrado = true });
+
+    private async Task Mandar(ItemRes it, object body)
+    {
+        if (quien is null || token is null || tarea is null) return;
+        guardando = it.Id;
+        errores.Remove(it.Id);
+        try
+        {
+            var r = await Http.PostAsJsonAsync($"api/deposito-tareas/celu/{token}/item/{it.Id}", body);
+            if (!r.IsSuccessStatusCode) { errores[it.Id] = await LeerError(r); return; }
+            valores.Remove(it.Id);
+            tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{token}/tarea/{tarea.Id}");
+            inicio = await Http.GetFromJsonAsync<InicioRes>($"api/deposito-tareas/celu/{token}");
+        }
+        catch { errores[it.Id] = "No se pudo guardar, probá de nuevo"; }
+        finally { guardando = null; }
+        await EnfocarSiguiente(it.Id);
+    }
+
+    /// <summary>Después de guardar, el cursor salta al próximo que falta (así cargan de corrido con Enter).</summary>
+    private async Task EnfocarSiguiente(int? desde)
+    {
+        if (tarea is null || tarea.Tipo is "LIBRE" or "UBICACION") return;
+        var lista = tarea.Items;
+        var i0 = desde is int d ? lista.FindIndex(x => x.Id == d) + 1 : 0;
+        var sig = lista.Skip(i0).FirstOrDefault(x => !x.Hecho) ?? lista.FirstOrDefault(x => !x.Hecho);
+        if (sig is null) return;
+        StateHasChanged();
+        await Task.Delay(50);
+        try { await JS.InvokeVoidAsync("eval", $"document.getElementById('tp-in-{sig.Id}')?.focus()"); } catch { }
+    }
+
+    private async Task Listo()
+    {
+        if (tarea is null) return;
+        var r = await Http.PostAsync($"api/deposito-tareas/celu/{token}/tarea/{tarea.Id}/listo", null);
+        if (r.IsSuccessStatusCode && quien is not null) await ElegirQuien(quien);
+    }
+
+    private void SetValor(int id, ChangeEventArgs e) => valores[id] = e.Value?.ToString() ?? "";
+
+    private static string Hora(ItemRes it) => it.HechoAt is DateTime h ? h.ToArTime().ToString("HH:mm") : "";
+
+    private static string ParaTxt(string p) => p switch { "HOY" => "hoy", "SEMANA" => "esta semana", _ => "sin apuro" };
+
+    private static async Task<string> LeerError(HttpResponseMessage r)
+    {
+        try
+        {
+            var d = await r.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+            if (d is not null && d.TryGetValue("error", out var e)) return e;
+        }
+        catch { }
+        return "No se pudo guardar";
+    }
+}
