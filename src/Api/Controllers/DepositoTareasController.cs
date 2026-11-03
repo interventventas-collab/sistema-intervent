@@ -15,8 +15,10 @@ namespace Api.Controllers;
 ///
 /// Compu (con login): armar la tarea eligiendo qué hacer, de qué productos (stock dudoso, negativo,
 /// sin mover, sin lugar, sin código, a mano), para quién y para cuándo; ver cómo van; y en los
-/// conteos que no coinciden, decidir si se corrige el stock ("Aceptar conteo"). El stock NUNCA cambia
-/// solo por un conteo, para no pisar MercadoLibre por un error.
+/// conteos viejos que quedaron sin revisar, decidir si se corrige el stock ("Aceptar conteo").
+/// 2026-11-03 (2ª vuelta): pedido del dueño "quiero que ya lo deje arreglado": desde ahora el conteo
+/// CORRIGE el stock en el momento (y MercadoLibre), desde el celu o desde la PC del depósito
+/// (botón 📋 Tareas en Imprimir pedidos). Queda anotado quién y en Stock_Movimientos.
 ///
 /// Celu (sin login, por token): el mismo link del repartidor (/mis-pedidos/{token}) o, para los que
 /// no tienen, uno propio (/tareas/{token}, en Nom_Empleados.TareasToken).
@@ -302,6 +304,28 @@ public class DepositoTareasController : ControllerBase
         }));
     }
 
+    /// <summary>Para el botón 📋 Tareas y el aviso de la pantalla del depósito (Imprimir pedidos).</summary>
+    [HttpGet("resumen")]
+    public async Task<IActionResult> Resumen()
+    {
+        var tareas = await _db.DepTareas.AsNoTracking()
+            .Where(t => t.CanceladaAt == null && t.TerminadaAt == null)
+            .OrderBy(t => t.Para == "HOY" ? 0 : t.Para == "SEMANA" ? 1 : 2).ThenBy(t => t.CreatedAt)
+            .Select(t => new { t.Titulo, t.EmpleadoId, t.Para })
+            .ToListAsync();
+        var emps = await _db.NomEmpleados.AsNoTracking().ToDictionaryAsync(e => e.Id, e => NombreCorto(e.Nombre));
+        return Ok(new
+        {
+            pendientes = tareas.Count,
+            lista = tareas.Take(5).Select(t => new
+            {
+                titulo = t.Titulo,
+                empleado = t.EmpleadoId is int e && emps.TryGetValue(e, out var n) ? n : null,
+                para = t.Para
+            })
+        });
+    }
+
     /// <summary>Detalle con cada producto: lo que hicieron y, en los conteos, lo que decía el sistema.</summary>
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Detalle(int id)
@@ -502,8 +526,11 @@ public class DepositoTareasController : ControllerBase
                                zona = p.UbicacionZona,
                                hecho = i.HechoAt != null,
                                contado = i.Contado,
+                               stockAntes = i.StockAlContar,
                                noEncontrado = i.NoEncontrado,
-                               valor = i.Valor
+                               valor = i.Valor,
+                               hechoPor = i.HechoPor,
+                               hechoAt = i.HechoAt
                            }).ToListAsync();
 
         var zonas = t.Tipo == "UBICACION"
@@ -520,7 +547,9 @@ public class DepositoTareasController : ControllerBase
             terminada = t.TerminadaAt != null,
             items = items.Select(i => new
             {
-                i.id, i.sku, i.nombre, i.barcode, i.hecho, i.contado, i.noEncontrado, i.valor,
+                i.id, i.sku, i.nombre, i.barcode, i.hecho, i.contado, i.noEncontrado, i.valor, i.hechoPor, i.hechoAt,
+                // lo que decía el sistema: recién DESPUÉS de contar (mientras cuentan, a ciegas)
+                stockAntes = i.hecho ? i.stockAntes : null,
                 lugar = UbicacionHelper.Texto(i.planta, i.zona)
             }),
             plantas = UbicacionHelper.Plantas.Select(p => new { codigo = p.Codigo, nombre = p.Nombre }),
@@ -542,7 +571,7 @@ public class DepositoTareasController : ControllerBase
         if (it is null) return NotFound();
         var t = await TareasDe(emp.Id).FirstOrDefaultAsync(x => x.Id == it.TareaId);
         if (t is null) return NotFound();
-        if (it.Revision is not null) return BadRequest(new { error = "Ese ya lo revisó la oficina, no se puede cambiar." });
+        if (it.Revision is "ACEPTADO" or "DESCARTADO") return BadRequest(new { error = "Ese ya lo revisó la oficina, no se puede cambiar." });
         var prod = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == it.ProductoId);
         if (prod is null) return NotFound();
 
@@ -551,6 +580,8 @@ public class DepositoTareasController : ControllerBase
         it.Contado = null;
         it.StockAlContar = null;
         it.Valor = null;
+        it.Revision = null;
+        int? stockAntes = null, stockDespues = null;
 
         if (!req.NoEncontrado)
         {
@@ -560,6 +591,31 @@ public class DepositoTareasController : ControllerBase
                     if (req.Contado is not int c || c < 0 || c > 1_000_000) return BadRequest(new { error = "Poné cuántos contaste." });
                     it.Contado = c;
                     it.StockAlContar = prod.StockUnidades;
+                    // Queda arreglado en el momento: el stock pasa a ser lo que contaron.
+                    stockAntes = prod.StockUnidades;
+                    stockDespues = c;
+                    if (stockAntes != stockDespues)
+                    {
+                        prod.StockUnidades = c;
+                        prod.UpdatedAt = DateTime.UtcNow;
+                        prod.StockChangedAt = DateTime.UtcNow;
+                        await CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+                        _db.StockMovimientos.Add(new StockMovimiento
+                        {
+                            ProductoId = prod.Id,
+                            OperadorNombreSnap = quien,
+                            DepositoNombreSnap = "9 de Abril",
+                            TipoMov = "SET",
+                            Cantidad = c,
+                            StockAntes = stockAntes.Value,
+                            StockDespues = c,
+                            Comentario = $"Conteo de la tarea #{t.Id} ({t.Titulo})",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                    it.Revision = "AUTO";
+                    it.RevisionAt = DateTime.UtcNow;
+                    it.RevisionPor = quien;
                     break;
                 case "UBICACION":
                 {
@@ -593,7 +649,8 @@ public class DepositoTareasController : ControllerBase
         it.HechoPor = quien;
         await _db.SaveChangesAsync();
         await CerrarSiTerminoAsync(t, quien);
-        return Ok(new { ok = true, terminada = t.TerminadaAt != null });
+        if (stockAntes is int a && stockDespues is int d && a != d) FireAndForgetPushMeli(prod.Id);
+        return Ok(new { ok = true, terminada = t.TerminadaAt != null, stockAntes, stockDespues });
     }
 
     /// <summary>"✓ Listo" de una tarea libre (o de una con productos, si terminaron todos).</summary>

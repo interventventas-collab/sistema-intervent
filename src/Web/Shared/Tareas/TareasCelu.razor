@@ -175,6 +175,10 @@ else if (error && !Embebido)
                     @if (errorItem is not null) { <div class="tc-err">@errorItem</div> }
                 </div>
 
+                @if (ultimoArreglo is not null && tarea.Tipo == "CONTAR")
+                {
+                    <div class="tc-box tc-ok" style="font-size:0.85rem;">@ultimoArreglo</div>
+                }
                 <div class="tc-row">
                     <button type="button" class="tc-btn" disabled="@guardando" @onclick="NoLoEncuentro">No lo encuentro</button>
                     <button type="button" class="tc-btn" disabled="@guardando" @onclick="Saltar">Saltear</button>
@@ -207,6 +211,8 @@ else if (error && !Embebido)
     [Parameter] public bool Embebido { get; set; }
     /// <summary>Para el encabezado de /tareas/{token}.</summary>
     [Parameter] public EventCallback<string> OnNombre { get; set; }
+    /// <summary>Tarea para abrir al entrar (QR de la PC del depósito).</summary>
+    [Parameter] public int? AbrirAl { get; set; }
 
     private record TareaRes(int Id, string Tipo, string Titulo, string? Comentario, string Para, bool ParaTodos, int Total, int Hechos, DateTime? TerminadaAt, string? TerminadaPor);
     private record InicioRes(string Nombre, List<TareaRes> Tareas);
@@ -214,7 +220,8 @@ else if (error && !Embebido)
     private record PlantaRes(string Codigo, string Nombre);
     private record ZonaRes(string Planta, string Codigo, string? Nombre);
     private record DetalleRes(int Id, string Tipo, string Titulo, string? Comentario, bool Terminada, List<ItemRes> Items, List<PlantaRes> Plantas, List<ZonaRes>? Zonas);
-    private record GuardarRes(bool Ok, bool Terminada);
+    private record GuardarRes(bool Ok, bool Terminada, int? StockAntes, int? StockDespues);
+    private string? ultimoArreglo;   // "✓ Arreglado: decía 3, ahora 2" del último que guardó
 
     private InicioRes? datos;
     private bool error;
@@ -226,7 +233,11 @@ else if (error && !Embebido)
     private bool guardando;
     private string? errorItem;
 
-    protected override async Task OnInitializedAsync() => await Cargar();
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        if (AbrirAl is int id && datos?.Tareas.Any(t => t.Id == id) == true) await Abrir(id);
+    }
 
     public async Task Cargar()
     {
@@ -246,6 +257,7 @@ else if (error && !Embebido)
         try
         {
             tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{Token}/tarea/{id}");
+            ultimoArreglo = null;
             salteados.Clear();
             elegido = null;
             PrepararItem();
@@ -323,6 +335,10 @@ else if (error && !Embebido)
                 errorItem = await LeerError(r);
                 return;
             }
+            var g = await r.Content.ReadFromJsonAsync<GuardarRes>();
+            ultimoArreglo = g?.StockAntes is int a && g.StockDespues is int d
+                ? (a == d ? $"✓ {it.Nombre}: estaba bien ({d})" : $"✓ Arreglado {it.Nombre}: decía {a}, ahora {d}")
+                : null;
             // recargar la tarea (así el "ya hechos" y el lugar quedan como los guardó el sistema)
             var id = tarea.Id;
             tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{Token}/tarea/{id}");

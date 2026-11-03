@@ -20,3 +20,6 @@ public record DepTareaDetalleDto(int Id, string Tipo, string Titulo, string? Com
 public record DepTareaCrearResultDto(bool Ok, int Id, int Items);
 public record DepTareaAceptarResultDto(bool Ok, int StockAntes, int StockDespues);
 public record DepTareaLinkDto(string Token);
+
+public record DepTareasResumenItemDto(string Titulo, string? Empleado, string Para);
+public record DepTareasResumenDto(int Pendientes, List<DepTareasResumenItemDto> Lista);

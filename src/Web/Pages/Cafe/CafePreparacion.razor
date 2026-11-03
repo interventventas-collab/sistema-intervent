@@ -671,6 +671,15 @@
         <a class="btn btn-secondary" href="/deposito/ordenes-meli" style="text-decoration:none;">🏷️ Órdenes MeLi</a>
         <button class="btn btn-secondary" @onclick="() => mostrarQrEscaner = true">📷 Escáner en el celu</button>
         <FotosQrBoton Clase="btn btn-secondary" AbrirHaciaDerecha="true" />
+        @* 03/11/2026: tareas que asigna el dueño (contar stock, dónde está, etc). Se cargan acá o en el celu. *@
+        <button class="btn btn-secondary" @onclick="() => verTareas = true"
+                style="@(tareasResumen?.Pendientes > 0 ? "border:2px solid #111827; font-weight:800;" : "")">
+            📋 Tareas
+            @if (tareasResumen?.Pendientes > 0)
+            {
+                <span style="background:#b91c1c; color:#fff; border-radius:9px; padding:0 0.45rem; font-size:0.75rem; margin-left:0.25rem;">@tareasResumen.Pendientes</span>
+            }
+        </button>
         @* 2026-08-06: se sacó el botón verde "WhatsApp Gabriel" (abría la pantalla grande vieja).
            Ahora WhatsApp se usa desde el globito flotante que está en todas las pantallas. *@
         @if (ParaArmar.Count > 0)
@@ -685,6 +694,21 @@
             Auto-refresh cada 10 s · última: @ultimaActualizacion.ToString("HH:mm:ss")
         </span>
     </div>
+
+    @* 03/11/2026: aviso de tareas pendientes (lo primero que ven). Si no hay, no aparece. *@
+    @if (tareasResumen?.Pendientes > 0)
+    {
+        <div @onclick="() => verTareas = true" title="Abrir las tareas"
+             style="display:flex; justify-content:space-between; gap:0.8rem; align-items:center; background:#fff; border:1px solid #e5e7eb; border-left:4px solid #111827; border-radius:6px; padding:0.55rem 0.8rem; margin:0.6rem 0 0.4rem; font-size:0.9rem; cursor:pointer;">
+            <span>📋 <strong>@(tareasResumen.Pendientes == 1 ? "Hay 1 tarea pendiente" : $"Hay {tareasResumen.Pendientes} tareas pendientes")</strong>
+                · @string.Join(" · ", tareasResumen.Lista.Select(t => t.Titulo + (t.Empleado is null ? "" : $" ({t.Empleado}{(t.Para == "HOY" ? ", para hoy" : "")})")))</span>
+            <strong style="white-space:nowrap;">Abrir tareas →</strong>
+        </div>
+    }
+    @if (verTareas)
+    {
+        <Web.Shared.Tareas.TareasDepositoPc OnCerrar="CerrarTareas" />
+    }
 
     @* 2026-09-02: aviso de lo que hay que pedirle al proveedor. Esta pantalla es la que el
        depósito mira todo el día, así que el faltante les cae a la vista sin ir a buscarlo.
@@ -1147,6 +1171,14 @@
     private bool loading = true;
     private DateTime ultimaActualizacion = DateTime.Now;
     private System.Threading.Timer? refreshTimer;
+    // 03/11/2026: botón 📋 Tareas + aviso
+    private DepTareasResumenDto? tareasResumen;
+    private bool verTareas;
+    private async Task CerrarTareas()
+    {
+        verTareas = false;
+        try { tareasResumen = await Api.GetDepTareasResumenAsync(); } catch { }
+    }
     // Seleccion multiple para imprimir varios juntos.
     private HashSet<int> seleccionadosParaImprimir = new();
 
@@ -1255,6 +1287,7 @@
             visitasPrep = await Api.GetVisitasPreparacionAsync() ?? new();
             // Refresca el estado del celu del depósito (por si se habilitó desde el celular)
             try { pickingDispositivo = await Api.GetPickingDispositivoAsync(); } catch { }
+            try { tareasResumen = await Api.GetDepTareasResumenAsync(); } catch { }
             ultimaActualizacion = DateTime.Now;
         }
         catch (Exception ex)
