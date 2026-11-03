@@ -40,6 +40,21 @@
                     <button type="button" class="ta-b" @onclick="() => Rechazar(nSel)">No</button>
                 </div>
             }
+            @foreach (var f in avisos.Fotos ?? new())
+            {
+                var fSel = f;
+                <div class="ta-row">
+                    📷 <b>@f.Quien</b> dice que la foto está mal <span class="ta-g">· @f.Sku@(f.Motivo is null ? "" : $" · {f.Motivo}")</span>
+                    <div class="ta-g">@f.Nombre</div>
+                    <div class="ta-fotos">
+                        <span>Ahora<br />@if (f.FotoActual is not null) { <img src="@f.FotoActual" alt="" /> } else { <i class="ta-g">sin foto</i> }</span>
+                        <span>→</span>
+                        <span>Nueva<br />@if (f.FotoNueva is not null) { <img src="@f.FotoNueva" alt="" /> } else { <i class="ta-g">no mandó<br />(solo avisa)</i> }</span>
+                    </div>
+                    <button type="button" class="ta-b d" @onclick="() => AprobarFoto(fSel)">@(f.FotoNueva is null ? "Sacar la foto que está mal" : "Aprobar la nueva")</button>
+                    <button type="button" class="ta-b" @onclick="() => RechazarFoto(fSel)">No, está bien así</button>
+                </div>
+            }
             @foreach (var m in avisos.Mucha)
             {
                 var mSel = m;
@@ -157,6 +172,8 @@
     .ta-c { border:1px solid #d1d5db; border-radius:7px; padding:0.2rem 0.6rem; font-size:0.78rem; font-weight:600; background:#fff; cursor:pointer; color:#111827; }
     .ta-c.on { background:#111827; color:#fff; border-color:#111827; }
     .ta-link { background:none; border:none; padding:0 0.2rem; color:#374151; text-decoration:underline; cursor:pointer; font:inherit; font-size:0.78rem; }
+    .ta-fotos { display:flex; align-items:center; gap:0.6rem; margin-top:0.35rem; font-size:0.72rem; color:#6b7280; text-align:center; }
+    .ta-fotos img { width:90px; height:90px; object-fit:contain; background:#fff; border:1px solid #e5e7eb; border-radius:6px; display:block; margin-top:0.15rem; }
     .ta-pie { display:flex; justify-content:space-between; align-items:center; margin-top:0.8rem; }
     .ta-mandar { font-size:0.88rem; padding:0.4rem 1rem; }
     @((MarkupString)TareasNivel.Css)
@@ -207,6 +224,8 @@
         {
             foreach (var t in a.Terminadas.Where(t => !vistosAntes.Contains("t" + t.Id)))
                 Toast.Info($"📋 {t.TerminadaPor ?? t.Empleado} terminó \"{t.Titulo}\"" + (t.Tipo == "LIBRE" ? "" : $" · {t.Hechos} de {t.Total}"));
+            foreach (var f in (a.Fotos ?? new()).Where(f => !vistosAntes.Contains("f" + f.ItemId)))
+                Toast.Info($"📷 {f.Quien} dice que la foto de {f.Sku} está mal" + (f.FotoNueva is null ? "" : " y mandó una nueva") + ": falta tu OK");
             foreach (var n in a.Nombres.Where(n => !vistosAntes.Contains("n" + n.ItemId)))
                 Toast.Info($"✏️ {n.PropuestoPor} propone otro nombre para {n.Sku}: falta tu OK");
             var muchas = a.Mucha.Count(m => !vistosAntes.Contains("m" + m.ItemId));
@@ -222,6 +241,7 @@
         a.Terminadas.Select(t => "t" + t.Id)
             .Concat(a.Nombres.Select(n => "n" + n.ItemId))
             .Concat(a.Mucha.Select(m => "m" + m.ItemId))
+            .Concat((a.Fotos ?? new()).Select(f => "f" + f.ItemId))
             .ToHashSet();
 
     private string NombreEditado(DepTareaNombrePendienteDto n) => editados.TryGetValue(n.ItemId, out var v) ? v : n.NombrePropuesto;
@@ -235,6 +255,18 @@
     private async Task Rechazar(DepTareaNombrePendienteDto n)
     {
         try { await Api.RechazarDepTareaNombreAsync(n.ItemId); await Cargar(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task AprobarFoto(DepAvisoFotoDto f)
+    {
+        try { await Api.AprobarDepTareaFotoAsync(f.ItemId); Toast.Success(f.FotoNueva is null ? "Listo, esa foto ya no se muestra." : "Listo, la foto nueva quedó puesta."); await Cargar(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task RechazarFoto(DepAvisoFotoDto f)
+    {
+        try { await Api.RechazarDepTareaFotoAsync(f.ItemId); await Cargar(); }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 

@@ -8658,3 +8658,11 @@ GO
 IF COL_LENGTH('Dep_Tareas','VistaAt') IS NULL
     ALTER TABLE Dep_Tareas ADD VistaAt DATETIME2 NULL;
 GO
+
+-- 2026-11-03: Tareas del depósito — "la foto está mal" + foto nueva propuesta (espera aprobación).
+-- ⚠ En PROD correr a mano ANTES de publicar.
+IF COL_LENGTH('Dep_TareaItems','FotoReportadaAt') IS NULL
+    ALTER TABLE Dep_TareaItems ADD FotoReportadaAt DATETIME2 NULL, FotoReportadaPor NVARCHAR(200) NULL,
+        FotoMotivo NVARCHAR(300) NULL, FotoPropuestaArchivo NVARCHAR(200) NULL, FotoRevision NVARCHAR(20) NULL,
+        FotoRevisionAt DATETIME2 NULL, FotoRevisionPor NVARCHAR(120) NULL;
+GO

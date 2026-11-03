@@ -71,6 +71,33 @@
         </div>
     }
 
+    @* ───── Fotos que reportaron desde el depósito (esperan tu OK) ───── *@
+    @if (fotosPend.Count > 0)
+    {
+        <div class="dt-lbl">📷 Fotos para aprobar · @fotosPend.Count</div>
+        <div class="dt-box">
+            <table class="dt-tabla">
+                <thead><tr><th>Producto</th><th>Ahora</th><th>Nueva</th><th>Quién / por qué</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var f in fotosPend)
+                    {
+                        var fSel = f;
+                        <tr>
+                            <td>@f.Nombre <span class="dt-sku">@f.Sku</span></td>
+                            <td>@if (f.FotoActual is not null) { <img src="@f.FotoActual" alt="" style="width:70px; height:70px; object-fit:contain; border:1px solid #e5e7eb; border-radius:6px;" /> } else { <span class="dt-gris">sin foto</span> }</td>
+                            <td>@if (f.FotoNueva is not null) { <img src="@f.FotoNueva" alt="" style="width:70px; height:70px; object-fit:contain; border:1px solid #e5e7eb; border-radius:6px;" /> } else { <span class="dt-gris">no mandó (solo avisa)</span> }</td>
+                            <td class="dt-gris">@f.Quien @(f.At is DateTime fa ? fa.ToArTime().ToString("dd/MM HH:mm") : "")@(f.Motivo is null ? "" : $" · {f.Motivo}")</td>
+                            <td style="white-space:nowrap;">
+                                <button type="button" class="dt-btn dark" @onclick="() => AprobarFoto(fSel)">@(f.FotoNueva is null ? "Sacar la que está mal" : "Aprobar la nueva")</button>
+                                <button type="button" class="dt-btn" @onclick="() => RechazarFoto(fSel)">No</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
     @* ───── Nueva tarea ───── *@
     <div class="dt-lbl">Nueva tarea</div>
     <div class="dt-box">
@@ -396,6 +423,22 @@
     private async Task CargarNombres()
     {
         try { nombres = await Api.GetDepTareasNombresPendientesAsync() ?? new(); } catch { }
+        try { fotosPend = (await Api.GetDepTareasAvisosAsync())?.Fotos ?? new(); } catch { }
+    }
+
+    // ── fotos reportadas desde el depósito ──
+    private List<DepAvisoFotoDto> fotosPend = new();
+
+    private async Task AprobarFoto(DepAvisoFotoDto f)
+    {
+        try { await Api.AprobarDepTareaFotoAsync(f.ItemId); ToastService.Success(f.FotoNueva is null ? "Listo, esa foto ya no se muestra." : "Listo, la foto nueva quedó puesta."); await CargarNombres(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task RechazarFoto(DepAvisoFotoDto f)
+    {
+        try { await Api.RechazarDepTareaFotoAsync(f.ItemId); await CargarNombres(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
     private async Task AprobarNombre(DepTareaNombrePendienteDto n)

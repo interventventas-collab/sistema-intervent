@@ -105,4 +105,26 @@ public class DepTareaItem
 
     [MaxLength(120)]
     public string? NombreRevisionPor { get; set; }
+
+    /// <summary>2026-11-03: "⚠ la foto está mal" desde el depósito, con (opcional) una foto nueva sacada
+    /// en el momento o bajada de un link. Queda "en revisión" hasta que el dueño la aprueba:
+    /// FotoRevision null = pendiente | APROBADA | RECHAZADA. La nueva espera en FotoPropuestaArchivo.</summary>
+    public DateTime? FotoReportadaAt { get; set; }
+
+    [MaxLength(200)]
+    public string? FotoReportadaPor { get; set; }
+
+    [MaxLength(300)]
+    public string? FotoMotivo { get; set; }
+
+    [MaxLength(200)]
+    public string? FotoPropuestaArchivo { get; set; }
+
+    [MaxLength(20)]
+    public string? FotoRevision { get; set; }
+
+    public DateTime? FotoRevisionAt { get; set; }
+
+    [MaxLength(120)]
+    public string? FotoRevisionPor { get; set; }
 }

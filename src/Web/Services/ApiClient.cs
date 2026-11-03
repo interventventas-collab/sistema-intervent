@@ -3777,6 +3777,12 @@ public class ApiClient
     public async Task PedirRecontarDepTareaItemAsync(int itemId)
         => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/recontar", new { });
 
+    public async Task AprobarDepTareaFotoAsync(int itemId)
+        => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/foto/aprobar", new { });
+
+    public async Task RechazarDepTareaFotoAsync(int itemId)
+        => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/foto/rechazar", new { });
+
     public async Task MarcarDepTareaVistaAsync(int id)
         => await PostAsync<object>($"/api/deposito-tareas/{id}/visto", new { });
 
