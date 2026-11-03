@@ -27,45 +27,53 @@ public class AlqReservasController : ControllerBase
 
     public record SumarAlMapaRequest(string? Direccion, string? Link);
 
-    /// <summary>2026-11-03: todas las facturas y notas de credito de alquileres (para el tilde "Ver
-    /// alquileres" del listado de Ventas). Junta el historial (Alq_ReservaComprobantes) con el
-    /// comprobante vigente de cada reserva, igual que el Libro IVA, y le dice a cada NC qué factura anula.</summary>
-    [HttpGet("comprobantes-listado")]
-    public async Task<IActionResult> ComprobantesListado([FromQuery] DateTime? desde)
+    /// <summary>2026-11-03: una factura o NC de alquiler, venga del historial o de los campos vigentes de la reserva.</summary>
+    private sealed record AlqCbteFila(int ReservaId, string Clase, string Tipo, int TipoNum, int PtoVta, int Nro,
+        DateTime? Fecha, string? Cae, DateTime? CaeVto, decimal? Neto, decimal? Iva, decimal Total,
+        int? CuentaId, string? Motivo)
     {
-        var filas = new List<(int ReservaId, string Clase, string Tipo, int TipoNum, int PtoVta, int Nro,
-            DateTime? Fecha, decimal Total, string? Motivo)>();
+        public (int, int, int) Clave => (PtoVta, TipoNum, Nro);
+    }
 
-        foreach (var h in await _db.AlqReservaComprobantes
-            .Where(c => c.Cae != null && c.CbteNro > 0)
+    /// <summary>2026-11-03: junta el historial (Alq_ReservaComprobantes) con el comprobante vigente de cada
+    /// reserva, igual que el Libro IVA, y empareja cada NC con la factura que anula (misma reserva, emitida
+    /// antes: primero la del mismo importe, si no la última que quedó sin anular).</summary>
+    private async Task<(List<AlqCbteFila> Filas, Dictionary<(int, int, int), AlqCbteFila> AnulaA,
+        Dictionary<(int, int, int), AlqCbteFila> AnuladaPor)> ComprobantesAlquilerAsync(int? reservaId = null)
+    {
+        var filas = new List<AlqCbteFila>();
+
+        foreach (var h in await _db.AlqReservaComprobantes.AsNoTracking()
+            .Where(c => c.Cae != null && c.CbteNro > 0 && (reservaId == null || c.ReservaId == reservaId))
             .OrderBy(c => c.Id)
             .ToListAsync())
-            filas.Add((h.ReservaId, h.Clase, h.TipoComprobante, h.CbteTipoNum, h.PtoVta, h.CbteNro,
-                       h.Fecha ?? h.CreatedAt, h.ImpTotal ?? 0, h.Motivo));
+            filas.Add(new(h.ReservaId, h.Clase, h.TipoComprobante, h.CbteTipoNum, h.PtoVta, h.CbteNro,
+                          h.Fecha ?? h.CreatedAt, h.Cae, h.CaeVto, h.ImpNeto, h.ImpIVA, h.ImpTotal ?? 0,
+                          h.ArcaWebserviceAccountId, h.Motivo));
 
         foreach (var r in await _db.AlqReservas.AsNoTracking()
-            .Where(x => (x.ArcaCae != null && x.ArcaCbteNro != null) || (x.NcCae != null && x.NcCbteNro != null))
+            .Where(x => ((x.ArcaCae != null && x.ArcaCbteNro != null) || (x.NcCae != null && x.NcCbteNro != null))
+                        && (reservaId == null || x.Id == reservaId))
             .ToListAsync())
         {
             if (r.ArcaCae != null && r.ArcaCbteNro is > 0)
-                filas.Add((r.Id, "factura", r.TipoComprobante, r.ArcaCbteTipoNum ?? 0, r.ArcaPtoVta ?? 0,
-                           r.ArcaCbteNro.Value, r.ArcaFecha, r.ArcaImpTotal ?? 0, null));
+                filas.Add(new(r.Id, "factura", r.TipoComprobante, r.ArcaCbteTipoNum ?? 0, r.ArcaPtoVta ?? 0,
+                              r.ArcaCbteNro.Value, r.ArcaFecha, r.ArcaCae, r.ArcaCaeVto, r.ArcaImpNeto, r.ArcaImpIVA,
+                              r.ArcaImpTotal ?? 0, r.ArcaWebserviceAccountId, null));
             if (r.NcCae != null && r.NcCbteNro is > 0)
             {
                 var tipoNc = (r.NcCbteTipoNum ?? 0) switch { 3 => "NCA", 8 => "NCB", 13 => "NCC", _ => "NC" };
-                filas.Add((r.Id, "nota_credito", tipoNc, r.NcCbteTipoNum ?? 0, r.NcPtoVta ?? 0,
-                           r.NcCbteNro.Value, r.NcFecha ?? r.NcEmitidaAt, r.NcImpTotal ?? 0, r.NcMotivo));
+                filas.Add(new(r.Id, "nota_credito", tipoNc, r.NcCbteTipoNum ?? 0, r.NcPtoVta ?? 0,
+                              r.NcCbteNro.Value, r.NcFecha ?? r.NcEmitidaAt, r.NcCae, r.NcCaeVto, r.NcImpNeto,
+                              r.NcImpIVA, r.NcImpTotal ?? 0, r.ArcaWebserviceAccountId, r.NcMotivo));
             }
         }
 
         // Un comprobante = una fila, aunque venga de las dos fuentes.
-        filas = filas.GroupBy(x => (x.PtoVta, x.TipoNum, x.Nro)).Select(g => g.First()).ToList();
+        filas = filas.GroupBy(x => x.Clave).Select(g => g.First()).ToList();
 
-        static string Num(int pto, int nro) => $"{pto:D4}-{nro:D8}";
-        var anulaA = new Dictionary<(int, int, int), string>();
-        var anuladaPor = new Dictionary<(int, int, int), string>();
-        // Cada NC anula una factura de la MISMA reserva emitida antes: primero la del mismo importe,
-        // si no la última que quedó sin anular.
+        var anulaA = new Dictionary<(int, int, int), AlqCbteFila>();
+        var anuladaPor = new Dictionary<(int, int, int), AlqCbteFila>();
         foreach (var g in filas.GroupBy(x => x.ReservaId))
         {
             var libres = g.Where(x => x.Clase == "factura").OrderBy(x => x.Fecha).ThenBy(x => x.Nro).ToList();
@@ -73,13 +81,23 @@ public class AlqReservasController : ControllerBase
             {
                 var antes = libres.Where(f => f.Fecha == null || nc.Fecha == null || f.Fecha <= nc.Fecha).ToList();
                 if (antes.Count == 0) continue;
-                var fc = antes.LastOrDefault(f => f.Total == nc.Total);
-                if (fc == default) fc = antes.Last();
+                var fc = antes.LastOrDefault(f => f.Total == nc.Total) ?? antes.Last();
                 libres.Remove(fc);
-                anulaA[(nc.PtoVta, nc.TipoNum, nc.Nro)] = Num(fc.PtoVta, fc.Nro);
-                anuladaPor[(fc.PtoVta, fc.TipoNum, fc.Nro)] = Num(nc.PtoVta, nc.Nro);
+                anulaA[nc.Clave] = fc;
+                anuladaPor[fc.Clave] = nc;
             }
         }
+        return (filas, anulaA, anuladaPor);
+    }
+
+    /// <summary>2026-11-03: todas las facturas y notas de credito de alquileres (para el tilde "Ver
+    /// alquileres" del listado de Ventas). EsVigente = es la factura que hoy vale para esa reserva
+    /// (se puede cobrar o anular).</summary>
+    [HttpGet("comprobantes-listado")]
+    public async Task<IActionResult> ComprobantesListado([FromQuery] DateTime? desde)
+    {
+        var (filas, anulaA, anuladaPor) = await ComprobantesAlquilerAsync();
+        static string Num(AlqCbteFila f) => $"{f.PtoVta:D4}-{f.Nro:D8}";
 
         var ids = filas.Select(x => x.ReservaId).Distinct().ToList();
         var reservas = await _db.AlqReservas.AsNoTracking().Include(x => x.ClienteNav)
@@ -93,14 +111,57 @@ public class AlqReservasController : ControllerBase
                 reservas.TryGetValue(x.ReservaId, out var r);
                 var cliente = !string.IsNullOrWhiteSpace(r?.ClienteNav?.Nombre)
                     ? r!.ClienteNav!.Nombre : (r?.ClienteNav?.RazonSocial ?? "");
-                var k = (x.PtoVta, x.TipoNum, x.Nro);
+                var esVigente = x.Clase == "factura" && r is not null && r.ArcaCbteNro == x.Nro
+                    && r.ArcaPtoVta == x.PtoVta && r.ArcaCae != null
+                    && !(r.NcEstado == "autorizado" && r.NcCae != null);
                 return new AlqComprobanteListadoDto(x.ReservaId, r?.Numero ?? "", cliente, x.Fecha!.Value.Date,
                     x.Clase, x.Tipo, x.PtoVta, x.Nro, x.Total,
-                    anulaA.GetValueOrDefault(k), anuladaPor.GetValueOrDefault(k), x.Motivo);
+                    anulaA.TryGetValue(x.Clave, out var fa) ? Num(fa) : null,
+                    anuladaPor.TryGetValue(x.Clave, out var nc) ? Num(nc) : null,
+                    x.Motivo, r?.ClienteId, x.TipoNum, esVigente);
             })
             .OrderByDescending(x => x.Fecha).ThenByDescending(x => x.CbteNro)
             .ToList();
         return Ok(lista);
+    }
+
+    /// <summary>2026-11-03: PDF de CUALQUIER factura o NC de una reserva, también las viejas que quedaron
+    /// solo en el historial (la anulada, la NC de antes de re-facturar). Arma una copia de la reserva en
+    /// memoria con los datos de ese comprobante y usa el mismo PDF de siempre. No guarda nada.</summary>
+    [HttpGet("{id:int}/comprobante-pdf")]
+    public async Task<IActionResult> ComprobantePdf(int id, [FromQuery] int ptoVta, [FromQuery] int tipo, [FromQuery] int nro)
+    {
+        var r = await _db.AlqReservas.AsNoTracking()
+            .Include(x => x.ClienteNav)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+        var (filas, anulaA, _) = await ComprobantesAlquilerAsync(id);
+        var c = filas.FirstOrDefault(f => f.PtoVta == ptoVta && f.TipoNum == tipo && f.Nro == nro);
+        if (c is null) return NotFound(new { error = "No encontré ese comprobante en el alquiler" });
+
+        void PonerFactura(AlqCbteFila f)
+        {
+            r.ArcaCae = f.Cae; r.ArcaCaeVto = f.CaeVto; r.ArcaFecha = f.Fecha;
+            r.ArcaPtoVta = f.PtoVta; r.ArcaCbteNro = f.Nro; r.ArcaCbteTipoNum = f.TipoNum;
+            r.ArcaImpNeto = f.Neto; r.ArcaImpIVA = f.Iva; r.ArcaImpTotal = f.Total;
+            r.ArcaWebserviceAccountId = f.CuentaId ?? r.ArcaWebserviceAccountId;
+        }
+        var esNc = c.Clase == "nota_credito";
+        if (esNc)
+        {
+            if (anulaA.TryGetValue(c.Clave, out var fa)) PonerFactura(fa);
+            r.NcCae = c.Cae; r.NcCaeVto = c.CaeVto; r.NcFecha = c.Fecha;
+            r.NcPtoVta = c.PtoVta; r.NcCbteNro = c.Nro; r.NcCbteTipoNum = c.TipoNum;
+            r.NcImpNeto = c.Neto; r.NcImpIVA = c.Iva; r.NcImpTotal = c.Total; r.NcMotivo = c.Motivo;
+            r.ArcaWebserviceAccountId = c.CuentaId ?? r.ArcaWebserviceAccountId;
+        }
+        else PonerFactura(c);
+
+        var bytes = BuildFacturaPdf(r, notaCredito: esNc);
+        var letra = ArcaInvoicePdfService.LetraDelTipo(c.TipoNum);
+        var nombre = $"{(esNc ? "NotaCredito" : "Factura")}-{letra}-{c.PtoVta:D5}-{c.Nro:D8}.pdf";
+        return File(bytes, "application/pdf", nombre);
     }
 
 

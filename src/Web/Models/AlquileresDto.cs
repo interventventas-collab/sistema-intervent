@@ -419,4 +419,8 @@ public class AlqComprobanteListadoDto
     public string? AnulaA { get; set; }
     public string? AnuladaPor { get; set; }
     public string? Motivo { get; set; }
+    public int? ClienteId { get; set; }
+    public int CbteTipoNum { get; set; }
+    /// <summary>Es la factura que hoy vale para esa reserva (se puede cobrar o anular).</summary>
+    public bool EsVigente { get; set; }
 }
