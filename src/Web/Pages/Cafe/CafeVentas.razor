@@ -4009,6 +4009,33 @@
 }
 
 @* ═══════════════ MODAL VIEWER / PDF ═══════════════ *@
+@* 2026-11-03: ventanita con el PDF de una factura / NC de alquiler (ojito del listado). *@
+@if (alqPreview is not null)
+{
+    <div class="modal-overlay" @onclick="CerrarPdfAlquiler">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 820px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin: 0;">📄 @AlqTipoTexto(alqPreview) @NroCorto($"{alqPreview.CbteNro}") · @alqPreview.ClienteNombre</h3>
+                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                    <button class="btn btn-secondary" style="font-size: 0.85rem;" @onclick="DescargarPdfAlquiler" disabled="@(alqPreviewBytes is null)">⬇ Descargar</button>
+                    <button class="btn btn-secondary" style="font-size: 0.85rem;" @onclick="CerrarPdfAlquiler">✕ Cerrar</button>
+                </div>
+            </div>
+            <div class="modal-body" style="background: #525659; padding: 0; overflow: hidden;">
+                @if (!string.IsNullOrEmpty(alqPreviewUrl))
+                {
+                    <embed src="@(alqPreviewUrl + "#toolbar=1&navpanes=0&scrollbar=0&pagemode=none&zoom=60")" type="application/pdf"
+                           style="width: 100%; height: 75vh; border: none; display: block; background: #525659;" />
+                }
+                else
+                {
+                    <div style="padding: 3rem; text-align: center; color: white;">⏳ Cargando PDF…</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 @if (printVenta is not null && settings is not null)
 {
     <style>
@@ -5987,11 +6014,37 @@
         try { alqComprobantes = await Api.GetAlqComprobantesListadoAsync() ?? new(); } catch { }
     }
 
+    // 2026-11-03: el ojito y la 🖨 de un renglón de alquiler abren el PDF en una ventanita (como el de las
+    // ventas), sin descargarlo. Desde ahí se puede descargar o imprimir.
+    private AlqComprobanteListadoDto? alqPreview;
+    private string? alqPreviewUrl;
+    private byte[]? alqPreviewBytes;
+
     private async Task VerPdfAlquiler(AlqComprobanteListadoDto a)
     {
+        await CerrarPdfAlquiler();
+        alqPreview = a;
         var (bytes, error) = await Api.GetAlqComprobantePdfAsync(a.ReservaId, a.PtoVta, a.CbteTipoNum, a.CbteNro);
-        if (bytes is null) { ToastService.Error(error ?? "No se pudo armar el PDF"); return; }
-        await JS.InvokeVoidAsync("openPdfInNewTab", Convert.ToBase64String(bytes));
+        if (bytes is null) { ToastService.Error(error ?? "No se pudo armar el PDF"); alqPreview = null; return; }
+        alqPreviewBytes = bytes;
+        alqPreviewUrl = await JS.InvokeAsync<string>("createBlobUrl", Convert.ToBase64String(bytes), "application/pdf");
+    }
+
+    private async Task CerrarPdfAlquiler()
+    {
+        if (!string.IsNullOrEmpty(alqPreviewUrl))
+        {
+            try { await JS.InvokeVoidAsync("revokeBlobUrl", alqPreviewUrl); } catch { }
+        }
+        alqPreviewUrl = null; alqPreviewBytes = null; alqPreview = null;
+    }
+
+    private async Task DescargarPdfAlquiler()
+    {
+        if (alqPreview is null || alqPreviewBytes is null) return;
+        var a = alqPreview;
+        var nombre = $"{(a.Clase == "nota_credito" ? "NotaCredito" : "Factura")}-{a.PtoVta:D5}-{a.CbteNro:D8}.pdf";
+        await JS.InvokeVoidAsync("downloadFile", nombre, "application/pdf", Convert.ToBase64String(alqPreviewBytes));
     }
 
     private int? alqMenuAbierto;
@@ -6075,7 +6128,10 @@
         var anulada = !esNc && a.AnuladaPor is not null;
         <tr style="background:#f9fafb; @(anulada ? "opacity:0.55;" : "")">
             <td></td>
-            <td style="font-family: monospace; font-weight: 700;">@a.ReservaNumero</td>
+            <td style="font-family: monospace; font-weight: 700; white-space: nowrap;">
+                <button type="button" class="vta-ojito" title="Ver este comprobante en pantalla (sin descargar)"
+                        @onclick="() => VerPdfAlquiler(a)">👁️</button>@a.ReservaNumero
+            </td>
             <td>@a.Fecha.ToString("dd/MM/yyyy")</td>
             <td>@a.ClienteNombre <span style="color:#6b7280; font-size:0.8rem;">· alquiler</span></td>
             <td>
@@ -6094,7 +6150,7 @@
             </td>
             <td style="font-size:0.8rem; color:#6b7280;">@(anulada ? "anulada" : "")</td>
             <td class="actions-cell" style="position:relative;">
-                <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => VerPdfAlquiler(a)" title="Ver / imprimir el PDF de este comprobante">🖨</button>
+                <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => VerPdfAlquiler(a)" title="Ver / imprimir / descargar el PDF de este comprobante">🖨</button>
                 @if (a.EsVigente && a.ClienteId.HasValue)
                 {
                     <button class="btn-icon" style="color: #059669;" @onclick='() => Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={a.ClienteId!.Value}&reserva={a.ReservaId}")' title="Cobrar este alquiler">💰</button>
