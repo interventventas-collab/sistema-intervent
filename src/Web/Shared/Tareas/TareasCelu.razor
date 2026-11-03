@@ -135,7 +135,7 @@ else if (error && !Embebido)
                     @switch (tarea.Tipo)
                     {
                         case "CONTAR":
-                            <div class="tc-lab">¿Cuántos hay? Contá todo: lo del estante y lo que está en cajas.</div>
+                            <div class="tc-lab">¿Cuántos hay? Contá lo del estante y lo que está en cajas. <b>No cuentes lo que ya está armado para un pedido.</b></div>
                             <div class="tc-num">@(numero.Length == 0 ? " " : numero)</div>
                             <div class="tc-keys">
                                 @foreach (var k in new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "C" })
@@ -220,7 +220,7 @@ else if (error && !Embebido)
     private record PlantaRes(string Codigo, string Nombre);
     private record ZonaRes(string Planta, string Codigo, string? Nombre);
     private record DetalleRes(int Id, string Tipo, string Titulo, string? Comentario, bool Terminada, List<ItemRes> Items, List<PlantaRes> Plantas, List<ZonaRes>? Zonas);
-    private record GuardarRes(bool Ok, bool Terminada, int? StockAntes, int? StockDespues);
+    private record GuardarRes(bool Ok, bool Terminada, int? StockAntes, int? StockDespues, int Apartados);
     private string? ultimoArreglo;   // "✓ Arreglado: decía 3, ahora 2" del último que guardó
 
     private InicioRes? datos;
@@ -338,6 +338,7 @@ else if (error && !Embebido)
             var g = await r.Content.ReadFromJsonAsync<GuardarRes>();
             ultimoArreglo = g?.StockAntes is int a && g.StockDespues is int d
                 ? (a == d ? $"✓ {it.Nombre}: estaba bien ({d})" : $"✓ Arreglado {it.Nombre}: decía {a}, ahora {d}")
+                  + (g.Apartados > 0 ? $" (contaste {d + g.Apartados}, {g.Apartados} ya vendidos sin armar)" : "")
                 : null;
             // recargar la tarea (así el "ya hechos" y el lugar quedan como los guardó el sistema)
             var id = tarea.Id;

@@ -168,11 +168,13 @@
                                         <text> · </text><button type="button" class="tp-link" @onclick="() => NoLoEncuentro(iSel)">no lo encuentro</button>
                                     }
                                     else if (it.NoEncontrado) { <span class="tp-rojo">no lo encontró · @it.HechoPor @Hora(it)</span> }
-                                    else if (tarea.Tipo == "CONTAR" && it.StockAntes is int antes && antes != it.Contado)
+                                    else if (tarea.Tipo == "CONTAR")
                                     {
-                                        <span class="tp-ok">✓ arreglado · decía @antes, ahora @it.Contado</span> <span class="tp-gris">· @it.HechoPor @Hora(it)</span>
+                                        var ahora = Math.Max(0, (it.Contado ?? 0) - it.Apartados);
+                                        <span class="tp-ok">@(it.StockAntes == ahora ? $"✓ estaba bien ({ahora})" : $"✓ arreglado · decía {it.StockAntes}, ahora {ahora}")</span>
+                                        @if (it.Apartados > 0) { <span class="tp-gris"> · contaron @it.Contado, @it.Apartados ya vendidos sin armar</span> }
+                                        <span class="tp-gris"> · @it.HechoPor @Hora(it)</span>
                                     }
-                                    else if (tarea.Tipo == "CONTAR") { <span class="tp-ok">✓ estaba bien (@it.Contado)</span> <span class="tp-gris">· @it.HechoPor @Hora(it)</span> }
                                     else { <span class="tp-ok">✓ @it.Valor</span> <span class="tp-gris">· @it.HechoPor @Hora(it)</span> }
                                 </td>
                             </tr>
@@ -182,7 +184,8 @@
                 <div class="tp-nota">
                     @if (tarea.Tipo == "CONTAR")
                     {
-                        <text>Mientras cuentan no ven cuánto decía el sistema: aparece recién después de guardar. Si se equivocan, corrigen el número y Enter de nuevo.</text>
+                        <text><b>No cuenten lo que ya está armado para un pedido.</b> Lo vendido que todavía está en el estante (ventas sin armar y MeLi sin etiqueta) lo descuenta solo el sistema.
+                        Mientras cuentan no ven cuánto decía el sistema: aparece recién después de guardar. Si se equivocan, corrigen el número y Enter de nuevo.</text>
                     }
                 </div>
             }
@@ -196,7 +199,7 @@
     private record TareaRes(int Id, string Tipo, string Titulo, string? Comentario, string Para, bool ParaTodos, int Total, int Hechos, DateTime? TerminadaAt, string? TerminadaPor);
     private record InicioRes(string Nombre, List<TareaRes> Tareas);
     private record ItemRes(int Id, string? Sku, string Nombre, string? Barcode, bool Hecho, int? Contado, int? StockAntes, bool NoEncontrado,
-        string? Valor, string? HechoPor, DateTime? HechoAt, string? Lugar);
+        string? Valor, string? HechoPor, DateTime? HechoAt, string? Lugar, int Apartados);
     private record PlantaRes(string Codigo, string Nombre);
     private record DetalleRes(int Id, string Tipo, string Titulo, string? Comentario, bool Terminada, List<ItemRes> Items, List<PlantaRes> Plantas);
 

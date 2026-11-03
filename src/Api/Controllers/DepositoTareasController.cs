@@ -30,8 +30,12 @@ public class DepositoTareasController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly StockReservaService _reservas;
 
-    public DepositoTareasController(AppDbContext db, IServiceScopeFactory scopeFactory) { _db = db; _scopeFactory = scopeFactory; }
+    public DepositoTareasController(AppDbContext db, IServiceScopeFactory scopeFactory, StockReservaService reservas)
+    {
+        _db = db; _scopeFactory = scopeFactory; _reservas = reservas;
+    }
 
     private string Usuario => User.Identity?.Name ?? "?";
 
@@ -168,6 +172,15 @@ public class DepositoTareasController : ControllerBase
                 return BadRequest(new { error = "Fuente desconocida." });
         }
 
+        // El café se lleva en GRAMOS: el conteo es de unidades, así que para contar queda afuera.
+        if (tipoN0(tipo) == "CONTAR")
+        {
+            var enGramos = await _db.CafeProductos.AsNoTracking()
+                .Where(p => motivos.Keys.Contains(p.Id) && (p.Categoria == "CAFE" || p.StockGramos != 0))
+                .Select(p => p.Id).ToListAsync();
+            foreach (var id in enGramos) motivos.Remove(id);
+        }
+
         // Ya en una tarea abierta del mismo tipo → no repetir.
         var tipoN = (tipo ?? "").ToUpperInvariant();
         var yaEnTarea = await (from i in _db.DepTareaItems.AsNoTracking()
@@ -247,6 +260,46 @@ public class DepositoTareasController : ControllerBase
         return Ok(new { ok = true, id = t.Id, items = orden.Count });
     }
 
+    private static string tipoN0(string? tipo) => (tipo ?? "").ToUpperInvariant();
+
+    /// <summary>
+    /// 2026-11-03: unidades VENDIDAS que todavía están en el estante. Pregunta del dueño: "¿y qué pasa si
+    /// hay reservado de alguna venta?". Al cargar una venta el stock se descuenta en el momento, pero el
+    /// producto sigue en el depósito hasta que lo arman/despachan. Si contaran eso y el stock pasara a ser
+    /// lo contado, volverían a aparecer unidades ya vendidas. Se restan:
+    ///  - MeLi: órdenes con la etiqueta sin imprimir (<see cref="StockReservaService"/>, el mismo criterio
+    ///    del "reservado" de la carga de stock del celu).
+    ///  - Ventas propias en el tablero del depósito SIN ARMAR (PARA_PREPARAR / EN_PREPARACION, mismos
+    ///    7 días del tablero), sumando lo que su venta le descontó a ESTE producto (incluye las partes de
+    ///    los compuestos y las ediciones).
+    /// Lo ya ARMADO (LISTO) no se resta: la regla para el que cuenta es "no cuentes lo que ya está armado".
+    /// </summary>
+    private async Task<(int Meli, int Propias)> ApartadosAsync(int productoId)
+    {
+        var meli = await _reservas.GetReservaAsync(productoId);
+        var desde = DateTime.UtcNow.Date.AddDays(-7);
+        var numeros = await _db.CafeVentas.AsNoTracking()
+            .Where(v => v.PreparacionOcultoAt == null && v.Estado != "anulado"
+                && (v.EstadoPreparacion == "PARA_PREPARAR" || v.EstadoPreparacion == "EN_PREPARACION")
+                && (v.CreatedAt >= desde || (v.PreparacionUpdatedAt != null && v.PreparacionUpdatedAt >= desde)))
+            .Select(v => v.Numero).ToListAsync();
+        var propias = 0;
+        if (numeros.Count > 0)
+        {
+            var movs = await _db.StockMovimientos.AsNoTracking()
+                .Where(m => m.ProductoId == productoId && !m.Reverted
+                    && (m.TipoMov == "VENTA_NUESTRA" || m.TipoMov == "VENTA_NUESTRA_COMP" || m.TipoMov == "DEVUELTO_VENTA")
+                    && m.CreatedAt >= desde.AddDays(-30))
+                .Select(m => new { m.Comentario, m.StockAntes, m.StockDespues }).ToListAsync();
+            foreach (var n in numeros)
+            {
+                var marca = "#" + n + " ";
+                propias += movs.Where(m => m.Comentario != null && m.Comentario.Contains(marca)).Sum(m => m.StockAntes - m.StockDespues);
+            }
+        }
+        return (meli, Math.Max(0, propias));
+    }
+
     private static string TituloPorDefecto(string tipo) => tipo switch
     {
         "CONTAR" => "Contar stock",
@@ -266,17 +319,21 @@ public class DepositoTareasController : ControllerBase
         var tareas = await q.Take(200).ToListAsync();
         var ids = tareas.Select(t => t.Id).ToList();
 
-        var stats = await _db.DepTareaItems.AsNoTracking().Where(i => ids.Contains(i.TareaId))
-            .GroupBy(i => i.TareaId)
-            .Select(g => new
-            {
-                Id = g.Key,
-                Total = g.Count(),
-                Hechos = g.Count(i => i.HechoAt != null),
-                NoEncontrados = g.Count(i => i.NoEncontrado),
-                Diferencias = g.Count(i => i.HechoAt != null && i.Contado != null && i.Contado != i.StockAlContar),
-                SinRevisar = g.Count(i => i.HechoAt != null && (i.NoEncontrado || (i.Contado != null && i.Contado != i.StockAlContar)) && i.Revision == null)
-            }).ToDictionaryAsync(x => x.Id);
+        // En memoria: "no coincide" = lo contado MENOS los vendidos sin armar (Valor) ≠ lo que decía el sistema.
+        var filas = await _db.DepTareaItems.AsNoTracking().Where(i => ids.Contains(i.TareaId))
+            .Select(i => new { i.TareaId, i.HechoAt, i.Contado, i.StockAlContar, i.NoEncontrado, i.Revision, i.Valor })
+            .ToListAsync();
+        bool Dif(int? contado, int? alContar, string? valor) =>
+            contado is int c && Math.Max(0, c - (int.TryParse(valor, out var ap) ? ap : 0)) != alContar;
+        var stats = filas.GroupBy(i => i.TareaId).Select(g => new
+        {
+            Id = g.Key,
+            Total = g.Count(),
+            Hechos = g.Count(i => i.HechoAt != null),
+            NoEncontrados = g.Count(i => i.NoEncontrado),
+            Diferencias = g.Count(i => i.HechoAt != null && Dif(i.Contado, i.StockAlContar, i.Valor)),
+            SinRevisar = g.Count(i => i.HechoAt != null && (i.NoEncontrado || Dif(i.Contado, i.StockAlContar, i.Valor)) && i.Revision == null)
+        }).ToDictionary(x => x.Id);
 
         var emps = await _db.NomEmpleados.AsNoTracking().ToDictionaryAsync(e => e.Id, e => NombreCorto(e.Nombre));
 
@@ -550,6 +607,8 @@ public class DepositoTareasController : ControllerBase
                 i.id, i.sku, i.nombre, i.barcode, i.hecho, i.contado, i.noEncontrado, i.valor, i.hechoPor, i.hechoAt,
                 // lo que decía el sistema: recién DESPUÉS de contar (mientras cuentan, a ciegas)
                 stockAntes = i.hecho ? i.stockAntes : null,
+                // CONTAR: unidades vendidas sin armar que se restaron a lo contado (guardadas en Valor)
+                apartados = t.Tipo == "CONTAR" && int.TryParse(i.valor, out var ap) ? ap : 0,
                 lugar = UbicacionHelper.Texto(i.planta, i.zona)
             }),
             plantas = UbicacionHelper.Plantas.Select(p => new { codigo = p.Codigo, nombre = p.Nombre }),
@@ -591,12 +650,16 @@ public class DepositoTareasController : ControllerBase
                     if (req.Contado is not int c || c < 0 || c > 1_000_000) return BadRequest(new { error = "Poné cuántos contaste." });
                     it.Contado = c;
                     it.StockAlContar = prod.StockUnidades;
-                    // Queda arreglado en el momento: el stock pasa a ser lo que contaron.
+                    // Queda arreglado en el momento: el stock pasa a ser lo que contaron MENOS lo que ya
+                    // está vendido y sigue en el estante (ver ApartadosAsync).
+                    var (apMeli, apPropias) = await ApartadosAsync(prod.Id);
+                    var apartados = apMeli + apPropias;
+                    if (apartados > 0) it.Valor = apartados.ToString();
                     stockAntes = prod.StockUnidades;
-                    stockDespues = c;
+                    stockDespues = Math.Max(0, c - apartados);
                     if (stockAntes != stockDespues)
                     {
-                        prod.StockUnidades = c;
+                        prod.StockUnidades = stockDespues.Value;
                         prod.UpdatedAt = DateTime.UtcNow;
                         prod.StockChangedAt = DateTime.UtcNow;
                         await CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
@@ -606,10 +669,11 @@ public class DepositoTareasController : ControllerBase
                             OperadorNombreSnap = quien,
                             DepositoNombreSnap = "9 de Abril",
                             TipoMov = "SET",
-                            Cantidad = c,
+                            Cantidad = stockDespues.Value,
                             StockAntes = stockAntes.Value,
-                            StockDespues = c,
-                            Comentario = $"Conteo de la tarea #{t.Id} ({t.Titulo})",
+                            StockDespues = stockDespues.Value,
+                            Comentario = $"Conteo de la tarea #{t.Id} ({t.Titulo}): contaron {c}"
+                                + (apartados > 0 ? $" − {apartados} vendidos sin armar" + (apMeli > 0 ? $" ({apMeli} MeLi)" : "") : ""),
                             CreatedAt = DateTime.UtcNow
                         });
                     }
@@ -650,7 +714,7 @@ public class DepositoTareasController : ControllerBase
         await _db.SaveChangesAsync();
         await CerrarSiTerminoAsync(t, quien);
         if (stockAntes is int a && stockDespues is int d && a != d) FireAndForgetPushMeli(prod.Id);
-        return Ok(new { ok = true, terminada = t.TerminadaAt != null, stockAntes, stockDespues });
+        return Ok(new { ok = true, terminada = t.TerminadaAt != null, stockAntes, stockDespues, apartados = t.Tipo == "CONTAR" && int.TryParse(it.Valor, out var apx) ? apx : 0 });
     }
 
     /// <summary>"✓ Listo" de una tarea libre (o de una con productos, si terminaron todos).</summary>

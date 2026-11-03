@@ -265,7 +265,7 @@
                                         @foreach (var i in DetalleOrdenado())
                                         {
                                             var iSel = i;
-                                            var dif = i.Contado is not null && i.Contado != i.StockAlContar;
+                                            var dif = i.Contado is not null && Ahora(i) != i.StockAlContar;
                                             <tr>
                                                 <td>@i.Nombre <span class="dt-sku">@i.Sku</span></td>
                                                 @if (detalle.Tipo == "CONTAR")
@@ -476,7 +476,7 @@
 
     /// <summary>Primero lo que hay que revisar (no coincide / no lo encontraron), después el resto.</summary>
     private IEnumerable<DepTareaItemDto> DetalleOrdenado() => detalle!.Items
-        .OrderBy(i => (i.NoEncontrado || (i.Contado is not null && i.Contado != i.StockAlContar)) && i.Revision is null ? 0 : i.HechoAt is null ? 2 : 1);
+        .OrderBy(i => (i.NoEncontrado || (i.Contado is not null && Ahora(i) != i.StockAlContar)) && i.Revision is null ? 0 : i.HechoAt is null ? 2 : 1);
 
     private async Task AceptarConteo(DepTareaItemDto i)
     {
@@ -509,10 +509,15 @@
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
+    /// <summary>Apartados = vendidos sin armar que se restaron al contar (vienen en Valor).</summary>
+    private static int Apartados(DepTareaItemDto i) => int.TryParse(i.Valor, out var a) ? a : 0;
+    private static int Ahora(DepTareaItemDto i) => Math.Max(0, (i.Contado ?? 0) - Apartados(i));
+
     private static string DifTxt(DepTareaItemDto i)
     {
-        var d = (i.Contado ?? 0) - (i.StockAlContar ?? 0);
-        return d > 0 ? $"(sobran {d})" : $"(faltan {-d})";
+        var d = Ahora(i) - (i.StockAlContar ?? 0);
+        var txt = d > 0 ? $"(sobran {d})" : $"(faltan {-d})";
+        return Apartados(i) > 0 ? $"{txt} · {Apartados(i)} vendidos sin armar descontados" : txt;
     }
 
     private static string TipoCorto(string t) => t switch
