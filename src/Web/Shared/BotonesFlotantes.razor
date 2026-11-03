@@ -31,7 +31,8 @@
         }
         <button type="button" class="bf-main" title="Resumen del día, asistente, preguntas y WhatsApp" @onclick="() => abierto = !abierto">
             @(abierto ? "✕" : "☰")
-            @if (!abierto && PreguntasSinResponder > 0) { <span class="bf-num">@(PreguntasSinResponder > 99 ? "99+" : PreguntasSinResponder.ToString())</span> }
+            @{ var totalAvisos = PreguntasSinResponder + (Tareas?.Pendientes ?? 0); }
+            @if (!abierto && totalAvisos > 0) { <span class="bf-num">@(totalAvisos > 99 ? "99+" : totalAvisos.ToString())</span> }
         </button>
     </div>
 }
@@ -64,6 +65,9 @@
     [Parameter] public WaBuscadorFlotante? WhatsApp { get; set; }
     [Parameter] public bool VePreguntas { get; set; }
     [Parameter] public int PreguntasSinResponder { get; set; }
+    /// <summary>03/11/2026: 📋 Tareas del depósito (solo para los admin; null = no lo ve). No es parámetro:
+    /// el layout lo engancha cuando TareasAvisos ya cargó (su @ref recién existe después del primer dibujo).</summary>
+    public Web.Shared.Tareas.TareasAvisos? Tareas { get; set; }
 
     private bool abierto;
 
@@ -79,6 +83,8 @@
             l.Add(new("asistente", "Asistente", "💬", "", Asistente.SinLeer));
         if (VePreguntas)
             l.Add(new("preguntas", PreguntasSinResponder > 0 ? $"Preguntas MeLi · {PreguntasSinResponder} sin responder" : "Preguntas MeLi", "📥", "", PreguntasSinResponder));
+        if (Tareas is not null)
+            l.Add(new("tareas", Tareas.Pendientes > 0 ? $"Tareas del depósito · {Tareas.Pendientes} para mirar" : "Tareas del depósito", "📋", "", Tareas.Pendientes));
         if (WhatsApp?.Disponible == true)
             l.Add(new("whatsapp", "WhatsApp", "wa", "bf-wa", 0));
         return l;
@@ -93,6 +99,7 @@
             case "asistente": if (Asistente is not null) await Asistente.Abrir(); break;
             case "preguntas": Nav.NavigateTo("/meli/preguntas"); break;
             case "whatsapp": WhatsApp?.Abrir(); break;
+            case "tareas": if (Tareas is not null) await Tareas.Abrir(); break;
         }
     }
 

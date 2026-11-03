@@ -44,6 +44,9 @@ public class DepTarea
 
     /// <summary>La sacó el dueño (ya no aparece en ningún celu). No se borra: queda lo que hicieron.</summary>
     public DateTime? CanceladaAt { get; set; }
+
+    /// <summary>2026-11-03: el dueño ya vio que se terminó (botón flotante 📋 → "Visto").</summary>
+    public DateTime? VistaAt { get; set; }
 }
 
 [Table("Dep_TareaItems")]

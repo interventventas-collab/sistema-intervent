@@ -8652,3 +8652,9 @@ IF COL_LENGTH('Dep_TareaItems','NombreSugerido') IS NULL
         NombreSugeridoAt DATETIME2 NULL, NombreRevision NVARCHAR(20) NULL, NombreRevisionAt DATETIME2 NULL,
         NombreRevisionPor NVARCHAR(120) NULL;
 GO
+
+-- 2026-11-03: Tareas del depósito — el dueño ya vio la tarea terminada (botón flotante 📋).
+-- ⚠ En PROD correr a mano ANTES de publicar.
+IF COL_LENGTH('Dep_Tareas','VistaAt') IS NULL
+    ALTER TABLE Dep_Tareas ADD VistaAt DATETIME2 NULL;
+GO

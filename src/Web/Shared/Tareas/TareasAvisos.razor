@@ -1,0 +1,320 @@
+@* 2026-11-03: "📋 Tareas del depósito" en el botón flotante del dueño. Pedido: "me gustaría que esas tareas
+   me las notifique acá y poder enviarlas desde acá; ahora sé que las hizo pero no las veo".
+   - Cada minuto mira /api/deposito-tareas/avisos: el número rojo = nombres para aprobar + diferencias
+     grandes + "no lo encuentro" + tareas terminadas sin ver. Si aparece algo nuevo, sale un aviso (toast).
+   - Se abre al costado: Para mirar (aprobar nombre, Visto, Pedir que lo recuente), En curso y Mandar una tarea.
+   Lo ubica MainLayout solo para los usuarios admin; BotonesFlotantes llama a Abrir(). *@
+@implements IDisposable
+@inject ApiClient Api
+@inject ToastService Toast
+@inject NavigationManager Nav
+
+@if (abierto)
+{
+    <div class="ta-fondo" @onclick="Cerrar"></div>
+    <div class="ta-panel">
+        <div class="ta-top">
+            <h3>📋 Tareas del depósito</h3>
+            <button type="button" class="ta-x" @onclick="Cerrar">✕</button>
+        </div>
+
+        @if (avisos is null)
+        {
+            <div class="ta-g">Cargando…</div>
+        }
+        else
+        {
+            <div class="ta-sec">Para mirar · @avisos.Pendientes</div>
+            @if (avisos.Pendientes == 0)
+            {
+                <div class="ta-g">Nada para mirar. 👌</div>
+            }
+            @foreach (var n in avisos.Nombres)
+            {
+                var nSel = n;
+                <div class="ta-row">
+                    ✏️ <b>@n.PropuestoPor</b> propone otro nombre <span class="ta-g">· @n.Sku</span>
+                    <div class="ta-g">Ahora: @n.NombreActual</div>
+                    <input class="ta-in" value="@NombreEditado(nSel)" @oninput="e => editados[nSel.ItemId] = e.Value?.ToString() ?? string.Empty" />
+                    <button type="button" class="ta-b d" @onclick="() => Aprobar(nSel)">Aprobar</button>
+                    <button type="button" class="ta-b" @onclick="() => Rechazar(nSel)">No</button>
+                </div>
+            }
+            @foreach (var m in avisos.Mucha)
+            {
+                var mSel = m;
+                <div class="ta-row">
+                    <span class="tn-MUCHA">⚠ Mucha diferencia</span> · @m.Nombre · decía @m.Decia, ahora @m.Ahora
+                    <span class="ta-g">· @m.Quien @Hora(m.At)</span><br />
+                    <button type="button" class="ta-b" @onclick="() => ItemVisto(mSel.ItemId)">Visto</button>
+                    <button type="button" class="ta-b" @onclick="() => Recontar(mSel.ItemId, mSel.Quien)">Pedir que lo recuente</button>
+                </div>
+            }
+            @foreach (var x in avisos.NoEncontrados)
+            {
+                var xSel = x;
+                <div class="ta-row">
+                    <span class="ta-rojo">No lo encontró</span> · @x.Nombre <span class="ta-g">· @x.Quien @Hora(x.At)</span><br />
+                    <button type="button" class="ta-b" @onclick="() => ItemVisto(xSel.ItemId)">Visto</button>
+                    <button type="button" class="ta-b" @onclick="() => Recontar(xSel.ItemId, xSel.Quien)">Que lo vuelva a buscar</button>
+                </div>
+            }
+            @foreach (var t in avisos.Terminadas)
+            {
+                var tSel = t;
+                <div class="ta-row">
+                    ✓ <b>@(t.TerminadaPor ?? t.Empleado)</b> terminó "@t.Titulo"@(t.Tipo == "LIBRE" ? "" : $" · {t.Hechos} de {t.Total}")
+                    <span class="ta-g">· @Hora(t.TerminadaAt)</span><br />
+                    <button type="button" class="ta-b" @onclick="IrALaPantalla">Ver detalle</button>
+                    <button type="button" class="ta-b" @onclick="() => TareaVista(tSel.Id)">Visto</button>
+                </div>
+            }
+
+            @if (avisos.EnCurso.Count > 0)
+            {
+                <div class="ta-sec">En curso</div>
+                @foreach (var t in avisos.EnCurso)
+                {
+                    <div class="ta-row">
+                        @if (t.Tipo != "LIBRE")
+                        {
+                            <span class="ta-bar"><i style="width:@(t.Total == 0 ? 0 : t.Hechos * 100 / t.Total)%"></i></span>
+                        }
+                        @t.Titulo · <b>@t.Empleado</b>@(t.Tipo == "LIBRE" ? "" : $" · {t.Hechos} de {t.Total}")
+                        <span class="ta-g">· @(t.Para == "HOY" ? "para hoy" : t.Para == "SEMANA" ? "esta semana" : "sin apuro")</span>
+                    </div>
+                }
+            }
+
+            @* ── Mandar una tarea ── *@
+            <div class="ta-sec">Mandar una tarea</div>
+            <div class="ta-chips">
+                @foreach (var (cod, txt) in new[] { ("CONTAR", "Contar"), ("UBICACION", "Dónde está"), ("BARCODE", "Código de barras"), ("LIBRE", "Libre") })
+                {
+                    var c = cod;
+                    <button type="button" class="ta-c @(tipo == c ? "on" : "")" @onclick="() => { tipo = c; productos.Clear(); }">@txt</button>
+                }
+            </div>
+            @if (tipo == "LIBRE")
+            {
+                <textarea class="ta-in" rows="2" @bind="texto" @bind:event="oninput" placeholder="¿Qué tienen que hacer? Ej: ordenar la estantería de bazar"></textarea>
+            }
+            else
+            {
+                <textarea class="ta-in" rows="2" @bind="texto" @bind:event="oninput" placeholder="Pegá los códigos (SKU o de barras)"></textarea>
+                <div class="ta-g">
+                    o tocá:
+                    @foreach (var (f, txt) in Fuentes())
+                    {
+                        var fSel = f;
+                        <button type="button" class="ta-link" @onclick="() => TraerFuente(fSel, txt)">@txt</button>
+                    }
+                </div>
+                @if (productos.Count > 0)
+                {
+                    <div class="ta-g" style="margin-top:0.3rem;">✓ @productos.Count productos (@origen)</div>
+                }
+            }
+            <div class="ta-chips" style="margin-top:0.4rem;">
+                @foreach (var e in empleados)
+                {
+                    var eSel = e;
+                    <button type="button" class="ta-c @(empleadoId == eSel.Id ? "on" : "")" @onclick="() => empleadoId = eSel.Id">@eSel.Nombre</button>
+                }
+                <button type="button" class="ta-c @(empleadoId is null ? "on" : "")" @onclick="() => empleadoId = null">Cualquiera</button>
+            </div>
+            <div class="ta-chips" style="margin-top:0.4rem;">
+                <button type="button" class="ta-c @(para == "HOY" ? "on" : "")" @onclick='() => para = "HOY"'>Hoy</button>
+                <button type="button" class="ta-c @(para == "SEMANA" ? "on" : "")" @onclick='() => para = "SEMANA"'>Esta semana</button>
+                <button type="button" class="ta-c @(para == "SIN_APURO" ? "on" : "")" @onclick='() => para = "SIN_APURO"'>Sin apuro</button>
+            </div>
+            <div class="ta-pie">
+                <button type="button" class="ta-link" @onclick="IrALaPantalla">Abrir la pantalla completa →</button>
+                <button type="button" class="ta-b d ta-mandar" disabled="@mandando" @onclick="Mandar">@(mandando ? "Mandando…" : "Mandar")</button>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .ta-fondo { position:fixed; inset:0; background:rgba(17,24,39,0.25); z-index:9100; }
+    .ta-panel { position:fixed; top:0; right:0; bottom:0; width:480px; max-width:100vw; background:#fff; z-index:9101; overflow-y:auto;
+        padding:1rem 1.1rem 1.5rem; box-shadow:-8px 0 24px rgba(0,0,0,0.18); font-size:0.86rem; color:#111827; }
+    .ta-top { display:flex; justify-content:space-between; align-items:center; }
+    .ta-top h3 { margin:0; font-size:1.1rem; }
+    .ta-x { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.15rem 0.6rem; cursor:pointer; }
+    .ta-sec { font-size:0.7rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; margin:1rem 0 0.35rem; }
+    .ta-row { border-bottom:1px solid #f3f4f6; padding:0.5rem 0; }
+    .ta-g { color:#6b7280; font-size:0.78rem; }
+    .ta-rojo { color:#b91c1c; font-weight:700; }
+    .ta-b { display:inline-block; border:1px solid #d1d5db; border-radius:7px; padding:0.2rem 0.6rem; font-size:0.78rem; font-weight:600;
+        background:#fff; margin:0.3rem 0.25rem 0 0; cursor:pointer; color:#111827; }
+    .ta-b.d { background:#111827; color:#fff; border-color:#111827; }
+    .ta-in { width:100%; border:1px solid #d1d5db; border-radius:6px; padding:0.35rem 0.45rem; font:inherit; font-size:0.82rem; margin-top:0.3rem; box-sizing:border-box; }
+    .ta-bar { display:inline-block; width:90px; height:6px; background:#e5e7eb; border-radius:3px; vertical-align:middle; margin-right:0.4rem; overflow:hidden; }
+    .ta-bar i { display:block; height:100%; background:#111827; }
+    .ta-chips { display:flex; flex-wrap:wrap; gap:0.3rem; margin-top:0.3rem; }
+    .ta-c { border:1px solid #d1d5db; border-radius:7px; padding:0.2rem 0.6rem; font-size:0.78rem; font-weight:600; background:#fff; cursor:pointer; color:#111827; }
+    .ta-c.on { background:#111827; color:#fff; border-color:#111827; }
+    .ta-link { background:none; border:none; padding:0 0.2rem; color:#374151; text-decoration:underline; cursor:pointer; font:inherit; font-size:0.78rem; }
+    .ta-pie { display:flex; justify-content:space-between; align-items:center; margin-top:0.8rem; }
+    .ta-mandar { font-size:0.88rem; padding:0.4rem 1rem; }
+    @((MarkupString)TareasNivel.Css)
+</style>
+
+@code {
+    /// <summary>El layout lo usa para refrescar el número del botón flotante.</summary>
+    [Parameter] public EventCallback OnCambio { get; set; }
+
+    public int Pendientes => avisos?.Pendientes ?? 0;
+
+    private DepAvisosDto? avisos;
+    private bool abierto;
+    private System.Threading.Timer? timer;
+    private HashSet<string>? vistosAntes;   // para avisar solo lo NUEVO (null = primera carga, no avisa)
+    private readonly Dictionary<int, string> editados = new();
+
+    private List<DepTareaEmpleadoDto> empleados = new();
+    private string tipo = "CONTAR", para = "HOY";
+    private int? empleadoId;
+    private string? texto, origen;
+    private List<int> productos = new();
+    private bool mandando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        timer = new System.Threading.Timer(async _ => await InvokeAsync(Cargar), null, 60_000, 60_000);
+    }
+
+    public async Task Abrir()
+    {
+        abierto = true;
+        if (empleados.Count == 0)
+            try { empleados = await Api.GetDepTareasEmpleadosAsync() ?? new(); } catch { }
+        await Cargar();
+    }
+
+    private void Cerrar() => abierto = false;
+
+    private async Task Cargar()
+    {
+        DepAvisosDto? a;
+        try { a = await Api.GetDepTareasAvisosAsync(); } catch { return; }
+        if (a is null) return;
+        var claves = Claves(a);
+        if (vistosAntes is not null)
+        {
+            foreach (var t in a.Terminadas.Where(t => !vistosAntes.Contains("t" + t.Id)))
+                Toast.Info($"📋 {t.TerminadaPor ?? t.Empleado} terminó \"{t.Titulo}\"" + (t.Tipo == "LIBRE" ? "" : $" · {t.Hechos} de {t.Total}"));
+            foreach (var n in a.Nombres.Where(n => !vistosAntes.Contains("n" + n.ItemId)))
+                Toast.Info($"✏️ {n.PropuestoPor} propone otro nombre para {n.Sku}: falta tu OK");
+            var muchas = a.Mucha.Count(m => !vistosAntes.Contains("m" + m.ItemId));
+            if (muchas > 0) Toast.Warning($"⚠ {muchas} {(muchas == 1 ? "producto" : "productos")} con mucha diferencia en el conteo");
+        }
+        vistosAntes = claves;
+        avisos = a;
+        await OnCambio.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private static HashSet<string> Claves(DepAvisosDto a) =>
+        a.Terminadas.Select(t => "t" + t.Id)
+            .Concat(a.Nombres.Select(n => "n" + n.ItemId))
+            .Concat(a.Mucha.Select(m => "m" + m.ItemId))
+            .ToHashSet();
+
+    private string NombreEditado(DepTareaNombrePendienteDto n) => editados.TryGetValue(n.ItemId, out var v) ? v : n.NombrePropuesto;
+
+    private async Task Aprobar(DepTareaNombrePendienteDto n)
+    {
+        try { await Api.AprobarDepTareaNombreAsync(n.ItemId, NombreEditado(n)); Toast.Success("Nombre cambiado."); await Cargar(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task Rechazar(DepTareaNombrePendienteDto n)
+    {
+        try { await Api.RechazarDepTareaNombreAsync(n.ItemId); await Cargar(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task ItemVisto(int itemId)
+    {
+        try { await Api.MarcarDepTareaItemVistoAsync(itemId); await Cargar(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task Recontar(int itemId, string? quien)
+    {
+        try
+        {
+            await Api.PedirRecontarDepTareaItemAsync(itemId);
+            Toast.Success($"Listo: a {quien ?? "quien la tenga"} le vuelve a aparecer para contar.");
+            await Cargar();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task TareaVista(int id)
+    {
+        try { await Api.MarcarDepTareaVistaAsync(id); await Cargar(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void IrALaPantalla() { abierto = false; Nav.NavigateTo("/deposito/tareas"); }
+
+    private IEnumerable<(string, string)> Fuentes() => tipo switch
+    {
+        "UBICACION" => new[] { ("sin-lugar", "sin lugar cargado") },
+        "BARCODE" => new[] { ("sin-codigo", "sin código de barras") },
+        _ => new[] { ("dudosos", "stock dudoso"), ("negativos", "stock en negativo"), ("sin-mover", "no se mueven hace 3 meses") }
+    };
+
+    /// <summary>Los primeros 40 de esa lista (para más, la pantalla completa).</summary>
+    private async Task TraerFuente(string fuente, string txt)
+    {
+        try
+        {
+            var l = await Api.GetDepTareasCandidatosAsync(fuente, tipo) ?? new();
+            productos = l.Take(40).Select(x => x.Id).ToList();
+            origen = $"los primeros {productos.Count} de {txt}";
+            texto = null;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task Mandar()
+    {
+        mandando = true;
+        try
+        {
+            string? titulo = null;
+            var ids = productos;
+            if (tipo == "LIBRE")
+            {
+                if (string.IsNullOrWhiteSpace(texto)) { Toast.Warning("Escribí qué tienen que hacer."); return; }
+                titulo = texto.Trim();
+                ids = new();
+            }
+            else if (!string.IsNullOrWhiteSpace(texto))
+            {
+                var l = await Api.GetDepTareasCandidatosAsync("codigos", tipo, texto) ?? new();
+                ids = l.Select(x => x.Id).ToList();
+                if (ids.Count == 0) { Toast.Warning("No encontré esos códigos (o ya están en otra tarea abierta)."); return; }
+            }
+            if (tipo != "LIBRE" && ids.Count == 0) { Toast.Warning("Pegá códigos o elegí una lista."); return; }
+            var r = await Api.CrearDepTareaAsync(tipo, titulo, null, empleadoId, para, ids);
+            if (r is null) return;
+            var quien = empleados.FirstOrDefault(e => e.Id == empleadoId)?.Nombre ?? "cualquiera";
+            Toast.Success(tipo == "LIBRE" ? $"Mandada a {quien}." : $"Mandada a {quien}: {r.Items} productos.");
+            texto = null; productos.Clear(); origen = null;
+            await Cargar();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { mandando = false; }
+    }
+
+    private static string Hora(DateTime? utc) => utc is DateTime d ? d.ToArTime().ToString("dd/MM HH:mm") : "";
+
+    public void Dispose() => timer?.Dispose();
+}

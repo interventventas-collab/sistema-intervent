@@ -2127,6 +2127,11 @@
 {
     <WaBuscadorFlotante @ref="waBuscadorRef" SinBurbuja="true" />
     @* 2026-11-03: un solo botón abajo a la derecha que despliega ☀, asistente, preguntas MeLi y WhatsApp. *@
+    @* 03/11/2026: 📋 Tareas del depósito (avisos + mandar tareas), solo para los admin. *@
+    @if (role == "admin")
+    {
+        <Web.Shared.Tareas.TareasAvisos @ref="tareasAvisosRef" OnCambio="EngancharTareas" />
+    }
     <BotonesFlotantes @ref="botonesRef" Bienvenida="bienvenidaRef" Asistente="asistenteRef" WhatsApp="waBuscadorRef"
                       VePreguntas="@(HasPerm("publicaciones"))" PreguntasSinResponder="preguntasSinResponder" />
 }
@@ -2741,6 +2746,13 @@
     private AssistantWidget? asistenteRef;
     private WaBuscadorFlotante? waBuscadorRef;
     private BotonesFlotantes? botonesRef;
+    private Web.Shared.Tareas.TareasAvisos? tareasAvisosRef;
+    private void EngancharTareas()
+    {
+        if (botonesRef is null) return;
+        botonesRef.Tareas = tareasAvisosRef;
+        botonesRef.Refrescar();
+    }
     private int preguntasSinResponder;
     private void PreguntasContadas(int n)
     {

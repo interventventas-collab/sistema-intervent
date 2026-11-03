@@ -605,6 +605,7 @@ public class DepositoTareasController : ControllerBase
                            select new
                            {
                                id = i.Id,
+                               productoId = p.Id,
                                sku = p.Sku,
                                nombre = p.Nombre,
                                barcode = p.Barcode,
@@ -621,6 +622,9 @@ public class DepositoTareasController : ControllerBase
                                nombreRevision = i.NombreRevision
                            }).ToListAsync();
 
+        // 2026-11-03: la foto de cada producto: la propia (Cafe_ProductoFoto) y, si no tiene, la de MeLi.
+        var fotos = await FotosAsync(items.Select(i => i.productoId).ToList());
+
         // las zonas van siempre: mientras cuentan también pueden corregir dónde está
         var zonas = await _db.CafeUbicacionZonas.AsNoTracking().OrderBy(z => z.Planta).ThenBy(z => z.Codigo)
             .Select(z => new { planta = z.Planta, codigo = z.Codigo, nombre = z.Nombre }).ToListAsync();
@@ -636,6 +640,8 @@ public class DepositoTareasController : ControllerBase
             {
                 i.id, i.sku, i.nombre, i.barcode, i.hecho, i.contado, i.noEncontrado, i.valor, i.hechoPor, i.hechoAt,
                 i.nombreSugerido, i.nombreRevision, i.planta, i.zona,
+                foto = fotos.TryGetValue(i.productoId, out var f) ? f.Url : null,
+                fotoPropia = fotos.TryGetValue(i.productoId, out var f2) && f2.Propia,
                 // lo que decía el sistema: recién DESPUÉS de contar (mientras cuentan, a ciegas)
                 stockAntes = i.hecho ? i.stockAntes : null,
                 // CONTAR: unidades vendidas sin armar que se restaron a lo contado (guardadas en Valor)
@@ -860,6 +866,185 @@ public class DepositoTareasController : ControllerBase
         it.NombreRevision = "RECHAZADO";
         it.NombreRevisionAt = DateTime.UtcNow;
         it.NombreRevisionPor = Usuario;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    private const string FotosDir = "/data/files/producto-fotos";
+
+    /// <summary>productoId → (url de la foto, es propia). Propia = la que sacaron en el depósito
+    /// (/api/public/producto-foto/img/...); si no hay, la miniatura de su publicación de MeLi.</summary>
+    private async Task<Dictionary<int, (string Url, bool Propia)>> FotosAsync(List<int> ids)
+    {
+        var res = new Dictionary<int, (string, bool)>();
+        if (ids.Count == 0) return res;
+        var propias = await _db.CafeProductoFotos.AsNoTracking()
+            .Where(f => ids.Contains(f.CafeProductoId) && f.FotoPropiaArchivo != null)
+            .Select(f => new { f.CafeProductoId, f.FotoPropiaArchivo }).ToListAsync();
+        foreach (var f in propias) res[f.CafeProductoId] = ($"api/public/producto-foto/img/{f.FotoPropiaArchivo}", true);
+        var faltan = ids.Where(id => !res.ContainsKey(id)).ToList();
+        if (faltan.Count > 0)
+        {
+            var meli = await (from c in _db.MeliItemComponentes.AsNoTracking()
+                              join m in _db.MeliItems.AsNoTracking() on c.MeliItemId equals m.MeliItemId
+                              where faltan.Contains(c.CafeProductoId) && m.Thumbnail != null
+                              orderby m.Status == "active" descending, m.SoldQuantity descending
+                              select new { c.CafeProductoId, m.Thumbnail }).ToListAsync();
+            foreach (var m in meli)
+                if (!res.ContainsKey(m.CafeProductoId))
+                    res[m.CafeProductoId] = (m.Thumbnail!.Replace("http://", "https://"), false);
+        }
+        return res;
+    }
+
+    /// <summary>2026-11-03: "📷 Sacar foto" desde la tarea (celu o PC del depósito). Queda como FOTO PROPIA
+    /// del producto (la misma que usa el tablero de preparación). NO toca las fotos de MercadoLibre.</summary>
+    [HttpPost("celu/{token}/item/{itemId:int}/foto")]
+    [AllowAnonymous]
+    [RequestSizeLimit(12 * 1024 * 1024)]
+    public async Task<IActionResult> CeluFoto(string token, int itemId, IFormFile file)
+    {
+        var emp = await EmpleadoDelTokenAsync(token);
+        if (emp is null) return NotFound();
+        var it = await _db.DepTareaItems.AsNoTracking().FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it is null || !await TareasDe(emp.Id).AnyAsync(x => x.Id == it.TareaId)) return NotFound();
+        if (file is null || file.Length == 0) return BadRequest(new { error = "No llegó la foto." });
+        if (file.Length > 12 * 1024 * 1024) return BadRequest(new { error = "La foto es muy grande." });
+        if (!file.ContentType.StartsWith("image/")) return BadRequest(new { error = "Tiene que ser una foto." });
+
+        Directory.CreateDirectory(FotosDir);
+        var ext = Path.GetExtension(file.FileName);
+        if (string.IsNullOrEmpty(ext) || ext.Length > 6) ext = ".jpg";
+        var filename = $"prod-{it.ProductoId}-{Guid.NewGuid():N}{ext}";
+        using (var fs = new FileStream(Path.Combine(FotosDir, filename), FileMode.Create))
+            await file.CopyToAsync(fs);
+
+        var foto = await _db.CafeProductoFotos.FirstOrDefaultAsync(f => f.CafeProductoId == it.ProductoId);
+        var viejo = foto?.FotoPropiaArchivo;
+        var originalViejo = foto?.FotoOriginalArchivo;
+        if (foto is null) { foto = new CafeProductoFoto { CafeProductoId = it.ProductoId }; _db.CafeProductoFotos.Add(foto); }
+        foto.FotoPropiaArchivo = filename;
+        foto.FotoPropiaAt = DateTime.UtcNow;
+        foto.FotoOriginalArchivo = null;
+        foto.Estado = "APROBADA";
+        foto.Comentario = null;
+        foto.Usuario = NombreCorto(emp.Nombre);
+        foto.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        foreach (var old in new[] { viejo, originalViejo })
+        {
+            if (string.IsNullOrEmpty(old) || old == filename) continue;
+            try { var path = Path.Combine(FotosDir, old); if (System.IO.File.Exists(path)) System.IO.File.Delete(path); }
+            catch { /* best-effort */ }
+        }
+        return Ok(new { ok = true, foto = $"api/public/producto-foto/img/{filename}" });
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // AVISOS (botón flotante 📋 del dueño)
+    // ════════════════════════════════════════════════════════════════════
+
+    /// <summary>2026-11-03: lo que el dueño tiene para mirar (nombres propuestos, diferencias grandes,
+    /// "no lo encuentro", tareas terminadas sin ver) + lo que está en curso. Pedido: "que me lo notifique
+    /// en el botón flotante y poder enviarlas desde ahí".</summary>
+    [HttpGet("avisos")]
+    public async Task<IActionResult> Avisos()
+    {
+        var emps = await _db.NomEmpleados.AsNoTracking().ToDictionaryAsync(e => e.Id, e => NombreCorto(e.Nombre));
+        var abiertas = await _db.DepTareas.AsNoTracking().Where(t => t.CanceladaAt == null).Select(t => t.Id).ToListAsync();
+
+        var filas = await (from i in _db.DepTareaItems.AsNoTracking()
+                           join p in _db.CafeProductos.AsNoTracking() on i.ProductoId equals p.Id
+                           where abiertas.Contains(i.TareaId) && i.HechoAt != null
+                                 && ((i.Revision == "AUTO" && i.Contado != null) || (i.NoEncontrado && i.Revision == null))
+                           orderby i.HechoAt descending
+                           select new { i.Id, i.TareaId, p.Sku, p.Nombre, i.Contado, i.StockAlContar, i.Valor, i.NoEncontrado, i.HechoPor, i.HechoAt })
+                          .Take(300).ToListAsync();
+        var mucha = filas.Where(f => !f.NoEncontrado && f.StockAlContar is int a
+                && Nivel(a, Math.Max(0, (f.Contado ?? 0) - (int.TryParse(f.Valor, out var ap) ? ap : 0))) == "MUCHA")
+            .Select(f => new
+            {
+                itemId = f.Id, tareaId = f.TareaId, sku = f.Sku, nombre = f.Nombre,
+                decia = f.StockAlContar, ahora = Math.Max(0, (f.Contado ?? 0) - (int.TryParse(f.Valor, out var ap2) ? ap2 : 0)),
+                quien = f.HechoPor, at = f.HechoAt
+            }).ToList();
+        var noEncontrados = filas.Where(f => f.NoEncontrado)
+            .Select(f => new { itemId = f.Id, tareaId = f.TareaId, sku = f.Sku, nombre = f.Nombre, quien = f.HechoPor, at = f.HechoAt }).ToList();
+
+        var nombres = await (from i in _db.DepTareaItems.AsNoTracking()
+                             join p in _db.CafeProductos.AsNoTracking() on i.ProductoId equals p.Id
+                             where i.NombreSugerido != null && i.NombreRevision == null
+                             orderby i.NombreSugeridoAt
+                             select new
+                             {
+                                 itemId = i.Id, productoId = p.Id, sku = p.Sku, nombreActual = p.Nombre,
+                                 nombrePropuesto = i.NombreSugerido, propuestoPor = i.NombreSugeridoPor, propuestoAt = i.NombreSugeridoAt
+                             }).ToListAsync();
+
+        var tareas = await _db.DepTareas.AsNoTracking()
+            .Where(t => t.CanceladaAt == null && (t.TerminadaAt == null || t.VistaAt == null))
+            .OrderBy(t => t.TerminadaAt == null).ThenByDescending(t => t.TerminadaAt).ThenBy(t => t.CreatedAt)
+            .Take(30).ToListAsync();
+        var ids = tareas.Select(t => t.Id).ToList();
+        var stats = (await _db.DepTareaItems.AsNoTracking().Where(i => ids.Contains(i.TareaId))
+                .Select(i => new { i.TareaId, i.HechoAt }).ToListAsync())
+            .GroupBy(i => i.TareaId).ToDictionary(g => g.Key, g => (Total: g.Count(), Hechos: g.Count(i => i.HechoAt != null)));
+        object Tarea(DepTarea t)
+        {
+            stats.TryGetValue(t.Id, out var s);
+            return new
+            {
+                id = t.Id, tipo = t.Tipo, titulo = t.Titulo, para = t.Para,
+                empleado = t.EmpleadoId is int e && emps.TryGetValue(e, out var n) ? n : "Cualquiera",
+                total = s.Total, hechos = s.Hechos, terminadaAt = t.TerminadaAt, terminadaPor = t.TerminadaPor
+            };
+        }
+        var terminadas = tareas.Where(t => t.TerminadaAt != null).Select(Tarea).ToList();
+        var enCurso = tareas.Where(t => t.TerminadaAt == null).Select(Tarea).ToList();
+
+        return Ok(new
+        {
+            pendientes = nombres.Count + mucha.Count + noEncontrados.Count + terminadas.Count,
+            nombres, mucha, noEncontrados, terminadas, enCurso
+        });
+    }
+
+    /// <summary>"Visto": la diferencia grande o el "no lo encuentro" ya lo miró el dueño.</summary>
+    [HttpPost("items/{itemId:int}/visto")]
+    public async Task<IActionResult> ItemVisto(int itemId)
+    {
+        var it = await _db.DepTareaItems.FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it is null) return NotFound();
+        it.Revision = "VISTO";
+        it.RevisionAt = DateTime.UtcNow;
+        it.RevisionPor = Usuario;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>"Pedir que lo recuente": el producto vuelve a quedar pendiente en su celu (y la tarea se
+    /// reabre si estaba terminada). El stock queda como está hasta que lo vuelvan a contar.</summary>
+    [HttpPost("items/{itemId:int}/recontar")]
+    public async Task<IActionResult> ItemRecontar(int itemId)
+    {
+        var it = await _db.DepTareaItems.FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it is null) return NotFound();
+        var t = await _db.DepTareas.FirstOrDefaultAsync(x => x.Id == it.TareaId);
+        if (t is null || t.CanceladaAt != null) return BadRequest(new { error = "Esa tarea ya no está." });
+        it.HechoAt = null; it.HechoPor = null; it.Contado = null; it.StockAlContar = null; it.Valor = null;
+        it.NoEncontrado = false; it.Revision = null; it.RevisionAt = null; it.RevisionPor = null;
+        t.TerminadaAt = null; t.TerminadaPor = null; t.VistaAt = null;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>"Visto" de una tarea terminada (deja de avisar).</summary>
+    [HttpPost("{id:int}/visto")]
+    public async Task<IActionResult> TareaVista(int id)
+    {
+        var t = await _db.DepTareas.FirstOrDefaultAsync(x => x.Id == id);
+        if (t is null) return NotFound();
+        t.VistaAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
     }

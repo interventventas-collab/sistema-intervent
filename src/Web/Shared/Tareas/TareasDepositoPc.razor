@@ -45,12 +45,22 @@
     .tp-pb.on { background:#111827; color:#fff; border-color:#111827; }
     .tp-listo { background:#111827; color:#fff; border:none; border-radius:8px; padding:0.7rem 1.4rem; font-size:1rem; font-weight:700; cursor:pointer; margin-top:0.8rem; }
     .tp-nota { font-size:0.8rem; color:#6b7280; margin-top:0.7rem; }
+    .tp-fotito { width:44px; height:44px; object-fit:contain; background:#fff; border:1px solid #e5e7eb; border-radius:6px; vertical-align:middle; margin-right:0.5rem; cursor:zoom-in; }
+    .tp-sinfoto { display:inline-block; width:44px; height:44px; border:1px dashed #d1d5db; border-radius:6px; vertical-align:middle; margin-right:0.5rem; }
+    .tp-camara { display:inline-block; position:relative; overflow:hidden; }
+    .tp-camara input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+    .tp-zoom { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1300; display:flex; align-items:center; justify-content:center; cursor:zoom-out; }
+    .tp-zoom img { max-width:90vw; max-height:88vh; background:#fff; }
     .tp-acc { background:none; border:none; padding:0 0.15rem; cursor:pointer; font-size:0.95rem; opacity:0.55; }
     .tp-acc:hover { opacity:1; }
     .tp-extra td { background:#f9fafb; }
     @((MarkupString)TareasNivel.Css)
 </style>
 
+@if (zoom is not null)
+{
+    <div class="tp-zoom" @onclick="() => zoom = null"><img src="@zoom" alt="" /></div>
+}
 <div class="tp-ov" @onclick="OnCerrar">
     <div class="tp-box" @onclick:stopPropagation="true">
         <div class="tp-top">
@@ -138,9 +148,13 @@
                             var iSel = it;
                             <tr>
                                 <td>
+                                    @if (it.Foto is not null) { <img class="tp-fotito" src="@it.Foto" alt="" @onclick="() => zoom = iSel.Foto" /> }
+                                    else { <span class="tp-sinfoto" title="Sin foto"></span> }
                                     @it.Nombre <span class="tp-sku">@it.Sku</span>
                                     <button type="button" class="tp-acc" title="Está en otro lugar" @onclick='() => AbrirExtra(iSel, "lugar")'>📍</button>
                                     <button type="button" class="tp-acc" title="Proponer otro nombre (lo aprueba la oficina)" @onclick='() => AbrirExtra(iSel, "nombre")'>✏️</button>
+                                    <span class="tp-acc tp-camara" title="@(it.FotoPropia ? "Cambiar la foto" : "Agregar foto")">@(subiendoFoto == it.Id ? "⏳" : "📷")
+                                        <InputFile OnChange="e => SubirFoto(e, iSel)" accept="image/*" /></span>
                                     @if (it.NombreSugerido is not null)
                                     {
                                         <div class="tp-gris">✏️ propuesto: "@it.NombreSugerido" · @(it.NombreRevision switch { "APROBADO" => "aprobado", "RECHAZADO" => "no aprobado", _ => "esperando aprobación" })</div>
@@ -251,7 +265,29 @@
     private record InicioRes(string Nombre, List<TareaRes> Tareas);
     private record ItemRes(int Id, string? Sku, string Nombre, string? Barcode, bool Hecho, int? Contado, int? StockAntes, bool NoEncontrado,
         string? Valor, string? HechoPor, DateTime? HechoAt, string? Lugar, int Apartados,
-        string? NombreSugerido, string? NombreRevision, string? Planta, string? Zona);
+        string? NombreSugerido, string? NombreRevision, string? Planta, string? Zona, string? Foto, bool FotoPropia);
+    private string? zoom;
+    private int? subiendoFoto;
+
+    /// <summary>📷 en la PC: elegir el archivo. Queda como foto propia del producto (no toca MercadoLibre).</summary>
+    private async Task SubirFoto(InputFileChangeEventArgs e, ItemRes it)
+    {
+        subiendoFoto = it.Id;
+        errores.Remove(it.Id);
+        try
+        {
+            var img = await e.File.RequestImageFileAsync("image/jpeg", 1600, 1600);
+            using var content = new MultipartFormDataContent();
+            var sc = new StreamContent(img.OpenReadStream(12 * 1024 * 1024));
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+            content.Add(sc, "file", "foto.jpg");
+            var r = await Http.PostAsync($"api/deposito-tareas/celu/{token}/item/{it.Id}/foto", content);
+            if (!r.IsSuccessStatusCode) { errores[it.Id] = await LeerError(r); return; }
+            tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{token}/tarea/{tarea!.Id}");
+        }
+        catch { errores[it.Id] = "No se pudo subir la foto"; }
+        finally { subiendoFoto = null; }
+    }
     private record GuardarRes(bool Ok, bool Confirmar, int? StockAntes, int? StockDespues, int Apartados);
     private record Confirmacion(int Antes, int Despues, int Apartados);
     // mucha diferencia: esperando "Sí, guardar" / "Vuelvo a contar" (por renglón)
