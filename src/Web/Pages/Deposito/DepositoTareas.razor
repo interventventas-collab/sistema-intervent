@@ -38,11 +38,38 @@
     .dt-acciones { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-top: 0.8rem; flex-wrap: wrap; }
     .dt-detalle td { background: #fafafa; }
     .dt-nota { font-size: 0.82rem; color: #6b7280; margin-top: 0.5rem; }
+    @((MarkupString)Web.Shared.Tareas.TareasNivel.Css)
 </style>
 
 <div class="dt-wrap">
     <h2 style="margin:0;">Tareas del depósito</h2>
     <div class="dt-nota" style="margin-top:0.2rem;">Lo que asignás acá les aparece en el celu, arriba de todo, en "Tareas pendientes".</div>
+
+    @* ───── Nombres que propusieron desde el depósito (esperan tu OK) ───── *@
+    @if (nombres.Count > 0)
+    {
+        <div class="dt-lbl">✏️ Nombres para aprobar · @nombres.Count</div>
+        <div class="dt-box">
+            <table class="dt-tabla">
+                <thead><tr><th>Ahora se llama</th><th>Proponen (lo podés retocar)</th><th>Quién</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var n in nombres)
+                    {
+                        var nSel = n;
+                        <tr>
+                            <td>@n.NombreActual <span class="dt-sku">@n.Sku</span></td>
+                            <td><input class="dt-input" value="@NombreEditado(nSel)" @oninput="e => nombresEditados[nSel.ItemId] = e.Value?.ToString() ?? string.Empty" /></td>
+                            <td class="dt-gris">@n.PropuestoPor @(n.PropuestoAt is DateTime pa ? pa.ToArTime().ToString("dd/MM HH:mm") : "")</td>
+                            <td style="white-space:nowrap;">
+                                <button type="button" class="dt-btn dark" @onclick="() => AprobarNombre(nSel)">Aprobar</button>
+                                <button type="button" class="dt-btn" @onclick="() => RechazarNombre(nSel)">No</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 
     @* ───── Nueva tarea ───── *@
     <div class="dt-lbl">Nueva tarea</div>
@@ -71,6 +98,13 @@
                     <button type="button" class="dt-chip @(fuente == c ? "on" : "")" @onclick="() => ElegirFuente(c)">@txt</button>
                 }
             </div>
+            @if (fuente == "codigos")
+            {
+                <textarea class="dt-input" rows="3" style="margin-top:0.5rem;" @bind="pegados" @bind:event="oninput"
+                          placeholder="Pegá los códigos (SKU o código de barras), separados por espacios, comas o renglones. Ej: C938BL C355BL BAÑO4"></textarea>
+                <div style="margin-top:0.4rem;"><button type="button" class="dt-btn" @onclick="BuscarPegados">Buscar estos códigos</button>
+                    @if (noEncontrados.Count > 0) { <span class="dt-rojo" style="margin-left:0.6rem;">No los encontré o ya están en otra tarea abierta: @string.Join(", ", noEncontrados)</span> }</div>
+            }
             @if (fuente == "buscar")
             {
                 <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
@@ -117,7 +151,7 @@
                     </table>
                 </div>
             }
-            else if (fuente is not null && !(fuente == "buscar" && string.IsNullOrWhiteSpace(buscar)))
+            else if (fuente is not null && !(fuente == "buscar" && string.IsNullOrWhiteSpace(buscar)) && !(fuente == "codigos" && string.IsNullOrWhiteSpace(pegados)))
             {
                 <div class="dt-nota">No hay productos para esto (o ya están todos en otra tarea abierta).</div>
             }
@@ -225,6 +259,10 @@
                             }
                         </td>
                         <td>
+                            @if (tSel.MuchaDiferencia > 0)
+                            {
+                                <span class="tn-MUCHA">⚠ @tSel.MuchaDiferencia con mucha diferencia</span><text> · </text>
+                            }
                             @if (tSel.Diferencias > 0 || tSel.NoEncontrados > 0)
                             {
                                 var partes = new List<string>();
@@ -271,7 +309,7 @@
                                                 @if (detalle.Tipo == "CONTAR")
                                                 {
                                                     <td>@(i.StockAlContar?.ToString() ?? (i.HechoAt is null ? "" : "—"))</td>
-                                                    <td class="@(dif || i.NoEncontrado ? "dt-rojo" : "")">
+                                                    <td class="@(i.NoEncontrado ? "dt-rojo" : dif ? "tn-" + Web.Shared.Tareas.TareasNivel.Nivel(i.StockAlContar ?? 0, Ahora(i)) : "")">
                                                         @(i.HechoAt is null ? "falta" : i.NoEncontrado ? "no lo encontró" : i.Contado.ToString())
                                                         @if (dif) { <span class="dt-gris"> @DifTxt(i)</span> }
                                                     </td>
@@ -316,7 +354,7 @@
     private static readonly (string Cod, string Txt)[] FuentesTxt =
     {
         ("dudosos", "Stock dudoso"), ("negativos", "Stock en negativo"), ("sin-mover", "No se mueven hace 3 meses"),
-        ("sin-lugar", "Sin lugar cargado"), ("sin-codigo", "Sin código de barras"), ("buscar", "Elegir a mano…")
+        ("sin-lugar", "Sin lugar cargado"), ("sin-codigo", "Sin código de barras"), ("codigos", "Pegar códigos…"), ("buscar", "Elegir a mano…")
     };
 
     private List<DepTareaEmpleadoDto> empleados = new();
@@ -347,12 +385,58 @@
         catch (Exception ex) { ToastService.Error("No pude cargar los empleados: " + ex.Message); }
         await ElegirFuente("dudosos");
         await CargarTareas();
+        await CargarNombres();
+    }
+
+    // ── nombres propuestos desde el depósito ──
+    private List<DepTareaNombrePendienteDto> nombres = new();
+    private readonly Dictionary<int, string> nombresEditados = new();
+    private string NombreEditado(DepTareaNombrePendienteDto n) => nombresEditados.TryGetValue(n.ItemId, out var v) ? v : n.NombrePropuesto;
+
+    private async Task CargarNombres()
+    {
+        try { nombres = await Api.GetDepTareasNombresPendientesAsync() ?? new(); } catch { }
+    }
+
+    private async Task AprobarNombre(DepTareaNombrePendienteDto n)
+    {
+        try
+        {
+            await Api.AprobarDepTareaNombreAsync(n.ItemId, NombreEditado(n));
+            ToastService.Success($"Listo: ahora se llama \"{NombreEditado(n)}\"");
+            await CargarNombres();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task RechazarNombre(DepTareaNombrePendienteDto n)
+    {
+        try { await Api.RechazarDepTareaNombreAsync(n.ItemId); await CargarNombres(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    // ── pegar códigos ──
+    private string? pegados;
+    private List<string> noEncontrados = new();
+
+    private async Task BuscarPegados()
+    {
+        noEncontrados.Clear();
+        if (string.IsNullOrWhiteSpace(pegados)) return;
+        cargandoCand = true;
+        try { candidatos = await Api.GetDepTareasCandidatosAsync("codigos", tipo, pegados) ?? new(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); candidatos = new(); }
+        cargandoCand = false;
+        TildarPrimeros(int.MaxValue);
+        var cods = pegados.Split(new[] { ' ', ',', ';', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        noEncontrados = cods.Where(c => !candidatos.Any(x => string.Equals(x.Sku, c, StringComparison.OrdinalIgnoreCase) || x.Barcode == c))
+            .Distinct().ToList();
     }
 
     private bool FuenteSirve(string f) => tipo switch
     {
-        "UBICACION" => f is "sin-lugar" or "buscar" or "dudosos" or "sin-mover",
-        "BARCODE" => f is "sin-codigo" or "buscar",
+        "UBICACION" => f is "sin-lugar" or "codigos" or "buscar" or "dudosos" or "sin-mover",
+        "BARCODE" => f is "sin-codigo" or "codigos" or "buscar",
         _ => f is not "sin-lugar" and not "sin-codigo"
     };
 
@@ -371,6 +455,7 @@
         if (f != "buscar") elegidos.Clear();
         candidatos.Clear();
         if (f == "buscar") { await Buscar(); return; }
+        if (f == "codigos") { await BuscarPegados(); return; }
         await CargarCandidatos();
         TildarPrimeros(40);
     }
@@ -429,7 +514,7 @@
             // si no tenía link en el celu, se lo creamos y se copia para mandárselo
             if (EmpleadoElegido is { LinkRepartidor: null } e) await CopiarLink(e);
             titulo = null; comentario = null; elegidos.Clear();
-            if (tipo != "LIBRE" && fuente is not null && fuente != "buscar") await CargarCandidatos();
+            if (tipo != "LIBRE" && fuente is not null && fuente is not "buscar" and not "codigos") await CargarCandidatos();
             await CargarTareas();
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }

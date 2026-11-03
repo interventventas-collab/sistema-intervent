@@ -8644,3 +8644,11 @@ GO
 IF COL_LENGTH('Nom_Empleados','TareasToken') IS NULL
     ALTER TABLE Nom_Empleados ADD TareasToken NVARCHAR(40) NULL;
 GO
+
+-- 2026-11-03: Tareas del depósito — nombre nuevo propuesto desde el depósito (espera aprobación).
+-- ⚠ En PROD correr a mano ANTES de publicar.
+IF COL_LENGTH('Dep_TareaItems','NombreSugerido') IS NULL
+    ALTER TABLE Dep_TareaItems ADD NombreSugerido NVARCHAR(300) NULL, NombreSugeridoPor NVARCHAR(200) NULL,
+        NombreSugeridoAt DATETIME2 NULL, NombreRevision NVARCHAR(20) NULL, NombreRevisionAt DATETIME2 NULL,
+        NombreRevisionPor NVARCHAR(120) NULL;
+GO

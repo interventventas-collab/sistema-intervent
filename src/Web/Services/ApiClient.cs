@@ -3759,6 +3759,15 @@ public class ApiClient
     public async Task DescartarDepTareaConteoAsync(int itemId)
         => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/descartar", new { });
 
+    public async Task<List<DepTareaNombrePendienteDto>?> GetDepTareasNombresPendientesAsync()
+        => await GetAsync<List<DepTareaNombrePendienteDto>>("/api/deposito-tareas/nombres-pendientes");
+
+    public async Task AprobarDepTareaNombreAsync(int itemId, string nombre)
+        => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/nombre/aprobar", new { nombre });
+
+    public async Task RechazarDepTareaNombreAsync(int itemId)
+        => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/nombre/rechazar", new { });
+
     public async Task CancelarDepTareaAsync(int id)
         => await PostAsync<object>($"/api/deposito-tareas/{id}/cancelar", new { });
 
