@@ -505,6 +505,15 @@
                 <input type="checkbox" @bind="filtroSinEnviar" style="margin:0;" />
                 <span>📭 Sin enviar</span>
             </label>
+            @* 2026-11-03: suma las facturas y notas de crédito de alquileres al listado (solo para verlas). *@
+            @if (!ModoPresupuestos)
+            {
+                <label style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.7rem; align-self:flex-end; background:@(verAlquileres ? "#eff6ff" : "white"); border:1.5px solid @(verAlquileres ? "#3b82f6" : "#d1d5db"); border-radius:999px; font-size:0.8rem; cursor:pointer; user-select:none;"
+                       title="Suma al listado las facturas y notas de crédito de alquileres. Para editarlas o cobrarlas se sigue usando Alquileres.">
+                    <input type="checkbox" checked="@verAlquileres" @onchange="OnVerAlquileresChanged" style="margin:0;" />
+                    <span>🎪 Ver alquileres</span>
+                </label>
+            }
             @if (HayFiltrosActivos)
             {
                 <button class="btn btn-secondary" @onclick="LimpiarFiltros"
@@ -608,8 +617,17 @@
                         </tr>
                     </thead>
                     <tbody>
+                        @{
+                            var alqFilas = AlqFilasVisibles;
+                            var alqIdx = 0;
+                        }
                         @foreach (var v in VentasFiltradas)
                         {
+                            while (alqIdx < alqFilas.Count && alqFilas[alqIdx].Fecha.Date >= v.Fecha.Date)
+                            {
+                                <text>@RenglonAlquiler(alqFilas[alqIdx])</text>
+                                alqIdx++;
+                            }
                             var anulada = v.Estado == "anulado";
                             var sel = selectedIds.Contains(v.Id);
                             var pendienteArca = v.ArcaEstado == "pendiente";
@@ -1076,6 +1094,11 @@
                                 </td>
                                 <td style="text-align: right; font-size: 0.66rem; white-space: nowrap; color: @(v.Margen >= 0 ? "#9ca3af" : "#f87171");">$@FormatMoney(v.Margen)</td>
                             </tr>
+                        }
+                        @while (alqIdx < alqFilas.Count)
+                        {
+                            <text>@RenglonAlquiler(alqFilas[alqIdx])</text>
+                            alqIdx++;
                         }
                     </tbody>
                 </table>
@@ -5939,6 +5962,97 @@
 
     /// <summary>2026-08-20: mostrar solo las ventas que todavía no se le mandaron al cliente.</summary>
     private bool filtroSinEnviar;
+
+    // ─── 2026-11-03: tilde "Ver alquileres" ───
+    // Las facturas y NC de alquileres viven en otra tabla; con el tilde se intercalan por fecha en el
+    // listado, solo para verlas (no se seleccionan, no se cobran ni se editan desde acá).
+    private bool verAlquileres;
+    private List<AlqComprobanteListadoDto>? alqComprobantes;
+
+    private async Task OnVerAlquileresChanged(ChangeEventArgs e)
+    {
+        verAlquileres = e.Value is true;
+        if (verAlquileres && alqComprobantes is null)
+        {
+            try { alqComprobantes = await Api.GetAlqComprobantesListadoAsync() ?? new(); }
+            catch { ToastService.Error("No se pudieron traer los alquileres"); verAlquileres = false; }
+        }
+    }
+
+    /// <summary>Los de alquiler que corresponden a lo que se está viendo: mismos filtros de fecha, texto
+    /// y tipo, y dentro de las fechas de la página actual (para que no se repitan en todas las páginas).
+    /// Si hay un filtro que solo existe en ventas (estado, saldo, repartidor, etc.) no se muestran.</summary>
+    private List<AlqComprobanteListadoDto> AlqFilasVisibles
+    {
+        get
+        {
+            if (!verAlquileres || alqComprobantes is null || ModoPresupuestos) return new();
+            if (filtroEstado != "TODOS" || filtroSaldo != "TODOS" || filtroPreparacion != "TODOS"
+                || filtroRepartidor != "TODOS" || filtroSinEnviar || filtroCae is "SIN_CAE" or "PENDIENTE")
+                return new();
+            IEnumerable<AlqComprobanteListadoDto> q = alqComprobantes;
+            if (filtroFechaDesde.HasValue) q = q.Where(a => a.Fecha.Date >= filtroFechaDesde.Value.Date);
+            if (filtroFechaHasta.HasValue) q = q.Where(a => a.Fecha.Date <= filtroFechaHasta.Value.Date);
+            if (filtroTipo != "TODOS")
+                q = q.Where(a => a.TipoComprobante == filtroTipo
+                              || (a.Clase == "nota_credito" && a.TipoComprobante == "NC" + filtroTipo.Substring(1)));
+            if (!string.IsNullOrWhiteSpace(filtroCliente))
+            {
+                var t = filtroCliente.Trim();
+                q = q.Where(a => a.ReservaNumero.MatchesSearch(t) || a.ClienteNombre.MatchesSearch(t)
+                              || a.CbteNro.ToString().Contains(t));
+            }
+            // Modo paginado: solo las fechas que cubre esta página.
+            var lista = VentasFiltradas;
+            if (!traerTodoActivo && !rangoUltimosDias.HasValue && !busquedaServidorActiva && lista.Count > 0)
+            {
+                var masNueva = lista.Max(v => v.Fecha.Date);
+                var masVieja = lista.Min(v => v.Fecha.Date);
+                if (pageOffset > 0) q = q.Where(a => a.Fecha.Date <= masNueva);
+                if (pageOffset + pageSize < totalVentas) q = q.Where(a => a.Fecha.Date >= masVieja);
+            }
+            return q.OrderByDescending(a => a.Fecha).ThenByDescending(a => a.CbteNro).ToList();
+        }
+    }
+
+    private static string AlqTipoTexto(AlqComprobanteListadoDto a) => a.TipoComprobante switch
+    {
+        "FA" => "Factura A", "FB" => "Factura B", "FC" => "Factura C",
+        "NCA" => "NC A", "NCB" => "NC B", "NCC" => "NC C", var x => x
+    };
+
+    private static string NroCorto(string? num) => num is null ? "" : num.Split('-').Last().TrimStart('0');
+
+    private RenderFragment RenglonAlquiler(AlqComprobanteListadoDto a) => __builder =>
+    {
+        var esNc = a.Clase == "nota_credito";
+        var anulada = !esNc && a.AnuladaPor is not null;
+        <tr style="background:#f9fafb; @(anulada ? "opacity:0.55;" : "")">
+            <td></td>
+            <td style="font-family: monospace; font-weight: 700;">@a.ReservaNumero</td>
+            <td>@a.Fecha.ToString("dd/MM/yyyy")</td>
+            <td>@a.ClienteNombre <span style="color:#6b7280; font-size:0.8rem;">· alquiler</span></td>
+            <td>
+                @AlqTipoTexto(a) @NroCorto($"{a.CbteNro}")
+                @if (esNc && a.AnulaA is not null)
+                {
+                    <div style="font-size:0.7rem; color:#6b7280;" title="@(a.Motivo ?? "")">anula la @NroCorto(a.AnulaA)</div>
+                }
+                else if (anulada)
+                {
+                    <div style="font-size:0.7rem; color:#6b7280;">anulada con NC @NroCorto(a.AnuladaPor)</div>
+                }
+            </td>
+            <td style="text-align: right; font-weight: 600; @(esNc ? "color:#dc2626;" : "") @(anulada ? "text-decoration:line-through;" : "")">
+                @(esNc ? "−" : "")$@FormatMoney(a.Total)
+            </td>
+            <td style="font-size:0.8rem; color:#6b7280;">@(anulada ? "anulada" : "")</td>
+            <td>
+                <a href="/alquileres/reservas?openId=@a.ReservaId" style="font-size:0.8rem;" title="Abrir el alquiler">Ver alquiler →</a>
+            </td>
+            <td></td>
+        </tr>
+    };
 
     /// <summary>2026-08-20: si la venta que estás editando ya se le mandó al cliente, este texto dice
     /// por dónde y cuándo (para avisar que la corrección NO le llega sola).</summary>

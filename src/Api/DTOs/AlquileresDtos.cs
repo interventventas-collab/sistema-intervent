@@ -296,3 +296,11 @@ public class UpdateAlqReservaRequest
 
 // ===== Disponibilidad =====
 public record AlqDisponibilidadDto(int EquipoId, string EquipoSku, string EquipoNombre, int StockTotal, int StockComprometido, int Disponible);
+
+/// <summary>2026-11-03: una factura o nota de credito de alquiler, para mostrarla en el listado de Ventas
+/// (tilde "Ver alquileres"). AnulaA = numero de la factura que anula esta NC; AnuladaPor = numero de la
+/// NC que anulo esta factura.</summary>
+public record AlqComprobanteListadoDto(
+    int ReservaId, string ReservaNumero, string ClienteNombre, DateTime Fecha,
+    string Clase, string TipoComprobante, int PtoVta, int CbteNro, decimal Total,
+    string? AnulaA, string? AnuladaPor, string? Motivo);

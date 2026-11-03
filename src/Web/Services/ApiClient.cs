@@ -508,6 +508,10 @@ public class ApiClient
     public async Task MarcarCotizacionChatVentaAsync(int id, int ventaId)
         => await PostAsync<object>($"/api/cafe/cotizaciones-chat/{id}/venta", new { VentaId = ventaId });
 
+    // 2026-11-03: facturas y notas de crédito de alquileres para el tilde "Ver alquileres" de Ventas.
+    public async Task<List<AlqComprobanteListadoDto>?> GetAlqComprobantesListadoAsync()
+        => await GetAsync<List<AlqComprobanteListadoDto>>("/api/alquileres/reservas/comprobantes-listado");
+
     // --- Alquileres: Cotizaciones pegadas al telefono (2026-08-31) ---
     public async Task<List<AlqCotizacionDto>?> GetAlqCotizacionesAsync(string telefono, int limit = 20)
         => await GetAsync<List<AlqCotizacionDto>>($"/api/alquileres/cotizaciones?telefono={Uri.EscapeDataString(telefono)}&limit={limit}");
