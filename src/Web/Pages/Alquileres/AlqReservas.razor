@@ -383,7 +383,17 @@
     <div class="modal-overlay" @onclick="CloseForm">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1100px; max-height: 92vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: whitesmoke;">
-                <h3>@(isEditing ? $"Editar Reserva {editingNumero}" : "Nueva Reserva")</h3>
+                <h3>@(isEditing ? $"Editar Reserva {editingNumero}" : "Nueva Reserva")
+                    @* 2026-11-03: Venta | Alquiler — "Venta" vuelve a Nueva Venta con el mismo cliente. *@
+                    @if (!isEditing)
+                    {
+                        <span style="display:inline-flex; border:1px solid #d1d5db; border-radius:999px; overflow:hidden; font-size:0.82rem; font-weight:600; margin-left:0.6rem; vertical-align:middle;">
+                            <button type="button" style="padding:0.2rem 0.75rem; background:white; color:#374151; border:none; border-right:1px solid #d1d5db; cursor:pointer;" @onclick="PasarAVenta"
+                                    title="Es una venta: abre Nueva Venta con este cliente ya puesto">🧾 Venta</button>
+                            <span style="padding:0.2rem 0.75rem; background:#eff6ff; color:#1d4ed8; border:none;">🎪 Alquiler</span>
+                        </span>
+                    }
+                </h3>
                 <div style="display: flex; gap: 0.4rem; align-items: center;">
                     @if (isEditing && editingId.HasValue)
                     {
@@ -1445,6 +1455,8 @@
     }
     // Atajo de teclado "N + A": ?nueva=<timestamp> abre +Nueva Reserva desde cualquier pantalla. 2026-07-08
     [SupplyParameterFromQuery(Name = "nueva")] public string? NuevaParam { get; set; }
+    // 2026-11-03: ?nueva=...&cliente=ID — viene del botón "Alquiler" de Nueva Venta con el cliente ya elegido.
+    [SupplyParameterFromQuery(Name = "cliente")] public int? ClienteParam { get; set; }
     // 2026-08-31: ?cotizacion=ID — abrir Nueva Reserva ya cargada con un presupuesto que se pasó
     // por WhatsApp (botón "📅 Pasar a reserva" del cotizador del chat).
     [SupplyParameterFromQuery(Name = "cotizacion")] public int? CotizacionParam { get; set; }
@@ -2059,6 +2071,7 @@
             lastNuevaHandled = NuevaParam;
             if (clientes is null || equipos is null) await LoadCatalogos();
             await ShowCreate();
+            if (ClienteParam is int cliUrl && clientes?.Any(c => c.Id == cliUrl) == true) ElegirCliente(cliUrl);
             return;
         }
         // 2026-08-31: ?cotizacion=ID — Nueva Reserva con los equipos y el flete del presupuesto ya puestos.
@@ -2426,6 +2439,17 @@
     }
 
     private void CloseForm() { showForm = false; formError = null; }
+
+    /// <summary>2026-11-03: botón "Venta" de Nueva Reserva. Si ya cargó equipos, avisa que se pierden.</summary>
+    private async Task PasarAVenta()
+    {
+        if (formItems.Count > 0 && !await JS.InvokeAsync<bool>("confirm",
+                "Lo que cargaste en este alquiler no pasa a la venta (solo el cliente).\n\n¿Paso a cargar una venta?"))
+            return;
+        var cli = formClienteId;
+        CloseForm();
+        Nav.NavigateTo($"/cafe/ventas?nueva={DateTime.UtcNow.Ticks}" + (cli > 0 ? $"&cliente={cli}" : ""));
+    }
 
     private void AddItem()
     {
