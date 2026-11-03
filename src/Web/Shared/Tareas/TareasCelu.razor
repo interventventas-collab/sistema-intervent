@@ -44,6 +44,8 @@
     .tc-err { color:#b91c1c; font-size:0.85rem; margin-top:0.5rem; font-weight:700; }
     .tc-fin { text-align:center; padding:2rem 1rem; }
     .tc-fin div:first-child { font-size:3rem; }
+    .tc-mini { background:none; border:none; padding:0.3rem 0; color:#374151; text-decoration:underline; cursor:pointer; font:inherit; font-size:0.85rem; margin-right:1rem; }
+    @((MarkupString)TareasNivel.Css)
 </style>
 
 @if (datos is not null && (datos.Tareas.Count > 0 || !Embebido))
@@ -135,7 +137,7 @@ else if (error && !Embebido)
                     @switch (tarea.Tipo)
                     {
                         case "CONTAR":
-                            <div class="tc-lab">¿Cuántos hay? Contá todo: lo del estante y lo que está en cajas.</div>
+                            <div class="tc-lab">¿Cuántos hay? Contá lo del estante y lo que está en cajas. <b>No cuentes lo que ya está armado para un pedido.</b></div>
                             <div class="tc-num">@(numero.Length == 0 ? " " : numero)</div>
                             <div class="tc-keys">
                                 @foreach (var k in new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "C" })
@@ -175,9 +177,62 @@ else if (error && !Embebido)
                     @if (errorItem is not null) { <div class="tc-err">@errorItem</div> }
                 </div>
 
+                @if (confirmar is { } cf)
+                {
+                    <div class="tc-box tn-alerta">
+                        <div class="tn-MUCHA" style="font-size:1.05rem;">⚠ Mucha diferencia</div>
+                        <div style="font-size:0.92rem; margin-top:0.3rem;">El sistema decía <b>@cf.Antes</b> y contaste <b>@numero</b>@(cf.Apartados > 0 ? $" ({cf.Apartados} ya vendidos sin armar, quedaría {cf.Despues})" : "").
+                            ¿Lo contaste bien?</div>
+                        <div class="tc-row" style="margin-top:0.6rem;">
+                            <button type="button" class="tc-btn" @onclick="() => { confirmar = null; numero = string.Empty; }">Vuelvo a contar</button>
+                            <button type="button" class="tc-btn dark" disabled="@guardando" @onclick="() => Guardar(true)">Sí, guardar</button>
+                        </div>
+                    </div>
+                }
                 @if (ultimoArreglo is not null && tarea.Tipo == "CONTAR")
                 {
-                    <div class="tc-box tc-ok" style="font-size:0.85rem;">@ultimoArreglo</div>
+                    <div class="tc-box tn-@nivelUltimo" style="font-size:0.85rem;">@ultimoArreglo</div>
+                }
+                <div style="margin:0 0.2rem 0.5rem;">
+                    <button type="button" class="tc-mini" @onclick="() => { verLugar = !verLugar; verNombre = false; }">📍 Está en otro lugar</button>
+                    <button type="button" class="tc-mini" @onclick="() => { verNombre = !verNombre; verLugar = false; nombreNuevo = it.Nombre; }">✏️ Proponer otro nombre</button>
+                </div>
+                @if (verLugar)
+                {
+                    <div class="tc-box">
+                        <div class="tc-lab" style="margin-top:0;">¿Dónde está? (se corrige ya, sin aprobación)</div>
+                        <div class="tc-chips">
+                            @foreach (var p in tarea.Plantas)
+                            {
+                                var pSel = p;
+                                <button type="button" class="tc-chip @(lugarPlanta == pSel.Codigo ? "on" : "")" @onclick="() => { lugarPlanta = pSel.Codigo; lugarZona = null; }">@pSel.Nombre</button>
+                            }
+                        </div>
+                        @if (lugarPlanta is not null)
+                        {
+                            <div class="tc-chips">
+                                @foreach (var z in (tarea.Zonas ?? new()).Where(z => z.Planta == lugarPlanta))
+                                {
+                                    var zSel = z;
+                                    <button type="button" class="tc-chip @(lugarZona == zSel.Codigo ? "on" : "")" @onclick="() => lugarZona = lugarZona == zSel.Codigo ? null : zSel.Codigo">@zSel.Codigo</button>
+                                }
+                            </div>
+                            <input class="tc-input" placeholder="…o escribí una zona nueva" @bind="lugarZona" @bind:event="oninput" maxlength="30" />
+                            <button type="button" class="tc-btn dark tc-big" @onclick="GuardarLugar">Guardar lugar</button>
+                        }
+                    </div>
+                }
+                @if (verNombre)
+                {
+                    <div class="tc-box">
+                        <div class="tc-lab" style="margin-top:0;">Nombre nuevo (lo tiene que aprobar la oficina)</div>
+                        <textarea class="tc-input" rows="2" @bind="nombreNuevo" @bind:event="oninput" maxlength="300"></textarea>
+                        <button type="button" class="tc-btn dark tc-big" @onclick="ProponerNombre">Mandar para aprobar</button>
+                    </div>
+                }
+                @if (it.NombreSugerido is not null)
+                {
+                    <div class="tc-m" style="margin:0 0.2rem 0.5rem;">✏️ Propusiste: "@it.NombreSugerido" · @(it.NombreRevision switch { "APROBADO" => "aprobado ✓", "RECHAZADO" => "no lo aprobaron", _ => "esperando aprobación" })</div>
                 }
                 <div class="tc-row">
                     <button type="button" class="tc-btn" disabled="@guardando" @onclick="NoLoEncuentro">No lo encuentro</button>
@@ -216,11 +271,17 @@ else if (error && !Embebido)
 
     private record TareaRes(int Id, string Tipo, string Titulo, string? Comentario, string Para, bool ParaTodos, int Total, int Hechos, DateTime? TerminadaAt, string? TerminadaPor);
     private record InicioRes(string Nombre, List<TareaRes> Tareas);
-    private record ItemRes(int Id, string? Sku, string Nombre, string? Barcode, bool Hecho, int? Contado, bool NoEncontrado, string? Valor, string? Lugar);
+    private record ItemRes(int Id, string? Sku, string Nombre, string? Barcode, bool Hecho, int? Contado, bool NoEncontrado, string? Valor, string? Lugar,
+        string? NombreSugerido, string? NombreRevision, string? Planta, string? Zona);
     private record PlantaRes(string Codigo, string Nombre);
     private record ZonaRes(string Planta, string Codigo, string? Nombre);
     private record DetalleRes(int Id, string Tipo, string Titulo, string? Comentario, bool Terminada, List<ItemRes> Items, List<PlantaRes> Plantas, List<ZonaRes>? Zonas);
-    private record GuardarRes(bool Ok, bool Terminada, int? StockAntes, int? StockDespues);
+    private record GuardarRes(bool Ok, bool Terminada, int? StockAntes, int? StockDespues, int Apartados, bool Confirmar);
+    private record Confirmacion(int Antes, int Despues, int Apartados);
+    private Confirmacion? confirmar;     // mucha diferencia: esperando "Sí, guardar" / "Vuelvo a contar"
+    private string nivelUltimo = "OK";
+    private bool verLugar, verNombre;
+    private string? lugarPlanta, lugarZona, nombreNuevo;
     private string? ultimoArreglo;   // "✓ Arreglado: decía 3, ahora 2" del último que guardó
 
     private InicioRes? datos;
@@ -283,6 +344,9 @@ else if (error && !Embebido)
         numero = it?.Hecho == true && it.Contado is int c ? c.ToString() : "";
         barcode = it?.Hecho == true && tarea?.Tipo == "BARCODE" ? it.Valor : null;
         planta = null; zona = null;
+        confirmar = null;
+        verLugar = false; verNombre = false;
+        lugarPlanta = it?.Planta; lugarZona = it?.Zona;
     }
 
     private void IrA(ItemRes i) { elegido = i; PrepararItem(); }
@@ -312,14 +376,44 @@ else if (error && !Embebido)
 
     private Task NoLoEncuentro() => Mandar(new { contado = (int?)null, noEncontrado = true, planta = (string?)null, zona = (string?)null, barcode = (string?)null });
 
-    private Task Guardar() => Mandar(new
+    private Task Guardar() => Guardar(false);
+
+    private Task Guardar(bool confirmado) => Mandar(new
     {
         contado = tarea!.Tipo == "CONTAR" && int.TryParse(numero, out var n) ? n : (int?)null,
         noEncontrado = false,
         planta,
         zona,
-        barcode
+        barcode,
+        confirmado
     });
+
+    private async Task GuardarLugar()
+    {
+        if (Actual is not { } it || lugarPlanta is null) return;
+        var r = await Http.PostAsJsonAsync($"api/deposito-tareas/celu/{Token}/item/{it.Id}/lugar", new { planta = lugarPlanta, zona = lugarZona });
+        if (!r.IsSuccessStatusCode) { errorItem = await LeerError(r); return; }
+        await Recargar(it);
+        verLugar = false;
+    }
+
+    private async Task ProponerNombre()
+    {
+        if (Actual is not { } it) return;
+        var r = await Http.PostAsJsonAsync($"api/deposito-tareas/celu/{Token}/item/{it.Id}/nombre", new { nombre = nombreNuevo });
+        if (!r.IsSuccessStatusCode) { errorItem = await LeerError(r); return; }
+        await Recargar(it);
+        verNombre = false;
+    }
+
+    /// <summary>Recarga la tarea y se queda en el mismo producto.</summary>
+    private async Task Recargar(ItemRes it)
+    {
+        tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{Token}/tarea/{tarea!.Id}");
+        var mismo = tarea?.Items.FirstOrDefault(x => x.Id == it.Id);
+        var num = numero;
+        if (mismo is not null) { elegido = mismo; PrepararItem(); numero = num; }
+    }
 
     private async Task Mandar(object body)
     {
@@ -336,8 +430,18 @@ else if (error && !Embebido)
                 return;
             }
             var g = await r.Content.ReadFromJsonAsync<GuardarRes>();
+            if (g?.Confirmar == true && g.StockAntes is int ca && g.StockDespues is int cd)
+            {
+                confirmar = new Confirmacion(ca, cd, g.Apartados);
+                return;
+            }
+            confirmar = null;
+            nivelUltimo = g?.StockAntes is int na && g.StockDespues is int nd ? TareasNivel.Nivel(na, nd) : "OK";
             ultimoArreglo = g?.StockAntes is int a && g.StockDespues is int d
-                ? (a == d ? $"✓ {it.Nombre}: estaba bien ({d})" : $"✓ Arreglado {it.Nombre}: decía {a}, ahora {d}")
+                ? (a == d ? $"✓ {it.Nombre}: estaba bien ({d})"
+                   : nivelUltimo == "MUCHA" ? $"⚠ {it.Nombre}: mucha diferencia, decía {a}, ahora {d}. Quedó guardado."
+                   : $"✓ Arreglado {it.Nombre}: decía {a}, ahora {d} (revisá)")
+                  + (g.Apartados > 0 ? $" (contaste {d + g.Apartados}, {g.Apartados} ya vendidos sin armar)" : "")
                 : null;
             // recargar la tarea (así el "ya hechos" y el lugar quedan como los guardó el sistema)
             var id = tarea.Id;

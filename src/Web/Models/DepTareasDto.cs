@@ -9,7 +9,7 @@ public record DepTareaCandidatoDto(int Id, string? Sku, string Nombre, int Stock
 
 public record DepTareaDto(int Id, string Tipo, string Titulo, string? Comentario, int? EmpleadoId, string Empleado,
     string Para, DateTime CreatedAt, DateTime? TerminadaAt, string? TerminadaPor,
-    int Total, int Hechos, int NoEncontrados, int Diferencias, int SinRevisar);
+    int Total, int Hechos, int NoEncontrados, int Diferencias, int SinRevisar, int MuchaDiferencia = 0);
 
 public record DepTareaItemDto(int Id, int ProductoId, string? Sku, string Nombre, int StockAhora, string? Lugar, string? Barcode,
     DateTime? HechoAt, string? HechoPor, int? Contado, int? StockAlContar, bool NoEncontrado, string? Valor,
@@ -23,3 +23,6 @@ public record DepTareaLinkDto(string Token);
 
 public record DepTareasResumenItemDto(string Titulo, string? Empleado, string Para);
 public record DepTareasResumenDto(int Pendientes, List<DepTareasResumenItemDto> Lista);
+
+public record DepTareaNombrePendienteDto(int ItemId, int ProductoId, string? Sku, string NombreActual, string NombrePropuesto,
+    string? PropuestoPor, DateTime? PropuestoAt);

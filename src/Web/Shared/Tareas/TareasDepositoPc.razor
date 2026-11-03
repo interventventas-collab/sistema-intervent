@@ -45,6 +45,10 @@
     .tp-pb.on { background:#111827; color:#fff; border-color:#111827; }
     .tp-listo { background:#111827; color:#fff; border:none; border-radius:8px; padding:0.7rem 1.4rem; font-size:1rem; font-weight:700; cursor:pointer; margin-top:0.8rem; }
     .tp-nota { font-size:0.8rem; color:#6b7280; margin-top:0.7rem; }
+    .tp-acc { background:none; border:none; padding:0 0.15rem; cursor:pointer; font-size:0.95rem; opacity:0.55; }
+    .tp-acc:hover { opacity:1; }
+    .tp-extra td { background:#f9fafb; }
+    @((MarkupString)TareasNivel.Css)
 </style>
 
 <div class="tp-ov" @onclick="OnCerrar">
@@ -133,7 +137,15 @@
                         {
                             var iSel = it;
                             <tr>
-                                <td>@it.Nombre <span class="tp-sku">@it.Sku</span></td>
+                                <td>
+                                    @it.Nombre <span class="tp-sku">@it.Sku</span>
+                                    <button type="button" class="tp-acc" title="Está en otro lugar" @onclick='() => AbrirExtra(iSel, "lugar")'>📍</button>
+                                    <button type="button" class="tp-acc" title="Proponer otro nombre (lo aprueba la oficina)" @onclick='() => AbrirExtra(iSel, "nombre")'>✏️</button>
+                                    @if (it.NombreSugerido is not null)
+                                    {
+                                        <div class="tp-gris">✏️ propuesto: "@it.NombreSugerido" · @(it.NombreRevision switch { "APROBADO" => "aprobado", "RECHAZADO" => "no aprobado", _ => "esperando aprobación" })</div>
+                                    }
+                                </td>
                                 <td class="tp-gris">@(it.Lugar ?? "—")</td>
                                 <td style="white-space:nowrap;">
                                     @switch (tarea.Tipo)
@@ -161,28 +173,70 @@
                                     }
                                 </td>
                                 <td>
-                                    @if (errores.TryGetValue(it.Id, out var err)) { <span class="tp-rojo">@err</span> }
+                                    @if (confirmar.TryGetValue(it.Id, out var cf))
+                                    {
+                                        <div class="tn-alerta">
+                                            <span class="tn-MUCHA">⚠ Mucha diferencia</span>
+                                            <span> · decía <b>@cf.Antes</b>, contaron <b>@Valor(it)</b>@(cf.Apartados > 0 ? $" ({cf.Apartados} vendidos sin armar → {cf.Despues})" : ""). ¿Lo contaron bien?</span>
+                                            <div style="margin-top:0.35rem;">
+                                                <button type="button" class="tp-pb on" @onclick="() => ConfirmarConteo(iSel)">Sí, guardar</button>
+                                                <button type="button" class="tp-pb" @onclick="() => VolverAContar(iSel)">Vuelvo a contar</button>
+                                            </div>
+                                        </div>
+                                    }
+                                    else if (errores.TryGetValue(it.Id, out var err)) { <span class="tp-rojo">@err</span> }
                                     else if (!it.Hecho)
                                     {
                                         <span class="tp-gris">@(tarea.Tipo == "UBICACION" ? "tocá la planta" : "escribí y Enter")</span>
                                         <text> · </text><button type="button" class="tp-link" @onclick="() => NoLoEncuentro(iSel)">no lo encuentro</button>
                                     }
                                     else if (it.NoEncontrado) { <span class="tp-rojo">no lo encontró · @it.HechoPor @Hora(it)</span> }
-                                    else if (tarea.Tipo == "CONTAR" && it.StockAntes is int antes && antes != it.Contado)
+                                    else if (tarea.Tipo == "CONTAR")
                                     {
-                                        <span class="tp-ok">✓ arreglado · decía @antes, ahora @it.Contado</span> <span class="tp-gris">· @it.HechoPor @Hora(it)</span>
+                                        var ahora = Math.Max(0, (it.Contado ?? 0) - it.Apartados);
+                                        var nv = TareasNivel.Nivel(it.StockAntes ?? 0, ahora);
+                                        <span class="tn-@nv">@(nv == "OK" ? $"✓ estaba bien ({ahora})" : nv == "REVISA" ? $"Revisá · decía {it.StockAntes}, ahora {ahora}" : $"⚠ Mucha diferencia · decía {it.StockAntes}, ahora {ahora}")</span>
+                                        @if (it.Apartados > 0) { <span class="tp-gris"> · contaron @it.Contado, @it.Apartados ya vendidos sin armar</span> }
+                                        <span class="tp-gris"> · @it.HechoPor @Hora(it)</span>
                                     }
-                                    else if (tarea.Tipo == "CONTAR") { <span class="tp-ok">✓ estaba bien (@it.Contado)</span> <span class="tp-gris">· @it.HechoPor @Hora(it)</span> }
                                     else { <span class="tp-ok">✓ @it.Valor</span> <span class="tp-gris">· @it.HechoPor @Hora(it)</span> }
                                 </td>
                             </tr>
+                            @if (extraItem == it.Id && extraTipo == "lugar")
+                            {
+                                <tr class="tp-extra">
+                                    <td colspan="4">
+                                        <b>📍 ¿Dónde está?</b> <span class="tp-gris">(se corrige ya, sin aprobación)</span>
+                                        @foreach (var p in tarea.Plantas)
+                                        {
+                                            var pSel = p;
+                                            <button type="button" class="tp-pb @(extraPlanta == pSel.Codigo ? "on" : "")" @onclick="() => extraPlanta = pSel.Codigo">@pSel.Nombre</button>
+                                        }
+                                        <input class="tp-in bc" style="width:150px;" placeholder="zona (opcional)" maxlength="30" @bind="extraZona" @bind:event="oninput" />
+                                        <button type="button" class="tp-pb on" disabled="@(extraPlanta is null)" @onclick="() => GuardarLugar(iSel)">Guardar lugar</button>
+                                        <button type="button" class="tp-link" @onclick="() => extraItem = null">cancelar</button>
+                                    </td>
+                                </tr>
+                            }
+                            else if (extraItem == it.Id && extraTipo == "nombre")
+                            {
+                                <tr class="tp-extra">
+                                    <td colspan="4">
+                                        <b>✏️ Nombre nuevo</b> <span class="tp-gris">(lo tiene que aprobar la oficina)</span><br />
+                                        <input class="tp-in bc" style="width:70%; margin-top:0.3rem;" maxlength="300" @bind="extraNombre" @bind:event="oninput" />
+                                        <button type="button" class="tp-pb on" @onclick="() => ProponerNombre(iSel)">Mandar para aprobar</button>
+                                        <button type="button" class="tp-link" @onclick="() => extraItem = null">cancelar</button>
+                                    </td>
+                                </tr>
+                            }
                         }
                     </tbody>
                 </table>
                 <div class="tp-nota">
                     @if (tarea.Tipo == "CONTAR")
                     {
-                        <text>Mientras cuentan no ven cuánto decía el sistema: aparece recién después de guardar. Si se equivocan, corrigen el número y Enter de nuevo.</text>
+                        <text><b>No cuenten lo que ya está armado para un pedido.</b> Lo vendido que todavía está en el estante (ventas sin armar y MeLi sin etiqueta) lo descuenta solo el sistema.
+                        Mientras cuentan no ven cuánto decía el sistema: aparece recién después de guardar. Si se equivocan, corrigen el número y Enter de nuevo.</text>
                     }
                 </div>
             }
@@ -196,7 +250,14 @@
     private record TareaRes(int Id, string Tipo, string Titulo, string? Comentario, string Para, bool ParaTodos, int Total, int Hechos, DateTime? TerminadaAt, string? TerminadaPor);
     private record InicioRes(string Nombre, List<TareaRes> Tareas);
     private record ItemRes(int Id, string? Sku, string Nombre, string? Barcode, bool Hecho, int? Contado, int? StockAntes, bool NoEncontrado,
-        string? Valor, string? HechoPor, DateTime? HechoAt, string? Lugar);
+        string? Valor, string? HechoPor, DateTime? HechoAt, string? Lugar, int Apartados,
+        string? NombreSugerido, string? NombreRevision, string? Planta, string? Zona);
+    private record GuardarRes(bool Ok, bool Confirmar, int? StockAntes, int? StockDespues, int Apartados);
+    private record Confirmacion(int Antes, int Despues, int Apartados);
+    // mucha diferencia: esperando "Sí, guardar" / "Vuelvo a contar" (por renglón)
+    private readonly Dictionary<int, Confirmacion> confirmar = new();
+    private int? extraItem;
+    private string? extraTipo, extraPlanta, extraZona, extraNombre;
     private record PlantaRes(string Codigo, string Nombre);
     private record DetalleRes(int Id, string Tipo, string Titulo, string? Comentario, bool Terminada, List<ItemRes> Items, List<PlantaRes> Plantas);
 
@@ -244,7 +305,7 @@
 
     private async Task AbrirTarea(int id)
     {
-        valores.Clear(); zonas.Clear(); errores.Clear();
+        valores.Clear(); zonas.Clear(); errores.Clear(); confirmar.Clear(); extraItem = null;
         tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{token}/tarea/{id}");
         await EnfocarSiguiente(null);
     }
@@ -261,7 +322,7 @@
         if (tarea!.Tipo == "CONTAR")
         {
             if (!int.TryParse(v, out var n) || n < 0) { errores[it.Id] = "Poné un número"; return; }
-            await Mandar(it, new { contado = n, noEncontrado = false });
+            await Mandar(it, new { contado = n, noEncontrado = false, confirmado = false });
         }
         else await Mandar(it, new { noEncontrado = false, barcode = v });
     }
@@ -280,6 +341,13 @@
         {
             var r = await Http.PostAsJsonAsync($"api/deposito-tareas/celu/{token}/item/{it.Id}", body);
             if (!r.IsSuccessStatusCode) { errores[it.Id] = await LeerError(r); return; }
+            var g = await r.Content.ReadFromJsonAsync<GuardarRes>();
+            if (g?.Confirmar == true && g.StockAntes is int ca && g.StockDespues is int cd)
+            {
+                confirmar[it.Id] = new Confirmacion(ca, cd, g.Apartados);
+                return;
+            }
+            confirmar.Remove(it.Id);
             valores.Remove(it.Id);
             tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{token}/tarea/{tarea.Id}");
             inicio = await Http.GetFromJsonAsync<InicioRes>($"api/deposito-tareas/celu/{token}");
@@ -309,7 +377,45 @@
         if (r.IsSuccessStatusCode && quien is not null) await ElegirQuien(quien);
     }
 
-    private void SetValor(int id, ChangeEventArgs e) => valores[id] = e.Value?.ToString() ?? "";
+    private void SetValor(int id, ChangeEventArgs e) { valores[id] = e.Value?.ToString() ?? ""; confirmar.Remove(id); }
+
+    private async Task ConfirmarConteo(ItemRes it)
+    {
+        if (!int.TryParse((valores.TryGetValue(it.Id, out var x) ? x : Valor(it)).Trim(), out var n)) return;
+        await Mandar(it, new { contado = n, noEncontrado = false, confirmado = true });
+    }
+
+    private async Task VolverAContar(ItemRes it)
+    {
+        confirmar.Remove(it.Id);
+        valores[it.Id] = "";
+        StateHasChanged();
+        await Task.Delay(30);
+        try { await JS.InvokeVoidAsync("eval", $"document.getElementById('tp-in-{it.Id}')?.focus()"); } catch { }
+    }
+
+    private void AbrirExtra(ItemRes it, string tipo)
+    {
+        if (extraItem == it.Id && extraTipo == tipo) { extraItem = null; return; }
+        extraItem = it.Id; extraTipo = tipo;
+        extraPlanta = it.Planta; extraZona = it.Zona; extraNombre = it.NombreSugerido ?? it.Nombre;
+    }
+
+    private async Task GuardarLugar(ItemRes it)
+    {
+        var r = await Http.PostAsJsonAsync($"api/deposito-tareas/celu/{token}/item/{it.Id}/lugar", new { planta = extraPlanta, zona = extraZona });
+        if (!r.IsSuccessStatusCode) { errores[it.Id] = await LeerError(r); return; }
+        extraItem = null;
+        tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{token}/tarea/{tarea!.Id}");
+    }
+
+    private async Task ProponerNombre(ItemRes it)
+    {
+        var r = await Http.PostAsJsonAsync($"api/deposito-tareas/celu/{token}/item/{it.Id}/nombre", new { nombre = extraNombre });
+        if (!r.IsSuccessStatusCode) { errores[it.Id] = await LeerError(r); return; }
+        extraItem = null;
+        tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{token}/tarea/{tarea!.Id}");
+    }
 
     private static string Hora(ItemRes it) => it.HechoAt is DateTime h ? h.ToArTime().ToString("HH:mm") : "";
 

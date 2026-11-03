@@ -30,8 +30,12 @@ public class DepositoTareasController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly StockReservaService _reservas;
 
-    public DepositoTareasController(AppDbContext db, IServiceScopeFactory scopeFactory) { _db = db; _scopeFactory = scopeFactory; }
+    public DepositoTareasController(AppDbContext db, IServiceScopeFactory scopeFactory, StockReservaService reservas)
+    {
+        _db = db; _scopeFactory = scopeFactory; _reservas = reservas;
+    }
 
     private string Usuario => User.Identity?.Name ?? "?";
 
@@ -150,6 +154,21 @@ public class DepositoTareasController : ControllerBase
                              .OrderBy(p => p.Nombre).Select(p => p.Id).Take(300).ToListAsync())
                     motivos[id] = "Sin código de barras";
                 break;
+            case "codigos":
+            {
+                // 2026-11-03: pegar una lista de códigos (SKU o código de barras), separados por
+                // espacios, comas o renglones. Ej: los de la hoja impresa que ya estaban contando a mano.
+                var cods = (q ?? "").Split(new[] { ' ', ',', ';', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Take(300).ToList();
+                if (cods.Count == 0) return Ok(Array.Empty<object>());
+                var hall = await prods.Where(p => (p.Sku != null && cods.Contains(p.Sku)) || (p.Barcode != null && cods.Contains(p.Barcode)))
+                    .Select(p => new { p.Id, p.Sku, p.Barcode }).ToListAsync();
+                // en el orden en que los pegaron
+                foreach (var c in cods)
+                    foreach (var h in hall.Where(h => string.Equals(h.Sku, c, StringComparison.OrdinalIgnoreCase) || h.Barcode == c))
+                        motivos.TryAdd(h.Id, "De la lista pegada");
+                break;
+            }
             case "buscar":
             {
                 var query = prods;
@@ -166,6 +185,15 @@ public class DepositoTareasController : ControllerBase
             }
             default:
                 return BadRequest(new { error = "Fuente desconocida." });
+        }
+
+        // El café se lleva en GRAMOS: el conteo es de unidades, así que para contar queda afuera.
+        if (tipoN0(tipo) == "CONTAR")
+        {
+            var enGramos = await _db.CafeProductos.AsNoTracking()
+                .Where(p => motivos.Keys.Contains(p.Id) && (p.Categoria == "CAFE" || p.StockGramos != 0))
+                .Select(p => p.Id).ToListAsync();
+            foreach (var id in enGramos) motivos.Remove(id);
         }
 
         // Ya en una tarea abierta del mismo tipo → no repetir.
@@ -247,6 +275,57 @@ public class DepositoTareasController : ControllerBase
         return Ok(new { ok = true, id = t.Id, items = orden.Count });
     }
 
+    private static string tipoN0(string? tipo) => (tipo ?? "").ToUpperInvariant();
+
+    /// <summary>2026-11-03: cuánto se aleja lo contado de lo que decía el sistema. OK = igual;
+    /// REVISA = hasta 2 unidades o hasta el 10%; MUCHA = más del 10% Y más de 2 unidades (en ese caso,
+    /// antes de guardar se les pregunta si lo contaron bien). Mismos márgenes en Web (TareasNivel).</summary>
+    public static string Nivel(int antes, int ahora)
+    {
+        var dif = Math.Abs(ahora - antes);
+        if (dif == 0) return "OK";
+        if (dif <= 2 || dif <= 0.10m * Math.Max(Math.Abs(antes), 1)) return "REVISA";
+        return "MUCHA";
+    }
+
+    /// <summary>
+    /// 2026-11-03: unidades VENDIDAS que todavía están en el estante. Pregunta del dueño: "¿y qué pasa si
+    /// hay reservado de alguna venta?". Al cargar una venta el stock se descuenta en el momento, pero el
+    /// producto sigue en el depósito hasta que lo arman/despachan. Si contaran eso y el stock pasara a ser
+    /// lo contado, volverían a aparecer unidades ya vendidas. Se restan:
+    ///  - MeLi: órdenes con la etiqueta sin imprimir (<see cref="StockReservaService"/>, el mismo criterio
+    ///    del "reservado" de la carga de stock del celu).
+    ///  - Ventas propias en el tablero del depósito SIN ARMAR (PARA_PREPARAR / EN_PREPARACION, mismos
+    ///    7 días del tablero), sumando lo que su venta le descontó a ESTE producto (incluye las partes de
+    ///    los compuestos y las ediciones).
+    /// Lo ya ARMADO (LISTO) no se resta: la regla para el que cuenta es "no cuentes lo que ya está armado".
+    /// </summary>
+    private async Task<(int Meli, int Propias)> ApartadosAsync(int productoId)
+    {
+        var meli = await _reservas.GetReservaAsync(productoId);
+        var desde = DateTime.UtcNow.Date.AddDays(-7);
+        var numeros = await _db.CafeVentas.AsNoTracking()
+            .Where(v => v.PreparacionOcultoAt == null && v.Estado != "anulado"
+                && (v.EstadoPreparacion == "PARA_PREPARAR" || v.EstadoPreparacion == "EN_PREPARACION")
+                && (v.CreatedAt >= desde || (v.PreparacionUpdatedAt != null && v.PreparacionUpdatedAt >= desde)))
+            .Select(v => v.Numero).ToListAsync();
+        var propias = 0;
+        if (numeros.Count > 0)
+        {
+            var movs = await _db.StockMovimientos.AsNoTracking()
+                .Where(m => m.ProductoId == productoId && !m.Reverted
+                    && (m.TipoMov == "VENTA_NUESTRA" || m.TipoMov == "VENTA_NUESTRA_COMP" || m.TipoMov == "DEVUELTO_VENTA")
+                    && m.CreatedAt >= desde.AddDays(-30))
+                .Select(m => new { m.Comentario, m.StockAntes, m.StockDespues }).ToListAsync();
+            foreach (var n in numeros)
+            {
+                var marca = "#" + n + " ";
+                propias += movs.Where(m => m.Comentario != null && m.Comentario.Contains(marca)).Sum(m => m.StockAntes - m.StockDespues);
+            }
+        }
+        return (meli, Math.Max(0, propias));
+    }
+
     private static string TituloPorDefecto(string tipo) => tipo switch
     {
         "CONTAR" => "Contar stock",
@@ -266,17 +345,23 @@ public class DepositoTareasController : ControllerBase
         var tareas = await q.Take(200).ToListAsync();
         var ids = tareas.Select(t => t.Id).ToList();
 
-        var stats = await _db.DepTareaItems.AsNoTracking().Where(i => ids.Contains(i.TareaId))
-            .GroupBy(i => i.TareaId)
-            .Select(g => new
-            {
-                Id = g.Key,
-                Total = g.Count(),
-                Hechos = g.Count(i => i.HechoAt != null),
-                NoEncontrados = g.Count(i => i.NoEncontrado),
-                Diferencias = g.Count(i => i.HechoAt != null && i.Contado != null && i.Contado != i.StockAlContar),
-                SinRevisar = g.Count(i => i.HechoAt != null && (i.NoEncontrado || (i.Contado != null && i.Contado != i.StockAlContar)) && i.Revision == null)
-            }).ToDictionaryAsync(x => x.Id);
+        // En memoria: "no coincide" = lo contado MENOS los vendidos sin armar (Valor) ≠ lo que decía el sistema.
+        var filas = await _db.DepTareaItems.AsNoTracking().Where(i => ids.Contains(i.TareaId))
+            .Select(i => new { i.TareaId, i.HechoAt, i.Contado, i.StockAlContar, i.NoEncontrado, i.Revision, i.Valor })
+            .ToListAsync();
+        bool Dif(int? contado, int? alContar, string? valor) =>
+            contado is int c && Math.Max(0, c - (int.TryParse(valor, out var ap) ? ap : 0)) != alContar;
+        var stats = filas.GroupBy(i => i.TareaId).Select(g => new
+        {
+            Id = g.Key,
+            Total = g.Count(),
+            Hechos = g.Count(i => i.HechoAt != null),
+            NoEncontrados = g.Count(i => i.NoEncontrado),
+            Diferencias = g.Count(i => i.HechoAt != null && Dif(i.Contado, i.StockAlContar, i.Valor)),
+            Mucha = g.Count(i => i.HechoAt != null && i.Contado is int c && i.StockAlContar is int a
+                && Nivel(a, Math.Max(0, c - (int.TryParse(i.Valor, out var ap) ? ap : 0))) == "MUCHA"),
+            SinRevisar = g.Count(i => i.HechoAt != null && (i.NoEncontrado || Dif(i.Contado, i.StockAlContar, i.Valor)) && i.Revision == null)
+        }).ToDictionary(x => x.Id);
 
         var emps = await _db.NomEmpleados.AsNoTracking().ToDictionaryAsync(e => e.Id, e => NombreCorto(e.Nombre));
 
@@ -299,6 +384,7 @@ public class DepositoTareasController : ControllerBase
                 hechos = s?.Hechos ?? 0,
                 noEncontrados = s?.NoEncontrados ?? 0,
                 diferencias = s?.Diferencias ?? 0,
+                muchaDiferencia = s?.Mucha ?? 0,
                 sinRevisar = s?.SinRevisar ?? 0
             };
         }));
@@ -530,13 +616,14 @@ public class DepositoTareasController : ControllerBase
                                noEncontrado = i.NoEncontrado,
                                valor = i.Valor,
                                hechoPor = i.HechoPor,
-                               hechoAt = i.HechoAt
+                               hechoAt = i.HechoAt,
+                               nombreSugerido = i.NombreSugerido,
+                               nombreRevision = i.NombreRevision
                            }).ToListAsync();
 
-        var zonas = t.Tipo == "UBICACION"
-            ? await _db.CafeUbicacionZonas.AsNoTracking().OrderBy(z => z.Planta).ThenBy(z => z.Codigo)
-                .Select(z => new { planta = z.Planta, codigo = z.Codigo, nombre = z.Nombre }).ToListAsync()
-            : null;
+        // las zonas van siempre: mientras cuentan también pueden corregir dónde está
+        var zonas = await _db.CafeUbicacionZonas.AsNoTracking().OrderBy(z => z.Planta).ThenBy(z => z.Codigo)
+            .Select(z => new { planta = z.Planta, codigo = z.Codigo, nombre = z.Nombre }).ToListAsync();
 
         return Ok(new
         {
@@ -548,8 +635,11 @@ public class DepositoTareasController : ControllerBase
             items = items.Select(i => new
             {
                 i.id, i.sku, i.nombre, i.barcode, i.hecho, i.contado, i.noEncontrado, i.valor, i.hechoPor, i.hechoAt,
+                i.nombreSugerido, i.nombreRevision, i.planta, i.zona,
                 // lo que decía el sistema: recién DESPUÉS de contar (mientras cuentan, a ciegas)
                 stockAntes = i.hecho ? i.stockAntes : null,
+                // CONTAR: unidades vendidas sin armar que se restaron a lo contado (guardadas en Valor)
+                apartados = t.Tipo == "CONTAR" && int.TryParse(i.valor, out var ap) ? ap : 0,
                 lugar = UbicacionHelper.Texto(i.planta, i.zona)
             }),
             plantas = UbicacionHelper.Plantas.Select(p => new { codigo = p.Codigo, nombre = p.Nombre }),
@@ -557,7 +647,7 @@ public class DepositoTareasController : ControllerBase
         });
     }
 
-    public record CeluItemRequest(int? Contado, bool NoEncontrado, string? Planta, string? Zona, string? Barcode);
+    public record CeluItemRequest(int? Contado, bool NoEncontrado, string? Planta, string? Zona, string? Barcode, bool Confirmado = false);
 
     /// <summary>Guarda lo que hicieron con un producto. CONTAR: solo anota (el stock no cambia).
     /// UBICACION y BARCODE: se cargan directo en el producto.</summary>
@@ -575,6 +665,16 @@ public class DepositoTareasController : ControllerBase
         var prod = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == it.ProductoId);
         if (prod is null) return NotFound();
 
+        // 2026-11-03: si la diferencia es MUCHA, antes de tocar el stock se les pregunta si lo contaron
+        // bien (frena los errores de tipeo: 30 en vez de 300). No se guarda nada hasta que confirman.
+        if (t.Tipo == "CONTAR" && !req.NoEncontrado && !req.Confirmado && req.Contado is int cc && cc >= 0)
+        {
+            var (m0, p0) = await ApartadosAsync(prod.Id);
+            var ahora0 = Math.Max(0, cc - m0 - p0);
+            if (Nivel(prod.StockUnidades, ahora0) == "MUCHA")
+                return Ok(new { ok = false, confirmar = true, stockAntes = prod.StockUnidades, stockDespues = ahora0, apartados = m0 + p0 });
+        }
+
         var quien = NombreCorto(emp.Nombre);
         it.NoEncontrado = req.NoEncontrado;
         it.Contado = null;
@@ -591,12 +691,16 @@ public class DepositoTareasController : ControllerBase
                     if (req.Contado is not int c || c < 0 || c > 1_000_000) return BadRequest(new { error = "Poné cuántos contaste." });
                     it.Contado = c;
                     it.StockAlContar = prod.StockUnidades;
-                    // Queda arreglado en el momento: el stock pasa a ser lo que contaron.
+                    // Queda arreglado en el momento: el stock pasa a ser lo que contaron MENOS lo que ya
+                    // está vendido y sigue en el estante (ver ApartadosAsync).
+                    var (apMeli, apPropias) = await ApartadosAsync(prod.Id);
+                    var apartados = apMeli + apPropias;
+                    if (apartados > 0) it.Valor = apartados.ToString();
                     stockAntes = prod.StockUnidades;
-                    stockDespues = c;
+                    stockDespues = Math.Max(0, c - apartados);
                     if (stockAntes != stockDespues)
                     {
-                        prod.StockUnidades = c;
+                        prod.StockUnidades = stockDespues.Value;
                         prod.UpdatedAt = DateTime.UtcNow;
                         prod.StockChangedAt = DateTime.UtcNow;
                         await CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
@@ -606,10 +710,11 @@ public class DepositoTareasController : ControllerBase
                             OperadorNombreSnap = quien,
                             DepositoNombreSnap = "9 de Abril",
                             TipoMov = "SET",
-                            Cantidad = c,
+                            Cantidad = stockDespues.Value,
                             StockAntes = stockAntes.Value,
-                            StockDespues = c,
-                            Comentario = $"Conteo de la tarea #{t.Id} ({t.Titulo})",
+                            StockDespues = stockDespues.Value,
+                            Comentario = $"Conteo de la tarea #{t.Id} ({t.Titulo}): contaron {c}"
+                                + (apartados > 0 ? $" − {apartados} vendidos sin armar" + (apMeli > 0 ? $" ({apMeli} MeLi)" : "") : ""),
                             CreatedAt = DateTime.UtcNow
                         });
                     }
@@ -650,7 +755,113 @@ public class DepositoTareasController : ControllerBase
         await _db.SaveChangesAsync();
         await CerrarSiTerminoAsync(t, quien);
         if (stockAntes is int a && stockDespues is int d && a != d) FireAndForgetPushMeli(prod.Id);
-        return Ok(new { ok = true, terminada = t.TerminadaAt != null, stockAntes, stockDespues });
+        return Ok(new { ok = true, terminada = t.TerminadaAt != null, stockAntes, stockDespues, apartados = t.Tipo == "CONTAR" && int.TryParse(it.Valor, out var apx) ? apx : 0 });
+    }
+
+    public record CeluLugarRequest(string? Planta, string? Zona);
+
+    /// <summary>2026-11-03: mientras cuentan, "📍 está en otro lugar": corrige la ubicación del producto
+    /// en el momento (no hace falta aprobación), sin marcar el producto como hecho.</summary>
+    [HttpPost("celu/{token}/item/{itemId:int}/lugar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CeluLugar(string token, int itemId, [FromBody] CeluLugarRequest req)
+    {
+        var emp = await EmpleadoDelTokenAsync(token);
+        if (emp is null) return NotFound();
+        var it = await _db.DepTareaItems.AsNoTracking().FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it is null || !await TareasDe(emp.Id).AnyAsync(x => x.Id == it.TareaId)) return NotFound();
+        var planta = (req?.Planta ?? "").Trim().ToUpperInvariant();
+        if (!UbicacionHelper.PlantaValida(planta)) return BadRequest(new { error = "Elegí la planta." });
+        var zona = UbicacionHelper.NormalizarZona(req!.Zona);
+        if (zona is not null && !await _db.CafeUbicacionZonas.AnyAsync(z => z.Planta == planta && z.Codigo == zona))
+            _db.CafeUbicacionZonas.Add(new CafeUbicacionZona { Planta = planta, Codigo = zona });
+        var prod = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == it.ProductoId);
+        if (prod is null) return NotFound();
+        prod.UbicacionPlanta = planta;
+        prod.UbicacionZona = zona;
+        prod.UbicacionAt = DateTime.UtcNow;
+        prod.UbicacionPor = NombreCorto(emp.Nombre);
+        prod.UbicacionDudosaAt = null;
+        prod.UbicacionDudosaPor = null;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, lugar = UbicacionHelper.Texto(planta, zona) });
+    }
+
+    public record CeluNombreRequest(string? Nombre);
+
+    /// <summary>2026-11-03: "✏️ proponer otro nombre". NO cambia el producto: queda pendiente hasta que el
+    /// dueño lo aprueba en Tareas del depósito (pedido: "que lo pueda hacer pero que me pida aprobación").</summary>
+    [HttpPost("celu/{token}/item/{itemId:int}/nombre")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CeluNombre(string token, int itemId, [FromBody] CeluNombreRequest req)
+    {
+        var emp = await EmpleadoDelTokenAsync(token);
+        if (emp is null) return NotFound();
+        var it = await _db.DepTareaItems.FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it is null || !await TareasDe(emp.Id).AnyAsync(x => x.Id == it.TareaId)) return NotFound();
+        var nombre = string.Join(' ', (req?.Nombre ?? "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (nombre.Length < 3) return BadRequest(new { error = "Escribí el nombre nuevo." });
+        if (nombre.Length > 300) nombre = nombre[..300];
+        it.NombreSugerido = nombre;
+        it.NombreSugeridoPor = NombreCorto(emp.Nombre);
+        it.NombreSugeridoAt = DateTime.UtcNow;
+        it.NombreRevision = null;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Nombres propuestos desde el depósito que esperan aprobación.</summary>
+    [HttpGet("nombres-pendientes")]
+    public async Task<IActionResult> NombresPendientes()
+    {
+        var filas = await (from i in _db.DepTareaItems.AsNoTracking()
+                           join p in _db.CafeProductos.AsNoTracking() on i.ProductoId equals p.Id
+                           where i.NombreSugerido != null && i.NombreRevision == null
+                           orderby i.NombreSugeridoAt
+                           select new
+                           {
+                               itemId = i.Id,
+                               productoId = p.Id,
+                               sku = p.Sku,
+                               nombreActual = p.Nombre,
+                               nombrePropuesto = i.NombreSugerido,
+                               propuestoPor = i.NombreSugeridoPor,
+                               propuestoAt = i.NombreSugeridoAt
+                           }).ToListAsync();
+        return Ok(filas);
+    }
+
+    public record AprobarNombreRequest(string? Nombre);
+
+    /// <summary>Aprueba el nombre (se puede retocar antes de aprobar) y lo pone en el producto.</summary>
+    [HttpPost("items/{itemId:int}/nombre/aprobar")]
+    public async Task<IActionResult> AprobarNombre(int itemId, [FromBody] AprobarNombreRequest? req)
+    {
+        var it = await _db.DepTareaItems.FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it?.NombreSugerido is null) return NotFound();
+        var nombre = string.IsNullOrWhiteSpace(req?.Nombre) ? it.NombreSugerido : req!.Nombre!.Trim();
+        var prod = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == it.ProductoId);
+        if (prod is null) return NotFound();
+        var viejo = prod.Nombre;
+        prod.Nombre = nombre.Length > 300 ? nombre[..300] : nombre;
+        prod.UpdatedAt = DateTime.UtcNow;
+        it.NombreRevision = "APROBADO";
+        it.NombreRevisionAt = DateTime.UtcNow;
+        it.NombreRevisionPor = Usuario;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, antes = viejo, ahora = prod.Nombre });
+    }
+
+    [HttpPost("items/{itemId:int}/nombre/rechazar")]
+    public async Task<IActionResult> RechazarNombre(int itemId)
+    {
+        var it = await _db.DepTareaItems.FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it?.NombreSugerido is null) return NotFound();
+        it.NombreRevision = "RECHAZADO";
+        it.NombreRevisionAt = DateTime.UtcNow;
+        it.NombreRevisionPor = Usuario;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     /// <summary>"✓ Listo" de una tarea libre (o de una con productos, si terminaron todos).</summary>

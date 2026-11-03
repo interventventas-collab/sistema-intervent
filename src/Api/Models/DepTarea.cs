@@ -84,4 +84,22 @@ public class DepTareaItem
 
     [MaxLength(120)]
     public string? RevisionPor { get; set; }
+
+    /// <summary>2026-11-03: nombre nuevo propuesto desde el depósito. NO se aplica solo: espera que el
+    /// dueño lo apruebe (NombreRevision = APROBADO | RECHAZADO; null = pendiente).</summary>
+    [MaxLength(300)]
+    public string? NombreSugerido { get; set; }
+
+    [MaxLength(200)]
+    public string? NombreSugeridoPor { get; set; }
+
+    public DateTime? NombreSugeridoAt { get; set; }
+
+    [MaxLength(20)]
+    public string? NombreRevision { get; set; }
+
+    public DateTime? NombreRevisionAt { get; set; }
+
+    [MaxLength(120)]
+    public string? NombreRevisionPor { get; set; }
 }
