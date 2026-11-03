@@ -732,16 +732,32 @@
                                 </div>
                                 <hr style="margin: 0.5rem 0; border: none; border-top: 1px solid #d1d5db;" />
                                 <div class="venta-totals-row" style="font-size: 1.15rem; font-weight: 800; color: #059669;">
-                                    <span>TOTAL:</span>
+                                    <span>@(SumaIva ? "NETO sin IVA:" : "TOTAL:")</span>
                                     <strong>$@FormatMoney(Total)</strong>
                                 </div>
                             }
                             else
                             {
                                 <div class="venta-totals-row" style="font-size: 1.15rem; font-weight: 800; color: #059669;">
-                                    <span>TOTAL:</span>
+                                    <span>@(SumaIva ? "NETO sin IVA:" : "TOTAL:")</span>
                                     <input class="form-input" type="number" step="0.01" min="0" @bind="formTotalManual"
                                            style="text-align: right; max-width: 150px; font-weight: 800; font-size: 1.05rem; color: #059669;" />
+                                </div>
+                            }
+                            @* 2026-11-03: con Factura A/B el importe de arriba es SIN IVA y al facturar se le suma el 21%.
+                               Antes decía "TOTAL" pelado: Germán cargó el precio con IVA (CPC Servicios) y salió con IVA doble. *@
+                            @if (SumaIva)
+                            {
+                                <div class="venta-totals-row" style="font-size: 0.9rem; color: #6b7280;">
+                                    <span>IVA 21%:</span>
+                                    <span>$@FormatMoney(IvaFactura)</span>
+                                </div>
+                                <div class="venta-totals-row" style="font-size: 1.15rem; font-weight: 800; color: #111827;">
+                                    <span>TOTAL c/IVA:</span>
+                                    <strong>$@FormatMoney(Total + IvaFactura)</strong>
+                                </div>
+                                <div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.15rem;">
+                                    Cargá el precio <strong>sin IVA</strong>: el 21% se suma solo al facturar.
                                 </div>
                             }
                             <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
@@ -1901,7 +1917,14 @@
             : null;
         var tipoTexto = r.TipoComprobante switch { "FA" => "Factura A", "FB" => "Factura B", _ => "Factura C" };
         var empresaTexto = accEmisora is not null ? ArcaAccountLabel(accEmisora) : "la empresa por defecto";
-        var confirmMsg = $"Vas a emitir {tipoTexto} por ${FormatMoney(r.MontoTotal)}\n\n"
+        // 2026-11-03: en A y B el MontoTotal es el NETO y ARCA suma el 21%. Antes el cartel decía "por $neto"
+        // y la factura salía por más (caso CPC Servicios): ahora dice el total real con IVA.
+        var sumaIva = r.TipoComprobante is "FA" or "FB";
+        var ivaTxt = Math.Round(r.MontoTotal * 0.21m, 2);
+        var importeTexto = sumaIva
+            ? $"${FormatMoney(r.MontoTotal + ivaTxt)} CON IVA\n(neto ${FormatMoney(r.MontoTotal)} + IVA 21% ${FormatMoney(ivaTxt)})"
+            : $"${FormatMoney(r.MontoTotal)}";
+        var confirmMsg = $"Vas a emitir {tipoTexto} por {importeTexto}\n\n"
                        + $"EMPRESA: {empresaTexto}\n"
                        + $"CLIENTE: {r.ClienteNombre}\n\n"
                        + "Una vez emitida NO se puede borrar ni cambiar de empresa (solo anularla con nota de credito).\n\n"
@@ -1991,13 +2014,17 @@
                   PrecioUnitario = 0m,
                   MultiplicaPorDias = i.MultiplicaPorDias
               }).ToList();
+    /// <summary>2026-11-03: Factura A y B le suman 21% al total de la reserva al emitir (la C no).</summary>
+    private bool SumaIva => formTipoComprobante is "FA" or "FB";
+    private decimal IvaFactura => Math.Round(Total * 0.21m, 2);
     private decimal Total => formUsarPrecios
         ? Math.Max(0m, Subtotal - Math.Max(0m, formDescuento))
         : Math.Max(0m, formTotalManual);
     // 2026-10-05: el saldo descuenta TODO lo pagado (seña vieja + cobranzas), no solo la seña.
     // Antes ignoraba lo cobrado y el formulario decía un saldo distinto al de la lista.
     private decimal PagadoForm => Math.Max(0m, formSena) + (pagosReserva is null ? 0m : pagosReserva.CobradoSinRecibo + pagosReserva.Pagos.Sum(p => p.Importe));
-    private decimal Saldo => Math.Max(0m, Total - PagadoForm);
+    // 2026-11-03: con Factura A/B el cliente paga el total CON IVA (igual que "¿Quién me debe?").
+    private decimal Saldo => Math.Max(0m, Total + (SumaIva ? IvaFactura : 0m) - PagadoForm);
     private decimal formSenaOriginal;
     private AlqReservaPagosDto? pagosReserva;
     private bool irACargarPago;
