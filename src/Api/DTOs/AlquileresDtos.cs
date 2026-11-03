@@ -304,4 +304,9 @@ public record AlqComprobanteListadoDto(
     int ReservaId, string ReservaNumero, string ClienteNombre, DateTime Fecha,
     string Clase, string TipoComprobante, int PtoVta, int CbteNro, decimal Total,
     string? AnulaA, string? AnuladaPor, string? Motivo,
-    int? ClienteId = null, int CbteTipoNum = 0, bool EsVigente = false);
+    int? ClienteId = null, int CbteTipoNum = 0, bool EsVigente = false,
+    DateTime? FechaEntrega = null, DateTime? FechaRetiro = null, decimal MontoReserva = 0,
+    string? Observaciones = null, List<AlqComprobanteListadoItemDto>? Items = null);
+
+/// <summary>2026-11-03: renglón de equipo para el cartelito (hover) del listado de Ventas.</summary>
+public record AlqComprobanteListadoItemDto(string Nombre, int Cantidad, decimal PrecioUnitario);

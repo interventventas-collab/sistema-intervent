@@ -27,6 +27,9 @@
         max-width: 520px;
     }
     .cell-cliente-hover:hover .venta-tooltip { display: block; }
+    /* 2026-11-03: factura de alquiler anulada en gris (sin opacity: si no el cartelito también queda transparente) */
+    .data-table tbody tr.alq-anulada > td { color: #9ca3af; }
+    .data-table tbody tr.alq-anulada .venta-tooltip, .data-table tbody tr.alq-anulada .venta-tooltip td { color: #1f2937; }
     /* 2026-09-17: ojito 👁️ de la ficha del cliente en cada renglón */
     .vta-ojito { background: #fff; border: 1px solid #d1d5db; border-radius: 6px; padding: 0 0.3rem; margin-right: 0.35rem; font-size: 0.85rem; line-height: 1.5; cursor: pointer; vertical-align: middle; }
     .vta-ojito:hover { background: #f3f4f6; border-color: #9ca3af; }
@@ -4024,10 +4027,18 @@
     <div class="modal-overlay" @onclick="CerrarPdfAlquiler">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 820px; max-height: 92vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: whitesmoke;">
-                <h3 style="margin: 0;">📄 @AlqTipoTexto(alqPreview) @NroCorto($"{alqPreview.CbteNro}") · @alqPreview.ClienteNombre</h3>
+                <h3 style="margin: 0; font-size: 1rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="@alqPreview.ClienteNombre">📄 @alqPreview.ReservaNumero · @alqPreview.ClienteNombre</h3>
                 <div style="display: flex; gap: 0.4rem; align-items: center;">
-                    <button class="btn btn-secondary" style="font-size: 0.85rem;" @onclick="DescargarPdfAlquiler" disabled="@(alqPreviewBytes is null)">⬇ Descargar</button>
-                    <button class="btn btn-secondary" style="font-size: 0.85rem;" @onclick="CerrarPdfAlquiler">✕ Cerrar</button>
+                    @* 2026-11-03: ver la factura/NC o el comprobante de la reserva, desde la misma ventanita. *@
+                    @{ var ap = alqPreview; }
+                    <span style="display:inline-flex; border:1px solid #d1d5db; border-radius:999px; overflow:hidden; font-size:0.82rem; font-weight:600;">
+                        <button type="button" style="padding:0.25rem 0.75rem; border:none; cursor:pointer; white-space:nowrap; background:@(alqPreviewQue == "factura" ? "#eff6ff" : "white"); color:@(alqPreviewQue == "factura" ? "#1d4ed8" : "#374151");"
+                                @onclick='() => VerPdfAlquiler(ap, "factura")'>🧾 @AlqTipoTexto(ap) @NroCorto($"{ap.CbteNro}")</button>
+                        <button type="button" style="padding:0.25rem 0.75rem; border:none; border-left:1px solid #d1d5db; cursor:pointer; white-space:nowrap; background:@(alqPreviewQue == "reserva" ? "#eff6ff" : "white"); color:@(alqPreviewQue == "reserva" ? "#1d4ed8" : "#374151");"
+                                @onclick='() => VerPdfAlquiler(ap, "reserva")'>📅 Reserva</button>
+                    </span>
+                    <button class="btn btn-secondary" style="font-size: 0.85rem; white-space: nowrap;" @onclick="DescargarPdfAlquiler" disabled="@(alqPreviewBytes is null)">⬇ Descargar</button>
+                    <button class="btn btn-secondary" style="font-size: 0.85rem; white-space: nowrap;" @onclick="CerrarPdfAlquiler">✕ Cerrar</button>
                 </div>
             </div>
             <div class="modal-body" style="background: #525659; padding: 0; overflow: hidden;">
@@ -6028,12 +6039,19 @@
     private AlqComprobanteListadoDto? alqPreview;
     private string? alqPreviewUrl;
     private byte[]? alqPreviewBytes;
+    /// <summary>"factura" = la factura/NC de ARCA · "reserva" = el comprobante de la reserva (con QR, entrega y retiro).</summary>
+    private string alqPreviewQue = "factura";
 
-    private async Task VerPdfAlquiler(AlqComprobanteListadoDto a)
+    private async Task VerPdfAlquiler(AlqComprobanteListadoDto a) => await VerPdfAlquiler(a, "factura");
+
+    private async Task VerPdfAlquiler(AlqComprobanteListadoDto a, string que)
     {
         await CerrarPdfAlquiler();
         alqPreview = a;
-        var (bytes, error) = await Api.GetAlqComprobantePdfAsync(a.ReservaId, a.PtoVta, a.CbteTipoNum, a.CbteNro);
+        alqPreviewQue = que;
+        var (bytes, error) = que == "reserva"
+            ? await Api.GetAlqReservaPdfAsync(a.ReservaId)
+            : await Api.GetAlqComprobantePdfAsync(a.ReservaId, a.PtoVta, a.CbteTipoNum, a.CbteNro);
         if (bytes is null) { ToastService.Error(error ?? "No se pudo armar el PDF"); alqPreview = null; return; }
         alqPreviewBytes = bytes;
         alqPreviewUrl = await JS.InvokeAsync<string>("createBlobUrl", Convert.ToBase64String(bytes), "application/pdf");
@@ -6052,7 +6070,9 @@
     {
         if (alqPreview is null || alqPreviewBytes is null) return;
         var a = alqPreview;
-        var nombre = $"{(a.Clase == "nota_credito" ? "NotaCredito" : "Factura")}-{a.PtoVta:D5}-{a.CbteNro:D8}.pdf";
+        var nombre = alqPreviewQue == "reserva"
+            ? $"Reserva-{a.ReservaNumero}.pdf"
+            : $"{(a.Clase == "nota_credito" ? "NotaCredito" : "Factura")}-{a.PtoVta:D5}-{a.CbteNro:D8}.pdf";
         await JS.InvokeVoidAsync("downloadFile", nombre, "application/pdf", Convert.ToBase64String(alqPreviewBytes));
     }
 
@@ -6135,14 +6155,67 @@
     {
         var esNc = a.Clase == "nota_credito";
         var anulada = !esNc && a.AnuladaPor is not null;
-        <tr style="background:#f9fafb; @(anulada ? "opacity:0.55;" : "")">
+        <tr class="@(anulada ? "alq-anulada" : "")" style="background:#f9fafb;">
             <td></td>
             <td style="font-family: monospace; font-weight: 700; white-space: nowrap;">
                 <button type="button" class="vta-ojito" title="Ver este comprobante en pantalla (sin descargar)"
                         @onclick="() => VerPdfAlquiler(a)">👁️</button>@a.ReservaNumero
             </td>
-            <td>@a.Fecha.ToString("dd/MM/yyyy")</td>
-            <td>@a.ClienteNombre <span style="color:#6b7280; font-size:0.8rem;">· alquiler</span></td>
+            <td>
+                @a.Fecha.ToString("dd/MM/yyyy")
+                @if (a.FechaEntrega.HasValue)
+                {
+                    <div style="font-size:0.7rem; color:#6b7280; margin-top:0.15rem; white-space:nowrap;"
+                         title="Cuándo se entrega y cuándo se retira">🚚 entrega @a.FechaEntrega.Value.ToString("dd/MM")@(a.FechaRetiro.HasValue ? $" · retira {a.FechaRetiro.Value:dd/MM}" : "")</div>
+                }
+            </td>
+            <td style="position: relative;" class="cell-cliente-hover">
+                @a.ClienteNombre <span style="color:#6b7280; font-size:0.8rem;">· alquiler</span>
+                @* 2026-11-03: mismo cartelito que las ventas: qué se alquila, al pasar el mouse. *@
+                <div class="venta-tooltip">
+                    <div style="font-weight: 700; color: #1f2937; margin-bottom: 0.4rem; padding-bottom: 0.3rem; border-bottom: 1px solid #e5e7eb;">
+                        @a.ReservaNumero — @a.ClienteNombre
+                    </div>
+                    @if (a.FechaEntrega.HasValue)
+                    {
+                        <div style="font-size: 0.8rem; color: #374151; margin-bottom: 0.4rem;">
+                            🚚 Entrega <strong>@a.FechaEntrega.Value.ToString("dd/MM/yyyy")</strong>@if (a.FechaRetiro.HasValue) {<span> · Retira <strong>@a.FechaRetiro.Value.ToString("dd/MM/yyyy")</strong></span>}
+                        </div>
+                    }
+                    @if (a.Items is { Count: > 0 })
+                    {
+                        <div style="font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem;">Equipos</div>
+                        <table style="width: 100%; font-size: 0.82rem; border-collapse: collapse;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid #e5e7eb;">
+                                    <th style="text-align: left; padding: 0.2rem; font-weight: 600; color: #6b7280;">Equipo</th>
+                                    <th style="text-align: center; padding: 0.2rem; font-weight: 600; color: #6b7280;">Cant</th>
+                                    <th style="text-align: right; padding: 0.2rem; font-weight: 600; color: #6b7280;">Precio c/u</th>
+                                    <th style="text-align: right; padding: 0.2rem; font-weight: 600; color: #6b7280;">Subtot</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var it in a.Items)
+                            {
+                                <tr>
+                                    <td style="padding: 0.2rem; line-height: 1.2;">@it.Nombre</td>
+                                    <td style="text-align: center; padding: 0.2rem; font-family: monospace;">@it.Cantidad</td>
+                                    <td style="text-align: right; padding: 0.2rem; font-family: monospace; white-space: nowrap;">@(it.PrecioUnitario > 0 ? $"${FormatMoney(it.PrecioUnitario)}" : "—")</td>
+                                    <td style="text-align: right; padding: 0.2rem; font-family: monospace;">@(it.PrecioUnitario > 0 ? $"${FormatMoney(it.Cantidad * it.PrecioUnitario)}" : "—")</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                    <div style="margin-top: 0.4rem; font-size: 0.82rem; text-align: right;">
+                        Total de la reserva (sin IVA): <strong>$@FormatMoney(a.MontoReserva)</strong>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(a.Observaciones))
+                    {
+                        <div style="margin-top: 0.5rem; padding-top: 0.3rem; border-top: 1px solid #e5e7eb; font-size: 0.8rem; color: #374151; white-space: pre-wrap;">@a.Observaciones</div>
+                    }
+                </div>
+            </td>
             <td>
                 @AlqTipoTexto(a) @NroCorto($"{a.CbteNro}")
                 @if (esNc && a.AnulaA is not null)

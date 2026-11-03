@@ -423,4 +423,17 @@ public class AlqComprobanteListadoDto
     public int CbteTipoNum { get; set; }
     /// <summary>Es la factura que hoy vale para esa reserva (se puede cobrar o anular).</summary>
     public bool EsVigente { get; set; }
+    public DateTime? FechaEntrega { get; set; }
+    public DateTime? FechaRetiro { get; set; }
+    /// <summary>Total de la reserva (neto, sin IVA).</summary>
+    public decimal MontoReserva { get; set; }
+    public string? Observaciones { get; set; }
+    public List<AlqComprobanteListadoItemDto>? Items { get; set; }
+}
+
+public class AlqComprobanteListadoItemDto
+{
+    public string Nombre { get; set; } = "";
+    public int Cantidad { get; set; }
+    public decimal PrecioUnitario { get; set; }
 }
