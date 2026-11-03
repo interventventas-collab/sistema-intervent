@@ -157,6 +157,8 @@ public class AppDbContext : DbContext
     public DbSet<CafeProducto> CafeProductos => Set<CafeProducto>();
     // 2026-09-24: zonas del depósito (código corto + nombre largo) para la ubicación de productos
     public DbSet<CafeUbicacionZona> CafeUbicacionZonas => Set<CafeUbicacionZona>();
+    public DbSet<DepTarea> DepTareas => Set<DepTarea>();
+    public DbSet<DepTareaItem> DepTareaItems => Set<DepTareaItem>();
     // 2026-08-05: estado de la foto por producto (aprobada / reportada errónea) — a nivel sistema
     public DbSet<CafeProductoFoto> CafeProductoFotos => Set<CafeProductoFoto>();
     // 2026-10-30: fichas técnicas de café (una por café, editable desde Productos o Catálogo)
