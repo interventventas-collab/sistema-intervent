@@ -3731,6 +3731,34 @@ public class ApiClient
         return null;
     }
 
+    // 2026-11-03: Tareas del depósito (/deposito/tareas)
+    public async Task<List<DepTareaEmpleadoDto>?> GetDepTareasEmpleadosAsync()
+        => await GetAsync<List<DepTareaEmpleadoDto>>("/api/deposito-tareas/empleados");
+
+    public async Task<DepTareaLinkDto?> CrearDepTareasLinkAsync(int empleadoId)
+        => await PostAsync<DepTareaLinkDto>($"/api/deposito-tareas/empleados/{empleadoId}/link", new { });
+
+    public async Task<List<DepTareaCandidatoDto>?> GetDepTareasCandidatosAsync(string fuente, string tipo, string? q = null)
+        => await GetAsync<List<DepTareaCandidatoDto>>($"/api/deposito-tareas/candidatos?fuente={fuente}&tipo={tipo}&q={Uri.EscapeDataString(q ?? "")}");
+
+    public async Task<DepTareaCrearResultDto?> CrearDepTareaAsync(string tipo, string? titulo, string? comentario, int? empleadoId, string para, List<int> productoIds)
+        => await PostAsync<DepTareaCrearResultDto>("/api/deposito-tareas", new { tipo, titulo, comentario, empleadoId, para, productoIds });
+
+    public async Task<List<DepTareaDto>?> GetDepTareasAsync(string estado)
+        => await GetAsync<List<DepTareaDto>>($"/api/deposito-tareas?estado={estado}");
+
+    public async Task<DepTareaDetalleDto?> GetDepTareaAsync(int id)
+        => await GetAsync<DepTareaDetalleDto>($"/api/deposito-tareas/{id}");
+
+    public async Task<DepTareaAceptarResultDto?> AceptarDepTareaConteoAsync(int itemId)
+        => await PostAsync<DepTareaAceptarResultDto>($"/api/deposito-tareas/items/{itemId}/aceptar", new { });
+
+    public async Task DescartarDepTareaConteoAsync(int itemId)
+        => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/descartar", new { });
+
+    public async Task CancelarDepTareaAsync(int id)
+        => await PostAsync<object>($"/api/deposito-tareas/{id}/cancelar", new { });
+
     // 2026-09-24: Ubicación de los productos en el depósito (/cafe/ubicaciones)
     public async Task<UbicacionesResumenDto?> GetUbicacionesResumenAsync()
         => await GetAsync<UbicacionesResumenDto>("/api/cafe/ubicaciones/resumen");

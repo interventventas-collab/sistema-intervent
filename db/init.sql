@@ -8601,3 +8601,48 @@ BEGIN
     CREATE INDEX IX_NomVac_Emp ON Nom_Vacaciones (EmpleadoId, Desde);
 END
 GO
+
+-- 2026-11-03: Tareas del depósito (/deposito/tareas en la compu, "Tareas pendientes" en el celu).
+-- ⚠ En PROD correr a mano (tablas + columna TareasToken).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Dep_Tareas' AND xtype='U')
+BEGIN
+    CREATE TABLE Dep_Tareas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Tipo NVARCHAR(20) NOT NULL,
+        Titulo NVARCHAR(200) NOT NULL,
+        Comentario NVARCHAR(1000) NULL,
+        EmpleadoId INT NULL,
+        Para NVARCHAR(20) NOT NULL DEFAULT 'HOY',
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedBy NVARCHAR(120) NULL,
+        TerminadaAt DATETIME2 NULL,
+        TerminadaPor NVARCHAR(200) NULL,
+        CanceladaAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_DepTareas_Emp ON Dep_Tareas (EmpleadoId, TerminadaAt);
+END
+GO
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Dep_TareaItems' AND xtype='U')
+BEGIN
+    CREATE TABLE Dep_TareaItems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        TareaId INT NOT NULL,
+        ProductoId INT NOT NULL,
+        Orden INT NOT NULL DEFAULT 0,
+        HechoAt DATETIME2 NULL,
+        HechoPor NVARCHAR(200) NULL,
+        Contado INT NULL,
+        StockAlContar INT NULL,
+        NoEncontrado BIT NOT NULL DEFAULT 0,
+        Valor NVARCHAR(100) NULL,
+        Revision NVARCHAR(20) NULL,
+        RevisionAt DATETIME2 NULL,
+        RevisionPor NVARCHAR(120) NULL,
+        CONSTRAINT FK_DepTareaItems_Tarea FOREIGN KEY (TareaId) REFERENCES Dep_Tareas(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_DepTareaItems_Tarea ON Dep_TareaItems (TareaId, Orden);
+END
+GO
+IF COL_LENGTH('Nom_Empleados','TareasToken') IS NULL
+    ALTER TABLE Nom_Empleados ADD TareasToken NVARCHAR(40) NULL;
+GO

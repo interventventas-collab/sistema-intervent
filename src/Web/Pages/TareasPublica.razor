@@ -1,0 +1,41 @@
+@page "/tareas/{Token}"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@using Web.Shared.Tareas
+
+@* 2026-11-03: link del celu con las "Tareas pendientes" para los empleados que NO tienen link de
+   repartidor (los que sí, las ven arriba de todo en su /mis-pedidos). Se copia desde
+   Stock y compras → Tareas del depósito → "Links del celu de cada uno". Sin login, como el del repartidor. *@
+
+<style>
+    body { background:#f3f4f6 !important; }
+    .tp-wrap { max-width:520px; margin:0 auto; padding:1rem 0.8rem 2rem; font-family:inherit; }
+    .tp-hd { background:#111827; color:white; border-radius:14px; padding:1rem 1.1rem; margin-bottom:1rem; }
+    .tp-hola { font-size:0.85rem; opacity:0.85; }
+    .tp-name { font-size:1.5rem; font-weight:800; }
+    .tp-fecha { font-size:0.82rem; opacity:0.85; margin-top:0.15rem; }
+</style>
+
+<div class="tp-wrap">
+    <div class="tp-hd">
+        <div class="tp-hola">👋 Hola</div>
+        <div class="tp-name">@(nombre ?? "…")</div>
+        <div class="tp-fecha">@Fecha</div>
+    </div>
+    <TareasCelu Token="@Token" OnNombre="n => nombre = n" />
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+    private string? nombre;
+
+    private static readonly string[] Dias = { "Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado" };
+    private static string Fecha
+    {
+        get
+        {
+            var h = DateTime.UtcNow.AddHours(-3);
+            return $"{Dias[(int)h.DayOfWeek]} {h:dd/MM}";
+        }
+    }
+}

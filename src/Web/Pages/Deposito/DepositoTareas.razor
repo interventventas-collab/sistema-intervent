@@ -1,0 +1,527 @@
+@page "/deposito/tareas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@* 2026-11-03: "Tareas del depósito". El dueño arma una tarea (qué hacer · de qué productos · para
+   quién · para cuándo) y le aparece al empleado en el celu, arriba de todo. Acá se ve cómo van y,
+   en los conteos que no coinciden, se decide si se corrige el stock. El stock NO cambia solo.
+   Estilo: texto plano, botones en vez de desplegables, color solo para lo que no coincide. *@
+
+<style>
+    .dt-wrap { max-width: 1100px; }
+    .dt-lbl { font-size: 0.75rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin: 1.2rem 0 0.4rem; }
+    .dt-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.9rem 1rem; background: #fff; }
+    .dt-q { font-size: 0.85rem; color: #6b7280; margin: 0.8rem 0 0.35rem; }
+    .dt-q:first-child { margin-top: 0; }
+    .dt-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .dt-chip { border: 1px solid #d1d5db; background: #fff; border-radius: 8px; padding: 0.35rem 0.75rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; color: #111827; }
+    .dt-chip.on { background: #1f2937; color: #fff; border-color: #1f2937; }
+    .dt-chip small { font-weight: 400; opacity: 0.75; }
+    .dt-input { width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 0.45rem 0.6rem; font: inherit; font-size: 0.9rem; }
+    .dt-prods { max-height: 340px; overflow-y: auto; border: 1px solid #f3f4f6; border-radius: 8px; margin-top: 0.4rem; }
+    .dt-tabla { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .dt-tabla th { text-align: left; font-weight: 600; color: #6b7280; font-size: 0.75rem; padding: 0.4rem 0.5rem; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0; background: #fff; }
+    .dt-tabla td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    .dt-sku { font-family: monospace; font-size: 0.78rem; color: #6b7280; }
+    .dt-gris { color: #9ca3af; font-size: 0.82rem; }
+    .dt-rojo { color: #b91c1c; font-weight: 700; }
+    .dt-link { background: none; border: none; padding: 0; color: #2563eb; cursor: pointer; font: inherit; }
+    .dt-link:hover { text-decoration: underline; }
+    .dt-mini { width: 90px; display: inline-block; vertical-align: middle; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-right: 6px; }
+    .dt-mini i { display: block; height: 100%; background: #1f2937; }
+    .dt-btn { border: 1px solid #d1d5db; background: #fff; border-radius: 7px; padding: 0.3rem 0.7rem; font-size: 0.84rem; cursor: pointer; }
+    .dt-btn.dark { background: #1f2937; color: #fff; border-color: #1f2937; font-weight: 700; }
+    .dt-btn:disabled { opacity: 0.5; cursor: default; }
+    .dt-acciones { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-top: 0.8rem; flex-wrap: wrap; }
+    .dt-detalle td { background: #fafafa; }
+    .dt-nota { font-size: 0.82rem; color: #6b7280; margin-top: 0.5rem; }
+</style>
+
+<div class="dt-wrap">
+    <h2 style="margin:0;">Tareas del depósito</h2>
+    <div class="dt-nota" style="margin-top:0.2rem;">Lo que asignás acá les aparece en el celu, arriba de todo, en "Tareas pendientes".</div>
+
+    @* ───── Nueva tarea ───── *@
+    <div class="dt-lbl">Nueva tarea</div>
+    <div class="dt-box">
+        <div class="dt-q">¿Qué tienen que hacer?</div>
+        <div class="dt-chips">
+            @foreach (var (cod, txt) in TiposTxt)
+            {
+                var c = cod;
+                <button type="button" class="dt-chip @(tipo == c ? "on" : "")" @onclick="() => ElegirTipo(c)">@txt</button>
+            }
+        </div>
+
+        @if (tipo == "LIBRE")
+        {
+            <div class="dt-q">¿Qué?</div>
+            <input class="dt-input" @bind="titulo" placeholder="Ej: ordenar la estantería de bazar" maxlength="200" />
+        }
+        else
+        {
+            <div class="dt-q">¿De qué productos?</div>
+            <div class="dt-chips">
+                @foreach (var (cod, txt) in FuentesTxt.Where(f => FuenteSirve(f.Cod)))
+                {
+                    var c = cod;
+                    <button type="button" class="dt-chip @(fuente == c ? "on" : "")" @onclick="() => ElegirFuente(c)">@txt</button>
+                }
+            </div>
+            @if (fuente == "buscar")
+            {
+                <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
+                    <input class="dt-input" @bind="buscar" @bind:event="oninput" @onkeyup="BuscarEnter" placeholder="Nombre, código o código de barras" />
+                    <button type="button" class="dt-btn" @onclick="Buscar">Buscar</button>
+                </div>
+            }
+
+            @if (cargandoCand)
+            {
+                <div class="dt-nota">Buscando…</div>
+            }
+            else if (candidatos.Count > 0 || elegidos.Count > 0)
+            {
+                var visibles = VisiblesCand();
+                <div class="dt-acciones" style="margin-top:0.6rem;">
+                    <span style="font-size:0.88rem;"><b>@elegidos.Count</b> elegidos@(fuente == "buscar" ? "" : $" de {candidatos.Count}")</span>
+                    <span class="dt-chips">
+                        @if (fuente != "buscar")
+                        {
+                            <button type="button" class="dt-btn" @onclick="() => TildarPrimeros(20)">Los primeros 20</button>
+                            <button type="button" class="dt-btn" @onclick="() => TildarPrimeros(40)">Los primeros 40</button>
+                            <button type="button" class="dt-btn" @onclick="() => TildarPrimeros(int.MaxValue)">Todos</button>
+                        }
+                        <button type="button" class="dt-btn" @onclick="() => elegidos.Clear()">Ninguno</button>
+                    </span>
+                </div>
+                <div class="dt-prods">
+                    <table class="dt-tabla">
+                        <thead><tr><th></th><th>Producto</th><th>Stock</th><th>Lugar</th><th>Por qué</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in visibles)
+                            {
+                                var pSel = p;
+                                <tr @onclick="() => Tildar(pSel)" style="cursor:pointer;">
+                                    <td><input type="checkbox" checked="@elegidos.ContainsKey(pSel.Id)" /></td>
+                                    <td>@pSel.Nombre <span class="dt-sku">@pSel.Sku</span></td>
+                                    <td class="@(pSel.Stock < 0 ? "dt-rojo" : "")">@pSel.Stock</td>
+                                    <td class="dt-gris">@(pSel.Lugar ?? "—")</td>
+                                    <td class="dt-gris">@pSel.Motivo</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else if (fuente is not null && !(fuente == "buscar" && string.IsNullOrWhiteSpace(buscar)))
+            {
+                <div class="dt-nota">No hay productos para esto (o ya están todos en otra tarea abierta).</div>
+            }
+
+            <div class="dt-q">Nombre de la tarea (opcional)</div>
+            <input class="dt-input" @bind="titulo" placeholder="@TituloSugerido" maxlength="200" />
+        }
+
+        <div class="dt-q">¿Para quién?</div>
+        <div class="dt-chips">
+            @foreach (var e in empleados)
+            {
+                var eSel = e;
+                <button type="button" class="dt-chip @(empleadoId == eSel.Id ? "on" : "")" @onclick="() => empleadoId = eSel.Id">@eSel.Nombre</button>
+            }
+            <button type="button" class="dt-chip @(empleadoId is null ? "on" : "")" @onclick="() => empleadoId = null">Cualquiera</button>
+        </div>
+        @if (EmpleadoElegido is { } ee && ee.LinkRepartidor is null && ee.LinkTareas is null)
+        {
+            <div class="dt-nota">@ee.Nombre todavía no tiene link en el celu: al asignar se lo creamos y te lo copiamos para mandárselo.</div>
+        }
+
+        <div class="dt-q">¿Para cuándo?</div>
+        <div class="dt-chips">
+            <button type="button" class="dt-chip @(para == "HOY" ? "on" : "")" @onclick='() => para = "HOY"'>Hoy</button>
+            <button type="button" class="dt-chip @(para == "SEMANA" ? "on" : "")" @onclick='() => para = "SEMANA"'>Esta semana</button>
+            <button type="button" class="dt-chip @(para == "SIN_APURO" ? "on" : "")" @onclick='() => para = "SIN_APURO"'>Sin apuro</button>
+        </div>
+
+        <div class="dt-q">Comentario (opcional)</div>
+        <textarea class="dt-input" rows="2" @bind="comentario" placeholder="Ej: empezá por el pasillo A"></textarea>
+
+        <div class="dt-acciones">
+            <span class="dt-gris">@(tipo == "CONTAR" ? "Cuentan a ciegas: en el celu no ven cuánto dice el sistema." : "")</span>
+            <button type="button" class="dt-btn dark" disabled="@(!PuedeAsignar || guardando)" @onclick="Asignar">@(guardando ? "Asignando…" : "Asignar")</button>
+        </div>
+    </div>
+
+    @* ───── Cómo van ───── *@
+    <div class="dt-acciones" style="margin-top:1.2rem;">
+        <div class="dt-chips">
+            <button type="button" class="dt-chip @(estado == "curso" ? "on" : "")" @onclick='() => CambiarEstado("curso")'>En curso</button>
+            <button type="button" class="dt-chip @(estado == "terminadas" ? "on" : "")" @onclick='() => CambiarEstado("terminadas")'>Terminadas</button>
+        </div>
+        <button type="button" class="dt-link" @onclick="() => verLinks = !verLinks">📱 Links del celu de cada uno</button>
+    </div>
+
+    @if (verLinks)
+    {
+        <div class="dt-box" style="margin-top:0.5rem;">
+            <table class="dt-tabla">
+                @foreach (var e in empleados)
+                {
+                    var eSel = e;
+                    <tr>
+                        <td style="width:180px;"><b>@eSel.Nombre</b></td>
+                        <td>
+                            @if (eSel.LinkRepartidor is not null)
+                            {
+                                <span class="dt-gris">Las ve en su link de repartidor de siempre.</span>
+                            }
+                            else
+                            {
+                                <button type="button" class="dt-btn" @onclick="() => CopiarLink(eSel)">Copiar link</button>
+                                @if (eSel.LinkTareas is null) { <span class="dt-gris"> · todavía no tiene, se crea al copiarlo</span> }
+                            }
+                        </td>
+                    </tr>
+                }
+            </table>
+        </div>
+    }
+
+    @if (cargandoTareas)
+    {
+        <div class="dt-nota">Cargando…</div>
+    }
+    else if (tareas.Count == 0)
+    {
+        <div class="dt-nota">@(estado == "curso" ? "No hay tareas en curso." : "No hay tareas terminadas en los últimos 30 días.")</div>
+    }
+    else
+    {
+        <table class="dt-tabla" style="margin-top:0.4rem;">
+            <thead><tr><th>Tarea</th><th>Quién</th><th>Para</th><th>Avance</th><th>Lo que encontraron</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var t in tareas)
+                {
+                    var tSel = t;
+                    <tr>
+                        <td>
+                            <b>@tSel.Titulo</b> <span class="dt-gris">· @TipoCorto(tSel.Tipo)</span>
+                            @if (!string.IsNullOrWhiteSpace(tSel.Comentario)) { <div class="dt-gris">@tSel.Comentario</div> }
+                        </td>
+                        <td>@tSel.Empleado</td>
+                        <td class="dt-gris">@ParaTxt(tSel)</td>
+                        <td style="white-space:nowrap;">
+                            @if (tSel.Tipo == "LIBRE")
+                            {
+                                @(tSel.TerminadaAt is null ? "pendiente" : $"✓ {tSel.TerminadaPor}")
+                            }
+                            else
+                            {
+                                <span class="dt-mini"><i style="width:@(tSel.Total == 0 ? 0 : tSel.Hechos * 100 / tSel.Total)%"></i></span>@($"{tSel.Hechos}/{tSel.Total}")
+                            }
+                        </td>
+                        <td>
+                            @if (tSel.Diferencias > 0 || tSel.NoEncontrados > 0)
+                            {
+                                var partes = new List<string>();
+                                if (tSel.Diferencias > 0) partes.Add($"{tSel.Diferencias} no coinciden");
+                                if (tSel.NoEncontrados > 0) partes.Add($"{tSel.NoEncontrados} no los encontraron");
+                                <span class="@(tSel.SinRevisar > 0 ? "dt-rojo" : "dt-gris")">@string.Join(" · ", partes)</span>
+                            }
+                            else if (tSel.Hechos > 0 && tSel.Tipo == "CONTAR")
+                            {
+                                <span class="dt-gris">todo coincide</span>
+                            }
+                            @if (tSel.Tipo != "LIBRE" && tSel.Hechos > 0)
+                            {
+                                <text> · </text><button type="button" class="dt-link" @onclick="() => VerDetalle(tSel.Id)">@(abierta == tSel.Id ? "cerrar" : "ver")</button>
+                            }
+                        </td>
+                        <td style="text-align:right;">
+                            @if (tSel.TerminadaAt is null)
+                            {
+                                <button type="button" class="dt-link" style="color:#6b7280;" @onclick="() => Cancelar(tSel)">sacar</button>
+                            }
+                        </td>
+                    </tr>
+                    @if (abierta == tSel.Id && detalle is not null)
+                    {
+                        <tr class="dt-detalle">
+                            <td colspan="6">
+                                <table class="dt-tabla">
+                                    <thead>
+                                        <tr>
+                                            <th>Producto</th>
+                                            @if (detalle.Tipo == "CONTAR") { <th>Sistema</th><th>Contaron</th><th></th> }
+                                            else { <th>Cargaron</th> }
+                                            <th>Quién</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var i in DetalleOrdenado())
+                                        {
+                                            var iSel = i;
+                                            var dif = i.Contado is not null && i.Contado != i.StockAlContar;
+                                            <tr>
+                                                <td>@i.Nombre <span class="dt-sku">@i.Sku</span></td>
+                                                @if (detalle.Tipo == "CONTAR")
+                                                {
+                                                    <td>@(i.StockAlContar?.ToString() ?? (i.HechoAt is null ? "" : "—"))</td>
+                                                    <td class="@(dif || i.NoEncontrado ? "dt-rojo" : "")">
+                                                        @(i.HechoAt is null ? "falta" : i.NoEncontrado ? "no lo encontró" : i.Contado.ToString())
+                                                        @if (dif) { <span class="dt-gris"> @DifTxt(i)</span> }
+                                                    </td>
+                                                    <td style="white-space:nowrap;">
+                                                        @if (dif && i.Revision is null)
+                                                        {
+                                                            <button type="button" class="dt-btn dark" @onclick="() => AceptarConteo(iSel)">Aceptar conteo</button>
+                                                            <button type="button" class="dt-btn" @onclick="() => Descartar(iSel)">Dejar como está</button>
+                                                        }
+                                                        else if (i.Revision == "ACEPTADO") { <span class="dt-gris">✓ stock corregido (@i.RevisionPor)</span> }
+                                                        else if (i.Revision == "DESCARTADO") { <span class="dt-gris">se dejó como estaba</span> }
+                                                    </td>
+                                                }
+                                                else
+                                                {
+                                                    <td class="@(i.NoEncontrado ? "dt-rojo" : "")">@(i.HechoAt is null ? "falta" : i.NoEncontrado ? "no lo encontró" : i.Valor)</td>
+                                                }
+                                                <td class="dt-gris">@i.HechoPor @(i.HechoAt is DateTime h ? h.ToArTime().ToString("dd/MM HH:mm") : "")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                                @if (detalle.Tipo == "CONTAR")
+                                {
+                                    <div class="dt-nota">"Aceptar conteo" corrige el stock (y MercadoLibre) por la diferencia que vieron al contar: si después se vendió algo, esa venta no se pierde.</div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private static readonly (string Cod, string Txt)[] TiposTxt =
+    {
+        ("CONTAR", "Contar stock"), ("UBICACION", "Cargar dónde está"), ("BARCODE", "Código de barras"), ("LIBRE", "Tarea libre")
+    };
+    private static readonly (string Cod, string Txt)[] FuentesTxt =
+    {
+        ("dudosos", "Stock dudoso"), ("negativos", "Stock en negativo"), ("sin-mover", "No se mueven hace 3 meses"),
+        ("sin-lugar", "Sin lugar cargado"), ("sin-codigo", "Sin código de barras"), ("buscar", "Elegir a mano…")
+    };
+
+    private List<DepTareaEmpleadoDto> empleados = new();
+    private string tipo = "CONTAR";
+    private string? fuente;
+    private string? buscar;
+    private string? titulo;
+    private string? comentario;
+    private int? empleadoId;
+    private string para = "HOY";
+    private bool guardando;
+
+    private List<DepTareaCandidatoDto> candidatos = new();
+    // los elegidos quedan aunque cambies la búsqueda (en "Elegir a mano" se arman de a varias búsquedas)
+    private Dictionary<int, DepTareaCandidatoDto> elegidos = new();
+    private bool cargandoCand;
+
+    private string estado = "curso";
+    private List<DepTareaDto> tareas = new();
+    private bool cargandoTareas = true;
+    private int? abierta;
+    private DepTareaDetalleDto? detalle;
+    private bool verLinks;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { empleados = await Api.GetDepTareasEmpleadosAsync() ?? new(); }
+        catch (Exception ex) { ToastService.Error("No pude cargar los empleados: " + ex.Message); }
+        await ElegirFuente("dudosos");
+        await CargarTareas();
+    }
+
+    private bool FuenteSirve(string f) => tipo switch
+    {
+        "UBICACION" => f is "sin-lugar" or "buscar" or "dudosos" or "sin-mover",
+        "BARCODE" => f is "sin-codigo" or "buscar",
+        _ => f is not "sin-lugar" and not "sin-codigo"
+    };
+
+    private async Task ElegirTipo(string t)
+    {
+        tipo = t;
+        elegidos.Clear();
+        candidatos.Clear();
+        if (t == "LIBRE") { fuente = null; return; }
+        await ElegirFuente(t switch { "UBICACION" => "sin-lugar", "BARCODE" => "sin-codigo", _ => "dudosos" });
+    }
+
+    private async Task ElegirFuente(string f)
+    {
+        fuente = f;
+        if (f != "buscar") elegidos.Clear();
+        candidatos.Clear();
+        if (f == "buscar") { await Buscar(); return; }
+        await CargarCandidatos();
+        TildarPrimeros(40);
+    }
+
+    private async Task BuscarEnter(KeyboardEventArgs e) { if (e.Key == "Enter") await Buscar(); }
+
+    private async Task Buscar()
+    {
+        if (string.IsNullOrWhiteSpace(buscar)) { candidatos.Clear(); return; }
+        await CargarCandidatos();
+    }
+
+    private async Task CargarCandidatos()
+    {
+        cargandoCand = true;
+        try { candidatos = await Api.GetDepTareasCandidatosAsync(fuente!, tipo, buscar) ?? new(); }
+        catch (Exception ex) { ToastService.Error("No pude traer los productos: " + ex.Message); candidatos = new(); }
+        cargandoCand = false;
+    }
+
+    /// <summary>En "Elegir a mano" se ven los ya elegidos arriba + lo que encontró la búsqueda.</summary>
+    private List<DepTareaCandidatoDto> VisiblesCand() => fuente == "buscar"
+        ? elegidos.Values.Concat(candidatos.Where(c => !elegidos.ContainsKey(c.Id))).ToList()
+        : candidatos;
+
+    private void Tildar(DepTareaCandidatoDto p) { if (!elegidos.Remove(p.Id)) elegidos[p.Id] = p; }
+
+    private void TildarPrimeros(int n)
+    {
+        elegidos.Clear();
+        foreach (var c in candidatos.Take(n)) elegidos[c.Id] = c;
+    }
+
+    private string TituloSugerido => tipo switch
+    {
+        "CONTAR" => fuente switch { "dudosos" => "Contar stock dudoso", "negativos" => "Contar stock en negativo", "sin-mover" => "Contar lo que no se mueve", _ => "Contar stock" },
+        "UBICACION" => "Cargar dónde está",
+        "BARCODE" => "Cargar código de barras",
+        _ => ""
+    };
+
+    private DepTareaEmpleadoDto? EmpleadoElegido => empleados.FirstOrDefault(e => e.Id == empleadoId);
+
+    private bool PuedeAsignar => tipo == "LIBRE" ? !string.IsNullOrWhiteSpace(titulo) : elegidos.Count > 0;
+
+    private async Task Asignar()
+    {
+        guardando = true;
+        try
+        {
+            var tit = string.IsNullOrWhiteSpace(titulo) ? TituloSugerido : titulo;
+            var r = await Api.CrearDepTareaAsync(tipo, tit, comentario, empleadoId, para, elegidos.Keys.ToList());
+            if (r is null) return;
+            var quien = EmpleadoElegido?.Nombre ?? "cualquiera";
+            ToastService.Success(tipo == "LIBRE" ? $"Listo, se la asignaste a {quien}." : $"Listo: {r.Items} productos para {quien}.");
+            // si no tenía link en el celu, se lo creamos y se copia para mandárselo
+            if (EmpleadoElegido is { LinkRepartidor: null } e) await CopiarLink(e);
+            titulo = null; comentario = null; elegidos.Clear();
+            if (tipo != "LIBRE" && fuente is not null && fuente != "buscar") await CargarCandidatos();
+            await CargarTareas();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task CopiarLink(DepTareaEmpleadoDto e)
+    {
+        try
+        {
+            var token = e.LinkTareas;
+            if (token is null)
+            {
+                token = (await Api.CrearDepTareasLinkAsync(e.Id))?.Token;
+                if (token is null) return;
+                var i = empleados.IndexOf(e);
+                if (i >= 0) empleados[i] = e with { LinkTareas = token };
+            }
+            var url = Nav.BaseUri.TrimEnd('/') + "/tareas/" + token;
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+            ToastService.Success($"Copiado el link de {e.Nombre}. Mandáselo por WhatsApp para que lo guarde en el celu.");
+        }
+        catch (Exception ex) { ToastService.Error("No pude copiar el link: " + ex.Message); }
+    }
+
+    private async Task CambiarEstado(string e) { estado = e; abierta = null; await CargarTareas(); }
+
+    private async Task CargarTareas()
+    {
+        cargandoTareas = true;
+        try { tareas = await Api.GetDepTareasAsync(estado) ?? new(); }
+        catch (Exception ex) { ToastService.Error("No pude cargar las tareas: " + ex.Message); }
+        cargandoTareas = false;
+    }
+
+    private async Task VerDetalle(int id)
+    {
+        if (abierta == id) { abierta = null; detalle = null; return; }
+        abierta = id;
+        detalle = null;
+        try { detalle = await Api.GetDepTareaAsync(id); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    /// <summary>Primero lo que hay que revisar (no coincide / no lo encontraron), después el resto.</summary>
+    private IEnumerable<DepTareaItemDto> DetalleOrdenado() => detalle!.Items
+        .OrderBy(i => (i.NoEncontrado || (i.Contado is not null && i.Contado != i.StockAlContar)) && i.Revision is null ? 0 : i.HechoAt is null ? 2 : 1);
+
+    private async Task AceptarConteo(DepTareaItemDto i)
+    {
+        try
+        {
+            var r = await Api.AceptarDepTareaConteoAsync(i.Id);
+            if (r is null) return;
+            ToastService.Success($"{i.Nombre}: stock {r.StockAntes} → {r.StockDespues}");
+            await RefrescarDetalle();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task Descartar(DepTareaItemDto i)
+    {
+        try { await Api.DescartarDepTareaConteoAsync(i.Id); await RefrescarDetalle(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task RefrescarDetalle()
+    {
+        if (abierta is int id) detalle = await Api.GetDepTareaAsync(id);
+        await CargarTareas();
+    }
+
+    private async Task Cancelar(DepTareaDto t)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Sacar \"{t.Titulo}\"? Deja de aparecer en el celu. Lo que ya hicieron queda guardado.")) return;
+        try { await Api.CancelarDepTareaAsync(t.Id); await CargarTareas(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private static string DifTxt(DepTareaItemDto i)
+    {
+        var d = (i.Contado ?? 0) - (i.StockAlContar ?? 0);
+        return d > 0 ? $"(sobran {d})" : $"(faltan {-d})";
+    }
+
+    private static string TipoCorto(string t) => t switch
+    {
+        "CONTAR" => "contar", "UBICACION" => "dónde está", "BARCODE" => "código de barras", _ => "libre"
+    };
+
+    private static string ParaTxt(DepTareaDto t)
+    {
+        if (t.TerminadaAt is DateTime fin) return "terminó " + fin.ToArTime().ToString("dd/MM HH:mm");
+        return t.Para switch { "HOY" => "hoy", "SEMANA" => "esta semana", _ => "sin apuro" };
+    }
+}

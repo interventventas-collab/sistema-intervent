@@ -6,6 +6,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @using Web.Shared.Oficina
+@using Web.Shared.Tareas
 
 @*
    2026-06-05: Pantalla mobile-first del repartidor. URL fija con PublicToken.
@@ -479,6 +480,10 @@
                 }
             </div>
         </div>
+
+        @* 03/11/2026: "Tareas pendientes" que asigna el dueño en Stock → Tareas del depósito. Si no tiene
+           ninguna no se ve nada. *@
+        <TareasCelu Token="@Token" Embebido="true" />
 
         @* 21/10/2026: la sección "Oficina" (un cuadradito por cada tilde de su ficha: Gabriel, Germán,
            Osmar) queda detrás de UN botón, así los pedidos quedan arriba. Los cuadraditos se abren en

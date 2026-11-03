@@ -73,6 +73,11 @@ public class NomEmpleado
     [MaxLength(200)]
     public string? Email { get; set; }
 
+    /// <summary>2026-11-03: link del celu para "Tareas del depósito" de los que no tienen link de
+    /// repartidor (/tareas/{token}). Los que sí tienen, ven las tareas en su link de siempre.</summary>
+    [MaxLength(40)]
+    public string? TareasToken { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
