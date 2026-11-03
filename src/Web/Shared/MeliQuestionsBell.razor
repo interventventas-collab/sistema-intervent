@@ -513,6 +513,9 @@
 
 @code {
     private MeliQuestionsUnreadDto unread = new();
+    // 2026-11-03: el botón flotante único muestra cuántas hay sin responder (sin hacer otra consulta).
+    [Parameter] public EventCallback<int> OnTotal { get; set; }
+
     private int lastCount;
     private bool canShow = true; // toggle si endpoint falla varias veces seguidas
     private int consecutiveErrors;
@@ -568,6 +571,7 @@
             }
             lastCount = r.NotSeen;
             unread = r;
+            await OnTotal.InvokeAsync(r.Total);
 
             // === Auto-show del cartel grande ===
             // Mostrar si: hay preguntas, no esta ya abierto, y no estamos en snooze.

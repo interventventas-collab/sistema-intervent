@@ -2,14 +2,14 @@
 @inject IJSRuntime JS
 
 <div class="assistant-fab @(open ? "open" : "")">
-    @if (!open)
+    @if (!open && !SinBurbuja)
     {
         <button class="assistant-bubble" @onclick="ToggleOpen" title="Asistente">
             💬
             @if (unread > 0) { <span class="assistant-dot">@unread</span> }
         </button>
     }
-    else
+    else if (open)
     {
         <div class="assistant-panel">
             <div class="assistant-header">
@@ -258,6 +258,10 @@
 
 @code {
     private bool open;
+    // 2026-11-03: sin burbuja propia; se abre desde el botón flotante único (BotonesFlotantes).
+    [Parameter] public bool SinBurbuja { get; set; }
+    public int SinLeer => unread;
+    public async Task Abrir() { if (!open) await ToggleOpen(); await InvokeAsync(StateHasChanged); }
     private bool loading;
     private string input = "";
     private int unread;

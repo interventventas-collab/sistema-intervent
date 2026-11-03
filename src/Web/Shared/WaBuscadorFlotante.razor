@@ -14,7 +14,7 @@
 
 @if (mostrar)
 {
-    @if (!abierto)
+    @if (!abierto && !SinBurbuja)
     {
         <button class="wabf-bubble" id="wabf-bubble" @onclick="Abrir" title="Abrir WhatsApp (arrastrá para moverlo)">
             <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28" aria-hidden="true">
@@ -22,7 +22,7 @@
             </svg>
         </button>
     }
-    else
+    else if (abierto)
     {
         <div class="wabf-panel" id="wabf-panel">
             <div class="wabf-bar">
@@ -287,6 +287,10 @@
     {
         try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", waLink); } catch { }
     }
+
+    // 2026-11-03: sin logo propio; se abre desde el botón flotante único (BotonesFlotantes).
+    [Parameter] public bool SinBurbuja { get; set; }
+    public bool Disponible => mostrar;
 
     public void Abrir()
     {
