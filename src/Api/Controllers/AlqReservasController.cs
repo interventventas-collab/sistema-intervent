@@ -101,6 +101,7 @@ public class AlqReservasController : ControllerBase
 
         var ids = filas.Select(x => x.ReservaId).Distinct().ToList();
         var reservas = await _db.AlqReservas.AsNoTracking().Include(x => x.ClienteNav)
+            .Include(x => x.Items).ThenInclude(i => i.EquipoNav)
             .Where(x => ids.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id);
 
@@ -118,7 +119,11 @@ public class AlqReservasController : ControllerBase
                     x.Clase, x.Tipo, x.PtoVta, x.Nro, x.Total,
                     anulaA.TryGetValue(x.Clave, out var fa) ? Num(fa) : null,
                     anuladaPor.TryGetValue(x.Clave, out var nc) ? Num(nc) : null,
-                    x.Motivo, r?.ClienteId, x.TipoNum, esVigente);
+                    x.Motivo, r?.ClienteId, x.TipoNum, esVigente,
+                    r?.FechaEntrega, r?.FechaRetiro, r?.MontoTotal ?? 0, r?.Notas,
+                    r?.Items.Select(i => new AlqComprobanteListadoItemDto(
+                        i.EquipoId.HasValue ? (i.EquipoNav?.Nombre ?? "—") : (i.Descripcion ?? "—"),
+                        i.Cantidad, i.PrecioUnitario)).ToList());
             })
             .OrderByDescending(x => x.Fecha).ThenByDescending(x => x.CbteNro)
             .ToList();
