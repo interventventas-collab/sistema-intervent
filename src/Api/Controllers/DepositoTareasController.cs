@@ -605,6 +605,7 @@ public class DepositoTareasController : ControllerBase
                            select new
                            {
                                id = i.Id,
+                               productoId = p.Id,
                                sku = p.Sku,
                                nombre = p.Nombre,
                                barcode = p.Barcode,
@@ -618,8 +619,14 @@ public class DepositoTareasController : ControllerBase
                                hechoPor = i.HechoPor,
                                hechoAt = i.HechoAt,
                                nombreSugerido = i.NombreSugerido,
-                               nombreRevision = i.NombreRevision
+                               nombreRevision = i.NombreRevision,
+                               fotoReportadaAt = i.FotoReportadaAt,
+                               fotoRevision = i.FotoRevision,
+                               fotoPropuesta = i.FotoPropuestaArchivo
                            }).ToListAsync();
+
+        // 2026-11-03: la foto de cada producto: la propia (Cafe_ProductoFoto) y, si no tiene, la de MeLi.
+        var fotos = await FotosAsync(items.Select(i => i.productoId).ToList());
 
         // las zonas van siempre: mientras cuentan también pueden corregir dónde está
         var zonas = await _db.CafeUbicacionZonas.AsNoTracking().OrderBy(z => z.Planta).ThenBy(z => z.Codigo)
@@ -636,6 +643,12 @@ public class DepositoTareasController : ControllerBase
             {
                 i.id, i.sku, i.nombre, i.barcode, i.hecho, i.contado, i.noEncontrado, i.valor, i.hechoPor, i.hechoAt,
                 i.nombreSugerido, i.nombreRevision, i.planta, i.zona,
+                foto = fotos.TryGetValue(i.productoId, out var f) ? f.Url : null,
+                fotoPropia = fotos.TryGetValue(i.productoId, out var f2) && f2.Propia,
+                // "📷 foto en revisión": la reportaron y el dueño todavía no la miró
+                fotoEnRevision = i.fotoReportadaAt != null && i.fotoRevision == null,
+                fotoRevision = i.fotoRevision,
+                fotoPropuesta = i.fotoPropuesta is null ? null : $"api/deposito-tareas/foto-propuesta/{i.fotoPropuesta}",
                 // lo que decía el sistema: recién DESPUÉS de contar (mientras cuentan, a ciegas)
                 stockAntes = i.hecho ? i.stockAntes : null,
                 // CONTAR: unidades vendidas sin armar que se restaron a lo contado (guardadas en Valor)
@@ -860,6 +873,310 @@ public class DepositoTareasController : ControllerBase
         it.NombreRevision = "RECHAZADO";
         it.NombreRevisionAt = DateTime.UtcNow;
         it.NombreRevisionPor = Usuario;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    private const string FotosDir = "/data/files/producto-fotos";
+
+    /// <summary>productoId → (url de la foto, es propia). Propia = la que sacaron en el depósito
+    /// (/api/public/producto-foto/img/...); si no hay, la miniatura de su publicación de MeLi.</summary>
+    private async Task<Dictionary<int, (string Url, bool Propia)>> FotosAsync(List<int> ids)
+    {
+        var res = new Dictionary<int, (string, bool)>();
+        if (ids.Count == 0) return res;
+        var regs = await _db.CafeProductoFotos.AsNoTracking()
+            .Where(f => ids.Contains(f.CafeProductoId))
+            .Select(f => new { f.CafeProductoId, f.FotoPropiaArchivo, f.Estado }).ToListAsync();
+        foreach (var f in regs.Where(f => f.FotoPropiaArchivo != null))
+            res[f.CafeProductoId] = ($"api/public/producto-foto/img/{f.FotoPropiaArchivo}", true);
+        // REPORTADA sin foto propia = la de MeLi está mal y no se muestra en el sistema
+        var meliOculta = regs.Where(f => f.FotoPropiaArchivo == null && f.Estado == "REPORTADA").Select(f => f.CafeProductoId).ToHashSet();
+        var faltan = ids.Where(id => !res.ContainsKey(id) && !meliOculta.Contains(id)).ToList();
+        if (faltan.Count > 0)
+        {
+            var meli = await (from c in _db.MeliItemComponentes.AsNoTracking()
+                              join m in _db.MeliItems.AsNoTracking() on c.MeliItemId equals m.MeliItemId
+                              where faltan.Contains(c.CafeProductoId) && m.Thumbnail != null
+                              orderby m.Status == "active" descending, m.SoldQuantity descending
+                              select new { c.CafeProductoId, m.Thumbnail }).ToListAsync();
+            foreach (var m in meli)
+                if (!res.ContainsKey(m.CafeProductoId))
+                    res[m.CafeProductoId] = (m.Thumbnail!.Replace("http://", "https://"), false);
+        }
+        return res;
+    }
+
+    /// <summary>2026-11-03: "📷 la foto está mal" desde la tarea (celu o PC del depósito). Pedido del dueño:
+    /// "que puedan reportar la imagen que está mal y subir una nueva en el momento, con enlace o sacando
+    /// foto; yo solo la apruebo, y mientras tanto aparece como foto en revisión". Se puede mandar solo el
+    /// aviso, o el aviso + una foto (archivo/cámara) o un link. NADA cambia hasta que el dueño aprueba.</summary>
+    [HttpPost("celu/{token}/item/{itemId:int}/foto")]
+    [AllowAnonymous]
+    [RequestSizeLimit(12 * 1024 * 1024)]
+    public async Task<IActionResult> CeluFoto(string token, int itemId, [FromForm] IFormFile? file, [FromForm] string? motivo, [FromForm] string? url)
+    {
+        var emp = await EmpleadoDelTokenAsync(token);
+        if (emp is null) return NotFound();
+        var it = await _db.DepTareaItems.FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it is null || !await TareasDe(emp.Id).AnyAsync(x => x.Id == it.TareaId)) return NotFound();
+
+        byte[]? bytes = null;
+        string? ext = null;
+        if (file is not null && file.Length > 0)
+        {
+            if (file.Length > 12 * 1024 * 1024) return BadRequest(new { error = "La foto es muy grande." });
+            if (!file.ContentType.StartsWith("image/")) return BadRequest(new { error = "Tiene que ser una foto." });
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            bytes = ms.ToArray();
+            ext = Path.GetExtension(file.FileName);
+        }
+        else if (!string.IsNullOrWhiteSpace(url))
+        {
+            // Este link lo pega alguien SIN login (el link del celu): solo direcciones públicas de internet,
+            // nunca máquinas de adentro (localhost, IPs privadas, nombres de contenedores sin punto).
+            if (!await LinkPublicoAsync(url)) return BadRequest(new { error = "Ese link no sirve. Copiá el link de la imagen (que empiece con https)." });
+            var (b, e, error) = await CafeProductoFotoController.BajarImagenAsync(url);
+            if (error is not null) return BadRequest(new { error });
+            bytes = b; ext = e;
+        }
+
+        string? nuevo = null;
+        if (bytes is not null)
+        {
+            Directory.CreateDirectory(FotosDir);
+            if (string.IsNullOrEmpty(ext) || ext.Length > 6) ext = ".jpg";
+            nuevo = $"propuesta-{it.ProductoId}-{Guid.NewGuid():N}{ext}";
+            await System.IO.File.WriteAllBytesAsync(Path.Combine(FotosDir, nuevo), bytes);
+        }
+        // si ya había una propuesta pendiente, la reemplaza
+        if (it.FotoRevision == null) BorrarFoto(it.FotoPropuestaArchivo);
+        it.FotoPropuestaArchivo = nuevo;
+        it.FotoMotivo = string.IsNullOrWhiteSpace(motivo) ? null : (motivo.Trim().Length > 300 ? motivo.Trim()[..300] : motivo.Trim());
+        it.FotoReportadaAt = DateTime.UtcNow;
+        it.FotoReportadaPor = NombreCorto(emp.Nombre);
+        it.FotoRevision = null; it.FotoRevisionAt = null; it.FotoRevisionPor = null;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, conFoto = nuevo != null });
+    }
+
+    private static async Task<bool> LinkPublicoAsync(string url)
+    {
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u)) return false;
+        if (u.Scheme != Uri.UriSchemeHttps && u.Scheme != Uri.UriSchemeHttp) return false;
+        if (!u.Host.Contains('.') || u.IsLoopback) return false;
+        try
+        {
+            var ips = await System.Net.Dns.GetHostAddressesAsync(u.Host);
+            if (ips.Length == 0) return false;
+            foreach (var ip in ips)
+            {
+                if (System.Net.IPAddress.IsLoopback(ip) || ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal) return false;
+                var b = ip.MapToIPv4().GetAddressBytes();
+                if (b[0] == 10 || b[0] == 127 || b[0] == 0 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+                    || (b[0] == 192 && b[1] == 168) || (b[0] == 169 && b[1] == 254)) return false;
+            }
+            return true;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>La foto propuesta (todavía sin aprobar). Pública como las demás fotos de producto.</summary>
+    [HttpGet("foto-propuesta/{archivo}")]
+    [AllowAnonymous]
+    public IActionResult FotoPropuesta(string archivo)
+    {
+        if (!archivo.StartsWith("propuesta-") || archivo.Contains('/') || archivo.Contains("..")) return NotFound();
+        var path = Path.Combine(FotosDir, archivo);
+        if (!System.IO.File.Exists(path)) return NotFound();
+        var ct = Path.GetExtension(archivo).ToLowerInvariant() switch { ".png" => "image/png", ".webp" => "image/webp", ".gif" => "image/gif", _ => "image/jpeg" };
+        return PhysicalFile(path, ct);
+    }
+
+    private static void BorrarFoto(string? archivo)
+    {
+        if (string.IsNullOrEmpty(archivo)) return;
+        try { var path = Path.Combine(FotosDir, archivo); if (System.IO.File.Exists(path)) System.IO.File.Delete(path); }
+        catch { /* best-effort */ }
+    }
+
+    /// <summary>Aprueba el reporte de foto. Con foto nueva: pasa a ser la foto propia del producto (la vieja
+    /// propia se borra). Sin foto nueva: se saca la que estaba mal (la propia se borra; si era la de MeLi,
+    /// se marca REPORTADA = no se muestra en el sistema). No toca MercadoLibre.</summary>
+    [HttpPost("items/{itemId:int}/foto/aprobar")]
+    public async Task<IActionResult> AprobarFoto(int itemId)
+    {
+        var it = await _db.DepTareaItems.FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it?.FotoReportadaAt is null) return NotFound();
+        var foto = await _db.CafeProductoFotos.FirstOrDefaultAsync(f => f.CafeProductoId == it.ProductoId);
+        if (foto is null) { foto = new CafeProductoFoto { CafeProductoId = it.ProductoId }; _db.CafeProductoFotos.Add(foto); }
+        var viejo = foto.FotoPropiaArchivo;
+        var originalViejo = foto.FotoOriginalArchivo;
+        if (it.FotoPropuestaArchivo is not null)
+        {
+            // la propuesta pasa a ser la foto propia (se renombra a prod-… como las demás)
+            var ext = Path.GetExtension(it.FotoPropuestaArchivo);
+            var final = $"prod-{it.ProductoId}-{Guid.NewGuid():N}{ext}";
+            try { System.IO.File.Move(Path.Combine(FotosDir, it.FotoPropuestaArchivo), Path.Combine(FotosDir, final)); }
+            catch { return BadRequest(new { error = "No encontré la foto nueva, pedí que la vuelvan a mandar." }); }
+            foto.FotoPropiaArchivo = final;
+            foto.FotoPropiaAt = DateTime.UtcNow;
+            foto.Estado = "APROBADA";
+            it.FotoPropuestaArchivo = null;
+        }
+        else
+        {
+            foto.FotoPropiaArchivo = null;
+            foto.Estado = "REPORTADA";
+        }
+        foto.FotoOriginalArchivo = null;
+        foto.Comentario = it.FotoMotivo;
+        foto.Usuario = it.FotoReportadaPor;
+        foto.UpdatedAt = DateTime.UtcNow;
+        it.FotoRevision = "APROBADA";
+        it.FotoRevisionAt = DateTime.UtcNow;
+        it.FotoRevisionPor = Usuario;
+        await _db.SaveChangesAsync();
+        BorrarFoto(viejo);
+        BorrarFoto(originalViejo);
+        return Ok(new { ok = true });
+    }
+
+    [HttpPost("items/{itemId:int}/foto/rechazar")]
+    public async Task<IActionResult> RechazarFoto(int itemId)
+    {
+        var it = await _db.DepTareaItems.FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it?.FotoReportadaAt is null) return NotFound();
+        BorrarFoto(it.FotoPropuestaArchivo);
+        it.FotoPropuestaArchivo = null;
+        it.FotoRevision = "RECHAZADA";
+        it.FotoRevisionAt = DateTime.UtcNow;
+        it.FotoRevisionPor = Usuario;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // AVISOS (botón flotante 📋 del dueño)
+    // ════════════════════════════════════════════════════════════════════
+
+    /// <summary>2026-11-03: lo que el dueño tiene para mirar (nombres propuestos, diferencias grandes,
+    /// "no lo encuentro", tareas terminadas sin ver) + lo que está en curso. Pedido: "que me lo notifique
+    /// en el botón flotante y poder enviarlas desde ahí".</summary>
+    [HttpGet("avisos")]
+    public async Task<IActionResult> Avisos()
+    {
+        var emps = await _db.NomEmpleados.AsNoTracking().ToDictionaryAsync(e => e.Id, e => NombreCorto(e.Nombre));
+        var abiertas = await _db.DepTareas.AsNoTracking().Where(t => t.CanceladaAt == null).Select(t => t.Id).ToListAsync();
+
+        var filas = await (from i in _db.DepTareaItems.AsNoTracking()
+                           join p in _db.CafeProductos.AsNoTracking() on i.ProductoId equals p.Id
+                           where abiertas.Contains(i.TareaId) && i.HechoAt != null
+                                 && ((i.Revision == "AUTO" && i.Contado != null) || (i.NoEncontrado && i.Revision == null))
+                           orderby i.HechoAt descending
+                           select new { i.Id, i.TareaId, p.Sku, p.Nombre, i.Contado, i.StockAlContar, i.Valor, i.NoEncontrado, i.HechoPor, i.HechoAt })
+                          .Take(300).ToListAsync();
+        var mucha = filas.Where(f => !f.NoEncontrado && f.StockAlContar is int a
+                && Nivel(a, Math.Max(0, (f.Contado ?? 0) - (int.TryParse(f.Valor, out var ap) ? ap : 0))) == "MUCHA")
+            .Select(f => new
+            {
+                itemId = f.Id, tareaId = f.TareaId, sku = f.Sku, nombre = f.Nombre,
+                decia = f.StockAlContar, ahora = Math.Max(0, (f.Contado ?? 0) - (int.TryParse(f.Valor, out var ap2) ? ap2 : 0)),
+                quien = f.HechoPor, at = f.HechoAt
+            }).ToList();
+        var noEncontrados = filas.Where(f => f.NoEncontrado)
+            .Select(f => new { itemId = f.Id, tareaId = f.TareaId, sku = f.Sku, nombre = f.Nombre, quien = f.HechoPor, at = f.HechoAt }).ToList();
+
+        var nombres = await (from i in _db.DepTareaItems.AsNoTracking()
+                             join p in _db.CafeProductos.AsNoTracking() on i.ProductoId equals p.Id
+                             where i.NombreSugerido != null && i.NombreRevision == null
+                             orderby i.NombreSugeridoAt
+                             select new
+                             {
+                                 itemId = i.Id, productoId = p.Id, sku = p.Sku, nombreActual = p.Nombre,
+                                 nombrePropuesto = i.NombreSugerido, propuestoPor = i.NombreSugeridoPor, propuestoAt = i.NombreSugeridoAt
+                             }).ToListAsync();
+
+        var fotosRep = await (from i in _db.DepTareaItems.AsNoTracking()
+                              join p in _db.CafeProductos.AsNoTracking() on i.ProductoId equals p.Id
+                              where i.FotoReportadaAt != null && i.FotoRevision == null
+                              orderby i.FotoReportadaAt
+                              select new { i.Id, as_ = p.Id, p.Sku, p.Nombre, i.FotoMotivo, i.FotoPropuestaArchivo, i.FotoReportadaPor, i.FotoReportadaAt })
+                             .ToListAsync();
+        var fotosAct = await FotosAsync(fotosRep.Select(f => f.as_).Distinct().ToList());
+        var fotos = fotosRep.Select(f => new
+        {
+            itemId = f.Id, sku = f.Sku, nombre = f.Nombre, motivo = f.FotoMotivo,
+            fotoActual = fotosAct.TryGetValue(f.as_, out var fa) ? fa.Url : null,
+            fotoNueva = f.FotoPropuestaArchivo is null ? null : $"api/deposito-tareas/foto-propuesta/{f.FotoPropuestaArchivo}",
+            quien = f.FotoReportadaPor, at = f.FotoReportadaAt
+        }).ToList();
+
+        var tareas = await _db.DepTareas.AsNoTracking()
+            .Where(t => t.CanceladaAt == null && (t.TerminadaAt == null || t.VistaAt == null))
+            .OrderBy(t => t.TerminadaAt == null).ThenByDescending(t => t.TerminadaAt).ThenBy(t => t.CreatedAt)
+            .Take(30).ToListAsync();
+        var ids = tareas.Select(t => t.Id).ToList();
+        var stats = (await _db.DepTareaItems.AsNoTracking().Where(i => ids.Contains(i.TareaId))
+                .Select(i => new { i.TareaId, i.HechoAt }).ToListAsync())
+            .GroupBy(i => i.TareaId).ToDictionary(g => g.Key, g => (Total: g.Count(), Hechos: g.Count(i => i.HechoAt != null)));
+        object Tarea(DepTarea t)
+        {
+            stats.TryGetValue(t.Id, out var s);
+            return new
+            {
+                id = t.Id, tipo = t.Tipo, titulo = t.Titulo, para = t.Para,
+                empleado = t.EmpleadoId is int e && emps.TryGetValue(e, out var n) ? n : "Cualquiera",
+                total = s.Total, hechos = s.Hechos, terminadaAt = t.TerminadaAt, terminadaPor = t.TerminadaPor
+            };
+        }
+        var terminadas = tareas.Where(t => t.TerminadaAt != null).Select(Tarea).ToList();
+        var enCurso = tareas.Where(t => t.TerminadaAt == null).Select(Tarea).ToList();
+
+        return Ok(new
+        {
+            pendientes = nombres.Count + fotos.Count + mucha.Count + noEncontrados.Count + terminadas.Count,
+            nombres, fotos, mucha, noEncontrados, terminadas, enCurso
+        });
+    }
+
+    /// <summary>"Visto": la diferencia grande o el "no lo encuentro" ya lo miró el dueño.</summary>
+    [HttpPost("items/{itemId:int}/visto")]
+    public async Task<IActionResult> ItemVisto(int itemId)
+    {
+        var it = await _db.DepTareaItems.FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it is null) return NotFound();
+        it.Revision = "VISTO";
+        it.RevisionAt = DateTime.UtcNow;
+        it.RevisionPor = Usuario;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>"Pedir que lo recuente": el producto vuelve a quedar pendiente en su celu (y la tarea se
+    /// reabre si estaba terminada). El stock queda como está hasta que lo vuelvan a contar.</summary>
+    [HttpPost("items/{itemId:int}/recontar")]
+    public async Task<IActionResult> ItemRecontar(int itemId)
+    {
+        var it = await _db.DepTareaItems.FirstOrDefaultAsync(i => i.Id == itemId);
+        if (it is null) return NotFound();
+        var t = await _db.DepTareas.FirstOrDefaultAsync(x => x.Id == it.TareaId);
+        if (t is null || t.CanceladaAt != null) return BadRequest(new { error = "Esa tarea ya no está." });
+        it.HechoAt = null; it.HechoPor = null; it.Contado = null; it.StockAlContar = null; it.Valor = null;
+        it.NoEncontrado = false; it.Revision = null; it.RevisionAt = null; it.RevisionPor = null;
+        t.TerminadaAt = null; t.TerminadaPor = null; t.VistaAt = null;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>"Visto" de una tarea terminada (deja de avisar).</summary>
+    [HttpPost("{id:int}/visto")]
+    public async Task<IActionResult> TareaVista(int id)
+    {
+        var t = await _db.DepTareas.FirstOrDefaultAsync(x => x.Id == id);
+        if (t is null) return NotFound();
+        t.VistaAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
     }

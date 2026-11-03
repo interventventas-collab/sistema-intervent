@@ -3768,6 +3768,24 @@ public class ApiClient
     public async Task RechazarDepTareaNombreAsync(int itemId)
         => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/nombre/rechazar", new { });
 
+    public async Task<DepAvisosDto?> GetDepTareasAvisosAsync()
+        => await GetAsync<DepAvisosDto>("/api/deposito-tareas/avisos");
+
+    public async Task MarcarDepTareaItemVistoAsync(int itemId)
+        => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/visto", new { });
+
+    public async Task PedirRecontarDepTareaItemAsync(int itemId)
+        => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/recontar", new { });
+
+    public async Task AprobarDepTareaFotoAsync(int itemId)
+        => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/foto/aprobar", new { });
+
+    public async Task RechazarDepTareaFotoAsync(int itemId)
+        => await PostAsync<object>($"/api/deposito-tareas/items/{itemId}/foto/rechazar", new { });
+
+    public async Task MarcarDepTareaVistaAsync(int id)
+        => await PostAsync<object>($"/api/deposito-tareas/{id}/visto", new { });
+
     public async Task CancelarDepTareaAsync(int id)
         => await PostAsync<object>($"/api/deposito-tareas/{id}/cancelar", new { });
 

@@ -45,12 +45,23 @@
     .tp-pb.on { background:#111827; color:#fff; border-color:#111827; }
     .tp-listo { background:#111827; color:#fff; border:none; border-radius:8px; padding:0.7rem 1.4rem; font-size:1rem; font-weight:700; cursor:pointer; margin-top:0.8rem; }
     .tp-nota { font-size:0.8rem; color:#6b7280; margin-top:0.7rem; }
+    .tp-fotito { width:44px; height:44px; object-fit:contain; background:#fff; border:1px solid #e5e7eb; border-radius:6px; vertical-align:middle; margin-right:0.5rem; cursor:zoom-in; }
+    .tp-sinfoto { display:inline-block; width:44px; height:44px; border:1px dashed #d1d5db; border-radius:6px; vertical-align:middle; margin-right:0.5rem; }
+    .tp-camara { display:inline-block; position:relative; overflow:hidden; }
+    .tp-revision { display:inline-block; background:#fef3c7; color:#92400e; border-radius:5px; padding:0 0.35rem; font-size:0.72rem; font-weight:700; margin-right:0.35rem; }
+    .tp-camara input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+    .tp-zoom { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1300; display:flex; align-items:center; justify-content:center; cursor:zoom-out; }
+    .tp-zoom img { max-width:90vw; max-height:88vh; background:#fff; }
     .tp-acc { background:none; border:none; padding:0 0.15rem; cursor:pointer; font-size:0.95rem; opacity:0.55; }
     .tp-acc:hover { opacity:1; }
     .tp-extra td { background:#f9fafb; }
     @((MarkupString)TareasNivel.Css)
 </style>
 
+@if (zoom is not null)
+{
+    <div class="tp-zoom" @onclick="() => zoom = null"><img src="@zoom" alt="" /></div>
+}
 <div class="tp-ov" @onclick="OnCerrar">
     <div class="tp-box" @onclick:stopPropagation="true">
         <div class="tp-top">
@@ -138,9 +149,13 @@
                             var iSel = it;
                             <tr>
                                 <td>
+                                    @if (it.Foto is not null) { <img class="tp-fotito" src="@it.Foto" alt="" @onclick="() => zoom = iSel.Foto" /> }
+                                    else { <span class="tp-sinfoto" title="Sin foto"></span> }
+                                    @if (it.FotoEnRevision) { <span class="tp-revision" title="Esperando que la oficina la apruebe">📷 en revisión</span> }
                                     @it.Nombre <span class="tp-sku">@it.Sku</span>
                                     <button type="button" class="tp-acc" title="Está en otro lugar" @onclick='() => AbrirExtra(iSel, "lugar")'>📍</button>
                                     <button type="button" class="tp-acc" title="Proponer otro nombre (lo aprueba la oficina)" @onclick='() => AbrirExtra(iSel, "nombre")'>✏️</button>
+                                    <button type="button" class="tp-acc" title="La foto está mal / mandar una nueva (la aprueba la oficina)" @onclick='() => AbrirExtra(iSel, "foto")'>📷</button>
                                     @if (it.NombreSugerido is not null)
                                     {
                                         <div class="tp-gris">✏️ propuesto: "@it.NombreSugerido" · @(it.NombreRevision switch { "APROBADO" => "aprobado", "RECHAZADO" => "no aprobado", _ => "esperando aprobación" })</div>
@@ -218,6 +233,27 @@
                                     </td>
                                 </tr>
                             }
+                            else if (extraItem == it.Id && extraTipo == "foto")
+                            {
+                                <tr class="tp-extra">
+                                    <td colspan="4">
+                                        <b>📷 La foto está mal / foto nueva</b> <span class="tp-gris">(la tiene que aprobar la oficina)</span><br />
+                                        @foreach (var mo in new[] { "No es este producto", "Se ve mal / borrosa", "Es de otro color", "Está vieja" })
+                                        {
+                                            var moSel = mo;
+                                            <button type="button" class="tp-pb @(fotoMotivo == moSel ? "on" : "")" @onclick="() => fotoMotivo = fotoMotivo == moSel ? null : moSel">@mo</button>
+                                        }
+                                        <div style="margin-top:0.4rem;">
+                                            <span class="tp-pb on tp-camara">@(subiendoFoto == it.Id ? "Mandando…" : "Elegir foto nueva y mandar")
+                                                <InputFile OnChange="e => SubirFoto(e, iSel)" accept="image/*" /></span>
+                                            <input class="tp-in bc" style="width:300px;" placeholder="…o pegá el link de una foto buena" @bind="fotoLink" @bind:event="oninput" />
+                                            <button type="button" class="tp-pb" disabled="@string.IsNullOrWhiteSpace(fotoLink)" @onclick="() => MandarFoto(iSel, null, fotoLink)">Mandar link</button>
+                                            <button type="button" class="tp-pb" @onclick="() => MandarFoto(iSel, null, null)">Solo avisar que está mal</button>
+                                            <button type="button" class="tp-link" @onclick="() => extraItem = null">cancelar</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
                             else if (extraItem == it.Id && extraTipo == "nombre")
                             {
                                 <tr class="tp-extra">
@@ -251,7 +287,42 @@
     private record InicioRes(string Nombre, List<TareaRes> Tareas);
     private record ItemRes(int Id, string? Sku, string Nombre, string? Barcode, bool Hecho, int? Contado, int? StockAntes, bool NoEncontrado,
         string? Valor, string? HechoPor, DateTime? HechoAt, string? Lugar, int Apartados,
-        string? NombreSugerido, string? NombreRevision, string? Planta, string? Zona);
+        string? NombreSugerido, string? NombreRevision, string? Planta, string? Zona, string? Foto, bool FotoPropia,
+        bool FotoEnRevision, string? FotoRevision, string? FotoPropuesta);
+    private string? zoom;
+    private int? subiendoFoto;
+    private string? fotoMotivo, fotoLink;
+
+    /// <summary>📷 en la PC: elegir la foto nueva. Queda "en revisión" hasta que la aprueba la oficina.</summary>
+    private async Task SubirFoto(InputFileChangeEventArgs e, ItemRes it)
+    {
+        try { await MandarFoto(it, await e.File.RequestImageFileAsync("image/jpeg", 1600, 1600), null); }
+        catch { errores[it.Id] = "No se pudo leer la foto"; }
+    }
+
+    private async Task MandarFoto(ItemRes it, IBrowserFile? archivo, string? link)
+    {
+        subiendoFoto = it.Id;
+        errores.Remove(it.Id);
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            if (archivo is not null)
+            {
+                var sc = new StreamContent(archivo.OpenReadStream(12 * 1024 * 1024));
+                sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+                content.Add(sc, "file", "foto.jpg");
+            }
+            if (!string.IsNullOrWhiteSpace(link)) content.Add(new StringContent(link.Trim()), "url");
+            if (!string.IsNullOrWhiteSpace(fotoMotivo)) content.Add(new StringContent(fotoMotivo), "motivo");
+            var r = await Http.PostAsync($"api/deposito-tareas/celu/{token}/item/{it.Id}/foto", content);
+            if (!r.IsSuccessStatusCode) { errores[it.Id] = await LeerError(r); return; }
+            fotoMotivo = null; fotoLink = null; extraItem = null;
+            tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{token}/tarea/{tarea!.Id}");
+        }
+        catch { errores[it.Id] = "No se pudo mandar"; }
+        finally { subiendoFoto = null; }
+    }
     private record GuardarRes(bool Ok, bool Confirmar, int? StockAntes, int? StockDespues, int Apartados);
     private record Confirmacion(int Antes, int Despues, int Apartados);
     // mucha diferencia: esperando "Sí, guardar" / "Vuelvo a contar" (por renglón)

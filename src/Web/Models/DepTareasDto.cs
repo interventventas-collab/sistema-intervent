@@ -26,3 +26,12 @@ public record DepTareasResumenDto(int Pendientes, List<DepTareasResumenItemDto> 
 
 public record DepTareaNombrePendienteDto(int ItemId, int ProductoId, string? Sku, string NombreActual, string NombrePropuesto,
     string? PropuestoPor, DateTime? PropuestoAt);
+
+// 2026-11-03: avisos del botón flotante 📋 (GET /api/deposito-tareas/avisos)
+public record DepAvisoMuchaDto(int ItemId, int TareaId, string? Sku, string Nombre, int? Decia, int Ahora, string? Quien, DateTime? At);
+public record DepAvisoNoEncontradoDto(int ItemId, int TareaId, string? Sku, string Nombre, string? Quien, DateTime? At);
+public record DepAvisoTareaDto(int Id, string Tipo, string Titulo, string Para, string Empleado, int Total, int Hechos, DateTime? TerminadaAt, string? TerminadaPor);
+public record DepAvisoFotoDto(int ItemId, string? Sku, string Nombre, string? Motivo, string? FotoActual, string? FotoNueva, string? Quien, DateTime? At);
+public record DepAvisosDto(int Pendientes, List<DepTareaNombrePendienteDto> Nombres, List<DepAvisoMuchaDto> Mucha,
+    List<DepAvisoNoEncontradoDto> NoEncontrados, List<DepAvisoTareaDto> Terminadas, List<DepAvisoTareaDto> EnCurso,
+    List<DepAvisoFotoDto>? Fotos = null);
