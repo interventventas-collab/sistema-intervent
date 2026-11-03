@@ -32,6 +32,8 @@
                             || relPath.StartsWith("saldos-clientes/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("repartidor/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("mis-pedidos/", StringComparison.OrdinalIgnoreCase)
+                            // 2026-11-03: tareas del depósito en el celu, para los que no tienen link de repartidor
+                            || relPath.StartsWith("tareas/", StringComparison.OrdinalIgnoreCase)
                             // 2026-10-02: link del celu para SACAR FOTOS con tela verde/azul (sin login, como /mis-pedidos)
                             || relPath.StartsWith("fotos/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("picking/", StringComparison.OrdinalIgnoreCase)
