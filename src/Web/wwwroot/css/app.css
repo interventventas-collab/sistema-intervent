@@ -5412,6 +5412,11 @@ tr.om-franja-tr > td { padding: 0 0.5rem 0.8rem !important; border-top: none !im
 .op-combos { background: none; border: none; color: #1d4ed8; font-size: 0.76rem; padding: 0.4rem 0 0.1rem; cursor: pointer; }
 .op-pdf { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; padding: 0.4rem 0.2rem; border-bottom: 1px solid #f3f4f6; font-size: 0.8rem; }
 .op-pdf.on { background: #eff6ff; }
+.op-pdf-h { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.op-subir { font-size: 0.75rem; font-weight: 600; color: #2563eb; cursor: pointer; padding: 0.15rem 0.5rem; border: 1px solid #bfdbfe; border-radius: 6px; background: #fff; }
+.op-subir:hover { background: #eff6ff; }
+.op-subir-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); opacity: 0; }
+.op-subir.off { color: #9ca3af; border-color: #e5e7eb; cursor: default; }
 .op-pdf span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-ojo { border: 1px solid #e5e7eb; background: #fff; border-radius: 6px; padding: 0 0.4rem; cursor: pointer; flex: none; }
 .op-visor { }

@@ -296,15 +296,20 @@
 
                 @* 2026-11-03: PDFs a mano (catálogos, medidas, modos de uso) de la carpeta Catalogos de Archivos. *@
                 <div class="card">
-                    <div class="bp-card-h">📚 PDFs a mano</div>
+                    <div class="bp-card-h op-pdf-h">
+                        <span>📚 PDFs a mano</span>
+                        @* 2026-11-03: subir el PDF desde acá mismo, sin ir a Administración → Archivos. *@
+                        <InputFile OnChange="SubirPdfs" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" class="op-subir-input" id="bp-subir-pdf" disabled="@subiendoPdf" />
+                        <label for="bp-subir-pdf" class="op-subir @(subiendoPdf ? "off" : "")">@(subiendoPdf ? "Subiendo…" : "⬆ Subir PDF")</label>
+                    </div>
                     <div class="bp-detail">
                         @if (pdfs is null)
                         {
-                            <div class="op-nota">@(pdfsSinCarpeta ? $"Creá la carpeta \"{CarpetaCatalogos}\" en Archivos y subí ahí los PDFs que quieras tener a mano." : "Cargando…")</div>
+                            <div class="op-nota">@(pdfsSinCarpeta ? "Todavía no hay PDFs. Tocá \"⬆ Subir PDF\" para agregar catálogos, medidas o modos de uso." : "Cargando…")</div>
                         }
                         else if (pdfs.Count == 0)
                         {
-                            <div class="op-nota">La carpeta "@CarpetaCatalogos" de Archivos está vacía. Arrastrá ahí los PDFs (catálogos, medidas, modos de uso).</div>
+                            <div class="op-nota">Todavía no hay PDFs. Tocá "⬆ Subir PDF" para agregar catálogos, medidas o modos de uso.</div>
                         }
                         else
                         {
@@ -515,6 +520,33 @@
 
     private static bool EsImagenArchivo(string n) =>
         new[] { ".png", ".jpg", ".jpeg", ".webp", ".gif" }.Contains(System.IO.Path.GetExtension(n).ToLowerInvariant());
+
+    private bool subiendoPdf;
+
+    private async Task SubirPdfs(InputFileChangeEventArgs e)
+    {
+        var archivos = e.GetMultipleFiles(20)
+            .Where(f => f.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) || EsImagenArchivo(f.Name)).ToList();
+        if (archivos.Count == 0) { Toast.Error("Solo se pueden subir PDFs o fotos."); return; }
+        subiendoPdf = true;
+        StateHasChanged();
+        int ok = 0;
+        try
+        {
+            foreach (var f in archivos)
+            {
+                await using var st = f.OpenReadStream(100L * 1024 * 1024);
+                var r = await Api.UploadFilesAsync(CarpetaCatalogos, new[] { (f.Name, (Stream)st, f.Size) });
+                if (r?.FirstOrDefault()?.Success == true) ok++;
+                else Toast.Error($"No se pudo subir {f.Name}: {r?.FirstOrDefault()?.Error}");
+            }
+        }
+        catch (Exception ex) { Toast.Error("No se pudo subir: " + ex.Message); }
+        finally { subiendoPdf = false; }
+        if (ok > 0) Toast.Success(ok == 1 ? "PDF subido." : $"{ok} archivos subidos.");
+        pdfsSinCarpeta = false;
+        await CargarPdfs();
+    }
 
     private async Task CargarPdfs()
     {
