@@ -1,0 +1,74 @@
+@* 2026-11-03: ventana con TODAS las publicaciones de MeLi de un producto, agrupadas en
+   sueltas / packs del mismo producto / combos con otros productos. Las pausadas al final. *@
+@inject ApiClient Api
+
+<div class="modal-overlay" @onclick="Cerrar">
+    <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 920px; max-height: 90vh; display:flex; flex-direction:column;">
+        <div class="modal-header">
+            <h3 style="margin:0; font-size:1.05rem;">🛒 En MercadoLibre — @(datos?.Sku ?? "") · @(datos?.Nombre ?? Titulo)</h3>
+            <button class="btn-close" @onclick="Cerrar">&times;</button>
+        </div>
+        <div class="modal-body" style="overflow-y:auto;">
+            @if (datos is null)
+            {
+                <p class="text-muted">@(cargando ? "Cargando publicaciones..." : "No se pudieron traer las publicaciones.")</p>
+            }
+            else if (datos.Publis.Count == 0)
+            {
+                <p style="color:#6b7280;">Este producto no está en ninguna publicación de MercadoLibre.</p>
+            }
+            else
+            {
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; color:#374151; margin-bottom:0.5rem;">
+                    <span>Está en <strong>@datos.Activas publicaciones activas</strong>@(datos.Pausadas > 0 ? $" · {datos.Pausadas} pausadas" : "")</span>
+                    @if (datos.Pausadas > 0)
+                    {
+                        <label style="font-size:0.8rem; color:#6b7280; cursor:pointer;">
+                            <input type="checkbox" checked="@verPausadas" @onchange="e => verPausadas = (bool)(e.Value ?? false)" />
+                            mostrar pausadas (@datos.Pausadas)
+                        </label>
+                    }
+                </div>
+                @foreach (var (titulo, tipo) in Grupos)
+                {
+                    var g = datos.Publis.Where(p => p.Tipo == tipo && p.Activa).ToList();
+                    if (g.Count == 0) continue;
+                    <div class="pm-grupo">@titulo · @g.Count</div>
+                    @foreach (var p in g) { <PublisMeliFila P="p" /> }
+                }
+                @if (verPausadas)
+                {
+                    var pz = datos.Publis.Where(p => !p.Activa).ToList();
+                    if (pz.Count > 0)
+                    {
+                        <div class="pm-grupo">Pausadas · @pz.Count</div>
+                        @foreach (var p in pz) { <PublisMeliFila P="p" /> }
+                    }
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int ProductoId { get; set; }
+    [Parameter] public string? Titulo { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private static readonly (string, string)[] Grupos =
+        { ("Sueltas", "suelta"), ("Packs del mismo producto", "pack"), ("Combos con otros productos", "combo") };
+    private MeliPublisDeProductoDto? datos;
+    private bool cargando = true;
+    private bool verPausadas = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (datos?.ProductoId == ProductoId) return;
+        cargando = true;
+        try { datos = await Api.GetMeliPublisDeProductoAsync(ProductoId); }
+        catch { datos = null; }
+        cargando = false;
+    }
+
+    private Task Cerrar() => OnClose.InvokeAsync();
+}
