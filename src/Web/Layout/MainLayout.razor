@@ -1455,7 +1455,7 @@
                 <CobranzasPendientesBell />
             }
             <ChatBell />
-            <MeliQuestionsBell />
+            <MeliQuestionsBell OnTotal="PreguntasContadas" />
             @if (!IsRoleWithCustomSidebar())
             {
                 <MeliCambiosBell />
@@ -2015,9 +2015,11 @@
 
 @* 2026-06-30: Asistente flotante SOLO en el dashboard (antes aparecia en todas las pantallas
    y tapaba el boton "Emitir cotizacion" del modal de Nueva Venta). *@
-@if (IsOnDashboard)
+@* 2026-11-03: ya no tiene burbuja propia: se abre desde el botón flotante único (BotonesFlotantes),
+   así que puede estar en todas las pantallas sin tapar nada. *@
+@if (!IsEmbedded)
 {
-    <AssistantWidget />
+    <AssistantWidget @ref="asistenteRef" SinBurbuja="true" />
 }
 
 @* 2026-05-28: modal para pedir clave del admin al activar modo edición del sidebar. *@
@@ -2056,7 +2058,7 @@
 
 @* 2026-10-29: ventanita de bienvenida con el resumen del día + globito ☀ para volver a abrirla.
    No se abre mientras la pantalla del PIN tapa todo. *@
-<BienvenidaVentana Bloqueado="@mostrarPinLock" />
+<BienvenidaVentana @ref="bienvenidaRef" Bloqueado="@mostrarPinLock" SinGlobito="true" />
 
 @* 2026-07-23: panel flotante de WhatsApp (API oficial de Meta). Se abre con el boton verde
    de la topbar y permite responder sin salir de la pantalla donde estas trabajando.
@@ -2120,7 +2122,10 @@
    Depósito (que ya tiene su propio chat fijo). *@
 @if (!IsEmbedded)
 {
-    <WaBuscadorFlotante />
+    <WaBuscadorFlotante @ref="waBuscadorRef" SinBurbuja="true" />
+    @* 2026-11-03: un solo botón abajo a la derecha que despliega ☀, asistente, preguntas MeLi y WhatsApp. *@
+    <BotonesFlotantes @ref="botonesRef" Bienvenida="bienvenidaRef" Asistente="asistenteRef" WhatsApp="waBuscadorRef"
+                      VePreguntas="@(HasPerm("publicaciones"))" PreguntasSinResponder="preguntasSinResponder" />
 }
 
 @* 2026-06-23: modal global de vinculacion WhatsApp. Se abre desde cualquier pantalla apretando
@@ -2728,6 +2733,18 @@
 
     // 2026-08-06: chat flotante/arrastrable de WhatsApp para Depósito (lo abre el ítem del menú).
     private DepositoWaFloating? depWaRef;
+    // 2026-11-03: botón flotante único (BotonesFlotantes) y las ventanas que abre.
+    private BienvenidaVentana? bienvenidaRef;
+    private AssistantWidget? asistenteRef;
+    private WaBuscadorFlotante? waBuscadorRef;
+    private BotonesFlotantes? botonesRef;
+    private int preguntasSinResponder;
+    private void PreguntasContadas(int n)
+    {
+        if (n == preguntasSinResponder) return;
+        preguntasSinResponder = n;
+        StateHasChanged();
+    }
 
     // 2026-08-06: QR para abrir la pantalla actual en el celu.
     private bool showQrModal;
@@ -3112,18 +3129,10 @@
                 if (usada == "1") { calcNuevoBadge = false; await InvokeAsync(StateHasChanged); }
             }
             catch { }
-            // 2026-07-21: respetar cómo dejó el menú el usuario (plegado/expandido).
-            // Default = plegado; solo se expande si el usuario lo guardó así antes.
-            try
-            {
-                var savedCollapsed = await JS.InvokeAsync<string?>("localStorage.getItem", "sidebarCollapsed");
-                if (savedCollapsed == "false" && sidebarCollapsed)
-                {
-                    sidebarCollapsed = false;
-                    await InvokeAsync(StateHasChanged);
-                }
-            }
-            catch { }
+            // 2026-11-03: el menú arranca SIEMPRE plegado (antes se acordaba si lo habían dejado abierto).
+            // Los botones del rincón reciben sus ventanas recién ahora (los @ref se llenan al dibujar).
+            botonesRef?.Refrescar();
+            StateHasChanged();
         }
     }
 
@@ -3455,6 +3464,9 @@
     private void NavigateTo(string url)
     {
         CloseSidebar();
+        // 2026-11-03: elegiste una pantalla del menú → se vuelve a plegar solo.
+        sidebarCollapsed = true;
+        menuAntesDeLaVenta = null;
         Navigation.NavigateTo(url);
     }
 
@@ -3483,12 +3495,8 @@
         menuAntesDeLaVenta = null;   // lo tocó a mano: al cerrar la venta no se lo cambiamos
         sidebarCollapsed = !sidebarCollapsed;
         userMenuOpen = false;
-        // 2026-07-21: recordar la elección en el navegador para próximas visitas.
-        try
-        {
-            await JS.InvokeVoidAsync("localStorage.setItem", "sidebarCollapsed", sidebarCollapsed ? "true" : "false");
-        }
-        catch { /* navegador viejo o JS bloqueado: no pasa nada, solo no se recuerda */ }
+        // 2026-11-03: ya no se recuerda abierto/plegado: siempre arranca plegado.
+        await Task.CompletedTask;
     }
     private void ToggleUserMenu() => userMenuOpen = !userMenuOpen;
 

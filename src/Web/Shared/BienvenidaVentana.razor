@@ -10,7 +10,7 @@
 
 @if (persona is not null && !Bloqueado)
 {
-    @if (!abierta)
+    @if (!abierta && !SinGlobito)
     {
         <button class="bnv-globito @(Traer.Corriendo ? "bnv-girando" : "")" @onclick="AbrirAsync"
                 title="@(Traer.Corriendo ? "Trayendo movimientos…" : "Resumen del día")">
@@ -18,7 +18,7 @@
             @if (PendientesCount > 0) { <span class="bnv-badge">@PendientesCount</span> }
         </button>
     }
-    else
+    else if (abierta)
     {
         <div class="bnv-fondo" @onclick="Cerrar"></div>
         <div class="bnv-ventana" role="dialog">
@@ -68,6 +68,12 @@
 @code {
     /// <summary>True mientras la pantalla del PIN tapa todo: no abrir nada por debajo.</summary>
     [Parameter] public bool Bloqueado { get; set; }
+    // 2026-11-03: el ☀ ahora vive adentro del botón flotante único (BotonesFlotantes).
+    [Parameter] public bool SinGlobito { get; set; }
+    public bool Disponible => persona is not null && !Bloqueado;
+    public int Pendientes => PendientesCount;
+    public bool Trayendo => Traer.Corriendo;
+    public Task Abrir() => InvokeAsync(AbrirAsync);
 
     private string? persona;
     private bool abierta;
