@@ -403,3 +403,20 @@ public class AlqReservaPagosDto
     public decimal CobradoSinRecibo { get; set; }
     public List<AlqReservaPagoDto> Pagos { get; set; } = new();
 }
+
+/// <summary>2026-11-03: factura o nota de crédito de alquiler para el listado de Ventas (tilde "Ver alquileres").</summary>
+public class AlqComprobanteListadoDto
+{
+    public int ReservaId { get; set; }
+    public string ReservaNumero { get; set; } = "";
+    public string ClienteNombre { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public string Clase { get; set; } = "factura";
+    public string TipoComprobante { get; set; } = "";
+    public int PtoVta { get; set; }
+    public int CbteNro { get; set; }
+    public decimal Total { get; set; }
+    public string? AnulaA { get; set; }
+    public string? AnuladaPor { get; set; }
+    public string? Motivo { get; set; }
+}

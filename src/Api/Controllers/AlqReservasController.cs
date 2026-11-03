@@ -27,6 +27,83 @@ public class AlqReservasController : ControllerBase
 
     public record SumarAlMapaRequest(string? Direccion, string? Link);
 
+    /// <summary>2026-11-03: todas las facturas y notas de credito de alquileres (para el tilde "Ver
+    /// alquileres" del listado de Ventas). Junta el historial (Alq_ReservaComprobantes) con el
+    /// comprobante vigente de cada reserva, igual que el Libro IVA, y le dice a cada NC qué factura anula.</summary>
+    [HttpGet("comprobantes-listado")]
+    public async Task<IActionResult> ComprobantesListado([FromQuery] DateTime? desde)
+    {
+        var filas = new List<(int ReservaId, string Clase, string Tipo, int TipoNum, int PtoVta, int Nro,
+            DateTime? Fecha, decimal Total, string? Motivo)>();
+
+        foreach (var h in await _db.AlqReservaComprobantes
+            .Where(c => c.Cae != null && c.CbteNro > 0)
+            .OrderBy(c => c.Id)
+            .ToListAsync())
+            filas.Add((h.ReservaId, h.Clase, h.TipoComprobante, h.CbteTipoNum, h.PtoVta, h.CbteNro,
+                       h.Fecha ?? h.CreatedAt, h.ImpTotal ?? 0, h.Motivo));
+
+        foreach (var r in await _db.AlqReservas.AsNoTracking()
+            .Where(x => (x.ArcaCae != null && x.ArcaCbteNro != null) || (x.NcCae != null && x.NcCbteNro != null))
+            .ToListAsync())
+        {
+            if (r.ArcaCae != null && r.ArcaCbteNro is > 0)
+                filas.Add((r.Id, "factura", r.TipoComprobante, r.ArcaCbteTipoNum ?? 0, r.ArcaPtoVta ?? 0,
+                           r.ArcaCbteNro.Value, r.ArcaFecha, r.ArcaImpTotal ?? 0, null));
+            if (r.NcCae != null && r.NcCbteNro is > 0)
+            {
+                var tipoNc = (r.NcCbteTipoNum ?? 0) switch { 3 => "NCA", 8 => "NCB", 13 => "NCC", _ => "NC" };
+                filas.Add((r.Id, "nota_credito", tipoNc, r.NcCbteTipoNum ?? 0, r.NcPtoVta ?? 0,
+                           r.NcCbteNro.Value, r.NcFecha ?? r.NcEmitidaAt, r.NcImpTotal ?? 0, r.NcMotivo));
+            }
+        }
+
+        // Un comprobante = una fila, aunque venga de las dos fuentes.
+        filas = filas.GroupBy(x => (x.PtoVta, x.TipoNum, x.Nro)).Select(g => g.First()).ToList();
+
+        static string Num(int pto, int nro) => $"{pto:D4}-{nro:D8}";
+        var anulaA = new Dictionary<(int, int, int), string>();
+        var anuladaPor = new Dictionary<(int, int, int), string>();
+        // Cada NC anula una factura de la MISMA reserva emitida antes: primero la del mismo importe,
+        // si no la última que quedó sin anular.
+        foreach (var g in filas.GroupBy(x => x.ReservaId))
+        {
+            var libres = g.Where(x => x.Clase == "factura").OrderBy(x => x.Fecha).ThenBy(x => x.Nro).ToList();
+            foreach (var nc in g.Where(x => x.Clase == "nota_credito").OrderBy(x => x.Fecha).ThenBy(x => x.Nro))
+            {
+                var antes = libres.Where(f => f.Fecha == null || nc.Fecha == null || f.Fecha <= nc.Fecha).ToList();
+                if (antes.Count == 0) continue;
+                var fc = antes.LastOrDefault(f => f.Total == nc.Total);
+                if (fc == default) fc = antes.Last();
+                libres.Remove(fc);
+                anulaA[(nc.PtoVta, nc.TipoNum, nc.Nro)] = Num(fc.PtoVta, fc.Nro);
+                anuladaPor[(fc.PtoVta, fc.TipoNum, fc.Nro)] = Num(nc.PtoVta, nc.Nro);
+            }
+        }
+
+        var ids = filas.Select(x => x.ReservaId).Distinct().ToList();
+        var reservas = await _db.AlqReservas.AsNoTracking().Include(x => x.ClienteNav)
+            .Where(x => ids.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id);
+
+        var lista = filas
+            .Where(x => x.Fecha != null && (!desde.HasValue || x.Fecha.Value.Date >= desde.Value.Date))
+            .Select(x =>
+            {
+                reservas.TryGetValue(x.ReservaId, out var r);
+                var cliente = !string.IsNullOrWhiteSpace(r?.ClienteNav?.Nombre)
+                    ? r!.ClienteNav!.Nombre : (r?.ClienteNav?.RazonSocial ?? "");
+                var k = (x.PtoVta, x.TipoNum, x.Nro);
+                return new AlqComprobanteListadoDto(x.ReservaId, r?.Numero ?? "", cliente, x.Fecha!.Value.Date,
+                    x.Clase, x.Tipo, x.PtoVta, x.Nro, x.Total,
+                    anulaA.GetValueOrDefault(k), anuladaPor.GetValueOrDefault(k), x.Motivo);
+            })
+            .OrderByDescending(x => x.Fecha).ThenByDescending(x => x.CbteNro)
+            .ToList();
+        return Ok(lista);
+    }
+
+
     /// <summary>Suma una reserva de alquiler al mapa de reparto (mismo patrón que ventas).</summary>
     [HttpPost("{id:int}/sumar-al-mapa")]
     public async Task<IActionResult> SumarAlMapa(int id, [FromBody] SumarAlMapaRequest? req)
