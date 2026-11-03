@@ -512,6 +512,17 @@ public class ApiClient
     public async Task<List<AlqComprobanteListadoDto>?> GetAlqComprobantesListadoAsync()
         => await GetAsync<List<AlqComprobanteListadoDto>>("/api/alquileres/reservas/comprobantes-listado");
 
+    /// <summary>2026-11-03: PDF de cualquier factura o NC de un alquiler (también las viejas y anuladas).</summary>
+    public async Task<(byte[]? bytes, string? error)> GetAlqComprobantePdfAsync(int reservaId, int ptoVta, int tipo, int nro)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/alquileres/reservas/{reservaId}/comprobante-pdf?ptoVta={ptoVta}&tipo={tipo}&nro={nro}");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, "Sesión expirada"); }
+        if (resp.IsSuccessStatusCode) return (await resp.Content.ReadAsByteArrayAsync(), null);
+        try { var err = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (null, err?.Error ?? $"Error {(int)resp.StatusCode}"); }
+        catch { return (null, $"Error {(int)resp.StatusCode}"); }
+    }
+
     // --- Alquileres: Cotizaciones pegadas al telefono (2026-08-31) ---
     public async Task<List<AlqCotizacionDto>?> GetAlqCotizacionesAsync(string telefono, int limit = 20)
         => await GetAsync<List<AlqCotizacionDto>>($"/api/alquileres/cotizaciones?telefono={Uri.EscapeDataString(telefono)}&limit={limit}");

@@ -513,6 +513,11 @@
                     <input type="checkbox" checked="@verAlquileres" @onchange="OnVerAlquileresChanged" style="margin:0;" />
                     <span>🎪 Ver alquileres</span>
                 </label>
+                <label style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.7rem; align-self:flex-end; background:@(soloAlquileres ? "#eff6ff" : "white"); border:1.5px solid @(soloAlquileres ? "#3b82f6" : "#d1d5db"); border-radius:999px; font-size:0.8rem; cursor:pointer; user-select:none;"
+                       title="Esconde las ventas y deja solo las facturas y notas de crédito de alquileres">
+                    <input type="checkbox" checked="@soloAlquileres" @onchange="OnSoloAlquileresChanged" style="margin:0;" />
+                    <span>Solo alquileres</span>
+                </label>
             }
             @if (HayFiltrosActivos)
             {
@@ -621,7 +626,7 @@
                             var alqFilas = AlqFilasVisibles;
                             var alqIdx = 0;
                         }
-                        @foreach (var v in VentasFiltradas)
+                        @foreach (var v in (soloAlquileres ? new List<CafeVentaDto>() : VentasFiltradas))
                         {
                             while (alqIdx < alqFilas.Count && alqFilas[alqIdx].Fecha.Date >= v.Fecha.Date)
                             {
@@ -5968,10 +5973,51 @@
     // listado, solo para verlas (no se seleccionan, no se cobran ni se editan desde acá).
     private bool verAlquileres;
     private List<AlqComprobanteListadoDto>? alqComprobantes;
+    private bool soloAlquileres;
+
+    private async Task OnSoloAlquileresChanged(ChangeEventArgs e)
+    {
+        soloAlquileres = e.Value is true;
+        if (soloAlquileres && !verAlquileres) await OnVerAlquileresChanged(new ChangeEventArgs { Value = true });
+        if (!verAlquileres) soloAlquileres = false;
+    }
+
+    private async Task RecargarAlquileres()
+    {
+        try { alqComprobantes = await Api.GetAlqComprobantesListadoAsync() ?? new(); } catch { }
+    }
+
+    private async Task VerPdfAlquiler(AlqComprobanteListadoDto a)
+    {
+        var (bytes, error) = await Api.GetAlqComprobantePdfAsync(a.ReservaId, a.PtoVta, a.CbteTipoNum, a.CbteNro);
+        if (bytes is null) { ToastService.Error(error ?? "No se pudo armar el PDF"); return; }
+        await JS.InvokeVoidAsync("openPdfInNewTab", Convert.ToBase64String(bytes));
+    }
+
+    private int? alqMenuAbierto;
+
+    /// <summary>Mismo paso a paso que en Alquileres: confirmar, pedir el motivo y emitir la NC.</summary>
+    private async Task AnularAlquilerConNc(AlqComprobanteListadoDto a)
+    {
+        alqMenuAbierto = null;
+        var msg = $"Vas a ANULAR la {AlqTipoTexto(a)} {a.PtoVta:D5}-{a.CbteNro:D8} por ${FormatMoney(a.Total)}\n\n"
+                + $"CLIENTE: {a.ClienteNombre} · alquiler {a.ReservaNumero}\n\n"
+                + "Se emite una nota de crédito con la MISMA empresa y por el MISMO importe.\n"
+                + "La nota de crédito también queda con CAE y tampoco se puede borrar.\n\n"
+                + "¿Anulo la factura?";
+        if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
+        var motivo = await JS.InvokeAsync<string?>("prompt", "¿Por qué se anula? (sale impreso en la nota de crédito)", "");
+        if (motivo is null) return;
+        var (ok, error) = await Api.EmitirNotaCreditoReservaAsync(a.ReservaId, motivo);
+        if (ok) ToastService.Success($"Factura anulada con nota de crédito — alquiler {a.ReservaNumero}");
+        else ToastService.Error(error ?? "No se pudo emitir la nota de crédito");
+        await RecargarAlquileres();
+    }
 
     private async Task OnVerAlquileresChanged(ChangeEventArgs e)
     {
         verAlquileres = e.Value is true;
+        if (!verAlquileres) soloAlquileres = false;
         if (verAlquileres && alqComprobantes is null)
         {
             try { alqComprobantes = await Api.GetAlqComprobantesListadoAsync() ?? new(); }
@@ -6004,7 +6050,7 @@
             }
             // Modo paginado: solo las fechas que cubre esta página.
             var lista = VentasFiltradas;
-            if (!traerTodoActivo && !rangoUltimosDias.HasValue && !busquedaServidorActiva && lista.Count > 0)
+            if (!soloAlquileres && !traerTodoActivo && !rangoUltimosDias.HasValue && !busquedaServidorActiva && lista.Count > 0)
             {
                 var masNueva = lista.Max(v => v.Fecha.Date);
                 var masVieja = lista.Min(v => v.Fecha.Date);
@@ -6047,8 +6093,25 @@
                 @(esNc ? "−" : "")$@FormatMoney(a.Total)
             </td>
             <td style="font-size:0.8rem; color:#6b7280;">@(anulada ? "anulada" : "")</td>
-            <td>
-                <a href="/alquileres/reservas?openId=@a.ReservaId" style="font-size:0.8rem;" title="Abrir el alquiler">Ver alquiler →</a>
+            <td class="actions-cell" style="position:relative;">
+                <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => VerPdfAlquiler(a)" title="Ver / imprimir el PDF de este comprobante">🖨</button>
+                @if (a.EsVigente && a.ClienteId.HasValue)
+                {
+                    <button class="btn-icon" style="color: #059669;" @onclick='() => Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={a.ClienteId!.Value}&reserva={a.ReservaId}")' title="Cobrar este alquiler">💰</button>
+                }
+                <button class="btn-icon btn-edit" @onclick='() => Navigation.NavigateTo($"/alquileres/reservas?openId={a.ReservaId}")' title="Abrir el alquiler">✎</button>
+                @if (a.EsVigente)
+                {
+                    <button class="btn-icon" style="color: #4b5563;" @onclick="() => alqMenuAbierto = alqMenuAbierto == a.ReservaId ? null : a.ReservaId" title="Más acciones">+</button>
+                    @if (alqMenuAbierto == a.ReservaId)
+                    {
+                        <div style="position:absolute; right:0; top:100%; z-index:30; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.12); padding:0.25rem; min-width:220px;">
+                            <button class="actions-popup-item" style="color:#b91c1c;" @onclick="() => AnularAlquilerConNc(a)">
+                                <span class="ic">↩️</span><span>Anular con nota de crédito</span>
+                            </button>
+                        </div>
+                    }
+                }
             </td>
             <td></td>
         </tr>

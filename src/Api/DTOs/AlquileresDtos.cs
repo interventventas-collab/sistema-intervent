@@ -303,4 +303,5 @@ public record AlqDisponibilidadDto(int EquipoId, string EquipoSku, string Equipo
 public record AlqComprobanteListadoDto(
     int ReservaId, string ReservaNumero, string ClienteNombre, DateTime Fecha,
     string Clase, string TipoComprobante, int PtoVta, int CbteNro, decimal Total,
-    string? AnulaA, string? AnuladaPor, string? Motivo);
+    string? AnulaA, string? AnuladaPor, string? Motivo,
+    int? ClienteId = null, int CbteTipoNum = 0, bool EsVigente = false);
