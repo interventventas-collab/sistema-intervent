@@ -1,0 +1,32 @@
+@* 2026-11-03: un renglón de "publicación de MeLi donde está el producto": foto, número, título,
+   suelta/pack/combo, precio y "Ver ↗". Lo usan el listado, la ventana completa y la ficha. *@
+<div class="pm-fila @(P.Activa ? "" : "pm-pausada")">
+    @if (!string.IsNullOrEmpty(P.Thumbnail))
+    {
+        <img class="pm-foto" src="@P.Thumbnail" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />
+    }
+    else
+    {
+        <div class="pm-foto"></div>
+    }
+    <div class="pm-num">
+        <div class="pm-mla">@P.MeliItemId</div>
+        <div class="pm-sku">@P.Sku</div>
+    </div>
+    <div class="pm-tit">
+        @P.Title
+        <div class="pm-sub">
+            @P.TipoTexto · descuenta @P.CantidadInt@(string.IsNullOrEmpty(P.Envio) ? "" : " · " + P.Envio)@(P.ListingTypeId == "gold_pro" ? " · cuotas" : "") · @P.SoldQuantity vendidas@(string.IsNullOrEmpty(P.Variante) ? "" : " · " + P.Variante)
+        </div>
+    </div>
+    <div class="pm-precio">
+        $@P.Price.ToString("N0", Ar)
+        @if (!P.Activa) { <span class="pm-estado">pausada</span> }
+    </div>
+    <a class="pm-ver" href="@P.Link" target="_blank" rel="noopener" title="Abrir en MercadoLibre">Ver ↗</a>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MeliPubliDeProductoDto P { get; set; } = default!;
+    private static readonly System.Globalization.CultureInfo Ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+}

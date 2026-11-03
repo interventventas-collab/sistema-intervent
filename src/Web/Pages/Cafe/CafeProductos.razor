@@ -294,6 +294,19 @@
                                             <LugarProducto ProductoId="p.Id" Lugar="@lug?.Lugar" Dudoso="@(lug?.DudosaAt is not null)"
                                                            Editable="true" OfrecerNoEsta="false" PermitirCambiar="true" Tamano="0.75rem" OnCambio="LoadLugares" />
                                         </div>
+                                        @* 2026-11-03: en cuántas publicaciones de MeLi está; al tocar se despliega abajo del renglón. *@
+                                        conteosMeli.TryGetValue(p.Id, out var cm);
+                                        @if (cm is not null && cm.Activas + cm.Pausadas > 0)
+                                        {
+                                            <span class="pm-boton" @onclick="() => TogglePublisMeli(capturado.Id)"
+                                                  title="Ver las publicaciones de MercadoLibre donde está este producto">
+                                                🛒 en @(cm.Activas > 0 ? cm.Activas : cm.Pausadas) publi@(((cm.Activas > 0 ? cm.Activas : cm.Pausadas) == 1) ? "" : "s") MeLi@(cm.Activas == 0 ? " (pausadas)" : "") @(publisAbiertas.Contains(p.Id) ? "▴" : "▾")
+                                            </span>
+                                        }
+                                        else if (conteosMeliCargados)
+                                        {
+                                            <span class="pm-boton pm-sin">sin publis MeLi</span>
+                                        }
                                     }
                                     @if (!string.IsNullOrEmpty(p.Notas))
                                     {
@@ -518,6 +531,29 @@
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(p)" title="Eliminar">@SvgIcons.AlertCircle</button>
                                 </td>
                             </tr>
+                            @if (!p.EsCompuestoFake && publisAbiertas.Contains(p.Id))
+                            {
+                                <tr>
+                                    <td colspan="20" class="pm-desplegado">
+                                        @if (!publisCache.TryGetValue(p.Id, out var pd) || pd is null)
+                                        {
+                                            <span style="font-size:0.82rem; color:#6b7280;">@(pd is null && publisCache.ContainsKey(p.Id) ? "No se pudieron traer las publicaciones." : "Cargando publicaciones...")</span>
+                                        }
+                                        else
+                                        {
+                                            var top = pd.Publis.Where(x => x.Activa).OrderByDescending(x => x.SoldQuantity).Take(6).ToList();
+                                            if (top.Count == 0) top = pd.Publis.Take(6).ToList();
+                                            <div class="pm-desplegado-caja">
+                                                @foreach (var x in top) { <PublisMeliFila P="x" /> }
+                                            </div>
+                                            <span class="pm-vertodas" @onclick="() => ventanaPublisId = capturado.Id">
+                                                @(pd.Activas > 0 ? $"Ver las {pd.Activas} activas" + (pd.Pausadas > 0 ? $" (+{pd.Pausadas} pausadas)" : "") : $"Ver {(pd.Pausadas == 1 ? "la pausada" : $"las {pd.Pausadas} pausadas")}") →
+                                            </span>
+                                            <span style="font-size:0.78rem; color:#6b7280;"> sueltas · packs · combos</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
                         }
                     </tbody>
                 </table>
@@ -525,6 +561,11 @@
         }
     </div>
 </div>
+
+@if (ventanaPublisId is int vpId)
+{
+    <PublisMeliVentana ProductoId="vpId" OnClose="() => ventanaPublisId = null" />
+}
 
 @if (showForm)
 {
@@ -677,6 +718,36 @@
                         }
                     </div>
                 </div>
+
+                @* 2026-11-03: en qué publicaciones de MeLi está este producto. *@
+                @if (isEditing && editingId.HasValue && conteosMeli.TryGetValue(editingId.Value, out var cmf) && cmf.Activas + cmf.Pausadas > 0)
+                {
+                    <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">🛒 En MercadoLibre</h4>
+                    <div class="pm-ficha">
+                        @if (publisCache.TryGetValue(editingId.Value, out var pf) && pf is not null)
+                        {
+                            <div style="font-size:0.92rem;">
+                                <strong>Está en @pf.Activas publicaciones activas</strong>
+                                <span style="color:#6b7280; font-size:0.82rem;">
+                                    @foreach (var (n, t) in new[] { (pf.Publis.Count(x => x.Activa && x.Tipo == "suelta"), "sueltas"), (pf.Publis.Count(x => x.Activa && x.Tipo == "pack"), "packs"), (pf.Publis.Count(x => x.Activa && x.Tipo == "combo"), "combos"), (pf.Pausadas, "pausadas") }.Where(z => z.Item1 > 0))
+                                    {
+                                        <text> · @n @t</text>
+                                    }
+                                </span>
+                            </div>
+                            var fotos = pf.Publis.Where(x => x.Activa && !string.IsNullOrEmpty(x.Thumbnail)).OrderByDescending(x => x.SoldQuantity).ToList();
+                            <div class="pm-ficha-fotos">
+                                @foreach (var x in fotos.Take(10)) { <img src="@x.Thumbnail" alt="" title="@x.MeliItemId · @x.Title" loading="lazy" /> }
+                                @if (fotos.Count > 10) { <span style="font-size:0.8rem; color:#6b7280;">+@(fotos.Count - 10)</span> }
+                            </div>
+                            <button type="button" class="btn btn-primary" style="font-size:0.85rem;" @onclick="() => ventanaPublisId = editingId">Ver todas las publicaciones</button>
+                        }
+                        else
+                        {
+                            <span style="font-size:0.85rem; color:#6b7280;">Cargando publicaciones…</span>
+                        }
+                    </div>
+                }
 
                 @* 2026-10-30: ficha técnica del café (la misma que en Catálogo → Fichas técnicas). *@
                 @if (formCategoria == "CAFE" && isEditing && editingId.HasValue)
@@ -2472,6 +2543,7 @@
         var loadPortadasCombos = LoadPortadasCombos();
         var loadLugares = LoadLugares();
         var loadSettings = LoadSettings();
+        var loadConteosMeli = LoadConteosMeli();
         await Load();
         await loadOems;
         await loadMarcas;
@@ -2481,11 +2553,47 @@
         await loadPortadasCombos;
         await loadLugares;
         await loadSettings;
+        await loadConteosMeli;
         // 2026-09-07: la cotizacion se busca APARTE y sin esperarla. Es un scraping al sitio del
         // BNA con 10s de timeout: si lo esperaramos aca, un dia que el BNA no conteste la pantalla
         // de productos tardaria 10 segundos de mas en abrir. Solo sirve para mostrar equivalencias,
         // asi que llega cuando llega y refrescamos.
         _ = LoadDolar();
+    }
+
+    // 2026-11-03: en cuántas publicaciones de MeLi está cada producto (una sola consulta para
+    // toda la lista) y, al desplegar o abrir la ficha, el detalle de ese producto (se guarda).
+    private Dictionary<int, MeliPublisConteoDto> conteosMeli = new();
+    private bool conteosMeliCargados;
+    private readonly HashSet<int> publisAbiertas = new();
+    private readonly Dictionary<int, MeliPublisDeProductoDto?> publisCache = new();
+    private int? ventanaPublisId;
+
+    private async Task LoadConteosMeli()
+    {
+        try
+        {
+            conteosMeli = (await Api.GetMeliPublisConteosAsync()).ToDictionary(c => c.ProductoId);
+            conteosMeliCargados = true;
+        }
+        catch { /* sin el dato, la lista se ve igual que antes */ }
+    }
+
+    private async Task CargarPublisMeli(int productoId)
+    {
+        if (publisCache.TryGetValue(productoId, out var ya) && ya is not null) return;
+        try { publisCache[productoId] = await Api.GetMeliPublisDeProductoAsync(productoId); }
+        catch { publisCache[productoId] = null; }
+        StateHasChanged();
+    }
+
+    private async Task TogglePublisMeli(int productoId)
+    {
+        if (!publisAbiertas.Remove(productoId))
+        {
+            publisAbiertas.Add(productoId);
+            await CargarPublisMeli(productoId);
+        }
     }
 
     // 2026-09-24: lugar en el depósito de cada producto, para mostrarlo abajo del nombre.
@@ -2873,6 +2981,7 @@
         _ = CargarLugarProducto(p);
         fichaProd = null; fichaProdCargada = false;
         _ = CargarFichaProducto(p.Id);
+        if (conteosMeli.ContainsKey(p.Id)) _ = CargarPublisMeli(p.Id);
         formNombre = p.Nombre; formSku = p.Sku ?? ""; formBarcode = p.Barcode ?? "";
         formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo;

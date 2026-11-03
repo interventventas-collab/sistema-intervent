@@ -1,0 +1,139 @@
+@* 2026-11-03: bandeja de preguntas → "También lo tenés en". Muestra las otras publicaciones del
+   producto preguntado (packs primero) para ofrecerlas en la respuesta, de a una con "+ agregar".
+   Buscador por código para traer las de otro producto. Al comprador le llega solo el texto: MeLi
+   no deja enlaces en las respuestas; el "Ver ↗" es para mirarla uno. *@
+@inject ApiClient Api
+
+<div class="card op-card">
+    <div class="bp-card-h">📦 También lo tenés en</div>
+    <div class="bp-detail">
+        <form class="op-bus" @onsubmit="Buscar" @onsubmit:preventDefault="true">
+            <input class="form-input" placeholder="Código del producto (ej. C1925NEG)" @bind="codigo" @bind:event="oninput" />
+            <button type="submit" class="btn btn-secondary btn-sm" disabled="@(cargando || string.IsNullOrWhiteSpace(codigo))">Buscar</button>
+        </form>
+        @if (cargando)
+        {
+            <div class="op-nota">Buscando…</div>
+        }
+        else if (datos is null)
+        {
+            <div class="op-nota">@(candidatos.Count > 0 ? "No hay un producto con ese código exacto. ¿Es alguno de estos?" : mensaje)</div>
+        }
+        else
+        {
+            <div class="op-prod">@datos.Sku · @datos.Nombre</div>
+        }
+        @if (candidatos.Count > 0)
+        {
+            <div class="op-cands">
+                @foreach (var c in candidatos)
+                {
+                    <button type="button" class="op-cand @(datos?.ProductoId == c.Id ? "on" : "")" title="@c.Nombre"
+                            @onclick="() => CargarProducto(c.Id, c.Sku)">@(c.Sku ?? c.Nombre)</button>
+                }
+            </div>
+        }
+        @if (datos is not null)
+        {
+            var lista = datos.Publis.Where(p => p.Activa && p.MeliItemId != MeliItemId)
+                .OrderBy(p => p.Tipo == "pack" ? 0 : p.Tipo == "suelta" ? 1 : 2).ThenBy(p => p.Cantidad).ThenByDescending(p => p.SoldQuantity).ToList();
+            var principales = lista.Where(p => p.Tipo != "combo").ToList();
+            var combos = lista.Where(p => p.Tipo == "combo").ToList();
+            @if (lista.Count == 0)
+            {
+                <div class="op-nota">No hay otras publicaciones activas de este producto.</div>
+            }
+            @foreach (var p in principales) { @Fila(p) }
+            @if (combos.Count > 0)
+            {
+                <button type="button" class="op-combos" @onclick="() => verCombos = !verCombos">
+                    @(verCombos ? "▴" : "▾") @combos.Count combos con otros productos
+                </button>
+                @if (verCombos) { @foreach (var p in combos) { @Fila(p) } }
+            }
+            <div class="op-nota">Elegís una o varias con "+ agregar" y se escriben en la respuesta. "Ver ↗" la abre para vos; al comprador le llega solo el texto.</div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Publicación de la pregunta: de ahí sale el producto y no se ofrece a sí misma.</summary>
+    [Parameter, EditorRequired] public string MeliItemId { get; set; } = "";
+    /// <summary>Cambia la lista de elegidas: la bandeja rearma el renglón del mensaje.</summary>
+    [Parameter] public EventCallback<List<MeliPubliDeProductoDto>> OnElegidasCambiaron { get; set; }
+
+    private static readonly System.Globalization.CultureInfo Ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+    private string? itemCargado;
+    private string codigo = "";
+    private bool cargando;
+    private bool verCombos;
+    private string mensaje = "";
+    private MeliPublisDeProductoDto? datos;
+    private List<MeliProductoCandidatoDto> candidatos = new();
+    private readonly List<MeliPubliDeProductoDto> elegidas = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (itemCargado == MeliItemId) return;
+        itemCargado = MeliItemId;
+        elegidas.Clear(); verCombos = false; datos = null; candidatos = new(); codigo = "";
+        cargando = true;
+        try
+        {
+            var r = await Api.GetMeliPublisDePubliAsync(MeliItemId);
+            datos = r?.Producto; candidatos = r?.Candidatos ?? new();
+            codigo = datos?.Sku ?? "";
+            mensaje = datos is null ? "Esta publicación no tiene producto asignado. Escribí un código para buscar." : "";
+        }
+        catch { mensaje = "No se pudieron traer las publicaciones."; }
+        cargando = false;
+    }
+
+    private async Task Buscar()
+    {
+        var q = codigo.Trim();
+        if (q.Length < 2) return;
+        cargando = true; candidatos = new();
+        try
+        {
+            var r = await Api.BuscarMeliPublisPorCodigoAsync(q);
+            datos = r?.Producto; candidatos = r?.Candidatos ?? new();
+            mensaje = datos is null && candidatos.Count == 0 ? $"No encontré ningún producto con \"{q}\"." : "";
+        }
+        catch { mensaje = "No se pudo buscar."; }
+        cargando = false; verCombos = false;
+    }
+
+    private async Task CargarProducto(int id, string? sku)
+    {
+        cargando = true;
+        try { datos = await Api.GetMeliPublisDeProductoAsync(id); codigo = sku ?? codigo; }
+        catch { mensaje = "No se pudieron traer las publicaciones."; }
+        cargando = false; verCombos = false;
+    }
+
+    private async Task Toggle(MeliPubliDeProductoDto p)
+    {
+        var ya = elegidas.FirstOrDefault(e => e.MeliItemId == p.MeliItemId);
+        if (ya is not null) elegidas.Remove(ya); else elegidas.Add(p);
+        await OnElegidasCambiaron.InvokeAsync(elegidas.ToList());
+    }
+
+    private RenderFragment Fila(MeliPubliDeProductoDto p) => __builder =>
+    {
+        var on = elegidas.Any(e => e.MeliItemId == p.MeliItemId);
+        var c = Math.Max(1, p.CantidadInt);
+        <div class="op-fila @(on ? "on" : "")">
+            @if (!string.IsNullOrEmpty(p.Thumbnail)) { <img src="@p.Thumbnail" alt="" loading="lazy" /> } else { <div class="op-sinfoto"></div> }
+            <div class="op-t">
+                <div>
+                    <b>@(p.Tipo == "combo" ? p.Title : p.Tipo == "pack" ? $"Pack x{c}" : "Suelta")</b> · $@p.Price.ToString("N0", Ar)
+                    @if (p.Tipo == "pack") { <span class="op-pu">($@((p.Price / c).ToString("N0", Ar)) c/u)</span> }
+                </div>
+                @if (p.Tipo != "combo") { <div class="op-tt" title="@p.Title">@p.Title</div> }
+                <div class="op-s">@p.MeliItemId · stock @p.AvailableQuantity · <a href="@p.Link" target="_blank" rel="noopener">Ver ↗</a></div>
+            </div>
+            <button type="button" class="op-add @(on ? "on" : "")" @onclick="() => Toggle(p)">@(on ? "✓ agregado" : "+ agregar")</button>
+        </div>
+    };
+}

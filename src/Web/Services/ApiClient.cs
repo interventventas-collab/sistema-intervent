@@ -7198,6 +7198,19 @@ public class ApiClient
     }
 
     // ===== Cafe ↔ MeLi push =====
+    // 2026-11-03: en qué publicaciones de MeLi está cada producto (listado, ficha y bandeja de preguntas).
+    public async Task<List<MeliPublisConteoDto>> GetMeliPublisConteosAsync()
+        => await GetAsync<List<MeliPublisConteoDto>>("/api/meli/publis-producto/conteos") ?? new();
+
+    public async Task<MeliPublisDeProductoDto?> GetMeliPublisDeProductoAsync(int productoId)
+        => await GetAsync<MeliPublisDeProductoDto>($"/api/meli/publis-producto/{productoId}");
+
+    public async Task<MeliPublisBusquedaDto?> GetMeliPublisDePubliAsync(string meliItemId)
+        => await GetAsync<MeliPublisBusquedaDto>($"/api/meli/publis-producto/de-publi/{Uri.EscapeDataString(meliItemId)}");
+
+    public async Task<MeliPublisBusquedaDto?> BuscarMeliPublisPorCodigoAsync(string codigo)
+        => await GetAsync<MeliPublisBusquedaDto>($"/api/meli/publis-producto/buscar?q={Uri.EscapeDataString(codigo)}");
+
     public async Task<CafeMeliPreviewDto?> GetCafeMeliPreviewAsync(int cafeProductoId)
         => await GetAsync<CafeMeliPreviewDto>($"/api/cafe/productos/{cafeProductoId}/meli-preview");
 

@@ -209,6 +209,31 @@
                         }
                     }
                 </div>
+                @* 2026-11-03: PDF de "PDFs a mano" abierto al lado, sin salir de la pregunta. *@
+                @if (pdfViendo is not null)
+                {
+                    <div class="card op-visor">
+                        <div class="bp-card-h op-visor-h">
+                            <span>👁 @pdfViendo.Name</span>
+                            <span>
+                                @if (pdfBlob is not null) { <button class="btn btn-secondary btn-sm" @onclick="AgrandarPdf" title="Abrir en una pestaña nueva">⤢ Grande</button> }
+                                <button class="btn btn-secondary btn-sm" @onclick="CerrarPdf">✕ Cerrar</button>
+                            </span>
+                        </div>
+                        @if (EsImagenArchivo(pdfViendo.Name))
+                        {
+                            <img src="@($"api/files/download?path={Uri.EscapeDataString(pdfViendo.Path)}")" alt="@pdfViendo.Name" />
+                        }
+                        else if (pdfBlob is not null)
+                        {
+                            <iframe src="@pdfBlob" title="@pdfViendo.Name"></iframe>
+                        }
+                        else
+                        {
+                            <div class="bp-empty" style="padding:24px">@(pdfError ? "No se pudo abrir el archivo." : "Abriendo…")</div>
+                        }
+                    </div>
+                }
             </div>
 
             <!-- DERECHA: detalle publicación + cliente -->
@@ -260,6 +285,37 @@
                             <div style="margin-top:12px">
                                 <a class="btn btn-secondary btn-sm" style="width:100%; text-align:center" href="@(string.IsNullOrEmpty(it.Permalink) ? selectedQ?.MeliUrl : it.Permalink)" target="_blank">Ver en MeLi ↗</a>
                             </div>
+                        }
+                    </div>
+                </div>
+
+                @if (selectedQ is not null && !string.IsNullOrEmpty(selectedQ.ItemId))
+                {
+                    <OtrasPublisPregunta MeliItemId="@selectedQ.ItemId" OnElegidasCambiaron="PacksElegidos" />
+                }
+
+                @* 2026-11-03: PDFs a mano (catálogos, medidas, modos de uso) de la carpeta Catalogos de Archivos. *@
+                <div class="card">
+                    <div class="bp-card-h">📚 PDFs a mano</div>
+                    <div class="bp-detail">
+                        @if (pdfs is null)
+                        {
+                            <div class="op-nota">@(pdfsSinCarpeta ? $"Creá la carpeta \"{CarpetaCatalogos}\" en Archivos y subí ahí los PDFs que quieras tener a mano." : "Cargando…")</div>
+                        }
+                        else if (pdfs.Count == 0)
+                        {
+                            <div class="op-nota">La carpeta "@CarpetaCatalogos" de Archivos está vacía. Arrastrá ahí los PDFs (catálogos, medidas, modos de uso).</div>
+                        }
+                        else
+                        {
+                            @foreach (var f in pdfs)
+                            {
+                                <div class="op-pdf @(pdfViendo?.Path == f.Path ? "on" : "")">
+                                    <span title="@f.Path">📄 @f.Name</span>
+                                    <button class="op-ojo" title="Ver acá al lado" @onclick="() => VerPdf(f)">👁</button>
+                                </div>
+                            }
+                            <div class="op-nota">Son los de la carpeta "@CarpetaCatalogos" en Archivos.</div>
                         }
                     </div>
                 </div>
@@ -417,6 +473,90 @@
     private MeliQuestionDetailDto? detail;
     private List<MeliQuickReplyDto> quickReplies = new();
     private string draft = "";
+
+    // 2026-11-03: renglón de "también lo tenemos en ..." que se escribe en la respuesta al elegir
+    // packs. Se guarda el último escrito para reemplazarlo (o sacarlo) cuando cambia la elección.
+    private string renglonPacks = "";
+    private static readonly System.Globalization.CultureInfo Ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+
+    private void PacksElegidos(List<MeliPubliDeProductoDto> elegidas)
+    {
+        var nuevo = "";
+        if (elegidas.Count > 0)
+        {
+            var partes = elegidas.Select(p =>
+            {
+                var precio = "$" + p.Price.ToString("N0", Ar);
+                return p.Tipo switch
+                {
+                    "pack" => $"PACK X {p.CantidadInt} a {precio}",
+                    // Suelta: se usa el título (en el café cada suelta es otro peso o molienda).
+                    "suelta" => $"{p.Title.ToUpperInvariant()} a {precio}",
+                    _ => $"{p.Title.ToUpperInvariant()} a {precio}",
+                };
+            }).Distinct().ToList();
+            var lista = partes.Count == 1 ? partes[0] : string.Join(", ", partes.Take(partes.Count - 1)) + " y " + partes[^1];
+            nuevo = $"También lo tenemos en {lista}. Lo encontrás en nuestras otras publicaciones.";
+        }
+        if (!string.IsNullOrEmpty(renglonPacks) && draft.Contains(renglonPacks))
+            draft = draft.Replace(renglonPacks, nuevo);
+        else if (!string.IsNullOrEmpty(nuevo))
+            draft = string.IsNullOrWhiteSpace(draft) ? nuevo : draft.TrimEnd() + "\n" + nuevo;
+        draft = draft.Replace("\n\n", "\n").Trim();
+        renglonPacks = nuevo;
+    }
+
+    // 2026-11-03: PDFs a mano.
+    private const string CarpetaCatalogos = "Catalogos";
+    private List<FileEntryDto>? pdfs;
+    private bool pdfsSinCarpeta, pdfError;
+    private FileEntryDto? pdfViendo;
+    private string? pdfBlob;
+
+    private static bool EsImagenArchivo(string n) =>
+        new[] { ".png", ".jpg", ".jpeg", ".webp", ".gif" }.Contains(System.IO.Path.GetExtension(n).ToLowerInvariant());
+
+    private async Task CargarPdfs()
+    {
+        try
+        {
+            var r = await Api.ListFilesAsync(CarpetaCatalogos);
+            if (r is null) { pdfsSinCarpeta = true; return; }
+            var lista = r.Entries.Where(e => !e.IsFolder).ToList();
+            // Una vuelta por las subcarpetas (ej. Catalogos/Colombraro), sin ir más hondo.
+            foreach (var sub in r.Entries.Where(e => e.IsFolder))
+            {
+                var rs = await Api.ListFilesAsync(sub.Path);
+                if (rs is not null) lista.AddRange(rs.Entries.Where(e => !e.IsFolder));
+            }
+            pdfs = lista.Where(e => e.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) || EsImagenArchivo(e.Name))
+                .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+        catch { pdfsSinCarpeta = true; }
+    }
+
+    private async Task VerPdf(FileEntryDto f)
+    {
+        await CerrarPdf();
+        pdfViendo = f; pdfError = false;
+        if (EsImagenArchivo(f.Name)) return;
+        StateHasChanged();
+        // El download viene "para bajar": puesto directo en el iframe se descargaría. Se trae y se
+        // muestra como enlace local (mismo truco que el visor de listas de precios).
+        pdfBlob = await JS.InvokeAsync<string?>("listaVisor.abrir", $"api/files/download?path={Uri.EscapeDataString(f.Path)}");
+        pdfError = pdfBlob is null;
+    }
+
+    private async Task CerrarPdf()
+    {
+        if (pdfBlob is not null) { try { await JS.InvokeVoidAsync("listaVisor.soltar", pdfBlob); } catch { } }
+        pdfBlob = null; pdfViendo = null;
+    }
+
+    private async Task AgrandarPdf()
+    {
+        if (pdfBlob is not null) await JS.InvokeVoidAsync("listaVisor.grande", pdfBlob);
+    }
     private bool mostrarCotizador = false;
     private bool cotizArriba = false;
     private bool loading = true, loadingDetail, sending, refreshing;
@@ -458,8 +598,10 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var cargarPdfs = CargarPdfs();
         await LoadQuickReplies();
         await LoadLists(selectFirst: true);
+        await cargarPdfs;
         loading = false;
     }
 
@@ -514,6 +656,7 @@
     {
         selId = id;
         draft = "";
+        renglonPacks = "";
         selectedQ = (pend?.FirstOrDefault(q => q.Id == id)) ?? (hist?.FirstOrDefault(q => q.Id == id));
         detail = null;
         loadingDetail = true;
@@ -671,7 +814,7 @@
     .bp-pill.muted { background: rgba(148,163,184,.4); color: var(--text-muted,#4b5563); }
     .bp-filters-hint { margin-left: auto; font-size: .8rem; color: var(--text-muted,#9ca3af); }
 
-    .bp-grid { display: grid; grid-template-columns: 320px minmax(0,1fr) 300px; gap: 12px; align-items: start; }
+    .bp-grid { display: grid; grid-template-columns: 320px minmax(0,1fr) 340px; gap: 12px; align-items: start; }
     .bp-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
     .bp-card-h { padding: 10px 14px; border-bottom: 1px solid rgba(148,163,184,.2); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted,#9ca3af); }
 
