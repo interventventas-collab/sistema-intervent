@@ -293,6 +293,19 @@
                                     <span class="prep-tag prep-tag-envase-negro">⚫ Envase negro</span>
                                 }
                             </div>
+                            @* 2026-11-04: total de unidades y cómo armarlo con cajas cerradas (packs y bultos). *@
+                            @if (ArmadoDe(it) is var arm && arm.Total is not null)
+                            {
+                                <div style="font-size:0.82rem; margin-top:0.25rem; color:#111827;">Total: <b>@arm.Total</b>@arm.TotalExtra</div>
+                                @if (arm.Armar is not null)
+                                {
+                                    <div style="font-size:0.76rem; color:#374151;">Armar: <b>@arm.Armar</b>@arm.ArmarExtra</div>
+                                }
+                                @if (arm.Nota is not null)
+                                {
+                                    <div style="font-size:0.72rem; color:#6b7280;">@arm.Nota</div>
+                                }
+                            }
                         </div>
                         @{
                             var stockTexto = StockTextoSistema(it);
@@ -765,6 +778,64 @@
         "BULTO" => "Bulto",
         _ => f
     };
+
+    // 2026-11-04: pedido del dueño (lío con los vasos): el armador ve el TOTAL de unidades y cómo
+    // armarlo con cajas cerradas ("10 paquetes de 100", "1 caja cerrada + 6 paquetes de 100").
+    // La caja cerrada es el UxB de la ficha. El aviso de "no mandar la caja entera" sale solo
+    // cuando lo vendido es menos que una caja. Sin colores: texto normal y gris.
+    private record ArmadoInfo(string? Total, string? TotalExtra, string? Armar, string? ArmarExtra, string? Nota);
+
+    private static ArmadoInfo ArmadoDe(CafePreparacionItemDto it)
+    {
+        var vacio = new ArmadoInfo(null, null, null, null, null);
+        var caja = it.UxB is int u && u > 1 ? u : 0;
+        int porPaquete, total;
+        var packN = FormatoPack.Unidades(it.Formato);
+        if (packN.HasValue) { porPaquete = packN.Value; total = it.Cantidad * porPaquete; }
+        else if (it.Formato == "BULTO" && caja > 0) { porPaquete = caja; total = it.Cantidad * caja; }
+        // Sueltos: solo cuando son muchos (media caja o más), que es cuando se confunden.
+        else if (it.Formato == "UNIT" && caja > 1 && it.Cantidad * 2 >= caja) { porPaquete = 1; total = it.Cantidad; }
+        else return vacio;
+        if (total <= 1) return vacio;
+
+        var cosa = NombreUnidades(it.ProductoNombre);
+        var totalTxt = $"{total:N0} {cosa}".Replace(",", ".");
+        if (FormatoPack.ConEstuche(it.Formato))
+            return new ArmadoInfo(totalTxt, $" en {it.Cantidad} estuche{(it.Cantidad == 1 ? "" : "s")}", null, null, null);
+        if (caja <= porPaquete && it.Formato != "BULTO") return new ArmadoInfo(totalTxt, null, null, null, null);
+        if (it.Formato == "UNIT") totalTxt = $"{Miles0(total)} {cosa}";
+
+        string Miles(int n) => n.ToString("N0").Replace(",", ".");
+        string Cajas(int n) => n == 1 ? "1 caja cerrada" : $"{n} cajas cerradas";
+        string Paquetes(int n) => porPaquete > 1 && n % porPaquete == 0
+            ? $"{n / porPaquete} paquete{(n / porPaquete == 1 ? "" : "s")} de {Miles(porPaquete)}"
+            : $"{Miles(n)} {cosa} sueltos";
+
+        var cerradas = total / caja;
+        var resto = total % caja;
+        if (cerradas == 0)
+        {
+            // Menos de media caja: con el total alcanza (no hay riesgo de mandar la caja entera).
+            if (total * 2 < caja) return new ArmadoInfo(totalTxt, null, null, null, null);
+            return new ArmadoInfo(totalTxt, null, porPaquete > 1 ? Paquetes(total) : null, null, $"La caja cerrada trae {Miles(caja)}: no mandar la caja entera");
+        }
+        if (resto == 0)
+            return new ArmadoInfo(totalTxt, null, Cajas(cerradas),
+                it.Formato == "BULTO" ? null : (cerradas == 1 ? " (justo lo que trae)" : $" de {Miles(caja)}"), null);
+        return new ArmadoInfo(totalTxt, null, $"{Cajas(cerradas)} ({Miles(caja)}) + {Paquetes(resto)}", null, null);
+    }
+
+    private static string Miles0(int n) => n.ToString("N0").Replace(",", ".");
+
+    private static string NombreUnidades(string? nombre)
+    {
+        var n = (nombre ?? "").Trim().ToUpperInvariant();
+        if (n.StartsWith("VASO")) return "vasos";
+        if (n.StartsWith("TAPA")) return "tapas";
+        if (n.Contains("CAPSULA") || n.Contains("CÁPSULA")) return "cápsulas";
+        if (n.StartsWith("POTE")) return "potes";
+        return "u.";
+    }
 
     // 2026-06-17: para BULTO y PACK anexamos las unidades que vienen en cada bulto
     // (campo UxB del producto). El armador ve "Bulto x 1200 u." en vez de solo "Bulto".

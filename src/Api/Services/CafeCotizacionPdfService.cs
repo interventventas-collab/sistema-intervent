@@ -390,8 +390,14 @@ public class CafeCotizacionPdfService
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(pr.CantPrint.ToString()).SemiBold();
                             // Formato — 2026-09-19: pegado a la cantidad (pedido del usuario)
                             // 2026-09-21: en negrita y negro (antes gris italica, en la hoja impresa no se leia)
+                            // 2026-11-04: en los packs, debajo y chiquito "total 1.000 un" (pedido del dueño).
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter()
-                                .Text(pr.FmtPrint).Bold().FontColor(Colors.Black);
+                                .Text(t =>
+                                {
+                                    t.Span(pr.FmtPrint).Bold().FontColor(Colors.Black);
+                                    if (pr.TotalUnidades is int tu && tu > 1)
+                                        t.Span($"\ntotal {tu.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))} un").FontSize(6.5f).FontColor(Colors.Grey.Darken1);
+                                });
                             // Producto
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text(t =>
                             {
@@ -727,6 +733,8 @@ public class CafeCotizacionPdfService
         public string? Sku { get; set; }
         public string Nombre { get; set; } = "";
         public string FmtPrint { get; set; } = "";
+        /// <summary>2026-11-04: unidades totales de un renglón en pack (cantidad × unidades del pack).</summary>
+        public int? TotalUnidades { get; set; }
         public decimal PrecioPrint { get; set; }
         public decimal DescuentoPct { get; set; }
         public decimal Subtotal { get; set; }
@@ -832,6 +840,7 @@ public class CafeCotizacionPdfService
                 Sku = i.ProductoNav?.Sku,
                 Nombre = i.ProductoNombreSnapshot,
                 FmtPrint = fmtPrint,
+                TotalUnidades = CafePricingService.ParsePackUnidades(i.Formato) is int pn ? i.Cantidad * pn : null,
                 Subtotal = i.Subtotal,
                 PrecioPrint = precioPrint,
                 DescuentoPct = i.DescuentoPct,
