@@ -682,6 +682,9 @@
                                             <td><input type="checkbox" @bind="imputaciones[p.Clave].Seleccionado" @bind:after="RecalcularTotal" /></td>
                                             <td>
                                                 <b>@p.Numero</b>
+                                                @* 04/11/2026: ojito para ver la factura sin salir de la cobranza. *@
+                                                <button type="button" title="Ver la factura" @onclick="() => VerPdfComprobante(p)"
+                                                        style="border:none; background:none; cursor:pointer; padding:0 0.15rem; font-size:0.85rem; vertical-align:middle;">👁️</button>
                                                 @* 2026-08-27: los alquileres se cobran en el mismo recibo que las ventas; se marcan para que el operador sepa que esta cobrando. *@
                                                 @if (p.EsAlquiler)
                                                 {
@@ -1496,6 +1499,67 @@
 
 @* 2026-10-08: si en otra pestaña se carga o corrige un cliente, esta lista se refresca sola (antes había que apretar F5). *@
 <ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
+
+@* 04/11/2026: visor del PDF de la factura (ojito de "Comprobantes a cobrar"). Va encima de la ventana de la cobranza. *@
+@if (pdfComp is not null)
+{
+    <div class="modal-overlay" style="z-index:9500;" @onclick="CerrarPdfComprobante">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 820px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin: 0; font-size: 1rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">📄 @pdfComp.Numero</h3>
+                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                    <button class="btn btn-secondary" style="font-size: 0.85rem; white-space: nowrap;" @onclick="DescargarPdfComprobante" disabled="@(pdfCompBytes is null)">⬇ Descargar</button>
+                    <button class="btn btn-secondary" style="font-size: 0.85rem; white-space: nowrap;" @onclick="CerrarPdfComprobante">✕ Cerrar</button>
+                </div>
+            </div>
+            <div class="modal-body" style="background: #525659; padding: 0; overflow: hidden;">
+                @if (!string.IsNullOrEmpty(pdfCompUrl))
+                {
+                    <embed src="@(pdfCompUrl + "#toolbar=1&navpanes=0&scrollbar=0&pagemode=none&zoom=60")" type="application/pdf"
+                           style="width: 100%; height: 75vh; border: none; display: block; background: #525659;" />
+                }
+                else
+                {
+                    <div style="padding: 3rem; text-align: center; color: white;">⏳ Cargando PDF…</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ComprobantePendienteDto? pdfComp;
+    private string? pdfCompUrl;
+    private byte[]? pdfCompBytes;
+
+    private async Task VerPdfComprobante(ComprobantePendienteDto c)
+    {
+        await CerrarPdfComprobante();
+        pdfComp = c;
+        var (bytes, error) = c.EsAlquiler
+            ? await Api.GetAlqFacturaPdfAsync(c.ReservaId!.Value)
+            : await Api.GetCafeVentaPdfAsync(c.VentaId);
+        if (bytes is null) { ToastService.Error(error ?? "No se pudo armar el PDF"); pdfComp = null; return; }
+        pdfCompBytes = bytes;
+        pdfCompUrl = await JS.InvokeAsync<string>("createBlobUrl", Convert.ToBase64String(bytes), "application/pdf");
+    }
+
+    private async Task CerrarPdfComprobante()
+    {
+        if (!string.IsNullOrEmpty(pdfCompUrl))
+        {
+            try { await JS.InvokeVoidAsync("revokeBlobUrl", pdfCompUrl); } catch { }
+        }
+        pdfCompUrl = null; pdfCompBytes = null; pdfComp = null;
+    }
+
+    private async Task DescargarPdfComprobante()
+    {
+        if (pdfComp is null || pdfCompBytes is null) return;
+        var nombre = $"{pdfComp.Numero}.pdf";
+        await JS.InvokeVoidAsync("downloadFile", nombre, "application/pdf", Convert.ToBase64String(pdfCompBytes));
+    }
+}
 
 @code {
     // 2026-10-08: si el buscador no encuentra a nadie puede ser un cliente recién cargado en OTRA compu
