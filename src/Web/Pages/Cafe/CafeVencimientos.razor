@@ -1,0 +1,208 @@
+@page "/cafe/vencimientos"
+@attribute [Authorize]
+@implements IDisposable
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* 2026-11-04: "Asignar vencimientos". Buscás producto o marca y le asignás cantidad + fecha.
+   Lo que queda de cada fecha lo calcula el sistema con el stock (sale primero lo que vence antes).
+   Pensada para usar desde el celu del depósito también: una columna, botones grandes. *@
+
+<style>
+    .vc-wrap { max-width: 900px; margin: 0 auto; padding: 1rem; }
+    .vc-top { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.8rem; }
+    .vc-top input[type=search] { flex: 1; min-width: 220px; font-size: 1rem; padding: 0.6rem 0.8rem; border: 1px solid #d1d5db; border-radius: 8px; }
+    .vc-chk { font-size: 0.85rem; color: #374151; display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+    .vc-ayuda { font-size: 0.8rem; color: #6b7280; margin-bottom: 0.8rem; }
+    .vc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.7rem 0.8rem; margin-bottom: 0.6rem; }
+    .vc-tit { font-size: 0.95rem; font-weight: 600; color: #111827; }
+    .vc-sku { color: #1e40af; font-family: monospace; font-weight: 600; margin-right: 0.35rem; }
+    .vc-sub { font-size: 0.78rem; color: #6b7280; margin-top: 2px; }
+    .vc-sub b { color: #374151; }
+    .vc-falta { color: #b45309; font-weight: 700; }
+    .vc-ok { color: #6b7280; }
+    .vc-fila { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; padding: 0.35rem 0; border-top: 1px solid #f3f4f6; }
+    .vc-fila .f { flex: 1; }
+    .vc-fila.term { color: #9ca3af; }
+    .vc-venc { color: #dc2626; font-weight: 700; }
+    .vc-form { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-top: 0.45rem; }
+    .vc-form input { font-size: 0.95rem; padding: 0.45rem 0.55rem; border: 1px solid #d1d5db; border-radius: 6px; }
+    .vc-form .cant { width: 90px; }
+    .vc-btn { background: #1d4ed8; color: #fff; border: none; border-radius: 6px; padding: 0.5rem 0.8rem; font-weight: 600; font-size: 0.85rem; cursor: pointer; }
+    .vc-btn:disabled { opacity: 0.5; }
+    .vc-ic { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.3rem 0.5rem; cursor: pointer; font-size: 0.85rem; }
+</style>
+
+<div class="vc-wrap">
+    <h2 style="margin: 0 0 0.6rem;">📅 Asignar vencimientos</h2>
+    <div class="vc-top">
+        <input type="search" placeholder="Buscar producto, código o marca (ej: cremuccino)" @bind="busqueda" @bind:event="oninput" @bind:after="Buscar" />
+        <label class="vc-chk"><input type="checkbox" @bind="soloAsignados" @bind:after="Buscar" /> Ver solo los que ya tienen vencimiento</label>
+    </div>
+    <div class="vc-ayuda">
+        Poné cuántos hay con cada fecha. El stock no cambia: solo le ponés fecha a lo que ya está.
+        El sistema va indicando sacar primero el que vence antes.
+    </div>
+
+    @if (cargando)
+    {
+        <p style="color:#6b7280;">Buscando...</p>
+    }
+    else if (productos is null || productos.Count == 0)
+    {
+        <p style="color:#9ca3af;">@(string.IsNullOrWhiteSpace(busqueda) && !soloAsignados ? "Escribí un producto o una marca para empezar." : "No encontré productos con stock.")</p>
+    }
+    else
+    {
+        @foreach (var p in productos)
+        {
+            var f = Form(p.ProductoId);
+            <div class="vc-card">
+                <div class="vc-tit">@if (!string.IsNullOrEmpty(p.Sku)) { <span class="vc-sku">@p.Sku</span> }@p.Nombre</div>
+                <div class="vc-sub">
+                    Stock <b>@Cant(p.Stock, p.EsCafe)</b>
+                    @if (!string.IsNullOrEmpty(p.Ubicacion)) { <span> · 📍 @p.Ubicacion</span> }
+                    @if (p.Filas.Count > 0)
+                    {
+                        @if (p.SinVencimiento > 0)
+                        {
+                            <span> · <span class="vc-falta">Faltan asignar @Cant(p.SinVencimiento, p.EsCafe)</span></span>
+                        }
+                        else
+                        {
+                            <span class="vc-ok"> · ✓ todo con fecha</span>
+                        }
+                    }
+                </div>
+                @foreach (var fl in p.Filas)
+                {
+                    var term = fl.Quedan <= 0;
+                    var vencido = fl.FechaVence.Date < Hoy && !term;
+                    <div class="vc-fila @(term ? "term" : "")">
+                        @if (editandoId == fl.Id)
+                        {
+                            <input class="cant" type="number" min="0" step="@(p.EsCafe ? "0.1" : "1")" @bind="editCant" style="width:80px;font-size:0.9rem;padding:0.3rem;border:1px solid #d1d5db;border-radius:6px;" />
+                            <input type="date" @bind="editFecha" style="font-size:0.9rem;padding:0.3rem;border:1px solid #d1d5db;border-radius:6px;" />
+                            <button class="vc-btn" @onclick="() => GuardarEdicion(p, fl)">Guardar</button>
+                            <button class="vc-ic" @onclick="() => editandoId = null">✕</button>
+                        }
+                        else
+                        {
+                            <span class="f">
+                                <b>@Cant(fl.Cantidad, p.EsCafe)</b> · vence <b class="@(vencido ? "vc-venc" : "")">@fl.FechaVence.ToString("dd/MM/yyyy")</b>@(vencido ? " (vencido)" : "")
+                                <span style="color:#6b7280;"> · @(term ? "terminado" : $"quedan {Cant(fl.Quedan, p.EsCafe)}")@(!term && fl.FechaVence == p.ProximoVence ? " · sacar primero" : "")</span>
+                            </span>
+                            <button class="vc-ic" title="Corregir" @onclick="() => EmpezarEdicion(fl)">✏</button>
+                            <button class="vc-ic" title="Borrar" @onclick="() => Borrar(p, fl)">🗑</button>
+                        }
+                    </div>
+                }
+                <div class="vc-form">
+                    <input class="cant" type="number" min="0" step="@(p.EsCafe ? "0.1" : "1")" placeholder="@(p.EsCafe ? "kg" : "cant.")" @bind="f.Cantidad" />
+                    <input type="date" @bind="f.Fecha" />
+                    <button class="vc-btn" disabled="@(f.Guardando)" @onclick="() => Asignar(p)">+ Asignar vencimiento</button>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private class FormFila { public decimal? Cantidad; public DateTime? Fecha; public bool Guardando; }
+
+    private string busqueda = "";
+    private bool soloAsignados;
+    private bool cargando;
+    private List<VencProductoDto>? productos;
+    private readonly Dictionary<int, FormFila> forms = new();
+    private int? editandoId;
+    private decimal? editCant;
+    private DateTime? editFecha;
+    private CancellationTokenSource? cts;
+    private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;   // hora argentina
+
+    private FormFila Form(int productoId)
+    {
+        if (!forms.TryGetValue(productoId, out var f)) forms[productoId] = f = new FormFila();
+        return f;
+    }
+
+    private static string Cant(decimal v, bool esCafe) =>
+        esCafe ? $"{v:0.#} kg" : v.ToString("N0");
+
+    private async Task Buscar()
+    {
+        cts?.Cancel();
+        cts = new CancellationTokenSource();
+        var tk = cts.Token;
+        try { await Task.Delay(350, tk); } catch (TaskCanceledException) { return; }
+        cargando = true; StateHasChanged();
+        try
+        {
+            var r = await Api.GetVencimientosCargaAsync(busqueda, true, soloAsignados);
+            if (tk.IsCancellationRequested) return;
+            productos = r ?? new();
+            // la cantidad sugerida = lo que falta asignar
+            foreach (var p in productos)
+            {
+                var f = Form(p.ProductoId);
+                if (f.Cantidad is null && p.SinVencimiento > 0) f.Cantidad = p.SinVencimiento;
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { if (!tk.IsCancellationRequested) { cargando = false; StateHasChanged(); } }
+    }
+
+    private void Reemplazar(VencProductoDto? nuevo)
+    {
+        if (nuevo is null || productos is null) return;
+        var i = productos.FindIndex(x => x.ProductoId == nuevo.ProductoId);
+        if (i >= 0) productos[i] = nuevo;
+    }
+
+    private async Task Asignar(VencProductoDto p)
+    {
+        var f = Form(p.ProductoId);
+        if (f.Cantidad is not > 0) { ToastService.Error("Poné cuántos vencen en esa fecha"); return; }
+        if (f.Fecha is null) { ToastService.Error("Poné la fecha de vencimiento"); return; }
+        f.Guardando = true;
+        try
+        {
+            var r = await Api.AsignarVencimientoAsync(p.ProductoId, f.Cantidad.Value, f.Fecha.Value);
+            Reemplazar(r);
+            f.Cantidad = r is { SinVencimiento: > 0 } ? r.SinVencimiento : null;
+            f.Fecha = null;
+            ToastService.Success("Vencimiento asignado");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { f.Guardando = false; }
+    }
+
+    private void EmpezarEdicion(VencFilaDto fl)
+    {
+        editandoId = fl.Id; editCant = fl.Cantidad; editFecha = fl.FechaVence;
+    }
+
+    private async Task GuardarEdicion(VencProductoDto p, VencFilaDto fl)
+    {
+        if (editCant is not > 0 || editFecha is null) { ToastService.Error("Completá cantidad y fecha"); return; }
+        try
+        {
+            Reemplazar(await Api.EditarVencimientoAsync(fl.Id, editCant.Value, editFecha.Value));
+            editandoId = null;
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task Borrar(VencProductoDto p, VencFilaDto fl)
+    {
+        try
+        {
+            if (await Api.BorrarVencimientoAsync(fl.Id))
+                Reemplazar(await Api.GetVencimientosProductoAsync(p.ProductoId));
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    public void Dispose() { cts?.Cancel(); cts?.Dispose(); }
+}

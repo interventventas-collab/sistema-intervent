@@ -196,6 +196,8 @@ public class AppDbContext : DbContext
     public DbSet<CafeComboItem> CafeComboItems => Set<CafeComboItem>();
     public DbSet<CafeClienteProductoDescartado> CafeClienteProductosDescartados => Set<CafeClienteProductoDescartado>();
     public DbSet<CafeProductoPack> CafeProductoPacks => Set<CafeProductoPack>();
+    // 2026-11-04: "Asignar vencimiento" (cantidad + fecha por producto)
+    public DbSet<CafeProductoVencimiento> CafeProductoVencimientos => Set<CafeProductoVencimiento>();
     public DbSet<CafePrecioEspecialCliente> CafePreciosEspecialesCliente => Set<CafePrecioEspecialCliente>();
     public DbSet<CafeListaEspecial> CafeListasEspeciales => Set<CafeListaEspecial>();
     public DbSet<CafeListaEspecialItem> CafeListasEspecialesItems => Set<CafeListaEspecialItem>();
