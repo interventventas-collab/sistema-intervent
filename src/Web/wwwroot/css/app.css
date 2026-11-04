@@ -1288,6 +1288,9 @@ button {
 .content {
   flex: 1;
   padding: 1.5rem;
+  /* 2026-11-04: lugar abajo para el boton flotante unico (BotonesFlotantes, 56px a 22px del borde):
+     sin esto tapaba el ultimo renglon de cada pantalla (ej. el tacho de borrar en Listas personalizadas). */
+  padding-bottom: 96px;
 }
 
 /* ============================================================
@@ -2283,6 +2286,7 @@ button {
 
   .content {
     padding: 1rem;
+    padding-bottom: 84px; /* boton flotante (ver arriba) */
   }
 
   .stats-grid {
