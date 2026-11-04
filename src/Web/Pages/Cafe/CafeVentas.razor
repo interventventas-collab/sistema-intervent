@@ -3011,6 +3011,16 @@
                                                                 title="Volver al nombre original del catálogo">✕</button>
                                                     }
                                                 </div>
+                                                @* 2026-11-04: vencimiento — cuál sale (y si son dos fechas, cuántos de cada una). *@
+                                                @if (ci.ProductoId > 0 && vencsVenta.TryGetValue(ci.ProductoId, out var vzv))
+                                                {
+                                                    var unidV = VencResumenDto.UnidadesDe(ci.Formato, ci.Cantidad, productos?.FirstOrDefault(p => p.Id == ci.ProductoId)?.UxB, esCafe);
+                                                    var txtV = vzv.SalePara(unidV);
+                                                    @if (txtV is not null)
+                                                    {
+                                                        <div style="font-size:0.75rem; color:#374151; margin-top:1px;" title="Hay: @vzv.Detalle()">📅 @txtV</div>
+                                                    }
+                                                }
                                                 @* 2026-10-06: Osmar se confundía cargando ¼ kg cuando pedían 1 kg (porque alguna vez
                                                    compró ¼) y vasos sueltos cuando van por pack/caja. Aviso + botón para corregir. *@
                                                 @if (fmtAlerta)
@@ -8283,6 +8293,14 @@
         });
     }
 
+    // 2026-11-04: vencimientos (solo productos con fechas) para avisar cuál sale al cargar la venta.
+    private Dictionary<int, VencResumenDto> vencsVenta = new();
+    private async Task RecargarVencimientos()
+    {
+        try { vencsVenta = (await Api.GetVencimientosResumenTodosAsync() ?? new()).ToDictionary(v => v.ProductoId); }
+        catch { /* sin vencimientos la venta se carga igual */ }
+    }
+
     private async Task LoadCatalogos()
     {
         try
@@ -8290,6 +8308,7 @@
             clientes = (await Api.GetCafeClientesAsync())?.Where(c => c.IsActive).ToList() ?? new();
             productos = (await Api.GetCafeProductosAsync())?.Where(p => p.IsActive).ToList() ?? new();
             combos = (await Api.GetCafeCombosAsync(activos: true)) ?? new();
+            await RecargarVencimientos();
             settings = await Api.GetCafeSettingsAsync();
             // 2026-07-03: cuentas ARCA para el selector "¿Con qué empresa facturás?" (multi-sociedad).
             await LoadArcaAccountsAsync();
@@ -8478,6 +8497,8 @@
 
     private void ShowCreate()
     {
+        // 2026-11-04: refrescar vencimientos (el depósito los va cargando durante el día)
+        _ = InvokeAsync(async () => { await RecargarVencimientos(); StateHasChanged(); });
         editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null;
         convirtiendoPreventaId = null;  // reset si veníamos de una conversión cancelada
         desdePresupuestoId = null;      // 2026-10-20: idem si veníamos de un presupuesto
