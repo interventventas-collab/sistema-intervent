@@ -24,6 +24,22 @@ public class VencProductoDto
     public DateTime? SiguienteVence { get; set; }
     public decimal SinVencimiento { get; set; }
     public decimal Asignado { get; set; }
+    // 2026-11-04: tarjeta con los 4 trabajos
+    public bool LugarDudoso { get; set; }
+    public string? FotoPropiaArchivo { get; set; }
+    public string? FotoEstado { get; set; }
+    public string? MeliThumb { get; set; }
+    public DateTime? UltimoConteoAt { get; set; }
+    public string? UltimoConteoPor { get; set; }
+}
+
+public class VencContarResp
+{
+    public bool Confirmar { get; set; }
+    public int StockAntes { get; set; }
+    public int StockDespues { get; set; }
+    public int Apartados { get; set; }
+    public VencProductoDto? Producto { get; set; }
 }
 
 public class VencResumenDto

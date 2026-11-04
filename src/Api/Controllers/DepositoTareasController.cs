@@ -300,7 +300,10 @@ public class DepositoTareasController : ControllerBase
     ///    los compuestos y las ediciones).
     /// Lo ya ARMADO (LISTO) no se resta: la regla para el que cuenta es "no cuentes lo que ya está armado".
     /// </summary>
-    private async Task<(int Meli, int Propias)> ApartadosAsync(int productoId)
+    private Task<(int Meli, int Propias)> ApartadosAsync(int productoId) => ApartadosDeAsync(_db, _reservas, productoId);
+
+    /// <summary>2026-11-04: misma cuenta, reusable (la usa también "Asignar vencimientos" para arreglar stock).</summary>
+    public static async Task<(int Meli, int Propias)> ApartadosDeAsync(AppDbContext _db, StockReservaService _reservas, int productoId)
     {
         var meli = await _reservas.GetReservaAsync(productoId);
         var desde = DateTime.UtcNow.Date.AddDays(-7);
