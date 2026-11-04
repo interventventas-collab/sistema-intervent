@@ -316,6 +316,8 @@ builder.Services.AddHostedService<MeliCodigoColectaBackgroundService>();
 // Lo usan /cafe/stock-comparado, /cafe/stock-masivo y el cartelito "Stock Full" de la ficha.
 builder.Services.AddHostedService<MeliFullStockSyncBackgroundService>();
 builder.Services.AddHostedService<MeliStockPushBackgroundService>();
+// 2026-11-04: nota "📅 VENCE → … Sacar el que vence …" en las órdenes de MeLi (solo producción)
+builder.Services.AddHostedService<MeliVencimientoNotasService>();
 builder.Services.AddHostedService<MeliPricePushBackgroundService>();
 // 2026-09-28: cuánto deja cada venta de MeLi (lee el pago de Mercado Pago de cada orden)
 builder.Services.AddScoped<MeliOrderFinanzasService>();

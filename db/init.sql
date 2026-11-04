@@ -8695,3 +8695,9 @@ BEGIN
     CREATE INDEX IX_CafeProductoVencimientos_Producto ON Cafe_ProductoVencimientos (ProductoId, FechaVence);
 END
 GO
+
+-- 2026-11-04: nota de vencimiento en las órdenes de MeLi ("📅 VENCE → … Sacar el que vence …").
+-- ⚠ En PROD correr a mano ANTES de publicar (sin la columna la API rompe al leer MeliOrders).
+IF COL_LENGTH('MeliOrders','VencNoteSentAt') IS NULL
+    ALTER TABLE MeliOrders ADD VencNoteSentAt DATETIME2 NULL;
+GO
