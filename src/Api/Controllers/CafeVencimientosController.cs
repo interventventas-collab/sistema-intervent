@@ -208,7 +208,8 @@ public class CafeVencimientosController : ControllerBase
         var filas = await _db.MeliOrders.AsNoTracking().Where(o => o.MeliOrderId == meliOrderId).ToListAsync();
         if (filas.Count == 0) return NotFound(new { error = "Orden no encontrada" });
         var notas = await MeliVencimientoNotasService.TextosAsync(_db, filas);
-        return Ok(new { notas, enviada = filas.Max(f => f.VencNoteSentAt) });
+        var ganancia = await MeliVencimientoNotasService.GananciaTextoAsync(_db, filas);
+        return Ok(new { notas, enviada = filas.Max(f => f.VencNoteSentAt), ganancia, gananciaEnviada = filas.Max(f => f.GananciaNoteSentAt) });
     }
 
     // ─── DELETE ───
