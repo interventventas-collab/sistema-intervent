@@ -2442,6 +2442,10 @@ public class ItemCustomDto
     public decimal? Precio1Kg { get; set; }
     public decimal? PrecioMedio { get; set; }
     public decimal? PrecioCuarto { get; set; }
+    // 2026-11-04: stock y costo de la unidad que se vende (pack entero, combo; cafe en kg y $/kg)
+    public decimal? Stock { get; set; }
+    public decimal? Costo { get; set; }
+    public bool EsCafe { get; set; }
 }
 
 public class ItemDisponibleDto
@@ -2454,6 +2458,9 @@ public class ItemDisponibleDto
     public decimal? PrecioBar { get; set; }
     public decimal? PrecioOtro { get; set; }
     public string? Detalle { get; set; }
+    public decimal? Stock { get; set; }
+    public decimal? Costo { get; set; }
+    public bool EsCafe { get; set; }
 }
 
 // 2026-07-14: borrador de venta compartido (servidor)
