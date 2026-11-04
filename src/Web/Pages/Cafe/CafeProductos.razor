@@ -589,6 +589,8 @@
                         <a href="/cafe/ubicaciones?q=@Uri.EscapeDataString(string.IsNullOrWhiteSpace(formSku) ? formNombre : formSku)"
                            style="margin-left:0.4rem; font-size:0.82rem;">@(lugarProducto is null ? "cargar" : "cambiar")</a>
                     </div>
+                    @* 2026-11-04: fechas de vencimiento (cantidad + fecha). Ver /cafe/vencimientos. *@
+                    <VencimientosProducto ProductoId="editingId.Value" />
                 }
 
                 <div class="form-row">

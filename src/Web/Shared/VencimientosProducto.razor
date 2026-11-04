@@ -1,0 +1,102 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* 2026-11-04: vencimientos en la ficha del producto. Plegado muestra una línea; abierto lista las
+   fechas (cuánto queda de cada una) y deja "Asignar vencimiento". Mismo cálculo que /cafe/vencimientos. *@
+
+<div style="font-size:0.88rem; color:#374151; margin:0 0 0.6rem;">
+    📅 Vencimientos:
+    @if (dto is null)
+    {
+        <span style="color:#9ca3af;">…</span>
+    }
+    else if (dto.Filas.Count == 0)
+    {
+        <span style="color:#6b7280;">sin asignar</span>
+    }
+    else
+    {
+        <span>
+            @if (dto.ProximoVence is not null)
+            {
+                <span>sacar primero el que vence <b>@dto.ProximoVence.Value.ToString("dd/MM/yyyy")</b> (quedan @Cant(dto.ProximoQuedan))</span>
+            }
+            else
+            {
+                <span style="color:#6b7280;">todas las fechas terminadas</span>
+            }
+            @if (dto.SinVencimiento > 0)
+            {
+                <span style="color:#b45309; font-weight:700;"> · faltan asignar @Cant(dto.SinVencimiento)</span>
+            }
+        </span>
+    }
+    <a href="javascript:void(0)" style="margin-left:0.4rem; font-size:0.82rem;" @onclick="() => abierto = !abierto">@(abierto ? "cerrar" : (dto?.Filas.Count > 0 ? "ver / asignar" : "asignar vencimiento"))</a>
+
+    @if (abierto && dto is not null)
+    {
+        <div style="margin-top:0.4rem; padding:0.5rem 0.6rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            @foreach (var fl in dto.Filas)
+            {
+                var term = fl.Quedan <= 0;
+                <div style="display:flex; align-items:center; gap:0.4rem; padding:0.2rem 0; @(term ? "color:#9ca3af;" : "")">
+                    <span style="flex:1;"><b>@Cant(fl.Cantidad)</b> · vence <b>@fl.FechaVence.ToString("dd/MM/yyyy")</b> · @(term ? "terminado" : $"quedan {Cant(fl.Quedan)}")</span>
+                    <button type="button" class="btn-icon" title="Borrar" @onclick="() => Borrar(fl.Id)">🗑</button>
+                </div>
+            }
+            <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
+                <input class="form-input" type="number" min="0" step="@(dto.EsCafe ? "0.1" : "1")" placeholder="@(dto.EsCafe ? "kg" : "cant.")" style="width:90px;" @bind="cantidad" />
+                <input class="form-input" type="date" style="width:160px;" @bind="fecha" />
+                <button type="button" class="btn btn-primary btn-sm" disabled="@guardando" @onclick="Asignar">+ Asignar vencimiento</button>
+            </div>
+            <div style="font-size:0.75rem; color:#6b7280; margin-top:0.3rem;">El stock no cambia: solo le ponés fecha. Se saca primero el que vence antes.</div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int ProductoId { get; set; }
+
+    private VencProductoDto? dto;
+    private bool abierto;
+    private decimal? cantidad;
+    private DateTime? fecha;
+    private bool guardando;
+    private int cargadoDe;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ProductoId == cargadoDe) return;
+        cargadoDe = ProductoId; dto = null; abierto = false; cantidad = null; fecha = null;
+        try { dto = await Api.GetVencimientosProductoAsync(ProductoId); Sugerir(); }
+        catch { dto = new VencProductoDto(); }
+    }
+
+    private void Sugerir() { if (cantidad is null && dto is { SinVencimiento: > 0 }) cantidad = dto.SinVencimiento; }
+
+    private string Cant(decimal v) => dto?.EsCafe == true ? $"{v:0.#} kg" : v.ToString("N0");
+
+    private async Task Asignar()
+    {
+        if (cantidad is not > 0) { ToastService.Error("Poné cuántos vencen en esa fecha"); return; }
+        if (fecha is null) { ToastService.Error("Poné la fecha de vencimiento"); return; }
+        guardando = true;
+        try
+        {
+            dto = await Api.AsignarVencimientoAsync(ProductoId, cantidad.Value, fecha.Value) ?? dto;
+            cantidad = null; fecha = null; Sugerir();
+            ToastService.Success("Vencimiento asignado");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task Borrar(int id)
+    {
+        try
+        {
+            if (await Api.BorrarVencimientoAsync(id)) dto = await Api.GetVencimientosProductoAsync(ProductoId) ?? dto;
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+}

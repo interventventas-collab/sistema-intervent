@@ -8672,3 +8672,24 @@ GO
 IF COL_LENGTH('Cafe_ProductoPacks','ConEstuche') IS NULL
     ALTER TABLE Cafe_ProductoPacks ADD ConEstuche BIT NOT NULL CONSTRAINT DF_Cafe_ProductoPacks_ConEstuche DEFAULT 0;
 GO
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 2026-11-04: VENCIMIENTOS por producto ("Asignar vencimiento"). Cada fila = una cantidad
+-- con su fecha. Lo que QUEDA de cada fecha no se guarda: se calcula con el stock actual
+-- suponiendo que siempre sale primero lo que vence antes (lo que se le indica al depósito).
+-- Café: Cantidad en kg. ⚠ En PROD correr a mano ANTES de publicar.
+-- ─────────────────────────────────────────────────────────────────────────────
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ProductoVencimientos' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ProductoVencimientos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ProductoId INT NOT NULL,
+        Cantidad DECIMAL(18,3) NOT NULL,
+        FechaVence DATE NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedBy NVARCHAR(200) NULL,
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_CafeProductoVencimientos_Producto ON Cafe_ProductoVencimientos (ProductoId, FechaVence);
+END
+GO
