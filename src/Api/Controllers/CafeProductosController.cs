@@ -776,7 +776,8 @@ public class CafeProductosController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] CreateCafeProductoRequest req)
+    public async Task<IActionResult> Create([FromBody] CreateCafeProductoRequest req,
+        [FromServices] Api.Services.CafeStockLogger stockLogger)
     {
         if (string.IsNullOrWhiteSpace(req.Nombre))
             return BadRequest(new { error = "El nombre es obligatorio" });
@@ -804,8 +805,10 @@ public class CafeProductosController : ControllerBase
             MarcaId = marcaId,
             Costo = req.Costo,
             PrecioPorKg = req.PrecioPorKg,
-            Pvp1 = req.Pvp1,
-            Pvp2 = req.Pvp2,
+            // 2026-11-04: en OTROS, Pvp1/Pvp2 son espejo de PrecioBar/PrecioOtro (no se ven en la ficha).
+            // "Crear similar" los copiaba del producto base y quedaban precios viejos escondidos (B90X120).
+            Pvp1 = cat == "OTROS" && (req.PrecioBar ?? req.PrecioOtro) is > 0 ? (req.PrecioBar ?? req.PrecioOtro) : req.Pvp1,
+            Pvp2 = cat == "OTROS" && req.PrecioOtro is > 0 ? req.PrecioOtro : req.Pvp2,
             BarPctSobreCosto = cat == "OTROS" ? req.BarPctSobreCosto : null,
             // Modelo NUEVO de precios (solo OTROS, en CAFE quedan null):
             PrecioOtro = cat == "OTROS" ? req.PrecioOtro : null,
@@ -866,6 +869,39 @@ public class CafeProductosController : ControllerBase
                 });
             }
             await _db.SaveChangesAsync();
+        }
+        // 2026-11-04: si el producto nace con stock, anotarlo tambien en el deposito principal
+        // (de ahi lo toma MeLi) y dejar el movimiento en el historial. Antes solo quedaba en la ficha
+        // y el deposito 9 de Abril arrancaba vacio (B90X120: ficha 2900, deposito nada).
+        if (p.StockUnidades > 0 || p.StockGramos > 0)
+        {
+            var depDefault = await _db.CafeDepositos
+                .Where(d => d.IsDefault && d.IsActive).OrderBy(d => d.Id)
+                .Select(d => (int?)d.Id).FirstOrDefaultAsync();
+            depDefault ??= await _db.CafeDepositos.OrderBy(d => d.Id).Select(d => (int?)d.Id).FirstOrDefaultAsync();
+            if (depDefault.HasValue)
+            {
+                _db.CafeStockPorDeposito.Add(new CafeStockPorDeposito
+                {
+                    ProductoId = p.Id, DepositoId = depDefault.Value,
+                    StockUnidades = p.StockUnidades, StockGramos = p.StockGramos,
+                    UpdatedAt = DateTime.UtcNow
+                });
+                p.StockChangedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
+            if (p.StockUnidades > 0)
+            {
+                var op = HttpContext.Request.Headers["X-Operator-Name"].ToString();
+                await stockLogger.LogAsync(
+                    productoId: p.Id,
+                    tipoMov: "AJUSTE_ADMIN",
+                    stockAntes: 0,
+                    stockDespues: p.StockUnidades,
+                    operadorNombre: string.IsNullOrWhiteSpace(op) ? (User?.Identity?.Name ?? "Sistema") : op,
+                    comentario: "Stock inicial al crear el producto",
+                    saveChanges: true);
+            }
         }
         var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).Include(x => x.Packs).FirstAsync(x => x.Id == p.Id);
         return Ok(Map(saved));

@@ -523,7 +523,7 @@
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(p)" title="Editar">@SvgIcons.Edit</button>
-                                    <button class="btn-icon" style="color:#7c3aed;" @onclick="() => ShowCreateSimilar(p)" title="Crear similar (duplica este producto con SKU+stock vacíos)">📋</button>
+                                    <button class="btn-icon" style="color:#7c3aed;" @onclick="() => CrearSimilarAlDia(p)" title="Crear similar (duplica este producto con SKU+stock vacíos)">📋</button>
                                     @if (esCafe)
                                     {
                                         <button class="btn-icon" style="color:#1d4ed8;" @onclick="() => ShowMeliSync(p)" title="Sincronizar a MercadoLibre">📤</button>
@@ -3070,6 +3070,19 @@
     /// SKU vacio + stock 0 + reservas 0 (el resto se copia: nombre, marca, OEM, costo, PVPs, packs, etc).
     /// Util para crear variantes de color rapido: clickeas en C7000NEG → cambias nombre/SKU → guardas C7000BEI.
     /// NO copia linkeo MeLi: el producto nuevo arranca sin publicaciones vinculadas.</summary>
+    /// <summary>2026-11-04: "crear similar" relee el producto base del servidor antes de copiarlo.
+    /// Si la pantalla estaba abierta desde antes, copiaba precios/costos viejos (B90X120 salio con
+    /// los precios de la B1 de antes de pasarla a unidad).</summary>
+    private async Task CrearSimilarAlDia(CafeProductoDto p)
+    {
+        if (!p.EsCompuestoFake)
+        {
+            try { var fresco = await Api.GetCafeProductoAsync(p.Id); if (fresco is not null) p = fresco; }
+            catch { /* sin conexion: sigue con lo que hay en pantalla */ }
+        }
+        ShowCreateSimilar(p);
+    }
+
     private void ShowCreateSimilar(CafeProductoDto p)
     {
         // 2026-06-18: si es compuesto, redirigir a /cafe/combos?clone={id} (el modal de combos sabe duplicarlo).

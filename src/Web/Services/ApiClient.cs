@@ -1715,6 +1715,9 @@ public class ApiClient
         return await GetAsync<List<CafeProductoDto>>(url);
     }
 
+    public async Task<CafeProductoDto?> GetCafeProductoAsync(int id)
+        => await GetAsync<CafeProductoDto>($"/api/cafe/productos/{id}");
+
     public async Task<CafeProductoDto?> CreateCafeProductoAsync(CreateCafeProductoRequest request)
         => await PostAsync<CafeProductoDto>("/api/cafe/productos", request);
 
