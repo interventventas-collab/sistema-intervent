@@ -8699,3 +8699,9 @@ GO
 IF COL_LENGTH('MeliOrders','VencNoteSentAt') IS NULL
     ALTER TABLE MeliOrders ADD VencNoteSentAt DATETIME2 NULL;
 GO
+
+-- 2026-11-04: nota de ganancia en las órdenes de MeLi ("💲 Cobrás … → gana $X (N%)").
+-- ⚠ En PROD correr a mano ANTES de publicar.
+IF COL_LENGTH('MeliOrders','GananciaNoteSentAt') IS NULL
+    ALTER TABLE MeliOrders ADD GananciaNoteSentAt DATETIME2 NULL;
+GO
