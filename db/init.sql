@@ -8666,3 +8666,9 @@ IF COL_LENGTH('Dep_TareaItems','FotoReportadaAt') IS NULL
         FotoMotivo NVARCHAR(300) NULL, FotoPropuestaArchivo NVARCHAR(200) NULL, FotoRevision NVARCHAR(20) NULL,
         FotoRevisionAt DATETIME2 NULL, FotoRevisionPor NVARCHAR(120) NULL;
 GO
+
+-- 2026-11-04: packs armados en ESTUCHE (cápsulas x10 con estuche). Formato de venta "PACK_10E".
+-- ⚠ En PROD correr a mano ANTES de publicar.
+IF COL_LENGTH('Cafe_ProductoPacks','ConEstuche') IS NULL
+    ALTER TABLE Cafe_ProductoPacks ADD ConEstuche BIT NOT NULL CONSTRAINT DF_Cafe_ProductoPacks_ConEstuche DEFAULT 0;
+GO

@@ -315,6 +315,8 @@ public class CafeProductoPackDto
     public decimal? PrecioOverride { get; set; }
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; }
+    /// <summary>2026-11-04: pack armado en estuche (formato "PACK_10E").</summary>
+    public bool ConEstuche { get; set; }
 }
 
 public class CafeProductoPackRequest
@@ -324,6 +326,7 @@ public class CafeProductoPackRequest
     public string Nombre { get; set; } = "";
     public decimal? PrecioOverride { get; set; }
     public int SortOrder { get; set; }
+    public bool ConEstuche { get; set; }
 }
 
 public class CreateCafeProductoRequest

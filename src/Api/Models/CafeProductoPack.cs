@@ -16,6 +16,9 @@ public class CafeProductoPack
     public string Nombre { get; set; } = string.Empty;
     /// <summary>Precio del pack. Si es null, se calcula al vuelo como precio_unitario × Cantidad.</summary>
     public decimal? PrecioOverride { get; set; }
+    /// <summary>2026-11-04: pack que va armado en ESTUCHE (cápsulas x10 con estuche). Puede convivir
+    /// con otro pack de la misma Cantidad sin estuche: el formato de venta es "PACK_10E" en vez de "PACK_10".</summary>
+    public bool ConEstuche { get; set; }
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

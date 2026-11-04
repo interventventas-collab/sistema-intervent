@@ -205,7 +205,7 @@ public record CafeProductoDto(
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,
-    bool IsActive, int SortOrder);
+    bool IsActive, int SortOrder, bool ConEstuche = false);
 
 /// <summary>Item enviado por el frontend cuando edita los packs de un producto. Si Id viene
 /// con valor, se actualiza el pack existente; si Id es null, se crea uno nuevo. Los packs que
@@ -217,6 +217,8 @@ public class CafeProductoPackRequest
     public string Nombre { get; set; } = string.Empty;
     public decimal? PrecioOverride { get; set; }
     public int SortOrder { get; set; }
+    /// <summary>2026-11-04: pack armado en estuche (ver CafeProductoPack.ConEstuche).</summary>
+    public bool ConEstuche { get; set; }
 }
 
 public class CreateCafeProductoRequest

@@ -77,7 +77,7 @@ public class CafeProductosController : ControllerBase
         p.ImportSource,
         p.Packs?.Where(pk => pk.IsActive)
             .OrderBy(pk => pk.SortOrder).ThenBy(pk => pk.Cantidad)
-            .Select(pk => new CafeProductoPackDto(pk.Id, pk.Cantidad, pk.Nombre, pk.PrecioOverride, pk.IsActive, pk.SortOrder))
+            .Select(pk => new CafeProductoPackDto(pk.Id, pk.Cantidad, pk.Nombre, pk.PrecioOverride, pk.IsActive, pk.SortOrder, pk.ConEstuche))
             .ToList() ?? new List<CafeProductoPackDto>(),
         StockMinimoMeLi: p.StockMinimoMeLi,
         StockIdeal: p.StockIdeal,
@@ -860,6 +860,7 @@ public class CafeProductosController : ControllerBase
                     Nombre = pk.Nombre.Trim(),
                     PrecioOverride = pk.PrecioOverride,
                     SortOrder = pk.SortOrder,
+                    ConEstuche = pk.ConEstuche,
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow
                 });
@@ -1099,6 +1100,7 @@ public class CafeProductosController : ControllerBase
                     existente.Nombre = pk.Nombre.Trim();
                     existente.PrecioOverride = pk.PrecioOverride;
                     existente.SortOrder = pk.SortOrder;
+                    existente.ConEstuche = pk.ConEstuche;
                 }
                 else
                 {
@@ -1109,6 +1111,7 @@ public class CafeProductosController : ControllerBase
                         Nombre = pk.Nombre.Trim(),
                         PrecioOverride = pk.PrecioOverride,
                         SortOrder = pk.SortOrder,
+                        ConEstuche = pk.ConEstuche,
                         IsActive = true,
                         CreatedAt = DateTime.UtcNow
                     });

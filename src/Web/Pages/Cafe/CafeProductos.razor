@@ -1114,6 +1114,7 @@
                                         <th style="text-align: left; padding: 0.25rem 0.3rem; width: 80px; color: #065f46;">Cantidad</th>
                                         <th style="text-align: left; padding: 0.25rem 0.3rem; color: #065f46;">Nombre</th>
                                         <th style="text-align: left; padding: 0.25rem 0.3rem; width: 140px; color: #065f46;">Precio del pack</th>
+                                        <th style="text-align: center; padding: 0.25rem 0.3rem; width: 80px; color: #065f46;" title="El pack va armado en estuche (ej. cápsulas x 10 con estuche). Puede haber uno con y otro sin estuche de la misma cantidad.">Estuche</th>
                                         <th style="width: 36px;"></th>
                                     </tr>
                                 </thead>
@@ -1137,6 +1138,9 @@
                                                 <input class="form-input" type="number" step="0.01" min="0" style="padding: 0.3rem; font-size: 0.85rem;"
                                                        placeholder="@(formPrecioOtro.HasValue && pk.Cantidad.HasValue ? (formPrecioOtro.Value * pk.Cantidad.Value).ToString("0.##") : "0,00")"
                                                        @bind="pk.PrecioOverride" />
+                                            </td>
+                                            <td style="padding: 0.2rem 0.3rem; text-align: center;">
+                                                <input type="checkbox" checked="@pk.ConEstuche" @onchange="@(e => pk.ConEstuche = e.Value is true)" />
                                             </td>
                                             <td style="padding: 0.2rem 0.3rem; text-align: center;">
                                                 <button type="button" class="btn btn-sm btn-danger" style="padding: 0.2rem 0.5rem;"
@@ -1167,7 +1171,7 @@
                                 <option value="UNIT">Suelto (por unidad)</option>
                                 @foreach (var pk in formPacks.Where(p => p.Cantidad.HasValue && p.Cantidad.Value > 0))
                                 {
-                                    <option value="@($"PACK_{pk.Cantidad!.Value}")">@(string.IsNullOrWhiteSpace(pk.Nombre) ? $"Pack x {pk.Cantidad!.Value}" : pk.Nombre)</option>
+                                    <option value="@FormatoPack.De(pk.Cantidad!.Value, pk.ConEstuche)">@(string.IsNullOrWhiteSpace(pk.Nombre) ? $"Pack x {pk.Cantidad!.Value}" : pk.Nombre)</option>
                                 }
                                 @if (formUxB.HasValue && formUxB.Value > 0)
                                 {
@@ -2138,6 +2142,7 @@
         public string Nombre { get; set; } = "";
         public decimal? PrecioOverride { get; set; }
         public int SortOrder { get; set; }
+        public bool ConEstuche { get; set; }
     }
     // Márgenes editables: derivados del precio + costo. Sincronizados bidireccionalmente.
     private decimal? formMargenBar;
@@ -3047,7 +3052,8 @@
                 Cantidad = pk.Cantidad,
                 Nombre = pk.Nombre,
                 PrecioOverride = pk.PrecioOverride,
-                SortOrder = pk.SortOrder
+                SortOrder = pk.SortOrder,
+                ConEstuche = pk.ConEstuche
             })
             .ToList() ?? new();
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
@@ -3115,7 +3121,8 @@
                 Cantidad = pk.Cantidad,
                 Nombre = pk.Nombre,
                 PrecioOverride = pk.PrecioOverride,
-                SortOrder = pk.SortOrder
+                SortOrder = pk.SortOrder,
+                ConEstuche = pk.ConEstuche
             }).ToList() ?? new();
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
         // Producto NUEVO: stock arranca en 0, reserva 1 (default seguro).
@@ -3174,8 +3181,8 @@
         var f = formFormatoPorDefecto;
         if (string.IsNullOrWhiteSpace(f) || f == "UNIT") return "UNIT";
         if (f == "BULTO") return (formUxB.HasValue && formUxB.Value > 0) ? "BULTO" : "UNIT";
-        if (f.StartsWith("PACK_") && int.TryParse(f.AsSpan("PACK_".Length), out var n) && n > 0)
-            return formPacks.Any(pk => pk.Cantidad == n) ? f : "UNIT";
+        if (FormatoPack.Unidades(f) is int n)
+            return formPacks.Any(pk => pk.Cantidad == n && pk.ConEstuche == FormatoPack.ConEstuche(f)) ? f : "UNIT";
         return "UNIT";
     }
 
@@ -3302,7 +3309,8 @@
                                 Cantidad = pk.Cantidad!.Value,
                                 Nombre = string.IsNullOrWhiteSpace(pk.Nombre) ? $"Pack x {pk.Cantidad.Value}" : pk.Nombre.Trim(),
                                 PrecioOverride = pk.PrecioOverride,
-                                SortOrder = idx
+                                SortOrder = idx,
+                                ConEstuche = pk.ConEstuche
                             })
                             .ToList()
                         : null,
@@ -3361,7 +3369,8 @@
                                 Cantidad = pk.Cantidad!.Value,
                                 Nombre = string.IsNullOrWhiteSpace(pk.Nombre) ? $"Pack x {pk.Cantidad.Value}" : pk.Nombre.Trim(),
                                 PrecioOverride = pk.PrecioOverride,
-                                SortOrder = idx
+                                SortOrder = idx,
+                                ConEstuche = pk.ConEstuche
                             })
                             .ToList()
                         : null,

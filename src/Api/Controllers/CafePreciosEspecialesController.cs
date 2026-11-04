@@ -90,7 +90,7 @@ public class CafePreciosEspecialesController : ControllerBase
 
         foreach (var pack in (p.Packs ?? new List<CafeProductoPack>())
                  .Where(x => x.IsActive).OrderBy(x => x.SortOrder).ThenBy(x => x.Cantidad))
-            Add(CafePricingService.FORMATO_PACK_PREFIX + pack.Cantidad);
+            Add(CafePricingService.FormatoDePack(pack));
 
         return res;
     }
