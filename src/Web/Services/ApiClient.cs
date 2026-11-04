@@ -1726,6 +1726,8 @@ public class ApiClient
         => await DeleteAsync($"/api/cafe/vencimientos/{id}");
     public async Task<List<VencProductoDto>?> GetVencimientosCargaAsync(string? q, bool soloConStock, bool soloAsignados, string? marca = null)
         => await GetAsync<List<VencProductoDto>>($"/api/cafe/vencimientos/carga?q={Uri.EscapeDataString(q ?? "")}&soloConStock={soloConStock}&soloAsignados={soloAsignados}&marca={Uri.EscapeDataString(marca ?? "")}");
+    public async Task<VencContarResp?> ContarStockVencimientosAsync(int productoId, int contado, bool confirmado)
+        => await PostAsync<VencContarResp>($"/api/cafe/vencimientos/producto/{productoId}/contar", new { Contado = contado, Confirmado = confirmado });
     public async Task<List<string>?> GetVencimientosMarcasAsync()
         => await GetAsync<List<string>>("/api/cafe/vencimientos/marcas");
     public async Task<List<VencResumenDto>?> GetVencimientosResumenAsync(List<int> productoIds)

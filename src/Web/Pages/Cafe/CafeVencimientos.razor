@@ -20,7 +20,6 @@
     .vc-sub { font-size: 0.78rem; color: #6b7280; margin-top: 2px; }
     .vc-sub b { color: #374151; }
     .vc-falta { color: #b45309; font-weight: 700; }
-    .vc-ok { color: #6b7280; }
     .vc-fila { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; padding: 0.35rem 0; border-top: 1px solid #f3f4f6; }
     .vc-fila .f { flex: 1; }
     .vc-fila.term { color: #9ca3af; }
@@ -37,6 +36,12 @@
     .vc-chip { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 999px; padding: 0.3rem 0.75rem; font-size: 0.82rem; cursor: pointer; }
     .vc-chip.on { background: #1d4ed8; border-color: #1d4ed8; color: #fff; font-weight: 600; }
     .vc-chips-lbl { font-size: 0.78rem; color: #6b7280; align-self: center; margin-right: 0.2rem; }
+    .vc-sec { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.88rem; padding: 0.4rem 0; border-bottom: 1px solid #f3f4f6; }
+    .vc-sec .cant { font-size: 0.95rem; padding: 0.4rem 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; }
+    .vc-lbl { width: 6.7rem; flex-shrink: 0; color: #6b7280; font-size: 0.78rem; font-weight: 700; }
+    .vc-foto { width: 56px; height: 56px; object-fit: contain; border-radius: 8px; border: 1px solid #e5e7eb; background: #fff; cursor: pointer; }
+    .vc-foto-no { display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; color: #9ca3af; }
+    .vc-ok { color: #15803d; font-weight: 600; }
     .vc-ic { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.3rem 0.5rem; cursor: pointer; font-size: 0.85rem; }
 </style>
 
@@ -81,22 +86,78 @@
         {
             var f = Form(p.ProductoId);
             var hecho = Hecho(p);
+            var c = Conteo(p.ProductoId);
+            var fotoUrl = FotoUrl(p);
             <div class="vc-card @(hecho ? "hecho" : "")">
                 @if (hecho) { <span class="vc-listo">✅ LISTO</span> }
                 <div class="vc-tit">@if (!string.IsNullOrEmpty(p.Sku)) { <span class="vc-sku">@p.Sku</span> }@p.Nombre</div>
-                <div class="vc-sub">
-                    Stock <b>@Cant(p.Stock, p.EsCafe)</b>
-                    @if (!string.IsNullOrEmpty(p.Ubicacion)) { <span> · 📍 @p.Ubicacion</span> }
-                    @if (p.Filas.Count > 0)
+
+                @* ── FOTO ── *@
+                <div class="vc-sec">
+                    <span class="vc-lbl">📷 Foto</span>
+                    @if (fotoUrl is not null)
                     {
-                        @if (p.SinVencimiento > 0)
+                        <img src="@fotoUrl" class="vc-foto" alt="" @onclick="() => fotoAbierta = p" />
+                    }
+                    else
+                    {
+                        <span class="vc-foto vc-foto-no" @onclick="() => fotoAbierta = p">sin foto</span>
+                    }
+                    <button class="vc-ic" @onclick="() => fotoAbierta = p">@(fotoUrl is null ? "Sacar / subir foto" : "Ver · cambiar · está mal")</button>
+                    @if (p.FotoEstado == "REPORTADA") { <span class="vc-falta">foto marcada como mal</span> }
+                </div>
+
+                @* ── STOCK ── *@
+                <div class="vc-sec">
+                    <span class="vc-lbl">📦 Stock</span>
+                    @if (p.EsCafe)
+                    {
+                        <span>Sistema dice <b>@Cant(p.Stock, true)</b> <span style="color:#6b7280;">· el café se corrige desde Stock</span></span>
+                    }
+                    else if (c.Confirmar is not null)
+                    {
+                        var cf = c.Confirmar;
+                        <span class="vc-falta">Sistema dice @cf.StockAntes y quedaría en @cf.StockDespues@(cf.Apartados > 0 ? $" (contaste {c.Contado} − {cf.Apartados} vendidos sin armar)" : ""). ¿Lo contaste bien?</span>
+                        <button class="vc-btn" disabled="@c.Guardando" @onclick="() => Contar(p, true)">Sí, está bien</button>
+                        <button class="vc-ic" @onclick="() => c.Confirmar = null">Vuelvo a contar</button>
+                    }
+                    else
+                    {
+                        <span>Sistema dice <b>@Cant(p.Stock, false)</b> · Contaste:</span>
+                        <input class="cant" type="number" min="0" step="1" style="width:80px;" @bind="c.Contado" />
+                        <button class="vc-btn" disabled="@c.Guardando" @onclick="() => Contar(p, false)">Arreglar stock</button>
+                        @if (p.UltimoConteoAt is DateTime ct)
                         {
-                            <span> · <span class="vc-falta">Faltan asignar @Cant(p.SinVencimiento, p.EsCafe)</span></span>
+                            <span class="vc-ok">✓ contado @ct.AddHours(-3).ToString("dd/MM")@(string.IsNullOrEmpty(p.UltimoConteoPor) ? "" : $" ({p.UltimoConteoPor})")</span>
                         }
-                        else
-                        {
-                            <span class="vc-ok"> · todo con fecha</span>
-                        }
+                    }
+                </div>
+                @if (!p.EsCafe && c.Confirmar is null)
+                {
+                    <div style="font-size:0.72rem; color:#9ca3af; margin:-0.2rem 0 0.2rem 7.2rem;">No cuentes lo que ya está armado para un pedido: lo vendido sin armar se descuenta solo.</div>
+                }
+
+                @* ── LUGAR ── *@
+                <div class="vc-sec">
+                    <span class="vc-lbl">📍 Dónde está</span>
+                    <LugarProducto ProductoId="p.ProductoId" Lugar="@p.Ubicacion" Dudoso="p.LugarDudoso" Editable="true" PermitirCambiar="true"
+                                   OfrecerNoEsta="false" Tamano="0.85rem" OnCambio="() => Recargar(p.ProductoId)" />
+                </div>
+
+                @* ── VENCIMIENTOS ── *@
+                <div class="vc-sec" style="border-bottom:none;">
+                    <span class="vc-lbl">📅 Vencimientos</span>
+                    @if (p.Filas.Count == 0)
+                    {
+                        <span style="color:#6b7280;">sin asignar</span>
+                    }
+                    else if (p.SinVencimiento > 0)
+                    {
+                        <span class="vc-falta">Faltan asignar @Cant(p.SinVencimiento, p.EsCafe)</span>
+                    }
+                    else
+                    {
+                        <span class="vc-ok">✓ todo con fecha</span>
                     }
                 </div>
                 @foreach (var fl in p.Filas)
@@ -132,6 +193,13 @@
     }
 </div>
 
+@if (fotoAbierta is not null)
+{
+    <FotoProductoModal ProductoId="fotoAbierta.ProductoId" Sku="@fotoAbierta.Sku" Nombre="@fotoAbierta.Nombre"
+                       FotoPropiaArchivo="@fotoAbierta.FotoPropiaArchivo" MeliThumb="@fotoAbierta.MeliThumb" Estado="@fotoAbierta.FotoEstado"
+                       OnCambio="OnFotoCambio" OnCerrar="() => fotoAbierta = null" />
+}
+
 @code {
     private class FormFila { public decimal? Cantidad; public DateTime? Fecha; public bool Guardando; }
 
@@ -148,8 +216,50 @@
     private CancellationTokenSource? cts;
     private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;   // hora argentina
 
-    /// <summary>Hecho = tiene fechas y todo el stock quedó con fecha.</summary>
-    private static bool Hecho(VencProductoDto p) => p.Filas.Count > 0 && p.SinVencimiento <= 0;
+    /// <summary>✅ LISTO = todo el stock con fecha + con lugar + contado en los últimos 30 días (café: sin conteo).</summary>
+    private static bool Hecho(VencProductoDto p) => p.Filas.Count > 0 && p.SinVencimiento <= 0
+        && !string.IsNullOrEmpty(p.Ubicacion)
+        && (p.EsCafe || (p.UltimoConteoAt is DateTime c && c >= DateTime.UtcNow.AddDays(-30)));
+
+    private class ConteoFila { public int? Contado; public bool Guardando; public VencContarResp? Confirmar; }
+    private readonly Dictionary<int, ConteoFila> conteos = new();
+    private ConteoFila Conteo(int id) { if (!conteos.TryGetValue(id, out var c)) conteos[id] = c = new ConteoFila(); return c; }
+    private VencProductoDto? fotoAbierta;
+
+    private static string? FotoUrl(VencProductoDto p)
+    {
+        if (!string.IsNullOrEmpty(p.FotoPropiaArchivo)) return $"/api/public/producto-foto/img/{p.FotoPropiaArchivo}";
+        if (p.FotoEstado == "REPORTADA") return null;   // la de MeLi está marcada como mal: no mostrarla
+        return string.IsNullOrEmpty(p.MeliThumb) ? null : p.MeliThumb.Replace("http://", "https://");
+    }
+
+    private async Task Contar(VencProductoDto p, bool confirmado)
+    {
+        var c = Conteo(p.ProductoId);
+        if (c.Contado is not int n || n < 0) { ToastService.Error("Poné cuántos contaste"); return; }
+        c.Guardando = true;
+        try
+        {
+            var r = await Api.ContarStockVencimientosAsync(p.ProductoId, n, confirmado);
+            if (r is null) return;
+            if (r.Confirmar) { c.Confirmar = r; return; }
+            c.Confirmar = null; c.Contado = null;
+            Reemplazar(r.Producto);
+            ToastService.Success(r.StockAntes == r.StockDespues ? "Contado: coincide con el sistema" : $"Stock arreglado: {r.StockAntes} → {r.StockDespues}");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { c.Guardando = false; }
+    }
+
+    private async Task Recargar(int productoId)
+    {
+        try { Reemplazar(await Api.GetVencimientosProductoAsync(productoId)); StateHasChanged(); } catch { }
+    }
+
+    private async Task OnFotoCambio((string? Archivo, string? Estado) x)
+    {
+        if (fotoAbierta is not null) await Recargar(fotoAbierta.ProductoId);
+    }
 
     protected override async Task OnInitializedAsync()
     {

@@ -18,12 +18,25 @@ namespace Api.Controllers;
 public class CafeVencimientosController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public CafeVencimientosController(AppDbContext db) { _db = db; }
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly StockReservaService _reservas;
+    public CafeVencimientosController(AppDbContext db, IServiceScopeFactory scopeFactory, StockReservaService reservas)
+    { _db = db; _scopeFactory = scopeFactory; _reservas = reservas; }
 
     public record FilaDto(int Id, decimal Cantidad, DateTime FechaVence, decimal Quedan);
     public record ProductoVencDto(int ProductoId, string? Sku, string Nombre, string? Marca, string? Ubicacion,
         bool EsCafe, decimal Stock, List<FilaDto> Filas, DateTime? ProximoVence, decimal ProximoQuedan,
-        DateTime? SiguienteVence, decimal SinVencimiento, decimal Asignado);
+        DateTime? SiguienteVence, decimal SinVencimiento, decimal Asignado)
+    {
+        // 2026-11-04: la tarjeta junta 4 trabajos (stock, lugar, foto, vencimientos)
+        public bool LugarDudoso { get; init; }
+        public string? FotoPropiaArchivo { get; init; }
+        public string? FotoEstado { get; init; }
+        public string? MeliThumb { get; init; }
+        public DateTime? UltimoConteoAt { get; init; }
+        public string? UltimoConteoPor { get; init; }
+    }
+    public record ContarRequest(int Contado, bool Confirmado);
     public record AsignarRequest(decimal Cantidad, DateTime FechaVence);
     public record AlertaDto(int ProductoId, string? Sku, string Nombre, bool EsCafe, DateTime FechaVence, decimal Quedan, int Dias);
 
@@ -33,7 +46,41 @@ public class CafeVencimientosController : ControllerBase
         return string.IsNullOrWhiteSpace(op) ? (User?.Identity?.Name ?? "Sistema") : op;
     }
 
-    private static ProductoVencDto Map(CafeProducto p, VencimientosService.VencResumen? r)
+    private record Extra(string? FotoPropia, string? FotoEstado, string? Thumb, DateTime? ConteoAt, string? ConteoPor);
+
+    /// <summary>Foto (propia o de MeLi) y último conteo (movimiento "Conteo…" de los últimos 60 días) de varios productos.</summary>
+    private async Task<Dictionary<int, Extra>> ExtrasAsync(List<int> ids)
+    {
+        var res = new Dictionary<int, Extra>();
+        if (ids.Count == 0) return res;
+        var fotos = await _db.CafeProductoFotos.AsNoTracking().Where(f => ids.Contains(f.CafeProductoId))
+            .Select(f => new { f.CafeProductoId, f.FotoPropiaArchivo, f.Estado }).ToListAsync();
+        var thumbsDir = await _db.MeliItems.AsNoTracking()
+            .Where(m => m.CafeProductoId != null && ids.Contains(m.CafeProductoId.Value) && m.Thumbnail != null && m.Status != "deleted")
+            .OrderBy(m => m.Status == "active" ? 0 : 1)
+            .Select(m => new { Pid = m.CafeProductoId!.Value, m.Thumbnail }).ToListAsync();
+        var thumbsComp = await (from c in _db.MeliItemComponentes
+                                join m in _db.MeliItems on c.MeliItemId equals m.MeliItemId
+                                where ids.Contains(c.CafeProductoId) && m.Thumbnail != null && m.Status != "deleted"
+                                orderby m.Status == "active" ? 0 : 1
+                                select new { Pid = c.CafeProductoId, m.Thumbnail }).ToListAsync();
+        var desde = DateTime.UtcNow.AddDays(-60);
+        var conteos = await _db.StockMovimientos.AsNoTracking()
+            .Where(m => ids.Contains(m.ProductoId) && m.CreatedAt >= desde && m.Comentario != null && m.Comentario.StartsWith("Conteo"))
+            .Select(m => new { m.ProductoId, m.CreatedAt, m.OperadorNombreSnap })
+            .ToListAsync();
+        conteos = conteos.OrderByDescending(m => m.CreatedAt).ToList();
+        foreach (var id in ids)
+        {
+            var f = fotos.FirstOrDefault(x => x.CafeProductoId == id);
+            var th = thumbsDir.FirstOrDefault(x => x.Pid == id)?.Thumbnail ?? thumbsComp.FirstOrDefault(x => x.Pid == id)?.Thumbnail;
+            var c = conteos.FirstOrDefault(x => x.ProductoId == id);
+            res[id] = new Extra(f?.FotoPropiaArchivo, f?.Estado, th, c?.CreatedAt, c?.OperadorNombreSnap);
+        }
+        return res;
+    }
+
+    private static ProductoVencDto Map(CafeProducto p, VencimientosService.VencResumen? r, Extra? x = null)
     {
         var esCafe = VencimientosService.EsCafe(p);
         var stock = VencimientosService.StockDe(p);
@@ -41,7 +88,12 @@ public class CafeVencimientosController : ControllerBase
         var ubic = string.Join(" · ", new[] { p.UbicacionPlanta, p.UbicacionZona }.Where(x => !string.IsNullOrWhiteSpace(x)));
         return new ProductoVencDto(p.Id, p.Sku, p.Nombre, p.Marca ?? p.MarcaNav?.Nombre, ubic.Length > 0 ? ubic : null,
             esCafe, stock, r.Filas.Select(f => new FilaDto(f.Id, f.Cantidad, f.FechaVence, f.Quedan)).ToList(),
-            r.ProximoVence, r.ProximoQuedan, r.SiguienteVence, r.SinVencimiento, r.Asignado);
+            r.ProximoVence, r.ProximoQuedan, r.SiguienteVence, r.SinVencimiento, r.Asignado)
+        {
+            LugarDudoso = p.UbicacionDudosaAt != null,
+            FotoPropiaArchivo = x?.FotoPropia, FotoEstado = x?.FotoEstado, MeliThumb = x?.Thumb,
+            UltimoConteoAt = x?.ConteoAt, UltimoConteoPor = x?.ConteoPor
+        };
     }
 
     private async Task<ProductoVencDto?> CargarAsync(int productoId)
@@ -49,7 +101,8 @@ public class CafeVencimientosController : ControllerBase
         var p = await _db.CafeProductos.AsNoTracking().Include(x => x.MarcaNav).FirstOrDefaultAsync(x => x.Id == productoId);
         if (p is null) return null;
         var res = await VencimientosService.ResumenAsync(_db, new[] { productoId });
-        return Map(p, res.GetValueOrDefault(productoId));
+        var ex = await ExtrasAsync(new List<int> { productoId });
+        return Map(p, res.GetValueOrDefault(productoId), ex.GetValueOrDefault(productoId));
     }
 
     // ─── GET un producto ───
@@ -89,6 +142,53 @@ public class CafeVencimientosController : ControllerBase
         return Ok(await CargarAsync(v.ProductoId));
     }
 
+    // ─── POST contar: arreglar el stock con lo contado (misma regla que el conteo de Tareas) ───
+    /// <summary>2026-11-04: el stock pasa a lo contado MENOS lo vendido que sigue en el estante (MeLi con
+    /// etiqueta sin imprimir + ventas propias sin armar). Si la diferencia es mucha, primero pide confirmar.
+    /// Si coincide, deja igual un movimiento "CONTEO" (sin cambio) para saber que se contó.</summary>
+    [HttpPost("producto/{productoId:int}/contar")]
+    public async Task<IActionResult> Contar(int productoId, [FromBody] ContarRequest req)
+    {
+        var prod = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == productoId);
+        if (prod is null) return NotFound(new { error = "Producto no encontrado" });
+        if (VencimientosService.EsCafe(prod)) return BadRequest(new { error = "El café se cuenta en kilos: corregilo desde Stock." });
+        if (req.Contado < 0 || req.Contado > 1_000_000) return BadRequest(new { error = "Poné cuántos contaste." });
+        var (apMeli, apPropias) = await DepositoTareasController.ApartadosDeAsync(_db, _reservas, prod.Id);
+        var apartados = apMeli + apPropias;
+        var antes = prod.StockUnidades;
+        var despues = Math.Max(0, req.Contado - apartados);
+        if (!req.Confirmado && DepositoTareasController.Nivel(antes, despues) == "MUCHA")
+            return Ok(new { confirmar = true, stockAntes = antes, stockDespues = despues, apartados });
+        var quien = Operador();
+        var coment = $"Conteo (Asignar vencimientos): contaron {req.Contado}"
+            + (apartados > 0 ? $" − {apartados} vendidos sin armar" + (apMeli > 0 ? $" ({apMeli} MeLi)" : "") : "");
+        if (antes != despues)
+        {
+            prod.StockUnidades = despues;
+            prod.UpdatedAt = DateTime.UtcNow;
+            prod.StockChangedAt = DateTime.UtcNow;
+            await CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+        }
+        _db.StockMovimientos.Add(new StockMovimiento
+        {
+            ProductoId = prod.Id, OperadorNombreSnap = quien, DepositoNombreSnap = "9 de Abril",
+            TipoMov = antes != despues ? "SET" : "CONTEO",
+            Cantidad = antes != despues ? despues : 0, StockAntes = antes, StockDespues = despues,
+            Comentario = antes != despues ? coment : coment + " (coincide)", CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        if (antes != despues)
+        {
+            var sf = _scopeFactory; var pid = prod.Id;
+            _ = Task.Run(async () =>
+            {
+                try { using var sc = sf.CreateScope(); await sc.ServiceProvider.GetRequiredService<MeliStockPushService>().PushStockForProductoAsync(pid); }
+                catch { /* queda en StockChangedAt, lo retoma el background */ }
+            });
+        }
+        return Ok(new { confirmar = false, stockAntes = antes, stockDespues = despues, apartados, producto = await CargarAsync(prod.Id) });
+    }
+
     // ─── DELETE ───
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Borrar(int id)
@@ -123,7 +223,8 @@ public class CafeVencimientosController : ControllerBase
             return Ok(new List<ProductoVencDto>());   // sin filtro no traemos todo el catálogo
         var prods = await qry.OrderBy(p => p.Marca).ThenBy(p => p.Nombre).Take(300).ToListAsync();
         var res = await VencimientosService.ResumenAsync(_db, prods.Select(p => p.Id));
-        return Ok(prods.Select(p => Map(p, res.GetValueOrDefault(p.Id))).ToList());
+        var ex = await ExtrasAsync(prods.Select(p => p.Id).ToList());
+        return Ok(prods.Select(p => Map(p, res.GetValueOrDefault(p.Id), ex.GetValueOrDefault(p.Id))).ToList());
     }
 
     // ─── GET marcas con productos (para el filtro) ───
