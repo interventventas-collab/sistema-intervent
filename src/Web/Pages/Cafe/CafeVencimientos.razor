@@ -30,6 +30,13 @@
     .vc-form .cant { width: 90px; }
     .vc-btn { background: #1d4ed8; color: #fff; border: none; border-radius: 6px; padding: 0.5rem 0.8rem; font-weight: 600; font-size: 0.85rem; cursor: pointer; }
     .vc-btn:disabled { opacity: 0.5; }
+    /* 2026-11-04: hechos bien visibles + filtros por estado y marca (botones, no desplegable) */
+    .vc-card.hecho { border-left: 5px solid #16a34a; background: #f0fdf4; }
+    .vc-listo { float: right; color: #15803d; font-weight: 800; font-size: 0.9rem; white-space: nowrap; margin-left: 0.5rem; }
+    .vc-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.55rem; }
+    .vc-chip { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 999px; padding: 0.3rem 0.75rem; font-size: 0.82rem; cursor: pointer; }
+    .vc-chip.on { background: #1d4ed8; border-color: #1d4ed8; color: #fff; font-weight: 600; }
+    .vc-chips-lbl { font-size: 0.78rem; color: #6b7280; align-self: center; margin-right: 0.2rem; }
     .vc-ic { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.3rem 0.5rem; cursor: pointer; font-size: 0.85rem; }
 </style>
 
@@ -37,8 +44,24 @@
     <h2 style="margin: 0 0 0.6rem;">📅 Asignar vencimientos</h2>
     <div class="vc-top">
         <input type="search" placeholder="Buscar producto, código o marca (ej: cremuccino)" @bind="busqueda" @bind:event="oninput" @bind:after="Buscar" />
-        <label class="vc-chk"><input type="checkbox" @bind="soloAsignados" @bind:after="Buscar" /> Ver solo los que ya tienen vencimiento</label>
     </div>
+    <div class="vc-chips">
+        <span class="vc-chips-lbl">Ver:</span>
+        <button class="vc-chip @(estado == "TODOS" ? "on" : "")" @onclick="@(() => CambiarEstado("TODOS"))">Todos</button>
+        <button class="vc-chip @(estado == "PEND" ? "on" : "")" @onclick="@(() => CambiarEstado("PEND"))">Pendientes@(productos is not null && estado != "HECHOS" ? $" ({productos.Count(x => !Hecho(x))})" : "")</button>
+        <button class="vc-chip @(estado == "HECHOS" ? "on" : "")" @onclick="@(() => CambiarEstado("HECHOS"))">✅ Hechos@(productos is not null ? $" ({productos.Count(Hecho)})" : "")</button>
+    </div>
+    @if (marcas is { Count: > 0 })
+    {
+        <div class="vc-chips">
+            <span class="vc-chips-lbl">Marca:</span>
+            <button class="vc-chip @(marca is null ? "on" : "")" @onclick="@(() => CambiarMarca(null))">Todas</button>
+            @foreach (var m in marcas)
+            {
+                <button class="vc-chip @(marca == m ? "on" : "")" @onclick="@(() => CambiarMarca(m))">@m</button>
+            }
+        </div>
+    }
     <div class="vc-ayuda">
         Poné cuántos hay con cada fecha. El stock no cambia: solo le ponés fecha a lo que ya está.
         El sistema va indicando sacar primero el que vence antes.
@@ -50,14 +73,16 @@
     }
     else if (productos is null || productos.Count == 0)
     {
-        <p style="color:#9ca3af;">@(string.IsNullOrWhiteSpace(busqueda) && !soloAsignados ? "Escribí un producto o una marca para empezar." : "No encontré productos con stock.")</p>
+        <p style="color:#9ca3af;">@(string.IsNullOrWhiteSpace(busqueda) && marca is null && estado != "HECHOS" ? "Escribí un producto o tocá una marca para empezar." : "No encontré productos.")</p>
     }
     else
     {
-        @foreach (var p in productos)
+        @foreach (var p in productos.Where(x => estado == "TODOS" || (estado == "HECHOS") == Hecho(x)))
         {
             var f = Form(p.ProductoId);
-            <div class="vc-card">
+            var hecho = Hecho(p);
+            <div class="vc-card @(hecho ? "hecho" : "")">
+                @if (hecho) { <span class="vc-listo">✅ LISTO</span> }
                 <div class="vc-tit">@if (!string.IsNullOrEmpty(p.Sku)) { <span class="vc-sku">@p.Sku</span> }@p.Nombre</div>
                 <div class="vc-sub">
                     Stock <b>@Cant(p.Stock, p.EsCafe)</b>
@@ -70,7 +95,7 @@
                         }
                         else
                         {
-                            <span class="vc-ok"> · ✓ todo con fecha</span>
+                            <span class="vc-ok"> · todo con fecha</span>
                         }
                     }
                 </div>
@@ -92,7 +117,7 @@
                                 <b>@Cant(fl.Cantidad, p.EsCafe)</b> · vence <b class="@(vencido ? "vc-venc" : "")">@fl.FechaVence.ToString("dd/MM/yyyy")</b>@(vencido ? " (vencido)" : "")
                                 <span style="color:#6b7280;"> · @(term ? "terminado" : $"quedan {Cant(fl.Quedan, p.EsCafe)}")@(!term && fl.FechaVence == p.ProximoVence ? " · sacar primero" : "")</span>
                             </span>
-                            <button class="vc-ic" title="Corregir" @onclick="() => EmpezarEdicion(fl)">✏</button>
+                            <button class="vc-ic" title="Corregir" @onclick="() => EmpezarEdicion(fl)">✏️</button>
                             <button class="vc-ic" title="Borrar" @onclick="() => Borrar(p, fl)">🗑</button>
                         }
                     </div>
@@ -111,7 +136,9 @@
     private class FormFila { public decimal? Cantidad; public DateTime? Fecha; public bool Guardando; }
 
     private string busqueda = "";
-    private bool soloAsignados;
+    private string estado = "TODOS";          // TODOS | PEND | HECHOS
+    private string? marca;
+    private List<string>? marcas;
     private bool cargando;
     private List<VencProductoDto>? productos;
     private readonly Dictionary<int, FormFila> forms = new();
@@ -121,11 +148,25 @@
     private CancellationTokenSource? cts;
     private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;   // hora argentina
 
+    /// <summary>Hecho = tiene fechas y todo el stock quedó con fecha.</summary>
+    private static bool Hecho(VencProductoDto p) => p.Filas.Count > 0 && p.SinVencimiento <= 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { marcas = await Api.GetVencimientosMarcasAsync(); } catch { marcas = null; }
+    }
+
+    private async Task CambiarEstado(string e) { estado = e; await Buscar(); }
+    private async Task CambiarMarca(string? m) { marca = m; await Buscar(); }
+
     private FormFila Form(int productoId)
     {
         if (!forms.TryGetValue(productoId, out var f)) forms[productoId] = f = new FormFila();
         return f;
     }
+
+    /// <summary>4.000 → 4 (sin ceros de más, para que no parezca cuatro mil).</summary>
+    private static decimal Limpio(decimal v) => v / 1.000000000000000000000000000000000m;
 
     private static string Cant(decimal v, bool esCafe) =>
         esCafe ? $"{v:0.#} kg" : v.ToString("N0");
@@ -139,14 +180,14 @@
         cargando = true; StateHasChanged();
         try
         {
-            var r = await Api.GetVencimientosCargaAsync(busqueda, true, soloAsignados);
+            var r = await Api.GetVencimientosCargaAsync(busqueda, true, estado == "HECHOS", marca);
             if (tk.IsCancellationRequested) return;
             productos = r ?? new();
             // la cantidad sugerida = lo que falta asignar
             foreach (var p in productos)
             {
                 var f = Form(p.ProductoId);
-                if (f.Cantidad is null && p.SinVencimiento > 0) f.Cantidad = p.SinVencimiento;
+                if (f.Cantidad is null && p.SinVencimiento > 0) f.Cantidad = Limpio(p.SinVencimiento);
             }
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
@@ -170,7 +211,7 @@
         {
             var r = await Api.AsignarVencimientoAsync(p.ProductoId, f.Cantidad.Value, f.Fecha.Value);
             Reemplazar(r);
-            f.Cantidad = r is { SinVencimiento: > 0 } ? r.SinVencimiento : null;
+            f.Cantidad = r is { SinVencimiento: > 0 } ? Limpio(r.SinVencimiento) : null;
             f.Fecha = null;
             ToastService.Success("Vencimiento asignado");
         }
@@ -180,7 +221,7 @@
 
     private void EmpezarEdicion(VencFilaDto fl)
     {
-        editandoId = fl.Id; editCant = fl.Cantidad; editFecha = fl.FechaVence;
+        editandoId = fl.Id; editCant = Limpio(fl.Cantidad); editFecha = fl.FechaVence;
     }
 
     private async Task GuardarEdicion(VencProductoDto p, VencFilaDto fl)

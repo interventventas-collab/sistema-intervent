@@ -72,7 +72,7 @@
         catch { dto = new VencProductoDto(); }
     }
 
-    private void Sugerir() { if (cantidad is null && dto is { SinVencimiento: > 0 }) cantidad = dto.SinVencimiento; }
+    private void Sugerir() { if (cantidad is null && dto is { SinVencimiento: > 0 }) cantidad = dto.SinVencimiento / 1.000000000000000000000000000000000m; }
 
     private string Cant(decimal v) => dto?.EsCafe == true ? $"{v:0.#} kg" : v.ToString("N0");
 
