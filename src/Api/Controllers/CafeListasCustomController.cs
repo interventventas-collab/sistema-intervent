@@ -330,6 +330,11 @@ public class CafeListasCustomController : ControllerBase
         public decimal? Precio1Kg { get; set; }
         public decimal? PrecioMedio { get; set; }
         public decimal? PrecioCuarto { get; set; }
+        // 2026-11-04: para armar la lista (solo pantalla, el PDF no lo usa): stock y costo de la
+        // unidad que se vende (producto, pack entero, combo) — en CAFE stock en kg y costo por kg.
+        public decimal? Stock { get; set; }
+        public decimal? Costo { get; set; }
+        public bool EsCafe { get; set; }
     }
 
     public class ContenidoListaDto
@@ -348,6 +353,46 @@ public class CafeListasCustomController : ControllerBase
         public decimal? PrecioBar { get; set; }
         public decimal? PrecioOtro { get; set; }
         public string? Detalle { get; set; }
+        // 2026-11-04: ver ItemDto.Stock/Costo/EsCafe
+        public decimal? Stock { get; set; }
+        public decimal? Costo { get; set; }
+        public bool EsCafe { get; set; }
+    }
+
+    /// <summary>2026-11-04: stock (cuantos combos se pueden armar) y costo de cada combo, para el
+    /// editor de listas. Cafe por gramos segun formato (1KG/MEDIO/CUARTO); BULTO usa UxB.</summary>
+    private async Task<Dictionary<int, (decimal? Stock, decimal? Costo)>> ComboStockCostoAsync(List<int> comboIds)
+    {
+        var res = new Dictionary<int, (decimal? Stock, decimal? Costo)>();
+        if (comboIds.Count == 0) return res;
+        var items = await _db.CafeComboItems.Where(ci => comboIds.Contains(ci.ComboId))
+            .Select(ci => new { ci.ComboId, ci.Formato, ci.Cantidad, ci.ProductoNav!.Categoria, ci.ProductoNav.Costo,
+                ci.ProductoNav.StockUnidades, ci.ProductoNav.StockGramos, ci.ProductoNav.UxB })
+            .ToListAsync();
+        foreach (var g in items.GroupBy(x => x.ComboId))
+        {
+            decimal? stock = null; decimal costo = 0;
+            foreach (var it in g)
+            {
+                decimal disp, c;
+                if (string.Equals(it.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))
+                {
+                    var gramos = (it.Formato ?? "1KG").ToUpperInvariant() switch { "MEDIO" => 500m, "CUARTO" => 250m, _ => 1000m } * it.Cantidad;
+                    disp = gramos > 0 ? Math.Floor(it.StockGramos / gramos) : 0;
+                    c = it.Costo / 1000m * gramos;
+                }
+                else
+                {
+                    var unidades = it.Cantidad * (string.Equals(it.Formato, "BULTO", StringComparison.OrdinalIgnoreCase) && it.UxB is > 0 ? it.UxB.Value : 1);
+                    disp = unidades > 0 ? Math.Floor((decimal)it.StockUnidades / unidades) : 0;
+                    c = it.Costo * unidades;
+                }
+                stock = stock is null ? disp : Math.Min(stock.Value, disp);
+                costo += c;
+            }
+            res[g.Key] = (stock is < 0 ? 0 : stock, costo);
+        }
+        return res;
     }
 
     // ─── GET contenido (lista + secciones + items con datos resueltos) ───
@@ -381,7 +426,9 @@ public class CafeListasCustomController : ControllerBase
             .Select(c => new { c.Id, c.Nombre, c.Sku, c.Marca, Precio = (decimal?)c.PrecioReferencia }).ToListAsync();
         var packs = await _db.CafeProductoPacks.Where(p => packIds.Contains(p.Id))
             .Include(p => p.Producto).ThenInclude(p => p!.MarcaNav)
-            .Select(p => new { p.Id, p.Nombre, p.Cantidad, p.PrecioOverride, ProdNombre = p.Producto!.Nombre, p.Producto.PrecioBar, p.Producto.PrecioOtro, p.Producto.Sku, Marca = p.Producto.Marca ?? (p.Producto.MarcaNav != null ? p.Producto.MarcaNav.Nombre : null) }).ToListAsync();
+            .Select(p => new { p.Id, p.Nombre, p.Cantidad, p.PrecioOverride, ProdNombre = p.Producto!.Nombre, p.Producto.PrecioBar, p.Producto.PrecioOtro, p.Producto.Sku, Marca = p.Producto.Marca ?? (p.Producto.MarcaNav != null ? p.Producto.MarcaNav.Nombre : null),
+                p.Producto.Costo, p.Producto.StockUnidades }).ToListAsync();
+        var comboStock = await ComboStockCostoAsync(comboIds);
 
         var negocio = await _db.CafeSettings.FirstOrDefaultAsync() ?? new CafeSetting();
         var esBar = string.Equals(lista.TipoCliente, "BAR", StringComparison.OrdinalIgnoreCase);
@@ -400,6 +447,7 @@ public class CafeListasCustomController : ControllerBase
                 decimal? precio = null;
                 string? detalle = null;
                 decimal? p1Kg = null, pMedio = null, pCuarto = null;
+                decimal? stock = null, costo = null; bool esCafe = false;
 
                 if (i.TipoItem == "PRODUCTO")
                 {
@@ -409,6 +457,9 @@ public class CafeListasCustomController : ControllerBase
                         nombre = p.Nombre;
                         sku = p.Sku;
                         marca = p.Marca ?? p.MarcaNav?.Nombre;
+                        costo = p.Costo;
+                        esCafe = string.Equals(p.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase);
+                        stock = esCafe ? Math.Round(p.StockGramos / 1000m, 1) : p.StockUnidades;
                         if (string.Equals(p.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))
                         {
                             p1Kg = Services.CafePricingService.CalcularPrecioUnitario(p, Services.CafePricingService.FORMATO_1KG, tipoCli, negocio);
@@ -426,6 +477,7 @@ public class CafeListasCustomController : ControllerBase
                 {
                     var c = combos.FirstOrDefault(x => x.Id == i.RefId);
                     if (c != null) { nombre = c.Nombre; sku = c.Sku; marca = c.Marca; precio = c.Precio; detalle = "Combo"; }
+                    if (comboStock.TryGetValue(i.RefId, out var cs)) { stock = cs.Stock; costo = cs.Costo; }
                 }
                 else if (i.TipoItem == "PACK")
                 {
@@ -438,6 +490,8 @@ public class CafeListasCustomController : ControllerBase
                         var precioBase = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar);
                         precio = p.PrecioOverride ?? (precioBase * p.Cantidad);
                         detalle = $"Pack x {p.Cantidad}";
+                        costo = p.Costo * p.Cantidad;
+                        stock = p.Cantidad > 0 ? (decimal?)Math.Floor((decimal)p.StockUnidades / p.Cantidad) : null;
                     }
                 }
                 return new ItemDto
@@ -445,7 +499,8 @@ public class CafeListasCustomController : ControllerBase
                     Id = i.Id, TipoItem = i.TipoItem, RefId = i.RefId, Orden = i.Orden,
                     Notas = i.Notas, EsNovedad = i.EsNovedad,
                     Nombre = nombre, Sku = sku, Marca = marca, Precio = precio, Detalle = detalle,
-                    Precio1Kg = p1Kg, PrecioMedio = pMedio, PrecioCuarto = pCuarto
+                    Precio1Kg = p1Kg, PrecioMedio = pMedio, PrecioCuarto = pCuarto,
+                    Stock = stock, Costo = costo, EsCafe = esCafe
                 };
             }).ToList()
         }).ToList();
@@ -497,7 +552,9 @@ public class CafeListasCustomController : ControllerBase
                 {
                     Tipo = "PRODUCTO", Id = p.Id, Nombre = p.Nombre, Sku = p.Sku,
                     Marca = p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null),
-                    PrecioBar = p.PrecioBar, PrecioOtro = p.PrecioOtro
+                    PrecioBar = p.PrecioBar, PrecioOtro = p.PrecioOtro,
+                    Costo = p.Costo, EsCafe = p.Categoria == "CAFE",
+                    Stock = p.Categoria == "CAFE" ? Math.Round(p.StockGramos / 1000m, 1) : p.StockUnidades
                 }).ToListAsync();
         }
         else if (tipo == "COMBO")
@@ -517,6 +574,9 @@ public class CafeListasCustomController : ControllerBase
                     PrecioBar = c.PrecioReferencia, PrecioOtro = c.PrecioReferencia,
                     Detalle = "Combo"
                 }).ToListAsync();
+            var cst = await ComboStockCostoAsync(result.Select(r => r.Id).ToList());
+            foreach (var r in result)
+                if (cst.TryGetValue(r.Id, out var v)) { r.Stock = v.Stock; r.Costo = v.Costo; }
         }
         else if (tipo == "PACK")
         {
@@ -541,7 +601,9 @@ public class CafeListasCustomController : ControllerBase
                     Marca = p.Producto.Marca ?? (p.Producto.MarcaNav != null ? p.Producto.MarcaNav.Nombre : null),
                     PrecioBar = p.PrecioOverride ?? (p.Producto.PrecioBar.HasValue ? p.Producto.PrecioBar.Value * p.Cantidad : (decimal?)null),
                     PrecioOtro = p.PrecioOverride ?? (p.Producto.PrecioOtro.HasValue ? p.Producto.PrecioOtro.Value * p.Cantidad : (decimal?)null),
-                    Detalle = $"Pack x {p.Cantidad}"
+                    Detalle = $"Pack x {p.Cantidad}",
+                    Costo = p.Producto.Costo * p.Cantidad,
+                    Stock = p.Cantidad > 0 ? (decimal?)Math.Floor((decimal)p.Producto.StockUnidades / p.Cantidad) : null
                 }).ToListAsync();
         }
         return Ok(result);
