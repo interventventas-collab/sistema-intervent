@@ -484,7 +484,12 @@ public class ArcaInvoicePdfService
             ? it.Cantidad.ToString("0", new CultureInfo("es-AR"))
             : it.Cantidad.ToString("0.##", new CultureInfo("es-AR"));
         table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(cant).SemiBold();
-        table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(fmt).Bold().FontColor(Colors.Black);
+        table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(t =>
+        {
+            t.Span(fmt).Bold().FontColor(Colors.Black);
+            if (it.TotalUnidades is int tu && tu > 1)
+                t.Span($"\ntotal {tu.ToString("N0", new CultureInfo("es-AR"))} un").FontSize(6.5f).FontColor(Colors.Grey.Darken1);
+        });
         table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text(t =>
         {
             if (!string.IsNullOrEmpty(it.Sku))
@@ -794,6 +799,8 @@ public class PdfItem
     public string? Producto { get; set; }
     /// <summary>Formato del producto separado (ej "EN GRANOS · 1KG"). Si null queda vacío.</summary>
     public string? Formato { get; set; }
+    /// <summary>2026-11-04: unidades totales de un renglón en pack ("total 1.000 un", chiquito debajo del formato).</summary>
+    public int? TotalUnidades { get; set; }
     public decimal Cantidad { get; set; }
     /// <summary>Precio unitario FINAL (con descuento ya aplicado si lo hay).</summary>
     public decimal PrecioUnitario { get; set; }

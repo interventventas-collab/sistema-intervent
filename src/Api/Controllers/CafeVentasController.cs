@@ -1588,6 +1588,8 @@ public class CafeVentasController : ControllerBase
             {
                 CafePricingService.FORMATO_UNIT => "Unidad",
                 CafePricingService.FORMATO_BULTO => "Bulto",
+                // 2026-11-04: "Pack x 100" con mayúscula, igual que la cotización.
+                var f when CafePricingService.ParsePackUnidades(f).HasValue => "P" + CafePricingService.FormatoLabel(f)[1..],
                 _ => CafePricingService.FormatoLabel(it.Formato)
             });
             var fmtStr = string.Join(" · ", fmtParts);
@@ -1602,6 +1604,7 @@ public class CafeVentasController : ControllerBase
                 Sku = it.ProductoNav?.Sku,           // SKU (va adentro de la celda Producto, en azul)
                 Producto = prodName,                  // Nombre limpio
                 Formato = tamanio,                    // 2026-09-30: solo el tamaño ("1/2 kg"), como el presupuesto
+                TotalUnidades = !it.EsConceptoLibre && CafePricingService.ParsePackUnidades(it.Formato) is int pn ? it.Cantidad * pn : null,
                 Molienda = string.IsNullOrEmpty(it.Molienda) ? null : it.Molienda,
                 Envase = envase,
                 Cantidad = it.Cantidad,
