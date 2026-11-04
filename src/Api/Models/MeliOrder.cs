@@ -49,6 +49,10 @@ public class MeliOrder
 
     public bool StockDiscounted { get; set; } = false;
 
+    /// <summary>2026-11-04: cuándo se dejó en la orden de MeLi la nota "📅 VENCE → … Sacar el que vence …"
+    /// (MeliVencimientoNotasService, solo producción). Null = todavía no.</summary>
+    public DateTime? VencNoteSentAt { get; set; }
+
     /// <summary>2026-07-10: true cuando ya se avisó esta venta por Telegram (para no repetir el
     /// aviso). Las ventas que ya existían cuando se agregó Telegram arrancan en true (backfill en
     /// init.sql) para no mandar una catarata de avisos viejos.</summary>

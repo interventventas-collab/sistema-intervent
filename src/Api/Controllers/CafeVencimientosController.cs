@@ -201,6 +201,16 @@ public class CafeVencimientosController : ControllerBase
         return Ok(new { confirmar = false, stockAntes = antes, stockDespues = despues, apartados, producto = await CargarAsync(prod.Id) });
     }
 
+    // ─── GET ver qué nota le dejaría a una orden de MeLi (no manda nada) ───
+    [HttpGet("nota-meli/{meliOrderId:long}")]
+    public async Task<IActionResult> NotaMeli(long meliOrderId)
+    {
+        var filas = await _db.MeliOrders.AsNoTracking().Where(o => o.MeliOrderId == meliOrderId).ToListAsync();
+        if (filas.Count == 0) return NotFound(new { error = "Orden no encontrada" });
+        var notas = await MeliVencimientoNotasService.TextosAsync(_db, filas);
+        return Ok(new { notas, enviada = filas.Max(f => f.VencNoteSentAt) });
+    }
+
     // ─── DELETE ───
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Borrar(int id)
