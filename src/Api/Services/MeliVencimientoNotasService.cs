@@ -114,9 +114,21 @@ public class MeliVencimientoNotasService : BackgroundService
             var comps = await db.MeliItemComponentes.AsNoTracking().Where(c => c.MeliItemId == o.ItemId).ToListAsync(ct);
             if (comps.Count == 0)
             {
-                var pid = await db.MeliItems.AsNoTracking().Where(m => m.MeliItemId == o.ItemId && m.CafeProductoId != null)
-                    .Select(m => m.CafeProductoId).FirstOrDefaultAsync(ct);
-                if (pid is int p) unidades[p] = unidades.GetValueOrDefault(p) + o.Quantity;
+                // Vínculo viejo (producto atado directo a la publicación). Café fraccionado: igual que el
+                // descuento de stock (MeliStockSyncService) — SKU que termina en .4 = ¼ kg, .2 = ½ kg;
+                // si no, el CafeFormato de la publicación (MEDIO/CUARTO) o 1 kg.
+                var mis = await db.MeliItems.AsNoTracking().Where(m => m.MeliItemId == o.ItemId && m.CafeProductoId != null)
+                    .Select(m => new { m.CafeProductoId, m.VariationId, m.Sku, m.CafeFormato }).ToListAsync(ct);
+                var mi = mis.FirstOrDefault(m => m.VariationId == o.VariationId) ?? mis.FirstOrDefault();
+                if (mi?.CafeProductoId is int p)
+                {
+                    var esCafe = await db.CafeProductos.AsNoTracking().AnyAsync(x => x.Id == p && x.Categoria == "CAFE", ct);
+                    var factor = !esCafe ? 1m
+                        : mi.Sku is string sk && sk.EndsWith(".4") ? 0.25m
+                        : mi.Sku is string sk2 && sk2.EndsWith(".2") ? 0.5m
+                        : Factor(mi.CafeFormato);
+                    unidades[p] = unidades.GetValueOrDefault(p) + o.Quantity * factor;
+                }
                 else ambigua = true;
                 continue;
             }
