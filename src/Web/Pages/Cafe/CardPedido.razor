@@ -306,6 +306,12 @@
                                     <div style="font-size:0.72rem; color:#6b7280;">@arm.Nota</div>
                                 }
                             }
+                            @* 2026-11-04: vencimiento — cuál tienen que agarrar (sale primero el que vence antes). *@
+                            @if (it.ProductoId is int pidV && Vencimientos is not null && Vencimientos.TryGetValue(pidV, out var vzc)
+                                 && vzc.SacarPara(VencResumenDto.UnidadesDe(it.Formato, it.Cantidad, it.UxB, it.Categoria == "CAFE")) is string sacar)
+                            {
+                                <div style="font-size:0.8rem; margin-top:0.2rem; color:#111827;">📅 <b>@sacar</b></div>
+                            }
                         </div>
                         @{
                             var stockTexto = StockTextoSistema(it);
@@ -424,6 +430,8 @@
     [Parameter] public EventCallback OnImprimir { get; set; }
     [Parameter] public EventCallback<bool> OnToggleSelectForPrint { get; set; }
     [Parameter] public bool SelectedForPrint { get; set; }
+    /// <summary>2026-11-04: vencimientos por ProductoId (solo los que tienen fechas). Lo carga CafePreparacion.</summary>
+    [Parameter] public Dictionary<int, VencResumenDto>? Vencimientos { get; set; }
 
     // Por default la composicion esta colapsada (el armador la despliega cuando va a armar ese pedido).
     private bool mostrarComposicion = false;

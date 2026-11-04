@@ -1730,6 +1730,8 @@ public class ApiClient
         => await GetAsync<List<string>>("/api/cafe/vencimientos/marcas");
     public async Task<List<VencResumenDto>?> GetVencimientosResumenAsync(List<int> productoIds)
         => await PostAsync<List<VencResumenDto>>("/api/cafe/vencimientos/resumen", productoIds);
+    public async Task<List<VencResumenDto>?> GetVencimientosResumenTodosAsync()
+        => await GetAsync<List<VencResumenDto>>("/api/cafe/vencimientos/resumen-todos");
     public async Task<List<VencAlertaDto>?> GetVencimientosAlertasAsync(int dias = 30)
         => await GetAsync<List<VencAlertaDto>>($"/api/cafe/vencimientos/alertas?dias={dias}");
 

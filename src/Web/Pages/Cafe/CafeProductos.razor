@@ -294,6 +294,17 @@
                                             <LugarProducto ProductoId="p.Id" Lugar="@lug?.Lugar" Dudoso="@(lug?.DudosaAt is not null)"
                                                            Editable="true" OfrecerNoEsta="false" PermitirCambiar="true" Tamano="0.75rem" OnCambio="LoadLugares" />
                                         </div>
+                                        @* 2026-11-04: vencimientos. La primera fecha es la que sale primero. *@
+                                        @if (!p.EsPackFake && vencs.TryGetValue(p.Id, out var vz))
+                                        {
+                                            <div style="font-size:0.75rem; color:#374151; margin-top:1px;" title="Sale primero el que vence antes">
+                                                📅 @vz.Detalle()
+                                                @if (vz.SinVencimiento > 0)
+                                                {
+                                                    <span style="color:#b45309;"> · @vz.Cant(vz.SinVencimiento) sin fecha</span>
+                                                }
+                                            </div>
+                                        }
                                         @* 2026-11-03: en cuántas publicaciones de MeLi está; al tocar se despliega abajo del renglón. *@
                                         conteosMeli.TryGetValue(p.Id, out var cm);
                                         @if (cm is not null && cm.Activas + cm.Pausadas > 0)
@@ -2549,6 +2560,7 @@
         var loadFotosPropias = LoadFotosPropias();
         var loadPortadasCombos = LoadPortadasCombos();
         var loadLugares = LoadLugares();
+        var loadVencs = LoadVencimientos();
         var loadSettings = LoadSettings();
         var loadConteosMeli = LoadConteosMeli();
         await Load();
@@ -2558,6 +2570,7 @@
         await loadThumbs;
         await loadFotosPropias;
         await loadPortadasCombos;
+        await loadVencs;
         await loadLugares;
         await loadSettings;
         await loadConteosMeli;
@@ -2617,6 +2630,14 @@
             lugares = dic;
         }
         catch { /* si falla, la lista se ve igual que antes, sin el lugar */ }
+    }
+
+    // 2026-11-04: vencimientos de cada producto (solo los que tienen), para la línea 📅 del listado.
+    private Dictionary<int, VencResumenDto> vencs = new();
+    private async Task LoadVencimientos()
+    {
+        try { vencs = (await Api.GetVencimientosResumenTodosAsync() ?? new()).ToDictionary(v => v.ProductoId); }
+        catch { /* si falla, la lista se ve igual que antes */ }
     }
 
     private async Task LoadThumbnails()

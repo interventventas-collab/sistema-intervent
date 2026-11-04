@@ -109,6 +109,10 @@
                 <div class="pk-cant"><span class="x">×</span>@it.Cantidad</div>
                 <div style="flex:1; min-width:0;">
                     <div class="pk-nombre">@it.ProductoNombre</div>
+                    @if (!string.IsNullOrEmpty(it.Vence))
+                    {
+                        <div style="font-size:0.85rem; color:#111827; margin:2px 0;">📅 <b>@it.Vence</b></div>
+                    }
                     <div class="pk-tags">
                         @if (!string.IsNullOrEmpty(it.Formato) && it.Formato != "Unidad" && it.Formato != "UNIT")
                         {
@@ -259,5 +263,6 @@
         public string? Categoria { get; set; }
         public int Cantidad { get; set; }
         public bool Tildado { get; set; }
+        public string? Vence { get; set; }   // 2026-11-04: "Sacar el que vence dd/MM/yyyy"
     }
 }

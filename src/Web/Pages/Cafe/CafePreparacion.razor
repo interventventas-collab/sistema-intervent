@@ -840,7 +840,7 @@
                     <div class="drive-pedidos-grid">
                         @foreach (var v in ParaArmarFiltrados)
                         {
-                            <CardPedido Venta="v"
+                            <CardPedido Venta="v" Vencimientos="vencsPrep"
                                         SelectedForPrint="seleccionadosParaImprimir.Contains(v.Id)"
                                         OnAvanzar="() => Avanzar(v)"
                                         OnQuitarDelFlujo="() => QuitarDelFlujo(v)"
@@ -1278,6 +1278,8 @@
         refreshTimer = new System.Threading.Timer(async _ => await InvokeAsync(Cargar), null, 10000, 10000);
     }
 
+    private Dictionary<int, VencResumenDto> vencsPrep = new();
+
     private async Task Cargar()
     {
         loading = true;
@@ -1288,6 +1290,8 @@
             // Refresca el estado del celu del depósito (por si se habilitó desde el celular)
             try { pickingDispositivo = await Api.GetPickingDispositivoAsync(); } catch { }
             try { tareasResumen = await Api.GetDepTareasResumenAsync(); } catch { }
+            // 2026-11-04: vencimientos para "Sacar el que vence…" en cada renglón
+            try { vencsPrep = (await Api.GetVencimientosResumenTodosAsync() ?? new()).ToDictionary(x => x.ProductoId); } catch { }
             ultimaActualizacion = DateTime.Now;
         }
         catch (Exception ex)

@@ -54,6 +54,28 @@ public static class VencimientosService
             Math.Max(0m, resto), conStock.Sum(f => f.Quedan));
     }
 
+    /// <summary>2026-11-04: texto para el ARMADO. Cantidad en unidades (o kg en café).
+    /// 1 fecha → "Sacar el que vence 15/01/2027"; si no alcanza → "Sacar 3 del 15/01/2027 y 3 del 20/06/2027".
+    /// Null si el producto no tiene fechas con stock.</summary>
+    public static string? TextoSacar(VencResumen? r, decimal cantidad)
+    {
+        if (r is null || cantidad <= 0) return null;
+        var fechas = r.Filas.Where(f => f.Quedan > 0).GroupBy(f => f.FechaVence.Date).OrderBy(g => g.Key)
+            .Select(g => (Fecha: g.Key, Quedan: g.Sum(f => f.Quedan))).ToList();
+        if (fechas.Count == 0) return null;
+        string Cant(decimal v) => r.EsCafe ? $"{v:0.##} kg" : (v / 1.000000000000000000000000000000000m).ToString("0.##");
+        var partes = new List<string>();
+        var resto = cantidad;
+        foreach (var f in fechas)
+        {
+            if (resto <= 0) break;
+            var toma = Math.Min(resto, f.Quedan);
+            partes.Add($"{Cant(toma)} del {f.Fecha:dd/MM/yyyy}");
+            resto -= toma;
+        }
+        return partes.Count == 1 ? $"Sacar el que vence {fechas[0].Fecha:dd/MM/yyyy}" : "Sacar " + string.Join(" y ", partes);
+    }
+
     /// <summary>Resumen de varios productos de una vez. Solo devuelve los que tienen algún vencimiento asignado.</summary>
     public static async Task<Dictionary<int, VencResumen>> ResumenAsync(AppDbContext db, IEnumerable<int> productoIds, CancellationToken ct = default)
     {

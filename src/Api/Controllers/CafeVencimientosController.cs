@@ -141,11 +141,29 @@ public class CafeVencimientosController : ControllerBase
     public async Task<IActionResult> Resumen([FromBody] List<int> productoIds)
     {
         var res = await VencimientosService.ResumenAsync(_db, productoIds ?? new());
-        return Ok(res.Values.Where(r => r.ProximoVence != null).Select(r => new
-        {
-            r.ProductoId, r.ProximoVence, r.ProximoQuedan, r.SiguienteVence, r.EsCafe
-        }).ToList());
+        return Ok(ResumenDtos(res));
     }
+
+    /// <summary>2026-11-04: resumen de TODOS los productos que tienen vencimientos (listado de productos).</summary>
+    [HttpGet("resumen-todos")]
+    public async Task<IActionResult> ResumenTodos()
+    {
+        var ids = await _db.CafeProductoVencimientos.Select(v => v.ProductoId).Distinct().ToListAsync();
+        var res = await VencimientosService.ResumenAsync(_db, ids);
+        return Ok(ResumenDtos(res));
+    }
+
+    public record FechaQuedanDto(DateTime FechaVence, decimal Quedan);
+    public record ResumenDto(int ProductoId, DateTime? ProximoVence, decimal ProximoQuedan, DateTime? SiguienteVence,
+        bool EsCafe, decimal SinVencimiento, List<FechaQuedanDto> Fechas);
+
+    /// <summary>Solo productos que todavía tienen algo con fecha. Fechas = cada fecha con lo que queda
+    /// (misma fecha cargada dos veces se suma), de la más cercana a la más lejana.</summary>
+    private static List<ResumenDto> ResumenDtos(Dictionary<int, VencimientosService.VencResumen> res) =>
+        res.Values.Where(r => r.ProximoVence != null).Select(r => new ResumenDto(
+            r.ProductoId, r.ProximoVence, r.ProximoQuedan, r.SiguienteVence, r.EsCafe, r.SinVencimiento,
+            r.Filas.Where(f => f.Quedan > 0).GroupBy(f => f.FechaVence.Date).OrderBy(g => g.Key)
+                .Select(g => new FechaQuedanDto(g.Key, g.Sum(f => f.Quedan))).ToList())).ToList();
 
     // ─── GET por vencer / vencidos (para Alertas) ───
     [HttpGet("alertas")]

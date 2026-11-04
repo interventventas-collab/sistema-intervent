@@ -57,7 +57,7 @@ public class CafePickingPublicController : ControllerBase
         return Ok(new
         {
             estado,
-            lista = estado == "ok" ? Proyectar(lista, await LugaresPorSkuAsync(lista)) : null,
+            lista = estado == "ok" ? Proyectar(lista, await LugaresPorSkuAsync(lista), await VencePorSkuAsync(lista)) : null,
             info = new { creadaPor = lista.CreadaPor, cantidadPedidos = lista.CantidadPedidos, ventaNumeros = lista.VentaNumeros, createdAt = lista.CreatedAt }
         });
     }
@@ -99,7 +99,7 @@ public class CafePickingPublicController : ControllerBase
             await _db.SaveChangesAsync();
         }
 
-        return Ok(new { estado = "ok", lista = Proyectar(lista, await LugaresPorSkuAsync(lista)) });
+        return Ok(new { estado = "ok", lista = Proyectar(lista, await LugaresPorSkuAsync(lista), await VencePorSkuAsync(lista)) });
     }
 
     /// <summary>Marca/desmarca un producto como ya juntado. Solo desde el celu habilitado.</summary>
@@ -144,7 +144,24 @@ public class CafePickingPublicController : ControllerBase
             }, StringComparer.OrdinalIgnoreCase);
     }
 
-    private static object Proyectar(CafePickingLista l, Dictionary<string, (string? Lugar, bool Dudoso)> lugares) => new
+    /// <summary>2026-11-04: por SKU, "Sacar el que vence dd/MM/yyyy" (la fecha más próxima con stock).</summary>
+    private async Task<Dictionary<string, string>> VencePorSkuAsync(CafePickingLista l)
+    {
+        var skus = l.Items.Select(i => i.Sku).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).Distinct().ToList();
+        if (skus.Count == 0) return new();
+        var prods = await _db.CafeProductos.AsNoTracking()
+            .Where(p => p.IsActive && p.Sku != null && skus.Contains(p.Sku))
+            .Select(p => new { p.Id, p.Sku }).ToListAsync();
+        var res = await Services.VencimientosService.ResumenAsync(_db, prods.Select(p => p.Id));
+        var dic = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in prods)
+            if (res.TryGetValue(p.Id, out var r) && r.ProximoVence is DateTime f && !dic.ContainsKey(p.Sku!))
+                dic[p.Sku!] = $"Sacar el que vence {f:dd/MM/yyyy}";
+        return dic;
+    }
+
+    private static object Proyectar(CafePickingLista l, Dictionary<string, (string? Lugar, bool Dudoso)> lugares,
+        Dictionary<string, string>? vence = null) => new
     {
         token = l.Token,
         creadaPor = l.CreadaPor,
@@ -162,7 +179,8 @@ public class CafePickingPublicController : ControllerBase
             lugarDudoso = !string.IsNullOrEmpty(i.Sku) && lugares.TryGetValue(i.Sku, out var lg2) && lg2.Dudoso,
             categoria = i.Categoria,
             cantidad = i.Cantidad,
-            tildado = i.Tildado
+            tildado = i.Tildado,
+            vence = vence is not null && !string.IsNullOrEmpty(i.Sku) && vence.TryGetValue(i.Sku, out var vt) ? vt : null
         }).ToList()
     };
 }
