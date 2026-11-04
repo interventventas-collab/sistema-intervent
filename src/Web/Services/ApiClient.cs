@@ -1724,8 +1724,10 @@ public class ApiClient
         => await PutAsync<VencProductoDto>($"/api/cafe/vencimientos/{id}", new { Cantidad = cantidad, FechaVence = fecha.Date });
     public async Task<bool> BorrarVencimientoAsync(int id)
         => await DeleteAsync($"/api/cafe/vencimientos/{id}");
-    public async Task<List<VencProductoDto>?> GetVencimientosCargaAsync(string? q, bool soloConStock, bool soloAsignados)
-        => await GetAsync<List<VencProductoDto>>($"/api/cafe/vencimientos/carga?q={Uri.EscapeDataString(q ?? "")}&soloConStock={soloConStock}&soloAsignados={soloAsignados}");
+    public async Task<List<VencProductoDto>?> GetVencimientosCargaAsync(string? q, bool soloConStock, bool soloAsignados, string? marca = null)
+        => await GetAsync<List<VencProductoDto>>($"/api/cafe/vencimientos/carga?q={Uri.EscapeDataString(q ?? "")}&soloConStock={soloConStock}&soloAsignados={soloAsignados}&marca={Uri.EscapeDataString(marca ?? "")}");
+    public async Task<List<string>?> GetVencimientosMarcasAsync()
+        => await GetAsync<List<string>>("/api/cafe/vencimientos/marcas");
     public async Task<List<VencResumenDto>?> GetVencimientosResumenAsync(List<int> productoIds)
         => await PostAsync<List<VencResumenDto>>("/api/cafe/vencimientos/resumen", productoIds);
     public async Task<List<VencAlertaDto>?> GetVencimientosAlertasAsync(int dias = 30)
