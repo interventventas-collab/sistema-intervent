@@ -55,9 +55,13 @@ public class MeliVencimientoNotasService : BackgroundService
                 && (o.LogisticType == null || o.LogisticType != "fulfillment")
                 && (o.ShippingStatus == null || !EnvioTerminado.Contains(o.ShippingStatus)))
             .ToListAsync(ct);
-        foreach (var grupo in ordenes.GroupBy(o => (o.MeliAccountId, o.MeliOrderId)))
+        // 2026-11-04: los "paquetes" de MeLi (carrito con varios productos) son varias órdenes con el mismo
+        // PackId, y en la vista del paquete MeLi muestra la nota de UNA sola. Se arma una nota para todo el
+        // paquete y se deja en cada orden del paquete.
+        foreach (var grupo in ordenes.GroupBy(o => (o.MeliAccountId, Clave: o.PackId ?? o.MeliOrderId)))
         {
-            var filas = grupo.ToList();
+            var filas = await FilasDelPaqueteAsync(db, grupo.ToList(), ct);
+            if (filas.Any(f => f.VencNoteSentAt != null)) { foreach (var f in filas) f.VencNoteSentAt ??= DateTime.UtcNow; await db.SaveChangesAsync(ct); continue; }
             var notas = await TextosAsync(db, filas, ct);
             if (notas.Count == 0) continue;   // ningún producto con vencimiento: no se marca (por si le asignan después)
             var account = await db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == grupo.Key.MeliAccountId, ct);
@@ -67,18 +71,10 @@ public class MeliVencimientoNotasService : BackgroundService
             var http = httpF.CreateClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
             var ok = true;
+            foreach (var oid in filas.Select(f => f.MeliOrderId).Distinct())
             foreach (var nota in notas)
             {
-                var body = JsonSerializer.Serialize(new { note = nota });
-                using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
-                var resp = await http.PostAsync($"https://api.mercadolibre.com/orders/{grupo.Key.MeliOrderId}/notes", content, ct);
-                if (!resp.IsSuccessStatusCode)
-                {
-                    ok = false;
-                    var err = await resp.Content.ReadAsStringAsync(ct);
-                    Console.WriteLine($"[VencNota] order {grupo.Key.MeliOrderId} {(int)resp.StatusCode}: {err[..Math.Min(err.Length, 200)]}");
-                    break;
-                }
+                if (!await PostNotaAsync(http, oid, nota, "VencNota", ct)) { ok = false; break; }
             }
             if (ok)
             {
@@ -200,9 +196,11 @@ public class MeliVencimientoNotasService : BackgroundService
             .Where(o => o.GananciaNoteSentAt == null && o.FinConsultadoAt != null && o.FinNeto != null
                 && o.DateCreated >= desde && o.Status == "paid")
             .ToListAsync(ct);
-        foreach (var grupo in ordenes.GroupBy(o => (o.MeliAccountId, o.MeliOrderId)))
+        foreach (var grupo in ordenes.GroupBy(o => (o.MeliAccountId, Clave: o.PackId ?? o.MeliOrderId)))
         {
-            var filas = grupo.ToList();
+            var filas = await FilasDelPaqueteAsync(db, grupo.ToList(), ct);
+            if (filas.Any(f => f.GananciaNoteSentAt != null)) { foreach (var f in filas) f.GananciaNoteSentAt ??= DateTime.UtcNow; await db.SaveChangesAsync(ct); continue; }
+            if (filas.Any(f => f.FinNeto is null)) continue;   // falta traer el cobro de alguna orden del paquete
             var nota = await GananciaTextoAsync(db, filas, ct);
             if (nota is null) { foreach (var f in filas) f.GananciaNoteSentAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); continue; }
             var account = await db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == grupo.Key.MeliAccountId, ct);
@@ -211,27 +209,44 @@ public class MeliVencimientoNotasService : BackgroundService
             if (token is null) continue;
             var http = httpF.CreateClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            var body = JsonSerializer.Serialize(new { note = nota });
-            using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
-            var resp = await http.PostAsync($"https://api.mercadolibre.com/orders/{grupo.Key.MeliOrderId}/notes", content, ct);
-            if (resp.IsSuccessStatusCode)
+            var okG = true;
+            foreach (var oid in filas.Select(f => f.MeliOrderId).Distinct())
+                if (!await PostNotaAsync(http, oid, nota, "GananciaNota", ct)) { okG = false; break; }
+            if (okG)
             {
                 foreach (var f in filas) f.GananciaNoteSentAt = DateTime.UtcNow;
                 await db.SaveChangesAsync(ct);
             }
-            else
-            {
-                var err = await resp.Content.ReadAsStringAsync(ct);
-                Console.WriteLine($"[GananciaNota] order {grupo.Key.MeliOrderId} {(int)resp.StatusCode}: {err[..Math.Min(err.Length, 200)]}");
-            }
         }
+    }
+
+    /// <summary>Todas las órdenes del mismo paquete (PackId), aunque alguna no haya entrado en la consulta.</summary>
+    public static async Task<List<MeliOrder>> FilasDelPaqueteAsync(AppDbContext db, List<MeliOrder> filas, CancellationToken ct)
+    {
+        var pack = filas.Select(f => f.PackId).FirstOrDefault(p => p != null);
+        if (pack is null) return filas;
+        var todas = await db.MeliOrders.Where(o => o.PackId == pack && o.MeliAccountId == filas[0].MeliAccountId && o.Status == "paid").ToListAsync(ct);
+        return todas.Count > 0 ? todas : filas;
+    }
+
+    private static async Task<bool> PostNotaAsync(HttpClient http, long orderId, string nota, string tag, CancellationToken ct)
+    {
+        var body = JsonSerializer.Serialize(new { note = nota });
+        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        var resp = await http.PostAsync($"https://api.mercadolibre.com/orders/{orderId}/notes", content, ct);
+        if (resp.IsSuccessStatusCode) return true;
+        var err = await resp.Content.ReadAsStringAsync(ct);
+        Console.WriteLine($"[{tag}] order {orderId} {(int)resp.StatusCode}: {err[..Math.Min(err.Length, 200)]}");
+        return false;
     }
 
     private static readonly System.Globalization.CultureInfo Ar = new("es-AR");
     private static string Pesos(decimal v) => "$" + Math.Round(v, 0).ToString("N0", Ar);
 
-    /// <summary>Texto de la nota de ganancia (null si no hay costo cargado o no hay datos de cobro).</summary>
-    public static async Task<string?> GananciaTextoAsync(AppDbContext db, List<MeliOrder> filas, CancellationToken ct = default)
+    private record Cuenta(string Ref, decimal Cobra, decimal Com, decimal Ret, decimal Otros, decimal Envio, decimal Neto, decimal Costo);
+
+    /// <summary>Cuenta de UNA orden (sus renglones): null si no se sabe bien qué se vendió o falta costo.</summary>
+    private static async Task<Cuenta?> CuentaDeOrdenAsync(AppDbContext db, List<MeliOrder> filas, CancellationToken ct)
     {
         if (filas.Any(f => f.FinNeto is null)) return null;
         var (unidades, ambigua) = await UnidadesYDudaAsync(db, filas, ct);
@@ -241,26 +256,56 @@ public class MeliVencimientoNotasService : BackgroundService
             .Select(p => new { p.Id, p.Costo, p.IvaPct }).ToListAsync(ct);
         if (prods.Count != ids.Count || prods.Any(p => p.Costo <= 0)) return null;
         var costo = prods.Sum(p => unidades[p.Id] * p.Costo * (1 + p.IvaPct / 100m));
-        var cobra = filas.Sum(f => f.TotalAmount);
-        var com = filas.Sum(f => f.FinComision ?? 0);
-        var ret = filas.Sum(f => f.FinRetenciones ?? 0);
-        var otros = filas.Sum(f => f.FinOtros ?? 0);
-        var envio = filas.Sum(f => f.FinEnvio ?? 0);
-        var neto = filas.Sum(f => f.FinNeto ?? 0);
+        var item = filas[0].ItemId;
+        var sku = await db.MeliItems.AsNoTracking().Where(m => m.MeliItemId == item && m.Sku != null)
+            .OrderBy(m => m.VariationId == filas[0].VariationId ? 0 : 1).Select(m => m.Sku).FirstOrDefaultAsync(ct);
+        var refTxt = !string.IsNullOrWhiteSpace(sku) ? sku! : (filas[0].ItemTitle.Length > 22 ? filas[0].ItemTitle[..22] : filas[0].ItemTitle);
+        return new Cuenta(refTxt, filas.Sum(f => f.TotalAmount), filas.Sum(f => f.FinComision ?? 0), filas.Sum(f => f.FinRetenciones ?? 0),
+            filas.Sum(f => f.FinOtros ?? 0), filas.Sum(f => f.FinEnvio ?? 0), filas.Sum(f => f.FinNeto ?? 0), costo);
+    }
+
+    /// <summary>Texto de la nota de ganancia (null si no hay costo cargado, no hay datos de cobro o es dudosa).
+    /// Varias órdenes del mismo paquete → una nota con el total del paquete + cuánto deja cada producto.</summary>
+    public static async Task<string?> GananciaTextoAsync(AppDbContext db, List<MeliOrder> filas, CancellationToken ct = default)
+    {
+        var cuentas = new List<Cuenta>();
+        foreach (var g in filas.GroupBy(f => f.MeliOrderId))
+        {
+            var c = await CuentaDeOrdenAsync(db, g.ToList(), ct);
+            if (c is null) return null;
+            cuentas.Add(c);
+        }
+        if (cuentas.Count == 0) return null;
+        var cobra = cuentas.Sum(c => c.Cobra); var com = cuentas.Sum(c => c.Com); var ret = cuentas.Sum(c => c.Ret);
+        var otros = cuentas.Sum(c => c.Otros); var envio = cuentas.Sum(c => c.Envio); var neto = cuentas.Sum(c => c.Neto);
+        var costo = cuentas.Sum(c => c.Costo);
         var envioEstimado = false;
         if (envio <= 0 && cobra >= 33000m)
         {
             var itemIds = filas.Select(f => f.ItemId).Distinct().ToList();
             var est = await db.MeliItems.AsNoTracking()
                 .Where(m => itemIds.Contains(m.MeliItemId) && m.FreeShipping && m.SaleFeeShippingCost != null)
-                .Select(m => m.SaleFeeShippingCost!.Value).FirstOrDefaultAsync(ct);
+                .Select(m => m.SaleFeeShippingCost!.Value).OrderByDescending(x => x).FirstOrDefaultAsync(ct);
             if (est > 0) { envio = est; neto -= est; envioEstimado = true; }
         }
         var gana = neto - costo;
         var pct = costo > 0 ? Math.Round(gana / costo * 100m, 0) : 0;
-        var txt = $"💲 Cobrás {Pesos(cobra)} − com. {Pesos(com)} − ret. {Pesos(ret)}"
+        var cab = cuentas.Count > 1 ? $"💲 Paquete de {cuentas.Count}: Cobrás" : "💲 Cobrás";
+        var txt = $"{cab} {Pesos(cobra)} − com. {Pesos(com)} − ret. {Pesos(ret)}"
             + (otros > 0 ? $" − otros {Pesos(otros)}" : "")
             + $" − envío {(envioEstimado ? "~" : "")}{Pesos(envio)} = {Pesos(neto)} · costo {Pesos(costo)} → gana {Pesos(gana)} ({pct:0}%)";
+        if (cuentas.Count > 1)
+        {
+            // cuánto deja cada producto (el envío estimado se reparte según lo que cobra cada uno)
+            var det = cuentas.Select(c =>
+            {
+                var envC = envioEstimado && cobra > 0 ? envio * c.Cobra / cobra : 0;
+                var g = c.Neto - envC - c.Costo;
+                var p = c.Costo > 0 ? Math.Round(g / c.Costo * 100m, 0) : 0;
+                return $"{c.Ref} {p:0}%";
+            });
+            txt += " | " + string.Join(" · ", det);
+        }
         return txt.Length > 290 ? txt[..290] : txt;
     }
 
