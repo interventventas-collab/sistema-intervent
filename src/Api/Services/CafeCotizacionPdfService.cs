@@ -709,6 +709,8 @@ public class CafeCotizacionPdfService
 
     private static string FormatoLabel(string f) => f switch
     {
+        // 2026-11-04: los packs salían como "PACK_10" crudo; ahora "Pack x 10" / "Pack x 10 con estuche".
+        _ when CafePricingService.ParsePackUnidades(f).HasValue => "P" + CafePricingService.FormatoLabel(f)[1..],
         "1KG" => "1 kg",
         "MEDIO" => "1/2 kg",
         "CUARTO" => "1/4 kg",

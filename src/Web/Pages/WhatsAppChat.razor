@@ -6285,7 +6285,7 @@
                 if (p.UxB.HasValue && p.UxB.Value > 0 && (p.PrecioBulto.HasValue || p.PrecioBultoOtro.HasValue))
                     ops.Add(("BULTO", $"Bulto x{p.UxB.Value}"));
                 foreach (var pk in (p.Packs ?? new()).Where(x => x.IsActive).OrderBy(x => x.Cantidad))
-                    ops.Add(($"PACK_{pk.Cantidad}", $"Pack x{pk.Cantidad}"));
+                    ops.Add((FormatoPack.De(pk), $"Pack x{pk.Cantidad}" + (pk.ConEstuche ? " c/estuche" : "")));
             }
         }
         // Si el renglón viene de repetir un comprobante viejo con un formato que ya no está en la
@@ -6525,8 +6525,8 @@
         if (string.IsNullOrWhiteSpace(f) || f == "UNIT") return "UNIT";
         if (f == "BULTO")
             return (p.UxB.HasValue && p.UxB.Value > 0 && (p.PrecioBulto.HasValue || p.PrecioBultoOtro.HasValue)) ? "BULTO" : "UNIT";
-        if (f.StartsWith("PACK_") && int.TryParse(f.AsSpan("PACK_".Length), out var n) && n > 0)
-            return (p.Packs?.Any(pk => pk.IsActive && pk.Cantidad == n) ?? false) ? f : "UNIT";
+        if (FormatoPack.Unidades(f).HasValue)
+            return FormatoPack.Buscar(p.Packs, f) is not null ? f : "UNIT";
         return "UNIT";
     }
 
@@ -6536,7 +6536,7 @@
     {
         if (string.IsNullOrWhiteSpace(formato) || formato == "UNIT" || formato == "1KG") return null;
         if (formato == "BULTO") return "Bulto";
-        if (formato.StartsWith("PACK_") && int.TryParse(formato.AsSpan("PACK_".Length), out var n)) return $"Pack x{n}";
+        if (FormatoPack.Unidades(formato) is int n) return $"Pack x{n}" + (FormatoPack.ConEstuche(formato) ? " c/estuche" : "");
         return formato;
     }
 

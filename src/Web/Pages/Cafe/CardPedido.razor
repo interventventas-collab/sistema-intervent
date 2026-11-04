@@ -757,6 +757,7 @@
 
     private static string FormatoLabel(string f) => f switch
     {
+        _ when FormatoPack.Unidades(f).HasValue => FormatoPack.Etiqueta(f),
         "1KG" => "1 kg",
         "MEDIO" => "1/2 kg",
         "CUARTO" => "1/4 kg",

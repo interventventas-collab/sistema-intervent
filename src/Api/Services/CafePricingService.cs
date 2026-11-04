@@ -32,12 +32,33 @@ public static class CafePricingService
     public const string TIPO_BAR = "BAR";
     public const string TIPO_OTRO = "OTRO";
 
-    /// <summary>Si el formato es "PACK_N", devuelve N. Sino, null.</summary>
+    /// <summary>Sufijo del pack armado en estuche: "PACK_10E" = 10 unidades con estuche.</summary>
+    public const string SUFIJO_ESTUCHE = "E";
+
+    /// <summary>Si el formato es "PACK_N" o "PACK_NE" (con estuche), devuelve N. Sino, null.</summary>
     public static int? ParsePackUnidades(string? formato)
     {
         if (string.IsNullOrEmpty(formato) || !formato.StartsWith(FORMATO_PACK_PREFIX)) return null;
         var rest = formato.AsSpan(FORMATO_PACK_PREFIX.Length);
+        if (rest.EndsWith(SUFIJO_ESTUCHE)) rest = rest[..^SUFIJO_ESTUCHE.Length];
         return int.TryParse(rest, out var n) && n > 0 ? n : null;
+    }
+
+    /// <summary>¿El formato es un pack armado en estuche ("PACK_10E")?</summary>
+    public static bool EsPackConEstuche(string? formato)
+        => ParsePackUnidades(formato).HasValue && formato!.EndsWith(SUFIJO_ESTUCHE);
+
+    /// <summary>Formato de venta de un pack: "PACK_10" o "PACK_10E" si va con estuche.</summary>
+    public static string FormatoDePack(CafeProductoPack pk)
+        => FORMATO_PACK_PREFIX + pk.Cantidad + (pk.ConEstuche ? SUFIJO_ESTUCHE : "");
+
+    /// <summary>El pack activo del producto que corresponde al formato (cantidad + con/sin estuche).</summary>
+    public static CafeProductoPack? PackDeFormato(IEnumerable<CafeProductoPack>? packs, string? formato)
+    {
+        var n = ParsePackUnidades(formato);
+        if (!n.HasValue || packs is null) return null;
+        var estuche = EsPackConEstuche(formato);
+        return packs.FirstOrDefault(p => p.IsActive && p.Cantidad == n.Value && p.ConEstuche == estuche);
     }
 
     /// <summary>Gramos por unidad segun el formato. Solo aplica a CAFE.</summary>
@@ -53,7 +74,7 @@ public static class CafePricingService
     public static string FormatoLabel(string formato)
     {
         var packN = ParsePackUnidades(formato);
-        if (packN.HasValue) return $"pack x {packN.Value}";
+        if (packN.HasValue) return $"pack x {packN.Value}" + (EsPackConEstuche(formato) ? " con estuche" : "");
         return formato switch
         {
             FORMATO_1KG => "1 kg",
@@ -175,7 +196,7 @@ public static class CafePricingService
         var packN = ParsePackUnidades(formato);
         if (packN.HasValue)
         {
-            var pack = producto.Packs?.FirstOrDefault(p => p.IsActive && p.Cantidad == packN.Value);
+            var pack = PackDeFormato(producto.Packs, formato);
             if (pack?.PrecioOverride.HasValue == true)
             {
                 precioDirecto = pack.PrecioOverride.Value;

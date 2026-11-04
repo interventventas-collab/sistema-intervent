@@ -2729,7 +2729,7 @@
                                     <option value="UNIT">Suelto</option>
                                     @foreach (var pack in AddProductoPacks)
                                     {
-                                        <option value="@($"PACK_{pack.Cantidad}")">@pack.Nombre</option>
+                                        <option value="@FormatoPack.De(pack)">@pack.Nombre</option>
                                     }
                                     @if (AddProductoTieneBulto)
                                     {
@@ -5167,7 +5167,7 @@
                             <option value="UNIT">📦 Suelto</option>
                             @foreach (var pack in packsModal)
                             {
-                                <option value="@($"PACK_{pack.Cantidad}")">🎁 @pack.Nombre</option>
+                                <option value="@FormatoPack.De(pack)">🎁 @pack.Nombre</option>
                             }
                             @if (tieneBultoModal)
                             {
@@ -7209,10 +7209,9 @@
                 }
                 else if (addFormato?.StartsWith("PACK_") == true && p.Packs is not null)
                 {
-                    var packN = addFormato.Substring(5);
-                    if (int.TryParse(packN, out var n))
+                    if (FormatoPack.Unidades(addFormato) is int n)
                     {
-                        var pack = p.Packs.FirstOrDefault(x => x.IsActive && x.Cantidad == n);
+                        var pack = FormatoPack.Buscar(p.Packs, addFormato);
                         if (pack is not null)
                         {
                             // Si el pack tiene PrecioOverride, ese es el precio del pack completo. Si no, calculamos
@@ -7250,7 +7249,7 @@
         "CUARTO" => "1/4 kg",
         "UNIT" => "Unidad",
         "BULTO" => AddProductoBultoLabel,
-        var f when f?.StartsWith("PACK_") == true => $"Pack x {f.Substring(5)}",
+        var f when FormatoPack.Unidades(f).HasValue => FormatoPack.Etiqueta(f!),
         _ => addFormato ?? ""
     };
 
@@ -12359,16 +12358,12 @@
         => $"{(g / 1000m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))} kg";
 
     /// <summary>Si el formato es "PACK_N", devuelve N. Sino null.</summary>
-    private static int? ParsePackUnidades(string? formato)
-    {
-        if (string.IsNullOrEmpty(formato) || !formato.StartsWith("PACK_")) return null;
-        return int.TryParse(formato.AsSpan("PACK_".Length), out var n) && n > 0 ? n : (int?)null;
-    }
+    private static int? ParsePackUnidades(string? formato) => FormatoPack.Unidades(formato);
 
     private static string FormatoLabel(string formato)
     {
         var packN = ParsePackUnidades(formato);
-        if (packN.HasValue) return $"Pack x {packN.Value}";
+        if (packN.HasValue) return FormatoPack.Etiqueta(formato);
         return formato switch
         {
             "1KG" => "1 kg",
@@ -12398,7 +12393,7 @@
     private string FormatoParaMostrar(int productoId, string formato)
     {
         var packN = ParsePackUnidades(formato);
-        if (packN.HasValue) return $"Pack × {packN.Value}";
+        if (packN.HasValue) return $"Pack × {packN.Value}" + (FormatoPack.ConEstuche(formato) ? " con estuche" : "");
         if (formato != "BULTO") return FormatoLabel(formato);
         var uxb = productos?.FirstOrDefault(p => p.Id == productoId)?.UxB ?? 0;
         return uxb > 1 ? $"Bulto × {uxb}" : "Bulto";
@@ -12426,7 +12421,7 @@
             if (p.Packs is not null)
             {
                 foreach (var pack in p.Packs.Where(x => x.IsActive).OrderBy(x => x.SortOrder).ThenBy(x => x.Cantidad))
-                    res.Add(($"PACK_{pack.Cantidad}", pack.Nombre));
+                    res.Add((FormatoPack.De(pack), pack.Nombre));
             }
             if (p.Categoria == "OTROS" && p.UxB.HasValue && p.UxB.Value > 0
                 && (p.PrecioBulto.HasValue || p.PrecioBultoOtro.HasValue))
@@ -12448,8 +12443,8 @@
         if (string.IsNullOrWhiteSpace(f) || f == "UNIT") return "UNIT";
         if (f == "BULTO")
             return (p.UxB.HasValue && p.UxB.Value > 0 && (p.PrecioBulto.HasValue || p.PrecioBultoOtro.HasValue)) ? "BULTO" : "UNIT";
-        if (f.StartsWith("PACK_") && int.TryParse(f.AsSpan("PACK_".Length), out var n) && n > 0)
-            return (p.Packs?.Any(pk => pk.IsActive && pk.Cantidad == n) ?? false) ? f : "UNIT";
+        if (FormatoPack.Unidades(f).HasValue)
+            return FormatoPack.Buscar(p.Packs, f) is not null ? f : "UNIT";
         return "UNIT";
     }
 

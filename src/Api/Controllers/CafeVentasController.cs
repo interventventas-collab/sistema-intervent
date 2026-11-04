@@ -4067,12 +4067,12 @@ public class CafeVentasController : ControllerBase
             // PACK_N requiere que el producto tenga un Cafe_ProductoPack activo con Cantidad = N.
             if (esFormatoPack)
             {
-                var packRow = prod.Packs?.FirstOrDefault(p => p.IsActive && p.Cantidad == packUnidades!.Value);
+                var packRow = CafePricingService.PackDeFormato(prod.Packs, it.Formato);
                 if (packRow is null)
                 {
                     cotizadoItems.Add(new CafeCotizadoItemDto(
                         prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, prod.StockGramos, prod.StockUnidades,
-                        false, $"Este producto no tiene un pack x {packUnidades.Value} cargado",
+                        false, $"Este producto no tiene un pack x {packUnidades.Value}{(CafePricingService.EsPackConEstuche(it.Formato) ? " con estuche" : "")} cargado",
                         NormMolienda(it.Molienda), it.EsDoyPack, descPctManual));
                     todoOk = false;
                     continue;
@@ -4399,6 +4399,7 @@ public class CafeVentasController : ControllerBase
 
     private static string FormatoNombre(string f) => f switch
     {
+        _ when CafePricingService.ParsePackUnidades(f).HasValue => CafePricingService.FormatoLabel(f),
         "1KG" => "1 kg",
         "MEDIO" => "1/2 kg",
         "CUARTO" => "1/4 kg",
