@@ -36,6 +36,34 @@
     .vc-chip { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 999px; padding: 0.3rem 0.75rem; font-size: 0.82rem; cursor: pointer; }
     .vc-chip.on { background: #1d4ed8; border-color: #1d4ed8; color: #fff; font-weight: 600; }
     .vc-chips-lbl { font-size: 0.78rem; color: #6b7280; align-self: center; margin-right: 0.2rem; }
+    /* 2026-11-04 v2 (opción B): tarjeta compacta. Foto chica + nombre + lugar + etiquetas; stock en cajita a la derecha. */
+    .vc-head { display: flex; gap: 0.7rem; align-items: flex-start; }
+    .vc-fotob { width: 56px; height: 56px; border-radius: 8px; border: 1px solid #e5e7eb; background: #fff; flex-shrink: 0; position: relative; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .vc-fotob img { width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
+    .vc-fotob.no { border-style: dashed; font-size: 0.65rem; color: #9ca3af; }
+    .vc-fotob .cam { position: absolute; right: -7px; bottom: -7px; background: #fff; border: 1px solid #d1d5db; border-radius: 50%; width: 22px; height: 22px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; }
+    .vc-info { flex: 1; min-width: 0; }
+    .vc-lugar { margin-top: 1px; }
+    .vc-chips2 { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.3rem; align-items: center; }
+    .vc-et { font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid #e5e7eb; background: #fff; color: #6b7280; white-space: nowrap; }
+    .vc-et.ok { border-color: #86efac; color: #15803d; background: #f0fdf4; }
+    .vc-et.no { border-color: #fcd34d; color: #92400e; background: #fffbeb; }
+    .vc-listo2 { color: #15803d; font-weight: 800; font-size: 0.8rem; margin-left: 0.2rem; }
+    .vc-stock { text-align: center; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.3rem 0.6rem; min-width: 84px; background: #f9fafb; flex-shrink: 0; }
+    .vc-stock .l { font-size: 0.62rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; }
+    .vc-stock .n { font-size: 1.35rem; font-weight: 800; line-height: 1.15; }
+    .vc-stock .acc { font-size: 0.7rem; color: #6b7280; white-space: nowrap; }
+    .vc-stock .acc a { color: #4b5563; }
+    .vc-stock.ok { border-color: #86efac; background: #f0fdf4; }
+    .vc-stock.ok .acc { color: #15803d; }
+    .vc-stock.abierto { border-color: #f59e0b; background: #fffbeb; text-align: left; min-width: 220px; max-width: 280px; }
+    .vc-stock.abierto .row { display: flex; gap: 0.3rem; align-items: center; margin-top: 0.3rem; flex-wrap: wrap; }
+    .vc-stock.abierto input { width: 64px; font-size: 0.95rem; padding: 0.3rem 0.4rem; border: 1px solid #d1d5db; border-radius: 6px; }
+    .vc-bnar { background: #f59e0b; color: #fff; border: none; border-radius: 6px; padding: 0.35rem 0.6rem; font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+    .vc-bnar:disabled { opacity: 0.5; }
+    @@media (max-width: 600px) { .vc-head { flex-wrap: wrap; } .vc-stock.abierto { max-width: none; width: 100%; } }
+    .vc-bx { background: #fff; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.78rem; cursor: pointer; }
+    .vc-card > .vc-fila:first-of-type { margin-top: 0.4rem; }
     .vc-sec { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.88rem; padding: 0.4rem 0; border-bottom: 1px solid #f3f4f6; }
     .vc-sec .cant { font-size: 0.95rem; padding: 0.4rem 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; }
     .vc-lbl { width: 6.7rem; flex-shrink: 0; color: #6b7280; font-size: 0.78rem; font-weight: 700; }
@@ -88,76 +116,79 @@
             var hecho = Hecho(p);
             var c = Conteo(p.ProductoId);
             var fotoUrl = FotoUrl(p);
+            var contadoOk = !p.EsCafe && p.UltimoConteoAt is DateTime cOk && cOk >= DateTime.UtcNow.AddDays(-30);
             <div class="vc-card @(hecho ? "hecho" : "")">
-                @if (hecho) { <span class="vc-listo">✅ LISTO</span> }
-                <div class="vc-tit">@if (!string.IsNullOrEmpty(p.Sku)) { <span class="vc-sku">@p.Sku</span> }@p.Nombre</div>
+                <div class="vc-head">
+                    @* FOTO chiquita: tocás y se abre la ventanita de foto (ver · cambiar · está mal) *@
+                    <div class="vc-fotob @(fotoUrl is null ? "no" : "")" title="Foto: ver, cambiar o avisar que está mal" @onclick="() => fotoAbierta = p">
+                        @if (fotoUrl is not null) { <img src="@fotoUrl" alt="" /> } else { <span>sin foto</span> }
+                        <span class="cam">📷</span>
+                    </div>
+                    <div class="vc-info">
+                        <div class="vc-tit">@if (!string.IsNullOrEmpty(p.Sku)) { <span class="vc-sku">@p.Sku</span> }@p.Nombre</div>
+                        <div class="vc-lugar">
+                            <LugarProducto ProductoId="p.ProductoId" Lugar="@p.Ubicacion" Dudoso="p.LugarDudoso" Editable="true" PermitirCambiar="true"
+                                           OfrecerNoEsta="false" Tamano="0.78rem" OnCambio="() => Recargar(p.ProductoId)" />
+                        </div>
+                        <div class="vc-chips2">
+                            <span class="vc-et @(fotoUrl is not null && p.FotoEstado != "REPORTADA" ? "ok" : "no")">📷 @(fotoUrl is null ? "sin foto" : p.FotoEstado == "REPORTADA" ? "foto mal" : "foto")</span>
+                            @if (!p.EsCafe)
+                            {
+                                <span class="vc-et @(contadoOk ? "ok" : "no")">📦 @(contadoOk ? $"contado {p.UltimoConteoAt!.Value.AddHours(-3):dd/MM}" : "sin contar")</span>
+                            }
+                            <span class="vc-et @(string.IsNullOrEmpty(p.Ubicacion) ? "no" : "ok")">📍 @(string.IsNullOrEmpty(p.Ubicacion) ? "sin lugar" : p.Ubicacion)</span>
+                            <span class="vc-et @(p.Filas.Count > 0 && p.SinVencimiento <= 0 ? "ok" : "no")">📅 @(p.Filas.Count == 0 ? "sin fechas" : p.SinVencimiento > 0 ? $"faltan {Cant(p.SinVencimiento, p.EsCafe)}" : "fechas")</span>
+                            @if (hecho) { <span class="vc-listo2">✅ LISTO</span> }
+                        </div>
+                    </div>
 
-                @* ── FOTO ── *@
-                <div class="vc-sec">
-                    <span class="vc-lbl">📷 Foto</span>
-                    @if (fotoUrl is not null)
-                    {
-                        <img src="@fotoUrl" class="vc-foto" alt="" @onclick="() => fotoAbierta = p" />
-                    }
-                    else
-                    {
-                        <span class="vc-foto vc-foto-no" @onclick="() => fotoAbierta = p">sin foto</span>
-                    }
-                    <button class="vc-ic" @onclick="() => fotoAbierta = p">@(fotoUrl is null ? "Sacar / subir foto" : "Ver · cambiar · está mal")</button>
-                    @if (p.FotoEstado == "REPORTADA") { <span class="vc-falta">foto marcada como mal</span> }
-                </div>
-
-                @* ── STOCK ── *@
-                <div class="vc-sec">
-                    <span class="vc-lbl">📦 Stock</span>
+                    @* STOCK: cajita arriba a la derecha. Se toca solo si está mal (naranja) o para decir que está bien. *@
                     @if (p.EsCafe)
                     {
-                        <span>Sistema dice <b>@Cant(p.Stock, true)</b> <span style="color:#6b7280;">· el café se corrige desde Stock</span></span>
+                        <div class="vc-stock" title="El café se corrige desde Stock (va en kilos)"><div class="l">stock</div><div class="n">@Cant(p.Stock, true)</div></div>
                     }
                     else if (c.Confirmar is not null)
                     {
                         var cf = c.Confirmar;
-                        <span class="vc-falta">Sistema dice @cf.StockAntes y quedaría en @cf.StockDespues@(cf.Apartados > 0 ? $" (contaste {c.Contado} − {cf.Apartados} vendidos sin armar)" : ""). ¿Lo contaste bien?</span>
-                        <button class="vc-btn" disabled="@c.Guardando" @onclick="() => Contar(p, true)">Sí, está bien</button>
-                        <button class="vc-ic" @onclick="() => c.Confirmar = null">Vuelvo a contar</button>
+                        <div class="vc-stock abierto">
+                            <div class="l">el sistema dice @cf.StockAntes</div>
+                            <div style="font-size:0.8rem; margin-top:3px;">Quedaría en <b>@cf.StockDespues</b>@(cf.Apartados > 0 ? $" ({c.Contado} − {cf.Apartados} vendidos sin armar)" : ""). ¿Lo contaste bien?</div>
+                            <div class="row">
+                                <button class="vc-bnar" disabled="@c.Guardando" @onclick="() => Contar(p, true)">Sí, corregir</button>
+                                <button class="vc-bx" @onclick="() => c.Confirmar = null">Vuelvo a contar</button>
+                            </div>
+                        </div>
+                    }
+                    else if (c.Abierto)
+                    {
+                        <div class="vc-stock abierto">
+                            <div class="l">stock · el sistema dice @Cant(p.Stock, false)</div>
+                            <div class="row">
+                                <span style="font-size:0.85rem;">Contaste</span>
+                                <input type="number" min="0" step="1" @bind="c.Contado" />
+                                <button class="vc-bnar" disabled="@c.Guardando" @onclick="() => Contar(p, false)">Corregir</button>
+                                <button class="vc-bx" title="Cerrar" @onclick="() => { c.Abierto = false; c.Contado = null; }">✕</button>
+                            </div>
+                            <div style="font-size:0.68rem; color:#92400e; margin-top:3px;">No cuentes lo ya armado para pedidos.</div>
+                        </div>
                     }
                     else
                     {
-                        <span>Sistema dice <b>@Cant(p.Stock, false)</b> · Contaste:</span>
-                        <input class="cant" type="number" min="0" step="1" style="width:80px;" @bind="c.Contado" />
-                        <button class="vc-btn" disabled="@c.Guardando" @onclick="() => Contar(p, false)">Arreglar stock</button>
-                        @if (p.UltimoConteoAt is DateTime ct)
-                        {
-                            <span class="vc-ok">✓ contado @ct.AddHours(-3).ToString("dd/MM")@(string.IsNullOrEmpty(p.UltimoConteoPor) ? "" : $" ({p.UltimoConteoPor})")</span>
-                        }
-                    }
-                </div>
-                @if (!p.EsCafe && c.Confirmar is null)
-                {
-                    <div style="font-size:0.72rem; color:#9ca3af; margin:-0.2rem 0 0.2rem 7.2rem;">No cuentes lo que ya está armado para un pedido: lo vendido sin armar se descuenta solo.</div>
-                }
-
-                @* ── LUGAR ── *@
-                <div class="vc-sec">
-                    <span class="vc-lbl">📍 Dónde está</span>
-                    <LugarProducto ProductoId="p.ProductoId" Lugar="@p.Ubicacion" Dudoso="p.LugarDudoso" Editable="true" PermitirCambiar="true"
-                                   OfrecerNoEsta="false" Tamano="0.85rem" OnCambio="() => Recargar(p.ProductoId)" />
-                </div>
-
-                @* ── VENCIMIENTOS ── *@
-                <div class="vc-sec" style="border-bottom:none;">
-                    <span class="vc-lbl">📅 Vencimientos</span>
-                    @if (p.Filas.Count == 0)
-                    {
-                        <span style="color:#6b7280;">sin asignar</span>
-                    }
-                    else if (p.SinVencimiento > 0)
-                    {
-                        <span class="vc-falta">Faltan asignar @Cant(p.SinVencimiento, p.EsCafe)</span>
-                    }
-                    else
-                    {
-                        <span class="vc-ok">✓ todo con fecha</span>
+                        <div class="vc-stock @(contadoOk ? "ok" : "")">
+                            <div class="l">stock</div>
+                            <div class="n">@Cant(p.Stock, false)</div>
+                            <div class="acc">
+                                <a href="javascript:void(0)" @onclick="() => c.Abierto = true">✏️ corregir</a>
+                                @if (!contadoOk)
+                                {
+                                    <span> · </span><a href="javascript:void(0)" title="Lo que hay en el estante coincide" @onclick="() => EstaBien(p)">✓ bien</a>
+                                }
+                                else
+                                {
+                                    <span> · ✓ contado</span>
+                                }
+                            </div>
+                        </div>
                     }
                 </div>
                 @foreach (var fl in p.Filas)
@@ -221,7 +252,7 @@
         && !string.IsNullOrEmpty(p.Ubicacion)
         && (p.EsCafe || (p.UltimoConteoAt is DateTime c && c >= DateTime.UtcNow.AddDays(-30)));
 
-    private class ConteoFila { public int? Contado; public bool Guardando; public VencContarResp? Confirmar; }
+    private class ConteoFila { public int? Contado; public bool Guardando; public VencContarResp? Confirmar; public bool Abierto; }
     private readonly Dictionary<int, ConteoFila> conteos = new();
     private ConteoFila Conteo(int id) { if (!conteos.TryGetValue(id, out var c)) conteos[id] = c = new ConteoFila(); return c; }
     private VencProductoDto? fotoAbierta;
@@ -243,9 +274,24 @@
             var r = await Api.ContarStockVencimientosAsync(p.ProductoId, n, confirmado);
             if (r is null) return;
             if (r.Confirmar) { c.Confirmar = r; return; }
-            c.Confirmar = null; c.Contado = null;
+            c.Confirmar = null; c.Contado = null; c.Abierto = false;
             Reemplazar(r.Producto);
             ToastService.Success(r.StockAntes == r.StockDespues ? "Contado: coincide con el sistema" : $"Stock arreglado: {r.StockAntes} → {r.StockDespues}");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { c.Guardando = false; }
+    }
+
+    /// <summary>"✓ bien": lo que hay en el estante coincide con el sistema (queda anotado como contado, sin tocar el stock).</summary>
+    private async Task EstaBien(VencProductoDto p)
+    {
+        var c = Conteo(p.ProductoId);
+        c.Guardando = true;
+        try
+        {
+            var r = await Api.ContarStockVencimientosAsync(p.ProductoId, 0, false, coincide: true);
+            Reemplazar(r?.Producto);
+            ToastService.Success("Anotado: el stock está bien");
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
         finally { c.Guardando = false; }

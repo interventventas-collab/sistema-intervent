@@ -36,7 +36,7 @@ public class CafeVencimientosController : ControllerBase
         public DateTime? UltimoConteoAt { get; init; }
         public string? UltimoConteoPor { get; init; }
     }
-    public record ContarRequest(int Contado, bool Confirmado);
+    public record ContarRequest(int Contado, bool Confirmado, bool Coincide = false);
     public record AsignarRequest(decimal Cantidad, DateTime FechaVence);
     public record AlertaDto(int ProductoId, string? Sku, string Nombre, bool EsCafe, DateTime FechaVence, decimal Quedan, int Dias);
 
@@ -152,6 +152,18 @@ public class CafeVencimientosController : ControllerBase
         var prod = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == productoId);
         if (prod is null) return NotFound(new { error = "Producto no encontrado" });
         if (VencimientosService.EsCafe(prod)) return BadRequest(new { error = "El café se cuenta en kilos: corregilo desde Stock." });
+        if (req.Coincide)
+        {
+            // "✓ está bien": lo que hay en el estante coincide con el sistema. No cambia nada, solo queda anotado.
+            _db.StockMovimientos.Add(new StockMovimiento
+            {
+                ProductoId = prod.Id, OperadorNombreSnap = Operador(), DepositoNombreSnap = "9 de Abril",
+                TipoMov = "CONTEO", Cantidad = 0, StockAntes = prod.StockUnidades, StockDespues = prod.StockUnidades,
+                Comentario = "Conteo (Asignar vencimientos): está bien (coincide)", CreatedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+            return Ok(new { confirmar = false, stockAntes = prod.StockUnidades, stockDespues = prod.StockUnidades, apartados = 0, producto = await CargarAsync(prod.Id) });
+        }
         if (req.Contado < 0 || req.Contado > 1_000_000) return BadRequest(new { error = "Poné cuántos contaste." });
         var (apMeli, apPropias) = await DepositoTareasController.ApartadosDeAsync(_db, _reservas, prod.Id);
         var apartados = apMeli + apPropias;
