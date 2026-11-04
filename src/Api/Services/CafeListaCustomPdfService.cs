@@ -164,7 +164,7 @@ public class CafeListaCustomPdfService
                             {
                                 cd.ConstantColumn(60);   // SKU
                                 cd.RelativeColumn(5);    // Nombre
-                                cd.ConstantColumn(40);   // NOVEDAD
+                                cd.ConstantColumn(50);   // NOVEDAD (2026-11-04: a 40 la palabra se partia y la D quedaba abajo)
                                 if (tieneCafe)
                                 {
                                     cd.ConstantColumn(70); // 1 kg
@@ -189,11 +189,11 @@ public class CafeListaCustomPdfService
                                         if (!string.IsNullOrEmpty(it.Detalle))
                                             t.Span($"  · {it.Detalle}").FontSize(8).FontColor(Colors.Grey.Darken1);
                                     });
-                                tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3).AlignCenter()
+                                tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).PaddingVertical(3).PaddingHorizontal(1).AlignCenter()
                                     .Element(e =>
                                     {
                                         if (it.EsNovedad)
-                                            e.AlignMiddle().Background(Colors.Red.Darken1).Padding(2).AlignCenter()
+                                            e.AlignMiddle().Background(Colors.Red.Darken1).PaddingVertical(2).PaddingHorizontal(3).AlignCenter()
                                                 .Text("NOVEDAD").FontSize(6.5f).Bold().FontColor(Colors.White);
                                         else
                                             e.Text("");
