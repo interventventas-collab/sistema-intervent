@@ -1588,6 +1588,8 @@ public class CafeVentasController : ControllerBase
             {
                 CafePricingService.FORMATO_UNIT => "Unidad",
                 CafePricingService.FORMATO_BULTO => "Bulto",
+                // 2026-11-04: "Pack x 100" con mayúscula, igual que la cotización.
+                var f when CafePricingService.ParsePackUnidades(f).HasValue => "P" + CafePricingService.FormatoLabel(f)[1..],
                 _ => CafePricingService.FormatoLabel(it.Formato)
             });
             var fmtStr = string.Join(" · ", fmtParts);
