@@ -1,0 +1,127 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* 2026-11-05: arreglar el stock sin salir de Imprimir pedidos (tocando la cajita "STOCK SISTEMA").
+   "✓ Está bien" → queda anotado como contado. "Contaste ___ → Corregir" → mismo arreglo que en
+   Asignar vencimientos: descuenta lo vendido sin armar, pide confirmar si la diferencia es grande,
+   avisa a MercadoLibre y queda en el historial ("Conteo (Imprimir pedidos)"). *@
+<div @onclick="Cerrar"
+     style="position:fixed; inset:0; background:rgba(17,24,39,0.5); display:flex; align-items:center; justify-content:center; z-index:9999; padding:0.75rem;">
+    <div @onclick:stopPropagation="true"
+         style="background:#fff; border-radius:14px; padding:1rem; width:min(94vw,380px); max-height:94vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+        <div style="display:flex; gap:0.6rem; align-items:center;">
+            <div style="font-weight:800; font-size:0.86rem; line-height:1.25; color:#111827; flex:1;">
+                @if (!string.IsNullOrEmpty(dto?.Sku)) { <span style="font-family:monospace; color:#1d4ed8; margin-right:0.3rem;">@dto.Sku</span> }
+                @(dto?.Nombre ?? Nombre)
+            </div>
+            <button type="button" @onclick="Cerrar" title="Cerrar" aria-label="Cerrar"
+                    style="border:none; background:#f3f4f6; border-radius:8px; width:32px; height:32px; cursor:pointer; flex-shrink:0;">✕</button>
+        </div>
+
+        @if (dto is null)
+        {
+            <div style="padding:1.2rem 0; text-align:center; color:#6b7280;">Cargando…</div>
+        }
+        else
+        {
+            <div style="text-align:center; margin:0.8rem 0 0.4rem;">
+                <div style="font-size:0.7rem; color:#6b7280; font-weight:700; text-transform:uppercase; letter-spacing:.4px;">El sistema dice</div>
+                <div style="font-size:2rem; font-weight:800; color:#111827; line-height:1.1;">@dto.Stock.ToString("N0")</div>
+                <div style="font-size:0.76rem; color:#6b7280;">
+                    @if (dto.UltimoConteoAt is DateTime uc)
+                    {
+                        <span>Último conteo: @uc.AddHours(-3).ToString("dd/MM") @(string.IsNullOrEmpty(dto.UltimoConteoPor) ? "" : $"por {dto.UltimoConteoPor}")</span>
+                    }
+                    else
+                    {
+                        <span>Sin contar en los últimos 60 días</span>
+                    }
+                </div>
+            </div>
+
+            @if (confirmar is not null)
+            {
+                <div style="background:#fffbeb; border:1px solid #f59e0b; border-radius:10px; padding:0.7rem; margin-top:0.5rem; font-size:0.86rem; color:#78350f;">
+                    <b>La diferencia es grande.</b> El sistema dice <b>@confirmar.StockAntes</b> y quedaría en <b>@confirmar.StockDespues</b>@(confirmar.Apartados > 0 ? $" (contaste {contado} − {confirmar.Apartados} vendidos sin armar)" : "").
+                    ¿Lo corrijo igual?
+                    <div style="display:flex; gap:0.5rem; margin-top:0.6rem;">
+                        <button type="button" disabled="@guardando" @onclick="() => Contar(true)"
+                                style="flex:1; background:#f59e0b; color:#fff; border:none; border-radius:8px; padding:0.55rem; font-weight:800; cursor:pointer;">Sí, corregir</button>
+                        <button type="button" @onclick="() => confirmar = null"
+                                style="flex:1; background:#fff; border:1px solid #d1d5db; border-radius:8px; padding:0.55rem; font-weight:600; cursor:pointer;">Vuelvo a contar</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <button type="button" disabled="@guardando" @onclick="EstaBien"
+                        style="width:100%; margin-top:0.6rem; background:#16a34a; color:#fff; border:none; border-radius:9px; padding:0.65rem; font-weight:800; font-size:0.95rem; cursor:pointer;">
+                    ✓ Está bien, hay @dto.Stock.ToString("N0")
+                </button>
+                <div style="text-align:center; font-size:0.74rem; color:#9ca3af; margin:0.5rem 0;">— o si hay otra cantidad —</div>
+                <div style="display:flex; gap:0.5rem; align-items:center;">
+                    <span style="font-size:0.8rem; color:#374151; font-weight:600;">Contaste</span>
+                    <input type="number" min="0" step="1" @bind="contado" placeholder="cant."
+                           style="width:90px; font-size:1rem; padding:0.45rem 0.5rem; border:1.5px solid #f59e0b; border-radius:8px;" />
+                    <button type="button" disabled="@guardando" @onclick="() => Contar(false)"
+                            style="flex:1; background:#f59e0b; color:#fff; border:none; border-radius:8px; padding:0.55rem; font-weight:800; cursor:pointer;">Corregir</button>
+                </div>
+                <div style="font-size:0.74rem; color:#6b7280; margin-top:0.55rem; line-height:1.4;">
+                    Contá lo que hay en el estante <b>antes de sacar lo de este pedido</b>. El sistema descuenta solo lo que está vendido y todavía sin armar, y avisa a MercadoLibre.
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int ProductoId { get; set; }
+    [Parameter] public string? Nombre { get; set; }
+    /// <summary>Se llama cuando el stock quedó corregido o anotado como contado.</summary>
+    [Parameter] public EventCallback OnCambio { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private VencProductoDto? dto;
+    private int? contado;
+    private bool guardando;
+    private VencContarResp? confirmar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { dto = await Api.GetVencimientosProductoAsync(ProductoId) ?? new VencProductoDto { ProductoId = ProductoId, Nombre = Nombre ?? "" }; }
+        catch (Exception ex) { ToastService.Error(ex.Message); dto = new VencProductoDto { ProductoId = ProductoId, Nombre = Nombre ?? "" }; }
+    }
+
+    private async Task EstaBien()
+    {
+        guardando = true;
+        try
+        {
+            await Api.ContarStockVencimientosAsync(ProductoId, 0, false, coincide: true, origen: "pedidos");
+            ToastService.Success("Anotado: el stock está bien");
+            await OnCambio.InvokeAsync();
+            await OnCerrar.InvokeAsync();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task Contar(bool confirmado)
+    {
+        if (contado is not int n || n < 0) { ToastService.Error("Poné cuántos contaste"); return; }
+        guardando = true;
+        try
+        {
+            var r = await Api.ContarStockVencimientosAsync(ProductoId, n, confirmado, origen: "pedidos");
+            if (r is null) return;
+            if (r.Confirmar) { confirmar = r; return; }
+            ToastService.Success(r.StockAntes == r.StockDespues ? "Contado: coincide con el sistema" : $"Stock arreglado: {r.StockAntes} → {r.StockDespues}");
+            await OnCambio.InvokeAsync();
+            await OnCerrar.InvokeAsync();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private Task Cerrar() => OnCerrar.InvokeAsync();
+}

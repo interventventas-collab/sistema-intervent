@@ -329,10 +329,18 @@
                         @if (stockTexto is not null)
                         {
                             var semaforo = ColorDelStock(it);
-                            <div class="prep-item-stock @semaforo.Clase" title="@semaforo.Ayuda">
+                            @* 2026-11-05: tocando la cajita se arregla el stock (no café: ese va en kilos, desde Stock). *@
+                            var sePuedeContar = it.ProductoId is not null && it.Categoria != "CAFE" && Vencimientos is not null;
+                            <div class="prep-item-stock @semaforo.Clase" title="@(sePuedeContar ? "Tocá para decir si está bien o corregirlo" : semaforo.Ayuda)"
+                                 style="@(sePuedeContar ? "cursor:pointer;" : "")"
+                                 @onclick="() => { if (sePuedeContar) { stockProductoId = it.ProductoId; stockNombre = it.ProductoNombre; } }">
                                 <div class="prep-item-stock-label">STOCK</div>
                                 <div class="prep-item-stock-label">SISTEMA</div>
                                 <div class="prep-item-stock-valor">@stockTexto</div>
+                                @if (sePuedeContar)
+                                {
+                                    <div style="font-size:0.62rem; font-weight:700; text-decoration:underline; margin-top:0.1rem;">✏️ corregir</div>
+                                }
                             </div>
                         }
                     </div>
@@ -436,6 +444,10 @@
 {
     <CargarVencimientoModal ProductoId="vpid" Nombre="@vencNombre" OnCerrar="CerrarVenc" />
 }
+@if (stockProductoId is int spid)
+{
+    <ContarStockModal ProductoId="spid" Nombre="@stockNombre" OnCambio="OnStockCambio" OnCerrar="() => stockProductoId = null" />
+}
 
 @code {
     [Parameter, EditorRequired] public CafePreparacionVentaDto Venta { get; set; } = null!;
@@ -449,6 +461,11 @@
     [Parameter] public Dictionary<int, VencResumenDto>? Vencimientos { get; set; }
     /// <summary>2026-11-05: se cargó un vencimiento desde la ventanita → el padre recarga los vencimientos.</summary>
     [Parameter] public EventCallback OnVencimientosCambio { get; set; }
+
+    /// <summary>2026-11-05: se corrigió/anotó el stock desde la cajita → el padre recarga los pedidos.</summary>
+    [Parameter] public EventCallback OnStockCambio { get; set; }
+    private int? stockProductoId;
+    private string? stockNombre;
 
     private int? vencProductoId;
     private string? vencNombre;

@@ -36,7 +36,8 @@ public class CafeVencimientosController : ControllerBase
         public DateTime? UltimoConteoAt { get; init; }
         public string? UltimoConteoPor { get; init; }
     }
-    public record ContarRequest(int Contado, bool Confirmado, bool Coincide = false);
+    /// <summary>Origen = de qué pantalla se contó (queda en el historial). Default "Asignar vencimientos".</summary>
+    public record ContarRequest(int Contado, bool Confirmado, bool Coincide = false, string? Origen = null);
     public record AsignarRequest(decimal Cantidad, DateTime FechaVence);
     public record AlertaDto(int ProductoId, string? Sku, string Nombre, bool EsCafe, DateTime FechaVence, decimal Quedan, int Dias);
 
@@ -146,6 +147,8 @@ public class CafeVencimientosController : ControllerBase
     /// <summary>2026-11-04: el stock pasa a lo contado MENOS lo vendido que sigue en el estante (MeLi con
     /// etiqueta sin imprimir + ventas propias sin armar). Si la diferencia es mucha, primero pide confirmar.
     /// Si coincide, deja igual un movimiento "CONTEO" (sin cambio) para saber que se contó.</summary>
+    private static string OrigenDe(ContarRequest r) => r.Origen == "pedidos" ? "Imprimir pedidos" : "Asignar vencimientos";
+
     [HttpPost("producto/{productoId:int}/contar")]
     public async Task<IActionResult> Contar(int productoId, [FromBody] ContarRequest req)
     {
@@ -159,7 +162,7 @@ public class CafeVencimientosController : ControllerBase
             {
                 ProductoId = prod.Id, OperadorNombreSnap = Operador(), DepositoNombreSnap = "9 de Abril",
                 TipoMov = "CONTEO", Cantidad = 0, StockAntes = prod.StockUnidades, StockDespues = prod.StockUnidades,
-                Comentario = "Conteo (Asignar vencimientos): está bien (coincide)", CreatedAt = DateTime.UtcNow
+                Comentario = $"Conteo ({OrigenDe(req)}): está bien (coincide)", CreatedAt = DateTime.UtcNow
             });
             await _db.SaveChangesAsync();
             return Ok(new { confirmar = false, stockAntes = prod.StockUnidades, stockDespues = prod.StockUnidades, apartados = 0, producto = await CargarAsync(prod.Id) });
@@ -172,7 +175,7 @@ public class CafeVencimientosController : ControllerBase
         if (!req.Confirmado && DepositoTareasController.Nivel(antes, despues) == "MUCHA")
             return Ok(new { confirmar = true, stockAntes = antes, stockDespues = despues, apartados });
         var quien = Operador();
-        var coment = $"Conteo (Asignar vencimientos): contaron {req.Contado}"
+        var coment = $"Conteo ({OrigenDe(req)}): contaron {req.Contado}"
             + (apartados > 0 ? $" − {apartados} vendidos sin armar" + (apMeli > 0 ? $" ({apMeli} MeLi)" : "") : "");
         if (antes != despues)
         {
