@@ -1936,7 +1936,7 @@ public class CafeVentasController : ControllerBase
             ClienteTipoSnapshot = tipo,
             ClienteTelefonoSnapshot = cli?.Telefono,
             ClienteRazonSocialSnapshot = cli?.RazonSocial,
-            ClienteDomicilioEntregaSnapshot = cli?.DomicilioEntrega,
+            ClienteDomicilioEntregaSnapshot = cli?.DomicilioEntregaCompleto,
             ClienteComentariosComprobante = cli?.ComentariosComprobante,
             ClienteCuitSnapshot = cli?.Cuit,
             ClienteDireccionSnapshot = cli?.Direccion,
@@ -2055,7 +2055,7 @@ public class CafeVentasController : ControllerBase
             clienteNombre = cli.Nombre;
             clienteTelefono = cli.Telefono;
             clienteRazonSocial = cli.RazonSocial;
-            clienteDomicilioEntrega = cli.DomicilioEntrega;
+            clienteDomicilioEntrega = cli.DomicilioEntregaCompleto;
             clienteComentariosComprobante = cli.ComentariosComprobante;
             clienteCuit = cli.Cuit;
             clienteDireccion = cli.Direccion;
@@ -3393,7 +3393,7 @@ public class CafeVentasController : ControllerBase
                 v.ClienteTipoSnapshot = CafePricingService.ResolverTipo(cli.Tipo);
                 v.ClienteTelefonoSnapshot = cli.Telefono;
                 v.ClienteRazonSocialSnapshot = cli.RazonSocial;
-                v.ClienteDomicilioEntregaSnapshot = cli.DomicilioEntrega;
+                v.ClienteDomicilioEntregaSnapshot = cli.DomicilioEntregaCompleto;
                 v.ClienteComentariosComprobante = cli.ComentariosComprobante;
                 v.ClienteCuitSnapshot = cli.Cuit;
                 v.ClienteDireccionSnapshot = cli.Direccion;

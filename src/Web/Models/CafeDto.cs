@@ -21,6 +21,7 @@ public class CafeClienteDto
     public string? LocalidadEntrega { get; set; }
     public string? CpEntrega { get; set; }
     public string? ProvinciaEntrega { get; set; }
+    public string? PisoDeptoEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public bool IsActive { get; set; }
@@ -70,6 +71,7 @@ public class CreateCafeClienteRequest
     public string? LocalidadEntrega { get; set; }
     public string? CpEntrega { get; set; }
     public string? ProvinciaEntrega { get; set; }
+    public string? PisoDeptoEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public string? MapeoLink { get; set; }
@@ -105,6 +107,7 @@ public class UpdateCafeClienteRequest
     public string? LocalidadEntrega { get; set; }
     public string? CpEntrega { get; set; }
     public string? ProvinciaEntrega { get; set; }
+    public string? PisoDeptoEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public bool? IsActive { get; set; }

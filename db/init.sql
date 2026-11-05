@@ -8491,6 +8491,11 @@ GO
 IF COL_LENGTH('Cafe_Clientes','ProvinciaEntrega') IS NULL
     ALTER TABLE Cafe_Clientes ADD ProvinciaEntrega NVARCHAR(100) NULL;
 GO
+-- 05/11/2026: piso / depto del domicilio de ENTREGA, aparte para que no estorbe al buscar la
+-- dirección en Google. Se suma al domicilio de cada venta nueva ("Larrea 322 · 5º I").
+IF COL_LENGTH('Cafe_Clientes','PisoDeptoEntrega') IS NULL
+    ALTER TABLE Cafe_Clientes ADD PisoDeptoEntrega NVARCHAR(60) NULL;
+GO
 
 -- 2026-10-29: ventanita de bienvenida — recordatorios entre el equipo + último día que se abrió sola
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='Bienvenida_Recordatorios')
