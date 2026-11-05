@@ -1,0 +1,100 @@
+@* 2026-11-05: elegir una fecha con botones: año → mes → día (sin calendario ni ruedita).
+   Los años están todos a la vista (no hay que avanzar), los meses con nombre y los días en grilla.
+   Abajo se lee la fecha en palabras para confirmar. Se usa en los vencimientos. *@
+
+<div class="fb">
+    <div class="fb-lbl">1 · Año</div>
+    <div class="fb-grid" style="grid-template-columns:repeat(@Anios.Count, 1fr);">
+        @foreach (var a in Anios)
+        {
+            var y = a;
+            <button type="button" class="fb-b @(anio == y ? "sel" : "")" @onclick="() => ElegirAnio(y)">@y</button>
+        }
+    </div>
+
+    <div class="fb-lbl">2 · Mes</div>
+    <div class="fb-grid" style="grid-template-columns:repeat(6, 1fr);">
+        @for (var m = 1; m <= 12; m++)
+        {
+            var mm = m;
+            <button type="button" class="fb-b fb-sm @(mes == mm ? "sel" : "")" @onclick="() => ElegirMes(mm)">@MesesCortos[mm - 1]</button>
+        }
+    </div>
+
+    <div class="fb-lbl">3 · Día</div>
+    <div class="fb-grid" style="grid-template-columns:repeat(8, 1fr);">
+        @for (var d = 1; d <= 31; d++)
+        {
+            var dd = d;
+            var existe = anio is null || mes is null || dd <= DateTime.DaysInMonth(anio.Value, mes.Value);
+            <button type="button" class="fb-b fb-sm @(dia == dd ? "sel" : "")" disabled="@(!existe)" @onclick="() => ElegirDia(dd)">@dd</button>
+        }
+    </div>
+
+    <div class="fb-res @(Value is DateTime v0 && v0.Date < Hoy ? "pasada" : "")">
+        @if (Value is DateTime v)
+        {
+            <span>Vence el <b>@Dias[(int)v.DayOfWeek] @v.Day de @MesesLargos[v.Month - 1] de @v.Year</b>@(v.Date < Hoy ? " · ⚠ ya está vencido" : "")</span>
+        }
+        else
+        {
+            <span>Tocá el año, el mes y el día</span>
+        }
+    </div>
+</div>
+
+<style>
+    .fb-lbl { font-size: 0.7rem; color: #6b7280; font-weight: 700; margin: 0.6rem 0 0.3rem; text-transform: uppercase; letter-spacing: .4px; }
+    .fb-grid { display: grid; gap: 5px; }
+    .fb-b { border: 1.5px solid #e5e7eb; border-radius: 8px; text-align: center; padding: 0.5rem 0; font-size: 0.92rem; font-weight: 600; background: #fff; color: #374151; cursor: pointer; min-width: 0; }
+    .fb-b.fb-sm { padding: 0.38rem 0; font-size: 0.84rem; }
+    .fb-b.sel { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+    .fb-b:disabled { color: #e5e7eb; border-color: #f3f4f6; cursor: default; }
+    .fb-res { margin-top: 0.7rem; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 0.5rem 0.6rem; font-size: 0.86rem; color: #4c1d95; text-align: center; }
+    .fb-res.pasada { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+</style>
+
+@code {
+    [Parameter] public DateTime? Value { get; set; }
+    [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
+
+    private static readonly string[] MesesCortos = { "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic" };
+    private static readonly string[] MesesLargos = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
+    private static readonly string[] Dias = { "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado" };
+    private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;   // hora argentina
+
+    private int? anio, mes, dia;
+
+    /// <summary>Este año y los 4 siguientes (y el de la fecha cargada si es otro).</summary>
+    private List<int> Anios
+    {
+        get
+        {
+            var l = Enumerable.Range(Hoy.Year, 5).ToList();
+            if (anio is int a && !l.Contains(a)) { l.Add(a); l.Sort(); }
+            return l;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        var actual = Armar();
+        if (Value != actual)
+        {
+            anio = Value?.Year; mes = Value?.Month; dia = Value?.Day;
+        }
+    }
+
+    private DateTime? Armar() => anio is int a && mes is int m && dia is int d && d <= DateTime.DaysInMonth(a, m) ? new DateTime(a, m, d) : null;
+
+    private Task ElegirAnio(int a) { anio = a; return Avisar(); }
+    private Task ElegirMes(int m) { mes = m; return Avisar(); }
+    private Task ElegirDia(int d) { dia = d; return Avisar(); }
+
+    private async Task Avisar()
+    {
+        if (anio is int a && mes is int m && dia is int d && d > DateTime.DaysInMonth(a, m)) dia = null;   // 31 en un mes de 30
+        Value = Armar();
+        await ValueChanged.InvokeAsync(Value);
+    }
+}
