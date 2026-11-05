@@ -8317,10 +8317,16 @@ public class ApiClient
     // ===== Cafe: Stock masivo =====
     public async Task<List<StockProductoDto>?> GetStockEnDepositoAsync(int depositoId)
         => await GetAsync<List<StockProductoDto>>($"/api/cafe/stock-masivo/{depositoId}");
-    public record StockMasivoItemReq(int ProductoId, decimal StockGramos, int StockUnidades);
+    public record LoteVencReq(decimal Cantidad, DateTime FechaVence);
+    public record StockMasivoItemReq(int ProductoId, decimal StockGramos, int StockUnidades, List<LoteVencReq>? Vencimientos = null);
+    /// <summary>2026-11-05: productos que ya tienen vencimientos (al cargarles stock la fecha es obligatoria).</summary>
+    public async Task<List<int>?> GetProductosConVencimientoAsync() => await GetAsync<List<int>>("/api/cafe/stock-masivo/con-vencimiento");
 
     // 30/10/2026: planilla Excel que SUMA al stock (bajar → completar código y cantidad → subir).
-    public record PlanillaLineaDto(string Codigo, string Nombre, string Categoria, decimal Antes, decimal Suma, decimal Despues, string Origen);
+    public record PlanillaLineaDto(string Codigo, string Nombre, string Categoria, decimal Antes, decimal Suma, decimal Despues, string Origen)
+    {
+        public string? Vence { get; init; }
+    }
     public record PlanillaYaSubidaDto(DateTime Fecha, string? Usuario);
     public record PlanillaPreviewDto(int FilasLeidas, List<PlanillaLineaDto> Lineas, List<string> Errores, PlanillaYaSubidaDto? YaSubida);
 

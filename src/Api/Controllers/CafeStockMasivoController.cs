@@ -48,6 +48,12 @@ public class CafeStockMasivoController : ControllerBase
         });
     }
 
+    /// <summary>2026-11-05: ids de los productos que ya tienen algún vencimiento cargado
+    /// (al cargarles stock la fecha es obligatoria).</summary>
+    [HttpGet("con-vencimiento")]
+    public async Task<IActionResult> ConVencimiento()
+        => Ok(await _db.CafeProductoVencimientos.AsNoTracking().Select(v => v.ProductoId).Distinct().ToListAsync());
+
     public record StockProductoDto(
         int ProductoId, string Codigo, string Nombre, string Categoria,
         decimal StockGramos, int StockUnidades, string? Composicion = null, bool IsActive = true);
@@ -124,7 +130,9 @@ public class CafeStockMasivoController : ControllerBase
         return Ok(list);
     }
 
-    public record UpdateStockItem(int ProductoId, decimal StockGramos, int StockUnidades);
+    /// <summary>2026-11-05: lo que entra con fecha de vencimiento (unidades, o kg en café).</summary>
+    public record LoteVenc(decimal Cantidad, DateTime FechaVence);
+    public record UpdateStockItem(int ProductoId, decimal StockGramos, int StockUnidades, List<LoteVenc>? Vencimientos = null);
     // 2026-09-28: Comentario opcional (ej: "factura Colombraro 1234") que queda en el historial de cada producto.
     public record UpdateStockMasivoReq(int DepositoId, List<UpdateStockItem> Items, string? Comentario = null);
 
@@ -179,6 +187,17 @@ public class CafeStockMasivoController : ControllerBase
                 });
             }
             cambios++;
+        }
+        // 2026-11-05: si al cargar stock se puso la fecha de vencimiento, queda asignada (igual que en "Asignar vencimiento").
+        foreach (var item in req.Items)
+        {
+            if (item.Vencimientos is null || !productosMap.ContainsKey(item.ProductoId)) continue;
+            foreach (var l in item.Vencimientos.Where(l => l.Cantidad > 0 && l.FechaVence.Year >= 2000))
+                _db.CafeProductoVencimientos.Add(new CafeProductoVencimiento
+                {
+                    ProductoId = item.ProductoId, Cantidad = l.Cantidad, FechaVence = l.FechaVence.Date,
+                    CreatedAt = DateTime.UtcNow, CreatedBy = operadorNombre
+                });
         }
         await _db.SaveChangesAsync();
 
@@ -249,12 +268,16 @@ public class CafeStockMasivoController : ControllerBase
     private const string Separador = " · ";
 
     public record PlanillaLineaDto(string Codigo, string Nombre, string Categoria,
-        decimal Antes, decimal Suma, decimal Despues, string Origen);
+        decimal Antes, decimal Suma, decimal Despues, string Origen)
+    {
+        /// <summary>2026-11-05: "12 vencen 15/03/2027" (null si no vino fecha).</summary>
+        public string? Vence { get; init; }
+    }
     public record PlanillaYaSubidaDto(DateTime Fecha, string? Usuario);
     public record PlanillaPreviewDto(int FilasLeidas, List<PlanillaLineaDto> Lineas, List<string> Errores,
         PlanillaYaSubidaDto? YaSubida);
 
-    private sealed record FilaPlanilla(int Fila, string Codigo, decimal Cantidad);
+    private sealed record FilaPlanilla(int Fila, string Codigo, decimal Cantidad, DateTime? Vence = null);
 
     [HttpGet("planilla/{depositoId:int}")]
     public async Task<IActionResult> BajarPlanilla(int depositoId)
@@ -300,7 +323,7 @@ public class CafeStockMasivoController : ControllerBase
 
         // Hoja Carga: el usuario escribe A (código o nombre: Excel le va sugiriendo de la lista) y D (cuántos llegaron).
         // B, C y E se completan solos. A puede quedar como "CODIGO · NOMBRE" (si eligió de la sugerencia) o solo el código.
-        string[] hc = { "Escribí el código o el nombre", "Producto", $"Tenés ahora en {dep.Nombre}", "Llegaron (escribí cuántos)", "Vas a tener" };
+        string[] hc = { "Escribí el código o el nombre", "Producto", $"Tenés ahora en {dep.Nombre}", "Llegaron (escribí cuántos)", "Vas a tener", "Vence (dd/mm/aaaa)" };
         var amarillo = ClosedXML.Excel.XLColor.FromHtml("#fef08a");
         var gris = ClosedXML.Excel.XLColor.FromHtml("#e5e7eb");
         for (int i = 0; i < hc.Length; i++)
@@ -308,12 +331,14 @@ public class CafeStockMasivoController : ControllerBase
             var cell = ws.Cell(1, i + 1);
             cell.Value = hc[i];
             cell.Style.Font.Bold = true;
-            cell.Style.Fill.BackgroundColor = (i == 0 || i == 3) ? amarillo : gris;
+            cell.Style.Fill.BackgroundColor = (i == 0 || i == 3 || i == 5) ? amarillo : gris;
         }
         ws.Cell(1, 1).CreateComment().AddText("Empezá a escribir el código o el nombre y elegí de la lista que aparece. También podés escribir el código entero a mano.");
         ws.Cell(1, 3).CreateComment().AddText("Lo que hay hoy en el sistema en este depósito. Es solo para que lo veas, no se toca.");
         ws.Cell(1, 4).CreateComment().AddText("Cuántos te llegaron. Se SUMAN a lo que tengas en el sistema al subir la planilla. Si es café, en kg (ej: 2,5).");
         ws.Cell(1, 5).CreateComment().AddText("Tenés ahora + llegaron. Lo que vas a ver en el sistema después de subirla.");
+        ws.Cell(1, 6).CreateComment().AddText("Fecha de vencimiento de lo que llegó (ej: 15/03/2027). Si el producto ya tiene vencimientos cargados es OBLIGATORIA. Si no vence, dejala vacía.");
+        ws.Range(2, 6, FilasCarga + 1, 6).Style.NumberFormat.Format = "dd/mm/yyyy";
         string rango = $"Productos!$A$2:$C${ultima}";
         for (int f = 2; f <= FilasCarga + 1; f++)
         {
@@ -334,7 +359,7 @@ public class CafeStockMasivoController : ControllerBase
             .Fill.SetBackgroundColor(ClosedXML.Excel.XLColor.FromHtml("#fecaca"));
         ws.Range(2, 3, FilasCarga + 1, 3).Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Right;
         ws.Range(2, 5, FilasCarga + 1, 5).Style.Font.Bold = true;
-        ws.Column(1).Width = 45; ws.Column(2).Width = 50; ws.Column(3).Width = 22; ws.Column(4).Width = 24; ws.Column(5).Width = 14;
+        ws.Column(1).Width = 45; ws.Column(2).Width = 50; ws.Column(3).Width = 22; ws.Column(4).Width = 24; ws.Column(5).Width = 14; ws.Column(6).Width = 20;
         ws.SheetView.FreezeRows(1);
         ws.Cell(2, 1).SetActive();
 
@@ -406,7 +431,19 @@ public class CafeStockMasivoController : ControllerBase
                 { errores.Add($"Fila {f} ({codigo}): la cantidad \"{cCant.GetString()}\" no es un número."); continue; }
             }
             if (cant <= 0) { errores.Add($"Fila {f} ({codigo}): la cantidad tiene que ser mayor a 0 (esta planilla solo suma)."); continue; }
-            filas.Add(new FilaPlanilla(f, codigo, cant));
+            // 2026-11-05: columna F = vence (fecha de Excel o texto dd/mm/aaaa). Vacía = sin fecha.
+            DateTime? vence = null;
+            var cV = ws.Cell(f, 6);
+            if (!cV.IsEmpty())
+            {
+                if (cV.DataType == ClosedXML.Excel.XLDataType.DateTime) vence = cV.GetDateTime().Date;
+                else if (cV.DataType == ClosedXML.Excel.XLDataType.Number) vence = DateTime.FromOADate(cV.GetDouble()).Date;
+                else if (DateTime.TryParseExact(cV.GetString().Trim(), new[] { "d/M/yyyy", "d/M/yy", "d-M-yyyy", "d.M.yyyy" },
+                             System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dv)) vence = dv.Date;
+                else { errores.Add($"Fila {f} ({codigo}): la fecha de vencimiento \"{cV.GetString()}\" no se entiende (escribila como 15/03/2027). No se carga."); continue; }
+                if (vence.Value.Year < 2000) { errores.Add($"Fila {f} ({codigo}): la fecha de vencimiento no es válida. No se carga."); continue; }
+            }
+            filas.Add(new FilaPlanilla(f, codigo, cant, vence));
         }
         return filas;
     }
@@ -422,19 +459,19 @@ public class CafeStockMasivoController : ControllerBase
 
     /// <summary>Lee la planilla y arma cuánto suma a cada producto (los compuestos se reparten en sus piezas).
     /// Las cuentas se hacen contra el stock de AHORA en la base.</summary>
-    private async Task<(List<FilaPlanilla> Filas, List<PlanillaLineaDto> Lineas, Dictionary<int, decimal> Deltas, List<string> Errores, string? Fatal)>
+    private async Task<(List<FilaPlanilla> Filas, List<PlanillaLineaDto> Lineas, Dictionary<int, decimal> Deltas, List<string> Errores, string? Fatal, Dictionary<int, List<LoteVenc>> Lotes)>
         ArmarPlanillaAsync(int depositoId, IFormFile? file)
     {
         var errores = new List<string>();
-        if (file is null || file.Length == 0) return (new(), new(), new(), errores, "Subí el archivo .xlsx de la planilla.");
+        if (file is null || file.Length == 0) return (new(), new(), new(), errores, "Subí el archivo .xlsx de la planilla.", new());
         var dep = await _db.CafeDepositos.AsNoTracking().FirstOrDefaultAsync(d => d.Id == depositoId);
-        if (dep is null) return (new(), new(), new(), errores, "Depósito no encontrado.");
-        if (dep.Nombre == "Full MeLi") return (new(), new(), new(), errores, "El depósito Full se sincroniza solo desde MeLi, no se le puede cargar stock.");
+        if (dep is null) return (new(), new(), new(), errores, "Depósito no encontrado.", new());
+        if (dep.Nombre == "Full MeLi") return (new(), new(), new(), errores, "El depósito Full se sincroniza solo desde MeLi, no se le puede cargar stock.", new());
 
         List<FilaPlanilla> filas;
         int? depArchivo;
         try { using var s = file.OpenReadStream(); filas = LeerPlanilla(s, errores, out depArchivo); }
-        catch (Exception ex) { return (new(), new(), new(), errores, "No pude leer el Excel: " + ex.Message); }
+        catch (Exception ex) { return (new(), new(), new(), errores, "No pude leer el Excel: " + ex.Message, new()); }
         if (depArchivo is not null && depArchivo != depositoId)
         {
             var otro = await _db.CafeDepositos.AsNoTracking().Where(d => d.Id == depArchivo).Select(d => d.Nombre).FirstOrDefaultAsync();
@@ -452,11 +489,19 @@ public class CafeStockMasivoController : ControllerBase
         // cuánto suma cada producto (en kg para café, unidades para el resto) y de dónde viene
         var deltas = new Dictionary<int, decimal>();
         var origen = new Dictionary<int, List<string>>();
-        void Sumar(int pid, decimal cant, string de)
+        var lotes = new Dictionary<int, List<LoteVenc>>();
+        // 2026-11-05: si el producto ya tiene vencimientos cargados, la fecha es obligatoria.
+        var conVenc = (await _db.CafeProductoVencimientos.AsNoTracking().Select(v => v.ProductoId).Distinct().ToListAsync()).ToHashSet();
+        void Sumar(int pid, decimal cant, string de, DateTime? vence)
         {
             deltas[pid] = deltas.GetValueOrDefault(pid) + cant;
             if (!origen.TryGetValue(pid, out var l)) origen[pid] = l = new();
             l.Add(de);
+            if (vence is not null)
+            {
+                if (!lotes.TryGetValue(pid, out var lv)) lotes[pid] = lv = new();
+                lv.Add(new LoteVenc(cant, vence.Value));
+            }
         }
         foreach (var f in filas)
         {
@@ -464,12 +509,17 @@ public class CafeStockMasivoController : ControllerBase
             {
                 if (p.Categoria != "CAFE" && f.Cantidad != Math.Floor(f.Cantidad))
                 { errores.Add($"Fila {f.Fila} ({f.Codigo}): {p.Nombre} va en unidades, no puede llevar decimales ({f.Cantidad:0.###})."); continue; }
-                Sumar(p.Id, f.Cantidad, $"fila {f.Fila}");
+                if (f.Vence is null && conVenc.Contains(p.Id))
+                { errores.Add($"Fila {f.Fila} ({f.Codigo}): {p.Nombre} ya tiene vencimientos cargados, falta la fecha de vencimiento (columna F). No se carga."); continue; }
+                Sumar(p.Id, f.Cantidad, $"fila {f.Fila}", f.Vence);
             }
             else if (comps.TryGetValue(f.Codigo, out var c))
             {
                 if (f.Cantidad != Math.Floor(f.Cantidad)) { errores.Add($"Fila {f.Fila} ({f.Codigo}): un compuesto no puede llevar decimales."); continue; }
-                foreach (var (pid, n) in c.Piezas) Sumar(pid, f.Cantidad * n, $"fila {f.Fila} ({c.Sku} × {f.Cantidad:0})");
+                var faltan = f.Vence is null ? c.Piezas.Where(x => conVenc.Contains(x.ProductoId)).Select(x => porId.TryGetValue(x.ProductoId, out var pp) ? pp.Nombre : "?").ToList() : new();
+                if (faltan.Count > 0)
+                { errores.Add($"Fila {f.Fila} ({f.Codigo}): {string.Join(", ", faltan)} ya tiene vencimientos cargados, falta la fecha de vencimiento (columna F). No se carga."); continue; }
+                foreach (var (pid, n) in c.Piezas) Sumar(pid, f.Cantidad * n, $"fila {f.Fila} ({c.Sku} × {f.Cantidad:0})", f.Vence);
             }
             else errores.Add($"Fila {f.Fila}: el código \"{f.Codigo}\" no existe. No se carga.");
         }
@@ -483,9 +533,11 @@ public class CafeStockMasivoController : ControllerBase
             var p = porId[pid];
             stock.TryGetValue(pid, out var s);
             decimal antes = p.Categoria == "CAFE" ? (s?.StockGramos ?? 0m) / 1000m : (s?.StockUnidades ?? 0);
-            lineas.Add(new PlanillaLineaDto(p.Sku!.Trim(), p.Nombre, p.Categoria, antes, suma, antes + suma, string.Join(", ", origen[pid])));
+            var vtxt = lotes.TryGetValue(pid, out var lv) ? string.Join(" · ", lv.GroupBy(x => x.FechaVence.Date).OrderBy(g => g.Key)
+                .Select(g => $"{g.Sum(x => x.Cantidad):0.###} vencen {g.Key:dd/MM/yyyy}")) : null;
+            lineas.Add(new PlanillaLineaDto(p.Sku!.Trim(), p.Nombre, p.Categoria, antes, suma, antes + suma, string.Join(", ", origen[pid])) { Vence = vtxt });
         }
-        return (filas, lineas.OrderBy(l => l.Nombre).ToList(), deltas, errores, null);
+        return (filas, lineas.OrderBy(l => l.Nombre).ToList(), deltas, errores, null, lotes);
     }
 
     private async Task<PlanillaYaSubidaDto?> BuscarYaSubidaAsync(string hash)
@@ -501,7 +553,7 @@ public class CafeStockMasivoController : ControllerBase
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> PreviewPlanilla(int depositoId, [FromForm] IFormFile? file)
     {
-        var (filas, lineas, _, errores, fatal) = await ArmarPlanillaAsync(depositoId, file);
+        var (filas, lineas, _, errores, fatal, _) = await ArmarPlanillaAsync(depositoId, file);
         if (fatal is not null) return BadRequest(new { error = fatal });
         var ya = filas.Count == 0 ? null : await BuscarYaSubidaAsync(HashPlanilla(depositoId, filas));
         return Ok(new PlanillaPreviewDto(filas.Count, lineas, errores, ya));
@@ -513,7 +565,7 @@ public class CafeStockMasivoController : ControllerBase
     public async Task<IActionResult> AplicarPlanilla(int depositoId, [FromForm] IFormFile? file,
         [FromForm] string? comentario, [FromForm] bool confirmarRepetida = false)
     {
-        var (filas, _, deltas, _, fatal) = await ArmarPlanillaAsync(depositoId, file);
+        var (filas, _, deltas, _, fatal, lotes) = await ArmarPlanillaAsync(depositoId, file);
         if (fatal is not null) return BadRequest(new { error = fatal });
         if (deltas.Count == 0) return BadRequest(new { error = "La planilla no tiene ningún producto válido para cargar." });
         var hash = HashPlanilla(depositoId, filas);
@@ -534,7 +586,7 @@ public class CafeStockMasivoController : ControllerBase
             var g = s?.StockGramos ?? 0m;
             var u = s?.StockUnidades ?? 0;
             if (cats[kv.Key] == "CAFE") g += kv.Value * 1000m; else u += (int)kv.Value;
-            return new UpdateStockItem(kv.Key, g, u);
+            return new UpdateStockItem(kv.Key, g, u, lotes.GetValueOrDefault(kv.Key));
         }).ToList();
 
         var coment = "Planilla Excel" + (string.IsNullOrWhiteSpace(comentario) ? "" : " · " + comentario.Trim());
