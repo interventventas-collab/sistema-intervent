@@ -253,11 +253,12 @@
                             <span style="font-size:0.78rem; color:#6b7280;">Cada pieza se puede cambiar a mano. El compuesto no tiene stock propio: sube el de cada pieza.</span>
                             <div style="display:flex; gap:0.4rem;">
                                 <button class="btn btn-secondary" @onclick="LimpiarSeleccionCarga">Cancelar</button>
-                                <button class="btn btn-primary" @onclick="AgregarCompuestoAlCarrito" disabled="@(!cargaCompSel.Items.Any(i => PiezaValor(i) != 0))">
+                                <button class="btn btn-primary" @onclick="AgregarCompuestoAlCarrito" disabled="@(!cargaCompSel.Items.Any(i => PiezaValor(i) != 0) || FaltaFecha)">
                                     Agregar piezas a la lista →
                                 </button>
                             </div>
                         </div>
+                        @PanelVence
                     </div>
                 }
                 else
@@ -300,7 +301,7 @@
                                @onkeydown="OnKeyDownCantidad"
                                disabled="@(cargaProdSel is null)" />
                     </div>
-                    <button class="btn btn-primary" @onclick="AgregarAlCarrito" disabled="@(cargaProdSel is null || CargaValor == 0)">
+                    <button class="btn btn-primary" @onclick="AgregarAlCarrito" disabled="@(cargaProdSel is null || CargaValor == 0 || FaltaFecha)">
                         Agregar a la lista →
                     </button>
                     @if (cargaProdSel is not null && CargaValor != 0)
@@ -310,6 +311,7 @@
                         </div>
                     }
                 </div>
+                @PanelVence
                 }
 
                 @* 2026-08-25: hace cuanto que NO entra mercaderia de este producto en este deposito. *@
@@ -456,6 +458,14 @@
                             → queda @stockNuevoMostrar @unidad
                             @if (rsvCart > 0) { <span style="color:#d97706;" title="Ventas MeLi pendientes de despacho"> · 📦 +@rsvCart reservado</span> }
                         </div>
+                        @if (c.Lotes.Count > 0)
+                        {
+                            var sinF = c.ValorIngresado - c.Lotes.Sum(l => l.Cantidad);
+                            <div style="font-size:0.78rem; color:#6b7280;">
+                                📅 @string.Join(" · ", c.Lotes.GroupBy(l => l.FechaVence.Date).OrderBy(g => g.Key).Select(g => (c.Lotes.Count > 1 || sinF > 0 ? $"{g.Sum(l => l.Cantidad):0.###} " : "") + $"vence{(c.Lotes.Count > 1 || sinF > 0 ? "n" : "")} {g.Key:dd/MM/yyyy}"))
+                                @if (sinF > 0) { <span> · @sinF.ToString("0.###") sin fecha</span> }
+                            </div>
+                        }
                         @if (!string.IsNullOrEmpty(c.Origen))
                         {
                             <div style="font-size:0.75rem; color:#6b7280;">de @c.Origen</div>
@@ -751,6 +761,7 @@ else if (modoCarga == "planilla")
             <div style="font-size:0.88rem; color:#374151; line-height:1.7; margin-bottom:1rem;">
                 1 · Bajá la planilla. Trae adentro la lista de todos los productos.<br />
                 2 · En la hoja <b>Carga</b> escribí el <b>código</b> y la <b>cantidad que llegó</b>. El nombre y el stock salen solos; si el código no existe se pone en rojo.<br />
+                &nbsp;&nbsp;&nbsp;&nbsp;Si tiene <b>fecha de vencimiento</b>, ponela en la columna <b>Vence</b> (ej. 15/03/2027). Si el producto ya tiene vencimientos cargados, es obligatoria.<br />
                 3 · Subila acá. Antes de grabar ves cuánto tenía cada producto y cuánto va a quedar. <b>Siempre suma</b> a lo que haya en ese momento, nunca reemplaza.
             </div>
 
@@ -809,6 +820,7 @@ else if (modoCarga == "planilla")
                                     <th style="text-align:right;">Tiene ahora</th>
                                     <th style="text-align:right;">Suma</th>
                                     <th style="text-align:right;">Queda</th>
+                                    <th>Vence</th>
                                     <th style="color:#9ca3af; font-weight:400;">De</th>
                                 </tr>
                             </thead>
@@ -821,6 +833,7 @@ else if (modoCarga == "planilla")
                                         <td style="text-align:right; color:#6b7280;">@Cant(l, l.Antes)</td>
                                         <td style="text-align:right;">+@Cant(l, l.Suma)</td>
                                         <td style="text-align:right; font-weight:700;">@Cant(l, l.Despues)</td>
+                                        <td style="font-size:0.8rem; color:#374151;">@(l.Vence ?? "—")</td>
                                         <td style="color:#9ca3af; font-size:0.78rem;">@l.Origen</td>
                                     </tr>
                                 }
@@ -1058,7 +1071,56 @@ else if (modoCarga == "planilla")
         public int StockNuevoU { get; set; }
         /// <summary>2026-09-28: si vino de un compuesto, su nombre (para que se entienda en la lista).</summary>
         public string? Origen { get; set; }
+        /// <summary>2026-11-05: lo que entra con fecha de vencimiento (puede ser más de una fecha).</summary>
+        public List<ApiClient.LoteVencReq> Lotes { get; set; } = new();
     }
+
+    // ─── 2026-11-05: fecha de vencimiento al cargar stock ───
+    // Aparece al SUMAR. Si el producto (o alguna pieza del compuesto) ya tiene vencimientos, es obligatoria.
+    private HashSet<int> conVenc = new();
+    private DateTime? cargaVence;
+    private bool cargaVenceAbierta;
+    private bool CargaVenceVisible => cargaModo == "modificar"
+        && ((cargaProdSel is not null && CargaValor > 0) || (cargaCompSel is not null && cargaCompSel.Items.Any(i => PiezaValor(i) > 0)));
+    private bool CargaVenceObligatoria => cargaProdSel is not null
+        ? conVenc.Contains(cargaProdSel.ProductoId)
+        : cargaCompSel is not null && cargaCompSel.Items.Any(i => PiezaValor(i) > 0 && conVenc.Contains(i.ProductoId));
+    private bool FaltaFecha => CargaVenceVisible && CargaVenceObligatoria && cargaVence is null;
+    private DateTime? FechaLote => CargaVenceVisible && (CargaVenceObligatoria || cargaVenceAbierta) ? cargaVence : null;
+    private async Task CargarConVenc()
+    {
+        try { conVenc = (await Api.GetProductosConVencimientoAsync() ?? new()).ToHashSet(); } catch { }
+    }
+    private string TituloVence => cargaProdSel is not null
+        ? $"¿Cuándo vence{(CargaValor == 1 ? "" : "n")} {(CargaValor == 1 ? "esta" : "estas")} {CargaValor:0.###}{(cargaProdSel.Categoria == "CAFE" ? " kg" : "")}?"
+        : "¿Cuándo vence lo que entra?";
+
+    private RenderFragment PanelVence => __builder =>
+    {
+        if (!CargaVenceVisible) return;
+        <div style="margin-top:0.8rem; border-top:1px solid #f3f4f6; padding-top:0.7rem;">
+            <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; font-size:0.9rem;">
+                <b>📅 @TituloVence</b>
+                @if (CargaVenceObligatoria)
+                {
+                    <span style="font-size:0.8rem; color:#b45309;">Ya tiene vencimientos cargados: la fecha es obligatoria</span>
+                }
+                else if (!cargaVenceAbierta)
+                {
+                    <button type="button" class="btn btn-secondary" style="font-size:0.82rem; padding:0.3rem 0.8rem;" @onclick="() => cargaVenceAbierta = true">Poner fecha</button>
+                    <span style="font-size:0.8rem; color:#6b7280;">si no vence, cargalo así nomás</span>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-secondary" style="font-size:0.82rem; padding:0.3rem 0.8rem;" @onclick="() => { cargaVenceAbierta = false; cargaVence = null; }">Sin fecha</button>
+                }
+            </div>
+            @if (CargaVenceObligatoria || cargaVenceAbierta)
+            {
+                <div style="max-width:520px;"><FechaBotones @bind-Value="cargaVence" /></div>
+            }
+        </div>
+    };
 
     private IEnumerable<StockProductoDto> ProductosMatchingCarga(string q)
     {
@@ -1117,7 +1179,7 @@ else if (modoCarga == "planilla")
     {
         var c = compuestos.FirstOrDefault(x => x.Id == comboId);
         if (c is null) return;
-        cargaProdSel = null; cargaStockActualTxt = "—"; cargaValorTxt = ""; cargaReservadoActual = 0;
+        cargaProdSel = null; cargaStockActualTxt = "—"; cargaValorTxt = ""; cargaReservadoActual = 0; cargaVence = null; cargaVenceAbierta = false;
         cargaCompSel = c;
         cargaCompCantTxt = "";
         cargaCompPiezaTxt.Clear();
@@ -1139,6 +1201,8 @@ else if (modoCarga == "planilla")
     {
         var comp = cargaCompSel;
         if (comp is null) return;
+        if (FaltaFecha) { ToastService.Info("Elegí la fecha de vencimiento"); return; }
+        var fechaComp = FechaLote;
         int agregadas = 0;
         foreach (var it in comp.Items.OrderBy(i => i.SortOrder))
         {
@@ -1154,6 +1218,7 @@ else if (modoCarga == "planilla")
                 RecalcularNuevo(ex);
                 if (string.IsNullOrEmpty(ex.Origen)) ex.Origen = comp.Nombre;
                 else if (!ex.Origen.Split(" + ").Contains(comp.Nombre)) ex.Origen += " + " + comp.Nombre;
+                if (fechaComp is DateTime fc && v > 0 && ex.Modo == "modificar") ex.Lotes.Add(new ApiClient.LoteVencReq(v, fc));
             }
             else
             {
@@ -1164,6 +1229,7 @@ else if (modoCarga == "planilla")
                     StockActualG = p.StockGramos, StockActualU = p.StockUnidades,
                     Origen = comp.Nombre
                 };
+                if (fechaComp is DateTime fc && v > 0) item.Lotes.Add(new ApiClient.LoteVencReq(v, fc));
                 RecalcularNuevo(item);
                 carrito.Add(item);
             }
@@ -1195,6 +1261,7 @@ else if (modoCarga == "planilla")
         cargaProdSel = null; cargaCompSel = null;
         cargaSearch = ""; cargaStockActualTxt = "—"; cargaValorTxt = ""; cargaReservadoActual = 0;
         cargaCompCantTxt = ""; cargaCompPiezaTxt.Clear();
+        cargaVence = null; cargaVenceAbierta = false;
     }
 
     private async Task LimpiarSeleccionCarga()
@@ -1209,6 +1276,7 @@ else if (modoCarga == "planilla")
         var p = rows?.FirstOrDefault(r => r.ProductoId == productoId);
         if (p is null) return;
         cargaCompSel = null; cargaCompPiezaTxt.Clear(); cargaCompCantTxt = "";
+        cargaVence = null; cargaVenceAbierta = false;
         cargaProdSel = p;
         cargaSearch = $"{p.Codigo} — {p.Nombre}";
         cargaSearchOpen = false;
@@ -1301,7 +1369,23 @@ else if (modoCarga == "planilla")
     {
         var cargaValor = CargaValor;
         if (cargaProdSel is null || cargaValor == 0) return;
+        if (FaltaFecha) { ToastService.Info("Elegí la fecha de vencimiento"); return; }
         var p = cargaProdSel;
+        var fechaLote = FechaLote;
+        // 2026-11-05: el mismo producto con otra fecha (dos lotes) se SUMA al que ya estaba en la lista.
+        var previo = carrito.FirstOrDefault(c => c.ProductoId == p.ProductoId);
+        if (previo is not null && previo.Modo == "modificar" && cargaModo == "modificar" && cargaValor > 0
+            && (fechaLote is not null || previo.Lotes.Count > 0))
+        {
+            previo.ValorIngresado += cargaValor;
+            if (fechaLote is DateTime fl0) previo.Lotes.Add(new ApiClient.LoteVencReq(cargaValor, fl0));
+            RecalcularNuevo(previo);
+            ToastService.Info($"Sumado al que ya estaba en la lista: ahora +{previo.ValorIngresado:0.###}");
+            LimpiarSeleccionCargaSinFoco();
+            try { await JS.InvokeVoidAsync("focusElementById", "carga-buscador"); } catch { }
+            await CargarHistorial();
+            return;
+        }
         decimal nuevoG = p.StockGramos;
         int nuevoU = p.StockUnidades;
         if (cargaModo == "modificar")
@@ -1329,7 +1413,9 @@ else if (modoCarga == "planilla")
             StockActualG = p.StockGramos,
             StockActualU = p.StockUnidades,
             StockNuevoG = nuevoG,
-            StockNuevoU = nuevoU
+            StockNuevoU = nuevoU,
+            Lotes = fechaLote is DateTime fl && cargaModo == "modificar" && cargaValor > 0
+                ? new() { new ApiClient.LoteVencReq(cargaValor, fl) } : new()
         });
         // Reset para el siguiente producto.
         LimpiarSeleccionCargaSinFoco();
@@ -1344,13 +1430,15 @@ else if (modoCarga == "planilla")
         guardando = true;
         try
         {
-            var items = carrito.Select(c => new ApiClient.StockMasivoItemReq(c.ProductoId, c.StockNuevoG, c.StockNuevoU)).ToList();
+            var items = carrito.Select(c => new ApiClient.StockMasivoItemReq(c.ProductoId, c.StockNuevoG, c.StockNuevoU,
+                c.Lotes.Count > 0 ? c.Lotes.ToList() : null)).ToList();
             var ok = await Api.ActualizarStockMasivoAsync(depositoIdSeleccionado, items,
                 string.IsNullOrWhiteSpace(cargaComentario) ? null : cargaComentario.Trim());
             if (!ok) { ToastService.Error("No se pudo guardar. La lista sigue acá, probá de nuevo."); return; }
             ToastService.Success($"✓ {carrito.Count} productos actualizados. Push a MeLi disparado automático.");
             carrito.Clear();
             cargaComentario = "";
+            await CargarConVenc();
             await CargarStock();
             await CargarHistorial();
         }
@@ -1396,6 +1484,7 @@ else if (modoCarga == "planilla")
         await CargarStock();
         try { compuestos = (await Api.GetCafeCombosAsync(true) ?? new()).Where(c => c.EsCompuesto && c.Items.Count > 0 && !Composicion.EsPack(c)).ToList(); }
         catch { compuestos = new(); }
+        await CargarConVenc();
         await CargarHistorial();
     }
 
