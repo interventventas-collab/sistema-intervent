@@ -250,7 +250,8 @@ public class MeliVencimientoNotasService : BackgroundService
     private static readonly System.Globalization.CultureInfo Ar = new("es-AR");
     private static string Pesos(decimal v) => "$" + Math.Round(v, 0).ToString("N0", Ar);
 
-    private record Cuenta(string Ref, decimal Cobra, decimal Com, decimal Ret, decimal Otros, decimal Envio, decimal Neto, decimal Costo);
+    /// <summary>Sugerido = precio sugerido del fabricante (OEM PvpConIva × multiplicador × unidades); null si algún producto no lo tiene.</summary>
+    private record Cuenta(string Ref, decimal Cobra, decimal Com, decimal Ret, decimal Otros, decimal Envio, decimal Neto, decimal Costo, decimal? Sugerido = null);
 
     /// <summary>Cuenta de UNA orden (sus renglones): null si no se sabe bien qué se vendió o falta costo.</summary>
     private static async Task<Cuenta?> CuentaDeOrdenAsync(AppDbContext db, List<MeliOrder> filas, CancellationToken ct)
@@ -260,15 +261,18 @@ public class MeliVencimientoNotasService : BackgroundService
         if (ambigua || unidades.Count == 0) return null;   // no se sabe bien qué se vendió: mejor no poner un número falso
         var ids = unidades.Keys.ToList();
         var prods = await db.CafeProductos.AsNoTracking().Where(p => ids.Contains(p.Id))
-            .Select(p => new { p.Id, p.Costo, p.IvaPct }).ToListAsync(ct);
+            .Select(p => new { p.Id, p.Costo, p.IvaPct, Pvp = p.OemNav != null ? p.OemNav.PvpConIva : null, p.MultiplicadorOem }).ToListAsync(ct);
         if (prods.Count != ids.Count || prods.Any(p => p.Costo <= 0)) return null;
         var costo = prods.Sum(p => unidades[p.Id] * p.Costo * (1 + p.IvaPct / 100m));
+        decimal? sugerido = prods.All(p => p.Pvp is > 0)
+            ? prods.Sum(p => unidades[p.Id] * p.Pvp!.Value * (p.MultiplicadorOem is > 0 ? p.MultiplicadorOem.Value : 1m))
+            : null;
         var item = filas[0].ItemId;
         var sku = await db.MeliItems.AsNoTracking().Where(m => m.MeliItemId == item && m.Sku != null)
             .OrderBy(m => m.VariationId == filas[0].VariationId ? 0 : 1).Select(m => m.Sku).FirstOrDefaultAsync(ct);
         var refTxt = !string.IsNullOrWhiteSpace(sku) ? sku! : (filas[0].ItemTitle.Length > 22 ? filas[0].ItemTitle[..22] : filas[0].ItemTitle);
         return new Cuenta(refTxt, filas.Sum(f => f.TotalAmount), filas.Sum(f => f.FinComision ?? 0), filas.Sum(f => f.FinRetenciones ?? 0),
-            filas.Sum(f => f.FinOtros ?? 0), filas.Sum(f => f.FinEnvio ?? 0), filas.Sum(f => f.FinNeto ?? 0), costo);
+            filas.Sum(f => f.FinOtros ?? 0), filas.Sum(f => f.FinEnvio ?? 0), filas.Sum(f => f.FinNeto ?? 0), costo, sugerido);
     }
 
     /// <summary>Texto de la nota de ganancia (null si no hay costo cargado, no hay datos de cobro o es dudosa).
@@ -310,6 +314,7 @@ public class MeliVencimientoNotasService : BackgroundService
             + (otros > 0 ? $" − otros {Pesos(otros)}" : "")
             + (esFlex && envio <= 0 ? "" : $" − envío {(envioEstimado ? "~" : "")}{Pesos(envio)}")
             + $" = {Pesos(neto)} · costo {Pesos(costo)} → gana {Pesos(gana)} ({pct:0}%)"
+            + (cuentas.All(c => c.Sugerido is > 0) ? $" · sug. fábrica {Pesos(cuentas.Sum(c => c.Sugerido!.Value))}" : "")
             + (esFlex ? " · " + FlexTexto(flex) : "");
         if (cuentas.Count > 1)
         {
