@@ -201,14 +201,21 @@ public class MeliVencimientoNotasService : BackgroundService
             var filas = await FilasDelPaqueteAsync(db, grupo.ToList(), ct);
             if (filas.Any(f => f.GananciaNoteSentAt != null)) { foreach (var f in filas) f.GananciaNoteSentAt ??= DateTime.UtcNow; await db.SaveChangesAsync(ct); continue; }
             if (filas.Any(f => f.FinNeto is null)) continue;   // falta traer el cobro de alguna orden del paquete
-            var nota = await GananciaTextoAsync(db, filas, ct);
-            if (nota is null) { foreach (var f in filas) f.GananciaNoteSentAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); continue; }
             var account = await db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == grupo.Key.MeliAccountId, ct);
             if (account is null) continue;
             var token = await accSvc.GetValidTokenAsync(account);
             if (token is null) continue;
             var http = httpF.CreateClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            // Flex: lo que se cobra por el envío va aparte. Si MeLi no contesta, se reintenta en la próxima vuelta.
+            FlexEnvio? flex = null;
+            if (EsFlex(filas))
+            {
+                flex = await FlexEnvioAsync(http, filas, ct);
+                if (flex is null) continue;
+            }
+            var nota = await GananciaTextoAsync(db, filas, ct, flex);
+            if (nota is null) { foreach (var f in filas) f.GananciaNoteSentAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); continue; }
             var okG = true;
             foreach (var oid in filas.Select(f => f.MeliOrderId).Distinct())
                 if (!await PostNotaAsync(http, oid, nota, "GananciaNota", ct)) { okG = false; break; }
@@ -266,8 +273,9 @@ public class MeliVencimientoNotasService : BackgroundService
 
     /// <summary>Texto de la nota de ganancia (null si no hay costo cargado, no hay datos de cobro o es dudosa).
     /// Varias órdenes del mismo paquete → una nota con el total del paquete + cuánto deja cada producto.</summary>
-    public static async Task<string?> GananciaTextoAsync(AppDbContext db, List<MeliOrder> filas, CancellationToken ct = default)
+    public static async Task<string?> GananciaTextoAsync(AppDbContext db, List<MeliOrder> filas, CancellationToken ct = default, FlexEnvio? flex = null)
     {
+        var esFlex = EsFlex(filas);
         var cuentas = new List<Cuenta>();
         foreach (var g in filas.GroupBy(f => f.MeliOrderId))
         {
@@ -279,8 +287,15 @@ public class MeliVencimientoNotasService : BackgroundService
         var cobra = cuentas.Sum(c => c.Cobra); var com = cuentas.Sum(c => c.Com); var ret = cuentas.Sum(c => c.Ret);
         var otros = cuentas.Sum(c => c.Otros); var envio = cuentas.Sum(c => c.Envio); var neto = cuentas.Sum(c => c.Neto);
         var costo = cuentas.Sum(c => c.Costo);
+        if (esFlex)
+        {
+            // Flex: cuando el envío lo paga el cliente, MeLi lo deposita junto con la venta (entra en el neto).
+            // Se saca de la cuenta del producto y se muestra aparte, así la ganancia es solo de la mercadería.
+            cuentas = cuentas.Select(c => c with { Neto = c.Cobra - c.Com - c.Ret - c.Otros - c.Envio }).ToList();
+            neto = cuentas.Sum(c => c.Neto);
+        }
         var envioEstimado = false;
-        if (envio <= 0 && cobra >= 33000m)
+        if (!esFlex && envio <= 0 && cobra >= 33000m)
         {
             var itemIds = filas.Select(f => f.ItemId).Distinct().ToList();
             var est = await db.MeliItems.AsNoTracking()
@@ -293,7 +308,9 @@ public class MeliVencimientoNotasService : BackgroundService
         var cab = cuentas.Count > 1 ? $"💲 Paquete de {cuentas.Count}: Cobrás" : "💲 Cobrás";
         var txt = $"{cab} {Pesos(cobra)} − com. {Pesos(com)} − ret. {Pesos(ret)}"
             + (otros > 0 ? $" − otros {Pesos(otros)}" : "")
-            + $" − envío {(envioEstimado ? "~" : "")}{Pesos(envio)} = {Pesos(neto)} · costo {Pesos(costo)} → gana {Pesos(gana)} ({pct:0}%)";
+            + (esFlex && envio <= 0 ? "" : $" − envío {(envioEstimado ? "~" : "")}{Pesos(envio)}")
+            + $" = {Pesos(neto)} · costo {Pesos(costo)} → gana {Pesos(gana)} ({pct:0}%)"
+            + (esFlex ? " · " + FlexTexto(flex) : "");
         if (cuentas.Count > 1)
         {
             // cuánto deja cada producto (el envío estimado se reparte según lo que cobra cada uno)
@@ -307,6 +324,61 @@ public class MeliVencimientoNotasService : BackgroundService
             txt += " | " + string.Join(" · ", det);
         }
         return txt.Length > 290 ? txt[..290] : txt;
+    }
+
+    // ─── Flex: el envío aparte ───
+    /// <summary>Lo que entra por el envío de una venta Flex: lo que pagó el cliente y lo que bonifica MeLi
+    /// (MeLi+ / descuento obligatorio del 10% en envío gratis). El descuento "ratio" es el envío gratis
+    /// que pone el vendedor: no es plata que entra.</summary>
+    public record FlexEnvio(decimal PagaCliente, decimal BonificaMeli);
+
+    public static bool EsFlex(List<MeliOrder> filas) => filas.Any(f => f.LogisticType == "self_service");
+
+    /// <summary>Consulta /shipments/{id}/costs. Null si MeLi no contesta.</summary>
+    public static async Task<FlexEnvio?> FlexEnvioAsync(HttpClient http, List<MeliOrder> filas, CancellationToken ct = default)
+    {
+        var sid = filas.Select(f => f.ShippingId).FirstOrDefault(x => x != null);
+        if (sid is null) return null;
+        try
+        {
+            using var resp = await http.GetAsync($"https://api.mercadolibre.com/shipments/{sid}/costs", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            var root = doc.RootElement;
+            decimal cliente = 0, meli = 0;
+            static decimal Num(JsonElement e, string p) => e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDecimal() : 0;
+            static decimal Bonif(JsonElement e, bool sinRatio)
+            {
+                decimal t = 0;
+                if (e.TryGetProperty("discounts", out var ds) && ds.ValueKind == JsonValueKind.Array)
+                    foreach (var d in ds.EnumerateArray())
+                    {
+                        var tipo = d.TryGetProperty("type", out var tp) && tp.ValueKind == JsonValueKind.String ? tp.GetString() : null;
+                        if (sinRatio && tipo == "ratio") continue;
+                        t += Num(d, "promoted_amount");
+                    }
+                return t;
+            }
+            if (root.TryGetProperty("receiver", out var rc) && rc.ValueKind == JsonValueKind.Object)
+            {
+                cliente = Num(rc, "cost");
+                meli += Bonif(rc, sinRatio: true);
+            }
+            if (root.TryGetProperty("senders", out var ss) && ss.ValueKind == JsonValueKind.Array)
+                foreach (var se in ss.EnumerateArray()) meli += Bonif(se, sinRatio: false);
+            return new FlexEnvio(cliente, meli);
+        }
+        catch { return null; }
+    }
+
+    private static string FlexTexto(FlexEnvio? f)
+    {
+        if (f is null) return "🛵 Flex: envío aparte";
+        var total = f.PagaCliente + f.BonificaMeli;
+        if (total <= 0) return "🛵 Envío Flex aparte: $0";
+        var quien = f.PagaCliente > 0 && f.BonificaMeli > 0 ? $"cliente {Pesos(f.PagaCliente)} + MeLi {Pesos(f.BonificaMeli)}"
+            : f.PagaCliente > 0 ? "lo pagó el cliente" : "bonifica MeLi";
+        return $"🛵 Envío Flex aparte: +{Pesos(total)} ({quien})";
     }
 
     /// <summary>Café: los formatos de la receta van en kg (1KG/MEDIO/CUARTO). Lo demás: 1 (BULTO no se usa en recetas MeLi).</summary>
