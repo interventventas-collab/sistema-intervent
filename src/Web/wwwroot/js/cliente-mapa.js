@@ -1,7 +1,8 @@
 // 2026-10-28: mapa de la ficha del cliente (sección Entrega). El pin salta solo a la dirección
 // escrita; si no es ahí, se arrastra o se toca el mapa. Al lado, la foto de la puerta (Street
 // View mirando hacia el pin). Avisa a Blazor con PinMovido(lat, lng).
-//   clienteMapa.init(mapaId, fotoId, dotnet, lat, lng)  /  setPin(lat, lng)  /  clearPin()  /  destroy()
+//   clienteMapa.init(mapaId, fotoId, dotnet, lat, lng, buscadorId)  /  setPin  /  clearPin  /  destroy
+// 2026-11-05: buscadorId = casillero del domicilio con sugerencias tipo Google Maps (LugarElegido).
 (function () {
     let cargando = null;
     let clave = null;
@@ -75,8 +76,75 @@
             });
     }
 
+    // 2026-11-05: buscador estilo Google Maps en el casillero del domicilio. Mientras escribís
+    // sugiere direcciones y lugares (Argentina, primero cerca de CABA/GBA). Al elegir uno mueve el
+    // pin y le pasa a Blazor calle y número, barrio/localidad, CP y provincia (LugarElegido).
+    function comp(place, tipo, corto) {
+        const c = (place.address_components || []).find(x => x.types.indexOf(tipo) >= 0);
+        return c ? (corto ? c.short_name : c.long_name) : '';
+    }
+    // Si Google rechaza la clave, el buscador de Google deja el casillero gris y bloqueado. Lo
+    // destrabamos para que se pueda seguir escribiendo el domicilio a mano como siempre.
+    function destrabar(input) {
+        if (!input) return;
+        input.disabled = false;
+        input.classList.remove('gm-err-autocomplete');
+        input.style.backgroundImage = 'none';
+        if (/Oops|went wrong/i.test(input.placeholder)) input.placeholder = 'Calle y número';
+    }
+    const authPrevio = window.gm_authFailure;
+    window.gm_authFailure = function () {
+        document.querySelectorAll('[data-ac-cliente="1"]').forEach(destrabar);
+        if (typeof authPrevio === 'function') try { authPrevio(); } catch (e) { }
+    };
+    function engancharBuscador(inputId) {
+        const input = inputId && document.getElementById(inputId);
+        if (!input || !google.maps.places || input.dataset.acCliente === '1') return;
+        input.dataset.acCliente = '1';
+        const vigia = new MutationObserver(() => {
+            if (input.disabled || input.classList.contains('gm-err-autocomplete')) destrabar(input);
+        });
+        vigia.observe(input, { attributes: true, attributeFilter: ['disabled', 'class', 'placeholder'] });
+        const amba = new google.maps.LatLngBounds({ lat: -35.1, lng: -59.1 }, { lat: -34.3, lng: -58.1 });
+        const ac = new google.maps.places.Autocomplete(input, {
+            fields: ['address_components', 'geometry', 'name', 'formatted_address', 'types'],
+            componentRestrictions: { country: 'ar' },
+            bounds: amba, strictBounds: false
+        });
+        // Enter elige la sugerencia, no guarda el formulario.
+        input.addEventListener('keydown', e => {
+            if (e.key !== 'Enter') return;
+            const pac = document.querySelector('.pac-container');
+            if (pac && pac.style.display !== 'none' && pac.offsetParent !== null) e.preventDefault();
+        });
+        ac.addListener('place_changed', () => {
+            const p = ac.getPlace();
+            if (!p || !p.geometry || !p.geometry.location) return;
+            const lat = p.geometry.location.lat(), lng = p.geometry.location.lng();
+            const ruta = comp(p, 'route'), nro = comp(p, 'street_number');
+            const esLugar = (p.types || []).some(t => t === 'establishment' || t === 'point_of_interest');
+            let calle = ruta ? (ruta + (nro ? ' ' + nro : '')) : (p.name || '');
+            if (esLugar && p.name && !nro) calle = p.name + (ruta ? ' (' + ruta + ')' : '');
+            const provincia = comp(p, 'administrative_area_level_1');
+            const enCaba = /Aut[oó]noma/i.test(provincia);
+            const barrio = comp(p, 'neighborhood') || comp(p, 'sublocality_level_1');
+            const localidad = enCaba ? (barrio && !/^Comuna/i.test(barrio) ? barrio : '')
+                : (comp(p, 'locality') || comp(p, 'administrative_area_level_2'));
+            const cpm = (comp(p, 'postal_code') || '').match(/\d{4}/);
+            const cp = cpm ? cpm[0] : '';
+            const texto = (p.formatted_address || '').replace(', Argentina', '');
+            if (mapa) {
+                moverPin(lat, lng, false);
+                mapa.panTo({ lat: lat, lng: lng });
+                if (mapa.getZoom() < 16) mapa.setZoom(17);
+            }
+            if (dotnet) dotnet.invokeMethodAsync('LugarElegido', calle, localidad, cp, provincia, lat, lng, texto);
+        });
+    }
+
     window.clienteMapa = {
-        init: async function (mapaId, fotoElId, dotnetRef, lat, lng) {
+        engancharBuscador: async function (inputId) { await asegurarGoogle(); engancharBuscador(inputId); },
+        init: async function (mapaId, fotoElId, dotnetRef, lat, lng, buscadorId) {
             dotnet = dotnetRef; fotoId = fotoElId; pin = null;
             await asegurarGoogle();
             const el = document.getElementById(mapaId);
@@ -92,6 +160,7 @@
             if (hay) moverPin(lat, lng, false);
             else if (fotoId && document.getElementById(fotoId))
                 document.getElementById(fotoId).innerHTML = '<span class="cm-foto-txt">Acá va a aparecer la foto de la puerta</span>';
+            engancharBuscador(buscadorId);
         },
         setPin: function (lat, lng) {
             if (!mapa) return;

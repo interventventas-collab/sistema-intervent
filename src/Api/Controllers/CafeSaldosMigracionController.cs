@@ -141,7 +141,7 @@ public class CafeSaldosMigracionController : ControllerBase
             ClienteTipoSnapshot = cli.Tipo,
             ClienteTelefonoSnapshot = cli.Telefono,
             ClienteRazonSocialSnapshot = cli.RazonSocial,
-            ClienteDomicilioEntregaSnapshot = cli.DomicilioEntrega,
+            ClienteDomicilioEntregaSnapshot = cli.DomicilioEntregaCompleto,
             ClienteComentariosComprobante = cli.ComentariosComprobante,
             ClienteCuitSnapshot = cli.Cuit,
             ClienteDireccionSnapshot = cli.Direccion,

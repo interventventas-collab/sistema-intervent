@@ -62,6 +62,18 @@ public class CafeCliente
     [MaxLength(500)]
     public string? DomicilioEntrega { get; set; }
 
+    /// <summary>2026-11-05 — Piso / depto del domicilio de entrega, aparte para que no estorbe al
+    /// buscar la dirección en Google. Se suma al domicilio de cada venta ("Larrea 322 · 5º I").</summary>
+    [MaxLength(60)]
+    public string? PisoDeptoEntrega { get; set; }
+
+    /// <summary>Domicilio de entrega con el piso/depto pegado, para copiar a la venta (remito,
+    /// celu del repartidor, mapa). Null si no hay domicilio de entrega.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? DomicilioEntregaCompleto => string.IsNullOrWhiteSpace(DomicilioEntrega) ? DomicilioEntrega
+        : string.IsNullOrWhiteSpace(PisoDeptoEntrega) ? DomicilioEntrega
+        : DomicilioEntrega!.Trim() + " · " + PisoDeptoEntrega!.Trim();
+
     /// <summary>2026-08-31 — La localidad del domicilio de ENTREGA, que puede ser otra que la
     /// fiscal. Antes sólo existía `Localidad`, que es la del domicilio fiscal (la que completa
     /// ARCA con el CUIT). Osmar: *"pongo dirección pero no hay localidad para elegir"*.

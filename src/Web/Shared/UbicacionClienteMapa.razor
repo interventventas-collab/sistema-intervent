@@ -47,6 +47,13 @@
     /// <summary>El CP de 4 números que trae Google en la dirección ("B1776", "C1425ABC" → 1776 / 1425).
     /// El padre lo pone sólo si el CP está vacío.</summary>
     [Parameter] public EventCallback<string> OnCp { get; set; }
+    /// <summary>2026-11-05: id del casillero del domicilio. Ahí se engancha el buscador estilo
+    /// Google Maps (sugerencias mientras escribís).</summary>
+    [Parameter] public string? BuscadorId { get; set; }
+    /// <summary>Eligieron una sugerencia del buscador: calle y número, localidad/barrio, CP y provincia.</summary>
+    [Parameter] public EventCallback<LugarGoogle> OnLugar { get; set; }
+
+    public record LugarGoogle(string Calle, string Localidad, string Cp, string Provincia);
 
     private readonly string mapaId = "cm-" + Guid.NewGuid().ToString("N")[..8];
     private DotNetObjectReference<UbicacionClienteMapa>? yo;
@@ -55,6 +62,7 @@
     private string? textoGoogle;
     private bool buscando, noEncontrada, listo;
     private bool pinAutomatico;   // el pin lo puso la búsqueda (no lo tocó nadie): sigue a la dirección
+    private bool ignorarProximaConsulta;  // la dirección la escribió el buscador: el pin ya está puesto
     private CancellationTokenSource? espera;
 
     protected override void OnInitialized() => ultimaConsulta = Limpia(Consulta);
@@ -65,7 +73,7 @@
         yo = DotNetObjectReference.Create(this);
         try
         {
-            await JS.InvokeVoidAsync("clienteMapa.init", mapaId, FotoId, yo, Lat, Lng);
+            await JS.InvokeVoidAsync("clienteMapa.init", mapaId, FotoId, yo, Lat, Lng, BuscadorId);
             listo = true;
         }
         catch { }
@@ -76,6 +84,7 @@
         var c = Limpia(Consulta);
         if (c == ultimaConsulta) return;
         ultimaConsulta = c;
+        if (ignorarProximaConsulta) { ignorarProximaConsulta = false; espera?.Cancel(); pendiente = null; return; }
         // Espera a que termine de escribir (no busca letra por letra: cada búsqueda es una consulta a Google).
         espera?.Cancel();
         if (c is null) { pendiente = null; return; }
@@ -132,6 +141,21 @@
         await Avisar(la, lo);
         StateHasChanged();
         try { var d = await Api.DireccionDePuntoAsync(la, lo); textoGoogle = SinPais(d); await AvisarCp(d); } catch { }
+        StateHasChanged();
+    }
+
+    /// <summary>2026-11-05: eligieron una sugerencia del buscador. El JS ya movió el pin; acá se
+    /// guarda la ubicación y se le pasan los datos a la ficha. La dirección nueva que escribe la
+    /// ficha no dispara otra búsqueda (el pin ya está donde eligieron).</summary>
+    [JSInvokable]
+    public async Task LugarElegido(string calle, string localidad, string cp, string provincia, double lat, double lng, string texto)
+    {
+        var la = Math.Round((decimal)lat, 7); var lo = Math.Round((decimal)lng, 7);
+        espera?.Cancel();
+        noEncontrada = false; pendiente = null; textoGoogle = string.IsNullOrWhiteSpace(texto) ? null : texto;
+        pinAutomatico = true; ignorarProximaConsulta = true;
+        await Avisar(la, lo);
+        await OnLugar.InvokeAsync(new LugarGoogle(calle ?? "", localidad ?? "", cp ?? "", provincia ?? ""));
         StateHasChanged();
     }
 

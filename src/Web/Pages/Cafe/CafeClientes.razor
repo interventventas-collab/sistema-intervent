@@ -442,8 +442,10 @@
                                            title="Abrir el pin de este domicilio en Google Maps">🗺 Ver en Maps</a>
                                     }
                                 </div>
-                                <input class="form-input" @bind="formDomicilioEntrega" placeholder="Calle y número (si difiere del fiscal)" />
-                                <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal. Si entrega en más de un lugar, sumá domicilios alternativos abajo.</p>
+                                @* 2026-11-05: buscador estilo Google Maps (cliente-mapa.js engancha Places a este id). *@
+                                <input id="cm-buscador-domicilio" class="form-input" @bind="formDomicilioEntrega" autocomplete="off"
+                                       placeholder="Escribí calle y número o el nombre del lugar" />
+                                <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Mientras escribís te sugiere direcciones como Google Maps: al elegir una se completan solos barrio, CP, provincia y el pin. El piso va en su casillero. Si está vacío, se usa la dirección fiscal.</p>
                             </div>
                             <div style="display: flex; gap: 0.6rem;">
                                 <div class="form-group" style="flex: 1 1 auto; min-width: 0;">
@@ -472,9 +474,15 @@
                                 <label class="form-label">Provincia</label>
                                 <input class="form-input" list="datalist-provincias" @bind="formProvinciaEntrega" placeholder="Ej: Buenos Aires" />
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Entre calles</label>
-                                <input class="form-input" @bind="formEntreCalles" placeholder="Ej: entre Larroque y Beruti" />
+                            <div style="display: flex; gap: 0.6rem;">
+                                <div class="form-group" style="flex: 0 0 130px;">
+                                    <label class="form-label">Piso / Depto</label>
+                                    <input class="form-input" @bind="formPisoDeptoEntrega" maxlength="60" placeholder="Ej: 5º I" />
+                                </div>
+                                <div class="form-group" style="flex: 1 1 auto; min-width: 0;">
+                                    <label class="form-label">Entre calles</label>
+                                    <input class="form-input" @bind="formEntreCalles" placeholder="Ej: entre Larroque y Beruti" />
+                                </div>
                             </div>
                             <div class="cm-foto" id="cm-foto-cliente"></div>
                             <div class="cm-link">
@@ -497,7 +505,8 @@
                         <div class="cm-col">
                             <UbicacionClienteMapa @ref="mapaCliente" @key="mapaKey" Consulta="@ConsultaEntrega"
                                                   Lat="formMapeoLat" Lng="formMapeoLng" FotoId="cm-foto-cliente"
-                                                  OnUbicacion="CambioUbicacion" OnCp="CpDeGoogle" />
+                                                  OnUbicacion="CambioUbicacion" OnCp="CpDeGoogle"
+                                                  BuscadorId="cm-buscador-domicilio" OnLugar="LugarDeGoogle" />
                         </div>
                     </div>
                     @* ─── 2026-07-30: Domicilios de entrega alternativos (se cargan por modal) ─── *@
@@ -1692,6 +1701,23 @@
     }
     private bool cpEntregaAMano;
 
+    /// <summary>2026-11-05: eligieron una sugerencia del buscador de domicilio. Completa calle y
+    /// número, barrio/localidad (de la lista oficial si coincide), provincia y CP. El pin ya lo
+    /// movió el mapa.</summary>
+    private void LugarDeGoogle(UbicacionClienteMapa.LugarGoogle l)
+    {
+        if (!string.IsNullOrWhiteSpace(l.Calle)) formDomicilioEntrega = l.Calle.Trim();
+        var prov = l.Provincia?.Trim() ?? "";
+        if (System.Text.RegularExpressions.Regex.IsMatch(prov, "Aut[oó]noma", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            prov = LocalidadesService.Caba;
+        else if (prov.StartsWith("Provincia de ", StringComparison.OrdinalIgnoreCase)) prov = prov[13..];  // Google: "Provincia de Buenos Aires"
+        var op = string.IsNullOrWhiteSpace(l.Localidad) ? null : Localidades.Exacta(l.Localidad, prov == "" ? null : prov);
+        if (op is not null) ElegirLocalidadEntrega(op);
+        else if (!string.IsNullOrWhiteSpace(l.Localidad)) formLocalidadEntrega = l.Localidad.Trim();
+        if (prov != "") formProvinciaEntrega = prov;
+        if (!string.IsNullOrWhiteSpace(l.Cp)) { formCpEntrega = l.Cp.Trim(); cpEntregaAMano = false; cpEntregaOpciones = new(); }
+    }
+
     private async Task UsarLinkPegado(string? url)
     {
         linkPegado = (url ?? "").Trim();
@@ -1710,6 +1736,7 @@
     private List<LocalidadesService.Opcion> cpEntregaOpciones = new();
     private string formLocalidadEntrega = "";   // 2026-08-31: la localidad del domicilio de ENTREGA
     private string formTelefono2 = "", formEntreCalles = "";
+    private string formPisoDeptoEntrega = "";   // 2026-11-05: piso / depto, aparte del domicilio
     private int? formCodigoInterno;
     private string formMapeoLink = "";
     private decimal? formMapeoLat;
@@ -2116,7 +2143,7 @@
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
         formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = ""; formLocalidadEntrega = "";
         formCpEntrega = ""; formProvinciaEntrega = ""; cpEntregaOpciones = new(); linkPegado = ""; mapaKey++; cpEntregaAMano = false;
-        formTelefono2 = ""; formEntreCalles = "";
+        formTelefono2 = ""; formEntreCalles = ""; formPisoDeptoEntrega = "";
         formLocalidad = ""; formCiudad = ""; formCp = ""; formCondicionIvaDefault = "";
         formCodigoInterno = null; formMapeoLink = "";
         formMapeoLat = null; formMapeoLng = null;
@@ -2142,6 +2169,7 @@
         formLocalidadEntrega = c.LocalidadEntrega ?? "";
         formCpEntrega = c.CpEntrega ?? ""; formProvinciaEntrega = c.ProvinciaEntrega ?? ""; cpEntregaOpciones = new(); linkPegado = ""; mapaKey++; cpEntregaAMano = formCpEntrega != "";
         formTelefono2 = c.Telefono2 ?? ""; formEntreCalles = c.EntreCalles ?? "";
+        formPisoDeptoEntrega = c.PisoDeptoEntrega ?? "";
         formComentariosComprobante = c.ComentariosComprobante ?? "";
         formLocalidad = c.Localidad ?? ""; formCiudad = c.Ciudad ?? "";
         formCp = c.Cp ?? ""; formCondicionIvaDefault = c.CondicionIvaDefault ?? "";
@@ -2844,7 +2872,7 @@
             ("CUIT", T(formCuit)),
             ("Condición IVA", iva),
             ("Domicilio fiscal", string.Join(" · ", new[] { T(formDireccion), T(formLocalidad), T(formCiudad), T(formCp) }.Where(x => x != ""))),
-            ("Dirección de entrega", string.Join(" · ", new[] { T(formDomicilioEntrega), T(formLocalidadEntrega) }.Where(x => x != ""))),
+            ("Dirección de entrega", string.Join(" · ", new[] { T(formDomicilioEntrega), T(formPisoDeptoEntrega), T(formLocalidadEntrega) }.Where(x => x != ""))),
             ("Entre calles", T(formEntreCalles)),
             ("Link de mapa", T(formMapeoLink)),
             ("Comprador MeLi", T(formMeliNickname)),
@@ -2899,6 +2927,7 @@
                     Cuit = formCuit, Telefono = formTelefono, Telefono2 = formTelefono2, Email = formEmail,
                     Direccion = formDireccion, EntreCalles = formEntreCalles, DomicilioEntrega = formDomicilioEntrega,
                     LocalidadEntrega = formLocalidadEntrega, CpEntrega = formCpEntrega, ProvinciaEntrega = formProvinciaEntrega,
+                    PisoDeptoEntrega = formPisoDeptoEntrega,
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
@@ -2928,6 +2957,7 @@
                     Cuit = formCuit, Telefono = formTelefono, Telefono2 = formTelefono2, Email = formEmail,
                     Direccion = formDireccion, EntreCalles = formEntreCalles, DomicilioEntrega = formDomicilioEntrega,
                     LocalidadEntrega = formLocalidadEntrega, CpEntrega = formCpEntrega, ProvinciaEntrega = formProvinciaEntrega,
+                    PisoDeptoEntrega = formPisoDeptoEntrega,
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,

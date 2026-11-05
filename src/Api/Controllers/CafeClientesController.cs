@@ -45,7 +45,7 @@ public class CafeClientesController : ControllerBase
         c.EnviarSiempreEmail, c.EnviarSiempreWhatsapp,
         c.LocalidadEntrega,
         c.ComprobantePreferido,
-        c.CpEntrega, c.ProvinciaEntrega);
+        c.CpEntrega, c.ProvinciaEntrega, c.PisoDeptoEntrega);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -229,6 +229,7 @@ public class CafeClientesController : ControllerBase
             LocalidadEntrega = Norm(req.LocalidadEntrega),
             CpEntrega = Norm(req.CpEntrega),
             ProvinciaEntrega = Norm(req.ProvinciaEntrega),
+            PisoDeptoEntrega = Norm(req.PisoDeptoEntrega),
             Notas = Norm(req.Notas),
             ComentariosComprobante = Norm(req.ComentariosComprobante),
             MapeoLink = Norm(req.MapeoLink),
@@ -387,6 +388,7 @@ public class CafeClientesController : ControllerBase
         if (req.LocalidadEntrega is not null) c.LocalidadEntrega = Norm(req.LocalidadEntrega);
         if (req.CpEntrega is not null) c.CpEntrega = Norm(req.CpEntrega);
         if (req.ProvinciaEntrega is not null) c.ProvinciaEntrega = Norm(req.ProvinciaEntrega);
+        if (req.PisoDeptoEntrega is not null) c.PisoDeptoEntrega = Norm(req.PisoDeptoEntrega);
         if (req.Notas is not null) c.Notas = Norm(req.Notas);
         if (req.ComentariosComprobante is not null) c.ComentariosComprobante = Norm(req.ComentariosComprobante);
         if (req.IsActive.HasValue) c.IsActive = req.IsActive.Value;
