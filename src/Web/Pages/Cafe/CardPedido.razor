@@ -310,7 +310,17 @@
                             @if (it.ProductoId is int pidV && Vencimientos is not null && Vencimientos.TryGetValue(pidV, out var vzc)
                                  && vzc.SacarPara(VencResumenDto.UnidadesDe(it.Formato, it.Cantidad, it.UxB, it.Categoria == "CAFE")) is string sacar)
                             {
-                                <div style="font-size:0.8rem; margin-top:0.2rem; color:#111827;">📅 <b>@sacar</b></div>
+                                <div style="font-size:0.8rem; margin-top:0.2rem; color:#111827;">📅 <b>@sacar</b>
+                                    <a href="javascript:void(0)" style="font-size:0.74rem; color:#7c3aed; margin-left:0.3rem;" @onclick="() => AbrirVenc(pidV, it.ProductoNombre)">@(vzc.SinVencimiento > 0 ? "cargar el resto" : "cambiar")</a>
+                                </div>
+                            }
+                            else if (it.ProductoId is int pidN && Vencimientos is not null)
+                            {
+                                @* 2026-11-05: sin fecha cargada → botón que abre la ventanita, sin salir del pedido. *@
+                                <button type="button" @onclick="() => AbrirVenc(pidN, it.ProductoNombre)"
+                                        style="margin-top:0.3rem; font-size:0.76rem; font-weight:700; color:#7c3aed; border:1.5px solid #c4b5fd; background:#f5f3ff; border-radius:7px; padding:0.2rem 0.55rem; cursor:pointer;">
+                                    📅 Cargar vencimiento
+                                </button>
                             }
                         </div>
                         @{
@@ -422,6 +432,11 @@
     </div>
 }
 
+@if (vencProductoId is int vpid)
+{
+    <CargarVencimientoModal ProductoId="vpid" Nombre="@vencNombre" OnCerrar="CerrarVenc" />
+}
+
 @code {
     [Parameter, EditorRequired] public CafePreparacionVentaDto Venta { get; set; } = null!;
     [Parameter] public EventCallback OnAvanzar { get; set; }
@@ -432,6 +447,13 @@
     [Parameter] public bool SelectedForPrint { get; set; }
     /// <summary>2026-11-04: vencimientos por ProductoId (solo los que tienen fechas). Lo carga CafePreparacion.</summary>
     [Parameter] public Dictionary<int, VencResumenDto>? Vencimientos { get; set; }
+    /// <summary>2026-11-05: se cargó un vencimiento desde la ventanita → el padre recarga los vencimientos.</summary>
+    [Parameter] public EventCallback OnVencimientosCambio { get; set; }
+
+    private int? vencProductoId;
+    private string? vencNombre;
+    private void AbrirVenc(int productoId, string? nombre) { vencProductoId = productoId; vencNombre = nombre; }
+    private async Task CerrarVenc() { vencProductoId = null; await OnVencimientosCambio.InvokeAsync(); }
 
     // Por default la composicion esta colapsada (el armador la despliega cuando va a armar ese pedido).
     private bool mostrarComposicion = false;

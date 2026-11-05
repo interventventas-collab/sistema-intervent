@@ -44,52 +44,36 @@
                     <button type="button" class="btn-icon" title="Borrar" @onclick="() => Borrar(fl.Id)">🗑</button>
                 </div>
             }
-            <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
-                <input class="form-input" type="number" min="0" step="@(dto.EsCafe ? "0.1" : "1")" placeholder="@(dto.EsCafe ? "kg" : "cant.")" style="width:90px;" @bind="cantidad" />
-                <input class="form-input" type="date" style="width:160px;" @bind="fecha" />
-                <button type="button" class="btn btn-primary btn-sm" disabled="@guardando" @onclick="Asignar">+ Asignar vencimiento</button>
+            <div style="margin-top:0.35rem;">
+                <button type="button" class="btn btn-primary btn-sm" @onclick="() => modal = true">📅 + Asignar vencimiento</button>
             </div>
             <div style="font-size:0.75rem; color:#6b7280; margin-top:0.3rem;">El stock no cambia: solo le ponés fecha. Se saca primero el que vence antes.</div>
         </div>
     }
 </div>
 
+@if (modal)
+{
+    <CargarVencimientoModal ProductoId="ProductoId" Nombre="@dto?.Nombre" OnGuardado="r => dto = r" OnCerrar="() => modal = false" />
+}
+
 @code {
     [Parameter] public int ProductoId { get; set; }
 
     private VencProductoDto? dto;
     private bool abierto;
-    private decimal? cantidad;
-    private DateTime? fecha;
-    private bool guardando;
+    private bool modal;
     private int cargadoDe;
 
     protected override async Task OnParametersSetAsync()
     {
         if (ProductoId == cargadoDe) return;
-        cargadoDe = ProductoId; dto = null; abierto = false; cantidad = null; fecha = null;
-        try { dto = await Api.GetVencimientosProductoAsync(ProductoId); Sugerir(); }
+        cargadoDe = ProductoId; dto = null; abierto = false; modal = false;
+        try { dto = await Api.GetVencimientosProductoAsync(ProductoId); }
         catch { dto = new VencProductoDto(); }
     }
 
-    private void Sugerir() { if (cantidad is null && dto is { SinVencimiento: > 0 }) cantidad = dto.SinVencimiento / 1.000000000000000000000000000000000m; }
-
     private string Cant(decimal v) => dto?.EsCafe == true ? $"{v:0.#} kg" : v.ToString("N0");
-
-    private async Task Asignar()
-    {
-        if (cantidad is not > 0) { ToastService.Error("Poné cuántos vencen en esa fecha"); return; }
-        if (fecha is null) { ToastService.Error("Poné la fecha de vencimiento"); return; }
-        guardando = true;
-        try
-        {
-            dto = await Api.AsignarVencimientoAsync(ProductoId, cantidad.Value, fecha.Value) ?? dto;
-            cantidad = null; fecha = null; Sugerir();
-            ToastService.Success("Vencimiento asignado");
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-        finally { guardando = false; }
-    }
 
     private async Task Borrar(int id)
     {

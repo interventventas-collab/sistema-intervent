@@ -840,7 +840,7 @@
                     <div class="drive-pedidos-grid">
                         @foreach (var v in ParaArmarFiltrados)
                         {
-                            <CardPedido Venta="v" Vencimientos="vencsPrep"
+                            <CardPedido @key="v.Id" Venta="v" Vencimientos="vencsPrep" OnVencimientosCambio="RecargarVencs"
                                         SelectedForPrint="seleccionadosParaImprimir.Contains(v.Id)"
                                         OnAvanzar="() => Avanzar(v)"
                                         OnQuitarDelFlujo="() => QuitarDelFlujo(v)"
@@ -1278,6 +1278,12 @@
         refreshTimer = new System.Threading.Timer(async _ => await InvokeAsync(Cargar), null, 10000, 10000);
     }
 
+    /// <summary>2026-11-05: después de cargar un vencimiento desde la ventanita del pedido.</summary>
+    private async Task RecargarVencs()
+    {
+        try { vencsPrep = (await Api.GetVencimientosResumenTodosAsync() ?? new()).ToDictionary(x => x.ProductoId); } catch { }
+        StateHasChanged();
+    }
     private Dictionary<int, VencResumenDto> vencsPrep = new();
 
     private async Task Cargar()

@@ -112,7 +112,6 @@
     {
         @foreach (var p in productos.Where(x => estado == "TODOS" || (estado == "HECHOS") == Hecho(x)))
         {
-            var f = Form(p.ProductoId);
             var hecho = Hecho(p);
             var c = Conteo(p.ProductoId);
             var fotoUrl = FotoUrl(p);
@@ -196,33 +195,29 @@
                     var term = fl.Quedan <= 0;
                     var vencido = fl.FechaVence.Date < Hoy && !term;
                     <div class="vc-fila @(term ? "term" : "")">
-                        @if (editandoId == fl.Id)
-                        {
-                            <input class="cant" type="number" min="0" step="@(p.EsCafe ? "0.1" : "1")" @bind="editCant" style="width:80px;font-size:0.9rem;padding:0.3rem;border:1px solid #d1d5db;border-radius:6px;" />
-                            <input type="date" @bind="editFecha" style="font-size:0.9rem;padding:0.3rem;border:1px solid #d1d5db;border-radius:6px;" />
-                            <button class="vc-btn" @onclick="() => GuardarEdicion(p, fl)">Guardar</button>
-                            <button class="vc-ic" @onclick="() => editandoId = null">✕</button>
-                        }
-                        else
-                        {
+                        @{
                             <span class="f">
                                 <b>@Cant(fl.Cantidad, p.EsCafe)</b> · vence <b class="@(vencido ? "vc-venc" : "")">@fl.FechaVence.ToString("dd/MM/yyyy")</b>@(vencido ? " (vencido)" : "")
                                 <span style="color:#6b7280;"> · @(term ? "terminado" : $"quedan {Cant(fl.Quedan, p.EsCafe)}")@(!term && fl.FechaVence == p.ProximoVence ? " · sacar primero" : "")</span>
                             </span>
-                            <button class="vc-ic" title="Corregir" @onclick="() => EmpezarEdicion(fl)">✏️</button>
+                            <button class="vc-ic" title="Corregir" @onclick="() => AbrirVenc(p, fl)">✏️</button>
                             <button class="vc-ic" title="Borrar" @onclick="() => Borrar(p, fl)">🗑</button>
                         }
                     </div>
                 }
                 <div class="vc-form">
-                    <input class="cant" type="number" min="0" step="@(p.EsCafe ? "0.1" : "1")" placeholder="@(p.EsCafe ? "kg" : "cant.")" @bind="f.Cantidad" />
-                    <input type="date" @bind="f.Fecha" />
-                    <button class="vc-btn" disabled="@(f.Guardando)" @onclick="() => Asignar(p)">+ Asignar vencimiento</button>
+                    <button class="vc-btn" @onclick="() => AbrirVenc(p, null)">📅 + Asignar vencimiento</button>
                 </div>
             </div>
         }
     }
 </div>
+
+@if (vencAbierto is not null)
+{
+    <CargarVencimientoModal ProductoId="vencAbierto.ProductoId" Nombre="@vencAbierto.Nombre" FotoUrl="@FotoUrl(vencAbierto)" Editar="vencEditar"
+                            OnGuardado="r => Reemplazar(r)" OnCerrar="() => { vencAbierto = null; vencEditar = null; }" />
+}
 
 @if (fotoAbierta is not null)
 {
@@ -232,7 +227,6 @@
 }
 
 @code {
-    private class FormFila { public decimal? Cantidad; public DateTime? Fecha; public bool Guardando; }
 
     private string busqueda = "";
     private string estado = "TODOS";          // TODOS | PEND | HECHOS
@@ -240,10 +234,10 @@
     private List<string>? marcas;
     private bool cargando;
     private List<VencProductoDto>? productos;
-    private readonly Dictionary<int, FormFila> forms = new();
-    private int? editandoId;
-    private decimal? editCant;
-    private DateTime? editFecha;
+    // 2026-11-05: la carga/corrección de fechas se hace en la ventanita (fecha con botones año → mes → día)
+    private VencProductoDto? vencAbierto;
+    private VencFilaDto? vencEditar;
+    private void AbrirVenc(VencProductoDto p, VencFilaDto? fl) { vencAbierto = p; vencEditar = fl; }
     private CancellationTokenSource? cts;
     private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;   // hora argentina
 
@@ -315,12 +309,6 @@
     private async Task CambiarEstado(string e) { estado = e; await Buscar(); }
     private async Task CambiarMarca(string? m) { marca = m; await Buscar(); }
 
-    private FormFila Form(int productoId)
-    {
-        if (!forms.TryGetValue(productoId, out var f)) forms[productoId] = f = new FormFila();
-        return f;
-    }
-
     /// <summary>4.000 → 4 (sin ceros de más, para que no parezca cuatro mil).</summary>
     private static decimal Limpio(decimal v) => v / 1.000000000000000000000000000000000m;
 
@@ -339,12 +327,6 @@
             var r = await Api.GetVencimientosCargaAsync(busqueda, true, estado == "HECHOS", marca);
             if (tk.IsCancellationRequested) return;
             productos = r ?? new();
-            // la cantidad sugerida = lo que falta asignar
-            foreach (var p in productos)
-            {
-                var f = Form(p.ProductoId);
-                if (f.Cantidad is null && p.SinVencimiento > 0) f.Cantidad = Limpio(p.SinVencimiento);
-            }
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
         finally { if (!tk.IsCancellationRequested) { cargando = false; StateHasChanged(); } }
@@ -355,40 +337,6 @@
         if (nuevo is null || productos is null) return;
         var i = productos.FindIndex(x => x.ProductoId == nuevo.ProductoId);
         if (i >= 0) productos[i] = nuevo;
-    }
-
-    private async Task Asignar(VencProductoDto p)
-    {
-        var f = Form(p.ProductoId);
-        if (f.Cantidad is not > 0) { ToastService.Error("Poné cuántos vencen en esa fecha"); return; }
-        if (f.Fecha is null) { ToastService.Error("Poné la fecha de vencimiento"); return; }
-        f.Guardando = true;
-        try
-        {
-            var r = await Api.AsignarVencimientoAsync(p.ProductoId, f.Cantidad.Value, f.Fecha.Value);
-            Reemplazar(r);
-            f.Cantidad = r is { SinVencimiento: > 0 } ? Limpio(r.SinVencimiento) : null;
-            f.Fecha = null;
-            ToastService.Success("Vencimiento asignado");
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-        finally { f.Guardando = false; }
-    }
-
-    private void EmpezarEdicion(VencFilaDto fl)
-    {
-        editandoId = fl.Id; editCant = Limpio(fl.Cantidad); editFecha = fl.FechaVence;
-    }
-
-    private async Task GuardarEdicion(VencProductoDto p, VencFilaDto fl)
-    {
-        if (editCant is not > 0 || editFecha is null) { ToastService.Error("Completá cantidad y fecha"); return; }
-        try
-        {
-            Reemplazar(await Api.EditarVencimientoAsync(fl.Id, editCant.Value, editFecha.Value));
-            editandoId = null;
-        }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
     private async Task Borrar(VencProductoDto p, VencFilaDto fl)

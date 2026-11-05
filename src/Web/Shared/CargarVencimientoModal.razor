@@ -1,0 +1,132 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* 2026-11-05: ventanita para cargar (o corregir) un vencimiento sin salir de la pantalla.
+   Cantidad (viene puesta con lo que no tiene fecha) + fecha con botones año → mes → día + Guardar.
+   Si después de guardar sigue quedando stock sin fecha (dos lotes), queda abierta para la otra fecha.
+   Se usa en Imprimir pedidos, Asignar vencimientos y la ficha del producto. *@
+<div @onclick="Cerrar"
+     style="position:fixed; inset:0; background:rgba(17,24,39,0.5); display:flex; align-items:center; justify-content:center; z-index:9999; padding:0.75rem;">
+    <div @onclick:stopPropagation="true"
+         style="background:#fff; border-radius:14px; padding:1rem; width:min(94vw,390px); max-height:94vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+        <div style="display:flex; gap:0.6rem; align-items:center;">
+            @if (FotoUrl is not null)
+            {
+                <img src="@FotoUrl" alt="" style="width:46px; height:46px; object-fit:contain; border:1px solid #e5e7eb; border-radius:8px; flex-shrink:0; background:#fff;" />
+            }
+            <div style="font-weight:800; font-size:0.86rem; line-height:1.25; color:#111827; flex:1;">
+                @if (!string.IsNullOrEmpty(dto?.Sku)) { <span style="font-family:monospace; color:#1d4ed8; margin-right:0.3rem;">@dto.Sku</span> }
+                @(dto?.Nombre ?? Nombre)
+            </div>
+            <button type="button" @onclick="Cerrar" title="Cerrar" aria-label="Cerrar"
+                    style="border:none; background:#f3f4f6; border-radius:8px; width:32px; height:32px; cursor:pointer; flex-shrink:0;">✕</button>
+        </div>
+
+        @if (dto is null)
+        {
+            <div style="padding:1.2rem 0; text-align:center; color:#6b7280;">Cargando…</div>
+        }
+        else
+        {
+            <div style="font-size:0.8rem; color:#6b7280; margin:0.6rem 0 0.2rem;">
+                Stock en sistema: <b style="color:#111827;">@Cant(dto.Stock)</b> · sin fecha: <b style="color:@(dto.SinVencimiento > 0 ? "#b45309" : "#15803d");">@Cant(dto.SinVencimiento)</b>
+            </div>
+            @if (editando is not null)
+            {
+                <div style="font-size:0.8rem; color:#7c3aed; font-weight:700; margin-top:0.3rem;">Corrigiendo: @Cant(editando.Cantidad) que vencen el @editando.FechaVence.ToString("dd/MM/yyyy")</div>
+            }
+            @if (aviso is not null)
+            {
+                <div style="font-size:0.8rem; background:#fffbeb; border:1px solid #fcd34d; color:#92400e; border-radius:8px; padding:0.4rem 0.55rem; margin-top:0.4rem;">@aviso</div>
+            }
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
+                <span style="font-size:0.72rem; color:#6b7280; font-weight:700; text-transform:uppercase; letter-spacing:.4px;">Cantidad</span>
+                <input type="number" min="0" step="@(dto.EsCafe ? "0.1" : "1")" @bind="cantidad" placeholder="@(dto.EsCafe ? "kg" : "cant.")"
+                       style="width:90px; font-size:1rem; padding:0.4rem 0.5rem; border:1.5px solid #d1d5db; border-radius:8px;" />
+                <span style="font-size:0.78rem; color:#6b7280;">@(dto.EsCafe ? "kg" : "unidades") que vencen en esa fecha</span>
+            </div>
+
+            <FechaBotones @bind-Value="fecha" />
+
+            <button type="button" disabled="@guardando" @onclick="Guardar"
+                    style="width:100%; margin-top:0.7rem; background:#7c3aed; color:#fff; border:none; border-radius:9px; padding:0.7rem; font-weight:800; font-size:0.95rem; cursor:pointer; opacity:@(guardando ? "0.6" : "1");">
+                💾 @(editando is not null ? "Guardar corrección" : "Guardar vencimiento")
+            </button>
+
+            @if (dto.Filas.Count > 0)
+            {
+                <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:0.45rem 0.6rem; margin-top:0.7rem; font-size:0.8rem;">
+                    <div style="font-size:0.68rem; color:#6b7280; font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin-bottom:0.2rem;">Ya cargado</div>
+                    @foreach (var fl in dto.Filas)
+                    {
+                        <div style="display:flex; justify-content:space-between; padding:0.1rem 0; @(fl.Quedan <= 0 ? "color:#9ca3af;" : "")">
+                            <span><b>@Cant(fl.Cantidad)</b> · vence <b>@fl.FechaVence.ToString("dd/MM/yyyy")</b></span>
+                            <span>@(fl.Quedan <= 0 ? "terminado" : $"quedan {Cant(fl.Quedan)}")</span>
+                        </div>
+                    }
+                </div>
+            }
+            <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.45rem;">El stock no cambia: solo le ponés fecha. Se saca primero el que vence antes.</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int ProductoId { get; set; }
+    [Parameter] public string? Nombre { get; set; }
+    [Parameter] public string? FotoUrl { get; set; }
+    /// <summary>Si viene, la ventanita corrige esa fecha en vez de agregar una nueva.</summary>
+    [Parameter] public VencFilaDto? Editar { get; set; }
+    /// <summary>Se llama después de cada guardado con el producto actualizado.</summary>
+    [Parameter] public EventCallback<VencProductoDto> OnGuardado { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private VencProductoDto? dto;
+    private VencFilaDto? editando;
+    private decimal? cantidad;
+    private DateTime? fecha;
+    private bool guardando;
+    private string? aviso;
+
+    protected override async Task OnInitializedAsync()
+    {
+        editando = Editar;
+        if (editando is not null) { cantidad = Limpio(editando.Cantidad); fecha = editando.FechaVence; }
+        try { dto = await Api.GetVencimientosProductoAsync(ProductoId) ?? new VencProductoDto { ProductoId = ProductoId, Nombre = Nombre ?? "" }; }
+        catch (Exception ex) { ToastService.Error(ex.Message); dto = new VencProductoDto { ProductoId = ProductoId, Nombre = Nombre ?? "" }; }
+        if (editando is null && dto.SinVencimiento > 0) cantidad = Limpio(dto.SinVencimiento);
+    }
+
+    /// <summary>4.000 → 4 (sin ceros de más).</summary>
+    private static decimal Limpio(decimal v) => v / 1.000000000000000000000000000000000m;
+    private string Cant(decimal v) => dto?.EsCafe == true ? $"{Limpio(v):0.###} kg" : Limpio(v).ToString("N0");
+
+    private async Task Guardar()
+    {
+        if (cantidad is not > 0) { ToastService.Error("Poné cuántos vencen en esa fecha"); return; }
+        if (fecha is null) { ToastService.Error("Elegí el año, el mes y el día"); return; }
+        guardando = true;
+        try
+        {
+            var r = editando is not null
+                ? await Api.EditarVencimientoAsync(editando.Id, cantidad.Value, fecha.Value)
+                : await Api.AsignarVencimientoAsync(ProductoId, cantidad.Value, fecha.Value);
+            if (r is null) return;
+            dto = r;
+            await OnGuardado.InvokeAsync(r);
+            ToastService.Success(editando is not null ? "Vencimiento corregido" : "Vencimiento cargado");
+            if (editando is null && r.SinVencimiento > 0)
+            {
+                // quedan unidades sin fecha (otro lote): queda abierta para cargar la otra fecha
+                aviso = $"Quedan {Cant(r.SinVencimiento)} sin fecha. Si son de otro lote, elegí la otra fecha y guardá; si no, cerrá.";
+                cantidad = Limpio(r.SinVencimiento); fecha = null;
+                return;
+            }
+            await OnCerrar.InvokeAsync();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private Task Cerrar() => OnCerrar.InvokeAsync();
+}
