@@ -203,13 +203,25 @@ public class CafeVencimientosController : ControllerBase
 
     // ─── GET ver qué nota le dejaría a una orden de MeLi (no manda nada) ───
     [HttpGet("nota-meli/{meliOrderId:long}")]
-    public async Task<IActionResult> NotaMeli(long meliOrderId)
+    public async Task<IActionResult> NotaMeli(long meliOrderId, [FromServices] MeliAccountService accSvc, [FromServices] IHttpClientFactory httpF)
     {
         var filas = await _db.MeliOrders.AsNoTracking().Where(o => o.MeliOrderId == meliOrderId).ToListAsync();
         if (filas.Count == 0) return NotFound(new { error = "Orden no encontrada" });
         filas = await MeliVencimientoNotasService.FilasDelPaqueteAsync(_db, filas, HttpContext.RequestAborted);
         var notas = await MeliVencimientoNotasService.TextosAsync(_db, filas);
-        var ganancia = await MeliVencimientoNotasService.GananciaTextoAsync(_db, filas);
+        MeliVencimientoNotasService.FlexEnvio? flex = null;
+        if (MeliVencimientoNotasService.EsFlex(filas))
+        {
+            var acc = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == filas[0].MeliAccountId);
+            var token = acc is null ? null : await accSvc.GetValidTokenAsync(acc);
+            if (token is not null)
+            {
+                var http = httpF.CreateClient();
+                http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                flex = await MeliVencimientoNotasService.FlexEnvioAsync(http, filas, HttpContext.RequestAborted);
+            }
+        }
+        var ganancia = await MeliVencimientoNotasService.GananciaTextoAsync(_db, filas, HttpContext.RequestAborted, flex);
         return Ok(new { notas, enviada = filas.Max(f => f.VencNoteSentAt), ganancia, gananciaEnviada = filas.Max(f => f.GananciaNoteSentAt) });
     }
 
