@@ -66,6 +66,9 @@ public class CafeMarcasController : ControllerBase
             Nombre = nombre,
             ProveedorId = req.ProveedorId.HasValue && req.ProveedorId.Value > 0 ? req.ProveedorId.Value : null,
             Notas = NullIfEmpty(req.Notas),
+            DescuentoProveedor = Recortar(req.DescuentoProveedor),
+            ComoRemarcamos = Recortar(req.ComoRemarcamos),
+            ReglaMeli = Recortar(req.ReglaMeli),
             MargenPctSobreCosto = req.MargenPctSobreCosto.HasValue && req.MargenPctSobreCosto.Value >= 0
                 ? Math.Round(req.MargenPctSobreCosto.Value, 2) : 100m,
             IsActive = true,
@@ -104,6 +107,9 @@ public class CafeMarcasController : ControllerBase
             m.ProveedorId = null;
         }
         if (req.Notas is not null) m.Notas = NullIfEmpty(req.Notas);
+        if (req.DescuentoProveedor is not null) m.DescuentoProveedor = Recortar(req.DescuentoProveedor);
+        if (req.ComoRemarcamos is not null) m.ComoRemarcamos = Recortar(req.ComoRemarcamos);
+        if (req.ReglaMeli is not null) m.ReglaMeli = Recortar(req.ReglaMeli);
         if (req.IsActive.HasValue) m.IsActive = req.IsActive.Value;
         if (req.BloqueaDescuento.HasValue) m.BloqueaDescuento = req.BloqueaDescuento.Value;
         if (req.MargenPctSobreCosto.HasValue)
@@ -158,7 +164,14 @@ public class CafeMarcasController : ControllerBase
         m.ProveedorId, m.ProveedorNav?.Nombre,
         m.Notas, m.IsActive, m.BloqueaDescuento, m.MargenPctSobreCosto,
         m.CreatedAt, m.UpdatedAt,
-        productosCount, oemsCount);
+        productosCount, oemsCount,
+        m.DescuentoProveedor, m.ComoRemarcamos, m.ReglaMeli);
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private static string? Recortar(string? s)
+    {
+        var t = NullIfEmpty(s);
+        return t is not null && t.Length > 200 ? t[..200] : t;
+    }
 }
