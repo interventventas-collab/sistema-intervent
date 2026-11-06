@@ -703,16 +703,6 @@
                 <NavGroup Label="⭐ Favoritos" Icon="@SvgIcons.Dashboard" FlyoutMode="true"
                           Highlight="true" DefaultExpanded="true"
                           HasActiveChild="@(IsActive("/cafe/ventas") || IsActive("/visitas") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/pedidos-whatsapp") || IsActive("/cafe/productos") || IsActive("/cafe/listas-precios") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/cafe/clientes") || IsActive("/mapeo") || IsActive("/cafe/clientes-mapeados") || IsActive("/documentacion"))">
-                    <NavItem Href="/cafe/ventas" Label="🛒 Ventas" Icon="@SvgIcons.ShoppingBag"
-                             IsActive="@IsActive("/cafe/ventas")" OnClick="@(() => NavigateTo("/cafe/ventas"))" />
-                    @* 2026-08-05: Visitas — recibo de visita / cambio con QR y firma *@
-                    <NavItem Href="/visitas" Label="📋 Visitas" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/visitas")" OnClick="@(() => NavigateTo("/visitas"))" />
-                    @if (HasPerm("cafe-tesoreria"))
-                    {
-                        <NavItem Href="/cafe/tesoreria/cobranzas" Label="📥 Cobranzas" Icon="@SvgIcons.ShoppingBag"
-                                 IsActive="@IsActive("/cafe/tesoreria/cobranzas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cobranzas"))" />
-                    }
                     @if (HasPerm("cafe-depositos"))
                     {
                         @* 2026-07-23: sector WhatsApp unificado (pedido Osmar) — chats y pedidos juntos,
@@ -728,24 +718,13 @@
                            horas. Ahora se entra por el SELECTOR DE LINEAS de la pantalla de WhatsApp,
                            que es donde uno la busca, y asi el menu no suma una cuarta entrada de
                            WhatsApp a las tres que ya tenia. *@
-                        @* Stock unificado: entra a Stock masivo, y desde la pantalla hay boton para abrir Stock movil. *@
-                        <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
-                                 IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
                         <NavItem Href="/cafe/historial-stock" Label="📊 Historial stock" Icon="@SvgIcons.Tag"
                                  IsActive="@IsActive("/cafe/historial-stock")" OnClick="@(() => NavigateTo("/cafe/historial-stock"))" />
                     }
-                    <NavItem Href="/cafe/clientes" Label="👤 Clientes" Icon="@SvgIcons.Users"
-                             IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
-                    <NavItem Href="/cafe/productos" Label="🏷 Productos" Icon="@SvgIcons.Package"
-                             IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
-                    <NavItem Href="/cafe/listas-precios" Label="💲 Listas de precios" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/cafe/listas-precios")" OnClick="@(() => NavigateTo("/cafe/listas-precios"))" />
                     <NavItem Href="/cafe/listas-precios-custom" Label="📋 Listas personalizadas" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/listas-precios-custom")" OnClick="@(() => NavigateTo("/cafe/listas-precios-custom"))" />
                     <NavItem Href="/mapeo?full=1" IsExternal="true" Label="🗺 Mapa de clientes" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/mapeo")" />
-                    <NavItem Href="/cafe/clientes-mapeados" Label="👥 Clientes Mapeados" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/cafe/clientes-mapeados")" OnClick="@(() => NavigateTo("/cafe/clientes-mapeados"))" />
                     <NavItem Href="/documentacion" Label="📑 Documentación" Icon="@SvgIcons.Folder"
                              IsActive="@IsActive("/documentacion")" OnClick="@(() => NavigateTo("/documentacion"))" />
                 </NavGroup>
@@ -758,15 +737,11 @@
                              IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
                     @if (HasPerm("cafe-tesoreria"))
                     {
-                        <NavItem Href="/cafe/clientes/panel-deudas" Label="💰 ¿Quién me debe?" Icon="@SvgIcons.Database"
-                                 IsActive="@(IsActive("/cafe/clientes/panel-deudas") || IsActive("/cafe/saldos-pendientes"))" OnClick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))" />
                         <NavItem Href="/cafe/tesoreria/resumen" Label="📊 Resumen Tesorería" Icon="@SvgIcons.Dashboard"
                                  IsActive="@IsActive("/cafe/tesoreria/resumen")" OnClick="@(() => NavigateTo("/cafe/tesoreria/resumen"))" />
                     }
                     <NavItem Href="/cafe/preventas" Label="🛒 Pedidos de Gaby" Icon="@SvgIcons.ShoppingBag"
                              IsActive="@IsActive("/cafe/preventas")" OnClick="@(() => NavigateTo("/cafe/preventas"))" />
-                    <NavItem Href="/cafe/preparacion" Label="📦 Preparación pedidos" Icon="@SvgIcons.Package"
-                             IsActive="@IsActive("/cafe/preparacion")" OnClick="@(() => NavigateTo("/cafe/preparacion"))" />
                     <NavItem Href="/cafe/consultas" Label="🔍 Consultas" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/consultas")" OnClick="@(() => NavigateTo("/cafe/consultas"))" />
                 </NavGroup>
@@ -776,10 +751,6 @@
                           HasActiveChild="@(IsActive("/cafe/catalogo") || IsActive("/cafe/fichas-tecnicas") || IsActive("/cafe/productos") || IsActive("/cafe/fotos-chroma") || IsActive("/cafe/skus-meli") || IsActive("/cafe/combos") || IsActive("/cafe/kits") || IsActive("/cafe/servicios") || IsActive("/cafe/oems") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios"))">
                     <NavItem Href="/cafe/catalogo" Label="📦 Todos los códigos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/cafe/catalogo")" OnClick="@(() => NavigateTo("/cafe/catalogo"))" />
-                    <NavItem Href="/cafe/productos" Label="Productos" Icon="@SvgIcons.Package"
-                             IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
-                    <NavItem Href="/cafe/fichas-tecnicas" Label="📄 Fichas técnicas" Icon="@SvgIcons.Package"
-                             IsActive="@IsActive("/cafe/fichas-tecnicas")" OnClick="@(() => NavigateTo("/cafe/fichas-tecnicas"))" />
                     <NavItem Href="/cafe/fotos-chroma" Label="📷 Fotos fondo verde/azul" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/cafe/fotos-chroma")" OnClick="@(() => NavigateTo("/cafe/fotos-chroma"))" />
                     <NavItem Href="/cafe/skus-meli" Label="🛒 SKUs MeLi" Icon="@SvgIcons.Tag"
@@ -794,8 +765,6 @@
                              IsActive="@IsActive("/cafe/oems")" OnClick="@(() => NavigateTo("/cafe/oems"))" />
                     <NavItem Href="/cafe/marcas" Label="Marcas" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/marcas")" OnClick="@(() => NavigateTo("/cafe/marcas"))" />
-                    <NavItem Href="/cafe/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/cafe/listas-precios")" OnClick="@(() => NavigateTo("/cafe/listas-precios"))" />
                     <NavItem Href="/cafe/listas-precios-custom" Label="📋 Listas personalizadas" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/listas-precios-custom")" OnClick="@(() => NavigateTo("/cafe/listas-precios-custom"))" />
                     <NavItem Href="/cafe/packs-control" Label="📦 Precios de packs" Icon="@SvgIcons.Tag"
@@ -805,17 +774,8 @@
                 @* ───────── 3. CLIENTES Y PROVEEDORES ───────── *@
                 <NavGroup Label="👥 Clientes y proveedores" Icon="@SvgIcons.Users" FlyoutMode="true"
                           HasActiveChild="@(IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/proveedores") || IsActive("/cafe/proveedores-ctacte") || IsActive("/cafe/telefonos-clientes-meli"))">
-                    <NavItem Href="/cafe/clientes" Label="Clientes" Icon="@SvgIcons.Users"
-                             IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
                     <NavItem Href="/cafe/telefonos-clientes-meli" Label="📞 Teléfonos clientes MeLi" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/cafe/telefonos-clientes-meli")" OnClick="@(() => NavigateTo("/cafe/telefonos-clientes-meli"))" />
-                    <NavItem Href="/cafe/clientes-mapeados" Label="Clientes Mapeados" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/cafe/clientes-mapeados")" OnClick="@(() => NavigateTo("/cafe/clientes-mapeados"))" />
-                    <NavItem Href="/cafe/proveedores" Label="Proveedores" Icon="@SvgIcons.Users"
-                             IsActive="@IsActive("/cafe/proveedores")" OnClick="@(() => NavigateTo("/cafe/proveedores"))" />
-                    @* 17/09/2026: a quién le debemos (facturas de AFIP + cotizaciones). *@
-                    <NavItem Href="/cafe/proveedores-ctacte" Label="📒 Cuenta corriente proveedores" Icon="@SvgIcons.Users"
-                             IsActive="@IsActive("/cafe/proveedores-ctacte")" OnClick="@(() => NavigateTo("/cafe/proveedores-ctacte"))" />
                 </NavGroup>
 
                 @* ───────── 4. TESORERÍA (Cajas / Pagos / Cheques) ───────── *@
@@ -825,8 +785,6 @@
                               HasActiveChild="@(IsActive("/plata-que-entro") || IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/tesoreria/cheques-todos") || IsActive("/cafe/tesoreria/cheques-banco") || IsActive("/cafe/configuracion/bancos"))">
                         <NavItem Href="/cafe/tesoreria/cajas" Label="💰 Cajas" Icon="@SvgIcons.Database"
                                  IsActive="@IsActive("/cafe/tesoreria/cajas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cajas"))" />
-                        <NavItem Href="/cafe/tesoreria/pagos" Label="📤 Pagos" Icon="@SvgIcons.ShoppingBag"
-                                 IsActive="@IsActive("/cafe/tesoreria/pagos")" OnClick="@(() => NavigateTo("/cafe/tesoreria/pagos"))" />
                         @* 2026-09-25: lo mismo que la bolsita 💰, en grande: toda la plata que entró sin cargar. *@
                         <NavItem Href="/plata-que-entro" Label="💰 Plata que entró" Icon="@SvgIcons.Tag"
                                  IsActive="@IsActive("/plata-que-entro")" OnClick="@(() => NavigateTo("/plata-que-entro"))" />
@@ -857,8 +815,6 @@
                    porque el usuario penso que Favoritos era solo acceso directo y no encontraba Stock. *@
                 <NavGroup Label="📦 Stock y compras" Icon="@SvgIcons.Store" FlyoutMode="true"
                           HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/stock/reposicion") || IsActive("/stock/ranking") || IsActive("/cafe/ubicaciones") || IsActive("/deposito/tareas") || IsActive("/cafe/vencimientos") || IsActive("/stock/valuacion") || IsActive("/stock/ideal"))">
-                    <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
-                             IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
                     <NavItem Href="/cafe/historial-stock" Label="📊 Historial stock" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/historial-stock")" OnClick="@(() => NavigateTo("/cafe/historial-stock"))" />
                     @* 2026-06-15: pantalla nueva — listar reservas activas con detalle por orden MeLi *@
@@ -894,34 +850,9 @@
                     }
                 </NavGroup>
 
-                @* ───────── 6. EMPLEADOS (unificado Personal + Nóminas 2026-06-03) ─────────
-                   2026-06-06: Repartidores movido aca desde el grupo Tesoreria *@
-                <NavGroup Label="👥 Empleados" Icon="@SvgIcons.Users" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/cafe/repartidores") || IsActive("/nominas") || IsActive("/nominas/empleados") || IsActive("/nominas/vacaciones") || IsActive("/nominas/liquidaciones") || IsActive("/nominas/panel"))">
-                    <NavItem Href="/horas-extras" Label="🕐 Horario" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/horas-extras")" OnClick="@(() => NavigateTo("/horas-extras"))" />
-                    <NavItem Href="/viajes" Label="🚚 Viajes" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/viajes")" OnClick="@(() => NavigateTo("/viajes"))" />
-                    <NavItem Href="/cafe/repartidores" Label="🚚 Repartidores" Icon="@SvgIcons.Users"
-                             IsActive="@IsActive("/cafe/repartidores")" OnClick="@(() => NavigateTo("/cafe/repartidores"))" />
-                    @* 2026-06-08: Arqueo repartidor movido aca desde Tesorería (mas relacionado con repartidores) *@
-                    <NavItem Href="/cafe/arqueo-repartidor" Label="🧾 Arqueo repartidor" Icon="@SvgIcons.Database"
-                             IsActive="@IsActive("/cafe/arqueo-repartidor")" OnClick="@(() => NavigateTo("/cafe/arqueo-repartidor"))" />
-                    @if (HasPerm("nominas"))
-                    {
-                        <NavItem Href="/nominas/empleados" Label="👤 Ficha empleados" Icon="@SvgIcons.Users"
-                                 IsActive="@IsActive("/nominas/empleados")" OnClick="@(() => NavigateTo("/nominas/empleados"))" />
-                        @* 2026-11-02: almanaque de vacaciones *@
-                        <NavItem Href="/nominas/vacaciones" Label="🏖 Vacaciones" Icon="@SvgIcons.Tag"
-                                 IsActive="@IsActive("/nominas/vacaciones")" OnClick="@(() => NavigateTo("/nominas/vacaciones"))" />
-                        <NavItem Href="/nominas/panel" Label="💰 ¿Cuánto debo pagar?" Icon="@SvgIcons.Dashboard"
-                                 IsActive="@IsActive("/nominas/panel")" OnClick="@(() => NavigateTo("/nominas/panel"))" />
-                        <NavItem Href="/nominas/liquidaciones" Label="📑 Liquidaciones" Icon="@SvgIcons.Tag"
-                                 IsActive="@IsActive("/nominas/liquidaciones")" OnClick="@(() => NavigateTo("/nominas/liquidaciones"))" />
-                        <NavItem Href="/nominas" Label="📊 Inicio nóminas" Icon="@SvgIcons.Dashboard"
-                                 IsActive="@IsActive("/nominas")" OnClick="@(() => NavigateTo("/nominas"))" />
-                    }
-                </NavGroup>
+                @* 2026-11-06: el grupo Empleados salió del menú lateral: las 9 pantallas están en el
+                   desplegable "Empleados" de la barra de arriba (pedido del dueño: lo que está arriba
+                   no se repite al costado). *@
 
                 @* ───────── 7. CONFIG / TEMPORAL ───────── *@
                 <NavGroup Label="⚙️ Config / Temporal" Icon="@SvgIcons.Settings" FlyoutMode="true"
@@ -935,8 +866,6 @@
                     @* Migracion temporal: saldos del sistema viejo a matchear con clientes *@
                     <NavItem Href="/cafe/saldos" Label="💰 Saldos migración" Icon="@SvgIcons.Database"
                              IsActive="@IsActive("/cafe/saldos")" OnClick="@(() => NavigateTo("/cafe/saldos"))" />
-                    <NavItem Href="/cafe/maquinas" Label="☕ Máquinas (comodato/financ.)" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/cafe/maquinas")" OnClick="@(() => NavigateTo("/cafe/maquinas"))" />
                 </NavGroup>
             </NavGroup>
         }
@@ -1106,7 +1035,9 @@
                    Administracion sin condicion: la contadora externa NO lo veia (no es admin) y
                    la ruta quedaba fail-open (no estaba en RouteToMenuKey) => entraba cualquiera
                    escribiendo la direccion a mano. *@
-                @if (HasPerm("contadora"))
+                @* 2026-11-06: quien ve la barra de arriba (cafe/oficina) ya tiene Contadora en Compras y
+                   Bóveda arriba; acá queda solo para la contadora externa y otros sin barra. *@
+                @if (HasPerm("contadora") && !(HasPerm("cafe") || HasPerm("oficina")))
                 {
                     <NavItem Href="/contadora" Label="🧾 Contadora" Icon="@SvgIcons.Database"
                              IsActive="@IsActive("/contadora")" OnClick="@(() => NavigateTo("/contadora"))" />
@@ -1160,7 +1091,7 @@
                     <NavItem Href="/backups" Label="Backups" Icon="@SvgIcons.Backup"
                              IsActive="@IsActive("/backups")" OnClick="@(() => NavigateTo("/backups"))" />
                 }
-                @if (HasPerm("vault"))
+                @if (HasPerm("vault") && !(HasPerm("cafe") || HasPerm("oficina")))
                 {
                     <NavItem Href="/vault" Label="Bóveda" Icon="@SvgIcons.Shield"
                              IsActive="@IsActive("/vault")" OnClick="@(() => NavigateTo("/vault"))" />
@@ -2989,6 +2920,7 @@
         {
             Navigation.LocationChanged += OnLocationChanged;
             CheckRoutePermission();
+            AnotarVisita();
         }
     }
 
@@ -2998,12 +2930,25 @@
         // venga la navegacion de donde venga (menu lateral, boton Volver, atras del navegador).
         CerrarDropdownsTopbar();
         CheckRoutePermission();
+        AnotarVisita();
         _ = InvokeAsync(async () => await JS.InvokeVoidAsync("updatePageTitle", BrandSettings.BrandName));
         // 2026-06-15: cada vez que navegas, refrescamos el timestamp de "última actividad"
         // para que la sesión no se bloquee mientras estás trabajando.
         _ = InvokeAsync(async () => await Operator.TouchAsync());
         // 2026-06-30: re-render para que IsOnDashboard (que controla el AssistantWidget) se actualice
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    // 2026-11-06: cada pantalla que se abre queda anotada (Uso_Pantallas) para saber qué se usa
+    // de verdad y reordenar el menú. Invisible para el usuario; si falla no pasa nada.
+    private string? _ultimaVisitaAnotada;
+    private void AnotarVisita()
+    {
+        if (IsEmbedded) return;
+        var ruta = "/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('?')[0].Split('#')[0];
+        if (ruta == _ultimaVisitaAnotada) return; // cambio solo de filtros en la misma pantalla
+        _ultimaVisitaAnotada = ruta;
+        _ = Api.AnotarVisitaAsync(ruta, Operator.Current);
     }
 
     private void CheckRoutePermission()

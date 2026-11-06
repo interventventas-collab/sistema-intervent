@@ -8712,3 +8712,18 @@ GO
 IF COL_LENGTH('MeliOrders','GananciaNoteSentAt') IS NULL
     ALTER TABLE MeliOrders ADD GananciaNoteSentAt DATETIME2 NULL;
 GO
+
+-- 2026-11-06: anota qué pantalla abre cada uno (para reordenar el menú por uso real).
+-- La API también la crea sola si falta (UsoPantallasController), así que en PROD no hace falta a mano.
+IF OBJECT_ID('Uso_Pantallas') IS NULL
+BEGIN
+    CREATE TABLE Uso_Pantallas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Ruta NVARCHAR(200) NOT NULL,
+        Usuario NVARCHAR(100) NOT NULL CONSTRAINT DF_UsoPantallas_Usuario DEFAULT '',
+        Operador NVARCHAR(60) NOT NULL CONSTRAINT DF_UsoPantallas_Operador DEFAULT '',
+        CuandoAt DATETIME2 NOT NULL CONSTRAINT DF_UsoPantallas_Cuando DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_UsoPantallas_Cuando ON Uso_Pantallas(CuandoAt);
+END
+GO

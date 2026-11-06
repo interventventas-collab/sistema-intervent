@@ -7153,6 +7153,18 @@ public class ApiClient
     // paradas de días anteriores. Ahora cada parada tiene su día de reparto y los días pasados
     // SON el historial: no se borra nada.
 
+    // 2026-11-06: anota qué pantalla se abrió (para reordenar el menú por uso real).
+    // Nunca molesta: si falla, se ignora.
+    public async Task AnotarVisitaAsync(string ruta, string? operador)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            await _http.PostAsJsonAsync("/api/uso/visita", new { ruta, operador });
+        }
+        catch { }
+    }
+
     private async Task<T?> PostAsync<T>(string url, object data)
     {
         await SetAuthHeaderAsync();
