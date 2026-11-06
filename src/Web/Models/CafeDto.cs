@@ -2940,4 +2940,6 @@ public class CafeProductoUltimaVentaDto
     public int ProductoId { get; set; }
     public DateTime Fecha { get; set; }
     public string? Cliente { get; set; }
+    public string Canal { get; set; } = "SISTEMA"; // SISTEMA | MELI
+    public long? MeliOrderId { get; set; }
 }

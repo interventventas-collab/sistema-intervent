@@ -780,16 +780,54 @@ public class CafeProductosController : ControllerBase
     [HttpGet("ultimas-ventas")]
     public async Task<IActionResult> UltimasVentas()
     {
-        var filas = await _db.Database.SqlQueryRaw<CafeProductoUltimaVentaDto>(@"
-            SELECT ProductoId, Fecha, Cliente FROM (
-                SELECT vi.ProductoId AS ProductoId, v.Fecha AS Fecha,
+        // Ventas nuestras: la más nueva no anulada de cada producto (fecha de la venta + hora de carga).
+        var sistema = await _db.Database.SqlQueryRaw<UltimaVentaFila>(@"
+            SELECT ProductoId, Fecha, Cuando, Cliente, CAST(NULL AS bigint) AS MeliOrderId FROM (
+                SELECT vi.ProductoId AS ProductoId, v.Fecha AS Fecha, DATEADD(hour, -3, v.CreatedAt) AS Cuando,
                        COALESCE(v.ClienteNombreSnapshot, v.ClienteRazonSocialSnapshot) AS Cliente,
                        ROW_NUMBER() OVER (PARTITION BY vi.ProductoId ORDER BY v.Fecha DESC, v.Id DESC) AS rn
                 FROM Cafe_VentaItems vi
                 JOIN Cafe_Ventas v ON v.Id = vi.VentaId
                 WHERE vi.ProductoId IS NOT NULL AND v.Estado <> 'anulado'
             ) x WHERE rn = 1").ToListAsync();
-        return Ok(filas);
+
+        // MeLi: el último descuento de stock por venta de MeLi ("Orden MeLi #NNN · ...") y de ahí
+        // el comprador y la fecha de la orden (MeliOrders.DateCreated ya está en hora argentina).
+        var meli = await _db.Database.SqlQueryRaw<UltimaVentaFila>(@"
+            SELECT x.ProductoId AS ProductoId,
+                   CAST(COALESCE(o.DateCreated, DATEADD(hour, -3, x.CreatedAt)) AS date) AS Fecha,
+                   COALESCE(o.DateCreated, DATEADD(hour, -3, x.CreatedAt)) AS Cuando,
+                   o.BuyerNickname AS Cliente, x.OrderId AS MeliOrderId
+            FROM (
+                SELECT m.ProductoId, m.CreatedAt,
+                       TRY_CAST(SUBSTRING(m.Comentario, 13, CHARINDEX(' ', m.Comentario + ' ', 13) - 13) AS bigint) AS OrderId,
+                       ROW_NUMBER() OVER (PARTITION BY m.ProductoId ORDER BY m.Id DESC) AS rn
+                FROM Stock_Movimientos m
+                WHERE m.TipoMov LIKE 'VENTA_MELI%' AND m.Reverted = 0 AND m.Comentario LIKE 'Orden MeLi #%'
+            ) x
+            OUTER APPLY (SELECT TOP 1 mo.DateCreated, mo.BuyerNickname FROM MeliOrders mo WHERE mo.MeliOrderId = x.OrderId) o
+            WHERE x.rn = 1").ToListAsync();
+
+        var porProducto = sistema.ToDictionary(f => f.ProductoId);
+        foreach (var m in meli)
+        {
+            // Gana la más nueva. Las nuestras se comparan por la fecha de la venta y, si es el mismo día, por la hora.
+            if (!porProducto.TryGetValue(m.ProductoId, out var s0)
+                || m.Fecha.Date > s0.Fecha.Date
+                || (m.Fecha.Date == s0.Fecha.Date && m.Cuando > s0.Cuando))
+                porProducto[m.ProductoId] = m;
+        }
+        return Ok(porProducto.Values.Select(f => new CafeProductoUltimaVentaDto(
+            f.ProductoId, f.Fecha, f.Cliente, f.MeliOrderId is null ? "SISTEMA" : "MELI", f.MeliOrderId)).ToList());
+    }
+
+    public class UltimaVentaFila
+    {
+        public int ProductoId { get; set; }
+        public DateTime Fecha { get; set; }
+        public DateTime Cuando { get; set; }
+        public string? Cliente { get; set; }
+        public long? MeliOrderId { get; set; }
     }
 
     /// <summary>2026-11-06: botón "Ver historial" del listado. Tres pestañas:

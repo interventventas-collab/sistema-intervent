@@ -1360,4 +1360,5 @@ public record CafeProductoHistEntradaDto(DateTime FechaUtc, string Tipo, int? Ca
 public record CafeProductoHistMovDto(DateTime FechaUtc, string TipoMov, int Diferencia, int StockDespues,
     string? Quien, string? Comentario, string? Deposito, bool Reverted);
 
-public record CafeProductoUltimaVentaDto(int ProductoId, DateTime Fecha, string? Cliente);
+public record CafeProductoUltimaVentaDto(int ProductoId, DateTime Fecha, string? Cliente,
+    string Canal = "SISTEMA", long? MeliOrderId = null);

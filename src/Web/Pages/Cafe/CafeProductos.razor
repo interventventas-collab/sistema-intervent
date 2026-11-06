@@ -327,7 +327,7 @@
                                         }
                                         else if (ultimasVentasCargadas)
                                         {
-                                            <div style="font-size:0.75rem; color:#9ca3af; margin-top:1px;">Sin ventas por el sistema</div>
+                                            <div style="font-size:0.75rem; color:#9ca3af; margin-top:1px;">Sin ventas</div>
                                         }
                                     }
                                     @if (!string.IsNullOrEmpty(p.Notas))
@@ -2340,6 +2340,8 @@
         var dias = (DateTime.UtcNow.ToArTime().Date - u.Fecha.Date).Days;
         var hace = dias <= 0 ? "hoy" : dias == 1 ? "ayer" : $"hace {dias} días";
         var cli = string.IsNullOrWhiteSpace(u.Cliente) ? "" : $" ({u.Cliente})";
+        if (u.Canal == "MELI")
+            return $"Última venta MeLi {u.Fecha:dd/MM/yyyy} · {hace}{(u.MeliOrderId is null ? "" : $" · #{u.MeliOrderId}")}{cli}";
         return $"Última venta {u.Fecha:dd/MM/yyyy} · {hace}{cli}";
     }
 
