@@ -116,7 +116,7 @@
             {
                 var considerados = soloElegidos ? preview.Productos.Where(p => tildados.Contains(p.ProductoId)).ToList() : preview.Productos;
                 var bajo = considerados.Where(p => p.BajoPiso).OrderBy(p => p.DejaPct).ToList();
-                @if (Pct is decimal pv && pv > 0)
+                @if (Pct is decimal pv && pv > 0 && considerados.Count > 0)
                 {
                     @if (bajo.Count == 0)
                     {

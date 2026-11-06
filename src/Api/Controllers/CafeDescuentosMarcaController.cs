@@ -276,7 +276,7 @@ END");
 
         var quien = User.FindFirstValue(ClaimTypes.Name);
         var pct = Math.Round(req.DescuentoPct, 2);
-        await using var tx = await _db.Database.BeginTransactionAsync();
+        // Un solo SaveChanges = todo o nada (la estrategia de reintentos no acepta transacción manual).
         var viejas = await _db.CafeDescuentosMarcaCliente
             .Where(f => clienteIds.Contains(f.ClienteId) && f.MarcaId == req.MarcaId).ToListAsync();
         _db.CafeDescuentosMarcaCliente.RemoveRange(viejas);
@@ -291,7 +291,6 @@ END");
                     { ClienteId = cid, MarcaId = req.MarcaId, ProductoId = pid, DescuentoPct = pct, CreatedBy = quien });
         }
         await _db.SaveChangesAsync();
-        await tx.CommitAsync();
         return Ok(new { ok = true, clientes = clienteIds.Count });
     }
 
