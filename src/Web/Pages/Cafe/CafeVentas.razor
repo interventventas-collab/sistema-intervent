@@ -2010,6 +2010,17 @@
                                 style="background:none; border:none; padding:0; color:#1d4ed8; font-size:0.78rem; cursor:pointer; text-decoration:underline;">ver en 💲 Pactados</button>
                     </div>
                 }
+                @* 2026-11-06: descuento fijo por marca del cliente (Precios y descuentos especiales). Texto plano. *@
+                @if (descMarcaResumen.Count > 0)
+                {
+                    <div id="nv-desc-marca" style="margin-top: 0.3rem; font-size: 0.78rem; color: #374151; line-height: 1.45;">
+                        <span style="font-weight: 700;">🏷 Tiene descuento por marca</span>
+                        @foreach (var dr in descMarcaResumen)
+                        {
+                            <span> · @dr.MarcaNombre @dr.DescuentoPct.ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))%@(dr.TodaLaMarca ? "" : $" ({dr.Productos} producto{(dr.Productos == 1 ? "" : "s")})")</span>
+                        }
+                    </div>
+                }
 
                 @* ═══ 2026-09-29: PLAN DE BONIFICACIÓN del cliente (Núcleo) ═══
                      Cada 5 kg de F1 pagados en ESTA venta → 1 caja D401 bonificada, y los kg de F1
@@ -2676,6 +2687,10 @@
                                                     {
                                                         <span style="color: #374151; font-size: 0.72rem; font-weight: 700; margin-left: 0.35rem;">· pactado</span>
                                                     }
+                                                    else if (descMarcaPorProducto.TryGetValue(pId, out var dmB))
+                                                    {
+                                                        <span style="color: #374151; font-size: 0.72rem; font-weight: 700; margin-left: 0.35rem;">· −@dmB.Pct.ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))% marca</span>
+                                                    }
                                                 </div>
                                             }
                                             @* 2026-06-01: combos marcados como "compuesto" tambien aparecen aca *@
@@ -3138,6 +3153,15 @@
                                                 <input class="form-input" type="number" step="0.5" min="0" max="100"
                                                        style="width: 80px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.85rem;"
                                                        value="@formItem.DescuentoPct.ToString(System.Globalization.CultureInfo.InvariantCulture)" @onchange="@(e => OnItemDescuentoChanged(i, e.Value?.ToString()))" />
+                                                @* 2026-11-06: el % lo puso solo el descuento por marca del cliente. *@
+                                                @if (DescMarcaDeRenglon(formItem) is string dmMarca)
+                                                {
+                                                    <div class="nv-desc-marca-lbl" style="font-size:0.7rem; color:#374151; font-weight:700; margin-top:0.15rem;" title="Descuento fijo de este cliente con la marca. Se carga en Ventas → Precios y descuentos especiales.">desc. @dmMarca del cliente</div>
+                                                    @if (ci.CostoUnitario > 0 && ci.Cantidad > 0 && (ci.Subtotal / (ci.CostoUnitario * ci.Cantidad) - 1m) * 100m < 40m)
+                                                    {
+                                                        <div style="font-size:0.7rem; color:#b91c1c; margin-top:0.1rem;">⚠ deja @(((ci.Subtotal / (ci.CostoUnitario * ci.Cantidad) - 1m) * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture))%, debajo del 40%</div>
+                                                    }
+                                                }
                                             </td>
                                             <td style="text-align: right; font-weight: 700;">
                                                 <div>$@FormatMoney(ci.Subtotal)</div>
@@ -6989,6 +7013,49 @@
     private List<CafePrecioEspecialDto> preciosEspecialesLista = new();
     private HashSet<int> productosConPacto = new();
 
+    // ═══ 2026-11-06: DESCUENTO FIJO POR MARCA del cliente (Cafe_DescuentosMarcaCliente) ═══
+    // Se carga en Ventas → Precios y descuentos especiales. Al cargar un renglón de esa marca
+    // se le pone solo el % como DESCUENTO DEL RENGLÓN (sale en "Bonif." en la factura).
+    // Decisiones de Osmar: si el producto tiene precio pactado manda el pactado; si deja
+    // menos de 40% avisa pero deja vender; el operador lo puede cambiar o sacar a mano.
+    private Dictionary<int, (decimal Pct, string Marca)> descMarcaPorProducto = new();
+    private List<CafeDescMarcaResumenDto> descMarcaResumen = new();
+    // Renglones a los que se les puso el descuento solo (y con qué %): si el operador lo cambia, se respeta.
+    private readonly Dictionary<CafeCotizarItemRequest, decimal> descMarcaAplicado = new(ReferenceEqualityComparer.Instance);
+    // Renglones ya mirados: no se vuelven a tocar (así si le sacan el % a mano, no vuelve).
+    private readonly HashSet<CafeCotizarItemRequest> descMarcaEvaluado = new(ReferenceEqualityComparer.Instance);
+
+    private string? DescMarcaDeRenglon(CafeCotizarItemRequest fi)
+        => descMarcaAplicado.TryGetValue(fi, out var ap) && fi.DescuentoPct == ap
+           && descMarcaPorProducto.TryGetValue(fi.ProductoId, out var d) ? d.Marca : null;
+
+    private void AplicarDescuentoMarca()
+    {
+        foreach (var fi in formItems)
+        {
+            if (descMarcaAplicado.TryGetValue(fi, out var ap))
+            {
+                if (fi.DescuentoPct != ap) { descMarcaAplicado.Remove(fi); continue; } // lo tocaron a mano
+                // Le cambiaron el formato a uno pactado, o ya no corresponde: se saca.
+                if (PrecioPactadoDe(fi.ProductoId, fi.Formato).HasValue || fi.PrecioUnitarioOverride.HasValue
+                    || !descMarcaPorProducto.ContainsKey(fi.ProductoId))
+                {
+                    fi.DescuentoPct = 0m; descMarcaAplicado.Remove(fi);
+                }
+                continue;
+            }
+            if (!descMarcaEvaluado.Add(fi)) continue;
+            if (descMarcaPorProducto.Count == 0 || fi.ProductoId <= 0 || fi.EsConceptoLibre || (fi.ServicioId ?? 0) > 0) continue;
+            if (fi.DescuentoPct != 0m || fi.PrecioUnitarioOverride.HasValue) continue;
+            if (PrecioPactadoDe(fi.ProductoId, fi.Formato).HasValue) continue;
+            if (descMarcaPorProducto.TryGetValue(fi.ProductoId, out var dm))
+            {
+                fi.DescuentoPct = dm.Pct;
+                descMarcaAplicado[fi] = dm.Pct;
+            }
+        }
+    }
+
     private static string ClavePrecioPactado(int productoId, string? formato)
         => $"{productoId}|{(formato ?? "UNIT").Trim().ToUpperInvariant()}";
 
@@ -7008,7 +7075,24 @@
         preciosEspeciales = new();
         preciosEspecialesLista = new();
         productosConPacto = new();
+        // 2026-11-06: cambió el cliente → se sacan los descuentos por marca que se pusieron solos
+        // (eran del cliente anterior) y se vuelven a mirar todos los renglones con el nuevo.
+        foreach (var kv in descMarcaAplicado)
+            if (kv.Key.DescuentoPct == kv.Value) kv.Key.DescuentoPct = 0m;
+        descMarcaAplicado.Clear();
+        descMarcaEvaluado.Clear();
+        descMarcaPorProducto = new();
+        descMarcaResumen = new();
+        // Al editar una venta ya hecha, sus renglones quedan como están (solo los nuevos llevan el %).
+        if (editingVentaId != null) foreach (var it in formItems) descMarcaEvaluado.Add(it);
         if (formClienteId <= 0) return;
+        try
+        {
+            var dm = await Api.GetDescuentosMarcaClienteAsync(formClienteId);
+            descMarcaResumen = dm.Resumen;
+            foreach (var x in dm.Productos) descMarcaPorProducto[x.ProductoId] = (x.DescuentoPct, x.MarcaNombre);
+        }
+        catch { /* sin descuentos por marca la venta sigue igual */ }
         try
         {
             preciosEspecialesLista = await Api.GetPreciosEspecialesAsync(formClienteId);
@@ -11387,6 +11471,7 @@
         // desde TODOS los caminos que fijan el cliente (elegirlo a mano, restaurar un borrador,
         // abrir una preventa, editar una venta). El método no pide nada si el cliente no cambió.
         await EnsurePreciosEspecialesAsync();
+        AplicarDescuentoMarca();
         if (formItems.Count == 0) { cotizacion = null; return; }
         try
         {
@@ -12332,6 +12417,8 @@
             //     al editar — no recalcularlo. El usuario puede pisarlo desde el input si quiere.
             PrecioUnitarioOverride = i.PrecioUnitario
         }).ToList();
+        // 2026-11-06: los renglones de la venta que se edita no se tocan con el descuento por marca.
+        foreach (var it in formItems) descMarcaEvaluado.Add(it);
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         addMolienda = "EN GRANOS"; addEnvase = "NEGRO";
         fijoPesoOn = fijoMoliendaOn = fijoEnvaseOn = false; fijoFormato = fijoMolienda = fijoEnvase = null;   // 26/10/2026

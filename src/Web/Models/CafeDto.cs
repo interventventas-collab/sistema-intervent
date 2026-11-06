@@ -2814,3 +2814,69 @@ public class CafePactoDto
     public int? ListaId { get; set; }
     public string? ListaNombre { get; set; }
 }
+
+// 2026-11-06: descuento fijo de un cliente con una MARCA (toda o productos elegidos).
+// Ventas → Precios y descuentos especiales → "Descuentos por marca". En Nueva Venta entra
+// como descuento del renglón (Bonif. en la factura). Ver CafeDescuentosMarcaController.
+public class CafeDescMarcaProductoDto
+{
+    public int ProductoId { get; set; }
+    public string? Sku { get; set; }
+    public string Nombre { get; set; } = "";
+    public decimal PrecioHoy { get; set; }
+    public decimal PrecioConDesc { get; set; }
+    public decimal Costo { get; set; }
+    public decimal? DejaPct { get; set; }
+    public bool BajoPiso { get; set; }
+}
+
+public class CafeDescMarcaDto
+{
+    public int ClienteId { get; set; }
+    public string ClienteNombre { get; set; } = "";
+    public string? ClienteCodigo { get; set; }
+    public int MarcaId { get; set; }
+    public string MarcaNombre { get; set; } = "";
+    public decimal DescuentoPct { get; set; }
+    public bool TodaLaMarca { get; set; }
+    public int ProductosMarca { get; set; }
+    public List<CafeDescMarcaProductoDto> Productos { get; set; } = new();
+    public int BajoPiso { get; set; }
+    public string? PeorNombre { get; set; }
+    public decimal? PeorDejaPct { get; set; }
+}
+
+public class CafeDescMarcaPreviewDto
+{
+    public int MarcaId { get; set; }
+    public string MarcaNombre { get; set; } = "";
+    public bool BloqueaDescuento { get; set; }
+    public decimal DescuentoPct { get; set; }
+    public decimal MaxPctSinRomperPiso { get; set; }
+    public List<CafeDescMarcaProductoDto> Productos { get; set; } = new();
+}
+
+public class CafeDescMarcaVentaDto
+{
+    public List<CafeDescMarcaResumenDto> Resumen { get; set; } = new();
+    public List<CafeDescMarcaVentaProductoDto> Productos { get; set; } = new();
+}
+public class CafeDescMarcaResumenDto
+{
+    public string MarcaNombre { get; set; } = "";
+    public decimal DescuentoPct { get; set; }
+    public bool TodaLaMarca { get; set; }
+    public int Productos { get; set; }
+}
+public class CafeDescMarcaVentaProductoDto
+{
+    public int ProductoId { get; set; }
+    public decimal DescuentoPct { get; set; }
+    public string MarcaNombre { get; set; } = "";
+}
+public class CafeClienteSimpleDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Codigo { get; set; }
+}
