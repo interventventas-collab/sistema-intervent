@@ -1,74 +1,182 @@
 @* 2026-11-06: barra de menú nueva, ordenada por las 5 partes del negocio + lo que comparten.
    Fila propia debajo de la barra de arriba (ocupa todo el ancho). La ve SOLO quien tenga
-   MainLayout.MenuNuevo (por ahora, el usuario admin). Catálogo en MenuNuevoCatalogo.cs. *@
+   MainLayout.MenuNuevo (por ahora, el usuario admin). Catálogo en MenuNuevoCatalogo.cs; el orden
+   que acomoda el dueño (✏ Acomodar) se guarda en la base vía MenuNuevoService. *@
+@implements IDisposable
 @inject NavigationManager Nav
+@inject MenuNuevoService Svc
+@inject ToastService Toast
 
-<div class="mnb">
-    @foreach (var d in MenuNuevoCatalogo.Directos.Where(Visible))
+<div class="mnb @(editando ? "editando" : "")">
+    @if (editando)
     {
-        <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)">@d.Label</button>
+        <span class="mnb-aviso">✏ Acomodando:</span>
+        @Desplegable(DIRECTOS, "★ Directos", "botones de un clic", Lista(DIRECTOS))
+    }
+    else
+    {
+        @foreach (var d in Svc.Actual.Directos.Where(Visible))
+        {
+            <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)">@d.Label</button>
+        }
     }
     <span class="mnb-sep"></span>
-    @foreach (var g in MenuNuevoCatalogo.Grupos)
+    @{ var primeroDeTodos = true; }
+    @foreach (var ga in (editando ? Svc.Actual.Grupos : Svc.Actual.Grupos))
     {
-        var items = g.Items.Where(Visible).ToList();
-        if (items.Count == 0) continue;
-        if (!g.DelNegocio && g == MenuNuevoCatalogo.Grupos.First(x => !x.DelNegocio))
+        var g = ga.Grupo;
+        var items = editando ? Lista(g.Titulo) : ga.Items.Where(Visible).ToList();
+        if (!editando && items.Count == 0) continue;
+        if (!g.DelNegocio && primeroDeTodos)
         {
+            primeroDeTodos = false;
             <span class="mnb-sep"></span>
         }
-        <div class="mnb-wrap">
-            <button class="mnb-grupo @(abierto == g.Titulo ? "abierto" : "") @(items.Any(i => EsActual(i.Href)) ? "on" : "")"
-                    @onclick="() => Alternar(g.Titulo)">
-                @g.Titulo <span class="mnb-caret">▾</span>
-            </button>
-            @if (abierto == g.Titulo)
-            {
-                <div class="mnb-menu @(EsDeLaDerecha(g) ? "derecha" : "")" @onclick:stopPropagation="true">
-                    @if (!string.IsNullOrEmpty(g.Subtitulo))
-                    {
-                        <div class="mnb-sub">@g.Subtitulo</div>
-                    }
-                    @foreach (var it in items)
-                    {
-                        if (it.Seccion != null)
-                        {
-                            <div class="mnb-seccion">@it.Seccion</div>
-                        }
-                        <button class="mnb-item @(EsActual(it.Href) ? "on" : "")" @onclick="() => Ir(it)">@it.Label</button>
-                    }
-                </div>
-            }
-        </div>
+        @Desplegable(g.Titulo, g.Titulo, g.Subtitulo, items)
     }
-    <button class="mnb-buscar" @onclick="OnBuscar" title="Buscar cualquier pantalla (Ctrl+K)">🔍 Buscar</button>
+    @if (editando)
+    {
+        <span class="mnb-sep"></span>
+        @Desplegable(MAS, "⋯ Más pantallas", "en el costado, casi no se usan", Lista(MAS))
+        <span class="mnb-acciones">
+            <button class="mnb-btn primario" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando…" : "Guardar")</button>
+            <button class="mnb-btn" disabled="@guardando" @onclick="Cancelar">Cancelar</button>
+            @if (Svc.TieneOrdenPropio)
+            {
+                <button class="mnb-btn suave" disabled="@guardando" @onclick="VolverAlOriginal">Volver al orden original</button>
+            }
+        </span>
+    }
+    else
+    {
+        <span class="mnb-acciones">
+            @if (PuedeAcomodar)
+            {
+                <button class="mnb-buscar" @onclick="EmpezarAcomodar" title="Mover pantallas de una sección a otra">✏ Acomodar</button>
+            }
+            <button class="mnb-buscar" @onclick="OnBuscar" title="Buscar cualquier pantalla (Ctrl+K)">🔍 Buscar</button>
+        </span>
+    }
 </div>
 @if (abierto != null)
 {
-    <div class="mnb-fondo" @onclick="() => abierto = null"></div>
+    <div class="mnb-fondo" @onclick="() => { abierto = null; moviendo = null; }"></div>
 }
 
 @code {
     [Parameter, EditorRequired] public Func<string, bool> HasPerm { get; set; } = default!;
     [Parameter, EditorRequired] public Action<string> NavigateTo { get; set; } = default!;
     [Parameter] public EventCallback OnBuscar { get; set; }
+    /// <summary>Solo el dueño acomoda; lo que acomoda vale para todos los que usen el menú nuevo.</summary>
+    [Parameter] public bool PuedeAcomodar { get; set; }
+
+    private const string DIRECTOS = "★";
+    private const string MAS = "⋯";
 
     private string? abierto;
+    private bool editando, guardando;
+    /// <summary>Copia que se edita; recién al Guardar va a la base.</summary>
+    private Dictionary<string, List<MenuNuevoCatalogo.Item>> borrador = new();
+    /// <summary>Renglón al que se le tocó "Mover a…" (se despliegan los destinos abajo).</summary>
+    private (string Lista, string Href)? moviendo;
 
+    protected override async Task OnInitializedAsync()
+    {
+        Svc.OnChange += Repintar;
+        await Svc.EnsureLoadedAsync();
+    }
+    private void Repintar() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Svc.OnChange -= Repintar;
+
+    // ───────── Un desplegable (normal o acomodando) ─────────
+    private RenderFragment Desplegable(string clave, string titulo, string subtitulo, List<MenuNuevoCatalogo.Item> items) => __builder =>
+    {
+        <div class="mnb-wrap">
+            <button class="mnb-grupo @(abierto == clave ? "abierto" : "") @(!editando && items.Any(i => EsActual(i.Href)) ? "on" : "")"
+                    @onclick="() => Alternar(clave)">
+                @titulo
+                @if (editando) { <span class="mnb-cuenta">@items.Count</span> }
+                <span class="mnb-caret">▾</span>
+            </button>
+            @if (abierto == clave)
+            {
+                <div class="mnb-menu @(AbreALaIzquierda(clave) ? "derecha" : "") @(editando ? "ancho" : "")" @onclick:stopPropagation="true">
+                    @if (!string.IsNullOrEmpty(subtitulo))
+                    {
+                        <div class="mnb-sub">@subtitulo</div>
+                    }
+                    @if (items.Count == 0)
+                    {
+                        <div class="mnb-sub">Vacío. Traé pantallas con "Mover a…" desde otra sección.</div>
+                    }
+                    @for (int n = 0; n < items.Count; n++)
+                    {
+                        var it = items[n];
+                        var idx = n;
+                        if (!editando)
+                        {
+                            if (it.Seccion != null && MenuNuevoCatalogo.GrupoDeFabrica.TryGetValue(it.Href, out var gf) && gf == clave)
+                            {
+                                <div class="mnb-seccion">@it.Seccion</div>
+                            }
+                            <button class="mnb-item @(EsActual(it.Href) ? "on" : "")" @onclick="() => Ir(it)">@it.Label</button>
+                        }
+                        else
+                        {
+                            <div class="mnb-fila-ed">
+                                <span class="mnb-nombre">@it.Label</span>
+                                <button class="mnb-ico" title="Subir" disabled="@(idx == 0)" @onclick="() => Correr(clave, idx, -1)">▲</button>
+                                <button class="mnb-ico" title="Bajar" disabled="@(idx == items.Count - 1)" @onclick="() => Correr(clave, idx, +1)">▼</button>
+                                @if (clave == DIRECTOS)
+                                {
+                                    <button class="mnb-ico" title="Sacar de los directos (sigue en su sección)" @onclick="() => SacarDirecto(it.Href)">✕</button>
+                                }
+                                else
+                                {
+                                    var esDirecto = borrador[DIRECTOS].Any(d => d.Href == it.Href);
+                                    <button class="mnb-ico @(esDirecto ? "on" : "")" title="@(esDirecto ? "Ya es botón directo (tocá para sacarlo)" : "Hacerlo botón directo de un clic")"
+                                            @onclick="() => AlternarDirecto(it)">★</button>
+                                    <button class="mnb-mover @(moviendo?.Href == it.Href ? "on" : "")" @onclick="() => moviendo = moviendo?.Href == it.Href ? null : (clave, it.Href)">Mover a…</button>
+                                }
+                            </div>
+                            @if (moviendo is { } m && m.Href == it.Href && m.Lista == clave)
+                            {
+                                <div class="mnb-destinos">
+                                    @foreach (var dest in Destinos().Where(d => d.Clave != clave))
+                                    {
+                                        <button class="mnb-destino" @onclick="() => Mover(clave, it.Href, dest.Clave)">@dest.Nombre</button>
+                                    }
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    // ───────── Navegar ─────────
     private bool Visible(MenuNuevoCatalogo.Item i) => i.Permiso == null || HasPerm(i.Permiso);
 
-    private void Alternar(string titulo) => abierto = abierto == titulo ? null : titulo;
+    private void Alternar(string clave)
+    {
+        abierto = abierto == clave ? null : clave;
+        moviendo = null;
+    }
 
-    /// <summary>Los últimos grupos abren hacia la izquierda para no cortarse contra el borde.</summary>
-    private static bool EsDeLaDerecha(MenuNuevoCatalogo.Grupo g)
-        => Array.IndexOf(MenuNuevoCatalogo.Grupos, g) >= MenuNuevoCatalogo.Grupos.Length - 2;
+    /// <summary>Los de la punta derecha abren hacia la izquierda para no cortarse contra el borde.</summary>
+    private bool AbreALaIzquierda(string clave)
+    {
+        if (clave == MAS) return true;
+        var i = Array.FindIndex(MenuNuevoCatalogo.Grupos, g => g.Titulo == clave);
+        return i >= MenuNuevoCatalogo.Grupos.Length - 2;
+    }
 
     private bool EsActual(string href)
     {
         var actual = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('#')[0];
-        var sinQuery = actual.Split('?')[0];
         if (href.Contains('?')) return string.Equals(actual, href, StringComparison.OrdinalIgnoreCase);
-        return string.Equals(sinQuery, href, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(actual.Split('?')[0], href, StringComparison.OrdinalIgnoreCase);
     }
 
     private void Ir(MenuNuevoCatalogo.Item it)
@@ -81,8 +189,88 @@
     /// <summary>MainLayout lo llama al cambiar de pantalla (por si se navegó por otro lado).</summary>
     public void Cerrar()
     {
-        if (abierto == null) return;
+        if (abierto == null || editando) return;
         abierto = null;
         StateHasChanged();
+    }
+
+    // ───────── Acomodar ─────────
+    private List<MenuNuevoCatalogo.Item> Lista(string clave) => borrador.TryGetValue(clave, out var l) ? l : new();
+
+    private IEnumerable<(string Clave, string Nombre)> Destinos()
+        => MenuNuevoCatalogo.Grupos.Select(g => (g.Titulo, g.Titulo)).Append((MAS, "⋯ Más pantallas"));
+
+    private void EmpezarAcomodar()
+    {
+        var a = Svc.Actual;
+        borrador = new Dictionary<string, List<MenuNuevoCatalogo.Item>>
+        {
+            [DIRECTOS] = a.Directos.ToList(),
+            [MAS] = a.Mas.ToList(),
+        };
+        foreach (var g in a.Grupos) borrador[g.Grupo.Titulo] = g.Items.ToList();
+        editando = true;
+        abierto = MenuNuevoCatalogo.Grupos[0].Titulo;
+        moviendo = null;
+    }
+
+    private void Correr(string clave, int idx, int delta)
+    {
+        var l = borrador[clave];
+        var j = idx + delta;
+        if (j < 0 || j >= l.Count) return;
+        (l[idx], l[j]) = (l[j], l[idx]);
+    }
+
+    private void Mover(string desde, string href, string hacia)
+    {
+        var it = borrador[desde].FirstOrDefault(i => i.Href == href);
+        if (it == null) return;
+        borrador[desde].Remove(it);
+        borrador[hacia].Add(it);
+        moviendo = null;
+        var nombre = hacia == MAS ? "Más pantallas" : hacia;
+        Toast.Success($"\"{it.Label}\" pasó a {nombre} (queda al final)");
+    }
+
+    private void AlternarDirecto(MenuNuevoCatalogo.Item it)
+    {
+        var d = borrador[DIRECTOS];
+        var ya = d.FirstOrDefault(x => x.Href == it.Href);
+        if (ya != null) d.Remove(ya); else d.Add(it);
+    }
+
+    private void SacarDirecto(string href) => borrador[DIRECTOS].RemoveAll(x => x.Href == href);
+
+    private async Task Guardar()
+    {
+        guardando = true;
+        try
+        {
+            var armado = new MenuNuevoCatalogo.Armado(
+                borrador[DIRECTOS],
+                MenuNuevoCatalogo.Grupos.Select(g => new MenuNuevoCatalogo.GrupoArmado(g, borrador[g.Titulo])).ToList(),
+                borrador[MAS]);
+            await Svc.GuardarAsync(armado);
+            editando = false; abierto = null; moviendo = null;
+            Toast.Success("Menú guardado");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private void Cancelar() { editando = false; abierto = null; moviendo = null; }
+
+    private async Task VolverAlOriginal()
+    {
+        guardando = true;
+        try
+        {
+            await Svc.VolverAlOriginalAsync();
+            editando = false; abierto = null; moviendo = null;
+            Toast.Success("Menú vuelto al orden original");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo: " + ex.Message); }
+        finally { guardando = false; }
     }
 }

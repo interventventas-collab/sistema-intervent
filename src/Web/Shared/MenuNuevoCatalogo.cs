@@ -120,6 +120,93 @@ public static class MenuNuevoCatalogo
         }),
     };
 
+    // ───────────── Orden acomodado por el dueño (✏ Acomodar) ─────────────
+    // Se guarda en la base (api/menu-config) como listas de direcciones. Las etiquetas y permisos
+    // salen siempre de este archivo, así que un cambio de nombre acá no rompe lo acomodado.
+
+    public record GrupoOrden(string Titulo, List<string> Items);
+    public record Orden(List<string> Directos, List<GrupoOrden> Grupos, List<string> Mas);
+
+    /// <summary>Cómo queda el menú para mostrar: grupos con sus renglones ya ordenados.</summary>
+    public record GrupoArmado(Grupo Grupo, List<Item> Items);
+    public record Armado(List<Item> Directos, List<GrupoArmado> Grupos, List<Item> Mas);
+
+    private static Dictionary<string, Item>? _porHref;
+    private static Dictionary<string, string>? _grupoDeFabrica;
+
+    /// <summary>Cada pantalla una sola vez, por dirección (la primera vez que aparece).</summary>
+    public static Dictionary<string, Item> PorHref
+    {
+        get
+        {
+            if (_porHref != null) return _porHref;
+            var d = new Dictionary<string, Item>(StringComparer.OrdinalIgnoreCase);
+            foreach (var it in Grupos.SelectMany(g => g.Items).Concat(MasPantallas).Concat(Directos))
+                d.TryAdd(it.Href, it);
+            return _porHref = d;
+        }
+    }
+
+    /// <summary>En qué grupo venía cada pantalla de fábrica ("" = Más pantallas). Sirve para
+    /// mostrar los subtítulos (Stock / Compras) solo mientras la pantalla siga en su lugar.</summary>
+    public static Dictionary<string, string> GrupoDeFabrica
+    {
+        get
+        {
+            if (_grupoDeFabrica != null) return _grupoDeFabrica;
+            var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var g in Grupos) foreach (var it in g.Items) d.TryAdd(it.Href, g.Titulo);
+            foreach (var it in MasPantallas) d.TryAdd(it.Href, "");
+            return _grupoDeFabrica = d;
+        }
+    }
+
+    public static Orden OrdenDeFabrica() => new(
+        Directos.Select(i => i.Href).ToList(),
+        Grupos.Select(g => new GrupoOrden(g.Titulo, g.Items.Select(i => i.Href).ToList())).ToList(),
+        MasPantallas.Select(i => i.Href).ToList());
+
+    /// <summary>Junta lo acomodado con el catálogo: lo que ya no existe se descarta, y una
+    /// pantalla nueva que el dueño todavía no acomodó aparece en su grupo de fábrica.</summary>
+    public static Armado Armar(Orden? o)
+    {
+        o ??= OrdenDeFabrica();
+        var usados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        List<Item> Tomar(IEnumerable<string>? hrefs, bool marcar = true)
+        {
+            var r = new List<Item>();
+            foreach (var h in hrefs ?? Enumerable.Empty<string>())
+                if (PorHref.TryGetValue(h, out var it) && (!marcar || usados.Add(it.Href)))
+                    r.Add(it);
+            return r;
+        }
+        // Los directos usan su nombre corto si lo tienen ("Preparación" y no "Preparación de pedidos").
+        var directos = Tomar(o.Directos, marcar: false).DistinctBy(i => i.Href)
+            .Select(i => Directos.FirstOrDefault(d => string.Equals(d.Href, i.Href, StringComparison.OrdinalIgnoreCase)) ?? i)
+            .ToList();
+        var grupos = Grupos.Select(g =>
+        {
+            var go = o.Grupos?.FirstOrDefault(x => x.Titulo == g.Titulo);
+            return new GrupoArmado(g, Tomar(go?.Items));
+        }).ToList();
+        var mas = Tomar(o.Mas);
+        // Pantallas que no estaban en lo guardado (agregadas después): a su lugar de fábrica.
+        foreach (var (href, it) in PorHref)
+        {
+            if (usados.Contains(href)) continue;
+            if (!GrupoDeFabrica.TryGetValue(href, out var gt)) continue; // solo-directo
+            usados.Add(href);
+            if (gt == "") mas.Add(it);
+            else grupos.First(x => x.Grupo.Titulo == gt).Items.Add(it);
+        }
+        return new Armado(directos, grupos, mas);
+    }
+
+    public static Orden AOrden(Armado a) => new(
+        a.Directos.Select(i => i.Href).ToList(),
+        a.Grupos.Select(g => new GrupoOrden(g.Grupo.Titulo, g.Items.Select(i => i.Href).ToList())).ToList(),
+        a.Mas.Select(i => i.Href).ToList());
+
     /// <summary>Lo que casi no se usa: queda en el costado, adentro de "Más pantallas".</summary>
     public static readonly Item[] MasPantallas =
     {

@@ -7153,6 +7153,16 @@ public class ApiClient
     // paradas de días anteriores. Ahora cada parada tiene su día de reparto y los días pasados
     // SON el historial: no se borra nada.
 
+    // 2026-11-06: orden del menú nuevo acomodado por el dueño (null = orden de fábrica).
+    public async Task<Web.Shared.MenuNuevoCatalogo.Orden?> GetMenuConfigAsync()
+    {
+        try { return await GetAsync<Web.Shared.MenuNuevoCatalogo.Orden>("/api/menu-config"); }
+        catch { return null; }
+    }
+    public async Task SaveMenuConfigAsync(Web.Shared.MenuNuevoCatalogo.Orden orden)
+        => await PutAsync<object>("/api/menu-config", orden);
+    public async Task ResetMenuConfigAsync() => await DeleteAsync("/api/menu-config");
+
     // 2026-11-06: anota qué pantalla se abrió (para reordenar el menú por uso real).
     // Nunca molesta: si falla, se ignora.
     public async Task AnotarVisitaAsync(string ruta, string? operador)
