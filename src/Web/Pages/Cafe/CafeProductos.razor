@@ -321,6 +321,14 @@
                                         @* 2026-11-06: ventas (con 👁 del comprobante), entradas/costos y movimientos de stock. *@
                                         <span class="pm-boton" style="margin-left:0.3rem;" title="Ver a quién se vendió, cuándo entró y todos los movimientos de stock"
                                               @onclick="() => AbrirHistorialProducto(capturado)">🕘 Ver historial</span>
+                                        @if (ultimasVentas.TryGetValue(p.Id, out var uv))
+                                        {
+                                            <div style="font-size:0.75rem; color:#374151; margin-top:1px;">@TextoUltimaVenta(uv)</div>
+                                        }
+                                        else if (ultimasVentasCargadas)
+                                        {
+                                            <div style="font-size:0.75rem; color:#9ca3af; margin-top:1px;">Sin ventas por el sistema</div>
+                                        }
                                     }
                                     @if (!string.IsNullOrEmpty(p.Notas))
                                     {
@@ -2314,6 +2322,27 @@
     private bool showDeleteConfirm;
     private CafeProductoDto? toDelete;
 
+    // 2026-11-06: "Última venta dd/MM/yyyy · hace N días (cliente)" debajo de Ver historial.
+    private Dictionary<int, CafeProductoUltimaVentaDto> ultimasVentas = new();
+    private bool ultimasVentasCargadas;
+    private async Task LoadUltimasVentas()
+    {
+        try
+        {
+            ultimasVentas = (await Api.GetCafeProductosUltimasVentasAsync() ?? new()).ToDictionary(u => u.ProductoId);
+            ultimasVentasCargadas = true;
+        }
+        catch { /* si falla, la lista se ve igual que antes */ }
+    }
+
+    private static string TextoUltimaVenta(CafeProductoUltimaVentaDto u)
+    {
+        var dias = (DateTime.UtcNow.ToArTime().Date - u.Fecha.Date).Days;
+        var hace = dias <= 0 ? "hoy" : dias == 1 ? "ayer" : $"hace {dias} días";
+        var cli = string.IsNullOrWhiteSpace(u.Cliente) ? "" : $" ({u.Cliente})";
+        return $"Última venta {u.Fecha:dd/MM/yyyy} · {hace}{cli}";
+    }
+
     // 2026-11-06: "Ver historial" (ventas · entradas · movimientos de stock)
     private CafeProductoDto? histMovProducto;
     private void AbrirHistorialProducto(CafeProductoDto p) => histMovProducto = p;
@@ -2582,6 +2611,7 @@
         var loadVencs = LoadVencimientos();
         var loadSettings = LoadSettings();
         var loadConteosMeli = LoadConteosMeli();
+        var loadUltimasVentas = LoadUltimasVentas();
         await Load();
         await loadOems;
         await loadMarcas;
@@ -2593,6 +2623,7 @@
         await loadLugares;
         await loadSettings;
         await loadConteosMeli;
+        await loadUltimasVentas;
         // 2026-09-07: la cotizacion se busca APARTE y sin esperarla. Es un scraping al sitio del
         // BNA con 10s de timeout: si lo esperaramos aca, un dia que el BNA no conteste la pantalla
         // de productos tardaria 10 segundos de mas en abrir. Solo sirve para mostrar equivalencias,

@@ -775,6 +775,23 @@ public class CafeProductosController : ControllerBase
         return Ok(rows);
     }
 
+    /// <summary>2026-11-06: "Última venta dd/MM/yyyy · hace N días (cliente)" debajo del botón
+    /// Ver historial. Una sola consulta para toda la lista: la venta (no anulada) más nueva de cada producto.</summary>
+    [HttpGet("ultimas-ventas")]
+    public async Task<IActionResult> UltimasVentas()
+    {
+        var filas = await _db.Database.SqlQueryRaw<CafeProductoUltimaVentaDto>(@"
+            SELECT ProductoId, Fecha, Cliente FROM (
+                SELECT vi.ProductoId AS ProductoId, v.Fecha AS Fecha,
+                       COALESCE(v.ClienteNombreSnapshot, v.ClienteRazonSocialSnapshot) AS Cliente,
+                       ROW_NUMBER() OVER (PARTITION BY vi.ProductoId ORDER BY v.Fecha DESC, v.Id DESC) AS rn
+                FROM Cafe_VentaItems vi
+                JOIN Cafe_Ventas v ON v.Id = vi.VentaId
+                WHERE vi.ProductoId IS NOT NULL AND v.Estado <> 'anulado'
+            ) x WHERE rn = 1").ToListAsync();
+        return Ok(filas);
+    }
+
     /// <summary>2026-11-06: botón "Ver historial" del listado. Tres pestañas:
     /// ventas = renglones de ventas nuestras (sin anuladas), con el VentaId para el ojito del PDF;
     /// entradas = stock sumado + cambios de costo (hoy no se anota proveedor ni factura por producto);

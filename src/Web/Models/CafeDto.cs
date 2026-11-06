@@ -2934,3 +2934,10 @@ public class CafeProductoHistMovDto
     public string? Deposito { get; set; }
     public bool Reverted { get; set; }
 }
+
+public class CafeProductoUltimaVentaDto
+{
+    public int ProductoId { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? Cliente { get; set; }
+}
