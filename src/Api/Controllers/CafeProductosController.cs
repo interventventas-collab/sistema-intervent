@@ -775,6 +775,105 @@ public class CafeProductosController : ControllerBase
         return Ok(rows);
     }
 
+    /// <summary>2026-11-06: "Última venta dd/MM/yyyy · hace N días (cliente)" debajo del botón
+    /// Ver historial. Una sola consulta para toda la lista: la venta (no anulada) más nueva de cada producto.</summary>
+    [HttpGet("ultimas-ventas")]
+    public async Task<IActionResult> UltimasVentas()
+    {
+        var filas = await _db.Database.SqlQueryRaw<CafeProductoUltimaVentaDto>(@"
+            SELECT ProductoId, Fecha, Cliente FROM (
+                SELECT vi.ProductoId AS ProductoId, v.Fecha AS Fecha,
+                       COALESCE(v.ClienteNombreSnapshot, v.ClienteRazonSocialSnapshot) AS Cliente,
+                       ROW_NUMBER() OVER (PARTITION BY vi.ProductoId ORDER BY v.Fecha DESC, v.Id DESC) AS rn
+                FROM Cafe_VentaItems vi
+                JOIN Cafe_Ventas v ON v.Id = vi.VentaId
+                WHERE vi.ProductoId IS NOT NULL AND v.Estado <> 'anulado'
+            ) x WHERE rn = 1").ToListAsync();
+        return Ok(filas);
+    }
+
+    /// <summary>2026-11-06: botón "Ver historial" del listado. Tres pestañas:
+    /// ventas = renglones de ventas nuestras (sin anuladas), con el VentaId para el ojito del PDF;
+    /// entradas = stock sumado + cambios de costo (hoy no se anota proveedor ni factura por producto);
+    /// movimientos = todo Stock_Movimientos (ventas nuestras y MeLi, conteos, ajustes, devoluciones).
+    /// Fechas de stock/costo en UTC (la pantalla las pasa a hora argentina).</summary>
+    [HttpGet("{id:int}/historial")]
+    public async Task<IActionResult> Historial(int id, [FromQuery] string tipo = "ventas",
+        [FromQuery] int skip = 0, [FromQuery] int take = 30)
+    {
+        if (!await _db.CafeProductos.AnyAsync(p => p.Id == id))
+            return NotFound(new { error = "Producto no encontrado" });
+        skip = Math.Max(0, skip);
+        take = Math.Clamp(take, 1, 200);
+
+        switch ((tipo ?? "").Trim().ToLowerInvariant())
+        {
+            case "ventas":
+            {
+                var q = _db.CafeVentaItems
+                    .Where(i => i.ProductoId == id && i.VentaNav!.Estado != "anulado");
+                var filas = await q
+                    .OrderByDescending(i => i.VentaNav!.Fecha).ThenByDescending(i => i.VentaId)
+                    .Skip(skip).Take(take)
+                    .Select(i => new CafeProductoHistVentaDto(
+                        i.VentaId, i.VentaNav!.Fecha,
+                        i.VentaNav.ClienteNombreSnapshot ?? i.VentaNav.ClienteRazonSocialSnapshot,
+                        i.Cantidad, i.PrecioUnitario,
+                        i.VentaNav.TipoComprobante, i.VentaNav.Numero, i.Formato))
+                    .ToListAsync();
+                string? resumen = null;
+                if (skip == 0)
+                {
+                    var desde = DateTime.UtcNow.AddHours(-3).Date.AddDays(-90);
+                    var ult = q.Where(i => i.VentaNav!.Fecha >= desde);
+                    var nVentas = await ult.Select(i => i.VentaId).Distinct().CountAsync();
+                    var nClientes = await ult.Where(i => i.VentaNav!.ClienteId != null)
+                        .Select(i => i.VentaNav!.ClienteId).Distinct().CountAsync();
+                    var meli = await _db.StockMovimientos.CountAsync(m => m.ProductoId == id
+                        && m.TipoMov.StartsWith("VENTA_MELI") && m.CreatedAt >= desde.AddHours(3));
+                    resumen = $"Últimos 3 meses: {nVentas} venta{(nVentas == 1 ? "" : "s")} · {nClientes} cliente{(nClientes == 1 ? "" : "s")}"
+                        + (meli > 0 ? $" · además {meli} por MercadoLibre (en Movimientos)" : "");
+                }
+                return Ok(new { items = filas, hayMas = filas.Count == take, resumen });
+            }
+            case "entradas":
+            {
+                // Se traen skip+take de cada lado, se mezclan por fecha y se corta la página.
+                var n = skip + take;
+                var entradas = await _db.StockMovimientos
+                    .Where(m => m.ProductoId == id && m.TipoMov == "SUMA")
+                    .OrderByDescending(m => m.CreatedAt).Take(n)
+                    .Select(m => new CafeProductoHistEntradaDto(m.CreatedAt, "ENTRADA",
+                        m.StockDespues - m.StockAntes, null, null,
+                        m.OperadorNombreSnap, m.Comentario, m.DepositoNombreSnap))
+                    .ToListAsync();
+                var costos = await _db.CafeHistorialPrecios
+                    .Where(h => h.ProductoId == id && h.CostoNuevo != null && h.CostoAnterior != h.CostoNuevo)
+                    .OrderByDescending(h => h.ChangedAt).Take(n)
+                    .Select(h => new CafeProductoHistEntradaDto(h.ChangedAt, "COSTO",
+                        null, h.CostoAnterior, h.CostoNuevo, h.ChangedBy, h.Motivo, null))
+                    .ToListAsync();
+                var todas = entradas.Concat(costos).OrderByDescending(x => x.FechaUtc).ToList();
+                var pagina = todas.Skip(skip).Take(take).ToList();
+                return Ok(new { items = pagina, hayMas = todas.Count > skip + take || entradas.Count == n || costos.Count == n, resumen = (string?)null });
+            }
+            case "movimientos":
+            {
+                var filas = await _db.StockMovimientos
+                    .Where(m => m.ProductoId == id)
+                    .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+                    .Skip(skip).Take(take)
+                    .Select(m => new CafeProductoHistMovDto(m.CreatedAt, m.TipoMov,
+                        m.StockDespues - m.StockAntes, m.StockDespues,
+                        m.OperadorNombreSnap, m.Comentario, m.DepositoNombreSnap, m.Reverted))
+                    .ToListAsync();
+                return Ok(new { items = filas, hayMas = filas.Count == take, resumen = (string?)null });
+            }
+            default:
+                return BadRequest(new { error = "tipo debe ser ventas, entradas o movimientos" });
+        }
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCafeProductoRequest req,
         [FromServices] Api.Services.CafeStockLogger stockLogger)
