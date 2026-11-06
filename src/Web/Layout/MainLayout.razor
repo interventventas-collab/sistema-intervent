@@ -659,8 +659,10 @@
     <nav class="sidebar-nav" role="navigation" aria-label="Menu principal">
         @* 2026-07-21: "Editar visibilidad" se movió al grupo Administración (abajo), porque casi
            no se usa y quedaba muy llamativo arriba de todo. Ver más abajo dentro del NavGroup. *@
-        @* ═════════════ 1. DASHBOARD ═════════════ *@
-        @if (HasPerm("dashboard"))
+        @* ═════════════ 1. DASHBOARD ═════════════
+           2026-11-06: con el menú nuevo, estos sueltos (Dashboard…Compartido) salen de
+           MenuNuevoCatalogo.Costado y el dueño los puede mover a las secciones de arriba. *@
+        @if (!MenuNuevo && HasPerm("dashboard"))
         {
             <NavItem Href="/" Label="Dashboard" Icon="@SvgIcons.Dashboard"
                      IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
@@ -674,14 +676,14 @@
         @* ═════════════ CHAT INTERNO ═════════════
            2026-08-05: se OCULTA para el usuario Depósito (pidió sacarlo, "ya no sirve").
            El "Chat del equipo" embebido más abajo se mantiene. Admin/oficina lo siguen viendo. *@
-        @if (!HasPerm("deposito"))
+        @if (!MenuNuevo && !HasPerm("deposito"))
         {
             <NavItem Href="/chat" Label="💬 Chat" Icon="@SvgIcons.Users"
                      IsActive="@IsActive("/chat")" OnClick="@(() => NavigateTo("/chat"))" />
         }
 
         @* ═════════════ MIS ALERTAS (motor de alertas configurables, 2026-07-10) ═════════════ *@
-        @if (!IsRoleWithCustomSidebar())
+        @if (!MenuNuevo && !IsRoleWithCustomSidebar())
         {
             <NavItem Href="/mis-alertas" Label="🔔 Mis Alertas" Icon="@SvgIcons.AlertCircle"
                      IsActive="@IsActive("/mis-alertas")" OnClick="@(() => NavigateTo("/mis-alertas"))" />
@@ -694,7 +696,7 @@
         @* ═════════════ CARPETA COMPARTIDA (2026-07-06) ═════════════
            Carpeta de archivos compartida entre admin y depósito (permiso "compartido").
            Top-level para que la vean tambien los usuarios de depósito (no ven el grupo Café). *@
-        @if (HasPerm("compartido"))
+        @if (!MenuNuevo && HasPerm("compartido"))
         {
             <NavItem Href="/compartido" Label="📂 Compartido" Icon="@SvgIcons.Folder"
                      IsActive="@IsActive("/compartido")" OnClick="@(() => NavigateTo("/compartido"))" />
@@ -744,15 +746,12 @@
            Alquileres) no se muestran para no repetir pantallas. *@
         @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
         {
-            @if (HasPerm("cafe-depositos"))
+            @foreach (var it in MenuNuevoSvc.Actual.Costado.Where(i => i.Permiso == null || HasPerm(i.Permiso)))
             {
-                <NavItem Href="/whatsapp" Label="📲 WhatsApp · Chats" Icon="@SvgIcons.MessageCircle"
-                         IsActive="@IsActive("/whatsapp")" OnClick="@(() => NavigateTo("/whatsapp"))" />
-                <NavItem Href="/llamadas" Label="📞 WhatsApp · Llamadas" Icon="@SvgIcons.MessageCircle"
-                         IsActive="@IsActive("/llamadas")" OnClick="@(() => NavigateTo("/llamadas"))" />
+                var href = it.Href;
+                <NavItem Href="@href" Label="@it.Label" Icon="@IconoCostado(href)"
+                         IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
             }
-            <NavItem Href="/documentacion" Label="📑 Documentación" Icon="@SvgIcons.Folder"
-                     IsActive="@IsActive("/documentacion")" OnClick="@(() => NavigateTo("/documentacion"))" />
             var masVisibles = MenuNuevoSvc.Actual.Mas.Where(i => i.Permiso == null || HasPerm(i.Permiso)).ToList();
             <NavGroup Label="⋯ Más pantallas" Icon="@SvgIcons.Folder" FlyoutMode="true"
                       HasActiveChild="@(masVisibles.Any(i => IsActive(i.Href)))">
@@ -2779,6 +2778,16 @@
     private MenuNuevoBarra? menuNuevoRef;
     [Inject] private MenuNuevoService MenuNuevoSvc { get; set; } = default!;
     private void MenuNuevoCambio() => InvokeAsync(StateHasChanged);
+    /// <summary>Ícono del menú del costado según la pantalla (los de siempre; el resto, una etiqueta).</summary>
+    private static MarkupString IconoCostado(string href) => href switch
+    {
+        "/" or "/panorama" => SvgIcons.Dashboard,
+        "/chat" => SvgIcons.Users,
+        "/mis-alertas" or "/automatizaciones" => SvgIcons.AlertCircle,
+        "/compartido" or "/documentacion" => SvgIcons.Folder,
+        "/whatsapp" or "/llamadas" => SvgIcons.MessageCircle,
+        _ => SvgIcons.Tag,
+    };
     private string role = "user";
     private List<string> permissions = new();
 

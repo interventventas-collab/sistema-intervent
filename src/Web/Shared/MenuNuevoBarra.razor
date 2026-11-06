@@ -10,7 +10,15 @@
 <div class="mnb @(editando ? "editando" : "")">
     @if (editando)
     {
-        <span class="mnb-aviso">✏ Acomodando:</span>
+        @* Guardar/Cancelar adelante: si la fila se parte en dos, un desplegable abierto los tapaba. *@
+        <span class="mnb-aviso">✏ Acomodando</span>
+        <button class="mnb-btn primario" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando…" : "Guardar")</button>
+        <button class="mnb-btn" disabled="@guardando" @onclick="Cancelar">Cancelar</button>
+        @if (Svc.TieneOrdenPropio)
+        {
+            <button class="mnb-btn suave" disabled="@guardando" @onclick="VolverAlOriginal">Volver al orden original</button>
+        }
+        <span class="mnb-sep"></span>
         @Desplegable(DIRECTOS, "★ Directos", "botones de un clic", Lista(DIRECTOS))
     }
     else
@@ -37,15 +45,8 @@
     @if (editando)
     {
         <span class="mnb-sep"></span>
+        @Desplegable(COSTADO, "◧ Costado", "sueltas en el menú de la izquierda", Lista(COSTADO))
         @Desplegable(MAS, "⋯ Más pantallas", "en el costado, casi no se usan", Lista(MAS))
-        <span class="mnb-acciones">
-            <button class="mnb-btn primario" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando…" : "Guardar")</button>
-            <button class="mnb-btn" disabled="@guardando" @onclick="Cancelar">Cancelar</button>
-            @if (Svc.TieneOrdenPropio)
-            {
-                <button class="mnb-btn suave" disabled="@guardando" @onclick="VolverAlOriginal">Volver al orden original</button>
-            }
-        </span>
     }
     else
     {
@@ -72,6 +73,7 @@
 
     private const string DIRECTOS = "★";
     private const string MAS = "⋯";
+    private const string COSTADO = MenuNuevoCatalogo.CLAVE_COSTADO;
 
     private string? abierto;
     private bool editando, guardando;
@@ -138,7 +140,7 @@
                     {
                         <div class="mnb-sub">@subtitulo</div>
                     }
-                    @if (editando && clave != DIRECTOS && clave != MAS)
+                    @if (editando && clave != DIRECTOS && clave != MAS && clave != COSTADO)
                     {
                         <div class="mnb-color-sec">
                             <span>Color de "@titulo":</span>
@@ -212,7 +214,8 @@
     /// <summary>Los de la punta derecha abren hacia la izquierda para no cortarse contra el borde.</summary>
     private bool AbreALaIzquierda(string clave)
     {
-        if (clave == MAS) return true;
+        // Costado y Más pantallas quedan en la 2ª renglón, pegados a la izquierda: abren normal.
+        if (clave == MAS || clave == COSTADO) return false;
         var i = Array.FindIndex(MenuNuevoCatalogo.Grupos, g => g.Titulo == clave);
         return i >= MenuNuevoCatalogo.Grupos.Length - 2;
     }
@@ -243,7 +246,8 @@
     private List<MenuNuevoCatalogo.Item> Lista(string clave) => borrador.TryGetValue(clave, out var l) ? l : new();
 
     private IEnumerable<(string Clave, string Nombre)> Destinos()
-        => MenuNuevoCatalogo.Grupos.Select(g => (g.Titulo, g.Titulo)).Append((MAS, "⋯ Más pantallas"));
+        => MenuNuevoCatalogo.Grupos.Select(g => (g.Titulo, g.Titulo))
+            .Append((COSTADO, "◧ Costado izquierdo")).Append((MAS, "⋯ Más pantallas"));
 
     private void EmpezarAcomodar()
     {
@@ -252,6 +256,7 @@
         {
             [DIRECTOS] = a.Directos.ToList(),
             [MAS] = a.Mas.ToList(),
+            [COSTADO] = a.Costado.ToList(),
         };
         foreach (var g in a.Grupos) borrador[g.Grupo.Titulo] = g.Items.ToList();
         colores = new Dictionary<string, string>(a.Colores, StringComparer.OrdinalIgnoreCase);
@@ -276,7 +281,7 @@
         borrador[desde].Remove(it);
         borrador[hacia].Add(it);
         moviendo = null;
-        var nombre = hacia == MAS ? "Más pantallas" : hacia;
+        var nombre = hacia == MAS ? "Más pantallas" : hacia == COSTADO ? "el costado izquierdo" : hacia;
         Toast.Success($"\"{it.Label}\" pasó a {nombre} (queda al final)");
     }
 
@@ -298,7 +303,8 @@
                 borrador[DIRECTOS],
                 MenuNuevoCatalogo.Grupos.Select(g => new MenuNuevoCatalogo.GrupoArmado(g, borrador[g.Titulo])).ToList(),
                 borrador[MAS],
-                colores);
+                colores,
+                borrador[COSTADO]);
             await Svc.GuardarAsync(armado);
             editando = false; abierto = null; moviendo = null;
             Toast.Success("Menú guardado");

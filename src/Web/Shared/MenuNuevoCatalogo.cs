@@ -127,7 +127,10 @@ public static class MenuNuevoCatalogo
     public record GrupoOrden(string Titulo, List<string> Items);
     /// <summary>Colores: clave = título de sección o dirección de pantalla → nombre de pastel.</summary>
     public record Orden(List<string> Directos, List<GrupoOrden> Grupos, List<string> Mas,
-                        Dictionary<string, string>? Colores = null);
+                        Dictionary<string, string>? Colores = null, List<string>? Costado = null);
+
+    /// <summary>Clave de "grupo de fábrica" para lo del costado suelto ("" = Más pantallas).</summary>
+    public const string CLAVE_COSTADO = "◧";
 
     /// <summary>2026-11-06: colores pastel que el dueño puede ponerle a secciones y pantallas.
     /// Fondo suave + borde un poco más fuerte (para la rayita de la sección).</summary>
@@ -153,7 +156,7 @@ public static class MenuNuevoCatalogo
     /// <summary>Cómo queda el menú para mostrar: grupos con sus renglones ya ordenados.</summary>
     public record GrupoArmado(Grupo Grupo, List<Item> Items);
     public record Armado(List<Item> Directos, List<GrupoArmado> Grupos, List<Item> Mas,
-                         Dictionary<string, string> Colores);
+                         Dictionary<string, string> Colores, List<Item> Costado);
 
     private static Dictionary<string, Item>? _porHref;
     private static Dictionary<string, string>? _grupoDeFabrica;
@@ -165,7 +168,7 @@ public static class MenuNuevoCatalogo
         {
             if (_porHref != null) return _porHref;
             var d = new Dictionary<string, Item>(StringComparer.OrdinalIgnoreCase);
-            foreach (var it in Grupos.SelectMany(g => g.Items).Concat(MasPantallas).Concat(Directos))
+            foreach (var it in Grupos.SelectMany(g => g.Items).Concat(MasPantallas).Concat(Costado).Concat(Directos))
                 d.TryAdd(it.Href, it);
             return _porHref = d;
         }
@@ -181,6 +184,7 @@ public static class MenuNuevoCatalogo
             var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var g in Grupos) foreach (var it in g.Items) d.TryAdd(it.Href, g.Titulo);
             foreach (var it in MasPantallas) d.TryAdd(it.Href, "");
+            foreach (var it in Costado) d.TryAdd(it.Href, CLAVE_COSTADO);
             return _grupoDeFabrica = d;
         }
     }
@@ -188,7 +192,9 @@ public static class MenuNuevoCatalogo
     public static Orden OrdenDeFabrica() => new(
         Directos.Select(i => i.Href).ToList(),
         Grupos.Select(g => new GrupoOrden(g.Titulo, g.Items.Select(i => i.Href).ToList())).ToList(),
-        MasPantallas.Select(i => i.Href).ToList());
+        MasPantallas.Select(i => i.Href).ToList(),
+        null,
+        Costado.Select(i => i.Href).ToList());
 
     /// <summary>Junta lo acomodado con el catálogo: lo que ya no existe se descarta, y una
     /// pantalla nueva que el dueño todavía no acomodó aparece en su grupo de fábrica.</summary>
@@ -214,6 +220,8 @@ public static class MenuNuevoCatalogo
             return new GrupoArmado(g, Tomar(go?.Items));
         }).ToList();
         var mas = Tomar(o.Mas);
+        // Lo guardado antes de que existiera el "Costado" no lo trae: va el de fábrica.
+        var costado = Tomar(o.Costado ?? Costado.Select(i => i.Href).ToList());
         // Pantallas que no estaban en lo guardado (agregadas después): a su lugar de fábrica.
         foreach (var (href, it) in PorHref)
         {
@@ -221,17 +229,34 @@ public static class MenuNuevoCatalogo
             if (!GrupoDeFabrica.TryGetValue(href, out var gt)) continue; // solo-directo
             usados.Add(href);
             if (gt == "") mas.Add(it);
+            else if (gt == CLAVE_COSTADO) costado.Add(it);
             else grupos.First(x => x.Grupo.Titulo == gt).Items.Add(it);
         }
         var colores = new Dictionary<string, string>(o.Colores ?? new(), StringComparer.OrdinalIgnoreCase);
-        return new Armado(directos, grupos, mas, colores);
+        return new Armado(directos, grupos, mas, colores, costado);
     }
 
     public static Orden AOrden(Armado a) => new(
         a.Directos.Select(i => i.Href).ToList(),
         a.Grupos.Select(g => new GrupoOrden(g.Grupo.Titulo, g.Items.Select(i => i.Href).ToList())).ToList(),
         a.Mas.Select(i => i.Href).ToList(),
-        new Dictionary<string, string>(a.Colores));
+        new Dictionary<string, string>(a.Colores),
+        a.Costado.Select(i => i.Href).ToList());
+
+    /// <summary>2026-11-06: lo que va suelto en el menú del costado (arriba de "Más pantallas").
+    /// También se puede mover a las secciones de arriba con ✏ Acomodar, y al revés.</summary>
+    public static readonly Item[] Costado =
+    {
+        new("Dashboard", "/", "dashboard"),
+        new("Panorama", "/panorama", "dashboard"),
+        new("Chat", "/chat"),
+        new("Mis alertas", "/mis-alertas"),
+        new("Automatizaciones y alertas", "/automatizaciones"),
+        new("Compartido", "/compartido", "compartido"),
+        new("WhatsApp · Chats", "/whatsapp", "cafe-depositos"),
+        new("WhatsApp · Llamadas", "/llamadas", "cafe-depositos"),
+        new("Documentación", "/documentacion"),
+    };
 
     /// <summary>Lo que casi no se usa: queda en el costado, adentro de "Más pantallas".</summary>
     public static readonly Item[] MasPantallas =
