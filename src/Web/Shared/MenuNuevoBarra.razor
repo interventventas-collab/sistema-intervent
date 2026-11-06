@@ -17,7 +17,7 @@
     {
         @foreach (var d in Svc.Actual.Directos.Where(Visible))
         {
-            <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)">@d.Label</button>
+            <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloBoton(d.Href)" @onclick="() => Ir(d)">@d.Label</button>
         }
     }
     <span class="mnb-sep"></span>
@@ -79,6 +79,39 @@
     private Dictionary<string, List<MenuNuevoCatalogo.Item>> borrador = new();
     /// <summary>Renglón al que se le tocó "Mover a…" (se despliegan los destinos abajo).</summary>
     private (string Lista, string Href)? moviendo;
+    /// <summary>Renglón al que se le tocó 🎨 (se despliegan los circulitos de color).</summary>
+    private string? pintando;
+    /// <summary>Colores del borrador (sección o pantalla → pastel).</summary>
+    private Dictionary<string, string> colores = new(StringComparer.OrdinalIgnoreCase);
+
+    // ───────── Colores pastel ─────────
+    private string? ColorDe(string clave)
+    {
+        var d = editando ? colores : Svc.Actual.Colores;
+        return d.TryGetValue(clave, out var c) ? c : null;
+    }
+    /// <summary>Botón de la barra (sección o directo): fondo pastel + rayita abajo.</summary>
+    private string EstiloBoton(string clave)
+        => MenuNuevoCatalogo.Pastel(ColorDe(clave)) is { } p ? $"background:{p.Fondo};box-shadow:inset 0 -2px 0 {p.Borde};" : "";
+    /// <summary>Renglón adentro del desplegable: fondo pastel + rayita a la izquierda.</summary>
+    private string EstiloItem(string href)
+        => MenuNuevoCatalogo.Pastel(ColorDe(href)) is { } p ? $"background:{p.Fondo};box-shadow:inset 3px 0 0 {p.Borde};" : "";
+
+    private void PonerColor(string clave, string? color)
+    {
+        if (color == null) colores.Remove(clave); else colores[clave] = color;
+    }
+
+    private RenderFragment Circulos(string clave) => __builder =>
+    {
+        var actual = colores.TryGetValue(clave, out var c) ? c : null;
+        foreach (var p in MenuNuevoCatalogo.Pasteles)
+        {
+            <button class="mnb-circulo @(actual == p.Clave ? "on" : "")" title="@p.Nombre"
+                    style="background:@p.Fondo;border-color:@p.Borde" @onclick="() => PonerColor(clave, p.Clave)"></button>
+        }
+        <button class="mnb-destino" title="Sacar el color" @onclick="() => PonerColor(clave, null)">sin color</button>
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -93,7 +126,7 @@
     {
         <div class="mnb-wrap">
             <button class="mnb-grupo @(abierto == clave ? "abierto" : "") @(!editando && items.Any(i => EsActual(i.Href)) ? "on" : "")"
-                    @onclick="() => Alternar(clave)">
+                    style="@EstiloBoton(clave)" @onclick="() => Alternar(clave)">
                 @titulo
                 @if (editando) { <span class="mnb-cuenta">@items.Count</span> }
                 <span class="mnb-caret">▾</span>
@@ -104,6 +137,13 @@
                     @if (!string.IsNullOrEmpty(subtitulo))
                     {
                         <div class="mnb-sub">@subtitulo</div>
+                    }
+                    @if (editando && clave != DIRECTOS && clave != MAS)
+                    {
+                        <div class="mnb-color-sec">
+                            <span>Color de "@titulo":</span>
+                            @Circulos(clave)
+                        </div>
                     }
                     @if (items.Count == 0)
                     {
@@ -119,12 +159,13 @@
                             {
                                 <div class="mnb-seccion">@it.Seccion</div>
                             }
-                            <button class="mnb-item @(EsActual(it.Href) ? "on" : "")" @onclick="() => Ir(it)">@it.Label</button>
+                            <button class="mnb-item @(EsActual(it.Href) ? "on" : "")" style="@EstiloItem(it.Href)" @onclick="() => Ir(it)">@it.Label</button>
                         }
                         else
                         {
-                            <div class="mnb-fila-ed">
+                            <div class="mnb-fila-ed" style="@EstiloItem(it.Href)">
                                 <span class="mnb-nombre">@it.Label</span>
+                                <button class="mnb-ico @(pintando == it.Href ? "on" : "")" title="Ponerle color" @onclick="() => { pintando = pintando == it.Href ? null : it.Href; moviendo = null; }">🎨</button>
                                 <button class="mnb-ico" title="Subir" disabled="@(idx == 0)" @onclick="() => Correr(clave, idx, -1)">▲</button>
                                 <button class="mnb-ico" title="Bajar" disabled="@(idx == items.Count - 1)" @onclick="() => Correr(clave, idx, +1)">▼</button>
                                 @if (clave == DIRECTOS)
@@ -139,6 +180,10 @@
                                     <button class="mnb-mover @(moviendo?.Href == it.Href ? "on" : "")" @onclick="() => moviendo = moviendo?.Href == it.Href ? null : (clave, it.Href)">Mover a…</button>
                                 }
                             </div>
+                            @if (pintando == it.Href)
+                            {
+                                <div class="mnb-destinos">@Circulos(it.Href)</div>
+                            }
                             @if (moviendo is { } m && m.Href == it.Href && m.Lista == clave)
                             {
                                 <div class="mnb-destinos">
@@ -209,6 +254,8 @@
             [MAS] = a.Mas.ToList(),
         };
         foreach (var g in a.Grupos) borrador[g.Grupo.Titulo] = g.Items.ToList();
+        colores = new Dictionary<string, string>(a.Colores, StringComparer.OrdinalIgnoreCase);
+        pintando = null;
         editando = true;
         abierto = MenuNuevoCatalogo.Grupos[0].Titulo;
         moviendo = null;
@@ -250,7 +297,8 @@
             var armado = new MenuNuevoCatalogo.Armado(
                 borrador[DIRECTOS],
                 MenuNuevoCatalogo.Grupos.Select(g => new MenuNuevoCatalogo.GrupoArmado(g, borrador[g.Titulo])).ToList(),
-                borrador[MAS]);
+                borrador[MAS],
+                colores);
             await Svc.GuardarAsync(armado);
             editando = false; abierto = null; moviendo = null;
             Toast.Success("Menú guardado");

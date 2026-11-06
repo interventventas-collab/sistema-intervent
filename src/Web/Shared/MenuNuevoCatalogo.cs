@@ -125,11 +125,35 @@ public static class MenuNuevoCatalogo
     // salen siempre de este archivo, así que un cambio de nombre acá no rompe lo acomodado.
 
     public record GrupoOrden(string Titulo, List<string> Items);
-    public record Orden(List<string> Directos, List<GrupoOrden> Grupos, List<string> Mas);
+    /// <summary>Colores: clave = título de sección o dirección de pantalla → nombre de pastel.</summary>
+    public record Orden(List<string> Directos, List<GrupoOrden> Grupos, List<string> Mas,
+                        Dictionary<string, string>? Colores = null);
+
+    /// <summary>2026-11-06: colores pastel que el dueño puede ponerle a secciones y pantallas.
+    /// Fondo suave + borde un poco más fuerte (para la rayita de la sección).</summary>
+    public static readonly (string Clave, string Nombre, string Fondo, string Borde)[] Pasteles =
+    {
+        ("rosa", "Rosa", "#fce7f3", "#f9a8d4"),
+        ("durazno", "Durazno", "#ffedd5", "#fdba74"),
+        ("amarillo", "Amarillo", "#fef9c3", "#facc15"),
+        ("verde", "Verde", "#dcfce7", "#86efac"),
+        ("menta", "Menta", "#ccfbf1", "#5eead4"),
+        ("celeste", "Celeste", "#dbeafe", "#93c5fd"),
+        ("lavanda", "Lavanda", "#ede9fe", "#c4b5fd"),
+        ("cafe", "Café con leche", "#efe4d6", "#c8a27c"),
+    };
+
+    public static (string Fondo, string Borde)? Pastel(string? clave)
+    {
+        if (string.IsNullOrEmpty(clave)) return null;
+        foreach (var p in Pasteles) if (p.Clave == clave) return (p.Fondo, p.Borde);
+        return null;
+    }
 
     /// <summary>Cómo queda el menú para mostrar: grupos con sus renglones ya ordenados.</summary>
     public record GrupoArmado(Grupo Grupo, List<Item> Items);
-    public record Armado(List<Item> Directos, List<GrupoArmado> Grupos, List<Item> Mas);
+    public record Armado(List<Item> Directos, List<GrupoArmado> Grupos, List<Item> Mas,
+                         Dictionary<string, string> Colores);
 
     private static Dictionary<string, Item>? _porHref;
     private static Dictionary<string, string>? _grupoDeFabrica;
@@ -199,13 +223,15 @@ public static class MenuNuevoCatalogo
             if (gt == "") mas.Add(it);
             else grupos.First(x => x.Grupo.Titulo == gt).Items.Add(it);
         }
-        return new Armado(directos, grupos, mas);
+        var colores = new Dictionary<string, string>(o.Colores ?? new(), StringComparer.OrdinalIgnoreCase);
+        return new Armado(directos, grupos, mas, colores);
     }
 
     public static Orden AOrden(Armado a) => new(
         a.Directos.Select(i => i.Href).ToList(),
         a.Grupos.Select(g => new GrupoOrden(g.Grupo.Titulo, g.Items.Select(i => i.Href).ToList())).ToList(),
-        a.Mas.Select(i => i.Href).ToList());
+        a.Mas.Select(i => i.Href).ToList(),
+        new Dictionary<string, string>(a.Colores));
 
     /// <summary>Lo que casi no se usa: queda en el costado, adentro de "Más pantallas".</summary>
     public static readonly Item[] MasPantallas =
