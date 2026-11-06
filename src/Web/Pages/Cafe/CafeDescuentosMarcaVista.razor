@@ -1,0 +1,371 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+@* 2026-11-06 — Pestaña "Descuentos por marca" de Ventas → Precios y descuentos especiales.
+   Pedido de Osmar: que un cliente tenga SIEMPRE un % con una marca (toda o productos elegidos),
+   ej. Dulce Lugar 10% en Cremuccino. En Nueva Venta entra solo como descuento del renglón.
+   Si deja menos de 40% sobre costo, avisa en rojo pero deja guardar (decisión suya). *@
+
+<div style="display: flex; justify-content: flex-end; margin: -0.4rem 0 0.6rem;">
+    @if (!formAbierto)
+    {
+        <button type="button" class="btn btn-secondary" @onclick="AbrirNuevo">➕ Nuevo descuento</button>
+    }
+</div>
+
+@if (formAbierto)
+{
+    <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.8rem 0.9rem; margin-bottom: 1rem; background: #fafafa;">
+        <div style="font-weight: 700; margin-bottom: 0.6rem;">@(editando ? "✏️ Cambiar descuento" : "➕ Nuevo descuento")</div>
+
+        @* ── cliente ── *@
+        <div style="margin-bottom: 0.6rem;">
+            <span style="font-size: 0.85rem; color: #374151;">Cliente</span>
+            @if (cliente is null)
+            {
+                <input class="form-input" style="margin-top: 0.2rem;" @bind="buscarCliente" @bind:event="oninput" placeholder="Buscá el cliente por nombre o código" />
+                @if (buscarCliente.Trim().Length >= 2)
+                {
+                    <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.3rem;">
+                        @foreach (var c in ClientesEncontrados())
+                        {
+                            <button type="button" @onclick="() => ElegirCliente(c)"
+                                    style="text-align: left; background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; font-size: 0.85rem; color: #111827;">
+                                @(string.IsNullOrWhiteSpace(c.Codigo) ? "" : c.Codigo + " · ")@c.Nombre <span style="color: #6b7280;"> · @c.Tipo</span>
+                            </button>
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                <div style="margin-top: 0.2rem;">
+                    <strong>@cliente.Nombre</strong>
+                    @if (!editando)
+                    {
+                        <button type="button" class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.15rem 0.45rem; margin-left: 0.4rem;" @onclick="SacarCliente">cambiar</button>
+                    }
+                </div>
+                @if (similares.Count > 0)
+                {
+                    <div style="font-size: 0.82rem; color: #374151; margin-top: 0.4rem;">
+                        Aplicar también a sus otras sucursales:
+                        @foreach (var s in similares)
+                        {
+                            <label style="display: block; margin: 0.15rem 0 0 0.3rem; cursor: pointer;">
+                                <input type="checkbox" checked="@similaresTildados.Contains(s.Id)" @onchange="() => AlternarSimilar(s.Id)" /> @s.Nombre
+                            </label>
+                        }
+                    </div>
+                }
+            }
+        </div>
+
+        @* ── marca y % ── *@
+        <div style="display: flex; gap: 0.8rem; flex-wrap: wrap; align-items: flex-start; margin-bottom: 0.6rem;">
+            <div style="min-width: 240px;">
+                <span style="font-size: 0.85rem; color: #374151;">Marca</span>
+                @if (marca is null)
+                {
+                    <input class="form-input" style="margin-top: 0.2rem;" @bind="buscarMarca" @bind:event="oninput" placeholder="Buscá la marca" />
+                    @if (buscarMarca.Trim().Length >= 2)
+                    {
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.3rem;">
+                            @foreach (var m in MarcasEncontradas())
+                            {
+                                <button type="button" @onclick="() => ElegirMarca(m)"
+                                        style="text-align: left; background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; font-size: 0.85rem; color: #111827;">
+                                    @m.Nombre @(m.BloqueaDescuento ? " · sin descuentos (marca propia)" : "")
+                                </button>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div style="margin-top: 0.2rem;">
+                        <strong>@marca.Nombre</strong>
+                        @if (!editando)
+                        {
+                            <button type="button" class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.15rem 0.45rem; margin-left: 0.4rem;" @onclick="SacarMarca">cambiar</button>
+                        }
+                    </div>
+                }
+            </div>
+            <div>
+                <span style="font-size: 0.85rem; color: #374151;">Descuento</span>
+                <div style="display: flex; align-items: center; gap: 0.3rem; margin-top: 0.2rem;">
+                    <input class="form-input" style="width: 80px; text-align: right;" inputmode="decimal" @bind="pctTxt" @bind:event="oninput" @bind:after="CargarPreview" placeholder="10" /> %
+                </div>
+            </div>
+        </div>
+
+        @if (marca is not null)
+        {
+            <div style="display: flex; gap: 0; margin-bottom: 0.5rem;">
+                <button type="button" class="btn @(soloElegidos ? "btn-secondary" : "btn-primary")" style="border-radius: 6px 0 0 6px; font-size: 0.82rem;" @onclick="() => soloElegidos = false">Toda la marca</button>
+                <button type="button" class="btn @(soloElegidos ? "btn-primary" : "btn-secondary")" style="border-radius: 0 6px 6px 0; font-size: 0.82rem;" @onclick="() => soloElegidos = true">Solo productos elegidos</button>
+            </div>
+
+            @if (preview is null)
+            {
+                <p style="font-size: 0.8rem; color: #6b7280;">Cargando productos de la marca…</p>
+            }
+            else
+            {
+                var considerados = soloElegidos ? preview.Productos.Where(p => tildados.Contains(p.ProductoId)).ToList() : preview.Productos;
+                var bajo = considerados.Where(p => p.BajoPiso).OrderBy(p => p.DejaPct).ToList();
+                @if (Pct is decimal pv && pv > 0)
+                {
+                    @if (bajo.Count == 0)
+                    {
+                        <div style="font-size: 0.8rem; color: #6b7280;">
+                            Con @Fmt(pv)% @(soloElegidos ? "los elegidos dejan" : "todos dejan") 40% o más sobre costo.
+                            @if (!soloElegidos && preview.MaxPctSinRomperPiso > 0) { <span> Hasta @Fmt(preview.MaxPctSinRomperPiso)% no rompe el piso en ningún producto de la marca.</span> }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="font-size: 0.8rem; color: #b91c1c;">
+                            ⚠ @bajo.Count de @considerados.Count producto@(considerados.Count == 1 ? "" : "s") quedan debajo del 40% (el peor: @bajo[0].Nombre, @Fmt(bajo[0].DejaPct ?? 0)%). Se puede guardar igual.
+                        </div>
+                    }
+                }
+
+                @if (soloElegidos)
+                {
+                    <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.5rem;">Tildá los productos (@tildados.Count de @preview.Productos.Count):</div>
+                }
+                <div style="max-height: 340px; overflow: auto; margin-top: 0.3rem; @(soloElegidos ? "" : "display:none;")">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+                        <tr style="color: #6b7280; font-size: 0.75rem;">
+                            <th></th><th style="text-align: left;">Producto</th><th style="text-align: right;">Hoy</th>
+                            <th style="text-align: right;">Con @(Pct is decimal p0 ? Fmt(p0) : "0")%</th><th style="text-align: right;">Deja</th>
+                        </tr>
+                        @foreach (var p in preview.Productos)
+                        {
+                            <tr style="border-top: 1px solid #f0f1f3;">
+                                <td><input type="checkbox" checked="@tildados.Contains(p.ProductoId)" @onchange="() => AlternarProducto(p.ProductoId)" /></td>
+                                <td>@(string.IsNullOrWhiteSpace(p.Sku) ? "" : p.Sku + " · ")@p.Nombre</td>
+                                <td style="text-align: right;">@(p.PrecioHoy > 0 ? Moneda(p.PrecioHoy) : "sin precio")</td>
+                                <td style="text-align: right;">@(p.PrecioHoy > 0 ? Moneda(p.PrecioConDesc) : "")</td>
+                                <td style="text-align: right; @(p.BajoPiso ? "color:#b91c1c;" : "")">@(p.DejaPct is decimal d ? Fmt(d) + "%" : "")</td>
+                            </tr>
+                        }
+                    </table>
+                </div>
+            }
+        }
+
+        <div style="display: flex; gap: 0.4rem; margin-top: 0.8rem;">
+            <button type="button" class="btn btn-primary" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando…" : "Guardar")</button>
+            <button type="button" class="btn btn-secondary" @onclick="Cerrar">Cancelar</button>
+        </div>
+    </div>
+}
+
+@if (cargando)
+{
+    <p class="text-muted">Cargando…</p>
+}
+else
+{
+    var grupos = Filtrados.GroupBy(d => (d.ClienteId, d.ClienteNombre, d.ClienteCodigo)).OrderBy(g => g.Key.ClienteNombre).ToList();
+    @if (grupos.Count == 0)
+    {
+        <p style="color: #6b7280; font-size: 0.88rem;">
+            @(string.IsNullOrWhiteSpace(Buscar) ? "Todavía no hay clientes con descuento por marca. Tocá \"Nuevo descuento\"." : "No hay descuentos por marca que coincidan con la búsqueda.")
+        </p>
+    }
+    @foreach (var g in grupos)
+    {
+        <div style="border-bottom: 1px solid #e5e7eb; padding: 0.7rem 0;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.4rem;">
+                <div>
+                    <span style="font-weight: 700;">@g.Key.ClienteNombre</span>
+                    <span style="color: #6b7280; font-size: 0.82rem;">@(string.IsNullOrWhiteSpace(g.Key.ClienteCodigo) ? "" : " · " + g.Key.ClienteCodigo) · @g.Count() descuento@(g.Count() == 1 ? "" : "s")</span>
+                </div>
+                <a href="/cafe/clientes?edit=@g.Key.ClienteId" style="font-size: 0.8rem;">abrir ficha</a>
+            </div>
+            @foreach (var d in g.OrderBy(x => x.MarcaNombre))
+            {
+                <div style="font-size: 0.85rem; color: #374151; padding: 0.2rem 0; display: flex; gap: 0.4rem; align-items: baseline; flex-wrap: wrap;">
+                    <span><strong>@d.MarcaNombre</strong> · <strong>@Fmt(d.DescuentoPct)%</strong> ·
+                        @(d.TodaLaMarca ? $"toda la marca ({d.ProductosMarca} productos)" : $"{d.Productos.Count} producto{(d.Productos.Count == 1 ? "" : "s")} elegido{(d.Productos.Count == 1 ? "" : "s")}")</span>
+                    @if (d.BajoPiso > 0)
+                    {
+                        <span style="color: #b91c1c;">· ⚠ @d.BajoPiso debajo del 40% (el peor: @d.PeorNombre, @Fmt(d.PeorDejaPct ?? 0)%)</span>
+                    }
+                    else if (d.PeorNombre is not null)
+                    {
+                        <span style="color: #6b7280;">· el que menos deja: @d.PeorNombre @Fmt(d.PeorDejaPct ?? 0)%</span>
+                    }
+                    <button type="button" class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.15rem 0.45rem;" title="Cambiar" @onclick="() => Editar(d)">✏️</button>
+                    <button type="button" class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.15rem 0.45rem; color: #dc2626;" title="Sacar el descuento" @onclick="() => Borrar(d)">🗑</button>
+                </div>
+                @if (!d.TodaLaMarca)
+                {
+                    <div style="font-size: 0.78rem; color: #6b7280; padding-left: 0.6rem;">@string.Join(" · ", d.Productos.Select(p => p.Nombre))</div>
+                }
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string Buscar { get; set; } = "";
+
+    private static readonly System.Globalization.CultureInfo Ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+
+    private bool cargando = true, guardando, formAbierto, editando;
+    private List<CafeDescMarcaDto> descuentos = new();
+
+    private List<CafeClienteDto> clientesTodos = new();
+    private List<CafeMarcaDto> marcasTodas = new();
+    private string buscarCliente = "", buscarMarca = "", pctTxt = "";
+    private CafeClienteDto? cliente;
+    private CafeMarcaDto? marca;
+    private bool soloElegidos;
+    private CafeDescMarcaPreviewDto? preview;
+    private readonly HashSet<int> tildados = new();
+    private List<CafeClienteSimpleDto> similares = new();
+    private readonly HashSet<int> similaresTildados = new();
+
+    protected override async Task OnInitializedAsync() => await Recargar();
+
+    private async Task Recargar()
+    {
+        try { descuentos = await Api.GetDescuentosMarcaAsync(); }
+        catch (Exception ex) { ToastService.Error("No se pudieron traer los descuentos por marca: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private bool Coincide(string? s) => !string.IsNullOrEmpty(s) && s.Contains(Buscar.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private IEnumerable<CafeDescMarcaDto> Filtrados
+        => string.IsNullOrWhiteSpace(Buscar) ? descuentos
+           : descuentos.Where(d => Coincide(d.ClienteNombre) || Coincide(d.ClienteCodigo) || Coincide(d.MarcaNombre)
+                                   || d.Productos.Any(p => Coincide(p.Nombre) || Coincide(p.Sku)));
+
+    private decimal? Pct
+    {
+        get
+        {
+            var t = (pctTxt ?? "").Trim().Replace(',', '.');
+            return decimal.TryParse(t, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+        }
+    }
+
+    private static string Fmt(decimal v) => v.ToString("0.#", Ar);
+    private static string Moneda(decimal v) => "$" + v.ToString(v % 1 == 0 ? "N0" : "N2", Ar);
+
+    private async Task AsegurarCatalogos()
+    {
+        try
+        {
+            if (clientesTodos.Count == 0) clientesTodos = (await Api.GetCafeClientesAsync() ?? new()).Where(c => c.IsActive).ToList();
+            if (marcasTodas.Count == 0) marcasTodas = (await Api.GetCafeMarcasAsync(true) ?? new()).OrderBy(m => m.Nombre).ToList();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudieron traer clientes y marcas: " + ex.Message); }
+    }
+
+    private async Task AbrirNuevo()
+    {
+        Limpiar();
+        formAbierto = true;
+        await AsegurarCatalogos();
+    }
+
+    private void Limpiar()
+    {
+        editando = false; cliente = null; marca = null; preview = null; soloElegidos = false;
+        buscarCliente = ""; buscarMarca = ""; pctTxt = "";
+        tildados.Clear(); similares = new(); similaresTildados.Clear();
+    }
+
+    private void Cerrar() { formAbierto = false; Limpiar(); }
+
+    private IEnumerable<CafeClienteDto> ClientesEncontrados()
+    {
+        var q = buscarCliente.Trim();
+        return clientesTodos.Where(c => (c.Nombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+                                        || (c.Codigo ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+                                        || (c.RazonSocial ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)).Take(8);
+    }
+
+    private IEnumerable<CafeMarcaDto> MarcasEncontradas()
+        => marcasTodas.Where(m => m.Nombre.Contains(buscarMarca.Trim(), StringComparison.OrdinalIgnoreCase)).Take(8);
+
+    private async Task ElegirCliente(CafeClienteDto c)
+    {
+        cliente = c; similaresTildados.Clear();
+        try { similares = await Api.GetClientesSimilaresAsync(c.Id); } catch { similares = new(); }
+        await CargarPreview();
+    }
+
+    private void SacarCliente() { cliente = null; similares = new(); similaresTildados.Clear(); }
+
+    private void AlternarSimilar(int id) { if (!similaresTildados.Remove(id)) similaresTildados.Add(id); }
+
+    private async Task ElegirMarca(CafeMarcaDto m)
+    {
+        if (m.BloqueaDescuento) { ToastService.Error($"{m.Nombre} es marca propia: no lleva descuentos"); return; }
+        marca = m; tildados.Clear();
+        await CargarPreview();
+    }
+
+    private void SacarMarca() { marca = null; preview = null; tildados.Clear(); }
+
+    private void AlternarProducto(int id) { if (!tildados.Remove(id)) tildados.Add(id); }
+
+    private async Task CargarPreview()
+    {
+        if (marca is null) return;
+        try { preview = await Api.GetDescuentoMarcaPreviewAsync(marca.Id, Pct ?? 0m, cliente?.Id); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task Editar(CafeDescMarcaDto d)
+    {
+        await AsegurarCatalogos();
+        Limpiar();
+        editando = true; formAbierto = true;
+        cliente = clientesTodos.FirstOrDefault(c => c.Id == d.ClienteId) ?? new CafeClienteDto { Id = d.ClienteId, Nombre = d.ClienteNombre };
+        marca = marcasTodas.FirstOrDefault(m => m.Id == d.MarcaId) ?? new CafeMarcaDto { Id = d.MarcaId, Nombre = d.MarcaNombre };
+        pctTxt = Fmt(d.DescuentoPct);
+        soloElegidos = !d.TodaLaMarca;
+        foreach (var p in d.Productos) tildados.Add(p.ProductoId);
+        await CargarPreview();
+    }
+
+    private async Task Guardar()
+    {
+        if (cliente is null) { ToastService.Error("Elegí el cliente"); return; }
+        if (marca is null) { ToastService.Error("Elegí la marca"); return; }
+        if (Pct is not decimal pct || pct <= 0 || pct >= 100) { ToastService.Error("Poné el % de descuento (ej: 10)"); return; }
+        if (soloElegidos && tildados.Count == 0) { ToastService.Error("Tildá al menos un producto, o elegí \"Toda la marca\""); return; }
+
+        var ids = new List<int> { cliente.Id };
+        ids.AddRange(similaresTildados);
+        guardando = true;
+        try
+        {
+            await Api.GuardarDescuentoMarcaAsync(ids, marca.Id, pct, soloElegidos ? tildados.ToList() : null);
+            ToastService.Success(ids.Count > 1
+                ? $"Descuento {Fmt(pct)}% en {marca.Nombre} guardado para {ids.Count} clientes"
+                : $"Descuento {Fmt(pct)}% en {marca.Nombre} guardado para {cliente.Nombre}");
+            Cerrar();
+            await Recargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task Borrar(CafeDescMarcaDto d)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Sacarle a {d.ClienteNombre} el {Fmt(d.DescuentoPct)}% en {d.MarcaNombre}?\n\nLas ventas ya hechas no cambian.")) return;
+        try { await Api.BorrarDescuentoMarcaAsync(d.ClienteId, d.MarcaId); ToastService.Success("Descuento sacado"); await Recargar(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+}

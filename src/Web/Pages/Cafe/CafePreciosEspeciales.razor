@@ -13,7 +13,7 @@
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.6rem;">
-        <h3 style="margin: 0;">🏷 Precios especiales</h3>
+        <h3 style="margin: 0;">🏷 Precios y descuentos especiales</h3>
         <div style="display: flex; gap: 0;">
             @foreach (var (key, label) in Vistas)
             {
@@ -26,7 +26,7 @@
     <div class="card-body">
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.9rem;">
             <input class="form-input" style="flex: 1; min-width: 220px;" @bind="buscar" @bind:event="oninput"
-                   placeholder="🔍 Buscar cliente o producto (nombre o código)" />
+                   placeholder="@(vista == "marca" ? "🔍 Buscar cliente o marca" : "🔍 Buscar cliente o producto (nombre o código)")" />
             @if (vista == "lista")
             {
                 <button type="button" class="btn btn-secondary" @onclick="AlternarNuevaLista">➕ Nueva lista</button>
@@ -298,12 +298,23 @@
                 </div>
             }
         }
+        else if (vista == "marca")
+        {
+            <CafeDescuentosMarcaVista Buscar="@buscar" />
+        }
         else if (vista == "cliente")
         {
             var grupos = PactosFiltrados.GroupBy(p => (p.ClienteId, p.ClienteNombre, p.ClienteCodigo)).OrderBy(g => g.Key.ClienteNombre).ToList();
+            // 2026-11-06: los clientes que solo tienen descuento por marca también aparecen acá.
+            var conPacto = grupos.Select(g => g.Key.ClienteId).ToHashSet();
+            var soloMarca = DescMarcaFiltrados.Where(d => !conPacto.Contains(d.ClienteId))
+                .GroupBy(d => (d.ClienteId, d.ClienteNombre, d.ClienteCodigo)).OrderBy(g => g.Key.ClienteNombre).ToList();
             @if (grupos.Count == 0)
             {
+                @if (soloMarca.Count == 0)
+                {
                 <p style="color: #6b7280; font-size: 0.88rem;">No hay clientes con precios especiales@(string.IsNullOrWhiteSpace(buscar) ? "" : " que coincidan con la búsqueda").</p>
+                }
             }
             @foreach (var g in grupos)
             {
@@ -322,6 +333,26 @@
                             <strong>@Moneda(p.Precio)</strong>
                             <span style="color: #6b7280;"> · @(p.ListaNombre is null ? "suelto (de la ficha)" : p.ListaNombre)</span>
                         </div>
+                    }
+                    @foreach (var d in descMarca.Where(x => x.ClienteId == g.Key.ClienteId).OrderBy(x => x.MarcaNombre))
+                    {
+                        <div style="font-size: 0.85rem; color: #374151; padding: 0.15rem 0;">@LineaDescMarca(d)</div>
+                    }
+                </div>
+            }
+            @foreach (var g in soloMarca)
+            {
+                <div style="border-bottom: 1px solid #e5e7eb; padding: 0.7rem 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.4rem;">
+                        <div>
+                            <span style="font-weight: 700;">@g.Key.ClienteNombre</span>
+                            <span style="color: #6b7280; font-size: 0.82rem;">@(string.IsNullOrWhiteSpace(g.Key.ClienteCodigo) ? "" : " · " + g.Key.ClienteCodigo)</span>
+                        </div>
+                        <a href="/cafe/clientes?edit=@g.Key.ClienteId" style="font-size: 0.8rem;">abrir ficha</a>
+                    </div>
+                    @foreach (var d in g.OrderBy(x => x.MarcaNombre))
+                    {
+                        <div style="font-size: 0.85rem; color: #374151; padding: 0.15rem 0;">@LineaDescMarca(d)</div>
                     }
                 </div>
             }
@@ -356,7 +387,7 @@
 </div>
 
 @code {
-    private static readonly (string, string)[] Vistas = { ("lista", "Por lista"), ("cliente", "Por cliente"), ("producto", "Por producto") };
+    private static readonly (string, string)[] Vistas = { ("lista", "Por lista"), ("cliente", "Por cliente"), ("producto", "Por producto"), ("marca", "Descuentos por marca") };
     private static readonly System.Globalization.CultureInfo Ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
 
     private string vista = "lista";
@@ -365,6 +396,17 @@
 
     private List<CafeListaEspecialDto> listas = new();
     private List<CafePactoDto> pactos = new();
+    // 2026-11-06: descuentos fijos por marca (se muestran en "Por cliente"; se cargan en su pestaña).
+    private List<CafeDescMarcaDto> descMarca = new();
+
+    private IEnumerable<CafeDescMarcaDto> DescMarcaFiltrados
+        => string.IsNullOrWhiteSpace(buscar) ? descMarca
+           : descMarca.Where(d => Coincide(d.ClienteNombre) || Coincide(d.ClienteCodigo) || Coincide(d.MarcaNombre));
+
+    private static string LineaDescMarca(CafeDescMarcaDto d)
+        => $"{d.MarcaNombre} −{d.DescuentoPct.ToString("0.#", Ar)}% · " +
+           (d.TodaLaMarca ? "toda la marca" : $"{d.Productos.Count} producto{(d.Productos.Count == 1 ? "" : "s")} elegido{(d.Productos.Count == 1 ? "" : "s")}") +
+           " · descuento por marca";
     private readonly HashSet<int> tildes = new();
     private readonly Dictionary<int, int> para = new(); // lista → cliente elegido para la propuesta
 
@@ -409,7 +451,11 @@
         if (v != "lista")
         {
             cargando = true;
-            try { pactos = await Api.GetPactosTodosAsync(); }
+            try
+            {
+                if (v != "marca") pactos = await Api.GetPactosTodosAsync();
+                if (v == "cliente") descMarca = await Api.GetDescuentosMarcaAsync();
+            }
             catch (Exception ex) { ToastService.Error(ex.Message); }
             finally { cargando = false; }
         }

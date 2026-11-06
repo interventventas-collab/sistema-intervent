@@ -36,7 +36,7 @@ public static class MenuNuevoCatalogo
             new("Pedidos de WhatsApp", "/cafe/pedidos-whatsapp"),
             new("Visitas", "/visitas"),
             new("Clientes", "/cafe/clientes", Seccion: "Clientes"),
-            new("Precios especiales", "/cafe/precios-especiales"),
+            new("Precios y descuentos especiales", "/cafe/precios-especiales"),
         }),
         new("Frikaf", "solo café", true, new Item[]
         {

@@ -1573,6 +1573,25 @@ public class ApiClient
     public async Task<bool> BorrarPrecioEspecialAsync(int id)
         => await DeleteAsync($"/api/cafe/precios-especiales/{id}");
 
+    // 2026-11-06: descuento fijo por MARCA para un cliente (Precios y descuentos especiales).
+    public async Task<List<CafeDescMarcaDto>> GetDescuentosMarcaAsync()
+        => await GetAsync<List<CafeDescMarcaDto>>("/api/cafe/descuentos-marca") ?? new();
+
+    public async Task<CafeDescMarcaPreviewDto?> GetDescuentoMarcaPreviewAsync(int marcaId, decimal pct, int? clienteId)
+        => await GetAsync<CafeDescMarcaPreviewDto>($"/api/cafe/descuentos-marca/preview?marcaId={marcaId}&pct={pct.ToString(System.Globalization.CultureInfo.InvariantCulture)}&clienteId={clienteId}");
+
+    public async Task<CafeDescMarcaVentaDto> GetDescuentosMarcaClienteAsync(int clienteId)
+        => await GetAsync<CafeDescMarcaVentaDto>($"/api/cafe/descuentos-marca/cliente/{clienteId}") ?? new();
+
+    public async Task<List<CafeClienteSimpleDto>> GetClientesSimilaresAsync(int clienteId)
+        => await GetAsync<List<CafeClienteSimpleDto>>($"/api/cafe/descuentos-marca/similares/{clienteId}") ?? new();
+
+    public async Task<bool> GuardarDescuentoMarcaAsync(List<int> clienteIds, int marcaId, decimal descuentoPct, List<int>? productoIds)
+        => await PostAsync<OkResult>("/api/cafe/descuentos-marca", new { clienteIds, marcaId, descuentoPct, productoIds }) is not null;
+
+    public async Task<bool> BorrarDescuentoMarcaAsync(int clienteId, int marcaId)
+        => await DeleteAsync($"/api/cafe/descuentos-marca?clienteId={clienteId}&marcaId={marcaId}");
+
     // 2026-10-26: Ventas → Precios especiales (listas que valen para varios clientes).
     public async Task<List<CafeListaEspecialDto>> GetListasEspecialesAsync()
         => await GetAsync<List<CafeListaEspecialDto>>("/api/cafe/listas-especiales") ?? new();
