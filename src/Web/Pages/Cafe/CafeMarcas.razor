@@ -61,6 +61,10 @@
                                     {
                                         <div style="font-size: 0.78rem; color: #6b7280;">@m.Notas</div>
                                     }
+                                    @if (NotasPrecio(m) is { } np)
+                                    {
+                                        <div style="font-size: 0.78rem; color: #6b7280;">@np</div>
+                                    }
                                 </td>
                                 <td>
                                     @if (!string.IsNullOrEmpty(m.ProveedorNombre))
@@ -174,6 +178,21 @@
                         </p>
                     </div>
                 </div>
+                <p style="font-size: 0.75rem; color: #6b7280; margin: 0.4rem 0 0.3rem;">
+                    Anotaciones internas (no las ve el cliente). Salen en la ficha de cada producto de la marca y en la del proveedor.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Descuento que nos hace el proveedor</label>
+                    <input class="form-input" maxlength="200" @bind="formDescuentoProveedor" placeholder="Ej: Lista −45% · −18% y −10% · Sin descuento" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cómo remarcamos (venta por fuera)</label>
+                    <input class="form-input" maxlength="200" @bind="formComoRemarcamos" placeholder="Ej: Precio de lista redondeado a $1.000 · Costo + 50%" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">MercadoLibre</label>
+                    <input class="form-input" maxlength="200" @bind="formReglaMeli" placeholder="Ej: Que deje 40% o más" />
+                </div>
                 <div class="form-group">
                     <label class="form-label">Notas</label>
                     <textarea class="form-input" rows="2" @bind="formNotas"></textarea>
@@ -238,6 +257,9 @@
     private string proveedorSearch = "";
     private bool proveedorSearchOpen;
     private string formNotas = "";
+    private string formDescuentoProveedor = "";
+    private string formComoRemarcamos = "";
+    private string formReglaMeli = "";
     private decimal formMargenPct = 100m;
     private bool formIsActive = true;
 
@@ -280,6 +302,7 @@
         editing = null;
         formNombre = ""; formProveedorId = 0; proveedorSearch = ""; proveedorSearchOpen = false;
         formNotas = ""; formIsActive = true; formMargenPct = 100m;
+        formDescuentoProveedor = ""; formComoRemarcamos = ""; formReglaMeli = "";
         formError = null; showForm = true;
     }
 
@@ -290,6 +313,9 @@
         formProveedorId = m.ProveedorId ?? 0;
         proveedorSearch = ""; proveedorSearchOpen = false;
         formNotas = m.Notas ?? "";
+        formDescuentoProveedor = m.DescuentoProveedor ?? "";
+        formComoRemarcamos = m.ComoRemarcamos ?? "";
+        formReglaMeli = m.ReglaMeli ?? "";
         formIsActive = m.IsActive;
         formMargenPct = m.MargenPctSobreCosto;
         formError = null; showForm = true;
@@ -325,7 +351,10 @@
                     Nombre = formNombre,
                     ProveedorId = formProveedorId > 0 ? formProveedorId : null,
                     Notas = formNotas,
-                    MargenPctSobreCosto = formMargenPct
+                    MargenPctSobreCosto = formMargenPct,
+                    DescuentoProveedor = formDescuentoProveedor,
+                    ComoRemarcamos = formComoRemarcamos,
+                    ReglaMeli = formReglaMeli
                 });
                 ToastService.Success("Marca creada");
             }
@@ -338,7 +367,10 @@
                     ClearProveedor = formProveedorId <= 0,
                     Notas = formNotas,
                     IsActive = formIsActive,
-                    MargenPctSobreCosto = formMargenPct
+                    MargenPctSobreCosto = formMargenPct,
+                    DescuentoProveedor = formDescuentoProveedor,
+                    ComoRemarcamos = formComoRemarcamos,
+                    ReglaMeli = formReglaMeli
                 });
                 ToastService.Success("Marca actualizada");
             }
@@ -363,5 +395,15 @@
             await Load();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); toDelete = null; }
+    }
+
+    /// <summary>"Descuento: … · Remarcamos: … · MeLi: …" con lo que esté cargado, o null.</summary>
+    public static string? NotasPrecio(CafeMarcaDto m)
+    {
+        var partes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(m.DescuentoProveedor)) partes.Add($"Descuento: {m.DescuentoProveedor}");
+        if (!string.IsNullOrWhiteSpace(m.ComoRemarcamos)) partes.Add($"Remarcamos: {m.ComoRemarcamos}");
+        if (!string.IsNullOrWhiteSpace(m.ReglaMeli)) partes.Add($"MeLi: {m.ReglaMeli}");
+        return partes.Count == 0 ? null : string.Join(" · ", partes);
     }
 }

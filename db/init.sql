@@ -3479,6 +3479,16 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CuentaEnValuacion' AND Object_ID = Object_ID('Cafe_Marcas'))
     ALTER TABLE Cafe_Marcas ADD CuentaEnValuacion BIT NOT NULL DEFAULT 1;
 GO
+
+-- 2026-11-06: anotaciones internas de precio por marca (descuento del proveedor, cómo remarcamos, MeLi).
+-- Se muestran en la ficha del producto y en la del proveedor.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'DescuentoProveedor' AND Object_ID = Object_ID('Cafe_Marcas'))
+    ALTER TABLE Cafe_Marcas ADD DescuentoProveedor NVARCHAR(200) NULL;
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'ComoRemarcamos' AND Object_ID = Object_ID('Cafe_Marcas'))
+    ALTER TABLE Cafe_Marcas ADD ComoRemarcamos NVARCHAR(200) NULL;
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'ReglaMeli' AND Object_ID = Object_ID('Cafe_Marcas'))
+    ALTER TABLE Cafe_Marcas ADD ReglaMeli NVARCHAR(200) NULL;
+GO
 -- Cafe_Productos.ExcluirDeValuacion: excepcion por producto puntual (no suma aunque la marca si).
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'ExcluirDeValuacion' AND Object_ID = Object_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD ExcluirDeValuacion BIT NOT NULL DEFAULT 0;

@@ -22,6 +22,17 @@ public class CafeMarca
     [MaxLength(500)]
     public string? Notas { get; set; }
 
+    /// <summary>06/11/2026 — Anotaciones internas de precio, texto libre que se ve en la ficha de
+    /// cada producto de la marca y en la del proveedor. Ej: "Lista −45%", "Lista redondeada a $1.000".</summary>
+    [MaxLength(200)]
+    public string? DescuentoProveedor { get; set; }
+
+    [MaxLength(200)]
+    public string? ComoRemarcamos { get; set; }
+
+    [MaxLength(200)]
+    public string? ReglaMeli { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     /// <summary>Marcas propias (Frikaf) bloquean descuentos: siempre se cobra 100%.</summary>

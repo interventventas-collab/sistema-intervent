@@ -110,6 +110,25 @@
                 <button class="btn-close" @onclick="CloseForm">&times;</button>
             </div>
             <div class="modal-body">
+                @* 2026-11-06: marcas de este proveedor con su descuento y cómo remarcamos (se cargan en Marcas). *@
+                @if (editing is not null && marcasDelProveedor is { Count: > 0 })
+                {
+                    <div class="form-group">
+                        <label class="form-label">Sus marcas · descuento y cómo remarcamos</label>
+                        @foreach (var m in marcasDelProveedor)
+                        {
+                            <div style="font-size:0.85rem; padding:0.25rem 0; border-bottom:1px solid #f3f4f6;">
+                                <strong>@m.Nombre</strong>
+                                <span style="color:#374151;"> · @(CafeMarcas.NotasPrecio(m) ?? "sin anotar")</span>
+                                @if (!string.IsNullOrWhiteSpace(m.Notas))
+                                {
+                                    <div style="font-size:0.78rem; color:#6b7280;">@m.Notas</div>
+                                }
+                            </div>
+                        }
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Se cambian en <a href="/cafe/marcas">Marcas</a>.</p>
+                    </div>
+                }
                 @if (!string.IsNullOrEmpty(formError)) { <div class="form-error">@formError</div> }
 
                 @* Identidad *@
@@ -280,6 +299,7 @@
     private bool showForm, saving;
     private string? formError;
     private CafeProveedorDto? editing;
+    private List<CafeMarcaDto>? marcasDelProveedor;
     private string formNombre = "";
     private string formContacto = "";
     private string formTelefono = "";
@@ -354,6 +374,8 @@
         formDireccion = p.Direccion ?? ""; formCodigoPostal = p.CodigoPostal ?? "";
         formProvincia = p.Provincia ?? ""; formCiudad = p.Ciudad ?? ""; formWeb = p.Web ?? "";
         localidadesSugeridas = await CpService.GetLocalidadesAsync(formProvincia);
+        marcasDelProveedor = null;
+        try { marcasDelProveedor = await Api.GetCafeMarcasAsync(activos: true, proveedorId: p.Id); } catch { }
         formIsActive = p.IsActive;
         formAceptaRedirigido = p.AceptaRedirigido;
         formError = null; showForm = true;
