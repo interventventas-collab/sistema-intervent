@@ -1,0 +1,316 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+@* 2026-11-06: botón "Ver historial" del listado de productos. Tres pestañas (botones, no desplegable):
+   Ventas (con 👁 para ver el comprobante en PDF, como en Cobranzas), Compras / entradas (stock sumado +
+   cambios de costo: hoy no se anota proveedor ni factura por producto) y Movimientos de stock (todo). *@
+
+<div class="modal-overlay" @onclick="Cerrar">
+    <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 820px; max-height: 92vh; display: flex; flex-direction: column;">
+        <div class="modal-header" style="background: whitesmoke;">
+            <h3 style="margin: 0; font-size: 1rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">🕘 Historial — @Nombre</h3>
+            <button class="btn-close" @onclick="Cerrar">&times;</button>
+        </div>
+        <div class="modal-body" style="overflow-y: auto;">
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.6rem;">
+                @foreach (var (clave, texto) in Pestanas)
+                {
+                    var c = clave;
+                    <button class="btn @(tab == c ? "btn-primary" : "btn-secondary")" style="font-size: 0.85rem;"
+                            @onclick="() => CambiarTab(c)">@texto</button>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(resumen))
+            {
+                <div style="font-size: 0.78rem; color: #6b7280; margin-bottom: 0.4rem;">@resumen</div>
+            }
+
+            @if (cargando && Vacio)
+            {
+                <div style="padding: 1.5rem; text-align: center; color: #6b7280;">⏳ Cargando…</div>
+            }
+            else if (Vacio)
+            {
+                <div style="padding: 1.5rem; text-align: center; color: #9ca3af;">@TextoVacio</div>
+            }
+            else
+            {
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    @if (tab == "ventas")
+                    {
+                        @foreach (var v in ventas)
+                        {
+                            <tr style="border-bottom: 1px solid #f3f4f6;">
+                                <td style="padding: 0.35rem 0.25rem; color: #6b7280; white-space: nowrap;">@v.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td style="padding: 0.35rem 0.25rem;">@(v.Cliente ?? "(sin cliente)")</td>
+                                <td style="padding: 0.35rem 0.25rem; text-align: right; white-space: nowrap;">@Cuanto(v)</td>
+                                <td style="padding: 0.35rem 0.25rem; text-align: right; white-space: nowrap;">$@Plata(v.PrecioUnitario)</td>
+                                <td style="padding: 0.35rem 0.25rem; color: #6b7280; font-size: 0.78rem; white-space: nowrap;">@v.TipoComprobante · @NumeroCorto(v.Numero)</td>
+                                <td style="padding: 0.35rem 0.25rem; text-align: center; width: 2rem;">
+                                    <button type="button" title="Ver el comprobante" @onclick="() => VerPdf(v)"
+                                            style="background: none; border: none; cursor: pointer; font-size: 1rem; padding: 0;">👁</button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else if (tab == "entradas")
+                    {
+                        @foreach (var e in entradas)
+                        {
+                            <tr style="border-bottom: 1px solid #f3f4f6;">
+                                <td style="padding: 0.35rem 0.25rem; color: #6b7280; white-space: nowrap; vertical-align: top;">@e.FechaUtc.ToArTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td style="padding: 0.35rem 0.25rem;">
+                                    @if (e.Tipo == "COSTO")
+                                    {
+                                        <span>Costo @(e.CostoAnterior is null ? "" : $"${Plata(e.CostoAnterior.Value)} → ")<strong>$@Plata(e.CostoNuevo ?? 0)</strong></span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #15803d;">+@e.Cantidad u entraron</span>
+                                    }
+                                    <div style="font-size: 0.75rem; color: #6b7280;">@Junto(e.Detalle, e.Deposito, e.Quien)</div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var m in movs)
+                        {
+                            <tr style="border-bottom: 1px solid #f3f4f6; @(m.Reverted ? "text-decoration: line-through; color: #9ca3af;" : "")">
+                                <td style="padding: 0.35rem 0.25rem; color: #6b7280; white-space: nowrap; vertical-align: top;">@m.FechaUtc.ToArTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td style="padding: 0.35rem 0.25rem; text-align: right; white-space: nowrap; vertical-align: top; font-weight: 600; color: @(m.Diferencia > 0 ? "#15803d" : m.Diferencia < 0 ? "#b91c1c" : "#6b7280");">
+                                    @(m.Diferencia > 0 ? "+" + m.Diferencia : m.Diferencia == 0 ? "=" : m.Diferencia.ToString())
+                                </td>
+                                <td style="padding: 0.35rem 0.25rem;">
+                                    @NombreMov(m.TipoMov)
+                                    <div style="font-size: 0.75rem; color: #6b7280;">@Junto(m.Comentario, m.Deposito, m.Quien)</div>
+                                </td>
+                                <td style="padding: 0.35rem 0.25rem; text-align: right; white-space: nowrap; color: #374151; vertical-align: top;">quedan @m.StockDespues</td>
+                            </tr>
+                        }
+                    }
+                </table>
+                @if (hayMas)
+                {
+                    <div style="margin-top: 0.5rem;">
+                        <button class="btn btn-secondary" style="font-size: 0.8rem;" disabled="@cargando" @onclick="CargarMas">
+                            @(cargando ? "Cargando…" : "Ver más ▾")
+                        </button>
+                    </div>
+                }
+                @if (tab == "entradas")
+                {
+                    <div style="font-size: 0.72rem; color: #9ca3af; margin-top: 0.5rem;">
+                        Hoy no se anota a qué proveedor ni con qué factura entró cada producto: sale cuándo, cuánto y quién lo cargó, más los cambios de costo.
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@if (pdfVenta is not null)
+{
+    <div class="modal-overlay" style="z-index:9500;" @onclick="CerrarPdf">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 820px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin: 0; font-size: 1rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">📄 @pdfVenta.Numero · @pdfVenta.Cliente</h3>
+                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                    <button class="btn btn-secondary" style="font-size: 0.85rem; white-space: nowrap;" @onclick="DescargarPdf" disabled="@(pdfBytes is null)">⬇ Descargar</button>
+                    <button class="btn btn-secondary" style="font-size: 0.85rem; white-space: nowrap;" @onclick="CerrarPdf">✕ Cerrar</button>
+                </div>
+            </div>
+            <div class="modal-body" style="background: #525659; padding: 0; overflow: hidden;">
+                @if (!string.IsNullOrEmpty(pdfUrl))
+                {
+                    <embed src="@(pdfUrl + "#toolbar=1&navpanes=0&scrollbar=0&pagemode=none&zoom=60")" type="application/pdf"
+                           style="width: 100%; height: 75vh; border: none; display: block; background: #525659;" />
+                }
+                else
+                {
+                    <div style="padding: 3rem; text-align: center; color: white;">⏳ Cargando PDF…</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int ProductoId { get; set; }
+    [Parameter] public string Nombre { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private static readonly (string, string)[] Pestanas =
+    {
+        ("ventas", "Ventas"), ("entradas", "Compras / entradas"), ("movimientos", "Movimientos de stock")
+    };
+
+    private string tab = "ventas";
+    private bool cargando, hayMas;
+    private string? resumen;
+    private List<CafeProductoHistVentaDto> ventas = new();
+    private List<CafeProductoHistEntradaDto> entradas = new();
+    private List<CafeProductoHistMovDto> movs = new();
+    private int pedido; // descarta respuestas viejas si se cambia de pestaña rápido
+
+    private bool Vacio => tab switch
+    {
+        "ventas" => ventas.Count == 0,
+        "entradas" => entradas.Count == 0,
+        _ => movs.Count == 0
+    };
+
+    private string TextoVacio => tab switch
+    {
+        "ventas" => "No tiene ventas cargadas en el sistema.",
+        "entradas" => "No hay entradas de stock ni cambios de costo anotados.",
+        _ => "No hay movimientos de stock."
+    };
+
+    protected override async Task OnInitializedAsync() => await Cargar(reiniciar: true);
+
+    private async Task CambiarTab(string t)
+    {
+        if (tab == t) return;
+        tab = t;
+        await Cargar(reiniciar: true);
+    }
+
+    private Task CargarMas() => Cargar(reiniciar: false);
+
+    private async Task Cargar(bool reiniciar)
+    {
+        var miPedido = ++pedido;
+        var t = tab;
+        if (reiniciar)
+        {
+            ventas = new(); entradas = new(); movs = new(); resumen = null; hayMas = false;
+        }
+        cargando = true;
+        try
+        {
+            switch (t)
+            {
+                case "ventas":
+                {
+                    var r = await Api.GetCafeProductoHistAsync<CafeProductoHistVentaDto>(ProductoId, t, ventas.Count);
+                    if (miPedido != pedido || r is null) return;
+                    ventas.AddRange(r.Items); hayMas = r.HayMas;
+                    if (reiniciar) resumen = r.Resumen;
+                    break;
+                }
+                case "entradas":
+                {
+                    var r = await Api.GetCafeProductoHistAsync<CafeProductoHistEntradaDto>(ProductoId, t, entradas.Count);
+                    if (miPedido != pedido || r is null) return;
+                    entradas.AddRange(r.Items); hayMas = r.HayMas;
+                    break;
+                }
+                default:
+                {
+                    var r = await Api.GetCafeProductoHistAsync<CafeProductoHistMovDto>(ProductoId, t, movs.Count);
+                    if (miPedido != pedido || r is null) return;
+                    movs.AddRange(r.Items); hayMas = r.HayMas;
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            if (miPedido == pedido) ToastService.Error("No se pudo cargar el historial: " + ex.Message);
+        }
+        finally
+        {
+            if (miPedido == pedido) cargando = false;
+        }
+    }
+
+    private async Task Cerrar()
+    {
+        await CerrarPdf();
+        await OnClose.InvokeAsync();
+    }
+
+    private static string Plata(decimal v)
+    {
+        var ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+        return v == Math.Truncate(v) ? v.ToString("N0", ar) : v.ToString("N2", ar);
+    }
+
+    /// <summary>"CAFE-2026-2836" → "2836" (el resto es igual en todas).</summary>
+    private static string NumeroCorto(string n)
+    {
+        var i = n.LastIndexOf('-');
+        return i >= 0 && i < n.Length - 1 ? n[(i + 1)..] : n;
+    }
+
+    /// <summary>Cantidad en el formato en que se vendió: "3 u", "1 pack x100", "2 kg"...</summary>
+    private static string Cuanto(CafeProductoHistVentaDto v)
+    {
+        var f = (v.Formato ?? "UNIT").ToUpperInvariant();
+        if (f == "UNIT") return $"{v.Cantidad} u";
+        if (f == "1KG") return $"{v.Cantidad} kg";
+        if (f == "MEDIO") return $"{v.Cantidad} × ½ kg";
+        if (f == "CUARTO") return $"{v.Cantidad} × ¼ kg";
+        if (f.StartsWith("PACK_"))
+        {
+            var resto = f[5..];
+            var estuche = resto.EndsWith("E");
+            if (estuche) resto = resto[..^1];
+            return $"{v.Cantidad} pack{(v.Cantidad == 1 ? "" : "s")} x{resto}{(estuche ? " c/estuche" : "")}";
+        }
+        if (f == "BULTO") return $"{v.Cantidad} bulto{(v.Cantidad == 1 ? "" : "s")}";
+        return $"{v.Cantidad} {f.ToLowerInvariant()}";
+    }
+
+    private static string Junto(params string?[] partes)
+        => string.Join(" · ", partes.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+    private static string NombreMov(string t) => t switch
+    {
+        "VENTA_MELI" => "Venta MercadoLibre",
+        "VENTA_MELI_FULL" => "Venta MercadoLibre (Full)",
+        "VENTA_NUESTRA" => "Venta nuestra",
+        "VENTA_NUESTRA_COMP" => "Venta nuestra (como parte de un compuesto)",
+        "SUMA" => "Entró mercadería",
+        "RESTA" => "Se sacó stock",
+        "SET" => "Stock puesto a mano",
+        "AJUSTE_ADMIN" => "Ajuste a mano",
+        "CONTEO" => "Conteo",
+        "DEVUELTO_VENTA" => "Volvió de una venta",
+        _ => t
+    };
+
+    // ---- PDF del comprobante (mismo visor que en Nueva cobranza) ----
+    private CafeProductoHistVentaDto? pdfVenta;
+    private string? pdfUrl;
+    private byte[]? pdfBytes;
+
+    private async Task VerPdf(CafeProductoHistVentaDto v)
+    {
+        await CerrarPdf();
+        pdfVenta = v;
+        var (bytes, error) = await Api.GetCafeVentaPdfAsync(v.VentaId);
+        if (bytes is null) { ToastService.Error(error ?? "No se pudo armar el PDF"); pdfVenta = null; return; }
+        pdfBytes = bytes;
+        pdfUrl = await JS.InvokeAsync<string>("createBlobUrl", Convert.ToBase64String(bytes), "application/pdf");
+    }
+
+    private async Task CerrarPdf()
+    {
+        if (!string.IsNullOrEmpty(pdfUrl))
+        {
+            try { await JS.InvokeVoidAsync("revokeBlobUrl", pdfUrl); } catch { }
+        }
+        pdfUrl = null; pdfBytes = null; pdfVenta = null;
+    }
+
+    private async Task DescargarPdf()
+    {
+        if (pdfVenta is null || pdfBytes is null) return;
+        await JS.InvokeVoidAsync("downloadFile", $"{pdfVenta.Numero}.pdf", "application/pdf", Convert.ToBase64String(pdfBytes));
+    }
+}

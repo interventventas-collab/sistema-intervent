@@ -1771,6 +1771,10 @@ public class ApiClient
     public async Task<List<CafeHistorialPrecioDto>?> GetCafeProductoHistorialAsync(int id)
         => await GetAsync<List<CafeHistorialPrecioDto>>($"/api/cafe/productos/{id}/historial-precios");
 
+    /// <summary>2026-11-06: "Ver historial" del listado. tipo = ventas | entradas | movimientos.</summary>
+    public async Task<CafeProductoHistPagina<T>?> GetCafeProductoHistAsync<T>(int id, string tipo, int skip, int take = 30)
+        => await GetAsync<CafeProductoHistPagina<T>>($"/api/cafe/productos/{id}/historial?tipo={tipo}&skip={skip}&take={take}");
+
     /// <summary>2026-08-25: Excel simple (SKU · Nombre · Marca · Stock) de los productos que se ven
     /// en pantalla. Se mandan los ids ya filtrados y en orden, para que el archivo salga igual a la grilla.</summary>
     public async Task<byte[]?> ExportCafeProductosExcelAsync(List<int> ids)

@@ -2889,3 +2889,48 @@ public class CafeClienteSimpleDto
     public string Nombre { get; set; } = "";
     public string? Codigo { get; set; }
 }
+
+
+// ===== 2026-11-06: "Ver historial" de un producto =====
+public class CafeProductoHistPagina<T>
+{
+    public List<T> Items { get; set; } = new();
+    public bool HayMas { get; set; }
+    public string? Resumen { get; set; }
+}
+
+public class CafeProductoHistVentaDto
+{
+    public int VentaId { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? Cliente { get; set; }
+    public int Cantidad { get; set; }
+    public decimal PrecioUnitario { get; set; }
+    public string TipoComprobante { get; set; } = "";
+    public string Numero { get; set; } = "";
+    public string? Formato { get; set; }
+}
+
+public class CafeProductoHistEntradaDto
+{
+    public DateTime FechaUtc { get; set; }
+    public string Tipo { get; set; } = "";
+    public int? Cantidad { get; set; }
+    public decimal? CostoAnterior { get; set; }
+    public decimal? CostoNuevo { get; set; }
+    public string? Quien { get; set; }
+    public string? Detalle { get; set; }
+    public string? Deposito { get; set; }
+}
+
+public class CafeProductoHistMovDto
+{
+    public DateTime FechaUtc { get; set; }
+    public string TipoMov { get; set; } = "";
+    public int Diferencia { get; set; }
+    public int StockDespues { get; set; }
+    public string? Quien { get; set; }
+    public string? Comentario { get; set; }
+    public string? Deposito { get; set; }
+    public bool Reverted { get; set; }
+}

@@ -1348,3 +1348,14 @@ public record CafeCatalogoItemDto(
     string? Detalle,       // ej "4 × ABE-CHED" o "3 componentes"
     string EditRoute       // a donde va la fila al tocar Editar
 );
+
+
+// ===== 2026-11-06: "Ver historial" de un producto =====
+public record CafeProductoHistVentaDto(int VentaId, DateTime Fecha, string? Cliente, int Cantidad,
+    decimal PrecioUnitario, string TipoComprobante, string Numero, string? Formato = null);
+
+public record CafeProductoHistEntradaDto(DateTime FechaUtc, string Tipo, int? Cantidad,
+    decimal? CostoAnterior, decimal? CostoNuevo, string? Quien, string? Detalle, string? Deposito);
+
+public record CafeProductoHistMovDto(DateTime FechaUtc, string TipoMov, int Diferencia, int StockDespues,
+    string? Quien, string? Comentario, string? Deposito, bool Reverted);

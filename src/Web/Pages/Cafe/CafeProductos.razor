@@ -318,6 +318,9 @@
                                         {
                                             <span class="pm-boton pm-sin">sin publis MeLi</span>
                                         }
+                                        @* 2026-11-06: ventas (con 👁 del comprobante), entradas/costos y movimientos de stock. *@
+                                        <span class="pm-boton" style="margin-left:0.3rem;" title="Ver a quién se vendió, cuándo entró y todos los movimientos de stock"
+                                              @onclick="() => AbrirHistorialProducto(capturado)">🕘 Ver historial</span>
                                     }
                                     @if (!string.IsNullOrEmpty(p.Notas))
                                     {
@@ -1549,6 +1552,11 @@
     </div>
 }
 
+@if (histMovProducto is not null)
+{
+    <HistorialProductoModal ProductoId="histMovProducto.Id" Nombre="@histMovProducto.Nombre" OnClose="() => histMovProducto = null" />
+}
+
 @if (showHistorial && histProducto is not null)
 {
     <div class="modal-overlay" @onclick="CerrarHistorial">
@@ -2305,6 +2313,10 @@
     }
     private bool showDeleteConfirm;
     private CafeProductoDto? toDelete;
+
+    // 2026-11-06: "Ver historial" (ventas · entradas · movimientos de stock)
+    private CafeProductoDto? histMovProducto;
+    private void AbrirHistorialProducto(CafeProductoDto p) => histMovProducto = p;
 
     // Historial de precios
     private bool showHistorial;
