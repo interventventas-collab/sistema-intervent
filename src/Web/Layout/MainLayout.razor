@@ -149,6 +149,37 @@
         white-space: nowrap;
     }
     .topbar-nav-modern:hover { background: #f3f4f6; }
+
+    /* 2026-11-06: fila del menú nuevo (MenuNuevoBarra). Texto plano, sin cajitas de color. */
+    .mnb-fila { flex-basis: 100%; border-top: 1px solid #f1f5f9; padding-top: 0.25rem; }
+    /* z-index arriba del fondo invisible: con un menú abierto, tocar otro grupo lo abre de una. */
+    .mnb { display: flex; align-items: center; flex-wrap: wrap; gap: 0.1rem; position: relative; z-index: 9450; }
+    .mnb-directo, .mnb-grupo, .mnb-buscar {
+        border: none; background: transparent; color: #111827; font-size: 0.86rem;
+        padding: 0.35rem 0.6rem; border-radius: 6px; cursor: pointer; white-space: nowrap; font-family: inherit;
+    }
+    .mnb-directo { font-weight: 600; }
+    .mnb-directo:hover, .mnb-grupo:hover, .mnb-grupo.abierto, .mnb-buscar:hover { background: #f3f4f6; }
+    .mnb-directo.on, .mnb-grupo.on { box-shadow: inset 0 -2px 0 #111827; border-radius: 0; }
+    .mnb-caret { color: #9ca3af; font-size: 0.7rem; }
+    .mnb-sep { width: 1px; height: 18px; background: #e5e7eb; margin: 0 0.4rem; }
+    .mnb-buscar { margin-left: auto; color: #6b7280; }
+    .mnb-wrap { position: relative; }
+    .mnb-menu {
+        position: absolute; top: calc(100% + 4px); left: 0; min-width: 230px; z-index: 9500;
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.12); padding: 0.3rem 0;
+    }
+    .mnb-menu.derecha { left: auto; right: 0; }
+    .mnb-sub { font-size: 0.72rem; color: #9ca3af; padding: 0.2rem 0.9rem 0.3rem; }
+    .mnb-seccion { font-size: 0.66rem; letter-spacing: .06em; text-transform: uppercase; color: #9ca3af; padding: 0.5rem 0.9rem 0.15rem; }
+    .mnb-item {
+        display: block; width: 100%; text-align: left; border: none; background: transparent;
+        padding: 0.38rem 0.9rem; font-size: 0.88rem; color: #1f2937; cursor: pointer; font-family: inherit;
+    }
+    .mnb-item:hover { background: #f3f4f6; }
+    .mnb-item.on { font-weight: 600; }
+    .mnb-fondo { position: fixed; inset: 0; z-index: 9400; }
     .topbar-nav-modern.abierto { background: #f3f4f6; }
     .calc-nuevo-badge {
         background: #dc2626; color: #fff; font-size: 9px; font-weight: 700;
@@ -681,8 +712,35 @@
             </NavGroup>
         }
 
+        @* 2026-11-06: MENÚ NUEVO (por ahora solo el usuario admin). Todo lo del día a día está en la
+           barra de arriba (MenuNuevoBarra); acá quedan WhatsApp, Documentación y "Más pantallas"
+           con lo que casi no se usa. Los grupos de siempre (Ventas por fuera, MercadoLibre,
+           Alquileres) no se muestran para no repetir pantallas. *@
+        @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
+        {
+            @if (HasPerm("cafe-depositos"))
+            {
+                <NavItem Href="/whatsapp" Label="📲 WhatsApp · Chats" Icon="@SvgIcons.MessageCircle"
+                         IsActive="@IsActive("/whatsapp")" OnClick="@(() => NavigateTo("/whatsapp"))" />
+                <NavItem Href="/llamadas" Label="📞 WhatsApp · Llamadas" Icon="@SvgIcons.MessageCircle"
+                         IsActive="@IsActive("/llamadas")" OnClick="@(() => NavigateTo("/llamadas"))" />
+            }
+            <NavItem Href="/documentacion" Label="📑 Documentación" Icon="@SvgIcons.Folder"
+                     IsActive="@IsActive("/documentacion")" OnClick="@(() => NavigateTo("/documentacion"))" />
+            var masVisibles = MenuNuevoCatalogo.MasPantallas.Where(i => i.Permiso == null || HasPerm(i.Permiso)).ToList();
+            <NavGroup Label="⋯ Más pantallas" Icon="@SvgIcons.Folder" FlyoutMode="true"
+                      HasActiveChild="@(masVisibles.Any(i => IsActive(i.Href)))">
+                @foreach (var it in masVisibles)
+                {
+                    var href = it.Href;
+                    <NavItem Href="@href" Label="@it.Label" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
+                }
+            </NavGroup>
+        }
+
         @* 2026-06-06: oficina ve EXACTAMENTE el mismo sidebar que admin *@
-        @if (HasPerm("cafe") || HasPerm("oficina"))
+        @if (!MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
                       HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/skus-meli") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios") || IsActive("/cafe/saldos") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/maquinas") || IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/tesoreria/cheques-todos") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/preventas") || IsActive("/cafe/arca/errores") || IsActive("/cafe/clientes/panel-deudas") || IsActive("/cafe/preparacion") || IsActive("/cafe/tesoreria/cheques-banco") || IsActive("/cafe/tesoreria/extracto-banco") || IsActive("/cafe/cobranzas-pendientes") || IsActive("/cafe/arqueo-repartidor") || IsActive("/cafe/repartidores") || IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/stock"))">
@@ -907,7 +965,7 @@
            Solo visible para INTERVENT (es la unica empresa que vende por ML).
            Si no hay empresa elegida, se sigue mostrando para no esconderlo a usuarios viejos.
            Re-vincular publicaciones vive aca (es una accion de ML, no de inventario). *@
-        @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos") || HasPerm("mapeo") || HasPerm("me1")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
+        @if (!MenuNuevo && (HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos") || HasPerm("mapeo") || HasPerm("me1")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
         {
             <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
                       HasActiveChild="@(IsActive("/publicaciones") || IsActive("/publicaciones-nueva") || IsActive("/meli/clonar") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas") || IsActive("/cafe/telefonos-clientes-meli") || IsActive("/meli/preguntas") || IsActive("/meli/respuestas-automaticas") || IsActive("/meli/postventa-cafe") || IsActive("/mercadopago/cobrar") || IsActive("/mercadopago/cobranzas"))">
@@ -992,7 +1050,7 @@
         @* ═════════════ 7. ALQUILERES (modulo independiente) ═════════════
            Modulo aparte para alquiler de equipos para eventos.
            No comparte datos con el resto del ERP (productos, ventas, marcas, etc.). *@
-        @if (HasPerm("alquileres"))
+        @if (!MenuNuevo && HasPerm("alquileres"))
         {
             <NavGroup Label="Alquileres" Icon="@SvgIcons.Calendar"
                       HasActiveChild="@(IsActive("/alquileres") || IsActive("/alquileres/equipos") || IsActive("/alquileres/fletes") || IsActive("/alquileres/texto") || IsActive("/alquileres/clientes") || IsActive("/alquileres/reservas") || IsActive("/alquileres/calendario") || IsActive("/alquileres/cobranzas-pendientes"))">
@@ -1461,12 +1519,15 @@
                 @* 2026-06-17 v9: rediseno moderno — paleta neutra (blanco + gris) + iconos sutiles + separador visual.
                    Quitamos los gradientes saturados y unificamos altura/tipografia. La logica (onclick, dropdowns) no cambia. *@
                 @* Bloque NAVEGACION — botones secundarios con fondo transparente *@
+                @if (!MenuNuevo)
+                {
                 <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/vault"))"
                         title="Bóveda de contraseñas">
                     <span class="topbar-nav-modern-ico">@SvgIcons.Shield</span>
                     <span>BOVEDA CONT</span>
                 </button>
+                }
                 @* 2026-10-20: CALCU ALQUILER va pegado abajo de CALCUPRECIOS (mismo lugar, mitad de alto
                    cada uno). Abre la misma calculadora, pero directo en la solapa Alquiler: desde que no
                    se usa el WhatsApp de la API, el cotizador de alquileres vive acá. *@
@@ -1487,6 +1548,9 @@
                         <span>🪑 CALCU ALQUILER</span>
                     </button>
                 </div>
+                @* 2026-11-06: con el menú nuevo, todo esto vive en la fila MenuNuevoBarra (abajo). *@
+                @if (!MenuNuevo)
+                {
                 <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/cafe/stock-masivo"))"
                         title="Stock masivo (todos los productos)">
@@ -1648,6 +1712,7 @@
                     }
                 </div>
 
+                }
                 @* 2026-07-08: se sacó el badge "Cheques" de la barra — ahora hay una card de
                    "Cheques por pagar" en el dashboard con la misma info, así que era redundante. *@
 
@@ -1707,6 +1772,12 @@
                Chat, WhatsApp, indicadores de subida/sincro) se movió a la DERECHA de la fila
                de chips de arriba (.topstrip-icons), para descongestionar esta barra de menú. *@
         </div>
+        @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
+        {
+            <div class="mnb-fila">
+                <MenuNuevoBarra @ref="menuNuevoRef" HasPerm="HasPerm" NavigateTo="NavigateTo" OnBuscar="OpenCommandPalette" />
+            </div>
+        }
     </header>
 }
     @* 2026-07-22: acá vivía el cartelón rojo de "publis MeLi esperando revisión de PRECIO"
@@ -2405,6 +2476,17 @@
                     .Where(kv => DepositoWhitelistKeys.Contains(kv.Key))
                     .ToDictionary(kv => kv.Key, kv => kv.Value);
             }
+            if (MenuNuevo)
+            {
+                // 2026-11-06: el buscador también encuentra lo del menú nuevo (ej. "kilos de café").
+                var todo = new Dictionary<string, (string Emoji, string Label, string Href)>(MenuCatalog);
+                var hrefs = new HashSet<string>(MenuCatalog.Values.Select(v => v.Href), StringComparer.OrdinalIgnoreCase);
+                foreach (var g in MenuNuevoCatalogo.Grupos)
+                    foreach (var it in g.Items.Concat(MenuNuevoCatalogo.MasPantallas.Where(_ => g == MenuNuevoCatalogo.Grupos[0])))
+                        if ((it.Permiso == null || HasPerm(it.Permiso)) && hrefs.Add(it.Href))
+                            todo["mn:" + it.Href] = ("•", g.Items.Contains(it) ? $"{it.Label} ({g.Titulo})" : it.Label, it.Href);
+                return todo;
+            }
             return MenuCatalog;
         }
     }
@@ -2664,6 +2746,11 @@
     private string? companyNamesEditError;
     private bool isSavingCompanyNames;
     private string username = "usuario";
+    // 2026-11-06: menú nuevo por las 5 partes del negocio. Se prueba primero SOLO con el usuario
+    // admin (el dueño); la oficina sigue con el menú de siempre hasta que él diga. Depósito nunca
+    // lo ve (tiene su menú propio y no ve la barra de arriba).
+    private bool MenuNuevo => string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase);
+    private MenuNuevoBarra? menuNuevoRef;
     private string role = "user";
     private List<string> permissions = new();
 
@@ -2931,6 +3018,7 @@
         CerrarDropdownsTopbar();
         CheckRoutePermission();
         AnotarVisita();
+        menuNuevoRef?.Cerrar();
         _ = InvokeAsync(async () => await JS.InvokeVoidAsync("updatePageTitle", BrandSettings.BrandName));
         // 2026-06-15: cada vez que navegas, refrescamos el timestamp de "última actividad"
         // para que la sesión no se bloquee mientras estás trabajando.
