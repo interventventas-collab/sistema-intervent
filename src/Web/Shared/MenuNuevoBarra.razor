@@ -1,0 +1,88 @@
+@* 2026-11-06: barra de menú nueva, ordenada por las 5 partes del negocio + lo que comparten.
+   Fila propia debajo de la barra de arriba (ocupa todo el ancho). La ve SOLO quien tenga
+   MainLayout.MenuNuevo (por ahora, el usuario admin). Catálogo en MenuNuevoCatalogo.cs. *@
+@inject NavigationManager Nav
+
+<div class="mnb">
+    @foreach (var d in MenuNuevoCatalogo.Directos.Where(Visible))
+    {
+        <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)">@d.Label</button>
+    }
+    <span class="mnb-sep"></span>
+    @foreach (var g in MenuNuevoCatalogo.Grupos)
+    {
+        var items = g.Items.Where(Visible).ToList();
+        if (items.Count == 0) continue;
+        if (!g.DelNegocio && g == MenuNuevoCatalogo.Grupos.First(x => !x.DelNegocio))
+        {
+            <span class="mnb-sep"></span>
+        }
+        <div class="mnb-wrap">
+            <button class="mnb-grupo @(abierto == g.Titulo ? "abierto" : "") @(items.Any(i => EsActual(i.Href)) ? "on" : "")"
+                    @onclick="() => Alternar(g.Titulo)">
+                @g.Titulo <span class="mnb-caret">▾</span>
+            </button>
+            @if (abierto == g.Titulo)
+            {
+                <div class="mnb-menu @(EsDeLaDerecha(g) ? "derecha" : "")" @onclick:stopPropagation="true">
+                    @if (!string.IsNullOrEmpty(g.Subtitulo))
+                    {
+                        <div class="mnb-sub">@g.Subtitulo</div>
+                    }
+                    @foreach (var it in items)
+                    {
+                        if (it.Seccion != null)
+                        {
+                            <div class="mnb-seccion">@it.Seccion</div>
+                        }
+                        <button class="mnb-item @(EsActual(it.Href) ? "on" : "")" @onclick="() => Ir(it)">@it.Label</button>
+                    }
+                </div>
+            }
+        </div>
+    }
+    <button class="mnb-buscar" @onclick="OnBuscar" title="Buscar cualquier pantalla (Ctrl+K)">🔍 Buscar</button>
+</div>
+@if (abierto != null)
+{
+    <div class="mnb-fondo" @onclick="() => abierto = null"></div>
+}
+
+@code {
+    [Parameter, EditorRequired] public Func<string, bool> HasPerm { get; set; } = default!;
+    [Parameter, EditorRequired] public Action<string> NavigateTo { get; set; } = default!;
+    [Parameter] public EventCallback OnBuscar { get; set; }
+
+    private string? abierto;
+
+    private bool Visible(MenuNuevoCatalogo.Item i) => i.Permiso == null || HasPerm(i.Permiso);
+
+    private void Alternar(string titulo) => abierto = abierto == titulo ? null : titulo;
+
+    /// <summary>Los últimos grupos abren hacia la izquierda para no cortarse contra el borde.</summary>
+    private static bool EsDeLaDerecha(MenuNuevoCatalogo.Grupo g)
+        => Array.IndexOf(MenuNuevoCatalogo.Grupos, g) >= MenuNuevoCatalogo.Grupos.Length - 2;
+
+    private bool EsActual(string href)
+    {
+        var actual = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('#')[0];
+        var sinQuery = actual.Split('?')[0];
+        if (href.Contains('?')) return string.Equals(actual, href, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(sinQuery, href, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void Ir(MenuNuevoCatalogo.Item it)
+    {
+        abierto = null;
+        if (it.Externo) Nav.NavigateTo(it.Href, forceLoad: true);
+        else NavigateTo(it.Href);
+    }
+
+    /// <summary>MainLayout lo llama al cambiar de pantalla (por si se navegó por otro lado).</summary>
+    public void Cerrar()
+    {
+        if (abierto == null) return;
+        abierto = null;
+        StateHasChanged();
+    }
+}

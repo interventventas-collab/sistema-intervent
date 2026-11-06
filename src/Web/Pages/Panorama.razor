@@ -557,6 +557,15 @@
         new("ops", "Operaciones"), new("kg", "Kilos de café")
     };
 
+    // 2026-11-06: "?ver=kg" abre directo en la pestaña pedida (el menú nuevo tiene
+    // "Kilos de café vendidos" en Frikaf, que viene acá).
+    [SupplyParameterFromQuery(Name = "ver")] public string? Ver { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(Ver) && Metricas.Any(m => m.Key == Ver)) metrica = Ver;
+    }
+
     protected override async Task OnInitializedAsync() => await Cargar();
 
     private async Task CambiarPeriodo(string p)
