@@ -8727,3 +8727,13 @@ BEGIN
     CREATE INDEX IX_UsoPantallas_Cuando ON Uso_Pantallas(CuandoAt);
 END
 GO
+
+-- 2026-11-06: orden del menú nuevo acomodado por el dueño (✏ Acomodar). La API también la crea sola.
+IF OBJECT_ID('Menu_Config') IS NULL
+    CREATE TABLE Menu_Config (
+        Id INT NOT NULL PRIMARY KEY,
+        Json NVARCHAR(MAX) NOT NULL,
+        ActualizadoAt DATETIME2 NOT NULL CONSTRAINT DF_MenuConfig_At DEFAULT SYSUTCDATETIME(),
+        ActualizadoPor NVARCHAR(100) NOT NULL CONSTRAINT DF_MenuConfig_Por DEFAULT ''
+    );
+GO

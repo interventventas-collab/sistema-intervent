@@ -39,5 +39,6 @@ builder.Services.AddSingleton<Web.Services.Mobile.KeyboardPrefs>();
 builder.Services.AddSingleton<Web.Services.Mobile.CatalogIndex>();
 // 2026-05-28: cache de visibilidad del sidebar por rol (admin edita desde el sidebar)
 builder.Services.AddSingleton<Web.Services.MenuVisibilityService>();
+builder.Services.AddSingleton<Web.Services.MenuNuevoService>(); // 2026-11-06: orden del menú nuevo
 
 await builder.Build().RunAsync();

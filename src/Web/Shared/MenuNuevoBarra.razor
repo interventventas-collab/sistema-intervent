@@ -1,74 +1,230 @@
 @* 2026-11-06: barra de menú nueva, ordenada por las 5 partes del negocio + lo que comparten.
    Fila propia debajo de la barra de arriba (ocupa todo el ancho). La ve SOLO quien tenga
-   MainLayout.MenuNuevo (por ahora, el usuario admin). Catálogo en MenuNuevoCatalogo.cs. *@
+   MainLayout.MenuNuevo (por ahora, el usuario admin). Catálogo en MenuNuevoCatalogo.cs; el orden
+   que acomoda el dueño (✏ Acomodar) se guarda en la base vía MenuNuevoService. *@
+@implements IDisposable
 @inject NavigationManager Nav
+@inject MenuNuevoService Svc
+@inject ToastService Toast
 
-<div class="mnb">
-    @foreach (var d in MenuNuevoCatalogo.Directos.Where(Visible))
+<div class="mnb @(editando ? "editando" : "")">
+    @if (editando)
     {
-        <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)">@d.Label</button>
+        @* Guardar/Cancelar adelante: si la fila se parte en dos, un desplegable abierto los tapaba. *@
+        <span class="mnb-aviso">✏ Acomodando</span>
+        <button class="mnb-btn primario" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando…" : "Guardar")</button>
+        <button class="mnb-btn" disabled="@guardando" @onclick="Cancelar">Cancelar</button>
+        @if (Svc.TieneOrdenPropio)
+        {
+            <button class="mnb-btn suave" disabled="@guardando" @onclick="VolverAlOriginal">Volver al orden original</button>
+        }
+        <span class="mnb-sep"></span>
+        @Desplegable(DIRECTOS, "★ Directos", "botones de un clic", Lista(DIRECTOS))
+    }
+    else
+    {
+        @foreach (var d in Svc.Actual.Directos.Where(Visible))
+        {
+            <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloBoton(d.Href)" @onclick="() => Ir(d)">@d.Label</button>
+        }
     }
     <span class="mnb-sep"></span>
-    @foreach (var g in MenuNuevoCatalogo.Grupos)
+    @{ var primeroDeTodos = true; }
+    @foreach (var ga in (editando ? Svc.Actual.Grupos : Svc.Actual.Grupos))
     {
-        var items = g.Items.Where(Visible).ToList();
-        if (items.Count == 0) continue;
-        if (!g.DelNegocio && g == MenuNuevoCatalogo.Grupos.First(x => !x.DelNegocio))
+        var g = ga.Grupo;
+        var items = editando ? Lista(g.Titulo) : ga.Items.Where(Visible).ToList();
+        if (!editando && items.Count == 0) continue;
+        if (!g.DelNegocio && primeroDeTodos)
         {
+            primeroDeTodos = false;
             <span class="mnb-sep"></span>
         }
-        <div class="mnb-wrap">
-            <button class="mnb-grupo @(abierto == g.Titulo ? "abierto" : "") @(items.Any(i => EsActual(i.Href)) ? "on" : "")"
-                    @onclick="() => Alternar(g.Titulo)">
-                @g.Titulo <span class="mnb-caret">▾</span>
-            </button>
-            @if (abierto == g.Titulo)
-            {
-                <div class="mnb-menu @(EsDeLaDerecha(g) ? "derecha" : "")" @onclick:stopPropagation="true">
-                    @if (!string.IsNullOrEmpty(g.Subtitulo))
-                    {
-                        <div class="mnb-sub">@g.Subtitulo</div>
-                    }
-                    @foreach (var it in items)
-                    {
-                        if (it.Seccion != null)
-                        {
-                            <div class="mnb-seccion">@it.Seccion</div>
-                        }
-                        <button class="mnb-item @(EsActual(it.Href) ? "on" : "")" @onclick="() => Ir(it)">@it.Label</button>
-                    }
-                </div>
-            }
-        </div>
+        @Desplegable(g.Titulo, g.Titulo, g.Subtitulo, items)
     }
-    <button class="mnb-buscar" @onclick="OnBuscar" title="Buscar cualquier pantalla (Ctrl+K)">🔍 Buscar</button>
+    @if (editando)
+    {
+        <span class="mnb-sep"></span>
+        @Desplegable(COSTADO, "◧ Costado", "sueltas en el menú de la izquierda", Lista(COSTADO))
+        @Desplegable(MAS, "⋯ Más pantallas", "en el costado, casi no se usan", Lista(MAS))
+    }
+    else
+    {
+        <span class="mnb-acciones">
+            @if (PuedeAcomodar)
+            {
+                <button class="mnb-buscar" @onclick="EmpezarAcomodar" title="Mover pantallas de una sección a otra">✏ Acomodar</button>
+            }
+            <button class="mnb-buscar" @onclick="OnBuscar" title="Buscar cualquier pantalla (Ctrl+K)">🔍 Buscar</button>
+        </span>
+    }
 </div>
 @if (abierto != null)
 {
-    <div class="mnb-fondo" @onclick="() => abierto = null"></div>
+    <div class="mnb-fondo" @onclick="() => { abierto = null; moviendo = null; }"></div>
 }
 
 @code {
     [Parameter, EditorRequired] public Func<string, bool> HasPerm { get; set; } = default!;
     [Parameter, EditorRequired] public Action<string> NavigateTo { get; set; } = default!;
     [Parameter] public EventCallback OnBuscar { get; set; }
+    /// <summary>Solo el dueño acomoda; lo que acomoda vale para todos los que usen el menú nuevo.</summary>
+    [Parameter] public bool PuedeAcomodar { get; set; }
+
+    private const string DIRECTOS = "★";
+    private const string MAS = "⋯";
+    private const string COSTADO = MenuNuevoCatalogo.CLAVE_COSTADO;
 
     private string? abierto;
+    private bool editando, guardando;
+    /// <summary>Copia que se edita; recién al Guardar va a la base.</summary>
+    private Dictionary<string, List<MenuNuevoCatalogo.Item>> borrador = new();
+    /// <summary>Renglón al que se le tocó "Mover a…" (se despliegan los destinos abajo).</summary>
+    private (string Lista, string Href)? moviendo;
+    /// <summary>Renglón al que se le tocó 🎨 (se despliegan los circulitos de color).</summary>
+    private string? pintando;
+    /// <summary>Colores del borrador (sección o pantalla → pastel).</summary>
+    private Dictionary<string, string> colores = new(StringComparer.OrdinalIgnoreCase);
 
+    // ───────── Colores pastel ─────────
+    private string? ColorDe(string clave)
+    {
+        var d = editando ? colores : Svc.Actual.Colores;
+        return d.TryGetValue(clave, out var c) ? c : null;
+    }
+    /// <summary>Botón de la barra (sección o directo): fondo pastel + rayita abajo.</summary>
+    private string EstiloBoton(string clave)
+        => MenuNuevoCatalogo.Pastel(ColorDe(clave)) is { } p ? $"background:{p.Fondo};box-shadow:inset 0 -2px 0 {p.Borde};" : "";
+    /// <summary>Renglón adentro del desplegable: fondo pastel + rayita a la izquierda.</summary>
+    private string EstiloItem(string href)
+        => MenuNuevoCatalogo.Pastel(ColorDe(href)) is { } p ? $"background:{p.Fondo};box-shadow:inset 3px 0 0 {p.Borde};" : "";
+
+    private void PonerColor(string clave, string? color)
+    {
+        if (color == null) colores.Remove(clave); else colores[clave] = color;
+    }
+
+    private RenderFragment Circulos(string clave) => __builder =>
+    {
+        var actual = colores.TryGetValue(clave, out var c) ? c : null;
+        foreach (var p in MenuNuevoCatalogo.Pasteles)
+        {
+            <button class="mnb-circulo @(actual == p.Clave ? "on" : "")" title="@p.Nombre"
+                    style="background:@p.Fondo;border-color:@p.Borde" @onclick="() => PonerColor(clave, p.Clave)"></button>
+        }
+        <button class="mnb-destino" title="Sacar el color" @onclick="() => PonerColor(clave, null)">sin color</button>
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Svc.OnChange += Repintar;
+        await Svc.EnsureLoadedAsync();
+    }
+    private void Repintar() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Svc.OnChange -= Repintar;
+
+    // ───────── Un desplegable (normal o acomodando) ─────────
+    private RenderFragment Desplegable(string clave, string titulo, string subtitulo, List<MenuNuevoCatalogo.Item> items) => __builder =>
+    {
+        <div class="mnb-wrap">
+            <button class="mnb-grupo @(abierto == clave ? "abierto" : "") @(!editando && items.Any(i => EsActual(i.Href)) ? "on" : "")"
+                    style="@EstiloBoton(clave)" @onclick="() => Alternar(clave)">
+                @titulo
+                @if (editando) { <span class="mnb-cuenta">@items.Count</span> }
+                <span class="mnb-caret">▾</span>
+            </button>
+            @if (abierto == clave)
+            {
+                <div class="mnb-menu @(AbreALaIzquierda(clave) ? "derecha" : "") @(editando ? "ancho" : "")" @onclick:stopPropagation="true">
+                    @if (!string.IsNullOrEmpty(subtitulo))
+                    {
+                        <div class="mnb-sub">@subtitulo</div>
+                    }
+                    @if (editando && clave != DIRECTOS && clave != MAS && clave != COSTADO)
+                    {
+                        <div class="mnb-color-sec">
+                            <span>Color de "@titulo":</span>
+                            @Circulos(clave)
+                        </div>
+                    }
+                    @if (items.Count == 0)
+                    {
+                        <div class="mnb-sub">Vacío. Traé pantallas con "Mover a…" desde otra sección.</div>
+                    }
+                    @for (int n = 0; n < items.Count; n++)
+                    {
+                        var it = items[n];
+                        var idx = n;
+                        if (!editando)
+                        {
+                            if (it.Seccion != null && MenuNuevoCatalogo.GrupoDeFabrica.TryGetValue(it.Href, out var gf) && gf == clave)
+                            {
+                                <div class="mnb-seccion">@it.Seccion</div>
+                            }
+                            <button class="mnb-item @(EsActual(it.Href) ? "on" : "")" style="@EstiloItem(it.Href)" @onclick="() => Ir(it)">@it.Label</button>
+                        }
+                        else
+                        {
+                            <div class="mnb-fila-ed" style="@EstiloItem(it.Href)">
+                                <span class="mnb-nombre">@it.Label</span>
+                                <button class="mnb-ico @(pintando == it.Href ? "on" : "")" title="Ponerle color" @onclick="() => { pintando = pintando == it.Href ? null : it.Href; moviendo = null; }">🎨</button>
+                                <button class="mnb-ico" title="Subir" disabled="@(idx == 0)" @onclick="() => Correr(clave, idx, -1)">▲</button>
+                                <button class="mnb-ico" title="Bajar" disabled="@(idx == items.Count - 1)" @onclick="() => Correr(clave, idx, +1)">▼</button>
+                                @if (clave == DIRECTOS)
+                                {
+                                    <button class="mnb-ico" title="Sacar de los directos (sigue en su sección)" @onclick="() => SacarDirecto(it.Href)">✕</button>
+                                }
+                                else
+                                {
+                                    var esDirecto = borrador[DIRECTOS].Any(d => d.Href == it.Href);
+                                    <button class="mnb-ico @(esDirecto ? "on" : "")" title="@(esDirecto ? "Ya es botón directo (tocá para sacarlo)" : "Hacerlo botón directo de un clic")"
+                                            @onclick="() => AlternarDirecto(it)">★</button>
+                                    <button class="mnb-mover @(moviendo?.Href == it.Href ? "on" : "")" @onclick="() => moviendo = moviendo?.Href == it.Href ? null : (clave, it.Href)">Mover a…</button>
+                                }
+                            </div>
+                            @if (pintando == it.Href)
+                            {
+                                <div class="mnb-destinos">@Circulos(it.Href)</div>
+                            }
+                            @if (moviendo is { } m && m.Href == it.Href && m.Lista == clave)
+                            {
+                                <div class="mnb-destinos">
+                                    @foreach (var dest in Destinos().Where(d => d.Clave != clave))
+                                    {
+                                        <button class="mnb-destino" @onclick="() => Mover(clave, it.Href, dest.Clave)">@dest.Nombre</button>
+                                    }
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    // ───────── Navegar ─────────
     private bool Visible(MenuNuevoCatalogo.Item i) => i.Permiso == null || HasPerm(i.Permiso);
 
-    private void Alternar(string titulo) => abierto = abierto == titulo ? null : titulo;
+    private void Alternar(string clave)
+    {
+        abierto = abierto == clave ? null : clave;
+        moviendo = null;
+    }
 
-    /// <summary>Los últimos grupos abren hacia la izquierda para no cortarse contra el borde.</summary>
-    private static bool EsDeLaDerecha(MenuNuevoCatalogo.Grupo g)
-        => Array.IndexOf(MenuNuevoCatalogo.Grupos, g) >= MenuNuevoCatalogo.Grupos.Length - 2;
+    /// <summary>Los de la punta derecha abren hacia la izquierda para no cortarse contra el borde.</summary>
+    private bool AbreALaIzquierda(string clave)
+    {
+        // Costado y Más pantallas quedan en la 2ª renglón, pegados a la izquierda: abren normal.
+        if (clave == MAS || clave == COSTADO) return false;
+        var i = Array.FindIndex(MenuNuevoCatalogo.Grupos, g => g.Titulo == clave);
+        return i >= MenuNuevoCatalogo.Grupos.Length - 2;
+    }
 
     private bool EsActual(string href)
     {
         var actual = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('#')[0];
-        var sinQuery = actual.Split('?')[0];
         if (href.Contains('?')) return string.Equals(actual, href, StringComparison.OrdinalIgnoreCase);
-        return string.Equals(sinQuery, href, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(actual.Split('?')[0], href, StringComparison.OrdinalIgnoreCase);
     }
 
     private void Ir(MenuNuevoCatalogo.Item it)
@@ -81,8 +237,94 @@
     /// <summary>MainLayout lo llama al cambiar de pantalla (por si se navegó por otro lado).</summary>
     public void Cerrar()
     {
-        if (abierto == null) return;
+        if (abierto == null || editando) return;
         abierto = null;
         StateHasChanged();
+    }
+
+    // ───────── Acomodar ─────────
+    private List<MenuNuevoCatalogo.Item> Lista(string clave) => borrador.TryGetValue(clave, out var l) ? l : new();
+
+    private IEnumerable<(string Clave, string Nombre)> Destinos()
+        => MenuNuevoCatalogo.Grupos.Select(g => (g.Titulo, g.Titulo))
+            .Append((COSTADO, "◧ Costado izquierdo")).Append((MAS, "⋯ Más pantallas"));
+
+    private void EmpezarAcomodar()
+    {
+        var a = Svc.Actual;
+        borrador = new Dictionary<string, List<MenuNuevoCatalogo.Item>>
+        {
+            [DIRECTOS] = a.Directos.ToList(),
+            [MAS] = a.Mas.ToList(),
+            [COSTADO] = a.Costado.ToList(),
+        };
+        foreach (var g in a.Grupos) borrador[g.Grupo.Titulo] = g.Items.ToList();
+        colores = new Dictionary<string, string>(a.Colores, StringComparer.OrdinalIgnoreCase);
+        pintando = null;
+        editando = true;
+        abierto = MenuNuevoCatalogo.Grupos[0].Titulo;
+        moviendo = null;
+    }
+
+    private void Correr(string clave, int idx, int delta)
+    {
+        var l = borrador[clave];
+        var j = idx + delta;
+        if (j < 0 || j >= l.Count) return;
+        (l[idx], l[j]) = (l[j], l[idx]);
+    }
+
+    private void Mover(string desde, string href, string hacia)
+    {
+        var it = borrador[desde].FirstOrDefault(i => i.Href == href);
+        if (it == null) return;
+        borrador[desde].Remove(it);
+        borrador[hacia].Add(it);
+        moviendo = null;
+        var nombre = hacia == MAS ? "Más pantallas" : hacia == COSTADO ? "el costado izquierdo" : hacia;
+        Toast.Success($"\"{it.Label}\" pasó a {nombre} (queda al final)");
+    }
+
+    private void AlternarDirecto(MenuNuevoCatalogo.Item it)
+    {
+        var d = borrador[DIRECTOS];
+        var ya = d.FirstOrDefault(x => x.Href == it.Href);
+        if (ya != null) d.Remove(ya); else d.Add(it);
+    }
+
+    private void SacarDirecto(string href) => borrador[DIRECTOS].RemoveAll(x => x.Href == href);
+
+    private async Task Guardar()
+    {
+        guardando = true;
+        try
+        {
+            var armado = new MenuNuevoCatalogo.Armado(
+                borrador[DIRECTOS],
+                MenuNuevoCatalogo.Grupos.Select(g => new MenuNuevoCatalogo.GrupoArmado(g, borrador[g.Titulo])).ToList(),
+                borrador[MAS],
+                colores,
+                borrador[COSTADO]);
+            await Svc.GuardarAsync(armado);
+            editando = false; abierto = null; moviendo = null;
+            Toast.Success("Menú guardado");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private void Cancelar() { editando = false; abierto = null; moviendo = null; }
+
+    private async Task VolverAlOriginal()
+    {
+        guardando = true;
+        try
+        {
+            await Svc.VolverAlOriginalAsync();
+            editando = false; abierto = null; moviendo = null;
+            Toast.Success("Menú vuelto al orden original");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo: " + ex.Message); }
+        finally { guardando = false; }
     }
 }

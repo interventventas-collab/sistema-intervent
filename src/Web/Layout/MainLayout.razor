@@ -180,6 +180,32 @@
     .mnb-item:hover { background: #f3f4f6; }
     .mnb-item.on { font-weight: 600; }
     .mnb-fondo { position: fixed; inset: 0; z-index: 9400; }
+    .mnb-acciones { margin-left: auto; display: inline-flex; gap: 0.2rem; align-items: center; }
+    .mnb-acciones .mnb-buscar { margin-left: 0; }
+    /* Modo acomodar */
+    .mnb.editando { background: #fffbeb; border-radius: 6px; padding: 0.15rem 0.3rem; }
+    .mnb-aviso { font-size: 0.8rem; color: #92400e; font-weight: 600; margin-right: 0.3rem; }
+    .mnb-cuenta { font-size: 0.7rem; color: #9ca3af; margin-left: 0.15rem; }
+    .mnb-menu.ancho { min-width: 340px; max-height: 70vh; overflow-y: auto; }
+    .mnb-fila-ed { display: flex; align-items: center; gap: 0.2rem; padding: 0.15rem 0.5rem 0.15rem 0.9rem; }
+    .mnb-fila-ed:hover { background: #f9fafb; }
+    .mnb-nombre { flex: 1; font-size: 0.86rem; color: #1f2937; }
+    .mnb-ico, .mnb-mover, .mnb-btn, .mnb-destino {
+        border: 1px solid #e5e7eb; background: #fff; color: #374151; border-radius: 5px; cursor: pointer;
+        font-size: 0.75rem; padding: 0.15rem 0.4rem; font-family: inherit;
+    }
+    .mnb-ico:disabled { opacity: 0.3; cursor: default; }
+    .mnb-ico.on { color: #b45309; border-color: #fcd34d; }
+    .mnb-mover.on { background: #111827; color: #fff; border-color: #111827; }
+    .mnb-destinos { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.3rem 0.9rem 0.5rem; background: #f9fafb; }
+    .mnb-destino:hover { background: #111827; color: #fff; }
+    .mnb-btn { font-size: 0.82rem; padding: 0.3rem 0.7rem; }
+    .mnb-btn.primario { background: #111827; color: #fff; border-color: #111827; }
+    .mnb-btn.suave { border-color: transparent; color: #6b7280; }
+    .mnb-color-sec { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; padding: 0.2rem 0.9rem 0.5rem; border-bottom: 1px solid #f1f5f9; margin-bottom: 0.2rem; font-size: 0.78rem; color: #6b7280; }
+    .mnb-color-sec > span { margin-right: 0.2rem; }
+    .mnb-circulo { width: 20px; height: 20px; border-radius: 50%; border: 2px solid; cursor: pointer; padding: 0; }
+    .mnb-circulo.on { outline: 2px solid #111827; outline-offset: 1px; }
     .topbar-nav-modern.abierto { background: #f3f4f6; }
     .calc-nuevo-badge {
         background: #dc2626; color: #fff; font-size: 9px; font-weight: 700;
@@ -633,8 +659,10 @@
     <nav class="sidebar-nav" role="navigation" aria-label="Menu principal">
         @* 2026-07-21: "Editar visibilidad" se movió al grupo Administración (abajo), porque casi
            no se usa y quedaba muy llamativo arriba de todo. Ver más abajo dentro del NavGroup. *@
-        @* ═════════════ 1. DASHBOARD ═════════════ *@
-        @if (HasPerm("dashboard"))
+        @* ═════════════ 1. DASHBOARD ═════════════
+           2026-11-06: con el menú nuevo, estos sueltos (Dashboard…Compartido) salen de
+           MenuNuevoCatalogo.Costado y el dueño los puede mover a las secciones de arriba. *@
+        @if (!MenuNuevo && HasPerm("dashboard"))
         {
             <NavItem Href="/" Label="Dashboard" Icon="@SvgIcons.Dashboard"
                      IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
@@ -648,14 +676,14 @@
         @* ═════════════ CHAT INTERNO ═════════════
            2026-08-05: se OCULTA para el usuario Depósito (pidió sacarlo, "ya no sirve").
            El "Chat del equipo" embebido más abajo se mantiene. Admin/oficina lo siguen viendo. *@
-        @if (!HasPerm("deposito"))
+        @if (!MenuNuevo && !HasPerm("deposito"))
         {
             <NavItem Href="/chat" Label="💬 Chat" Icon="@SvgIcons.Users"
                      IsActive="@IsActive("/chat")" OnClick="@(() => NavigateTo("/chat"))" />
         }
 
         @* ═════════════ MIS ALERTAS (motor de alertas configurables, 2026-07-10) ═════════════ *@
-        @if (!IsRoleWithCustomSidebar())
+        @if (!MenuNuevo && !IsRoleWithCustomSidebar())
         {
             <NavItem Href="/mis-alertas" Label="🔔 Mis Alertas" Icon="@SvgIcons.AlertCircle"
                      IsActive="@IsActive("/mis-alertas")" OnClick="@(() => NavigateTo("/mis-alertas"))" />
@@ -668,7 +696,7 @@
         @* ═════════════ CARPETA COMPARTIDA (2026-07-06) ═════════════
            Carpeta de archivos compartida entre admin y depósito (permiso "compartido").
            Top-level para que la vean tambien los usuarios de depósito (no ven el grupo Café). *@
-        @if (HasPerm("compartido"))
+        @if (!MenuNuevo && HasPerm("compartido"))
         {
             <NavItem Href="/compartido" Label="📂 Compartido" Icon="@SvgIcons.Folder"
                      IsActive="@IsActive("/compartido")" OnClick="@(() => NavigateTo("/compartido"))" />
@@ -718,16 +746,13 @@
            Alquileres) no se muestran para no repetir pantallas. *@
         @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
         {
-            @if (HasPerm("cafe-depositos"))
+            @foreach (var it in MenuNuevoSvc.Actual.Costado.Where(i => i.Permiso == null || HasPerm(i.Permiso)))
             {
-                <NavItem Href="/whatsapp" Label="📲 WhatsApp · Chats" Icon="@SvgIcons.MessageCircle"
-                         IsActive="@IsActive("/whatsapp")" OnClick="@(() => NavigateTo("/whatsapp"))" />
-                <NavItem Href="/llamadas" Label="📞 WhatsApp · Llamadas" Icon="@SvgIcons.MessageCircle"
-                         IsActive="@IsActive("/llamadas")" OnClick="@(() => NavigateTo("/llamadas"))" />
+                var href = it.Href;
+                <NavItem Href="@href" Label="@it.Label" Icon="@IconoCostado(href)"
+                         IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
             }
-            <NavItem Href="/documentacion" Label="📑 Documentación" Icon="@SvgIcons.Folder"
-                     IsActive="@IsActive("/documentacion")" OnClick="@(() => NavigateTo("/documentacion"))" />
-            var masVisibles = MenuNuevoCatalogo.MasPantallas.Where(i => i.Permiso == null || HasPerm(i.Permiso)).ToList();
+            var masVisibles = MenuNuevoSvc.Actual.Mas.Where(i => i.Permiso == null || HasPerm(i.Permiso)).ToList();
             <NavGroup Label="⋯ Más pantallas" Icon="@SvgIcons.Folder" FlyoutMode="true"
                       HasActiveChild="@(masVisibles.Any(i => IsActive(i.Href)))">
                 @foreach (var it in masVisibles)
@@ -1775,7 +1800,7 @@
         @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
         {
             <div class="mnb-fila">
-                <MenuNuevoBarra @ref="menuNuevoRef" HasPerm="HasPerm" NavigateTo="NavigateTo" OnBuscar="OpenCommandPalette" />
+                <MenuNuevoBarra @ref="menuNuevoRef" HasPerm="HasPerm" NavigateTo="NavigateTo" OnBuscar="OpenCommandPalette" PuedeAcomodar="@(string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase))" />
             </div>
         }
     </header>
@@ -2751,6 +2776,18 @@
     // lo ve (tiene su menú propio y no ve la barra de arriba).
     private bool MenuNuevo => string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase);
     private MenuNuevoBarra? menuNuevoRef;
+    [Inject] private MenuNuevoService MenuNuevoSvc { get; set; } = default!;
+    private void MenuNuevoCambio() => InvokeAsync(StateHasChanged);
+    /// <summary>Ícono del menú del costado según la pantalla (los de siempre; el resto, una etiqueta).</summary>
+    private static MarkupString IconoCostado(string href) => href switch
+    {
+        "/" or "/panorama" => SvgIcons.Dashboard,
+        "/chat" => SvgIcons.Users,
+        "/mis-alertas" or "/automatizaciones" => SvgIcons.AlertCircle,
+        "/compartido" or "/documentacion" => SvgIcons.Folder,
+        "/whatsapp" or "/llamadas" => SvgIcons.MessageCircle,
+        _ => SvgIcons.Tag,
+    };
     private string role = "user";
     private List<string> permissions = new();
 
@@ -3006,6 +3043,7 @@
         if (firstRender)
         {
             Navigation.LocationChanged += OnLocationChanged;
+            MenuNuevoSvc.OnChange += MenuNuevoCambio; // 2026-11-06: "Más pantallas" del costado sigue lo acomodado
             CheckRoutePermission();
             AnotarVisita();
         }
@@ -3312,6 +3350,7 @@
         Operator.OnChange -= OnOperatorChanged;
         Company.OnChange -= OnCompanyChanged;
         Navigation.LocationChanged -= OnLocationChanged;
+        MenuNuevoSvc.OnChange -= MenuNuevoCambio;
         BrandSettings.OnChange -= OnBrandChanged;
         MenuVisibility.OnChange -= OnMenuVisibilityChanged;
     }
