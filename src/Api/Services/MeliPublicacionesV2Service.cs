@@ -726,7 +726,10 @@ public class MeliPublicacionesV2Service
                 variosPrecios ? cond.Min : fam?.Min,
                 variosPrecios ? cond.Max : fam?.Max,
                 variosPrecios,
-                cfg?.SyncPrecio ?? false, cfg?.SyncStock ?? false, cfg?.GananciaObjetivoPct,
+                cfg?.SyncPrecio ?? false,
+                // 2026-11-06: sin fila de config el stock SÍ se manda (el motor de stock no mira la config y el
+                // resto del sistema toma true por defecto): mostrarlo apagado engañaba (1.115 publis, ej. vasos 12 oz).
+                cfg?.SyncStock ?? true, cfg?.GananciaObjetivoPct,
                 r.Cuenta, cfg?.SkuAnterior,
                 r.PromoPrecio, r.PromoNombre, r.PromoHasta,
                 null, EstimarPrecioObjetivo(costo, cfg?.GananciaObjetivoPct ?? 50m,

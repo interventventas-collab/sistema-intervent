@@ -419,7 +419,7 @@ public class MeliPublicacionesExcelService
                 cfgs.TryGetValue(f.Mla, out var cfg);
                 var objHoy = cfg?.GananciaObjetivoPct;
                 var spHoy = cfg?.SyncPrecio ?? false;
-                var ssHoy = cfg?.SyncStock ?? false;
+                var ssHoy = cfg?.SyncStock ?? true;   // 2026-11-06: sin config = sincroniza (igual que al bajar el Excel)
 
                 // Base de comparación: lo que decía el archivo cuando se bajó.
                 var tieneOrig = original.TryGetValue(f.Mla, out var org);

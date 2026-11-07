@@ -210,6 +210,23 @@ public class MeliStockPushService
         if (meliItems.Count == 0)
             return new PushStockResult(0, 0, 0, 0, new() { "No se encontraron MeliItems para los ids dados" });
 
+        // 2026-11-06: el tilde «sincroniza» (MeliItem_SyncConfig.SyncStock) se respeta. Antes el motor no lo
+        // miraba: 33 publis con el tilde apagado seguían recibiendo stock. Sin fila de config = sincroniza.
+        var stockAMano = await _db.MeliItemSyncConfigs.AsNoTracking()
+            .Where(c => meliItemIds.Contains(c.MeliItemId) && !c.SyncStock)
+            .Select(c => c.MeliItemId).ToListAsync(ct);
+        int salteadasAMano = 0;
+        if (stockAMano.Count > 0)
+        {
+            var aMano = stockAMano.ToHashSet();
+            var idsAMano = meliItems.Where(mi => aMano.Contains(mi.MeliItemId)).Select(mi => mi.MeliItemId).Distinct().ToList();
+            salteadasAMano = idsAMano.Count;
+            meliItems = meliItems.Where(mi => !aMano.Contains(mi.MeliItemId)).ToList();
+            _logger.LogInformation("[StockPush] {N} publicaciones con stock a mano (tilde sincroniza apagado): no se les manda stock", salteadasAMano);
+            if (meliItems.Count == 0)
+                return new PushStockResult(salteadasAMano, 0, salteadasAMano, 0, idsAMano.Select(id => $"{id}: stock a mano (tilde «sincroniza» apagado), no se le mandó nada").ToList());
+        }
+
         // Cargar TODOS los componentes de estas publicaciones (no solo los del producto que cambio,
         // porque para combos MeLi necesitamos el stock minimo entre TODOS los componentes).
         var componentes = await _db.MeliItemComponentes
@@ -837,8 +854,14 @@ public class MeliStockPushService
                               select new { mc.MeliItemId, Cambio = p.StockChangedAt })
             .ToListAsync(ct);
 
+        // 2026-11-06: las de stock a mano (tilde «sincroniza» apagado) no se reintentan: si no, como
+        // nunca se marcan, quedarían siempre primeras en la cola ocupando lugar.
+        var aMano = (await _db.MeliItemSyncConfigs.AsNoTracking()
+            .Where(c => !c.SyncStock).Select(c => c.MeliItemId).ToListAsync(ct)).ToHashSet();
+
         // Primero las que hace mas tiempo que esperan (el cambio de stock mas viejo sin mandar).
         var allMeliIds = pendLegacy.Concat(pendComp)
+            .Where(x => !aMano.Contains(x.MeliItemId))
             .GroupBy(x => x.MeliItemId)
             .Select(g => new { Mla = g.Key, Cambio = g.Min(x => x.Cambio) })
             .OrderBy(x => x.Cambio)

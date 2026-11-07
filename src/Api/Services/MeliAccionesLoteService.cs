@@ -70,8 +70,8 @@ public class MeliAccionesLoteService
         return new Resultado(mlas.Count, ok, err, detalle);
     }
 
-    /// <summary>Prende o apaga el sincro de precio y/o de stock. Sólo toca la configuración
-    /// del sistema: no pushea nada a MeLi en el momento.</summary>
+    /// <summary>Prende o apaga el sincro de precio y/o de stock. Al prender el stock se lo manda a MeLi en el
+    /// momento (2026-11-06); el resto sólo toca la configuración.</summary>
     public async Task<Resultado> CambiarSincroAsync(List<string> mlas, bool? precio, bool? stock,
         CancellationToken ct = default)
     {
@@ -99,6 +99,23 @@ public class MeliAccionesLoteService
             catch (Exception ex) { err++; detalle.Add(new(mla, false, ex.Message)); }
         }
         await _db.SaveChangesAsync(ct);
+
+        // 2026-11-06: al PRENDER el stock se le manda ya (el cartel de la pantalla lo promete). Antes solo
+        // quedaba configurado y el stock llegaba recién cuando se movía algún producto.
+        if (stock == true && ok > 0)
+        {
+            try
+            {
+                var r = await _stockPush.PushStockForMeliItemsAsync(lista, ct);
+                var errores = r.Mensajes.Where(m => m.Contains("rror") || m.Contains("rechaz")).ToList();
+                var dp = Describir(precio, null);
+                for (int i = 0; i < detalle.Count; i++)
+                    if (detalle[i].Ok && lista.Contains(detalle[i].MeliItemId))
+                        detalle[i] = detalle[i] with { Mensaje = dp.Length > 0 ? dp + " · stock mandado a MeLi" : "stock mandado a MeLi" };
+                if (r.Errores > 0) _logger.LogWarning("[AccionesLote] Stock prendido: {Err} no se pudieron mandar: {Msg}", r.Errores, string.Join(" | ", errores.Take(5)));
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "[AccionesLote] Stock prendido pero falló el envío inmediato (lo reintenta el respaldo)"); }
+        }
         _logger.LogInformation("[AccionesLote] Sincro ({Que}): {Ok} ok, {Err} error", Describir(precio, stock), ok, err);
         return new Resultado(mlas.Count, ok, err, detalle);
     }

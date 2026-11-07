@@ -331,6 +331,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<MeliComisionRefres
 builder.Services.AddHostedService<MeliMargenVigilanteService>();
 // 2026-09-26: relee de noche comisión + envío de todas las activas y avisa si MeLi cambió el envío.
 builder.Services.AddHostedService<MeliEnviosNocturnoService>();
+// 2026-11-06: si MeLi pasa sola una publi de me1 a me2, la vuelve a me1 y avisa (interruptor meli.guardian_me1.enabled)
+builder.Services.AddHostedService<MeliEnvioMe1GuardianService>();
 builder.Services.AddHostedService<ContabiliumNightlySnapshotService>();
 builder.Services.AddScoped<CafePreciosFuturosService>();
 builder.Services.AddHostedService<CafePreciosFuturosBackgroundService>();
