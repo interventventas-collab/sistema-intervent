@@ -43,7 +43,7 @@
                 <option value="STATUS_ACTIVE">🟢 Activada</option>
                 <option value="PAUSADA_CON_STOCK">⚠️ Pausada con stock (revisar precio)</option>
                 <option value="ENVIO_CAMBIO">🚚 MeLi cambió el envío</option>
-                <option value="ENVIO_ME1_VUELTO">🚚 Vuelta a me1 sola</option>
+                <option value="ENVIO_ME1_VUELTO">🚨 Envío gratis: vuelta a me1</option>
                 <option value="ENVIO_ME1_FALLO">⚠️ Envío gratis: no volvió a me1</option>
             </select>
             <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
@@ -251,7 +251,7 @@
         "PAUSADA_CON_STOCK" => "⚠️ Pausada con stock",
         "ENVIO_CAMBIO" => "🚚 Cambió el envío",
         "ENVIOS_CAMBIARON" => "🚚 Resumen envíos",
-        "ENVIO_ME1_VUELTO" => "🚚 Vuelta a me1",
+        "ENVIO_ME1_VUELTO" => "🚨 Envío gratis: precio + vuelta a me1",
         "ENVIO_ME1_FALLO" => "⚠️ Envío gratis: no volvió a me1",
         _ => tipo
     };
@@ -265,6 +265,7 @@
         "PAUSADA_CON_STOCK" => "tipo-revisar",
         "ENVIO_CAMBIO" => "tipo-revisar",
         "ENVIO_ME1_FALLO" => "tipo-revisar",
+        "ENVIO_ME1_VUELTO" => "tipo-revisar",
         _ => ""
     };
 
