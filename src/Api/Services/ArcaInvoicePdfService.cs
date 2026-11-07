@@ -319,12 +319,9 @@ public class ArcaInvoicePdfService
                                 c.Item().Text($"IVA {iva.Pct.ToString("0.##")}%: $ {iva.Importe.ToString("N2", new CultureInfo("es-AR"))}");
                             }
                         }
-                        // 2026-07-14: total de bonificación (suma de descuentos por renglón), estilo Contabilium.
-                        var bonifTotalF = comp.Items
-                            .Where(it => it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue)
-                            .Sum(it => (it.PrecioOriginal!.Value - it.PrecioUnitario) * it.Cantidad);
-                        if (bonifTotalF > 0.01m)
-                            c.Item().Text($"Bonificación: $ {bonifTotalF.ToString("N2", new CultureInfo("es-AR"))}").FontSize(9);
+                        // 2026-11-07: se sacó la línea "Bonificación" de los totales (pedido del dueño):
+                        // confundía, parecía que se restaba del total. El descuento ya se ve en la
+                        // columna Bonif. de cada renglón y el neto es la suma de los subtotales.
                         c.Item().PaddingTop(2).Text($"Importe Total: $ {comp.ImpTotal.ToString("N2", new CultureInfo("es-AR"))}").FontSize(11).Bold();
                     });
 
