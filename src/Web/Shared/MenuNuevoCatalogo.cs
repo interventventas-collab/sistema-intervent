@@ -144,6 +144,19 @@ public static class MenuNuevoCatalogo
         ("celeste", "Celeste", "#dbeafe", "#93c5fd"),
         ("lavanda", "Lavanda", "#ede9fe", "#c4b5fd"),
         ("cafe", "Café con leche", "#efe4d6", "#c8a27c"),
+        // 2026-11-07: más variedad (pedido del dueño). Siguen siendo suaves para que el texto se lea.
+        ("rojo", "Rojo suave", "#fee2e2", "#fca5a5"),
+        ("coral", "Coral", "#ffe4d6", "#fb923c"),
+        ("mostaza", "Mostaza", "#fdf0c4", "#eab308"),
+        ("lima", "Lima", "#ecfccb", "#a3e635"),
+        ("salvia", "Salvia", "#e3ede4", "#9cb8a0"),
+        ("turquesa", "Turquesa", "#cffafe", "#22d3ee"),
+        ("azul", "Azul", "#e0e7ff", "#818cf8"),
+        ("violeta", "Violeta", "#f3e8ff", "#c084fc"),
+        ("fucsia", "Fucsia", "#fae8ff", "#e879f9"),
+        ("gris", "Gris", "#f1f5f9", "#94a3b8"),
+        ("arena", "Arena", "#f5f0e6", "#d6c7a1"),
+        ("plomo", "Plomo", "#e5e7eb", "#4b5563"),
     };
 
     public static (string Fondo, string Borde)? Pastel(string? clave)
