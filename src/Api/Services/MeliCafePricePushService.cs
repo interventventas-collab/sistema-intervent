@@ -239,6 +239,11 @@ public class MeliCafePricePushService
                 variantIds.Add(v.GetProperty("id").GetInt64());
         }
 
+        // 2026-11-06: con el tilde «sincroniza» apagado (stock a mano) se manda solo el precio, como en Full.
+        var stockAMano = await _db.MeliItemSyncConfigs.AsNoTracking()
+            .AnyAsync(c => c.MeliItemId == meliItemId && !c.SyncStock);
+        if (stockAMano) isFulfillment = true;
+
         // Construir payload: si es fulfillment, solo PRICE (sin stock).
         Dictionary<string, object> payload;
         if (variantIds.Count > 0)
