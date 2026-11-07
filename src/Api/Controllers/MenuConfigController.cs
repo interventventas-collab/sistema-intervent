@@ -60,6 +60,43 @@ WHEN NOT MATCHED THEN INSERT (Id, Json, ActualizadoPor) VALUES (1, {json}, {quie
         return NoContent();
     }
 
+    // ───── 2026-11-07: pestañas del depósito ("✏ Acomodar" de ellos): orden y colores. ─────
+    // Fila Id = 2 de la misma tabla. La puede cambiar cualquiera que entre (el depósito usa un
+    // solo usuario para todos): solo cambia el orden y el color de sus propias pestañas.
+    [HttpGet("deposito")]
+    public async Task<IActionResult> GetDeposito()
+    {
+        await AsegurarTablaAsync();
+        var json = (await _db.Database
+            .SqlQueryRaw<string>("SELECT TOP 1 Json AS Value FROM Menu_Config WHERE Id = 2")
+            .ToListAsync()).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(json)) return NoContent();
+        return Content(json, "application/json");
+    }
+
+    [HttpPut("deposito")]
+    public async Task<IActionResult> PutDeposito([FromBody] JsonElement body)
+    {
+        if (body.ValueKind != JsonValueKind.Object) return BadRequest("Formato inválido");
+        var json = body.GetRawText();
+        if (json.Length > 10_000) return BadRequest("Demasiado grande");
+        await AsegurarTablaAsync();
+        var quien = User.FindFirstValue(ClaimTypes.Name) ?? "";
+        await _db.Database.ExecuteSqlInterpolatedAsync($@"
+MERGE Menu_Config AS t USING (SELECT 2 AS Id) AS s ON t.Id = s.Id
+WHEN MATCHED THEN UPDATE SET Json = {json}, ActualizadoAt = SYSUTCDATETIME(), ActualizadoPor = {quien}
+WHEN NOT MATCHED THEN INSERT (Id, Json, ActualizadoPor) VALUES (2, {json}, {quien});");
+        return Ok(new { ok = true });
+    }
+
+    [HttpDelete("deposito")]
+    public async Task<IActionResult> DeleteDeposito()
+    {
+        await AsegurarTablaAsync();
+        await _db.Database.ExecuteSqlRawAsync("DELETE FROM Menu_Config WHERE Id = 2");
+        return NoContent();
+    }
+
     private async Task AsegurarTablaAsync()
     {
         if (_tablaOk) return;

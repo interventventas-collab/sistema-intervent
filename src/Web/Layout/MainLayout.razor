@@ -181,6 +181,36 @@
         color: #9ca3af; font-size: 0.95rem; cursor: pointer;
     }
     .ta-chat-cerrar:hover { color: #fff; }
+    /* 2026-11-07: pestañas del depósito con color (pastel, redondas) y "✏ Acomodar". */
+    .ta-tab { border: 1px solid transparent; transition: transform .12s ease, box-shadow .12s ease, background .12s ease; }
+    .ta-tab.color { border-radius: 999px; font-weight: 600; }
+    .ta-tab.color:hover { transform: translateY(-1px) scale(1.04); box-shadow: 0 3px 8px rgba(0,0,0,.10); }
+    .ta-tab.color.on { box-shadow: 0 0 0 2px #111827; border-radius: 999px; }
+    .ta-tab-wrap { display: inline-flex; align-items: center; gap: 2px; position: relative; }
+    .ta-tabs.editando { background: #fffbeb; border-radius: 8px; padding: 0.2rem 0.3rem; }
+    .ta-tabs.editando .ta-tab { cursor: default; }
+    .ta-tabs.editando .ta-tab-wrap { border: 1px dashed #fbbf24; background: #fff; border-radius: 10px; padding: 2px 4px; margin: 2px 3px; }
+    .ta-ed-btn { border: 1px solid #e5e7eb; background: #fff; border-radius: 5px; font-size: 0.7rem; padding: 0.1rem 0.3rem; cursor: pointer; font-family: inherit; }
+    .ta-ed-btn:disabled { opacity: .3; cursor: default; }
+    .ta-ed-btn.on { border-color: #f59e0b; background: #fef3c7; }
+    .ta-paleta {
+        position: absolute; top: calc(100% + 4px); left: 0; z-index: 9500; display: flex; gap: 4px;
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 6px; box-shadow: 0 8px 20px rgba(0,0,0,.15);
+    }
+    .ta-punto { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #e5e7eb; cursor: pointer; padding: 0; font-size: 0.65rem; color: #6b7280; background: #fff; }
+    .ta-punto:hover { transform: scale(1.15); }
+    .ta-punto.on { outline: 2px solid #111827; outline-offset: 1px; }
+    .ta-ed-acciones { display: inline-flex; gap: 0.3rem; margin-left: 0.5rem; }
+    .ta-ed-guardar { border: none; background: #16a34a; color: #fff; font-weight: 700; border-radius: 999px; padding: 0.3rem 0.8rem; cursor: pointer; font-family: inherit; font-size: 0.8rem; }
+    .ta-ed-otro { border: 1px solid #d1d5db; background: #fff; border-radius: 999px; padding: 0.3rem 0.7rem; cursor: pointer; font-family: inherit; font-size: 0.8rem; }
+    .ta-acomodar { margin-left: auto; border: none; background: transparent; color: #6b7280; font-size: 0.78rem; cursor: pointer; font-family: inherit; padding: 0.3rem 0.5rem; border-radius: 6px; }
+    .ta-acomodar:hover { background: #f3f4f6; color: #111827; }
+    .ta-salir {
+        border: 1px solid #fecaca; background: #fff; color: #b91c1c; font-weight: 700; font-size: 0.8rem;
+        border-radius: 999px; padding: 0.35rem 0.8rem; cursor: pointer; font-family: inherit; white-space: nowrap; margin-left: 0.3rem;
+        transition: transform .12s ease, background .12s ease;
+    }
+    .ta-salir:hover { background: #fef2f2; transform: translateY(-1px); }
     .ta-solo-celu { display: none !important; }
     @@media (min-width: 769px) {
         .sidebar.ta { transform: translateX(-100%); width: 280px !important; z-index: 9600; box-shadow: 4px 0 24px rgba(0,0,0,.25); }
@@ -214,6 +244,7 @@
         /* Depósito: arriba datos + chat + íconos, abajo sus pantallas como pestañas. */
         .main-ta-depo .ta-tabs { order: 10; flex-basis: 100%; margin-left: 0; border-top: 1px solid #f1f5f9; padding-top: 0.15rem; }
         .main-ta-depo .ta-chat-btn { margin-left: 0.5rem; }
+        .main-ta-depo .ta-salir { order: 6; }
     }
     @@media (min-width: 769px) and (max-width: 1500px) {
         .main-ta .ta-acciones .topbar-action-whatsapp span { display: none; }
@@ -1513,29 +1544,64 @@
         }
         @if (TodoArribaDepo)
         {
-            var taKeys = MenuVisibility.GetEnabledKeys(GetEffectiveRoleForVisibility());
-            <nav class="ta-tabs" aria-label="Pantallas del depósito">
+            var taLista = depoEditando ? depoEdLista : DepoTabsOrdenadas();
+            <nav class="ta-tabs @(depoEditando ? "editando" : "")" aria-label="Pantallas del depósito">
                 @* 2026-11-07: el depósito no tiene la franja de abajo (donde vivía "← Volver"): va acá. *@
-                <BackButton />
-                @foreach (var k in taKeys)
+                @if (!depoEditando) { <BackButton /> }
+                @for (var n = 0; n < taLista.Count; n++)
                 {
-                    if (MenuCatalog.TryGetValue(k, out var entry))
-                    {
-                        var href = entry.Href;
-                        var faltan = k.Equals("stock/ideal", StringComparison.OrdinalIgnoreCase) ? faltantesParaPedir : null;
-                        <button class="ta-tab @(IsActive(href) ? "on" : "")" @onclick="@(() => NavigateTo(href))" title="@entry.Label">
-                            @entry.Emoji @entry.Label
-                            @if (faltan is int f && f > 0) { <span class="ta-badge" title="Productos abajo del stock ideal, para pedir">@f</span> }
+                    var t = taLista[n];
+                    var pos = n;
+                    var col = Web.Shared.MenuNuevoCatalogo.Pastel(ColorDepo(t.Key));
+                    var estilo = col is { } cc ? $"background:{cc.Fondo}; border-color:{cc.Borde};" : "";
+                    <span class="ta-tab-wrap">
+                        @if (depoEditando)
+                        {
+                            <button class="ta-ed-btn" disabled="@(pos == 0)" title="Mover a la izquierda" @onclick="() => MoverDepoTab(pos, -1)">◀</button>
+                        }
+                        <button class="ta-tab @(col is not null ? "color" : "") @(!depoEditando && IsActive(t.Href) ? "on" : "")" style="@estilo"
+                                title="@t.Label" @onclick="@(() => { if (!depoEditando) NavigateTo(t.Href); })">
+                            @t.Emoji @t.Label
+                            @if (!depoEditando && t.Key.Equals("stock/ideal", StringComparison.OrdinalIgnoreCase) && faltantesParaPedir is int f && f > 0)
+                            {
+                                <span class="ta-badge" title="Productos abajo del stock ideal, para pedir">@f</span>
+                            }
                         </button>
-                    }
+                        @if (depoEditando)
+                        {
+                            <button class="ta-ed-btn" disabled="@(pos == taLista.Count - 1)" title="Mover a la derecha" @onclick="() => MoverDepoTab(pos, 1)">▶</button>
+                            <button class="ta-ed-btn @(depoColorDe == t.Key ? "on" : "")" title="Elegir color" @onclick="() => depoColorDe = depoColorDe == t.Key ? null : t.Key">🎨</button>
+                            @if (depoColorDe == t.Key)
+                            {
+                                <span class="ta-paleta">
+                                    <button class="ta-punto sin" title="Sin color" @onclick="() => PonerColorDepo(t.Key, null)">✕</button>
+                                    @foreach (var pa in Web.Shared.MenuNuevoCatalogo.Pasteles)
+                                    {
+                                        var clave = pa.Clave;
+                                        <button class="ta-punto @(ColorDepo(t.Key) == clave ? "on" : "")" title="@pa.Nombre"
+                                                style="background:@pa.Fondo; border-color:@pa.Borde;" @onclick="() => PonerColorDepo(t.Key, clave)"></button>
+                                    }
+                                </span>
+                            }
+                        }
+                    </span>
                 }
-                @if (HasPerm("compartido"))
+                @if (depoEditando)
                 {
-                    <button class="ta-tab @(IsActive("/compartido") ? "on" : "")" @onclick="@(() => NavigateTo("/compartido"))">📂 Compartido</button>
+                    <span class="ta-ed-acciones">
+                        <button class="ta-ed-guardar" @onclick="GuardarDepoTabs" disabled="@depoGuardando">@(depoGuardando ? "Guardando…" : "✓ Guardar")</button>
+                        <button class="ta-ed-otro" @onclick="CancelarDepoTabs" disabled="@depoGuardando">Cancelar</button>
+                        <button class="ta-ed-otro" @onclick="OriginalDepoTabs" disabled="@depoGuardando" title="Volver al orden y colores de fábrica">Orden original</button>
+                    </span>
+                }
+                else
+                {
+                    <button class="ta-acomodar" @onclick="EmpezarDepoTabs" title="Mover las pestañas de lugar y ponerles color">✏ Acomodar</button>
                 }
             </nav>
             <button class="ta-chat-btn @(chatEquipoAbierto ? "on" : "")" @onclick="() => chatEquipoAbierto = !chatEquipoAbierto"
                     title="Abrir / cerrar el chat del equipo">💬 Chat equipo</button>
+            <button class="ta-salir" @onclick="Logout" title="Cerrar la sesión de este usuario">⎋ Salir</button>
         }
 
         @* 2026-07-08: grupo de iconitos movido acá desde la barra de menú (descongestiona
@@ -2860,6 +2926,102 @@
     private bool TodoArriba => !IsEmbedded && ((MenuNuevo && (HasPerm("cafe") || HasPerm("oficina"))) || IsRoleWithCustomSidebar());
     private bool TodoArribaDepo => TodoArriba && IsRoleWithCustomSidebar();
     private bool chatEquipoAbierto;
+
+    // ───── 2026-11-07: "✏ Acomodar" del depósito: orden y color de sus pestañas (para todos los
+    // que entran con el usuario del depósito). Se guarda en api/menu-config/deposito. ─────
+    private record DepoTab(string Key, string Href, string Emoji, string Label);
+    private ApiClient.DepositoTabsConfig? depoCfg;
+    private bool depoCfgPedida, depoEditando, depoGuardando;
+    private List<DepoTab> depoEdLista = new();
+    private Dictionary<string, string> depoEdColores = new();
+    private string? depoColorDe;
+
+    private List<DepoTab> DepoTabsDeFabrica()
+    {
+        var r = new List<DepoTab>();
+        foreach (var k in MenuVisibility.GetEnabledKeys(GetEffectiveRoleForVisibility()))
+            if (MenuCatalog.TryGetValue(k, out var e)) r.Add(new DepoTab(k, e.Href, e.Emoji, e.Label));
+        if (HasPerm("compartido")) r.Add(new DepoTab("compartido", "/compartido", "📂", "Compartido"));
+        return r;
+    }
+
+    private List<DepoTab> DepoTabsOrdenadas()
+    {
+        if (!depoCfgPedida) { depoCfgPedida = true; _ = CargarDepoCfgAsync(); }
+        var fab = DepoTabsDeFabrica();
+        var orden = depoCfg?.Orden ?? new();
+        // Lo acomodado primero, en su orden; una pantalla nueva que todavía no acomodaron, al final.
+        return fab.OrderBy(t => { var i = orden.FindIndex(o => string.Equals(o, t.Key, StringComparison.OrdinalIgnoreCase)); return i < 0 ? int.MaxValue : i; })
+                  .ThenBy(t => fab.IndexOf(t)).ToList();
+    }
+
+    private string? ColorDepo(string key)
+    {
+        var d = depoEditando ? depoEdColores : depoCfg?.Colores;
+        return d is not null && d.TryGetValue(key, out var c) ? c : null;
+    }
+
+    private async Task CargarDepoCfgAsync()
+    {
+        depoCfg = await Api.GetDepositoTabsConfigAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void EmpezarDepoTabs()
+    {
+        depoEdLista = DepoTabsOrdenadas();
+        depoEdColores = new Dictionary<string, string>(depoCfg?.Colores ?? new(), StringComparer.OrdinalIgnoreCase);
+        depoColorDe = null;
+        depoEditando = true;
+    }
+
+    private void MoverDepoTab(int pos, int delta)
+    {
+        var dest = pos + delta;
+        if (dest < 0 || dest >= depoEdLista.Count) return;
+        (depoEdLista[pos], depoEdLista[dest]) = (depoEdLista[dest], depoEdLista[pos]);
+    }
+
+    private void PonerColorDepo(string key, string? clave)
+    {
+        if (clave is null) depoEdColores.Remove(key); else depoEdColores[key] = clave;
+        depoColorDe = null;
+    }
+
+    private async Task GuardarDepoTabs()
+    {
+        depoGuardando = true;
+        try
+        {
+            var cfg = new ApiClient.DepositoTabsConfig
+            {
+                Orden = depoEdLista.Select(t => t.Key).ToList(),
+                Colores = new Dictionary<string, string>(depoEdColores)
+            };
+            await Api.SaveDepositoTabsConfigAsync(cfg);
+            depoCfg = cfg;
+            depoEditando = false; depoColorDe = null;
+            ToastService.Success("Listo: quedaron guardadas las pestañas.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+        finally { depoGuardando = false; }
+    }
+
+    private void CancelarDepoTabs() { depoEditando = false; depoColorDe = null; }
+
+    private async Task OriginalDepoTabs()
+    {
+        depoGuardando = true;
+        try
+        {
+            await Api.ResetDepositoTabsConfigAsync();
+            depoCfg = null;
+            depoEditando = false; depoColorDe = null;
+            ToastService.Success("Volvieron al orden original.");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo: " + ex.Message); }
+        finally { depoGuardando = false; }
+    }
 
     private RenderFragment CalcuPila => __builder =>
     {

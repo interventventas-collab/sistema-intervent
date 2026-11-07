@@ -7194,6 +7194,21 @@ public class ApiClient
         => await PutAsync<object>("/api/menu-config", orden);
     public async Task ResetMenuConfigAsync() => await DeleteAsync("/api/menu-config");
 
+    /// <summary>2026-11-07: orden y colores de las pestañas del depósito (null = como vienen).</summary>
+    public class DepositoTabsConfig
+    {
+        public List<string> Orden { get; set; } = new();
+        public Dictionary<string, string> Colores { get; set; } = new();
+    }
+    public async Task<DepositoTabsConfig?> GetDepositoTabsConfigAsync()
+    {
+        try { return await GetAsync<DepositoTabsConfig>("/api/menu-config/deposito"); }
+        catch { return null; }
+    }
+    public async Task SaveDepositoTabsConfigAsync(DepositoTabsConfig cfg)
+        => await PutAsync<object>("/api/menu-config/deposito", cfg);
+    public async Task ResetDepositoTabsConfigAsync() => await DeleteAsync("/api/menu-config/deposito");
+
     // 2026-11-06: anota qué pantalla se abrió (para reordenar el menú por uso real).
     // Nunca molesta: si falla, se ignora.
     public async Task AnotarVisitaAsync(string ruta, string? operador)
