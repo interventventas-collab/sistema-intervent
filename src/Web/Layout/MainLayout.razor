@@ -1515,6 +1515,8 @@
         {
             var taKeys = MenuVisibility.GetEnabledKeys(GetEffectiveRoleForVisibility());
             <nav class="ta-tabs" aria-label="Pantallas del depósito">
+                @* 2026-11-07: el depósito no tiene la franja de abajo (donde vivía "← Volver"): va acá. *@
+                <BackButton />
                 @foreach (var k in taKeys)
                 {
                     if (MenuCatalog.TryGetValue(k, out var entry))
