@@ -573,6 +573,70 @@ public class CafeClientesController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>2026-11-07: "Usar como principal". Intercambia el domicilio alternativo con el
+    /// principal del cliente: el alternativo pasa a ser el "domicilio de siempre" (el que sale por
+    /// defecto en cada venta) y el principal de antes queda guardado como alternativo, con su pin.
+    /// El principal de antes viene de la ficha abierta (puede tener cambios sin guardar).
+    /// Solo toca el domicilio de ENTREGA: el fiscal (ARCA) no cambia. Las ventas ya hechas tampoco.</summary>
+    [HttpPost("direcciones/{dirId:int}/hacer-principal")]
+    public async Task<IActionResult> HacerPrincipal(int dirId, [FromBody] CafeHacerPrincipalRequest req)
+    {
+        var d = await _db.CafeClienteDirecciones.FindAsync(dirId);
+        if (d is null || !d.IsActive) return NotFound(new { error = "Dirección no encontrada" });
+        var c = await _db.CafeClientes.FindAsync(d.ClienteId);
+        if (c is null) return NotFound(new { error = "Cliente no encontrado" });
+
+        // Lo que pasa a ser principal (sale del alternativo). El alternativo guarda el piso pegado
+        // a la calle ("Olavarría 594 · 4 C"): se separa para el casillero Piso / Depto.
+        var (calleNueva, pisoNuevo) = SepararPiso(d.Direccion);
+        var nuevo = new CafeHacerPrincipalResponse(calleNueva, pisoNuevo, Norm(d.Localidad), Norm(d.Cp), Norm(d.Ciudad),
+            Norm(d.EntreCalles), Norm(d.MapeoLink), d.MapeoLat, d.MapeoLng);
+
+        // El principal de antes queda como alternativo (si había uno; si no, el alternativo se borra:
+        // pasó arriba y no hay nada que guardar abajo).
+        var calleVieja = Norm(req.Domicilio);
+        if (calleVieja is null)
+        {
+            _db.CafeClienteDirecciones.Remove(d);
+        }
+        else
+        {
+            var piso = Norm(req.PisoDepto);
+            d.Direccion = piso is null ? calleVieja : $"{calleVieja} · {piso}";
+            d.Localidad = Norm(req.Localidad);
+            d.Cp = Norm(req.Cp);
+            d.Ciudad = Norm(req.Provincia);
+            d.EntreCalles = Norm(req.EntreCalles);
+            d.MapeoLink = Norm(req.MapeoLink);
+            d.MapeoLat = d.MapeoLink is null ? null : req.MapeoLat;
+            d.MapeoLng = d.MapeoLink is null ? null : req.MapeoLng;
+            d.Etiqueta = "Domicilio anterior";
+            d.EsPrincipal = false;
+            d.UpdatedAt = DateTime.UtcNow;
+        }
+
+        c.DomicilioEntrega = nuevo.Domicilio;
+        c.PisoDeptoEntrega = nuevo.PisoDepto;
+        c.LocalidadEntrega = nuevo.Localidad;
+        c.CpEntrega = nuevo.Cp;
+        c.ProvinciaEntrega = nuevo.Provincia;
+        c.EntreCalles = nuevo.EntreCalles;
+        c.MapeoLink = nuevo.MapeoLink;
+        c.MapeoLat = nuevo.MapeoLink is null ? null : nuevo.MapeoLat;
+        c.MapeoLng = nuevo.MapeoLink is null ? null : nuevo.MapeoLng;
+        c.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(nuevo);
+    }
+
+    private static (string calle, string? piso) SepararPiso(string direccion)
+    {
+        var i = direccion.LastIndexOf(" · ", StringComparison.Ordinal);
+        if (i <= 0) return (direccion.Trim(), null);
+        var piso = direccion[(i + 3)..].Trim();
+        return (direccion[..i].Trim(), piso == "" ? null : piso);
+    }
+
     /// <summary>Deja EsPrincipal=1 solo en la dirección indicada; apaga las demás del mismo cliente.</summary>
     private async Task DesmarcarOtrasPrincipales(int clienteId, int dirIdPrincipal)
     {

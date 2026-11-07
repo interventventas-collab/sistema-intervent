@@ -546,6 +546,8 @@
                                                     </div>
                                                 }
                                             </div>
+                                            @* 2026-11-07: este pasa a ser el principal; el de arriba queda acá como alternativo. *@
+                                            <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.5rem; white-space: nowrap;" @onclick="() => HacerPrincipal(d)" disabled="@dirGuardando" title="Este pasa a ser el domicilio principal (el que sale en cada venta) y el de arriba queda guardado acá como alternativo">⭐ Usar como principal</button>
                                             <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.4rem;" @onclick="() => AbrirModalDireccion(d)" disabled="@dirGuardando" title="Editar">✏️</button>
                                             <button type="button" class="btn btn-secondary" style="font-size: 0.68rem; padding: 0.2rem 0.4rem; color: #dc2626;" @onclick="() => BorrarDireccion(d)" disabled="@dirGuardando" title="Borrar">🗑</button>
                                         </div>
@@ -1490,45 +1492,70 @@
 @if (showDireccionModal)
 {
     <div class="modal-overlay" style="z-index: 9500;" @onclick="CerrarModalDireccion">
-        <div class="modal-card" style="max-width: 620px; width: min(620px, 96vw);" @onclick:stopPropagation="true">
+        <div class="modal-card" style="max-width: 980px; width: min(980px, 96vw);" @onclick:stopPropagation="true">
             <div class="modal-header" style="background: #f0fdf4;">
                 <h3 style="color:#166534;">@(dirEditandoId.HasValue ? "✏️ Editar domicilio alternativo" : "➕ Nuevo domicilio alternativo")</h3>
                 <button class="btn-close" @onclick="CerrarModalDireccion">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">Nombre para reconocerlo</label>
-                    <input class="form-input" @bind="dirEtiqueta" placeholder="Ej: Depósito Canning, Local centro, Sucursal Boulevard" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Dirección de entrega *</label>
-                    <input class="form-input" @bind="dirDireccion" placeholder="Calle y número de este domicilio" />
-                </div>
-                <div class="form-row">
-                    <div class="form-group" style="flex: 2;">
-                        <label class="form-label">Localidad</label>
-                        <input class="form-input" @bind="dirLocalidad" placeholder="Localidad" />
+                @* 2026-11-07: mismo buscador estilo Google Maps y mapa con pin que el domicilio principal. *@
+                <div class="cm-entrega">
+                    <div class="cm-col">
+                        <div class="form-group">
+                            <label class="form-label">Nombre para reconocerlo</label>
+                            <input class="form-input" @bind="dirEtiqueta" placeholder="Ej: Depósito Canning, Local centro, Sucursal Boulevard" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Dirección de entrega *</label>
+                            <input id="cm-buscador-dir-alt" class="form-input" @bind="dirDireccion" autocomplete="off"
+                                   placeholder="Escribí calle y número o el nombre del lugar" />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Te sugiere direcciones como Google Maps: al elegir una se completan barrio, CP, provincia y el pin.</p>
+                        </div>
+                        <div style="display: flex; gap: 0.6rem;">
+                            <div class="form-group" style="flex: 1 1 auto; min-width: 0;">
+                                <label class="form-label">Localidad (en Capital, el barrio)</label>
+                                <LocalidadBuscador @bind-Value="dirLocalidad" OnElegida="ElegirLocalidadDir" Placeholder="Ej: Tigre, Palermo, Lanús Oeste" />
+                            </div>
+                            <div class="form-group" style="flex: 0 0 90px;">
+                                <label class="form-label">CP</label>
+                                <input class="form-input" @bind="dirCp" maxlength="8" placeholder="1648" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Provincia</label>
+                            <input class="form-input" list="datalist-provincias" @bind="dirProvincia" placeholder="Ej: Buenos Aires" />
+                        </div>
+                        <div style="display: flex; gap: 0.6rem;">
+                            <div class="form-group" style="flex: 0 0 130px;">
+                                <label class="form-label">Piso / Depto</label>
+                                <input class="form-input" @bind="dirPiso" maxlength="60" placeholder="Ej: 5º I" />
+                            </div>
+                            <div class="form-group" style="flex: 1 1 auto; min-width: 0;">
+                                <label class="form-label">Entre calles</label>
+                                <input class="form-input" @bind="dirEntreCalles" placeholder="Ej: entre Larroque y Beruti" />
+                            </div>
+                        </div>
+                        <div class="cm-foto" id="cm-foto-dir-alt"></div>
+                        <div class="cm-link">
+                            <span>🔗 ¿Te mandaron la ubicación?</span>
+                            <input class="form-input" value="@dirLinkPegado" placeholder="Pegá acá el link de Google Maps"
+                                   @onchange="@(e => UsarLinkPegadoDir(e.Value?.ToString()))" disabled="@dirLeyendoLink" />
+                        </div>
+                        <div class="form-group" style="margin-top: 0.5rem;">
+                            <label class="form-label">Teléfono de entrega</label>
+                            <input class="form-input" @bind="dirTelefono" placeholder="Teléfono de ESTE domicilio (puede ser distinto al del cliente)" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Notas internas de este domicilio</label>
+                            <textarea class="form-input" @bind="dirNotasInternas" rows="2" placeholder="Solo las ves vos (no salen en el comprobante). Ej: tocar timbre del fondo, preguntar por Marcelo"></textarea>
+                        </div>
                     </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">CP</label>
-                        <input class="form-input" @bind="dirCp" placeholder="CP" />
+                    <div class="cm-col">
+                        <UbicacionClienteMapa @ref="mapaDir" Consulta="@ConsultaDir"
+                                              Lat="dirLat" Lng="dirLng" FotoId="cm-foto-dir-alt"
+                                              OnUbicacion="CambioUbicacionDir" OnCp="CpDeGoogleDir"
+                                              BuscadorId="cm-buscador-dir-alt" OnLugar="LugarDeGoogleDir" />
                     </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Entre calles</label>
-                    <input class="form-input" @bind="dirEntreCalles" placeholder="Referencia para la entrega (ej: entre Larroque y Beruti)" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Teléfono de entrega</label>
-                    <input class="form-input" @bind="dirTelefono" placeholder="Teléfono de ESTE domicilio (puede ser distinto al del cliente)" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label">🗺 Enlace Google Maps del pin</label>
-                    <input class="form-input" @bind="dirMapeoLink" placeholder="Pegá el link corto de Google Maps de este punto (opcional)" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Notas internas de este domicilio</label>
-                    <textarea class="form-input" @bind="dirNotasInternas" rows="2" placeholder="Solo las ves vos (no salen en el comprobante). Ej: tocar timbre del fondo, preguntar por Marcelo"></textarea>
                 </div>
                 <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
                     Es un domicilio alternativo. El domicilio principal (el de siempre) sigue siendo el de arriba; este lo elegís en la venta cuando la entrega vaya acá.
@@ -2442,6 +2469,12 @@
     private List<CafeDireccionDto> direccionesCliente = new();
     private string dirEtiqueta = "", dirDireccion = "", dirLocalidad = "", dirCp = "", dirTelefono = "", dirMapeoLink = "";
     private string dirEntreCalles = "", dirNotasInternas = "";
+    // 2026-11-07: provincia (va en la columna Ciudad del domicilio), piso (se guarda pegado a la
+    // calle: "Olavarría 594 · 4 C") y el pin del mapa del domicilio alternativo.
+    private string dirProvincia = "", dirPiso = "", dirLinkPegado = "";
+    private decimal? dirLat, dirLng;
+    private bool dirLeyendoLink;
+    private UbicacionClienteMapa? mapaDir;
     private bool dirEsPrincipal = false, dirGuardando = false;
     private bool showDireccionModal = false;
     private int? dirEditandoId = null;
@@ -2458,7 +2491,92 @@
         dirEditandoId = null;
         dirEtiqueta = ""; dirDireccion = ""; dirLocalidad = ""; dirCp = ""; dirTelefono = ""; dirMapeoLink = "";
         dirEntreCalles = ""; dirNotasInternas = "";
+        dirProvincia = ""; dirPiso = ""; dirLinkPegado = ""; dirLat = null; dirLng = null;
         dirEsPrincipal = false; dirError = null;
+    }
+
+    private string ConsultaDir => string.Join(", ", new[] { dirDireccion, dirLocalidad,
+        dirProvincia == LocalidadesService.Caba ? "CABA" : dirProvincia }
+        .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
+
+    private void CambioUbicacionDir((decimal? lat, decimal? lng, string link) u)
+    {
+        dirLat = u.lat; dirLng = u.lng; dirMapeoLink = u.link;
+    }
+
+    private void CpDeGoogleDir(string cp)
+    {
+        if (string.IsNullOrWhiteSpace(dirCp)) dirCp = cp;
+    }
+
+    private void ElegirLocalidadDir(LocalidadesService.Opcion o)
+    {
+        dirLocalidad = o.Nombre;
+        if (!string.IsNullOrEmpty(o.Provincia)) dirProvincia = o.Provincia;
+        if (o.Cps.Count > 0 ? !o.Cps.Contains(dirCp.Trim()) : Localidades.CpEsDeOtra(dirCp, o))
+            dirCp = o.CpUnico ?? "";
+    }
+
+    /// <summary>Eligieron una sugerencia del buscador en el domicilio alternativo (igual que en el principal).</summary>
+    private void LugarDeGoogleDir(UbicacionClienteMapa.LugarGoogle l)
+    {
+        if (!string.IsNullOrWhiteSpace(l.Calle)) dirDireccion = l.Calle.Trim();
+        var prov = l.Provincia?.Trim() ?? "";
+        if (System.Text.RegularExpressions.Regex.IsMatch(prov, "Aut[oó]noma", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            prov = LocalidadesService.Caba;
+        else if (prov.StartsWith("Provincia de ", StringComparison.OrdinalIgnoreCase)) prov = prov[13..];
+        var op = string.IsNullOrWhiteSpace(l.Localidad) ? null : Localidades.Exacta(l.Localidad, prov == "" ? null : prov);
+        if (op is not null) ElegirLocalidadDir(op);
+        else if (!string.IsNullOrWhiteSpace(l.Localidad)) dirLocalidad = l.Localidad.Trim();
+        if (prov != "") dirProvincia = prov;
+        if (!string.IsNullOrWhiteSpace(l.Cp)) dirCp = l.Cp.Trim();
+    }
+
+    private async Task UsarLinkPegadoDir(string? url)
+    {
+        dirLinkPegado = (url ?? "").Trim();
+        if (dirLinkPegado == "" || mapaDir is null) return;
+        dirLeyendoLink = true;
+        try
+        {
+            if (await mapaDir.UsarLink(dirLinkPegado)) dirLinkPegado = "";
+            else ToastService.Warning("No pude sacar la ubicación de ese link. Probá tocando el mapa donde entregás.");
+        }
+        finally { dirLeyendoLink = false; }
+    }
+
+    /// <summary>2026-11-07: "⭐ Usar como principal". Este domicilio alternativo pasa a ser el
+    /// principal (el que sale solo en cada venta) y el principal de arriba queda guardado como
+    /// alternativo, con su pin. Se graba en el momento; la ficha se actualiza sola.</summary>
+    private async Task HacerPrincipal(CafeDireccionDto d)
+    {
+        if (!editingId.HasValue) return;
+        var actual = string.IsNullOrWhiteSpace(formDomicilioEntrega) ? "(ninguno)" : formDomicilioEntrega.Trim();
+        if (!await JS.InvokeAsync<bool>("confirm",
+                $"¿Usar «{d.Direccion}» como domicilio principal?\n\nDesde ahora las ventas nuevas salen con ese domicilio. " +
+                $"El principal de ahora («{actual}») queda guardado abajo como alternativo. Las ventas ya hechas no cambian."))
+            return;
+        dirGuardando = true;
+        try
+        {
+            var r = await Api.HacerPrincipalCafeDireccionAsync(d.Id, new CafeHacerPrincipalRequest
+            {
+                Domicilio = formDomicilioEntrega, PisoDepto = formPisoDeptoEntrega, Localidad = formLocalidadEntrega,
+                Cp = formCpEntrega, Provincia = formProvinciaEntrega, EntreCalles = formEntreCalles,
+                MapeoLink = formMapeoLink, MapeoLat = formMapeoLat, MapeoLng = formMapeoLng
+            });
+            if (r is null) { ToastService.Error("No se pudo cambiar el domicilio principal."); return; }
+            formDomicilioEntrega = r.Domicilio ?? ""; formPisoDeptoEntrega = r.PisoDepto ?? "";
+            formLocalidadEntrega = r.Localidad ?? ""; formCpEntrega = r.Cp ?? ""; formProvinciaEntrega = r.Provincia ?? "";
+            formEntreCalles = r.EntreCalles ?? ""; formMapeoLink = r.MapeoLink ?? "";
+            formMapeoLat = r.MapeoLat; formMapeoLng = r.MapeoLng;
+            cpEntregaAMano = true; cpEntregaOpciones = new();
+            mapaKey++;   // el mapa arranca de cero con el pin del domicilio nuevo
+            await LoadDirecciones(editingId.Value);
+            ToastService.Success("Listo: ese domicilio ahora es el principal.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { dirGuardando = false; }
     }
 
     // Abre el modal: con d=null para uno nuevo, con d cargado para editarlo.
@@ -2472,7 +2590,11 @@
         {
             dirEditandoId = d.Id;
             dirEtiqueta = d.Etiqueta ?? "";
-            dirDireccion = d.Direccion;
+            var sep = d.Direccion.LastIndexOf(" · ", StringComparison.Ordinal);
+            dirDireccion = sep > 0 ? d.Direccion[..sep].Trim() : d.Direccion;
+            dirPiso = sep > 0 ? d.Direccion[(sep + 3)..].Trim() : "";
+            dirProvincia = d.Ciudad ?? "";
+            dirLat = d.MapeoLat; dirLng = d.MapeoLng; dirLinkPegado = "";
             dirLocalidad = d.Localidad ?? "";
             dirCp = d.Cp ?? "";
             dirTelefono = d.Telefono ?? "";
@@ -2500,7 +2622,9 @@
         {
             var req = new CafeDireccionUpsertRequest
             {
-                Etiqueta = dirEtiqueta, Direccion = dirDireccion.Trim(), EntreCalles = dirEntreCalles,
+                Etiqueta = dirEtiqueta,
+                Direccion = string.IsNullOrWhiteSpace(dirPiso) ? dirDireccion.Trim() : $"{dirDireccion.Trim()} · {dirPiso.Trim()}",
+                EntreCalles = dirEntreCalles, Ciudad = dirProvincia,
                 NotasInternas = dirNotasInternas, Localidad = dirLocalidad,
                 Cp = dirCp, Telefono = dirTelefono, MapeoLink = dirMapeoLink,
                 EsPrincipal = false  // el principal es siempre el "domicilio de siempre"; los alternativos nunca son principales

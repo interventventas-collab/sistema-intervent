@@ -1,12 +1,14 @@
 // 2026-10-28: mapa de la ficha del cliente (sección Entrega). El pin salta solo a la dirección
 // escrita; si no es ahí, se arrastra o se toca el mapa. Al lado, la foto de la puerta (Street
 // View mirando hacia el pin). Avisa a Blazor con PinMovido(lat, lng).
-//   clienteMapa.init(mapaId, fotoId, dotnet, lat, lng, buscadorId)  /  setPin  /  clearPin  /  destroy
+//   clienteMapa.init(mapaId, fotoId, dotnet, lat, lng, buscadorId)  /  setPin(mapaId,…)  /  clearPin(mapaId)  /  destroy(mapaId)
 // 2026-11-05: buscadorId = casillero del domicilio con sugerencias tipo Google Maps (LugarElegido).
 (function () {
     let cargando = null;
     let clave = null;
-    let mapa = null, pin = null, dotnet = null, fotoId = null, fotoPedida = 0;
+    // 2026-11-07: un mapa por ficha abierta (el del domicilio principal y el del alternativo pueden
+    // estar a la vez). Cada uno guarda lo suyo acá, por el id de su <div>.
+    const mapas = {};
 
     // Misma clave del navegador que usa el mapa de Mapeo (api/mapeo/stops/map-key).
     function asegurarGoogle() {
@@ -38,29 +40,29 @@
         return cargando;
     }
 
-    function moverPin(lat, lng, avisar) {
+    function moverPin(m, lat, lng, avisar) {
         const pos = { lat: +lat, lng: +lng };
-        if (!pin) {
-            pin = new google.maps.Marker({ map: mapa, position: pos, draggable: true, title: 'Arrastrame hasta la puerta' });
-            pin.addListener('dragend', e => moverPin(e.latLng.lat(), e.latLng.lng(), true));
+        if (!m.pin) {
+            m.pin = new google.maps.Marker({ map: m.mapa, position: pos, draggable: true, title: 'Arrastrame hasta la puerta' });
+            m.pin.addListener('dragend', e => moverPin(m, e.latLng.lat(), e.latLng.lng(), true));
         } else {
-            pin.setPosition(pos);
-            pin.setMap(mapa);
+            m.pin.setPosition(pos);
+            m.pin.setMap(m.mapa);
         }
-        foto(pos);
-        if (avisar && dotnet) dotnet.invokeMethodAsync('PinMovido', pos.lat, pos.lng);
+        foto(m, pos);
+        if (avisar && m.dotnet) m.dotnet.invokeMethodAsync('PinMovido', pos.lat, pos.lng);
     }
 
     // Foto de la puerta: busca la vista de calle más cercana (hasta 60 m) y la orienta hacia el pin.
-    function foto(pos) {
-        const el = fotoId && document.getElementById(fotoId);
+    function foto(m, pos) {
+        const el = m.fotoId && document.getElementById(m.fotoId);
         if (!el) return;
-        const yo = ++fotoPedida;
+        const yo = ++m.fotoPedida;
         el.innerHTML = '<span class="cm-foto-txt">Buscando la foto de la calle…</span>';
         new google.maps.StreetViewService().getPanorama(
             { location: pos, radius: 60, source: google.maps.StreetViewSource.OUTDOOR },
             (data, status) => {
-                if (yo !== fotoPedida) return;
+                if (yo !== m.fotoPedida) return;
                 if (status !== 'OK' || !data || !data.location) {
                     el.innerHTML = '<span class="cm-foto-txt">Google no tiene foto de esta cuadra</span>';
                     return;
@@ -97,7 +99,7 @@
         document.querySelectorAll('[data-ac-cliente="1"]').forEach(destrabar);
         if (typeof authPrevio === 'function') try { authPrevio(); } catch (e) { }
     };
-    function engancharBuscador(inputId) {
+    function engancharBuscador(inputId, m) {
         const input = inputId && document.getElementById(inputId);
         if (!input || !google.maps.places || input.dataset.acCliente === '1') return;
         input.dataset.acCliente = '1';
@@ -133,47 +135,53 @@
             const cpm = (comp(p, 'postal_code') || '').match(/\d{4}/);
             const cp = cpm ? cpm[0] : '';
             const texto = (p.formatted_address || '').replace(', Argentina', '');
-            if (mapa) {
-                moverPin(lat, lng, false);
-                mapa.panTo({ lat: lat, lng: lng });
-                if (mapa.getZoom() < 16) mapa.setZoom(17);
+            if (m && m.mapa) {
+                moverPin(m, lat, lng, false);
+                m.mapa.panTo({ lat: lat, lng: lng });
+                if (m.mapa.getZoom() < 16) m.mapa.setZoom(17);
             }
-            if (dotnet) dotnet.invokeMethodAsync('LugarElegido', calle, localidad, cp, provincia, lat, lng, texto);
+            if (m && m.dotnet) m.dotnet.invokeMethodAsync('LugarElegido', calle, localidad, cp, provincia, lat, lng, texto);
         });
     }
 
     window.clienteMapa = {
-        engancharBuscador: async function (inputId) { await asegurarGoogle(); engancharBuscador(inputId); },
         init: async function (mapaId, fotoElId, dotnetRef, lat, lng, buscadorId) {
-            dotnet = dotnetRef; fotoId = fotoElId; pin = null;
+            const m = mapas[mapaId] = { mapa: null, pin: null, dotnet: dotnetRef, fotoId: fotoElId, fotoPedida: 0 };
             await asegurarGoogle();
             const el = document.getElementById(mapaId);
-            if (!el) return;
+            if (!el || mapas[mapaId] !== m) return;
             const hay = lat != null && lng != null;
-            mapa = new google.maps.Map(el, {
+            m.mapa = new google.maps.Map(el, {
                 center: hay ? { lat: +lat, lng: +lng } : { lat: -34.66, lng: -58.45 },  // sin punto: GBA sur
                 zoom: hay ? 17 : 10,
                 mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
                 clickableIcons: false, gestureHandling: 'cooperative'
             });
-            mapa.addListener('click', e => moverPin(e.latLng.lat(), e.latLng.lng(), true));
-            if (hay) moverPin(lat, lng, false);
-            else if (fotoId && document.getElementById(fotoId))
-                document.getElementById(fotoId).innerHTML = '<span class="cm-foto-txt">Acá va a aparecer la foto de la puerta</span>';
-            engancharBuscador(buscadorId);
+            m.mapa.addListener('click', e => moverPin(m, e.latLng.lat(), e.latLng.lng(), true));
+            if (hay) moverPin(m, lat, lng, false);
+            else if (m.fotoId && document.getElementById(m.fotoId))
+                document.getElementById(m.fotoId).innerHTML = '<span class="cm-foto-txt">Acá va a aparecer la foto de la puerta</span>';
+            engancharBuscador(buscadorId, m);
         },
-        setPin: function (lat, lng) {
-            if (!mapa) return;
-            moverPin(lat, lng, false);
-            mapa.panTo({ lat: +lat, lng: +lng });
-            if (mapa.getZoom() < 16) mapa.setZoom(17);
+        setPin: function (mapaId, lat, lng) {
+            const m = mapas[mapaId];
+            if (!m || !m.mapa) return;
+            moverPin(m, lat, lng, false);
+            m.mapa.panTo({ lat: +lat, lng: +lng });
+            if (m.mapa.getZoom() < 16) m.mapa.setZoom(17);
         },
-        clearPin: function () {
-            if (pin) pin.setMap(null);
-            fotoPedida++;
-            const el = fotoId && document.getElementById(fotoId);
+        clearPin: function (mapaId) {
+            const m = mapas[mapaId];
+            if (!m) return;
+            if (m.pin) m.pin.setMap(null);
+            m.fotoPedida++;
+            const el = m.fotoId && document.getElementById(m.fotoId);
             if (el) el.innerHTML = '<span class="cm-foto-txt">Acá va a aparecer la foto de la puerta</span>';
         },
-        destroy: function () { mapa = null; pin = null; dotnet = null; fotoPedida++; }
+        destroy: function (mapaId) {
+            const m = mapas[mapaId];
+            if (m) { m.dotnet = null; m.fotoPedida++; }
+            delete mapas[mapaId];
+        }
     };
 })();

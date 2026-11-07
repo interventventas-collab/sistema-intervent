@@ -163,6 +163,33 @@ public class CafeDireccionUpsertRequest
     public bool EsPrincipal { get; set; }
 }
 
+/// <summary>2026-11-07: "Usar como principal" — el domicilio principal que hoy muestra la ficha.</summary>
+public class CafeHacerPrincipalRequest
+{
+    public string? Domicilio { get; set; }
+    public string? PisoDepto { get; set; }
+    public string? Localidad { get; set; }
+    public string? Cp { get; set; }
+    public string? Provincia { get; set; }
+    public string? EntreCalles { get; set; }
+    public string? MapeoLink { get; set; }
+    public decimal? MapeoLat { get; set; }
+    public decimal? MapeoLng { get; set; }
+}
+
+public class CafeHacerPrincipalResponse
+{
+    public string? Domicilio { get; set; }
+    public string? PisoDepto { get; set; }
+    public string? Localidad { get; set; }
+    public string? Cp { get; set; }
+    public string? Provincia { get; set; }
+    public string? EntreCalles { get; set; }
+    public string? MapeoLink { get; set; }
+    public decimal? MapeoLat { get; set; }
+    public decimal? MapeoLng { get; set; }
+}
+
 public class CafeProductoDto
 {
     public int Id { get; set; }
