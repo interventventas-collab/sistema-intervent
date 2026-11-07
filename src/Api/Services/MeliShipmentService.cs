@@ -321,76 +321,9 @@ public class MeliShipmentService
         // 2026-06-16: Para envios Flex, postear el link de Google Maps como nota interna en cada
         // orden de MeLi. Asi el repartidor abre la app de MeLi y tiene el link a Maps al toque.
         // Solo procesa shipments del rango (daysBack) con MapsNoteSentAt=null.
-        if (modeFilter == "flex")
-        {
-            try { await PostPendingMapsNotesAsync(account, http, daysBack); }
-            catch (Exception ex) { Console.WriteLine($"[MapsNote] error general account {account.Nickname}: {ex.Message}"); }
-        }
+        // 2026-11-06: ya NO se postea (el dueño no quiere las coordenadas en la nota; se ve una sola nota por venta).
 
         return (synced, flex);
-    }
-
-    /// <summary>2026-06-16: postea nota interna con link de Google Maps en cada orden Flex sincronizada.
-    /// Filtra por: cuenta, logistic_type=self_service, MapsNoteSentAt null, hay MeliOrderId, DateCreated dentro de daysBack.</summary>
-    private async Task PostPendingMapsNotesAsync(MeliAccount account, HttpClient http, int daysBack)
-    {
-        var cutoff = DateTime.UtcNow.AddDays(-daysBack);
-        var pendientes = await _db.MeliShipments
-            .Where(s => s.MeliAccountId == account.Id
-                        && s.LogisticType == "self_service"
-                        && s.MapsNoteSentAt == null
-                        && s.MeliOrderId != null
-                        && s.DateCreated >= cutoff)
-            .ToListAsync();
-
-        foreach (var sh in pendientes)
-        {
-            try
-            {
-                var noteText = BuildMapsNote(sh);
-                if (string.IsNullOrEmpty(noteText)) continue;
-                var body = JsonSerializer.Serialize(new { note = noteText });
-                using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
-                var resp = await http.PostAsync($"https://api.mercadolibre.com/orders/{sh.MeliOrderId}/notes", content);
-                if (resp.IsSuccessStatusCode)
-                {
-                    sh.MapsNoteSentAt = DateTime.UtcNow;
-                }
-                else
-                {
-                    var errBody = await resp.Content.ReadAsStringAsync();
-                    Console.WriteLine($"[MapsNote] order {sh.MeliOrderId} {(int)resp.StatusCode}: {errBody[..Math.Min(errBody.Length, 200)]}");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[MapsNote] order {sh.MeliOrderId} exception: {ex.Message}");
-            }
-        }
-        await _db.SaveChangesAsync();
-    }
-
-    /// <summary>2026-06-16 v2: arma el TEXTO de la nota — prefiere lat/lng (el repartidor copia,
-    /// pega en el buscador de Google Maps y va al pin exacto). Si no hay coords, manda la
-    /// direccion como texto (address_line + city). NO mandamos la URL completa porque al pegarla en
-    /// el buscador de Maps, Maps la trata como query literal y falla. Coords es directo.</summary>
-    private static string? BuildMapsNote(MeliShipment sh)
-    {
-        if (sh.Latitude.HasValue && sh.Longitude.HasValue
-            && sh.Latitude.Value != 0m && sh.Longitude.Value != 0m)
-        {
-            var lat = sh.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            var lng = sh.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            return $"Maps: {lat},{lng}";
-        }
-
-        var addr = sh.AddressLine;
-        if (string.IsNullOrWhiteSpace(addr)) return null;
-        var query = addr;
-        if (!string.IsNullOrWhiteSpace(sh.City)) query += " " + sh.City;
-        // El campo nota de MeLi tiene 120 chars. Recortamos para asegurar que entre con el "Maps: " prefijo.
-        if (query.Length > 110) query = query.Substring(0, 110);
-        return $"Maps: {query}";
     }
 
     /// <summary>2026-07-17: para cada envio que YA tiene telefono del comprador y todavia no le
@@ -425,18 +358,11 @@ public class MeliShipmentService
         if (!TelefonoUtil.EsReal(sh.ReceiverPhone) || sh.MeliOrderId == null || sh.PhoneNoteSentAt != null)
             return false;
         // El campo nota de MeLi admite hasta 300 chars; el telefono entra sobrado.
+        // 2026-11-06: va dentro de la nota única de la venta (junto con ganancia y vencimiento).
         var noteText = $"Tel cliente: {sh.ReceiverPhone}";
-        var body = JsonSerializer.Serialize(new { note = noteText });
-        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
-        var resp = await http.PostAsync($"https://api.mercadolibre.com/orders/{sh.MeliOrderId}/notes", content);
-        if (resp.IsSuccessStatusCode)
-        {
-            sh.PhoneNoteSentAt = DateTime.UtcNow;
-            return true;
-        }
-        var errBody = await resp.Content.ReadAsStringAsync();
-        Console.WriteLine($"[PhoneNote] order {sh.MeliOrderId} {(int)resp.StatusCode}: {errBody[..Math.Min(errBody.Length, 200)]}");
-        return false;
+        if (!await MeliNotaUnica.PonerAsync(http, sh.MeliOrderId.Value, MeliNotaUnica.Telefono, noteText, "PhoneNote")) return false;
+        sh.PhoneNoteSentAt = DateTime.UtcNow;
+        return true;
     }
 
     /// <summary>2026-07-17: fuerza a re-consultar UN envio a MeLi (boton "Traer telefono ahora") y, si el

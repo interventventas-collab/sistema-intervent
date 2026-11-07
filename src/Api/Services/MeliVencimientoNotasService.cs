@@ -71,11 +71,10 @@ public class MeliVencimientoNotasService : BackgroundService
             var http = httpF.CreateClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
             var ok = true;
+            // 2026-11-06: va dentro de la nota única de la venta (junto con ganancia y teléfono).
+            var venc = notas[0] + string.Concat(notas.Skip(1).Select(n => " | " + n.Replace("📅 VENCE → ", "")));
             foreach (var oid in filas.Select(f => f.MeliOrderId).Distinct())
-            foreach (var nota in notas)
-            {
-                if (!await PostNotaAsync(http, oid, nota, "VencNota", ct)) { ok = false; break; }
-            }
+                if (!await MeliNotaUnica.PonerAsync(http, oid, MeliNotaUnica.Vence, venc, "VencNota", ct)) { ok = false; break; }
             if (ok)
             {
                 foreach (var f in filas) f.VencNoteSentAt = DateTime.UtcNow;
@@ -218,7 +217,7 @@ public class MeliVencimientoNotasService : BackgroundService
             if (nota is null) { foreach (var f in filas) f.GananciaNoteSentAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); continue; }
             var okG = true;
             foreach (var oid in filas.Select(f => f.MeliOrderId).Distinct())
-                if (!await PostNotaAsync(http, oid, nota, "GananciaNota", ct)) { okG = false; break; }
+                if (!await MeliNotaUnica.PonerAsync(http, oid, MeliNotaUnica.Ganancia, nota, "GananciaNota", ct)) { okG = false; break; }
             if (okG)
             {
                 foreach (var f in filas) f.GananciaNoteSentAt = DateTime.UtcNow;
@@ -236,17 +235,6 @@ public class MeliVencimientoNotasService : BackgroundService
         return todas.Count > 0 ? todas : filas;
     }
 
-    private static async Task<bool> PostNotaAsync(HttpClient http, long orderId, string nota, string tag, CancellationToken ct)
-    {
-        var body = JsonSerializer.Serialize(new { note = nota });
-        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
-        var resp = await http.PostAsync($"https://api.mercadolibre.com/orders/{orderId}/notes", content, ct);
-        if (resp.IsSuccessStatusCode) return true;
-        var err = await resp.Content.ReadAsStringAsync(ct);
-        Console.WriteLine($"[{tag}] order {orderId} {(int)resp.StatusCode}: {err[..Math.Min(err.Length, 200)]}");
-        return false;
-    }
-
     private static readonly System.Globalization.CultureInfo Ar = new("es-AR");
     private static string Pesos(decimal v) => "$" + Math.Round(v, 0).ToString("N0", Ar);
 
@@ -261,8 +249,10 @@ public class MeliVencimientoNotasService : BackgroundService
         if (ambigua || unidades.Count == 0) return null;   // no se sabe bien qué se vendió: mejor no poner un número falso
         var ids = unidades.Keys.ToList();
         var prods = await db.CafeProductos.AsNoTracking().Where(p => ids.Contains(p.Id))
-            .Select(p => new { p.Id, p.Costo, p.IvaPct, Pvp = p.OemNav != null ? p.OemNav.PvpConIva : null, p.MultiplicadorOem }).ToListAsync(ct);
+            .Select(p => new { p.Id, p.Costo, p.IvaPct, p.Categoria, Pvp = p.OemNav != null ? p.OemNav.PvpConIva : null, p.MultiplicadorOem }).ToListAsync(ct);
         if (prods.Count != ids.Count || prods.Any(p => p.Costo <= 0)) return null;
+        // 2026-11-06: el costo del café está mal cargado → no se pone ganancia en ventas con café (sería un número falso).
+        if (prods.Any(p => string.Equals(p.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))) return null;
         var costo = prods.Sum(p => unidades[p.Id] * p.Costo * (1 + p.IvaPct / 100m));
         decimal? sugerido = prods.All(p => p.Pvp is > 0)
             ? prods.Sum(p => unidades[p.Id] * p.Pvp!.Value * (p.MultiplicadorOem is > 0 ? p.MultiplicadorOem.Value : 1m))
