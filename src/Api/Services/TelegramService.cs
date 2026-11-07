@@ -381,7 +381,7 @@ public class TelegramService
         bool telegramListo = chatsAlertas.Count > 0;
         if (quiereTelegram && !quiereCampanita && !telegramListo) return;
 
-        var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE", "MARGEN_BAJO", "PRECIO_MANTENIDO", "ENVIOS_CAMBIARON" };
+        var tipos = new[] { "PAUSADA_CON_STOCK", "STATUS_ACTIVE", "MARGEN_BAJO", "PRECIO_MANTENIDO", "ENVIOS_CAMBIARON", "ENVIO_ME1_FALLO" };
         var corteViejo = DateTime.UtcNow.AddHours(-12);
 
         // Anti-backlog: eventos sin avisar más viejos que 12h se marcan y no se mandan.
@@ -455,6 +455,7 @@ public class TelegramService
             "MARGEN_BAJO" => $"abajo del {ev.ValorAnterior ?? "50"}% (deja {ev.DeltaPct ?? 0:0.#}%)",
             "PRECIO_MANTENIDO" => $"precio corregido para mantener el {ev.Delta ?? 50:0.#}%",
             "ENVIOS_CAMBIARON" => "MeLi cambió el costo de envío",
+            "ENVIO_ME1_FALLO" => "pasó a envío gratis (me2) y no volvió a me1",
             _ => "reactivada"
         };
         if (ev.Tipo == "ENVIOS_CAMBIARON") return ev.Title ?? "Publicaciones con nuevo costo de envío";
@@ -507,6 +508,14 @@ public class TelegramService
             lineas.Add("");
             lineas.Add("MercadoLibre cambió el envío sin que cambie el precio. No se tocó ningún precio; el % de ganancia ya se calcula con el envío nuevo.");
             return string.Join("\n", lineas);
+        }
+        else if (ev.Tipo == "ENVIO_ME1_FALLO")
+        {
+            // 2026-11-06: guardián de me1 (MeliEnvioMe1GuardianService). MeLi la pasó a me2 y no la dejó volver.
+            lineas.Add("🚚 MercadoLibre pasó esta publicación a ENVÍO GRATIS (me2) y no deja volverla a me1");
+            lineas.Add($"📦 {ev.Title ?? ev.MeliItemId}");
+            if (!string.IsNullOrWhiteSpace(ev.Sku)) lineas.Add($"SKU {ev.Sku}");
+            if (!string.IsNullOrWhiteSpace(ev.Notes)) lineas.Add(ev.Notes);
         }
         else // STATUS_ACTIVE
         {

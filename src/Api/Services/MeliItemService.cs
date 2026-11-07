@@ -2353,6 +2353,9 @@ public class MeliItemService
             existing.VariationAttributes = variationAttributes;
             // Solo overrideamos LogisticType si vino del API. Si vino null (no estaba en la response),
             // mantenemos el valor cacheado para no perder info.
+            // 2026-11-06: si MeLi la pasó sola de me1 a me2 (envío gratis a cargo nuestro), el guardián la vuelve a me1.
+            if (status is "active" or "paused" && MeliEnvioMe1GuardianService.EsPaseDeMe1AMe2(existing.LogisticType, logisticType))
+                MeliEnvioMe1GuardianService.Encolar(meliItemId);
             if (logisticType != null) existing.LogisticType = logisticType;
             // 2026-06-08: aplicar auto-linkeo si se encontró match por SKU
             if (autoComboId.HasValue) existing.CafeComboId = autoComboId;
@@ -2769,6 +2772,8 @@ public class MeliItemService
                 && lt2.GetString() is string logi && item.LogisticType != logi)
             {
                 cambios.Add($"envío: {EnvioLegible(item.LogisticType)} → {EnvioLegible(logi)}");
+                if (MeliEnvioMe1GuardianService.EsPaseDeMe1AMe2(item.LogisticType, logi))
+                    MeliEnvioMe1GuardianService.Encolar(item.MeliItemId);
                 item.LogisticType = logi;
             }
             var gratis = sh.TryGetProperty("free_shipping", out var fs2) && fs2.ValueKind == JsonValueKind.True;
@@ -4412,6 +4417,8 @@ public class MeliItemService
         {
             liveIsFull = string.Equals(lt.GetString(), "fulfillment", StringComparison.OrdinalIgnoreCase);
             // Cachear para futuras consultas
+            if (MeliEnvioMe1GuardianService.EsPaseDeMe1AMe2(item.LogisticType, lt.GetString()))
+                MeliEnvioMe1GuardianService.Encolar(item.MeliItemId);
             item.LogisticType = lt.GetString();
         }
 
