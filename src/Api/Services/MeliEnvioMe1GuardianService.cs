@@ -10,21 +10,21 @@ namespace Api.Services;
 
 /// <summary>
 /// 2026-11-06 — Guardián de me1: si MercadoLibre pasa SOLA una publicación de me1 a me2 (envío
-/// gratis a cargo nuestro), el sistema le vuelve a pedir me1 al toque y avisa.
+/// gratis a cargo nuestro), el sistema cuida la plata y avisa URGENTE.
 ///
 /// Por qué existe: el 05/11 las sillas Nina (C4321) y la mesita Carolina estaban en me1 (caja real
 /// grande, el comprador paga el envío). Al cambiarles el precio, MeLi las re-evaluó y las pasó a me2
 /// con envío gratis obligatorio: una caja de 152 cm cotizaba $75.090 de envío a cargo nuestro.
-/// Mandándole otra vez me1 volvían (con la caja real que excede los límites de me2).
 ///
 /// Cómo se entera: cada vez que el sistema relee una publicación (aviso de MeLi al instante, refresco
 /// de comisión, push de precio, sincronización) y ve que el envío pasó de "default" (me1) a un modo
 /// de me2, la encola acá. Espera 20 s a que MeLi termine de acomodarla, la relee EN VIVO y, si sigue en me2:
-///   1) PRIMERO la plata: si con el envío gratis el precio de hoy deja menos del 40% sobre el costo, sube
-///      el precio (redondeado a ...999) para que lo deje. Nunca baja.
-///   2) Le manda {"shipping":{"mode":"me1","free_shipping":false}} y verifica a los 15 s.
-///   3) Aviso URGENTE siempre a la campanita y Telegram: ENVIO_ME1_VUELTO (volvió) o ENVIO_ME1_FALLO
-///      (MeLi no la deja: medidas dentro de me2, categoría que no acepta). No reintenta por 12 h si falló.
+///   1) Si con el envío gratis el precio de hoy deja menos del 40% sobre el costo, sube el precio
+///      (redondeado a ...999) para que lo deje. Nunca baja.
+///   2) Deja un aviso ENVIO_GRATIS_MELI: cartel que tapa la pantalla con sonido (admin y oficina) hasta
+///      que alguien toque "Lo vi", más Telegram y campanita.
+/// NO le pide me1 a MeLi solo (decisión del dueño 06/11: pedirlo automático puede parecer raro y
+/// traer una penalización). Eso lo decide él mirando el aviso.
 ///
 /// Interruptor: AppSettings meli.guardian_me1.enabled = "true" (default apagado: en desarrollo la base
 /// es vieja y la cuenta de MeLi es la REAL, no tiene que salir a tocar publicaciones).
@@ -32,7 +32,6 @@ namespace Api.Services;
 public class MeliEnvioMe1GuardianService : BackgroundService
 {
     private static readonly TimeSpan ESPERA_ANTES = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan ESPERA_VERIFICAR = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan NO_REINTENTAR = TimeSpan.FromHours(12);
     // Piso de ganancia sobre el costo, después de comisión y envío (regla del dueño, 02/11/2026).
     private const decimal PISO_PCT = 40m;
@@ -43,7 +42,7 @@ public class MeliEnvioMe1GuardianService : BackgroundService
 
     // MLA → desde cuándo se puede revisar (encolado + 20 s).
     private static readonly ConcurrentDictionary<string, DateTime> _pendientes = new();
-    // MLA → último intento (para no pelearse con MeLi si no la deja).
+    // MLA → último aviso (para no repetir el mismo aviso si MeLi manda varios avisos seguidos).
     private static readonly ConcurrentDictionary<string, DateTime> _ultimoIntento = new();
 
     private readonly IServiceScopeFactory _scopeFactory;
@@ -154,38 +153,23 @@ public class MeliEnvioMe1GuardianService : BackgroundService
             quePasoPrecio = $"❌ Falló la subida de precio ({ex.Message}). Precio sin tocar: {P(precioAntes)}.";
         }
 
-        // 3) Después, pedir me1 otra vez y verificar (MeLi a veces contesta 200 y no lo toma).
-        var body = JsonSerializer.Serialize(new { shipping = new { mode = "me1", free_shipping = false } });
-        using var put = await http.PutAsync($"https://api.mercadolibre.com/items/{mla}",
-            new StringContent(body, Encoding.UTF8, "application/json"), ct);
-        var putTxt = put.IsSuccessStatusCode ? "" : await put.Content.ReadAsStringAsync(ct);
-        await Task.Delay(ESPERA_VERIFICAR, ct);
-        var despues = await LeerEnvioAsync(http, mla, ct);
-        var volvio = despues?.Modo == "me1";
-
-        string quePasoEnvio = volvio
-            ? "✅ La volví a me1: el envío lo paga el comprador."
-                + (precioNuevo.HasValue ? $" Ojo: el precio quedó en {P(precioNuevo.Value)}; si querés volver a {P(precioAntes)}, cambialo a mano y fijate que siga en me1." : "")
-            : "❌ MeLi NO la deja volver a me1 (suele ser porque la caja cargada entra en me2). Queda con envío gratis a tu cargo"
-                + (fila.SaleFeeShippingCost is decimal c && c > 0 ? $" (~{P(c)})" : "") + ".";
-
-        if (volvio)
-            foreach (var f in filas) { f.LogisticType = despues!.Value.Logistica ?? "default"; f.FreeShipping = despues.Value.Gratis; }
-
-        // 4) Aviso URGENTE siempre (campanita + Telegram), con lo que hizo.
+        // 3) NO se pide me1 solo (ver arriba). Aviso URGENTE: cartel con sonido + Telegram + campanita.
+        var envio = filas.First().SaleFeeShippingCost;   // PublicarAsync recaptura la comisión y el envío
+        var quePasoEnvio = envio is decimal c && c > 0
+            ? $"El envío gratis te cuesta ~{P(c)} por venta."
+            : "Todavía no sé cuánto cuesta el envío gratis.";
         db.MeliCambiosDetectados.Add(new MeliCambioDetectado
         {
             MeliItemId = mla, MeliAccountId = fila.MeliAccountId, Sku = fila.Sku, Title = fila.Title,
-            Tipo = volvio ? "ENVIO_ME1_VUELTO" : "ENVIO_ME1_FALLO",
+            Tipo = "ENVIO_GRATIS_MELI",
             ValorAnterior = precioAntes.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ValorNuevo = (precioNuevo ?? precioAntes).ToString(System.Globalization.CultureInfo.InvariantCulture),
             Delta = precioNuevo.HasValue ? precioNuevo - precioAntes : null,
             Source = "guardian-me1", DetectedAt = DateTime.UtcNow,
-            Notes = Recortar($"MercadoLibre la pasó sola de me1 a envío gratis (me2 {antes.Value.Logistica}). {quePasoPrecio} {quePasoEnvio}"
-                + (putTxt.Length > 0 ? $" MeLi: {putTxt}" : ""), 500)
+            Notes = Recortar($"MercadoLibre la pasó sola de me1 a envío gratis a tu cargo (me2 {antes.Value.Logistica}). {quePasoEnvio} {quePasoPrecio} "
+                + "No le pedí me1 a MeLi: si la querés de vuelta en me1, hacelo desde el panel de MeLi.", 500)
         });
         await db.SaveChangesAsync(ct);
-        if (volvio) _ultimoIntento.TryRemove(mla, out _);
         _logger.LogWarning("[Guardián me1] {Mla} pasó a me2 ({Log}) · {Precio} · {Envio}", mla, antes.Value.Logistica, quePasoPrecio, quePasoEnvio);
     }
 
