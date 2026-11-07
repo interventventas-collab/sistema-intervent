@@ -1,0 +1,301 @@
+@implements IDisposable
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+@* 2026-11-07: botón "🚚 ME1" de Preparación (aprobado por el dueño con maqueta). Abre, sin salir de la
+   pantalla, la lista de los envíos ME1 de MercadoLibre (los que despachamos nosotros: no Flex ni Full)
+   para imprimir la etiqueta ME1 propia (troquel de armado + destinatario + QR). El numerito rojo =
+   envíos para despachar que todavía no tienen la etiqueta impresa; se recalcula cada 60 s.
+   Solo LEE de MeLi: imprimir usa el mismo endpoint de etiquetas que Órdenes MeLi. *@
+
+<style>
+    .me1-back { position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 1500; display: flex; align-items: flex-start; justify-content: center; padding: 5vh 16px; }
+    .me1-vent { width: 100%; max-width: 1000px; max-height: 88vh; background: #fff; border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,.25); display: flex; flex-direction: column; overflow: hidden; }
+    .me1-vh { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid #e5e7eb; }
+    .me1-vh h3 { margin: 0; font-size: 1.1rem; }
+    .me1-sub { font-size: 0.8rem; color: #6b7280; }
+    .me1-x { margin-left: auto; background: none; border: none; font-size: 1.3rem; color: #6b7280; cursor: pointer; }
+    .me1-fil { display: flex; gap: 8px; align-items: center; padding: 10px 18px; font-size: 0.82rem; flex-wrap: wrap; }
+    .me1-chip { border: 1px solid #e2e8f0; border-radius: 999px; padding: 3px 11px; background: #fff; cursor: pointer; font-size: 0.82rem; color: #334155; }
+    .me1-chip.on { background: #1e293b; color: #fff; border-color: #1e293b; font-weight: 600; }
+    .me1-imp { margin-left: auto; background: #2563eb; color: #fff; border: none; border-radius: 999px; padding: 8px 18px; font-weight: 700; font-size: 0.9rem; cursor: pointer; }
+    .me1-imp:hover { background: #1d4ed8; }
+    .me1-imp:disabled { background: #93c5fd; cursor: default; }
+    .me1-lista { overflow-y: auto; min-height: 0; flex: 1; }
+    .me1-fila { display: grid; grid-template-columns: 26px 52px 60px minmax(0,1fr) 230px 140px; gap: 12px; align-items: center; padding: 10px 18px; border-top: 1px solid #f1f5f9; font-size: 0.85rem; }
+    .me1-fila.sel { background: #eff6ff; }
+    .me1-fila input { width: 18px; height: 18px; cursor: pointer; }
+    .me1-foto { width: 56px; height: 56px; border-radius: 8px; border: 1px solid #e5e7eb; background: #f8fafc; object-fit: contain; }
+    .me1-cu { color: #6b7280; font-size: 0.78rem; line-height: 1.3; }
+    .me1-pr { min-width: 0; }
+    .me1-pr div { font-weight: 700; font-size: 0.92rem; }
+    .me1-pr a { font-size: 0.75rem; color: #64748b; }
+    .me1-dest b { display: block; }
+    .me1-dest span { color: #475569; font-size: 0.78rem; }
+    .me1-est { font-size: 0.78rem; font-weight: 700; border-radius: 999px; padding: 4px 10px; text-align: center; border: none; cursor: pointer; }
+    .me1-est.sin { background: #fef3c7; color: #92400e; }
+    .me1-est.ya { background: #dcfce7; color: #166534; }
+    .me1-vacio { padding: 24px 18px; color: #64748b; font-size: 0.9rem; }
+    .me1-pie { padding: 10px 18px; background: #f9fafb; font-size: 0.78rem; color: #6b7280; border-top: 1px solid #e5e7eb; }
+    @@media (max-width: 760px) {
+        .me1-fila { grid-template-columns: 26px 60px minmax(0,1fr); }
+        .me1-fila .me1-cu { display: none; }
+        .me1-fila .me1-dest, .me1-fila .me1-est { grid-column: 2 / -1; }
+    }
+</style>
+
+<button class="@Clase" @onclick="Abrir" title="Envíos ME1 de MercadoLibre (los despachamos nosotros): ver e imprimir etiquetas">
+    🚚 ME1
+    @if (SinImprimir > 0)
+    {
+        <span class="pp-badge">@SinImprimir</span>
+    }
+</button>
+
+@if (abierto)
+{
+    <div class="me1-back" @onclick="() => abierto = false">
+        <div class="me1-vent" @onclick:stopPropagation="true">
+            <div class="me1-vh">
+                <span style="font-size:1.4rem">🚚</span>
+                <div>
+                    <h3>Envíos ME1 de MercadoLibre</h3>
+                    <div class="me1-sub">los que despachamos nosotros (no Flex ni Full) · últimos 30 días</div>
+                </div>
+                <button class="me1-x" title="Cerrar" @onclick="() => abierto = false">✕</button>
+            </div>
+            <div class="me1-fil">
+                <button class="me1-chip @(verDespachados ? "" : "on")" @onclick="() => CambiarVista(false)">Para despachar (@ParaDespachar.Count)</button>
+                <button class="me1-chip @(verDespachados ? "on" : "")" @onclick="() => CambiarVista(true)">Ya despachados (@Despachados.Count)</button>
+                <span style="color:#94a3b8">|</span> Etiqueta:
+                @foreach (var (k, l, t) in FormatosEtiqueta)
+                {
+                    <button class="me1-chip @(formato == k ? "on" : "")" title="@t" @onclick="() => ElegirFormato(k)">@l</button>
+                }
+                <button class="me1-imp" disabled="@(tildadas.Count == 0)" @onclick="ImprimirTildadas">
+                    🖨️ @TextoImprimir
+                </button>
+            </div>
+            <div class="me1-lista">
+                @if (cargando && ordenes.Count == 0)
+                {
+                    <div class="me1-vacio">Cargando envíos ME1…</div>
+                }
+                else if (Visibles.Count == 0)
+                {
+                    <div class="me1-vacio">@(verDespachados ? "No hay envíos ME1 despachados en los últimos 30 días." : "No hay envíos ME1 para despachar. 🎉")</div>
+                }
+                else
+                {
+                    @foreach (var o in Visibles)
+                    {
+                        var env = o.NumeroEnvio;
+                        var sel = env.HasValue && tildadas.Contains(env.Value);
+                        <div class="me1-fila @(sel ? "sel" : "")">
+                            <div>
+                                @if (env.HasValue)
+                                {
+                                    <input type="checkbox" checked="@sel" @onchange="() => Tildar(env.Value)" title="Tildar para imprimir" />
+                                }
+                            </div>
+                            @* la fecha de la venta YA viene en hora argentina: no convertir *@
+                            <div class="me1-cu">@Dia(o.Fecha)<br />@o.Fecha.ToString("HH:mm")</div>
+                            @{ var foto = o.Productos.FirstOrDefault(p => !string.IsNullOrEmpty(p.Foto))?.Foto; }
+                            @if (foto is not null) { <img class="me1-foto" src="@foto" alt="" loading="lazy" /> }
+                            else { <span class="me1-foto"></span> }
+                            <div class="me1-pr">
+                                @foreach (var p in o.Productos)
+                                {
+                                    <div>×@p.Cantidad @p.Titulo</div>
+                                }
+                                <a href="@($"/deposito/ordenes-meli?orden={o.Numero}")" @onclick:preventDefault="true"
+                                   @onclick="() => VerDetalle(o.Numero)">venta @o.NumeroVenta · ver detalle</a>
+                            </div>
+                            <div class="me1-dest">
+                                <b>@(string.IsNullOrWhiteSpace(o.Destinatario) ? o.Comprador : o.Destinatario)</b>
+                                <span>@Domicilio(o)</span>
+                            </div>
+                            <div>
+                                @if (env.HasValue)
+                                {
+                                    <button class="me1-est @(o.EtiquetaImpresa ? "ya" : "sin")" title="Imprimir solo esta" @onclick="() => ImprimirUna(env.Value)">
+                                        @(o.EtiquetaImpresa ? $"✓ Impresa{(o.EtiquetaImpresaAt.HasValue ? " " + o.EtiquetaImpresaAt.Value.ToArTime().ToString("dd/MM") : "")}" : "Falta imprimir")
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="me1-pie">Imprime nuestra etiqueta ME1 de siempre (troquel de armado arriba + destinatario grande + QR). Las ya impresas se pueden volver a imprimir tildándolas o tocando "✓ Impresa".</div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Clase { get; set; } = "btn btn-secondary";
+
+    private static readonly (string, string, string)[] FormatosEtiqueta =
+    {
+        ("termica", "Térmica directa", "Imprime directo en la térmica (Zebra o HPRT). Si esta compu no tiene el programa de la impresora, baja el archivo .txt"),
+        ("termica-pdf", "Térmica PDF", "PDF con una etiqueta por página"),
+        ("a4-3", "A4 ×3", "Tres etiquetas por hoja A4 acostada"),
+        ("a4-1", "A4 ×1", "Una etiqueta por hoja A4"),
+    };
+    private const string ClaveFormato = "om-etiqueta-formato";   // el mismo que Órdenes MeLi: cada compu recuerda su impresora
+
+    private List<MeliDepoOrden> ordenes = new();
+    private readonly HashSet<long> tildadas = new();
+    private string formato = "a4-3";
+    private bool abierto, cargando, verDespachados, cerrado;
+    private System.Threading.Timer? timer;
+
+    private List<MeliDepoOrden> ParaDespachar => ordenes.Where(o => o.EstadoClave == "despachar").ToList();
+    private List<MeliDepoOrden> Despachados => ordenes.Where(o => o.EstadoClave is "camino" or "entregada").ToList();
+    private List<MeliDepoOrden> Visibles => verDespachados ? Despachados : ParaDespachar;
+    private int SinImprimir => ParaDespachar.Count(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa);
+
+    private string TextoImprimir
+    {
+        get
+        {
+            if (tildadas.Count == 0) return "Tildá las que quieras imprimir";
+            var sinImp = Visibles.Count(o => o.NumeroEnvio.HasValue && tildadas.Contains(o.NumeroEnvio.Value) && !o.EtiquetaImpresa);
+            return sinImp == tildadas.Count
+                ? $"Imprimir {(tildadas.Count == 1 ? "la 1 sin imprimir" : $"las {tildadas.Count} sin imprimir")}"
+                : $"Imprimir {tildadas.Count}";
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        // El numerito del botón: al entrar y cada 60 s (la lista es liviana, solo ME1).
+        timer = new System.Threading.Timer(async _ =>
+        {
+            if (cerrado) return;
+            await InvokeAsync(async () => { await Cargar(); StateHasChanged(); });
+        }, null, 0, 60000);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var f = await JS.InvokeAsync<string?>("localStorage.getItem", ClaveFormato);
+            if (FormatosEtiqueta.Any(x => x.Item1 == f)) formato = f!;
+        }
+        catch { }
+    }
+
+    private async Task Cargar()
+    {
+        if (cargando) return;
+        cargando = true;
+        try
+        {
+            var r = await Api.GetMeliDepoOrdenesAsync(30, null, "me1", null, null);
+            if (r is not null) ordenes = r.Ordenes.Where(o => o.EstadoClave != "cancelada").ToList();
+        }
+        catch { }
+        finally { cargando = false; }
+    }
+
+    private async Task Abrir()
+    {
+        abierto = true;
+        verDespachados = false;
+        await Cargar();
+        TildarSinImprimir();
+    }
+
+    private void CambiarVista(bool despachados)
+    {
+        verDespachados = despachados;
+        tildadas.Clear();
+        if (!despachados) TildarSinImprimir();
+    }
+
+    /// <summary>Al abrir quedan tildadas las que faltan imprimir: un solo toque y salen todas.</summary>
+    private void TildarSinImprimir()
+    {
+        tildadas.Clear();
+        foreach (var o in ParaDespachar.Where(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa))
+            tildadas.Add(o.NumeroEnvio!.Value);
+    }
+
+    private void Tildar(long envio) { if (!tildadas.Add(envio)) tildadas.Remove(envio); }
+
+    private async Task ElegirFormato(string f)
+    {
+        formato = f;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveFormato, f); } catch { }
+    }
+
+    private async Task ImprimirTildadas()
+    {
+        if (tildadas.Count == 0) return;
+        ToastService.Success($"Generando {tildadas.Count} etiqueta(s) ME1…");
+        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(tildadas.OrderBy(x => x), formato));
+        tildadas.Clear();
+        _ = RefrescarLuego();
+    }
+
+    private async Task ImprimirUna(long envio)
+    {
+        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { envio }, formato));
+        _ = RefrescarLuego();
+    }
+
+    /// <summary>Igual que Órdenes MeLi: térmica directa por Zebra Browser Print / QZ Tray (js/zebra-print.js);
+    /// el resto abre el PDF en otra pestaña.</summary>
+    private async Task AbrirEtiqueta(string url)
+    {
+        if (formato == "termica")
+        {
+            string r;
+            try { r = await JS.InvokeAsync<string>("zebraImprimir", url); } catch { r = "sin-zebra"; }
+            if (r == "ok") { ToastService.Success("Etiqueta enviada a la impresora"); return; }
+            if (r.StartsWith("error:")) { ToastService.Error(r[6..]); return; }
+            ToastService.Warning("No encontré el programa de la impresora (Zebra Browser Print o QZ Tray) en esta compu: te bajo el archivo .txt");
+            await JS.InvokeVoidAsync("zebraBajar", url);
+            return;
+        }
+        await JS.InvokeVoidAsync("window.open", url, "_blank");
+    }
+
+    /// <summary>A los pocos segundos vuelve a traer la lista para que pasen a "✓ Impresa".</summary>
+    private async Task RefrescarLuego()
+    {
+        await Task.Delay(6000);
+        try { await InvokeAsync(async () => { await Cargar(); StateHasChanged(); }); } catch { }
+    }
+
+    private void VerDetalle(long numero) => Nav.NavigateTo($"/deposito/ordenes-meli?orden={numero}");
+
+    private static string Dia(DateTime f)
+    {
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        if (f.Date == hoy) return "hoy";
+        if (f.Date == hoy.AddDays(-1)) return "ayer";
+        return f.ToString("dd/MM");
+    }
+
+    private static string Domicilio(MeliDepoOrden o)
+    {
+        var partes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(o.Direccion)) partes.Add(o.Direccion!);
+        var loc = (o.Localidad ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(o.Cp)) loc = $"{loc} ({o.Cp})".Trim();
+        if (loc.Length > 0) partes.Add(loc);
+        return partes.Count == 0 ? "dirección: se completa al imprimir" : string.Join(" · ", partes);
+    }
+
+    public void Dispose()
+    {
+        cerrado = true;
+        timer?.Dispose();
+    }
+}

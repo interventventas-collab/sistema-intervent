@@ -33,6 +33,11 @@ public class MeliDepoOrden
     public string EstadoClave { get; set; } = "";
     public int Unidades { get; set; }
     public List<MeliDepoOrdenProducto> Productos { get; set; } = new();
+    // 2026-11-07: solo vienen cuando se pide envio=me1 (ventanita ME1 de Preparación).
+    public string? Destinatario { get; set; }
+    public string? Direccion { get; set; }
+    public string? Localidad { get; set; }
+    public string? Cp { get; set; }
 }
 
 public class MeliDepoOrdenProducto

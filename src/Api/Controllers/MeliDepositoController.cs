@@ -46,6 +46,9 @@ public class MeliDepositoController : ControllerBase
 
         var query = _db.MeliOrders.AsNoTracking().Where(o => o.DateCreated >= desdeAr);
         if (cuenta.HasValue) query = query.Where(o => o.MeliAccountId == cuenta.Value);
+        // 2026-11-07: botón "ME1" de Preparación: solo los envíos que despachamos nosotros (ME1).
+        var soloMe1 = string.Equals(envio, "me1", StringComparison.OrdinalIgnoreCase);
+        if (soloMe1) query = query.Where(o => o.ShippingMode == "me1" && (o.LogisticType == null || (o.LogisticType != "self_service" && o.LogisticType != "fulfillment")));
 
         var texto = q?.Trim();
         if (!string.IsNullOrEmpty(texto))
@@ -110,16 +113,44 @@ public class MeliDepositoController : ControllerBase
                     }).ToList()
                 };
             })
-            .Where(g => string.IsNullOrEmpty(envio) || g.tipoClave == envio)
+            .Where(g => soloMe1 || string.IsNullOrEmpty(envio) || g.tipoClave == envio)
             .Where(g => string.IsNullOrEmpty(estado) || g.estadoClave == estado)
             .OrderByDescending(g => g.fecha)
             .Take(500)
             .ToList();
 
+        if (!soloMe1)
+            return Ok(new
+            {
+                cuentas = cuentas.Select(a => new { id = a.Id, nombre = a.Nickname }),
+                ordenes = grupos
+            });
+
+        // 2026-11-07: para ME1 también va a quién y adónde (lo que ya tenemos bajado de MeLi).
+        var envIds = grupos.Where(g => g.numeroEnvio.HasValue).Select(g => g.numeroEnvio!.Value).Distinct().ToList();
+        var destinos = (await _db.MeliShipments.AsNoTracking()
+                .Where(s => envIds.Contains(s.MeliShipmentId))
+                .Select(s => new { s.MeliShipmentId, s.ReceiverName, s.StreetName, s.StreetNumber, s.AddressLine, s.City, s.ZipCode })
+                .ToListAsync())
+            .GroupBy(s => s.MeliShipmentId).ToDictionary(g => g.Key, g => g.First());
         return Ok(new
         {
             cuentas = cuentas.Select(a => new { id = a.Id, nombre = a.Nickname }),
-            ordenes = grupos
+            ordenes = grupos.Select(g =>
+            {
+                var d = g.numeroEnvio.HasValue && destinos.TryGetValue(g.numeroEnvio.Value, out var x) ? x : null;
+                var calle = d is null ? null
+                    : !string.IsNullOrWhiteSpace(d.StreetName) ? $"{d.StreetName} {d.StreetNumber}".Trim() : d.AddressLine;
+                return new
+                {
+                    g.numero, g.numeroVenta, g.numeroEnvio, g.etiquetaImpresa, g.etiquetaImpresaAt, g.fecha, g.cuenta,
+                    g.comprador, g.tipo, g.tipoClave, g.estado, g.estadoClave, g.unidades, g.productos,
+                    destinatario = d?.ReceiverName,
+                    direccion = calle,
+                    localidad = d?.City,
+                    cp = d?.ZipCode
+                };
+            })
         });
     }
 
