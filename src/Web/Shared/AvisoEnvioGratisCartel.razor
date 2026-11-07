@@ -1,0 +1,180 @@
+@inject ApiClient Api
+@inject AuthService AuthSvc
+@inject IJSRuntime JS
+@implements IDisposable
+@*
+   2026-11-06 — Cartel URGENTE: MercadoLibre pasó sola una publicación de me1 a envío gratis a cargo
+   nuestro (lo detecta MeliEnvioMe1GuardianService, que además ya subió el precio si dejaba < 40%).
+   Pedido del dueño: "que sea imposible no verlo, con sonido, así lo vemos al toque". Mismo criterio que
+   el cartel del depósito: tapa la pantalla, suena 1 minuto y se queda esperando hasta "Lo vi" (queda
+   anotado quién). Lo ven admin y oficina. Si hay varios, aparecen de a uno.
+   No hay empujón en vivo: pregunta cada 30 s (y al abrir el sistema, así aparece a la mañana).
+*@
+@if (habilitado && aviso is not null)
+{
+    <div class="aveg-fondo">
+        <div class="aveg-card">
+            <div class="aveg-head">
+                <span class="aveg-camp">🔔</span>
+                <span class="aveg-titulo">URGENTE · MercadoLibre pasó una publicación a envío gratis a tu cargo</span>
+            </div>
+            <div class="aveg-body">
+                <div class="aveg-meta">@FechaLinda(aviso.DetectedAt)@(total > 1 ? $" · hay {total - 1} más esperando" : "")</div>
+                <div class="aveg-publi">@(aviso.Titulo ?? aviso.MeliItemId)</div>
+                <div class="aveg-meta">@(string.IsNullOrWhiteSpace(aviso.Sku) ? "" : $"SKU {aviso.Sku} · ")@aviso.MeliItemId</div>
+                @if (aviso.PrecioAntes is decimal pa && aviso.PrecioAhora is decimal pn && pn != pa)
+                {
+                    <div class="aveg-precio">Precio subido: @Plata(pa) → <b>@Plata(pn)</b> <span class="aveg-gris">(para que deje 40% pagando el envío)</span></div>
+                }
+                else if (aviso.PrecioAntes is decimal p0)
+                {
+                    <div class="aveg-precio">Precio sin tocar: <b>@Plata(p0)</b></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(aviso.Texto))
+                {
+                    <div class="aveg-texto">@aviso.Texto</div>
+                }
+                <div class="aveg-botones">
+                    <button class="aveg-btn aveg-btn-ok" @onclick="LoVi" disabled="@marcando">@(marcando ? "…" : "Lo vi")</button>
+                    <a class="aveg-btn" href="@Link(aviso.MeliItemId)" target="_blank" rel="noopener" @onclick="PararSonido">Ver en MeLi</a>
+                </div>
+                @if (!sonando)
+                {
+                    <div class="aveg-nota">El aviso queda acá hasta que alguien toque “Lo vi”.</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ApiClient.EnvioGratisAvisoDto? aviso;
+    private int total;
+    private bool habilitado, marcando, sonando;
+    private int? sonandoPara;
+    private System.Threading.Timer? timerConsulta, timerSonido;
+    private int tokenSonido;
+    private const int SegundosDeSonido = 60;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var user = await AuthSvc.GetUserAsync();
+            var perms = user?.Permissions ?? new();
+            habilitado = string.Equals(user?.Role, "admin", StringComparison.OrdinalIgnoreCase) || perms.Contains("oficina");
+        }
+        catch { habilitado = false; }
+        if (!habilitado) return;
+        await ConsultarAsync();
+        timerConsulta = new System.Threading.Timer(_ => _ = InvokeAsync(ConsultarAsync), null, 30000, 30000);
+    }
+
+    private async Task ConsultarAsync()
+    {
+        if (marcando) return;
+        try
+        {
+            var r = await Api.GetEnvioGratisPendienteAsync();
+            total = r?.Total ?? 0;
+            var nuevo = r?.Aviso;
+            aviso = nuevo;
+            // Suena solo la primera vez que aparece cada aviso (no cada 30 s).
+            if (nuevo is not null && sonandoPara != nuevo.Id) { sonandoPara = nuevo.Id; Sonar(); }
+            if (nuevo is null) PararSonido();
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private void Sonar()
+    {
+        PararSonido();
+        sonando = true;
+        var miToken = ++tokenSonido;
+        var hasta = DateTime.UtcNow.AddSeconds(SegundosDeSonido);
+        _ = JS.InvokeVoidAsync("waTestSound", "alarma").AsTask();
+        timerSonido = new System.Threading.Timer(async _ =>
+        {
+            if (miToken != tokenSonido) return;
+            if (DateTime.UtcNow >= hasta)
+            {
+                sonando = false;
+                timerSonido?.Dispose();
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            try { await JS.InvokeVoidAsync("waTestSound", "alarma"); } catch { }
+        }, null, 3000, 3000);
+    }
+
+    private void PararSonido()
+    {
+        tokenSonido++;
+        sonando = false;
+        timerSonido?.Dispose();
+        timerSonido = null;
+    }
+
+    private async Task LoVi()
+    {
+        if (aviso is null) return;
+        marcando = true;
+        PararSonido();
+        try
+        {
+            string? quien = null;
+            try { quien = await JS.InvokeAsync<string?>("localStorage.getItem", "current_operator"); } catch { }
+            await Api.MarcarEnvioGratisVistoAsync(aviso.Id, quien);
+        }
+        catch { }
+        marcando = false;
+        aviso = null;
+        StateHasChanged();
+        await ConsultarAsync();   // si había otro esperando, aparece (y suena)
+    }
+
+    private static string Link(string mla) => mla.Length > 3
+        ? $"https://articulo.mercadolibre.com.ar/{mla.Insert(3, "-")}" : "https://www.mercadolibre.com.ar";
+
+    private static string Plata(decimal v) => "$" + v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+
+    private static string FechaLinda(DateTime utc)
+    {
+        var l = utc.ToArTime();
+        var hoy = DateTimeExt.AhoraAr().Date;
+        return l.Date == hoy ? $"hoy {l:HH:mm}" : l.ToString("dd/MM HH:mm");
+    }
+
+    public void Dispose()
+    {
+        timerConsulta?.Dispose();
+        timerSonido?.Dispose();
+    }
+}
+
+<style>
+    /* Tapa TODO a propósito: es un aviso que no se puede saltear (mismo criterio que el del depósito). */
+    .aveg-fondo { position: fixed; inset: 0; z-index: 99001; background: rgba(15,23,42,0.72);
+        display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .aveg-card { background: #fff; border-radius: 14px; width: 100%; max-width: 470px;
+        overflow: hidden; box-shadow: 0 18px 50px rgba(0,0,0,0.45); }
+    .aveg-head { background: #fee2e2; padding: 0.9rem 1.1rem; display: flex; align-items: center; gap: 0.6rem; }
+    .aveg-camp { font-size: 1.5rem; animation: aveg-toc 1s ease-in-out infinite; }
+    @@keyframes aveg-toc { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
+    .aveg-titulo { font-size: 1rem; font-weight: 800; color: #991b1b; line-height: 1.3; }
+    .aveg-body { padding: 1.1rem; }
+    .aveg-meta { font-size: 0.8rem; color: #6b7280; margin-bottom: 0.35rem; }
+    .aveg-publi { font-size: 1.1rem; font-weight: 700; color: #111827; line-height: 1.35; margin-bottom: 0.2rem; }
+    .aveg-precio { font-size: 1rem; color: #111827; margin: 0.6rem 0 0.4rem; }
+    .aveg-gris { color: #6b7280; font-size: 0.85rem; }
+    .aveg-texto { font-size: 0.88rem; line-height: 1.45; color: #374151;
+        border-left: 4px solid #d1d5db; padding-left: 0.8rem; white-space: pre-wrap; word-break: break-word; }
+    .aveg-botones { display: flex; gap: 0.6rem; margin-top: 1.2rem; }
+    .aveg-btn { flex: 1; padding: 0.85rem; border-radius: 10px; border: 1px solid #d1d5db; text-align: center;
+        background: #fff; font-size: 1rem; font-weight: 700; color: #374151; cursor: pointer; text-decoration: none; }
+    .aveg-btn:hover { background: #f3f4f6; }
+    .aveg-btn-ok { flex: 2; background: #16a34a; border-color: #16a34a; color: #fff; }
+    .aveg-btn-ok:hover { background: #15803d; }
+    .aveg-nota { font-size: 0.78rem; color: #9ca3af; margin-top: 0.7rem; text-align: center; }
+</style>

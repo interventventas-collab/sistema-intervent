@@ -2026,7 +2026,9 @@
                 coin:    function (c) { nota(c, 988, 0, 0.07, 'square', 0.2); nota(c, 1319, 0.07, 0.20, 'square', 0.2); },
                 powerup: function (c) { var f = [523, 659, 784, 1047, 1319]; for (var i = 0; i < f.length; i++) nota(c, f[i], i * 0.05, 0.13, 'square', 0.18); },
                 laser:   function (c) { sweep(c, 1200, 200, 0, 0.25, 'sawtooth', 0.2); },
-                levelup: function (c) { var f = [392, 523, 659, 784]; for (var i = 0; i < f.length; i++) nota(c, f[i], i * 0.09, 0.18, 'triangle', 0.2); }
+                levelup: function (c) { var f = [392, 523, 659, 784]; for (var i = 0; i < f.length; i++) nota(c, f[i], i * 0.09, 0.18, 'triangle', 0.2); },
+                // 2026-11-06: alarma del cartel urgente de envío gratis (MeLi). Tiene que sonar distinto a todo.
+                alarma:  function (c) { for (var i = 0; i < 3; i++) { nota(c, 988, i * 0.36, 0.16, 'square', 0.3); nota(c, 740, i * 0.36 + 0.18, 0.16, 'square', 0.3); } }
             };
         })();
         function _waCtx() {
