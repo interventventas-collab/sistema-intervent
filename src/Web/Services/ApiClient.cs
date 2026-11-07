@@ -1539,6 +1539,10 @@ public class ApiClient
     public async Task<CafeDireccionDto?> CreateCafeDireccionAsync(int clienteId, CafeDireccionUpsertRequest req)
         => await PostAsync<CafeDireccionDto>($"/api/cafe/clientes/{clienteId}/direcciones", req);
 
+    /// <summary>2026-11-07: el domicilio alternativo pasa a ser el principal (y el principal queda como alternativo).</summary>
+    public async Task<CafeHacerPrincipalResponse?> HacerPrincipalCafeDireccionAsync(int dirId, CafeHacerPrincipalRequest req)
+        => await PostAsync<CafeHacerPrincipalResponse>($"/api/cafe/clientes/direcciones/{dirId}/hacer-principal", req);
+
     public async Task<CafeDireccionDto?> UpdateCafeDireccionAsync(int dirId, CafeDireccionUpsertRequest req)
         => await PutAsync<CafeDireccionDto>($"/api/cafe/clientes/direcciones/{dirId}", req);
 

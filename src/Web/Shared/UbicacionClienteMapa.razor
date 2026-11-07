@@ -117,7 +117,7 @@
                 textoGoogle = SinPais(r.Direccion); await AvisarCp(r.Direccion);
                 pinAutomatico = true;
                 await Avisar(r.Lat, r.Lng);
-                if (listo) await JS.InvokeVoidAsync("clienteMapa.setPin", r.Lat, r.Lng);
+                if (listo) await JS.InvokeVoidAsync("clienteMapa.setPin", mapaId, r.Lat, r.Lng);
             }
             else noEncontrada = true;
         }
@@ -166,7 +166,7 @@
         if (r is not { Ok: true }) return false;
         pendiente = null; noEncontrada = false; textoGoogle = null; pinAutomatico = false;
         await OnUbicacion.InvokeAsync((r.Lat, r.Lng, url.Trim()));
-        if (listo) await JS.InvokeVoidAsync("clienteMapa.setPin", r.Lat, r.Lng);
+        if (listo) await JS.InvokeVoidAsync("clienteMapa.setPin", mapaId, r.Lat, r.Lng);
         try { var d = await Api.DireccionDePuntoAsync(r.Lat, r.Lng); textoGoogle = SinPais(d); await AvisarCp(d); } catch { }
         StateHasChanged();
         return true;
@@ -176,7 +176,7 @@
     {
         pendiente = null; textoGoogle = null; pinAutomatico = false;
         await OnUbicacion.InvokeAsync((null, null, ""));
-        if (listo) await JS.InvokeVoidAsync("clienteMapa.clearPin");
+        if (listo) await JS.InvokeVoidAsync("clienteMapa.clearPin", mapaId);
     }
 
     private Task Avisar(decimal lat, decimal lng) => OnUbicacion.InvokeAsync((lat, lng,
@@ -201,7 +201,7 @@
     public async ValueTask DisposeAsync()
     {
         espera?.Cancel();
-        try { await JS.InvokeVoidAsync("clienteMapa.destroy"); } catch { }
+        try { await JS.InvokeVoidAsync("clienteMapa.destroy", mapaId); } catch { }
         yo?.Dispose();
     }
 }

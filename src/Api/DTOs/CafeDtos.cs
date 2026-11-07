@@ -51,6 +51,27 @@ public class CafeDireccionUpsertRequest
     public bool EsPrincipal { get; set; }
 }
 
+/// <summary>2026-11-07: "Usar como principal". Lo que hoy figura como domicilio principal en la
+/// ficha abierta (puede tener cambios sin guardar): pasa al domicilio alternativo, y el alternativo
+/// pasa a ser el principal del cliente.</summary>
+public class CafeHacerPrincipalRequest
+{
+    public string? Domicilio { get; set; }
+    public string? PisoDepto { get; set; }
+    public string? Localidad { get; set; }
+    public string? Cp { get; set; }
+    public string? Provincia { get; set; }
+    public string? EntreCalles { get; set; }
+    public string? MapeoLink { get; set; }
+    public decimal? MapeoLat { get; set; }
+    public decimal? MapeoLng { get; set; }
+}
+
+/// <summary>Cómo quedó el domicilio principal del cliente después del cambio (para la ficha).</summary>
+public record CafeHacerPrincipalResponse(
+    string? Domicilio, string? PisoDepto, string? Localidad, string? Cp, string? Provincia,
+    string? EntreCalles, string? MapeoLink, decimal? MapeoLat, decimal? MapeoLng);
+
 public class CreateCafeClienteRequest
 {
     public string Nombre { get; set; } = string.Empty;
