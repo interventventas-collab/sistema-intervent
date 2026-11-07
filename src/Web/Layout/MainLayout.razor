@@ -150,6 +150,90 @@
     }
     .topbar-nav-modern:hover { background: #f3f4f6; }
 
+    /* 2026-11-07: "todo arriba" (admin y depósito). En compu el menú de la izquierda no ocupa
+       lugar: es un cajón que abre "☰ Menú". Los accesos rápidos suben a la fila de arriba y el
+       menú nuevo queda en una sola fila al lado de Menú / Volver. En celu, todo como siempre. */
+    .ta-acciones { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
+    .ta-acciones .tb-nuevo .keys { display: none; }
+    .ta-menu-lbl { font-size: 0.85rem; font-weight: 600; }
+    .ta-tabs { display: flex; align-items: center; gap: 0.1rem; flex-wrap: wrap; margin-left: 0.5rem; }
+    .ta-tab {
+        border: none; background: transparent; color: #111827; font-size: 0.85rem; font-family: inherit;
+        padding: 0.4rem 0.6rem; border-radius: 6px; cursor: pointer; white-space: nowrap;
+        display: inline-flex; align-items: center; gap: 0.3rem;
+    }
+    .ta-tab:hover { background: #f3f4f6; }
+    .ta-tab.on { font-weight: 700; box-shadow: inset 0 -2px 0 #111827; border-radius: 0; }
+    .ta-badge { background: #dc2626; color: #fff; border-radius: 999px; font-size: 0.68rem; font-weight: 800; padding: 0 0.4rem; line-height: 1.4; }
+    .ta-chat-btn {
+        margin-left: auto; border: 1px solid #6ee7b7; background: #ecfdf5; color: #065f46; font-weight: 700;
+        font-size: 0.82rem; border-radius: 999px; padding: 0.35rem 0.8rem; cursor: pointer; font-family: inherit; white-space: nowrap;
+        transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .ta-chat-btn:hover, .ta-chat-btn.on { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(16,185,129,.25); }
+    .ta-chat-flot {
+        position: fixed; top: 64px; right: 16px; width: 340px; z-index: 9300;
+        background: #111827; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.35); padding: 6px 0 4px;
+    }
+    .ta-chat-flot .sbchat { height: 420px; }
+    .ta-chat-cerrar {
+        position: absolute; top: 8px; right: 12px; z-index: 2; border: none; background: transparent;
+        color: #9ca3af; font-size: 0.95rem; cursor: pointer;
+    }
+    .ta-chat-cerrar:hover { color: #fff; }
+    .ta-solo-celu { display: none !important; }
+    @@media (min-width: 769px) {
+        .sidebar.ta { transform: translateX(-100%); width: 280px !important; z-index: 9600; box-shadow: 4px 0 24px rgba(0,0,0,.25); }
+        .sidebar.ta.open { transform: translateX(0); }
+        .sidebar-overlay.ta-ov { display: block; z-index: 9550; }
+        .main-wrapper.main-ta { margin-left: 0 !important; }
+        .main-ta .topbar-menu-btn {
+            display: inline-flex; width: auto; height: 32px; gap: 0.35rem; padding: 0 0.65rem;
+            border: 1px solid #e5e7eb; background: #fff; color: #111827; border-radius: 8px; cursor: pointer;
+        }
+        .main-ta .topbar-menu-btn:hover { background: #f3f4f6; }
+        .main-ta .topbar { flex-wrap: nowrap; min-height: 0; padding: 0.2rem 1rem; gap: 0.5rem; }
+        .main-ta .topbar-left { gap: 0.3rem; flex-shrink: 0; }
+        .main-ta .topbar-back-btn { margin-left: 0; padding: 0.3rem 0.6rem; }
+        .main-ta .mnb-fila { flex: 1 1 auto; flex-basis: auto; min-width: 0; border-top: 0; padding-top: 0; }
+        .main-ta .topstrip { padding: 0.3rem 1rem; }
+        .main-ta-depo .topbar { display: none; }
+        .sidebar.ta:not(.open) { box-shadow: none; }
+        .sidebar.ta .sidebar-collapse-btn { display: none; }
+        /* Una sola fila arriba: no se parte; lo que sobra se achica. */
+        .main-ta:not(.main-ta-depo) .topstrip { flex-wrap: nowrap; }
+        .main-ta .topstrip-chips { flex-wrap: nowrap; flex-shrink: 0; gap: 0.4rem; }
+        .main-ta .topstrip-icons .topbar-square-btn { width: 34px; height: 34px; }
+        .main-ta .topstrip-icons .topbar-square-btn svg { width: 18px; height: 18px; }
+        .main-ta .topchip { padding: 0.25rem 0.55rem; }
+        .main-ta .topchip-ico { display: none; }
+        .main-ta .ta-acciones .tb-nuevo { padding-left: 0.6rem; padding-right: 0.6rem; }
+        /* Menú nuevo en una fila: un poco más compacto. */
+        .main-ta .mnb-directo, .main-ta .mnb-grupo, .main-ta .mnb-buscar { padding: 0.32rem 0.45rem; font-size: 0.84rem; }
+        .main-ta .mnb-sep { margin: 0 0.2rem; }
+        /* Depósito: arriba datos + chat + íconos, abajo sus pantallas como pestañas. */
+        .main-ta-depo .ta-tabs { order: 10; flex-basis: 100%; margin-left: 0; border-top: 1px solid #f1f5f9; padding-top: 0.15rem; }
+        .main-ta-depo .ta-chat-btn { margin-left: 0.5rem; }
+    }
+    @@media (min-width: 769px) and (max-width: 1500px) {
+        .main-ta .ta-acciones .topbar-action-whatsapp span { display: none; }
+        .main-ta .ta-acciones .topbar-action-whatsapp { padding-left: 0.6rem; padding-right: 0.6rem; }
+        .main-ta .topbar-back-btn .bb-txt { display: none; }
+        .main-ta .topstrip { padding-left: 0.6rem; padding-right: 0.6rem; gap: 0.35rem; }
+        .main-ta .topstrip-chips { gap: 0.3rem; }
+        .main-ta .ta-acciones { gap: 0.3rem; }
+        .main-ta .ta-acciones .calc-nuevo-badge { display: none; }
+        .main-ta .ta-acciones .calc-pila .topbar-nav-modern { padding-left: 0.45rem; padding-right: 0.45rem; }
+        .main-ta .ta-acciones .tb-nuevo { padding-left: 0.45rem; padding-right: 0.45rem; }
+        .main-ta .mab-txt { display: none; }
+        .main-ta .mnb-directo, .main-ta .mnb-grupo, .main-ta .mnb-buscar { padding: 0.3rem 0.35rem; font-size: 0.8rem; }
+        .main-ta .topbar { padding-left: 0.6rem; padding-right: 0.6rem; }
+    }
+    @@media (max-width: 768px) {
+        .ta-solo-pc, .ta-tabs { display: none !important; }
+        .ta-solo-celu { display: contents !important; }
+    }
+
     /* 2026-11-06: fila del menú nuevo (MenuNuevoBarra). Texto plano, sin cajitas de color. */
     .mnb-fila { flex-basis: 100%; border-top: 1px solid #f1f5f9; padding-top: 0.25rem; }
     /* z-index arriba del fondo invisible: con un menú abierto, tocar otro grupo lo abre de una. */
@@ -629,7 +713,9 @@
 
 @if (!IsEmbedded)
 {
-<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod") @(HasPerm("deposito") ? "sidebar-with-chat" : "")" id="sidebar">
+@* 2026-11-07: "todo arriba" (admin y depósito): en compu el menú de la izquierda no ocupa lugar;
+   se abre como cajón con el botón "☰ Menú" de la barra (clase ta). En celu queda como siempre. *@
+<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed && !TodoArriba ? "collapsed" : "") @(TodoArriba ? "ta" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod") @(HasPerm("deposito") ? "sidebar-with-chat" : "")" id="sidebar">
     @if (IsDevEnvironment)
     {
         <div class="dev-environment-banner" title="Estás en el entorno de DESARROLLO. Los datos NO son los de producción.">
@@ -1236,7 +1322,7 @@
     </nav>
     @* 2026-07-06: chat del equipo embebido en el menú, SOLO para el usuario Depósito
        (menú corto con espacio libre). Siempre a la vista en cualquier pantalla. *@
-    @if (HasPerm("deposito"))
+    @if (HasPerm("deposito") && !TodoArriba)
     {
         <SidebarChat />
     }
@@ -1269,7 +1355,7 @@
 @* Botón "Nueva Venta" - vive dentro del topbar (ver más abajo) para quedar
    siempre visible arriba a la derecha sin tapar otros íconos. *@
 
-<main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "")">
+<main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "") @(TodoArriba ? "main-ta" : "") @(TodoArribaDepo ? "main-ta-depo" : "")">
 @if (!IsEmbedded)
 {
     @* 2026-07-08: fila de chips arriba de todo (empresa/usuario · reloj · dólar · disco).
@@ -1308,6 +1394,9 @@
            de cada uno. El componente se maneja solo (hora argentina + su propio tic). *@
         <RelojArgentino />
 
+        @* 2026-11-07: con "todo arriba" no van dólar ni disco (pedido del dueño: no hacen falta). *@
+        @if (!TodoArriba)
+        {
         @* Dólar BNA (se esconde en celu para no amontonar) *@
         <div class="topchip topchip-secondary" title="Dólar BNA">
             <span class="topchip-ico" style="background:#eaf3de; color:#3B6D11;">
@@ -1354,6 +1443,7 @@
                 }
             </span>
         </div>
+        }
         @* 2026-07-17: código de autorización del día para colectas/devoluciones de MeLi.
            Chip clickeable: un clic copia el código. Si todavía no llegó el mail de hoy,
            muestra "esperando…" en gris (no muestra uno viejo como si fuera el de hoy). *@
@@ -1411,6 +1501,40 @@
             </div>
         }
         </div>
+
+        @* 2026-11-07: "todo arriba". Admin: los accesos rápidos suben a esta fila. Depósito: sus
+           pantallas como pestañas + el chat del equipo en un botón. *@
+        @if (TodoArriba && !TodoArribaDepo && (HasPerm("cafe") || HasPerm("oficina")))
+        {
+            <div class="ta-acciones ta-solo-pc">
+                @CalcuPila
+                @AccionesNuevo
+            </div>
+        }
+        @if (TodoArribaDepo)
+        {
+            var taKeys = MenuVisibility.GetEnabledKeys(GetEffectiveRoleForVisibility());
+            <nav class="ta-tabs" aria-label="Pantallas del depósito">
+                @foreach (var k in taKeys)
+                {
+                    if (MenuCatalog.TryGetValue(k, out var entry))
+                    {
+                        var href = entry.Href;
+                        var faltan = k.Equals("stock/ideal", StringComparison.OrdinalIgnoreCase) ? faltantesParaPedir : null;
+                        <button class="ta-tab @(IsActive(href) ? "on" : "")" @onclick="@(() => NavigateTo(href))" title="@entry.Label">
+                            @entry.Emoji @entry.Label
+                            @if (faltan is int f && f > 0) { <span class="ta-badge" title="Productos abajo del stock ideal, para pedir">@f</span> }
+                        </button>
+                    }
+                }
+                @if (HasPerm("compartido"))
+                {
+                    <button class="ta-tab @(IsActive("/compartido") ? "on" : "")" @onclick="@(() => NavigateTo("/compartido"))">📂 Compartido</button>
+                }
+            </nav>
+            <button class="ta-chat-btn @(chatEquipoAbierto ? "on" : "")" @onclick="() => chatEquipoAbierto = !chatEquipoAbierto"
+                    title="Abrir / cerrar el chat del equipo">💬 Chat equipo</button>
+        }
 
         @* 2026-07-08: grupo de iconitos movido acá desde la barra de menú (descongestiona
            esa fila). Misma lógica y mismos botones: Widgets/Apps, Buscar, Actualizar, campanas,
@@ -1530,6 +1654,7 @@
         <div class="topbar-left">
             <button class="topbar-menu-btn" @onclick="ToggleSidebar" aria-label="Abrir menu">
                 @SvgIcons.Menu
+                @if (TodoArriba) { <span class="ta-menu-lbl">Menú</span> }
             </button>
             <BackButton />
             @* 2026-07-08: empresa, usuario, candado y reloj se movieron a la fila de chips
@@ -1556,23 +1681,8 @@
                 @* 2026-10-20: CALCU ALQUILER va pegado abajo de CALCUPRECIOS (mismo lugar, mitad de alto
                    cada uno). Abre la misma calculadora, pero directo en la solapa Alquiler: desde que no
                    se usa el WhatsApp de la API, el cotizador de alquileres vive acá. *@
-                <div class="calc-pila">
-                    <button class="topbar-nav-modern calcuprecios-btn"
-                            @onclick="OpenCalcFromNav"
-                            title="CalcuPrecios — buscar costo y precio sugerido">
-                        <span class="topbar-nav-modern-ico">@SvgIcons.Calculator</span>
-                        <span>CALCUPRECIOS</span>
-                        @if (calcNuevoBadge)
-                        {
-                            <span class="calc-nuevo-badge">nuevo</span>
-                        }
-                    </button>
-                    <button class="topbar-nav-modern calcualq-btn"
-                            @onclick="OpenCalcAlquilerFromNav"
-                            title="Cotizar un alquiler (queda guardado con nombre o teléfono)">
-                        <span>🪑 CALCU ALQUILER</span>
-                    </button>
-                </div>
+                @* 2026-11-07: con "todo arriba" esto va en la fila de arriba (en compu); acá queda para el celu. *@
+                <span class="@(TodoArriba ? "ta-solo-celu" : "")" style="display:contents;">@CalcuPila</span>
                 @* 2026-11-06: con el menú nuevo, todo esto vive en la fila MenuNuevoBarra (abajo). *@
                 @if (!MenuNuevo)
                 {
@@ -1746,52 +1856,7 @@
 
                 @* ACCIONES PRIMARIAS — 2026-07-08: tres accesos rapidos con color por modulo.
                    Venta (oscuro), Alquiler (azul), Cobranza (verde). Cada uno muestra su atajo de teclado. *@
-                <div class="tb-nuevo-group">
-                    <button class="tb-nuevo tb-nuevo-venta" @onclick='() => NuevoRapido("venta")'
-                            title="Nueva venta — atajo: apretá N y después V" aria-label="Nueva venta">
-                        <span class="ic" aria-hidden="true">🛒</span>
-                        <span class="lbl">Venta</span>
-                        <span class="keys"><span class="kbd">N</span><span class="kbd">V</span></span>
-                    </button>
-                    <button class="tb-nuevo tb-nuevo-alq" @onclick='() => NuevoRapido("alquiler")'
-                            title="Nueva reserva de alquiler — atajo: apretá N y después A" aria-label="Nueva reserva de alquiler">
-                        <span class="ic" aria-hidden="true">📅</span>
-                        <span class="lbl">Alquiler</span>
-                        <span class="keys"><span class="kbd">N</span><span class="kbd">A</span></span>
-                    </button>
-                    <button class="tb-nuevo tb-nuevo-cob" @onclick='() => NuevoRapido("cobranza")'
-                            title="Nueva cobranza — atajo: apretá N y después C" aria-label="Nueva cobranza">
-                        <span class="ic" aria-hidden="true">💵</span>
-                        <span class="lbl">Cobranza</span>
-                        <span class="keys"><span class="kbd">N</span><span class="kbd">C</span></span>
-                    </button>
-                    @* 2026-09-17: espejo de Cobranza para las compras: abre un pago a proveedor. *@
-                    <button class="tb-nuevo tb-nuevo-pago" @onclick='() => NuevoRapido("pago")'
-                            title="Nuevo pago a proveedor — atajo: apretá N y después P" aria-label="Nuevo pago a proveedor">
-                        <span class="ic" aria-hidden="true">📤</span>
-                        <span class="lbl">Pago</span>
-                        <span class="keys"><span class="kbd">N</span><span class="kbd">P</span></span>
-                    </button>
-                </div>
-                @* 2026-06-29: el boton 'Cobranzas' suelto se movio al dropdown Ventas (abajo de Ventas) *@
-                @* 2026-08-31 (pedido del dueño): este boton ahora va DERECHO a /whatsapp.
-                   Antes abria el panel flotante WhatsAppFlotante, que es un SEGUNDO panel casi
-                   igual al del circulito verde de abajo (WaBuscadorFlotante) pero PEOR: sin los
-                   filtros de linea. Dos botones para lo mismo, y el mejor escondido. Ahora cada
-                   uno tiene un trabajo: el circulito abre el panel rapido, este lleva a la
-                   pantalla completa de una, sin tener que buscar la flechita ↗.
-
-                   Se le saco tambien el puntito de estado y el gris de "desvinculado": ese dato
-                   es del robot de la linea por QR, y este boton lleva a la linea OFICIAL. Tenerlo
-                   ahi hacia que el WhatsApp de todos los dias pareciera roto cuando el que estaba
-                   caido era el robot — un cruce de cables entre dos cosas que no se tocan. *@
-                <button class="topbar-action-whatsapp"
-                        @onclick='() => NavigateTo("/whatsapp")'
-                        title="WhatsApp — abrir la pantalla de conversaciones"
-                        aria-label="WhatsApp">
-                    @SvgIcons.MessageCircle
-                    <span>WhatsApp</span>
-                </button>
+                <span class="@(TodoArriba ? "ta-solo-celu" : "")" style="display:contents;">@AccionesNuevo</span>
             }
             @* 2026-07-08: el grupo de iconitos (Widgets/Apps, Buscar, Actualizar, campanas,
                Chat, WhatsApp, indicadores de subida/sincro) se movió a la DERECHA de la fila
@@ -1812,6 +1877,16 @@
     </div>
 </main>
 
+@* 2026-11-07: depósito con "todo arriba": el chat del equipo ya no vive en la columna; se abre
+   con el botón "💬 Chat equipo" de la barra, en esta ventanita (se cierra con ✕ o con el botón). *@
+@if (TodoArribaDepo && chatEquipoAbierto)
+{
+    <div class="ta-chat-flot">
+        <button class="ta-chat-cerrar" @onclick="() => chatEquipoAbierto = false" title="Cerrar el chat">✕</button>
+        <SidebarChat />
+    </div>
+}
+
 @* 2026-06-15: Pantalla bloqueante de PIN por operador. Mientras Operator.IsValidated == false
    (no hay PIN ingresado, o pasaron 30 min sin actividad), tapa todo. Solo aplica a roles que
    cargan ventas (cafe/oficina/deposito). Para "deposito-only" usamos su lista propia. *@
@@ -1822,7 +1897,7 @@
 
 @if (sidebarOpen)
 {
-    <div class="sidebar-overlay visible" @onclick="CloseSidebar"></div>
+    <div class="sidebar-overlay visible @(TodoArriba ? "ta-ov" : "")" @onclick="CloseSidebar"></div>
 }
 
 @* 2026-07-09: botón de menú FLOTANTE fijo. Solo aparece en pantallas angostas (celular / zoom alto),
@@ -2777,6 +2852,83 @@
     // admin (el dueño); la oficina sigue con el menú de siempre hasta que él diga. Depósito nunca
     // lo ve (tiene su menú propio y no ve la barra de arriba).
     private bool MenuNuevo => string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase);
+    /// <summary>2026-11-07: "todo arriba" (opción A elegida por el dueño): admin con el menú nuevo y
+    /// el depósito. El menú de la izquierda no ocupa lugar en compu (cajón con "☰ Menú"), sin dólar
+    /// ni disco. La oficina sigue como estaba hasta que el dueño diga.</summary>
+    private bool TodoArriba => !IsEmbedded && ((MenuNuevo && (HasPerm("cafe") || HasPerm("oficina"))) || IsRoleWithCustomSidebar());
+    private bool TodoArribaDepo => TodoArriba && IsRoleWithCustomSidebar();
+    private bool chatEquipoAbierto;
+
+    private RenderFragment CalcuPila => __builder =>
+    {
+                <div class="calc-pila">
+                    <button class="topbar-nav-modern calcuprecios-btn"
+                            @onclick="OpenCalcFromNav"
+                            title="CalcuPrecios — buscar costo y precio sugerido">
+                        <span class="topbar-nav-modern-ico">@SvgIcons.Calculator</span>
+                        <span>CALCUPRECIOS</span>
+                        @if (calcNuevoBadge)
+                        {
+                            <span class="calc-nuevo-badge">nuevo</span>
+                        }
+                    </button>
+                    <button class="topbar-nav-modern calcualq-btn"
+                            @onclick="OpenCalcAlquilerFromNav"
+                            title="Cotizar un alquiler (queda guardado con nombre o teléfono)">
+                        <span>🪑 CALCU ALQUILER</span>
+                    </button>
+                </div>
+    };
+
+    private RenderFragment AccionesNuevo => __builder =>
+    {
+                <div class="tb-nuevo-group">
+                    <button class="tb-nuevo tb-nuevo-venta" @onclick='() => NuevoRapido("venta")'
+                            title="Nueva venta — atajo: apretá N y después V" aria-label="Nueva venta">
+                        <span class="ic" aria-hidden="true">🛒</span>
+                        <span class="lbl">Venta</span>
+                        <span class="keys"><span class="kbd">N</span><span class="kbd">V</span></span>
+                    </button>
+                    <button class="tb-nuevo tb-nuevo-alq" @onclick='() => NuevoRapido("alquiler")'
+                            title="Nueva reserva de alquiler — atajo: apretá N y después A" aria-label="Nueva reserva de alquiler">
+                        <span class="ic" aria-hidden="true">📅</span>
+                        <span class="lbl">Alquiler</span>
+                        <span class="keys"><span class="kbd">N</span><span class="kbd">A</span></span>
+                    </button>
+                    <button class="tb-nuevo tb-nuevo-cob" @onclick='() => NuevoRapido("cobranza")'
+                            title="Nueva cobranza — atajo: apretá N y después C" aria-label="Nueva cobranza">
+                        <span class="ic" aria-hidden="true">💵</span>
+                        <span class="lbl">Cobranza</span>
+                        <span class="keys"><span class="kbd">N</span><span class="kbd">C</span></span>
+                    </button>
+                    @* 2026-09-17: espejo de Cobranza para las compras: abre un pago a proveedor. *@
+                    <button class="tb-nuevo tb-nuevo-pago" @onclick='() => NuevoRapido("pago")'
+                            title="Nuevo pago a proveedor — atajo: apretá N y después P" aria-label="Nuevo pago a proveedor">
+                        <span class="ic" aria-hidden="true">📤</span>
+                        <span class="lbl">Pago</span>
+                        <span class="keys"><span class="kbd">N</span><span class="kbd">P</span></span>
+                    </button>
+                </div>
+                @* 2026-06-29: el boton 'Cobranzas' suelto se movio al dropdown Ventas (abajo de Ventas) *@
+                @* 2026-08-31 (pedido del dueño): este boton ahora va DERECHO a /whatsapp.
+                   Antes abria el panel flotante WhatsAppFlotante, que es un SEGUNDO panel casi
+                   igual al del circulito verde de abajo (WaBuscadorFlotante) pero PEOR: sin los
+                   filtros de linea. Dos botones para lo mismo, y el mejor escondido. Ahora cada
+                   uno tiene un trabajo: el circulito abre el panel rapido, este lleva a la
+                   pantalla completa de una, sin tener que buscar la flechita ↗.
+
+                   Se le saco tambien el puntito de estado y el gris de "desvinculado": ese dato
+                   es del robot de la linea por QR, y este boton lleva a la linea OFICIAL. Tenerlo
+                   ahi hacia que el WhatsApp de todos los dias pareciera roto cuando el que estaba
+                   caido era el robot — un cruce de cables entre dos cosas que no se tocan. *@
+                <button class="topbar-action-whatsapp"
+                        @onclick='() => NavigateTo("/whatsapp")'
+                        title="WhatsApp — abrir la pantalla de conversaciones"
+                        aria-label="WhatsApp">
+                    @SvgIcons.MessageCircle
+                    <span>WhatsApp</span>
+                </button>
+    };
     private MenuNuevoBarra? menuNuevoRef;
     [Inject] private MenuNuevoService MenuNuevoSvc { get; set; } = default!;
     private void MenuNuevoCambio() => InvokeAsync(StateHasChanged);

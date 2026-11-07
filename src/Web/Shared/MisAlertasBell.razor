@@ -17,7 +17,7 @@
          @onclick="@(() => Navigation.NavigateTo("/mis-alertas"))">
         <div class="mab-badge @(noVistas > 0 ? "mab-badge-blink" : "")" title="Tenés alertas — click para ver Mis Alertas">
             <span class="mab-icon">🔔</span>
-            <span>Alertas</span>
+            <span class="mab-txt">Alertas</span>
             @if (noVistas > 0)
             {
                 <span class="mab-num">@noVistas</span>
