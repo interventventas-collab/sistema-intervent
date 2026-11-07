@@ -7444,6 +7444,28 @@ public class ApiClient
     public async Task<List<AvisoDepDto>> GetAvisosDepositoPendientesAsync()
         => await GetAsync<List<AvisoDepDto>>("/api/whatsapp/twilio/avisos-deposito/pendientes") ?? new();
 
+    // 2026-11-06: cartel URGENTE de publicación que MeLi pasó sola a envío gratis (guardián me1).
+    public class EnvioGratisAvisoDto
+    {
+        public int Id { get; set; }
+        public string MeliItemId { get; set; } = "";
+        public string? Sku { get; set; }
+        public string? Titulo { get; set; }
+        public DateTime DetectedAt { get; set; }
+        public string? Texto { get; set; }
+        public decimal? PrecioAntes { get; set; }
+        public decimal? PrecioAhora { get; set; }
+    }
+    public class EnvioGratisPendienteDto
+    {
+        public int Total { get; set; }
+        public EnvioGratisAvisoDto? Aviso { get; set; }
+    }
+    public async Task<EnvioGratisPendienteDto?> GetEnvioGratisPendienteAsync()
+        => await GetAsync<EnvioGratisPendienteDto>("/api/meli/envio-gratis/pendiente");
+    public async Task MarcarEnvioGratisVistoAsync(int id, string? quien)
+        => await PostAsync<object>($"/api/meli/envio-gratis/{id}/visto?quien={Uri.EscapeDataString(quien ?? "")}", new { });
+
     public async Task<AvisoDepDto?> GetAvisoDepositoAsync(int id)
         => await GetAsync<AvisoDepDto>($"/api/whatsapp/twilio/avisos-deposito/{id}");
 

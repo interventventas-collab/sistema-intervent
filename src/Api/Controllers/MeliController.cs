@@ -434,6 +434,51 @@ public class MeliController : ControllerBase
         return Ok(new { count = n });
     }
 
+    /// <summary>2026-11-06: aviso URGENTE de publicación que MeLi pasó sola a envío gratis (guardián me1).
+    /// Lo pide el cartel que tapa la pantalla (admin y oficina) cada 30 s. Devuelve el más viejo sin ver
+    /// y cuántos hay en total. Solo los de los últimos 30 días.</summary>
+    [HttpGet("envio-gratis/pendiente")]
+    public async Task<IActionResult> EnvioGratisPendiente([FromServices] Api.Data.AppDbContext db)
+    {
+        var desde = DateTime.UtcNow.AddDays(-30);
+        var q = db.MeliCambiosDetectados.AsNoTracking()
+            .Where(c => c.Tipo == "ENVIO_GRATIS_MELI" && c.SeenAt == null && c.DetectedAt >= desde);
+        var total = await q.CountAsync();
+        var c = await q.OrderBy(x => x.DetectedAt).FirstOrDefaultAsync();
+        if (c is null) return Ok(new { total = 0 });
+        decimal? Dec(string? v) => decimal.TryParse(v, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+        return Ok(new
+        {
+            total,
+            aviso = new
+            {
+                c.Id, c.MeliItemId, c.Sku, Titulo = c.Title, c.DetectedAt, Texto = c.Notes,
+                PrecioAntes = Dec(c.ValorAnterior), PrecioAhora = Dec(c.ValorNuevo)
+            }
+        });
+    }
+
+    /// <summary>2026-11-06: "Lo vi" del cartel de envío gratis. Queda anotado quién y cuándo.</summary>
+    [HttpPost("envio-gratis/{id:int}/visto")]
+    public async Task<IActionResult> EnvioGratisVisto(int id, [FromQuery] string? quien, [FromServices] Api.Data.AppDbContext db)
+    {
+        var c = await db.MeliCambiosDetectados.FirstOrDefaultAsync(x => x.Id == id && x.Tipo == "ENVIO_GRATIS_MELI");
+        if (c is null) return NotFound();
+        if (c.SeenAt is null)
+        {
+            c.SeenAt = DateTime.UtcNow;
+            var nombre = string.IsNullOrWhiteSpace(quien) ? User.Identity?.Name : quien.Trim();
+            if (!string.IsNullOrWhiteSpace(nombre))
+            {
+                var t = (c.Notes ?? "") + $" · Lo vio {nombre} {PanoramaService.AhoraAr():dd/MM HH:mm}";
+                c.Notes = t.Length > 500 ? t[..500] : t;
+            }
+            await db.SaveChangesAsync();
+        }
+        return Ok(new { ok = true });
+    }
+
     /// <summary>2026-07-16: activa una publicación pausada DESDE EL SISTEMA (el usuario ya revisó el
     /// precio). PUT status=active en MeLi + empuja el stock actual (que el robot no tocó mientras
     /// estaba pausada) + marca el cambio como visto. El id es el del registro en cambios detectados.</summary>
