@@ -81,6 +81,19 @@
     .dp-q-acc button { background:#111827; color:#fff; border:none; border-radius:7px; padding:0.35rem 0.9rem; font:inherit; font-size:0.84rem; font-weight:700; cursor:pointer; }
     .dp-q-acc button:disabled { background:#d1d5db; cursor:default; }
 
+    .dp-tabs { display:flex; gap:0.35rem; padding:0.5rem 1rem; border-bottom:1px solid #e5e7eb; flex-shrink:0; }
+    .dp-ped { grid-template-columns:1fr 80px 84px 84px !important; }
+    .dp-ped2 { grid-template-columns:1fr 92px 88px 76px !important; }
+    .dp-ya { border:none; background:#111827; color:#fff; border-radius:7px; padding:0.25rem 0.3rem; font:inherit; font-size:0.74rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+    .dp-des { border:1px solid #d1d5db; background:#fff; border-radius:7px; padding:0.25rem 0.3rem; font:inherit; font-size:0.74rem; font-weight:700; cursor:pointer; }
+    .dp-quien { display:flex; flex-wrap:wrap; align-items:center; gap:0.4rem; padding:0.45rem 1rem 0.55rem 2rem; background:#f9fafb; border-top:1px solid #f3f4f6; font-size:0.82rem; }
+    .dp-quien input { width:70px; border:1px solid #d1d5db; border-radius:6px; padding:0.2rem 0.4rem; font:inherit; font-size:0.86rem; }
+    .dp-hist-bus { padding:0.5rem 1rem; border-bottom:1px solid #eef0f3; flex-shrink:0; }
+    .dp-hist-bus input { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:7px; padding:0.35rem 0.6rem; font:inherit; font-size:0.86rem; }
+    .dp-hist { display:grid; grid-template-columns:48px 1fr 190px; gap:0.55rem; padding:0.4rem 1rem; border-top:1px solid #f3f4f6; font-size:0.86rem; align-items:center; }
+    .dp-hist .f { color:#6b7280; font-size:0.76rem; }
+    .dp-hist small { display:block; color:#6b7280; font-size:0.74rem; }
+
     .dp-marca { display:flex; gap:0.6rem; align-items:center; padding:0.55rem 1rem; border-top:1px solid #eef0f3; cursor:pointer; font-size:0.95rem; font-weight:700; }
     .dp-marca:hover { background:#f9fafb; }
     .dp-marca span.c { margin-left:auto; font-weight:800; }
@@ -147,6 +160,10 @@
         else
         {
             <div class="dp-l gris">No falta nada por pedir</div>
+        }
+        @if (FaltantesPedidos.Count > 0)
+        {
+            <div class="dp-l gris">@FaltantesPedidos.Count pedidos sin llegar</div>
         }
     </div>
 
@@ -274,35 +291,98 @@
 {
     <div class="dp-flot dp-vent @Lugar">
         <div class="dp-vh">
-            📦 Faltantes por marca <small>@FaltantesParaPedir.Count productos para pedir · @PorMarca.Count marcas</small>
+            📦 Faltantes por marca
             <button class="dp-x" title="Cerrar" @onclick="Cerrar">✕</button>
         </div>
-        <div class="dp-lista">
-            @if (PorMarca.Count == 0)
-            {
-                <div class="dp-vacio">No falta nada por pedir. 🎉</div>
-            }
-            @foreach (var g in PorMarca)
-            {
-                var abierta = marcaAbierta == g.Key;
-                <div class="dp-marca" @onclick="() => marcaAbierta = abierta ? null : g.Key">
-                    <span>@(abierta ? "▼" : "▶")</span> @g.Key
-                    <span class="c">@g.Count()</span>
-                </div>
-                @if (abierta)
+        <div class="dp-tabs">
+            <button class="dp-ch @(tabFalt == "pedir" ? "on" : "")" @onclick='() => CambiarTab("pedir")'>Para pedir (@FaltantesParaPedir.Count)</button>
+            <button class="dp-ch @(tabFalt == "pedidos" ? "on" : "")" @onclick='() => CambiarTab("pedidos")'>Pedidos, sin llegar (@FaltantesPedidos.Count)</button>
+            <button class="dp-ch @(tabFalt == "historial" ? "on" : "")" @onclick='() => CambiarTab("historial")'>Historial</button>
+        </div>
+        @if (tabFalt == "historial")
+        {
+            <div class="dp-hist-bus"><input placeholder="Buscar producto o marca…" @bind="buscaHist" @bind:event="oninput" /></div>
+            <div class="dp-lista">
+                @if (historial is null)
                 {
-                    @foreach (var f in g.OrderBy(x => x.StockAhora))
+                    <div class="dp-vacio">Cargando…</div>
+                }
+                else if (HistorialVisible.Count == 0)
+                {
+                    <div class="dp-vacio">No hay nada para mostrar.</div>
+                }
+                else
+                {
+                    @foreach (var h in HistorialVisible)
                     {
-                        <div class="dp-prod">
-                            <div>@f.Nombre @if (!string.IsNullOrEmpty(f.Codigo)) { <small>@f.Codigo</small> }</div>
-                            <div class="num @(f.StockAhora <= 0 ? "cero" : "")">Hay @f.StockAhora.ToString("0.##") @f.Unidad</div>
-                            <div class="num">Faltan @f.Faltan.ToString("0.##")</div>
+                        <div class="dp-hist" @key="h.Id">
+                            <span class="f">@(h.ResueltoAt?.ToArTime().ToString("dd/MM") ?? "")</span>
+                            <div>@h.Nombre <small>@(string.IsNullOrWhiteSpace(h.Marca) ? "Sin marca" : h.Marca)</small></div>
+                            <span>@Motivo(h)</span>
                         </div>
                     }
                 }
+            </div>
+        }
+        else
+        {
+            var grupos = tabFalt == "pedir" ? PorMarca : Agrupar(FaltantesPedidos);
+            <div class="dp-lista">
+                @if (grupos.Count == 0)
+                {
+                    <div class="dp-vacio">@(tabFalt == "pedir" ? "No falta nada por pedir. 🎉" : "No hay pedidos esperando entrega.")</div>
+                }
+                @foreach (var g in grupos)
+                {
+                    var abierta = marcaAbierta == g.Key;
+                    <div class="dp-marca" @onclick="() => marcaAbierta = abierta ? null : g.Key">
+                        <span>@(abierta ? "▼" : "▶")</span> @g.Key
+                        <span class="c">@g.Count()</span>
+                    </div>
+                    @if (abierta)
+                    {
+                        @foreach (var f in g.OrderBy(x => x.StockAhora))
+                        {
+                            var fi = f;
+                            @if (tabFalt == "pedir")
+                            {
+                                <div class="dp-prod dp-ped" @key="f.Id">
+                                    <div>@f.Nombre @if (!string.IsNullOrEmpty(f.Codigo)) { <small>@f.Codigo</small> }</div>
+                                    <div class="num @(f.StockAhora <= 0 ? "cero" : "")">Hay @f.StockAhora.ToString("0.##") @f.Unidad</div>
+                                    <div class="num">Faltan @f.Faltan.ToString("0.##")</div>
+                                    <button class="dp-ya" @onclick="() => EmpezarMarcar(fi)">✓ Ya lo pedí</button>
+                                </div>
+                                @if (marcando == f.Id)
+                                {
+                                    <div class="dp-quien">
+                                        Pedí <input type="number" min="0" step="any" @bind="cantMarcar" /> @f.Unidad · ¿Quién lo pidió?
+                                        @foreach (var o in operadores)
+                                        {
+                                            var oo = o;
+                                            <button class="dp-ch" disabled="@guardandoFalt" @onclick="() => ConfirmarPedido(fi, oo)">@o</button>
+                                        }
+                                        <button class="dp-des" @onclick="() => marcando = null">Cancelar</button>
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="dp-prod dp-ped2" @key="f.Id">
+                                    <div>@f.Nombre <small>@(string.IsNullOrWhiteSpace(f.PedidoPor) ? "" : "Pedido por " + f.PedidoPor)</small></div>
+                                    <div class="num">@(f.CantidadPedida.HasValue ? $"Pedí {f.CantidadPedida.Value:0.##} {f.Unidad}" : $"Hay {f.StockAhora:0.##} {f.Unidad}")</div>
+                                    <div class="num" style="color:#6b7280;">@HaceDias(f.PedidoAt)</div>
+                                    <button class="dp-des" disabled="@guardandoFalt" @onclick="() => DeshacerPedido(fi)">Deshacer</button>
+                                </div>
+                            }
+                        }
+                    }
+                }
+            </div>
+            @if (tabFalt == "pedir")
+            {
+                <div class="dp-pie"><a @onclick='() => Nav.NavigateTo("/stock/ideal")'>Ver todo y bajar el pedido en Excel →</a></div>
             }
-        </div>
-        <div class="dp-pie"><a @onclick='() => Nav.NavigateTo("/stock/ideal")'>Ver todo y bajar el pedido en Excel →</a></div>
+        }
     </div>
 }
 
@@ -412,10 +492,27 @@
     private List<MeliDepoOrden> VentasSinEtiqueta => ventas.Where(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa).ToList();
     private List<MeliDepoOrden> FilasVentana => ventana == "ven" ? ventas : verDespachados ? Me1Despachados : Me1ParaDespachar;
 
-    private List<StockIdealPendienteDto> FaltantesParaPedir => faltantes.Where(f => !f.Pedido).ToList();
-    private List<IGrouping<string, StockIdealPendienteDto>> PorMarca => FaltantesParaPedir
+    private List<StockIdealPendienteDto> FaltantesParaPedir => faltantes.Where(f => !f.Pedido && !f.YaRepuesto).ToList();
+    private List<StockIdealPendienteDto> FaltantesPedidos => faltantes.Where(f => f.Pedido).ToList();
+    private List<IGrouping<string, StockIdealPendienteDto>> PorMarca => Agrupar(FaltantesParaPedir);
+    private static List<IGrouping<string, StockIdealPendienteDto>> Agrupar(List<StockIdealPendienteDto> filas) => filas
         .GroupBy(f => string.IsNullOrWhiteSpace(f.Marca) ? "Sin marca" : f.Marca!.Trim(), StringComparer.OrdinalIgnoreCase)
         .OrderByDescending(g => g.Count()).ThenBy(g => g.Key).ToList();
+
+    // 2026-11-09: tres vistas de Faltantes: para pedir, pedidos sin llegar e historial.
+    private string tabFalt = "pedir";
+    private List<StockIdealHistorialDto>? historial;
+    private string buscaHist = "";
+    private int? marcando;
+    private decimal cantMarcar;
+    private bool guardandoFalt;
+    private List<string> operadores = new();
+    private List<StockIdealHistorialDto> HistorialVisible => (historial ?? new())
+        .Where(h => string.IsNullOrWhiteSpace(buscaHist)
+                    || h.Nombre.Contains(buscaHist.Trim(), StringComparison.OrdinalIgnoreCase)
+                    || (h.Marca ?? "").Contains(buscaHist.Trim(), StringComparison.OrdinalIgnoreCase)
+                    || (h.Codigo ?? "").Contains(buscaHist.Trim(), StringComparison.OrdinalIgnoreCase))
+        .ToList();
 
     protected override void OnInitialized()
     {
@@ -597,6 +694,13 @@
         tildadas.Clear();
         verDespachados = false;
         if (p is "me1" or "ven") TildarSinImprimir();
+        if (p == "fal")
+        {
+            tabFalt = "pedir";
+            marcando = null;
+            if (operadores.Count == 0)
+                try { operadores = await Api.GetOperadoresPreparacionAsync(); } catch { }
+        }
         if (p == "pre")
         {
             preguntaAbierta = preguntas.FirstOrDefault()?.Id;
@@ -618,6 +722,69 @@
         if (ventana == a.Pastilla) ventana = null;
         await Tocar(a.Pastilla);
         if (a.Marca is not null) marcaAbierta = a.Marca;
+    }
+
+    private async Task CambiarTab(string tab)
+    {
+        tabFalt = tab;
+        marcaAbierta = null;
+        marcando = null;
+        if (tab == "historial")
+        {
+            historial = null;
+            buscaHist = "";
+            try { historial = await Api.GetStockIdealHistorialAsync() ?? new(); } catch { historial = new(); }
+        }
+    }
+
+    private void EmpezarMarcar(StockIdealPendienteDto f)
+    {
+        marcando = f.Id;
+        // Al proveedor se le compra por caja entera: si se sabe, se propone lo que da en cajas.
+        cantMarcar = f.UnidadesSiPidoBultos ?? f.Faltan;
+    }
+
+    private async Task ConfirmarPedido(StockIdealPendienteDto f, string quien)
+    {
+        guardandoFalt = true;
+        try
+        {
+            if (await Api.MarcarStockIdealPedidoAsync(f.Id, cantMarcar > 0 ? cantMarcar : null, quien))
+            {
+                marcando = null;
+                await CargarFaltantes();
+            }
+            else ToastService.Error("No se pudo anotar el pedido");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo anotar: " + ex.Message); }
+        finally { guardandoFalt = false; }
+    }
+
+    private async Task DeshacerPedido(StockIdealPendienteDto f)
+    {
+        guardandoFalt = true;
+        try
+        {
+            if (await Api.DeshacerStockIdealPedidoAsync(f.Id)) await CargarFaltantes();
+            else ToastService.Error("No se pudo deshacer");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo deshacer: " + ex.Message); }
+        finally { guardandoFalt = false; }
+    }
+
+    private static string Motivo(StockIdealHistorialDto h) => h.Estado switch
+    {
+        "REPUESTO" => "Llegó la mercadería",
+        "REPUESTO_SOLO" => "Se repuso sin pedirlo",
+        "DESCARTADO" => "Lo sacó de la lista" + (string.IsNullOrWhiteSpace(h.ResueltoPor) ? "" : " " + h.ResueltoPor),
+        _ => h.Estado
+    };
+
+    private static string HaceDias(DateTime? utc)
+    {
+        if (utc is null) return "";
+        var dias = (DateTime.UtcNow.AddHours(-3).Date - utc.Value.AddHours(-3).Date).Days;
+        return dias <= 0 ? "hoy" : dias == 1 ? "ayer" : $"hace {dias} días";
     }
 
     private void AbrirPregunta(int id) { preguntaAbierta = id; borrador = ""; }

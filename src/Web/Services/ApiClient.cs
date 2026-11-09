@@ -3947,13 +3947,17 @@ public class ApiClient
 
     private class ContadorDto { public int Total { get; set; } }
 
-    public async Task<bool> MarcarStockIdealPedidoAsync(int id, decimal? cantidadPedida = null)
+    public async Task<bool> MarcarStockIdealPedidoAsync(int id, decimal? cantidadPedida = null, string? quien = null)
     {
         await SetAuthHeaderAsync();
         var resp = await _http.PostAsJsonAsync($"/api/stock/ideal/pendientes/{id}/pedido",
-            new { cantidadPedida });
+            new { cantidadPedida, quien });
         return resp.IsSuccessStatusCode;
     }
+
+    /// <summary>2026-11-09: lo que ya salió de la lista de faltantes (llegó, se repuso solo o lo sacaron).</summary>
+    public async Task<List<StockIdealHistorialDto>?> GetStockIdealHistorialAsync()
+        => await GetAsync<List<StockIdealHistorialDto>>("/api/stock/ideal/historial");
 
     public async Task<bool> DescartarStockIdealPendienteAsync(int id)
     {

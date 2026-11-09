@@ -1980,6 +1980,20 @@ public class StockIdealPendienteDto
     public decimal? CantidadPedida { get; set; }
 }
 
+public class StockIdealHistorialDto
+{
+    public int Id { get; set; }
+    public string? Codigo { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Marca { get; set; }
+    /// <summary>REPUESTO (llegó lo pedido) · REPUESTO_SOLO (se repuso sin pedirlo) · DESCARTADO (lo sacaron).</summary>
+    public string Estado { get; set; } = "";
+    public DateTime? ResueltoAt { get; set; }
+    public string? ResueltoPor { get; set; }
+    public decimal? CantidadPedida { get; set; }
+    public DateTime DetectadoAt { get; set; }
+}
+
 public class StockIdealPendientesResultDto
 {
     public int Total { get; set; }
