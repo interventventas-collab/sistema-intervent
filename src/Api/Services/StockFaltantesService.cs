@@ -126,16 +126,17 @@ public class StockFaltantesService
         return nuevos.Count;
     }
 
-    /// <summary>Cierra los renglones marcados "ya lo pedi" cuyo producto volvio a estar por
-    /// encima del disparador: la mercaderia entro, no hay nada mas que hacer con ese renglon.
-    /// Los PENDIENTE NO se tocan a proposito — esos nunca se pidieron, asi que tienen que
-    /// quedar a la vista (marcados "ya repuesto") hasta que alguien los saque.</summary>
+    /// <summary>Cierra los renglones cuyo producto volvio a estar por encima del disparador.
+    /// PEDIDO pasa a REPUESTO (entro la mercaderia). 2026-11-09, pedido del dueño: los PENDIENTE
+    /// tambien se cierran, como REPUESTO_SOLO ("se repuso sin pedirlo"), y van al historial; antes
+    /// quedaban en la lista con "Faltan 0" hasta que alguien los sacara. Si el producto vuelve a
+    /// bajar se anota un renglon nuevo, que avisa de nuevo.</summary>
     private async Task CerrarPedidosRepuestosAsync(
         Dictionary<int, (string Categoria, int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso)> porProducto,
         CancellationToken ct)
     {
         var pedidos = await _db.CafeStockFaltantes
-            .Where(f => f.Estado == "PEDIDO")
+            .Where(f => f.Estado == "PEDIDO" || f.Estado == "PENDIENTE")
             .ToListAsync(ct);
         if (pedidos.Count == 0) return;
 
@@ -146,13 +147,13 @@ public class StockFaltantesService
             var stock = StockDe(p.Categoria, p.StockUnidades, p.StockGramos);
             if (HayQuePedir(p.StockIdeal, p.StockPiso, stock)) continue;  // sigue faltando
 
-            f.Estado = "REPUESTO";
+            f.Estado = f.Estado == "PEDIDO" ? "REPUESTO" : "REPUESTO_SOLO";
             f.ResueltoAt = DateTime.UtcNow;
             cerrados++;
         }
 
         if (cerrados == 0) return;
         await _db.SaveChangesAsync(ct);
-        _logger.LogInformation("[StockFaltantes] {N} renglones pedidos se cerraron solos (entro la mercaderia)", cerrados);
+        _logger.LogInformation("[StockFaltantes] {N} renglones se cerraron solos (el producto ya no falta)", cerrados);
     }
 }

@@ -272,7 +272,12 @@ public class StockIdealController : ControllerBase
         int Total, int YaRepuestos, int EnCero, int NuevosEnganchados, int YaPedidos,
         List<PendienteRow> Filas);
 
-    public record MarcarPedidoRequest(decimal? CantidadPedida);
+    /// <summary>Quien: en el deposito entran todos con el mismo usuario, asi que la pantalla manda
+    /// la persona que eligieron. Si no viene, queda el usuario de la sesion.</summary>
+    public record MarcarPedidoRequest(decimal? CantidadPedida, string? Quien = null);
+
+    public record HistorialFaltanteRow(int Id, string? Codigo, string Nombre, string? Marca, string Estado,
+        DateTime? ResueltoAt, string? ResueltoPor, decimal? CantidadPedida, DateTime DetectadoAt);
 
     /// <summary>GET /api/stock/ideal/pendientes — la lista de para pedir. Antes de devolverla
     /// engancha los que hayan quedado por debajo desde la ultima vez (asi la pantalla se llena
@@ -378,7 +383,7 @@ public class StockIdealController : ControllerBase
     /// <summary>POST /api/stock/ideal/pendientes/{id}/pedido — "ya lo pedi": sale de la lista.</summary>
     [HttpPost("pendientes/{id:int}/pedido")]
     public async Task<IActionResult> MarcarPedido(int id, [FromBody] MarcarPedidoRequest? req)
-        => await ResolverAsync(id, "PEDIDO", req?.CantidadPedida);
+        => await ResolverAsync(id, "PEDIDO", req?.CantidadPedida, req?.Quien);
 
     /// <summary>DELETE /api/stock/ideal/pendientes/{id} — sacarlo de la lista sin pedirlo
     /// (se anotó de más, ya no hace falta, etc.).</summary>
@@ -418,7 +423,26 @@ public class StockIdealController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    private async Task<IActionResult> ResolverAsync(int id, string estado, decimal? cantidad)
+    /// <summary>GET /api/stock/ideal/historial — lo que ya salio de la lista (llego, se repuso solo
+    /// o lo sacaron), de lo mas nuevo a lo mas viejo.</summary>
+    [HttpGet("historial")]
+    public async Task<IActionResult> Historial([FromQuery] int limite = 500)
+    {
+        if (limite < 1) limite = 1;
+        if (limite > 1000) limite = 1000;
+        var filas = await _db.CafeStockFaltantes.AsNoTracking()
+            .Where(f => f.Estado == "REPUESTO" || f.Estado == "REPUESTO_SOLO" || f.Estado == "DESCARTADO")
+            .OrderByDescending(f => f.ResueltoAt)
+            .Take(limite)
+            .Select(f => new HistorialFaltanteRow(
+                f.Id, f.Producto!.Sku, f.Producto.Nombre,
+                f.Producto.Marca ?? (f.Producto.MarcaNav != null ? f.Producto.MarcaNav.Nombre : null),
+                f.Estado, f.ResueltoAt, f.ResueltoPor, f.CantidadPedida, f.DetectadoAt))
+            .ToListAsync();
+        return Ok(filas);
+    }
+
+    private async Task<IActionResult> ResolverAsync(int id, string estado, decimal? cantidad, string? quien = null)
     {
         var f = await _db.CafeStockFaltantes.FirstOrDefaultAsync(x => x.Id == id);
         if (f is null) return NotFound(new { error = "Ese renglón ya no está en la lista." });
@@ -429,7 +453,7 @@ public class StockIdealController : ControllerBase
 
         f.Estado = estado;
         f.ResueltoAt = DateTime.UtcNow;
-        f.ResueltoPor = User.FindFirst(ClaimTypes.Name)?.Value;
+        f.ResueltoPor = string.IsNullOrWhiteSpace(quien) ? User.FindFirst(ClaimTypes.Name)?.Value : quien.Trim()[..Math.Min(quien.Trim().Length, 120)];
         if (cantidad.HasValue && cantidad.Value > 0) f.CantidadPedida = cantidad.Value;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });

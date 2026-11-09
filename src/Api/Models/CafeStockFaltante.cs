@@ -32,7 +32,7 @@ public class CafeStockFaltante
 
     public int IdealAlDetectar { get; set; }
 
-    /// <summary>PENDIENTE = falta pedirlo · PEDIDO = ya se pidio · DESCARTADO = lo sacaron a mano.</summary>
+    /// <summary>PENDIENTE = falta pedirlo · PEDIDO = ya se pidio · DESCARTADO = lo sacaron a mano · REPUESTO = entro lo pedido · REPUESTO_SOLO = se repuso sin pedirlo.</summary>
     [MaxLength(20)]
     public string Estado { get; set; } = "PENDIENTE";
 
