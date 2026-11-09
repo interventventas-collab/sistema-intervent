@@ -123,13 +123,13 @@
                     {
                         <div class="cobch-t">¿De qué se lo descuento?</div>
                         <div class="cobch-chips">
-                            <button class="cobch-chip @(destino == DestinoViajes ? "on" : "")" @onclick="() => destino = DestinoViajes">Viajes@(Movil ? "" : $" · le debemos {Plata(de.DeudaViajes)}")</button>
-                            <button class="cobch-chip @(destino == DestinoSueldo ? "on" : "")" @onclick="() => destino = DestinoSueldo">Sueldo@(Movil ? "" : $" · le debemos {Plata(de.DeudaSueldo)}")</button>
+                            <button class="cobch-chip @(destino == DestinoViajes ? "on" : "")" @onclick="() => destino = DestinoViajes">Viajes@(Movil ? "" : SaldoPersona.Detalle(de.Nombre, de.DeudaViajes))</button>
+                            <button class="cobch-chip @(destino == DestinoSueldo ? "on" : "")" @onclick="() => destino = DestinoSueldo">Sueldo@(Movil ? "" : SaldoPersona.Detalle(de.Nombre, de.DeudaSueldo))</button>
                         </div>
                     }
                     else
                     {
-                        <div class="cobch-sub cobch-pad">Se le descuenta del sueldo@(Movil ? "" : $" · le debemos {Plata(de.DeudaSueldo)}")</div>
+                        <div class="cobch-sub cobch-pad">Se le descuenta del sueldo@(Movil ? "" : SaldoPersona.Detalle(de.Nombre, de.DeudaSueldo))</div>
                     }
                 }
                 @if (proveedorId > 0)

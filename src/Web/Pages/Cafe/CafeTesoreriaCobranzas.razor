@@ -1054,18 +1054,18 @@
                                                 <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.25rem;">¿De qué se lo descuento?</div>
                                                 <button class="btn @(m.RedirigidoDestino == "viajes" ? "btn-primary" : "btn-secondary")"
                                                         style="font-size:0.8rem;" @onclick="() => ElegirDeDonde(idx, DestinoViajes)">
-                                                    Viajes · le debemos @Plata(dest.DeudaViajes)
+                                                    Viajes@(SaldoPersona.Detalle(dest.Nombre, dest.DeudaViajes))
                                                 </button>
                                                 <button class="btn @(m.RedirigidoDestino == "sueldo" ? "btn-primary" : "btn-secondary")"
                                                         style="font-size:0.8rem;" @onclick="() => ElegirDeDonde(idx, DestinoSueldo)">
-                                                    Sueldo · le debemos @Plata(dest.DeudaSueldo)
+                                                    Sueldo@(SaldoPersona.Detalle(dest.Nombre, dest.DeudaSueldo))
                                                 </button>
                                             </div>
                                         }
                                         else if (dest is not null)
                                         {
                                             <p style="font-size:0.75rem; color:#6b7280; margin:0.4rem 0 0;">
-                                                Se le descuenta del sueldo · le debemos @Plata(dest.DeudaSueldo)
+                                                Se le descuenta del sueldo@(SaldoPersona.Detalle(dest.Nombre, dest.DeudaSueldo))
                                             </p>
                                         }
                                     }

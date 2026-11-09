@@ -594,7 +594,7 @@
                     @if (misViajes.Saldo > 0)
                     {
                         <text>
-                            Te debemos $@misViajes.Saldo.ToString("N0", new System.Globalization.CultureInfo("es-AR"))
+                            @SaldoPersona.AFavor(nombre, misViajes.Saldo) $@misViajes.Saldo.ToString("N0", new System.Globalization.CultureInfo("es-AR"))
                             @if (misViajes.Saldo == misViajes.ImportePendiente && misViajes.ViajesPendientes > 0)
                             {
                                 <text>· @misViajes.ViajesPendientes viaje@(misViajes.ViajesPendientes == 1 ? "" : "s") sin cerrar</text>
@@ -603,7 +603,7 @@
                     }
                     else if (misViajes.Saldo < 0)
                     {
-                        <text>Tenés $@Math.Abs(misViajes.Saldo).ToString("N0", new System.Globalization.CultureInfo("es-AR")) cobrados de más.</text>
+                        <text>@SaldoPersona.AFavor(nombre, misViajes.Saldo) $@Math.Abs(misViajes.Saldo).ToString("N0", new System.Globalization.CultureInfo("es-AR"))</text>
                     }
                     else
                     {
@@ -670,7 +670,7 @@
                             </div>
                         }
                         <div class="ren final">
-                            <span>@(miCuenta.Saldo > 0 ? "Te debemos" : miCuenta.Saldo < 0 ? "Cobraste de más" : "Está todo cobrado")</span>
+                            <span>@(miCuenta.Saldo != 0 ? SaldoPersona.AFavor(nombre, miCuenta.Saldo) : "Está todo cobrado")</span>
                             @if (miCuenta.Saldo != 0)
                             {
                                 <b>@Plata(Math.Abs(miCuenta.Saldo))</b>
