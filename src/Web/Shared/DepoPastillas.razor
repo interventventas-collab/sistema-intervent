@@ -11,7 +11,7 @@
    cartelito. Imprimir usa el mismo endpoint de etiquetas que Órdenes MeLi. *@
 
 <style>
-    .dp-col { display:flex; flex-direction:column; gap:0.65rem; position:sticky; top:8px; align-self:start; }
+    .dp-col { display:flex; flex-direction:column; gap:0.65rem; position:sticky; top:8px; align-self:start; z-index:20; }
     .dp-big { position:relative; border-radius:22px; padding:0.75rem 1rem; box-shadow:0 2px 7px rgba(0,0,0,.09); cursor:pointer; transition:transform .15s ease, box-shadow .15s ease; }
     .dp-big:hover { transform:translateY(-2px); box-shadow:0 6px 14px rgba(0,0,0,.14); }
     .dp-big.me1 { background:linear-gradient(135deg,#fed7aa,#fff7ed); }
@@ -23,13 +23,22 @@
     .dp-big.nueva { outline:3px solid #dc2626; outline-offset:1px; }
     .dp-big.sel { outline:3px solid #111827; outline-offset:1px; }
     .dp-t { display:flex; align-items:center; gap:0.5rem; font-size:1.1rem; font-weight:700; color:#111827; }
-    .dp-n { margin-left:auto; background:#dc2626; color:#fff; border-radius:999px; font-size:1.05rem; font-weight:800; padding:0 0.65rem; line-height:1.5; }
+    .dp-n { margin-left:auto; background:#dc2626; color:#fff; border-radius:999px; font-size:1.3rem; font-weight:800; padding:0 0.75rem; line-height:1.45; }
     .dp-n.cero { background:rgba(17,24,39,.12); color:#4b5563; }
     .dp-l { font-size:0.84rem; margin-top:0.35rem; color:#374151; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
     .dp-l b { color:#111827; }
     .dp-l.gris { color:#6b7280; font-size:0.78rem; -webkit-line-clamp:1; }
     .dp-bt { display:inline-block; margin-top:0.5rem; background:#111827; color:#fff; border:none; border-radius:999px; padding:0.35rem 0.9rem; font:inherit; font-size:0.84rem; font-weight:700; cursor:pointer; }
     .dp-tag { background:#dc2626; color:#fff; font-size:0.68rem; font-weight:800; border-radius:6px; padding:1px 7px; margin-right:5px; }
+    .dp-prev { display:none; position:absolute; right:100%; top:0; margin-right:10px; width:370px; background:#fff; border:1px solid #d1d5db; border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.25); padding:0.55rem 0.8rem 0.65rem; cursor:pointer; }
+    .dp-prev::after { content:""; position:absolute; top:0; bottom:0; right:-12px; width:12px; }
+    .dp-big:hover .dp-prev { display:block; }
+    .dp-col.sin-prev .dp-prev { display:none !important; }
+    .dp-prev-t { font-size:0.74rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.15rem; }
+    .dp-prev-f { padding:0.3rem 0; border-top:1px solid #f3f4f6; font-size:0.84rem; color:#374151; line-height:1.3; }
+    .dp-prev-f b { font-weight:600; color:#111827; }
+    .dp-prev-f small { display:block; color:#6b7280; font-size:0.76rem; }
+    .dp-prev-m { display:flex; justify-content:space-between; }
     .dp-mas { display:flex; flex-wrap:wrap; gap:0.4rem; }
     .dp-mas .pp-b { font-size:0.75rem; padding:0.3rem 0.65rem; }
 
@@ -108,76 +117,83 @@
         .dp-avisos, .dp-vent { width:auto; max-width:none; }
         .dp-fila { grid-template-columns:20px 44px 1fr 92px; }
         .dp-fila .dp-foto, .dp-fila .dp-dest { display:none; }
+        .dp-prev { display:none !important; }
     }
 </style>
 
-<aside class="dp-col">
-    <div class="dp-big me1 @Marcas("me1")" @onclick='() => Tocar("me1")' title="Envíos ME1 de MercadoLibre (los despachamos nosotros)">
-        <div class="dp-t">🚚 ME1 <span class="dp-n @(Me1SinImprimir.Count == 0 ? "cero" : "")">@Me1SinImprimir.Count</span></div>
-        @if (Me1ParaDespachar.FirstOrDefault() is { } um)
-        {
-            <div class="dp-l">@if (nuevas.Contains("me1")) { <span class="dp-tag">NUEVO</span> }<b>@Producto(um)</b> · @Quien(um)</div>
-        }
-        else
-        {
-            <div class="dp-l gris">Sin envíos para despachar</div>
-        }
-        @if (Me1SinImprimir.Count > 0)
-        {
-            <button class="dp-bt" @onclick="ImprimirTodasMe1" @onclick:stopPropagation="true">
-                🖨️ @(Me1SinImprimir.Count == 1 ? "Imprimir la etiqueta" : $"Imprimir las {Me1SinImprimir.Count} etiquetas")
-            </button>
-        }
+<aside class="dp-col @(ventana is null ? "" : "sin-prev")">
+    @* 2026-11-09: las pastillas muestran solo cantidades; el detalle se ve al pasar el cursor y tocando se abre la ventana. *@
+    <div class="dp-big me1 @Marcas("me1")" @onclick='() => Tocar("me1")'>
+        <div class="dp-t">🚚 ME1 @Nuevo("me1") <span class="dp-n @(Me1SinImprimir.Count == 0 ? "cero" : "")">@Me1ParaDespachar.Count</span></div>
+        <div class="dp-l gris">@(Me1ParaDespachar.Count == 0 ? "Nada para despachar" : Me1SinImprimir.Count == 0 ? "para despachar · todas con etiqueta" : $"para despachar · {Me1SinImprimir.Count} sin etiqueta")</div>
+        <div class="dp-prev">
+            <div class="dp-prev-t">Envíos ME1 para despachar</div>
+            @if (Me1ParaDespachar.Count == 0) { <div class="dp-prev-f">No hay envíos para despachar</div> }
+            @foreach (var o in Me1ParaDespachar.Take(5))
+            {
+                <div class="dp-prev-f"><b>@Producto(o)</b><small>@Quien(o) · @(o.EtiquetaImpresa ? "con etiqueta" : "sin etiqueta")</small></div>
+            }
+            @if (Me1SinImprimir.Count > 0)
+            {
+                <button class="dp-bt" @onclick="ImprimirTodasMe1" @onclick:stopPropagation="true">
+                    🖨️ @(Me1SinImprimir.Count == 1 ? "Imprimir la etiqueta" : $"Imprimir las {Me1SinImprimir.Count} etiquetas")
+                </button>
+            }
+        </div>
     </div>
 
-    <div class="dp-big ven @Marcas("ven")" @onclick='() => Tocar("ven")' title="Ventas de MercadoLibre para despachar">
-        <div class="dp-t">🏷️ Ventas MeLi <span class="dp-n @(VentasSinEtiqueta.Count == 0 ? "cero" : "")">@VentasSinEtiqueta.Count</span></div>
-        <div class="dp-l">Flex <b>@ventas.Count(v => v.TipoClave == "flex")</b> · Correo <b>@ventas.Count(v => v.TipoClave == "correo")</b> · <b>@VentasSinEtiqueta.Count</b> sin etiqueta</div>
-        @if (ventas.FirstOrDefault() is { } uv)
-        {
-            <div class="dp-l">@if (nuevas.Contains("ven")) { <span class="dp-tag">NUEVO</span> }<b>@Producto(uv)</b> · @Dia(uv.Fecha) @uv.Fecha.ToString("HH:mm")</div>
-        }
+    <div class="dp-big ven @Marcas("ven")" @onclick='() => Tocar("ven")'>
+        <div class="dp-t">🏷️ Ventas MeLi @Nuevo("ven") <span class="dp-n @(VentasSinEtiqueta.Count == 0 ? "cero" : "")">@VentasSinEtiqueta.Count</span></div>
+        <div class="dp-l gris">sin etiqueta · Flex @ventas.Count(v => v.TipoClave == "flex") · Correo @ventas.Count(v => v.TipoClave == "correo")</div>
+        <div class="dp-prev">
+            <div class="dp-prev-t">Últimas ventas para despachar</div>
+            @if (ventas.Count == 0) { <div class="dp-prev-f">No hay ventas para despachar</div> }
+            @foreach (var o in ventas.Take(5))
+            {
+                <div class="dp-prev-f"><b>@Producto(o)</b><small>@o.Tipo · @Dia(o.Fecha) @o.Fecha.ToString("HH:mm") · @(o.EtiquetaImpresa ? "con etiqueta" : "sin etiqueta")</small></div>
+            }
+        </div>
     </div>
 
-    <div class="dp-big tar @Marcas("tar")" @onclick='() => Tocar("tar")' title="Tareas del depósito">
-        <div class="dp-t">📋 Tareas <span class="dp-n @((Tareas?.Pendientes ?? 0) == 0 ? "cero" : "")">@(Tareas?.Pendientes ?? 0)</span></div>
-        @if (Tareas?.Lista.FirstOrDefault() is { } ut)
-        {
-            <div class="dp-l">@if (nuevas.Contains("tar")) { <span class="dp-tag">NUEVO</span> }<b>@ut.Titulo</b>@(ut.Empleado is null ? "" : $" · {ut.Empleado}")@(ut.Para == "HOY" ? ", para hoy" : "")</div>
-        }
-        else
-        {
-            <div class="dp-l gris">Sin tareas pendientes</div>
-        }
+    <div class="dp-big tar @Marcas("tar")" @onclick='() => Tocar("tar")'>
+        <div class="dp-t">📋 Tareas @Nuevo("tar") <span class="dp-n @((Tareas?.Pendientes ?? 0) == 0 ? "cero" : "")">@(Tareas?.Pendientes ?? 0)</span></div>
+        <div class="dp-prev">
+            <div class="dp-prev-t">Tareas pendientes</div>
+            @if ((Tareas?.Lista.Count ?? 0) == 0) { <div class="dp-prev-f">Sin tareas pendientes</div> }
+            @foreach (var t in Tareas?.Lista.Take(5) ?? Enumerable.Empty<DepTareasResumenItemDto>())
+            {
+                <div class="dp-prev-f"><b>@t.Titulo</b><small>@(t.Empleado ?? "Sin asignar")@(t.Para == "HOY" ? ", para hoy" : "")</small></div>
+            }
+        </div>
     </div>
 
-    <div class="dp-big fal @Marcas("fal")" @onclick='() => Tocar("fal")' title="Lo que hay que pedir, por marca">
-        <div class="dp-t">📦 Faltantes <span class="dp-n @(FaltantesParaPedir.Count == 0 ? "cero" : "")">@FaltantesParaPedir.Count</span></div>
-        @if (PorMarca.Count > 0)
-        {
-            <div class="dp-l">@if (nuevas.Contains("fal")) { <span class="dp-tag">NUEVO</span> }@string.Join(" · ", PorMarca.Take(3).Select(g => $"{g.Key} {g.Count()}"))@(PorMarca.Count > 3 ? $" · +{PorMarca.Count - 3} marcas" : "")</div>
-        }
-        else
-        {
-            <div class="dp-l gris">No falta nada por pedir</div>
-        }
+    <div class="dp-big fal @Marcas("fal")" @onclick='() => Tocar("fal")'>
+        <div class="dp-t">📦 Faltantes @Nuevo("fal") <span class="dp-n @(FaltantesParaPedir.Count == 0 ? "cero" : "")">@FaltantesParaPedir.Count</span></div>
         @if (FaltantesPedidos.Count > 0)
         {
-            <div class="dp-l gris">@FaltantesPedidos.Count pedidos sin llegar</div>
+            <div class="dp-l gris">para pedir · @FaltantesPedidos.Count pedidos sin llegar</div>
         }
+        <div class="dp-prev">
+            <div class="dp-prev-t">Para pedir, por marca</div>
+            @if (PorMarca.Count == 0) { <div class="dp-prev-f">No falta nada por pedir</div> }
+            @foreach (var g in PorMarca.Take(6))
+            {
+                <div class="dp-prev-f dp-prev-m"><b>@g.Key</b><span>@g.Count()</span></div>
+            }
+            @if (PorMarca.Count > 6) { <div class="dp-prev-f"><small>y @(PorMarca.Count - 6) marcas más</small></div> }
+        </div>
     </div>
 
-    <div class="dp-big pre @Marcas("pre")" @onclick='() => Tocar("pre")' title="Preguntas de MercadoLibre sin responder">
-        <div class="dp-t">💬 Preguntas <span class="dp-n @(preguntas.Count == 0 ? "cero" : "")">@preguntas.Count</span></div>
-        @if (preguntas.FirstOrDefault() is { } up)
-        {
-            <div class="dp-l">@if (nuevas.Contains("pre")) { <span class="dp-tag">NUEVO</span> }“<b>@up.Text</b>”</div>
-            <div class="dp-l gris">@(up.ItemTitle ?? up.ItemId) · @Hace(up.DateCreated)</div>
-        }
-        else
-        {
-            <div class="dp-l gris">No hay preguntas sin responder</div>
-        }
+    <div class="dp-big pre @Marcas("pre")" @onclick='() => Tocar("pre")'>
+        <div class="dp-t">💬 Preguntas @Nuevo("pre") <span class="dp-n @(preguntas.Count == 0 ? "cero" : "")">@preguntas.Count</span></div>
+        <div class="dp-prev">
+            <div class="dp-prev-t">Preguntas sin responder</div>
+            @if (preguntas.Count == 0) { <div class="dp-prev-f">No hay preguntas sin responder</div> }
+            @foreach (var q in preguntas.Take(4))
+            {
+                <div class="dp-prev-f"><b>“@q.Text”</b><small>@(q.ItemTitle ?? q.ItemId) · @Hace(q.DateCreated)</small></div>
+            }
+        </div>
     </div>
 
     <div class="dp-mas">
@@ -484,6 +500,10 @@
     private System.Threading.Timer? timer;
 
     private string Lugar => Pantalla.Enorme ? "arriba" : "abajo";
+    private RenderFragment Nuevo(string p) => __builder =>
+    {
+        @if (nuevas.Contains(p)) { <span class="dp-tag">NUEVO</span> }
+    };
     private string Marcas(string p) => (ventana == p ? "sel " : "") + (nuevas.Contains(p) ? "nueva" : "");
 
     private List<MeliDepoOrden> Me1ParaDespachar => me1.Where(o => o.EstadoClave == "despachar").ToList();
