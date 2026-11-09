@@ -2,6 +2,7 @@
 @inject ToastService ToastService
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject PantallaDepositoState Pantalla
 @implements IDisposable
 
 @*
@@ -577,7 +578,8 @@
             // Mostrar si: hay preguntas, no esta ya abierto, y no estamos en snooze.
             // Excepcion: si llego una pregunta NUEVA (Total > lastTotalSeenForAutoShow), forzar
             // mostrar aunque estuviera en snooze — el usuario querra verla.
-            if (!showModal && r.Total > 0)
+            // 2026-11-09: en la pantalla de armado no interrumpe: avisa la pastilla Preguntas.
+            if (!showModal && r.Total > 0 && !Pantalla.Activa)
             {
                 bool hayNueva = r.Total > lastTotalSeenForAutoShow;
                 bool snoozed = false;

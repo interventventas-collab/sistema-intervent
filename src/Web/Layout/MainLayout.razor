@@ -204,6 +204,16 @@
     .ta-ed-guardar { border: none; background: #16a34a; color: #fff; font-weight: 700; border-radius: 999px; padding: 0.3rem 0.8rem; cursor: pointer; font-family: inherit; font-size: 0.8rem; }
     .ta-ed-otro { border: 1px solid #d1d5db; background: #fff; border-radius: 999px; padding: 0.3rem 0.7rem; cursor: pointer; font-family: inherit; font-size: 0.8rem; }
     .ta-acomodar { margin-left: auto; border: none; background: transparent; color: #6b7280; font-size: 0.78rem; cursor: pointer; font-family: inherit; padding: 0.3rem 0.5rem; border-radius: 6px; }
+    /* 2026-11-09: pantalla enorme de armado: se van las barras; quedan el reloj y la colecta en la cabecera. */
+    @@media (min-width: 900px) {
+        .main-enorme.main-wrapper { margin-left: 0; }
+        .main-enorme > *:not(.content):not(.topstrip) { display: none !important; }
+        .main-enorme > .topstrip { position: fixed; top: 5px; left: 218px; z-index: 30; background: transparent; border: none; box-shadow: none; padding: 0; min-height: 0; width: auto; }
+        .main-enorme > .topstrip > *:not(.topstrip-chips) { display: none !important; }
+        .main-enorme .topstrip-chips { flex-wrap: nowrap; }
+        .main-enorme .topstrip-chips > *:not(.rl-chip):not(.topchip-colecta) { display: none !important; }
+        .main-enorme > .content { padding: 0; }
+    }
     .ta-acomodar:hover { background: #f3f4f6; color: #111827; }
     .ta-salir {
         border: 1px solid #fecaca; background: #fff; color: #b91c1c; font-weight: 700; font-size: 0.8rem;
@@ -740,6 +750,7 @@
 @inject OperatorService Operator
 @inject NuevaVentaSignal NuevaVentaSignal
 @inject CurrentCompanyService Company
+@inject PantallaDepositoState Pantalla
 @implements IDisposable
 
 @if (!IsEmbedded)
@@ -1386,7 +1397,7 @@
 @* Botón "Nueva Venta" - vive dentro del topbar (ver más abajo) para quedar
    siempre visible arriba a la derecha sin tapar otros íconos. *@
 
-<main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "") @(TodoArriba ? "main-ta" : "") @(TodoArribaDepo ? "main-ta-depo" : "")">
+<main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "") @(TodoArriba ? "main-ta" : "") @(TodoArribaDepo ? "main-ta-depo" : "") @(Pantalla.Enorme ? "main-enorme" : "")">
 @if (!IsEmbedded)
 {
     @* 2026-07-08: fila de chips arriba de todo (empresa/usuario · reloj · dólar · disco).
@@ -1488,7 +1499,7 @@
         }
         @if (_ccCod)
         {
-            <div class="topchip" title="Código del día para colectas/devoluciones. Clic para copiar." style="cursor:pointer; border-color:#f59e0b; background:#fffbeb;" @onclick="CopiarCodigoColecta">
+            <div class="topchip-colecta topchip" title="Código del día para colectas/devoluciones. Clic para copiar." style="cursor:pointer; border-color:#f59e0b; background:#fffbeb;" @onclick="CopiarCodigoColecta">
                 <span class="topchip-ico" style="background:#fef3c7; color:#92400e;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></svg>
                 </span>
@@ -1503,7 +1514,7 @@
         }
         else
         {
-            <div class="topchip topchip-secondary" title="Código del día para colectas/devoluciones de MercadoLibre. Todavía no llegó el código de hoy.">
+            <div class="topchip-colecta topchip topchip-secondary" title="Código del día para colectas/devoluciones de MercadoLibre. Todavía no llegó el código de hoy.">
                 <span class="topchip-ico" style="background:#f3f4f6; color:#9ca3af;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></svg>
                 </span>
@@ -1947,6 +1958,12 @@
 
 @* 2026-11-07: depósito con "todo arriba": el chat del equipo ya no vive en la columna; se abre
    con el botón "💬 Chat equipo" de la barra, en esta ventanita (se cierra con ✕ o con el botón). *@
+@* 2026-11-09: en la pantalla de armado estos botones pasan a las pastillas de la derecha. *@
+@if (Pantalla.Activa)
+{
+    <style>@@media (min-width: 900px) { .bf, .depwa-bubble { display: none !important; } }</style>
+}
+
 @if (TodoArribaDepo && chatEquipoAbierto)
 {
     <div class="ta-chat-flot">
@@ -3243,6 +3260,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Pantalla.Cambio += RepintarPorPantalla;
+        Pantalla.PedirChatEquipo += AbrirChatDesdePastillas;
+        Pantalla.PedirWhatsApp += AbrirWhatsAppDesdePastillas;
         NuevaVentaSignal.OnVentaAbierta += OnVentaAbierta;
         SyncProgress.OnChange += OnSyncProgressChanged;
         UploadProgress.OnChanged += OnUploadProgressChanged;
@@ -3655,8 +3675,15 @@
         catch { /* el numerito es un plus, nunca puede romper el menú */ }
     }
 
+    private void RepintarPorPantalla() => _ = InvokeAsync(StateHasChanged);
+    private void AbrirChatDesdePastillas() { chatEquipoAbierto = !chatEquipoAbierto; _ = InvokeAsync(StateHasChanged); }
+    private void AbrirWhatsAppDesdePastillas() => depWaRef?.Abrir();
+
     public void Dispose()
     {
+        Pantalla.Cambio -= RepintarPorPantalla;
+        Pantalla.PedirChatEquipo -= AbrirChatDesdePastillas;
+        Pantalla.PedirWhatsApp -= AbrirWhatsAppDesdePastillas;
         NuevaVentaSignal.OnVentaAbierta -= OnVentaAbierta;
         timerFaltantes?.Dispose();
         try { cmdPalRef?.Dispose(); } catch { }
