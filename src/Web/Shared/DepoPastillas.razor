@@ -1,0 +1,765 @@
+@implements IDisposable
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject ToastService ToastService
+@inject NavigationManager Nav
+@inject PantallaDepositoState Pantalla
+
+@* 2026-11-09: pastillas grandes a la derecha de la pantalla de armado (maqueta aprobada por el dueño).
+   Cada pastilla muestra en vivo una tarea del depósito (ME1, ventas MeLi, tareas, faltantes por marca
+   y preguntas) y abre su ventana al lado, sin oscurecer el tablero. Lo que entra nuevo avisa con un
+   cartelito. Imprimir usa el mismo endpoint de etiquetas que Órdenes MeLi. *@
+
+<style>
+    .dp-col { display:flex; flex-direction:column; gap:0.65rem; position:sticky; top:8px; align-self:start; }
+    .dp-big { position:relative; border-radius:22px; padding:0.75rem 1rem; box-shadow:0 2px 7px rgba(0,0,0,.09); cursor:pointer; transition:transform .15s ease, box-shadow .15s ease; }
+    .dp-big:hover { transform:translateY(-2px); box-shadow:0 6px 14px rgba(0,0,0,.14); }
+    .dp-big.me1 { background:linear-gradient(135deg,#fed7aa,#fff7ed); }
+    .dp-big.ven { background:linear-gradient(135deg,#fde68a,#fef3c7); }
+    .dp-big.tar { background:linear-gradient(135deg,#bbf7d0,#ecfdf5); }
+    .dp-big.fal { background:linear-gradient(135deg,#a5f3fc,#ecfeff); }
+    .dp-big.pre { background:linear-gradient(135deg,#ddd6fe,#f5f3ff); border-radius:26px; margin-bottom:0.65rem; }
+    .dp-big.pre::after { content:""; position:absolute; right:34px; bottom:-16px; border-left:24px solid transparent; border-top:17px solid #f3efff; }
+    .dp-big.nueva { outline:3px solid #dc2626; outline-offset:1px; }
+    .dp-big.sel { outline:3px solid #111827; outline-offset:1px; }
+    .dp-t { display:flex; align-items:center; gap:0.5rem; font-size:1.1rem; font-weight:700; color:#111827; }
+    .dp-n { margin-left:auto; background:#dc2626; color:#fff; border-radius:999px; font-size:1.05rem; font-weight:800; padding:0 0.65rem; line-height:1.5; }
+    .dp-n.cero { background:rgba(17,24,39,.12); color:#4b5563; }
+    .dp-l { font-size:0.84rem; margin-top:0.35rem; color:#374151; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .dp-l b { color:#111827; }
+    .dp-l.gris { color:#6b7280; font-size:0.78rem; -webkit-line-clamp:1; }
+    .dp-bt { display:inline-block; margin-top:0.5rem; background:#111827; color:#fff; border:none; border-radius:999px; padding:0.35rem 0.9rem; font:inherit; font-size:0.84rem; font-weight:700; cursor:pointer; }
+    .dp-tag { background:#dc2626; color:#fff; font-size:0.68rem; font-weight:800; border-radius:6px; padding:1px 7px; margin-right:5px; }
+    .dp-mas { display:flex; flex-wrap:wrap; gap:0.4rem; }
+    .dp-mas .pp-b { font-size:0.75rem; padding:0.3rem 0.65rem; }
+
+    .dp-flot { position:fixed; right:376px; z-index:905; }
+    .dp-flot.arriba { top:62px; }
+    .dp-flot.abajo { top:158px; }
+    .dp-avisos { width:430px; display:flex; flex-direction:column; gap:0.5rem; }
+    .dp-aviso { background:#111827; color:#fff; border-radius:14px; padding:0.7rem 1rem; box-shadow:0 10px 26px rgba(0,0,0,.3); font-size:0.92rem; animation:dp-entra .25s ease; }
+    @@keyframes dp-entra { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
+    .dp-aviso small { display:block; color:#d1d5db; font-size:0.81rem; margin-top:2px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+    .dp-aviso-bs { margin-top:0.5rem; display:flex; gap:0.5rem; align-items:center; }
+    .dp-aviso-bs button { background:#fff; color:#111827; border:none; border-radius:999px; padding:0.3rem 0.85rem; font:inherit; font-size:0.81rem; font-weight:700; cursor:pointer; }
+    .dp-aviso-bs button.des { background:none; color:#d1d5db; font-weight:400; }
+
+    .dp-vent { width:700px; max-width:calc(100vw - 400px); display:flex; flex-direction:column; background:#fff; border-radius:14px; border:1px solid #d1d5db; box-shadow:0 14px 40px rgba(0,0,0,.33); overflow:hidden; }
+    .dp-flot.arriba .dp-vent { max-height:calc(100vh - 80px); }
+    .dp-flot.abajo .dp-vent { max-height:calc(100vh - 176px); }
+    .dp-vh { display:flex; align-items:center; gap:0.6rem; padding:0.7rem 1rem; border-bottom:1px solid #e5e7eb; font-size:1.1rem; font-weight:700; flex-shrink:0; }
+    .dp-vh small { font-size:0.78rem; font-weight:400; color:#6b7280; }
+    .dp-x { margin-left:auto; background:none; border:none; font-size:1.3rem; cursor:pointer; color:#374151; line-height:1; }
+    .dp-vf { display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; padding:0.5rem 1rem; font-size:0.8rem; background:#f9fafb; border-bottom:1px solid #eef0f3; flex-shrink:0; }
+    .dp-ch { border:1px solid #e5e7eb; background:#fff; border-radius:999px; padding:0.2rem 0.65rem; font:inherit; font-size:0.8rem; cursor:pointer; }
+    .dp-ch.on { background:#111827; border-color:#111827; color:#fff; }
+    .dp-imp { margin-left:auto; background:#111827; color:#fff; border:none; border-radius:8px; padding:0.4rem 0.8rem; font:inherit; font-size:0.84rem; font-weight:700; cursor:pointer; }
+    .dp-imp:disabled { background:#d1d5db; cursor:default; }
+    .dp-lista { overflow-y:auto; flex:1; min-height:0; }
+    .dp-fila { display:grid; grid-template-columns:20px 44px 44px 1fr 170px 92px; gap:0.55rem; align-items:center; padding:0.5rem 1rem; border-top:1px solid #eef0f3; font-size:0.86rem; }
+    .dp-fila.nu { background:#fff7ed; }
+    .dp-cu { color:#6b7280; font-size:0.73rem; line-height:1.3; }
+    .dp-foto { width:44px; height:44px; object-fit:contain; border:1px solid #e5e7eb; border-radius:6px; background:#fff; }
+    .dp-fila .sub { display:block; color:#6b7280; font-size:0.76rem; }
+    .dp-est { border:none; border-radius:999px; font:inherit; font-size:0.74rem; font-weight:700; padding:0.25rem 0.3rem; cursor:pointer; background:#fef3c7; color:#92400e; }
+    .dp-est.ya { background:#dcfce7; color:#166534; }
+    .dp-vacio { padding:2rem; text-align:center; color:#6b7280; }
+    .dp-pie { padding:0.5rem 1rem; border-top:1px solid #eef0f3; font-size:0.8rem; text-align:right; flex-shrink:0; }
+    .dp-pie a { color:#111827; font-weight:700; cursor:pointer; }
+
+    .dp-q { padding:0.7rem 1rem; border-top:1px solid #eef0f3; }
+    .dp-q.cerrada { display:flex; gap:0.6rem; align-items:baseline; cursor:pointer; }
+    .dp-q.cerrada:hover { background:#f9fafb; }
+    .dp-q .pr { font-size:0.78rem; color:#6b7280; }
+    .dp-q .tx { font-size:1rem; font-weight:600; margin:0.2rem 0 0.5rem; }
+    .dp-q.cerrada .tx { font-size:0.9rem; font-weight:400; margin:0; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dp-q.cerrada .pr { white-space:nowrap; }
+    .dp-q textarea { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:0.5rem 0.7rem; font:inherit; font-size:0.9rem; resize:vertical; }
+    .dp-qr { display:flex; flex-wrap:wrap; gap:0.3rem; margin-bottom:0.45rem; }
+    .dp-qr button { border:1px solid #e5e7eb; background:#f9fafb; border-radius:999px; padding:0.15rem 0.6rem; font:inherit; font-size:0.74rem; cursor:pointer; max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dp-q-acc { display:flex; justify-content:flex-end; margin-top:0.4rem; }
+    .dp-q-acc button { background:#111827; color:#fff; border:none; border-radius:7px; padding:0.35rem 0.9rem; font:inherit; font-size:0.84rem; font-weight:700; cursor:pointer; }
+    .dp-q-acc button:disabled { background:#d1d5db; cursor:default; }
+
+    .dp-marca { display:flex; gap:0.6rem; align-items:center; padding:0.55rem 1rem; border-top:1px solid #eef0f3; cursor:pointer; font-size:0.95rem; font-weight:700; }
+    .dp-marca:hover { background:#f9fafb; }
+    .dp-marca span.c { margin-left:auto; font-weight:800; }
+    .dp-prod { display:grid; grid-template-columns:1fr 90px 90px; gap:0.5rem; padding:0.3rem 1rem 0.3rem 2rem; font-size:0.86rem; border-top:1px solid #f3f4f6; align-items:baseline; }
+    .dp-prod .num { text-align:right; color:#374151; }
+    .dp-prod .cero { color:#b91c1c; font-weight:700; }
+    .dp-prod small { display:block; color:#6b7280; font-size:0.74rem; }
+
+    @@media (max-width: 899px) {
+        .dp-flot { right:10px; left:10px; }
+        .dp-flot.arriba, .dp-flot.abajo { top:62px; }
+        .dp-avisos, .dp-vent { width:auto; max-width:none; }
+        .dp-fila { grid-template-columns:20px 44px 1fr 92px; }
+        .dp-fila .dp-foto, .dp-fila .dp-dest { display:none; }
+    }
+</style>
+
+<aside class="dp-col">
+    <div class="dp-big me1 @Marcas("me1")" @onclick='() => Tocar("me1")' title="Envíos ME1 de MercadoLibre (los despachamos nosotros)">
+        <div class="dp-t">🚚 ME1 <span class="dp-n @(Me1SinImprimir.Count == 0 ? "cero" : "")">@Me1SinImprimir.Count</span></div>
+        @if (Me1ParaDespachar.FirstOrDefault() is { } um)
+        {
+            <div class="dp-l">@if (nuevas.Contains("me1")) { <span class="dp-tag">NUEVO</span> }<b>@Producto(um)</b> · @Quien(um)</div>
+        }
+        else
+        {
+            <div class="dp-l gris">Sin envíos para despachar</div>
+        }
+        @if (Me1SinImprimir.Count > 0)
+        {
+            <button class="dp-bt" @onclick="ImprimirTodasMe1" @onclick:stopPropagation="true">
+                🖨️ @(Me1SinImprimir.Count == 1 ? "Imprimir la etiqueta" : $"Imprimir las {Me1SinImprimir.Count} etiquetas")
+            </button>
+        }
+    </div>
+
+    <div class="dp-big ven @Marcas("ven")" @onclick='() => Tocar("ven")' title="Ventas de MercadoLibre para despachar">
+        <div class="dp-t">🏷️ Ventas MeLi <span class="dp-n @(VentasSinEtiqueta.Count == 0 ? "cero" : "")">@VentasSinEtiqueta.Count</span></div>
+        <div class="dp-l">Flex <b>@ventas.Count(v => v.TipoClave == "flex")</b> · Correo <b>@ventas.Count(v => v.TipoClave == "correo")</b> · <b>@VentasSinEtiqueta.Count</b> sin etiqueta</div>
+        @if (ventas.FirstOrDefault() is { } uv)
+        {
+            <div class="dp-l">@if (nuevas.Contains("ven")) { <span class="dp-tag">NUEVO</span> }<b>@Producto(uv)</b> · @Dia(uv.Fecha) @uv.Fecha.ToString("HH:mm")</div>
+        }
+    </div>
+
+    <div class="dp-big tar @Marcas("tar")" @onclick='() => Tocar("tar")' title="Tareas del depósito">
+        <div class="dp-t">📋 Tareas <span class="dp-n @((Tareas?.Pendientes ?? 0) == 0 ? "cero" : "")">@(Tareas?.Pendientes ?? 0)</span></div>
+        @if (Tareas?.Lista.FirstOrDefault() is { } ut)
+        {
+            <div class="dp-l">@if (nuevas.Contains("tar")) { <span class="dp-tag">NUEVO</span> }<b>@ut.Titulo</b>@(ut.Empleado is null ? "" : $" · {ut.Empleado}")@(ut.Para == "HOY" ? ", para hoy" : "")</div>
+        }
+        else
+        {
+            <div class="dp-l gris">Sin tareas pendientes</div>
+        }
+    </div>
+
+    <div class="dp-big fal @Marcas("fal")" @onclick='() => Tocar("fal")' title="Lo que hay que pedir, por marca">
+        <div class="dp-t">📦 Faltantes <span class="dp-n @(FaltantesParaPedir.Count == 0 ? "cero" : "")">@FaltantesParaPedir.Count</span></div>
+        @if (PorMarca.Count > 0)
+        {
+            <div class="dp-l">@if (nuevas.Contains("fal")) { <span class="dp-tag">NUEVO</span> }@string.Join(" · ", PorMarca.Take(3).Select(g => $"{g.Key} {g.Count()}"))@(PorMarca.Count > 3 ? $" · +{PorMarca.Count - 3} marcas" : "")</div>
+        }
+        else
+        {
+            <div class="dp-l gris">No falta nada por pedir</div>
+        }
+    </div>
+
+    <div class="dp-big pre @Marcas("pre")" @onclick='() => Tocar("pre")' title="Preguntas de MercadoLibre sin responder">
+        <div class="dp-t">💬 Preguntas <span class="dp-n @(preguntas.Count == 0 ? "cero" : "")">@preguntas.Count</span></div>
+        @if (preguntas.FirstOrDefault() is { } up)
+        {
+            <div class="dp-l">@if (nuevas.Contains("pre")) { <span class="dp-tag">NUEVO</span> }“<b>@up.Text</b>”</div>
+            <div class="dp-l gris">@(up.ItemTitle ?? up.ItemId) · @Hace(up.DateCreated)</div>
+        }
+        else
+        {
+            <div class="dp-l gris">No hay preguntas sin responder</div>
+        }
+    </div>
+
+    <div class="dp-mas">
+        <a class="pp-b amar" href="https://drive.google.com/drive/folders/193CHGuunMIQX9LvpsQHyLK3m3IiIXBBH" target="_blank"
+           title="Abrir la carpeta IMPRIMIR PEDIDOS DE OSMAR en Google Drive (otra pestaña)">📁 Drive</a>
+        <button class="pp-b lila" @onclick="OnEscaner">📷 Escáner</button>
+        <FotosQrBoton Clase="pp-b cel" Texto="🖼️ Fotos" />
+        <a class="pp-b ros" href="/deposito/ordenes-meli">🏷️ Órdenes MeLi</a>
+        @if (PuedeLimpiar)
+        {
+            <button class="pp-b rojo" @onclick="OnLimpiar"
+                    title="Saca todos los pedidos actuales del tablero. Las ventas y los PDFs en Drive quedan intactos.">🧹 Limpiar tablero</button>
+        }
+        <button class="pp-b azul" @onclick="OnRefrescar" title="Se actualiza solo cada 10 segundos">🔄 Refrescar</button>
+        @if (EsDeposito)
+        {
+            <button class="pp-b verde" @onclick="Pantalla.AbrirChatEquipo">💬 Chat equipo</button>
+            <button class="pp-b verde" @onclick="Pantalla.AbrirWhatsApp">🟢 WhatsApp</button>
+        }
+    </div>
+</aside>
+
+@if (avisos.Count > 0)
+{
+    <div class="dp-flot dp-avisos @Lugar" style="@(ventana is not null ? "display:none" : "")">
+        @foreach (var a in avisos.Take(4))
+        {
+            var av = a;
+            <div class="dp-aviso" @key="av.Id">
+                🔔 <b>@av.Titulo</b>
+                <small>@av.Texto</small>
+                <div class="dp-aviso-bs">
+                    @if (av.Envio.HasValue)
+                    {
+                        <button @onclick="() => ImprimirDesdeAviso(av)">🖨️ Imprimir etiqueta</button>
+                    }
+                    <button @onclick="() => VerAviso(av)">Ver</button>
+                    <button class="des" @onclick="() => avisos.Remove(av)">después</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (ventana is "me1" or "ven")
+{
+    var esMe1 = ventana == "me1";
+    <div class="dp-flot dp-vent @Lugar">
+        <div class="dp-vh">
+            @(esMe1 ? "🚚 Envíos ME1" : "🏷️ Ventas MeLi para despachar")
+            <small>@(esMe1 ? "los que despachamos nosotros" : "Flex y Correo")</small>
+            <button class="dp-x" title="Cerrar" @onclick="Cerrar">✕</button>
+        </div>
+        <div class="dp-vf">
+            @if (esMe1)
+            {
+                <button class="dp-ch @(verDespachados ? "" : "on")" @onclick="() => CambiarVista(false)">Para despachar (@Me1ParaDespachar.Count)</button>
+                <button class="dp-ch @(verDespachados ? "on" : "")" @onclick="() => CambiarVista(true)">Ya despachados (@Me1Despachados.Count)</button>
+            }
+            Etiqueta:
+            @foreach (var (k, l, t) in FormatosEtiqueta)
+            {
+                <button class="dp-ch @(formato == k ? "on" : "")" title="@t" @onclick="() => ElegirFormato(k)">@l</button>
+            }
+            <button class="dp-imp" disabled="@(tildadas.Count == 0)" @onclick="ImprimirTildadas">🖨️ Imprimir @(tildadas.Count == 0 ? "" : tildadas.Count.ToString())</button>
+        </div>
+        <div class="dp-lista">
+            @if (FilasVentana.Count == 0)
+            {
+                <div class="dp-vacio">No hay envíos para mostrar. 🎉</div>
+            }
+            @foreach (var o in FilasVentana)
+            {
+                var env = o.NumeroEnvio;
+                var sel = env.HasValue && tildadas.Contains(env.Value);
+                var foto = o.Productos.FirstOrDefault(p => !string.IsNullOrEmpty(p.Foto))?.Foto;
+                <div class="dp-fila @(recienLlegados.Contains(o.Numero) ? "nu" : "")" @key="o.Numero">
+                    <div>
+                        @if (env.HasValue)
+                        {
+                            <input type="checkbox" checked="@sel" @onchange="() => Tildar(env.Value)" title="Tildar para imprimir" />
+                        }
+                    </div>
+                    <div class="dp-cu">@Dia(o.Fecha)<br />@o.Fecha.ToString("HH:mm")</div>
+                    @if (foto is not null) { <img class="dp-foto" src="@foto" alt="" loading="lazy" /> } else { <span class="dp-foto"></span> }
+                    <div>
+                        @foreach (var p in o.Productos)
+                        {
+                            <div><b>×@p.Cantidad</b> @p.Titulo</div>
+                        }
+                        @if (recienLlegados.Contains(o.Numero)) { <span class="dp-tag">NUEVO</span> }
+                        <a class="sub" style="display:inline;" href="@($"/deposito/ordenes-meli?orden={o.Numero}")">@(esMe1 ? "venta" : o.Tipo) @o.NumeroVenta · ver detalle</a>
+                    </div>
+                    <div class="dp-dest">
+                        <b>@Quien(o)</b>
+                        @if (esMe1) { <span class="sub">@Domicilio(o)</span> }
+                    </div>
+                    <div>
+                        @if (env.HasValue)
+                        {
+                            <button class="dp-est @(o.EtiquetaImpresa ? "ya" : "")" title="Imprimir solo esta" @onclick="() => ImprimirUna(env.Value)">@(o.EtiquetaImpresa ? "✓ Impresa" : "🖨️ Imprimir")</button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (ventana == "fal")
+{
+    <div class="dp-flot dp-vent @Lugar">
+        <div class="dp-vh">
+            📦 Faltantes por marca <small>@FaltantesParaPedir.Count productos para pedir · @PorMarca.Count marcas</small>
+            <button class="dp-x" title="Cerrar" @onclick="Cerrar">✕</button>
+        </div>
+        <div class="dp-lista">
+            @if (PorMarca.Count == 0)
+            {
+                <div class="dp-vacio">No falta nada por pedir. 🎉</div>
+            }
+            @foreach (var g in PorMarca)
+            {
+                var abierta = marcaAbierta == g.Key;
+                <div class="dp-marca" @onclick="() => marcaAbierta = abierta ? null : g.Key">
+                    <span>@(abierta ? "▼" : "▶")</span> @g.Key
+                    <span class="c">@g.Count()</span>
+                </div>
+                @if (abierta)
+                {
+                    @foreach (var f in g.OrderBy(x => x.StockAhora))
+                    {
+                        <div class="dp-prod">
+                            <div>@f.Nombre @if (!string.IsNullOrEmpty(f.Codigo)) { <small>@f.Codigo</small> }</div>
+                            <div class="num @(f.StockAhora <= 0 ? "cero" : "")">Hay @f.StockAhora.ToString("0.##") @f.Unidad</div>
+                            <div class="num">Faltan @f.Faltan.ToString("0.##")</div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+        <div class="dp-pie"><a @onclick='() => Nav.NavigateTo("/stock/ideal")'>Ver todo y bajar el pedido en Excel →</a></div>
+    </div>
+}
+
+@if (ventana == "pre")
+{
+    <div class="dp-flot dp-vent @Lugar">
+        <div class="dp-vh">
+            💬 Preguntas de MercadoLibre <small>@preguntas.Count sin responder</small>
+            <button class="dp-x" title="Cerrar" @onclick="Cerrar">✕</button>
+        </div>
+        <div class="dp-lista">
+            @if (preguntas.Count == 0)
+            {
+                <div class="dp-vacio">No hay preguntas sin responder. 🎉</div>
+            }
+            @foreach (var q in preguntas)
+            {
+                var qq = q;
+                if (preguntaAbierta == q.Id)
+                {
+                    <div class="dp-q" @key="q.Id">
+                        <div class="pr">@(q.ItemTitle ?? q.ItemId) · @q.FromNickname · @Hace(q.DateCreated)</div>
+                        <div class="tx">@q.Text</div>
+                        @if (respuestasRapidas.Count > 0)
+                        {
+                            <div class="dp-qr">
+                                @foreach (var r in respuestasRapidas)
+                                {
+                                    <button title="@r.Text" @onclick="() => borrador = r.Text">@r.Text</button>
+                                }
+                            </div>
+                        }
+                        <textarea rows="3" placeholder="Escribí la respuesta…" @bind="borrador" @bind:event="oninput"></textarea>
+                        <div class="dp-q-acc">
+                            <button disabled="@(enviando || string.IsNullOrWhiteSpace(borrador))" @onclick="() => Responder(qq)">@(enviando ? "Enviando…" : "📤 Responder")</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="dp-q cerrada" @key="q.Id" @onclick="() => AbrirPregunta(qq.Id)">
+                        <span class="tx">“@q.Text”</span>
+                        <span class="pr">@Corto(q.ItemTitle ?? q.ItemId) · @Hace(q.DateCreated)</span>
+                    </div>
+                }
+            }
+        </div>
+        <div class="dp-pie"><a @onclick='() => Nav.NavigateTo("/meli/preguntas")'>Abrir la bandeja completa →</a></div>
+    </div>
+}
+
+@code {
+    [Parameter] public DepTareasResumenDto? Tareas { get; set; }
+    [Parameter] public EventCallback OnAbrirTareas { get; set; }
+    [Parameter] public EventCallback OnEscaner { get; set; }
+    [Parameter] public EventCallback OnLimpiar { get; set; }
+    [Parameter] public EventCallback OnRefrescar { get; set; }
+    [Parameter] public bool PuedeLimpiar { get; set; }
+    [Parameter] public bool EsDeposito { get; set; }
+
+    private static readonly (string, string, string)[] FormatosEtiqueta =
+    {
+        ("termica", "Térmica directa", "Imprime directo en la térmica (Zebra o HPRT). Si esta compu no tiene el programa de la impresora, baja el archivo .txt"),
+        ("termica-pdf", "Térmica PDF", "PDF con una etiqueta por página"),
+        ("a4-3", "A4 ×3", "Tres etiquetas por hoja A4 acostada"),
+        ("a4-1", "A4 ×1", "Una etiqueta por hoja A4"),
+    };
+    private const string ClaveFormato = "om-etiqueta-formato";   // el mismo que Órdenes MeLi: cada compu recuerda su impresora
+
+    private sealed class Aviso
+    {
+        public int Id; public string Pastilla = ""; public string Titulo = ""; public string Texto = "";
+        public long? Envio; public string? Marca; public DateTime Hasta;
+    }
+
+    private List<MeliDepoOrden> me1 = new();
+    private List<MeliDepoOrden> ventas = new();
+    private List<MeliQuestionDto> preguntas = new();
+    private List<StockIdealPendienteDto> faltantes = new();
+    private List<MeliQuickReplyDto> respuestasRapidas = new();
+    private readonly List<Aviso> avisos = new();
+    private readonly HashSet<string> nuevas = new();
+    private readonly HashSet<long> recienLlegados = new();
+    private readonly HashSet<long> tildadas = new();
+
+    // Lo que ya se conocía: en la primera carga se anota todo sin avisar, para avisar solo lo que entra después.
+    private readonly HashSet<long> vistosMe1 = new(), vistosVentas = new();
+    private readonly HashSet<int> vistasPreg = new(), vistosFalt = new();
+    private readonly HashSet<string> vistasTareas = new();
+    private bool me1Ok, ventasOk, pregOk, faltOk, tareasOk;
+
+    private string? ventana;
+    private string? marcaAbierta;
+    private int? preguntaAbierta;
+    private string borrador = "";
+    private bool enviando, verDespachados, ocupado, cerrado;
+    private string formato = "a4-3";
+    private int vuelta, proximoAviso;
+    private System.Threading.Timer? timer;
+
+    private string Lugar => Pantalla.Enorme ? "arriba" : "abajo";
+    private string Marcas(string p) => (ventana == p ? "sel " : "") + (nuevas.Contains(p) ? "nueva" : "");
+
+    private List<MeliDepoOrden> Me1ParaDespachar => me1.Where(o => o.EstadoClave == "despachar").ToList();
+    private List<MeliDepoOrden> Me1Despachados => me1.Where(o => o.EstadoClave is "camino" or "entregada").ToList();
+    private List<MeliDepoOrden> Me1SinImprimir => Me1ParaDespachar.Where(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa).ToList();
+    private List<MeliDepoOrden> VentasSinEtiqueta => ventas.Where(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa).ToList();
+    private List<MeliDepoOrden> FilasVentana => ventana == "ven" ? ventas : verDespachados ? Me1Despachados : Me1ParaDespachar;
+
+    private List<StockIdealPendienteDto> FaltantesParaPedir => faltantes.Where(f => !f.Pedido).ToList();
+    private List<IGrouping<string, StockIdealPendienteDto>> PorMarca => FaltantesParaPedir
+        .GroupBy(f => string.IsNullOrWhiteSpace(f.Marca) ? "Sin marca" : f.Marca!.Trim(), StringComparer.OrdinalIgnoreCase)
+        .OrderByDescending(g => g.Count()).ThenBy(g => g.Key).ToList();
+
+    protected override void OnInitialized()
+    {
+        Pantalla.Cambio += AlCambiarPantalla;
+        // Cada 15 s mira qué toca: MeLi y preguntas cada 45 s, faltantes cada 90 s.
+        timer = new System.Threading.Timer(async _ =>
+        {
+            if (cerrado) return;
+            await InvokeAsync(Vuelta);
+        }, null, 0, 15000);
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Tareas is null) return;
+        var claves = Tareas.Lista.Select(ClaveTarea).ToList();
+        if (tareasOk)
+        {
+            var nuevasT = Tareas.Lista.Where(t => !vistasTareas.Contains(ClaveTarea(t))).ToList();
+            if (nuevasT.Count > 0)
+            {
+                nuevas.Add("tar");
+                Avisar("tar", nuevasT.Count == 1 ? "Tarea nueva" : $"{nuevasT.Count} tareas nuevas",
+                    string.Join(" · ", nuevasT.Select(t => t.Titulo)));
+            }
+        }
+        vistasTareas.Clear();
+        foreach (var c in claves) vistasTareas.Add(c);
+        tareasOk = true;
+    }
+    private static string ClaveTarea(DepTareasResumenItemDto t) => $"{t.Titulo}|{t.Empleado}|{t.Para}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var f = await JS.InvokeAsync<string?>("localStorage.getItem", ClaveFormato);
+            if (FormatosEtiqueta.Any(x => x.Item1 == f)) { formato = f!; StateHasChanged(); }
+        }
+        catch { }
+    }
+
+    private void AlCambiarPantalla() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task Vuelta()
+    {
+        if (ocupado) return;
+        ocupado = true;
+        try
+        {
+            avisos.RemoveAll(a => a.Hasta < DateTime.UtcNow);
+            if (vuelta % 3 == 0)
+            {
+                await CargarMe1();
+                await CargarVentas();
+                await CargarPreguntas();
+            }
+            if (vuelta % 6 == 0) await CargarFaltantes();
+            vuelta++;
+            if (!cerrado) StateHasChanged();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task CargarMe1()
+    {
+        try
+        {
+            var r = await Api.GetMeliDepoOrdenesAsync(30, null, "me1", null, null);
+            if (r is null) return;
+            me1 = r.Ordenes.Where(o => o.EstadoClave != "cancelada").ToList();
+            AvisarEnvios("me1", Me1ParaDespachar, vistosMe1, ref me1Ok, "Entró un ME1", "ME1 nuevos");
+        }
+        catch { }
+    }
+
+    private async Task CargarVentas()
+    {
+        try
+        {
+            var r = await Api.GetMeliDepoOrdenesAsync(7, null, null, "despachar", null);
+            if (r is null) return;
+            // ME1 tiene su propia pastilla; Full lo despacha MeLi y no lleva etiqueta nuestra.
+            ventas = r.Ordenes.Where(o => o.TipoClave != "full" && !o.Tipo.Contains("ME1")).ToList();
+            AvisarEnvios("ven", ventas, vistosVentas, ref ventasOk, "Venta nueva de MercadoLibre", "ventas nuevas de MercadoLibre");
+        }
+        catch { }
+    }
+
+    private void AvisarEnvios(string pastilla, List<MeliDepoOrden> lista, HashSet<long> vistos, ref bool yaCargo, string tituloUno, string tituloVarios)
+    {
+        var entraron = lista.Where(o => !vistos.Contains(o.Numero)).ToList();
+        if (yaCargo && entraron.Count > 0)
+        {
+            nuevas.Add(pastilla);
+            foreach (var o in entraron) recienLlegados.Add(o.Numero);
+            var u = entraron[0];
+            if (entraron.Count == 1)
+                Avisar(pastilla, tituloUno + (pastilla == "ven" ? $" · {u.Tipo}" : ""), $"{Producto(u)} · {Quien(u)}", u.NumeroEnvio);
+            else
+                Avisar(pastilla, $"Entraron {entraron.Count} {tituloVarios}", string.Join(" · ", entraron.Take(3).Select(Producto)));
+        }
+        foreach (var o in lista) vistos.Add(o.Numero);
+        yaCargo = true;
+    }
+
+    private async Task CargarPreguntas()
+    {
+        try
+        {
+            var r = await Api.GetMeliQuestionsAsync("UNANSWERED");
+            if (r is null) return;
+            preguntas = r.OrderByDescending(q => q.DateCreated).ToList();
+            if (preguntaAbierta is null || preguntas.All(q => q.Id != preguntaAbierta))
+                preguntaAbierta = ventana == "pre" ? preguntas.FirstOrDefault()?.Id : null;
+            var entraron = preguntas.Where(q => !vistasPreg.Contains(q.Id)).ToList();
+            if (pregOk && entraron.Count > 0)
+            {
+                nuevas.Add("pre");
+                Avisar("pre", entraron.Count == 1 ? "Pregunta nueva de MercadoLibre" : $"{entraron.Count} preguntas nuevas",
+                    entraron.Count == 1 ? $"“{entraron[0].Text}” · {entraron[0].ItemTitle}" : string.Join(" · ", entraron.Take(3).Select(q => $"“{Corto(q.Text)}”")));
+            }
+            foreach (var q in preguntas) vistasPreg.Add(q.Id);
+            pregOk = true;
+        }
+        catch { }
+    }
+
+    private async Task CargarFaltantes()
+    {
+        try
+        {
+            var r = await Api.GetStockIdealPendientesAsync();
+            if (r is null) return;
+            faltantes = r.Filas;
+            if (faltOk)
+            {
+                // Un cartelito por marca, para que cuando una venta vacía varios productos no lluevan avisos.
+                var porMarca = FaltantesParaPedir
+                    .Where(f => !f.YaRepuesto && !vistosFalt.Contains(f.Id))
+                    .GroupBy(f => string.IsNullOrWhiteSpace(f.Marca) ? "Sin marca" : f.Marca!.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (porMarca.Count > 0) nuevas.Add("fal");
+                foreach (var g in porMarca.Take(3))
+                {
+                    var texto = string.Join(" · ", g.Take(3).Select(f => $"{Corto(f.Nombre)} (hay {f.StockAhora:0.##})"))
+                                + (g.Count() > 3 ? $" · y {g.Count() - 3} más" : "");
+                    Avisar("fal", $"Hay que pedir · {g.Key}", texto, null, g.Key);
+                }
+            }
+            foreach (var f in faltantes) vistosFalt.Add(f.Id);
+            faltOk = true;
+        }
+        catch { }
+    }
+
+    private void Avisar(string pastilla, string titulo, string texto, long? envio = null, string? marca = null)
+    {
+        avisos.Insert(0, new Aviso
+        {
+            Id = ++proximoAviso, Pastilla = pastilla, Titulo = titulo, Texto = texto, Envio = envio, Marca = marca,
+            Hasta = DateTime.UtcNow.AddMinutes(2)
+        });
+    }
+
+    private async Task Tocar(string p)
+    {
+        if (ventana == p) { Cerrar(); return; }
+        nuevas.Remove(p);
+        avisos.RemoveAll(a => a.Pastilla == p);
+        if (p == "tar")
+        {
+            ventana = null;
+            await OnAbrirTareas.InvokeAsync();
+            return;
+        }
+        ventana = p;
+        tildadas.Clear();
+        verDespachados = false;
+        if (p is "me1" or "ven") TildarSinImprimir();
+        if (p == "pre")
+        {
+            preguntaAbierta = preguntas.FirstOrDefault()?.Id;
+            borrador = "";
+            try { await Api.MarkMeliQuestionsSeenAsync(); } catch { }
+            try { respuestasRapidas = await Api.GetMeliQuickRepliesAsync() ?? new(); } catch { }
+        }
+    }
+
+    private void Cerrar()
+    {
+        if (ventana is "me1" or "ven") recienLlegados.Clear();
+        ventana = null;
+    }
+
+    private async Task VerAviso(Aviso a)
+    {
+        avisos.Remove(a);
+        if (ventana == a.Pastilla) ventana = null;
+        await Tocar(a.Pastilla);
+        if (a.Marca is not null) marcaAbierta = a.Marca;
+    }
+
+    private void AbrirPregunta(int id) { preguntaAbierta = id; borrador = ""; }
+
+    private async Task Responder(MeliQuestionDto q)
+    {
+        if (string.IsNullOrWhiteSpace(borrador)) return;
+        enviando = true;
+        try
+        {
+            if (await Api.AnswerMeliQuestionAsync(q.Id, borrador))
+            {
+                ToastService.Success("Respuesta enviada");
+                preguntas.Remove(q);
+                borrador = "";
+                preguntaAbierta = preguntas.FirstOrDefault()?.Id;
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo enviar: " + ex.Message); }
+        finally { enviando = false; }
+    }
+
+    private void CambiarVista(bool despachados)
+    {
+        verDespachados = despachados;
+        tildadas.Clear();
+        if (!despachados) TildarSinImprimir();
+    }
+
+    /// <summary>Al abrir quedan tildadas las que faltan imprimir: un solo toque y salen todas.</summary>
+    private void TildarSinImprimir()
+    {
+        tildadas.Clear();
+        foreach (var o in FilasVentana.Where(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa))
+            tildadas.Add(o.NumeroEnvio!.Value);
+    }
+
+    private void Tildar(long envio) { if (!tildadas.Add(envio)) tildadas.Remove(envio); }
+
+    private async Task ElegirFormato(string f)
+    {
+        formato = f;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveFormato, f); } catch { }
+    }
+
+    private async Task ImprimirTildadas()
+    {
+        if (tildadas.Count == 0) return;
+        ToastService.Success($"Generando {tildadas.Count} etiqueta(s)…");
+        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(tildadas.OrderBy(x => x), formato));
+        tildadas.Clear();
+        _ = RefrescarLuego();
+    }
+
+    private async Task ImprimirTodasMe1()
+    {
+        var ids = Me1SinImprimir.Select(o => o.NumeroEnvio!.Value).ToList();
+        if (ids.Count == 0) return;
+        nuevas.Remove("me1");
+        ToastService.Success($"Generando {ids.Count} etiqueta(s) ME1…");
+        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(ids, formato));
+        _ = RefrescarLuego();
+    }
+
+    private async Task ImprimirUna(long envio)
+    {
+        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { envio }, formato));
+        _ = RefrescarLuego();
+    }
+
+    private async Task ImprimirDesdeAviso(Aviso a)
+    {
+        avisos.Remove(a);
+        nuevas.Remove(a.Pastilla);
+        if (a.Envio.HasValue) await ImprimirUna(a.Envio.Value);
+    }
+
+    private async Task AbrirEtiqueta(string url)
+    {
+        if (formato == "termica")
+        {
+            string r;
+            try { r = await JS.InvokeAsync<string>("zebraImprimir", url); } catch { r = "sin-zebra"; }
+            if (r == "ok") { ToastService.Success("Etiqueta enviada a la impresora"); return; }
+            if (r.StartsWith("error:")) { ToastService.Error(r[6..]); return; }
+            ToastService.Warning("No encontré el programa de la impresora (Zebra Browser Print o QZ Tray) en esta compu: te bajo el archivo .txt");
+            await JS.InvokeVoidAsync("zebraBajar", url);
+            return;
+        }
+        await JS.InvokeVoidAsync("window.open", url, "_blank");
+    }
+
+    /// <summary>El sistema anota "impresa" al generar la etiqueta: se vuelve a mirar para actualizar los números.</summary>
+    private async Task RefrescarLuego()
+    {
+        await Task.Delay(3000);
+        if (cerrado) return;
+        await InvokeAsync(async () => { await CargarMe1(); await CargarVentas(); StateHasChanged(); });
+    }
+
+    private static string Producto(MeliDepoOrden o)
+    {
+        var p = o.Productos.FirstOrDefault();
+        if (p is null) return "Venta " + o.NumeroVenta;
+        return $"×{p.Cantidad} {p.Titulo}" + (o.Productos.Count > 1 ? $" y {o.Productos.Count - 1} más" : "");
+    }
+    private static string Quien(MeliDepoOrden o) => string.IsNullOrWhiteSpace(o.Destinatario) ? o.Comprador : o.Destinatario!;
+    private static string Corto(string s) => s.Length <= 34 ? s : s[..33] + "…";
+
+    private static string Dia(DateTime f)
+    {
+        // la fecha de la venta YA viene en hora argentina: no convertir
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        if (f.Date == hoy) return "hoy";
+        if (f.Date == hoy.AddDays(-1)) return "ayer";
+        return f.ToString("dd/MM");
+    }
+
+    private static string Domicilio(MeliDepoOrden o)
+    {
+        var partes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(o.Direccion)) partes.Add(o.Direccion!);
+        var loc = (o.Localidad ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(o.Cp)) loc = $"{loc} ({o.Cp})".Trim();
+        if (loc.Length > 0) partes.Add(loc);
+        return partes.Count == 0 ? "dirección: se completa al imprimir" : string.Join(" · ", partes);
+    }
+
+    private static string Hace(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc;
+        if (d.TotalMinutes < 1) return "ahora";
+        if (d.TotalMinutes < 60) return $"hace {(int)d.TotalMinutes} min";
+        if (d.TotalHours < 24) return $"hace {(int)d.TotalHours} h";
+        if (d.TotalDays < 7) return $"hace {(int)d.TotalDays} d";
+        return utc.ToArTime().ToString("dd/MM/yyyy");
+    }
+
+    public void Dispose()
+    {
+        cerrado = true;
+        timer?.Dispose();
+        Pantalla.Cambio -= AlCambiarPantalla;
+    }
+}

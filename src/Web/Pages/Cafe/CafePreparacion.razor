@@ -5,6 +5,8 @@
 @inject ToastService ToastService
 @inject OperatorService Operator
 @inject NavigationManager Navigation
+@inject PantallaDepositoState Pantalla
+@inject Web.Services.AuthService AuthSvc
 
 <style>
     /* Tablero de Preparacion: cards GRANDES con cantidades resaltadas. Estilo
@@ -665,14 +667,31 @@
     .pp-b.cel   { background: linear-gradient(135deg,#a5f3fc,#ecfeff); }
     .pp-b.verde { background: linear-gradient(135deg,#bbf7d0,#ecfdf5); }
     .pp-b.rojo  { background: linear-gradient(135deg,#fecaca,#fef2f2); color: #991b1b; }
+    /* 2026-11-09: cabecera finita + pedidos a la izquierda y pastillas a la derecha. */
+    .dp-cab { display:flex; align-items:center; gap:0.7rem; background:#fff; min-height:54px; padding:0.3rem 0.75rem; border-bottom:1px solid #e5e7eb; margin:-0.8rem -0.8rem 0.75rem; }
+    .dp-cab h2 { margin:0; font-size:1.2rem; display:flex; align-items:center; gap:0.5rem; white-space:nowrap; }
+    .dp-lugar-reloj { width:262px; flex-shrink:0; }
+    .dp-busca { flex:1; min-width:120px; display:flex; align-items:center; gap:0.45rem; }
+    .dp-busca input { flex:1; min-width:0; padding:0.42rem 0.65rem; border:1px solid #d1d5db; border-radius:6px; font-size:0.87rem; }
+    .dp-cuenta { font-size:0.88rem; color:#4b5563; white-space:nowrap; }
+    .dp-cuenta b { font-size:1.12rem; color:#111827; }
+    .dp-pc-btn { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.38rem 0.7rem; font:inherit; font-size:0.82rem; font-weight:700; white-space:nowrap; cursor:pointer; }
+    .dp-pc-btn:hover { background:#f3f4f6; }
+    .dp-wrap { display:grid; grid-template-columns:minmax(0,1fr) 352px; gap:0.75rem; align-items:start; }
+    .dp-main { min-width:0; }
+    @@media (max-width: 899px) {
+        .dp-wrap { grid-template-columns:minmax(0,1fr); }
+        .dp-cab { flex-wrap:wrap; }
+        .dp-pc-btn, .dp-lugar-reloj { display:none; }
+    }
     .pp-badge { background: #dc2626; color: #fff; border-radius: 999px; font-size: 0.7rem; padding: 0 0.45rem; font-weight: 800; line-height: 1.5; }
 </style>
 
 <div class="content-container" style="padding: 0.8rem;">
-    <div class="prep-header-toolbar">
-        <h2 style="margin: 0; display:flex; align-items:center; gap:0.5rem;">
-            @* Logo oficial de Google Drive para que el armador asocie visualmente esta pantalla
-               con la carpeta de Drive que ya usaba antes ("IMPRIMIR PEDIDOS DE OSMAR"). *@
+    @* 2026-11-09: cabecera finita (maqueta aprobada). Los botones y avisos que había acá pasaron a las
+       pastillas de la derecha. En pantalla enorme, el reloj y la colecta del layout caen en el hueco. *@
+    <div class="dp-cab">
+        <h2>
             <svg width="22" height="20" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
                 <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
                 <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/>
@@ -681,87 +700,41 @@
                 <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
                 <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
             </svg>
-            IMPRIMIR PEDIDOS DE OSMAR
+            PEDIDOS PARA ARMAR
         </h2>
-        @* 2026-11-07: botones tipo píldora con degradé pastel (variante C elegida por el dueño con maqueta):
-           al pasar el mouse se levantan y les cruza un brillo. Estilos .pp-b más arriba. *@
-        <button class="pp-b azul" @onclick="Cargar" title="Refrescar manualmente">🔄 Refrescar</button>
-        <a class="pp-b amar" href="https://drive.google.com/drive/folders/193CHGuunMIQX9LvpsQHyLK3m3IiIXBBH" target="_blank"
-           title="Abrir la carpeta IMPRIMIR PEDIDOS DE OSMAR en Google Drive (otra pestaña)">
-            📁 Abrir carpeta en Drive
-        </a>
-        @* 2026-10-02: Órdenes MeLi, Escáner y Fotos subieron acá (antes ocupaban una fila entera más abajo).
-           Órdenes MeLi: el escaneo de etiqueta MeLi en su propia página (2026-09-21).
-           Escáner: paquetes con la cámara del celu del depósito, /escaner (2026-09-23).
-           Fotos: fotos de productos con fondo verde/azul, QR para abrirla en el celu. *@
-        <a class="pp-b ros" href="/deposito/ordenes-meli">🏷️ Órdenes MeLi</a>
-        @* 2026-11-07: envíos ME1 (los despachamos nosotros) para imprimir sin salir de acá. *@
-        <Me1EnviosBoton Clase="pp-b dur" />
-        <button class="pp-b lila" @onclick="() => mostrarQrEscaner = true">📷 Escáner en el celu</button>
-        <FotosQrBoton Clase="pp-b cel" Texto="🖼️ Fotos" AbrirHaciaDerecha="true" />
-        @* 03/11/2026: tareas que asigna el dueño (contar stock, dónde está, etc). Se cargan acá o en el celu. *@
-        <button class="pp-b verde" @onclick="() => verTareas = true">
-            📋 Tareas
-            @if (tareasResumen?.Pendientes > 0)
-            {
-                <span class="pp-badge">@tareasResumen.Pendientes</span>
-            }
-        </button>
-        @* 2026-08-06: se sacó el botón verde "WhatsApp Gabriel" (abría la pantalla grande vieja).
-           Ahora WhatsApp se usa desde el globito flotante que está en todas las pantallas. *@
-        @if (ParaArmar.Count > 0)
+        @if (Pantalla.Enorme)
         {
-            <button class="pp-b rojo" @onclick="LimpiarTablero"
-                    title="Saca todos los pedidos actuales del tablero. Las ventas y los PDFs en Drive quedan intactos. Los nuevos pedidos que subas a Drive vuelven a aparecer.">
-                🧹 Limpiar tablero
-            </button>
+            <span class="dp-lugar-reloj"></span>
         }
-        <span class="prep-refresh-indicator">
-            Auto-refresh cada 10 s · última: @ultimaActualizacion.ToString("HH:mm:ss")
-        </span>
+        <div class="dp-busca">
+            <span>🔍</span>
+            <input type="text" @bind="filtroBusqueda" @bind:event="oninput" @bind:after="AlBuscar"
+                   placeholder="Buscar por cliente, número, dirección, localidad..." />
+            @if (!string.IsNullOrEmpty(filtroBusqueda))
+            {
+                <button class="btn btn-secondary" style="padding:0.3rem 0.6rem; font-size:0.8rem;"
+                        @onclick="LimpiarBusqueda" title="Limpiar búsqueda">✕</button>
+            }
+        </div>
+        <span class="dp-cuenta">Para armar <b>@ParaArmar.Count</b> &nbsp;·&nbsp; Ya armados hoy <b>@armadosHoy</b></span>
+        @if (Pantalla.Enorme)
+        {
+            <button class="dp-pc-btn" @onclick="EsconderChrome" title="Esconder también las pestañas y favoritos de Chrome">⛶</button>
+            <button class="dp-pc-btn" @onclick="SalirDeEnorme" title="Volver a ver las barras del sistema">✕ Salir de pantalla completa</button>
+        }
+        else
+        {
+            <button class="dp-pc-btn" @onclick="EntrarEnEnorme" title="Pedidos en pantalla enorme">⛶ Pantalla completa</button>
+        }
     </div>
 
-    @* 03/11/2026: aviso de tareas pendientes (lo primero que ven). Si no hay, no aparece. *@
-    @if (tareasResumen?.Pendientes > 0)
-    {
-        <div @onclick="() => verTareas = true" title="Abrir las tareas"
-             style="display:flex; justify-content:space-between; gap:0.8rem; align-items:center; background:#fff; border:1px solid #e5e7eb; border-left:4px solid #111827; border-radius:6px; padding:0.55rem 0.8rem; margin:0.6rem 0 0.4rem; font-size:0.9rem; cursor:pointer;">
-            <span>📋 <strong>@(tareasResumen.Pendientes == 1 ? "Hay 1 tarea pendiente" : $"Hay {tareasResumen.Pendientes} tareas pendientes")</strong>
-                · @string.Join(" · ", tareasResumen.Lista.Select(t => t.Titulo + (t.Empleado is null ? "" : $" ({t.Empleado}{(t.Para == "HOY" ? ", para hoy" : "")})")))</span>
-            <strong style="white-space:nowrap;">Abrir tareas →</strong>
-        </div>
-    }
     @if (verTareas)
     {
         <Web.Shared.Tareas.TareasDepositoPc OnCerrar="CerrarTareas" />
     }
 
-    @* 2026-09-02: aviso de lo que hay que pedirle al proveedor. Esta pantalla es la que el
-       depósito mira todo el día, así que el faltante les cae a la vista sin ir a buscarlo.
-       Si no falta nada, no aparece nada: no molesta. *@
-    @if (faltantesParaPedir > 0)
-    {
-        <div class="prep-faltantes" @onclick='() => Navigation.NavigateTo("/stock/ideal")'
-             title="Ver la lista y bajar el Excel del pedido">
-            📦 <strong>@faltantesParaPedir</strong>
-            @(faltantesParaPedir == 1 ? "producto quedó" : "productos quedaron") por debajo del stock que queremos tener
-            <span class="prep-faltantes-link">ver qué hay que pedir →</span>
-        </div>
-    }
-
-    @* 2026-06-08: buscador en vivo que filtra cards por número de factura/comprobante o cliente.
-       Se aplica a "Para armar" y "Ya armados" simultaneamente. *@
-    <div style="display:flex; gap:0.5rem; align-items:center; margin:0.5rem 0 1rem; padding:0.4rem 0.7rem; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
-        <span style="font-size:1rem;">🔍</span>
-        <input type="text" @bind="filtroBusqueda" @bind:event="oninput" @bind:after="AlBuscar"
-               placeholder="Buscar por cliente, número de comprobante (CAFE-2026-XXXX), dirección, localidad..."
-               style="flex:1; padding:0.5rem 0.7rem; border:1px solid #d1d5db; border-radius:6px; font-size:0.9rem;" />
-        @if (!string.IsNullOrEmpty(filtroBusqueda))
-        {
-            <button class="btn btn-secondary" style="padding:0.35rem 0.7rem; font-size:0.8rem;"
-                    @onclick="LimpiarBusqueda" title="Limpiar búsqueda">✕</button>
-        }
-    </div>
+    <div class="dp-wrap">
+    <div class="dp-main">
 
     @* 14/10/2026: con el buscador el depósito puede traer al tablero una venta que no está
        (sacada sin querer, vieja o nunca mandada), por cliente o por número, eligiendo quién. *@
@@ -797,24 +770,6 @@
             }
         </div>
     }
-
-    @* Cartelito SIEMPRE visible: cuál es el celu del depósito habilitado (2026-08-02) *@
-    @if (pickingDispositivo is not null && pickingDispositivo.Registrado)
-    {
-        <div class="prep-celu-chip on">
-            <span>📱 Celu del depósito:</span>
-            <span class="nombre">@(pickingDispositivo.Nombre ?? "habilitado")</span>
-            <span style="opacity:0.8;">· habilitado @HaceCuanto(pickingDispositivo.CreatedAt)</span>
-            <button class="cambiar" @onclick="OlvidarDispositivo" title="Liberar este celu para habilitar otro">Cambiar celu</button>
-        </div>
-    }
-    else
-    {
-        <div class="prep-celu-chip off">
-            <span>📵 Ningún celular del depósito habilitado todavía. El primero que abra una lista y toque "habilitar" queda registrado.</span>
-        </div>
-    }
-
 
     @if (mostrarQrEscaner)
     {
@@ -1143,6 +1098,13 @@
             </div>
         }
     }
+    </div>
+    <DepoPastillas Tareas="tareasResumen" EsDeposito="esDeposito" PuedeLimpiar="ParaArmar.Count > 0"
+                   OnAbrirTareas="() => verTareas = true"
+                   OnEscaner="() => mostrarQrEscaner = true"
+                   OnLimpiar="LimpiarTablero"
+                   OnRefrescar="Cargar" />
+    </div>
 </div>
 
 @* 14/10/2026: la ✕ de la tarjeta pregunta antes de sacar el pedido y quién lo saca. *@
@@ -1287,10 +1249,51 @@
     }
 
     /// <summary>2026-09-02 — Productos por debajo del stock ideal/piso. 0 = no se muestra el aviso.</summary>
-    private int faltantesParaPedir;
+    // 2026-11-09: pantalla enorme. Cada compu recuerda cómo la dejaron; depósito arranca en enorme.
+    private const string ClaveEnorme = "depo-pantalla-enorme";
+    private bool esDeposito;
+    private int armadosHoy, vueltaArmados;
+
+    private async Task PrepararPantalla()
+    {
+        Pantalla.Entrar();
+        try
+        {
+            var perms = (await AuthSvc.GetUserAsync())?.Permissions ?? new();
+            esDeposito = perms.Contains("deposito") && !perms.Contains("cafe") && !perms.Contains("oficina");
+        }
+        catch { }
+        string? guardado = null;
+        try { guardado = await JS.InvokeAsync<string?>("localStorage.getItem", ClaveEnorme); } catch { }
+        Pantalla.PonerEnorme(guardado is null ? esDeposito : guardado == "1");
+    }
+
+    private async Task GuardarEnorme(bool enorme)
+    {
+        Pantalla.PonerEnorme(enorme);
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveEnorme, enorme ? "1" : "0"); } catch { }
+    }
+
+    private async Task EntrarEnEnorme()
+    {
+        await GuardarEnorme(true);
+        await EsconderChrome();
+    }
+
+    private async Task SalirDeEnorme()
+    {
+        await GuardarEnorme(false);
+        try { await JS.InvokeVoidAsync("depoPantalla.salir"); } catch { }
+    }
+
+    private async Task EsconderChrome()
+    {
+        try { await JS.InvokeVoidAsync("depoPantalla.entrar"); } catch { }
+    }
 
     protected override async Task OnInitializedAsync()
     {
+        await PrepararPantalla();
         await Operator.LoadAsync();
         await Cargar();
         // 14/10/2026: personas para "¿quién?" y los sacados del tablero.
@@ -1298,8 +1301,6 @@
         await CargarSacados();
         // Camino al picking: estado del celu del deposito (no bloquea si falla)
         try { pickingDispositivo = await Api.GetPickingDispositivoAsync(); } catch { }
-        // 2026-09-02: cuántos productos hay para pedir, para el aviso de arriba.
-        try { faltantesParaPedir = await Api.GetStockIdealPendientesContadorAsync(); } catch { }
         // Auto-refresh cada 10 segundos
         refreshTimer = new System.Threading.Timer(async _ => await InvokeAsync(Cargar), null, 10000, 10000);
     }
@@ -1322,6 +1323,11 @@
             // Refresca el estado del celu del depósito (por si se habilitó desde el celular)
             try { pickingDispositivo = await Api.GetPickingDispositivoAsync(); } catch { }
             try { tareasResumen = await Api.GetDepTareasResumenAsync(); } catch { }
+            // 2026-11-09: el número de "Ya armados hoy" de la cabecera, una vez por minuto.
+            if (vueltaArmados++ % 6 == 0)
+            {
+                try { armadosHoy = (await Api.GetCafePreparacionArmadosAsync("hoy"))?.Count ?? armadosHoy; } catch { }
+            }
             // 2026-11-04: vencimientos para "Sacar el que vence…" en cada renglón
             try { vencsPrep = (await Api.GetVencimientosResumenTodosAsync() ?? new()).ToDictionary(x => x.ProductoId); } catch { }
             ultimaActualizacion = DateTime.Now;
@@ -1673,5 +1679,7 @@
     public void Dispose()
     {
         refreshTimer?.Dispose();
+        Pantalla.Salir();
+        _ = JS.InvokeVoidAsync("depoPantalla.salir");
     }
 }

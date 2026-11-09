@@ -19,6 +19,7 @@ builder.Services.AddAuthorizationCore();
 // App services
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<ToastService>();
+builder.Services.AddScoped<PantallaDepositoState>();
 // 2026-08-06: presencia en vivo de la bandeja de WhatsApp (SignalR)
 builder.Services.AddScoped<Web.Services.PresenceService>();
 // 2026-08-15: tema (claro/oscuro) por línea de WhatsApp + letra elegida para la pantalla

@@ -1245,6 +1245,12 @@
             } catch (e) { /* noop */ }
         };
 
+        // 2026-11-09: pantalla de armado: esconder también las pestañas y favoritos de Chrome.
+        window.depoPantalla = {
+            entrar: function () { try { var p = document.documentElement.requestFullscreen(); if (p) p.catch(function () { }); } catch (e) { } },
+            salir: function () { try { if (document.fullscreenElement) { var p = document.exitFullscreen(); if (p) p.catch(function () { }); } } catch (e) { } }
+        };
+
         // 2026-06-04: helpers para el modal auto-show del cartel de preguntas MeLi.
         // Snooze por 5 minutos en localStorage. Si dentro de la ventana, no mostrar.
         window.meliQ_isSnoozed = function () {
