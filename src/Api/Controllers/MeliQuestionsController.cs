@@ -299,7 +299,7 @@ public class MeliQuestionsController : ControllerBase
         new() { Category = "Stock",  Text = "¡Hola! Sí, tenemos stock disponible para entrega inmediata 😊" },
         new() { Category = "Envío",  Text = "¡Gracias por tu consulta! Hacemos envíos a todo el país por Mercado Envíos." },
         new() { Category = "Precio", Text = "¡Hola! El precio publicado es el final, con IVA incluido." },
-        new() { Category = "Retiro", Text = "Sí, se puede retirar por nuestro depósito. Coordinamos por acá 😊" }
+        // 2026-11-10: sacada la de "se puede retirar por nuestro depósito": no hay retiro en MeLi.
     };
 
     /// <summary>Parsea la lista guardada. Tolera el formato viejo (array de strings sin categoría).</summary>

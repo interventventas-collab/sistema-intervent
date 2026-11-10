@@ -86,6 +86,10 @@
     .dp-q textarea { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:0.5rem 0.7rem; font:inherit; font-size:0.9rem; resize:vertical; }
     .dp-qr { display:flex; flex-wrap:wrap; gap:0.3rem; margin-bottom:0.45rem; }
     .dp-qr button { border:1px solid #e5e7eb; background:#f9fafb; border-radius:999px; padding:0.15rem 0.6rem; font:inherit; font-size:0.74rem; cursor:pointer; max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dp-qr button.dp-qr-acc { background:#fff; border-color:#d1d5db; font-weight:600; }
+    .dp-qr button.dp-qr-acc.on { background:#111827; border-color:#111827; color:#fff; }
+    .dp-cotiz { border:1px solid #e5e7eb; border-radius:10px; padding:0.6rem; margin-bottom:0.5rem; max-height:52vh; overflow-y:auto; }
+    .dp-cotiz-aviso { font-size:0.78rem; color:#92400e; margin-bottom:0.4rem; }
     .dp-q-acc { display:flex; justify-content:flex-end; margin-top:0.4rem; }
     .dp-q-acc button { background:#111827; color:#fff; border:none; border-radius:7px; padding:0.35rem 0.9rem; font:inherit; font-size:0.84rem; font-weight:700; cursor:pointer; }
     .dp-q-acc button:disabled { background:#d1d5db; cursor:default; }
@@ -315,13 +319,20 @@
                     <div class="dp-q" @key="q.Id">
                         <div class="pr">@(q.ItemTitle ?? q.ItemId) · @q.FromNickname · @Hace(q.DateCreated)</div>
                         <div class="tx">@q.Text</div>
-                        @if (respuestasRapidas.Count > 0)
+                        <div class="dp-qr">
+                            @foreach (var r in respuestasRapidas)
+                            {
+                                <button title="@r.Text" @onclick="() => borrador = r.Text">@r.Text</button>
+                            }
+                            @* 2026-11-10: editar las rápidas y el cotizador de alquileres, como en la bandeja completa. *@
+                            <button class="dp-qr-acc" @onclick="() => editandoRapidas = true">✏️ Editar respuestas</button>
+                            <button class="dp-qr-acc @(cotizando ? "on" : "")" @onclick="() => cotizando = !cotizando">🪑 Cotizar alquiler</button>
+                        </div>
+                        @if (cotizando)
                         {
-                            <div class="dp-qr">
-                                @foreach (var r in respuestasRapidas)
-                                {
-                                    <button title="@r.Text" @onclick="() => borrador = r.Text">@r.Text</button>
-                                }
+                            <div class="dp-cotiz">
+                                <div class="dp-cotiz-aviso">⚠️ La respuesta de MercadoLibre es <b>pública</b>: el presupuesto lo ve cualquiera que entre a la publicación.</div>
+                                <CotizadorAlquiler ParaMeli="true" TextoBoton="📝 Poner en la respuesta" OnListo="PonerCotizacion" />
                             </div>
                         }
                         <textarea rows="3" placeholder="Escribí la respuesta…" @bind="borrador" @bind:event="oninput"></textarea>
@@ -341,6 +352,7 @@
         </div>
         <div class="dp-pie"><a @onclick='() => Nav.NavigateTo("/meli/preguntas")'>Abrir la bandeja completa →</a></div>
     </div>
+    <RespuestasRapidasEditor @bind-Abierto="editandoRapidas" Respuestas="respuestasRapidas" OnGuardadas="r => respuestasRapidas = r" />
 }
 
 @code {
@@ -372,6 +384,16 @@
     private List<MeliQuestionDto> preguntas = new();
     private List<StockIdealPendienteDto> faltantes = new();
     private List<MeliQuickReplyDto> respuestasRapidas = new();
+    private bool editandoRapidas, cotizando;
+
+    /// <summary>El presupuesto del cotizador cae en la respuesta (se revisa y se manda con Responder).</summary>
+    private void PonerCotizacion(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+        borrador = string.IsNullOrWhiteSpace(borrador) ? texto : borrador.TrimEnd() + "\n\n" + texto;
+        cotizando = false;
+        ToastService.Success("Presupuesto puesto en la respuesta: revisalo y tocá Responder");
+    }
     private readonly List<Aviso> avisos = new();
     private readonly HashSet<string> nuevas = new();
     private readonly HashSet<long> recienLlegados = new();
