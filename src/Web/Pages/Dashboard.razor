@@ -11,6 +11,10 @@
 @inject MenuNuevoService MenuSvc
 @inject IJSRuntime JS
 
+@* 2026-11-10: para admin no va "Bienvenido / Panel de control" ni el botón Fotos (ocupaban lugar;
+   el usuario se ve arriba, abajo de INTER VENT). Los demás lo siguen viendo. *@
+@if (!DashNuevo)
+{
 <div class="view-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.8rem;">
     <div>
         <h2>Bienvenido, @username</h2>
@@ -19,6 +23,7 @@
     @* 2026-10-02: fotos con fondo verde/azul — QR para abrirla en el celu (lo usan también los de depósito). *@
     <FotosQrBoton />
 </div>
+}
 
 @* ═══ Fila hero: Mapa de Reparto (mitad izquierda) + WhatsApp (mitad derecha) ═══
    2026-07-29 pedido Osmar: la card del mapa deja de ocupar todo el ancho; comparte la
