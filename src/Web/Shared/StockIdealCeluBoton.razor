@@ -8,12 +8,12 @@
    de /ideal-celu, donde el depósito carga stock ideal y piso desde el celu con esa clave. *@
 
 <span class="sic-wrap">
-    <button class="@Clase" title="Cargar stock ideal y piso desde el celu" @onclick="() => abierto = !abierto">📱 Ideal en celu · Clave <b>@(clave ?? "…")</b></button>
+    <button class="@Clase" title="Abrir el depósito en el celu (stock, fotos, vencimientos, preparación…)" @onclick="() => abierto = !abierto">📱 Depósito en celu · Clave <b>@(clave ?? "…")</b></button>
     @if (abierto)
     {
         <div class="sic-back" @onclick="() => abierto = false"></div>
         <div class="sic-box">
-            <div class="sic-tit">📱 Stock ideal y piso en el celu</div>
+            <div class="sic-tit">📱 Depósito en el celu</div>
             <img src="@($"/api/qr?url={Uri.EscapeDataString(Link)}")" alt="QR para abrir en el celu" />
             <div class="sic-txt">Escanealo con la cámara del celu y escribí la clave de hoy:</div>
             <div class="sic-clave">@(clave ?? "…")</div>
@@ -41,7 +41,8 @@
     private string? clave;
     private System.Threading.Timer? refresco;
 
-    private string Link => Navigation.BaseUri.TrimEnd('/') + "/ideal-celu";
+    // 2026-11-10: el QR lleva al inicio único (/depo); el viejo /ideal-celu sigue andando.
+    private string Link => Navigation.BaseUri.TrimEnd('/') + "/depo";
 
     protected override async Task OnInitializedAsync()
     {

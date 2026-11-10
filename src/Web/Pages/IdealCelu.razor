@@ -38,10 +38,29 @@
     .ic-codigo { display:flex; align-items:center; gap:0.5rem; font-size:0.88rem; color:#374151; margin:-0.2rem 0 0.6rem; }
     .ic-codigo button { margin-left:auto; background:none; border:none; color:#6b7280; font:inherit; text-decoration:underline; }
     .ic-mas { display:block; width:100%; min-height:46px; background:#fff; border:1px solid #d1d5db; border-radius:8px; font:inherit; font-weight:600; color:#111827; }
+    .ic-inicio { display:inline-block; font-size:0.88rem; color:#374151; text-decoration:none; margin-bottom:0.2rem; }
+    .ic-top { display:flex; gap:0.65rem; }
+    .ic-foto { width:72px; height:72px; flex-shrink:0; border-radius:8px; background:#e5e7eb; object-fit:cover; display:flex; align-items:center; justify-content:center; font-size:0.7rem; color:#6b7280; text-align:center; }
+    .ic-datos { min-width:0; flex:1; }
+    .ic-d { font-size:0.8rem; color:#4b5563; margin-top:2px; line-height:1.4; overflow-wrap:anywhere; }
+    .ic-d b { color:#111827; font-weight:600; }
+    .ic-gris { color:#9ca3af; }
+    .ic-acc { display:flex; gap:0.4rem; margin-top:0.5rem; }
+    .ic-acc button { flex:1; min-height:40px; border:1px solid #d1d5db; background:#fff; border-radius:7px; font:inherit; font-size:0.8rem; font-weight:600; color:#111827; padding:0 0.2rem; }
+    .ic-acc button.on { background:#111827; color:#fff; border-color:#111827; }
+    .ic-panel { margin-top:0.5rem; padding:0.6rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; }
+    .ic-panel label { display:block; font-size:0.76rem; color:#6b7280; margin-bottom:0.45rem; }
+    .ic-panel select, .ic-panel input { display:block; width:100%; box-sizing:border-box; min-height:44px; margin-top:2px; border:1px solid #d1d5db; border-radius:7px; padding:0.3rem 0.5rem; font:inherit; font-size:16px; background:#fff; color:#111827; }
+    .ic-panel-bs { display:flex; gap:0.5rem; }
+    .ic-panel-bs button { flex:1; min-height:44px; border-radius:7px; font:inherit; font-weight:700; border:1px solid #d1d5db; background:#fff; color:#111827; }
+    .ic-panel-bs button.prim { background:#111827; color:#fff; border-color:#111827; }
+    .ic-solo { display:flex; align-items:center; gap:0.5rem; font-size:0.88rem; color:#374151; margin:-0.1rem 0 0.6rem; }
+    .ic-solo input { width:20px; height:20px; }
 </style>
 
 <div class="ic-wrap">
-    <div class="ic-tit">📦 Stock ideal y piso</div>
+    <a class="ic-inicio" href="/depo">← Inicio</a>
+    <div class="ic-tit">@Titulo</div>
 
     @if (pase is null)
     {
@@ -78,6 +97,13 @@
                 <button @onclick="LimpiarEscaneo">Ver todos</button>
             </div>
         }
+        @if (Modo != "ideal" && escaneado is null)
+        {
+            <label class="ic-solo">
+                <input type="checkbox" @bind="soloSinDato" @bind:after="() => limite = PASO" />
+                @(Modo == "venc" ? "Solo los que no tienen vencimiento" : "Solo los que no tienen ubicación")
+            </label>
+        }
         @if (Filtradas.Count == 0)
         {
             <p class="ic-txt">@(escaneado is not null ? "Ningún producto tiene cargado ese código de barras." : "No hay productos con esa búsqueda.")</p>
@@ -87,11 +113,28 @@
             var pid = f.ProductoId;
             var kilos = f.Unidad == "kg";
             <div class="ic-prod" @key="pid">
-                <div class="ic-nom">@f.Nombre</div>
-                <div class="ic-hay">
-                    @(string.IsNullOrWhiteSpace(f.Marca) ? "Sin marca" : f.Marca) ·
-                    <span style="@(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">hay @Num(f.StockActual)@(kilos ? " kilos" : "")</span>
-                    @if (guardados.Contains(pid)) { <span class="ic-ok"> · ✓ Guardado</span> }
+                <div class="ic-top">
+                    @if (f.Foto is not null)
+                    {
+                        <img class="ic-foto" src="@f.Foto" alt="" loading="lazy" />
+                    }
+                    else
+                    {
+                        <div class="ic-foto">sin foto</div>
+                    }
+                    <div class="ic-datos">
+                        <div class="ic-nom">@f.Nombre</div>
+                        <div class="ic-d">@(f.Codigo ?? "Sin código") · @(string.IsNullOrWhiteSpace(f.Marca) ? "Sin marca" : f.Marca)</div>
+                        <div class="ic-d">@if (string.IsNullOrWhiteSpace(f.Barcode)) { <span class="ic-gris">Sin código de barras</span> } else { <text>Barras @f.Barcode</text> }</div>
+                        <div class="ic-d">
+                            <span style="@(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">Hay @Num(f.StockActual)@(kilos ? " kilos" : "")</span> ·
+                            📍 @if (f.Ubicacion is null) { <span class="ic-gris">sin ubicación</span> } else { <b>@f.Ubicacion</b> }
+                        </div>
+                        <div class="ic-d">
+                            📅 @if (f.Vence is null) { <span class="ic-gris">sin vencimiento</span> } else { <text>Vence <b>@f.Vence.Value.ToString("dd/MM/yyyy")</b> (@Num(f.VenceQuedan)@(kilos ? " kg" : " u"))</text> }
+                            @if (guardados.Contains(pid)) { <span class="ic-ok"> · ✓ Guardado</span> }
+                        </div>
+                    </div>
                 </div>
                 <div class="ic-dos">
                     <label>
@@ -107,6 +150,53 @@
                                @onchange="@(e => Cambiar(f, e.Value?.ToString(), true))" />
                     </label>
                 </div>
+                <div class="ic-acc">
+                    <button disabled="@(abriendoFoto == pid)" @onclick="() => SacarFoto(f)">@(abriendoFoto == pid ? "Abriendo…" : "📷 Foto")</button>
+                    <button class="@(panel == (pid, "ubic") ? "on" : "")" @onclick='() => AbrirPanel(f, "ubic")'>📍 Ubicación</button>
+                    <button class="@(panel == (pid, "venc") ? "on" : "")" @onclick='() => AbrirPanel(f, "venc")'>📅 Vencimiento</button>
+                </div>
+                @if (panel == (pid, "ubic"))
+                {
+                    <div class="ic-panel">
+                        @if (zonas is null)
+                        {
+                            <div class="ic-d">Cargando lugares…</div>
+                        }
+                        else
+                        {
+                            <label>Planta
+                                <select value="@plantaSel" @onchange="ElegirPlanta">
+                                    <option value="">— Sin ubicación —</option>
+                                    @foreach (var pl in zonas.Plantas) { <option value="@pl.Codigo">@pl.Nombre</option> }
+                                </select>
+                            </label>
+                            @if (plantaSel != "")
+                            {
+                                <label>Lugar
+                                    <select @bind="zonaSel">
+                                        <option value="">— Solo la planta —</option>
+                                        @foreach (var z in zonas.Zonas.Where(z => z.Planta == plantaSel)) { <option value="@z.Codigo">@(z.Nombre is null ? z.Codigo : $"{z.Codigo} · {z.Nombre}")</option> }
+                                    </select>
+                                </label>
+                            }
+                            <div class="ic-panel-bs">
+                                <button @onclick="() => panel = null">Cancelar</button>
+                                <button class="prim" disabled="@guardandoPanel" @onclick="() => GuardarUbicacion(f)">@(guardandoPanel ? "Guardando…" : "Guardar")</button>
+                            </div>
+                        }
+                    </div>
+                }
+                @if (panel == (pid, "venc"))
+                {
+                    <div class="ic-panel">
+                        <label>¿Cuándo vence?<input type="date" @bind="fechaSel" /></label>
+                        <label>¿Cuántos vencen ese día?@(kilos ? " (kilos)" : "")<input type="text" inputmode="decimal" autocomplete="off" @bind="cantidadSel" /></label>
+                        <div class="ic-panel-bs">
+                            <button @onclick="() => panel = null">Cancelar</button>
+                            <button class="prim" disabled="@guardandoPanel" @onclick="() => GuardarVencimiento(f)">@(guardandoPanel ? "Guardando…" : "Guardar")</button>
+                        </div>
+                    </div>
+                }
             </div>
         }
         @if (Filtradas.Count > limite)
@@ -136,10 +226,102 @@
             // Escaneado: solo los que tienen ESE código (también sin los ceros de adelante: EAN vs UPC).
             if (escaneado is not null)
                 return filas.Where(f => MismoCodigo(f.Barcode, escaneado) || MismoCodigo(f.Codigo, escaneado)).ToList();
+            IEnumerable<StockIdealRowDto> r = filas;
+            if (soloSinDato && Modo == "venc") r = r.Where(f => f.Vence is null);
+            if (soloSinDato && Modo == "ubic") r = r.Where(f => f.Ubicacion is null);
             var q = busca.Trim();
-            if (q.Length == 0) return filas;
-            return filas.Where(f => Tiene(f.Nombre, q) || Tiene(f.Marca, q) || Tiene(f.Codigo, q) || Tiene(f.Barcode, q)).ToList();
+            if (q.Length > 0) r = r.Where(f => Tiene(f.Nombre, q) || Tiene(f.Marca, q) || Tiene(f.Codigo, q) || Tiene(f.Barcode, q));
+            return r.ToList();
         }
+    }
+
+    // ───── 2026-11-10: desde el inicio (/depo) se entra por Vencimientos o Ubicaciones: misma lista ─────
+    [Parameter, SupplyParameterFromQuery(Name = "ver")] public string? Ver { get; set; }
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+    private string Modo => Ver is "venc" or "ubic" ? Ver : "ideal";
+    private string Titulo => Modo switch { "venc" => "📅 Vencimientos", "ubic" => "📍 Ubicaciones", _ => "📦 Stock ideal y piso" };
+    private bool soloSinDato;
+
+    private (int Id, string Tipo)? panel;
+    private string plantaSel = "", zonaSel = "", cantidadSel = "";
+    private DateTime? fechaSel;
+    private bool guardandoPanel;
+    private int? abriendoFoto;
+    private ZonasDepoCeluDto? zonas;
+
+    private async Task AbrirPanel(StockIdealRowDto f, string tipo)
+    {
+        if (panel == (f.ProductoId, tipo)) { panel = null; return; }
+        panel = (f.ProductoId, tipo);
+        if (tipo == "venc") { fechaSel = null; cantidadSel = ""; return; }
+        // Ubicación: arranca con la que tiene (la API la manda como "PB · RACK 2").
+        var partes = (f.Ubicacion ?? "").Split('·', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (zonas is null)
+        {
+            var r = await Api.GetZonasDepoCeluAsync(pase!);
+            if (r.Vencido) { await PedirClaveDeNuevo(); return; }
+            zonas = r.Dato ?? new();
+        }
+        plantaSel = zonas.Plantas.FirstOrDefault(p => partes.Length > 0 && (p.Codigo == partes[0] || p.Nombre == partes[0]))?.Codigo ?? "";
+        zonaSel = partes.Length > 1 ? partes[1] : "";
+    }
+
+    private void ElegirPlanta(ChangeEventArgs e)
+    {
+        plantaSel = e.Value?.ToString() ?? "";
+        zonaSel = "";
+    }
+
+    private async Task GuardarUbicacion(StockIdealRowDto f)
+    {
+        guardandoPanel = true;
+        var r = await Api.PonerUbicacionCeluAsync(pase!, f.ProductoId, plantaSel == "" ? null : plantaSel, zonaSel == "" ? null : zonaSel);
+        guardandoPanel = false;
+        if (r.Vencido) { await PedirClaveDeNuevo(); return; }
+        if (r.Error is not null) { ToastService.Error(r.Error); return; }
+        string? lugar = null;
+        try { if (r.Dato.TryGetProperty("lugar", out var l)) lugar = l.GetString(); } catch { }
+        f.Ubicacion = lugar;
+        panel = null;
+        guardados.Add(f.ProductoId);
+    }
+
+    private async Task GuardarVencimiento(StockIdealRowDto f)
+    {
+        if (fechaSel is null) { ToastService.Error("Poné la fecha de vencimiento."); return; }
+        var txt = (cantidadSel ?? "").Trim().Replace(" ", "");
+        if (!decimal.TryParse(txt, NumberStyles.Number, CultureInfo.GetCultureInfo("es-AR"), out var cant) || cant <= 0)
+        {
+            ToastService.Error("Poné cuántos vencen ese día (por ejemplo 12, o 2,5 kilos).");
+            return;
+        }
+        guardandoPanel = true;
+        var r = await Api.SumarVencimientoCeluAsync(pase!, f.ProductoId, fechaSel.Value, cant);
+        guardandoPanel = false;
+        if (r.Vencido) { await PedirClaveDeNuevo(); return; }
+        if (r.Error is not null) { ToastService.Error(r.Error); return; }
+        try
+        {
+            f.Vence = r.Dato.TryGetProperty("vence", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetDateTime() : null;
+            f.VenceQuedan = r.Dato.TryGetProperty("quedan", out var q) ? q.GetDecimal() : 0;
+        }
+        catch { }
+        panel = null;
+        guardados.Add(f.ProductoId);
+        // Lo que queda de cada fecha sale del stock (se saca primero lo que vence antes): con 0 no queda nada.
+        if (f.Vence is null)
+            ToastService.Info($"Vencimiento guardado. Como hay {Num(f.StockActual)} en stock, no queda nada por vencer.");
+    }
+
+    /// <summary>Abre la subida de foto de siempre (/subir-foto-producto). Al volver atrás, la lista se recarga con la foto nueva.</summary>
+    private async Task SacarFoto(StockIdealRowDto f)
+    {
+        abriendoFoto = f.ProductoId;
+        var r = await Api.TokenFotoCeluAsync(pase!, f.ProductoId);
+        abriendoFoto = null;
+        if (r.Vencido) { await PedirClaveDeNuevo(); return; }
+        if (r.Dato?.Token is not { Length: > 0 } token) { ToastService.Error(r.Error ?? "No se pudo abrir la cámara."); return; }
+        Nav.NavigateTo($"/subir-foto-producto/{token}");
     }
 
     private static bool MismoCodigo(string? guardado, string leido)

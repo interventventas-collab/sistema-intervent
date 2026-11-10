@@ -3958,6 +3958,48 @@ public class ApiClient
         return resp.IsSuccessStatusCode ? "" : null;
     }
 
+    // 2026-11-10: inicio del celu del depósito (/depo) y lo que se carga desde la lista.
+    private const string URL_DEPO_CELU = "/api/public/depo-celu";
+
+    /// <summary>Resultado de una llamada con el pase del celu: Vencido = hay que pedir la clave de nuevo.</summary>
+    public record RespuestaCelu<T>(T? Dato, bool Vencido, string? Error);
+
+    private async Task<RespuestaCelu<T>> MandarCeluAsync<T>(HttpMethod metodo, string url, string pase, object? cuerpo = null)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(metodo, url);
+            req.Headers.Add("X-Pase-Celu", pase);
+            if (cuerpo is not null) req.Content = JsonContent.Create(cuerpo);
+            var resp = await _http.SendAsync(req);
+            if ((int)resp.StatusCode == 403) return new(default, true, null);
+            if (!resp.IsSuccessStatusCode)
+            {
+                string? err = null;
+                try { err = (await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("error").GetString(); } catch { }
+                return new(default, false, err ?? "No se pudo. Probá de nuevo.");
+            }
+            return new(await resp.Content.ReadFromJsonAsync<T>(), false, null);
+        }
+        catch { return new(default, false, "Sin conexión. Probá de nuevo."); }
+    }
+
+    public Task<RespuestaCelu<LinksDepoCeluDto>> GetLinksDepoCeluAsync(string pase)
+        => MandarCeluAsync<LinksDepoCeluDto>(HttpMethod.Get, $"{URL_DEPO_CELU}/links", pase);
+
+    public Task<RespuestaCelu<ZonasDepoCeluDto>> GetZonasDepoCeluAsync(string pase)
+        => MandarCeluAsync<ZonasDepoCeluDto>(HttpMethod.Get, $"{URL_DEPO_CELU}/zonas", pase);
+
+    public Task<RespuestaCelu<System.Text.Json.JsonElement>> PonerUbicacionCeluAsync(string pase, int productoId, string? planta, string? zona)
+        => MandarCeluAsync<System.Text.Json.JsonElement>(HttpMethod.Put, $"{URL_DEPO_CELU}/producto/{productoId}/ubicacion", pase, new { planta, zona });
+
+    public Task<RespuestaCelu<System.Text.Json.JsonElement>> SumarVencimientoCeluAsync(string pase, int productoId, DateTime fechaVence, decimal cantidad)
+        => MandarCeluAsync<System.Text.Json.JsonElement>(HttpMethod.Post, $"{URL_DEPO_CELU}/producto/{productoId}/vencimiento", pase,
+            new { fechaVence = fechaVence.ToString("yyyy-MM-dd"), cantidad });
+
+    public Task<RespuestaCelu<PaseIdealCeluDto>> TokenFotoCeluAsync(string pase, int productoId)
+        => MandarCeluAsync<PaseIdealCeluDto>(HttpMethod.Post, $"{URL_DEPO_CELU}/producto/{productoId}/foto", pase);
+
     public async Task<byte[]?> DownloadStockIdealPedidoExcelAsync(
         string? marca = null, string? q = null, string? categoria = null, string origen = "pendientes")
     {

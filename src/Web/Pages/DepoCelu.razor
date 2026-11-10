@@ -1,0 +1,119 @@
+@page "/depo"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@* 2026-11-10: inicio único del celu del depósito. Un solo QR (botón "Depósito en celu" de la pantalla
+   de armado), la clave del día y después eligen qué van a hacer. Cargar stock y Fotos abren las
+   pantallas de siempre; Escáner y Preparación solo andan en el celu habilitado. *@
+
+<PageTitle>Depósito</PageTitle>
+
+<style>
+    body { background:#f3f4f6 !important; }
+    .dc-wrap { max-width:520px; margin:0 auto; padding:0.9rem; font-family:inherit; color:#111827; }
+    .dc-tit { font-size:1.35rem; font-weight:800; margin:0.2rem 0 0.1rem; }
+    .dc-sub { color:#6b7280; font-size:0.88rem; margin-bottom:0.9rem; }
+    .dc-caja { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:1.1rem; }
+    .dc-clave { width:100%; box-sizing:border-box; min-height:56px; border:1px solid #d1d5db; border-radius:8px; font:inherit; font-size:28px; font-weight:700; letter-spacing:0.25em; text-align:center; }
+    .dc-entrar { width:100%; min-height:48px; margin-top:0.7rem; background:#111827; color:#fff; border:none; border-radius:8px; font:inherit; font-size:1rem; font-weight:700; }
+    .dc-error { color:#b91c1c; font-size:0.88rem; margin-top:0.6rem; }
+    .dc-g { display:grid; grid-template-columns:1fr 1fr; gap:0.6rem; }
+    .dc-b { display:block; text-align:left; background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:0.9rem 0.75rem; min-height:96px; font:inherit; color:#111827; cursor:pointer; }
+    .dc-b:disabled { opacity:0.5; }
+    .dc-e { font-size:1.7rem; line-height:1; }
+    .dc-n { font-weight:700; font-size:0.95rem; margin-top:0.45rem; }
+    .dc-d { font-size:0.76rem; color:#6b7280; margin-top:0.1rem; line-height:1.3; }
+    .dc-pie { font-size:0.76rem; color:#6b7280; margin-top:0.9rem; text-align:center; }
+</style>
+
+<div class="dc-wrap">
+    <div class="dc-tit">🏭 Depósito</div>
+    @if (pase is null)
+    {
+        <div class="dc-sub">Escribí la clave de hoy. Está en el sistema, en la pantalla de armado.</div>
+        <form class="dc-caja" @onsubmit="Entrar">
+            <input class="dc-clave" type="tel" inputmode="numeric" maxlength="6" autocomplete="off" @bind="clave" @bind:event="oninput" />
+            <button class="dc-entrar" type="submit" disabled="@(entrando || clave.Trim().Length != 6)">@(entrando ? "Entrando…" : "Entrar")</button>
+            @if (error is not null) { <div class="dc-error">@error</div> }
+        </form>
+    }
+    else
+    {
+        <div class="dc-sub">¿Qué vas a hacer?</div>
+        <div class="dc-g">
+            <button class="dc-b" disabled="@(links?.Stock is null)" @onclick='() => Ir($"/stock/{links!.Stock}")'>
+                <div class="dc-e">📥</div><div class="dc-n">Cargar stock</div><div class="dc-d">Sumar o restar lo que entró</div>
+            </button>
+            <button class="dc-b" @onclick='() => Ir("/ideal-celu")'>
+                <div class="dc-e">📦</div><div class="dc-n">Stock ideal y piso</div><div class="dc-d">Cuánto tener de cada uno</div>
+            </button>
+            <button class="dc-b" disabled="@(links?.Fotos is null)" @onclick='() => Ir($"/fotos/{links!.Fotos}")'>
+                <div class="dc-e">🖼️</div><div class="dc-n">Fotos</div><div class="dc-d">Con la tela verde o azul</div>
+            </button>
+            <button class="dc-b" @onclick='() => Ir("/ideal-celu?ver=venc")'>
+                <div class="dc-e">📅</div><div class="dc-n">Vencimientos</div><div class="dc-d">Fecha y cuántos vencen</div>
+            </button>
+            <button class="dc-b" @onclick='() => Ir("/ideal-celu?ver=ubic")'>
+                <div class="dc-e">📍</div><div class="dc-n">Ubicaciones</div><div class="dc-d">Dónde está cada producto</div>
+            </button>
+            <button class="dc-b" @onclick='() => Ir("/escaner")'>
+                <div class="dc-e">📷</div><div class="dc-n">Escáner de paquetes</div><div class="dc-d">Qué va adentro de cada envío</div>
+            </button>
+            <button class="dc-b" @onclick='() => Ir("/depo/preparacion")'>
+                <div class="dc-e">🧺</div><div class="dc-n">Preparación</div><div class="dc-d">Armar los pedidos del día</div>
+            </button>
+        </div>
+        @if (error is not null) { <div class="dc-error">@error</div> }
+        <div class="dc-pie">Entraste con la clave de hoy · vale hasta las 23:59 (hora de Argentina)</div>
+    }
+</div>
+
+@code {
+    // Mismo pase que /ideal-celu: entrando en una, quedan abiertas las dos.
+    private const string CLAVE_GUARDADA = "ideal_celu_pase";
+
+    private string? pase, error;
+    private string clave = "";
+    private bool entrando;
+    private LinksDepoCeluDto? links;
+
+    protected override async Task OnInitializedAsync()
+    {
+        string? guardado = null;
+        try { guardado = await JS.InvokeAsync<string?>("localStorage.getItem", CLAVE_GUARDADA); } catch { }
+        if (string.IsNullOrEmpty(guardado)) return;
+        pase = guardado;
+        await CargarLinks();
+    }
+
+    private async Task Entrar()
+    {
+        if (entrando || clave.Trim().Length != 6) return;
+        entrando = true; error = null;
+        var (token, err) = await Api.EntrarIdealCeluAsync(clave.Trim());
+        entrando = false;
+        if (token is null) { error = err; return; }
+        pase = token;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", CLAVE_GUARDADA, token); } catch { }
+        await CargarLinks();
+    }
+
+    private async Task CargarLinks()
+    {
+        var r = await Api.GetLinksDepoCeluAsync(pase!);
+        if (r.Vencido)
+        {
+            pase = null; clave = ""; links = null;
+            error = "La clave cambió. Escribí la de hoy.";
+            try { await JS.InvokeVoidAsync("localStorage.removeItem", CLAVE_GUARDADA); } catch { }
+            return;
+        }
+        links = r.Dato;
+        error = r.Error;
+    }
+
+    private void Ir(string url) => Nav.NavigateTo(url);
+}
