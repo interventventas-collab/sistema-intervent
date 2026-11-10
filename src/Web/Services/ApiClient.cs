@@ -10448,6 +10448,9 @@ public class ApiClient
         if (!string.IsNullOrWhiteSpace(mes)) url += $"&mes={Uri.EscapeDataString(mes)}";
         return await GetAsync<PanoramaDto>(url);
     }
+
+    public async Task<VisitasPaginasDto?> GetVisitasPaginasAsync()
+        => await GetAsync<VisitasPaginasDto>("/api/panorama/visitas");
 }
 
 // 2026-08-03: resultado del borrado de cliente.

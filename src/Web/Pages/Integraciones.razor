@@ -56,6 +56,16 @@
                                 </div>
                             </button>
                         }
+                        @if (gaId == 0)
+                        {
+                            <button class="add-integration-option" @onclick="OpenGaModal">
+                                <span class="integration-logo-icon drive-logo" style="width:28px;height:28px;font-size:0.7rem;">GA</span>
+                                <div>
+                                    <strong>Google Analytics</strong>
+                                    <small>Ver en Panorama las visitas de las páginas</small>
+                                </div>
+                            </button>
+                        }
                         @if (driveId == 0)
                         {
                             <button class="add-integration-option" @onclick="() => AddIntegration_Drive()">
@@ -373,6 +383,26 @@
                 </div>
             </div>
         }
+    </div>
+    }
+
+    <!-- Google Analytics (solo si esta configurada) -->
+    @if (gaId > 0)
+    {
+    <div class="integration-card integration-active">
+        <div class="integration-card-header">
+            <div class="integration-logo">
+                <span class="integration-logo-icon drive-logo">GA</span>
+            </div>
+            <div class="integration-info">
+                <h3>Google Analytics</h3>
+                <p>Muestra en Panorama cuánta gente entra a las páginas web.</p>
+            </div>
+            <div class="integration-header-actions">
+                <span class="status-badge status-active">Activa</span>
+                <button class="btn btn-secondary btn-sm" @onclick="OpenGaModal">Configurar</button>
+            </div>
+        </div>
     </div>
     }
 
@@ -2594,6 +2624,46 @@
     </div>
 }
 
+<!-- Modal: Configuracion Google Analytics -->
+@if (showGaModal)
+{
+    <div class="modal-overlay" @onclick="CloseGaModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3>Google Analytics</h3>
+                <button class="btn-close" @onclick="CloseGaModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">ID de propiedad</label>
+                    <input type="text" inputmode="numeric" class="form-input" @bind="gaPropertyId" placeholder="Solo números. No es el que empieza con G-" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Archivo de la llave</label>
+                    <InputFile OnChange="OnGaKeyPicked" accept=".json" class="form-input" />
+                    @if (gaKeyError is not null)
+                    {
+                        <small style="display:block;margin-top:0.25rem;color:#dc2626;">@gaKeyError</small>
+                    }
+                    else if (!string.IsNullOrEmpty(gaClientEmail))
+                    {
+                        <small class="text-muted" style="display:block;margin-top:0.25rem;">
+                            @(gaKeyNueva is null ? "Ya cargada" : "Lista para guardar") · @gaClientEmail
+                        </small>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseGaModal">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveGa" disabled="@gaSaving">
+                    @(gaSaving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 <!-- Modal: Configuracion Google Drive -->
 @if (showDriveModal)
 {
@@ -2980,6 +3050,16 @@
     private bool emailSaving;
     private bool emailTesting;
 
+    // Google Analytics: la llave no vuelve nunca al navegador, solo se sabe si ya hay una.
+    private int gaId;
+    private bool gaHasKey;
+    private string gaPropertyId = "";
+    private string gaClientEmail = "";
+    private string? gaKeyNueva;
+    private string? gaKeyError;
+    private bool showGaModal;
+    private bool gaSaving;
+
     // Google Drive config fields (OAuth 2.0)
     private int driveId;
     private bool driveActive;
@@ -3005,8 +3085,8 @@
 
     // Add integration menu
     private bool showAddMenu;
-    private bool HasConfiguredIntegrations => mlId > 0 || openaiId > 0 || claudeId > 0 || emailId > 0 || driveId > 0 || waLinked || arcaId > 0 || arcaWsId > 0;
-    private bool HasAvailableIntegrations => mlId == 0 || openaiId == 0 || claudeId == 0 || emailId == 0 || driveId == 0 || !waLinked || arcaId == 0 || arcaWsId == 0;
+    private bool HasConfiguredIntegrations => mlId > 0 || openaiId > 0 || claudeId > 0 || emailId > 0 || driveId > 0 || gaId > 0 || waLinked || arcaId > 0 || arcaWsId > 0;
+    private bool HasAvailableIntegrations => mlId == 0 || openaiId == 0 || claudeId == 0 || emailId == 0 || driveId == 0 || gaId == 0 || !waLinked || arcaId == 0 || arcaWsId == 0;
 
     // Test user flow
     private bool showTestUserModal;
@@ -3044,6 +3124,7 @@
         await LoadClaude();
         await LoadEmail();
         await LoadDrive();
+        await LoadGa();
         await LoadAccounts();
         await LoadWhatsApp();
         await LoadArca();
@@ -3767,6 +3848,107 @@
         }
         catch (Exception ex) { ToastService.Error("No se pudo cambiar: " + ex.Message); }
         finally { driveRespaldoGuardando = false; }
+    }
+
+    private async Task LoadGa()
+    {
+        try
+        {
+            var integration = await Api.GetIntegrationAsync("google-analytics");
+            if (integration is null) return;
+            gaId = integration.Id;
+            gaHasKey = integration.HasSecret;
+            if (string.IsNullOrEmpty(integration.Settings)) return;
+            using var doc = System.Text.Json.JsonDocument.Parse(integration.Settings);
+            if (doc.RootElement.TryGetProperty("propertyId", out var p)) gaPropertyId = p.GetString() ?? "";
+            if (doc.RootElement.TryGetProperty("clientEmail", out var c)) gaClientEmail = c.GetString() ?? "";
+        }
+        catch { /* sin conexión guardada: la tarjeta no aparece */ }
+    }
+
+    private void OpenGaModal()
+    {
+        showAddMenu = false;
+        gaKeyError = null;
+        showGaModal = true;
+    }
+
+    private void CloseGaModal()
+    {
+        gaKeyNueva = null;
+        showGaModal = false;
+    }
+
+    private async Task OnGaKeyPicked(InputFileChangeEventArgs e)
+    {
+        gaKeyNueva = null;
+        gaKeyError = null;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 64 * 1024);
+            using var reader = new StreamReader(stream);
+            var texto = await reader.ReadToEndAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(texto);
+            var raiz = doc.RootElement;
+            var esLlave = raiz.TryGetProperty("type", out var tipo) && tipo.GetString() == "service_account"
+                          && raiz.TryGetProperty("private_key", out _)
+                          && raiz.TryGetProperty("client_email", out _);
+            if (!esLlave)
+            {
+                gaKeyError = "Ese archivo no es la llave de la cuenta.";
+                return;
+            }
+            gaClientEmail = raiz.GetProperty("client_email").GetString() ?? "";
+            gaKeyNueva = texto;
+        }
+        catch
+        {
+            gaKeyError = "No se pudo leer ese archivo. Tiene que ser el .json que bajaste de Google.";
+        }
+    }
+
+    private async Task SaveGa()
+    {
+        var propertyId = (gaPropertyId ?? "").Trim();
+        if (propertyId.Length == 0 || !propertyId.All(char.IsDigit))
+        {
+            ToastService.Error("El ID de propiedad son solo números.");
+            return;
+        }
+        if (gaKeyNueva is null && !gaHasKey)
+        {
+            ToastService.Error("Falta elegir el archivo de la llave.");
+            return;
+        }
+
+        gaSaving = true;
+        try
+        {
+            var result = await Api.SaveIntegrationAsync(new SaveIntegrationRequest
+            {
+                Provider = "google-analytics",
+                AppSecret = gaKeyNueva, // null conserva la llave que ya estaba
+                Settings = System.Text.Json.JsonSerializer.Serialize(new { propertyId, clientEmail = gaClientEmail }),
+                IsActive = true
+            });
+            if (result is not null)
+            {
+                gaId = result.Id;
+                gaHasKey = result.HasSecret;
+                gaPropertyId = propertyId;
+                gaKeyNueva = null;
+                showGaModal = false;
+                ToastService.Success("Google Analytics guardado. Las visitas ya se ven en Panorama.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al guardar: " + ex.Message);
+        }
+        finally
+        {
+            gaSaving = false;
+        }
     }
 
     private async Task LoadDrive()
