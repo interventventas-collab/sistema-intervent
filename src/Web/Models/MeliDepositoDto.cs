@@ -38,6 +38,13 @@ public class MeliDepoOrden
     public string? Direccion { get; set; }
     public string? Localidad { get; set; }
     public string? Cp { get; set; }
+    // 2026-11-10: en qué anda el envío (horas en hora argentina). Quién lleva/entregó: solo ME1.
+    public DateTime? ImpresaAr { get; set; }
+    public DateTime? SalioAr { get; set; }
+    public DateTime? EntregadaAr { get; set; }
+    public bool EnRuta { get; set; }
+    public string? Lleva { get; set; }
+    public string? Entrego { get; set; }
 }
 
 public class MeliDepoOrdenProducto

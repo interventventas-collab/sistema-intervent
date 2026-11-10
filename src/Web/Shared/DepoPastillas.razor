@@ -65,8 +65,22 @@
     .dp-imp { margin-left:auto; background:#111827; color:#fff; border:none; border-radius:8px; padding:0.4rem 0.8rem; font:inherit; font-size:0.84rem; font-weight:700; cursor:pointer; }
     .dp-imp:disabled { background:#d1d5db; cursor:default; }
     .dp-lista { overflow-y:auto; flex:1; min-height:0; }
-    .dp-fila { display:grid; grid-template-columns:20px 44px 44px 1fr 170px 92px; gap:0.55rem; align-items:center; padding:0.5rem 1rem; border-top:1px solid #eef0f3; font-size:0.86rem; }
+    .dp-fila { display:grid; grid-template-columns:20px 44px 44px 1fr 160px 150px; gap:0.55rem; align-items:center; padding:0.5rem 1rem; border-top:1px solid #eef0f3; font-size:0.86rem; }
+    /* 2026-11-10: el color del renglón dice en qué anda el envío. */
+    .dp-fila.f-armado { background:#fffbeb; }
+    .dp-fila.f-camino { background:#eff6ff; }
+    .dp-fila.f-entregado { background:#f0fdf4; }
+    .dp-fila.f-cancelada { background:#f9fafb; color:#9ca3af; }
     .dp-fila.nu { background:#fff7ed; }
+    .dp-fase { font-size:0.8rem; line-height:1.3; }
+    .dp-fase b { display:block; font-size:0.84rem; }
+    .dp-fase .dp-est { margin-top:0.25rem; }
+    .dp-sep { width:1px; height:18px; background:#e5e7eb; margin:0 0.15rem; }
+    .dp-det-l { color:#374151; cursor:pointer; text-decoration:underline; }
+    .dp-det { padding:0.5rem 1rem 0.7rem 5.5rem; border-top:1px dashed #e5e7eb; font-size:0.8rem; color:#374151; background:#fff; }
+    .dp-det h4 { margin:0.45rem 0 0.15rem; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em; color:#6b7280; }
+    .dp-det p { margin:0.1rem 0; }
+    .dp-det .sub, .dp-det .sub-i { color:#6b7280; font-size:0.74rem; }
     .dp-cu { color:#6b7280; font-size:0.73rem; line-height:1.3; }
     .dp-foto { width:44px; height:44px; object-fit:contain; border:1px solid #e5e7eb; border-radius:6px; background:#fff; }
     .dp-fila .sub { display:block; color:#6b7280; font-size:0.76rem; }
@@ -98,7 +112,7 @@
         .dp-flot { right:10px; left:10px; }
         .dp-flot.arriba, .dp-flot.abajo { top:62px; }
         .dp-avisos, .dp-vent { width:auto; max-width:none; }
-        .dp-fila { grid-template-columns:20px 44px 1fr 92px; }
+        .dp-fila { grid-template-columns:20px 44px 1fr 130px; }
         .dp-fila .dp-foto, .dp-fila .dp-dest { display:none; }
         .dp-prev { display:none !important; }
     }
@@ -227,7 +241,7 @@
     var esMe1 = ventana == "me1";
     <div class="dp-flot dp-vent @Lugar">
         <div class="dp-vh">
-            @(esMe1 ? "🚚 Envíos ME1" : "🏷️ Ventas MeLi para despachar")
+            @(esMe1 ? "🚚 Envíos ME1" : "🏷️ Ventas MeLi")
             <small>@(esMe1 ? "los que despachamos nosotros" : "Flex y Correo")</small>
             <button class="dp-x" title="Cerrar" @onclick="Cerrar">✕</button>
         </div>
@@ -236,6 +250,20 @@
             {
                 <button class="dp-ch @(verDespachados ? "" : "on")" @onclick="() => CambiarVista(false)">Para despachar (@Me1ParaDespachar.Count)</button>
                 <button class="dp-ch @(verDespachados ? "on" : "")" @onclick="() => CambiarVista(true)">Ya despachados (@Me1Despachados.Count)</button>
+            }
+            else
+            {
+                @* 2026-11-10: no solo las de imprimir: también impresas, en camino y entregadas. *@
+                @foreach (var (k, l) in FiltrosVentas)
+                {
+                    <button class="dp-ch @(filtroVen == k ? "on" : "")" @onclick="() => ElegirFiltroVen(k)">@l @(k == "todas" ? "" : $"({ventasVentana.Count(o => Fase(o) == k)})")</button>
+                }
+                <span class="dp-sep"></span>
+                @foreach (var (d, l) in new[] { (1, "Hoy"), (7, "7 días"), (30, "30 días") })
+                {
+                    <button class="dp-ch @(diasVen == d ? "on" : "")" @onclick="() => ElegirDiasVen(d)">@l</button>
+                }
+                <span class="dp-sep"></span>
             }
             Etiqueta:
             @foreach (var (k, l, t) in FormatosEtiqueta)
@@ -254,7 +282,8 @@
                 var env = o.NumeroEnvio;
                 var sel = env.HasValue && tildadas.Contains(env.Value);
                 var foto = o.Productos.FirstOrDefault(p => !string.IsNullOrEmpty(p.Foto))?.Foto;
-                <div class="dp-fila @(recienLlegados.Contains(o.Numero) ? "nu" : "")" @key="o.Numero">
+                var fase = Fase(o);
+                <div class="dp-fila f-@fase @(recienLlegados.Contains(o.Numero) ? "nu" : "")" @key="o.Numero">
                     <div>
                         @if (env.HasValue)
                         {
@@ -269,19 +298,60 @@
                             <div><b>×@p.Cantidad</b> @p.Titulo</div>
                         }
                         @if (recienLlegados.Contains(o.Numero)) { <span class="dp-tag">NUEVO</span> }
-                        <a class="sub" style="display:inline;" href="@($"/deposito/ordenes-meli?orden={o.Numero}")">@(esMe1 ? "venta" : o.Tipo) @o.NumeroVenta · ver detalle</a>
+                        <span class="sub">@(esMe1 ? "venta" : o.Tipo) @o.NumeroVenta ·
+                            <a class="dp-det-l" @onclick="() => AlternarDetalle(o)">@(detalleAbierto == o.Numero ? "▾" : "▸") detalle</a></span>
                     </div>
                     <div class="dp-dest">
                         <b>@Quien(o)</b>
                         @if (esMe1) { <span class="sub">@Domicilio(o)</span> }
+                        else if (!string.IsNullOrEmpty(o.Cuenta)) { <span class="sub">cuenta @o.Cuenta</span> }
                     </div>
-                    <div>
-                        @if (env.HasValue)
+                    <div class="dp-fase">
+                        <b>@TituloFase(o, fase)</b>
+                        <span class="sub">@DetalleFase(o, fase)</span>
+                        @if (env.HasValue && fase is "imprimir" or "armado")
                         {
-                            <button class="dp-est @(o.EtiquetaImpresa ? "ya" : "")" title="Imprimir solo esta" @onclick="() => ImprimirUna(env.Value)">@(o.EtiquetaImpresa ? "✓ Impresa" : "🖨️ Imprimir")</button>
+                            <button class="dp-est @(o.EtiquetaImpresa ? "ya" : "")" title="@(o.EtiquetaImpresa ? "Volver a imprimir esta" : "Imprimir solo esta")" @onclick="() => ImprimirUna(env.Value)">@(o.EtiquetaImpresa ? "Reimprimir" : "🖨️ Imprimir")</button>
                         }
                     </div>
                 </div>
+                @if (detalleAbierto == o.Numero)
+                {
+                    <div class="dp-det">
+                        @if (!fichas.TryGetValue(o.Numero, out var fi))
+                        {
+                            <div class="sub">Trayendo de MercadoLibre…</div>
+                        }
+                        else if (fi is null)
+                        {
+                            <div class="sub">No se pudo traer el detalle. Probá de nuevo.</div>
+                        }
+                        else
+                        {
+                            <h4>Preguntas anteriores del comprador (@fi.Preguntas.Count)</h4>
+                            @if (fi.Preguntas.Count == 0) { <div class="sub">No hizo preguntas.</div> }
+                            @foreach (var pq in fi.Preguntas.OrderByDescending(x => x.Fecha).Take(8))
+                            {
+                                <p>“@pq.Texto” @if (!string.IsNullOrWhiteSpace(pq.Respuesta)) { <span>— @pq.Respuesta</span> } <span class="sub-i">@Dia(pq.Fecha) @(pq.Producto is null || pq.DeEsteProducto ? "" : $"· {Corto(pq.Producto)}")</span></p>
+                            }
+                            <h4>Mensajes internos (@fi.Mensajes.Count)</h4>
+                            @if (!fi.MensajesOk) { <div class="sub">MercadoLibre no contestó los mensajes.</div> }
+                            else if (fi.Mensajes.Count == 0) { <div class="sub">No hay mensajes.</div> }
+                            @foreach (var m in fi.Mensajes)
+                            {
+                                <p><b>@(m.De == "comprador" ? "Comprador" : "Nosotros"):</b> @m.Texto <span class="sub-i">@(m.Fecha is DateTime fm ? Dia(fm) + " " + fm.ToString("HH:mm") : "")</span></p>
+                            }
+                            <h4>Notas de la venta (@fi.Notas.Count)</h4>
+                            @if (!fi.NotasOk) { <div class="sub">MercadoLibre no contestó las notas.</div> }
+                            else if (fi.Notas.Count == 0) { <div class="sub">Sin notas.</div> }
+                            @foreach (var n in fi.Notas)
+                            {
+                                <p>@n.Texto</p>
+                            }
+                            <a class="dp-det-l" href="@($"/deposito/ordenes-meli?orden={o.Numero}")">Abrir la ficha completa →</a>
+                        }
+                    </div>
+                }
             }
         </div>
     </div>
@@ -425,7 +495,83 @@
     private List<MeliDepoOrden> Me1Despachados => me1.Where(o => o.EstadoClave is "camino" or "entregada").ToList();
     private List<MeliDepoOrden> Me1SinImprimir => Me1ParaDespachar.Where(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa).ToList();
     private List<MeliDepoOrden> VentasSinEtiqueta => ventas.Where(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa).ToList();
-    private List<MeliDepoOrden> FilasVentana => ventana == "ven" ? ventas : verDespachados ? Me1Despachados : Me1ParaDespachar;
+    private List<MeliDepoOrden> FilasVentana => ventana == "ven"
+        ? ventasVentana.Where(o => filtroVen == "todas" || Fase(o) == filtroVen).ToList()
+        : verDespachados ? Me1Despachados : Me1ParaDespachar;
+
+    // ───── 2026-11-10: en qué anda cada envío (color del renglón y texto de la derecha) ─────
+    // "Armado" = etiqueta ya impresa (se imprime cuando el paquete está listo) y todavía no salió.
+    private static string Fase(MeliDepoOrden o)
+    {
+        if (o.EstadoClave == "cancelada") return "cancelada";
+        if (o.EstadoClave == "entregada" || o.EntregadaAr.HasValue) return "entregado";
+        if (o.EstadoClave == "camino" || o.EnRuta) return "camino";
+        return o.EtiquetaImpresa ? "armado" : "imprimir";
+    }
+
+    private static string TituloFase(MeliDepoOrden o, string fase) => fase switch
+    {
+        "entregado" => "✅ Entregado",
+        "camino" => o.Estado == "No entregada" ? "⚠️ No entregada" : "🛵 En camino",
+        "armado" => "📦 Armado",
+        "cancelada" => "Cancelada",
+        _ => "🖨️ Para imprimir",
+    };
+
+    private static string Cuando(DateTime? d) => d is DateTime x ? $"{Dia(x)} {x:HH:mm}" : "";
+
+    private static string DetalleFase(MeliDepoOrden o, string fase) => fase switch
+    {
+        "entregado" => string.Join(" · ", new[] { o.Entrego is null ? null : "por " + o.Entrego, Cuando(o.EntregadaAr) }.Where(s => !string.IsNullOrEmpty(s))),
+        "camino" => string.Join(" · ", new[] { o.Lleva is null ? null : "lo lleva " + o.Lleva, o.SalioAr is null ? null : "salió " + Cuando(o.SalioAr) }.Where(s => !string.IsNullOrEmpty(s))),
+        "armado" => o.ImpresaAr is null ? "etiqueta impresa" : "etiqueta impresa " + Cuando(o.ImpresaAr),
+        "cancelada" => "",
+        _ => "todavía sin etiqueta",
+    };
+
+    // ───── Ventas MeLi: filtros y lista propia de la ventana (la pastilla sigue contando las de imprimir) ─────
+    private static readonly (string, string)[] FiltrosVentas =
+    {
+        ("imprimir", "Para imprimir"), ("armado", "Impresas"), ("camino", "En camino"), ("entregado", "Entregadas"), ("todas", "Todas"),
+    };
+    private string filtroVen = "imprimir";
+    private int diasVen = 7;
+    private List<MeliDepoOrden> ventasVentana = new();
+
+    private async Task CargarVentasVentana()
+    {
+        try
+        {
+            var r = await Api.GetMeliDepoOrdenesAsync(diasVen, null, null, null, null);
+            if (r is null) return;
+            ventasVentana = r.Ordenes.Where(o => o.TipoClave != "full" && !o.Tipo.Contains("ME1") && o.EstadoClave != "cancelada").ToList();
+        }
+        catch { }
+    }
+
+    private void ElegirFiltroVen(string k) { filtroVen = k; tildadas.Clear(); detalleAbierto = null; }
+
+    private async Task ElegirDiasVen(int d)
+    {
+        diasVen = d; tildadas.Clear(); detalleAbierto = null;
+        await CargarVentasVentana();
+    }
+
+    // ───── Detalle en el mismo renglón: preguntas anteriores, mensajes internos y notas ─────
+    private long? detalleAbierto;
+    private readonly Dictionary<long, MeliDepoFicha?> fichas = new();
+
+    private async Task AlternarDetalle(MeliDepoOrden o)
+    {
+        if (detalleAbierto == o.Numero) { detalleAbierto = null; return; }
+        detalleAbierto = o.Numero;
+        if (fichas.TryGetValue(o.Numero, out var ya) && ya is not null) return;
+        fichas.Remove(o.Numero);
+        StateHasChanged();
+        MeliDepoFicha? f = null;
+        try { f = await Api.GetMeliDepoFichaAsync(o.Numero); } catch { }
+        fichas[o.Numero] = f is { Ok: true } ? f : null;
+    }
 
     private List<StockIdealPendienteDto> FaltantesParaPedir => faltantes.Where(f => !f.Pedido && !f.YaRepuesto && !f.EnArmado).ToList();
     private List<StockIdealPendienteDto> FaltantesPedidos => faltantes.Where(f => f.Pedido).ToList();
@@ -519,6 +665,8 @@
             // ME1 tiene su propia pastilla; Full lo despacha MeLi y no lleva etiqueta nuestra.
             ventas = r.Ordenes.Where(o => o.TipoClave != "full" && !o.Tipo.Contains("ME1")).ToList();
             AvisarEnvios("ven", ventas, vistosVentas, ref ventasOk, "Venta nueva de MercadoLibre", "ventas nuevas de MercadoLibre");
+            // Con la ventana abierta, su lista también se pone al día.
+            if (ventana == "ven") await CargarVentasVentana();
         }
         catch { }
     }
@@ -613,6 +761,8 @@
         ventana = p;
         tildadas.Clear();
         verDespachados = false;
+        detalleAbierto = null;
+        if (p == "ven") { filtroVen = "imprimir"; await CargarVentasVentana(); }
         if (p is "me1" or "ven") TildarSinImprimir();
         if (p == "fal") marcaAbierta = null;
         if (p == "pre")
