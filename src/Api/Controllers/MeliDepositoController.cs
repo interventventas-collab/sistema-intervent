@@ -119,20 +119,29 @@ public class MeliDepositoController : ControllerBase
             .Take(500)
             .ToList();
 
-        if (!soloMe1)
-            return Ok(new
-            {
-                cuentas = cuentas.Select(a => new { id = a.Id, nombre = a.Nickname }),
-                ordenes = grupos
-            });
-
         // 2026-11-07: para ME1 también va a quién y adónde (lo que ya tenemos bajado de MeLi).
+        // 2026-11-10: y en qué anda cada envío: quién lo lleva, a qué hora salió y quién lo entregó
+        // y cuándo. Los envíos bajados son los ME1; en Flex/Correo esos datos quedan vacíos.
+        // Las horas van en hora ARGENTINA (como "fecha"); en la base están en UTC.
         var envIds = grupos.Where(g => g.numeroEnvio.HasValue).Select(g => g.numeroEnvio!.Value).Distinct().ToList();
         var destinos = (await _db.MeliShipments.AsNoTracking()
                 .Where(s => envIds.Contains(s.MeliShipmentId))
-                .Select(s => new { s.MeliShipmentId, s.ReceiverName, s.StreetName, s.StreetNumber, s.AddressLine, s.City, s.ZipCode })
+                .Select(s => new
+                {
+                    s.MeliShipmentId, s.ReceiverName, s.StreetName, s.StreetNumber, s.AddressLine, s.City, s.ZipCode,
+                    s.DateShipped, s.DateDelivered, s.InternalStatus, s.RepartidorAsignadoId,
+                    s.EntregadoPorRepartidorId, s.EntregadoPorRepartidorAt
+                })
                 .ToListAsync())
             .GroupBy(s => s.MeliShipmentId).ToDictionary(g => g.Key, g => g.First());
+        var repIds = destinos.Values.SelectMany(d => new[] { d.RepartidorAsignadoId, d.EntregadoPorRepartidorId })
+            .Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToList();
+        var repartidores = repIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.CafeRepartidores.AsNoTracking().Where(r => repIds.Contains(r.Id))
+                .ToDictionaryAsync(r => r.Id, r => r.Nombre);
+        static DateTime? Ar(DateTime? utc) => utc?.AddHours(-3);
+        string? Rep(int? id) => id.HasValue && repartidores.TryGetValue(id.Value, out var n) ? n : null;
+
         return Ok(new
         {
             cuentas = cuentas.Select(a => new { id = a.Id, nombre = a.Nickname }),
@@ -148,7 +157,13 @@ public class MeliDepositoController : ControllerBase
                     destinatario = d?.ReceiverName,
                     direccion = calle,
                     localidad = d?.City,
-                    cp = d?.ZipCode
+                    cp = d?.ZipCode,
+                    impresaAr = Ar(g.etiquetaImpresaAt),
+                    salioAr = Ar(d?.DateShipped),
+                    entregadaAr = Ar(d?.EntregadoPorRepartidorAt ?? d?.DateDelivered),
+                    enRuta = d?.InternalStatus == "en_ruta",
+                    lleva = Rep(d?.RepartidorAsignadoId),
+                    entrego = Rep(d?.EntregadoPorRepartidorId),
                 };
             })
         });
