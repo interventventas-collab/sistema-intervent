@@ -311,8 +311,11 @@
     }
     .mnb-shell:hover { box-shadow: 0 4px 10px rgba(0,0,0,.14); }
     .mnb-shell-txt { display: flex; flex-direction: column; text-align: left; line-height: 1.1; }
-    .mnb-shell-txt small { font-size: 0.66rem; font-weight: 600; color: #713f12; }
-    .mnb-shell-txt b { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+    .mnb-shell-txt small { display: none; }
+    .mnb-shell-txt b { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+    .mnb-shell { padding: 0 0.35rem 0 0.6rem !important; gap: 0.3rem !important; }
+    .mnb-shell .mnb-ico-e { font-size: 0.95rem; }
+    .mnb-shell-ref { width: 22px !important; height: 22px !important; font-size: 0.8rem !important; }
     .mnb-shell-ref {
         width: 26px; height: 26px; border-radius: 50%; border: 0; background: #dc2626; color: #fff; cursor: pointer;
         display: grid; place-items: center; font-size: 0.9rem; padding: 0; font-family: inherit;
@@ -328,7 +331,19 @@
         .main-ta.main-ta-col .topstrip { padding-top: 0.5rem; padding-bottom: 0.4rem; }
     }
     /* Pantalla angosta (notebook): no entra todo en una fila; los botones bajan a un renglón propio. */
-    @@media (min-width: 769px) and (max-width: 1780px) {
+    /* 2026-11-10: con el menú izquierdo plegado (64 px) entra todo en una fila hasta notebooks de 1366;
+       más angosto que eso, los botones bajan a un renglón propio. */
+    @@media (min-width: 769px) and (max-width: 1500px) {
+        .mnb-arriba .mnb { gap: 0.3rem; }
+        .mnb-arriba .mnb-directo { padding: 0 0.45rem; font-size: 0.8rem; }
+        .mnb-arriba .mnb-doble { padding-right: 0.35rem; }
+        .mnb-arriba .mnb-cont > .mnb-directo, .mnb-arriba .mnb-doble, .mnb-shell { height: 40px; }
+        .calc-uno-btn { width: 40px; height: 40px; font-size: 1.3rem; }
+        .main-ta.main-ta-col .topstrip { gap: 0.35rem; }
+        .main-ta-col .topstrip-icons .topbar-square-btn { width: 30px; height: 30px; }
+        .main-ta-col .topstrip-icons { gap: 0.05rem; }
+    }
+    @@media (min-width: 769px) and (max-width: 1340px) {
         .main-ta.main-ta-col .topstrip { flex-wrap: wrap !important; row-gap: 0.6rem; }
         .main-ta-col .mnb-arriba { order: 20; flex-basis: 100%; }
     }
@@ -494,6 +509,15 @@
     @@keyframes calcnuevo { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
     /* 2026-10-20: CALCUPRECIOS + CALCU ALQUILER apilados, en el alto de un botón de la barra */
     .calc-pila { display: inline-flex; flex-direction: column; gap: 2px; }
+    /* 2026-11-10: calculadora única (menú nuevo). */
+    .calc-uno { position: relative; display: inline-flex; }
+    .calc-uno-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid #f9a8d4; background: linear-gradient(135deg, #fce7f3, #ede9fe);
+        font-size: 1.5rem; line-height: 1; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 0; }
+    .calc-uno-btn:hover { box-shadow: 0 4px 10px rgba(0,0,0,.12); }
+    .calc-uno-menu { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); padding-top: 6px; z-index: 9500;
+        flex-direction: column; gap: 4px; }
+    .calc-uno:hover .calc-uno-menu { display: flex; }
+    .calc-uno-menu .topbar-nav-modern { height: 34px; padding: 0 0.8rem; font-size: 0.8rem; border-radius: 8px; justify-content: flex-start; white-space: nowrap; box-shadow: 0 6px 16px rgba(0,0,0,.18); }
     .calc-pila .topbar-nav-modern { height: 19px; padding: 0 0.6rem; font-size: 0.72rem; border-radius: 5px; justify-content: flex-start; }
     .calc-pila .topbar-nav-modern-ico { font-size: 0.8rem; }
     .calc-pila .topbar-nav-modern-ico svg { width: 13px; height: 13px; }
@@ -1783,7 +1807,23 @@
         @if (TodoArriba && !TodoArribaDepo && (HasPerm("cafe") || HasPerm("oficina")))
         {
             <div class="ta-acciones ta-solo-pc">
-                @CalcuPila
+                @if (MenuNuevo)
+                {
+                    @* 2026-11-10: una sola calculadora grande; al pasar el mouse aparecen las dos (para que entre todo en una fila). *@
+                    <span class="calc-uno">
+                        <button class="calc-uno-btn" @onclick="OpenCalcFromNav" title="Calculadoras">🧮</button>
+                        <span class="calc-uno-menu">
+                            <button class="topbar-nav-modern calcuprecios-btn" @onclick="OpenCalcFromNav">
+                                <span class="topbar-nav-modern-ico">@SvgIcons.Calculator</span><span>CALCUPRECIOS</span>
+                            </button>
+                            <button class="topbar-nav-modern calcualq-btn" @onclick="OpenCalcAlquilerFromNav"><span>🪑 CALCU ALQUILER</span></button>
+                        </span>
+                    </span>
+                }
+                else
+                {
+                    @CalcuPila
+                }
                 @AccionesNuevo
             </div>
         }

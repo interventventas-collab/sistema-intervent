@@ -149,7 +149,7 @@ public static class MenuNuevoCatalogo
     /// <summary>Iconos (2026-11-10): clave = título de sección o dirección de pantalla → emoji que eligió el dueño.</summary>
     public record Orden(List<string> Directos, List<GrupoOrden> Grupos, List<string> Mas,
                         Dictionary<string, string>? Colores = null, List<string>? Costado = null,
-                        Dictionary<string, string>? Iconos = null);
+                        Dictionary<string, string>? Iconos = null, List<string>? Pastillas = null);
 
     /// <summary>Clave de "grupo de fábrica" para lo del costado suelto ("" = Más pantallas).</summary>
     public const string CLAVE_COSTADO = "◧";
@@ -195,7 +195,7 @@ public static class MenuNuevoCatalogo
     public record GrupoArmado(Grupo Grupo, List<Item> Items);
     public record Armado(List<Item> Directos, List<GrupoArmado> Grupos, List<Item> Mas,
                          Dictionary<string, string> Colores, List<Item> Costado,
-                         Dictionary<string, string>? Iconos = null);
+                         Dictionary<string, string>? Iconos = null, List<string>? Pastillas = null);
 
     /// <summary>2026-11-10: emojis para elegir en ✏ Acomodar (pedido del dueño: "poner íconos yo").</summary>
     /// <summary>2026-11-10 (2ª): más emojis y ordenados por tema del negocio (café, envases y
@@ -305,7 +305,7 @@ public static class MenuNuevoCatalogo
             colores.TryAdd("Compras", colorStock);
         }
         var iconos = new Dictionary<string, string>(o.Iconos ?? new(), StringComparer.OrdinalIgnoreCase);
-        return new Armado(directos, grupos, mas, colores, costado, iconos);
+        return new Armado(directos, grupos, mas, colores, costado, iconos, o.Pastillas);
     }
 
     public static Orden AOrden(Armado a) => new(
@@ -314,7 +314,8 @@ public static class MenuNuevoCatalogo
         a.Mas.Select(i => i.Href).ToList(),
         new Dictionary<string, string>(a.Colores),
         a.Costado.Select(i => i.Href).ToList(),
-        a.Iconos == null ? null : new Dictionary<string, string>(a.Iconos));
+        a.Iconos == null ? null : new Dictionary<string, string>(a.Iconos),
+        a.Pastillas?.ToList());
 
     /// <summary>2026-11-06: lo que va suelto en el menú del costado (arriba de "Más pantallas").
     /// También se puede mover a las secciones de arriba con ✏ Acomodar, y al revés.</summary>

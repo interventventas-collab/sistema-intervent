@@ -56,6 +56,19 @@ public class MenuNuevoService
         await GuardarAsync(a with { Colores = colores, Iconos = iconos });
     }
 
+    /// <summary>2026-11-10: orden y colores de las pastillas de la derecha del Dashboard.
+    /// Los colores van en el mismo diccionario, con la clave "pas:" + pastilla.</summary>
+    public async Task GuardarPastillasAsync(List<string> orden, Dictionary<string, string?> colores)
+    {
+        var a = Actual;
+        var col = new Dictionary<string, string>(a.Colores, StringComparer.OrdinalIgnoreCase);
+        foreach (var (k, v) in colores)
+        {
+            if (string.IsNullOrEmpty(v)) col.Remove("pas:" + k); else col["pas:" + k] = v;
+        }
+        await GuardarAsync(a with { Colores = col, Pastillas = orden });
+    }
+
     public async Task VolverAlOriginalAsync()
     {
         await _api.ResetMenuConfigAsync();

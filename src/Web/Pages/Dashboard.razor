@@ -8,6 +8,7 @@
 @inject ToastService ToastService
 @inject CurrentCompanyService Company
 @inject NavigationManager Navigation
+@inject MenuNuevoService MenuSvc
 @inject IJSRuntime JS
 
 <div class="view-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.8rem;">
@@ -114,7 +115,27 @@ else
         .op-wrap > .op-side { order:-1; min-width:0; }
     }
     .op-side { display:flex; flex-direction:column; gap:0.7rem; }
-    .op-side .dp-col, .op-side .op-col { position:static; align-self:stretch; width:auto; }
+    /* 2026-11-10: las pastillas de los dos componentes quedan "sueltas" en la columna, así se pueden ordenar todas juntas. */
+    .op-side .dp-col, .op-side .op-col { display:contents; }
+    .op-side .op-chat { order:500; }
+    .op-acomodar { order:-1; align-self:flex-end; border:0; background:transparent; color:#6b7280; font:inherit; font-size:0.78rem; cursor:pointer; padding:0 0.2rem; }
+    .op-acomodar:hover { color:#111827; }
+    .op-acom-fondo { position:fixed; inset:0; background:rgba(17,24,39,.35); z-index:9700; }
+    .op-acom { position:fixed; top:12vh; left:50%; transform:translateX(-50%); width:660px; max-width:calc(100vw - 32px); z-index:9701; background:#fff;
+        border-radius:14px; box-shadow:0 18px 44px rgba(0,0,0,.3); padding:1rem 1.1rem; }
+    .op-acom-t { font-weight:700; font-size:1rem; }
+    .op-acom-sub { font-size:0.8rem; color:#6b7280; margin-bottom:0.6rem; }
+    .op-acom-fila { display:flex; align-items:center; gap:0.35rem; padding:0.35rem 0; border-top:1px solid #f1f2f4; }
+    .op-acom-nom { flex:0 0 190px; font-size:0.88rem; font-weight:600; }
+    .op-acom-b { border:1px solid #e5e7eb; background:#fff; border-radius:6px; width:26px; height:26px; cursor:pointer; padding:0; }
+    .op-acom-b:disabled { opacity:.3; cursor:default; }
+    .op-acom-cols { display:flex; flex-wrap:wrap; gap:3px; margin-left:0.4rem; }
+    .op-acom-co { width:18px; height:18px; border-radius:50%; border:2px solid #e5e7eb; cursor:pointer; padding:0; }
+    .op-acom-co.on { outline:2px solid #111827; outline-offset:1px; }
+    .op-acom-bs { display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.8rem; }
+    .op-acom-bs button { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.4rem 0.9rem; font:inherit; font-weight:700; cursor:pointer; }
+    .op-acom-bs button.si { background:#111827; border-color:#111827; color:#fff; }
+    .dash-panorama { margin-top:1.5rem; border-top:1px solid #e5e7eb; padding-top:0.5rem; }
     .op-chat { background:#111827; border-radius:14px; padding:4px 0 2px; box-shadow:0 2px 7px rgba(0,0,0,.09); }
     .op-chat .sbchat { height:380px; margin:4px 6px; }
     .op-chat { padding:0; }
@@ -1865,17 +1886,58 @@ else
 </style>
 
 @* === Cheques por pagar — calendario visual === *@
-<ChequesPorPagarCalendario />
+@* 2026-11-10: para admin el almanaque pasó a una pastilla de la derecha (acá era enorme). *@
+@if (!DashNuevo)
+{
+    <ChequesPorPagarCalendario />
+}
+
+@* 2026-11-10: con la pantalla principal más limpia, Panorama va acá abajo de todo (pedido del dueño). *@
+@if (DashNuevo)
+{
+    <div class="dash-panorama"><Web.Pages.Panorama /></div>
+}
 
 </div> @* fin op-main *@
 @if (DashNuevo)
 {
     @* 2026-11-10: el chat del equipo abajo de las pastillas (pedido del dueño: "a la derecha que hay lugar"). *@
     <div class="op-side">
+        @((MarkupString)CssPastillas())
+        <button class="op-acomodar" @onclick="AbrirAcomodarPastillas" title="Mover las pastillas y cambiarles el color">✏ Acomodar pastillas</button>
         @* 2026-11-10: Ventas MeLi, ME1, Faltantes y Preguntas como las ve el depósito (abren su ventana al costado). *@
         <DepoPastillas Oficina="true" />
         <OficinaPastillas ConDeposito="true" />
         @* 2026-11-10: arranca cerrado (pedido del dueño); se abre tocando la barrita. *@
+        @if (acomPas != null)
+        {
+            <div class="op-acom-fondo" @onclick="() => acomPas = null"></div>
+            <div class="op-acom">
+                <div class="op-acom-t">Acomodar pastillas</div>
+                <div class="op-acom-sub">Con ▲ ▼ las movés; tocando un color la pintás.</div>
+                @for (var n = 0; n < acomPas.Count; n++)
+                {
+                    var ip = n;
+                    var k = acomPas[ip];
+                    <div class="op-acom-fila">
+                        <span class="op-acom-nom">@PastillaNombre(k)</span>
+                        <button class="op-acom-b" disabled="@(ip == 0)" @onclick="() => MoverPastilla(ip, -1)">▲</button>
+                        <button class="op-acom-b" disabled="@(ip == acomPas.Count - 1)" @onclick="() => MoverPastilla(ip, 1)">▼</button>
+                        <span class="op-acom-cols">
+                            <button class="op-acom-co @(acomCol.GetValueOrDefault(k) == null ? "on" : "")" title="Como viene" style="background:#fff;" @onclick="() => acomCol[k] = null"></button>
+                            @foreach (var pa in MenuNuevoCatalogo.Pasteles.Take(12))
+                            {
+                                <button class="op-acom-co @(acomCol.GetValueOrDefault(k) == pa.Clave ? "on" : "")" title="@pa.Nombre" style="background:@pa.Fondo; border-color:@pa.Borde;" @onclick="() => acomCol[k] = pa.Clave"></button>
+                            }
+                        </span>
+                    </div>
+                }
+                <div class="op-acom-bs">
+                    <button @onclick="() => acomPas = null">Cancelar</button>
+                    <button class="si" @onclick="GuardarPastillas">Guardar</button>
+                </div>
+            </div>
+        }
         <div class="op-chat @(chatAbierto ? "abierto" : "")">
             <button class="op-chat-bar" @onclick="() => chatAbierto = !chatAbierto"
                     title="@(chatAbierto ? "Cerrar el chat" : "Abrir el chat del equipo")">
@@ -1898,6 +1960,72 @@ else
     private bool userCargado;
     /// <summary>2026-11-10: el chat del equipo del Dashboard arranca cerrado.</summary>
     private bool chatAbierto;
+
+    // ───────── Pastillas de la derecha: orden y color (2026-11-10) ─────────
+    private static readonly (string Clave, string Sel, string Nombre)[] PastillasTodas =
+    {
+        ("d-me1", ".dp-big.me1", "🚚 ME1"),
+        ("d-ven", ".dp-big.ven", "🏷️ Ventas MeLi"),
+        ("d-fal", ".dp-big.fal", "📦 Faltantes"),
+        ("d-pre", ".dp-big.pre", "💬 Preguntas"),
+        ("o-me1", ".op-big.me1", "🚚 ME1 sin repartidor"),
+        ("o-alq", ".op-big.alq", "🎪 Alquileres"),
+        ("o-cal", ".op-big.cal", "📅 Almanaque de cheques"),
+        ("o-che", ".op-big.che", "📄 Cheques por pagar"),
+        ("o-pag", ".op-big.pag", "✅ Pagos a confirmar"),
+    };
+    private List<string>? acomPas;
+    private Dictionary<string, string?> acomCol = new();
+
+    private List<string> OrdenPastillas()
+    {
+        var guardado = MenuSvc.Actual.Pastillas ?? new List<string>();
+        var res = guardado.Where(k => PastillasTodas.Any(p => p.Clave == k)).Distinct().ToList();
+        foreach (var p in PastillasTodas) if (!res.Contains(p.Clave)) res.Add(p.Clave);
+        return res;
+    }
+    private static string PastillaNombre(string k) => PastillasTodas.FirstOrDefault(p => p.Clave == k).Nombre ?? k;
+
+    private string CssPastillas()
+    {
+        var sb = new System.Text.StringBuilder("<style>");
+        var orden = OrdenPastillas();
+        for (var i = 0; i < orden.Count; i++)
+        {
+            var p = PastillasTodas.First(x => x.Clave == orden[i]);
+            sb.Append($".op-side {p.Sel}{{order:{i};}}");
+            if (MenuSvc.Actual.Colores.TryGetValue("pas:" + p.Clave, out var c) && MenuNuevoCatalogo.Pastel(c) is { } pc)
+                sb.Append($".op-side {p.Sel}{{background:linear-gradient(135deg,{pc.Borde},{pc.Fondo});}}");
+        }
+        sb.Append("</style>");
+        return sb.ToString();
+    }
+
+    private void AbrirAcomodarPastillas()
+    {
+        acomPas = OrdenPastillas();
+        acomCol = PastillasTodas.ToDictionary(p => p.Clave,
+            p => MenuSvc.Actual.Colores.TryGetValue("pas:" + p.Clave, out var c) ? c : (string?)null);
+    }
+    private void MoverPastilla(int i, int d)
+    {
+        if (acomPas == null) return;
+        var j = i + d;
+        if (j < 0 || j >= acomPas.Count) return;
+        (acomPas[i], acomPas[j]) = (acomPas[j], acomPas[i]);
+    }
+    private async Task GuardarPastillas()
+    {
+        if (acomPas == null) return;
+        try
+        {
+            await MenuSvc.GuardarPastillasAsync(acomPas, acomCol);
+            acomPas = null;
+            ToastService.Success("Pastillas acomodadas");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+    }
+    private void MenuCambio() => InvokeAsync(StateHasChanged);
     /// <summary>2026-11-10: "Equipo hoy" arranca plegado (pedido del dueño).</summary>
     private bool equipoAbierto = true;
     private bool DashNuevo => userCargado && string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase);
@@ -2253,6 +2381,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        MenuSvc.OnChange += MenuCambio;
+        _ = MenuSvc.EnsureLoadedAsync();
         var user = await AuthService.GetUserAsync();
         if (user is not null)
         {
@@ -2702,6 +2832,7 @@ else
 
     public void Dispose()
     {
+        MenuSvc.OnChange -= MenuCambio;
         clockTimer?.Dispose();
         coffeeTimer?.Dispose();
         salesSummaryTimer?.Dispose();

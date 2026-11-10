@@ -49,6 +49,10 @@
     .op-aviso-bs button { background:#fff; color:#111827; border:none; border-radius:999px; padding:0.3rem 0.85rem; font:inherit; font-size:0.8rem; font-weight:700; cursor:pointer; }
     .op-aviso-bs button.des { background:none; color:#d1d5db; font-weight:400; }
 
+    .op-big.cal { background:linear-gradient(135deg,#e0e7ff,#f5f7ff); }
+    .op-vent.op-vent-cal { width:900px; max-width:calc(100vw - 340px); }
+    .op-cal-cuerpo { overflow:auto; padding:0.4rem 0.6rem 0.6rem; }
+    .op-cal-cuerpo > * { zoom:0.74; }
     .op-vent { position:fixed; right:320px; top:70px; z-index:905; width:520px; max-width:calc(100vw - 340px); max-height:calc(100vh - 90px);
         display:flex; flex-direction:column; background:#fff; border-radius:14px; border:1px solid #d1d5db; box-shadow:0 14px 40px rgba(0,0,0,.33); overflow:hidden; }
     .op-vh { display:flex; align-items:center; gap:0.6rem; padding:0.7rem 1rem; border-bottom:1px solid #e5e7eb; font-size:1.02rem; font-weight:600; flex-shrink:0; }
@@ -133,6 +137,12 @@
         </div>
     </div>
 
+    @* 📅 Almanaque de cheques (2026-11-10): antes era un almanaque enorme abajo del Dashboard. *@
+    <div class="op-big cal @Marcas("cal")" @onclick='() => Tocar("cal")'>
+        <div class="op-t">📅 Almanaque de cheques</div>
+        <div class="op-l gris">tocá para ver el mes</div>
+    </div>
+
     @* 📄 Cheques por pagar *@
     <div class="op-big che @Marcas("che")" @onclick='() => Tocar("che")'>
         <div class="op-t">📄 Cheques por pagar <span class="op-n @(ChequesSemana.Count == 0 ? "cero" : "")">@ChequesSemana.Count</span></div>
@@ -209,6 +219,17 @@
                 </div>
             </div>
         }
+    </div>
+}
+
+@if (ventana == "cal")
+{
+    <div class="op-vent op-vent-cal">
+        <div class="op-vh">
+            📅 Almanaque de cheques <small>por pagar</small>
+            <button class="op-x" title="Cerrar" @onclick="Cerrar">✕</button>
+        </div>
+        <div class="op-cal-cuerpo"><ChequesPorPagarCalendario /></div>
     </div>
 }
 
@@ -444,6 +465,7 @@
     {
         nuevas.Remove(p);
         avisos.RemoveAll(a => a.Pastilla == p);
+        if (p == "cal") { ventana = ventana == "cal" ? null : "cal"; return; }
         if (p == "me1")
         {
             // Con envíos sin repartidor se abre la ventanita al costado para asignar; si no hay, va a la pantalla.
