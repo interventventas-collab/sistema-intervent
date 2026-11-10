@@ -30,23 +30,26 @@
             <span class="mnb-cont">
                 @if (d.Nuevo is { } tipo)
                 {
-                    <span class="mnb-doble">
+                    <span class="mnb-doble" style="@EstiloCard(d.Href)">
                         <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)"><span class="mnb-ico-e @(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, d.Href) != null ? "propio" : "")">@IconoBoton(d.Href)</span>@d.Label</button>
                         <button class="mnb-mas" title="@TituloNuevo(tipo)" aria-label="@TituloNuevo(tipo)" @onclick="() => Nuevo(tipo)">+</button>
                     </span>
                 }
                 else
                 {
-                    <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)"><span class="mnb-ico-e @(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, d.Href) != null ? "propio" : "")">@IconoBoton(d.Href)</span>@d.Label</button>
+                    <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloCard(d.Href)" @onclick="() => Ir(d)"><span class="mnb-ico-e @(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, d.Href) != null ? "propio" : "")">@IconoBoton(d.Href)</span>@d.Label</button>
                 }
                 @Numerito(d.Href)
+                @* 2026-11-10: lapicito para cambiarle el ícono y el color a este botón. *@
+                <button class="mnb-lapiz" title="Cambiar ícono y color" aria-label="Cambiar ícono y color de @d.Label"
+                        @onclick="e => OnLapiz?.Invoke(d.Href, d.Label, e.ClientX - 60, e.ClientY + 14)" @onclick:stopPropagation="true">✏</button>
             </span>
         }
         @* 2026-11-10: Shell Flota al lado de MAPEO: el saldo a la vista y el ⟳ lo vuelve a leer. *@
         @if (shell != null)
         {
             <span class="mnb-cont">
-                <span class="mnb-shell" role="button" tabindex="0" title="Ir a Shell Flota" @onclick='() => NavigateTo("/integraciones/shell")'>
+                <span class="mnb-shell" style="@EstiloCard("shell")" role="button" tabindex="0" title="Ir a Shell Flota" @onclick='() => NavigateTo("/integraciones/shell")'>
                     <span class="mnb-ico-e propio">@(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, "shell") ?? "⛽")</span>
                     <span class="mnb-shell-txt">
                         <small>Shell Flota</small>
@@ -56,6 +59,8 @@
                             title="@(TituloShell())" aria-label="Leer el saldo de Shell ahora"
                             @onclick="LeerShellAhora" @onclick:stopPropagation="true"><span>⟳</span></button>
                 </span>
+                <button class="mnb-lapiz" title="Cambiar el ícono" aria-label="Cambiar el ícono de Shell Flota"
+                        @onclick='e => OnLapiz?.Invoke("shell", "Shell Flota", e.ClientX - 60, e.ClientY + 14)' @onclick:stopPropagation="true">✏</button>
             </span>
         }
     }
@@ -98,6 +103,12 @@
     [Parameter] public Action<string>? OnNuevo { get; set; }
     /// <summary>Solo el dueño acomoda; lo que acomoda vale para todos los que usen el menú nuevo.</summary>
     [Parameter] public bool PuedeAcomodar { get; set; }
+    /// <summary>2026-11-10: tocaron el lápiz ✏ de un botón (clave, nombre, x, y) → MainLayout abre la ventanita.</summary>
+    [Parameter] public Action<string, string, double, double>? OnLapiz { get; set; }
+
+    /// <summary>Color que eligió el dueño para la tarjetita del botón de arriba.</summary>
+    private string EstiloCard(string clave)
+        => MenuNuevoCatalogo.Pastel(MenuNuevoCatalogo.IconoDe(Svc.Actual.Colores, clave)) is { } p ? $"background:{p.Fondo};border-color:{p.Borde};" : "";
 
     private const string DIRECTOS = "★";
     private const string MAS = "⋯";
@@ -323,14 +334,7 @@
                     }
                     @if (editando && clave != DIRECTOS && clave != MAS && clave != COSTADO)
                     {
-                        <div class="mnb-color-sec">
-                            <span>Color de "@titulo":</span>
-                            @Circulos(clave)
-                        </div>
-                        <div class="mnb-color-sec">
-                            <span>Ícono de "@titulo":</span>
-                            @Emojis(clave)
-                        </div>
+                        @* 2026-11-10: color e ícono se cambian con el lápiz ✏ de cada botón (ya no acá). *@
                     }
                     @if (items.Count == 0)
                     {
@@ -352,8 +356,6 @@
                         {
                             <div class="mnb-fila-ed" style="@EstiloItem(it.Href)">
                                 <span class="mnb-nombre">@it.Label</span>
-                                <button class="mnb-ico @(pintando == it.Href ? "on" : "")" title="Ponerle color" @onclick="() => { pintando = pintando == it.Href ? null : it.Href; moviendo = null; iconeando = null; }">🎨</button>
-                                <button class="mnb-ico @(iconeando == it.Href ? "on" : "")" title="Elegir su ícono" @onclick="() => { iconeando = iconeando == it.Href ? null : it.Href; moviendo = null; pintando = null; }">@(iconos.TryGetValue(it.Href, out var ie) ? ie : "😀")</button>
                                 <button class="mnb-ico" title="Subir" disabled="@(idx == 0)" @onclick="() => Correr(clave, idx, -1)">▲</button>
                                 <button class="mnb-ico" title="Bajar" disabled="@(idx == items.Count - 1)" @onclick="() => Correr(clave, idx, +1)">▼</button>
                                 @if (clave == DIRECTOS)

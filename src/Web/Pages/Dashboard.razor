@@ -123,6 +123,9 @@ else
     .op-chat-bar:hover { background:rgba(255,255,255,.06); }
     .op-chat-car { color:#9ca3af; font-weight:400; }
     @@media (max-width: 899px) { .op-chat { display:none; } }
+    .dash-eh-toggle { cursor:pointer; }
+    .dash-eh-car { margin-left:auto; margin-right:0.6rem; font-size:0.8rem; font-weight:400; color:#6b7280; cursor:pointer; white-space:nowrap; }
+    .dash-eh-car:hover { color:#111827; }
     .dash-eh-summary { display:inline-flex; flex-wrap:wrap; gap:0.9rem; margin-left:0.6rem; font-size:0.78rem; font-weight:400; color:#6b7280; }
 </style>
 <div class="@(DashNuevo ? "op-wrap" : "")">
@@ -139,8 +142,8 @@ else
         <span class="dash-card-title-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></span>
         @if (DashNuevo)
         {
-            @* 2026-11-10: "Equipo hoy" en rayitas — resumen en una línea. *@
-            <span>Equipo hoy</span>
+            @* 2026-11-10: "Equipo hoy" — arranca plegado (solo esta línea); se abre tocándola. *@
+            <span class="dash-eh-toggle" @onclick="() => equipoAbierto = !equipoAbierto" title="@(equipoAbierto ? "Plegar" : "Tocá para ver el equipo")">Equipo hoy</span>
             @if (equipoResp is not null)
             {
                 var visEq = equipoResp.Items.Where(x => EmpVisible(x.NomEmpleadoId)).ToList();
@@ -155,8 +158,14 @@ else
                         <span><span class="dash-dot" style="background:#10b981;"></span>@nFue ya se fue@(nFue == 1 ? "" : "ron")</span>
                     }
                     <span><span class="dash-dot" style="background:#f59e0b;"></span>@nRep repartiendo sin fichar</span>
-                    <span><span class="dash-dot" style="background:#9ca3af;"></span>@nNo no vino@(nNo == 1 ? "" : "ieron")</span>
+                    <span><span class="dash-dot" style="background:#9ca3af;"></span>@nNo @(nNo == 1 ? "no vino" : "no vinieron")</span>
+                    @{ var nQuietos = visEq.Count(x => x.MinutosSinMarcar >= EquipoHoyRayitas.UmbralQuietoMin && x.RutaFaltan > 0); }
+                    @if (nQuietos > 0)
+                    {
+                        <span style="color:#b45309; font-weight:700;">⚠ @nQuietos quieto@(nQuietos == 1 ? "" : "s") hace rato</span>
+                    }
                 </span>
+                <span class="dash-eh-car" @onclick="() => equipoAbierto = !equipoAbierto">@(equipoAbierto ? "plegar ▾" : "tocá para ver ▸")</span>
             }
         }
         else
@@ -208,6 +217,10 @@ else
     @if (equipoLoading && equipoResp is null)
     {
         <div class="dash-card-sub">Cargando equipo…</div>
+    }
+    else if (DashNuevo && !equipoAbierto)
+    {
+        @* plegado: solo la línea de arriba *@
     }
     else if (DashNuevo && equipoResp is not null && equipoResp.Items.Count > 0)
     {
@@ -1874,6 +1887,8 @@ else
     private bool userCargado;
     /// <summary>2026-11-10: el chat del equipo del Dashboard arranca cerrado.</summary>
     private bool chatAbierto;
+    /// <summary>2026-11-10: "Equipo hoy" arranca plegado (pedido del dueño).</summary>
+    private bool equipoAbierto;
     private bool DashNuevo => userCargado && string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase);
     private Dictionary<int, List<string>> equipoHoras = new();
     private bool mapaMiniIniciado;
