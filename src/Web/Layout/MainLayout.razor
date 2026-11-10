@@ -1566,8 +1566,7 @@
         {
             <div class="ta-acciones ta-solo-pc">
                 @CalcuPila
-                @* Con el menú nuevo, cargar una venta/cobranza/alquiler/pago es el + pegado a su botón. *@
-                @if (!MenuNuevo) { @AccionesNuevo }
+                @AccionesNuevo
             </div>
         }
         @if (TodoArribaDepo)
@@ -3080,7 +3079,8 @@
 
     private RenderFragment AccionesNuevo => __builder =>
     {
-                <div class="tb-nuevo-group">
+                @* Con el menú nuevo, en compu cargar algo es el + pegado a cada botón de la barra. *@
+                <div class="tb-nuevo-group @(MenuNuevo ? "mn-oculto-pc" : "")">
                     <button class="tb-nuevo tb-nuevo-venta" @onclick='() => NuevoRapido("venta")'
                             title="Nueva venta — atajo: apretá N y después V" aria-label="Nueva venta">
                         <span class="ic" aria-hidden="true">🛒</span>
