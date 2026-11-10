@@ -51,7 +51,11 @@
     .dp-sinrep-t { font-size:0.78rem; font-weight:700; color:#9a3412; text-transform:uppercase; letter-spacing:0.03em; padding:0.5rem 0.9rem 0.2rem; }
     .dp-sinrep { display:flex; gap:0.6rem; align-items:flex-start; padding:0.5rem 0.9rem; border-bottom:1px solid #f3f4f6; background:#fff7ed; font-size:0.86rem; }
     .dp-sub { color:#6b7280; font-size:0.78rem; line-height:1.4; }
-    .dp-asig { flex-shrink:0; height:30px; font-size:0.8rem; max-width:140px; padding:0 6px; border:1px solid #d1d5db; border-radius:6px; background:#fff; }
+    .dp-asig { flex-shrink:0; height:28px; font-size:0.78rem; max-width:150px; padding:0 6px; border:1px solid #d1d5db; border-radius:6px; background:#fff; margin-top:4px; }
+    .dp-asig.falta { border-color:#f59e0b; background:#fffbeb; color:#92400e; font-weight:700; }
+    /* 2026-11-10: en la oficina la ventana arranca más arriba y nunca pasa del borde de abajo (también con zoom). */
+    .dp-flot.ofi.arriba, .dp-flot.ofi.abajo { top:70px; }
+    .dp-flot.dp-vent.ofi { max-height:calc(100vh - 90px); }
     .dp-conf-fondo { position:fixed; inset:0; background:rgba(17,24,39,.45); z-index:9800; }
     .dp-conf { position:fixed; top:22vh; left:50%; transform:translateX(-50%); width:440px; max-width:calc(100vw - 32px); z-index:9801;
                background:#fff; border-radius:14px; box-shadow:0 18px 44px rgba(0,0,0,.35); padding:1.1rem 1.2rem; }
@@ -72,8 +76,10 @@
     .dp-aviso-bs button.des { background:none; color:#d1d5db; font-weight:400; }
 
     .dp-vent { width:700px; max-width:calc(100vw - 400px); display:flex; flex-direction:column; background:#fff; border-radius:14px; border:1px solid #d1d5db; box-shadow:0 14px 40px rgba(0,0,0,.33); overflow:hidden; }
-    .dp-flot.arriba .dp-vent { max-height:calc(100vh - 80px); }
-    .dp-flot.abajo .dp-vent { max-height:calc(100vh - 176px); }
+    /* 2026-11-10: la ventana ES el .dp-flot (mismo elemento): antes estas reglas no se aplicaban y la
+       ventana se pasaba del borde de abajo sin poder ver el final. */
+    .dp-flot.dp-vent.arriba { max-height:calc(100vh - 80px); }
+    .dp-flot.dp-vent.abajo { max-height:calc(100vh - 176px); }
     .dp-vh { display:flex; align-items:center; gap:0.6rem; padding:0.7rem 1rem; border-bottom:1px solid #e5e7eb; font-size:1.1rem; font-weight:700; flex-shrink:0; }
     .dp-vh small { font-size:0.78rem; font-weight:400; color:#6b7280; }
     .dp-x { margin-left:auto; background:none; border:none; font-size:1.3rem; cursor:pointer; color:#374151; line-height:1; }
@@ -332,10 +338,12 @@
         </div>
         <div class="dp-lista">
             @* 2026-11-10: en la oficina, la ventana de ME1 también asigna repartidor (antes era otra pastilla). *@
-            @if (esMe1 && Oficina && Me1SinRepOfi.Count > 0)
+            @* 2026-11-10 (2ª): el "Asignar" va en cada venta de la lista; acá arriba solo quedan los que no
+               están en la lista que se ve (por ejemplo, ya despachados sin repartidor). *@
+            @if (esMe1 && Oficina && Me1SinRepFuera.Count > 0)
             {
-                <div class="dp-sinrep-t">🚚 Sin repartidor (@Me1SinRepOfi.Count) · asigná acá</div>
-                @foreach (var s0 in Me1SinRepOfi)
+                <div class="dp-sinrep-t">🚚 Sin repartidor y fuera de esta lista (@Me1SinRepFuera.Count) · asigná acá</div>
+                @foreach (var s0 in Me1SinRepFuera)
                 {
                     var sh = s0;
                     <div class="dp-sinrep" @key="sh.Id">
@@ -363,7 +371,6 @@
                         </select>
                     </div>
                 }
-                <div class="dp-sinrep-t" style="margin-top:0.6rem;">📦 Para despachar e imprimir</div>
             }
             @if (FilasVentana.Count == 0)
             {
@@ -396,6 +403,19 @@
                     <div class="dp-dest">
                         <b>@Quien(o)</b>
                         @if (esMe1) { <span class="sub">@Domicilio(o)</span> }
+                        @if (esMe1 && Oficina && env.HasValue && me1Ofi.FirstOrDefault(x => x.MeliShipmentId == env.Value) is { } shp)
+                        {
+                            @if (!string.IsNullOrWhiteSpace(shp.ReceiverPhone)) { <span class="sub">📞 @shp.ReceiverPhone</span> }
+                            <select class="dp-asig @(shp.RepartidorAsignadoId == null ? "falta" : "")" disabled="@(asignandoMe1 == shp.Id)"
+                                    title="@(shp.RepartidorAsignadoId == null ? "Todavía sin repartidor" : "Cambiar el repartidor")"
+                                    @onchange="@(e => AsignarMe1(shp, e.Value?.ToString()))">
+                                <option value="" selected="@(shp.RepartidorAsignadoId == null)">@(shp.RepartidorAsignadoId == null ? "🚚 Asignar…" : "")</option>
+                                @foreach (var r in repsOfi)
+                                {
+                                    <option value="@r.Id" selected="@(shp.RepartidorAsignadoId == r.Id)">🚚 @r.Nombre</option>
+                                }
+                            </select>
+                        }
                         else if (!string.IsNullOrEmpty(o.Cuenta)) { <span class="sub">cuenta @o.Cuenta</span> }
                     </div>
                     <div class="dp-fase">
@@ -742,6 +762,14 @@
     private List<MeliMe1ShipmentDto> me1Ofi = new();
     private List<RepartidorDto> repsOfi = new();
     private int? asignandoMe1;
+    private List<MeliMe1ShipmentDto> Me1SinRepFuera
+    {
+        get
+        {
+            var enLista = FilasVentana.Where(o => o.NumeroEnvio.HasValue).Select(o => o.NumeroEnvio!.Value).ToHashSet();
+            return Me1SinRepOfi.Where(x => !enLista.Contains(x.MeliShipmentId)).ToList();
+        }
+    }
     private List<MeliMe1ShipmentDto> Me1SinRepOfi => me1Ofi
         .Where(s => s.Status is not ("delivered" or "not_delivered" or "cancelled") && s.RepartidorAsignadoId == null).ToList();
     private static string Me1EstadoOfi(MeliMe1ShipmentDto s) => s.Status switch
