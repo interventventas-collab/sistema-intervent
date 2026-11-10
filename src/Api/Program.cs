@@ -192,6 +192,8 @@ builder.Services.AddScoped<SesionesService>();
 // el numero de conexion de nadie a ninguna empresa de afuera). El lector se comparte (singleton)
 // porque abrir el archivo en cada pedido seria carisimo; el robot la renueva una vez por mes.
 builder.Services.AddSingleton<GeoIpService>();
+// 2026-11-10: clave del día del celu del depósito (/depo, stock ideal, preparación).
+builder.Services.AddSingleton<ClaveDiaCeluService>();
 builder.Services.AddHostedService<GeoIpDownloader>();
 builder.Services.AddScoped<TwilioWhatsAppService>();
 builder.Services.AddScoped<MetaWhatsAppService>();

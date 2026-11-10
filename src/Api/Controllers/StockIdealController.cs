@@ -8,8 +8,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace Api.Controllers;
 
@@ -35,12 +33,12 @@ public class StockIdealController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly StockFaltantesService _faltantes;
-    private readonly IConfiguration _config;
-    public StockIdealController(AppDbContext db, StockFaltantesService faltantes, IConfiguration config)
+    private readonly ClaveDiaCeluService _clave;
+    public StockIdealController(AppDbContext db, StockFaltantesService faltantes, ClaveDiaCeluService clave)
     {
         _db = db;
         _faltantes = faltantes;
-        _config = config;
+        _clave = clave;
     }
 
     // ───────────────────────── DTOs ─────────────────────────
@@ -270,42 +268,24 @@ public class StockIdealController : ControllerBase
 
     private const int MAX_ITEMS_CELU = 20;
 
-    private static string HoyArTexto() => DateTime.UtcNow.AddHours(-3).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-    private byte[] FirmaCelu(string para, string dia)
-    {
-        var secreto = _config["Jwt:Secret"];
-        if (string.IsNullOrEmpty(secreto)) throw new InvalidOperationException("Falta Jwt:Secret");
-        return HMACSHA256.HashData(Encoding.UTF8.GetBytes(secreto), Encoding.UTF8.GetBytes($"stock-ideal-celu|{para}|{dia}"));
-    }
-
-    private string ClaveCelu(string dia)
-        => (BitConverter.ToUInt32(FirmaCelu("clave", dia), 0) % 1_000_000).ToString("D6", CultureInfo.InvariantCulture);
-
-    private string PaseCelu(string dia) => Convert.ToHexString(FirmaCelu("pase", dia));
-
-    private static bool IgualesSeguro(string a, string b)
-        => CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
-
-    private bool PaseCeluValido()
-        => Request.Headers.TryGetValue("X-Pase-Celu", out var pase)
-           && IgualesSeguro(pase.ToString(), PaseCelu(HoyArTexto()));
+    // La clave y el pase viven en ClaveDiaCeluService (los usan también /depo y Preparación).
+    private bool PaseCeluValido() => _clave.PaseValido(Request);
 
     private ObjectResult PaseVencido() => StatusCode(403, new { error = "La clave cambió. Pedí la de hoy." });
 
     /// <summary>GET /api/stock/ideal/celu/clave — la clave de hoy, para mostrarla adentro del sistema.</summary>
     [HttpGet("celu/clave")]
-    public IActionResult ClaveDeHoy() => Ok(new { clave = ClaveCelu(HoyArTexto()) });
+    public IActionResult ClaveDeHoy() => Ok(new { clave = _clave.ClaveDeHoy() });
 
     [AllowAnonymous]
     [EnableRateLimiting("clave-celu")]
     [HttpPost("/api/public/stock-ideal-celu/entrar")]
     public IActionResult EntrarCelu([FromBody] CeluEntrarRequest? req)
     {
-        var dia = HoyArTexto();
-        if (!IgualesSeguro((req?.Clave ?? "").Trim(), ClaveCelu(dia)))
+        var pase = _clave.Entrar(req?.Clave);
+        if (pase is null)
             return StatusCode(403, new { error = "Clave incorrecta. Mirá la clave de hoy en el sistema." });
-        return Ok(new { token = PaseCelu(dia) });
+        return Ok(new { token = pase });
     }
 
     [AllowAnonymous]
