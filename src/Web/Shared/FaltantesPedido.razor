@@ -1,0 +1,791 @@
+@implements IDisposable
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject ToastService ToastService
+@using System.Text.RegularExpressions
+
+@* 2026-11-10: el pedido al proveedor se arma de a poco. "Pedir" suma el producto a un pedido en
+   armado (todavía no se le pidió nada a nadie); recién al "Cerrar pedido" pasa a "Enviados, sin
+   llegar" y se puede mandar por mail o bajar en PDF. Lo usan la ventana Faltantes del depósito y
+   /stock/ideal (en el celu, y en la compu como panel). Las ventanitas van FUERA de .fp-raiz a
+   propósito: en la compu /stock/ideal esconde .fp-raiz y las ventanitas se tienen que seguir viendo. *@
+
+<style>
+    .fp-raiz { display:flex; flex-direction:column; flex:1; min-height:0; min-width:0; background:#fff; }
+    .fp-tabs { display:flex; flex-wrap:wrap; align-items:center; gap:0.35rem; padding:0.5rem 1rem; border-bottom:1px solid #e5e7eb; flex-shrink:0; }
+    .fp-ch { border:1px solid #e5e7eb; background:#fff; color:#111827; border-radius:999px; padding:0.2rem 0.65rem; font:inherit; font-size:0.8rem; cursor:pointer; white-space:nowrap; }
+    .fp-ch.on { background:#111827; border-color:#111827; color:#fff; font-weight:600; }
+    .fp-soy { flex-basis:100%; font-size:0.76rem; color:#6b7280; }
+    .fp-lista { overflow-y:auto; flex:1; min-height:0; }
+    .fp-vacio { padding:2rem 1rem; text-align:center; color:#6b7280; }
+    .fp-busca { padding:0.5rem 1rem; border-bottom:1px solid #eef0f3; flex-shrink:0; }
+    .fp-busca input { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:7px; padding:0.35rem 0.6rem; font:inherit; font-size:0.86rem; }
+
+    .fp-marca { display:flex; gap:0.6rem; align-items:center; padding:0.55rem 1rem; border-top:1px solid #eef0f3; cursor:pointer; font-size:0.95rem; font-weight:700; color:#111827; }
+    .fp-marca:hover { background:#f9fafb; }
+    .fp-marca.fija { cursor:default; background:#f9fafb; }
+    .fp-marca .c { margin-left:auto; font-weight:800; }
+    .fp-marca .c.tx { font-weight:400; font-size:0.84rem; color:#6b7280; }
+
+    .fp-fila { display:flex; align-items:center; gap:0.6rem; padding:0.4rem 1rem 0.4rem 2rem; border-top:1px solid #f3f4f6; font-size:0.86rem; }
+    .fp-nom { flex:1; min-width:0; overflow-wrap:anywhere; color:#111827; }
+    .fp-nom small { display:block; color:#6b7280; font-size:0.74rem; }
+    .fp-dat { display:flex; gap:0.7rem; white-space:nowrap; color:#6b7280; font-size:0.8rem; }
+    .fp-cero { color:#b91c1c; font-weight:700; }
+    .fp-acc { display:flex; align-items:center; justify-content:flex-end; gap:0.55rem; flex-shrink:0; }
+    .fp-en { color:#15803d; font-weight:600; font-size:0.8rem; white-space:nowrap; }
+    .fp-pedir { background:#111827; color:#fff; border:none; border-radius:7px; padding:0.28rem 1rem; font:inherit; font-size:0.8rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+    .fp-sec { background:#fff; color:#111827; border:1px solid #d1d5db; border-radius:7px; padding:0.28rem 0.7rem; font:inherit; font-size:0.78rem; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .fp-quitar { background:none; border:none; padding:0.2rem 0; color:#6b7280; font:inherit; font-size:0.8rem; text-decoration:underline; cursor:pointer; white-space:nowrap; }
+    .fp-ok { background:#15803d; color:#fff; border:none; border-radius:7px; padding:0.4rem 0.9rem; font:inherit; font-size:0.86rem; font-weight:700; cursor:pointer; }
+    .fp-pedir:disabled, .fp-sec:disabled, .fp-ok:disabled, .fp-quitar:disabled, .fp-paso button:disabled { opacity:0.5; cursor:default; }
+
+    .fp-paso { display:inline-flex; align-items:stretch; border:1px solid #d1d5db; border-radius:7px; overflow:hidden; background:#fff; }
+    .fp-paso button { width:32px; background:#fff; border:none; color:#374151; font:inherit; font-size:1rem; cursor:pointer; }
+    .fp-paso input { width:62px; border:none; border-left:1px solid #e5e7eb; border-right:1px solid #e5e7eb; border-radius:0; text-align:center; font:inherit; font-size:0.88rem; font-weight:600; color:#111827; padding:0.2rem; outline:none; }
+    .fp-uni { font-size:0.74rem; color:#6b7280; white-space:nowrap; }
+
+    .fp-cierre { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.6rem; padding:0.55rem 1rem; background:#f9fafb; border-top:1px solid #eef0f3; font-size:0.82rem; color:#6b7280; font-weight:600; }
+    .fp-barra { position:sticky; bottom:0; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.6rem; padding:0.55rem 1rem; background:#f9fafb; border-top:1px solid #e5e7eb; font-weight:600; font-size:0.86rem; color:#111827; flex-shrink:0; }
+
+    .fp-enviado { display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem; padding:0.4rem 1rem 0.4rem 2rem; border-top:1px solid #eef0f3; background:#f9fafb; font-size:0.8rem; color:#374151; }
+    .fp-enviado span { flex:1; min-width:120px; }
+
+    .fp-hist { display:flex; align-items:center; gap:0.55rem; padding:0.4rem 1rem; border-top:1px solid #f3f4f6; font-size:0.86rem; }
+    .fp-hist .f { color:#6b7280; font-size:0.76rem; width:44px; flex-shrink:0; }
+    .fp-hist .n { flex:1; min-width:0; overflow-wrap:anywhere; }
+    .fp-hist small { display:block; color:#6b7280; font-size:0.74rem; }
+    .fp-hist .m { flex:0 1 190px; color:#374151; }
+
+    .fp-fondo { position:fixed; inset:0; z-index:9600; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(17,24,39,0.45); }
+    .fp-vent { width:400px; max-width:100%; max-height:calc(100vh - 32px); overflow-y:auto; background:#fff; border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,0.33); box-sizing:border-box; }
+    .fp-vent-h { display:flex; align-items:center; gap:0.5rem; padding:0.75rem 1rem; border-bottom:1px solid #eef0f3; font-size:1.02rem; font-weight:700; color:#111827; }
+    .fp-x { margin-left:auto; background:none; border:none; font-size:1.2rem; line-height:1; color:#374151; cursor:pointer; min-width:32px; min-height:32px; }
+    .fp-vent-c { padding:0.85rem 1rem 1rem; }
+    .fp-vent-c p { margin:0 0 0.75rem; color:#4b5563; font-size:0.88rem; line-height:1.4; }
+    .fp-vent-c label { display:block; font-size:0.78rem; font-weight:600; color:#374151; margin-bottom:0.2rem; }
+    .fp-vent-c input, .fp-vent-c textarea { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:7px; padding:0.45rem 0.6rem; font:inherit; font-size:16px; margin-bottom:0.65rem; }
+    .fp-vent-c textarea { resize:vertical; }
+    .fp-err { color:#b91c1c; font-size:0.84rem; margin-bottom:0.6rem; }
+    .fp-ancho { display:block; width:100%; padding:0.6rem; margin-top:0.5rem; border-radius:8px; font-size:0.9rem; text-align:center; }
+    .fp-personas { display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.75rem; }
+    .fp-personas .fp-ch { padding:0.45rem 0.85rem; font-size:0.9rem; }
+    .fp-otro { display:flex; gap:0.4rem; }
+    .fp-otro input { margin-bottom:0; flex:1; min-width:0; }
+
+    @@media (max-width: 899px) {
+        .fp-ch { min-height:40px; padding:0.3rem 0.8rem; }
+        .fp-marca { min-height:44px; box-sizing:border-box; }
+        .fp-fila { flex-wrap:wrap; padding:0.55rem 1rem; row-gap:0.4rem; }
+        .fp-nom { flex:1 1 100%; }
+        .fp-dat { flex:1 1 auto; }
+        .fp-acc { margin-left:auto; }
+        .fp-pedir, .fp-sec, .fp-ok { min-height:40px; padding-left:1.1rem; padding-right:1.1rem; }
+        .fp-quitar { min-height:40px; padding:0 0.3rem; }
+        .fp-paso button { width:42px; min-height:40px; font-size:1.15rem; }
+        .fp-paso input { font-size:16px; }
+        .fp-cierre .fp-ok { flex:1 1 100%; }
+        .fp-enviado { padding-left:1rem; }
+        .fp-hist { flex-wrap:wrap; }
+        .fp-hist .m { flex:1 1 100%; padding-left:calc(44px + 0.55rem); }
+    }
+</style>
+
+<div class="fp-raiz">
+    <div class="fp-tabs">
+        <button class="fp-ch @(tab == "pedir" ? "on" : "")" @onclick='() => CambiarTab("pedir")'>Para pedir (@ParaPedirCount)</button>
+        <button class="fp-ch @(tab == "armado" ? "on" : "")" @onclick='() => CambiarTab("armado")'>Pedido en armado (@EnArmadoLista.Count)</button>
+        <button class="fp-ch @(tab == "enviados" ? "on" : "")" @onclick='() => CambiarTab("enviados")'>Enviados, sin llegar (@EnviadosLista.Count)</button>
+        <button class="fp-ch @(tab == "historial" ? "on" : "")" @onclick='() => CambiarTab("historial")'>Historial</button>
+        @if (!string.IsNullOrEmpty(quien))
+        {
+            <div class="fp-soy">Está armando: <b>@quien</b> · <button class="fp-quitar" @onclick="() => PedirQuien(null)">cambiar</button></div>
+        }
+    </div>
+
+    @if (tab == "historial")
+    {
+        <div class="fp-busca"><input placeholder="Buscar producto o marca…" @bind="buscaHist" @bind:event="oninput" /></div>
+        <div class="fp-lista">
+            @if (historial is null)
+            {
+                <div class="fp-vacio">Cargando…</div>
+            }
+            else if (HistorialVisible.Count == 0)
+            {
+                <div class="fp-vacio">No hay nada para mostrar.</div>
+            }
+            else
+            {
+                @foreach (var h in HistorialVisible)
+                {
+                    <div class="fp-hist" @key="h.Id">
+                        <span class="f">@(h.ResueltoAt?.ToArTime().ToString("dd/MM") ?? "")</span>
+                        <div class="n">@h.Nombre <small>@(string.IsNullOrWhiteSpace(h.Marca) ? "Sin marca" : h.Marca)</small></div>
+                        <span class="m">@Motivo(h)</span>
+                    </div>
+                }
+            }
+        </div>
+    }
+    else if (tab == "armado")
+    {
+        var grupos = Agrupar(EnArmadoLista);
+        <div class="fp-lista">
+            @if (cargando)
+            {
+                <div class="fp-vacio">Cargando…</div>
+            }
+            else if (grupos.Count == 0)
+            {
+                <div class="fp-vacio">El pedido está vacío. Tocá <b>Pedir</b> en lo que haga falta y se va sumando acá.</div>
+            }
+            @foreach (var g in grupos)
+            {
+                var marcaG = g;
+                var armadores = g.Select(x => x.ArmadoPor).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                <div class="fp-marca fija" @key="@("m-" + g.Key)">
+                    <span>@g.Key</span>
+                    <span class="c tx">@g.Count() @(g.Count() == 1 ? "producto" : "productos")</span>
+                </div>
+                @foreach (var f in g.OrderBy(x => x.Nombre))
+                {
+                    var fi = f;
+                    var cant = Cantidad(f);
+                    <div class="fp-fila" @key="f.Id">
+                        <div class="fp-nom">@f.Nombre<small>@Bajada(f, cant)</small></div>
+                        <div class="fp-acc">
+                            <div class="fp-paso">
+                                <button title="Uno menos" disabled="@(cant - 1 <= 0)" @onclick="() => Sumar(fi, -1)">−</button>
+                                <input type="text" inputmode="@(f.Unidad == "kg" ? "decimal" : "numeric")" aria-label="Cantidad"
+                                       value="@(textoCant.TryGetValue(f.Id, out var tx) ? tx : Formato(cant, f.Unidad))"
+                                       @onchange="e => CantidadTipeada(fi, e.Value?.ToString())" />
+                                <button title="Uno más" @onclick="() => Sumar(fi, 1)">+</button>
+                            </div>
+                            <span class="fp-uni">@(f.Unidad == "kg" ? "kilos" : "un.")</span>
+                            <button class="fp-quitar" disabled="@ocupados.Contains(f.Id)" @onclick="() => QuitarAsync(fi)">Quitar</button>
+                        </div>
+                    </div>
+                }
+                <div class="fp-cierre">
+                    <span>@(armadores.Count > 0 ? "Lo armó: " + string.Join(", ", armadores) : "")</span>
+                    <button class="fp-ok" disabled="@cerrandoPedido" @onclick="() => CerrarAsync(marcaG)">
+                        @(cerrandoPedido ? "Cerrando…" : g.Key == SinMarca ? "Cerrar pedido sin marca" : $"Cerrar pedido de {g.Key}")
+                    </button>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        var grupos = tab == "pedir" ? Agrupar(ParaPedirLista) : Agrupar(EnviadosLista);
+        <div class="fp-lista">
+            @if (cargando)
+            {
+                <div class="fp-vacio">Cargando…</div>
+            }
+            else if (grupos.Count == 0)
+            {
+                <div class="fp-vacio">@(tab == "pedir" ? "No falta nada por pedir. 🎉" : "No hay pedidos esperando entrega.")</div>
+            }
+            @foreach (var g in grupos)
+            {
+                var abierta = marcaAbierta == g.Key;
+                <div class="fp-marca" @key="@("m-" + g.Key)" @onclick="() => marcaAbierta = abierta ? null : g.Key">
+                    <span>@(abierta ? "▼" : "▶")</span> @g.Key
+                    <span class="c">@(tab == "pedir" ? g.Count(x => !x.EnArmado) : g.Count())</span>
+                </div>
+                @if (abierta && tab == "pedir")
+                {
+                    @foreach (var f in g.OrderBy(x => x.StockAhora))
+                    {
+                        var fi = f;
+                        <div class="fp-fila" @key="f.Id">
+                            <div class="fp-nom">@f.Nombre @if (!string.IsNullOrEmpty(f.Codigo)) { <small>@f.Codigo</small> }</div>
+                            <div class="fp-dat">
+                                <span class="@(f.StockAhora <= 0 ? "fp-cero" : "")">Hay @Formato(f.StockAhora, f.Unidad)@(f.Unidad == "kg" ? " kg" : "")</span>
+                                <span>Faltan @Formato(f.Faltan, f.Unidad)</span>
+                            </div>
+                            <div class="fp-acc">
+                                @if (f.EnArmado)
+                                {
+                                    <span class="fp-en">✓ En el pedido</span>
+                                    <button class="fp-quitar" disabled="@ocupados.Contains(f.Id)" @onclick="() => QuitarAsync(fi)">Quitar</button>
+                                }
+                                else
+                                {
+                                    <button class="fp-pedir" disabled="@ocupados.Contains(f.Id)" @onclick="() => PedirAsync(fi)">Pedir</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else if (abierta)
+                {
+                    @foreach (var p in g.GroupBy(x => x.PedidoProveedorId).OrderByDescending(x => x.Max(y => y.PedidoAt)))
+                    {
+                        var pid = p.Key;
+                        var marcaP = g.Key;
+                        var cuantos = p.Count();
+                        @if (pid is not null)
+                        {
+                            <div class="fp-enviado" @key="@("p-" + pid)">
+                                <span>Pedido @FechaPedido(p.Max(y => y.PedidoAt)) · @cuantos @(cuantos == 1 ? "producto" : "productos")</span>
+                                <button class="fp-sec" disabled="@bajandoPdf" @onclick="() => BajarPdf(pid.Value, marcaP)">Descargar PDF</button>
+                                <button class="fp-sec" @onclick="() => AbrirMandar(pid.Value, marcaP, cuantos)">Mandar por mail</button>
+                            </div>
+                        }
+                        @foreach (var f in p.OrderBy(x => x.Nombre))
+                        {
+                            var fi = f;
+                            <div class="fp-fila" @key="f.Id">
+                                <div class="fp-nom">@f.Nombre <small>@(string.IsNullOrWhiteSpace(f.PedidoPor) ? "" : "Pedido por " + f.PedidoPor)</small></div>
+                                <div class="fp-dat">
+                                    <span>@(f.CantidadPedida.HasValue ? $"Pedí {Formato(f.CantidadPedida.Value, f.Unidad)} {f.Unidad}" : $"Hay {Formato(f.StockAhora, f.Unidad)} {f.Unidad}")</span>
+                                    <span>@HaceDias(f.PedidoAt)</span>
+                                </div>
+                                <div class="fp-acc">
+                                    <button class="fp-sec" disabled="@ocupados.Contains(f.Id)" @onclick="() => DeshacerAsync(fi)">Deshacer</button>
+                                </div>
+                            </div>
+                        }
+                    }
+                }
+            }
+        </div>
+        @if (tab == "pedir" && EnArmadoLista.Count > 0)
+        {
+            <div class="fp-barra">
+                <span>Pedido en armado: @EnArmadoLista.Count @(EnArmadoLista.Count == 1 ? "producto" : "productos")</span>
+                <button class="fp-ok" @onclick='() => CambiarTab("armado")'>Ver pedido →</button>
+            </div>
+        }
+    }
+</div>
+
+@if (eligiendoQuien)
+{
+    <div class="fp-fondo">
+        <div class="fp-vent">
+            <div class="fp-vent-h">
+                ¿Quién está armando el pedido?
+                <button class="fp-x" title="Cancelar" @onclick="CancelarQuien">✕</button>
+            </div>
+            <div class="fp-vent-c">
+                <p>Se elige una vez y queda anotado mientras tengas abierta esta pantalla.</p>
+                @if (operadores.Count > 0)
+                {
+                    <div class="fp-personas">
+                        @foreach (var o in operadores)
+                        {
+                            var oo = o;
+                            <button class="fp-ch" @onclick="() => ElegirQuien(oo)">@o</button>
+                        }
+                    </div>
+                }
+                <label>@(operadores.Count > 0 ? "Otro nombre" : "Tu nombre")</label>
+                <div class="fp-otro">
+                    <input maxlength="60" @bind="otroNombre" @bind:event="oninput" />
+                    <button class="fp-pedir" disabled="@string.IsNullOrWhiteSpace(otroNombre)" @onclick="() => ElegirQuien(otroNombre)">Listo</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (mandar is not null)
+{
+    <div class="fp-fondo">
+        <div class="fp-vent">
+            <div class="fp-vent-h">
+                @(mandar.RecienCerrado ? "Pedido cerrado" : "Mandar pedido") · @mandar.Marca
+                <button class="fp-x" title="Cerrar" @onclick="CerrarMandar">✕</button>
+            </div>
+            <div class="fp-vent-c">
+                <p>@mandar.Productos @(mandar.Productos == 1 ? "producto" : "productos").<br />Bajalo o mandáselo al proveedor.</p>
+                <label for="fp-mail">Mail</label>
+                <input id="fp-mail" type="email" inputmode="email" autocomplete="off" placeholder="proveedor@ejemplo.com"
+                       @bind="mandar.Para" @bind:event="oninput" disabled="@mandar.Enviando" />
+                <label for="fp-msj">Mensaje (si querés)</label>
+                <textarea id="fp-msj" rows="3" @bind="mandar.Mensaje" @bind:event="oninput" disabled="@mandar.Enviando"></textarea>
+                @if (!string.IsNullOrEmpty(mandar.Error))
+                {
+                    <div class="fp-err">@mandar.Error</div>
+                }
+                <button class="fp-ok fp-ancho" disabled="@mandar.Enviando" @onclick="MandarMail">@(mandar.Enviando ? "Mandando…" : "Mandar por mail")</button>
+                <button class="fp-sec fp-ancho" disabled="@bajandoPdf" @onclick="() => BajarPdf(mandar.Id, mandar.Marca)">@(bajandoPdf ? "Generando…" : "Descargar PDF")</button>
+                @if (mandar.RecienCerrado)
+                {
+                    <button class="fp-quitar fp-ancho" @onclick="CerrarMandar">Cerrar sin mandar</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Solapa con la que arranca: pedir, armado, enviados o historial.</summary>
+    [Parameter] public string TabInicial { get; set; } = "pedir";
+    /// <summary>Marca desplegada al abrir (por ejemplo, la del aviso que tocaron).</summary>
+    [Parameter] public string? MarcaInicial { get; set; }
+    /// <summary>Se avisa cada vez que se sumó, sacó o cerró algo, para que la pantalla actualice sus números.</summary>
+    [Parameter] public EventCallback OnCambio { get; set; }
+    /// <summary>Se avisa cuando llegaron datos nuevos (no se hizo ningún cambio).</summary>
+    [Parameter] public EventCallback OnDatos { get; set; }
+
+    private const string SinMarca = "Sin marca";
+    private const string ClaveQuien = "fp-quien";   // sessionStorage: se elige una vez por sesión
+
+    private sealed class Mandar
+    {
+        public int Id; public string Marca = ""; public int Productos; public bool RecienCerrado;
+        public string Para = ""; public string? Mensaje; public string? Error; public bool Enviando;
+    }
+
+    private List<StockIdealPendienteDto> filas = new();
+    private List<StockIdealHistorialDto>? historial;
+    private List<string> operadores = new();
+    private string tab = "pedir";
+    private string? marcaAbierta;
+    private string buscaHist = "";
+    private string? quien;
+    private string otroNombre = "";
+    private bool cargando = true, eligiendoQuien, cerrandoPedido, bajandoPdf, cerrado, huboErrorCant;
+    private Func<Task>? trasElegir;
+    private Mandar? mandar;
+    private readonly HashSet<int> ocupados = new();
+    private readonly Dictionary<int, string> textoCant = new();
+    private readonly Dictionary<int, decimal> porGuardar = new();
+    // Mail usado en esta sesión por marca, para precargarlo al volver a mandar desde "Enviados".
+    private readonly Dictionary<string, string> mailPorMarca = new(StringComparer.OrdinalIgnoreCase);
+    private System.Threading.Timer? timer;
+    private CancellationTokenSource? demora;
+    private Task cola = Task.CompletedTask;
+    private int mutaciones;
+
+    public int CantidadEnArmado => EnArmadoLista.Count;
+
+    private List<StockIdealPendienteDto> ParaPedirLista => filas.Where(f => !f.Pedido && !f.YaRepuesto).ToList();
+    private int ParaPedirCount => filas.Count(f => !f.Pedido && !f.YaRepuesto && !f.EnArmado);
+    private List<StockIdealPendienteDto> EnArmadoLista => filas.Where(f => f.EnArmado && !f.Pedido).ToList();
+    private List<StockIdealPendienteDto> EnviadosLista => filas.Where(f => f.Pedido).ToList();
+
+    private List<StockIdealHistorialDto> HistorialVisible => (historial ?? new())
+        .Where(h => string.IsNullOrWhiteSpace(buscaHist)
+                    || h.Nombre.Contains(buscaHist.Trim(), StringComparison.OrdinalIgnoreCase)
+                    || (h.Marca ?? "").Contains(buscaHist.Trim(), StringComparison.OrdinalIgnoreCase)
+                    || (h.Codigo ?? "").Contains(buscaHist.Trim(), StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    private static List<IGrouping<string, StockIdealPendienteDto>> Agrupar(List<StockIdealPendienteDto> lista) => lista
+        .GroupBy(f => string.IsNullOrWhiteSpace(f.Marca) ? SinMarca : f.Marca!.Trim(), StringComparer.OrdinalIgnoreCase)
+        .OrderByDescending(g => g.Count()).ThenBy(g => g.Key).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        tab = TabInicial;
+        marcaAbierta = MarcaInicial;
+        timer = new System.Threading.Timer(async _ =>
+        {
+            // Con algo a medio guardar no se recarga: pisaría lo que acaban de tocar.
+            if (cerrado || ocupados.Count > 0 || porGuardar.Count > 0) return;
+            await InvokeAsync(async () => { await RecargarAsync(); if (!cerrado) StateHasChanged(); });
+        }, null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+        await RecargarAsync(silencioso: false);
+        if (tab == "historial") await CargarHistorial();
+        try { operadores = await Api.GetOperadoresPreparacionAsync(); } catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            quien = await JS.InvokeAsync<string?>("sessionStorage.getItem", ClaveQuien);
+            if (!string.IsNullOrEmpty(quien)) StateHasChanged();
+        }
+        catch { }
+    }
+
+    /// <summary>Vuelve a traer la lista. silencioso = sin cartel de error si justo falló la red.</summary>
+    public async Task RecargarAsync(bool silencioso = true)
+    {
+        var alEmpezar = mutaciones;
+        StockIdealPendientesResultDto? r = null;
+        try { r = await Api.GetStockIdealPendientesAsync(); }
+        catch { if (!silencioso) ToastService.Error("No se pudo cargar la lista"); }
+        cargando = false;
+        // Si mientras viajaba tocaron algo, esta respuesta ya es vieja: la que vale es la que venga después.
+        if (r is null || cerrado || alEmpezar != mutaciones) return;
+        filas = r.Filas;
+        await OnDatos.InvokeAsync();
+    }
+
+    /// <summary>Lleva a una solapa desde afuera (por ejemplo el botón "Ver pedido" de la compu).</summary>
+    public void IrA(string solapa)
+    {
+        tab = solapa;
+        StateHasChanged();
+    }
+
+    private async Task CambiarTab(string t)
+    {
+        if (t != tab) marcaAbierta = null;
+        tab = t;
+        if (t == "historial") await CargarHistorial();
+    }
+
+    private async Task CargarHistorial()
+    {
+        historial = null;
+        buscaHist = "";
+        try { historial = await Api.GetStockIdealHistorialAsync() ?? new(); } catch { historial = new(); }
+    }
+
+    // ---- Quién está armando: en el depósito entran todos con el mismo usuario. ----
+
+    private void PedirQuien(Func<Task>? despues)
+    {
+        trasElegir = despues;
+        otroNombre = "";
+        eligiendoQuien = true;
+    }
+
+    private void CancelarQuien()
+    {
+        eligiendoQuien = false;
+        trasElegir = null;
+    }
+
+    private async Task ElegirQuien(string nombre)
+    {
+        nombre = (nombre ?? "").Trim();
+        if (nombre.Length == 0) return;
+        quien = nombre;
+        eligiendoQuien = false;
+        try { await JS.InvokeVoidAsync("sessionStorage.setItem", ClaveQuien, nombre); } catch { }
+        var seguir = trasElegir;
+        trasElegir = null;
+        if (seguir is not null) await seguir();
+    }
+
+    // ---- Los cambios van en fila india: si no, un "Quitar" puede llegar antes que la cantidad que tocaron recién. ----
+
+    private Task Encolar(Func<Task> trabajo)
+    {
+        cola = Seguir(cola, trabajo);
+        return cola;
+    }
+
+    private static async Task Seguir(Task antes, Func<Task> trabajo)
+    {
+        try { await antes; } catch { }
+        await trabajo();
+    }
+
+    private async Task Avisar()
+    {
+        if (cerrado) return;
+        await OnCambio.InvokeAsync();
+    }
+
+    public async Task PedirAsync(StockIdealPendienteDto f)
+    {
+        if (string.IsNullOrEmpty(quien)) { PedirQuien(() => PedirAsync(f)); return; }
+        if (!ocupados.Add(f.Id)) return;
+        mutaciones++;
+        // Al proveedor se le compra por caja entera: si se sabe, va lo que da en cajas. Si no, la API usa lo que falta.
+        var cantidad = f.UnidadesSiPidoBultos;
+        var nombre = quien;
+        try
+        {
+            await Encolar(async () =>
+            {
+                var (ok, error) = await Api.ArmarStockIdealAsync(f.Id, cantidad, nombre);
+                if (!ok) ToastService.Error(error ?? "No se pudo sumar al pedido");
+            });
+            await RecargarAsync();
+            await Avisar();
+        }
+        finally { ocupados.Remove(f.Id); }
+    }
+
+    public async Task QuitarAsync(StockIdealPendienteDto f)
+    {
+        if (!ocupados.Add(f.Id)) return;
+        mutaciones++;
+        porGuardar.Remove(f.Id);
+        textoCant.Remove(f.Id);
+        try
+        {
+            await Encolar(async () =>
+            {
+                var (ok, error) = await Api.QuitarArmadoStockIdealAsync(f.Id);
+                if (!ok) ToastService.Error(error ?? "No se pudo quitar");
+            });
+            await RecargarAsync();
+            await Avisar();
+        }
+        finally { ocupados.Remove(f.Id); }
+    }
+
+    private async Task DeshacerAsync(StockIdealPendienteDto f)
+    {
+        if (!ocupados.Add(f.Id)) return;
+        mutaciones++;
+        try
+        {
+            var ok = false;
+            try { ok = await Api.DeshacerStockIdealPedidoAsync(f.Id); }
+            catch (Exception ex) { ToastService.Error("No se pudo deshacer: " + ex.Message); return; }
+            if (!ok) { ToastService.Error("No se pudo deshacer"); return; }
+            await RecargarAsync();
+            await Avisar();
+        }
+        finally { ocupados.Remove(f.Id); }
+    }
+
+    // ---- Cantidades: se ve al toque y se guarda un ratito después, para que tocar + varias veces mande una sola. ----
+
+    private static decimal Cantidad(StockIdealPendienteDto f) => f.CantidadArmado ?? f.UnidadesSiPidoBultos ?? f.Faltan;
+
+    private void Sumar(StockIdealPendienteDto f, int delta)
+    {
+        var nueva = Cantidad(f) + delta;
+        if (nueva <= 0) return;
+        CambiarCantidad(f, nueva);
+    }
+
+    private void CambiarCantidad(StockIdealPendienteDto f, decimal nueva)
+    {
+        mutaciones++;
+        f.CantidadArmado = nueva;
+        textoCant.Remove(f.Id);
+        porGuardar[f.Id] = nueva;
+        demora?.Cancel();
+        demora = new CancellationTokenSource();
+        _ = GuardarDespues(demora.Token);
+    }
+
+    private async Task GuardarDespues(CancellationToken ct)
+    {
+        try { await Task.Delay(600, ct); }
+        catch (TaskCanceledException) { return; }
+        await InvokeAsync(GuardarCantidades);
+    }
+
+    private Task GuardarCantidades()
+    {
+        demora?.Cancel();
+        if (porGuardar.Count == 0) return cola;
+        var lote = porGuardar.ToList();
+        porGuardar.Clear();
+        var nombre = string.IsNullOrEmpty(quien) ? null : quien;
+        return Encolar(async () =>
+        {
+            var fallo = false;
+            foreach (var (id, cant) in lote)
+            {
+                var (ok, error) = await Api.ArmarStockIdealAsync(id, cant, nombre);
+                if (ok) continue;
+                fallo = true;
+                ToastService.Error(error ?? "No se pudo cambiar la cantidad");
+            }
+            if (!fallo) return;
+            huboErrorCant = true;
+            if (!cerrado) { await RecargarAsync(); await InvokeAsync(StateHasChanged); }
+        });
+    }
+
+    /// <summary>Tipeó la cantidad a mano. Lo que no se entiende no se guarda y el casillero vuelve al número que estaba.</summary>
+    private async Task CantidadTipeada(StockIdealPendienteDto f, string? texto)
+    {
+        var t = (texto ?? "").Trim();
+        if (!LeerCantidad(t, f.Unidad == "kg", out var valor, out var problema))
+        {
+            ToastService.Error(problema);
+            await DevolverCasillero(f.Id, t);
+            return;
+        }
+        if (valor == Cantidad(f)) { await DevolverCasillero(f.Id, t); return; }
+        CambiarCantidad(f, valor);
+    }
+
+    /// <summary>Blazor no toca el casillero si el número no cambió: se dibuja con lo tipeado y después con el valor bueno.</summary>
+    private async Task DevolverCasillero(int id, string tipeado)
+    {
+        textoCant[id] = tipeado;
+        StateHasChanged();
+        await Task.Yield();
+        textoCant.Remove(id);
+        StateHasChanged();
+    }
+
+    private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
+
+    /// <summary>Unidades: enteras, se acepta el punto de miles. Kilos: coma o punto decimal.
+    /// "1.250" en kilos se rechaza: puede ser mil doscientos o un kilo y cuarto.</summary>
+    private static bool LeerCantidad(string t, bool esKg, out decimal valor, out string problema)
+    {
+        valor = 0;
+        problema = "";
+        t = t.Replace(" ", "");
+        if (esKg)
+        {
+            if (Regex.IsMatch(t, @"^\d{1,3}\.\d{3}$"))
+            {
+                problema = "Escribilo sin punto: 1250, o con coma para los decimales: 1,25";
+                return false;
+            }
+            var limpio = t.Contains(',') ? t.Replace(".", "").Replace(',', '.') : t;
+            if (!decimal.TryParse(limpio, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out valor) || valor <= 0)
+            {
+                problema = "Poné una cantidad mayor a cero, en kilos. Por ejemplo 2,5";
+                return false;
+            }
+            valor = Math.Round(valor, 3);
+            return true;
+        }
+        if (!Regex.IsMatch(t, @"^\d+$|^\d{1,3}(\.\d{3})+$") || !decimal.TryParse(t.Replace(".", ""), out valor) || valor <= 0)
+        {
+            problema = "Poné una cantidad mayor a cero, sin decimales: va en unidades enteras.";
+            return false;
+        }
+        return true;
+    }
+
+    private static string Formato(decimal v, string unidad)
+        => unidad == "kg" ? v.ToString("0.###", Ar) : v.ToString(v == Math.Truncate(v) ? "#,0" : "#,0.##", Ar);
+
+    private static string Bajada(StockIdealPendienteDto f, decimal cant)
+    {
+        var partes = new List<string>();
+        if (!string.IsNullOrEmpty(f.Codigo)) partes.Add(f.Codigo!);
+        if (f.UnidadesPorBulto is > 0 && cant % f.UnidadesPorBulto.Value == 0)
+        {
+            var cajas = (int)(cant / f.UnidadesPorBulto.Value);
+            partes.Add($"{cajas} {(cajas == 1 ? "caja" : "cajas")} de {f.UnidadesPorBulto}");
+        }
+        return string.Join(" · ", partes);
+    }
+
+    // ---- Cerrar, bajar y mandar ----
+
+    private async Task CerrarAsync(IGrouping<string, StockIdealPendienteDto> g)
+    {
+        if (string.IsNullOrEmpty(quien)) { PedirQuien(() => CerrarAsync(g)); return; }
+        if (cerrandoPedido) return;
+        cerrandoPedido = true;
+        mutaciones++;
+        huboErrorCant = false;
+        try
+        {
+            // Primero que se guarde cualquier cantidad recién tocada: si no, se cerraría con la de antes.
+            await GuardarCantidades();
+            await cola;
+            if (huboErrorCant)
+            {
+                ToastService.Error("No se cerró el pedido: hay una cantidad que no se pudo guardar. Revisala.");
+                return;
+            }
+            var marcaApi = g.Key == SinMarca ? null : g.Key;
+            var (pedido, error) = await Api.CerrarPedidoProveedorAsync(marcaApi, quien);
+            if (pedido is null)
+            {
+                ToastService.Error(error ?? "No se pudo cerrar el pedido");
+                return;
+            }
+            mandar = new Mandar
+            {
+                Id = pedido.Id, Marca = g.Key, Productos = pedido.Productos, RecienCerrado = true,
+                Para = pedido.UltimoEmail ?? ""
+            };
+            await RecargarAsync();
+            await Avisar();
+        }
+        finally { cerrandoPedido = false; }
+    }
+
+    private void AbrirMandar(int id, string marca, int productos)
+    {
+        mandar = new Mandar
+        {
+            Id = id, Marca = marca, Productos = productos,
+            Para = mailPorMarca.TryGetValue(marca, out var m) ? m : ""
+        };
+    }
+
+    private void CerrarMandar() => mandar = null;
+
+    private static bool MailValido(string m) => Regex.IsMatch(m, @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+
+    private async Task MandarMail()
+    {
+        var m = mandar;
+        if (m is null || m.Enviando) return;
+        var para = (m.Para ?? "").Trim();
+        m.Para = para;
+        if (!MailValido(para))
+        {
+            m.Error = "Ese mail no parece válido. Revisalo. Tiene que ser algo así: nombre@empresa.com";
+            return;
+        }
+        m.Error = null;
+        m.Enviando = true;
+        try
+        {
+            var (ok, error) = await Api.EnviarPedidoProveedorEmailAsync(m.Id, para, string.IsNullOrWhiteSpace(m.Mensaje) ? null : m.Mensaje.Trim(), quien);
+            if (!ok)
+            {
+                m.Error = string.IsNullOrWhiteSpace(error) || error == "Error" ? "No se pudo mandar el mail. Probá de nuevo." : error;
+                return;
+            }
+            mailPorMarca[m.Marca] = para;
+            ToastService.Success($"Listo, el pedido salió por mail a {para}");
+            if (mandar == m) mandar = null;
+        }
+        catch (Exception ex) { m.Error = "No se pudo mandar el mail: " + ex.Message; }
+        finally { m.Enviando = false; }
+    }
+
+    private async Task BajarPdf(int id, string marca)
+    {
+        if (bajandoPdf) return;
+        bajandoPdf = true;
+        try
+        {
+            var bytes = await Api.DownloadPedidoProveedorPdfAsync(id);
+            if (bytes is null) { ToastService.Error("No se pudo generar el PDF"); return; }
+            var limpia = new string(marca.Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
+            await JS.InvokeVoidAsync("downloadBytesAsFile", $"Pedido-{limpia}-{id}.pdf", Convert.ToBase64String(bytes), "application/pdf");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo bajar el PDF: " + ex.Message); }
+        finally { bajandoPdf = false; }
+    }
+
+    private static string Motivo(StockIdealHistorialDto h) => h.Estado switch
+    {
+        "REPUESTO" => "Llegó la mercadería",
+        "REPUESTO_SOLO" => "Se repuso sin pedirlo",
+        "DESCARTADO" => "Lo sacó de la lista" + (string.IsNullOrWhiteSpace(h.ResueltoPor) ? "" : " " + h.ResueltoPor),
+        _ => h.Estado
+    };
+
+    private static string HaceDias(DateTime? utc)
+    {
+        if (utc is null) return "";
+        var dias = (DateTimeExt.AhoraAr().Date - utc.Value.ToArTime().Date).Days;
+        return dias <= 0 ? "hoy" : dias == 1 ? "ayer" : $"hace {dias} días";
+    }
+
+    private static string FechaPedido(DateTime? utc) => utc is null ? "" : "del " + utc.Value.ToArTime().ToString("dd/MM");
+
+    public void Dispose()
+    {
+        cerrado = true;
+        timer?.Dispose();
+        // Si cerraron la ventana justo después de tocar + o −, que no se pierda.
+        _ = GuardarCantidades();
+    }
+}

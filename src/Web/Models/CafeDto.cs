@@ -1978,6 +1978,25 @@ public class StockIdealPendienteDto
     public DateTime? PedidoAt { get; set; }
     public string? PedidoPor { get; set; }
     public decimal? CantidadPedida { get; set; }
+
+    // 2026-11-10 — "Pedir" lo suma a un pedido que se arma de a poco. Mientras se arma viene con
+    // Pedido=false y EnArmado=true; al cerrarlo pasa a Pedido=true y trae PedidoProveedorId.
+    public bool EnArmado { get; set; }
+    public decimal? CantidadArmado { get; set; }
+    public string? ArmadoPor { get; set; }
+    public int? PedidoProveedorId { get; set; }
+}
+
+/// <summary>2026-11-10: lo que devuelve la API al cerrar el pedido en armado de una marca.</summary>
+public class StockIdealPedidoCerradoDto
+{
+    public int Id { get; set; }
+    public string? Marca { get; set; }
+    public int Productos { get; set; }
+    public DateTime CerradoAt { get; set; }
+    public string? CerradoPor { get; set; }
+    /// <summary>Último mail al que se le mandó un pedido de esta marca (null si nunca se mandó).</summary>
+    public string? UltimoEmail { get; set; }
 }
 
 public class StockIdealHistorialDto

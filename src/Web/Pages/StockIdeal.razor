@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject IJSRuntime JS
 @using System.Globalization
+@using System.Text.RegularExpressions
 @using Microsoft.AspNetCore.Components.Forms
 
 @* 2026-09-02: "Stock ideal" — cuánto queremos tener siempre de cada producto, para armar
@@ -20,11 +21,13 @@
      · Faltantes   — la foto de ahora: los que están por debajo en este momento.
      · Configurar  — la planilla donde se cargan los ideales, a mano o por Excel.
    La lista se refresca sola cada minuto, para el que la deja abierta en el depósito.
+   2026-11-10: "Pedir" reemplaza a "Ya lo pedí": suma al pedido en armado (FaltantesPedido).
+   En el celu, en vez de las tablas, se elige entre Pedido y Stock ideal y piso.
    OJO: el "stock ideal" NO es el "stock mínimo para MeLi" (ese vive en la ficha del
    producto y en Stock masivo). Son dos números distintos a propósito. *@
 @implements IDisposable
 
-<div class="card">
+<div class="card si-card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
         <div>
             <h3 style="margin:0;">📦 Stock ideal</h3>
@@ -32,7 +35,7 @@
                 Lo que hay que pedir para volver a tener el stock que querés tener siempre.
             </p>
         </div>
-        <div style="display:flex; gap:0.5rem;">
+        <div class="si-compu" style="display:flex; gap:0.5rem;">
             <button class="btn btn-secondary" @onclick="Recargar" disabled="@cargando">🔄 Actualizar</button>
             @if (solapa != "config")
             {
@@ -44,9 +47,9 @@
     </div>
 
     @* ===== Solapas ===== *@
-    <div style="display:flex; gap:2px; padding:0 1rem; background:#f9fafb; border-bottom:1px solid #e5e7eb; flex-wrap:wrap;">
+    <div class="si-compu" style="display:flex; gap:2px; padding:0 1rem; background:#f9fafb; border-bottom:1px solid #e5e7eb; flex-wrap:wrap;">
         <button class="si-tab @(solapa == "pedir" ? "on" : "")" @onclick='() => CambiarSolapa("pedir")'>
-            Para pedir@(pendientes is not null ? $" ({pendientes.Total})" : "")
+            Para pedir@(pendientes is not null ? $" ({pendientes.Filas.Count(f => !f.Pedido && !f.EnArmado && !f.YaRepuesto)})" : "")
         </button>
         <button class="si-tab @(solapa == "faltantes" ? "on" : "")" @onclick='() => CambiarSolapa("faltantes")'>
             Faltantes ahora@(resumen is not null ? $" ({resumen.Faltantes})" : "")
@@ -57,7 +60,7 @@
     </div>
 
     @* ===== Filtros (compartidos por las dos solapas) ===== *@
-    <div class="card-body" style="background:#f8fafc; border-bottom:1px solid #e5e7eb; padding:0.8rem 1rem;">
+    <div class="card-body si-compu" style="background:#f8fafc; border-bottom:1px solid #e5e7eb; padding:0.8rem 1rem;">
         <div style="display:flex; gap:0.7rem; flex-wrap:wrap; align-items:flex-end;">
             <div style="min-width:170px;">
                 <label class="form-label">Marca</label>
@@ -91,7 +94,8 @@
     @* ===== Resumen ===== *@
     @if (solapa == "pedir" && pendientes is not null && !cargando)
     {
-        <div style="padding:0.7rem 1rem; font-size:0.85rem; color:#374151; border-bottom:1px solid #e5e7eb;">
+        var enArmado = pendientes.Filas.Count(f => f.EnArmado);
+        <div class="si-compu" style="padding:0.7rem 1rem; font-size:0.85rem; color:#374151; border-bottom:1px solid #e5e7eb;">
             @if (pendientes.Total == 0)
             {
                 <span>✅ No hay nada anotado para pedir. Los productos entran solos acá cuando su stock queda por debajo del ideal.</span>
@@ -100,7 +104,11 @@
             {
                 <span>
                     @* Los ya pedidos se cuentan aparte: siguen faltando, pero no hay que volver a pedirlos. *@
-                    <strong>@(pendientes.Total - pendientes.YaPedidos)</strong> para pedir
+                    <strong>@(pendientes.Total - pendientes.YaPedidos - enArmado)</strong> para pedir
+                    @if (enArmado > 0)
+                    {
+                        <span class="text-muted"> · @enArmado en el pedido en armado</span>
+                    }
                     @if (pendientes.YaPedidos > 0)
                     {
                         <span class="text-muted"> · @pendientes.YaPedidos ya pedidos, esperando que llegue</span>
@@ -116,11 +124,17 @@
                 </span>
             }
             <span class="text-muted"> · se actualiza sola cada minuto</span>
+            @if (fp is not null)
+            {
+                <button class="btn btn-sm btn-secondary" style="margin-left:0.6rem;" @onclick="VerPedidoCompu">
+                    Pedido en armado: @fp.CantidadEnArmado @(fp.CantidadEnArmado == 1 ? "producto" : "productos") · Ver pedidos →
+                </button>
+            }
         </div>
     }
     else if (solapa != "pedir" && resumen is not null && !cargando)
     {
-        <div style="padding:0.7rem 1rem; font-size:0.85rem; color:#374151; border-bottom:1px solid #e5e7eb;">
+        <div class="si-compu" style="padding:0.7rem 1rem; font-size:0.85rem; color:#374151; border-bottom:1px solid #e5e7eb;">
             @if (resumen.ConIdeal == 0)
             {
                 <span>
@@ -155,7 +169,7 @@
     }
 
     @* ===== Contenido ===== *@
-    <div class="card-body" style="padding:0;">
+    <div class="card-body si-compu" style="padding:0;">
         @if (cargando)
         {
             <p class="text-muted" style="padding:1.5rem;">Cargando...</p>
@@ -196,6 +210,7 @@
                             @foreach (var f in pendientes.Filas)
                             {
                                 var id = f.Id;
+                                var fila = f;
                                 <tr style="@(f.YaRepuesto || f.Pedido ? "background:#f9fafb;" : "")">
                                     <td class="si-cod"><code>@(string.IsNullOrWhiteSpace(f.Codigo) ? "—" : f.Codigo)</code></td>
                                     <td class="si-prod" style="@(f.Pedido ? "color:#6b7280;" : "")">
@@ -251,10 +266,18 @@
                                                     title="Se marcó por error: vuelve a la lista de lo que hay que pedir"
                                                     @onclick="() => DeshacerPedido(id)" disabled="@resolviendo">↶ Deshacer</button>
                                         }
+                                        else if (f.EnArmado)
+                                        {
+                                            <span style="color:#15803d; font-weight:600; font-size:0.78rem; margin-right:0.35rem;">✓ En el pedido</span>
+                                            <button class="btn btn-sm btn-secondary" style="font-size:0.75rem;"
+                                                    title="Sacarlo del pedido en armado: vuelve a la lista para pedir"
+                                                    @onclick="() => QuitarDeTabla(fila)">Quitar</button>
+                                        }
                                         else
                                         {
                                             <button class="btn btn-sm btn-primary" style="font-size:0.75rem;"
-                                                    @onclick="() => MarcarPedido(id)" disabled="@resolviendo">✓ Ya lo pedí</button>
+                                                    title="Sumarlo al pedido en armado. Todavía no se le pide nada a nadie."
+                                                    @onclick="() => PedirDeTabla(fila)">Pedir</button>
                                         }
                                         <button class="btn btn-sm btn-secondary" style="font-size:0.75rem;"
                                                 title="Sacarlo de la lista"
@@ -479,6 +502,74 @@
             }
         }
     </div>
+
+    @* ===== Celu: dos vistas en lugar de las tablas ===== *@
+    <div class="si-celu">
+        <div class="si-vistas">
+            <button class="si-vista @(vistaCelu == "pedido" ? "on" : "")" @onclick='() => CambiarVistaCelu("pedido")'>Pedido</button>
+            <button class="si-vista @(vistaCelu == "ideal" ? "on" : "")" @onclick='() => CambiarVistaCelu("ideal")'>Stock ideal y piso</button>
+        </div>
+        @if (vistaCelu == "ideal")
+        {
+            <div class="si-celu-busca">
+                <input type="search" placeholder="🔍 Buscar producto o marca" @bind="buscaCelu" @bind:event="oninput" @bind:after="() => limiteCelu = PasoCelu" />
+            </div>
+            @if (filasCelu is null)
+            {
+                <p class="text-muted" style="padding:1.5rem;">Cargando...</p>
+            }
+            else if (FiltradasCelu.Count == 0)
+            {
+                <p class="text-muted" style="padding:1.5rem;">No hay productos con esa búsqueda.</p>
+            }
+            else
+            {
+                @foreach (var f in FiltradasCelu.Take(limiteCelu))
+                {
+                    var pid = f.ProductoId;
+                    var kilos = f.Unidad == "kg";
+                    <div class="si-prodc" @key="pid">
+                        <div class="si-prodc-n">@f.Nombre</div>
+                        <div class="si-prodc-h">
+                            @(string.IsNullOrWhiteSpace(f.Marca) ? "Sin marca" : f.Marca) ·
+                            <span style="@(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">hay @Num(f.StockActual)@(kilos ? " kilos" : "")</span>
+                            @if (guardados.Contains(pid)) { <span class="si-prodc-ok"> · ✓ Guardado</span> }
+                        </div>
+                        <div class="si-dos">
+                            <label>
+                                Ideal@(kilos ? " (kilos)" : "")
+                                <input type="text" inputmode="numeric" autocomplete="off" placeholder="—"
+                                       value="@(edits.TryGetValue(pid, out var vIdeal) ? vIdeal : Miles(f.StockIdeal))"
+                                       @onchange="@(e => OnIdealChange(pid, e.Value?.ToString()))" />
+                            </label>
+                            <label>
+                                Piso@(kilos ? " (kilos)" : "")
+                                <input type="text" inputmode="numeric" autocomplete="off" placeholder="—"
+                                       value="@(editsPiso.TryGetValue(pid, out var vPiso) ? vPiso : Miles(f.StockPiso))"
+                                       @onchange="@(e => OnPisoChange(pid, e.Value?.ToString()))" />
+                            </label>
+                        </div>
+                    </div>
+                }
+                @if (FiltradasCelu.Count > limiteCelu)
+                {
+                    <button class="si-celu-mas" @onclick="() => limiteCelu += PasoCelu">Ver más (quedan @(FiltradasCelu.Count - limiteCelu))</button>
+                }
+            }
+        }
+    </div>
+
+    @* Un solo FaltantesPedido: en el celu es la vista "Pedido"; en la compu, un panel que se abre con "Ver pedido".
+       Cerrado en la compu solo se esconde su lista: las ventanitas (quién arma, mandar por mail) se siguen viendo. *@
+    <div class="si-fp @(pedidoCompu ? "abierto" : "") @(vistaCelu == "pedido" ? "celu-on" : "")">
+        <div class="si-fp-panel">
+            <div class="si-fp-cab">
+                📦 Pedido
+                <button title="Cerrar" @onclick="() => pedidoCompu = false">✕</button>
+            </div>
+            <FaltantesPedido @ref="fp" OnCambio="AlCambiarPedido" OnDatos="@(() => { })" />
+        </div>
+    </div>
 </div>
 
 <style>
@@ -504,6 +595,41 @@
 /* Filas mas bajas: entra casi el doble de productos sin scrollear. */
 .si-compacta td { padding-top:0.28rem !important; padding-bottom:0.28rem !important; }
 .si-compacta tbody tr:nth-child(even) { background:#fcfcfd; }
+
+.si-celu { display:none; }
+.si-fp-cab { display:flex; align-items:center; justify-content:space-between; padding:0.7rem 1rem; border-bottom:1px solid #e5e7eb; font-size:1.05rem; font-weight:700; flex-shrink:0; }
+.si-fp-cab button { background:none; border:none; font-size:1.2rem; line-height:1; color:#374151; cursor:pointer; }
+@@media (min-width: 769px) {
+    .si-fp:not(.abierto) .fp-raiz, .si-fp:not(.abierto) .si-fp-cab { display:none; }
+    .si-fp.abierto .si-fp-panel {
+        position:fixed; top:64px; right:16px; width:720px; max-width:calc(100vw - 32px); max-height:calc(100vh - 84px);
+        display:flex; flex-direction:column; background:#fff; border:1px solid #d1d5db; border-radius:14px;
+        box-shadow:0 14px 40px rgba(0,0,0,0.33); overflow:hidden; z-index:1200;
+    }
+}
+@@media (max-width: 768px) {
+    /* .card recorta lo que sobresale y eso anula la barra pegada abajo del pedido. */
+    .si-card { overflow:visible; }
+    .si-compu { display:none !important; }
+    .si-celu { display:block; }
+    .si-fp-cab { display:none; }
+    .si-fp:not(.celu-on) .fp-raiz { display:none; }
+    /* Lugar para el botón flotante, que queda abajo a la derecha. */
+    .si-fp .fp-barra { padding-right:84px; }
+    .si-vistas { display:flex; gap:0.4rem; padding:0.6rem 0.75rem; border-bottom:1px solid #e5e7eb; }
+    .si-vista { flex:1; min-height:44px; border:1px solid #d1d5db; background:#fff; color:#111827; border-radius:8px; font:inherit; font-size:0.92rem; font-weight:600; cursor:pointer; }
+    .si-vista.on { background:#111827; border-color:#111827; color:#fff; }
+    .si-celu-busca { padding:0.6rem 0.75rem; }
+    .si-celu-busca input { width:100%; box-sizing:border-box; min-height:44px; border:1px solid #d1d5db; border-radius:8px; padding:0.4rem 0.7rem; font:inherit; font-size:16px; }
+    .si-prodc { padding:0.65rem 0.75rem; border-top:1px solid #f3f4f6; }
+    .si-prodc-n { font-weight:700; color:#111827; overflow-wrap:anywhere; }
+    .si-prodc-h { font-size:0.8rem; color:#6b7280; margin-top:1px; }
+    .si-prodc-ok { color:#15803d; font-weight:600; }
+    .si-dos { display:flex; gap:0.6rem; margin-top:0.4rem; }
+    .si-dos label { flex:1; min-width:0; font-size:0.76rem; color:#6b7280; margin:0; }
+    .si-dos input { display:block; width:100%; box-sizing:border-box; min-height:44px; margin-top:2px; border:1px solid #d1d5db; border-radius:7px; padding:0.3rem 0.6rem; font:inherit; font-size:16px; font-weight:600; color:#111827; }
+    .si-celu-mas { display:block; width:100%; min-height:44px; background:#fff; border:none; border-top:1px solid #e5e7eb; font:inherit; font-size:0.9rem; font-weight:600; color:#111827; cursor:pointer; }
+}
 </style>
 
 @code {
@@ -536,6 +662,67 @@
     private byte[]? archivoBytes;
     private StockIdealPreviewDto? preview;
     private string? errorExcel;
+
+    // 2026-11-10: pedido en armado (compu y celu) y vista "Stock ideal y piso" del celu.
+    private const int PasoCelu = 40;
+    private FaltantesPedido? fp;
+    private bool pedidoCompu;
+    private string vistaCelu = "pedido";
+    private List<StockIdealRowDto>? filasCelu;
+    private string buscaCelu = "";
+    private int limiteCelu = PasoCelu;
+
+    private List<StockIdealRowDto> FiltradasCelu
+    {
+        get
+        {
+            var q = buscaCelu.Trim();
+            if (filasCelu is null || q.Length == 0) return filasCelu ?? new();
+            return filasCelu.Where(f => Contiene(f.Nombre, q) || Contiene(f.Marca, q) || Contiene(f.Codigo, q)).ToList();
+        }
+    }
+
+    /// <summary>Sin distinguir mayúsculas ni acentos: en el celu se escribe "azucar".</summary>
+    private static bool Contiene(string? texto, string q) => texto is not null
+        && CultureInfo.InvariantCulture.CompareInfo.IndexOf(texto, q, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace) >= 0;
+
+    private async Task CambiarVistaCelu(string v)
+    {
+        vistaCelu = v;
+        if (v == "pedido")
+        {
+            // Al cargar ideales pueden haber entrado productos nuevos para pedir.
+            if (fp is not null) await fp.RecargarAsync();
+            return;
+        }
+        if (filasCelu is not null) return;
+        try
+        {
+            var res = await Api.GetStockIdealListaAsync(false, null, null, null);
+            filasCelu = res?.Filas ?? new();
+            if (res is null) ToastService.Error("No se pudo cargar la lista");
+        }
+        catch (Exception ex)
+        {
+            filasCelu = new();
+            ToastService.Error("Error: " + ex.Message);
+        }
+    }
+
+    private void VerPedidoCompu()
+    {
+        fp?.IrA("armado");
+        pedidoCompu = true;
+    }
+
+    private Task PedirDeTabla(StockIdealPendienteDto f) => fp?.PedirAsync(f) ?? Task.CompletedTask;
+    private Task QuitarDeTabla(StockIdealPendienteDto f) => fp?.QuitarAsync(f) ?? Task.CompletedTask;
+
+    /// <summary>El pedido cambió desde el componente: la tabla de la compu se pone al día.</summary>
+    private async Task AlCambiarPedido()
+    {
+        if (solapa == "pedir") await CargarAsync(silencioso: true);
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -620,26 +807,6 @@
             if (!silencioso) ToastService.Error("Error: " + ex.Message);
         }
         finally { if (!silencioso) cargando = false; }
-    }
-
-    /// <summary>"Ya lo pedí": el renglón NO se va de la lista (el producto sigue faltando hasta
-    /// que entra la mercadería), queda marcado y baja al fondo. Antes se lo sacaba, y como pedir
-    /// no sube el stock, el robot lo volvía a anotar al minuto como si fuera nuevo.</summary>
-    private async Task MarcarPedido(int id)
-    {
-        resolviendo = true;
-        try
-        {
-            if (await Api.MarcarStockIdealPedidoAsync(id))
-            {
-                // Se recarga para que quede marcado y reordenado como lo devuelve el servidor.
-                await CargarAsync(silencioso: true);
-                ToastService.Success("Anotado como pedido · queda en la lista hasta que llegue");
-            }
-            else ToastService.Error("No se pudo marcar");
-        }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { resolviendo = false; }
     }
 
     /// <summary>Se marcó "ya lo pedí" por error: vuelve a la lista de lo que hay que pedir.</summary>
@@ -763,18 +930,25 @@
         if (e.Key == "Enter") await CargarAsync();
     }
 
-    /// <summary>Lee lo que tipearon. Devuelve (false, _) si no es un número.
-    /// Aguanta el "1.500" con punto de miles.</summary>
+    /// <summary>Lee lo que tipearon. Devuelve (false, _) si no es un número entero.
+    /// Aguanta el "1.500" con punto de miles. 2026-11-10: "2,5" o "2.5" antes se guardaban como 25;
+    /// el ideal y el piso son enteros (kilos en el café), así que ahora se rechazan.</summary>
     private bool LeerNumero(string texto, out int? valor)
     {
         valor = null;
         if (texto.Length == 0) return true;
-        var limpio = texto.Replace(".", "").Replace(" ", "");
-        if (!int.TryParse(limpio, NumberStyles.Any, CultureInfo.InvariantCulture, out var n))
+        var sinEspacios = texto.Replace(" ", "");
+        if (!Regex.IsMatch(sinEspacios, @"^\d+$|^\d{1,3}(\.\d{3})+$")) return false;
+        if (!int.TryParse(sinEspacios.Replace(".", ""), NumberStyles.None, CultureInfo.InvariantCulture, out var n))
             return false;
         valor = Math.Max(0, n);
         return true;
     }
+
+    private static string TextoNumeroMalo(string texto) => $"'{texto}' no sirve: escribí un número entero, sin decimales (por ejemplo 12 o 1.500)";
+
+    private StockIdealRowDto? BuscarFila(int productoId)
+        => filas.FirstOrDefault(f => f.ProductoId == productoId) ?? filasCelu?.FirstOrDefault(f => f.ProductoId == productoId);
 
     /// <summary>Guarda el PISO de una fila al salir del casillero. Vacío = sin piso (avisa con el ideal).</summary>
     private async Task OnPisoChange(int productoId, string? valor)
@@ -784,12 +958,13 @@
 
         if (!LeerNumero(texto, out var nuevo))
         {
-            ToastService.Error($"'{texto}' no es un número");
+            ToastService.Error(TextoNumeroMalo(texto));
+            await Task.Yield();   // deja dibujar lo tipeado para que al sacarlo el casillero vuelva al valor guardado
             editsPiso.Remove(productoId);
             return;
         }
 
-        var fila = filas.FirstOrDefault(f => f.ProductoId == productoId);
+        var fila = BuscarFila(productoId);
         if (fila is not null && fila.StockPiso == nuevo) { editsPiso.Remove(productoId); return; }
 
         try
@@ -830,12 +1005,13 @@
 
         if (!LeerNumero(texto, out var nuevo))
         {
-            ToastService.Error($"'{texto}' no es un número");
+            ToastService.Error(TextoNumeroMalo(texto));
+            await Task.Yield();   // deja dibujar lo tipeado para que al sacarlo el casillero vuelva al valor guardado
             edits.Remove(productoId);
             return;
         }
 
-        var fila = filas.FirstOrDefault(f => f.ProductoId == productoId);
+        var fila = BuscarFila(productoId);
         if (fila is not null && fila.StockIdeal == nuevo) { edits.Remove(productoId); return; }
 
         try
