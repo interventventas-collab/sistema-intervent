@@ -1,0 +1,540 @@
+@using Web.Services
+@using Web.Models
+@implements IDisposable
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* 2026-11-10: columna de pastillas vivas a la derecha del Dashboard (solo admin; maqueta aprobada
+   Todo_junto_PROPUESTA). Mismo estilo que las pastillas del depósito (DepoPastillas, clases .dp-*),
+   copiado acá con prefijo .op- para no pisarse. Seis pastillas de la oficina: preguntas MeLi, ME1 sin
+   repartidor, alquileres, cheques por pagar, pagos a confirmar y faltantes para pedir. Se refrescan
+   cada 60 s. Avisa con un cartelito negro solo si entra una pregunta nueva o un faltante nuevo. *@
+
+<style>
+    .op-col { display:flex; flex-direction:column; gap:0.7rem; position:sticky; top:8px; align-self:start; z-index:20; }
+    .op-big { position:relative; border-radius:22px; padding:0.75rem 1rem; box-shadow:0 2px 7px rgba(0,0,0,.09); cursor:pointer; transition:transform .15s ease, box-shadow .15s ease; }
+    .op-big:hover { transform:translateY(-2px); box-shadow:0 6px 14px rgba(0,0,0,.14); }
+    .op-big.pre { background:linear-gradient(135deg,#ddd6fe,#f5f3ff); }
+    .op-big.me1 { background:linear-gradient(135deg,#fed7aa,#fff7ed); }
+    .op-big.alq { background:linear-gradient(135deg,#fde68a,#fef3c7); }
+    .op-big.che { background:linear-gradient(135deg,#fbcfe8,#fdf2f8); }
+    .op-big.pag { background:linear-gradient(135deg,#bbf7d0,#ecfdf5); }
+    .op-big.fal { background:linear-gradient(135deg,#a5f3fc,#ecfeff); }
+    .op-big.nueva { outline:3px solid #dc2626; outline-offset:1px; }
+    .op-big.sel { outline:3px solid #111827; outline-offset:1px; }
+    .op-t { display:flex; align-items:center; gap:0.45rem; font-size:1rem; font-weight:600; color:#111827; }
+    .op-n { margin-left:auto; background:#dc2626; color:#fff; border-radius:999px; font-size:1.05rem; font-weight:800; padding:0 0.65rem; line-height:1.45; }
+    .op-n.cero { background:rgba(17,24,39,.12); color:#4b5563; }
+    .op-l { font-size:0.8rem; margin-top:0.35rem; color:#374151; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .op-l.gris { color:#6b7280; }
+    .op-tag { background:#dc2626; color:#fff; font-size:0.66rem; font-weight:800; border-radius:6px; padding:1px 6px; }
+    .op-prev { display:none; position:absolute; right:100%; top:0; margin-right:10px; width:360px; background:#fff; border:1px solid #d1d5db; border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.25); padding:0.55rem 0.8rem 0.65rem; cursor:pointer; z-index:30; }
+    .op-prev::after { content:""; position:absolute; top:0; bottom:0; right:-12px; width:12px; }
+    .op-big:hover .op-prev { display:block; }
+    .op-col.sin-prev .op-prev { display:none !important; }
+    .op-prev-t { font-size:0.72rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.15rem; }
+    .op-prev-f { padding:0.3rem 0; border-top:1px solid #f3f4f6; font-size:0.82rem; color:#374151; line-height:1.3; }
+    .op-prev-f b { font-weight:600; color:#111827; }
+    .op-prev-f small { display:block; color:#6b7280; font-size:0.74rem; }
+    .op-prev-m { display:flex; justify-content:space-between; gap:0.5rem; }
+    .op-prev-mas { padding-top:0.35rem; border-top:1px solid #f3f4f6; font-size:0.78rem; color:#111827; font-weight:600; }
+
+    .op-avisos { position:fixed; right:320px; top:70px; z-index:905; width:380px; display:flex; flex-direction:column; gap:0.5rem; }
+    .op-aviso { background:#111827; color:#fff; border-radius:14px; padding:0.7rem 1rem; box-shadow:0 10px 26px rgba(0,0,0,.3); font-size:0.9rem; animation:op-entra .25s ease; }
+    @@keyframes op-entra { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
+    .op-aviso small { display:block; color:#d1d5db; font-size:0.8rem; margin-top:2px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+    .op-aviso-bs { margin-top:0.5rem; display:flex; gap:0.5rem; align-items:center; }
+    .op-aviso-bs button { background:#fff; color:#111827; border:none; border-radius:999px; padding:0.3rem 0.85rem; font:inherit; font-size:0.8rem; font-weight:700; cursor:pointer; }
+    .op-aviso-bs button.des { background:none; color:#d1d5db; font-weight:400; }
+
+    .op-vent { position:fixed; right:320px; top:70px; z-index:905; width:520px; max-width:calc(100vw - 340px); max-height:calc(100vh - 90px);
+        display:flex; flex-direction:column; background:#fff; border-radius:14px; border:1px solid #d1d5db; box-shadow:0 14px 40px rgba(0,0,0,.33); overflow:hidden; }
+    .op-vh { display:flex; align-items:center; gap:0.6rem; padding:0.7rem 1rem; border-bottom:1px solid #e5e7eb; font-size:1.02rem; font-weight:600; flex-shrink:0; }
+    .op-vh small { font-size:0.76rem; font-weight:400; color:#6b7280; }
+    .op-x { margin-left:auto; background:none; border:none; font-size:1.3rem; cursor:pointer; color:#374151; line-height:1; }
+    .op-lista { overflow-y:auto; flex:1; min-height:0; }
+    .op-fila { display:flex; align-items:flex-start; gap:0.6rem; padding:0.6rem 1rem; border-top:1px solid #eef0f3; font-size:0.82rem; }
+    .op-fila .sub { display:block; color:#6b7280; font-size:0.74rem; margin-top:1px; }
+    .op-copiar { color:#1d4ed8; font-family:monospace; cursor:pointer; }
+    .op-vacio { padding:2rem; text-align:center; color:#6b7280; }
+    .op-pie { padding:0.5rem 1rem; border-top:1px solid #eef0f3; font-size:0.8rem; text-align:right; flex-shrink:0; }
+    .op-pie a { color:#111827; font-weight:700; cursor:pointer; }
+
+    @@media (max-width: 899px) {
+        .op-col { position:static; flex-direction:row; overflow-x:auto; gap:0.6rem; padding:0.2rem 0.1rem 0.6rem; -webkit-overflow-scrolling:touch; }
+        .op-big { flex:0 0 230px; }
+        .op-big:hover { transform:none; }
+        .op-prev { display:none !important; }
+        .op-avisos, .op-vent { right:10px; left:10px; width:auto; max-width:none; top:62px; }
+    }
+</style>
+
+<aside class="op-col @(ventana is null ? "" : "sin-prev")">
+    @* 💬 Preguntas MeLi *@
+    <div class="op-big pre @Marcas("pre")" @onclick='() => Tocar("pre")'>
+        <div class="op-t">💬 Preguntas MeLi @Nuevo("pre") <span class="op-n @(preguntas.Count == 0 ? "cero" : "")">@preguntas.Count</span></div>
+        <div class="op-l @(preguntas.Count == 0 ? "gris" : "")">
+            @if (preguntas.Count == 0) { <text>Todo respondido</text> }
+            else { <text>@(nuevas.Contains("pre") ? "Nueva: " : "Última: ")“@preguntas[0].Text”</text> }
+        </div>
+        <div class="op-prev">
+            <div class="op-prev-t">Preguntas sin responder</div>
+            @if (preguntas.Count == 0) { <div class="op-prev-f">No hay preguntas sin responder</div> }
+            @foreach (var q in preguntas.Take(5))
+            {
+                <div class="op-prev-f"><b>“@Corto(q.Text, 90)”</b><small>@(q.ItemTitle ?? q.ItemId) · @Hace(q.DateCreated)</small></div>
+            }
+            @Mas(preguntas.Count)
+        </div>
+    </div>
+
+    @* 🚚 ME1 sin repartidor *@
+    <div class="op-big me1 @Marcas("me1")" @onclick='() => Tocar("me1")'>
+        <div class="op-t">🚚 ME1 sin repartidor <span class="op-n @(Me1SinRep.Count == 0 ? "cero" : "")">@Me1SinRep.Count</span></div>
+        <div class="op-l @(Me1SinRep.Count == 0 ? "gris" : "")">
+            @if (me1 is null) { <text>Cargando…</text> }
+            else if (Me1SinRep.Count == 0) { <text>Todos con repartidor</text> }
+            else { <text>@Me1Quien(Me1SinRep[0])@(string.IsNullOrWhiteSpace(Me1SinRep[0].City) ? "" : $" · {Me1SinRep[0].City}")</text> }
+        </div>
+        <div class="op-prev">
+            <div class="op-prev-t">Envíos ME1 sin repartidor</div>
+            @if (Me1SinRep.Count == 0) { <div class="op-prev-f">Todos tienen repartidor asignado</div> }
+            @foreach (var s in Me1SinRep.Take(5))
+            {
+                <div class="op-prev-f"><b>@Me1Quien(s)</b><small>@(s.City ?? s.AddressLine ?? "") · @Me1Estado(s)</small></div>
+            }
+            @if (Me1SinRep.Count > 0) { <div class="op-prev-mas">Tocá para asignar ›</div> }
+        </div>
+    </div>
+
+    @* 🎪 Alquileres *@
+    <div class="op-big alq @Marcas("alq")" @onclick='() => Tocar("alq")'>
+        <div class="op-t">🎪 Alquileres <span class="op-n @(AlqNumero == 0 ? "cero" : "")">@AlqNumero</span></div>
+        <div class="op-l gris">
+            @if (alq is null) { <text>Cargando…</text> }
+            else { <text>@alq.ARetirarHoy a retirar hoy · @alq.Vencidos vencido@(alq.Vencidos == 1 ? "" : "s") · @alq.EnCalle afuera</text> }
+        </div>
+        <div class="op-prev">
+            <div class="op-prev-t">Alquileres afuera</div>
+            @if (alqCalle.Count == 0) { <div class="op-prev-f">No hay alquileres afuera</div> }
+            @foreach (var r in alqCalle.Take(5))
+            {
+                <div class="op-prev-f op-prev-m"><span><b>@r.ClienteNombre</b><small>@r.Numero</small></span><span style="white-space:nowrap; color:@(r.FechaRetiro.Date < HoyAr ? "#b91c1c" : "#374151");">@RetiroTxt(r)</span></div>
+            }
+            @Mas(alqCalle.Count)
+        </div>
+    </div>
+
+    @* 📄 Cheques por pagar *@
+    <div class="op-big che @Marcas("che")" @onclick='() => Tocar("che")'>
+        <div class="op-t">📄 Cheques por pagar <span class="op-n @(ChequesSemana.Count == 0 ? "cero" : "")">@ChequesSemana.Count</span></div>
+        <div class="op-l gris">
+            @if (cheques is null) { <text>Cargando…</text> }
+            else if (cheques.Count == 0) { <text>No hay cheques por pagar</text> }
+            else { <text>@ProximoCheque(cheques[0])@(ChequesSemana.Count == 0 ? " · nada esta semana" : "")</text> }
+        </div>
+        <div class="op-prev">
+            <div class="op-prev-t">Próximos cheques a pagar</div>
+            @if ((cheques?.Count ?? 0) == 0) { <div class="op-prev-f">No hay cheques por pagar</div> }
+            @foreach (var c in (cheques ?? new()).Take(5))
+            {
+                <div class="op-prev-f op-prev-m"><span><b>@(string.IsNullOrWhiteSpace(c.ContraparteNombre) ? "(sin contraparte)" : c.ContraparteNombre)</b><small>@(c.FechaPago?.ToString("dd/MM") ?? "—") · cheque #@c.Numero</small></span><span style="white-space:nowrap;">$@Plata(c.Importe)</span></div>
+            }
+            @Mas(cheques?.Count ?? 0)
+        </div>
+    </div>
+
+    @* ✅ Pagos a confirmar *@
+    <div class="op-big pag @Marcas("pag")" @onclick='() => Tocar("pag")'>
+        <div class="op-t">✅ Pagos a confirmar <span class="op-n @(pagos.Count == 0 ? "cero" : "")">@pagos.Count</span></div>
+        <div class="op-l gris">
+            @if (!pagosOk) { <text>Cargando…</text> }
+            else if (pagos.Count == 0) { <text>Todo al día</text> }
+            else { <text>@Corto(pagos[0].Concepto, 40) · $@Plata(pagos[0].Monto)</text> }
+        </div>
+        <div class="op-prev">
+            <div class="op-prev-t">Pagos cargados desde el celu</div>
+            @if (pagos.Count == 0) { <div class="op-prev-f">Nada para confirmar</div> }
+            @foreach (var p in pagos.Take(5))
+            {
+                <div class="op-prev-f op-prev-m"><span><b>@Corto(p.Concepto, 50)</b><small>@(p.EmpleadoNombre ?? p.ProveedorNombre ?? "") · cargó @p.CreadoPor</small></span><span style="white-space:nowrap;">$@Plata(p.Monto)</span></div>
+            }
+            @Mas(pagos.Count)
+        </div>
+    </div>
+
+    @* 🛒 Faltantes para pedir *@
+    <div class="op-big fal @Marcas("fal")" @onclick='() => Tocar("fal")'>
+        <div class="op-t">🛒 Faltantes para pedir @Nuevo("fal") <span class="op-n @(Faltantes.Count == 0 ? "cero" : "")">@Faltantes.Count</span></div>
+        <div class="op-l gris">
+            @if (!faltOk) { <text>Cargando…</text> }
+            else if (Faltantes.Count == 0) { <text>No falta nada por pedir</text> }
+            else { <text>@string.Join(" · ", PorMarca.Take(3).Select(g => $"{g.Key} {g.Count()}"))</text> }
+        </div>
+        <div class="op-prev">
+            <div class="op-prev-t">Para pedir</div>
+            @if (Faltantes.Count == 0) { <div class="op-prev-f">No falta nada por pedir</div> }
+            @foreach (var f in Faltantes.Take(5))
+            {
+                <div class="op-prev-f"><b>@Corto(f.Nombre, 60)</b><small>@(string.IsNullOrWhiteSpace(f.Marca) ? "Sin marca" : f.Marca) · hay @f.StockAhora.ToString("0.##")</small></div>
+            }
+            @Mas(Faltantes.Count)
+        </div>
+    </div>
+</aside>
+
+@if (avisos.Count > 0 && ventana is null)
+{
+    <div class="op-avisos">
+        @foreach (var a in avisos.Take(3))
+        {
+            var av = a;
+            <div class="op-aviso" @key="av.Id">
+                🔔 <b>@av.Titulo</b>
+                <small>@av.Texto</small>
+                <div class="op-aviso-bs">
+                    <button @onclick="() => VerAviso(av)">Ver</button>
+                    <button class="des" @onclick="() => avisos.Remove(av)">Después</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (ventana == "me1")
+{
+    <div class="op-vent">
+        <div class="op-vh">
+            🚚 ME1 sin repartidor <small>asigná acá</small>
+            <button class="op-x" title="Cerrar" @onclick="Cerrar">✕</button>
+        </div>
+        <div class="op-lista">
+            @if (Me1SinRep.Count == 0)
+            {
+                <div class="op-vacio">Todos los envíos tienen repartidor asignado.</div>
+            }
+            @foreach (var s in Me1SinRep)
+            {
+                var sh = s;
+                <div class="op-fila" @key="sh.Id">
+                    <div style="flex:1; min-width:0;">
+                        <div><b>@Me1Quien(sh)</b> <span class="sub" style="display:inline;">· @Me1Estado(sh)</span></div>
+                        @if (!string.IsNullOrWhiteSpace(sh.ItemsSummary))
+                        {
+                            <span class="sub">@sh.ItemsSummary</span>
+                        }
+                        <span class="sub">
+                            @if (!string.IsNullOrWhiteSpace(sh.BuyerNickname))
+                            {
+                                <span class="op-copiar" title="Tocá para copiar el usuario de MeLi" @onclick="@(() => Copiar(sh.BuyerNickname!, "Usuario de MeLi copiado"))">👤 @sh.BuyerNickname 📋</span>
+                            }
+                            @if (sh.MeliOrderId.HasValue)
+                            {
+                                <span class="op-copiar" style="color:#374151; margin-left:8px;" title="Tocá para copiar el N° de venta" @onclick="@(() => Copiar(sh.MeliOrderId!.Value.ToString(), "N° de venta copiado"))">🧾 @sh.MeliOrderId 📋</span>
+                            }
+                        </span>
+                        @if (!string.IsNullOrWhiteSpace(sh.AddressLine) || !string.IsNullOrWhiteSpace(sh.City))
+                        {
+                            <span class="sub">📍 @(sh.AddressLine)@(string.IsNullOrWhiteSpace(sh.City) ? "" : $", {sh.City}")
+                                <a href="@MapsUrl(sh)" target="_blank" rel="noopener" title="Ver el domicilio en Google Maps" style="text-decoration:none;">🗺</a></span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(sh.ReceiverPhone))
+                        {
+                            <span class="sub">📞 @sh.ReceiverPhone</span>
+                        }
+                    </div>
+                    <select class="form-input" style="flex-shrink:0; height:30px; font-size:0.78rem; max-width:130px; padding:0 6px;"
+                            value=""
+                            @onchange="@(e => Asignar(sh, e.Value?.ToString()))"
+                            disabled="@(asignando == sh.Id)">
+                        <option value="">Asignar…</option>
+                        @foreach (var r in repartidores)
+                        {
+                            <option value="@r.Id">@r.Nombre</option>
+                        }
+                    </select>
+                </div>
+            }
+        </div>
+        <div class="op-pie"><a @onclick='() => Nav.NavigateTo("/meli/me1/entregas")'>Ver todos los envíos ME1 ›</a></div>
+    </div>
+}
+
+@code {
+    private sealed class Aviso { public int Id; public string Pastilla = ""; public string Titulo = ""; public string Texto = ""; public DateTime Hasta; }
+
+    private List<MeliQuestionDto> preguntas = new();
+    private List<MeliMe1ShipmentDto>? me1;
+    private List<RepartidorDto> repartidores = new();
+    private AlqDashboardResumen? alq;
+    private List<AlqReservaDto> alqCalle = new();
+    private List<ApiClient.ChequeProximoDto>? cheques;
+    private List<PendienteListDto> pagos = new();
+    private List<StockIdealPendienteDto> faltantes = new();
+    private bool pagosOk, faltOk, pregOk;
+    private readonly HashSet<int> vistasPreg = new(), vistosFalt = new();
+    private readonly HashSet<string> nuevas = new();
+    private readonly List<Aviso> avisos = new();
+    private int proximoAviso;
+    private string? ventana;
+    private int? asignando;
+    private bool ocupado, cerrado;
+    private System.Threading.Timer? timer;
+
+    private DateTime HoyAr => DateTimeExt.AhoraAr().Date;
+
+    private static bool Me1Pendiente(MeliMe1ShipmentDto s)
+        => s.Status != "delivered" && s.Status != "not_delivered" && s.Status != "cancelled";
+    private List<MeliMe1ShipmentDto> Me1SinRep =>
+        me1?.Where(s => Me1Pendiente(s) && s.RepartidorAsignadoId == null).ToList() ?? new();
+    private int AlqNumero => alq is null ? 0 : alq.ARetirarHoy + alq.Vencidos;
+    private List<ApiClient.ChequeProximoDto> ChequesSemana =>
+        cheques?.Where(c => c.FechaPago.HasValue && c.FechaPago.Value.Date <= HoyAr.AddDays(7)).ToList() ?? new();
+    private List<StockIdealPendienteDto> Faltantes => faltantes.Where(f => !f.Pedido && !f.YaRepuesto && !f.EnArmado).ToList();
+    private List<IGrouping<string, StockIdealPendienteDto>> PorMarca => Faltantes
+        .GroupBy(f => string.IsNullOrWhiteSpace(f.Marca) ? "Sin marca" : f.Marca!.Trim(), StringComparer.OrdinalIgnoreCase)
+        .OrderByDescending(g => g.Count()).ThenBy(g => g.Key).ToList();
+
+    private RenderFragment Nuevo(string p) => __builder =>
+    {
+        @if (nuevas.Contains(p)) { <span class="op-tag">NUEVO</span> }
+    };
+    private RenderFragment Mas(int total) => __builder =>
+    {
+        @if (total > 5) { <div class="op-prev-mas">y @(total - 5) más · ver todas ›</div> }
+        else if (total > 0) { <div class="op-prev-mas">ver todas ›</div> }
+    };
+    private string Marcas(string p) => (ventana == p ? "sel " : "") + (nuevas.Contains(p) ? "nueva" : "");
+
+    protected override void OnInitialized()
+    {
+        timer = new System.Threading.Timer(async _ =>
+        {
+            if (cerrado) return;
+            await InvokeAsync(Vuelta);
+        }, null, 0, 60000);
+    }
+
+    private async Task Vuelta()
+    {
+        if (ocupado) return;
+        ocupado = true;
+        try
+        {
+            avisos.RemoveAll(a => a.Hasta < DateTime.UtcNow);
+            await Task.WhenAll(CargarPreguntas(), CargarMe1(), CargarAlq(), CargarCheques(), CargarPagos(), CargarFaltantes());
+            if (!cerrado) StateHasChanged();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task CargarPreguntas()
+    {
+        try
+        {
+            var r = await Api.GetMeliQuestionsAsync("UNANSWERED");
+            if (r is null) return;
+            preguntas = r.OrderByDescending(q => q.DateCreated).ToList();
+            var entraron = preguntas.Where(q => !vistasPreg.Contains(q.Id)).ToList();
+            if (pregOk && entraron.Count > 0)
+            {
+                nuevas.Add("pre");
+                Avisar("pre", entraron.Count == 1 ? "Pregunta nueva de MercadoLibre" : $"{entraron.Count} preguntas nuevas",
+                    entraron.Count == 1 ? $"“{entraron[0].Text}” · {entraron[0].ItemTitle}" : string.Join(" · ", entraron.Take(3).Select(q => $"“{Corto(q.Text, 40)}”")));
+            }
+            foreach (var q in preguntas) vistasPreg.Add(q.Id);
+            pregOk = true;
+        }
+        catch { }
+    }
+
+    private async Task CargarMe1()
+    {
+        try
+        {
+            if (repartidores.Count == 0)
+                repartidores = (await Api.GetRepartidoresAsync() ?? new()).Where(r => r.IsActive).ToList();
+            me1 = await Api.GetMeliMe1ShipmentsAsync("todos") ?? new();
+        }
+        catch { }
+    }
+
+    private async Task CargarAlq()
+    {
+        try
+        {
+            alq = await Api.GetAlqResumenDashboardAsync();
+            var entregadas = await Api.GetAlqReservasAsync(estado: "entregado");
+            alqCalle = entregadas?.Where(r => r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue)
+                .OrderBy(r => r.FechaRetiro).ToList() ?? new();
+        }
+        catch { }
+    }
+
+    private async Task CargarCheques()
+    {
+        try { cheques = await Api.GetChequesProximosPagarAsync(50); }
+        catch { }
+    }
+
+    private async Task CargarPagos()
+    {
+        try
+        {
+            var r = await Api.GetPagosMovilPendientesAsync();
+            if (r is null) return;
+            pagos = r.OrderBy(p => p.CreatedAt).ToList();
+            pagosOk = true;
+        }
+        catch { }
+    }
+
+    private async Task CargarFaltantes()
+    {
+        try
+        {
+            var r = await Api.GetStockIdealPendientesAsync();
+            if (r is null) return;
+            faltantes = r.Filas;
+            if (faltOk)
+            {
+                var entraron = Faltantes.Where(f => !vistosFalt.Contains(f.Id)).ToList();
+                if (entraron.Count > 0)
+                {
+                    nuevas.Add("fal");
+                    Avisar("fal", entraron.Count == 1 ? "Hay que pedir un producto" : $"Hay que pedir {entraron.Count} productos",
+                        string.Join(" · ", entraron.Take(3).Select(f => $"{Corto(f.Nombre, 40)} (hay {f.StockAhora:0.##})"))
+                        + (entraron.Count > 3 ? $" · y {entraron.Count - 3} más" : ""));
+                }
+            }
+            foreach (var f in faltantes) vistosFalt.Add(f.Id);
+            faltOk = true;
+        }
+        catch { }
+    }
+
+    private void Avisar(string pastilla, string titulo, string texto)
+        => avisos.Insert(0, new Aviso { Id = ++proximoAviso, Pastilla = pastilla, Titulo = titulo, Texto = texto, Hasta = DateTime.UtcNow.AddMinutes(5) });
+
+    private void VerAviso(Aviso a)
+    {
+        avisos.Remove(a);
+        Tocar(a.Pastilla);
+    }
+
+    private void Tocar(string p)
+    {
+        nuevas.Remove(p);
+        avisos.RemoveAll(a => a.Pastilla == p);
+        if (p == "me1")
+        {
+            // Con envíos sin repartidor se abre la ventanita al costado para asignar; si no hay, va a la pantalla.
+            if (ventana == "me1") { Cerrar(); return; }
+            if (Me1SinRep.Count > 0) { ventana = "me1"; return; }
+        }
+        var url = p switch
+        {
+            "pre" => "/meli/preguntas",
+            "me1" => "/meli/me1/entregas",
+            "alq" => "/alquileres",
+            "che" => "/cafe/tesoreria/cheques-todos?vista=A_PAGAR",
+            "pag" => "/tesoreria/pagos-pendientes",
+            "fal" => "/stock/ideal",
+            _ => null
+        };
+        if (url is not null) Nav.NavigateTo(url);
+    }
+
+    private void Cerrar() => ventana = null;
+
+    private async Task Asignar(MeliMe1ShipmentDto s, string? value)
+    {
+        if (!int.TryParse(value, out var repId)) return;
+        asignando = s.Id;
+        try
+        {
+            var ok = await Api.AsignarRepartidorMe1Async(s.Id, repId);
+            if (ok)
+            {
+                s.RepartidorAsignadoId = repId;
+                s.RepartidorAsignadoNombre = repartidores.FirstOrDefault(r => r.Id == repId)?.Nombre;
+                ToastService.Success($"✓ Asignado a {s.RepartidorAsignadoNombre}");
+                if (Me1SinRep.Count == 0) ventana = null;
+            }
+            else ToastService.Error("No se pudo asignar el repartidor");
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { asignando = null; }
+    }
+
+    private async Task Copiar(string texto, string mensaje)
+    {
+        try { await JS.InvokeVoidAsync("copyToClipboard", texto); ToastService.Success($"📋 {mensaje}"); }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
+    private static string Me1Quien(MeliMe1ShipmentDto s) => s.ReceiverName ?? s.BuyerNickname ?? "—";
+
+    private static string Me1Estado(MeliMe1ShipmentDto s) => s.Status switch
+    {
+        "shipped" when s.Substatus == "out_for_delivery" => "salió a entregar",
+        "shipped" => "en camino",
+        "ready_to_ship" => "listo para despachar",
+        "handling" => "en preparación",
+        "pending" => "pendiente",
+        _ => s.Status ?? ""
+    };
+
+    private static string MapsUrl(MeliMe1ShipmentDto s)
+    {
+        var partes = new[] { s.AddressLine, s.City, s.State, "Argentina" }.Where(x => !string.IsNullOrWhiteSpace(x));
+        return $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(string.Join(", ", partes))}";
+    }
+
+    private string RetiroTxt(AlqReservaDto r)
+    {
+        var d = r.FechaRetiro.Date;
+        if (d < HoyAr) return $"vencido {d:dd/MM}";
+        if (d == HoyAr) return "retira hoy";
+        if (d == HoyAr.AddDays(1)) return "retira mañana";
+        return $"retira {d:dd/MM}";
+    }
+
+    private static readonly string[] Dias = { "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado" };
+    private string ProximoCheque(ApiClient.ChequeProximoDto c)
+    {
+        if (c.FechaPago is null) return "";
+        var d = c.FechaPago.Value.Date;
+        if (d < HoyAr) return $"hay uno vencido del {d:dd/MM}";
+        if (d == HoyAr) return "el próximo vence hoy";
+        if (d == HoyAr.AddDays(1)) return "el próximo vence mañana";
+        if (d <= HoyAr.AddDays(6)) return $"el próximo vence el {Dias[(int)d.DayOfWeek]}";
+        return $"el próximo vence el {d:dd/MM}";
+    }
+
+    private static string Plata(decimal v) => v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+
+    private static string Corto(string? t, int max)
+    {
+        if (string.IsNullOrWhiteSpace(t)) return "";
+        t = t.Trim().Replace('\n', ' ');
+        return t.Length <= max ? t : t.Substring(0, max) + "…";
+    }
+
+    private static string Hace(DateTime utc)
+    {
+        var dif = DateTime.UtcNow - utc;
+        if (dif.TotalMinutes < 1) return "recién";
+        if (dif.TotalMinutes < 60) return $"hace {(int)dif.TotalMinutes} min";
+        if (dif.TotalHours < 24) return $"hace {(int)dif.TotalHours} h";
+        return utc.ToArTime().ToString("dd/MM HH:mm");
+    }
+
+    public void Dispose()
+    {
+        cerrado = true;
+        timer?.Dispose();
+    }
+}

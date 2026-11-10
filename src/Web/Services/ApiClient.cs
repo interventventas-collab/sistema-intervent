@@ -10599,6 +10599,28 @@ public class ApiClient
 
     public async Task<VisitasPaginasDto?> GetVisitasPaginasAsync()
         => await GetAsync<VisitasPaginasDto>("/api/panorama/visitas");
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 2026-11-10: Dashboard nuevo (admin) — "Equipo hoy" en rayitas. Mismo endpoint que
+    // GetDashboardEquipoAsync, pero además devuelve la hora de cada entrega del día por
+    // empleado (EntregasHoras, "HH:mm" hora Argentina) para dibujar los puntitos.
+    // Una sola llamada: se lee el JSON una vez y se arma el equipo + las horas.
+    // ════════════════════════════════════════════════════════════════════════════════
+    private sealed record DashEquipoHorasItem(int NomEmpleadoId, List<string>? EntregasHoras);
+    private sealed record DashEquipoHorasResp(List<DashEquipoHorasItem>? Items);
+
+    public async Task<(DashboardEquipoResponse? Equipo, Dictionary<int, List<string>> Horas)> GetDashboardEquipoConHorasAsync()
+    {
+        var horas = new Dictionary<int, List<string>>();
+        var el = await GetAsync<System.Text.Json.JsonElement?>("/api/dashboard/equipo-dia");
+        if (el is null) return (null, horas);
+        var opts = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var equipo = System.Text.Json.JsonSerializer.Deserialize<DashboardEquipoResponse>(el.Value, opts);
+        var h = System.Text.Json.JsonSerializer.Deserialize<DashEquipoHorasResp>(el.Value, opts);
+        foreach (var it in h?.Items ?? new())
+            horas[it.NomEmpleadoId] = it.EntregasHoras ?? new();
+        return (equipo, horas);
+    }
 }
 
 // 2026-08-03: resultado del borrado de cliente.

@@ -273,6 +273,23 @@
         .main-ta .mnb-directo, .main-ta .mnb-grupo, .main-ta .mnb-buscar { padding: 0.3rem 0.35rem; font-size: 0.8rem; }
         .main-ta .topbar { padding-left: 0.6rem; padding-right: 0.6rem; }
     }
+    /* 2026-11-10: menú nuevo con la columna de la izquierda siempre a la vista (en compu). */
+    @@media (min-width: 769px) {
+        .sidebar.ta.ta-col { transform: none; width: 236px !important; z-index: 900; box-shadow: none; }
+        .main-wrapper.main-ta.main-ta-col { margin-left: 236px !important; }
+        .main-ta-col .topbar-menu-btn { display: none !important; }
+        .sidebar.ta-col .nav-group-flyout-panel { left: 236px; max-width: calc(100vw - 236px); }
+    }
+    .sidebar.ta-col .nav-group-children .nav-icon:empty { display: none; }
+    .sidebar.ta-col .nav-group-children .nav-item { padding-top: 0.32rem; padding-bottom: 0.32rem; font-size: 0.86rem; }
+    .mn-organizar {
+        display: flex; justify-content: space-between; align-items: center; width: calc(100% - 1rem);
+        margin: 0.9rem 0.5rem 0.4rem; padding: 0.55rem 0.8rem; border-radius: 8px; cursor: pointer;
+        background: transparent; border: 1px solid rgba(255,255,255,.14); color: #e5e7eb;
+        font-family: inherit; font-size: 0.88rem; font-weight: 600;
+    }
+    .mn-organizar:hover, .mn-organizar.abierto { background: rgba(255,255,255,.06); }
+    .mn-organizar-car { color: #9ca3af; font-weight: 400; }
     @@media (max-width: 768px) {
         .ta-solo-pc, .ta-tabs { display: none !important; }
         .ta-solo-celu { display: contents !important; }
@@ -298,6 +315,28 @@
         padding: 0 0.5rem; border-radius: 0 6px 6px 0; cursor: pointer;
     }
     .mnb-mas:hover { background: #374151; }
+    /* 2026-11-10: numeritos pegados a Preparación / Ventas / Cobranzas + listita al pasar el mouse. */
+    .mnb-cont { position: relative; display: inline-flex; align-items: center; margin-right: 0.35rem; }
+    .mnb-num {
+        position: absolute; top: -9px; right: -12px; z-index: 2; border: 2px solid #fff; border-radius: 999px;
+        color: #fff; font-size: 0.68rem; font-weight: 800; line-height: 1.35; padding: 0 0.38rem; cursor: pointer; font-family: inherit;
+    }
+    .mnb-num.prep { background: #2563eb; }
+    .mnb-num.ven { background: #16a34a; }
+    .mnb-num.cob { background: #f59e0b; }
+    .mnb-pop {
+        display: none; position: absolute; top: 100%; left: 0; margin-top: 6px; width: 320px; z-index: 9500;
+        background: #fff; border: 1px solid #d1d5db; border-radius: 10px; box-shadow: 0 10px 26px rgba(0,0,0,.18);
+        padding: 0.5rem 0.75rem 0.55rem; cursor: pointer; text-align: left;
+    }
+    .mnb-pop::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+    .mnb-cont:hover .mnb-pop { display: block; }
+    .mnb.editando .mnb-pop { display: none !important; }
+    .mnb-pop-t { font-size: 0.7rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.15rem; }
+    .mnb-pop-f { display: flex; justify-content: space-between; gap: 0.6rem; padding: 0.22rem 0; border-top: 1px solid #f3f4f6; font-size: 0.82rem; color: #111827; }
+    .mnb-pop-f span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .mnb-pop-f small { color: #6b7280; font-size: 0.76rem; white-space: nowrap; flex-shrink: 0; }
+    .mnb-pop-mas { color: #2563eb; font-size: 0.78rem; margin-top: 0.25rem; }
     .mnb-mas:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }
     @@media (max-width: 768px) { .mnb-mas { display: none; } .mnb-doble .mnb-directo, .mnb-doble .mnb-grupo { border-radius: 6px; } }
     .mnb-caret { color: #9ca3af; font-size: 0.7rem; }
@@ -771,7 +810,7 @@
 {
 @* 2026-11-07: "todo arriba" (admin y depósito): en compu el menú de la izquierda no ocupa lugar;
    se abre como cajón con el botón "☰ Menú" de la barra (clase ta). En celu queda como siempre. *@
-<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed && !TodoArriba ? "collapsed" : "") @(TodoArriba ? "ta" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod") @(HasPerm("deposito") ? "sidebar-with-chat" : "")" id="sidebar">
+<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed && !TodoArriba ? "collapsed" : "") @(TodoArriba ? "ta" : "") @(ColumnaNueva ? "ta-col" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod") @(HasPerm("deposito") ? "sidebar-with-chat" : "")" id="sidebar">
     @if (IsDevEnvironment)
     {
         <div class="dev-environment-banner" title="Estás en el entorno de DESARROLLO. Los datos NO son los de producción.">
@@ -886,7 +925,40 @@
            barra de arriba (MenuNuevoBarra); acá quedan WhatsApp, Documentación y "Más pantallas"
            con lo que casi no se usa. Los grupos de siempre (Ventas por fuera, MercadoLibre,
            Alquileres) no se muestran para no repetir pantallas. *@
+        @* 2026-11-10: el menú de la izquierda vuelve a ser el principal (pedido del dueño): las
+           secciones del negocio (lo que antes eran los desplegables de la barra) quedan acá, cada
+           una se abre y se cierra con un clic. Lo que casi no se usa (los sueltos de siempre,
+           "Más pantallas" y Administración) va adentro de "⚙ Organizar". *@
         @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
+        {
+            @foreach (var ga in MenuNuevoSvc.Actual.Grupos)
+            {
+                var g = ga.Grupo;
+                var itemsSec = ga.Items.Where(i => i.Permiso == null || HasPerm(i.Permiso)).ToList();
+                if (itemsSec.Count == 0 && g.Nuevo == null) continue;
+                <NavGroup Label="@g.Titulo" Icon="@IconoSeccion(g.Titulo)"
+                          HasActiveChild="@(itemsSec.Any(i => IsActive(i.Href)))"
+                          DefaultExpanded="@(itemsSec.Any(i => IsActive(i.Href)))">
+                    @if (g.Nuevo is { } tipoNuevo)
+                    {
+                        <NavItem Href="#" Label="@("＋ " + TituloNuevoSeccion(tipoNuevo))" Icon="@SvgIcons.Plus"
+                                 IsActive="false" OnClick="@(() => NuevoRapido(tipoNuevo))" />
+                    }
+                    @foreach (var it in itemsSec)
+                    {
+                        var itSec = it;
+                        <NavItem Href="@itSec.Href" Label="@itSec.Label"
+                                 IsActive="@IsActive(itSec.Href)"
+                                 OnClick="@(() => { if (itSec.Externo) Navigation.NavigateTo(itSec.Href, forceLoad: true); else NavigateTo(itSec.Href); })" />
+                    }
+                </NavGroup>
+            }
+            <button class="mn-organizar @(organizarAbierto ? "abierto" : "")" @onclick="() => organizarAbierto = !organizarAbierto"
+                    title="Lo que casi no se usa: Dashboard, Panorama, Chat, WhatsApp, Más pantallas y Administración">
+                <span>⚙ Organizar</span><span class="mn-organizar-car">@(organizarAbierto ? "▾" : "▸")</span>
+            </button>
+        }
+        @if (MenuNuevo && organizarAbierto && (HasPerm("cafe") || HasPerm("oficina")))
         {
             @foreach (var it in MenuNuevoSvc.Actual.Costado.Where(i => i.Permiso == null || HasPerm(i.Permiso)))
             {
@@ -1253,7 +1325,8 @@
         @* ═════════════ 10. ADMINISTRACION (sistema) ═════════════
            Solo cosas de configuracion del sistema: usuarios, roles, integraciones, archivos
            tecnicos, auditoria, backups, configuracion general. *@
-        @if (HasPerm("contadora") || HasPerm("usuarios") || HasPerm("sesiones") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups") || HasPerm("vault"))
+        @* 2026-11-10: con el menú nuevo, Administración va adentro de "⚙ Organizar". *@
+        @if ((!MenuNuevo || organizarAbierto) && (HasPerm("contadora") || HasPerm("usuarios") || HasPerm("sesiones") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups") || HasPerm("vault")))
         {
             <NavGroup Label="Administración" Icon="@SvgIcons.Admin"
                       HasActiveChild="@(IsActive("/contadora") || IsActive("/usuarios") || IsActive("/sesiones") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config") || IsActive("/vault"))">
@@ -1413,7 +1486,7 @@
 @* Botón "Nueva Venta" - vive dentro del topbar (ver más abajo) para quedar
    siempre visible arriba a la derecha sin tapar otros íconos. *@
 
-<main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "") @(TodoArriba ? "main-ta" : "") @(TodoArribaDepo ? "main-ta-depo" : "") @(Pantalla.Enorme ? "main-enorme" : "")">
+<main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "") @(TodoArriba ? "main-ta" : "") @(ColumnaNueva ? "main-ta-col" : "") @(TodoArribaDepo ? "main-ta-depo" : "") @(Pantalla.Enorme ? "main-enorme" : "")">
 @if (!IsEmbedded)
 {
     @* 2026-07-08: fila de chips arriba de todo (empresa/usuario · reloj · dólar · disco).
@@ -1691,7 +1764,8 @@
             @if (!IsRoleWithCustomSidebar())
             {
                 @* 2026-09-14: el 💰 cuenta ventas Y alquileres (la 🪑 aparte se sacó: una sola lista). *@
-                <CobranzasPendientesBell />
+                @* 2026-11-10: con el menú nuevo, en compu la bolsita va como numerito pegado a "Cobranzas". *@
+                <span class="@(MenuNuevo ? "mn-oculto-pc" : "")" style="display:contents;"><CobranzasPendientesBell /></span>
             }
             <ChatBell />
             <MeliQuestionsBell OnTotal="PreguntasContadas" />
@@ -3125,13 +3199,43 @@
                    es del robot de la linea por QR, y este boton lleva a la linea OFICIAL. Tenerlo
                    ahi hacia que el WhatsApp de todos los dias pareciera roto cuando el que estaba
                    caido era el robot — un cruce de cables entre dos cosas que no se tocan. *@
-                <button class="topbar-action-whatsapp"
+                @* 2026-11-10: con el menú nuevo, en compu WhatsApp queda adentro de "⚙ Organizar" (pedido del dueño). *@
+                <button class="topbar-action-whatsapp @(MenuNuevo ? "mn-oculto-pc" : "")"
                         @onclick='() => NavigateTo("/whatsapp")'
                         title="WhatsApp — abrir la pantalla de conversaciones"
                         aria-label="WhatsApp">
                     @SvgIcons.MessageCircle
                     <span>WhatsApp</span>
                 </button>
+    };
+    /// <summary>2026-11-10: "⚙ Organizar" del menú de la izquierda (lo que casi no se usa). Arranca cerrado.</summary>
+    private bool organizarAbierto;
+    /// <summary>2026-11-10: con el menú nuevo, en compu el menú de la izquierda vuelve a estar
+    /// siempre a la vista (columna fija) en vez de ser un cajón que abre "☰ Menú".</summary>
+    private bool ColumnaNueva => MenuNuevo && !IsEmbedded && (HasPerm("cafe") || HasPerm("oficina"));
+    private static MarkupString IconoSeccion(string titulo) => titulo switch
+    {
+        "Clientes" => SvgIcons.Users,
+        "Frikaf" => SvgIcons.Store,
+        "MercadoLibre" => SvgIcons.ShoppingBag,
+        "Intereventos" => SvgIcons.Calendar,
+        "Logística" => SvgIcons.Torino,
+        "Stock" => SvgIcons.Box,
+        "Compras" => SvgIcons.Package,
+        "Productos y precios" => SvgIcons.Tag,
+        "Plata" => SvgIcons.Wallet,
+        "Empleados" => SvgIcons.Clock,
+        _ => SvgIcons.Folder,
+    };
+    private static string TituloNuevoSeccion(string tipo) => tipo switch
+    {
+        "alquiler" => "Nuevo alquiler",
+        "stock" => "Cargar stock",
+        "compra" => "Nueva compra",
+        "venta" => "Nueva venta",
+        "cobranza" => "Nueva cobranza",
+        "pago" => "Nuevo pago",
+        _ => "Nuevo",
     };
     private MenuNuevoBarra? menuNuevoRef;
     [Inject] private MenuNuevoService MenuNuevoSvc { get; set; } = default!;

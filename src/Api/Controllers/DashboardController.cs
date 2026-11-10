@@ -334,7 +334,10 @@ public class DashboardController : ControllerBase
         string? UltimoDomicilio = null, string? UltimaEntregaHora = null,
         // Minutos desde la última entrega. Si pasa mucho tiempo, algo le pasó (se trabó, se le
         // rompió algo, se olvidó de marcar) y conviene llamarlo. -1 = todavía no entregó nada.
-        int MinutosSinMarcar = -1);
+        int MinutosSinMarcar = -1,
+        // 2026-11-10: hora (Argentina, "HH:mm") de cada parada que entregó hoy, para dibujar los
+        // puntitos en la rayita del día del Dashboard nuevo. Mismas paradas que RutaEntregadas.
+        List<string>? EntregasHoras = null);
 
     // 2026-06-25: orden fijo pedido por Osmar — repartidores primero (alexis, walter,
     // benjamin, gonzalo, rodrigo), después oficina (osmar, german, gabriel, miguel).
@@ -414,6 +417,7 @@ public class DashboardController : ControllerBase
         var ultimoDomByRep = new Dictionary<int, string>();
         var ultimaHoraByRep = new Dictionary<int, string>();
         var minsSinMarcarByRep = new Dictionary<int, int>();
+        var horasEntregaByRep = new Dictionary<int, List<string>>();
         if (repIds.Count > 0)
         {
             var driversMapa = await _db.MapeoDrivers
@@ -441,6 +445,12 @@ public class DashboardController : ControllerBase
                     rutaEntByRep[grupo.Key] = entregadas.Count;
                     rutaNoEntByRep[grupo.Key] = cerradas;
                     rutaFaltanByRep[grupo.Key] = grupo.Count() - entregadas.Count - cerradas;
+                    // Las horas se guardan en UTC; en pantalla van en hora de Argentina.
+                    horasEntregaByRep[grupo.Key] = entregadas
+                        .Select(s => entregasPorStop[s.Id]!.Value)
+                        .OrderBy(h => h)
+                        .Select(h => h.AddHours(-3).ToString("HH:mm"))
+                        .ToList();
                     // La ultima entrega = la de hora mas reciente. Es "por donde anda" el repartidor.
                     var ultima = entregadas
                         .Select(s => new { Stop = s, Hora = entregasPorStop[s.Id]!.Value })
@@ -562,6 +572,7 @@ public class DashboardController : ControllerBase
             int rutaEnt = 0, rutaFaltan = 0, rutaNoEnt = 0;
             string? ultimoDom = null, ultimaHora = null;
             int minsSinMarcar = -1;
+            List<string>? horasEntrega = null;
             bool tieneRepartidor = repByEmp.TryGetValue(e.Id, out var rep);
             if (tieneRepartidor && rep != null)
             {
@@ -579,6 +590,7 @@ public class DashboardController : ControllerBase
                 ultimoDomByRep.TryGetValue(rep.Id, out ultimoDom);
                 ultimaHoraByRep.TryGetValue(rep.Id, out ultimaHora);
                 if (!minsSinMarcarByRep.TryGetValue(rep.Id, out minsSinMarcar)) minsSinMarcar = -1;
+                horasEntregaByRep.TryGetValue(rep.Id, out horasEntrega);
             }
 
             decimal neto = 0m, pagado = 0m;
@@ -596,7 +608,8 @@ public class DashboardController : ControllerBase
                 porRendir, pagado, leDebo, tieneRepartidor,
                 porRendirVentas, porRendirAlq,
                 ventasPend, ventasEntHoy, alqEntHoy, alqRetHoy,
-                rutaEnt, rutaFaltan, rutaNoEnt, ultimoDom, ultimaHora, minsSinMarcar);
+                rutaEnt, rutaFaltan, rutaNoEnt, ultimoDom, ultimaHora, minsSinMarcar,
+                horasEntrega ?? new List<string>());
         })
         .OrderBy(x => OrdenPersonalizado(x.Nombre))
         .ThenBy(x => x.Nombre)
