@@ -36,10 +36,20 @@ public class CafePickingController : ControllerBase
             .ToListAsync();
         if (ventas.Count == 0) return BadRequest(new { error = "No se encontraron los pedidos" });
 
+        var lista = await CrearListaAsync(_db, ventas, req.Operador);
+
+        return Ok(new { token = lista.Token, cantidadPedidos = lista.CantidadPedidos, cantidadItems = lista.Items.Count });
+    }
+
+    /// <summary>Arma y guarda la lista congelada de esos pedidos. La usan el tablero (POST crear)
+    /// y el celu del depósito (/depo/preparacion, 2026-11-10), así las dos salen iguales.
+    /// Las ventas tienen que venir con sus Items cargados.</summary>
+    public static async Task<CafePickingLista> CrearListaAsync(AppDbContext db, List<CafeVenta> ventas, string? operador)
+    {
         // SKU por producto (solo informativo, para reconocer el producto en el checklist)
         var prodIds = ventas.SelectMany(v => v.Items)
             .Where(i => i.ProductoId != null).Select(i => i.ProductoId!.Value).Distinct().ToList();
-        var skuPorProducto = await _db.CafeProductos
+        var skuPorProducto = await db.CafeProductos
             .Where(p => prodIds.Contains(p.Id))
             .Select(p => new { p.Id, p.Sku })
             .ToDictionaryAsync(x => x.Id, x => x.Sku);
@@ -71,7 +81,7 @@ public class CafePickingController : ControllerBase
         var lista = new CafePickingLista
         {
             Token = Guid.NewGuid().ToString("N"),
-            CreadaPor = req.Operador,
+            CreadaPor = operador,
             CantidadPedidos = ventas.Count,
             VentaNumeros = string.Join(", ", ventas.OrderBy(v => v.Numero).Select(v => v.Numero))
         };
@@ -89,10 +99,10 @@ public class CafePickingController : ControllerBase
                 Cantidad = g.Cantidad
             });
         }
-        _db.CafePickingListas.Add(lista);
-        await _db.SaveChangesAsync();
+        db.CafePickingListas.Add(lista);
+        await db.SaveChangesAsync();
 
-        return Ok(new { token = lista.Token, cantidadPedidos = lista.CantidadPedidos, cantidadItems = lista.Items.Count });
+        return lista;
     }
 
     /// <summary>Devuelve el celu del deposito habilitado (si hay), para mostrarlo en /cafe/preparacion.</summary>

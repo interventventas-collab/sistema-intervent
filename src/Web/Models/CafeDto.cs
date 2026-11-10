@@ -1877,6 +1877,11 @@ public class StockIdealRowDto
     public DateTime? UltimaEntrada { get; set; }
     /// <summary>Solo lo trae la pantalla del celu (/ideal-celu), para buscar escaneando.</summary>
     public string? Barcode { get; set; }
+    // 2026-11-10: lo que muestra la tarjeta del celu (solo /ideal-celu).
+    public string? Foto { get; set; }
+    public string? Ubicacion { get; set; }
+    public DateTime? Vence { get; set; }
+    public decimal VenceQuedan { get; set; }
 }
 
 public class StockIdealListResultDto
@@ -1904,6 +1909,10 @@ public class StockIdealBulkItemDto
 
 public class ClaveIdealCeluDto { public string Clave { get; set; } = ""; }
 public class PaseIdealCeluDto { public string Token { get; set; } = ""; }
+public class LinksDepoCeluDto { public string? Stock { get; set; } public string? Fotos { get; set; } }
+public class PlantaDepoCeluDto { public string Codigo { get; set; } = ""; public string Nombre { get; set; } = ""; }
+public class ZonaDepoCeluDto { public string Planta { get; set; } = ""; public string Codigo { get; set; } = ""; public string? Nombre { get; set; } }
+public class ZonasDepoCeluDto { public List<PlantaDepoCeluDto> Plantas { get; set; } = new(); public List<ZonaDepoCeluDto> Zonas { get; set; } = new(); }
 
 public class StockIdealBulkRequestDto
 {
