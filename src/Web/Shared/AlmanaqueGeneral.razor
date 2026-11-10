@@ -1,0 +1,301 @@
+@* 2026-11-10: ALMANAQUE PARA TODO (pedido del dueño). Reemplaza al almanaque de cheques del Dashboard.
+   - Se elige qué ver: cheques a pagar, cheques a cobrar, entregas y retiros de alquiler, ventas y notas.
+   - Semana (arranca acá), Mes o Año. Grande y legible: ocupa casi toda la pantalla.
+   - Ventas van sumadas por día (cantidad y total) para no llenar el almanaque. *@
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<div class="ag-fondo" @onclick="Cerrar"></div>
+<div class="ag">
+    <div class="ag-head">
+        <div class="ag-tit">📅 Almanaque</div>
+        <div class="ag-vistas">
+            @foreach (var (k, l) in new[] { ("sem", "Semana"), ("mes", "Mes"), ("ano", "Año") })
+            {
+                <button class="ag-b @(vista == k ? "on" : "")" @onclick="() => CambiarVista(k)">@l</button>
+            }
+        </div>
+        <div class="ag-nav">
+            <button class="ag-b" @onclick="() => Mover(-1)" title="Anterior">‹</button>
+            <button class="ag-b" @onclick="IrHoy">Hoy</button>
+            <button class="ag-b" @onclick="() => Mover(1)" title="Siguiente">›</button>
+            <span class="ag-rango">@RangoTexto()</span>
+        </div>
+        <button class="ag-x" title="Cerrar" @onclick="Cerrar">✕</button>
+    </div>
+    <div class="ag-filtros">
+        <span class="ag-ver">Ver:</span>
+        @foreach (var t in Tipos)
+        {
+            var tk = t.Clave;
+            <button class="ag-f @(activos.Contains(tk) ? "on" : "")" style="--c:@t.Color" @onclick="() => Alternar(tk)">
+                <span class="ag-dot"></span>@t.Nombre
+            </button>
+        }
+        @if (cargando) { <span class="ag-carg">cargando…</span> }
+    </div>
+
+    <div class="ag-cuerpo">
+        @if (vista == "sem")
+        {
+            <div class="ag-sem">
+                @for (var i = 0; i < 7; i++)
+                {
+                    var d = InicioSemana(cursor).AddDays(i);
+                    var evs = EventosDe(d);
+                    <div class="ag-dia @(d == Hoy ? "hoy" : "")">
+                        <div class="ag-dia-h">@Dias[i] <b>@d.Day</b> <small>@Meses[d.Month - 1]</small></div>
+                        <div class="ag-dia-l">
+                            @if (evs.Count == 0) { <div class="ag-vacio">—</div> }
+                            @foreach (var e in evs)
+                            {
+                                var ev = e;
+                                <div class="ag-ev" style="--c:@ColorDe(ev.Tipo)" title="@ev.Detalle" @onclick="() => Abrir(ev)">
+                                    <div class="ag-ev-t">@IconoDe(ev.Tipo) @ev.Titulo</div>
+                                    @if (!string.IsNullOrEmpty(ev.Sub)) { <div class="ag-ev-s">@ev.Sub</div> }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else if (vista == "mes")
+        {
+            var ini = InicioSemana(new DateTime(cursor.Year, cursor.Month, 1));
+            <div class="ag-mes">
+                @for (var i = 0; i < 7; i++) { <div class="ag-mes-h">@Dias[i]</div> }
+                @for (var i = 0; i < 42; i++)
+                {
+                    var d = ini.AddDays(i);
+                    var evs = EventosDe(d);
+                    var dd = d;
+                    <div class="ag-celda @(d.Month != cursor.Month ? "fuera" : "") @(d == Hoy ? "hoy" : "")" @ondblclick="() => VerSemana(dd)">
+                        <div class="ag-celda-n" @onclick="() => VerSemana(dd)" title="Ver esta semana">@d.Day</div>
+                        @foreach (var e in evs.Take(4))
+                        {
+                            var ev = e;
+                            <div class="ag-chip" style="--c:@ColorDe(ev.Tipo)" title="@ev.Titulo @ev.Sub" @onclick="() => Abrir(ev)">@IconoDe(ev.Tipo) @ev.Titulo</div>
+                        }
+                        @if (evs.Count > 4) { <div class="ag-mas" @onclick="() => VerSemana(dd)">+@(evs.Count - 4) más</div> }
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="ag-ano">
+                @for (var m = 1; m <= 12; m++)
+                {
+                    var p = new DateTime(cursor.Year, m, 1);
+                    var ini = InicioSemana(p);
+                    var mm = m;
+                    <div class="ag-mini">
+                        <div class="ag-mini-t" @onclick="() => VerMes(mm)">@MesesLargos[m - 1]</div>
+                        <div class="ag-mini-g">
+                            @for (var i = 0; i < 7; i++) { <span class="ag-mini-h">@Dias[i][0]</span> }
+                            @for (var i = 0; i < 42; i++)
+                            {
+                                var d = ini.AddDays(i);
+                                var dd = d;
+                                var tipos = d.Month == m ? EventosDe(d).Select(e => e.Tipo).Distinct().Take(3).ToList() : new List<string>();
+                                <span class="ag-mini-d @(d.Month != m ? "fuera" : "") @(d == Hoy ? "hoy" : "")" @onclick="() => VerSemana(dd)"
+                                      title="@(tipos.Count == 0 ? "" : string.Join(", ", EventosDe(d).Select(e => e.Titulo).Take(6)))">
+                                    @(d.Month == m ? d.Day.ToString() : "")
+                                    @if (tipos.Count > 0)
+                                    {
+                                        <span class="ag-mini-p">@foreach (var t in tipos) { <i style="background:@ColorDe(t)"></i> }</span>
+                                    }
+                                </span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .ag-fondo { position:fixed; inset:0; background:rgba(17,24,39,.35); z-index:9600; }
+    .ag { position:fixed; top:64px; left:76px; right:16px; bottom:16px; z-index:9601; background:#fff; border-radius:16px;
+          box-shadow:0 20px 50px rgba(0,0,0,.3); display:flex; flex-direction:column; overflow:hidden; color:#111827; }
+    .ag-head { display:flex; align-items:center; gap:0.8rem; padding:0.8rem 1.1rem 0.5rem; flex-wrap:wrap; }
+    .ag-tit { font-size:1.2rem; font-weight:800; }
+    .ag-vistas, .ag-nav { display:flex; align-items:center; gap:0.3rem; }
+    .ag-b { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.35rem 0.8rem; font:inherit; font-size:0.9rem; font-weight:600; cursor:pointer; }
+    .ag-b.on { background:#111827; border-color:#111827; color:#fff; }
+    .ag-rango { font-size:1rem; font-weight:700; margin-left:0.4rem; }
+    .ag-x { margin-left:auto; border:0; background:transparent; font-size:1.3rem; cursor:pointer; color:#6b7280; }
+    .ag-filtros { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; padding:0 1.1rem 0.6rem; border-bottom:1px solid #e5e7eb; }
+    .ag-ver { font-size:0.85rem; color:#6b7280; }
+    .ag-f { display:inline-flex; align-items:center; gap:0.35rem; border:1px solid #e5e7eb; background:#f9fafb; color:#9ca3af; border-radius:999px;
+            padding:0.3rem 0.75rem; font:inherit; font-size:0.85rem; font-weight:600; cursor:pointer; }
+    .ag-f.on { background:#fff; color:#111827; border-color:var(--c); box-shadow:inset 0 0 0 1px var(--c); }
+    .ag-dot { width:10px; height:10px; border-radius:50%; background:var(--c); opacity:.35; }
+    .ag-f.on .ag-dot { opacity:1; }
+    .ag-carg { font-size:0.8rem; color:#6b7280; }
+    .ag-cuerpo { flex:1; min-height:0; overflow:auto; padding:0.7rem 1.1rem 1rem; }
+    /* Semana */
+    .ag-sem { display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); gap:0.5rem; height:100%; min-height:420px; }
+    .ag-dia { border:1px solid #e5e7eb; border-radius:12px; display:flex; flex-direction:column; min-height:0; background:#fafafa; }
+    .ag-dia.hoy { border-color:#2563eb; box-shadow:0 0 0 2px #bfdbfe; background:#fff; }
+    .ag-dia-h { padding:0.45rem 0.6rem; font-size:0.85rem; color:#6b7280; border-bottom:1px solid #eef0f3; }
+    .ag-dia-h b { font-size:1.25rem; color:#111827; margin:0 0.15rem; }
+    .ag-dia-l { flex:1; min-height:0; overflow-y:auto; padding:0.4rem; display:flex; flex-direction:column; gap:0.35rem; }
+    .ag-vacio { color:#d1d5db; text-align:center; padding-top:0.5rem; }
+    .ag-ev { border-left:4px solid var(--c); background:#fff; border-radius:8px; padding:0.35rem 0.5rem; box-shadow:0 1px 2px rgba(0,0,0,.06); cursor:pointer; }
+    .ag-ev:hover { box-shadow:0 3px 8px rgba(0,0,0,.12); }
+    .ag-ev-t { font-size:0.86rem; font-weight:600; line-height:1.3; }
+    .ag-ev-s { font-size:0.78rem; color:#6b7280; line-height:1.3; }
+    /* Mes */
+    .ag-mes { display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); gap:4px; }
+    .ag-mes-h { font-size:0.8rem; font-weight:700; color:#6b7280; text-align:center; padding:0.2rem; }
+    .ag-celda { border:1px solid #e5e7eb; border-radius:8px; min-height:108px; padding:0.25rem 0.3rem; display:flex; flex-direction:column; gap:2px; background:#fff; min-width:0; }
+    .ag-celda.fuera { background:#f9fafb; opacity:.55; }
+    .ag-celda.hoy { border-color:#2563eb; box-shadow:0 0 0 2px #bfdbfe; }
+    .ag-celda-n { font-weight:700; font-size:0.9rem; cursor:pointer; }
+    .ag-chip { font-size:0.75rem; line-height:1.25; border-left:3px solid var(--c); padding:1px 4px; background:#f9fafb; border-radius:4px;
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+    .ag-mas { font-size:0.72rem; color:#2563eb; cursor:pointer; }
+    /* Año */
+    .ag-ano { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:1rem; }
+    .ag-mini { border:1px solid #e5e7eb; border-radius:12px; padding:0.5rem; }
+    .ag-mini-t { font-weight:700; margin-bottom:0.3rem; cursor:pointer; }
+    .ag-mini-g { display:grid; grid-template-columns:repeat(7, 1fr); gap:2px; }
+    .ag-mini-h { font-size:0.7rem; color:#9ca3af; text-align:center; }
+    .ag-mini-d { position:relative; font-size:0.78rem; text-align:center; padding:3px 0 7px; border-radius:5px; cursor:pointer; }
+    .ag-mini-d:hover { background:#f3f4f6; }
+    .ag-mini-d.hoy { background:#dbeafe; font-weight:700; }
+    .ag-mini-d.fuera { cursor:default; }
+    .ag-mini-p { position:absolute; left:0; right:0; bottom:1px; display:flex; justify-content:center; gap:1px; }
+    .ag-mini-p i { width:5px; height:5px; border-radius:50%; display:block; }
+    @@media (max-width: 1100px) {
+        .ag { left:8px; right:8px; top:56px; bottom:8px; }
+        .ag-sem { grid-template-columns:repeat(7, minmax(120px, 1fr)); }
+    }
+</style>
+
+@code {
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private record Tipo(string Clave, string Nombre, string Color, string Icono);
+    private static readonly Tipo[] Tipos =
+    {
+        new("chp", "Cheques a pagar", "#dc2626", "💸"),
+        new("chc", "Cheques a cobrar", "#16a34a", "💰"),
+        new("ent", "Entregas de alquiler", "#7c3aed", "🎪"),
+        new("ret", "Retiros de alquiler", "#ea580c", "🔁"),
+        new("ven", "Ventas", "#2563eb", "🧾"),
+        new("not", "Notas", "#6b7280", "📝"),
+    };
+    private static readonly string[] Dias = { "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom" };
+    private static readonly string[] Meses = { "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic" };
+    private static readonly string[] MesesLargos = { "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre" };
+
+    private sealed record Ev(DateTime Dia, string Tipo, string Titulo, string? Sub, string? Detalle, string? Url);
+
+    private string vista = "sem";
+    private DateTime cursor = DateTimeExt.AhoraAr().Date;
+    private static DateTime Hoy => DateTimeExt.AhoraAr().Date;
+    private readonly HashSet<string> activos = new() { "chp", "chc", "ent", "ret", "ven", "not" };
+    private List<Ev> eventos = new();
+    private bool cargando;
+    private (DateTime, DateTime)? cargado;
+    private List<ChequeUniDto>? cheques;
+    private List<AlqReservaDto>? reservas;
+    private static readonly System.Globalization.CultureInfo Ar = new("es-AR");
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private static DateTime InicioSemana(DateTime d) => d.Date.AddDays(-(((int)d.DayOfWeek + 6) % 7));
+
+    private (DateTime Desde, DateTime Hasta) Rango() => vista switch
+    {
+        "sem" => (InicioSemana(cursor), InicioSemana(cursor).AddDays(6)),
+        "mes" => (InicioSemana(new DateTime(cursor.Year, cursor.Month, 1)), InicioSemana(new DateTime(cursor.Year, cursor.Month, 1)).AddDays(41)),
+        _ => (new DateTime(cursor.Year, 1, 1), new DateTime(cursor.Year, 12, 31)),
+    };
+
+    private string RangoTexto()
+    {
+        var (d, h) = Rango();
+        return vista switch
+        {
+            "sem" => $"{d.Day} {Meses[d.Month - 1]} al {h.Day} {Meses[h.Month - 1]} {h.Year}",
+            "mes" => $"{MesesLargos[cursor.Month - 1]} {cursor.Year}",
+            _ => cursor.Year.ToString(),
+        };
+    }
+
+    private async Task Cargar()
+    {
+        var (desde, hasta) = Rango();
+        cargando = true;
+        StateHasChanged();
+        try
+        {
+            var lista = new List<Ev>();
+            // Cheques y alquileres: se traen una vez (son listas chicas) y se filtran por fecha.
+            cheques ??= (await Api.GetChequesUnificadoAsync("TODOS"))?.Filas ?? new();
+            reservas ??= await Api.GetAlqReservasAsync() ?? new();
+            foreach (var c in cheques.Where(c => c.Vence.HasValue && c.Vence.Value.Date >= desde && c.Vence.Value.Date <= hasta))
+            {
+                var aPagar = c.Vista == "A_PAGAR";
+                var aCobrar = c.Vista is "EN_MANO" or "EN_BANCO";
+                if (!aPagar && !aCobrar) continue;
+                var quien = c.ClienteNombre ?? c.Emisor ?? c.Banco;
+                lista.Add(new Ev(c.Vence!.Value.Date, aPagar ? "chp" : "chc", $"${c.Importe.ToString("N0", Ar)}",
+                    $"{quien} · #{c.Numero}", $"{c.EstadoTexto} · {c.Banco}", $"/cafe/tesoreria/cheques-todos?vista={c.Vista}"));
+            }
+            foreach (var r in reservas.Where(r => r.Estado != "cancelado"))
+            {
+                if (r.FechaEntrega.Date >= desde && r.FechaEntrega.Date <= hasta)
+                    lista.Add(new Ev(r.FechaEntrega.Date, "ent", r.ClienteNombre, $"entrega · {r.Numero}{(string.IsNullOrWhiteSpace(r.HoraInicio) ? "" : " · " + r.HoraInicio)}", r.DireccionEvento, "/alquileres/reservas"));
+                if (r.FechaRetiro.Date >= desde && r.FechaRetiro.Date <= hasta)
+                    lista.Add(new Ev(r.FechaRetiro.Date, "ret", r.ClienteNombre, $"retiro · {r.Numero}", r.DireccionEvento, "/alquileres/reservas"));
+            }
+            try
+            {
+                var notas = await Api.GetCalendarioNotasAsync(desde, hasta) ?? new();
+                foreach (var n in notas)
+                    lista.Add(new Ev(n.Fecha.Date, "not", n.Titulo, n.Importe.HasValue ? "$" + n.Importe.Value.ToString("N0", Ar) : n.Descripcion, n.Descripcion, null));
+            }
+            catch { }
+            try
+            {
+                var ventas = await Api.GetCafeVentasAsync(desde, hasta.AddDays(1)) ?? new();
+                foreach (var g in ventas.Where(v => v.Fecha.Date >= desde && v.Fecha.Date <= hasta).GroupBy(v => v.Fecha.Date))
+                    lista.Add(new Ev(g.Key, "ven", $"{g.Count()} venta{(g.Count() == 1 ? "" : "s")}", "$" + g.Sum(v => v.Total).ToString("N0", Ar),
+                        string.Join(", ", g.Select(v => v.ClienteNombre).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct().Take(8)), "/cafe/ventas"));
+            }
+            catch { }
+            eventos = lista;
+            cargado = (desde, hasta);
+        }
+        catch { }
+        finally { cargando = false; }
+    }
+
+    private List<Ev> EventosDe(DateTime d)
+        => eventos.Where(e => e.Dia == d && activos.Contains(e.Tipo))
+                  .OrderBy(e => Array.FindIndex(Tipos, t => t.Clave == e.Tipo)).ToList();
+
+    private static string ColorDe(string t) => Tipos.FirstOrDefault(x => x.Clave == t)?.Color ?? "#6b7280";
+    private static string IconoDe(string t) => Tipos.FirstOrDefault(x => x.Clave == t)?.Icono ?? "";
+
+    private void Alternar(string t) { if (!activos.Remove(t)) activos.Add(t); }
+
+    private async Task CambiarVista(string v) { vista = v; await Cargar(); }
+    private async Task Mover(int n)
+    {
+        cursor = vista switch { "sem" => cursor.AddDays(7 * n), "mes" => cursor.AddMonths(n), _ => cursor.AddYears(n) };
+        await Cargar();
+    }
+    private async Task IrHoy() { cursor = Hoy; await Cargar(); }
+    private async Task VerSemana(DateTime d) { cursor = d; vista = "sem"; await Cargar(); }
+    private async Task VerMes(int m) { cursor = new DateTime(cursor.Year, m, 1); vista = "mes"; await Cargar(); }
+
+    private void Abrir(Ev e) { if (e.Url != null) Nav.NavigateTo(e.Url); }
+    private Task Cerrar() => OnCerrar.InvokeAsync();
+}

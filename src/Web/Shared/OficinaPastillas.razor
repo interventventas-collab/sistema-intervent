@@ -54,6 +54,15 @@
     .op-vent.op-vent-cal { width:900px; max-width:calc(100vw - 340px); }
     .op-cal-cuerpo { overflow:auto; padding:0.4rem 0.6rem 0.6rem; }
     .op-cal-cuerpo > * { zoom:0.74; }
+    .op-vent.op-vent-ancha { width:860px; max-width:calc(100vw - 420px); }
+    .op-tabs { display:flex; flex-wrap:wrap; gap:0.3rem; padding:0.5rem 1rem; border-bottom:1px solid #eef0f3; flex-shrink:0; }
+    .op-tab { border:1px solid #e5e7eb; background:#fff; border-radius:999px; padding:0.25rem 0.75rem; font:inherit; font-size:0.82rem; cursor:pointer; }
+    .op-tab.on { background:#111827; border-color:#111827; color:#fff; }
+    .op-tabla { width:100%; border-collapse:collapse; font-size:0.86rem; }
+    .op-tabla th { text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.04em; color:#6b7280; padding:0.45rem 0.6rem; border-bottom:1px solid #e5e7eb; position:sticky; top:0; background:#fff; }
+    .op-tabla td { padding:0.45rem 0.6rem; border-bottom:1px solid #f1f2f4; vertical-align:top; }
+    .op-tabla .sub { color:#6b7280; font-size:0.76rem; }
+    .op-est { background:#f3f4f6; border-radius:999px; padding:0.1rem 0.5rem; font-size:0.75rem; white-space:nowrap; }
     .op-vent { position:fixed; right:320px; top:70px; z-index:905; width:520px; max-width:calc(100vw - 340px); max-height:calc(100vh - 90px);
         display:flex; flex-direction:column; background:#fff; border-radius:14px; border:1px solid #d1d5db; box-shadow:0 14px 40px rgba(0,0,0,.33); overflow:hidden; }
     .op-vh { display:flex; align-items:center; gap:0.6rem; padding:0.7rem 1rem; border-bottom:1px solid #e5e7eb; font-size:1.02rem; font-weight:600; flex-shrink:0; }
@@ -144,13 +153,13 @@
 
     @* 📅 Almanaque de cheques (2026-11-10): antes era un almanaque enorme abajo del Dashboard. *@
     <div class="op-big cal @Marcas("cal")" @onclick='() => Tocar("cal")'>
-        <div class="op-t">📅 Almanaque de cheques</div>
-        <div class="op-l gris">tocá para ver el mes</div>
+        <div class="op-t">📅 Almanaque</div>
+        <div class="op-l gris">cheques, alquileres, ventas y notas</div>
     </div>
 
     @* 📄 Cheques por pagar *@
     <div class="op-big che @Marcas("che")" @onclick='() => Tocar("che")'>
-        <div class="op-t">📄 Cheques por pagar <span class="op-n @(ChequesSemana.Count == 0 ? "cero" : "")">@ChequesSemana.Count</span></div>
+        <div class="op-t">📄 Cheques <span class="op-n @(ChequesSemana.Count == 0 ? "cero" : "")">@ChequesSemana.Count</span></div>
         <div class="op-l gris">
             @if (cheques is null) { <text>Cargando…</text> }
             else if (cheques.Count == 0) { <text>No hay cheques por pagar</text> }
@@ -255,12 +264,81 @@
 
 @if (ventana == "cal")
 {
-    <div class="op-vent op-vent-cal">
+    @* 2026-11-10: almanaque para todo (cheques, alquileres, ventas, notas), por semana, mes o año. *@
+    <AlmanaqueGeneral OnCerrar="Cerrar" />
+}
+
+@if (ventana == "che")
+{
+    <div class="op-vent op-vent-ancha">
         <div class="op-vh">
-            📅 Almanaque de cheques <small>por pagar</small>
+            📄 Cheques <small>todos: los que tengo, los que di y los que tengo que pagar</small>
             <button class="op-x" title="Cerrar" @onclick="Cerrar">✕</button>
         </div>
-        <div class="op-cal-cuerpo"><ChequesPorPagarCalendario /></div>
+        <div class="op-tabs">
+            @foreach (var (k, l) in SolapasCheques)
+            {
+                <button class="op-tab @(chVista == k ? "on" : "")" @onclick="() => VerCheques(k)">@l @(chResp is null ? "" : $"({ConteoCh(k)})")</button>
+            }
+        </div>
+        <div class="op-lista">
+            @if (chCargando) { <div class="op-vacio">Cargando…</div> }
+            else if ((chResp?.Filas.Count ?? 0) == 0) { <div class="op-vacio">No hay cheques en esta lista.</div> }
+            else
+            {
+                <table class="op-tabla">
+                    <tr><th>Vence</th><th>Cheque</th><th>De / para</th><th style="text-align:right;">Importe</th><th>Estado</th></tr>
+                    @foreach (var c in chResp!.Filas.OrderBy(c => c.Vence.HasValue && c.Vence.Value.Date >= HoyAr ? 0 : 1).ThenBy(c => c.Vence.HasValue && c.Vence.Value.Date >= HoyAr ? c.Vence.Value.Ticks : -(c.Vence?.Ticks ?? 0)))
+                    {
+                        var vencido = c.Vence.HasValue && c.Vence.Value.Date < HoyAr && c.Vista is "EN_MANO" or "A_PAGAR";
+                        <tr>
+                            <td style="white-space:nowrap; @(vencido ? "color:#b91c1c; font-weight:700;" : "")">@(c.Vence?.ToString("dd/MM/yy") ?? "—")</td>
+                            <td>#@c.Numero<div class="sub">@c.Banco</div></td>
+                            <td>@(c.ClienteNombre ?? c.Emisor ?? "—")@if (!string.IsNullOrWhiteSpace(c.FueA)) { <div class="sub">→ @c.FueA</div> }</td>
+                            <td style="text-align:right; white-space:nowrap; font-weight:700;">$@Plata(c.Importe)</td>
+                            <td><span class="op-est">@c.EstadoTexto</span></td>
+                        </tr>
+                    }
+                </table>
+            }
+        </div>
+        <div class="op-pie"><a @onclick='() => Nav.NavigateTo($"/cafe/tesoreria/cheques-todos?vista={chVista}")'>Ir a la pantalla de cheques ›</a></div>
+    </div>
+}
+
+@if (ventana == "alq")
+{
+    <div class="op-vent op-vent-ancha">
+        <div class="op-vh">
+            🎪 Alquileres <small>lo que está afuera y lo que viene</small>
+            <button class="op-x" title="Cerrar" @onclick="Cerrar">✕</button>
+        </div>
+        <div class="op-tabs">
+            <button class="op-tab @(alqVista == "calle" ? "on" : "")" @onclick='() => alqVista = "calle"'>Afuera ahora (@alqCalle.Count)</button>
+            <button class="op-tab @(alqVista == "prox" ? "on" : "")" @onclick='() => alqVista = "prox"'>Próximas (@AlqProximas.Count)</button>
+        </div>
+        <div class="op-lista">
+            @{ var listaAlq = alqVista == "calle" ? alqCalle : AlqProximas; }
+            @if (listaAlq.Count == 0) { <div class="op-vacio">@(alqVista == "calle" ? "No hay nada afuera." : "No hay reservas próximas.")</div> }
+            else
+            {
+                <table class="op-tabla">
+                    <tr><th>Cliente</th><th>Entrega</th><th>Retiro</th><th>Dónde</th><th style="text-align:right;">Total</th></tr>
+                    @foreach (var r in listaAlq)
+                    {
+                        var vencido = alqVista == "calle" && r.FechaRetiro.Date < HoyAr;
+                        <tr>
+                            <td><b>@r.ClienteNombre</b><div class="sub">@r.Numero · @r.Estado</div></td>
+                            <td style="white-space:nowrap;">@r.FechaEntrega.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</td>
+                            <td style="white-space:nowrap; @(vencido ? "color:#b91c1c; font-weight:700;" : "")">@r.FechaRetiro.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))@(vencido ? " · vencido" : "")</td>
+                            <td><div class="sub" style="max-width:240px;">@r.DireccionEvento</div></td>
+                            <td style="text-align:right; white-space:nowrap;">$@Plata(r.MontoTotal)</td>
+                        </tr>
+                    }
+                </table>
+            }
+        </div>
+        <div class="op-pie"><a @onclick='() => Nav.NavigateTo("/alquileres/reservas")'>Ver todas las reservas ›</a></div>
     </div>
 }
 
@@ -329,6 +407,38 @@
     private List<MeliQuestionDto> preguntas = new();
     private List<MeliMe1ShipmentDto>? me1;
     private List<RepartidorDto> repartidores = new();
+    // ───────── Ventanas de Cheques y Alquileres (2026-11-10) ─────────
+    private static readonly (string Key, string Label)[] SolapasCheques =
+    {
+        ("TODOS", "Todos"), ("EN_MANO", "Tengo en mano"), ("EN_BANCO", "En el banco"),
+        ("A_PAGAR", "Tengo que pagar"), ("USADOS", "Ya los usé"), ("RECHAZADOS", "Rebotaron"),
+    };
+    private string chVista = "TODOS";
+    private ChequesUnificadoResponse? chResp;
+    private bool chCargando;
+    private int ConteoCh(string k) => chResp is null ? 0 : k switch
+    {
+        "EN_MANO" => chResp.Conteos.EnMano, "EN_BANCO" => chResp.Conteos.EnBanco, "USADOS" => chResp.Conteos.Usados,
+        "RECHAZADOS" => chResp.Conteos.Rechazados, "A_PAGAR" => chResp.Conteos.APagar, _ => chResp.Conteos.Todos,
+    };
+    private async Task VerCheques(string k)
+    {
+        chVista = k; chCargando = true; StateHasChanged();
+        try { chResp = await Api.GetChequesUnificadoAsync(k); }
+        catch { }
+        finally { chCargando = false; StateHasChanged(); }
+    }
+    private string alqVista = "calle";
+    private List<AlqReservaDto> alqTodas = new();
+    private List<AlqReservaDto> AlqProximas => alqTodas
+        .Where(r => r.Estado is "reservado" or "confirmado" && r.FechaEntrega.Date >= HoyAr)
+        .OrderBy(r => r.FechaEntrega).Take(40).ToList();
+    private async Task CargarProximas()
+    {
+        try { alqTodas = await Api.GetAlqReservasAsync() ?? new(); StateHasChanged(); }
+        catch { }
+    }
+
     private AlqDashboardResumen? alq;
     private List<AlqReservaDto> alqCalle = new();
     private List<ApiClient.ChequeProximoDto>? cheques;
@@ -509,6 +619,8 @@
         nuevas.Remove(p);
         avisos.RemoveAll(a => a.Pastilla == p);
         if (p == "cal") { ventana = ventana == "cal" ? null : "cal"; return; }
+        if (p == "che") { if (ventana == "che") { Cerrar(); return; } ventana = "che"; _ = VerCheques(chVista); return; }
+        if (p == "alq") { if (ventana == "alq") { Cerrar(); return; } ventana = "alq"; _ = CargarProximas(); return; }
         if (p == "me1")
         {
             // Con envíos sin repartidor se abre la ventanita al costado para asignar; si no hay, va a la pantalla.
