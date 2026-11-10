@@ -264,7 +264,8 @@ public class StockIdealController : ControllerBase
 
     public record CeluEntrarRequest(string? Clave);
     public record CeluFila(int ProductoId, string? Codigo, string Nombre, string? Marca,
-        decimal StockActual, int? StockIdeal, int? StockPiso, string Unidad, string? Barcode);
+        decimal StockActual, int? StockIdeal, int? StockPiso, string Unidad, string? Barcode,
+        string? Foto = null, string? Ubicacion = null, DateTime? Vence = null, decimal VenceQuedan = 0);
 
     private const int MAX_ITEMS_CELU = 20;
 
@@ -294,10 +295,47 @@ public class StockIdealController : ControllerBase
     {
         if (!PaseCeluValido()) return PaseVencido();
         var prods = await CargarProductosAsync(null, null, null);
+        var ids = prods.Select(p => p.Id).ToList();
+        // 2026-11-10: foto, ubicación y vencimiento para la tarjeta del celu.
+        var fotos = await FotosCeluAsync(ids);
+        var lugares = (await _db.CafeProductos.AsNoTracking()
+                .Where(p => p.IsActive && p.UbicacionPlanta != null)
+                .Select(p => new { p.Id, p.UbicacionPlanta, p.UbicacionZona }).ToListAsync())
+            .ToDictionary(x => x.Id, x => UbicacionHelper.Texto(x.UbicacionPlanta, x.UbicacionZona));
+        var vencs = await VencimientosService.ResumenAsync(_db, ids);
         return Ok(prods
             .OrderBy(p => p.Nombre)
-            .Select(p => new CeluFila(p.Id, p.Sku, p.Nombre, p.Marca, StockDe(p), p.StockIdeal, p.StockPiso, UnidadDe(p.Categoria), p.Barcode))
+            .Select(p =>
+            {
+                var v = vencs.GetValueOrDefault(p.Id);
+                return new CeluFila(p.Id, p.Sku, p.Nombre, p.Marca, StockDe(p), p.StockIdeal, p.StockPiso, UnidadDe(p.Categoria), p.Barcode,
+                    fotos.GetValueOrDefault(p.Id), lugares.GetValueOrDefault(p.Id), v?.ProximoVence, v?.ProximoQuedan ?? 0);
+            })
             .ToList());
+    }
+
+    /// <summary>Foto de cada producto: la propia (sacada en el depósito) o, si no hay, la de su
+    /// publicación de MeLi. Misma regla que las tareas del depósito (DepositoTareasController.FotosAsync).</summary>
+    private async Task<Dictionary<int, string>> FotosCeluAsync(List<int> ids)
+    {
+        var res = new Dictionary<int, string>();
+        if (ids.Count == 0) return res;
+        var regs = await _db.CafeProductoFotos.AsNoTracking()
+            .Select(f => new { f.CafeProductoId, f.FotoPropiaArchivo, f.Estado }).ToListAsync();
+        var activos = ids.ToHashSet();
+        foreach (var f in regs.Where(f => f.FotoPropiaArchivo != null && activos.Contains(f.CafeProductoId)))
+            res[f.CafeProductoId] = $"/api/public/producto-foto/img/{f.FotoPropiaArchivo}";
+        // REPORTADA sin foto propia = la de MeLi está mal y no se muestra.
+        var meliOculta = regs.Where(f => f.FotoPropiaArchivo == null && f.Estado == "REPORTADA").Select(f => f.CafeProductoId).ToHashSet();
+        var meli = await (from c in _db.MeliItemComponentes.AsNoTracking()
+                          join m in _db.MeliItems.AsNoTracking() on c.MeliItemId equals m.MeliItemId
+                          where m.Thumbnail != null
+                          orderby m.Status == "active" descending, m.SoldQuantity descending
+                          select new { c.CafeProductoId, m.Thumbnail }).ToListAsync();
+        foreach (var m in meli)
+            if (activos.Contains(m.CafeProductoId) && !meliOculta.Contains(m.CafeProductoId) && !res.ContainsKey(m.CafeProductoId))
+                res[m.CafeProductoId] = m.Thumbnail!.Replace("http://", "https://");
+        return res;
     }
 
     [AllowAnonymous]
