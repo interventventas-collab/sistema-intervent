@@ -1875,6 +1875,8 @@ public class StockIdealRowDto
     public decimal Faltan { get; set; }
     public string Unidad { get; set; } = "u";
     public DateTime? UltimaEntrada { get; set; }
+    /// <summary>Solo lo trae la pantalla del celu (/ideal-celu), para buscar escaneando.</summary>
+    public string? Barcode { get; set; }
 }
 
 public class StockIdealListResultDto
@@ -1899,6 +1901,9 @@ public class StockIdealBulkItemDto
     /// <summary>Idem para el ideal.</summary>
     public bool TocaIdeal { get; set; } = true;
 }
+
+public class ClaveIdealCeluDto { public string Clave { get; set; } = ""; }
+public class PaseIdealCeluDto { public string Token { get; set; } = ""; }
 
 public class StockIdealBulkRequestDto
 {

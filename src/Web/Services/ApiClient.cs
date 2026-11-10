@@ -3910,6 +3910,54 @@ public class ApiClient
         return null;
     }
 
+    // 2026-11-10: celu del depósito con la clave del día. No pasa por el aviso de sesión vencida:
+    // esa pantalla no tiene usuario, y si la clave cambió vuelve a pedirla.
+    private const string URL_IDEAL_CELU = "/api/public/stock-ideal-celu";
+
+    public async Task<string?> GetClaveIdealCeluAsync()
+        => (await GetAsync<ClaveIdealCeluDto>("/api/stock/ideal/celu/clave"))?.Clave;
+
+    public async Task<(string? Token, string? Error)> EntrarIdealCeluAsync(string clave)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"{URL_IDEAL_CELU}/entrar", new { clave });
+            if (resp.IsSuccessStatusCode)
+                return ((await resp.Content.ReadFromJsonAsync<PaseIdealCeluDto>())?.Token, null);
+            return (null, (int)resp.StatusCode switch
+            {
+                429 => "Probaste muchas veces. Esperá un minuto.",
+                403 => "Clave incorrecta. Mirá la clave de hoy en el sistema.",
+                _ => "No se pudo entrar. Probá de nuevo.",
+            });
+        }
+        catch { return (null, "Sin conexión. Probá de nuevo."); }
+    }
+
+    /// <summary>Filas null + Vencido true = hay que volver a pedir la clave.</summary>
+    public async Task<(List<StockIdealRowDto>? Filas, bool Vencido)> GetListaIdealCeluAsync(string pase)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{URL_IDEAL_CELU}/lista");
+        req.Headers.Add("X-Pase-Celu", pase);
+        var resp = await _http.SendAsync(req);
+        if ((int)resp.StatusCode == 403) return (null, true);
+        if (!resp.IsSuccessStatusCode) return (null, false);
+        return (await resp.Content.ReadFromJsonAsync<List<StockIdealRowDto>>(), false);
+    }
+
+    /// <summary>Devuelve "" si guardó, "vencido" si cambió la clave, o null si falló.</summary>
+    public async Task<string?> GuardarIdealCeluAsync(string pase, StockIdealBulkItemDto item)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Put, $"{URL_IDEAL_CELU}/guardar")
+        {
+            Content = JsonContent.Create(new StockIdealBulkRequestDto { Items = new() { item } }),
+        };
+        req.Headers.Add("X-Pase-Celu", pase);
+        var resp = await _http.SendAsync(req);
+        if ((int)resp.StatusCode == 403) return "vencido";
+        return resp.IsSuccessStatusCode ? "" : null;
+    }
+
     public async Task<byte[]?> DownloadStockIdealPedidoExcelAsync(
         string? marca = null, string? q = null, string? categoria = null, string origen = "pendientes")
     {

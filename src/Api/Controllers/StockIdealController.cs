@@ -4,9 +4,12 @@ using Api.Services;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Api.Controllers;
 
@@ -32,10 +35,12 @@ public class StockIdealController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly StockFaltantesService _faltantes;
-    public StockIdealController(AppDbContext db, StockFaltantesService faltantes)
+    private readonly IConfiguration _config;
+    public StockIdealController(AppDbContext db, StockFaltantesService faltantes, IConfiguration config)
     {
         _db = db;
         _faltantes = faltantes;
+        _config = config;
     }
 
     // ───────────────────────── DTOs ─────────────────────────
@@ -74,7 +79,7 @@ public class StockIdealController : ControllerBase
 
     // Proyeccion liviana: lo justo para armar las filas sin traer la entidad entera.
     private record ProdInfo(int Id, string? Sku, string Nombre, string? Marca, string? Categoria,
-        int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso, int? UxB);
+        int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso, int? UxB, string? Barcode);
 
     /// <summary>El cafe se mide en kilos (viene guardado en gramos); todo lo demas, en unidades.</summary>
     private static bool EsCafe(string? categoria)
@@ -183,7 +188,7 @@ public class StockIdealController : ControllerBase
             .Select(p => new ProdInfo(
                 p.Id, p.Sku, p.Nombre,
                 p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null),
-                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal, p.StockPiso, p.UxB))
+                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal, p.StockPiso, p.UxB, p.Barcode))
             .ToListAsync();
 
         return lista
@@ -249,6 +254,80 @@ public class StockIdealController : ControllerBase
 
         if (actualizados > 0 || quitados > 0) await _db.SaveChangesAsync();
         return Ok(new StockIdealBulkResult(actualizados, quitados, noEncontrados));
+    }
+
+
+    // ───────────────────────── CELU DEL DEPÓSITO (clave del día) ─────────────────────────
+    // 2026-11-10: pantalla /ideal-celu, sin usuario: se abre con un QR fijo y pide una clave que
+    // se ve en el sistema y cambia sola cada día (hora argentina). La clave y el pase salen de
+    // firmar la fecha con el secreto de la app: no se guarda nada y a la medianoche dejan de
+    // servir. Solo deja ver y cambiar ideal y piso, sin costos ni precios. Las rutas van bajo
+    // /api/public/, que ya está permitida en WaMovilScopeMiddleware para los celus con huella.
+
+    public record CeluEntrarRequest(string? Clave);
+    public record CeluFila(int ProductoId, string? Codigo, string Nombre, string? Marca,
+        decimal StockActual, int? StockIdeal, int? StockPiso, string Unidad, string? Barcode);
+
+    private const int MAX_ITEMS_CELU = 20;
+
+    private static string HoyArTexto() => DateTime.UtcNow.AddHours(-3).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private byte[] FirmaCelu(string para, string dia)
+    {
+        var secreto = _config["Jwt:Secret"];
+        if (string.IsNullOrEmpty(secreto)) throw new InvalidOperationException("Falta Jwt:Secret");
+        return HMACSHA256.HashData(Encoding.UTF8.GetBytes(secreto), Encoding.UTF8.GetBytes($"stock-ideal-celu|{para}|{dia}"));
+    }
+
+    private string ClaveCelu(string dia)
+        => (BitConverter.ToUInt32(FirmaCelu("clave", dia), 0) % 1_000_000).ToString("D6", CultureInfo.InvariantCulture);
+
+    private string PaseCelu(string dia) => Convert.ToHexString(FirmaCelu("pase", dia));
+
+    private static bool IgualesSeguro(string a, string b)
+        => CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
+
+    private bool PaseCeluValido()
+        => Request.Headers.TryGetValue("X-Pase-Celu", out var pase)
+           && IgualesSeguro(pase.ToString(), PaseCelu(HoyArTexto()));
+
+    private ObjectResult PaseVencido() => StatusCode(403, new { error = "La clave cambió. Pedí la de hoy." });
+
+    /// <summary>GET /api/stock/ideal/celu/clave — la clave de hoy, para mostrarla adentro del sistema.</summary>
+    [HttpGet("celu/clave")]
+    public IActionResult ClaveDeHoy() => Ok(new { clave = ClaveCelu(HoyArTexto()) });
+
+    [AllowAnonymous]
+    [EnableRateLimiting("clave-celu")]
+    [HttpPost("/api/public/stock-ideal-celu/entrar")]
+    public IActionResult EntrarCelu([FromBody] CeluEntrarRequest? req)
+    {
+        var dia = HoyArTexto();
+        if (!IgualesSeguro((req?.Clave ?? "").Trim(), ClaveCelu(dia)))
+            return StatusCode(403, new { error = "Clave incorrecta. Mirá la clave de hoy en el sistema." });
+        return Ok(new { token = PaseCelu(dia) });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("/api/public/stock-ideal-celu/lista")]
+    public async Task<IActionResult> ListaCelu()
+    {
+        if (!PaseCeluValido()) return PaseVencido();
+        var prods = await CargarProductosAsync(null, null, null);
+        return Ok(prods
+            .OrderBy(p => p.Nombre)
+            .Select(p => new CeluFila(p.Id, p.Sku, p.Nombre, p.Marca, StockDe(p), p.StockIdeal, p.StockPiso, UnidadDe(p.Categoria), p.Barcode))
+            .ToList());
+    }
+
+    [AllowAnonymous]
+    [HttpPut("/api/public/stock-ideal-celu/guardar")]
+    public async Task<IActionResult> GuardarCelu([FromBody] StockIdealBulkRequest? req)
+    {
+        if (!PaseCeluValido()) return PaseVencido();
+        if (req?.Items is null || req.Items.Count > MAX_ITEMS_CELU)
+            return BadRequest(new { error = "Pedido inválido" });
+        return await Bulk(req);
     }
 
 

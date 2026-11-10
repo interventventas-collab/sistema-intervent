@@ -1,0 +1,299 @@
+@page "/ideal-celu"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@using System.Globalization
+@using System.Text.RegularExpressions
+
+@* 2026-11-10: stock ideal y piso en el celu del depósito, sin usuario. Se abre con el QR del botón
+   de la pantalla de armado y pide la clave del día, que se ve ahí mismo. *@
+
+<PageTitle>Stock ideal</PageTitle>
+
+<style>
+    body { background:#f3f4f6 !important; }
+    .ic-wrap { max-width:520px; margin:0 auto; padding:0.8rem; font-family:inherit; color:#111827; }
+    .ic-tit { font-size:1.25rem; font-weight:800; margin:0.2rem 0 0.7rem; }
+    .ic-caja { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:1.1rem; }
+    .ic-txt { color:#6b7280; font-size:0.9rem; margin:0 0 0.8rem; }
+    .ic-clave { width:100%; box-sizing:border-box; min-height:56px; border:1px solid #d1d5db; border-radius:8px; font:inherit; font-size:28px; font-weight:700; letter-spacing:0.25em; text-align:center; }
+    .ic-entrar { width:100%; min-height:48px; margin-top:0.7rem; background:#111827; color:#fff; border:none; border-radius:8px; font:inherit; font-size:1rem; font-weight:700; }
+    .ic-error { color:#b91c1c; font-size:0.88rem; margin-top:0.6rem; }
+    .ic-busca { width:100%; box-sizing:border-box; min-height:46px; border:1px solid #d1d5db; border-radius:8px; padding:0.4rem 0.7rem; font:inherit; font-size:16px; margin-bottom:0.6rem; }
+    .ic-prod { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:0.65rem 0.75rem; margin-bottom:0.5rem; }
+    .ic-nom { font-weight:700; overflow-wrap:anywhere; }
+    .ic-hay { font-size:0.8rem; color:#6b7280; margin-top:1px; }
+    .ic-ok { color:#15803d; font-weight:600; }
+    .ic-dos { display:flex; gap:0.6rem; margin-top:0.4rem; }
+    .ic-dos label { flex:1; min-width:0; font-size:0.76rem; color:#6b7280; margin:0; }
+    .ic-dos input { display:block; width:100%; box-sizing:border-box; min-height:44px; margin-top:2px; border:1px solid #d1d5db; border-radius:7px; padding:0.3rem 0.6rem; font:inherit; font-size:16px; font-weight:600; color:#111827; }
+    .ic-fila-busca { display:flex; gap:0.5rem; margin-bottom:0.6rem; }
+    .ic-fila-busca .ic-busca { flex:1; min-width:0; margin-bottom:0; }
+    .ic-escanear { flex-shrink:0; min-height:46px; padding:0 0.9rem; background:#111827; color:#fff; border:none; border-radius:8px; font:inherit; font-weight:700; }
+    .ic-lector { background:#000; border-radius:10px; overflow:hidden; margin-bottom:0.5rem; }
+    .ic-cancelar { width:100%; min-height:44px; margin-bottom:0.6rem; background:#fff; border:1px solid #d1d5db; border-radius:8px; font:inherit; font-weight:600; color:#111827; }
+    .ic-codigo { display:flex; align-items:center; gap:0.5rem; font-size:0.88rem; color:#374151; margin:-0.2rem 0 0.6rem; }
+    .ic-codigo button { margin-left:auto; background:none; border:none; color:#6b7280; font:inherit; text-decoration:underline; }
+    .ic-mas { display:block; width:100%; min-height:46px; background:#fff; border:1px solid #d1d5db; border-radius:8px; font:inherit; font-weight:600; color:#111827; }
+</style>
+
+<div class="ic-wrap">
+    <div class="ic-tit">📦 Stock ideal y piso</div>
+
+    @if (pase is null)
+    {
+        <form class="ic-caja" @onsubmit="Entrar">
+            <p class="ic-txt">Escribí la clave de hoy. Está en el sistema, en la pantalla de armado.</p>
+            <input class="ic-clave" type="tel" inputmode="numeric" maxlength="6" autocomplete="off" @bind="clave" @bind:event="oninput" />
+            <button class="ic-entrar" type="submit" disabled="@(entrando || clave.Trim().Length != 6)">@(entrando ? "Entrando…" : "Entrar")</button>
+            @if (error is not null) { <div class="ic-error">@error</div> }
+        </form>
+    }
+    else if (filas is null)
+    {
+        <p class="ic-txt">Cargando…</p>
+    }
+    else
+    {
+        @if (escaneando)
+        {
+            <div id="ic-lector" class="ic-lector"></div>
+            <button class="ic-cancelar" @onclick="DejarDeEscanear">Cancelar</button>
+        }
+        else
+        {
+            <div class="ic-fila-busca">
+                <input class="ic-busca" type="search" placeholder="🔍 Buscar producto, marca o código" @bind="busca" @bind:event="oninput" @bind:after="() => limite = PASO" />
+                <button class="ic-escanear" @onclick="Escanear">📷 Escanear</button>
+            </div>
+        }
+        @if (errorCamara is not null) { <div class="ic-error" style="margin:-0.2rem 0 0.6rem;">@errorCamara</div> }
+        @if (escaneado is not null && !escaneando)
+        {
+            <div class="ic-codigo">
+                <span>Código <b>@escaneado</b>: @(Filtradas.Count == 1 ? "1 producto" : $"{Filtradas.Count} productos")</span>
+                <button @onclick="LimpiarEscaneo">Ver todos</button>
+            </div>
+        }
+        @if (Filtradas.Count == 0)
+        {
+            <p class="ic-txt">@(escaneado is not null ? "Ningún producto tiene cargado ese código de barras." : "No hay productos con esa búsqueda.")</p>
+        }
+        @foreach (var f in Filtradas.Take(limite))
+        {
+            var pid = f.ProductoId;
+            var kilos = f.Unidad == "kg";
+            <div class="ic-prod" @key="pid">
+                <div class="ic-nom">@f.Nombre</div>
+                <div class="ic-hay">
+                    @(string.IsNullOrWhiteSpace(f.Marca) ? "Sin marca" : f.Marca) ·
+                    <span style="@(f.StockActual <= 0 ? "color:#b91c1c; font-weight:700;" : "")">hay @Num(f.StockActual)@(kilos ? " kilos" : "")</span>
+                    @if (guardados.Contains(pid)) { <span class="ic-ok"> · ✓ Guardado</span> }
+                </div>
+                <div class="ic-dos">
+                    <label>
+                        Ideal@(kilos ? " (kilos)" : "")
+                        <input type="text" inputmode="numeric" autocomplete="off" placeholder="—"
+                               value="@(editsIdeal.TryGetValue(pid, out var vi) ? vi : Miles(f.StockIdeal))"
+                               @onchange="@(e => Cambiar(f, e.Value?.ToString(), false))" />
+                    </label>
+                    <label>
+                        Piso@(kilos ? " (kilos)" : "")
+                        <input type="text" inputmode="numeric" autocomplete="off" placeholder="—"
+                               value="@(editsPiso.TryGetValue(pid, out var vp) ? vp : Miles(f.StockPiso))"
+                               @onchange="@(e => Cambiar(f, e.Value?.ToString(), true))" />
+                    </label>
+                </div>
+            </div>
+        }
+        @if (Filtradas.Count > limite)
+        {
+            <button class="ic-mas" @onclick="() => limite += PASO">Ver más (quedan @(Filtradas.Count - limite))</button>
+        }
+    }
+</div>
+
+@code {
+    private const string CLAVE_GUARDADA = "ideal_celu_pase";
+    private const int PASO = 40;
+
+    private string? pase, error;
+    private string clave = "", busca = "";
+    private bool entrando;
+    private int limite = PASO;
+    private List<StockIdealRowDto>? filas;
+    private readonly Dictionary<int, string> editsIdeal = new(), editsPiso = new();
+    private readonly HashSet<int> guardados = new();
+
+    private List<StockIdealRowDto> Filtradas
+    {
+        get
+        {
+            if (filas is null) return new();
+            // Escaneado: solo los que tienen ESE código (también sin los ceros de adelante: EAN vs UPC).
+            if (escaneado is not null)
+                return filas.Where(f => MismoCodigo(f.Barcode, escaneado) || MismoCodigo(f.Codigo, escaneado)).ToList();
+            var q = busca.Trim();
+            if (q.Length == 0) return filas;
+            return filas.Where(f => Tiene(f.Nombre, q) || Tiene(f.Marca, q) || Tiene(f.Codigo, q) || Tiene(f.Barcode, q)).ToList();
+        }
+    }
+
+    private static bool MismoCodigo(string? guardado, string leido)
+    {
+        if (string.IsNullOrWhiteSpace(guardado)) return false;
+        var a = guardado.Trim();
+        return string.Equals(a, leido, StringComparison.OrdinalIgnoreCase)
+            || (a.TrimStart('0').Length > 0 && a.TrimStart('0') == leido.TrimStart('0'));
+    }
+
+    // ───── Escanear con la cámara (mismo lector que el escáner del depósito) ─────
+    private bool escaneando;
+    private string? escaneado, errorCamara;
+    private DotNetObjectReference<IdealCelu>? refJs;
+
+    private async Task Escanear()
+    {
+        errorCamara = null;
+        refJs ??= DotNetObjectReference.Create(this);
+        escaneando = true;
+        StateHasChanged();
+        await Task.Yield(); // que el cuadro del lector entre a la pantalla
+        try { await JS.InvokeVoidAsync("scannerBarcode.start", "ic-lector", refJs); }
+        catch { errorCamara = "No se pudo abrir la cámara."; escaneando = false; }
+    }
+
+    private async Task DejarDeEscanear()
+    {
+        escaneando = false;
+        try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { }
+    }
+
+    [JSInvokable]
+    public async Task OnScanDetected(string text, string format)
+    {
+        if (string.IsNullOrWhiteSpace(text) || !escaneando) return;
+        await DejarDeEscanear();
+        escaneado = text.Trim();
+        busca = "";
+        limite = PASO;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnScanError(string message)
+    {
+        errorCamara = message;
+        escaneando = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void LimpiarEscaneo() { escaneado = null; busca = ""; limite = PASO; }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (escaneando) { try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { } }
+        refJs?.Dispose();
+    }
+
+    private static bool Tiene(string? texto, string q) => texto is not null
+        && CultureInfo.InvariantCulture.CompareInfo.IndexOf(texto, q, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace) >= 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        string? guardado = null;
+        try { guardado = await JS.InvokeAsync<string?>("localStorage.getItem", CLAVE_GUARDADA); } catch { }
+        if (string.IsNullOrEmpty(guardado)) return;
+        pase = guardado;
+        await CargarAsync();
+    }
+
+    private async Task Entrar()
+    {
+        if (entrando || clave.Trim().Length != 6) return;
+        entrando = true; error = null;
+        var (token, err) = await Api.EntrarIdealCeluAsync(clave.Trim());
+        entrando = false;
+        if (token is null) { error = err; return; }
+        pase = token;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", CLAVE_GUARDADA, token); } catch { }
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        try
+        {
+            var (lista, vencido) = await Api.GetListaIdealCeluAsync(pase!);
+            if (vencido) { await PedirClaveDeNuevo(); return; }
+            if (lista is null) { pase = null; error = "No se pudo cargar la lista. Probá de nuevo."; return; }
+            filas = lista;
+        }
+        catch { pase = null; error = "Sin conexión. Probá de nuevo."; }
+    }
+
+    private async Task PedirClaveDeNuevo()
+    {
+        pase = null; filas = null; clave = "";
+        error = "La clave cambió. Escribí la de hoy.";
+        try { await JS.InvokeVoidAsync("localStorage.removeItem", CLAVE_GUARDADA); } catch { }
+    }
+
+    private async Task Cambiar(StockIdealRowDto f, string? valor, bool esPiso)
+    {
+        var edits = esPiso ? editsPiso : editsIdeal;
+        var texto = (valor ?? "").Trim();
+        edits[f.ProductoId] = texto;
+
+        if (!LeerNumero(texto, out var nuevo))
+        {
+            ToastService.Error($"'{texto}' no sirve: escribí un número entero, sin decimales (por ejemplo 12 o 1.500)");
+            await Task.Yield();   // deja dibujar lo tipeado para que al sacarlo el casillero vuelva al valor guardado
+            edits.Remove(f.ProductoId);
+            return;
+        }
+        if ((esPiso ? f.StockPiso : f.StockIdeal) == nuevo) { edits.Remove(f.ProductoId); return; }
+
+        var item = new StockIdealBulkItemDto
+        {
+            ProductoId = f.ProductoId,
+            StockIdeal = esPiso ? null : nuevo,
+            StockPiso = esPiso ? nuevo : null,
+            TocaIdeal = !esPiso,
+            TocaPiso = esPiso,
+        };
+        string? r;
+        try { r = await Api.GuardarIdealCeluAsync(pase!, item); }
+        catch { r = null; }
+
+        if (r == "vencido") { await PedirClaveDeNuevo(); return; }
+        if (r is null)
+        {
+            ToastService.Error("No se pudo guardar. Probá de nuevo.");
+            edits.Remove(f.ProductoId);
+            return;
+        }
+        if (esPiso) f.StockPiso = nuevo; else f.StockIdeal = nuevo;
+        edits.Remove(f.ProductoId);
+        guardados.Add(f.ProductoId);
+    }
+
+    /// <summary>Misma regla que la pantalla de la compu: vacío borra, "1.500" son 1500 y no hay decimales.</summary>
+    private static bool LeerNumero(string texto, out int? valor)
+    {
+        valor = null;
+        if (texto.Length == 0) return true;
+        var sinEspacios = texto.Replace(" ", "");
+        if (!Regex.IsMatch(sinEspacios, @"^\d+$|^\d{1,3}(\.\d{3})+$")) return false;
+        if (!int.TryParse(sinEspacios.Replace(".", ""), NumberStyles.None, CultureInfo.InvariantCulture, out var n)) return false;
+        valor = n;
+        return true;
+    }
+
+    private static string Miles(int? v) => v.HasValue ? v.Value.ToString("N0", CultureInfo.GetCultureInfo("es-AR")) : "";
+
+    private static string Num(decimal v) => v.ToString("#,##0.##", CultureInfo.GetCultureInfo("es-AR"));
+}
