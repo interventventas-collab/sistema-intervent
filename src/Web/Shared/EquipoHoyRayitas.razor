@@ -1,191 +1,101 @@
 @using Web.Services
-
-@* 2026-11-10: "Equipo hoy" en rayitas (Dashboard nuevo, solo admin; maqueta aprobada Todo_junto/Equipo_juntas).
-   Un renglón por persona: avatar con anillo (verde fichado, naranja repartiendo sin fichar, gris), una
-   pista de 7 a 20 hs (hora ARGENTINA) con lo fichado, un puntito por entrega en la hora en que se marcó,
-   las que faltan punteadas a la derecha de "ahora", y una franja rayada si hace mucho que no marca nada.
-   Al pasar el mouse se abre la tarjeta de la persona; al tocar, el detalle de siempre. *@
-
+@* 2026-11-10 (2ª): "Equipo hoy" pasó de rayitas a una TABLA simple (el dueño: "no se entiende nada").
+   Una fila por persona, en palabras: quién · estado · entregas de hoy con barrita · última entrega ·
+   aviso. Tocando la fila se abre el detalle de siempre. El nombre del archivo quedó por historia. *@
 <style>
-    .eh-rows { display:flex; flex-direction:column; }
-    .eh-row { position:relative; display:grid; grid-template-columns:180px minmax(0,1fr) 110px; gap:0.9rem; align-items:center;
-        padding:0.45rem 0.4rem; border-top:1px solid #f1f2f4; cursor:pointer; border-radius:8px; }
-    .eh-row:hover { background:#fffbeb; }
-    .eh-who { display:flex; align-items:center; gap:0.6rem; min-width:0; }
-    .eh-av { flex-shrink:0; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-        color:#fff; font-size:0.72rem; font-weight:600; box-shadow:0 0 0 2px #fff, 0 0 0 4px var(--ring); }
-    .eh-name { font-size:0.88rem; color:#111827; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .eh-sub { font-size:0.72rem; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .eh-sub.nar { color:#c2410c; }
-    .eh-track { position:relative; height:30px; background:#f3f4f6; border-radius:8px; }
-    .eh-fich { position:absolute; top:0; bottom:0; background:#d1fae5; border-radius:6px; }
-    .eh-quieto { position:absolute; top:3px; bottom:3px; border-radius:4px;
-        background:repeating-linear-gradient(135deg, #fde68a 0 5px, #fef9c3 5px 10px); }
-    .eh-dot { position:absolute; top:50%; width:8px; height:8px; margin:-4px 0 0 -4px; border-radius:50%; background:#16a34a;
-        box-shadow:0 0 0 1.5px #fff; }
-    .eh-falta { position:absolute; top:50%; width:10px; height:10px; margin:-5px 0 0 -5px; border-radius:50%;
-        border:2px dashed #f59e0b; box-sizing:border-box; }
-    .eh-ahora { position:absolute; top:-6px; bottom:-6px; width:2px; margin-left:-1px; background:#dc2626; }
-    .eh-num { font-size:0.8rem; color:#6b7280; white-space:nowrap; }
-    .eh-num b { font-size:1.05rem; font-weight:500; color:#111827; }
-    .eh-num small { display:block; font-size:0.7rem; color:#c2410c; }
-    .eh-axis { position:relative; height:18px; margin:0.3rem 0 0; }
-    .eh-axis-in { position:absolute; left:calc(180px + 0.9rem + 0.4rem); right:calc(110px + 0.9rem + 0.4rem); top:0; bottom:0; }
-    .eh-axis span { position:absolute; transform:translateX(-50%); font-size:0.68rem; color:#9ca3af; }
-    .eh-axis span.ah { color:#dc2626; }
-    .eh-leg { display:flex; flex-wrap:wrap; gap:1rem; margin-top:0.55rem; font-size:0.72rem; color:#6b7280; align-items:center; }
-    .eh-leg i { display:inline-block; vertical-align:middle; margin-right:5px; }
-
-    /* Tarjeta al pasar el mouse (opción A) */
-    .eh-card { display:none; position:absolute; left:120px; top:calc(100% - 6px); z-index:60; width:270px; background:#fff;
-        border:1px solid #e5e7eb; border-radius:14px; box-shadow:0 12px 30px rgba(0,0,0,.16); padding:0.85rem 0.95rem; cursor:default;
-        pointer-events:none; }
-    .eh-row:hover .eh-card { display:block; }
-    .eh-card-hd { display:flex; align-items:center; gap:0.7rem; }
-    .eh-card-hd .eh-av { width:50px; height:50px; font-size:0.9rem; box-shadow:0 0 0 3px #fff, 0 0 0 6px var(--ring); }
-    .eh-card-n { font-size:0.98rem; color:#111827; }
-    .eh-card-e { font-size:0.76rem; color:#6b7280; }
-    .eh-card-big { margin-top:0.7rem; font-size:0.8rem; color:#6b7280; }
-    .eh-card-big b { font-size:1.6rem; font-weight:400; color:#111827; margin-right:4px; }
-    .eh-seg { display:flex; gap:3px; margin-top:0.45rem; }
-    .eh-seg span { flex:1; height:6px; border-radius:3px; background:#e5e7eb; }
-    .eh-seg span.ok { background:#22c55e; }
-    .eh-barra { height:6px; border-radius:3px; background:#e5e7eb; margin-top:0.45rem; overflow:hidden; }
-    .eh-barra span { display:block; height:100%; background:#22c55e; }
-    .eh-warn { margin-top:0.6rem; background:#fef3c7; color:#92400e; border-radius:8px; padding:0.35rem 0.55rem; font-size:0.76rem; }
-    .eh-card-l { margin-top:0.6rem; font-size:0.78rem; color:#374151; line-height:1.35; }
-    .eh-card-l small { display:block; color:#9ca3af; font-size:0.7rem; }
-
-    @@media (max-width: 760px) {
-        .eh-row { grid-template-columns:120px minmax(0,1fr) 56px; gap:0.5rem; }
-        .eh-axis-in { left:calc(120px + 0.5rem + 0.4rem); right:calc(56px + 0.5rem + 0.4rem); }
-        .eh-card { left:10px; }
-        .eh-av { width:30px; height:30px; font-size:0.62rem; }
-    }
+    .eqt { width:100%; border-collapse:collapse; margin-top:0.4rem; }
+    .eqt th { font-size:0.68rem; text-transform:uppercase; letter-spacing:0.05em; color:#6b7280; text-align:left; font-weight:600; padding:0.35rem 0.5rem; border-bottom:1px solid #e5e7eb; }
+    .eqt td { padding:0.5rem; border-bottom:1px solid #f1f2f4; vertical-align:middle; font-size:0.86rem; color:#111827; }
+    .eqt tr.fila { cursor:pointer; }
+    .eqt tr.fila:hover td { background:#f9fafb; }
+    .eqt-who { display:flex; align-items:center; gap:0.55rem; font-weight:700; }
+    .eqt-av { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; color:#fff; font-size:0.68rem; font-weight:700; flex-shrink:0; }
+    .eqt-st { display:inline-block; border-radius:999px; padding:0.1rem 0.6rem; font-size:0.76rem; font-weight:600; white-space:nowrap; }
+    .eqt-st.on { background:#dcfce7; color:#166534; }
+    .eqt-st.fue { background:#f1f5f9; color:#475569; }
+    .eqt-st.sf { background:#ffedd5; color:#9a3412; }
+    .eqt-st.no { background:#f3f4f6; color:#9ca3af; }
+    .eqt-muted { color:#6b7280; font-size:0.8rem; }
+    .eqt-bar { display:flex; align-items:center; gap:0.5rem; white-space:nowrap; }
+    .eqt-bar b { font-size:0.95rem; }
+    .eqt-track { width:120px; height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; flex-shrink:0; }
+    .eqt-fill { display:block; height:100%; background:#22c55e; }
+    .eqt-warn { color:#b45309; font-weight:700; white-space:nowrap; }
+    .eqt-ok { color:#166534; white-space:nowrap; }
+    @@media (max-width: 900px) { .eqt .col-ult { display:none; } .eqt-track { width:70px; } }
 </style>
-
-<div class="eh-rows">
-    @foreach (var emp in Items)
+<table class="eqt">
+    <tr><th>Quién</th><th>Estado</th><th>Entregas de hoy</th><th class="col-ult">Última entrega</th><th>Aviso</th></tr>
+    @foreach (var e in Items)
     {
-        var e = emp;
+        var emp = e;
         var tipo = Tipo(e);
-        var ring = tipo switch { "fichado" => "#10b981", "repartiendo" => "#f59e0b", _ => "#d1d5db" };
         var total = e.RutaEntregadas + e.RutaFaltan + e.RutaNoEntregadas;
-        var horas = HorasDe(e);
         var quieto = e.MinutosSinMarcar >= UmbralQuietoMin && e.RutaFaltan > 0;
-        <div class="eh-row" @key="e.NomEmpleadoId" @onclick="() => OnClickEmp.InvokeAsync(e)">
-            <div class="eh-who">
-                <div class="eh-av" style="--ring:@ring; background:@OperatorService.ShortBgColor(e.ApodoKiosko ?? e.Nombre);">@OperatorService.ShortLabel(e.ApodoKiosko ?? e.Nombre)</div>
-                <div style="min-width:0;">
-                    <div class="eh-name">@ShortName(e.Nombre)</div>
-                    <div class="eh-sub @(tipo == "repartiendo" ? "nar" : "")">@SubTexto(e, tipo)</div>
+        var termino = total > 0 && e.RutaFaltan == 0;
+        <tr class="fila" @onclick="() => OnClickEmp.InvokeAsync(emp)" title="Tocá para ver el detalle">
+            <td>
+                <div class="eqt-who">
+                    <span class="eqt-av" style="background:@OperatorService.ShortBgColor(e.ApodoKiosko ?? e.Nombre);">@OperatorService.ShortLabel(e.ApodoKiosko ?? e.Nombre)</span>
+                    @ShortName(e.Nombre)
                 </div>
-            </div>
-            <div class="eh-track">
-                @if (Fichado(e) is { } fi)
+            </td>
+            <td>
+                @if (e.Estado == "trabajando")
                 {
-                    <div class="eh-fich" style="left:@Pct(fi.Item1); width:@Pct(Math.Max(0, fi.Item2 - fi.Item1), false);"></div>
+                    <span class="eqt-st on">trabajando</span> <span class="eqt-muted">· desde @e.HoraEntrada</span>
                 }
-                @if (quieto && horas.Count > 0)
+                else if (e.Estado == "salio")
                 {
-                    var desde = horas.Last();
-                    <div class="eh-quieto" style="left:@Pct(desde); width:@Pct(Math.Max(0, AhoraMin - desde), false);"></div>
+                    <span class="eqt-st fue">se fue @e.HoraSalida</span> <span class="eqt-muted">· entró @e.HoraEntrada</span>
                 }
-                @foreach (var h in horas)
+                else if (tipo == "repartiendo")
                 {
-                    <span class="eh-dot" style="left:@Pct(h);"></span>
+                    <span class="eqt-st sf">repartiendo sin fichar</span>
                 }
-                @foreach (var p in Pendientes(e.RutaFaltan))
+                else
                 {
-                    <span class="eh-falta" style="left:@Pct(p);"></span>
+                    <span class="eqt-st no">@(e.Estado == "no_ficha" ? "no ficha" : "no vino")</span>
                 }
-                <span class="eh-ahora" style="left:@Pct(AhoraMin);"></span>
-            </div>
-            <div class="eh-num">
-                @if (e.TieneRepartidor && total > 0)
+            </td>
+            <td>
+                @if (total > 0)
                 {
-                    <span><b>@e.RutaEntregadas</b> / @total</span>
-                    @if (quieto)
-                    {
-                        <small>@Minutos(e.MinutosSinMarcar) quieto</small>
-                    }
+                    var pct = (100.0 * e.RutaEntregadas / total).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+                    <div class="eqt-bar"><b>@e.RutaEntregadas de @total</b><span class="eqt-track"><span class="eqt-fill" style="width:@pct%;"></span></span></div>
                 }
-            </div>
-
-            <div class="eh-card">
-                <div class="eh-card-hd">
-                    <div class="eh-av" style="--ring:@ring; background:@OperatorService.ShortBgColor(e.ApodoKiosko ?? e.Nombre);">@OperatorService.ShortLabel(e.ApodoKiosko ?? e.Nombre)</div>
-                    <div>
-                        <div class="eh-card-n">@ShortName(e.Nombre)</div>
-                        <div class="eh-card-e"><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:@ring; margin-right:4px;"></span>@EstadoLargo(e, tipo)</div>
-                    </div>
-                </div>
-                @if (e.TieneRepartidor && total > 0)
+                else if (!e.TieneRepartidor)
                 {
-                    <div class="eh-card-big"><b>@e.RutaEntregadas</b>de @total entregas</div>
-                    @if (total <= 20)
-                    {
-                        <div class="eh-seg">
-                            @for (var i = 0; i < total; i++)
-                            {
-                                <span class="@(i < e.RutaEntregadas ? "ok" : "")"></span>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="eh-barra"><span style="width:@((100.0 * e.RutaEntregadas / total).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%;"></span></div>
-                    }
-                    @if (quieto)
-                    {
-                        <div class="eh-warn">⚠ Hace @Minutos(e.MinutosSinMarcar) que no marca nada</div>
-                    }
-                    @if (e.RutaNoEntregadas > 0)
-                    {
-                        <div class="eh-card-l">@e.RutaNoEntregadas sin entregar (canceladas o no encontró a nadie)</div>
-                    }
+                    <span class="eqt-muted">no reparte</span>
+                }
+                else
+                {
+                    <span class="eqt-muted">sin entregas hoy</span>
+                }
+            </td>
+            <td class="col-ult">
+                @if (e.MinutosSinMarcar >= 0)
+                {
+                    <span>hace @Minutos(e.MinutosSinMarcar)</span>
                     @if (!string.IsNullOrWhiteSpace(e.UltimoDomicilio))
                     {
-                        <div class="eh-card-l">@e.UltimoDomicilio<small>última entrega@(string.IsNullOrWhiteSpace(e.UltimaEntregaHora) ? "" : $" · {e.UltimaEntregaHora}")@(e.MinutosSinMarcar >= 0 ? $" · hace {Minutos(e.MinutosSinMarcar)}" : "")</small></div>
+                        <div class="eqt-muted" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="@e.UltimoDomicilio">@e.UltimoDomicilio</div>
                     }
                 }
-                @if (e.TieneRepartidor && (e.AlqEntregadosHoy > 0 || e.AlqRetiradosHoy > 0))
+            </td>
+            <td>
+                @if (quieto)
                 {
-                    <div class="eh-card-l">Alquileres hoy: @e.AlqEntregadosHoy entregado@(e.AlqEntregadosHoy == 1 ? "" : "s") · @e.AlqRetiradosHoy retirado@(e.AlqRetiradosHoy == 1 ? "" : "s")</div>
+                    <span class="eqt-warn">⚠ @Minutos(e.MinutosSinMarcar) quieto</span>
                 }
-                @if (e.TieneRepartidor && (e.VentasPendientes > 0 || e.VentasEntregadasHoy > 0))
+                else if (termino)
                 {
-                    <div class="eh-card-l">Ventas: @e.VentasPendientes para entregar · @e.VentasEntregadasHoy entregada@(e.VentasEntregadasHoy == 1 ? "" : "s") hoy</div>
+                    <span class="eqt-ok">✅ terminó</span>
                 }
-                @if (e.PorRendir > 0)
-                {
-                    <div class="eh-card-l">Tiene que rendir $@e.PorRendir.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</div>
-                }
-                <div class="eh-card-l"><small>Tocá para ver el detalle</small></div>
-            </div>
-        </div>
+            </td>
+        </tr>
     }
-</div>
-
-<div class="eh-axis">
-    <div class="eh-axis-in">
-        @foreach (var h in new[] { 7, 9, 11, 13, 15, 17, 19, 20 })
-        {
-            if (Math.Abs(h * 60 - AhoraMin) < 50) continue;
-            <span style="left:@Pct(h * 60);">@h</span>
-        }
-        @if (AhoraMin >= Desde && AhoraMin <= Hasta)
-        {
-            <span class="ah" style="left:@Pct(AhoraMin);">ahora</span>
-        }
-    </div>
-</div>
-<div class="eh-leg">
-    <span><i style="width:16px; height:8px; border-radius:3px; background:#d1fae5;"></i>fichado</span>
-    <span><i style="width:8px; height:8px; border-radius:50%; background:#16a34a;"></i>entrega hecha</span>
-    <span><i style="width:10px; height:10px; border-radius:50%; border:2px dashed #f59e0b; box-sizing:border-box;"></i>falta entregar</span>
-    <span><i style="width:16px; height:8px; border-radius:3px; background:repeating-linear-gradient(135deg, #fde68a 0 4px, #fef9c3 4px 8px);"></i>mucho tiempo sin marcar</span>
-</div>
+</table>
 
 @code {
     [Parameter] public List<ApiClient.DashboardEquipoItem> Items { get; set; } = new();

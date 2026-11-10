@@ -1,0 +1,90 @@
+@* 2026-11-10: ventanita del lápiz ✏ (pedido del dueño: "un lápiz en cada uno y poder cambiarlo de ahí").
+   Se abre al tocar el lápiz de un botón de arriba o de una sección/pantalla del menú de la izquierda.
+   Elige SOLO el ícono y el color de ese botón y se guarda al tocar "Listo" (mismo Menu_Config que
+   "Acomodar"). *@
+@inject MenuNuevoService Svc
+@inject ToastService Toast
+
+@if (Clave != null)
+{
+    <div class="lz-fondo" @onclick="Cerrar"></div>
+    <div class="lz" style="left:min(@Px(X), calc(100vw - 332px)); top:min(@Px(Y), calc(100vh - 430px));" @onclick:stopPropagation="true">
+        <div class="lz-t">@Titulo</div>
+        <div class="lz-sub">Ícono</div>
+        <div class="lz-emojis">
+            @foreach (var em in MenuNuevoCatalogo.Emojis)
+            {
+                <button class="lz-em @(icono == em ? "on" : "")" title="Usar @em" @onclick="() => icono = em">@em</button>
+            }
+            <button class="lz-sin @(icono == null ? "on" : "")" @onclick="() => icono = null">sin ícono</button>
+        </div>
+        <div class="lz-sub">Color</div>
+        <div class="lz-colores">
+            <button class="lz-co @(color == null ? "on" : "")" title="Sin color" style="background:#fff;" @onclick="() => color = null"></button>
+            @foreach (var p in MenuNuevoCatalogo.Pasteles)
+            {
+                <button class="lz-co @(color == p.Clave ? "on" : "")" title="@p.Nombre" style="background:@p.Fondo; border-color:@p.Borde;" @onclick="() => color = p.Clave"></button>
+            }
+        </div>
+        <div class="lz-bs">
+            <button class="lz-b" @onclick="Cerrar" disabled="@guardando">Cancelar</button>
+            <button class="lz-b ok" @onclick="Listo" disabled="@guardando">@(guardando ? "Guardando…" : "Listo")</button>
+        </div>
+    </div>
+}
+
+<style>
+    .lz-fondo { position: fixed; inset: 0; z-index: 9700; }
+    .lz { position: fixed; z-index: 9701; width: 320px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px;
+          box-shadow: 0 14px 34px rgba(0,0,0,.22); padding: 0.75rem 0.9rem; color: #111827; text-align: left; }
+    .lz-t { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; }
+    .lz-sub { font-size: 0.68rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin: 0.45rem 0 0.25rem; }
+    .lz-emojis { display: flex; flex-wrap: wrap; gap: 2px; }
+    .lz-em { border: 1px solid transparent; background: transparent; border-radius: 6px; font-size: 1.15rem; line-height: 1; padding: 3px; cursor: pointer; }
+    .lz-em:hover { background: #f3f4f6; }
+    .lz-em.on { border-color: #111827; background: #fef3c7; }
+    .lz-sin { border: 1px solid #e5e7eb; background: #fff; border-radius: 6px; font-size: 0.72rem; color: #6b7280; padding: 2px 7px; cursor: pointer; font-family: inherit; }
+    .lz-sin.on { border-color: #111827; color: #111827; }
+    .lz-colores { display: flex; flex-wrap: wrap; gap: 5px; }
+    .lz-co { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #e5e7eb; cursor: pointer; padding: 0; }
+    .lz-co.on { outline: 2px solid #111827; outline-offset: 1px; }
+    .lz-bs { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.7rem; }
+    .lz-b { border: 1px solid #d1d5db; background: #fff; border-radius: 8px; padding: 0.35rem 0.8rem; font: inherit; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
+    .lz-b.ok { background: #111827; border-color: #111827; color: #fff; }
+</style>
+
+@code {
+    private string? Clave, Titulo;
+    private double X, Y;
+    private string? icono, color;
+    private bool guardando;
+
+    /// <summary>Abre la ventanita para un botón. clave = título de sección o dirección de pantalla.</summary>
+    public void Abrir(string clave, string titulo, double x, double y)
+    {
+        Clave = clave;
+        Titulo = titulo;
+        icono = MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, clave);
+        color = Svc.Actual.Colores.TryGetValue(clave, out var c) ? c : null;
+        X = x; Y = y;
+        StateHasChanged();
+    }
+
+    private void Cerrar() { if (!guardando) { Clave = null; StateHasChanged(); } }
+
+    private async Task Listo()
+    {
+        if (Clave == null) return;
+        guardando = true;
+        try
+        {
+            await Svc.GuardarIconoColorAsync(Clave, icono, color);
+            Clave = null;
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    // Que la ventanita no se salga de la pantalla (se ajusta del lado de JS sería más fino; con esto alcanza).
+    private static string Px(double v) => Math.Max(8, v).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "px";
+}

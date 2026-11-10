@@ -45,6 +45,17 @@ public class MenuNuevoService
         OnChange?.Invoke();
     }
 
+    /// <summary>2026-11-10: lápiz ✏ de un botón: cambia solo su ícono y su color, y guarda.</summary>
+    public async Task GuardarIconoColorAsync(string clave, string? icono, string? color)
+    {
+        var a = Actual;
+        var colores = new Dictionary<string, string>(a.Colores, StringComparer.OrdinalIgnoreCase);
+        var iconos = new Dictionary<string, string>(a.Iconos ?? new(), StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(icono)) iconos.Remove(clave); else iconos[clave] = icono;
+        if (string.IsNullOrEmpty(color)) colores.Remove(clave); else colores[clave] = color;
+        await GuardarAsync(a with { Colores = colores, Iconos = iconos });
+    }
+
     public async Task VolverAlOriginalAsync()
     {
         await _api.ResetMenuConfigAsync();

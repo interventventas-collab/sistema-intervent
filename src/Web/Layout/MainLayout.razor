@@ -342,6 +342,19 @@
         .mnb-shell-txt small { display: none; }
     }
     .mn-brand-inicio { cursor: pointer; }
+    /* 2026-11-10: lápiz ✏ en cada botón: aparece al pasar el mouse. */
+    .mnb-lapiz { display: none; position: absolute; bottom: -8px; right: -8px; z-index: 3; width: 22px; height: 22px; border-radius: 50%;
+        border: 1px solid #d1d5db; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18); font-size: 0.68rem; cursor: pointer; padding: 0; place-items: center; }
+    .mnb-cont:hover > .mnb-lapiz { display: grid; }
+    .mnb-lapiz:hover { background: #fef3c7; }
+    .mnb.editando .mnb-lapiz { display: none !important; }
+    .mn-lw { position: relative; box-shadow: inset 3px 0 0 var(--mn-color, transparent); border-radius: 4px; }
+    .mn-lapiz { display: none; position: absolute; top: 9px; right: 6px; z-index: 3; width: 20px; height: 20px; border-radius: 50%;
+        border: 0; background: #fff; color: #111; font-size: 0.62rem; cursor: pointer; padding: 0; place-items: center; }
+    .mn-lw.sec > .mn-lapiz { right: 30px; }
+    .mn-lw:not(.sec):hover > .mn-lapiz { display: grid; }
+    .mn-lw.sec:has(> .nav-group > .nav-group-header:hover) > .mn-lapiz, .mn-lw > .mn-lapiz:hover { display: grid; }
+    .sidebar.collapsed .mn-lapiz { display: none !important; }
     .mn-emoji { font-size: 1.05rem; line-height: 1; display: inline-block; width: 1.25rem; text-align: center; }
     .mnb-arriba .mnb-ico-e.propio { display: inline !important; }
     .mnb-emojis { display: flex; flex-wrap: wrap; gap: 2px; max-width: 360px; }
@@ -1011,6 +1024,9 @@
                 var itemsSec = ga.Items.Where(i => i.Permiso == null || HasPerm(i.Permiso)).ToList();
                 if (itemsSec.Count == 0 && g.Nuevo == null) continue;
                 @* 2026-11-10: siempre plegadas (se abren solo al tocarlas) y con el ícono que elija el dueño. *@
+                var tituloSec = g.Titulo;
+                <div class="mn-lw sec" style="@EstiloLateral(tituloSec)">
+                <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(tituloSec, tituloSec, e.ClientX + 12, e.ClientY - 20)">✏</button>
                 <NavGroup Label="@g.Titulo" Icon="@IconoMenu(g.Titulo, IconoSeccion(g.Titulo))"
                           HasActiveChild="@(itemsSec.Any(i => IsActive(i.Href)))"
                           NoAutoExpand="true">
@@ -1022,11 +1038,15 @@
                     @foreach (var it in itemsSec)
                     {
                         var itSec = it;
+                        <div class="mn-lw" style="@EstiloLateral(itSec.Href)">
                         <NavItem Href="@itSec.Href" Label="@itSec.Label" Icon="@IconoMenu(itSec.Href, default)"
                                  IsActive="@IsActive(itSec.Href)"
                                  OnClick="@(() => { if (itSec.Externo) Navigation.NavigateTo(itSec.Href, forceLoad: true); else NavigateTo(itSec.Href); })" />
+                        <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(itSec.Href, itSec.Label, e.ClientX + 12, e.ClientY - 20)">✏</button>
+                        </div>
                     }
                 </NavGroup>
+                </div>
             }
             <button class="mn-organizar @(organizarAbierto ? "abierto" : "")" @onclick="() => organizarAbierto = !organizarAbierto"
                     title="Lo que casi no se usa: Dashboard, Panorama, Chat, WhatsApp, Más pantallas y Administración">
@@ -1042,8 +1062,11 @@
             {
                 var href = it.Href;
                 <div class="@(it.SoloCelu ? "mn-oculto-pc" : "")" style="display:contents;">
+                    <div class="mn-lw" style="@EstiloLateral(href)">
+                    <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(href, it.Label, e.ClientX + 12, e.ClientY - 20)">✏</button>
                     <NavItem Href="@href" Label="@it.Label" Icon="@IconoMenu(href, IconoCostado(href))"
                              IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
+                    </div>
                 </div>
             }
             var masVisibles = MenuNuevoSvc.Actual.Mas.Where(i => i.Permiso == null || HasPerm(i.Permiso)).ToList();
@@ -1717,7 +1740,7 @@
         @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
         {
             <div class="mnb-arriba">
-                <MenuNuevoBarra @ref="menuNuevoRef" HasPerm="HasPerm" NavigateTo="NavigateTo" OnBuscar="OpenCommandPalette" OnNuevo="NuevoRapido" PuedeAcomodar="@(string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase))" />
+                <MenuNuevoBarra @ref="menuNuevoRef" HasPerm="HasPerm" NavigateTo="NavigateTo" OnBuscar="OpenCommandPalette" OnNuevo="NuevoRapido" OnLapiz="AbrirLapiz" PuedeAcomodar="@(string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase))" />
             </div>
         }
 
@@ -2376,6 +2399,11 @@
 @* 2026-06-05: Buscador rapido global (Ctrl+K) *@
 <CommandPalette @ref="commandPalette" Catalog="@FilteredMenuCatalog" />
 
+@if (MenuNuevo)
+{
+    @* 2026-11-10: ventanita del lápiz ✏ (ícono y color de cada botón). *@
+    <LapizMenu @ref="lapizRef" />
+}
 <ToastContainer />
 
 @* 2026-06-30: Asistente flotante SOLO en el dashboard (antes aparecia en todas las pantallas
@@ -3295,7 +3323,13 @@
     /// <summary>2026-11-10: con el menú nuevo, en compu el menú de la izquierda vuelve a estar
     /// siempre a la vista (columna fija) en vez de ser un cajón que abre "☰ Menú".</summary>
     private bool ColumnaNueva => MenuNuevo && !IsEmbedded && (HasPerm("cafe") || HasPerm("oficina"));
-    /// <summary>2026-11-10: si el dueño eligió un emoji en ✏ Acomodar, va ese; si no, el de siempre.</summary>
+    private LapizMenu? lapizRef;
+    /// <summary>2026-11-10: abre la ventanita del lápiz ✏ (ícono y color de un botón).</summary>
+    private void AbrirLapiz(string clave, string titulo, double x, double y) => lapizRef?.Abrir(clave, titulo, x, y);
+    /// <summary>Color elegido para una sección/pantalla del menú de la izquierda: rayita a la izquierda.</summary>
+    private string EstiloLateral(string clave)
+        => MenuNuevoCatalogo.Pastel(MenuNuevoCatalogo.IconoDe(MenuNuevoSvc.Actual.Colores, clave)) is { } p ? $"--mn-color:{p.Borde};" : "";
+    /// <summary>2026-11-10: si el dueño eligió un emoji con el lápiz ✏, va ese; si no, el de siempre.</summary>
     private MarkupString IconoMenu(string clave, MarkupString porDefecto)
         => MenuNuevoCatalogo.IconoDe(MenuNuevoSvc.Actual.Iconos, clave) is { } e
             ? new MarkupString($"<span class=\"mn-emoji\">{System.Net.WebUtility.HtmlEncode(e)}</span>")
