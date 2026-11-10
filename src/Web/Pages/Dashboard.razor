@@ -113,7 +113,8 @@ else
         .op-wrap { grid-template-columns:minmax(0,1fr); }
         .op-wrap > .op-side { order:-1; min-width:0; }
     }
-    .op-side { display:flex; flex-direction:column; gap:0.8rem; }
+    .op-side { display:flex; flex-direction:column; gap:0.7rem; }
+    .op-side .dp-col, .op-side .op-col { position:static; align-self:stretch; width:auto; }
     .op-chat { background:#111827; border-radius:14px; padding:4px 0 2px; box-shadow:0 2px 7px rgba(0,0,0,.09); }
     .op-chat .sbchat { height:380px; margin:4px 6px; }
     .op-chat { padding:0; }
@@ -1871,7 +1872,9 @@ else
 {
     @* 2026-11-10: el chat del equipo abajo de las pastillas (pedido del dueño: "a la derecha que hay lugar"). *@
     <div class="op-side">
-        <OficinaPastillas />
+        @* 2026-11-10: Ventas MeLi, ME1, Faltantes y Preguntas como las ve el depósito (abren su ventana al costado). *@
+        <DepoPastillas Oficina="true" />
+        <OficinaPastillas ConDeposito="true" />
         @* 2026-11-10: arranca cerrado (pedido del dueño); se abre tocando la barrita. *@
         <div class="op-chat @(chatAbierto ? "abierto" : "")">
             <button class="op-chat-bar" @onclick="() => chatAbierto = !chatAbierto"
