@@ -116,6 +116,12 @@ else
     .op-side { display:flex; flex-direction:column; gap:0.8rem; }
     .op-chat { background:#111827; border-radius:14px; padding:4px 0 2px; box-shadow:0 2px 7px rgba(0,0,0,.09); }
     .op-chat .sbchat { height:380px; margin:4px 6px; }
+    .op-chat { padding:0; }
+    .op-chat.abierto { padding-bottom:2px; }
+    .op-chat-bar { display:flex; justify-content:space-between; align-items:center; width:100%; border:0; background:transparent;
+        color:#e5e7eb; font:inherit; font-size:0.9rem; font-weight:600; padding:0.65rem 0.9rem; cursor:pointer; border-radius:14px; }
+    .op-chat-bar:hover { background:rgba(255,255,255,.06); }
+    .op-chat-car { color:#9ca3af; font-weight:400; }
     @@media (max-width: 899px) { .op-chat { display:none; } }
     .dash-eh-summary { display:inline-flex; flex-wrap:wrap; gap:0.9rem; margin-left:0.6rem; font-size:0.78rem; font-weight:400; color:#6b7280; }
 </style>
@@ -1845,7 +1851,17 @@ else
     @* 2026-11-10: el chat del equipo abajo de las pastillas (pedido del dueño: "a la derecha que hay lugar"). *@
     <div class="op-side">
         <OficinaPastillas />
-        <div class="op-chat"><SidebarChat /></div>
+        @* 2026-11-10: arranca cerrado (pedido del dueño); se abre tocando la barrita. *@
+        <div class="op-chat @(chatAbierto ? "abierto" : "")">
+            <button class="op-chat-bar" @onclick="() => chatAbierto = !chatAbierto"
+                    title="@(chatAbierto ? "Cerrar el chat" : "Abrir el chat del equipo")">
+                <span>💬 Chat del equipo</span><span class="op-chat-car">@(chatAbierto ? "▾" : "▸")</span>
+            </button>
+            @if (chatAbierto)
+            {
+                <SidebarChat />
+            }
+        </div>
     </div>
 }
 </div> @* fin op-wrap *@
@@ -1856,6 +1872,8 @@ else
     // 2026-11-10: Dashboard nuevo (rayitas del equipo + pastillas a la derecha) solo para admin,
     // con la misma condición que usa MainLayout para el menú nuevo.
     private bool userCargado;
+    /// <summary>2026-11-10: el chat del equipo del Dashboard arranca cerrado.</summary>
+    private bool chatAbierto;
     private bool DashNuevo => userCargado && string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase);
     private Dictionary<int, List<string>> equipoHoras = new();
     private bool mapaMiniIniciado;

@@ -146,8 +146,10 @@ public static class MenuNuevoCatalogo
 
     public record GrupoOrden(string Titulo, List<string> Items);
     /// <summary>Colores: clave = título de sección o dirección de pantalla → nombre de pastel.</summary>
+    /// <summary>Iconos (2026-11-10): clave = título de sección o dirección de pantalla → emoji que eligió el dueño.</summary>
     public record Orden(List<string> Directos, List<GrupoOrden> Grupos, List<string> Mas,
-                        Dictionary<string, string>? Colores = null, List<string>? Costado = null);
+                        Dictionary<string, string>? Colores = null, List<string>? Costado = null,
+                        Dictionary<string, string>? Iconos = null);
 
     /// <summary>Clave de "grupo de fábrica" para lo del costado suelto ("" = Más pantallas).</summary>
     public const string CLAVE_COSTADO = "◧";
@@ -192,7 +194,19 @@ public static class MenuNuevoCatalogo
     /// <summary>Cómo queda el menú para mostrar: grupos con sus renglones ya ordenados.</summary>
     public record GrupoArmado(Grupo Grupo, List<Item> Items);
     public record Armado(List<Item> Directos, List<GrupoArmado> Grupos, List<Item> Mas,
-                         Dictionary<string, string> Colores, List<Item> Costado);
+                         Dictionary<string, string> Colores, List<Item> Costado,
+                         Dictionary<string, string>? Iconos = null);
+
+    /// <summary>2026-11-10: emojis para elegir en ✏ Acomodar (pedido del dueño: "poner íconos yo").</summary>
+    public static readonly string[] Emojis =
+    {
+        "🛒","🧾","💵","💰","💳","📤","📥","📦","🚚","🛵","🗺","📍","🏠","🏬","🏭","☕","🫘","🥤","🍦","🧁",
+        "🎪","🎉","📅","🗓","⏰","👥","👤","🧑‍💼","🤝","📞","💬","📱","✉","🔔","⭐","❤","🔥","✅","⚠","🚨",
+        "📊","📈","📉","🧮","🏷","🔖","📋","📝","🗂","📁","🔍","⚙","🔧","🛠","🔑","🔒","🏦","⛽","🚗","🧹",
+        "🟢","🟡","🔴","🔵","🟣","🟠","⚫","⚪",
+    };
+    public static string? IconoDe(Dictionary<string, string>? iconos, string clave)
+        => iconos != null && iconos.TryGetValue(clave, out var e) && !string.IsNullOrWhiteSpace(e) ? e : null;
 
     private static Dictionary<string, Item>? _porHref;
     private static Dictionary<string, string>? _grupoDeFabrica;
@@ -283,7 +297,8 @@ public static class MenuNuevoCatalogo
             colores.TryAdd("Stock", colorStock);
             colores.TryAdd("Compras", colorStock);
         }
-        return new Armado(directos, grupos, mas, colores, costado);
+        var iconos = new Dictionary<string, string>(o.Iconos ?? new(), StringComparer.OrdinalIgnoreCase);
+        return new Armado(directos, grupos, mas, colores, costado, iconos);
     }
 
     public static Orden AOrden(Armado a) => new(
@@ -291,7 +306,8 @@ public static class MenuNuevoCatalogo
         a.Grupos.Select(g => new GrupoOrden(g.Grupo.Titulo, g.Items.Select(i => i.Href).ToList())).ToList(),
         a.Mas.Select(i => i.Href).ToList(),
         new Dictionary<string, string>(a.Colores),
-        a.Costado.Select(i => i.Href).ToList());
+        a.Costado.Select(i => i.Href).ToList(),
+        a.Iconos == null ? null : new Dictionary<string, string>(a.Iconos));
 
     /// <summary>2026-11-06: lo que va suelto en el menú del costado (arriba de "Más pantallas").
     /// También se puede mover a las secciones de arriba con ✏ Acomodar, y al revés.</summary>

@@ -342,6 +342,12 @@
         .mnb-shell-txt small { display: none; }
     }
     .mn-brand-inicio { cursor: pointer; }
+    .mn-emoji { font-size: 1.05rem; line-height: 1; display: inline-block; width: 1.25rem; text-align: center; }
+    .mnb-arriba .mnb-ico-e.propio { display: inline !important; }
+    .mnb-emojis { display: flex; flex-wrap: wrap; gap: 2px; max-width: 360px; }
+    .mnb-emoji { border: 1px solid transparent; background: transparent; border-radius: 6px; font-size: 1.15rem; line-height: 1; padding: 3px; cursor: pointer; }
+    .mnb-emoji:hover { background: #f3f4f6; }
+    .mnb-emoji.on { border-color: #111827; background: #fef3c7; }
     .mn-inicio { margin-bottom: 0.35rem; padding-bottom: 0.35rem; border-bottom: 1px solid rgba(255,255,255,.08); }
     .mn-organizar {
         display: flex; justify-content: space-between; align-items: center; width: calc(100% - 1rem);
@@ -1004,9 +1010,10 @@
                 var g = ga.Grupo;
                 var itemsSec = ga.Items.Where(i => i.Permiso == null || HasPerm(i.Permiso)).ToList();
                 if (itemsSec.Count == 0 && g.Nuevo == null) continue;
-                <NavGroup Label="@g.Titulo" Icon="@IconoSeccion(g.Titulo)"
+                @* 2026-11-10: siempre plegadas (se abren solo al tocarlas) y con el ícono que elija el dueño. *@
+                <NavGroup Label="@g.Titulo" Icon="@IconoMenu(g.Titulo, IconoSeccion(g.Titulo))"
                           HasActiveChild="@(itemsSec.Any(i => IsActive(i.Href)))"
-                          DefaultExpanded="@(itemsSec.Any(i => IsActive(i.Href)))">
+                          NoAutoExpand="true">
                     @if (g.Nuevo is { } tipoNuevo)
                     {
                         <NavItem Href="#" Label="@("＋ " + TituloNuevoSeccion(tipoNuevo))" Icon="@SvgIcons.Plus"
@@ -1015,7 +1022,7 @@
                     @foreach (var it in itemsSec)
                     {
                         var itSec = it;
-                        <NavItem Href="@itSec.Href" Label="@itSec.Label"
+                        <NavItem Href="@itSec.Href" Label="@itSec.Label" Icon="@IconoMenu(itSec.Href, default)"
                                  IsActive="@IsActive(itSec.Href)"
                                  OnClick="@(() => { if (itSec.Externo) Navigation.NavigateTo(itSec.Href, forceLoad: true); else NavigateTo(itSec.Href); })" />
                     }
@@ -1035,7 +1042,7 @@
             {
                 var href = it.Href;
                 <div class="@(it.SoloCelu ? "mn-oculto-pc" : "")" style="display:contents;">
-                    <NavItem Href="@href" Label="@it.Label" Icon="@IconoCostado(href)"
+                    <NavItem Href="@href" Label="@it.Label" Icon="@IconoMenu(href, IconoCostado(href))"
                              IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
                 </div>
             }
@@ -3288,6 +3295,11 @@
     /// <summary>2026-11-10: con el menú nuevo, en compu el menú de la izquierda vuelve a estar
     /// siempre a la vista (columna fija) en vez de ser un cajón que abre "☰ Menú".</summary>
     private bool ColumnaNueva => MenuNuevo && !IsEmbedded && (HasPerm("cafe") || HasPerm("oficina"));
+    /// <summary>2026-11-10: si el dueño eligió un emoji en ✏ Acomodar, va ese; si no, el de siempre.</summary>
+    private MarkupString IconoMenu(string clave, MarkupString porDefecto)
+        => MenuNuevoCatalogo.IconoDe(MenuNuevoSvc.Actual.Iconos, clave) is { } e
+            ? new MarkupString($"<span class=\"mn-emoji\">{System.Net.WebUtility.HtmlEncode(e)}</span>")
+            : porDefecto;
     private static MarkupString IconoSeccion(string titulo) => titulo switch
     {
         "Clientes" => SvgIcons.Users,
