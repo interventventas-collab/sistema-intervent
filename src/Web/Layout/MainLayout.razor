@@ -223,8 +223,11 @@
     .ta-salir:hover { background: #fef2f2; transform: translateY(-1px); }
     .ta-solo-celu { display: none !important; }
     @@media (min-width: 769px) {
+        .mn-oculto-pc { display: none !important; }
         .sidebar.ta { transform: translateX(-100%); width: 280px !important; z-index: 9600; box-shadow: 4px 0 24px rgba(0,0,0,.25); }
-        .sidebar.ta.open { transform: translateX(0); }
+        /* "none" y no translateX(0): con transform el cajón recorta el panel de "Más pantallas". */
+        .sidebar.ta.open { transform: none; }
+        .sidebar.ta .nav-group-flyout-panel { left: 280px; max-width: calc(100vw - 280px); }
         .sidebar-overlay.ta-ov { display: block; z-index: 9550; }
         .main-wrapper.main-ta { margin-left: 0 !important; }
         .main-ta .topbar-menu-btn {
@@ -286,6 +289,17 @@
     .mnb-directo { font-weight: 600; }
     .mnb-directo:hover, .mnb-grupo:hover, .mnb-grupo.abierto, .mnb-buscar:hover { background: #f3f4f6; }
     .mnb-directo.on, .mnb-grupo.on { box-shadow: inset 0 -2px 0 #111827; border-radius: 0; }
+    /* 2026-11-10: botón + lista en una sola pieza: el nombre abre la lista y el + carga uno nuevo.
+       En celu no va el +: ahí siguen los botones de siempre de la barra de arriba. */
+    .mnb-doble { display: inline-flex; align-items: stretch; margin-right: 0.15rem; }
+    .mnb-doble .mnb-directo { border-radius: 6px 0 0 6px; }
+    .mnb-mas {
+        border: none; background: #111827; color: #fff; font-weight: 700; font-size: 0.9rem; font-family: inherit;
+        padding: 0 0.5rem; border-radius: 0 6px 6px 0; cursor: pointer;
+    }
+    .mnb-mas:hover { background: #374151; }
+    .mnb-mas:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }
+    @@media (max-width: 768px) { .mnb-mas { display: none; } .mnb-doble .mnb-directo { border-radius: 6px; } }
     .mnb-caret { color: #9ca3af; font-size: 0.7rem; }
     .mnb-sep { width: 1px; height: 18px; background: #e5e7eb; margin: 0 0.4rem; }
     .mnb-buscar { margin-left: auto; color: #6b7280; }
@@ -877,8 +891,10 @@
             @foreach (var it in MenuNuevoSvc.Actual.Costado.Where(i => i.Permiso == null || HasPerm(i.Permiso)))
             {
                 var href = it.Href;
-                <NavItem Href="@href" Label="@it.Label" Icon="@IconoCostado(href)"
-                         IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
+                <div class="@(it.SoloCelu ? "mn-oculto-pc" : "")" style="display:contents;">
+                    <NavItem Href="@href" Label="@it.Label" Icon="@IconoCostado(href)"
+                             IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
+                </div>
             }
             var masVisibles = MenuNuevoSvc.Actual.Mas.Where(i => i.Permiso == null || HasPerm(i.Permiso)).ToList();
             <NavGroup Label="⋯ Más pantallas" Icon="@SvgIcons.Folder" FlyoutMode="true"
@@ -1658,7 +1674,7 @@
                     </div>
                 }
             </div>
-            <button class="topbar-square-btn" @onclick="OpenCommandPalette"
+            <button class="topbar-square-btn @(MenuNuevo ? "mn-oculto-pc" : "")" @onclick="OpenCommandPalette"
                     title="Buscar pantalla rápido (Ctrl + K)"
                     aria-label="Buscar pantalla">@SvgIcons.Search</button>
             <button class="topbar-square-btn" @onclick="DoHardReload"
@@ -1944,7 +1960,7 @@
         @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
         {
             <div class="mnb-fila">
-                <MenuNuevoBarra @ref="menuNuevoRef" HasPerm="HasPerm" NavigateTo="NavigateTo" OnBuscar="OpenCommandPalette" PuedeAcomodar="@(string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase))" />
+                <MenuNuevoBarra @ref="menuNuevoRef" HasPerm="HasPerm" NavigateTo="NavigateTo" OnBuscar="OpenCommandPalette" OnNuevo="NuevoRapido" PuedeAcomodar="@(string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase))" />
             </div>
         }
     </header>
@@ -3063,7 +3079,8 @@
 
     private RenderFragment AccionesNuevo => __builder =>
     {
-                <div class="tb-nuevo-group">
+                @* Con el menú nuevo, en compu cargar algo es el + pegado a cada botón de la barra. *@
+                <div class="tb-nuevo-group @(MenuNuevo ? "mn-oculto-pc" : "")">
                     <button class="tb-nuevo tb-nuevo-venta" @onclick='() => NuevoRapido("venta")'
                             title="Nueva venta — atajo: apretá N y después V" aria-label="Nueva venta">
                         <span class="ic" aria-hidden="true">🛒</span>

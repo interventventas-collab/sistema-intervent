@@ -3975,6 +3975,64 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // 2026-11-10: pedido en armado. "Pedir" lo suma de a poco y recién al cerrarlo pasa a "Enviados".
+    /// <summary>Lo suma al pedido en armado, o le cambia la cantidad si ya estaba. Sin cantidad, usa lo que falta.</summary>
+    public async Task<(bool ok, string? error)> ArmarStockIdealAsync(int id, decimal? cantidad, string? quien)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsJsonAsync($"/api/stock/ideal/pendientes/{id}/armar", new { cantidad, quien });
+            return resp.IsSuccessStatusCode ? (true, null) : (false, await ExtraerError(resp));
+        }
+        catch (HttpRequestException ex) { return (false, ex.Message); }
+    }
+
+    /// <summary>Lo saca del pedido en armado: vuelve a "Para pedir".</summary>
+    public async Task<(bool ok, string? error)> QuitarArmadoStockIdealAsync(int id)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsJsonAsync($"/api/stock/ideal/pendientes/{id}/quitar-armado", new { });
+            return resp.IsSuccessStatusCode ? (true, null) : (false, await ExtraerError(resp));
+        }
+        catch (HttpRequestException ex) { return (false, ex.Message); }
+    }
+
+    /// <summary>Cierra lo que está en armado de una marca (marca null = productos sin marca).</summary>
+    public async Task<(StockIdealPedidoCerradoDto? pedido, string? error)> CerrarPedidoProveedorAsync(string? marca, string? quien)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsJsonAsync("/api/stock/ideal/pedidos/cerrar", new { marca, quien });
+            if (!resp.IsSuccessStatusCode) return (null, await ExtraerError(resp));
+            return (await resp.Content.ReadFromJsonAsync<StockIdealPedidoCerradoDto>(), null);
+        }
+        catch (HttpRequestException ex) { return (null, ex.Message); }
+    }
+
+    public async Task<byte[]?> DownloadPedidoProveedorPdfAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/stock/ideal/pedidos/{id}/pdf");
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
+    /// <summary>Manda el pedido con el PDF adjunto al mail que escribieron.</summary>
+    public async Task<(bool ok, string? error)> EnviarPedidoProveedorEmailAsync(int id, string para, string? mensaje, string? quien)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsJsonAsync($"/api/stock/ideal/pedidos/{id}/email", new { para, mensaje, quien });
+            return resp.IsSuccessStatusCode ? (true, null) : (false, await ExtraerError(resp));
+        }
+        catch (HttpRequestException ex) { return (false, ex.Message); }
+    }
+
     public async Task<byte[]?> DownloadStockIdealExcelAsync()
     {
         await SetAuthHeaderAsync();

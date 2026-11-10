@@ -10,23 +10,31 @@ namespace Web.Shared;
 public static class MenuNuevoCatalogo
 {
     /// <summary>Un renglón del menú. Seccion != null = título chiquito antes del renglón.
-    /// Permiso null = lo ve cualquiera que vea el menú. Externo = abre la página entera (mapa).</summary>
-    public record Item(string Label, string Href, string? Permiso = null, string? Seccion = null, bool Externo = false);
+    /// Permiso null = lo ve cualquiera que vea el menú. Externo = abre la página entera (mapa).
+    /// Nuevo = con botón + pegado que carga uno nuevo (venta, cobranza, alquiler, pago).
+    /// SoloCelu = en compu ya está a la vista en la barra, así que no se repite en el cajón.</summary>
+    public record Item(string Label, string Href, string? Permiso = null, string? Seccion = null, bool Externo = false,
+                       string? Nuevo = null, bool SoloCelu = false);
 
     public record Grupo(string Titulo, string Subtitulo, bool DelNegocio, Item[] Items);
 
     /// <summary>Botones directos de todos los días (un clic, sin abrir nada).</summary>
     public static readonly Item[] Directos =
     {
-        new("Ventas", "/cafe/ventas"),
-        new("Cobranzas", "/cafe/tesoreria/cobranzas"),
+        new("Ventas", "/cafe/ventas", Nuevo: "venta"),
+        new("Cobranzas", "/cafe/tesoreria/cobranzas", Nuevo: "cobranza"),
+        new("Alquileres", "/alquileres/reservas", "alquileres", Nuevo: "alquiler"),
+        new("Pagos", "/cafe/tesoreria/pagos", Nuevo: "pago"),
         new("Preparación", "/cafe/preparacion"),
         new("Stock", "/cafe/stock-masivo"),
     };
 
+    /// <summary>"Clientes" antes se llamaba así: lo acomodado y su color siguen guardados con ese nombre.</summary>
+    private const string TITULO_VIEJO_CLIENTES = "Ventas por fuera";
+
     public static readonly Grupo[] Grupos =
     {
-        new("Ventas por fuera", "WhatsApp, teléfono, en persona", true, new Item[]
+        new("Clientes", "WhatsApp, teléfono, en persona", true, new Item[]
         {
             new("Ventas", "/cafe/ventas"),
             new("Cobranzas", "/cafe/tesoreria/cobranzas"),
@@ -35,7 +43,7 @@ public static class MenuNuevoCatalogo
             new("Pedidos de Gaby", "/cafe/preventas"),
             new("Pedidos de WhatsApp", "/cafe/pedidos-whatsapp"),
             new("Visitas", "/visitas"),
-            new("Clientes", "/cafe/clientes", Seccion: "Clientes"),
+            new("Clientes", "/cafe/clientes"),
             new("Precios y descuentos especiales", "/cafe/precios-especiales"),
         }),
         new("Frikaf", "solo café", true, new Item[]
@@ -224,12 +232,17 @@ public static class MenuNuevoCatalogo
             return r;
         }
         // Los directos usan su nombre corto si lo tienen ("Preparación" y no "Preparación de pedidos").
-        var directos = Tomar(o.Directos, marcar: false).DistinctBy(i => i.Href)
+        var guardados = Tomar(o.Directos, marcar: false).DistinctBy(i => i.Href)
             .Select(i => Directos.FirstOrDefault(d => string.Equals(d.Href, i.Href, StringComparison.OrdinalIgnoreCase)) ?? i)
             .ToList();
+        // Los que tienen + van siempre primero, aunque lo guardado sea de antes de que existieran.
+        var directos = Directos.Where(d => d.Nuevo != null).Concat(guardados.Where(i => i.Nuevo == null)).ToList();
+        // Cada pantalla una sola vez: lo que tiene botón directo no se repite en los desplegables.
+        foreach (var d in directos) usados.Add(d.Href);
         var grupos = Grupos.Select(g =>
         {
-            var go = o.Grupos?.FirstOrDefault(x => x.Titulo == g.Titulo);
+            var go = o.Grupos?.FirstOrDefault(x => x.Titulo == g.Titulo)
+                     ?? (g.Titulo == "Clientes" ? o.Grupos?.FirstOrDefault(x => x.Titulo == TITULO_VIEJO_CLIENTES) : null);
             return new GrupoArmado(g, Tomar(go?.Items));
         }).ToList();
         var mas = Tomar(o.Mas);
@@ -246,6 +259,7 @@ public static class MenuNuevoCatalogo
             else grupos.First(x => x.Grupo.Titulo == gt).Items.Add(it);
         }
         var colores = new Dictionary<string, string>(o.Colores ?? new(), StringComparer.OrdinalIgnoreCase);
+        if (colores.Remove(TITULO_VIEJO_CLIENTES, out var colorClientes)) colores.TryAdd("Clientes", colorClientes);
         return new Armado(directos, grupos, mas, colores, costado);
     }
 
@@ -263,10 +277,10 @@ public static class MenuNuevoCatalogo
         new("Dashboard", "/", "dashboard"),
         new("Panorama", "/panorama", "dashboard"),
         new("Chat", "/chat"),
-        new("Mis alertas", "/mis-alertas"),
+        new("Mis alertas", "/mis-alertas", SoloCelu: true),
         new("Automatizaciones y alertas", "/automatizaciones"),
         new("Compartido", "/compartido", "compartido"),
-        new("WhatsApp · Chats", "/whatsapp", "cafe-depositos"),
+        new("WhatsApp · Chats", "/whatsapp", "cafe-depositos", SoloCelu: true),
         new("WhatsApp · Llamadas", "/llamadas", "cafe-depositos"),
         new("Documentación", "/documentacion"),
     };
