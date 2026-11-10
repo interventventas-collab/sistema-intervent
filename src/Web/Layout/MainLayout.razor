@@ -282,6 +282,65 @@
     }
     .sidebar.ta-col .nav-group-children .nav-icon:empty { display: none; }
     .sidebar.ta-col .nav-group-children .nav-item { padding-top: 0.32rem; padding-bottom: 0.32rem; font-size: 0.86rem; }
+    /* 2026-11-10: botones del menú nuevo en la fila de arriba (opción A: tarjetitas blancas). */
+    .mnb-arriba { flex: 0 0 auto; display: flex; align-items: center; }
+    .mnb-arriba .mnb { flex-wrap: nowrap; gap: 0.55rem; }
+    .mnb-arriba .mnb.editando { flex-wrap: wrap; }
+    .mnb-arriba .mnb-cont { margin-right: 0; }
+    .mnb-arriba .mnb-cont > .mnb-directo, .mnb-arriba .mnb-doble {
+        height: 44px; border-radius: 12px; background: #fff; border: 1px solid #e5e7eb;
+        box-shadow: 0 1px 3px rgba(0,0,0,.08); transition: box-shadow .12s ease, transform .12s ease;
+    }
+    .mnb-arriba .mnb-cont > .mnb-directo:hover, .mnb-arriba .mnb-doble:hover { box-shadow: 0 4px 10px rgba(0,0,0,.12); transform: translateY(-1px); }
+    .mnb-arriba .mnb-directo {
+        display: inline-flex; align-items: center; gap: 0.45rem; padding: 0 0.85rem;
+        font-size: 0.9rem; font-weight: 700; color: #111827;
+    }
+    .mnb-arriba .mnb-doble { display: inline-flex; align-items: center; padding-right: 0.5rem; margin-right: 0; }
+    .mnb-arriba .mnb-doble .mnb-directo { background: transparent !important; border: 0; box-shadow: none; padding-right: 0.4rem; height: 100%; border-radius: 12px 0 0 12px; }
+    .mnb-arriba .mnb-doble .mnb-directo:hover { background: transparent; }
+    .mnb-arriba .mnb-mas { width: 24px; height: 24px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 0.95rem; }
+    .mnb-arriba .mnb-cont > .mnb-directo.on, .mnb-arriba .mnb-doble:has(.mnb-directo.on) { box-shadow: 0 0 0 2px #111827; border-radius: 12px; }
+    .mnb-arriba .mnb-doble .mnb-directo.on { box-shadow: none; }
+    .mnb-ico-e { font-size: 1.1rem; line-height: 1; }
+    .mnb-arriba .mnb-num { top: -7px; right: -8px; }
+    .mnb-shell {
+        position: relative; display: inline-flex; align-items: center; gap: 0.45rem; height: 44px; padding: 0 0.5rem 0 0.8rem;
+        border-radius: 12px; border: 1px solid #eab308; background: linear-gradient(135deg, #fde047, #facc15);
+        box-shadow: 0 1px 3px rgba(0,0,0,.08); cursor: pointer; font-family: inherit; color: #111827; white-space: nowrap;
+    }
+    .mnb-shell:hover { box-shadow: 0 4px 10px rgba(0,0,0,.14); }
+    .mnb-shell-txt { display: flex; flex-direction: column; text-align: left; line-height: 1.1; }
+    .mnb-shell-txt small { font-size: 0.66rem; font-weight: 600; color: #713f12; }
+    .mnb-shell-txt b { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+    .mnb-shell-ref {
+        width: 26px; height: 26px; border-radius: 50%; border: 0; background: #dc2626; color: #fff; cursor: pointer;
+        display: grid; place-items: center; font-size: 0.9rem; padding: 0; font-family: inherit;
+    }
+    .mnb-shell-ref:disabled { cursor: wait; }
+    .mnb-shell-ref.girando span { display: inline-block; animation: mnb-gira 1s linear infinite; }
+    @@keyframes mnb-gira { to { transform: rotate(360deg); } }
+    .topstrip:has(.mnb.editando) { flex-wrap: wrap !important; }
+    @@media (min-width: 769px) {
+        .main-ta-col .topbar { display: none !important; }
+        .main-ta-col .ta-acciones { margin-left: 0; }
+        .main-ta-col .topstrip-icons { margin-left: auto; }
+        .main-ta.main-ta-col .topstrip { padding-top: 0.5rem; padding-bottom: 0.4rem; }
+    }
+    /* Pantalla angosta (notebook): no entra todo en una fila; los botones bajan a un renglón propio. */
+    @@media (min-width: 769px) and (max-width: 1780px) {
+        .main-ta.main-ta-col .topstrip { flex-wrap: wrap !important; row-gap: 0.6rem; }
+        .main-ta-col .mnb-arriba { order: 20; flex-basis: 100%; }
+    }
+    /* Pantallas más chicas: se achican para seguir en una fila. */
+    @@media (max-width: 1980px) {
+        .mnb-arriba .mnb-cont > .mnb-directo .mnb-ico-e, .mnb-arriba .mnb-doble .mnb-ico-e { display: none; }
+    }
+    @@media (max-width: 1820px) {
+        .mnb-arriba .mnb { gap: 0.4rem; }
+        .mnb-arriba .mnb-directo { padding: 0 0.6rem; font-size: 0.84rem; }
+        .mnb-shell-txt small { display: none; }
+    }
     .mn-organizar {
         display: flex; justify-content: space-between; align-items: center; width: calc(100% - 1rem);
         margin: 0.9rem 0.5rem 0.4rem; padding: 0.55rem 0.8rem; border-radius: 8px; cursor: pointer;
@@ -960,6 +1019,9 @@
         }
         @if (MenuNuevo && organizarAbierto && (HasPerm("cafe") || HasPerm("oficina")))
         {
+            @* 2026-11-10: "Acomodar" salió de la barra de arriba y vive acá. *@
+            <NavItem Href="#" Label="Acomodar menú" Icon="@SvgIcons.Edit" IsActive="false"
+                     OnClick="@(() => menuNuevoRef?.EmpezarAcomodar())" />
             @foreach (var it in MenuNuevoSvc.Actual.Costado.Where(i => i.Permiso == null || HasPerm(i.Permiso)))
             {
                 var href = it.Href;
@@ -1633,6 +1695,16 @@
         }
         </div>
 
+        @* 2026-11-10: los botones del menú nuevo (Preparación, Ventas, Cobranzas, Pagos, MAPEO y
+           Shell Flota) suben a esta fila, entre "MeLi · revisar PRECIO" y las calculadoras. Ya no
+           hay segunda fila. *@
+        @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
+        {
+            <div class="mnb-arriba">
+                <MenuNuevoBarra @ref="menuNuevoRef" HasPerm="HasPerm" NavigateTo="NavigateTo" OnBuscar="OpenCommandPalette" OnNuevo="NuevoRapido" PuedeAcomodar="@(string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase))" />
+            </div>
+        }
+
         @* 2026-11-07: "todo arriba". Admin: los accesos rápidos suben a esta fila. Depósito: sus
            pantallas como pestañas + el chat del equipo en un botón. *@
         @if (TodoArriba && !TodoArribaDepo && (HasPerm("cafe") || HasPerm("oficina")))
@@ -1709,7 +1781,7 @@
            Chat, WhatsApp, e indicadores de subida/sincro. *@
         <div class="topstrip-icons">
             @* Widgets como dropdown (calc + post-its + zoom) *@
-            <div class="topbar-widgets-wrap">
+            <div class="topbar-widgets-wrap @(MenuNuevo ? "mn-oculto-pc" : "")">
                 <button class="topbar-square-btn topbar-widgets-btn @(showWidgetsDropdown ? "abierto" : "")"
                         @onclick="ToggleWidgetsDropdown"
                         title="Widgets (Calculadora, Post-its)"
@@ -1747,14 +1819,14 @@
                     </div>
                 }
             </div>
-            <button class="topbar-square-btn @(MenuNuevo ? "mn-oculto-pc" : "")" @onclick="OpenCommandPalette"
+            <button class="topbar-square-btn" @onclick="OpenCommandPalette"
                     title="Buscar pantalla rápido (Ctrl + K)"
                     aria-label="Buscar pantalla">@SvgIcons.Search</button>
             <button class="topbar-square-btn" @onclick="DoHardReload"
                     title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
                     aria-label="Forzar recarga">@SvgIcons.Refresh</button>
             @* 2026-08-06: QR que lleva SIEMPRE al WhatsApp del celu (/whatsapp-movil). *@
-            <button class="topbar-square-btn" @onclick="AbrirQrModal"
+            <button class="topbar-square-btn @(MenuNuevo ? "mn-oculto-pc" : "")" @onclick="AbrirQrModal"
                     title="Abrir el WhatsApp en el celu: muestra un código QR para escanear con el teléfono"
                     aria-label="Abrir WhatsApp en el celu (QR)">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h.01M21 21v.01M17 21h.01M21 17h.01"/></svg>
@@ -2031,12 +2103,6 @@
                Chat, WhatsApp, indicadores de subida/sincro) se movió a la DERECHA de la fila
                de chips de arriba (.topstrip-icons), para descongestionar esta barra de menú. *@
         </div>
-        @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
-        {
-            <div class="mnb-fila">
-                <MenuNuevoBarra @ref="menuNuevoRef" HasPerm="HasPerm" NavigateTo="NavigateTo" OnBuscar="OpenCommandPalette" OnNuevo="NuevoRapido" PuedeAcomodar="@(string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase))" />
-            </div>
-        }
     </header>
 }
     @* 2026-07-22: acá vivía el cartelón rojo de "publis MeLi esperando revisión de PRECIO"
