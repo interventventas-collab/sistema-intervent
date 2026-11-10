@@ -46,4 +46,11 @@ public class CafeStockFaltante
     /// <summary>Cuanto se pidio finalmente, si lo anotaron. Opcional.</summary>
     [Column(TypeName = "decimal(18,3)")]
     public decimal? CantidadPedida { get; set; }
+
+    /// <summary>2026-11-10: quién lo sumó al pedido en armado (Estado='ARMANDO').</summary>
+    [MaxLength(120)]
+    public string? ArmadoPor { get; set; }
+
+    /// <summary>2026-11-10: en qué pedido cerrado salió. Null en los marcados antes de existir.</summary>
+    public int? PedidoProveedorId { get; set; }
 }

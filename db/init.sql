@@ -8745,3 +8745,26 @@ IF OBJECT_ID('Menu_Config') IS NULL
         ActualizadoPor NVARCHAR(100) NOT NULL CONSTRAINT DF_MenuConfig_Por DEFAULT ''
     );
 GO
+
+-- ============================================================
+-- 10/11/2026: pedidos a proveedor que se arman de a poco (botón Pedir) y se cierran por marca.
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+-- ============================================================
+SET QUOTED_IDENTIFIER ON;
+GO
+IF COL_LENGTH('Cafe_StockFaltantes','ArmadoPor') IS NULL
+    ALTER TABLE Cafe_StockFaltantes ADD ArmadoPor NVARCHAR(120) NULL;
+GO
+IF COL_LENGTH('Cafe_StockFaltantes','PedidoProveedorId') IS NULL
+    ALTER TABLE Cafe_StockFaltantes ADD PedidoProveedorId INT NULL;
+GO
+IF OBJECT_ID('Cafe_PedidosProveedor') IS NULL
+    CREATE TABLE Cafe_PedidosProveedor (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Marca NVARCHAR(200) NULL,
+        CerradoAt DATETIME2 NOT NULL,
+        CerradoPor NVARCHAR(120) NULL,
+        UltimoEmail NVARCHAR(254) NULL,
+        UltimoEmailAt DATETIME2 NULL
+    );
+GO

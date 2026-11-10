@@ -281,6 +281,7 @@ public class AppDbContext : DbContext
     public DbSet<CafeStockPorDeposito> CafeStockPorDeposito => Set<CafeStockPorDeposito>();
     // 2026-09-02: la lista de "para pedir" (productos que cruzaron por debajo del stock ideal)
     public DbSet<CafeStockFaltante> CafeStockFaltantes => Set<CafeStockFaltante>();
+    public DbSet<CafePedidoProveedor> CafePedidosProveedor => Set<CafePedidoProveedor>();
     public DbSet<FileMetadata> FileMetadata => Set<FileMetadata>();
     public DbSet<ContabiliumAccount> ContabiliumAccounts => Set<ContabiliumAccount>();
     public DbSet<MeliItemComponente> MeliItemComponentes => Set<MeliItemComponente>();

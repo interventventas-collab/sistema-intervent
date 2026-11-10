@@ -266,7 +266,15 @@ public class StockIdealController : ControllerBase
         // cargadas las unidades por bulto (UxB) o si se mide en kilos.
         int? UnidadesPorBulto, int? Bultos, decimal? UnidadesSiPidoBultos,
         // "Ya lo pedi": el renglon sigue en la lista pero marcado, para no pedirlo dos veces.
-        bool Pedido, DateTime? PedidoAt, string? PedidoPor, decimal? CantidadPedida);
+        bool Pedido, DateTime? PedidoAt, string? PedidoPor, decimal? CantidadPedida,
+        // 2026-11-10: sumado al pedido que se está armando (todavía no se le pidió a nadie).
+        bool EnArmado = false, decimal? CantidadArmado = null, string? ArmadoPor = null,
+        int? PedidoProveedorId = null);
+
+    public record ArmarRequest(decimal? Cantidad, string? Quien = null);
+    public record CerrarPedidoRequest(string? Marca, string? Quien = null);
+    public record EnviarPedidoRequest(string? Para, string? Mensaje = null, string? Quien = null);
+    public record PedidoCerradoRow(int Id, string? Marca, int Productos, DateTime CerradoAt, string? CerradoPor, string? UltimoEmail);
 
     public record PendientesResult(
         int Total, int YaRepuestos, int EnCero, int NuevosEnganchados, int YaPedidos,
@@ -290,11 +298,11 @@ public class StockIdealController : ControllerBase
         // PEDIDO tambien entra: el producto ya se le pidio al proveedor pero la mercaderia no
         // llego, asi que sigue faltando. Se muestra marcado para que nadie lo pida dos veces.
         var filas = await _db.CafeStockFaltantes.AsNoTracking()
-            .Where(f => f.Estado == "PENDIENTE" || f.Estado == "PEDIDO")
+            .Where(f => f.Estado == "PENDIENTE" || f.Estado == "PEDIDO" || f.Estado == "ARMANDO")
             .Select(f => new
             {
                 f.Id, f.ProductoId, f.StockAlDetectar, f.IdealAlDetectar, f.DetectadoAt,
-                f.Estado, f.ResueltoAt, f.ResueltoPor, f.CantidadPedida,
+                f.Estado, f.ResueltoAt, f.ResueltoPor, f.CantidadPedida, f.ArmadoPor, f.PedidoProveedorId,
                 Codigo = f.Producto!.Sku,
                 f.Producto.Nombre,
                 Marca = f.Producto.Marca ?? (f.Producto.MarcaNav != null ? f.Producto.MarcaNav.Nombre : null),
@@ -326,6 +334,7 @@ public class StockIdealController : ControllerBase
             var faltan = StockFaltantesService.CuantoPedir(ideal, f.PisoAhora, stockAhora);
             var (uxb, bultos, unidadesBultos) = CalcularBultos(f.Categoria, f.UxB, faltan);
             var pedido = f.Estado == "PEDIDO";
+            var enArmado = f.Estado == "ARMANDO";
             return new PendienteRow(
                 f.Id, f.ProductoId, f.Codigo, f.Nombre, f.Marca,
                 f.StockAlDetectar, f.IdealAlDetectar, f.DetectadoAt,
@@ -336,7 +345,11 @@ public class StockIdealController : ControllerBase
                 Pedido: pedido,
                 PedidoAt: pedido ? f.ResueltoAt : null,
                 PedidoPor: pedido ? f.ResueltoPor : null,
-                CantidadPedida: pedido ? f.CantidadPedida : null);
+                CantidadPedida: pedido ? f.CantidadPedida : null,
+                EnArmado: enArmado,
+                CantidadArmado: enArmado ? f.CantidadPedida : null,
+                ArmadoPor: enArmado ? f.ArmadoPor : null,
+                PedidoProveedorId: f.PedidoProveedorId);
         })
         // Arriba lo que hay que pedir (y de eso, lo que esta en cero). Despues lo ya pedido,
         // que sigue faltando pero no hay que volver a pedirlo. Al final lo ya repuesto.
@@ -419,6 +432,192 @@ public class StockIdealController : ControllerBase
         f.ResueltoAt = null;
         f.ResueltoPor = null;
         f.CantidadPedida = null;
+        f.PedidoProveedorId = null;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    // ───────────────────────── PEDIDO EN ARMADO ─────────────────────────
+    // 2026-11-10: "Pedir" suma el producto a un pedido que se arma de a poco. Recién al cerrarlo
+    // pasa a PEDIDO (enviado, sin llegar). Mientras tanto no se le pidió nada a nadie.
+
+    private string? QuienEs(string? quien)
+    {
+        var q = quien?.Trim();
+        if (string.IsNullOrEmpty(q)) return User.FindFirst(ClaimTypes.Name)?.Value;
+        return q[..Math.Min(q.Length, 120)];
+    }
+
+    private static string? MarcaDe(CafeProducto? p)
+    {
+        var m = p?.Marca ?? p?.MarcaNav?.Nombre;
+        return string.IsNullOrWhiteSpace(m) ? null : m.Trim();
+    }
+
+    /// <summary>POST pendientes/{id}/armar — lo suma al pedido, o le cambia la cantidad si ya estaba.</summary>
+    [HttpPost("pendientes/{id:int}/armar")]
+    public async Task<IActionResult> Armar(int id, [FromBody] ArmarRequest? req)
+    {
+        var f = await _db.CafeStockFaltantes.Include(x => x.Producto).FirstOrDefaultAsync(x => x.Id == id);
+        if (f is null) return NotFound(new { error = "Ese renglón ya no está en la lista." });
+        if (f.Estado != "PENDIENTE" && f.Estado != "ARMANDO")
+            return BadRequest(new { error = "Ese producto ya no está para pedir." });
+
+        var cantidad = req?.Cantidad ?? f.CantidadPedida;
+        if (cantidad is null && f.Producto is { } p)
+        {
+            var stock = StockFaltantesService.StockDe(p.Categoria, p.StockUnidades, p.StockGramos);
+            cantidad = StockFaltantesService.CuantoPedir(p.StockIdeal ?? f.IdealAlDetectar, p.StockPiso, stock);
+        }
+        if (cantidad is null or <= 0)
+            return BadRequest(new { error = "Poné una cantidad mayor a cero." });
+
+        if (f.Estado == "PENDIENTE") f.ArmadoPor = QuienEs(req?.Quien);
+        f.Estado = "ARMANDO";
+        f.CantidadPedida = cantidad;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>POST pendientes/{id}/quitar-armado — lo saca del pedido y vuelve a Para pedir.</summary>
+    [HttpPost("pendientes/{id:int}/quitar-armado")]
+    public async Task<IActionResult> QuitarArmado(int id)
+    {
+        var f = await _db.CafeStockFaltantes.FirstOrDefaultAsync(x => x.Id == id);
+        if (f is null) return NotFound(new { error = "Ese renglón ya no está en la lista." });
+        if (f.Estado != "ARMANDO") return Ok(new { ok = true, yaEstaba = true });
+
+        // El índice único solo deja UN renglón PENDIENTE por producto.
+        var yaHayPendiente = await _db.CafeStockFaltantes
+            .AnyAsync(x => x.ProductoId == f.ProductoId && x.Estado == "PENDIENTE" && x.Id != f.Id);
+        f.Estado = yaHayPendiente ? "DESCARTADO" : "PENDIENTE";
+        f.CantidadPedida = null;
+        f.ArmadoPor = null;
+        if (yaHayPendiente) f.ResueltoAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>POST pedidos/cerrar — cierra lo armado de UNA marca: cada proveedor recibe lo suyo.</summary>
+    [HttpPost("pedidos/cerrar")]
+    public async Task<IActionResult> CerrarPedido([FromBody] CerrarPedidoRequest? req)
+    {
+        var marca = string.IsNullOrWhiteSpace(req?.Marca) ? null : req!.Marca!.Trim();
+        var armados = await _db.CafeStockFaltantes
+            .Include(x => x.Producto!).ThenInclude(p => p.MarcaNav)
+            .Where(x => x.Estado == "ARMANDO")
+            .ToListAsync();
+        var filas = armados.Where(x => string.Equals(MarcaDe(x.Producto), marca, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (filas.Count == 0)
+            return BadRequest(new { error = "No hay productos en armado de esa marca." });
+
+        // Sin transacción (la conexión con reintentos no la admite suelta): si falla el segundo
+        // guardado queda un pedido vacío que no se ve en ningún lado, y los productos siguen en armado.
+        var quien = QuienEs(req?.Quien);
+        var pedido = new CafePedidoProveedor { Marca = marca, CerradoAt = DateTime.UtcNow, CerradoPor = quien };
+        _db.CafePedidosProveedor.Add(pedido);
+        await _db.SaveChangesAsync();
+        foreach (var f in filas)
+        {
+            f.Estado = "PEDIDO";
+            f.ResueltoAt = pedido.CerradoAt;
+            f.ResueltoPor = quien;
+            f.PedidoProveedorId = pedido.Id;
+        }
+        await _db.SaveChangesAsync();
+
+        var ultimoEmail = await _db.CafePedidosProveedor.AsNoTracking()
+            .Where(p => p.Marca == marca && p.UltimoEmail != null)
+            .OrderByDescending(p => p.UltimoEmailAt)
+            .Select(p => p.UltimoEmail)
+            .FirstOrDefaultAsync();
+
+        return Ok(new PedidoCerradoRow(pedido.Id, marca, filas.Count, pedido.CerradoAt, quien, ultimoEmail));
+    }
+
+    private async Task<(CafePedidoProveedor Pedido, List<PedidoProveedorLinea> Lineas)?> DatosPedidoAsync(int id)
+    {
+        var pedido = await _db.CafePedidosProveedor.FirstOrDefaultAsync(p => p.Id == id);
+        if (pedido is null) return null;
+        var filas = await _db.CafeStockFaltantes.AsNoTracking()
+            .Where(f => f.PedidoProveedorId == id && f.Estado != "DESCARTADO")
+            .Select(f => new { f.CantidadPedida, f.Producto!.Sku, f.Producto.Nombre, f.Producto.Categoria, f.Producto.UxB })
+            .ToListAsync();
+        var lineas = filas
+            .OrderBy(f => f.Nombre)
+            .Select(f =>
+            {
+                var cantidad = f.CantidadPedida ?? 0;
+                var (uxb, bultos, _) = CalcularBultos(f.Categoria, f.UxB, cantidad);
+                return new PedidoProveedorLinea(f.Sku, f.Nombre, cantidad, StockFaltantesService.UnidadDe(f.Categoria), bultos, uxb);
+            })
+            .ToList();
+        return (pedido, lineas);
+    }
+
+    private static string NombrePdf(CafePedidoProveedor p)
+    {
+        var marca = new string((p.Marca ?? "sin-marca").Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
+        return $"Pedido-{marca}-{p.Id}.pdf";
+    }
+
+    /// <summary>El remitente que ya está configurado para los mails: va como encabezado del PDF.</summary>
+    private static async Task<string?> RemitenteAsync(IntegrationService integraciones)
+    {
+        var smtp = await integraciones.GetByProviderAsync("email-smtp");
+        if (string.IsNullOrWhiteSpace(smtp?.Settings)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(smtp.Settings);
+            return doc.RootElement.TryGetProperty("fromName", out var n) ? n.GetString() : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    /// <summary>GET pedidos/{id}/pdf — el PDF para bajar.</summary>
+    [HttpGet("pedidos/{id:int}/pdf")]
+    public async Task<IActionResult> PdfPedido(int id,
+        [FromServices] CafePedidoProveedorPdfService pdf, [FromServices] IntegrationService integraciones)
+    {
+        if (await DatosPedidoAsync(id) is not { } d) return NotFound(new { error = "Ese pedido no existe." });
+        var bytes = pdf.Generar(d.Pedido.Id, d.Pedido.Marca, d.Pedido.CerradoAt, await RemitenteAsync(integraciones), d.Lineas);
+        return File(bytes, "application/pdf", NombrePdf(d.Pedido));
+    }
+
+    /// <summary>POST pedidos/{id}/email — lo manda con el PDF adjunto a la dirección que escriban.</summary>
+    [HttpPost("pedidos/{id:int}/email")]
+    public async Task<IActionResult> EmailPedido(int id, [FromBody] EnviarPedidoRequest? req,
+        [FromServices] CafePedidoProveedorPdfService pdf, [FromServices] IntegrationService integraciones,
+        [FromServices] EnvioComprobanteService envio, [FromServices] ILogger<StockIdealController> log)
+    {
+        var para = req?.Para?.Trim() ?? "";
+        if (!System.Net.Mail.MailAddress.TryCreate(para, out var direccion) || direccion.Address != para || para.Length > 254)
+            return BadRequest(new { error = "Ese mail no parece válido. Revisalo." });
+        if (await DatosPedidoAsync(id) is not { } d) return NotFound(new { error = "Ese pedido no existe." });
+
+        var marca = string.IsNullOrWhiteSpace(d.Pedido.Marca) ? "" : $" {d.Pedido.Marca}";
+        var remitente = await RemitenteAsync(integraciones);
+        var mensaje = req?.Mensaje?.Trim();
+        if (mensaje?.Length > 2000) mensaje = mensaje[..2000];
+        var cuerpo = "Hola, les pasamos el pedido adjunto."
+            + (string.IsNullOrEmpty(mensaje) ? "" : "\n\n" + mensaje)
+            + "\n\nMuchas gracias."
+            + (string.IsNullOrWhiteSpace(remitente) ? "" : "\n" + remitente);
+        var bytes = pdf.Generar(d.Pedido.Id, d.Pedido.Marca, d.Pedido.CerradoAt, remitente, d.Lineas);
+
+        try
+        {
+            var (ok, error) = await envio.EnviarEmailConAdjuntoAsync(para, $"Pedido{marca} N° {d.Pedido.Id}", cuerpo, bytes, NombrePdf(d.Pedido));
+            if (!ok) return BadRequest(new { error = error ?? "No se pudo mandar el mail." });
+        }
+        catch (Exception ex) when (ex is System.Net.Mail.SmtpException or InvalidOperationException or FormatException)
+        {
+            log.LogWarning(ex, "[Pedido proveedor] no se pudo mandar el pedido {Id}", id);
+            return BadRequest(new { error = "No se pudo mandar el mail. Probá de nuevo o bajá el PDF." });
+        }
+
+        d.Pedido.UltimoEmail = para;
+        d.Pedido.UltimoEmailAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
     }
@@ -448,7 +647,7 @@ public class StockIdealController : ControllerBase
         if (f is null) return NotFound(new { error = "Ese renglón ya no está en la lista." });
         // PEDIDO tambien se puede sacar con la ✕ (el renglon sigue vivo en la lista hasta que
         // entra la mercaderia, asi que tiene que poder descartarse igual que un PENDIENTE).
-        if (f.Estado != "PENDIENTE" && f.Estado != "PEDIDO") return Ok(new { ok = true, yaEstaba = true });
+        if (f.Estado != "PENDIENTE" && f.Estado != "PEDIDO" && f.Estado != "ARMANDO") return Ok(new { ok = true, yaEstaba = true });
         if (f.Estado == estado) return Ok(new { ok = true, yaEstaba = true });
 
         f.Estado = estado;
@@ -604,7 +803,7 @@ public class StockIdealController : ControllerBase
         await _faltantes.EngancharAsync();
 
         var filas = await _db.CafeStockFaltantes.AsNoTracking()
-            .Where(f => f.Estado == "PENDIENTE")
+            .Where(f => f.Estado == "PENDIENTE" || f.Estado == "ARMANDO")
             .Select(f => new
             {
                 f.IdealAlDetectar,

@@ -79,7 +79,7 @@ public class StockFaltantesService
         // a engancharse al minuto siguiente como si fuera nuevo. El renglon PEDIDO sigue vivo en
         // la lista (marcado "ya pedido") hasta que entra la mercaderia o alguien lo saca.
         var yaEnLaLista = await _db.CafeStockFaltantes
-            .Where(f => f.Estado == "PENDIENTE" || f.Estado == "PEDIDO")
+            .Where(f => f.Estado == "PENDIENTE" || f.Estado == "PEDIDO" || f.Estado == "ARMANDO")
             .Select(f => f.ProductoId)
             .ToListAsync(ct);
         var yaAnotados = yaEnLaLista.ToHashSet();
