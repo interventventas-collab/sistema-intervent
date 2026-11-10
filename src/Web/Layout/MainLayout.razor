@@ -292,14 +292,14 @@
     /* 2026-11-10: botón + lista en una sola pieza: el nombre abre la lista y el + carga uno nuevo.
        En celu no va el +: ahí siguen los botones de siempre de la barra de arriba. */
     .mnb-doble { display: inline-flex; align-items: stretch; margin-right: 0.15rem; }
-    .mnb-doble .mnb-directo { border-radius: 6px 0 0 6px; }
+    .mnb-doble .mnb-directo, .mnb-doble .mnb-grupo { border-radius: 6px 0 0 6px; }
     .mnb-mas {
         border: none; background: #111827; color: #fff; font-weight: 700; font-size: 0.9rem; font-family: inherit;
         padding: 0 0.5rem; border-radius: 0 6px 6px 0; cursor: pointer;
     }
     .mnb-mas:hover { background: #374151; }
     .mnb-mas:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }
-    @@media (max-width: 768px) { .mnb-mas { display: none; } .mnb-doble .mnb-directo { border-radius: 6px; } }
+    @@media (max-width: 768px) { .mnb-mas { display: none; } .mnb-doble .mnb-directo, .mnb-doble .mnb-grupo { border-radius: 6px; } }
     .mnb-caret { color: #9ca3af; font-size: 0.7rem; }
     .mnb-sep { width: 1px; height: 18px; background: #e5e7eb; margin: 0 0.4rem; }
     .mnb-buscar { margin-left: auto; color: #6b7280; }
@@ -2848,6 +2848,12 @@
             case "pago":
                 // Con marca de tiempo: si ya está en Pagos, igual vuelve a abrir el formulario.
                 Navigation.NavigateTo($"/cafe/tesoreria/pagos?nueva={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
+                break;
+            case "stock":
+                Navigation.NavigateTo("/cafe/stock-masivo");
+                break;
+            case "compra":
+                Navigation.NavigateTo($"/cafe/compras?nueva={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
                 break;
         }
     }

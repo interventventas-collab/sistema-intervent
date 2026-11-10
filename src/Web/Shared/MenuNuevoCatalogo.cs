@@ -16,17 +16,24 @@ public static class MenuNuevoCatalogo
     public record Item(string Label, string Href, string? Permiso = null, string? Seccion = null, bool Externo = false,
                        string? Nuevo = null, bool SoloCelu = false);
 
-    public record Grupo(string Titulo, string Subtitulo, bool DelNegocio, Item[] Items);
+    /// <summary>Nuevo = el desplegable lleva un + pegado que carga uno nuevo (alquiler, stock, compra).</summary>
+    public record Grupo(string Titulo, string Subtitulo, bool DelNegocio, Item[] Items, string? Nuevo = null);
 
     /// <summary>Botones directos de todos los días (un clic, sin abrir nada).</summary>
     public static readonly Item[] Directos =
     {
         new("Ventas", "/cafe/ventas", Nuevo: "venta"),
         new("Cobranzas", "/cafe/tesoreria/cobranzas", Nuevo: "cobranza"),
-        new("Alquileres", "/alquileres/reservas", "alquileres", Nuevo: "alquiler"),
         new("Pagos", "/cafe/tesoreria/pagos", Nuevo: "pago"),
         new("Preparación", "/cafe/preparacion"),
-        new("Stock", "/cafe/stock-masivo"),
+    };
+
+    /// <summary>Tienen su + en el desplegable (Stock, Intereventos): no vuelven como botón suelto,
+    /// aunque el orden guardado en la base todavía los traiga.</summary>
+    public static readonly HashSet<string> NoDirectos = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/cafe/stock-masivo",
+        "/alquileres/reservas",
     };
 
     /// <summary>"Clientes" antes se llamaba así: lo acomodado y su color siguen guardados con ese nombre.</summary>
@@ -73,7 +80,7 @@ public static class MenuNuevoCatalogo
             new("Equipos", "/alquileres/equipos", "alquileres"),
             new("Fletes", "/alquileres/fletes", "alquileres"),
             new("Texto del presupuesto", "/alquileres/texto", "alquileres"),
-        }),
+        }, Nuevo: "alquiler"),
         new("Logística", "armado y reparto", true, new Item[]
         {
             new("Preparación de pedidos", "/cafe/preparacion"),
@@ -85,21 +92,24 @@ public static class MenuNuevoCatalogo
             new("Entregas me1", "/meli/me1/entregas", "me1"),
             new("Códigos postales me1", "/meli/me1/codigos-postales", "me1"),
         }),
-        new("Stock y compras", "", false, new Item[]
+        new("Stock", "", false, new Item[]
         {
-            new("Stock", "/cafe/stock-masivo", Seccion: "Stock"),
+            new("Cargar stock", "/cafe/stock-masivo"),
             new("Vencimientos", "/cafe/vencimientos"),
             new("Historial stock", "/cafe/historial-stock"),
             new("Faltantes para pedir", "/stock/ideal"),
             new("Reposición / pedidos", "/stock/reposicion"),
             new("Ubicaciones", "/cafe/ubicaciones"),
             new("Tareas del depósito", "/deposito/tareas"),
-            new("Proveedores", "/cafe/proveedores", Seccion: "Compras"),
+        }, Nuevo: "stock"),
+        new("Compras", "", false, new Item[]
+        {
+            new("Proveedores", "/cafe/proveedores"),
             new("¿A quién le debo?", "/cafe/proveedores-ctacte"),
             new("Facturas de compra", "/contadora?tab=comp", "contadora"),
             new("Pagos a proveedores", "/cafe/tesoreria/pagos"),
             new("Compras", "/cafe/compras"),
-        }),
+        }, Nuevo: "compra"),
         new("Productos y precios", "", false, new Item[]
         {
             new("Productos", "/cafe/productos"),
@@ -233,6 +243,7 @@ public static class MenuNuevoCatalogo
         }
         // Los directos usan su nombre corto si lo tienen ("Preparación" y no "Preparación de pedidos").
         var guardados = Tomar(o.Directos, marcar: false).DistinctBy(i => i.Href)
+            .Where(i => !NoDirectos.Contains(i.Href))
             .Select(i => Directos.FirstOrDefault(d => string.Equals(d.Href, i.Href, StringComparison.OrdinalIgnoreCase)) ?? i)
             .ToList();
         // Los que tienen + van siempre primero, aunque lo guardado sea de antes de que existieran.
@@ -260,6 +271,12 @@ public static class MenuNuevoCatalogo
         }
         var colores = new Dictionary<string, string>(o.Colores ?? new(), StringComparer.OrdinalIgnoreCase);
         if (colores.Remove(TITULO_VIEJO_CLIENTES, out var colorClientes)) colores.TryAdd("Clientes", colorClientes);
+        // "Stock y compras" se separó en dos: cada mitad hereda el color que tenía.
+        if (colores.Remove("Stock y compras", out var colorStock))
+        {
+            colores.TryAdd("Stock", colorStock);
+            colores.TryAdd("Compras", colorStock);
+        }
         return new Armado(directos, grupos, mas, colores, costado);
     }
 
