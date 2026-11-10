@@ -1900,6 +1900,9 @@ public class StockIdealBulkItemDto
     public bool TocaIdeal { get; set; } = true;
 }
 
+public class ClaveIdealCeluDto { public string Clave { get; set; } = ""; }
+public class PaseIdealCeluDto { public string Token { get; set; } = ""; }
+
 public class StockIdealBulkRequestDto
 {
     public List<StockIdealBulkItemDto> Items { get; set; } = new();

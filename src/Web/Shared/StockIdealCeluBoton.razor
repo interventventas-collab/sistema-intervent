@@ -1,0 +1,70 @@
+@implements IDisposable
+@inject NavigationManager Navigation
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+@* 2026-11-10: botón de la pantalla de armado con la CLAVE DEL DÍA siempre a la vista. Abre el QR fijo
+   de /ideal-celu, donde el depósito carga stock ideal y piso desde el celu con esa clave. *@
+
+<span class="sic-wrap">
+    <button class="@Clase" title="Cargar stock ideal y piso desde el celu" @onclick="() => abierto = !abierto">📱 Ideal en celu · Clave <b>@(clave ?? "…")</b></button>
+    @if (abierto)
+    {
+        <div class="sic-back" @onclick="() => abierto = false"></div>
+        <div class="sic-box">
+            <div class="sic-tit">📱 Stock ideal y piso en el celu</div>
+            <img src="@($"/api/qr?url={Uri.EscapeDataString(Link)}")" alt="QR para abrir en el celu" />
+            <div class="sic-txt">Escanealo con la cámara del celu y escribí la clave de hoy:</div>
+            <div class="sic-clave">@(clave ?? "…")</div>
+            <div class="sic-txt">Cambia sola todos los días.</div>
+            <button class="sic-copiar" @onclick="Copiar">Copiar link</button>
+        </div>
+    }
+</span>
+
+<style>
+    .sic-wrap { position:relative; display:inline-block; }
+    .sic-back { position:fixed; inset:0; z-index:900; }
+    .sic-box { position:absolute; right:0; bottom:calc(100% + 6px); z-index:901; width:270px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,.15); padding:0.9rem; text-align:center; }
+    .sic-box img { width:190px; height:190px; display:block; margin:0 auto 0.4rem; }
+    .sic-tit { font-weight:700; font-size:0.95rem; margin-bottom:0.5rem; color:#111827; }
+    .sic-txt { font-size:0.8rem; color:#6b7280; }
+    .sic-clave { font-size:1.9rem; font-weight:800; letter-spacing:0.14em; color:#111827; }
+    .sic-copiar { width:100%; margin-top:0.6rem; padding:0.5rem; border-radius:8px; border:1px solid #d1d5db; background:#fff; cursor:pointer; font-size:0.88rem; color:#111827; }
+</style>
+
+@code {
+    [Parameter] public string Clase { get; set; } = "pp-b";
+
+    private bool abierto;
+    private string? clave;
+    private System.Threading.Timer? refresco;
+
+    private string Link => Navigation.BaseUri.TrimEnd('/') + "/ideal-celu";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TraerClave();
+        // La pantalla de armado queda abierta días: así pasada la medianoche muestra la nueva.
+        refresco = new System.Threading.Timer(_ => InvokeAsync(async () =>
+        {
+            await TraerClave();
+            StateHasChanged();
+        }), null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+    }
+
+    private async Task TraerClave()
+    {
+        try { clave = await Api.GetClaveIdealCeluAsync() ?? clave; }
+        catch { }
+    }
+
+    private async Task Copiar()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", Link); ToastService.Success("Link copiado."); }
+        catch { ToastService.Error("No se pudo copiar el link."); }
+    }
+
+    public void Dispose() => refresco?.Dispose();
+}
