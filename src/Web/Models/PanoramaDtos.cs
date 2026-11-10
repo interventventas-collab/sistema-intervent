@@ -3,6 +3,9 @@ namespace Web.Models;
 // 2026-08-31 — Lo que devuelve /api/panorama. Espeja los records de Api/Services/PanoramaService.cs.
 // Si allá cambia un nombre de campo, acá tiene que cambiar igual (el JSON se ata por nombre).
 
+public record VisitasPaginaDto(string Dominio, int Hoy, int Ayer, int Semana);
+public record VisitasPaginasDto(bool Conectado, string? Problema, List<VisitasPaginaDto> Paginas);
+
 public record PanoramaPataDto(
     string Clave, string Nombre, string Canal,
     decimal Facturado, decimal? Margen, decimal? MargenPct,

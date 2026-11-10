@@ -375,6 +375,37 @@
             </div>
         </div>
 
+        @if (visitas is not null)
+        {
+            <div class="pan-panel pan-visitas">
+                <div class="pan-panel-h">
+                    <h3>Visitas a las páginas</h3>
+                    <span class="pan-muted">personas que entraron</span>
+                </div>
+
+                @if (!visitas.Conectado)
+                {
+                    <p class="pan-visita pan-muted">
+                        Falta conectar Google Analytics.
+                        <a class="pan-link inline" href="/integraciones">ir a Integraciones</a>
+                    </p>
+                }
+                else if (visitas.Problema is not null)
+                {
+                    <p class="pan-visita pan-muted">@visitas.Problema</p>
+                }
+                else
+                {
+                    @foreach (var p in visitas.Paginas)
+                    {
+                        <div class="pan-visita">
+                            <b>@p.Dominio</b><span class="pan-sep">·</span>hoy @p.Hoy.ToString("N0", Ar)<span class="pan-sep">·</span>ayer @p.Ayer.ToString("N0", Ar)<span class="pan-sep">·</span>últimos 7 días @p.Semana.ToString("N0", Ar)
+                        </div>
+                    }
+                }
+            </div>
+        }
+
         <p class="pan-pie">
             Los números salen de tu base en el momento. Café: sin anuladas y sin proformas ya facturadas; las notas de
             crédito restan. MercadoLibre: órdenes pagadas, con el margen descontando comisión, envío e IVA — la misma
@@ -388,6 +419,11 @@
 
 <style>
     .pan-wrap { padding: 0.2rem 0 2rem; }
+
+    .pan-visitas { margin-top:1rem; }
+    .pan-visita { margin:0.6rem 0 0; font-size:0.87rem; color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+    .pan-visita.pan-muted { color:var(--text-muted); }
+    .pan-visita b { color:var(--text-primary); font-weight:600; }
 
     .pan-top { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
     .pan-h1 { margin:0; font-size:1.5rem; font-weight:700; letter-spacing:-0.02em; color:var(--text-primary); }
@@ -566,7 +602,17 @@
         if (!string.IsNullOrEmpty(Ver) && Metricas.Any(m => m.Key == Ver)) metrica = Ver;
     }
 
-    protected override async Task OnInitializedAsync() => await Cargar();
+    protected override async Task OnInitializedAsync() => await Task.WhenAll(Cargar(), CargarVisitas());
+
+    private VisitasPaginasDto? visitas;
+
+    // Va aparte: si Google tarda o falla, el resto de Panorama no se entera.
+    private async Task CargarVisitas()
+    {
+        try { visitas = await Api.GetVisitasPaginasAsync(); }
+        catch { visitas = null; }
+        StateHasChanged();
+    }
 
     private async Task CambiarPeriodo(string p)
     {

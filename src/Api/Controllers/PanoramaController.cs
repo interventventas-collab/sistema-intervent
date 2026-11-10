@@ -32,4 +32,10 @@ public class PanoramaController : ControllerBase
         var data = await _svc.GetAsync(periodo, meses, mes, ct);
         return Ok(data);
     }
+
+    /// <summary>Visitas de las páginas web. Va aparte para que Panorama no dependa de Google.</summary>
+    [HttpGet("visitas")]
+    public async Task<IActionResult> GetVisitas([FromServices] VisitasPaginasService visitas,
+                                                CancellationToken ct = default)
+        => Ok(await visitas.GetAsync(ct));
 }
