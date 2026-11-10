@@ -25,7 +25,17 @@
     {
         @foreach (var d in Svc.Actual.Directos.Where(Visible))
         {
-            <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloBoton(d.Href)" @onclick="() => Ir(d)">@d.Label</button>
+            @if (d.Nuevo is { } tipo)
+            {
+                <span class="mnb-doble">
+                    <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloBoton(d.Href)" @onclick="() => Ir(d)">@d.Label</button>
+                    <button class="mnb-mas" title="@TituloNuevo(tipo)" aria-label="@TituloNuevo(tipo)" @onclick="() => Nuevo(tipo)">+</button>
+                </span>
+            }
+            else
+            {
+                <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloBoton(d.Href)" @onclick="() => Ir(d)">@d.Label</button>
+            }
         }
     }
     <span class="mnb-sep"></span>
@@ -68,6 +78,8 @@
     [Parameter, EditorRequired] public Func<string, bool> HasPerm { get; set; } = default!;
     [Parameter, EditorRequired] public Action<string> NavigateTo { get; set; } = default!;
     [Parameter] public EventCallback OnBuscar { get; set; }
+    /// <summary>El + pegado a un botón: carga uno nuevo (venta, cobranza, alquiler, pago).</summary>
+    [Parameter] public Action<string>? OnNuevo { get; set; }
     /// <summary>Solo el dueño acomoda; lo que acomoda vale para todos los que usen el menú nuevo.</summary>
     [Parameter] public bool PuedeAcomodar { get; set; }
 
@@ -172,7 +184,10 @@
                                 <button class="mnb-ico" title="Bajar" disabled="@(idx == items.Count - 1)" @onclick="() => Correr(clave, idx, +1)">▼</button>
                                 @if (clave == DIRECTOS)
                                 {
-                                    <button class="mnb-ico" title="Sacar de los directos (sigue en su sección)" @onclick="() => SacarDirecto(it.Href)">✕</button>
+                                    @if (it.Nuevo == null)
+                                    {
+                                        <button class="mnb-ico" title="Sacar de los directos (vuelve a su sección)" @onclick="() => SacarDirecto(it.Href)">✕</button>
+                                    }
                                 }
                                 else
                                 {
@@ -233,6 +248,21 @@
         if (it.Externo) Nav.NavigateTo(it.Href, forceLoad: true);
         else NavigateTo(it.Href);
     }
+
+    private void Nuevo(string tipo)
+    {
+        abierto = null;
+        OnNuevo?.Invoke(tipo);
+    }
+
+    private static string TituloNuevo(string tipo) => tipo switch
+    {
+        "venta" => "Cargar una venta nueva (atajo: N y después V)",
+        "cobranza" => "Cargar una cobranza nueva (atajo: N y después C)",
+        "alquiler" => "Cargar una reserva de alquiler nueva (atajo: N y después A)",
+        "pago" => "Cargar un pago a proveedor nuevo (atajo: N y después P)",
+        _ => "Cargar nuevo"
+    };
 
     /// <summary>MainLayout lo llama al cambiar de pantalla (por si se navegó por otro lado).</summary>
     public void Cerrar()
