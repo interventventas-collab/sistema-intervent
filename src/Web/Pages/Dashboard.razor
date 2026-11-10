@@ -753,6 +753,9 @@ else
         </div>
     </div>
 
+    @* 2026-11-10: admin ya ve los cheques en la pastilla de la derecha. *@
+    @if (!DashNuevo)
+    {
     @* Cheques por pagar — próximos a pagar (misma data que el botón de la topbar) *@
     <div class="dashboard-detail-card mac-stat-card accent-amber @(AlertaCard("CHEQUE_VENCE") is not null ? "dash-card-alerta" : "")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/cheques-todos?vista=A_PAGAR")' title="Ir a los cheques que tengo que pagar">
         @if (AlertaCard("CHEQUE_VENCE") is string msgCheq)
@@ -797,7 +800,11 @@ else
         }
         <div class="tres-card-foot">Ver todos ›</div>
     </div>
+    }
 
+    @* 2026-11-10: admin ya ve Shell arriba (botón amarillo) y los cheques en la pastilla de la derecha. *@
+    @if (!DashNuevo)
+    {
     @* Shell Flota — saldo disponible (robot lee el saldo solo). 2026-07-08: bajó un nivel *@
     <div class="dashboard-detail-card mac-stat-card accent-amber @(AlertaCard("SHELL_BAJO") is not null ? "dash-card-alerta" : "")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/integraciones/shell")' title="Ir a Shell Flota">
         <CustomCardOverlay CardKey="shell-flota" Settings="@cardCustomSettings" />
@@ -830,6 +837,7 @@ else
             }
         }
     </div>
+    }
 
     @* Saldo Mercado Pago (API oficial — saldo disponible) — 2026-07-04 *@
     <div class="dashboard-detail-card mac-stat-card accent-blue" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/integraciones/mercadopago")' title="Ir a Mercado Pago">
@@ -1888,7 +1896,7 @@ else
     /// <summary>2026-11-10: el chat del equipo del Dashboard arranca cerrado.</summary>
     private bool chatAbierto;
     /// <summary>2026-11-10: "Equipo hoy" arranca plegado (pedido del dueño).</summary>
-    private bool equipoAbierto;
+    private bool equipoAbierto = true;
     private bool DashNuevo => userCargado && string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase);
     private Dictionary<int, List<string>> equipoHoras = new();
     private bool mapaMiniIniciado;
