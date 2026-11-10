@@ -79,7 +79,7 @@ public class StockIdealController : ControllerBase
 
     // Proyeccion liviana: lo justo para armar las filas sin traer la entidad entera.
     private record ProdInfo(int Id, string? Sku, string Nombre, string? Marca, string? Categoria,
-        int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso, int? UxB);
+        int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso, int? UxB, string? Barcode);
 
     /// <summary>El cafe se mide en kilos (viene guardado en gramos); todo lo demas, en unidades.</summary>
     private static bool EsCafe(string? categoria)
@@ -188,7 +188,7 @@ public class StockIdealController : ControllerBase
             .Select(p => new ProdInfo(
                 p.Id, p.Sku, p.Nombre,
                 p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null),
-                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal, p.StockPiso, p.UxB))
+                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal, p.StockPiso, p.UxB, p.Barcode))
             .ToListAsync();
 
         return lista
@@ -266,7 +266,7 @@ public class StockIdealController : ControllerBase
 
     public record CeluEntrarRequest(string? Clave);
     public record CeluFila(int ProductoId, string? Codigo, string Nombre, string? Marca,
-        decimal StockActual, int? StockIdeal, int? StockPiso, string Unidad);
+        decimal StockActual, int? StockIdeal, int? StockPiso, string Unidad, string? Barcode);
 
     private const int MAX_ITEMS_CELU = 20;
 
@@ -316,7 +316,7 @@ public class StockIdealController : ControllerBase
         var prods = await CargarProductosAsync(null, null, null);
         return Ok(prods
             .OrderBy(p => p.Nombre)
-            .Select(p => new CeluFila(p.Id, p.Sku, p.Nombre, p.Marca, StockDe(p), p.StockIdeal, p.StockPiso, UnidadDe(p.Categoria)))
+            .Select(p => new CeluFila(p.Id, p.Sku, p.Nombre, p.Marca, StockDe(p), p.StockIdeal, p.StockPiso, UnidadDe(p.Categoria), p.Barcode))
             .ToList());
     }
 

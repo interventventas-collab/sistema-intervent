@@ -4,6 +4,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 @using System.Globalization
 @using System.Text.RegularExpressions
 
@@ -29,6 +30,13 @@
     .ic-dos { display:flex; gap:0.6rem; margin-top:0.4rem; }
     .ic-dos label { flex:1; min-width:0; font-size:0.76rem; color:#6b7280; margin:0; }
     .ic-dos input { display:block; width:100%; box-sizing:border-box; min-height:44px; margin-top:2px; border:1px solid #d1d5db; border-radius:7px; padding:0.3rem 0.6rem; font:inherit; font-size:16px; font-weight:600; color:#111827; }
+    .ic-fila-busca { display:flex; gap:0.5rem; margin-bottom:0.6rem; }
+    .ic-fila-busca .ic-busca { flex:1; min-width:0; margin-bottom:0; }
+    .ic-escanear { flex-shrink:0; min-height:46px; padding:0 0.9rem; background:#111827; color:#fff; border:none; border-radius:8px; font:inherit; font-weight:700; }
+    .ic-lector { background:#000; border-radius:10px; overflow:hidden; margin-bottom:0.5rem; }
+    .ic-cancelar { width:100%; min-height:44px; margin-bottom:0.6rem; background:#fff; border:1px solid #d1d5db; border-radius:8px; font:inherit; font-weight:600; color:#111827; }
+    .ic-codigo { display:flex; align-items:center; gap:0.5rem; font-size:0.88rem; color:#374151; margin:-0.2rem 0 0.6rem; }
+    .ic-codigo button { margin-left:auto; background:none; border:none; color:#6b7280; font:inherit; text-decoration:underline; }
     .ic-mas { display:block; width:100%; min-height:46px; background:#fff; border:1px solid #d1d5db; border-radius:8px; font:inherit; font-weight:600; color:#111827; }
 </style>
 
@@ -50,10 +58,29 @@
     }
     else
     {
-        <input class="ic-busca" type="search" placeholder="🔍 Buscar producto, marca o código" @bind="busca" @bind:event="oninput" @bind:after="() => limite = PASO" />
+        @if (escaneando)
+        {
+            <div id="ic-lector" class="ic-lector"></div>
+            <button class="ic-cancelar" @onclick="DejarDeEscanear">Cancelar</button>
+        }
+        else
+        {
+            <div class="ic-fila-busca">
+                <input class="ic-busca" type="search" placeholder="🔍 Buscar producto, marca o código" @bind="busca" @bind:event="oninput" @bind:after="() => limite = PASO" />
+                <button class="ic-escanear" @onclick="Escanear">📷 Escanear</button>
+            </div>
+        }
+        @if (errorCamara is not null) { <div class="ic-error" style="margin:-0.2rem 0 0.6rem;">@errorCamara</div> }
+        @if (escaneado is not null && !escaneando)
+        {
+            <div class="ic-codigo">
+                <span>Código <b>@escaneado</b>: @(Filtradas.Count == 1 ? "1 producto" : $"{Filtradas.Count} productos")</span>
+                <button @onclick="LimpiarEscaneo">Ver todos</button>
+            </div>
+        }
         @if (Filtradas.Count == 0)
         {
-            <p class="ic-txt">No hay productos con esa búsqueda.</p>
+            <p class="ic-txt">@(escaneado is not null ? "Ningún producto tiene cargado ese código de barras." : "No hay productos con esa búsqueda.")</p>
         }
         @foreach (var f in Filtradas.Take(limite))
         {
@@ -105,10 +132,71 @@
     {
         get
         {
+            if (filas is null) return new();
+            // Escaneado: solo los que tienen ESE código (también sin los ceros de adelante: EAN vs UPC).
+            if (escaneado is not null)
+                return filas.Where(f => MismoCodigo(f.Barcode, escaneado) || MismoCodigo(f.Codigo, escaneado)).ToList();
             var q = busca.Trim();
-            if (filas is null || q.Length == 0) return filas ?? new();
-            return filas.Where(f => Tiene(f.Nombre, q) || Tiene(f.Marca, q) || Tiene(f.Codigo, q)).ToList();
+            if (q.Length == 0) return filas;
+            return filas.Where(f => Tiene(f.Nombre, q) || Tiene(f.Marca, q) || Tiene(f.Codigo, q) || Tiene(f.Barcode, q)).ToList();
         }
+    }
+
+    private static bool MismoCodigo(string? guardado, string leido)
+    {
+        if (string.IsNullOrWhiteSpace(guardado)) return false;
+        var a = guardado.Trim();
+        return string.Equals(a, leido, StringComparison.OrdinalIgnoreCase)
+            || (a.TrimStart('0').Length > 0 && a.TrimStart('0') == leido.TrimStart('0'));
+    }
+
+    // ───── Escanear con la cámara (mismo lector que el escáner del depósito) ─────
+    private bool escaneando;
+    private string? escaneado, errorCamara;
+    private DotNetObjectReference<IdealCelu>? refJs;
+
+    private async Task Escanear()
+    {
+        errorCamara = null;
+        refJs ??= DotNetObjectReference.Create(this);
+        escaneando = true;
+        StateHasChanged();
+        await Task.Yield(); // que el cuadro del lector entre a la pantalla
+        try { await JS.InvokeVoidAsync("scannerBarcode.start", "ic-lector", refJs); }
+        catch { errorCamara = "No se pudo abrir la cámara."; escaneando = false; }
+    }
+
+    private async Task DejarDeEscanear()
+    {
+        escaneando = false;
+        try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { }
+    }
+
+    [JSInvokable]
+    public async Task OnScanDetected(string text, string format)
+    {
+        if (string.IsNullOrWhiteSpace(text) || !escaneando) return;
+        await DejarDeEscanear();
+        escaneado = text.Trim();
+        busca = "";
+        limite = PASO;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnScanError(string message)
+    {
+        errorCamara = message;
+        escaneando = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void LimpiarEscaneo() { escaneado = null; busca = ""; limite = PASO; }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (escaneando) { try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { } }
+        refJs?.Dispose();
     }
 
     private static bool Tiene(string? texto, string q) => texto is not null
