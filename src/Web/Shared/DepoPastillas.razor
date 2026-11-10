@@ -104,13 +104,13 @@
     @* 2026-11-09: las pastillas muestran solo cantidades; el detalle se ve al pasar el cursor y tocando se abre la ventana. *@
     <div class="dp-big me1 @Marcas("me1")" @onclick='() => Tocar("me1")'>
         <div class="dp-t">🚚 ME1 @Nuevo("me1") <span class="dp-n @(Me1SinImprimir.Count == 0 ? "cero" : "")">@Me1ParaDespachar.Count</span></div>
-        <div class="dp-l gris">@(Me1ParaDespachar.Count == 0 ? "Nada para despachar" : Me1SinImprimir.Count == 0 ? "para despachar · todas con etiqueta" : $"para despachar · {Me1SinImprimir.Count} sin etiqueta")</div>
+        <div class="dp-l gris">@(Me1ParaDespachar.Count == 0 ? "Nada para despachar" : Me1SinImprimir.Count == 0 ? "para despachar · todas impresas" : $"para despachar · {Me1SinImprimir.Count} para imprimir")</div>
         <div class="dp-prev">
             <div class="dp-prev-t">Envíos ME1 para despachar</div>
             @if (Me1ParaDespachar.Count == 0) { <div class="dp-prev-f">No hay envíos para despachar</div> }
             @foreach (var o in Me1ParaDespachar.Take(5))
             {
-                <div class="dp-prev-f"><b>@Producto(o)</b><small>@Quien(o) · @(o.EtiquetaImpresa ? "con etiqueta" : "sin etiqueta")</small></div>
+                <div class="dp-prev-f"><b>@Producto(o)</b><small>@Quien(o) · @(o.EtiquetaImpresa ? "impresa" : "para imprimir")</small></div>
             }
             @if (Me1SinImprimir.Count > 0)
             {
@@ -123,13 +123,13 @@
 
     <div class="dp-big ven @Marcas("ven")" @onclick='() => Tocar("ven")'>
         <div class="dp-t">🏷️ Ventas MeLi @Nuevo("ven") <span class="dp-n @(VentasSinEtiqueta.Count == 0 ? "cero" : "")">@VentasSinEtiqueta.Count</span></div>
-        <div class="dp-l gris">sin etiqueta · Flex @ventas.Count(v => v.TipoClave == "flex") · Correo @ventas.Count(v => v.TipoClave == "correo")</div>
+        <div class="dp-l gris">para imprimir · Flex @ventas.Count(v => v.TipoClave == "flex") · Correo @ventas.Count(v => v.TipoClave == "correo")</div>
         <div class="dp-prev">
             <div class="dp-prev-t">Últimas ventas para despachar</div>
             @if (ventas.Count == 0) { <div class="dp-prev-f">No hay ventas para despachar</div> }
             @foreach (var o in ventas.Take(5))
             {
-                <div class="dp-prev-f"><b>@Producto(o)</b><small>@o.Tipo · @Dia(o.Fecha) @o.Fecha.ToString("HH:mm") · @(o.EtiquetaImpresa ? "con etiqueta" : "sin etiqueta")</small></div>
+                <div class="dp-prev-f"><b>@Producto(o)</b><small>@o.Tipo · @Dia(o.Fecha) @o.Fecha.ToString("HH:mm") · @(o.EtiquetaImpresa ? "impresa" : "para imprimir")</small></div>
             }
         </div>
     </div>
