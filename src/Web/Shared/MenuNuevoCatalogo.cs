@@ -22,10 +22,12 @@ public static class MenuNuevoCatalogo
     /// <summary>Botones directos de todos los días (un clic, sin abrir nada).</summary>
     public static readonly Item[] Directos =
     {
+        // 2026-11-10: la barra de arriba queda con estos 5 solos, en este orden (pedido del dueño).
+        new("Preparación", "/cafe/preparacion"),
         new("Ventas", "/cafe/ventas", Nuevo: "venta"),
         new("Cobranzas", "/cafe/tesoreria/cobranzas", Nuevo: "cobranza"),
         new("Pagos", "/cafe/tesoreria/pagos", Nuevo: "pago"),
-        new("Preparación", "/cafe/preparacion"),
+        new("MAPEO", "/mapeo?full=1", Externo: true),
     };
 
     /// <summary>Tienen su + en el desplegable (Stock, Intereventos): no vuelven como botón suelto,
@@ -184,6 +186,9 @@ public static class MenuNuevoCatalogo
         return null;
     }
 
+    public static bool EsDirectoDeFabrica(string href)
+        => Directos.Any(d => string.Equals(d.Href, href, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Cómo queda el menú para mostrar: grupos con sus renglones ya ordenados.</summary>
     public record GrupoArmado(Grupo Grupo, List<Item> Items);
     public record Armado(List<Item> Directos, List<GrupoArmado> Grupos, List<Item> Mas,
@@ -246,8 +251,9 @@ public static class MenuNuevoCatalogo
             .Where(i => !NoDirectos.Contains(i.Href))
             .Select(i => Directos.FirstOrDefault(d => string.Equals(d.Href, i.Href, StringComparison.OrdinalIgnoreCase)) ?? i)
             .ToList();
-        // Los que tienen + van siempre primero, aunque lo guardado sea de antes de que existieran.
-        var directos = Directos.Where(d => d.Nuevo != null).Concat(guardados.Where(i => i.Nuevo == null)).ToList();
+        // 2026-11-10: los 5 de fábrica van siempre primero y en su orden; después, si el dueño
+        // marcó alguno más con ★, ese también.
+        var directos = Directos.Concat(guardados.Where(i => i.Nuevo == null && !EsDirectoDeFabrica(i.Href))).ToList();
         // Cada pantalla una sola vez: lo que tiene botón directo no se repite en los desplegables.
         foreach (var d in directos) usados.Add(d.Href);
         var grupos = Grupos.Select(g =>
@@ -297,7 +303,8 @@ public static class MenuNuevoCatalogo
         new("Mis alertas", "/mis-alertas", SoloCelu: true),
         new("Automatizaciones y alertas", "/automatizaciones"),
         new("Compartido", "/compartido", "compartido"),
-        new("WhatsApp · Chats", "/whatsapp", "cafe-depositos", SoloCelu: true),
+        // 2026-11-10: el botón verde de WhatsApp ya no está arriba en compu: queda acá, en "⚙ Organizar".
+        new("WhatsApp · Chats", "/whatsapp", "cafe-depositos"),
         new("WhatsApp · Llamadas", "/llamadas", "cafe-depositos"),
         new("Documentación", "/documentacion"),
     };

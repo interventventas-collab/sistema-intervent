@@ -6,6 +6,8 @@
 @inject NavigationManager Nav
 @inject MenuNuevoService Svc
 @inject ToastService Toast
+@inject ApiClient Api
+@inject HttpClient Http
 
 <div class="mnb @(editando ? "editando" : "")">
     @if (editando)
@@ -25,21 +27,27 @@
     {
         @foreach (var d in Svc.Actual.Directos.Where(Visible))
         {
-            @if (d.Nuevo is { } tipo)
-            {
-                <span class="mnb-doble">
+            <span class="mnb-cont">
+                @if (d.Nuevo is { } tipo)
+                {
+                    <span class="mnb-doble">
+                        <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloBoton(d.Href)" @onclick="() => Ir(d)">@d.Label</button>
+                        <button class="mnb-mas" title="@TituloNuevo(tipo)" aria-label="@TituloNuevo(tipo)" @onclick="() => Nuevo(tipo)">+</button>
+                    </span>
+                }
+                else
+                {
                     <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloBoton(d.Href)" @onclick="() => Ir(d)">@d.Label</button>
-                    <button class="mnb-mas" title="@TituloNuevo(tipo)" aria-label="@TituloNuevo(tipo)" @onclick="() => Nuevo(tipo)">+</button>
-                </span>
-            }
-            else
-            {
-                <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloBoton(d.Href)" @onclick="() => Ir(d)">@d.Label</button>
-            }
+                }
+                @Numerito(d.Href)
+            </span>
         }
     }
+    @* 2026-11-10: las secciones pasaron al menú de la izquierda; acá solo aparecen al acomodar. *@
+    @if (editando)
+    {
     <span class="mnb-sep"></span>
-    @{ var primeroDeTodos = true; }
+    var primeroDeTodos = true;
     @foreach (var ga in (editando ? Svc.Actual.Grupos : Svc.Actual.Grupos))
     {
         var g = ga.Grupo;
@@ -51,6 +59,7 @@
             <span class="mnb-sep"></span>
         }
         @Desplegable(g.Titulo, g.Titulo, g.Subtitulo, items, g.Nuevo)
+    }
     }
     @if (editando)
     {
@@ -131,9 +140,89 @@
     {
         Svc.OnChange += Repintar;
         await Svc.EnsureLoadedAsync();
+        // 2026-11-10: los numeritos se refrescan solos cada minuto.
+        _ = CargarNumeritos();
+        reloj = new System.Threading.Timer(_ => _ = CargarNumeritos(), null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
     }
     private void Repintar() => InvokeAsync(StateHasChanged);
-    public void Dispose() => Svc.OnChange -= Repintar;
+    public void Dispose()
+    {
+        Svc.OnChange -= Repintar;
+        reloj?.Dispose();
+    }
+
+    // ───────── Numeritos (2026-11-10) ─────────
+    // 📦 Preparación = pedidos para armar · 🚚 Ventas = ventas sin entregar (misma regla que el
+    // resumen del listado de Ventas) · 💰 Cobranzas = cobros de repartidores para volcar (lo que
+    // antes era la bolsita de arriba). Al pasar el mouse se ve la lista; tocando el número se va a
+    // la pantalla. Si no hay nada, no se muestra.
+    private System.Threading.Timer? reloj;
+    private int prepN, ventasN, cobN;
+    private List<(string Izq, string Der)> prepL = new(), ventasL = new(), cobL = new();
+    private bool cargando;
+
+    private record SinEntregarResp(int Total, List<SinEntregarItem> Items);
+    private record SinEntregarItem(int Id, string Numero, DateTime Fecha, string Cliente, string? EntregaPor, string? EstadoPreparacion, bool Retira);
+
+    private async Task CargarNumeritos()
+    {
+        if (cargando) return;
+        cargando = true;
+        try
+        {
+            var ar = new System.Globalization.CultureInfo("es-AR");
+            try
+            {
+                var prep = await Api.GetCafePreparacionAsync(7) ?? new();
+                prepN = prep.Count;
+                prepL = prep.Take(5).Select(p => (p.ClienteNombre, "$" + p.Total.ToString("N0", ar))).ToList();
+            }
+            catch { }
+            try
+            {
+                var r = await Http.GetFromJsonAsync<SinEntregarResp>("/api/cafe/ventas/sin-entregar-resumen?max=5");
+                if (r != null)
+                {
+                    ventasN = r.Total;
+                    ventasL = r.Items.Select(i => (i.Cliente,
+                        i.Retira ? "retira" : !string.IsNullOrWhiteSpace(i.EntregaPor) ? i.EntregaPor! : "sin repartidor")).ToList();
+                }
+            }
+            catch { }
+            try
+            {
+                cobN = await Api.GetCountCobranzasPendientesAsync() + await Api.GetCountAlqCobranzasPendientesAsync()
+                     + await Api.GetCountRediPendientesAsync();
+                var cobs = await Api.GetCobranzasPendientesAsync() ?? new();
+                cobL = cobs.Take(5).Select(c => ((c.ClienteNombre ?? c.VentaNumero) + " · " + c.RepartidorNombre,
+                    "$" + c.Importe.ToString("N0", ar))).ToList();
+            }
+            catch { }
+            await InvokeAsync(StateHasChanged);
+        }
+        finally { cargando = false; }
+    }
+
+    private RenderFragment Numerito(string href) => __builder =>
+    {
+        var (n, lista, ico, clase, titulo, destino) = href.ToLowerInvariant() switch
+        {
+            "/cafe/preparacion" => (prepN, prepL, "📦", "prep", "para armar", "/cafe/preparacion"),
+            "/cafe/ventas" => (ventasN, ventasL, "🚚", "ven", "ventas sin entregar", "/cafe/ventas"),
+            "/cafe/tesoreria/cobranzas" => (cobN, cobL, "💰", "cob", "cobros de repartidores para volcar", "/cafe/cobranzas-pendientes"),
+            _ => (0, new List<(string, string)>(), "", "", "", ""),
+        };
+        if (n <= 0) return;
+        <button class="mnb-num @clase" title="@($"{n} {titulo}")" @onclick="() => NavigateTo(destino)">@ico @(n > 99 ? "99+" : n.ToString())</button>
+        <div class="mnb-pop" @onclick="() => NavigateTo(destino)">
+            <div class="mnb-pop-t">@n @titulo</div>
+            @foreach (var (izq, der) in lista)
+            {
+                <div class="mnb-pop-f"><span>@izq</span><small>@der</small></div>
+            }
+            <div class="mnb-pop-mas">@(n > lista.Count ? $"y {n - lista.Count} más · " : "")ver todo ›</div>
+        </div>
+    };
 
     // ───────── Un desplegable (normal o acomodando) ─────────
     private RenderFragment Desplegable(string clave, string titulo, string subtitulo, List<MenuNuevoCatalogo.Item> items, string? nuevo = null) => __builder =>
@@ -189,7 +278,7 @@
                                 <button class="mnb-ico" title="Bajar" disabled="@(idx == items.Count - 1)" @onclick="() => Correr(clave, idx, +1)">▼</button>
                                 @if (clave == DIRECTOS)
                                 {
-                                    @if (it.Nuevo == null)
+                                    @if (it.Nuevo == null && !MenuNuevoCatalogo.EsDirectoDeFabrica(it.Href))
                                     {
                                         <button class="mnb-ico" title="Sacar de los directos (vuelve a su sección)" @onclick="() => SacarDirecto(it.Href)">✕</button>
                                     }

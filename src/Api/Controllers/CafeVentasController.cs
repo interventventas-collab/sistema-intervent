@@ -5070,6 +5070,31 @@ public class CafeVentasController : ControllerBase
     // contar sobre lo cargado daria numeros falsos (y los pendientes viejos, de enero
     // o junio, ni siquiera estarian en la pagina).
     // ═══════════════════════════════════════════════════════════════════════════
+    // 2026-11-10: numerito 🚚 del botón Ventas en la barra de arriba (menú nuevo). Misma regla de
+    // "sin entregar" que el resumen del listado de Ventas, para que los dos números coincidan.
+    // Devuelve el total y las más viejas primero (las que más urgen) para la listita al pasar el mouse.
+    [HttpGet("sin-entregar-resumen")]
+    public async Task<IActionResult> SinEntregarResumen([FromQuery] int max = 6)
+    {
+        max = Math.Clamp(max, 1, 20);
+        var q = _db.CafeVentas.AsNoTracking()
+            .Where(v => v.Estado != "anulado" && v.EntregadoAt == null && v.EstadoPreparacion != null);
+        var total = await q.CountAsync();
+        var items = await q.OrderBy(v => v.Fecha).ThenBy(v => v.Id).Take(max)
+            .Select(v => new
+            {
+                v.Id,
+                v.Numero,
+                v.Fecha,
+                Cliente = v.ClienteNav != null ? v.ClienteNav.Nombre : (v.ClienteNombreSnapshot ?? ""),
+                v.EntregaPor,
+                v.EstadoPreparacion,
+                v.Retira,
+            })
+            .ToListAsync();
+        return Ok(new { total, items });
+    }
+
     [HttpGet("resumen-listado")]
     public async Task<IActionResult> ResumenListado([FromServices] CafeSaldosService saldos)
     {
