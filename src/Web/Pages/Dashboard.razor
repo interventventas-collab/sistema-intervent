@@ -104,6 +104,19 @@ else
    Productos, Stock). El resto sigue viendo el dashboard normal. *@
 @if (!isDepositoOnly)
 {
+@* 2026-11-10: Dashboard nuevo (solo admin): el contenido a la izquierda y la columna de pastillas
+   vivas de la oficina a la derecha (OficinaPastillas). Los demás usuarios lo ven igual que siempre. *@
+<style>
+    .op-wrap { display:grid; grid-template-columns:minmax(0,1fr) 290px; gap:1rem; align-items:start; }
+    .op-wrap > .op-main { min-width:0; }
+    @@media (max-width: 899px) {
+        .op-wrap { grid-template-columns:minmax(0,1fr); }
+        .op-wrap > .op-side { order:-1; min-width:0; }
+    }
+    .dash-eh-summary { display:inline-flex; flex-wrap:wrap; gap:0.9rem; margin-left:0.6rem; font-size:0.78rem; font-weight:400; color:#6b7280; }
+</style>
+<div class="@(DashNuevo ? "op-wrap" : "")">
+<div class="@(DashNuevo ? "op-main" : "")">
 @* 2026-06-22: rediseño Mac/iOS — tarjetas blancas, bordes finos, iconos SVG uniformes.
    Las acciones y dropdowns NO cambian: misma logica, mismas rutas. *@
 @* 2026-07-08: la tira mini (dólar + disco) se movió a la fila de chips de arriba de todo
@@ -114,9 +127,34 @@ else
 <div class="dash-card">
     <div class="dash-card-title">
         <span class="dash-card-title-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></span>
-        Equipo trabajando ahora
+        @if (DashNuevo)
+        {
+            @* 2026-11-10: "Equipo hoy" en rayitas — resumen en una línea. *@
+            <span>Equipo hoy</span>
+            @if (equipoResp is not null)
+            {
+                var visEq = equipoResp.Items.Where(x => EmpVisible(x.NomEmpleadoId)).ToList();
+                var nFich = visEq.Count(x => x.Estado == "trabajando");
+                var nFue = visEq.Count(x => x.Estado == "salio");
+                var nRep = visEq.Count(x => EquipoHoyRayitas.Tipo(x) == "repartiendo");
+                var nNo = visEq.Count(x => x.Estado == "sin-fichar" && EquipoHoyRayitas.Tipo(x) == "nada");
+                <span class="dash-eh-summary">
+                    <span><span class="dash-dot" style="background:#10b981;"></span>@nFich trabajando</span>
+                    @if (nFue > 0)
+                    {
+                        <span><span class="dash-dot" style="background:#10b981;"></span>@nFue ya se fue@(nFue == 1 ? "" : "ron")</span>
+                    }
+                    <span><span class="dash-dot" style="background:#f59e0b;"></span>@nRep repartiendo sin fichar</span>
+                    <span><span class="dash-dot" style="background:#9ca3af;"></span>@nNo no vino@(nNo == 1 ? "" : "ieron")</span>
+                </span>
+            }
+        }
+        else
+        {
+        <text>Equipo trabajando ahora</text>
         <span class="dash-card-title-pill">en vivo</span>
-        @if (equipoResp?.Resumen is not null)
+        }
+        @if (!DashNuevo && equipoResp?.Resumen is not null)
         {
             <span class="dash-equipo-summary">
                 <span><span class="dash-dot" style="background:#16a34a;"></span>@equipoResp.Resumen.Trabajando trabajando</span>
@@ -160,6 +198,11 @@ else
     @if (equipoLoading && equipoResp is null)
     {
         <div class="dash-card-sub">Cargando equipo…</div>
+    }
+    else if (DashNuevo && equipoResp is not null && equipoResp.Items.Count > 0)
+    {
+        <EquipoHoyRayitas Items="@equipoResp.Items.Where(x => EmpVisible(x.NomEmpleadoId)).ToList()"
+                          Horas="@equipoHoras" OnClickEmp="OpenEmpDetalle" />
     }
     else if (equipoResp is not null && equipoResp.Items.Count > 0)
     {
@@ -418,7 +461,11 @@ else
 }
 
 @* === 2026-07-08: Fila de 3 cards operativas (Preparación + Alquileres en calle + me1) ===
-   Pedido Osmar: van entre "Equipo trabajando ahora" y las cards financieras. Cuadradas y algo altas. *@
+   Pedido Osmar: van entre "Equipo trabajando ahora" y las cards financieras. Cuadradas y algo altas.
+   2026-11-10: en el Dashboard nuevo (admin) esta fila no va: Preparación, Alquileres, ME1 y el mapa
+   pasan a las pastillas de la derecha / al menú. *@
+@if (userCargado && !DashNuevo)
+{
 <div class="dashboard-tres-cards">
 
     @* Preparación de pedidos — resumen de /cafe/preparacion *@
@@ -637,6 +684,7 @@ else
     </div>
 
 </div>
+} @* fin fila de 3 cards (no va en el Dashboard nuevo) *@
 
 @* === Fila de KPIs financieros: Shell + Galicia + Ventas del mes + Saldos + Doc ===
    2026-06-22: rediseño Mac — blanco con borde izquierdo de color, icono pastel, tipografia limpia.
@@ -1787,10 +1835,22 @@ else
 @* === Cheques por pagar — calendario visual === *@
 <ChequesPorPagarCalendario />
 
+</div> @* fin op-main *@
+@if (DashNuevo)
+{
+    <div class="op-side"><OficinaPastillas /></div>
+}
+</div> @* fin op-wrap *@
 } @* fin @if (!isDepositoOnly) *@
 
 @code {
     private string username = "usuario";
+    // 2026-11-10: Dashboard nuevo (rayitas del equipo + pastillas a la derecha) solo para admin,
+    // con la misma condición que usa MainLayout para el menú nuevo.
+    private bool userCargado;
+    private bool DashNuevo => userCargado && string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase);
+    private Dictionary<int, List<string>> equipoHoras = new();
+    private bool mapaMiniIniciado;
     // 2026-05-30: hide widgets dashboard para usuarios SOLO depósito.
     private List<string> userPermissions = new();
     private bool isDepositoOnly => userPermissions.Contains("deposito")
@@ -1943,8 +2003,11 @@ else
             catch { /* si el navegador bloquea localStorage, quedan desplegadas por default */ }
         }
 
-        if (firstRender)
+        // 2026-11-10: el mini-mapa se arma cuando ya se sabe quién es el usuario (en el Dashboard
+        // nuevo del admin no está la card del mapa).
+        if (userCargado && !mapaMiniIniciado && !DashNuevo && !isDepositoOnly)
         {
+            mapaMiniIniciado = true;
             await InitMapaMiniAsync();
         }
     }
@@ -2040,6 +2103,7 @@ else
 
     private async Task LoadPrepResumenAsync()
     {
+        if (DashNuevo) return;   // 2026-11-10: la card no va en el Dashboard nuevo
         try
         {
             var para = await Api.GetCafePreparacionAsync(7);
@@ -2054,6 +2118,7 @@ else
 
     private async Task LoadMe1CardAsync()
     {
+        if (DashNuevo) return;   // 2026-11-10: lo muestra la pastilla "ME1 sin repartidor"
         try
         {
             if (me1Repartidores.Count == 0)
@@ -2143,6 +2208,7 @@ else
             // 2026-05-30: cargar permisos para ocultar widgets a usuarios solo depósito.
             userPermissions = user.Permissions ?? new();
         }
+        userCargado = true;
 
         // 2026-08-05: el usuario SOLO depósito ya no arranca en el dashboard, sino directo en
         // el tablero de Preparación de pedidos (Osmar). Redirigir apenas sabemos los permisos.
@@ -2352,6 +2418,7 @@ else
 
     private async Task LoadAlqResumenAsync()
     {
+        if (DashNuevo) return;   // 2026-11-10: lo muestra la pastilla "Alquileres"
         try
         {
             alqResumen = await Api.GetAlqResumenDashboardAsync();
@@ -2451,7 +2518,13 @@ else
     {
         try
         {
-            equipoResp = await Api.GetDashboardEquipoAsync();
+            if (DashNuevo)
+            {
+                // 2026-11-10: con la hora de cada entrega, para los puntitos de la rayita.
+                var (eq, horas) = await Api.GetDashboardEquipoConHorasAsync();
+                if (eq is not null) { equipoResp = eq; equipoHoras = horas; }
+            }
+            else equipoResp = await Api.GetDashboardEquipoAsync();
         }
         catch { /* mantenemos lo anterior si falla */ }
         equipoLoading = false;
