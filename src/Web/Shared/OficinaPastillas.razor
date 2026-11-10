@@ -49,6 +49,7 @@
     .op-aviso-bs button { background:#fff; color:#111827; border:none; border-radius:999px; padding:0.3rem 0.85rem; font:inherit; font-size:0.8rem; font-weight:700; cursor:pointer; }
     .op-aviso-bs button.des { background:none; color:#d1d5db; font-weight:400; }
 
+    .op-big.cor { background:linear-gradient(135deg,#e2e8f0,#f8fafc); }
     .op-big.cal { background:linear-gradient(135deg,#e0e7ff,#f5f7ff); }
     .op-vent.op-vent-cal { width:900px; max-width:calc(100vw - 340px); }
     .op-cal-cuerpo { overflow:auto; padding:0.4rem 0.6rem 0.6rem; }
@@ -100,6 +101,9 @@
 
     }
 
+    @* 2026-11-10: con ConDeposito, ME1 (despachar, imprimir y asignar) es una sola pastilla del depósito. *@
+    @if (!ConDeposito)
+    {
     @* 🚚 ME1 sin repartidor *@
     <div class="op-big me1 @Marcas("me1")" @onclick='() => Tocar("me1")'>
         <div class="op-t">🚚 ME1 sin repartidor <span class="op-n @(Me1SinRep.Count == 0 ? "cero" : "")">@Me1SinRep.Count</span></div>
@@ -119,6 +123,7 @@
         </div>
     </div>
 
+    }
     @* 🎪 Alquileres *@
     <div class="op-big alq @Marcas("alq")" @onclick='() => Tocar("alq")'>
         <div class="op-t">🎪 Alquileres <span class="op-n @(AlqNumero == 0 ? "cero" : "")">@AlqNumero</span></div>
@@ -162,6 +167,10 @@
         </div>
     </div>
 
+    @* 2026-11-10: con ConDeposito no va "Pagos a confirmar" (el dueño cree que no se usa; la pantalla sigue en el menú Plata).
+       En su lugar, 📧 Correos importantes. *@
+    @if (!ConDeposito)
+    {
     @* ✅ Pagos a confirmar *@
     <div class="op-big pag @Marcas("pag")" @onclick='() => Tocar("pag")'>
         <div class="op-t">✅ Pagos a confirmar <span class="op-n @(pagos.Count == 0 ? "cero" : "")">@pagos.Count</span></div>
@@ -180,6 +189,28 @@
             @Mas(pagos.Count)
         </div>
     </div>
+
+    }
+    @if (ConDeposito)
+    {
+        @* 📧 Correos importantes (2026-11-10): antes era una tarjeta grande abajo del Dashboard. *@
+        <div class="op-big cor @Marcas("cor")" @onclick='() => Tocar("cor")'>
+            <div class="op-t">📧 Correos importantes <span class="op-n @(correos.Count == 0 ? "cero" : "")">@correos.Count</span></div>
+            <div class="op-l gris">
+                @if (correos.Count == 0) { <text>Nada importante sin leer</text> }
+                else { <text>@Corto(NombreCorreo(correos[0]), 60)</text> }
+            </div>
+            <div class="op-prev">
+                <div class="op-prev-t">Correos importantes</div>
+                @if (correos.Count == 0) { <div class="op-prev-f">No hay correos importantes sin leer</div> }
+                @foreach (var c in correos.Take(5))
+                {
+                    <div class="op-prev-f"><b>@NombreCorreo(c)</b><small>@(string.IsNullOrWhiteSpace(c.Asunto) ? "(sin asunto)" : Corto(c.Asunto!, 80))</small></div>
+                }
+                @Mas(correos.Count)
+            </div>
+        </div>
+    }
 
     @if (!ConDeposito)
     {
@@ -403,8 +434,20 @@
         catch { }
     }
 
+    // 2026-11-10: correos importantes (pastilla).
+    private List<ApiClient.CorreoImportanteDto> correos = new();
+    private static string NombreCorreo(ApiClient.CorreoImportanteDto c)
+        => string.IsNullOrWhiteSpace(c.Remitente) ? (c.RemitenteEmail ?? "(desconocido)") : c.Remitente!;
+    private async Task CargarCorreos()
+    {
+        if (!ConDeposito) return;
+        try { correos = await Api.GetCorreosImportantesAsync(); }
+        catch { }
+    }
+
     private async Task CargarCheques()
     {
+        await CargarCorreos();
         try { cheques = await Api.GetChequesProximosPagarAsync(50); }
         catch { }
     }
@@ -479,6 +522,7 @@
             "alq" => "/alquileres",
             "che" => "/cafe/tesoreria/cheques-todos?vista=A_PAGAR",
             "pag" => "/tesoreria/pagos-pendientes",
+            "cor" => "/mis-alertas",
             "fal" => "/stock/ideal",
             _ => null
         };
