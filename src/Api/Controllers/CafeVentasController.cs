@@ -4483,6 +4483,17 @@ public class CafeVentasController : ControllerBase
         if (!salirDelFlujo && !EstadosPreparacion.Contains(nuevo))
             return BadRequest(new { error = $"Estado invalido. Valores: {string.Join(", ", EstadosPreparacion)}" });
 
+        AplicarEstadoPreparacion(_db, v, nuevo, req.OperadorNombre, req.Notas);
+        await _db.SaveChangesAsync();
+        return Ok(new { id = v.Id, estado = v.EstadoPreparacion });
+    }
+
+    /// <summary>Cambia el estado de armado y deja el renglón en el historial (con quién).
+    /// La usan el tablero y el celu del depósito (/depo/preparacion, 2026-11-10). No guarda:
+    /// el que llama hace SaveChanges. <paramref name="nuevo"/> vacío = sale del flujo.</summary>
+    public static void AplicarEstadoPreparacion(AppDbContext db, CafeVenta v, string nuevo, string? operador, string? notas)
+    {
+        var salirDelFlujo = string.IsNullOrEmpty(nuevo);
         var anterior = v.EstadoPreparacion;
         v.EstadoPreparacion = salirDelFlujo ? null : nuevo;
         v.PreparacionUpdatedAt = DateTime.UtcNow;
@@ -4492,23 +4503,34 @@ public class CafeVentasController : ControllerBase
         {
             v.ModificadoDespuesDeArmar = false;
         }
-        _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+        db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
         {
             VentaId = v.Id,
             EstadoAnterior = anterior,
             EstadoNuevo = v.EstadoPreparacion ?? "(SALIO_FLUJO)",
-            OperadorNombre = req.OperadorNombre?.Trim(),
-            Notas = req.Notas?.Trim(),
+            OperadorNombre = operador?.Trim(),
+            Notas = notas?.Trim(),
             CreatedAt = DateTime.UtcNow
         });
-        await _db.SaveChangesAsync();
-        return Ok(new { id = v.Id, estado = v.EstadoPreparacion });
+    }
+
+    /// <summary>Las ventas que están en el tablero "Pedidos para armar" (las de los últimos
+    /// <paramref name="dias"/> días). La usan el tablero y el celu del depósito (2026-11-10).</summary>
+    public static IQueryable<CafeVenta> EnTableroPreparacion(IQueryable<CafeVenta> q, int dias)
+    {
+        var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
+        return q.Where(v => v.PreparacionOcultoAt == null
+                && (v.EstadoPreparacion == "PARA_PREPARAR"
+                    || v.EstadoPreparacion == "EN_PREPARACION"
+                    || (v.EstadoPreparacion == null && v.DriveSubidoAt != null))
+                && v.Estado != "anulado"
+                // 14/10/2026: también las que alguien trajo al tablero estos días aunque la venta sea vieja.
+                && (v.CreatedAt >= desde || (v.PreparacionUpdatedAt != null && v.PreparacionUpdatedAt >= desde)));
     }
 
     [HttpGet("preparacion")]
     public async Task<IActionResult> ListarPreparacion([FromQuery] int dias = 7)
     {
-        var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
         // 2026-09-09: lo que decide si una venta esta en el tablero es SU ESTADO, no Drive.
         // Antes se exigia ademas DriveSubidoAt != null, y eso volvia INVISIBLE para el deposito
         // a toda venta cargada mientras Google tenia el permiso vencido: el cartel decia "la venta
@@ -4518,15 +4540,7 @@ public class CafeVentasController : ControllerBase
         // El caso EstadoPreparacion == null sigue atado a Drive a proposito: son ventas viejas
         // que entraron al tablero antes de que se guardara el estado. Sin esa atadura entrarian
         // TODAS las ventas de oficina que nunca se mandaron a armar.
-        var ventas = await _db.CafeVentas
-            .Include(v => v.Items)
-            .Where(v => v.PreparacionOcultoAt == null
-                && (v.EstadoPreparacion == "PARA_PREPARAR"
-                    || v.EstadoPreparacion == "EN_PREPARACION"
-                    || (v.EstadoPreparacion == null && v.DriveSubidoAt != null))
-                && v.Estado != "anulado"
-                // 14/10/2026: también las que alguien trajo al tablero estos días aunque la venta sea vieja.
-                && (v.CreatedAt >= desde || (v.PreparacionUpdatedAt != null && v.PreparacionUpdatedAt >= desde)))
+        var ventas = await EnTableroPreparacion(_db.CafeVentas.Include(v => v.Items), dias)
             // Orden: las que tienen Drive primero por DriveSubidoAt desc, las sin Drive al final por CreatedAt desc
             .OrderByDescending(v => v.DriveSubidoAt ?? v.CreatedAt)
             .Select(v => new

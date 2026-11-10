@@ -1,0 +1,253 @@
+@page "/depo/preparacion"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@using System.Net
+@using System.Net.Http.Json
+
+@* 2026-11-10: armar pedidos desde el celu del depósito, sin usuario. Se entra desde /depo con la
+   clave del día; además tiene que ser el celu habilitado (el mismo del picking). Muestra los
+   pedidos del tablero sin plata; tocar uno abre su lista de picking y "Ya armado" lo pasa a
+   armado anotando quién, igual que en la compu. *@
+
+<PageTitle>Pedidos para armar</PageTitle>
+
+<style>
+    body { background:#f3f4f6 !important; }
+    .dp-wrap { max-width:520px; margin:0 auto; padding:0.8rem; font-family:inherit; color:#111827; }
+    .dp-volver { display:inline-flex; align-items:center; min-height:44px; color:#111827; font-weight:600; text-decoration:none; }
+    .dp-tit { font-size:1.25rem; font-weight:800; margin:0.2rem 0 0.7rem; }
+    .dp-txt { color:#6b7280; font-size:0.9rem; margin:0 0 0.8rem; }
+    .dp-caja { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:1.1rem; }
+    .dp-error { color:#b91c1c; font-size:0.88rem; margin:0 0 0.6rem; }
+    .dp-ped { background:#fff; border:1px solid #e5e7eb; border-radius:10px; margin-bottom:0.5rem; overflow:hidden; }
+    .dp-abrir { display:block; width:100%; text-align:left; background:none; border:none; padding:0.7rem 0.75rem; font:inherit; color:inherit; min-height:44px; }
+    .dp-num { font-weight:800; }
+    .dp-cli { font-weight:600; overflow-wrap:anywhere; }
+    .dp-sub { font-size:0.8rem; color:#6b7280; margin-top:2px; }
+    .dp-mod { color:#b45309; font-weight:700; }
+    .dp-acc { display:flex; border-top:1px solid #e5e7eb; }
+    .dp-acc button { flex:1; min-height:46px; border:none; background:#fff; font:inherit; font-weight:700; color:#111827; }
+    .dp-acc button + button { border-left:1px solid #e5e7eb; }
+    .dp-acc .dp-listo { color:#15803d; }
+    .dp-acc button:disabled { opacity:0.5; }
+    .dp-quien { padding:0.7rem 0.75rem; border-top:1px solid #e5e7eb; background:#fffbeb; }
+    .dp-quien b { display:block; margin-bottom:0.45rem; font-size:0.9rem; }
+    .dp-chips { display:flex; flex-wrap:wrap; gap:0.4rem; }
+    .dp-chip { min-height:44px; padding:0 0.9rem; border:1px solid #d1d5db; border-radius:22px; background:#fff; font:inherit; font-weight:600; color:#111827; }
+    .dp-chip.on { background:#111827; border-color:#111827; color:#fff; }
+    .dp-quien-acc { display:flex; gap:0.5rem; margin-top:0.6rem; }
+    .dp-quien-acc button { flex:1; min-height:46px; border-radius:8px; font:inherit; font-weight:700; border:1px solid #d1d5db; background:#fff; color:#111827; }
+    .dp-quien-acc .si { background:#15803d; border-color:#15803d; color:#fff; }
+    .dp-quien-acc .si:disabled { opacity:0.45; }
+    .dp-recargar { display:block; width:100%; min-height:46px; margin-top:0.4rem; background:#fff; border:1px solid #d1d5db; border-radius:8px; font:inherit; font-weight:600; color:#111827; }
+</style>
+
+<div class="dp-wrap">
+    <a class="dp-volver" href="/depo">← Inicio</a>
+    <div class="dp-tit">📦 Pedidos para armar</div>
+
+    @if (estado == "no_habilitado")
+    {
+        <div class="dp-caja">
+            <p class="dp-txt" style="color:#111827; font-weight:600;">Este celular no está habilitado para preparar pedidos.</p>
+            <a class="dp-volver" href="/depo">← Volver</a>
+        </div>
+    }
+    else if (pedidos is null)
+    {
+        @if (error is not null) { <p class="dp-error">@error</p> }
+        else { <p class="dp-txt">Cargando…</p> }
+        @if (error is not null) { <button class="dp-recargar" @onclick="CargarAsync">Probar de nuevo</button> }
+    }
+    else
+    {
+        @if (error is not null) { <p class="dp-error">@error</p> }
+        @if (aviso is not null) { <p class="dp-txt" style="color:#15803d; font-weight:700;">@aviso</p> }
+        @if (pedidos.Count == 0)
+        {
+            <p class="dp-txt">No hay pedidos para armar. 🎉</p>
+        }
+        @foreach (var p in pedidos)
+        {
+            var ped = p;
+            <div class="dp-ped" @key="ped.Id">
+                <button class="dp-abrir" disabled="@ocupado" @onclick="() => AbrirAsync(ped)">
+                    <div><span class="dp-num">@ped.Numero</span></div>
+                    <div class="dp-cli">@ped.Cliente</div>
+                    <div class="dp-sub">
+                        @ped.Productos producto@(ped.Productos == 1 ? "" : "s") · @ped.Unidades unidad@(ped.Unidades == 1 ? "" : "es")
+                        @if (!string.IsNullOrWhiteSpace(ped.EntregaPor)) { <span> · 🚚 @ped.EntregaPor</span> }
+                        @if (ped.Modificado) { <span class="dp-mod"> · MODIFICADO</span> }
+                    </div>
+                </button>
+                @if (armandoId == ped.Id)
+                {
+                    <div class="dp-quien">
+                        <b>¿Quién armó @ped.Numero?</b>
+                        <div class="dp-chips">
+                            @foreach (var o in operadores)
+                            {
+                                var oSel = o;
+                                <button class="dp-chip @(quien == o ? "on" : "")" @onclick="() => quien = oSel">@o</button>
+                            }
+                        </div>
+                        <div class="dp-quien-acc">
+                            <button @onclick="() => armandoId = null">Cancelar</button>
+                            <button class="si" disabled="@(string.IsNullOrEmpty(quien) || ocupado)" @onclick="() => MarcarArmadoAsync(ped)">
+                                @(ocupado ? "Guardando…" : "Ya armado")
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="dp-acc">
+                        <button disabled="@ocupado" @onclick="() => AbrirAsync(ped)">📋 Abrir lista</button>
+                        <button class="dp-listo" disabled="@ocupado" @onclick="() => ElegirQuien(ped)">✅ Ya armado</button>
+                    </div>
+                }
+            </div>
+        }
+        <button class="dp-recargar" disabled="@ocupado" @onclick="CargarAsync">↻ Actualizar</button>
+    }
+</div>
+
+@code {
+    private const string CLAVE_PASE = "ideal_celu_pase";
+    private const string CLAVE_DEVICE = "picking_device_id";
+    private const string ENCABEZADO_PASE = "X-Pase-Celu";
+
+    private string? pase, deviceId, estado, error, quien, aviso;
+    private List<PedidoCelu>? pedidos;
+    private List<string> operadores = new();
+    private int? armandoId;
+    private bool ocupado;
+
+    public class PedidoCelu
+    {
+        public int Id { get; set; }
+        public string Numero { get; set; } = "";
+        public string Cliente { get; set; } = "";
+        public int Productos { get; set; }
+        public int Unidades { get; set; }
+        public string? EntregaPor { get; set; }
+        public bool Modificado { get; set; }
+    }
+
+    private class PedidosResp
+    {
+        public string? Estado { get; set; }
+        public List<PedidoCelu>? Pedidos { get; set; }
+        public List<string>? Operadores { get; set; }
+    }
+
+    private class AccionResp
+    {
+        public string? Estado { get; set; }
+        public string? Token { get; set; }
+        public string? Error { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { pase = await JS.InvokeAsync<string?>("localStorage.getItem", CLAVE_PASE); } catch { }
+        if (string.IsNullOrEmpty(pase)) { Nav.NavigateTo("/depo"); return; }
+
+        // Misma identidad del celu que usa el picking (/picking/{token}).
+        try { deviceId = await JS.InvokeAsync<string?>("localStorage.getItem", CLAVE_DEVICE); } catch { }
+        if (string.IsNullOrEmpty(deviceId))
+        {
+            deviceId = Guid.NewGuid().ToString("N");
+            try { await JS.InvokeVoidAsync("localStorage.setItem", CLAVE_DEVICE, deviceId); } catch { }
+        }
+        await CargarAsync();
+    }
+
+    private HttpRequestMessage Pedido(HttpMethod metodo, string url, object? cuerpo = null)
+    {
+        var msg = new HttpRequestMessage(metodo, url);
+        msg.Headers.Add(ENCABEZADO_PASE, pase);
+        if (cuerpo is not null) msg.Content = JsonContent.Create(cuerpo);
+        return msg;
+    }
+
+    /// <summary>La clave cambió (o no hay): se borra y se vuelve al inicio a pedirla.</summary>
+    private async Task PaseVencidoAsync()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.removeItem", CLAVE_PASE); } catch { }
+        Nav.NavigateTo("/depo");
+    }
+
+    private async Task CargarAsync()
+    {
+        error = null;
+        try
+        {
+            using var resp = await Http.SendAsync(Pedido(HttpMethod.Get,
+                $"api/public/depo-preparacion/pedidos?deviceId={Uri.EscapeDataString(deviceId ?? "")}"));
+            if (resp.StatusCode == HttpStatusCode.Forbidden) { await PaseVencidoAsync(); return; }
+            if (!resp.IsSuccessStatusCode) { error = "No se pudieron traer los pedidos. Probá de nuevo."; return; }
+            var r = await resp.Content.ReadFromJsonAsync<PedidosResp>();
+            estado = r?.Estado;
+            if (estado != "ok") return;
+            pedidos = r!.Pedidos ?? new();
+            operadores = r.Operadores ?? new();
+            if (armandoId is int a && !pedidos.Any(p => p.Id == a)) armandoId = null;
+        }
+        catch { error = "Sin conexión. Probá de nuevo."; }
+    }
+
+    private async Task AbrirAsync(PedidoCelu p)
+    {
+        if (ocupado) return;
+        ocupado = true; error = null;
+        try
+        {
+            using var resp = await Http.SendAsync(Pedido(HttpMethod.Post,
+                $"api/public/depo-preparacion/{p.Id}/abrir", new { deviceId }));
+            if (resp.StatusCode == HttpStatusCode.Forbidden) { await PaseVencidoAsync(); return; }
+            var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<AccionResp>() : null;
+            if (r?.Estado == "no_habilitado") { estado = "no_habilitado"; return; }
+            if (string.IsNullOrEmpty(r?.Token)) { error = $"No se pudo abrir la lista de {p.Numero}."; return; }
+            Nav.NavigateTo($"/picking/{r.Token}");
+        }
+        catch { error = "Sin conexión. Probá de nuevo."; }
+        finally { ocupado = false; }
+    }
+
+    private void ElegirQuien(PedidoCelu p)
+    {
+        aviso = null;
+        armandoId = p.Id;
+        quien = null;
+    }
+
+    private async Task MarcarArmadoAsync(PedidoCelu p)
+    {
+        if (ocupado || string.IsNullOrEmpty(quien)) return;
+        ocupado = true; error = null;
+        try
+        {
+            using var resp = await Http.SendAsync(Pedido(HttpMethod.Post,
+                $"api/public/depo-preparacion/{p.Id}/armado", new { deviceId, quien }));
+            if (resp.StatusCode == HttpStatusCode.Forbidden) { await PaseVencidoAsync(); return; }
+            AccionResp? r = null;
+            try { r = await resp.Content.ReadFromJsonAsync<AccionResp>(); } catch { }
+            if (r?.Estado == "no_habilitado") { estado = "no_habilitado"; return; }
+            if (!resp.IsSuccessStatusCode)
+            {
+                error = r?.Error ?? $"No se pudo marcar {p.Numero} como armado.";
+                if (resp.StatusCode == HttpStatusCode.Conflict) { armandoId = null; await CargarAsync(); error = r?.Error; }
+                return;
+            }
+            armandoId = null;
+            pedidos?.RemoveAll(x => x.Id == p.Id);
+            aviso = $"✓ {p.Numero} quedó armado ({quien}).";
+        }
+        catch { error = "Sin conexión. Probá de nuevo."; }
+        finally { ocupado = false; }
+    }
+}
