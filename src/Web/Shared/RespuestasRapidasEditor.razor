@@ -1,0 +1,112 @@
+@inject ApiClient Api
+@inject ToastService Toast
+
+@* 2026-11-10: editar las respuestas rápidas de MercadoLibre desde la ventanita de Preguntas del
+   depósito. Guarda la MISMA lista que "Editar respuestas rápidas" de la bandeja completa
+   (api/meli/questions/quick-replies): lo que se cambia acá se ve allá y al revés. *@
+
+@if (Abierto)
+{
+    <div class="rre-fondo" @onclick="Cerrar">
+        <div class="rre-caja" @onclick:stopPropagation="true">
+            <div class="rre-h">
+                <div>
+                    <b>⚡ Respuestas rápidas</b>
+                    <div class="rre-sub">Para contestar rápido a mano. No son las del robot.</div>
+                </div>
+                <button class="rre-x" title="Cerrar" @onclick="Cerrar">✕</button>
+            </div>
+            <div class="rre-b">
+                @if (edicion.Count == 0)
+                {
+                    <div class="rre-sub">No hay ninguna. Agregá la primera abajo.</div>
+                }
+                @for (int i = 0; i < edicion.Count; i++)
+                {
+                    var idx = i;
+                    <div class="rre-item">
+                        <div class="rre-cats">
+                            @foreach (var c in Categorias)
+                            {
+                                <button class="@(edicion[idx].Category == c.Nombre ? "on" : "")" @onclick="() => edicion[idx].Category = c.Nombre">@c.Icono @c.Nombre</button>
+                            }
+                        </div>
+                        <div class="rre-fila">
+                            <textarea rows="2" @bind="edicion[idx].Text" placeholder="Escribí la respuesta…"></textarea>
+                            <button class="rre-borrar" title="Borrar esta respuesta" @onclick="() => edicion.RemoveAt(idx)">🗑️</button>
+                        </div>
+                    </div>
+                }
+                <button class="rre-agregar" @onclick="Agregar">➕ Agregar respuesta</button>
+            </div>
+            <div class="rre-f">
+                <button @onclick="Cerrar">Cancelar</button>
+                <button class="prim" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando…" : "💾 Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .rre-fondo { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1200; display:flex; align-items:center; justify-content:center; padding:1rem; }
+    .rre-caja { background:#fff; border-radius:12px; width:100%; max-width:560px; max-height:88vh; display:flex; flex-direction:column; box-shadow:0 16px 40px rgba(0,0,0,.25); }
+    .rre-h { display:flex; justify-content:space-between; gap:1rem; padding:0.9rem 1.1rem; border-bottom:1px solid #e5e7eb; color:#111827; }
+    .rre-sub { font-size:0.8rem; color:#6b7280; margin-top:2px; }
+    .rre-x { background:none; border:none; font-size:1.2rem; cursor:pointer; color:#6b7280; }
+    .rre-b { padding:0.9rem 1.1rem; overflow-y:auto; display:flex; flex-direction:column; gap:0.6rem; }
+    .rre-item { border:1px solid #e5e7eb; border-radius:9px; padding:0.55rem; display:flex; flex-direction:column; gap:0.4rem; }
+    .rre-cats { display:flex; flex-wrap:wrap; gap:0.3rem; }
+    .rre-cats button { border:1px solid #d1d5db; background:#fff; color:#6b7280; border-radius:999px; padding:0.1rem 0.55rem; font:inherit; font-size:0.74rem; cursor:pointer; }
+    .rre-cats button.on { background:#111827; border-color:#111827; color:#fff; }
+    .rre-fila { display:flex; gap:0.5rem; align-items:flex-start; }
+    .rre-fila textarea { flex:1; min-width:0; border:1px solid #d1d5db; border-radius:7px; padding:0.45rem 0.6rem; font:inherit; font-size:0.88rem; resize:vertical; }
+    .rre-borrar { border:1px solid #fecaca; background:#fff; border-radius:7px; padding:0.35rem 0.5rem; cursor:pointer; }
+    .rre-agregar { align-self:flex-start; border:1px solid #d1d5db; background:#fff; border-radius:7px; padding:0.35rem 0.8rem; font:inherit; font-size:0.85rem; cursor:pointer; }
+    .rre-f { display:flex; justify-content:flex-end; gap:0.5rem; padding:0.8rem 1.1rem; border-top:1px solid #e5e7eb; }
+    .rre-f button { border:1px solid #d1d5db; background:#fff; border-radius:7px; padding:0.4rem 1rem; font:inherit; font-weight:600; cursor:pointer; color:#111827; }
+    .rre-f button.prim { background:#111827; border-color:#111827; color:#fff; }
+</style>
+
+@code {
+    [Parameter] public bool Abierto { get; set; }
+    [Parameter] public EventCallback<bool> AbiertoChanged { get; set; }
+    /// <summary>La lista actual (se copia: si cancelan, no se toca).</summary>
+    [Parameter] public List<MeliQuickReplyDto> Respuestas { get; set; } = new();
+    /// <summary>Avisa la lista guardada, para que la ventanita muestre las nuevas.</summary>
+    [Parameter] public EventCallback<List<MeliQuickReplyDto>> OnGuardadas { get; set; }
+
+    // Mismas categorías que la bandeja completa (BandejaPreguntas.razor).
+    private static readonly (string Nombre, string Icono)[] Categorias =
+    {
+        ("Envío", "🚚"), ("Precio", "💲"), ("Stock", "📦"), ("Pago", "💳"), ("Retiro", "🏬"), ("Otros", "💬"),
+    };
+
+    private List<MeliQuickReplyDto> edicion = new();
+    private bool guardando, estabaAbierto;
+
+    protected override void OnParametersSet()
+    {
+        if (Abierto && !estabaAbierto)
+            edicion = Respuestas.Select(q => new MeliQuickReplyDto { Category = q.Category, Text = q.Text }).ToList();
+        estabaAbierto = Abierto;
+    }
+
+    private void Agregar() => edicion.Add(new MeliQuickReplyDto { Category = "Otros", Text = "" });
+
+    private Task Cerrar() => AbiertoChanged.InvokeAsync(false);
+
+    private async Task Guardar()
+    {
+        guardando = true;
+        try
+        {
+            var guardadas = await Api.SaveMeliQuickRepliesAsync(edicion)
+                            ?? edicion.Where(q => !string.IsNullOrWhiteSpace(q.Text)).ToList();
+            Toast.Success("Respuestas rápidas guardadas");
+            await OnGuardadas.InvokeAsync(guardadas);
+            await AbiertoChanged.InvokeAsync(false);
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+}
