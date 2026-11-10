@@ -31,15 +31,31 @@
                 @if (d.Nuevo is { } tipo)
                 {
                     <span class="mnb-doble">
-                        <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloBoton(d.Href)" @onclick="() => Ir(d)">@d.Label</button>
+                        <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)"><span class="mnb-ico-e">@IconoDe(d.Href)</span>@d.Label</button>
                         <button class="mnb-mas" title="@TituloNuevo(tipo)" aria-label="@TituloNuevo(tipo)" @onclick="() => Nuevo(tipo)">+</button>
                     </span>
                 }
                 else
                 {
-                    <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloBoton(d.Href)" @onclick="() => Ir(d)">@d.Label</button>
+                    <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)"><span class="mnb-ico-e">@IconoDe(d.Href)</span>@d.Label</button>
                 }
                 @Numerito(d.Href)
+            </span>
+        }
+        @* 2026-11-10: Shell Flota al lado de MAPEO: el saldo a la vista y el ⟳ lo vuelve a leer. *@
+        @if (shell != null)
+        {
+            <span class="mnb-cont">
+                <span class="mnb-shell" role="button" tabindex="0" title="Ir a Shell Flota" @onclick='() => NavigateTo("/integraciones/shell")'>
+                    <span class="mnb-ico-e">⛽</span>
+                    <span class="mnb-shell-txt">
+                        <small>Shell Flota</small>
+                        <b>@(leyendoShell ? "leyendo…" : string.IsNullOrEmpty(shell.LastSaldo) ? "sin saldo" : "$" + shell.LastSaldo)</b>
+                    </span>
+                    <button class="mnb-shell-ref @(leyendoShell ? "girando" : "")" disabled="@leyendoShell"
+                            title="@(TituloShell())" aria-label="Leer el saldo de Shell ahora"
+                            @onclick="LeerShellAhora" @onclick:stopPropagation="true"><span>⟳</span></button>
+                </span>
             </span>
         }
     }
@@ -67,16 +83,7 @@
         @Desplegable(COSTADO, "◧ Costado", "sueltas en el menú de la izquierda", Lista(COSTADO))
         @Desplegable(MAS, "⋯ Más pantallas", "en el costado, casi no se usan", Lista(MAS))
     }
-    else
-    {
-        <span class="mnb-acciones">
-            @if (PuedeAcomodar)
-            {
-                <button class="mnb-buscar" @onclick="EmpezarAcomodar" title="Mover pantallas de una sección a otra">✏ Acomodar</button>
-            }
-            <button class="mnb-buscar" @onclick="OnBuscar" title="Buscar cualquier pantalla (Ctrl+K)">🔍 Buscar</button>
-        </span>
-    }
+    @* 2026-11-10: "Acomodar" pasó a ⚙ Organizar y "Buscar" a la lupa de los iconitos. *@
 </div>
 @if (abierto != null)
 {
@@ -171,6 +178,7 @@
         try
         {
             var ar = new System.Globalization.CultureInfo("es-AR");
+            if (!leyendoShell) await CargarShell();
             try
             {
                 var prep = await Api.GetCafePreparacionAsync(7) ?? new();
@@ -202,6 +210,48 @@
         }
         finally { cargando = false; }
     }
+
+    // ───────── Shell Flota (2026-11-10) ─────────
+    private Web.Models.ShellAccountDto? shell;
+    private bool leyendoShell;
+
+    private async Task CargarShell()
+    {
+        try { shell = await Api.GetShellAccountAsync(); } catch { }
+    }
+
+    private string TituloShell()
+    {
+        if (leyendoShell) return "Leyendo el saldo en Shell… (tarda unos segundos)";
+        var cuando = shell?.LastSaldoAt is DateTime t ? " · última lectura " + t.ToArTime().ToString("dd/MM HH:mm") : "";
+        return "Leer el saldo de Shell ahora" + cuando;
+    }
+
+    private async Task LeerShellAhora()
+    {
+        if (leyendoShell) return;
+        leyendoShell = true;
+        StateHasChanged();
+        try
+        {
+            var r = await Api.SincronizarShellAsync();
+            if (r is { Ok: false }) Toast.Error("No se pudo leer el saldo de Shell" + (string.IsNullOrWhiteSpace(r.Error) ? "" : ": " + r.Error));
+            await CargarShell();
+            if (r is { Ok: true }) Toast.Success("Saldo de Shell actualizado");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo leer el saldo de Shell: " + ex.Message); }
+        finally { leyendoShell = false; StateHasChanged(); }
+    }
+
+    private static string IconoDe(string href) => href.ToLowerInvariant() switch
+    {
+        "/cafe/preparacion" => "📦",
+        "/cafe/ventas" => "🧾",
+        "/cafe/tesoreria/cobranzas" => "💵",
+        "/cafe/tesoreria/pagos" => "📤",
+        "/mapeo?full=1" => "🗺",
+        _ => "",
+    };
 
     private RenderFragment Numerito(string href) => __builder =>
     {
@@ -378,7 +428,8 @@
         => MenuNuevoCatalogo.Grupos.Select(g => (g.Titulo, g.Titulo))
             .Append((COSTADO, "◧ Costado izquierdo")).Append((MAS, "⋯ Más pantallas"));
 
-    private void EmpezarAcomodar()
+    /// <summary>Lo llama "✏ Acomodar menú" desde ⚙ Organizar (menú de la izquierda).</summary>
+    public void EmpezarAcomodar()
     {
         var a = Svc.Actual;
         borrador = new Dictionary<string, List<MenuNuevoCatalogo.Item>>
@@ -393,6 +444,7 @@
         editando = true;
         abierto = MenuNuevoCatalogo.Grupos[0].Titulo;
         moviendo = null;
+        StateHasChanged();
     }
 
     private void Correr(string clave, int idx, int delta)

@@ -113,6 +113,10 @@ else
         .op-wrap { grid-template-columns:minmax(0,1fr); }
         .op-wrap > .op-side { order:-1; min-width:0; }
     }
+    .op-side { display:flex; flex-direction:column; gap:0.8rem; }
+    .op-chat { background:#111827; border-radius:14px; padding:4px 0 2px; box-shadow:0 2px 7px rgba(0,0,0,.09); }
+    .op-chat .sbchat { height:380px; margin:4px 6px; }
+    @@media (max-width: 899px) { .op-chat { display:none; } }
     .dash-eh-summary { display:inline-flex; flex-wrap:wrap; gap:0.9rem; margin-left:0.6rem; font-size:0.78rem; font-weight:400; color:#6b7280; }
 </style>
 <div class="@(DashNuevo ? "op-wrap" : "")">
@@ -1838,7 +1842,11 @@ else
 </div> @* fin op-main *@
 @if (DashNuevo)
 {
-    <div class="op-side"><OficinaPastillas /></div>
+    @* 2026-11-10: el chat del equipo abajo de las pastillas (pedido del dueño: "a la derecha que hay lugar"). *@
+    <div class="op-side">
+        <OficinaPastillas />
+        <div class="op-chat"><SidebarChat /></div>
+    </div>
 }
 </div> @* fin op-wrap *@
 } @* fin @if (!isDepositoOnly) *@
