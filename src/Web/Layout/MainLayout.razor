@@ -1051,6 +1051,12 @@
                 <NavGroup Label="@g.Titulo" Icon="@IconoMenu(g.Titulo, IconoSeccion(g.Titulo))"
                           HasActiveChild="@(itemsSec.Any(i => IsActive(i.Href)))"
                           NoAutoExpand="true">
+                    @if (g.Titulo == "MercadoLibre" && publisRevisar > 0)
+                    {
+                        <NavItem Href="/cafe/cambios-meli" Label="⚠ Revisar precio" IsActive="@IsActive("/cafe/cambios-meli")"
+                                 Badge="@publisRevisar" BadgeTitle="Publicaciones pausadas con stock o reactivadas: no se venden hasta que les revises el precio"
+                                 OnClick="@(() => NavigateTo("/cafe/cambios-meli"))" />
+                    }
                     @if (g.Nuevo is { } tipoNuevo)
                     {
                         <NavItem Href="#" Label="@("＋ " + TituloNuevoSeccion(tipoNuevo))" Icon="@SvgIcons.Plus"
@@ -1748,7 +1754,8 @@
         @* 2026-07-22: publicaciones MeLi esperando revisión de PRECIO — antes era un cartelón
            rojo que ocupaba toda una barra; ahora es este chip (pedido Osmar). Solo aparece si
            hay pendientes. Click → /cafe/cambios-meli. *@
-        @if (publisRevisar > 0)
+        @* 2026-11-10: con el menú nuevo, "revisar PRECIO" vive adentro de MercadoLibre (menú de la izquierda). *@
+        @if (publisRevisar > 0 && !MenuNuevo)
         {
             <div class="topchip topchip-publi-revisar" @onclick="IrARevisarPublis"
                  title="Publicaciones de MercadoLibre pausadas con stock o reactivadas. No se venden hasta que les revises el precio y las actives. Click para ir a revisar.">

@@ -43,6 +43,17 @@
     .dp-mas .pp-b { font-size:0.75rem; padding:0.3rem 0.65rem; }
 
     .dp-flot { position:fixed; right:376px; z-index:905; }
+    /* 2026-11-10: en el Dashboard de la oficina la columna es más angosta. */
+    .dp-flot.ofi { right:330px; }
+    .dp-conf-fondo { position:fixed; inset:0; background:rgba(17,24,39,.45); z-index:9800; }
+    .dp-conf { position:fixed; top:22vh; left:50%; transform:translateX(-50%); width:440px; max-width:calc(100vw - 32px); z-index:9801;
+               background:#fff; border-radius:14px; box-shadow:0 18px 44px rgba(0,0,0,.35); padding:1.1rem 1.2rem; }
+    .dp-conf h3 { margin:0 0 0.5rem; font-size:1.05rem; }
+    .dp-conf p { margin:0 0 0.6rem; font-size:0.9rem; line-height:1.45; color:#374151; }
+    .dp-conf .dp-conf-av { background:#fef3c7; border:1px solid #f59e0b; color:#78350f; border-radius:8px; padding:0.5rem 0.7rem; font-weight:600; }
+    .dp-conf-bs { display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.8rem; }
+    .dp-conf-bs button { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.45rem 1rem; font:inherit; font-size:0.88rem; font-weight:700; cursor:pointer; }
+    .dp-conf-bs button.si { background:#111827; border-color:#111827; color:#fff; }
     .dp-flot.arriba { top:62px; }
     .dp-flot.abajo { top:158px; }
     .dp-avisos { width:430px; display:flex; flex-direction:column; gap:0.5rem; }
@@ -152,6 +163,8 @@
         </div>
     </div>
 
+    @if (!Oficina)
+    {
     <div class="dp-big tar @Marcas("tar")" @onclick='() => Tocar("tar")'>
         <div class="dp-t">📋 Tareas @Nuevo("tar") <span class="dp-n @((Tareas?.Pendientes ?? 0) == 0 ? "cero" : "")">@(Tareas?.Pendientes ?? 0)</span></div>
         <div class="dp-prev">
@@ -164,6 +177,7 @@
         </div>
     </div>
 
+    }
     <div class="dp-big fal @Marcas("fal")" @onclick='() => Tocar("fal")'>
         <div class="dp-t">📦 Faltantes @Nuevo("fal") <span class="dp-n @(FaltantesParaPedir.Count == 0 ? "cero" : "")">@FaltantesParaPedir.Count</span></div>
         @if (FaltantesPedidos.Count > 0)
@@ -193,6 +207,8 @@
         </div>
     </div>
 
+    @if (!Oficina)
+    {
     <div class="dp-mas">
         <a class="pp-b amar" href="https://drive.google.com/drive/folders/193CHGuunMIQX9LvpsQHyLK3m3IiIXBBH" target="_blank"
            title="Abrir la carpeta IMPRIMIR PEDIDOS DE OSMAR en Google Drive (otra pestaña)">📁 Drive</a>
@@ -212,11 +228,37 @@
             <button class="pp-b verde" @onclick="Pantalla.AbrirWhatsApp">🟢 WhatsApp</button>
         }
     </div>
+    }
 </aside>
+@* 2026-11-10: doble confirmación antes de imprimir etiquetas de MercadoLibre (pedido del dueño). *@
+@if (confPaso > 0)
+{
+    <div class="dp-conf-fondo" @onclick="CancelarImprimir"></div>
+    <div class="dp-conf" @onclick:stopPropagation="true">
+        @if (confPaso == 1)
+        {
+            <h3>🖨️ ¿Imprimir @(confCant == 1 ? "1 etiqueta" : $"{confCant} etiquetas")?</h3>
+            <p class="dp-conf-av">⚠ Al imprimir, en MercadoLibre @(confCant == 1 ? "esta venta va a aparecer" : "estas ventas van a aparecer") como <b>ETIQUETA IMPRESA</b>, y ya no figuran como "para imprimir".</p>
+            <div class="dp-conf-bs">
+                <button @onclick="CancelarImprimir">Cancelar</button>
+                <button class="si" @onclick="() => confPaso = 2">Sí, seguir</button>
+            </div>
+        }
+        else
+        {
+            <h3>¿Seguro? Última confirmación</h3>
+            <p>Se @(confCant == 1 ? "imprime 1 etiqueta" : $"imprimen {confCant} etiquetas") y en MercadoLibre @(confCant == 1 ? "queda marcada" : "quedan marcadas") como impresa@(confCant == 1 ? "" : "s").</p>
+            <div class="dp-conf-bs">
+                <button @onclick="CancelarImprimir">No, cancelar</button>
+                <button class="si" @onclick="ConfirmarImprimir">Imprimir</button>
+            </div>
+        }
+    </div>
+}
 
 @if (avisos.Count > 0)
 {
-    <div class="dp-flot dp-avisos @Lugar" style="@(ventana is not null ? "display:none" : "")">
+    <div class="dp-flot dp-avisos @Lugar @(Oficina ? "ofi" : "")" style="@(ventana is not null ? "display:none" : "")">
         @foreach (var a in avisos.Take(4))
         {
             var av = a;
@@ -239,7 +281,7 @@
 @if (ventana is "me1" or "ven")
 {
     var esMe1 = ventana == "me1";
-    <div class="dp-flot dp-vent @Lugar">
+    <div class="dp-flot dp-vent @Lugar @(Oficina ? "ofi" : "")">
         <div class="dp-vh">
             @(esMe1 ? "🚚 Envíos ME1" : "🏷️ Ventas MeLi")
             <small>@(esMe1 ? "los que despachamos nosotros" : "Flex y Correo")</small>
@@ -359,7 +401,7 @@
 
 @if (ventana == "fal")
 {
-    <div class="dp-flot dp-vent @Lugar">
+    <div class="dp-flot dp-vent @Lugar @(Oficina ? "ofi" : "")">
         <div class="dp-vh">
             📦 Faltantes por marca
             <button class="dp-x" title="Cerrar" @onclick="Cerrar">✕</button>
@@ -371,7 +413,7 @@
 
 @if (ventana == "pre")
 {
-    <div class="dp-flot dp-vent @Lugar">
+    <div class="dp-flot dp-vent @Lugar @(Oficina ? "ofi" : "")">
         <div class="dp-vh">
             💬 Preguntas de MercadoLibre <small>@preguntas.Count sin responder</small>
             <button class="dp-x" title="Cerrar" @onclick="Cerrar">✕</button>
@@ -433,6 +475,8 @@
     [Parameter] public EventCallback OnRefrescar { get; set; }
     [Parameter] public bool PuedeLimpiar { get; set; }
     [Parameter] public bool EsDeposito { get; set; }
+    /// <summary>2026-11-10: en el Dashboard de la oficina: sin Tareas ni la fila de botones del depósito.</summary>
+    [Parameter] public bool Oficina { get; set; }
 
     private static readonly (string, string, string)[] FormatosEtiqueta =
     {
@@ -831,29 +875,57 @@
         try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveFormato, f); } catch { }
     }
 
-    private async Task ImprimirTildadas()
+    // ───────── Doble confirmación antes de imprimir (2026-11-10) ─────────
+    private int confPaso, confCant;
+    private Func<Task>? confAccion;
+    private void PedirConfirmacion(int cant, Func<Task> accion)
     {
-        if (tildadas.Count == 0) return;
-        ToastService.Success($"Generando {tildadas.Count} etiqueta(s)…");
-        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(tildadas.OrderBy(x => x), formato));
-        tildadas.Clear();
-        _ = RefrescarLuego();
+        confCant = cant; confAccion = accion; confPaso = 1;
+    }
+    private void CancelarImprimir() { confPaso = 0; confAccion = null; }
+    private async Task ConfirmarImprimir()
+    {
+        var a = confAccion;
+        confPaso = 0; confAccion = null;
+        if (a != null) await a();
     }
 
-    private async Task ImprimirTodasMe1()
+    private Task ImprimirTildadas()
+    {
+        if (tildadas.Count == 0) return Task.CompletedTask;
+        var ids = tildadas.OrderBy(x => x).ToList();
+        PedirConfirmacion(ids.Count, async () =>
+        {
+            ToastService.Success($"Generando {ids.Count} etiqueta(s)…");
+            await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(ids, formato));
+            tildadas.Clear();
+            _ = RefrescarLuego();
+        });
+        return Task.CompletedTask;
+    }
+
+    private Task ImprimirTodasMe1()
     {
         var ids = Me1SinImprimir.Select(o => o.NumeroEnvio!.Value).ToList();
-        if (ids.Count == 0) return;
-        nuevas.Remove("me1");
-        ToastService.Success($"Generando {ids.Count} etiqueta(s) ME1…");
-        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(ids, formato));
-        _ = RefrescarLuego();
+        if (ids.Count == 0) return Task.CompletedTask;
+        PedirConfirmacion(ids.Count, async () =>
+        {
+            nuevas.Remove("me1");
+            ToastService.Success($"Generando {ids.Count} etiqueta(s) ME1…");
+            await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(ids, formato));
+            _ = RefrescarLuego();
+        });
+        return Task.CompletedTask;
     }
 
-    private async Task ImprimirUna(long envio)
+    private Task ImprimirUna(long envio)
     {
-        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { envio }, formato));
-        _ = RefrescarLuego();
+        PedirConfirmacion(1, async () =>
+        {
+            await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { envio }, formato));
+            _ = RefrescarLuego();
+        });
+        return Task.CompletedTask;
     }
 
     private async Task ImprimirDesdeAviso(Aviso a)

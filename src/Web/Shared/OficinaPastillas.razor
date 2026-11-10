@@ -72,6 +72,10 @@
 </style>
 
 <aside class="op-col @(ventana is null ? "" : "sin-prev")">
+    @* 2026-11-10: con ConDeposito, Preguntas y Faltantes las muestran las pastillas del depósito
+       (DepoPastillas), que abren su ventana al costado. Acá quedan las de oficina. *@
+    @if (!ConDeposito)
+    {
     @* 💬 Preguntas MeLi *@
     <div class="op-big pre @Marcas("pre")" @onclick='() => Tocar("pre")'>
         <div class="op-t">💬 Preguntas MeLi @Nuevo("pre") <span class="op-n @(preguntas.Count == 0 ? "cero" : "")">@preguntas.Count</span></div>
@@ -89,6 +93,8 @@
             @Mas(preguntas.Count)
         </div>
     </div>
+
+    }
 
     @* 🚚 ME1 sin repartidor *@
     <div class="op-big me1 @Marcas("me1")" @onclick='() => Tocar("me1")'>
@@ -165,6 +171,8 @@
         </div>
     </div>
 
+    @if (!ConDeposito)
+    {
     @* 🛒 Faltantes para pedir *@
     <div class="op-big fal @Marcas("fal")" @onclick='() => Tocar("fal")'>
         <div class="op-t">🛒 Faltantes para pedir @Nuevo("fal") <span class="op-n @(Faltantes.Count == 0 ? "cero" : "")">@Faltantes.Count</span></div>
@@ -183,6 +191,7 @@
             @Mas(Faltantes.Count)
         </div>
     </div>
+    }
 </aside>
 
 @if (avisos.Count > 0 && ventana is null)
@@ -415,8 +424,15 @@
         catch { }
     }
 
+    /// <summary>2026-11-10: en el Dashboard van también las pastillas del depósito (Ventas MeLi, ME1,
+    /// Faltantes, Preguntas): acá no se repiten Preguntas ni Faltantes, ni sus avisos.</summary>
+    [Parameter] public bool ConDeposito { get; set; }
+
     private void Avisar(string pastilla, string titulo, string texto)
-        => avisos.Insert(0, new Aviso { Id = ++proximoAviso, Pastilla = pastilla, Titulo = titulo, Texto = texto, Hasta = DateTime.UtcNow.AddMinutes(5) });
+    {
+        if (ConDeposito && pastilla is "pre" or "fal") return;
+        avisos.Insert(0, new Aviso { Id = ++proximoAviso, Pastilla = pastilla, Titulo = titulo, Texto = texto, Hasta = DateTime.UtcNow.AddMinutes(5) });
+    }
 
     private void VerAviso(Aviso a)
     {
