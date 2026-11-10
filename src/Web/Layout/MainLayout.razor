@@ -342,6 +342,21 @@
         .mnb-shell-txt small { display: none; }
     }
     .mn-brand-inicio { cursor: pointer; }
+    /* 2026-11-10: menú de la izquierda plegado (solo íconos); se abre tocándolo y se superpone. */
+    .mn-secciones { position: relative; }
+    .mn-abrir { display: none; position: absolute; inset: 0; z-index: 5; cursor: pointer; }
+    @@media (min-width: 769px) { .mn-abrir { display: block; } }
+    @@media (min-width: 769px) {
+        .sidebar.ta.ta-col.collapsed { width: 64px !important; }
+        .main-wrapper.main-ta.main-ta-col { margin-left: 64px !important; }
+        .sidebar.ta.ta-col:not(.collapsed) { box-shadow: 6px 0 28px rgba(0,0,0,.28); z-index: 9600; }
+        .sidebar.ta-col.collapsed .mn-organizar { justify-content: center; padding: 0.55rem 0; width: calc(100% - 0.6rem); margin-left: 0.3rem; margin-right: 0.3rem; }
+        .sidebar.ta-col.collapsed .mn-org-txt, .sidebar.ta-col.collapsed .mn-organizar-car { display: none; }
+        .sidebar.ta-col.collapsed .nav-group-children { display: none !important; }
+        .sidebar.ta-col.collapsed .prod-environment-banner, .sidebar.ta-col.collapsed .dev-environment-banner { color: transparent !important; height: 22px; overflow: hidden; white-space: nowrap; padding: 0 !important; }
+        .mn-cierra { position: fixed; inset: 0 0 0 236px; z-index: 9590; }
+    }
+    .mn-org-txt { flex: 1; text-align: left; margin-left: 0.4rem; }
     /* 2026-11-10: lápiz ✏ en cada botón: aparece al pasar el mouse. */
     .mnb-lapiz { display: none; position: absolute; bottom: -8px; right: -8px; z-index: 3; width: 22px; height: 22px; border-radius: 50%;
         border: 1px solid #d1d5db; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18); font-size: 0.68rem; cursor: pointer; padding: 0; place-items: center; }
@@ -890,7 +905,7 @@
 {
 @* 2026-11-07: "todo arriba" (admin y depósito): en compu el menú de la izquierda no ocupa lugar;
    se abre como cajón con el botón "☰ Menú" de la barra (clase ta). En celu queda como siempre. *@
-<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed && !TodoArriba ? "collapsed" : "") @(TodoArriba ? "ta" : "") @(ColumnaNueva ? "ta-col" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod") @(HasPerm("deposito") ? "sidebar-with-chat" : "")" id="sidebar">
+<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed && (!TodoArriba || ColumnaNueva) ? "collapsed" : "") @(TodoArriba ? "ta" : "") @(ColumnaNueva ? "ta-col" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod") @(HasPerm("deposito") ? "sidebar-with-chat" : "")" id="sidebar">
     @if (IsDevEnvironment)
     {
         <div class="dev-environment-banner" title="Estás en el entorno de DESARROLLO. Los datos NO son los de producción.">
@@ -1018,6 +1033,12 @@
                 <NavItem Href="/" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
             </div>
+            @* 2026-11-10: plegado (solo íconos), tocar cualquier sección abre el menú entero. *@
+            <div class="mn-secciones">
+            @if (sidebarCollapsed && ColumnaNueva)
+            {
+                <div class="mn-abrir" title="Abrir el menú" @onclick="() => { sidebarCollapsed = false; }"></div>
+            }
             @foreach (var ga in MenuNuevoSvc.Actual.Grupos)
             {
                 var g = ga.Grupo;
@@ -1050,8 +1071,9 @@
             }
             <button class="mn-organizar @(organizarAbierto ? "abierto" : "")" @onclick="() => organizarAbierto = !organizarAbierto"
                     title="Lo que casi no se usa: Dashboard, Panorama, Chat, WhatsApp, Más pantallas y Administración">
-                <span>⚙ Organizar</span><span class="mn-organizar-car">@(organizarAbierto ? "▾" : "▸")</span>
+                <span class="mn-org-ico">⚙</span><span class="mn-org-txt">Organizar</span><span class="mn-organizar-car">@(organizarAbierto ? "▾" : "▸")</span>
             </button>
+            </div>
         }
         @if (MenuNuevo && organizarAbierto && (HasPerm("cafe") || HasPerm("oficina")))
         {
@@ -1587,6 +1609,11 @@
 @* Botón "Nueva Venta" - vive dentro del topbar (ver más abajo) para quedar
    siempre visible arriba a la derecha sin tapar otros íconos. *@
 
+@if (ColumnaNueva && !sidebarCollapsed)
+{
+    @* 2026-11-10: con el menú abierto, tocar afuera lo vuelve a plegar. *@
+    <div class="mn-cierra" @onclick="() => { sidebarCollapsed = true; }"></div>
+}
 <main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "") @(TodoArriba ? "main-ta" : "") @(ColumnaNueva ? "main-ta-col" : "") @(TodoArribaDepo ? "main-ta-depo" : "") @(Pantalla.Enorme ? "main-enorme" : "")">
 @if (!IsEmbedded)
 {

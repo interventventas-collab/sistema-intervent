@@ -198,13 +198,20 @@ public static class MenuNuevoCatalogo
                          Dictionary<string, string>? Iconos = null);
 
     /// <summary>2026-11-10: emojis para elegir en ✏ Acomodar (pedido del dueño: "poner íconos yo").</summary>
-    public static readonly string[] Emojis =
+    /// <summary>2026-11-10 (2ª): más emojis y ordenados por tema del negocio (café, envases y
+    /// limpieza, eventos, ventas, plata, reparto, oficina, colores). Pedido del dueño.</summary>
+    public static readonly (string Tema, string[] Lista)[] EmojiGrupos =
     {
-        "🛒","🧾","💵","💰","💳","📤","📥","📦","🚚","🛵","🗺","📍","🏠","🏬","🏭","☕","🫘","🥤","🍦","🧁",
-        "🎪","🎉","📅","🗓","⏰","👥","👤","🧑‍💼","🤝","📞","💬","📱","✉","🔔","⭐","❤","🔥","✅","⚠","🚨",
-        "📊","📈","📉","🧮","🏷","🔖","📋","📝","🗂","📁","🔍","⚙","🔧","🛠","🔑","🔒","🏦","⛽","🚗","🧹",
-        "🟢","🟡","🔴","🔵","🟣","🟠","⚫","⚪",
+        ("Café", new[] { "☕","🫘","🫖","🍵","🧋","🥛","🍫","🍪","🥐","🧁","🍰","🍩","🥤","🧃","🍦","🍨","🧉","🍯","🧂","🍬" }),
+        ("Envases y limpieza", new[] { "📦","🫙","🥫","🧴","🧽","🧻","🪣","🧺","🗑","🛍","🥡","🍽","🥄","🍴","🧊","🧤","🧹","🧼","🪥","🫧" }),
+        ("Eventos y alquileres", new[] { "🎪","🎉","🎈","🪑","🛋","⛺","💡","🔌","🎤","🎶","🥂","🍾","🎂","🎁","🎊","🪅" }),
+        ("Ventas y MercadoLibre", new[] { "🛒","🏷","💲","🧾","📈","📉","⭐","🤝","📣","🆕","🔖","🏪" }),
+        ("Plata", new[] { "💵","💰","💳","🏦","💸","🪙","🧮","📊","⛽" }),
+        ("Reparto", new[] { "🚚","🛵","🚐","🚗","📍","🗺","🧭","🏠","🏬","🏭" }),
+        ("Oficina y equipo", new[] { "📋","📝","📁","🗂","📅","⏰","📞","📱","💬","✉","🔔","👥","👤","🔧","⚙","🔑","🔒","🔍","📸","🖨" }),
+        ("Colores y avisos", new[] { "🟢","🟡","🔴","🔵","🟣","🟠","⚫","⚪","🔥","❤","✅","⚠","🚨","💯" }),
     };
+    public static readonly string[] Emojis = EmojiGrupos.SelectMany(g => g.Lista).Distinct().ToArray();
     public static string? IconoDe(Dictionary<string, string>? iconos, string clave)
         => iconos != null && iconos.TryGetValue(clave, out var e) && !string.IsNullOrWhiteSpace(e) ? e : null;
 

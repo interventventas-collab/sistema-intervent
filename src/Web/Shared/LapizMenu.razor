@@ -8,16 +8,22 @@
 @if (Clave != null)
 {
     <div class="lz-fondo" @onclick="Cerrar"></div>
-    <div class="lz" style="left:min(@Px(X), calc(100vw - 332px)); top:min(@Px(Y), calc(100vh - 430px));" @onclick:stopPropagation="true">
+    <div class="lz" style="left:min(@Px(X), calc(100vw - 352px)); top:min(@Px(Y), calc(100vh - 520px));" @onclick:stopPropagation="true">
         <div class="lz-t">@Titulo</div>
         <div class="lz-sub">Ícono</div>
-        <div class="lz-emojis">
-            @foreach (var em in MenuNuevoCatalogo.Emojis)
+        <div class="lz-scroll">
+            @foreach (var (tema, lista) in MenuNuevoCatalogo.EmojiGrupos)
             {
-                <button class="lz-em @(icono == em ? "on" : "")" title="Usar @em" @onclick="() => icono = em">@em</button>
+                <div class="lz-tema">@tema</div>
+                <div class="lz-emojis">
+                    @foreach (var em in lista)
+                    {
+                        <button class="lz-em @(icono == em ? "on" : "")" title="Usar @em" @onclick="() => icono = em">@em</button>
+                    }
+                </div>
             }
-            <button class="lz-sin @(icono == null ? "on" : "")" @onclick="() => icono = null">sin ícono</button>
         </div>
+        <button class="lz-sin @(icono == null ? "on" : "")" style="margin-top:0.35rem;" @onclick="() => icono = null">sin ícono</button>
         <div class="lz-sub">Color</div>
         <div class="lz-colores">
             <button class="lz-co @(color == null ? "on" : "")" title="Sin color" style="background:#fff;" @onclick="() => color = null"></button>
@@ -35,10 +41,12 @@
 
 <style>
     .lz-fondo { position: fixed; inset: 0; z-index: 9700; }
-    .lz { position: fixed; z-index: 9701; width: 320px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px;
+    .lz { position: fixed; z-index: 9701; width: 340px; background: #fff; border: 1px solid #d1d5db; border-radius: 12px;
           box-shadow: 0 14px 34px rgba(0,0,0,.22); padding: 0.75rem 0.9rem; color: #111827; text-align: left; }
     .lz-t { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; }
     .lz-sub { font-size: 0.68rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin: 0.45rem 0 0.25rem; }
+    .lz-scroll { max-height: 260px; overflow-y: auto; padding-right: 4px; }
+    .lz-tema { font-size: 0.7rem; color: #6b7280; margin: 0.35rem 0 0.1rem; }
     .lz-emojis { display: flex; flex-wrap: wrap; gap: 2px; }
     .lz-em { border: 1px solid transparent; background: transparent; border-radius: 6px; font-size: 1.15rem; line-height: 1; padding: 3px; cursor: pointer; }
     .lz-em:hover { background: #f3f4f6; }
