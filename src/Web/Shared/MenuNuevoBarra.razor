@@ -31,13 +31,13 @@
                 @if (d.Nuevo is { } tipo)
                 {
                     <span class="mnb-doble">
-                        <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)"><span class="mnb-ico-e">@IconoDe(d.Href)</span>@d.Label</button>
+                        <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)"><span class="mnb-ico-e @(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, d.Href) != null ? "propio" : "")">@IconoBoton(d.Href)</span>@d.Label</button>
                         <button class="mnb-mas" title="@TituloNuevo(tipo)" aria-label="@TituloNuevo(tipo)" @onclick="() => Nuevo(tipo)">+</button>
                     </span>
                 }
                 else
                 {
-                    <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)"><span class="mnb-ico-e">@IconoDe(d.Href)</span>@d.Label</button>
+                    <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)"><span class="mnb-ico-e @(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, d.Href) != null ? "propio" : "")">@IconoBoton(d.Href)</span>@d.Label</button>
                 }
                 @Numerito(d.Href)
             </span>
@@ -47,7 +47,7 @@
         {
             <span class="mnb-cont">
                 <span class="mnb-shell" role="button" tabindex="0" title="Ir a Shell Flota" @onclick='() => NavigateTo("/integraciones/shell")'>
-                    <span class="mnb-ico-e">⛽</span>
+                    <span class="mnb-ico-e propio">@(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, "shell") ?? "⛽")</span>
                     <span class="mnb-shell-txt">
                         <small>Shell Flota</small>
                         <b>@(leyendoShell ? "leyendo…" : string.IsNullOrEmpty(shell.LastSaldo) ? "sin saldo" : "$" + shell.LastSaldo)</b>
@@ -142,6 +142,31 @@
         }
         <button class="mnb-destino" title="Sacar el color" @onclick="() => PonerColor(clave, null)">sin color</button>
     };
+
+    // ───────── Íconos que elige el dueño (2026-11-10) ─────────
+    /// <summary>Íconos del borrador (sección o pantalla → emoji).</summary>
+    private Dictionary<string, string> iconos = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Renglón al que se le tocó 😀 (se despliegan los emojis abajo).</summary>
+    private string? iconeando;
+
+    private RenderFragment Emojis(string clave) => __builder =>
+    {
+        var actual = iconos.TryGetValue(clave, out var e) ? e : null;
+        foreach (var em in MenuNuevoCatalogo.Emojis)
+        {
+            <button class="mnb-emoji @(actual == em ? "on" : "")" title="Usar @em" @onclick="() => PonerIcono(clave, em)">@em</button>
+        }
+        <button class="mnb-destino" title="Sacar el ícono" @onclick="() => PonerIcono(clave, null)">sin ícono</button>
+    };
+
+    private void PonerIcono(string clave, string? emoji)
+    {
+        if (emoji == null) iconos.Remove(clave); else iconos[clave] = emoji;
+    }
+
+    /// <summary>Ícono que se muestra en el botón: el que eligió el dueño o el de fábrica.</summary>
+    private string IconoBoton(string href)
+        => MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, href) ?? IconoDe(href);
 
     protected override async Task OnInitializedAsync()
     {
@@ -302,6 +327,10 @@
                             <span>Color de "@titulo":</span>
                             @Circulos(clave)
                         </div>
+                        <div class="mnb-color-sec">
+                            <span>Ícono de "@titulo":</span>
+                            @Emojis(clave)
+                        </div>
                     }
                     @if (items.Count == 0)
                     {
@@ -323,7 +352,8 @@
                         {
                             <div class="mnb-fila-ed" style="@EstiloItem(it.Href)">
                                 <span class="mnb-nombre">@it.Label</span>
-                                <button class="mnb-ico @(pintando == it.Href ? "on" : "")" title="Ponerle color" @onclick="() => { pintando = pintando == it.Href ? null : it.Href; moviendo = null; }">🎨</button>
+                                <button class="mnb-ico @(pintando == it.Href ? "on" : "")" title="Ponerle color" @onclick="() => { pintando = pintando == it.Href ? null : it.Href; moviendo = null; iconeando = null; }">🎨</button>
+                                <button class="mnb-ico @(iconeando == it.Href ? "on" : "")" title="Elegir su ícono" @onclick="() => { iconeando = iconeando == it.Href ? null : it.Href; moviendo = null; pintando = null; }">@(iconos.TryGetValue(it.Href, out var ie) ? ie : "😀")</button>
                                 <button class="mnb-ico" title="Subir" disabled="@(idx == 0)" @onclick="() => Correr(clave, idx, -1)">▲</button>
                                 <button class="mnb-ico" title="Bajar" disabled="@(idx == items.Count - 1)" @onclick="() => Correr(clave, idx, +1)">▼</button>
                                 @if (clave == DIRECTOS)
@@ -347,6 +377,10 @@
                             @if (pintando == it.Href)
                             {
                                 <div class="mnb-destinos">@Circulos(it.Href)</div>
+                            }
+                            @if (iconeando == it.Href)
+                            {
+                                <div class="mnb-destinos mnb-emojis">@Emojis(it.Href)</div>
                             }
                             @if (moviendo is { } m && m.Href == it.Href && m.Lista == clave)
                             {
@@ -440,7 +474,9 @@
         };
         foreach (var g in a.Grupos) borrador[g.Grupo.Titulo] = g.Items.ToList();
         colores = new Dictionary<string, string>(a.Colores, StringComparer.OrdinalIgnoreCase);
+        iconos = new Dictionary<string, string>(a.Iconos ?? new(), StringComparer.OrdinalIgnoreCase);
         pintando = null;
+        iconeando = null;
         editando = true;
         abierto = MenuNuevoCatalogo.Grupos[0].Titulo;
         moviendo = null;
@@ -485,7 +521,8 @@
                 MenuNuevoCatalogo.Grupos.Select(g => new MenuNuevoCatalogo.GrupoArmado(g, borrador[g.Titulo])).ToList(),
                 borrador[MAS],
                 colores,
-                borrador[COSTADO]);
+                borrador[COSTADO],
+                iconos);
             await Svc.GuardarAsync(armado);
             editando = false; abierto = null; moviendo = null;
             Toast.Success("Menú guardado");
