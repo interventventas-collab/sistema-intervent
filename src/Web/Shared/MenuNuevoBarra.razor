@@ -50,7 +50,7 @@
             primeroDeTodos = false;
             <span class="mnb-sep"></span>
         }
-        @Desplegable(g.Titulo, g.Titulo, g.Subtitulo, items)
+        @Desplegable(g.Titulo, g.Titulo, g.Subtitulo, items, g.Nuevo)
     }
     @if (editando)
     {
@@ -136,15 +136,20 @@
     public void Dispose() => Svc.OnChange -= Repintar;
 
     // ───────── Un desplegable (normal o acomodando) ─────────
-    private RenderFragment Desplegable(string clave, string titulo, string subtitulo, List<MenuNuevoCatalogo.Item> items) => __builder =>
+    private RenderFragment Desplegable(string clave, string titulo, string subtitulo, List<MenuNuevoCatalogo.Item> items, string? nuevo = null) => __builder =>
     {
-        <div class="mnb-wrap">
+        var conMas = !editando && nuevo != null;
+        <div class="mnb-wrap @(conMas ? "mnb-doble" : "")">
             <button class="mnb-grupo @(abierto == clave ? "abierto" : "") @(!editando && items.Any(i => EsActual(i.Href)) ? "on" : "")"
                     style="@EstiloBoton(clave)" @onclick="() => Alternar(clave)">
                 @titulo
                 @if (editando) { <span class="mnb-cuenta">@items.Count</span> }
                 <span class="mnb-caret">▾</span>
             </button>
+            @if (conMas)
+            {
+                <button class="mnb-mas" title="@TituloNuevo(nuevo!)" aria-label="@TituloNuevo(nuevo!)" @onclick="() => Nuevo(nuevo!)">+</button>
+            }
             @if (abierto == clave)
             {
                 <div class="mnb-menu @(AbreALaIzquierda(clave) ? "derecha" : "") @(editando ? "ancho" : "")" @onclick:stopPropagation="true">
@@ -261,6 +266,8 @@
         "cobranza" => "Cargar una cobranza nueva (atajo: N y después C)",
         "alquiler" => "Cargar una reserva de alquiler nueva (atajo: N y después A)",
         "pago" => "Cargar un pago a proveedor nuevo (atajo: N y después P)",
+        "stock" => "Cargar stock",
+        "compra" => "Cargar una compra nueva",
         _ => "Cargar nuevo"
     };
 

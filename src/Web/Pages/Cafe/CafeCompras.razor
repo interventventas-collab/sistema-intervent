@@ -449,6 +449,20 @@
     private CafeCompraDto? toAnular;
     private CafeCompraDto? toDelete;
 
+    // El + de Compras en el menú llega con ?nueva=marca de tiempo: así vuelve a abrir aunque ya esté acá.
+    [Parameter, SupplyParameterFromQuery(Name = "nueva")] public long? PreNueva { get; set; }
+    private long? nuevaAtendida;
+
+    protected override void OnParametersSet()
+    {
+        if (PreNueva is > 0 && PreNueva != nuevaAtendida)
+        {
+            nuevaAtendida = PreNueva;
+            // Si ya estaba cargando una, no se la borramos.
+            if (!showForm) ShowCreate();
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await LoadCatalogos();
