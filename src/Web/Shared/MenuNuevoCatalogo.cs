@@ -24,10 +24,16 @@ public static class MenuNuevoCatalogo
     {
         new("Ventas", "/cafe/ventas", Nuevo: "venta"),
         new("Cobranzas", "/cafe/tesoreria/cobranzas", Nuevo: "cobranza"),
-        new("Alquileres", "/alquileres/reservas", "alquileres", Nuevo: "alquiler"),
         new("Pagos", "/cafe/tesoreria/pagos", Nuevo: "pago"),
         new("Preparación", "/cafe/preparacion"),
-        new("Stock", "/cafe/stock-masivo"),
+    };
+
+    /// <summary>Tienen su + en el desplegable (Stock, Intereventos): no vuelven como botón suelto,
+    /// aunque el orden guardado en la base todavía los traiga.</summary>
+    public static readonly HashSet<string> NoDirectos = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/cafe/stock-masivo",
+        "/alquileres/reservas",
     };
 
     /// <summary>"Clientes" antes se llamaba así: lo acomodado y su color siguen guardados con ese nombre.</summary>
@@ -88,7 +94,7 @@ public static class MenuNuevoCatalogo
         }),
         new("Stock", "", false, new Item[]
         {
-            new("Stock", "/cafe/stock-masivo"),
+            new("Cargar stock", "/cafe/stock-masivo"),
             new("Vencimientos", "/cafe/vencimientos"),
             new("Historial stock", "/cafe/historial-stock"),
             new("Faltantes para pedir", "/stock/ideal"),
@@ -237,6 +243,7 @@ public static class MenuNuevoCatalogo
         }
         // Los directos usan su nombre corto si lo tienen ("Preparación" y no "Preparación de pedidos").
         var guardados = Tomar(o.Directos, marcar: false).DistinctBy(i => i.Href)
+            .Where(i => !NoDirectos.Contains(i.Href))
             .Select(i => Directos.FirstOrDefault(d => string.Equals(d.Href, i.Href, StringComparison.OrdinalIgnoreCase)) ?? i)
             .ToList();
         // Los que tienen + van siempre primero, aunque lo guardado sea de antes de que existieran.

@@ -197,8 +197,11 @@
                                 else
                                 {
                                     var esDirecto = borrador[DIRECTOS].Any(d => d.Href == it.Href);
-                                    <button class="mnb-ico @(esDirecto ? "on" : "")" title="@(esDirecto ? "Ya es botón directo (tocá para sacarlo)" : "Hacerlo botón directo de un clic")"
-                                            @onclick="() => AlternarDirecto(it)">★</button>
+                                    @if (!MenuNuevoCatalogo.NoDirectos.Contains(it.Href))
+                                    {
+                                        <button class="mnb-ico @(esDirecto ? "on" : "")" title="@(esDirecto ? "Ya es botón directo (tocá para sacarlo)" : "Hacerlo botón directo de un clic")"
+                                                @onclick="() => AlternarDirecto(it)">★</button>
+                                    }
                                     <button class="mnb-mover @(moviendo?.Href == it.Href ? "on" : "")" @onclick="() => moviendo = moviendo?.Href == it.Href ? null : (clave, it.Href)">Mover a…</button>
                                 }
                             </div>
