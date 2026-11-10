@@ -224,7 +224,9 @@
     .ta-solo-celu { display: none !important; }
     @@media (min-width: 769px) {
         .sidebar.ta { transform: translateX(-100%); width: 280px !important; z-index: 9600; box-shadow: 4px 0 24px rgba(0,0,0,.25); }
-        .sidebar.ta.open { transform: translateX(0); }
+        /* "none" y no translateX(0): con transform el cajón recorta el panel de "Más pantallas". */
+        .sidebar.ta.open { transform: none; }
+        .sidebar.ta .nav-group-flyout-panel { left: 280px; max-width: calc(100vw - 280px); }
         .sidebar-overlay.ta-ov { display: block; z-index: 9550; }
         .main-wrapper.main-ta { margin-left: 0 !important; }
         .main-ta .topbar-menu-btn {
