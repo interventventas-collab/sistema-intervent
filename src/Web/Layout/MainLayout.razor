@@ -409,6 +409,10 @@
     .mnb-fila { flex-basis: 100%; border-top: 1px solid #f1f5f9; padding-top: 0.25rem; }
     /* z-index arriba del fondo invisible: con un menú abierto, tocar otro grupo lo abre de una. */
     .mnb { display: flex; align-items: center; flex-wrap: wrap; gap: 0.1rem; position: relative; z-index: 9450; }
+    /* 2026-11-10: arriba en la fila, los botones no deben quedar por encima de Nueva Venta u otras ventanas
+       grandes; solo al acomodar (desplegables abiertos) suben. */
+    .mnb-arriba .mnb { z-index: auto; }
+    .mnb-arriba .mnb.editando { z-index: 9450; }
     .mnb-directo, .mnb-grupo, .mnb-buscar {
         border: none; background: transparent; color: #111827; font-size: 0.86rem;
         padding: 0.35rem 0.6rem; border-radius: 6px; cursor: pointer; white-space: nowrap; font-family: inherit;
@@ -1665,8 +1669,12 @@
                 {
                     <span class="topchip-label" style="display:inline-flex; align-items:center; gap:3px;">
                         <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                        @Operator.Current
+                        @Operator.Current@(MenuNuevo ? " · " + username : "")
                     </span>
+                }
+                else if (MenuNuevo)
+                {
+                    <span class="topchip-label" style="display:block;">@username</span>
                 }
             </span>
             @if (Operator.HasOperator && requierePinLock)
