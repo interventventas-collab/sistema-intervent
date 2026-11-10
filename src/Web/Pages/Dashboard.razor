@@ -135,7 +135,12 @@ else
     .op-acom-bs { display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.8rem; }
     .op-acom-bs button { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.4rem 0.9rem; font:inherit; font-weight:700; cursor:pointer; }
     .op-acom-bs button.si { background:#111827; border-color:#111827; color:#fff; }
-    .dash-panorama { margin-top:1.5rem; border-top:1px solid #e5e7eb; padding-top:0.5rem; }
+    .dash-panorama { margin-top:1.5rem; border-top:1px solid #e5e7eb; padding-top:0.5rem; order:50; }
+    /* 2026-11-10: admin — arriba Equipo hoy; abajo Panorama y, como parte de él, las tarjetas de plata y stock. */
+    .op-main { display:flex; flex-direction:column; min-width:0; }
+    .op-main > .dash-sec-tit { order:55; font-size:1.05rem; font-weight:700; color:#111827; margin:1.2rem 0 0.6rem; }
+    .op-main > .dashboard-cards-row { order:56; }
+    .op-main > .dashboard-top-grid { order:57; }
     .op-chat { background:#111827; border-radius:14px; padding:4px 0 2px; box-shadow:0 2px 7px rgba(0,0,0,.09); }
     .op-chat .sbchat { height:380px; margin:4px 6px; }
     .op-chat { padding:0; }
@@ -1075,6 +1080,9 @@ else
         }
     </div>
 
+    @* 2026-11-10: admin — Documentación ya está en ⚙ Organizar. *@
+    @if (!DashNuevo)
+    {
     @* Documentación importante — acceso directo + stats *@
     <div class="dashboard-detail-card mac-stat-card accent-purple" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/documentacion")' title="Ir a Documentación importante">
         <CustomCardOverlay CardKey="documentacion" Settings="@cardCustomSettings" />
@@ -1098,6 +1106,7 @@ else
             }
         }
     </div>
+    }
 
 </div>
 
@@ -1106,6 +1115,9 @@ else
    código del mail por cada correo). Ahora es una tira a lo ancho: UN renglón por mail
    con quién lo mandó, el asunto, el arranque del texto y la fecha. Se toca y abre Gmail.
    2026-10-19: la tira se parte al medio — correos a la izquierda, WhatsApp 2933 a la derecha. *@
+@* 2026-11-10: admin — Correos (están en Alertas) y Fijo Transradio (WhatsApp va en Organizar) salen del Dashboard. *@
+@if (!DashNuevo)
+{
 <div class="ci-wa-row">
 <div class="ci-card">
     <div class="ci-head">
@@ -1158,8 +1170,12 @@ else
 </div>
 <div class="ci-wa-cell"><WaChatCard Titulo="FIJO TRANSRADIO" LineaNombre="FIJO TRANSRADIO" /></div>
 </div>
+}
 
 @* ═══ Card: resumen del día (cheques + saldo Galicia + preguntas MeLi) ═══ *@
+@* 2026-11-10: admin — "Resumen del día" repetía lo que ya está a la vista. *@
+@if (!DashNuevo)
+{
 <div class="dash-card">
     <div class="dash-card-title">
         <span class="dash-card-title-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2h-4"/><path d="M9 11V7a3 3 0 016 0v4"/></svg></span>
@@ -1234,6 +1250,7 @@ else
         </div>
     </div>
 </div>
+}
 
 @* ═══ Fila vieja: solo postits + (los otros widgets se fueron al strip) ═══ *@
 <div class="dashboard-top-grid dashboard-modern">
@@ -1896,6 +1913,8 @@ else
 @if (DashNuevo)
 {
     <div class="dash-panorama"><Web.Pages.Panorama /></div>
+    @* 2026-11-10: las tarjetas de plata y stock pasan a ser parte de Panorama (van justo debajo, por CSS order). *@
+    <div class="dash-sec-tit">💰 Plata y stock</div>
 }
 
 </div> @* fin op-main *@
@@ -1965,14 +1984,12 @@ else
     private static readonly (string Clave, string Sel, string Nombre)[] PastillasTodas =
     {
         ("d-me1", ".dp-big.me1", "🚚 ME1"),
-        ("d-ven", ".dp-big.ven", "🏷️ Ventas MeLi"),
+        ("d-ven", ".dp-big.ven", "🏷️ Ventas MeLi y preguntas"),
         ("d-fal", ".dp-big.fal", "📦 Faltantes"),
-        ("d-pre", ".dp-big.pre", "💬 Preguntas"),
-        ("o-me1", ".op-big.me1", "🚚 ME1 sin repartidor"),
         ("o-alq", ".op-big.alq", "🎪 Alquileres"),
         ("o-cal", ".op-big.cal", "📅 Almanaque de cheques"),
         ("o-che", ".op-big.che", "📄 Cheques por pagar"),
-        ("o-pag", ".op-big.pag", "✅ Pagos a confirmar"),
+        ("o-cor", ".op-big.cor", "📧 Correos importantes"),
     };
     private List<string>? acomPas;
     private Dictionary<string, string?> acomCol = new();

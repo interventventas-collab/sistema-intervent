@@ -45,6 +45,13 @@
     .dp-flot { position:fixed; right:376px; z-index:905; }
     /* 2026-11-10: en el Dashboard de la oficina la columna es más angosta. */
     .dp-flot.ofi { right:330px; }
+    .dp-preg { margin-top:0.45rem; background:#fff; border:1px solid #c4b5fd; border-radius:10px; padding:0.3rem 0.55rem; font-size:0.78rem; color:#4c1d95; line-height:1.3; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dp-preg:hover { background:#f5f3ff; }
+    .dp-preg.nueva { border-color:#dc2626; box-shadow:0 0 0 2px #fecaca; }
+    .dp-sinrep-t { font-size:0.78rem; font-weight:700; color:#9a3412; text-transform:uppercase; letter-spacing:0.03em; padding:0.5rem 0.9rem 0.2rem; }
+    .dp-sinrep { display:flex; gap:0.6rem; align-items:flex-start; padding:0.5rem 0.9rem; border-bottom:1px solid #f3f4f6; background:#fff7ed; font-size:0.86rem; }
+    .dp-sub { color:#6b7280; font-size:0.78rem; line-height:1.4; }
+    .dp-asig { flex-shrink:0; height:30px; font-size:0.8rem; max-width:140px; padding:0 6px; border:1px solid #d1d5db; border-radius:6px; background:#fff; }
     .dp-conf-fondo { position:fixed; inset:0; background:rgba(17,24,39,.45); z-index:9800; }
     .dp-conf { position:fixed; top:22vh; left:50%; transform:translateX(-50%); width:440px; max-width:calc(100vw - 32px); z-index:9801;
                background:#fff; border-radius:14px; box-shadow:0 18px 44px rgba(0,0,0,.35); padding:1.1rem 1.2rem; }
@@ -133,7 +140,7 @@
     @* 2026-11-09: las pastillas muestran solo cantidades; el detalle se ve al pasar el cursor y tocando se abre la ventana. *@
     <div class="dp-big me1 @Marcas("me1")" @onclick='() => Tocar("me1")'>
         <div class="dp-t">🚚 ME1 @Nuevo("me1") <span class="dp-n @(Me1SinImprimir.Count == 0 ? "cero" : "")">@Me1ParaDespachar.Count</span></div>
-        <div class="dp-l gris">@(Me1ParaDespachar.Count == 0 ? "Nada para despachar" : Me1SinImprimir.Count == 0 ? "para despachar · todas impresas" : $"para despachar · {Me1SinImprimir.Count} para imprimir")</div>
+        <div class="dp-l gris">@(Me1ParaDespachar.Count == 0 ? "Nada para despachar" : Me1SinImprimir.Count == 0 ? "para despachar · todas impresas" : $"para despachar · {Me1SinImprimir.Count} para imprimir")@(Oficina && Me1SinRepOfi.Count > 0 ? $" · {Me1SinRepOfi.Count} sin repartidor" : "")</div>
         <div class="dp-prev">
             <div class="dp-prev-t">Envíos ME1 para despachar</div>
             @if (Me1ParaDespachar.Count == 0) { <div class="dp-prev-f">No hay envíos para despachar</div> }
@@ -153,6 +160,12 @@
     <div class="dp-big ven @Marcas("ven")" @onclick='() => Tocar("ven")'>
         <div class="dp-t">🏷️ Ventas MeLi @Nuevo("ven") <span class="dp-n @(VentasSinEtiqueta.Count == 0 ? "cero" : "")">@VentasSinEtiqueta.Count</span></div>
         <div class="dp-l gris">para imprimir · Flex @ventas.Count(v => v.TipoClave == "flex") · Correo @ventas.Count(v => v.TipoClave == "correo")</div>
+        @if (Oficina && preguntas.Count > 0)
+        {
+            <div class="dp-preg @(nuevas.Contains("pre") ? "nueva" : "")" title="Tocá para responder" @onclick='() => Tocar("pre")' @onclick:stopPropagation="true">
+                💬 <b>@(preguntas.Count == 1 ? "Pregunta" : $"{preguntas.Count} preguntas")</b> “@Corto(preguntas[0].Text)”
+            </div>
+        }
         <div class="dp-prev">
             <div class="dp-prev-t">Últimas ventas para despachar</div>
             @if (ventas.Count == 0) { <div class="dp-prev-f">No hay ventas para despachar</div> }
@@ -195,6 +208,9 @@
         </div>
     </div>
 
+    @* 2026-11-10: en la oficina las preguntas van como cartelito adentro de Ventas MeLi (una pastilla menos). *@
+    @if (!Oficina)
+    {
     <div class="dp-big pre @Marcas("pre")" @onclick='() => Tocar("pre")'>
         <div class="dp-t">💬 Preguntas @Nuevo("pre") <span class="dp-n @(preguntas.Count == 0 ? "cero" : "")">@preguntas.Count</span></div>
         <div class="dp-prev">
@@ -206,7 +222,7 @@
             }
         </div>
     </div>
-
+    }
     @if (!Oficina)
     {
     <div class="dp-mas">
@@ -315,6 +331,40 @@
             <button class="dp-imp" disabled="@(tildadas.Count == 0)" @onclick="ImprimirTildadas">🖨️ Imprimir @(tildadas.Count == 0 ? "" : tildadas.Count.ToString())</button>
         </div>
         <div class="dp-lista">
+            @* 2026-11-10: en la oficina, la ventana de ME1 también asigna repartidor (antes era otra pastilla). *@
+            @if (esMe1 && Oficina && Me1SinRepOfi.Count > 0)
+            {
+                <div class="dp-sinrep-t">🚚 Sin repartidor (@Me1SinRepOfi.Count) · asigná acá</div>
+                @foreach (var s0 in Me1SinRepOfi)
+                {
+                    var sh = s0;
+                    <div class="dp-sinrep" @key="sh.Id">
+                        <div style="flex:1; min-width:0;">
+                            <div><b>@(sh.ReceiverName ?? sh.BuyerNickname ?? "—")</b> <span class="dp-sub">· @Me1EstadoOfi(sh)@(string.IsNullOrWhiteSpace(sh.Cuenta) ? "" : " · " + sh.Cuenta)</span></div>
+                            @if (!string.IsNullOrWhiteSpace(sh.ItemsSummary)) { <div class="dp-sub">@sh.ItemsSummary</div> }
+                            <div class="dp-sub">
+                                @if (!string.IsNullOrWhiteSpace(sh.BuyerNickname)) { <span>👤 @sh.BuyerNickname</span> }
+                                @if (sh.MeliOrderId.HasValue) { <span style="margin-left:8px;">🧾 @sh.MeliOrderId</span> }
+                                <span style="margin-left:8px;">📦 @sh.MeliShipmentId</span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(sh.AddressLine) || !string.IsNullOrWhiteSpace(sh.City))
+                            {
+                                <div class="dp-sub">📍 @(sh.AddressLine)@(string.IsNullOrWhiteSpace(sh.City) ? "" : $", {sh.City}")
+                                    <a href="@MapsOfi(sh)" target="_blank" rel="noopener" title="Ver en Google Maps" style="text-decoration:none;">🗺</a></div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(sh.ReceiverPhone)) { <div class="dp-sub">📞 @sh.ReceiverPhone</div> }
+                        </div>
+                        <select class="dp-asig" value="" disabled="@(asignandoMe1 == sh.Id)" @onchange="@(e => AsignarMe1(sh, e.Value?.ToString()))">
+                            <option value="">Asignar…</option>
+                            @foreach (var r in repsOfi)
+                            {
+                                <option value="@r.Id">@r.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                }
+                <div class="dp-sinrep-t" style="margin-top:0.6rem;">📦 Para despachar e imprimir</div>
+            }
             @if (FilasVentana.Count == 0)
             {
                 <div class="dp-vacio">No hay envíos para mostrar. 🎉</div>
@@ -688,8 +738,57 @@
         finally { ocupado = false; }
     }
 
+    // ───────── Oficina: asignar repartidor a los ME1 (2026-11-10) ─────────
+    private List<MeliMe1ShipmentDto> me1Ofi = new();
+    private List<RepartidorDto> repsOfi = new();
+    private int? asignandoMe1;
+    private List<MeliMe1ShipmentDto> Me1SinRepOfi => me1Ofi
+        .Where(s => s.Status is not ("delivered" or "not_delivered" or "cancelled") && s.RepartidorAsignadoId == null).ToList();
+    private static string Me1EstadoOfi(MeliMe1ShipmentDto s) => s.Status switch
+    {
+        "shipped" when s.Substatus == "out_for_delivery" => "salió a entregar",
+        "shipped" => "en camino",
+        "ready_to_ship" => "listo para despachar",
+        "handling" => "en preparación",
+        "pending" => "pendiente",
+        _ => s.Status ?? ""
+    };
+    private static string MapsOfi(MeliMe1ShipmentDto s)
+    {
+        var partes = new[] { s.AddressLine, s.City, s.State, "Argentina" }.Where(x => !string.IsNullOrWhiteSpace(x));
+        return $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(string.Join(", ", partes))}";
+    }
+    private async Task CargarMe1Ofi()
+    {
+        if (!Oficina) return;
+        try
+        {
+            if (repsOfi.Count == 0) repsOfi = (await Api.GetRepartidoresAsync() ?? new()).Where(r => r.IsActive).ToList();
+            me1Ofi = await Api.GetMeliMe1ShipmentsAsync("todos") ?? new();
+        }
+        catch { }
+    }
+    private async Task AsignarMe1(MeliMe1ShipmentDto s, string? value)
+    {
+        if (!int.TryParse(value, out var repId)) return;
+        asignandoMe1 = s.Id;
+        try
+        {
+            if (await Api.AsignarRepartidorMe1Async(s.Id, repId))
+            {
+                s.RepartidorAsignadoId = repId;
+                s.RepartidorAsignadoNombre = repsOfi.FirstOrDefault(r => r.Id == repId)?.Nombre;
+                ToastService.Success($"✓ Asignado a {s.RepartidorAsignadoNombre}");
+            }
+            else ToastService.Error("No se pudo asignar el repartidor");
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { asignandoMe1 = null; }
+    }
+
     private async Task CargarMe1()
     {
+        await CargarMe1Ofi();
         try
         {
             var r = await Api.GetMeliDepoOrdenesAsync(30, null, "me1", null, null);
