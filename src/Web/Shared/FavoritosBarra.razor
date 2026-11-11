@@ -1,0 +1,332 @@
+@* 2026-11-10: ⭐ FAVORITOS (pedido del dueño). Un lugar propio para lo de todos los días.
+   - El dueño (OSMAR) arma la lista base; cada uno (según el operador del PIN) puede cambiar la suya
+     sin tocar la de los demás, y volver a la del dueño cuando quiera.
+   - Tres estilos para elegir: franja finita de texto, franja con tarjetitas, o sección en el menú de la izquierda.
+   - Se guarda en el mismo Menu_Config (Favoritos / FavEstilo). Modo="franja" se dibuja abajo de la barra de
+     arriba; Modo="menu" adentro del menú de la izquierda (solo si eligieron ese estilo). *@
+@implements IDisposable
+@inject MenuNuevoService Svc
+@inject OperatorService Operator
+@inject NavigationManager Nav
+@inject ToastService Toast
+
+@if (Visible)
+{
+    var lista = Items();
+    @if (Modo == "menu")
+    {
+        <div class="favm">
+            <div class="favm-t"><span>⭐ Favoritos</span>
+                <button class="favm-b" title="Agregar favoritos" @onclick="AbrirAgregar">＋</button>
+                <button class="favm-b" title="Acomodar favoritos" @onclick="AbrirEditar">✏</button>
+            </div>
+            @foreach (var it in lista)
+            {
+                var x = it;
+                <a class="favm-i @(EsActual(x.Href) ? "on" : "")" href="@x.Href" title="@x.Label" @onclick="() => Ir(x)" @onclick:preventDefault="true">
+                    <span class="favm-e">@Icono(x.Href)</span><span class="favm-l">@x.Label</span>
+                </a>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="fav @(Estilo == "tarjetas" ? "tarj" : "")">
+            <span class="fav-lbl" title="Tus favoritos">⭐</span>
+            @if (lista.Count == 0)
+            {
+                <span class="fav-vacio">Todavía no hay favoritos.</span>
+            }
+            @foreach (var it in lista)
+            {
+                var x = it;
+                <a class="fav-i @(EsActual(x.Href) ? "on" : "")" href="@x.Href" @onclick="() => Ir(x)" @onclick:preventDefault="true" style="@Color(x.Href)">
+                    <span class="fav-e">@Icono(x.Href)</span>@x.Label
+                </a>
+            }
+            <button class="fav-mas" title="Agregar favoritos" @onclick="AbrirAgregar">＋ agregar</button>
+            <button class="fav-mas" title="Acomodar, cambiar el estilo o volver a los de Osmar" @onclick="AbrirEditar">✏</button>
+        </div>
+    }
+}
+
+@if (panel != null)
+{
+    <div class="favp-fondo" @onclick="Cerrar"></div>
+    <div class="favp">
+        @if (panel == "agregar")
+        {
+            <div class="favp-h">⭐ Agregar favoritos <small>@QuienTexto()</small><button class="favp-x" @onclick="Cerrar">✕</button></div>
+            <input class="favp-buscar" placeholder="Buscar pantalla… (stock, clientes, cheques…)" @bind="filtro" @bind:event="oninput" />
+            <div class="favp-lista">
+                @foreach (var (titulo, items) in Secciones())
+                {
+                    var vis = items.Where(i => string.IsNullOrWhiteSpace(filtro) || i.Label.Contains(filtro, StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (vis.Count == 0) continue;
+                    <div class="favp-sec">@titulo</div>
+                    @foreach (var it in vis)
+                    {
+                        var x = it;
+                        var es = trabajo.Any(h => string.Equals(h, x.Href, StringComparison.OrdinalIgnoreCase));
+                        <button class="favp-fila @(es ? "on" : "")" @onclick="() => Alternar(x.Href)">
+                            <span class="favp-star">@(es ? "★" : "☆")</span><span>@Icono(x.Href) @x.Label</span>
+                        </button>
+                    }
+                }
+            </div>
+            <div class="favp-pie">
+                <span class="favp-cant">@trabajo.Count favoritos</span>
+                <button class="favp-b" @onclick="Cerrar">Cancelar</button>
+                <button class="favp-b si" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando…" : "Guardar")</button>
+            </div>
+        }
+        else
+        {
+            <div class="favp-h">✏ Acomodar favoritos <small>@QuienTexto()</small><button class="favp-x" @onclick="Cerrar">✕</button></div>
+            @if (EsDueno)
+            {
+                <div class="favp-quien">
+                    <span>Estoy armando la lista de:</span>
+                    @foreach (var (k, l) in Personas())
+                    {
+                        var kk = k;
+                        <button class="favp-ch @(objetivo == kk ? "on" : "")" @onclick="() => CambiarObjetivo(kk)">@l</button>
+                    }
+                </div>
+            }
+            <div class="favp-lista">
+                @if (trabajo.Count == 0) { <div class="favp-vacio">No hay favoritos. Agregalos con "＋ agregar".</div> }
+                @for (var n = 0; n < trabajo.Count; n++)
+                {
+                    var i = n;
+                    var href = trabajo[i];
+                    <div class="favp-ed">
+                        <span class="favp-nom">@Icono(href) @Nombre(href)</span>
+                        <button class="favp-mini" disabled="@(i == 0)" @onclick="() => Mover(i, -1)">▲</button>
+                        <button class="favp-mini" disabled="@(i == trabajo.Count - 1)" @onclick="() => Mover(i, 1)">▼</button>
+                        <button class="favp-mini" title="Sacar de favoritos" @onclick="() => trabajo.RemoveAt(i)">✕</button>
+                    </div>
+                }
+            </div>
+            <div class="favp-estilo">
+                <span>Cómo se ve:</span>
+                @foreach (var (k, l) in MenuNuevoCatalogo.FavEstilos)
+                {
+                    var kk = k;
+                    <button class="favp-ch @(estiloTrabajo == kk ? "on" : "")" @onclick="() => estiloTrabajo = kk">@l</button>
+                }
+            </div>
+            <div class="favp-pie">
+                @if (objetivo != MenuNuevoCatalogo.FAV_BASE && Operator.HasOperator)
+                {
+                    <button class="favp-b" title="Borra tus cambios y vuelve a la lista que armó Osmar" @onclick="VolverABase">↩ Volver a los de Osmar</button>
+                }
+                @if (EsDueno && objetivo == MenuNuevoCatalogo.FAV_DUENO)
+                {
+                    <button class="favp-b" title="Lo que tenés vos pasa a ser la lista de arranque de todos" @onclick="UsarComoBase">Usar como lista para todos</button>
+                }
+                <span style="flex:1"></span>
+                <button class="favp-b" @onclick="Cerrar">Cancelar</button>
+                <button class="favp-b si" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando…" : "Guardar")</button>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    /* Franja (texto / tarjetitas) */
+    .fav { display:flex; align-items:center; gap:0.35rem; flex-wrap:wrap; padding:0.3rem 1rem; background:#fff; border-bottom:1px solid #eef0f3; }
+    .fav-lbl { font-size:0.95rem; margin-right:0.2rem; }
+    .fav-vacio { font-size:0.82rem; color:#9ca3af; }
+    .fav-i { display:inline-flex; align-items:center; gap:0.3rem; padding:0.2rem 0.6rem; border-radius:999px; font-size:0.84rem; font-weight:600; color:#1f2937;
+             text-decoration:none; border:1px solid transparent; white-space:nowrap; }
+    .fav-i:hover { background:#f3f4f6; }
+    .fav-i.on { border-color:#111827; }
+    .fav-e { font-size:0.95rem; line-height:1; }
+    .fav.tarj { padding:0.45rem 1rem; gap:0.45rem; }
+    .fav.tarj .fav-i { border-radius:10px; background:#fff; border:1px solid #e5e7eb; box-shadow:0 1px 3px rgba(0,0,0,.07); padding:0.35rem 0.75rem; }
+    .fav.tarj .fav-i:hover { box-shadow:0 3px 8px rgba(0,0,0,.12); }
+    .fav.tarj .fav-i.on { border-color:#111827; }
+    .fav-mas { border:1px dashed #d1d5db; background:transparent; color:#6b7280; border-radius:999px; padding:0.2rem 0.6rem; font:inherit; font-size:0.78rem; cursor:pointer; }
+    .fav-mas:hover { color:#111827; border-color:#9ca3af; }
+    /* Sección en el menú de la izquierda */
+    .favm { margin:0.2rem 0 0.4rem; padding-bottom:0.35rem; border-bottom:1px solid rgba(255,255,255,.08); }
+    .favm-t { display:flex; align-items:center; gap:0.2rem; padding:0.3rem 0.75rem; font-size:0.7rem; letter-spacing:0.07em; text-transform:uppercase; color:#8b90a8; font-weight:700; }
+    .favm-t span { flex:1; }
+    .favm-b { border:0; background:transparent; color:#8b90a8; cursor:pointer; font-size:0.8rem; padding:0 0.2rem; }
+    .favm-b:hover { color:#fff; }
+    .favm-i { display:flex; align-items:center; gap:0.6rem; padding:0.4rem 0.75rem; border-radius:6px; color:#c4cad8; text-decoration:none; font-size:0.88rem; }
+    .favm-i:hover, .favm-i.on { background:#2a2a4a; color:#fff; }
+    .favm-e { width:1.25rem; text-align:center; font-size:1rem; }
+    .sidebar.collapsed .favm-t span, .sidebar.collapsed .favm-b, .sidebar.collapsed .favm-l { display:none; }
+    .sidebar.collapsed .favm-i { justify-content:center; padding:0.45rem 0; }
+    /* Ventanas */
+    .favp-fondo { position:fixed; inset:0; background:rgba(17,24,39,.35); z-index:9700; }
+    .favp { position:fixed; top:9vh; left:50%; transform:translateX(-50%); width:560px; max-width:calc(100vw - 24px); max-height:82vh; z-index:9701;
+            background:#fff; border-radius:14px; box-shadow:0 18px 44px rgba(0,0,0,.3); display:flex; flex-direction:column; color:#111827; }
+    .favp-h { display:flex; align-items:center; gap:0.5rem; padding:0.85rem 1.1rem 0.5rem; font-weight:700; font-size:1.05rem; }
+    .favp-h small { font-weight:400; color:#6b7280; font-size:0.8rem; }
+    .favp-x { margin-left:auto; border:0; background:transparent; font-size:1.2rem; cursor:pointer; color:#6b7280; }
+    .favp-buscar { margin:0 1.1rem 0.5rem; padding:0.5rem 0.75rem; border:1px solid #d1d5db; border-radius:8px; font:inherit; }
+    .favp-lista { overflow-y:auto; min-height:0; flex:1; padding:0 1.1rem; }
+    .favp-sec { font-size:0.7rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#6b7280; margin:0.6rem 0 0.2rem; }
+    .favp-fila { display:flex; align-items:center; gap:0.5rem; width:100%; border:0; background:transparent; text-align:left; font:inherit; font-size:0.9rem;
+                 padding:0.3rem 0.4rem; border-radius:6px; cursor:pointer; }
+    .favp-fila:hover { background:#f9fafb; }
+    .favp-fila.on { background:#fffbeb; font-weight:600; }
+    .favp-star { color:#f59e0b; font-size:1.05rem; width:1.2rem; }
+    .favp-ed { display:flex; align-items:center; gap:0.3rem; padding:0.35rem 0; border-top:1px solid #f1f2f4; }
+    .favp-nom { flex:1; font-size:0.9rem; }
+    .favp-mini { border:1px solid #e5e7eb; background:#fff; border-radius:6px; width:28px; height:28px; cursor:pointer; padding:0; }
+    .favp-mini:disabled { opacity:.3; cursor:default; }
+    .favp-vacio { color:#9ca3af; padding:1rem 0; text-align:center; }
+    .favp-quien, .favp-estilo { display:flex; flex-wrap:wrap; align-items:center; gap:0.3rem; padding:0.4rem 1.1rem; font-size:0.84rem; color:#374151; }
+    .favp-estilo { border-top:1px solid #eef0f3; margin-top:0.4rem; padding-top:0.6rem; }
+    .favp-ch { border:1px solid #e5e7eb; background:#fff; border-radius:999px; padding:0.2rem 0.7rem; font:inherit; font-size:0.82rem; cursor:pointer; }
+    .favp-ch.on { background:#111827; border-color:#111827; color:#fff; }
+    .favp-pie { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; padding:0.7rem 1.1rem 0.9rem; border-top:1px solid #eef0f3; }
+    .favp-cant { flex:1; font-size:0.82rem; color:#6b7280; }
+    .favp-b { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.4rem 0.85rem; font:inherit; font-size:0.85rem; font-weight:700; cursor:pointer; }
+    .favp-b.si { background:#111827; border-color:#111827; color:#fff; }
+</style>
+
+@code {
+    /// <summary>"franja" (abajo de la barra de arriba) o "menu" (adentro del menú de la izquierda).</summary>
+    [Parameter] public string Modo { get; set; } = "franja";
+
+    private string? panel;              // "agregar" | "editar"
+    private string filtro = "";
+    private List<string> trabajo = new();
+    private string objetivo = MenuNuevoCatalogo.FAV_BASE;
+    private string estiloTrabajo = "texto";
+    private bool guardando;
+
+    private string? Op => Operator.HasOperator ? Operator.Current!.Trim().ToUpperInvariant() : null;
+    private bool EsDueno => string.Equals(Op, MenuNuevoCatalogo.FAV_DUENO, StringComparison.OrdinalIgnoreCase) || Op == null;
+    private string Estilo => Svc.EstiloFav(Op);
+    private bool Visible => Modo == "menu" ? Estilo == "menu" : Estilo != "menu";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Svc.OnChange += Repintar;
+        Operator.OnChange += Repintar;
+        await Svc.EnsureLoadedAsync();
+    }
+    private void Repintar() => InvokeAsync(StateHasChanged);
+    public void Dispose() { Svc.OnChange -= Repintar; Operator.OnChange -= Repintar; }
+
+    private List<MenuNuevoCatalogo.Item> Items()
+        => Svc.FavoritosDe(Op).Select(h => MenuNuevoCatalogo.PorHref.TryGetValue(h, out var it) ? it : null)
+              .Where(i => i != null).Select(i => i!).ToList();
+
+    private string Icono(string href) => MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, href) ?? MenuNuevoCatalogo.IconoFavorito(href);
+    private static string Nombre(string href) => MenuNuevoCatalogo.PorHref.TryGetValue(href, out var it) ? it.Label : href;
+    private string Color(string href)
+        => Estilo == "tarjetas" && MenuNuevoCatalogo.Pastel(MenuNuevoCatalogo.IconoDe(Svc.Actual.Colores, href)) is { } p ? $"background:{p.Fondo};border-color:{p.Borde};" : "";
+
+    private bool EsActual(string href)
+    {
+        var actual = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('#')[0];
+        return string.Equals(actual.Split('?')[0], href.Split('?')[0], StringComparison.OrdinalIgnoreCase);
+    }
+    private void Ir(MenuNuevoCatalogo.Item it)
+    {
+        if (it.Externo) Nav.NavigateTo(it.Href, forceLoad: true); else Nav.NavigateTo(it.Href);
+    }
+
+    private IEnumerable<(string, List<MenuNuevoCatalogo.Item>)> Secciones()
+    {
+        foreach (var g in Svc.Actual.Grupos) yield return (g.Grupo.Titulo, g.Items.ToList());
+        yield return ("Botones de arriba", Svc.Actual.Directos.ToList());
+        yield return ("Organizar", Svc.Actual.Costado.ToList());
+        yield return ("Más pantallas", Svc.Actual.Mas.ToList());
+    }
+
+    private IEnumerable<(string, string)> Personas()
+    {
+        yield return (MenuNuevoCatalogo.FAV_BASE, "Todos (lista de arranque)");
+        foreach (var p in OperatorService.OperatorsOficina) yield return (p, char.ToUpper(p[0]) + p[1..].ToLower());
+    }
+
+    private string QuienTexto()
+    {
+        var k = panel == "agregar" ? (Op ?? MenuNuevoCatalogo.FAV_BASE) : objetivo;
+        return k == MenuNuevoCatalogo.FAV_BASE ? "· lista de arranque para todos" : $"· de {char.ToUpper(k[0]) + k[1..].ToLower()}";
+    }
+
+    private void AbrirAgregar()
+    {
+        objetivo = Op ?? MenuNuevoCatalogo.FAV_BASE;
+        trabajo = Svc.FavoritosDe(Op);
+        filtro = "";
+        panel = "agregar";
+    }
+    private void AbrirEditar()
+    {
+        objetivo = Op ?? MenuNuevoCatalogo.FAV_BASE;
+        trabajo = Svc.FavoritosDe(Op);
+        estiloTrabajo = Estilo;
+        panel = "editar";
+    }
+    private void CambiarObjetivo(string k)
+    {
+        objetivo = k;
+        trabajo = k == MenuNuevoCatalogo.FAV_BASE ? Svc.FavoritosBase() : Svc.FavoritosDe(k);
+        estiloTrabajo = Svc.EstiloFav(k == MenuNuevoCatalogo.FAV_BASE ? null : k);
+    }
+    private void Cerrar() { if (!guardando) panel = null; }
+
+    private void Alternar(string href)
+    {
+        if (trabajo.Any(h => string.Equals(h, href, StringComparison.OrdinalIgnoreCase)))
+            trabajo.RemoveAll(h => string.Equals(h, href, StringComparison.OrdinalIgnoreCase));
+        else trabajo.Add(href);
+    }
+    private void Mover(int i, int d)
+    {
+        var j = i + d;
+        if (j < 0 || j >= trabajo.Count) return;
+        (trabajo[i], trabajo[j]) = (trabajo[j], trabajo[i]);
+    }
+
+    private async Task Guardar()
+    {
+        guardando = true;
+        try
+        {
+            var op = objetivo == MenuNuevoCatalogo.FAV_BASE ? null : objetivo;
+            await Svc.GuardarFavoritosAsync(op, trabajo.ToList());
+            if (panel == "editar" && estiloTrabajo != Svc.EstiloFav(op)) await Svc.GuardarEstiloFavAsync(op, estiloTrabajo);
+            panel = null;
+            Toast.Success("Favoritos guardados");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+    private async Task VolverABase()
+    {
+        guardando = true;
+        try
+        {
+            await Svc.GuardarFavoritosAsync(objetivo, null);
+            panel = null;
+            Toast.Success("Volviste a los favoritos de Osmar");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo: " + ex.Message); }
+        finally { guardando = false; }
+    }
+    private async Task UsarComoBase()
+    {
+        guardando = true;
+        try
+        {
+            await Svc.GuardarFavoritosAsync(null, trabajo.ToList());
+            Toast.Success("Ahora es la lista de arranque de todos");
+        }
+        catch (Exception ex) { Toast.Error("No se pudo: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    /// <summary>Lo llama la ⭐ del menú de la izquierda.</summary>
+    public bool EsFavorito(string href) => Svc.FavoritosDe(Op).Any(h => string.Equals(h, href, StringComparison.OrdinalIgnoreCase));
+}

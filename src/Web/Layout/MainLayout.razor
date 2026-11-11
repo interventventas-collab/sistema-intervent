@@ -382,6 +382,11 @@
     .mn-lapiz { display: none; position: absolute; top: 9px; right: 6px; z-index: 3; width: 20px; height: 20px; border-radius: 50%;
         border: 0; background: #fff; color: #111; font-size: 0.62rem; cursor: pointer; padding: 0; place-items: center; }
     .mn-lw.sec > .mn-lapiz { right: 30px; }
+    .mn-estrella { display: none; position: absolute; top: 9px; right: 30px; z-index: 3; width: 20px; height: 20px; border-radius: 50%;
+        border: 0; background: rgba(255,255,255,.12); color: #9ca3af; font-size: 0.72rem; cursor: pointer; padding: 0; place-items: center; }
+    .mn-estrella.si { color: #fbbf24; }
+    .mn-lw:not(.sec):hover > .mn-estrella { display: grid; }
+    .sidebar.collapsed .mn-estrella { display: none !important; }
     .mn-lw:not(.sec):hover > .mn-lapiz { display: grid; }
     .mn-lw.sec:has(> .nav-group > .nav-group-header:hover) > .mn-lapiz, .mn-lw > .mn-lapiz:hover { display: grid; }
     .sidebar.collapsed .mn-lapiz { display: none !important; }
@@ -1061,6 +1066,7 @@
                 <NavItem Href="/" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
             </div>
+            <FavoritosBarra Modo="menu" />
             @* 2026-11-10: plegado (solo íconos), tocar cualquier sección abre el menú entero. *@
             <div class="mn-secciones">
             @if (sidebarCollapsed && ColumnaNueva)
@@ -1098,6 +1104,7 @@
                                  IsActive="@IsActive(itSec.Href)"
                                  OnClick="@(() => { if (itSec.Externo) Navigation.NavigateTo(itSec.Href, forceLoad: true); else NavigateTo(itSec.Href); })" />
                         <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(itSec.Href, itSec.Label, e.ClientX + 12, e.ClientY - 20)">✏</button>
+                        <button class="mn-estrella @(EsFav(itSec.Href) ? "si" : "")" title="@(EsFav(itSec.Href) ? "Sacar de favoritos" : "Agregar a favoritos")" @onclick="() => AlternarFav(itSec.Href)">★</button>
                         </div>
                     }
                 </NavGroup>
@@ -1120,6 +1127,7 @@
                 <div class="@(it.SoloCelu ? "mn-oculto-pc" : "")" style="display:contents;">
                     <div class="mn-lw" style="@EstiloLateral(href)">
                     <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(href, it.Label, e.ClientX + 12, e.ClientY - 20)">✏</button>
+                    <button class="mn-estrella @(EsFav(href) ? "si" : "")" title="@(EsFav(href) ? "Sacar de favoritos" : "Agregar a favoritos")" @onclick="() => AlternarFav(href)">★</button>
                     <NavItem Href="@href" Label="@it.Label" Icon="@IconoMenu(href, IconoCostado(href))"
                              IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
                     </div>
@@ -2012,6 +2020,11 @@
 
     @* Banner rojo de WhatsApp desvinculado removido 2026-06-24: el boton gris con punto rojo
        en la topbar (ver waDesvinculado en linea ~1033) ya avisa el estado sin ocupar espacio. *@
+    @* 2026-11-10: ⭐ Favoritos (franja abajo de la barra de arriba; si eligieron el estilo "menú", va a la izquierda). *@
+    @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
+    {
+        <FavoritosBarra Modo="franja" />
+    }
     <header class="topbar">
         <div class="topbar-left">
             <button class="topbar-menu-btn" @onclick="ToggleSidebar" aria-label="Abrir menu">
@@ -3406,6 +3419,19 @@
     /// siempre a la vista (columna fija) en vez de ser un cajón que abre "☰ Menú".</summary>
     private bool ColumnaNueva => MenuNuevo && !IsEmbedded && (HasPerm("cafe") || HasPerm("oficina"));
     private LapizMenu? lapizRef;
+    // 2026-11-10: ⭐ en cada pantalla del menú de la izquierda (favoritos de quien tiene el PIN puesto).
+    private string? OpFav => Operator.HasOperator ? Operator.Current!.Trim().ToUpperInvariant() : null;
+    private bool EsFav(string href) => MenuNuevoSvc.FavoritosDe(OpFav).Any(h => string.Equals(h, href, StringComparison.OrdinalIgnoreCase));
+    private async Task AlternarFav(string href)
+    {
+        try
+        {
+            var era = EsFav(href);
+            await MenuNuevoSvc.AlternarFavoritoAsync(OpFav, href);
+            ToastService.Success(era ? "Sacado de favoritos" : "⭐ Agregado a favoritos");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo: " + ex.Message); }
+    }
     /// <summary>2026-11-10: abre la ventanita del lápiz ✏ (ícono y color de un botón).</summary>
     private void AbrirLapiz(string clave, string titulo, double x, double y) => lapizRef?.Abrir(clave, titulo, x, y);
     /// <summary>Color elegido para una sección/pantalla del menú de la izquierda: rayita a la izquierda.</summary>

@@ -149,7 +149,8 @@ public static class MenuNuevoCatalogo
     /// <summary>Iconos (2026-11-10): clave = título de sección o dirección de pantalla → emoji que eligió el dueño.</summary>
     public record Orden(List<string> Directos, List<GrupoOrden> Grupos, List<string> Mas,
                         Dictionary<string, string>? Colores = null, List<string>? Costado = null,
-                        Dictionary<string, string>? Iconos = null, List<string>? Pastillas = null);
+                        Dictionary<string, string>? Iconos = null, List<string>? Pastillas = null,
+                        Dictionary<string, List<string>>? Favoritos = null, Dictionary<string, string>? FavEstilo = null);
 
     /// <summary>Clave de "grupo de fábrica" para lo del costado suelto ("" = Más pantallas).</summary>
     public const string CLAVE_COSTADO = "◧";
@@ -195,7 +196,8 @@ public static class MenuNuevoCatalogo
     public record GrupoArmado(Grupo Grupo, List<Item> Items);
     public record Armado(List<Item> Directos, List<GrupoArmado> Grupos, List<Item> Mas,
                          Dictionary<string, string> Colores, List<Item> Costado,
-                         Dictionary<string, string>? Iconos = null, List<string>? Pastillas = null);
+                         Dictionary<string, string>? Iconos = null, List<string>? Pastillas = null,
+                         Dictionary<string, List<string>>? Favoritos = null, Dictionary<string, string>? FavEstilo = null);
 
     /// <summary>2026-11-10: emojis para elegir en ✏ Acomodar (pedido del dueño: "poner íconos yo").</summary>
     /// <summary>2026-11-10 (2ª): más emojis y ordenados por tema del negocio (café, envases y
@@ -305,7 +307,7 @@ public static class MenuNuevoCatalogo
             colores.TryAdd("Compras", colorStock);
         }
         var iconos = new Dictionary<string, string>(o.Iconos ?? new(), StringComparer.OrdinalIgnoreCase);
-        return new Armado(directos, grupos, mas, colores, costado, iconos, o.Pastillas);
+        return new Armado(directos, grupos, mas, colores, costado, iconos, o.Pastillas, o.Favoritos, o.FavEstilo);
     }
 
     public static Orden AOrden(Armado a) => new(
@@ -315,7 +317,48 @@ public static class MenuNuevoCatalogo
         new Dictionary<string, string>(a.Colores),
         a.Costado.Select(i => i.Href).ToList(),
         a.Iconos == null ? null : new Dictionary<string, string>(a.Iconos),
-        a.Pastillas?.ToList());
+        a.Pastillas?.ToList(),
+        a.Favoritos?.ToDictionary(k => k.Key, k => k.Value.ToList()),
+        a.FavEstilo == null ? null : new Dictionary<string, string>(a.FavEstilo));
+
+    // ───────── Favoritos (2026-11-10) ─────────
+    /// <summary>Lista de arranque si el dueño todavía no armó la suya: lo de todos los días que no está en la barra.</summary>
+    public static readonly string[] FavoritosDeFabrica =
+    {
+        "/cafe/stock-masivo", "/cafe/productos", "/cafe/catalogo", "/cafe/clientes",
+        "/cafe/listas-precios", "/publicaciones-nueva", "/cafe/presupuestos", "/cafe/proveedores",
+    };
+    /// <summary>Clave de la lista base (la que arma el dueño) dentro de Favoritos.</summary>
+    public const string FAV_BASE = "";
+    /// <summary>El dueño: puede cambiar la lista base y la de los demás.</summary>
+    public const string FAV_DUENO = "OSMAR";
+    public static readonly (string Clave, string Nombre)[] FavEstilos =
+    {
+        ("texto", "Franja finita (texto)"),
+        ("tarjetas", "Franja con tarjetitas"),
+        ("menu", "En el menú de la izquierda"),
+    };
+    /// <summary>Ícono por defecto de cada pantalla para los favoritos (si no le pusieron uno con el lápiz).</summary>
+    public static string IconoFavorito(string href) => href.ToLowerInvariant() switch
+    {
+        var h when h.Contains("stock") => "📦",
+        var h when h.Contains("producto") => "🏷",
+        var h when h.Contains("catalogo") => "📚",
+        var h when h.Contains("cliente") => "👥",
+        var h when h.Contains("listas-precios") => "💲",
+        var h when h.Contains("publicacion") => "🛒",
+        var h when h.Contains("presupuesto") => "📝",
+        var h when h.Contains("proveedor") => "🏭",
+        var h when h.Contains("compras") => "🧾",
+        var h when h.Contains("cheque") => "📄",
+        var h when h.Contains("caja") => "💰",
+        var h when h.Contains("alquiler") => "🎪",
+        var h when h.Contains("mapeo") || h.Contains("reparto") => "🗺",
+        var h when h.Contains("meli") || h.Contains("ordenes") => "🛍",
+        var h when h.Contains("ventas") => "🧾",
+        var h when h.Contains("horas") || h.Contains("nominas") => "🕘",
+        _ => "⭐",
+    };
 
     /// <summary>2026-11-06: lo que va suelto en el menú del costado (arriba de "Más pantallas").
     /// También se puede mover a las secciones de arriba con ✏ Acomodar, y al revés.</summary>
