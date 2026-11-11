@@ -338,7 +338,7 @@
         .mnb-arriba .mnb-directo { padding: 0 0.45rem; font-size: 0.8rem; }
         .mnb-arriba .mnb-doble { padding-right: 0.35rem; }
         .mnb-arriba .mnb-cont > .mnb-directo, .mnb-arriba .mnb-doble, .mnb-shell { height: 40px; }
-        .calc-uno-btn { width: 40px; height: 40px; font-size: 1.3rem; }
+        .calc-uno-btn { height: 40px; padding: 0 0.6rem; font-size: 0.8rem; }
         .main-ta.main-ta-col .topstrip { gap: 0.35rem; }
         .main-ta-col .topstrip-icons .topbar-square-btn { width: 30px; height: 30px; }
         .main-ta-col .topstrip-icons { gap: 0.05rem; }
@@ -390,6 +390,13 @@
     .mn-lw:not(.sec):hover > .mn-lapiz { display: grid; }
     .mn-lw.sec:has(> .nav-group > .nav-group-header:hover) > .mn-lapiz, .mn-lw > .mn-lapiz:hover { display: grid; }
     .sidebar.collapsed .mn-lapiz { display: none !important; }
+    /* 2026-11-11: flechita de "acceso directo" en lo que ya está en un botón grande del Dashboard. */
+    .mn-atajo { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); z-index: 2; width: 16px; height: 16px; border-radius: 4px;
+                background: #fff; color: #111827; display: grid; place-items: center; pointer-events: none; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+    .mn-atajo svg { width: 11px; height: 11px; }
+    .mn-lw:not(.sec):hover > .mn-atajo { display: none; }
+    .sidebar.collapsed .mn-atajo { top: 6px; right: 6px; transform: none; width: 13px; height: 13px; }
+    .sidebar.collapsed .mn-atajo svg { width: 9px; height: 9px; }
     .mn-emoji { font-size: 1.05rem; line-height: 1; display: inline-block; width: 1.25rem; text-align: center; }
     .mnb-arriba .mnb-ico-e.propio { display: inline !important; }
     .mnb-emojis { display: flex; flex-wrap: wrap; gap: 2px; max-width: 360px; }
@@ -520,9 +527,16 @@
     .calc-pila { display: inline-flex; flex-direction: column; gap: 2px; }
     /* 2026-11-10: calculadora única (menú nuevo). */
     .calc-uno { position: relative; display: inline-flex; }
-    .calc-uno-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid #f9a8d4; background: linear-gradient(135deg, #fce7f3, #ede9fe);
-        font-size: 1.5rem; line-height: 1; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 0; }
-    .calc-uno-btn:hover { box-shadow: 0 4px 10px rgba(0,0,0,.12); }
+    .calc-uno-btn { height: 44px; border-radius: 12px; border: 1px solid #e5e7eb; background: #fff; color: #111827;
+        display: inline-flex; align-items: center; gap: 0.45rem; padding: 0 0.85rem; font: inherit; font-size: 0.9rem; font-weight: 700;
+        cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); white-space: nowrap; transition: box-shadow .15s, transform .15s; }
+    .calc-uno-btn:hover { box-shadow: 0 4px 10px rgba(0,0,0,.12); transform: translateY(-1px); }
+    .calc-uno-ico { display: inline-grid; place-items: center; width: 18px; height: 18px; }
+    .calc-uno-ico svg { width: 18px; height: 18px; }
+    .calc-uno-it { display: inline-flex; align-items: center; gap: 0.45rem; height: 36px; padding: 0 0.85rem; border: 1px solid #e5e7eb; border-radius: 10px;
+        background: #fff; color: #111827; font: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 6px 16px rgba(0,0,0,.15); }
+    .calc-uno-it:hover { background: #f9fafb; border-color: #111827; }
+    .calc-uno-it .calc-uno-ico, .calc-uno-it .calc-uno-ico svg { width: 16px; height: 16px; }
     .calc-uno-menu { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); padding-top: 6px; z-index: 9500;
         flex-direction: column; gap: 4px; }
     .calc-uno:hover .calc-uno-menu { display: flex; }
@@ -1104,6 +1118,7 @@
                                  IsActive="@IsActive(itSec.Href)"
                                  OnClick="@(() => { if (itSec.Externo) Navigation.NavigateTo(itSec.Href, forceLoad: true); else NavigateTo(itSec.Href); })" />
                         <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(itSec.Href, itSec.Label, e.ClientX + 12, e.ClientY - 20)">✏</button>
+                        @if (EsAtajo(itSec.Href)) { @AtajoIcono }
                         </div>
                     }
                 </NavGroup>
@@ -1128,6 +1143,7 @@
                     <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(href, it.Label, e.ClientX + 12, e.ClientY - 20)">✏</button>
                     <NavItem Href="@href" Label="@it.Label" Icon="@IconoMenu(href, IconoCostado(href))"
                              IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
+                    @if (EsAtajo(href)) { @AtajoIcono }
                     </div>
                 </div>
             }
@@ -1825,12 +1841,11 @@
                 {
                     @* 2026-11-10: una sola calculadora grande; al pasar el mouse aparecen las dos (para que entre todo en una fila). *@
                     <span class="calc-uno">
-                        <button class="calc-uno-btn" @onclick="OpenCalcFromNav" title="Calculadoras">🧮</button>
+                        @* 2026-11-11: opción B del dueño: botón blanco con nombre, igual a los otros (el 🧮 rosa era "muy cutre"). *@
+                        <button class="calc-uno-btn" @onclick="OpenCalcFromNav" title="Calculadoras"><span class="calc-uno-ico">@SvgIcons.Calculator</span><span class="calc-uno-txt">Calculadoras</span></button>
                         <span class="calc-uno-menu">
-                            <button class="topbar-nav-modern calcuprecios-btn" @onclick="OpenCalcFromNav">
-                                <span class="topbar-nav-modern-ico">@SvgIcons.Calculator</span><span>CALCUPRECIOS</span>
-                            </button>
-                            <button class="topbar-nav-modern calcualq-btn" @onclick="OpenCalcAlquilerFromNav"><span>🪑 CALCU ALQUILER</span></button>
+                            <button class="calc-uno-it" @onclick="OpenCalcFromNav"><span class="calc-uno-ico">@SvgIcons.Calculator</span>CalcuPrecios</button>
+                            <button class="calc-uno-it" @onclick="OpenCalcAlquilerFromNav"><span class="calc-uno-ico">@SvgIcons.Calculator</span>CalcuAlquiler</button>
                         </span>
                     </span>
                 }
@@ -3425,6 +3440,13 @@
     private LapizMenu? lapizRef;
     // 2026-11-10: ⭐ en cada pantalla del menú de la izquierda (favoritos de quien tiene el PIN puesto).
     private string? OpFav => Operator.HasOperator ? Operator.Current!.Trim().ToUpperInvariant() : null;
+    /// <summary>2026-11-11: ¿esta pantalla ya tiene acceso directo en un botón grande del Dashboard?</summary>
+    private bool EsAtajo(string href) => MenuNuevoSvc.EnGrandes(OpFav).Contains(href);
+    /// <summary>La flechita típica de "acceso directo" (cuadradito blanco con flecha).</summary>
+    private static readonly RenderFragment AtajoIcono = b =>
+    {
+        b.AddMarkupContent(0, "<span class=\"mn-atajo\" title=\"Ya tiene acceso directo en el Inicio\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 17L17 7\"/><path d=\"M8 7h9v9\"/></svg></span>");
+    };
     private bool EsFav(string href) => MenuNuevoSvc.FavoritosDe(OpFav).Any(h => string.Equals(h, href, StringComparison.OrdinalIgnoreCase));
     private async Task AlternarFav(string href)
     {
