@@ -41,6 +41,18 @@
     .dp-prev-m { display:flex; justify-content:space-between; }
     .dp-mas { display:flex; flex-wrap:wrap; gap:0.4rem; }
     .dp-mas .pp-b { font-size:0.75rem; padding:0.3rem 0.65rem; }
+    .dp-big.cel { background:linear-gradient(135deg,#fbcfe8,#fdf2f8); margin-bottom:0.65rem; }
+    .dp-mas2 { position:relative; }
+    .dp-big.masp { background:linear-gradient(135deg,#e5e7eb,#f9fafb); }
+    .dp-mas-fl { margin-left:auto; color:#6b7280; font-size:0.9rem; }
+    .dp-mas-menu { display:none; margin-top:0.4rem; background:#fff; border:1px solid #e5e7eb; border-radius:14px; box-shadow:0 10px 26px rgba(0,0,0,.16); padding:0.35rem; }
+    .dp-mas2:hover .dp-mas-menu, .dp-mas2.abierto .dp-mas-menu, .dp-mas2:has(.fqr-box) .dp-mas-menu { display:block; }
+    .dp-mas-menu .fqr-wrap { display:block; }
+    .dp-mi { display:flex; width:100%; align-items:center; gap:0.6rem; padding:0.5rem 0.7rem; border:none; background:none; border-radius:9px;
+             font:inherit; font-size:0.9rem; font-weight:700; color:#111827; text-decoration:none; cursor:pointer; text-align:left; }
+    .dp-mi:hover { background:#f3f4f6; }
+    .dp-mi small { margin-left:auto; font-weight:500; color:#6b7280; font-size:0.74rem; }
+    .dp-mi.rojo { color:#b91c1c; border-top:1px solid #f3f4f6; border-radius:0 0 9px 9px; }
 
     .dp-flot { position:fixed; right:376px; z-index:905; }
     /* 2026-11-10: en el Dashboard de la oficina la columna es más angosta. */
@@ -231,24 +243,30 @@
     }
     @if (!Oficina)
     {
-    <div class="dp-mas">
-        <a class="pp-b amar" href="https://drive.google.com/drive/folders/193CHGuunMIQX9LvpsQHyLK3m3IiIXBBH" target="_blank"
-           title="Abrir la carpeta IMPRIMIR PEDIDOS DE OSMAR en Google Drive (otra pestaña)">📁 Drive</a>
-        <button class="pp-b lila" @onclick="OnEscaner">📷 Escáner</button>
-        <FotosQrBoton Clase="pp-b cel" Texto="🖼️ Fotos" />
-        <StockIdealCeluBoton Clase="pp-b amar" />
-        <a class="pp-b ros" href="/deposito/ordenes-meli">🏷️ Órdenes MeLi</a>
-        @if (PuedeLimpiar)
-        {
-            <button class="pp-b rojo" @onclick="OnLimpiar"
-                    title="Saca todos los pedidos actuales del tablero. Las ventas y los PDFs en Drive quedan intactos.">🧹 Limpiar tablero</button>
-        }
-        <button class="pp-b azul" @onclick="OnRefrescar" title="Se actualiza solo cada 10 segundos">🔄 Refrescar</button>
-        @if (EsDeposito)
-        {
-            <button class="pp-b verde" @onclick="Pantalla.AbrirChatEquipo">💬 Chat equipo</button>
-            <button class="pp-b verde" @onclick="Pantalla.AbrirWhatsApp">🟢 WhatsApp</button>
-        }
+    @* 2026-11-11: el celu va como pastilla grande y lo demás junto en "Más", que se abre al pasar el mouse
+       (o tocando, en celu/tablet). Refrescar pasó a la flechita ↻ al lado de "Pantalla completa". *@
+    <StockIdealCeluBoton Clase="dp-big cel" Grande="true" />
+    <div class="dp-mas2 @(masAbierto ? "abierto" : "")" @onmouseleave="() => masAbierto = false">
+        <div class="dp-big masp" @onclick="() => masAbierto = !masAbierto">
+            <div class="dp-t">➕ Más <span class="dp-mas-fl">▾</span></div>
+        </div>
+        <div class="dp-mas-menu">
+            <a class="dp-mi" href="https://drive.google.com/drive/folders/193CHGuunMIQX9LvpsQHyLK3m3IiIXBBH" target="_blank"
+               title="Abrir la carpeta IMPRIMIR PEDIDOS DE OSMAR en Google Drive (otra pestaña)">📁 Drive<small>carpeta de pedidos</small></a>
+            <button class="dp-mi" @onclick="OnEscaner">📷 Escáner<small>qué va en cada paquete</small></button>
+            <FotosQrBoton Clase="dp-mi" Texto="🖼️ Fotos" />
+            <a class="dp-mi" href="/deposito/ordenes-meli">🏷️ Órdenes MeLi</a>
+            @if (EsDeposito)
+            {
+                <button class="dp-mi" @onclick="Pantalla.AbrirChatEquipo">💬 Chat equipo</button>
+                <button class="dp-mi" @onclick="Pantalla.AbrirWhatsApp">🟢 WhatsApp</button>
+            }
+            @if (PuedeLimpiar)
+            {
+                <button class="dp-mi rojo" @onclick="OnLimpiar"
+                        title="Saca todos los pedidos actuales del tablero. Las ventas y los PDFs en Drive quedan intactos.">🧹 Limpiar tablero</button>
+            }
+        </div>
     </div>
     }
 </aside>
@@ -544,6 +562,7 @@
     [Parameter] public EventCallback OnLimpiar { get; set; }
     [Parameter] public EventCallback OnRefrescar { get; set; }
     [Parameter] public bool PuedeLimpiar { get; set; }
+    private bool masAbierto;
     [Parameter] public bool EsDeposito { get; set; }
     /// <summary>2026-11-10: en el Dashboard de la oficina: sin Tareas ni la fila de botones del depósito.</summary>
     [Parameter] public bool Oficina { get; set; }

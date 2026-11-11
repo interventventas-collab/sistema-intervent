@@ -7,8 +7,19 @@
 @* 2026-11-10: botón de la pantalla de armado con la CLAVE DEL DÍA siempre a la vista. Abre el QR fijo
    de /ideal-celu, donde el depósito carga stock ideal y piso desde el celu con esa clave. *@
 
-<span class="sic-wrap">
+<span class="sic-wrap @(Grande ? "grande" : "")">
+    @if (Grande)
+    {
+        @* 2026-11-11: en Preparación es una pastilla grande "Trabajar con el celu" (pedido del dueño). *@
+        <div class="@Clase" title="Abrir el depósito en el celu (stock, fotos, vencimientos, preparación…)" @onclick="() => abierto = !abierto">
+            <div class="dp-t">📱 Trabajar con el celu <span class="sic-big-clave">@(clave ?? "…")</span></div>
+            <div class="dp-l">clave de hoy · tocá para ver el QR</div>
+        </div>
+    }
+    else
+    {
     <button class="@Clase" title="Abrir el depósito en el celu (stock, fotos, vencimientos, preparación…)" @onclick="() => abierto = !abierto">📱 Depósito en celu · Clave <b>@(clave ?? "…")</b></button>
+    }
     @if (abierto)
     {
         <div class="sic-back" @onclick="() => abierto = false"></div>
@@ -25,6 +36,8 @@
 
 <style>
     .sic-wrap { position:relative; display:inline-block; }
+    .sic-wrap.grande { display:block; }
+    .sic-big-clave { margin-left:auto; background:#111827; color:#fff; border-radius:10px; padding:0.1rem 0.6rem; font-family:ui-monospace,monospace; font-size:1.15rem; font-weight:800; letter-spacing:0.12em; }
     .sic-back { position:fixed; inset:0; z-index:900; }
     .sic-box { position:absolute; right:0; bottom:calc(100% + 6px); z-index:901; width:270px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,.15); padding:0.9rem; text-align:center; }
     .sic-box img { width:190px; height:190px; display:block; margin:0 auto 0.4rem; }
@@ -36,6 +49,7 @@
 
 @code {
     [Parameter] public string Clase { get; set; } = "pp-b";
+    [Parameter] public bool Grande { get; set; }
 
     private bool abierto;
     private string? clave;
