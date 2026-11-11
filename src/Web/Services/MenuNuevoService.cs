@@ -115,6 +115,31 @@ public class MenuNuevoService
     public bool TieneGrandesPropios(string? op)
         => ClaveGrandes(op) != MenuNuevoCatalogo.GRANDES && Actual.Favoritos?.ContainsKey(ClaveGrandes(op)) == true;
 
+    /// <summary>2026-11-11: cada lugar se guarda como "principal|sub1|sub2…" (hasta 6 subbotones).</summary>
+    public static (string Principal, List<string> Subs) Partir(string? lugar)
+    {
+        var p = (lugar ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries);
+        return p.Length == 0 ? ("", new()) : (p[0], p.Skip(1).Take(MenuNuevoCatalogo.MAX_SUBS).ToList());
+    }
+    public static string Juntar(string principal, IEnumerable<string> subs)
+        => string.IsNullOrEmpty(principal) ? "" : string.Join("|", new[] { principal }.Concat(subs.Take(MenuNuevoCatalogo.MAX_SUBS)));
+
+    /// <summary>Pantallas que esta persona tiene en sus botones grandes (principales y subbotones):
+    /// esas no se repiten en la barra de arriba.</summary>
+    public HashSet<string> EnGrandes(string? op)
+        => GrandesDe(op).SelectMany(l => { var (m, s) = Partir(l); return new[] { m }.Concat(s); })
+                        .Where(h => h != "").ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    // Numeritos (ventas sin entregar, cobros para volcar, para armar): los calcula la barra de arriba y los
+    // muestran también los botones grandes.
+    public Dictionary<string, int> Numeros { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public event Action? OnNumeros;
+    public void AvisarNumeros() => OnNumeros?.Invoke();
+
+    // El + de "Nueva venta / cobranza / pago" de un botón grande lo resuelve MainLayout (igual que el de arriba).
+    public event Action<string>? OnNuevo;
+    public void PedirNuevo(string tipo) => OnNuevo?.Invoke(tipo);
+
     /// <summary>Pone (o vacía, href "") el lugar n de los 8 grandes de esta persona. Osmar (o sin PIN) cambia los de todos.</summary>
     public async Task GuardarGrandeAsync(string? op, int n, string href)
     {

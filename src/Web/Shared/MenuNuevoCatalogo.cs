@@ -335,6 +335,7 @@ public static class MenuNuevoCatalogo
     /// <summary>2026-11-11: prefijo de los 8 favoritos grandes del Dashboard dentro de Favoritos.</summary>
     public const string GRANDES = "GRANDES:";
     public const int CANT_GRANDES = 8;
+    public const int MAX_SUBS = 6;
     public static readonly (string Clave, string Nombre)[] FavEstilos =
     {
         ("texto", "Franja finita (texto)"),

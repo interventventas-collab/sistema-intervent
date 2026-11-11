@@ -8,6 +8,7 @@
 @inject ToastService Toast
 @inject ApiClient Api
 @inject HttpClient Http
+@inject OperatorService Operator
 
 <div class="mnb @(editando ? "editando" : "")">
     @if (editando)
@@ -25,7 +26,9 @@
     }
     else
     {
-        @foreach (var d in Svc.Actual.Directos.Where(Visible))
+        @* 2026-11-11: lo que ya está en un botón grande del Dashboard (de quien tiene el PIN) no se repite acá. *@
+        var enGrandes = Svc.EnGrandes(Operator.HasOperator ? Operator.Current!.Trim().ToUpperInvariant() : null);
+        @foreach (var d in Svc.Actual.Directos.Where(Visible).Where(x => !enGrandes.Contains(x.Href)))
         {
             <span class="mnb-cont">
                 @if (d.Nuevo is { } tipo)
@@ -182,6 +185,7 @@
     protected override async Task OnInitializedAsync()
     {
         Svc.OnChange += Repintar;
+        Operator.OnChange += Repintar;
         await Svc.EnsureLoadedAsync();
         // 2026-11-10: los numeritos se refrescan solos cada minuto.
         _ = CargarNumeritos();
@@ -191,6 +195,7 @@
     public void Dispose()
     {
         Svc.OnChange -= Repintar;
+        Operator.OnChange -= Repintar;
         reloj?.Dispose();
     }
 
@@ -242,6 +247,10 @@
                     "$" + c.Importe.ToString("N0", ar))).ToList();
             }
             catch { }
+            Svc.Numeros["/cafe/preparacion"] = prepN;
+            Svc.Numeros["/cafe/ventas"] = ventasN;
+            Svc.Numeros["/cafe/tesoreria/cobranzas"] = cobN;
+            Svc.AvisarNumeros();
             await InvokeAsync(StateHasChanged);
         }
         finally { cargando = false; }
