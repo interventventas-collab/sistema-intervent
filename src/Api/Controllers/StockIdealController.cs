@@ -49,7 +49,10 @@ public class StockIdealController : ControllerBase
     public record StockIdealRow(
         int ProductoId, string? Codigo, string Nombre, string? Marca, string? Categoria,
         decimal StockActual, int? StockIdeal, int? StockPiso, decimal Faltan, string Unidad,
-        DateTime? UltimaEntrada);
+        DateTime? UltimaEntrada,
+        // 2026-11-11: para la solapa Configurar (x bulto, lugar en el depósito y nota del producto).
+        int? UxB = null, string? UbicacionPlanta = null, string? UbicacionZona = null,
+        string? Ubicacion = null, string? Notas = null);
 
     public record StockIdealListResult(
         int Total, int ConIdeal, int Faltantes, int EnCero, decimal UnidadesFaltantes,
@@ -77,7 +80,8 @@ public class StockIdealController : ControllerBase
 
     // Proyeccion liviana: lo justo para armar las filas sin traer la entidad entera.
     private record ProdInfo(int Id, string? Sku, string Nombre, string? Marca, string? Categoria,
-        int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso, int? UxB, string? Barcode);
+        int StockUnidades, decimal StockGramos, int? StockIdeal, int? StockPiso, int? UxB, string? Barcode,
+        string? UbicacionPlanta = null, string? UbicacionZona = null, string? Notas = null);
 
     /// <summary>El cafe se mide en kilos (viene guardado en gramos); todo lo demas, en unidades.</summary>
     private static bool EsCafe(string? categoria)
@@ -125,7 +129,9 @@ public class StockIdealController : ControllerBase
                     p.Id, p.Sku, p.Nombre, p.Marca, p.Categoria,
                     stock, p.StockIdeal, p.StockPiso,
                     Faltante(p.StockIdeal, p.StockPiso, stock), UnidadDe(p.Categoria),
-                    ultimasEntradas.TryGetValue(p.Id, out var f) ? f : null);
+                    ultimasEntradas.TryGetValue(p.Id, out var f) ? f : null,
+                    p.UxB, p.UbicacionPlanta, p.UbicacionZona,
+                    UbicacionHelper.Texto(p.UbicacionPlanta, p.UbicacionZona), p.Notas);
             })
             .ToList();
 
@@ -186,7 +192,8 @@ public class StockIdealController : ControllerBase
             .Select(p => new ProdInfo(
                 p.Id, p.Sku, p.Nombre,
                 p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null),
-                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal, p.StockPiso, p.UxB, p.Barcode))
+                p.Categoria, p.StockUnidades, p.StockGramos, p.StockIdeal, p.StockPiso, p.UxB, p.Barcode,
+                p.UbicacionPlanta, p.UbicacionZona, p.Notas))
             .ToListAsync();
 
         return lista
@@ -205,6 +212,42 @@ public class StockIdealController : ControllerBase
             .GroupBy(m => m.ProductoId)
             .Select(g => new { ProductoId = g.Key, Fecha = g.Max(m => m.CreatedAt) })
             .ToDictionaryAsync(x => x.ProductoId, x => x.Fecha);
+    }
+
+    // ───────────────────────── NOTA y BAJA (solapa Configurar) ─────────────────────────
+
+    public record NotaRequest(string? Notas);
+
+    /// <summary>2026-11-11: el comentario de la solapa Configurar es la MISMA nota del producto
+    /// (CafeProducto.Notas, la que se edita en Productos). Vacío = sin nota.</summary>
+    [HttpPut("{id:int}/nota")]
+    public async Task<IActionResult> GuardarNota(int id, [FromBody] NotaRequest req)
+    {
+        var p = await _db.CafeProductos.FindAsync(id);
+        if (p is null) return NotFound(new { error = "Producto no encontrado." });
+        var nota = string.IsNullOrWhiteSpace(req?.Notas) ? null : req!.Notas!.Trim();
+        if (nota is { Length: > 500 }) nota = nota[..500];
+        p.Notas = nota;
+        p.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, notas = nota });
+    }
+
+    /// <summary>2026-11-11: dar de baja = dejarlo INACTIVO (igual que poner "Inactivo" en Productos).
+    /// No se borra: con historial de stock no se puede, y así se puede volver a activar.</summary>
+    [HttpPost("{id:int}/baja")]
+    public async Task<IActionResult> DarDeBaja(int id, [FromServices] AuditLogService audit)
+    {
+        var p = await _db.CafeProductos.FindAsync(id);
+        if (p is null) return NotFound(new { error = "Producto no encontrado." });
+        if (!p.IsActive) return Ok(new { ok = true });
+        p.IsActive = false;
+        p.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        await audit.LogAsync("CafeProducto", id.ToString(), "BAJA",
+            $"{p.Sku} dado de baja desde Stock ideal (stock {p.StockUnidades} u / {p.StockGramos} g)",
+            User?.Identity?.Name);
+        return Ok(new { ok = true });
     }
 
     // ───────────────────────── GUARDAR (planilla) ─────────────────────────

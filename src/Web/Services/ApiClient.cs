@@ -3941,6 +3941,21 @@ public class ApiClient
         return null;
     }
 
+    // 2026-11-11: solapa Configurar de Stock ideal — comentario (nota del producto) y dar de baja.
+    public async Task GuardarNotaProductoIdealAsync(int productoId, string? notas)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync($"/api/stock/ideal/{productoId}/nota", new { notas });
+        await ThrowIfErrorAsync(resp);
+    }
+
+    public async Task DarDeBajaProductoIdealAsync(int productoId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/stock/ideal/{productoId}/baja", null);
+        await ThrowIfErrorAsync(resp);
+    }
+
     // 2026-11-10: celu del depósito con la clave del día. No pasa por el aviso de sesión vencida:
     // esa pantalla no tiene usuario, y si la clave cambió vuelve a pedirla.
     private const string URL_IDEAL_CELU = "/api/public/stock-ideal-celu";
