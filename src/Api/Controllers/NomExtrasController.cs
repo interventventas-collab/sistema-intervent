@@ -67,11 +67,31 @@ public class NomExtrasController : ControllerBase
         var sugerencias = tipo switch
         {
             "horas_extra" => await SugerirHorasExtra(empleados, cargados, desde, hasta),
-            "comision_cafe" => SugerirComisiones(empleados, cargados),
+            "comision_cafe" => SugerirComisiones(empleados, cargados, (await KgPorMesAsync(_db, desde, desde.AddMonths(1))).GetValueOrDefault((anio, mes))),
             "feriado" => await SugerirFeriados(empleados, cargados, feriados),
             "aguinaldo" => await SugerirAguinaldo(empleados, cargados, anio, mes),
             _ => new List<NomExtraSugerenciaDto>()
         };
+
+        // 2026-11-11 (2ª): Comisiones muestra la balanza (kg de café vendidos) de cada mes.
+        List<NomBalanzaMesDto>? balanza = null;
+        if (tipo == "comision_cafe")
+        {
+            var hoy = HoyAr();
+            var hastaB = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(1);
+            var desdeB = hastaB.AddMonths(-13);
+            var kgs = await KgPorMesAsync(_db, desdeB, hastaB);
+            var comis = await _db.NomExtras.Where(x => x.Tipo == "comision_cafe")
+                .Select(x => new { x.Id, x.Monto, x.LiquidacionId, x.LiquidacionNav!.Anio, x.LiquidacionNav.Mes }).ToListAsync();
+            var pagadoComis = await PagadoPorExtraAsync(_db, comis.Select(c => c.LiquidacionId).Distinct().ToList(), "comision_cafe");
+            balanza = new List<NomBalanzaMesDto>();
+            for (var d = hastaB.AddMonths(-1); d >= desdeB; d = d.AddMonths(-1))
+            {
+                var delMes = comis.Where(c => c.Anio == d.Year && c.Mes == d.Month).ToList();
+                balanza.Add(new NomBalanzaMesDto(d.Year, d.Month, kgs.GetValueOrDefault((d.Year, d.Month)),
+                    delMes.Count > 0, delMes.Count > 0 && delMes.All(c => pagadoComis.GetValueOrDefault(c.Id) >= c.Monto - 0.01m)));
+            }
+        }
 
         return Ok(new NomExtrasModuloDto(
             tipo, anio, mes,
@@ -79,7 +99,47 @@ public class NomExtrasController : ControllerBase
             sugerencias,
             feriados.Select(f => new NomFeriadoDto(f.Id, f.Fecha, f.Descripcion)).ToList(),
             empleados.Select(e => new NomExtraEmpleadoDto(e.Id, e.Nombre, e.SueldoBase, e.ValorHora,
-                e.ComisionPorKg, e.ModalidadSueldo, e.JornalDiario)).ToList()));
+                e.ComisionPorKg, e.ModalidadSueldo, e.JornalDiario)).ToList(),
+            balanza));
+    }
+
+    /// <summary>Kg de café vendidos por mes (la "balanza" del inicio): mismas reglas que
+    /// DashboardController.GetCoffeeMonthlyKg (sin anuladas, sin tercerizado, cotización+factura una vez).</summary>
+    public static async Task<Dictionary<(int, int), decimal>> KgPorMesAsync(AppDbContext db, DateTime desde, DateTime hasta)
+    {
+        var rows = await db.CafeVentaItems
+            .Where(i => i.VentaNav != null
+                        && i.VentaNav.Estado != "anulado"
+                        && i.VentaNav.Fecha >= desde
+                        && i.VentaNav.Fecha < hasta
+                        && !(i.VentaNav.OrigenVentaId != null && db.CafeVentas.Any(o => o.Id == i.VentaNav.OrigenVentaId
+                               && o.FacturadaComoVentaId == i.VentaNav.Id && o.Estado != "anulado"))
+                        && i.Categoria == "CAFE"
+                        && !(i.ProductoNav != null && i.ProductoNav.Tercerizado))
+            .Select(i => new { i.GramosDescontados, i.VentaNav!.Fecha })
+            .ToListAsync();
+        return rows.GroupBy(r => (r.Fecha.Year, r.Fecha.Month))
+            .ToDictionary(g => g.Key, g => Math.Round(g.Sum(x => x.GramosDescontados) / 1000m, 1));
+    }
+
+    /// <summary>2026-11-11 (2ª): todos los extras de un año/mes (mes 0 = todo el año), para el
+    /// desplegable "Otros conceptos" debajo de la lista de Liquidaciones.</summary>
+    [HttpGet("extras-lista")]
+    public async Task<IActionResult> Lista([FromQuery] int anio, [FromQuery] int mes = 0)
+    {
+        var q = _db.NomExtras.Include(x => x.EmpleadoNav).Include(x => x.LiquidacionNav)
+            .Where(x => x.LiquidacionNav!.Anio == anio && x.LiquidacionNav.Estado != "anulada");
+        if (mes is >= 1 and <= 12) q = q.Where(x => x.LiquidacionNav!.Mes == mes);
+        var extras = await q.OrderBy(x => x.Tipo).ThenBy(x => x.LiquidacionNav!.Mes).ThenBy(x => x.EmpleadoNav!.Nombre).ThenBy(x => x.Id).ToListAsync();
+        var ids = extras.Select(x => x.Id).ToList();
+        var pagos = await _db.NomPagos.Where(p => p.ExtraId != null && ids.Contains(p.ExtraId.Value)).ToListAsync();
+        var res = new List<NomExtraDto>();
+        foreach (var g in extras.GroupBy(x => x.Tipo))
+        {
+            var pagadoPor = await PagadoPorExtraAsync(_db, g.Select(x => x.LiquidacionId).Distinct().ToList(), g.Key);
+            res.AddRange(g.Select(x => MapExtra(x, pagos.Where(p => p.ExtraId == x.Id).ToList(), pagadoPor.GetValueOrDefault(x.Id))));
+        }
+        return Ok(res);
     }
 
     /// <summary>Horas extra del fichaje: por cada día con entrada y salida, lo trabajado de más
@@ -118,21 +178,21 @@ public class NomExtrasController : ControllerBase
             }
             horas = Math.Round(horas, 2, MidpointRounding.AwayFromZero);
             if (horas <= 0m) continue;
-            var monto = Math.Round(horas * emp.ValorHora, 0, MidpointRounding.AwayFromZero);
-            res.Add(new NomExtraSugerenciaDto(emp.Id, emp.Nombre, null, null, horas, monto,
+            // 2026-11-11 (2ª): el monto lo pone el dueño a mano ("no quiero que lo calcule el sistema").
+            res.Add(new NomExtraSugerenciaDto(emp.Id, emp.Nombre, null, null, horas, 0m,
                 $"{horas:0.##} h extra según el fichaje",
-                emp.ValorHora > 0
-                    ? $"Fichaje: {horas:0.##} h de más en {dias} día(s) × ${M(emp.ValorHora)} la hora"
-                    : $"Fichaje: {horas:0.##} h de más en {dias} día(s) · sin valor hora en la ficha"));
+                $"Fichaje: {horas:0.##} h de más en {dias} día(s)"));
         }
         return res;
     }
 
     /// <summary>Solo los que cobran comisión (tienen $ por kg en la ficha) y todavía no se cargaron.</summary>
-    private static List<NomExtraSugerenciaDto> SugerirComisiones(List<NomEmpleado> empleados, List<NomExtra> cargados) =>
+    /// 2026-11-11 (2ª): los kg vienen de la balanza del mes y el importe = kg × $ por kg.
+    private static List<NomExtraSugerenciaDto> SugerirComisiones(List<NomEmpleado> empleados, List<NomExtra> cargados, decimal kgMes) =>
         empleados.Where(e => e.ComisionPorKg > 0m && !cargados.Any(c => c.EmpleadoId == e.Id))
-            .Select(e => new NomExtraSugerenciaDto(e.Id, e.Nombre, null, null, 0m, 0m, null,
-                $"Cobra ${M(e.ComisionPorKg)} por kg — poné los kg vendidos"))
+            .Select(e => new NomExtraSugerenciaDto(e.Id, e.Nombre, null, null, kgMes,
+                Math.Round(kgMes * e.ComisionPorKg, 0, MidpointRounding.AwayFromZero), null,
+                $"${M(e.ComisionPorKg)} por kg"))
             .ToList();
 
     /// <summary>Quién fichó en cada feriado del mes. El día ya va en el sueldo: si lo trabajó se le
@@ -158,14 +218,12 @@ public class NomExtrasController : ControllerBase
                 if (emp is null) continue;
                 if (cargados.Any(c => c.EmpleadoId == emp.Id && c.Fecha?.Date == f.Fecha.Date)) continue;
                 if (res.Any(s => s.EmpleadoId == emp.Id && s.FeriadoId == f.Id)) continue;
-                var esDiario = string.Equals(emp.ModalidadSueldo, "diario", StringComparison.OrdinalIgnoreCase);
-                var valorDia = esDiario ? emp.JornalDiario : Math.Round(emp.SueldoBase / 30m, 0, MidpointRounding.AwayFromZero);
                 var horario = r.HoraEntrada.HasValue && r.HoraSalida.HasValue
                     ? $"fichó {r.HoraEntrada.Value:hh\\:mm} a {r.HoraSalida.Value:hh\\:mm}"
                     : "fichó ese día";
-                res.Add(new NomExtraSugerenciaDto(emp.Id, emp.Nombre, f.Fecha.Date, f.Id, 1m, valorDia,
-                    $"Feriado {f.Fecha:dd/MM} · {f.Descripcion}",
-                    $"{horario} · propuesto {(esDiario ? "jornal" : "sueldo ÷ 30")} ${M(valorDia)}"));
+                // 2026-11-11 (2ª): el monto lo pone el dueño a mano.
+                res.Add(new NomExtraSugerenciaDto(emp.Id, emp.Nombre, f.Fecha.Date, f.Id, 1m, 0m,
+                    $"Feriado {f.Fecha:dd/MM} · {f.Descripcion}", horario));
             }
         }
         return res;
@@ -220,6 +278,7 @@ public class NomExtrasController : ControllerBase
         public decimal Monto { get; set; }
         public string? Detalle { get; set; }
         public int? FeriadoId { get; set; }
+        public string? FechaPagoStr { get; set; }
     }
 
     [HttpPost("extras")]
@@ -256,6 +315,7 @@ public class NomExtrasController : ControllerBase
             Monto = Math.Round(req.Monto, 2, MidpointRounding.AwayFromZero),
             Detalle = string.IsNullOrWhiteSpace(req.Detalle) ? null : req.Detalle.Trim(),
             FeriadoId = tipo == "feriado" ? req.FeriadoId : null,
+            FechaPago = ParseFecha(req.FechaPagoStr),
             CargadoPor = User?.Identity?.Name,
             CreatedAt = DateTime.UtcNow
         };
@@ -271,6 +331,8 @@ public class NomExtrasController : ControllerBase
         public decimal? Monto { get; set; }
         public string? Detalle { get; set; }
         public string? FechaStr { get; set; }
+        /// <summary>null = no se toca; "" = sin fecha; "yyyy-MM-dd" = esa fecha.</summary>
+        public string? FechaPagoStr { get; set; }
     }
 
     [HttpPut("extras/{id:int}")]
@@ -289,6 +351,7 @@ public class NomExtrasController : ControllerBase
         if (req.Cantidad.HasValue) x.Cantidad = Math.Max(0m, req.Cantidad.Value);
         if (req.Detalle is not null) x.Detalle = string.IsNullOrWhiteSpace(req.Detalle) ? null : req.Detalle.Trim();
         if (!string.IsNullOrWhiteSpace(req.FechaStr) && x.Tipo == "plus") x.Fecha = ParseFecha(req.FechaStr);
+        if (req.FechaPagoStr is not null) x.FechaPago = ParseFecha(req.FechaPagoStr);
         x.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         await RecalcularLiquidacionAsync(_db, x.LiquidacionId);
@@ -477,6 +540,26 @@ public class NomExtrasController : ControllerBase
         return res;
     }
 
+    /// <summary>2026-11-11 (2ª): lo que hay que pagar HOY (o quedó atrasado) por empleado, según la
+    /// fecha de pago de cada extra. Lo usa "Equipo hoy" del inicio.</summary>
+    public static async Task<Dictionary<int, List<(NomExtra Extra, decimal Debe)>>> APagarHastaAsync(AppDbContext db, DateTime hoy)
+    {
+        var res = new Dictionary<int, List<(NomExtra, decimal)>>();
+        var extras = await db.NomExtras.Where(x => x.FechaPago != null && x.FechaPago <= hoy).ToListAsync();
+        foreach (var g in extras.GroupBy(x => x.Tipo))
+        {
+            var pagado = await PagadoPorExtraAsync(db, g.Select(x => x.LiquidacionId).Distinct().ToList(), g.Key);
+            foreach (var x in g)
+            {
+                var debe = x.Monto - pagado.GetValueOrDefault(x.Id);
+                if (debe <= 0.01m) continue;
+                if (!res.TryGetValue(x.EmpleadoId, out var l)) res[x.EmpleadoId] = l = new();
+                l.Add((x, debe));
+            }
+        }
+        return res;
+    }
+
     private static DateTime? ParseFecha(string? s) =>
         !string.IsNullOrWhiteSpace(s) && DateTime.TryParseExact(s.Trim(), "yyyy-MM-dd",
             System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d)
@@ -507,6 +590,7 @@ public class NomExtrasController : ControllerBase
             x.Fecha, x.Cantidad, x.Monto, x.Detalle, x.FeriadoId,
             pagado, Math.Max(0m, x.Monto - pagado), x.CargadoPor, x.CreatedAt,
             pagos.OrderBy(p => p.FechaPago).Select(p => new NomPagoDto(
-                p.Id, p.LiquidacionId, p.FechaPago, p.Metodo, p.Monto, p.Concepto, p.Detalle, p.Notas, p.CreatedAt)).ToList());
+                p.Id, p.LiquidacionId, p.FechaPago, p.Metodo, p.Monto, p.Concepto, p.Detalle, p.Notas, p.CreatedAt)).ToList(),
+            x.FechaPago);
     }
 }

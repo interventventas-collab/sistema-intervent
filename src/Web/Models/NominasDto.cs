@@ -174,6 +174,7 @@ public class NomExtraDto
     public string? CargadoPor { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<NomPagoDto> Pagos { get; set; } = new();
+    public DateTime? FechaPago { get; set; }
 }
 public class NomExtraSugerenciaDto
 {
@@ -206,7 +207,9 @@ public class NomExtrasModuloDto
     public List<NomExtraSugerenciaDto> Sugerencias { get; set; } = new();
     public List<NomFeriadoDto> Feriados { get; set; } = new();
     public List<NomExtraEmpleadoDto> Empleados { get; set; } = new();
+    public List<NomBalanzaMesDto> Balanza { get; set; } = new();
 }
+public class NomBalanzaMesDto { public int Anio { get; set; } public int Mes { get; set; } public decimal Kg { get; set; } public bool Cargado { get; set; } public bool Pagado { get; set; } }
 
 // 2026-07-01: metadata de un archivo adjunto (recibo/nómina) — sin el contenido binario.
 public class NomNominaArchivoDto

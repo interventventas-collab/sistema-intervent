@@ -105,7 +105,8 @@ public record NomExtraResumenDto(string Tipo, decimal Monto, decimal Pagado);
 public record NomExtraDto(
     int Id, int LiquidacionId, int EmpleadoId, string EmpleadoNombre, string Tipo,
     int Anio, int Mes, DateTime? Fecha, decimal Cantidad, decimal Monto, string? Detalle, int? FeriadoId,
-    decimal Pagado, decimal Debe, string? CargadoPor, DateTime CreatedAt, List<NomPagoDto> Pagos);
+    decimal Pagado, decimal Debe, string? CargadoPor, DateTime CreatedAt, List<NomPagoDto> Pagos,
+    DateTime? FechaPago = null);
 public record NomExtraSugerenciaDto(
     int EmpleadoId, string EmpleadoNombre, DateTime? Fecha, int? FeriadoId,
     decimal Cantidad, decimal Monto, string? Detalle, string Explicacion);
@@ -115,7 +116,10 @@ public record NomExtraEmpleadoDto(int Id, string Nombre, decimal SueldoBase, dec
 public record NomExtrasModuloDto(
     string Tipo, int Anio, int Mes,
     List<NomExtraDto> Cargados, List<NomExtraSugerenciaDto> Sugerencias,
-    List<NomFeriadoDto> Feriados, List<NomExtraEmpleadoDto> Empleados);
+    List<NomFeriadoDto> Feriados, List<NomExtraEmpleadoDto> Empleados,
+    List<NomBalanzaMesDto>? Balanza = null);
+// 2026-11-11 (2ª): kg de café de la balanza por mes, para el módulo Comisiones.
+public record NomBalanzaMesDto(int Anio, int Mes, decimal Kg, bool Cargado, bool Pagado);
 
 // 2026-07-01: metadata de un archivo adjunto (sin el contenido binario).
 public record NomNominaArchivoDto(
