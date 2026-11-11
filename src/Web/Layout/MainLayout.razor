@@ -2655,7 +2655,8 @@
         <Web.Shared.Tareas.TareasAvisos @ref="tareasAvisosRef" OnCambio="EngancharTareas" />
     }
     <BotonesFlotantes @ref="botonesRef" Bienvenida="bienvenidaRef" Asistente="asistenteRef" WhatsApp="waBuscadorRef"
-                      VePreguntas="@(HasPerm("publicaciones"))" PreguntasSinResponder="preguntasSinResponder" />
+                      VePreguntas="@(HasPerm("publicaciones"))" PreguntasSinResponder="preguntasSinResponder"
+                      Rol="@role" Usuario="@username" TienePermiso="HasPerm" />
 }
 
 @* 2026-06-23: modal global de vinculacion WhatsApp. Se abre desde cualquier pantalla apretando

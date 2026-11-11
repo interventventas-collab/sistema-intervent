@@ -1,61 +1,208 @@
 @* 2026-11-03: un solo botón abajo a la derecha en vez de los círculos sueltos (☀ resumen del día,
-   WhatsApp y 💬 asistente). Al pasar el mouse (o tocarlo en el celu) se despliegan para arriba con su
-   nombre; suma "Preguntas MeLi" para ir al respondedor desde cualquier pantalla.
-   Cada ventana sigue siendo la de siempre: este botón solo llama a su Abrir(). *@
+   WhatsApp y 💬 asistente). Cada ventana sigue siendo la de siempre: este botón solo llama a su Abrir().
+   2026-11-11 (pedido del dueño: "que sea editable y se pueda mover para cada uno, siempre visible plegado,
+   hasta 10"): en la compu ya no se abre "mágico" al pasar el mouse. Los circulitos están siempre a la vista
+   y el nombre aparece solo en el que señalás. Arriba ⋮⋮ para arrastrarlo; abajo ✏ para elegir hasta 10 cosas:
+   las 5 de siempre, cualquier pantalla del menú o un link de afuera (planilla de Google, mapa…).
+   Se guarda por persona en Menu_Config Id 3 (MenuConfigController "flotante"): lo de Osmar (o sin PIN) es la
+   base que ven todos; Gabriel/Germán con su PIN arman los suyos; los otros usuarios, el de su usuario.
+   En el celu queda como antes: ☰ que se abre tocándolo. *@
+@implements IDisposable
 @inject NavigationManager Nav
+@inject ApiClient Api
+@inject MenuNuevoService Svc
+@inject OperatorService Operator
+@inject ToastService Toast
+@inject IJSRuntime JS
 
-@if (Items().Count > 0)
+@{ var items = Visibles(); }
+@if (items.Count > 0 || editando)
 {
-    <div class="bf @(abierto ? "bf-abierto" : "")" @onmouseenter="() => abierto = true" @onmouseleave="() => abierto = false">
-        @if (abierto)
-        {
-            <div class="bf-lista">
-                @foreach (var it in Items())
-                {
-                    <button type="button" class="bf-item" @onclick="() => Elegir(it)">
-                        <span class="bf-lab">@it.Texto</span>
-                        <span class="bf-circ @it.Clase">
-                            @if (it.Icono == "wa")
-                            {
-                                <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                            }
-                            else
-                            {
-                                @it.Icono
-                            }
-                            @if (it.Numero > 0) { <span class="bf-num">@(it.Numero > 99 ? "99+" : it.Numero.ToString())</span> }
-                        </span>
-                    </button>
-                }
-            </div>
-        }
-        <button type="button" class="bf-main" title="Resumen del día, asistente, preguntas y WhatsApp" @onclick="() => abierto = !abierto">
+    var cfg = Mio();
+    var der = cfg?.Derecha ?? 22;
+    var aba = cfg?.Abajo ?? 22;
+    if (arrastrando) { der = arrDer; aba = arrAba; }
+    var labDer = arrastrando ? arrLabDer : cfg?.LabDer == true;
+    var acostado = cfg?.Acostado == true;
+    <div class="bf @(abierto ? "bf-abierto" : "") @(acostado ? "bf-acostado" : "") @(labDer ? "bf-labder" : "") @(arrastrando ? "bf-moviendo" : "")"
+         style="right:clamp(0px, @(der)px, calc(100vw - 56px)); bottom:clamp(0px, @(aba)px, calc(100vh - 56px));">
+        <span class="bf-agarre" title="Arrastrame para ponerme en otro lado" @onpointerdown="EmpezarArrastre">⋮⋮</span>
+        <div class="bf-lista">
+            @foreach (var it in items)
+            {
+                <button type="button" class="bf-item" @onclick="() => Elegir(it)">
+                    <span class="bf-lab">@it.Texto</span>
+                    <span class="bf-circ @it.Clase">
+                        @if (it.Icono == "wa")
+                        {
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                        }
+                        else
+                        {
+                            @it.Icono
+                        }
+                        @if (it.Numero > 0) { <span class="bf-num">@(it.Numero > 99 ? "99+" : it.Numero.ToString())</span> }
+                    </span>
+                </button>
+            }
+            <button type="button" class="bf-lapiz" title="Elegir qué botones tengo acá (hasta @MAX)" @onclick="AbrirEditor">✏</button>
+        </div>
+        @* Celu: el ☰ de siempre, que se abre tocándolo. *@
+        <button type="button" class="bf-main" title="Mis botones" @onclick="() => abierto = !abierto">
             @(abierto ? "✕" : "☰")
-            @{ var totalAvisos = PreguntasSinResponder + (Tareas?.Pendientes ?? 0); }
+            @{ var totalAvisos = items.Sum(i => i.Numero); }
             @if (!abierto && totalAvisos > 0) { <span class="bf-num">@(totalAvisos > 99 ? "99+" : totalAvisos.ToString())</span> }
         </button>
     </div>
 }
 
+@if (arrastrando)
+{
+    @* Mientras se arrastra, una capa invisible toma el mouse en toda la pantalla. *@
+    <div class="bf-capa" @onpointermove="Arrastrar" @onpointerup="SoltarArrastre" @onpointerleave="SoltarArrastre"></div>
+}
+
+@if (editando)
+{
+    <div class="bf-ed-fondo" @onclick="CerrarEditor"></div>
+    <div class="bf-ed">
+        <div class="bf-ed-h">Mis botones <small>· @QuienTexto() · @borrador.Count de @MAX</small><button class="bf-ed-x" @onclick="CerrarEditor">✕</button></div>
+        <div class="bf-ed-cuerpo">
+            @if (borrador.Count == 0)
+            {
+                <div class="bf-ed-vacio">No elegiste ninguno: el botón no se va a ver. Buscá abajo y agregá.</div>
+            }
+            @for (var n = 0; n < borrador.Count; n++)
+            {
+                var i = n;
+                var d = Describir(borrador[i]);
+                <div class="bf-ed-fila">
+                    <span class="bf-ed-ico">@(d.Icono == "wa" ? "🟢" : d.Icono)</span>
+                    <span class="bf-ed-nom">@d.Texto@if (d.Externo) { <small> · link de afuera</small> }</span>
+                    <button class="bf-ed-b" title="Subir" disabled="@(i == 0)" @onclick="() => Mover(i, -1)">↑</button>
+                    <button class="bf-ed-b" title="Bajar" disabled="@(i == borrador.Count - 1)" @onclick="() => Mover(i, 1)">↓</button>
+                    <button class="bf-ed-b" title="Sacar" @onclick="() => borrador.RemoveAt(i)">✕</button>
+                </div>
+            }
+
+            <div class="bf-ed-forma">
+                <label><input type="radio" name="bf-forma" checked="@(!borradorAcostado)" @onchange="() => borradorAcostado = false" /> parado (columna)</label>
+                <label><input type="radio" name="bf-forma" checked="@borradorAcostado" @onchange="() => borradorAcostado = true" /> acostado (fila)</label>
+            </div>
+
+            @if (borrador.Count < MAX)
+            {
+                <input class="bf-ed-buscar" placeholder="🔍 Agregar: buscá una pantalla o pegá un link (https://…)"
+                       @bind="filtro" @bind:event="oninput" />
+                var f = filtro.Trim();
+                @if (EsLink(f))
+                {
+                    <div class="bf-ed-link">
+                        <input class="bf-ed-buscar" placeholder="Nombre del botón (ej. ALQ, Mapa)" @bind="nombreLink" @bind:event="oninput" maxlength="40" />
+                        <button class="bf-ed-ok" disabled="@string.IsNullOrWhiteSpace(nombreLink)" @onclick="AgregarLink">Agregar link</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="bf-ed-lista">
+                        @foreach (var (titulo, opciones) in Opciones(f))
+                        {
+                            <div class="bf-ed-sec">@titulo</div>
+                            @foreach (var o in opciones)
+                            {
+                                var x = o;
+                                <button class="bf-ed-op" @onclick="() => Agregar(x.Clave)"><span>@(x.Icono == "wa" ? "🟢" : x.Icono)</span> @x.Texto</button>
+                            }
+                        }
+                    </div>
+                }
+            }
+        </div>
+        <div class="bf-ed-pie">
+            <button class="bf-ed-ok" disabled="@guardando" @onclick="GuardarEditor">@(guardando ? "Guardando…" : "Listo")</button>
+            <button class="bf-ed-sec-b" disabled="@guardando" @onclick="CerrarEditor">Cancelar</button>
+            <span style="flex:1"></span>
+            @if (Mio()?.Derecha is not null)
+            {
+                <button class="bf-ed-sec-b" disabled="@guardando" title="Lo vuelve abajo a la derecha" @onclick="VolverAlLugar">↘ Volver a su lugar</button>
+            }
+            @if (Persona() != "" && TienePropios())
+            {
+                <button class="bf-ed-sec-b" disabled="@guardando" @onclick="VolverAOsmar">↩ Volver a los de Osmar</button>
+            }
+        </div>
+    </div>
+}
+
 <style>
-    .bf { position: fixed; right: 22px; bottom: 22px; z-index: 9000; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
-    /* Colchón invisible para que el mouse no "se caiga" entre el botón y la lista. */
-    .bf-abierto { padding: 12px 0 0 60px; }
-    .bf-main { position: relative; width: 56px; height: 56px; border-radius: 50%; border: none; background: #1f2937; color: #fff;
-        font-size: 24px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.28); display: flex; align-items: center; justify-content: center; }
-    .bf-abierto .bf-main { background: #374151; }
-    .bf-lista { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; margin-right: 4px; animation: bf-sube .15s ease; }
-    @@keyframes bf-sube { from { opacity: 0; transform: translateY(8px); } }
-    .bf-item { display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0; cursor: pointer; }
-    .bf-lab { background: #1f2937; color: #fff; font-size: 13px; padding: 5px 10px; border-radius: 7px; white-space: nowrap; }
-    .bf-circ { position: relative; width: 48px; height: 48px; border-radius: 50%; background: #fff; border: 1px solid #e5e7eb; color: #111827;
-        font-size: 21px; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(0,0,0,.16); }
-    .bf-item:hover .bf-circ { transform: scale(1.06); }
-    .bf-item:hover .bf-lab { background: #111827; }
+    .bf { position: fixed; z-index: 9000; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .bf-lista { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+    .bf-acostado, .bf-acostado .bf-lista { flex-direction: row; }
+    .bf-agarre { color: #9ca3af; font-size: 13px; letter-spacing: 1px; line-height: 1; padding: 2px 6px; cursor: grab; user-select: none; touch-action: none; opacity: .55; }
+    .bf-acostado .bf-agarre { writing-mode: vertical-lr; }
+    .bf:hover .bf-agarre { opacity: 1; }
+    .bf-moviendo .bf-agarre { cursor: grabbing; color: #2563eb; opacity: 1; }
+    .bf-item { position: relative; display: flex; align-items: center; background: none; border: none; padding: 0; cursor: pointer; }
+    /* El nombre aparece solo en el que se señala (a la izquierda, o a la derecha si está del lado izquierdo). */
+    .bf-lab { display: none; position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+        background: #1f2937; color: #fff; font-size: 12.5px; padding: 4px 9px; border-radius: 6px; white-space: nowrap; pointer-events: none; }
+    .bf-labder .bf-lab { right: auto; left: calc(100% + 8px); }
+    .bf-acostado .bf-lab { right: auto; left: 50%; top: auto; bottom: calc(100% + 8px); transform: translateX(-50%); }
+    .bf-item:hover .bf-lab { display: block; }
+    .bf-circ { position: relative; width: 40px; height: 40px; border-radius: 50%; background: #fff; border: 1px solid #e5e7eb; color: #111827;
+        font-size: 18px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,.14); }
+    .bf-item:hover .bf-circ { border-color: #1f2937; transform: scale(1.06); }
     .bf-circ.bf-wa { background: #25d366; border-color: #25d366; color: #fff; }
-    .bf-num { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; border-radius: 10px; background: #dc2626; color: #fff;
-        font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 5px; border: 2px solid #fff; }
-    @@media (max-width: 768px) { .bf { right: 12px; bottom: 12px; } }
+    .bf-lapiz { background: none; border: none; color: #9ca3af; font-size: 13px; cursor: pointer; padding: 2px 6px; opacity: .55; }
+    .bf:hover .bf-lapiz { opacity: 1; }
+    .bf-lapiz:hover { color: #111827; }
+    .bf-num { position: absolute; top: -4px; right: -5px; min-width: 18px; height: 18px; border-radius: 9px; background: #dc2626; color: #fff;
+        font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; border: 2px solid #fff; }
+    .bf-main { display: none; position: relative; width: 56px; height: 56px; border-radius: 50%; border: none; background: #1f2937; color: #fff;
+        font-size: 24px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.28); align-items: center; justify-content: center; }
+    .bf-capa { position: fixed; inset: 0; z-index: 9700; cursor: grabbing; }
+
+    .bf-ed-fondo { position: fixed; inset: 0; z-index: 9800; background: rgba(0,0,0,.18); }
+    .bf-ed { position: fixed; z-index: 9801; right: 24px; bottom: 24px; width: 380px; max-width: calc(100vw - 24px); max-height: calc(100vh - 48px);
+        display: flex; flex-direction: column; background: #fff; border: 1px solid #d1d5db; border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); font-size: 13px; }
+    .bf-ed-h { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid #f3f4f6; font-weight: 600; }
+    .bf-ed-h small { font-weight: 400; color: #9ca3af; flex: 1; }
+    .bf-ed-x { background: none; border: none; color: #9ca3af; font-size: 15px; cursor: pointer; }
+    .bf-ed-cuerpo { overflow-y: auto; padding: 6px 12px 10px; }
+    .bf-ed-vacio { color: #9ca3af; padding: 8px 0; }
+    .bf-ed-fila { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid #f3f4f6; }
+    .bf-ed-ico { width: 22px; text-align: center; }
+    .bf-ed-nom { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bf-ed-nom small { color: #9ca3af; }
+    .bf-ed-b { background: none; border: none; color: #6b7280; cursor: pointer; padding: 0 4px; font-size: 13px; }
+    .bf-ed-b:disabled { color: #e5e7eb; cursor: default; }
+    .bf-ed-forma { display: flex; gap: 14px; padding: 8px 0 2px; color: #374151; font-size: 12.5px; }
+    .bf-ed-forma label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .bf-ed-buscar { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 8px; font: inherit; margin-top: 8px; }
+    .bf-ed-link { display: flex; gap: 6px; align-items: center; }
+    .bf-ed-link .bf-ed-buscar { flex: 1; }
+    .bf-ed-link .bf-ed-ok { margin-top: 8px; white-space: nowrap; }
+    .bf-ed-lista { max-height: 260px; overflow-y: auto; margin-top: 4px; }
+    .bf-ed-sec { font-size: 10.5px; color: #9ca3af; text-transform: uppercase; letter-spacing: .03em; padding: 8px 0 2px; }
+    .bf-ed-op { display: flex; gap: 8px; width: 100%; text-align: left; background: none; border: none; padding: 4px 4px; border-radius: 5px; cursor: pointer; font: inherit; color: #111827; }
+    .bf-ed-op:hover { background: #f3f4f6; }
+    .bf-ed-pie { display: flex; gap: 6px; align-items: center; padding: 10px 12px; border-top: 1px solid #f3f4f6; flex-wrap: wrap; }
+    .bf-ed-ok { background: #1f2937; color: #fff; border: 1px solid #1f2937; border-radius: 6px; padding: 5px 12px; font: inherit; cursor: pointer; }
+    .bf-ed-ok:disabled { opacity: .5; cursor: default; }
+    .bf-ed-sec-b { background: #fff; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
+
+    @@media (max-width: 768px) {
+        /* Celu: como antes, ☰ abajo a la derecha que se abre tocándolo (el lugar guardado es de la compu). */
+        .bf { right: 12px !important; bottom: 12px !important; flex-direction: column !important; align-items: flex-end; gap: 12px; }
+        .bf-agarre { display: none; }
+        .bf-main { display: flex; }
+        .bf-lista { display: none; flex-direction: column !important; align-items: flex-end; gap: 10px; }
+        .bf-abierto .bf-lista { display: flex; }
+        .bf-item { gap: 10px; }
+        .bf-lab { display: block; position: static; transform: none; }
+        .bf-lapiz { display: none; }
+        .bf-ed { right: 12px; bottom: 12px; }
+    }
     @@media print { .bf { display: none !important; } }
 </style>
 
@@ -65,29 +212,122 @@
     [Parameter] public WaBuscadorFlotante? WhatsApp { get; set; }
     [Parameter] public bool VePreguntas { get; set; }
     [Parameter] public int PreguntasSinResponder { get; set; }
+    /// <summary>2026-11-11: para saber de quién es el botón (los admin se distinguen por el PIN) y qué pantallas puede elegir.</summary>
+    [Parameter] public string Rol { get; set; } = "user";
+    [Parameter] public string Usuario { get; set; } = "";
+    [Parameter] public Func<string, bool>? TienePermiso { get; set; }
     /// <summary>03/11/2026: 📋 Tareas del depósito (solo para los admin; null = no lo ve). No es parámetro:
     /// el layout lo engancha cuando TareasAvisos ya cargó (su @ref recién existe después del primer dibujo).</summary>
     public Web.Shared.Tareas.TareasAvisos? Tareas { get; set; }
 
+    private const int MAX = 10;
+    private static readonly string[] DeFabrica = { "bienvenida", "asistente", "preguntas", "tareas", "whatsapp" };
+
+    private Dictionary<string, FlotantePersonaDto> config = new();
     private bool abierto;
 
-    private record Item(string Clave, string Texto, string Icono, string Clase, int Numero);
+    private record Item(string Clave, string Texto, string Icono, string Clase, int Numero, bool Externo = false);
 
-    // Se arma en cada dibujo: así toma si la bienvenida ya cargó, si hay mensajes del asistente, etc.
-    private List<Item> Items()
+    protected override async Task OnInitializedAsync()
     {
-        var l = new List<Item>();
-        if (Bienvenida?.Disponible == true)
-            l.Add(new("bienvenida", Bienvenida.Trayendo ? "Resumen del día · trayendo movimientos…" : "Resumen del día", "☀", "", Bienvenida.Pendientes));
-        if (Asistente is not null)
-            l.Add(new("asistente", "Asistente", "💬", "", Asistente.SinLeer));
-        if (VePreguntas)
-            l.Add(new("preguntas", PreguntasSinResponder > 0 ? $"Preguntas MeLi · {PreguntasSinResponder} sin responder" : "Preguntas MeLi", "📥", "", PreguntasSinResponder));
-        if (Tareas is not null)
-            l.Add(new("tareas", Tareas.Pendientes > 0 ? $"Tareas del depósito · {Tareas.Pendientes} para mirar" : "Tareas del depósito", "📋", "", Tareas.Pendientes));
-        if (WhatsApp?.Disponible == true)
-            l.Add(new("whatsapp", "WhatsApp", "wa", "bf-wa", 0));
-        return l;
+        Operator.OnChange += Repintar;
+        Svc.OnChange += Repintar;
+        Svc.OnNumeros += Repintar;
+        try { config = await Api.GetFlotanteAsync() ?? new(); } catch { }
+        try { await Svc.EnsureLoadedAsync(); } catch { }
+    }
+    private void Repintar() => InvokeAsync(StateHasChanged);
+    public void Dispose() { Operator.OnChange -= Repintar; Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; }
+
+    // El layout avisa cuando cambian cosas (la bienvenida terminó de cargar, llegó el conteo de preguntas).
+    public void Refrescar() => InvokeAsync(StateHasChanged);
+
+    // ───────── De quién es ─────────
+    private bool EsAdmin => Rol == "admin";
+    /// <summary>"" = la base de Osmar (admin con OSMAR o sin PIN). Gabriel/Germán: su nombre. Otros usuarios: "U:usuario".</summary>
+    private string Persona()
+    {
+        if (!EsAdmin) return "U:" + (Usuario ?? "").Trim().ToUpperInvariant();
+        var op = Operator.HasOperator ? Operator.Current!.Trim().ToUpperInvariant() : "";
+        return op == MenuNuevoCatalogo.FAV_DUENO ? "" : op;
+    }
+    private bool TienePropios() => config.ContainsKey(Persona());
+    /// <summary>Lo suyo si lo armó; si no, lo de Osmar; si no, null (los 5 de fábrica, abajo a la derecha).</summary>
+    private FlotantePersonaDto? Mio()
+        => config.TryGetValue(Persona(), out var c) ? c : config.TryGetValue("", out var b) ? b : null;
+    private List<string> MisItems() => Mio()?.Items ?? DeFabrica.ToList();
+
+    private string QuienTexto()
+    {
+        var p = Persona();
+        if (p == "") return "los ven todos los que no armaron los suyos";
+        var n = p.StartsWith("U:") ? p[2..] : p;
+        return n.Length == 0 ? "" : "solo para " + char.ToUpper(n[0]) + n[1..].ToLower();
+    }
+
+    // ───────── Qué se dibuja ─────────
+    private List<Item> Visibles()
+        => MisItems().Select(Describir).Where(d => d.Clave != "").ToList();
+
+    /// <summary>Convierte lo guardado en un botón. Clave "" = no disponible para esta persona/pantalla (no se dibuja).</summary>
+    private Item Describir(string k)
+    {
+        switch (k)
+        {
+            case "bienvenida":
+                return Bienvenida?.Disponible == true
+                    ? new(k, Bienvenida.Trayendo ? "Resumen del día · trayendo movimientos…" : "Resumen del día", "☀", "", Bienvenida.Pendientes)
+                    : Nada(k, "Resumen del día", "☀");
+            case "asistente":
+                return Asistente is not null ? new(k, "Asistente", "💬", "", Asistente.SinLeer) : Nada(k, "Asistente", "💬");
+            case "preguntas":
+                return VePreguntas
+                    ? new(k, PreguntasSinResponder > 0 ? $"Preguntas MeLi · {PreguntasSinResponder} sin responder" : "Preguntas MeLi", "📥", "", PreguntasSinResponder)
+                    : Nada(k, "Preguntas MeLi", "📥");
+            case "tareas":
+                return Tareas is not null
+                    ? new(k, Tareas.Pendientes > 0 ? $"Tareas del depósito · {Tareas.Pendientes} para mirar" : "Tareas del depósito", "📋", "", Tareas.Pendientes)
+                    : Nada(k, "Tareas del depósito", "📋");
+            case "whatsapp":
+                return WhatsApp?.Disponible == true ? new(k, "WhatsApp", "wa", "bf-wa", 0) : Nada(k, "WhatsApp", "wa");
+        }
+        if (k.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            var p = k.Split('¦');
+            var nombre = p.Length > 1 && p[1].Trim() != "" ? p[1].Trim() : "Link";
+            return new(k, nombre, IconoLink(p[0]), "", 0, Externo: true);
+        }
+        var it = Pantalla(k);
+        if (it is null || !PuedeVer(it)) return Nada(k, it?.Label ?? k, "•");
+        var num = Svc.Numeros.TryGetValue(it.Href, out var nn) ? nn : 0;
+        return new(k, it.Label, IconoPantalla(it.Href), "", num, it.Externo);
+    }
+    // En el editor se ve igual (con su nombre), aunque en esta compu no esté disponible.
+    private Item Nada(string k, string texto, string icono) => editando ? new(k, texto, icono, "", 0) : new("", texto, icono, "", 0);
+
+    private static MenuNuevoCatalogo.Item? Pantalla(string href)
+        => string.IsNullOrEmpty(href) ? null
+           : MenuNuevoCatalogo.Directos.FirstOrDefault(d => string.Equals(d.Href, href, StringComparison.OrdinalIgnoreCase))
+             ?? (MenuNuevoCatalogo.PorHref.TryGetValue(href, out var x) ? x : null);
+    private bool PuedeVer(MenuNuevoCatalogo.Item it)
+        => EsAdmin || string.IsNullOrEmpty(it.Permiso) || TienePermiso?.Invoke(it.Permiso) == true;
+    private string IconoPantalla(string href) => MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, href) ?? href.ToLowerInvariant() switch
+    {
+        "/cafe/preparacion" => "📦",
+        "/cafe/ventas" => "🧾",
+        "/cafe/tesoreria/cobranzas" => "💵",
+        "/cafe/tesoreria/pagos" => "📤",
+        "/mapeo?full=1" => "🗺",
+        _ => MenuNuevoCatalogo.IconoFavorito(href),
+    };
+    private static string IconoLink(string url)
+    {
+        var u = url.ToLowerInvariant();
+        if (u.Contains("docs.google.com/spreadsheets") || u.Contains("sheets.google")) return "📊";
+        if (u.Contains("maps.google") || u.Contains("google.com/maps") || u.Contains("maps.app.goo.gl") || u.Contains("goo.gl/maps")) return "🗺";
+        if (u.Contains("docs.google.com/document")) return "📄";
+        if (u.Contains("drive.google")) return "📁";
+        return "🔗";
     }
 
     private async Task Elegir(Item it)
@@ -95,14 +335,162 @@
         abierto = false;
         switch (it.Clave)
         {
-            case "bienvenida": if (Bienvenida is not null) await Bienvenida.Abrir(); break;
-            case "asistente": if (Asistente is not null) await Asistente.Abrir(); break;
-            case "preguntas": Nav.NavigateTo("/meli/preguntas"); break;
-            case "whatsapp": WhatsApp?.Abrir(); break;
-            case "tareas": if (Tareas is not null) await Tareas.Abrir(); break;
+            case "bienvenida": if (Bienvenida is not null) await Bienvenida.Abrir(); return;
+            case "asistente": if (Asistente is not null) await Asistente.Abrir(); return;
+            case "preguntas": Nav.NavigateTo("/meli/preguntas"); return;
+            case "whatsapp": WhatsApp?.Abrir(); return;
+            case "tareas": if (Tareas is not null) await Tareas.Abrir(); return;
+        }
+        if (it.Clave.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            // Links de afuera (planilla, mapa): en otra pestaña, para no perder lo que estaba abierto.
+            await JS.InvokeVoidAsync("open", it.Clave.Split('¦')[0], "_blank", "noopener");
+            return;
+        }
+        Nav.NavigateTo(it.Clave, forceLoad: it.Externo);
+    }
+
+    // ───────── Guardar ─────────
+    private async Task Guardar(FlotantePersonaDto? nuevo, bool volverAOsmar = false)
+    {
+        try
+        {
+            var r = await Api.SaveFlotanteAsync(Persona(), volverAOsmar ? null : nuevo);
+            if (r is not null) config = r;
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+    }
+    /// <summary>Copia de lo que ve ahora (para guardarlo como propio cuando cambia algo).</summary>
+    private FlotantePersonaDto Copia()
+    {
+        var m = Mio();
+        return new FlotantePersonaDto { Items = MisItems().ToList(), Derecha = m?.Derecha, Abajo = m?.Abajo, LabDer = m?.LabDer == true, Acostado = m?.Acostado == true };
+    }
+
+    // ───────── Arrastrar ─────────
+    private bool arrastrando;
+    private int arrDer, arrAba, anchoVentana, altoVentana;
+    private bool arrLabDer;
+    private double iniX, iniY;
+    private int iniDer, iniAba;
+
+    private async Task EmpezarArrastre(PointerEventArgs e)
+    {
+        try
+        {
+            var tam = await JS.InvokeAsync<int[]>("eval", "[window.innerWidth, window.innerHeight]");
+            anchoVentana = tam[0]; altoVentana = tam[1];
+        }
+        catch { anchoVentana = 1600; altoVentana = 900; }
+        var m = Mio();
+        iniDer = arrDer = Math.Clamp(m?.Derecha ?? 22, 0, Math.Max(0, anchoVentana - 56));
+        iniAba = arrAba = Math.Clamp(m?.Abajo ?? 22, 0, Math.Max(0, altoVentana - 56));
+        arrLabDer = m?.LabDer == true;
+        iniX = e.ClientX; iniY = e.ClientY;
+        arrastrando = true;
+    }
+    private void Arrastrar(PointerEventArgs e)
+    {
+        if (!arrastrando) return;
+        arrDer = Math.Clamp(iniDer - (int)(e.ClientX - iniX), 0, Math.Max(0, anchoVentana - 56));
+        arrAba = Math.Clamp(iniAba - (int)(e.ClientY - iniY), 0, Math.Max(0, altoVentana - 56));
+        // Del lado izquierdo de la pantalla, el nombre sale a la derecha (si no, se cortaría contra el borde).
+        arrLabDer = arrDer > anchoVentana / 2;
+    }
+    private async Task SoltarArrastre(PointerEventArgs e)
+    {
+        if (!arrastrando) return;
+        Arrastrar(e);
+        arrastrando = false;
+        if (Math.Abs(arrDer - iniDer) < 3 && Math.Abs(arrAba - iniAba) < 3) return;   // fue un clic, no un arrastre
+        var c = Copia();
+        c.Derecha = arrDer; c.Abajo = arrAba; c.LabDer = arrLabDer;
+        if (Mio() is { } m) { m.Derecha = arrDer; m.Abajo = arrAba; m.LabDer = arrLabDer; }   // que no salte mientras guarda
+        await Guardar(c);
+    }
+
+    // ───────── Editor ✏ ─────────
+    private bool editando, guardando, borradorAcostado;
+    private List<string> borrador = new();
+    private string filtro = "", nombreLink = "";
+
+    private void AbrirEditor()
+    {
+        borrador = MisItems().ToList();
+        borradorAcostado = Mio()?.Acostado == true;
+        filtro = ""; nombreLink = "";
+        editando = true;
+        abierto = false;
+    }
+    private void CerrarEditor() { if (!guardando) editando = false; }
+
+    private void Mover(int i, int d)
+    {
+        var j = i + d;
+        if (j < 0 || j >= borrador.Count) return;
+        (borrador[i], borrador[j]) = (borrador[j], borrador[i]);
+    }
+    private void Agregar(string clave)
+    {
+        if (borrador.Count >= MAX || borrador.Contains(clave, StringComparer.OrdinalIgnoreCase)) return;
+        borrador.Add(clave);
+        filtro = "";
+    }
+    private static bool EsLink(string t) => t.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || t.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+    private void AgregarLink()
+    {
+        var url = filtro.Trim().Replace("¦", "");
+        var nombre = nombreLink.Trim().Replace("¦", " ").Replace("|", " ");
+        if (!EsLink(url) || nombre == "") return;
+        Agregar(url + "¦" + nombre);
+        nombreLink = "";
+    }
+
+    /// <summary>Lo que se puede agregar: las 5 de siempre y las pantallas del menú (mismas secciones que los botones grandes).</summary>
+    private IEnumerable<(string, List<Item>)> Opciones(string f)
+    {
+        bool Pasa(string texto) => f == "" || texto.Contains(f, StringComparison.OrdinalIgnoreCase);
+        var ya = borrador.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var propias = DeFabrica.Where(k => !ya.Contains(k)).Select(Describir).Where(d => d.Clave != "" && Pasa(d.Texto)).ToList();
+        if (propias.Count > 0) yield return ("Del botón", propias);
+
+        var secciones = new List<(string, IEnumerable<MenuNuevoCatalogo.Item>)> { ("Botones de arriba", MenuNuevoCatalogo.Directos) };
+        foreach (var g in Svc.Actual.Grupos) secciones.Add((g.Grupo.Titulo, g.Items));
+        secciones.Add(("Organizar", Svc.Actual.Costado));
+        secciones.Add(("Más pantallas", Svc.Actual.Mas));
+        foreach (var (titulo, its) in secciones)
+        {
+            var l = its.Where(i => !ya.Contains(i.Href) && PuedeVer(i) && Pasa(i.Label) && vistos.Add(i.Href))
+                       .Select(i => new Item(i.Href, i.Label, IconoPantalla(i.Href), "", 0)).ToList();
+            if (l.Count > 0) yield return (titulo, l);
         }
     }
 
-    // El layout avisa cuando cambian cosas (la bienvenida terminó de cargar, llegó el conteo de preguntas).
-    public void Refrescar() => InvokeAsync(StateHasChanged);
+    private async Task GuardarEditor()
+    {
+        guardando = true;
+        try
+        {
+            var c = Copia();
+            c.Items = borrador.ToList();
+            c.Acostado = borradorAcostado;
+            await Guardar(c);
+            editando = false;
+        }
+        finally { guardando = false; }
+    }
+    private async Task VolverAlLugar()
+    {
+        guardando = true;
+        try { var c = Copia(); c.Derecha = null; c.Abajo = null; c.LabDer = false; await Guardar(c); }
+        finally { guardando = false; }
+    }
+    private async Task VolverAOsmar()
+    {
+        guardando = true;
+        try { await Guardar(null, volverAOsmar: true); editando = false; }
+        finally { guardando = false; }
+    }
 }

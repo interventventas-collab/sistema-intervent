@@ -97,6 +97,67 @@ WHEN NOT MATCHED THEN INSERT (Id, Json, ActualizadoPor) VALUES (2, {json}, {quie
         return NoContent();
     }
 
+    // ───── 2026-11-11: botón de abajo (flotante) de cada persona: qué tiene (hasta 10) y dónde está. ─────
+    // Fila Id = 3: { "<persona>": { Items, Derecha, Abajo, LabDer, Acostado } }. Persona "" = la base de Osmar.
+    // Los admin (Osmar, Gabriel, Germán comparten usuario y se distinguen por el PIN) mandan la persona;
+    // los demás usuarios guardan siempre en la suya ("U:" + usuario), así nadie pisa lo de otro.
+    public const int MAX_FLOTANTE = 10;
+    public record FlotantePersona(List<string>? Items, int? Derecha, int? Abajo, bool LabDer, bool Acostado);
+    public record FlotantePut(string? Persona, FlotantePersona? Config);
+
+    [HttpGet("flotante")]
+    public async Task<IActionResult> GetFlotante()
+    {
+        await AsegurarTablaAsync();
+        return Ok(await LeerFlotanteAsync());
+    }
+
+    [HttpPut("flotante")]
+    public async Task<IActionResult> PutFlotante([FromBody] FlotantePut req)
+    {
+        await AsegurarTablaAsync();
+        var quien = User.FindFirstValue(ClaimTypes.Name) ?? "";
+        var clave = User.IsInRole("admin")
+            ? (req.Persona ?? "").Trim().ToUpperInvariant()
+            : "U:" + quien.Trim().ToUpperInvariant();
+        if (clave.Length > 60) return BadRequest("Persona inválida");
+        await _lockFlot.WaitAsync();
+        try
+        {
+            var todo = await LeerFlotanteAsync();
+            if (req.Config is null) todo.Remove(clave);   // "Volver a los de Osmar"
+            else
+            {
+                var items = (req.Config.Items ?? new())
+                    .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim())
+                    .Where(x => x.Length <= 600)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).Take(MAX_FLOTANTE).ToList();
+                int? Lim(int? v) => v is null ? null : Math.Clamp(v.Value, 0, 5000);
+                todo[clave] = req.Config with { Items = items, Derecha = Lim(req.Config.Derecha), Abajo = Lim(req.Config.Abajo) };
+            }
+            var json = JsonSerializer.Serialize(todo);
+            if (json.Length > 100_000) return BadRequest("Demasiado grande");
+            await _db.Database.ExecuteSqlInterpolatedAsync($@"
+MERGE Menu_Config AS t USING (SELECT 3 AS Id) AS s ON t.Id = s.Id
+WHEN MATCHED THEN UPDATE SET Json = {json}, ActualizadoAt = SYSUTCDATETIME(), ActualizadoPor = {quien}
+WHEN NOT MATCHED THEN INSERT (Id, Json, ActualizadoPor) VALUES (3, {json}, {quien});");
+            return Ok(todo);
+        }
+        finally { _lockFlot.Release(); }
+    }
+
+    private static readonly SemaphoreSlim _lockFlot = new(1, 1);
+
+    private async Task<Dictionary<string, FlotantePersona>> LeerFlotanteAsync()
+    {
+        var json = (await _db.Database
+            .SqlQueryRaw<string>("SELECT TOP 1 Json AS Value FROM Menu_Config WHERE Id = 3")
+            .ToListAsync()).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try { return JsonSerializer.Deserialize<Dictionary<string, FlotantePersona>>(json) ?? new(); }
+        catch { return new(); }
+    }
+
     private async Task AsegurarTablaAsync()
     {
         if (_tablaOk) return;

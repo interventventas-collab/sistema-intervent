@@ -7411,6 +7411,12 @@ public class ApiClient
         => await PutAsync<object>("/api/menu-config/deposito", cfg);
     public async Task ResetDepositoTabsConfigAsync() => await DeleteAsync("/api/menu-config/deposito");
 
+    // 2026-11-11: botón de abajo de cada persona (qué tiene y dónde está).
+    public async Task<Dictionary<string, FlotantePersonaDto>?> GetFlotanteAsync()
+        => await GetAsync<Dictionary<string, FlotantePersonaDto>>("/api/menu-config/flotante");
+    public async Task<Dictionary<string, FlotantePersonaDto>?> SaveFlotanteAsync(string? persona, FlotantePersonaDto? config)
+        => await PutAsync<Dictionary<string, FlotantePersonaDto>>("/api/menu-config/flotante", new { persona, config });
+
     // 2026-11-06: anota qué pantalla se abrió (para reordenar el menú por uso real).
     // Nunca molesta: si falla, se ignora.
     public async Task AnotarVisitaAsync(string ruta, string? operador)
