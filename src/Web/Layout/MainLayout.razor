@@ -1066,7 +1066,7 @@
                 <NavItem Href="/" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
             </div>
-            <FavoritosBarra Modo="menu" />
+            @* 2026-11-11: la franja ⭐ Favoritos se sacó: la reemplazan los 8 botones grandes del Dashboard (pedido del dueño). *@
             @* 2026-11-10: plegado (solo íconos), tocar cualquier sección abre el menú entero. *@
             <div class="mn-secciones">
             @if (sidebarCollapsed && ColumnaNueva)
@@ -1104,7 +1104,6 @@
                                  IsActive="@IsActive(itSec.Href)"
                                  OnClick="@(() => { if (itSec.Externo) Navigation.NavigateTo(itSec.Href, forceLoad: true); else NavigateTo(itSec.Href); })" />
                         <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(itSec.Href, itSec.Label, e.ClientX + 12, e.ClientY - 20)">✏</button>
-                        <button class="mn-estrella @(EsFav(itSec.Href) ? "si" : "")" title="@(EsFav(itSec.Href) ? "Sacar de favoritos" : "Agregar a favoritos")" @onclick="() => AlternarFav(itSec.Href)">★</button>
                         </div>
                     }
                 </NavGroup>
@@ -1127,7 +1126,6 @@
                 <div class="@(it.SoloCelu ? "mn-oculto-pc" : "")" style="display:contents;">
                     <div class="mn-lw" style="@EstiloLateral(href)">
                     <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(href, it.Label, e.ClientX + 12, e.ClientY - 20)">✏</button>
-                    <button class="mn-estrella @(EsFav(href) ? "si" : "")" title="@(EsFav(href) ? "Sacar de favoritos" : "Agregar a favoritos")" @onclick="() => AlternarFav(href)">★</button>
                     <NavItem Href="@href" Label="@it.Label" Icon="@IconoMenu(href, IconoCostado(href))"
                              IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
                     </div>
@@ -2023,7 +2021,7 @@
     @* 2026-11-10: ⭐ Favoritos (franja abajo de la barra de arriba; si eligieron el estilo "menú", va a la izquierda). *@
     @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
     {
-        <FavoritosBarra Modo="franja" />
+        @* 2026-11-11: la franja ⭐ Favoritos se sacó: la reemplazan los 8 botones grandes del Dashboard (pedido del dueño). *@
     }
     <header class="topbar">
         <div class="topbar-left">
@@ -3136,6 +3134,9 @@
                 break;
             case "compra":
                 Navigation.NavigateTo($"/cafe/compras?nueva={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
+                break;
+            case "producto":
+                Navigation.NavigateTo($"/cafe/productos?nuevo={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
                 break;
         }
     }
