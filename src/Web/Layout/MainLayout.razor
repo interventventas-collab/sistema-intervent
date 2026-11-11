@@ -357,19 +357,21 @@
         .mnb-shell-txt small { display: none; }
     }
     .mn-brand-inicio { cursor: pointer; }
-    /* 2026-11-10: menú de la izquierda plegado (solo íconos); se abre tocándolo y se superpone. */
+    /* 2026-11-11: menú de la izquierda de admin se abre y cierra SOLO con la flechita, como el de oficina
+       (antes se abría tocándolo, se superponía y se cerraba al tocar afuera: "quedó difícil de usar"). */
     .mn-secciones { position: relative; }
-    .mn-abrir { display: none; position: absolute; inset: 0; z-index: 5; cursor: pointer; }
-    @@media (min-width: 769px) { .mn-abrir { display: block; } }
     @@media (min-width: 769px) {
         .sidebar.ta.ta-col.collapsed { width: 64px !important; }
-        .main-wrapper.main-ta.main-ta-col { margin-left: 64px !important; }
-        .sidebar.ta.ta-col:not(.collapsed) { box-shadow: 6px 0 28px rgba(0,0,0,.28); z-index: 9600; }
+        .main-wrapper.main-ta.main-ta-col.main-collapsed { margin-left: 64px !important; }
+        .sidebar.ta.ta-col .sidebar-collapse-btn { display: flex; width: 26px; height: 26px; border: 1px solid rgba(255,255,255,.55); border-radius: 6px; }
+        .sidebar.ta-col .sidebar-brand { overflow: hidden; }
+        .sidebar.ta-col .sidebar-brand-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sidebar.ta-col.collapsed .sidebar-brand { flex-direction: column; gap: 0.5rem; padding: 0.9rem 0.3rem; }
+        .sidebar.ta-col.collapsed .nav-group-children { display: none !important; }
+        .mn-abrir { display: block; position: absolute; inset: 0; z-index: 5; cursor: pointer; }
         .sidebar.ta-col.collapsed .mn-organizar { justify-content: center; padding: 0.55rem 0; width: calc(100% - 0.6rem); margin-left: 0.3rem; margin-right: 0.3rem; }
         .sidebar.ta-col.collapsed .mn-org-txt, .sidebar.ta-col.collapsed .mn-organizar-car { display: none; }
-        .sidebar.ta-col.collapsed .nav-group-children { display: none !important; }
         .sidebar.ta-col.collapsed .prod-environment-banner, .sidebar.ta-col.collapsed .dev-environment-banner { color: transparent !important; height: 22px; overflow: hidden; white-space: nowrap; padding: 0 !important; }
-        .mn-cierra { position: fixed; inset: 0 0 0 236px; z-index: 9590; }
     }
     .mn-org-txt { flex: 1; text-align: left; margin-left: 0.4rem; }
     /* 2026-11-10: lápiz ✏ en cada botón: aparece al pasar el mouse. */
@@ -1085,6 +1087,7 @@
             <div class="mn-secciones">
             @if (sidebarCollapsed && ColumnaNueva)
             {
+                @* plegado: tocar un ícono lo abre (queda abierto hasta tocar la flechita) *@
                 <div class="mn-abrir" title="Abrir el menú" @onclick="() => { sidebarCollapsed = false; }"></div>
             }
             @foreach (var ga in MenuNuevoSvc.Actual.Grupos)
@@ -1665,11 +1668,6 @@
 @* Botón "Nueva Venta" - vive dentro del topbar (ver más abajo) para quedar
    siempre visible arriba a la derecha sin tapar otros íconos. *@
 
-@if (ColumnaNueva && !sidebarCollapsed)
-{
-    @* 2026-11-10: con el menú abierto, tocar afuera lo vuelve a plegar. *@
-    <div class="mn-cierra" @onclick="() => { sidebarCollapsed = true; }"></div>
-}
 <main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "") @(IsEmbedded ? "main-embedded" : "") @(TodoArriba ? "main-ta" : "") @(ColumnaNueva ? "main-ta-col" : "") @(TodoArribaDepo ? "main-ta-depo" : "") @(Pantalla.Enorme ? "main-enorme" : "")">
 @if (!IsEmbedded)
 {
