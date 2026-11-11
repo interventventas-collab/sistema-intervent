@@ -58,6 +58,7 @@ public class DepoCeluPreparacionController : ControllerBase
     {
         if (await ControlarAsync(deviceId) is { } corte) return corte;
 
+        var editandoCorte = DateTime.UtcNow - CafeVentasController.EditandoVence;
         var pedidos = await CafeVentasController.EnTableroPreparacion(_db.CafeVentas.AsNoTracking(), DIAS_TABLERO)
             .OrderByDescending(v => v.DriveSubidoAt ?? v.CreatedAt)   // mismo orden que el tablero
             .Select(v => new
@@ -68,7 +69,15 @@ public class DepoCeluPreparacionController : ControllerBase
                 productos = v.Items.Count,
                 unidades = v.Items.Sum(i => (int?)i.Cantidad) ?? 0,
                 entregaPor = v.EntregaPor,
-                modificado = v.ModificadoDespuesDeArmar
+                modificado = v.ModificadoDespuesDeArmar,
+                // 10/11/2026: cartel rojo "OJO, X está modificando" + aviso amarillo de qué cambió.
+                editandoPor = v.EditandoAt != null && v.EditandoAt > editandoCorte ? v.EditandoPor : null,
+                cambios = _db.CafeVentaHistorial
+                    .Where(h => v.CambioAvisoDesde != null && h.VentaId == v.Id && h.Tipo == "EDICION" && h.CreatedAt >= v.CambioAvisoDesde)
+                    .OrderBy(h => h.Id).Select(h => h.Detalle).ToList(),
+                cambioPor = _db.CafeVentaHistorial
+                    .Where(h => v.CambioAvisoDesde != null && h.VentaId == v.Id && h.Tipo == "EDICION" && h.CreatedAt >= v.CambioAvisoDesde)
+                    .OrderByDescending(h => h.Id).Select(h => h.Quien).FirstOrDefault()
             })
             .ToListAsync();
 
@@ -117,9 +126,21 @@ public class DepoCeluPreparacionController : ControllerBase
         var v = await CafeVentasController.EnTableroPreparacion(_db.CafeVentas, DIAS_TABLERO)
             .FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return Conflict(new { error = "Ese pedido ya no está para armar." });
+        if (CafeVentasController.EditandoAhora(v) is { } editor)
+            return Conflict(new { error = $"OJO: {editor} está modificando {v.Numero}. Esperá a que termine." });
 
         CafeVentasController.AplicarEstadoPreparacion(_db, v, "LISTO", elegido, "Ya armado desde el celu del depósito");
         await _db.SaveChangesAsync();
         return Ok(new { estado = "ok", id = v.Id, numero = v.Numero });
+    }
+
+    /// <summary>POST {id}/cambio-visto — "Entendido" del aviso amarillo de qué cambió (10/11/2026).</summary>
+    [HttpPost("{id:int}/cambio-visto")]
+    public async Task<IActionResult> CambioVisto(int id, [FromBody] CeluPedidoRequest? req)
+    {
+        if (await ControlarAsync(req?.DeviceId) is { } corte) return corte;
+        await _db.CafeVentas.Where(x => x.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.CambioAvisoDesde, (DateTime?)null));
+        return Ok(new { estado = "ok" });
     }
 }
