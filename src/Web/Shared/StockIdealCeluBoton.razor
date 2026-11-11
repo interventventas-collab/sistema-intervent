@@ -11,9 +11,20 @@
     @if (Grande)
     {
         @* 2026-11-11: en Preparación es una pastilla grande "Trabajar con el celu" (pedido del dueño). *@
-        <div class="@Clase" title="Abrir el depósito en el celu (stock, fotos, vencimientos, preparación…)" @onclick="() => abierto = !abierto">
+        <div class="@Clase" title="Abrir el depósito en el celu (stock, fotos, vencimientos, preparación…)" @onclick="AbrirCerrar">
             <div class="dp-t">📱 Trabajar con el celu <span class="sic-big-clave">@(clave ?? "…")</span></div>
-            <div class="dp-l">clave de hoy · tocá para ver el QR</div>
+            @if (dispo is { Registrado: true })
+            {
+                <div class="dp-l">clave de hoy · celu habilitado: <b>@(dispo.Nombre ?? "sí")</b></div>
+            }
+            else if (dispo is not null)
+            {
+                <div class="dp-l" style="color:#b91c1c; font-weight:700;">📵 ningún celu habilitado · tocá para habilitar</div>
+            }
+            else
+            {
+                <div class="dp-l">clave de hoy · tocá para ver el QR</div>
+            }
         </div>
     }
     else
@@ -30,6 +41,25 @@
             <div class="sic-clave">@(clave ?? "…")</div>
             <div class="sic-txt">Cambia sola todos los días.</div>
             <button class="sic-copiar" @onclick="Copiar">Copiar link</button>
+            @* 2026-11-11: el celu del depósito se habilita y se cambia desde acá (pedido del dueño). *@
+            @if (dispo is { Registrado: true })
+            {
+                <div class="sic-celu on">
+                    📱 Celu del depósito: <b>@(dispo.Nombre ?? "habilitado")</b>
+                    <button class="sic-cambiar" @onclick="CambiarCelu">Cambiar celu</button>
+                </div>
+            }
+            else if (dispo is not null)
+            {
+                <div class="sic-celu off">
+                    <b>📵 Para habilitar el celu del depósito:</b>
+                    <ol>
+                        <li>Escaneá el QR <b>con ese celu</b> y poné la clave.</li>
+                        <li>Tocá <b>🧺 Preparación</b>.</li>
+                        <li>Tocá <b>✅ Habilitar este celular</b>.</li>
+                    </ol>
+                </div>
+            }
         </div>
     }
 </span>
@@ -39,12 +69,17 @@
     .sic-wrap.grande { display:block; }
     .sic-big-clave { margin-left:auto; background:#111827; color:#fff; border-radius:10px; padding:0.1rem 0.6rem; font-family:ui-monospace,monospace; font-size:1.15rem; font-weight:800; letter-spacing:0.12em; }
     .sic-back { position:fixed; inset:0; z-index:900; }
-    .sic-box { position:absolute; right:0; bottom:calc(100% + 6px); z-index:901; width:270px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,.15); padding:0.9rem; text-align:center; }
+    .sic-box { position:absolute; right:0; bottom:calc(100% + 6px); z-index:901; width:290px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,.15); padding:0.9rem; text-align:center; }
     .sic-box img { width:190px; height:190px; display:block; margin:0 auto 0.4rem; }
     .sic-tit { font-weight:700; font-size:0.95rem; margin-bottom:0.5rem; color:#111827; }
     .sic-txt { font-size:0.8rem; color:#6b7280; }
     .sic-clave { font-size:1.9rem; font-weight:800; letter-spacing:0.14em; color:#111827; }
     .sic-copiar { width:100%; margin-top:0.6rem; padding:0.5rem; border-radius:8px; border:1px solid #d1d5db; background:#fff; cursor:pointer; font-size:0.88rem; color:#111827; }
+    .sic-celu { margin-top:0.7rem; padding:0.6rem; border-radius:8px; font-size:0.82rem; text-align:left; line-height:1.35; }
+    .sic-celu.on { background:#f0fdf4; border:1px solid #86efac; color:#166534; }
+    .sic-celu.off { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+    .sic-celu ol { margin:0.35rem 0 0; padding-left:1.2rem; }
+    .sic-cambiar { display:block; width:100%; margin-top:0.45rem; padding:0.4rem; border-radius:8px; border:1px solid #b91c1c; background:#fff; color:#b91c1c; font-weight:700; cursor:pointer; font-size:0.82rem; }
 </style>
 
 @code {
@@ -53,6 +88,7 @@
 
     private bool abierto;
     private string? clave;
+    private PickingDispositivoDto? dispo;
     private System.Threading.Timer? refresco;
 
     // 2026-11-10: el QR lleva al inicio único (/depo); el viejo /ideal-celu sigue andando.
@@ -61,18 +97,53 @@
     protected override async Task OnInitializedAsync()
     {
         await TraerClave();
+        if (Grande) await TraerDispo();
         // La pantalla de armado queda abierta días: así pasada la medianoche muestra la nueva.
         refresco = new System.Threading.Timer(_ => InvokeAsync(async () =>
         {
             await TraerClave();
+            if (Grande) await TraerDispo();
             StateHasChanged();
-        }), null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+        }), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
     }
 
     private async Task TraerClave()
     {
         try { clave = await Api.GetClaveIdealCeluAsync() ?? clave; }
         catch { }
+    }
+
+    private async Task TraerDispo()
+    {
+        try { dispo = await Api.GetPickingDispositivoAsync() ?? dispo; } catch { }
+    }
+
+    private async Task AbrirCerrar()
+    {
+        abierto = !abierto;
+        if (abierto && Grande) await TraerDispo();
+    }
+
+    private async Task CambiarCelu()
+    {
+        bool ok;
+        try
+        {
+            ok = await JS.InvokeAsync<bool>("confirm",
+                "¿Liberar el celu del depósito? El celu actual va a quedar bloqueado y vas a tener que habilitar el nuevo desde el celular.");
+        }
+        catch { ok = false; }
+        if (!ok) return;
+        try
+        {
+            if (await Api.OlvidarPickingDispositivoAsync())
+            {
+                await TraerDispo();
+                ToastService.Success("Listo. Ahora habilitá el celu nuevo: QR → clave → Preparación → Habilitar.");
+            }
+            else ToastService.Error("No se pudo liberar el celu.");
+        }
+        catch { ToastService.Error("No se pudo liberar el celu."); }
     }
 
     private async Task Copiar()
