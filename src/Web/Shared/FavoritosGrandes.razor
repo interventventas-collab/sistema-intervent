@@ -67,6 +67,7 @@
         {
             <div class="favp-h">@(buscando == "principal" ? "Botón principal" : "Agregar subbotón") <small>· botón @(lugar + 1) de 8 @QuienTexto()</small><button class="favp-x" @onclick="Cerrar">✕</button></div>
             <input class="favp-buscar" placeholder="Buscar pantalla… (stock, clientes, cheques…)" @bind="filtro" @bind:event="oninput" />
+            var atajos = Svc.EnGrandes(Op);
             <div class="favp-lista">
                 @if (buscando == "principal" && string.IsNullOrWhiteSpace(filtro))
                 {
@@ -82,8 +83,13 @@
                     {
                         var x = it;
                         var es = string.Equals(principalT, x.Href, StringComparison.OrdinalIgnoreCase) || subsT.Contains(x.Href, StringComparer.OrdinalIgnoreCase);
+                        var enOtro = !es && atajos.Contains(x.Href);
                         <button class="favp-fila @(es ? "on" : "")" disabled="@es" @onclick="() => Elegir(x.Href)">
                             <span>@Icono(x.Href) @x.Label</span>
+                            @if (es || enOtro)
+                            {
+                                <span class="fg-atajo" title="@(es ? "Ya está en este botón" : "Ya tiene acceso directo en otro botón")"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>@(es ? "en este botón" : "ya tiene acceso")</span>
+                            }
                         </button>
                     }
                 }
@@ -200,6 +206,9 @@
     .favp-cant { flex:1; font-size:0.82rem; color:#6b7280; }
     .favp-b { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.4rem 0.85rem; font:inherit; font-size:0.85rem; font-weight:700; cursor:pointer; }
     .favp-b.si { background:#111827; border-color:#111827; color:#fff; }
+    .fg-atajo { margin-left:auto; display:inline-flex; align-items:center; gap:0.25rem; font-size:0.7rem; font-weight:600; color:#6b7280;
+                border:1px solid #e5e7eb; border-radius:6px; padding:1px 6px; background:#fff; }
+    .fg-atajo svg { width:11px; height:11px; color:#111827; }
 </style>
 
 @code {
