@@ -95,7 +95,27 @@ public record NomLiquidacionDto(
     DateTime CreatedAt, DateTime? UpdatedAt,
     List<NomPagoDto> Pagos,
     // 2026-07-01: recibos/nóminas adjuntas
-    int ArchivosCount = 0);
+    int ArchivosCount = 0,
+    // 2026-11-11: extras cargados aparte (Horas extras, Comisiones, Feriados, Aguinaldo, Plus)
+    decimal MontoExtras = 0,
+    List<NomExtraResumenDto>? ExtrasResumen = null);
+
+// 2026-11-11: módulos aparte de la liquidación
+public record NomExtraResumenDto(string Tipo, decimal Monto, decimal Pagado);
+public record NomExtraDto(
+    int Id, int LiquidacionId, int EmpleadoId, string EmpleadoNombre, string Tipo,
+    int Anio, int Mes, DateTime? Fecha, decimal Cantidad, decimal Monto, string? Detalle, int? FeriadoId,
+    decimal Pagado, decimal Debe, string? CargadoPor, DateTime CreatedAt, List<NomPagoDto> Pagos);
+public record NomExtraSugerenciaDto(
+    int EmpleadoId, string EmpleadoNombre, DateTime? Fecha, int? FeriadoId,
+    decimal Cantidad, decimal Monto, string? Detalle, string Explicacion);
+public record NomFeriadoDto(int Id, DateTime Fecha, string Descripcion);
+public record NomExtraEmpleadoDto(int Id, string Nombre, decimal SueldoBase, decimal ValorHora,
+    decimal ComisionPorKg, string ModalidadSueldo, decimal JornalDiario);
+public record NomExtrasModuloDto(
+    string Tipo, int Anio, int Mes,
+    List<NomExtraDto> Cargados, List<NomExtraSugerenciaDto> Sugerencias,
+    List<NomFeriadoDto> Feriados, List<NomExtraEmpleadoDto> Empleados);
 
 // 2026-07-01: metadata de un archivo adjunto (sin el contenido binario).
 public record NomNominaArchivoDto(

@@ -69,6 +69,12 @@ public class NomLiquidacion
     [Column(TypeName = "decimal(18,2)")]
     public decimal OtrosDescuentos { get; set; }
 
+    /// <summary>2026-11-11: suma de los extras cargados aparte (Horas extras, Comisiones, Feriados,
+    /// Aguinaldo y Plus — tabla Nom_Extras). Se recalcula cada vez que se carga/cambia/borra uno.
+    /// Entra en TotalGanado para que el saldo y "¿Cuánto debo pagar?" lo sumen.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal MontoExtras { get; set; }
+
     [Column(TypeName = "decimal(18,2)")]
     public decimal TotalGanado { get; set; }
 
@@ -88,6 +94,7 @@ public class NomLiquidacion
     public DateTime? UpdatedAt { get; set; }
 
     public ICollection<NomPago> Pagos { get; set; } = new List<NomPago>();
+    public ICollection<NomExtra> Extras { get; set; } = new List<NomExtra>();
 }
 
 [Table("Nom_Pagos")]
@@ -132,5 +139,55 @@ public class NomPago
     /// <summary>El renglon que este pago genero en la caja, para poder deshacerlo si se borra.</summary>
     public int? CajaMovimientoId { get; set; }
 
+    /// <summary>2026-11-11: si el pago es de un extra (Nom_Extras), cuál. NULL = pago de la liquidación.</summary>
+    public int? ExtraId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// 2026-11-11: Horas extras, Comisiones, Feriados trabajados, Aguinaldo y Plus, cada uno por su lado
+/// (pedido del dueño: "no me gusta como esta todo junto"). Cada renglón cuelga de la liquidación
+/// del mes del empleado (aguinaldo: junio o diciembre) para que el total del mes los sume, pero se
+/// cargan y se pagan desde su propio módulo. El monto lo deciden ellos: el sistema solo propone.
+/// </summary>
+[Table("Nom_Extras")]
+public class NomExtra
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int LiquidacionId { get; set; }
+    [ForeignKey(nameof(LiquidacionId))]
+    public NomLiquidacion? LiquidacionNav { get; set; }
+
+    public int EmpleadoId { get; set; }
+    [ForeignKey(nameof(EmpleadoId))]
+    public NomEmpleado? EmpleadoNav { get; set; }
+
+    /// <summary>horas_extra | comision_cafe | feriado | aguinaldo | plus (igual que NomPago.Concepto).</summary>
+    [Required, MaxLength(20)]
+    public string Tipo { get; set; } = "plus";
+
+    /// <summary>Día al que corresponde (feriado trabajado, día del plus). NULL en los mensuales.</summary>
+    public DateTime? Fecha { get; set; }
+
+    /// <summary>Horas (horas extra), kg (comisión) o días del semestre (aguinaldo). Informativo.</summary>
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal Cantidad { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Monto { get; set; }
+
+    [MaxLength(300)]
+    public string? Detalle { get; set; }
+
+    public int? FeriadoId { get; set; }
+
+    [MaxLength(120)]
+    public string? CargadoPor { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
 }

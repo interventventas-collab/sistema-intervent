@@ -8784,3 +8784,33 @@ GO
 IF COL_LENGTH('Cafe_Ventas','CambioAvisoDesde') IS NULL
     ALTER TABLE Cafe_Ventas ADD CambioAvisoDesde DATETIME2 NULL;
 GO
+
+-- ============================================================
+-- 11/11/2026: Horas extras, Comisiones, Feriados, Aguinaldo y Plus en módulos aparte.
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+-- ============================================================
+IF COL_LENGTH('Nom_Liquidaciones','MontoExtras') IS NULL
+    ALTER TABLE Nom_Liquidaciones ADD MontoExtras DECIMAL(18,2) NOT NULL CONSTRAINT DF_NomLiq_MontoExtras DEFAULT 0;
+GO
+IF COL_LENGTH('Nom_Pagos','ExtraId') IS NULL
+    ALTER TABLE Nom_Pagos ADD ExtraId INT NULL;
+GO
+IF OBJECT_ID('Nom_Extras') IS NULL
+    CREATE TABLE Nom_Extras (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        LiquidacionId INT NOT NULL REFERENCES Nom_Liquidaciones(Id),
+        EmpleadoId INT NOT NULL REFERENCES Nom_Empleados(Id),
+        Tipo NVARCHAR(20) NOT NULL,
+        Fecha DATE NULL,
+        Cantidad DECIMAL(10,2) NOT NULL DEFAULT 0,
+        Monto DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Detalle NVARCHAR(300) NULL,
+        FeriadoId INT NULL,
+        CargadoPor NVARCHAR(120) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_NomExtras_Tipo_Liq')
+    CREATE INDEX IX_NomExtras_Tipo_Liq ON Nom_Extras(Tipo, LiquidacionId);
+GO

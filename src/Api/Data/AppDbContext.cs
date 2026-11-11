@@ -129,6 +129,7 @@ public class AppDbContext : DbContext
     public DbSet<NomEmpleado> NomEmpleados => Set<NomEmpleado>();
     public DbSet<NomLiquidacion> NomLiquidaciones => Set<NomLiquidacion>();
     public DbSet<NomPago> NomPagos => Set<NomPago>();
+    public DbSet<NomExtra> NomExtras => Set<NomExtra>();
     public DbSet<NomNominaArchivo> NomNominaArchivos => Set<NomNominaArchivo>();
     public DbSet<NomEmpleadoArchivo> NomEmpleadoArchivos => Set<NomEmpleadoArchivo>();
     public DbSet<NomVacacion> NomVacaciones => Set<NomVacacion>();

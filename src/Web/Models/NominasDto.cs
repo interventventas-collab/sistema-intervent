@@ -146,6 +146,66 @@ public class NomLiquidacionDto
     public List<NomPagoDto> Pagos { get; set; } = new();
     // 2026-07-01: cantidad de recibos/nóminas adjuntas (para mostrar 📎N en la lista)
     public int ArchivosCount { get; set; }
+    // 2026-11-11: lo cargado aparte en los módulos (Horas extras, Comisiones, Feriados, Aguinaldo, Plus)
+    public decimal MontoExtras { get; set; }
+    public List<NomExtraResumenDto>? ExtrasResumen { get; set; }
+    public decimal ExtraDeTipo(string tipo) => ExtrasResumen?.Where(x => x.Tipo == tipo).Sum(x => x.Monto) ?? 0m;
+    public decimal ExtraPagadoDeTipo(string tipo) => ExtrasResumen?.Where(x => x.Tipo == tipo).Sum(x => x.Pagado) ?? 0m;
+}
+
+// ===== 2026-11-11: módulos aparte (Horas extras, Comisiones, Feriados, Aguinaldo, Plus) =====
+public class NomExtraResumenDto { public string Tipo { get; set; } = ""; public decimal Monto { get; set; } public decimal Pagado { get; set; } }
+public class NomExtraDto
+{
+    public int Id { get; set; }
+    public int LiquidacionId { get; set; }
+    public int EmpleadoId { get; set; }
+    public string EmpleadoNombre { get; set; } = "";
+    public string Tipo { get; set; } = "";
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public DateTime? Fecha { get; set; }
+    public decimal Cantidad { get; set; }
+    public decimal Monto { get; set; }
+    public string? Detalle { get; set; }
+    public int? FeriadoId { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Debe { get; set; }
+    public string? CargadoPor { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public List<NomPagoDto> Pagos { get; set; } = new();
+}
+public class NomExtraSugerenciaDto
+{
+    public int EmpleadoId { get; set; }
+    public string EmpleadoNombre { get; set; } = "";
+    public DateTime? Fecha { get; set; }
+    public int? FeriadoId { get; set; }
+    public decimal Cantidad { get; set; }
+    public decimal Monto { get; set; }
+    public string? Detalle { get; set; }
+    public string Explicacion { get; set; } = "";
+}
+public class NomFeriadoDto { public int Id { get; set; } public DateTime Fecha { get; set; } public string Descripcion { get; set; } = ""; }
+public class NomExtraEmpleadoDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public decimal SueldoBase { get; set; }
+    public decimal ValorHora { get; set; }
+    public decimal ComisionPorKg { get; set; }
+    public string ModalidadSueldo { get; set; } = "mensual";
+    public decimal JornalDiario { get; set; }
+}
+public class NomExtrasModuloDto
+{
+    public string Tipo { get; set; } = "";
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public List<NomExtraDto> Cargados { get; set; } = new();
+    public List<NomExtraSugerenciaDto> Sugerencias { get; set; } = new();
+    public List<NomFeriadoDto> Feriados { get; set; } = new();
+    public List<NomExtraEmpleadoDto> Empleados { get; set; } = new();
 }
 
 // 2026-07-01: metadata de un archivo adjunto (recibo/nómina) — sin el contenido binario.

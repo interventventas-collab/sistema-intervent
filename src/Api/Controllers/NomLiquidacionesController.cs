@@ -27,7 +27,7 @@ public class NomLiquidacionesController : ControllerBase
     {
         var q = _db.NomLiquidaciones
             .Include(l => l.EmpleadoNav)
-            .Include(l => l.Pagos)
+            .Include(l => l.Pagos).Include(l => l.Extras)
             .AsQueryable();
         if (anio.HasValue) q = q.Where(l => l.Anio == anio.Value);
         if (mes.HasValue) q = q.Where(l => l.Mes == mes.Value);
@@ -48,7 +48,7 @@ public class NomLiquidacionesController : ControllerBase
     {
         var l = await _db.NomLiquidaciones
             .Include(l => l.EmpleadoNav)
-            .Include(l => l.Pagos)
+            .Include(l => l.Pagos).Include(l => l.Extras)
             .FirstOrDefaultAsync(l => l.Id == id);
         if (l is null) return NotFound(new { error = "Liquidacion no encontrada" });
         return Ok(Map(l));
@@ -164,7 +164,7 @@ public class NomLiquidacionesController : ControllerBase
 
         var saved = await _db.NomLiquidaciones
             .Include(l => l.EmpleadoNav)
-            .Include(l => l.Pagos)
+            .Include(l => l.Pagos).Include(l => l.Extras)
             .FirstAsync(l => l.Id == liq.Id);
         return Ok(Map(saved));
     }
@@ -172,7 +172,7 @@ public class NomLiquidacionesController : ControllerBase
     [HttpPut("liquidaciones/{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateNomLiquidacionRequest req)
     {
-        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).FirstOrDefaultAsync(l => l.Id == id);
+        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).Include(l => l.Extras).FirstOrDefaultAsync(l => l.Id == id);
         if (liq is null) return NotFound(new { error = "Liquidacion no encontrada" });
         var emp = await _db.NomEmpleados.FindAsync(liq.EmpleadoId);
         if (emp is null) return BadRequest(new { error = "Empleado no encontrado" });
@@ -206,7 +206,7 @@ public class NomLiquidacionesController : ControllerBase
 
         var saved = await _db.NomLiquidaciones
             .Include(l => l.EmpleadoNav)
-            .Include(l => l.Pagos)
+            .Include(l => l.Pagos).Include(l => l.Extras)
             .FirstAsync(l => l.Id == liq.Id);
         return Ok(Map(saved));
     }
@@ -214,10 +214,12 @@ public class NomLiquidacionesController : ControllerBase
     [HttpDelete("liquidaciones/{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).FirstOrDefaultAsync(l => l.Id == id);
+        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).Include(l => l.Extras).FirstOrDefaultAsync(l => l.Id == id);
         if (liq is null) return NotFound(new { error = "Liquidacion no encontrada" });
         if (liq.Pagos.Any())
             return BadRequest(new { error = "No se puede eliminar: ya tiene pagos asociados. Borrá los pagos primero o cambiala a 'anulada'." });
+        if (await _db.NomExtras.AnyAsync(x => x.LiquidacionId == id))
+            return BadRequest(new { error = "No se puede eliminar: tiene horas extras, comisiones, feriados, aguinaldo o plus cargados. Borralos primero desde su módulo." });
         _db.NomLiquidaciones.Remove(liq);
         await _db.SaveChangesAsync();
         return Ok(new { deleted = true });
@@ -230,7 +232,7 @@ public class NomLiquidacionesController : ControllerBase
     [HttpPost("pagos")]
     public async Task<IActionResult> CreatePago([FromBody] CreateNomPagoRequest req)
     {
-        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).FirstOrDefaultAsync(l => l.Id == req.LiquidacionId);
+        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).Include(l => l.Extras).FirstOrDefaultAsync(l => l.Id == req.LiquidacionId);
         if (liq is null) return BadRequest(new { error = "Liquidacion no encontrada" });
         if (liq.Estado == "anulada") return BadRequest(new { error = "No se puede pagar una liquidacion anulada" });
         if (req.Monto <= 0) return BadRequest(new { error = "El monto debe ser mayor a 0" });
@@ -242,7 +244,7 @@ public class NomLiquidacionesController : ControllerBase
             return BadRequest(new { error = $"El monto excede el saldo pendiente (${saldo:N2})" });
 
         // Concepto: validamos contra la lista permitida; si viene vacio o invalido, default a "sueldo".
-        var conceptosValidos = new HashSet<string> { "sueldo", "comision_cafe", "horas_extra", "bono", "adelanto", "aguinaldo", "otro" };
+        var conceptosValidos = new HashSet<string> { "sueldo", "comision_cafe", "horas_extra", "bono", "adelanto", "aguinaldo", "feriado", "plus", "otro" };
         var concepto = (req.Concepto ?? "sueldo").Trim().ToLowerInvariant();
         if (!conceptosValidos.Contains(concepto)) concepto = "otro";
 
@@ -279,7 +281,7 @@ public class NomLiquidacionesController : ControllerBase
 
         var saved = await _db.NomLiquidaciones
             .Include(l => l.EmpleadoNav)
-            .Include(l => l.Pagos)
+            .Include(l => l.Pagos).Include(l => l.Extras)
             .FirstAsync(l => l.Id == liq.Id);
         return Ok(Map(saved));
     }
@@ -303,7 +305,7 @@ public class NomLiquidacionesController : ControllerBase
 
         var pago = await _db.NomPagos.FindAsync(id);
         if (pago is null) return NotFound(new { error = "Pago no encontrado" });
-        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).FirstOrDefaultAsync(l => l.Id == pago.LiquidacionId);
+        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).Include(l => l.Extras).FirstOrDefaultAsync(l => l.Id == pago.LiquidacionId);
         if (liq is null) return BadRequest(new { error = "Liquidacion del pago no encontrada" });
         if (liq.Estado == "anulada") return BadRequest(new { error = "No se puede editar un pago de una liquidacion anulada" });
 
@@ -318,11 +320,19 @@ public class NomLiquidacionesController : ControllerBase
             var otrosPagos = liq.Pagos.Where(p => p.Id != pago.Id).Sum(p => p.Monto);
             if (otrosPagos + req.Monto.Value > liq.NetoAPagar + 0.01m)
                 return BadRequest(new { error = $"El monto excede el total a pagar (${liq.NetoAPagar - otrosPagos:N2} restante)" });
+            // 2026-11-11: si el pago es de un extra, tampoco puede pasarse de lo que vale ese extra.
+            if (pago.ExtraId.HasValue)
+            {
+                var ext = await _db.NomExtras.FindAsync(pago.ExtraId.Value);
+                var otrosDelExtra = liq.Pagos.Where(p => p.Id != pago.Id && p.ExtraId == pago.ExtraId).Sum(p => p.Monto);
+                if (ext is not null && otrosDelExtra + req.Monto.Value > ext.Monto + 0.01m)
+                    return BadRequest(new { error = $"El monto excede lo que vale ese extra (${ext.Monto - otrosDelExtra:N2} restante)" });
+            }
             pago.Monto = req.Monto.Value;
         }
         if (!string.IsNullOrWhiteSpace(req.Concepto))
         {
-            var conceptosValidos = new HashSet<string> { "sueldo", "comision_cafe", "horas_extra", "bono", "adelanto", "aguinaldo", "otro" };
+            var conceptosValidos = new HashSet<string> { "sueldo", "comision_cafe", "horas_extra", "bono", "adelanto", "aguinaldo", "feriado", "plus", "otro" };
             var concepto = req.Concepto.Trim().ToLowerInvariant();
             pago.Concepto = conceptosValidos.Contains(concepto) ? concepto : "otro";
         }
@@ -357,7 +367,7 @@ public class NomLiquidacionesController : ControllerBase
 
         var saved = await _db.NomLiquidaciones
             .Include(l => l.EmpleadoNav)
-            .Include(l => l.Pagos)
+            .Include(l => l.Pagos).Include(l => l.Extras)
             .FirstAsync(l => l.Id == liq.Id);
         return Ok(Map(saved));
     }
@@ -389,7 +399,7 @@ public class NomLiquidacionesController : ControllerBase
     {
         if (anio < 2000 || mes < 1 || mes > 12) return BadRequest(new { error = "Año/mes invalido" });
         var liqs = await _db.NomLiquidaciones
-            .Include(l => l.Pagos)
+            .Include(l => l.Pagos).Include(l => l.Extras)
             .Where(l => l.Anio == anio && l.Mes == mes && l.Estado != "anulada")
             .ToListAsync();
         var totalPagado = liqs.Sum(l => l.Pagos.Sum(p => p.Monto));
@@ -434,7 +444,7 @@ public class NomLiquidacionesController : ControllerBase
         return DateTime.UtcNow.AddHours(-3).Date; // hoy en horario Argentina
     }
 
-    private static void Calcular(NomLiquidacion liq, NomEmpleado emp, bool esCreacion)
+    internal static void Calcular(NomLiquidacion liq, NomEmpleado emp, bool esCreacion)
     {
         // 2026-06-08: si el empleado es modalidad "diario", el sueldo base se calcula
         // como DiasTrabajados × JornalDiario (en vez de tomar el SueldoBase mensual fijo).
@@ -459,7 +469,8 @@ public class NomLiquidacionesController : ControllerBase
         // Usa el SueldoBase CONGELADO de la liquidación (no el de la ficha) para no descuadrar meses viejos.
         var diaProporcional = esDiario ? 0m : liq.SueldoBase / 30m;
         liq.DescuentoFaltas = Math.Round(liq.DiasAusencia * diaProporcional, 2, MidpointRounding.AwayFromZero);
-        liq.TotalGanado = liq.SueldoBase + liq.MontoHsExtra + liq.Comision + liq.Bonos + liq.Aguinaldo;
+        // 2026-11-11: + MontoExtras = lo cargado aparte en los módulos (Horas extras, Comisiones, Feriados, Aguinaldo, Plus).
+        liq.TotalGanado = liq.SueldoBase + liq.MontoHsExtra + liq.Comision + liq.Bonos + liq.Aguinaldo + liq.MontoExtras;
         liq.TotalDescuentos = liq.DescuentoFaltas + liq.Adelantos + liq.OtrosDescuentos;
         liq.NetoAPagar = Math.Round(liq.TotalGanado - liq.TotalDescuentos, 2, MidpointRounding.AwayFromZero);
     }
@@ -487,7 +498,10 @@ public class NomLiquidacionesController : ControllerBase
                 p.Id, p.LiquidacionId, p.FechaPago, p.Metodo, p.Monto,
                 p.Concepto, p.Detalle,
                 p.Notas, p.CreatedAt)).ToList(),
-            archivosCount);
+            archivosCount,
+            l.MontoExtras,
+            l.Extras.GroupBy(x => x.Tipo).Select(g => new NomExtraResumenDto(g.Key, g.Sum(x => x.Monto),
+                l.Pagos.Where(p => p.ExtraId != null && g.Select(x => x.Id).Contains(p.ExtraId.Value)).Sum(p => p.Monto))).ToList());
     }
 
     // ============================================================
@@ -523,7 +537,7 @@ public class NomLiquidacionesController : ControllerBase
         if (req is null) return BadRequest(new { error = "Body vacio" });
 
         // Reusa la logica del CreatePago existente
-        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).FirstOrDefaultAsync(l => l.Id == req.LiquidacionId);
+        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).Include(l => l.Extras).FirstOrDefaultAsync(l => l.Id == req.LiquidacionId);
         if (liq is null) return BadRequest(new { error = "Liquidacion no encontrada" });
         if (liq.Estado == "anulada") return BadRequest(new { error = "No se puede pagar una liquidacion anulada" });
         if (req.Monto <= 0) return BadRequest(new { error = "El monto debe ser mayor a 0" });
@@ -534,7 +548,7 @@ public class NomLiquidacionesController : ControllerBase
         if (req.Monto > saldo + 0.01m)
             return BadRequest(new { error = $"El monto excede el saldo pendiente (${saldo:N2})" });
 
-        var conceptosValidos = new HashSet<string> { "sueldo", "comision_cafe", "horas_extra", "bono", "adelanto", "aguinaldo", "otro" };
+        var conceptosValidos = new HashSet<string> { "sueldo", "comision_cafe", "horas_extra", "bono", "adelanto", "aguinaldo", "feriado", "plus", "otro" };
         var concepto = (req.Concepto ?? "sueldo").Trim().ToLowerInvariant();
         if (!conceptosValidos.Contains(concepto)) concepto = "otro";
 
@@ -668,7 +682,7 @@ public class NomLiquidacionesController : ControllerBase
         // Solo liquidaciones activas (no anuladas) con saldo > 0
         var liqs = await _db.NomLiquidaciones
             .Include(l => l.EmpleadoNav)
-            .Include(l => l.Pagos)
+            .Include(l => l.Pagos).Include(l => l.Extras)
             .Where(l => l.Estado != "anulada")
             .ToListAsync();
 
@@ -676,16 +690,17 @@ public class NomLiquidacionesController : ControllerBase
         static decimal PresupuestoConcepto(string concepto, NomLiquidacion l) => concepto switch
         {
             "sueldo" => l.SueldoBase,
-            "horas_extra" => l.MontoHsExtra,
-            "comision_cafe" => l.Comision,
+            "horas_extra" => l.MontoHsExtra + l.Extras.Where(x => x.Tipo == concepto).Sum(x => x.Monto),
+            "comision_cafe" => l.Comision + l.Extras.Where(x => x.Tipo == concepto).Sum(x => x.Monto),
             "bono" => l.Bonos,
-            "aguinaldo" => l.Aguinaldo,
+            "aguinaldo" => l.Aguinaldo + l.Extras.Where(x => x.Tipo == concepto).Sum(x => x.Monto),
+            "feriado" or "plus" => l.Extras.Where(x => x.Tipo == concepto).Sum(x => x.Monto),
             _ => 0m
         };
 
         // Solo los 5 conceptos "positivos" (los que se le pagan al empleado).
         // Adelantos y OtrosDescuentos no van porque son descuentos (no se le paga eso).
-        var conceptosPositivos = new[] { "sueldo", "horas_extra", "comision_cafe", "bono", "aguinaldo" };
+        var conceptosPositivos = new[] { "sueldo", "horas_extra", "comision_cafe", "bono", "aguinaldo", "feriado", "plus" };
 
         var empleadosDict = new Dictionary<int, DashboardEmpleadoDto>();
         var liqsConSaldo = new List<DashboardLiquidacionDto>();
@@ -787,7 +802,7 @@ public class NomLiquidacionesController : ControllerBase
         // 1) Armar query con filtros
         var q = _db.NomLiquidaciones
             .Include(l => l.EmpleadoNav)
-            .Include(l => l.Pagos)
+            .Include(l => l.Pagos).Include(l => l.Extras)
             .Where(l => l.Estado != "anulada")
             .AsQueryable();
 
@@ -1087,6 +1102,8 @@ public class NomLiquidacionesController : ControllerBase
             "bono" => "Bono",
             "adelanto" => "Adelanto",
             "aguinaldo" => "Aguinaldo",
+            "feriado" => "Feriado trabajado",
+            "plus" => "Plus",
             _ => "Pago"
         };
 

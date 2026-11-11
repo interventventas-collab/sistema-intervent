@@ -44,10 +44,12 @@
         var resumen = new[]
         {
             new { Cod = "sueldo", Label = "💰 Sueldos", Pend = liqsActivas.Sum(l => Math.Max(0m, l.SueldoBase - l.Pagos.Where(p => p.Concepto == "sueldo").Sum(p => p.Monto))) },
-            new { Cod = "horas_extra", Label = "⏰ Horas extras", Pend = liqsActivas.Sum(l => Math.Max(0m, l.MontoHsExtra - l.Pagos.Where(p => p.Concepto == "horas_extra").Sum(p => p.Monto))) },
-            new { Cod = "comision_cafe", Label = "☕ Comisión café", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Comision - l.Pagos.Where(p => p.Concepto == "comision_cafe").Sum(p => p.Monto))) },
+            new { Cod = "horas_extra", Label = "⏱ Horas extras", Pend = liqsActivas.Sum(l => Math.Max(0m, l.MontoHsExtra + l.ExtraDeTipo("horas_extra") - l.Pagos.Where(p => p.Concepto == "horas_extra").Sum(p => p.Monto))) },
+            new { Cod = "comision_cafe", Label = "☕ Comisiones", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Comision + l.ExtraDeTipo("comision_cafe") - l.Pagos.Where(p => p.Concepto == "comision_cafe").Sum(p => p.Monto))) },
+            new { Cod = "feriado", Label = "🎉 Feriados", Pend = liqsActivas.Sum(l => Math.Max(0m, l.ExtraDeTipo("feriado") - l.Pagos.Where(p => p.Concepto == "feriado").Sum(p => p.Monto))) },
             new { Cod = "bono", Label = "🎁 Bonos", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Bonos - l.Pagos.Where(p => p.Concepto == "bono").Sum(p => p.Monto))) },
-            new { Cod = "aguinaldo", Label = "🎄 Aguinaldo", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Aguinaldo - l.Pagos.Where(p => p.Concepto == "aguinaldo").Sum(p => p.Monto))) }
+            new { Cod = "aguinaldo", Label = "🎄 Aguinaldo", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Aguinaldo + l.ExtraDeTipo("aguinaldo") - l.Pagos.Where(p => p.Concepto == "aguinaldo").Sum(p => p.Monto))) },
+            new { Cod = "plus", Label = "⭐ Plus", Pend = liqsActivas.Sum(l => Math.Max(0m, l.ExtraDeTipo("plus") - l.Pagos.Where(p => p.Concepto == "plus").Sum(p => p.Monto))) }
         };
         var algoPendiente = totalPend > 0.01m;
         var bgGradient = algoPendiente ? "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)" : "linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)";
@@ -144,10 +146,12 @@
                                         var chipsRow = new[]
                                         {
                                             new { Cod = "sueldo", Icono = "💰", Pend = Math.Max(0m, l.SueldoBase - l.Pagos.Where(p => p.Concepto == "sueldo").Sum(p => p.Monto)) },
-                                            new { Cod = "horas_extra", Icono = "⏰", Pend = Math.Max(0m, l.MontoHsExtra - l.Pagos.Where(p => p.Concepto == "horas_extra").Sum(p => p.Monto)) },
-                                            new { Cod = "comision_cafe", Icono = "☕", Pend = Math.Max(0m, l.Comision - l.Pagos.Where(p => p.Concepto == "comision_cafe").Sum(p => p.Monto)) },
+                                            new { Cod = "horas_extra", Icono = "⏱", Pend = Math.Max(0m, l.MontoHsExtra + l.ExtraDeTipo("horas_extra") - l.Pagos.Where(p => p.Concepto == "horas_extra").Sum(p => p.Monto)) },
+                                            new { Cod = "comision_cafe", Icono = "☕", Pend = Math.Max(0m, l.Comision + l.ExtraDeTipo("comision_cafe") - l.Pagos.Where(p => p.Concepto == "comision_cafe").Sum(p => p.Monto)) },
+                                            new { Cod = "feriado", Icono = "🎉", Pend = Math.Max(0m, l.ExtraDeTipo("feriado") - l.Pagos.Where(p => p.Concepto == "feriado").Sum(p => p.Monto)) },
                                             new { Cod = "bono", Icono = "🎁", Pend = Math.Max(0m, l.Bonos - l.Pagos.Where(p => p.Concepto == "bono").Sum(p => p.Monto)) },
-                                            new { Cod = "aguinaldo", Icono = "🎄", Pend = Math.Max(0m, l.Aguinaldo - l.Pagos.Where(p => p.Concepto == "aguinaldo").Sum(p => p.Monto)) }
+                                            new { Cod = "aguinaldo", Icono = "🎄", Pend = Math.Max(0m, l.Aguinaldo + l.ExtraDeTipo("aguinaldo") - l.Pagos.Where(p => p.Concepto == "aguinaldo").Sum(p => p.Monto)) },
+                                            new { Cod = "plus", Icono = "⭐", Pend = Math.Max(0m, l.ExtraDeTipo("plus") - l.Pagos.Where(p => p.Concepto == "plus").Sum(p => p.Monto)) }
                                         };
                                         var conPend = chipsRow.Where(c => c.Pend > 0.01m).ToList();
                                         if (conPend.Count > 0)
@@ -241,10 +245,13 @@
                                     <label class="form-label">Horas trabajadas</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormHorasTrabajadasTxt" />
                                 </div>
+                                @if (VerCasilleroViejo(formHorasExtra))
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Horas extra</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormHorasExtraTxt" />
                                 </div>
+                                }
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Días de ausencia</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormDiasAusenciaTxt" />
@@ -276,6 +283,8 @@
                                 </div>
                             }
                             <div class="form-row">
+                                @if (VerCasilleroViejo(formKgCafe))
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">☕ Kg de café vendidos</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormKgCafeTxt" placeholder="Ej: 120,5" />
@@ -283,15 +292,32 @@
                                         Comisión = @formKgCafe kg × $@FormatMoney(ComisionPorKgEmp) = <strong style="color: #059669;">$@FormatMoney(ComisionCalculada)</strong>
                                     </p>
                                 </div>
+                                }
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">🎁 Bonos ($)</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormBonosTxt" />
                                 </div>
+                                @if (VerCasilleroViejo(formAguinaldo))
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">🎄 Aguinaldo ($)</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormAguinaldoTxt" />
                                 </div>
+                                }
                             </div>
+                            @* 2026-11-11: horas extras, comisiones, feriados, aguinaldo y plus se cargan y se pagan en su módulo.
+                               Acá solo se ve cuánto suman este mes. *@
+                            @if (EsPeriodoModulos)
+                            {
+                                <div style="font-size: 0.82rem; color: #374151; margin: 0.2rem 0 0.6rem; line-height: 1.6;">
+                                    <span style="color:#6b7280;">Aparte este mes (se cargan y se pagan en su módulo):</span><br />
+                                    @foreach (var m in ModulosAparte)
+                                    {
+                                        var monto = editingLiq?.ExtraDeTipo(m.Tipo) ?? 0m;
+                                        <a href="/nominas/extras/@m.Tipo" style="color:#374151; text-decoration:none; margin-right:10px; white-space:nowrap;">@m.Icono @m.Nombre <b>$@FormatMoney(monto)</b></a>
+                                    }
+                                </div>
+                            }
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">💸 Adelantos ($)</label>
@@ -334,22 +360,38 @@
                                     Este sueldo queda guardado en este mes. Cambiar la ficha del empleado no lo modifica.
                                 </div>
                             }
+                            @if (VerCasilleroViejo(formHorasExtra))
+                            {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Hs extra (@formHorasExtra × $@FormatMoney(ValorHoraEmp)):</span>
                                 <span style="color: #059669;">$@FormatMoney(MontoHsExtra)</span>
                             </div>
+                            }
+                            @if (VerCasilleroViejo(formKgCafe))
+                            {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Comisión (@formKgCafe kg × $@FormatMoney(ComisionPorKgEmp)):</span>
                                 <span style="color: #059669;">$@FormatMoney(ComisionCalculada)</span>
                             </div>
+                            }
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Bonos:</span>
                                 <span style="color: #059669;">$@FormatMoney(formBonos)</span>
                             </div>
+                            @if (VerCasilleroViejo(formAguinaldo))
+                            {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Aguinaldo:</span>
                                 <span style="color: #059669;">$@FormatMoney(formAguinaldo)</span>
                             </div>
+                            }
+                            @if (formMontoExtras != 0m || EsPeriodoModulos)
+                            {
+                            <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                <span>+ Aparte (hs extras, comisiones, feriados, aguinaldo, plus):</span>
+                                <span style="color: #059669;">$@FormatMoney(formMontoExtras)</span>
+                            </div>
+                            }
                             <hr style="margin: 0.4rem 0; border: none; border-top: 1px solid #d1d5db;" />
                             <div class="venta-totals-row" style="font-weight: 700; color: #059669;">
                                 <span>Total ganado:</span>
@@ -516,6 +558,10 @@
                                             <option value="bono">🎁 Bonos</option>
                                             <option value="adelanto">💸 Adelantos</option>
                                             <option value="aguinaldo">🎄 Aguinaldo</option>
+                            <option value="feriado">🎉 Feriados</option>
+                            <option value="plus">⭐ Plus</option>
+                                            <option value="feriado">🎉 Feriados</option>
+                                            <option value="plus">⭐ Plus</option>
                                             <option value="otro">📝 Otros descuentos</option>
                                         </select>
                                     </div>
@@ -785,6 +831,8 @@
                             <option value="bono">🎁 Bonos</option>
                             <option value="adelanto">💸 Adelantos</option>
                             <option value="aguinaldo">🎄 Aguinaldo</option>
+                            <option value="feriado">🎉 Feriados</option>
+                            <option value="plus">⭐ Plus</option>
                             <option value="otro">📝 Otro</option>
                         </select>
                     </div>
@@ -928,6 +976,8 @@
         "bono" => "Bonos",
         "adelanto" => "Adelantos",
         "aguinaldo" => "Aguinaldo",
+        "feriado" => "Feriados",
+        "plus" => "Plus",
         "otro" => "Otros descuentos",
         _ => c
     };
@@ -940,6 +990,8 @@
         "bono" => "🎁",
         "adelanto" => "💸",
         "aguinaldo" => "🎄",
+        "feriado" => "🎉",
+        "plus" => "⭐",
         "otro" => "📝",
         _ => "•"
     };
@@ -1084,7 +1136,19 @@
     // Para diarios el descuento por ausencia no aplica (si no trabajó un día simplemente no lo cuenta).
     private decimal DiaProporcional => EsEmpleadoDiario ? 0m : SueldoBaseMensual / 30m;
     private decimal DescuentoFaltas => Math.Round(formDiasAusencia * DiaProporcional, 2, MidpointRounding.AwayFromZero);
-    private decimal TotalGanado => SueldoBaseEmp + MontoHsExtra + ComisionCalculada + formBonos + formAguinaldo;
+    private decimal TotalGanado => SueldoBaseEmp + MontoHsExtra + ComisionCalculada + formBonos + formAguinaldo + formMontoExtras;
+    // 2026-11-11: lo cargado aparte en los módulos (Horas extras, Comisiones, Feriados, Aguinaldo, Plus).
+    private decimal formMontoExtras;
+    /// <summary>Desde noviembre 2026 las horas extra, la comisión y el aguinaldo se cargan en su
+    /// módulo. En los meses de antes quedan los casilleros viejos como estaban.</summary>
+    private bool EsPeriodoModulos => formAnio * 100 + formMes >= 202611;
+    private bool VerCasilleroViejo(decimal valor) => !EsPeriodoModulos || valor != 0m;
+    private record ModuloAparte(string Tipo, string Icono, string Nombre);
+    private static readonly ModuloAparte[] ModulosAparte =
+    {
+        new("horas_extra", "⏱", "Horas extras"), new("comision_cafe", "☕", "Comisiones"),
+        new("feriado", "🎉", "Feriados"), new("aguinaldo", "🎄", "Aguinaldo"), new("plus", "⭐", "Plus"),
+    };
     private decimal TotalDescuentos => DescuentoFaltas + formAdelantos + formOtros;
     private decimal NetoAPagar => Math.Max(0m, TotalGanado - TotalDescuentos);
 
@@ -1141,6 +1205,7 @@
         formDiasTrabajados = l.DiasTrabajados;  // 2026-06-08
         formBonos = l.Bonos;
         formAguinaldo = l.Aguinaldo;
+        formMontoExtras = l.MontoExtras;
         formAdelantos = l.Adelantos;
         formOtros = l.OtrosDescuentos;
         formNotas = l.Notas ?? "";
@@ -1223,7 +1288,7 @@
         formSueldoBase = 0;
         formHorasTrabajadas = 0; formHorasExtra = 0; formRecargoPct = 0m;
         formDiasAusencia = 0; formDiasVacaciones = 0;
-        formKgCafe = 0; formDiasTrabajados = 0; formBonos = 0; formAguinaldo = 0; formAdelantos = 0; formOtros = 0;
+        formKgCafe = 0; formDiasTrabajados = 0; formBonos = 0; formAguinaldo = 0; formAdelantos = 0; formOtros = 0; formMontoExtras = 0;
         formNotas = "";
         LimpiarPagoForm();
         formError = null;
@@ -1338,10 +1403,12 @@
     private static decimal PresupuestoConcepto(string concepto, NomLiquidacionDto liq) => concepto switch
     {
         "sueldo" => liq.SueldoBase,
-        "horas_extra" => liq.MontoHsExtra,
-        "comision_cafe" => liq.Comision,
+        "horas_extra" => liq.MontoHsExtra + liq.ExtraDeTipo("horas_extra"),
+        "comision_cafe" => liq.Comision + liq.ExtraDeTipo("comision_cafe"),
         "bono" => liq.Bonos,
-        "aguinaldo" => liq.Aguinaldo,
+        "aguinaldo" => liq.Aguinaldo + liq.ExtraDeTipo("aguinaldo"),
+        "feriado" => liq.ExtraDeTipo("feriado"),
+        "plus" => liq.ExtraDeTipo("plus"),
         "adelanto" => liq.Adelantos,
         "otro" => liq.OtrosDescuentos,
         _ => 0m
