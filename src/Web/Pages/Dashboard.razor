@@ -140,6 +140,7 @@ else
     .op-acom-bs { display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.8rem; }
     .op-acom-bs button { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.4rem 0.9rem; font:inherit; font-weight:700; cursor:pointer; }
     .op-acom-bs button.si { background:#111827; border-color:#111827; color:#fff; }
+    .dash-fg-abajo { order:49; margin-top:1rem; }
     .dash-panorama { margin-top:1.5rem; border-top:1px solid #e5e7eb; padding-top:0.5rem; order:50; }
     /* 2026-11-10: admin — arriba Equipo hoy; abajo Panorama y, como parte de él, las tarjetas de plata y stock. */
     .op-main { display:flex; flex-direction:column; min-width:0; }
@@ -171,7 +172,7 @@ else
 @* 2026-11-11: 8 favoritos grandes arriba de todo (pedido del dueño); Equipo hoy queda debajo. *@
 @if (DashNuevo)
 {
-    <FavoritosGrandes />
+    <FavoritosGrandes Desde="0" Hasta="MenuNuevoCatalogo.GRANDES_ARRIBA" />
 }
 
 @* ═══ Card: equipo trabajando ahora ═══ *@
@@ -1923,6 +1924,8 @@ else
 @* 2026-11-10: con la pantalla principal más limpia, Panorama va acá abajo de todo (pedido del dueño). *@
 @if (DashNuevo)
 {
+    @* 2026-11-11: 4 botones grandes más, entre Equipo hoy y Panorama (pedido del dueño). *@
+    <div class="dash-fg-abajo"><FavoritosGrandes Desde="MenuNuevoCatalogo.GRANDES_ARRIBA" Hasta="MenuNuevoCatalogo.CANT_GRANDES" /></div>
     <div class="dash-panorama"><Web.Pages.Panorama /></div>
     @* 2026-11-10: las tarjetas de plata y stock pasan a ser parte de Panorama (van justo debajo, por CSS order). *@
     <div class="dash-sec-tit">💰 Plata y stock</div>

@@ -334,7 +334,9 @@ public static class MenuNuevoCatalogo
     public const string FAV_DUENO = "OSMAR";
     /// <summary>2026-11-11: prefijo de los 8 favoritos grandes del Dashboard dentro de Favoritos.</summary>
     public const string GRANDES = "GRANDES:";
-    public const int CANT_GRANDES = 8;
+    public const int CANT_GRANDES = 12;
+    /// <summary>2026-11-11: los primeros 8 van arriba de Equipo hoy; los otros 4, entre Equipo hoy y Panorama.</summary>
+    public const int GRANDES_ARRIBA = 8;
     public const int MAX_SUBS = 6;
     public static readonly (string Clave, string Nombre)[] FavEstilos =
     {
