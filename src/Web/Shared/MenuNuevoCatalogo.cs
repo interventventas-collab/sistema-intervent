@@ -137,6 +137,11 @@ public static class MenuNuevoCatalogo
             new("Vacaciones", "/nominas/vacaciones", "nominas"),
             new("¿Cuánto debo pagar?", "/nominas/panel", "nominas"),
             new("Liquidaciones", "/nominas/liquidaciones", "nominas"),
+            new("Horas extras", "/nominas/extras/horas_extra", "nominas"),
+            new("Comisiones", "/nominas/extras/comision_cafe", "nominas"),
+            new("Feriados", "/nominas/extras/feriado", "nominas"),
+            new("Aguinaldo", "/nominas/extras/aguinaldo", "nominas"),
+            new("Plus", "/nominas/extras/plus", "nominas"),
         }),
     };
 

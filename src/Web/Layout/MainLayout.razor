@@ -2137,6 +2137,22 @@
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/liquidaciones"))">
                                 <span class="ico">📑</span> Liquidaciones
                             </button>
+                            @* 2026-11-11: cada extra en su módulo, aparte de la liquidación *@
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/extras/horas_extra"))">
+                                <span class="ico">⏱</span> Horas extras
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/extras/comision_cafe"))">
+                                <span class="ico">☕</span> Comisiones
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/extras/feriado"))">
+                                <span class="ico">🎉</span> Feriados
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/extras/aguinaldo"))">
+                                <span class="ico">🎄</span> Aguinaldo
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/extras/plus"))">
+                                <span class="ico">⭐</span> Plus
+                            </button>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas"))">
                                 <span class="ico">📊</span> Inicio nóminas
                             </button>
@@ -3046,6 +3062,11 @@
         { "nominas/vacaciones", ("🏖", "Vacaciones", "/nominas/vacaciones") },
         { "nominas/panel", ("💰", "¿Cuánto debo pagar?", "/nominas/panel") },
         { "nominas/liquidaciones", ("📑", "Liquidaciones", "/nominas/liquidaciones") },
+        { "nominas/extras/horas_extra", ("⏱", "Horas extras", "/nominas/extras/horas_extra") },
+        { "nominas/extras/comision_cafe", ("☕", "Comisiones", "/nominas/extras/comision_cafe") },
+        { "nominas/extras/feriado", ("🎉", "Feriados", "/nominas/extras/feriado") },
+        { "nominas/extras/aguinaldo", ("🎄", "Aguinaldo", "/nominas/extras/aguinaldo") },
+        { "nominas/extras/plus", ("⭐", "Plus", "/nominas/extras/plus") },
         { "nominas", ("📊", "Inicio nóminas", "/nominas") },
         // Dashboard
         { "", ("🏠", "Inicio", "/") },

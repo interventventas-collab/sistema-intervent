@@ -957,6 +957,16 @@ public class ApiClient
     public async Task<bool> DeleteNomPagoAsync(int id)
         => await DeleteAsync($"/api/nominas/pagos/{id}");
 
+    // 2026-11-11: módulos aparte (Horas extras, Comisiones, Feriados, Aguinaldo, Plus)
+    public async Task<NomExtrasModuloDto?> GetNomExtrasAsync(string tipo, int anio, int mes)
+        => await GetAsync<NomExtrasModuloDto>($"/api/nominas/extras/{tipo}?anio={anio}&mes={mes}");
+    public async Task CrearNomExtraAsync(object req) => await PostAsync<object>("/api/nominas/extras", req);
+    public async Task EditarNomExtraAsync(int id, object req) => await PutAsync<object>($"/api/nominas/extras/{id}", req);
+    public async Task BorrarNomExtraAsync(int id) => await DeleteWithBodyAsync<object>($"/api/nominas/extras/{id}");
+    public async Task PagarNomExtraAsync(int id, object req) => await PostAsync<object>($"/api/nominas/extras/{id}/pagar", req);
+    public async Task CrearNomFeriadoAsync(object req) => await PostAsync<object>("/api/nominas/feriados", req);
+    public async Task BorrarNomFeriadoAsync(int id) => await DeleteWithBodyAsync<object>($"/api/nominas/feriados/{id}");
+
     /// <summary>Trae los datos del panel '¿Cuanto debo pagar?' — empleados con saldo,
     /// agrupados con sus liquidaciones pendientes y conceptos.</summary>
     public async Task<DashboardDeudasDto?> GetNomDashboardDeudasAsync()
