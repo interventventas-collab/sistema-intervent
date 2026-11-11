@@ -1889,6 +1889,11 @@ public class StockIdealRowDto
     public string? Ubicacion { get; set; }
     public DateTime? Vence { get; set; }
     public decimal VenceQuedan { get; set; }
+    // 2026-11-11: solapa Configurar — x bulto, lugar (planta y zona por separado) y nota del producto.
+    public int? UxB { get; set; }
+    public string? UbicacionPlanta { get; set; }
+    public string? UbicacionZona { get; set; }
+    public string? Notas { get; set; }
 }
 
 public class StockIdealListResultDto
