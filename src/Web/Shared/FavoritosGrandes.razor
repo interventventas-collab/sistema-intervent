@@ -1,8 +1,10 @@
-@* 2026-11-11: 8 FAVORITOS GRANDES arriba del Dashboard (pedido del dueño: "8 cuadrados con el +, vacíos,
-   y le asigno lo que me parezca"). Arrancan vacíos; tocando el + se elige la pantalla. Con el ✏ de cada
-   cuadro se cambia o se vacía.
+@* 2026-11-11: 8 BOTONES GRANDES arriba del Dashboard (pedido del dueño: "8 cuadrados con el +, vacíos,
+   y le asigno lo que me parezca"). Arrancan vacíos; tocando el + se elige la pantalla principal.
+   2ª (11/11): cada botón puede llevar hasta 6 SUBBOTONES adentro, siempre a la vista (opción A del dibujo).
+   Ej.: Ventas con Productos, Listas de precios, Presupuestos… Ventas/Cobranzas/Pagos conservan su + negro
+   (nueva venta/cobranza/pago) y su numerito. Lo que está en un botón grande ya no se repite en la barra de arriba.
    - Lo que arma Osmar (o sin PIN) lo ven todos; Gabriel/Germán con su PIN pueden armar los suyos y volver
-     a los de Osmar. Se guarda en Menu_Config (Favoritos, clave "GRANDES:"). *@
+     a los de Osmar. Se guarda en Menu_Config (Favoritos, clave "GRANDES:"), cada lugar "principal|sub1|sub2…". *@
 @implements IDisposable
 @inject MenuNuevoService Svc
 @inject OperatorService Operator
@@ -14,18 +16,35 @@
     @for (var n = 0; n < lista.Count; n++)
     {
         var i = n;
-        var href = lista[i];
-        var it = string.IsNullOrEmpty(href) ? null : (MenuNuevoCatalogo.PorHref.TryGetValue(href, out var x) ? x : null);
+        var (principal, subs) = MenuNuevoService.Partir(lista[i]);
+        var it = Item(principal);
         if (it == null)
         {
             <button class="fg-c fg-vacio" title="Elegir qué va en este lugar" @onclick="() => Abrir(i)"><span class="fg-mas">＋</span><span class="fg-elegir">elegir</span></button>
         }
         else
         {
-            <div class="fg-c" style="@Color(it.Href)" title="@it.Label" @onclick="() => Ir(it)">
+            var num = Svc.Numeros.TryGetValue(it.Href, out var nn) ? nn : 0;
+            <div class="fg-c @(subs.Count > 0 ? "con-subs" : "")" style="@Color(it.Href)" title="Ir a @it.Label" @onclick="() => Ir(it)">
+                @if (num > 0) { <span class="fg-num">@num</span> }
+                @if (it.Nuevo is { } tipo)
+                {
+                    <button class="fg-nuevo" title="@TituloNuevo(tipo)" @onclick="() => Svc.PedirNuevo(tipo)" @onclick:stopPropagation="true">+</button>
+                }
                 <span class="fg-e">@Icono(it.Href)</span>
                 <span class="fg-l">@it.Label</span>
-                <button class="fg-lap" title="Cambiar o sacar" @onclick="() => Abrir(i)" @onclick:stopPropagation="true">✏</button>
+                @if (subs.Count > 0)
+                {
+                    <span class="fg-subs">
+                        @foreach (var sh in subs)
+                        {
+                            var si = Item(sh);
+                            if (si == null) continue;
+                            <button class="fg-s" title="Ir a @si.Label" @onclick="() => Ir(si)" @onclick:stopPropagation="true"><span>@Icono(si.Href)</span>@si.Label</button>
+                        }
+                    </span>
+                }
+                <button class="fg-lap" title="Cambiar, agregar subbotones o sacar" @onclick="() => Abrir(i)" @onclick:stopPropagation="true">✏</button>
             </div>
         }
     }
@@ -39,50 +58,100 @@
 {
     <div class="favp-fondo" @onclick="Cerrar"></div>
     <div class="favp">
-        <div class="favp-h">Lugar @(lugar + 1) de 8 <small>@QuienTexto()</small><button class="favp-x" @onclick="Cerrar">✕</button></div>
-        <input class="favp-buscar" placeholder="Buscar pantalla… (stock, clientes, cheques…)" @bind="filtro" @bind:event="oninput" />
-        <div class="favp-lista">
-            @foreach (var (titulo, items) in Secciones())
-            {
-                var vis = items.Where(i => string.IsNullOrWhiteSpace(filtro) || i.Label.Contains(filtro, StringComparison.OrdinalIgnoreCase)).ToList();
-                if (vis.Count == 0) continue;
-                <div class="favp-sec">@titulo</div>
-                @foreach (var it in vis)
+        @if (buscando != null)
+        {
+            <div class="favp-h">@(buscando == "principal" ? "Botón principal" : "Agregar subbotón") <small>· botón @(lugar + 1) de 8 @QuienTexto()</small><button class="favp-x" @onclick="Cerrar">✕</button></div>
+            <input class="favp-buscar" placeholder="Buscar pantalla… (stock, clientes, cheques…)" @bind="filtro" @bind:event="oninput" />
+            <div class="favp-lista">
+                @foreach (var (titulo, items) in Secciones())
                 {
-                    var x = it;
-                    var es = string.Equals(actual, x.Href, StringComparison.OrdinalIgnoreCase);
-                    <button class="favp-fila @(es ? "on" : "")" disabled="@guardando" @onclick="() => Elegir(x.Href)">
-                        <span>@Icono(x.Href) @x.Label</span>
-                    </button>
+                    var vis = items.Where(i => string.IsNullOrWhiteSpace(filtro) || i.Label.Contains(filtro, StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (vis.Count == 0) continue;
+                    <div class="favp-sec">@titulo</div>
+                    @foreach (var it in vis)
+                    {
+                        var x = it;
+                        var es = string.Equals(principalT, x.Href, StringComparison.OrdinalIgnoreCase) || subsT.Contains(x.Href, StringComparer.OrdinalIgnoreCase);
+                        <button class="favp-fila @(es ? "on" : "")" disabled="@es" @onclick="() => Elegir(x.Href)">
+                            <span>@Icono(x.Href) @x.Label</span>
+                        </button>
+                    }
                 }
-            }
-        </div>
-        <div class="favp-pie">
-            @if (!string.IsNullOrEmpty(actual))
-            {
-                <button class="favp-b" disabled="@guardando" @onclick='() => Elegir("")'>Dejar vacío</button>
-            }
-            <span style="flex:1"></span>
-            <button class="favp-b" @onclick="Cerrar">Cancelar</button>
-        </div>
+            </div>
+            <div class="favp-pie">
+                <span style="flex:1"></span>
+                @if (!string.IsNullOrEmpty(principalT))
+                {
+                    <button class="favp-b" @onclick="() => buscando = null">← Volver</button>
+                }
+                else
+                {
+                    <button class="favp-b" @onclick="Cerrar">Cancelar</button>
+                }
+            </div>
+        }
+        else
+        {
+            var pi = Item(principalT);
+            <div class="favp-h">✏ Botón @(lugar + 1) de 8 <small>@QuienTexto()</small><button class="favp-x" @onclick="Cerrar">✕</button></div>
+            <div class="favp-lista">
+                <div class="favp-sec">Botón principal</div>
+                <div class="favp-ed">
+                    <span class="favp-nom" style="font-weight:700;">@(pi == null ? "—" : Icono(pi.Href) + " " + pi.Label)</span>
+                    <button class="favp-b" @onclick="() => Buscar(principal: true)">Cambiar</button>
+                </div>
+                <div class="favp-sec">Subbotones adentro (@subsT.Count de @MenuNuevoCatalogo.MAX_SUBS)</div>
+                @if (subsT.Count == 0) { <div class="favp-vacio" style="padding:0.4rem 0;">Todavía no tiene. Son opcionales.</div> }
+                @for (var n = 0; n < subsT.Count; n++)
+                {
+                    var k = n;
+                    var h = subsT[k];
+                    <div class="favp-ed">
+                        <span class="favp-nom">@Icono(h) @(Item(h)?.Label ?? h)</span>
+                        <button class="favp-mini" disabled="@(k == 0)" @onclick="() => Mover(k, -1)">▲</button>
+                        <button class="favp-mini" disabled="@(k == subsT.Count - 1)" @onclick="() => Mover(k, 1)">▼</button>
+                        <button class="favp-mini" title="Sacar este subbotón" @onclick="() => subsT.RemoveAt(k)">✕</button>
+                    </div>
+                }
+                @if (subsT.Count < MenuNuevoCatalogo.MAX_SUBS)
+                {
+                    <button class="fav-mas" style="margin:0.5rem 0 0.3rem;" @onclick="() => Buscar(principal: false)">＋ agregar subbotón</button>
+                }
+            </div>
+            <div class="favp-pie">
+                <button class="favp-b" disabled="@guardando" title="Deja este lugar vacío, con el +" @onclick="Vaciar">Dejar vacío</button>
+                <span style="flex:1"></span>
+                <button class="favp-b" @onclick="Cerrar">Cancelar</button>
+                <button class="favp-b si" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando…" : "Guardar")</button>
+            </div>
+        }
     </div>
 }
 
 <style>
     .fg { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:0.85rem; margin-bottom:1rem; }
-    .fg-c { position:relative; height:140px; border-radius:16px; background:#fff; border:1px solid #e5e7eb;
-            box-shadow:0 1px 4px rgba(0,0,0,.08); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.5rem;
-            cursor:pointer; padding:0.5rem; text-align:center; font:inherit; color:#111827; transition:box-shadow .15s, transform .15s; }
+    .fg-c { position:relative; min-height:140px; border-radius:16px; background:#fff; border:1px solid #e5e7eb;
+            box-shadow:0 1px 4px rgba(0,0,0,.08); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.45rem;
+            cursor:pointer; padding:0.75rem 0.6rem; text-align:center; font:inherit; color:#111827; transition:box-shadow .15s, transform .15s; }
     .fg-c:hover { box-shadow:0 6px 16px rgba(0,0,0,.12); transform:translateY(-1px); }
     .fg-e { font-size:2.5rem; line-height:1; }
     .fg-l { font-size:1rem; font-weight:800; line-height:1.15; }
+    .fg-c.con-subs .fg-e { font-size:2rem; }
+    .fg-subs { display:flex; flex-wrap:wrap; justify-content:center; gap:0.3rem; margin-top:0.15rem; }
+    .fg-s { display:inline-flex; align-items:center; gap:0.25rem; background:rgba(255,255,255,.9); border:1px solid #d1d5db; border-radius:999px;
+            padding:0.18rem 0.6rem; font:inherit; font-size:0.76rem; font-weight:600; color:#1f2937; cursor:pointer; white-space:nowrap; }
+    .fg-s:hover { border-color:#111827; background:#fff; }
+    .fg-num { position:absolute; top:8px; left:10px; background:#16a34a; color:#fff; font-size:0.72rem; font-weight:800; border-radius:999px; padding:1px 7px; }
+    .fg-nuevo { position:absolute; top:8px; right:10px; width:28px; height:28px; border-radius:50%; border:0; background:#111827; color:#fff;
+                font-size:1.05rem; font-weight:700; line-height:1; cursor:pointer; padding:0; }
+    .fg-nuevo:hover { background:#374151; }
     .fg-vacio { background:transparent; border:2px dashed #cbd5e1; box-shadow:none; gap:0.2rem; }
     .fg-vacio:hover { border-color:#9ca3af; background:#fff; box-shadow:none; }
     .fg-mas { font-size:2.8rem; color:#9ca3af; line-height:1; }
     .fg-elegir { font-size:0.75rem; color:#9ca3af; font-weight:600; }
     .fg-vacio:hover .fg-mas, .fg-vacio:hover .fg-elegir { color:#111827; }
-    @@media (max-width: 1500px) { .fg-c { height:118px; } .fg-e { font-size:2.1rem; } }
-    .fg-lap { position:absolute; top:6px; right:6px; width:24px; height:24px; border-radius:50%; border:1px solid #d1d5db; background:#fff;
+    @@media (max-width: 1500px) { .fg-c { min-height:118px; } .fg-e { font-size:2.1rem; } .fg-c.con-subs .fg-e { font-size:1.7rem; } }
+    .fg-lap { position:absolute; bottom:6px; right:6px; width:24px; height:24px; border-radius:50%; border:1px solid #d1d5db; background:#fff;
               font-size:0.7rem; cursor:pointer; padding:0; opacity:0; transition:opacity .15s; }
     .fg-c:hover .fg-lap { opacity:1; }
     .fg-pie { margin:-0.6rem 0 0.8rem; text-align:right; }
@@ -91,7 +160,9 @@
 
 @code {
     private int? lugar;
-    private string actual = "";
+    private string principalT = "";
+    private List<string> subsT = new();
+    private string? buscando;   // null = editor · "principal" · "sub"
     private string filtro = "";
     private bool guardando;
 
@@ -100,15 +171,39 @@
     protected override async Task OnInitializedAsync()
     {
         Svc.OnChange += Repintar;
+        Svc.OnNumeros += Repintar;
         Operator.OnChange += Repintar;
         await Svc.EnsureLoadedAsync();
     }
     private void Repintar() => InvokeAsync(StateHasChanged);
-    public void Dispose() { Svc.OnChange -= Repintar; Operator.OnChange -= Repintar; }
+    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; Operator.OnChange -= Repintar; }
 
-    private string Icono(string href) => MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, href) ?? MenuNuevoCatalogo.IconoFavorito(href);
+    private static MenuNuevoCatalogo.Item? Item(string href)
+        => string.IsNullOrEmpty(href) ? null
+           : MenuNuevoCatalogo.Directos.FirstOrDefault(d => string.Equals(d.Href, href, StringComparison.OrdinalIgnoreCase))
+             ?? (MenuNuevoCatalogo.PorHref.TryGetValue(href, out var x) ? x : null);
+
+    private string Icono(string href) => MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, href) ?? IconoFabrica(href);
+    private static string IconoFabrica(string href) => href.ToLowerInvariant() switch
+    {
+        "/cafe/preparacion" => "📦",
+        "/cafe/ventas" => "🧾",
+        "/cafe/tesoreria/cobranzas" => "💵",
+        "/cafe/tesoreria/pagos" => "📤",
+        "/mapeo?full=1" => "🗺",
+        _ => MenuNuevoCatalogo.IconoFavorito(href),
+    };
     private string Color(string href)
         => MenuNuevoCatalogo.Pastel(MenuNuevoCatalogo.IconoDe(Svc.Actual.Colores, href)) is { } p ? $"background:{p.Fondo};border-color:{p.Borde};" : "";
+
+    private static string TituloNuevo(string tipo) => tipo switch
+    {
+        "venta" => "Cargar una venta nueva",
+        "cobranza" => "Cargar una cobranza nueva",
+        "pago" => "Cargar un pago a proveedor nuevo",
+        "alquiler" => "Cargar una reserva de alquiler nueva",
+        _ => "Cargar nuevo",
+    };
 
     private void Ir(MenuNuevoCatalogo.Item it)
     {
@@ -117,8 +212,8 @@
 
     private IEnumerable<(string, List<MenuNuevoCatalogo.Item>)> Secciones()
     {
+        yield return ("Botones de arriba", MenuNuevoCatalogo.Directos.ToList());
         foreach (var g in Svc.Actual.Grupos) yield return (g.Grupo.Titulo, g.Items.ToList());
-        yield return ("Botones de arriba", Svc.Actual.Directos.ToList());
         yield return ("Organizar", Svc.Actual.Costado.ToList());
         yield return ("Más pantallas", Svc.Actual.Mas.ToList());
     }
@@ -129,19 +224,44 @@
     private void Abrir(int i)
     {
         lugar = i;
-        actual = Svc.GrandesDe(Op)[i];
+        (principalT, subsT) = MenuNuevoService.Partir(Svc.GrandesDe(Op)[i]);
         filtro = "";
+        // Lugar vacío: directo a elegir el principal.
+        buscando = string.IsNullOrEmpty(principalT) ? "principal" : null;
     }
-    private void Cerrar() { if (!guardando) lugar = null; }
+    private void Buscar(bool principal) { buscando = principal ? "principal" : "sub"; filtro = ""; }
+    private void Cerrar() { if (!guardando) { lugar = null; buscando = null; } }
 
     private async Task Elegir(string href)
+    {
+        if (buscando == "principal")
+        {
+            var nuevo = string.IsNullOrEmpty(principalT);
+            principalT = href;
+            subsT.RemoveAll(h => string.Equals(h, href, StringComparison.OrdinalIgnoreCase));
+            // Lugar que estaba vacío: se guarda al toque (un toque y listo, como antes).
+            if (nuevo) { await Guardar(); return; }
+        }
+        else if (subsT.Count < MenuNuevoCatalogo.MAX_SUBS) subsT.Add(href);
+        buscando = null;
+    }
+    private void Mover(int i, int d)
+    {
+        var j = i + d;
+        if (j < 0 || j >= subsT.Count) return;
+        (subsT[i], subsT[j]) = (subsT[j], subsT[i]);
+    }
+
+    private Task Vaciar() { principalT = ""; subsT.Clear(); return Guardar(); }
+
+    private async Task Guardar()
     {
         if (lugar == null) return;
         guardando = true;
         try
         {
-            await Svc.GuardarGrandeAsync(Op, lugar.Value, href);
-            lugar = null;
+            await Svc.GuardarGrandeAsync(Op, lugar.Value, MenuNuevoService.Juntar(principalT, subsT));
+            lugar = null; buscando = null;
         }
         catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
         finally { guardando = false; }

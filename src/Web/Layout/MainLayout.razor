@@ -3111,6 +3111,9 @@
 
     /// <summary>Abre el formulario de creación según el tipo. Lo usan tanto los tres botones
     /// de la barra como los atajos de teclado (N+V / N+A / N+C).</summary>
+    /// <summary>2026-11-11: el + de un botón grande del Dashboard (Nueva venta / cobranza / pago).</summary>
+    private void NuevoDesdeGrande(string tipo) => _ = InvokeAsync(() => { NuevoRapido(tipo); StateHasChanged(); });
+
     private void NuevoRapido(string tipo)
     {
         switch (tipo)
@@ -3619,6 +3622,7 @@
         Pantalla.Cambio += RepintarPorPantalla;
         Pantalla.PedirChatEquipo += AbrirChatDesdePastillas;
         Pantalla.PedirWhatsApp += AbrirWhatsAppDesdePastillas;
+        MenuNuevoSvc.OnNuevo += NuevoDesdeGrande;
         NuevaVentaSignal.OnVentaAbierta += OnVentaAbierta;
         SyncProgress.OnChange += OnSyncProgressChanged;
         UploadProgress.OnChanged += OnUploadProgressChanged;
@@ -4040,6 +4044,7 @@
         Pantalla.Cambio -= RepintarPorPantalla;
         Pantalla.PedirChatEquipo -= AbrirChatDesdePastillas;
         Pantalla.PedirWhatsApp -= AbrirWhatsAppDesdePastillas;
+        MenuNuevoSvc.OnNuevo -= NuevoDesdeGrande;
         NuevaVentaSignal.OnVentaAbierta -= OnVentaAbierta;
         timerFaltantes?.Dispose();
         try { cmdPalRef?.Dispose(); } catch { }
