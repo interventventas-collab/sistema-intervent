@@ -2567,6 +2567,25 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    /// <summary>10/11/2026: "tengo esta venta abierta para modificar" (cartel rojo OJO en Preparación).</summary>
+    public async Task MarcarEditandoVentaAsync(int id)
+    {
+        try { await SetAuthHeaderAsync(); using var r = await _http.PostAsync($"/api/cafe/ventas/{id}/editando", null); } catch { }
+    }
+
+    /// <summary>10/11/2026: cerré la venta sin guardar → se saca el cartel rojo.</summary>
+    public async Task SoltarEditandoVentaAsync(int id)
+    {
+        try { await SetAuthHeaderAsync(); using var r = await _http.DeleteAsync($"/api/cafe/ventas/{id}/editando"); } catch { }
+    }
+
+    /// <summary>10/11/2026: "Entendido" del aviso amarillo de qué cambió el pedido.</summary>
+    public async Task<bool> CambioVistoPreparacionAsync(int id)
+    {
+        try { await SetAuthHeaderAsync(); using var r = await _http.PostAsync($"/api/cafe/ventas/preparacion/{id}/cambio-visto", null); return r.IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
     /// <summary>Oculta UNA venta del tablero de Preparacion (la venta y el PDF en Drive siguen intactos).</summary>
     public async Task<bool> OcultarPreparacionAsync(int id, string? operador = null)
     {

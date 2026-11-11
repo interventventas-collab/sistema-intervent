@@ -777,6 +777,13 @@ public class CafePreparacionVentaDto
     /// <summary>2026-06-03: si true, el pedido se editó después de armado y se re-subió.
     /// La card muestra chip naranja "⚠ PEDIDO MODIFICADO" para avisar al armador.</summary>
     public bool ModificadoDespuesDeArmar { get; set; }
+    /// <summary>10/11/2026: quién la tiene abierta para modificar ahora (cartel rojo "OJO"). Null = nadie.</summary>
+    public string? EditandoPor { get; set; }
+    public DateTime? EditandoAt { get; set; }
+    /// <summary>10/11/2026: renglones del historial con lo que cambió y todavía no vieron (aviso amarillo).</summary>
+    public List<string>? Cambios { get; set; }
+    public string? CambioPor { get; set; }
+    public DateTime? CambioAt { get; set; }
     /// <summary>2026-06-05: true cuando la venta no se pudo subir a Drive. La card muestra chip rojo "SIN DRIVE".</summary>
     public bool SinDrive { get; set; }
     public List<CafePreparacionItemDto> Items { get; set; } = new();

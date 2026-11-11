@@ -7815,6 +7815,7 @@
         Operator.OnChange += OnOperatorChange;
         Navigation.LocationChanged += OnLocationChanged;
         NuevaVentaSignal.OnRequest += OnNuevaVentaSignal;
+        editandoTimer = new System.Threading.Timer(_ => InvokeAsync(AvisarEditandoAsync), null, 3000, 3000);
         try { deleteSettings = await Api.GetCafeDeleteSettingsAsync(); }
         catch { deleteSettings = new DeleteCafeVentaSettingsDto(); }
         // 2026-07-24: personas internas con WhatsApp (para el chip "copia por WhatsApp al emitir")
@@ -8356,8 +8357,35 @@
         if (int.TryParse(query["cliente"], out var cliUrl) && cliUrl > 0) _ = InvokeAsync(() => ElegirClienteDeUrlAsync(cliUrl));
     }
 
+    // ── 10/11/2026: cartel rojo "OJO, X está modificando este pedido" en Preparación ──
+    // Cada 3 s mira si hay una venta abierta para editar: al abrirla avisa, la renueva cada 30 s y al
+    // cerrarla (guardando o no) la suelta. Si se cierra la compu, el aviso vence solo a los 90 s.
+    private System.Threading.Timer? editandoTimer;
+    private int? editandoAvisadoId;
+    private DateTime editandoAvisadoAt;
+
+    private async Task AvisarEditandoAsync()
+    {
+        var actual = showForm ? editingVentaId : null;
+        if (actual != editandoAvisadoId)
+        {
+            var anterior = editandoAvisadoId;
+            editandoAvisadoId = actual;
+            editandoAvisadoAt = DateTime.UtcNow;
+            if (anterior is int a) await Api.SoltarEditandoVentaAsync(a);
+            if (actual is int n) await Api.MarcarEditandoVentaAsync(n);
+        }
+        else if (actual is int n && DateTime.UtcNow - editandoAvisadoAt > TimeSpan.FromSeconds(30))
+        {
+            editandoAvisadoAt = DateTime.UtcNow;
+            await Api.MarcarEditandoVentaAsync(n);
+        }
+    }
+
     public void Dispose()
     {
+        editandoTimer?.Dispose();
+        if (editandoAvisadoId is int soltar) _ = Api.SoltarEditandoVentaAsync(soltar);
         Operator.OnChange -= OnOperatorChange;
         Navigation.LocationChanged -= OnLocationChanged;
         NuevaVentaSignal.OnRequest -= OnNuevaVentaSignal;

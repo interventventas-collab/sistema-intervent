@@ -1529,7 +1529,9 @@
         }
         else
         {
-            ToastService.Error("No se pudo marcar como LISTO");
+            ToastService.Error(v.EditandoPor is not null
+                ? $"OJO: {CambiosArmado.Nombre(v.EditandoPor)} está modificando {v.Numero}. Esperá a que termine."
+                : "No se pudo marcar como LISTO");
         }
     }
 

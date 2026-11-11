@@ -4,6 +4,7 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@implements IDisposable
 @using System.Net
 @using System.Net.Http.Json
 
@@ -42,6 +43,16 @@
     .dp-quien-acc button { flex:1; min-height:46px; border-radius:8px; font:inherit; font-weight:700; border:1px solid #d1d5db; background:#fff; color:#111827; }
     .dp-quien-acc .si { background:#15803d; border-color:#15803d; color:#fff; }
     .dp-quien-acc .si:disabled { opacity:0.45; }
+    .dp-ped.bloq { border:2px solid #dc2626; }
+    .dp-ped.camb { border:2px solid #d97706; }
+    .dp-ojo { background:#dc2626; color:#fff; padding:0.6rem 0.75rem; line-height:1.3; }
+    .dp-ojo b { display:block; font-size:1rem; }
+    .dp-camb { background:#fffbeb; border-bottom:1px solid #fcd34d; padding:0.6rem 0.75rem; font-size:0.88rem; color:#78350f; }
+    .dp-camb b { display:block; color:#92400e; margin-bottom:0.2rem; }
+    .dp-camb .mas { color:#15803d; font-weight:700; }
+    .dp-camb .menos { color:#b91c1c; font-weight:700; }
+    .dp-camb button { margin-top:0.45rem; min-height:44px; padding:0 1.1rem; border-radius:8px; border:1px solid #d97706; background:#fff; font:inherit; font-weight:700; color:#92400e; }
+    .dp-tapado { opacity:0.55; }
     .dp-recargar { display:block; width:100%; min-height:46px; margin-top:0.4rem; background:#fff; border:1px solid #d1d5db; border-radius:8px; font:inherit; font-weight:600; color:#111827; }
 </style>
 
@@ -73,8 +84,25 @@
         @foreach (var p in pedidos)
         {
             var ped = p;
-            <div class="dp-ped" @key="ped.Id">
-                <button class="dp-abrir" disabled="@ocupado" @onclick="() => AbrirAsync(ped)">
+            var bloq = ped.EditandoPor is not null;
+            var camb = CambiosArmado.Filtrar(ped.Cambios);
+            <div class="dp-ped @(bloq ? "bloq" : camb.Count > 0 ? "camb" : "")" @key="ped.Id">
+                @if (bloq)
+                {
+                    <div class="dp-ojo"><b>⚠ OJO: @CambiosArmado.Nombre(ped.EditandoPor) está modificando este pedido</b>Esperá antes de armarlo.</div>
+                }
+                else if (camb.Count > 0)
+                {
+                    <div class="dp-camb">
+                        <b>✏ @CambiosArmado.Nombre(ped.CambioPor) cambió este pedido</b>
+                        @foreach (var c in camb)
+                        {
+                            <div class="@(c.Tipo == CambiosArmado.Tipo.Agrego ? "mas" : c.Tipo == CambiosArmado.Tipo.Saco ? "menos" : "")">@c.Texto</div>
+                        }
+                        <button disabled="@ocupado" @onclick="() => CambioVistoAsync(ped)">Entendido</button>
+                    </div>
+                }
+                <button class="dp-abrir @(bloq ? "dp-tapado" : "")" disabled="@ocupado" @onclick="() => AbrirAsync(ped)">
                     <div><span class="dp-num">@ped.Numero</span></div>
                     <div class="dp-cli">@ped.Cliente</div>
                     <div class="dp-sub">
@@ -106,7 +134,7 @@
                 {
                     <div class="dp-acc">
                         <button disabled="@ocupado" @onclick="() => AbrirAsync(ped)">📋 Abrir lista</button>
-                        <button class="dp-listo" disabled="@ocupado" @onclick="() => ElegirQuien(ped)">✅ Ya armado</button>
+                        <button class="dp-listo" disabled="@(ocupado || bloq)" @onclick="() => ElegirQuien(ped)">✅ Ya armado</button>
                     </div>
                 }
             </div>
@@ -135,6 +163,38 @@
         public int Unidades { get; set; }
         public string? EntregaPor { get; set; }
         public bool Modificado { get; set; }
+        // 10/11/2026: cartel rojo "OJO, X está modificando" + aviso amarillo de qué cambió.
+        public string? EditandoPor { get; set; }
+        public List<string>? Cambios { get; set; }
+        public string? CambioPor { get; set; }
+    }
+
+    // 10/11/2026: se actualiza solo cada 15 s, así el cartel rojo aparece sin tocar "Actualizar".
+    private System.Threading.Timer? refresco;
+
+    public void Dispose() => refresco?.Dispose();
+
+    private async Task RefrescarSoloAsync()
+    {
+        if (ocupado || estado != "ok") return;
+        await CargarAsync();
+        StateHasChanged();
+    }
+
+    private async Task CambioVistoAsync(PedidoCelu p)
+    {
+        if (ocupado) return;
+        ocupado = true; error = null;
+        try
+        {
+            using var resp = await Http.SendAsync(Pedido(HttpMethod.Post,
+                $"api/public/depo-preparacion/{p.Id}/cambio-visto", new { deviceId }));
+            if (resp.StatusCode == HttpStatusCode.Forbidden) { await PaseVencidoAsync(); return; }
+            if (resp.IsSuccessStatusCode) p.Cambios = null;
+            else error = "No se pudo guardar. Probá de nuevo.";
+        }
+        catch { error = "Sin conexión. Probá de nuevo."; }
+        finally { ocupado = false; }
     }
 
     private class PedidosResp
@@ -164,6 +224,7 @@
             try { await JS.InvokeVoidAsync("localStorage.setItem", CLAVE_DEVICE, deviceId); } catch { }
         }
         await CargarAsync();
+        refresco = new System.Threading.Timer(_ => InvokeAsync(RefrescarSoloAsync), null, 15000, 15000);
     }
 
     private HttpRequestMessage Pedido(HttpMethod metodo, string url, object? cuerpo = null)

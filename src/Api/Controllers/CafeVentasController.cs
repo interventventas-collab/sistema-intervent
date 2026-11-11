@@ -3333,6 +3333,14 @@ public class CafeVentasController : ControllerBase
         var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
 
+        // 10/11/2026: si está en Preparación (o ya armada, que vuelve al tablero al re-subir), lo que
+        // cambie acá les sale a los del depósito en el aviso amarillo "Osmar cambió este pedido".
+        // Al guardar se termina el "está modificando" (cartel rojo).
+        if (v.EstadoPreparacion is "PARA_PREPARAR" or "EN_PREPARACION" or "LISTO")
+            v.CambioAvisoDesde ??= DateTime.UtcNow.AddSeconds(-2);
+        v.EditandoPor = null;
+        v.EditandoAt = null;
+
         if (req.Fecha.HasValue) v.Fecha = FechaArgentina(req.Fecha);
         if (req.Observaciones is not null)
             v.Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim();
@@ -4483,9 +4491,55 @@ public class CafeVentasController : ControllerBase
         if (!salirDelFlujo && !EstadosPreparacion.Contains(nuevo))
             return BadRequest(new { error = $"Estado invalido. Valores: {string.Join(", ", EstadosPreparacion)}" });
 
+        if (nuevo == "LISTO" && EditandoAhora(v) is { } editor)
+            return Conflict(new { error = $"OJO: {editor} está modificando este pedido. Esperá a que termine para marcarlo listo." });
+
         AplicarEstadoPreparacion(_db, v, nuevo, req.OperadorNombre, req.Notas);
         await _db.SaveChangesAsync();
         return Ok(new { id = v.Id, estado = v.EstadoPreparacion });
+    }
+
+    // ── 10/11/2026: "OJO, X está modificando este pedido" ──
+    // La pantalla de ventas avisa cada ~30 s mientras tiene la venta abierta para editar. Si pasan
+    // 90 s sin aviso (cerró sin guardar, se cortó la compu) se da por terminado solo.
+    public static readonly TimeSpan EditandoVence = TimeSpan.FromSeconds(90);
+
+    /// <summary>Quién la está modificando ahora, o null.</summary>
+    public static string? EditandoAhora(CafeVenta v)
+        => v.EditandoAt != null && v.EditandoAt > DateTime.UtcNow - EditandoVence && !string.IsNullOrWhiteSpace(v.EditandoPor)
+            ? v.EditandoPor : null;
+
+    /// <summary>POST {id}/editando — "la tengo abierta para modificar" (y renovar). Sin pasar por el
+    /// guardado normal: no es un cambio de la venta, no va al historial ni toca UpdatedAt.</summary>
+    [HttpPost("{id:int}/editando")]
+    public async Task<IActionResult> MarcarEditando(int id)
+    {
+        var quien = NormOperatorName(Request.Headers["X-Operator-Name"].FirstOrDefault());
+        if (string.IsNullOrWhiteSpace(quien)) quien = User?.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(quien)) quien = "Alguien de la oficina";
+        if (quien.Length > 100) quien = quien[..100];
+        var ahora = DateTime.UtcNow;
+        var n = await _db.CafeVentas.Where(x => x.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.EditandoPor, quien).SetProperty(x => x.EditandoAt, ahora));
+        return n == 0 ? NotFound() : Ok(new { ok = true });
+    }
+
+    /// <summary>DELETE {id}/editando — cerró la venta sin guardar: se saca el cartel rojo.</summary>
+    [HttpDelete("{id:int}/editando")]
+    public async Task<IActionResult> SoltarEditando(int id)
+    {
+        await _db.CafeVentas.Where(x => x.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.EditandoPor, (string?)null).SetProperty(x => x.EditandoAt, (DateTime?)null));
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>POST preparacion/{id}/cambio-visto — "Entendido" del aviso amarillo en el tablero.</summary>
+    [HttpPost("preparacion/{id:int}/cambio-visto")]
+    public async Task<IActionResult> CambioVisto(int id)
+    {
+        await _db.CafeVentas.Where(x => x.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.CambioAvisoDesde, (DateTime?)null));
+        return Ok(new { ok = true });
     }
 
     /// <summary>Cambia el estado de armado y deja el renglón en el historial (con quién).
@@ -4503,6 +4557,8 @@ public class CafeVentasController : ControllerBase
         {
             v.ModificadoDespuesDeArmar = false;
         }
+        // 10/11/2026: ya armado → el aviso de "qué cambió" ya no hace falta.
+        if (nuevo == "LISTO") v.CambioAvisoDesde = null;
         db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
         {
             VentaId = v.Id,
@@ -4540,6 +4596,7 @@ public class CafeVentasController : ControllerBase
         // El caso EstadoPreparacion == null sigue atado a Drive a proposito: son ventas viejas
         // que entraron al tablero antes de que se guardara el estado. Sin esa atadura entrarian
         // TODAS las ventas de oficina que nunca se mandaron a armar.
+        var editandoCorte = DateTime.UtcNow - EditandoVence;
         var ventas = await EnTableroPreparacion(_db.CafeVentas.Include(v => v.Items), dias)
             // Orden: las que tienen Drive primero por DriveSubidoAt desc, las sin Drive al final por CreatedAt desc
             .OrderByDescending(v => v.DriveSubidoAt ?? v.CreatedAt)
@@ -4578,6 +4635,18 @@ public class CafeVentasController : ControllerBase
                 comentarioArmado = v.ComentarioArmado,
                 // 2026-06-03: flag MODIFICADO — el pedido se edito despues de armado y se re-subio
                 modificadoDespuesDeArmar = v.ModificadoDespuesDeArmar,
+                // 10/11/2026: cartel rojo "OJO, X está modificando" + aviso amarillo de qué cambió.
+                editandoPor = v.EditandoAt != null && v.EditandoAt > editandoCorte ? v.EditandoPor : null,
+                editandoAt = v.EditandoAt != null && v.EditandoAt > editandoCorte ? v.EditandoAt : null,
+                cambios = _db.CafeVentaHistorial
+                    .Where(h => v.CambioAvisoDesde != null && h.VentaId == v.Id && h.Tipo == "EDICION" && h.CreatedAt >= v.CambioAvisoDesde)
+                    .OrderBy(h => h.Id).Select(h => h.Detalle).ToList(),
+                cambioPor = _db.CafeVentaHistorial
+                    .Where(h => v.CambioAvisoDesde != null && h.VentaId == v.Id && h.Tipo == "EDICION" && h.CreatedAt >= v.CambioAvisoDesde)
+                    .OrderByDescending(h => h.Id).Select(h => h.Quien).FirstOrDefault(),
+                cambioAt = _db.CafeVentaHistorial
+                    .Where(h => v.CambioAvisoDesde != null && h.VentaId == v.Id && h.Tipo == "EDICION" && h.CreatedAt >= v.CambioAvisoDesde)
+                    .OrderByDescending(h => h.Id).Select(h => (DateTime?)h.CreatedAt).FirstOrDefault(),
                 items = v.Items.Select(i => new
                 {
                     id = i.Id,

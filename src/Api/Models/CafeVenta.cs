@@ -302,6 +302,18 @@ public class CafeVenta
     /// para avisar al armador. Se resetea a false cuando se marca como LISTO de nuevo (rearmado).</summary>
     public bool ModificadoDespuesDeArmar { get; set; }
 
+    /// <summary>10/11/2026: quién tiene la venta abierta para modificarla ahora (cartel rojo "OJO" en
+    /// Preparación). La pantalla de ventas lo renueva cada ~30 s (EditandoAt); si pasan 90 s sin
+    /// renovar se da por terminado solo (cerró sin guardar, se cortó, etc.).</summary>
+    [MaxLength(100)]
+    public string? EditandoPor { get; set; }
+    public DateTime? EditandoAt { get; set; }
+
+    /// <summary>10/11/2026: desde cuándo hay cambios que los del depósito todavía no vieron (aviso
+    /// amarillo "Osmar cambió este pedido"). Se lee del historial de la venta desde esta hora.
+    /// Se limpia con "Entendido" o al marcarla LISTO.</summary>
+    public DateTime? CambioAvisoDesde { get; set; }
+
     // ═══════════════════════════════════════════════════════════════════════
     //  ENTREGA CON FIRMA Y RECIBO (2026-06-22)
     // ═══════════════════════════════════════════════════════════════════════

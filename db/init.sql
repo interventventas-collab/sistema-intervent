@@ -8770,3 +8770,17 @@ IF OBJECT_ID('Cafe_PedidosProveedor') IS NULL
         UltimoEmailAt DATETIME2 NULL
     );
 GO
+
+-- ============================================================
+-- 10/11/2026: cartel "OJO, X está modificando este pedido" y aviso de qué cambió en Preparación.
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+-- ============================================================
+IF COL_LENGTH('Cafe_Ventas','EditandoPor') IS NULL
+    ALTER TABLE Cafe_Ventas ADD EditandoPor NVARCHAR(100) NULL;
+GO
+IF COL_LENGTH('Cafe_Ventas','EditandoAt') IS NULL
+    ALTER TABLE Cafe_Ventas ADD EditandoAt DATETIME2 NULL;
+GO
+IF COL_LENGTH('Cafe_Ventas','CambioAvisoDesde') IS NULL
+    ALTER TABLE Cafe_Ventas ADD CambioAvisoDesde DATETIME2 NULL;
+GO
