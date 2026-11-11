@@ -286,10 +286,12 @@ public class CafeVencimientosController : ControllerBase
 
     /// <summary>2026-11-04: resumen de TODOS los productos que tienen vencimientos (listado de productos).</summary>
     [HttpGet("resumen-todos")]
-    public async Task<IActionResult> ResumenTodos()
+    public async Task<IActionResult> ResumenTodos([FromQuery] bool sinArmar = false)
     {
         var ids = await _db.CafeProductoVencimientos.Select(v => v.ProductoId).Distinct().ToListAsync();
-        var res = await VencimientosService.ResumenAsync(_db, ids);
+        // 11/11/2026: Preparación pide sinArmar=true → lo vendido que todavía está en el estante cuenta.
+        var sumar = sinArmar ? await VencimientosService.SinArmarAsync(_db) : null;
+        var res = await VencimientosService.ResumenAsync(_db, ids, sumar);
         return Ok(ResumenDtos(res));
     }
 

@@ -1312,7 +1312,7 @@
     /// <summary>2026-11-05: después de cargar un vencimiento desde la ventanita del pedido.</summary>
     private async Task RecargarVencs()
     {
-        try { vencsPrep = (await Api.GetVencimientosResumenTodosAsync() ?? new()).ToDictionary(x => x.ProductoId); } catch { }
+        try { vencsPrep = (await Api.GetVencimientosResumenTodosAsync(sinArmar: true) ?? new()).ToDictionary(x => x.ProductoId); } catch { }
         StateHasChanged();
     }
     private Dictionary<int, VencResumenDto> vencsPrep = new();
@@ -1333,7 +1333,7 @@
                 try { armadosHoy = (await Api.GetCafePreparacionArmadosAsync("hoy"))?.Count ?? armadosHoy; } catch { }
             }
             // 2026-11-04: vencimientos para "Sacar el que vence…" en cada renglón
-            try { vencsPrep = (await Api.GetVencimientosResumenTodosAsync() ?? new()).ToDictionary(x => x.ProductoId); } catch { }
+            try { vencsPrep = (await Api.GetVencimientosResumenTodosAsync(sinArmar: true) ?? new()).ToDictionary(x => x.ProductoId); } catch { }
             ultimaActualizacion = DateTime.Now;
         }
         catch (Exception ex)

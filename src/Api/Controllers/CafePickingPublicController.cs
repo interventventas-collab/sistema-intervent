@@ -152,7 +152,9 @@ public class CafePickingPublicController : ControllerBase
         var prods = await _db.CafeProductos.AsNoTracking()
             .Where(p => p.IsActive && p.Sku != null && skus.Contains(p.Sku))
             .Select(p => new { p.Id, p.Sku }).ToListAsync();
-        var res = await Services.VencimientosService.ResumenAsync(_db, prods.Select(p => p.Id));
+        // 11/11/2026: lo vendido sin armar sigue en el estante → cuenta para elegir la fecha.
+        var res = await Services.VencimientosService.ResumenAsync(_db, prods.Select(p => p.Id),
+            await Services.VencimientosService.SinArmarAsync(_db));
         var dic = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in prods)
             if (res.TryGetValue(p.Id, out var r) && r.ProximoVence is DateTime f && !dic.ContainsKey(p.Sku!))
