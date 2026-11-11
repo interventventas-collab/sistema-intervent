@@ -717,6 +717,7 @@
             }
         </div>
         <span class="dp-cuenta">Para armar <b>@ParaArmar.Count</b> &nbsp;·&nbsp; Ya armados hoy <b>@armadosHoy</b></span>
+        <button class="dp-pc-btn" style="font-size:1.05rem; padding:0.2rem 0.6rem;" @onclick="Cargar" title="Refrescar (igual se actualiza solo cada 10 segundos)">↻</button>
         @if (Pantalla.Enorme)
         {
             <button class="dp-pc-btn" @onclick="EsconderChrome" title="Esconder también las pestañas y favoritos de Chrome">⛶</button>
@@ -735,6 +736,24 @@
 
     <div class="dp-wrap">
     <div class="dp-main">
+
+    @* Cartelito SIEMPRE visible: cuál es el celu del depósito habilitado (2026-08-02).
+       11/11/2026: se había perdido al rehacer la pantalla con las pastillas (09/11); vuelve. *@
+    @if (pickingDispositivo is not null && pickingDispositivo.Registrado)
+    {
+        <div class="prep-celu-chip on">
+            <span>📱 Celu del depósito:</span>
+            <span class="nombre">@(pickingDispositivo.Nombre ?? "habilitado")</span>
+            <span style="opacity:0.8;">· habilitado @HaceCuanto(pickingDispositivo.CreatedAt)</span>
+            <button class="cambiar" @onclick="OlvidarDispositivo" title="Liberar este celu para habilitar otro">Cambiar celu</button>
+        </div>
+    }
+    else
+    {
+        <div class="prep-celu-chip off">
+            <span>📵 Ningún celular del depósito habilitado todavía. El primero que abra una lista y toque "habilitar" queda registrado.</span>
+        </div>
+    }
 
     @* 14/10/2026: con el buscador el depósito puede traer al tablero una venta que no está
        (sacada sin querer, vieja o nunca mandada), por cliente o por número, eligiendo quién. *@
