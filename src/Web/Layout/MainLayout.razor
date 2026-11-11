@@ -2283,10 +2283,11 @@
 
 @* 2026-11-07: depósito con "todo arriba": el chat del equipo ya no vive en la columna; se abre
    con el botón "💬 Chat equipo" de la barra, en esta ventanita (se cierra con ✕ o con el botón). *@
-@* 2026-11-09: en la pantalla de armado estos botones pasan a las pastillas de la derecha. *@
+@* 2026-11-09: en la pantalla de armado estos botones pasan a las pastillas de la derecha.
+   2026-11-11: el botón de abajo (.bf) ya NO se esconde: el dueño lo quiere en todas las pantallas (se puede mover o compactar). *@
 @if (Pantalla.Activa)
 {
-    <style>@@media (min-width: 900px) { .bf, .depwa-bubble { display: none !important; } }</style>
+    <style>@@media (min-width: 900px) { .depwa-bubble { display: none !important; } }</style>
 }
 
 @if (TodoArribaDepo && chatEquipoAbierto)

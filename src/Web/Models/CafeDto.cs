@@ -3040,4 +3040,6 @@ public class FlotantePersonaDto
     public int? Abajo { get; set; }
     public bool LabDer { get; set; }
     public bool Acostado { get; set; }
+    /// <summary>2026-11-11: plegado en un solo ícono (se abre tocándolo).</summary>
+    public bool Compacto { get; set; }
 }
