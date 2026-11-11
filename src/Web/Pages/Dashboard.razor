@@ -168,6 +168,12 @@ else
    (MainLayout .topstrip), junto con empresa/usuario y el reloj. El dashboard arranca directo
    en el contenido. Balanza y Stock ya viven en su tarjeta detallada más abajo. *@
 
+@* 2026-11-11: 8 favoritos grandes arriba de todo (pedido del dueño); Equipo hoy queda debajo. *@
+@if (DashNuevo)
+{
+    <FavoritosGrandes />
+}
+
 @* ═══ Card: equipo trabajando ahora ═══ *@
 <div class="dash-card">
     <div class="dash-card-title">
