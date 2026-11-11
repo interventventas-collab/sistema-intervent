@@ -2255,7 +2255,15 @@
     @* 2026-07-22: acá vivía el cartelón rojo de "publis MeLi esperando revisión de PRECIO"
        (incidente KDOR 2026-07-16). Ahora es un chip en la fila de arriba (.topstrip-chips). *@
     <div class="content">
-        @Body
+        @* 2026-11-11: pantalla con clave → primero se pide la clave (venga de donde venga). *@
+        @if (PantallaClaves.Bloqueada(RutaClave))
+        {
+            <ClavePedir Href="@RutaClave" Nombre="@NombreRutaClave()" />
+        }
+        else
+        {
+            @Body
+        }
     </div>
 </main>
 
@@ -3494,6 +3502,11 @@
     };
     private MenuNuevoBarra? menuNuevoRef;
     [Inject] private MenuNuevoService MenuNuevoSvc { get; set; } = default!;
+    [Inject] private PantallaClaveService PantallaClaves { get; set; } = default!;
+    private string RutaClave => "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+    private string? NombreRutaClave()
+        => MenuNuevoCatalogo.PorHref.Values.FirstOrDefault(i => PantallaClaveService.Normalizar(i.Href) == PantallaClaveService.Normalizar(RutaClave))?.Label;
+    private void RepintarClaves() => _ = InvokeAsync(StateHasChanged);
     private void MenuNuevoCambio() => InvokeAsync(StateHasChanged);
     /// <summary>Ícono del menú del costado según la pantalla (los de siempre; el resto, una etiqueta).</summary>
     private static MarkupString IconoCostado(string href) => href switch
@@ -3646,6 +3659,8 @@
         Pantalla.PedirChatEquipo += AbrirChatDesdePastillas;
         Pantalla.PedirWhatsApp += AbrirWhatsAppDesdePastillas;
         MenuNuevoSvc.OnNuevo += NuevoDesdeGrande;
+        PantallaClaves.OnChange += RepintarClaves;
+        _ = PantallaClaves.CargarAsync();
         NuevaVentaSignal.OnVentaAbierta += OnVentaAbierta;
         SyncProgress.OnChange += OnSyncProgressChanged;
         UploadProgress.OnChanged += OnUploadProgressChanged;
@@ -4068,6 +4083,7 @@
         Pantalla.PedirChatEquipo -= AbrirChatDesdePastillas;
         Pantalla.PedirWhatsApp -= AbrirWhatsAppDesdePastillas;
         MenuNuevoSvc.OnNuevo -= NuevoDesdeGrande;
+        PantallaClaves.OnChange -= RepintarClaves;
         NuevaVentaSignal.OnVentaAbierta -= OnVentaAbierta;
         timerFaltantes?.Dispose();
         try { cmdPalRef?.Dispose(); } catch { }

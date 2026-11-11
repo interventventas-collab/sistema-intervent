@@ -129,15 +129,22 @@ public class MenuNuevoService
     public const string SOLO_TITULO = "*";
     public static (string Href, string? Titulo) PartirTitulo(string principal)
     {
-        var k = principal.IndexOf('¦');
-        if (k < 0) return (principal, null);
-        var t = principal[(k + 1)..].Trim();
-        return (principal[..k], t == "" ? null : t);
+        var (h, t, _) = PartirPrincipal(principal);
+        return (h, t);
     }
-    public static string JuntarTitulo(string href, string? titulo)
+    /// <summary>2026-11-11: "dirección¦Nombre¦color" (nombre y color opcionales; color = clave de pastel).</summary>
+    public static (string Href, string? Titulo, string? Color) PartirPrincipal(string principal)
     {
-        var t = (titulo ?? "").Replace("|", " ").Replace("¦", " ").Trim();
-        return string.IsNullOrEmpty(href) ? "" : t == "" ? href : href + "¦" + t;
+        var p = principal.Split('¦');
+        string? T(int i) => p.Length > i && p[i].Trim() != "" ? p[i].Trim() : null;
+        return (p[0], T(1), T(2));
+    }
+    public static string JuntarTitulo(string href, string? titulo, string? color = null)
+    {
+        string L(string? x) => (x ?? "").Replace("|", " ").Replace("¦", " ").Trim();
+        var t = L(titulo); var c = L(color);
+        if (string.IsNullOrEmpty(href)) return "";
+        return c != "" ? $"{href}¦{t}¦{c}" : t != "" ? $"{href}¦{t}" : href;
     }
 
     /// <summary>Pantallas que esta persona tiene en sus botones grandes (principales y subbotones):
@@ -167,6 +174,20 @@ public class MenuNuevoService
         fav[ClaveGrandes(op)] = l;
         await GuardarAsync(Actual with { Favoritos = fav });
     }
+    /// <summary>2026-11-11: cambia de lugar dos botones grandes (arrastrando o con "Mover a…").</summary>
+    public async Task IntercambiarGrandesAsync(string? op, int a, int b)
+    {
+        await RecargarAsync();
+        var l = GrandesDe(op);
+        if (a < 0 || b < 0 || a >= l.Count || b >= l.Count || a == b) return;
+        (l[a], l[b]) = (l[b], l[a]);
+        var fav = Actual.Favoritos?.ToDictionary(k => k.Key, k => k.Value.ToList()) ?? new Dictionary<string, List<string>>();
+        fav[ClaveGrandes(op)] = l;
+        await GuardarAsync(Actual with { Favoritos = fav });
+    }
+    /// <summary>Botón grande que se está arrastrando (puede soltarse en el otro bloque).</summary>
+    public int? Arrastrando { get; set; }
+
     public async Task VolverGrandesAOsmarAsync(string? op)
     {
         await RecargarAsync();

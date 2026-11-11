@@ -10,34 +10,39 @@
 @inject OperatorService Operator
 @inject NavigationManager Nav
 @inject ToastService Toast
+@inject PantallaClaveService Claves
 
 <div class="fg">
     @{ var lista = Svc.GrandesDe(Op); }
-    @for (var n = 0; n < lista.Count; n++)
+    @for (var n = Desde; n < Math.Min(Hasta, lista.Count); n++)
     {
         var i = n;
         var (principalCrudo, subs) = MenuNuevoService.Partir(lista[i]);
-        var (principal, tituloPropio) = MenuNuevoService.PartirTitulo(principalCrudo);
+        var (principal, tituloPropio, colorPropio) = MenuNuevoService.PartirPrincipal(principalCrudo);
         var it = principal == MenuNuevoService.SOLO_TITULO
             ? new MenuNuevoCatalogo.Item(tituloPropio ?? "Sin nombre", MenuNuevoService.SOLO_TITULO)
             : Item(principal);
         if (it == null)
         {
-            <button class="fg-c fg-vacio" title="Elegir qué va en este lugar" @onclick="() => Abrir(i)"><span class="fg-mas">＋</span><span class="fg-elegir">elegir</span></button>
+            <button class="fg-c fg-vacio @(sobre == i ? "sobre" : "")" title="Elegir qué va en este lugar" @onclick="() => Abrir(i)"
+                    @ondragover="() => sobre = i" @ondragover:preventDefault="true" @ondragleave="() => sobre = null" @ondrop="() => Soltar(i)"><span class="fg-mas">＋</span><span class="fg-elegir">elegir</span></button>
         }
         else
         {
             var num = Svc.Numeros.TryGetValue(it.Href, out var nn) ? nn : 0;
             var carpeta = it.Href == MenuNuevoService.SOLO_TITULO;
             var nombre = tituloPropio ?? it.Label;
-            <div class="fg-c @(subs.Count > 0 ? "con-subs" : "") @(carpeta ? "carpeta" : "")" style="@Color(it.Href)" title="@(carpeta ? nombre : "Ir a " + it.Label)" @onclick="() => { if (!carpeta) Ir(it); }">
+            <div class="fg-c @(subs.Count > 0 ? "con-subs" : "") @(carpeta ? "carpeta" : "") @(sobre == i ? "sobre" : "")" style="@ColorBoton(colorPropio, it.Href)"
+                 title="@(carpeta ? nombre : "Ir a " + it.Label)" @onclick="() => { if (!carpeta) Ir(it); }"
+                 draggable="true" @ondragstart="() => Svc.Arrastrando = i" @ondragend="() => { Svc.Arrastrando = null; sobre = null; }"
+                 @ondragover="() => sobre = i" @ondragover:preventDefault="true" @ondragleave="() => sobre = null" @ondrop="() => Soltar(i)">
                 @if (num > 0) { <span class="fg-num">@num</span> }
                 @if (TipoNuevo(it) is { } tipo)
                 {
                     <button class="fg-nuevo" title="@TituloNuevo(tipo)" @onclick="() => Svc.PedirNuevo(tipo)" @onclick:stopPropagation="true">+</button>
                 }
                 <span class="fg-e">@(carpeta ? "📁" : Icono(it.Href))</span>
-                <span class="fg-l">@nombre</span>
+                <span class="fg-l">@nombre@(!carpeta && Claves.TieneClave(it.Href) ? " 🔒" : "")</span>
                 @if (subs.Count > 0)
                 {
                     <span class="fg-subs">
@@ -45,7 +50,7 @@
                         {
                             var si = Item(sh);
                             if (si == null) continue;
-                            <button class="fg-s" title="Ir a @si.Label" @onclick="() => Ir(si)" @onclick:stopPropagation="true"><span>@Icono(si.Href)</span>@si.Label</button>
+                            <button class="fg-s" title="Ir a @si.Label" @onclick="() => Ir(si)" @onclick:stopPropagation="true"><span>@Icono(si.Href)</span>@si.Label@(Claves.TieneClave(si.Href) ? " 🔒" : "")</button>
                         }
                     </span>
                 }
@@ -54,7 +59,7 @@
         }
     }
 </div>
-@if (Op != null && Op != MenuNuevoCatalogo.FAV_DUENO && Svc.TieneGrandesPropios(Op))
+@if (Desde == 0 && Op != null && Op != MenuNuevoCatalogo.FAV_DUENO && Svc.TieneGrandesPropios(Op))
 {
     <div class="fg-pie"><button class="fg-volver" @onclick="VolverAOsmar">↩ Volver a los de Osmar</button></div>
 }
@@ -65,7 +70,7 @@
     <div class="favp">
         @if (buscando != null)
         {
-            <div class="favp-h">@(buscando == "principal" ? "Botón principal" : "Agregar subbotón") <small>· botón @(lugar + 1) de 8 @QuienTexto()</small><button class="favp-x" @onclick="Cerrar">✕</button></div>
+            <div class="favp-h">@(buscando == "principal" ? "Botón principal" : "Agregar subbotón") <small>· botón @(lugar + 1) de @MenuNuevoCatalogo.CANT_GRANDES @QuienTexto()</small><button class="favp-x" @onclick="Cerrar">✕</button></div>
             <input class="favp-buscar" placeholder="Buscar pantalla… (stock, clientes, cheques…)" @bind="filtro" @bind:event="oninput" />
             var atajos = Svc.EnGrandes(Op);
             <div class="favp-lista">
@@ -109,7 +114,7 @@
         else
         {
             var pi = principalT == MenuNuevoService.SOLO_TITULO ? null : Item(principalT);
-            <div class="favp-h">✏ Botón @(lugar + 1) de 8 <small>@QuienTexto()</small><button class="favp-x" @onclick="Cerrar">✕</button></div>
+            <div class="favp-h">✏ Botón @(lugar + 1) de @MenuNuevoCatalogo.CANT_GRANDES <small>@QuienTexto()</small><button class="favp-x" @onclick="Cerrar">✕</button></div>
             <div class="favp-lista">
                 <div class="favp-sec">Botón principal</div>
                 <div class="favp-ed">
@@ -120,6 +125,15 @@
                 <input class="favp-buscar" style="margin:0; width:100%;" maxlength="30"
                        placeholder="@(principalT == MenuNuevoService.SOLO_TITULO ? "Escribí el título (ej.: Compras, Oficina…)" : "Dejalo vacío para usar \"" + (pi?.Label ?? "") + "\"")"
                        @bind="tituloT" @bind:event="oninput" />
+                <div class="favp-sec">Color</div>
+                <div class="fg-colores">
+                    <button class="fg-co @(colorT == null ? "on" : "")" title="Sin color (blanco)" style="background:#fff;" @onclick="() => colorT = null"></button>
+                    @foreach (var pa in MenuNuevoCatalogo.Pasteles)
+                    {
+                        var pk = pa.Clave;
+                        <button class="fg-co @(colorT == pk ? "on" : "")" title="@pa.Nombre" style="background:@pa.Fondo; border-color:@pa.Borde;" @onclick="() => colorT = pk"></button>
+                    }
+                </div>
                 <div class="favp-sec">Subbotones adentro (@subsT.Count de @MenuNuevoCatalogo.MAX_SUBS)</div>
                 @if (subsT.Count == 0) { <div class="favp-vacio" style="padding:0.4rem 0;">Todavía no tiene. Son opcionales.</div> }
                 @for (var n = 0; n < subsT.Count; n++)
@@ -137,8 +151,43 @@
                 {
                     <button class="fav-mas" style="margin:0.5rem 0 0.3rem;" @onclick="() => Buscar(principal: false)">＋ agregar subbotón</button>
                 }
+                @if (EsDueno)
+                {
+                    @* 2026-11-11: clave en la PANTALLA (la pide entres por donde entres: botón, menú o link). *@
+                    <div class="favp-sec">🔒 Clave de las pantallas de este botón</div>
+                    @foreach (var h in PantallasDelBoton())
+                    {
+                        var hh = h;
+                        var tiene = Claves.TieneClave(hh);
+                        <div class="favp-ed">
+                            <span class="favp-nom">@Icono(hh) @(Item(hh)?.Label ?? hh) @if (tiene) { <b class="fg-candado">🔒 con clave</b> }</span>
+                            @if (claveDe == hh)
+                            {
+                                <input class="fg-clave-in" type="password" autocomplete="new-password" placeholder="Clave nueva" @bind="claveNueva" @bind:event="oninput" />
+                                <button class="favp-b si" disabled="@guardandoClave" @onclick="() => PonerClave(hh)">OK</button>
+                                <button class="favp-b" @onclick="() => claveDe = null">✕</button>
+                            }
+                            else
+                            {
+                                <button class="favp-b" @onclick="() => EmpezarClave(hh)">@(tiene ? "Cambiar clave" : "Poner clave")</button>
+                                @if (tiene)
+                                {
+                                    <button class="favp-b" disabled="@guardandoClave" @onclick="() => SacarClave(hh)">Sacar</button>
+                                }
+                            }
+                        </div>
+                    }
+                }
             </div>
             <div class="favp-pie">
+                <select class="fg-mover" title="Cambiarlo de lugar con otro botón (también podés arrastrarlo)" @onchange="MoverA" disabled="@guardando">
+                    <option value="">↔ Mover a…</option>
+                    @for (var n = 0; n < MenuNuevoCatalogo.CANT_GRANDES; n++)
+                    {
+                        if (n == lugar) continue;
+                        <option value="@n">@NombreLugar(n)</option>
+                    }
+                </select>
                 <button class="favp-b" disabled="@guardando" title="Deja este lugar vacío, con el +" @onclick="Vaciar">Dejar vacío</button>
                 <span style="flex:1"></span>
                 <button class="favp-b" @onclick="Cerrar">Cancelar</button>
@@ -209,12 +258,50 @@
     .fg-atajo { margin-left:auto; display:inline-flex; align-items:center; gap:0.25rem; font-size:0.7rem; font-weight:600; color:#6b7280;
                 border:1px solid #e5e7eb; border-radius:6px; padding:1px 6px; background:#fff; }
     .fg-atajo svg { width:11px; height:11px; color:#111827; }
+    .fg-c.sobre { outline:3px dashed #111827; outline-offset:2px; }
+    .fg-c[draggable="true"] { cursor:grab; }
+    .fg-colores { display:flex; flex-wrap:wrap; gap:5px; padding:0.2rem 0 0.3rem; }
+    .fg-co { width:24px; height:24px; border-radius:50%; border:2px solid #e5e7eb; cursor:pointer; padding:0; }
+    .fg-co.on { outline:2px solid #111827; outline-offset:1px; }
+    .fg-mover { border:1px solid #d1d5db; border-radius:8px; padding:0.38rem 0.5rem; font:inherit; font-size:0.85rem; background:#fff; max-width:220px; }
+    .fg-candado { font-size:0.72rem; color:#92400e; background:#fef3c7; border-radius:6px; padding:1px 6px; margin-left:0.3rem; }
+    .fg-clave-in { width:130px; padding:0.35rem 0.5rem; border:1px solid #d1d5db; border-radius:8px; font:inherit; font-size:0.85rem; }
 </style>
 
 @code {
     private int? lugar;
     private string principalT = "";
     private string tituloT = "";
+    private string? colorT;
+    private string? claveDe;
+    private string claveNueva = "";
+    private bool guardandoClave;
+    /// <summary>Solo Osmar (o sin PIN) pone y saca claves.</summary>
+    private bool EsDueno => Op == null || Op == MenuNuevoCatalogo.FAV_DUENO;
+    private IEnumerable<string> PantallasDelBoton()
+        => (principalT is "" or MenuNuevoService.SOLO_TITULO ? subsT : new[] { principalT }.Concat(subsT)).Distinct(StringComparer.OrdinalIgnoreCase);
+
+    private void EmpezarClave(string href) { claveDe = href; claveNueva = ""; }
+    private async Task PonerClave(string href)
+    {
+        if (claveNueva.Trim().Length < 4) { Toast.Error("La clave tiene que tener al menos 4 caracteres"); return; }
+        guardandoClave = true;
+        try { await Claves.PonerAsync(href, claveNueva); claveDe = null; claveNueva = ""; Toast.Success("Clave puesta: esa pantalla ahora la pide"); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { guardandoClave = false; }
+    }
+    private async Task SacarClave(string href)
+    {
+        guardandoClave = true;
+        try { await Claves.PonerAsync(href, null); Toast.Success("Listo, esa pantalla ya no pide clave"); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { guardandoClave = false; }
+    }
+    private int? sobre;
+
+    /// <summary>Qué lugares dibuja este bloque: 0–8 arriba de Equipo hoy, 8–12 entre Equipo hoy y Panorama.</summary>
+    [Parameter] public int Desde { get; set; } = 0;
+    [Parameter] public int Hasta { get; set; } = MenuNuevoCatalogo.CANT_GRANDES;
     private List<string> subsT = new();
     private string? buscando;   // null = editor · "principal" · "sub"
     private string filtro = "";
@@ -226,11 +313,12 @@
     {
         Svc.OnChange += Repintar;
         Svc.OnNumeros += Repintar;
+        Claves.OnChange += Repintar;
         Operator.OnChange += Repintar;
         await Svc.EnsureLoadedAsync();
     }
     private void Repintar() => InvokeAsync(StateHasChanged);
-    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; Operator.OnChange -= Repintar; }
+    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; Claves.OnChange -= Repintar; Operator.OnChange -= Repintar; }
 
     private static MenuNuevoCatalogo.Item? Item(string href)
         => string.IsNullOrEmpty(href) ? null
@@ -290,8 +378,8 @@
     {
         lugar = i;
         (principalT, subsT) = MenuNuevoService.Partir(Svc.GrandesDe(Op)[i]);
-        var (h, t) = MenuNuevoService.PartirTitulo(principalT);
-        principalT = h; tituloT = t ?? "";
+        var (h, t, c) = MenuNuevoService.PartirPrincipal(principalT);
+        principalT = h; tituloT = t ?? ""; colorT = c;
         filtro = "";
         // Lugar vacío: directo a elegir el principal.
         buscando = string.IsNullOrEmpty(principalT) ? "principal" : null;
@@ -320,7 +408,44 @@
         (subsT[i], subsT[j]) = (subsT[j], subsT[i]);
     }
 
-    private Task Vaciar() { principalT = ""; tituloT = ""; subsT.Clear(); return Guardar(); }
+    private Task Vaciar() { principalT = ""; tituloT = ""; colorT = null; subsT.Clear(); return Guardar(); }
+
+    private string ColorBoton(string? propio, string href)
+        => MenuNuevoCatalogo.Pastel(propio) is { } p ? $"background:{p.Fondo};border-color:{p.Borde};" : Color(href);
+
+    private string NombreLugar(int n)
+    {
+        var (pc, _) = MenuNuevoService.Partir(Svc.GrandesDe(Op)[n]);
+        var (h, t, _) = MenuNuevoService.PartirPrincipal(pc);
+        var nom = h == "" ? "vacío" : t ?? Item(h)?.Label ?? h;
+        return $"Lugar {n + 1}{(n >= MenuNuevoCatalogo.GRANDES_ARRIBA ? " (abajo)" : "")} · {nom}";
+    }
+
+    /// <summary>Soltaron un botón arrastrado sobre el lugar i: se intercambian (sirve entre los de arriba y los de abajo).</summary>
+    private async Task Soltar(int i)
+    {
+        sobre = null;
+        var desde = Svc.Arrastrando;
+        Svc.Arrastrando = null;
+        if (desde == null || desde == i) return;
+        try { await Svc.IntercambiarGrandesAsync(Op, desde.Value, i); }
+        catch (Exception ex) { Toast.Error("No se pudo mover: " + ex.Message); }
+    }
+
+    private async Task MoverA(ChangeEventArgs e)
+    {
+        if (lugar == null || !int.TryParse(e.Value?.ToString(), out var destino)) return;
+        guardando = true;
+        try
+        {
+            // Primero se guarda lo que se estaba editando, después se cambia de lugar.
+            await Svc.GuardarGrandeAsync(Op, lugar.Value, MenuNuevoService.Juntar(MenuNuevoService.JuntarTitulo(principalT, tituloT, colorT), subsT));
+            await Svc.IntercambiarGrandesAsync(Op, lugar.Value, destino);
+            lugar = null; buscando = null;
+        }
+        catch (Exception ex) { Toast.Error("No se pudo mover: " + ex.Message); }
+        finally { guardando = false; }
+    }
 
     private async Task Guardar()
     {
@@ -333,7 +458,7 @@
         guardando = true;
         try
         {
-            await Svc.GuardarGrandeAsync(Op, lugar.Value, MenuNuevoService.Juntar(MenuNuevoService.JuntarTitulo(principalT, tituloT), subsT));
+            await Svc.GuardarGrandeAsync(Op, lugar.Value, MenuNuevoService.Juntar(MenuNuevoService.JuntarTitulo(principalT, tituloT, colorT), subsT));
             lugar = null; buscando = null;
         }
         catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }

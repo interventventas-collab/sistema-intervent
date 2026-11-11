@@ -1,0 +1,59 @@
+@* 2026-11-11: se muestra EN LUGAR de una pantalla con clave (pedido del dueño: "clave en la pantalla",
+   se entre por donde se entre). Al poner la clave correcta, la pantalla queda abierta hasta recargar. *@
+@inject PantallaClaveService Claves
+@inject NavigationManager Nav
+
+<div class="cp">
+    <div class="cp-caja">
+        <div class="cp-ico">🔒</div>
+        <div class="cp-t">Esta pantalla pide clave</div>
+        <div class="cp-sub">@Nombre</div>
+        <form @onsubmit="Abrir" @onsubmit:preventDefault="true">
+            <input class="cp-in" type="password" autocomplete="off" placeholder="Clave" @bind="clave" @bind:event="oninput" @ref="input" />
+            @if (error != null) { <div class="cp-err">@error</div> }
+            <div class="cp-bs">
+                <button type="button" class="cp-b" @onclick='() => Nav.NavigateTo("/")'>← Volver al inicio</button>
+                <button type="submit" class="cp-b si" disabled="@(probando || string.IsNullOrWhiteSpace(clave))">@(probando ? "Probando…" : "Abrir")</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .cp { min-height:60vh; display:grid; place-items:center; padding:2rem 1rem; }
+    .cp-caja { width:340px; max-width:100%; background:#fff; border:1px solid #e5e7eb; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.08);
+               padding:1.6rem 1.4rem 1.2rem; text-align:center; color:#111827; }
+    .cp-ico { font-size:2.4rem; line-height:1; }
+    .cp-t { font-weight:800; font-size:1.1rem; margin-top:0.5rem; }
+    .cp-sub { color:#6b7280; font-size:0.85rem; margin:0.2rem 0 0.9rem; }
+    .cp-in { width:100%; padding:0.6rem 0.8rem; border:1px solid #d1d5db; border-radius:10px; font:inherit; font-size:1rem; text-align:center; letter-spacing:0.15em; }
+    .cp-err { color:#b91c1c; font-size:0.85rem; font-weight:600; margin-top:0.5rem; }
+    .cp-bs { display:flex; gap:0.5rem; justify-content:space-between; margin-top:0.9rem; }
+    .cp-b { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.45rem 0.85rem; font:inherit; font-size:0.85rem; font-weight:700; cursor:pointer; }
+    .cp-b.si { background:#111827; border-color:#111827; color:#fff; }
+    .cp-b:disabled { opacity:.5; cursor:default; }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public string Href { get; set; } = "";
+    [Parameter] public string? Nombre { get; set; }
+
+    private string clave = "";
+    private string? error;
+    private bool probando;
+    private ElementReference input;
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (first) { try { await input.FocusAsync(); } catch { } }
+    }
+
+    private async Task Abrir()
+    {
+        if (string.IsNullOrWhiteSpace(clave)) return;
+        probando = true; error = null;
+        try { error = await Claves.AbrirAsync(Href, clave); }
+        catch { error = "No se pudo verificar la clave."; }
+        finally { probando = false; clave = ""; }
+    }
+}
