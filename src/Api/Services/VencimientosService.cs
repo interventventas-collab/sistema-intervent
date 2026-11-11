@@ -77,7 +77,43 @@ public static class VencimientosService
     }
 
     /// <summary>Resumen de varios productos de una vez. Solo devuelve los que tienen algún vencimiento asignado.</summary>
+    /// <summary>11/11/2026: unidades (o kg en café) de ventas que YA descontaron stock pero todavía
+    /// están en el tablero de Preparación sin armar. Esas unidades siguen físicamente en el estante,
+    /// así que para decir "Sacar el que vence…" hay que sumarlas al stock: si no, la última unidad
+    /// vendida (stock 0) se quedaba sin fecha y en los demás se indicaba la fecha más nueva.</summary>
+    public static async Task<Dictionary<int, decimal>> SinArmarAsync(AppDbContext db, int dias = 7, CancellationToken ct = default)
+    {
+        var filas = await Api.Controllers.CafeVentasController.EnTableroPreparacion(db.CafeVentas.AsNoTracking(), dias)
+            .Where(v => v.TipoComprobante != "PRO")
+            .SelectMany(v => v.Items)
+            .Where(i => i.ProductoId != null && !i.EsConceptoLibre)
+            .Select(i => new { ProductoId = i.ProductoId!.Value, i.Formato, i.Cantidad, i.GramosDescontados,
+                Cat = i.ProductoNav!.Categoria, UxB = i.ProductoNav.UxB })
+            .ToListAsync(ct);
+        var res = new Dictionary<int, decimal>();
+        foreach (var f in filas)
+        {
+            var esCafe = string.Equals(f.Cat, "CAFE", StringComparison.OrdinalIgnoreCase);
+            decimal u;
+            if (esCafe) u = Math.Round(f.GramosDescontados / 1000m, 3);
+            else
+            {
+                var packN = CafePricingService.ParsePackUnidades(f.Formato);
+                u = packN.HasValue ? f.Cantidad * packN.Value
+                    : f.Formato == "BULTO" ? f.Cantidad * (f.UxB ?? 1) : f.Cantidad;
+            }
+            if (u <= 0) continue;
+            res[f.ProductoId] = res.GetValueOrDefault(f.ProductoId) + u;
+        }
+        return res;
+    }
+
     public static async Task<Dictionary<int, VencResumen>> ResumenAsync(AppDbContext db, IEnumerable<int> productoIds, CancellationToken ct = default)
+        => await ResumenAsync(db, productoIds, null, ct);
+
+    /// <summary>sumarAlStock: unidades a sumar al stock antes de repartir las fechas (ver SinArmarAsync).</summary>
+    public static async Task<Dictionary<int, VencResumen>> ResumenAsync(AppDbContext db, IEnumerable<int> productoIds,
+        Dictionary<int, decimal>? sumarAlStock, CancellationToken ct = default)
     {
         var ids = productoIds.Distinct().ToList();
         var res = new Dictionary<int, VencResumen>();
@@ -91,6 +127,7 @@ public static class VencimientosService
         {
             var esCafe = string.Equals(p.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase);
             var stock = esCafe ? Math.Round(p.StockGramos / 1000m, 3) : p.StockUnidades;
+            if (sumarAlStock is not null && sumarAlStock.TryGetValue(p.Id, out var extra)) stock += extra;
             res[p.Id] = Calcular(p.Id, esCafe, stock, vencs.Where(v => v.ProductoId == p.Id));
         }
         return res;
