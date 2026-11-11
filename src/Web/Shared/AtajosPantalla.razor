@@ -1,0 +1,240 @@
+@* 2026-11-11: fila de BOTONES PROPIOS arriba de una pantalla (empezó por Ventas: pedido del dueño
+   "un botón de nueva venta y de clientes… o poner los botones que yo quiera"). Arranca con los de fábrica
+   (Ventas: + Nueva venta y Clientes); con el ✏ se agregan, ordenan o sacan.
+   - Cada botón es una pantalla ("/cafe/clientes") o una acción de cargar nuevo ("+venta", "+cobranza"…,
+     que resuelve MainLayout.NuevoRapido igual que el + de la barra de arriba).
+   - Lo que arma Osmar (o sin PIN) lo ven todos; Gabriel/Germán con su PIN pueden armar los suyos.
+     Se guarda en Menu_Config (Favoritos, clave "ATAJOS:<pantalla>|<persona>"). *@
+@implements IDisposable
+@inject MenuNuevoService Svc
+@inject OperatorService Operator
+@inject NavigationManager Nav
+@inject ToastService Toast
+
+<div class="atp">
+    @foreach (var h in Svc.AtajosDe(Pantalla, Op, Fabrica))
+    {
+        var x = h;
+        var (ico, nom) = Mostrar(x);
+        if (nom == null) continue;
+        <button class="atp-b @(EsAccion(x) ? "nuevo" : "")" title="@(EsAccion(x) ? "Cargar " + nom.ToLower() : "Ir a " + nom)" @onclick="() => Tocar(x)">
+            <span>@ico</span>@nom
+        </button>
+    }
+    <button class="atp-lap" title="Elegir qué botones van acá" @onclick="Abrir">✏</button>
+</div>
+
+@if (abierto)
+{
+    <div class="atp-fondo" @onclick="Cerrar"></div>
+    <div class="atp-v">
+        @if (buscando)
+        {
+            <div class="atp-h">Agregar un botón <small>@QuienTexto()</small><button class="atp-x" @onclick="Cerrar">✕</button></div>
+            <input class="atp-buscar" placeholder="Buscar… (clientes, stock, cobranza…)" @bind="filtro" @bind:event="oninput" />
+            <div class="atp-lista">
+                @{ var acc = Acciones.Where(a => Pasa(a.Nombre)).ToList(); }
+                @if (acc.Count > 0)
+                {
+                    <div class="atp-sec">Cargar nuevo</div>
+                    @foreach (var a in acc)
+                    {
+                        var aa = a;
+                        var ya = trabajo.Contains(aa.Clave, StringComparer.OrdinalIgnoreCase);
+                        <button class="atp-fila @(ya ? "on" : "")" disabled="@ya" @onclick="() => Agregar(aa.Clave)">＋ @aa.Nombre @(ya ? "· ya está" : "")</button>
+                    }
+                }
+                @foreach (var (titulo, items) in Secciones())
+                {
+                    var vis = items.Where(i => Pasa(i.Label)).ToList();
+                    if (vis.Count == 0) continue;
+                    <div class="atp-sec">@titulo</div>
+                    @foreach (var it in vis)
+                    {
+                        var ii = it;
+                        var ya = trabajo.Contains(ii.Href, StringComparer.OrdinalIgnoreCase);
+                        <button class="atp-fila @(ya ? "on" : "")" disabled="@ya" @onclick="() => Agregar(ii.Href)">@Icono(ii.Href) @ii.Label @(ya ? "· ya está" : "")</button>
+                    }
+                }
+            </div>
+            <div class="atp-pie"><span style="flex:1"></span><button class="atp-btn" @onclick="() => buscando = false">← Volver</button></div>
+        }
+        else
+        {
+            <div class="atp-h">✏ Botones de @Nombre <small>@QuienTexto()</small><button class="atp-x" @onclick="Cerrar">✕</button></div>
+            <div class="atp-lista">
+                @if (trabajo.Count == 0) { <div class="atp-vacio">No hay botones. Tocá "＋ Agregar botón".</div> }
+                @for (var n = 0; n < trabajo.Count; n++)
+                {
+                    var i = n;
+                    var (ico, nom) = Mostrar(trabajo[i]);
+                    <div class="atp-ed">
+                        <span class="atp-nom">@ico @(nom ?? trabajo[i])</span>
+                        <button class="atp-mini" title="Más a la izquierda" disabled="@(i == 0)" @onclick="() => Mover(i, -1)">◀</button>
+                        <button class="atp-mini" title="Más a la derecha" disabled="@(i == trabajo.Count - 1)" @onclick="() => Mover(i, 1)">▶</button>
+                        <button class="atp-mini" title="Sacar" @onclick="() => trabajo.RemoveAt(i)">✕</button>
+                    </div>
+                }
+                @if (trabajo.Count < MAX)
+                {
+                    <button class="atp-agregar" @onclick="EmpezarAgregar">＋ Agregar botón</button>
+                }
+            </div>
+            <div class="atp-pie">
+                @if (Op != null && Op != MenuNuevoCatalogo.FAV_DUENO && Svc.TieneAtajosPropios(Pantalla, Op))
+                {
+                    <button class="atp-btn" disabled="@guardando" @onclick="VolverAOsmar">↩ Volver a los de Osmar</button>
+                }
+                <span style="flex:1"></span>
+                <button class="atp-btn" @onclick="Cerrar">Cancelar</button>
+                <button class="atp-btn si" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando…" : "Guardar")</button>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .atp { display:flex; flex-wrap:wrap; align-items:center; gap:0.4rem; }
+    .atp-b { display:inline-flex; align-items:center; gap:0.35rem; border:1px solid #d1d5db; background:#fff; color:#111827; border-radius:10px;
+             padding:0.4rem 0.85rem; font:inherit; font-size:0.88rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+    .atp-b:hover { border-color:#111827; }
+    .atp-b.nuevo { background:#111827; border-color:#111827; color:#fff; }
+    .atp-b.nuevo:hover { background:#374151; }
+    .atp-lap { width:30px; height:30px; border-radius:50%; border:1px solid #e5e7eb; background:#fff; font-size:0.75rem; cursor:pointer; padding:0; opacity:.55; }
+    .atp-lap:hover { opacity:1; border-color:#9ca3af; }
+    .atp-fondo { position:fixed; inset:0; background:rgba(17,24,39,.35); z-index:9700; }
+    .atp-v { position:fixed; top:9vh; left:50%; transform:translateX(-50%); width:480px; max-width:calc(100vw - 24px); max-height:82vh; z-index:9701;
+             background:#fff; border-radius:14px; box-shadow:0 18px 44px rgba(0,0,0,.3); display:flex; flex-direction:column; color:#111827; font-size:0.9rem; }
+    .atp-h { display:flex; align-items:center; gap:0.5rem; padding:0.85rem 1.1rem 0.5rem; font-weight:700; font-size:1.05rem; }
+    .atp-h small { font-weight:400; color:#6b7280; font-size:0.8rem; }
+    .atp-x { margin-left:auto; border:0; background:transparent; font-size:1.2rem; cursor:pointer; color:#6b7280; }
+    .atp-buscar { margin:0 1.1rem 0.5rem; padding:0.5rem 0.75rem; border:1px solid #d1d5db; border-radius:8px; font:inherit; }
+    .atp-lista { overflow-y:auto; min-height:0; flex:1; padding:0 1.1rem 0.4rem; }
+    .atp-sec { font-size:0.7rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#6b7280; margin:0.6rem 0 0.2rem; }
+    .atp-fila { display:block; width:100%; border:0; background:transparent; text-align:left; font:inherit; padding:0.3rem 0.4rem; border-radius:6px; cursor:pointer; color:#111827; }
+    .atp-fila:hover { background:#f9fafb; }
+    .atp-fila.on { color:#9ca3af; cursor:default; }
+    .atp-ed { display:flex; align-items:center; gap:0.3rem; padding:0.4rem 0; border-top:1px solid #f1f2f4; }
+    .atp-nom { flex:1; font-weight:600; }
+    .atp-mini { border:1px solid #e5e7eb; background:#fff; border-radius:6px; width:28px; height:28px; cursor:pointer; padding:0; font-size:0.7rem; }
+    .atp-mini:disabled { opacity:.3; cursor:default; }
+    .atp-agregar { width:100%; margin-top:0.5rem; border:1px dashed #9ca3af; background:#fff; border-radius:8px; padding:0.5rem; font:inherit; font-weight:700; cursor:pointer; }
+    .atp-agregar:hover { border-color:#111827; }
+    .atp-vacio { color:#9ca3af; padding:0.8rem 0; text-align:center; }
+    .atp-pie { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; padding:0.7rem 1.1rem 0.9rem; border-top:1px solid #eef0f3; }
+    .atp-btn { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.4rem 0.85rem; font:inherit; font-size:0.85rem; font-weight:700; cursor:pointer; }
+    .atp-btn.si { background:#111827; border-color:#111827; color:#fff; }
+</style>
+
+@code {
+    /// <summary>Pantalla dueña de esta fila (ej. "/cafe/ventas"): cada una guarda sus propios botones.</summary>
+    [Parameter, EditorRequired] public string Pantalla { get; set; } = "";
+    /// <summary>Nombre para el título de la ventanita ("Ventas").</summary>
+    [Parameter] public string Nombre { get; set; } = "esta pantalla";
+    /// <summary>Con qué botones arranca si nadie los cambió.</summary>
+    [Parameter] public string[] Fabrica { get; set; } = Array.Empty<string>();
+
+    private const int MAX = 10;
+    private static readonly (string Clave, string Nombre, string Icono)[] Acciones =
+    {
+        ("+venta", "Nueva venta", "＋"),
+        ("+cobranza", "Nueva cobranza", "＋"),
+        ("+pago", "Nuevo pago a proveedor", "＋"),
+        ("+alquiler", "Nueva reserva de alquiler", "＋"),
+        ("+producto", "Nuevo producto", "＋"),
+        ("+compra", "Nueva compra", "＋"),
+    };
+
+    private bool abierto, buscando, guardando;
+    private string filtro = "";
+    private List<string> trabajo = new();
+
+    private string? Op => Operator.HasOperator ? Operator.Current!.Trim().ToUpperInvariant() : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Svc.OnChange += Repintar;
+        Operator.OnChange += Repintar;
+        await Svc.EnsureLoadedAsync();
+    }
+    private void Repintar() => InvokeAsync(StateHasChanged);
+    public void Dispose() { Svc.OnChange -= Repintar; Operator.OnChange -= Repintar; }
+
+    private static bool EsAccion(string h) => h.StartsWith('+');
+
+    private static MenuNuevoCatalogo.Item? Item(string href)
+        => string.IsNullOrEmpty(href) ? null
+           : MenuNuevoCatalogo.Directos.FirstOrDefault(d => string.Equals(d.Href, href, StringComparison.OrdinalIgnoreCase))
+             ?? (MenuNuevoCatalogo.PorHref.TryGetValue(href, out var x) ? x : null);
+
+    private string Icono(string href) => MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, href) ?? MenuNuevoCatalogo.IconoFavorito(href);
+
+    /// <summary>Ícono y nombre del botón; nombre null = pantalla que ya no existe (no se dibuja).</summary>
+    private (string Ico, string? Nom) Mostrar(string h)
+    {
+        if (EsAccion(h))
+        {
+            var a = Acciones.FirstOrDefault(x => string.Equals(x.Clave, h, StringComparison.OrdinalIgnoreCase));
+            return a.Clave == null ? ("", null) : (a.Icono, a.Nombre);
+        }
+        var it = Item(h);
+        return it == null ? ("", null) : (Icono(it.Href), it.Label);
+    }
+
+    private void Tocar(string h)
+    {
+        if (EsAccion(h)) { Svc.PedirNuevo(h[1..]); return; }
+        var it = Item(h);
+        if (it == null) return;
+        if (it.Externo) Nav.NavigateTo(it.Href, forceLoad: true); else Nav.NavigateTo(it.Href);
+    }
+
+    private bool Pasa(string label) => string.IsNullOrWhiteSpace(filtro) || label.Contains(filtro.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private IEnumerable<(string, List<MenuNuevoCatalogo.Item>)> Secciones()
+    {
+        yield return ("Botones de arriba", MenuNuevoCatalogo.Directos.ToList());
+        foreach (var g in Svc.Actual.Grupos) yield return (g.Grupo.Titulo, g.Items.ToList());
+        yield return ("Más pantallas", Svc.Actual.Mas.ToList());
+    }
+
+    private string QuienTexto()
+        => Op == null || Op == MenuNuevoCatalogo.FAV_DUENO ? "· los ven todos" : $"· solo para {char.ToUpper(Op[0]) + Op[1..].ToLower()}";
+
+    private void Abrir()
+    {
+        trabajo = Svc.AtajosDe(Pantalla, Op, Fabrica).Where(h => Mostrar(h).Nom != null).ToList();
+        buscando = false; filtro = ""; abierto = true;
+    }
+    private void Cerrar() { if (!guardando) abierto = false; }
+
+    private void EmpezarAgregar() { buscando = true; filtro = ""; }
+
+    private void Agregar(string h)
+    {
+        if (trabajo.Count < MAX && !trabajo.Contains(h, StringComparer.OrdinalIgnoreCase)) trabajo.Add(h);
+        buscando = false;
+    }
+    private void Mover(int i, int d)
+    {
+        var j = i + d;
+        if (j < 0 || j >= trabajo.Count) return;
+        (trabajo[i], trabajo[j]) = (trabajo[j], trabajo[i]);
+    }
+
+    private async Task Guardar()
+    {
+        guardando = true;
+        try { await Svc.GuardarAtajosAsync(Pantalla, Op, trabajo); abierto = false; Toast.Success("Listo, botones guardados"); }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task VolverAOsmar()
+    {
+        guardando = true;
+        try { await Svc.VolverAtajosAOsmarAsync(Pantalla, Op); abierto = false; Toast.Success("Volviste a los de Osmar"); }
+        catch (Exception ex) { Toast.Error("No se pudo: " + ex.Message); }
+        finally { guardando = false; }
+    }
+}

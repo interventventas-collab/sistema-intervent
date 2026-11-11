@@ -330,6 +330,11 @@
                 </span>
             }
         </h3>
+        @* 2026-11-11: botones propios de Ventas (arrancan con + Nueva venta y Clientes; se eligen con el ✏). *@
+        @if (!ModoPresupuestos)
+        {
+            <AtajosPantalla Pantalla="/cafe/ventas" Nombre="Ventas" Fabrica="@(new[] { "+venta", "/cafe/clientes" })" />
+        }
     </div>
     @* ─── 2026-09-07: renglón de arriba. Izquierda: cuánto va del mes. Derecha: lo que quedó
          pendiente, tocable (cada uno trae TODAS las que corresponden, no solo la página). ─── *@

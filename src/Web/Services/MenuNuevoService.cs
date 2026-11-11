@@ -89,7 +89,7 @@ public class MenuNuevoService
     public bool TienePropios(string? op)
         => Clave(op) != MenuNuevoCatalogo.FAV_BASE && Actual.Favoritos?.ContainsKey(Clave(op)) == true;
     public List<string> PersonasConFavoritos()
-        => Actual.Favoritos?.Keys.Where(k => k != MenuNuevoCatalogo.FAV_BASE && !k.StartsWith(MenuNuevoCatalogo.GRANDES)).OrderBy(k => k).ToList() ?? new();
+        => Actual.Favoritos?.Keys.Where(k => k != MenuNuevoCatalogo.FAV_BASE && !k.StartsWith(MenuNuevoCatalogo.GRANDES) && !k.StartsWith(ATAJOS)).OrderBy(k => k).ToList() ?? new();
 
     // ───────── 8 favoritos grandes del Dashboard (2026-11-11) ─────────
     // Van en el mismo diccionario Favoritos con clave "GRANDES:" + persona ("GRANDES:" solo = los de Osmar, que ven todos
@@ -185,6 +185,41 @@ public class MenuNuevoService
         fav[ClaveGrandes(op)] = l;
         await GuardarAsync(Actual with { Favoritos = fav });
     }
+    // ───────── Botones propios arriba de cada pantalla (2026-11-11, empezó por Ventas) ─────────
+    // Clave "ATAJOS:<pantalla>|<persona>" ("|" solo = los de Osmar, que ven todos los que no armaron los suyos).
+    // Cada elemento es una pantalla ("/cafe/clientes") o una acción "+venta", "+cobranza"…
+    public const string ATAJOS = "ATAJOS:";
+    private static string ClaveAtajos(string pantalla, string? op)
+    {
+        var k = Clave(op);
+        return ATAJOS + pantalla + "|" + (k == MenuNuevoCatalogo.FAV_DUENO ? MenuNuevoCatalogo.FAV_BASE : k);
+    }
+    public List<string> AtajosDe(string pantalla, string? op, IEnumerable<string> fabrica)
+    {
+        var f = Actual.Favoritos;
+        if (f != null && f.TryGetValue(ClaveAtajos(pantalla, op), out var l)) return l.ToList();
+        if (f != null && f.TryGetValue(ClaveAtajos(pantalla, null), out var b)) return b.ToList();
+        return fabrica.ToList();
+    }
+    public bool TieneAtajosPropios(string pantalla, string? op)
+        => ClaveAtajos(pantalla, op) != ClaveAtajos(pantalla, null) && Actual.Favoritos?.ContainsKey(ClaveAtajos(pantalla, op)) == true;
+    public async Task GuardarAtajosAsync(string pantalla, string? op, List<string> lista)
+    {
+        await RecargarAsync();
+        var fav = Actual.Favoritos?.ToDictionary(k => k.Key, k => k.Value.ToList()) ?? new Dictionary<string, List<string>>();
+        fav[ClaveAtajos(pantalla, op)] = lista.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        await GuardarAsync(Actual with { Favoritos = fav });
+    }
+    public async Task VolverAtajosAOsmarAsync(string pantalla, string? op)
+    {
+        await RecargarAsync();
+        var k = ClaveAtajos(pantalla, op);
+        if (k == ClaveAtajos(pantalla, null)) return;
+        var fav = Actual.Favoritos?.ToDictionary(x => x.Key, x => x.Value.ToList()) ?? new Dictionary<string, List<string>>();
+        fav.Remove(k);
+        await GuardarAsync(Actual with { Favoritos = fav });
+    }
+
     /// <summary>Botón grande que se está arrastrando (puede soltarse en el otro bloque).</summary>
     public int? Arrastrando { get; set; }
 
