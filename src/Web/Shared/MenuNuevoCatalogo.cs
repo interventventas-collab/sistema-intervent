@@ -332,6 +332,9 @@ public static class MenuNuevoCatalogo
     public const string FAV_BASE = "";
     /// <summary>El dueño: puede cambiar la lista base y la de los demás.</summary>
     public const string FAV_DUENO = "OSMAR";
+    /// <summary>2026-11-11: prefijo de los 8 favoritos grandes del Dashboard dentro de Favoritos.</summary>
+    public const string GRANDES = "GRANDES:";
+    public const int CANT_GRANDES = 8;
     public static readonly (string Clave, string Nombre)[] FavEstilos =
     {
         ("texto", "Franja finita (texto)"),

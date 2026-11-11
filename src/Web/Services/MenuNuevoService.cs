@@ -89,7 +89,52 @@ public class MenuNuevoService
     public bool TienePropios(string? op)
         => Clave(op) != MenuNuevoCatalogo.FAV_BASE && Actual.Favoritos?.ContainsKey(Clave(op)) == true;
     public List<string> PersonasConFavoritos()
-        => Actual.Favoritos?.Keys.Where(k => k != MenuNuevoCatalogo.FAV_BASE).OrderBy(k => k).ToList() ?? new();
+        => Actual.Favoritos?.Keys.Where(k => k != MenuNuevoCatalogo.FAV_BASE && !k.StartsWith(MenuNuevoCatalogo.GRANDES)).OrderBy(k => k).ToList() ?? new();
+
+    // ───────── 8 favoritos grandes del Dashboard (2026-11-11) ─────────
+    // Van en el mismo diccionario Favoritos con clave "GRANDES:" + persona ("GRANDES:" solo = los de Osmar, que ven todos
+    // los que no armaron los suyos). Siempre 8 lugares; "" = lugar vacío (cuadro con +).
+    private static string ClaveGrandes(string? op)
+    {
+        var k = Clave(op);
+        return MenuNuevoCatalogo.GRANDES + (k == MenuNuevoCatalogo.FAV_DUENO ? MenuNuevoCatalogo.FAV_BASE : k);
+    }
+    private static List<string> A8(IEnumerable<string>? l)
+    {
+        var r = (l ?? Enumerable.Empty<string>()).Take(MenuNuevoCatalogo.CANT_GRANDES).ToList();
+        while (r.Count < MenuNuevoCatalogo.CANT_GRANDES) r.Add("");
+        return r;
+    }
+    public List<string> GrandesDe(string? op)
+    {
+        var f = Actual.Favoritos;
+        if (f != null && f.TryGetValue(ClaveGrandes(op), out var l)) return A8(l);
+        if (f != null && f.TryGetValue(MenuNuevoCatalogo.GRANDES, out var b)) return A8(b);
+        return A8(null);
+    }
+    public bool TieneGrandesPropios(string? op)
+        => ClaveGrandes(op) != MenuNuevoCatalogo.GRANDES && Actual.Favoritos?.ContainsKey(ClaveGrandes(op)) == true;
+
+    /// <summary>Pone (o vacía, href "") el lugar n de los 8 grandes de esta persona. Osmar (o sin PIN) cambia los de todos.</summary>
+    public async Task GuardarGrandeAsync(string? op, int n, string href)
+    {
+        await RecargarAsync();
+        var l = GrandesDe(op);
+        if (n < 0 || n >= l.Count) return;
+        l[n] = href ?? "";
+        var fav = Actual.Favoritos?.ToDictionary(k => k.Key, k => k.Value.ToList()) ?? new Dictionary<string, List<string>>();
+        fav[ClaveGrandes(op)] = l;
+        await GuardarAsync(Actual with { Favoritos = fav });
+    }
+    public async Task VolverGrandesAOsmarAsync(string? op)
+    {
+        await RecargarAsync();
+        var fav = Actual.Favoritos?.ToDictionary(k => k.Key, k => k.Value.ToList()) ?? new Dictionary<string, List<string>>();
+        var k = ClaveGrandes(op);
+        if (k == MenuNuevoCatalogo.GRANDES) return;
+        fav.Remove(k);
+        await GuardarAsync(Actual with { Favoritos = fav });
+    }
 
     public string EstiloFav(string? op)
         => Actual.FavEstilo != null && (Actual.FavEstilo.TryGetValue(Clave(op), out var e) || Actual.FavEstilo.TryGetValue(MenuNuevoCatalogo.FAV_BASE, out e)) ? e : "texto";
