@@ -524,7 +524,9 @@
                 borrador[MAS],
                 colores,
                 borrador[COSTADO],
-                iconos);
+                iconos,
+                // 2026-11-10: lo que no se toca al acomodar (pastillas y favoritos) se conserva tal cual.
+                Svc.Actual.Pastillas, Svc.Actual.Favoritos, Svc.Actual.FavEstilo);
             await Svc.GuardarAsync(armado);
             editando = false; abierto = null; moviendo = null;
             Toast.Success("Menú guardado");

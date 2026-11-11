@@ -48,6 +48,7 @@ public class MenuNuevoService
     /// <summary>2026-11-10: lápiz ✏ de un botón: cambia solo su ícono y su color, y guarda.</summary>
     public async Task GuardarIconoColorAsync(string clave, string? icono, string? color)
     {
+        await RecargarAsync();
         var a = Actual;
         var colores = new Dictionary<string, string>(a.Colores, StringComparer.OrdinalIgnoreCase);
         var iconos = new Dictionary<string, string>(a.Iconos ?? new(), StringComparer.OrdinalIgnoreCase);
@@ -60,6 +61,7 @@ public class MenuNuevoService
     /// Los colores van en el mismo diccionario, con la clave "pas:" + pastilla.</summary>
     public async Task GuardarPastillasAsync(List<string> orden, Dictionary<string, string?> colores)
     {
+        await RecargarAsync();
         var a = Actual;
         var col = new Dictionary<string, string>(a.Colores, StringComparer.OrdinalIgnoreCase);
         foreach (var (k, v) in colores)
@@ -67,6 +69,67 @@ public class MenuNuevoService
             if (string.IsNullOrEmpty(v)) col.Remove("pas:" + k); else col["pas:" + k] = v;
         }
         await GuardarAsync(a with { Colores = col, Pastillas = orden });
+    }
+
+    // ───────── Favoritos por persona (2026-11-10) ─────────
+    // En Favoritos: clave "" = lista base que arma el dueño; clave "OSMAR"/"GABRIEL"/… = la de cada uno.
+    private static string Clave(string? op) => string.IsNullOrWhiteSpace(op) ? MenuNuevoCatalogo.FAV_BASE : op.Trim().ToUpperInvariant();
+
+    public List<string> FavoritosBase()
+        => Actual.Favoritos != null && Actual.Favoritos.TryGetValue(MenuNuevoCatalogo.FAV_BASE, out var b) ? b.ToList()
+           : MenuNuevoCatalogo.FavoritosDeFabrica.ToList();
+
+    /// <summary>Los favoritos que ve esta persona: los suyos si los cambió, si no la lista base.</summary>
+    public List<string> FavoritosDe(string? op)
+    {
+        var k = Clave(op);
+        if (k != MenuNuevoCatalogo.FAV_BASE && Actual.Favoritos != null && Actual.Favoritos.TryGetValue(k, out var l)) return l.ToList();
+        return FavoritosBase();
+    }
+    public bool TienePropios(string? op)
+        => Clave(op) != MenuNuevoCatalogo.FAV_BASE && Actual.Favoritos?.ContainsKey(Clave(op)) == true;
+    public List<string> PersonasConFavoritos()
+        => Actual.Favoritos?.Keys.Where(k => k != MenuNuevoCatalogo.FAV_BASE).OrderBy(k => k).ToList() ?? new();
+
+    public string EstiloFav(string? op)
+        => Actual.FavEstilo != null && (Actual.FavEstilo.TryGetValue(Clave(op), out var e) || Actual.FavEstilo.TryGetValue(MenuNuevoCatalogo.FAV_BASE, out e)) ? e : "texto";
+
+    /// <summary>Antes de guardar se vuelve a leer lo guardado: así no se pisan los cambios que otro hizo desde otra compu.</summary>
+    private async Task RecargarAsync()
+    {
+        try
+        {
+            _guardado = await _api.GetMenuConfigAsync();
+            Actual = MenuNuevoCatalogo.Armar(_guardado);
+        }
+        catch { }
+    }
+
+    /// <summary>Guarda la lista de favoritos de una persona (op) o la base (op = null). lista null = borra la propia (vuelve a la base).</summary>
+    public async Task GuardarFavoritosAsync(string? op, List<string>? lista)
+    {
+        await RecargarAsync();
+        var fav = Actual.Favoritos?.ToDictionary(k => k.Key, k => k.Value.ToList()) ?? new Dictionary<string, List<string>>();
+        var k = Clave(op);
+        if (lista == null) fav.Remove(k); else fav[k] = lista.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        await GuardarAsync(Actual with { Favoritos = fav });
+    }
+
+    public async Task AlternarFavoritoAsync(string? op, string href)
+    {
+        var l = FavoritosDe(op);
+        if (l.Any(x => string.Equals(x, href, StringComparison.OrdinalIgnoreCase))) l.RemoveAll(x => string.Equals(x, href, StringComparison.OrdinalIgnoreCase));
+        else l.Add(href);
+        // Sin operador elegido, lo que toca es la lista base.
+        await GuardarFavoritosAsync(op, l);
+    }
+
+    public async Task GuardarEstiloFavAsync(string? op, string estilo)
+    {
+        await RecargarAsync();
+        var est = Actual.FavEstilo == null ? new Dictionary<string, string>() : new Dictionary<string, string>(Actual.FavEstilo);
+        est[Clave(op)] = estilo;
+        await GuardarAsync(Actual with { FavEstilo = est });
     }
 
     public async Task VolverAlOriginalAsync()
