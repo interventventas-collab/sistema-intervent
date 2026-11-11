@@ -960,6 +960,8 @@ public class ApiClient
     // 2026-11-11: módulos aparte (Horas extras, Comisiones, Feriados, Aguinaldo, Plus)
     public async Task<NomExtrasModuloDto?> GetNomExtrasAsync(string tipo, int anio, int mes)
         => await GetAsync<NomExtrasModuloDto>($"/api/nominas/extras/{tipo}?anio={anio}&mes={mes}");
+    public async Task<List<NomExtraDto>?> GetNomExtrasListaAsync(int anio, int mes)
+        => await GetAsync<List<NomExtraDto>>($"/api/nominas/extras-lista?anio={anio}&mes={mes}");
     public async Task CrearNomExtraAsync(object req) => await PostAsync<object>("/api/nominas/extras", req);
     public async Task EditarNomExtraAsync(int id, object req) => await PutAsync<object>($"/api/nominas/extras/{id}", req);
     public async Task BorrarNomExtraAsync(int id) => await DeleteWithBodyAsync<object>($"/api/nominas/extras/{id}");
@@ -4486,7 +4488,11 @@ public class ApiClient
         int RutaNoEntregadas = 0,
         string? UltimoDomicilio = null, string? UltimaEntregaHora = null,
         // Minutos desde la última entrega (-1 = todavía no entregó nada hoy).
-        int MinutosSinMarcar = -1);
+        int MinutosSinMarcar = -1,
+        List<string>? EntregasHoras = null,
+        // 2026-11-11 (2ª): lo que hay que pagarle hoy (o quedó atrasado) por fecha de pago de sus extras.
+        decimal PagarHoy = 0, string? PagarHoyDetalle = null, string? PagarHoyTipo = null,
+        int PagarHoyAnio = 0, int PagarHoyMes = 0, bool PagarHoyAtrasado = false);
     public record DashboardEquipoResumen(int Trabajando, int Salio, int SinFichar, int NoFicha);
     public record DashboardEquipoResponse(List<DashboardEquipoItem> Items, DashboardEquipoResumen Resumen, DateTime Fecha);
 

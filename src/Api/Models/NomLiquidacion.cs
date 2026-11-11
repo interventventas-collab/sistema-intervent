@@ -185,6 +185,10 @@ public class NomExtra
 
     public int? FeriadoId { get; set; }
 
+    /// <summary>2026-11-11 (2ª): cuándo se le va a pagar. Ese día aparece en "Equipo hoy" del inicio.</summary>
+    [Column(TypeName = "date")]
+    public DateTime? FechaPago { get; set; }
+
     [MaxLength(120)]
     public string? CargadoPor { get; set; }
 

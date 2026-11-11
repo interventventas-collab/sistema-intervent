@@ -38,6 +38,24 @@
     .ex-pagar .fila { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
     .ex-pagar label { display: block; font-size: 0.72rem; color: #6b7280; }
     .ex-vacio { color: #9ca3af; padding: 10px 8px; }
+    .ex-tabla input.fpago { width: 140px; }
+    /* 2026-11-11 (2ª): Comisiones con la balanza de cada mes */
+    .ex-com { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+    .ex-bal { width: 290px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; flex-shrink: 0; }
+    .ex-bal .eye { font-size: 0.7rem; letter-spacing: .06em; color: #6b7280; text-transform: uppercase; }
+    .ex-bal .big { font-size: 2rem; font-weight: 700; line-height: 1.15; margin-top: 4px; }
+    .ex-bal .big small { font-size: 0.9rem; color: #6b7280; font-weight: 500; margin-left: 4px; }
+    .ex-bal .mesl { color: #6b7280; font-size: 0.85rem; margin-bottom: 8px; }
+    .ex-bal-m { display: flex; justify-content: space-between; padding: 5px 6px; border-radius: 5px; cursor: pointer; font-size: 0.86rem; color: #374151; }
+    .ex-bal-m:hover { background: #f9fafb; }
+    .ex-bal-m.sel { background: #fef3c7; font-weight: 600; color: #111; }
+    .ex-bal-m .p { font-size: 0.72rem; margin-left: 4px; }
+    .ex-com-der { flex: 1; min-width: 420px; }
+    .ex-chk { width: 16px; height: 16px; cursor: pointer; }
+    .ex-gris td { color: #9ca3af; }
+    .ex-tot td { font-weight: 700; border-bottom: 0; }
+    .ex-acc input.fpago { width: 150px; }
+    .ex-acc { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 10px; flex-wrap: wrap; }
 </style>
 
 <div class="card">
@@ -72,15 +90,88 @@
         else if (datos is not null)
         {
             @* ───────── Lo que propone el sistema ───────── *@
-            @if (sugs.Count > 0)
+            @if (tipo == "comision_cafe")
             {
-                <div class="ex-sec">Para cargar · propuesto por el sistema, el monto lo ponés vos</div>
+                var balSel = datos.Balanza.FirstOrDefault(b => b.Anio == anio && b.Mes == mes);
+                <div class="ex-com">
+                    <div class="ex-bal">
+                        <div class="eye">⚖ Balanza</div>
+                        <div class="big">@K(balSel?.Kg ?? 0)<small>kg</small></div>
+                        <div class="mesl">@MesNombre(mes).ToLower() @anio · café vendido</div>
+                        @foreach (var b in datos.Balanza)
+                        {
+                            var bb = b;
+                            var esHoy = bb.Anio == HoyAr.Year && bb.Mes == HoyAr.Month;
+                            <div class="ex-bal-m @(bb.Anio == anio && bb.Mes == mes ? "sel" : "")" @onclick="() => IrAMes(bb.Anio, bb.Mes)" title="Ver comisiones de este mes">
+                                <span>@MesNombre(bb.Mes).ToLower() @bb.Anio
+                                    @if (esHoy) { <span class="p ex-muted">(va por el día @HoyAr.Day)</span> }
+                                    else if (bb.Pagado) { <span class="p ex-ok">✓ pagado</span> }
+                                    else if (bb.Cargado) { <span class="p ex-pend">cargado</span> }
+                                </span>
+                                <span>@K(bb.Kg) kg</span>
+                            </div>
+                        }
+                        <p class="ex-muted" style="margin:8px 0 0">Tocá un mes para ver sus comisiones.</p>
+                    </div>
+                    <div class="ex-com-der">
+                        <div class="ex-sec" style="margin-top:0">Comisiones de @MesNombre(mes).ToLower() @anio · balanza @K(balSel?.Kg ?? 0) kg</div>
+                        @if (sugs.Count == 0)
+                        {
+                            <p class="ex-muted">@(datos.Cargados.Count > 0 ? "Ya están cargadas todas las de este mes (abajo)." : "Nadie cobra comisión: poné el $ por kg en la ficha del empleado.")</p>
+                        }
+                        else
+                        {
+                            <table class="ex-tabla">
+                                <tr><th style="width:30px"></th><th>Empleado</th><th class="n">$ por kg</th><th class="n">Kg</th><th class="n">Importe</th></tr>
+                                @foreach (var s in sugs)
+                                {
+                                    var ss = s;
+                                    var em = Emp(ss.Sug.EmpleadoId);
+                                    <tr class="@(ss.Tildado ? "" : "ex-gris")">
+                                        <td><input type="checkbox" class="ex-chk" checked="@ss.Tildado" @onchange="e => ss.Tildado = e.Value is true" /></td>
+                                        <td>@ss.Sug.EmpleadoNombre</td>
+                                        <td class="n">$@F(em?.ComisionPorKg ?? 0)</td>
+                                        <td class="n">
+                                            @if (ss.Tildado)
+                                            {
+                                                <input class="form-input cant" style="width:100px" type="text" inputmode="decimal" onfocus="this.select()"
+                                                       value="@ss.CantTxt" @onchange="e => CambioCantidadSug(ss, e.Value?.ToString())" />
+                                            }
+                                            else { <span>—</span> }
+                                        </td>
+                                        <td class="n">
+                                            @if (ss.Tildado)
+                                            {
+                                                <input class="form-input num" type="text" inputmode="decimal" onfocus="this.select()"
+                                                       value="@ss.MontoTxt" @onchange='e => { ss.MontoTxt = e.Value?.ToString() ?? ""; }' />
+                                            }
+                                            else { <span>—</span> }
+                                        </td>
+                                    </tr>
+                                }
+                                @{ var tild = sugs.Where(x => x.Tildado).ToList(); }
+                                <tr class="ex-tot"><td></td><td>@tild.Count empleado@(tild.Count == 1 ? "" : "s")</td><td></td><td></td>
+                                    <td class="n">$@F(tild.Sum(x => MontoInput.TryParse(x.MontoTxt, out var v) ? v : 0m))</td></tr>
+                            </table>
+                            <div class="ex-acc">
+                                <span class="ex-muted">Fecha de pago</span>
+                                <input class="form-input fpago" type="date" @bind="comFechaPago" />
+                                <button class="ex-btn pri" style="padding:6px 14px" disabled="@guardando" @onclick="CargarComisiones">Cargar comisiones de @MesNombre(mes).ToLower()</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else if (sugs.Count > 0)
+            {
+                <div class="ex-sec">Para cargar · el monto lo ponés vos</div>
                 <table class="ex-tabla">
                     <tr>
                         <th>Empleado</th>
                         @if (tipo == "feriado") { <th>Feriado</th> }
                         @if (MuestraCantidad) { <th class="n">@CantidadLabel</th> }
                         <th class="n">Monto</th>
+                        <th>Fecha de pago</th>
                         <th>De dónde sale</th>
                         <th></th>
                     </tr>
@@ -97,6 +188,7 @@
                             }
                             <td class="n"><input class="form-input num" type="text" inputmode="decimal" onfocus="this.select()"
                                                  value="@ss.MontoTxt" @onchange='e => { ss.MontoTxt = e.Value?.ToString() ?? ""; }' placeholder="$" /></td>
+                            <td><input class="form-input fpago" type="date" @bind="ss.FechaPago" /></td>
                             <td class="ex-muted">@ss.Sug.Explicacion</td>
                             <td class="n"><button class="ex-btn pri" disabled="@guardando" @onclick="() => CargarSugerencia(ss)">Cargar</button></td>
                         </tr>
@@ -113,12 +205,13 @@
                     <th>@(tipo == "plus" ? "Por qué" : "Detalle")</th>
                     @if (MuestraCantidad) { <th class="n">@CantidadLabel</th> }
                     <th class="n">Monto</th>
+                    <th>Fecha de pago</th>
                     <th class="n">Debe</th>
                     <th></th>
                 </tr>
                 @if (datos.Cargados.Count == 0)
                 {
-                    <tr><td colspan="7" class="ex-vacio">Nada cargado todavía.</td></tr>
+                    <tr><td colspan="8" class="ex-vacio">Nada cargado todavía.</td></tr>
                 }
                 @foreach (var x in datos.Cargados)
                 {
@@ -160,6 +253,21 @@
                                 <span>$@F(xx.Monto)</span>
                             }
                         </td>
+                        <td>
+                            @if (editando)
+                            {
+                                <input class="form-input fpago" type="date" @bind="editFechaPago" />
+                            }
+                            else if (xx.FechaPago is { } fp)
+                            {
+                                var hoyAr = HoyAr;
+                                <span class="@(xx.Debe > 0.01m && fp.Date < hoyAr ? "ex-pend" : "")">@(fp.Date == hoyAr ? "hoy " : "")@fp.ToString("ddd dd/MM", Es)</span>
+                            }
+                            else
+                            {
+                                <span class="ex-muted">sin fecha</span>
+                            }
+                        </td>
                         <td class="n">
                             @if (xx.Debe > 0.01m)
                             {
@@ -193,7 +301,7 @@
                     @if (pagoId == xx.Id)
                     {
                         <tr class="ex-pagar">
-                            <td colspan="7">
+                            <td colspan="8">
                                 <div class="fila">
                                     <div><label>Monto</label><input class="form-input num" type="text" inputmode="decimal" onfocus="this.select()" @bind="pagoMontoTxt" @bind:event="oninput" /></div>
                                     <div><label>Fecha</label><input class="form-input" type="date" @bind="pagoFecha" /></div>
@@ -265,6 +373,7 @@
                                    value="@nuevoCantTxt" @onchange="e => CambioCantidadNuevo(e.Value?.ToString())" /></td>
                     }
                     <td><input class="form-input num" type="text" inputmode="decimal" onfocus="this.select()" placeholder="Monto $" @bind="nuevoMontoTxt" /></td>
+                    <td title="Fecha de pago: ese día aparece en Equipo hoy del inicio"><input class="form-input fpago" type="date" @bind="nuevoFechaPago" /></td>
                     @if (tipo != "feriado")
                     {
                         <td style="width:40%"><input class="form-input" @bind="nuevoDetalle" placeholder="@(tipo == "plus" ? "Por qué (ej: descarga camión sábado)" : "Detalle (opcional)")" /></td>
@@ -322,6 +431,8 @@
         public NomExtraSugerenciaDto Sug { get; set; } = new();
         public string CantTxt { get; set; } = "";
         public string MontoTxt { get; set; } = "";
+        public DateTime? FechaPago { get; set; }
+        public bool Tildado { get; set; } = true;
     }
 
     private string tipo = "horas_extra";
@@ -334,6 +445,12 @@
     // editar
     private int editId;
     private string editCantTxt = "", editMontoTxt = "", editDetalle = "";
+    private DateTime? editFechaPago;
+    private DateTime? nuevoFechaPago;
+    private DateTime? comFechaPago;
+    private static DateTime HoyAr => DateTime.UtcNow.ToArTime().Date;
+    [SupplyParameterFromQuery(Name = "anio")] public int? QAnio { get; set; }
+    [SupplyParameterFromQuery(Name = "mes")] public int? QMes { get; set; }
     // pagar
     private int pagoId;
     private string pagoMontoTxt = "";
@@ -356,9 +473,9 @@
         : $"{MesNombre(mes)} {anio}";
     private string Ayuda => tipo switch
     {
-        "horas_extra" => "Las horas salen del fichaje (sin los feriados) × el valor hora de la ficha. El monto lo podés cambiar.",
-        "comision_cafe" => "Solo los que cobran comisión (tienen $ por kg en su ficha). Poné los kg vendidos y sale el monto.",
-        "feriado" => "El día del feriado ya va en el sueldo. Si lo trabajó, se le paga un día más aparte: el sistema propone sueldo ÷ 30 y vos ponés lo que calculaste.",
+        "horas_extra" => "El sistema te muestra las horas de más del fichaje (sin los feriados). El monto lo ponés vos. Con fecha de pago, ese día aparece en Equipo hoy.",
+        "comision_cafe" => "Elegí el mes en la balanza, tildá a quién le pagás y el importe sale de kg × $ por kg (lo podés cambiar).",
+        "feriado" => "El día del feriado ya va en el sueldo. Si lo trabajó, se le paga un día más aparte: el sistema te avisa quién fichó, el monto lo ponés vos.",
         "aguinaldo" => "Mitad del mejor sueldo del semestre, proporcional a los días si entró a mitad. Se puede corregir y pagar en partes.",
         "plus" => "Lo que se da de vez en cuando. Elegí el empleado, poné por qué y el monto.",
         _ => ""
@@ -368,6 +485,7 @@
     {
         var hoy = DateTime.UtcNow.ToArTime();
         anio = hoy.Year; mes = hoy.Month;
+        if (QAnio is >= 2000 and <= 2100 && QMes is >= 1 and <= 12) { anio = QAnio.Value; mes = QMes.Value; }
         try { cajas = (await Api.GetCafeCajasAsync() ?? new()).Where(c => !c.EnDolares).ToList(); } catch { cajas = new(); }
     }
 
@@ -400,6 +518,7 @@
                 CantTxt = s.Cantidad > 0 ? MontoInput.FormatoCantidad(s.Cantidad) : "",
                 MontoTxt = s.Monto > 0 ? MontoInput.Formato(s.Monto) : ""
             }).ToList();
+            comFechaPago = null;
         }
         catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
         finally { cargando = false; }
@@ -423,17 +542,50 @@
     {
         nuevoEmpId = int.TryParse(txt, out var id) ? id : 0;
         RecalcularMontoPorCantidad(nuevoEmpId, nuevoCantTxt, v => nuevoMontoTxt = v);
-        if (tipo == "feriado" && Emp(nuevoEmpId) is { } e && string.IsNullOrWhiteSpace(nuevoMontoTxt))
-            nuevoMontoTxt = MontoInput.Formato(e.ModalidadSueldo == "diario" ? e.JornalDiario : Math.Round(e.SueldoBase / 30m, 0));
     }
 
-    /// <summary>Horas × valor hora o kg × $ por kg, para que el monto se llene solo (después lo pisan).</summary>
+    /// <summary>Solo Comisiones: kg × $ por kg. 2026-11-11 (2ª): horas extra y feriados el monto
+    /// lo pone el dueño a mano ("no quiero que lo calcule el sistema").</summary>
     private void RecalcularMontoPorCantidad(int empId, string cantTxt, Action<string> set)
     {
+        if (tipo != "comision_cafe") return;
         var e = Emp(empId);
         if (e is null || !MontoInput.TryParse(cantTxt, out var cant) || cant <= 0) return;
-        var tarifa = tipo == "horas_extra" ? e.ValorHora : tipo == "comision_cafe" ? e.ComisionPorKg : 0m;
-        if (tarifa > 0) set(MontoInput.Formato(Math.Round(cant * tarifa, 0)));
+        if (e.ComisionPorKg > 0) set(MontoInput.Formato(Math.Round(cant * e.ComisionPorKg, 0)));
+    }
+
+    private async Task IrAMes(int a, int m)
+    {
+        anio = a; mes = m; editId = 0; pagoId = 0;
+        await Cargar();
+    }
+
+    private async Task CargarComisiones()
+    {
+        var tild = sugs.Where(x => x.Tildado).ToList();
+        if (tild.Count == 0) { ToastService.Warning("Tildá a quién le pagás"); return; }
+        foreach (var t in tild)
+            if (!MontoInput.TryParse(t.MontoTxt, out var m) || m <= 0) { ToastService.Warning($"Falta el importe de {t.Sug.EmpleadoNombre}"); return; }
+        guardando = true;
+        var ok = 0;
+        try
+        {
+            foreach (var t in tild)
+            {
+                MontoInput.TryParse(t.MontoTxt, out var monto);
+                MontoInput.TryParse(t.CantTxt, out var cant);
+                await Api.CrearNomExtraAsync(new
+                {
+                    Tipo = tipo, EmpleadoId = t.Sug.EmpleadoId, Anio = anio, Mes = mes,
+                    Cantidad = cant, Monto = monto, Detalle = $"Balanza {MesNombre(mes).ToLower()} {anio}",
+                    FechaPagoStr = comFechaPago?.ToString("yyyy-MM-dd")
+                });
+                ok++;
+            }
+            ToastService.Success($"Cargadas {ok} comisiones de {MesNombre(mes).ToLower()}");
+        }
+        catch (Exception ex) { ToastService.Error((ok > 0 ? $"Se cargaron {ok}, después falló: " : "") + ex.Message); }
+        finally { guardando = false; await Cargar(); }
     }
 
     private async Task CargarSugerencia(SugEdit s)
@@ -446,7 +598,7 @@
             "horas_extra" => null,
             _ => s.Sug.Detalle
         };
-        await Crear(s.Sug.EmpleadoId, cant, monto, detalle, s.Sug.FeriadoId, s.Sug.Fecha);
+        await Crear(s.Sug.EmpleadoId, cant, monto, detalle, s.Sug.FeriadoId, s.Sug.Fecha, s.FechaPago);
     }
 
     private async Task CargarNuevo()
@@ -460,11 +612,11 @@
         if (tipo == "feriado" && datos?.Feriados.FirstOrDefault(f => f.Id == nuevoFeriadoId) is { } fer)
             detalle = $"Feriado {fer.Fecha:dd/MM} · {fer.Descripcion}";
         var ok = await Crear(nuevoEmpId, cant, monto, detalle, tipo == "feriado" ? nuevoFeriadoId : null,
-            tipo == "plus" ? nuevoFecha : null);
+            tipo == "plus" ? nuevoFecha : null, nuevoFechaPago);
         if (ok) LimpiarNuevo();
     }
 
-    private async Task<bool> Crear(int empId, decimal cant, decimal monto, string? detalle, int? feriadoId, DateTime? fecha)
+    private async Task<bool> Crear(int empId, decimal cant, decimal monto, string? detalle, int? feriadoId, DateTime? fecha, DateTime? fechaPago)
     {
         guardando = true;
         try
@@ -473,7 +625,8 @@
             {
                 Tipo = tipo, EmpleadoId = empId, Anio = anio, Mes = mes,
                 FechaStr = fecha?.ToString("yyyy-MM-dd"),
-                Cantidad = cant, Monto = monto, Detalle = detalle, FeriadoId = feriadoId
+                Cantidad = cant, Monto = monto, Detalle = detalle, FeriadoId = feriadoId,
+                FechaPagoStr = fechaPago?.ToString("yyyy-MM-dd")
             });
             ToastService.Success("Cargado");
             await Cargar();
@@ -485,7 +638,7 @@
 
     private void LimpiarNuevo()
     {
-        nuevoEmpId = 0; nuevoFeriadoId = 0; nuevoCantTxt = ""; nuevoMontoTxt = ""; nuevoDetalle = "";
+        nuevoEmpId = 0; nuevoFeriadoId = 0; nuevoCantTxt = ""; nuevoMontoTxt = ""; nuevoDetalle = ""; nuevoFechaPago = null;
         nuevoFecha = DateTime.UtcNow.ToArTime().Date;
     }
 
@@ -495,6 +648,7 @@
         editCantTxt = MontoInput.FormatoCantidad(x.Cantidad);
         editMontoTxt = MontoInput.Formato(x.Monto);
         editDetalle = x.Detalle ?? "";
+        editFechaPago = x.FechaPago?.Date;
     }
 
     private async Task GuardarEdicion(NomExtraDto x)
@@ -504,7 +658,7 @@
         guardando = true;
         try
         {
-            await Api.EditarNomExtraAsync(x.Id, new { Cantidad = cant, Monto = monto, Detalle = editDetalle });
+            await Api.EditarNomExtraAsync(x.Id, new { Cantidad = cant, Monto = monto, Detalle = editDetalle, FechaPagoStr = editFechaPago?.ToString("yyyy-MM-dd") ?? "" });
             editId = 0;
             ToastService.Success("Guardado");
             await Cargar();
@@ -588,6 +742,7 @@
     }
 
     private static string F(decimal v) => v.ToString("N0", Es);
+    private static string K(decimal v) => v.ToString("#,##0.#", Es);
     private static string MesNombre(int m)
     {
         var s = new DateTime(2000, m, 1).ToString("MMMM", Es);

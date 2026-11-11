@@ -8812,3 +8812,9 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_NomExtras_Tipo_Liq')
     CREATE INDEX IX_NomExtras_Tipo_Liq ON Nom_Extras(Tipo, LiquidacionId);
 GO
+
+-- 11/11/2026 (2ª): fecha de pago de cada extra (aparece en Equipo hoy ese día).
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+IF COL_LENGTH('Nom_Extras','FechaPago') IS NULL
+    ALTER TABLE Nom_Extras ADD FechaPago DATE NULL;
+GO

@@ -22,10 +22,23 @@
     .eqt-fill { display:block; height:100%; background:#22c55e; }
     .eqt-warn { color:#b45309; font-weight:700; white-space:nowrap; }
     .eqt-ok { color:#166534; white-space:nowrap; }
+    .eqt-paga { white-space:nowrap; }
+    .eqt-paga b { font-size:0.95rem; }
+    .eqt-paga.atr b { color:#b91c1c; }
+    .eqt-paga a { margin-left:0.4rem; border:1px solid #d1d5db; border-radius:6px; padding:1px 8px; font-size:0.76rem; color:#111827; text-decoration:none; background:#fff; }
+    .eqt-paga a:hover { background:#f9fafb; }
+    .eqt-tot { font-size:0.86rem; margin:0.3rem 0 0.1rem; }
+    .eqt-tot b { color:#111827; }
     @@media (max-width: 900px) { .eqt .col-ult { display:none; } .eqt-track { width:70px; } }
 </style>
+@{ var totPagar = Items.Sum(x => x.PagarHoy); var hayPagar = totPagar > 0; }
+@if (hayPagar)
+{
+    <div class="eqt-tot">💵 Hoy hay que pagar <b>$@totPagar.ToString("N0", Es)</b>
+        <span class="eqt-muted">· feriados, horas extra, comisiones, plus o aguinaldo con fecha de pago hoy@(Items.Any(x => x.PagarHoyAtrasado) ? " o atrasados" : "")</span></div>
+}
 <table class="eqt">
-    <tr><th>Quién</th><th>Estado</th><th>Entregas de hoy</th><th class="col-ult">Última entrega</th><th>Aviso</th></tr>
+    <tr><th>Quién</th><th>Estado</th><th>Entregas de hoy</th><th class="col-ult">Última entrega</th>@if (hayPagar) {<th>Hoy se le paga</th>}<th>Aviso</th></tr>
     @foreach (var e in Items)
     {
         var emp = e;
@@ -83,6 +96,22 @@
                     }
                 }
             </td>
+            @if (hayPagar)
+            {
+                <td @onclick:stopPropagation="true">
+                    @if (e.PagarHoy > 0)
+                    {
+                        <span class="eqt-paga @(e.PagarHoyAtrasado ? "atr" : "")">
+                            <b>$@e.PagarHoy.ToString("N0", Es)</b> <span class="eqt-muted">@e.PagarHoyDetalle</span>
+                            <a href="/nominas/extras/@e.PagarHoyTipo?anio=@e.PagarHoyAnio&mes=@e.PagarHoyMes" title="Ir a pagarlo">Pagar</a>
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="eqt-muted">—</span>
+                    }
+                </td>
+            }
             <td>
                 @if (quieto)
                 {
@@ -101,6 +130,8 @@
     [Parameter] public List<ApiClient.DashboardEquipoItem> Items { get; set; } = new();
     [Parameter] public Dictionary<int, List<string>> Horas { get; set; } = new();
     [Parameter] public EventCallback<ApiClient.DashboardEquipoItem> OnClickEmp { get; set; }
+
+    private static readonly System.Globalization.CultureInfo Es = new("es-AR");
 
     // El mismo umbral que el aviso "Hace X min que no marca nada" del Dashboard de siempre.
     public const int UmbralQuietoMin = 45;

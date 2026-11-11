@@ -38,18 +38,17 @@
     @if (liqs is not null && liqs.Count > 0)
     {
         var liqsActivas = liqs.Where(l => l.Estado != "anulada").ToList();
-        var totalPend = liqsActivas.Sum(l => l.Saldo);
-        var totalGanado = liqsActivas.Sum(l => l.TotalGanado);
-        var totalPagado = liqsActivas.Sum(l => l.TotalPagado);
+        // 2026-11-11 (2ª): la lista muestra SOLO el sueldo; lo de los módulos va en el desplegable de abajo.
+        var totalPend = liqsActivas.Sum(l => SalSueldo(l));
+        var totalGanado = liqsActivas.Sum(l => GanSueldo(l));
+        var totalPagado = liqsActivas.Sum(l => PagSueldo(l));
         var resumen = new[]
         {
             new { Cod = "sueldo", Label = "💰 Sueldos", Pend = liqsActivas.Sum(l => Math.Max(0m, l.SueldoBase - l.Pagos.Where(p => p.Concepto == "sueldo").Sum(p => p.Monto))) },
-            new { Cod = "horas_extra", Label = "⏱ Horas extras", Pend = liqsActivas.Sum(l => Math.Max(0m, l.MontoHsExtra + l.ExtraDeTipo("horas_extra") - l.Pagos.Where(p => p.Concepto == "horas_extra").Sum(p => p.Monto))) },
-            new { Cod = "comision_cafe", Label = "☕ Comisiones", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Comision + l.ExtraDeTipo("comision_cafe") - l.Pagos.Where(p => p.Concepto == "comision_cafe").Sum(p => p.Monto))) },
-            new { Cod = "feriado", Label = "🎉 Feriados", Pend = liqsActivas.Sum(l => Math.Max(0m, l.ExtraDeTipo("feriado") - l.Pagos.Where(p => p.Concepto == "feriado").Sum(p => p.Monto))) },
+            new { Cod = "horas_extra", Label = "⏱ Horas extras", Pend = liqsActivas.Sum(l => Math.Max(0m, l.MontoHsExtra - (l.Pagos.Where(p => p.Concepto == "horas_extra").Sum(p => p.Monto) - l.ExtraPagadoDeTipo("horas_extra")))) },
+            new { Cod = "comision_cafe", Label = "☕ Comisiones", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Comision - (l.Pagos.Where(p => p.Concepto == "comision_cafe").Sum(p => p.Monto) - l.ExtraPagadoDeTipo("comision_cafe")))) },
             new { Cod = "bono", Label = "🎁 Bonos", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Bonos - l.Pagos.Where(p => p.Concepto == "bono").Sum(p => p.Monto))) },
-            new { Cod = "aguinaldo", Label = "🎄 Aguinaldo", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Aguinaldo + l.ExtraDeTipo("aguinaldo") - l.Pagos.Where(p => p.Concepto == "aguinaldo").Sum(p => p.Monto))) },
-            new { Cod = "plus", Label = "⭐ Plus", Pend = liqsActivas.Sum(l => Math.Max(0m, l.ExtraDeTipo("plus") - l.Pagos.Where(p => p.Concepto == "plus").Sum(p => p.Monto))) }
+            new { Cod = "aguinaldo", Label = "🎄 Aguinaldo", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Aguinaldo - (l.Pagos.Where(p => p.Concepto == "aguinaldo").Sum(p => p.Monto) - l.ExtraPagadoDeTipo("aguinaldo")))) },
         };
         var algoPendiente = totalPend > 0.01m;
         var bgGradient = algoPendiente ? "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)" : "linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)";
@@ -135,23 +134,21 @@
                                     }
                                 </td>
                                 <td style="font-weight: 600;">@MesNombre(l.Mes) @l.Anio</td>
-                                <td style="text-align: right; color: #059669;">$@FormatMoney(l.TotalGanado)</td>
+                                <td style="text-align: right; color: #059669;">$@FormatMoney(GanSueldo(l))</td>
                                 <td style="text-align: right; color: #dc2626;">$@FormatMoney(l.TotalDescuentos)</td>
-                                <td style="text-align: right; font-weight: 800; color: #1d4ed8;">$@FormatMoney(l.NetoAPagar)</td>
-                                <td style="text-align: right;">$@FormatMoney(l.TotalPagado)</td>
+                                <td style="text-align: right; font-weight: 800; color: #1d4ed8;">$@FormatMoney(Math.Max(0m, l.NetoAPagar - l.MontoExtras))</td>
+                                <td style="text-align: right;">$@FormatMoney(PagSueldo(l))</td>
                                 <td style="text-align: right;">
-                                    <div style="font-weight: 700; color: @(l.Saldo > 0.01m ? "#dc2626" : "#059669");">$@FormatMoney(l.Saldo)</div>
-                                    @if (l.Saldo > 0.01m)
+                                    <div style="font-weight: 700; color: @(SalSueldo(l) > 0.01m ? "#dc2626" : "#059669");">$@FormatMoney(SalSueldo(l))</div>
+                                    @if (SalSueldo(l) > 0.01m)
                                     {
                                         var chipsRow = new[]
                                         {
                                             new { Cod = "sueldo", Icono = "💰", Pend = Math.Max(0m, l.SueldoBase - l.Pagos.Where(p => p.Concepto == "sueldo").Sum(p => p.Monto)) },
-                                            new { Cod = "horas_extra", Icono = "⏱", Pend = Math.Max(0m, l.MontoHsExtra + l.ExtraDeTipo("horas_extra") - l.Pagos.Where(p => p.Concepto == "horas_extra").Sum(p => p.Monto)) },
-                                            new { Cod = "comision_cafe", Icono = "☕", Pend = Math.Max(0m, l.Comision + l.ExtraDeTipo("comision_cafe") - l.Pagos.Where(p => p.Concepto == "comision_cafe").Sum(p => p.Monto)) },
-                                            new { Cod = "feriado", Icono = "🎉", Pend = Math.Max(0m, l.ExtraDeTipo("feriado") - l.Pagos.Where(p => p.Concepto == "feriado").Sum(p => p.Monto)) },
+                                            new { Cod = "horas_extra", Icono = "⏱", Pend = Math.Max(0m, l.MontoHsExtra - (l.Pagos.Where(p => p.Concepto == "horas_extra").Sum(p => p.Monto) - l.ExtraPagadoDeTipo("horas_extra"))) },
+                                            new { Cod = "comision_cafe", Icono = "☕", Pend = Math.Max(0m, l.Comision - (l.Pagos.Where(p => p.Concepto == "comision_cafe").Sum(p => p.Monto) - l.ExtraPagadoDeTipo("comision_cafe"))) },
                                             new { Cod = "bono", Icono = "🎁", Pend = Math.Max(0m, l.Bonos - l.Pagos.Where(p => p.Concepto == "bono").Sum(p => p.Monto)) },
-                                            new { Cod = "aguinaldo", Icono = "🎄", Pend = Math.Max(0m, l.Aguinaldo + l.ExtraDeTipo("aguinaldo") - l.Pagos.Where(p => p.Concepto == "aguinaldo").Sum(p => p.Monto)) },
-                                            new { Cod = "plus", Icono = "⭐", Pend = Math.Max(0m, l.ExtraDeTipo("plus") - l.Pagos.Where(p => p.Concepto == "plus").Sum(p => p.Monto)) }
+                                            new { Cod = "aguinaldo", Icono = "🎄", Pend = Math.Max(0m, l.Aguinaldo - (l.Pagos.Where(p => p.Concepto == "aguinaldo").Sum(p => p.Monto) - l.ExtraPagadoDeTipo("aguinaldo"))) },
                                         };
                                         var conPend = chipsRow.Where(c => c.Pend > 0.01m).ToList();
                                         if (conPend.Count > 0)
@@ -178,6 +175,61 @@
                     </tbody>
                 </table>
             </div>
+            @* 2026-11-11 (2ª): "Otros conceptos" — lo de los módulos (feriados, horas extra, comisiones,
+               plus, aguinaldo) ya no va mezclado en el saldo de cada fila: va acá, plegado. *@
+            @if (extrasLista.Count > 0)
+            {
+                var porTipo = ModulosExtras.Select(m => new { m.Tipo, m.Icono, m.Nombre, Items = extrasLista.Where(x => x.Tipo == m.Tipo).ToList() }).ToList();
+                var debeExt = extrasLista.Sum(x => x.Debe);
+                <div style="margin: 0.9rem 1rem 1rem; border: 1px solid #e5e7eb; border-radius: 8px;">
+                    <div style="padding: 0.6rem 0.8rem; background: #fafafa; border-radius: 8px; cursor: pointer; display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;"
+                         @onclick="() => otrosAbierto = !otrosAbierto">
+                        <strong>@(otrosAbierto ? "▾" : "▸") Otros conceptos @(filtroMes == 0 ? filtroAnio.ToString() : "de " + MesNombre(filtroMes).ToLower())</strong>
+                        <span style="color: #6b7280; font-size: 0.85rem;">
+                            @string.Join(" · ", porTipo.Select(t => $"{t.Nombre} ${FormatMoney0(t.Items.Sum(x => x.Monto))}"))
+                            · debe <b style="color: @(debeExt > 0.01m ? "#b91c1c" : "#047857");">$@FormatMoney0(debeExt)</b>
+                        </span>
+                    </div>
+                    @if (otrosAbierto)
+                    {
+                        <div style="padding: 0 0.8rem 0.6rem;">
+                            @foreach (var t in porTipo.Where(t => t.Items.Count > 0))
+                            {
+                                <div style="font-weight: 600; margin: 0.7rem 0 0.2rem;">@t.Icono @t.Nombre</div>
+                                <table class="data-table" style="font-size: 0.86rem;">
+                                    <thead><tr><th>Empleado</th>@if (filtroMes == 0) {<th>Mes</th>}<th>Detalle</th><th style="text-align:right">Monto</th><th>Fecha de pago</th><th style="text-align:right">Debe</th><th></th></tr></thead>
+                                    <tbody>
+                                        @foreach (var x in t.Items)
+                                        {
+                                            var hoyAr = DateTime.UtcNow.ToArTime().Date;
+                                            <tr>
+                                                <td>@x.EmpleadoNombre</td>
+                                                @if (filtroMes == 0) {<td>@MesNombre(x.Mes)</td>}
+                                                <td>@(x.Detalle ?? "")</td>
+                                                <td style="text-align:right">$@FormatMoney0(x.Monto)</td>
+                                                <td>
+                                                    @if (x.FechaPago is { } fp)
+                                                    {
+                                                        <span style="@(x.Debe > 0.01m && fp.Date < hoyAr ? "color:#b91c1c;font-weight:600" : "")">@(fp.Date == hoyAr ? "hoy " : "")@fp.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</span>
+                                                    }
+                                                    else { <span style="color:#9ca3af">sin fecha</span> }
+                                                </td>
+                                                <td style="text-align:right">
+                                                    @if (x.Debe > 0.01m) { <b style="color:#b91c1c">$@FormatMoney0(x.Debe)</b> }
+                                                    else { <span style="color:#047857">pagado</span> }
+                                                </td>
+                                                <td style="text-align:right">
+                                                    <a class="btn btn-primary" style="padding: 0.15rem 0.7rem; font-size: 0.8rem;" href="/nominas/extras/@x.Tipo?anio=@x.Anio&mes=@x.Mes">@(x.Debe > 0.01m ? "Pagar" : "Ver")</a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            }
+                        </div>
+                    }
+                </div>
+            }
         }
     </div>
 </div>
@@ -886,6 +938,16 @@
     private List<NomLiquidacionDto>? liqs;
     private List<NomEmpleadoDto>? empleados;
     private bool isLoading = true;
+    // 2026-11-11 (2ª): sueldo SOLO (sin lo de los módulos) para la lista; lo demás va en "Otros conceptos".
+    private List<NomExtraDto> extrasLista = new();
+    private bool otrosAbierto;
+    private static readonly (string Tipo, string Icono, string Nombre)[] ModulosExtras =
+        { ("feriado", "🎉", "Feriados"), ("horas_extra", "⏱", "Horas extras"), ("comision_cafe", "☕", "Comisiones"), ("plus", "⭐", "Plus"), ("aguinaldo", "🎄", "Aguinaldo") };
+    private static decimal PagExtras(NomLiquidacionDto l) => l.ExtrasResumen?.Sum(x => x.Pagado) ?? 0m;
+    private static decimal GanSueldo(NomLiquidacionDto l) => l.TotalGanado - l.MontoExtras;
+    private static decimal PagSueldo(NomLiquidacionDto l) => l.TotalPagado - PagExtras(l);
+    private static decimal SalSueldo(NomLiquidacionDto l) => l.Saldo - (l.MontoExtras - PagExtras(l));
+    private static string FormatMoney0(decimal v) => v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
     private int filtroAnio = DateTime.Today.Year;
     private int filtroMes = DateTime.Today.Month;
     private string filtroEstado = "";
@@ -1178,6 +1240,8 @@
                 string.IsNullOrEmpty(filtroEstado) ? null : filtroEstado) ?? new();
         }
         catch { ToastService.Error("Error al cargar liquidaciones"); liqs = new(); }
+        try { extrasLista = await Api.GetNomExtrasListaAsync(filtroAnio, filtroMes) ?? new(); }
+        catch { extrasLista = new(); }
         isLoading = false;
     }
 

@@ -337,7 +337,11 @@ public class DashboardController : ControllerBase
         int MinutosSinMarcar = -1,
         // 2026-11-10: hora (Argentina, "HH:mm") de cada parada que entregó hoy, para dibujar los
         // puntitos en la rayita del día del Dashboard nuevo. Mismas paradas que RutaEntregadas.
-        List<string>? EntregasHoras = null);
+        List<string>? EntregasHoras = null,
+        // 2026-11-11 (2ª): lo que hay que pagarle HOY (o quedó atrasado) según la fecha de pago de
+        // sus extras (feriado, horas extra, comisión, plus, aguinaldo).
+        decimal PagarHoy = 0, string? PagarHoyDetalle = null, string? PagarHoyTipo = null,
+        int PagarHoyAnio = 0, int PagarHoyMes = 0, bool PagarHoyAtrasado = false);
 
     // 2026-06-25: orden fijo pedido por Osmar — repartidores primero (alexis, walter,
     // benjamin, gonzalo, rodrigo), después oficina (osmar, german, gabriel, miguel).
@@ -526,6 +530,11 @@ public class DashboardController : ControllerBase
         var liqByEmp = liqsDelMes.ToDictionary(l => l.EmpleadoId, l => l);
         var pagosByLiq = pagosDelMes.GroupBy(p => p.LiquidacionId).ToDictionary(g => g.Key, g => g.Sum(x => x.Monto));
         var regByFicha = regsHoy.ToDictionary(r => r.EmpleadoId, r => r);
+        var aPagar = await NomExtrasController.APagarHastaAsync(_db, hoy);
+        var liqIdsAPagar = aPagar.Values.SelectMany(v => v).Select(v => v.Extra.LiquidacionId).Distinct().ToList();
+        var liqsAPagar = await _db.NomLiquidaciones
+            .Where(l => liqIdsAPagar.Contains(l.Id))
+            .ToDictionaryAsync(l => l.Id, l => new { l.Anio, l.Mes });
 
         var result = emps.Select(e =>
         {
@@ -602,6 +611,21 @@ public class DashboardController : ControllerBase
             decimal leDebo = neto - pagado;
             if (leDebo < 0) leDebo = 0;
 
+            decimal pagarHoy = 0m; string? pagarDet = null, pagarTipo = null; int pagarAnio = 0, pagarMes = 0; bool atrasado = false;
+            if (aPagar.TryGetValue(e.Id, out var lp) && lp.Count > 0)
+            {
+                pagarHoy = lp.Sum(v => v.Debe);
+                atrasado = lp.Any(v => v.Extra.FechaPago < hoy);
+                var primero = lp.OrderBy(v => v.Extra.FechaPago).First().Extra;
+                pagarTipo = primero.Tipo;
+                if (liqsAPagar.TryGetValue(primero.LiquidacionId, out var lq)) { pagarAnio = lq.Anio; pagarMes = lq.Mes; }
+                pagarDet = string.Join(" + ", lp.GroupBy(v => v.Extra.Tipo).Select(g =>
+                    NomExtrasController.TipoLabel(g.Key).ToLowerInvariant()
+                    + (g.Key == "feriado" && g.Count() == 1 && g.First().Extra.Fecha is { } ff ? $" {ff:dd/MM}" : "")));
+                if (atrasado)
+                    pagarDet += $" · era el {lp.Where(v => v.Extra.FechaPago < hoy).Min(v => v.Extra.FechaPago)!.Value:dd/MM}";
+            }
+
             return new DashboardEquipoItem(
                 e.Id, e.Nombre, apodoKiosko, apodoRepartidor,
                 estado, horaEntrada, horaSalida, trabajado,
@@ -609,7 +633,8 @@ public class DashboardController : ControllerBase
                 porRendirVentas, porRendirAlq,
                 ventasPend, ventasEntHoy, alqEntHoy, alqRetHoy,
                 rutaEnt, rutaFaltan, rutaNoEnt, ultimoDom, ultimaHora, minsSinMarcar,
-                horasEntrega ?? new List<string>());
+                horasEntrega ?? new List<string>(),
+                pagarHoy, pagarDet, pagarTipo, pagarAnio, pagarMes, atrasado);
         })
         .OrderBy(x => OrdenPersonalizado(x.Nombre))
         .ThenBy(x => x.Nombre)
