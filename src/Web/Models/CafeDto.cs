@@ -3029,3 +3029,15 @@ public class CafeProductoUltimaVentaDto
     public string Canal { get; set; } = "SISTEMA"; // SISTEMA | MELI
     public long? MeliOrderId { get; set; }
 }
+
+/// <summary>2026-11-11: botón de abajo de una persona. Items: "bienvenida", "asistente", "preguntas", "tareas",
+/// "whatsapp", una pantalla ("/cafe/ventas") o un link de afuera ("https://…¦Nombre"). Derecha/Abajo en px
+/// (null = el lugar de siempre). LabDer = el nombre sale a la derecha (está del lado izquierdo de la pantalla).</summary>
+public class FlotantePersonaDto
+{
+    public List<string>? Items { get; set; }
+    public int? Derecha { get; set; }
+    public int? Abajo { get; set; }
+    public bool LabDer { get; set; }
+    public bool Acostado { get; set; }
+}
