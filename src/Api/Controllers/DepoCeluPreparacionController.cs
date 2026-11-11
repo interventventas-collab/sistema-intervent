@@ -1,4 +1,5 @@
 using Api.Data;
+using Api.Models;
 using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -42,8 +43,51 @@ public class DepoCeluPreparacionController : ControllerBase
     private async Task<IActionResult?> ControlarAsync(string? deviceId)
     {
         if (!_clave.PaseValido(Request)) return PaseVencido();
-        if (!await ClaveDiaCeluService.EsCeluHabilitadoAsync(_db, deviceId)) return NoHabilitado();
+        if (!await ClaveDiaCeluService.EsCeluHabilitadoAsync(_db, deviceId))
+        {
+            // 11/11/2026: si todavía no hay NINGÚN celu del depósito, el celu ofrece habilitarse
+            // ahí mismo (antes solo se podía desde una lista del picking, tildando pedidos en la compu).
+            var hayOtro = await _db.CafePickingDispositivos.AnyAsync(x => x.Activo);
+            return hayOtro ? NoHabilitado() : new OkObjectResult(new { estado = "sin_dispositivo" });
+        }
         return null;
+    }
+
+    public record HabilitarRequest(string? DeviceId, string? Nombre);
+
+    /// <summary>POST habilitar — deja ESTE celu como el del depósito. Pide la clave del día y solo
+    /// funciona si no hay otro activo (para cambiarlo, "Cambiar celu" en la compu).</summary>
+    [HttpPost("habilitar")]
+    public async Task<IActionResult> Habilitar([FromBody] HabilitarRequest req)
+    {
+        if (!_clave.PaseValido(Request)) return PaseVencido();
+        var deviceId = req?.DeviceId?.Trim() ?? "";
+        if (string.IsNullOrEmpty(deviceId) || deviceId.Length > 80) return BadRequest(new { error = "Falta identificar el celular" });
+
+        var deposito = await _db.CafePickingDispositivos.Where(x => x.Activo).OrderBy(x => x.Id).FirstOrDefaultAsync();
+        if (deposito is not null)
+            return deposito.DeviceId == deviceId ? Ok(new { estado = "ok" }) : NoHabilitado();
+
+        var nombre = string.IsNullOrWhiteSpace(req?.Nombre) ? null : req!.Nombre!.Trim()[..Math.Min(req.Nombre.Trim().Length, 160)];
+        var previo = await _db.CafePickingDispositivos.FirstOrDefaultAsync(x => x.DeviceId == deviceId);
+        if (previo is not null)
+        {
+            previo.Activo = true;
+            previo.LastSeenAt = DateTime.UtcNow;
+            if (nombre is not null) previo.Nombre = nombre;
+        }
+        else
+        {
+            _db.CafePickingDispositivos.Add(new CafePickingDispositivo
+            {
+                DeviceId = deviceId,
+                Nombre = nombre,
+                Activo = true,
+                LastSeenAt = DateTime.UtcNow
+            });
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { estado = "ok" });
     }
 
     /// <summary>Personas para "¿quién lo armó?": las mismas del tablero (preparacion/operadores).</summary>

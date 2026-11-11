@@ -21,6 +21,7 @@
     .dp-volver { display:inline-flex; align-items:center; min-height:44px; color:#111827; font-weight:600; text-decoration:none; }
     .dp-tit { font-size:1.25rem; font-weight:800; margin:0.2rem 0 0.7rem; }
     .dp-txt { color:#6b7280; font-size:0.9rem; margin:0 0 0.8rem; }
+    .dp-habilitar { display:block; width:100%; min-height:50px; margin-top:0.6rem; background:#22c55e; color:#052e16; border:none; border-radius:10px; font:inherit; font-size:1.05rem; font-weight:800; }
     .dp-caja { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:1.1rem; }
     .dp-error { color:#b91c1c; font-size:0.88rem; margin:0 0 0.6rem; }
     .dp-ped { background:#fff; border:1px solid #e5e7eb; border-radius:10px; margin-bottom:0.5rem; overflow:hidden; }
@@ -64,7 +65,18 @@
     {
         <div class="dp-caja">
             <p class="dp-txt" style="color:#111827; font-weight:600;">Este celular no está habilitado para preparar pedidos.</p>
+            <p class="dp-txt">Ya hay otro celular del depósito. Para cambiarlo, en la compu tocá <b>Cambiar celu</b> (arriba de los pedidos, en Preparación) y volvé a entrar acá.</p>
             <a class="dp-volver" href="/depo">← Volver</a>
+        </div>
+    }
+    else if (estado == "sin_dispositivo")
+    {
+        @* 11/11/2026: habilitar el celu del depósito desde acá, sin pasar por una lista del picking. *@
+        <div class="dp-caja">
+            <p class="dp-txt" style="color:#111827; font-weight:700; font-size:1.05rem;">Habilitar este celular</p>
+            <p class="dp-txt">Todavía no hay un celular del depósito. Si <b>este es el celu del depósito</b>, tocá el botón. Los demás celulares quedan bloqueados para armar pedidos.</p>
+            <button class="dp-habilitar" disabled="@ocupado" @onclick="HabilitarAsync">@(ocupado ? "Habilitando…" : "✅ Habilitar este celular")</button>
+            @if (error is not null) { <p class="dp-error">@error</p> }
         </div>
     }
     else if (pedidos is null)
@@ -242,6 +254,37 @@
         Nav.NavigateTo("/depo");
     }
 
+    private async Task HabilitarAsync()
+    {
+        ocupado = true; error = null;
+        try
+        {
+            using var resp = await Http.SendAsync(Pedido(HttpMethod.Post,
+                "api/public/depo-preparacion/habilitar", new { deviceId, nombre = await NombreCeluAsync() }));
+            if (resp.StatusCode == HttpStatusCode.Forbidden) { await PaseVencidoAsync(); return; }
+            if (!resp.IsSuccessStatusCode) { error = "No se pudo habilitar. Probá de nuevo."; return; }
+            await CargarAsync();
+        }
+        catch { error = "Sin conexión. Probá de nuevo."; }
+        finally { ocupado = false; }
+    }
+
+    /// <summary>Nombre para reconocer el celu en la compu (ej "Android · Chrome"), igual que el picking.</summary>
+    private async Task<string> NombreCeluAsync()
+    {
+        try
+        {
+            var ua = await JS.InvokeAsync<string>("eval", "navigator.userAgent") ?? "";
+            string so = ua.Contains("Android") ? "Android"
+                : (ua.Contains("iPhone") || ua.Contains("iPad") || ua.Contains("iPod")) ? "iPhone/iPad"
+                : ua.Contains("Windows") ? "Windows" : ua.Contains("Mac") ? "Mac" : "Celu";
+            string nav = ua.Contains("Edg") ? "Edge" : ua.Contains("Chrome") ? "Chrome"
+                : ua.Contains("Firefox") ? "Firefox" : ua.Contains("Safari") ? "Safari" : "";
+            return string.IsNullOrEmpty(nav) ? so : $"{so} · {nav}";
+        }
+        catch { return "Celu del depósito"; }
+    }
+
     private async Task CargarAsync()
     {
         error = null;
@@ -271,7 +314,7 @@
                 $"api/public/depo-preparacion/{p.Id}/abrir", new { deviceId }));
             if (resp.StatusCode == HttpStatusCode.Forbidden) { await PaseVencidoAsync(); return; }
             var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<AccionResp>() : null;
-            if (r?.Estado == "no_habilitado") { estado = "no_habilitado"; return; }
+            if (r?.Estado is "no_habilitado" or "sin_dispositivo") { estado = r.Estado; return; }
             if (string.IsNullOrEmpty(r?.Token)) { error = $"No se pudo abrir la lista de {p.Numero}."; return; }
             Nav.NavigateTo($"/picking/{r.Token}");
         }
@@ -297,7 +340,7 @@
             if (resp.StatusCode == HttpStatusCode.Forbidden) { await PaseVencidoAsync(); return; }
             AccionResp? r = null;
             try { r = await resp.Content.ReadFromJsonAsync<AccionResp>(); } catch { }
-            if (r?.Estado == "no_habilitado") { estado = "no_habilitado"; return; }
+            if (r?.Estado is "no_habilitado" or "sin_dispositivo") { estado = r.Estado; return; }
             if (!resp.IsSuccessStatusCode)
             {
                 error = r?.Error ?? $"No se pudo marcar {p.Numero} como armado.";

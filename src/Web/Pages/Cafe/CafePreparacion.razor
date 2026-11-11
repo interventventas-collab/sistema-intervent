@@ -737,23 +737,8 @@
     <div class="dp-wrap">
     <div class="dp-main">
 
-    @* Cartelito SIEMPRE visible: cuál es el celu del depósito habilitado (2026-08-02).
-       11/11/2026: se había perdido al rehacer la pantalla con las pastillas (09/11); vuelve. *@
-    @if (pickingDispositivo is not null && pickingDispositivo.Registrado)
-    {
-        <div class="prep-celu-chip on">
-            <span>📱 Celu del depósito:</span>
-            <span class="nombre">@(pickingDispositivo.Nombre ?? "habilitado")</span>
-            <span style="opacity:0.8;">· habilitado @HaceCuanto(pickingDispositivo.CreatedAt)</span>
-            <button class="cambiar" @onclick="OlvidarDispositivo" title="Liberar este celu para habilitar otro">Cambiar celu</button>
-        </div>
-    }
-    else
-    {
-        <div class="prep-celu-chip off">
-            <span>📵 Ningún celular del depósito habilitado todavía. El primero que abra una lista y toque "habilitar" queda registrado.</span>
-        </div>
-    }
+    @* 11/11/2026: el celu del depósito (cuál es, habilitar, Cambiar celu) está en la pastilla
+       "Trabajar con el celu" de la derecha (StockIdealCeluBoton), pedido del dueño. *@
 
     @* 14/10/2026: con el buscador el depósito puede traer al tablero una venta que no está
        (sacada sin querer, vieja o nunca mandada), por cliente o por número, eligiendo quién. *@
