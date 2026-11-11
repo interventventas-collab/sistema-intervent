@@ -16,17 +16,28 @@
 @inject IJSRuntime JS
 
 @{ var items = Visibles(); }
-@if (items.Count > 0 || editando)
+@* 2026-11-11: siempre se dibuja (aunque no tenga botones, queda el ✏ para elegir). *@
+@if (true)
 {
     var cfg = Mio();
+    var compacto = cfg?.Compacto == true;
     var der = cfg?.Derecha ?? 22;
     var aba = cfg?.Abajo ?? 22;
     if (arrastrando) { der = arrDer; aba = arrAba; }
     var labDer = arrastrando ? arrLabDer : cfg?.LabDer == true;
     var acostado = cfg?.Acostado == true;
-    <div class="bf @(abierto ? "bf-abierto" : "") @(acostado ? "bf-acostado" : "") @(labDer ? "bf-labder" : "") @(arrastrando ? "bf-moviendo" : "")"
+    <div class="bf @(abierto ? "bf-abierto" : "") @(compacto ? "bf-compacto" : "") @(acostado ? "bf-acostado" : "") @(labDer ? "bf-labder" : "") @(arrastrando ? "bf-moviendo" : "")"
          style="right:clamp(0px, @(der)px, calc(100vw - 56px)); bottom:clamp(0px, @(aba)px, calc(100vh - 56px));">
         <span class="bf-agarre" title="Arrastrame para ponerme en otro lado" @onpointerdown="EmpezarArrastre">⋮⋮</span>
+        @if (compacto)
+        {
+            @* Plegado en un solo ícono: tocándolo se vuelve a abrir. *@
+            var avisos = items.Sum(i => i.Numero);
+            <button type="button" class="bf-uno" title="Abrir mis botones" @onclick="() => Compactar(false)">
+                ☰
+                @if (avisos > 0) { <span class="bf-num">@(avisos > 99 ? "99+" : avisos.ToString())</span> }
+            </button>
+        }
         <div class="bf-lista">
             @foreach (var it in items)
             {
@@ -45,7 +56,10 @@
                     </span>
                 </button>
             }
-            <button type="button" class="bf-lapiz" title="Elegir qué botones tengo acá (hasta @MAX)" @onclick="AbrirEditor">✏</button>
+            <span class="bf-pie">
+                <button type="button" class="bf-lapiz" title="Elegir qué botones tengo acá (hasta @MAX)" @onclick="AbrirEditor">✏</button>
+                <button type="button" class="bf-lapiz" title="Achicarlo a un solo ícono" @onclick="() => Compactar(true)">—</button>
+            </span>
         </div>
         @* Celu: el ☰ de siempre, que se abre tocándolo. *@
         <button type="button" class="bf-main" title="Mis botones" @onclick="() => abierto = !abierto">
@@ -160,6 +174,12 @@
         font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; border: 2px solid #fff; }
     .bf-main { display: none; position: relative; width: 56px; height: 56px; border-radius: 50%; border: none; background: #1f2937; color: #fff;
         font-size: 24px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.28); align-items: center; justify-content: center; }
+    .bf-pie { display: flex; gap: 0; }
+    .bf-acostado .bf-pie { flex-direction: column; }
+    .bf-compacto .bf-lista { display: none; }
+    .bf-uno { position: relative; width: 48px; height: 48px; border-radius: 50%; border: none; background: #1f2937; color: #fff;
+        font-size: 21px; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.25); display: flex; align-items: center; justify-content: center; }
+    .bf-uno:hover { background: #374151; }
     .bf-capa { position: fixed; inset: 0; z-index: 9700; cursor: grabbing; }
 
     .bf-ed-fondo { position: fixed; inset: 0; z-index: 9800; background: rgba(0,0,0,.18); }
@@ -200,7 +220,8 @@
         .bf-abierto .bf-lista { display: flex; }
         .bf-item { gap: 10px; }
         .bf-lab { display: block; position: static; transform: none; }
-        .bf-lapiz { display: none; }
+        .bf-lapiz, .bf-uno { display: none; }
+        .bf-compacto .bf-abierto .bf-lista, .bf-compacto.bf-abierto .bf-lista { display: flex; }
         .bf-ed { right: 12px; bottom: 12px; }
     }
     @@media print { .bf { display: none !important; } }
@@ -364,7 +385,7 @@
     private FlotantePersonaDto Copia()
     {
         var m = Mio();
-        return new FlotantePersonaDto { Items = MisItems().ToList(), Derecha = m?.Derecha, Abajo = m?.Abajo, LabDer = m?.LabDer == true, Acostado = m?.Acostado == true };
+        return new FlotantePersonaDto { Items = MisItems().ToList(), Derecha = m?.Derecha, Abajo = m?.Abajo, LabDer = m?.LabDer == true, Acostado = m?.Acostado == true, Compacto = m?.Compacto == true };
     }
 
     // ───────── Arrastrar ─────────
@@ -481,6 +502,15 @@
         }
         finally { guardando = false; }
     }
+    /// <summary>Lo achica a un solo ícono (o lo vuelve a abrir). Queda guardado para esa persona.</summary>
+    private async Task Compactar(bool si)
+    {
+        var c = Copia();
+        c.Compacto = si;
+        if (Mio() is { } m) m.Compacto = si;   // que cambie al toque, sin esperar a que guarde
+        await Guardar(c);
+    }
+
     private async Task VolverAlLugar()
     {
         guardando = true;
