@@ -2600,6 +2600,20 @@
     private string? ThumbnailFor(int productoId)
         => thumbsByProductoId.TryGetValue(productoId, out var t) ? t : null;
 
+    // 2026-11-11: "/cafe/productos?nuevo=<marca de tiempo>" abre el formulario de producto nuevo
+    // (el + del botón grande "Productos" del Dashboard). La marca de tiempo hace que vuelva a abrir
+    // aunque ya estés en esta pantalla.
+    [SupplyParameterFromQuery(Name = "nuevo")] public string? NuevoQ { get; set; }
+    private string? nuevoQAtendido;
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(NuevoQ) && NuevoQ != nuevoQAtendido)
+        {
+            nuevoQAtendido = NuevoQ;
+            ShowCreate();
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         // Cargo OEMs, marcas y reglas de precios en paralelo a productos

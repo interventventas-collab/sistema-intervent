@@ -124,10 +124,26 @@ public class MenuNuevoService
     public static string Juntar(string principal, IEnumerable<string> subs)
         => string.IsNullOrEmpty(principal) ? "" : string.Join("|", new[] { principal }.Concat(subs.Take(MenuNuevoCatalogo.MAX_SUBS)));
 
+    /// <summary>2026-11-11: el principal puede llevar un nombre propio: "dirección¦Nombre". Con dirección "*" es
+    /// un botón "solo título" (no lleva a ninguna pantalla, agrupa subbotones).</summary>
+    public const string SOLO_TITULO = "*";
+    public static (string Href, string? Titulo) PartirTitulo(string principal)
+    {
+        var k = principal.IndexOf('¦');
+        if (k < 0) return (principal, null);
+        var t = principal[(k + 1)..].Trim();
+        return (principal[..k], t == "" ? null : t);
+    }
+    public static string JuntarTitulo(string href, string? titulo)
+    {
+        var t = (titulo ?? "").Replace("|", " ").Replace("¦", " ").Trim();
+        return string.IsNullOrEmpty(href) ? "" : t == "" ? href : href + "¦" + t;
+    }
+
     /// <summary>Pantallas que esta persona tiene en sus botones grandes (principales y subbotones):
     /// esas no se repiten en la barra de arriba.</summary>
     public HashSet<string> EnGrandes(string? op)
-        => GrandesDe(op).SelectMany(l => { var (m, s) = Partir(l); return new[] { m }.Concat(s); })
+        => GrandesDe(op).SelectMany(l => { var (m, s) = Partir(l); return new[] { PartirTitulo(m).Href }.Concat(s); })
                         .Where(h => h != "").ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     // Numeritos (ventas sin entregar, cobros para volcar, para armar): los calcula la barra de arriba y los
