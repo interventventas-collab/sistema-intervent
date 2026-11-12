@@ -233,21 +233,14 @@ public class StockIdealController : ControllerBase
         return Ok(new { ok = true, notas = nota });
     }
 
-    /// <summary>2026-11-11: dar de baja = dejarlo INACTIVO (igual que poner "Inactivo" en Productos).
-    /// No se borra: con historial de stock no se puede, y así se puede volver a activar.</summary>
+    /// <summary>2026-11-11: dar de baja = dejarlo INACTIVO. 2026-11-12: además pausa sus publicaciones
+    /// de MeLi (ver ProductoBajaService). La pantalla nueva usa POST /api/cafe/productos/{id}/baja con
+    /// la opción de stock en 0; esta queda por si alguien tiene la página vieja abierta.</summary>
     [HttpPost("{id:int}/baja")]
-    public async Task<IActionResult> DarDeBaja(int id, [FromServices] AuditLogService audit)
+    public async Task<IActionResult> DarDeBaja(int id, [FromServices] ProductoBajaService svc)
     {
-        var p = await _db.CafeProductos.FindAsync(id);
-        if (p is null) return NotFound(new { error = "Producto no encontrado." });
-        if (!p.IsActive) return Ok(new { ok = true });
-        p.IsActive = false;
-        p.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
-        await audit.LogAsync("CafeProducto", id.ToString(), "BAJA",
-            $"{p.Sku} dado de baja desde Stock ideal (stock {p.StockUnidades} u / {p.StockGramos} g)",
-            User?.Identity?.Name);
-        return Ok(new { ok = true });
+        var r = await svc.DarDeBajaAsync(id, stockEnCero: false, desde: "Stock ideal", User?.Identity?.Name);
+        return r.Mensaje == "Producto no encontrado." ? NotFound(new { error = r.Mensaje }) : Ok(r);
     }
 
     // ───────────────────────── GUARDAR (planilla) ─────────────────────────

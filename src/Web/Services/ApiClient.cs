@@ -3949,6 +3949,18 @@ public class ApiClient
         await ThrowIfErrorAsync(resp);
     }
 
+    // 2026-11-12: dar de baja un producto pausa sus publicaciones de MeLi (+ stock en 0 si se elige).
+    public Task<ProductoBajaPreviewDto?> GetProductoBajaPreviewAsync(int productoId)
+        => GetAsync<ProductoBajaPreviewDto>($"/api/cafe/productos/{productoId}/baja-preview");
+
+    public async Task<ProductoBajaResultadoDto?> DarDeBajaProductoAsync(int productoId, bool stockEnCero, string desde)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/productos/{productoId}/baja", new { stockEnCero, desde });
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<ProductoBajaResultadoDto>();
+    }
+
     public async Task DarDeBajaProductoIdealAsync(int productoId)
     {
         await SetAuthHeaderAsync();

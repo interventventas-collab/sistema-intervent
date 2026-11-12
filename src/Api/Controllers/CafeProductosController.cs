@@ -1222,7 +1222,9 @@ public class CafeProductosController : ControllerBase
         // Si cambió el stock, disparar push event-driven a MeLi después del SaveChanges
         var dispararPush = stockCambio;
         if (req.Notas is not null) p.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
-        if (req.IsActive.HasValue) p.IsActive = req.IsActive.Value;
+        // 2026-11-12: desde acá solo se ACTIVA. Dar de baja va por POST {id}/baja, que además pausa
+        // las publicaciones de MeLi (antes quedaban activas y se seguía vendiendo algo que no existe).
+        if (req.IsActive == true) p.IsActive = true;
         if (req.IvaPct.HasValue) p.IvaPct = NormalizeIva(req.IvaPct);
         p.UpdatedAt = DateTime.UtcNow;
 
@@ -1495,6 +1497,24 @@ public class CafeProductosController : ControllerBase
         }
 
         return Ok(new { comboId = combo.Id, sku, skuViejo, publicaciones = publis });
+    }
+
+    /// <summary>2026-11-12: qué publicaciones de MeLi se pausan si se da de baja (para el cartel).</summary>
+    [HttpGet("{id:int}/baja-preview")]
+    public async Task<IActionResult> BajaPreview(int id, [FromServices] ProductoBajaService svc)
+    {
+        var r = await svc.PreviewAsync(id);
+        return r is null ? NotFound(new { error = "Producto no encontrado." }) : Ok(r);
+    }
+
+    public record DarDeBajaRequest(bool StockEnCero, string? Desde = null);
+
+    /// <summary>2026-11-12: dar de baja = inactivo (+ stock en 0 si se elige) + pausar sus publicaciones de MeLi.</summary>
+    [HttpPost("{id:int}/baja")]
+    public async Task<IActionResult> DarDeBaja(int id, [FromBody] DarDeBajaRequest req, [FromServices] ProductoBajaService svc)
+    {
+        var r = await svc.DarDeBajaAsync(id, req?.StockEnCero ?? false, string.IsNullOrWhiteSpace(req?.Desde) ? "Productos" : req!.Desde!, User?.Identity?.Name);
+        return r.Mensaje == "Producto no encontrado." ? NotFound(new { error = r.Mensaje }) : Ok(r);
     }
 
     [HttpDelete("{id:int}")]
