@@ -540,26 +540,6 @@
                                         }
                                     </td>
                                 </tr>
-                                @if (bajaPreguntando == pid)
-                                {
-                                    <tr class="si-baja-conf">
-                                        <td colspan="@(SinFiltroDeMarca ? 10 : 9)">
-                                            <b>¿Dar de baja @f.Nombre@(string.IsNullOrWhiteSpace(f.Codigo) ? "" : $" ({f.Codigo})")?</b>
-                                            @if (f.StockActual > 0)
-                                            {
-                                                <span style="color:#b91c1c; font-weight:600;"> · OJO: todavía tiene @Num(f.StockActual)@(f.Unidad == "kg" ? " kg" : "") en stock</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="si-gris"> · tiene 0 en stock</span>
-                                            }
-                                            <span class="si-gris"> · no se borra: deja de aparecer en ventas, stock y listas · se puede volver a activar desde Productos</span>
-                                            &nbsp;
-                                            <button class="btn btn-secondary si-btn-rojo" disabled="@dandoDeBaja" @onclick="() => DarDeBaja(f)">@(dandoDeBaja ? "..." : "Sí, dar de baja")</button>
-                                            <button class="btn btn-secondary" disabled="@dandoDeBaja" @onclick="() => bajaPreguntando = null">Cancelar</button>
-                                        </td>
-                                    </tr>
-                                }
                             }
                         </tbody>
                     </table>
@@ -636,6 +616,14 @@
         </div>
     </div>
 </div>
+
+@if (bajaPreguntando is int bajaPid)
+{
+    var bajaFila = filas.FirstOrDefault(x => x.ProductoId == bajaPid);
+    <DarDeBajaProductoModal ProductoId="bajaPid" Nombre="@bajaFila?.Nombre" Desde="Stock ideal"
+                            OnClose="() => bajaPreguntando = null"
+                            OnDadoDeBaja="() => { if (bajaFila is not null) filas.Remove(bajaFila); }" />
+}
 
 <style>
 .si-tab {
@@ -744,7 +732,6 @@
     private List<UbicacionPlantaDto> plantasUbi = new();
     private List<UbicacionZonaDto> zonasUbi = new();
     private int? bajaPreguntando;
-    private bool dandoDeBaja;
 
     private async Task AbrirUbicacion(StockIdealRowDto f)
     {
@@ -803,20 +790,6 @@
             guardados.Add(f.ProductoId);
         }
         catch (Exception ex) { ToastService.Error("No se pudo guardar el comentario: " + ex.Message); }
-    }
-
-    private async Task DarDeBaja(StockIdealRowDto f)
-    {
-        dandoDeBaja = true;
-        try
-        {
-            await Api.DarDeBajaProductoIdealAsync(f.ProductoId);
-            filas.Remove(f);
-            bajaPreguntando = null;
-            ToastService.Success($"{f.Nombre} dado de baja. Se puede volver a activar desde Productos.");
-        }
-        catch (Exception ex) { ToastService.Error("No se pudo dar de baja: " + ex.Message); }
-        finally { dandoDeBaja = false; }
     }
 
     private bool bajandoPedido, bajandoConfig, procesando;

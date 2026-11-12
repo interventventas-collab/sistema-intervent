@@ -1405,10 +1405,23 @@
                 {
                     <div class="form-group">
                         <label class="form-label">Estado</label>
-                        <select class="form-input" @bind="formIsActive">
-                            <option value="@true">Activo</option>
-                            <option value="@false">Inactivo</option>
-                        </select>
+                        @* 2026-11-12: dar de baja va por su propio cartel (pausa las publicaciones de MeLi).
+                           Acá solo se puede volver a activar. Select con string puente: atado a bool no anda. *@
+                        @if (editIsActiveOriginal)
+                        {
+                            <div style="display:flex; align-items:center; gap:0.6rem;">
+                                <span>Activo</span>
+                                <button type="button" class="btn btn-secondary" style="color:#b91c1c;"
+                                        @onclick="() => bajaProductoId = editingId">Dar de baja…</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <select class="form-input" @bind="formEstado">
+                                <option value="activo">Activo</option>
+                                <option value="inactivo">Inactivo</option>
+                            </select>
+                        }
                     </div>
                 }
             </div>
@@ -1563,6 +1576,13 @@
 @if (histMovProducto is not null)
 {
     <HistorialProductoModal ProductoId="histMovProducto.Id" Nombre="@histMovProducto.Nombre" OnClose="() => histMovProducto = null" />
+}
+
+@if (bajaProductoId is int bajaPid)
+{
+    <DarDeBajaProductoModal ProductoId="bajaPid" Nombre="@formNombre" Desde="Productos"
+                            OnClose="() => bajaProductoId = null"
+                            OnDadoDeBaja="BajaHecha" />
 }
 
 @if (showHistorial && histProducto is not null)
@@ -2265,6 +2285,10 @@
     private int? formStockPiso;
     private string formNotas = "";
     private bool formIsActive = true;
+    private bool editIsActiveOriginal = true;
+    private string formEstado { get => formIsActive ? "activo" : "inactivo"; set => formIsActive = value == "activo"; }
+    // 2026-11-12: cartel de dar de baja (pausa publicaciones de MeLi).
+    private int? bajaProductoId;
 
     // Catalogo de OEMs (cargado una sola vez al abrir la pagina)
     private List<CafeOemDto>? oems;
@@ -3151,7 +3175,7 @@
         formStockIdeal = p.StockIdeal;
         formStockPiso = p.StockPiso;
         formStockKg = Math.Round(p.StockGramos / 1000m, 3, MidpointRounding.AwayFromZero);
-        formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
+        formNotas = p.Notas ?? ""; formIsActive = p.IsActive; editIsActiveOriginal = p.IsActive;
         formError = null; showForm = true;
     }
 
@@ -3236,6 +3260,14 @@
     }
 
     private void CloseForm() { showForm = false; formError = null; }
+
+    /// <summary>2026-11-12: el producto quedó dado de baja desde el cartel → cerrar la edición y recargar.
+    /// El cartel queda abierto mostrando qué publicaciones se pausaron, hasta que toque "Listo".</summary>
+    private async Task BajaHecha()
+    {
+        showForm = false; formError = null;
+        await Load();
+    }
 
     // 2026-10-30: ficha técnica del café que se está editando (recuadro arriba de los precios).
     private FichaTecnicaDto? fichaProd;
