@@ -38,4 +38,10 @@ public class PanoramaController : ControllerBase
     public async Task<IActionResult> GetVisitas([FromServices] VisitasPaginasService visitas,
                                                 CancellationToken ct = default)
         => Ok(await visitas.GetAsync(ct));
+
+    /// <summary>Reputación de las cuentas de MercadoLibre. Va aparte para que Panorama no dependa de MeLi.</summary>
+    [HttpGet("reputacion-meli")]
+    public async Task<IActionResult> GetReputacionMeli([FromServices] MeliReputacionService reputacion,
+                                                       CancellationToken ct = default)
+        => Ok(await reputacion.GetAsync(ct));
 }

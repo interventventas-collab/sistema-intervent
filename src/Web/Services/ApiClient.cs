@@ -10656,6 +10656,9 @@ public class ApiClient
     public async Task<VisitasPaginasDto?> GetVisitasPaginasAsync()
         => await GetAsync<VisitasPaginasDto>("/api/panorama/visitas");
 
+    public async Task<MeliReputacionDto?> GetReputacionMeliAsync()
+        => await GetAsync<MeliReputacionDto>("/api/panorama/reputacion-meli");
+
     // ════════════════════════════════════════════════════════════════════════════════
     // 2026-11-10: Dashboard nuevo (admin) — "Equipo hoy" en rayitas. Mismo endpoint que
     // GetDashboardEquipoAsync, pero además devuelve la hora de cada entrega del día por

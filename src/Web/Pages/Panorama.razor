@@ -406,6 +406,68 @@
             </div>
         }
 
+        @if (reputacion is not null && reputacion.Cuentas.Count > 0)
+        {
+            <div class="pan-panel pan-visitas">
+                <div class="pan-panel-h">
+                    <h3>Reputación en MercadoLibre</h3>
+                    <span class="pan-muted">la barra llena = te bajan de nivel · actualizado @reputacion.ConsultadoAt.AddHours(-3).ToString("HH:mm", Ar)</span>
+                </div>
+
+                <div class="pan-rep-cuentas">
+                    @foreach (var c in reputacion.Cuentas)
+                    {
+                        <div class="pan-rep-cuenta">
+                            <div class="pan-visita">
+                                <b>@c.Cuenta</b>
+                                @if (c.Color is not null)
+                                {
+                                    <span class="pan-sep">·</span><span class="pan-rep-color @ClaseColor(c.Color)">● @c.Color</span>
+                                }
+                                @if (!string.IsNullOrEmpty(c.Lider))
+                                {
+                                    <span class="pan-sep">·</span>@("MercadoLíder " + Capitalizar(c.Lider))
+                                }
+                                @if (c.Ventas > 0)
+                                {
+                                    <span class="pan-sep">·</span>@($"{c.Ventas.ToString("N0", Ar)} ventas {TextoPeriodo(c.Periodo)}")
+                                }
+                            </div>
+
+                            @if (c.Problema is not null)
+                            {
+                                <p class="pan-visita pan-muted">@c.Problema</p>
+                            }
+                            else
+                            {
+                                @foreach (var m in c.Metricas)
+                                {
+                                    var lleno = m.Tope > 0 ? Math.Min(100m, m.Porcentaje / m.Tope * 100m) : 0m;
+                                    <div class="pan-rep-met">
+                                        <div class="pan-rep-n">@m.Nombre</div>
+                                        <div class="pan-rep-bar" title="@($"{PctRep(m.Porcentaje)}% de un tope de {PctRep(m.Tope)}%")">
+                                            <div class="pan-rep-fill @ClaseBarra(lleno)" style="width:@(Math.Max(lleno, 1.5m).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                                        </div>
+                                        <div class="pan-rep-t">
+                                            <b>@m.Cantidad</b> (@PctRep(m.Porcentaje)%) de @PctRep(m.Tope)%<span class="pan-sep">·</span>@(m.TeEntran == 1 ? "te entra 1 más" : m.TeEntran == 0 ? "llegaste al tope" : $"te entran {m.TeEntran.ToString("N0", Ar)} más")
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="pan-rep-ley">
+                    <span class="pan-rep-cuadro verde">■</span> tranquilo (menos de la mitad)<span class="pan-sep">·</span><span class="pan-rep-cuadro naranja">■</span> pasaste la mitad del tope<span class="pan-sep">·</span><span class="pan-rep-cuadro rojo">■</span> cerca de perder el nivel
+                </div>
+                <p class="pan-rep-nota">
+                    Los números los da MercadoLibre. Los topes no los informa: son los de su ayuda (MercadoLíder: reclamos 1%, cancelaciones 0,5%, demoras 8%;
+                    cuenta común para seguir en verde: 1,5%, 1% y 10%).
+                </p>
+            </div>
+        }
+
         <p class="pan-pie">
             Los números salen de tu base en el momento. Café: sin anuladas y sin proformas ya facturadas; las notas de
             crédito restan. MercadoLibre: órdenes pagadas, con el margen descontando comisión, envío e IVA — la misma
@@ -421,6 +483,28 @@
     .pan-wrap { padding: 0.2rem 0 2rem; }
 
     .pan-visitas { margin-top:1rem; }
+
+    .pan-rep-cuentas { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:0.6rem 2rem; }
+    .pan-rep-color { font-weight:600; }
+    .pan-rep-color.verde { color:#15803d; }
+    .pan-rep-color.amarillo { color:#a16207; }
+    .pan-rep-color.naranja { color:#c2410c; }
+    .pan-rep-color.rojo { color:#b91c1c; }
+    .pan-rep-met { display:grid; grid-template-columns:110px 1fr; column-gap:12px; align-items:center; margin-top:0.65rem; }
+    .pan-rep-n { font-size:0.85rem; color:var(--text-secondary); }
+    .pan-rep-bar { height:12px; background:var(--border); border-radius:6px; overflow:hidden; }
+    .pan-rep-fill { height:100%; border-radius:6px; }
+    .pan-rep-fill.verde { background:#22c55e; }
+    .pan-rep-fill.naranja { background:#f59e0b; }
+    .pan-rep-fill.rojo { background:#dc2626; }
+    .pan-rep-t { grid-column:2; font-size:0.78rem; color:var(--text-muted); margin-top:3px; font-variant-numeric:tabular-nums; }
+    .pan-rep-t b { color:var(--text-secondary); }
+    .pan-rep-ley { margin-top:0.9rem; font-size:0.75rem; color:var(--text-muted); }
+    .pan-rep-cuadro.verde { color:#22c55e; }
+    .pan-rep-cuadro.naranja { color:#f59e0b; }
+    .pan-rep-cuadro.rojo { color:#dc2626; }
+    .pan-rep-nota { margin:0.35rem 0 0; font-size:0.72rem; color:var(--text-muted); }
+    @@media (max-width: 600px) { .pan-rep-met { grid-template-columns:90px 1fr; } }
     .pan-visita { margin:0.6rem 0 0; font-size:0.87rem; color:var(--text-secondary); font-variant-numeric:tabular-nums; }
     .pan-visita.pan-muted { color:var(--text-muted); }
     .pan-visita b { color:var(--text-primary); font-weight:600; }
@@ -602,9 +686,40 @@
         if (!string.IsNullOrEmpty(Ver) && Metricas.Any(m => m.Key == Ver)) metrica = Ver;
     }
 
-    protected override async Task OnInitializedAsync() => await Task.WhenAll(Cargar(), CargarVisitas());
+    protected override async Task OnInitializedAsync() => await Task.WhenAll(Cargar(), CargarVisitas(), CargarReputacion());
 
     private VisitasPaginasDto? visitas;
+    private MeliReputacionDto? reputacion;
+
+    // Va aparte: si MercadoLibre tarda o falla, el resto de Panorama no se entera.
+    private async Task CargarReputacion()
+    {
+        try { reputacion = await Api.GetReputacionMeliAsync(); }
+        catch { reputacion = null; }
+        StateHasChanged();
+    }
+
+    private static string PctRep(decimal x) => x.ToString("0.##", Ar);
+
+    // Menos de la mitad del tope: verde. Desde la mitad: naranja. Desde el 80%: rojo.
+    private static string ClaseBarra(decimal lleno) => lleno >= 80m ? "rojo" : lleno >= 50m ? "naranja" : "verde";
+
+    private static string ClaseColor(string color) => color switch
+    {
+        "verde" or "verde claro" => "verde",
+        "amarillo" => "amarillo",
+        "naranja" => "naranja",
+        _ => "rojo"
+    };
+
+    private static string Capitalizar(string s) => s.Length == 0 ? s : char.ToUpper(s[0]) + s[1..];
+
+    private static string TextoPeriodo(string? periodo) => periodo switch
+    {
+        "60 days" => "en los últimos 60 días",
+        "365 days" => "en el último año",
+        _ => ""
+    };
 
     // Va aparte: si Google tarda o falla, el resto de Panorama no se entera.
     private async Task CargarVisitas()
