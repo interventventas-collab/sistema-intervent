@@ -6,6 +6,12 @@ namespace Web.Models;
 public record VisitasPaginaDto(string Dominio, int Hoy, int Ayer, int Semana);
 public record VisitasPaginasDto(bool Conectado, string? Problema, List<VisitasPaginaDto> Paginas);
 
+// 2026-11-12 — /api/panorama/reputacion-meli. Espeja Api/Services/MeliReputacionService.cs.
+public record MeliMetricaDto(string Nombre, int Cantidad, decimal Porcentaje, decimal Tope, int TeEntran);
+public record MeliReputacionCuentaDto(string Cuenta, string? Color, string? Lider, int Ventas, string? Periodo,
+                                      List<MeliMetricaDto> Metricas, string? Problema);
+public record MeliReputacionDto(DateTime ConsultadoAt, List<MeliReputacionCuentaDto> Cuentas);
+
 public record PanoramaPataDto(
     string Clave, string Nombre, string Canal,
     decimal Facturado, decimal? Margen, decimal? MargenPct,
