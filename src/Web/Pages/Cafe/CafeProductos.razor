@@ -148,6 +148,13 @@
                         @(isBusyBulk ? "Aplicando..." : $"Aplicar marca a {selProductos.Count}")
                     </button>
 
+                    @* 2026-11-12: dar de baja varios tildados de una (pausa sus publicaciones de MeLi). *@
+                    <button class="btn btn-secondary" style="color:#b91c1c; border-color:#fca5a5;" @onclick="AbrirBajaBulk"
+                            disabled="@(IdsBajaBulk.Count == 0 || isBusyBulk)"
+                            title="Los combos y los que ya están inactivos no cuentan">
+                        🗑 Dar de baja a @IdsBajaBulk.Count…
+                    </button>
+
                     @* 2026-09-24: lugar en el depósito para todos los tildados (mismos botones que el renglón) *@
                     <div style="flex-basis:100%; display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; padding-top:0.4rem; border-top:1px dashed #f59e0b;">
                         <span style="font-weight:600; color:#78350f; font-size:0.85rem;">📍 Poner lugar a los tildados:</span>
@@ -1578,6 +1585,13 @@
     <HistorialProductoModal ProductoId="histMovProducto.Id" Nombre="@histMovProducto.Nombre" OnClose="() => histMovProducto = null" />
 }
 
+@if (bajaBulkIds is not null)
+{
+    <DarDeBajaProductoModal ProductoIds="bajaBulkIds" Desde="Productos (varios)"
+                            OnClose="() => bajaBulkIds = null"
+                            OnDadoDeBaja="BajaBulkHecha" />
+}
+
 @if (bajaProductoId is int bajaPid)
 {
     <DarDeBajaProductoModal ProductoId="bajaPid" Nombre="@formNombre" Desde="Productos"
@@ -1857,6 +1871,18 @@
     }
 
     private void LimpiarSeleccion() => selProductos.Clear();
+
+    // 2026-11-12: dar de baja varios tildados (sin combos ni los que ya están inactivos).
+    private List<int>? bajaBulkIds;
+    private List<int> IdsBajaBulk => productosVisibles
+        .Where(p => !p.EsCompuestoFake && p.IsActive && selProductos.Contains(p.Id))
+        .Select(p => p.Id).ToList();
+    private void AbrirBajaBulk() { if (IdsBajaBulk.Count > 0) bajaBulkIds = IdsBajaBulk; }
+    private async Task BajaBulkHecha()
+    {
+        if (bajaBulkIds is not null) foreach (var id in bajaBulkIds) selProductos.Remove(id);
+        await Load();
+    }
 
     /// <summary>Limpia todos los campos de precios futuros (fecha + todos los importes).</summary>
     private void LimpiarPreciosFuturos()

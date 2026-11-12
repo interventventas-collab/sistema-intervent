@@ -3,47 +3,92 @@
 
 @* 2026-11-12: dar de baja un producto. Dos opciones (stock en 0 / stock como está) y, en las dos,
    se pausan en MercadoLibre todas las publicaciones que lo contienen (sueltas, sets, packs, combos).
-   Se usa en Productos (editar) y en Stock ideal → Configurar. *@
+   Se usa en Productos (editar), Stock ideal → Configurar y, para VARIOS a la vez, en Productos con
+   Edición ON (tildes). Con varios: una línea por producto + total de publicaciones, y los da de baja
+   de a uno mostrando el avance. *@
 <div @onclick="Cerrar"
      style="position:fixed; inset:0; background:rgba(17,24,39,0.5); display:flex; align-items:center; justify-content:center; z-index:9999; padding:0.75rem;">
     <div @onclick:stopPropagation="true"
-         style="background:#fff; border-radius:14px; padding:1.1rem 1.2rem; width:min(94vw,560px); max-height:92vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.3); font-size:0.9rem; color:#111827;">
+         style="background:#fff; border-radius:14px; padding:1.1rem 1.2rem; width:min(94vw,@(EsVarios ? "680px" : "560px")); max-height:92vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.3); font-size:0.9rem; color:#111827;">
         <div style="display:flex; align-items:flex-start; gap:0.6rem;">
             <div style="flex:1;">
-                <div style="font-weight:700; font-size:1.02rem;">Dar de baja @(dto?.Sku ?? "")</div>
-                <div style="color:#6b7280; font-size:0.85rem;">
-                    @(dto?.Nombre ?? Nombre)
-                    @if (dto is not null)
+                @if (EsVarios)
+                {
+                    <div style="font-weight:700; font-size:1.02rem;">Dar de baja @Ids.Count productos</div>
+                    @if (dtos.Count == Ids.Count)
                     {
-                        <span> · stock @StockTxt</span>
+                        <div style="color:#6b7280; font-size:0.85rem;">stock total @dtos.Sum(d => d.StockUnidades) u.@(dtos.Any(d => d.StockGramos > 0) ? $" + {dtos.Sum(d => d.StockGramos) / 1000m:0.###} kg" : "")</div>
                     }
-                </div>
+                }
+                else
+                {
+                    <div style="font-weight:700; font-size:1.02rem;">Dar de baja @(Uno?.Sku ?? "")</div>
+                    <div style="color:#6b7280; font-size:0.85rem;">
+                        @(Uno?.Nombre ?? Nombre)
+                        @if (Uno is not null) { <span> · stock @StockTxt(Uno)</span> }
+                    </div>
+                }
             </div>
             <button type="button" @onclick="Cerrar" aria-label="Cerrar"
                     style="border:none; background:#f3f4f6; border-radius:8px; width:32px; height:32px; cursor:pointer;">✕</button>
         </div>
 
-        @if (dto is null)
+        @if (error is not null)
         {
-            <div style="padding:1.2rem 0; text-align:center; color:#6b7280;">@(error ?? "Buscando sus publicaciones…")</div>
+            <div style="padding:1.2rem 0; text-align:center; color:#b91c1c;">@error</div>
         }
-        else if (resultado is not null)
+        else if (dtos.Count < Ids.Count)
         {
-            <div style="margin-top:0.9rem; font-weight:600; color:@(resultado.Fallaron > 0 ? "#b91c1c" : "#111827");">@resultado.Mensaje</div>
-            @if (resultado.Detalle.Count > 0)
+            <div style="padding:1.2rem 0; text-align:center; color:#6b7280;">Buscando sus publicaciones… @(EsVarios ? $"{dtos.Count} de {Ids.Count}" : "")</div>
+        }
+        else if (enviando || resultados.Count > 0)
+        {
+            @if (enviando)
             {
-                <div style="margin-top:0.5rem; font-size:0.8rem; line-height:1.55;">
-                    @foreach (var d in resultado.Detalle)
+                <div style="margin-top:0.9rem; font-weight:600;">Dando de baja… @resultados.Count de @dtos.Count</div>
+            }
+            else
+            {
+                var fallaron = resultados.Sum(r => r.Res?.Fallaron ?? 1);
+                var pausadas = resultados.Sum(r => r.Res?.Pausadas ?? 0);
+                <div style="margin-top:0.9rem; font-weight:600; color:@(fallaron > 0 ? "#b91c1c" : "#111827");">
+                    @if (EsVarios)
                     {
-                        <div style="color:@(d.Ok ? "#374151" : "#b91c1c");">
-                            <span style="font-family:monospace;">@d.MeliItemId</span> · @d.Titulo · <b>@d.Mensaje</b>
-                        </div>
+                        @($"{resultados.Count(r => r.Res is not null)} dados de baja · {pausadas} publicación(es) pausada(s) en MercadoLibre")
+                        @if (fallaron > 0) { <span> · OJO: @fallaron con problemas (en rojo abajo), revisalas a mano en Publicaciones.</span> }
+                    }
+                    else
+                    {
+                        @(resultados[0].Res?.Mensaje ?? resultados[0].Error)
                     }
                 </div>
             }
-            <div style="display:flex; justify-content:flex-end; margin-top:1rem;">
-                <button class="btn btn-secondary" @onclick="Cerrar">Listo</button>
+            <div style="margin-top:0.5rem; font-size:0.8rem; line-height:1.55;">
+                @foreach (var r in resultados)
+                {
+                    @if (EsVarios)
+                    {
+                        <div style="font-weight:600; margin-top:0.35rem; color:@(r.Res is null || r.Res.Fallaron > 0 ? "#b91c1c" : "#111827");">
+                            @r.Dto.Sku · @r.Dto.Nombre — @(r.Res?.Mensaje ?? r.Error)
+                        </div>
+                    }
+                    @if (r.Res is not null)
+                    {
+                        @foreach (var d in r.Res.Detalle.Where(d => !EsVarios || !d.Ok))
+                        {
+                            <div style="color:@(d.Ok ? "#374151" : "#b91c1c"); padding-left:@(EsVarios ? "0.8rem" : "0");">
+                                <span style="font-family:monospace;">@d.MeliItemId</span> · @d.Titulo · <b>@d.Mensaje</b>
+                            </div>
+                        }
+                    }
+                }
             </div>
+            @if (!enviando)
+            {
+                <div style="display:flex; justify-content:flex-end; margin-top:1rem;">
+                    <button class="btn btn-secondary" @onclick="Cerrar">Listo</button>
+                </div>
+            }
         }
         else
         {
@@ -54,43 +99,63 @@
             </label>
             <label style="display:flex; gap:0.6rem; align-items:flex-start; padding:0.6rem 0; border-top:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb; cursor:pointer;">
                 <input type="radio" name="baja-op" checked="@(!stockEnCero)" @onchange="() => stockEnCero = false" style="margin-top:0.25rem;" />
-                <span>Dar de baja y dejar el stock como está (@StockTxt)<br /><span style="color:#6b7280; font-size:0.82rem;">Queda anotado lo que hay, pero no se vende más</span></span>
+                <span>Dar de baja y dejar el stock como está@(EsVarios ? "" : $" ({StockTxt(Uno!)})")<br /><span style="color:#6b7280; font-size:0.82rem;">Queda anotado lo que hay, pero no se vende más</span></span>
             </label>
-            @if (dto.StockEnFull > 0 && stockEnCero)
+            @if (dtos.Sum(d => d.StockEnFull) > 0 && stockEnCero)
             {
-                <div style="color:#6b7280; font-size:0.82rem; margin-top:0.4rem;">Las @dto.StockEnFull u. que están en Full de MercadoLibre no se tocan (están en su depósito).</div>
+                <div style="color:#6b7280; font-size:0.82rem; margin-top:0.4rem;">Las @dtos.Sum(d => d.StockEnFull) u. que están en Full de MercadoLibre no se tocan (están en su depósito).</div>
             }
 
-            @if (Pausar.Count == 0 && Compartidas.Count == 0)
+            @if (EsVarios)
             {
-                <div style="margin:0.9rem 0; color:#374151;">No tiene publicaciones en MercadoLibre.</div>
+                <div style="margin-top:0.8rem; font-size:0.82rem; line-height:1.6;">
+                    @foreach (var d in dtos)
+                    {
+                        var aPausar = Pausar(d).Count(x => x.Estado != "paused");
+                        <div style="border-bottom:1px solid #f3f4f6; padding:0.15rem 0;">
+                            <span style="font-family:monospace;">@d.Sku</span> · @d.Nombre · stock @StockTxt(d)
+                            @if (d.YaInactivo) { <span style="color:#6b7280;"> · ya estaba inactivo</span> }
+                            @if (aPausar > 0) { <span style="color:#92400e; font-weight:600;"> · pausa @aPausar publi.</span> }
+                            @if (Compartidas(d).Count > 0) { <span style="color:#92400e;"> · @Compartidas(d).Count con otros colores (siguen)</span> }
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (TotalPausar == 0 && TotalYaPausadas == 0 && dtos.All(d => Compartidas(d).Count == 0))
+            {
+                <div style="margin:0.9rem 0; color:#374151;">@(EsVarios ? "Ninguno tiene publicaciones en MercadoLibre." : "No tiene publicaciones en MercadoLibre.")</div>
             }
             else
             {
                 <div style="margin:0.9rem 0; padding:0.6rem 0.75rem; border:1px solid #fcd34d; background:#fffbeb; color:#92400e; border-radius:8px;">
-                    @if (Pausar.Count > 0)
+                    @if (TotalPausar > 0 || TotalYaPausadas > 0)
                     {
                         <div style="font-weight:700; margin-bottom:0.3rem;">
-                            ⚠ Se van a pausar @Pausar.Count publicación(es) de MercadoLibre
-                            @if (YaPausadas > 0) { <span style="font-weight:400;"> (@YaPausadas ya estaban pausadas)</span> }
+                            ⚠ Se van a pausar @TotalPausar publicación(es) de MercadoLibre
+                            @if (TotalYaPausadas > 0) { <span style="font-weight:400;"> (@TotalYaPausadas ya estaban pausadas)</span> }
                         </div>
-                        <div style="font-size:0.8rem; line-height:1.55;">
-                            @foreach (var pub in (verTodas ? Pausar : Pausar.Take(4)))
-                            {
-                                <div><span style="font-family:monospace;">@pub.MeliItemId</span> · @pub.Titulo@(pub.Estado == "paused" ? " · ya pausada" : "")</div>
-                            }
-                            @if (!verTodas && Pausar.Count > 4)
-                            {
-                                <a href="javascript:void(0)" @onclick="() => verTodas = true" style="color:#92400e; text-decoration:underline;">… y @(Pausar.Count - 4) más · ver todas</a>
-                            }
-                        </div>
+                        @if (!EsVarios)
+                        {
+                            var lista = Pausar(Uno!);
+                            <div style="font-size:0.8rem; line-height:1.55;">
+                                @foreach (var pub in (verTodas ? lista : lista.Take(4)))
+                                {
+                                    <div><span style="font-family:monospace;">@pub.MeliItemId</span> · @pub.Titulo@(pub.Estado == "paused" ? " · ya pausada" : "")</div>
+                                }
+                                @if (!verTodas && lista.Count > 4)
+                                {
+                                    <a href="javascript:void(0)" @onclick="() => verTodas = true" style="color:#92400e; text-decoration:underline;">… y @(lista.Count - 4) más · ver todas</a>
+                                }
+                            </div>
+                        }
                         <div style="font-size:0.78rem; margin-top:0.35rem;">Se pausan, no se finalizan: si te equivocaste, activás el producto y las prendés de nuevo.</div>
                     }
-                    @if (Compartidas.Count > 0)
+                    @if (dtos.Any(d => Compartidas(d).Count > 0))
                     {
-                        <div style="font-size:0.8rem; margin-top:@(Pausar.Count > 0 ? "0.5rem" : "0");">
+                        <div style="font-size:0.8rem; margin-top:0.5rem;">
                             <b>Siguen activas</b> porque tienen otros colores que sí se venden@(stockEnCero ? " (este color queda en 0)" : " — OJO: este color sigue con stock, mejor elegí stock en 0"):
-                            @foreach (var pub in Compartidas)
+                            @foreach (var pub in dtos.SelectMany(Compartidas))
                             {
                                 <div><span style="font-family:monospace;">@pub.MeliItemId</span> · @pub.Titulo</div>
                             }
@@ -100,10 +165,9 @@
             }
 
             <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
-                <button class="btn btn-secondary" disabled="@enviando" @onclick="Cerrar">Cancelar</button>
-                <button class="btn" disabled="@enviando" @onclick="Confirmar"
-                        style="background:#dc2626; color:#fff; border:none;">
-                    @(enviando ? "Dando de baja…" : (Pausar.Count(x => x.Estado != "paused") > 0 ? "Dar de baja y pausar" : "Dar de baja"))
+                <button class="btn btn-secondary" @onclick="Cerrar">Cancelar</button>
+                <button class="btn" @onclick="Confirmar" style="background:#dc2626; color:#fff; border:none;">
+                    @((EsVarios ? $"Dar de baja {dtos.Count}" : "Dar de baja") + (TotalPausar > 0 ? " y pausar" : ""))
                 </button>
             </div>
         }
@@ -111,35 +175,49 @@
 </div>
 
 @code {
-    [Parameter, EditorRequired] public int ProductoId { get; set; }
+    /// <summary>Un solo producto (Productos → editar, Stock ideal).</summary>
+    [Parameter] public int ProductoId { get; set; }
+    /// <summary>Varios a la vez (Productos con Edición ON). Si viene, manda sobre ProductoId.</summary>
+    [Parameter] public List<int>? ProductoIds { get; set; }
     [Parameter] public string? Nombre { get; set; }
     /// <summary>Pantalla desde donde se da de baja (queda anotado en el registro).</summary>
     [Parameter] public string Desde { get; set; } = "Productos";
     [Parameter] public EventCallback OnClose { get; set; }
-    /// <summary>Se llama cuando el producto quedó dado de baja (para refrescar la lista).</summary>
+    /// <summary>Se llama cuando terminó de dar de baja (para refrescar la lista).</summary>
     [Parameter] public EventCallback OnDadoDeBaja { get; set; }
 
-    private ProductoBajaPreviewDto? dto;
-    private ProductoBajaResultadoDto? resultado;
+    private record Resultado(ProductoBajaPreviewDto Dto, ProductoBajaResultadoDto? Res, string? Error);
+
+    private List<int> Ids => ProductoIds is { Count: > 0 } ? ProductoIds : new() { ProductoId };
+    private bool EsVarios => Ids.Count > 1;
+    private readonly List<ProductoBajaPreviewDto> dtos = new();
+    private ProductoBajaPreviewDto? Uno => dtos.FirstOrDefault();
+    private readonly List<Resultado> resultados = new();
     private string? error;
     private bool stockEnCero = true;
     private bool verTodas;
     private bool enviando;
 
-    private List<ProductoBajaPubliDto> Pausar => dto?.Publicaciones.Where(p => !p.CompartidaConOtrosColores).ToList() ?? new();
-    private List<ProductoBajaPubliDto> Compartidas => dto?.Publicaciones.Where(p => p.CompartidaConOtrosColores).ToList() ?? new();
-    private int YaPausadas => Pausar.Count(p => p.Estado == "paused");
+    private static List<ProductoBajaPubliDto> Pausar(ProductoBajaPreviewDto d) => d.Publicaciones.Where(p => !p.CompartidaConOtrosColores).ToList();
+    private static List<ProductoBajaPubliDto> Compartidas(ProductoBajaPreviewDto d) => d.Publicaciones.Where(p => p.CompartidaConOtrosColores).ToList();
+    // Una publicación puede tener a dos de los productos elegidos (ej. un set con dos colores): contarla una vez.
+    private int TotalPausar => dtos.SelectMany(Pausar).Where(p => p.Estado != "paused").Select(p => p.MeliItemId).Distinct().Count();
+    private int TotalYaPausadas => dtos.SelectMany(Pausar).Where(p => p.Estado == "paused").Select(p => p.MeliItemId).Distinct().Count();
 
-    private string StockTxt => dto is null ? "" :
-        dto.StockGramos > 0 ? $"{dto.StockGramos / 1000m:0.###} kg" : $"{dto.StockUnidades} u.";
+    private static string StockTxt(ProductoBajaPreviewDto d) =>
+        d.StockGramos > 0 ? $"{d.StockGramos / 1000m:0.###} kg" : $"{d.StockUnidades} u.";
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            dto = await Api.GetProductoBajaPreviewAsync(ProductoId);
-            if (dto is null) error = "No se encontró el producto.";
-            else if (dto.StockUnidades == 0 && dto.StockGramos == 0) stockEnCero = true;
+            foreach (var id in Ids)
+            {
+                var d = await Api.GetProductoBajaPreviewAsync(id);
+                if (d is null) { error = "No se encontró uno de los productos."; return; }
+                dtos.Add(d);
+                StateHasChanged();
+            }
         }
         catch (Exception ex) { error = "No se pudo cargar: " + ex.Message; }
     }
@@ -147,16 +225,23 @@
     private async Task Confirmar()
     {
         enviando = true;
-        try
+        resultados.Clear();
+        foreach (var d in dtos)
         {
-            resultado = await Api.DarDeBajaProductoAsync(ProductoId, stockEnCero, Desde);
-            if (resultado is null) { ToastService.Error("No se pudo dar de baja."); return; }
-            if (resultado.Fallaron > 0) ToastService.Error(resultado.Mensaje);
-            else ToastService.Success(resultado.Mensaje);
-            await OnDadoDeBaja.InvokeAsync();
+            try
+            {
+                var r = await Api.DarDeBajaProductoAsync(d.ProductoId, stockEnCero, Desde);
+                resultados.Add(new Resultado(d, r, r is null ? "No se pudo dar de baja." : null));
+            }
+            catch (Exception ex) { resultados.Add(new Resultado(d, null, "No se pudo dar de baja: " + ex.Message)); }
+            StateHasChanged();
         }
-        catch (Exception ex) { ToastService.Error("No se pudo dar de baja: " + ex.Message); }
-        finally { enviando = false; }
+        enviando = false;
+
+        var problemas = resultados.Count(r => r.Res is null || r.Res.Fallaron > 0);
+        if (problemas > 0) ToastService.Error(EsVarios ? $"{problemas} con problemas: mirá el detalle." : (resultados[0].Res?.Mensaje ?? resultados[0].Error ?? "Error"));
+        else ToastService.Success(EsVarios ? $"{resultados.Count} productos dados de baja." : resultados[0].Res!.Mensaje);
+        await OnDadoDeBaja.InvokeAsync();
     }
 
     private Task Cerrar() => enviando ? Task.CompletedTask : OnClose.InvokeAsync();
