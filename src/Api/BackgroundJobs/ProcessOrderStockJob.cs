@@ -54,33 +54,20 @@ public class ProcessOrderStockJob : IScheduledJob
 
                 if (meliItem is null || meliItem.ProductId is null)
                 {
-                    // No tiene producto vinculado, marcar como procesadas igualmente
-                    foreach (var order in group)
-                    {
-                        order.StockDiscounted = true;
-                        order.UpdatedAt = DateTime.UtcNow;
-                    }
+                    // 2026-11-12 BUG-FIX: antes las marcaba StockDiscounted=true "igualmente". Como hoy
+                    // NINGUNA publicacion usa el ProductId viejo (todo va por CafeProductoId /
+                    // MeliItemComponentes), este job le "robaba" la orden a MeliStockSyncService y esa
+                    // venta nunca descontaba stock (131 ventas sep–nov; ej. Volturno V103 vendida sin
+                    // tener). Ahora NO la toca: la deja para MeliStockSyncService, que la descuenta
+                    // o la marca él mismo si de verdad no tiene producto vinculado.
                     skippedNoProduct += group.Count();
-
-                    await auditLog.LogAsync("MeliOrder", itemId, "STOCK_SKIP",
-                        JsonSerializer.Serialize(new
-                        {
-                            motivo = "Sin producto vinculado",
-                            item = itemId,
-                            ordenes = group.Count(),
-                            cantidadTotal = group.Sum(o => o.Quantity)
-                        }), "Sistema/ProcessOrderStock");
                     continue;
                 }
 
                 var product = await db.Products.FindAsync(new object[] { meliItem.ProductId.Value }, cancellationToken);
                 if (product is null)
                 {
-                    foreach (var order in group)
-                    {
-                        order.StockDiscounted = true;
-                        order.UpdatedAt = DateTime.UtcNow;
-                    }
+                    // Mismo criterio que arriba: no marcar, la procesa MeliStockSyncService.
                     skippedNoProduct += group.Count();
                     continue;
                 }
