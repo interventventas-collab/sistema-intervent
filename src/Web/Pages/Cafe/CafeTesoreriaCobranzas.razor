@@ -180,12 +180,16 @@
         else
         {
             @* 2026-07-03: rediseño card-row para maximizar trazabilidad y usar mejor el espacio.
-               5 columnas: [Nº+Fecha] · [Cliente+Chips CAFE+Factura] · [Trazabilidad quien cargó/aprobó] · [Total+F.Pago] · [Estado+Acciones] *@
+               5 columnas: [Nº+Fecha] · [Cliente+Chips CAFE+Factura] · [Total+F.Pago+quién cargó/cobró] · [→ a quién se le pasó] · [Estado+Acciones] (orden nuevo 13/11/2026) *@
             <div style="display:flex; flex-direction:column; gap:.5rem;">
+                @* 13/11/2026: títulos de columna (maqueta aprobada por el dueño). *@
+                <div style="display:grid; grid-template-columns:130px minmax(0,1.3fr) 190px minmax(0,1fr) 150px; gap:.9rem; padding:0 1rem 0 calc(1rem + 4px); font-size:.66rem; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:.05em;">
+                    <div>Recibo</div><div>Cliente</div><div style="text-align:right;">Cobrado</div><div>Se le pasó a</div><div></div>
+                </div>
                 @foreach (var c in cobranzasFiltradas)
                 {
                     var esAnulada = c.Estado == "ANULADA";
-                    <div style="display:grid; grid-template-columns:130px 1fr 240px 160px 150px; gap:.9rem; align-items:start; padding:.75rem 1rem; background:#fff; border:1px solid #e5e7eb; border-left:4px solid @(esAnulada ? "#dc2626" : "#16a34a"); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,.03); @(esAnulada ? "opacity:.55;" : "")">
+                    <div style="display:grid; grid-template-columns:130px minmax(0,1.3fr) 190px minmax(0,1fr) 150px; gap:.9rem; align-items:start; padding:.75rem 1rem; background:#fff; border:1px solid #e5e7eb; border-left:4px solid @(esAnulada ? "#dc2626" : "#16a34a"); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,.03); @(esAnulada ? "opacity:.55;" : "")">
 
                         @* --- Col 1: número + fecha --- *@
                         <div>
@@ -252,8 +256,21 @@
                             }
                         </div>
 
-                        @* --- Col 3: trazabilidad quien cobró/aprobó --- *@
-                        <div style="font-size:.75rem; display:flex; flex-direction:column; gap:.3rem;">
+                        @* --- Col 3 (13/11/2026, orden que pidió el dueño): total + forma de pago + retenciones, y abajo quién la cargó/cobró --- *@
+                        <div style="text-align:right;">
+                            <div style="font-weight:700; color:#16a34a; font-size:1.05rem;">$@c.Total.ToString("N2")</div>
+                            @if (!string.IsNullOrWhiteSpace(c.FormaPago))
+                            {
+                                var (bg, fg, br) = FormaPagoColor(c.FormaPago);
+                                <div style="margin-top:.25rem;">
+                                    <span title="@(c.FormaPagoDetalle ?? c.FormaPago)" style="display:inline-block; font-size:0.7rem; padding:.1rem .45rem; background:@bg; color:@fg; border:1px solid @br; border-radius:4px; white-space:nowrap;">@c.FormaPago</span>
+                                </div>
+                            }
+                            @if (c.Retenciones > 0)
+                            {
+                                <div style="margin-top:.2rem; font-size:.7rem; color:#6b7280;">Ret: $@c.Retenciones.ToString("N2")</div>
+                            }
+                        <div style="font-size:.72rem; display:flex; flex-direction:column; gap:.25rem; margin-top:.4rem; text-align:left;">
                             @if (!string.IsNullOrWhiteSpace(c.RepartidorNombre))
                             {
                                 <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:4px; padding:.25rem .4rem;" title="Cobrada en la calle por el repartidor">
@@ -293,32 +310,33 @@
                                 <div style="color:#9ca3af; font-style:italic;">— sin trazabilidad —</div>
                             }
                         </div>
+                        </div>
 
-                        @* --- Col 4: total + forma de pago + retenciones --- *@
-                        <div style="text-align:right;">
-                            <div style="font-weight:700; color:#16a34a; font-size:1.05rem;">$@c.Total.ToString("N2")</div>
-                            @if (!string.IsNullOrWhiteSpace(c.FormaPago))
-                            {
-                                var (bg, fg, br) = FormaPagoColor(c.FormaPago);
-                                <div style="margin-top:.25rem;">
-                                    <span title="@(c.FormaPagoDetalle ?? c.FormaPago)" style="display:inline-block; font-size:0.7rem; padding:.1rem .45rem; background:@bg; color:@fg; border:1px solid @br; border-radius:4px; white-space:nowrap;">@c.FormaPago</span>
-                                </div>
-                            }
+                        @* --- Col 4 (13/11/2026): a quién se le pasó la plata, al lado del monto, mismo tamaño que el cliente y en violeta --- *@
+                        <div style="min-width:0;">
                             @if (!string.IsNullOrWhiteSpace(c.RedirigidoA))
                             {
-                                <div style="margin-top:.2rem; font-size:.72rem; color:#374151;" title="A quién se le pasó la plata">→ @c.RedirigidoA</div>
-                            }
-                            @if (!string.IsNullOrWhiteSpace(c.RedirigidoComentario))
-                            {
-                                <div style="margin-top:.1rem; font-size:.72rem; color:#6b7280; font-style:italic;" title="Comentario de la redirigida">“@c.RedirigidoComentario”</div>
+                                @foreach (var (nom, det) in PartesRedirigido(c.RedirigidoA))
+                                {
+                                    <div style="font-weight:700; font-size:.95rem; color:#7c3aed;" title="A quién se le pasó la plata">→ @nom</div>
+                                    @if (!string.IsNullOrWhiteSpace(det))
+                                    {
+                                        <div style="font-size:.74rem; color:#7c3aed; margin:.1rem 0 .25rem 1.1rem;">@det</div>
+                                    }
+                                }
                             }
                             @if (!string.IsNullOrWhiteSpace(c.EndosadoA))
                             {
-                                <div style="margin-top:.2rem; font-size:.72rem; color:#374151;" title="El cheque de esta cobranza se le pasó a un proveedor">→ endosado a @c.EndosadoA</div>
+                                <div style="font-weight:700; font-size:.95rem; color:#7c3aed;" title="El cheque de esta cobranza se le pasó a un proveedor">→ @c.EndosadoA</div>
+                                <div style="font-size:.74rem; color:#7c3aed; margin:.1rem 0 .25rem 1.1rem;">cheque endosado</div>
                             }
-                            @if (c.Retenciones > 0)
+                            @if (!string.IsNullOrWhiteSpace(c.RedirigidoComentario))
                             {
-                                <div style="margin-top:.2rem; font-size:.7rem; color:#6b7280;">Ret: $@c.Retenciones.ToString("N2")</div>
+                                <div style="font-size:.74rem; color:#6b7280; font-style:italic; margin-left:1.1rem;" title="Comentario de la redirigida">“@c.RedirigidoComentario”</div>
+                            }
+                            @if (string.IsNullOrWhiteSpace(c.RedirigidoA) && string.IsNullOrWhiteSpace(c.EndosadoA))
+                            {
+                                <span style="color:#d1d5db;">—</span>
                             }
                         </div>
 
@@ -1528,6 +1546,19 @@
 }
 
 @code {
+    /// <summary>13/11/2026: "GLOBAL FOOD S.R.L · proveedor (oficial · Factura A 0003-…)" → nombre y detalle
+    /// por separado, para mostrar el nombre grande al lado del monto y el detalle chico abajo.</summary>
+    private static IEnumerable<(string Nombre, string? Detalle)> PartesRedirigido(string txt)
+    {
+        foreach (var parte in txt.Split(" / ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var i = parte.IndexOf(" · ", StringComparison.Ordinal);
+            if (i < 0) { yield return (parte, null); continue; }
+            var det = parte[(i + 3)..].Replace(" (", " · ");
+            if (det.EndsWith(')')) det = det[..^1];
+            yield return (parte[..i], det);
+        }
+    }
     private ComprobantePendienteDto? pdfComp;
     private string? pdfCompUrl;
     private byte[]? pdfCompBytes;
