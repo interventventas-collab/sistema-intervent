@@ -5440,3 +5440,52 @@ tr.om-franja-tr > td { padding: 0 0.5rem 0.8rem !important; border-top: none !im
   border-radius: var(--radius-sm); display: flex; align-items: center; }
 .nav-group-split .nav-group-arrow-btn:hover { background: rgba(255,255,255,.1); }
 .nav-group.expanded > .nav-group-split .nav-group-arrow { transform: rotate(90deg); }
+
+/* ═══ 2026-11-13: menú flotante "INTER VENT" (menú nuevo, compu). La pastilla queda fija arriba a la
+   izquierda; al pasar el mouse (con ¼ s de pausa) se abre el menú ENCIMA de la pantalla; se cierra al
+   sacar el mouse. En celu sigue el menú de siempre. ═══ */
+.mf-pill, .mf-fondo { display: none; }
+@media (min-width: 769px) {
+  .mf-pill { display: flex; align-items: center; gap: 0.55rem; position: fixed; left: 12px; top: 10px; z-index: 1001;
+    background: rgba(17,24,39,.94); backdrop-filter: blur(8px); color: #fff; border: 0; border-radius: 14px;
+    padding: 0.5rem 0.85rem 0.5rem 0.55rem; box-shadow: 0 8px 22px rgba(17,24,39,.25); cursor: pointer;
+    font: inherit; font-weight: 800; letter-spacing: .04em; font-size: 0.86rem; max-width: 220px; }
+  .mf-logo { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg,#10b981,#059669);
+    display: grid; place-items: center; flex: 0 0 auto; }
+  .mf-logo svg { width: 15px; height: 15px; color: #fff; }
+  .mf-nom { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mf-car { color: #9ca3af; font-weight: 400; font-size: 0.8rem; }
+  .mf-tag { position: absolute; top: -7px; left: 44px; background: #16a34a; color: #fff; font-size: 0.5rem; letter-spacing: .06em;
+    padding: 1px 6px; border-radius: 6px; font-weight: 800; }
+  .mf-tag.dev { background: #d97706; }
+  .mf-fondo { display: block; position: fixed; inset: 0; z-index: 999; background: rgba(17,24,39,.12); }
+
+  .sidebar.ta.ta-col.mf, .sidebar.ta.ta-col.mf.collapsed {
+    position: fixed; left: 12px; top: 10px; bottom: 12px; width: 300px !important; height: auto; z-index: 1002;
+    border-radius: 18px; overflow: hidden auto; box-shadow: 0 24px 60px rgba(0,0,0,.35);
+    opacity: 0; visibility: hidden; transform: translateY(-6px) scale(.985); transform-origin: top left;
+    transition: opacity .15s ease, transform .15s ease, visibility 0s linear .15s; }
+  body:has(.mf-pill:hover) .sidebar.ta.ta-col.mf:not(.mf-off),
+  .sidebar.ta.ta-col.mf:hover:not(.mf-off),
+  .sidebar.ta.ta-col.mf.mf-fijo {
+    opacity: 1; visibility: visible; transform: none;
+    transition: opacity .15s ease .25s, transform .15s ease .25s, visibility 0s linear .25s; }
+  .sidebar.ta.ta-col.mf.mf-fijo { transition-delay: 0s; }
+  .main-wrapper.main-ta.main-ta-col, .main-wrapper.main-ta.main-ta-col.main-collapsed { margin-left: 0 !important; }
+  .main-ta-col > .topstrip { padding-left: 240px !important; }
+  .sidebar.ta-col.mf .sidebar-collapse-btn { display: none !important; }
+  .sidebar.ta-col.mf .prod-environment-banner, .sidebar.ta-col.mf .dev-environment-banner { display: none; }
+  .sidebar.ta-col.mf .nav-group-flyout-panel { left: 314px; max-width: calc(100vw - 330px); }
+}
+.mf-rapidos { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; padding: 0.5rem 0.6rem 0.6rem; }
+.mf-r { display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(255,255,255,.07); color: #e5e7eb;
+  border: 0; border-radius: 10px; padding: 0.5rem 0.4rem; font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; text-decoration: none; }
+.mf-r:hover { background: rgba(255,255,255,.13); color: #fff; }
+.mf-r.on { background: #10b981; color: #06281c; }
+.mf-salir { margin-left: auto; margin-right: 0.35rem; border: 1px solid rgba(248,113,113,.5); color: #fca5a5; background: none;
+  border-radius: 8px; padding: 0.25rem 0.55rem; font: inherit; font-size: 0.75rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.mf-salir:hover { background: rgba(248,113,113,.12); }
+@media (min-width: 769px) {
+  body:has(.sidebar.mf:hover) .mf-tag, .mf-pill:hover .mf-tag, body:has(.sidebar.mf.mf-fijo) .mf-tag { visibility: hidden; }
+  .sidebar.ta-col.mf .mn-organizar { display: none; }
+}
