@@ -98,6 +98,9 @@ public static class MenuNuevoCatalogo
         }),
         new("Stock", "", false, new Item[]
         {
+            // 13/11/2026: la pantalla de entrada también es una pantalla del catálogo, así se puede
+            // elegir en los botones grandes, el botón de abajo y el buscador (en el menú es el renglón Stock).
+            new("Stock", "/cafe/stock"),
             new("Cargar stock", "/cafe/stock-masivo"),
             new("Vencimientos", "/cafe/vencimientos"),
             new("Historial stock", "/cafe/historial-stock"),
