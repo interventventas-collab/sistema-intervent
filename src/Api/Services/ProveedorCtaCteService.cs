@@ -63,7 +63,12 @@ public class ProveedorCtaCteService
         /// <summary>Con signo: una NC o un saldo inicial a favor van en negativo.</summary>
         public decimal Total { get; set; }
         public decimal Pagado { get; set; }
-        public decimal Saldo => Total - Pagado;
+        /// <summary>13/11/2026: lo que se canceló contra una NC del mismo monto (factura y NC se anulan entre sí).
+        /// Va aparte de Pagado para no mezclarlo con pagos de caja ni con los marcados en la Contadora.</summary>
+        public decimal Compensado { get; set; }
+        /// <summary>13/11/2026: la factura o NC con la que se anula ("Nota de crédito A 00003-00000643").</summary>
+        public string? AnuladaCon { get; set; }
+        public decimal Saldo => Total - Pagado - Compensado;
         public int? DeudaId { get; set; }
         public string? AfipIdComprobante { get; set; }
         public bool TieneArchivo { get; set; }
@@ -264,9 +269,35 @@ public class ProveedorCtaCteService
             }
         }
 
+        foreach (var c in activas) CompensarNotasCredito(c);
+
         foreach (var c in activas) c.PagosContadora = docsAfip.Values.Where(d => c.Docs.Contains(d)).Sum(d => d.Pagado)
             - c.Imputaciones.Where(i => i.Clave != null && i.Clave.StartsWith(PrefAfip)).Sum(i => i.Importe);
         return res;
+    }
+
+    /// <summary>13/11/2026: una NC de AFIP por el MISMO monto que una factura impaga del mismo proveedor
+    /// la anula: las dos quedan en cero, la factura sale de Pendiente (así no se ofrece para pagar desde
+    /// el banco) y en Movimientos cada una dice con cuál se anula. La deuda total no cambia (antes
+    /// sumaba +X y −X). Se junta con la factura más cercana en fecha anterior o igual a la NC; si la NC es
+    /// por otro monto (descuento sobre varias cosas) queda como antes, bajando la deuda total.</summary>
+    private static void CompensarNotasCredito(Cuenta c)
+    {
+        var facturas = c.Docs.Where(d => d.AfipIdComprobante != null && !d.EsNotaCredito && d.Total > 0.005m).ToList();
+        foreach (var nc in c.Docs.Where(d => d.AfipIdComprobante != null && d.EsNotaCredito && d.Total < -0.005m)
+                     .OrderBy(d => d.Fecha).ThenBy(d => d.Numero))
+        {
+            var monto = -nc.Total;
+            var fac = facturas
+                .Where(f => f.AnuladaCon == null && f.Pagado < 0.005m && Math.Abs(f.Total - monto) < 0.01m && f.Fecha <= nc.Fecha)
+                .OrderByDescending(f => f.Fecha).ThenByDescending(f => f.Numero)
+                .FirstOrDefault();
+            if (fac is null) continue;
+            fac.Compensado = fac.Total;
+            fac.AnuladaCon = nc.Etiqueta;
+            nc.Compensado = nc.Total;
+            nc.AnuladaCon = fac.Etiqueta;
+        }
     }
 
     public static string NumeroAfip(int? pv, long? num)
@@ -285,9 +316,14 @@ public class ProveedorCtaCteService
         foreach (var d in c.Docs)
         {
             if (d.Total >= 0)
-                filas.Add((d.Fecha, 0, d.Etiqueta, d.Total, 0m, d.Observaciones, d.Clave, null, d.Oficial, null, false));
+                filas.Add((d.Fecha, 0, d.Etiqueta, d.Total, 0m,
+                    d.AnuladaCon != null ? $"Anulada por la {d.AnuladaCon} (no se paga)" : d.Observaciones,
+                    d.Clave, null, d.Oficial, null, false));
             else
-                filas.Add((d.Fecha, 0, d.Etiqueta, 0m, -d.Total, d.EsNotaCredito ? "Nota de crédito: baja la deuda" : "A nuestro favor", d.Clave, null, d.Oficial, null, false));
+                filas.Add((d.Fecha, 0, d.Etiqueta, 0m, -d.Total,
+                    d.AnuladaCon != null ? $"Anula la {d.AnuladaCon}"
+                        : d.EsNotaCredito ? "Nota de crédito: baja la deuda" : "A nuestro favor",
+                    d.Clave, null, d.Oficial, null, false));
         }
         var etiquetas = c.Docs.ToDictionary(d => d.Clave, d => d.Etiqueta);
         foreach (var g in c.Imputaciones.GroupBy(i => i.PagoId))
