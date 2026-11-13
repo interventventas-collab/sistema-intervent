@@ -41,7 +41,7 @@
                 {
                     <button class="fg-nuevo" title="@TituloNuevo(tipo)" @onclick="() => Svc.PedirNuevo(tipo)" @onclick:stopPropagation="true">+</button>
                 }
-                <span class="fg-e">@(carpeta ? "📁" : Icono(it.Href))</span>
+                <span class="fg-e">@MenuNuevoCatalogo.Pintar(carpeta ? "📁" : Icono(it.Href))</span>
                 <span class="fg-l">@nombre@(!carpeta && Claves.TieneClave(it.Href) ? " 🔒" : "")</span>
                 @if (subs.Count > 0)
                 {
@@ -50,7 +50,7 @@
                         {
                             var si = Item(sh);
                             if (si == null) continue;
-                            <button class="fg-s" title="Ir a @si.Label" @onclick="() => Ir(si)" @onclick:stopPropagation="true"><span>@Icono(si.Href)</span>@si.Label@(Claves.TieneClave(si.Href) ? " 🔒" : "")</button>
+                            <button class="fg-s" title="Ir a @si.Label" @onclick="() => Ir(si)" @onclick:stopPropagation="true"><span>@MenuNuevoCatalogo.Pintar(Icono(si.Href))</span>@si.Label@(Claves.TieneClave(si.Href) ? " 🔒" : "")</button>
                         }
                     </span>
                 }
@@ -90,7 +90,7 @@
                         var es = string.Equals(principalT, x.Href, StringComparison.OrdinalIgnoreCase) || subsT.Contains(x.Href, StringComparer.OrdinalIgnoreCase);
                         var enOtro = !es && atajos.Contains(x.Href);
                         <button class="favp-fila @(es ? "on" : "")" disabled="@es" @onclick="() => Elegir(x.Href)">
-                            <span>@Icono(x.Href) @x.Label</span>
+                            <span>@MenuNuevoCatalogo.Pintar(Icono(x.Href)) @x.Label</span>
                             @if (es || enOtro)
                             {
                                 <span class="fg-atajo" title="@(es ? "Ya está en este botón" : "Ya tiene acceso directo en otro botón")"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>@(es ? "en este botón" : "ya tiene acceso")</span>
@@ -118,7 +118,7 @@
             <div class="favp-lista">
                 <div class="favp-sec">Botón principal</div>
                 <div class="favp-ed">
-                    <span class="favp-nom" style="font-weight:700;">@(principalT == MenuNuevoService.SOLO_TITULO ? "📁 Solo título (no lleva a ninguna pantalla)" : pi == null ? "—" : Icono(pi.Href) + " " + pi.Label)</span>
+                    <span class="favp-nom" style="font-weight:700;">@(principalT == MenuNuevoService.SOLO_TITULO ? "📁 Solo título (no lleva a ninguna pantalla)" : pi == null ? "—" : MenuNuevoCatalogo.ComoTexto(Icono(pi.Href)) + " " + pi.Label)</span>
                     <button class="favp-b" @onclick="() => Buscar(principal: true)">Cambiar</button>
                 </div>
                 <div class="favp-sec">Nombre del botón @(principalT == MenuNuevoService.SOLO_TITULO ? "" : "(opcional)")</div>
@@ -141,7 +141,7 @@
                     var k = n;
                     var h = subsT[k];
                     <div class="favp-ed">
-                        <span class="favp-nom">@Icono(h) @(Item(h)?.Label ?? h)</span>
+                        <span class="favp-nom">@MenuNuevoCatalogo.Pintar(Icono(h)) @(Item(h)?.Label ?? h)</span>
                         <button class="favp-mini" disabled="@(k == 0)" @onclick="() => Mover(k, -1)">▲</button>
                         <button class="favp-mini" disabled="@(k == subsT.Count - 1)" @onclick="() => Mover(k, 1)">▼</button>
                         <button class="favp-mini" title="Sacar este subbotón" @onclick="() => subsT.RemoveAt(k)">✕</button>
@@ -160,7 +160,7 @@
                         var hh = h;
                         var tiene = Claves.TieneClave(hh);
                         <div class="favp-ed">
-                            <span class="favp-nom">@Icono(hh) @(Item(hh)?.Label ?? hh) @if (tiene) { <b class="fg-candado">🔒 con clave</b> }</span>
+                            <span class="favp-nom">@MenuNuevoCatalogo.Pintar(Icono(hh)) @(Item(hh)?.Label ?? hh) @if (tiene) { <b class="fg-candado">🔒 con clave</b> }</span>
                             @if (claveDe == hh)
                             {
                                 <input class="fg-clave-in" type="password" autocomplete="new-password" placeholder="Clave nueva" @bind="claveNueva" @bind:event="oninput" />

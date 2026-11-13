@@ -34,13 +34,13 @@
                 @if (d.Nuevo is { } tipo)
                 {
                     <span class="mnb-doble" style="@EstiloCard(d.Href)">
-                        <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)"><span class="mnb-ico-e @(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, d.Href) != null ? "propio" : "")">@IconoBoton(d.Href)</span>@d.Label</button>
+                        <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" @onclick="() => Ir(d)"><span class="mnb-ico-e @(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, d.Href) != null ? "propio" : "")">@MenuNuevoCatalogo.Pintar(IconoBoton(d.Href))</span>@d.Label</button>
                         <button class="mnb-mas" title="@TituloNuevo(tipo)" aria-label="@TituloNuevo(tipo)" @onclick="() => Nuevo(tipo)">+</button>
                     </span>
                 }
                 else
                 {
-                    <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloCard(d.Href)" @onclick="() => Ir(d)"><span class="mnb-ico-e @(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, d.Href) != null ? "propio" : "")">@IconoBoton(d.Href)</span>@d.Label</button>
+                    <button class="mnb-directo @(EsActual(d.Href) ? "on" : "")" style="@EstiloCard(d.Href)" @onclick="() => Ir(d)"><span class="mnb-ico-e @(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, d.Href) != null ? "propio" : "")">@MenuNuevoCatalogo.Pintar(IconoBoton(d.Href))</span>@d.Label</button>
                 }
                 @Numerito(d.Href)
                 @* 2026-11-10: lapicito para cambiarle el ícono y el color a este botón. *@
@@ -53,7 +53,7 @@
         {
             <span class="mnb-cont">
                 <span class="mnb-shell" style="@EstiloCard("shell")" role="button" tabindex="0" title="Ir a Shell Flota" @onclick='() => NavigateTo("/integraciones/shell")'>
-                    <span class="mnb-ico-e propio">@(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, "shell") ?? "⛽")</span>
+                    <span class="mnb-ico-e propio">@MenuNuevoCatalogo.Pintar(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, "shell") ?? "⛽")</span>
                     <span class="mnb-shell-txt">
                         <small>Shell Flota</small>
                         <b>@(leyendoShell ? "leyendo…" : string.IsNullOrEmpty(shell.LastSaldo) ? "sin saldo" : "$" + shell.LastSaldo)</b>
@@ -168,7 +168,7 @@
         var actual = iconos.TryGetValue(clave, out var e) ? e : null;
         foreach (var em in MenuNuevoCatalogo.Emojis)
         {
-            <button class="mnb-emoji @(actual == em ? "on" : "")" title="Usar @em" @onclick="() => PonerIcono(clave, em)">@em</button>
+            <button class="mnb-emoji @(actual == em ? "on" : "")" title="Usar @MenuNuevoCatalogo.ComoTexto(em)" @onclick="() => PonerIcono(clave, em)">@MenuNuevoCatalogo.Pintar(em)</button>
         }
         <button class="mnb-destino" title="Sacar el ícono" @onclick="() => PonerIcono(clave, null)">sin ícono</button>
     };

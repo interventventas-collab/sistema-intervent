@@ -89,7 +89,7 @@ public static class MenuNuevoCatalogo
             new("Mapa de reparto", "/mapeo?full=1", Externo: true),
             new("Clientes mapeados", "/cafe/clientes-mapeados"),
             new("Repartidores", "/cafe/repartidores"),
-            new("Viajes", "/viajes"),
+            new("Viajes Nacho", "/viajes"),
             new("Arqueo repartidor", "/cafe/arqueo-repartidor"),
             new("Entregas me1", "/meli/me1/entregas", "me1"),
             new("Códigos postales me1", "/meli/me1/codigos-postales", "me1"),
@@ -214,11 +214,32 @@ public static class MenuNuevoCatalogo
         ("Eventos y alquileres", new[] { "🎪","🎉","🎈","🪑","🛋","⛺","💡","🔌","🎤","🎶","🥂","🍾","🎂","🎁","🎊","🪅" }),
         ("Ventas y MercadoLibre", new[] { "🛒","🏷","💲","🧾","📈","📉","⭐","🤝","📣","🆕","🔖","🏪" }),
         ("Plata", new[] { "💵","💰","💳","🏦","💸","🪙","🧮","📊","⛽" }),
-        ("Reparto", new[] { "🚚","🛵","🚐","🚗","📍","🗺","🧭","🏠","🏬","🏭" }),
+        ("Reparto", new[] { TaxiAr,"🚕","🚚","🛵","🚐","🚗","📍","🗺","🧭","🏠","🏬","🏭" }),
         ("Oficina y equipo", new[] { "📋","📝","📁","🗂","📅","⏰","📞","📱","💬","✉","🔔","👥","👤","🔧","⚙","🔑","🔒","🔍","📸","🖨" }),
         ("Colores y avisos", new[] { "🟢","🟡","🔴","🔵","🟣","🟠","⚫","⚪","🔥","❤","✅","⚠","🚨","💯" }),
     };
     public static readonly string[] Emojis = EmojiGrupos.SelectMany(g => g.Lista).Distinct().ToArray();
+    /// <summary>2026-11-13: ícono dibujado (no es emoji): taxi argentino negro con techo amarillo
+    /// (pedido del dueño). Se guarda como esta palabra y se pinta con <see cref="Pintar"/>.</summary>
+    public const string TaxiAr = "taxi-ar";
+    private const string TaxiArSvg =
+        "<svg class=\"ico-dibujo\" viewBox=\"0 0 64 40\" width=\"1.25em\" height=\"1em\" style=\"vertical-align:-0.15em\" aria-label=\"Taxi\">" +
+        "<rect x=\"25\" y=\"2\" width=\"14\" height=\"6\" rx=\"1.5\" fill=\"#fde047\" stroke=\"#111\" stroke-width=\"1.2\"/>" +
+        "<text x=\"32\" y=\"6.8\" font-size=\"4.6\" font-weight=\"700\" font-family=\"Arial,sans-serif\" text-anchor=\"middle\" fill=\"#111\">TAXI</text>" +
+        "<path d=\"M15 18 L21 9 Q22 8 24 8 L42 8 Q44 8 45 9 L51 18 Z\" fill=\"#facc15\" stroke=\"#111\" stroke-width=\"1.5\" stroke-linejoin=\"round\"/>" +
+        "<path d=\"M22 17 L25 11 L31 11 L31 17 Z M34 17 L34 11 L41 11 L45 17 Z\" fill=\"#bfdbfe\" stroke=\"#111\" stroke-width=\"1\"/>" +
+        "<path d=\"M4 29 Q4 20 13 18 L53 18 Q61 20 61 29 L61 31 Q61 33 59 33 L5 33 Q4 33 4 31 Z\" fill=\"#1f2937\" stroke=\"#9ca3af\" stroke-width=\"1.5\"/>" +
+        "<rect x=\"57\" y=\"22\" width=\"4\" height=\"3\" rx=\"1\" fill=\"#fef08a\"/>" +
+        "<rect x=\"4\" y=\"22\" width=\"3\" height=\"3\" rx=\"1\" fill=\"#ef4444\"/>" +
+        "<line x1=\"32\" y1=\"19\" x2=\"32\" y2=\"31\" stroke=\"#4b5563\" stroke-width=\"1\"/>" +
+        "<circle cx=\"17\" cy=\"33\" r=\"6\" fill=\"#111\" stroke=\"#9ca3af\" stroke-width=\"1.2\"/><circle cx=\"17\" cy=\"33\" r=\"2.6\" fill=\"#d1d5db\"/>" +
+        "<circle cx=\"48\" cy=\"33\" r=\"6\" fill=\"#111\" stroke=\"#9ca3af\" stroke-width=\"1.2\"/><circle cx=\"48\" cy=\"33\" r=\"2.6\" fill=\"#d1d5db\"/>" +
+        "</svg>";
+    /// <summary>Pinta un ícono del menú: el dibujo si es uno propio (taxi), o el emoji tal cual.</summary>
+    public static Microsoft.AspNetCore.Components.MarkupString Pintar(string? icono)
+        => new(icono == TaxiAr ? TaxiArSvg : System.Net.WebUtility.HtmlEncode(icono ?? ""));
+    /// <summary>Para lugares donde va texto solo (títulos, avisos): el taxi como emoji 🚕.</summary>
+    public static string ComoTexto(string? icono) => icono == TaxiAr ? "🚕" : icono ?? "";
     public static string? IconoDe(Dictionary<string, string>? iconos, string clave)
         => iconos != null && iconos.TryGetValue(clave, out var e) && !string.IsNullOrWhiteSpace(e) ? e : null;
 

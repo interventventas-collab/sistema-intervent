@@ -18,7 +18,7 @@
         var (ico, nom) = Mostrar(x);
         if (nom == null) continue;
         <button class="atp-b @(EsAccion(x) ? "nuevo" : "")" title="@(EsAccion(x) ? "Cargar " + nom.ToLower() : "Ir a " + nom)" @onclick="() => Tocar(x)">
-            <span>@ico</span>@nom
+            <span>@MenuNuevoCatalogo.Pintar(ico)</span>@nom
         </button>
     }
     <button class="atp-lap" title="Elegir qué botones van acá" @onclick="Abrir">✏</button>
@@ -53,7 +53,7 @@
                     {
                         var ii = it;
                         var ya = trabajo.Contains(ii.Href, StringComparer.OrdinalIgnoreCase);
-                        <button class="atp-fila @(ya ? "on" : "")" disabled="@ya" @onclick="() => Agregar(ii.Href)">@Icono(ii.Href) @ii.Label @(ya ? "· ya está" : "")</button>
+                        <button class="atp-fila @(ya ? "on" : "")" disabled="@ya" @onclick="() => Agregar(ii.Href)">@MenuNuevoCatalogo.Pintar(Icono(ii.Href)) @ii.Label @(ya ? "· ya está" : "")</button>
                     }
                 }
             </div>
@@ -69,7 +69,7 @@
                     var i = n;
                     var (ico, nom) = Mostrar(trabajo[i]);
                     <div class="atp-ed">
-                        <span class="atp-nom">@ico @(nom ?? trabajo[i])</span>
+                        <span class="atp-nom">@MenuNuevoCatalogo.Pintar(ico) @(nom ?? trabajo[i])</span>
                         <button class="atp-mini" title="Más a la izquierda" disabled="@(i == 0)" @onclick="() => Mover(i, -1)">◀</button>
                         <button class="atp-mini" title="Más a la derecha" disabled="@(i == trabajo.Count - 1)" @onclick="() => Mover(i, 1)">▶</button>
                         <button class="atp-mini" title="Sacar" @onclick="() => trabajo.RemoveAt(i)">✕</button>
