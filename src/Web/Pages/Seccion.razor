@@ -1,0 +1,86 @@
+@page "/seccion/{Slug}"
+@attribute [Authorize]
+@inject MenuNuevoService Svc
+@inject AuthService Auth
+@inject ApiClient Api
+@inject NavigationManager Nav
+@implements IDisposable
+
+@* 2026-11-13: pantalla de entrada de cada sección del menú (pedido del dueño: "si entrás a uno, ves
+   todo lo que hay dentro"). Arriba todos sus botones; Stock tiene la suya propia (/cafe/stock).
+   Los botones son links de verdad: ruedita / Ctrl+clic abren en otra pestaña.
+   Maqueta: scratchpad/Secciones_todo_PROPUESTA.png *@
+
+@if (grupo is null)
+{
+    <div class="sec-p"><h2 class="sec-t">Sección no encontrada</h2><a href="/">Volver al inicio</a></div>
+}
+else
+{
+    <div class="sec-p">
+        <h2 class="sec-t">@grupo.Titulo</h2>
+        <div class="sec-sub">@(string.IsNullOrWhiteSpace(grupo.Subtitulo) ? "" : grupo.Subtitulo + " · ")elegí qué querés hacer</div>
+        <div class="sec-acc">
+            @foreach (var it in items)
+            {
+                var ico = MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, it.Href);
+                <a class="sec-b @(it == items[0] ? "p" : "")" href="@it.Href" target="@(it.Externo ? "_blank" : null)">
+                    @if (ico != null) { <span class="sec-ico">@MenuNuevoCatalogo.Pintar(ico)</span> }
+                    @it.Label
+                </a>
+            }
+        </div>
+        @if (items.Count == 0)
+        {
+            <div class="sec-vacio">No tenés pantallas habilitadas en esta sección.</div>
+        }
+    </div>
+}
+
+<style>
+    .sec-p { padding: 0.25rem 0.25rem 1.5rem; }
+    .sec-t { margin: 0 0 0.15rem; font-size: 1.4rem; }
+    .sec-sub { color: #6b7280; font-size: 0.8rem; margin-bottom: 0.9rem; }
+    .sec-acc { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+    .sec-b { display: inline-flex; align-items: center; gap: 0.4rem; background: #fff; border: 1px solid #d1d5db; border-radius: 10px;
+             padding: 0.7rem 1rem; font-size: 0.92rem; font-weight: 600; color: #111827; text-decoration: none; }
+    .sec-b:hover { border-color: #111827; }
+    .sec-b.p { background: #111827; color: #fff; border-color: #111827; }
+    .sec-ico { font-size: 1.05rem; line-height: 1; }
+    .sec-vacio { color: #6b7280; font-size: 0.85rem; }
+</style>
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+    private MenuNuevoCatalogo.Grupo? grupo;
+    private List<MenuNuevoCatalogo.Item> items = new();
+    private List<string> permisos = new();
+    private string? icono;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Svc.OnChange += Repintar;
+        await Svc.EnsureLoadedAsync();
+        try { permisos = (await Auth.GetUserAsync())?.Permissions ?? new(); } catch { }
+        // Permisos frescos del servidor (igual que el menú), por si cambiaron sin volver a entrar.
+        try { if ((await Api.GetMeAsync())?.Permissions is { } p) permisos = p; } catch { }
+        Armar();
+    }
+
+    protected override void OnParametersSet() => Armar();
+
+    private void Armar()
+    {
+        grupo = MenuNuevoCatalogo.GrupoPorSlug(Slug);
+        if (grupo is null) { items = new(); return; }
+        // Stock tiene su propia pantalla de entrada.
+        if (grupo.Directo is { } d) { Nav.NavigateTo(d, replace: true); return; }
+        var armado = Svc.Actual.Grupos.FirstOrDefault(g => g.Grupo.Titulo == grupo.Titulo);
+        var lista = MenuNuevoCatalogo.TodoDeSeccion(grupo, armado?.Items);
+        items = lista.Where(i => i.Permiso == null || permisos.Contains(i.Permiso)).ToList();
+        icono = MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, grupo.Titulo);
+    }
+
+    private void Repintar() => InvokeAsync(() => { Armar(); StateHasChanged(); });
+    public void Dispose() => Svc.OnChange -= Repintar;
+}

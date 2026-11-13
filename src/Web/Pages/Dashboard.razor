@@ -170,9 +170,11 @@ else
    en el contenido. Balanza y Stock ya viven en su tarjeta detallada más abajo. *@
 
 @* 2026-11-11: 8 favoritos grandes arriba de todo (pedido del dueño); Equipo hoy queda debajo. *@
+@* 2026-11-13: los botones grandes pasan a ser las 10 secciones del menú, con todo lo de adentro
+   (SeccionesInicio). FavoritosGrandes queda en el código y sus datos guardados, por si se vuelve atrás. *@
 @if (DashNuevo)
 {
-    <FavoritosGrandes Desde="0" Hasta="MenuNuevoCatalogo.GRANDES_ARRIBA" />
+    <SeccionesInicio />
 }
 
 @* ═══ Card: equipo trabajando ahora ═══ *@
@@ -1924,8 +1926,6 @@ else
 @* 2026-11-10: con la pantalla principal más limpia, Panorama va acá abajo de todo (pedido del dueño). *@
 @if (DashNuevo)
 {
-    @* 2026-11-11: 4 botones grandes más, entre Equipo hoy y Panorama (pedido del dueño). *@
-    <div class="dash-fg-abajo"><FavoritosGrandes Desde="MenuNuevoCatalogo.GRANDES_ARRIBA" Hasta="MenuNuevoCatalogo.CANT_GRANDES" /></div>
     <div class="dash-panorama"><Web.Pages.Panorama /></div>
     @* 2026-11-10: las tarjetas de plata y stock pasan a ser parte de Panorama (van justo debajo, por CSS order). *@
     <div class="dash-sec-tit">💰 Plata y stock</div>

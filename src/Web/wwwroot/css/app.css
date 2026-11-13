@@ -5431,3 +5431,12 @@ tr.om-franja-tr > td { padding: 0 0.5rem 0.8rem !important; border-top: none !im
 /* 2026-11-05: sugerencias del buscador de domicilio (Google Places) por encima de los modales. */
 .pac-container { z-index: 10050 !important; font-family: inherit; border-radius: 6px; box-shadow: 0 8px 20px rgba(0,0,0,.15); }
 .pac-item { padding: 4px 8px; cursor: pointer; }
+
+/* 2026-11-13: sección del menú con nombre = link a su pantalla y flechita = desplegar. */
+.nav-group-header.nav-group-split { padding: 0; gap: 0; cursor: default; }
+.nav-group-split .nav-group-link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.75rem;
+  color: inherit; text-decoration: none; border-radius: var(--radius-sm); }
+.nav-group-split .nav-group-arrow-btn { border: 0; background: none; color: inherit; cursor: pointer; padding: 0.625rem 0.6rem;
+  border-radius: var(--radius-sm); display: flex; align-items: center; }
+.nav-group-split .nav-group-arrow-btn:hover { background: rgba(255,255,255,.1); }
+.nav-group.expanded > .nav-group-split .nav-group-arrow { transform: rotate(90deg); }

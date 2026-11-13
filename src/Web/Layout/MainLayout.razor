@@ -1097,21 +1097,12 @@
                 if (itemsSec.Count == 0 && g.Nuevo == null) continue;
                 @* 2026-11-10: siempre plegadas (se abren solo al tocarlas) y con el ícono que elija el dueño. *@
                 var tituloSec = g.Titulo;
-                @if (g.Directo is { } hrefDirecto)
-                {
-                    @* 13/11/2026: sección de un solo renglón (Stock): lleva a su pantalla, que tiene los botones. *@
-                    <div class="mn-lw" style="@EstiloLateral(tituloSec)">
-                    <NavItem Href="@hrefDirecto" Label="@g.Titulo" Icon="@IconoMenu(g.Titulo, IconoSeccion(g.Titulo))"
-                             IsActive="@(IsActive(hrefDirecto) || itemsSec.Any(i => IsActive(i.Href)))"
-                             OnClick="@(() => NavigateTo(hrefDirecto))" />
-                    <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(tituloSec, tituloSec, e.ClientX + 12, e.ClientY - 20)">✏</button>
-                    </div>
-                    continue;
-                }
+                var hrefSec = MenuNuevoCatalogo.HrefSeccion(g);
                 <div class="mn-lw sec" style="@EstiloLateral(tituloSec)">
                 <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(tituloSec, tituloSec, e.ClientX + 12, e.ClientY - 20)">✏</button>
                 <NavGroup Label="@g.Titulo" Icon="@IconoMenu(g.Titulo, IconoSeccion(g.Titulo))"
-                          HasActiveChild="@(itemsSec.Any(i => IsActive(i.Href)))"
+                          HasActiveChild="@(IsActive(hrefSec) || itemsSec.Any(i => IsActive(i.Href)))"
+                          LabelHref="@hrefSec" OnLabelClick="@(() => NavigateTo(hrefSec))"
                           NoAutoExpand="true">
                     @if (g.Titulo == "MercadoLibre" && publisRevisar > 0)
                     {
@@ -1124,7 +1115,7 @@
                         <NavItem Href="#" Label="@("＋ " + TituloNuevoSeccion(tipoNuevo))" Icon="@SvgIcons.Plus"
                                  IsActive="false" OnClick="@(() => NuevoRapido(tipoNuevo))" />
                     }
-                    @foreach (var it in itemsSec)
+                    @foreach (var it in itemsSec.Where(i => i.Href != hrefSec))
                     {
                         var itSec = it;
                         <div class="mn-lw" style="@EstiloLateral(itSec.Href)">
@@ -3558,7 +3549,7 @@
                 d[k] = v == MenuNuevoCatalogo.TaxiAr ? new { svg = MenuNuevoCatalogo.TaxiArSvg } : v;
         // Secciones de un solo renglón (Stock): su pantalla lleva el ícono de la sección.
         foreach (var g in MenuNuevoCatalogo.Grupos)
-            if (g.Directo is { } hd && !d.ContainsKey(hd) && MenuNuevoCatalogo.IconoDe(iconos, g.Titulo) is { } vi)
+            if (MenuNuevoCatalogo.HrefSeccion(g) is { } hd && !d.ContainsKey(hd) && MenuNuevoCatalogo.IconoDe(iconos, g.Titulo) is { } vi)
                 d[hd] = vi == MenuNuevoCatalogo.TaxiAr ? new { svg = MenuNuevoCatalogo.TaxiArSvg } : vi;
         var json = System.Text.Json.JsonSerializer.Serialize(d);
         if (json == _iconosTituloMandados) return;

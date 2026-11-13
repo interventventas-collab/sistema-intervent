@@ -1,0 +1,136 @@
+@* 2026-11-13: Inicio = las 10 secciones del menú, una tarjeta cada una, con TODO lo de adentro a la vista
+   (pedido del dueño: "si son 10 cards, haciendo lo que hicimos en stock, estaríamos re bien").
+   - Título = entrar a la pantalla de la sección (como el nombre en el menú). Botón chico = ir directo.
+   - El orden es el MISMO que el del menú: arrastrar una tarjeta sobre otra mueve la sección en los dos.
+   - Ícono y color: los del lápiz ✏ del menú (valen para menú y tarjeta).
+   - Son links de verdad: ruedita / Ctrl+clic abren en otra pestaña.
+   Reemplaza a FavoritosGrandes en el Dashboard (sus datos quedan guardados, por si se vuelve atrás).
+   Maqueta: scratchpad/Secciones_todo_PROPUESTA.png *@
+@implements IDisposable
+@inject MenuNuevoService Svc
+@inject ApiClient Api
+@inject AuthService Auth
+@inject ToastService Toast
+
+<div class="si">
+    @for (var n = 0; n < tarjetas.Count; n++)
+    {
+        var i = n;
+        var (g, items) = tarjetas[i];
+        var nuevo = g.Nuevo ?? (g.Titulo == "Clientes" ? "venta" : null);
+        var href = MenuNuevoCatalogo.HrefSeccion(g);
+        <div class="si-c @(sobre == i && arrastrando != i ? "sobre" : "")" style="@Color(g.Titulo)"
+             draggable="true" @ondragstart="() => arrastrando = i" @ondragend="() => { arrastrando = null; sobre = null; }"
+             @ondragover="() => sobre = i" @ondragover:preventDefault="true" @ondragleave="() => sobre = null" @ondrop="() => SoltarAsync(i)">
+            @if (nuevo != null)
+            {
+                <button class="si-nuevo" title="@TituloNuevo(nuevo)" @onclick="() => Svc.PedirNuevo(nuevo)">+</button>
+            }
+            <a class="si-tit" href="@href" title="Entrar a @g.Titulo">
+                <span class="si-ico">@MenuNuevoCatalogo.Pintar(MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, g.Titulo) ?? IconoFabrica(g.Titulo))</span>
+                <span class="si-nom">@g.Titulo</span>
+            </a>
+            <div class="si-chips">
+                @foreach (var it in items)
+                {
+                    var num = Svc.Numeros.TryGetValue(it.Href, out var nn) ? nn : 0;
+                    var ico = MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, it.Href);
+                    <a class="si-ch" href="@it.Href" target="@(it.Externo ? "_blank" : null)" title="Ir a @it.Label">
+                        @if (ico != null) { <span class="si-chi">@MenuNuevoCatalogo.Pintar(ico)</span> }
+                        @it.Label
+                        @if (num > 0) { <span class="si-num">@(num > 99 ? "99+" : num.ToString())</span> }
+                    </a>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .si { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.7rem; margin-bottom: 1rem; }
+    @@media (max-width: 1500px) { .si { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    @@media (max-width: 1100px) { .si { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @@media (max-width: 768px) { .si { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .si-c { position: relative; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 0.8rem 0.6rem 0.7rem;
+            text-align: center; cursor: grab; transition: box-shadow .15s, border-color .15s; }
+    .si-c:hover { box-shadow: 0 4px 14px rgba(0,0,0,.07); }
+    .si-c.sobre { border-color: #111827; box-shadow: 0 0 0 2px #111827 inset; }
+    .si-tit { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; text-decoration: none; color: #111827; margin-bottom: 0.5rem; }
+    .si-tit:hover .si-nom { text-decoration: underline; }
+    .si-ico { font-size: 1.5rem; line-height: 1.2; }
+    .si-nom { font-weight: 800; font-size: 0.98rem; }
+    .si-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.28rem; }
+    .si-ch { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.72rem; border: 1px solid #d1d5db; border-radius: 12px;
+             padding: 0.1rem 0.5rem; background: #fff; color: #111827; text-decoration: none; white-space: nowrap; }
+    .si-ch:hover { border-color: #111827; }
+    .si-chi { font-size: 0.8rem; line-height: 1; }
+    .si-num { background: #dc2626; color: #fff; border-radius: 8px; font-size: 0.6rem; padding: 0 0.3rem; font-weight: 700; }
+    .si-nuevo { position: absolute; top: 0.45rem; right: 0.5rem; width: 24px; height: 24px; border-radius: 50%; border: 0;
+                background: #111827; color: #fff; font-size: 1rem; line-height: 1; cursor: pointer; }
+</style>
+
+@code {
+    private List<(MenuNuevoCatalogo.Grupo Grupo, List<MenuNuevoCatalogo.Item> Items)> tarjetas = new();
+    private List<string> permisos = new();
+    private int? arrastrando, sobre;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Svc.OnChange += Repintar;
+        Svc.OnNumeros += Repintar;
+        await Svc.EnsureLoadedAsync();
+        try { permisos = (await Auth.GetUserAsync())?.Permissions ?? new(); } catch { }
+        try { if ((await Api.GetMeAsync())?.Permissions is { } p) permisos = p; } catch { }
+        Armar();
+    }
+
+    private void Armar()
+    {
+        tarjetas = Svc.Actual.Grupos
+            .Select(ga => (ga.Grupo, MenuNuevoCatalogo.TodoDeSeccion(ga.Grupo, ga.Items)
+                .Where(i => i.Permiso == null || permisos.Contains(i.Permiso)).ToList()))
+            .Where(t => t.Item2.Count > 0 || t.Grupo.Nuevo != null)
+            .ToList();
+    }
+
+    /// <summary>Soltar una tarjeta sobre otra: la sección pasa a ese lugar (en el Inicio y en el menú).</summary>
+    private async Task SoltarAsync(int destino)
+    {
+        var desde = arrastrando;
+        arrastrando = null; sobre = null;
+        if (desde is not int d || d == destino) return;
+        var titulos = tarjetas.Select(t => t.Grupo.Titulo).ToList();
+        var mov = titulos[d];
+        titulos.RemoveAt(d);
+        titulos.Insert(destino, mov);
+        // Las secciones que no se muestran (sin permisos) quedan al final, en su orden.
+        var grupos = Svc.Actual.Grupos
+            .OrderBy(ga => { var k = titulos.IndexOf(ga.Grupo.Titulo); return k < 0 ? int.MaxValue : k; })
+            .ToList();
+        try
+        {
+            await Svc.GuardarAsync(Svc.Actual with { Grupos = grupos });
+        }
+        catch (Exception ex) { Toast.Error("No se pudo guardar el orden: " + ex.Message); }
+        Armar();
+    }
+
+    private string Color(string titulo)
+        => MenuNuevoCatalogo.Pastel(MenuNuevoCatalogo.IconoDe(Svc.Actual.Colores, titulo)) is { } p ? $"background:{p.Fondo};border-color:{p.Borde};" : "";
+
+    private static string IconoFabrica(string titulo) => titulo switch
+    {
+        "Clientes" => "👥", "Frikaf" => "☕", "MercadoLibre" => "🤝", "Intereventos" => "🎪", "Logística" => "🚚",
+        "Stock" => "📦", "Compras" => "🏭", "Productos y precios" => "🏷", "Plata" => "💵", "Empleados" => "👷",
+        _ => "📁",
+    };
+
+    private static string TituloNuevo(string tipo) => tipo switch
+    {
+        "venta" => "Nueva venta", "alquiler" => "Nuevo alquiler", "stock" => "Cargar stock", "compra" => "Nueva compra",
+        "cobranza" => "Nueva cobranza", "pago" => "Nuevo pago", _ => "Nuevo",
+    };
+
+    private void Repintar() => InvokeAsync(() => { Armar(); StateHasChanged(); });
+    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; }
+}
