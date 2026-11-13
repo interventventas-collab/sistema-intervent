@@ -41,13 +41,13 @@
         <div class="bf-lista">
             @* 2026-11-13: ⚡ Acciones siempre primero (no cuenta en los 10 y no se saca). *@
             <div class="bf-acc-wrap">
-                <button type="button" class="bf-item" @onclick="() => { accAbierto = !accAbierto; }">
+                <button type="button" class="bf-item" @onclick="AbrirCerrarAcciones">
                     <span class="bf-circ bf-acc">⚡</span>
                     <span class="bf-lab"><b>Acciones</b></span>
                 </button>
                 @if (accAbierto)
                 {
-                    <div class="bf-acc-menu @(labDer ? "der" : "")">
+                    <div class="bf-acc-menu @(labDer ? "der" : "") @(accAbajo ? "abajo" : "")">
                         <div class="bf-acc-t">Acciones rápidas</div>
                         @foreach (var k in MisAcciones())
                         {
@@ -233,6 +233,8 @@
     .bf-acc-menu { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 9001; width: 230px; background: #fff; border: 1px solid #d1d5db;
         border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.2); padding: 6px; text-align: left; }
     .bf-acc-menu.der { right: auto; left: 0; }
+    /* 2026-11-13: si la barra está en la mitad de arriba de la pantalla, el menú se abre hacia abajo (si no, quedaba cortado arriba). */
+    .bf-acc-menu.abajo { bottom: auto; top: calc(100% + 8px); }
     .bf-acc-t { font-size: 10.5px; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; padding: 4px 8px 4px; }
     .bf-acc-it { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; border-radius: 8px; padding: 7px 8px;
         font: inherit; font-size: 14px; color: #111827; cursor: pointer; text-align: left; }
@@ -516,6 +518,17 @@
     private bool arrastrando;
     private int arrDer, arrAba, anchoVentana, altoVentana;
     private bool arrLabDer;
+    private bool accAbajo;
+
+    private async Task AbrirCerrarAcciones()
+    {
+        if (!accAbierto)
+        {
+            try { accAbajo = await JS.InvokeAsync<bool>("eval", "(() => { const e = document.querySelector('.bf-acc-wrap'); return !!e && e.getBoundingClientRect().top < window.innerHeight / 2; })()"); }
+            catch { accAbajo = false; }
+        }
+        accAbierto = !accAbierto;
+    }
     private double iniX, iniY;
     private int iniDer, iniAba;
 
