@@ -25,6 +25,11 @@
             {
                 <span> · valor a costo <b>$@valor.TotalContado.ToString("N0")</b> <span class="sti-gris">(sin café)</span></span>
             }
+            @* 2026-11-13: el café en kg (antes estaba en la tarjeta Stock del Panorama). *@
+            @if (cafe is not null)
+            {
+                <span> · café <b>@cafe.KgTotal.ToString("N0", new System.Globalization.CultureInfo("es-AR")) kg</b> <span class="sti-gris">(@cafe.VariedadesConStock de @cafe.Variedades variedades con stock)</span></span>
+            }
             <span> · </span><span class="@(faltantes > 0 ? "sti-rojo" : "")">@faltantes para pedir</span>
             <span> · </span><span class="@(VencenPronto > 0 ? "sti-rojo" : "")">@VencenPronto vencen en 30 días</span>
             @if (tareas is not null)
@@ -150,6 +155,7 @@
     private List<StockIdealRowDto>? lista;
     private Dictionary<int, DateTime?> vencimientos = new();
     private ApiClient.ValuacionResult? valor;
+    private CoffeeStockKgDto? cafe;
     private DepTareasResumenDto? tareas;
     private int faltantes;
     private string? error;
@@ -176,6 +182,7 @@
         var tValor = Api.GetValuacionAsync();
         var tTareas = Api.GetDepTareasResumenAsync();
         var tFalt = Api.GetStockIdealPendientesContadorAsync();
+        var tCafe = Api.GetCoffeeStockKgAsync();
         try { lista = (await tLista)?.Filas ?? new(); }
         catch (Exception ex) { lista = new(); error = ex.Message; }
         try
@@ -189,6 +196,7 @@
         try { valor = await tValor; } catch { }
         try { tareas = await tTareas; } catch { }
         try { faltantes = await tFalt; } catch { }
+        try { cafe = await tCafe; } catch { }
     }
 
     private DateTime? Vence(int productoId) => vencimientos.TryGetValue(productoId, out var v) ? v : null;

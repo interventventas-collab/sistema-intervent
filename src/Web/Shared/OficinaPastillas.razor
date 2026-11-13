@@ -50,6 +50,7 @@
     .op-aviso-bs button.des { background:none; color:#d1d5db; font-weight:400; }
 
     .op-big.cor { background:linear-gradient(135deg,#e2e8f0,#f8fafc); }
+    .op-big.pos { background:linear-gradient(135deg,#fef08a,#fefce8); }
     .op-big.cal { background:linear-gradient(135deg,#e0e7ff,#f5f7ff); }
     .op-vent.op-vent-cal { width:900px; max-width:calc(100vw - 340px); }
     .op-cal-cuerpo { overflow:auto; padding:0.4rem 0.6rem 0.6rem; }
@@ -228,6 +229,16 @@
         </div>
     }
 
+    @if (ConDeposito)
+    {
+        @* 📝 Postits del equipo (13/11/2026): antes era una tarjeta abajo del Panorama. Los mismos postits
+           compartidos (scope "dashboard"); se ven y se editan en la ventanita. *@
+        <div class="op-big pos @Marcas("pos")" @onclick='() => Tocar("pos")'>
+            <div class="op-t">📝 Postits del equipo <span class="op-n cero">@(postitsCant?.ToString() ?? "")</span></div>
+            <div class="op-l gris">@(postitPrimero is null ? "notas compartidas del equipo" : Corto(postitPrimero, 60))</div>
+        </div>
+    }
+
     @if (!ConDeposito)
     {
     @* 🛒 Faltantes para pedir *@
@@ -266,6 +277,19 @@
                 </div>
             </div>
         }
+    </div>
+}
+
+@if (ventana == "pos")
+{
+    <div class="op-vent">
+        <div class="op-vh">
+            📝 Postits del equipo <small>los ve todo el equipo</small>
+            <button class="op-x" title="Cerrar" @onclick="Cerrar">✕</button>
+        </div>
+        <div class="op-lista" style="padding:0.5rem 0.8rem;">
+            <PostitsWidget Scope="dashboard" Title="Postits del equipo" CardStyle="max-height:none; box-shadow:none; border:0; padding:0;" />
+        </div>
     </div>
 }
 
@@ -640,9 +664,25 @@
     private List<ApiClient.CorreoImportanteDto> correos = new();
     private static string NombreCorreo(ApiClient.CorreoImportanteDto c)
         => string.IsNullOrWhiteSpace(c.Remitente) ? (c.RemitenteEmail ?? "(desconocido)") : c.Remitente!;
+    // 13/11/2026: postits del equipo (pastilla).
+    private int? postitsCant;
+    private string? postitPrimero;
+    private async Task CargarPostits()
+    {
+        try
+        {
+            var ps = await Api.GetPostitsAsync("dashboard");
+            if (ps is null) return;
+            postitsCant = ps.Count;
+            postitPrimero = ps.Select(x => x.Texto).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+        }
+        catch { }
+    }
+
     private async Task CargarCorreos()
     {
         if (!ConDeposito) return;
+        await CargarPostits();
         try { correos = await Api.GetCorreosImportantesAsync(); }
         catch { }
     }
@@ -814,6 +854,7 @@
         nuevas.Remove(p);
         avisos.RemoveAll(a => a.Pastilla == p);
         if (p == "cal") { ventana = ventana == "cal" ? null : "cal"; return; }
+        if (p == "pos") { ventana = ventana == "pos" ? null : "pos"; return; }
         if (p == "che")
         {
             if (ventana == "che") { Cerrar(); return; }
