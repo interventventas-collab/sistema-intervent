@@ -3529,6 +3529,21 @@
         => MenuNuevoCatalogo.PorHref.Values.FirstOrDefault(i => PantallaClaveService.Normalizar(i.Href) == PantallaClaveService.Normalizar(RutaClave))?.Label;
     private void RepintarClaves() => _ = InvokeAsync(StateHasChanged);
     private void MenuNuevoCambio() => InvokeAsync(StateHasChanged);
+    /// <summary>2026-11-13: el título de cada pantalla lleva el ícono que se eligió para ella en el menú
+    /// (js/icono-titulo.js). Se manda solo cuando cambian los íconos.</summary>
+    private string? _iconosTituloMandados;
+    private async Task MandarIconosTituloAsync()
+    {
+        var iconos = MenuNuevoSvc.Actual.Iconos;
+        if (iconos == null) return;
+        var d = new Dictionary<string, object>();
+        foreach (var (k, v) in iconos)
+            if (!string.IsNullOrWhiteSpace(v) && k.StartsWith('/'))
+                d[k] = v == MenuNuevoCatalogo.TaxiAr ? new { svg = MenuNuevoCatalogo.TaxiArSvg } : v;
+        var json = System.Text.Json.JsonSerializer.Serialize(d);
+        if (json == _iconosTituloMandados) return;
+        try { await JS.InvokeVoidAsync("icoTitulo.set", d); _iconosTituloMandados = json; } catch { }
+    }
     /// <summary>Ícono del menú del costado según la pantalla (los de siempre; el resto, una etiqueta).</summary>
     private static MarkupString IconoCostado(string href) => href switch
     {
@@ -3957,6 +3972,7 @@
     private bool cmdPalHandlerRegistered = false;
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        await MandarIconosTituloAsync();
         // 2026-06-05: registrar atajo Ctrl+K (o Cmd+K en Mac) para abrir el CommandPalette.
         if (firstRender && !cmdPalHandlerRegistered)
         {
