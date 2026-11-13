@@ -1,0 +1,222 @@
+@page "/cafe/stock"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+@* 2026-11-13: "Stock" como pantalla de entrada (pedido del dueño: "si entrás en stock, lo primero
+   debería ser ver el stock que hay, y tener pantallas que te dejen elegir qué hacer").
+   Arriba: resumen en una línea + botones a las pantallas de stock que antes eran 7 renglones del menú.
+   Abajo: la lista de lo que hay (misma fuente que "Faltantes para pedir": api/stock/ideal/lista).
+   Estilo: texto plano, rojo solo para lo que falta o vence. Maqueta: scratchpad/Stock_inicio_PROPUESTA.png *@
+
+<div class="sti">
+    <h2 class="sti-t">📦 Stock</h2>
+    <div class="sti-sub">Lo que hay hoy en el depósito. Arriba, lo que podés hacer.</div>
+
+    <div class="sti-res">
+        @if (lista is null)
+        {
+            <span>Cargando…</span>
+        }
+        else
+        {
+            <span>@ConStock.ToString("N0") productos con stock</span>
+            @if (valor is not null)
+            {
+                <span> · valor a costo <b>$@valor.TotalContado.ToString("N0")</b> <span class="sti-gris">(sin café)</span></span>
+            }
+            <span> · </span><span class="@(faltantes > 0 ? "sti-rojo" : "")">@faltantes para pedir</span>
+            <span> · </span><span class="@(VencenPronto > 0 ? "sti-rojo" : "")">@VencenPronto vencen en 30 días</span>
+            @if (tareas is not null)
+            {
+                <span> · @tareas.Pendientes @(tareas.Pendientes == 1 ? "tarea abierta" : "tareas abiertas")</span>
+            }
+        }
+    </div>
+
+    <div class="sti-lbl">¿Qué querés hacer?</div>
+    <div class="sti-acc">
+        <a class="sti-b p" href="/cafe/stock-masivo">+ Cargar stock<small>entró mercadería</small></a>
+        <a class="sti-b" href="/stock/ideal"><span>Faltantes para pedir</span>@if (faltantes > 0) {<span class="sti-n">@faltantes</span>}<small>lo que hay que comprar</small></a>
+        <a class="sti-b" href="/stock/reposicion">Reposición / pedidos<small>pedidos al proveedor</small></a>
+        <a class="sti-b" href="/cafe/vencimientos"><span>Vencimientos</span>@if (VencenPronto > 0) {<span class="sti-n">@VencenPronto</span>}<small>qué sacar primero</small></a>
+        <a class="sti-b" href="/cafe/historial-stock">Historial<small>entradas y salidas</small></a>
+        <a class="sti-b" href="/cafe/ubicaciones">Ubicaciones<small>dónde está cada cosa</small></a>
+        <a class="sti-b" href="/deposito/tareas"><span>Tareas del depósito</span>@if ((tareas?.Pendientes ?? 0) > 0) {<span class="sti-n">@tareas!.Pendientes</span>}<small>conteos para los chicos</small></a>
+        <a class="sti-b" href="/stock/valuacion">Valor de stock<small>cuánta plata hay</small></a>
+    </div>
+
+    <div class="sti-card">
+        <div class="sti-bar">
+            <input class="sti-buscar" placeholder="🔍 Buscar producto, código o marca…" @bind="buscar" @bind:event="oninput" />
+            @foreach (var (clave, nombre) in Filtros)
+            {
+                <button class="sti-chip @(filtro == clave ? "on" : "")" @onclick="() => { filtro = clave; mostrar = 200; }">@nombre</button>
+            }
+        </div>
+        @if (lista is null)
+        {
+            <div class="sti-vacio">Cargando…</div>
+        }
+        else if (error != null)
+        {
+            <div class="sti-vacio">No se pudo cargar el stock: @error</div>
+        }
+        else
+        {
+            var filas = Filtradas().ToList();
+            @if (filas.Count == 0)
+            {
+                <div class="sti-vacio">No hay productos que coincidan.</div>
+            }
+            else
+            {
+                <table class="sti-tabla">
+                    <thead>
+                        <tr><th>Producto</th><th>Marca</th><th class="n">Hay</th><th class="n">Ideal</th><th>Ubicación</th><th>Vence</th><th class="n">Última entrada</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in filas.Take(mostrar))
+                        {
+                            var fila = f;
+                            var vence = Vence(f.ProductoId);
+                            var venceProx = vence.HasValue && vence.Value.Date <= Limite30;
+                            <tr title="Tocá para ver su historial" @onclick="() => historial = fila">
+                                <td>@f.Nombre @if (!string.IsNullOrWhiteSpace(f.Codigo)) {<span class="sti-cod">@f.Codigo</span>}</td>
+                                <td class="sti-gris">@(f.Marca ?? "—")</td>
+                                <td class="n @(f.StockActual <= 0 || f.Faltan > 0 ? "sti-rojo" : "")">@Cant(f.StockActual, f.Unidad)</td>
+                                <td class="n sti-gris">@(f.StockIdeal?.ToString("N0") ?? "—")</td>
+                                <td class="sti-gris">@(string.IsNullOrWhiteSpace(f.Ubicacion) ? "sin ubicar" : f.Ubicacion)</td>
+                                <td class="@(venceProx ? "sti-rojo" : "sti-gris")">@(vence.HasValue ? (vence.Value.Year == HoyAr.Year ? vence.Value.ToString("dd/MM") : vence.Value.ToString("MM/yyyy")) : "—")</td>
+                                <td class="n sti-gris">@(f.UltimaEntrada.HasValue ? f.UltimaEntrada.Value.ToArTime().ToString("dd/MM/yy") : "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (filas.Count > mostrar)
+                {
+                    <div class="sti-mas"><button class="sti-chip" @onclick="() => mostrar += 300">Mostrar más (@(filas.Count - mostrar) más)</button></div>
+                }
+            }
+        }
+    </div>
+    <div class="sti-nota">Tocando un producto se abre su historial (ventas, entradas, movimientos). En rojo solo lo que falta o vence.</div>
+</div>
+
+@if (historial is not null)
+{
+    <HistorialProductoModal ProductoId="historial.ProductoId" Nombre="@historial.Nombre" OnClose="() => historial = null" />
+}
+
+<style>
+    .sti { padding: 0.25rem 0.25rem 1.5rem; }
+    .sti-t { margin: 0 0 0.15rem; font-size: 1.4rem; }
+    .sti-sub { color: #6b7280; font-size: 0.8rem; margin-bottom: 0.7rem; }
+    .sti-res { font-size: 0.86rem; color: #374151; margin-bottom: 0.8rem; }
+    .sti-res b { color: #111827; }
+    .sti-rojo { color: #b91c1c !important; font-weight: 700; }
+    .sti-gris { color: #6b7280; }
+    .sti-lbl { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem; }
+    .sti-acc { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.9rem; }
+    .sti-b { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; padding: 0.45rem 0.8rem; font-size: 0.84rem; font-weight: 600;
+             color: #111827; text-decoration: none; line-height: 1.2; }
+    .sti-b:hover { border-color: #111827; }
+    .sti-b small { display: block; font-weight: 400; color: #6b7280; font-size: 0.7rem; }
+    .sti-b.p { background: #111827; color: #fff; border-color: #111827; }
+    .sti-b.p small { color: #9ca3af; }
+    .sti-n { background: #dc2626; color: #fff; border-radius: 9px; font-size: 0.65rem; padding: 0 0.4rem; margin-left: 0.35rem; vertical-align: 1px; }
+    .sti-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+    .sti-bar { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; padding: 0.6rem 0.75rem; border-bottom: 1px solid #e5e7eb; }
+    .sti-buscar { flex: 1; min-width: 220px; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.4rem 0.6rem; font: inherit; font-size: 0.85rem; }
+    .sti-chip { font: inherit; font-size: 0.78rem; border: 1px solid #d1d5db; border-radius: 14px; padding: 0.15rem 0.65rem; background: #fff; cursor: pointer; }
+    .sti-chip.on { background: #111827; color: #fff; border-color: #111827; }
+    .sti-tabla { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    .sti-tabla th { text-align: left; font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; font-weight: 700; }
+    .sti-tabla td { padding: 0.45rem 0.75rem; border-bottom: 1px solid #f3f4f6; }
+    .sti-tabla tbody tr { cursor: pointer; }
+    .sti-tabla tbody tr:hover { background: #f9fafb; }
+    .sti-tabla .n { text-align: right; white-space: nowrap; }
+    .sti-cod { font-family: monospace; color: #6b7280; font-size: 0.7rem; margin-left: 0.25rem; }
+    .sti-vacio { padding: 1rem; color: #6b7280; font-size: 0.85rem; }
+    .sti-mas { padding: 0.6rem; text-align: center; }
+    .sti-nota { font-size: 0.75rem; color: #6b7280; margin-top: 0.6rem; }
+    @@media (max-width: 768px) {
+        .sti-tabla th:nth-child(2), .sti-tabla td:nth-child(2),
+        .sti-tabla th:nth-child(7), .sti-tabla td:nth-child(7) { display: none; }
+    }
+</style>
+
+@code {
+    private List<StockIdealRowDto>? lista;
+    private Dictionary<int, DateTime?> vencimientos = new();
+    private ApiClient.ValuacionResult? valor;
+    private DepTareasResumenDto? tareas;
+    private int faltantes;
+    private string? error;
+    private string buscar = "";
+    private string filtro = "todos";
+    private int mostrar = 200;
+    private StockIdealRowDto? historial;
+
+    private static readonly (string, string)[] Filtros =
+    {
+        ("todos", "Todos"), ("faltante", "Debajo del ideal"), ("sin", "Sin stock"), ("vence", "Vence pronto"), ("ubicar", "Sin ubicación"),
+    };
+
+    private static DateTime HoyAr => DateTimeExt.AhoraAr().Date;
+    private static DateTime Limite30 => HoyAr.AddDays(30);
+    private int ConStock => lista?.Count(f => f.StockActual > 0) ?? 0;
+    private int VencenPronto => vencimientos.Values.Count(v => v.HasValue && v.Value.Date <= Limite30);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Todo en paralelo: si alguno falla, el resto igual se muestra.
+        var tLista = Api.GetStockIdealListaAsync(soloFaltantes: false);
+        var tVenc = Api.GetVencimientosResumenTodosAsync();
+        var tValor = Api.GetValuacionAsync();
+        var tTareas = Api.GetDepTareasResumenAsync();
+        var tFalt = Api.GetStockIdealPendientesContadorAsync();
+        try { lista = (await tLista)?.Filas ?? new(); }
+        catch (Exception ex) { lista = new(); error = ex.Message; }
+        try
+        {
+            vencimientos = ((await tVenc) ?? new())
+                .Where(v => v.ProximoVence.HasValue && v.ProximoQuedan > 0)
+                .GroupBy(v => v.ProductoId)
+                .ToDictionary(g => g.Key, g => g.Min(v => v.ProximoVence));
+        }
+        catch { }
+        try { valor = await tValor; } catch { }
+        try { tareas = await tTareas; } catch { }
+        try { faltantes = await tFalt; } catch { }
+    }
+
+    private DateTime? Vence(int productoId) => vencimientos.TryGetValue(productoId, out var v) ? v : null;
+
+    private IEnumerable<StockIdealRowDto> Filtradas()
+    {
+        IEnumerable<StockIdealRowDto> q = lista ?? new();
+        var t = buscar.Trim();
+        if (t.Length > 0)
+        {
+            var partes = t.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            q = q.Where(f =>
+            {
+                var texto = $"{f.Nombre} {f.Codigo} {f.Marca} {f.Barcode}";
+                return partes.All(p => texto.Contains(p, StringComparison.OrdinalIgnoreCase));
+            });
+        }
+        q = filtro switch
+        {
+            "faltante" => q.Where(f => f.Faltan > 0),
+            "sin" => q.Where(f => f.StockActual <= 0),
+            "vence" => q.Where(f => Vence(f.ProductoId) is { } v && v.Date <= Limite30).OrderBy(f => Vence(f.ProductoId)),
+            "ubicar" => q.Where(f => string.IsNullOrWhiteSpace(f.Ubicacion) && f.StockActual > 0),
+            _ => q,
+        };
+        return filtro == "vence" ? q : q.OrderBy(f => f.Nombre, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string Cant(decimal v, string unidad)
+        => unidad == "u" ? v.ToString("N0") : $"{v.ToString("0.##")} {unidad}";
+}

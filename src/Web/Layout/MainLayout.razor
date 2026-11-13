@@ -1097,6 +1097,17 @@
                 if (itemsSec.Count == 0 && g.Nuevo == null) continue;
                 @* 2026-11-10: siempre plegadas (se abren solo al tocarlas) y con el ícono que elija el dueño. *@
                 var tituloSec = g.Titulo;
+                @if (g.Directo is { } hrefDirecto)
+                {
+                    @* 13/11/2026: sección de un solo renglón (Stock): lleva a su pantalla, que tiene los botones. *@
+                    <div class="mn-lw" style="@EstiloLateral(tituloSec)">
+                    <NavItem Href="@hrefDirecto" Label="@g.Titulo" Icon="@IconoMenu(g.Titulo, IconoSeccion(g.Titulo))"
+                             IsActive="@(IsActive(hrefDirecto) || itemsSec.Any(i => IsActive(i.Href)))"
+                             OnClick="@(() => NavigateTo(hrefDirecto))" />
+                    <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(tituloSec, tituloSec, e.ClientX + 12, e.ClientY - 20)">✏</button>
+                    </div>
+                    continue;
+                }
                 <div class="mn-lw sec" style="@EstiloLateral(tituloSec)">
                 <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(tituloSec, tituloSec, e.ClientX + 12, e.ClientY - 20)">✏</button>
                 <NavGroup Label="@g.Titulo" Icon="@IconoMenu(g.Titulo, IconoSeccion(g.Titulo))"
@@ -3545,6 +3556,10 @@
         foreach (var (k, v) in iconos)
             if (!string.IsNullOrWhiteSpace(v) && k.StartsWith('/'))
                 d[k] = v == MenuNuevoCatalogo.TaxiAr ? new { svg = MenuNuevoCatalogo.TaxiArSvg } : v;
+        // Secciones de un solo renglón (Stock): su pantalla lleva el ícono de la sección.
+        foreach (var g in MenuNuevoCatalogo.Grupos)
+            if (g.Directo is { } hd && !d.ContainsKey(hd) && MenuNuevoCatalogo.IconoDe(iconos, g.Titulo) is { } vi)
+                d[hd] = vi == MenuNuevoCatalogo.TaxiAr ? new { svg = MenuNuevoCatalogo.TaxiArSvg } : vi;
         var json = System.Text.Json.JsonSerializer.Serialize(d);
         if (json == _iconosTituloMandados) return;
         try { await JS.InvokeVoidAsync("icoTitulo.set", d); _iconosTituloMandados = json; } catch { }

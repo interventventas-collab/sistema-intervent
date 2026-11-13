@@ -17,7 +17,9 @@ public static class MenuNuevoCatalogo
                        string? Nuevo = null, bool SoloCelu = false);
 
     /// <summary>Nuevo = el desplegable lleva un + pegado que carga uno nuevo (alquiler, stock, compra).</summary>
-    public record Grupo(string Titulo, string Subtitulo, bool DelNegocio, Item[] Items, string? Nuevo = null);
+    /// <summary>13/11/2026: Directo = la sección es UN renglón que lleva a esa pantalla (ej. Stock → /cafe/stock,
+    /// que tiene botones a sus pantallas). Los Items siguen en el catálogo (buscador, íconos, favoritos).</summary>
+    public record Grupo(string Titulo, string Subtitulo, bool DelNegocio, Item[] Items, string? Nuevo = null, string? Directo = null);
 
     /// <summary>Botones directos de todos los días (un clic, sin abrir nada).</summary>
     public static readonly Item[] Directos =
@@ -103,7 +105,8 @@ public static class MenuNuevoCatalogo
             new("Reposición / pedidos", "/stock/reposicion"),
             new("Ubicaciones", "/cafe/ubicaciones"),
             new("Tareas del depósito", "/deposito/tareas"),
-        }, Nuevo: "stock"),
+            new("Valor de stock", "/stock/valuacion"),
+        }, Nuevo: "stock", Directo: "/cafe/stock"),
         new("Compras", "", false, new Item[]
         {
             new("Proveedores", "/cafe/proveedores"),
@@ -421,7 +424,6 @@ public static class MenuNuevoCatalogo
         new("Marcas", "/cafe/marcas"),
         new("Fotos fondo verde/azul", "/cafe/fotos-chroma"),
         new("Ranking productos", "/stock/ranking"),
-        new("Valor de stock", "/stock/valuacion"),
         new("Depósitos", "/cafe/depositos", "cafe-depositos"),
         new("Pagos rápidos (celu)", "/pagos-movil", "cafe-tesoreria"),
         new("Catálogo de bancos", "/cafe/configuracion/bancos", "cafe-tesoreria"),
