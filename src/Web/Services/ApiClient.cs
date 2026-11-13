@@ -4526,6 +4526,33 @@ public class ApiClient
     public async Task<DashboardEquipoResponse?> GetDashboardEquipoAsync()
         => await GetAsync<DashboardEquipoResponse>("/api/dashboard/equipo-dia");
 
+    // 2026-11-13: ficha completa de cada empleado desplegable en "Equipo hoy" (solo el dueño).
+    public record EquipoUltimoDto(int EmpId, DateTime CuandoUtc, string Texto, string Donde);
+    public record EquipoMovDto(string Hora, string Texto, string Donde);
+    public record EquipoSemanaDto(string Clase, int Cantidad);
+    public record EquipoUltimoFichaDto(DateTime CuandoUtc, string Texto, string Donde);
+    public record EquipoLiqDto(int Id, int Anio, int Mes, decimal NetoAPagar, decimal Adelantos, string Estado,
+        decimal DiasTrabajados, decimal KgCafe, decimal Pagado, DateTime? UltimoPago);
+    public record EquipoVacDto(int Periodo, int LeTocan, int Tomadas, int Pedidas,
+        DateTime? ProximaDesde, DateTime? ProximaHasta, string? ProximaEstado);
+    public record EquipoDocDto(int Id, string FileName, DateTime UploadedAt);
+    public record EquipoLinkDto(string Que, string Ruta);
+    public record EquipoFichaDto(int Id, string Nombre, string? Puesto, DateTime FechaIngreso, string? Documento,
+        string? TelefonoContacto, string? TelefonoFamiliar, string? Email, string? Domicilio,
+        string? Banco, string? Cbu, string? Alias,
+        string ModalidadSueldo, decimal SueldoBase, decimal JornalDiario, decimal ValorHora,
+        decimal? ComisionPorcentaje, decimal ComisionPorKg, decimal BonoFijo,
+        DateTime Dia, List<EquipoMovDto> DelDia, int[] Ritmo, List<EquipoSemanaDto> Semana,
+        EquipoUltimoFichaDto? Ultimo, List<string> UsaDesde, string Fichar,
+        EquipoLiqDto? MesActual, EquipoLiqDto? MesAnterior, EquipoVacDto Vacaciones,
+        List<EquipoDocDto> Documentos, List<EquipoLinkDto> Links);
+
+    public async Task<List<EquipoUltimoDto>?> GetEquipoUltimosAsync()
+        => await GetAsync<List<EquipoUltimoDto>>("/api/equipo-ficha/ultimos");
+
+    public async Task<EquipoFichaDto?> GetEquipoFichaAsync(int empId, DateTime? dia = null)
+        => await GetAsync<EquipoFichaDto>($"/api/equipo-ficha/{empId}" + (dia is null ? "" : $"?fecha={dia:yyyy-MM-dd}"));
+
     // 2026-07-04: historial de ventas por mes para el mini gráfico en la card "Ventas del mes".
     public record MonthlySalesPointDto(
         int Year, int Month, string MonthLabel,
