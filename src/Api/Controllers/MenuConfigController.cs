@@ -102,7 +102,8 @@ WHEN NOT MATCHED THEN INSERT (Id, Json, ActualizadoPor) VALUES (2, {json}, {quie
     // Los admin (Osmar, Gabriel, Germán comparten usuario y se distinguen por el PIN) mandan la persona;
     // los demás usuarios guardan siempre en la suya ("U:" + usuario), así nadie pisa lo de otro.
     public const int MAX_FLOTANTE = 10;
-    public record FlotantePersona(List<string>? Items, int? Derecha, int? Abajo, bool LabDer, bool Acostado, bool Compacto = false);
+    /// <summary>Acciones (13/11/2026): lo que muestra el botón ⚡ Acciones ("venta", "cobranza"…); null = las de fábrica.</summary>
+    public record FlotantePersona(List<string>? Items, int? Derecha, int? Abajo, bool LabDer, bool Acostado, bool Compacto = false, List<string>? Acciones = null);
     public record FlotantePut(string? Persona, FlotantePersona? Config);
 
     [HttpGet("flotante")]
@@ -133,7 +134,10 @@ WHEN NOT MATCHED THEN INSERT (Id, Json, ActualizadoPor) VALUES (2, {json}, {quie
                     .Where(x => x.Length <= 600)
                     .Distinct(StringComparer.OrdinalIgnoreCase).Take(MAX_FLOTANTE).ToList();
                 int? Lim(int? v) => v is null ? null : Math.Clamp(v.Value, 0, 5000);
-                todo[clave] = req.Config with { Items = items, Derecha = Lim(req.Config.Derecha), Abajo = Lim(req.Config.Abajo) };
+                var acciones = req.Config.Acciones?
+                    .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Where(x => x.Length <= 40)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).Take(30).ToList();
+                todo[clave] = req.Config with { Items = items, Derecha = Lim(req.Config.Derecha), Abajo = Lim(req.Config.Abajo), Acciones = acciones };
             }
             var json = JsonSerializer.Serialize(todo);
             if (json.Length > 100_000) return BadRequest("Demasiado grande");

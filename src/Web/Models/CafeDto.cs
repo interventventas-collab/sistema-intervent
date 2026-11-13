@@ -3042,4 +3042,6 @@ public class FlotantePersonaDto
     public bool Acostado { get; set; }
     /// <summary>2026-11-11: plegado en un solo ícono (se abre tocándolo).</summary>
     public bool Compacto { get; set; }
+    /// <summary>2026-11-13: acciones del botón ⚡ ("venta", "cobranza"…). null = las de fábrica.</summary>
+    public List<string>? Acciones { get; set; }
 }
