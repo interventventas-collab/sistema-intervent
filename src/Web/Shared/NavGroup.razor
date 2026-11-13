@@ -33,6 +33,23 @@ else
 {
     @* Modo clasico — acordeon vertical (hijos debajo del header) *@
     <div class="nav-group @(IsExpanded ? "expanded" : "") @(HasActiveChild ? "has-active" : "") @(Highlight ? "nav-group-highlight" : "")">
+        @if (LabelHref is { } hrefLabel)
+        {
+            @* 2026-11-13: el nombre lleva a la pantalla de la sección; la flechita despliega (pedido del dueño). *@
+            <div class="nav-group-header nav-group-split">
+                <a class="nav-group-link" href="@hrefLabel" @onclick="OnLabelClick" @onclick:preventDefault="true">
+                    <span class="nav-icon">@Icon</span>
+                    <span class="nav-label">@Label</span>
+                </a>
+                <button class="nav-group-arrow-btn" title="Ver lo que hay adentro" @onclick="Toggle">
+                    <span class="nav-group-arrow">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </span>
+                </button>
+            </div>
+        }
+        else
+        {
         <button class="nav-group-header" @onclick="Toggle">
             <span class="nav-icon">@Icon</span>
             <span class="nav-label">@Label</span>
@@ -40,6 +57,7 @@ else
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </span>
         </button>
+        }
         <div class="nav-group-children" style="@(IsExpanded ? "" : "display:none")">
             @ChildContent
         </div>
@@ -59,6 +77,9 @@ else
     /// actual adentro; se abre únicamente cuando lo tocan.</summary>
     [Parameter] public bool NoAutoExpand { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>2026-11-13: si viene, el nombre es un link a esa pantalla y solo la flechita despliega.</summary>
+    [Parameter] public string? LabelHref { get; set; }
+    [Parameter] public EventCallback OnLabelClick { get; set; }
 
     private bool IsExpanded { get; set; }
 

@@ -246,6 +246,35 @@ public static class MenuNuevoCatalogo
         => new(icono == TaxiAr ? TaxiArSvg : System.Net.WebUtility.HtmlEncode(icono ?? ""));
     /// <summary>Para lugares donde va texto solo (títulos, avisos): el taxi como emoji 🚕.</summary>
     public static string ComoTexto(string? icono) => icono == TaxiAr ? "🚕" : icono ?? "";
+    /// <summary>13/11/2026: cada sección tiene su pantalla de entrada. Stock usa la suya propia (Directo);
+    /// las demás, la genérica /seccion/{nombre} (Pages/Seccion.razor) con todos sus botones arriba.</summary>
+    /// <summary>13/11/2026: TODO lo de una sección (pantalla de sección y tarjetas del Inicio): el orden
+    /// acomodado + lo que el menú saca por tener botón propio arriba (Preparación, Mapa…), sin la
+    /// propia pantalla de entrada (ej. "Stock" dentro de Stock).</summary>
+    public static List<Item> TodoDeSeccion(Grupo g, IEnumerable<Item>? armados)
+    {
+        var lista = (armados ?? g.Items).ToList();
+        var directos = Directos.Select(d => d.Href).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var it in g.Items.Where(i => directos.Contains(i.Href)).Reverse())
+            if (!lista.Any(x => string.Equals(x.Href, it.Href, StringComparison.OrdinalIgnoreCase)))
+                lista.Insert(0, it);
+        var propia = HrefSeccion(g);
+        return lista.Where(i => !string.Equals(i.Href, propia, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+    public static string HrefSeccion(Grupo g) => g.Directo ?? "/seccion/" + Slug(g.Titulo);
+    public static Grupo? GrupoPorSlug(string slug)
+        => Grupos.FirstOrDefault(g => string.Equals(Slug(g.Titulo), slug, StringComparison.OrdinalIgnoreCase));
+    public static string Slug(string titulo)
+    {
+        var t = titulo.Trim().ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var ch in t)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+            sb.Append(char.IsLetterOrDigit(ch) ? ch : '-');
+        }
+        return System.Text.RegularExpressions.Regex.Replace(sb.ToString(), "-+", "-").Trim('-');
+    }
     public static string? IconoDe(Dictionary<string, string>? iconos, string clave)
         => iconos != null && iconos.TryGetValue(clave, out var e) && !string.IsNullOrWhiteSpace(e) ? e : null;
 

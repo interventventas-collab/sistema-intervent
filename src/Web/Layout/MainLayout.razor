@@ -954,7 +954,19 @@
 {
 @* 2026-11-07: "todo arriba" (admin y depósito): en compu el menú de la izquierda no ocupa lugar;
    se abre como cajón con el botón "☰ Menú" de la barra (clase ta). En celu queda como siempre. *@
-<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed && (!TodoArriba || ColumnaNueva) ? "collapsed" : "") @(TodoArriba ? "ta" : "") @(ColumnaNueva ? "ta-col" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod") @(HasPerm("deposito") ? "sidebar-with-chat" : "")" id="sidebar">
+@* 2026-11-13: menú nuevo = pastilla flotante "INTER VENT" arriba a la izquierda; al pasar el mouse se abre
+   el menú encima de la pantalla (pedido del dueño). Maqueta: scratchpad/Menu_flotante_INTERVENT_PROPUESTA.png *@
+@if (ColumnaNueva)
+{
+    <button class="mf-pill" title="Menú" @onclick="() => mfFijo = !mfFijo">
+        <span class="mf-tag @(IsDevEnvironment ? "dev" : "")">@(IsDevEnvironment ? "DESARROLLO" : "PRODUCCIÓN")</span>
+        <span class="mf-logo">@SvgIcons.GetByName(BrandSettings.BrandIcon)</span>
+        <span class="mf-nom">@BrandSettings.BrandName</span>
+        <span class="mf-car">☰</span>
+    </button>
+    @if (mfFijo) { <div class="mf-fondo" @onclick="() => mfFijo = false"></div> }
+}
+<aside @onmouseleave="() => { if (mfFijo) mfFijo = false; }" class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed && !TodoArriba ? "collapsed" : "") @(TodoArriba ? "ta" : "") @(ColumnaNueva ? "ta-col mf" : "") @(ColumnaNueva && mfOff ? "mf-off" : "") @(ColumnaNueva && mfFijo ? "mf-fijo" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod") @(HasPerm("deposito") ? "sidebar-with-chat" : "")" id="sidebar">
     @if (IsDevEnvironment)
     {
         <div class="dev-environment-banner" title="Estás en el entorno de DESARROLLO. Los datos NO son los de producción.">
@@ -1078,14 +1090,17 @@
         @if (MenuNuevo && (HasPerm("cafe") || HasPerm("oficina")))
         {
             @* 2026-11-10: "Inicio" arriba de todo, para volver al Dashboard de un toque (pedido del dueño). *@
-            <div class="mn-inicio">
-                <NavItem Href="/" Label="Inicio" Icon="@SvgIcons.Dashboard"
-                         IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
+            <div class="mf-rapidos">
+                <a class="mf-r @(IsActive("/") ? "on" : "")" href="/" @onclick="@(() => NavigateTo("/"))" @onclick:preventDefault="true">⌂ Inicio</a>
+                <button class="mf-r" @onclick="VolverAtrasAsync">← Atrás</button>
+                <button class="mf-r" @onclick="() => { mfFijo = false; mfOff = true; OpenCommandPalette(); }">🔍 Buscar</button>
+                <button class="mf-r @(organizarAbierto ? "on" : "")" @onclick="() => organizarAbierto = !organizarAbierto">⚙ Organizar</button>
             </div>
             @* 2026-11-11: la franja ⭐ Favoritos se sacó: la reemplazan los 8 botones grandes del Dashboard (pedido del dueño). *@
             @* 2026-11-10: plegado (solo íconos), tocar cualquier sección abre el menú entero. *@
             <div class="mn-secciones">
-            @if (sidebarCollapsed && ColumnaNueva)
+            @* 2026-11-13: con el menú flotante ya no hay columna plegada que abrir. *@
+            @if (false)
             {
                 @* plegado: tocar un ícono lo abre (queda abierto hasta tocar la flechita) *@
                 <div class="mn-abrir" title="Abrir el menú" @onclick="() => { sidebarCollapsed = false; }"></div>
@@ -1097,21 +1112,12 @@
                 if (itemsSec.Count == 0 && g.Nuevo == null) continue;
                 @* 2026-11-10: siempre plegadas (se abren solo al tocarlas) y con el ícono que elija el dueño. *@
                 var tituloSec = g.Titulo;
-                @if (g.Directo is { } hrefDirecto)
-                {
-                    @* 13/11/2026: sección de un solo renglón (Stock): lleva a su pantalla, que tiene los botones. *@
-                    <div class="mn-lw" style="@EstiloLateral(tituloSec)">
-                    <NavItem Href="@hrefDirecto" Label="@g.Titulo" Icon="@IconoMenu(g.Titulo, IconoSeccion(g.Titulo))"
-                             IsActive="@(IsActive(hrefDirecto) || itemsSec.Any(i => IsActive(i.Href)))"
-                             OnClick="@(() => NavigateTo(hrefDirecto))" />
-                    <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(tituloSec, tituloSec, e.ClientX + 12, e.ClientY - 20)">✏</button>
-                    </div>
-                    continue;
-                }
+                var hrefSec = MenuNuevoCatalogo.HrefSeccion(g);
                 <div class="mn-lw sec" style="@EstiloLateral(tituloSec)">
                 <button class="mn-lapiz" title="Cambiar ícono y color" @onclick="e => AbrirLapiz(tituloSec, tituloSec, e.ClientX + 12, e.ClientY - 20)">✏</button>
                 <NavGroup Label="@g.Titulo" Icon="@IconoMenu(g.Titulo, IconoSeccion(g.Titulo))"
-                          HasActiveChild="@(itemsSec.Any(i => IsActive(i.Href)))"
+                          HasActiveChild="@(IsActive(hrefSec) || itemsSec.Any(i => IsActive(i.Href)))"
+                          LabelHref="@hrefSec" OnLabelClick="@(() => NavigateTo(hrefSec))"
                           NoAutoExpand="true">
                     @if (g.Titulo == "MercadoLibre" && publisRevisar > 0)
                     {
@@ -1124,7 +1130,7 @@
                         <NavItem Href="#" Label="@("＋ " + TituloNuevoSeccion(tipoNuevo))" Icon="@SvgIcons.Plus"
                                  IsActive="false" OnClick="@(() => NuevoRapido(tipoNuevo))" />
                     }
-                    @foreach (var it in itemsSec)
+                    @foreach (var it in itemsSec.Where(i => i.Href != hrefSec))
                     {
                         var itSec = it;
                         <div class="mn-lw" style="@EstiloLateral(itSec.Href)">
@@ -1656,6 +1662,10 @@
             <span class="sidebar-user-name">@username</span>
             <span class="sidebar-user-role">@role</span>
         </div>
+        @if (ColumnaNueva)
+        {
+            <button class="mf-salir" @onclick="Logout" title="Cerrar sesión">⎋ Salir</button>
+        }
         <button class="sidebar-menu-btn" @onclick="ToggleUserMenu" @onclick:stopPropagation="true" title="Menu">
             <span class="sidebar-menu-icon @(userMenuOpen ? "rotated" : "")">@SvgIcons.ChevronUp</span>
         </button>
@@ -3481,6 +3491,18 @@
     private bool organizarAbierto;
     /// <summary>2026-11-10: con el menú nuevo, en compu el menú de la izquierda vuelve a estar
     /// siempre a la vista (columna fija) en vez de ser un cajón que abre "☰ Menú".</summary>
+    // 2026-11-13: menú flotante "INTER VENT".
+    private bool mfFijo, mfOff;
+    private void CerrarMenuFlotante()
+    {
+        mfFijo = false; mfOff = true;
+        _ = Task.Delay(700).ContinueWith(_ => InvokeAsync(() => { mfOff = false; StateHasChanged(); }));
+    }
+    private async Task VolverAtrasAsync()
+    {
+        CerrarMenuFlotante();
+        try { await JS.InvokeVoidAsync("history.back"); } catch { }
+    }
     private bool ColumnaNueva => MenuNuevo && !IsEmbedded && (HasPerm("cafe") || HasPerm("oficina"));
     private LapizMenu? lapizRef;
     // 2026-11-10: ⭐ en cada pantalla del menú de la izquierda (favoritos de quien tiene el PIN puesto).
@@ -3558,7 +3580,7 @@
                 d[k] = v == MenuNuevoCatalogo.TaxiAr ? new { svg = MenuNuevoCatalogo.TaxiArSvg } : v;
         // Secciones de un solo renglón (Stock): su pantalla lleva el ícono de la sección.
         foreach (var g in MenuNuevoCatalogo.Grupos)
-            if (g.Directo is { } hd && !d.ContainsKey(hd) && MenuNuevoCatalogo.IconoDe(iconos, g.Titulo) is { } vi)
+            if (MenuNuevoCatalogo.HrefSeccion(g) is { } hd && !d.ContainsKey(hd) && MenuNuevoCatalogo.IconoDe(iconos, g.Titulo) is { } vi)
                 d[hd] = vi == MenuNuevoCatalogo.TaxiAr ? new { svg = MenuNuevoCatalogo.TaxiArSvg } : vi;
         var json = System.Text.Json.JsonSerializer.Serialize(d);
         if (json == _iconosTituloMandados) return;
@@ -3843,6 +3865,7 @@
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
+        if (ColumnaNueva) CerrarMenuFlotante();
         // 2026-09-01: se cambio de pantalla -> ningun desplegable de la topbar puede quedar abierto,
         // venga la navegacion de donde venga (menu lateral, boton Volver, atras del navegador).
         CerrarDropdownsTopbar();
