@@ -11,6 +11,47 @@
 @inject ApiClient Api
 @inject AuthService Auth
 @inject ToastService Toast
+@inject OperatorService Operator
+
+@* 2026-11-13: tira ⭐ Favoritos + "✏ Arreglar botones" (ocultar con ● gris para volver, color por botón).
+   Todo es de cada persona (su PIN); sin PIN = lo de Osmar. Maqueta: scratchpad/Botones_ocultar_favoritos_PROPUESTA.png *@
+<div class="si-fav">
+    <b class="si-fav-t">⭐ Favoritos</b>
+    @{ var tira = Tira(); }
+    @if (tira.Count == 0 && !arreglando)
+    {
+        <span class="si-fav-vacio">Todavía no elegiste. Tocá <b>✏ Arreglar botones</b> y la ☆ de los que quieras tener acá.</span>
+    }
+    @for (var n = 0; n < tira.Count; n++)
+    {
+        var i = n;
+        var it = tira[i];
+        var num = Svc.Numeros.TryGetValue(it.Href, out var nn) ? nn : 0;
+        @if (arreglando)
+        {
+            <span class="si-ch" style="@ColorChip(it.Href)">
+                @if (i > 0) { <button class="si-ctl" title="Mover a la izquierda" @onclick="() => MoverTira(i, i - 1)">‹</button> }
+                @it.Label
+                @if (i < tira.Count - 1) { <button class="si-ctl" title="Mover a la derecha" @onclick="() => MoverTira(i, i + 1)">›</button> }
+                <button class="si-ctl" title="Sacar de Favoritos" @onclick="() => Favorito(it.Href, false)">✕</button>
+            </span>
+        }
+        else
+        {
+            <a class="si-ch" href="@it.Href" target="@(it.Externo ? "_blank" : null)" style="@ColorChip(it.Href)" title="Ir a @it.Label">
+                @it.Label
+                @if (num > 0) { <span class="si-num">@(num > 99 ? "99+" : num.ToString())</span> }
+            </a>
+        }
+    }
+    <button class="si-arr @(arreglando ? "on" : "")" @onclick="() => { arreglando = !arreglando; paleta = null; }">
+        @(arreglando ? "✓ Listo" : "✏ Arreglar botones")
+    </button>
+</div>
+@if (arreglando)
+{
+    <div class="si-ayuda">☆ = poner en Favoritos · 🎨 = color · 👁 = ocultar (queda un ● gris en la tarjeta y tocándolo vuelve). Lo que cambiás lo ves solo vos@(Op is null ? "" : $" ({Nombre(Op)})").</div>
+}
 
 <div class="si">
     @for (var n = 0; n < tarjetas.Count; n++)
@@ -20,7 +61,7 @@
         var nuevo = g.Nuevo ?? (g.Titulo == "Clientes" ? "venta" : null);
         var href = MenuNuevoCatalogo.HrefSeccion(g);
         <div class="si-c @(sobre == i && arrastrando != i ? "sobre" : "")" style="@Color(g.Titulo)"
-             draggable="true" @ondragstart="() => arrastrando = i" @ondragend="() => { arrastrando = null; sobre = null; }"
+             draggable="@(arreglando ? "false" : "true")" @ondragstart="() => arrastrando = i" @ondragend="() => { arrastrando = null; sobre = null; }"
              @ondragover="() => sobre = i" @ondragover:preventDefault="true" @ondragleave="() => sobre = null" @ondrop="() => SoltarAsync(i)">
             @if (nuevo != null)
             {
@@ -31,15 +72,53 @@
                 <span class="si-nom">@g.Titulo</span>
             </a>
             <div class="si-chips">
-                @foreach (var it in items)
+                @foreach (var it0 in items)
                 {
+                    var it = it0;
                     var num = Svc.Numeros.TryGetValue(it.Href, out var nn) ? nn : 0;
                     var ico = MenuNuevoCatalogo.IconoDe(Svc.Actual.Iconos, it.Href);
-                    <a class="si-ch" href="@it.Href" target="@(it.Externo ? "_blank" : null)" title="Ir a @it.Label">
-                        @if (ico != null) { <span class="si-chi">@MenuNuevoCatalogo.Pintar(ico)</span> }
-                        @it.Label
-                        @if (num > 0) { <span class="si-num">@(num > 99 ? "99+" : num.ToString())</span> }
-                    </a>
+                    var oculto = ocultos.Contains(it.Href);
+                    @if (arreglando)
+                    {
+                        <span class="si-ch @(oculto ? "si-oculto" : "")" style="@(oculto ? "" : ColorChip(it.Href))">
+                            @if (ico != null) { <span class="si-chi">@MenuNuevoCatalogo.Pintar(ico)</span> }
+                            <span class="si-lab">@it.Label</span>
+                            @if (oculto)
+                            {
+                                <button class="si-ctl si-most" title="Volver a mostrar" @onclick="() => Ocultar(it.Href, false)">mostrar</button>
+                            }
+                            else
+                            {
+                                var enTira = tiraHrefs.Contains(it.Href);
+                                <button class="si-ctl" title="@(enTira ? "Sacar de Favoritos" : "Poner en Favoritos")" @onclick="() => Favorito(it.Href, !enTira)">@(enTira ? "⭐" : "☆")</button>
+                                <button class="si-ctl" title="Elegir color" @onclick="() => paleta = paleta == it.Href ? null : it.Href">🎨</button>
+                                <button class="si-ctl" title="Ocultar" @onclick="() => Ocultar(it.Href, true)">👁</button>
+                            }
+                            @if (paleta == it.Href)
+                            {
+                                <span class="si-pal">
+                                    <button class="si-pc" style="background:#fff;" title="Sin color" @onclick="() => PonerColor(it.Href, null)">✕</button>
+                                    @foreach (var pc in MenuNuevoCatalogo.Pasteles)
+                                    {
+                                        var clave = pc.Clave;
+                                        <button class="si-pc" style="background:@pc.Fondo; border-color:@pc.Borde;" title="@pc.Nombre" @onclick="() => PonerColor(it.Href, clave)"></button>
+                                    }
+                                </span>
+                            }
+                        </span>
+                    }
+                    else if (oculto)
+                    {
+                        <button class="si-dot" title="@it.Label (oculto) · tocá para volver a mostrarlo" @onclick="() => Ocultar(it.Href, false)"></button>
+                    }
+                    else
+                    {
+                        <a class="si-ch" href="@it.Href" target="@(it.Externo ? "_blank" : null)" style="@ColorChip(it.Href)" title="Ir a @it.Label">
+                            @if (ico != null) { <span class="si-chi">@MenuNuevoCatalogo.Pintar(ico)</span> }
+                            @it.Label
+                            @if (num > 0) { <span class="si-num">@(num > 99 ? "99+" : num.ToString())</span> }
+                        </a>
+                    }
                 }
             </div>
         </div>
@@ -65,6 +144,26 @@
     .si-ch:hover { border-color: #111827; }
     .si-chi { font-size: 0.8rem; line-height: 1; }
     .si-num { background: #dc2626; color: #fff; border-radius: 8px; font-size: 0.6rem; padding: 0 0.3rem; font-weight: 700; }
+    .si-fav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px;
+              padding: 0.45rem 0.8rem; margin-bottom: 0.6rem; }
+    .si-fav .si-ch { font-size: 0.8rem; padding: 0.2rem 0.65rem; }
+    .si-fav-t { font-size: 0.92rem; margin-right: 0.35rem; }
+    .si-fav-vacio { font-size: 0.78rem; color: #6b7280; }
+    .si-arr { margin-left: auto; border: 1px solid #d1d5db; background: #fff; border-radius: 999px; font: inherit; font-size: 0.76rem;
+              padding: 0.2rem 0.75rem; cursor: pointer; color: #374151; }
+    .si-arr.on { background: #111827; border-color: #111827; color: #fff; }
+    .si-ayuda { font-size: 0.76rem; color: #6b7280; margin: -0.3rem 0 0.6rem 0.2rem; }
+    .si-ctl { border: 0; background: none; padding: 0 0.1rem; font-size: 0.72rem; cursor: pointer; line-height: 1; color: #374151; }
+    .si-ctl:hover { transform: scale(1.2); }
+    .si-most { color: #2563eb; text-decoration: underline; }
+    .si-oculto { opacity: 0.5; }
+    .si-oculto .si-lab { text-decoration: line-through; }
+    .si-ch { position: relative; }
+    .si-pal { position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 30; background: #fff; border: 1px solid #d1d5db; border-radius: 10px;
+              box-shadow: 0 8px 20px rgba(0,0,0,.18); padding: 6px; display: grid; grid-template-columns: repeat(7, 20px); gap: 5px; }
+    .si-pc { width: 20px; height: 20px; border-radius: 50%; border: 1px solid #d1d5db; cursor: pointer; padding: 0; font-size: 0.6rem; color: #6b7280; }
+    .si-dot { width: 9px; height: 9px; border-radius: 50%; background: #cbd5e1; border: 1px solid #94a3b8; padding: 0; cursor: pointer; align-self: center; }
+    .si-dot:hover { background: #64748b; }
     .si-nuevo { position: absolute; top: 0.45rem; right: 0.5rem; width: 24px; height: 24px; border-radius: 50%; border: 0;
                 background: #111827; color: #fff; font-size: 1rem; line-height: 1; cursor: pointer; }
 </style>
@@ -78,14 +177,57 @@
     {
         Svc.OnChange += Repintar;
         Svc.OnNumeros += Repintar;
+        Operator.OnChange += Repintar;
         await Svc.EnsureLoadedAsync();
         try { permisos = (await Auth.GetUserAsync())?.Permissions ?? new(); } catch { }
         try { if ((await Api.GetMeAsync())?.Permissions is { } p) permisos = p; } catch { }
         Armar();
     }
 
+    // ───────── Favoritos, ocultos y colores de cada persona (2026-11-13) ─────────
+    private bool arreglando;
+    private string? paleta;
+    private HashSet<string> ocultos = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> tiraHrefs = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> coloresChip = new(StringComparer.OrdinalIgnoreCase);
+    private string? Op => Operator.HasOperator ? Operator.Current!.Trim().ToUpperInvariant() : null;
+    private static string Nombre(string op) => op.Length == 0 ? op : op[0] + op[1..].ToLowerInvariant();
+
+    /// <summary>La tira en el orden elegido, solo con pantallas que esta persona puede ver.</summary>
+    private List<MenuNuevoCatalogo.Item> Tira()
+    {
+        var todos = tarjetas.SelectMany(t => t.Items).GroupBy(i => i.Href, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        return Svc.TiraDe(Op).Select(h => todos.TryGetValue(h, out var it) ? it : null).Where(i => i != null).Select(i => i!).ToList();
+    }
+
+    private string ColorChip(string href)
+        => coloresChip.TryGetValue(href, out var c) && MenuNuevoCatalogo.Pastel(c) is { } p ? $"background:{p.Fondo};border-color:{p.Borde};" : "";
+
+    private async Task Hacer(Func<Task> accion)
+    {
+        try { await accion(); }
+        catch (Exception ex) { Toast.Error("No se pudo guardar: " + ex.Message); }
+        Armar();
+    }
+    private Task Favorito(string href, bool poner) => Hacer(() => Svc.PonerEnTiraAsync(Op, href, poner));
+    private Task MoverTira(int a, int b)
+    {
+        // La tira guardada puede tener pantallas que esta persona no ve: se mueve sobre la guardada.
+        var guardada = Svc.TiraDe(Op);
+        var visibles = Tira();
+        var ia = guardada.FindIndex(h => h.Equals(visibles[a].Href, StringComparison.OrdinalIgnoreCase));
+        var ib = guardada.FindIndex(h => h.Equals(visibles[b].Href, StringComparison.OrdinalIgnoreCase));
+        return Hacer(() => Svc.MoverEnTiraAsync(Op, ia, ib));
+    }
+    private Task Ocultar(string href, bool ocultar) => Hacer(() => Svc.OcultarAsync(Op, href, ocultar));
+    private Task PonerColor(string href, string? color) { paleta = null; return Hacer(() => Svc.ColorChipAsync(Op, href, color)); }
+
     private void Armar()
     {
+        ocultos = Svc.OcultosDe(Op);
+        tiraHrefs = Svc.TiraDe(Op).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        coloresChip = Svc.ColoresChipDe(Op);
         tarjetas = Svc.Actual.Grupos
             .Select(ga => (ga.Grupo, MenuNuevoCatalogo.TodoDeSeccion(ga.Grupo, ga.Items)
                 .Where(i => i.Permiso == null || permisos.Contains(i.Permiso)).ToList()))
@@ -132,5 +274,5 @@
     };
 
     private void Repintar() => InvokeAsync(() => { Armar(); StateHasChanged(); });
-    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; }
+    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; Operator.OnChange -= Repintar; }
 }

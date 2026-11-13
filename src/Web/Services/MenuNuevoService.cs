@@ -89,7 +89,7 @@ public class MenuNuevoService
     public bool TienePropios(string? op)
         => Clave(op) != MenuNuevoCatalogo.FAV_BASE && Actual.Favoritos?.ContainsKey(Clave(op)) == true;
     public List<string> PersonasConFavoritos()
-        => Actual.Favoritos?.Keys.Where(k => k != MenuNuevoCatalogo.FAV_BASE && !k.StartsWith(MenuNuevoCatalogo.GRANDES) && !k.StartsWith(ATAJOS)).OrderBy(k => k).ToList() ?? new();
+        => Actual.Favoritos?.Keys.Where(k => k != MenuNuevoCatalogo.FAV_BASE && !k.StartsWith(MenuNuevoCatalogo.GRANDES) && !k.StartsWith(ATAJOS) && !k.StartsWith(TIRA) && !k.StartsWith(OCULTOS) && !k.StartsWith(CHCOL)).OrderBy(k => k).ToList() ?? new();
 
     // ───────── 8 favoritos grandes del Dashboard (2026-11-11) ─────────
     // Van en el mismo diccionario Favoritos con clave "GRANDES:" + persona ("GRANDES:" solo = los de Osmar, que ven todos
@@ -219,6 +219,62 @@ public class MenuNuevoService
         fav.Remove(k);
         await GuardarAsync(Actual with { Favoritos = fav });
     }
+
+    // ───────── Inicio: tira ⭐ Favoritos, botones ocultos y color de cada botón (2026-11-13) ─────────
+    // TODO es de cada persona (pedido del dueño: "que los favoritos los elija cada uno"); sin PIN = los de Osmar.
+    // Van en el diccionario Favoritos: "TIRA:<persona>" (pantallas en orden), "OCULTOS:<persona>" (pantallas)
+    // y "CHCOL:<persona>" (elementos "pantalla¦color").
+    public const string TIRA = "TIRA:", OCULTOS = "OCULTOS:", CHCOL = "CHCOL:";
+    private static string ClavePersona(string prefijo, string? op)
+    {
+        var k = Clave(op);
+        return prefijo + (k == MenuNuevoCatalogo.FAV_DUENO ? MenuNuevoCatalogo.FAV_BASE : k);
+    }
+    private List<string> ListaDe(string prefijo, string? op)
+        => Actual.Favoritos != null && Actual.Favoritos.TryGetValue(ClavePersona(prefijo, op), out var l) ? l.ToList() : new();
+    public List<string> TiraDe(string? op) => ListaDe(TIRA, op);
+    public HashSet<string> OcultosDe(string? op) => ListaDe(OCULTOS, op).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> ColoresChipDe(string? op)
+        => ListaDe(CHCOL, op).Select(x => x.Split('¦')).Where(p => p.Length == 2 && p[1] != "")
+            .GroupBy(p => p[0], StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Last()[1], StringComparer.OrdinalIgnoreCase);
+
+    private async Task GuardarListaAsync(string prefijo, string? op, Func<List<string>, List<string>> cambio)
+    {
+        await RecargarAsync();
+        var fav = Actual.Favoritos?.ToDictionary(k => k.Key, k => k.Value.ToList()) ?? new Dictionary<string, List<string>>();
+        var k = ClavePersona(prefijo, op);
+        var nueva = cambio(fav.TryGetValue(k, out var l) ? l.ToList() : new());
+        if (nueva.Count == 0) fav.Remove(k); else fav[k] = nueva;
+        await GuardarAsync(Actual with { Favoritos = fav });
+    }
+    public Task PonerEnTiraAsync(string? op, string href, bool poner)
+        => GuardarListaAsync(TIRA, op, l =>
+        {
+            l.RemoveAll(x => string.Equals(x, href, StringComparison.OrdinalIgnoreCase));
+            if (poner) l.Add(href);
+            return l;
+        });
+    public Task MoverEnTiraAsync(string? op, int desde, int hasta)
+        => GuardarListaAsync(TIRA, op, l =>
+        {
+            if (desde < 0 || desde >= l.Count || hasta < 0 || hasta >= l.Count || desde == hasta) return l;
+            var x = l[desde]; l.RemoveAt(desde); l.Insert(hasta, x);
+            return l;
+        });
+    public Task OcultarAsync(string? op, string href, bool ocultar)
+        => GuardarListaAsync(OCULTOS, op, l =>
+        {
+            l.RemoveAll(x => string.Equals(x, href, StringComparison.OrdinalIgnoreCase));
+            if (ocultar) l.Add(href);
+            return l;
+        });
+    public Task ColorChipAsync(string? op, string href, string? color)
+        => GuardarListaAsync(CHCOL, op, l =>
+        {
+            l.RemoveAll(x => x.Split('¦')[0].Equals(href, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(color)) l.Add($"{href}¦{color}");
+            return l;
+        });
 
     /// <summary>Botón grande que se está arrastrando (puede soltarse en el otro bloque).</summary>
     public int? Arrastrando { get; set; }
