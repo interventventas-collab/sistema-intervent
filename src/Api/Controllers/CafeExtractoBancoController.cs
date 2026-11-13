@@ -56,6 +56,47 @@ public class CafeExtractoBancoController : ControllerBase
 
     public record AsociarRequest(int VentaId, string? Operador);
 
+    /// <summary>13/11/2026: desde qué día cuenta la solapa "Salieron" de la pastilla Banco Galicia.
+    /// Pedido del dueño: "solo desde hoy" (las ~70 viejas, desde el 15/09, no se muestran).</summary>
+    public static readonly DateTime SalieronDesde = new(2026, 11, 13);
+
+    public record SalidaDto(int Id, DateTime Fecha, decimal Importe, string? Nombre, string? Cuit, string? Descripcion,
+        int? ProveedorId, string? ProveedorNombre, bool ConCuentaCorriente);
+
+    /// <summary>13/11/2026 — Pastilla "Banco Galicia", solapa Salieron: transferencias que hicimos (con CUIT
+    /// del que recibe) desde <see cref="SalieronDesde"/> que todavía no pagaron nada de un proveedor y no se
+    /// apartaron. Sin las de Palanica a Palanica (cuentas propias). Dice si el CUIT es de un proveedor y si
+    /// ese proveedor lleva cuenta corriente (ahí se puede asociar la factura).</summary>
+    [HttpGet("salieron")]
+    public async Task<IActionResult> Salieron()
+    {
+        var movs = await _db.CafeExtractoMovimientos.AsNoTracking()
+            .Where(m => m.Debitos > 0 && m.IgnoradoAt == null && m.Fecha >= SalieronDesde
+                        && m.LeyendaAdicional2 != null && m.LeyendaAdicional2 != ""
+                        && m.LeyendaAdicional2 != ChequesBancoImportService.CuitPalanica
+                        && !_db.CafePagosProveedor.Any(p => p.ExtractoMovId == m.Id && p.Estado == "VIGENTE"))
+            .OrderByDescending(m => m.Fecha).ThenByDescending(m => m.Id)
+            .Select(m => new { m.Id, m.Fecha, m.Debitos, m.LeyendaAdicional1, m.LeyendaAdicional2, m.Descripcion })
+            .ToListAsync();
+        if (movs.Count == 0) return Ok(new List<SalidaDto>());
+
+        var provs = (await _db.CafeProveedores.AsNoTracking()
+                .Where(p => p.Cuit != null && p.Cuit != "")
+                .Select(p => new { p.Id, p.Nombre, p.Cuit, p.CuentaCorriente, p.CuentaCorrienteDesde })
+                .ToListAsync())
+            .GroupBy(p => ProveedorCtaCteService.NormCuit(p.Cuit))
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.CuentaCorriente).First());
+
+        // Solo transferencias a un CUIT de verdad (11 números): los débitos automáticos traen texto ("SEGUROS").
+        movs = movs.Where(m => ProveedorCtaCteService.NormCuit(m.LeyendaAdicional2).Length == 11).ToList();
+        return Ok(movs.Select(m =>
+        {
+            provs.TryGetValue(ProveedorCtaCteService.NormCuit(m.LeyendaAdicional2), out var p);
+            return new SalidaDto(m.Id, m.Fecha, m.Debitos, m.LeyendaAdicional1, m.LeyendaAdicional2, m.Descripcion,
+                p?.Id, p?.Nombre, p is not null && p.CuentaCorriente && p.CuentaCorrienteDesde != null);
+        }).ToList());
+    }
+
     [HttpGet("saldo")]
     public async Task<IActionResult> Saldo()
     {

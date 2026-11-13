@@ -50,6 +50,7 @@
     .op-aviso-bs button.des { background:none; color:#d1d5db; font-weight:400; }
 
     .op-big.cor { background:linear-gradient(135deg,#e2e8f0,#f8fafc); }
+    .op-big.pos { background:linear-gradient(135deg,#fef08a,#fefce8); }
     .op-big.cal { background:linear-gradient(135deg,#e0e7ff,#f5f7ff); }
     .op-vent.op-vent-cal { width:900px; max-width:calc(100vw - 340px); }
     .op-cal-cuerpo { overflow:auto; padding:0.4rem 0.6rem 0.6rem; }
@@ -157,22 +158,29 @@
         <div class="op-l gris">cheques, alquileres, ventas y notas</div>
     </div>
 
-    @* 📄 Cheques por pagar *@
+    @* 🏦 Banco Galicia (13/11/2026): reemplaza a la pastilla Cheques (misma clave "che" y clase .che, así
+       conserva el lugar y el color que cada uno le eligió). Junta lo que hay que hacer con el banco: plata que
+       entró sin cobranza, transferencias que salieron sin decir qué pagaron (desde el 13/11) y cheques a pagar
+       esta semana. El saldo va tapado como en la tarjeta vieja del Panorama (que se sacó). *@
     <div class="op-big che @Marcas("che")" @onclick='() => Tocar("che")'>
-        <div class="op-t">📄 Cheques <span class="op-n @(ChequesSemana.Count == 0 ? "cero" : "")">@ChequesSemana.Count</span></div>
-        <div class="op-l gris">
-            @if (cheques is null) { <text>Cargando…</text> }
-            else if (cheques.Count == 0) { <text>No hay cheques por pagar</text> }
-            else { <text>@ProximoCheque(cheques[0])@(ChequesSemana.Count == 0 ? " · nada esta semana" : "")</text> }
+        <div class="op-t">🏦 Banco Galicia @Nuevo("che") <span class="op-n @(BancoNumero == 0 ? "cero" : "")">@BancoNumero</span></div>
+        <div class="op-l @(BancoNumero == 0 ? "gris" : "")">
+            @if (!bancoOk) { <text>Cargando…</text> }
+            else if (BancoNumero == 0) { <text>Todo al día</text> }
+            else { <text>@BancoResumen</text> }
+        </div>
+        <div class="op-l gris" style="margin-top:0.15rem;">
+            <span @onclick="ToggleSaldo" @onclick:stopPropagation="true" title="@(verSaldo ? "Tapar el saldo" : "Ver el saldo")" style="cursor:pointer;">
+                @(saldoBanco is null || saldoBanco.CantidadMovimientos == 0 ? "$ —" : verSaldo ? "$" + Plata(saldoBanco.Saldo) : "$ ••••••") @(verSaldo ? "👁" : "🙈")
+            </span>
+            @if (saldoBanco?.UltimoImportadoAt is DateTime ua) { <text> · al día @ua.ToArTime().ToString("HH:mm")</text> }
         </div>
         <div class="op-prev">
-            <div class="op-prev-t">Próximos cheques a pagar</div>
-            @if ((cheques?.Count ?? 0) == 0) { <div class="op-prev-f">No hay cheques por pagar</div> }
-            @foreach (var c in (cheques ?? new()).Take(5))
-            {
-                <div class="op-prev-f op-prev-m"><span><b>@(string.IsNullOrWhiteSpace(c.ContraparteNombre) ? "(sin contraparte)" : c.ContraparteNombre)</b><small>@(c.FechaPago?.ToString("dd/MM") ?? "—") · cheque #@c.Numero</small></span><span style="white-space:nowrap;">$@Plata(c.Importe)</span></div>
-            }
-            @Mas(cheques?.Count ?? 0)
+            <div class="op-prev-t">Para hacer con el banco</div>
+            <div class="op-prev-f op-prev-m"><span><b>💰 Entraron</b><small>transferencias y cheques sin cobranza</small></span><span>@Entraron.Count</span></div>
+            <div class="op-prev-f op-prev-m"><span><b>💸 Salieron</b><small>transferencias sin decir qué pagaron</small></span><span>@salieron.Count</span></div>
+            <div class="op-prev-f op-prev-m"><span><b>📄 Cheques a pagar</b><small>@(cheques is { Count: > 0 } ? ProximoCheque(cheques[0]) : "no hay cheques por pagar")</small></span><span>@ChequesSemana.Count</span></div>
+            <div class="op-prev-mas">Tocá para verlos ›</div>
         </div>
     </div>
 
@@ -221,6 +229,16 @@
         </div>
     }
 
+    @if (ConDeposito)
+    {
+        @* 📝 Postits del equipo (13/11/2026): antes era una tarjeta abajo del Panorama. Los mismos postits
+           compartidos (scope "dashboard"); se ven y se editan en la ventanita. *@
+        <div class="op-big pos @Marcas("pos")" @onclick='() => Tocar("pos")'>
+            <div class="op-t">📝 Postits del equipo <span class="op-n cero">@(postitsCant?.ToString() ?? "")</span></div>
+            <div class="op-l gris">@(postitPrimero is null ? "notas compartidas del equipo" : Corto(postitPrimero, 60))</div>
+        </div>
+    }
+
     @if (!ConDeposito)
     {
     @* 🛒 Faltantes para pedir *@
@@ -262,6 +280,19 @@
     </div>
 }
 
+@if (ventana == "pos")
+{
+    <div class="op-vent">
+        <div class="op-vh">
+            📝 Postits del equipo <small>los ve todo el equipo</small>
+            <button class="op-x" title="Cerrar" @onclick="Cerrar">✕</button>
+        </div>
+        <div class="op-lista" style="padding:0.5rem 0.8rem;">
+            <PostitsWidget Scope="dashboard" Title="Postits del equipo" CardStyle="max-height:none; box-shadow:none; border:0; padding:0;" />
+        </div>
+    </div>
+}
+
 @if (ventana == "cal")
 {
     @* 2026-11-10: almanaque para todo (cheques, alquileres, ventas, notas), por semana, mes o año. *@
@@ -272,37 +303,122 @@
 {
     <div class="op-vent op-vent-ancha">
         <div class="op-vh">
-            📄 Cheques <small>todos: los que tengo, los que di y los que tengo que pagar</small>
-            <button class="op-x" title="Cerrar" @onclick="Cerrar">✕</button>
+            🏦 Banco Galicia
+            <small>@(saldoBanco?.UltimoImportadoAt is DateTime u2 ? $"se actualiza solo · última vez {u2.ToArTime():dd/MM HH:mm}" : "")</small>
+            <span style="margin-left:auto; font-size:1rem; font-weight:800; cursor:pointer;" @onclick="ToggleSaldo" title="@(verSaldo ? "Tapar el saldo" : "Ver el saldo")">
+                @(saldoBanco is null ? "" : verSaldo ? "$" + Plata(saldoBanco.Saldo) : "$ ••••••") @(verSaldo ? "👁" : "🙈")
+            </span>
+            <button class="op-x" style="margin-left:0.6rem;" title="Cerrar" @onclick="Cerrar">✕</button>
         </div>
         <div class="op-tabs">
-            @foreach (var (k, l) in SolapasCheques)
-            {
-                <button class="op-tab @(chVista == k ? "on" : "")" @onclick="() => VerCheques(k)">@l @(chResp is null ? "" : $"({ConteoCh(k)})")</button>
-            }
+            <button class="op-tab @(bancoVista == "ent" ? "on" : "")" @onclick='() => bancoVista = "ent"'>💰 Entraron (@Entraron.Count)</button>
+            <button class="op-tab @(bancoVista == "sal" ? "on" : "")" @onclick='() => bancoVista = "sal"'>💸 Salieron (@salieron.Count)</button>
+            <button class="op-tab @(bancoVista == "che" ? "on" : "")" @onclick='() => { bancoVista = "che"; _ = VerCheques(chVista); }'>📄 Cheques (@ChequesSemana.Count)</button>
         </div>
-        <div class="op-lista">
-            @if (chCargando) { <div class="op-vacio">Cargando…</div> }
-            else if ((chResp?.Filas.Count ?? 0) == 0) { <div class="op-vacio">No hay cheques en esta lista.</div> }
-            else
-            {
-                <table class="op-tabla">
-                    <tr><th>Vence</th><th>Cheque</th><th>De / para</th><th style="text-align:right;">Importe</th><th>Estado</th></tr>
-                    @foreach (var c in chResp!.Filas.OrderBy(c => c.Vence.HasValue && c.Vence.Value.Date >= HoyAr ? 0 : 1).ThenBy(c => c.Vence.HasValue && c.Vence.Value.Date >= HoyAr ? c.Vence.Value.Ticks : -(c.Vence?.Ticks ?? 0)))
-                    {
-                        var vencido = c.Vence.HasValue && c.Vence.Value.Date < HoyAr && c.Vista is "EN_MANO" or "A_PAGAR";
-                        <tr>
-                            <td style="white-space:nowrap; @(vencido ? "color:#b91c1c; font-weight:700;" : "")">@(c.Vence?.ToString("dd/MM/yy") ?? "—")</td>
-                            <td>#@c.Numero<div class="sub">@c.Banco</div></td>
-                            <td>@(c.ClienteNombre ?? c.Emisor ?? "—")@if (!string.IsNullOrWhiteSpace(c.FueA)) { <div class="sub">→ @c.FueA</div> }</td>
-                            <td style="text-align:right; white-space:nowrap; font-weight:700;">$@Plata(c.Importe)</td>
-                            <td><span class="op-est">@c.EstadoTexto</span></td>
-                        </tr>
-                    }
-                </table>
-            }
-        </div>
-        <div class="op-pie"><a @onclick='() => Nav.NavigateTo($"/cafe/tesoreria/cheques-todos?vista={chVista}")'>Ir a la pantalla de cheques ›</a></div>
+        @if (bancoVista == "ent")
+        {
+            <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">Plata que entró al banco y todavía no es cobranza de nadie</div>
+            <div class="op-lista">
+                @if (Entraron.Count == 0) { <div class="op-vacio">No hay nada para aplicar. Todo al día.</div> }
+                @foreach (var it in Entraron)
+                {
+                    var item = it;
+                    <div class="op-fila">
+                        <span style="width:3.2rem; color:#6b7280;">@PlataAcciones.Cuando(item)</span>
+                        <span style="flex:1;"><b>@(item.ClienteNombre ?? item.DeQuien ?? "(sin nombre)")</b>
+                            <span class="sub">@item.QueEs@(string.IsNullOrWhiteSpace(item.PorQue) ? "" : " · " + item.PorQue)</span></span>
+                        <span style="white-space:nowrap; font-weight:700;">@PlataAcciones.Plata(item.Importe)</span>
+                        <button class="op-tab" @onclick="() => Aplicar(item)">@(PlataAcciones.Url(item) is null ? "elegir cliente" : "cobrar")</button>
+                    </div>
+                }
+            </div>
+            <div class="op-pie"><a @onclick='() => Nav.NavigateTo("/cafe/cobranzas-pendientes")'>Ir a Plata que entró ›</a></div>
+        }
+        else if (bancoVista == "sal")
+        {
+            <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">Transferencias que hiciste desde el @Web.Services.ApiClient.SalieronDesde.ToString("dd/MM") y todavía no dicen qué pagaron</div>
+            <div class="op-lista">
+                @if (salieron.Count == 0) { <div class="op-vacio">No hay transferencias para explicar.</div> }
+                @foreach (var sm in salieron)
+                {
+                    var m = sm;
+                    <div class="op-fila" style="flex-wrap:wrap;">
+                        <span style="width:3.2rem; color:#6b7280;">@m.Fecha.ToString("dd/MM")</span>
+                        <span style="flex:1; min-width:12rem;"><b>@(m.ProveedorNombre ?? m.Nombre ?? "(sin nombre)")</b>
+                            <span class="sub">@(m.ConCuentaCorriente ? "proveedor con cuenta corriente" : m.ProveedorId is not null ? "proveedor sin cuenta corriente" : $"CUIT {m.Cuit} · no es un proveedor cargado")</span></span>
+                        <span style="white-space:nowrap; font-weight:700;">$@Plata2(m.Importe)</span>
+                        @if (salAbierta == m.Id)
+                        {
+                            <div style="flex-basis:100%; padding:0.4rem 0 0 3.8rem;">
+                                @if (m.ConCuentaCorriente)
+                                {
+                                    @if (salFacturas is null) { <span class="sub">Buscando facturas…</span> }
+                                    else if (salFacturas.Count == 0) { <span class="sub">No tiene nada pendiente. Puede que la factura todavía no haya entrado de AFIP.</span> }
+                                    else
+                                    {
+                                        <div class="sub" style="margin-bottom:0.25rem;">¿Qué pagó esta transferencia?</div>
+                                        @foreach (var f in salFacturas)
+                                        {
+                                            var fac = f;
+                                            var igual = Math.Abs(fac.Saldo - m.Importe) < 0.01m;
+                                            <div style="display:flex; gap:0.5rem; align-items:center; padding:0.15rem 0;">
+                                                <span style="flex:1;">@(fac.Etiqueta ?? fac.IdComprobante) <span class="sub" style="display:inline;">@fac.FechaEmision?.ToString("dd/MM")</span>@if (igual) { <b style="color:#065f46;"> · mismo monto</b> }</span>
+                                                <span style="white-space:nowrap;">$@Plata2(fac.Saldo)</span>
+                                                <button class="op-tab @(igual ? "on" : "")" disabled="@salGuardando" @onclick="() => AsociarSalida(m, fac)">Asociar</button>
+                                            </div>
+                                        }
+                                        <div class="sub" style="margin-top:0.25rem;">Si pagó varias juntas, hacelo desde el <a style="cursor:pointer; text-decoration:underline;" @onclick='() => Nav.NavigateTo("/cafe/tesoreria/extracto-banco")'>extracto</a>.</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                                        <button class="op-tab" @onclick='() => Nav.NavigateTo("/cafe/proveedores-ctacte")'>Es de un proveedor → llevarle cuenta corriente</button>
+                                        <button class="op-tab" disabled="@salGuardando" @onclick="() => NoEsProveedor(m)">No es pago a proveedor</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <button class="op-tab @(m.ConCuentaCorriente ? "on" : "")" @onclick="() => AbrirSalida(m)">@(m.ConCuentaCorriente ? "Asociar factura" : "¿Qué fue?")</button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="op-pie"><a @onclick='() => Nav.NavigateTo("/cafe/tesoreria/extracto-banco")'>Ir al extracto completo ›</a></div>
+        }
+        else
+        {
+            <div class="op-tabs">
+                @foreach (var (k, l) in SolapasCheques)
+                {
+                    <button class="op-tab @(chVista == k ? "on" : "")" @onclick="() => VerCheques(k)">@l @(chResp is null ? "" : $"({ConteoCh(k)})")</button>
+                }
+            </div>
+            <div class="op-lista">
+                @if (chCargando) { <div class="op-vacio">Cargando…</div> }
+                else if ((chResp?.Filas.Count ?? 0) == 0) { <div class="op-vacio">No hay cheques en esta lista.</div> }
+                else
+                {
+                    <table class="op-tabla">
+                        <tr><th>Vence</th><th>Cheque</th><th>De / para</th><th style="text-align:right;">Importe</th><th>Estado</th></tr>
+                        @foreach (var c in chResp!.Filas.OrderBy(c => c.Vence.HasValue && c.Vence.Value.Date >= HoyAr ? 0 : 1).ThenBy(c => c.Vence.HasValue && c.Vence.Value.Date >= HoyAr ? c.Vence.Value.Ticks : -(c.Vence?.Ticks ?? 0)))
+                        {
+                            var vencido = c.Vence.HasValue && c.Vence.Value.Date < HoyAr && c.Vista is "EN_MANO" or "A_PAGAR";
+                            <tr>
+                                <td style="white-space:nowrap; @(vencido ? "color:#b91c1c; font-weight:700;" : "")">@(c.Vence?.ToString("dd/MM/yy") ?? "—")</td>
+                                <td>#@c.Numero<div class="sub">@c.Banco</div></td>
+                                <td>@(c.ClienteNombre ?? c.Emisor ?? "—")@if (!string.IsNullOrWhiteSpace(c.FueA)) { <div class="sub">→ @c.FueA</div> }</td>
+                                <td style="text-align:right; white-space:nowrap; font-weight:700;">$@Plata(c.Importe)</td>
+                                <td><span class="op-est">@c.EstadoTexto</span></td>
+                            </tr>
+                        }
+                    </table>
+                }
+            </div>
+            <div class="op-pie"><a @onclick='() => Nav.NavigateTo($"/cafe/tesoreria/cheques-todos?vista={chVista}")'>Ir a la pantalla de cheques ›</a></div>
+        }
     </div>
 }
 
@@ -495,7 +611,7 @@
         try
         {
             avisos.RemoveAll(a => a.Hasta < DateTime.UtcNow);
-            await Task.WhenAll(CargarPreguntas(), CargarMe1(), CargarAlq(), CargarCheques(), CargarPagos(), CargarFaltantes());
+            await Task.WhenAll(CargarPreguntas(), CargarMe1(), CargarAlq(), CargarCheques(), CargarBanco(), CargarPagos(), CargarFaltantes());
             if (!cerrado) StateHasChanged();
         }
         finally { ocupado = false; }
@@ -548,12 +664,131 @@
     private List<ApiClient.CorreoImportanteDto> correos = new();
     private static string NombreCorreo(ApiClient.CorreoImportanteDto c)
         => string.IsNullOrWhiteSpace(c.Remitente) ? (c.RemitenteEmail ?? "(desconocido)") : c.Remitente!;
+    // 13/11/2026: postits del equipo (pastilla).
+    private int? postitsCant;
+    private string? postitPrimero;
+    private async Task CargarPostits()
+    {
+        try
+        {
+            var ps = await Api.GetPostitsAsync("dashboard");
+            if (ps is null) return;
+            postitsCant = ps.Count;
+            postitPrimero = ps.Select(x => x.Texto).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+        }
+        catch { }
+    }
+
     private async Task CargarCorreos()
     {
         if (!ConDeposito) return;
+        await CargarPostits();
         try { correos = await Api.GetCorreosImportantesAsync(); }
         catch { }
     }
+
+    // ───────── 🏦 Banco Galicia (13/11/2026) ─────────
+    private SaldoBancoDto? saldoBanco;
+    private List<PlataItemDto> plataEntro = new();
+    private List<SalidaBancoDto> salieron = new();
+    private bool bancoOk, verSaldo;
+    private string bancoVista = "ent";
+    private readonly HashSet<string> vistosBanco = new();
+    private int? salAbierta;
+    private List<FacturaCompraImpagaDto>? salFacturas;
+    private bool salGuardando;
+
+    /// <summary>De "Plata que entró" solo lo del banco (transferencias y cheques); los cobros de repartidor no.</summary>
+    private List<PlataItemDto> Entraron => plataEntro.Where(i => i.Tipo is "TRANSFERENCIA" or "ECHEQ" or "CHEQUE").ToList();
+    private int BancoNumero => Entraron.Count + salieron.Count + ChequesSemana.Count;
+    private string BancoResumen => string.Join(" · ", new[]
+    {
+        Entraron.Count == 0 ? null : $"{Entraron.Count} cobranza{(Entraron.Count == 1 ? "" : "s")}",
+        salieron.Count == 0 ? null : $"{salieron.Count} pago{(salieron.Count == 1 ? "" : "s")}",
+        ChequesSemana.Count == 0 ? null : $"{ChequesSemana.Count} cheque{(ChequesSemana.Count == 1 ? "" : "s")} a pagar",
+    }.Where(x => x != null));
+
+    private void ToggleSaldo() => verSaldo = !verSaldo;
+
+    private async Task CargarBanco()
+    {
+        try
+        {
+            var tSaldo = Api.GetSaldoBancoAsync();
+            var tEnt = Api.GetPlataListaAsync("por-volcar");
+            var tSal = Api.GetSalieronBancoAsync();
+            saldoBanco = await tSaldo;
+            plataEntro = await tEnt;
+            salieron = await tSal ?? new();
+            // Aviso cuando llega info nueva del banco (no en la primera carga).
+            var claves = Entraron.Select(i => i.Key).Concat(salieron.Select(m => "S-" + m.Id)).ToList();
+            if (bancoOk)
+            {
+                var ent = Entraron.Count(i => !vistosBanco.Contains(i.Key));
+                var sal = salieron.Count(m => !vistosBanco.Contains("S-" + m.Id));
+                if (ent + sal > 0)
+                {
+                    nuevas.Add("che");
+                    Avisar("che", "Entró info del Galicia", string.Join(" · ", new[]
+                    {
+                        ent == 0 ? null : $"+{ent} para cobrar",
+                        sal == 0 ? null : $"+{sal} pago{(sal == 1 ? "" : "s")} para explicar",
+                    }.Where(x => x != null)));
+                }
+            }
+            foreach (var k in claves) vistosBanco.Add(k);
+            bancoOk = true;
+        }
+        catch { }
+    }
+
+    private void Aplicar(PlataItemDto i)
+        => Nav.NavigateTo(PlataAcciones.Url(i) ?? "/cafe/cobranzas-pendientes");
+
+    private async Task AbrirSalida(SalidaBancoDto m)
+    {
+        if (salAbierta == m.Id) { salAbierta = null; return; }
+        salAbierta = m.Id; salFacturas = null;
+        if (!m.ConCuentaCorriente || string.IsNullOrEmpty(m.Cuit)) return;
+        try { salFacturas = await Api.GetFacturasImpagasProveedorAsync(m.Cuit) ?? new(); }
+        catch { salFacturas = new(); }
+    }
+
+    private async Task AsociarSalida(SalidaBancoDto m, FacturaCompraImpagaDto f)
+    {
+        salGuardando = true;
+        try
+        {
+            var r = await Api.PagarComprasDesdeBancoAsync(m.Id, new List<string> { f.IdComprobante },
+                Math.Abs(f.Saldo - m.Importe) < 0.01m ? null : new Dictionary<string, decimal> { [f.IdComprobante] = Math.Min(f.Saldo, m.Importe) });
+            if (r is { Ok: true })
+            {
+                ToastService.Success($"✓ Transferencia asociada a {f.Etiqueta ?? f.IdComprobante}");
+                salieron.Remove(m); salAbierta = null;
+            }
+            else ToastService.Error(r?.Error ?? "No se pudo asociar");
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { salGuardando = false; }
+    }
+
+    private async Task NoEsProveedor(SalidaBancoDto m)
+    {
+        salGuardando = true;
+        try
+        {
+            if (await Api.IgnorarMovimientoExtractoAsync(m.Id, "no es pago a proveedor"))
+            {
+                ToastService.Success("✓ Listo, no se pide más");
+                salieron.Remove(m); salAbierta = null;
+            }
+            else ToastService.Error("No se pudo apartar");
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { salGuardando = false; }
+    }
+
+    private static string Plata2(decimal v) => v.ToString("N2", new System.Globalization.CultureInfo("es-AR"));
 
     private async Task CargarCheques()
     {
@@ -619,7 +854,16 @@
         nuevas.Remove(p);
         avisos.RemoveAll(a => a.Pastilla == p);
         if (p == "cal") { ventana = ventana == "cal" ? null : "cal"; return; }
-        if (p == "che") { if (ventana == "che") { Cerrar(); return; } ventana = "che"; _ = VerCheques(chVista); return; }
+        if (p == "pos") { ventana = ventana == "pos" ? null : "pos"; return; }
+        if (p == "che")
+        {
+            if (ventana == "che") { Cerrar(); return; }
+            ventana = "che";
+            // Abre en la solapa que tiene algo para hacer.
+            bancoVista = Entraron.Count > 0 ? "ent" : salieron.Count > 0 ? "sal" : "che";
+            if (bancoVista == "che") _ = VerCheques(chVista);
+            return;
+        }
         if (p == "alq") { if (ventana == "alq") { Cerrar(); return; } ventana = "alq"; _ = CargarProximas(); return; }
         if (p == "me1")
         {

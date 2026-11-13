@@ -755,9 +755,15 @@ else
    2026-07-04: MOVIDO ARRIBA de "Resumen del día" (pedido Osmar). Antes venia despues de
    postits/balanza/stock y quedaba muy abajo.
    2026-07-08: la card "Alquileres en calle" se movió a la fila de 3 cards de arriba. *@
+@* 2026-11-13: admin no ve esta fila (ver "Plata y stock" más abajo). *@
+@if (!DashNuevo)
+{
 <div class="dashboard-cards-row">
     @* 2026-07-08: Galicia + Cheques por pagar arriba (tesorería); Shell bajó un nivel. Pedido Osmar. *@
-    @* Saldo banco Galicia *@
+    @* Saldo banco Galicia. 13/11/2026: para admin (Dashboard nuevo) el saldo pasó a la pastilla
+       "Banco Galicia" de la derecha, junto con lo que hay que hacer con el banco (pedido del dueño). *@
+    @if (!DashNuevo)
+    {
     <div class="dashboard-detail-card mac-stat-card accent-blue @(AlertaCard("BANCO_BAJO") is not null ? "dash-card-alerta" : "")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/extracto-banco")' title="Ir al extracto bancario">
         <CustomCardOverlay CardKey="saldo-banco-galicia" Settings="@cardCustomSettings" />
         @if (AlertaCard("BANCO_BAJO") is string msgGalicia)
@@ -793,6 +799,7 @@ else
                   style="color:#2563eb; text-decoration:underline; font-size:0.75rem; cursor:pointer;">⚙ Conexión automática</span>
         </div>
     </div>
+    }
 
     @* 2026-11-10: admin ya ve los cheques en la pastilla de la derecha. *@
     @if (!DashNuevo)
@@ -1123,6 +1130,7 @@ else
     }
 
 </div>
+}
 
 @* Correos importantes — mails que dispararon alertas EMAIL_REMITENTE (2026-07-10).
    2026-08-26: salió de la grilla de KPIs (era una card altísima con 4 renglones de
@@ -1266,6 +1274,10 @@ else
 </div>
 }
 
+@* 2026-11-13: admin — "Plata y stock" sale del Panorama: Postits pasan a una pastilla de la derecha,
+   el stock de café a la entrada de Stock; lo demás ya estaba en otras pantallas (pedido del dueño). *@
+@if (!DashNuevo)
+{
 @* ═══ Fila vieja: solo postits + (los otros widgets se fueron al strip) ═══ *@
 <div class="dashboard-top-grid dashboard-modern">
     @* Postits: block de notas compartido (componente reusable, scope=dashboard) *@
@@ -1381,6 +1393,7 @@ else
         }
     </div>
 </div>
+}
 
 <style>
     /* ═══════════════ 2026-06-25 — Dashboard nuevo: strip mini + equipo + resumen ═══════════════ */
@@ -1927,8 +1940,7 @@ else
 @if (DashNuevo)
 {
     <div class="dash-panorama"><Web.Pages.Panorama /></div>
-    @* 2026-11-10: las tarjetas de plata y stock pasan a ser parte de Panorama (van justo debajo, por CSS order). *@
-    <div class="dash-sec-tit">💰 Plata y stock</div>
+    @* 2026-11-13: "Plata y stock" ya no va (ver arriba). *@
 }
 
 </div> @* fin op-main *@
@@ -2002,8 +2014,9 @@ else
         ("d-fal", ".dp-big.fal", "📦 Faltantes"),
         ("o-alq", ".op-big.alq", "🎪 Alquileres"),
         ("o-cal", ".op-big.cal", "📅 Almanaque"),
-        ("o-che", ".op-big.che", "📄 Cheques"),
+        ("o-che", ".op-big.che", "🏦 Banco Galicia"),
         ("o-cor", ".op-big.cor", "📧 Correos importantes"),
+        ("o-pos", ".op-big.pos", "📝 Postits del equipo"),
     };
     private List<string>? acomPas;
     private Dictionary<string, string?> acomCol = new();
