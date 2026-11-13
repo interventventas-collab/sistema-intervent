@@ -2655,9 +2655,14 @@
     {
         <Web.Shared.Tareas.TareasAvisos @ref="tareasAvisosRef" OnCambio="EngancharTareas" />
     }
-    <BotonesFlotantes @ref="botonesRef" Bienvenida="bienvenidaRef" Asistente="asistenteRef" WhatsApp="waBuscadorRef"
-                      VePreguntas="@(HasPerm("publicaciones"))" PreguntasSinResponder="preguntasSinResponder"
-                      Rol="@role" Usuario="@username" TienePermiso="HasPerm" />
+    @* 13/11/2026: el depósito NO ve el botón de abajo (pedido del dueño: "no quiero que lo vean";
+       tienen sus pestañas y pastillas propias). *@
+    @if (!IsRoleWithCustomSidebar())
+    {
+        <BotonesFlotantes @ref="botonesRef" Bienvenida="bienvenidaRef" Asistente="asistenteRef" WhatsApp="waBuscadorRef"
+                          VePreguntas="@(HasPerm("publicaciones"))" PreguntasSinResponder="preguntasSinResponder"
+                          Rol="@role" Usuario="@username" TienePermiso="HasPerm" />
+    }
 }
 
 @* 2026-06-23: modal global de vinculacion WhatsApp. Se abre desde cualquier pantalla apretando
