@@ -217,9 +217,10 @@
     .bf { position: fixed; z-index: 9000; display: flex; flex-direction: column; align-items: center; gap: 6px; }
     .bf-lista { display: flex; flex-direction: column; align-items: center; gap: 7px; }
     .bf-acostado, .bf-acostado .bf-lista { flex-direction: row; }
-    .bf-agarre { color: #9ca3af; font-size: 13px; letter-spacing: 1px; line-height: 1; padding: 2px 6px; cursor: grab; user-select: none; touch-action: none; opacity: .55; }
+    /* 2026-11-13: agarre y ✏ con fondo blanco propio: con los nombres la barra se ensanchó y quedaban encima de otras cosas, invisibles. */
+    .bf-agarre { color: #4b5563; font-size: 14px; font-weight: 700; letter-spacing: 1px; line-height: 1; padding: 5px 6px; cursor: grab; user-select: none; touch-action: none;
+        background: #fff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
     .bf-acostado .bf-agarre { writing-mode: vertical-lr; }
-    .bf:hover .bf-agarre { opacity: 1; }
     .bf-moviendo .bf-agarre { cursor: grabbing; color: #2563eb; opacity: 1; }
     /* 2026-11-13: el nombre va siempre debajo del dibujito (antes salía solo al pasar el mouse). */
     .bf-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: none; padding: 0; cursor: pointer; width: 64px; }
@@ -244,14 +245,13 @@
         font-size: 18px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,.14); }
     .bf-item:hover .bf-circ { border-color: #1f2937; transform: scale(1.06); }
     .bf-circ.bf-wa { background: #25d366; border-color: #25d366; color: #fff; }
-    .bf-lapiz { background: none; border: none; color: #9ca3af; font-size: 13px; cursor: pointer; padding: 2px 6px; opacity: .55; }
-    .bf:hover .bf-lapiz { opacity: 1; }
+    .bf-lapiz { background: none; border: none; color: #4b5563; font-size: 14px; font-weight: 700; cursor: pointer; padding: 4px 7px; }
     .bf-lapiz:hover { color: #111827; }
     .bf-num { position: absolute; top: -4px; right: -5px; min-width: 18px; height: 18px; border-radius: 9px; background: #dc2626; color: #fff;
         font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; border: 2px solid #fff; }
     .bf-main { display: none; position: relative; width: 56px; height: 56px; border-radius: 50%; border: none; background: #1f2937; color: #fff;
         font-size: 24px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.28); align-items: center; justify-content: center; }
-    .bf-pie { display: flex; gap: 0; }
+    .bf-pie { display: flex; gap: 0; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
     .bf-acostado .bf-pie { flex-direction: column; }
     .bf-compacto .bf-lista { display: none; }
     .bf-uno { position: relative; width: 48px; height: 48px; border-radius: 50%; border: none; background: #1f2937; color: #fff;
@@ -299,7 +299,7 @@
         .bf-lab { display: block; position: static; transform: none; }
         .bf-item { flex-direction: row-reverse; width: auto; }
         .bf-acc-menu { right: 0; left: auto; bottom: 0; }
-        .bf-lapiz, .bf-uno { display: none; }
+        .bf-lapiz, .bf-uno, .bf-pie { display: none; }
         .bf-compacto .bf-abierto .bf-lista, .bf-compacto.bf-abierto .bf-lista { display: flex; }
         .bf-ed { right: 12px; bottom: 12px; }
     }
