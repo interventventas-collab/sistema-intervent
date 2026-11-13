@@ -24,7 +24,7 @@
             {
                 var x = it;
                 <a class="favm-i @(EsActual(x.Href) ? "on" : "")" href="@x.Href" title="@x.Label" @onclick="() => Ir(x)" @onclick:preventDefault="true">
-                    <span class="favm-e">@Icono(x.Href)</span><span class="favm-l">@x.Label</span>
+                    <span class="favm-e">@MenuNuevoCatalogo.Pintar(Icono(x.Href))</span><span class="favm-l">@x.Label</span>
                 </a>
             }
         </div>
@@ -41,7 +41,7 @@
             {
                 var x = it;
                 <a class="fav-i @(EsActual(x.Href) ? "on" : "")" href="@x.Href" @onclick="() => Ir(x)" @onclick:preventDefault="true" style="@Color(x.Href)">
-                    <span class="fav-e">@Icono(x.Href)</span>@x.Label
+                    <span class="fav-e">@MenuNuevoCatalogo.Pintar(Icono(x.Href))</span>@x.Label
                 </a>
             }
             <button class="fav-mas" title="Agregar favoritos" @onclick="AbrirAgregar">＋ agregar</button>
@@ -69,7 +69,7 @@
                         var x = it;
                         var es = trabajo.Any(h => string.Equals(h, x.Href, StringComparison.OrdinalIgnoreCase));
                         <button class="favp-fila @(es ? "on" : "")" @onclick="() => Alternar(x.Href)">
-                            <span class="favp-star">@(es ? "★" : "☆")</span><span>@Icono(x.Href) @x.Label</span>
+                            <span class="favp-star">@(es ? "★" : "☆")</span><span>@MenuNuevoCatalogo.Pintar(Icono(x.Href)) @x.Label</span>
                         </button>
                     }
                 }
@@ -101,7 +101,7 @@
                     var i = n;
                     var href = trabajo[i];
                     <div class="favp-ed">
-                        <span class="favp-nom">@Icono(href) @Nombre(href)</span>
+                        <span class="favp-nom">@MenuNuevoCatalogo.Pintar(Icono(href)) @Nombre(href)</span>
                         <button class="favp-mini" disabled="@(i == 0)" @onclick="() => Mover(i, -1)">▲</button>
                         <button class="favp-mini" disabled="@(i == trabajo.Count - 1)" @onclick="() => Mover(i, 1)">▼</button>
                         <button class="favp-mini" title="Sacar de favoritos" @onclick="() => trabajo.RemoveAt(i)">✕</button>

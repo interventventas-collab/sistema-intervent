@@ -50,7 +50,7 @@
                         }
                         else
                         {
-                            @it.Icono
+                            @MenuNuevoCatalogo.Pintar(it.Icono)
                         }
                         @if (it.Numero > 0) { <span class="bf-num">@(it.Numero > 99 ? "99+" : it.Numero.ToString())</span> }
                     </span>
@@ -91,7 +91,7 @@
                 var i = n;
                 var d = Describir(borrador[i]);
                 <div class="bf-ed-fila">
-                    <span class="bf-ed-ico">@(d.Icono == "wa" ? "🟢" : d.Icono)</span>
+                    <span class="bf-ed-ico">@MenuNuevoCatalogo.Pintar(d.Icono == "wa" ? "🟢" : d.Icono)</span>
                     <span class="bf-ed-nom">@d.Texto@if (d.Externo) { <small> · link de afuera</small> }</span>
                     <button class="bf-ed-b" title="Subir" disabled="@(i == 0)" @onclick="() => Mover(i, -1)">↑</button>
                     <button class="bf-ed-b" title="Bajar" disabled="@(i == borrador.Count - 1)" @onclick="() => Mover(i, 1)">↓</button>
@@ -125,7 +125,7 @@
                             @foreach (var o in opciones)
                             {
                                 var x = o;
-                                <button class="bf-ed-op" @onclick="() => Agregar(x.Clave)"><span>@(x.Icono == "wa" ? "🟢" : x.Icono)</span> @x.Texto</button>
+                                <button class="bf-ed-op" @onclick="() => Agregar(x.Clave)"><span>@MenuNuevoCatalogo.Pintar(x.Icono == "wa" ? "🟢" : x.Icono)</span> @x.Texto</button>
                             }
                         }
                     </div>

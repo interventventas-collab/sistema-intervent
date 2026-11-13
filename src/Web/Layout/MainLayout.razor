@@ -2114,7 +2114,7 @@
                                 <span class="ico">🕐</span> Horario
                             </button>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/viajes"))">
-                                <span class="ico">🚚</span> Viajes
+                                <span class="ico">🚚</span> Viajes Nacho
                             </button>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/cafe/repartidores"))">
                                 <span class="ico">🚚</span> Repartidores
@@ -3056,7 +3056,7 @@
         { "cafe/configuracion", ("⚙", "Configuración", "/cafe/configuracion") },
         { "documentacion", ("📑", "Documentación", "/documentacion") },
         { "horas-extras", ("🕐", "Horario", "/horas-extras") },
-        { "viajes", ("🚚", "Viajes", "/viajes") },
+        { "viajes", ("🚚", "Viajes Nacho", "/viajes") },
         // 2026-06-03: agregados Nóminas para que aparezcan en el panel D/O y los pueda activar para Oficina
         { "nominas/empleados", ("👤", "Ficha empleados", "/nominas/empleados") },
         { "nominas/vacaciones", ("🏖", "Vacaciones", "/nominas/vacaciones") },
@@ -3495,7 +3495,7 @@
     /// <summary>2026-11-10: si el dueño eligió un emoji con el lápiz ✏, va ese; si no, el de siempre.</summary>
     private MarkupString IconoMenu(string clave, MarkupString porDefecto)
         => MenuNuevoCatalogo.IconoDe(MenuNuevoSvc.Actual.Iconos, clave) is { } e
-            ? new MarkupString($"<span class=\"mn-emoji\">{System.Net.WebUtility.HtmlEncode(e)}</span>")
+            ? new MarkupString($"<span class=\"mn-emoji\">{MenuNuevoCatalogo.Pintar(e).Value}</span>")
             : porDefecto;
     private static MarkupString IconoSeccion(string titulo) => titulo switch
     {

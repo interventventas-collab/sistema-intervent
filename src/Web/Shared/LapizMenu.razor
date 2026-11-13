@@ -18,7 +18,7 @@
                 <div class="lz-emojis">
                     @foreach (var em in lista)
                     {
-                        <button class="lz-em @(icono == em ? "on" : "")" title="Usar @em" @onclick="() => icono = em">@em</button>
+                        <button class="lz-em @(icono == em ? "on" : "")" title="Usar @MenuNuevoCatalogo.ComoTexto(em)" @onclick="() => icono = em">@MenuNuevoCatalogo.Pintar(em)</button>
                     }
                 </div>
             }
