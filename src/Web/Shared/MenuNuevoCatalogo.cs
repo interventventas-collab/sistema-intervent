@@ -222,7 +222,7 @@ public static class MenuNuevoCatalogo
     /// <summary>2026-11-13: ícono dibujado (no es emoji): taxi argentino negro con techo amarillo
     /// (pedido del dueño). Se guarda como esta palabra y se pinta con <see cref="Pintar"/>.</summary>
     public const string TaxiAr = "taxi-ar";
-    private const string TaxiArSvg =
+    public const string TaxiArSvg =
         "<svg class=\"ico-dibujo\" viewBox=\"0 0 64 40\" width=\"1.25em\" height=\"1em\" style=\"vertical-align:-0.15em\" aria-label=\"Taxi\">" +
         "<rect x=\"25\" y=\"2\" width=\"14\" height=\"6\" rx=\"1.5\" fill=\"#fde047\" stroke=\"#111\" stroke-width=\"1.2\"/>" +
         "<text x=\"32\" y=\"6.8\" font-size=\"4.6\" font-weight=\"700\" font-family=\"Arial,sans-serif\" text-anchor=\"middle\" fill=\"#111\">TAXI</text>" +
