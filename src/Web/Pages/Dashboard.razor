@@ -757,7 +757,10 @@ else
    2026-07-08: la card "Alquileres en calle" se movió a la fila de 3 cards de arriba. *@
 <div class="dashboard-cards-row">
     @* 2026-07-08: Galicia + Cheques por pagar arriba (tesorería); Shell bajó un nivel. Pedido Osmar. *@
-    @* Saldo banco Galicia *@
+    @* Saldo banco Galicia. 13/11/2026: para admin (Dashboard nuevo) el saldo pasó a la pastilla
+       "Banco Galicia" de la derecha, junto con lo que hay que hacer con el banco (pedido del dueño). *@
+    @if (!DashNuevo)
+    {
     <div class="dashboard-detail-card mac-stat-card accent-blue @(AlertaCard("BANCO_BAJO") is not null ? "dash-card-alerta" : "")" style="cursor:pointer; position:relative;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/extracto-banco")' title="Ir al extracto bancario">
         <CustomCardOverlay CardKey="saldo-banco-galicia" Settings="@cardCustomSettings" />
         @if (AlertaCard("BANCO_BAJO") is string msgGalicia)
@@ -793,6 +796,7 @@ else
                   style="color:#2563eb; text-decoration:underline; font-size:0.75rem; cursor:pointer;">⚙ Conexión automática</span>
         </div>
     </div>
+    }
 
     @* 2026-11-10: admin ya ve los cheques en la pastilla de la derecha. *@
     @if (!DashNuevo)
@@ -2002,7 +2006,7 @@ else
         ("d-fal", ".dp-big.fal", "📦 Faltantes"),
         ("o-alq", ".op-big.alq", "🎪 Alquileres"),
         ("o-cal", ".op-big.cal", "📅 Almanaque"),
-        ("o-che", ".op-big.che", "📄 Cheques"),
+        ("o-che", ".op-big.che", "🏦 Banco Galicia"),
         ("o-cor", ".op-big.cor", "📧 Correos importantes"),
     };
     private List<string>? acomPas;

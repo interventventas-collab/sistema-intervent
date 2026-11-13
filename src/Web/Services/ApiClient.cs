@@ -1891,6 +1891,13 @@ public class ApiClient
     public async Task<SaldoBancoDto?> GetSaldoBancoAsync()
         => await GetAsync<SaldoBancoDto>("/api/cafe/extracto-banco/saldo");
 
+    /// <summary>13/11/2026: desde qué día cuenta la solapa Salieron (igual que la API).</summary>
+    public static readonly DateTime SalieronDesde = new(2026, 11, 13);
+
+    /// <summary>13/11/2026: transferencias que salieron (desde hoy) sin decir qué pagaron.</summary>
+    public async Task<List<SalidaBancoDto>?> GetSalieronBancoAsync()
+        => await GetAsync<List<SalidaBancoDto>>("/api/cafe/extracto-banco/salieron");
+
     public async Task<List<ExtractoMovimientoDto>?> GetExtractoMovimientosAsync(
         DateTime? desde = null, DateTime? hasta = null, string? tipo = null, string? asociado = null)
     {

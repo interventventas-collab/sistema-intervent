@@ -407,6 +407,20 @@ public class ExtractoMovimientoDto
     public string? IgnoradoMotivo { get; set; }
 }
 
+/// <summary>13/11/2026: transferencia que salió del Galicia y todavía no dice qué pagó (pastilla Banco Galicia).</summary>
+public class SalidaBancoDto
+{
+    public int Id { get; set; }
+    public DateTime Fecha { get; set; }
+    public decimal Importe { get; set; }
+    public string? Nombre { get; set; }
+    public string? Cuit { get; set; }
+    public string? Descripcion { get; set; }
+    public int? ProveedorId { get; set; }
+    public string? ProveedorNombre { get; set; }
+    public bool ConCuentaCorriente { get; set; }
+}
+
 public class SaldoBancoDto
 {
     public decimal Saldo { get; set; }
