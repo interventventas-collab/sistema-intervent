@@ -1,4 +1,7 @@
 @using Web.Services
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject NavigationManager Nav
 @* 2026-11-10 (2ª): "Equipo hoy" pasó de rayitas a una TABLA simple (el dueño: "no se entiende nada").
    Una fila por persona, en palabras: quién · estado · entregas de hoy con barrita · última entrega ·
    aviso. Tocando la fila se abre el detalle de siempre. El nombre del archivo quedó por historia. *@
@@ -29,6 +32,11 @@
     .eqt-paga a:hover { background:#f9fafb; }
     .eqt-tot { font-size:0.86rem; margin:0.3rem 0 0.1rem; }
     .eqt-tot b { color:#111827; }
+    .eqt tr.fila.abierta td { background:#f9fafb; border-bottom:none; }
+    .eqt-chev { color:#9ca3af; font-size:0.7rem; width:10px; }
+    .eqt-um { max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.82rem; }
+    .eqt-um-cuando { font-weight:600; color:#111827; }
+    .eqt tr.eqf-row > td { background:#f9fafb; padding:0 0.5rem 1rem 2.6rem; border-bottom:1px solid #e5e7eb; }
     @@media (max-width: 900px) { .eqt .col-ult { display:none; } .eqt-track { width:70px; } }
 </style>
 @{ var totPagar = Items.Sum(x => x.PagarHoy); var hayPagar = totPagar > 0; }
@@ -38,7 +46,7 @@
         <span class="eqt-muted">· feriados, horas extra, comisiones, plus o aguinaldo con fecha de pago hoy@(Items.Any(x => x.PagarHoyAtrasado) ? " o atrasados" : "")</span></div>
 }
 <table class="eqt">
-    <tr><th>Quién</th><th>Estado</th><th>Entregas de hoy</th><th class="col-ult">Última entrega</th>@if (hayPagar) {<th>Hoy se le paga</th>}<th>Aviso</th></tr>
+    <tr><th>Quién</th><th>Estado</th><th class="col-ult">Último movimiento en el sistema</th><th>Entregas de hoy</th>@if (hayPagar) {<th>Hoy se le paga</th>}<th>Aviso</th></tr>
     @foreach (var e in Items)
     {
         var emp = e;
@@ -46,9 +54,11 @@
         var total = e.RutaEntregadas + e.RutaFaltan + e.RutaNoEntregadas;
         var quieto = e.MinutosSinMarcar >= UmbralQuietoMin && e.RutaFaltan > 0;
         var termino = total > 0 && e.RutaFaltan == 0;
-        <tr class="fila" @onclick="() => OnClickEmp.InvokeAsync(emp)" title="Tocá para ver el detalle">
+        var abierto = abiertoId == e.NomEmpleadoId;
+        <tr class="fila @(abierto ? "abierta" : "")" @onclick="() => Toggle(emp)" title="@(abierto ? "Tocá para cerrar" : "Tocá para ver todo de esta persona")">
             <td>
                 <div class="eqt-who">
+                    <span class="eqt-chev">@(abierto ? "▾" : "▸")</span>
                     <span class="eqt-av" style="background:@OperatorService.ShortBgColor(e.ApodoKiosko ?? e.Nombre);">@OperatorService.ShortLabel(e.ApodoKiosko ?? e.Nombre)</span>
                     @ShortName(e.Nombre)
                 </div>
@@ -71,11 +81,29 @@
                     <span class="eqt-st no">@(e.Estado == "no_ficha" ? "no ficha" : "no vino")</span>
                 }
             </td>
+            <td class="col-ult">
+                @if (ultimos.TryGetValue(e.NomEmpleadoId, out var um))
+                {
+                    var reciente = (DateTime.UtcNow - um.CuandoUtc).TotalHours < 12;
+                    <div class="eqt-um" title="@um.Texto">
+                        <span class="@(reciente ? "eqt-um-cuando" : "eqt-muted")">@Hace(um.CuandoUtc)</span>
+                        <span class="eqt-muted"> · @um.Texto</span>
+                    </div>
+                }
+                else if (ultimosCargados)
+                {
+                    <span class="eqt-muted">nada en los últimos 7 días</span>
+                }
+            </td>
             <td>
                 @if (total > 0)
                 {
                     var pct = (100.0 * e.RutaEntregadas / total).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
                     <div class="eqt-bar"><b>@e.RutaEntregadas de @total</b><span class="eqt-track"><span class="eqt-fill" style="width:@pct%;"></span></span></div>
+                    @if (e.MinutosSinMarcar >= 0 && !string.IsNullOrWhiteSpace(e.UltimoDomicilio))
+                    {
+                        <div class="eqt-muted" style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="@e.UltimoDomicilio">última hace @Minutos(e.MinutosSinMarcar) · @e.UltimoDomicilio</div>
+                    }
                 }
                 else if (!e.TieneRepartidor)
                 {
@@ -84,16 +112,6 @@
                 else
                 {
                     <span class="eqt-muted">sin entregas hoy</span>
-                }
-            </td>
-            <td class="col-ult">
-                @if (e.MinutosSinMarcar >= 0)
-                {
-                    <span>hace @Minutos(e.MinutosSinMarcar)</span>
-                    @if (!string.IsNullOrWhiteSpace(e.UltimoDomicilio))
-                    {
-                        <div class="eqt-muted" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="@e.UltimoDomicilio">@e.UltimoDomicilio</div>
-                    }
                 }
             </td>
             @if (hayPagar)
@@ -123,6 +141,13 @@
                 }
             </td>
         </tr>
+        @if (abierto)
+        {
+            <tr class="eqf-row"><td colspan="@(hayPagar ? 6 : 5)">
+                <EquipoFichaEmpleado Ficha="ficha" Cargando="fichaCargando" Item="emp"
+                                     OnCambiarDia="CambiarDia" OnVerReparto="() => OnClickEmp.InvokeAsync(emp)" />
+            </td></tr>
+        }
     }
 </table>
 
@@ -132,6 +157,66 @@
     [Parameter] public EventCallback<ApiClient.DashboardEquipoItem> OnClickEmp { get; set; }
 
     private static readonly System.Globalization.CultureInfo Es = new("es-AR");
+
+    // 2026-11-13: último movimiento de cada uno + ficha desplegable (una a la vez).
+    private Dictionary<int, ApiClient.EquipoUltimoDto> ultimos = new();
+    private bool ultimosCargados;
+    private DateTime ultimosAt = DateTime.MinValue;
+    private int? abiertoId;
+    private ApiClient.EquipoFichaDto? ficha;
+    private bool fichaCargando;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // El tablero refresca "Equipo hoy" solo; esto acompaña como mucho una vez por minuto.
+        if ((DateTime.UtcNow - ultimosAt).TotalSeconds < 60) return;
+        ultimosAt = DateTime.UtcNow;
+        try
+        {
+            var l = await Api.GetEquipoUltimosAsync();
+            if (l is not null) { ultimos = l.ToDictionary(x => x.EmpId); ultimosCargados = true; }
+        }
+        catch { /* si falla, la columna queda vacía */ }
+        if (abiertoId is int id && ficha?.Dia.Date == DateTimeExt.AhoraAr().Date) await CargarFicha(id, null);
+    }
+
+    private async Task Toggle(ApiClient.DashboardEquipoItem e)
+    {
+        if (abiertoId == e.NomEmpleadoId) { abiertoId = null; ficha = null; return; }
+        abiertoId = e.NomEmpleadoId;
+        ficha = null;
+        await CargarFicha(e.NomEmpleadoId, null);
+    }
+
+    private async Task CambiarDia(DateTime dia)
+    {
+        if (abiertoId is int id) await CargarFicha(id, dia);
+    }
+
+    private async Task CargarFicha(int id, DateTime? dia)
+    {
+        fichaCargando = true;
+        StateHasChanged();
+        try
+        {
+            var f = await Api.GetEquipoFichaAsync(id, dia);
+            if (abiertoId == id) ficha = f;
+        }
+        catch { }
+        finally { fichaCargando = false; }
+    }
+
+    private static string Hace(DateTime utc)
+    {
+        var min = (int)Math.Max(0, (DateTime.UtcNow - utc).TotalMinutes);
+        if (min < 1) return "recién";
+        if (min < 60) return $"hace {min} min";
+        var ar = utc.ToArTime();
+        var hoy = DateTimeExt.AhoraAr().Date;
+        if (ar.Date == hoy) return min < 180 ? $"hace {min / 60} h {min % 60} min" : $"hoy {ar:HH:mm}";
+        if (ar.Date == hoy.AddDays(-1)) return $"ayer {ar:HH:mm}";
+        return ar.ToString("dd/MM HH:mm");
+    }
 
     // El mismo umbral que el aviso "Hace X min que no marca nada" del Dashboard de siempre.
     public const int UmbralQuietoMin = 45;

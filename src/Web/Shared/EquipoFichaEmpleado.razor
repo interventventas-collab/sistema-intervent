@@ -1,0 +1,271 @@
+@using Web.Services
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject ToastService Toast
+@* 2026-11-13: ficha completa de un empleado, desplegada debajo de su fila en "Equipo hoy".
+   Tres columnas: qué hizo (día elegido + resumen de la semana) · plata · papeles y accesos.
+   Solo la ve el dueño (usuario admin). Texto plano, color solo para lo importante. *@
+<style>
+    .eqf-head { display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; padding:0.3rem 0 0.7rem; border-bottom:1px solid #e5e7eb; }
+    .eqf-head .eqf-sub { color:#6b7280; font-size:0.82rem; }
+    .eqf-head .sp { flex:1; }
+    .eqf-btn { font-size:0.76rem; border:1px solid #d1d5db; border-radius:6px; padding:2px 10px; background:#fff; color:#111827; text-decoration:none; cursor:pointer; white-space:nowrap; }
+    .eqf-btn:hover { background:#f3f4f6; }
+    .eqf-cols { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:1.8rem; padding-top:0.8rem; }
+    @@media (max-width: 1100px) { .eqf-cols { grid-template-columns:1fr; gap:1rem; } }
+    .eqf-h { font-size:0.68rem; letter-spacing:0.05em; text-transform:uppercase; color:#6b7280; font-weight:600; margin:0 0 0.45rem; display:flex; align-items:center; gap:0.4rem; }
+    .eqf-h .dia { text-transform:none; letter-spacing:0; color:#111827; font-weight:600; }
+    .eqf-h button { border:0; background:none; color:#6b7280; cursor:pointer; padding:0 4px; font-size:0.85rem; }
+    .eqf-h button:disabled { color:#d1d5db; cursor:default; }
+    .eqf-ritmo { display:flex; align-items:flex-end; gap:2px; height:26px; }
+    .eqf-ritmo i { flex:1; background:#d1d5db; border-radius:1px; min-height:2px; }
+    .eqf-ritmo i.si { background:#6b7280; }
+    .eqf-horas { display:flex; justify-content:space-between; font-size:0.66rem; color:#9ca3af; margin:2px 0 0.5rem; }
+    .eqf-tl { max-height:260px; overflow-y:auto; }
+    .eqf-tl div { display:flex; gap:0.6rem; padding:3px 0; border-bottom:1px dotted #e5e7eb; font-size:0.82rem; }
+    .eqf-tl .h { width:38px; color:#6b7280; font-variant-numeric:tabular-nums; flex-shrink:0; }
+    .eqf-tl .t { flex:1; min-width:0; }
+    .eqf-tl .d { color:#9ca3af; font-size:0.72rem; white-space:nowrap; }
+    .eqf-sem { margin-top:0.55rem; font-size:0.8rem; color:#374151; }
+    .eqf-kv { display:grid; grid-template-columns:auto 1fr; gap:0.3rem 0.9rem; font-size:0.82rem; }
+    .eqf-kv > span:nth-child(odd) { color:#6b7280; white-space:nowrap; }
+    .eqf-sep { border-top:1px solid #e5e7eb; margin:0.6rem 0; }
+    .eqf-muted { color:#9ca3af; }
+    .eqf-a { color:#1d4ed8; text-decoration:none; cursor:pointer; }
+    .eqf-a:hover { text-decoration:underline; }
+    .eqf-link { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.25rem; }
+    .eqf-mono { font-family:ui-monospace,Consolas,monospace; font-size:0.74rem; background:#f3f4f6; padding:1px 5px; border-radius:4px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .eqf-nota { font-size:0.72rem; color:#9ca3af; margin-top:0.6rem; }
+</style>
+
+@if (Ficha is null)
+{
+    <div class="eqf-muted" style="padding:0.8rem 0;">@(Cargando ? "Cargando todo de esta persona…" : "No se pudo cargar la ficha.")</div>
+}
+else
+{
+    var f = Ficha;
+    var hoy = DateTimeExt.AhoraAr().Date;
+    <div class="eqf-head">
+        <span class="eqf-sub">
+            @(string.IsNullOrWhiteSpace(f.Puesto) ? "" : Cap(f.Puesto) + " · ")entró @f.FechaIngreso.ToString("MM/yyyy")@(string.IsNullOrWhiteSpace(f.TelefonoContacto) ? "" : " · " + f.TelefonoContacto)
+        </span>
+        <span class="sp"></span>
+        @if (WaLink(f.TelefonoContacto) is string wa)
+        {
+            <a class="eqf-btn" href="@wa" target="_blank" @onclick:stopPropagation="true">💬 WhatsApp</a>
+        }
+        @if (Item?.TieneRepartidor == true)
+        {
+            <span class="eqf-btn" @onclick="() => OnVerReparto.InvokeAsync()">🚚 Reparto del día</span>
+        }
+        <a class="eqf-btn" href="/nominas/empleados">✏ Editar ficha</a>
+    </div>
+
+    <div class="eqf-cols">
+        @* ── Qué hizo ── *@
+        <div>
+            <div class="eqf-h">
+                Qué hizo
+                <button @onclick="() => OnCambiarDia.InvokeAsync(f.Dia.AddDays(-1))" title="Día anterior">◀</button>
+                <span class="dia">@DiaTexto(f.Dia)</span>
+                <button disabled="@(f.Dia.Date >= hoy)" @onclick="() => OnCambiarDia.InvokeAsync(f.Dia.AddDays(1))" title="Día siguiente">▶</button>
+                @if (Cargando) { <span class="eqf-muted" style="text-transform:none;">cargando…</span> }
+            </div>
+            @{ var max = Math.Max(1, f.Ritmo.Skip(7).Take(15).DefaultIfEmpty(0).Max()); }
+            <div class="eqf-ritmo" title="Cuántas cosas hizo en cada hora">
+                @for (var h = 7; h < 22; h++)
+                {
+                    var n = f.Ritmo[h];
+                    <i class="@(n > 0 ? "si" : "")" style="height:@(n == 0 ? 2 : Math.Max(4, 26 * n / max))px;" title="@h hs: @n"></i>
+                }
+            </div>
+            <div class="eqf-horas"><span>7</span><span>10</span><span>13</span><span>16</span><span>19</span><span>22</span></div>
+            @if (f.DelDia.Count == 0)
+            {
+                <div class="eqf-muted" style="font-size:0.82rem;">No hay nada a su nombre este día.</div>
+            }
+            else
+            {
+                <div class="eqf-tl">
+                    @foreach (var m in f.DelDia)
+                    {
+                        <div><span class="h">@m.Hora</span><span class="t">@m.Texto</span><span class="d">@m.Donde</span></div>
+                    }
+                </div>
+            }
+            <div class="eqf-sem">
+                Últimos 7 días:
+                @if (f.Semana.Count == 0)
+                {
+                    <span class="eqf-muted">nada a su nombre</span>
+                }
+                else
+                {
+                    @string.Join(" · ", f.Semana.Select(s => $"{s.Cantidad} {s.Clase}"))
+                }
+            </div>
+            @if (f.UsaDesde.Count > 0)
+            {
+                <div class="eqf-sem eqf-muted">Usa el sistema desde: @string.Join(", ", f.UsaDesde)</div>
+            }
+        </div>
+
+        @* ── Plata ── *@
+        <div>
+            <div class="eqf-h">Plata</div>
+            <div class="eqf-kv">
+                <span>Cobra</span><span>@Sueldo(f)</span>
+                @if (f.MesActual is { } ma)
+                {
+                    <span>@Mes(ma.Mes) va</span><span><b>$@ma.NetoAPagar.ToString("N0", Es)</b> neto@(ma.DiasTrabajados > 0 ? $" · {ma.DiasTrabajados:0.#} días" : "")@(ma.KgCafe > 0 ? $" · {ma.KgCafe:0.#} kg" : "")</span>
+                    @if (ma.Adelantos > 0)
+                    {
+                        <span>Adelantos</span><span>$@ma.Adelantos.ToString("N0", Es)</span>
+                    }
+                    <span>Pagado</span><span>$@ma.Pagado.ToString("N0", Es)@(ma.UltimoPago is DateTime up1 ? $" · último {up1:dd/MM}" : "")</span>
+                }
+                else
+                {
+                    <span>@Mes(hoy.Month)</span><span class="eqf-muted">sin liquidación todavía</span>
+                }
+                @if (f.MesAnterior is { } mp)
+                {
+                    var debe = mp.NetoAPagar - mp.Pagado;
+                    <span>@Mes(mp.Mes)</span><span>$@mp.NetoAPagar.ToString("N0", Es) neto · @(debe > 0 ? "" : "pagado")@(mp.UltimoPago is DateTime up2 && debe <= 0 ? $" {up2:dd/MM}" : "")
+                        @if (debe > 0) { <b style="color:#b91c1c;">falta pagar $@debe.ToString("N0", Es)</b> }</span>
+                }
+            </div>
+            <div class="eqf-sep"></div>
+            <div class="eqf-kv">
+                <span>Vacaciones @f.Vacaciones.Periodo</span>
+                <span>le tocan @f.Vacaciones.LeTocan · tomó @f.Vacaciones.Tomadas · <b>quedan @Math.Max(0, f.Vacaciones.LeTocan - f.Vacaciones.Tomadas)</b>@(f.Vacaciones.Pedidas > 0 ? $" · {f.Vacaciones.Pedidas} pedidas" : "")</span>
+                @if (f.Vacaciones.ProximaDesde is DateTime pd)
+                {
+                    <span>@(pd.Date <= hoy ? "De vacaciones" : "Próximas")</span><span>@pd.ToString("dd/MM") al @f.Vacaciones.ProximaHasta?.ToString("dd/MM")@(f.Vacaciones.ProximaEstado == "pedida" ? " (pedidas)" : "")</span>
+                }
+            </div>
+            <div style="margin-top:0.6rem; display:flex; gap:1rem; flex-wrap:wrap; font-size:0.82rem;">
+                <a class="eqf-a" href="/nominas/liquidaciones">Liquidaciones →</a>
+                <a class="eqf-a" href="/nominas/vacaciones">Vacaciones →</a>
+            </div>
+        </div>
+
+        @* ── Papeles y accesos ── *@
+        <div>
+            <div class="eqf-h">Papeles y accesos</div>
+            @if (f.Links.Count == 0)
+            {
+                <div class="eqf-muted" style="font-size:0.82rem;">No tiene link personal.</div>
+            }
+            @foreach (var l in f.Links)
+            {
+                var url = Nav.BaseUri.TrimEnd('/') + l.Ruta;
+                <div class="eqf-link" style="font-size:0.82rem;">
+                    <span style="color:#6b7280;">@l.Que</span>
+                </div>
+                <div class="eqf-link">
+                    <span class="eqf-mono" title="@url">@url</span>
+                    <a class="eqf-a" style="font-size:0.78rem;" @onclick="() => Copiar(url)">copiar</a>
+                    @if (WaLink(f.TelefonoContacto, url) is string wl)
+                    {
+                        <a class="eqf-a" style="font-size:0.78rem;" href="@wl" target="_blank">mandar por WA</a>
+                    }
+                    <a class="eqf-a" style="font-size:0.78rem;" href="@url" target="_blank">abrir</a>
+                </div>
+            }
+            <div class="eqf-kv" style="margin-top:0.3rem;">
+                <span>Fichar</span><span>@f.Fichar</span>
+            </div>
+            <div class="eqf-sep"></div>
+            <div class="eqf-kv">
+                <span>Documentos</span>
+                <span>
+                    @if (f.Documentos.Count == 0)
+                    {
+                        <span class="eqf-muted">ninguno · </span>
+                    }
+                    @foreach (var d in f.Documentos)
+                    {
+                        <a class="eqf-a" href="/api/nominas/empleados/@f.Id/archivos/@d.Id/download" target="_blank" title="Subido @d.UploadedAt.ToArTime().ToString("dd/MM/yyyy")">@d.FileName</a><text> · </text>
+                    }
+                    <a class="eqf-a" href="/nominas/empleados">+ subir</a>
+                </span>
+            </div>
+            <div class="eqf-sep"></div>
+            <div class="eqf-kv">
+                @if (!string.IsNullOrWhiteSpace(f.Documento)) { <span>DNI</span><span>@f.Documento</span> }
+                @if (!string.IsNullOrWhiteSpace(f.Alias) || !string.IsNullOrWhiteSpace(f.Cbu))
+                {
+                    <span>Cobra en</span><span>@string.Join(" · ", new[] { f.Banco, string.IsNullOrWhiteSpace(f.Alias) ? null : "alias " + f.Alias, string.IsNullOrWhiteSpace(f.Cbu) ? null : "CBU " + f.Cbu }.Where(x => !string.IsNullOrWhiteSpace(x)))</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(f.Domicilio)) { <span>Vive en</span><span>@f.Domicilio</span> }
+                @if (!string.IsNullOrWhiteSpace(f.TelefonoFamiliar)) { <span>Si pasa algo</span><span>@f.TelefonoFamiliar</span> }
+                @if (!string.IsNullOrWhiteSpace(f.Email)) { <span>Mail</span><span>@f.Email</span> }
+            </div>
+        </div>
+    </div>
+    <div class="eqf-nota">Lo que se hace desde los usuarios compartidos (OFICINA, DEPOSITO) sin elegir quién es no queda a nombre de nadie, así que no aparece acá.</div>
+}
+
+@code {
+    [Parameter] public ApiClient.EquipoFichaDto? Ficha { get; set; }
+    [Parameter] public bool Cargando { get; set; }
+    [Parameter] public ApiClient.DashboardEquipoItem? Item { get; set; }
+    [Parameter] public EventCallback<DateTime> OnCambiarDia { get; set; }
+    [Parameter] public EventCallback OnVerReparto { get; set; }
+
+    private static readonly System.Globalization.CultureInfo Es = new("es-AR");
+    private static readonly string[] Meses = { "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre" };
+    private static string Mes(int m) => Meses[m];
+
+    private static string Cap(string s) => s.Length == 0 ? s : char.ToUpper(s[0]) + s[1..].ToLower();
+
+    private static string DiaTexto(DateTime d)
+    {
+        var hoy = DateTimeExt.AhoraAr().Date;
+        if (d.Date == hoy) return "hoy";
+        if (d.Date == hoy.AddDays(-1)) return "ayer";
+        return d.ToString("ddd dd/MM", Es);
+    }
+
+    private static string Sueldo(ApiClient.EquipoFichaDto f)
+    {
+        var partes = new List<string>();
+        switch (f.ModalidadSueldo)
+        {
+            case "diario" when f.JornalDiario > 0: partes.Add($"por día · ${f.JornalDiario.ToString("N0", Es)}"); break;
+            case "hora" when f.ValorHora > 0: partes.Add($"por hora · ${f.ValorHora.ToString("N0", Es)}"); break;
+            default:
+                if (f.SueldoBase > 0) partes.Add($"{f.ModalidadSueldo} · ${f.SueldoBase.ToString("N0", Es)}");
+                else if (f.JornalDiario > 0) partes.Add($"por día · ${f.JornalDiario.ToString("N0", Es)}");
+                else partes.Add(f.ModalidadSueldo);
+                break;
+        }
+        if (f.ComisionPorKg > 0) partes.Add($"${f.ComisionPorKg.ToString("N0", Es)} x kg");
+        if (f.ComisionPorcentaje is > 0) partes.Add($"{f.ComisionPorcentaje:0.#}% comisión");
+        if (f.BonoFijo > 0) partes.Add($"bono ${f.BonoFijo.ToString("N0", Es)}");
+        return string.Join(" + ", partes);
+    }
+
+    /// <summary>Link de WhatsApp al teléfono del empleado (Argentina), opcionalmente con un texto.</summary>
+    private static string? WaLink(string? tel, string? texto = null)
+    {
+        if (string.IsNullOrWhiteSpace(tel)) return null;
+        var d = new string(tel.Where(char.IsDigit).ToArray());
+        if (d.Length < 8) return null;
+        if (d.StartsWith("0")) d = d[1..];
+        if (!d.StartsWith("54")) d = "549" + d;
+        return $"https://wa.me/{d}" + (texto is null ? "" : "?text=" + Uri.EscapeDataString(texto));
+    }
+
+    private async Task Copiar(string url)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+            Toast.Success("Link copiado");
+        }
+        catch { Toast.Error("No se pudo copiar"); }
+    }
+}
