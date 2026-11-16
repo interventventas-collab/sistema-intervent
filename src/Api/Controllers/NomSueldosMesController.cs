@@ -78,6 +78,11 @@ public class NomSueldosMesController : ControllerBase
     public async Task<IActionResult> PendientesAnteriores([FromQuery] int anio, [FromQuery] int mes)
     {
         if (anio < 2000 || mes < 1 || mes > 12) return BadRequest(new { error = "Año/mes inválido" });
+        return Ok(await PendientesAnterioresLista(anio, mes));
+    }
+
+    private async Task<List<PendienteAnteriorDto>> PendientesAnterioresLista(int anio, int mes)
+    {
         var res = new List<PendienteAnteriorDto>();
         var (a, m) = (PrimerPeriodoVista / 100, PrimerPeriodoVista % 100);
         while (a * 100 + m < anio * 100 + mes)
@@ -87,7 +92,7 @@ public class NomSueldosMesController : ControllerBase
                     res.Add(new PendienteAnteriorDto(e.EmpleadoId, e.Nombre, c.Tipo, a, m, c.Debe, c.ProximaFecha, e.LiquidacionId));
             if (++m > 12) { m = 1; a++; }
         }
-        return Ok(res.OrderBy(r => r.Anio).ThenBy(r => r.Mes).ThenBy(r => r.Nombre).ToList());
+        return res.OrderBy(r => r.Anio).ThenBy(r => r.Mes).ThenBy(r => r.Nombre).ToList();
     }
 
     private async Task<List<SueldoMesEmpleadoDto>> ArmarMesAsync(int anio, int mes)
@@ -215,7 +220,15 @@ public class NomSueldosMesController : ControllerBase
 
     [HttpGet("proximos-pagos")]
     public async Task<IActionResult> Proximos([FromQuery] int dias = 7)
-        => Ok(await ProximosPagosAsync(_db, HoyAr().AddDays(Math.Clamp(dias, 0, 60))));
+    {
+        var res = await ProximosPagosAsync(_db, HoyAr().AddDays(Math.Clamp(dias, 0, 60)));
+        // 16/11: también lo que quedó debiendo de meses anteriores SIN fecha (ej. sueldo de octubre de Osmar):
+        // sale como vencido el 1º del mes siguiente. Lo que tiene fecha ya viene arriba.
+        var hoy = HoyAr();
+        foreach (var p in (await PendientesAnterioresLista(hoy.Year, hoy.Month)).Where(p => p.ProximaFecha is null && p.LiquidacionId is not null))
+            res.Add(new ProximoPagoDto(p.EmpleadoId, p.Nombre, p.Tipo, new DateTime(p.Anio, p.Mes, 1).AddMonths(1), p.Debe, p.Anio, p.Mes, p.LiquidacionId!.Value));
+        return Ok(res.OrderBy(r => r.Fecha).ToList());
+    }
 
     /// <summary>Lo que falta pagar con fecha hasta <paramref name="hasta"/> (incluye todo lo atrasado).</summary>
     public static async Task<List<ProximoPagoDto>> ProximosPagosAsync(AppDbContext db, DateTime hasta)

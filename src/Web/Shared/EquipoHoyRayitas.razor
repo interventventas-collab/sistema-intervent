@@ -63,6 +63,21 @@
    horas extras, comisiones, feriados, plus, aguinaldo con fecha de pago). Reemplaza la columna "Hoy se le paga".
    Solo lo ve quien ve Sueldos. *@
 @{ var hayPagar = false; }
+@if (pagoAbierto is { } pa)
+{
+    <div class="modal-overlay" @onclick="CerrarPago">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 760px; max-height: 92vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h3>💵 Pagar a @pa.Nombre</h3>
+                <button class="btn-close" @onclick="CerrarPago">&times;</button>
+            </div>
+            <div class="modal-body">
+                <PagoEmpleadoForm EmpleadoIdInicial="pa.EmpleadoId" AnioInicial="pa.Anio" MesInicial="pa.Mes" ConceptoInicial="@pa.Tipo" MontoInicial="pa.Monto"
+                                  BloquearEmpleado="true" OnPagado="@(async _ => { await RecargarPagos(); pagoAbierto = null; })" />
+            </div>
+        </div>
+    </div>
+}
 @if (showProgramar)
 {
     <div class="modal-overlay" @onclick="() => showProgramar = false">
@@ -111,10 +126,11 @@
                         // 16/11: cartelito corto para que se vayan preparando: HOY / MAÑANA / EN N DÍAS / ATRASADO
                         var enDias = (primero.Fecha.Date - Web.Services.FechaPalabras.HoyAr).Days;
                         var cartel = urg.Count > 0 ? (atr ? "ATRASADO" : "HOY") : enDias == 1 ? "MAÑANA" : $"EN {enDias} DÍAS";
-                        var detalle = string.Join("\n", suyos.Select(p => $"{Cap(Web.Services.FechaPalabras.Cuando(p.Fecha))}: {NombreConcepto(p.Tipo)} ${p.Monto.ToString("N0", Es)}"));
-                        <a class="eqp-pill @(urg.Count > 0 ? (atr ? "atr" : "hoy") : "prox")" href="@LinkPago(primero)" @onclick:stopPropagation="true"
+                        var detalle = string.Join("\n", suyos.Select(p => $"{Cap(Web.Services.FechaPalabras.Cuando(p.Fecha))}: {NombreConcepto(p.Tipo)}{MesSiNoEsEste(p)} ${p.Monto.ToString("N0", Es)}"));
+                        @* 16/11: tocar abre el pago YA ARMADO (empleado, concepto, mes e importe) del primero de la lista *@
+                        <a class="eqp-pill @(urg.Count > 0 ? (atr ? "atr" : "hoy") : "prox")" href="javascript:void(0)" @onclick="() => AbrirPago(primero)" @onclick:stopPropagation="true"
                            title="@("Tocá para pagar\n" + detalle)">
-                            💰 <span class="eqp-cartel">@cartel</span> <b>$@lista.Sum(p => p.Monto).ToString("N0", Es)</b> · @string.Join(", ", lista.Select(p => NombreConcepto(p.Tipo)).Distinct())
+                            💰 <span class="eqp-cartel">@cartel</span> <b>$@lista.Sum(p => p.Monto).ToString("N0", Es)</b> · @string.Join(", ", lista.Select(p => NombreConcepto(p.Tipo) + MesSiNoEsEste(p)).Distinct())
                         </a>
                     }
                 </div>
@@ -225,6 +241,16 @@
     // 2026-11-16: próximos pagos al equipo
     private List<ProximoPagoDto> proximos = new();
     private bool showProgramar;
+    private ProximoPagoDto? pagoAbierto;
+    private void AbrirPago(ProximoPagoDto p) => pagoAbierto = p;
+    private void CerrarPago() => pagoAbierto = null;
+    private static readonly string[] MesCorto = { "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic" };
+    /// <summary>" oct" si el concepto es de otro mes (lo que quedó debiendo de antes).</summary>
+    private static string MesSiNoEsEste(ProximoPagoDto p)
+    {
+        var h = Web.Services.FechaPalabras.HoyAr;
+        return p.Anio * 100 + p.Mes < h.Year * 100 + h.Month ? " " + MesCorto[p.Mes - 1] : "";
+    }
     private async Task RecargarPagos()
     {
         try { proximos = await Api.GetProximosPagosAsync(7) ?? new(); } catch { }

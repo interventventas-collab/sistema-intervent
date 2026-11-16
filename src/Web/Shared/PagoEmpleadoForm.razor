@@ -124,6 +124,9 @@
     [Parameter] public int AnioInicial { get; set; }
     [Parameter] public int MesInicial { get; set; }
     [Parameter] public bool BloquearEmpleado { get; set; }
+    /// <summary>16/11: para abrir el pago ya armado desde el aviso 💰 de Equipo hoy.</summary>
+    [Parameter] public string? ConceptoInicial { get; set; }
+    [Parameter] public decimal MontoInicial { get; set; }
     /// <summary>Se llama después de registrar el pago, con el concepto pagado.</summary>
     [Parameter] public EventCallback<string> OnPagado { get; set; }
 
@@ -162,6 +165,8 @@
         try { empleados = (await Api.GetNomEmpleadosAsync())?.Where(e => e.IsActive).OrderBy(e => e.Nombre).ToList() ?? new(); } catch { empleados = new(); }
         try { cajas = (await Api.GetCafeCajasAsync() ?? new()).Where(c => !c.EnDolares).ToList(); } catch { cajas = new(); }
         cajaId = CajaSegunMetodo(metodo);
+        if (!string.IsNullOrEmpty(ConceptoInicial) && Conceptos.Any(c => c.Cod == ConceptoInicial)) concepto = ConceptoInicial;
+        if (MontoInicial > 0) montoTxt = MontoInput.Formato(MontoInicial);
         await Recargar();
     }
 
