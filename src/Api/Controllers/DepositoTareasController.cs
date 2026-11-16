@@ -945,14 +945,9 @@ public class DepositoTareasController : ControllerBase
         var faltan = ids.Where(id => !res.ContainsKey(id) && !meliOculta.Contains(id)).ToList();
         if (faltan.Count > 0)
         {
-            var meli = await (from c in _db.MeliItemComponentes.AsNoTracking()
-                              join m in _db.MeliItems.AsNoTracking() on c.MeliItemId equals m.MeliItemId
-                              where faltan.Contains(c.CafeProductoId) && m.Thumbnail != null
-                              orderby m.Status == "active" descending, m.SoldQuantity descending
-                              select new { c.CafeProductoId, m.Thumbnail }).ToListAsync();
-            foreach (var m in meli)
-                if (!res.ContainsKey(m.CafeProductoId))
-                    res[m.CafeProductoId] = (m.Thumbnail!.Replace("http://", "https://"), false);
+            // 2026-11-16: misma regla de foto de MeLi que todo el sistema (FotoProductoService)
+            foreach (var (pid, url) in await new Api.Services.FotoProductoService(_db).MeliAsync(faltan))
+                res[pid] = (url, false);
         }
         return res;
     }

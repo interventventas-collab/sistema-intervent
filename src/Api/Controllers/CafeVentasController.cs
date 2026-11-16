@@ -4572,6 +4572,9 @@ public class CafeVentasController : ControllerBase
 
     /// <summary>Las ventas que están en el tablero "Pedidos para armar" (las de los últimos
     /// <paramref name="dias"/> días). La usan el tablero y el celu del depósito (2026-11-10).</summary>
+    private static string? FotoMeliDe(Dictionary<int, string> thumbs, int? productoId)
+        => productoId != null && thumbs.TryGetValue(productoId.Value, out var t) ? t : null;
+
     public static IQueryable<CafeVenta> EnTableroPreparacion(IQueryable<CafeVenta> q, int dias)
     {
         var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
@@ -4597,6 +4600,10 @@ public class CafeVentasController : ControllerBase
         // que entraron al tablero antes de que se guardara el estado. Sin esa atadura entrarian
         // TODAS las ventas de oficina que nunca se mandaron a armar.
         var editandoCorte = DateTime.UtcNow - EditandoVence;
+        // 2026-11-16: foto de MeLi de cada producto con la regla única (FotoProductoService), no "la publi más nueva".
+        var pidsTablero = await EnTableroPreparacion(_db.CafeVentas, dias)
+            .SelectMany(v => v.Items).Where(i => i.ProductoId != null).Select(i => i.ProductoId!.Value).Distinct().ToListAsync();
+        var thumbsTablero = await new Api.Services.FotoProductoService(_db).MeliAsync(pidsTablero);
         var ventas = await EnTableroPreparacion(_db.CafeVentas.Include(v => v.Items), dias)
             // Orden: las que tienen Drive primero por DriveSubidoAt desc, las sin Drive al final por CreatedAt desc
             .OrderByDescending(v => v.DriveSubidoAt ?? v.CreatedAt)
@@ -4681,13 +4688,7 @@ public class CafeVentasController : ControllerBase
                     // 2026-08-03: fotito del producto (thumbnail de la publicación MeLi vinculada) para
                     // mostrar una mini imagen en el tablero y poder verla más grande al tocarla.
                     // Toma la publicación activa más reciente linkeada a ese producto de café.
-                    thumbnail = i.ProductoId != null
-                        ? _db.MeliItems
-                            .Where(mi => mi.CafeProductoId == i.ProductoId && mi.Thumbnail != null && mi.Status == "active")
-                            .OrderByDescending(mi => mi.UpdatedAt)
-                            .Select(mi => mi.Thumbnail)
-                            .FirstOrDefault()
-                        : null,
+                    thumbnail = FotoMeliDe(thumbsTablero, i.ProductoId),
                     // 2026-08-05: id del producto (para aprobar/reportar la foto) + estado de la foto
                     // a nivel sistema (APROBADA / REPORTADA / null). Es por producto → lo ven todos.
                     productoId = i.ProductoId,

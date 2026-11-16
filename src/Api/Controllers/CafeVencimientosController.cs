@@ -56,15 +56,8 @@ public class CafeVencimientosController : ControllerBase
         if (ids.Count == 0) return res;
         var fotos = await _db.CafeProductoFotos.AsNoTracking().Where(f => ids.Contains(f.CafeProductoId))
             .Select(f => new { f.CafeProductoId, f.FotoPropiaArchivo, f.Estado }).ToListAsync();
-        var thumbsDir = await _db.MeliItems.AsNoTracking()
-            .Where(m => m.CafeProductoId != null && ids.Contains(m.CafeProductoId.Value) && m.Thumbnail != null && m.Status != "deleted")
-            .OrderBy(m => m.Status == "active" ? 0 : 1)
-            .Select(m => new { Pid = m.CafeProductoId!.Value, m.Thumbnail }).ToListAsync();
-        var thumbsComp = await (from c in _db.MeliItemComponentes
-                                join m in _db.MeliItems on c.MeliItemId equals m.MeliItemId
-                                where ids.Contains(c.CafeProductoId) && m.Thumbnail != null && m.Status != "deleted"
-                                orderby m.Status == "active" ? 0 : 1
-                                select new { Pid = c.CafeProductoId, m.Thumbnail }).ToListAsync();
+        // 2026-11-16: misma regla de foto de MeLi que todo el sistema (FotoProductoService)
+        var thumbs = await new Api.Services.FotoProductoService(_db).MeliAsync(ids);
         var desde = DateTime.UtcNow.AddDays(-60);
         var conteos = await _db.StockMovimientos.AsNoTracking()
             .Where(m => ids.Contains(m.ProductoId) && m.CreatedAt >= desde && m.Comentario != null && m.Comentario.StartsWith("Conteo"))
@@ -74,7 +67,7 @@ public class CafeVencimientosController : ControllerBase
         foreach (var id in ids)
         {
             var f = fotos.FirstOrDefault(x => x.CafeProductoId == id);
-            var th = thumbsDir.FirstOrDefault(x => x.Pid == id)?.Thumbnail ?? thumbsComp.FirstOrDefault(x => x.Pid == id)?.Thumbnail;
+            var th = thumbs.TryGetValue(id, out var t) ? t : null;
             var c = conteos.FirstOrDefault(x => x.ProductoId == id);
             res[id] = new Extra(f?.FotoPropiaArchivo, f?.Estado, th, c?.CreatedAt, c?.OperadorNombreSnap);
         }

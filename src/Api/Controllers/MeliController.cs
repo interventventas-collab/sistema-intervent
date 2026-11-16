@@ -2188,52 +2188,11 @@ public class MeliController : ControllerBase
     /// <summary>Devuelve un diccionario { CafeProductoId → thumbnail_url } con la primera imagen
     /// del primer MeliItem linkeado a cada producto. Para mostrar en el listado /cafe/productos.</summary>
     [HttpGet("product-thumbnails")]
-    public async Task<IActionResult> GetProductThumbnails([FromServices] Api.Data.AppDbContext db)
+    public async Task<IActionResult> GetProductThumbnails([FromServices] Api.Services.FotoProductoService fotos)
     {
-        // 2026-11-16: antes se elegía la publi activa actualizada más recientemente, y muchas veces era
-        // un PACK (x2, x4, x12…) → productos sueltos con foto de pack. Ahora se prefiere la publi de
-        // 1 UNIDAD de ese producto; el pack queda de último recurso. Entre las sueltas se mantiene el orden
-        // de antes (link directo primero, después la más reciente) para no cambiar las fotos que ya estaban bien.
-        var activas = await db.MeliItems.AsNoTracking()
-            .Where(mi => mi.Thumbnail != null && mi.Thumbnail != "" && mi.Status == "active")
-            .Select(mi => new { mi.MeliItemId, mi.CafeProductoId, mi.Thumbnail, mi.UpdatedAt })
-            .ToListAsync();
-        var porItem = activas.GroupBy(x => x.MeliItemId).ToDictionary(g => g.Key, g => g.First());
-
-        var comps = await db.MeliItemComponentes.AsNoTracking()
-            .Select(c => new { c.MeliItemId, c.MeliVariationId, c.CafeProductoId, c.Cantidad })
-            .ToListAsync();
-        comps = comps.Where(c => porItem.ContainsKey(c.MeliItemId)).ToList();
-        // La publi es "suelta" para el producto si en alguna variante lleva 1 unidad de él. Que lleve
-        // también OTRO producto no la hace pack (tacho + tapa = una unidad armada con dos partes).
-        // Si el producto no figura en los componentes (link viejo), no se sabe: se toma como suelta.
-        var suelta = comps.GroupBy(c => (c.MeliItemId, c.CafeProductoId))
-            .ToDictionary(g => g.Key, g => g.Any(c => c.Cantidad <= 1m));
-
-        // Candidatas: el link viejo (MeliItem.CafeProductoId) + los componentes. Si la publi tiene
-        // componentes cargados, eso manda para saber si es pack aunque el link viejo diga lo contrario.
-        var candidatas = activas.Where(mi => mi.CafeProductoId != null)
-            .Select(mi => (Pid: mi.CafeProductoId!.Value, mi.MeliItemId))
-            .Concat(comps.Select(c => (Pid: c.CafeProductoId, c.MeliItemId)))
-            .Distinct();
-
-        var map = new Dictionary<int, string>();
-        foreach (var g in candidatas.GroupBy(x => x.Pid))
-        {
-            var best = g.Select(x =>
-                {
-                    var mi = porItem[x.MeliItemId];
-                    var esSuelta = !suelta.TryGetValue((x.MeliItemId, x.Pid), out var s) || s;
-                    return new { mi.Thumbnail, mi.UpdatedAt, EsSuelta = esSuelta, Directo = mi.CafeProductoId == x.Pid };
-                })
-                .OrderByDescending(x => x.EsSuelta)
-                .ThenByDescending(x => x.Directo)
-                .ThenByDescending(x => x.UpdatedAt)
-                .First();
-            map[g.Key] = best.Thumbnail!;
-        }
-
-        return Ok(map);
+        // 2026-11-16: la regla vive en FotoProductoService (la misma en todas las pantallas):
+        // primero la publi del producto solo de a 1; nunca la de un pack mezclado ni la de "caja con tapa" para la tapa.
+        return Ok(await fotos.MeliAsync());
     }
 
     /// <summary>Sincroniza el stock Full (meli_facility) de MeLi hacia Cafe_StockPorDeposito[Full].

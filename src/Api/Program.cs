@@ -282,6 +282,7 @@ builder.Services.AddScoped<MeliClonService>();
 builder.Services.AddScoped<MeliMedidasService>();
 builder.Services.AddScoped<MeliAccionesLoteService>();
 builder.Services.AddScoped<MeliFotosService>();
+builder.Services.AddScoped<FotoProductoService>(); // 2026-11-16: una sola regla de foto de producto
 builder.Services.AddScoped<MeliDescripcionService>();
 builder.Services.AddScoped<MeliPrecioManualService>();
 builder.Services.AddScoped<MeliCuotasService>();
