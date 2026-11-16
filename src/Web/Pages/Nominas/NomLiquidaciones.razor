@@ -3,7 +3,27 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
+<style>
+    .sm-bots { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; padding: 0.55rem 1rem; border-bottom: 1px solid #e5e7eb; }
+    .sm-bots .sm-btn { padding: 0.3rem 0.75rem; font-size: 0.85rem; }
+    .sm-tot { padding: 0.8rem 1rem; font-size: 0.92rem; border-bottom: 1px solid #e5e7eb; }
+    .sm-t { width: 100%; border-collapse: collapse; }
+    .sm-t th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; font-weight: 600; text-align: left; padding: 0.45rem 0.8rem; border-bottom: 1px solid #e5e7eb; }
+    .sm-t td { padding: 0.35rem 0.8rem; font-size: 0.86rem; color: #111827; }
+    .sm-t .n { text-align: right; white-space: nowrap; }
+    .sm-e td { font-weight: 700; font-size: 0.92rem; border-top: 1px solid #e5e7eb; padding-top: 0.65rem; }
+    .sm-e td .sm-mut { font-weight: 400; margin-left: 0.4rem; }
+    .sm-c td:first-child { padding-left: 2rem; }
+    .sm-c:hover td { background: #f9fafb; }
+    .sm-mut { color: #6b7280; font-size: 0.8rem; }
+    .sm-d { color: #b91c1c; font-weight: 600; }
+    .sm-ok { color: #047857; }
+    .sm-a { color: #1d4ed8; cursor: pointer; text-decoration: none; font-size: 0.82rem; white-space: nowrap; }
+    .sm-a:hover { text-decoration: underline; }
+    .sm-btn { border: 1px solid #d1d5db; background: #fff; border-radius: 6px; padding: 0.15rem 0.6rem; font-size: 0.8rem; cursor: pointer; }
+</style>
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3>
@@ -31,11 +51,22 @@
             <button class="btn btn-secondary" style="background: #16a34a; color: white; border: none;" @onclick="OpenExportModal" title="Descargar Excel con resumen de liquidaciones">
                 📊 Excel
             </button>
-            <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Liquidación</button>
+            <button class="btn btn-secondary" @onclick="() => showPagoEmp = true" title="Pagar sueldo, horas extras, feriado, comisión, plus o aguinaldo">💵 + Nuevo pago</button>
         </div>
     </div>
+    @* 2026-11-16: todo en Sueldos. Cada concepto se carga desde acá y se abre en una ventana encima
+       (antes eran 5 pantallas sueltas). Cada uno sigue siendo independiente. *@
+    <div class="sm-bots">
+        <span class="sm-mut">Cargar:</span>
+        <button class="sm-btn" @onclick="ShowCreate">+ Sueldo del mes</button>
+        @foreach (var t in TiposVista.Where(t => t.Tipo != "sueldo"))
+        {
+            var tt = t.Tipo;
+            <button class="sm-btn" @onclick="() => AbrirConcepto(tt)">+ @t.Nombre</button>
+        }
+    </div>
     @* ═══════════ Panel resumen pendiente por concepto ═══════════ *@
-    @if (liqs is not null && liqs.Count > 0)
+    @if (liqs is not null && liqs.Count > 0 && !VistaNueva)
     {
         var liqsActivas = liqs.Where(l => l.Estado != "anulada").ToList();
         // 2026-11-11 (2ª): la lista muestra SOLO el sueldo; lo de los módulos va en el desplegable de abajo.
@@ -95,10 +126,80 @@
         {
             <p class="text-muted" style="padding: 1.5rem;">Cargando liquidaciones...</p>
         }
+        else if (VistaNueva)
+        {
+            @* 2026-11-16: Sueldos centralizado pero independiente. Cada empleado y abajo cada concepto
+               (sueldo, horas extras, comisiones, feriados, plus, aguinaldo) con cuándo se paga. *@
+            var conDatos = sueldosMes.Where(x => x.Conceptos.Count > 0).ToList();
+            var porTipo = TiposVista.Select(t => new { t.Tipo, t.Nombre, Debe = conDatos.SelectMany(x => x.Conceptos).Where(c => c.Tipo == t.Tipo).Sum(c => c.Debe) }).Where(x => x.Debe > 0.01m).ToList();
+            var debeTotal = porTipo.Sum(x => x.Debe);
+            <div class="sm-tot">
+                @if (debeTotal > 0.01m)
+                {
+                    <span>Le debés en total <b class="sm-d">$@FormatMoney0(debeTotal)</b></span>
+                    @foreach (var t in porTipo) { <span class="sm-mut"> · @t.Nombre.ToLower() $@FormatMoney0(t.Debe)</span> }
+                }
+                else if (conDatos.Count > 0) { <span class="sm-ok">Está todo pagado este mes.</span> }
+                else { <span class="sm-mut">Todavía no hay nada cargado este mes. Tocá "+ Sueldo del mes" o "Cargar sueldo" en cada empleado.</span> }
+            </div>
+            <div class="table-responsive">
+            <table class="sm-t">
+                <tr class="sm-h"><th>Empleado / concepto</th><th class="n">Cargado</th><th class="n">Pagado</th><th class="n">Debe</th><th>Cuándo se paga</th><th></th></tr>
+                @foreach (var e in sueldosMes)
+                {
+                    var emp = e;
+                    var car = e.Conceptos.Sum(c => c.Cargado); var pag = e.Conceptos.Sum(c => c.Pagado); var deb = e.Conceptos.Sum(c => c.Debe);
+                    var prox = e.Conceptos.Where(c => c.Debe > 0.01m && c.ProximaFecha != null).OrderBy(c => c.ProximaFecha).FirstOrDefault();
+                    <tr class="sm-e">
+                        <td>@e.Nombre @if (!string.IsNullOrEmpty(e.Puesto)) { <span class="sm-mut">@e.Puesto.ToLower()</span> }</td>
+                        @if (e.Conceptos.Count == 0)
+                        {
+                            <td colspan="4" class="sm-mut">sin nada cargado este mes</td>
+                            <td class="n"><button class="sm-btn" @onclick="() => CrearPara(emp.EmpleadoId)">Cargar sueldo</button></td>
+                        }
+                        else
+                        {
+                            <td class="n">$@FormatMoney0(car)</td>
+                            <td class="n">$@FormatMoney0(pag)</td>
+                            <td class="n @(deb > 0.01m ? "sm-d" : "sm-ok")">@(deb > 0.01m ? "$" + FormatMoney0(deb) : "pagado")</td>
+                            <td class="@(prox is not null && Web.Services.FechaPalabras.Atrasado(prox.ProximaFecha!.Value) ? "sm-d" : "sm-mut")">@(prox is null ? "" : Web.Services.FechaPalabras.Atrasado(prox.ProximaFecha!.Value) ? "atrasado: " + CuandoTxt(prox.ProximaFecha!.Value) : "próximo: " + CuandoTxt(prox.ProximaFecha!.Value))</td>
+                            <td></td>
+                        }
+                    </tr>
+                    @foreach (var c in e.Conceptos)
+                    {
+                        var cc = c;
+                        <tr class="sm-c">
+                            <td><span class="sm-in">@NombreTipo(c.Tipo)</span>@if (!string.IsNullOrEmpty(c.Info)) { <span class="sm-mut"> · @c.Info</span> }</td>
+                            <td class="n">$@FormatMoney0(c.Cargado)</td>
+                            <td class="n">$@FormatMoney0(c.Pagado)</td>
+                            <td class="n @(c.Debe > 0.01m ? "sm-d" : "sm-ok")">@(c.Debe > 0.01m ? "$" + FormatMoney0(c.Debe) : "pagado")</td>
+                            <td>
+                                @if (c.Debe <= 0.01m)
+                                {
+                                    <span class="sm-mut">@(c.UltimoPago is { } up ? "pagado " + Web.Services.FechaPalabras.Corta(up) : "")</span>
+                                }
+                                else if (c.ProximaFecha is { } pf)
+                                {
+                                    <span class="@(Web.Services.FechaPalabras.Atrasado(pf) ? "sm-d" : "")">@CuandoTxt(pf)</span>
+                                    @if (c.ProximaMonto > 0.01m && c.ProximaMonto < c.Debe - 0.01m) { <span> · <b>$@FormatMoney0(c.ProximaMonto)</b></span> }
+                                }
+                                else
+                                {
+                                    <span class="sm-mut">sin fecha · </span><a class="sm-a" @onclick="() => Entrar(emp, cc)">poner fecha</a>
+                                }
+                            </td>
+                            <td class="n"><a class="sm-a" @onclick="() => Entrar(emp, cc)">Entrar ›</a></td>
+                        </tr>
+                    }
+                }
+            </table>
+            </div>
+        }
         else if (liqs is null || liqs.Count == 0)
         {
             <p class="text-muted" style="padding: 1.5rem;">
-                No hay liquidaciones para los filtros seleccionados. Tocá <strong>"+ Nueva Liquidación"</strong> para crear una.
+                No hay liquidaciones para los filtros seleccionados. Tocá <strong>"+ Sueldo del mes"</strong> para crear una.
             </p>
         }
         else
@@ -165,7 +266,7 @@
                                         }
                                     }
                                 </td>
-                                <td>@EstadoBadge(l.Estado)</td>
+                                <td>@EstadoBadge(EstadoSueldo(l))</td>
                                 <td class="actions-cell" @onclick:stopPropagation="true">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(l)" title="Ver / editar">@SvgIcons.Edit</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(l)" title="Eliminar">@SvgIcons.AlertCircle</button>
@@ -175,64 +276,45 @@
                     </tbody>
                 </table>
             </div>
-            @* 2026-11-11 (2ª): "Otros conceptos" — lo de los módulos (feriados, horas extra, comisiones,
-               plus, aguinaldo) ya no va mezclado en el saldo de cada fila: va acá, plegado. *@
-            @if (extrasLista.Count > 0)
-            {
-                var porTipo = ModulosExtras.Select(m => new { m.Tipo, m.Icono, m.Nombre, Items = extrasLista.Where(x => x.Tipo == m.Tipo).ToList() }).ToList();
-                var debeExt = extrasLista.Sum(x => x.Debe);
-                <div style="margin: 0.9rem 1rem 1rem; border: 1px solid #e5e7eb; border-radius: 8px;">
-                    <div style="padding: 0.6rem 0.8rem; background: #fafafa; border-radius: 8px; cursor: pointer; display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;"
-                         @onclick="() => otrosAbierto = !otrosAbierto">
-                        <strong>@(otrosAbierto ? "▾" : "▸") Otros conceptos @(filtroMes == 0 ? filtroAnio.ToString() : "de " + MesNombre(filtroMes).ToLower())</strong>
-                        <span style="color: #6b7280; font-size: 0.85rem;">
-                            @string.Join(" · ", porTipo.Select(t => $"{t.Nombre} ${FormatMoney0(t.Items.Sum(x => x.Monto))}"))
-                            · debe <b style="color: @(debeExt > 0.01m ? "#b91c1c" : "#047857");">$@FormatMoney0(debeExt)</b>
-                        </span>
-                    </div>
-                    @if (otrosAbierto)
-                    {
-                        <div style="padding: 0 0.8rem 0.6rem;">
-                            @foreach (var t in porTipo.Where(t => t.Items.Count > 0))
-                            {
-                                <div style="font-weight: 600; margin: 0.7rem 0 0.2rem;">@t.Icono @t.Nombre</div>
-                                <table class="data-table" style="font-size: 0.86rem;">
-                                    <thead><tr><th>Empleado</th>@if (filtroMes == 0) {<th>Mes</th>}<th>Detalle</th><th style="text-align:right">Monto</th><th>Fecha de pago</th><th style="text-align:right">Debe</th><th></th></tr></thead>
-                                    <tbody>
-                                        @foreach (var x in t.Items)
-                                        {
-                                            var hoyAr = DateTime.UtcNow.ToArTime().Date;
-                                            <tr>
-                                                <td>@x.EmpleadoNombre</td>
-                                                @if (filtroMes == 0) {<td>@MesNombre(x.Mes)</td>}
-                                                <td>@(x.Detalle ?? "")</td>
-                                                <td style="text-align:right">$@FormatMoney0(x.Monto)</td>
-                                                <td>
-                                                    @if (x.FechaPago is { } fp)
-                                                    {
-                                                        <span style="@(x.Debe > 0.01m && fp.Date < hoyAr ? "color:#b91c1c;font-weight:600" : "")">@(fp.Date == hoyAr ? "hoy " : "")@fp.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</span>
-                                                    }
-                                                    else { <span style="color:#9ca3af">sin fecha</span> }
-                                                </td>
-                                                <td style="text-align:right">
-                                                    @if (x.Debe > 0.01m) { <b style="color:#b91c1c">$@FormatMoney0(x.Debe)</b> }
-                                                    else { <span style="color:#047857">pagado</span> }
-                                                </td>
-                                                <td style="text-align:right">
-                                                    <a class="btn btn-primary" style="padding: 0.15rem 0.7rem; font-size: 0.8rem;" href="/nominas/extras/@x.Tipo?anio=@x.Anio&mes=@x.Mes">@(x.Debe > 0.01m ? "Pagar" : "Ver")</a>
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            }
-                        </div>
-                    }
-                </div>
-            }
+            @* 2026-11-16: Sueldos muestra SOLO el sueldo. Feriados, horas extras, comisiones, plus y aguinaldo
+               se ven y se pagan cada uno en su pantalla (/nominas/extras/{tipo}). *@
+
         }
     </div>
 </div>
+
+@* 2026-11-16: ventana de cada concepto (horas extras, comisiones, feriados, plus, aguinaldo). *@
+@if (ventanaTipo is not null)
+{
+    <div class="modal-overlay" @onclick="CerrarConcepto">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1200px; width: 96vw; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h3>@NombreTipo(ventanaTipo) · @MesNombreVentana</h3>
+                <button class="btn-close" @onclick="CerrarConcepto">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto; padding: 0;">
+                <Web.Pages.Nominas.NomExtras Tipo="@ventanaTipo" EnVentana="true" AnioInicial="ventanaAnio" MesInicial="ventanaMes" OnCambio="ConceptoCambio" />
+            </div>
+            <div class="modal-footer"><button class="btn btn-secondary" @onclick="CerrarConcepto">Cerrar</button></div>
+        </div>
+    </div>
+}
+
+@* 2026-11-16: Nuevo pago a un empleado eligiendo el concepto. *@
+@if (showPagoEmp)
+{
+    <div class="modal-overlay" @onclick="() => showPagoEmp = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 760px; max-height: 92vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h3>💵 Nuevo pago a empleado</h3>
+                <button class="btn-close" @onclick="() => showPagoEmp = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <PagoEmpleadoForm AnioInicial="filtroAnio" MesInicial="@(filtroMes == 0 ? DateTime.Today.Month : filtroMes)" OnPagado="@(async _ => await Load())" />
+            </div>
+        </div>
+    </div>
+}
 
 @if (showForm)
 {
@@ -240,7 +322,7 @@
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1000px; max-height: 92vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: whitesmoke;">
                 <h3>
-                    @(isEditing ? $"Liquidación de {editingNombre}" : "Nueva Liquidación")
+                    @(isEditing ? $"Liquidación de {editingNombre}" : "Sueldo del mes")
                     @if (isEditing)
                     {
                         <span style="font-weight: 400; font-size: 0.85rem; color: #6b7280; margin-left: 0.5rem;">@MesNombre(formMes) @formAnio</span>
@@ -286,6 +368,39 @@
                     </div>
                 </div>
 
+                @* 2026-11-16: desde nov 2026 la liquidación es SIMPLE: el importe del mes y nada más. Los pagos
+                   (con su concepto) se cargan abajo o desde "Nuevo pago". *@
+                @if (EsPeriodoModulos && !EsEmpleadoDiario)
+                {
+                    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
+                        <div class="form-row" style="align-items: end;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Importe del mes ($)</label>
+                                <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" style="font-size: 1.15rem; font-weight: 700; text-align: right;" @bind="FormSueldoBaseTxt" />
+                            </div>
+                            @if (formDiasAusencia != 0m)
+                            {
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Días de ausencia</label>
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormDiasAusenciaTxt" />
+                                </div>
+                            }
+                            @if (formOtros != 0m)
+                            {
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Otros descuentos ($)</label>
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormOtrosTxt" />
+                                </div>
+                            }
+                        </div>
+                        <div class="form-group" style="margin: 0.4rem 0 0;">
+                            <label class="form-label">Notas</label>
+                            <textarea class="form-input" rows="2" @bind="formNotas" placeholder="Notas internas (opcional)"></textarea>
+                        </div>
+                    </div>
+                }
+                else
+                {
                 <div class="form-row" style="align-items: stretch;">
                     @* ═══════════════ Insumos del mes ═══════════════ *@
                     <div style="flex: 1.2;">
@@ -293,10 +408,13 @@
                             <strong style="display: block; margin-bottom: 0.5rem;">Actividad del mes</strong>
 
                             <div class="form-row">
+                                @if (!EsPeriodoModulos || formHorasTrabajadas != 0m)
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Horas trabajadas</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormHorasTrabajadasTxt" />
                                 </div>
+                                }
                                 @if (VerCasilleroViejo(formHorasExtra))
                                 {
                                 <div class="form-group" style="flex: 1;">
@@ -310,16 +428,19 @@
                                 </div>
                             </div>
                             <div class="form-row">
+                                @if (!EsPeriodoModulos || formDiasVacaciones != 0m)
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Días de vacaciones</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormDiasVacacionesTxt" />
                                     <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">Solo informativo.</p>
                                 </div>
+                                }
                                 @* Campo "Recargo hs extra" eliminado: la hora extra paga el valor hora del empleado
                                    tal cual, sin porcentaje extra. formRecargoPct se mantiene en 0 internamente. *@
                             </div>
 
-                            <strong style="display: block; margin: 0.7rem 0 0.4rem;">Conceptos del mes</strong>
+                            <strong style="display: block; margin: 0.7rem 0 0.4rem;">@(EsPeriodoModulos ? "Descuentos" : "Conceptos del mes")</strong>
 
                             @* 2026-06-08: si el empleado cobra por día, mostrar campo Días trabajados *@
                             @if (EsEmpleadoDiario)
@@ -345,10 +466,13 @@
                                     </p>
                                 </div>
                                 }
+                                @if (VerCasilleroViejo(formBonos))
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">🎁 Bonos ($)</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormBonosTxt" />
                                 </div>
+                                }
                                 @if (VerCasilleroViejo(formAguinaldo))
                                 {
                                 <div class="form-group" style="flex: 1;">
@@ -357,24 +481,14 @@
                                 </div>
                                 }
                             </div>
-                            @* 2026-11-11: horas extras, comisiones, feriados, aguinaldo y plus se cargan y se pagan en su módulo.
-                               Acá solo se ve cuánto suman este mes. *@
-                            @if (EsPeriodoModulos)
-                            {
-                                <div style="font-size: 0.82rem; color: #374151; margin: 0.2rem 0 0.6rem; line-height: 1.6;">
-                                    <span style="color:#6b7280;">Aparte este mes (se cargan y se pagan en su módulo):</span><br />
-                                    @foreach (var m in ModulosAparte)
-                                    {
-                                        var monto = editingLiq?.ExtraDeTipo(m.Tipo) ?? 0m;
-                                        <a href="/nominas/extras/@m.Tipo" style="color:#374151; text-decoration:none; margin-right:10px; white-space:nowrap;">@m.Icono @m.Nombre <b>$@FormatMoney(monto)</b></a>
-                                    }
-                                </div>
-                            }
                             <div class="form-row">
+                                @if (VerCasilleroViejo(formAdelantos))
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">💸 Adelantos ($)</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormAdelantosTxt" />
                                 </div>
+                                }
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">📝 Otros descuentos ($)</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormOtrosTxt" />
@@ -426,10 +540,13 @@
                                 <span style="color: #059669;">$@FormatMoney(ComisionCalculada)</span>
                             </div>
                             }
+                            @if (VerCasilleroViejo(formBonos))
+                            {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Bonos:</span>
                                 <span style="color: #059669;">$@FormatMoney(formBonos)</span>
                             </div>
+                            }
                             @if (VerCasilleroViejo(formAguinaldo))
                             {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
@@ -437,7 +554,7 @@
                                 <span style="color: #059669;">$@FormatMoney(formAguinaldo)</span>
                             </div>
                             }
-                            @if (formMontoExtras != 0m || EsPeriodoModulos)
+                            @if (formMontoExtras != 0m && !EsPeriodoModulos)
                             {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Aparte (hs extras, comisiones, feriados, aguinaldo, plus):</span>
@@ -446,8 +563,8 @@
                             }
                             <hr style="margin: 0.4rem 0; border: none; border-top: 1px solid #d1d5db;" />
                             <div class="venta-totals-row" style="font-weight: 700; color: #059669;">
-                                <span>Total ganado:</span>
-                                <span>$@FormatMoney(TotalGanado)</span>
+                                <span>@(EsPeriodoModulos ? "Sueldo del mes:" : "Total ganado:")</span>
+                                <span>$@FormatMoney(TotalGanadoVista)</span>
                             </div>
 
                             <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
@@ -455,10 +572,13 @@
                                 <span>− Faltas (@formDiasAusencia d × $@FormatMoney(DiaProporcional)):</span>
                                 <span style="color: #dc2626;">$@FormatMoney(DescuentoFaltas)</span>
                             </div>
+                            @if (VerCasilleroViejo(formAdelantos))
+                            {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>− Adelantos:</span>
                                 <span style="color: #dc2626;">$@FormatMoney(formAdelantos)</span>
                             </div>
+                            }
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>− Otros descuentos:</span>
                                 <span style="color: #dc2626;">$@FormatMoney(formOtros)</span>
@@ -471,31 +591,32 @@
 
                             <hr style="margin: 0.6rem 0; border: none; border-top: 2px solid #d1d5db;" />
                             <div class="venta-totals-row" style="font-size: 1.25rem; font-weight: 800; color: #1d4ed8;">
-                                <span>NETO A PAGAR:</span>
-                                <span>$@FormatMoney(NetoAPagar)</span>
+                                <span>@(EsPeriodoModulos ? "SUELDO A PAGAR:" : "NETO A PAGAR:")</span>
+                                <span>$@FormatMoney(NetoVista)</span>
                             </div>
                         </div>
                     </div>
                 </div>
+                }
 
                 @* ═══════════════ Pagos (solo en edicion) ═══════════════ *@
                 @if (isEditing && editingLiq is not null)
                 {
                     <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 0.75rem; margin-top: 0.75rem;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-                            <strong>💵 Pagos registrados</strong>
-                            <span style="font-size: 0.85rem; color: @(editingLiq.Saldo > 0.01m ? "#dc2626" : "#059669"); font-weight: 700;">
-                                Pagado $@FormatMoney(editingLiq.TotalPagado) · Saldo $@FormatMoney(editingLiq.Saldo)
+                            <strong>@(EsPeriodoModulos ? "💵 Adelantos y pagos del sueldo" : "💵 Pagos registrados")</strong>
+                            <span style="font-size: 0.85rem; color: @(SaldoVista > 0.01m ? "#dc2626" : "#059669"); font-weight: 700;">
+                                Pagado $@FormatMoney(PagadoVista) · Falta $@FormatMoney(SaldoVista)
                             </span>
                         </div>
 
-                        @if (editingLiq.Pagos.Count > 0)
+                        @if (PagosVista.Count > 0)
                         {
-                            var porConcepto = editingLiq.Pagos.GroupBy(x => x.Concepto)
+                            var porConcepto = PagosVista.GroupBy(x => x.Concepto)
                                 .Select(g => new { Concepto = g.Key, Monto = g.Sum(x => x.Monto) })
                                 .OrderByDescending(x => x.Monto).ToList();
 
-                            if (porConcepto.Count > 1)
+                            if (porConcepto.Count > 1 && !EsPeriodoModulos)
                             {
                                 <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.5rem; padding: 0.4rem; background: white; border-radius: 6px; border: 1px solid #e5e7eb;">
                                     <span style="font-size: 0.72rem; color: #6b7280; align-self: center; font-weight: 600;">Pagado por concepto:</span>
@@ -519,7 +640,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var p in editingLiq.Pagos)
+                                    @foreach (var p in PagosVista)
                                     {
                                         <tr>
                                             <td>@p.FechaPago.ToString("dd/MM/yyyy")</td>
@@ -540,7 +661,47 @@
                             </table>
                         }
 
-                        @if (editingLiq.Saldo > 0.01m && editingLiq.Estado != "anulada")
+                        @* 2026-11-16: fechas en que se le paga el sueldo (en partes). Salen en Sueldos y en el inicio. *@
+                        @if (EsPeriodoModulos && editingLiq.Estado != "anulada")
+                        {
+                            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.6rem; margin-bottom: 0.6rem;">
+                                <strong style="font-size: 0.85rem; display: block; margin-bottom: 0.3rem;">📅 Cuándo se le paga el sueldo</strong>
+                                @if (sueldoFechas.Count == 0)
+                                {
+                                    <div style="font-size: 0.82rem; color: #6b7280; margin-bottom: 0.4rem;">Todavía sin fechas. Agregá en qué días le vas a pagar y cuánto.</div>
+                                }
+                                @foreach (var sf in sueldoFechas)
+                                {
+                                    var sfid = sf.Id;
+                                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-size: 0.86rem; padding: 0.25rem 0; border-bottom: 1px solid #f3f4f6;">
+                                        <span class="@(sf.Falta > 0.01m && Web.Services.FechaPalabras.Atrasado(sf.Fecha) ? "sm-d" : "")">@(sf.Falta > 0.01m ? CuandoTxt(sf.Fecha) : Web.Services.FechaPalabras.Corta(sf.Fecha))</span>
+                                        <span style="margin-left: auto;"><b>$@FormatMoney0(sf.Monto)</b>
+                                            @if (sf.Falta <= 0.01m) { <span class="sm-ok"> · pagado</span> }
+                                            else if (sf.Falta < sf.Monto - 0.01m) { <span class="sm-mut"> · falta $@FormatMoney0(sf.Falta)</span> }
+                                        </span>
+                                        <button class="btn-icon btn-delete" title="Sacar esta fecha" @onclick="() => BorrarSueldoFecha(sfid)">×</button>
+                                    </div>
+                                }
+                                <div style="display: flex; gap: 0.4rem; align-items: end; flex-wrap: wrap; margin-top: 0.4rem;">
+                                    <input class="form-input" type="date" style="max-width: 170px;" @bind="nuevaSueldoFecha" />
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" style="max-width: 160px; text-align: right;" placeholder="Importe" @bind="nuevaSueldoFechaMontoTxt" />
+                                    <button class="btn btn-secondary" type="button" @onclick="AgregarSueldoFecha">+ Agregar fecha</button>
+                                    @if (FaltaPonerFecha > 0.01m)
+                                    {
+                                        <span style="font-size: 0.78rem; color: #6b7280;">quedan $@FormatMoney0(FaltaPonerFecha) sin fecha
+                                            <a class="sm-a" @onclick="() => nuevaSueldoFechaMontoTxt = MontoInput.Formato(FaltaPonerFecha)">usar</a></span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (EsPeriodoModulos && editingLiq.Estado != "anulada")
+                        {
+                            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.6rem;">
+                                <strong style="font-size: 0.85rem; display: block; margin-bottom: 0.4rem;">Registrar pago</strong>
+                                <PagoEmpleadoForm @key="editingId" EmpleadoIdInicial="formEmpleadoId" AnioInicial="formAnio" MesInicial="formMes" BloquearEmpleado="true" OnPagado="DespuesDePagoEmpleado" />
+                            </div>
+                        }
+                        else if (SaldoVista > 0.01m && editingLiq.Estado != "anulada")
                         {
                             var presupuestoConcepto = PresupuestoConcepto(pagoConcepto, editingLiq);
                             var pagadoConcepto = PagadoEnConcepto(pagoConcepto, editingLiq);
@@ -586,7 +747,7 @@
                                                 Lo que falta de este concepto: $@FormatMoney(pendienteConcepto)
                                             </button>
                                         }
-                                        @if (editingLiq.Saldo > 0.01m)
+                                        @if (editingLiq.Saldo > 0.01m && !EsPeriodoModulos)
                                         {
                                             <button class="btn btn-secondary" type="button" @onclick="UsarSaldoCompleto"
                                                     style="font-size: 0.72rem; padding: 0.3rem 0.6rem;">
@@ -601,6 +762,8 @@
                                         <label class="form-label" style="font-size: 0.75rem;">Fecha</label>
                                         <input class="form-input" type="date" @bind="pagoFecha" />
                                     </div>
+                                    @if (!EsPeriodoModulos)
+                                    {
                                     <div class="form-group">
                                         <label class="form-label" style="font-size: 0.75rem;">Concepto *</label>
                                         <select class="form-input" @bind="pagoConcepto">
@@ -610,13 +773,12 @@
                                             <option value="bono">🎁 Bonos</option>
                                             <option value="adelanto">💸 Adelantos</option>
                                             <option value="aguinaldo">🎄 Aguinaldo</option>
-                            <option value="feriado">🎉 Feriados</option>
-                            <option value="plus">⭐ Plus</option>
                                             <option value="feriado">🎉 Feriados</option>
                                             <option value="plus">⭐ Plus</option>
                                             <option value="otro">📝 Otros descuentos</option>
                                         </select>
                                     </div>
+                                    }
                                     <div class="form-group">
                                         <label class="form-label" style="font-size: 0.75rem;">Método</label>
                                         <select class="form-input" @bind="pagoMetodo">
@@ -662,9 +824,9 @@
                                 </p>
                             </div>
                         }
-                        else if (editingLiq.Saldo <= 0.01m && editingLiq.Estado == "pagado")
+                        else if (SaldoVista <= 0.01m && editingLiq.Estado != "anulada")
                         {
-                            <p style="color: #059669; font-weight: 700; margin: 0;">✅ Esta liquidación está totalmente pagada.</p>
+                            <p style="color: #059669; font-weight: 700; margin: 0;">✅ @(EsPeriodoModulos ? "El sueldo de este mes está pagado." : "Esta liquidación está totalmente pagada.")</p>
                         }
                     </div>
 
@@ -938,6 +1100,7 @@
     private List<NomLiquidacionDto>? liqs;
     private List<NomEmpleadoDto>? empleados;
     private bool isLoading = true;
+    private bool showPagoEmp;
     // 2026-11-11 (2ª): sueldo SOLO (sin lo de los módulos) para la lista; lo demás va en "Otros conceptos".
     private List<NomExtraDto> extrasLista = new();
     private bool otrosAbierto;
@@ -1176,7 +1339,18 @@
         if (isEditing) return; // en edicion no pisamos lo que ya esta cargado
         var emp = empleados?.FirstOrDefault(e => e.Id == formEmpleadoId);
         if (emp is null) return;
-        if (emp.BonoFijo > 0) formBonos = emp.BonoFijo;
+        formSueldoBase = emp.SueldoBase;  // 2026-11-16: importe del mes propuesto (se puede cambiar)
+        if (emp.BonoFijo > 0 && !EsPeriodoModulos) formBonos = emp.BonoFijo;
+    }
+
+    /// <summary>2026-11-16: después de un pago desde el formulario con concepto, refrescar la ventana y la lista.</summary>
+    private async Task DespuesDePagoEmpleado(string concepto)
+    {
+        if (editingId is null) return;
+        try { editingLiq = await Api.GetNomLiquidacionAsync(editingId.Value) ?? editingLiq; } catch { }
+        await CargarSueldoFechas();
+        if (concepto != "sueldo") ToastService.Info("Ese pago queda en su pantalla (" + concepto.Replace("_", " ").Replace("comision cafe", "comisiones") + "), no en el sueldo.");
+        await Load();
     }
 
     // 2026-06-08: si el empleado es modalidad "diario", el sueldo base se calcula
@@ -1186,7 +1360,7 @@
     private decimal JornalDiarioEmp => EmpSeleccionado?.JornalDiario ?? 0m;
     // 2026-07-01: sueldo base mensual. En EDICIÓN usa el valor congelado/editado de la liquidación
     // (formSueldoBase); en CREACIÓN toma el de la ficha del empleado seleccionado.
-    private decimal SueldoBaseMensual => isEditing ? formSueldoBase : (EmpSeleccionado?.SueldoBase ?? 0m);
+    private decimal SueldoBaseMensual => isEditing || EsPeriodoModulos ? formSueldoBase : (EmpSeleccionado?.SueldoBase ?? 0m);
     private decimal SueldoBaseEmp => EsEmpleadoDiario
         ? Math.Round(formDiasTrabajados * JornalDiarioEmp, 2, MidpointRounding.AwayFromZero)
         : SueldoBaseMensual;
@@ -1213,11 +1387,25 @@
     };
     private decimal TotalDescuentos => DescuentoFaltas + formAdelantos + formOtros;
     private decimal NetoAPagar => Math.Max(0m, TotalGanado - TotalDescuentos);
+    // 2026-11-16: desde nov 2026 la ventana muestra SOLO el sueldo (lo de los módulos no se mezcla).
+    private static readonly HashSet<string> ConceptosModulos = new() { "horas_extra", "comision_cafe", "feriado", "aguinaldo", "plus" };
+    private decimal TotalGanadoVista => EsPeriodoModulos ? TotalGanado - formMontoExtras : TotalGanado;
+    private decimal NetoVista => EsPeriodoModulos ? Math.Max(0m, NetoAPagar - formMontoExtras) : NetoAPagar;
+    private List<NomPagoDto> PagosVista => editingLiq is null ? new()
+        : EsPeriodoModulos ? editingLiq.Pagos.Where(p => !ConceptosModulos.Contains(p.Concepto)).ToList() : editingLiq.Pagos;
+    private decimal PagadoVista => editingLiq is null ? 0m : EsPeriodoModulos ? PagSueldo(editingLiq) : editingLiq.TotalPagado;
+    private decimal SaldoVista => editingLiq is null ? 0m : EsPeriodoModulos ? Math.Max(0m, SalSueldo(editingLiq)) : editingLiq.Saldo;
+    private static string EstadoSueldo(NomLiquidacionDto l)
+        => l.Estado == "pendiente" && l.Anio * 100 + l.Mes >= 202611 && SalSueldo(l) <= 0.01m ? "pagado" : l.Estado;
 
     protected override async Task OnInitializedAsync()
     {
+        if (QAnio is >= 2000 and <= 2100) filtroAnio = QAnio.Value;
+        if (QMes is >= 1 and <= 12) filtroMes = QMes.Value;
         await LoadEmpleados();
         await Load();
+        if (QLiq is int ql && ql > 0) await AbrirLiquidacion(ql);
+        if (!string.IsNullOrEmpty(QVer) && TiposVista.Any(t => t.Tipo == QVer && t.Tipo != "sueldo")) AbrirConcepto(QVer);
         // 2026-10-06: sin la caja de dólares (acá se paga en pesos).
         try { cajasPago = (await Api.GetCafeCajasAsync() ?? new()).Where(c => !c.EnDolares).ToList(); } catch { cajasPago = new(); }
         pagoCajaId = CajaSegunMetodo(pagoMetodo);
@@ -1232,6 +1420,11 @@
     private async Task Load()
     {
         isLoading = true;
+        if (VistaNueva)
+        {
+            try { sueldosMes = await Api.GetSueldosMesAsync(filtroAnio, filtroMes) ?? new(); }
+            catch { ToastService.Error("Error al cargar los sueldos del mes"); sueldosMes = new(); }
+        }
         try
         {
             liqs = await Api.GetNomLiquidacionesAsync(
@@ -1251,6 +1444,93 @@
         isEditing = false; editingId = null; editingLiq = null;
         formAnio = DateTime.Today.Year; formMes = DateTime.Today.Month;
         showForm = true;
+    }
+
+    // ─── 2026-11-16: vista nueva (desde noviembre 2026, con un mes elegido) ───
+    private List<SueldoMesEmpleadoDto> sueldosMes = new();
+    private bool VistaNueva => filtroMes != 0 && filtroAnio * 100 + filtroMes >= 202611 && string.IsNullOrEmpty(filtroEstado);
+    private static readonly (string Tipo, string Nombre)[] TiposVista =
+        { ("sueldo", "Sueldo"), ("horas_extra", "Horas extras"), ("comision_cafe", "Comisiones"), ("feriado", "Feriados"), ("plus", "Plus"), ("aguinaldo", "Aguinaldo") };
+    private static string NombreTipo(string t) => TiposVista.FirstOrDefault(x => x.Tipo == t).Nombre ?? t;
+    private static string CuandoTxt(DateTime f) => Web.Services.FechaPalabras.Cuando(f);
+    [SupplyParameterFromQuery(Name = "anio")] public int? QAnio { get; set; }
+    [SupplyParameterFromQuery(Name = "mes")] public int? QMes { get; set; }
+    [SupplyParameterFromQuery(Name = "liq")] public int? QLiq { get; set; }
+
+    private async Task Entrar(SueldoMesEmpleadoDto e, SueldoMesConceptoDto c)
+    {
+        if (c.Tipo == "sueldo")
+        {
+            if (e.LiquidacionId is int id) await AbrirLiquidacion(id);
+            return;
+        }
+        AbrirConcepto(c.Tipo);
+    }
+
+    // ─── 2026-11-16: ventana de cada concepto ───
+    private string? ventanaTipo;
+    private int ventanaAnio, ventanaMes;
+    private bool ventanaCambio;
+    [SupplyParameterFromQuery(Name = "ver")] public string? QVer { get; set; }
+    private string MesNombreVentana => ventanaTipo == "aguinaldo" ? $"{(ventanaMes <= 6 ? "1º" : "2º")} semestre {ventanaAnio}" : $"{MesNombre(ventanaMes)} {ventanaAnio}";
+    private void AbrirConcepto(string tipo)
+    {
+        ventanaAnio = filtroAnio;
+        ventanaMes = filtroMes == 0 ? DateTime.Today.Month : filtroMes;
+        ventanaCambio = false;
+        ventanaTipo = tipo;
+    }
+    private Task ConceptoCambio() { ventanaCambio = true; return Task.CompletedTask; }
+    private async Task CerrarConcepto()
+    {
+        ventanaTipo = null;
+        if (ventanaCambio) await Load();
+    }
+
+    private async Task AbrirLiquidacion(int id)
+    {
+        var l = liqs?.FirstOrDefault(x => x.Id == id);
+        if (l is null) { try { l = await Api.GetNomLiquidacionAsync(id); } catch { l = null; } }
+        if (l is null) { ToastService.Error("No se encontró la liquidación"); return; }
+        ShowEdit(l);
+    }
+
+    private void CrearPara(int empleadoId)
+    {
+        ShowCreate();
+        formAnio = filtroAnio; formMes = filtroMes; formEmpleadoId = empleadoId;
+        OnEmpleadoElegido();
+    }
+
+    // ─── 2026-11-16: fechas de pago del sueldo ───
+    private List<SueldoFechaDto> sueldoFechas = new();
+    private DateTime nuevaSueldoFecha = DateTime.Today.AddDays(1);
+    private string nuevaSueldoFechaMontoTxt = "";
+    private decimal FaltaPonerFecha => Math.Max(0m, NetoVista - sueldoFechas.Sum(f => f.Monto));
+    private async Task CargarSueldoFechas()
+    {
+        sueldoFechas = new();
+        if (editingId is null || !EsPeriodoModulos) return;
+        try { sueldoFechas = await Api.GetSueldoFechasAsync(editingId.Value) ?? new(); } catch { }
+        StateHasChanged();
+    }
+    private async Task AgregarSueldoFecha()
+    {
+        if (editingId is null) return;
+        if (!MontoInput.TryParse(nuevaSueldoFechaMontoTxt, out var monto) || monto <= 0) { ToastService.Error("Poné el importe"); return; }
+        try
+        {
+            if (!await GuardarCabecera(silencioso: true)) { ToastService.Error(formError ?? "No se pudo guardar"); return; }
+            sueldoFechas = await Api.AgregarSueldoFechaAsync(editingId.Value, nuevaSueldoFecha.ToString("yyyy-MM-dd"), monto) ?? sueldoFechas;
+            nuevaSueldoFechaMontoTxt = ""; nuevaSueldoFecha = nuevaSueldoFecha.AddDays(7);
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+    private async Task BorrarSueldoFecha(int id)
+    {
+        try { sueldoFechas = await Api.BorrarSueldoFechaAsync(id) ?? sueldoFechas; await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
     private void ShowEdit(NomLiquidacionDto l)
@@ -1277,6 +1557,8 @@
         // 2026-07-01: cargar los recibos/nóminas adjuntos de esta liquidación
         archivos = null; archivoError = null;
         _ = CargarArchivos();
+        nuevaSueldoFecha = DateTime.Today.AddDays(1); nuevaSueldoFechaMontoTxt = "";
+        _ = CargarSueldoFechas();
     }
 
     // ─── 2026-07-01: RECIBOS / NÓMINAS adjuntas ───
@@ -1434,6 +1716,9 @@
                     Notas = formNotas
                 });
                 if (created is null) { formError = "No se pudo crear"; return false; }
+                // 2026-11-16: si cambiaron el importe del mes al crearla, guardarlo.
+                if (EsPeriodoModulos && !EsEmpleadoDiario && formSueldoBase > 0 && Math.Abs(formSueldoBase - created.SueldoBase) > 0.001m)
+                    created = await Api.UpdateNomLiquidacionAsync(created.Id, new UpdateNomLiquidacionRequest { SueldoBase = formSueldoBase }) ?? created;
                 ToastService.Success($"Liquidación creada — Neto $@FormatMoney(created.NetoAPagar)");
                 // Pasar a modo edicion para poder cargar pagos
                 isEditing = true; editingId = created.Id; editingLiq = created; editingNombre = created.EmpleadoNombre;

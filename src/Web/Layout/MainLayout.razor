@@ -2157,22 +2157,7 @@
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/liquidaciones"))">
                                 <span class="ico">📑</span> Liquidaciones
                             </button>
-                            @* 2026-11-11: cada extra en su módulo, aparte de la liquidación *@
-                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/extras/horas_extra"))">
-                                <span class="ico">⏱</span> Horas extras
-                            </button>
-                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/extras/comision_cafe"))">
-                                <span class="ico">☕</span> Comisiones
-                            </button>
-                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/extras/feriado"))">
-                                <span class="ico">🎉</span> Feriados
-                            </button>
-                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/extras/aguinaldo"))">
-                                <span class="ico">🎄</span> Aguinaldo
-                            </button>
-                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/extras/plus"))">
-                                <span class="ico">⭐</span> Plus
-                            </button>
+                            @* 2026-11-16: horas extras, comisiones, feriados, aguinaldo y plus se cargan desde Liquidaciones (botones arriba). *@
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas"))">
                                 <span class="ico">📊</span> Inicio nóminas
                             </button>

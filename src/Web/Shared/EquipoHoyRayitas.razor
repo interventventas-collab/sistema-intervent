@@ -2,6 +2,7 @@
 @inject ApiClient Api
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject AuthService AuthSvc
 @* 2026-11-10 (2ª): "Equipo hoy" pasó de rayitas a una TABLA simple (el dueño: "no se entiende nada").
    Una fila por persona, en palabras: quién · estado · entregas de hoy con barrita · última entrega ·
    aviso. Tocando la fila se abre el detalle de siempre. El nombre del archivo quedó por historia. *@
@@ -31,6 +32,19 @@
     .eqt-paga a { margin-left:0.4rem; border:1px solid #d1d5db; border-radius:6px; padding:1px 8px; font-size:0.76rem; color:#111827; text-decoration:none; background:#fff; }
     .eqt-paga a:hover { background:#f9fafb; }
     .eqt-tot { font-size:0.86rem; margin:0.3rem 0 0.1rem; }
+    .eqp-pill { margin-left:0.5rem; font-weight:500; font-size:0.78rem; border-radius:999px; padding:0.12rem 0.6rem; text-decoration:none; white-space:nowrap; border:1px solid #d1d5db; color:#374151; background:#fff; }
+    .eqp-pill b { font-weight:700; }
+    .eqp-pill.hoy { background:#fef3c7; border-color:#f59e0b; color:#92400e; }
+    .eqp-pill.atr { background:#fee2e2; border-color:#ef4444; color:#991b1b; }
+    .eqp-pill:hover { filter:brightness(0.96); }
+    .eqp { margin:0.4rem 0 0.6rem; border:1px solid #e5e7eb; border-radius:8px; padding:0.5rem 0.75rem; }
+    .eqp-tit { font-size:0.88rem; font-weight:700; margin-bottom:0.25rem; }
+    .eqp-row { display:flex; align-items:center; gap:0.75rem; padding:0.28rem 0; border-top:1px solid #f1f2f4; font-size:0.86rem; }
+    .eqp-cuando { min-width:150px; color:#111827; }
+    .eqp-quien { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .eqp .atr { color:#b91c1c; font-weight:600; }
+    .eqp-row a { border:1px solid #d1d5db; border-radius:6px; padding:1px 8px; font-size:0.76rem; color:#111827; text-decoration:none; background:#fff; }
+    .eqp-row a:hover { background:#f9fafb; }
     .eqt-tot b { color:#111827; }
     .eqt tr.fila.abierta td { background:#f9fafb; border-bottom:none; }
     .eqt-chev { color:#9ca3af; font-size:0.7rem; width:10px; }
@@ -39,12 +53,10 @@
     .eqt tr.eqf-row > td { background:#f9fafb; padding:0 0.5rem 1rem 2.6rem; border-bottom:1px solid #e5e7eb; }
     @@media (max-width: 900px) { .eqt .col-ult { display:none; } .eqt-track { width:70px; } }
 </style>
-@{ var totPagar = Items.Sum(x => x.PagarHoy); var hayPagar = totPagar > 0; }
-@if (hayPagar)
-{
-    <div class="eqt-tot">💵 Hoy hay que pagar <b>$@totPagar.ToString("N0", Es)</b>
-        <span class="eqt-muted">· feriados, horas extra, comisiones, plus o aguinaldo con fecha de pago hoy@(Items.Any(x => x.PagarHoyAtrasado) ? " o atrasados" : "")</span></div>
-}
+@* 2026-11-16: "Pagos al equipo": lo atrasado, lo de hoy y lo de los próximos 7 días (sueldo en partes y
+   horas extras, comisiones, feriados, plus, aguinaldo con fecha de pago). Reemplaza la columna "Hoy se le paga".
+   Solo lo ve quien ve Sueldos. *@
+@{ var hayPagar = false; }
 <table class="eqt">
     <tr><th>Quién</th><th>Estado</th><th class="col-ult">Último movimiento en el sistema</th><th>Entregas de hoy</th>@if (hayPagar) {<th>Hoy se le paga</th>}<th>Aviso</th></tr>
     @foreach (var e in Items)
@@ -61,6 +73,22 @@
                     <span class="eqt-chev">@(abierto ? "▾" : "▸")</span>
                     <span class="eqt-av" style="background:@OperatorService.ShortBgColor(e.ApodoKiosko ?? e.Nombre);">@OperatorService.ShortLabel(e.ApodoKiosko ?? e.Nombre)</span>
                     @ShortName(e.Nombre)
+                    @* 2026-11-16: aviso de pago en el MISMO renglón (pedido del dueño): hoy o atrasado bien a la vista,
+                       lo de los próximos 7 días más suave. Tocándolo va a pagarlo. *@
+                    @if (puedeVerPagos && proximos.Any(p => p.EmpleadoId == emp.NomEmpleadoId))
+                    {
+                        var suyos = proximos.Where(p => p.EmpleadoId == emp.NomEmpleadoId).OrderBy(p => p.Fecha).ToList();
+                        var urg = suyos.Where(p => p.Fecha.Date <= Web.Services.FechaPalabras.HoyAr).ToList();
+                        var lista = urg.Count > 0 ? urg : suyos.Take(1).ToList();
+                        var primero = lista[0];
+                        var atr = lista.Any(p => Web.Services.FechaPalabras.Atrasado(p.Fecha));
+                        var txt = urg.Count > 0 ? (atr ? "atrasado" : "hoy") : Web.Services.FechaPalabras.Cuando(primero.Fecha);
+                        var detalle = string.Join("\n", suyos.Select(p => $"{Cap(Web.Services.FechaPalabras.Cuando(p.Fecha))}: {NombreConcepto(p.Tipo)} ${p.Monto.ToString("N0", Es)}"));
+                        <a class="eqp-pill @(urg.Count > 0 ? (atr ? "atr" : "hoy") : "prox")" href="@LinkPago(primero)" @onclick:stopPropagation="true"
+                           title="@("Tocá para pagar\n" + detalle)">
+                            💲 <b>$@lista.Sum(p => p.Monto).ToString("N0", Es)</b> @txt · @string.Join(", ", lista.Select(p => NombreConcepto(p.Tipo)).Distinct())
+                        </a>
+                    }
                 </div>
             </td>
             <td>
@@ -121,7 +149,7 @@
                     {
                         <span class="eqt-paga @(e.PagarHoyAtrasado ? "atr" : "")">
                             <b>$@e.PagarHoy.ToString("N0", Es)</b> <span class="eqt-muted">@e.PagarHoyDetalle</span>
-                            <a href="/nominas/extras/@e.PagarHoyTipo?anio=@e.PagarHoyAnio&mes=@e.PagarHoyMes" title="Ir a pagarlo">Pagar</a>
+                            <a href="/nominas/liquidaciones?anio=@e.PagarHoyAnio&mes=@e.PagarHoyMes&ver=@e.PagarHoyTipo" title="Ir a pagarlo">Pagar</a>
                         </span>
                     }
                     else
@@ -166,11 +194,39 @@
     private ApiClient.EquipoFichaDto? ficha;
     private bool fichaCargando;
 
+    // 2026-11-16: próximos pagos al equipo
+    private List<ProximoPagoDto> proximos = new();
+    private bool puedeVerPagos;
+    private bool permisoMirado;
+    private static string Cap(string t) => string.IsNullOrEmpty(t) ? t : char.ToUpper(t[0]) + t[1..];
+    private static string NombreConcepto(string t) => t switch
+    {
+        "sueldo" => "sueldo", "horas_extra" => "horas extras", "comision_cafe" => "comisión",
+        "feriado" => "feriado", "plus" => "plus", "aguinaldo" => "aguinaldo", _ => t
+    };
+    private static string LinkPago(ProximoPagoDto p) => p.Tipo == "sueldo"
+        ? $"/nominas/liquidaciones?anio={p.Anio}&mes={p.Mes}&liq={p.LiquidacionId}"
+        : $"/nominas/liquidaciones?anio={p.Anio}&mes={p.Mes}&ver={p.Tipo}";
+
     protected override async Task OnParametersSetAsync()
     {
         // El tablero refresca "Equipo hoy" solo; esto acompaña como mucho una vez por minuto.
         if ((DateTime.UtcNow - ultimosAt).TotalSeconds < 60) return;
         ultimosAt = DateTime.UtcNow;
+        if (!permisoMirado)
+        {
+            permisoMirado = true;
+            try
+            {
+                var u = await AuthSvc.GetUserAsync();
+                puedeVerPagos = u is not null && (string.Equals(u.Role, "admin", StringComparison.OrdinalIgnoreCase) || (u.Permissions?.Contains("nominas") ?? false));
+            }
+            catch { puedeVerPagos = false; }
+        }
+        if (puedeVerPagos)
+        {
+            try { proximos = await Api.GetProximosPagosAsync(7) ?? new(); } catch { /* sin lista */ }
+        }
         try
         {
             var l = await Api.GetEquipoUltimosAsync();

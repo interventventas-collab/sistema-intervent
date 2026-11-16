@@ -8820,3 +8820,15 @@ GO
 IF COL_LENGTH('Nom_Extras','FechaPago') IS NULL
     ALTER TABLE Nom_Extras ADD FechaPago DATE NULL;
 GO
+
+-- 16/11/2026: fechas de pago del SUELDO (en partes). Salen en Sueldos y en "Pagos al equipo" del inicio.
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+IF OBJECT_ID('Nom_SueldoFechas') IS NULL
+    CREATE TABLE Nom_SueldoFechas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        LiquidacionId INT NOT NULL REFERENCES Nom_Liquidaciones(Id),
+        Fecha DATE NOT NULL,
+        Monto DECIMAL(18,2) NOT NULL DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+GO

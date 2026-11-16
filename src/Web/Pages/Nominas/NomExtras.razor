@@ -60,12 +60,19 @@
 
 <div class="card">
     <div class="card-body">
+        @* 2026-11-16: todo se maneja desde Sueldos: esta pantalla se abre como VENTANA encima (EnVentana).
+           Si alguien entra por la dirección vieja, se lo lleva a Sueldos con la ventana abierta. *@
+        @* 16/11: abierta desde un botón de Sueldos ya sabe qué se carga → sin pestañas *@
+        @if (!EnVentana)
+        {
         <div class="ex-tabs">
             @foreach (var m in Modulos)
             {
-                <a href="/nominas/extras/@m.Tipo" class="@(m.Tipo == tipo ? "on" : "")">@m.Icono @m.Nombre</a>
+                var mt = m.Tipo;
+                <a href="javascript:void(0)" @onclick="() => CambiarTipo(mt)" class="@(m.Tipo == tipo ? "on" : "")">@m.Icono @m.Nombre</a>
             }
         </div>
+        }
 
         <div class="ex-top">
             <div class="ex-periodo">
@@ -481,16 +488,45 @@
         _ => ""
     };
 
+    /// <summary>2026-11-16: abierta como ventana dentro de Sueldos.</summary>
+    [Parameter] public bool EnVentana { get; set; }
+    [Parameter] public int AnioInicial { get; set; }
+    [Parameter] public int MesInicial { get; set; }
+    /// <summary>Se llama después de cargar, pagar, editar o borrar algo (para que Sueldos se refresque).</summary>
+    [Parameter] public EventCallback OnCambio { get; set; }
+    private string? tipoParamVisto;
+    private bool primeraCarga = true;
+
     protected override async Task OnInitializedAsync()
     {
         var hoy = DateTime.UtcNow.ToArTime();
         anio = hoy.Year; mes = hoy.Month;
         if (QAnio is >= 2000 and <= 2100 && QMes is >= 1 and <= 12) { anio = QAnio.Value; mes = QMes.Value; }
+        if (AnioInicial is >= 2000 and <= 2100 && MesInicial is >= 1 and <= 12) { anio = AnioInicial; mes = MesInicial; }
+        if (!EnVentana)
+        {
+            var t0 = Modulos.Any(m => m.Tipo == (Tipo ?? "").ToLowerInvariant()) ? Tipo!.ToLowerInvariant() : "horas_extra";
+            Nav.NavigateTo($"/nominas/liquidaciones?anio={anio}&mes={mes}&ver={t0}", replace: true);
+            return;
+        }
         try { cajas = (await Api.GetCafeCajasAsync() ?? new()).Where(c => !c.EnDolares).ToList(); } catch { cajas = new(); }
+    }
+
+    private async Task CambiarTipo(string t)
+    {
+        if (t == tipo) return;
+        tipo = t;
+        if (tipo == "aguinaldo") mes = mes <= 6 ? 6 : 12;
+        editId = 0; pagoId = 0; LimpiarNuevo();
+        await Cargar();
     }
 
     protected override async Task OnParametersSetAsync()
     {
+        if (!EnVentana) return;
+        // Sueldos se vuelve a dibujar seguido: solo recargar si cambió el concepto pedido.
+        if (tipoParamVisto == Tipo) return;
+        tipoParamVisto = Tipo;
         var t = (Tipo ?? "").ToLowerInvariant();
         tipo = Modulos.Any(m => m.Tipo == t) ? t : "horas_extra";
         if (tipo == "aguinaldo") mes = mes <= 6 ? 6 : 12;
@@ -522,6 +558,9 @@
         }
         catch (Exception ex) { ToastService.Error("No se pudo cargar: " + ex.Message); }
         finally { cargando = false; }
+        // 2026-11-16: avisar a Sueldos que algo cambió (no en la primera carga).
+        if (primeraCarga) primeraCarga = false;
+        else if (OnCambio.HasDelegate) await OnCambio.InvokeAsync();
     }
 
     private NomExtraEmpleadoDto? Emp(int id) => datos?.Empleados.FirstOrDefault(e => e.Id == id);

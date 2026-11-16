@@ -1,0 +1,264 @@
+@* 2026-11-16: "Nuevo pago" a un EMPLEADO. Pedido del dueño: "si voy a nuevo pago, que me dé opción de
+   empleados y qué concepto de cada cosa". Se elige empleado, concepto (sueldo, horas extras, comisión,
+   feriado, plus, aguinaldo) y mes; el pago va solo a donde corresponde:
+    - Sueldo: a la liquidación del mes (si no existe, se crea con el sueldo de la ficha).
+    - Lo demás: primero cubre lo que ya estaba cargado y sin pagar en ese módulo; si sobra (o no había
+      nada), se carga un renglón nuevo en el módulo con ese importe y queda pagado. *@
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.6rem;">
+    <div class="form-group" style="margin: 0;">
+        <label class="form-label">Empleado</label>
+        <select class="form-input" @bind="empleadoId" @bind:after="Recargar" disabled="@BloquearEmpleado">
+            <option value="0">— Elegí —</option>
+            @foreach (var e in empleados)
+            {
+                <option value="@e.Id">@e.Nombre</option>
+            }
+        </select>
+    </div>
+    <div class="form-group" style="margin: 0;">
+        <label class="form-label">Concepto</label>
+        <select class="form-input" @bind="concepto" @bind:after="Recargar">
+            @foreach (var c in Conceptos)
+            {
+                <option value="@c.Cod">@c.Nombre</option>
+            }
+        </select>
+    </div>
+    <div class="form-group" style="margin: 0;">
+        <label class="form-label">Mes</label>
+        <div style="display: flex; gap: 0.3rem;">
+            <select class="form-input" @bind="mes" @bind:after="Recargar">
+                @for (int m = 1; m <= 12; m++)
+                {
+                    var mm = m;
+                    <option value="@mm">@Meses[mm - 1]</option>
+                }
+            </select>
+            <select class="form-input" style="max-width: 90px;" @bind="anio" @bind:after="Recargar">
+                @for (int y = DateTime.Today.Year - 1; y <= DateTime.Today.Year + 1; y++)
+                {
+                    var yy = y;
+                    <option value="@yy">@yy</option>
+                }
+            </select>
+        </div>
+    </div>
+</div>
+
+@if (empleadoId > 0)
+{
+    <div style="margin: 0.6rem 0 0; font-size: 0.88rem; color: #374151;">
+        @if (cargando)
+        {
+            <span style="color: #9ca3af;">Mirando cuánto se le debe...</span>
+        }
+        else
+        {
+            <span>@NombreConcepto(concepto) de @Meses[MesConsulta - 1].ToLower(): </span>
+            @if (cargado > 0.01m)
+            {
+                <span>cargado $@F(cargado) · pagado $@F(cargado - debe) · </span>
+                <b style="color: @(debe > 0.01m ? "#b91c1c" : "#047857");">@(debe > 0.01m ? $"le debés ${F(debe)}" : "pagado")</b>
+                @if (debe > 0.01m)
+                {
+                    <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.15rem 0.5rem; margin-left: 0.4rem;" @onclick="() => montoTxt = MontoInput.Formato(debe)">Pagar todo</button>
+                }
+            }
+            else
+            {
+                <span style="color: #6b7280;">no hay nada cargado. @(concepto == "sueldo" ? "Se crea la liquidación del mes con el sueldo de la ficha." : "Se carga con el importe que pongas.")</span>
+            }
+        }
+    </div>
+}
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.6rem; margin-top: 0.6rem;">
+    <div class="form-group" style="margin: 0;">
+        <label class="form-label">Importe ($)</label>
+        <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" style="font-size: 1.1rem; font-weight: 700; text-align: right;" placeholder="0,00" @bind="montoTxt" @bind:event="oninput" />
+    </div>
+    <div class="form-group" style="margin: 0;">
+        <label class="form-label">Fecha</label>
+        <input class="form-input" type="date" @bind="fecha" />
+    </div>
+    <div class="form-group" style="margin: 0;">
+        <label class="form-label">Método</label>
+        <select class="form-input" @bind="metodo" @bind:after="() => cajaId = CajaSegunMetodo(metodo)">
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia / Banco</option>
+            <option value="billetera_virtual">Billetera virtual (MP, Modo, etc.)</option>
+            <option value="cheque">Cheque</option>
+            <option value="v_privado">Redirigido (antes V)</option>
+            <option value="otro">Otro</option>
+        </select>
+    </div>
+    <div class="form-group" style="margin: 0;">
+        <label class="form-label">Sale de</label>
+        <select class="form-input" @bind="cajaId">
+            <option value="0">— no descontar —</option>
+            @foreach (var c in cajas)
+            {
+                <option value="@c.Id">@c.Nombre</option>
+            }
+        </select>
+    </div>
+</div>
+<div class="form-group" style="margin: 0.6rem 0 0;">
+    <label class="form-label">Detalle (opcional)</label>
+    <input class="form-input" @bind="detalle" @bind:event="oninput" placeholder="Ej: adelanto, feriado del 10/11, descarga del sábado..." />
+</div>
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="form-error" style="margin-top: 0.5rem;">@error</div>
+}
+<button class="btn btn-primary" type="button" style="width: 100%; margin-top: 0.7rem; padding: 0.55rem; font-weight: 700;" disabled="@guardando" @onclick="Registrar">
+    @(guardando ? "Registrando..." : Monto > 0 ? $"✓ Registrar pago de ${F(Monto)}" : "✓ Registrar pago")
+</button>
+
+@code {
+    [Parameter] public int EmpleadoIdInicial { get; set; }
+    [Parameter] public int AnioInicial { get; set; }
+    [Parameter] public int MesInicial { get; set; }
+    [Parameter] public bool BloquearEmpleado { get; set; }
+    /// <summary>Se llama después de registrar el pago, con el concepto pagado.</summary>
+    [Parameter] public EventCallback<string> OnPagado { get; set; }
+
+    private record Concepto(string Cod, string Nombre);
+    private static readonly Concepto[] Conceptos =
+    {
+        new("sueldo", "💰 Sueldo / adelanto"), new("horas_extra", "⏱ Horas extras"), new("comision_cafe", "☕ Comisión"),
+        new("feriado", "🎉 Feriado"), new("plus", "⭐ Plus"), new("aguinaldo", "🎄 Aguinaldo"),
+    };
+    private static readonly string[] Meses = { "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre" };
+    private static readonly System.Globalization.CultureInfo EsAr = new("es-AR");
+    private static string F(decimal v) => v.ToString("N2", EsAr);
+    private static string NombreConcepto(string cod) => Conceptos.FirstOrDefault(c => c.Cod == cod)?.Nombre.Split(' ', 2)[1] ?? cod;
+
+    private List<NomEmpleadoDto> empleados = new();
+    private List<CafeCajaDto> cajas = new();
+    private int empleadoId, anio, mes;
+    private string concepto = "sueldo";
+    private string montoTxt = "", metodo = "efectivo", detalle = "";
+    private DateTime fecha = DateTime.Today;
+    private int cajaId;
+    private bool cargando, guardando;
+    private string? error;
+    private NomLiquidacionDto? liq;
+    private List<NomExtraDto> extras = new();
+    private decimal cargado, debe;
+
+    private decimal Monto => MontoInput.TryParse(montoTxt, out var v) ? v : 0m;
+    private int MesConsulta => concepto == "aguinaldo" ? (mes <= 6 ? 6 : 12) : mes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        empleadoId = EmpleadoIdInicial;
+        anio = AnioInicial > 0 ? AnioInicial : DateTime.Today.Year;
+        mes = MesInicial is >= 1 and <= 12 ? MesInicial : DateTime.Today.Month;
+        try { empleados = (await Api.GetNomEmpleadosAsync())?.Where(e => e.IsActive).OrderBy(e => e.Nombre).ToList() ?? new(); } catch { empleados = new(); }
+        try { cajas = (await Api.GetCafeCajasAsync() ?? new()).Where(c => !c.EnDolares).ToList(); } catch { cajas = new(); }
+        cajaId = CajaSegunMetodo(metodo);
+        await Recargar();
+    }
+
+    private int CajaSegunMetodo(string m)
+    {
+        var tipo = m switch
+        {
+            "efectivo" => "EFECTIVO", "transferencia" => "BANCO", "billetera_virtual" => "BILLETERA_VIRTUAL",
+            "cheque" => "CHEQUES_CARTERA", "v_privado" => "V_PRIVADO", _ => ""
+        };
+        return cajas.FirstOrDefault(c => c.Tipo == tipo)?.Id ?? 0;
+    }
+
+    private async Task Recargar()
+    {
+        error = null; liq = null; extras = new(); cargado = 0; debe = 0;
+        if (empleadoId <= 0) return;
+        cargando = true;
+        try
+        {
+            if (concepto == "sueldo")
+            {
+                liq = (await Api.GetNomLiquidacionesAsync(anio, mes))?.FirstOrDefault(l => l.EmpleadoId == empleadoId && l.Estado != "anulada");
+                if (liq is not null)
+                {
+                    var pagExtras = liq.ExtrasResumen?.Sum(x => x.Pagado) ?? 0m;
+                    cargado = Math.Max(0m, liq.NetoAPagar - liq.MontoExtras);
+                    var pagado = liq.TotalPagado - pagExtras;
+                    debe = Math.Max(0m, cargado - pagado);
+                }
+            }
+            else
+            {
+                extras = (await Api.GetNomExtrasListaAsync(anio, MesConsulta) ?? new())
+                    .Where(x => x.EmpleadoId == empleadoId && x.Tipo == concepto).OrderBy(x => x.Id).ToList();
+                cargado = extras.Sum(x => x.Monto);
+                debe = extras.Sum(x => Math.Max(0m, x.Debe));
+            }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { cargando = false; }
+    }
+
+    private async Task Registrar()
+    {
+        error = null;
+        if (empleadoId <= 0) { error = "Elegí el empleado"; return; }
+        var monto = Math.Round(Monto, 2);
+        if (monto <= 0) { error = "Poné el importe"; return; }
+        guardando = true;
+        var fechaStr = fecha.ToString("yyyy-MM-dd");
+        int? caja = cajaId > 0 ? cajaId : null;
+        var det = string.IsNullOrWhiteSpace(detalle) ? null : detalle.Trim();
+        try
+        {
+            if (concepto == "sueldo")
+            {
+                if (liq is null)
+                {
+                    liq = await Api.CreateNomLiquidacionAsync(new CreateNomLiquidacionRequest { EmpleadoId = empleadoId, Anio = anio, Mes = mes });
+                    if (liq is null) { error = "No se pudo crear la liquidación del mes"; return; }
+                }
+                var r = await Api.AddNomPagoAsync(new CreateNomPagoRequest
+                {
+                    LiquidacionId = liq.Id, FechaPagoStr = fechaStr, Metodo = metodo, Monto = monto,
+                    Concepto = "sueldo", Detalle = det, CajaId = caja
+                });
+                if (r is null) { error = "No se pudo registrar el pago"; return; }
+            }
+            else
+            {
+                var resta = monto;
+                foreach (var x in extras.Where(x => x.Debe > 0.01m))
+                {
+                    if (resta <= 0.01m) break;
+                    var parte = Math.Min(resta, x.Debe);
+                    await Api.PagarNomExtraAsync(x.Id, new { Monto = parte, Metodo = metodo, FechaPagoStr = fechaStr, CajaId = caja, Notas = det });
+                    resta -= parte;
+                }
+                if (resta > 0.01m)
+                {
+                    var nuevo = await Api.CrearNomExtraConIdAsync(new
+                    {
+                        Tipo = concepto, EmpleadoId = empleadoId, Anio = anio, Mes = mes, FechaStr = fechaStr,
+                        Monto = resta, Detalle = det ?? "Cargado desde Nuevo pago", FechaPagoStr = fechaStr
+                    });
+                    if (nuevo is null || nuevo.Id <= 0) { error = "No se pudo cargar el importe"; return; }
+                    await Api.PagarNomExtraAsync(nuevo.Id, new { Monto = resta, Metodo = metodo, FechaPagoStr = fechaStr, CajaId = caja, Notas = det });
+                }
+            }
+            var emp = empleados.FirstOrDefault(e => e.Id == empleadoId)?.Nombre ?? "";
+            ToastService.Success($"Pago de {NombreConcepto(concepto).ToLower()} a {emp}: ${F(monto)} ✓");
+            montoTxt = ""; detalle = "";
+            await Recargar();
+            await OnPagado.InvokeAsync(concepto);
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { guardando = false; }
+    }
+}

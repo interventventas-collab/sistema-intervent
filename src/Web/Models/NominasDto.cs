@@ -357,3 +357,50 @@ public class DashboardPagarRequest
     public string? Operator { get; set; }
     public string? Password { get; set; }
 }
+
+public class NomExtraCreadoDto
+{
+    public int Id { get; set; }
+    public int LiquidacionId { get; set; }
+}
+
+// 2026-11-16: Sueldos centralizado
+public class SueldoMesConceptoDto
+{
+    public string Tipo { get; set; } = "";
+    public decimal Cargado { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Debe { get; set; }
+    public string? Info { get; set; }
+    public DateTime? ProximaFecha { get; set; }
+    public decimal ProximaMonto { get; set; }
+    public DateTime? UltimoPago { get; set; }
+    public bool SinFecha { get; set; }
+}
+public class SueldoMesEmpleadoDto
+{
+    public int EmpleadoId { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Puesto { get; set; }
+    public int? LiquidacionId { get; set; }
+    public List<SueldoMesConceptoDto> Conceptos { get; set; } = new();
+}
+public class SueldoFechaDto
+{
+    public int Id { get; set; }
+    public int LiquidacionId { get; set; }
+    public DateTime Fecha { get; set; }
+    public decimal Monto { get; set; }
+    public decimal Falta { get; set; }
+}
+public class ProximoPagoDto
+{
+    public int EmpleadoId { get; set; }
+    public string Nombre { get; set; } = "";
+    public string Tipo { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public decimal Monto { get; set; }
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public int LiquidacionId { get; set; }
+}
