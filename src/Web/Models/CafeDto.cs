@@ -2384,6 +2384,9 @@ public class ClienteSaldoPendienteDto
     public string? Notas { get; set; }
     public DateTime? UltimoPagoFecha { get; set; }
     public decimal? UltimoPagoImporte { get; set; }
+    /// <summary>16/11/2026: de lo pendiente, cuánto es de alquileres y cuánto de ventas.</summary>
+    public decimal SaldoAlquiler { get; set; }
+    public decimal SaldoVentas { get; set; }
 }
 
 /// <summary>2026-10-06: máquina de café que está en un cliente (GET api/cafe/maquinas-resumen).
