@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject AuthService AuthSvc
 
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
@@ -57,10 +58,25 @@
     <div class="modal-overlay" @onclick="CloseNuevo">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 900px; width:90vw; max-height: 90vh; overflow-y:auto;">
             <div class="modal-header">
-                <h4 style="margin:0;">📤 Nuevo pago a proveedor</h4>
+                <h4 style="margin:0;">@(aQuien == "empleado" ? "💵 Nuevo pago a empleado" : "📤 Nuevo pago a proveedor")</h4>
                 <button class="btn-close" @onclick="CloseNuevo">&times;</button>
             </div>
             <div class="modal-body">
+                @* 2026-11-16: "Nuevo pago" también para empleados (sueldo, horas extras, feriado...). Solo quien ve Sueldos. *@
+                @if (puedeEmpleados)
+                {
+                    <div style="display:flex; gap:0.4rem; margin-bottom:0.8rem;">
+                        <span style="align-self:center; color:#6b7280; font-size:0.85rem;">¿A quién?</span>
+                        <button type="button" class="btn @(aQuien == "proveedor" ? "btn-primary" : "btn-secondary")" @onclick='() => aQuien = "proveedor"'>Proveedor</button>
+                        <button type="button" class="btn @(aQuien == "empleado" ? "btn-primary" : "btn-secondary")" @onclick='() => aQuien = "empleado"'>Empleado</button>
+                    </div>
+                }
+                @if (aQuien == "empleado")
+                {
+                    <PagoEmpleadoForm />
+                }
+                else
+                {
                 @* --- Proveedor --- *@
                 <div class="form-group" style="position:relative;">
                     <label class="form-label">Proveedor</label>
@@ -304,12 +320,16 @@
                         }
                     </div>
                 }
+                }
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="CloseNuevo" disabled="@guardando">Cancelar</button>
+                <button class="btn btn-secondary" @onclick="CloseNuevo" disabled="@guardando">@(aQuien == "empleado" ? "Cerrar" : "Cancelar")</button>
+                @if (aQuien != "empleado")
+                {
                 <button class="btn btn-primary" @onclick="GuardarPago" disabled="@(!CuadraTotal || TotalImputado <= 0 || guardando)">
                     @(guardando ? "..." : "Guardar pago")
                 </button>
+                }
             </div>
         </div>
     </div>
@@ -384,8 +404,17 @@
     private decimal TotalMedios => formMedios.Sum(m => m.Importe);
     private bool CuadraTotal => Math.Abs(TotalImputado - (TotalMedios + formRetenciones)) < 0.01m;
 
+    private string aQuien = "proveedor";
+    private bool puedeEmpleados;
+
     protected override async Task OnInitializedAsync()
     {
+        try
+        {
+            var u = await AuthSvc.GetUserAsync();
+            puedeEmpleados = u is not null && (string.Equals(u.Role, "admin", StringComparison.OrdinalIgnoreCase) || (u.Permissions?.Contains("nominas") ?? false));
+        }
+        catch { puedeEmpleados = false; }
         proveedores = await Api.GetCafeProveedoresAsync() ?? new();
         cajas = await Api.GetCafeCajasAsync() ?? new();
         chequesEnCartera = (await Api.GetCafeChequesAsync("EN_CARTERA")) ?? new();
@@ -420,6 +449,7 @@
         pendientes = null; imputaciones = new(); echeqsPropios = new();
         aCuentaActivo = false; aCuentaImporte = 0;
         formMedios = new(); formRetenciones = 0; formObservaciones = null;
+        aQuien = "proveedor";
         showNuevo = true;
     }
 

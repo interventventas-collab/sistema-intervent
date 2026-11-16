@@ -31,6 +31,7 @@
             <button class="btn btn-secondary" style="background: #16a34a; color: white; border: none;" @onclick="OpenExportModal" title="Descargar Excel con resumen de liquidaciones">
                 📊 Excel
             </button>
+            <button class="btn btn-secondary" @onclick="() => showPagoEmp = true" title="Pagar sueldo, horas extras, feriado, comisión, plus o aguinaldo">💵 + Nuevo pago</button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Liquidación</button>
         </div>
     </div>
@@ -182,6 +183,22 @@
     </div>
 </div>
 
+@* 2026-11-16: Nuevo pago a un empleado eligiendo el concepto. *@
+@if (showPagoEmp)
+{
+    <div class="modal-overlay" @onclick="() => showPagoEmp = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 760px; max-height: 92vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h3>💵 Nuevo pago a empleado</h3>
+                <button class="btn-close" @onclick="() => showPagoEmp = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <PagoEmpleadoForm AnioInicial="filtroAnio" MesInicial="@(filtroMes == 0 ? DateTime.Today.Month : filtroMes)" OnPagado="@(async _ => await Load())" />
+            </div>
+        </div>
+    </div>
+}
+
 @if (showForm)
 {
     <div class="modal-overlay" @onclick="CloseForm">
@@ -234,6 +251,39 @@
                     </div>
                 </div>
 
+                @* 2026-11-16: desde nov 2026 la liquidación es SIMPLE: el importe del mes y nada más. Los pagos
+                   (con su concepto) se cargan abajo o desde "Nuevo pago". *@
+                @if (EsPeriodoModulos && !EsEmpleadoDiario)
+                {
+                    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
+                        <div class="form-row" style="align-items: end;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Importe del mes ($)</label>
+                                <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" style="font-size: 1.15rem; font-weight: 700; text-align: right;" @bind="FormSueldoBaseTxt" />
+                            </div>
+                            @if (formDiasAusencia != 0m)
+                            {
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Días de ausencia</label>
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormDiasAusenciaTxt" />
+                                </div>
+                            }
+                            @if (formOtros != 0m)
+                            {
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Otros descuentos ($)</label>
+                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormOtrosTxt" />
+                                </div>
+                            }
+                        </div>
+                        <div class="form-group" style="margin: 0.4rem 0 0;">
+                            <label class="form-label">Notas</label>
+                            <textarea class="form-input" rows="2" @bind="formNotas" placeholder="Notas internas (opcional)"></textarea>
+                        </div>
+                    </div>
+                }
+                else
+                {
                 <div class="form-row" style="align-items: stretch;">
                     @* ═══════════════ Insumos del mes ═══════════════ *@
                     <div style="flex: 1.2;">
@@ -430,6 +480,7 @@
                         </div>
                     </div>
                 </div>
+                }
 
                 @* ═══════════════ Pagos (solo en edicion) ═══════════════ *@
                 @if (isEditing && editingLiq is not null)
@@ -493,7 +544,14 @@
                             </table>
                         }
 
-                        @if (SaldoVista > 0.01m && editingLiq.Estado != "anulada")
+                        @if (EsPeriodoModulos && editingLiq.Estado != "anulada")
+                        {
+                            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.6rem;">
+                                <strong style="font-size: 0.85rem; display: block; margin-bottom: 0.4rem;">Registrar pago</strong>
+                                <PagoEmpleadoForm @key="editingId" EmpleadoIdInicial="formEmpleadoId" AnioInicial="formAnio" MesInicial="formMes" BloquearEmpleado="true" OnPagado="DespuesDePagoEmpleado" />
+                            </div>
+                        }
+                        else if (SaldoVista > 0.01m && editingLiq.Estado != "anulada")
                         {
                             var presupuestoConcepto = PresupuestoConcepto(pagoConcepto, editingLiq);
                             var pagadoConcepto = PagadoEnConcepto(pagoConcepto, editingLiq);
@@ -892,6 +950,7 @@
     private List<NomLiquidacionDto>? liqs;
     private List<NomEmpleadoDto>? empleados;
     private bool isLoading = true;
+    private bool showPagoEmp;
     // 2026-11-11 (2ª): sueldo SOLO (sin lo de los módulos) para la lista; lo demás va en "Otros conceptos".
     private List<NomExtraDto> extrasLista = new();
     private bool otrosAbierto;
@@ -1130,7 +1189,17 @@
         if (isEditing) return; // en edicion no pisamos lo que ya esta cargado
         var emp = empleados?.FirstOrDefault(e => e.Id == formEmpleadoId);
         if (emp is null) return;
-        if (emp.BonoFijo > 0) formBonos = emp.BonoFijo;
+        formSueldoBase = emp.SueldoBase;  // 2026-11-16: importe del mes propuesto (se puede cambiar)
+        if (emp.BonoFijo > 0 && !EsPeriodoModulos) formBonos = emp.BonoFijo;
+    }
+
+    /// <summary>2026-11-16: después de un pago desde el formulario con concepto, refrescar la ventana y la lista.</summary>
+    private async Task DespuesDePagoEmpleado(string concepto)
+    {
+        if (editingId is null) return;
+        try { editingLiq = await Api.GetNomLiquidacionAsync(editingId.Value) ?? editingLiq; } catch { }
+        if (concepto != "sueldo") ToastService.Info("Ese pago queda en su pantalla (" + concepto.Replace("_", " ").Replace("comision cafe", "comisiones") + "), no en el sueldo.");
+        await Load();
     }
 
     // 2026-06-08: si el empleado es modalidad "diario", el sueldo base se calcula
@@ -1140,7 +1209,7 @@
     private decimal JornalDiarioEmp => EmpSeleccionado?.JornalDiario ?? 0m;
     // 2026-07-01: sueldo base mensual. En EDICIÓN usa el valor congelado/editado de la liquidación
     // (formSueldoBase); en CREACIÓN toma el de la ficha del empleado seleccionado.
-    private decimal SueldoBaseMensual => isEditing ? formSueldoBase : (EmpSeleccionado?.SueldoBase ?? 0m);
+    private decimal SueldoBaseMensual => isEditing || EsPeriodoModulos ? formSueldoBase : (EmpSeleccionado?.SueldoBase ?? 0m);
     private decimal SueldoBaseEmp => EsEmpleadoDiario
         ? Math.Round(formDiasTrabajados * JornalDiarioEmp, 2, MidpointRounding.AwayFromZero)
         : SueldoBaseMensual;
@@ -1398,6 +1467,9 @@
                     Notas = formNotas
                 });
                 if (created is null) { formError = "No se pudo crear"; return false; }
+                // 2026-11-16: si cambiaron el importe del mes al crearla, guardarlo.
+                if (EsPeriodoModulos && !EsEmpleadoDiario && formSueldoBase > 0 && Math.Abs(formSueldoBase - created.SueldoBase) > 0.001m)
+                    created = await Api.UpdateNomLiquidacionAsync(created.Id, new UpdateNomLiquidacionRequest { SueldoBase = formSueldoBase }) ?? created;
                 ToastService.Success($"Liquidación creada — Neto $@FormatMoney(created.NetoAPagar)");
                 // Pasar a modo edicion para poder cargar pagos
                 isEditing = true; editingId = created.Id; editingLiq = created; editingNombre = created.EmpleadoNombre;

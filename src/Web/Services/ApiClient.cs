@@ -963,6 +963,8 @@ public class ApiClient
     public async Task<List<NomExtraDto>?> GetNomExtrasListaAsync(int anio, int mes)
         => await GetAsync<List<NomExtraDto>>($"/api/nominas/extras-lista?anio={anio}&mes={mes}");
     public async Task CrearNomExtraAsync(object req) => await PostAsync<object>("/api/nominas/extras", req);
+    /// <summary>2026-11-16: igual que CrearNomExtraAsync pero devuelve el id (para pagarlo enseguida desde "Nuevo pago").</summary>
+    public async Task<NomExtraCreadoDto?> CrearNomExtraConIdAsync(object req) => await PostAsync<NomExtraCreadoDto>("/api/nominas/extras", req);
     public async Task EditarNomExtraAsync(int id, object req) => await PutAsync<object>($"/api/nominas/extras/{id}", req);
     public async Task BorrarNomExtraAsync(int id) => await DeleteWithBodyAsync<object>($"/api/nominas/extras/{id}");
     public async Task PagarNomExtraAsync(int id, object req) => await PostAsync<object>($"/api/nominas/extras/{id}/pagar", req);

@@ -357,3 +357,9 @@ public class DashboardPagarRequest
     public string? Operator { get; set; }
     public string? Password { get; set; }
 }
+
+public class NomExtraCreadoDto
+{
+    public int Id { get; set; }
+    public int LiquidacionId { get; set; }
+}
