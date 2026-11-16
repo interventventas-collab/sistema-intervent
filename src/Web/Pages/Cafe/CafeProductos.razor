@@ -99,6 +99,11 @@
                     @onclick="() => modoEdicion = !modoEdicion" title="Edicion rapida de marca y nombre">
                 @(modoEdicion ? "🔓 Edicion ON" : "🔒 Edicion OFF")
             </button>
+            @* 2026-11-16: mandarle una tarea al depósito con los tildados (contar, fotos, revisar…). *@
+            <button class="btn btn-secondary" @onclick="AbrirMandarDeposito"
+                    title="Tildá uno o varios productos y mandale una tarea al depósito (contar, sacar fotos, revisar…) con un mensaje">
+                📋 Mandar al depósito@(selProductos.Count > 0 ? $" ({IdsTarea.Count})" : "")
+            </button>
             @* 2026-08-25: baja a Excel lo que quedó filtrado en pantalla (no todo el catálogo). *@
             <button class="btn btn-success" @onclick="BajarExcel" disabled="@(bajandoExcel || productosVisibles.Count == 0)"
                     title="Bajar un Excel con los productos que estás viendo. Solapa 1: SKU, nombre, marca y stock. Solapa 2 (si hay cafés): precios de 1 kg, ½ kg y ¼ kg, con y sin IVA.">
@@ -146,6 +151,11 @@
                     <button class="btn btn-primary" @onclick="AplicarMarcaABulk"
                             disabled="@(selProductos.Count == 0 || isBusyBulk)">
                         @(isBusyBulk ? "Aplicando..." : $"Aplicar marca a {selProductos.Count}")
+                    </button>
+
+                    <button class="btn btn-primary" @onclick="AbrirMandarDeposito" disabled="@(IdsTarea.Count == 0)"
+                            title="Contar, sacar fotos, revisar… con un mensaje. Les aparece en el celu y en la PC del depósito.">
+                        📋 Mandar al depósito @IdsTarea.Count
                     </button>
 
                     @* 2026-11-12: dar de baja varios tildados de una (pausa sus publicaciones de MeLi). *@
@@ -1842,11 +1852,31 @@
     }
 }
 
+@if (verMandarDeposito)
+{
+    <Web.Shared.Tareas.MandarTareaModal ProductoIds="IdsTarea" OnCerrar="() => verMandarDeposito = false" OnMandada="TareaMandada" />
+}
+
 @code {
     private List<CafeProductoDto>? productos;
     private bool loading = true;
     private bool modoEdicion;
     private HashSet<int> selProductos = new();
+
+    // 2026-11-16: "📋 Mandar al depósito" con los tildados (los combos no cuentan: no están en el estante).
+    private bool verMandarDeposito;
+    private List<int> IdsTarea => (productos ?? new()).Where(p => !p.EsCompuestoFake && selProductos.Contains(p.Id)).Select(p => p.Id).ToList();
+    private void AbrirMandarDeposito()
+    {
+        if (IdsTarea.Count == 0)
+        {
+            modoEdicion = true;
+            ToastService.Info("Tildá los productos que querés mandar y volvé a tocar 📋 Mandar al depósito.");
+            return;
+        }
+        verMandarDeposito = true;
+    }
+    private void TareaMandada() { verMandarDeposito = false; selProductos.Clear(); }
     private string bulkMarcaIdStr = "";
     private bool isBusyBulk;
 

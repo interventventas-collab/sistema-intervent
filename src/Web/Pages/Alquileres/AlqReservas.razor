@@ -332,6 +332,10 @@
         var anuladaM = rM.NcEstado == "autorizado" && !string.IsNullOrEmpty(rM.NcCae);
         <div class="actions-popup-overlay" @onclick="CerrarAccionesMenu"></div>
         <div id="@($"alq-act-menu-{rM.Id}")" class="actions-popup" @onclick:stopPropagation="true">
+            @* 2026-11-16: "Preparar alquiler" en el celu / PC del depósito, con lo que lleva y un mensaje. *@
+            <button class="actions-popup-item" @onclick="async () => { var r = rM; CerrarAccionesMenu(); await Task.Yield(); mandarDeposito = (r.Id, r.Numero); }">
+                <span class="ic">📋</span><span>Mandar al depósito para preparar</span>
+            </button>
             <button class="actions-popup-item" @onclick="async () => { var r = rM; CerrarAccionesMenu(); await Task.Yield(); ShowAsignar(r); }">
                 <span class="ic">🚚</span><span>Asignar a repartidor</span>
             </button>
@@ -1367,7 +1371,15 @@
     <FichaClienteFlotante ClienteId="fcid" OnCerrar="@(() => fichaClienteId = null)" />
 }
 
+@if (mandarDeposito is { } md)
+{
+    <Web.Shared.Tareas.MandarTareaModal AlqReservaId="md.Id" AlqNumero="@md.Numero" OnCerrar="() => mandarDeposito = null" OnMandada="() => mandarDeposito = null" />
+}
+
 @code {
+    // 2026-11-16: reserva que se está mandando al depósito (📋 en el menú ⋯ del renglón)
+    private (int Id, string Numero)? mandarDeposito;
+
     private async Task CopiarDireccion(string? direccion)
     {
         if (string.IsNullOrWhiteSpace(direccion)) return;

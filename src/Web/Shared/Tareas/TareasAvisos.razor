@@ -44,7 +44,14 @@
             {
                 var fSel = f;
                 <div class="ta-row">
-                    📷 <b>@f.Quien</b> dice que la foto está mal <span class="ta-g">· @f.Sku@(f.Motivo is null ? "" : $" · {f.Motivo}")</span>
+                    @if (f.Motivo == "Foto pedida en la tarea")
+                    {
+                        <text>📷 <b>@f.Quien</b> mandó la foto que pediste <span class="ta-g">· @f.Sku</span></text>
+                    }
+                    else
+                    {
+                        <text>📷 <b>@f.Quien</b> dice que la foto está mal <span class="ta-g">· @f.Sku@(f.Motivo is null ? "" : $" · {f.Motivo}")</span></text>
+                    }
                     <div class="ta-g">@f.Nombre</div>
                     <div class="ta-fotos">
                         <span>Ahora<br />@if (f.FotoActual is not null) { <img src="@f.FotoActual" alt="" /> } else { <i class="ta-g">sin foto</i> }</span>

@@ -55,6 +55,12 @@
     .tp-acc { background:none; border:none; padding:0 0.15rem; cursor:pointer; font-size:0.95rem; opacity:0.55; }
     .tp-acc:hover { opacity:1; }
     .tp-extra td { background:#f9fafb; }
+    .tp-msj { background:#fff7d6; border:2px solid #e0a800; border-radius:10px; padding:0.6rem 0.85rem; margin-top:0.7rem; font-size:1.05rem; line-height:1.4; white-space:pre-wrap; }
+    .tp-alq { margin-top:0.8rem; }
+    .tp-alq-it { display:flex; gap:0.7rem; align-items:center; padding:0.45rem 0; border-bottom:1px solid #f3f4f6; font-size:1.05rem; cursor:pointer; }
+    .tp-alq-it span.c { width:1.5rem; height:1.5rem; border:2px solid #9ca3af; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; font-weight:800; }
+    .tp-alq-it.ok span.c { background:#111827; border-color:#111827; color:#fff; }
+    .tp-alq-it.ok b { text-decoration:line-through; color:#6b7280; }
     @((MarkupString)TareasNivel.Css)
 </style>
 
@@ -93,7 +99,7 @@
                         {
                             var tSel = t;
                             <button type="button" class="tp-tab @(tarea?.Id == tSel.Id ? "on" : "")" @onclick="() => AbrirTarea(tSel.Id)">
-                                @t.Titulo <small>· @ParaTxt(t.Para)@(t.Tipo == "LIBRE" ? "" : $" · {t.Hechos} de {t.Total}")</small>
+                                @TareasCelu.IconoTipo(t.Tipo) @t.Titulo <small>· @ParaTxt(t.Para)@(TareasCelu.SinProductos(t.Tipo) ? "" : $" · {t.Hechos} de {t.Total}")</small>
                             </button>
                         }
                     </div>
@@ -119,16 +125,35 @@
         else if (tarea is not null)
         {
             <div style="margin-top:0.9rem; font-size:0.9rem;">
-                @if (tarea.Tipo != "LIBRE")
+                @if (!TareasCelu.SinProductos(tarea.Tipo))
                 {
                     var hechos = tarea.Items.Count(i => i.Hecho);
                     <span class="tp-mini"><i style="width:@(tarea.Items.Count == 0 ? 0 : hechos * 100 / tarea.Items.Count)%"></i></span>
                     <span>@hechos de @tarea.Items.Count</span>
                 }
-                @if (!string.IsNullOrWhiteSpace(tarea.Comentario)) { <span> · 💬 @tarea.Comentario</span> }
             </div>
+            @* 2026-11-16: el mensaje del dueño, bien grande *@
+            @if (!string.IsNullOrWhiteSpace(tarea.Comentario)) { <div class="tp-msj">💬 @tarea.Comentario</div> }
 
-            @if (tarea.Tipo == "LIBRE")
+            @if (tarea.Tipo == "ALQUILER" && tarea.Alquiler is { } al)
+            {
+                <div class="tp-alq">
+                    <div><b>@al.Numero</b> · @al.Cliente · sale <b>@al.Entrega.ToString("dd/MM")</b> · vuelve @al.Retiro.ToString("dd/MM")</div>
+                    @if (!string.IsNullOrWhiteSpace(al.Direccion)) { <div class="tp-gris">📍 @al.Direccion</div> }
+                    <div class="tp-lbl">Tocá cada cosa a medida que la preparan</div>
+                    @foreach (var e in al.Equipos)
+                    {
+                        var eSel = e.Nombre;
+                        <div class="tp-alq-it @(tildadosAlq.Contains(eSel) ? "ok" : "")" @onclick="() => { if (!tildadosAlq.Remove(eSel)) tildadosAlq.Add(eSel); }">
+                            <span class="c">@(tildadosAlq.Contains(eSel) ? "✓" : "")</span>
+                            <b>@e.Cantidad @AlquileresDias.Corto(e.Nombre)</b>
+                        </div>
+                    }
+                    @if (tarea.Terminada) { <div class="tp-ok" style="margin-top:0.8rem;">✓ Ya está armado</div> }
+                    else { <button type="button" class="tp-listo" @onclick="Listo">✓ Listo, está armado</button> }
+                </div>
+            }
+            else if (TareasCelu.SinProductos(tarea.Tipo))
             {
                 @if (tarea.Terminada) { <div class="tp-ok" style="margin-top:0.8rem;">✓ Ya está hecha</div> }
                 else { <button type="button" class="tp-listo" @onclick="Listo">✓ Listo, ya lo hicimos</button> }
@@ -139,7 +164,7 @@
                     <thead>
                         <tr>
                             <th>Producto</th><th>Lugar</th>
-                            <th>@(tarea.Tipo switch { "CONTAR" => "¿Cuántos hay?", "BARCODE" => "Código de barras", _ => "¿Dónde está?" })</th>
+                            <th>@(tarea.Tipo switch { "CONTAR" => "¿Cuántos hay?", "BARCODE" => "Código de barras", "FOTOS" => "Foto", "REVISAR" => "¿Cómo está? (opcional)", "OTRO" => "Nota (opcional)", _ => "¿Dónde está?" })</th>
                             <th>Resultado</th>
                         </tr>
                     </thead>
@@ -175,6 +200,17 @@
                                                    value="@Valor(it)" @oninput="e => SetValor(iSel.Id, e)"
                                                    @onkeydown="e => Tecla(e, iSel)" />
                                             break;
+                                        case "FOTOS":
+                                            <span class="tp-pb on tp-camara">@(subiendoFoto == it.Id ? "Mandando…" : it.FotoPropuesta is null ? "📷 Subir foto" : "📷 Cambiar foto")
+                                                <InputFile OnChange="e => SubirFotoPedida(e, iSel)" accept="image/*" /></span>
+                                            break;
+                                        case "REVISAR":
+                                        case "OTRO":
+                                            <input id="tp-in-@it.Id" class="tp-in bc" maxlength="100" disabled="@(guardando == it.Id)" placeholder="nota (opcional)"
+                                                   value="@Valor(it)" @oninput="e => SetValor(iSel.Id, e)"
+                                                   @onkeydown="e => Tecla(e, iSel)" />
+                                            <button type="button" class="tp-pb on" disabled="@(guardando == it.Id)" @onclick="() => HechoConNota(iSel)">✓ Hecho</button>
+                                            break;
                                         default:
                                             @foreach (var p in tarea.Plantas)
                                             {
@@ -202,7 +238,7 @@
                                     else if (errores.TryGetValue(it.Id, out var err)) { <span class="tp-rojo">@err</span> }
                                     else if (!it.Hecho)
                                     {
-                                        <span class="tp-gris">@(tarea.Tipo == "UBICACION" ? "tocá la planta" : "escribí y Enter")</span>
+                                        <span class="tp-gris">@(tarea.Tipo switch { "UBICACION" => "tocá la planta", "FOTOS" => "subí la foto", "REVISAR" or "OTRO" => "tocá ✓ Hecho", _ => "escribí y Enter" })</span>
                                         <text> · </text><button type="button" class="tp-link" @onclick="() => NoLoEncuentro(iSel)">no lo encuentro</button>
                                     }
                                     else if (it.NoEncontrado) { <span class="tp-rojo">no lo encontró · @it.HechoPor @Hora(it)</span> }
@@ -330,7 +366,22 @@
     private int? extraItem;
     private string? extraTipo, extraPlanta, extraZona, extraNombre;
     private record PlantaRes(string Codigo, string Nombre);
-    private record DetalleRes(int Id, string Tipo, string Titulo, string? Comentario, bool Terminada, List<ItemRes> Items, List<PlantaRes> Plantas);
+    private record DetalleRes(int Id, string Tipo, string Titulo, string? Comentario, bool Terminada, List<ItemRes> Items, List<PlantaRes> Plantas,
+        AlqReservaDepoDto? Alquiler = null);
+    private readonly HashSet<string> tildadosAlq = new();
+
+    /// <summary>2026-11-16: tarea FOTOS: sube la foto (queda para que la oficina la apruebe) y marca el producto hecho.</summary>
+    private async Task SubirFotoPedida(InputFileChangeEventArgs e, ItemRes it)
+    {
+        fotoMotivo = "Foto pedida en la tarea";
+        try { await MandarFoto(it, await e.File.RequestImageFileAsync("image/jpeg", 1600, 1600), null); }
+        catch { errores[it.Id] = "No se pudo leer la foto"; return; }
+        if (!errores.ContainsKey(it.Id) && tarea?.Items.FirstOrDefault(x => x.Id == it.Id) is { FotoPropuesta: not null } act)
+            await Mandar(act, new { noEncontrado = false });
+    }
+
+    private Task HechoConNota(ItemRes it) =>
+        Mandar(it, new { noEncontrado = false, nota = (valores.TryGetValue(it.Id, out var x) ? x : Valor(it)).Trim() });
 
     private List<DepTareaEmpleadoDto> empleados = new();
     private DepTareaEmpleadoDto? quien;
@@ -376,7 +427,7 @@
 
     private async Task AbrirTarea(int id)
     {
-        valores.Clear(); zonas.Clear(); errores.Clear(); confirmar.Clear(); extraItem = null;
+        valores.Clear(); zonas.Clear(); errores.Clear(); confirmar.Clear(); extraItem = null; tildadosAlq.Clear();
         tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{token}/tarea/{id}");
         await EnfocarSiguiente(null);
     }
@@ -384,7 +435,7 @@
     private string QrSrc => "/api/qr?url=" + Uri.EscapeDataString($"{Nav.BaseUri.TrimEnd('/')}/tareas/{token}?tarea={tarea!.Id}");
 
     private string Valor(ItemRes it) => valores.TryGetValue(it.Id, out var v) ? v
-        : it.Hecho && !it.NoEncontrado ? (tarea!.Tipo == "CONTAR" ? it.Contado?.ToString() ?? "" : it.Valor ?? "") : "";
+        : it.Hecho && !it.NoEncontrado && it.Valor != "✓ hecho" ? (tarea!.Tipo == "CONTAR" ? it.Contado?.ToString() ?? "" : it.Valor ?? "") : "";
 
     private async Task Tecla(KeyboardEventArgs e, ItemRes it)
     {
@@ -395,6 +446,7 @@
             if (!int.TryParse(v, out var n) || n < 0) { errores[it.Id] = "Poné un número"; return; }
             await Mandar(it, new { contado = n, noEncontrado = false, confirmado = false });
         }
+        else if (tarea.Tipo is "REVISAR" or "OTRO") await Mandar(it, new { noEncontrado = false, nota = v });
         else await Mandar(it, new { noEncontrado = false, barcode = v });
     }
 
@@ -431,7 +483,7 @@
     /// <summary>Después de guardar, el cursor salta al próximo que falta (así cargan de corrido con Enter).</summary>
     private async Task EnfocarSiguiente(int? desde)
     {
-        if (tarea is null || tarea.Tipo is "LIBRE" or "UBICACION") return;
+        if (tarea is null || tarea.Tipo is "LIBRE" or "UBICACION" or "FOTOS" or "ALQUILER") return;
         var lista = tarea.Items;
         var i0 = desde is int d ? lista.FindIndex(x => x.Id == d) + 1 : 0;
         var sig = lista.Skip(i0).FirstOrDefault(x => !x.Hecho) ?? lista.FirstOrDefault(x => !x.Hecho);

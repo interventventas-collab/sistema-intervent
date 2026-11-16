@@ -1,0 +1,132 @@
+@* 2026-11-16: Alquileres día por día para el depósito. Pedido del dueño: "que puedan visualizar cantidades
+   de cada cosa cada día". Qué SALE (entrega) y qué VUELVE (retiro) cada día, sumado por equipo; tocando el
+   día se ve cada alquiler (cliente, dirección, qué lleva). Sin precios ni plata.
+   Celu: con Token (link del empleado, /tareas y /mis-pedidos). PC del depósito: sin Token (con login).
+   Datos: GET api/deposito-tareas/alquileres (DepositoTareasController.AlquileresAsync). *@
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject ApiClient Api
+
+<style>
+    .ad-sec { font-size:0.72rem; font-weight:800; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; margin:0.2rem 0.15rem 0.4rem;
+              display:flex; align-items:center; gap:0.4rem; cursor:pointer; background:none; border:none; padding:0; font-family:inherit; width:100%; text-align:left; }
+    .ad-sec i { margin-left:auto; font-style:normal; font-size:0.9rem; }
+    .ad-box { background:#fff; border-radius:12px; padding:0.35rem 0.9rem; margin-bottom:0.6rem; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+    .ad-dia { padding:0.55rem 0; border-bottom:1px solid #f0f1f3; cursor:pointer; }
+    .ad-dia:last-child { border-bottom:none; }
+    .ad-d { font-size:0.95rem; font-weight:800; color:#111827; }
+    .ad-d.hoy { color:#b91c1c; }
+    .ad-mov { font-size:0.95rem; color:#111827; line-height:1.4; margin-top:0.1rem; }
+    .ad-mov b { font-weight:700; }
+    .ad-g { color:#6b7280; font-size:0.8rem; }
+    .ad-res { margin:0.4rem 0 0.2rem 0.6rem; padding-left:0.6rem; border-left:2px solid #e5e7eb; font-size:0.86rem; }
+    .ad-res div + div { margin-top:0.45rem; }
+    .ad-vacio { color:#6b7280; font-size:0.88rem; padding:0.6rem 0; }
+</style>
+
+@if (datos is not null && (!Plegable || datos.Dias.Count > 0))
+{
+    @if (Plegable)
+    {
+        <button type="button" class="ad-sec" @onclick="() => abierto = !abierto">
+            🪑 Alquileres · próximos @Dias días<i>@(abierto ? "▴" : "▾")</i>
+        </button>
+    }
+    @if (!Plegable || abierto)
+    {
+        <div class="ad-box">
+            @if (datos.Dias.Count == 0)
+            {
+                <div class="ad-vacio">No sale ni vuelve ningún alquiler en los próximos @Dias días.</div>
+            }
+            @foreach (var d in datos.Dias)
+            {
+                var dSel = d;
+                var esHoy = d.Fecha.Date == hoy;
+                <div class="ad-dia" @onclick="() => Alternar(dSel.Fecha)">
+                    <div class="ad-d @(esHoy ? "hoy" : "")">@NombreDia(d.Fecha)</div>
+                    @foreach (var m in d.Movimientos)
+                    {
+                        <div class="ad-mov">
+                            <b>@(m.Tipo == "SALE" ? "SALE" : "VUELVE"):</b>
+                            @(m.Equipos.Count == 0 ? "(sin equipos cargados)" : string.Join(" · ", m.Equipos.Select(e => $"{e.Cantidad} {Corto(e.Nombre)}")))
+                            <div class="ad-g">@(m.Reservas.Count == 1 ? "1 alquiler" : $"{m.Reservas.Count} alquileres") · tocá para ver</div>
+                        </div>
+                    }
+                    @if (abiertos.Contains(d.Fecha))
+                    {
+                        <div class="ad-res">
+                            @foreach (var m in d.Movimientos)
+                            {
+                                @foreach (var r in datos.Reservas.Where(x => m.Reservas.Contains(x.Id)))
+                                {
+                                    <div>
+                                        <b>@(m.Tipo == "SALE" ? "Sale" : "Vuelve") · @r.Numero</b> · @r.Cliente
+                                        @if (r.Estado == "entregado" && m.Tipo == "SALE") { <span class="ad-g"> · ya salió</span> }
+                                        @if (!string.IsNullOrWhiteSpace(r.Direccion)) { <div class="ad-g">📍 @r.Direccion</div> }
+                                        <div>@string.Join(" · ", r.Equipos.Select(e => $"{e.Cantidad} {Corto(e.Nombre)}"))</div>
+                                        <div class="ad-g">sale @r.Entrega.ToString("dd/MM") · vuelve @r.Retiro.ToString("dd/MM")</div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    /// <summary>Link del celu del empleado. Sin token = PC con login.</summary>
+    [Parameter] public string? Token { get; set; }
+    /// <summary>En el celu: título que se abre/cierra; si no hay alquileres no se muestra nada.</summary>
+    [Parameter] public bool Plegable { get; set; }
+    [Parameter] public bool AbiertoAlInicio { get; set; }
+    [Parameter] public int Dias { get; set; } = 10;
+
+    private AlqDepoResDto? datos;
+    private bool abierto;
+    private readonly HashSet<DateTime> abiertos = new();
+    private DateTime hoy = DateTime.UtcNow.AddHours(-3).Date;
+
+    protected override async Task OnInitializedAsync()
+    {
+        abierto = AbiertoAlInicio;
+        await Cargar();
+    }
+
+    public async Task Cargar()
+    {
+        hoy = DateTime.UtcNow.AddHours(-3).Date;
+        try
+        {
+            datos = Token is null
+                ? await Api.GetDepAlquileresAsync(Dias)
+                : await Http.GetFromJsonAsync<AlqDepoResDto>($"api/deposito-tareas/celu/{Token}/alquileres?dias={Dias}");
+        }
+        catch { datos = null; }
+    }
+
+    private void Alternar(DateTime f) { if (!abiertos.Remove(f)) abiertos.Add(f); }
+
+    private string NombreDia(DateTime f)
+    {
+        var d = f.Date;
+        var dia = new[] { "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado" }[(int)d.DayOfWeek];
+        var txt = $"{dia} {d.Day}";
+        if (d == hoy) return "HOY " + txt;
+        if (d == hoy.AddDays(1)) return "Mañana " + txt;
+        return char.ToUpper(txt[0]) + txt[1..];
+    }
+
+    /// <summary>"SILLAS SIN APOYABRAZOS BLANCA" → "sillas sin apoyabrazos blanca" (en minúscula se lee mejor
+    /// en una lista larga); lo de entre paréntesis ("p/ 8 personas") se saca.</summary>
+    public static string Corto(string nombre)
+    {
+        var n = nombre ?? "";
+        var p = n.IndexOf('(');
+        if (p > 0) n = n[..p];
+        return n.Trim().ToLowerInvariant();
+    }
+}

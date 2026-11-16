@@ -8832,3 +8832,9 @@ IF OBJECT_ID('Nom_SueldoFechas') IS NULL
         CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
     );
 GO
+
+-- 16/11/2026: Tareas del depósito: "Preparar alquiler" (tarea atada a una reserva de alquiler).
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+IF COL_LENGTH('Dep_Tareas','AlqReservaId') IS NULL
+    ALTER TABLE Dep_Tareas ADD AlqReservaId INT NULL;
+GO

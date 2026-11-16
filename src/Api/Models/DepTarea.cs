@@ -47,6 +47,10 @@ public class DepTarea
 
     /// <summary>2026-11-03: el dueño ya vio que se terminó (botón flotante 📋 → "Visto").</summary>
     public DateTime? VistaAt { get; set; }
+
+    /// <summary>2026-11-16: tarea ALQUILER = "preparar este alquiler" (Alq_Reservas.Id). Lo que lleva se lee
+    /// de la reserva en el momento; no tiene renglones en Dep_TareaItems.</summary>
+    public int? AlqReservaId { get; set; }
 }
 
 [Table("Dep_TareaItems")]
