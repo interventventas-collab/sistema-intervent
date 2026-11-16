@@ -69,7 +69,7 @@ public class NomExtrasController : ControllerBase
             "horas_extra" => await SugerirHorasExtra(empleados, cargados, desde, hasta),
             "comision_cafe" => SugerirComisiones(empleados, cargados, (await KgPorMesAsync(_db, desde, desde.AddMonths(1))).GetValueOrDefault((anio, mes))),
             "feriado" => await SugerirFeriados(empleados, cargados, feriados),
-            "aguinaldo" => await SugerirAguinaldo(empleados, cargados, anio, mes),
+            // 16/11: el aguinaldo NO se calcula solo ("lo vemos con la contadora, lo cargo yo"). SugerirAguinaldo queda sin usar.
             _ => new List<NomExtraSugerenciaDto>()
         };
 

@@ -139,7 +139,8 @@ else
             <div class="eqf-sep"></div>
             <div class="eqf-kv">
                 <span>Vacaciones @f.Vacaciones.Periodo</span>
-                <span>le tocan @f.Vacaciones.LeTocan · tomó @f.Vacaciones.Tomadas · <b>quedan @Math.Max(0, f.Vacaciones.LeTocan - f.Vacaciones.Tomadas)</b>@(f.Vacaciones.Pedidas > 0 ? $" · {f.Vacaciones.Pedidas} pedidas" : "")</span>
+                @* 16/11: sin "le tocan / quedan" calculados por el sistema (los define él con la contadora) *@
+                <span>tomó <b>@f.Vacaciones.Tomadas</b> días@(f.Vacaciones.Pedidas > 0 ? $" · {f.Vacaciones.Pedidas} pedidas" : "")</span>
                 @if (f.Vacaciones.ProximaDesde is DateTime pd)
                 {
                     <span>@(pd.Date <= hoy ? "De vacaciones" : "Próximas")</span><span>@pd.ToString("dd/MM") al @f.Vacaciones.ProximaHasta?.ToString("dd/MM")@(f.Vacaciones.ProximaEstado == "pedida" ? " (pedidas)" : "")</span>

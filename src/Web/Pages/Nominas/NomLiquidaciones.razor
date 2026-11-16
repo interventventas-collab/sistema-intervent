@@ -1728,6 +1728,14 @@
     private async Task Save()
     {
         if (HayPagoSinRegistrar) { avisoPagoAccion = "guardar"; return; }
+        // 16/11: si escribió fecha + importe de pago del sueldo y tocó Guardar sin "+ Agregar fecha", se perdía
+        // en silencio (Osmar $500.000 para mañana). Ahora se agrega sola antes de guardar.
+        if (isEditing && EsPeriodoModulos && !string.IsNullOrWhiteSpace(nuevaSueldoFechaMontoTxt))
+        {
+            var antes = sueldoFechas.Count;
+            await AgregarSueldoFecha();
+            if (sueldoFechas.Count == antes) return;   // no se pudo: queda abierta con el aviso
+        }
         await GuardarCabecera();
     }
 
