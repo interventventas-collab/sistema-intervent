@@ -52,7 +52,6 @@
                 📊 Excel
             </button>
             <button class="btn btn-secondary" @onclick="() => showPagoEmp = true" title="Pagar sueldo, horas extras, feriado, comisión, plus o aguinaldo">💵 + Nuevo pago</button>
-            <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Liquidación</button>
         </div>
     </div>
     @* 2026-11-16: todo en Sueldos. Cada concepto se carga desde acá y se abre en una ventana encima
@@ -141,7 +140,7 @@
                     @foreach (var t in porTipo) { <span class="sm-mut"> · @t.Nombre.ToLower() $@FormatMoney0(t.Debe)</span> }
                 }
                 else if (conDatos.Count > 0) { <span class="sm-ok">Está todo pagado este mes.</span> }
-                else { <span class="sm-mut">Todavía no hay nada cargado este mes. Tocá "+ Nueva Liquidación" o "Cargar sueldo" en cada empleado.</span> }
+                else { <span class="sm-mut">Todavía no hay nada cargado este mes. Tocá "+ Sueldo del mes" o "Cargar sueldo" en cada empleado.</span> }
             </div>
             <div class="table-responsive">
             <table class="sm-t">
@@ -200,7 +199,7 @@
         else if (liqs is null || liqs.Count == 0)
         {
             <p class="text-muted" style="padding: 1.5rem;">
-                No hay liquidaciones para los filtros seleccionados. Tocá <strong>"+ Nueva Liquidación"</strong> para crear una.
+                No hay liquidaciones para los filtros seleccionados. Tocá <strong>"+ Sueldo del mes"</strong> para crear una.
             </p>
         }
         else
@@ -290,7 +289,7 @@
     <div class="modal-overlay" @onclick="CerrarConcepto">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1200px; width: 96vw; max-height: 92vh; display: flex; flex-direction: column;">
             <div class="modal-header">
-                <h3>Cargar y pagar</h3>
+                <h3>@NombreTipo(ventanaTipo) · @MesNombreVentana</h3>
                 <button class="btn-close" @onclick="CerrarConcepto">&times;</button>
             </div>
             <div class="modal-body" style="overflow-y: auto; padding: 0;">
@@ -323,7 +322,7 @@
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1000px; max-height: 92vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: whitesmoke;">
                 <h3>
-                    @(isEditing ? $"Liquidación de {editingNombre}" : "Nueva Liquidación")
+                    @(isEditing ? $"Liquidación de {editingNombre}" : "Sueldo del mes")
                     @if (isEditing)
                     {
                         <span style="font-weight: 400; font-size: 0.85rem; color: #6b7280; margin-left: 0.5rem;">@MesNombre(formMes) @formAnio</span>

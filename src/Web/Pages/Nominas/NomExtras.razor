@@ -62,6 +62,9 @@
     <div class="card-body">
         @* 2026-11-16: todo se maneja desde Sueldos: esta pantalla se abre como VENTANA encima (EnVentana).
            Si alguien entra por la dirección vieja, se lo lleva a Sueldos con la ventana abierta. *@
+        @* 16/11: abierta desde un botón de Sueldos ya sabe qué se carga → sin pestañas *@
+        @if (!EnVentana)
+        {
         <div class="ex-tabs">
             @foreach (var m in Modulos)
             {
@@ -69,6 +72,7 @@
                 <a href="javascript:void(0)" @onclick="() => CambiarTipo(mt)" class="@(m.Tipo == tipo ? "on" : "")">@m.Icono @m.Nombre</a>
             }
         </div>
+        }
 
         <div class="ex-top">
             <div class="ex-periodo">
