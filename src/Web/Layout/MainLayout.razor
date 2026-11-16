@@ -3311,7 +3311,9 @@
     // 2026-11-06: menú nuevo por las 5 partes del negocio. Se prueba primero SOLO con el usuario
     // admin (el dueño); la oficina sigue con el menú de siempre hasta que él diga. Depósito nunca
     // lo ve (tiene su menú propio y no ve la barra de arriba).
-    private bool MenuNuevo => string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase);
+    // 2026-11-16: el dueño la pasa también a la oficina (usuario OFICINA). Acomodar el menú sigue solo admin.
+    private bool MenuNuevo => string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(username, "OFICINA", StringComparison.OrdinalIgnoreCase);
     /// <summary>2026-11-07: "todo arriba" (opción A elegida por el dueño): admin con el menú nuevo y
     /// el depósito. El menú de la izquierda no ocupa lugar en compu (cajón con "☰ Menú"), sin dólar
     /// ni disco. La oficina sigue como estaba hasta que el dueño diga.</summary>

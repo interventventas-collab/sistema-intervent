@@ -2072,7 +2072,9 @@ else
     private void MenuCambio() => InvokeAsync(StateHasChanged);
     /// <summary>2026-11-10: "Equipo hoy" arranca plegado (pedido del dueño).</summary>
     private bool equipoAbierto = true;
-    private bool DashNuevo => userCargado && string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase);
+    // 2026-11-16: Inicio nuevo también para la oficina (usuario OFICINA), igual que el menú nuevo.
+    private bool DashNuevo => userCargado && (string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(username, "OFICINA", StringComparison.OrdinalIgnoreCase));
     private Dictionary<int, List<string>> equipoHoras = new();
     private bool mapaMiniIniciado;
     // 2026-05-30: hide widgets dashboard para usuarios SOLO depósito.
