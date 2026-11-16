@@ -22,6 +22,26 @@
     .sm-ok { color: #047857; }
     .sm-a { color: #1d4ed8; cursor: pointer; text-decoration: none; font-size: 0.82rem; white-space: nowrap; }
     .sm-a:hover { text-decoration: underline; }
+    .sv-lista { padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.6rem; max-width: 1100px; }
+    .sv-emp { border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; padding: 0.55rem 0.9rem 0.35rem; }
+    .sv-emp.sv-vacio { padding: 0.45rem 0.9rem; background: #fafafa; }
+    .sv-hd { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding-bottom: 0.3rem; }
+    .sv-nm { font-weight: 700; font-size: 0.95rem; color: #111827; }
+    .sv-bar { flex: 1; min-width: 80px; height: 7px; border-radius: 4px; background: #f3f4f6; border: 1px solid #e5e7eb; overflow: hidden; }
+    .sv-bar i { display: block; height: 100%; background: #22c55e; }
+    .sv-deb { font-weight: 700; color: #b91c1c; white-space: nowrap; font-size: 0.9rem; }
+    .sv-r { display: grid; grid-template-columns: minmax(130px,1.4fr) 110px 110px 110px 120px minmax(120px,1.2fr) 70px; align-items: center; padding: 0.3rem 0; border-top: 1px solid #f1f5f9; font-size: 0.86rem; color: #111827; }
+    .sv-r .n { text-align: right; padding-right: 0.8rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .sv-r:not(.sv-h):hover { background: #f9fafb; }
+    .sv-h { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: #9ca3af; font-weight: 600; border-top: none; padding: 0.1rem 0; }
+    .sv-dn { color: #b91c1c; font-weight: 600; }
+    .sv-f { font-size: 0.82rem; color: #4b5563; }
+    .sv-p { display: inline-block; font-size: 0.76rem; font-weight: 600; padding: 0.08rem 0.55rem; border-radius: 999px; white-space: nowrap; }
+    .sv-p.ok { background: #dcfce7; color: #166534; }
+    .sv-p.pa { background: #dbeafe; color: #1e40af; }
+    .sv-p.pe { background: #fef3c7; color: #92400e; }
+    .sv-p.at { background: #fee2e2; color: #991b1b; }
+    @@media (max-width: 800px) { .sv-r { grid-template-columns: 1fr 1fr 1fr; row-gap: 0.15rem; } .sv-h { display: none; } }
     .sm-btn { border: 1px solid #d1d5db; background: #fff; border-radius: 6px; padding: 0.15rem 0.6rem; font-size: 0.8rem; cursor: pointer; }
 </style>
 <div class="card">
@@ -142,58 +162,59 @@
                 else if (conDatos.Count > 0) { <span class="sm-ok">Está todo pagado este mes.</span> }
                 else { <span class="sm-mut">Todavía no hay nada cargado este mes. Tocá "+ Sueldo del mes" o "Cargar sueldo" en cada empleado.</span> }
             </div>
-            <div class="table-responsive">
-            <table class="sm-t">
-                <tr class="sm-h"><th>Empleado / concepto</th><th class="n">Cargado</th><th class="n">Pagado</th><th class="n">Debe</th><th>Cuándo se paga</th><th></th></tr>
+            @* 16/11 (2ª): cada empleado en su caja, barrita de cuánto se pagó, estado con color y "Vence". *@
+            <div class="sv-lista">
                 @foreach (var e in sueldosMes)
                 {
                     var emp = e;
-                    var car = e.Conceptos.Sum(c => c.Cargado); var pag = e.Conceptos.Sum(c => c.Pagado); var deb = e.Conceptos.Sum(c => c.Debe);
-                    var prox = e.Conceptos.Where(c => c.Debe > 0.01m && c.ProximaFecha != null).OrderBy(c => c.ProximaFecha).FirstOrDefault();
-                    <tr class="sm-e">
-                        <td>@e.Nombre @if (!string.IsNullOrEmpty(e.Puesto)) { <span class="sm-mut">@e.Puesto.ToLower()</span> }</td>
-                        @if (e.Conceptos.Count == 0)
-                        {
-                            <td colspan="4" class="sm-mut">sin nada cargado este mes</td>
-                            <td class="n"><button class="sm-btn" @onclick="() => CrearPara(emp.EmpleadoId)">Cargar sueldo</button></td>
-                        }
-                        else
-                        {
-                            <td class="n">$@FormatMoney0(car)</td>
-                            <td class="n">$@FormatMoney0(pag)</td>
-                            <td class="n @(deb > 0.01m ? "sm-d" : "sm-ok")">@(deb > 0.01m ? "$" + FormatMoney0(deb) : "pagado")</td>
-                            <td class="@(prox is not null && Web.Services.FechaPalabras.Atrasado(prox.ProximaFecha!.Value) ? "sm-d" : "sm-mut")">@(prox is null ? "" : Web.Services.FechaPalabras.Atrasado(prox.ProximaFecha!.Value) ? "atrasado: " + CuandoTxt(prox.ProximaFecha!.Value) : "próximo: " + CuandoTxt(prox.ProximaFecha!.Value))</td>
-                            <td></td>
-                        }
-                    </tr>
-                    @foreach (var c in e.Conceptos)
+                    if (e.Conceptos.Count == 0)
                     {
-                        var cc = c;
-                        <tr class="sm-c">
-                            <td><span class="sm-in">@NombreTipo(c.Tipo)</span>@if (!string.IsNullOrEmpty(c.Info)) { <span class="sm-mut"> · @c.Info</span> }</td>
-                            <td class="n">$@FormatMoney0(c.Cargado)</td>
-                            <td class="n">$@FormatMoney0(c.Pagado)</td>
-                            <td class="n @(c.Debe > 0.01m ? "sm-d" : "sm-ok")">@(c.Debe > 0.01m ? "$" + FormatMoney0(c.Debe) : "pagado")</td>
-                            <td>
-                                @if (c.Debe <= 0.01m)
-                                {
-                                    <span class="sm-mut">@(c.UltimoPago is { } up ? "pagado " + Web.Services.FechaPalabras.Corta(up) : "")</span>
-                                }
-                                else if (c.ProximaFecha is { } pf)
-                                {
-                                    <span class="@(Web.Services.FechaPalabras.Atrasado(pf) ? "sm-d" : "")">@CuandoTxt(pf)</span>
-                                    @if (c.ProximaMonto > 0.01m && c.ProximaMonto < c.Debe - 0.01m) { <span> · <b>$@FormatMoney0(c.ProximaMonto)</b></span> }
-                                }
-                                else
-                                {
-                                    <span class="sm-mut">sin fecha · </span><a class="sm-a" @onclick="() => Entrar(emp, cc)">poner fecha</a>
-                                }
-                            </td>
-                            <td class="n"><a class="sm-a" @onclick="() => Entrar(emp, cc)">Entrar ›</a></td>
-                        </tr>
+                        <div class="sv-emp sv-vacio">
+                            <div class="sv-hd"><span class="sv-nm">@e.Nombre</span>@if (!string.IsNullOrEmpty(e.Puesto)) { <span class="sm-mut">@e.Puesto.ToLower()</span> }
+                                <span class="sm-mut" style="flex:1">sin nada cargado este mes</span>
+                                <button class="sm-btn" @onclick="() => CrearPara(emp.EmpleadoId)">+ Cargar sueldo</button></div>
+                        </div>
+                        continue;
                     }
+                    var car = e.Conceptos.Sum(c => c.Cargado); var pag = e.Conceptos.Sum(c => c.Pagado); var deb = e.Conceptos.Sum(c => c.Debe);
+                    var pct = car > 0 ? (int)Math.Round(Math.Min(100m, pag * 100m / car)) : 0;
+                    <div class="sv-emp">
+                        <div class="sv-hd">
+                            <span class="sv-nm">@e.Nombre</span>@if (!string.IsNullOrEmpty(e.Puesto)) { <span class="sm-mut">@e.Puesto.ToLower()</span> }
+                            <span class="sv-bar" title="Pagado $@FormatMoney0(pag) de $@FormatMoney0(car) (@pct%)"><i style="width:@(pct)%"></i></span>
+                            @if (deb > 0.01m) { <span class="sv-deb">debe $@FormatMoney0(deb)</span> } else { <span class="sv-p ok">✓ todo pagado</span> }
+                        </div>
+                        <div class="sv-r sv-h"><span>Concepto</span><span class="n">Cargado</span><span class="n">Pagado</span><span class="n">Debe</span><span>Estado</span><span>Vence</span><span></span></div>
+                        @foreach (var c in e.Conceptos)
+                        {
+                            var cc = c;
+                            var est = EstadoConcepto(c);
+                            <div class="sv-r">
+                                <span>@NombreTipo(c.Tipo)@if (!string.IsNullOrEmpty(c.Info)) { <span class="sm-mut"> · @c.Info</span> }</span>
+                                <span class="n">$@FormatMoney0(c.Cargado)</span>
+                                <span class="n">$@FormatMoney0(c.Pagado)</span>
+                                <span class="n @(c.Debe > 0.01m ? "sv-dn" : "sm-mut")">$@FormatMoney0(Math.Max(0, c.Debe))</span>
+                                <span><span class="sv-p @est.Clase">@est.Icono @est.Texto</span></span>
+                                <span class="sv-f">
+                                    @if (c.Debe <= 0.01m)
+                                    {
+                                        @(c.UltimoPago is { } up ? Web.Services.FechaPalabras.Corta(up) : "")
+                                    }
+                                    else if (c.ProximaFecha is { } pf)
+                                    {
+                                        <span class="@(Web.Services.FechaPalabras.Atrasado(pf) ? "sm-d" : "")">@CuandoTxt(pf)</span>
+                                        @if (c.ProximaMonto > 0.01m && c.ProximaMonto < c.Debe - 0.01m) { <span> · $@FormatMoney0(c.ProximaMonto)</span> }
+                                    }
+                                    else
+                                    {
+                                        <a class="sm-a" @onclick="() => Entrar(emp, cc)">+ poner fecha</a>
+                                    }
+                                </span>
+                                <span class="n"><a class="sm-a" @onclick="() => Entrar(emp, cc)">Entrar ›</a></span>
+                            </div>
+                        }
+                    </div>
                 }
-            </table>
             </div>
         }
         else if (liqs is null || liqs.Count == 0)
@@ -1451,6 +1472,13 @@
     private bool VistaNueva => filtroMes != 0 && filtroAnio * 100 + filtroMes >= 202611 && string.IsNullOrEmpty(filtroEstado);
     private static readonly (string Tipo, string Nombre)[] TiposVista =
         { ("sueldo", "Sueldo"), ("horas_extra", "Horas extras"), ("comision_cafe", "Comisiones"), ("feriado", "Feriados"), ("plus", "Plus"), ("aguinaldo", "Aguinaldo") };
+    private static (string Clase, string Icono, string Texto) EstadoConcepto(SueldoMesConceptoDto c)
+    {
+        if (c.Debe <= 0.01m) return ("ok", "✓", "Pagado");
+        if (c.ProximaFecha is { } f && Web.Services.FechaPalabras.Atrasado(f)) return ("at", "⚠", "Atrasado");
+        if (c.Pagado > 0.01m) return ("pa", "◐", "Parcial");
+        return ("pe", "⏳", "Pendiente");
+    }
     private static string NombreTipo(string t) => TiposVista.FirstOrDefault(x => x.Tipo == t).Nombre ?? t;
     private static string CuandoTxt(DateTime f) => Web.Services.FechaPalabras.Cuando(f);
     [SupplyParameterFromQuery(Name = "anio")] public int? QAnio { get; set; }
