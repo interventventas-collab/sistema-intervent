@@ -4,7 +4,8 @@
 @inject ToastService ToastService
 
 @* 2026-11-02: almanaque de vacaciones. Un renglón por empleado y una columna por día del mes.
-   Los días que le tocan salen de la fecha de ingreso (ley de contrato de trabajo):
+   16/11/2026: el dueño NO quiere que el sistema calcule los días que le tocan ("lo vemos con la contadora,
+   los cargo yo"): se muestran solo los días tomados. (Antes: los días que le tocan salían de la fecha de ingreso:
    menos de 6 meses = 1 día cada 20 trabajados, menos de 5 años = 14, menos de 10 = 21,
    menos de 20 = 28, 20 o más = 35. Las de enero a abril corresponden al año anterior. *@
 
@@ -92,9 +93,7 @@
                     <thead>
                         <tr>
                             <th style="text-align: left; padding-left: 8px;">Empleado</th>
-                            <th class="n" title="Días que le tocan por las vacaciones @periodo">Le<br />tocan</th>
                             <th class="n" title="Días aprobados de las vacaciones @periodo">Ya<br />tomó</th>
-                            <th class="n">Le<br />quedan</th>
                             @for (var d = 1; d <= dias; d++)
                             {
                                 var f = new DateTime(anio, mes, d);
@@ -106,7 +105,6 @@
                         @foreach (var e in datos.Empleados)
                         {
                             var emp = e;
-                            var tocan = LeTocan(emp, periodo);
                             var tomo = DiasDe(emp.Id, periodo, "aprobada");
                             var pendientes = PendientesDelMes(emp.Id);
                             <tr>
@@ -119,9 +117,7 @@
                                         <div class="vac-pend">pidió @pv.Desde.ToString("dd/MM") → @pv.Hasta.ToString("dd/MM") · <button @onclick="() => Aprobar(pv)">aprobar</button></div>
                                     }
                                 </td>
-                                <td class="vac-num">@tocan</td>
-                                <td class="vac-num">@tomo</td>
-                                <td class="vac-num" style="@(tocan - tomo < 0 ? "color:#b91c1c;" : "")"><b>@(tocan - tomo)</b></td>
+                                <td class="vac-num"><b>@tomo</b></td>
                                 @for (var d = 1; d <= dias; d++)
                                 {
                                     var f = new DateTime(anio, mes, d);
@@ -166,9 +162,7 @@
                     <thead>
                         <tr>
                             <th style="text-align: left; padding-left: 8px;">Empleado</th>
-                            <th class="n">Le<br />tocan</th>
                             <th class="n">Ya<br />tomó</th>
-                            <th class="n">Le<br />quedan</th>
                             @foreach (var (a, m) in MesesTemporada())
                             {
                                 <th class="d">@NombreMes(m)[..3]<br />@(a % 100)</th>
@@ -178,16 +172,13 @@
                     <tbody>
                         @foreach (var emp in datos.Empleados)
                         {
-                            var tocan = LeTocan(emp, periodoVista);
                             var tomo = DiasDe(emp.Id, periodoVista, "aprobada");
                             <tr>
                                 <td class="vac-nom">
                                     <b>@PrimerNombre(emp.Nombre)</b>
                                     <div class="vac-muted">@Capitalizar(emp.Puesto) · desde @DesdeTexto(emp.FechaIngreso)</div>
                                 </td>
-                                <td class="vac-num">@tocan</td>
-                                <td class="vac-num">@tomo</td>
-                                <td class="vac-num" style="@(tocan - tomo < 0 ? "color:#b91c1c;" : "")"><b>@(tocan - tomo)</b></td>
+                                <td class="vac-num"><b>@tomo</b></td>
                                 @foreach (var (a, m) in MesesTemporada())
                                 {
                                     var aa = a; var mm = m;
@@ -240,12 +231,7 @@
                         @if (diasForm > 0)
                         {
                             <span>@diasForm días corridos</span>
-                            @if (empForm is not null)
-                            {
-                                var quedan = LeTocan(empForm, form.Periodo) - DiasDe(empForm.Id, form.Periodo, "aprobada", editandoId)
-                                             - (form.Estado == "aprobada" ? diasForm : 0);
-                                <span style="@(quedan < 0 ? "color:#b91c1c;font-weight:600;" : "color:#6b7280;")"> · le quedan @quedan</span>
-                            }
+
                         }
                         else { <span class="vac-muted">elegí las fechas</span> }
                     </div>
