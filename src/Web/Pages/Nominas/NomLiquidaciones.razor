@@ -76,6 +76,7 @@
                 📊 Excel
             </button>
             <button class="btn btn-secondary" @onclick="() => showPagoEmp = true" title="Pagar sueldo, horas extras, feriado, comisión, plus o aguinaldo">💵 + Nuevo pago</button>
+            <button class="btn btn-secondary" style="border:2px solid #93c5fd; color:#1d4ed8; font-weight:600;" @onclick="() => showProgramar = true" title="Anotar que a alguien le hay que pagar tal día (sale en Equipo hoy desde 7 días antes)">📅 Programar pago</button>
         </div>
     </div>
     @* 2026-11-16: todo en Sueldos. Cada concepto se carga desde acá y se abre en una ventana encima
@@ -345,6 +346,21 @@
     </div>
 }
 
+@* 16/11: programar un pago para otro día (sueldo en partes o cualquier concepto). *@
+@if (showProgramar)
+{
+    <div class="modal-overlay" @onclick="CerrarProgramar">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px; max-height: 92vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h3>📅 Programar un pago</h3>
+                <button class="btn-close" @onclick="CerrarProgramar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <ProgramarPagoForm OnProgramado="() => programoAlgo = true" />
+            </div>
+        </div>
+    </div>
+}
 @* 2026-11-16: Nuevo pago a un empleado eligiendo el concepto. *@
 @if (showPagoEmp)
 {
@@ -1146,6 +1162,8 @@
     private List<NomEmpleadoDto>? empleados;
     private bool isLoading = true;
     private bool showPagoEmp;
+    private bool showProgramar, programoAlgo;
+    private async Task CerrarProgramar() { showProgramar = false; if (programoAlgo) { programoAlgo = false; await Load(); } }
     // 2026-11-11 (2ª): sueldo SOLO (sin lo de los módulos) para la lista; lo demás va en "Otros conceptos".
     private List<NomExtraDto> extrasLista = new();
     private bool otrosAbierto;
