@@ -363,14 +363,10 @@ public class StockIdealController : ControllerBase
             res[f.CafeProductoId] = $"/api/public/producto-foto/img/{f.FotoPropiaArchivo}";
         // REPORTADA sin foto propia = la de MeLi está mal y no se muestra.
         var meliOculta = regs.Where(f => f.FotoPropiaArchivo == null && f.Estado == "REPORTADA").Select(f => f.CafeProductoId).ToHashSet();
-        var meli = await (from c in _db.MeliItemComponentes.AsNoTracking()
-                          join m in _db.MeliItems.AsNoTracking() on c.MeliItemId equals m.MeliItemId
-                          where m.Thumbnail != null
-                          orderby m.Status == "active" descending, m.SoldQuantity descending
-                          select new { c.CafeProductoId, m.Thumbnail }).ToListAsync();
-        foreach (var m in meli)
-            if (activos.Contains(m.CafeProductoId) && !meliOculta.Contains(m.CafeProductoId) && !res.ContainsKey(m.CafeProductoId))
-                res[m.CafeProductoId] = m.Thumbnail!.Replace("http://", "https://");
+        // 2026-11-16: misma regla de foto de MeLi que todo el sistema (FotoProductoService)
+        var faltan = ids.Where(id => !res.ContainsKey(id) && !meliOculta.Contains(id)).ToList();
+        foreach (var (pid, url) in await new Api.Services.FotoProductoService(_db).MeliAsync(faltan))
+            res[pid] = url;
         return res;
     }
 

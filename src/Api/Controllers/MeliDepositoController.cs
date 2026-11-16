@@ -546,13 +546,11 @@ public class MeliDepositoController : ControllerBase
                 ubicZona = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.UbicacionZona).FirstOrDefault() : null,
                 ubicDudosa = i.ProductoId != null && _db.CafeProductos.Any(p => p.Id == i.ProductoId && p.UbicacionDudosaAt != null),
                 fotoPropia = i.ProductoId != null ? _db.CafeProductoFotos.Where(f => f.CafeProductoId == i.ProductoId).Select(f => f.FotoPropiaArchivo).FirstOrDefault() : null,
-                // misma foto que el tablero de armado: la publicación MeLi activa más nueva de ese producto
-                thumb = i.ProductoId != null
-                    ? _db.MeliItems.Where(mi => mi.CafeProductoId == i.ProductoId && mi.Thumbnail != null && mi.Status == "active")
-                        .OrderByDescending(mi => mi.UpdatedAt).Select(mi => mi.Thumbnail).FirstOrDefault()
-                    : null
             })
             .ToListAsync();
+        // 2026-11-16: misma foto que todo el sistema (FotoProductoService)
+        var thumbs = await new Api.Services.FotoProductoService(_db).MeliAsync(
+            items.Where(i => i.ProductoId != null).Select(i => i.ProductoId!.Value).ToList());
 
         var productos = items.Select(i => new
         {
@@ -562,7 +560,7 @@ public class MeliDepositoController : ControllerBase
             titulo = i.ProductoNombreSnapshot,
             cantidad = i.Cantidad,
             sku = i.sku,
-            foto = !string.IsNullOrEmpty(i.fotoPropia) ? $"/api/public/producto-foto/img/{i.fotoPropia}" : FotoGrande(i.thumb),
+            foto = !string.IsNullOrEmpty(i.fotoPropia) ? $"/api/public/producto-foto/img/{i.fotoPropia}" : FotoGrande(i.ProductoId != null && thumbs.TryGetValue(i.ProductoId.Value, out var th) ? th : null),
             formato = i.Categoria == "CAFE"
                 ? i.Formato switch { "1KG" => "1 kg", "MEDIO" => "½ kg", "CUARTO" => "¼ kg", _ => null }
                 : null,
