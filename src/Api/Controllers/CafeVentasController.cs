@@ -5036,16 +5036,19 @@ public class CafeVentasController : ControllerBase
     /// IDs van separados por coma: ?ids=1,2,3 — máximo 50 por request.
     /// Pedido 2026-05-28.</summary>
     [HttpGet("imprimir-pdf-combinado")]
-    public async Task<IActionResult> ImprimirPdfCombinado([FromQuery] string ids)
+    public async Task<IActionResult> ImprimirPdfCombinado([FromQuery] string? ids, [FromQuery] string? alq = null)
     {
-        if (string.IsNullOrWhiteSpace(ids)) return BadRequest(new { error = "Faltan IDs" });
-        var idList = ids.Split(',', StringSplitOptions.RemoveEmptyEntries)
+        // 2026-11-16: alq = tareas "Preparar alquiler" del tablero: su remito va al final del mismo PDF.
+        var alqList = (alq ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => int.TryParse(s.Trim(), out var n) ? n : 0).Where(n => n > 0).Distinct().Take(50).ToList();
+        if (string.IsNullOrWhiteSpace(ids) && alqList.Count == 0) return BadRequest(new { error = "Faltan IDs" });
+        var idList = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(s => int.TryParse(s.Trim(), out var n) ? n : 0)
             .Where(n => n > 0)
             .Distinct()
             .Take(50)
             .ToList();
-        if (idList.Count == 0) return BadRequest(new { error = "IDs invalidos" });
+        if (idList.Count == 0 && alqList.Count == 0) return BadRequest(new { error = "IDs invalidos" });
 
         var cfg = await _db.CafeSettings.FindAsync(1);
         var ventas = await _db.CafeVentas
@@ -5054,7 +5057,7 @@ public class CafeVentasController : ControllerBase
             .ToListAsync();
         // Mantener orden de los IDs recibidos
         ventas = idList.Select(id => ventas.FirstOrDefault(v => v.Id == id)).Where(v => v != null).Cast<Models.CafeVenta>().ToList();
-        if (ventas.Count == 0) return NotFound(new { error = "Ninguna venta encontrada" });
+        if (ventas.Count == 0 && alqList.Count == 0) return NotFound(new { error = "Ninguna venta encontrada" });
 
         // Generar bytes de cada PDF y concatenar con PdfSharpCore
         var combined = new PdfSharpCore.Pdf.PdfDocument();
@@ -5071,12 +5074,21 @@ public class CafeVentasController : ControllerBase
             v.ImpresaAt = ahora;
             v.ImpresaCount = v.ImpresaCount + 1;
         }
+        foreach (var tid in alqList)
+        {
+            var rem = await Api.Services.AlqRemitoPdfService.GenerarAsync(_db, tid);
+            if (rem is null) continue;
+            using var ms = new MemoryStream(rem.Value.Bytes);
+            var src = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            for (int i = 0; i < src.PageCount; i++) combined.AddPage(src.Pages[i]);
+        }
+        if (combined.PageCount == 0) return NotFound(new { error = "Nada para imprimir" });
         await _db.SaveChangesAsync();
 
         using var outMs = new MemoryStream();
         combined.Save(outMs, false);
         var pdfBytes = outMs.ToArray();
-        var fileName = ventas.Count == 1
+        var fileName = ventas.Count == 1 && alqList.Count == 0
             ? BuildPdfFilename(ventas[0])
             : $"imprimir-{ventas.Count}-comprobantes-{DateTime.Now:yyyyMMddHHmm}.pdf";
         return File(pdfBytes, "application/pdf", fileName);

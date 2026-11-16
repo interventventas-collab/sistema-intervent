@@ -1322,6 +1322,89 @@ public class DepositoTareasController : ControllerBase
         return new AlqDepoRes(diasRes, lista, hm);
     }
 
+    // ── Alquileres en "Pedidos para armar" (2026-11-16) ──────────────────────────────────────
+    // Pedido del dueño: "mi idea es que aparezca tipo una venta más, con el detalle del alquiler para
+    // imprimir también y que puedan pegarle el remito con el pedido a las cosas". Cada tarea ALQUILER
+    // abierta es una tarjeta en el tablero; "Marcar armado" la termina (pasa a Ya armados) y la ✕ la saca.
+
+    public record AlqTableroItem(int TareaId, string? Comentario, string? Empleado, DateTime CreatedAt,
+        DateTime? TerminadaAt, string? TerminadaPor, string? Telefono, string? Hora, AlqReservaDepo Reserva);
+
+    /// <summary>estado: armar (las abiertas) | armados (terminadas en el rango: hoy, ayer, 7d, 30d, todos).</summary>
+    [HttpGet("alquileres-tablero")]
+    public async Task<IActionResult> AlquileresTablero([FromQuery] string? estado = null, [FromQuery] string? rango = null)
+    {
+        var q = _db.DepTareas.AsNoTracking().Where(t => t.Tipo == "ALQUILER" && t.CanceladaAt == null && t.AlqReservaId != null);
+        if (estado == "armados")
+        {
+            var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
+            DateTime? desde = rango switch
+            {
+                "ayer" => hoyAr.AddDays(-1), "7d" => hoyAr.AddDays(-7), "30d" => hoyAr.AddDays(-30), "todos" => null, _ => hoyAr
+            };
+            DateTime? hasta = rango == "ayer" ? hoyAr : null;
+            q = q.Where(t => t.TerminadaAt != null);
+            if (desde is DateTime d) { var dU = d.AddHours(3); q = q.Where(t => t.TerminadaAt >= dU); }
+            if (hasta is DateTime h) { var hU = h.AddHours(3); q = q.Where(t => t.TerminadaAt < hU); }
+            q = q.OrderByDescending(t => t.TerminadaAt);
+        }
+        else q = q.Where(t => t.TerminadaAt == null).OrderBy(t => t.CreatedAt);
+        var tareas = await q.Take(100).ToListAsync();
+        if (tareas.Count == 0) return Ok(Array.Empty<AlqTableroItem>());
+
+        var emps = await _db.NomEmpleados.AsNoTracking().ToDictionaryAsync(e => e.Id, e => NombreCorto(e.Nombre));
+        var rids = tareas.Select(t => t.AlqReservaId!.Value).Distinct().ToList();
+        var extra = await _db.AlqReservas.AsNoTracking().Where(r => rids.Contains(r.Id))
+            .Select(r => new { r.Id, Tel = r.ClienteNav != null ? r.ClienteNav.Telefono : null, r.HoraInicio })
+            .ToDictionaryAsync(x => x.Id);
+        var res = new List<AlqTableroItem>();
+        foreach (var t in tareas)
+        {
+            var rv = (await AlquileresAsync(null, null, t.AlqReservaId)).Reservas.FirstOrDefault();
+            if (rv is null) continue;
+            extra.TryGetValue(rv.Id, out var ex);
+            res.Add(new AlqTableroItem(t.Id, t.Comentario, t.EmpleadoId is int e && emps.TryGetValue(e, out var n) ? n : null,
+                t.CreatedAt, t.TerminadaAt, t.TerminadaPor, ex?.Tel, ex?.HoraInicio, rv));
+        }
+        return Ok(res);
+    }
+
+    /// <summary>Remito del alquiler (sin precios) para imprimir y pegar en las cosas.</summary>
+    [HttpGet("alquiler/{tareaId:int}/remito.pdf")]
+    public async Task<IActionResult> RemitoAlquiler(int tareaId)
+    {
+        var r = await AlqRemitoPdfService.GenerarAsync(_db, tareaId);
+        if (r is null) return NotFound(new { error = "No encontré ese alquiler." });
+        Response.Headers["Content-Disposition"] = $"inline; filename=\"Remito-{r.Value.Numero}.pdf\"";
+        return File(r.Value.Bytes, "application/pdf");
+    }
+
+    public record ArmadoRequest(string? Quien);
+
+    /// <summary>"✅ Marcar armado" desde el tablero del depósito.</summary>
+    [HttpPost("{id:int}/armado")]
+    public async Task<IActionResult> MarcarArmado(int id, [FromBody] ArmadoRequest? req)
+    {
+        var t = await _db.DepTareas.FirstOrDefaultAsync(x => x.Id == id && x.CanceladaAt == null);
+        if (t is null) return NotFound();
+        t.TerminadaAt ??= DateTime.UtcNow;
+        var quien = (req?.Quien ?? "").Trim();
+        t.TerminadaPor ??= quien.Length > 0 ? (quien.Length > 200 ? quien[..200] : quien) : Usuario;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>"↩ Volver" a Pedidos para armar.</summary>
+    [HttpPost("{id:int}/volver")]
+    public async Task<IActionResult> VolverAArmar(int id)
+    {
+        var t = await _db.DepTareas.FirstOrDefaultAsync(x => x.Id == id && x.CanceladaAt == null);
+        if (t is null) return NotFound();
+        t.TerminadaAt = null; t.TerminadaPor = null; t.VistaAt = null;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     /// <summary>Compu (pantalla del depósito y oficina).</summary>
     [HttpGet("alquileres")]
     public async Task<IActionResult> Alquileres([FromQuery] int? dias = null) => Ok(await AlquileresAsync(null, dias));

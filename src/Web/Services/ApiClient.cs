@@ -2761,6 +2761,18 @@ public class ApiClient
     public string GetImprimirPdfCombinadoUrl(IEnumerable<int> ids)
         => $"/api/cafe/ventas/imprimir-pdf-combinado?ids={string.Join(",", ids)}";
 
+    // 2026-11-16: con los remitos de alquiler tildados en el tablero (van al final del mismo PDF)
+    public string GetImprimirPdfCombinadoUrl(IEnumerable<int> ids, IEnumerable<int> alquileres)
+        => $"/api/cafe/ventas/imprimir-pdf-combinado?ids={string.Join(",", ids)}&alq={string.Join(",", alquileres)}";
+
+    // 2026-11-16: alquileres en "Pedidos para armar"
+    public async Task<List<AlqTableroItemDto>?> GetAlqTableroAsync(string estado, string? rango = null)
+        => await GetAsync<List<AlqTableroItemDto>>($"/api/deposito-tareas/alquileres-tablero?estado={estado}&rango={rango}");
+    public async Task MarcarAlqArmadoAsync(int tareaId)
+        => await PostAsync<object>($"/api/deposito-tareas/{tareaId}/armado", new { });
+    public async Task VolverAlqAArmarAsync(int tareaId)
+        => await PostAsync<object>($"/api/deposito-tareas/{tareaId}/volver", new { });
+
     // === Preventas (admin) ===
     public async Task<List<CafePreventaAdminDto>?> GetCafePreventasAdminAsync(string estado = "pendiente")
         => await GetAsync<List<CafePreventaAdminDto>>($"/api/preventas/admin?estado={Uri.EscapeDataString(estado)}");

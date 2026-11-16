@@ -283,6 +283,15 @@
     .vprep-actions { display:flex; gap:0.5rem; margin-top:0.6rem; }
     .vprep-btn-listo { flex:1; background:#16a34a; color:#fff; border:none; border-radius:8px; padding:0.55rem; font-weight:700; cursor:pointer; }
     .vprep-btn-listo:hover { background:#15803d; }
+    /* 2026-11-16: alquileres en Pedidos para armar (violeta, como en el celu del repartidor) */
+    .aprep-card { background:#faf5ff; border:2px solid #8b5cf6; border-radius:10px; padding:0.7rem 0.8rem; font-size:0.9rem; }
+    .aprep-top { display:flex; align-items:center; gap:0.45rem; }
+    .aprep-tag { background:#ede9fe; color:#5b21b6; font-size:0.72rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:4px; }
+    .aprep-num { font-family:monospace; font-weight:700; color:#111827; }
+    .aprep-pdf { margin-left:auto; text-decoration:none; }
+    .aprep-items { background:#fff; border-radius:8px; padding:0.45rem 0.6rem; margin-top:0.45rem; font-size:0.98rem; color:#111827; line-height:1.45; }
+    .aprep-msj { background:#fff7d6; border:1px solid #e0a800; border-radius:8px; padding:0.4rem 0.6rem; margin-top:0.4rem; white-space:pre-wrap; }
+    .aprep-sel { display:flex; align-items:center; gap:0.25rem; font-size:0.72rem; color:#6b7280; cursor:pointer; }
     .vprep-btn-quitar { background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; border-radius:8px; padding:0.55rem 0.7rem; cursor:pointer; font-weight:700; }
     /* Boton "Ver composicion" debajo del header, antes del body. Por default cerrado. */
     .prep-btn-ver-comp {
@@ -798,11 +807,12 @@
     else
     {
         @* Bar flotante de impresion multiple (aparece cuando hay >= 1 card tildada) *@
-        @if (seleccionadosParaImprimir.Count > 0)
+        @if (seleccionadosParaImprimir.Count + alqSel.Count > 0)
         {
+            var totSel = seleccionadosParaImprimir.Count + alqSel.Count;
             <div class="prep-print-bar">
                 <span style="font-size:1.2rem;">🖨️</span>
-                <strong>@seleccionadosParaImprimir.Count pedido@(seleccionadosParaImprimir.Count == 1 ? "" : "s") seleccionado@(seleccionadosParaImprimir.Count == 1 ? "" : "s")</strong>
+                <strong>@totSel pedido@(totSel == 1 ? "" : "s") seleccionado@(totSel == 1 ? "" : "s")</strong>
                 <button @onclick="ImprimirSeleccionados">Imprimir todo junto</button>
                 <button class="ghost" @onclick="LimpiarSeleccion">Limpiar selección</button>
             </div>
@@ -811,7 +821,7 @@
         @* ── PEDIDOS PARA ARMAR (todos los que están subidos a Drive y no están listos) ── *@
         <div class="prep-layout">
             <div class="prep-layout-main">
-                @if (ParaArmar.Count == 0)
+                @if (ParaArmar.Count == 0 && alqPrep.Count == 0)
                 {
                     <div class="prep-empty" style="padding:2rem; font-size:1rem;">
                         No hay pedidos para armar. ¡Buen trabajo! 🎉
@@ -831,6 +841,39 @@
                                         OnQuitarDelFlujo="() => QuitarDelFlujo(v)"
                                         OnImprimir="() => ImprimirUno(v)"
                                         OnToggleSelectForPrint="(sel) => ToggleSeleccion(v.Id, sel)" />
+                        }
+                        @* 2026-11-16: alquileres mandados al depósito ("Preparar alquiler"), como una venta más *@
+                        @foreach (var a in alqPrep)
+                        {
+                            var aSel = a;
+                            var rv = a.Reserva;
+                            <div class="aprep-card" @key="@("alq" + a.TareaId)">
+                                <div class="aprep-top">
+                                    <span class="aprep-tag">🪑 ALQUILER</span>
+                                    <span class="aprep-num">@rv.Numero</span>
+                                    <a class="aprep-pdf" href="@($"/api/deposito-tareas/alquiler/{a.TareaId}/remito.pdf")" target="_blank" title="Abrir / imprimir el remito para pegar en las cosas">
+                                        <svg class="pdf-icon-mini" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M14 0H4C1.79 0 0 1.79 0 4v22c0 2.21 1.79 4 4 4h16c2.21 0 4-1.79 4-4V10L14 0z" fill="#dc2626"/>
+                                            <text x="12" y="22" text-anchor="middle" fill="white" font-size="6" font-weight="700" font-family="Arial">PDF</text>
+                                        </svg>
+                                    </a>
+                                    <label class="aprep-sel" title="Tildar para imprimir junto con las ventas">
+                                        <input type="checkbox" checked="@alqSel.Contains(a.TareaId)" @onchange="e => ToggleAlqSel(aSel.TareaId, (bool)e.Value!)" /> Sel.
+                                    </label>
+                                </div>
+                                <div class="vprep-cliente">👤 @rv.Cliente</div>
+                                <div class="vprep-dir">📍 @(rv.Direccion ?? "sin dirección")@(string.IsNullOrWhiteSpace(a.Telefono) ? "" : $" · 📞 {a.Telefono}")</div>
+                                <div class="vprep-dir"><b style="color:#111827;">Sale @DiaCorto(rv.Entrega)@(string.IsNullOrWhiteSpace(a.Hora) ? "" : $" · {a.Hora}")</b> · vuelve @DiaCorto(rv.Retiro)</div>
+                                <div class="aprep-items">
+                                    @if (rv.Equipos.Count == 0) { <i>(sin equipos cargados)</i> }
+                                    @foreach (var e in rv.Equipos) { <div><b>@e.Cantidad</b> @Web.Shared.Tareas.AlquileresDias.Corto(e.Nombre)</div> }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(a.Comentario)) { <div class="aprep-msj">💬 @a.Comentario</div> }
+                                <div class="vprep-actions">
+                                    <button class="vprep-btn-listo" @onclick="() => MarcarAlqArmado(aSel)">✅ Marcar armado</button>
+                                    <button class="vprep-btn-quitar" @onclick="() => QuitarAlq(aSel)" title="Sacar del tablero">✕</button>
+                                </div>
+                            </div>
                         }
                     </div>
                 }
@@ -961,10 +1004,36 @@
                     <option value="todos">Todos</option>
                 </select>
             }
-            <span style="margin-left:auto; font-weight:600;">@((armados?.Count ?? 0) + visitasArmados.Count)</span>
+            <span style="margin-left:auto; font-weight:600;">@((armados?.Count ?? 0) + visitasArmados.Count + alqArmados.Count)</span>
         </div>
         @if (armadosExpanded)
         {
+            @if (alqArmados.Count > 0)
+            {
+                <div class="drive-pedidos-grid" style="margin-top:0.5rem;">
+                    @foreach (var aa in alqArmados)
+                    {
+                        var aaSel = aa;
+                        <div class="prep-armado-mini">
+                            <a href="@($"/api/deposito-tareas/alquiler/{aa.TareaId}/remito.pdf")" target="_blank" title="Abrir/imprimir el remito" style="text-decoration:none;">
+                                <svg class="pdf-icon-mini" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M14 0H4C1.79 0 0 1.79 0 4v22c0 2.21 1.79 4 4 4h16c2.21 0 4-1.79 4-4V10L14 0z" fill="#8b5cf6"/>
+                                    <text x="12" y="22" text-anchor="middle" fill="white" font-size="6" font-weight="700" font-family="Arial">PDF</text>
+                                </svg>
+                            </a>
+                            <div style="flex:1; min-width:0;">
+                                <div style="font-family:monospace; font-size:0.78rem; color:#6b7280;">🪑 Alquiler @aa.Reserva.Numero</div>
+                                <div style="font-weight:700;">@aa.Reserva.Cliente</div>
+                                @if (aa.TerminadaAt.HasValue)
+                                {
+                                    <div style="font-size:0.72rem; color:#16a34a;">✅ Armado @HaceCuanto(aa.TerminadaAt)</div>
+                                }
+                            </div>
+                            <button class="prep-btn-volver-armar" @onclick="() => VolverAlq(aaSel)" title="Volver este alquiler a 'Para armar'">↩ Volver</button>
+                        </div>
+                    }
+                </div>
+            }
             @if (visitasArmados.Count > 0)
             {
                 <div class="drive-pedidos-grid" style="margin-top:0.5rem;">
@@ -994,7 +1063,7 @@
             {
                 <p style="padding:0.5rem;">Cargando historial...</p>
             }
-            else if (armados.Count == 0 && visitasArmados.Count == 0)
+            else if (armados.Count == 0 && visitasArmados.Count == 0 && alqArmados.Count == 0)
             {
                 <div class="prep-empty">Todavía no hay pedidos marcados como LISTO en este rango.</div>
             }
@@ -1228,7 +1297,7 @@
     private async Task RecargarVisitasArmadas()
     {
         if (armadosExpanded)
-            visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new();
+            { visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new(); alqArmados = await CargarAlqArmadosAsync(); }
     }
 
     private async Task MarcarVisitaArmada(VisitaPreparacionDto vp)
@@ -1243,6 +1312,57 @@
         var ok = await Api.VolverAArmarVisitaAsync(va.Id);
         if (ok) { ToastService.Success($"Visita N° {va.Numero:0000} vuelta a 'Para armar'"); await Cargar(); await RecargarVisitasArmadas(); }
         else ToastService.Error("No se pudo volver la visita a 'Para armar'");
+    }
+
+    // ── Alquileres en el tablero (2026-11-16): tareas "Preparar alquiler" mandadas al depósito ──
+    private List<AlqTableroItemDto> alqPrep = new();
+    private List<AlqTableroItemDto> alqArmados = new();
+    private readonly HashSet<int> alqSel = new();
+
+    private async Task<List<AlqTableroItemDto>> CargarAlqArmadosAsync()
+    {
+        try { return await Api.GetAlqTableroAsync("armados", rangoArmados) ?? new(); } catch { return alqArmados; }
+    }
+
+    private void ToggleAlqSel(int tareaId, bool sel) { if (sel) alqSel.Add(tareaId); else alqSel.Remove(tareaId); }
+
+    private static string DiaCorto(DateTime d) =>
+        new[] { "dom", "lun", "mar", "mié", "jue", "vie", "sáb" }[(int)d.DayOfWeek] + " " + d.ToString("dd/MM");
+
+    private async Task MarcarAlqArmado(AlqTableroItemDto a)
+    {
+        try
+        {
+            await Api.MarcarAlqArmadoAsync(a.TareaId);
+            ToastService.Success($"Alquiler {a.Reserva.Numero} armado ✅");
+            await Cargar();
+            if (armadosExpanded) alqArmados = await CargarAlqArmadosAsync();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo marcar: " + ex.Message); }
+    }
+
+    private async Task VolverAlq(AlqTableroItemDto a)
+    {
+        try
+        {
+            await Api.VolverAlqAArmarAsync(a.TareaId);
+            ToastService.Success($"Alquiler {a.Reserva.Numero} vuelto a 'Para armar'");
+            await Cargar();
+            alqArmados = await CargarAlqArmadosAsync();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo volver: " + ex.Message); }
+    }
+
+    private async Task QuitarAlq(AlqTableroItemDto a)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Sacar el alquiler {a.Reserva.Numero} del tablero? (el alquiler no se toca, solo deja de estar para armar)")) return;
+        try
+        {
+            await Api.CancelarDepTareaAsync(a.TareaId);
+            ToastService.Info("Alquiler sacado del tablero");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo sacar: " + ex.Message); }
     }
 
     private async Task QuitarVisita(VisitaPreparacionDto vp)
@@ -1324,6 +1444,8 @@
         {
             lista = await Api.GetCafePreparacionAsync(7) ?? new();
             visitasPrep = await Api.GetVisitasPreparacionAsync() ?? new();
+            try { alqPrep = await Api.GetAlqTableroAsync("armar") ?? new(); } catch { }
+            alqSel.RemoveWhere(id => alqPrep.All(a => a.TareaId != id));
             // Refresca el estado del celu del depósito (por si se habilitó desde el celular)
             try { pickingDispositivo = await Api.GetPickingDispositivoAsync(); } catch { }
             try { tareasResumen = await Api.GetDepTareasResumenAsync(); } catch { }
@@ -1365,7 +1487,7 @@
                 // Recargar ambas listas
                 await Cargar();
                 armados = await Api.GetCafePreparacionArmadosAsync(rangoArmados) ?? new();
-                visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new();
+                { visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new(); alqArmados = await CargarAlqArmadosAsync(); }
                 StateHasChanged();
             }
             else
@@ -1385,7 +1507,7 @@
         if (armadosExpanded && armados is null)
         {
             armados = await Api.GetCafePreparacionArmadosAsync(rangoArmados) ?? new();
-            visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new();
+            { visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new(); alqArmados = await CargarAlqArmadosAsync(); }
         }
         StateHasChanged();
     }
@@ -1396,7 +1518,7 @@
         armados = null;  // fuerza loading mientras llega
         StateHasChanged();
         armados = await Api.GetCafePreparacionArmadosAsync(rangoArmados) ?? new();
-        visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new();
+        { visitasArmados = await Api.GetVisitasPreparacionArmadosAsync(rangoArmados) ?? new(); alqArmados = await CargarAlqArmadosAsync(); }
         StateHasChanged();
     }
 
@@ -1410,6 +1532,7 @@
     private void LimpiarSeleccion()
     {
         seleccionadosParaImprimir.Clear();
+        alqSel.Clear();
         StateHasChanged();
     }
 
@@ -1495,9 +1618,11 @@
     /// <summary>Imprimir VARIOS: genera un PDF combinado con todos los seleccionados.</summary>
     private async Task ImprimirSeleccionados()
     {
-        if (seleccionadosParaImprimir.Count == 0) return;
+        if (seleccionadosParaImprimir.Count == 0 && alqSel.Count == 0) return;
         var ids = seleccionadosParaImprimir.ToList();
-        var url = Api.GetImprimirPdfCombinadoUrl(ids);
+        var url = alqSel.Count > 0 ? Api.GetImprimirPdfCombinadoUrl(ids, alqSel.ToList()) : Api.GetImprimirPdfCombinadoUrl(ids);
+        var totalAlq = alqSel.Count;
+        alqSel.Clear();
         // Marcamos cada uno como impreso en UI (el endpoint ya los marca en la DB)
         var ahora = DateTime.UtcNow;
         if (lista is not null)
@@ -1508,7 +1633,7 @@
                 v.ImpresaCount = v.ImpresaCount + 1;
             }
         }
-        ToastService.Success($"Generando PDF combinado con {ids.Count} ticket{(ids.Count == 1 ? "" : "s")}...");
+        ToastService.Success($"Generando PDF combinado con {ids.Count + totalAlq} ticket{(ids.Count + totalAlq == 1 ? "" : "s")}...");
         await JS.InvokeVoidAsync("window.open", url, "_blank");
         seleccionadosParaImprimir.Clear();
         StateHasChanged();
