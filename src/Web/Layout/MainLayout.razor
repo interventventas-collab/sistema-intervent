@@ -1997,8 +1997,9 @@
             @if (!IsRoleWithCustomSidebar())
             {
                 @* 2026-09-14: el 💰 cuenta ventas Y alquileres (la 🪑 aparte se sacó: una sola lista). *@
-                @* 2026-11-10: con el menú nuevo, en compu la bolsita va como numerito pegado a "Cobranzas". *@
-                <span class="@(MenuNuevo ? "mn-oculto-pc" : "")" style="display:contents;"><CobranzasPendientesBell /></span>
+                @* 2026-11-10: con el menú nuevo, en compu la bolsita iba como numerito pegado a "Cobranzas".
+                   2026-11-16: vuelve a verse siempre (pedido del dueño "volver la bolsita"). *@
+                <CobranzasPendientesBell />
             }
             <ChatBell />
             <MeliQuestionsBell OnTotal="PreguntasContadas" />
