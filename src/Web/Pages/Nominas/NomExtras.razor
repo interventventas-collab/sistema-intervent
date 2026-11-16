@@ -60,6 +60,8 @@
 
 <div class="card">
     <div class="card-body">
+        @* 2026-11-16: volver a Sueldos (no había cómo volver). Lleva al mismo mes que se está mirando. *@
+        <a href="/nominas/liquidaciones?anio=@anio&mes=@mes" class="ex-btn" style="display:inline-block; margin-bottom:10px; text-decoration:none; color:#111827;">← Volver a Sueldos</a>
         <div class="ex-tabs">
             @foreach (var m in Modulos)
             {
