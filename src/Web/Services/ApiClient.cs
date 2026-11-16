@@ -966,6 +966,8 @@ public class ApiClient
     // 2026-11-16: Sueldos centralizado (empleado → conceptos), fechas de pago del sueldo y próximos pagos.
     public async Task<List<SueldoMesEmpleadoDto>?> GetSueldosMesAsync(int anio, int mes)
         => await GetAsync<List<SueldoMesEmpleadoDto>>($"/api/nominas/sueldos-mes?anio={anio}&mes={mes}");
+    public async Task<List<PendienteAnteriorDto>?> GetPendientesAnterioresAsync(int anio, int mes)
+        => await GetAsync<List<PendienteAnteriorDto>>($"/api/nominas/pendientes-anteriores?anio={anio}&mes={mes}");
     public async Task<List<SueldoFechaDto>?> GetSueldoFechasAsync(int liqId)
         => await GetAsync<List<SueldoFechaDto>>($"/api/nominas/liquidaciones/{liqId}/sueldo-fechas");
     public async Task<List<SueldoFechaDto>?> AgregarSueldoFechaAsync(int liqId, string fechaStr, decimal monto)

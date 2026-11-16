@@ -62,6 +62,36 @@ public class NomSueldosMesController : ControllerBase
     public async Task<IActionResult> SueldosMes([FromQuery] int anio, [FromQuery] int mes)
     {
         if (anio < 2000 || mes < 1 || mes > 12) return BadRequest(new { error = "Año/mes inválido" });
+        return Ok(await ArmarMesAsync(anio, mes));
+    }
+
+    /// <summary>16/11: desde julio 2026 los conceptos (comisión café, etc.) están separados del sueldo.</summary>
+    public const int PrimerPeriodoVista = 202607;
+    public record PendienteAnteriorDto(int EmpleadoId, string Nombre, string Tipo, int Anio, int Mes, decimal Debe,
+        DateTime? ProximaFecha, int? LiquidacionId);
+
+    /// <summary>
+    /// 16/11: lo que quedó sin pagar de los meses ANTERIORES al elegido (desde julio 2026). Pedido: la comisión
+    /// de octubre se paga el 5/11; mirando noviembre tiene que verse que falta pagarla.
+    /// </summary>
+    [HttpGet("pendientes-anteriores")]
+    public async Task<IActionResult> PendientesAnteriores([FromQuery] int anio, [FromQuery] int mes)
+    {
+        if (anio < 2000 || mes < 1 || mes > 12) return BadRequest(new { error = "Año/mes inválido" });
+        var res = new List<PendienteAnteriorDto>();
+        var (a, m) = (PrimerPeriodoVista / 100, PrimerPeriodoVista % 100);
+        while (a * 100 + m < anio * 100 + mes)
+        {
+            foreach (var e in await ArmarMesAsync(a, m))
+                foreach (var c in e.Conceptos.Where(c => c.Debe > 0.01m))
+                    res.Add(new PendienteAnteriorDto(e.EmpleadoId, e.Nombre, c.Tipo, a, m, c.Debe, c.ProximaFecha, e.LiquidacionId));
+            if (++m > 12) { m = 1; a++; }
+        }
+        return Ok(res.OrderBy(r => r.Anio).ThenBy(r => r.Mes).ThenBy(r => r.Nombre).ToList());
+    }
+
+    private async Task<List<SueldoMesEmpleadoDto>> ArmarMesAsync(int anio, int mes)
+    {
         var liqs = await _db.NomLiquidaciones.Where(l => l.Anio == anio && l.Mes == mes && l.Estado != "anulada").ToListAsync();
         var liqIds = liqs.Select(l => l.Id).ToList();
         var empIdsLiq = liqs.Select(l => l.EmpleadoId).ToList();
@@ -83,12 +113,16 @@ public class NomSueldosMesController : ControllerBase
                 var pagosLiq = pagos.Where(p => p.LiquidacionId == liq.Id).ToList();
                 // --- Sueldo ---
                 var cargado = CargadoSueldo(liq);
-                var pagado = PagadoSueldo(pagosLiq);
+                // Antes de nov 2026 la liquidación traía adentro aguinaldo / bono / comisión (NetoAPagar los incluye) y
+                // esos pagos se anotaban con su concepto: ahí cuenta todo pago suelto (sin ExtraId) como pago de la liquidación.
+                var viejo = anio * 100 + mes < 202611;
+                var pagosSueldo = viejo ? pagosLiq.Where(p => p.ExtraId == null).ToList()
+                                        : pagosLiq.Where(p => p.ExtraId == null && !NomExtrasController.Tipos.Contains(p.Concepto)).ToList();
+                var pagado = pagosSueldo.Sum(p => p.Monto);
                 var debe = Math.Max(0m, cargado - pagado);
                 var reparto = Repartir(fechas.Where(f => f.LiquidacionId == liq.Id), pagado);
                 var prox = reparto.FirstOrDefault(r => r.Falta > 0.01m);
                 var sinFecha = debe > 0.01m && prox.F is null;
-                var pagosSueldo = pagosLiq.Where(p => p.ExtraId == null && !NomExtrasController.Tipos.Contains(p.Concepto)).ToList();
                 conceptos.Add(new SueldoMesConceptoDto("sueldo", cargado, pagado, debe,
                     pagosSueldo.Count == 0 ? null : pagosSueldo.Count == 1 ? "1 pago" : $"{pagosSueldo.Count} pagos",
                     debe > 0.01m ? prox.F?.Fecha : null, debe > 0.01m && prox.F is not null ? Math.Min(prox.Falta, debe) : 0m,
@@ -114,7 +148,7 @@ public class NomSueldosMesController : ControllerBase
             if (liq is null && !e.IsActive) continue;
             res.Add(new SueldoMesEmpleadoDto(e.Id, e.Nombre, e.Puesto, liq?.Id, conceptos));
         }
-        return Ok(res);
+        return res;
     }
 
     private static string? InfoExtras(string tipo, List<NomExtra> xs) => tipo switch

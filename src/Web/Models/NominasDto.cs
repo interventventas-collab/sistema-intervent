@@ -393,6 +393,17 @@ public class SueldoFechaDto
     public decimal Monto { get; set; }
     public decimal Falta { get; set; }
 }
+public class PendienteAnteriorDto
+{
+    public int EmpleadoId { get; set; }
+    public string Nombre { get; set; } = "";
+    public string Tipo { get; set; } = "";
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public decimal Debe { get; set; }
+    public DateTime? ProximaFecha { get; set; }
+    public int? LiquidacionId { get; set; }
+}
 public class ProximoPagoDto
 {
     public int EmpleadoId { get; set; }
