@@ -278,9 +278,10 @@
                 {
                     <div class="form-group">
                         <label class="form-label">Estado</label>
-                        <select class="form-input" @bind="formIsActive">
-                            <option value="@true">Activo</option>
-                            <option value="@false">Inactivo</option>
+                        @* 16/11: select atado a bool no guarda en Blazor → puente string (ver AlqEquipos) *@
+                        <select class="form-input" @bind="formEstado">
+                            <option value="activo">Activo</option>
+                            <option value="inactivo">Inactivo (ya no trabaja)</option>
                         </select>
                     </div>
                 }
@@ -336,6 +337,7 @@
     private string formModalidadSueldo = "mensual";
     private decimal formJornalDiario;
     private bool formIsActive = true;
+    private string formEstado { get => formIsActive ? "activo" : "inactivo"; set => formIsActive = value == "activo"; }
     // 2026-07-31: datos personales / administrativos
     private DateTime? formFechaAlta;
     private string formBanco = "";
