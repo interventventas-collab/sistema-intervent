@@ -2190,37 +2190,47 @@ public class MeliController : ControllerBase
     [HttpGet("product-thumbnails")]
     public async Task<IActionResult> GetProductThumbnails([FromServices] Api.Data.AppDbContext db)
     {
-        var map = new Dictionary<int, string>();
-
-        // 1) Legacy: MeliItem.CafeProductoId directo
-        var legacy = await db.MeliItems.AsNoTracking()
-            .Where(mi => mi.CafeProductoId != null && mi.Thumbnail != null && mi.Status == "active")
-            .Select(mi => new { mi.CafeProductoId, mi.Thumbnail, mi.UpdatedAt })
+        // 2026-11-16: antes se elegía la publi activa actualizada más recientemente, y muchas veces era
+        // un PACK (x2, x4, x12…) → productos sueltos con foto de pack. Ahora se prefiere la publi de
+        // 1 UNIDAD de ese producto; el pack queda de último recurso. Entre las sueltas se mantiene el orden
+        // de antes (link directo primero, después la más reciente) para no cambiar las fotos que ya estaban bien.
+        var activas = await db.MeliItems.AsNoTracking()
+            .Where(mi => mi.Thumbnail != null && mi.Thumbnail != "" && mi.Status == "active")
+            .Select(mi => new { mi.MeliItemId, mi.CafeProductoId, mi.Thumbnail, mi.UpdatedAt })
             .ToListAsync();
-        foreach (var g in legacy.GroupBy(x => x.CafeProductoId!.Value))
-        {
-            var best = g.OrderByDescending(x => x.UpdatedAt).First();
-            if (!string.IsNullOrEmpty(best.Thumbnail)) map[g.Key] = best.Thumbnail!;
-        }
+        var porItem = activas.GroupBy(x => x.MeliItemId).ToDictionary(g => g.Key, g => g.First());
 
-        // 2) Vía componentes: para los que aún no tienen thumb, buscar via MeliItemComponente
-        var falta = await db.CafeProductos.AsNoTracking()
-            .Where(p => p.IsActive && !map.Keys.Contains(p.Id))
-            .Select(p => p.Id).ToListAsync();
-        if (falta.Count > 0)
+        var comps = await db.MeliItemComponentes.AsNoTracking()
+            .Select(c => new { c.MeliItemId, c.MeliVariationId, c.CafeProductoId, c.Cantidad })
+            .ToListAsync();
+        comps = comps.Where(c => porItem.ContainsKey(c.MeliItemId)).ToList();
+        // La publi es "suelta" para el producto si en alguna variante lleva 1 unidad de él. Que lleve
+        // también OTRO producto no la hace pack (tacho + tapa = una unidad armada con dos partes).
+        // Si el producto no figura en los componentes (link viejo), no se sabe: se toma como suelta.
+        var suelta = comps.GroupBy(c => (c.MeliItemId, c.CafeProductoId))
+            .ToDictionary(g => g.Key, g => g.Any(c => c.Cantidad <= 1m));
+
+        // Candidatas: el link viejo (MeliItem.CafeProductoId) + los componentes. Si la publi tiene
+        // componentes cargados, eso manda para saber si es pack aunque el link viejo diga lo contrario.
+        var candidatas = activas.Where(mi => mi.CafeProductoId != null)
+            .Select(mi => (Pid: mi.CafeProductoId!.Value, mi.MeliItemId))
+            .Concat(comps.Select(c => (Pid: c.CafeProductoId, c.MeliItemId)))
+            .Distinct();
+
+        var map = new Dictionary<int, string>();
+        foreach (var g in candidatas.GroupBy(x => x.Pid))
         {
-            var viaComp = await (
-                from c in db.MeliItemComponentes
-                join mi in db.MeliItems on c.MeliItemId equals mi.MeliItemId
-                where falta.Contains(c.CafeProductoId)
-                   && mi.Thumbnail != null && mi.Status == "active"
-                select new { c.CafeProductoId, mi.Thumbnail, mi.UpdatedAt }
-            ).ToListAsync();
-            foreach (var g in viaComp.GroupBy(x => x.CafeProductoId))
-            {
-                var best = g.OrderByDescending(x => x.UpdatedAt).First();
-                if (!string.IsNullOrEmpty(best.Thumbnail)) map[g.Key] = best.Thumbnail!;
-            }
+            var best = g.Select(x =>
+                {
+                    var mi = porItem[x.MeliItemId];
+                    var esSuelta = !suelta.TryGetValue((x.MeliItemId, x.Pid), out var s) || s;
+                    return new { mi.Thumbnail, mi.UpdatedAt, EsSuelta = esSuelta, Directo = mi.CafeProductoId == x.Pid };
+                })
+                .OrderByDescending(x => x.EsSuelta)
+                .ThenByDescending(x => x.Directo)
+                .ThenByDescending(x => x.UpdatedAt)
+                .First();
+            map[g.Key] = best.Thumbnail!;
         }
 
         return Ok(map);
