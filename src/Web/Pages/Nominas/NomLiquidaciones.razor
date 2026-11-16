@@ -165,7 +165,7 @@
                                         }
                                     }
                                 </td>
-                                <td>@EstadoBadge(l.Estado)</td>
+                                <td>@EstadoBadge(EstadoSueldo(l))</td>
                                 <td class="actions-cell" @onclick:stopPropagation="true">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(l)" title="Ver / editar">@SvgIcons.Edit</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(l)" title="Eliminar">@SvgIcons.AlertCircle</button>
@@ -175,61 +175,9 @@
                     </tbody>
                 </table>
             </div>
-            @* 2026-11-11 (2ª): "Otros conceptos" — lo de los módulos (feriados, horas extra, comisiones,
-               plus, aguinaldo) ya no va mezclado en el saldo de cada fila: va acá, plegado. *@
-            @if (extrasLista.Count > 0)
-            {
-                var porTipo = ModulosExtras.Select(m => new { m.Tipo, m.Icono, m.Nombre, Items = extrasLista.Where(x => x.Tipo == m.Tipo).ToList() }).ToList();
-                var debeExt = extrasLista.Sum(x => x.Debe);
-                <div style="margin: 0.9rem 1rem 1rem; border: 1px solid #e5e7eb; border-radius: 8px;">
-                    <div style="padding: 0.6rem 0.8rem; background: #fafafa; border-radius: 8px; cursor: pointer; display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;"
-                         @onclick="() => otrosAbierto = !otrosAbierto">
-                        <strong>@(otrosAbierto ? "▾" : "▸") Otros conceptos @(filtroMes == 0 ? filtroAnio.ToString() : "de " + MesNombre(filtroMes).ToLower())</strong>
-                        <span style="color: #6b7280; font-size: 0.85rem;">
-                            @string.Join(" · ", porTipo.Select(t => $"{t.Nombre} ${FormatMoney0(t.Items.Sum(x => x.Monto))}"))
-                            · debe <b style="color: @(debeExt > 0.01m ? "#b91c1c" : "#047857");">$@FormatMoney0(debeExt)</b>
-                        </span>
-                    </div>
-                    @if (otrosAbierto)
-                    {
-                        <div style="padding: 0 0.8rem 0.6rem;">
-                            @foreach (var t in porTipo.Where(t => t.Items.Count > 0))
-                            {
-                                <div style="font-weight: 600; margin: 0.7rem 0 0.2rem;">@t.Icono @t.Nombre</div>
-                                <table class="data-table" style="font-size: 0.86rem;">
-                                    <thead><tr><th>Empleado</th>@if (filtroMes == 0) {<th>Mes</th>}<th>Detalle</th><th style="text-align:right">Monto</th><th>Fecha de pago</th><th style="text-align:right">Debe</th><th></th></tr></thead>
-                                    <tbody>
-                                        @foreach (var x in t.Items)
-                                        {
-                                            var hoyAr = DateTime.UtcNow.ToArTime().Date;
-                                            <tr>
-                                                <td>@x.EmpleadoNombre</td>
-                                                @if (filtroMes == 0) {<td>@MesNombre(x.Mes)</td>}
-                                                <td>@(x.Detalle ?? "")</td>
-                                                <td style="text-align:right">$@FormatMoney0(x.Monto)</td>
-                                                <td>
-                                                    @if (x.FechaPago is { } fp)
-                                                    {
-                                                        <span style="@(x.Debe > 0.01m && fp.Date < hoyAr ? "color:#b91c1c;font-weight:600" : "")">@(fp.Date == hoyAr ? "hoy " : "")@fp.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</span>
-                                                    }
-                                                    else { <span style="color:#9ca3af">sin fecha</span> }
-                                                </td>
-                                                <td style="text-align:right">
-                                                    @if (x.Debe > 0.01m) { <b style="color:#b91c1c">$@FormatMoney0(x.Debe)</b> }
-                                                    else { <span style="color:#047857">pagado</span> }
-                                                </td>
-                                                <td style="text-align:right">
-                                                    <a class="btn btn-primary" style="padding: 0.15rem 0.7rem; font-size: 0.8rem;" href="/nominas/extras/@x.Tipo?anio=@x.Anio&mes=@x.Mes">@(x.Debe > 0.01m ? "Pagar" : "Ver")</a>
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            }
-                        </div>
-                    }
-                </div>
-            }
+            @* 2026-11-16: Sueldos muestra SOLO el sueldo. Feriados, horas extras, comisiones, plus y aguinaldo
+               se ven y se pagan cada uno en su pantalla (/nominas/extras/{tipo}). *@
+
         }
     </div>
 </div>
@@ -293,10 +241,13 @@
                             <strong style="display: block; margin-bottom: 0.5rem;">Actividad del mes</strong>
 
                             <div class="form-row">
+                                @if (!EsPeriodoModulos || formHorasTrabajadas != 0m)
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Horas trabajadas</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormHorasTrabajadasTxt" />
                                 </div>
+                                }
                                 @if (VerCasilleroViejo(formHorasExtra))
                                 {
                                 <div class="form-group" style="flex: 1;">
@@ -310,16 +261,19 @@
                                 </div>
                             </div>
                             <div class="form-row">
+                                @if (!EsPeriodoModulos || formDiasVacaciones != 0m)
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Días de vacaciones</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormDiasVacacionesTxt" />
                                     <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">Solo informativo.</p>
                                 </div>
+                                }
                                 @* Campo "Recargo hs extra" eliminado: la hora extra paga el valor hora del empleado
                                    tal cual, sin porcentaje extra. formRecargoPct se mantiene en 0 internamente. *@
                             </div>
 
-                            <strong style="display: block; margin: 0.7rem 0 0.4rem;">Conceptos del mes</strong>
+                            <strong style="display: block; margin: 0.7rem 0 0.4rem;">@(EsPeriodoModulos ? "Descuentos" : "Conceptos del mes")</strong>
 
                             @* 2026-06-08: si el empleado cobra por día, mostrar campo Días trabajados *@
                             @if (EsEmpleadoDiario)
@@ -345,10 +299,13 @@
                                     </p>
                                 </div>
                                 }
+                                @if (VerCasilleroViejo(formBonos))
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">🎁 Bonos ($)</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormBonosTxt" />
                                 </div>
+                                }
                                 @if (VerCasilleroViejo(formAguinaldo))
                                 {
                                 <div class="form-group" style="flex: 1;">
@@ -357,24 +314,14 @@
                                 </div>
                                 }
                             </div>
-                            @* 2026-11-11: horas extras, comisiones, feriados, aguinaldo y plus se cargan y se pagan en su módulo.
-                               Acá solo se ve cuánto suman este mes. *@
-                            @if (EsPeriodoModulos)
-                            {
-                                <div style="font-size: 0.82rem; color: #374151; margin: 0.2rem 0 0.6rem; line-height: 1.6;">
-                                    <span style="color:#6b7280;">Aparte este mes (se cargan y se pagan en su módulo):</span><br />
-                                    @foreach (var m in ModulosAparte)
-                                    {
-                                        var monto = editingLiq?.ExtraDeTipo(m.Tipo) ?? 0m;
-                                        <a href="/nominas/extras/@m.Tipo" style="color:#374151; text-decoration:none; margin-right:10px; white-space:nowrap;">@m.Icono @m.Nombre <b>$@FormatMoney(monto)</b></a>
-                                    }
-                                </div>
-                            }
                             <div class="form-row">
+                                @if (VerCasilleroViejo(formAdelantos))
+                                {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">💸 Adelantos ($)</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormAdelantosTxt" />
                                 </div>
+                                }
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">📝 Otros descuentos ($)</label>
                                     <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormOtrosTxt" />
@@ -426,10 +373,13 @@
                                 <span style="color: #059669;">$@FormatMoney(ComisionCalculada)</span>
                             </div>
                             }
+                            @if (VerCasilleroViejo(formBonos))
+                            {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Bonos:</span>
                                 <span style="color: #059669;">$@FormatMoney(formBonos)</span>
                             </div>
+                            }
                             @if (VerCasilleroViejo(formAguinaldo))
                             {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
@@ -437,7 +387,7 @@
                                 <span style="color: #059669;">$@FormatMoney(formAguinaldo)</span>
                             </div>
                             }
-                            @if (formMontoExtras != 0m || EsPeriodoModulos)
+                            @if (formMontoExtras != 0m && !EsPeriodoModulos)
                             {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Aparte (hs extras, comisiones, feriados, aguinaldo, plus):</span>
@@ -446,8 +396,8 @@
                             }
                             <hr style="margin: 0.4rem 0; border: none; border-top: 1px solid #d1d5db;" />
                             <div class="venta-totals-row" style="font-weight: 700; color: #059669;">
-                                <span>Total ganado:</span>
-                                <span>$@FormatMoney(TotalGanado)</span>
+                                <span>@(EsPeriodoModulos ? "Sueldo del mes:" : "Total ganado:")</span>
+                                <span>$@FormatMoney(TotalGanadoVista)</span>
                             </div>
 
                             <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
@@ -455,10 +405,13 @@
                                 <span>− Faltas (@formDiasAusencia d × $@FormatMoney(DiaProporcional)):</span>
                                 <span style="color: #dc2626;">$@FormatMoney(DescuentoFaltas)</span>
                             </div>
+                            @if (VerCasilleroViejo(formAdelantos))
+                            {
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>− Adelantos:</span>
                                 <span style="color: #dc2626;">$@FormatMoney(formAdelantos)</span>
                             </div>
+                            }
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>− Otros descuentos:</span>
                                 <span style="color: #dc2626;">$@FormatMoney(formOtros)</span>
@@ -471,8 +424,8 @@
 
                             <hr style="margin: 0.6rem 0; border: none; border-top: 2px solid #d1d5db;" />
                             <div class="venta-totals-row" style="font-size: 1.25rem; font-weight: 800; color: #1d4ed8;">
-                                <span>NETO A PAGAR:</span>
-                                <span>$@FormatMoney(NetoAPagar)</span>
+                                <span>@(EsPeriodoModulos ? "SUELDO A PAGAR:" : "NETO A PAGAR:")</span>
+                                <span>$@FormatMoney(NetoVista)</span>
                             </div>
                         </div>
                     </div>
@@ -483,19 +436,19 @@
                 {
                     <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 0.75rem; margin-top: 0.75rem;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-                            <strong>💵 Pagos registrados</strong>
-                            <span style="font-size: 0.85rem; color: @(editingLiq.Saldo > 0.01m ? "#dc2626" : "#059669"); font-weight: 700;">
-                                Pagado $@FormatMoney(editingLiq.TotalPagado) · Saldo $@FormatMoney(editingLiq.Saldo)
+                            <strong>@(EsPeriodoModulos ? "💵 Adelantos y pagos del sueldo" : "💵 Pagos registrados")</strong>
+                            <span style="font-size: 0.85rem; color: @(SaldoVista > 0.01m ? "#dc2626" : "#059669"); font-weight: 700;">
+                                Pagado $@FormatMoney(PagadoVista) · Falta $@FormatMoney(SaldoVista)
                             </span>
                         </div>
 
-                        @if (editingLiq.Pagos.Count > 0)
+                        @if (PagosVista.Count > 0)
                         {
-                            var porConcepto = editingLiq.Pagos.GroupBy(x => x.Concepto)
+                            var porConcepto = PagosVista.GroupBy(x => x.Concepto)
                                 .Select(g => new { Concepto = g.Key, Monto = g.Sum(x => x.Monto) })
                                 .OrderByDescending(x => x.Monto).ToList();
 
-                            if (porConcepto.Count > 1)
+                            if (porConcepto.Count > 1 && !EsPeriodoModulos)
                             {
                                 <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.5rem; padding: 0.4rem; background: white; border-radius: 6px; border: 1px solid #e5e7eb;">
                                     <span style="font-size: 0.72rem; color: #6b7280; align-self: center; font-weight: 600;">Pagado por concepto:</span>
@@ -519,7 +472,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var p in editingLiq.Pagos)
+                                    @foreach (var p in PagosVista)
                                     {
                                         <tr>
                                             <td>@p.FechaPago.ToString("dd/MM/yyyy")</td>
@@ -540,7 +493,7 @@
                             </table>
                         }
 
-                        @if (editingLiq.Saldo > 0.01m && editingLiq.Estado != "anulada")
+                        @if (SaldoVista > 0.01m && editingLiq.Estado != "anulada")
                         {
                             var presupuestoConcepto = PresupuestoConcepto(pagoConcepto, editingLiq);
                             var pagadoConcepto = PagadoEnConcepto(pagoConcepto, editingLiq);
@@ -586,7 +539,7 @@
                                                 Lo que falta de este concepto: $@FormatMoney(pendienteConcepto)
                                             </button>
                                         }
-                                        @if (editingLiq.Saldo > 0.01m)
+                                        @if (editingLiq.Saldo > 0.01m && !EsPeriodoModulos)
                                         {
                                             <button class="btn btn-secondary" type="button" @onclick="UsarSaldoCompleto"
                                                     style="font-size: 0.72rem; padding: 0.3rem 0.6rem;">
@@ -601,6 +554,8 @@
                                         <label class="form-label" style="font-size: 0.75rem;">Fecha</label>
                                         <input class="form-input" type="date" @bind="pagoFecha" />
                                     </div>
+                                    @if (!EsPeriodoModulos)
+                                    {
                                     <div class="form-group">
                                         <label class="form-label" style="font-size: 0.75rem;">Concepto *</label>
                                         <select class="form-input" @bind="pagoConcepto">
@@ -610,13 +565,12 @@
                                             <option value="bono">🎁 Bonos</option>
                                             <option value="adelanto">💸 Adelantos</option>
                                             <option value="aguinaldo">🎄 Aguinaldo</option>
-                            <option value="feriado">🎉 Feriados</option>
-                            <option value="plus">⭐ Plus</option>
                                             <option value="feriado">🎉 Feriados</option>
                                             <option value="plus">⭐ Plus</option>
                                             <option value="otro">📝 Otros descuentos</option>
                                         </select>
                                     </div>
+                                    }
                                     <div class="form-group">
                                         <label class="form-label" style="font-size: 0.75rem;">Método</label>
                                         <select class="form-input" @bind="pagoMetodo">
@@ -662,9 +616,9 @@
                                 </p>
                             </div>
                         }
-                        else if (editingLiq.Saldo <= 0.01m && editingLiq.Estado == "pagado")
+                        else if (SaldoVista <= 0.01m && editingLiq.Estado != "anulada")
                         {
-                            <p style="color: #059669; font-weight: 700; margin: 0;">✅ Esta liquidación está totalmente pagada.</p>
+                            <p style="color: #059669; font-weight: 700; margin: 0;">✅ @(EsPeriodoModulos ? "El sueldo de este mes está pagado." : "Esta liquidación está totalmente pagada.")</p>
                         }
                     </div>
 
@@ -1213,6 +1167,16 @@
     };
     private decimal TotalDescuentos => DescuentoFaltas + formAdelantos + formOtros;
     private decimal NetoAPagar => Math.Max(0m, TotalGanado - TotalDescuentos);
+    // 2026-11-16: desde nov 2026 la ventana muestra SOLO el sueldo (lo de los módulos no se mezcla).
+    private static readonly HashSet<string> ConceptosModulos = new() { "horas_extra", "comision_cafe", "feriado", "aguinaldo", "plus" };
+    private decimal TotalGanadoVista => EsPeriodoModulos ? TotalGanado - formMontoExtras : TotalGanado;
+    private decimal NetoVista => EsPeriodoModulos ? Math.Max(0m, NetoAPagar - formMontoExtras) : NetoAPagar;
+    private List<NomPagoDto> PagosVista => editingLiq is null ? new()
+        : EsPeriodoModulos ? editingLiq.Pagos.Where(p => !ConceptosModulos.Contains(p.Concepto)).ToList() : editingLiq.Pagos;
+    private decimal PagadoVista => editingLiq is null ? 0m : EsPeriodoModulos ? PagSueldo(editingLiq) : editingLiq.TotalPagado;
+    private decimal SaldoVista => editingLiq is null ? 0m : EsPeriodoModulos ? Math.Max(0m, SalSueldo(editingLiq)) : editingLiq.Saldo;
+    private static string EstadoSueldo(NomLiquidacionDto l)
+        => l.Estado == "pendiente" && l.Anio * 100 + l.Mes >= 202611 && SalSueldo(l) <= 0.01m ? "pagado" : l.Estado;
 
     protected override async Task OnInitializedAsync()
     {
