@@ -196,7 +196,7 @@ public class CafeSaldosService
             .ToDictionary(g => g.Key, g => g.ToList());
 
         var resumen = new List<(int ClienteId, decimal Neto, decimal Bruto, decimal Credito,
-            decimal Cot, decimal Fac, DateTime Fecha, int Cantidad, bool Migracion)>();
+            decimal Cot, decimal Fac, DateTime Fecha, int Cantidad, bool Migracion, decimal Alq)>();
 
         foreach (var (clienteId, lista) in grupos)
         {
@@ -217,7 +217,9 @@ public class CafeSaldosService
                 pendientes.Where(v => v.TipoComprobante is "FA" or "FB" or "FC").Sum(v => v.Saldo),
                 fecha,
                 pendientes.Count,
-                pendientes.Any(v => v.EsSaldoMigracion)
+                pendientes.Any(v => v.EsSaldoMigracion),
+                // 16/11/2026: lo pendiente de RESERVAS DE ALQUILER (vienen con Id negativo).
+                pendientes.Where(v => v.Id < 0).Sum(v => v.Saldo)
             ));
         }
         if (resumen.Count == 0) return new List<ClienteSaldoPendienteDto>();
@@ -270,7 +272,9 @@ public class CafeSaldosService
                     cli?.Telefono2,
                     string.IsNullOrWhiteSpace(cli?.Notas) ? null : cli!.Notas,
                     ultimos.TryGetValue(r.ClienteId, out var up) ? up.Fecha : null,
-                    ultimos.TryGetValue(r.ClienteId, out var up2) ? up2.Total + up2.Retenciones : null
+                    ultimos.TryGetValue(r.ClienteId, out var up2) ? up2.Total + up2.Retenciones : null,
+                    r.Alq,
+                    r.Bruto - r.Alq
                 );
             })
             .OrderBy(c => c.FechaMasAntigua) // más antigua primero (mayor urgencia)
@@ -379,4 +383,8 @@ public record ClienteSaldoPendienteDto(
     string? Telefono2 = null,
     string? Notas = null,
     DateTime? UltimoPagoFecha = null,
-    decimal? UltimoPagoImporte = null);
+    decimal? UltimoPagoImporte = null,
+    /// <summary>16/11/2026: de lo pendiente, cuánto es de reservas de ALQUILER (para filtrar en Nueva cobranza).</summary>
+    decimal SaldoAlquiler = 0m,
+    /// <summary>16/11/2026: de lo pendiente, cuánto es de VENTAS (mercadería).</summary>
+    decimal SaldoVentas = 0m);

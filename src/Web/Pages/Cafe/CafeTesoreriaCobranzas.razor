@@ -406,50 +406,88 @@
                         <input class="form-input" @bind="clienteSearch" @bind:event="oninput" @bind:after="RecargarSiNoHayClientes"
                                @onfocus="() => clienteSearchOpen = true"
                                placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección…" />
-                        @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
+                        @* 16/11/2026 (pedido del dueño): al abrir, ya se ven los que DEBEN (mayor deuda primero), con
+                           botones Ventas / Alquileres. "Ver todos" muestra todos los clientes como antes. Escribiendo,
+                           primero salen los que deben y abajo, en gris, los que no deben nada. *@
+                        var hayTexto = !string.IsNullOrWhiteSpace(clienteSearch);
+                        <div style="display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap; margin-top:0.45rem; font-size:0.8rem;">
+                            @foreach (var (modo, txt) in new[] { ("deben", "Los que deben"), ("ventas", "Ventas"), ("alquileres", "Alquileres") })
+                            {
+                                var m = modo;
+                                var activo = !verTodosClientes && filtroDeuda == m;
+                                <button type="button" @onclick="() => { filtroDeuda = m; verTodosClientes = false; }"
+                                        style="border:1px solid @(activo ? "#111827" : "#d1d5db"); background:@(activo ? "#111827" : "white"); color:@(activo ? "white" : "#374151"); border-radius:999px; padding:0.2rem 0.7rem; cursor:pointer; font-size:0.8rem;">
+                                    @txt <span style="opacity:0.7;">@DeudoresFiltrados(m).Count</span>
+                                </button>
+                            }
+                            <button type="button" @onclick="() => verTodosClientes = true"
+                                    style="border:1px solid @(verTodosClientes ? "#111827" : "#d1d5db"); background:@(verTodosClientes ? "#111827" : "white"); color:@(verTodosClientes ? "white" : "#374151"); border-radius:999px; padding:0.2rem 0.7rem; cursor:pointer; font-size:0.8rem; margin-left:auto;">
+                                Ver todos
+                            </button>
+                        </div>
+                        @if (deudores is null)
                         {
-                            var matchesTodos = ClientesMatching(clienteSearch);
-                            var matches = ClienteSearch.Recortar(matchesTodos);
-                            @* 28/09/2026: la lista va DENTRO de la ventana (no flotando): flotando, la ventana recién
-                               abierta es bajita y la cortaba — se veían 2 clientes. Así la ventana crece y se ven ~8. *@
-                            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 55vh; overflow-y: auto; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
-                                @if (matches.Count == 0)
+                            <div style="padding:0.5rem 0.1rem; color:#6b7280; font-size:0.82rem;">Buscando quién debe…</div>
+                        }
+                        else if (verTodosClientes && !hayTexto)
+                        {
+                            <div style="padding:0.5rem 0.1rem; color:#6b7280; font-size:0.82rem;">Escribí arriba para buscar entre todos los clientes.</div>
+                        }
+                        else
+                        {
+                            List<CafeClienteDto> conDeuda, sinDeuda;
+                            bool recortado = false;
+                            if (verTodosClientes)
+                            {
+                                var todos = ClientesMatching(clienteSearch);
+                                var rec = ClienteSearch.Recortar(todos);
+                                recortado = todos.Count > rec.Count;
+                                conDeuda = rec; sinDeuda = new();
+                            }
+                            else
+                            {
+                                var filtrados = DeudoresFiltrados(filtroDeuda);
+                                var ids = filtrados.Select(d => d.ClienteId).ToHashSet();
+                                if (hayTexto)
                                 {
-                                    <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                    var todos = ClientesMatching(clienteSearch);
+                                    conDeuda = todos.Where(c => ids.Contains(c.Id)).ToList();
+                                    sinDeuda = ClienteSearch.Recortar(todos.Where(c => !deudorPorId.ContainsKey(c.Id)).ToList());
                                 }
                                 else
                                 {
-                                    @foreach (var ci in matches)
+                                    var porId = (clientes ?? new()).ToDictionary(c => c.Id);
+                                    conDeuda = filtrados.OrderByDescending(d => MontoSegunFiltro(d, filtroDeuda))
+                                        .Where(d => porId.ContainsKey(d.ClienteId)).Select(d => porId[d.ClienteId]).ToList();
+                                    sinDeuda = new();
+                                }
+                            }
+                            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 55vh; overflow-y: auto; margin-top: 0.35rem;">
+                                @if (conDeuda.Count == 0 && sinDeuda.Count == 0)
+                                {
+                                    <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">
+                                        @(hayTexto ? "Sin resultados." : filtroDeuda == "alquileres" ? "Nadie debe alquileres." : filtroDeuda == "ventas" ? "Nadie debe ventas." : "Nadie debe nada.")
+                                    </div>
+                                }
+                                @foreach (var ci in conDeuda)
+                                {
+                                    @FilaCliente(ci, false)
+                                }
+                                @if (sinDeuda.Count > 0)
+                                {
+                                    <div style="padding: 0.35rem 0.6rem; background:#f9fafb; color:#6b7280; font-size:0.75rem; border-bottom:1px solid #f3f4f6;">
+                                        Otros clientes (no deben nada)
+                                    </div>
+                                    @foreach (var ci in sinDeuda)
                                     {
-                                        var ciId = ci.Id;
-                                        // Nombre a mostrar: prioriza Nombre (fantasia/comercial); si no, RazonSocial (fiscal).
-                                        var nombreMostrar = !string.IsNullOrWhiteSpace(ci.Nombre) ? ci.Nombre : (ci.RazonSocial ?? "—");
-                                        // Direccion a mostrar: prioriza DomicilioEntrega; si no, Direccion (fiscal).
-                                        var dirMostrar = !string.IsNullOrWhiteSpace(ci.DomicilioEntrega) ? ci.DomicilioEntrega : ci.Direccion;
-                                        <div @onclick="() => SelectCliente(ciId)"
-                                             style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
-                                            <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@ci.Codigo</span>
-                                            <strong>@nombreMostrar</strong>
-                                            @if (!string.IsNullOrEmpty(ci.Cuit))
-                                            {
-                                                <span style="color: #6b7280; font-size: 0.78rem;"> · @ci.Cuit</span>
-                                            }
-                                            @if (!string.IsNullOrEmpty(ci.Telefono))
-                                            {
-                                                <span style="color: #6b7280; font-size: 0.78rem;"> · 📞 @ci.Telefono</span>
-                                            }
-                                            @if (!string.IsNullOrEmpty(dirMostrar))
-                                            {
-                                                <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.15rem;">📍 @dirMostrar</div>
-                                            }
-                                        </div>
+                                        @FilaCliente(ci, true)
                                     }
-                                    @if (matchesTodos.Count > matches.Count)
-                                    {
-                                        <div style="padding: 0.45rem 0.7rem; background: #fffbeb; color: #92400e; font-size: 0.78rem; border-top: 1px solid #fde68a;">
-                                            @ClienteSearch.LeyendaTope(matchesTodos.Count, matches.Count)
-                                        </div>
-                                    }
+                                }
+                                @if (recortado)
+                                {
+                                    <div style="padding: 0.45rem 0.7rem; background: #fffbeb; color: #92400e; font-size: 0.78rem; border-top: 1px solid #fde68a;">
+                                        Hay más clientes: escribí más letras para achicar la lista.
+                                    </div>
                                 }
                             </div>
                         }
@@ -2657,7 +2695,9 @@
         formFecha = HoyAr; fechaOrigen = null; fechaTocadaAMano = false;
         maquinasPend = new(); maqImput = new(); dolarDelDia = 0m;   // 2026-10-06
         LimpiarRepartir();
+        filtroDeuda = "deben"; verTodosClientes = false;
         showNueva = true;
+        _ = CargarDeudores();
     }
 
     // 2026-08-21: filtro + orden con el buscador COMPARTIDO (ClienteSearch): ordena por relevancia
@@ -2665,6 +2705,78 @@
     // buscado podia quedar afuera del tope de la lista.
     private List<CafeClienteDto> ClientesMatching(string q)
         => ClienteSearch.Buscar(clientes, q);
+
+    // ── 16/11/2026: lista de los que DEBEN en Nueva cobranza ──
+    private List<ClienteSaldoPendienteDto>? deudores;
+    private Dictionary<int, ClienteSaldoPendienteDto> deudorPorId = new();
+    private string filtroDeuda = "deben";   // deben | ventas | alquileres
+    private bool verTodosClientes;
+
+    private async Task CargarDeudores()
+    {
+        deudores = null; deudorPorId = new();
+        try { deudores = await Api.GetCafeClientesSaldosPendientesAsync() ?? new(); }
+        catch { deudores = new(); }
+        deudorPorId = deudores.GroupBy(d => d.ClienteId).ToDictionary(g => g.Key, g => g.First());
+        StateHasChanged();
+    }
+
+    private List<ClienteSaldoPendienteDto> DeudoresFiltrados(string modo) => (deudores ?? new()).Where(d => modo switch
+    {
+        "ventas" => d.SaldoVentas > 0.5m,
+        "alquileres" => d.SaldoAlquiler > 0.5m,
+        _ => d.SaldoPendiente > 0.5m
+    }).ToList();
+
+    private static decimal MontoSegunFiltro(ClienteSaldoPendienteDto d, string modo) => modo switch
+    {
+        "ventas" => d.SaldoVentas,
+        "alquileres" => d.SaldoAlquiler,
+        _ => d.SaldoPendiente
+    };
+
+    private RenderFragment FilaCliente(CafeClienteDto ci, bool gris) => __builder =>
+    {
+        var ciId = ci.Id;
+        // Nombre a mostrar: prioriza Nombre (fantasia/comercial); si no, RazonSocial (fiscal).
+        var nombreMostrar = !string.IsNullOrWhiteSpace(ci.Nombre) ? ci.Nombre : (ci.RazonSocial ?? "—");
+        // Direccion a mostrar: prioriza DomicilioEntrega; si no, Direccion (fiscal).
+        var dirMostrar = !string.IsNullOrWhiteSpace(ci.DomicilioEntrega) ? ci.DomicilioEntrega : ci.Direccion;
+        deudorPorId.TryGetValue(ciId, out var deu);
+        <div @onclick="() => SelectCliente(ciId)"
+             style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; display:flex; gap:0.6rem; align-items:flex-start; @(gris ? "opacity:0.7;" : "")">
+            <div style="flex:1; min-width:0;">
+                <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@ci.Codigo</span>
+                <strong>@nombreMostrar</strong>
+                @if (!string.IsNullOrEmpty(ci.Cuit))
+                {
+                    <span style="color: #6b7280; font-size: 0.78rem;"> · @ci.Cuit</span>
+                }
+                @if (!string.IsNullOrEmpty(ci.Telefono))
+                {
+                    <span style="color: #6b7280; font-size: 0.78rem;"> · 📞 @ci.Telefono</span>
+                }
+                @if (!string.IsNullOrEmpty(dirMostrar))
+                {
+                    <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.15rem;">📍 @dirMostrar</div>
+                }
+            </div>
+            @if (deu is not null)
+            {
+                <div style="text-align:right; white-space:nowrap;">
+                    <div style="font-weight:700;">debe $@deu.SaldoPendiente.ToString("N2")</div>
+                    @if (deu.SaldoVentas > 0.5m && deu.SaldoAlquiler > 0.5m)
+                    {
+                        <div style="color:#6b7280; font-size:0.72rem;">ventas $@deu.SaldoVentas.ToString("N0") · alquileres $@deu.SaldoAlquiler.ToString("N0")</div>
+                    }
+                    else if (deu.SaldoAlquiler > 0.5m)
+                    {
+                        <div style="color:#6b7280; font-size:0.72rem;">alquiler</div>
+                    }
+                </div>
+            }
+        </div>
+    };
 
     private async Task SelectCliente(int id)
     {
